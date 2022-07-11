@@ -19,10 +19,9 @@
 #include <memory>
 #include <variant>
 
-#include "yb/client/yb_op.h"
-
 #include "yb/util/locks.h"
 #include "yb/util/lw_function.h"
+#include "yb/util/ref_cnt_buffer.h"
 
 #include "yb/yql/pggate/pg_gate_fwd.h"
 #include "yb/yql/pggate/pg_op.h"

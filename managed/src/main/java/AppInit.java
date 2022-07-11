@@ -33,6 +33,7 @@ import com.yugabyte.yw.models.ExtraMigration;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.MetricConfig;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.queries.QueryHelper;
 import com.yugabyte.yw.scheduler.Scheduler;
 import io.ebean.Ebean;
 import io.prometheus.client.hotspot.DefaultExports;
@@ -66,6 +67,7 @@ public class AppInit {
       AlertConfigurationWriter alertConfigurationWriter,
       AlertConfigurationService alertConfigurationService,
       AlertDestinationService alertDestinationService,
+      QueryHelper queryHelper,
       PlatformMetricsProcessor platformMetricsProcessor,
       Scheduler scheduler,
       CallHome callHome,

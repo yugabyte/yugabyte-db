@@ -189,6 +189,10 @@ Status TableInfo::LoadFromPB(const TableId& primary_table_id, const TableInfoPB&
   index_map->FromPB(pb.indexes());
   schema_version = pb.schema_version();
 
+  if (pb.has_wal_retention_secs()) {
+    wal_retention_secs = pb.wal_retention_secs();
+  }
+
   RETURN_NOT_OK(PartitionSchema::FromPB(pb.partition_schema(), schema(), &partition_schema));
 
   for (const DeletedColumnPB& deleted_col : pb.deleted_cols()) {
@@ -212,6 +216,7 @@ void TableInfo::ToPB(TableInfoPB* pb) const {
   }
   index_map->ToPB(pb->mutable_indexes());
   pb->set_schema_version(schema_version);
+  pb->set_wal_retention_secs(wal_retention_secs);
 
   partition_schema.ToPB(pb->mutable_partition_schema());
 

@@ -42,7 +42,7 @@ class NumberedDeque {
     inner_deque_.clear();
   }
 
-  Status push_back(SequenceNumber seq_num, const Element& element) {
+  Status push_back(const SequenceNumber seq_num, const Element& element) {
     if (PREDICT_FALSE(inner_deque_.empty())) {
       first_seq_num_ = seq_num;
     } else {
@@ -56,7 +56,7 @@ class NumberedDeque {
     return Status::OK();
   }
 
-  Status push_front(SequenceNumber seq_num, const Element& element) {
+  Status push_front(const SequenceNumber seq_num, const Element& element) {
     if (PREDICT_FALSE(inner_deque_.empty())) {
       first_seq_num_ = seq_num;
     } else {
@@ -113,7 +113,7 @@ class NumberedDeque {
 
   size_t size() const { return inner_deque_.size(); }
 
-  void truncate(size_t new_size) {
+  void truncate(const size_t new_size) {
     if (PREDICT_FALSE(new_size >= inner_deque_.size())) {
       return;
     }
@@ -128,7 +128,7 @@ class NumberedDeque {
     inner_deque_.erase(cut_from_included, inner_deque_.end());
   }
 
-  Result<const Element&> Get(SequenceNumber seq_num) const {
+  Result<const_iterator> iter_at(const SequenceNumber seq_num) const {
     if (inner_deque_.empty()) {
       return STATUS(NotFound, "Empty");
     }
@@ -147,8 +147,11 @@ class NumberedDeque {
           NotFound, "Sequence number $0 is later than last available ($1)", seq_num,
           first_seq_num_ + inner_deque_.size() - 1);
     }
+    return begin() + idx;
+  }
 
-    return inner_deque_.at(idx);
+  Result<const Element&> Get(const SequenceNumber seq_num) const {
+    return *VERIFY_RESULT(iter_at(seq_num));
   }
 
  private:

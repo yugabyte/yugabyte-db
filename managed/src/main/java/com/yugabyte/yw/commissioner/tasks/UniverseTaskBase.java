@@ -9,6 +9,7 @@ import static com.yugabyte.yw.forms.UniverseTaskParams.isFirstTryForTask;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.api.client.util.Objects;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Strings;
 import com.google.common.collect.Streams;
 import com.google.common.net.HostAndPort;
@@ -43,8 +44,8 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.EnableEncryptionAtRest;
 import com.yugabyte.yw.commissioner.tasks.subtasks.LoadBalancerStateChange;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ManageAlertDefinitions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ManipulateDnsRecordTask;
-import com.yugabyte.yw.commissioner.tasks.subtasks.ModifyBlackList;
 import com.yugabyte.yw.commissioner.tasks.subtasks.MarkUniverseForHealthScriptReUpload;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ModifyBlackList;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PauseServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PersistResizeNode;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PersistSystemdUpgrade;
@@ -76,8 +77,8 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForMasterLeader;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForServerReady;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForTServerHeartBeats;
-import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckMemory;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForYbcServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckMemory;
 import com.yugabyte.yw.commissioner.tasks.subtasks.nodes.UpdateNodeProcess;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.DeleteBootstrapIds;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.DeleteReplication;
@@ -86,6 +87,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigUpdate
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.UniverseInProgressException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.BackupRequestParams;
@@ -128,6 +130,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -152,6 +155,8 @@ import play.libs.Json;
 public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   protected static final String MIN_WRITE_READ_TABLE_CREATION_RELEASE = "2.6.0.0";
+
+  @VisibleForTesting static final Duration SLEEP_TIME_FORCE_LOCK_RETRY = Duration.ofSeconds(10);
 
   protected String ysqlPassword;
   protected String ycqlPassword;
@@ -238,40 +243,37 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     if (owner == null) {
       log.trace("TaskType not found for class " + this.getClass().getCanonicalName());
     }
-    return new UniverseUpdater() {
-      @Override
-      public void run(Universe universe) {
-        if (isFirstTryForTask(taskParams())) {
-          // Universe already has a reference to the last task UUID in case of retry.
-          // Check version only when it is a first try.
-          verifyUniverseVersion(expectedUniverseVersion, universe);
-        }
-        UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-        if (universeDetails.universePaused && !isResumeOrDelete) {
-          String msg = "Universe " + taskParams().universeUUID + " is currently paused";
-          log.error(msg);
-          throw new RuntimeException(msg);
-        }
-        // If this universe is already being edited, fail the request.
-        if (!isForceUpdate && universeDetails.updateInProgress) {
-          String msg = "Universe " + taskParams().universeUUID + " is already being updated.";
-          log.error(msg);
-          throw new RuntimeException(msg);
-        }
-        // If the task is retried, check if the task UUID is same as the one in the universe.
-        // Check this condition only on retry to retain same behavior as before.
-        if (!isForceUpdate
-            && !universeDetails.updateSucceeded
-            && taskParams().previousTaskUUID != null
-            && !Objects.equal(taskParams().previousTaskUUID, universeDetails.updatingTaskUUID)) {
-          String msg = "Only the last task " + taskParams().previousTaskUUID + " can be retried";
-          log.error(msg);
-          throw new RuntimeException(msg);
-        }
-        markUniverseUpdateInProgress(owner, universe, checkSuccess);
-        if (callback != null) {
-          callback.accept(universe);
-        }
+    return universe -> {
+      if (isFirstTryForTask(taskParams())) {
+        // Universe already has a reference to the last task UUID in case of retry.
+        // Check version only when it is a first try.
+        verifyUniverseVersion(expectedUniverseVersion, universe);
+      }
+      UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+      if (universeDetails.universePaused && !isResumeOrDelete) {
+        String msg = "Universe " + taskParams().universeUUID + " is currently paused";
+        log.error(msg);
+        throw new RuntimeException(msg);
+      }
+      // If this universe is already being edited, fail the request.
+      if (!isForceUpdate && universeDetails.updateInProgress) {
+        String msg = "Universe " + taskParams().universeUUID + " is already being updated";
+        log.error(msg);
+        throw new UniverseInProgressException(msg);
+      }
+      // If the task is retried, check if the task UUID is same as the one in the universe.
+      // Check this condition only on retry to retain same behavior as before.
+      if (!isForceUpdate
+          && !universeDetails.updateSucceeded
+          && taskParams().previousTaskUUID != null
+          && !Objects.equal(taskParams().previousTaskUUID, universeDetails.updatingTaskUUID)) {
+        String msg = "Only the last task " + taskParams().previousTaskUUID + " can be retried";
+        log.error(msg);
+        throw new RuntimeException(msg);
+      }
+      markUniverseUpdateInProgress(owner, universe, checkSuccess);
+      if (callback != null) {
+        callback.accept(universe);
       }
     };
   }
@@ -473,9 +475,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    *     version. -1 implies always lock the universe.
    */
   public Universe lockUniverseForUpdate(int expectedUniverseVersion) {
-    UniverseUpdater updater =
-        getLockingUniverseUpdater(expectedUniverseVersion, true, false, false);
-    return lockUniverseForUpdate(expectedUniverseVersion, updater);
+    return lockUniverseForUpdate(expectedUniverseVersion, false /* isResumeOrDelete */);
   }
 
   public Universe lockUniverseForUpdate(int expectedUniverseVersion, boolean isResumeOrDelete) {
@@ -485,12 +485,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   public Universe forceLockUniverseForUpdate(int expectedUniverseVersion) {
-    log.info(
-        "Force lock universe {} at version {}.",
-        taskParams().universeUUID,
-        expectedUniverseVersion);
-    UniverseUpdater updater = getLockingUniverseUpdater(expectedUniverseVersion, true, true, false);
-    return lockUniverseForUpdate(expectedUniverseVersion, updater);
+    return forceLockUniverseForUpdate(expectedUniverseVersion, false /* isResumeOrDelete */);
   }
 
   public Universe forceLockUniverseForUpdate(
@@ -499,9 +494,37 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         "Force lock universe {} at version {}.",
         taskParams().universeUUID,
         expectedUniverseVersion);
-    UniverseUpdater updater =
-        getLockingUniverseUpdater(expectedUniverseVersion, true, true, isResumeOrDelete);
-    return lockUniverseForUpdate(expectedUniverseVersion, updater);
+    if (runtimeConfigFactory
+        .forUniverse(Universe.getOrBadRequest(taskParams().universeUUID))
+        .getBoolean("yb.task.override_force_universe_lock")) {
+      UniverseUpdater updater =
+          getLockingUniverseUpdater(
+              expectedUniverseVersion,
+              true /* checkSuccess */,
+              true /* isForceUpdate */,
+              isResumeOrDelete);
+      return lockUniverseForUpdate(expectedUniverseVersion, updater);
+    }
+    long retryNumber = 0;
+    long maxNumberOfRetries =
+        config.getDuration("yb.task.max_force_universe_lock_timeout", TimeUnit.SECONDS)
+            / SLEEP_TIME_FORCE_LOCK_RETRY.getSeconds();
+    while (retryNumber < maxNumberOfRetries) {
+      retryNumber++;
+      try {
+        return lockUniverseForUpdate(expectedUniverseVersion, isResumeOrDelete);
+      } catch (UniverseInProgressException e) {
+        log.debug(
+            "Universe {} was locked: {}; retrying after {} seconds... (try number {} out of {})",
+            taskParams().universeUUID,
+            e.getMessage(),
+            SLEEP_TIME_FORCE_LOCK_RETRY.getSeconds(),
+            retryNumber,
+            maxNumberOfRetries);
+      }
+      waitFor(SLEEP_TIME_FORCE_LOCK_RETRY);
+    }
+    return lockUniverseForUpdate(expectedUniverseVersion, isResumeOrDelete);
   }
 
   /**

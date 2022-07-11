@@ -1241,8 +1241,7 @@ download_toolchain() {
   if [[ -z ${YB_LLVM_TOOLCHAIN_URL:-} &&
         ${YB_COMPILER_TYPE:-} =~ ^clang[0-9]+$ ]] && is_linux; then
     YB_LLVM_TOOLCHAIN_URL=$(
-      activate_virtualenv;
-      python3 -m llvm_installer --print-url --llvm-major-version=${YB_COMPILER_TYPE#clang}
+      python3 -m llvm_installer --print-url "--llvm-major-version=${YB_COMPILER_TYPE#clang}"
     )
     if [[ ${YB_LLVM_TOOLCHAIN_URL} != https://* ]]; then
       fatal "Failed to determine LLVM toolchain URL using the llvm-installer utility." \

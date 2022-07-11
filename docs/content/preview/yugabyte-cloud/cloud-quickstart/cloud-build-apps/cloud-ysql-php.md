@@ -31,7 +31,7 @@ The following tutorial shows a small [PHP application](https://github.com/yugaby
 Clone the sample application to your computer:
 
 ```sh
-git clone https://github.com/yugabyte/yugabyte-simple-php-app && cd yugabyte-simple-php-app
+git clone https://github.com/YugabyteDB-Samples/yugabyte-simple-php-app.git && cd yugabyte-simple-php-app
 ```
 
 ## Provide connection parameters

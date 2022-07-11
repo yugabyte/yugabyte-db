@@ -13,7 +13,8 @@
      "(^managed/src/main/public/swagger-ui/)",
      "(^managed/src/main/resources/swagger.json$)",
      "(^managed/build.sbt$)",
-     "(^managed/src/main/resources/aws_pricing/.*$)"
+     "(^managed/src/main/resources/aws_pricing/.*$)",
+     "(^python/yb/test_data/.*[.](log|out)$)"
   ],
   "linters": {
     "script-and-regex.script": {

@@ -7,6 +7,8 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
+import { TableType } from '../../../redesign/helpers/dtos';
+
 export enum Backup_States {
   IN_PROGRESS = 'InProgress',
   COMPLETED = 'Completed',
@@ -29,18 +31,6 @@ export const BACKUP_LABEL_MAP: Record<Backup_States, string> = {
   Stopped: 'Cancelled',
   DeleteInProgress: 'Deleting',
   QueuedForDeletion: 'Queued for deletion'
-};
-
-export enum TableType {
-  YQL_TABLE_TYPE = 'YQL_TABLE_TYPE',
-  REDIS_TABLE_TYPE = 'REDIS_TABLE_TYPE',
-  PGSQL_TABLE_TYPE = 'PGSQL_TABLE_TYPE'
-}
-
-export const TABLE_TYPE_MAP: Record<TableType, string> = {
-  YQL_TABLE_TYPE: 'YCQL',
-  PGSQL_TABLE_TYPE: 'YSQL',
-  REDIS_TABLE_TYPE: 'REDIS'
 };
 
 export interface Keyspace_Table {

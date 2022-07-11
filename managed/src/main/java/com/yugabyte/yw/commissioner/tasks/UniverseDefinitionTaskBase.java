@@ -1645,7 +1645,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       String softwareVersion) {
     AnsibleConfigureServers.Params params =
         getAnsibleConfigureServerParams(node, processType, UpgradeTaskType.Software, taskSubType);
-    if (softwareVersion == null) {
+    if (taskSubType == UpgradeTaskSubType.PackageReInstall) {
+      params.updatePackages = true;
+    } else if (softwareVersion == null) {
       UserIntent userIntent =
           getUniverse(true).getUniverseDetails().getClusterByUuid(node.placementUuid).userIntent;
       params.ybSoftwareVersion = userIntent.ybSoftwareVersion;

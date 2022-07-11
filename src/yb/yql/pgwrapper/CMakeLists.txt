@@ -85,7 +85,7 @@ ADD_YB_LIBRARY(ysql_upgrade
                SRCS ${YSQL_UPGRADE_SRCS}
                DEPS ${YSQL_UPGRADE_DEPS})
 
-set(YB_TEST_LINK_LIBS yb_pgwrapper yb_client ql-dml-test-base pg_wrapper_test_base tools_test_utils
+set(YB_TEST_LINK_LIBS yb_pgwrapper ql-dml-test-base pg_wrapper_test_base tools_test_utils
     geo_transactions_test_base ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(pg_catalog_perf-test)
 ADD_YB_TEST(pg_ddl_concurrency-test)

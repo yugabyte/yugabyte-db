@@ -143,23 +143,17 @@ public class YsqlQueryExecutor {
     return response;
   }
 
-  public JsonNode executeQueryInNodeShell(Universe universe, RunQueryFormData queryParams) {
+  public JsonNode executeQueryInNodeShell(
+      Universe universe, RunQueryFormData queryParams, NodeDetails node) {
     ObjectNode response = newObject();
     response.put("type", "ysql");
     String queryType = getQueryType(queryParams.query);
     String queryString =
         queryType.equals("SELECT") ? wrapJsonAgg(queryParams.query) : queryParams.query;
 
-    NodeDetails randomTServer = null;
-    try {
-      randomTServer = CommonUtils.getARandomLiveTServer(universe);
-    } catch (IllegalStateException ise) {
-      throw new PlatformServiceException(
-          BAD_REQUEST, "Cluster may not have been initialized yet. Please try later");
-    }
     ShellResponse shellResponse =
         nodeUniverseManager
-            .runYsqlCommand(randomTServer, universe, queryParams.db_name, queryString)
+            .runYsqlCommand(node, universe, queryParams.db_name, queryString)
             .processErrors("Ysql Query Execution Error");
     try {
       ObjectMapper objectMapper = new ObjectMapper();

@@ -15,7 +15,8 @@
     "yb_custom_ami_builder.yml",
     "remote_role.yml",
     "setup-cgroup.yml",
-    "edit_authorized_keys.yml"
+    "edit_authorized_keys.yml",
+    "reinstall-package.yml"
   ],
   "bin": [
     "bin/common.sh",

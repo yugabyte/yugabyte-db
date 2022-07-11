@@ -1,12 +1,10 @@
 ---
-title: Python ORMs
-linkTitle: Python ORM
+title: Use an ORM
+linkTitle: Use an ORM
 description: SQLAlchemy ORM support for YugabyteDB
-headcontent: SQLAlchemy ORM support for YugabyteDB
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
-    name: Python ORMs
     identifier: sqlalchemy-orm
     parent: python-drivers
     weight: 600
@@ -33,7 +31,7 @@ type: docs
 
 [SQLAlchemy](https://www.sqlalchemy.org/) is a popular ORM provider for Python applications, and is widely used by Python developers for database access. YugabyteDB provides full support for SQLAlchemy ORM.
 
-## CRUD operations with SQLAlchemy ORM
+## CRUD operations
 
 Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in the [Build an application](/preview/quick-start/build-apps/python/ysql-sqlalchemy/) page under the Quick start section.
 
@@ -51,17 +49,17 @@ You can verify the installation as follows:
 
 1. Open the Python prompt by executing the following command:
 
-    ```shell
+    ```sh
     python3
     ```
 
 1. From the Python prompt, execute the following commands to check the SQLAlchemy version:
 
-    ```python prompt
+    ```python
     import sqlalchemy
     ```
 
-    ```python prompt
+    ```python
     sqlalchemy.__version__
     ```
 
@@ -69,55 +67,51 @@ You can verify the installation as follows:
 
 To start with SQLAlchemy, in your project directory, create 4 Python files - `config.py`,`base.py`,`model.py`, and `main.py`
 
-`config.py` contains the credentials to connect to your database. Copy the following sample code to the `config.py` file.
+1. `config.py` contains the credentials to connect to your database. Copy the following sample code to the `config.py` file.
 
-```python
-  db_user = 'yugabyte'
-  db_password = 'yugabyte'
-  database = 'yugabyte'
-  db_host = 'localhost'
-  db_port = 5433
-```
+   ```python
+    db_user = 'yugabyte'
+    db_password = 'yugabyte'
+    database = 'yugabyte'
+    db_host = 'localhost'
+    db_port = 5433
+   ```
 
-Next, declare a mapping. When using the ORM, the configuration process begins with describing the database tables you'll use, and then defining the classes which map to those tables. In modern SQLAlchemy, these two tasks are usually performed together, using a system known as "Declarative Extensions". Classes mapped using the Declarative system are defined in terms of a base class which maintains a catalog of classes and tables relative to that base - this is known as the declarative base class.
+1. Next, declare a mapping. When using the ORM, the configuration process begins with describing the database tables you'll use, and then defining the classes which map to those tables. In modern SQLAlchemy, these two tasks are usually performed together, using a system known as **Declarative Extensions**. Classes mapped using the Declarative system are defined in terms of a base class which maintains a catalog of classes and tables relative to that base - this is known as the declarative base class. You create the base class using the `declarative_base()` function. Add the following code to the `base.py` file.
 
-You create the Base class using the `declarative_base()` function. Add the following code to the `base.py` file.
+   ```python
+   from sqlalchemy.ext.declarative import declarative_base
+   Base = declarative_base()
+   ```
 
-```python
-from sqlalchemy.ext.declarative import declarative_base
-Base = declarative_base()
-```
+1. Now that you have a _base_, you can define any number of mapped classes in terms of it. Start with a single table called `employees`, to store records for the end-users using your application. A new class called `Employee` maps to this table. In the class, you define details about the table to which you're mapping; primarily the table name, and names and datatypes of the columns. Add the following to the `model.py` file:
 
-Now that you have a "base", you can define any number of mapped classes in terms of it. Start with a single table called `employees`, to store records for the end-users using your application. A new class called `Employee` maps to this table. In the class, you define details about the table to which you're mapping; primarily the table name, and names and datatypes of the columns.
+   ```python
+   from sqlalchemy.ext.declarative import declarative_base
+   from sqlalchemy import Table, Column, Integer, String, DateTime, ForeignKey
+   from base import Base
 
-Add the following to the `model.py` file:
+   class Employee(Base):
 
-```python
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy import Table, Column, Integer, String, DateTime, ForeignKey
-from base import Base
+      __tablename__ = 'employees'
 
-class Employee(Base):
+      id = Column(Integer, primary_key=True)
+      name = Column(String(255), unique=True, nullable=False)
+      age = Column(Integer)
+      language = Column(String(255))
+   ```
 
-   __tablename__ = 'employees'
+1. After the setup is done, you can connect to the database and create a new session. In the `main.py` file, add the following.
 
-   id = Column(Integer, primary_key=True)
-   name = Column(String(255), unique=True, nullable=False)
-   age = Column(Integer)
-   language = Column(String(255))
-```
-
-After the setup is done, you can connect to the database and create a new session. In the `main.py` file, add the following.
-
-```python
-import config as cfg
-from sqlalchemy.orm import sessionmaker, relationship
-from sqlalchemy import create_engine
-from sqlalchemy import MetaData
-from model import Employee
-from base import Base
-from sqlalchemy import Table, Column, Integer, String, DateTime, ForeignKey
-
+   ```python
+   import config as cfg
+   from sqlalchemy.orm import sessionmaker, relationship
+   from sqlalchemy import create_engine
+   from sqlalchemy import MetaData
+   from model import Employee
+   from base import Base
+   from sqlalchemy import Table, Column, Integer, String, DateTime, ForeignKey
+   ```
 
 # create connection
 engine = create_engine('postgresql://{0}:{1}@{2}:{3}/{4}'.format(cfg.db_user, cfg.db_password, cfg.db_host, cfg.db_port, cfg.database))

@@ -3534,5 +3534,46 @@ TEST_F(RaftConsensusITest, SplitOpId) {
   split_latch.Wait();
 }
 
+TEST_F(RaftConsensusITest, CatchupAfterLeaderRestarted) {
+  constexpr auto kEntriesPerLogIndexChunk = 1000;
+  // We need enough ops to have more than one log index chunk.
+  constexpr auto kNumOps = kEntriesPerLogIndexChunk + 100;
+  constexpr auto kLogEntryOnDiskSizeBytesLowerBound = 10;
+
+  std::vector<string> extra_flags;
+  // Reduce number of entries per log index chunk to have more than one log index chunk quickly.
+  extra_flags.push_back(Format("--TEST_entries_per_log_index_chuck=$0", kEntriesPerLogIndexChunk));
+  // Reduce log segment size to have more than one log segment.
+  extra_flags.push_back(
+      Format("--log_segment_size_bytes=$0", kNumOps * kLogEntryOnDiskSizeBytesLowerBound));
+  // Reduce retryable_request_timeout_secs to avoid replaying already flushed entries:
+  extra_flags.push_back("--retryable_request_timeout_secs=0");
+  ASSERT_NO_FATALS(BuildAndStart(extra_flags));
+
+  const auto paused_ts_idx = 0;
+  auto* paused_ts = cluster_->tablet_server(paused_ts_idx);
+
+  // Pause a ts.
+  ASSERT_OK(paused_ts->Pause());
+  LOG(INFO)<< "Paused one of the replicas, starting to write...";
+
+  ASSERT_NO_FATALS(WriteOpsToLeader(kNumOps, 1));
+
+  LOG(INFO)<< "Written data. Flush tablet and restart the rest of the replicas";
+  for (size_t ts_idx = 0; ts_idx < cluster_->num_tablet_servers(); ++ts_idx) {
+    if (ts_idx != paused_ts_idx) {
+      ASSERT_OK(cluster_->FlushTabletsOnSingleTServer(
+          cluster_->tablet_server(ts_idx), {tablet_id_}, /* is_compaction = */ false));
+      cluster_->tablet_server(ts_idx)->Shutdown();
+      ASSERT_OK(cluster_->tablet_server(ts_idx)->Restart());
+    }
+  }
+
+  // Now unpause the replica, the lagging replica should eventually catch back up.
+  ASSERT_OK(paused_ts->Resume());
+
+  ASSERT_OK(WaitForServersToAgree(60s, tablet_servers_, tablet_id_, kNumOps));
+}
+
 }  // namespace tserver
 }  // namespace yb

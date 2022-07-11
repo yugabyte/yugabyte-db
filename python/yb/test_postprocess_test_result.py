@@ -10,8 +10,7 @@
 # or implied.  See the License for the specific language governing permissions and limitations
 # under the License.
 
-
-import py
+import pathlib
 import pytest
 import random
 from typing import Dict, Any
@@ -93,13 +92,13 @@ def test_processing_errors(mocked_post_processor: Postprocessor,
 def test_add_fail_tag_failures(mocked_post_processor: Postprocessor,
                                mocked_test_kvs_failure: Dict[str, Any],
                                error_text: str, expected_tag: str,
-                               tmpdir: py.path.local) -> None:
+                               tmp_path: pathlib.Path) -> None:
     test_kvs = mocked_test_kvs_failure
     # Write to temp file using built-in pytest fixture under /tmp/pytest-of-$USER/pytest-current
     # Temp directories older than 3 most recent runs are automatically removed.
-    test_log = tmpdir / 'failed_test.log'
+    test_log = tmp_path / 'failed_test.log'
     test_log.write_text(LOG_CONTENTS + error_text, encoding='utf-8')
-    mocked_post_processor.test_log_path = test_log.strpath
+    mocked_post_processor.test_log_path = str(test_log)
     mocked_post_processor.set_fail_tags(test_kvs)
     assert 'fail_tags' in test_kvs
     assert len(test_kvs['fail_tags']) == 1
@@ -111,12 +110,12 @@ def test_add_fail_tag_failures(mocked_post_processor: Postprocessor,
 
 def test_add_fail_tag_multiline(mocked_post_processor: Postprocessor,
                                 mocked_test_kvs_failure: Dict[str, Any],
-                                tmpdir: py.path.local) -> None:
+                                tmp_path: pathlib.Path) -> None:
     test_kvs = mocked_test_kvs_failure
-    test_log = tmpdir / 'failed_test.log'
+    test_log = tmp_path / 'failed_test.log'
     test_log.write_text(LOG_CONTENTS + 'SIGINT\n'*2 + 'SIGKILL\n'*3 + 'SIGSEGV\n'*4,
                         encoding='utf-8')
-    mocked_post_processor.test_log_path = test_log.strpath
+    mocked_post_processor.test_log_path = str(test_log)
     mocked_post_processor.set_fail_tags(test_kvs)
     assert 'fail_tags' in test_kvs
     assert len(test_kvs['fail_tags']) == 3

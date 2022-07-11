@@ -9,6 +9,7 @@ import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -398,9 +399,8 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
     verify(mockNodeManager, times(0)).nodeCommand(any(), any());
     assertEquals(Failure, taskInfo.getTaskState());
     defaultUniverse.refresh();
-    assertEquals(3, defaultUniverse.version);
-    // In case of an exception, only the ModifyBalckList task should be queued.
-    assertEquals(1, taskInfo.getSubTasks().size());
+    assertEquals(2, defaultUniverse.version);
+    assertTrue(taskInfo.getSubTasks().isEmpty());
   }
 
   @Test

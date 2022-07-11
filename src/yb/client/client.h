@@ -530,8 +530,8 @@ class YBClient {
   void DeleteNotServingTablet(const TabletId& tablet_id, StdStatusCallback callback);
 
   // Update a CDC stream's options.
-  Status UpdateCDCStream(const CDCStreamId& stream_id,
-                                 const master::SysCDCStreamEntryPB& new_entry);
+  Status UpdateCDCStream(const std::vector<CDCStreamId>& stream_ids,
+                         const std::vector<master::SysCDCStreamEntryPB>& new_entries);
 
   Result<bool> IsBootstrapRequired(const TableId& table_id,
                                    const boost::optional<CDCStreamId>& stream_id = boost::none);

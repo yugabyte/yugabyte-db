@@ -287,7 +287,8 @@ void CDCConsumer::TriggerPollForNewTablets() {
           if (FLAGS_use_node_to_node_encryption) {
             rpc::MessengerBuilder messenger_builder("cdc-consumer");
             if (!FLAGS_certs_for_cdc_dir.empty()) {
-              dir = JoinPathSegments(FLAGS_certs_for_cdc_dir, uuid);
+              dir = JoinPathSegments(FLAGS_certs_for_cdc_dir,
+                                     cdc::GetOriginalReplicationUniverseId(uuid));
             }
 
             auto secure_context_result = server::SetupSecureContext(
@@ -413,7 +414,8 @@ Status CDCConsumer::ReloadCertificates() {
 
     std::string cert_dir;
     if (!FLAGS_certs_for_cdc_dir.empty()) {
-      cert_dir = JoinPathSegments(FLAGS_certs_for_cdc_dir, entry.first);
+      cert_dir = JoinPathSegments(FLAGS_certs_for_cdc_dir,
+                                  cdc::GetOriginalReplicationUniverseId(entry.first));
     }
     RETURN_NOT_OK(server::ReloadSecureContextKeysAndCertificates(
         client->secure_context.get(), cert_dir, "" /* node_name */));

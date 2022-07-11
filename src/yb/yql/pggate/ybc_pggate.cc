@@ -46,8 +46,6 @@
 #include "yb/yql/pggate/pggate_thread_local_vars.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
-DECLARE_bool(client_suppress_created_logs);
-
 DEFINE_int32(ysql_client_read_write_timeout_ms, -1, "Timeout for YSQL's yb-client read/write "
              "operations. Falls back on max(client_read_write_timeout_ms, 600s) if set to -1." );
 DEFINE_int32(pggate_num_connections_to_server, 1,
@@ -1078,11 +1076,6 @@ bool YBCIsInitDbModeEnvVarSet() {
 }
 
 void YBCInitFlags() {
-  if (YBCIsInitDbModeEnvVarSet()) {
-    // Suppress log spew during initdb.
-    FLAGS_client_suppress_created_logs = true;
-  }
-
   SetAtomicFlag(GetAtomicFlag(&FLAGS_pggate_num_connections_to_server),
                 &FLAGS_num_connections_to_server);
 

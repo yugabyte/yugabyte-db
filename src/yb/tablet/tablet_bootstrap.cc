@@ -1199,7 +1199,7 @@ class TabletBootstrap {
       if (is_first_op_id_low_enough && is_first_op_time_early_enough) {
         LOG_WITH_PREFIX(INFO)
             << kBootstrapOptimizerLogPrefix
-            << "found first mandatory segment op id: " << op_id
+            << "found first mandatory segment op id: " << op_id << ", "
             << common_details_str() << ", "
             << "number of segments to be skipped: " << (iter - segments.begin());
         return iter;
