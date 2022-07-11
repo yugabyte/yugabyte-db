@@ -1552,7 +1552,7 @@ export default class ClusterFields extends Component {
     //filter out regions that are not from current provider
     const currentProvider = providers.data.find((a) => a.uuid === formValues[clusterType].provider);
     const providerRegions = currentProvider.regions.map((regions) => regions.uuid);
-    const regionItems = value.filter((region) => providerRegions.includes(region.value));
+    const regionItems = value ?? [].filter((region) => providerRegions.includes(region.value));
 
     updateFormField(`${clusterType}.regionList`, regionItems);
     this.setState({ nodeSetViaAZList: false, regionList: regionItems });
@@ -1877,7 +1877,7 @@ export default class ClusterFields extends Component {
         deviceDetail = (
           <span className="volume-info">
             {numVolumes}
-            &times;
+            &nbsp;&times;&nbsp;
             {volumeSize}
           </span>
         );
@@ -2652,28 +2652,24 @@ export default class ClusterFields extends Component {
             </Col>
           </Row>
 
-          <Row className="form-sub-field">
+          <Row className="form-sub-field volume-info-c">
             <Row>
               <Col sm={12} md={12} lg={6}>
                 {deviceDetail && (
-                  <div className="form-right-aligned-labels">
-                    <div className="form-inline-controls">
-                      <div
-                        className="form-group universe-form-instance-info"
-                        data-yb-field="volumn-info"
-                      >
+                  <>
+                    <Col sm={6} className="noPaddingLeft">
+                      <div className="form-right-aligned-labels">
                         <label className="form-item-label form-item-label-shrink">
                           Volume Info
                         </label>
                         {deviceDetail}
                       </div>
-                    </div>
-                    <div className="form-inline-controls">
-                      <div className="form-group universe-form-instance-info">
-                        {storageTypeSelector}
-                      </div>
-                    </div>
-                  </div>
+                    </Col>
+
+                    <Col sm={5} className="noPaddingLeft">
+                      <span className="volume-info">{storageTypeSelector}</span>
+                    </Col>
+                  </>
                 )}
                 {!this.checkVolumeSizeRestrictions() && (
                   <div className="has-error">
@@ -2687,11 +2683,11 @@ export default class ClusterFields extends Component {
 
             <Row>
               <Col sm={12} md={12} lg={6}>
-                <Col sm={5} className="noPaddingLeft">
+                <Col sm={6} className="noPaddingLeft">
                   <div className="form-right-aligned-labels right-side-form-field">{iopsField}</div>
                 </Col>
 
-                <Col sm={6} className="noPaddingLeft">
+                <Col sm={5} className="noPaddingLeft">
                   <div className="form-right-aligned-labels right-side-form-field throughput-field">
                     {throughputField}
                   </div>
