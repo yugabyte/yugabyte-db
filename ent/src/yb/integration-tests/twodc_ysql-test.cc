@@ -531,13 +531,6 @@ class TwoDCYsqlTest : public TwoDCTestBase, public testing::WithParamInterface<T
     }, MonoDelta::FromSeconds(kRpcTimeout), "Verify number of records");
   }
 
-  Status DeleteTable(Cluster* cluster,
-                     TableId* table_id /* = nullptr */) {
-    RETURN_NOT_OK(cluster->client_->DeleteTable(*table_id));
-
-    return Status::OK();
-  }
-
   Status TruncateTable(Cluster* cluster,
                        std::vector<string> table_ids) {
     RETURN_NOT_OK(cluster->client_->TruncateTables(table_ids));
@@ -1551,18 +1544,22 @@ TEST_P(TwoDCYsqlTest, DeleteTableChecks) {
   for (size_t i = 0; i < producer_tables.size(); ++i) {
     string producer_table_id = producer_tables[i]->id();
     string consumer_table_id = consumer_tables[i]->id();
-    ASSERT_NOK(DeleteTable(&producer_cluster_, &producer_table_id));
-    ASSERT_NOK(DeleteTable(&consumer_cluster_, &consumer_table_id));
+    // GH issue #12003, allow deletion of YSQL tables under replication for now.
+    ASSERT_OK(producer_client()->DeleteTable(producer_table_id));
+    ASSERT_OK(consumer_client()->DeleteTable(consumer_table_id));
   }
 
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
 
-  for (size_t i = 0; i < producer_tables.size(); ++i) {
-    string producer_table_id = producer_tables[i]->id();
-    string consumer_table_id = consumer_tables[i]->id();
-    ASSERT_OK(DeleteTable(&producer_cluster_, &producer_table_id));
-    ASSERT_OK(DeleteTable(&consumer_cluster_, &consumer_table_id));
-  }
+  // TODO(jhe) re-enable these checks after we disallow deletion of YSQL xCluster tables, part
+  // of gh issue #753.
+
+  // for (size_t i = 0; i < producer_tables.size(); ++i) {
+  //   string producer_table_id = producer_tables[i]->id();
+  //   string consumer_table_id = consumer_tables[i]->id();
+  //   ASSERT_OK(producer_client()->DeleteTable(producer_table_id));
+  //   ASSERT_OK(consumer_client()->DeleteTable(consumer_table_id));
+  // }
 }
 
 TEST_P(TwoDCYsqlTest, TruncateTableChecks) {
