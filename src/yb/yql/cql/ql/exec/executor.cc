@@ -160,7 +160,7 @@ void Executor::ExecuteAsync(const ParseTree& parse_tree, const StatementParamete
   if (read_time) {
     session_->SetReadPoint(read_time);
   } else {
-    session_->SetReadPoint(client::Restart::kFalse);
+    session_->RestartNonTxnReadPoint(client::Restart::kFalse);
   }
   RETURN_STMT_NOT_OK(Execute(parse_tree, params), &reset_async_calls);
 
@@ -173,7 +173,7 @@ void Executor::ExecuteAsync(const StatementBatch& batch, StatementExecutedCallba
   cb_ = std::move(cb);
   session_->SetDeadline(rescheduler_->GetDeadline());
   session_->SetForceConsistentRead(client::ForceConsistentRead::kFalse);
-  session_->SetReadPoint(client::Restart::kFalse);
+  session_->RestartNonTxnReadPoint(client::Restart::kFalse);
 
   // Table for DML batches, where all statements must modify the same table.
   client::YBTablePtr dml_batch_table;
@@ -1916,7 +1916,7 @@ void Executor::ProcessAsyncResults(const bool rescheduled, ResetAsyncCalls* rese
       }
 
       YBSessionPtr session = GetSession(exec_context_);
-      session->SetReadPoint(client::Restart::kTrue);
+      session->RestartNonTxnReadPoint(client::Restart::kTrue);
       RETURN_STMT_NOT_OK(ExecTreeNode(root), reset_async_calls);
       need_flush |= NeedsFlush(session);
       exec_itr++;

@@ -266,7 +266,7 @@ Status PgTxnManager::SetDeferrable(bool deferrable) {
 void PgTxnManager::StartNewSession() {
   session_ = BuildSession(async_client_init_->client(), clock_);
   if (PREDICT_FALSE(FLAGS_force_preset_read_time_on_client)) {
-    session_->SetReadPoint(client::Restart::kFalse);
+    session_->RestartNonTxnReadPoint(client::Restart::kFalse);
   } else {
     session_->SetReadPoint(ReadHybridTime());
   }
@@ -421,7 +421,7 @@ Status PgTxnManager::RestartTransaction() {
     if (!session_->IsRestartRequired()) {
       return STATUS(IllegalState, "Attempted to restart when session does not require restart");
     }
-    session_->SetReadPoint(client::Restart::kTrue);
+    session_->RestartNonTxnReadPoint(client::Restart::kTrue);
     return Status::OK();
   }
   if (!txn_->IsRestartRequired()) {
@@ -441,7 +441,8 @@ Status PgTxnManager::ResetTransactionReadPoint() {
   // If a txn_ has been created, session_->read_point() returns the read point stored in txn_.
   ConsistentReadPoint* rp = session_->read_point();
   rp->SetCurrentReadTime();
-
+  updated_read_time_for_follower_reads_ = false;
+  RETURN_NOT_OK(UpdateReadTimeForFollowerReadsIfRequired());
   VLOG(1) << "Setting current ht as read point " << rp->GetReadTime();
   return Status::OK();
 }

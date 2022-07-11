@@ -53,7 +53,7 @@ YBSession::YBSession(YBClient* client, const scoped_refptr<ClockBase>& clock) {
   async_rpc_metrics_ = metric_entity ? std::make_shared<AsyncRpcMetrics>(metric_entity) : nullptr;
 }
 
-void YBSession::SetReadPoint(const Restart restart) {
+void YBSession::RestartNonTxnReadPoint(const Restart restart) {
   const auto& read_point = batcher_config_.non_transactional_read_point;
   DCHECK_NOTNULL(read_point.get());
   if (restart && read_point->IsRestartRequired()) {
@@ -64,7 +64,7 @@ void YBSession::SetReadPoint(const Restart restart) {
 }
 
 void YBSession::SetReadPoint(const ReadHybridTime& read_time) {
-  batcher_config_.non_transactional_read_point->SetReadTime(read_time, {} /* local_limits */);
+  read_point()->SetReadTime(read_time, {} /* local_limits */);
 }
 
 bool YBSession::IsRestartRequired() {
