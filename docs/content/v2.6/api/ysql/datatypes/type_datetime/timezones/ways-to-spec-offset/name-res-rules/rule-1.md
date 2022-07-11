@@ -8,8 +8,7 @@ menu:
     identifier: rule-1
     parent: name-res-rules
     weight: 10
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 {{< tip title="" >}}
@@ -94,4 +93,3 @@ $body$;
 The block finishes silently.
 
 **This outcome supports the formulation of the rule that this page addresses.**
-

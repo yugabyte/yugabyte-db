@@ -147,6 +147,8 @@ export const countryToFlag = (isoCode?: string): string => {
 
 export const getFaultTolerance = (type: ClusterFaultTolerance | undefined, t: (key: string) => string): string => {
   switch (type) {
+    case ClusterFaultTolerance.Region:
+      return t('clusterWizard.faultToleranceRegion')
     case ClusterFaultTolerance.Zone:
       return t('clusterWizard.faultToleranceAZ');
     case ClusterFaultTolerance.Node:

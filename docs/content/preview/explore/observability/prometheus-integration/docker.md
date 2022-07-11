@@ -8,8 +8,7 @@ menu:
     identifier: observability-3-docker
     parent: explore-observability
     weight: 235
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

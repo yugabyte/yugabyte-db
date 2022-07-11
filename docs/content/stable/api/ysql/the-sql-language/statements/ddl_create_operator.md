@@ -7,8 +7,7 @@ menu:
   stable:
     identifier: ddl_create_operator
     parent: statements
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

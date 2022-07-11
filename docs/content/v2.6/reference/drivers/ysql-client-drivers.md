@@ -8,8 +8,7 @@ menu:
     identifier: ysql-client-libraries
     parent: drivers
     weight: 2940
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 The [Yugabyte Structured Query Language (YSQL) API](../../../api/ysql) builds upon and extends a fork of the query layer from PostgreSQL 11.2, with the intent of supporting most PostgreSQL functionality and adding new functionality to supported distributed SQL databases.

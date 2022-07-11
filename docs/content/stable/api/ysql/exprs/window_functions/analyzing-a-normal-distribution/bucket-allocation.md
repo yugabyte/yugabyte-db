@@ -8,8 +8,7 @@ menu:
     identifier: bucket-allocation
     parent: analyzing-a-normal-distribution
     weight: 10
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 It might seem that the built-in function `width_bucket()` ([here](https://www.postgresql.org/docs/11/functions-math.html#FUNCTIONS-MATH-FUNC-TABLE) in the PostgreSQL documentation) is tailor-made for this task. But there's a snag.

@@ -9,8 +9,7 @@ menu:
     identifier: date-time-data-types-semantics
     parent: api-ysql-datatypes-datetime
     weight: 40
-isTocNested: true
-showAsideToc: true
+type: indexpage
 ---
 
 The following subsections define the semantics of the _date-time_ data types:
@@ -18,4 +17,3 @@ The following subsections define the semantics of the _date-time_ data types:
 - [The _time_ data type](./type-time/)
 - [The plain _timestamp_ and _timestamptz_ data types](./type-timestamp/)
 - [The _interval_  data type and its variants](./type-interval/)
-

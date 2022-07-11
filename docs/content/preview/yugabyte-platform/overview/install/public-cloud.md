@@ -8,12 +8,11 @@ headcontent: Installing YugabyteDB Anywhere on public cloud
 aliases:
   - /preview/yugabyte-platform/overview/install/
 menu:
-  preview:
+  preview_yugabyte-platform:
     identifier: install-1-public-cloud
     parent: overview-yp
     weight: 20
-isTocNested: true
-showAsideToc: false
+type: docs
 ---
 
 For installation overview, select one of the following installation types:
@@ -56,4 +55,3 @@ Click elements of the following chart to access detailed steps:
     <area target="_blank" alt="Online installation" title="Online installation" href="/preview/yugabyte-platform/install-yugabyte-platform/install-software/default/" coords="236,1054,394,1112" shape="rect">
     <area target="_blank" alt="Airgapped installation" title="Airgapped installation" href="/preview/yugabyte-platform/install-yugabyte-platform/install-software/airgapped/" coords="502,1053,666,1114" shape="rect">
 </map>
-

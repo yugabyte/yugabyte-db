@@ -8,8 +8,7 @@ menu:
     identifier: percent-rank-cume-dist-ntile
     parent: window-function-syntax-semantics
     weight: 20
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 These three window functions bear a strong family resemblance to each other. The explanation of what they achieve rests on the notion of a _centile_. A centile is a measure used in statistics to denote the value below which a given fraction of the values in a set falls. The term  _percentile_ is often preferred by those who like to express fractions as percentages. For example, the 70th percentile is the value below which 70% of the values fall.
@@ -201,4 +200,3 @@ This is the result. To make it easier to see the pattern, several blank lines ha
 Notice that in this example, the number of rows per [_window_](../../invocation-syntax-semantics/#the-window-definition-rule), _9_, is not a multiple of the actual value, _4_ with which the function is invoked. This means that the number of rows assigned to each bucket can't be the same. Here, as promised, `ntile()` makes a best effort to get the numbers as close to each other as is possible. You can confirm, visually, that the populations are _three_ for one of the four buckets and _two_ for the other three.
 
 Notice, too, what the outcomes are for the tie groups. Each of `percent_rank()` and `cume_dist()` produces a different value for each row where _"class=1"_, which has no ties. For _"class=2"_, when there are ties, these functions each produce the same value for all the rows in each of the two tie groups. In contrast, `ntile()` assigns the two rows in the second tie group (with _"score=7"_) to different percentile groups.
-

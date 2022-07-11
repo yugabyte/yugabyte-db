@@ -9,8 +9,7 @@ menu:
     identifier: pgexercises
     parent: sample-data
     weight: 300
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Install the PostgreSQL-compatible version of PgExercises on the YugabyteDB distributed SQL database. Work through 81 exercises to learn SQL or test your knowledge.

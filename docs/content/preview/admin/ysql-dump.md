@@ -1,5 +1,5 @@
 ---
-title: ysql_dump - back up a YSQL database
+title: ysql_dump
 headerTitle: ysql_dump
 linkTitle: ysql_dump
 description: Back up a specified YSQL database into plain-text, SQL script file.
@@ -9,8 +9,7 @@ menu:
     identifier: ysql-dump
     parent: admin
     weight: 2467
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 `ysql_dump` is a utility for backing up a YugabyteDB database into a plain-text, SQL script file. `ysql_dump` makes consistent backups, even if the database is being used concurrently. `ysql_dump` does not block other users accessing the database (readers or writers).

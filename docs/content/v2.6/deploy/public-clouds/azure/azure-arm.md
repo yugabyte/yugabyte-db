@@ -8,8 +8,7 @@ menu:
     identifier: deploy-on-azure-1-azure-arm
     parent: public-clouds
     weight: 650
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

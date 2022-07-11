@@ -45,8 +45,8 @@ autoscales
 autoscaling
 awardable
 awardables
-Ayoa
 Axios
+Ayoa
 Azure
 B-tree
 backfilling
@@ -95,9 +95,9 @@ canonicalized
 captcha
 CentOS
 Certbot
+chai
 changeset
 changesets
-chai
 ChaosKube
 chatbot
 chatbots
@@ -459,6 +459,8 @@ prepending
 prepends
 prepopulated
 Prettifier
+Prisma
+Prisma
 Pritaly
 Priyanka
 profiler
@@ -517,6 +519,7 @@ reindexing
 reinitialize
 reinitializing
 relicensing
+relref
 remediations
 replicables
 repmgr
@@ -570,6 +573,7 @@ scrollable
 Semgrep
 Sendmail
 Sentry
+Sequelize
 serializable
 serializer
 serializers
@@ -695,8 +699,8 @@ triaged
 triages
 triaging
 Trivy
-truthy
 Truststore
+truthy
 Twilio
 Twitter
 TypeScript
@@ -834,8 +838,8 @@ worktrees
 Worldline
 Xcode
 Xeon
-YouTrack
 ycqlsh
+YouTrack
 ysqlsh
 ytt
 Yubico

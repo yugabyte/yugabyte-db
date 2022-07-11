@@ -130,6 +130,7 @@ export type { DbUpgradeRequest } from  './DbUpgradeRequest';
 export type { DefaultInternalTagsListResponse } from  './DefaultInternalTagsListResponse';
 export type { DefaultInternalTagsUpdateData } from  './DefaultInternalTagsUpdateData';
 export { EmailTemplateEnum } from './EmailTemplateEnum';
+export type { EncryptionInfo } from  './EncryptionInfo';
 export type { EntityMetadata } from  './EntityMetadata';
 export type { EntityMeteringData } from  './EntityMeteringData';
 export { EntityTypeEnum } from './EntityTypeEnum';

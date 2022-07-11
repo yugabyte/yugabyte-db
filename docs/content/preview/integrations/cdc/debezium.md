@@ -5,13 +5,12 @@ description: Debezium is an open source distributed platform used to capture the
 beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 aliases:
   - /preview/integrations/cdc/
-section: INTEGRATIONS
 menu:
   preview:
     identifier: cdc-debezium
+    parent: integrations
     weight: 571
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Debezium is an open-source distributed platform used to capture the changes in a database.

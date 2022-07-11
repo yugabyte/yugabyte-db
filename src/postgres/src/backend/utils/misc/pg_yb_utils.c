@@ -377,6 +377,21 @@ YBSavepointsEnabled()
 	return IsYugaByteEnabled() && YBTransactionsEnabled() && cached_value;
 }
 
+bool
+YBIsDBCatalogVersionMode()
+{
+	static int cached_value = -1;
+	if (cached_value == -1)
+	{
+		cached_value = YBCIsEnvVarTrueWithDefault(
+			"FLAGS_TEST_enable_db_catalog_version_mode", false);
+	}
+	return IsYugaByteEnabled() &&
+		   YBTransactionsEnabled() &&
+		   YbGetCatalogVersionType() == CATALOG_VERSION_CATALOG_TABLE &&
+		   cached_value;
+}
+
 void
 YBReportFeatureUnsupported(const char *msg)
 {
@@ -1027,7 +1042,8 @@ YBIncrementDdlNestingLevel()
 }
 
 void
-YBDecrementDdlNestingLevel(bool is_catalog_version_increment, bool is_breaking_catalog_change)
+YBDecrementDdlNestingLevel(bool is_catalog_version_increment,
+						   bool is_breaking_catalog_change)
 {
 	ddl_nesting_level--;
 	if (ddl_nesting_level == 0)
@@ -1609,39 +1625,47 @@ bool YBIsSupportedLibcLocale(const char *localebuf) {
 		   strcasecmp(localebuf, "en_US.UTF-8") == 0;
 }
 
-void
-YbLoadTablePropertiesIfNeeded(Relation rel, bool allow_missing)
+static YBCStatus
+YbGetTablePropertiesCommon(Relation rel)
 {
 	if (rel->yb_table_properties)
 	{
 		/* Already loaded, nothing to do */
-		return;
+		return YBCStatusOKValue;
 	}
 
 	Oid dbid          = YBCGetDatabaseOid(rel);
 	Oid storage_relid = YbGetStorageRelid(rel);
 
-	if (allow_missing)
+	YBCPgTableDesc desc = NULL;
+	YBCStatus status = YBCPgGetTableDesc(dbid, storage_relid, &desc);
+	if (!YBCStatusIsOK(status))
 	{
-		bool exists_in_yb = false;
-		HandleYBStatus(YBCPgTableExists(dbid, storage_relid, &exists_in_yb));
-		if (!exists_in_yb)
-		{
-			return;
-		}
+		return status;
 	}
 
-	YBCPgTableDesc desc = NULL;
-
 	/* Relcache entry data must live in CacheMemoryContext */
-	MemoryContext oldcxt = MemoryContextSwitchTo(CacheMemoryContext);
+	rel->yb_table_properties =
+		MemoryContextAllocZero(CacheMemoryContext, sizeof(YbTablePropertiesData));
 
-	rel->yb_table_properties = palloc0(sizeof(YbTablePropertiesData));
-
-	HandleYBStatus(YBCPgGetTableDesc(dbid, storage_relid, &desc));
 	HandleYBStatus(YBCPgGetTableProperties(desc, rel->yb_table_properties));
 
-	MemoryContextSwitchTo(oldcxt);
+	return YBCStatusOKValue;
+}
+
+YbTableProperties
+YbGetTableProperties(Relation rel)
+{
+	HandleYBStatus(YbGetTablePropertiesCommon(rel));
+	return rel->yb_table_properties;
+}
+
+YbTableProperties
+YbTryGetTableProperties(Relation rel)
+{
+	bool not_found = false;
+	HandleYBStatusIgnoreNotFound(YbGetTablePropertiesCommon(rel), &not_found);
+	return not_found ? NULL : rel->yb_table_properties;
 }
 
 Datum
@@ -1754,7 +1778,7 @@ yb_table_properties(PG_FUNCTION_ARGS)
 
 	Relation	rel = relation_open(relid, AccessShareLock);
 
-	YbLoadTablePropertiesIfNeeded(rel, true /* allow_missing */);
+	YbTableProperties yb_props = YbTryGetTableProperties(rel);
 
 	tupdesc = CreateTemplateTupleDesc(ncols, false);
 	TupleDescInitEntry(tupdesc, (AttrNumber) 1,
@@ -1772,28 +1796,28 @@ yb_table_properties(PG_FUNCTION_ARGS)
 	}
 	BlessTupleDesc(tupdesc);
 
-	if (rel->yb_table_properties)
+	if (yb_props)
 	{
-		values[0] = Int64GetDatum(rel->yb_table_properties->num_tablets);
-		values[1] = Int64GetDatum(rel->yb_table_properties->num_hash_key_columns);
-		values[2] = BoolGetDatum(rel->yb_table_properties->is_colocated);
+		values[0] = Int64GetDatum(yb_props->num_tablets);
+		values[1] = Int64GetDatum(yb_props->num_hash_key_columns);
+		values[2] = BoolGetDatum(yb_props->is_colocated);
 		if (ncols >= 5)
 		{
 			values[3] =
-				OidIsValid(rel->yb_table_properties->tablegroup_oid)
-					? ObjectIdGetDatum(rel->yb_table_properties->tablegroup_oid)
+				OidIsValid(yb_props->tablegroup_oid)
+					? ObjectIdGetDatum(yb_props->tablegroup_oid)
 					: (Datum) 0;
 			values[4] =
-				OidIsValid(rel->yb_table_properties->colocation_id)
-					? ObjectIdGetDatum(rel->yb_table_properties->colocation_id)
+				OidIsValid(yb_props->colocation_id)
+					? ObjectIdGetDatum(yb_props->colocation_id)
 					: (Datum) 0;
 		}
 
 		memset(nulls, 0, sizeof(nulls));
 		if (ncols >= 5)
 		{
-			nulls[3] = !OidIsValid(rel->yb_table_properties->tablegroup_oid);
-			nulls[4] = !OidIsValid(rel->yb_table_properties->colocation_id);
+			nulls[3] = !OidIsValid(yb_props->tablegroup_oid);
+			nulls[4] = !OidIsValid(yb_props->colocation_id);
 		}
 	}
 	else

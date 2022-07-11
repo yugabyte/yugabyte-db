@@ -4,12 +4,11 @@ headerTitle: Create and configure alerts
 linkTitle: Configure alerts
 description: Configure alerts and health check
 menu:
-  preview:
+  preview_yugabyte-platform:
     identifier: set-up-alerts-health-checking
     parent: configure-yugabyte-platform
     weight: 40
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 YugabyteDB Anywhere can check universes for issues that may affect deployment. Should problems arise, YugabyteDB Anywhere can automatically issue alert notifications

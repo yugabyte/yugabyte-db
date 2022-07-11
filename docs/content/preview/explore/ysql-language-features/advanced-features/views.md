@@ -10,8 +10,7 @@ menu:
     weight: 230
 aliases:
   - /preview/explore/ysql-language-features/views/
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 This document describes how to create, use, and manage views in YSQL.

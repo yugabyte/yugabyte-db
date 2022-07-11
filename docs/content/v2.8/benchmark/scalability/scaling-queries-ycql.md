@@ -8,8 +8,7 @@ menu:
     identifier: scaling-queries-2-ycql
     parent: scalability
     weight: 11
-showAsideToc: true
-isTocNested: true
+type: docs
 ---
 
 

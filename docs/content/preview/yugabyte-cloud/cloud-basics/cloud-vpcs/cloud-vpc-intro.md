@@ -4,12 +4,11 @@ headerTitle:
 linkTitle: Overview
 description: Requirements and considerations for setting up a VPC network.
 menu:
-  preview:
+  preview_yugabyte-cloud:
     identifier: cloud-vpc-intro
     parent: cloud-vpcs
     weight: 10
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 A virtual private cloud (VPC) is a virtual network that you can define in a cloud provider. After you create a VPC on a cloud provider, you can then connect it with other VPCs on the same provider. This is called peering. A VPC peering connection is a networking connection between two VPCs on the same cloud provider that enables you to route traffic between them privately, without traversing the public internet. VPC networks provide more secure connections between resources because the network is inaccessible from the public internet and other VPC networks.

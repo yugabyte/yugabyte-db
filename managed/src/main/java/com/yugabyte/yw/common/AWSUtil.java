@@ -5,6 +5,9 @@ package com.yugabyte.yw.common;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.amazonaws.SdkClientException;
+import static play.mvc.Http.Status.BAD_REQUEST;
+
+import com.amazonaws.AmazonClientException;
 import com.amazonaws.auth.AWSCredentials;
 import com.amazonaws.auth.AWSCredentialsProvider;
 import com.amazonaws.auth.AWSStaticCredentialsProvider;
@@ -14,22 +17,35 @@ import com.amazonaws.client.builder.AwsClientBuilder.EndpointConfiguration;
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.AmazonS3Client;
 import com.amazonaws.services.s3.AmazonS3ClientBuilder;
+import com.amazonaws.services.s3.internal.AmazonS3ExceptionBuilder;
 import com.amazonaws.services.s3.model.AmazonS3Exception;
+import com.amazonaws.services.s3.model.Bucket;
 import com.amazonaws.services.s3.model.DeleteObjectsRequest;
+import com.amazonaws.services.s3.model.GetBucketLocationRequest;
 import com.amazonaws.services.s3.model.DeleteObjectsRequest.KeyVersion;
 import com.amazonaws.services.s3.model.ListObjectsV2Result;
 import com.amazonaws.services.s3.model.S3ObjectSummary;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data;
+import com.yugabyte.yw.models.configs.data.CustomerConfigStorageWithRegionsData;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.yb.ybc.CloudStoreConfig;
+import org.yb.ybc.CloudStoreSpec;
+import org.yb.ybc.CloudType;
+import org.apache.http.HttpStatus;
 
 @Singleton
 @Slf4j
@@ -37,8 +53,19 @@ public class AWSUtil implements CloudUtil {
 
   public static final String AWS_ACCESS_KEY_ID_FIELDNAME = "AWS_ACCESS_KEY_ID";
   public static final String AWS_SECRET_ACCESS_KEY_FIELDNAME = "AWS_SECRET_ACCESS_KEY";
+  private static final String AWS_REGION_SPECIFIC_HOST_BASE_FORMAT = "s3.%s.amazonaws.com";
+  private static final String AWS_STANDARD_HOST_BASE_PATTERN = "s3([.](.+)|)[.]amazonaws[.]com";
   public static final String AWS_DEFAULT_REGION = "us-east-1";
   public static final String AWS_DEFAULT_ENDPOINT = "s3.amazonaws.com";
+
+  public static final String YBC_AWS_ACCESS_KEY_ID_FIELDNAME = "AWS_ACCESS_KEY_ID";
+  public static final String YBC_AWS_SECRET_ACCESS_KEY_FIELDNAME = "AWS_SECRET_ACCESS_KEY";
+  public static final String YBC_AWS_PATH_STYLE_ACCESS = "PATH_STYLE_ACCESS";
+  public static final String YBC_AWS_ENDPOINT_FIELDNAME = "AWS_ENDPOINT";
+  public static final String YBC_AWS_DEFAULT_REGION_FIELDNAME = "AWS_DEFAULT_REGION";
+
+  private static final Pattern standardHostBaseCompiled =
+      Pattern.compile(AWS_STANDARD_HOST_BASE_PATTERN);
 
   // This method is a way to check if given S3 config can extract objects.
   public boolean canCredentialListObjects(CustomerConfigData configData, List<String> locations) {
@@ -62,11 +89,11 @@ public class AWSUtil implements CloudUtil {
             log.error("No objects exists within bucket {}", bucketName);
           }
         }
-      } catch (Exception e) {
+      } catch (AmazonS3Exception e) {
         log.error(
             String.format(
                 "Credential cannot list objects in the specified backup location %s", location),
-            e);
+            e.getErrorMessage());
         return false;
       }
     }
@@ -91,14 +118,13 @@ public class AWSUtil implements CloudUtil {
         log.debug("Retrieved blobs info for bucket " + bucketName + " with prefix " + keyLocation);
         retrieveAndDeleteObjects(listObjectsResult, bucketName, s3Client);
       }
-
     } catch (AmazonS3Exception e) {
       log.error("Error while deleting key object from bucket " + bucketName, e.getErrorMessage());
       throw e;
     }
   }
 
-  private static String[] getSplitLocationValue(String location) {
+  public static String[] getSplitLocationValue(String location) {
     location = location.substring(5);
     String[] split = location.split("/", 2);
     return split;
@@ -133,6 +159,51 @@ public class AWSUtil implements CloudUtil {
       s3ClientBuilder.withEndpointConfiguration(endpointConfiguration);
     }
     return s3ClientBuilder.build();
+  }
+
+  public String getBucketRegion(String bucketName, CustomerConfigStorageS3Data s3Data)
+      throws AmazonS3Exception {
+    try {
+      AmazonS3 client = createS3Client(s3Data);
+      return getBucketRegion(bucketName, client);
+    } catch (AmazonS3Exception e) {
+      throw e;
+    }
+  }
+
+  // For reusing already created client, as in listBuckets function
+  private String getBucketRegion(String bucketName, AmazonS3 s3Client) {
+    try {
+      GetBucketLocationRequest locationRequest = new GetBucketLocationRequest(bucketName);
+      String bucketRegion = s3Client.getBucketLocation(locationRequest);
+      if (bucketRegion.equals("US")) {
+        bucketRegion = AWS_DEFAULT_REGION;
+      }
+      return bucketRegion;
+    } catch (AmazonS3Exception e) {
+      log.error(
+          String.format("Fetching bucket region for %s failed", bucketName), e.getErrorMessage());
+      throw e;
+    }
+  }
+
+  public String createBucketRegionSpecificHostBase(String bucketName, String bucketRegion) {
+    String regionSpecificHostBase =
+        String.format(AWS_REGION_SPECIFIC_HOST_BASE_FORMAT, bucketRegion);
+    return regionSpecificHostBase;
+  }
+
+  public boolean isHostBaseS3Standard(String hostBase) {
+    return standardHostBaseCompiled.matcher(hostBase).matches();
+  }
+
+  public String getOrCreateHostBase(
+      CustomerConfigStorageS3Data s3Data, String bucketName, String bucketRegion) {
+    String hostBase = s3Data.awsHostBase;
+    if (StringUtils.isEmpty(hostBase) || hostBase.equals(AWS_DEFAULT_ENDPOINT)) {
+      hostBase = createBucketRegionSpecificHostBase(bucketName, bucketRegion);
+    }
+    return hostBase;
   }
 
   @Override
@@ -177,5 +248,69 @@ public class AWSUtil implements CloudUtil {
     DeleteObjectsRequest deleteRequest =
         new DeleteObjectsRequest(bucketName).withKeys(objectKeys).withQuiet(false);
     s3Client.deleteObjects(deleteRequest);
+  }
+
+  @Override
+  public CloudStoreSpec createCloudStoreSpec(
+      String backupLocation, String commonDir, CustomerConfigData configData) {
+    CustomerConfigStorageS3Data s3Data = (CustomerConfigStorageS3Data) configData;
+    String[] splitValues = getSplitLocationValue(backupLocation);
+    String bucket = splitValues[0];
+    String cloudDir = splitValues.length > 1 ? splitValues[1] : "";
+    if (StringUtils.isNotBlank(cloudDir)) {
+      cloudDir = String.format("%s/%s/", splitValues[1], commonDir);
+    } else {
+      cloudDir = commonDir.concat("/");
+    }
+    Map<String, String> s3CredsMap = createCredsMapYbc(s3Data, commonDir, bucket);
+    return YbcBackupUtil.buildCloudStoreSpec(bucket, cloudDir, s3CredsMap, Util.S3);
+  }
+
+  private Map<String, String> createCredsMapYbc(
+      CustomerConfigData configData, String commonDir, String bucket) {
+    CustomerConfigStorageS3Data s3Data = (CustomerConfigStorageS3Data) configData;
+    Map<String, String> s3CredsMap = new HashMap<>();
+    s3CredsMap.put(YBC_AWS_ACCESS_KEY_ID_FIELDNAME, s3Data.awsAccessKeyId);
+    s3CredsMap.put(YBC_AWS_SECRET_ACCESS_KEY_FIELDNAME, s3Data.awsSecretAccessKey);
+    String bucketRegion = getBucketRegion(bucket, s3Data);
+    String hostBase = getOrCreateHostBase(s3Data, bucket, bucketRegion);
+    s3CredsMap.put(YBC_AWS_ENDPOINT_FIELDNAME, hostBase);
+    s3CredsMap.put(YBC_AWS_DEFAULT_REGION_FIELDNAME, bucketRegion);
+    return s3CredsMap;
+  }
+
+  @Override
+  public Map<String, String> listBuckets(CustomerConfigData configData) {
+    Map<String, String> bucketHostBaseMap = new HashMap<>();
+    try {
+      CustomerConfigStorageS3Data s3Data = (CustomerConfigStorageS3Data) configData;
+      if ((StringUtils.isBlank(s3Data.awsAccessKeyId)
+              || StringUtils.isBlank(s3Data.awsSecretAccessKey))
+          && s3Data.isIAMInstanceProfile == false) {
+        return bucketHostBaseMap;
+      }
+      final boolean useOriginalHostBase =
+          StringUtils.isNotBlank(s3Data.awsHostBase) && !isHostBaseS3Standard(s3Data.awsHostBase);
+      // don't use standard host base with regions, conflicting regions will lead to authorization
+      // errors.
+      if (!useOriginalHostBase) {
+        s3Data.awsHostBase = null;
+      }
+      AmazonS3 client = createS3Client(s3Data);
+      List<Bucket> buckets = client.listBuckets();
+      buckets
+          .parallelStream()
+          .forEach(
+              b ->
+                  bucketHostBaseMap.put(
+                      b.getName(),
+                      useOriginalHostBase
+                          ? s3Data.awsHostBase
+                          : createBucketRegionSpecificHostBase(
+                              b.getName(), getBucketRegion(b.getName(), client))));
+    } catch (SdkClientException e) {
+      log.error("Error while listing S3 buckets {}", e.getMessage());
+    }
+    return bucketHostBaseMap;
   }
 }

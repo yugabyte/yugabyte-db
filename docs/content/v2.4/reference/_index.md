@@ -5,11 +5,7 @@ linkTitle: Reference
 description: Reference of YugabyteDB architecture, APIs, CLIs, drivers, connectors, tools, and sample data.
 image: /images/section_icons/quick_start/sample_apps.png
 headcontent: Reference of YugabyteDB architecture, APIs, CLIs, drivers, connectors, tools, and sample data.
-section: REFERENCE
-menu:
-  v2.4:
-    identifier: reference
-    weight: 900
+type: indexpage
 ---
 
 <div class="row">
@@ -48,7 +44,7 @@ menu:
         <div class="title">CLI reference</div>
       </div>
       <div class="body">
-        Admin commands and utilities reference. 
+        Admin commands and utilities reference.
       </div>
     </a>
   </div>
@@ -98,7 +94,7 @@ menu:
         <div class="title">Third party tools</div>
       </div>
       <div class="body">
-        GUI tools for developing and managing YugabyteDB databases. 
+        GUI tools for developing and managing YugabyteDB databases.
       </div>
     </a>
   </div>

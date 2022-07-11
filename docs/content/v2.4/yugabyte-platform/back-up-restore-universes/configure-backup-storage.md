@@ -3,12 +3,11 @@ headerTitle: Configure backup storage
 linkTitle: Configure backup storage
 description: Configure backup storage
 menu:
-  v2.4:
+  v2.4_yugabyte-platform:
     parent: back-up-restore-universes
     identifier: configure-backup-storage
     weight: 10
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Depending on your cloud or on-premises environment, YugabyteDB universe data can be saved to the following storage options.

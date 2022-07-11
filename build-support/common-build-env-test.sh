@@ -189,9 +189,17 @@ test_set_cmake_build_type_and_compiler_type   release    linux-gnu gcc        re
 test_set_cmake_build_type_and_compiler_type   release    linux-gnu gcc8       release    gcc8    0
 test_set_cmake_build_type_and_compiler_type   release    linux-gnu gcc9       release    gcc9    0
 test_set_cmake_build_type_and_compiler_type   asan       linux-gnu auto       fastdebug  clang12 0
-test_set_cmake_build_type_and_compiler_type   debug      linux-gnu auto       debug      clang12 0
-test_set_cmake_build_type_and_compiler_type   FaStDeBuG  linux-gnu auto       fastdebug  clang12 0
-test_set_cmake_build_type_and_compiler_type   release    linux-gnu auto       release    clang12 0
+
+# Test cases where there is difference between architectures.
+if [[ $arch == "x86_64" ]]; then
+  clangN=clang13
+else
+  clangN=clang12
+fi
+
+test_set_cmake_build_type_and_compiler_type   debug      linux-gnu auto       debug      $clangN 0
+test_set_cmake_build_type_and_compiler_type   FaStDeBuG  linux-gnu auto       fastdebug  $clangN 0
+test_set_cmake_build_type_and_compiler_type   release    linux-gnu auto       release    $clangN 0
 
 # -------------------------------------------------------------------------------------------------
 

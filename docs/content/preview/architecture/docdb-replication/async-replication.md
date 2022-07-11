@@ -11,8 +11,7 @@ menu:
     identifier: architecture-docdb-async-replication
     parent: architecture-docdb-replication
     weight: 1150
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 xCluster replication enables asynchronous replication between independent YugabyteDB clusters.

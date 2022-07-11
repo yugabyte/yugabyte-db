@@ -40,14 +40,15 @@ typedef struct IndexTupleData
 	/* ---------------
 	 * t_info is laid out in the following fashion:
 	 *
-	 * 15th (high) bit: has nulls
-	 * 14th bit: has var-width attributes
-	 * 13th bit: AM-defined meaning
-	 * 12-0 bit: size of tuple
+	 * 31st (high) bit: has nulls
+	 * 30th bit: has var-width attributes
+	 * 29th bit: AM-defined meaning
+	 * 28-25 bit: unused
+	 * 24-0 bit: size of tuple
 	 * ---------------
 	 */
 
-	unsigned short t_info;		/* various info about tuple */
+	uint32	t_info;				/* various info about tuple */
 
 } IndexTupleData;				/* MORE DATA FOLLOWS AT END OF STRUCT */
 
@@ -63,11 +64,12 @@ typedef IndexAttributeBitMapData * IndexAttributeBitMap;
 /*
  * t_info manipulation macros
  */
-#define INDEX_SIZE_MASK 0x1FFF
-#define INDEX_AM_RESERVED_BIT 0x2000	/* reserved for index-AM specific
-										 * usage */
-#define INDEX_VAR_MASK	0x4000
-#define INDEX_NULL_MASK 0x8000
+#define INDEX_SIZE_MASK 0x1FFF	/* 8 KB */
+#define YB_INDEX_SIZE_MASK 0x1FFFFFF	/* 32 MB */
+#define INDEX_AM_RESERVED_BIT 0x20000000	/* reserved for index-AM specific
+										 	 * usage */
+#define INDEX_VAR_MASK	0x40000000
+#define INDEX_NULL_MASK 0x80000000
 
 #define IndexTupleSize(itup)		((Size) ((itup)->t_info & INDEX_SIZE_MASK))
 #define IndexTupleHasNulls(itup)	((((IndexTuple) (itup))->t_info & INDEX_NULL_MASK))

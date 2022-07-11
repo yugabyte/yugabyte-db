@@ -8,8 +8,7 @@ menu:
     identifier: docdb-tablet-splitting
     parent: architecture-docdb-sharding
     weight: 1143
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Overview
@@ -149,7 +148,7 @@ Imagine there is a table with pre-existing data spread across a certain number o
 1. Insert some sample data (100K rows) into this table.
 
     ```plpgsql
-    INSERT INTO t (k, v) 
+    INSERT INTO t (k, v)
         SELECT i::text, left(md5(random()::text), 4)
         FROM generate_series(1, 100000) s(i);
     ```
@@ -157,7 +156,7 @@ Imagine there is a table with pre-existing data spread across a certain number o
     ```plpgsql
     SELECT count(*) FROM t;
     ```
-    
+
     ```output
     count
     --------

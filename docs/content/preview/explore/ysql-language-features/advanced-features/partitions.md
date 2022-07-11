@@ -10,8 +10,7 @@ menu:
     weight: 225
 aliases:
   - /preview/explore/ysql-language-features/partitions/
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 This section describes how to partition tables in YugabyteDB using YSQL.

@@ -8,8 +8,7 @@ menu:
     identifier: sql-workbench
     parent: tools
     weight: 2740
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 [SQL Workbench/J](https://www.sql-workbench.eu/index.html) is a free, DBMS-independent, cross-platform SQL query tool that also works with YugabyteDB. SQL Workbench/J is written in Java and should run on any operating system that provides a Java Runtime Environment (JRE).
@@ -73,7 +72,7 @@ YugabyteDB is PostgreSQL-compatible, so when working with SQL Workbench/J, use t
 
     - **Classname**: `org.postgresql.Driver`
     - **Sample URL**: `jdbc:postgresql:127.0.0.1:5433/name_of_database` (based on YugabyteDB default values). When opening the driver configuration initially, this field displays
-  
+
         ```
        jdbc:postgresql://host:port/name_of_database
         ```

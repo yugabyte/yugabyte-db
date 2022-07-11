@@ -8,8 +8,7 @@ menu:
     identifier: ingest-scripts
     parent: ingest-the-covidcast-data
     weight: 100
-isTocNested: true
-showAsideToc: true
+type: indexpage
 ---
 
 Here are the `.sql` scripts that jointly implement the whole ingestion flow: creating staging tables; copying in the data from the `.csv` files; checking that the data in the staging tables conforms to the expected rules; and projecting the relevant columns and joining them into a single _"covidcast_fb_survey_results"_ table.

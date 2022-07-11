@@ -10,8 +10,7 @@ menu:
     identifier: ref-postgres-npgsql-driver
     parent: drivers
     weight: 600
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -72,7 +71,6 @@ The following is an example connection string for connecting to YugabyteDB.
 var connStringBuilder = "host=localhost;port=5433;database=yugabyte;user id=yugabyte;password="
 NpgsqlConnection conn = new NpgsqlConnection(connStringBuilder);
 ```
-
 ### Create table
 
 Tables can be created in YugabyteDB by passing the `CREATE TABLE` DDL statement to the `NpgsqlCommand` class and getting a command object, then calling the `ExecuteNonQuery()` method using this command object.

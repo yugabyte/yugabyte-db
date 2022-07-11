@@ -10,8 +10,7 @@ menu:
     identifier: tpcc-ysql
     parent: benchmark
     weight: 4
-showAsideToc: true
-isTocNested: true
+type: indexpage
 ---
 
 ## Overview
@@ -99,4 +98,3 @@ Other options like username, password, port, etc. can be changed using the confi
   {{% includeMarkdown "10000-wh/tpcc-ysql.md" %}}
   </div>
 </div>
-

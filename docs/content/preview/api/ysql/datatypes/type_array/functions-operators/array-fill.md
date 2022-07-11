@@ -7,8 +7,7 @@ menu:
   preview:
     identifier: array-fill
     parent: array-functions-operators
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 **Signature:**
 ```

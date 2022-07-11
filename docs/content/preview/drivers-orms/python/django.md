@@ -8,8 +8,7 @@ menu:
     identifier: django-orm
     parent: python-drivers
     weight: 600
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 

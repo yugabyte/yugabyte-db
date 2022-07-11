@@ -67,6 +67,7 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
   public GCPUtil mockGCPUtil = mock(GCPUtil.class);
   public AZUtil mockAZUtil = mock(AZUtil.class);
   public JsonFieldsValidator mockJsonFieldValidator = mock(JsonFieldsValidator.class);
+  public NFSUtil mockNfsUtil = mock(NFSUtil.class);
 
   public MetricService metricService;
   public AlertService alertService;
@@ -119,6 +120,7 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
                 .overrides(bind(AWSUtil.class).toInstance(mockAWSUtil))
                 .overrides(bind(GCPUtil.class).toInstance(mockGCPUtil))
                 .overrides(bind(AZUtil.class).toInstance(mockAZUtil))
+                .overrides(bind(NFSUtil.class).toInstance(mockNfsUtil))
                 .overrides(bind(NodeManager.class).toInstance(mockNodeManager))
                 .overrides(bind(JsonFieldsValidator.class).toInstance(mockJsonFieldValidator)))
         .build();

@@ -1801,6 +1801,9 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
       }
     }
 
+    // Table schema update depending on different conditions.
+    bool notify_ts_for_schema_change = false;
+
     // Update the table column ids if it's not equal to the stored ids.
     if (persisted_schema.column_ids() != column_ids) {
       if (meta.table_type() != TableType::PGSQL_TABLE_TYPE) {
@@ -1833,7 +1836,26 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
       // Update sys-catalog with the new table schema.
       RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), table));
       l.Commit();
-      // Update the new table schema in tablets.
+      notify_ts_for_schema_change = true;
+    }
+
+    // Restore partition key version.
+    if (persisted_schema.table_properties().partitioning_version() !=
+        schema.table_properties().partitioning_version()) {
+      auto l = table->LockForWrite();
+      auto table_props = l.mutable_data()->pb.mutable_schema()->mutable_table_properties();
+      table_props->set_partitioning_version(schema.table_properties().partitioning_version());
+
+      l.mutable_data()->pb.set_next_column_id(schema.max_col_id() + 1);
+      l.mutable_data()->pb.set_version(l->pb.version() + 1);
+      // Update sys-catalog with the new table schema.
+      RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), table));
+      l.Commit();
+      notify_ts_for_schema_change = true;
+    }
+
+    // Update the new table schema in tablets.
+    if (notify_ts_for_schema_change) {
       RETURN_NOT_OK(SendAlterTableRequest(table));
     }
   }
@@ -4637,7 +4659,6 @@ Status CatalogManager::InitCDCConsumer(
     const std::string& producer_universe_uuid,
     std::shared_ptr<CDCRpcTasks> cdc_rpc_tasks) {
 
-  std::unordered_set<HostPort, HostPortHash> tserver_addrs;
   // Get the tablets in the consumer table.
   cdc::ProducerEntryPB producer_entry;
   for (const auto& stream_info : consumer_info) {
@@ -4647,7 +4668,7 @@ Status CatalogManager::InitCDCConsumer(
     // Get producer tablets and map them to the consumer tablets
     RETURN_NOT_OK(InitCDCStream(
         stream_info.producer_table_id, stream_info.consumer_table_id, consumer_tablet_keys,
-        &tserver_addrs, &stream_entry, cdc_rpc_tasks));
+        &stream_entry, cdc_rpc_tasks));
     (*producer_entry.mutable_stream_map())[stream_info.stream_id] = std::move(stream_entry);
   }
 
@@ -4657,11 +4678,6 @@ Status CatalogManager::InitCDCConsumer(
   for (const auto& addr : master_addrs_list) {
     auto hp = VERIFY_RESULT(HostPort::FromString(addr, 0));
     HostPortToPB(hp, producer_entry.add_master_addrs());
-  }
-
-  producer_entry.mutable_tserver_addrs()->Reserve(narrow_cast<int>(tserver_addrs.size()));
-  for (const auto& addr : tserver_addrs) {
-    HostPortToPB(addr, producer_entry.add_tserver_addrs());
   }
 
   auto cluster_config = ClusterConfig();

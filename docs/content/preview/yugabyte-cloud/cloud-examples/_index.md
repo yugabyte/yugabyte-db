@@ -4,13 +4,12 @@ linkTitle: Example applications
 description: Example applications for YugabyteDB Managed.
 headcontent: Example applications for YugabyteDB Managed.
 image: /images/section_icons/index/develop.png
-section: YUGABYTEDB MANAGED
 menu:
-  preview:
+  preview_yugabyte-cloud:
+    parent: yugabytedb-managed
     identifier: cloud-examples
     weight: 800
-isTocNested: true
-showAsideToc: true
+type: indexpage
 ---
 
 The sample applications in this section provide advanced examples of connecting Spring, GraphQL, and YCQL Java applications to a YugabyteDB Managed cluster.

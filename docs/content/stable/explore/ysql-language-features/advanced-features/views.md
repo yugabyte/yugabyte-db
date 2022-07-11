@@ -8,8 +8,7 @@ menu:
     identifier: advanced-features-views
     parent: advanced-features
     weight: 230
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 This document describes how to create, use, and manage views in YSQL.

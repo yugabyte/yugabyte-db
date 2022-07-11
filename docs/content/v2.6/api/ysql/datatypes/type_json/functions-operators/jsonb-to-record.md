@@ -8,8 +8,7 @@ menu:
     identifier: jsonb-to-record
     parent: json-functions-operators
     weight: 230
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 **Purpose:** Convert a JSON _object_ into the equivalent SQL `record`.
@@ -45,7 +44,7 @@ begin
   as on_the_fly(a int, b text);
 
   assert
-    (result_1 = expected_result) and 
+    (result_1 = expected_result) and
     (result_2 = expected_result),
   'unexpected';
 end;
@@ -77,7 +76,7 @@ begin
   as on_the_fly(a int, b text[], c t1);
 
   assert
-    (result_1 = expected_result) and 
+    (result_1 = expected_result) and
     (result_2 = expected_result),
   'unexpected';
 end;

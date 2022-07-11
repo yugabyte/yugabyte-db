@@ -4,12 +4,11 @@ headerTitle: Schedule universe YCQL data backups
 linkTitle: Schedule data backups
 description: Use YugabyteDB Anywhere to create scheduled backups of universe YCQL data.
 menu:
-  preview:
+  preview_yugabyte-platform:
     identifier: schedule-data-backups-2-ycql
     parent: back-up-restore-universes
     weight: 40
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -41,7 +40,7 @@ Before scheduling a backup of your universe YCQL data, create a policy, as follo
 - Navigate to **Universes**.
 - Select the name of the universe for which you want to schedule backups.
 - Select the **Tables** tab and click **Actions** to verify that backups are enabled. If disabled, click **Enable Backup**.
-- Select the **Backups** tab and then select **Scheduled Backup Policies**. 
+- Select the **Backups** tab and then select **Scheduled Backup Policies**.
 - Click **Create Scheduled Backup Policy** to open the dialog shown in the following illustration:
 
 <br><br>
@@ -50,8 +49,8 @@ Before scheduling a backup of your universe YCQL data, create a policy, as follo
 
 - Provide the backup policy name.
 - Specify the interval between backups or select **Use cron expression (UTC)**.
-- Set the API type as YCQL. 
-- Select the database to back up. 
+- Set the API type as YCQL.
+- Select the database to back up.
 - Specify whether you want to back up all tables in the keyspace to which the database belongs or only  certain tables. If you choose **Select a subset of tables**, a **Select Tables** dialog opens allowing you to select one or more tables to back up.
 - Specify the period of time during which the backup is to be retained. Note that there's an option to never delete the backup.
 - Optionally, specify the number of threads that should be available for the backup process.
@@ -66,7 +65,7 @@ You can disable all backups, including scheduled ones, as follows:
 1. Navigate to the universe's **Tables** tab.
 2. Click **Actions > Disable Backup**.
 
-<!--  
+<!--
 
 ## Delete a scheduled backup
 

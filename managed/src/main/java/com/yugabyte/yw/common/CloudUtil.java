@@ -7,9 +7,10 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import com.yugabyte.yw.models.configs.CloudClientsFactory;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import java.util.List;
+import org.yb.ybc.CloudStoreSpec;
 import play.api.Play;
 
-public interface CloudUtil {
+public interface CloudUtil extends StorageUtil {
 
   public static final String KEY_LOCATION_SUFFIX = Util.KEY_LOCATION_SUFFIX;
 
@@ -21,6 +22,8 @@ public interface CloudUtil {
 
   public void deleteStorage(CustomerConfigData configData, List<String> backupLocations)
       throws Exception;
+
+  public <T> T listBuckets(CustomerConfigData configData);
 
   public static <T extends CloudUtil> T getCloudUtil(String configType) {
     switch (configType) {

@@ -8,8 +8,7 @@ menu:
     identifier: lag-lead
     parent: window-function-syntax-semantics
     weight: 40
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 These functions look backwards, or forwards, by the specified number of rows from the current row, within the current [_window_](../../invocation-syntax-semantics/#the-window-definition-rule). The functions fall into the second group, [Window functions that return column(s) of another row within the window](../#window-functions-that-return-column-s-of-another-row-within-the-window) in the section [List of all window functions](../#list-of-all-window-functions). Each of the functions in the second group makes obvious sense when the scope within which the specified row is found is the entire [_window_](../../invocation-syntax-semantics/#the-window-definition-rule). Only this use will be described here.

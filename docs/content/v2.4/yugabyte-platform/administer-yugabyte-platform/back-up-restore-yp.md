@@ -4,12 +4,11 @@ headerTitle: Back up and restore Yugabyte Platform
 linkTitle: Back up and restore Yugabyte Platform
 description: Use a script file to back up and restore Yugabyte Platform.
 menu:
-  v2.4:
+  v2.4_yugabyte-platform:
     identifier: back-up-restore-yp
     parent: administer-yugabyte-platform
     weight: 10
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Yugabyte Platform installations include configuration settings, certificates and keys, and other components required for orchestrating and managing YugabyteDB universes.
@@ -21,7 +20,7 @@ You can use the Yugabyte Platform backup script to back up an existing Yugabyte 
 1. Copy the the Yugabyte Platform backup script (`yb_platform_backup.sh`) from the yugabyte-db repository using the following `wget` command:
 
     ```sh
-    $ wget https://github.com/yugabyte/yugabyte-db/blob/master/managed/devops/bin/yb_platform_backup.sh 
+    $ wget https://github.com/yugabyte/yugabyte-db/blob/master/managed/devops/bin/yb_platform_backup.sh
     ```
 
 2. Run the `yb_platform_backup.sh` script using the `backup` command:
@@ -45,7 +44,7 @@ To restore the Yugabyte Platform content from your saved backup, follow the step
 1. Copy the the `yb_platform_backup.sh` script from the yugabyte-db repository using the following `wget` command:
 
     ```sh
-    $ wget https://github.com/yugabyte/yugabyte-db/blob/master/managed/devops/bin/yb_platform_backup.sh 
+    $ wget https://github.com/yugabyte/yugabyte-db/blob/master/managed/devops/bin/yb_platform_backup.sh
     ```
 
 2. Copy the backup `.tar` file from your storage location.

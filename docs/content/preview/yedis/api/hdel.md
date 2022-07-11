@@ -9,8 +9,7 @@ menu:
 aliases:
   - /preview/api/redis/hdel
   - /preview/api/yedis/hdel
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

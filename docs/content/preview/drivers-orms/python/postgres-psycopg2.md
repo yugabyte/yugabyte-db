@@ -8,8 +8,7 @@ menu:
     identifier: postgres-psycopg2-driver
     parent: python-drivers
     weight: 500
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -71,7 +70,7 @@ Python applications can connect to and query the YugabyteDB database. First, imp
 import psycopg2
 ```
 
-You can provide the connection details as follows:
+You can provide the connection details in one of the following ways:
 
 - Connection string
 
@@ -120,74 +119,74 @@ If you have created a cluster on [YugabyteDB Managed](https://www.yugabyte.com/c
 
 1. Copy the following sample code to set up tables and query the table contents. Replace the connection string `connString` with the cluster credentials and SSL certificate, if required.
 
-```python
-import psycopg2
+   ```python
+   import psycopg2
 
-# Create the database connection.
+   # Create the database connection.
 
-connString = "host=127.0.0.1 port=5433 dbname=yugabyte user=yugabyte password=yugabyte"
+   connString = "host=127.0.0.1 port=5433 dbname=yugabyte user=yugabyte password=yugabyte"
 
-conn = psycopg2.connect(connString)
+   conn = psycopg2.connect(connString)
 
-# Open a cursor to perform database operations.
-# The default mode for psycopg2 is "autocommit=false".
+   # Open a cursor to perform database operations.
+   # The default mode for psycopg2 is "autocommit=false".
 
-conn.set_session(autocommit=True)
-cur = conn.cursor()
+   conn.set_session(autocommit=True)
+   cur = conn.cursor()
 
-# Create the table. (It might preexist.)
+   # Create the table. (It might preexist.)
 
-cur.execute(
-  """
-  DROP TABLE IF EXISTS employee
-  """)
+   cur.execute(
+     """
+     DROP TABLE IF EXISTS employee
+     """)
 
-cur.execute(
-  """
-  CREATE TABLE employee (id int PRIMARY KEY,
-                         name varchar,
-                         age int,
-                         language varchar)
-  """)
-print("Created table employee")
-cur.close()
+   cur.execute(
+     """
+     CREATE TABLE employee (id int PRIMARY KEY,
+                            name varchar,
+                            age int,
+                            language varchar)
+     """)
+   print("Created table employee")
+   cur.close()
 
-# Take advantage of ordinary, transactional behavior for DMLs.
+   # Take advantage of ordinary, transactional behavior for DMLs.
 
-conn.set_session(autocommit=False)
-cur = conn.cursor()
+   conn.set_session(autocommit=False)
+   cur = conn.cursor()
 
-# Insert a row.
+   # Insert a row.
 
-cur.execute("INSERT INTO employee (id, name, age, language) VALUES (%s, %s, %s, %s)",
-            (1, 'John', 35, 'Python'))
-print("Inserted (id, name, age, language) = (1, 'John', 35, 'Python')")
+   cur.execute("INSERT INTO employee (id, name, age, language) VALUES (%s, %s, %s, %s)",
+               (1, 'John', 35, 'Python'))
+   print("Inserted (id, name, age, language) = (1, 'John', 35, 'Python')")
 
-# Query the row.
+   # Query the row.
 
-cur.execute("SELECT name, age, language FROM employee WHERE id = 1")
-row = cur.fetchone()
-print("Query returned: %s, %s, %s" % (row[0], row[1], row[2]))
+   cur.execute("SELECT name, age, language FROM employee WHERE id = 1")
+   row = cur.fetchone()
+   print("Query returned: %s, %s, %s" % (row[0], row[1], row[2]))
 
-# Commit and close down.
+   # Commit and close down.
 
-conn.commit()
-cur.close()
-conn.close()
-```
+   conn.commit()
+   cur.close()
+   conn.close()
+   ```
 
-When you run the `yb-ysql-helloworld.py` project, you should see output similar to the following:
+   When you run the `yb-ysql-helloworld.py` project, you should see output similar to the following:
 
-```text
-Created table employee
-Inserted (id, name, age, language) = (1, 'John', 35, 'Python')
-Query returned: John, 35, Python
-```
+   ```text
+   Created table employee
+   Inserted (id, name, age, language) = (1, 'John', 35, 'Python')
+   Query returned: John, 35, Python
+   ```
 
-If there is no output or you get an error, verify the parameters included in the connection string.
+   If there is no output or you get an error, verify the parameters included in the connection string.
 
 ## Next steps
 
 - Learn how to build Python applications using [Django](../../../drivers-orms/python/django/).
 - Learn how to build Python applications using [SQLAlchemy](../../../drivers-orms/python/sqlalchemy/).
-- Learn more about [fundamentals](../../../reference/drivers/python/postgres-psycopg2-reference/) of the PostgreSQL psycopg2 driver.
+- Learn more about [fundamentals](../../../reference/drivers/python/postgres-psycopg2-reference/#fundamentals) of the PostgreSQL psycopg2 driver.

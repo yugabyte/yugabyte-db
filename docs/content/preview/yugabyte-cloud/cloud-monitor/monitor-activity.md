@@ -5,12 +5,11 @@ description: View the activity on your cluster.
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 menu:
-  preview:
+  preview_yugabyte-cloud:
     identifier: monitor-activity
     parent: cloud-monitor
     weight: 600
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Review activity on your cluster using the **Activity** tab. The tab lists cluster activity, including the activity type, status, and start and end time.

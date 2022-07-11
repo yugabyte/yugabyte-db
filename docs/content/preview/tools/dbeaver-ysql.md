@@ -9,8 +9,7 @@ menu:
     identifier: dbeaver-1-ysql
     parent: tools
     weight: 40
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

@@ -7,8 +7,7 @@ menu:
   v2.4:
     identifier: dml_delete
     parent: statements
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

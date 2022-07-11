@@ -214,6 +214,11 @@ extern bool IsYBReadCommitted();
 extern bool YBSavepointsEnabled();
 
 /*
+ * Whether the per database catalog version mode is enabled.
+ */
+extern bool YBIsDBCatalogVersionMode();
+
+/*
  * Given a status returned by YB C++ code, reports that status as a PG/YSQL
  * ERROR using ereport if it is not OK.
  */
@@ -502,20 +507,24 @@ YBCPgYBTupleIdDescriptor* YBCCreateYBTupleIdDescriptor(Oid db_oid, Oid table_oid
 void YBCFillUniqueIndexNullAttribute(YBCPgYBTupleIdDescriptor* descr);
 
 /*
- * If allow_missing is true, existence precheck will be done and table
- * missing in DocDB will result in yb_table_properties remaining NULL.
- * Otherwise, DocDB will be queried unconditionally and the table missing
- * will trigger an error.
+ * Lazily loads yb_table_properties field in Relation.
  *
- * Note that this call will rarely send out RPC because of TableDesc cache.
+ * YbGetTableProperties expects the table to be present in the DocDB, while
+ * YbTryGetTableProperties queries the DocDB first and returns NULL if not found.
+ *
+ * Both calls returns the same yb_table_properties field from Relation
+ * for convenience (can be NULL for the second call).
+ *
+ * Note that these calls will rarely send out RPC because of
+ * Relation/TableDesc cache.
  *
  * TODO(alex):
  *    An optimization we could use is to amend RelationBuildDesc or
  *    ScanPgRelation to do a custom RPC fetching YB properties as well.
  *    However, TableDesc cache makes this low-priority.
  */
-void
-YbLoadTablePropertiesIfNeeded(Relation rel, bool allow_missing);
+YbTableProperties YbGetTableProperties(Relation rel);
+YbTableProperties YbTryGetTableProperties(Relation rel);
 
 /*
  * Check whether the given libc locale is supported in YugaByte mode.

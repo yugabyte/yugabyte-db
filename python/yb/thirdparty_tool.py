@@ -52,8 +52,6 @@ from collections import defaultdict
 
 from yb.os_versions import adjust_os_type, is_compatible_os
 
-from yb.llvm_urls import get_llvm_url
-
 
 ruamel_yaml_object = ruamel.yaml.YAML()
 
@@ -69,6 +67,8 @@ ARCH_REGEX_STR = '|'.join(['x86_64', 'aarch64', 'arm64'])
 
 # These were incorrectly used without the "clang" prefix to indicate various versions of Clang.
 NUMBER_ONLY_VERSIONS_OF_CLANG = [str(i) for i in [12, 13, 14]]
+
+SKIPPED_TAGS = ['v20220615172857-62ed7bc00f-macos-arm64']
 
 
 def get_arch_regex(index: int) -> str:
@@ -152,6 +152,11 @@ class ThirdPartyReleaseBase:
             (self.KEY_FIELDS_WITH_TAG if include_tag else self.KEY_FIELDS_NO_TAG))
 
 
+class SkipThirdPartyReleaseException(Exception):
+    def __init__(self, msg: str) -> None:
+        super().__init__(msg)
+
+
 class GitHubThirdPartyRelease(ThirdPartyReleaseBase):
     github_release: GitRelease
 
@@ -173,9 +178,11 @@ class GitHubThirdPartyRelease(ThirdPartyReleaseBase):
 
         sha_prefix = tag_match.group('sha_prefix')
         if not self.sha.startswith(sha_prefix):
-            raise ValueError(
-                f"SHA prefix {sha_prefix} extracted from tag {tag} is not a prefix of the "
-                f"SHA corresponding to the release/tag: {self.sha}.")
+            msg = (f"SHA prefix {sha_prefix} extracted from tag {tag} is not a prefix of the "
+                   f"SHA corresponding to the release/tag: {self.sha}.")
+            if tag in SKIPPED_TAGS:
+                raise SkipThirdPartyReleaseException(msg)
+            raise ValueError(msg)
 
         self.timestamp = group_dict['timestamp']
         self.os_type = adjust_os_type(group_dict['os'])
@@ -194,6 +201,7 @@ class GitHubThirdPartyRelease(ThirdPartyReleaseBase):
         if compiler_type is None and self.is_linuxbrew:
             compiler_type = 'gcc'
         if compiler_type in NUMBER_ONLY_VERSIONS_OF_CLANG:
+            assert isinstance(compiler_type, str)
             compiler_type == 'clang' + compiler_type
 
         if compiler_type is None:
@@ -322,11 +330,6 @@ def parse_args() -> argparse.Namespace:
         help='Determine the third-party archive download URL for the combination of criteria, '
              'including the compiler type, and write it to the file specified by this argument.')
     parser.add_argument(
-        '--save-llvm-url-to-file',
-        help='Determine the LLVM toolchain archive download URL and write it to the file '
-             'specified by this argument. Similar to --save-download-url-to-file but also '
-             'takes the OS into account.')
-    parser.add_argument(
         '--compiler-type',
         help='Compiler type, to help us decide which third-party archive to choose. '
              'The default value is determined by the YB_COMPILER_TYPE environment variable.',
@@ -451,7 +454,12 @@ class MetadataUpdater:
                 logging.info(f'Skipping tag {tag_name}, does not match the filter')
                 continue
 
-            yb_dep_release = GitHubThirdPartyRelease(release, target_commitish=sha)
+            try:
+                yb_dep_release = GitHubThirdPartyRelease(release, target_commitish=sha)
+            except SkipThirdPartyReleaseException as ex:
+                logging.warning("Skipping release: %s", ex)
+                continue
+
             if not yb_dep_release.is_consistent_with_yb_version(yb_version):
                 logging.debug(
                     f"Skipping release tag: {tag_name} (does not match version {yb_version}")
@@ -504,7 +512,7 @@ class MetadataUpdater:
                 groups_to_use.append(releases_by_commit[extra_commit])
 
         new_metadata: Dict[str, Any] = {
-            SHA_FOR_LOCAL_CHECKOUT_KEY: sha,
+            SHA_FOR_LOCAL_CHECKOUT_KEY: latest_release_sha,
             'archives': []
         }
         releases_to_use: List[GitHubThirdPartyRelease] = [
@@ -709,7 +717,7 @@ def main() -> None:
             print(compiler)
         return
 
-    if args.save_thirdparty_url_to_file or args.save_llvm_url_to_file:
+    if args.save_thirdparty_url_to_file:
         if not args.compiler_type:
             raise ValueError("Compiler type not specified")
         thirdparty_release: Optional[MetadataItem] = get_third_party_release(
@@ -726,19 +734,6 @@ def main() -> None:
         if args.save_thirdparty_url_to_file:
             make_parent_dir(args.save_thirdparty_url_to_file)
             write_file(thirdparty_url, args.save_thirdparty_url_to_file)
-        if (args.save_llvm_url_to_file and
-                thirdparty_release.compiler_type.startswith('clang') and
-                thirdparty_release.is_linuxbrew):
-            llvm_url = get_llvm_url(thirdparty_release.compiler_type)
-            if llvm_url is not None:
-                logging.info(f"Download URL for the LLVM toolchain: {llvm_url}")
-                make_parent_dir(args.save_llvm_url_to_file)
-                write_file(llvm_url, args.save_llvm_url_to_file)
-            else:
-                logging.info("Could not determine LLVM URL for compiler type %s" %
-                             thirdparty_release.compiler_type)
-        else:
-            logging.info("Not a Linuxbrew URL, not saving LLVM URL to file")
 
 
 if __name__ == '__main__':

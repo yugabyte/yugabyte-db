@@ -4,12 +4,11 @@ headerTitle: Create and edit instance tags
 linkTitle: Create and edit instance tags
 description: Use Yugabyte Platform to create and edit instance tags.
 menu:
-  v2.4:
+  v2.4_yugabyte-platform:
     identifier: instance-tags
     parent: configure-yugabyte-platform
-    weight: 
-isTocNested: true
-showAsideToc: true
+    weight:
+type: docs
 ---
 
 The instances created on a cloud provider can be assigned special metadata to help manage, bill or audit the resources. On Amazon Web Services (AWS), they are referred to as

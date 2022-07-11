@@ -1130,10 +1130,11 @@ EXPLAIN (COSTS FALSE) UPDATE single_row_complex_returning SET v1 = 11 WHERE k = 
 ---------------------------------------------------------------------------------------
  Update on single_row_complex_returning
    InitPlan 1 (returns $0)
-     ->  Aggregate
+     ->  Finalize Aggregate
            ->  Seq Scan on single_row_complex_returning single_row_complex_returning_1
+                 Partial Aggregate: true
    ->  Result
-(5 rows)
+(6 rows)
 
 -- (12) Mutable function
 EXPLAIN (COSTS FALSE) UPDATE single_row_complex_returning SET v1 = 12 WHERE k = 1 RETURNING assign_one_plus_param_to_v1(1);

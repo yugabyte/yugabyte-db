@@ -83,6 +83,8 @@ DECLARE_bool(stream_truncate_record);
 DECLARE_int32(cdc_state_checkpoint_update_interval_ms);
 DECLARE_int32(update_metrics_interval_ms);
 DECLARE_uint64(log_segment_size_bytes);
+DECLARE_uint64(consensus_max_batch_size_bytes);
+DECLARE_uint64(aborted_intent_cleanup_ms);
 
 namespace yb {
 
@@ -2429,6 +2431,146 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestEnumMultipleStreams)) {
   }
 
   ASSERT_EQ(insert_count, expected_key_value);
+}
+
+// Test GetChanges() can return records of a transaction with size was greater than
+// 'consensus_max_batch_size_bytes'.
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestTransactionWithLargeBatchSize)) {
+  FLAGS_update_min_cdc_indices_interval_secs = 1;
+  FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
+  FLAGS_consensus_max_batch_size_bytes = 1000;
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+
+  const uint32_t num_tablets = 1;
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version=*/nullptr));
+  ASSERT_EQ(tablets.size(), num_tablets);
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+
+  auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(resp.has_error());
+
+  // Insert some records in transaction.
+  ASSERT_OK(WriteRowsHelper(0 /* start */, 100 /* end */, &test_cluster_, true));
+  ASSERT_OK(test_client()->FlushTables(
+      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ false));
+  GetChangesResponsePB change_resp_1 = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+  change_resp_1 =
+      ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp_1.cdc_sdk_checkpoint()));
+  LOG(INFO) << "Number of records after first transaction: " << change_resp_1.records().size();
+
+  // Insert some records in transaction.
+  ASSERT_OK(WriteRowsHelper(100, 500, &test_cluster_, true));
+  ASSERT_OK(test_client()->FlushTables(
+      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ false));
+
+  int64 initial_num_intents;
+  PollForIntentCount(400, 0, IntentCountCompareOption::GreaterThan, &initial_num_intents);
+  LOG(INFO) << "Number of intents: " << initial_num_intents;
+
+  GetChangesResponsePB change_resp_2 =
+      ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp_1.cdc_sdk_checkpoint()));
+  uint32_t record_size = change_resp_2.cdc_sdk_proto_records_size();
+  // We have run 1 transactions after the last call to "GetChangesFromCDC", thus we expect
+  // atleast 400 records if we call "GetChangesFromCDC" now.
+  LOG(INFO) << "Number of records after second transaction: " << record_size;
+  ASSERT_GE(record_size, 400);
+  ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp_2.cdc_sdk_checkpoint()));
+
+  int64 final_num_intents;
+  PollForIntentCount(0, 0, IntentCountCompareOption::EqualTo, &final_num_intents);
+  ASSERT_EQ(0, final_num_intents);
+  LOG(INFO) << "Final number of intents: " << final_num_intents;
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestIntentCountPersistencyAfterCompaction)) {
+  FLAGS_update_min_cdc_indices_interval_secs = 1;
+  // We want to force every GetChanges to update the cdc_state table.
+  FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
+  FLAGS_aborted_intent_cleanup_ms = 1000;  // 1 sec
+
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+  const uint32_t num_tablets = 1;
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), num_tablets);
+
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+
+  auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(resp.has_error());
+
+  // Insert some records in transaction.
+  ASSERT_OK(WriteRowsHelper(0 /* start */, 100 /* end */, &test_cluster_, true));
+  ASSERT_OK(test_client()->FlushTables(
+      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ false));
+  GetChangesResponsePB change_resp_1 = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+  LOG(INFO) << "Number of records after first transaction: " << change_resp_1.records().size();
+  change_resp_1 =
+      ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp_1.cdc_sdk_checkpoint()));
+
+  ASSERT_OK(WriteRowsHelper(100 /* start */, 200 /* end */, &test_cluster_, true));
+  ASSERT_OK(test_client()->FlushTables(
+      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ false));
+
+  ASSERT_OK(WriteRowsHelper(200 /* start */, 300 /* end */, &test_cluster_, true));
+  ASSERT_OK(test_client()->FlushTables(
+      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ false));
+  SleepFor(MonoDelta::FromSeconds(10));
+
+  int64 initial_num_intents;
+  PollForIntentCount(1, 0, IntentCountCompareOption::GreaterThan, &initial_num_intents);
+
+  SleepFor(MonoDelta::FromSeconds(60));
+  LOG(INFO) << "All nodes will be restarted";
+  for (size_t i = 0; i < test_cluster()->num_tablet_servers(); ++i) {
+    test_cluster()->mini_tablet_server(i)->Shutdown();
+    ASSERT_OK(test_cluster()->mini_tablet_server(i)->Start());
+    ASSERT_OK(test_cluster()->mini_tablet_server(i)->WaitStarted());
+  }
+  LOG(INFO) << "All nodes restarted";
+
+  std::this_thread::sleep_for(std::chrono::milliseconds(FLAGS_aborted_intent_cleanup_ms));
+  ASSERT_OK(test_cluster_.mini_cluster_->CompactTablets());
+  std::this_thread::sleep_for(std::chrono::seconds(10));
+
+  int64 num_intents_after_compaction;
+  PollForIntentCount(
+      initial_num_intents, 0, IntentCountCompareOption::EqualTo, &num_intents_after_compaction);
+  LOG(INFO) << "Number of intents after compaction: " << num_intents_after_compaction;
+  ASSERT_EQ(num_intents_after_compaction, initial_num_intents);
+
+  GetChangesResponsePB change_resp_2 =
+      ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp_1.cdc_sdk_checkpoint()));
+  uint32_t record_size = change_resp_2.cdc_sdk_proto_records_size();
+
+  // We have run 2 transactions after the last call to "GetChangesFromCDC", thus we expect
+  // atleast 200 records if we call "GetChangesFromCDC" now.
+  LOG(INFO) << "Number of records after compaction: " << record_size;
+  ASSERT_GE(record_size, 200);
+
+  // Now that there are no more transaction, and we have called "GetChangesFromCDC" already, there
+  // must be no more records or intents remaining.
+  GetChangesResponsePB change_resp_3 =
+      ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp_2.cdc_sdk_checkpoint()));
+  uint32_t final_record_size = change_resp_3.cdc_sdk_proto_records_size();
+  LOG(INFO) << "Number of recrods after no new transactions: " << final_record_size;
+  ASSERT_EQ(final_record_size, 0);
+
+  int64 final_num_intents;
+  PollForIntentCount(0, 0, IntentCountCompareOption::EqualTo, &final_num_intents);
+  ASSERT_EQ(0, final_num_intents);
 }
 
 }  // namespace enterprise

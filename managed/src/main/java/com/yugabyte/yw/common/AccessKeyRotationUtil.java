@@ -2,32 +2,47 @@ package com.yugabyte.yw.common;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
 
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.tasks.params.ScheduledAccessKeyRotateParams;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.AccessKey;
+import com.yugabyte.yw.models.AccessKeyId;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
 
+import org.apache.commons.lang3.time.DateUtils;
+
 import io.ebean.annotation.Transactional;
-import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
 
-@Slf4j
 @Singleton
 public class AccessKeyRotationUtil {
 
   @Inject AccessManager accessManager;
+  @Inject RuntimeConfigFactory runtimeConfigFactory;
+
+  public static final String SSH_KEY_EXPIRATION_ENABLED =
+      "yb.security.ssh_keys.enable_ssh_key_expiration";
+  public static final String SSH_KEY_EXPIRATION_THRESHOLD_DAYS =
+      "yb.security.ssh_keys.ssh_key_expiration_threshold_days";
 
   public Set<UUID> getScheduledAccessKeyRotationUniverses(UUID customerUUID, UUID providerUUID) {
     Set<UUID> universeUUIDs = new HashSet<UUID>();
@@ -134,5 +149,61 @@ public class AccessKeyRotationUtil {
 
   public long convertDaysToMillis(int days) {
     return TimeUnit.DAYS.toMillis(days);
+  }
+
+  // returns days to expiry of SSH key of a universe or
+  // returns null if expiration is disabled and not set
+  // calculates minimum over all clusters
+  public Double getSSHKeyExpiryDays(Universe universe, Map<AccessKeyId, AccessKey> allAccessKeys) {
+
+    final Config config = runtimeConfigFactory.forUniverse(universe);
+    boolean expirationEnabled = config.getBoolean(SSH_KEY_EXPIRATION_ENABLED);
+    int expirationThresholdDays = config.getInt(SSH_KEY_EXPIRATION_THRESHOLD_DAYS);
+
+    List<AccessKey> universeAccessKeys = getUniverseAccessKeys(universe, allAccessKeys);
+    if (!expirationEnabled
+        && universeAccessKeys
+            .stream()
+            .allMatch(clusterAccessKey -> (clusterAccessKey.getExpirationDate() == null))) {
+      return null;
+    }
+
+    long timeToExpiry = Long.MAX_VALUE;
+    long currentTime = System.currentTimeMillis();
+    for (AccessKey clusterAccessKey : universeAccessKeys) {
+      if (clusterAccessKey.getExpirationDate() != null) {
+        timeToExpiry =
+            Math.min(timeToExpiry, clusterAccessKey.getExpirationDate().getTime() - currentTime);
+      } else if (expirationEnabled) {
+        Date expirationDate =
+            DateUtils.addDays(clusterAccessKey.getCreationDate(), expirationThresholdDays);
+        timeToExpiry = Math.min(timeToExpiry, expirationDate.getTime() - currentTime);
+      }
+    }
+    return (double) TimeUnit.MILLISECONDS.toDays(timeToExpiry);
+  }
+
+  // ideally a universe should have the same access key for all clusters
+  // still, we loop through each one as we store them at a cluster level
+  public List<AccessKey> getUniverseAccessKeys(
+      Universe universe, Map<AccessKeyId, AccessKey> allAccessKeys) {
+    List<Cluster> clusters = universe.getUniverseDetails().clusters;
+    UUID providerUUID = UUID.fromString(clusters.get(0).userIntent.provider);
+    List<AccessKey> accessKeys = new ArrayList<AccessKey>();
+    clusters.forEach(
+        cluster -> {
+          String clusterAccessKeyCode = cluster.userIntent.accessKeyCode;
+          AccessKeyId id = AccessKeyId.create(providerUUID, clusterAccessKeyCode);
+          accessKeys.add(allAccessKeys.get(id));
+        });
+    return accessKeys;
+  }
+
+  public Map<AccessKeyId, AccessKey> createAllAccessKeysMap() {
+    Map<AccessKeyId, AccessKey> accessKeys =
+        AccessKey.getAll()
+            .stream()
+            .collect(Collectors.toMap(accessKey -> accessKey.idKey, Function.identity()));
+    return accessKeys;
   }
 }

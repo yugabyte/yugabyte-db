@@ -3,12 +3,12 @@ package models
 // ClusterNodeInfo - Node level information
 type ClusterNodeInfo struct {
 
-	// The number of cores for each node
-	NumCores int32 `json:"num_cores"`
+    // The total amount of RAM (MB) used by all nodes
+    MemoryMb float64 `json:"memory_mb"`
 
-	// The amount of RAM (MB) for each node
-	MemoryMb int32 `json:"memory_mb"`
+    // The total size of disk (GB)
+    DiskSizeGb int32 `json:"disk_size_gb"`
 
-	// The size of disk (GB) of each node
-	DiskSizeGb int32 `json:"disk_size_gb"`
+    // The average CPU usage over all nodes
+    CpuUsage float64 `json:"cpu_usage"`
 }

@@ -4,12 +4,11 @@ headerTitle: Enable YugabyteDB Anywhere SSO authentication via OIDC
 description: Use OIDC to enable SSO login to YugabyteDB Anywhere.
 linkTitle: Configure authentication
 menu:
-  preview:
+  preview_yugabyte-platform:
     identifier: oidc-authentication
     parent: administer-yugabyte-platform
     weight: 20
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 
@@ -46,7 +45,7 @@ You can create an OIDC configuration as follows:
   - In the **Scope** field, enter your identity provider OIDC scope that is allowed to be requested.
   - In the **Email Attribute** field, enter the OIDC scope containing the user email identifier. The input into this field is case-sensitive.
 
-- Click **Save**. 
+- Click **Save**.
 
 
 For information on how to add users, see [Create, modify, and delete users](../../security/authorization-platform/#create-modify-and-delete-users). The email ID that you enter in the **Add User** dialog must be registered with the identity provider, and the role must reflect the user's role on YugabyteDB Anywhere.
@@ -55,5 +54,3 @@ Once OIDC is enabled, the user is presented with the following login options:
 
 - **Login with SSO** redirects the user to the appropriate identity provider's login mechanism.
 - **Super Admin Login** allows the user to login into YugabyteDB Anywhere as a local super admin.
-
- 

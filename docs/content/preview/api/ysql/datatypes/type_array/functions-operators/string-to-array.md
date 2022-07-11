@@ -7,8 +7,7 @@ menu:
   preview:
     identifier: string-to-array
     parent: array-functions-operators
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 **Purpose:** Return a one-dimensional `text[]` array by splitting the input `text` value into subvalues using the specified `text` value as the _"delimiter"_. Optionally, allows a specified `text` value to be interpreted as `NULL`.
 

@@ -12,8 +12,7 @@ menu:
     identifier: explore-security
     parent: explore
     weight: 300
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Like PostgreSQL, YugabyteDB provides security in multiple ways:

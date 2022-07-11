@@ -7,12 +7,11 @@ image: /images/section_icons/deploy/enterprise.png
 aliases:
   - /preview/yugabyte-cloud/cloud-basics/create-clusters-free/
 menu:
-  preview:
+  preview_yugabyte-cloud:
     identifier: create-clusters-free
     parent: create-clusters
     weight: 40
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Use your free Sandbox cluster to get started with YugabyteDB. Although not suitable for production workloads or performance testing, a Sandbox cluster includes enough resources to start exploring the core features available for developing applications with YugabyteDB.
@@ -23,7 +22,7 @@ Your Sandbox cluster includes the following:
 
 - Single node.
 - Up to 2 vCPUs, 4 GB memory, and 10 GB of storage, depending on the cloud provider.
-- A [preview release](../../../cloud-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) of YugabyteDB, which provides early access to new features.
+- A [preview release](../../../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) of YugabyteDB, which provides early access to new features.
 - Available in all [regions](../../../release-notes#cloud-provider-regions).
 
 Share your feedback, questions, and suggestions with other users on the [YugabyteDB Community Slack]({{<slack-invite>}}).

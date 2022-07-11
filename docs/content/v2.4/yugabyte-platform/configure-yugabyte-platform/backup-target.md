@@ -4,12 +4,11 @@ headerTitle: Configure the backup target
 linkTitle: Configure the backup target
 description: Configure the backup target.
 menu:
-  v2.4:
+  v2.4_yugabyte-platform:
     identifier: backup-target
     parent: configure-yugabyte-platform
     weight: 30
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Configure the backup target for YugabyteDB universe data by following the steps below for your backup storage option.

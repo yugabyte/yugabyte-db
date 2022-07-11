@@ -5,13 +5,13 @@ linkTitle: Manage clusters
 description: Manage your YugabyteDB Managed clusters.
 image: /images/section_icons/architecture/core_functions/universe.png
 headcontent: Scale clusters, configure backups and maintenance windows, and pause or delete clusters.
-section: YUGABYTEDB MANAGED
 menu:
-  preview:
+  preview_yugabyte-cloud:
+    parent: yugabytedb-managed
     identifier: cloud-clusters
     weight: 150
+type: indexpage
 ---
-
 YugabyteDB Managed provides the following tools to manage clusters:
 
 - [Scaling](configure-clusters/) - To ensure the cluster configuration matches its performance requirements, scale the cluster vertically or horizontally as your requirements change.

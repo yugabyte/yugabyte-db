@@ -8,8 +8,7 @@ menu:
     identifier: architecture-layered-architecture
     parent: architecture
     weight: 1109
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 YugabyteDB architecture follows a layered design. It is comprised of 2 logical layers as shown in the diagram below:

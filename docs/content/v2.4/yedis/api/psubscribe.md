@@ -6,8 +6,7 @@ menu:
   v2.4:
     parent: api-yedis
     weight: 2554
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis
@@ -17,10 +16,10 @@ This command subscribes the client to the specified pattern(s). The client will 
 
 ## See also
 
-[`keys`](../keys/), 
-[`pubsub`](../pubsub/), 
-[`publish`](../publish/), 
-[`subscribe`](../subscribe/), 
-[`unsubscribe`](../unsubscribe/), 
-[`psubscribe`](../psubscribe/), 
+[`keys`](../keys/),
+[`pubsub`](../pubsub/),
+[`publish`](../publish/),
+[`subscribe`](../subscribe/),
+[`unsubscribe`](../unsubscribe/),
+[`psubscribe`](../psubscribe/),
 [`punsubscribe`](../punsubscribe/)

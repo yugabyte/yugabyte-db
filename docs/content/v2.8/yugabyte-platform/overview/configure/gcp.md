@@ -5,12 +5,11 @@ linkTitle: Configure
 description: Configuring Yugabyte Platform on Google Cloud Platform
 image: /images/section_icons/deploy/enterprise.png
 menu:
-  v2.8:
+  v2.8_yugabyte-platform:
     identifier: configure-2-gcp
     parent: overview-yp
     weight: 40
-isTocNested: true
-showAsideToc: false
+type: docs
 ---
 
 Select your cloud provider to see the steps for configuration of database nodes. Click on the elements to see detailed steps.
@@ -63,7 +62,3 @@ Select your cloud provider to see the steps for configuration of database nodes.
     <area target="_blank" alt="GCP provider pre reqs" title="GCP provider pre reqs" href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/gcp/#prerequisites" coords="223,476,675,653" shape="rect">
     <area target="_blank" alt="configure GCP" title="configure GCP" href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/gcp/#configure-gcp" coords="305,703,601,791" shape="rect">
 </map>
-
-
-
-

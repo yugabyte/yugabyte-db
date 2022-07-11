@@ -6,8 +6,7 @@ menu:
   v2.4:
     parent: api-yedis
     weight: 2272
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis
@@ -42,7 +41,7 @@ $ PTTL yugakey
 ```
 
 ```
-(integer) 900 
+(integer) 900
 ```
 
 ## See also

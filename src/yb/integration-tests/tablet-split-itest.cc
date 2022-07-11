@@ -1997,9 +1997,8 @@ TEST_F(TabletSplitSingleServerITest, MaxFileSizeTTLTabletOnlyValidForManualSplit
   // Requires a metrics heartbeat to get max_file_size_for_compaction flag to master.
   auto ts_desc = ASSERT_RESULT(source_tablet_info->GetLeader());
   EXPECT_OK(WaitFor([&]() -> Result<bool> {
-      return ts_desc->uptime_seconds() > 0;
+      return ts_desc->uptime_seconds() > 0 && ts_desc->get_disable_tablet_split_if_default_ttl();
     }, 10s * kTimeMultiplier, "Wait for TServer to report metrics."));
-  EXPECT_TRUE(ts_desc->get_disable_tablet_split_if_default_ttl());
 
   // Candidate tablet should still be valid since default TTL not enabled.
   ASSERT_OK(split_manager->ValidateSplitCandidateTablet(*source_tablet_info));

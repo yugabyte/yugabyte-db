@@ -9,8 +9,7 @@ menu:
     identifier: java-orm
     parent: java-drivers
     weight: 600
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 [Hibernate ORM](https://hibernate.org/orm/) is an Object/Relational Mapping (ORM) framework for Java applications. Hibernate ORM is concerned with data persistence of relational databases, and enables developers to write applications whose data outlives the application lifetime.

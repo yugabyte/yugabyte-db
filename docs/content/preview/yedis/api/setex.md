@@ -9,8 +9,7 @@ menu:
 aliases:
   - /preview/api/redis/setex
   - /preview/api/yedis/setex
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

@@ -21,6 +21,8 @@
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/doc_operation.h"
 #include "yb/docdb/intent.h"
+#include "yb/docdb/shared_lock_manager.h"
+#include "yb/docdb/wait_queue.h"
 
 namespace rocksdb {
 
@@ -35,6 +37,8 @@ class Counter;
 
 namespace docdb {
 
+// Note -- we use boost::function here instead of std::function as it's implementation is better
+// suited for small callback instances.
 using ResolutionCallback = boost::function<void(const Result<HybridTime>&)>;
 
 // Resolves conflicts for write batch of transaction.
@@ -48,6 +52,12 @@ using ResolutionCallback = boost::function<void(const Result<HybridTime>&)>;
 // db - db that contains tablet data.
 // status_manager - status manager that should be used during this conflict resolution.
 // conflicts_metric - transaction_conflicts metric to update.
+// lock_batch - a pointer to the lock_batch used by this operation, which will be temporarily
+//              unlocked in the event that blocking conflicting transactions are found and
+//              waited-on. Only used in conjunction with the wait_queue.
+// wait_queue - a pointer to the tablet's wait queue. If null, we proceed with optimistic locking.
+//              Else, we proceed with pessimistic locking and use the wait_queue to block and
+//              unblock transactions with conflicts.
 void ResolveTransactionConflicts(const DocOperations& doc_ops,
                                  const KeyValueWriteBatchPB& write_batch,
                                  HybridTime resolution_ht,
@@ -56,6 +66,8 @@ void ResolveTransactionConflicts(const DocOperations& doc_ops,
                                  PartialRangeKeyIntents partial_range_key_intents,
                                  TransactionStatusManager* status_manager,
                                  Counter* conflicts_metric,
+                                 LockBatch* lock_batch,
+                                 WaitQueue* wait_queue,
                                  ResolutionCallback callback);
 
 // Resolves conflicts for doc operations.

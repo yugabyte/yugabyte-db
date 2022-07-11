@@ -7,8 +7,7 @@ menu:
   stable:
     identifier: ddl_refresh_matview
     parent: statements
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

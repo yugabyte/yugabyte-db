@@ -9,8 +9,7 @@ menu:
 aliases:
   - /preview/api/redis/flushall
   - /preview/api/yedis/flushall
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

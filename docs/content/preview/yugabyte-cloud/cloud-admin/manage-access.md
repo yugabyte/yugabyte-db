@@ -5,12 +5,11 @@ description: Manage access to your YugabyteDB Managed account and your clusters.
 headcontent:
 image: /images/section_icons/secure/create-roles.png
 menu:
-  preview:
+  preview_yugabyte-cloud:
     identifier: manage-cloud-access
     parent: cloud-admin
     weight: 100
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Invite team members to your account so that they can create, manage, and connect to clusters. You can also manage the login methods available to users for signing in to your YugabyteDB Managed account.

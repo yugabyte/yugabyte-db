@@ -9,9 +9,9 @@ menu:
     identifier: java-drivers
     parent: drivers-orms
     weight: 540
-isTocNested: true
-showAsideToc: true
+type: indexpage
 ---
+
 The following projects can be used to implement Java applications using the YugabyteDB YSQL API.
 
 ## Supported Projects
@@ -27,7 +27,7 @@ The following projects can be used to implement Java applications using the Yuga
 | Spring Data YugabyteDB | [Documentation](../../integrations/spring-framework/sdyb/)<br />[Hello World App](../../quick-start/build-apps/java/ysql-sdyb/)<br />[Blog](https://blog.yugabyte.com/spring-data-yugabytedb-getting-started/) | [Spring Data YugabyteDB Sample App](https://github.com/yugabyte/spring-data-yugabytedb-example)
 | Spring Data JPA | [Documentation](../../integrations/spring-framework/sd-jpa/)<br />[Hello World App](../../quick-start/build-apps/java/ysql-spring-data/)<br />[Blog](https://blog.yugabyte.com/run-the-rest-version-of-spring-petclinic-with-angular-and-distributed-sql-on-gke/) | [Spring Data JPA App](https://github.com/yugabyte/orm-examples/tree/master/java/spring)
 
-<!-- 
+<!--
 | Project (* Recommended) | Type | Support | Examples |
 | :------ | :--- | :------ | :------- |
 | [YugabyteDB JDBC Driver*](yugabyte-jdbc) | JDBC Driver | Full | [Hello World](/preview/quick-start/build-apps/java/ysql-yb-jdbc) <br />[CRUD](yugabyte-jdbc) |

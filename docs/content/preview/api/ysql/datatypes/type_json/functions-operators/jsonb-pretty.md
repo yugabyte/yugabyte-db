@@ -8,8 +8,7 @@ menu:
     identifier: jsonb-pretty
     parent: json-functions-operators
     weight: 200
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 **Purpose:** Format the text representation of the JSON value that the input `jsonb` actual argument represents, using whitespace, to make it more human-readable.

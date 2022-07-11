@@ -9,8 +9,7 @@ menu:
 aliases:
   - /preview/api/redis/role
   - /preview/api/yedis/role
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 YEDIS only has `master` role as far as Redis compatibility is concerned.
 

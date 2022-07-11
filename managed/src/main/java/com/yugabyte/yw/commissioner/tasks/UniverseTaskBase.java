@@ -25,6 +25,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.BackupTable;
 import com.yugabyte.yw.commissioner.tasks.subtasks.BackupTableYb;
+import com.yugabyte.yw.commissioner.tasks.subtasks.BackupTableYbc;
 import com.yugabyte.yw.commissioner.tasks.subtasks.BackupUniverseKeys;
 import com.yugabyte.yw.commissioner.tasks.subtasks.BulkImport;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeAdminPassword;
@@ -1574,6 +1575,15 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   /**
+   * Creates a task list to stop the yb-controller process on cluster's node and adds it to the
+   * queue.
+   *
+   * @param nodes set of nodes on which yb-controller has to be stopped
+   */
+  public SubTaskGroup createStopYbControllerTasks(Collection<NodeDetails> nodes) {
+    return createStopServerTasks(nodes, "controller", false);
+  }
+  /**
    * Creates a task list to stop the tservers of the cluster and adds it to the task queue.
    *
    * @param nodes set of nodes to be stopped as master
@@ -1777,13 +1787,14 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   protected Backup createAllBackupSubtasks(
       BackupRequestParams backupRequestParams, SubTaskGroupType subTaskGroupType) {
-    return createAllBackupSubtasks(backupRequestParams, subTaskGroupType, null);
+    return createAllBackupSubtasks(backupRequestParams, subTaskGroupType, null, false);
   }
 
   protected Backup createAllBackupSubtasks(
       BackupRequestParams backupRequestParams,
       SubTaskGroupType subTaskGroupType,
-      Set<String> tablesToBackup) {
+      Set<String> tablesToBackup,
+      boolean ybcBackup) {
     BackupTableParams backupTableParams = getBackupTableParams(backupRequestParams, tablesToBackup);
 
     if (backupRequestParams.alterLoadBalancer) {
@@ -1795,7 +1806,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         Backup.create(
             backupRequestParams.customerUUID,
             backupTableParams,
-            Backup.BackupCategory.YB_BACKUP_SCRIPT,
+            ybcBackup
+                ? Backup.BackupCategory.YB_CONTROLLER
+                : Backup.BackupCategory.YB_BACKUP_SCRIPT,
             Backup.BackupVersion.V2);
     backup.setTaskUUID(userTaskUUID);
     backupTableParams.backupUuid = backup.backupUUID;
@@ -1803,8 +1816,11 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     for (BackupTableParams backupParams : backupTableParams.backupList) {
       createEncryptedUniverseKeyBackupTask(backupParams).setSubTaskGroupType(subTaskGroupType);
     }
-
-    createTableBackupTaskYb(backupTableParams).setSubTaskGroupType(subTaskGroupType);
+    if (ybcBackup) {
+      createTableBackupTaskYbc(backupTableParams).setSubTaskGroupType(subTaskGroupType);
+    } else {
+      createTableBackupTaskYb(backupTableParams).setSubTaskGroupType(subTaskGroupType);
+    }
 
     if (backupRequestParams.alterLoadBalancer) {
       createLoadBalancerStateChangeTask(true).setSubTaskGroupType(subTaskGroupType);
@@ -1852,6 +1868,16 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         getTaskExecutor().createSubTaskGroup("BackupTableYb", executor, taskParams.ignoreErrors);
     BackupTableYb task = createTask(BackupTableYb.class);
     task.initialize(taskParams);
+    task.setUserTaskUUID(userTaskUUID);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  public SubTaskGroup createTableBackupTaskYbc(BackupTableParams tableParams) {
+    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("BackupTableYbc", executor);
+    BackupTableYbc task = createTask(BackupTableYbc.class);
+    task.initialize(tableParams);
     task.setUserTaskUUID(userTaskUUID);
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);

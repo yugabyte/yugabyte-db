@@ -20,9 +20,7 @@ menu:
     name: 3. Explore distributed SQL
     identifier: explore-dsql-1-ysql
     weight: 130
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -43,7 +41,7 @@ showAsideToc: true
 
 </ul>
 
-After [creating a local cluster](../../create-local-cluster/macos/), you can start exploring YugabyteDB's PostgreSQL-compatible, fully-relational [Yugabyte SQL API](../../../api/ysql/).
+After [creating a local cluster](../../../../preview/quick-start/#create-a-local-cluster), you can start exploring YugabyteDB's PostgreSQL-compatible, fully-relational [Yugabyte SQL API](../../../api/ysql/).
 
 ## Set up the sample database
 

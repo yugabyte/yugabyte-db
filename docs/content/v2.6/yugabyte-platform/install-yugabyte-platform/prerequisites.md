@@ -4,12 +4,11 @@ headerTitle: Prerequisites
 linkTitle: Prerequisites
 description: Prerequisites for installing Yugabyte Platform.
 menu:
-  v2.6:
+  v2.6_yugabyte-platform:
     identifier: prerequisites
     parent: install-yugabyte-platform
     weight: 20
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Yugabyte Platform first needs to be installed on a host computer, and then you configure Yugabyte Platform to work in your on-premises private cloud or in a public cloud environment. In a public cloud environment, Yugabyte Platform spawns instances for starting a YugabyteDB universe. In a private cloud environment, you use Yugabyte Platform to add nodes in which you want to be in the YugabyteDB universe. To manage these nodes, Yugabyte Platform requires SSH access to each of the nodes.
@@ -59,5 +58,3 @@ Installing Yugabyte Platform on Airgapped hosts, without access to any Internet 
 - Ensuring that attached disk storage (such as persistent EBS volumes on AWS) is 100 GB minimum
 - Having Yugabyte Platform airgapped install package. Contact Yugabyte Support for more information.
 - Signing the Yugabyte Enterprise Platform license agreement. Contact Yugabyte Support for more information.
-
-

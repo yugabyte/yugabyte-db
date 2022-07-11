@@ -9,8 +9,7 @@ menu:
     parent: change-data-capture
     identifier: cdc-java-console-client
     weight: 580
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 The Java console client for CDC prints CDC changes to the console. This client is meant **for testing purposes only**.

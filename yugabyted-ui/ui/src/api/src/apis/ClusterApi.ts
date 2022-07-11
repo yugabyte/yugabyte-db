@@ -33,21 +33,8 @@ export interface CreateClusterForQuery {
   projectId: string;
   CreateClusterRequest?: CreateClusterRequest;
 }
-export interface DeleteClusterForQuery {
-  accountId: string;
-  projectId: string;
-  clusterId: string;
-}
 export interface EditClusterForQuery {
-  accountId: string;
-  projectId: string;
-  clusterId: string;
   ClusterSpec?: ClusterSpec;
-}
-export interface GetClusterForQuery {
-  accountId: string;
-  projectId: string;
-  clusterId: string;
 }
 export interface ListClustersForQuery {
   accountId: string;
@@ -130,19 +117,9 @@ export const useCreateClusterMutation = <Error = ApiError>(
 
 
 export const deleteClusterMutate = (
-  body: DeleteClusterForQuery,
   customAxiosInstance?: AxiosInstance
 ) => {
-  const url = '/public/accounts/{accountId}/projects/{projectId}/clusters/{clusterId}'.replace(`{${'accountId'}}`, encodeURIComponent(String(body.accountId))).replace(`{${'projectId'}}`, encodeURIComponent(String(body.projectId))).replace(`{${'clusterId'}}`, encodeURIComponent(String(body.clusterId)));
-  // eslint-disable-next-line
-  // @ts-ignore
-  delete body.accountId;
-  // eslint-disable-next-line
-  // @ts-ignore
-  delete body.projectId;
-  // eslint-disable-next-line
-  // @ts-ignore
-  delete body.clusterId;
+  const url = '/cluster';
   return Axios<unknown>(
     {
       url,
@@ -161,8 +138,8 @@ export const useDeleteClusterMutation = <Error = ApiError>(
   const {mutation: mutationOptions, customAxiosInstance} = options ?? {};
   // eslint-disable-next-line
   // @ts-ignore
-  return useMutation<unknown, Error, DeleteClusterForQuery, unknown>((props) => {
-    return  deleteClusterMutate(props, customAxiosInstance);
+  return useMutation<unknown, Error, void, unknown>(() => {
+    return  deleteClusterMutate(customAxiosInstance);
   }, mutationOptions);
 };
 
@@ -177,16 +154,7 @@ export const editClusterMutate = (
   body: EditClusterForQuery,
   customAxiosInstance?: AxiosInstance
 ) => {
-  const url = '/public/accounts/{accountId}/projects/{projectId}/clusters/{clusterId}'.replace(`{${'accountId'}}`, encodeURIComponent(String(body.accountId))).replace(`{${'projectId'}}`, encodeURIComponent(String(body.projectId))).replace(`{${'clusterId'}}`, encodeURIComponent(String(body.clusterId)));
-  // eslint-disable-next-line
-  // @ts-ignore
-  delete body.accountId;
-  // eslint-disable-next-line
-  // @ts-ignore
-  delete body.projectId;
-  // eslint-disable-next-line
-  // @ts-ignore
-  delete body.clusterId;
+  const url = '/cluster';
   return Axios<ClusterResponse>(
     {
       url,
@@ -218,12 +186,11 @@ export const useEditClusterMutation = <Error = ApiError>(
  */
 
 export const getClusterAxiosRequest = (
-  requestParameters: GetClusterForQuery,
   customAxiosInstance?: AxiosInstance
 ) => {
   return Axios<ClusterResponse>(
     {
-      url: '/public/accounts/{accountId}/projects/{projectId}/clusters/{clusterId}'.replace(`{${'accountId'}}`, encodeURIComponent(String(requestParameters.accountId))).replace(`{${'projectId'}}`, encodeURIComponent(String(requestParameters.projectId))).replace(`{${'clusterId'}}`, encodeURIComponent(String(requestParameters.clusterId))),
+      url: '/cluster',
       method: 'GET',
       params: {
       }
@@ -233,18 +200,15 @@ export const getClusterAxiosRequest = (
 };
 
 export const getClusterQueryKey = (
-  requestParametersQuery: GetClusterForQuery,
   pageParam = -1,
   version = 1,
 ) => [
-  `/v${version}/public/accounts/{accountId}/projects/{projectId}/clusters/{clusterId}`,
+  `/v${version}/cluster`,
   pageParam,
-  ...(requestParametersQuery ? [requestParametersQuery] : [])
 ];
 
 
 export const useGetClusterInfiniteQuery = <T = ClusterResponse, Error = ApiError>(
-  params: GetClusterForQuery,
   options?: {
     query?: UseInfiniteQueryOptions<ClusterResponse, Error, T>;
     customAxiosInstance?: AxiosInstance;
@@ -252,12 +216,12 @@ export const useGetClusterInfiniteQuery = <T = ClusterResponse, Error = ApiError
   pageParam = -1,
   version = 1,
 ) => {
-  const queryKey = getClusterQueryKey(params, pageParam, version);
+  const queryKey = getClusterQueryKey(pageParam, version);
   const { query: queryOptions, customAxiosInstance } = options ?? {};
 
   const query = useInfiniteQuery<ClusterResponse, Error, T>(
     queryKey,
-    () => getClusterAxiosRequest(params, customAxiosInstance),
+    () => getClusterAxiosRequest(customAxiosInstance),
     queryOptions
   );
 
@@ -268,19 +232,18 @@ export const useGetClusterInfiniteQuery = <T = ClusterResponse, Error = ApiError
 };
 
 export const useGetClusterQuery = <T = ClusterResponse, Error = ApiError>(
-  params: GetClusterForQuery,
   options?: {
     query?: UseQueryOptions<ClusterResponse, Error, T>;
     customAxiosInstance?: AxiosInstance;
   },
   version = 1,
 ) => {
-  const queryKey = getClusterQueryKey(params,  version);
+  const queryKey = getClusterQueryKey(version);
   const { query: queryOptions, customAxiosInstance } = options ?? {};
 
   const query = useQuery<ClusterResponse, Error, T>(
     queryKey,
-    () => getClusterAxiosRequest(params, customAxiosInstance),
+    () => getClusterAxiosRequest(customAxiosInstance),
     queryOptions
   );
 
