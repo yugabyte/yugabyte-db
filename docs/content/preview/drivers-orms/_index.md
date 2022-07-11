@@ -24,6 +24,12 @@ In addition to the compatible upstream PostgreSQL drivers, YugabyteDB also suppo
 
 All YugabyteDB smart driver libraries are actively maintained, and receive bug fixes, performance enhancements, and security patches.
 
+{{< note title="Note" >}}
+
+To take advantage of smart driver load balancing features when connecting to clusters in YugabyteDB Managed, the smart driver and application must be deployed in a VPC that has been peered with the cluster VPC. For information on VPC networking in YugabyteDB Managed, refer to [VPC network](../yugabyte-cloud/cloud-basics/cloud-vpcs/).
+
+{{< /note >}}
+
 ## Supported libraries
 
 The following libraries are officially supported by YugabyteDB.
