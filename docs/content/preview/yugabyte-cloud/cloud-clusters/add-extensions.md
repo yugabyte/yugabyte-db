@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-YugabyteDB comes bundled with a number of extensions that are tested to work with YSQL. For a list of bundled extensions, refer to [PostgreSQL extensions](../../../explore/ysql-language-features/pg-extensions/).
+YugabyteDB is bundled with a number of [PostgreSQL extensions](../../../explore/ysql-language-features/pg-extensions/) that are tested to work with YSQL.
 
 ## Loading extensions
 

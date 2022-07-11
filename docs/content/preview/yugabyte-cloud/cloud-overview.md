@@ -22,7 +22,7 @@ YugabyteDB Managed is a fully managed YugabyteDB-as-a-Service that allows you to
 
 To begin using YugabyteDB Managed, go to [Quick start](../cloud-quickstart/).
 
-#### More resources
+#### Additional resources
 
 - Video playlist: [YugabyteDB Managed Getting Started](https://www.youtube.com/playlist?list=PL8Z3vt4qJTkJqisBVRDi6GAy8rhVo1xjc)
 
