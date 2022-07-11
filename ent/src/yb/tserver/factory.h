@@ -54,24 +54,24 @@ class CQLServerEnt : public cqlserver::CQLServer {
   explicit CQLServerEnt(Args&&... args) : CQLServer(std::forward<Args>(args)...) {
   }
 
-  CHECKED_STATUS ReloadKeysAndCertificates() override {
+  Status ReloadKeysAndCertificates() override {
     if (!secure_context_) {
       return Status::OK();
     }
 
     return server::ReloadSecureContextKeysAndCertificates(
           secure_context_.get(),
-          server::DefaultRootDir(*fs_manager_),
+          fs_manager_->GetDefaultRootDir(),
           server::SecureContextType::kExternal,
           options_.HostsString());
   }
 
  private:
-  CHECKED_STATUS SetupMessengerBuilder(rpc::MessengerBuilder* builder) override {
+  Status SetupMessengerBuilder(rpc::MessengerBuilder* builder) override {
     RETURN_NOT_OK(CQLServer::SetupMessengerBuilder(builder));
     if (!FLAGS_cert_node_filename.empty()) {
       secure_context_ = VERIFY_RESULT(server::SetupSecureContext(
-          server::DefaultRootDir(*fs_manager_),
+          fs_manager_->GetDefaultRootDir(),
           FLAGS_cert_node_filename,
           server::SecureContextType::kExternal,
           builder));

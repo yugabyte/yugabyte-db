@@ -5,14 +5,12 @@ linkTitle: Contribution checklist
 description: Review the steps to start contributing code and documentation.
 image: /images/section_icons/index/quick_start.png
 headcontent: Checklist for contributing to the core database.
-type: page
 menu:
   preview:
     identifier: contribute-checklist
     parent: core-database
     weight: 2911
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Step 1. Build the source

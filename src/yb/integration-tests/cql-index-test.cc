@@ -47,7 +47,7 @@ class CqlIndexTest : public CqlTestBase<MiniCluster> {
 
 YB_STRONGLY_TYPED_BOOL(UniqueIndex);
 
-CHECKED_STATUS CreateIndexedTable(
+Status CreateIndexedTable(
     CassandraSession* session, UniqueIndex unique_index = UniqueIndex::kFalse) {
   RETURN_NOT_OK(
       session->ExecuteQuery("CREATE TABLE IF NOT EXISTS t (key INT PRIMARY KEY, value INT) WITH "

@@ -23,13 +23,9 @@
 #include "yb/docdb/intent_aware_iterator.h"
 
 namespace yb {
-
-class IndexInfo;
-class IndexMap;
-class QLResultSet;
-class QLRowBlock;
-
 namespace docdb {
+
+YB_STRONGLY_TYPED_BOOL(IsInsert);
 
 class QLWriteOperation :
     public DocOperationBase<DocOperationType::QL_WRITE_OPERATION, QLWriteRequestPB>,
@@ -43,47 +39,20 @@ class QLWriteOperation :
   ~QLWriteOperation();
 
   // Construct a QLWriteOperation. Content of request will be swapped out by the constructor.
-  CHECKED_STATUS Init(QLResponsePB* response);
+  Status Init(QLResponsePB* response);
 
   bool RequireReadSnapshot() const override { return require_read_; }
 
-  CHECKED_STATUS GetDocPaths(
+  Status GetDocPaths(
       GetDocPathsMode mode, DocPathsToLock *paths, IsolationLevel *level) const override;
 
-  CHECKED_STATUS Apply(const DocOperationApplyData& data) override;
-
-  CHECKED_STATUS ApplyForJsonOperators(
-    const ColumnSchema& column,
-    const ColumnIdRep col_id,
-    const std::unordered_map<ColumnIdRep, vector<int>>& col_map,
-    const DocOperationApplyData& data,
-    const DocPath& sub_path, const MonoDelta& ttl,
-    const UserTimeMicros& user_timestamp,
-    QLTableRow* current_row,
-    bool is_insert);
-
-  CHECKED_STATUS ApplyForSubscriptArgs(const QLColumnValuePB& column_value,
-                                       const QLTableRow& current_row,
-                                       const DocOperationApplyData& data,
-                                       const MonoDelta& ttl,
-                                       const UserTimeMicros& user_timestamp,
-                                       const ColumnSchema& column,
-                                       DocPath* sub_path);
-
-  CHECKED_STATUS ApplyForRegularColumns(const QLColumnValuePB& column_value,
-                                        const QLTableRow& current_row,
-                                        const DocOperationApplyData& data,
-                                        const DocPath& sub_path, const MonoDelta& ttl,
-                                        const UserTimeMicros& user_timestamp,
-                                        const ColumnSchema& column,
-                                        const ColumnId& column_id,
-                                        QLTableRow* new_row);
+  Status Apply(const DocOperationApplyData& data) override;
 
   const QLWriteRequestPB& request() const { return request_; }
   QLResponsePB* response() const { return response_; }
 
-  std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>>* index_requests() {
-    return &index_requests_;
+  IndexRequests& index_requests() {
+    return index_requests_;
   }
 
   // Rowblock to return the "[applied]" status for conditional DML.
@@ -92,6 +61,34 @@ class QLWriteOperation :
   MonoDelta request_ttl() const;
 
  private:
+  using JsonColumnMap = std::unordered_map<ColumnId, std::vector<int>>;
+
+  Status ApplyForJsonOperators(
+    const ColumnSchema& column_schema,
+    const ColumnId col_id,
+    const JsonColumnMap& col_map,
+    const DocOperationApplyData& data,
+    const ValueControlFields& control_fields,
+    IsInsert is_insert,
+    QLTableRow* current_row,
+    RowPacker* row_packer);
+
+  Status ApplyForSubscriptArgs(const QLColumnValuePB& column_value,
+                               const QLTableRow& current_row,
+                               const DocOperationApplyData& data,
+                               const ValueControlFields& control_fields,
+                               const ColumnSchema& column,
+                               ColumnId column_id);
+
+  Status ApplyForRegularColumns(const QLColumnValuePB& column_value,
+                                const QLTableRow& current_row,
+                                const DocOperationApplyData& data,
+                                const ValueControlFields& control_fields,
+                                const ColumnSchema& column,
+                                ColumnId column_id,
+                                QLTableRow* new_row,
+                                RowPacker* row_packer);
+
   void ClearResponse() override {
     if (response_) {
       response_->Clear();
@@ -99,24 +96,24 @@ class QLWriteOperation :
   }
 
   // Initialize hashed_doc_key_ and/or pk_doc_key_.
-  CHECKED_STATUS InitializeKeys(bool hashed_key, bool primary_key);
+  Status InitializeKeys(bool hashed_key, bool primary_key);
 
-  CHECKED_STATUS ReadColumns(const DocOperationApplyData& data,
-                             Schema *static_projection,
-                             Schema *non_static_projection,
-                             QLTableRow* table_row);
+  Status ReadColumns(const DocOperationApplyData& data,
+                     Schema *static_projection,
+                     Schema *non_static_projection,
+                     QLTableRow* table_row);
 
-  CHECKED_STATUS PopulateConditionalDmlRow(const DocOperationApplyData& data,
-                                           bool should_apply,
-                                           const QLTableRow& table_row,
-                                           Schema static_projection,
-                                           Schema non_static_projection,
-                                           std::unique_ptr<QLRowBlock>* rowblock);
-
-  CHECKED_STATUS PopulateStatusRow(const DocOperationApplyData& data,
+  Status PopulateConditionalDmlRow(const DocOperationApplyData& data,
                                    bool should_apply,
                                    const QLTableRow& table_row,
+                                   Schema static_projection,
+                                   Schema non_static_projection,
                                    std::unique_ptr<QLRowBlock>* rowblock);
+
+  Status PopulateStatusRow(const DocOperationApplyData& data,
+                           bool should_apply,
+                           const QLTableRow& table_row,
+                           std::unique_ptr<QLRowBlock>* rowblock);
 
   Result<bool> HasDuplicateUniqueIndexValue(const DocOperationApplyData& data);
   Result<bool> HasDuplicateUniqueIndexValue(
@@ -127,12 +124,27 @@ class QLWriteOperation :
       IntentAwareIterator* iter, const SubDocKey& sub_doc_key,
       HybridTime min_hybrid_time);
 
-  CHECKED_STATUS DeleteRow(const DocPath& row_path, DocWriteBatch* doc_write_batch,
+  Status DeleteRow(const DocPath& row_path, DocWriteBatch* doc_write_batch,
                            const ReadHybridTime& read_ht, CoarseTimePoint deadline);
 
   Result<bool> IsRowDeleted(const QLTableRow& current_row, const QLTableRow& new_row) const;
+  UserTimeMicros user_timestamp() const;
 
-  CHECKED_STATUS UpdateIndexes(const QLTableRow& current_row, const QLTableRow& new_row);
+  Status UpdateIndexes(const QLTableRow& current_row, const QLTableRow& new_row);
+
+  Status ApplyUpsert(
+      const DocOperationApplyData& data, const QLTableRow& existing_row, QLTableRow* new_row);
+  Status ApplyDelete(
+      const DocOperationApplyData& data, QLTableRow* existing_row, QLTableRow* new_row);
+  DocPath MakeSubPath(const ColumnSchema& column_schema, ColumnId column_id);
+  Status InsertScalar(
+      const DocOperationApplyData& data,
+      const ColumnSchema& column_schema,
+      ColumnId column_id,
+      const ValueControlFields& control_fields,
+      const QLValuePB& value,
+      bfql::TSOpcode op_code,
+      RowPacker* row_packer);
 
   docdb::DocReadContextPtr doc_read_context_;
   const IndexMap& index_map_;
@@ -151,7 +163,7 @@ class QLWriteOperation :
 
   QLResponsePB* response_ = nullptr;
 
-  std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>> index_requests_;
+  IndexRequests index_requests_;
 
   const TransactionOperationContext txn_op_context_;
 
@@ -179,7 +191,7 @@ Result<QLWriteRequestPB*> CreateAndSetupIndexInsertRequest(
     const QLTableRow& existing_row,
     const QLTableRow& new_row,
     const IndexInfo* index,
-    std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>>* index_requests,
+    IndexRequests* index_requests,
     bool* has_index_key_changed = nullptr,
     bool* index_pred_new_row = nullptr,
     bool index_pred_existing_row = true);
@@ -191,42 +203,41 @@ class QLReadOperation : public DocExprExecutor {
       const TransactionOperationContext& txn_op_context)
       : request_(request), txn_op_context_(txn_op_context) {}
 
-  CHECKED_STATUS Execute(const YQLStorageIf& ql_storage,
-                         CoarseTimePoint deadline,
-                         const ReadHybridTime& read_time,
-                         const DocReadContext& doc_read_context,
-                         const Schema& projection,
-                         QLResultSet* result_set,
-                         HybridTime* restart_read_ht);
+  Status Execute(const YQLStorageIf& ql_storage,
+                 CoarseTimePoint deadline,
+                 const ReadHybridTime& read_time,
+                 const DocReadContext& doc_read_context,
+                 const Schema& projection,
+                 QLResultSet* result_set,
+                 HybridTime* restart_read_ht);
 
-  CHECKED_STATUS PopulateResultSet(const std::unique_ptr<QLScanSpec>& spec,
-                                   const QLTableRow& table_row,
-                                   QLResultSet *result_set);
+  Status PopulateResultSet(const std::unique_ptr<QLScanSpec>& spec,
+                           const QLTableRow& table_row,
+                           QLResultSet *result_set);
 
-  CHECKED_STATUS EvalAggregate(const QLTableRow& table_row);
-  CHECKED_STATUS PopulateAggregate(const QLTableRow& table_row, QLResultSet *resultset);
+  Status EvalAggregate(const QLTableRow& table_row);
+  Status PopulateAggregate(const QLTableRow& table_row, QLResultSet *resultset);
 
-  CHECKED_STATUS AddRowToResult(const std::unique_ptr<QLScanSpec>& spec,
-                                const QLTableRow& row,
-                                const size_t row_count_limit,
-                                const size_t offset,
-                                QLResultSet* resultset,
-                                int* match_count,
-                                size_t* num_rows_skipped);
+  Status AddRowToResult(const std::unique_ptr<QLScanSpec>& spec,
+                        const QLTableRow& row,
+                        const size_t row_count_limit,
+                        const size_t offset,
+                        QLResultSet* resultset,
+                        int* match_count,
+                        size_t* num_rows_skipped);
 
-  CHECKED_STATUS GetIntents(const Schema& schema, KeyValueWriteBatchPB* out);
+  Status GetIntents(const Schema& schema, KeyValueWriteBatchPB* out);
 
   QLResponsePB& response() { return response_; }
 
  private:
-
   // Checks whether we have processed enough rows for a page and sets the appropriate paging
   // state in the response object.
-  CHECKED_STATUS SetPagingStateIfNecessary(const YQLRowwiseIteratorIf* iter,
-                                           const QLResultSet* resultset,
-                                           const size_t row_count_limit,
-                                           const size_t num_rows_skipped,
-                                           const ReadHybridTime& read_time);
+  Status SetPagingStateIfNecessary(const YQLRowwiseIteratorIf* iter,
+                                   const QLResultSet* resultset,
+                                   const size_t row_count_limit,
+                                   const size_t num_rows_skipped,
+                                   const ReadHybridTime& read_time);
 
   const QLReadRequestPB& request_;
   const TransactionOperationContext txn_op_context_;

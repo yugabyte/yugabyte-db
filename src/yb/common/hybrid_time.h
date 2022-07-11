@@ -166,7 +166,7 @@ class HybridTime {
   }
 
   // Sets this hybrid time from 'value'
-  CHECKED_STATUS FromUint64(uint64_t value);
+  Status FromUint64(uint64_t value);
 
   static HybridTime FromPB(uint64_t value) {
     return value ? HybridTime(value) : HybridTime();

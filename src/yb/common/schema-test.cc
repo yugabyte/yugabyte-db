@@ -45,9 +45,7 @@
 namespace yb {
 namespace tablet {
 
-using std::unordered_map;
 using std::vector;
-using strings::Substitute;
 
 // Test basic functionality of Schema definition
 TEST(TestSchema, TestSchema) {
@@ -69,15 +67,17 @@ TEST(TestSchema, TestSchema) {
   ASSERT_GT(schema.memory_footprint_excluding_this(),
             empty_schema.memory_footprint_excluding_this());
 
-  EXPECT_EQ("Schema [\n"
-            "\tkey[string NOT NULL NOT A PARTITION KEY],\n"
-            "\tuint32val[uint32 NULLABLE NOT A PARTITION KEY],\n"
-            "\tint32val[int32 NOT NULL NOT A PARTITION KEY]\n"
-            "]\nproperties: contain_counters: false is_transactional: false "
-            "consistency_level: STRONG "
-            "use_mangled_column_name: false "
-            "is_ysql_catalog_table: false "
-            "retain_delete_markers: false",
+  EXPECT_EQ(Format("Schema [\n"
+                   "\tkey[string NOT NULL NOT A PARTITION KEY],\n"
+                   "\tuint32val[uint32 NULLABLE NOT A PARTITION KEY],\n"
+                   "\tint32val[int32 NOT NULL NOT A PARTITION KEY]\n"
+                   "]\nproperties: contain_counters: false is_transactional: false "
+                   "consistency_level: STRONG "
+                   "use_mangled_column_name: false "
+                   "is_ysql_catalog_table: false "
+                   "retain_delete_markers: false "
+                   "partitioning_version: $0",
+                   kCurrentPartitioningVersion),
             schema.ToString());
   EXPECT_EQ("key[string NOT NULL NOT A PARTITION KEY]", schema.column(0).ToString());
   EXPECT_EQ("uint32 NULLABLE NOT A PARTITION KEY", schema.column(1).TypeToString());
@@ -234,15 +234,17 @@ TEST(TestSchema, TestCreateProjection) {
 
   // By names, without IDs
   ASSERT_OK(schema.CreateProjectionByNames({ "col1", "col2", "col4" }, &partial_schema));
-  EXPECT_EQ("Schema [\n"
-            "\tcol1[string NOT NULL NOT A PARTITION KEY],\n"
-            "\tcol2[string NOT NULL NOT A PARTITION KEY],\n"
-            "\tcol4[string NOT NULL NOT A PARTITION KEY]\n"
-            "]\nproperties: contain_counters: false is_transactional: false "
-            "consistency_level: STRONG "
-            "use_mangled_column_name: false "
-            "is_ysql_catalog_table: false "
-            "retain_delete_markers: false",
+  EXPECT_EQ(Format("Schema [\n"
+                   "\tcol1[string NOT NULL NOT A PARTITION KEY],\n"
+                   "\tcol2[string NOT NULL NOT A PARTITION KEY],\n"
+                   "\tcol4[string NOT NULL NOT A PARTITION KEY]\n"
+                   "]\nproperties: contain_counters: false is_transactional: false "
+                   "consistency_level: STRONG "
+                   "use_mangled_column_name: false "
+                   "is_ysql_catalog_table: false "
+                   "retain_delete_markers: false "
+                   "partitioning_version: $0",
+                   kCurrentPartitioningVersion),
             partial_schema.ToString());
 
   // By names, with IDS
@@ -255,10 +257,12 @@ TEST(TestSchema, TestCreateProjection) {
                    "consistency_level: STRONG "
                    "use_mangled_column_name: false "
                    "is_ysql_catalog_table: false "
-                   "retain_delete_markers: false",
+                   "retain_delete_markers: false "
+                   "partitioning_version: $3",
                    schema_with_ids.column_id(0),
                    schema_with_ids.column_id(1),
-                   schema_with_ids.column_id(3)),
+                   schema_with_ids.column_id(3),
+                   kCurrentPartitioningVersion),
             partial_schema.ToString());
 
   // By names, with missing names.
@@ -279,10 +283,12 @@ TEST(TestSchema, TestCreateProjection) {
                    "consistency_level: STRONG "
                    "use_mangled_column_name: false "
                    "is_ysql_catalog_table: false "
-                   "retain_delete_markers: false",
+                   "retain_delete_markers: false "
+                   "partitioning_version: $3",
                    schema_with_ids.column_id(0),
                    schema_with_ids.column_id(1),
-                   schema_with_ids.column_id(3)),
+                   schema_with_ids.column_id(3),
+                   kCurrentPartitioningVersion),
             partial_schema.ToString());
 }
 

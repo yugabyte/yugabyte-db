@@ -51,7 +51,7 @@ PTAssign::PTAssign(MemoryContext *memctx,
 PTAssign::~PTAssign() {
 }
 
-CHECKED_STATUS PTAssign::Analyze(SemContext *sem_context) {
+Status PTAssign::Analyze(SemContext *sem_context) {
   SemState sem_state(sem_context);
 
   sem_state.set_processing_assignee(true);
@@ -137,7 +137,7 @@ PTUpdateStmt::PTUpdateStmt(MemoryContext *memctx,
 PTUpdateStmt::~PTUpdateStmt() {
 }
 
-CHECKED_STATUS PTUpdateStmt::Analyze(SemContext *sem_context) {
+Status PTUpdateStmt::Analyze(SemContext *sem_context) {
   // If use_cassandra_authentication is set, permissions are checked in PTDmlStmt::Analyze.
   RETURN_NOT_OK(PTDmlStmt::Analyze(sem_context));
 
@@ -196,7 +196,7 @@ CHECKED_STATUS PTUpdateStmt::Analyze(SemContext *sem_context) {
 
 namespace {
 
-CHECKED_STATUS MultipleColumnSetError(const ColumnDesc* const col_desc,
+Status MultipleColumnSetError(const ColumnDesc* const col_desc,
                                       const PTAssign* const assign_expr,
                                       SemContext* sem_context) {
   return sem_context->Error(
@@ -208,7 +208,7 @@ CHECKED_STATUS MultipleColumnSetError(const ColumnDesc* const col_desc,
 
 } // anonymous namespace
 
-CHECKED_STATUS PTUpdateStmt::AnalyzeSetExpr(PTAssign *assign_expr, SemContext *sem_context) {
+Status PTUpdateStmt::AnalyzeSetExpr(PTAssign *assign_expr, SemContext *sem_context) {
   // Analyze the expression.
   RETURN_NOT_OK(assign_expr->Analyze(sem_context));
 

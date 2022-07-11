@@ -12,8 +12,7 @@ menu:
     identifier: cluster-management-point-in-time-recovery-ycql
     parent: explore-cluster-management
     weight: 704
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -31,19 +30,21 @@ showAsideToc: true
   </li>
 </ul>
 
-The point-in-time recovery (PITR) feature allows you to restore the state of your cluster's data (and some types of metadata) from a specific point in time. This can be relative, such as "three hours ago", or an absolute timestamp.
+Point-in-time recovery (PITR) allows you to restore the state of your cluster's data and some types of metadata from a specific point in time. This can be relative, such as "three hours ago", or an absolute timestamp. For more information, see [Point-in-time recovery](../../../manage/backup-restore/point-in-time-recovery/#features). For details on the `yb-admin` commands, refer to the [Backup and snapshot commands](../../../admin/yb-admin/#backup-and-snapshot-commands) section of the yb-admin documentation.
 
-Refer to [Features](../../../manage/backup-restore/point-in-time-recovery/#features), [Use cases](../../../manage/backup-restore/point-in-time-recovery/#use-cases), and [Limitations](../../../manage/backup-restore/point-in-time-recovery/#limitations) for details on this feature. For more details on the `yb-admin` commands, refer to the [Backup and snapshot commands](../../../admin/yb-admin/#backup-and-snapshot-commands) section of the yb-admin documentation.
+You can try out PITR by creating a namespace and populating it, creating a snapshot schedule, and restoring from that schedule. 
 
-You can try out the PITR feature by creating a namespace and populating it, creating a snapshot schedule, and restoring (be sure to check out the [limitations](../../../manage/backup-restore/point-in-time-recovery/#limitations)!) from that schedule.
+{{< note title="Note" >}}
 
-{{< tip title="Examples are simplified" >}}
+This document contains examples that are deliberately simplified. In many of the scenarios, you could drop the index or table to recover. Consider the examples as part of an effort to undo a larger schema change, such as a database migration, which has performed several operations.
 
-The examples on this page are deliberately simplified. In many of the scenarios presented, you could drop the index or table to recover. Consider the examples as part of an effort to undo a larger schema change, such as a database migration, which has performed several operations.
-
-{{< /tip >}}
+{{< /note >}}
 
 ## Undo data changes
+
+The process of undoing data changes involves creating and taking a snapshot of a table, and then performing a restore from either an absolute or relative time.
+
+Before attempting a restore, you need to confirm that there is no restore in progress for the subject keyspace or table; if multiple restore commands are issued, the data might enter an inconsistent state. For details, see [Restore to a point in time](../../../manage/backup-restore/point-in-time-recovery/#restore-to-a-point-in-time).  
 
 ### Create and snapshot a table
 
@@ -52,7 +53,7 @@ Create and populate a table, get a timestamp to which you'll restore, and then w
 1. Start the YCQL shell and connect to your local instance:
 
     ```sh
-    $ ./bin/ycqlsh
+    ./bin/ycqlsh
     ```
 
 1. Create a table and populate some sample data:
@@ -88,13 +89,13 @@ Create and populate a table, get a timestamp to which you'll restore, and then w
     (4 rows)
     ```
 
-1. Create a snapshot schedule for the new `pitr` keyspace from a shell prompt. In this example, the schedule is one snapshot every minute, and each snapshot is retained for ten minutes.
+1. Create a snapshot schedule for the new `pitr` keyspace from a shell prompt. In the following example, the schedule is one snapshot every minute, and each snapshot is retained for ten minutes:
 
     ```sh
-    $ ./bin/yb-admin create_snapshot_schedule 1 10 ycql.pitr
+    ./bin/yb-admin create_snapshot_schedule 1 10 ycql.pitr
     ```
 
-    ```output
+    ```output.json
     {
         "schedule_id": "0e4ceb83-fe3d-43da-83c3-013a8ef592ca"
     }
@@ -103,10 +104,10 @@ Create and populate a table, get a timestamp to which you'll restore, and then w
 1. Verify that a snapshot has happened:
 
     ```sh
-    $ ./bin/yb-admin list_snapshot_schedules
+    ./bin/yb-admin list_snapshot_schedules
     ```
 
-    ```output
+    ```output.json
     {
         "schedules": [
             {
@@ -128,10 +129,10 @@ Create and populate a table, get a timestamp to which you'll restore, and then w
 
 ### Restore from an absolute time
 
-1. Get a timestamp.
+1. Get a timestamp:
 
     ```sh
-    $ python -c 'import datetime; print datetime.datetime.now().strftime("%s%f")'
+    python -c 'import datetime; print datetime.datetime.now().strftime("%s%f")'
     ```
 
     ```output
@@ -161,10 +162,10 @@ Create and populate a table, get a timestamp to which you'll restore, and then w
 1. Restore the snapshot schedule to the timestamp you obtained before you added the data, at a terminal prompt:
 
     ```sh
-    $ ./bin/yb-admin restore_snapshot_schedule 0e4ceb83-fe3d-43da-83c3-013a8ef592ca 1620418817729963
+    ./bin/yb-admin restore_snapshot_schedule 0e4ceb83-fe3d-43da-83c3-013a8ef592ca 1620418817729963
     ```
 
-    ```output
+    ```output.json
     {
         "snapshot_id": "2287921b-1cf9-4bbc-ad38-e309f86f72e9",
         "restoration_id": "1c5ef7c3-a33a-46b5-a64e-3fa0c72709eb"
@@ -174,7 +175,7 @@ Create and populate a table, get a timestamp to which you'll restore, and then w
 1. Next, verify the restoration is in `RESTORED` state (you'll observe more snapshots in the list, as well):
 
     ```sh
-    $ ./bin/yb-admin list_snapshots
+    ./bin/yb-admin list_snapshots
     ```
 
     ```output
@@ -225,8 +226,6 @@ Relative times can be in any of the following formats (again, note that you can 
 * Traditional PostgreSQL: `3 days 4 hours 5 minutes 6 seconds`
 * SQL standard: `D H:M:S`
 
-**Careful!** If you specify a time prior to when you created the table, the restore will leave the table intact, but empty.
-
 Refer to the yb-admin [_restore-snapshot-schedule_ command](../../../admin/yb-admin/#restore-snapshot-schedule) for more details.
 
 ## Undo metadata changes
@@ -235,17 +234,17 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 
 ### Undo table creation
 
-1. Using the same keyspace as the previous scenarios, create a new table.
+1. Using the same keyspace as the previous scenarios, create a new table:
 
     ```sql
     create table t2(k int primary key);
     ```
 
-1. Now restore back to a time before this table was created, as in [Restore from a relative time](#restore-from-a-relative-time).
+1. Restore back to a time before this table was created, as described in [Restore from a relative time](#restore-from-a-relative-time).
 
 1. Due to a ycqlsh caching issue, to check the effect of this change, you need to drop out of your current ycqlsh session and log back in.
 
-1. Check that table t2 is gone.
+1. Check that table t2 is gone:
 
     ```sh
     ./bin/ycqlsh -e 'use pitr; describe tables;'
@@ -259,7 +258,7 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 
 #### Undo column addition
 
-1. Using the same keyspace as the previous scenarios, alter your table by adding a column.
+1. Using the same keyspace as the previous scenarios, alter your table by adding a column:
 
     ```sql
     alter table pitr.employees add v2 int;
@@ -277,11 +276,11 @@ In addition to data changes, you can also use PITR to recover from metadata chan
     (4 rows)
     ```
 
-1. Now restore back to a time before this table was altered, as in [Restore from a relative time](#restore-from-a-relative-time).
+1. Restore back to a time before this table was altered, as described in [Restore from a relative time](#restore-from-a-relative-time).
 
 1. Due to a ycqlsh caching issue, to check the effect of this change, you need to drop out of your current ycqlsh session and log back in.
 
-1. Check that the v2 column is gone.
+1. Check that the v2 column is gone:
 
     ```sql
     ycqlsh:pitr> select * from employees;
@@ -300,7 +299,7 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 
 #### Undo column deletion
 
-1. Using the same keyspace as the previous scenarios, alter your table by dropping a column.
+1. Using the same keyspace as the previous scenarios, alter your table by dropping a column:
 
     ```sql
     alter table pitr.employees drop salary;
@@ -318,11 +317,11 @@ In addition to data changes, you can also use PITR to recover from metadata chan
     (4 rows)
     ```
 
-1. Now restore back to a time before this table was altered, as in [Restore from a relative time](#restore-from-a-relative-time).
+1. Restore back to a time before this table was altered, as described in [Restore from a relative time](#restore-from-a-relative-time).
 
 1. Due to a ycqlsh caching issue, to check the effect of this change, you need to drop out of your current ycqlsh session and log back in.
 
-1. Verify that the salary column is back.
+1. Verify that the salary column is back:
 
     ```sql
     ycqlsh:pitr> select * from employees;
@@ -341,7 +340,7 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 
 ### Undo index creation
 
-1. Create an index on the table from the previous examples.
+1. Create an index on the table from the previous examples:
 
     ```sql
     use pitr;
@@ -354,11 +353,11 @@ In addition to data changes, you can also use PITR to recover from metadata chan
     WITH transactions = {'enabled': 'true'};
     ```
 
-1. Now restore back to a time before this index was created.
+1. Restore back to a time before this index was created.
 
 1. Due to a ycqlsh caching issue, to check the effect of this change, you need to drop out of your current ycqlsh session and log back in.
 
-1. Verify that the index is gone.
+1. Verify that the index is gone:
 
     ```sh
     ./bin/ycqlsh -e 'describe index pitr.t1_index;'
@@ -370,7 +369,7 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 
 ### Undo table and index deletion
 
-1. Create a second table called `dont_deleteme`.
+1. Create a second table called `dont_deleteme`:
 
     ```sql
     create table dont_deleteme (
@@ -385,7 +384,7 @@ In addition to data changes, you can also use PITR to recover from metadata chan
     employees  dont_deleteme
     ```
 
-1. Create an index on the table from the previous examples.
+1. Create an index on the table from the previous examples:
 
     ```sql
     use pitr;
@@ -398,16 +397,16 @@ In addition to data changes, you can also use PITR to recover from metadata chan
     WITH transactions = {'enabled': 'true'};
     ```
 
-1. Wait a minute or two, then delete the new table and index.
+1. Wait a minute or two, then delete the new table and index:
 
     ```sql
     drop table dont_deleteme;
     drop index t1_index;
     ```
 
-1. Restore back to a time before you deleted the table and index, as in [Restore from a relative time](#restore-from-a-relative-time).
+1. Restore back to a time before you deleted the table and index, as described in [Restore from a relative time](#restore-from-a-relative-time).
 
-1. Verify that the index and table are restored.
+1. Verify that the index and table are restored:
 
     ```sh
     ./bin/ycqlsh -e 'describe table pitr.dont_deleteme; describe index pitr.t1_index;'

@@ -94,6 +94,7 @@ public abstract class KubernetesUpgradeTaskTest extends CommissionerBaseTest {
       PodStatus status = TestUtils.deserialize(statusString, PodStatus.class);
       when(mockKubernetesManager.getPodStatus(any(), any(), any())).thenReturn(status);
       YBClient mockClient = mock(YBClient.class);
+      when(mockClient.waitForMaster(any(), anyLong())).thenReturn(true);
       when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
 
       String masterLeaderName = "yb-master-0.yb-masters.demo-universe.svc.cluster.local";

@@ -198,7 +198,7 @@ TEST_F(TabletSplitTest, SplitTablet) {
       ASSERT_EQ(source_rows.erase(row.ToString()), 1);
     }
 
-    split_tablet->ForceRocksDBCompactInTest();
+    split_tablet->TEST_ForceRocksDBCompact();
 
     VLOG(1) << split_tablet->tablet_id() << " compacted:" << std::endl
             << split_tablet->TEST_DocDBDumpStr(IncludeIntents::kTrue);

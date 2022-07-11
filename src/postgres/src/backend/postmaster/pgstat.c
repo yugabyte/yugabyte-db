@@ -3014,6 +3014,39 @@ pgstat_bestart(void)
 }
 
 /*
+ * When backends die due to abnormal termination, cleanup is required.
+ *
+ * This function performs all the operations done by pgstat_bestshutdown_hook,
+ * which is executed during safe backend terminations. However, it does not
+ * report the remaining stats to the pgstat collector as the backend has
+ * already died.
+ */
+void
+yb_pgstat_clear_entry_pid(int pid)
+{
+	PgBackendStatus *beentry;
+	int			i;
+
+	beentry = BackendStatusArray;
+	for (i = 1; i <= MaxBackends; i++)
+	{
+		volatile PgBackendStatus *vbeentry = beentry;
+
+		if (pid == vbeentry->st_procpid)
+		{
+			PGSTAT_BEGIN_WRITE_ACTIVITY(beentry);
+			beentry->st_procpid = 0;	/* mark invalid */
+			PGSTAT_END_WRITE_ACTIVITY(beentry);
+			return;
+		}
+		beentry++;
+	}
+	ereport(LOG,
+			(errmsg("unable to find pgstat entry for abnormally terminated PID %d",
+					pid)));
+}
+
+/*
  * Shut down a single backend's statistics reporting at process exit.
  *
  * Flush any remaining statistics counts out to the collector.
@@ -3222,8 +3255,11 @@ pgstat_progress_end_command(void)
 		return;
 
 	PGSTAT_BEGIN_WRITE_ACTIVITY(beentry);
-	beentry->st_progress_command = PROGRESS_COMMAND_INVALID;
-	beentry->st_progress_command_target = InvalidOid;
+	if (beentry->st_progress_command != PROGRESS_COMMAND_COPY)
+	{
+		beentry->st_progress_command = PROGRESS_COMMAND_INVALID;
+		beentry->st_progress_command_target = InvalidOid;
+	}
 	PGSTAT_END_WRITE_ACTIVITY(beentry);
 }
 

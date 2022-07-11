@@ -48,6 +48,7 @@
 
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
+#include "yb/util/numbered_deque.h"
 
 namespace yb {
 
@@ -72,7 +73,7 @@ class LogReader {
   // LogReader.
   //
   // 'index' may be nullptr, but if it is, ReadReplicatesInRange() may not be used.
-  static CHECKED_STATUS Open(Env *env,
+  static Status Open(Env *env,
                              const scoped_refptr<LogIndex>& index,
                              std::string log_prefix,
                              const std::string& tablet_wal_path,
@@ -82,22 +83,22 @@ class LogReader {
 
   // Returns the biggest prefix of segments, from the current sequence, guaranteed
   // not to include any replicate messages with indexes >= 'index'.
-  CHECKED_STATUS GetSegmentPrefixNotIncluding(int64_t index, SegmentSequence* segments) const;
+  Status GetSegmentPrefixNotIncluding(int64_t index, SegmentSequence* segments) const;
 
-  CHECKED_STATUS GetSegmentPrefixNotIncluding(int64_t index, int64_t cdc_replicated_index,
+  Status GetSegmentPrefixNotIncluding(int64_t index, int64_t cdc_replicated_index,
                                               SegmentSequence* segments) const;
 
   // Return the minimum replicate index that is retained in the currently available
   // logs. May return -1 if no replicates have been logged.
   int64_t GetMinReplicateIndex() const;
 
-  // Return a readable segment with the given sequence number, or nullptr if it
+  // Return a readable segment with the given sequence number, or NotFound error if it
   // cannot be found (e.g. if it has already been GCed).
-  scoped_refptr<ReadableLogSegment> GetSegmentBySequenceNumber(int64_t seq) const;
+  Result<scoped_refptr<ReadableLogSegment>> GetSegmentBySequenceNumber(int64_t seq) const;
 
   // Copies a snapshot of the current sequence of segments into 'segments'.
   // 'segments' will be cleared first.
-  CHECKED_STATUS GetSegmentsSnapshot(SegmentSequence* segments) const;
+  Status GetSegmentsSnapshot(SegmentSequence* segments) const;
 
   // Reads all ReplicateMsgs from 'starting_at' to 'up_to' both inclusive.
   // The caller takes ownership of the returned ReplicateMsg objects.
@@ -107,10 +108,13 @@ class LogReader {
   // all, then will read exactly one operation.
   //
   // Requires that a LogIndex was passed into LogReader::Open().
+  // Requires up_to operation index to be Raft-committed, otherwise might return NotFound error if
+  // Raft operation at up_to index will be rewritten (due to term change).
+  //
   // The parameters starting_op_segment_seq_num, modified_schema, schema_version are used to read
   // appropriate schema corresponding to the from_op_id in the segment header or from the segment
-  // itself if there is a DDL log
-  CHECKED_STATUS ReadReplicatesInRange(
+  // itself if there is a DDL log.
+  Status ReadReplicatesInRange(
       const int64_t starting_at,
       const int64_t up_to,
       int64_t max_bytes_to_read,
@@ -124,8 +128,10 @@ class LogReader {
 
   // Look up the OpId for the given operation index.
   // Returns a bad Status if the log index fails to load (eg. due to an IO error).
+  // Returns NotFound if there is no index entry for such op_index or if Raft operation at op_index
+  // will be rewritten due to term change.
   Result<yb::OpId> LookupOpId(int64_t op_index) const;
-  Result<int64_t> LookupHeader(int64_t op_index) const;
+  Result<int64_t> LookupOpWalSegmentNumber(int64_t op_index) const;
 
   // Returns the number of segments.
   size_t num_segments() const;
@@ -136,7 +142,7 @@ class LogReader {
     return log_prefix_;
   }
 
-  LogIndex* TEST_GetLogIndex() const { return log_index_.get(); }
+  Result<LogIndexEntry> TEST_GetIndexEntry(int64_t index) const;
 
  private:
   FRIEND_TEST(cdc::CDCServiceTestMaxRentionTime, TestLogRetentionByOpId_MaxRentionTime);
@@ -156,14 +162,14 @@ class LogReader {
   // Index entries in 'segment's footer will be added to the index.
   // If the segment has no footer it will be scanned so this should not be used
   // for new segments.
-  CHECKED_STATUS AppendSegment(const scoped_refptr<ReadableLogSegment>& segment);
+  Status AppendSegment(const scoped_refptr<ReadableLogSegment>& segment);
 
   // Same as above but for segments without any entries.
   // Used by the Log to add "empty" segments.
-  CHECKED_STATUS AppendEmptySegment(const scoped_refptr<ReadableLogSegment>& segment);
+  Status AppendEmptySegment(const scoped_refptr<ReadableLogSegment>& segment);
 
   // Removes segments with sequence numbers less than or equal to 'seg_seqno' from this reader.
-  CHECKED_STATUS TrimSegmentsUpToAndIncluding(uint64_t seg_seqno);
+  Status TrimSegmentsUpToAndIncluding(int64_t seg_seqno);
 
   // Replaces the last segment in the reader with 'segment'.
   // Used to replace a segment that was still in the process of being written
@@ -171,24 +177,24 @@ class LogReader {
   // Requires that the last segment in 'segments_' has the same sequence
   // number as 'segment'.
   // Expects 'segment' to be properly closed and to have footer.
-  CHECKED_STATUS ReplaceLastSegment(const scoped_refptr<ReadableLogSegment>& segment);
+  Status ReplaceLastSegment(const scoped_refptr<ReadableLogSegment>& segment);
 
   // Appends 'segment' to the segment sequence.
   // Assumes that the segment was scanned, if no footer was found.
   // To be used only internally, clients of this class with private access (i.e. friends)
   // should use the thread safe version, AppendSegment(), which will also scan the segment
   // if no footer is present.
-  CHECKED_STATUS AppendSegmentUnlocked(const scoped_refptr<ReadableLogSegment>& segment);
+  Status AppendSegmentUnlocked(const scoped_refptr<ReadableLogSegment>& segment);
 
   // Used by Log to update its LogReader on how far it is possible to read
   // the current segment. Requires that the reader has at least one segment
   // and that the last segment has no footer, meaning it is currently being
   // written to.
-  void UpdateLastSegmentOffset(int64_t readable_to_offset);
+  Status UpdateLastSegmentOffset(int64_t readable_to_offset);
 
   // Read the LogEntryBatch pointed to by the provided index entry.
   // 'tmp_buf' is used as scratch space to avoid extra allocation.
-  CHECKED_STATUS ReadBatchUsingIndexEntry(const LogIndexEntry& index_entry,
+  Status ReadBatchUsingIndexEntry(const LogIndexEntry& index_entry,
                                           faststring* tmp_buf,
                                           LogEntryBatchPB* batch) const;
 
@@ -198,10 +204,10 @@ class LogReader {
             const scoped_refptr<MetricEntity>& tablet_metric_entity);
 
   // Reads the headers of all segments in 'path_'.
-  CHECKED_STATUS Init(const std::string& path);
+  Status Init(const std::string& path);
 
   // Initializes an 'empty' reader for tests, i.e. does not scan a path looking for segments.
-  CHECKED_STATUS InitEmptyReaderForTests();
+  Status InitEmptyReaderForTests();
 
   // Determines if a file is older than the time specified by FLAGS_log_max_seconds_to_retain.
   bool ViolatesMaxTimePolicy(const scoped_refptr<ReadableLogSegment>& segment) const;
@@ -211,6 +217,10 @@ class LogReader {
   // true, it will add the size of segment to potential_reclaimed_space.
   bool ViolatesMinSpacePolicy(const scoped_refptr<ReadableLogSegment>& segment,
                               int64_t *potential_reclaimed_space) const;
+
+  // Returns NotFound if there is no index entry for such op_index or if Raft operation at op_index
+  // will be rewritten due to term change.
+  Result<LogIndexEntry> GetIndexEntry(int64_t op_index) const;
 
   Env *env_;
 
@@ -222,17 +232,20 @@ class LogReader {
   scoped_refptr<Counter> entries_read_;
   scoped_refptr<Histogram> read_batch_latency_;
 
-  // The sequence of all current log segments in increasing sequence number
-  // order.
+  // The sequence of all current log segments in increasing sequence number order.
   SegmentSequence segments_;
 
   mutable simple_spinlock lock_;
 
   State state_;
 
+  mutable std::mutex load_index_mutex_;
+
   // Used for test only.
-  mutable std::unique_ptr<SegmentSequence> segments_violate_max_time_policy_;
-  mutable std::unique_ptr<SegmentSequence> segments_violate_min_space_policy_;
+  mutable std::unique_ptr<std::vector<ReadableLogSegmentPtr>>
+      TEST_segments_violate_max_time_policy_;
+  mutable std::unique_ptr<std::vector<ReadableLogSegmentPtr>>
+      TEST_segments_violate_min_space_policy_;
 
   DISALLOW_COPY_AND_ASSIGN(LogReader);
 };

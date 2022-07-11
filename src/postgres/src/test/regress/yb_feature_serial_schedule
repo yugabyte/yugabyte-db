@@ -17,4 +17,3 @@ test: yb_feature_alter_table
 test: yb_feature_alter_rename
 test: yb_feature_temp
 test: yb_feature_db
-test: yb_feature_matview

@@ -379,11 +379,15 @@ TEST_F(DebugUtilTest, LongOperationTracker) {
 
   std::this_thread::sleep_for(kLongDuration);
 
-  ASSERT_EQ(log_sink.MessagesSize(), 4);
-  ASSERT_STR_CONTAINS(log_sink.MessageAt(0), "Op2");
-  ASSERT_STR_CONTAINS(log_sink.MessageAt(1), "Op2");
-  ASSERT_STR_CONTAINS(log_sink.MessageAt(2), "Op4");
-  ASSERT_STR_CONTAINS(log_sink.MessageAt(3), "Op4");
+  if (IsSanitizer()) {
+    ASSERT_EQ(log_sink.MessagesSize(), 0);
+  } else {
+    ASSERT_EQ(log_sink.MessagesSize(), 4);
+    ASSERT_STR_CONTAINS(log_sink.MessageAt(0), "Op2");
+    ASSERT_STR_CONTAINS(log_sink.MessageAt(1), "Op2");
+    ASSERT_STR_CONTAINS(log_sink.MessageAt(2), "Op4");
+    ASSERT_STR_CONTAINS(log_sink.MessageAt(3), "Op4");
+  }
 }
 
 } // namespace yb

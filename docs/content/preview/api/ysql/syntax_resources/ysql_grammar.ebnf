@@ -333,7 +333,10 @@ copy_option =
     | 'FORCE_NOT_NULL' '(' column_names ')'
     | 'FORCE_NULL' '(' column_names ')'
     | 'ENCODING' 'encoding_name'
-    | 'ROWS_PER_TRANSACTION' integer ) ;
+    | 'ROWS_PER_TRANSACTION' integer
+    | 'DISABLE_FK_CHECK'
+    | 'REPLACE'
+    | 'SKIP' integer ) ;
 
 (* 'CREATE' 'AGGREGATE' *)
 create_aggregate = create_aggregate_normal
@@ -522,7 +525,7 @@ foreign_table_elem = ( column_name data_type
 create_group = 'CREATE' 'GROUP' role_name [ [ 'WITH' ] role_option { ',' role_option } ] ;
 
 (* 'CREATE' 'INDEX' *)
-create_index = 'CREATE' [ 'UNIQUE' ] 'INDEX' [ 'NONCONCURRENTLY' ] \
+create_index = 'CREATE' [ 'UNIQUE' ] 'INDEX' [ 'CONCURRENTLY' | 'NONCONCURRENTLY' ] \
                [ [ 'IF' 'NOT' 'EXISTS' ] name ] 'ON' [ 'ONLY' ] table_name \
                [ 'USING' access_method_name ]
                '(' index_elem { ',' index_elem } ')' \
@@ -1095,7 +1098,7 @@ select = [ 'WITH' [ 'RECURSIVE' ] ( common_table_expression { ',' common_table_e
                [ 'LIMIT' ( integer | 'ALL' ) ] \
                [ 'OFFSET' integer [ 'ROW' | 'ROWS' ] ] \
                [ 'FETCH' ( FIRST | NEXT ) integer ( ROW | ROWS ) ONLY ] \
-               { 'FOR' ( 'UPDATE' | 'NO KEY UPDATE' | 'SHARE' | 'KEY SHARE' ) [ 'OF' table_name { ',' table_name} ] [ 'SKIP LOCKED' ] };
+               { 'FOR' ( 'UPDATE' | 'NO KEY UPDATE' | 'SHARE' | 'KEY SHARE' ) [ 'OF' table_name { ',' table_name} ] [ 'NOWAIT' | 'SKIP LOCKED' ] };
 
 with_clause = [ 'WITH' [ 'RECURSIVE' ] ( common_table_expression { ',' common_table_expression } ) ] ;
 

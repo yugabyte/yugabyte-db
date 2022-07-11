@@ -124,7 +124,7 @@ class TabletInvoker {
 
   // Marks all replicas on current_ts_ as failed and retries the write on a
   // new replica.
-  CHECKED_STATUS FailToNewReplica(const Status& reason,
+  Status FailToNewReplica(const Status& reason,
                                   const tserver::TabletServerErrorPB* error_code = nullptr);
 
   // Called when we finish a lookup (to find the new consensus leader). Retries
@@ -201,7 +201,7 @@ class TabletInvoker {
   bool should_use_local_node_proxy_ = false;
 };
 
-CHECKED_STATUS ErrorStatus(const tserver::TabletServerErrorPB* error);
+Status ErrorStatus(const tserver::TabletServerErrorPB* error);
 template <class Response>
 HybridTime GetPropagatedHybridTime(const Response& response) {
   return response.has_propagated_hybrid_time() ? HybridTime(response.propagated_hybrid_time())

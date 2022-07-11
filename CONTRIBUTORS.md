@@ -150,3 +150,6 @@ This is a list of people who have contributed code to the [YugabyteDB](https://g
 * [tverona1](https://github.com/tverona1)
 * [vaibhav-yb](https://github.com/vaibhav-yb)
 * [arpang](https://github.com/arpang)
+* [adithya-yb](https://github.com/adithya-yb)
+* [paullee-yb](https://github.com/paullee-yb)
+* [AntonRybochkin](https://github.com/arybochkin)

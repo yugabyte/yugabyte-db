@@ -49,6 +49,17 @@ DEFINE_bool(log_ysql_catalog_versions, false,
             "Log YSQL catalog events. For debugging purposes.");
 TAG_FLAG(log_ysql_catalog_versions, hidden);
 
+DEFINE_bool(disable_hybrid_scan, false,
+            "If true, hybrid scan will be disabled");
+TAG_FLAG(disable_hybrid_scan, runtime);
+
+DEFINE_test_flag(bool, enable_db_catalog_version_mode, false,
+                 "Enable the per database catalog version mode, a DDL statement is assumed to "
+                 "only affect the current database and will only increment catalog version for "
+                 "the current database. For an old cluster that is upgraded, this gflag should "
+                 "only be turned on after pg_yb_catalog_version is upgraded to one row per "
+                 "database.");
+
 namespace yb {
 
 static int GetYCQLNumShardsPerTServer() {

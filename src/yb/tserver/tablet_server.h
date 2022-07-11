@@ -86,16 +86,16 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   // Some initialization tasks are asynchronous, such as the bootstrapping
   // of tablets. Caller can block, waiting for the initialization to fully
   // complete by calling WaitInited().
-  CHECKED_STATUS Init();
+  Status Init() override;
 
-  CHECKED_STATUS GetRegistration(ServerRegistrationPB* reg,
+  Status GetRegistration(ServerRegistrationPB* reg,
     server::RpcOnly rpc_only = server::RpcOnly::kFalse) const override;
 
   // Waits for the tablet server to complete the initialization.
-  CHECKED_STATUS WaitInited();
+  Status WaitInited();
 
-  CHECKED_STATUS Start();
-  virtual void Shutdown();
+  Status Start() override;
+  void Shutdown() override;
 
   std::string ToString() const override;
 
@@ -125,7 +125,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   // Update in-memory list of master addresses that this tablet server pings to.
   // If the update is from master leader, we use that list directly. If not, we
   // merge the existing in-memory master list with the provided config list.
-  CHECKED_STATUS UpdateMasterAddresses(const consensus::RaftConfigPB& new_config,
+  Status UpdateMasterAddresses(const consensus::RaftConfigPB& new_config,
                                        bool is_master_leader);
 
   server::Clock* Clock() override { return clock(); }
@@ -138,17 +138,19 @@ class TabletServer : public DbServerBase, public TabletServerIf {
     return shared_object();
   }
 
-  CHECKED_STATUS PopulateLiveTServers(const master::TSHeartbeatResponsePB& heartbeat_resp);
+  Status PopulateLiveTServers(const master::TSHeartbeatResponsePB& heartbeat_resp);
 
-  CHECKED_STATUS GetLiveTServers(
+  Status GetLiveTServers(
       std::vector<master::TSInformationPB> *live_tservers) const override;
 
-  CHECKED_STATUS GetTabletStatus(const GetTabletStatusRequestPB* req,
+  Status GetTabletStatus(const GetTabletStatusRequestPB* req,
                                  GetTabletStatusResponsePB* resp) const override;
 
   bool LeaderAndReady(const TabletId& tablet_id, bool allow_stale = false) const override;
 
-  const std::string& permanent_uuid() const { return fs_manager_->uuid(); }
+  const std::string& permanent_uuid() const override { return fs_manager_->uuid(); }
+
+  bool has_faulty_drive() const { return fs_manager_->has_faulty_drive(); }
 
   // Returns the proxy to call this tablet server locally.
   const std::shared_ptr<TabletServerServiceProxy>& proxy() const { return proxy_; }
@@ -192,7 +194,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   void SetUniverseKeys(const encryption::UniverseKeysPB& universe_keys);
 
-  virtual CHECKED_STATUS SetUniverseKeyRegistry(
+  virtual Status SetUniverseKeyRegistry(
       const encryption::UniverseKeyRegistryPB& universe_key_registry);
 
   void GetUniverseKeyRegistrySync();
@@ -204,7 +206,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
     return std::numeric_limits<int32_t>::max();
   }
 
-  client::TransactionPool* TransactionPool() override;
+  client::TransactionPool& TransactionPool() override;
 
   const std::shared_future<client::YBClient*>& client_future() const override;
 
@@ -216,14 +218,19 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   client::LocalTabletFilter CreateLocalTabletFilter() override;
 
+  void RegisterCertificateReloader(CertificateReloader reloader) override {}
+
  protected:
-  virtual CHECKED_STATUS RegisterServices();
+  virtual Status RegisterServices();
 
   friend class TabletServerTestBase;
 
-  CHECKED_STATUS DisplayRpcIcons(std::stringstream* output) override;
+  Status DisplayRpcIcons(std::stringstream* output) override;
 
-  CHECKED_STATUS ValidateMasterAddressResolution() const;
+  Status ValidateMasterAddressResolution() const;
+
+  MonoDelta default_client_timeout() override;
+  void SetupAsyncClientInit(client::AsyncClientInitialiser* async_client_init) override;
 
   std::atomic<bool> initted_{false};
 

@@ -100,7 +100,7 @@ class YBTabletUtilTest : public YBMiniClusterTestBase<MiniCluster> {
 
  protected:
 
-  CHECKED_STATUS WriteData() {
+  Status WriteData() {
     auto session = client_->NewSession();
     session->SetTimeout(5s);
 

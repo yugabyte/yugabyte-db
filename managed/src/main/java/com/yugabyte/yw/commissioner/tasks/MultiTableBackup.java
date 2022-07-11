@@ -35,6 +35,7 @@ import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.ScheduleTask;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.swagger.annotations.ApiModel;
@@ -258,6 +259,9 @@ public class MultiTableBackup extends UniverseTaskBase {
           tableBackupParams.transactionalBackup = params().transactionalBackup;
           tableBackupParams.backupType = params().backupType;
           tableBackupParams.isFullBackup = true;
+          tableBackupParams.disableChecksum = params().disableChecksum;
+          tableBackupParams.useTablespaces = params().useTablespaces;
+          tableBackupParams.disableParallelism = params().disableParallelism;
 
           Backup backup = Backup.create(params().customerUUID, tableBackupParams);
           backup.setTaskUUID(userTaskUUID);
@@ -289,6 +293,9 @@ public class MultiTableBackup extends UniverseTaskBase {
             backup.setTaskUUID(userTaskUUID);
             tableParams.backupUuid = backup.backupUUID;
             tableParams.customerUuid = backup.customerUUID;
+            tableParams.disableChecksum = params().disableChecksum;
+            tableBackupParams.useTablespaces = params().useTablespaces;
+            tableBackupParams.disableParallelism = params().disableParallelism;
             log.info("Task id {} for the backup {}", backup.taskUUID, backup.backupUUID);
 
             createEncryptedUniverseKeyBackupTask(tableParams)
@@ -368,6 +375,9 @@ public class MultiTableBackup extends UniverseTaskBase {
     backupParams.setKeyspace(tableKeySpace);
     backupParams.backupType = backupType;
     backupParams.transactionalBackup = params().transactionalBackup;
+    backupParams.disableChecksum = params().disableChecksum;
+    backupParams.useTablespaces = params().useTablespaces;
+    backupParams.disableParallelism = params().disableParallelism;
 
     if (tableName != null && tableUUID != null) {
       if (backupParams.tableNameList == null) {
@@ -411,6 +421,9 @@ public class MultiTableBackup extends UniverseTaskBase {
     backupParams.parallelism = params().parallelism;
     backupParams.timeBeforeDelete = params().timeBeforeDelete;
     backupParams.scheduleUUID = params().scheduleUUID;
+    backupParams.disableChecksum = params().disableChecksum;
+    backupParams.useTablespaces = params().useTablespaces;
+    backupParams.disableParallelism = params().disableParallelism;
     return backupParams;
   }
 
@@ -440,19 +453,26 @@ public class MultiTableBackup extends UniverseTaskBase {
         || universe.getUniverseDetails().updateInProgress) {
 
       if (shouldTakeBackup) {
+        schedule.updateBacklogStatus(true);
+        log.debug("Schedule {} backlog status is set to true", schedule.scheduleUUID);
         SCHEDULED_BACKUP_FAILURE_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
         metricService.setFailureStatusMetric(
             buildMetricTemplate(PlatformMetrics.SCHEDULE_BACKUP_STATUS, universe));
       }
 
+      String stateLogMsg = CommonUtils.generateStateLogMsg(universe, alreadyRunning);
       log.warn(
-          "Cannot run MultiTableBackup task since the universe {} is currently {}",
+          "Cannot run Backup task on universe {} due to the state {}",
           taskParams.universeUUID.toString(),
-          "in a locked/paused state or has backup running");
+          stateLogMsg);
       return;
     }
     UUID taskUUID = commissioner.submit(TaskType.MultiTableBackup, taskParams);
     ScheduleTask.create(taskUUID, schedule.getScheduleUUID());
+    if (schedule.getBacklogStatus()) {
+      schedule.updateBacklogStatus(false);
+      log.debug("Schedule {} backlog status is set to false", schedule.scheduleUUID);
+    }
     log.info(
         "Submitted backup for universe: {}, task uuid = {}.", taskParams.universeUUID, taskUUID);
     CustomerTask.create(

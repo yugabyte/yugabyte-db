@@ -71,7 +71,7 @@ client::YBTableName PTCreateTable::yb_table_name() const {
   return relation_->ToTableName();
 }
 
-CHECKED_STATUS PTCreateTable::Analyze(SemContext *sem_context) {
+Status PTCreateTable::Analyze(SemContext *sem_context) {
   SemState sem_state(sem_context);
 
   // Processing table name.
@@ -169,7 +169,7 @@ bool PTCreateTable::ColumnExists(const MCList<PTColumnDefinition *>& columns,
   return std::find(columns.begin(), columns.end(), column) != columns.end();
 }
 
-CHECKED_STATUS PTCreateTable::AppendColumn(SemContext *sem_context,
+Status PTCreateTable::AppendColumn(SemContext *sem_context,
                                            PTColumnDefinition *column,
                                            const bool check_duplicate) {
   if (check_duplicate && ColumnExists(columns_, column)) {
@@ -183,7 +183,7 @@ CHECKED_STATUS PTCreateTable::AppendColumn(SemContext *sem_context,
   return Status::OK();
 }
 
-CHECKED_STATUS PTCreateTable::AppendPrimaryColumn(SemContext *sem_context,
+Status PTCreateTable::AppendPrimaryColumn(SemContext *sem_context,
                                                   PTColumnDefinition *column,
                                                   const bool check_duplicate) {
   // The column and its datatype should already have been analyzed at this point.
@@ -197,7 +197,7 @@ CHECKED_STATUS PTCreateTable::AppendPrimaryColumn(SemContext *sem_context,
   return Status::OK();
 }
 
-CHECKED_STATUS PTCreateTable::AppendHashColumn(SemContext *sem_context,
+Status PTCreateTable::AppendHashColumn(SemContext *sem_context,
                                                PTColumnDefinition *column,
                                                const bool check_duplicate) {
   // The column and its datatype should already have been analyzed at this point.
@@ -211,7 +211,7 @@ CHECKED_STATUS PTCreateTable::AppendHashColumn(SemContext *sem_context,
   return Status::OK();
 }
 
-CHECKED_STATUS PTCreateTable::CheckPrimaryType(SemContext *sem_context,
+Status PTCreateTable::CheckPrimaryType(SemContext *sem_context,
                                                const PTColumnDefinition *column) const {
   // Column must have been analyzed. Check if its datatype is allowed for primary column.
   if (!QLType::IsValidPrimaryType(column->ql_type()->main())) {
@@ -267,7 +267,7 @@ void PTCreateTable::PrintSemanticAnalysisResult(SemContext *sem_context) {
   VLOG(3) << "SEMANTIC ANALYSIS RESULT (" << *loc_ << "):\n" << sem_output;
 }
 
-CHECKED_STATUS PTCreateTable::ToTableProperties(TableProperties *table_properties) const {
+Status PTCreateTable::ToTableProperties(TableProperties *table_properties) const {
   // Some external tools need to create indexes for a regular table.
   // For such tools any new table can be created as transactional by default.
   if (PREDICT_FALSE(FLAGS_cql_table_is_transactional_by_default)) {
@@ -299,17 +299,17 @@ PTPrimaryKey::~PTPrimaryKey() {
 
 namespace {
 
-CHECKED_STATUS SetupKeyNodeFunc(PTIndexColumn *node, SemContext *sem_context) {
+Status SetupKeyNodeFunc(PTIndexColumn *node, SemContext *sem_context) {
   return node->SetupPrimaryKey(sem_context);
 }
 
-CHECKED_STATUS SetupNestedKeyNodeFunc(PTIndexColumn *node, SemContext *sem_context) {
+Status SetupNestedKeyNodeFunc(PTIndexColumn *node, SemContext *sem_context) {
   return node->SetupHashKey(sem_context);
 }
 
 } // namespace
 
-CHECKED_STATUS PTPrimaryKey::Analyze(SemContext *sem_context) {
+Status PTPrimaryKey::Analyze(SemContext *sem_context) {
   if (sem_context->processing_column_definition() != is_column_element()) {
     return Status::OK();
   }
@@ -336,7 +336,7 @@ CHECKED_STATUS PTPrimaryKey::Analyze(SemContext *sem_context) {
 
 //--------------------------------------------------------------------------------------------------
 
-CHECKED_STATUS PTStatic::Analyze(SemContext *sem_context) {
+Status PTStatic::Analyze(SemContext *sem_context) {
   // Decorate the current column as static.
   PTColumnDefinition *column = sem_context->current_column();
   column->set_is_static();

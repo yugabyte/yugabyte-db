@@ -11,9 +11,7 @@ menu:
     weight: 628
 aliases:
   - /preview/deploy/kubernetes/multi-zone/gke
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -162,8 +160,8 @@ $ helm search repo yugabytedb/yugabyte --version {{<yb-version version="preview"
 ```
 
 ```output
-NAME                    CHART VERSION   APP VERSION     DESCRIPTION
-yugabytedb/yugabyte     2.13.0           2.13.0.1-b2    YugabyteDB is the high-performance distributed ...
+NAME                 CHART VERSION  APP VERSION   DESCRIPTION
+yugabytedb/yugabyte  {{<yb-version version="preview" format="short">}}          {{<yb-version version="preview" format="build">}}  YugabyteDB is the high-performance distributed ...
 ```
 
 ### Create override files
@@ -277,18 +275,21 @@ Now create the overall YugabyteDB cluster in such a way that one third of the no
 
 ```sh
 $ helm install yb-demo-us-central1-a yugabytedb/yugabyte \
+ --version {{<yb-version version="preview" format="short">}} \
  --namespace yb-demo-us-central1-a \
  -f overrides-us-central1-a.yaml --wait
 ```
 
 ```sh
 $ helm install yb-demo-us-central1-b yugabytedb/yugabyte \
+ --version {{<yb-version version="preview" format="short">}} \
  --namespace yb-demo-us-central1-b \
  -f overrides-us-central1-b.yaml --wait
 ```
 
 ```sh
 $ helm install yb-demo-us-central1-c yugabytedb/yugabyte \
+ --version {{<yb-version version="preview" format="short">}} \
  --namespace yb-demo-us-central1-c \
  -f overrides-us-central1-c.yaml --wait
 ```

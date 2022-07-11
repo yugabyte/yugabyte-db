@@ -37,6 +37,8 @@
 #include "yb/common/common_fwd.h"
 #include "yb/common/common_types.pb.h"
 
+#include "yb/docdb/docdb_fwd.h"
+
 #include "yb/encryption/encryption_fwd.h"
 
 #include "yb/gutil/macros.h"
@@ -82,29 +84,29 @@ class MiniTabletServer {
   // an ephemeral port. To determine the address that the server
   // bound to, call MiniTabletServer::bound_addr().
   // The TS will be initialized asynchronously and then started.
-  CHECKED_STATUS Start();
+  Status Start();
 
   // Waits for the tablet server to be fully initialized, including
   // having all tablets bootstrapped.
-  CHECKED_STATUS WaitStarted();
+  Status WaitStarted();
 
   void Shutdown();
-  CHECKED_STATUS FlushTablets(
+  Status FlushTablets(
       tablet::FlushMode mode = tablet::FlushMode::kSync,
       tablet::FlushFlags flags = tablet::FlushFlags::kAllDbs);
-  CHECKED_STATUS CompactTablets();
-  CHECKED_STATUS SwitchMemtables();
-  CHECKED_STATUS CleanTabletLogs();
+  Status CompactTablets(docdb::SkipFlush skip_flush = docdb::SkipFlush::kFalse);
+  Status SwitchMemtables();
+  Status CleanTabletLogs();
 
   // Stop and start the tablet server on the same RPC and webserver ports. The tserver must be
   // running.
-  CHECKED_STATUS Restart();
-  CHECKED_STATUS RestartStoppedServer();
+  Status Restart();
+  Status RestartStoppedServer();
 
   // Add a new tablet to the test server, use the default consensus configuration.
   //
   // Requires that the server has already been started with Start().
-  CHECKED_STATUS AddTestTablet(const std::string& ns_id,
+  Status AddTestTablet(const std::string& ns_id,
                        const std::string& table_id,
                        const std::string& tablet_id,
                        const Schema& schema,
@@ -112,7 +114,7 @@ class MiniTabletServer {
 
   // Add a new tablet to the test server and specify the consensus configuration
   // for the tablet.
-  CHECKED_STATUS AddTestTablet(const std::string& ns_id,
+  Status AddTestTablet(const std::string& ns_id,
                        const std::string& table_id,
                        const std::string& tablet_id,
                        const Schema& schema,
@@ -138,7 +140,7 @@ class MiniTabletServer {
   // Close and disable all connections from this server to any other servers in the cluster.
   void Isolate();
   // Re-enable connections from this server to other servers in the cluster.
-  CHECKED_STATUS Reconnect();
+  Status Reconnect();
 
   FsManager& fs_manager() const;
 

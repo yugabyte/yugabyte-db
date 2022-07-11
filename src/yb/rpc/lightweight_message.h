@@ -31,13 +31,13 @@ class LightweightMessage {
  public:
   virtual ~LightweightMessage() = default;
 
-  virtual CHECKED_STATUS ParseFromCodedStream(google::protobuf::io::CodedInputStream* cis) = 0;
+  virtual Status ParseFromCodedStream(google::protobuf::io::CodedInputStream* cis) = 0;
   virtual size_t SerializedSize() const = 0;
   virtual uint8_t* SerializeToArray(uint8_t* out) const = 0;
   virtual void AppendToDebugString(std::string* out) const = 0;
   virtual void Clear() = 0;
 
-  CHECKED_STATUS ParseFromSlice(const Slice& slice);
+  Status ParseFromSlice(const Slice& slice);
 
   size_t SpaceUsedLong() const {
     return SerializedSize(); // TODO(LW)
@@ -93,7 +93,7 @@ class AnyMessagePtr : public AnyMessagePtrBase<google::protobuf::Message*, Light
     message_ = 0;
   }
 
-  CHECKED_STATUS ParseFromSlice(const Slice& slice);
+  Status ParseFromSlice(const Slice& slice);
 };
 
 class AnyMessageConstPtr : public AnyMessagePtrBase<
@@ -174,7 +174,7 @@ class LightweightSerialization<google::protobuf::internal::WireFormatLite::TYPE_
   }
 };
 
-CHECKED_STATUS ParseFailed(const char* field_name);
+Status ParseFailed(const char* field_name);
 
 template <class Serialization, size_t TagSize, class Value>
 inline size_t RepeatedSize(const Value& value) {

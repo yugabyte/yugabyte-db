@@ -29,7 +29,7 @@ namespace pggate {
 
 class PgsqlOp {
  public:
-  explicit PgsqlOp(Arena* arena) : arena_(arena) {}
+  PgsqlOp(Arena* arena, bool is_region_local) : arena_(arena), is_region_local_(is_region_local) {}
   virtual ~PgsqlOp() = default;
 
   PgsqlOp(const PgsqlOp&) = delete;
@@ -67,6 +67,10 @@ class PgsqlOp {
     active_ = value;
   }
 
+  bool is_region_local() const {
+    return is_region_local_;
+  }
+
   void set_read_time(const ReadHybridTime& value) {
     read_time_ = value;
   }
@@ -77,7 +81,7 @@ class PgsqlOp {
 
   std::string ToString() const;
 
-  virtual CHECKED_STATUS InitPartitionKey(const PgTableDesc& table) = 0;
+  virtual Status InitPartitionKey(const PgTableDesc& table) = 0;
 
  private:
   virtual std::string RequestToString() const = 0;
@@ -86,14 +90,15 @@ class PgsqlOp {
   // allowed.
   Arena* arena_;
   bool active_ = false;
+  const bool is_region_local_;
   LWPgsqlResponsePB* response_ = nullptr;
   ReadHybridTime read_time_;
 };
 
 class PgsqlReadOp : public PgsqlOp {
  public:
-  explicit PgsqlReadOp(Arena* arena);
-  PgsqlReadOp(Arena* arena, const PgTableDesc& desc);
+  PgsqlReadOp(Arena* arena, bool is_region_local);
+  PgsqlReadOp(Arena* arena, const PgTableDesc& desc, bool is_region_local);
 
   LWPgsqlReadRequestPB& read_request() {
     return read_request_;
@@ -124,7 +129,7 @@ class PgsqlReadOp : public PgsqlOp {
   std::string RequestToString() const override;
 
  private:
-  CHECKED_STATUS InitPartitionKey(const PgTableDesc& table) override;
+  Status InitPartitionKey(const PgTableDesc& table) override;
 
   LWPgsqlReadRequestPB read_request_;
   bool read_from_followers_ = false;
@@ -137,7 +142,7 @@ std::shared_ptr<PgsqlReadRequestPB> InitSelect(
 
 class PgsqlWriteOp : public PgsqlOp {
  public:
-  PgsqlWriteOp(Arena* arena, bool need_transaction);
+  PgsqlWriteOp(Arena* arena, bool need_transaction, bool is_region_local);
 
   LWPgsqlWriteRequestPB& write_request() {
     return write_request_;
@@ -168,14 +173,14 @@ class PgsqlWriteOp : public PgsqlOp {
   std::string RequestToString() const override;
 
  private:
-  CHECKED_STATUS InitPartitionKey(const PgTableDesc& table) override;
+  Status InitPartitionKey(const PgTableDesc& table) override;
 
   LWPgsqlWriteRequestPB write_request_;
   bool need_transaction_;
   HybridTime write_time_;
 };
 
-CHECKED_STATUS ReviewResponsePagingState(const PgTableDesc& table, PgsqlReadOp* op);
+Status ReviewResponsePagingState(const PgTableDesc& table, PgsqlReadOp* op);
 
 bool PrepareNextRequest(PgsqlReadOp* read_op);
 

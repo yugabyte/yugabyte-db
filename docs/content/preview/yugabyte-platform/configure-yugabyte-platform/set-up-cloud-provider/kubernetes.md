@@ -1,17 +1,16 @@
 ---
 title: Configure the Kubernetes cloud provider
 headerTitle: Configure the Kubernetes cloud provider
-linkTitle: Configure the cloud provider
+linkTitle: Configure cloud providers
 description: Configure the Kubernetes cloud provider
 aliases:
   - /preview/deploy/enterprise-edition/configure-cloud-providers/kubernetes
 menu:
-  preview:
+  preview_yugabyte-platform:
     identifier: set-up-cloud-provider-5-kubernetes
     parent: configure-yugabyte-platform
     weight: 20
-isTocNested: false
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -120,9 +119,9 @@ The following command can be used to validate the service account:
 
 ```sh
 kubectl auth can-i \
-    --as yugabyte-platform-universe-management \
-    {get|create|delete|list} \
-    {namespaces|poddisruptionbudgets|services|statefulsets|secrets|pods|pvc}
+--as system:serviceaccount:<namespace>:yugabyte-platform-universe-management \
+{get|create|delete|list} \
+{namespaces|poddisruptionbudgets|services|statefulsets|secrets|pods|pvc}
 ```
 
 **Namespace Admin** can grant namespace-level admin access by using the following command:
@@ -139,9 +138,9 @@ The following command can be used to validate the service account:
 
 ```sh
 kubectl auth can-i \
-    --as yugabyte-platform-universe-management \
-    {get|create|delete|list|patch} \
-    {poddisruptionbudgets|services|statefulsets|secrets|pods|pvc}
+--as system:serviceaccount:<namespace>:yugabyte-platform-universe-management \
+{get|create|delete|list|patch} \
+{namespaces|poddisruptionbudgets|services|statefulsets|secrets|pods|pvc}
 ```
 
 **Namespace Restricted** can grant access to only the specific roles required to create and manage YugabyteDB universes in a particular namespace. Contains Roles and RoleBindings for the required set of permissions.
@@ -158,10 +157,10 @@ The following command can be used to validate the service account:
 
 ```sh
 kubectl auth can-i \
-    --as yugabyte-platform-universe-management \
-    --namespace {namespace} \
-    {get|delete|list} \
-    {poddisruptionbudgets|services|statefulsets|secrets|pods|pvc}
+--as system:serviceaccount:<namespace>:yugabyte-platform-universe-management \
+--namespace {namespace} \
+{get|delete|list} \
+{namespaces|poddisruptionbudgets|services|statefulsets|secrets|pods|pvc}
 ```
 
 ### `kubeconfig` file
@@ -180,7 +179,7 @@ You can create a `kubeconfig` file for the previously created `yugabyte-platform
     python generate_kubeconfig.py -s yugabyte-platform-universe-management -n <namespace>
     ```
 
-    <br>The following output should appear:
+    <br>Expect the following output:
 
     ```output
     Generated the kubeconfig file: /tmp/yugabyte-platform-universe-management.conf
@@ -342,6 +341,20 @@ Continue configuring your Kubernetes provider by clicking **Add region** and com
           tcp-yedis-port: "6379"
           tcp-ysql-port: "5433"
     ```
+
+  - Overrides to run YugabyteDB as a non-root user:
+
+    ```yml
+    podSecurityContext:
+      enabled: true
+      ## Set to false to stop the non-root user validation
+      runAsNonRoot: true
+      fsGroup: 10001
+      runAsUser: 10001
+      runAsGroup: 10001
+    ```
+
+    <br>Note that you cannot change users during the Helm upgrades.
 
 Continue configuring your Kubernetes provider by clicking **Add Zone**, as per the following illustration:
 

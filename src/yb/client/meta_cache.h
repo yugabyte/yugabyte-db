@@ -109,7 +109,7 @@ class RemoteTabletServer {
   // Initialize the RPC proxy to this tablet server, if it is not already set up.
   // This will involve a DNS lookup if there is not already an active proxy.
   // If there is an active proxy, does nothing.
-  CHECKED_STATUS InitProxy(YBClient* client);
+  Status InitProxy(YBClient* client);
 
   // Update information from the given pb.
   // Requires that 'pb''s UUID matches this server.
@@ -304,6 +304,9 @@ class RemoteTablet : public RefCountedThreadSafe<RemoteTablet> {
     GetRemoteTabletServers(&result, include_failed_replicas);
     return result;
   }
+
+  // Returns whether the tablet is located solely in the local region.
+  bool IsLocalRegion();
 
   // Return true if the tablet currently has a known LEADER replica
   // (i.e the next call to LeaderTServer() is likely to return non-NULL)
@@ -555,7 +558,7 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   // REQUIRES locations to be in order of partitions and without overlaps.
   // There could be gaps due to post-tablets not yet being running, in this case, MetaCache will
   // just skip updating cache for these tablets until they become running.
-  CHECKED_STATUS ProcessTabletLocations(
+  Status ProcessTabletLocations(
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& locations,
       boost::optional<PartitionListVersion> table_partition_list_version, LookupRpc* lookup_rpc);
 

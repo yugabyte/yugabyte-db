@@ -25,14 +25,29 @@ public class SetCheckpointRequest extends YRpc<SetCheckpointResponse>{
   private String tabletId;
   private long index;
   private long term;
+  private  boolean initialCheckpoint;
+  private boolean bootstrap = false;
 
   public SetCheckpointRequest(YBTable table, String streamId,
-                              String tabletId, long term, long index) {
+                              String tabletId, long term, long index, boolean initialCheckpoint) {
     super(table);
     this.streamId = streamId;
     this.tabletId = tabletId;
     this.term = term;
     this.index = index;
+    this.initialCheckpoint = initialCheckpoint;
+  }
+
+  public SetCheckpointRequest(YBTable table, String streamId,
+                              String tabletId, long term, long index, boolean initialCheckpoint,
+                              boolean bootstrap) {
+    super(table);
+    this.streamId = streamId;
+    this.tabletId = tabletId;
+    this.term = term;
+    this.index = index;
+    this.initialCheckpoint = initialCheckpoint;
+    this.bootstrap = bootstrap;
   }
 
   @Override
@@ -46,6 +61,8 @@ public class SetCheckpointRequest extends YRpc<SetCheckpointResponse>{
       .CDCCheckpointPB.newBuilder();
     builder.setCheckpoint(cBuilder.setOpId(Opid.OpIdPB.newBuilder().setIndex(this.index)
       .setTerm(this.term).build()).build());
+    builder.setInitialCheckpoint(this.initialCheckpoint);
+    builder.setBootstrap(this.bootstrap);
     return toChannelBuffer(header, builder.build());
   }
 
@@ -55,6 +72,10 @@ public class SetCheckpointRequest extends YRpc<SetCheckpointResponse>{
   @Override
   String method() {
     return "SetCDCCheckpoint";
+  }
+
+  String getTabletId() {
+    return this.tabletId;
   }
 
   @Override

@@ -89,10 +89,10 @@ class PTTableProperty : public PTProperty {
   }
 
   // Node semantics analysis.
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
+  virtual Status Analyze(SemContext *sem_context) override;
   void PrintSemanticAnalysisResult(SemContext *sem_context);
 
-  virtual CHECKED_STATUS SetTableProperty(yb::TableProperties *table_property) const;
+  virtual Status SetTableProperty(yb::TableProperties *table_property) const;
 
   PropertyType property_type() const {
     return property_type_;
@@ -125,7 +125,7 @@ class PTTableProperty : public PTProperty {
   std::shared_ptr<client::YBTable> copartition_table_;
 
  private:
-  CHECKED_STATUS AnalyzeSpeculativeRetry(const string &val);
+  Status AnalyzeSpeculativeRetry(const string &val);
 
   static const std::map<std::string, PTTableProperty::KVProperty> kPropertyDataTypes;
 };
@@ -164,7 +164,7 @@ class PTTablePropertyListNode : public TreeListNode<PTTableProperty> {
     return MCMakeShared<PTTablePropertyListNode>(memctx, std::forward<TypeArgs>(args)...);
   }
 
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
+  virtual Status Analyze(SemContext *sem_context) override;
 };
 
 class PTTablePropertyMap : public PTTableProperty {
@@ -192,10 +192,10 @@ class PTTablePropertyMap : public PTTableProperty {
   }
 
   // Node semantics analysis.
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
+  virtual Status Analyze(SemContext *sem_context) override;
   void PrintSemanticAnalysisResult(SemContext *sem_context);
 
-  virtual CHECKED_STATUS SetTableProperty(yb::TableProperties *table_property) const override;
+  virtual Status SetTableProperty(yb::TableProperties *table_property) const override;
 
   void SetPropertyName(MCSharedPtr<MCString> property_name) {
     lhs_ = property_name;

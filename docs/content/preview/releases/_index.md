@@ -7,25 +7,17 @@ image: /images/section_icons/index/quick_start.png
 aliases:
   - /preview/releases/releases-overview/
   - /preview/releases/whats-new/
-section: RELEASES
 menu:
-  preview:
+  preview_releases:
     identifier: releases
+    parent: release-notes
     weight: 1060
-isTocNested: true
-showAsideToc: true
+type: indexpage
+showRightNav: true
 ---
-
 {{< tip title="Versioning" >}}
 As of v2.2, Yugabyte follows a new release versioning convention for YugabyteDB and YugabyteDB Anywhere releases. For details, see [Release versioning](versioning/).
 {{< /tip >}}
-
-## On this page
-
-* Current [supported releases](#current-supported-releases)
-* Yugabyte's [release support policy](#release-support-policy) and [timelines](#release-support-timelines)
-* Releases that are [no longer supported](#eol-releases)
-* [Release series recommendations](#recommended-release-series-for-projects) for your project
 
 ## Current supported releases
 
@@ -53,7 +45,7 @@ For details, see the [Yugabyte Support Services Agreement](https://www.yugabyte.
 
 | Release series | Released | End of maintenance support | End of Life (EOL) |
 | :------------- | :------- | :------------------------- | :---------------- |
-| [v2.13](release-notes/v2.13/) ![PREVIEW](/images/releases/preview.png) | March 7, 2022 | n/a | n/a |
+| [v2.15](release-notes/v2.15/) ![PREVIEW](/images/releases/preview.png) | June 27, 2022 | n/a | n/a |
 | [v2.12](release-notes/v2.12/) ![CURRENT STABLE](/images/releases/current-stable.png) | February 22, 2022 | February 22, 2023 | August 22, 2023 |
 | [v2.8](release-notes/v2.8/) | November 15, 2021 | November 15, 2022 | June 15, 2023 |
 | [v2.6](release-notes/v2.6/) | July 5, 2021 | July 5, 2022 | January 5, 2023 |
@@ -65,6 +57,8 @@ The following releases are no longer supported:
 
 | Release series | Released | End of maintenance support | End of Life (EOL) |
 | :------------- | :------- | :------------------------- | :---------------- |
+| [v2.13](release-notes/v2.13/) | March 7, 2022 | n/a | n/a |
+| [v2.11](release-notes/v2.11/) | November 22, 2021 | n/a | n/a |
 | [v2.9](release-notes/v2.9/) | August 31, 2021 | n/a | n/a |
 | [v2.7](release-notes/v2.7/) | May 5, 2021 | n/a | n/a |
 | [v2.5](release-notes/v2.5/) | November 12, 2020 | n/a | n/a |

@@ -3,13 +3,12 @@ title: JanusGraph
 linkTitle: JanusGraph
 description: JanusGraph
 aliases:
-section: INTEGRATIONS
 menu:
   preview:
     identifier: janusgraph
+    parent: integrations
     weight: 571
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 In this tutorial, you are first going to setup [JanusGraph](https://janusgraph.org/) to work with YugabyteDB as the underlying database. Then, using the Gremlin console, you are going to load some data and run some graph commands.

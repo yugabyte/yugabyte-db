@@ -39,6 +39,7 @@
 #include <vector>
 
 #include <gflags/gflags.h>
+#include <glog/logging.h>
 
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
@@ -60,6 +61,7 @@
 #include "yb/rocksdb/db/memtable.h"
 
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/periodic.h"
 #include "yb/rpc/strand.h"
 #include "yb/rpc/thread_pool.h"
 
@@ -106,7 +108,13 @@ DEFINE_int32(cdc_min_replicated_index_considered_stale_secs, 900,
 
 DEFINE_bool(propagate_safe_time, true, "Propagate safe time to read from leader to followers");
 
+DEFINE_int32(wait_queue_poll_interval_ms, 1000,
+             "The interval duration between wait queue polls to fetch transaction statuses of "
+             "active blockers.");
+
 DECLARE_int32(ysql_transaction_abort_timeout_ms);
+
+DECLARE_int64(cdc_intent_retention_ms);
 
 namespace yb {
 namespace tablet {
@@ -216,6 +224,18 @@ Status TabletPeer::InitTabletPeer(
     service_thread_pool_ = &messenger->ThreadPool();
     strand_.reset(new rpc::Strand(&messenger->ThreadPool()));
     messenger_ = messenger;
+    if (tablet_->wait_queue()) {
+      std::weak_ptr<TabletPeer> weak_self = shared_from(this);
+      wait_queue_heartbeater_ = rpc::PeriodicTimer::Create(
+        messenger_,
+        [weak_self]() {
+          if (auto shared_self = weak_self.lock()) {
+            shared_self->PollWaitQueue();
+          }
+        },
+        FLAGS_wait_queue_poll_interval_ms * 1ms);
+      wait_queue_heartbeater_->Start();
+    }
 
     tablet->SetMemTableFlushFilterFactory([log] {
       auto largest_log_op_index = log->GetLatestEntryOpId().index;
@@ -429,6 +449,10 @@ consensus::RaftConfigPB TabletPeer::RaftConfig() const {
 
 bool TabletPeer::StartShutdown() {
   LOG_WITH_PREFIX(INFO) << "Initiating TabletPeer shutdown";
+
+  if (wait_queue_heartbeater_) {
+    wait_queue_heartbeater_->Stop();
+  }
 
   {
     std::lock_guard<decltype(lock_)> lock(lock_);
@@ -708,18 +732,6 @@ Status TabletPeer::GetLastReplicatedData(RemoveIntentsData* data) {
   return Status::OK();
 }
 
-void TabletPeer::GetLastCDCedData(RemoveIntentsData* data) {
-  if (consensus_ != nullptr) {
-    data->op_id.index = consensus_->GetLastCDCedOpId().index;
-    data->op_id.term = consensus_->GetLastCDCedOpId().term;
-  }
-
-  if((tablet_ != nullptr) && (tablet_->mvcc_manager() != nullptr)) {
-    // for now use this hybrid time, ideally it should be of last_updated_time
-    data->log_ht = tablet_->mvcc_manager()->LastReplicatedHybridTime();
-  }
-}
-
 void TabletPeer::UpdateClock(HybridTime hybrid_time) {
   clock_->Update(hybrid_time);
 }
@@ -852,7 +864,7 @@ void TabletPeer::GetInFlightOperations(Operation::TraceType trace_type,
     int64_t running_for_micros =
         MonoTime::Now().GetDeltaSince(driver->start_time()).ToMicroseconds();
     status_pb.set_running_for_micros(running_for_micros);
-    if (trace_type == Operation::TRACE_TXNS) {
+    if (trace_type == Operation::TRACE_TXNS && driver->trace()) {
       status_pb.set_trace_buffer(driver->trace()->DumpToString(true));
     }
     out->push_back(status_pb);
@@ -860,6 +872,12 @@ void TabletPeer::GetInFlightOperations(Operation::TraceType trace_type,
 }
 
 Result<int64_t> TabletPeer::GetEarliestNeededLogIndex(std::string* details) const {
+  if (PREDICT_FALSE(!log_)) {
+    auto status = STATUS(Uninitialized, "Log not ready (tablet peer not yet initialized?)");
+    LOG(DFATAL) << status;
+    return status;
+  }
+
   // First, we anchor on the last OpId in the Log to establish a lower bound
   // and avoid racing with the other checks. This limits the Log GC candidate
   // segments before we check the anchors.
@@ -1008,12 +1026,63 @@ Status TabletPeer::reset_cdc_min_replicated_index_if_stale() {
   std::lock_guard<decltype(cdc_min_replicated_index_lock_)> l(cdc_min_replicated_index_lock_);
   auto seconds_since_last_refresh =
       MonoTime::Now().GetDeltaSince(cdc_min_replicated_index_refresh_time_).ToSeconds();
-  if (seconds_since_last_refresh > FLAGS_cdc_min_replicated_index_considered_stale_secs) {
+  if (seconds_since_last_refresh >
+      GetAtomicFlag(&FLAGS_cdc_min_replicated_index_considered_stale_secs)) {
     LOG_WITH_PREFIX(INFO) << "Resetting cdc min replicated index. Seconds since last update: "
                           << seconds_since_last_refresh;
     RETURN_NOT_OK(set_cdc_min_replicated_index_unlocked(std::numeric_limits<int64_t>::max()));
   }
   return Status::OK();
+}
+
+Status TabletPeer::set_cdc_sdk_min_checkpoint_op_id(const OpId& cdc_sdk_min_checkpoint_op_id) {
+  LOG_WITH_PREFIX(INFO) << "Setting CDCSDK min checkpoint opId to "
+                        << cdc_sdk_min_checkpoint_op_id.ToString();
+  RETURN_NOT_OK(meta_->set_cdc_sdk_min_checkpoint_op_id(cdc_sdk_min_checkpoint_op_id));
+  return Status::OK();
+}
+
+OpId TabletPeer::cdc_sdk_min_checkpoint_op_id() {
+  return meta_->cdc_sdk_min_checkpoint_op_id();
+}
+
+Status TabletPeer::SetCDCSDKRetainOpIdAndTime(
+    const OpId& cdc_sdk_op_id, const MonoDelta& cdc_sdk_op_id_expiration) {
+  if (cdc_sdk_op_id == OpId::Invalid()) {
+    return Status::OK();
+  }
+  RETURN_NOT_OK(set_cdc_sdk_min_checkpoint_op_id(cdc_sdk_op_id));
+  auto txn_participant = tablet()->transaction_participant();
+  if (txn_participant) {
+    txn_participant->SetIntentRetainOpIdAndTime(cdc_sdk_op_id, cdc_sdk_op_id_expiration);
+  }
+  return Status::OK();
+}
+
+Result<MonoDelta> TabletPeer::GetCDCSDKIntentRetainTime(
+    const CoarseTimePoint& cdc_sdk_latest_active_time) {
+  MonoDelta cdc_sdk_intent_retention = MonoDelta::kZero;
+  // If cdc_sdk_latest_update_time is not updated to default CoarseTimePoint::min() value,
+  // It's mean that, no need to retain the intents. This can happen in below case:-
+  //      a. Only XCluster streams are defined for the tablet.
+  //      b. CDCSDK stream for the tablet is expired.
+  if (cdc_sdk_latest_active_time == CoarseTimePoint::min()) {
+    return cdc_sdk_intent_retention;
+  }
+
+  auto txn_participant = tablet()->transaction_participant();
+  if (txn_participant) {
+    // Get the current tablet LEADER's intent retention expiration time.
+    // Check how many milliseconds time remaining w.r.t current time, update
+    // all the FOLLOWERs as their cdc_sdk_min_checkpoint_op_id_expiration_.
+    MonoDelta max_retain_time =
+        MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_cdc_intent_retention_ms));
+    MonoDelta lastest_active_time(CoarseMonoClock::Now() - cdc_sdk_latest_active_time);
+    if (max_retain_time >= lastest_active_time) {
+      cdc_sdk_intent_retention = max_retain_time - lastest_active_time;
+    }
+  }
+  return cdc_sdk_intent_retention;
 }
 
 std::unique_ptr<Operation> TabletPeer::CreateOperation(consensus::ReplicateMsg* replicate_msg) {
@@ -1331,6 +1400,13 @@ bool TabletPeer::CanBeDeleted() {
 
 rpc::Scheduler& TabletPeer::scheduler() const {
   return messenger_->scheduler();
+}
+
+void TabletPeer::PollWaitQueue() const {
+  if (tablet()) {
+    DCHECK_NOTNULL(tablet()->wait_queue());
+    tablet()->wait_queue()->PollBlockerStatus(clock_->Now());
+  }
 }
 
 }  // namespace tablet

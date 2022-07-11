@@ -37,4 +37,18 @@ NonRecursiveSharedLockBase::~NonRecursiveSharedLockBase() {
   head = next_;
 }
 
+void SingleThreadedMutex::lock() {
+  auto old_value = locked_.exchange(true, std::memory_order_acq_rel);
+  LOG_IF(DFATAL, old_value) << "Thread collision on lock";
+}
+
+void SingleThreadedMutex::unlock() {
+  auto old_value = locked_.exchange(false, std::memory_order_acq_rel);
+  LOG_IF(DFATAL, !old_value) << "Unlock of not locked mutex";
+}
+
+bool SingleThreadedMutex::try_lock() {
+  return !locked_.exchange(true, std::memory_order_acq_rel);
+}
+
 }  // namespace yb

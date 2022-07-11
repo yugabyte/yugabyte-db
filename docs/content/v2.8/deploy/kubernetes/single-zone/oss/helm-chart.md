@@ -9,9 +9,7 @@ menu:
     name: Open Source
     identifier: k8s-oss-1
     weight: 621
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -31,12 +29,6 @@ showAsideToc: true
     <a href="{{< relref "./operator-hub.md" >}}" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Operator Hub
-    </a>
-  </li>
-  <li>
-    <a href="{{< relref "./rook-operator.md" >}}" class="nav-link">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
-      Rook operator
     </a>
   </li>
 </ul>
@@ -91,14 +83,14 @@ $ helm repo update
 ### Validate the chart version
 
 ```sh
-$ helm search repo yugabytedb/yugabyte
+$ helm search repo yugabytedb/yugabyte --version {{<yb-version version="v2.8" format="short">}}
 ```
 
 **Output:**
 
 ```output
 NAME                    CHART VERSION   APP VERSION     DESCRIPTION
-yugabytedb/yugabyte     2.8.4           2.8.4.0-b30    YugabyteDB is the high-performance distributed ...
+yugabytedb/yugabyte     {{<yb-version version="v2.8" format="short">}}           {{<yb-version version="v2.8" format="build">}}    YugabyteDB is the high-performance distributed ...
 ```
 
 ### Install YugabyteDB
@@ -111,7 +103,7 @@ Create a namespace and then install YugabyteDB.
 
 ```sh
 $ kubectl create namespace yb-demo
-$ helm install yb-demo yugabytedb/yugabyte --namespace yb-demo --wait
+$ helm install yb-demo yugabytedb/yugabyte --namespace yb-demo --wait --version {{<yb-version version="v2.8" format="short">}}
 ```
 
 #### On Minikube
@@ -123,6 +115,7 @@ Create a `yb-demo` namespace.
 ```sh
 $ kubectl create namespace yb-demo
 $ helm install yb-demo yugabytedb/yugabyte \
+--version {{<yb-version version="v2.8" format="short">}} \
 --set resource.master.requests.cpu=0.5,resource.master.requests.memory=0.5Gi,\
 resource.tserver.requests.cpu=0.5,resource.tserver.requests.memory=0.5Gi --namespace yb-demo
 ```
@@ -131,6 +124,7 @@ Note that in Minikube, the LoadBalancers for `yb-master-ui` and `yb-tserver-serv
 
 ```sh
 $ helm install yb-demo yugabytedb/yugabyte \
+--version {{<yb-version version="v2.8" format="short">}} \
 --set resource.master.requests.cpu=0.5,resource.master.requests.memory=0.5Gi,\
 resource.tserver.requests.cpu=0.5,resource.tserver.requests.memory=0.5Gi,\
 enableLoadBalancer=False --namespace yb-demo
@@ -225,8 +219,8 @@ $ helm history yb-demo -n yb-demo
 **Output:**
 
 ```output
-REVISION  UPDATED                   STATUS    CHART           APP VERSION  DESCRIPTION
-1         Thu Apr 13 13:29:13 2020  deployed  yugabyte-2.6.5  2.6.5.0-b4   Install complete
+REVISION  UPDATED                   STATUS    CHART           APP VERSION   DESCRIPTION
+1         Tue Apr 21 17:29:01 2020  deployed  yugabyte-{{<yb-version version="v2.8" format="short">}}  {{<yb-version version="v2.8" format="build">}}  Install complete
 ```
 
 ## Connect using YugabyteDB Shells
@@ -319,7 +313,7 @@ $ helm upgrade --set replicas.tserver=5 yb-demo ./yugabyte
 By default, the YugabyteDB Helm chart will expose the client API endpoints as well as master UI endpoint using 2 LoadBalancers. If you want to expose the client APIs using independent LoadBalancers, you can do the following.
 
 ```sh
-helm install yb-demo yugabytedb/yugabyte -f https://raw.githubusercontent.com/yugabyte/charts/master/stable/yugabyte/expose-all.yaml --namespace yb-demo --wait
+helm install yb-demo yugabytedb/yugabyte -f https://raw.githubusercontent.com/yugabyte/charts/master/stable/yugabyte/expose-all.yaml --version {{<yb-version version="v2.8" format="short">}} --namespace yb-demo --wait
 ```
 
 You can also bring up an internal LoadBalancer (for either YB-Master or YB-TServer services), if required. Just specify the [annotation](https://kubernetes.io/docs/concepts/services-networking/service/#internal-load-balancer) required for your cloud provider. See [Amazon EKS](../../eks/helm-chart/) and [Google Kubernetes Engine](../../gke/helm-chart/) for examples.
@@ -329,7 +323,7 @@ You can also bring up an internal LoadBalancer (for either YB-Master or YB-TServ
 In case you want to use a storage class other than the standard class for your deployment, provision the storage class and then pass in the name of the class while running the helm install command.
 
 ```sh
-$ helm install yugabyte --namespace yb-demo --name yb-demo --set storage.master.storageClass=<desired storage class>,storage.tserver.storageClass=<desired storage class> --wait
+$ helm install yugabyte --version {{<yb-version version="v2.8" format="short">}} --namespace yb-demo --name yb-demo --set storage.master.storageClass=<desired storage class>,storage.tserver.storageClass=<desired storage class> --wait
 ```
 
 ### Configure YB-Master and YB-TServer pods
@@ -338,6 +332,7 @@ Flags on the yb-master and yb-tserver pods can be done at the command line or by
 
 ```sh
 helm install yb-demo yugabytedb/yugabyte \
+--version {{<yb-version version="v2.8" format="short">}} \
 --set resource.master.requests.cpu=0.5,resource.master.requests.memory=0.5Gi,\
 resource.tserver.requests.cpu=0.5,resource.tserver.requests.memory=0.5Gi,\
 gflags.master.placement_cloud=myk8s-cloud,gflags.master.placement_region=myk8s-region,gflags.master.placement_zone=myk8s-zone,\

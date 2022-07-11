@@ -24,10 +24,20 @@
 - name: Check if {{ util.name }} already exists
   become: yes
   become_method: sudo
-  become_user: "{{ user_name }}"
+  environment:
+    PATH: "{{ bin_path }}:{{ ansible_env.PATH }}"
   shell: "which {{ util.name }}"
   register: util_exists
   failed_when: False
+
+- name: Get current version of {{ util.name }}
+  become: yes
+  become_method: sudo
+  environment:
+    PATH: "{{ bin_path }}:{{ ansible_env.PATH }}"
+  shell: "{{ util.name }} --version"
+  register: util_cur_version
+  when: util_exists.rc == 0
 
 - block:
   - name: "Install {{ util.name }}"
@@ -36,7 +46,6 @@
       apply:
         become: yes
         become_method: sudo
-    when: util_exists.rc != 0
   rescue:
     - name: Ignore errors for onprem provider
       fail:

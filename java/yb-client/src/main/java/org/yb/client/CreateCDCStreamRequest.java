@@ -14,7 +14,6 @@
 package org.yb.client;
 
 import com.google.protobuf.Message;
-import org.apache.log4j.LogMF;
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

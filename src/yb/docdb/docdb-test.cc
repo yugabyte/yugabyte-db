@@ -88,10 +88,8 @@ constexpr int64_t kIntKey2 = 789123;
 
 }
 
-CHECKED_STATUS GetKeyEntryValue(const rocksdb::UserBoundaryValues &values,
-                                size_t index,
-                                KeyEntryValue *out);
-CHECKED_STATUS GetDocHybridTime(const rocksdb::UserBoundaryValues &values, DocHybridTime *out);
+Result<KeyEntryValue> TEST_GetKeyEntryValue(
+    const rocksdb::UserBoundaryValues& values, size_t index);
 
 YB_STRONGLY_TYPED_BOOL(InitMarkerExpired);
 YB_STRONGLY_TYPED_BOOL(UseIntermediateFlushes);
@@ -248,7 +246,7 @@ SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b", "subkey_d"; HT{ physica
         ValueRef(ValueEntryType::kTombstone), 5000_usec_ht));
   }
 
-  void VerifySubDocument(SubDocKey subdoc_key, HybridTime ht, string subdoc_string) {
+  void VerifyDocument(const DocKey& doc_key, HybridTime ht, string subdoc_string) {
     SubDocument doc_from_rocksdb;
     bool subdoc_found_in_rocksdb = false;
 
@@ -257,7 +255,7 @@ SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b", "subkey_d"; HT{ physica
 
     // TODO(dtxn) - check both transaction and non-transaction path?
     // https://yugabyte.atlassian.net/browse/ENG-2177
-    auto encoded_subdoc_key = subdoc_key.EncodeWithoutHt();
+    auto encoded_subdoc_key = doc_key.Encode();
     GetSubDoc(
         encoded_subdoc_key, &doc_from_rocksdb, &subdoc_found_in_rocksdb,
         kNonTransactionalOperationContext, ReadHybridTime::SingleTime(ht));
@@ -488,6 +486,11 @@ class DocDBTestQl : public DocDBTest {
       const ReadHybridTime& read_time = ReadHybridTime::Max()) override {
     GetSubDocQl(doc_db(), subdoc_key, result, found_result, txn_op_context, read_time);
   }
+ protected:
+  template<typename T>
+  void TestTableTombstone(T id);
+  template<typename T>
+  void TestTableTombstoneCompaction(T id);
 };
 
 class DocDBTestRedis : public DocDBTest {
@@ -594,7 +597,7 @@ TEST_P(DocDBTestWrapper, KeyAsEmptyObjectIsNotMasked) {
       SubDocKey(DocKey([], [1234]), [null, false; HT{ physical: 617 }]) -> 12345
       SubDocKey(DocKey([], [1234]), ["later"; HT{ physical: 336 }]) -> 1
       )#");
-  VerifySubDocument(SubDocKey(doc_key), 4000_usec_ht,
+  VerifyDocument(doc_key, 4000_usec_ht,
                     R"#(
 {
   null: {},
@@ -623,7 +626,7 @@ TEST_P(DocDBTestWrapper, NullChildObjectShouldMaskValues) {
       SubDocKey(DocKey([], ["mydockey", 123456]), ["obj"; HT{ physical: 2000 }]) -> {}
       SubDocKey(DocKey([], ["mydockey", 123456]), ["obj", "key"; HT{ physical: 2000 }]) -> "value"
       )#");
-  VerifySubDocument(SubDocKey(doc_key), 4000_usec_ht,
+  VerifyDocument(doc_key, 4000_usec_ht,
                     R"#(
 {
   "obj": null
@@ -674,29 +677,60 @@ TEST_F(DocDBTestQl, LastProjectionIsNull) {
   )#", doc_from_rocksdb.ToString());
 }
 
-TEST_F(DocDBTestQl, ColocatedTableTombstoneTest) {
-  constexpr ColocationId colocation_id(0x4001);
+namespace {
+
+void SetId(DocKey* doc_key, ColocationId id) {
+  doc_key->set_colocation_id(id);
+}
+
+void SetId(DocKey* doc_key, const Uuid& id) {
+  doc_key->set_cotable_id(id);
+}
+
+std::string IdToString(ColocationId id) {
+  return Format("ColocationId=$0", std::to_string(id));
+}
+
+std::string IdToString(const Uuid& id) {
+  return Format("CoTableId=$0", id.ToString());
+}
+
+} // namespace
+
+// Test that table-level tombstone properly hides records.
+template<typename T>
+void DocDBTestQl::TestTableTombstone(T id) {
   DocKey doc_key_1(KeyEntryValues("mydockey", kIntKey1));
-  doc_key_1.set_colocation_id(colocation_id);
+  SetId(&doc_key_1, id);
   DocKey doc_key_2(KeyEntryValues("mydockey", kIntKey2));
-  doc_key_2.set_colocation_id(colocation_id);
+  SetId(&doc_key_2, id);
   ASSERT_OK(SetPrimitive(
       doc_key_1.Encode(), QLValue::Primitive(1), 1000_usec_ht));
   ASSERT_OK(SetPrimitive(
       doc_key_2.Encode(), QLValue::Primitive(2), 1000_usec_ht));
 
   DocKey doc_key_table;
-  doc_key_table.set_colocation_id(colocation_id);
+  SetId(&doc_key_table, id);
   ASSERT_OK(DeleteSubDoc(
       doc_key_table.Encode(), 2000_usec_ht));
 
-  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
-      SubDocKey(DocKey(ColocationId=16385, [], []), [HT{ physical: 2000 }]) -> DEL
-      SubDocKey(DocKey(ColocationId=16385, [], ["mydockey", 123456]), [HT{ physical: 1000 }]) -> 1
-      SubDocKey(DocKey(ColocationId=16385, [], ["mydockey", 789123]), [HT{ physical: 1000 }]) -> 2
-      )#");
-  VerifySubDocument(SubDocKey(doc_key_1), 4000_usec_ht, "");
-  VerifySubDocument(SubDocKey(doc_key_1), 1500_usec_ht, "1");
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(Format(R"#(
+      SubDocKey(DocKey($0, [], []), [HT{ physical: 2000 }]) -> DEL
+      SubDocKey(DocKey($0, [], ["mydockey", 123456]), [HT{ physical: 1000 }]) -> 1
+      SubDocKey(DocKey($0, [], ["mydockey", 789123]), [HT{ physical: 1000 }]) -> 2
+      )#",
+      IdToString(id)));
+  VerifyDocument(doc_key_1, 4000_usec_ht, "");
+  VerifyDocument(doc_key_1, 1500_usec_ht, "1");
+}
+
+TEST_F(DocDBTestQl, ColocatedTableTombstone) {
+  TestTableTombstone<ColocationId>(0x4001);
+}
+
+TEST_F(DocDBTestQl, YsqlSystemTableTombstone) {
+  TestTableTombstone<const Uuid&>(
+      ASSERT_RESULT(Uuid::FromString("11111111-2222-3333-4444-555555555555")));
 }
 
 TEST_P(DocDBTestWrapper, HistoryCompactionFirstRowHandlingRegression) {
@@ -758,163 +792,6 @@ SubDocKey(DocKey([], ["mydockey", 123456]), ["u"; HT{ physical: 1000 w: 1 }]) ->
      )#");
 }
 
-// This tests reads on data without init markers. Basic Test tests with init markers.
-TEST_P(DocDBTestWrapper, GetSubDocumentTest) {
-  const DocKey doc_key(KeyEntryValues("mydockey", kIntKey1));
-  SetupRocksDBState(doc_key.Encode());
-
-  // We will test the state of the entire document after every operation, using timestamps
-  // 500, 1500, 2500, 3500, 4500, 5500.
-
-  VerifySubDocument(SubDocKey(doc_key), 500_usec_ht, "");
-
-  VerifySubDocument(SubDocKey(doc_key), 1500_usec_ht,
-                    R"#(
-{
-  "a": {
-    "1": "1",
-    "2": "2"
-  },
-  "b": {
-    "c": {
-      "1": "3"
-    },
-    "d": {
-      "1": "5",
-      "2": "6"
-    }
-  },
-  "u": "7"
-}
-      )#");
-
-  VerifySubDocument(SubDocKey(doc_key), 2500_usec_ht,
-                    R"#(
-{
-  "a": {
-    "1": "1",
-    "2": 11
-  },
-  "b": {
-    "c": {
-      "1": "3"
-    },
-    "d": {
-      "1": "5",
-      "2": "6"
-    }
-  },
-  "u": "7"
-}
-      )#");
-
-  VerifySubDocument(SubDocKey(doc_key), 3500_usec_ht,
-                    R"#(
-{
-  "a": {
-    "1": "1",
-    "2": 11
-  },
-  "b": {
-    "e": {
-      "1": "8",
-      "2": "9"
-    },
-    "y": "10"
-  },
-  "u": "7"
-}
-      )#");
-
-  VerifySubDocument(SubDocKey(doc_key), 4500_usec_ht,
-                    R"#(
-{
-  "a": {
-    "1": "3",
-    "2": 11,
-    "3": "4"
-  },
-  "b": {
-    "e": {
-      "1": "8",
-      "2": "9"
-    },
-    "y": "10"
-  },
-  "u": "7"
-}
-      )#");
-
-  VerifySubDocument(SubDocKey(doc_key), 5500_usec_ht,
-                    R"#(
-{
-  "a": {
-    "1": "3",
-    "2": 11,
-    "3": "4"
-  },
-  "b": {
-    "e": {
-      "1": "8"
-    },
-    "y": "10"
-  },
-  "u": "7"
-}
-      )#");
-
-  // Test the evolution of SubDoc root.b at various timestamps.
-
-  VerifySubDocument(SubDocKey(doc_key, KeyEntryValue("b")), 500_usec_ht, "");
-
-  VerifySubDocument(SubDocKey(doc_key, KeyEntryValue("b")), 2500_usec_ht,
-                    R"#(
-{
-  "c": {
-    "1": "3"
-  },
-  "d": {
-    "1": "5",
-    "2": "6"
-  }
-}
-      )#");
-
-  VerifySubDocument(SubDocKey(doc_key, KeyEntryValue("b")), 3500_usec_ht,
-                    R"#(
-{
-  "e": {
-    "1": "8",
-    "2": "9"
-  },
-  "y": "10"
-}
-      )#");
-
-  VerifySubDocument(SubDocKey(doc_key, KeyEntryValue("b")), 5500_usec_ht,
-                    R"#(
-{
-  "e": {
-    "1": "8"
-  },
-  "y": "10"
-}
-      )#");
-
-  VerifySubDocument(SubDocKey(
-      doc_key, KeyEntryValue("b"), KeyEntryValue("d")), 10000_usec_ht, "");
-
-  VerifySubDocument(SubDocKey(doc_key, KeyEntryValue("b"), KeyEntryValue("d")),
-                    2500_usec_ht,
-                    R"#(
-  {
-    "1": "5",
-    "2": "6"
-  }
-        )#");
-
-}
-
 TEST_P(DocDBTestWrapper, ListInsertAndGetTest) {
   QLValuePB parent;
   QLValuePB list = QLValue::PrimitiveArray(10, 2);
@@ -924,7 +801,7 @@ TEST_P(DocDBTestWrapper, ListInsertAndGetTest) {
   AddMapValue("other", "other_value", &parent);
   ASSERT_OK(InsertSubDocument(DocPath(encoded_doc_key), ValueRef(parent), HybridTime(100)));
 
-  VerifySubDocument(SubDocKey(doc_key), HybridTime(250),
+  VerifyDocument(doc_key, HybridTime(250),
       R"#(
   {
     "list2": {
@@ -941,7 +818,7 @@ TEST_P(DocDBTestWrapper, ListInsertAndGetTest) {
       ValueRef(QLValue::PrimitiveArray(1, "3", 2, 2)),
       HybridTime(200)));
 
-  VerifySubDocument(SubDocKey(doc_key), HybridTime(250),
+  VerifyDocument(doc_key, HybridTime(250),
       R"#(
   {
     "list1": {
@@ -1011,7 +888,7 @@ SubDocKey(DocKey([], ["list_test", 231]), ["other"; \
     HT{ physical: 0 logical: 100 w: 3 }]) -> "other_value"
         )#");
 
-  VerifySubDocument(SubDocKey(doc_key), HybridTime(150),
+  VerifyDocument(doc_key, HybridTime(150),
       R"#(
   {
     "list2": {
@@ -1022,7 +899,7 @@ SubDocKey(DocKey([], ["list_test", 231]), ["other"; \
   }
         )#");
 
-  VerifySubDocument(SubDocKey(doc_key), HybridTime(450),
+  VerifyDocument(doc_key, HybridTime(450),
       R"#(
   {
     "list1": {
@@ -1083,7 +960,7 @@ SubDocKey(DocKey([], ["list_test", 231]), ["other"; \
     HT{ physical: 0 logical: 100 w: 3 }]) -> "other_value"
         )#");
 
-  VerifySubDocument(SubDocKey(doc_key), HybridTime(550),
+  VerifyDocument(doc_key, HybridTime(550),
       R"#(
   {
     "list1": {
@@ -1145,7 +1022,7 @@ SubDocKey(DocKey([], ["list_test", 231]), ["other"; \
     HT{ physical: 0 logical: 100 w: 3 }]) -> "other_value"
         )#");
 
-  VerifySubDocument(SubDocKey(doc_key), HybridTime(550),
+  VerifyDocument(doc_key, HybridTime(550),
       R"#(
   {
     "list1": {
@@ -1191,7 +1068,7 @@ TEST_P(DocDBTestWrapper, ListOverwriteAndInsertTest) {
   write_list({1, 2, 3, 4, 5}, 200);
   write_list({6, 7, 8}, 300);
 
-  VerifySubDocument(SubDocKey(doc_key), HybridTime(350),
+  VerifyDocument(doc_key, HybridTime(350),
       R"#(
   {
     "list": {
@@ -1233,7 +1110,7 @@ SubDocKey(DocKey([], ["list_test", 231]), ["list", ArrayIndex(5); \
   ASSERT_NOK(ReplaceInList(
       DocPath(encoded_doc_key, KeyEntryValue("list")), 3, ValueRef(QLValue::Primitive(17)),
       ReadHybridTime::SingleTime(HybridTime(400)), HybridTime(500), rocksdb::kDefaultQueryId));
-  VerifySubDocument(SubDocKey(doc_key), HybridTime(500),
+  VerifyDocument(doc_key, HybridTime(500),
       R"#(
   {
     "list": {
@@ -1311,7 +1188,7 @@ SubDocKey(DocKey([], ["foo", 231]), ["key2", ArrayIndex(4); HT{ physical: 0 logi
 -> 32
       )#");
 
-  VerifySubDocument(SubDocKey(doc_key), HybridTime(550),
+  VerifyDocument(doc_key, HybridTime(550),
       R"#(
   {
     "key1": {
@@ -2316,9 +2193,9 @@ SubDocKey(DocKey([], ["k1"]), ["s3"; HT{ physical: 2000 }]) -> "v3"; ttl: 0.000s
       )#");
 }
 
-// Test table tombstones for colocated tables.
-TEST_P(DocDBTestWrapper, TableTombstoneCompaction) {
-  constexpr ColocationId colocation_id(0x4001);
+// Test that table-level tombstone is properly compacted.
+template<typename T>
+void DocDBTestQl::TestTableTombstoneCompaction(T id) {
   HybridTime t = 1000_usec_ht;
 
   // Simulate SQL:
@@ -2327,7 +2204,7 @@ TEST_P(DocDBTestWrapper, TableTombstoneCompaction) {
     DocKey doc_key;
     std::string range_key_str = Format("r$0", i);
 
-    doc_key.set_colocation_id(colocation_id);
+    SetId(&doc_key, id);
     doc_key.ResizeRangeComponents(1);
     doc_key.SetRangeComponent(KeyEntryValue(range_key_str), 0 /* idx */);
     ASSERT_OK(SetPrimitive(
@@ -2337,16 +2214,17 @@ TEST_P(DocDBTestWrapper, TableTombstoneCompaction) {
     t = server::HybridClock::AddPhysicalTimeToHybridTime(t, 1ms);
   }
   ASSERT_OK(FlushRocksDbAndWait());
-  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
-SubDocKey(DocKey(ColocationId=16385, [], ["r1"]), [SystemColumnId(0); HT{ physical: 1000 }]) -> null
-SubDocKey(DocKey(ColocationId=16385, [], ["r2"]), [SystemColumnId(0); HT{ physical: 2000 }]) -> null
-SubDocKey(DocKey(ColocationId=16385, [], ["r3"]), [SystemColumnId(0); HT{ physical: 3000 }]) -> null
-      )#");
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(Format(R"#(
+SubDocKey(DocKey($0, [], ["r1"]), [SystemColumnId(0); HT{ physical: 1000 }]) -> null
+SubDocKey(DocKey($0, [], ["r2"]), [SystemColumnId(0); HT{ physical: 2000 }]) -> null
+SubDocKey(DocKey($0, [], ["r3"]), [SystemColumnId(0); HT{ physical: 3000 }]) -> null
+      )#",
+      IdToString(id)));
 
   // Simulate SQL (set table tombstone):
   //   TRUNCATE TABLE t;
   {
-    DocKey doc_key(colocation_id);
+    DocKey doc_key(id);
     ASSERT_OK(SetPrimitive(
         DocPath(doc_key.Encode()),
         ValueRef(ValueEntryType::kTombstone),
@@ -2354,12 +2232,13 @@ SubDocKey(DocKey(ColocationId=16385, [], ["r3"]), [SystemColumnId(0); HT{ physic
     t = server::HybridClock::AddPhysicalTimeToHybridTime(t, 1ms);
   }
   ASSERT_OK(FlushRocksDbAndWait());
-  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
-SubDocKey(DocKey(ColocationId=16385, [], []), [HT{ physical: 4000 }]) -> DEL
-SubDocKey(DocKey(ColocationId=16385, [], ["r1"]), [SystemColumnId(0); HT{ physical: 1000 }]) -> null
-SubDocKey(DocKey(ColocationId=16385, [], ["r2"]), [SystemColumnId(0); HT{ physical: 2000 }]) -> null
-SubDocKey(DocKey(ColocationId=16385, [], ["r3"]), [SystemColumnId(0); HT{ physical: 3000 }]) -> null
-      )#");
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(Format(R"#(
+SubDocKey(DocKey($0, [], []), [HT{ physical: 4000 }]) -> DEL
+SubDocKey(DocKey($0, [], ["r1"]), [SystemColumnId(0); HT{ physical: 1000 }]) -> null
+SubDocKey(DocKey($0, [], ["r2"]), [SystemColumnId(0); HT{ physical: 2000 }]) -> null
+SubDocKey(DocKey($0, [], ["r3"]), [SystemColumnId(0); HT{ physical: 3000 }]) -> null
+      )#",
+      IdToString(id)));
 
   // Simulate SQL:
   //  INSERT INTO t VALUES ("r1"), ("r2");
@@ -2367,7 +2246,7 @@ SubDocKey(DocKey(ColocationId=16385, [], ["r3"]), [SystemColumnId(0); HT{ physic
     DocKey doc_key;
     std::string range_key_str = Format("r$0", i);
 
-    doc_key.set_colocation_id(colocation_id);
+    SetId(&doc_key, id);
     doc_key.ResizeRangeComponents(1);
     doc_key.SetRangeComponent(KeyEntryValue(range_key_str), 0 /* idx */);
     ASSERT_OK(SetPrimitive(
@@ -2377,14 +2256,15 @@ SubDocKey(DocKey(ColocationId=16385, [], ["r3"]), [SystemColumnId(0); HT{ physic
     t = server::HybridClock::AddPhysicalTimeToHybridTime(t, 1ms);
   }
   ASSERT_OK(FlushRocksDbAndWait());
-  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
-SubDocKey(DocKey(ColocationId=16385, [], []), [HT{ physical: 4000 }]) -> DEL
-SubDocKey(DocKey(ColocationId=16385, [], ["r1"]), [SystemColumnId(0); HT{ physical: 5000 }]) -> null
-SubDocKey(DocKey(ColocationId=16385, [], ["r1"]), [SystemColumnId(0); HT{ physical: 1000 }]) -> null
-SubDocKey(DocKey(ColocationId=16385, [], ["r2"]), [SystemColumnId(0); HT{ physical: 6000 }]) -> null
-SubDocKey(DocKey(ColocationId=16385, [], ["r2"]), [SystemColumnId(0); HT{ physical: 2000 }]) -> null
-SubDocKey(DocKey(ColocationId=16385, [], ["r3"]), [SystemColumnId(0); HT{ physical: 3000 }]) -> null
-      )#");
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(Format(R"#(
+SubDocKey(DocKey($0, [], []), [HT{ physical: 4000 }]) -> DEL
+SubDocKey(DocKey($0, [], ["r1"]), [SystemColumnId(0); HT{ physical: 5000 }]) -> null
+SubDocKey(DocKey($0, [], ["r1"]), [SystemColumnId(0); HT{ physical: 1000 }]) -> null
+SubDocKey(DocKey($0, [], ["r2"]), [SystemColumnId(0); HT{ physical: 6000 }]) -> null
+SubDocKey(DocKey($0, [], ["r2"]), [SystemColumnId(0); HT{ physical: 2000 }]) -> null
+SubDocKey(DocKey($0, [], ["r3"]), [SystemColumnId(0); HT{ physical: 3000 }]) -> null
+      )#",
+      IdToString(id)));
 
   // Simulate SQL:
   //  DELETE FROM t WHERE c = "r2";
@@ -2392,7 +2272,7 @@ SubDocKey(DocKey(ColocationId=16385, [], ["r3"]), [SystemColumnId(0); HT{ physic
     DocKey doc_key;
     std::string range_key_str = Format("r$0", 2);
 
-    doc_key.set_colocation_id(colocation_id);
+    SetId(&doc_key, id);
     doc_key.ResizeRangeComponents(1);
     doc_key.SetRangeComponent(KeyEntryValue(range_key_str), 0 /* idx */);
     ASSERT_OK(SetPrimitive(
@@ -2402,21 +2282,32 @@ SubDocKey(DocKey(ColocationId=16385, [], ["r3"]), [SystemColumnId(0); HT{ physic
     t = server::HybridClock::AddPhysicalTimeToHybridTime(t, 1ms);
   }
   ASSERT_OK(FlushRocksDbAndWait());
-  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
-SubDocKey(DocKey(ColocationId=16385, [], []), [HT{ physical: 4000 }]) -> DEL
-SubDocKey(DocKey(ColocationId=16385, [], ["r1"]), [SystemColumnId(0); HT{ physical: 5000 }]) -> null
-SubDocKey(DocKey(ColocationId=16385, [], ["r1"]), [SystemColumnId(0); HT{ physical: 1000 }]) -> null
-SubDocKey(DocKey(ColocationId=16385, [], ["r2"]), [HT{ physical: 7000 }]) -> DEL
-SubDocKey(DocKey(ColocationId=16385, [], ["r2"]), [SystemColumnId(0); HT{ physical: 6000 }]) -> null
-SubDocKey(DocKey(ColocationId=16385, [], ["r2"]), [SystemColumnId(0); HT{ physical: 2000 }]) -> null
-SubDocKey(DocKey(ColocationId=16385, [], ["r3"]), [SystemColumnId(0); HT{ physical: 3000 }]) -> null
-      )#");
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(Format(R"#(
+SubDocKey(DocKey($0, [], []), [HT{ physical: 4000 }]) -> DEL
+SubDocKey(DocKey($0, [], ["r1"]), [SystemColumnId(0); HT{ physical: 5000 }]) -> null
+SubDocKey(DocKey($0, [], ["r1"]), [SystemColumnId(0); HT{ physical: 1000 }]) -> null
+SubDocKey(DocKey($0, [], ["r2"]), [HT{ physical: 7000 }]) -> DEL
+SubDocKey(DocKey($0, [], ["r2"]), [SystemColumnId(0); HT{ physical: 6000 }]) -> null
+SubDocKey(DocKey($0, [], ["r2"]), [SystemColumnId(0); HT{ physical: 2000 }]) -> null
+SubDocKey(DocKey($0, [], ["r3"]), [SystemColumnId(0); HT{ physical: 3000 }]) -> null
+      )#",
+      IdToString(id)));
 
   // Major compact.
   FullyCompactHistoryBefore(10000_usec_ht);
-  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
-SubDocKey(DocKey(ColocationId=16385, [], ["r1"]), [SystemColumnId(0); HT{ physical: 5000 }]) -> null
-      )#");
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(Format(R"#(
+SubDocKey(DocKey($0, [], ["r1"]), [SystemColumnId(0); HT{ physical: 5000 }]) -> null
+      )#",
+      IdToString(id)));
+}
+
+TEST_F(DocDBTestQl, ColocatedTableTombstoneCompaction) {
+  TestTableTombstoneCompaction<ColocationId>(0x5678);
+}
+
+TEST_F(DocDBTestQl, YsqlSystemTableTombstoneCompaction) {
+  TestTableTombstoneCompaction<const Uuid&>(
+      ASSERT_RESULT(Uuid::FromString("66666666-7777-8888-9999-000000000000")));
 }
 
 TEST_P(DocDBTestWrapper, MinorCompactionNoDeletions) {
@@ -2766,7 +2657,7 @@ SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b", "subkey_c"; HT{ physica
           I\x80\x00\x00\x00\x00\x01\xe2@\
           !', '{')
         )#");
-    VerifySubDocument(SubDocKey(doc_key), 8000_usec_ht, "{}");
+    VerifyDocument(doc_key, 8000_usec_ht, "{}");
   }
 
   // Reset our collection of snapshots now that we've performed one more operation.
@@ -2892,7 +2783,7 @@ class DocDBTestBoundaryValues: public DocDBTestWrapper {
       rocksdb()->GetLiveFilesMetaData(&files);
       ASSERT_EQ(trackers.size(), files.size());
       sort(files.begin(), files.end(), [](const auto &lhs, const auto &rhs) {
-        return lhs.name < rhs.name;
+        return lhs.name_id < rhs.name_id;
       });
 
       for (size_t j = 0; j != trackers.size(); ++j) {
@@ -2900,24 +2791,15 @@ class DocDBTestBoundaryValues: public DocDBTestWrapper {
         const auto &smallest = file.smallest.user_values;
         const auto &largest = file.largest.user_values;
         {
-          auto &times = trackers[j].times;
-          DocHybridTime temp;
-          ASSERT_OK(GetDocHybridTime(smallest, &temp));
-          ASSERT_EQ(times.min, temp.hybrid_time());
-          ASSERT_OK(GetDocHybridTime(largest, &temp));
-          ASSERT_EQ(times.max, temp.hybrid_time());
-        }
-        {
           auto &key_ints = trackers[j].key_ints;
           auto &key_strs = trackers[j].key_strs;
-          KeyEntryValue temp;
-          ASSERT_OK(GetKeyEntryValue(smallest, 0, &temp));
+          KeyEntryValue temp = ASSERT_RESULT(TEST_GetKeyEntryValue(smallest, 0));
           ASSERT_EQ(KeyEntryValue(key_strs.min), temp);
-          ASSERT_OK(GetKeyEntryValue(largest, 0, &temp));
+          temp = ASSERT_RESULT(TEST_GetKeyEntryValue(largest, 0));
           ASSERT_EQ(KeyEntryValue(key_strs.max), temp);
-          ASSERT_OK(GetKeyEntryValue(smallest, 1, &temp));
+          temp = ASSERT_RESULT(TEST_GetKeyEntryValue(smallest, 1));
           ASSERT_EQ(KeyEntryValue::Int64(key_ints.min), temp);
-          ASSERT_OK(GetKeyEntryValue(largest, 1, &temp));
+          temp = ASSERT_RESULT(TEST_GetKeyEntryValue(largest, 1));
           ASSERT_EQ(KeyEntryValue::Int64(key_ints.max), temp);
         }
       }
@@ -3085,8 +2967,7 @@ TEST_P(DocDBTestWrapper, BloomFilterCorrectness) {
       GetSubDoc(encoded_subdoc_key, &sub_doc, &sub_doc_found);
       ASSERT_TRUE(sub_doc_found) << "Entry for key #" << i
                                  << " not found, is_range_key: " << is_range_key;
-      ASSERT_EQ(static_cast<PrimitiveValue>(sub_doc),
-                PrimitiveValue::FromQLValuePB(value, CheckIsCollate::kFalse));
+      ASSERT_EQ(static_cast<PrimitiveValue>(sub_doc), PrimitiveValue::FromQLValuePB(value));
     }
   }
 
@@ -3124,12 +3005,12 @@ TEST_P(DocDBTestWrapper, MergingIterator) {
 
   // Get key2 from DocDB. Bloom filter will skip SST file and it should invalidate SST file
   // iterator in order for MergingIterator to not pickup key1 incorrectly.
-  VerifySubDocument(SubDocKey(key2), ht, "\"value2\"");
+  VerifyDocument(key2, ht, "\"value2\"");
 }
 
 TEST_P(DocDBTestWrapper, SetPrimitiveWithInitMarker) {
   // Both required and optional init marker should be ok.
-  for (auto init_marker_behavior : kInitMarkerBehaviorList) {
+  for (auto init_marker_behavior : InitMarkerBehaviorList()) {
     auto dwb = MakeDocWriteBatch(init_marker_behavior);
     ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey1), ValueRef(ValueEntryType::kObject)));
   }
@@ -3388,7 +3269,7 @@ SubDocKey(DocKey([], ["k1"]), ["s3", "s5"; HT{ physical: 10000 w: 1 }]) -> "v1";
       )#");
 }
 
-CHECKED_STATUS InsertToWriteBatchWithTTL(DocWriteBatch* dwb, const MonoDelta ttl) {
+Status InsertToWriteBatchWithTTL(DocWriteBatch* dwb, const MonoDelta ttl) {
   const DocKey doc_key(KeyEntryValues("k1"));
   KeyBytes encoded_doc_key(doc_key.Encode());
   QLValuePB subdoc;
@@ -3681,7 +3562,7 @@ SubDocKey(DocKey([], ["c"]), ["k5"; HT{ physical: 1100 }]) -> "vv5"; ttl: 25.000
 
 std::string EncodeValue(const QLValuePB& value) {
   std::string result;
-  AppendEncodedValue(value, CheckIsCollate::kFalse, &result);
+  AppendEncodedValue(value, &result);
   return result;
 }
 

@@ -11,8 +11,7 @@ menu:
     weight: 200
 aliases:
   - /preview/api/ysql/exprs/
-isTocNested: true
-showAsideToc: true
+type: indexpage
 ---
 
 YSQL supports all PostgreSQL-compatible built-in functions and operators. The following are the currently documented ones.

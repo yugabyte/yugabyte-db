@@ -109,7 +109,7 @@ std::unique_ptr<OptionsDescription> HelpOptions() {
   return result;
 }
 
-CHECKED_STATUS HelpExecute(const HelpArguments& args) {
+Status HelpExecute(const HelpArguments& args) {
   if (args.command.empty()) {
     ShowCommands<DataPatcherAction>();
     return Status::OK();
@@ -338,7 +338,7 @@ struct DeltaData {
 
 };
 
-CHECKED_STATUS AddDeltaToSstFile(
+Status AddDeltaToSstFile(
     const std::string& fname, MonoDelta delta, HybridTime bound_time,
     size_t max_num_old_wal_entries, bool debug, RocksDBHelper* helper) {
   LOG(INFO) << "Patching: " << fname << ", " << static_cast<const void*>(&fname);
@@ -475,7 +475,7 @@ CHECKED_STATUS AddDeltaToSstFile(
                 HybridTime(metadata_pb.start_hybrid_time()), FileType::kSST));
             metadata_pb.set_start_hybrid_time(new_start_ht.ToUint64());
             txn_metadata_buffer.clear();
-            pb_util::SerializeToString(metadata_pb, &txn_metadata_buffer);
+            RETURN_NOT_OK(pb_util::SerializeToString(metadata_pb, &txn_metadata_buffer));
             add_kv(key, txn_metadata_buffer);
           } else {
             delta_data.AddEarlyTime(HybridTime(metadata_pb.start_hybrid_time()));
@@ -547,7 +547,7 @@ void CheckDataFile(
   out->push_back(full_path);
 }
 
-CHECKED_STATUS ChangeTimeInDataFiles(
+Status ChangeTimeInDataFiles(
     MonoDelta delta, HybridTime bound_time, size_t max_num_old_wal_entries,
     const std::vector<std::string>& dirs, bool debug, TaskRunner* runner) {
   std::vector<std::string> files_to_process;
@@ -577,11 +577,11 @@ CHECKED_STATUS ChangeTimeInDataFiles(
   return Status::OK();
 }
 
-CHECKED_STATUS ChangeTimeInWalDir(
+Status ChangeTimeInWalDir(
     MonoDelta delta, HybridTime bound_time, size_t max_num_old_wal_entries,
     const std::string& dir) {
   auto env = Env::Default();
-  auto log_index = make_scoped_refptr<log::LogIndex>(dir);
+  auto log_index = VERIFY_RESULT(log::LogIndex::NewLogIndex(dir));
   std::unique_ptr<log::LogReader> log_reader;
   RETURN_NOT_OK(log::LogReader::Open(
       env, log_index, kLogPrefix, dir, /* table_metric_entity= */ nullptr,
@@ -606,7 +606,7 @@ CHECKED_STATUS ChangeTimeInWalDir(
   header.set_minor_version(log::kLogMinorVersion);
   header.set_sequence_number(1);
   header.set_unused_tablet_id("TABLET ID");
-  header.mutable_unused_schema();
+  header.mutable_schema();
 
   RETURN_NOT_OK(new_segment.WriteHeaderAndOpen(header));
 
@@ -632,9 +632,9 @@ CHECKED_STATUS ChangeTimeInWalDir(
       OpId committed_op_id;
       int64_t last_index = -1;
 
-      auto write_entry_batch = [
-          &batch, &buffer, &num_entries, &new_segment, &read_result, &committed_op_id](
-              bool last_batch_of_segment) -> Status {
+      auto write_entry_batch = [&batch, &buffer, &num_entries, &new_segment, &read_result,
+                                &committed_op_id,
+                                &log_index](bool last_batch_of_segment) -> Status {
         if (last_batch_of_segment) {
           read_result.committed_op_id.ToPB(batch.mutable_committed_op_id());
         } else if (committed_op_id.valid()) {
@@ -644,8 +644,23 @@ CHECKED_STATUS ChangeTimeInWalDir(
           batch.set_mono_time(read_result.entry_metadata.back().entry_time.ToUInt64());
         }
         buffer.clear();
-        pb_util::AppendToString(batch, &buffer);
+        RETURN_NOT_OK(pb_util::AppendToString(batch, &buffer));
         num_entries += batch.entry().size();
+
+        const auto batch_offset = new_segment.written_offset();
+        for (const auto& entry_pb : batch.entry()) {
+          if (!entry_pb.has_replicate()) {
+            continue;
+          }
+
+          log::LogIndexEntry index_entry;
+
+          index_entry.op_id = yb::OpId::FromPB(entry_pb.replicate().id());
+          index_entry.segment_sequence_number = new_segment.header().sequence_number();
+          index_entry.offset_in_segment = batch_offset;
+          RETURN_NOT_OK(log_index->AddEntry(index_entry));
+        }
+
         RETURN_NOT_OK(new_segment.WriteEntryBatch(Slice(buffer)));
         batch.clear_entry();
         return Status::OK();
@@ -718,11 +733,11 @@ CHECKED_STATUS ChangeTimeInWalDir(
     footer.set_max_replicate_index(max_replicate_index);
   }
 
-  RETURN_NOT_OK(new_segment.WriteFooterAndClose(footer));
+  RETURN_NOT_OK(new_segment.WriteIndexWithFooterAndClose(log_index.get(), &footer));
   return Env::Default()->RenameFile(tmp_segment_path, new_segment_path);
 }
 
-CHECKED_STATUS ChangeTimeInWalDirs(
+Status ChangeTimeInWalDirs(
     MonoDelta delta, HybridTime bound_time, size_t max_num_old_wal_entries,
     const std::vector<std::string>& dirs, TaskRunner* runner) {
   Env* env = Env::Default();
@@ -751,7 +766,7 @@ CHECKED_STATUS ChangeTimeInWalDirs(
   return Status::OK();
 }
 
-CHECKED_STATUS ChangeTimeExecute(const ChangeTimeArguments& args, bool subtract) {
+Status ChangeTimeExecute(const ChangeTimeArguments& args, bool subtract) {
   auto delta = VERIFY_RESULT(DateTime::IntervalFromString(args.delta));
   if (subtract) {
     delta = -delta;
@@ -787,7 +802,7 @@ std::unique_ptr<OptionsDescription> AddTimeOptions() {
   return ChangeTimeOptions(kAddTimeDescription);
 }
 
-CHECKED_STATUS AddTimeExecute(const AddTimeArguments& args) {
+Status AddTimeExecute(const AddTimeArguments& args) {
   return ChangeTimeExecute(args, /* subtract= */ false);
 }
 
@@ -803,7 +818,7 @@ std::unique_ptr<OptionsDescription> SubTimeOptions() {
   return ChangeTimeOptions(kSubTimeDescription);
 }
 
-CHECKED_STATUS SubTimeExecute(const SubTimeArguments& args) {
+Status SubTimeExecute(const SubTimeArguments& args) {
   return ChangeTimeExecute(args, /* subtract= */ true);
 }
 
@@ -838,7 +853,7 @@ std::unique_ptr<OptionsDescription> ApplyPatchOptions() {
 
 class ApplyPatch {
  public:
-  CHECKED_STATUS Execute(const ApplyPatchArguments& args) {
+  Status Execute(const ApplyPatchArguments& args) {
     dry_run_ = args.dry_run;
     revert_ = args.revert;
     LOG(INFO) << "Running the ApplyPatch command";
@@ -930,7 +945,7 @@ class ApplyPatch {
   // Functions for traversing RocksDB data directories
   // ----------------------------------------------------------------------------------------------
 
-  CHECKED_STATUS WalkDataCallback(
+  Status WalkDataCallback(
       Env::FileType type, const std::string& dirname, const std::string& fname) {
     switch (type) {
       case Env::FileType::FILE_TYPE:
@@ -945,7 +960,7 @@ class ApplyPatch {
   // Handles a file found during walking through the a data (RocksDB) directory tree. Looks for
   // CURRENT and MANIFEST files and copies them to the corresponding .patched directory. Does not
   // modify live data of the cluster.
-  CHECKED_STATUS HandleDataFile(const std::string& dirname, const std::string& fname) {
+  Status HandleDataFile(const std::string& dirname, const std::string& fname) {
     if (revert_) {
       // We don't look at any of the manifest files during the revert operation.
       return Status::OK();
@@ -980,7 +995,7 @@ class ApplyPatch {
   // Traversing WAL directories
   // ----------------------------------------------------------------------------------------------
 
-  CHECKED_STATUS WalkWalCallback(
+  Status WalkWalCallback(
       Env::FileType type, const std::string& dirname, const std::string& fname) {
     if (type != Env::FileType::DIRECTORY_TYPE) {
       return Status::OK();
@@ -1012,7 +1027,7 @@ class ApplyPatch {
   }
 
   // Renames dir1 -> dir2 -> dir3, starting from the end of the chain.
-  CHECKED_STATUS ChainRename(
+  Status ChainRename(
       const std::string& dir1, const std::string& dir2, const std::string& dir3) {
     RETURN_NOT_OK(SafeRename(dir2, dir3, /* check_dst_collision= */ true));
 
@@ -1023,7 +1038,7 @@ class ApplyPatch {
 
   // A logging wrapper over directory renaming. In dry-run mode, checks for some errors, but
   // check_dst_collision=false allows to skip ensuring that the destination does not exist.
-  CHECKED_STATUS SafeRename(
+  Status SafeRename(
       const std::string& src, const std::string& dst, bool check_dst_collision) {
     if (dry_run_) {
       if (!env_->FileExists(src)) {
@@ -1057,7 +1072,7 @@ class ApplyPatch {
   bool revert_ = false;
 };
 
-CHECKED_STATUS ApplyPatchExecute(const ApplyPatchArguments& args) {
+Status ApplyPatchExecute(const ApplyPatchArguments& args) {
   ApplyPatch apply_patch;
   return apply_patch.Execute(args);
 }

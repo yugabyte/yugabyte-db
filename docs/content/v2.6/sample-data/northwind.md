@@ -8,8 +8,7 @@ menu:
     identifier: northwind
     parent: sample-data
     weight: 2752
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Download and install the PostgreSQL-compatible version of the Northwind dataset on the YugabyteDB distributed SQL database.

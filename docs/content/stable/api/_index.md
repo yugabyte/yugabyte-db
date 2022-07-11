@@ -5,11 +5,12 @@ linkTitle: APIs
 description: YugabyteDB API reference for PostgreSQL-compatible YSQL and Cassandra-compatible YCQL
 image: /images/section_icons/index/api.png
 headcontent: YugabyteDB API reference
-section: REFERENCE
 menu:
   stable:
     identifier: api
+    parent: reference
     weight: 1100
+type: indexpage
 ---
 
 <div class="row">

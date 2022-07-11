@@ -1,10 +1,33 @@
 @import '../../../_style/colors.scss';
 
 .backup-configuration-form {
+  & > .row {
+    margin-bottom: 24px;
+  }
+
+  .yb-field-group {
+    padding-bottom: 0;
+  }
+
   .duration-options {
     display: flex;
-    align-items: center;
+    align-items: baseline;
     margin-top: 5px;
+  }
+
+  .alert-message {
+    &.warning {
+      margin-top: 15px;
+      color: #9d6c00;
+      font-weight: 400;
+      font-size: 13px;
+      line-height: 16px;
+
+      i {
+        color: $YB_WARNING_COLOR;
+        font-size: 14px;
+      }
+    }
   }
 
   label.btn-group-radio {
@@ -69,6 +92,19 @@
       font-weight: 600;
       font-size: 12px;
       font-style: normal;
+
+      button {
+        width: 73px;
+        height: 30px;
+        background: $YB_BG_WHITE_3;
+        border: 1px solid $YB_BG_WHITE_4;
+        border-radius: 6px;
+        font-style: normal;
+        font-weight: 500;
+        font-size: 12px;
+        line-height: 15px;
+        padding: 5px 10px;
+      }
     }
 
     .table-list {
@@ -84,6 +120,10 @@
         align-items: center;
         padding: 0px 10px;
         justify-content: space-between;
+        font-style: normal;
+        font-weight: 400;
+        font-size: 12px;
+        line-height: 19px;
 
         .select-icon {
           display: none;

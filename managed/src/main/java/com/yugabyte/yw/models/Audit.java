@@ -9,9 +9,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.common.PlatformServiceException;
 import io.ebean.Finder;
 import io.ebean.Model;
-import io.ebean.annotation.EnumValue;
 import io.ebean.annotation.CreatedTimestamp;
 import io.ebean.annotation.DbJson;
+import io.ebean.annotation.EnumValue;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.Date;
@@ -126,6 +126,15 @@ public class Audit extends Model {
 
     @EnumValue("GFlags")
     GFlags,
+
+    @EnumValue("Hook")
+    Hook,
+
+    @EnumValue("Hook Scope")
+    HookScope,
+
+    @EnumValue("NodeAgent")
+    NodeAgent
   }
 
   public enum ActionType {
@@ -227,6 +236,9 @@ public class Audit extends Model {
 
     @EnumValue("Upgrade Systemd")
     UpgradeSystemd,
+
+    @EnumValue("Reboot Universe")
+    RebootUniverse,
 
     @EnumValue("Resize Node")
     ResizeNode,
@@ -382,7 +394,52 @@ public class Audit extends Model {
     DeleteInstanceType,
 
     @EnumValue("Get Universe Resources")
-    GetUniverseResources
+    GetUniverseResources,
+
+    @EnumValue("Third-party Software Upgrade")
+    ThirdpartySoftwareUpgrade,
+
+    @EnumValue("Create TableSpaces")
+    CreateTableSpaces,
+
+    @EnumValue("Create Hook")
+    CreateHook,
+
+    @EnumValue("Delete Hook")
+    DeleteHook,
+
+    @EnumValue("Update Hook")
+    UpdateHook,
+
+    @EnumValue("Create Hook Scope")
+    CreateHookScope,
+
+    @EnumValue("Delete Hook Scope")
+    DeleteHookScope,
+
+    @EnumValue("Add Hook to Hook Scope")
+    AddHook,
+
+    @EnumValue("Remove Hook from Hook Scope")
+    RemoveHook,
+
+    @EnumValue("Rotate AccessKey")
+    RotateAccessKey,
+
+    @EnumValue("Create And Rotate Access Key")
+    CreateAndRotateAccessKey,
+
+    @EnumValue("Run Hook")
+    RunHook,
+
+    @EnumValue("Run API Triggered Tasks")
+    RunApiTriggeredHooks,
+
+    @EnumValue("Add Node Agent")
+    AddNodeAgent,
+
+    @EnumValue("Delete Node Agent")
+    DeleteNodeAgent
   }
 
   // An auto incrementing, user-friendly ID for the audit entry.

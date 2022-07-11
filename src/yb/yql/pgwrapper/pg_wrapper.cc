@@ -23,6 +23,7 @@
 
 #include <boost/algorithm/string.hpp>
 
+#include "yb/tserver/tablet_server_interface.h"
 #include "yb/util/env_util.h"
 #include "yb/util/errno.h"
 #include "yb/util/flag_tags.h"
@@ -41,6 +42,10 @@ DEFINE_string(pg_proxy_bind_address, "", "Address for the PostgreSQL proxy to bi
 DEFINE_string(postmaster_cgroup, "", "cgroup to add postmaster process to");
 DEFINE_bool(pg_transactions_enabled, true,
             "True to enable transactions in YugaByte PostgreSQL API.");
+DEFINE_string(yb_backend_oom_score_adj, "900",
+              "oom_score_adj of postgres backends in linux environments");
+DEFINE_bool(yb_pg_terminate_child_backend, false,
+            "Terminate other active server processes when a backend is killed");
 DEFINE_bool(pg_verbose_error_log, false,
             "True to enable verbose logging of errors in PostgreSQL server");
 DEFINE_int32(pgsql_proxy_webserver_port, 13000, "Webserver port for PGSQL");
@@ -157,7 +162,7 @@ void MergeSharedPreloadLibraries(const string& src, vector<string>* defaults) {
   defaults->insert(defaults->end(), new_items.begin(), new_items.end());
 }
 
-CHECKED_STATUS ReadCSVValues(const string& csv, vector<string>* lines) {
+Status ReadCSVValues(const string& csv, vector<string>* lines) {
   // Function reads CSV string in the following format:
   // - fields are divided with comma (,)
   // - fields with comma (,) or double-quote (") are quoted with double-quote (")
@@ -426,6 +431,10 @@ Status PgWrapper::Start() {
   pg_proc_->SetEnv("LD_LIBRARY_PATH", boost::join(ld_library_path, ":"));
   pg_proc_->ShareParentStderr();
   pg_proc_->ShareParentStdout();
+  pg_proc_->SetEnv("FLAGS_yb_pg_terminate_child_backend",
+                    FLAGS_yb_pg_terminate_child_backend ? "true" : "false");
+  pg_proc_->SetEnv("FLAGS_yb_backend_oom_score_adj", FLAGS_yb_backend_oom_score_adj);
+
   // See YBSetParentDeathSignal in pg_yb_utils.c for how this is used.
   pg_proc_->SetEnv("YB_PG_PDEATHSIG", Format("$0", SIGINT));
   pg_proc_->InheritNonstandardFd(conf_.tserver_shm_fd);
@@ -437,6 +446,10 @@ Status PgWrapper::Start() {
   }
   LOG(INFO) << "PostgreSQL server running as pid " << pg_proc_->pid();
   return Status::OK();
+}
+
+Status PgWrapper::ReloadConfig() {
+  return pg_proc_->Kill(SIGHUP);
 }
 
 void PgWrapper::Kill() {
@@ -606,8 +619,11 @@ void PgWrapper::SetCommonEnv(Subprocess* proc, bool yb_enabled) {
 // PgSupervisor: monitoring a PostgreSQL child process and restarting if needed
 // ------------------------------------------------------------------------------------------------
 
-PgSupervisor::PgSupervisor(PgProcessConf conf)
+PgSupervisor::PgSupervisor(PgProcessConf conf, tserver::TabletServerIf* tserver)
     : conf_(std::move(conf)) {
+  if (tserver) {
+    tserver->RegisterCertificateReloader(std::bind(&PgSupervisor::ReloadConfig, this));
+  }
 }
 
 PgSupervisor::~PgSupervisor() {
@@ -632,7 +648,7 @@ Status PgSupervisor::Start() {
   return Status::OK();
 }
 
-CHECKED_STATUS PgSupervisor::CleanupOldServerUnlocked() {
+Status PgSupervisor::CleanupOldServerUnlocked() {
   std::string postmaster_pid_filename = JoinPathSegments(conf_.data_dir, "postmaster.pid");
   if (Env::Default()->FileExists(postmaster_pid_filename)) {
     std::ifstream postmaster_pid_file;
@@ -682,7 +698,7 @@ PgProcessState PgSupervisor::GetState() {
   return state_;
 }
 
-CHECKED_STATUS PgSupervisor::ExpectStateUnlocked(PgProcessState expected_state) {
+Status PgSupervisor::ExpectStateUnlocked(PgProcessState expected_state) {
   if (state_ != expected_state) {
     return STATUS_FORMAT(
         IllegalState, "Expected PostgreSQL server state to be $0, got $1", expected_state, state_);
@@ -690,7 +706,7 @@ CHECKED_STATUS PgSupervisor::ExpectStateUnlocked(PgProcessState expected_state) 
   return Status::OK();
 }
 
-CHECKED_STATUS PgSupervisor::StartServerUnlocked() {
+Status PgSupervisor::StartServerUnlocked() {
   if (pg_wrapper_) {
     return STATUS(IllegalState, "Expecting pg_wrapper_ to not be set");
   }
@@ -748,6 +764,14 @@ void PgSupervisor::Stop() {
     }
   }
   supervisor_thread_->Join();
+}
+
+Status PgSupervisor::ReloadConfig() {
+  std::lock_guard<std::mutex> lock(mtx_);
+  if (pg_wrapper_) {
+    return pg_wrapper_->ReloadConfig();
+  }
+  return Status::OK();
 }
 
 }  // namespace pgwrapper

@@ -64,7 +64,7 @@ constexpr char CQLMessage::kTopologyChangeEvent[];
 constexpr char CQLMessage::kStatusChangeEvent[];
 constexpr char CQLMessage::kSchemaChangeEvent[];
 
-CHECKED_STATUS CQLMessage::QueryParameters::GetBindVariableValue(const std::string& name,
+Status CQLMessage::QueryParameters::GetBindVariableValue(const std::string& name,
                                                                  const size_t pos,
                                                                  const Value** value) const {
   if (!value_map.empty()) {
@@ -587,43 +587,43 @@ Status CQLRequest::ParseQueryParameters(QueryParameters* params) {
   return Status::OK();
 }
 
-CHECKED_STATUS CQLRequest::ParseByte(uint8_t* value) {
+Status CQLRequest::ParseByte(uint8_t* value) {
   static_assert(sizeof(*value) == kByteSize, "inconsistent byte size");
   return ParseNum("CQL byte", Load8, value);
 }
 
-CHECKED_STATUS CQLRequest::ParseShort(uint16_t* value) {
+Status CQLRequest::ParseShort(uint16_t* value) {
   static_assert(sizeof(*value) == kShortSize, "inconsistent short size");
   return ParseNum("CQL byte", NetworkByteOrder::Load16, value);
 }
 
-CHECKED_STATUS CQLRequest::ParseInt(int32_t* value) {
+Status CQLRequest::ParseInt(int32_t* value) {
   static_assert(sizeof(*value) == kIntSize, "inconsistent int size");
   return ParseNum("CQL int", NetworkByteOrder::Load32, value);
 }
 
-CHECKED_STATUS CQLRequest::ParseLong(int64_t* value) {
+Status CQLRequest::ParseLong(int64_t* value) {
   static_assert(sizeof(*value) == kLongSize, "inconsistent long size");
   return ParseNum("CQL long", NetworkByteOrder::Load64, value);
 }
 
-CHECKED_STATUS CQLRequest::ParseString(std::string* value)  {
+Status CQLRequest::ParseString(std::string* value)  {
   return ParseBytes("CQL string", &CQLRequest::ParseShort, value);
 }
 
-CHECKED_STATUS CQLRequest::ParseLongString(std::string* value)  {
+Status CQLRequest::ParseLongString(std::string* value)  {
   return ParseBytes("CQL long string", &CQLRequest::ParseInt, value);
 }
 
-CHECKED_STATUS CQLRequest::ParseShortBytes(std::string* value) {
+Status CQLRequest::ParseShortBytes(std::string* value) {
   return ParseBytes("CQL short bytes", &CQLRequest::ParseShort, value);
 }
 
-CHECKED_STATUS CQLRequest::ParseBytes(std::string* value) {
+Status CQLRequest::ParseBytes(std::string* value) {
   return ParseBytes("CQL bytes", &CQLRequest::ParseInt, value);
 }
 
-CHECKED_STATUS CQLRequest::ParseConsistency(Consistency* consistency) {
+Status CQLRequest::ParseConsistency(Consistency* consistency) {
   static_assert(sizeof(*consistency) == kConsistencySize, "inconsistent consistency size");
   return ParseNum("CQL consistency", NetworkByteOrder::Load16, consistency);
 }
@@ -674,7 +674,7 @@ Status AuthResponseRequest::ParseBody() {
   return STATUS(InvalidArgument, error_msg);
 }
 
-CHECKED_STATUS AuthResponseRequest::AuthQueryParameters::GetBindVariable(
+Status AuthResponseRequest::AuthQueryParameters::GetBindVariable(
     const std::string& name,
     int64_t pos,
     const std::shared_ptr<QLType>& type,

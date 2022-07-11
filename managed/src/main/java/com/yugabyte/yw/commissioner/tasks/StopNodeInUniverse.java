@@ -18,6 +18,7 @@ import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.util.Arrays;
@@ -106,6 +107,12 @@ public class StopNodeInUniverse extends UniverseTaskBase {
               .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
         }
 
+        // Stop Yb-controller on this node.
+        if (CommonUtils.canConfigureYbc(universe)) {
+          createStopYbControllerTasks(Arrays.asList(currentNode))
+              .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+        }
+
         // Stop the master process on this node.
         if (currentNode.isMaster) {
           createStopMasterTasks(new HashSet<NodeDetails>(Arrays.asList(currentNode)))
@@ -126,6 +133,9 @@ public class StopNodeInUniverse extends UniverseTaskBase {
             true /* useHostPort */);
         createUpdateNodeProcessTask(taskParams().nodeName, ServerType.MASTER, false)
             .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+        // Update the master addresses on the target universes whose source universe belongs to
+        // this task.
+        createXClusterConfigUpdateMasterAddressesTask();
       }
 
       // Update Node State to Stopped

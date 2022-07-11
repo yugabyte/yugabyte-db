@@ -6,11 +6,10 @@ description: Compare CockroachDB with YugabyteDB in terms of performance, Postgr
 aliases:
   - /comparisons/cockroachdb/
 menu:
-  preview:
+  preview_faq:
     parent: comparisons
     weight: 1075
-isTocNested: false
-showAsideToc: true
+type: docs
 ---
 
 YugabyteDB’s sharding, replication and transactions architecture is similar to that CockroachDB given that both are inspired by the [Google Spanner design paper](https://research.google.com/archive/spanner-osdi2012.pdf). Additionally, both use Raft as the distributed consensus replication algorithm and RocksDB as the per-node storage engine. The following sections highlight the advantages and similarities YugabyteDB has when compared with CockroachDB.

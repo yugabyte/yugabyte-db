@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!--  Built in 2022-04-18 02:23 by logback-translator            -->
+<!--                                                             -->
+<!--  For sponsoring SLF4J/logback/reload4j projects see         -->
+<!--    https://github.com/sponsors/qos-ch                       -->
+<!--                                                             -->
+<configuration>
+  <appender name="stdout" class="ch.qos.logback.core.ConsoleAppender">
+    <encoder>
+      <pattern>%d{HH:mm:ss.SSS} %level [%logger] \(%thread\) - %msg%n</pattern>
+    </encoder>
+  </appender>
+  <appender name="fileAppender" class="ch.qos.logback.core.rolling.RollingFileAppender">
+    <!--See also http://logback.qos.ch/manual/appenders.html#RollingFileAppender-->
+    <File>cdcsubscriber.log</File>
+    <encoder>
+      <pattern>%d{HH:mm:ss.SSS} %level [%logger] \(%thread\) - %msg%n</pattern>
+    </encoder>
+    <rollingPolicy class="ch.qos.logback.core.rolling.FixedWindowRollingPolicy">
+      <fileNamePattern>cdcsubscriber.%d{yyyy-MM-dd}.%i.log</fileNamePattern>
+    </rollingPolicy>
+    <triggeringPolicy class="ch.qos.logback.core.rolling.SizeBasedTriggeringPolicy"/>
+  </appender>
+  <logger name="org.yb.client" level="INFO"/>
+  <root level="INFO">
+    <appender-ref ref="stdout"/>
+    <appender-ref ref="fileAppender"/>
+  </root>
+</configuration>

@@ -305,11 +305,11 @@ class Reactor {
   void operator=(const Reactor&) = delete;
 
   // This may be called from another thread.
-  CHECKED_STATUS Init();
+  Status Init();
 
   // Add any connections on this reactor thread into the given status dump.
   // May be called from another thread.
-  CHECKED_STATUS DumpRunningRpcs(
+  Status DumpRunningRpcs(
       const DumpRunningRpcsRequestPB& req, DumpRunningRpcsResponsePB* resp);
 
   // Block until the Reactor thread is shut down
@@ -363,7 +363,7 @@ class Reactor {
 
   // Collect metrics.
   // Must be called from the reactor thread.
-  CHECKED_STATUS GetMetrics(ReactorMetrics *metrics);
+  Status GetMetrics(ReactorMetrics *metrics);
 
   void Join();
 
@@ -409,7 +409,7 @@ class Reactor {
   // May return a bad Status if the connect() call fails.
   // The resulting connection object is managed internally by the reactor thread.
   // Deadline specifies latest time allowed for initializing the connection.
-  CHECKED_STATUS FindOrStartConnection(const ConnectionId &conn_id,
+  Status FindOrStartConnection(const ConnectionId &conn_id,
                                        const std::string& hostname,
                                        const MonoTime &deadline,
                                        ConnectionPtr* conn);
@@ -438,7 +438,7 @@ class Reactor {
   bool DrainTaskQueueAndCheckIfClosing();
 
   template<class F>
-  CHECKED_STATUS RunOnReactorThread(const F& f, const SourceLocation& source_location);
+  Status RunOnReactorThread(const F& f, const SourceLocation& source_location);
 
   void ShutdownConnection(const ConnectionPtr& conn);
 

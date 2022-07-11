@@ -81,11 +81,11 @@ class QueryPagingState {
                                               bool is_top_level_read_node);
 
   // Compose paging state to send to users.
-  CHECKED_STATUS ComposePagingStateForUser();
-  CHECKED_STATUS ComposePagingStateForUser(const QLPagingStatePB& child_state);
+  Status ComposePagingStateForUser();
+  Status ComposePagingStateForUser(const QLPagingStatePB& child_state);
 
   // Load the paging state in DocDB responses.
-  CHECKED_STATUS LoadPagingStateFromDocdb(const RowsResult::SharedPtr& rows_result,
+  Status LoadPagingStateFromDocdb(const RowsResult::SharedPtr& rows_result,
                                           int64_t number_of_new_rows,
                                           bool has_nested_query);
 
@@ -292,7 +292,7 @@ class TnodeContext {
   }
 
   // Append rows result that was sent back by DocDB to this node.
-  CHECKED_STATUS AppendRowsResult(RowsResult::SharedPtr&& rows_result);
+  Status AppendRowsResult(RowsResult::SharedPtr&& rows_result);
 
   // Create CQL paging state based on user's information.
   // When calling YugaByte, users provide all info in StatementParameters including paging state.
@@ -300,7 +300,7 @@ class TnodeContext {
                                      bool is_top_level_select);
 
   // Clear paging state when the query reaches the end of scan.
-  CHECKED_STATUS ClearQueryState();
+  Status ClearQueryState();
 
   QueryPagingState *query_state() {
     return query_state_.get();
@@ -396,7 +396,7 @@ class TnodeContext {
   //      The counter state = top-level query counter state.
   //      User paging state = { Nested QueryPagingState::query_pb_,
   //                            Top-Level QueryPagingState::counter_pb_ }
-  CHECKED_STATUS ComposeRowsResultForUser(const TreeNode* child_select_node, bool for_new_batches);
+  Status ComposeRowsResultForUser(const TreeNode* child_select_node, bool for_new_batches);
 
   const boost::optional<uint32_t>& hash_code_from_partition_key_ops() {
     return hash_code_from_partition_key_ops_;
@@ -495,7 +495,7 @@ class ExecContext : public ProcessContextBase {
 
   //------------------------------------------------------------------------------------------------
   // Start a distributed transaction.
-  CHECKED_STATUS StartTransaction(
+  Status StartTransaction(
       IsolationLevel isolation_level, QLEnv* ql_env, Rescheduler* rescheduler);
 
   // Is a transaction currently in progress?
@@ -509,10 +509,10 @@ class ExecContext : public ProcessContextBase {
   }
 
   // Prepare a child distributed transaction.
-  CHECKED_STATUS PrepareChildTransaction(CoarseTimePoint deadline, ChildTransactionDataPB* data);
+  Status PrepareChildTransaction(CoarseTimePoint deadline, ChildTransactionDataPB* data);
 
   // Apply the result of a child distributed transaction.
-  CHECKED_STATUS ApplyChildTransactionResult(const ChildTransactionResultPB& result);
+  Status ApplyChildTransactionResult(const ChildTransactionResultPB& result);
 
   // Commit the current distributed transaction.
   void CommitTransaction(CoarseTimePoint deadline, client::CommitCallback callback);

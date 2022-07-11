@@ -13,6 +13,7 @@ on:
       - 'architecture/**'
       - 'managed/**'
       - '.gitignore'
+      - '.github/vale-styles/**'
 
   pull_request:
     branches:
@@ -24,6 +25,7 @@ on:
       - 'architecture/**'
       - 'managed/**'
       - '.gitignore'
+      - '.github/vale-styles/**'
 
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
@@ -39,18 +41,33 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: "GCC 5, debug, Linuxbrew, CentOS 7"
+          - name: "Clang 13, debug, CentOS 7"
             os: ubuntu-20.04
-            yb_build_args: debug
-          - name: "GCC 5, release, Linuxbrew, CentOS 7"
+            yb_build_args: --clang13 debug --no-linuxbrew
+
+          - name: "Clang 13, fastdebug, CentOS 7"
             os: ubuntu-20.04
-            yb_build_args: release
-          - name: "Clang 11, debug, CentOS 7"
+            yb_build_args: --clang13 fastdebug --no-linuxbrew
+
+          - name: "Clang 13, release, CentOS 7"
             os: ubuntu-20.04
-            yb_build_args: --clang11 debug
-          - name: "Clang 11, release, CentOS 7"
+            yb_build_args: --clang13 release --no-linuxbrew
+
+          - name: "Clang 13, release, CentOS 7, Linuxbrew glibc"
             os: ubuntu-20.04
-            yb_build_args: --clang11 release
+            yb_build_args: --clang13 release --linuxbrew
+
+          - name: "GCC 11, debug, CentOS 7"
+            os: ubuntu-20.04
+            yb_build_args: --gcc11 debug --no-linuxbrew
+
+          - name: "GCC 11, fastdebug, CentOS 7"
+            os: ubuntu-20.04
+            yb_build_args: --gcc11 fastdebug --no-linuxbrew
+
+          - name: "GCC 11, release, CentOS 7"
+            os: ubuntu-20.04
+            yb_build_args: --gcc11 release --no-linuxbrew
     if: >
       (github.event_name == 'push' &&
        !contains(github.event.head_commit.message, 'skip ci') &&
@@ -71,7 +88,7 @@ jobs:
               -i \
               "-w=$build_dir_in_container" \
               --mount type=bind,source="$PWD",target="$build_dir_in_container" \
-              "yugabyteci/yb_build_infra_centos7:v2021-03-26T05_02_29" \
+              "yugabyteci/yb_build_infra_centos7:v2022-05-05T04_49_22" \
               bash -c '
                 set -euo pipefail -x
                 echo "OSTYPE (inside Docker): $OSTYPE"

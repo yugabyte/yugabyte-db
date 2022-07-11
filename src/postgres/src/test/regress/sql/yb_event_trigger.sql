@@ -70,7 +70,8 @@ SELECT * FROM test;
 DROP TABLE test;
 
 -- Verify that yb_db_admin role can use event triggers.
-ALTER EVENT TRIGGER foo OWNER TO yb_db_admin;
+CREATE ROLE superuser_role SUPERUSER;
+CREATE ROLE non_superuser_role;
 SET SESSION AUTHORIZATION yb_db_admin;
 CREATE EVENT TRIGGER admin_foo ON ddl_command_start EXECUTE PROCEDURE test_event_trigger_foo();
 CREATE EVENT TRIGGER admin_bar ON ddl_command_end EXECUTE PROCEDURE test_event_trigger_bar();
@@ -78,5 +79,6 @@ ALTER EVENT TRIGGER admin_foo DISABLE;
 ALTER EVENT TRIGGER admin_foo ENABLE REPLICA;
 ALTER EVENT TRIGGER admin_foo ENABLE ALWAYS;
 ALTER EVENT TRIGGER admin_foo RENAME TO admin_foo_new;
+ALTER EVENT TRIGGER admin_foo_new OWNER TO superuser_role;
+ALTER EVENT TRIGGER admin_foo_new OWNER TO non_superuser_role;
 DROP EVENT TRIGGER admin_foo_new;
-

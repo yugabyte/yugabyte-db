@@ -61,6 +61,11 @@ INSERT INTO sc_multi_desc(k, r, v) VALUES (1, 10, 10),(1, 10, 10),(1, NULL, 2),(
 EXPLAIN (COSTS OFF) SELECT * FROM sc_multi_desc WHERE k = 1;
 SELECT * FROM sc_multi_desc WHERE k = 1;
 
+-- Testing for the case in issue #12481
+CREATE INDEX range_ind ON sc_multi_desc(v ASC, r ASC);
+EXPLAIN SELECT v,r FROM sc_multi_desc WHERE v IN (2,4) and r is null;
+SELECT v,r FROM sc_multi_desc WHERE v IN (2,4) and r is null;
+
 -- Test NULLS last ordering.
 CREATE TABLE sc_desc_nl(h int, r int, v int);
 CREATE INDEX on sc_desc_nl(h HASH, r DESC NULLS LAST);

@@ -216,7 +216,7 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
     ASSERT_OK(WaitSync(begin, end, table));
   }
 
-  CHECKED_STATUS BatchedFillTable(
+  Status BatchedFillTable(
       const int begin, const int end, const int batch_size, const TableHandle& table) {
     {
       auto session = CreateSession();
@@ -264,7 +264,7 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
     return TabletIdsAndReplicas(tablet_ids, replicas);
   }
 
-  CHECKED_STATUS WaitSync(int begin, int end, const TableHandle& table) {
+  Status WaitSync(int begin, int end, const TableHandle& table) {
     auto deadline = MonoTime::Now() + MonoDelta::FromSeconds(30);
     TabletIdsAndReplicas info = VERIFY_RESULT(GetTabletIdsAndReplicas(table));
     std::vector<std::string> tablet_ids = info.first;
@@ -275,7 +275,7 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
     return Status::OK();
   }
 
-  CHECKED_STATUS DoWaitSync(
+  Status DoWaitSync(
       const MonoTime& deadline,
       const std::vector<std::string>& tablet_ids,
       const std::string& replica,
@@ -356,7 +356,7 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
     return Wait(condition, deadline, "Waiting for replication");
   }
 
-  CHECKED_STATUS VerifyConsistency(
+  Status VerifyConsistency(
       int begin, int end, const TableHandle& table, int expected_rows_mismatched = 0) {
     auto deadline = MonoTime::Now() + MonoDelta::FromSeconds(30 * kTimeMultiplier);
     TabletIdsAndReplicas info = VERIFY_RESULT(GetTabletIdsAndReplicas(table));
@@ -370,7 +370,7 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
     return Status::OK();
   }
 
-  CHECKED_STATUS DoVerify(
+  Status DoVerify(
       const MonoTime& deadline,
       const std::vector<std::string>& tablet_ids,
       const std::string& replica,
@@ -420,7 +420,7 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
     return Status::OK();
   }
 
-  CHECKED_STATUS Import() {
+  Status Import() {
     std::this_thread::sleep_for(1s); // Wait until all tablets a synced and flushed.
     EXPECT_OK(cluster_->FlushTablets());
 
@@ -482,7 +482,7 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
 
   Status WaitForTableCreation(const YBTableName& table_name,
                               master::IsCreateTableDoneResponsePB *resp) {
-    return LoggedWaitFor([=]() -> Result<bool> {
+    return LoggedWaitFor([this, table_name, resp]() -> Result<bool> {
       master::IsCreateTableDoneRequestPB req;
       req.mutable_table()->set_table_name(table_name.table_name());
       req.mutable_table()->mutable_namespace_()->set_name(table_name.namespace_name());
@@ -1451,7 +1451,7 @@ Result<OpId> GetAllAppliedOpId(const std::vector<tablet::TabletPeerPtr>& peers) 
   return STATUS(NotFound, "No leader found");
 }
 
-CHECKED_STATUS WaitForAppliedOpIdsStabilized(
+Status WaitForAppliedOpIdsStabilized(
     const std::vector<tablet::TabletPeerPtr>& peers, const MonoDelta& timeout) {
   std::vector<OpId> prev_last_applied_op_ids;
   return WaitFor(

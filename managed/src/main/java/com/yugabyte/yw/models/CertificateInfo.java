@@ -36,6 +36,7 @@ import com.yugabyte.yw.common.Util.UniverseDetailSubset;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.HashicorpVaultConfigParams;
+import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 
@@ -135,7 +136,7 @@ public class CertificateInfo extends Model {
 
   public void setChecksum() throws IOException, NoSuchAlgorithmException {
     if (this.certificate != null) {
-      this.checksum = Util.getFileChecksum(this.certificate);
+      this.checksum = FileUtils.getFileChecksum(this.certificate);
       this.save();
     }
   }
@@ -229,7 +230,7 @@ public class CertificateInfo extends Model {
     cert.privateKey = privateKey;
     cert.certificate = certificate;
     cert.certType = certType;
-    cert.checksum = Util.getFileChecksum(certificate);
+    cert.checksum = FileUtils.getFileChecksum(certificate);
     cert.save();
     return cert;
   }
@@ -252,7 +253,7 @@ public class CertificateInfo extends Model {
     cert.certificate = certificate;
     cert.certType = CertConfigType.CustomCertHostPath;
     cert.customCertInfo = Json.toJson(customCertInfo);
-    cert.checksum = Util.getFileChecksum(certificate);
+    cert.checksum = FileUtils.getFileChecksum(certificate);
     cert.save();
     return cert;
   }
@@ -275,7 +276,7 @@ public class CertificateInfo extends Model {
     cert.certificate = certificate;
     cert.certType = CertConfigType.CustomServerCert;
     cert.customCertInfo = Json.toJson(customServerCertInfo);
-    cert.checksum = Util.getFileChecksum(certificate);
+    cert.checksum = FileUtils.getFileChecksum(certificate);
     cert.save();
     return cert;
   }
@@ -299,7 +300,7 @@ public class CertificateInfo extends Model {
     cert.certType = CertConfigType.HashicorpVault;
     JsonNode node = params.toJsonNode();
     if (node != null) cert.customCertInfo = node;
-    cert.checksum = Util.getFileChecksum(certificate);
+    cert.checksum = FileUtils.getFileChecksum(certificate);
     cert.save();
     return cert;
   }
@@ -316,7 +317,7 @@ public class CertificateInfo extends Model {
     copy.privateKey = certificateInfo.privateKey;
     copy.certificate = certFilePath;
     copy.certType = certificateInfo.certType;
-    copy.checksum = Util.getFileChecksum(certFilePath);
+    copy.checksum = FileUtils.getFileChecksum(certFilePath);
     copy.customCertInfo = certificateInfo.customCertInfo;
     copy.save();
     return copy;
@@ -336,7 +337,7 @@ public class CertificateInfo extends Model {
     JsonNode node = params.toJsonNode();
     if (node != null) customCertInfo = node;
 
-    checksum = Util.getFileChecksum(certificate);
+    checksum = FileUtils.getFileChecksum(certificate);
     save();
     return this;
   }

@@ -99,13 +99,13 @@ class RemoteBootstrapServiceImpl : public RemoteBootstrapServiceIf {
   typedef std::unordered_map<std::string, SessionData> SessionMap;
 
   // Validate the data identifier in a FetchData request.
-  CHECKED_STATUS ValidateFetchRequestDataId(
+  Status ValidateFetchRequestDataId(
       const DataIdPB& data_id,
       RemoteBootstrapErrorPB::Code* app_error,
       const scoped_refptr<RemoteBootstrapSession>& session) const;
 
   // Destroy the specified remote bootstrap session.
-  CHECKED_STATUS DoEndRemoteBootstrapSession(
+  Status DoEndRemoteBootstrapSession(
       const std::string& session_id,
       bool session_suceeded,
       RemoteBootstrapErrorPB::Code* app_error)  REQUIRES(sessions_mutex_);

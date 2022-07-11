@@ -4,6 +4,7 @@ package com.yugabyte.yw.common;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
 import io.fabric8.kubernetes.api.model.Node;
 import io.fabric8.kubernetes.api.model.NodeList;
@@ -14,12 +15,20 @@ import io.fabric8.kubernetes.api.model.Secret;
 import io.fabric8.kubernetes.api.model.Service;
 import io.fabric8.kubernetes.api.model.ServiceList;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.CancellationException;
+import java.io.BufferedWriter;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import javax.inject.Singleton;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.yaml.snakeyaml.Yaml;
 
 @Singleton
 public class ShellKubernetesManager extends KubernetesManager {
@@ -47,7 +56,9 @@ public class ShellKubernetesManager extends KubernetesManager {
 
   @Override
   public void createNamespace(Map<String, String> config, String namespace) {
-    List<String> commandList = ImmutableList.of("kubectl", "create", "namespace", namespace);
+    String namespaceFile = generateNamespaceYaml(namespace);
+    List<String> commandList =
+        ImmutableList.of("kubectl", "apply", "-f", namespaceFile, "--server-side");
     execCommand(config, commandList).processErrors();
   }
 
@@ -59,8 +70,12 @@ public class ShellKubernetesManager extends KubernetesManager {
   // https://github.com/yugabyte/yugabyte-db/issues/7012
   @Override
   public void applySecret(Map<String, String> config, String namespace, String pullSecret) {
+    // --server-side flag ensures that there is no race condition when
+    // multiple kubectl apply try to apply same secret in same
+    // namespace.
     List<String> commandList =
-        ImmutableList.of("kubectl", "apply", "-f", pullSecret, "--namespace", namespace);
+        ImmutableList.of(
+            "kubectl", "apply", "-f", pullSecret, "--namespace", namespace, "--server-side");
     execCommand(config, commandList).processErrors();
   }
 
@@ -114,14 +129,27 @@ public class ShellKubernetesManager extends KubernetesManager {
 
   @Override
   public String getPreferredServiceIP(
-      Map<String, String> config, String namespace, boolean isMaster) {
-    String serviceName = isMaster ? "yb-master-service" : "yb-tserver-service";
+      Map<String, String> config,
+      String universePrefix,
+      String namespace,
+      boolean isMaster,
+      boolean newNamingStyle) {
+    String appLabel = newNamingStyle ? "app.kubernetes.io/name" : "app";
+    String appName = isMaster ? "yb-master" : "yb-tserver";
+    // TODO(bhavin192): this might need to be changed when we support
+    // multi-cluster environments.
+    String selector =
+        String.format("release=%s,%s=%s,service-type!=headless", universePrefix, appLabel, appName);
     List<String> commandList =
         ImmutableList.of(
-            "kubectl", "get", "svc", serviceName, "--namespace", namespace, "-o", "json");
+            "kubectl", "get", "svc", "--namespace", namespace, "-l", selector, "-o", "json");
     ShellResponse response = execCommand(config, commandList).processErrors();
-    Service service = deserialize(response.message, Service.class);
-    return getIp(service);
+    List<Service> services = deserialize(response.message, ServiceList.class).getItems();
+    if (services.size() != 1) {
+      throw new RuntimeException(
+          "There must be exactly one Master or TServer endpoint service, got " + services.size());
+    }
+    return getIp(services.get(0));
   }
 
   @Override
@@ -142,19 +170,19 @@ public class ShellKubernetesManager extends KubernetesManager {
       commandList.add("--namespace");
       commandList.add(namespace);
     }
-    ShellResponse response = execCommand(config, commandList).processErrors();
-    if (response.code != 0) {
-      String msg = "Unable to get secret";
-      if (!response.message.isEmpty()) {
-        msg = String.format("%s: %s", msg, response.message);
-      }
-      throw new RuntimeException(msg);
-    }
+    ShellResponse response = execCommand(config, commandList).processErrors("Unable to get secret");
     return deserialize(response.message, Secret.class);
   }
 
   @Override
-  public void updateNumNodes(Map<String, String> config, String namespace, int numNodes) {
+  public void updateNumNodes(
+      Map<String, String> config,
+      String universePrefix,
+      String namespace,
+      int numNodes,
+      boolean newNamingStyle) {
+    String appLabel = newNamingStyle ? "app.kubernetes.io/name" : "app";
+    String selector = String.format("release=%s,%s=yb-tserver", universePrefix, appLabel);
     List<String> commandList =
         ImmutableList.of(
             "kubectl",
@@ -162,7 +190,8 @@ public class ShellKubernetesManager extends KubernetesManager {
             namespace,
             "scale",
             "statefulset",
-            "yb-tserver",
+            "-l",
+            selector,
             "--replicas=" + numNodes);
     execCommand(config, commandList).processErrors();
   }
@@ -171,8 +200,8 @@ public class ShellKubernetesManager extends KubernetesManager {
   public void deleteStorage(Map<String, String> config, String universePrefix, String namespace) {
     // Implementation specific helm release name.
     String helmReleaseName = Util.sanitizeHelmReleaseName(universePrefix);
-    // Delete Master Volumes
-    List<String> masterCommandList =
+    // Delete Master and TServer Volumes
+    List<String> commandList =
         ImmutableList.of(
             "kubectl",
             "delete",
@@ -180,19 +209,8 @@ public class ShellKubernetesManager extends KubernetesManager {
             "--namespace",
             namespace,
             "-l",
-            "app=yb-master,release=" + helmReleaseName);
-    execCommand(config, masterCommandList);
-    // Delete TServer Volumes
-    List<String> tserverCommandList =
-        ImmutableList.of(
-            "kubectl",
-            "delete",
-            "pvc",
-            "--namespace",
-            namespace,
-            "-l",
-            "app=yb-tserver,release=" + helmReleaseName);
-    execCommand(config, tserverCommandList);
+            "release=" + helmReleaseName);
+    execCommand(config, commandList);
     // TODO: check the execCommand outputs.
   }
 
@@ -201,5 +219,29 @@ public class ShellKubernetesManager extends KubernetesManager {
     // Delete Namespace
     List<String> masterCommandList = ImmutableList.of("kubectl", "delete", "namespace", namespace);
     execCommand(config, masterCommandList);
+    // TODO: process any errors. Don't raise exception in case of not
+    // found error, this can happen when same namespace is deleted by
+    // multiple invocations concurrently.
+  }
+
+  // generateNamespaceYaml creates a namespace YAML file for given
+  // name. This can be later extended to add other metadata like
+  // labels, annotations etc.
+  private String generateNamespaceYaml(String name) {
+    Map<String, Object> namespace = new HashMap<String, Object>();
+    namespace.put("apiVersion", "v1");
+    namespace.put("kind", "Namespace");
+    namespace.put("metadata", ImmutableMap.of("name", name));
+    Yaml yaml = new Yaml();
+
+    try {
+      Path tempFile = Files.createTempFile(UUID.randomUUID().toString() + "-namespace", ".yml");
+      BufferedWriter bw = new BufferedWriter(new FileWriter(tempFile.toFile()));
+      yaml.dump(namespace, bw);
+      return tempFile.toAbsolutePath().toString();
+    } catch (IOException e) {
+      LOG.error(e.getMessage());
+      throw new RuntimeException("Error writing Namespace YAML file.");
+    }
   }
 }

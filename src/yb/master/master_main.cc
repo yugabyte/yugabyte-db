@@ -41,7 +41,7 @@
 
 #include "yb/gutil/sysinfo.h"
 
-#include "yb/master/call_home.h"
+#include "yb/master/master_call_home.h"
 #include "yb/master/master.h"
 #include "yb/master/sys_catalog_initialization.h"
 
@@ -53,6 +53,7 @@
 #include "yb/util/main_util.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/result.h"
+#include "yb/util/size_literals.h"
 #include "yb/util/ulimit_util.h"
 #include "yb/util/debug/trace_event.h"
 
@@ -68,11 +69,10 @@ DECLARE_bool(durable_wal_write);
 DECLARE_int32(stderrthreshold);
 
 DECLARE_string(metric_node_name);
-DECLARE_int64(remote_bootstrap_rate_limit_bytes_per_sec);
-// Deprecated because it's misspelled.  But if set, this flag takes precedence over
-// remote_bootstrap_rate_limit_bytes_per_sec for compatibility.
-DECLARE_int64(remote_boostrap_rate_limit_bytes_per_sec);
+DECLARE_int32(remote_bootstrap_max_chunk_size);
 DECLARE_bool(use_docdb_aware_bloom_filter);
+DECLARE_int32(follower_unavailable_considered_failed_sec);
+DECLARE_int32(log_min_seconds_to_retain);
 
 using namespace std::literals;
 
@@ -98,14 +98,20 @@ static int MasterMain(int argc, char** argv) {
   FLAGS_default_memory_limit_to_ram_ratio = 0.10;
   // For masters we always want to fsync the WAL files (except in testing).
   FLAGS_durable_wal_write = true;
+  // Master has a lot less memory and relatively less data. So by default, let's keep the
+  // RBS chunk size small.
+  FLAGS_remote_bootstrap_max_chunk_size = 1_MB;
 
   // A multi-node Master leader should not evict failed Master followers
   // because there is no-one to assign replacement servers in order to maintain
   // the desired replication factor. (It's not turtles all the way down!)
   FLAGS_evict_failed_followers = false;
 
-  LOG_AND_RETURN_FROM_MAIN_NOT_OK(MasterTServerParseFlagsAndInit(
-      MasterOptions::kServerType, &argc, &argv));
+  FLAGS_follower_unavailable_considered_failed_sec = 2 * MonoTime::kSecondsPerHour;
+  FLAGS_log_min_seconds_to_retain = 2 * MonoTime::kSecondsPerHour;
+
+  LOG_AND_RETURN_FROM_MAIN_NOT_OK(
+      MasterTServerParseFlagsAndInit(MasterOptions::kServerType, &argc, &argv));
 
   auto opts_result = MasterOptions::CreateMasterOptions();
   LOG_AND_RETURN_FROM_MAIN_NOT_OK(opts_result);
@@ -127,8 +133,8 @@ static int MasterMain(int argc, char** argv) {
 
   LOG(INFO) << "Master server successfully started.";
 
-  std::unique_ptr<CallHome> call_home;
-  call_home = std::make_unique<CallHome>(&server, ServerType::MASTER);
+  std::unique_ptr<MasterCallHome> call_home;
+  call_home = std::make_unique<MasterCallHome>(&server);
   call_home->ScheduleCallHome();
 
   auto total_mem_watcher = server::TotalMemWatcher::Create();

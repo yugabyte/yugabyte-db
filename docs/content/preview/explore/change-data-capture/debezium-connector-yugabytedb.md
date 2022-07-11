@@ -13,8 +13,7 @@ menu:
     parent: change-data-capture
     identifier: debezium-connector-yugabytedb
     weight: 580
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 The Debezium connector for YugabyteDB captures row-level changes in the schemas of a YugabyteDB database.
@@ -274,7 +273,9 @@ If the `database.server.name` connector configuration property has the value `db
       ]
   },
   "payload": { --> 5
-      "id": "1"
+      "id": {
+        "value":"1"
+      }
   },
 }
 ```
@@ -480,9 +481,15 @@ The following example shows the value portion of a change event that the connect
   "payload": { --> 3
     "before": null, --> 4
     "after": { --> 5
-      "id": 1,
-      "name": "Vaibhav Kushwaha",
-      "email": "vaibhav@example.com"
+      "id": {
+        "value":1
+      },
+      "name": {
+        "value":"Vaibhav Kushwaha"
+      },
+      "email": {
+        "value":"vaibhav@example.com"
+      }
     },
     "source": { --> 6
       "version": "1.7.0-SNAPSHOT",
@@ -536,9 +543,15 @@ The update event is as follows:
   "payload": {
     "before": null, --> 1
     "after": { --> 2
-      "id": 1,
-      "name": 'Vaibhav Kushwaha',
-      "email": "service@example.com"
+      "id": {
+        "value": 1
+      },
+      "name": {
+        "value": "Vaibhav Kushwaha"
+      },
+      "email": {
+        "value": "service@example.com"
+      }
     },
     "source": { --> 3
       "version": "1.7.0-SNAPSHOT",
@@ -603,7 +616,9 @@ DELETE FROM customers WHERE id = 1;
   "schema": {...},
   "payload": {
     "before": { --> 1
-      "id": 1,
+      "id": {
+        "value": 1
+      },
       "name": null,
       "email": null
     },
@@ -895,6 +910,27 @@ You can send this configuration with a `POST` command to a running Kafka Connect
 * Reads the transaction log.
 * Streams change event records to Kafka topics.
 
+{{< note title="Note" >}}
+We use a custom record extractor (`YBExtractNewRecordState`) so that the sinks understand the format in which we are sending the data. For example, if you are using a JDBC sink connector, you need to add two more properties to the sink configuration:
+
+| Property | Value |
+| :------- | :---- |
+| `transforms` | `unwrap` |
+| `transforms.unwrap.type` | `io.debezium.connector.yugabytedb.transforms.YBExtractNewRecordState` |
+
+See the following section for more details on `YBExtractNewRecordState`.
+{{< /note >}}
+
+#### `YBExtractNewRecordState` SMT
+
+Unlike the Debezium Connector for PostgreSQL, we only send the `after` image of the "set of columns" that are modified. PostgreSQL sends the complete `after` image of the row which has changed. So by default if the column was not changed, it is not a part of the payload we send and the default value is set to `null`.
+
+To differentiate between the case where a column is set to `null` and the case in which it's not modified, we change the value type to a struct. In this structure, an unchanged column is `{'value': null}`, whereas the column changed to a null value is `{'value': null, 'set': true}`.
+
+A schema registry requires that, once a schema is registered, records must contain only payloads with that schema version. If you're using a schema registry, the YugabyteDB Debezium connector's approach can be problematic, as the schema may change with every message. For example, if we keep changing the record to only include the value of modified columns, the schema of each record will be different (the total number unique schemas will be a result of making all possible combinations of columns) and thus would require sending a schema with every record.
+
+To avoid this problem when you're using a schema registry, use the `YBExtractNewRecordState` SMT (Single Message Transformer for Kafka), which interprets these values and sends the record in the correct format (by removing the unmodified columns from the JSON message). Records transformed by `YBExtractNewRecordState` are compatible with all sink implementations. This approach ensures that the schema doesn't change with each new record and it can work with a schema registry.
+
 ### Connector configuration properties
 
 The Debezium YugabyteDB connector has many configuration properties that you can use to achieve the right connector behavior for your application. Many properties have default values.
@@ -912,7 +948,7 @@ The following properties are *required* unless a default value is available:
 | database.server.name | N/A | Logical name that identifies and provides a namespace for the particular YugabyteDB database server or cluster for which Debezium is capturing changes. This name must be unique, since it's also used to form the Kafka topic. |
 | database.streamid | N/A | Stream ID created using [yb-admin](../../../admin/yb-admin/#change-data-capture-cdc-commands) for Change data capture. |
 | table.include.list | N/A | Comma-separated list of table names and schema names, such as `public.test` or `test_schema.test_table_name`. |
-| table.max.num.tablets | 10 | Maximum number of tablets the connector can poll for. This should be greater than or equal to the number of tablets the table is split into. |
+| table.max.num.tablets | 100 | Maximum number of tablets the connector can poll for. This should be greater than or equal to the number of tablets the table is split into. |
 | database.sslmode | disable | Whether to use an encrypted connection to the YugabyteDB cluster. Supported options are:<br/><br/> `disable` uses an unencrypted connection <br/><br/> `require` uses an encrypted connection and fails if it can't be established <br/><br/> `verify-ca` uses an encrypted connection, verifies the server TLS certificate against the configured Certificate Authority (CA) certificates, and fails if no valid matching CA certificates are found. |
 | database.sslrootcert | N/A | The path to the file which contains the root certificate against which the server is to be validated. |
 | database.sslcert | N/A | Path to the file containing the client's SSL certificate. |
@@ -933,12 +969,22 @@ The APIs used to fetch the changes are set up to work with TLSv1.2 only. Make su
 
 {{< /note >}}
 
+{{< note title="Note" >}}
+
+If you have a YugabyteDB cluster with SSL enabled, need to obtain the root certificate and provide the path of the file in the `database.sslrootcert` configuration property. You can follow these links to get the certificates for your universe:
+
+* [Local deployments](../../../secure/tls-encryption/)
+* [YB Anywhere](../../../yugabyte-platform/security/enable-encryption-in-transit/#connect-to-a-ysql-endpoint-with-tls)
+* [YB Managed](../../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate)
+
+{{< /note >}}
+
 Advanced connector configuration properties:
 
 | Property | Default | Description |
 | :------- | :------ | :---------- |
 | snapshot.mode | N/A | `never` - Don't take a snapshot <br/><br/> `initial` - Take a snapshot when the connector is first started |
-| cdc.poll.interval.ms | 200 | The interval at which the connector will poll the database for the changes. |
+| cdc.poll.interval.ms | 500 | The interval at which the connector will poll the database for the changes. |
 | admin.operation.timeout.ms | 60000 | The default timeout used for administrative operations (e.g. createTable, deleteTable, getTables, etc). |
 | operation.timeout.ms | 60000 | The default timeout used for user operations (using sessions and scanners). |
 | socket.read.timeout.ms | 60000 | The default timeout to use when waiting on data from a socket. |
@@ -951,6 +997,9 @@ Advanced connector configuration properties:
 | max.queue.size | 20240 | Positive integer value for the maximum size of the blocking queue. The connector places change events received from streaming replication in the blocking queue before writing them to Kafka. This queue can provide back pressure when, for example, writing records to Kafka is slower that it should be, or when Kafka is not available. |
 | max.batch.size | 10240 | Positive integer value that specifies the maximum size of each batch of events that the connector processes. |
 | max.queue.size.in.bytes | 0 | Long value for the maximum size in bytes of the blocking queue. The feature is disabled by default, it will be active if it's set with a positive long value. |
+| max.connector.retries | 5 | Positive integer value for the maximum number of times a retry can happen at the connector level itself. |
+| connector.retry.delay.ms | 60000 | Delay between subsequent retries at the connector level. |
+| ignore.exceptions | `false` | Determines whether the connector ignores exceptions, which should not cause any critical runtime issues. By default, if there is an exception, the connector throws the exception and stops further execution. Specify `true` to have the connector log a warning for any exception and proceed. |
 
 ## Troubleshooting
 

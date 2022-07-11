@@ -10,8 +10,7 @@ menu:
     identifier: explain-analyze
     parent: query-tuning
     weight: 400
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 This section describes how to optimize queries using YSQL's `EXPLAIN` and `EXPLAIN ANALYZE` statements.

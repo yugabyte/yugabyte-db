@@ -105,7 +105,7 @@ class CQLServiceImpl : public CQLServerServiceIf,
   // Return the messenger.
   rpc::Messenger* messenger() { return messenger_; }
 
-  client::TransactionPool* TransactionPool();
+  client::TransactionPool& TransactionPool();
 
   server::Clock* clock();
 

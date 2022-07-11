@@ -3311,7 +3311,7 @@ YbAddTriggerFKReferenceIntent(Trigger *trigger, Relation fk_rel, HeapTuple new_r
 			null_found = attr->is_null && (attr->attr_num > 0);
 
 		if (!null_found)
-			HandleYBStatus(YBCAddForeignKeyReferenceIntent(descr));
+			HandleYBStatus(YBCAddForeignKeyReferenceIntent(descr, YBCIsRegionLocal(fk_rel)));
 		pfree(descr);
 	}
 }

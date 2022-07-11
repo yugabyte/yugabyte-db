@@ -443,6 +443,9 @@ AllocateRelationDesc(Form_pg_class relp)
 	/* make sure relation is marked as having no open file yet */
 	relation->rd_smgr = NULL;
 
+	/* YB properties will be loaded lazily */
+	relation->yb_table_properties = NULL;
+
 	/*
 	 * Copy the relation tuple form
 	 *
@@ -1747,12 +1750,38 @@ YBPreloadRelCache()
 	YbRegisterSysTableForPrefetching(AttrDefaultRelationId);           // pg_attrdef
 	YbRegisterSysTableForPrefetching(ConstraintRelationId);            // pg_constraint
 	YbRegisterSysTableForPrefetching(PartitionedRelationId);           // pg_partitioned_table
+	YbRegisterSysTableForPrefetching(TypeRelationId);                  // pg_type
 
 	if (!YBIsDBConnectionValid())
 		ereport(FATAL,
 		        (errcode(ERRCODE_CONNECTION_FAILURE),
 		         errmsg("Could not reconnect to database"),
 		         errhint("Database might have been dropped by another user")));
+
+	/*
+	 * The preloading catalog cache before processing relations will help to avoid
+	 * sequential scans over prefetched data.
+	 * In case postgres tries to read row from the cache by a key and there is
+	 * no such row in it, postgres will sent request to read particular row
+	 * from a particular system table. But in case table was prefetched all the
+	 * rows will be returned from in-memory cache in spite of the fact only single
+	 * one was requested. And required row will be found by filtering out all rows
+	 * which doesn't match specified key (i.e. sequential scan).
+	 * In case particular table has N rows and it is required to load all of them
+	 * N * N tuples will be built and analyzed from already prefetched data.
+	 * The more effective approach is to build entire cache first. In this case
+	 * only N tuples will be built.
+	 */
+	YBPreloadCatalogCache(DATABASEOID, -1);      // pg_database
+	YBPreloadCatalogCache(RELOID, RELNAMENSP);   // pg_class
+	YBPreloadCatalogCache(ATTNAME, ATTNUM);      // pg_attribute
+	YBPreloadCatalogCache(CLAOID, CLAAMNAMENSP); // pg_opclass
+	YBPreloadCatalogCache(AMOID, AMNAME);        // pg_am
+	YBPreloadCatalogCache(INDEXRELID, -1);       // pg_index
+	YBPreloadCatalogCache(RULERELNAME, -1);      // pg_rewrite
+	YBPreloadCatalogCache(CONSTROID, -1);        // pg_constraint
+	YBPreloadCatalogCache(PARTRELID, -1);        // pg_partitioned_table
+	YBPreloadCatalogCache(TYPEOID, TYPENAMENSP); // pg_type
 
 	YBLoadRelationsResult relations_result = YBLoadRelations();
 
@@ -1774,7 +1803,6 @@ YBPreloadRelCache()
 
 	if (relations_result.has_partitioned_tables)
 	{
-		YbRegisterSysTableForPrefetching(TypeRelationId);      // pg_type
 		YbRegisterSysTableForPrefetching(ProcedureRelationId); // pg_proc
 		YbRegisterSysTableForPrefetching(InheritsRelationId);  // pg_inherits
 	}
@@ -1782,23 +1810,8 @@ YBPreloadRelCache()
 	YBUpdateRelationsAttributes(relations_result.sys_relations_update_required);
 	YBUpdateRelationsPartitioning(relations_result.sys_relations_update_required);
 
-	/*
-	 * It is cheap to build the caches for all preloaded tables.
-	 * No additional RPC requests to a master will be initiated.
-	 */
-	YBPreloadCatalogCache(DATABASEOID, -1);      // pg_database
-	YBPreloadCatalogCache(RELOID, RELNAMENSP);   // pg_class
-	YBPreloadCatalogCache(ATTNAME, ATTNUM);      // pg_attribute
-	YBPreloadCatalogCache(CLAOID, CLAAMNAMENSP); // pg_opclass
-	YBPreloadCatalogCache(AMOID, AMNAME);        // pg_am
-	YBPreloadCatalogCache(INDEXRELID, -1);       // pg_index
-	YBPreloadCatalogCache(RULERELNAME, -1);      // pg_rewrite
-	YBPreloadCatalogCache(CONSTROID, -1);        // pg_constraint
-	YBPreloadCatalogCache(PARTRELID, -1);        // pg_partitioned_table
-
 	if (relations_result.has_partitioned_tables)
 	{
-		YBPreloadCatalogCache(TYPEOID, TYPENAMENSP);     // pg_type
 		YBPreloadCatalogCache(PROCOID, PROCNAMEARGSNSP); // pg_proc
 		YBPreloadCatalogCache(INHERITSRELID, -1);        // pg_inherits
 	}

@@ -8,8 +8,6 @@ import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType.PRI
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableList;
@@ -23,7 +21,6 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
-import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
@@ -61,10 +58,8 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import javax.annotation.Nullable;
 import org.apache.commons.lang3.StringUtils;
-import org.joda.time.DateTime;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import play.libs.Json;
 
 public class PlacementInfoUtil {
   public static final Logger LOG = LoggerFactory.getLogger(PlacementInfoUtil.class);
@@ -74,9 +69,6 @@ public class PlacementInfoUtil {
 
   // List of replication factors supported currently for read only clusters.
   private static final List<Integer> supportedReadOnlyRFs = ImmutableList.of(1, 2, 3, 4, 5, 6, 7);
-
-  // Constants used to determine tserver, master, and node liveness.
-  public static final String UNIVERSE_ALIVE_METRIC = "node_up";
 
   // Mode of node distribution across the given AZ configuration.
   enum ConfigureNodesMode {
@@ -529,6 +521,7 @@ public class PlacementInfoUtil {
       // Besides restrictions, resize is only available if no nodes are added/removed.
       taskParams.nodesResizeAvailable =
           isSamePlacement(oldCluster.placementInfo, cluster.placementInfo)
+              && oldCluster.userIntent.numNodes == cluster.userIntent.numNodes
               && checkResizePossible == null;
 
       // If only disk size was changed (used by nodes resize) - no need to proceed
@@ -1104,18 +1097,27 @@ public class PlacementInfoUtil {
   @VisibleForTesting
   /**
    * Try to generate a collection of PlacementIndexes from available zones using round-robin
-   * algorythm. If azUuidToNumNodes is not empty - at first we try to get nodes from that zones
-   * (sorted by number of nodes in ascending order).
+   * algorythm. If currentNodes is not empty - at first we try to get nodes from that zones (zones
+   * are sorted by the number of nodes in each in ascending order).
    *
    * <p>IllegalStateException will be thrown if there are not enough nodes.
    *
-   * @param azUuidToNumNodes Map of zone uuid to number of existent nodes in it.
+   * @param currentNodes Currently used nodes.
    * @param numNodes Number of nodes to generate.
    * @param cluster Cluster
    * @return Ordered collection of PlacementIndexes
    */
   static Collection<PlacementIndexes> generatePlacementIndexes(
-      Map<UUID, Integer> azUuidToNumNodes, final int numNodes, Cluster cluster) {
+      Collection<NodeDetails> currentNodes, final int numNodes, Cluster cluster) {
+    Map<UUID, Integer> azUuidToNumNodes = getAzUuidToNumNodes(currentNodes);
+    Map<UUID, Integer> currentToBeAdded = new HashMap<>();
+    int toBeAdded = 0;
+    for (NodeDetails currentNode : currentNodes) {
+      if (currentNode.state == NodeState.ToBeAdded) {
+        currentToBeAdded.merge(currentNode.azUuid, 1, Integer::sum);
+        toBeAdded++;
+      }
+    }
     Collection<PlacementIndexes> placements = new ArrayList<>();
 
     // Ordered map of PlacementIndexes for all zones.
@@ -1124,6 +1126,12 @@ public class PlacementInfoUtil {
     Map<UUID, Integer> availableNodesPerZone = new HashMap<>();
 
     if (!azUuidToNumNodes.isEmpty()) {
+      // Init available nodes for all zones with ToBeAdded nodes
+      // (since these nodes are not marked as "in use" in db we should subtract that count)
+      currentToBeAdded.forEach(
+          (zUUID, count) ->
+              availableNodesPerZone.put(
+                  zUUID, getAvailableNodesByZone(zUUID, cluster.userIntent) - count));
       // Taking from preferred zones first.
       Collection<UUID> preferredZoneUUIDs =
           sortKeysByValuesAndOriginalOrder(azUuidToNumNodes, zoneToPlacementIndexes.keySet());
@@ -1149,7 +1157,10 @@ public class PlacementInfoUtil {
     LOG.info("Generated placement indexes {} for {} nodes.", placements, numNodes);
     if (placements.size() < numNodes) {
       throw new IllegalStateException(
-          "Couldn't find enough nodes: needed " + numNodes + " but found " + placements.size());
+          "Couldn't find enough nodes: needed "
+              + (numNodes + toBeAdded)
+              + " but found "
+              + (placements.size() + toBeAdded));
     }
     return placements;
   }
@@ -1163,7 +1174,7 @@ public class PlacementInfoUtil {
    * @param zoneUUIDs Collection of zone UUIDs to use.
    * @param numNodes Number of PlacementIndexes to generate.
    * @param userIntent UserIntent describing the cluster.
-   * @param availableNodesPerZone Statefull counters of available nodes per zone.
+   * @param availableNodesPerZone Stateful counters of available nodes per zone.
    * @param zoneToPlacementIndexes Pre-calculated PlacementIndexes for each zone.
    * @return Ordered collection of PlacementIndexes
    */
@@ -1183,11 +1194,7 @@ public class PlacementInfoUtil {
       UUID zoneUUID = zoneUUIDIterator.next();
       Integer currentAvailable =
           availableNodesPerZone.computeIfAbsent(
-              zoneUUID,
-              zUUID ->
-                  (cloudType.equals(CloudType.onprem)
-                      ? NodeInstance.listByZone(zUUID, instanceType).size()
-                      : Integer.MAX_VALUE));
+              zoneUUID, zUUID -> getAvailableNodesByZone(zUUID, userIntent));
       if (currentAvailable > 0) {
         availableNodesPerZone.put(zoneUUID, --currentAvailable);
         PlacementIndexes pi = zoneToPlacementIndexes.get(zoneUUID).copy();
@@ -1203,6 +1210,12 @@ public class PlacementInfoUtil {
       }
     }
     return result;
+  }
+
+  private static int getAvailableNodesByZone(UUID zoneUUID, UserIntent userIntent) {
+    return userIntent.providerType.equals(CloudType.onprem)
+        ? NodeInstance.listByZone(zoneUUID, userIntent.instanceType).size()
+        : Integer.MAX_VALUE;
   }
 
   /**
@@ -1586,7 +1599,6 @@ public class PlacementInfoUtil {
     int numTservers = (int) getNumTserverNodes(nodesInCluster);
     int numDeltaNodes = userIntent.numNodes - numTservers;
     Map<String, NodeDetails> deltaNodesMap = new HashMap<>();
-    Map<UUID, Integer> azUuidToNumNodes = getAzUuidToNumNodes(nodesInCluster);
     LOG.info("Nodes desired={} vs existing={}.", userIntent.numNodes, numTservers);
     if (numDeltaNodes < 0) {
       // Desired action is to remove nodes from a given cluster.
@@ -1614,7 +1626,7 @@ public class PlacementInfoUtil {
     } else if (numDeltaNodes > 0) {
       // Desired action is to add nodes.
       Collection<PlacementIndexes> indexes =
-          generatePlacementIndexes(azUuidToNumNodes, numDeltaNodes, cluster);
+          generatePlacementIndexes(nodesInCluster, numDeltaNodes, cluster);
 
       int startIndex = getNextIndexToConfigure(nodeDetailsSet);
       addNodeDetailSetToTaskParams(
@@ -1632,7 +1644,7 @@ public class PlacementInfoUtil {
     int numNodes = userIntent.numNodes;
     Map<String, NodeDetails> deltaNodesMap = new HashMap<>();
     Collection<PlacementIndexes> indexes =
-        generatePlacementIndexes(Collections.emptyMap(), numNodes, cluster);
+        generatePlacementIndexes(Collections.emptySet(), numNodes, cluster);
     addNodeDetailSetToTaskParams(
         indexes, startIndex, numNodes, cluster, nodeDetailsSet, deltaNodesMap);
 
@@ -2249,37 +2261,57 @@ public class PlacementInfoUtil {
   // of azName. In case of single AZ providers, the azName is passed
   // as null.
   public static String getKubernetesNamespace(
-      String nodePrefix, String azName, Map<String, String> azConfig) {
+      String nodePrefix,
+      String azName,
+      Map<String, String> azConfig,
+      boolean newNamingStyle,
+      boolean isReadOnlyCluster) {
     boolean isMultiAZ = (azName != null);
-    return getKubernetesNamespace(isMultiAZ, nodePrefix, azName, azConfig);
+    return getKubernetesNamespace(
+        isMultiAZ, nodePrefix, azName, azConfig, newNamingStyle, isReadOnlyCluster);
   }
 
   /**
    * This function returns the namespace for the given AZ. If the AZ config has KUBENAMESPACE
    * defined, then it is used directly. Otherwise, the namespace is constructed with nodePrefix &
-   * azName params.
+   * azName params. In case of newNamingStyle, the nodePrefix is used as it is.
    */
   public static String getKubernetesNamespace(
-      boolean isMultiAZ, String nodePrefix, String azName, Map<String, String> azConfig) {
+      boolean isMultiAZ,
+      String nodePrefix,
+      String azName,
+      Map<String, String> azConfig,
+      boolean newNamingStyle,
+      boolean isReadOnlyCluster) {
     String namespace = azConfig.get("KUBENAMESPACE");
     if (StringUtils.isBlank(namespace)) {
       int suffixLen = isMultiAZ ? azName.length() + 1 : 0;
+      String readClusterSuffix =
+          "-rr"; // Avoid using "-readcluster" so user has more room for specifying the name.
+      if (isReadOnlyCluster) {
+        suffixLen += readClusterSuffix.length();
+      }
       namespace = Util.sanitizeKubernetesNamespace(nodePrefix, suffixLen);
-      if (isMultiAZ) {
+      if (isReadOnlyCluster) {
+        namespace = String.format("%s%s", namespace, readClusterSuffix);
+      }
+      if (isMultiAZ && !newNamingStyle) {
         namespace = String.format("%s-%s", namespace, azName);
       }
     }
     return namespace;
   }
 
-  // TODO(bhavin192): what if the same namespace is being used for
-  // different AZs (can be possible when we allow multiple releases in
-  // one namespace)? We need to have something like ns_az to make sure
-  // that the configuration is correct. This is eventually used by
-  // bin/yb_backup.py and bin/cluster_health.py. Those will need an
-  // update as well.
+  /**
+   * This method always assumes that old Helm naming style is being used.
+   *
+   * @deprecated Use {@link #getKubernetesConfigPerPod()} instead as it works for both new and old
+   *     Helm naming styles. Read the docstrig of {@link #getKubernetesConfigPerPod()} to understand
+   *     more about this deprecation.
+   */
+  @Deprecated
   public static Map<String, String> getConfigPerNamespace(
-      PlacementInfo pi, String nodePrefix, Provider provider) {
+      PlacementInfo pi, String nodePrefix, Provider provider, boolean isReadOnlyCluster) {
     Map<String, String> namespaceToConfig = new HashMap<>();
     Map<UUID, Map<String, String>> azToConfig = getConfigPerAZ(pi);
     boolean isMultiAZ = isMultiAZ(provider);
@@ -2290,7 +2322,9 @@ public class PlacementInfoUtil {
       }
 
       String azName = AvailabilityZone.get(entry.getKey()).code;
-      String namespace = getKubernetesNamespace(isMultiAZ, nodePrefix, azName, entry.getValue());
+      String namespace =
+          getKubernetesNamespace(
+              isMultiAZ, nodePrefix, azName, entry.getValue(), false, isReadOnlyCluster);
       namespaceToConfig.put(namespace, kubeconfig);
       if (!isMultiAZ) {
         break;
@@ -2300,31 +2334,66 @@ public class PlacementInfoUtil {
     return namespaceToConfig;
   }
 
+  /**
+   * Returns a map of pod FQDN to KUBECONFIG string for all pods in the nodeDetailsSet. This method
+   * is useful for both new and old naming styles, as we are not using namespace as key.
+   *
+   * <p>In new naming style, all the AZ deployments are in the same namespace. These AZs can be in
+   * different Kubernetes clusters, and will have same namespace name across all of them. This
+   * requires different kubeconfig per cluster/pod to access them.
+   */
+  public static Map<String, String> getKubernetesConfigPerPod(
+      PlacementInfo pi, Set<NodeDetails> nodeDetailsSet) {
+    Map<String, String> podToConfig = new HashMap<>();
+    Map<UUID, String> azToKubeconfig = new HashMap<>();
+    Map<UUID, Map<String, String>> azToConfig = getConfigPerAZ(pi);
+    for (Entry<UUID, Map<String, String>> entry : azToConfig.entrySet()) {
+      String kubeconfig = entry.getValue().get("KUBECONFIG");
+      if (kubeconfig == null) {
+        throw new NullPointerException("Couldn't find a kubeconfig for AZ " + entry.getKey());
+      }
+      azToKubeconfig.put(entry.getKey(), kubeconfig);
+    }
+
+    for (NodeDetails nd : nodeDetailsSet) {
+      String kubeconfig = azToKubeconfig.get(nd.azUuid);
+      if (kubeconfig == null) {
+        throw new NullPointerException("Couldn't find a kubeconfig for AZ " + nd.azUuid);
+      }
+      podToConfig.put(nd.cloudInfo.private_ip, kubeconfig);
+    }
+    return podToConfig;
+  }
+
   // Compute the master addresses of the pods in the deployment if multiAZ.
   public static String computeMasterAddresses(
       PlacementInfo pi,
       Map<UUID, Integer> azToNumMasters,
       String nodePrefix,
       Provider provider,
-      int masterRpcPort) {
-    List<String> masters = new ArrayList<>();
+      int masterRpcPort,
+      boolean newNamingStyle) {
+    List<String> masters = new ArrayList<String>();
     Map<UUID, String> azToDomain = getDomainPerAZ(pi);
     boolean isMultiAZ = isMultiAZ(provider);
-    if (!isMultiAZ) {
-      return null;
-    }
-
     for (Entry<UUID, Integer> entry : azToNumMasters.entrySet()) {
       AvailabilityZone az = AvailabilityZone.get(entry.getKey());
       String namespace =
-          getKubernetesNamespace(isMultiAZ, nodePrefix, az.code, az.getUnmaskedConfig());
+          getKubernetesNamespace(
+              isMultiAZ,
+              nodePrefix,
+              az.code,
+              az.getUnmaskedConfig(),
+              newNamingStyle, /*isReadOnlyCluster*/
+              false);
       String domain = azToDomain.get(entry.getKey());
+      String helmFullName =
+          getHelmFullNameWithSuffix(isMultiAZ, nodePrefix, az.code, newNamingStyle);
       for (int idx = 0; idx < entry.getValue(); idx++) {
-        // TODO(bhavin192): might need to change when we have multiple
-        // releases in one namespace.
         String master =
             String.format(
-                "yb-master-%d.yb-masters.%s.%s:%d", idx, namespace, domain, masterRpcPort);
+                "%syb-master-%d.%syb-masters.%s.%s:%d",
+                helmFullName, idx, helmFullName, namespace, domain, masterRpcPort);
         masters.add(master);
       }
     }
@@ -2348,6 +2417,24 @@ public class PlacementInfoUtil {
     }
 
     return azToDomain;
+  }
+
+  // Returns a string which is exactly the same as yugabyte chart's
+  // helper template yugabyte.fullname. This is prefixed to all the
+  // resource names when newNamingstyle is being used. We set
+  // fullnameOverride in the Helm overrides.
+  // https://git.io/yugabyte.fullname
+  public static String getHelmFullNameWithSuffix(
+      boolean isMultiAZ, String nodePrefix, String azName, boolean newNamingStyle) {
+    if (!newNamingStyle) {
+      return "";
+    }
+    String releaseName = isMultiAZ ? String.format("%s-%s", nodePrefix, azName) : nodePrefix;
+    // <release name> | truncate 43
+    if (releaseName.length() > 43) {
+      releaseName = releaseName.substring(0, 43);
+    }
+    return releaseName + "-";
   }
 
   // Returns the start index for provisioning new nodes based on the current maximum node index
@@ -2593,136 +2680,6 @@ public class PlacementInfoUtil {
   // Checks the status of the node by given name in current universe
   public static boolean isNodeRemovable(String nodeName, Set<NodeDetails> nodeDetailsSet) {
     return nodeDetailsSet.stream().anyMatch(n -> n.nodeName.equals(nodeName) && n.isRemovable());
-  }
-
-  /**
-   * Given a node, return its tserver & master alive/not-alive status and if either server is
-   * running we claim that the node is live else we claim it unreachable.
-   *
-   * @param nodeDetails The node to get the status of.
-   * @param nodeJson Metadata about all the nodes in the node's universe.
-   * @return JsonNode with the following format: { tserver_alive: true/false, master_alive:
-   *     true/false, node_status: <NodeDetails.NodeState> }
-   */
-  private static ObjectNode getNodeAliveStatus(NodeDetails nodeDetails, JsonNode nodeJson) {
-    boolean tserverAlive = false;
-    boolean masterAlive = false;
-    List<String> nodeValues = new ArrayList<>();
-
-    if (nodeJson.get("data") != null) {
-      for (JsonNode json : nodeJson.get("data")) {
-        String[] name = json.get("name").asText().split(":", 2);
-        if (name.length == 2 && name[0].equals(nodeDetails.cloudInfo.private_ip)) {
-          boolean alive = false;
-          for (JsonNode upData : json.get("y")) {
-            try {
-              alive = alive || (1 == (int) Float.parseFloat(upData.asText()));
-            } catch (NumberFormatException nfe) {
-              LOG.trace("Invalid number in node alive data: " + upData.asText());
-              // ignore this value
-            }
-          }
-
-          int port = Integer.parseInt(name[1]);
-
-          if (port == nodeDetails.masterHttpPort) {
-            masterAlive = masterAlive || alive;
-          } else if (port == nodeDetails.tserverHttpPort) {
-            tserverAlive = tserverAlive || alive;
-          }
-
-          if (!alive) {
-            nodeValues.add(json.toString());
-          }
-        }
-      }
-    }
-
-    if (!masterAlive || !tserverAlive) {
-      LOG.debug("Master or tserver considered not alive based on data: {}", nodeValues);
-    }
-
-    nodeDetails.state =
-        (!masterAlive && !tserverAlive) ? NodeDetails.NodeState.Unreachable : nodeDetails.state;
-
-    return Json.newObject()
-        .put("tserver_alive", tserverAlive)
-        .put("master_alive", masterAlive)
-        .put("node_status", nodeDetails.state.toString());
-  }
-
-  /**
-   * Helper function to get the status for each node and the alive/not alive status for each master
-   * and tserver.
-   *
-   * @param universe The universe to process alive status for.
-   * @param metricQueryResult The result of the query for node, master, and tserver status of the
-   *     universe.
-   * @return The response object containing the status of each node in the universe.
-   */
-  private static ObjectNode constructUniverseAliveStatus(
-      Universe universe, JsonNode metricQueryResult) {
-    ObjectNode response = Json.newObject();
-
-    // If error detected, update state and exit. Otherwise, get and return per-node liveness.
-    if (metricQueryResult.has("error")) {
-      for (NodeDetails nodeDetails : universe.getNodes()) {
-        nodeDetails.state = NodeDetails.NodeState.Unreachable;
-        ObjectNode result =
-            Json.newObject()
-                .put("tserver_alive", false)
-                .put("master_alive", false)
-                .put("node_status", nodeDetails.state.toString());
-        response.set(nodeDetails.nodeName, result);
-      }
-    } else {
-      JsonNode nodeJson = metricQueryResult.get(UNIVERSE_ALIVE_METRIC);
-      for (NodeDetails nodeDetails : universe.getNodes()) {
-        ObjectNode result = getNodeAliveStatus(nodeDetails, nodeJson);
-        response.set(nodeDetails.nodeName, result);
-      }
-    }
-
-    return response;
-  }
-
-  /**
-   * Given a universe, return a status for each master and tserver as alive/not alive and the node's
-   * status.
-   *
-   * @param universe The universe to query alive status for.
-   * @param metricQueryHelper Helper to execute the metrics query.
-   * @return JsonNode with the following format: { universe_uuid: <universeUUID>, <node_name_n>:
-   *     {tserver_alive: true/false, master_alive: true/false, node_status: <NodeDetails.NodeState>}
-   *     }
-   */
-  public static JsonNode getUniverseAliveStatus(
-      Universe universe, MetricQueryHelper metricQueryHelper) {
-    List<String> metricKeys = ImmutableList.of(UNIVERSE_ALIVE_METRIC);
-
-    // Set up params for metrics query.
-    Map<String, String> params = new HashMap<>();
-    DateTime now = DateTime.now();
-    params.put("end", Long.toString(now.getMillis() / 1000, 10));
-    DateTime start = now.minusMinutes(1);
-    params.put("start", Long.toString(start.getMillis() / 1000, 10));
-    ObjectNode filterJson = Json.newObject();
-    filterJson.put("node_prefix", universe.getUniverseDetails().nodePrefix);
-    params.put("filters", Json.stringify(filterJson));
-    for (int i = 0; i < metricKeys.size(); ++i) {
-      params.put("metrics[" + i + "]", metricKeys.get(i));
-    }
-
-    params.put("step", "30");
-
-    // Execute query and check for errors.
-    JsonNode metricQueryResult = metricQueryHelper.query(metricKeys, params);
-
-    // Persist the desired node information into the DB.
-    ObjectNode response = constructUniverseAliveStatus(universe, metricQueryResult);
-    response.put("universe_uuid", universe.universeUUID.toString());
-
-    return metricQueryResult.has("error") ? metricQueryResult : response;
   }
 
   public static int getZoneRF(PlacementInfo pi, String cloud, String region, String zone) {

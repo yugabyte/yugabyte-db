@@ -40,7 +40,7 @@ PTUseKeyspace::PTUseKeyspace(MemoryContext *memctx,
 PTUseKeyspace::~PTUseKeyspace() {
 }
 
-CHECKED_STATUS PTUseKeyspace::Analyze(SemContext *sem_context) {
+Status PTUseKeyspace::Analyze(SemContext *sem_context) {
   if (*name_ == common::kRedisKeyspaceName) {
     return sem_context->Error(loc(),
                               strings::Substitute("$0 is a reserved keyspace name",

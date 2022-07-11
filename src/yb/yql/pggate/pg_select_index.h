@@ -29,11 +29,12 @@ class PgSelectIndex : public PgSelect {
   PgSelectIndex(PgSession::ScopedRefPtr pg_session,
                 const PgObjectId& table_id,
                 const PgObjectId& index_id,
-                const PgPrepareParameters *prepare_params);
+                const PgPrepareParameters *prepare_params,
+                bool is_region_local);
 
   // Prepare NESTED query for secondary index. This function is called when Postgres layer is
   // accessing the IndexTable via an outer select (Sequential or primary scans)
-  CHECKED_STATUS PrepareSubquery(std::shared_ptr<LWPgsqlReadRequestPB> read_req);
+  Status PrepareSubquery(std::shared_ptr<LWPgsqlReadRequestPB> read_req);
 
   Result<PgTableDescPtr> LoadTable() override;
 

@@ -16,6 +16,8 @@
 #include <memory>
 #include <thread>
 
+#include <boost/algorithm/string/predicate.hpp>
+
 #include "yb/common/transaction.h"
 
 #include "yb/docdb/bounded_rocksdb_iterator.h"
@@ -55,9 +57,14 @@
 using namespace yb::size_literals;  // NOLINT.
 using namespace std::literals;
 
-static constexpr int32_t kMinBlockStartInterval = 1;
-static constexpr int32_t kDefaultBlockStartInterval = 16;
-static constexpr int32_t kMaxBlockStartInterval = 256;
+namespace {
+
+constexpr int32_t kMinBlockRestartInterval = 1;
+constexpr int32_t kDefaultDataBlockRestartInterval = 16;
+constexpr int32_t kDefaultIndexBlockRestartInterval = kMinBlockRestartInterval;
+constexpr int32_t kMaxBlockRestartInterval = 256;
+
+} // namespace
 
 DEFINE_int32(rocksdb_max_background_flushes, -1, "Number threads to do background flushes.");
 DEFINE_bool(rocksdb_disable_compactions, false, "Disable rocksdb compactions.");
@@ -143,8 +150,14 @@ DEFINE_string(compression_type, "Snappy",
               "On-disk compression type to use in RocksDB."
               "By default, Snappy is used if supported.");
 
-DEFINE_int32(block_restart_interval, kDefaultBlockStartInterval,
+DEFINE_int32(block_restart_interval, kDefaultDataBlockRestartInterval,
              "Controls the number of keys to look at for computing the diff encoding.");
+
+DEFINE_int32(index_block_restart_interval, kDefaultIndexBlockRestartInterval,
+             "Controls the number of data blocks to be indexed inside an index block.");
+
+DEFINE_bool(prioritize_tasks_by_disk, false,
+            "Consider disk load when considering compaction and flush priorities.");
 
 namespace yb {
 
@@ -161,7 +174,7 @@ Result<rocksdb::CompressionType> GetConfiguredCompressionType(const std::string&
     rocksdb::kLZ4Compression
   };
   for (const auto& compression_type : kValidRocksDBCompressionTypes) {
-    if (flag_value == rocksdb::CompressionTypeToString(compression_type)) {
+    if (boost::iequals(flag_value, rocksdb::CompressionTypeToString(compression_type))) {
       if (rocksdb::CompressionTypeSupported(compression_type)) {
         return compression_type;
       }
@@ -179,7 +192,7 @@ namespace docdb {
 
   Result<rocksdb::KeyValueEncodingFormat> GetConfiguredKeyValueEncodingFormat(
     const std::string& flag_value) {
-    for (const auto& encoding_format : rocksdb::kKeyValueEncodingFormatList) {
+    for (const auto& encoding_format : rocksdb::KeyValueEncodingFormatList()) {
       if (flag_value == KeyValueEncodingFormatToString(encoding_format)) {
         return encoding_format;
       }
@@ -449,17 +462,29 @@ void AutoInitFromBlockBasedTableOptions(rocksdb::BlockBasedTableOptions* table_o
   table_options->index_block_size = FLAGS_db_index_block_size_bytes;
   table_options->min_keys_per_index_block = FLAGS_db_min_keys_per_index_block;
 
-  if (FLAGS_block_restart_interval < kMinBlockStartInterval) {
-      LOG(INFO) << "FLAGS_block_restart_interval was set to a very low value, overriding "
-                << "block_restart_interval to " << kDefaultBlockStartInterval << ".";
-      table_options->block_restart_interval = kDefaultBlockStartInterval;
-    } else if (FLAGS_block_restart_interval > kMaxBlockStartInterval) {
-      LOG(INFO) << "FLAGS_block_restart_interval was set to a very high value, overriding "
-                << "block_restart_interval to " << kMaxBlockStartInterval << ".";
-      table_options->block_restart_interval = kMaxBlockStartInterval;
-    } else {
-      table_options->block_restart_interval = FLAGS_block_restart_interval;
-    }
+  if (FLAGS_block_restart_interval < kMinBlockRestartInterval) {
+    LOG(INFO) << "FLAGS_block_restart_interval was set to a very low value, overriding "
+              << "block_restart_interval to " << kDefaultDataBlockRestartInterval << ".";
+    table_options->block_restart_interval = kDefaultDataBlockRestartInterval;
+  } else if (FLAGS_block_restart_interval > kMaxBlockRestartInterval) {
+    LOG(INFO) << "FLAGS_block_restart_interval was set to a very high value, overriding "
+              << "block_restart_interval to " << kMaxBlockRestartInterval << ".";
+    table_options->block_restart_interval = kMaxBlockRestartInterval;
+  } else {
+    table_options->block_restart_interval = FLAGS_block_restart_interval;
+  }
+
+  if (FLAGS_index_block_restart_interval < kMinBlockRestartInterval) {
+    LOG(INFO) << "FLAGS_index_block_restart_interval was set to a very low value, overriding "
+              << "index_block_restart_interval to " << kMinBlockRestartInterval << ".";
+    table_options->index_block_restart_interval = kMinBlockRestartInterval;
+  } else if (FLAGS_index_block_restart_interval > kMaxBlockRestartInterval) {
+    LOG(INFO) << "FLAGS_index_block_restart_interval was set to a very high value, overriding "
+              << "index_block_restart_interval to " << kMaxBlockRestartInterval << ".";
+    table_options->index_block_restart_interval = kMaxBlockRestartInterval;
+  } else {
+    table_options->index_block_restart_interval = FLAGS_index_block_restart_interval;
+  }
 }
 
 class HybridTimeFilteringIterator : public rocksdb::FilteringIterator {
@@ -511,7 +536,7 @@ void AddSupportedFilterPolicy(
 
 PriorityThreadPool* GetGlobalPriorityThreadPool() {
     static PriorityThreadPool priority_thread_pool_for_compactions_and_flushes(
-      GetGlobalRocksDBPriorityThreadPoolSize());
+      GetGlobalRocksDBPriorityThreadPoolSize(), FLAGS_prioritize_tasks_by_disk);
     return &priority_thread_pool_for_compactions_and_flushes;
 }
 
@@ -527,6 +552,10 @@ rocksdb::BlockBasedTableOptions TEST_AutoInitFromRocksDbTableFlags() {
   rocksdb::BlockBasedTableOptions blockBasedTableOptions;
   AutoInitFromBlockBasedTableOptions(&blockBasedTableOptions);
   return blockBasedTableOptions;
+}
+
+Result<rocksdb::CompressionType> TEST_GetConfiguredCompressionType(const std::string& flag_value) {
+  return yb::GetConfiguredCompressionType(flag_value);
 }
 
 int32_t GetGlobalRocksDBPriorityThreadPoolSize() {
@@ -719,7 +748,7 @@ class RocksDBPatcherHelper {
     return *add_edit_;
   }
 
-  CHECKED_STATUS Apply(
+  Status Apply(
       const rocksdb::Options& options, const rocksdb::ImmutableCFOptions& imm_cf_options) {
     if (!delete_edit_.modified() && !add_edit_.modified()) {
       return Status::OK();
@@ -750,7 +779,7 @@ class RocksDBPatcherHelper {
   }
 
   template <class F>
-  CHECKED_STATUS IterateFilesHelper(const F& f, Status*) {
+  Status IterateFilesHelper(const F& f, Status*) {
     for (int level = 0; level < Levels(); ++level) {
       for (const auto* file : LevelFiles(level)) {
         RETURN_NOT_OK(f(level, *file));
@@ -806,13 +835,13 @@ class RocksDBPatcher::Impl {
     cf_options_.comparator = comparator_.user_comparator();
   }
 
-  CHECKED_STATUS Load() {
+  Status Load() {
     std::vector<rocksdb::ColumnFamilyDescriptor> column_families;
     column_families.emplace_back("default", cf_options_);
     return version_set_.Recover(column_families);
   }
 
-  CHECKED_STATUS SetHybridTimeFilter(HybridTime value) {
+  Status SetHybridTimeFilter(HybridTime value) {
     RocksDBPatcherHelper helper(&version_set_);
 
     helper.IterateFiles([&helper, value](int level, const rocksdb::FileMetaData& file) {
@@ -832,7 +861,7 @@ class RocksDBPatcher::Impl {
     return helper.Apply(options_, imm_cf_options_);
   }
 
-  CHECKED_STATUS ModifyFlushedFrontier(const ConsensusFrontier& frontier) {
+  Status ModifyFlushedFrontier(const ConsensusFrontier& frontier) {
     RocksDBPatcherHelper helper(&version_set_);
 
     docdb::ConsensusFrontier final_frontier = frontier;
@@ -875,7 +904,7 @@ class RocksDBPatcher::Impl {
     return helper.Apply(options_, imm_cf_options_);
   }
 
-  CHECKED_STATUS UpdateFileSizes() {
+  Status UpdateFileSizes() {
     RocksDBPatcherHelper helper(&version_set_);
 
     RETURN_NOT_OK(helper.IterateFiles(
@@ -934,10 +963,12 @@ Status RocksDBPatcher::UpdateFileSizes() {
   return impl_->UpdateFileSizes();
 }
 
-Status ForceRocksDBCompact(rocksdb::DB* db) {
+Status ForceRocksDBCompact(rocksdb::DB* db, SkipFlush skip_flush) {
+  rocksdb::CompactRangeOptions options;
+  options.skip_flush = skip_flush;
   RETURN_NOT_OK_PREPEND(
-      db->CompactRange(rocksdb::CompactRangeOptions(), /* begin = */ nullptr, /* end = */ nullptr),
-      "Compact range failed:");
+      db->CompactRange(options, /* begin = */ nullptr, /* end = */ nullptr),
+      "Compact range failed");
   return Status::OK();
 }
 

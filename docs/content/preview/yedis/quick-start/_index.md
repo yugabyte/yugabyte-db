@@ -14,9 +14,8 @@ menu:
   preview:
     parent: yedis
     weight: 2800
-type: page
+type: indexpage
 ---
-
 After [creating a local cluster](../../quick-start/create-local-cluster/), follow the instructions below to test YugabyteDB's Redis-compatible [YEDIS](../api/) API.
 
 [**redis-cli**](https://redis.io/topics/rediscli) is a command line interface to interact with a Redis server. For ease of use, YugabyteDB ships with the 4.0.1 version of redis-cli in its `bin` directory.
@@ -52,16 +51,16 @@ After [creating a local cluster](../../quick-start/create-local-cluster/), follo
 
 <div class="tab-content">
   <div id="macos" class="tab-pane fade show active" role="tabpanel" aria-labelledby="macos-tab">
-    {{% includeMarkdown "binary/test-yedis.md" /%}}
+  {{% includeMarkdown "binary/test-yedis.md" %}}
   </div>
   <div id="linux" class="tab-pane fade" role="tabpanel" aria-labelledby="linux-tab">
-    {{% includeMarkdown "binary/test-yedis.md" /%}}
+  {{% includeMarkdown "binary/test-yedis.md" %}}
   </div>
   <div id="docker" class="tab-pane fade" role="tabpanel" aria-labelledby="docker-tab">
-    {{% includeMarkdown "docker/test-yedis.md" /%}}
+  {{% includeMarkdown "docker/test-yedis.md" %}}
   </div>
   <div id="kubernetes" class="tab-pane fade" role="tabpanel" aria-labelledby="kubernetes-tab">
-    {{% includeMarkdown "kubernetes/test-yedis.md" /%}}
+  {{% includeMarkdown "kubernetes/test-yedis.md" %}}
   </div>
 </div>
 

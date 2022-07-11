@@ -49,7 +49,7 @@ class YQLVirtualTable : public docdb::YQLStorageIf {
   virtual Result<std::shared_ptr<QLRowBlock>> RetrieveData(
       const QLReadRequestPB& request) const = 0;
 
-  CHECKED_STATUS GetIterator(
+  Status GetIterator(
       const QLReadRequestPB& request,
       const Schema& projection,
       std::reference_wrapper<const docdb::DocReadContext> doc_read_context,
@@ -59,7 +59,7 @@ class YQLVirtualTable : public docdb::YQLStorageIf {
       const QLScanSpec& spec,
       std::unique_ptr<docdb::YQLRowwiseIteratorIf>* iter) const override;
 
-  CHECKED_STATUS BuildYQLScanSpec(
+  Status BuildYQLScanSpec(
       const QLReadRequestPB& request,
       const ReadHybridTime& read_time,
       const Schema& schema,
@@ -72,7 +72,7 @@ class YQLVirtualTable : public docdb::YQLStorageIf {
   // PGSQL Support.
   //------------------------------------------------------------------------------------------------
 
-  CHECKED_STATUS CreateIterator(
+  Status CreateIterator(
       const Schema& projection,
       std::reference_wrapper<const docdb::DocReadContext> doc_read_context,
       const TransactionOperationContext& txn_op_context,
@@ -83,7 +83,7 @@ class YQLVirtualTable : public docdb::YQLStorageIf {
     return Status::OK();
   }
 
-  CHECKED_STATUS InitIterator(docdb::YQLRowwiseIteratorIf* iter,
+  Status InitIterator(docdb::YQLRowwiseIteratorIf* iter,
                               const PgsqlReadRequestPB& request,
                               const Schema& schema,
                               const QLValuePB& ybctid) const override {
@@ -91,7 +91,7 @@ class YQLVirtualTable : public docdb::YQLStorageIf {
     return Status::OK();
   }
 
-  CHECKED_STATUS GetIterator(
+  Status GetIterator(
       const PgsqlReadRequestPB& request,
       const Schema& projection,
       std::reference_wrapper<const docdb::DocReadContext> doc_read_context,
@@ -104,7 +104,7 @@ class YQLVirtualTable : public docdb::YQLStorageIf {
     return Status::OK();
   }
 
-  CHECKED_STATUS GetIterator(
+  Status GetIterator(
       uint64 stmt_id,
       const Schema& projection,
       std::reference_wrapper<const docdb::DocReadContext> doc_read_context,
@@ -121,7 +121,7 @@ class YQLVirtualTable : public docdb::YQLStorageIf {
   // Finds the given column name in the schema and updates the specified column in the given row
   // with the provided value.
   template<class T>
-  CHECKED_STATUS SetColumnValue(const std::string& col_name, const T& value, QLRow* row) const {
+  Status SetColumnValue(const std::string& col_name, const T& value, QLRow* row) const {
     auto p = VERIFY_RESULT(ColumnIndexAndType(col_name));
     row->SetColumn(p.first, util::GetValue(value, p.second));
     return Status::OK();

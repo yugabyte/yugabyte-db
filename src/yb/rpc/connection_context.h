@@ -77,7 +77,7 @@ class ConnectionContext {
 
   virtual StreamReadBuffer& ReadBuffer() = 0;
 
-  virtual CHECKED_STATUS ReportPendingWriteBytes(size_t bytes_in_queue) = 0;
+  virtual Status ReportPendingWriteBytes(size_t bytes_in_queue) = 0;
 
   virtual void UpdateLastRead(const ConnectionPtr& connection);
 

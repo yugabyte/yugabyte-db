@@ -4,13 +4,12 @@ linkTitle: Troubleshoot
 description: Troubleshoot issues in YugabyteDB Managed.
 headcontent:
 image: /images/section_icons/index/quick_start.png
-section: YUGABYTEDB MANAGED
 menu:
-  preview:
+  preview_yugabyte-cloud:
     identifier: cloud-troubleshoot
+    parent: yugabytedb-managed
     weight: 850
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 If you are unable to reach YugabyteDB Managed or having issues, first check the [status](https://status.yugabyte.cloud/).
@@ -35,7 +34,7 @@ If you have a VPC configured, add one or more IP addresses from the peered VPC t
 
 If you are connected to a cluster in Cloud Shell and the message Connection Closed appears.
 
-Cloud Shell has a hard limit of 15 minutes for connections. Close the shell window and [launch a new session](../cloud-connect/connect-cloud-shell/).
+Cloud Shell has a hard limit of 1 hour for connections. In addition, if a Cloud Shell session is inactive for more than five minutes (for example, if you switch to another browser tab), your browser may disconnect the session. Close the shell window and [launch a new session](../cloud-connect/connect-cloud-shell/).
 
 ### SSL off
 
@@ -57,6 +56,21 @@ Ensure you are using the `--ssl` option and the path to the cluster CA certifica
 
 For information on connecting to clusters using a client shell, refer to [Connect via client shells](../cloud-connect/connect-client-shell/).
 
+### Remaining connection slots are reserved
+
+If your application returns the error:
+
+```output
+org.postgresql.util.PSQLException: FATAL: remaining connection slots are reserved for non-replication superuser connections
+```
+
+Your application has reached the limit of available connections for the cluster:
+
+- Sandbox clusters support up to 10 simultaneous connections.
+- Dedicated clusters support 10 simultaneous connections per vCPU. For example, a 3-node cluster with 4 vCPUs per node can support 10 x 3 x 4 = 120 connections.
+
+A solution would be to use a connection pooler. Depending on your use case, you may also want to consider scaling your cluster.
+
 ### Application fails to connect
 
 If the password for the YugabyteDB database account you are using to connect contains special characters (#, %, ^), the driver may fail to parse the URL.
@@ -71,7 +85,15 @@ The database admin credentials are separate from your YugabyteDB Managed credent
 
 If you are a database user who was added to the database by an administrator, ask your administrator to either re-send your credentials or [change your database password](../cloud-secure-clusters/add-users/).
 
-If you are the database admin and are unable to locate your database admin credentials file, contact {{<support-cloud>}}.
+Verify the case of the user name. Similarly to SQL and CQL, YSQL and YCQL are case-insensitive. When adding roles, names are automatically converted to lowercase. For example, the following command:
+
+```sql
+CREATE ROLE Alice LOGIN PASSWORD 'Password';
+```
+
+creates the user "alice". If you subsequently try to log in as "Alice", the login will fail. To use a case-sensitive name for a role, enclose the name in quotes. For example, to create the role "Alice", use `CREATE ROLE "Alice"`.
+
+If you are the database admin and are unable to locate your database admin credentials file, contact {{% support-cloud %}}.
 
 ### VPC networking
 
@@ -79,11 +101,11 @@ If you have set up a VPC network and are unable to connect, verify the following
 
 #### VPC status is Failed
 
-If you are unable to successfully create the VPC, contact {{<support-cloud>}}.
+If you are unable to successfully create the VPC, contact {{% support-cloud %}}.
 
 #### Peering connection status is Pending
 
-A peering connection status of _Pending_ indicates that you need to configure your cloud provider to accept the connection. Refer to [Create a peering connection](../cloud-basics/cloud-vpcs/cloud-add-peering/).
+A peering connection status of _Pending_ indicates that you need to configure your cloud provider to accept the connection. Refer to [Accept the peering request in AWS](../cloud-basics/cloud-vpcs/cloud-add-vpc-aws/#accept-the-peering-request-in-aws) or [Complete the peering in GCP](../cloud-basics/cloud-vpcs/cloud-add-vpc-gcp/#complete-the-peering-in-gcp).
 
 #### Peering connection status is Expired (AWS only)
 
@@ -108,7 +130,7 @@ ERROR:  permission denied to [...]
 HINT:  Must be superuser to [...].
 ```
 
-For security reasons, the database admin user is not a superuser. The admin user is a member of yb_superuser, which does allow most operations. For more information on database roles and privileges in YugabyteDB Managed, refer to [Database authorization in YugabyteDB Managed clusters](../cloud-secure-clusters/cloud-users/). If you need to perform an operation that requires superuser privileges, contact {{<support-cloud>}}.
+For security reasons, the database admin user is not a superuser. The admin user is a member of yb_superuser, which does allow most operations. For more information on database roles and privileges in YugabyteDB Managed, refer to [Database authorization in YugabyteDB Managed clusters](../cloud-secure-clusters/cloud-users/). If you need to perform an operation that requires superuser privileges, contact {{% support-cloud %}}.
 
 ### I need to change my database admin password
 
@@ -118,4 +140,4 @@ YugabyteDB uses [role-based access control](../../secure/authorization/) (RBAC) 
 
 ### You are editing your cluster infrastructure and are unable to reduce disk size per node
 
-50GB of disk space per vCPU is included in the base price for standard clusters. If you increased the disk size per node for your cluster, you cannot reduce it. If you need to reduce the disk size for your cluster, contact {{<support-cloud>}}.
+50GB of disk space per vCPU is included in the base price for Dedicated clusters. If you increased the disk size per node for your cluster, you cannot reduce it. If you need to reduce the disk size for your cluster, contact {{% support-cloud %}}.

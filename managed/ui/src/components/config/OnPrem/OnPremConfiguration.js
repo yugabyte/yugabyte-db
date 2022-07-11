@@ -44,7 +44,9 @@ const initialState = {
   numNodesConfigured: 0,
   numRegions: 0,
   numInstanceTypes: 0,
-  numInstanceTypesConfigured: 0
+  numInstanceTypesConfigured: 0,
+  ntpServers: [],
+  setUpChrony: true
 };
 
 export default class OnPremConfiguration extends Component {

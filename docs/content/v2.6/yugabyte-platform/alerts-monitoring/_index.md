@@ -6,10 +6,11 @@ description: Use Yugabyte Platform for alerts and monitoring of YugabyteDB unive
 image: /images/section_icons/manage/backup.png
 headcontent: Use Yugabyte Platform for alerts and monitoring of YugabyteDB universe data.
 menu:
-  v2.6:
-    parent: yugabyte-platform
+  v2.6_yugabyte-platform:
+    parent: yugabytedb-anywhere
     identifier: alerts-monitoring
 weight: 647
+type: indexpage
 ---
 
 <div class="row">

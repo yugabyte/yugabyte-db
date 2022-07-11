@@ -1,33 +1,25 @@
 package com.yugabyte.yw.commissioner;
 
-import akka.actor.ActorSystem;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.typesafe.config.Config;
+import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.SupportBundleUtil;
 import com.yugabyte.yw.models.SupportBundle;
 import com.yugabyte.yw.models.SupportBundle.SupportBundleStatusType;
 import java.util.List;
 import java.util.Date;
 import java.util.UUID;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.text.ParseException;
+import java.time.Duration;
 import lombok.extern.slf4j.Slf4j;
-import scala.concurrent.ExecutionContext;
-import scala.concurrent.duration.Duration;
 
 @Singleton
 @Slf4j
 public class SupportBundleCleanup {
 
-  private AtomicBoolean running = new AtomicBoolean(false);
-
-  private final ActorSystem actorSystem;
-
-  private final ExecutionContext executionContext;
-
+  private final PlatformScheduler platformScheduler;
   // In hours
   private final int YB_SUPPORT_BUNDLE_CLEANUP_INTERVAL = 24;
 
@@ -37,39 +29,23 @@ public class SupportBundleCleanup {
 
   @Inject
   public SupportBundleCleanup(
-      ActorSystem actorSystem,
-      ExecutionContext executionContext,
-      Config config,
-      SupportBundleUtil supportBundleUtil) {
-    this.actorSystem = actorSystem;
-    this.executionContext = executionContext;
+      PlatformScheduler platformScheduler, Config config, SupportBundleUtil supportBundleUtil) {
+    this.platformScheduler = platformScheduler;
     this.config = config;
     this.supportBundleUtil = supportBundleUtil;
   }
 
-  public void setRunningState(AtomicBoolean state) {
-    this.running = state;
-  }
-
   public void start() {
-    this.actorSystem
-        .scheduler()
-        .schedule(
-            Duration.create(0, TimeUnit.HOURS),
-            Duration.create(YB_SUPPORT_BUNDLE_CLEANUP_INTERVAL, TimeUnit.HOURS),
-            this::scheduleRunner,
-            this.executionContext);
+    platformScheduler.schedule(
+        getClass().getSimpleName(),
+        Duration.ZERO,
+        Duration.ofHours(YB_SUPPORT_BUNDLE_CLEANUP_INTERVAL),
+        this::scheduleRunner);
   }
 
   @VisibleForTesting
   void scheduleRunner() {
-    if (!running.compareAndSet(false, true)) {
-      log.info("Previous Support Bundle Cleanup is still in progress");
-      return;
-    }
-
     log.info("Running Support Bundle Cleanup");
-
     try {
       List<SupportBundle> supportBundleList = SupportBundle.getAll();
 
@@ -83,14 +59,12 @@ public class SupportBundleCleanup {
           });
     } catch (Exception e) {
       log.error("Error running support bundle cleanup", e);
-    } finally {
-      running.set(false);
     }
   }
 
   public synchronized void deleteSupportBundleIfOld(SupportBundle supportBundle)
       throws ParseException {
-    int default_delete_days = config.getInt("yb.support_bundle.default_retention_days");
+    int default_delete_days = config.getInt("yb.support_bundle.retention_days");
 
     if (supportBundle.getStatus() == SupportBundleStatusType.Failed) {
       // Deletes row from the support_bundle db table

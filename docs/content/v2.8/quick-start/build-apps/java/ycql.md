@@ -9,9 +9,7 @@ menu:
     name: Java
     identifier: java-4
     weight: 550
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -172,7 +170,7 @@ public class YBCqlHelloWorld {
 
       // Insert a row.
       String insert = "INSERT INTO ybdemo.employee (id, name, age, language)" +
-                                          " VALUES (1, 'John', 35, 'Java');"; 
+                                          " VALUES (1, 'John', 35, 'Java');";
       ResultSet insertResult = session.execute(insert);
       System.out.println("Inserted data: " + insert);
 

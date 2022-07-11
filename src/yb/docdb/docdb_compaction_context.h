@@ -22,6 +22,7 @@
 #include <boost/functional/hash.hpp>
 
 #include "yb/common/column_id.h"
+#include "yb/common/common_types.pb.h"
 #include "yb/common/hybrid_time.h"
 
 #include "yb/docdb/expiration.h"
@@ -45,7 +46,6 @@ YB_STRONGLY_TYPED_BOOL(ShouldRetainDeleteMarkersInMajorCompaction);
 
 struct Expiration;
 using ColumnIds = std::unordered_set<ColumnId, boost::hash<ColumnId>>;
-using ColumnIdsPtr = std::shared_ptr<ColumnIds>;
 
 // A "directive" of how a particular compaction should retain old (overwritten or deleted) values.
 struct HistoryRetentionDirective {
@@ -56,62 +56,39 @@ struct HistoryRetentionDirective {
   // the lowest "read point" of any pending read operations.
   HybridTime history_cutoff;
 
-  // Columns that were deleted at a timestamp lower than the history cutoff.
-  ColumnIdsPtr deleted_cols;
-
   MonoDelta table_ttl;
 
   ShouldRetainDeleteMarkersInMajorCompaction retain_delete_markers_in_major_compaction{false};
 };
 
-struct CompactionSchemaPacking {
+struct CompactionSchemaInfo {
+  TableType table_type;
   uint32_t schema_version = std::numeric_limits<uint32_t>::max();
   std::shared_ptr<const docdb::SchemaPacking> schema_packing;
+  Uuid cotable_id;
+  ColumnIds deleted_cols;
+
+  bool enabled() const;
+  size_t pack_limit() const; // As usual, when not specified size is in bytes.
 };
 
-using SchemaPackingProvider = std::function<
-    Result<CompactionSchemaPacking>(const Uuid& table_id, uint32_t schema_version)>;
+// Used to query latest possible schema version.
+constexpr SchemaVersion kLatestSchemaVersion = std::numeric_limits<SchemaVersion>::max();
 
-// DocDB compaction feed. A new instance of this class is created for every compaction.
-class DocDBCompactionContext : public rocksdb::CompactionContext {
+class SchemaPackingProvider {
  public:
-  DocDBCompactionContext(
-      rocksdb::CompactionFeed* next_feed,
-      HistoryRetentionDirective retention,
-      IsMajorCompaction is_major_compaction,
-      const KeyBounds* key_bounds,
-      const SchemaPackingProvider& schema_packing_provider);
+  // Returns schema packing for provided cotable_id and schema version.
+  // If schema_version is kLatestSchemaVersion, then latest possible schema packing is returned.
+  virtual Result<CompactionSchemaInfo> CotablePacking(
+      const Uuid& table_id, uint32_t schema_version, HybridTime history_cutoff) = 0;
 
-  ~DocDBCompactionContext() = default;
+  // Returns schema packing for provided colocation_id and schema version.
+  // If schema_version is kLatestSchemaVersion, then latest possible schema packing is returned.
+  virtual Result<CompactionSchemaInfo> ColocationPacking(
+      ColocationId colocation_id, uint32_t schema_version, HybridTime history_cutoff) = 0;
 
-  rocksdb::CompactionFeed* Feed() override {
-    return feed_.get();
-  }
-
-  // This indicates we don't have a cached TTL. We need this to be different from kMaxTtl
-  // and kResetTtl because a PERSIST call would lead to a cached TTL of kMaxTtl, and kResetTtl
-  // indicates no TTL in Cassandra.
-  const MonoDelta kNoTtl = MonoDelta::FromNanoseconds(-1);
-
-  // This is used to provide the history_cutoff timestamp to the compaction as a field in the
-  // ConsensusFrontier, so that it can be persisted in RocksDB metadata and recovered on bootstrap.
-  rocksdb::UserFrontierPtr GetLargestUserFrontier() const override;
-
-  // Returns an empty list when key_ranges_ is not set, denoting that the whole key range of the
-  // tablet should be considered live.
-  //
-  // When key_ranges_ is set, returns two live ranges:
-  // (1) A range covering any ApplyTransactionState records which may have been written
-  // (2) A range covering all valid keys in key_ranges_, i.e. all user data this tablet is
-  //     responsible for.
-  std::vector<std::pair<Slice, Slice>> GetLiveRanges() const override;
-
- private:
-  HybridTime history_cutoff_;
-  const KeyBounds* key_bounds_;
-  std::unique_ptr<rocksdb::CompactionFeed> feed_;
+  virtual ~SchemaPackingProvider() = default;
 };
-
 // A strategy for deciding how the history of old database operations should be retained during
 // compactions. We may implement this differently in production and in tests.
 class HistoryRetentionPolicy {
@@ -120,10 +97,14 @@ class HistoryRetentionPolicy {
   virtual HistoryRetentionDirective GetRetentionDirective() = 0;
 };
 
+using DeleteMarkerRetentionTimeProvider = std::function<HybridTime(
+    const std::vector<rocksdb::FileMetaData*>&)>;
+
 std::shared_ptr<rocksdb::CompactionContextFactory> CreateCompactionContextFactory(
     std::shared_ptr<HistoryRetentionPolicy> retention_policy,
     const KeyBounds* key_bounds,
-    const SchemaPackingProvider& schema_packing_provider);
+    const DeleteMarkerRetentionTimeProvider& delete_marker_retention_provider,
+    SchemaPackingProvider* schema_packing_provider);
 
 // A history retention policy that can be configured manually. Useful in tests. This class is
 // useful for testing and is thread-safe.
@@ -133,16 +114,10 @@ class ManualHistoryRetentionPolicy : public HistoryRetentionPolicy {
 
   void SetHistoryCutoff(HybridTime history_cutoff);
 
-  void AddDeletedColumn(ColumnId col);
-
   void SetTableTTLForTests(MonoDelta ttl);
 
  private:
   std::atomic<HybridTime> history_cutoff_{HybridTime::kMin};
-
-  std::mutex deleted_cols_mtx_;
-  ColumnIds deleted_cols_ GUARDED_BY(deleted_cols_mtx_);
-
   std::atomic<MonoDelta> table_ttl_{MonoDelta::kMax};
 };
 

@@ -8,6 +8,7 @@ import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -41,7 +42,6 @@ import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.ListMastersResponse;
 import org.yb.client.ListTabletServersResponse;
 import org.yb.master.CatalogEntityInfo;
-import org.yb.util.ServerInfo;
 
 @RunWith(MockitoJUnitRunner.class)
 public class EditUniverseTest extends UniverseModifyBaseTest {
@@ -51,7 +51,9 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
           TaskType.SetNodeStatus, // ToBeAdded to Adding
           TaskType.AnsibleCreateServer,
           TaskType.AnsibleUpdateNodeInfo,
+          TaskType.RunHooks,
           TaskType.AnsibleSetupServer,
+          TaskType.RunHooks,
           TaskType.AnsibleConfigureServers,
           TaskType.AnsibleConfigureServers, // GFlags
           TaskType.AnsibleConfigureServers, // GFlags
@@ -85,7 +87,9 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
           TaskType.SetNodeStatus, // ToBeAdded to Adding
           TaskType.AnsibleCreateServer,
           TaskType.AnsibleUpdateNodeInfo,
+          TaskType.RunHooks,
           TaskType.AnsibleSetupServer,
+          TaskType.RunHooks,
           TaskType.AnsibleConfigureServers,
           TaskType.AnsibleConfigureServers, // GFlags
           TaskType.AnsibleConfigureServers, // GFlags
@@ -141,6 +145,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     when(mockListTabletServersResponse.getTabletServersCount()).thenReturn(10);
 
     try {
+      when(mockClient.waitForMaster(any(), anyLong())).thenReturn(true);
       when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
       when(mockClient.changeMasterClusterConfig(any())).thenReturn(mockMasterChangeConfigResponse);
       when(mockClient.changeMasterConfig(
@@ -153,6 +158,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
       when(listMastersResponse.getMasters()).thenReturn(Collections.emptyList());
       when(mockClient.listMasters()).thenReturn(listMastersResponse);
     } catch (Exception e) {
+      fail();
     }
     mockWaits(mockClient);
     when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
@@ -231,6 +237,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     taskParams.nodePrefix = universe.getUniverseDetails().nodePrefix;
     taskParams.nodeDetailsSet = universe.getUniverseDetails().nodeDetailsSet;
     taskParams.clusters = universe.getUniverseDetails().clusters;
+    taskParams.creatingUser = defaultUser;
     Cluster primaryCluster = taskParams.getPrimaryCluster();
     UniverseDefinitionTaskParams.UserIntent newUserIntent = primaryCluster.userIntent.clone();
     PlacementInfo pi = universe.getUniverseDetails().getPrimaryCluster().placementInfo;

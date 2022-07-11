@@ -8,9 +8,14 @@ import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.PodStatus;
 import io.fabric8.kubernetes.api.model.Secret;
 import io.fabric8.kubernetes.api.model.Service;
+import io.fabric8.kubernetes.api.model.apps.StatefulSet;
+import io.fabric8.kubernetes.api.model.apps.StatefulSetList;
 import io.fabric8.kubernetes.client.Config;
 import io.fabric8.kubernetes.client.DefaultKubernetesClient;
 import io.fabric8.kubernetes.client.KubernetesClient;
+import io.fabric8.kubernetes.client.dsl.MixedOperation;
+import io.fabric8.kubernetes.client.dsl.RollableScalableResource;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -42,7 +47,7 @@ public class NativeKubernetesManager extends KubernetesManager {
     try (KubernetesClient client = getClient(config)) {
       client
           .namespaces()
-          .create(
+          .createOrReplace(
               new NamespaceBuilder().withNewMetadata().withName(namespace).endMetadata().build());
     }
   }
@@ -97,11 +102,30 @@ public class NativeKubernetesManager extends KubernetesManager {
 
   @Override
   public String getPreferredServiceIP(
-      Map<String, String> config, String namespace, boolean isMaster) {
-    String serviceName = isMaster ? "yb-master-service" : "yb-tserver-service";
+      Map<String, String> config,
+      String universePrefix,
+      String namespace,
+      boolean isMaster,
+      boolean newNamingStyle) {
+    String appLabel = newNamingStyle ? "app.kubernetes.io/name" : "app";
+    String appName = isMaster ? "yb-master" : "yb-tserver";
     try (KubernetesClient client = getClient(config)) {
-      Service service = client.services().inNamespace(namespace).withName(serviceName).get();
-      return getIp(service);
+      // TODO(bhavin192): this might need to be changed when we
+      // support multi-cluster environments.
+      List<Service> services =
+          client
+              .services()
+              .inNamespace(namespace)
+              .withLabel(appLabel, appName)
+              .withLabel("release", universePrefix)
+              .withoutLabel("service-type", "headless")
+              .list()
+              .getItems();
+      if (services.size() != 1) {
+        throw new RuntimeException(
+            "There must be exactly one Master or TServer endpoint service, got " + services.size());
+      }
+      return getIp(services.get(0));
     }
   }
 
@@ -124,9 +148,29 @@ public class NativeKubernetesManager extends KubernetesManager {
   }
 
   @Override
-  public void updateNumNodes(Map<String, String> config, String namespace, int numNodes) {
+  public void updateNumNodes(
+      Map<String, String> config,
+      String universePrefix,
+      String namespace,
+      int numNodes,
+      boolean newNamingStyle) {
+    String appLabel = newNamingStyle ? "app.kubernetes.io/name" : "app";
     try (KubernetesClient client = getClient(config)) {
-      client.apps().statefulSets().inNamespace(namespace).withName("yb-tserver").scale(numNodes);
+      // https://github.com/fabric8io/kubernetes-client/issues/3948
+      MixedOperation<StatefulSet, StatefulSetList, RollableScalableResource<StatefulSet>>
+          statefulSets = client.apps().statefulSets();
+      statefulSets
+          .inNamespace(namespace)
+          .withLabel("release", universePrefix)
+          .withLabel(appLabel, "yb-tserver")
+          .list()
+          .getItems()
+          .forEach(
+              s ->
+                  statefulSets
+                      .inNamespace(namespace)
+                      .withName(s.getMetadata().getName())
+                      .scale(numNodes));
     }
   }
 
@@ -138,13 +182,6 @@ public class NativeKubernetesManager extends KubernetesManager {
       client
           .persistentVolumeClaims()
           .inNamespace(namespace)
-          .withLabel("app", "yb-master")
-          .withLabel("release", helmReleaseName)
-          .delete();
-      client
-          .persistentVolumeClaims()
-          .inNamespace(namespace)
-          .withLabel("app", "yb-tserver")
           .withLabel("release", helmReleaseName)
           .delete();
     }

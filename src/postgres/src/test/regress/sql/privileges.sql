@@ -765,6 +765,53 @@ SELECT has_table_privilege('regress_priv_user1', 'atest4', 'SELECT WITH GRANT OP
 \c -
 CREATE ROLE regress_sro_user;
 
+-- Check that index expressions and predicates are run as the table's owner
+
+-- A dummy index function checking current_user
+CREATE FUNCTION sro_ifun(int) RETURNS int AS $$
+BEGIN
+	-- Below we set the table's owner to regress_sro_user
+	ASSERT current_user = 'regress_sro_user',
+		format('sro_ifun(%s) called by %s', $1, current_user);
+	RETURN $1;
+END;
+$$ LANGUAGE plpgsql IMMUTABLE;
+-- Create a table owned by regress_sro_user
+CREATE TABLE sro_tab (a int);
+ALTER TABLE sro_tab OWNER TO regress_sro_user;
+INSERT INTO sro_tab VALUES (1), (2), (3);
+-- Create an expression index with a predicate
+CREATE INDEX sro_idx ON sro_tab ((sro_ifun(a) + sro_ifun(0)))
+	WHERE sro_ifun(a + 10) > sro_ifun(10);
+DROP INDEX sro_idx;
+-- Do the same concurrently
+CREATE INDEX CONCURRENTLY sro_idx ON sro_tab ((sro_ifun(a) + sro_ifun(0)))
+	WHERE sro_ifun(a + 10) > sro_ifun(10);
+-- REINDEX
+REINDEX TABLE sro_tab;
+REINDEX INDEX sro_idx;
+REINDEX TABLE CONCURRENTLY sro_tab;
+DROP INDEX sro_idx;
+-- CLUSTER
+CREATE INDEX sro_cluster_idx ON sro_tab ((sro_ifun(a) + sro_ifun(0)));
+CLUSTER sro_tab USING sro_cluster_idx;
+DROP INDEX sro_cluster_idx;
+-- BRIN index
+CREATE INDEX sro_brin ON sro_tab USING brin ((sro_ifun(a) + sro_ifun(0)));
+SELECT brin_desummarize_range('sro_brin', 0);
+SELECT brin_summarize_range('sro_brin', 0);
+DROP TABLE sro_tab;
+-- Check with a partitioned table
+CREATE TABLE sro_ptab (a int) PARTITION BY RANGE (a);
+ALTER TABLE sro_ptab OWNER TO regress_sro_user;
+CREATE TABLE sro_part PARTITION OF sro_ptab FOR VALUES FROM (1) TO (10);
+ALTER TABLE sro_part OWNER TO regress_sro_user;
+INSERT INTO sro_ptab VALUES (1), (2), (3);
+CREATE INDEX sro_pidx ON sro_ptab ((sro_ifun(a) + sro_ifun(0)))
+	WHERE sro_ifun(a + 10) > sro_ifun(10);
+REINDEX TABLE sro_ptab;
+REINDEX INDEX CONCURRENTLY sro_pidx;
+
 SET SESSION AUTHORIZATION regress_sro_user;
 CREATE FUNCTION unwanted_grant() RETURNS void LANGUAGE sql AS
 	'GRANT regress_priv_group2 TO regress_sro_user';
@@ -790,6 +837,23 @@ REFRESH MATERIALIZED VIEW sro_mv;
 \c -
 REFRESH MATERIALIZED VIEW sro_mv;
 BEGIN; SET CONSTRAINTS ALL IMMEDIATE; REFRESH MATERIALIZED VIEW sro_mv; COMMIT;
+
+-- REFRESH MATERIALIZED VIEW CONCURRENTLY use of eval_const_expressions()
+SET SESSION AUTHORIZATION regress_sro_user;
+CREATE FUNCTION unwanted_grant_nofail(int) RETURNS int
+	IMMUTABLE LANGUAGE plpgsql AS $$
+BEGIN
+	PERFORM unwanted_grant();
+	RAISE WARNING 'owned';
+	RETURN 1;
+EXCEPTION WHEN OTHERS THEN
+	RETURN 2;
+END$$;
+CREATE MATERIALIZED VIEW sro_index_mv AS SELECT 1 AS c;
+CREATE UNIQUE INDEX ON sro_index_mv (c) WHERE unwanted_grant_nofail(1) > 0;
+\c -
+REFRESH MATERIALIZED VIEW CONCURRENTLY sro_index_mv;
+REFRESH MATERIALIZED VIEW sro_index_mv;
 
 DROP OWNED BY regress_sro_user;
 DROP ROLE regress_sro_user;

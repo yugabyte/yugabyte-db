@@ -13,12 +13,12 @@
 
 package org.yb.cdc;
 
-import org.apache.log4j.Logger;
 import org.junit.runner.RunWith;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.yb.cdc.common.CDCBaseClass;
 import org.yb.cdc.util.CDCSubscriber;
 import org.yb.client.GetCheckpointResponse;
-import org.yb.client.SetCheckpointResponse;
 
 import static org.yb.AssertionWrappers.*;
 import org.junit.Before;
@@ -27,7 +27,7 @@ import org.yb.util.YBTestRunnerNonTsanOnly;
 
 @RunWith(value = YBTestRunnerNonTsanOnly.class)
 public class TestCheckpoint extends CDCBaseClass {
-  private final static Logger LOG = Logger.getLogger(TestCheckpoint.class);
+  private final static Logger LOG = LoggerFactory.getLogger(TestCheckpoint.class);
 
   @Before
   public void setUp() throws Exception {
@@ -77,10 +77,7 @@ public class TestCheckpoint extends CDCBaseClass {
 
       long cpTerm = 2;
       long cpIndex = 9;
-      SetCheckpointResponse setResp = testSubscriber.setCheckpoint(cpTerm, cpIndex);
-      if (setResp == null) {
-        LOG.error("Cannot set checkpoint, null response received as SetCheckpointResponse");
-      }
+      testSubscriber.setCheckpoint(cpTerm, cpIndex, true);
 
       resp = testSubscriber.getCheckpoint();
 
@@ -110,23 +107,26 @@ public class TestCheckpoint extends CDCBaseClass {
       assertEquals(1, rowsAffected2);
 
       GetCheckpointResponse respBeforeSetting = testSubscriber.getCheckpoint();
-      if(respBeforeSetting == null) {
+      LOG.info("The checkpoint received before setting is " + respBeforeSetting.getTerm() + " "
+       + respBeforeSetting.getTerm());
+      if (respBeforeSetting == null) {
         LOG.error("Null response received as GetCheckpointResponse");
         fail();
       }
 
-      SetCheckpointResponse setResp = testSubscriber.setCheckpoint(1, -3);
-
-      GetCheckpointResponse respAfterSetting = testSubscriber.getCheckpoint();
-
-      // Now even if the checkpoint is set negatively,
-      // it would remain the same as the one before setting it explicitly
-      // since a negative index is illegal.
-      assertEquals(respBeforeSetting.getTerm(), respAfterSetting.getTerm());
-      assertEquals(respBeforeSetting.getIndex(), respAfterSetting.getIndex());
-    } catch (Exception e) {
-      LOG.error("Test to verify failure while setting checkpoint with negative index " +
-        "failed with exception", e);
+      boolean exceptionReceived = false;
+      try {
+        testSubscriber.setCheckpoint(1, -3, true);
+      }
+      catch (Exception e) {
+        LOG.info("Received expected exception ", e);
+        exceptionReceived = true;
+      }
+      if (!exceptionReceived) {
+        fail();
+      }
+    }
+    catch (Exception e) {
       fail();
     }
   }
@@ -150,7 +150,7 @@ public class TestCheckpoint extends CDCBaseClass {
       long cpTerm = 1;
       long cpIndex = 7;
 
-      SetCheckpointResponse resp = testSubscriber.setCheckpoint(cpTerm, cpIndex);
+      testSubscriber.setCheckpoint(cpTerm, cpIndex, true);
 
       // Checkpoint will be set to the specified value,
       // we are just checking if checkpoint can be set in IMPLICIT mode.

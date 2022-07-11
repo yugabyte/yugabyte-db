@@ -4,13 +4,14 @@ linkTitle: Cloud Shell
 description: Connect to YugabyteDB Managed clusters from any browser using Cloud Shell
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
+aliases:
+  - /preview/yugabyte-cloud/cloud-quickstart/qs-connect/
 menu:
-  preview:
+  preview_yugabyte-cloud:
     identifier: connect-cloud-shell
     parent: cloud-connect
     weight: 10
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Use any browser to connect to YugabyteDB Managed by using Cloud Shell. Cloud Shell doesn't require a CA certificate or any special network access configured.
@@ -84,6 +85,7 @@ The following table lists common meta-commands that can be used in Cloud Shell.
 | \c [database name] | Connect to a database. For example, `\c yb_demo`. |
 | \l | List all databases. |
 | \d | Display tables, views, and sequences. |
+| \d [name] | List columns with their types and attributes for the named table, view, materialized view, index, sequence, or foreign table. |
 | \dt | Display tables. |
 | \dv | Display views. |
 | \dm | Display materialized views. |

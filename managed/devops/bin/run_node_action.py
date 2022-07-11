@@ -3,8 +3,13 @@
 import argparse
 from collections import namedtuple
 from node_client_utils import SshParamikoClient, KubernetesClient
+from pathlib import Path
+import sys
 import uuid
-import os
+import warnings
+import logging
+
+warnings.filterwarnings("ignore")
 
 NodeTypeParser = namedtuple('NodeTypeParser', ['parser'])
 ActionHandler = namedtuple('ActionHandler', ['handler', 'parser'])
@@ -12,7 +17,7 @@ ActionHandler = namedtuple('ActionHandler', ['handler', 'parser'])
 
 def add_k8s_subparser(subparsers, command, parent):
     k8s_parser = subparsers.add_parser(command, help='is k8s universe', parents=[parent])
-    k8s_parser.add_argument('--namespace', type=str, help='k8s namespace', required=True)
+    k8s_parser.add_argument('--pod_fqdn', type=str, help='k8s pod FQDN', required=True)
     k8s_parser.add_argument('--kubeconfig', type=str, help='k8s kubeconfig', required=True)
     return k8s_parser
 
@@ -31,8 +36,7 @@ def add_ssh_subparser(subparsers, command, parent):
 def add_run_command_subparser(subparsers, command, parent):
     parser = subparsers.add_parser(command, help='run command and get output',
                                    parents=[parent])
-    parser.add_argument('--command', type=str, help='Command to run',
-                        required=True)
+    parser.add_argument('--command', nargs=argparse.REMAINDER)
 
 
 def handle_run_command(args, client):
@@ -63,8 +67,10 @@ def download_logs_ssh(args, client):
 
     client.exec_command(cmd)
     sftp_client = client.get_sftp_client()
-    sftp_client.get(tar_file_name, args.target_local_file)
-    sftp_client.close()
+    try:
+        sftp_client.get(tar_file_name, args.target_local_file)
+    finally:
+        sftp_client.close()
 
     client.exec_command(['rm', tar_file_name])
 
@@ -88,7 +94,7 @@ def handle_download_logs(args, client):
 
 
 def add_download_file_subparser(subparsers, command, parent):
-    parser = subparsers.add_parser(command, help='download node logs package',
+    parser = subparsers.add_parser(command, help='download file',
                                    parents=[parent])
     parser.add_argument('--yb_home_dir', type=str,
                         help='Home directory for YB',
@@ -117,10 +123,12 @@ def download_file_ssh(args, client):
 
     check_file_exists_output = int(
         client.exec_script("./bin/node_utils.sh", ["check_file_exists", tar_file_name]).strip())
-    if(check_file_exists_output):
+    if check_file_exists_output:
         sftp_client = client.get_sftp_client()
-        sftp_client.get(tar_file_name, args.target_local_file)
-        sftp_client.close()
+        try:
+            sftp_client.get(tar_file_name, args.target_local_file)
+        finally:
+            sftp_client.close()
 
         client.exec_command(['rm', tar_file_name])
 
@@ -143,7 +151,7 @@ def download_file_k8s(args, client):
 
     check_file_exists_output = int(
         client.exec_script("./bin/node_utils.sh", ["check_file_exists", tar_file_name]).strip())
-    if(check_file_exists_output):
+    if check_file_exists_output:
         client.get_file(tar_file_name, args.target_local_file)
         client.exec_command(['rm', tar_file_name])
 
@@ -155,6 +163,44 @@ def handle_download_file(args, client):
         download_file_k8s(args, client)
 
 
+def add_upload_file_subparser(subparsers, command, parent):
+    parser = subparsers.add_parser(command, help='upload file',
+                                   parents=[parent])
+    parser.add_argument('--source_file', type=str,
+                        help='Source file path',
+                        required=True)
+    parser.add_argument('--target_file', type=str,
+                        help='Target file path',
+                        required=True)
+    parser.add_argument('--permissions', type=str,
+                        help='Target file permissions',
+                        required=True)
+
+
+def upload_file_ssh(args, client):
+    sftp_client = client.get_sftp_client()
+    try:
+        sftp_client.put(args.source_file, args.target_file)
+    finally:
+        sftp_client.close()
+
+
+def upload_file_k8s(args, client):
+    client.put_file(args.source_file, args.target_file)
+
+
+def handle_upload_file(args, client):
+    target_path = Path(args.target_file)
+    client.exec_command(['mkdir', '-p', str(target_path.parent.absolute())])
+
+    if args.node_type == 'ssh':
+        upload_file_ssh(args, client)
+    else:
+        upload_file_k8s(args, client)
+
+    client.exec_command(['chmod', args.permissions, args.target_file])
+
+
 node_types = {
     'k8s': NodeTypeParser(add_k8s_subparser),
     'ssh': NodeTypeParser(add_ssh_subparser)
@@ -164,6 +210,7 @@ actions = {
     'run_command': ActionHandler(handle_run_command, add_run_command_subparser),
     'download_logs': ActionHandler(handle_download_logs, add_download_logs_subparser),
     'download_file': ActionHandler(handle_download_file, add_download_file_subparser),
+    'upload_file': ActionHandler(handle_upload_file, add_upload_file_subparser),
 }
 
 
@@ -193,15 +240,23 @@ def main():
     args = parse_args()
     if args.node_type == 'ssh':
         client = SshParamikoClient(args)
-        client.connect()
+        try:
+            client.connect()
+        except Exception as e:
+            sys.exit("Failed to establish SSH connection to {}:{} - {}"
+                     .format(args.ip, args.port, str(e)))
     else:
         client = KubernetesClient(args)
 
-    actions[args.action].handler(args, client)
+    try:
+        actions[args.action].handler(args, client)
+    finally:
+        if args.node_type == 'ssh':
+            client.close_connection()
 
-    if args.node_type == 'ssh':
-        client.close_connection()
 
-
-if __name__ == "__main__":
+if __name__ == '__main__':
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s: %(message)s")
     main()

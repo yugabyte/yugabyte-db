@@ -137,12 +137,8 @@ using consensus::RunLeaderElectionResponsePB;
 
 using master::ListMastersRequestPB;
 using master::ListMastersResponsePB;
-using master::ListMasterRaftPeersRequestPB;
-using master::ListMasterRaftPeersResponsePB;
 using master::ListTabletServersRequestPB;
 using master::ListTabletServersResponsePB;
-using master::ListLiveTabletServersRequestPB;
-using master::ListLiveTabletServersResponsePB;
 using master::TabletLocationsPB;
 using master::TSInfoPB;
 
@@ -357,7 +353,7 @@ class TableNameResolver::Impl {
     return false;
   }
 
-  CHECKED_STATUS ProcessNamespace(const Slice& prefix, const Slice& value) {
+  Status ProcessNamespace(const Slice& prefix, const Slice& value) {
     DCHECK(!current_namespace_);
     const auto ns = VERIFY_RESULT(ResolveNamespaceName(prefix, value));
     const auto i = namespaces_.find(NamespaceKey(ns.db_type, ns.name));
@@ -370,7 +366,7 @@ class TableNameResolver::Impl {
         ns.name, DatabasePrefix(ns.db_type));
   }
 
-  CHECKED_STATUS ProcessTableId(const Slice& table_id) {
+  Status ProcessTableId(const Slice& table_id) {
     const auto& idx = tables_.get<TableIdTag>();
     const auto i = idx.find(table_id);
     if (i == idx.end()) {
@@ -385,7 +381,7 @@ class TableNameResolver::Impl {
     return Status::OK();
   }
 
-  CHECKED_STATUS ProcessTableName(const Slice& table_name) {
+  Status ProcessTableName(const Slice& table_name) {
     DCHECK(current_namespace_);
     const auto& idx = tables_.get<TableNameTag>();
     const auto key = boost::make_tuple(Slice(current_namespace_->id()), table_name);
@@ -588,7 +584,7 @@ Status ClusterAdminClient::MasterLeaderStepDown(
       new_leader_uuid, &master_proxy);
 }
 
-CHECKED_STATUS ClusterAdminClient::LeaderStepDownWithNewLeader(
+Status ClusterAdminClient::LeaderStepDownWithNewLeader(
     const std::string& tablet_id,
     const std::string& dest_ts_uuid) {
   return LeaderStepDown(
@@ -669,7 +665,7 @@ Status ClusterAdminClient::SetTabletPeerInfo(
   return Status::OK();
 }
 
-CHECKED_STATUS ClusterAdminClient::SetWalRetentionSecs(
+Status ClusterAdminClient::SetWalRetentionSecs(
   const YBTableName& table_name,
   const uint32_t wal_ret_secs) {
   auto alterer = yb_client_->NewTableAlterer(table_name);
@@ -679,7 +675,7 @@ CHECKED_STATUS ClusterAdminClient::SetWalRetentionSecs(
   return Status::OK();
 }
 
-CHECKED_STATUS ClusterAdminClient::GetWalRetentionSecs(const YBTableName& table_name) {
+Status ClusterAdminClient::GetWalRetentionSecs(const YBTableName& table_name) {
   const auto info = VERIFY_RESULT(yb_client_->GetYBTableInfo(table_name));
   if (!info.wal_retention_secs) {
     cout << "WAL retention time not set for table " << table_name.table_name() << endl;
@@ -1258,6 +1254,9 @@ Status ClusterAdminClient::ListTables(bool include_db_type,
         case master::INDEX_TABLE_RELATION:
           str << " index";
           break;
+        case master::MATVIEW_TABLE_RELATION:
+          str << "matview";
+          break;
         default:
           str << " other";
       }
@@ -1272,7 +1271,9 @@ Status ClusterAdminClient::ListTables(bool include_db_type,
 struct FollowerDetails {
   string uuid;
   string host_port;
-  FollowerDetails(const string &u, const string &hp) : uuid(u), host_port(hp) {}
+  string peer_role;
+  FollowerDetails(const string &u, const string &hp, const string &role) :
+    uuid(u), host_port(hp), peer_role(role) {}
 };
 
 Status ClusterAdminClient::ListTablets(
@@ -1319,7 +1320,8 @@ Status ClusterAdminClient::ListTablets(
             HostPortPBToString(replica.ts_info().private_rpc_addresses(0));
           if (json) {
             follower_list.push_back(
-                FollowerDetails(replica.ts_info().permanent_uuid(), follower_host_port));
+                FollowerDetails(replica.ts_info().permanent_uuid(), follower_host_port,
+                  PeerRole_Name(replica.role())));
           } else {
             if (!follower_list_str.empty()) {
               follower_list_str += ",";
@@ -1343,6 +1345,8 @@ Status ClusterAdminClient::ListTablets(
       rapidjson::Value json_leader(rapidjson::kObjectType);
       AddStringField("uuid", leader_uuid, &json_leader, &document.GetAllocator());
       AddStringField("endpoint", leader_host_port, &json_leader, &document.GetAllocator());
+      AddStringField("role", PeerRole_Name(PeerRole::LEADER), &json_leader,
+          &document.GetAllocator());
       json_tablet.AddMember(rapidjson::StringRef("leader"), json_leader, document.GetAllocator());
       if (followers) {
         rapidjson::Value json_followers(rapidjson::kArrayType);
@@ -1351,6 +1355,7 @@ Status ClusterAdminClient::ListTablets(
           rapidjson::Value json_follower(rapidjson::kObjectType);
           AddStringField("uuid", follower.uuid, &json_follower, &document.GetAllocator());
           AddStringField("endpoint", follower.host_port, &json_follower, &document.GetAllocator());
+          AddStringField("role", follower.peer_role, &json_follower, &document.GetAllocator());
           json_followers.PushBack(json_follower, document.GetAllocator());
         }
         json_tablet.AddMember(rapidjson::StringRef("followers"), json_followers,
@@ -1667,7 +1672,7 @@ Status ClusterAdminClient::AddReadReplicaPlacementInfo(
   return Status::OK();
 }
 
-CHECKED_STATUS ClusterAdminClient::ModifyReadReplicaPlacementInfo(
+Status ClusterAdminClient::ModifyReadReplicaPlacementInfo(
     const std::string& placement_uuid, const std::string& placement_info, int replication_factor) {
   RETURN_NOT_OK_PREPEND(WaitUntilMasterLeaderReady(), "Wait for master leader failed!");
 
@@ -1709,7 +1714,7 @@ CHECKED_STATUS ClusterAdminClient::ModifyReadReplicaPlacementInfo(
   return Status::OK();
 }
 
-CHECKED_STATUS ClusterAdminClient::DeleteReadReplicaPlacementInfo() {
+Status ClusterAdminClient::DeleteReadReplicaPlacementInfo() {
   RETURN_NOT_OK_PREPEND(WaitUntilMasterLeaderReady(), "Wait for master leader failed!");
 
   auto master_resp = VERIFY_RESULT(GetMasterClusterConfig());
@@ -2097,7 +2102,7 @@ Result<master::GetMasterClusterConfigResponsePB> ClusterAdminClient::GetMasterCl
                    "MasterServiceImpl::GetMasterClusterConfig call failed.");
 }
 
-CHECKED_STATUS ClusterAdminClient::SplitTablet(const std::string& tablet_id) {
+Status ClusterAdminClient::SplitTablet(const std::string& tablet_id) {
   master::SplitTabletRequestPB req;
   req.set_tablet_id(tablet_id);
   const auto resp = VERIFY_RESULT(InvokeRpc(
@@ -2106,19 +2111,30 @@ CHECKED_STATUS ClusterAdminClient::SplitTablet(const std::string& tablet_id) {
   return Status::OK();
 }
 
-CHECKED_STATUS ClusterAdminClient::DisableTabletSplitting(int64_t disable_duration_ms) {
+Result<master::DisableTabletSplittingResponsePB> ClusterAdminClient::DisableTabletSplitsInternal(
+    int64_t disable_duration_ms, const std::string& feature_name) {
   master::DisableTabletSplittingRequestPB req;
   req.set_disable_duration_ms(disable_duration_ms);
-  const auto resp = VERIFY_RESULT(
-      InvokeRpc(&master::MasterAdminProxy::DisableTabletSplitting, *master_admin_proxy_, req));
+  req.set_feature_name(feature_name);
+  return InvokeRpc(&master::MasterAdminProxy::DisableTabletSplitting, *master_admin_proxy_, req);
+}
+
+Status ClusterAdminClient::DisableTabletSplitting(
+    int64_t disable_duration_ms, const std::string& feature_name) {
+  const auto resp = VERIFY_RESULT(DisableTabletSplitsInternal(disable_duration_ms, feature_name));
   std::cout << "Response: " << AsString(resp) << std::endl;
   return Status::OK();
 }
 
-CHECKED_STATUS ClusterAdminClient::IsTabletSplittingComplete() {
+Result<master::IsTabletSplittingCompleteResponsePB>
+    ClusterAdminClient::IsTabletSplittingCompleteInternal() {
   master::IsTabletSplittingCompleteRequestPB req;
-  const auto resp = VERIFY_RESULT(
-      InvokeRpc(&master::MasterAdminProxy::IsTabletSplittingComplete, *master_admin_proxy_, req));
+  return InvokeRpc(&master::MasterAdminProxy::IsTabletSplittingComplete, *master_admin_proxy_, req);
+}
+
+Status ClusterAdminClient::IsTabletSplittingComplete() {
+  master::IsTabletSplittingCompleteRequestPB req;
+  const auto resp = VERIFY_RESULT(IsTabletSplittingCompleteInternal());
   std::cout << "Response: " << AsString(resp) << std::endl;
   return Status::OK();
 }

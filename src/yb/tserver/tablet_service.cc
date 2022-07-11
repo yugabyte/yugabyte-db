@@ -212,6 +212,16 @@ DEFINE_test_flag(bool, fail_alter_schema_after_abort_transactions, false,
                  "This failure should not cause the TServer to crash but "
                  "instead return an error message on the YSQL connection.");
 
+DEFINE_test_flag(bool, txn_status_moved_rpc_force_fail, false,
+                 "Force updates in transaction status location to fail.");
+
+DEFINE_test_flag(int32, txn_status_moved_rpc_handle_delay_ms, 0,
+                 "Inject delay to slowdown handling of updates in transaction status location.");
+
+METRIC_DEFINE_gauge_uint64(server, ts_split_op_added, "Split OPs Added to Leader",
+                           yb::MetricUnit::kOperations,
+                           "Number of split operations added to the leader's Raft log.");
+
 double TEST_delay_create_transaction_probability = 0;
 
 namespace yb {
@@ -457,7 +467,9 @@ TabletServiceImpl::TabletServiceImpl(TabletServerIf* server)
 }
 
 TabletServiceAdminImpl::TabletServiceAdminImpl(TabletServer* server)
-    : TabletServerAdminServiceIf(server->MetricEnt()), server_(server) {}
+    : TabletServerAdminServiceIf(server->MetricEnt()), server_(server) {
+  ts_split_op_added_ = METRIC_ts_split_op_added.Instantiate(server->MetricEnt(), 0);
+}
 
 void TabletServiceAdminImpl::BackfillDone(
     const tablet::ChangeMetadataRequestPB* req, ChangeMetadataResponsePB* resp,
@@ -1194,6 +1206,76 @@ void TabletServiceImpl::AbortTransaction(const AbortTransactionRequestPB* req,
       });
 }
 
+void TabletServiceImpl::UpdateTransactionStatusLocation(
+    const UpdateTransactionStatusLocationRequestPB* req,
+    UpdateTransactionStatusLocationResponsePB* resp,
+    rpc::RpcContext context) {
+  TRACE("UpdateTransactionStatusLocation");
+
+  VLOG(1) << "UpdateTransactionStatusLocation: " << req->ShortDebugString()
+          << ", context: " << context.ToString();
+
+  auto context_ptr = std::make_shared<rpc::RpcContext>(std::move(context));
+  auto status = HandleUpdateTransactionStatusLocation(req, resp, context_ptr);
+  if (!status.ok()) {
+    LOG(WARNING) << status;
+    SetupErrorAndRespond(resp->mutable_error(), status, context_ptr.get());
+  }
+}
+
+Status TabletServiceImpl::HandleUpdateTransactionStatusLocation(
+    const UpdateTransactionStatusLocationRequestPB* req,
+    UpdateTransactionStatusLocationResponsePB* resp,
+    std::shared_ptr<rpc::RpcContext> context) {
+  LOG_IF(DFATAL, !req->has_propagated_hybrid_time())
+      << __func__ << " missing propagated hybrid time for transaction status location update";
+  UpdateClock(*req, server_->Clock());
+
+  if (PREDICT_FALSE(FLAGS_TEST_txn_status_moved_rpc_handle_delay_ms > 0)) {
+    std::this_thread::sleep_for(FLAGS_TEST_txn_status_moved_rpc_handle_delay_ms * 1ms);
+  }
+
+  if (PREDICT_FALSE(FLAGS_TEST_txn_status_moved_rpc_force_fail)) {
+    return STATUS(IllegalState, "UpdateTransactionStatusLocation forced to fail");
+  }
+
+  auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(req->transaction_id()));
+
+  auto tablet = LookupLeaderTabletOrRespond(
+      server_->tablet_peer_lookup(), req->tablet_id(), resp, context.get());
+  if (!tablet) {
+    return Status::OK();
+  }
+
+  auto* participant = tablet.peer->tablet()->transaction_participant();
+  if (!participant) {
+    return STATUS(InvalidArgument, "No transaction participant to process transaction status move");
+  }
+
+  auto metadata = participant->UpdateTransactionStatusLocation(txn_id, req->new_status_tablet_id());
+  if (!metadata.ok()) {
+    return metadata.status();
+  }
+
+  auto query = std::make_unique<tablet::WriteQuery>(
+      tablet.leader_term, context->GetClientDeadline(), tablet.peer.get(),
+      tablet.peer->tablet());
+  auto* request = query->operation().AllocateRequest();
+  metadata->ToPB(request->mutable_write_batch()->mutable_transaction());
+
+  query->set_callback([resp, context](const Status& status) {
+    if (!status.ok()) {
+      LOG(WARNING) << status;
+      SetupErrorAndRespond(resp->mutable_error(), status, context.get());
+    } else {
+      context->RespondSuccess();
+    }
+  });
+  tablet.peer->WriteAsync(std::move(query));
+
+  return Status::OK();
+}
+
 void TabletServiceImpl::Truncate(const TruncateRequestPB* req,
                                  TruncateResponsePB* resp,
                                  rpc::RpcContext context) {
@@ -1262,8 +1344,8 @@ Status TabletServiceAdminImpl::DoCreateTablet(const CreateTabletRequestPB* req,
   VLOG(1) << "Full request: " << req->DebugString();
 
   auto table_info = std::make_shared<tablet::TableInfo>(
-      req->table_id(), req->namespace_name(), req->table_name(), req->table_type(), schema,
-      IndexMap(),
+      tablet::Primary::kTrue, req->table_id(), req->namespace_name(), req->table_name(),
+      req->table_type(), schema, IndexMap(),
       req->has_index_info() ? boost::optional<IndexInfo>(req->index_info()) : boost::none,
       0 /* schema_version */, partition_schema);
   std::vector<SnapshotScheduleId> snapshot_schedules;
@@ -1525,6 +1607,10 @@ void TabletServiceAdminImpl::SplitTablet(
       MakeRpcOperationCompletionCallback(std::move(context), resp, server_->Clock()));
 
   leader_tablet_peer.peer->Submit(std::move(operation), leader_tablet_peer.leader_term);
+  ts_split_op_added_->Increment();
+  LOG(INFO) << leader_tablet_peer.peer->LogPrefix() << "RPC for split tablet successful. "
+      << "Submitting request to " << leader_tablet_peer.peer->tablet_id()
+      << " term " << leader_tablet_peer.leader_term;
 }
 
 void TabletServiceAdminImpl::UpgradeYsql(
@@ -1562,6 +1648,10 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
     context.RespondSuccess();
     return;
   }
+  if (req->include_trace()) {
+    context.EnsureTraceCreated();
+  }
+  ADOPT_TRACE(context.trace());
   TRACE("Start Write");
   TRACE_EVENT1("tserver", "TabletServiceImpl::Write",
                "tablet_id", req->tablet_id());
@@ -2258,7 +2348,7 @@ void TabletServiceImpl::IsTabletServerReady(const IsTabletServerReadyRequestPB* 
 void TabletServiceImpl::TakeTransaction(const TakeTransactionRequestPB* req,
                                         TakeTransactionResponsePB* resp,
                                         rpc::RpcContext context) {
-  auto transaction = server_->TransactionPool()->Take(
+  auto transaction = server_->TransactionPool().Take(
       client::ForceGlobalTransaction(req->has_is_global() && req->is_global()),
       context.GetClientDeadline());
   auto metadata = transaction->Release();

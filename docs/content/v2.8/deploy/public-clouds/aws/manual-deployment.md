@@ -8,8 +8,7 @@ menu:
     identifier: deploy-in-aws-3-manual-deployment
     parent: public-clouds
     weight: 630
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

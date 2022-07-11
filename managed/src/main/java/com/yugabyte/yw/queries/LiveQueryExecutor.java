@@ -7,14 +7,13 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.annotations.VisibleForTesting;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.forms.LiveQueriesParams;
 import java.util.UUID;
 import java.util.concurrent.Callable;
-
 import lombok.extern.slf4j.Slf4j;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.apache.commons.lang3.StringUtils;
 import play.api.Play;
 import play.libs.Json;
 
@@ -29,11 +28,17 @@ public class LiveQueryExecutor implements Callable<JsonNode> {
   private final QueryHelper.QueryApi apiType;
 
   public LiveQueryExecutor(String nodeName, String hostName, int port, QueryHelper.QueryApi api) {
+    this(nodeName, hostName, port, api, Play.current().injector().instanceOf(ApiHelper.class));
+  }
+
+  @VisibleForTesting
+  LiveQueryExecutor(
+      String nodeName, String hostName, int port, QueryHelper.QueryApi api, ApiHelper apiHelper) {
     this.nodeName = nodeName;
     this.hostName = hostName;
     this.port = port;
     this.apiType = api;
-    this.apiHelper = Play.current().injector().instanceOf(ApiHelper.class);
+    this.apiHelper = apiHelper;
   }
 
   @Override
@@ -102,7 +107,8 @@ public class LiveQueryExecutor implements Callable<JsonNode> {
   }
 
   // Similar to above helper function except for YCQL connection info
-  private JsonNode processYCQLRowData(JsonNode response) {
+  @VisibleForTesting
+  JsonNode processYCQLRowData(JsonNode response) {
     ObjectNode responseJson = Json.newObject();
     ObjectMapper mapper = new ObjectMapper();
     if (response.has("inbound_connections")) {
@@ -112,6 +118,9 @@ public class LiveQueryExecutor implements Callable<JsonNode> {
               mapper.treeToValue(objNode, LiveQueriesParams.YCQLQueryParams.class);
           if (params.calls_in_flight != null) {
             for (LiveQueriesParams.QueryCallsInFlight query : params.calls_in_flight) {
+              if (query.cql_details == null) {
+                continue;
+              }
               // Get SQL query string, joining multiple entries if necessary
               StringBuilder queryStringBuilder = new StringBuilder();
               ObjectNode rowData = Json.newObject();
@@ -121,9 +130,22 @@ public class LiveQueryExecutor implements Callable<JsonNode> {
                 }
                 queryStringBuilder.append(callDetail.get("sql_string").asText());
               }
-              String keyspace =
-                  params.connection_details.cql_connection_details.get("keyspace").asText();
-              String[] splitIp = params.remote_ip.split(":");
+              String keyspace = StringUtils.EMPTY;
+              if (params.connection_details != null
+                  && params.connection_details.cql_connection_details != null
+                  && params.connection_details.cql_connection_details.has("keyspace")) {
+                keyspace =
+                    params.connection_details.cql_connection_details.get("keyspace").asText();
+              }
+              String clientHost = StringUtils.EMPTY;
+              String clientPort = StringUtils.EMPTY;
+              int hostPortDelimiterIndex = params.remote_ip.lastIndexOf(":");
+              if (hostPortDelimiterIndex < 0) {
+                log.warn("Invalid remove_ip field in response: {}", params.remote_ip);
+              } else {
+                clientHost = params.remote_ip.substring(0, hostPortDelimiterIndex);
+                clientPort = params.remote_ip.substring(hostPortDelimiterIndex + 1);
+              }
               // Random UUID intended for table row key
               rowData.put("id", UUID.randomUUID().toString());
               rowData.put("nodeName", nodeName);
@@ -132,8 +154,8 @@ public class LiveQueryExecutor implements Callable<JsonNode> {
               rowData.put("query", queryStringBuilder.toString());
               rowData.put("type", query.cql_details.type);
               rowData.put("elapsedMillis", query.elapsed_millis);
-              rowData.put("clientHost", splitIp[0]);
-              rowData.put("clientPort", splitIp[1]);
+              rowData.put("clientHost", clientHost);
+              rowData.put("clientPort", clientPort);
 
               ArrayNode ycqlArray;
               if (!responseJson.has("ycql")) {

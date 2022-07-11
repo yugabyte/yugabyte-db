@@ -22,9 +22,6 @@
 #include <utility>
 #include <vector>
 
-#include "yb/client/yb_op.h"
-#include "yb/client/yb_table_name.h"
-
 #include "yb/common/pg_system_attr.h"
 #include "yb/common/pg_types.h"
 #include "yb/common/pgsql_protocol.pb.h"
@@ -178,7 +175,7 @@ class ResultFunctorAdapter {
   const T bad_status_value_;
 };
 
-CHECKED_STATUS CheckRequestTargets(const PgObjectId& table_id,
+Status CheckRequestTargets(const PgObjectId& table_id,
                                    const ColumnIdsContainer& targets,
                                    const LWPgsqlReadRequestPB& req) {
   SCHECK_EQ(table_id,
@@ -232,8 +229,6 @@ void SetupPaging(LWPgsqlReadRequestPB* req) {
 
 // Helper class to load data from all registered tables
 class Loader {
-  using ReadOperations = std::vector<std::shared_ptr<client::YBPgsqlReadOp>>;
-
  public:
   Loader(PgSession* session, size_t estimated_size)
       : session_(session), arena_(std::make_shared<Arena>()) {
@@ -241,7 +236,7 @@ class Loader {
   }
 
   // Prepare operation for read from particular table
-  CHECKED_STATUS Apply(const PgObjectId& table_id, const PgObjectId& index_id) {
+  Status Apply(const PgObjectId& table_id, const PgObjectId& index_id) {
     const auto table = VERIFY_RESULT(session_->LoadTable(table_id));
     const auto index = index_id.IsValid() ? VERIFY_RESULT(session_->LoadTable(index_id))
                                           : PgTableDescPtr();
@@ -251,8 +246,10 @@ class Loader {
             << "index_id=" << index_id;
     CHECK(table->schema().table_properties().is_ysql_catalog_table())
         << table_id << " " << table->table_name().table_name() << " is not a catalog table";
+    // System tables are not region local.
     op_info_.emplace_back(
-        ArenaMakeShared<PgsqlReadOp>(arena_, &*arena_, *table), table, index);
+        ArenaMakeShared<PgsqlReadOp>(arena_, &*arena_, *table, false /* is_region_local */),
+        table, index);
     auto& info = op_info_.back();
     auto& req = info.ReadOperation().read_request();
     SetupPaging(&req);
@@ -280,7 +277,7 @@ class Loader {
   }
 
   // Load data from all prepared operations and place the result into data_container
-  CHECKED_STATUS Load(DataContainer* data_container) {
+  Status Load(DataContainer* data_container) {
     VLOG(2) << "Loader::Load";
     while (!op_info_.empty()) {
       auto response = VERIFY_RESULT(session_->RunAsync(

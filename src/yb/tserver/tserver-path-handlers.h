@@ -59,7 +59,7 @@ class TabletServerPathHandlers {
 
   ~TabletServerPathHandlers();
 
-  CHECKED_STATUS Register(Webserver* server);
+  Status Register(Webserver* server);
 
  private:
   void HandleTablesPage(const Webserver::WebRequest& req,

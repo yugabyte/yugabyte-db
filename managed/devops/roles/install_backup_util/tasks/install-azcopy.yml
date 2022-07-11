@@ -6,7 +6,21 @@
 #
 # https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 
+- set_fact:
+    azcopy_cur_version: "{{ util_cur_version.stdout | regex_search('azcopy version (.+)', '\\1')\
+      | first }}"
+  when: util_exists.rc == 0
+
+- debug:
+    msg: "azcopy current version {{ azcopy_cur_version }} new version {{ azcopy_version }}"
+  when: util_exists.rc == 0
+
 - block:
+    - name: azcopy | Remove current azcopy
+      file:
+        path: "{{ bin_path }}/azcopy"
+        state: absent
+
     - name: azcopy | Download and install azcopy from {{ package_path }}
       unarchive:
         src: "{{ package_path }}/{{ azcopy_package }}"
@@ -17,3 +31,4 @@
         exclude:
           - ThirdPartyNotice.txt
         extra_opts: [--strip-components=1] # Remove tarball directory from extracted path.
+  when: util_exists.rc != 0 or azcopy_cur_version != azcopy_version

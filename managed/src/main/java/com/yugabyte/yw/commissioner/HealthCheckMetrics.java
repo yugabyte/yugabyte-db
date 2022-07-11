@@ -10,21 +10,28 @@
 
 package com.yugabyte.yw.commissioner;
 
-import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
+import static com.yugabyte.yw.common.metrics.MetricService.DEFAULT_METRIC_EXPIRY_SEC;
+import static com.yugabyte.yw.models.helpers.CommonUtils.nowPlusWithoutMillis;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.HealthCheck.Details;
 import com.yugabyte.yw.models.Metric;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import io.prometheus.client.CollectorRegistry;
 import io.prometheus.client.Gauge;
+import java.time.temporal.ChronoUnit;
 import java.util.Collections;
 import java.util.List;
+import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections.CollectionUtils;
 
 @Singleton
 @Slf4j
@@ -43,7 +50,7 @@ public class HealthCheckMetrics {
   private static final String REDIS_CONNECTIVITY_CHECK = "Connectivity with redis-cli";
   private static final String DISK_UTILIZATION_CHECK = "Disk utilization";
   private static final String CORE_FILES_CHECK = "Core files";
-  private static final String OPENED_FILE_DESCRIPTORS_CHECK = "Opened file descriptors";
+  public static final String OPENED_FILE_DESCRIPTORS_CHECK = "Opened file descriptors";
   private static final String CLOCK_SYNC_CHECK = "Clock synchronization";
   private static final String NODE_TO_NODE_CA_CERT_CHECK = "Node To Node CA Cert Expiry Days";
   private static final String NODE_TO_NODE_CERT_CHECK = "Node To Node Cert Expiry Days";
@@ -51,6 +58,9 @@ public class HealthCheckMetrics {
   private static final String CLIENT_TO_NODE_CERT_CHECK = "Client To Node Cert Expiry Days";
   private static final String CLIENT_CA_CERT_CHECK = "Client CA Cert Expiry Days";
   private static final String CLIENT_CERT_CHECK = "Client Cert Expiry Days";
+  public static final String NODE_EXPORTER_CHECK = "Node exporter";
+
+  public static final String CUSTOM_NODE_METRICS_COLLECTION_METRIC = "yb_node_custom_node_metrics";
 
   public static final List<PlatformMetrics> HEALTH_CHECK_METRICS_WITHOUT_STATUS =
       ImmutableList.<PlatformMetrics>builder()
@@ -70,12 +80,6 @@ public class HealthCheckMetrics {
           .add(PlatformMetrics.HEALTH_CHECK_N2N_CERT)
           .add(PlatformMetrics.HEALTH_CHECK_C2N_CA_CERT)
           .add(PlatformMetrics.HEALTH_CHECK_C2N_CERT)
-          .add(PlatformMetrics.HEALTH_CHECK_MASTER_BOOT_TIME_SEC)
-          .add(PlatformMetrics.HEALTH_CHECK_TSERVER_BOOT_TIME_SEC)
-          .add(PlatformMetrics.HEALTH_CHECK_N2N_CA_CERT_VALIDITY_DAYS)
-          .add(PlatformMetrics.HEALTH_CHECK_N2N_CERT_VALIDITY_DAYS)
-          .add(PlatformMetrics.HEALTH_CHECK_C2N_CA_CERT_VALIDITY_DAYS)
-          .add(PlatformMetrics.HEALTH_CHECK_C2N_CERT_VALIDITY_DAYS)
           .build();
 
   public static final List<PlatformMetrics> HEALTH_CHECK_METRICS =
@@ -163,109 +167,47 @@ public class HealthCheckMetrics {
   }
 
   public static List<Metric> getNodeMetrics(
-      String checkName, boolean isMaster, Universe universe, String nodeName, double metricValue) {
-    switch (checkName) {
-      case UPTIME_CHECK:
-        if (isMaster) {
-          return Collections.singletonList(
-              buildNodeMetric(
-                  PlatformMetrics.HEALTH_CHECK_MASTER_BOOT_TIME_SEC,
-                  universe,
-                  nodeName,
-                  metricValue));
-        } else {
-          return Collections.singletonList(
-              buildNodeMetric(
-                  PlatformMetrics.HEALTH_CHECK_TSERVER_BOOT_TIME_SEC,
-                  universe,
-                  nodeName,
-                  metricValue));
-        }
-      case FATAL_LOG_CHECK:
-        // 1 or 3 == error logs exist == 0 status
-        double errorLogsValue = (metricValue + 1) % 2;
-        // 2 or 3 == fatal logs exist == 0 status
-        double fatalLogsValue = metricValue < 2 ? 1 : 0;
-        if (isMaster) {
-          return ImmutableList.of(
-              buildNodeMetric(
-                  PlatformMetrics.HEALTH_CHECK_NODE_MASTER_FATAL_LOGS,
-                  universe,
-                  nodeName,
-                  fatalLogsValue),
-              buildNodeMetric(
-                  PlatformMetrics.HEALTH_CHECK_NODE_MASTER_ERROR_LOGS,
-                  universe,
-                  nodeName,
-                  errorLogsValue));
-        } else {
-          return ImmutableList.of(
-              buildNodeMetric(
-                  PlatformMetrics.HEALTH_CHECK_NODE_TSERVER_FATAL_LOGS,
-                  universe,
-                  nodeName,
-                  fatalLogsValue),
-              buildNodeMetric(
-                  PlatformMetrics.HEALTH_CHECK_NODE_TSERVER_ERROR_LOGS,
-                  universe,
-                  nodeName,
-                  errorLogsValue));
-        }
-      case OPENED_FILE_DESCRIPTORS_CHECK:
-        return Collections.singletonList(
-            buildNodeMetric(
-                PlatformMetrics.HEALTH_CHECK_USED_FD_PCT, universe, nodeName, metricValue));
-      case NODE_TO_NODE_CA_CERT_CHECK:
-        return Collections.singletonList(
-            buildNodeMetric(
-                PlatformMetrics.HEALTH_CHECK_N2N_CA_CERT_VALIDITY_DAYS,
-                universe,
-                nodeName,
-                metricValue));
-      case NODE_TO_NODE_CERT_CHECK:
-        return Collections.singletonList(
-            buildNodeMetric(
-                PlatformMetrics.HEALTH_CHECK_N2N_CERT_VALIDITY_DAYS,
-                universe,
-                nodeName,
-                metricValue));
-      case CLIENT_TO_NODE_CA_CERT_CHECK:
-        return Collections.singletonList(
-            buildNodeMetric(
-                PlatformMetrics.HEALTH_CHECK_C2N_CA_CERT_VALIDITY_DAYS,
-                universe,
-                nodeName,
-                metricValue));
-      case CLIENT_TO_NODE_CERT_CHECK:
-        return Collections.singletonList(
-            buildNodeMetric(
-                PlatformMetrics.HEALTH_CHECK_C2N_CERT_VALIDITY_DAYS,
-                universe,
-                nodeName,
-                metricValue));
-      case CLIENT_CA_CERT_CHECK:
-        return Collections.singletonList(
-            buildNodeMetric(
-                PlatformMetrics.HEALTH_CHECK_CLIENT_CA_CERT_VALIDITY_DAYS,
-                universe,
-                nodeName,
-                metricValue));
-      case CLIENT_CERT_CHECK:
-        return Collections.singletonList(
-            buildNodeMetric(
-                PlatformMetrics.HEALTH_CHECK_CLIENT_CERT_VALIDITY_DAYS,
-                universe,
-                nodeName,
-                metricValue));
-      default:
-        return Collections.emptyList();
+      Customer customer, Universe universe, String nodeName, List<Details.Metric> metrics) {
+    if (CollectionUtils.isEmpty(metrics)) {
+      return Collections.emptyList();
     }
+    return metrics
+        .stream()
+        .flatMap(m -> buildNodeMetric(m, customer, universe, nodeName).stream())
+        .collect(Collectors.toList());
   }
 
-  private static Metric buildNodeMetric(
-      PlatformMetrics metric, Universe universe, String nodeName, double value) {
-    return buildMetricTemplate(metric, universe)
-        .setKeyLabel(KnownAlertLabels.NODE_NAME, nodeName)
-        .setValue(value);
+  private static List<Metric> buildNodeMetric(
+      Details.Metric metric, Customer customer, Universe universe, String nodeName) {
+    if (CollectionUtils.isEmpty(metric.getValues())) {
+      return Collections.emptyList();
+    }
+    return metric
+        .getValues()
+        .stream()
+        .map(
+            value -> {
+              Metric result =
+                  new Metric()
+                      .setExpireTime(
+                          nowPlusWithoutMillis(DEFAULT_METRIC_EXPIRY_SEC, ChronoUnit.SECONDS))
+                      .setType(Metric.Type.GAUGE)
+                      .setName(metric.getName())
+                      .setHelp(metric.getHelp())
+                      .setUnit(metric.getUnit())
+                      .setCustomerUUID(customer.getUuid())
+                      .setSourceUuid(universe.getUniverseUUID())
+                      .setLabels(
+                          MetricLabelsBuilder.create().appendSource(universe).getMetricLabels())
+                      .setKeyLabel(KnownAlertLabels.NODE_NAME, nodeName)
+                      .setValue(value.getValue());
+              if (CollectionUtils.isNotEmpty(value.getLabels())) {
+                value
+                    .getLabels()
+                    .forEach(label -> result.setKeyLabel(label.getName(), label.getValue()));
+              }
+              return result;
+            })
+        .collect(Collectors.toList());
   }
 }

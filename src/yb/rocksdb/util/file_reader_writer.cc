@@ -447,7 +447,7 @@ class ReadaheadRandomAccessFile : public yb::RandomAccessFileWrapper {
 
   ReadaheadRandomAccessFile& operator=(const ReadaheadRandomAccessFile&) = delete;
 
-  CHECKED_STATUS Read(uint64_t offset, size_t n, Slice* result, uint8_t* scratch) const override {
+  Status Read(uint64_t offset, size_t n, Slice* result, uint8_t* scratch) const override {
     if (n >= readahead_size_) {
       return RandomAccessFileWrapper::Read(offset, n, result, scratch);
     }

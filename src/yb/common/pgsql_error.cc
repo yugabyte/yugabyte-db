@@ -31,5 +31,15 @@ const std::string kOpIndexCategoryName = "op index";
 StatusCategoryRegisterer op_index_category_registerer(
     StatusCategoryDescription::Make<OpIndexTag>(&kOpIndexCategoryName));
 
+const std::string kRelationOidCategoryName = "relation oid";
+
+StatusCategoryRegisterer relation_oid_category_registerer(
+    StatusCategoryDescription::Make<RelationOidTag>(&kRelationOidCategoryName));
+
+const std::string kAuxilaryMessageCategoryName = "aux msg";
+
+StatusCategoryRegisterer auxilary_message_category_registerer(
+    StatusCategoryDescription::Make<AuxilaryMessageTag>(&kAuxilaryMessageCategoryName));
+
 } // namespace
 } // namespace yb

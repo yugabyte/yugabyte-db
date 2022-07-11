@@ -232,7 +232,7 @@ class PeerMessageQueue {
   //
   // This is thread-safe against all of the read methods, but not thread-safe with concurrent Append
   // calls.
-  CHECKED_STATUS TEST_AppendOperation(const ReplicateMsgPtr& msg);
+  Status TEST_AppendOperation(const ReplicateMsgPtr& msg);
 
   // Appends a vector of messages to be replicated to the peers.  Returns OK unless the message
   // could not be added to the queue for some reason (e.g. the queue reached max size). Calls
@@ -245,7 +245,7 @@ class PeerMessageQueue {
   //
   // It is possible that this method will be invoked with empty list of messages, when
   // we update committed op id.
-  virtual CHECKED_STATUS AppendOperations(
+  virtual Status AppendOperations(
       const ReplicateMsgs& msgs, const yb::OpId& committed_op_id,
       RestartSafeCoarseTimePoint batch_mono_time);
 
@@ -264,7 +264,7 @@ class PeerMessageQueue {
   // not delete the entries. The simplest way is to pass the same instance of ConsensusRequestPB to
   // RequestForPeer(): the buffer will replace the old entries with new ones without de-allocating
   // the old ones if they are still required.
-  virtual CHECKED_STATUS RequestForPeer(
+  virtual Status RequestForPeer(
       const std::string& uuid,
       ConsensusRequestPB* request,
       ReplicateMsgsHolder* msgs_holder,
@@ -275,7 +275,7 @@ class PeerMessageQueue {
   // Fill in a StartRemoteBootstrapRequest for the specified peer.  If that peer should not remotely
   // bootstrap, returns a non-OK status.  On success, also internally resets
   // peer->needs_remote_bootstrap to false.
-  CHECKED_STATUS GetRemoteBootstrapRequestForPeer(
+  Status GetRemoteBootstrapRequestForPeer(
       const std::string& uuid,
       StartRemoteBootstrapRequestPB* req);
 
@@ -321,7 +321,7 @@ class PeerMessageQueue {
 
   void RegisterObserver(PeerMessageQueueObserver* observer);
 
-  CHECKED_STATUS UnRegisterObserver(PeerMessageQueueObserver* observer);
+  Status UnRegisterObserver(PeerMessageQueueObserver* observer);
 
   bool CanPeerBecomeLeader(const std::string& peer_uuid) const;
 
@@ -362,13 +362,9 @@ class PeerMessageQueue {
 
   // Get the maximum op ID that can be evicted for CDC consumer from log cache.
   yb::OpId GetCDCConsumerOpIdToEvict();
-  yb::OpId GetCDCConsumerOpIdForIntentRemoval();
-
 
   size_t LogCacheSize();
   size_t EvictLogCache(size_t bytes_to_evict);
-
-  CHECKED_STATUS FlushLogIndex();
 
   // Start memory tracking of following operations in case they are still present in our caches.
   void TrackOperationsMemory(const OpIds& op_ids);

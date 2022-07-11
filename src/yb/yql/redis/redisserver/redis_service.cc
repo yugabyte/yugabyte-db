@@ -773,8 +773,8 @@ struct RedisServiceImplData : public RedisServiceData {
   Result<vector<HostPortPB>> GetServerAddrsForChannel(const string& channel);
   size_t NumSubscriptionsUnlocked(Connection* conn);
 
-  CHECKED_STATUS GetRedisPasswords(vector<string>* passwords) override;
-  CHECKED_STATUS Initialize();
+  Status GetRedisPasswords(vector<string>* passwords) override;
+  Status Initialize();
   bool initialized() const { return initialized_.load(std::memory_order_relaxed); }
 
   // yb::Result<std::shared_ptr<client::YBTable>> GetYBTableForDB(const string& db_name);

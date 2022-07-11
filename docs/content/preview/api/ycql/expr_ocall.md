@@ -10,8 +10,7 @@ menu:
 aliases:
   - /preview/api/cassandra/expr_ocall
   - /preview/api/ycql/expr_ocall
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 An expression with operators is a compound expression that combines multiple expressions using built-in operators. The following sections discuss the YCQL operators in YugabyteDB.

@@ -8,8 +8,9 @@ import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.mock;
@@ -38,7 +39,7 @@ import java.util.stream.Collectors;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.runners.MockitoJUnitRunner;
+import org.mockito.junit.MockitoJUnitRunner;
 import org.yb.client.YBClient;
 import play.libs.Json;
 
@@ -56,6 +57,11 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
     YBClient mockClient = mock(YBClient.class);
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
+    try {
+      when(mockClient.waitForMaster(any(), anyLong())).thenReturn(true);
+    } catch (Exception e) {
+      fail();
+    }
     ShellResponse dummyShellResponse = new ShellResponse();
     dummyShellResponse.message = "true";
     when(mockNodeManager.nodeCommand(any(), any())).thenReturn(dummyShellResponse);
@@ -174,7 +180,7 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     assertTaskSequence(subTasksByPosition, RESUME_UNIVERSE_TASKS, RESUME_UNIVERSE_EXPECTED_RESULTS);
     assertEquals(Success, taskInfo.getTaskState());
-    assertFalse(defaultCustomer.getUniverseUUIDs().contains(defaultUniverse.universeUUID));
+    assertTrue(defaultCustomer.getUniverseUUIDs().contains(defaultUniverse.universeUUID));
   }
 
   @Test
@@ -207,6 +213,6 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
         RESUME_ENCRYPTION_AT_REST_UNIVERSE_TASKS,
         RESUME_ENCRYPTION_AT_REST_UNIVERSE_EXPECTED_RESULTS);
     assertEquals(Success, taskInfo.getTaskState());
-    assertFalse(defaultCustomer.getUniverseUUIDs().contains(defaultUniverse.universeUUID));
+    assertTrue(defaultCustomer.getUniverseUUIDs().contains(defaultUniverse.universeUUID));
   }
 }

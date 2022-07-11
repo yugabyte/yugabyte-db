@@ -98,7 +98,7 @@ boost::optional<YBPgErrorCode> PsqlErrorCode(const Status& status) {
 // Get a common Postgres error code from the status and all errors, and append it to a previous
 // Status.
 // If any of those have different conflicting error codes, previous result is returned as-is.
-CHECKED_STATUS AppendPsqlErrorCode(const Status& status,
+Status AppendPsqlErrorCode(const Status& status,
                                    const client::CollectedErrors& errors) {
   boost::optional<YBPgErrorCode> common_psql_error =  boost::make_optional(false, YBPgErrorCode());
   for(const auto& error : errors) {
@@ -114,7 +114,7 @@ CHECKED_STATUS AppendPsqlErrorCode(const Status& status,
 }
 
 // Get a common transaction error code for all the errors and append it to the previous Status.
-CHECKED_STATUS AppendTxnErrorCode(const Status& status, const client::CollectedErrors& errors) {
+Status AppendTxnErrorCode(const Status& status, const client::CollectedErrors& errors) {
   TransactionErrorCode common_txn_error = TransactionErrorCode::kNone;
   for (const auto& error : errors) {
     const TransactionErrorCode txn_error = TransactionError(error->status()).value();
@@ -148,7 +148,7 @@ CHECKED_STATUS AppendTxnErrorCode(const Status& status, const client::CollectedE
 
 // Given a set of errors from operations, this function attempts to combine them into one status
 // that is later passed to PostgreSQL and further converted into a more specific error code.
-CHECKED_STATUS CombineErrorsToStatus(const client::CollectedErrors& errors, const Status& status) {
+Status CombineErrorsToStatus(const client::CollectedErrors& errors, const Status& status) {
   if (errors.empty())
     return status;
 
@@ -247,7 +247,7 @@ Status HandleResponse(uint64_t session_id,
   return status;
 }
 
-CHECKED_STATUS GetTable(const TableId& table_id, PgTableCache* cache, client::YBTablePtr* table) {
+Status GetTable(const TableId& table_id, PgTableCache* cache, client::YBTablePtr* table) {
   if (*table && (**table).id() == table_id) {
     return Status::OK();
   }
@@ -315,7 +315,7 @@ struct PerformData {
     context.RespondSuccess();
   }
 
-  CHECKED_STATUS ProcessResponse() {
+  Status ProcessResponse() {
     int idx = 0;
     for (const auto& op : ops) {
       const auto status = HandleResponse(session_id, *op, resp, used_read_time);
@@ -517,23 +517,23 @@ Status PgClientSession::DropTablegroup(
     const PgDropTablegroupRequestPB& req, PgDropTablegroupResponsePB* resp,
     rpc::RpcContext* context) {
   const auto id = PgObjectId::FromPB(req.tablegroup_id());
-  const auto status = client().DeleteTablegroup(
-      GetPgsqlNamespaceId(id.database_oid),
-      GetPgsqlTablegroupId(id.database_oid, id.object_oid));
+  const auto status =
+      client().DeleteTablegroup(GetPgsqlTablegroupId(id.database_oid, id.object_oid));
   if (status.IsNotFound()) {
     return Status::OK();
   }
   return status;
 }
 
-Status PgClientSession::RollbackSubTransaction(
-    const PgRollbackSubTransactionRequestPB& req, PgRollbackSubTransactionResponsePB* resp,
+Status PgClientSession::RollbackToSubTransaction(
+    const PgRollbackToSubTransactionRequestPB& req, PgRollbackToSubTransactionResponsePB* resp,
     rpc::RpcContext* context) {
   VLOG_WITH_PREFIX_AND_FUNC(2) << req.ShortDebugString();
   SCHECK(Transaction(PgClientSessionKind::kPlain), IllegalState,
          Format("Rollback sub transaction $0, when not transaction is running",
                 req.sub_transaction_id()));
-  return Transaction(PgClientSessionKind::kPlain)->RollbackSubTransaction(req.sub_transaction_id());
+  return Transaction(PgClientSessionKind::kPlain)->RollbackToSubTransaction(
+      req.sub_transaction_id(), context->GetClientDeadline());
 }
 
 Status PgClientSession::SetActiveSubTransaction(
@@ -742,7 +742,7 @@ Status PgClientSession::BeginTransactionIfNecessary(
         : Status::OK();
   }
 
-  txn = transaction_pool_provider_()->Take(
+  txn = transaction_pool_provider_().Take(
       client::ForceGlobalTransaction(options.force_global_transaction()), deadline);
   if ((isolation == IsolationLevel::SNAPSHOT_ISOLATION ||
            isolation == IsolationLevel::READ_COMMITTED) &&
@@ -778,7 +778,7 @@ Result<const TransactionMetadata*> PgClientSession::GetDdlTransactionMetadata(
   if (!txn) {
     const auto isolation = FLAGS_ysql_serializable_isolation_for_ddl_txn
         ? IsolationLevel::SERIALIZABLE_ISOLATION : IsolationLevel::SNAPSHOT_ISOLATION;
-    txn = VERIFY_RESULT(transaction_pool_provider_()->TakeAndInit(isolation, deadline));
+    txn = VERIFY_RESULT(transaction_pool_provider_().TakeAndInit(isolation, deadline));
     ddl_txn_metadata_ = VERIFY_RESULT(Copy(txn->GetMetadata(deadline).get()));
     EnsureSession(PgClientSessionKind::kDdl)->SetTransaction(txn);
   }
@@ -797,7 +797,7 @@ Result<client::YBTransactionPtr> PgClientSession::RestartTransaction(
            "Attempted to restart when session does not require restart");
 
     const auto old_read_time = session->read_point()->GetReadTime();
-    session->SetReadPoint(client::Restart::kTrue);
+    session->RestartNonTxnReadPoint(client::Restart::kTrue);
     const auto new_read_time = session->read_point()->GetReadTime();
     VLOG_WITH_PREFIX(3) << "Restarted read: " << old_read_time << " => " << new_read_time;
     LOG_IF_WITH_PREFIX(DFATAL, old_read_time == new_read_time)

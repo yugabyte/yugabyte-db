@@ -19,6 +19,7 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThat;
+import static org.junit.Assert.fail;
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.anyLong;
 import static org.mockito.Mockito.doNothing;
@@ -84,10 +85,11 @@ public class ImportControllerTest extends CommissionerBaseTest {
     mockTabletSIs.add(si);
     when(mockResponse.getTabletServersList()).thenReturn(mockTabletSIs);
     try {
+      when(mockClient.waitForMaster(any(), anyLong())).thenReturn(true);
       when(mockClient.listTabletServers()).thenReturn(mockResponse);
       doNothing().when(mockClient).waitForMasterLeader(anyLong());
     } catch (Exception e) {
-      e.printStackTrace();
+      fail();
     }
   }
 
@@ -304,8 +306,8 @@ public class ImportControllerTest extends CommissionerBaseTest {
   }
 
   @Test
-  public void testFailedMasterImport() {
-    when(mockClient.waitForServer(any(), anyLong())).thenThrow(IllegalStateException.class);
+  public void testFailedMasterImport() throws Exception {
+    when(mockClient.waitForMaster(any(), anyLong())).thenThrow(IllegalStateException.class);
     String url = "/api/customers/" + customer.uuid + "/universes/import";
     ObjectNode bodyJson =
         Json.newObject().put("universeName", "importUniv").put("masterAddresses", MASTER_ADDRS);

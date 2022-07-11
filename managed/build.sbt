@@ -139,7 +139,7 @@ libraryDependencies ++= Seq(
   "com.yugabyte" % "cassandra-driver-core" % "3.8.0-yb-7",
   "org.yaml" % "snakeyaml" % "1.29",
   "org.bouncycastle" % "bcpkix-jdk15on" % "1.61",
-  "org.springframework.security" % "spring-security-core" % "5.3.10.RELEASE",
+  "org.springframework.security" % "spring-security-core" % "5.5.6",
   "com.amazonaws" % "aws-java-sdk-ec2" % "1.12.129",
   "com.amazonaws" % "aws-java-sdk-kms" % "1.12.129",
   "com.amazonaws" % "aws-java-sdk-iam" % "1.12.129",
@@ -169,7 +169,12 @@ libraryDependencies ++= Seq(
   "com.jayway.jsonpath" % "json-path" % "2.6.0",
   "commons-io" % "commons-io" % "2.8.0",
   "commons-codec" % "commons-codec" % "1.15",
+  "com.google.apis" % "google-api-services-compute" % "v1-rev20220506-1.32.1",
+  "com.google.apis" % "google-api-services-iam" % "v1-rev20211104-1.32.1",
+  "com.google.cloud" % "google-cloud-compute" % "1.9.1",
   "com.google.cloud" % "google-cloud-storage" % "2.2.1",
+  "com.google.cloud" % "google-cloud-kms" % "2.4.4",
+  "com.google.cloud" % "google-cloud-resourcemanager" % "1.4.0",
   "org.projectlombok" % "lombok" % "1.18.20",
   "com.squareup.okhttp3" % "okhttp" % "4.9.2",
   "com.squareup.okhttp3" % "mockwebserver" % "4.9.2" % Test,
@@ -179,7 +184,11 @@ libraryDependencies ++= Seq(
   "com.github.dikhan" % "pagerduty-client" % "3.1.2",
   "com.bettercloud" % "vault-java-driver" % "5.1.0",
   "org.apache.directory.api" % "api-all" % "2.1.0",
-  "io.fabric8" % "kubernetes-client" % "5.10.2"
+  "io.fabric8" % "kubernetes-client" % "5.10.2",
+  "org.apache.commons" % "commons-text" % "1.9",
+  "io.jsonwebtoken" % "jjwt-api" % "0.11.5",
+  "io.jsonwebtoken" % "jjwt-impl" % "0.11.5",
+  "io.jsonwebtoken" % "jjwt-jackson" % "0.11.5"
 )
 // Clear default resolvers.
 appResolvers := None
@@ -230,12 +239,8 @@ lazy val ybPublicSnapshotResolverDescription =
     "Public snapshot resolver for yb-client jar"
 
 lazy val ybPublicSnapshotResolver = {
-  if (mavenLocal) {
-    Seq()
-  } else {
-    val ybPublicSnapshotUrl = "https://repository.yugabyte.com/maven/"
-    Seq("Yugabyte Public Maven Snapshots" at ybPublicSnapshotUrl)
-  }
+  val ybPublicSnapshotUrl = "https://repository.yugabyte.com/maven/"
+  Seq("Yugabyte Public Maven Snapshots" at ybPublicSnapshotUrl)
 }
 
 // Custom remote maven repository to retrieve library dependencies from.
@@ -375,7 +380,8 @@ runPlatform := {
   Project.extract(newState).runTask(runPlatformTask, newState)
 }
 
-libraryDependencies += "org.yb" % "yb-client" % "0.8.17-SNAPSHOT"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.20-SNAPSHOT"
+libraryDependencies += "org.yb" % "ybc-client" % "0.0.4"
 
 libraryDependencies ++= Seq(
   // We wont use swagger-ui jar since we want to change some of the assets:
@@ -395,7 +401,7 @@ libraryDependencies ++= Seq(
 //libraryDependencies += "eu.unicredit" %% "sbt-swagger-codegen-lib" % "0.0.12"
 
 
-dependencyOverrides += "com.google.protobuf" % "protobuf-java" % "latest.integration"
+dependencyOverrides += "com.google.protobuf" % "protobuf-java" % "3.19.4"
 dependencyOverrides += "com.google.guava" % "guava" % "23.0"
 dependencyOverrides += "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.9.10"
 dependencyOverrides += "com.fasterxml.jackson.dataformat" % "jackson-dataformat-cbor" % "2.9.10"

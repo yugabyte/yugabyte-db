@@ -70,7 +70,7 @@ YB_DEFINE_ENUM(Partitioning, (kHash)(kRange))
 
 void BuildSchema(Partitioning partitioning, Schema* schema);
 
-CHECKED_STATUS CreateTable(
+Status CreateTable(
     const Schema& schema, int num_tablets, YBClient* client,
     TableHandle* table, const YBTableName& table_name = kTableName);
 
@@ -117,7 +117,7 @@ class KeyValueTableTest : public QLDmlTestBase<MiniClusterType> {
  protected:
   void CreateTable(Transactional transactional);
 
-  CHECKED_STATUS CreateTable(const Schema& schema);
+  Status CreateTable(const Schema& schema);
 
   void CreateIndex(Transactional transactional,
                    int indexed_column_index = 1,
@@ -178,7 +178,7 @@ class KeyValueTableTest : public QLDmlTestBase<MiniClusterType> {
 extern template class KeyValueTableTest<MiniCluster>;
 extern template class KeyValueTableTest<ExternalMiniCluster>;
 
-CHECKED_STATUS CheckOp(YBqlOp* op);
+Status CheckOp(YBqlOp* op);
 
 }  // namespace client
 }  // namespace yb

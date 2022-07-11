@@ -30,7 +30,8 @@ public class UpgradeTaskParams extends UniverseDefinitionTaskParams {
     Restart,
     Certs,
     ToggleTls,
-    ResizeNode
+    ResizeNode,
+    Reboot
   }
 
   public enum UpgradeTaskSubType {
@@ -39,7 +40,8 @@ public class UpgradeTaskParams extends UniverseDefinitionTaskParams {
     Install,
     CopyCerts,
     Round1GFlagsUpdate,
-    Round2GFlagsUpdate
+    Round2GFlagsUpdate,
+    PackageReInstall
   }
 
   public enum UpgradeOption {

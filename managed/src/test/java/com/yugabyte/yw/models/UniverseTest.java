@@ -708,7 +708,8 @@ public class UniverseTest extends FakeDBApplication {
         if (nodeState == NodeDetails.NodeState.ToBeAdded) {
           assertEquals(ImmutableSet.of(NodeActionType.DELETE), allowedActions);
         } else if (nodeState == NodeDetails.NodeState.Adding) {
-          assertEquals(ImmutableSet.of(NodeActionType.DELETE), allowedActions);
+          assertEquals(
+              ImmutableSet.of(NodeActionType.DELETE, NodeActionType.RELEASE), allowedActions);
         } else if (nodeState == NodeDetails.NodeState.InstanceCreated) {
           assertEquals(ImmutableSet.of(NodeActionType.DELETE), allowedActions);
         } else if (nodeState == NodeDetails.NodeState.ServerSetup) {

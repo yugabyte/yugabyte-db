@@ -14,10 +14,10 @@
 #ifndef YB_DOCDB_PACKED_ROW_H
 #define YB_DOCDB_PACKED_ROW_H
 
+#include <optional>
 #include <unordered_map>
 
 #include <boost/functional/hash.hpp>
-#include <boost/optional.hpp>
 
 #include <google/protobuf/repeated_field.h>
 
@@ -114,39 +114,53 @@ class SchemaPacking {
     return varlen_columns_count_;
   }
 
+  bool SkippedColumn(ColumnId column_id) const;
   Slice GetValue(size_t idx, const Slice& packed) const;
-  boost::optional<Slice> GetValue(ColumnId column, const Slice& packed) const;
+  std::optional<Slice> GetValue(ColumnId column_id, const Slice& packed) const;
   void ToPB(SchemaPackingPB* out) const;
 
   std::string ToString() const;
 
  private:
   std::vector<ColumnPackingData> columns_;
-  std::unordered_map<ColumnId, size_t, boost::hash<ColumnId>> column_to_idx_;
+  std::unordered_map<ColumnId, int64_t, boost::hash<ColumnId>> column_to_idx_;
   size_t varlen_columns_count_;
 };
 
 class SchemaPackingStorage {
  public:
   SchemaPackingStorage();
+  explicit SchemaPackingStorage(const SchemaPackingStorage& rhs, SchemaVersion min_schema_version);
 
-  Result<const SchemaPacking&> GetPacking(uint32_t schema_version) const;
+  Result<const SchemaPacking&> GetPacking(SchemaVersion schema_version) const;
   Result<const SchemaPacking&> GetPacking(Slice* packed_row) const;
 
-  void AddSchema(uint32_t version, const Schema& schema);
+  void AddSchema(SchemaVersion version, const Schema& schema);
 
-  CHECKED_STATUS LoadFromPB(const google::protobuf::RepeatedPtrField<SchemaPackingPB>& schemas);
-  void ToPB(uint32_t skip_schema_version, google::protobuf::RepeatedPtrField<SchemaPackingPB>* out);
+  Status LoadFromPB(const google::protobuf::RepeatedPtrField<SchemaPackingPB>& schemas);
+
+  // Copy all schema packings except schema_version_to_skip to out.
+  void ToPB(
+      SchemaVersion schema_version_to_skip,
+      google::protobuf::RepeatedPtrField<SchemaPackingPB>* out);
+
+  size_t SchemaCount() const {
+    return version_to_schema_packing_.size();
+  }
+
+  bool HasVersionBelow(SchemaVersion version) const;
 
  private:
-  std::unordered_map<uint32_t, SchemaPacking> version_to_schema_packing_;
+  std::unordered_map<SchemaVersion, SchemaPacking> version_to_schema_packing_;
 };
 
 class RowPacker {
  public:
-  RowPacker(uint32_t version, std::reference_wrapper<const SchemaPacking> packing);
-  explicit RowPacker(const std::pair<uint32_t, const SchemaPacking&>& pair)
-      : RowPacker(pair.first, pair.second) {
+  RowPacker(SchemaVersion version, std::reference_wrapper<const SchemaPacking> packing,
+            size_t packed_size_limit);
+
+  RowPacker(const std::pair<SchemaVersion, const SchemaPacking&>& pair, ssize_t packed_size_limit)
+      : RowPacker(pair.first, pair.second, packed_size_limit) {
   }
 
   bool Empty() const {
@@ -162,16 +176,20 @@ class RowPacker {
   ColumnId NextColumnId() const;
   Result<const ColumnPackingData&> NextColumnData() const;
 
-  Status AddValue(ColumnId column, const QLValuePB& value);
-  Status AddValue(ColumnId column, const Slice& value);
+  // Returns false when unable to add value due to packed size limit.
+  // tail_size is added to proposed encoded size, to make decision whether encoded value fits
+  // into bounds or not.
+  Result<bool> AddValue(ColumnId column_id, const Slice& value, ssize_t tail_size);
+  Result<bool> AddValue(ColumnId column_id, const QLValuePB& value);
 
   Result<Slice> Complete();
 
  private:
   template <class Value>
-  Status DoAddValue(ColumnId column, const Value& value);
+  Result<bool> DoAddValue(ColumnId column_id, const Value& value, ssize_t tail_size);
 
   const SchemaPacking& packing_;
+  const ssize_t packed_size_limit_;
   size_t idx_ = 0;
   size_t prefix_end_;
   ValueBuffer result_;

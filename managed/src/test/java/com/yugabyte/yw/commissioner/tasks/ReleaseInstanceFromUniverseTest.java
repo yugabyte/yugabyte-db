@@ -212,7 +212,11 @@ public class ReleaseInstanceFromUniverseTest extends CommissionerBaseTest {
   public void testReleaseNodeAllowedState() {
     Set<NodeState> allowedStates = NodeState.allowedStatesForAction(NodeActionType.RELEASE);
     Set<NodeState> expectedStates =
-        ImmutableSet.of(NodeState.BeingDecommissioned, NodeState.Removed, NodeState.Terminating);
+        ImmutableSet.of(
+            NodeState.Adding,
+            NodeState.BeingDecommissioned,
+            NodeState.Removed,
+            NodeState.Terminating);
     assertEquals(expectedStates, allowedStates);
   }
 }

@@ -9,8 +9,7 @@ menu:
     identifier: connect-to-cluster
     parent: tls-encryption
     weight: 40
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 You can connect CLIs, tools, and APIs to a remote YugabyteDB cluster when client-to-server encryption is enabled.
@@ -140,4 +139,3 @@ ycqlsh> DESCRIBE KEYSPACES;
 
 system_schema  system_auth  system
 ```
-

@@ -45,7 +45,7 @@ class TabletSplitter {
   // so we pass raft_log and raft_config explicitly).
   // If these arguments are not specified, it's assumed that the Raft log and Raft config are
   // accessible from tablet peer's Raft consensus instance and initialized.
-  virtual CHECKED_STATUS ApplyTabletSplit(
+  virtual Status ApplyTabletSplit(
       SplitOperation* operation, log::Log* raft_log,
       boost::optional<consensus::RaftConfigPB> raft_config) = 0;
 };

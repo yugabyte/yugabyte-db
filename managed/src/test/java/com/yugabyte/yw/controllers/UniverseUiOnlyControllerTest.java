@@ -4,8 +4,8 @@ import static com.yugabyte.yw.common.ApiUtils.getTestUserIntent;
 import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
-import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
+import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthToken;
 import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthTokenAndBody;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
@@ -54,9 +54,9 @@ import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
-import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -533,6 +533,128 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
             () -> doRequestWithAuthTokenAndBody("PUT", url, authToken, Json.newObject()));
     assertBadRequest(result, "clusters: This field is required");
     assertAuditEntry(0, customer.uuid);
+  }
+
+  @Test
+  public void testUniverseUpdateWithChangingIP() {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+
+    Provider p = ModelFactory.awsProvider(customer);
+    String accessKeyCode = "someKeyCode";
+    AccessKey.create(p.uuid, accessKeyCode, new AccessKey.KeyInfo());
+    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
+    AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ 1", "subnet-1");
+    Universe u = createUniverse(customer.getCustomerId());
+    InstanceType i =
+        InstanceType.upsert(p.uuid, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+
+    ObjectNode userIntentJson =
+        Json.newObject()
+            .put("universeName", u.name)
+            .put("numNodes", 3)
+            .put("instanceType", i.getInstanceTypeCode())
+            .put("replicationFactor", 3)
+            .put("provider", p.uuid.toString())
+            .put("accessKeyCode", accessKeyCode);
+    ArrayNode regionList = Json.newArray().add(r.uuid.toString());
+    userIntentJson.set("regionList", regionList);
+    ArrayNode nodeDetailsJsonArray = Json.newArray();
+    Universe.saveDetails(
+        u.universeUUID,
+        universe -> {
+          UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+          Cluster cluster = universeDetails.clusters.get(0);
+          cluster.userIntent = Json.fromJson(userIntentJson, UserIntent.class);
+          for (int idx = 0; idx < 3; idx++) {
+            NodeDetails node = ApiUtils.getDummyNodeDetails(idx, NodeState.Live);
+            node.placementUuid = cluster.uuid;
+            nodeDetailsJsonArray.add(Json.toJson(node));
+            if (idx == 1) {
+              node.cloudInfo.private_ip += "1"; // changing ip from 10.0.0.1 to 10.0.0.11
+            }
+            universeDetails.nodeDetailsSet.add(node);
+          }
+        });
+
+    Cluster cluster = u.getUniverseDetails().clusters.get(0);
+    ObjectNode clusterJson = Json.newObject();
+    clusterJson.set("userIntent", userIntentJson);
+    clusterJson.set("uuid", Json.toJson(cluster.uuid));
+    ArrayNode clustersJsonArray = Json.newArray().add(clusterJson);
+
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.set("clusters", clustersJsonArray);
+    bodyJson.set("nodeDetailsSet", nodeDetailsJsonArray);
+
+    String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID;
+    Result result =
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("PUT", url, authToken, bodyJson));
+    assertBadRequest(result, "Illegal attempt to change private ip to 10.0.0.1 for node host-n1");
+  }
+
+  @Test
+  public void testUniverseUpdateIllegalIP() {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+
+    Provider p = ModelFactory.awsProvider(customer);
+    String accessKeyCode = "someKeyCode";
+    AccessKey.create(p.uuid, accessKeyCode, new AccessKey.KeyInfo());
+    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
+    AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ 1", "subnet-1");
+    Universe u = createUniverse(customer.getCustomerId());
+    InstanceType i =
+        InstanceType.upsert(p.uuid, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+
+    ObjectNode userIntentJson =
+        Json.newObject()
+            .put("universeName", u.name)
+            .put("numNodes", 3)
+            .put("instanceType", i.getInstanceTypeCode())
+            .put("replicationFactor", 3)
+            .put("provider", p.uuid.toString())
+            .put("providerType", p.code)
+            .put("accessKeyCode", accessKeyCode);
+    ArrayNode regionList = Json.newArray().add(r.uuid.toString());
+    userIntentJson.set("regionList", regionList);
+    ArrayNode nodeDetailsJsonArray = Json.newArray();
+    Universe.saveDetails(
+        u.universeUUID,
+        universe -> {
+          UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+          Cluster cluster = universeDetails.clusters.get(0);
+          cluster.userIntent = Json.fromJson(userIntentJson, UserIntent.class);
+          for (int idx = 0; idx < 3; idx++) {
+            NodeDetails node = ApiUtils.getDummyNodeDetails(idx, NodeState.ToBeAdded);
+            node.nodeName = "";
+            node.placementUuid = cluster.uuid;
+            if (idx == 0) {
+              node.cloudInfo.private_ip = FORBIDDEN_IP_2;
+            }
+            nodeDetailsJsonArray.add(Json.toJson(node));
+            universeDetails.nodeDetailsSet.add(node);
+          }
+        });
+
+    Cluster cluster = u.getUniverseDetails().clusters.get(0);
+    ObjectNode clusterJson = Json.newObject();
+    clusterJson.set("userIntent", userIntentJson);
+    clusterJson.set("uuid", Json.toJson(cluster.uuid));
+    ArrayNode clustersJsonArray = Json.newArray().add(clusterJson);
+
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.set("clusters", clustersJsonArray);
+    bodyJson.set("nodeDetailsSet", nodeDetailsJsonArray);
+
+    String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID;
+    Result result =
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("PUT", url, authToken, bodyJson));
+    assertBadRequest(result, String.format("Forbidden ip %s for node", FORBIDDEN_IP_2));
   }
 
   @Test
@@ -1485,8 +1607,6 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
   @Test
   public void testExpandDiskSizeFailureInvalidSize() {
     Universe u = createUniverse(customer.getCustomerId());
-    customer.addUniverseUUID(u.universeUUID);
-    customer.save();
     setupDiskUpdateTest(100, "c4.xlarge", PublicCloudConstants.StorageType.GP2, u);
     u = Universe.getOrBadRequest(u.universeUUID);
 
@@ -1504,8 +1624,6 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
   @Test
   public void testExpandDiskSizeFailureInvalidStorage() {
     Universe u = createUniverse("Test universe", customer.getCustomerId(), Common.CloudType.gcp);
-    customer.addUniverseUUID(u.universeUUID);
-    customer.save();
     setupDiskUpdateTest(100, "c4.xlarge", PublicCloudConstants.StorageType.Scratch, u);
     u = Universe.getOrBadRequest(u.universeUUID);
 
@@ -1523,8 +1641,6 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
   @Test
   public void testExpandDiskSizeFailureInvalidInstance() {
     Universe u = createUniverse(customer.getCustomerId());
-    customer.addUniverseUUID(u.universeUUID);
-    customer.save();
     setupDiskUpdateTest(100, "i3.xlarge", PublicCloudConstants.StorageType.GP2, u);
     u = Universe.getOrBadRequest(u.universeUUID);
 
@@ -1545,8 +1661,6 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
     when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
     Universe u = createUniverse(customer.getCustomerId());
-    customer.addUniverseUUID(u.universeUUID);
-    customer.save();
     setupDiskUpdateTest(100, "c4.xlarge", PublicCloudConstants.StorageType.GP2, u);
     u = Universe.getOrBadRequest(u.universeUUID);
 

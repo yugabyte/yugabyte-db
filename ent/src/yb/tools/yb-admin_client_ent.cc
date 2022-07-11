@@ -10,9 +10,6 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#include "yb/tools/yb-admin_cli.h"
-#include "yb/tools/yb-admin_client.h"
-
 #include <iostream>
 
 #include <boost/algorithm/string.hpp>
@@ -31,6 +28,7 @@
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/util.h"
+#include "yb/gutil/strings/split.h"
 
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_error.h"
@@ -40,6 +38,11 @@
 #include "yb/master/master_ddl.proxy.h"
 #include "yb/master/master_encryption.proxy.h"
 #include "yb/master/master_replication.proxy.h"
+#include "yb/master/master_admin.pb.h"
+#include "yb/master/master_admin.proxy.h"
+
+#include "yb/tools/yb-admin_cli.h"
+#include "yb/tools/yb-admin_client.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_controller.h"
@@ -52,6 +55,7 @@
 #include "yb/util/pb_util.h"
 #include "yb/util/physical_time.h"
 #include "yb/util/protobuf_util.h"
+#include "yb/util/stol_utils.h"
 #include "yb/util/string_case.h"
 #include "yb/util/string_trim.h"
 #include "yb/util/string_util.h"
@@ -93,15 +97,12 @@ using master::IdPairPB;
 using master::ImportSnapshotMetaRequestPB;
 using master::ImportSnapshotMetaResponsePB;
 using master::ImportSnapshotMetaResponsePB_TableMetaPB;
-using master::IsCreateTableDoneRequestPB;
-using master::IsCreateTableDoneResponsePB;
 using master::ListSnapshotRestorationsRequestPB;
 using master::ListSnapshotRestorationsResponsePB;
 using master::ListSnapshotsRequestPB;
 using master::ListSnapshotsResponsePB;
 using master::ListTablesRequestPB;
 using master::ListTablesResponsePB;
-using master::ListTabletServersRequestPB;
 using master::ListTabletServersResponsePB;
 using master::RestoreSnapshotRequestPB;
 using master::RestoreSnapshotResponsePB;
@@ -280,6 +281,7 @@ Status ClusterAdminClient::CreateNamespaceSnapshot(const TypedNamespaceName& ns)
     req.set_exclude_system_tables(true);
     req.add_relation_type_filter(master::USER_TABLE_RELATION);
     req.add_relation_type_filter(master::INDEX_TABLE_RELATION);
+    req.add_relation_type_filter(master::MATVIEW_TABLE_RELATION);
     return master_ddl_proxy_->ListTables(req, &resp, rpc);
   }));
 
@@ -295,7 +297,8 @@ Status ClusterAdminClient::CreateNamespaceSnapshot(const TypedNamespaceName& ns)
     tables[i].set_pgschema_name(table.pgschema_name());
 
     RSTATUS_DCHECK(table.relation_type() == master::USER_TABLE_RELATION ||
-            table.relation_type() == master::INDEX_TABLE_RELATION, InternalError,
+            table.relation_type() == master::INDEX_TABLE_RELATION ||
+            table.relation_type() == master::MATVIEW_TABLE_RELATION, InternalError,
             Format("Invalid relation type: $0", table.relation_type()));
     RSTATUS_DCHECK_EQ(table.namespace_().name(), ns.name, InternalError,
                Format("Invalid namespace name: $0", table.namespace_().name()));
@@ -528,10 +531,58 @@ Result<TxnSnapshotId> ClusterAdminClient::SuitableSnapshotId(
   }
 }
 
+Status ClusterAdminClient::DisableTabletSplitsDuringRestore(CoarseTimePoint deadline) {
+  // TODO(Sanket): Eventually all of this logic needs to be moved
+  // to the master and exposed as APIs for the clients to consume.
+  const std::string feature_name = "PITR";
+  const auto splitting_disabled_until =
+      CoarseMonoClock::Now() + MonoDelta::FromSeconds(kPitrSplitDisableDurationSecs);
+  // Disable splitting and then wait for all pending splits to complete before
+  // starting restoration.
+  VERIFY_RESULT_PREPEND(
+      DisableTabletSplitsInternal(kPitrSplitDisableDurationSecs * 1000, feature_name),
+      "Failed to disable tablet split before restore.");
+
+  while (CoarseMonoClock::Now() < std::min(splitting_disabled_until, deadline)) {
+    // Wait for existing split operations to complete.
+    const auto resp =
+        VERIFY_RESULT_PREPEND(IsTabletSplittingCompleteInternal(),
+                              "Tablet splitting did not complete. Cannot restore.");
+    if (resp.is_tablet_splitting_complete()) {
+      break;
+    }
+    SleepFor(MonoDelta::FromMilliseconds(kPitrSplitDisableCheckFreqMs));
+  }
+
+  if (CoarseMonoClock::now() >= deadline) {
+    return STATUS(TimedOut, "Timed out waiting for tablet splitting to complete.");
+  }
+
+  // Return if we have used almost all of our time in waiting for splitting to complete,
+  // since we can't guarantee that another split does not start.
+  if (CoarseMonoClock::now() + MonoDelta::FromSeconds(3) >= splitting_disabled_until) {
+    return STATUS(TimedOut, "Not enough time after disabling splitting to disable ",
+                            "splitting again.");
+  }
+
+  // Disable for kPitrSplitDisableDurationSecs again so the restore has the full amount of time with
+  // splitting disables. This overwrites the previous value since the feature_name is the same so
+  // overall the time is still kPitrSplitDisableDurationSecs.
+  VERIFY_RESULT_PREPEND(
+      DisableTabletSplitsInternal(kPitrSplitDisableDurationSecs * 1000, feature_name),
+      "Failed to disable tablet split before restore.");
+
+  return Status::OK();
+}
+
 Result<rapidjson::Document> ClusterAdminClient::RestoreSnapshotSchedule(
     const SnapshotScheduleId& schedule_id, HybridTime restore_at) {
   auto deadline = CoarseMonoClock::now() + timeout_;
 
+  // Disable splitting for the entire run of restore.
+  RETURN_NOT_OK(DisableTabletSplitsDuringRestore(deadline));
+
+  // Get the suitable snapshot to restore from.
   auto snapshot_id = VERIFY_RESULT(SuitableSnapshotId(schedule_id, restore_at, deadline));
 
   for (;;) {
@@ -920,29 +971,82 @@ Status ClusterAdminClient::SetPreferredZones(const std::vector<string>& preferre
   rpc.set_timeout(timeout_);
 
   std::set<string> zones;
+  std::set<int> visited_priorities;
+
   for (const string& zone : preferred_zones) {
-    if (std::find(zones.begin(), zones.end(), zone) != zones.end()) {
-      continue;
-    }
-    size_t last_pos = 0;
-    size_t next_pos;
-    std::vector<string> tokens;
-    while ((next_pos = zone.find(".", last_pos)) != string::npos) {
-      tokens.push_back(zone.substr(last_pos, next_pos - last_pos));
-      last_pos = next_pos + 1;
-    }
-    tokens.push_back(zone.substr(last_pos, zone.size() - last_pos));
-    if (tokens.size() != 3) {
-      return STATUS_SUBSTITUTE(InvalidArgument, "Invalid argument for preferred zone $0, should "
-          "have format cloud.region.zone", zone);
+    if (zones.find(zone) != zones.end()) {
+      return STATUS_SUBSTITUTE(
+          InvalidArgument, "Invalid argument for preferred zone $0, values should not repeat",
+          zone);
     }
 
-    CloudInfoPB* cloud_info = req.add_preferred_zones();
+    std::vector<std::string> zone_priority_split = strings::Split(zone, ":", strings::AllowEmpty());
+    if (zone_priority_split.size() == 0 || zone_priority_split.size() > 2) {
+      return STATUS_SUBSTITUTE(
+          InvalidArgument,
+          "Invalid argument for preferred zone $0, should have format cloud.region.zone[:priority]",
+          zone);
+    }
+
+    std::vector<string> tokens = strings::Split(zone_priority_split[0], ".", strings::AllowEmpty());
+    if (tokens.size() != 3) {
+      return STATUS_SUBSTITUTE(
+          InvalidArgument,
+          "Invalid argument for preferred zone $0, should have format cloud.region.zone:[priority]",
+          zone);
+    }
+
+    uint priority = 1;
+
+    if (zone_priority_split.size() == 2) {
+      auto result = CheckedStoi(zone_priority_split[1]);
+      if (!result.ok() || result.get() < 1) {
+        return STATUS_SUBSTITUTE(
+            InvalidArgument,
+            "Invalid argument for preferred zone $0, priority should be non-zero positive integer",
+            zone);
+      }
+      priority = static_cast<uint>(result.get());
+    }
+
+    // Max priority if each zone has a unique priority value can only be the size of the input array
+    if (priority > preferred_zones.size()) {
+      return STATUS(
+          InvalidArgument,
+          "Priority value cannot be more than the number of zones in the preferred list since each "
+          "priority should be associated with at least one zone from the list");
+    }
+
+    CloudInfoPB* cloud_info = nullptr;
+    visited_priorities.insert(priority);
+
+    while (req.multi_preferred_zones_size() < static_cast<int>(priority)) {
+      req.add_multi_preferred_zones();
+    }
+
+    auto current_list = req.mutable_multi_preferred_zones(priority - 1);
+    cloud_info = current_list->add_zones();
+
     cloud_info->set_placement_cloud(tokens[0]);
     cloud_info->set_placement_region(tokens[1]);
     cloud_info->set_placement_zone(tokens[2]);
 
     zones.emplace(zone);
+
+    if (priority == 1) {
+      // Handle old clusters which can only handle a single priority. New clusters will ignore this
+      // member as multi_preferred_zones is already set.
+      cloud_info = req.add_preferred_zones();
+      cloud_info->set_placement_cloud(tokens[0]);
+      cloud_info->set_placement_region(tokens[1]);
+      cloud_info->set_placement_zone(tokens[2]);
+    }
+  }
+
+  int size = static_cast<int>(visited_priorities.size());
+  if (size > 0 && (*(visited_priorities.rbegin()) != size)) {
+    return STATUS_SUBSTITUTE(
+        InvalidArgument, "Invalid argument, each priority should have at least one zone");
   }
 
   RETURN_NOT_OK(master_cluster_proxy_->SetPreferredZones(req, &resp, &rpc));
@@ -1297,7 +1401,8 @@ Status ClusterAdminClient::WaitForSetupUniverseReplicationToFinish(const string&
     if (!s.ok() || resp.has_error()) {
         LOG(WARNING) << "Encountered error while waiting for setup_universe_replication to complete"
                      << " : " << (!s.ok() ? s.ToString() : resp.error().status().message());
-    } else if (resp.has_done() && resp.done()) {
+    }
+    if (resp.has_done() && resp.done()) {
       return StatusFromPB(resp.replication_error());
     }
 
@@ -1386,10 +1491,12 @@ Status ClusterAdminClient::AlterUniverseReplication(const std::string& producer_
     const std::vector<TableId>& add_tables,
     const std::vector<TableId>& remove_tables,
     const std::vector<std::string>& producer_bootstrap_ids_to_add,
-    const std::string& new_producer_universe_id) {
+    const std::string& new_producer_universe_id,
+    bool remove_table_ignore_errors) {
   master::AlterUniverseReplicationRequestPB req;
   master::AlterUniverseReplicationResponsePB resp;
   req.set_producer_id(producer_uuid);
+  req.set_remove_table_ignore_errors(remove_table_ignore_errors);
 
   if (!producer_addresses.empty()) {
     req.mutable_producer_master_addresses()->Reserve(narrow_cast<int>(producer_addresses.size()));
@@ -1452,7 +1559,7 @@ Status ClusterAdminClient::AlterUniverseReplication(const std::string& producer_
   return Status::OK();
 }
 
-CHECKED_STATUS ClusterAdminClient::SetUniverseReplicationEnabled(const std::string& producer_id,
+Status ClusterAdminClient::SetUniverseReplicationEnabled(const std::string& producer_id,
                                                                  bool is_enabled) {
   master::SetUniverseReplicationEnabledRequestPB req;
   master::SetUniverseReplicationEnabledResponsePB resp;

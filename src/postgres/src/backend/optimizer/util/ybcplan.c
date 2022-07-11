@@ -42,23 +42,40 @@
 #include "pg_yb_utils.h"
 
 /*
- * Returns true if the following are all true:
- *  - is insert, update, or delete command.
- *  - only one target table.
- *  - there are no ON CONFLICT or WITH clauses.
- *  - source data is a VALUES clause with one value set.
- *  - all values are either constants or bind markers.
+ * Check if statement can be implemented by a single request to the DocDB.
  *
- *  Additionally, during execution we will also check:
- *  - not in transaction block.
- *  - is a single-plan execution.
- *  - target table has no triggers.
- *  - target table has no indexes.
- *  And if all are true we will execute this op as a single-row transaction
- *  rather than a distributed transaction.
+ * An insert, update, or delete command makes one or more write requests to
+ * the DocDB to apply the changes, and may also make read requests to find
+ * the target row, its id, current values, etc. Complex expressions (e.g.
+ * subqueries, stored functions) may also make requests to DocDB.
+ *
+ * Typically multiple requests require a transaction to maintain consistency.
+ * However, if the command is about to make single write request, it is OK to
+ * skip the transaction. The ModifyTable plan node makes one write request per
+ * row it fetches from its subplans, therefore the key criteria of single row
+ * modify is a single Result plan node in the ModifyTable's plans list.
+ * Plain Result plan node produces exactly one row without making requests to
+ * the DocDB, unless it has a subplan or complex expressions to evaluate.
+ *
+ * Full list of the conditions we check here:
+ *  - there is only one target table;
+ *  - there is no ON CONFLICT clause;
+ *  - there is no init plan;
+ *  - there is only one source plan, which is a simple form of Result;
+ *  - all expressions in the Result's target list and in the returning list are
+ *    simple, that means they do not need to access the DocDB.
+ *
+ * Additionally, during execution we will also check:
+ *  - not in transaction block;
+ *  - is a single-plan execution;
+ *  - target table has no triggers to fire;
+ *  - target table has no indexes to update.
+ * And if all are true we will execute this op as a single-row transaction
+ * rather than a distributed transaction.
  */
 static bool ModifyTableIsSingleRowWrite(ModifyTable *modifyTable)
 {
+	Plan		   *plan;
 
 	/* Support INSERT, UPDATE, and DELETE. */
 	if (modifyTable->operation != CMD_INSERT &&
@@ -70,52 +87,33 @@ static bool ModifyTableIsSingleRowWrite(ModifyTable *modifyTable)
 	if (list_length(modifyTable->resultRelations) != 1)
 		return false;
 
-	/* ON CONFLICT clause is not supported here yet. */
+	/* ON CONFLICT clause may require another write request */
 	if (modifyTable->onConflictAction != ONCONFLICT_NONE)
 		return false;
 
-	/* WITH clause is not supported here yet. */
+	/* Init plan execution would require request(s) to DocDB */
 	if (modifyTable->plan.initPlan != NIL)
 		return false;
 
-	/* Check the data source, only allow a values clause right now */
+	/* Check the data source is a single plan */
 	if (list_length(modifyTable->plans) != 1)
 		return false;
 
-	/* Check if returning clause contains complex expressions */
-	if (YbIsTransactionalExpr((Node *) modifyTable->returningLists))
+	plan = (Plan *) linitial(modifyTable->plans);
+	/*
+	 * Only Result plan without a subplan produces single tuple without making
+	 * DocDB requests
+	 */
+	if (!IsA(plan, Result) || outerPlan(plan))
 		return false;
 
-	switch nodeTag(linitial(modifyTable->plans))
-	{
-		case T_Result:
-		{
-			/* Simple values clause: one valueset (single row) */
-			Result *values = (Result *) linitial(modifyTable->plans);
-			if (YbIsTransactionalExpr((Node *) values->plan.targetlist))
-			{
-				return false;
-			}
-			break;
-		}
-		case T_ValuesScan:
-		{
-			/*
-			 * Simple values clause: multiple valueset (multi-row).
-			 * TODO: Eventually we could inspect hash key values to check
-			 *       if single shard and optimize that.
-			 *       ---
-			 *       In this case we'd need some other way to explicitly filter out
-			 *       updates involving primary key - right now we simply rely on
-			 *       planner not setting the node to Result.
-			 */
-			return false;
+	/* Complex expressions in the target list may require DocDB requests */
+	if (YbIsTransactionalExpr((Node *) plan->targetlist))
+		return false;
 
-		}
-		default:
-			/* Do not support any other data sources. */
-			return false;
-	}
+	/* Same for the returning expressions */
+	if (YbIsTransactionalExpr((Node *) modifyTable->returningLists))
+		return false;
 
 	/* If all our checks passed return true */
 	return true;

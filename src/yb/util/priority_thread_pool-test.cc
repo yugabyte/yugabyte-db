@@ -39,7 +39,6 @@ const int kDrive2 = 2;
 const int kTopDiskCompactionPriority = 100;
 const int kTopDiskFlushPriority = 200;
 
-
 class Share {
  public:
   bool Step(int index) {
@@ -316,9 +315,9 @@ TEST(PriorityThreadPoolTest, ChangePriority) {
   ASSERT_EQ(running, std::vector<int>({2, 5, 6}));
 }
 
-TEST(PriorityThreadPoolTest, ActiveIORebalancing) {
+TEST(PriorityThreadPoolTest, GroupNoActiveIORebalancing) {
   const int kMaxRunningTasks = 5;
-  PriorityThreadPool thread_pool(kMaxRunningTasks);
+  PriorityThreadPool thread_pool(kMaxRunningTasks, true /* prioritize_by_group_no */);
   Share share;
   std::vector<int> running;
 
@@ -354,9 +353,9 @@ TEST(PriorityThreadPoolTest, ActiveIORebalancing) {
   ASSERT_EQ(running, std::vector<int>({2, 3, 8, 9, 10}));
 }
 
-TEST(PriorityThreadPoolTest, PicksTaskOnLessBusyDrive) {
+TEST(PriorityThreadPoolTest, GroupNoPicksTaskOnLessBusyDrive) {
   const int kMaxRunningTasks = 2;
-  PriorityThreadPool thread_pool(kMaxRunningTasks);
+  PriorityThreadPool thread_pool(kMaxRunningTasks, true /* prioritize_by_group_no */);
   Share share;
   std::vector<int> running;
 
@@ -377,6 +376,8 @@ TEST(PriorityThreadPoolTest, PicksTaskOnLessBusyDrive) {
     8 /* priority */, &share, &thread_pool, kDrive1, false /* pause */, true /* compaction */);
   SubmitTask(
     7 /* priority */, &share, &thread_pool, kDrive2, false /* pause */, true /* compaction */);
+  SubmitTask(
+    6 /* priority */, &share, &thread_pool, kDrive2, false /* pause */, true /* compaction */);
 
   // Since we turned the ability to pause off,
   // we should see tasks 10 and 9 running, as they were submitted first.
@@ -390,9 +391,9 @@ TEST(PriorityThreadPoolTest, PicksTaskOnLessBusyDrive) {
   ASSERT_EQ(running, std::vector<int>({7, 9}));
 }
 
-TEST(PriorityThreadPoolTest, OtherTasksRunBeforeCompactionTasks) {
+TEST(PriorityThreadPoolTest, GroupNoOtherTasksRunBeforeCompactionTasks) {
   const int kMaxRunningTasks = 2;
-  PriorityThreadPool thread_pool(kMaxRunningTasks);
+  PriorityThreadPool thread_pool(kMaxRunningTasks, true /* prioritize_by_group_no */ );
   Share share;
   std::vector<int> running;
 

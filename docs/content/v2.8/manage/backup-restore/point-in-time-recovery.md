@@ -8,8 +8,7 @@ menu:
     identifier: point-in-time-recovery
     parent: backup-restore
     weight: 704
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 The point-in-time recovery feature allows you to restore the state of your cluster's data from a specific point in time. This can be relative, such as "three hours ago", or an absolute timestamp.

@@ -62,7 +62,7 @@ namespace tserver {
 namespace {
 
 // Decode the remote error into a human-readable Status object.
-CHECKED_STATUS ExtractRemoteError(
+Status ExtractRemoteError(
     const rpc::ErrorStatusPB& remote_error, const Status& original_status) {
   if (!remote_error.HasExtension(RemoteBootstrapErrorPB::remote_bootstrap_error_ext)) {
     return original_status;
@@ -117,6 +117,10 @@ Status RemoteBootstrapFileDownloader::DownloadFile(
     }
   }
 
+  if (env().FileExists(file_path)) {
+    LOG(INFO) << file_path << " already exists and will be replaced";
+    RETURN_NOT_OK(env().DeleteFile(file_path));
+  }
   WritableFileOptions opts;
   opts.sync_on_close = true;
   std::unique_ptr<WritableFile> file;

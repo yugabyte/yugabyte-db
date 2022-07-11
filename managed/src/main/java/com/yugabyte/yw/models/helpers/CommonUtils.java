@@ -4,35 +4,11 @@ package com.yugabyte.yw.models.helpers;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.fasterxml.jackson.databind.node.TextNode;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.google.common.collect.Iterables;
-import com.jayway.jsonpath.Configuration;
-import com.jayway.jsonpath.JsonPath;
-import com.jayway.jsonpath.spi.json.JacksonJsonNodeJsonProvider;
-import com.jayway.jsonpath.spi.mapper.JacksonMappingProvider;
-import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.common.utils.Pair;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
-import com.yugabyte.yw.models.paging.PagedQuery;
-import com.yugabyte.yw.models.paging.PagedResponse;
-import io.ebean.ExpressionList;
-import io.ebean.Junction;
-import io.ebean.PagedList;
-import io.ebean.Query;
-import io.ebean.common.BeanList;
 import java.lang.annotation.Annotation;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.time.temporal.TemporalUnit;
-import java.util.UUID;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -46,18 +22,51 @@ import java.util.Optional;
 import java.util.Random;
 import java.util.Scanner;
 import java.util.Set;
+import java.util.UUID;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
-import lombok.extern.slf4j.Slf4j;
+
+import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections.MapUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.security.crypto.encrypt.Encryptors;
 import org.springframework.security.crypto.encrypt.TextEncryptor;
-import org.apache.commons.collections.CollectionUtils;
-import org.apache.commons.lang3.StringUtils;
+
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.databind.node.TextNode;
+import com.google.common.collect.ImmutableMultiset;
+import com.google.common.collect.Iterables;
+import com.jayway.jsonpath.Configuration;
+import com.jayway.jsonpath.JsonPath;
+import com.jayway.jsonpath.spi.json.JacksonJsonNodeJsonProvider;
+import com.jayway.jsonpath.spi.mapper.JacksonMappingProvider;
+import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.utils.Pair;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.configs.CustomerConfig;
+import com.yugabyte.yw.models.extended.UserWithFeatures;
+import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
+import com.yugabyte.yw.models.paging.PagedQuery;
+import com.yugabyte.yw.models.paging.PagedResponse;
+
+import io.ebean.ExpressionList;
+import io.ebean.Junction;
+import io.ebean.PagedList;
+import io.ebean.Query;
+import io.ebean.common.BeanList;
+import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
+import play.mvc.Http;
 
 @Slf4j
 public class CommonUtils {
@@ -129,14 +138,36 @@ public class CommonUtils {
   }
 
   public static Map<String, String> maskConfigNew(Map<String, String> config) {
+    return processDataNew(config, CommonUtils::isSensitiveField, CommonUtils::getMaskedValue);
+  }
+
+  public static Map<String, String> maskAllFields(Map<String, String> config) {
     return processDataNew(
-        config, CommonUtils::isSensitiveField, (key, value) -> getMaskedValue(key, value));
+        config,
+        (String s) -> {
+          return true;
+        },
+        CommonUtils::getMaskedValue);
   }
 
   public static String getMaskedValue(String key, String value) {
     return isStrictlySensitiveField(key) || (value == null) || value.length() < 5
         ? MASKED_FIELD_VALUE
         : value.replaceAll(maskRegex, "*");
+  }
+
+  /**
+   * masks the data in the passed configuration
+   *
+   * @param unmaskedConfig
+   * @param maskStr
+   * @return
+   */
+  public static CustomerConfig getConfigMasked(CustomerConfig unmaskedConfig) {
+    if (unmaskedConfig == null) return null;
+    CustomerConfig maskedConfig = unmaskedConfig;
+    maskedConfig.setData(unmaskedConfig.getMaskedData());
+    return maskedConfig;
   }
 
   @SuppressWarnings("unchecked")
@@ -190,41 +221,45 @@ public class CommonUtils {
 
   public static Map<String, String> encryptProviderConfig(
       Map<String, String> config, UUID customerUUID, String providerCode) {
-    if (config.isEmpty()) return new HashMap<>();
-    try {
-      final ObjectMapper mapper = new ObjectMapper();
-      final String salt = generateSalt(customerUUID, providerCode);
-      final TextEncryptor encryptor = Encryptors.delux(customerUUID.toString(), salt);
-      final String encryptedConfig = encryptor.encrypt(mapper.writeValueAsString(config));
-      Map<String, String> encryptMap = new HashMap<>();
-      encryptMap.put("encrypted", encryptedConfig);
-      return encryptMap;
-    } catch (Exception e) {
-      final String errMsg =
-          String.format(
-              "Could not encrypt provider configuration for customer %s", customerUUID.toString());
-      log.error(errMsg, e);
-      return null;
+    if (MapUtils.isNotEmpty(config)) {
+      try {
+        final ObjectMapper mapper = new ObjectMapper();
+        final String salt = generateSalt(customerUUID, providerCode);
+        final TextEncryptor encryptor = Encryptors.delux(customerUUID.toString(), salt);
+        final String encryptedConfig = encryptor.encrypt(mapper.writeValueAsString(config));
+        Map<String, String> encryptMap = new HashMap<>();
+        encryptMap.put("encrypted", encryptedConfig);
+        return encryptMap;
+      } catch (Exception e) {
+        final String errMsg =
+            String.format(
+                "Could not encrypt provider configuration for customer %s",
+                customerUUID.toString());
+        log.error(errMsg, e);
+      }
     }
+    return new HashMap<>();
   }
 
   public static Map<String, String> decryptProviderConfig(
       Map<String, String> config, UUID customerUUID, String providerCode) {
-    if (config.isEmpty()) return config;
-    try {
-      final ObjectMapper mapper = new ObjectMapper();
-      final String encryptedConfig = config.get("encrypted");
-      final String salt = generateSalt(customerUUID, providerCode);
-      final TextEncryptor encryptor = Encryptors.delux(customerUUID.toString(), salt);
-      final String decryptedConfig = encryptor.decrypt(encryptedConfig);
-      return mapper.readValue(decryptedConfig, new TypeReference<Map<String, String>>() {});
-    } catch (Exception e) {
-      final String errMsg =
-          String.format(
-              "Could not decrypt provider configuration for customer %s", customerUUID.toString());
-      log.error(errMsg, e);
-      return null;
+    if (MapUtils.isNotEmpty(config)) {
+      try {
+        final ObjectMapper mapper = new ObjectMapper();
+        final String encryptedConfig = config.get("encrypted");
+        final String salt = generateSalt(customerUUID, providerCode);
+        final TextEncryptor encryptor = Encryptors.delux(customerUUID.toString(), salt);
+        final String decryptedConfig = encryptor.decrypt(encryptedConfig);
+        return mapper.readValue(decryptedConfig, new TypeReference<Map<String, String>>() {});
+      } catch (Exception e) {
+        final String errMsg =
+            String.format(
+                "Could not decrypt provider configuration for customer %s",
+                customerUUID.toString());
+        log.error(errMsg, e);
+      }
     }
+    return new HashMap<>();
   }
 
   public static String generateSalt(UUID customerUUID, String providerCode) {
@@ -660,5 +695,49 @@ public class CommonUtils {
       scanner.close();
     }
     return data;
+  }
+
+  /**
+   * Compares two collections ignoring items order. Different size of collections gives inequality
+   * of collections.
+   */
+  public static <T> boolean isEqualIgnoringOrder(Collection<T> x, Collection<T> y) {
+    if ((x == null) || (y == null)) {
+      return x == y;
+    }
+
+    if (x.size() != y.size()) {
+      return false;
+    }
+
+    return ImmutableMultiset.copyOf(x).equals(ImmutableMultiset.copyOf(y));
+  }
+
+  /**
+   * Generates log message containing state information of universe and running status of scheduler.
+   */
+  public static String generateStateLogMsg(Universe universe, boolean alreadyRunning) {
+    String stateLogMsg =
+        String.format(
+            "alreadyRunning={} backupInProgress={} updateInProgress={} universePaused={}",
+            alreadyRunning,
+            universe.getUniverseDetails().backupInProgress,
+            universe.getUniverseDetails().updateInProgress,
+            universe.getUniverseDetails().universePaused);
+    return stateLogMsg;
+  }
+
+  public static boolean canConfigureYbc(Universe universe) {
+    if (universe == null) {
+      return false;
+    }
+    String ybcPackagePath =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.ybcPackagePath;
+    return StringUtils.isNotEmpty(ybcPackagePath);
+  }
+
+  /** Get the user sending the API request from the HTTP context. */
+  public static Users getUserFromContext(Http.Context ctx) {
+    return ((UserWithFeatures) ctx.args.get("user")).getUser();
   }
 }

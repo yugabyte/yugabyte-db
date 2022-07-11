@@ -92,6 +92,10 @@ TEST_F(NetworkFailureTest, DisconnectMasterLeader) {
   FLAGS_meta_cache_lookup_throttling_max_delay_ms = 10000;
   FLAGS_meta_cache_lookup_throttling_step_ms = 50;
 
+  constexpr int kWriteRows = RegularBuildVsSanitizers(5000, 500);
+  constexpr int kReportRows = kWriteRows / 5;
+  constexpr int kMaxRunningRequests = RegularBuildVsSanitizers(100, 10);
+
   TestThreadHolder thread_holder;
 
   std::atomic<int> written(0);
@@ -99,6 +103,8 @@ TEST_F(NetworkFailureTest, DisconnectMasterLeader) {
   thread_holder.AddThreadFunctor([
       this, &written, &stop_flag = thread_holder.stop_flag(), &prev_report]() {
     auto session = client_->NewSession();
+    session->SetTimeout(30s);
+
     std::deque<std::future<client::FlushStatus>> futures;
     std::deque<client::YBOperationPtr> ops;
 
@@ -110,11 +116,15 @@ TEST_F(NetworkFailureTest, DisconnectMasterLeader) {
         ops.pop_front();
 
         auto new_written = ++written;
-        if (new_written % 4000 == 0) {
+        if (new_written % kReportRows == 0) {
           auto now = CoarseMonoClock::now();
           auto old_value = prev_report.exchange(now);
           LOG(INFO) << "Written: " << new_written << ", time taken: " << MonoDelta(now - old_value);
         }
+      }
+
+      if (futures.size() >= kMaxRunningRequests) {
+        continue;
       }
 
       int key = RandomUniformInt<int>(0, std::numeric_limits<int>::max() - 1);
@@ -129,8 +139,13 @@ TEST_F(NetworkFailureTest, DisconnectMasterLeader) {
     }
   });
 
-  while (written.load() <= RegularBuildVsSanitizers(5000, 500)) {
-    std::this_thread::sleep_for(100ms);
+  auto status = WaitFor([&written, &thread_holder] {
+    return thread_holder.stop_flag().load() || written.load() > kWriteRows;
+  }, 10s * kTimeMultiplier, "Write enough rows");
+
+  if (!status.ok()) {
+    thread_holder.Stop();
+    ASSERT_OK(status);
   }
 
   auto old_lookups = CountLookups(cluster_.get());

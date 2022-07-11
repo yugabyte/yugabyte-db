@@ -96,7 +96,7 @@ class RemoteBootstrapClientTest : public RemoteBootstrapTest {
   }
 
  protected:
-  CHECKED_STATUS CompareFileContents(const string& path1, const string& path2);
+  Status CompareFileContents(const string& path1, const string& path2);
 
   std::unique_ptr<FsManager> fs_manager_;
   std::unique_ptr<rpc::Messenger> messenger_;

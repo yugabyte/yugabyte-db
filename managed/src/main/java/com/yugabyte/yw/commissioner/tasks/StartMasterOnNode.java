@@ -118,11 +118,17 @@ public class StartMasterOnNode extends UniverseDefinitionTaskBase {
           false /*ignoreUseCustomImageConfig*/);
 
       // Check that installed MASTER software version is consistent.
-      createSoftwareInstallTasks(nodeAsList, ServerType.MASTER, null);
+      createSoftwareInstallTasks(
+          nodeAsList, ServerType.MASTER, null, SubTaskGroupType.InstallingSoftware);
 
       // Update master configuration on the node.
       createConfigureServerTasks(
-              nodeAsList, true /* isShell */, true /* updateMasterAddrs */, true /* isMaster */)
+              nodeAsList,
+              params -> {
+                params.isMasterInShellMode = true;
+                params.updateMasterAddrsOnly = true;
+                params.isMaster = true;
+              })
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Start a master process.
@@ -142,6 +148,10 @@ public class StartMasterOnNode extends UniverseDefinitionTaskBase {
 
       // Update all server conf files with new master information.
       createMasterInfoUpdateTask(universe, currentNode);
+
+      // Update the master addresses on the target universes whose source universe belongs to
+      // this task.
+      createXClusterConfigUpdateMasterAddressesTask();
 
       // Update node state to running.
       createSetNodeStateTask(currentNode, NodeDetails.NodeState.Live)

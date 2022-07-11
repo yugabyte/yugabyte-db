@@ -52,8 +52,8 @@ class PgOperationBuffer {
 
   PgOperationBuffer(const Flusher& flusher, const BufferingSettings& buffering_settings);
   ~PgOperationBuffer();
-  CHECKED_STATUS Add(const PgTableDesc& table, PgsqlWriteOpPtr op, bool transactional);
-  CHECKED_STATUS Flush();
+  Status Add(const PgTableDesc& table, PgsqlWriteOpPtr op, bool transactional);
+  Status Flush();
   Result<BufferableOperations> FlushTake(
       const PgTableDesc& table, const PgsqlOp& op, bool transactional);
   size_t Size() const;

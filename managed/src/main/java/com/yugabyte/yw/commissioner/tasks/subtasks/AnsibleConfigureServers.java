@@ -49,6 +49,7 @@ public class AnsibleConfigureServers extends NodeTaskBase {
   public static class Params extends NodeTaskParams {
     public UpgradeTaskType type = UpgradeTaskParams.UpgradeTaskType.Everything;
     public String ybSoftwareVersion = null;
+    public String ybcPackagePath = null;
 
     // Optional params.
     public boolean isMasterInShellMode = false;
@@ -85,7 +86,9 @@ public class AnsibleConfigureServers extends NodeTaskBase {
     public VmUpgradeTaskType vmUpgradeTaskType = VmUpgradeTaskType.None;
 
     // In case a node doesn't have custom AMI, ignore the value of USE_CUSTOM_IMAGE config.
-    public boolean ignoreUseCustomImageConfig;
+    public boolean ignoreUseCustomImageConfig = false;
+
+    public boolean updatePackages = false;
   }
 
   @Override

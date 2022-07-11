@@ -468,6 +468,8 @@ pg_stat_get_progress_info(PG_FUNCTION_ARGS)
 	/* Translate command name into command type code. */
 	if (pg_strcasecmp(cmd, "VACUUM") == 0)
 		cmdtype = PROGRESS_COMMAND_VACUUM;
+	else if (pg_strcasecmp(cmd, "COPY") == 0)
+		cmdtype = PROGRESS_COMMAND_COPY;
 	else
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
@@ -505,7 +507,8 @@ pg_stat_get_progress_info(PG_FUNCTION_ARGS)
 		 * Report values for only those backends which are running the given
 		 * command.
 		 */
-		if (!beentry || beentry->st_progress_command != cmdtype)
+		if (!beentry || (beentry->st_progress_command != cmdtype &&
+						beentry->st_progress_command != PROGRESS_COMMAND_COPY))
 			continue;
 
 		/* Value available to all callers */

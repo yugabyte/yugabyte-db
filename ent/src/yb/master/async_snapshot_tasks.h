@@ -62,6 +62,10 @@ class AsyncTabletSnapshotOp : public RetryingTSRpcTask {
     callback_ = std::move(callback);
   }
 
+  void SetDbOid(int64_t db_oid) {
+    db_oid_ = db_oid;
+  }
+
  private:
   TabletId tablet_id() const override;
   TabletServerId permanent_uuid() const;
@@ -85,6 +89,7 @@ class AsyncTabletSnapshotOp : public RetryingTSRpcTask {
   SchemaPB schema_;
   google::protobuf::RepeatedPtrField<IndexInfoPB> indexes_;
   bool hide_ = false;
+  std::optional<int64_t> db_oid_ = std::nullopt;
 };
 
 } // namespace master

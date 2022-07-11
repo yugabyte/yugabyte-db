@@ -10,6 +10,7 @@ menu:
     identifier: explore-indexes-constraints
     parent: explore
     weight: 245
+type: indexpage
 ---
 
 

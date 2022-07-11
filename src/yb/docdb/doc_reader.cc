@@ -28,11 +28,12 @@
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/packed_row.h"
-#include "yb/docdb/subdoc_reader.h"
 #include "yb/docdb/subdocument.h"
 #include "yb/docdb/value.h"
 #include "yb/docdb/value_type.h"
 
+#include "yb/util/fast_varint.h"
+#include "yb/util/logging.h"
 #include "yb/util/monotime.h"
 #include "yb/util/result.h"
 #include "yb/util/status.h"
@@ -44,6 +45,79 @@ using yb::HybridTime;
 namespace yb {
 namespace docdb {
 
+namespace {
+
+constexpr int64_t kNothingFound = -1;
+
+YB_STRONGLY_TYPED_BOOL(CheckExistOnly);
+
+// Shared information about packed row. I.e. common for all columns in this row.
+struct PackedRowData {
+  DocHybridTime doc_ht;
+  ValueControlFields control_fields;
+};
+
+struct PackedColumnData {
+  const PackedRowData* row = nullptr;
+  Slice encoded_value;
+
+  explicit operator bool() const {
+    return row != nullptr;
+  }
+};
+
+Expiration GetNewExpiration(
+    const Expiration& parent_exp, const MonoDelta& ttl,
+    const DocHybridTime& new_write_time) {
+  Expiration new_exp = parent_exp;
+  // We may need to update the TTL in individual columns.
+  if (new_write_time.hybrid_time() >= new_exp.write_ht) {
+    // We want to keep the default TTL otherwise.
+    if (ttl != ValueControlFields::kMaxTtl) {
+      new_exp.write_ht = new_write_time.hybrid_time();
+      new_exp.ttl = ttl;
+    } else if (new_exp.ttl.IsNegative()) {
+      new_exp.ttl = -new_exp.ttl;
+    }
+  }
+
+  // If the hybrid time is kMin, then we must be using default TTL.
+  if (new_exp.write_ht == HybridTime::kMin) {
+    new_exp.write_ht = new_write_time.hybrid_time();
+  }
+
+  return new_exp;
+}
+
+int64_t GetTtlRemainingSeconds(
+    HybridTime read_time, HybridTime ttl_write_time, const Expiration& expiration) {
+  if (!expiration) {
+    return -1;
+  }
+
+  int64_t expiration_time_us =
+      ttl_write_time.GetPhysicalValueMicros() + expiration.ttl.ToMicroseconds();
+  int64_t remaining_us = expiration_time_us - read_time.GetPhysicalValueMicros();
+  if (remaining_us <= 0) {
+    return 0;
+  }
+  return remaining_us / MonoTime::kMicrosecondsPerSecond;
+}
+
+bool IsObsolete(const Expiration& expiration, const HybridTime& read_time) {
+  if (expiration.ttl == ValueControlFields::kMaxTtl) {
+    return false;
+  }
+
+  return HasExpiredTTL(expiration.write_ht, expiration.ttl, read_time);
+}
+
+Slice NullSlice() {
+  static char null_column_type = ValueEntryTypeAsChar::kNullLow;
+  return Slice(&null_column_type, sizeof(null_column_type));
+}
+
+} // namespace
 
   // TODO(dtxn) scan through all involved transactions first to cache statuses in a batch,
   // so during building subdocument we don't need to request them one by one.
@@ -70,11 +144,12 @@ Result<boost::optional<SubDocument>> TEST_GetSubDocument(
                   iter->read_time().ToString());
   iter->SeekToLastDocKey();
   SchemaPackingStorage schema_packing_storage;
-  DocDBTableReader doc_reader(iter.get(), deadline, schema_packing_storage);
+  DocDBTableReader doc_reader(iter.get(), deadline, projection, schema_packing_storage);
   RETURN_NOT_OK(doc_reader.UpdateTableTombstoneTime(sub_doc_key));
 
+  iter->Seek(sub_doc_key);
   SubDocument result;
-  if (VERIFY_RESULT(doc_reader.Get(sub_doc_key, projection, &result))) {
+  if (VERIFY_RESULT(doc_reader.Get(sub_doc_key, &result))) {
     return result;
   }
   return boost::none;
@@ -82,20 +157,30 @@ Result<boost::optional<SubDocument>> TEST_GetSubDocument(
 
 DocDBTableReader::DocDBTableReader(
     IntentAwareIterator* iter, CoarseTimePoint deadline,
+    const std::vector<KeyEntryValue>* projection,
     std::reference_wrapper<const SchemaPackingStorage> schema_packing_storage)
     : iter_(iter),
       deadline_info_(deadline),
-      subdoc_reader_builder_(iter_, &deadline_info_, schema_packing_storage) {
+      projection_(projection),
+      schema_packing_storage_(schema_packing_storage) {
+  if (projection_) {
+    auto projection_size = projection_->size();
+    encoded_projection_.resize(projection_size);
+    for (size_t i = 0; i != projection_size; ++i) {
+      (*projection_)[i].AppendToKey(&encoded_projection_[i]);
+    }
+  }
+  VLOG_WITH_FUNC(4)
+      << "Projection: " << AsString(projection_) << ", read time: " << iter_->read_time();
 }
 
 void DocDBTableReader::SetTableTtl(const Schema& table_schema) {
-  Expiration table_ttl(TableTTL(table_schema));
-  table_obsolescence_tracker_ = ObsolescenceTracker(
-      iter_->read_time(), table_obsolescence_tracker_.GetHighWriteTime(), table_ttl);
+  table_expiration_ = Expiration(TableTTL(table_schema));
 }
 
 Status DocDBTableReader::UpdateTableTombstoneTime(const Slice& root_doc_key) {
-  if (root_doc_key[0] == KeyEntryTypeAsChar::kColocationId) {
+  if (root_doc_key[0] == KeyEntryTypeAsChar::kColocationId ||
+      root_doc_key[0] == KeyEntryTypeAsChar::kTableId) {
     // Update table_tombstone_time based on what is written to RocksDB if its not already set.
     // Otherwise, just accept its value.
     // TODO -- this is a bit of a hack to allow DocRowwiseIterator to pass along the table tombstone
@@ -114,81 +199,392 @@ Status DocDBTableReader::UpdateTableTombstoneTime(const Slice& root_doc_key) {
     if (VERIFY_RESULT(Value::IsTombstoned(value))) {
       SCHECK_NE(doc_ht, DocHybridTime::kInvalid, Corruption,
                 "Invalid hybrid time for table tombstone");
-      table_obsolescence_tracker_ = table_obsolescence_tracker_.Child(doc_ht, MonoDelta::kMax);
+      table_tombstone_time_ = doc_ht;
     }
   }
-  return Status::OK();;
-}
-
-CHECKED_STATUS DocDBTableReader::InitForKey(const Slice& sub_doc_key) {
-  auto dockey_size =
-      VERIFY_RESULT(DocKey::EncodedSize(sub_doc_key, DocKeyPart::kWholeDocKey));
-  const Slice root_doc_key(sub_doc_key.data(), dockey_size);
-  iter_->SeekForward(root_doc_key);
-  RETURN_NOT_OK(subdoc_reader_builder_.InitObsolescenceInfo(
-      table_obsolescence_tracker_, root_doc_key, sub_doc_key));
   return Status::OK();
 }
 
-Result<bool> DocDBTableReader::Get(
-    const Slice& root_doc_key, const vector<KeyEntryValue>* projection, SubDocument* result) {
-  RETURN_NOT_OK(InitForKey(root_doc_key));
-  // Seed key_bytes with the subdocument key. For each subkey in the projection, build subdocument
-  // and reuse key_bytes while appending the subkey.
-  KeyBytes key_bytes;
-  // Preallocate some extra space to avoid allocation for small subkeys.
-  key_bytes.Reserve(root_doc_key.size() + kMaxBytesPerEncodedHybridTime + 32);
-  key_bytes.AppendRawBytes(root_doc_key);
-  if (projection != nullptr) {
-    bool doc_found = false;
-    const size_t subdocument_key_size = key_bytes.size();
-    for (const auto& subkey : *projection) {
-      // Append subkey to subdocument key. Reserve extra kMaxBytesPerEncodedHybridTime + 1 bytes in
-      // key_bytes to avoid the internal buffer from getting reallocated and moved by SeekForward()
-      // appending the hybrid time, thereby invalidating the buffer pointer saved by prefix_scope.
-      subkey.AppendToKey(&key_bytes);
-      key_bytes.Reserve(key_bytes.size() + kMaxBytesPerEncodedHybridTime + 1);
-      // This seek is to initialize the iterator for BuildSubDocument call.
-      iter_->SeekForward(&key_bytes);
-      SubDocument descendant;
-      auto reader = subdoc_reader_builder_.Build(key_bytes);
-      auto packed_column = subkey.IsColumnId()
-          ? subdoc_reader_builder_.GetPackedColumn(subkey.GetColumnId()) : PackedColumnData();
-      RETURN_NOT_OK(reader.Get(&descendant, packed_column));
-      doc_found = doc_found || (
-          descendant.value_type() != ValueEntryType::kInvalid
-          && descendant.value_type() != ValueEntryType::kTombstone);
-      result->SetChild(subkey, std::move(descendant));
+// Scan state entry. See state_ description below for details.
+struct StateEntry {
+  KeyBytes key_entry; // Represents the part of the key that is related to this state entry.
+  DocHybridTime write_time;
+  Expiration expiration;
+  KeyEntryValue key_value; // Decoded key_entry.
+  SubDocument* out;
 
-      // Restore subdocument key by truncating the appended subkey.
-      key_bytes.Truncate(subdocument_key_size);
+  std::string ToString() const {
+    return YB_STRUCT_TO_STRING(write_time, expiration, key_value);
+  }
+};
+
+Result<bool> TryDecodeValue(
+    HybridTime read_time, const ValueControlFields& control_fields, HybridTime write_time,
+    const Expiration& expiration, const Slice& value_slice, SubDocument* out) {
+  if (!out) {
+    return DecodeValueEntryType(value_slice) != ValueEntryType::kTombstone;
+  }
+  RETURN_NOT_OK(out->DecodeFromValue(value_slice));
+  if (control_fields.has_user_timestamp()) {
+    out->SetWriteTime(control_fields.user_timestamp);
+  } else {
+    out->SetWriteTime(write_time.GetPhysicalValueMicros());
+  }
+  out->SetTtl(GetTtlRemainingSeconds(read_time, write_time, expiration));
+
+  return !out->IsTombstone();
+}
+
+// Implements main logic in the reader.
+// Used keep scan state and avoid passing it between methods.
+class DocDBTableReader::GetHelper {
+ public:
+  GetHelper(DocDBTableReader* reader, const Slice& root_doc_key, SubDocument* result)
+      : reader_(*reader), root_doc_key_(root_doc_key), result_(*result) {
+    state_.emplace_back(StateEntry {
+      .key_entry = KeyBytes(),
+      .write_time = DocHybridTime(),
+      .expiration = reader_.table_expiration_,
+      .key_value = {},
+      .out = &result_,
+    });
+  }
+
+  Result<bool> Run() {
+    IntentAwareIteratorPrefixScope prefix_scope(root_doc_key_, reader_.iter_);
+
+    RETURN_NOT_OK(Prepare());
+
+    // projection could be null in tests only.
+    if (reader_.projection_) {
+      if (reader_.projection_->empty()) {
+        packed_column_data_ = GetPackedColumn(KeyEntryValue::kLivenessColumn.GetColumnId());
+        RETURN_NOT_OK(Scan(CheckExistOnly::kTrue));
+        return Found();
+      }
+      UpdatePackedColumnData();
     }
-    if (doc_found) {
-      iter_->SeekOutOfSubDoc(root_doc_key);
+    RETURN_NOT_OK(Scan(CheckExistOnly::kFalse));
+
+    if (last_found_ >= 0) {
       return true;
     }
+    if (has_root_value_) { // For tests only.
+      if (IsCollectionType(result_.type())) {
+        result_.object_container().clear();
+      }
+      return true;
+    }
+    if (!reader_.projection_) { // For tests only.
+      return false;
+    }
+
+    reader_.iter_->Seek(root_doc_key_);
+    RETURN_NOT_OK(Scan(CheckExistOnly::kTrue));
+    if (Found()) {
+      for (const auto& key : *reader_.projection_) {
+        result_.AllocateChild(key);
+      }
+      reader_.iter_->SeekOutOfSubDoc(root_doc_key_);
+      return true;
+    }
+
+    return false;
   }
 
-  // If doc is not found, decide if some non-projection column exists.
-  // Currently we read the whole doc here,
-  // may be optimized by exiting on the first column in future.
-  // TODO -- is resetting *result = SubDocument() needed here?
-  // TODO -- Add some metrics to understand:
-  // (a) how often we scan back
-  // (b) how often it's useful
-  // Also maybe in debug mode add some every-n logging of the rocksdb values for which it is
-  // useful
-  auto packed_column_data = subdoc_reader_builder_.GetPackedColumn(
-      KeyEntryValue::kLivenessColumn.GetColumnId());
-  if (packed_column_data) {
-    *result = SubDocument(ValueEntryType::kNullLow);
+  // Whether document was found or not.
+  bool Found() const {
+    return last_found_ >= 0 || has_root_value_;
+  }
+
+ private:
+  // Scans DocDB for entries related to root_doc_key_.
+  // Iterator should already point to the first such entry.
+  // Changes nearly all internal state fields.
+  Status Scan(CheckExistOnly check_exist_only) {
+    while (reader_.iter_->valid()) {
+      if (reader_.deadline_info_.CheckAndSetDeadlinePassed()) {
+        return STATUS(Expired, "Deadline for query passed");
+      }
+
+      if (!VERIFY_RESULT(HandleRecord(check_exist_only))) {
+        return Status::OK();
+      }
+    }
+    if (!check_exist_only && result_.value_type() == ValueEntryType::kObject &&
+        reader_.projection_) {
+      while (VERIFY_RESULT(NextColumn())) {}
+    }
+    VLOG_WITH_PREFIX_AND_FUNC(4)
+        << "(" << check_exist_only << "), found: " << last_found_ << ", column index: "
+        << column_index_ << ", " << result_.ToString();
+    return Status::OK();
+  }
+
+  Result<bool> HandleRecord(CheckExistOnly check_exist_only) {
+    auto key_result = VERIFY_RESULT(reader_.iter_->FetchKey());
+    VLOG_WITH_PREFIX_AND_FUNC(4)
+        << "check_exist_only: " << check_exist_only << ", key: "
+        << SubDocKey::DebugSliceToString(key_result.key) << ", write time: "
+        << key_result.write_time << ", value: " << reader_.iter_->value().ToDebugHexString();
+    DCHECK(key_result.key.starts_with(root_doc_key_));
+    auto subkeys = key_result.key.WithoutPrefix(root_doc_key_.size());
+
+    return DoHandleRecord(key_result, subkeys, check_exist_only);
+  }
+
+  Result<bool> DoHandleRecord(
+      const FetchKeyResult& key_result, const Slice& subkeys, CheckExistOnly check_exist_only) {
+    if (!check_exist_only && reader_.projection_) {
+      int compare_result = subkeys.compare_prefix(
+          reader_.encoded_projection_[column_index_].AsSlice());
+      VLOG_WITH_PREFIX_AND_FUNC(4)
+          << "Subkeys: " << subkeys.ToDebugHexString() << ", column: "
+          << (*reader_.projection_)[column_index_] << ", compare_result: " << compare_result;
+      if (compare_result < 0) {
+        SeekProjectionColumn();
+        return true;
+      }
+
+      if (compare_result > 0) {
+        if (!VERIFY_RESULT(NextColumn())) {
+          return false;
+        }
+
+        return DoHandleRecord(key_result, subkeys, check_exist_only);
+      }
+    }
+
+    if (!packed_column_data_ || packed_column_data_.row->doc_ht < key_result.write_time) {
+      RETURN_NOT_OK(ProcessEntry(
+         subkeys, reader_.iter_->value(), key_result.write_time, check_exist_only));
+      packed_column_data_.row = nullptr;
+    }
+    if (check_exist_only && Found()) {
+      return false;
+    }
+    reader_.iter_->SeekPastSubKey(key_result.key);
     return true;
   }
-  iter_->Seek(key_bytes);
-  auto reader = subdoc_reader_builder_.Build(key_bytes);
-  RETURN_NOT_OK(reader.Get(result, PackedColumnData()));
-  return result->value_type() != ValueEntryType::kInvalid
-      && result->value_type() != ValueEntryType::kTombstone;
+
+  // We are not yet reached next projection subkey, seek to it.
+  void SeekProjectionColumn() {
+    if (state_.front().key_entry.empty()) {
+      // Lazily fill root doc key buffer.
+      state_.front().key_entry.AppendRawBytes(root_doc_key_);
+    }
+    state_.front().key_entry.AppendRawBytes(
+        reader_.encoded_projection_[column_index_].AsSlice());
+    VLOG_WITH_PREFIX_AND_FUNC(4)
+        << "Seek next column: " << SubDocKey::DebugSliceToString(state_.front().key_entry);
+    reader_.iter_->SeekForward(state_.front().key_entry.AsSlice());
+    state_.front().key_entry.Truncate(root_doc_key_.size());
+  }
+
+  // Process DB entry.
+  Status ProcessEntry(
+      Slice subkeys, Slice value_slice, const DocHybridTime& write_time,
+      CheckExistOnly check_exist_only) {
+    subkeys = CleanupState(subkeys);
+    if (state_.back().write_time >= write_time) {
+      VLOG_WITH_PREFIX_AND_FUNC(4)
+          << "State: " << AsString(state_) << ", write_time: " << write_time;
+      return Status::OK();
+    }
+    auto control_fields = VERIFY_RESULT(ValueControlFields::Decode(&value_slice));
+    RETURN_NOT_OK(AllocateNewStateEntries(
+        subkeys, write_time, check_exist_only, control_fields.ttl));
+    return ApplyEntryValue(value_slice, control_fields, check_exist_only);
+  }
+
+  // Removes state_ elements that are that are not related to the passed in subkeys.
+  // Returns remaining part of subkeys, that not represented in state_.
+  Slice CleanupState(Slice subkeys) {
+    for (size_t i = 1; i != state_.size(); ++i) {
+      if (!subkeys.starts_with(state_[i].key_entry)) {
+        state_.resize(i);
+        break;
+      }
+      subkeys.remove_prefix(state_[i].key_entry.size());
+    }
+    return subkeys;
+  }
+
+  Status AllocateNewStateEntries(
+      Slice subkeys, const DocHybridTime& write_time, CheckExistOnly check_exist_only,
+      MonoDelta ttl) {
+    while (!subkeys.empty()) {
+      auto start = subkeys.data();
+      state_.emplace_back();
+      auto& parent = state_[state_.size() - 2];
+      auto& entry = state_.back();
+      RETURN_NOT_OK(entry.key_value.DecodeFromKey(&subkeys));
+      entry.key_entry.AppendRawBytes(Slice(start, subkeys.data()));
+      entry.write_time = subkeys.empty() ? write_time : parent.write_time;
+      entry.out = check_exist_only ? nullptr : &parent.out->AllocateChild(entry.key_value);
+      entry.expiration = GetNewExpiration(parent.expiration, ttl, write_time);
+    }
+    return Status::OK();
+  }
+
+  Status ApplyEntryValue(
+      const Slice& value_slice, const ValueControlFields& control_fields,
+      CheckExistOnly check_exist_only) {
+    VLOG_WITH_FUNC(4)
+        << "State: " << AsString(state_) << ", value: " << value_slice.ToDebugHexString();
+    auto& current = state_.back();
+    if (!IsObsolete(current.expiration, reader_.iter_->read_time().read) &&
+        VERIFY_RESULT(TryDecodeValue(
+            reader_.iter_->read_time().read, control_fields, current.write_time.hybrid_time(),
+            current.expiration, value_slice, current.out))) {
+      last_found_ = column_index_;
+    } else if (!check_exist_only && state_.size() > (reader_.projection_ ? 2 : 1)) {
+      state_[state_.size() - 2].out->DeleteChild(current.key_value);
+    }
+    return Status::OK();
+  }
+
+  Result<bool> NextColumn() {
+    if (VERIFY_RESULT(DecodePackedColumn())) {
+      last_found_ = column_index_;
+    } else if (last_found_ < static_cast<int64_t>(column_index_)) {
+      // Did not have value for column, allocate null value for it.
+      result_.AllocateChild((*reader_.projection_)[column_index_]);
+    }
+    ++column_index_;
+    if (column_index_ == reader_.projection_->size()) {
+      reader_.iter_->SeekOutOfSubDoc(root_doc_key_);
+      return false;
+    }
+    UpdatePackedColumnData();
+    return true;
+  }
+
+  Result<bool> DecodePackedColumn() {
+    if (!packed_column_data_) {
+      return false;
+    }
+    return TryDecodeValue(
+        reader_.iter_->read_time().read,
+        packed_column_data_.row->control_fields,
+        packed_column_data_.row->doc_ht.hybrid_time(),
+        state_.back().expiration,
+        packed_column_data_.encoded_value,
+        &result_.AllocateChild((*reader_.projection_)[column_index_]));
+  }
+
+  // Updates information about the current column packed data.
+  // Before calling, all fields should have correct values, especially column_index_ that points
+  // to the current column in projection.
+  void UpdatePackedColumnData() {
+    auto& column = (*reader_.projection_)[column_index_];
+    if (column.IsColumnId()) {
+      packed_column_data_ = GetPackedColumn(column.GetColumnId());
+    } else {
+      // Used in tests only.
+      packed_column_data_.row = nullptr;
+    }
+  }
+
+  Status Prepare() {
+    VLOG_WITH_PREFIX_AND_FUNC(4) << "Pos: " << reader_.iter_->DebugPosToString();
+    reader_.iter_->SeekForward(root_doc_key_);
+
+    Slice value;
+    DocHybridTime doc_ht = reader_.table_tombstone_time_;
+    RETURN_NOT_OK(reader_.iter_->FindLatestRecord(root_doc_key_, &doc_ht, &value));
+
+    if (!reader_.iter_->valid()) {
+      state_.front().write_time = reader_.table_tombstone_time_;
+      return Status::OK();
+    }
+    auto control_fields = VERIFY_RESULT(ValueControlFields::Decode(&value));
+
+    auto value_type = DecodeValueEntryType(value);
+    if (value_type == ValueEntryType::kPackedRow) {
+      value.consume_byte();
+      schema_packing_ = &VERIFY_RESULT(reader_.schema_packing_storage_.GetPacking(&value)).get();
+      packed_row_.Assign(value);
+      packed_row_data_.doc_ht = doc_ht;
+      packed_row_data_.control_fields = control_fields;
+    } else if (value_type != ValueEntryType::kTombstone && value_type != ValueEntryType::kInvalid) {
+      // Used in tests only
+      has_root_value_ = true;
+      if (value_type != ValueEntryType::kObject) {
+        SubDocument temp(value_type);
+        RETURN_NOT_OK(temp.DecodeFromValue(value));
+        result_ = temp;
+      }
+    }
+
+    VLOG_WITH_PREFIX_AND_FUNC(4) << "Write time: " << doc_ht;
+    state_.front().write_time = doc_ht;
+    return Status::OK();
+  }
+
+  PackedColumnData GetPackedColumn(ColumnId column_id) {
+    if (!schema_packing_) {
+      // Actual for tests only.
+      return PackedColumnData();
+    }
+
+    if (column_id == KeyEntryValue::kLivenessColumn.GetColumnId()) {
+      return PackedColumnData {
+        .row = &packed_row_data_,
+        .encoded_value = NullSlice(),
+      };
+    }
+
+    auto slice = schema_packing_->GetValue(column_id, packed_row_.AsSlice());
+    if (!slice) {
+      VLOG_WITH_PREFIX_AND_FUNC(4) << "No packed row data";
+      return PackedColumnData();
+    }
+
+    VLOG_WITH_PREFIX_AND_FUNC(4) << "Packed row: " << slice->ToDebugHexString();
+    return PackedColumnData {
+      .row = &packed_row_data_,
+      .encoded_value = slice->empty() ? NullSlice() : *slice,
+    };
+  }
+
+  std::string LogPrefix() const {
+    return DocKey::DebugSliceToString(root_doc_key_) + ": ";
+  }
+
+  DocDBTableReader& reader_;
+  const Slice root_doc_key_;
+  SubDocument& result_;
+
+  // Packed row related fields. Not changed after initialization.
+  ValueBuffer packed_row_;
+  PackedRowData packed_row_data_;
+  const SchemaPacking* schema_packing_ = nullptr;
+
+  // Scanning stack.
+  // I.e. the first entry is related to whole document (i.e. row).
+  // The second entry corresponds to column.
+  // And other entries are list/map entries in case of complex documents.
+  boost::container::small_vector<StateEntry, 4> state_;
+
+  // If packed row is found, this field contains data related to currently scanned column.
+  PackedColumnData packed_column_data_;
+
+  // Index of the current column in projection.
+  size_t column_index_ = 0;
+
+  // Index of the last found column in projection.
+  int64_t last_found_ = kNothingFound;
+
+  // Used in tests only, when we have value for root_doc_key_ itself.
+  // In actual DB we don't have values for pure doc key.
+  // Only delete marker, that is handled in a different way.
+  bool has_root_value_ = false;
+};
+
+Result<bool> DocDBTableReader::Get(const Slice& root_doc_key, SubDocument* result) {
+  GetHelper helper(this, root_doc_key, result);
+  return helper.Run();
 }
 
 }  // namespace docdb

@@ -24,7 +24,7 @@ class ClusterLoadBalancerMocked : public ClusterLoadBalancer {
     state_ = table_state.get();
     per_table_states_[""] = std::move(table_state);
 
-    SetOptions(LIVE, "");
+    ResetOptions();
 
     InitTablespaceManager();
   }
@@ -36,7 +36,7 @@ class ClusterLoadBalancerMocked : public ClusterLoadBalancer {
 
   void GetAllAffinitizedZones(
       const ReplicationInfoPB& replication_info,
-      AffinitizedZonesSet* affinitized_zones) const override {
+      vector<AffinitizedZonesSet>* affinitized_zones) const override {
     *affinitized_zones = affinitized_zones_;
   }
 
@@ -103,8 +103,10 @@ class ClusterLoadBalancerMocked : public ClusterLoadBalancer {
     state_->options_->placement_uuid = placement_uuid;
   }
 
+  void ResetOptions() { SetOptions(LIVE, ""); }
+
   TSDescriptorVector ts_descs_;
-  AffinitizedZonesSet affinitized_zones_;
+  vector<AffinitizedZonesSet> affinitized_zones_;
   TabletInfoMap tablet_map_;
   TableInfoMap table_map_;
   ReplicationInfoPB replication_info_;

@@ -43,7 +43,7 @@ class RateLimiter {
   // This function will be in charge of sending/receiving the data by calling send_rcv_func. This
   // function might sleep before returning to keep the transmission rate as close as possible to the
   // desired target.
-  CHECKED_STATUS SendOrReceiveData(std::function<Status()> send_rcv_func,
+  Status SendOrReceiveData(std::function<Status()> send_rcv_func,
                                    std::function<uint64_t()> reply_size_func);
 
   // Calculates the size for the next transmission so that the transmission rate remains as close

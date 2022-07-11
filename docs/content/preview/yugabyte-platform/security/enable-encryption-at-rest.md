@@ -4,12 +4,11 @@ headerTitle: Enable encryption at rest
 linkTitle: Enable encryption at rest
 description: Enable encryption at rest
 menu:
-  preview:
+  preview_yugabyte-platform:
     parent: security
     identifier: enable-encryption-at-rest
     weight: 28
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Data at rest within a YugabyteDB universe should be protected from unauthorized users by encrypting it. The YugabyteDB Anywhere UI allows you to do the following:
@@ -27,7 +26,7 @@ There are two types of keys that are used to encrypt data in YugabyteDB:
 - Universe key: The top-level symmetric key used to encrypt other keys and are common to the universe.
 - Data key: The symmetric key used to encrypt data. There is one data key generated per flushed file.
 
-For more information on the features, assumptions, design, data key management, universe keys, key rotations, master failures, and adding a node, see [Encryption At Rest in YugabyteDB](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/docdb-encryption-at-rest.md).
+For more information on the features, assumptions, design, data key management, universe keys, key rotations, master failures, and adding a node, see [Encryption at rest in YugabyteDB](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/docdb-encryption-at-rest.md).
 
 ## Enable encryption at rest during universe creation
 
@@ -67,7 +66,7 @@ You can enable encryption at rest on an existing universe as follows:
 
 2. Select the universe for which to enable encryption.
 
-3. Select **Actions > Edit Universe > Edit Security > Encryption-at-Rest**.
+3. Select **Actions > Edit Security > Encryption-at-Rest**.
 
 4. In the **Manage Encryption at Rest** dialog, toggle **Enable Encryption at Rest for <universe_name>**.
 
@@ -102,7 +101,7 @@ Once encryption is enabled with a new key, only new data is encrypted with this 
 To rotate the universe keys, perform the following:
 
 1. Open the YugabyteDB Anywhere UI and navigate to the universe for which you want to rotate the keys.
-2. Select **Actions > Edit Universe > Edit Security > Encryption-at-Rest**.
+2. Select **Actions > Edit Security > Encryption-at-Rest**.
 3. Select **Rotate Key** and click **Submit**.
 
 ## Disable encryption at rest
@@ -110,6 +109,6 @@ To rotate the universe keys, perform the following:
 You can disable encryption at rest for a universe as follows:
 
 1. Open the YugabyteDB Anywhere UI and navigate to the universe for which to disable encryption.
-2. Select **Action > Edit Universe > Edit Security > Encryption-at-Rest**.
+2. Select **Actions > Edit Security > Encryption-at-Rest**.
 3. In the **Manage Encryption at Rest** dialog, toggle **Enable Encryption at Rest for <universe_name>** and click **Submit**.
 4. To verify that encryption at rest is disabled, check the current cluster configuration for each node to see that it contains `encryption_enabled: false`.

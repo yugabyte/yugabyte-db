@@ -8,8 +8,7 @@ menu:
     identifier: table-creation
     parent: core-functions
     weight: 1184
-isTocNested: false
-showAsideToc: true
+type: docs
 ---
 
 In YugabyteDB, user-issued table creation is handled by the YB-Master leader, and is an asynchronous API. The

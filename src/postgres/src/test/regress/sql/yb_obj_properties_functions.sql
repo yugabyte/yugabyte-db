@@ -25,7 +25,7 @@ CREATE DATABASE test_yb_obj_props_clc COLOCATED = true;
 SELECT yb_is_database_colocated();
 --
 -- Test yb_table_properties.
-CREATE TABLE clc_temp_tbl (h INT PRIMARY KEY) WITH (colocated=true) SPLIT INTO 5 TABLETS;
+CREATE TABLE clc_temp_tbl (h INT PRIMARY KEY) WITH (colocated=true);
 CREATE TABLE clc_temp_tbl_2 (h INT PRIMARY KEY) WITH (colocated=true, colocation_id=100500);
 
 SELECT c.relname, props.*

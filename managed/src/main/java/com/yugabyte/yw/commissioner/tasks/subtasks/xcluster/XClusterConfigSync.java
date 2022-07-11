@@ -1,16 +1,16 @@
+// Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.commissioner.tasks.subtasks.xcluster;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.common.utils.Pair;
-import com.yugabyte.yw.forms.ITaskParams;
-import com.yugabyte.yw.forms.XClusterConfigCreateFormData;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -31,37 +31,20 @@ public class XClusterConfigSync extends XClusterConfigTaskBase {
   }
 
   @Override
-  public void initialize(ITaskParams params) {
-    super.initialize(params);
-  }
-
-  @Override
   public void run() {
     log.info("Running {}", getName());
 
     Universe targetUniverse = Universe.getOrBadRequest(taskParams().universeUUID);
     String targetUniverseMasterAddresses = targetUniverse.getMasterAddresses();
     String targetUniverseCertificate = targetUniverse.getCertificateNodetoNode();
-    YBClient client = ybService.getClient(targetUniverseMasterAddresses, targetUniverseCertificate);
-
-    try {
-      GetMasterClusterConfigResponse resp = client.getMasterClusterConfig();
-      if (resp.hasError()) {
-        String errMsg =
-            String.format(
-                "Failed to sync XClusterConfigs for Universe(%s): "
-                    + "Failed to get cluster config: %s",
-                targetUniverse.universeUUID, resp.errorMessage());
-        throw new RuntimeException(errMsg);
-      }
-
-      syncXClusterConfigs(resp.getConfig(), targetUniverse.universeUUID);
-
+    try (YBClient client =
+        ybService.getClient(targetUniverseMasterAddresses, targetUniverseCertificate)) {
+      CatalogEntityInfo.SysClusterConfigEntryPB clusterConfig =
+          getClusterConfig(client, targetUniverse.universeUUID);
+      syncXClusterConfigs(clusterConfig, targetUniverse.universeUUID);
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage());
       throw new RuntimeException(e);
-    } finally {
-      ybService.closeClient(client, targetUniverseMasterAddresses);
     }
 
     log.info("Completed {}", getName());
@@ -76,42 +59,32 @@ public class XClusterConfigSync extends XClusterConfigTaskBase {
         config.getConsumerRegistry().getProducerMapMap();
 
     replicationGroups.forEach(
-        (replicationId, value) -> {
-          String[] uuidAndName = replicationId.split("_", 2);
-          if (uuidAndName.length != 2) {
+        (replicationGroupName, value) -> {
+          // Parse and get information for this replication group.
+          Optional<Pair<UUID, String>> sourceUuidAndConfigName =
+              maybeParseReplicationGroupName(replicationGroupName);
+          if (!sourceUuidAndConfigName.isPresent()) {
             log.warn(
-                "Unable to parse XClusterConfig: {}, expected format <sourceUniverseUUID>_<name>",
-                replicationId);
+                "Skipping {} because it does not conform to the Platform replication group naming",
+                replicationGroupName);
             return;
           }
-          UUID sourceUniverseUUID;
-          try {
-            sourceUniverseUUID = UUID.fromString(uuidAndName[0]);
-          } catch (Exception e) {
-            log.warn(
-                "Unable to parse {} as valid UUID for replication id: {}",
-                uuidAndName[0],
-                replicationId);
-            return;
-          }
-          String xClusterConfigName = uuidAndName[1];
-
-          foundXClusterConfigs.add(new Pair(sourceUniverseUUID, xClusterConfigName));
-
+          UUID sourceUniverseUUID = sourceUuidAndConfigName.get().getFirst();
+          String xClusterConfigName = sourceUuidAndConfigName.get().getSecond();
+          foundXClusterConfigs.add(sourceUuidAndConfigName.get());
+          // Get table ids for this replication group.
           Map<String, CdcConsumer.StreamEntryPB> tableMap = value.getStreamMapMap();
-
           Set<String> xClusterConfigTables =
               tableMap
                   .values()
                   .stream()
-                  .map(tableEntry -> tableEntry.getProducerTableId())
+                  .map(CdcConsumer.StreamEntryPB::getProducerTableId)
                   .collect(Collectors.toSet());
-
+          // Get the status of this replication group.
           XClusterConfigStatusType xClusterConfigStatus =
               value.getDisableStream()
                   ? XClusterConfigStatusType.Paused
                   : XClusterConfigStatusType.Running;
-
           log.info(
               "Found XClusterConfig({}) between source({}) and target({}): status({}), tables({})",
               xClusterConfigName,
@@ -120,22 +93,28 @@ public class XClusterConfigSync extends XClusterConfigTaskBase {
               xClusterConfigStatus,
               xClusterConfigTables);
 
+          // Create or update a row in the Platform database for this replication group.
           XClusterConfig xClusterConfig =
               XClusterConfig.getByNameSourceTarget(
                   xClusterConfigName, sourceUniverseUUID, targetUniverseUUID);
-
           if (xClusterConfig == null) {
-            XClusterConfigCreateFormData createFormData = new XClusterConfigCreateFormData();
-            createFormData.name = xClusterConfigName;
-            createFormData.sourceUniverseUUID = sourceUniverseUUID;
-            createFormData.targetUniverseUUID = targetUniverseUUID;
-            createFormData.tables = xClusterConfigTables;
-            xClusterConfig = XClusterConfig.create(createFormData, xClusterConfigStatus);
+            xClusterConfig =
+                XClusterConfig.create(
+                    xClusterConfigName,
+                    sourceUniverseUUID,
+                    targetUniverseUUID,
+                    xClusterConfigStatus);
+            xClusterConfig.setTables(xClusterConfigTables);
+            xClusterConfig.setReplicationSetupDone(xClusterConfigTables);
+            updateStreamIdsFromTargetUniverseClusterConfig(
+                config, xClusterConfig, xClusterConfigTables);
             log.info("Created new XClusterConfig({})", xClusterConfig.uuid);
           } else {
-            xClusterConfig.setTables(xClusterConfigTables);
             xClusterConfig.status = xClusterConfigStatus;
-            xClusterConfig.update();
+            xClusterConfig.setTables(xClusterConfigTables);
+            xClusterConfig.setReplicationSetupDone(xClusterConfigTables);
+            updateStreamIdsFromTargetUniverseClusterConfig(
+                config, xClusterConfig, xClusterConfigTables);
             log.info("Updated existing XClusterConfig({})", xClusterConfig.uuid);
           }
         });
@@ -144,7 +123,7 @@ public class XClusterConfigSync extends XClusterConfigTaskBase {
         XClusterConfig.getByTargetUniverseUUID(targetUniverseUUID);
     for (XClusterConfig xClusterConfig : currentXClusterConfigsForTarget) {
       if (!foundXClusterConfigs.contains(
-          new Pair(xClusterConfig.sourceUniverseUUID, xClusterConfig.name))) {
+          new Pair<>(xClusterConfig.sourceUniverseUUID, xClusterConfig.name))) {
         xClusterConfig.delete();
         log.info("Deleted unknown XClusterConfig({})", xClusterConfig.uuid);
       }

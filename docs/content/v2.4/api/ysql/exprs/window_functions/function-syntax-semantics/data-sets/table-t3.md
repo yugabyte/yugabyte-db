@@ -8,8 +8,7 @@ menu:
     identifier: table-t3
     parent: data-sets
     weight: 40
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 {{< note title=" " >}}
@@ -91,7 +90,7 @@ order by day;
 ```
 This is the result of the second `SELECT`. To make them easier to read, a blank line has been manually inserted here between the rows for each successive week.
 ```
-       Day       | price  
+       Day       | price
 -----------------+--------
  Mon 15-Sep-2008 | $19.01
  Tue 16-Sep-2008 | $18.96

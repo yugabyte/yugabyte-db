@@ -19,6 +19,13 @@
   #include "yb/rpc/rpc_fwd.h"
 
 namespace yb {
+
+namespace cdc {
+
+class CDCServiceImpl;
+
+} // namespace cdc
+
 namespace tserver {
 namespace enterprise {
 
@@ -35,30 +42,39 @@ class TabletServer : public yb::tserver::TabletServer {
   void Shutdown() override;
 
   encryption::UniverseKeyManager* GetUniverseKeyManager();
-  CHECKED_STATUS SetUniverseKeyRegistry(
+  Status SetUniverseKeyRegistry(
       const encryption::UniverseKeyRegistryPB& universe_key_registry) override;
-  CHECKED_STATUS SetConfigVersionAndConsumerRegistry(int32_t cluster_config_version,
+  Status SetConfigVersionAndConsumerRegistry(int32_t cluster_config_version,
       const cdc::ConsumerRegistryPB* consumer_registry);
 
   int32_t cluster_config_version() const override;
 
   CDCConsumer* GetCDCConsumer();
 
-  CHECKED_STATUS ReloadKeysAndCertificates() override;
+  Status ReloadKeysAndCertificates() override;
+
+  void RegisterCertificateReloader(CertificateReloader reloader) override;
+
+  // Mark the CDC service as enabled via heartbeat.
+  Status SetCDCServiceEnabled();
 
  protected:
-  CHECKED_STATUS RegisterServices() override;
-  CHECKED_STATUS SetupMessengerBuilder(rpc::MessengerBuilder* builder) override;
+  Status RegisterServices() override;
+  Status SetupMessengerBuilder(rpc::MessengerBuilder* builder) override;
 
  private:
 
-  CHECKED_STATUS CreateCDCConsumer() REQUIRES(cdc_consumer_mutex_);
+  Status CreateCDCConsumer() REQUIRES(cdc_consumer_mutex_);
 
   std::unique_ptr<rpc::SecureContext> secure_context_;
+  std::vector<CertificateReloader> certificate_reloaders_;
 
   // CDC consumer.
   mutable std::mutex cdc_consumer_mutex_;
   std::unique_ptr<CDCConsumer> cdc_consumer_ GUARDED_BY(cdc_consumer_mutex_);
+
+  // CDC service.
+  std::shared_ptr<cdc::CDCServiceImpl> cdc_service_;
 };
 
 } // namespace enterprise

@@ -1,18 +1,17 @@
 ---
 title: Configure the VMware Tanzu cloud provider
 headerTitle: Configure the VMware Tanzu cloud provider
-linkTitle: Configure the cloud provider
+linkTitle: Configure cloud providers
 description: Configure the VMware Tanzu cloud provider
 aliases:
   - /deploy/pivotal-cloud-foundry/
   - /preview/deploy/pivotal-cloud-foundry/
 menu:
-  preview:
+  preview_yugabyte-platform:
     identifier: set-up-cloud-provider-4-vmware-tanzu
     parent: configure-yugabyte-platform
     weight: 20
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -86,7 +85,7 @@ You configure the TKG credentials as follows:
 
   - At the **provider level**, in which case this configuration file will be used for all availability zones in all regions. You use the **Cloud Provider Configuration** window for this setting.
   - At the **zone level**, which is important for multi-zone or multi-region deployments. You use the **Add new region** dialog for this setting.
-  
+
 - Use the **Service Account** field to provide the name of the service account that has the necessary access to manage the cluster, as described in [Create cluster](/preview/deploy/kubernetes/single-zone/oss/helm-chart/#create-cluster).
 
 - Use the **Image Registry** field to specify the location of the YugabyteDB image. You should accept the default setting, unless you are hosting your own registry.
@@ -100,7 +99,7 @@ You configure region and zones as follows:
 
 - On the **Create VMware Tanzu Configuration** page, click **Add region** to open the **Add new region** dialog.
 
-- Use the **Region** field to select the region. 
+- Use the **Region** field to select the region.
 
 - Complete the fields of the expanded **Add new region** dialog shown in the following illustration:
 
@@ -171,7 +170,7 @@ You configure region and zones as follows:
 
   If your configuration is successful, you are redirected to **VMware Tanzu configs**.
 
-## Appendix: VMware Tanzu Application Service
+## Appendix: VMware Tanzu application service
 
 VMware Tanzu Application Service is no longer actively supported and the following information is considered legacy.
 
@@ -180,11 +179,11 @@ If you choose to use VMware Tanzu Application Service, before creating the servi
 - The YugabyteDB tile is installed in your PCF marketplace.
 - The cloud provider is configured in the YugabyteDB Anywhere instance in your PCF environment .
 
-### Create a YugabyteDB Service instance
+### Create a YugabyteDB service instance
 
 You can create a YugabyteDB service instance via the App Manager UI or Cloud Foundry (cf) command-line interface (CLI).
 
-#### How to Use the PCF App Manager
+#### How to use the PCF app manager
 
 - In your PCF App manager, navigate to the marketplace and select **YugabyteDB**.
 - Read descriptions of the available service plans to identify the resource requirements and intended environment, as shown in the following illustration:<br><br>
@@ -196,7 +195,7 @@ You can create a YugabyteDB service instance via the App Manager UI or Cloud Fou
 
   ![App Manager Config](/images/deploy/pivotal-cloud-foundry/apps-manager-config.png)
 
-#### How to Use the Cloud Foundry CLI
+#### How to use the cloud foundry CLI
 
 You can view the marketplace and plan description in the cf CLI by executing the following command:
 
@@ -221,11 +220,11 @@ Once you decide on the service plan, you can launch the YugabyteDB service insta
 $ cf create-service yugabyte-db x-small yb-demo -c '{"universe_name": "yb-demo"}'
 ```
 
-### Configure the YugabyteDB Service instance
+### Configure the YugabyteDB service instance
 
 You can specify override options when you create a service instance using the YugabyteDB service broker.
 
-#### How to Override Cloud Providers
+#### How to override cloud providers
 
 Depending on the cloud providers configured for your YugabyteDB Anywhere, you can create Yugabyte service instances by providing overrides.
 
@@ -249,7 +248,7 @@ To provision in Kubernetes, your overrides should include the appropriate `provi
 }
 ```
 
-#### How to Override the Number of Nodes
+#### How to override the number of nodes
 
 To override the number of nodes, include the `num_nodes` with the desired value, and then include this parameter along with other parameters for the cloud provider, as follows:
 
@@ -260,7 +259,7 @@ To override the number of nodes, include the `num_nodes` with the desired value,
 }
 ```
 
-#### How to Override the Replication Factor
+#### How to override the replication factor
 
 To override the replication factor, include `replication` with the desired value, and then include this parameter along with other parameters for the cloud provider, as follows:
 
@@ -274,7 +273,7 @@ To override the replication factor, include `replication` with the desired value
 
 *replication* must be set to 1, 3, 5, or 7.
 
-#### How to Override the Volume Settings
+#### How to override the volume settings
 
 To override the volume settings, include `num_volumes` with the desired value, as well as `volume_size` with the volume size in GB for each of those volumes. For example, to have two volumes with 100GB each, overrides should be specified as follows:
 
@@ -286,7 +285,7 @@ To override the volume settings, include `num_volumes` with the desired value, a
 }
 ```
 
-#### How to Override  the YugabyteDB Software Version
+#### How to override  the YugabyteDB software version
 
 To override the YugabyteDB software version to be used, include `yb_version` with the desired value, ensuring that this version exists in YugabyteDB Anywhere, as follows:
 

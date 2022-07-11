@@ -34,7 +34,7 @@ class PgTableCache {
   explicit PgTableCache(std::shared_future<client::YBClient*> client_future);
   ~PgTableCache();
 
-  CHECKED_STATUS GetInfo(
+  Status GetInfo(
       const TableId& table_id,
       master::GetTableSchemaResponsePB* info,
       PgTablePartitionsPB* partitions);

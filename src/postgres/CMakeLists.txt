@@ -24,6 +24,13 @@ if(IS_GCC AND "${COMPILER_VERSION}" VERSION_GREATER "8.0")
          " -Wno-stringop-truncation")
 endif()
 
+if("${COMPILER_FAMILY}" STREQUAL "clang" AND
+   "${COMPILER_VERSION}" VERSION_GREATER_EQUAL "13.0.0" AND
+   NOT APPLE)
+  string(CONCAT POSTGRES_EXTRA_C_CXX_FLAGS "${POSTGRES_EXTRA_C_CXX_FLAGS}"
+         " -Wno-error=unused-but-set-variable")
+endif()
+
 if("${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "x86_64")
   string(CONCAT POSTGRES_EXTRA_C_CXX_FLAGS "${POSTGRES_EXTRA_C_CXX_FLAGS}"
          " -DUSE_SSE42_CRC32C=1")
@@ -53,16 +60,19 @@ endif()
 
 list(APPEND build_postgres_args
      "${BUILD_SUPPORT_DIR}/build_postgres"
-     --build_root          "${YB_BUILD_ROOT}"
-     --cflags              "${POSTGRES_EXTRA_C_CXX_FLAGS} ${CMAKE_C_FLAGS}"
-     --compiler_type       "${YB_COMPILER_TYPE}"
-     --cxxflags            "${POSTGRES_EXTRA_C_CXX_FLAGS} ${CMAKE_CXX_FLAGS}"
-     --ldflags             " ${CMAKE_SHARED_LINKER_FLAGS} ${POSTGRES_EXTRA_LD_FLAGS}"
-     --ldflags_ex          " ${CMAKE_EXE_LINKER_FLAGS}"
-     --openssl_include_dir "${OPENSSL_INCLUDE_DIR}"
-     --openssl_lib_dir     "${OPENSSL_LIB_DIR}"
-     --thirdparty_dir      "${YB_THIRDPARTY_DIR}"
-     --shared_library_suffix "${YB_SHARED_LIBRARY_SUFFIX}")
+     --build_root            "${YB_BUILD_ROOT}"
+     --cflags                "${POSTGRES_EXTRA_C_CXX_FLAGS} ${CMAKE_C_FLAGS}"
+     --compiler_type         "${YB_COMPILER_TYPE}"
+     --cxxflags              "${POSTGRES_EXTRA_C_CXX_FLAGS} ${CMAKE_CXX_FLAGS}"
+     --ldflags               " ${CMAKE_SHARED_LINKER_FLAGS} ${POSTGRES_EXTRA_LD_FLAGS}"
+     --ldflags_ex            " ${CMAKE_EXE_LINKER_FLAGS}"
+     --openssl_include_dir   "${OPENSSL_INCLUDE_DIR}"
+     --openssl_lib_dir       "${OPENSSL_LIB_DIR}"
+     --thirdparty_dir        "${YB_THIRDPARTY_DIR}"
+     --shared_library_suffix "${YB_SHARED_LIBRARY_SUFFIX}"
+     --compiler_family       "${COMPILER_FAMILY}"
+     --compiler_version      "${COMPILER_VERSION}"
+    )
 
 if (NOT DEFINED LIBPQ_SHARED_LIB)
   message(FATAL_ERROR "LIBPQ_SHARED_LIB must be defined")

@@ -3,23 +3,24 @@ package com.yugabyte.yw.common;
 import com.google.inject.Singleton;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common.CloudType;
-import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
-import com.yugabyte.yw.models.helpers.NodeDetails;
-import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.InstanceType;
-import java.util.List;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.Collections;
-import java.util.Date;
-import java.util.UUID;
+import com.yugabyte.yw.models.InstanceType.VolumeDetails;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.io.File;
 import java.nio.file.Path;
-import java.text.SimpleDateFormat;
-import java.text.ParseException;
 import java.text.DateFormat;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.Date;
+import java.util.List;
+import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.io.FileUtils;
 import org.joda.time.DateTime;
 
@@ -49,7 +50,6 @@ public class SupportBundleUtil {
 
     String[] fileNameSplit = fileName.split("-");
     String fileDateStr = fileNameSplit[fileNameSplit.length - 2];
-
     return newSdf.parse(newSdf.format(bundleSdf.parse(fileDateStr)));
   }
 
@@ -97,7 +97,7 @@ public class SupportBundleUtil {
   // Gets the path to "yb-data/" folder on the node (Ex: "/mnt/d0", "/mnt/disk0")
   public String getDataDirPath(
       Universe universe, NodeDetails node, NodeUniverseManager nodeUniverseManager, Config config) {
-    String dataDirPath = "";
+    String dataDirPath = config.getString("yb.support_bundle.default_mount_point_prefix") + "0";
     UserIntent userIntent = universe.getCluster(node.placementUuid).userIntent;
     CloudType cloudType = userIntent.providerType;
 
@@ -110,11 +110,7 @@ public class SupportBundleUtil {
         String mountPoints = userIntent.deviceInfo.mountPoints;
         dataDirPath = mountPoints.split(",")[0];
       } catch (Exception e) {
-        String defaultMountPath =
-            config.getString("yb.support_bundle.default_mount_point_prefix") + "0";
-        log.error(
-            String.format("On prem invalid mount points. Defaulting to %s", defaultMountPath), e);
-        return defaultMountPath;
+        log.error(String.format("On prem invalid mount points. Defaulting to %s", dataDirPath), e);
       }
     } else if (cloudType == CloudType.kubernetes) {
       // Kubernetes universes:
@@ -134,13 +130,14 @@ public class SupportBundleUtil {
         String providerUUID = userIntent.provider;
         InstanceType instanceType =
             InstanceType.getOrBadRequest(UUID.fromString(providerUUID), nodeInstanceType);
-        dataDirPath = instanceType.instanceTypeDetails.volumeDetailsList.get(0).mountPath;
+        List<VolumeDetails> volumeDetailsList = instanceType.instanceTypeDetails.volumeDetailsList;
+        if (CollectionUtils.isNotEmpty(volumeDetailsList)) {
+          dataDirPath = volumeDetailsList.get(0).mountPath;
+        } else {
+          log.info(String.format("Mount point is not defined. Defaulting to %s", dataDirPath));
+        }
       } catch (Exception e) {
-        String defaultMountPath =
-            config.getString("yb.support_bundle.default_mount_point_prefix") + "0";
-        log.error(
-            String.format("Could not get mount points. Defaulting to %s", defaultMountPath), e);
-        return defaultMountPath;
+        log.error(String.format("Could not get mount points. Defaulting to %s", dataDirPath), e);
       }
     }
     return dataDirPath;

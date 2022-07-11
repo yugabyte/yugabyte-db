@@ -117,7 +117,8 @@ Status PgCreateTable::Exec(
   table_creator->table_name(table_name_).table_type(client::YBTableType::PGSQL_TABLE_TYPE)
                 .table_id(PgObjectId::GetYbTableIdFromPB(req_.table_id()))
                 .schema(&schema)
-                .colocated(req_.colocated());
+                .is_colocated_via_database(req_.is_colocated_via_database())
+                .is_matview(req_.is_matview());
   if (req_.is_pg_catalog_table()) {
     table_creator->is_pg_catalog_table();
   }
@@ -257,18 +258,29 @@ Result<std::vector<std::string>> PgCreateTable::BuildSplitRows(const client::YBS
         PrimaryKeyRangeColumnCount() - (ybbasectid_added_ ? 1 : 0),
         IllegalState,
         "Number of split row values must be equal to number of primary key columns");
+
+    // Keeping backward compatibility for old tables
+    const auto partitioning_version = schema.table_properties().partitioning_version();
+    const auto range_components_size = row.size() + (partitioning_version > 0 ? 1 : 0);
+
     std::vector<docdb::KeyEntryValue> range_components;
-    range_components.reserve(row.size());
+    range_components.reserve(range_components_size);
     bool compare_columns = true;
     for (const auto& row_value : row) {
       const auto column_index = range_components.size();
-      range_components.push_back(row_value.value_case() == QLValuePB::VALUE_NOT_SET
-        ? docdb::KeyEntryValue(docdb::KeyEntryType::kLowest)
-        : docdb::KeyEntryValue::FromQLValuePB(
+      if (partitioning_version > 0) {
+        range_components.push_back(docdb::KeyEntryValue::FromQLValuePBForKey(
             row_value,
             schema.Column(schema.FindColumn(range_columns_[column_index])).sorting_type()));
+      } else {
+        range_components.push_back(row_value.value_case() == QLValuePB::VALUE_NOT_SET
+            ? docdb::KeyEntryValue(docdb::KeyEntryType::kLowest)
+            : docdb::KeyEntryValue::FromQLValuePB(
+                row_value,
+                schema.Column(schema.FindColumn(range_columns_[column_index])).sorting_type()));
+      }
 
-      // Validate that split rows honor column ordering.
+      // Validate that split rows respect column ordering.
       if (compare_columns && !prev_doc_key.empty()) {
         const auto& prev_value = prev_doc_key.range_group()[column_index];
         const auto compare = prev_value.CompareTo(range_components.back());
@@ -279,6 +291,16 @@ Result<std::vector<std::string>> PgCreateTable::BuildSplitRows(const client::YBS
           compare_columns = false;
         }
       }
+    }
+
+    // If `ybuniqueidxkeysuffix` or `ybidxbasectid` are added to a range_columns, their value must
+    // be explicitly specified with defaulted MINVALUE as this is being done for the columns that
+    // are not assigned a value for range partitioning to make YBOperation.partition_key, tablet's
+    // partition bounds and tablet's key_bounds match the same structure; for more details refer to
+    // YBTransformPartitionSplitPoints() and https://github.com/yugabyte/yugabyte-db/issues/12191
+    if ((partitioning_version > 0) && ybbasectid_added_) {
+      range_components.push_back(
+          docdb::KeyEntryValue::FromQLVirtualValue(QLVirtualValuePB::LIMIT_MIN));
     }
     prev_doc_key = docdb::DocKey(std::move(range_components));
     const auto keybytes = prev_doc_key.Encode();

@@ -5,13 +5,12 @@ description: Debezium is an open source distributed platform used to capture the
 beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 aliases:
   - /preview/integrations/cdc/
-section: INTEGRATIONS
 menu:
   preview:
     identifier: cdc-debezium
+    parent: integrations
     weight: 571
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Debezium is an open-source distributed platform used to capture the changes in a database.
@@ -23,7 +22,7 @@ Debezium is an open-source distributed platform used to capture the changes in a
 Using Docker, get the connector from Quay:
 
 ```sh
-docker pull quay.io/yugabyte/debezium-connector:1.1-beta
+docker pull quay.io/yugabyte/debezium-connector:1.3.4-BETA
 ```
 
 ### Build the Debezium connector on your own
@@ -97,7 +96,7 @@ docker run -it --rm \
   -e OFFSET_STORAGE_TOPIC=my_connect_offsets \
   -e STATUS_STORAGE_TOPIC=my_connect_statuses \
   --link zookeeper:zookeeper --link kafka:kafka \
-  quay.io/yugabyte/debezium-connector:1.1-beta
+  quay.io/yugabyte/debezium-connector:1.3.4-BETA
 ```
 
 Deploy the configuration for the connector:
@@ -123,7 +122,45 @@ curl -i -X POST -H "Accept:application/json" -H "Content-Type:application/json" 
 }'
 ```
 
-For a list of all the configuration options we provide with the Debezium YugabyteDB connector, see the [configuration options](../../../explore/change-data-capture/debezium-connector-yugabytedb/).
+{{< note title="Note" >}}
+
+If you have an SSL enabled cluster, you need to provide the path to the root certificate in the `database.sslrootcert` configuration property.
+
+{{< /note >}}
+
+If you have an SSL enabled YugabyteDB cluster, do the following:
+
+1. Copy the certificate file to your Docker container (assuming that the file exists on the root directory of your machine):
+
+    ```sh
+    docker cp ~/root.crt connect:/kafka/
+    ```
+
+1. Deploy the connector configuration:
+
+    ```sh
+    curl -i -X POST -H "Accept:application/json" -H "Content-Type:application/json" \
+      localhost:8083/connectors/ \
+      -d '{
+      "name": "ybconnector",
+      "config": {
+        "connector.class": "io.debezium.connector.yugabytedb.YugabyteDBConnector",
+        "database.hostname":"'$IP'",
+        "database.port":"5433",
+        "database.master.addresses": "'$IP':7100",
+        "database.user": "yugabyte",
+        "database.password": "yugabyte",
+        "database.dbname" : "yugabyte",
+        "database.server.name": "dbserver1",
+        "table.include.list":"public.test",
+        "database.streamid":"d540f5e4890c4d3b812933cbfd703ed3",
+        "snapshot.mode":"never",
+        "database.sslrootcert":"/kafka/root.crt"
+      }
+    }'
+    ```
+
+For a list of all the configuration options we provide with the Debezium YugabyteDB connector, see the [configuration options](../../../explore/change-data-capture/debezium-connector-yugabytedb/#connector-configuration-properties).
 
 {{< warning title="Warning" >}}
 

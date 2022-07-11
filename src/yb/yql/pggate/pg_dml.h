@@ -35,41 +35,41 @@ class PgDml : public PgStatement {
   virtual ~PgDml();
 
   // Append a target in SELECT or RETURNING.
-  CHECKED_STATUS AppendTarget(PgExpr *target);
+  Status AppendTarget(PgExpr *target);
 
   // Append a filter condition.
   // Supported expression kind is serialized Postgres expression
-  CHECKED_STATUS AppendQual(PgExpr *qual);
+  Status AppendQual(PgExpr *qual);
 
   // Append a column reference.
   // If any serialized Postgres expressions appended to other lists require explicit addition
   // of their column references. Those column references should have Postgres type information.
   // Other PgExpr kinds are automatically scanned and their column references are appended.
-  CHECKED_STATUS AppendColumnRef(PgExpr *colref);
+  Status AppendColumnRef(PgExpr *colref);
 
   // Prepare column for both ends.
   // - Prepare protobuf to communicate with DocDB.
   // - Prepare PgExpr to send data back to Postgres layer.
   Result<const PgColumn&> PrepareColumnForRead(int attr_num, LWPgsqlExpressionPB *target_pb);
-  CHECKED_STATUS PrepareColumnForWrite(PgColumn *pg_col, LWPgsqlExpressionPB *assign_pb);
+  Status PrepareColumnForWrite(PgColumn *pg_col, LWPgsqlExpressionPB *assign_pb);
 
   // Bind a column with an expression.
   // - For a secondary-index-scan, this bind specify the value of the secondary key which is used to
   //   query a row.
   // - For a primary-index-scan, this bind specify the value of the keys of the table.
-  CHECKED_STATUS BindColumn(int attnum, PgExpr *attr_value);
+  Status BindColumn(int attnum, PgExpr *attr_value);
 
   // Bind the whole table.
-  CHECKED_STATUS BindTable();
+  Status BindTable();
 
   // Assign an expression to a column.
-  CHECKED_STATUS AssignColumn(int attnum, PgExpr *attr_value);
+  Status AssignColumn(int attnum, PgExpr *attr_value);
 
   // Process the secondary index request if it is nested within this statement.
   Result<bool> ProcessSecondaryIndexRequest(const PgExecParameters *exec_params);
 
   // Fetch a row and return it to Postgres layer.
-  CHECKED_STATUS Fetch(int32_t natts,
+  Status Fetch(int32_t natts,
                        uint64_t *values,
                        bool *isnulls,
                        PgSysColumns *syscols,
@@ -96,11 +96,12 @@ class PgDml : public PgStatement {
  protected:
   // Method members.
   // Constructor.
-  PgDml(PgSession::ScopedRefPtr pg_session, const PgObjectId& table_id);
+  PgDml(PgSession::ScopedRefPtr pg_session, const PgObjectId& table_id, bool is_region_local);
   PgDml(PgSession::ScopedRefPtr pg_session,
         const PgObjectId& table_id,
         const PgObjectId& index_id,
-        const PgPrepareParameters *prepare_params);
+        const PgPrepareParameters *prepare_params,
+        bool is_region_local);
 
   // Allocate protobuf for a SELECTed expression.
   virtual LWPgsqlExpressionPB *AllocTargetPB() = 0;
@@ -118,13 +119,13 @@ class PgDml : public PgStatement {
   virtual LWPgsqlExpressionPB *AllocColumnAssignPB(PgColumn *col) = 0;
 
   // Specify target of the query in protobuf request.
-  CHECKED_STATUS AppendTargetPB(PgExpr *target);
+  Status AppendTargetPB(PgExpr *target);
 
   // Update bind values.
-  CHECKED_STATUS UpdateBindPBs();
+  Status UpdateBindPBs();
 
   // Update set values.
-  CHECKED_STATUS UpdateAssignPBs();
+  Status UpdateAssignPBs();
 
   // Compatibility: set deprecated column_refs for legacy nodes
   // We are deprecating PgsqlColumnRefsPB protobuf since it does not allow to transfer Postgres
@@ -190,6 +191,9 @@ class PgDml : public PgStatement {
                                           .index_only_scan = false,
                                           .use_secondary_index = false,
                                           .querying_colocated_table = false };
+
+  // Whether or not the statement accesses data within the local region.
+  const bool is_region_local_;
 
   // -----------------------------------------------------------------------------------------------
   // Data members for nested query: This is used for an optimization in PgGate.

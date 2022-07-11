@@ -33,37 +33,8 @@
 #include "yb/util/enums.h"
 #include "yb/util/monotime.h"
 
-namespace rocksdb {
-class DB;
-}
-
 namespace yb {
 namespace docdb {
-
-class KeyValueWriteBatchPB;
-class IntentAwareIterator;
-
-struct LazyIterator {
-  std::function<std::unique_ptr<IntentAwareIterator>()>* creator;
-  std::unique_ptr<IntentAwareIterator> iterator;
-
-  explicit LazyIterator(std::function<std::unique_ptr<IntentAwareIterator>()>* c)
-    : iterator(nullptr) {
-    creator = c;
-  }
-
-  explicit LazyIterator(std::unique_ptr<IntentAwareIterator> i) {
-    iterator = std::move(i);
-  }
-
-  ~LazyIterator() {}
-
-  IntentAwareIterator* Iterator() {
-    if (!iterator)
-      iterator = (*creator)();
-    return iterator.get();
-  }
-};
 
 YB_DEFINE_ENUM(ValueRefType, (kPb)(kValueType));
 
@@ -170,6 +141,14 @@ YB_DEFINE_ENUM(InitMarkerBehavior,
                // unless there are delete markers / TTL expiration involved.
                (kOptional));
 
+YB_STRONGLY_TYPED_BOOL(HasAncestor);
+
+// We store key/value as string to be able to move them to KeyValuePairPB later.
+struct DocWriteBatchEntry {
+  std::string key;
+  std::string value;
+};
+
 // The DocWriteBatch class is used to build a RocksDB write batch for a DocDB batch of operations
 // that may include a mix of write (set) or delete operations. It may read from RocksDB while
 // writing, and builds up an internal rocksdb::WriteBatch while handling the operations.
@@ -181,36 +160,24 @@ class DocWriteBatch {
                          InitMarkerBehavior init_marker_behavior,
                          std::atomic<int64_t>* monotonic_counter = nullptr);
 
-  Status SeekToKeyPrefix(LazyIterator* doc_iter, bool has_ancestor = false);
-  Status SeekToKeyPrefix(IntentAwareIterator* doc_iter, bool has_ancestor);
-
-  // Set the primitive at the given path to the given value. Intermediate subdocuments are created
-  // if necessary and possible.
-  CHECKED_STATUS SetPrimitive(
-      const DocPath& doc_path,
-      const ValueControlFields& control_fields,
-      const ValueRef& value,
-      LazyIterator* doc_iter);
-
-  CHECKED_STATUS SetPrimitive(
+  // Custom write_id could specified. Such write_id should be previously allocated with
+  // ReserveWriteId. In this case the value will be put to batch into preallocated position.
+  Status SetPrimitive(
       const DocPath& doc_path,
       const ValueControlFields& control_fields,
       const ValueRef& value,
       const ReadHybridTime& read_ht = ReadHybridTime::Max(),
       const CoarseTimePoint deadline = CoarseTimePoint::max(),
-      rocksdb::QueryId query_id = rocksdb::kDefaultQueryId);
+      rocksdb::QueryId query_id = rocksdb::kDefaultQueryId,
+      std::optional<IntraTxnWriteId> write_id = {});
 
-  CHECKED_STATUS SetPrimitive(
+  Status SetPrimitive(
       const DocPath& doc_path,
       const ValueControlFields& control_fields,
       const ValueRef& value,
-      std::unique_ptr<IntentAwareIterator> intent_iter) {
-    LazyIterator iter(std::move(intent_iter));
-    return SetPrimitive(doc_path, control_fields, value, &iter);
-  }
+      std::unique_ptr<IntentAwareIterator> intent_iter);
 
-
-  CHECKED_STATUS SetPrimitive(
+  Status SetPrimitive(
       const DocPath& doc_path,
       const ValueRef& value,
       const ReadHybridTime& read_ht = ReadHybridTime::Max(),
@@ -226,7 +193,7 @@ class DocWriteBatch {
   // TODO(akashnil): 03/20/17 ENG-1107
   // In each SetPrimitive call, some common work is repeated. It may be made more
   // efficient by not calling SetPrimitive internally.
-  CHECKED_STATUS ExtendSubDocument(
+  Status ExtendSubDocument(
       const DocPath& doc_path,
       const ValueRef& value,
       const ReadHybridTime& read_ht = ReadHybridTime::Max(),
@@ -235,7 +202,7 @@ class DocWriteBatch {
       MonoDelta ttl = ValueControlFields::kMaxTtl,
       UserTimeMicros user_timestamp = ValueControlFields::kInvalidUserTimestamp);
 
-  CHECKED_STATUS InsertSubDocument(
+  Status InsertSubDocument(
       const DocPath& doc_path,
       const ValueRef& value,
       const ReadHybridTime& read_ht = ReadHybridTime::Max(),
@@ -245,7 +212,7 @@ class DocWriteBatch {
       UserTimeMicros user_timestamp = ValueControlFields::kInvalidUserTimestamp,
       bool init_marker_ttl = true);
 
-  CHECKED_STATUS ExtendList(
+  Status ExtendList(
       const DocPath& doc_path,
       const ValueRef& value,
       const ReadHybridTime& read_ht = ReadHybridTime::Max(),
@@ -255,7 +222,7 @@ class DocWriteBatch {
       UserTimeMicros user_timestamp = ValueControlFields::kInvalidUserTimestamp);
 
   // 'indices' must be sorted. List indexes are not zero indexed, the first element is list[1].
-  CHECKED_STATUS ReplaceRedisInList(
+  Status ReplaceRedisInList(
       const DocPath& doc_path,
       int64_t index,
       const ValueRef& value,
@@ -268,7 +235,7 @@ class DocWriteBatch {
       MonoDelta default_ttl = ValueControlFields::kMaxTtl,
       MonoDelta write_ttl = ValueControlFields::kMaxTtl);
 
-  CHECKED_STATUS ReplaceCqlInList(
+  Status ReplaceCqlInList(
       const DocPath &doc_path,
       const int index,
       const ValueRef& value,
@@ -278,7 +245,7 @@ class DocWriteBatch {
       MonoDelta default_ttl = ValueControlFields::kMaxTtl,
       MonoDelta write_ttl = ValueControlFields::kMaxTtl);
 
-  CHECKED_STATUS DeleteSubDoc(
+  Status DeleteSubDoc(
       const DocPath& doc_path,
       const ReadHybridTime& read_ht = ReadHybridTime::Max(),
       const CoarseTimePoint deadline = CoarseTimePoint::max(),
@@ -290,7 +257,7 @@ class DocWriteBatch {
 
   size_t size() const { return put_batch_.size(); }
 
-  const std::vector<std::pair<std::string, std::string>>& key_value_pairs() const {
+  const std::vector<DocWriteBatchEntry>& key_value_pairs() const {
     return put_batch_;
   }
 
@@ -310,7 +277,7 @@ class DocWriteBatch {
     return cache_.Get(encoded_key_prefix);
   }
 
-  std::pair<std::string, std::string>& AddRaw() {
+  DocWriteBatchEntry& AddRaw() {
     put_batch_.emplace_back();
     return put_batch_.back();
   }
@@ -325,17 +292,38 @@ class DocWriteBatch {
     return ttl_.Initialized();
   }
 
+  // See SetPrimitive above.
+  IntraTxnWriteId ReserveWriteId() {
+    put_batch_.emplace_back();
+    return narrow_cast<IntraTxnWriteId>(put_batch_.size()) - 1;
+  }
+
  private:
-  // This member function performs the necessary operations to set a primitive value for a given
-  // docpath assuming the appropriate operations have been taken care of for subkeys with index <
-  // subkey_index. This method assumes responsibility of ensuring the proper DocDB structure
-  // (e.g: init markers) is maintained for subdocuments starting at the given subkey_index.
-  CHECKED_STATUS SetPrimitiveInternal(
+  struct LazyIterator;
+
+  // Set the primitive at the given path to the given value. Intermediate subdocuments are created
+  // if necessary and possible.
+  Status DoSetPrimitive(
       const DocPath& doc_path,
       const ValueControlFields& control_fields,
       const ValueRef& value,
       LazyIterator* doc_iter,
-      bool is_deletion);
+      std::optional<IntraTxnWriteId> write_id);
+
+  Status SeekToKeyPrefix(LazyIterator* doc_iter, HasAncestor has_ancestor);
+  Status SeekToKeyPrefix(IntentAwareIterator* doc_iter, HasAncestor has_ancestor);
+
+  // This member function performs the necessary operations to set a primitive value for a given
+  // docpath assuming the appropriate operations have been taken care of for subkeys with index <
+  // subkey_index. This method assumes responsibility of ensuring the proper DocDB structure
+  // (e.g: init markers) is maintained for subdocuments starting at the given subkey_index.
+  Status SetPrimitiveInternal(
+      const DocPath& doc_path,
+      const ValueControlFields& control_fields,
+      const ValueRef& value,
+      LazyIterator* doc_iter,
+      bool is_deletion,
+      std::optional<IntraTxnWriteId> write_id);
 
   // Handle the user provided timestamp during writes.
   Result<bool> SetPrimitiveInternalHandleUserTimestamp(const ValueControlFields& control_fields,
@@ -355,7 +343,7 @@ class DocWriteBatch {
 
   InitMarkerBehavior init_marker_behavior_;
   std::atomic<int64_t>* monotonic_counter_;
-  std::vector<std::pair<std::string, std::string>> put_batch_;
+  std::vector<DocWriteBatchEntry> put_batch_;
 
   // Taken from internal_doc_iterator
   KeyBytes key_prefix_;

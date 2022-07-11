@@ -13,9 +13,9 @@
 
 package org.yb.cdc.ysql;
 
-import org.apache.log4j.Logger;
-
 import org.junit.runner.RunWith;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.yb.cdc.CdcService;
 import org.yb.cdc.CdcService.RowMessage.Op;
 import org.yb.cdc.common.CDCBaseClass;
@@ -33,7 +33,7 @@ import org.yb.util.YBTestRunnerNonTsanOnly;
 
 @RunWith(value = YBTestRunnerNonTsanOnly.class)
 public class Test3IntCol extends CDCBaseClass {
-  private Logger LOG = Logger.getLogger(Test3IntCol.class);
+  private Logger LOG = LoggerFactory.getLogger(Test3IntCol.class);
 
   private void executeScriptAssertRecords(ExpectedRecord3Proto[] expectedRecords,
                                           String sqlScript) throws Exception {

@@ -203,6 +203,16 @@ std::string FrozenToString(const FrozenContainer& frozen) {
   return ss.str();
 }
 
+// In Postgres, character value cannot have embedded \0 byte. Both YCQL and Redis
+// allow embedded \0 byte but neither has collation concept so kCollString becomes
+// a synonym for kString. If the value is not empty and the first byte is \0, in
+// Postgres it indicates this is a collation encoded string and we use kCollString:
+// (1) in Postgres kCollString means a collation encoded string;
+// (2) in both YCQL and Redis kCollString is a synonym for kString so it is also correct;
+inline bool IsCollationEncodedString(const Slice& val) {
+  return !val.empty() && val[0] == '\0';
+}
+
 } // anonymous namespace
 
 const PrimitiveValue PrimitiveValue::kInvalid = PrimitiveValue(ValueEntryType::kInvalid);
@@ -509,8 +519,30 @@ void AddValueType(
 // Indicates that the stored jsonb is the complete jsonb value and not a partial update to jsonb.
 static constexpr int64_t kCompleteJsonb = 1;
 
+class SizeCounter {
+ public:
+  size_t value() const {
+    return value_;
+  }
+
+  void push_back(char ch) {
+    ++value_;
+  }
+
+  void append(const std::string& str) {
+    value_ += str.size();
+  }
+
+  void append(const char* str, size_t size) {
+    value_ += size;
+  }
+
+ private:
+  size_t value_ = 0;
+};
+
 template <class Buffer>
-void DoAppendEncodedValue(const QLValuePB& value, CheckIsCollate check_is_collate, Buffer* out) {
+void DoAppendEncodedValue(const QLValuePB& value, Buffer* out) {
   switch (value.value_case()) {
     case QLValuePB::kInt8Value:
       out->push_back(ValueEntryTypeAsChar::kInt32);
@@ -554,18 +586,9 @@ void DoAppendEncodedValue(const QLValuePB& value, CheckIsCollate check_is_collat
       out->append(value.varint_value());
       return;
     case QLValuePB::kStringValue: {
-      const string& val = value.string_value();
-      // In both Postgres and YCQL, character value cannot have embedded \0 byte.
-      // Redis allows embedded \0 byte but it does not use QLValuePB so will not
-      // come here to pick up 'is_collate'. Therefore, if the value is not empty
-      // and the first byte is \0, it indicates this is a collation encoded string.
-      if (!val.empty() && val[0] == '\0' && check_is_collate) {
-        // An empty collation encoded string is at least 3 bytes.
-        CHECK_GE(val.size(), 3);
-        out->push_back(ValueEntryTypeAsChar::kCollString);
-      } else {
-        out->push_back(ValueEntryTypeAsChar::kString);
-      }
+      const auto& val = value.string_value();
+      out->push_back(IsCollationEncodedString(val) ? ValueEntryTypeAsChar::kCollString
+                                                   : ValueEntryTypeAsChar::kString);
       out->append(val);
       return;
     }
@@ -652,16 +675,36 @@ void DoAppendEncodedValue(const QLValuePB& value, CheckIsCollate check_is_collat
 
 } // namespace
 
-void AppendEncodedValue(const QLValuePB& value, CheckIsCollate check_is_collate, ValueBuffer* out) {
-  DoAppendEncodedValue(value, check_is_collate, out);
+void AppendEncodedValue(const QLValuePB& value, ValueBuffer* out) {
+  DoAppendEncodedValue(value, out);
 }
 
-void AppendEncodedValue(const QLValuePB& value, CheckIsCollate check_is_collate, std::string* out) {
-  DoAppendEncodedValue(value, check_is_collate, out);
+void AppendEncodedValue(const QLValuePB& value, std::string* out) {
+  DoAppendEncodedValue(value, out);
+}
+
+size_t EncodedValueSize(const QLValuePB& value) {
+  SizeCounter counter;
+  DoAppendEncodedValue(value, &counter);
+  return counter.value();
 }
 
 Status KeyEntryValue::DecodeFromKey(Slice* slice) {
   return DecodeKey(slice, this);
+}
+
+Result<KeyEntryValue> KeyEntryValue::FullyDecodeFromKey(const Slice& slice) {
+  auto slice_copy = slice;
+  KeyEntryValue result;
+  RETURN_NOT_OK(result.DecodeFromKey(&slice_copy));
+  if (!slice_copy.empty()) {
+    return STATUS_FORMAT(
+        Corruption,
+        "Extra data after decoding key entry value: $0 - $1",
+        slice.WithoutSuffix(slice_copy.size()).ToDebugHexString(),
+        slice_copy.ToDebugHexString());
+  }
+  return result;
 }
 
 Status KeyEntryValue::DecodeKey(Slice* slice, KeyEntryValue* out) {
@@ -933,8 +976,8 @@ Status KeyEntryValue::DecodeKey(Slice* slice, KeyEntryValue* out) {
         return STATUS_FORMAT(Corruption, "Not enough bytes for UUID: $0", slice->size());
       }
       if (out) {
-        RETURN_NOT_OK((new(&out->uuid_val_) Uuid())->FromSlice(
-            *slice, boost::uuids::uuid::static_size()));
+        out->uuid_val_ = VERIFY_RESULT(Uuid::FromSlice(
+            slice->Prefix(boost::uuids::uuid::static_size())));
       }
       slice->remove_prefix(boost::uuids::uuid::static_size());
       type_ref = type;
@@ -946,8 +989,7 @@ Status KeyEntryValue::DecodeKey(Slice* slice, KeyEntryValue* out) {
       if (out) {
         string bytes;
         RETURN_NOT_OK(DecodeZeroEncodedStr(slice, &bytes));
-        new(&out->uuid_val_) Uuid();
-        RETURN_NOT_OK(out->uuid_val_.DecodeFromComparable(bytes));
+        new(&out->uuid_val_) Uuid(VERIFY_RESULT(Uuid::FromComparable(bytes)));
       } else {
         RETURN_NOT_OK(DecodeZeroEncodedStr(slice, nullptr));
       }
@@ -959,8 +1001,7 @@ Status KeyEntryValue::DecodeKey(Slice* slice, KeyEntryValue* out) {
       if (out) {
         string bytes;
         RETURN_NOT_OK(DecodeComplementZeroEncodedStr(slice, &bytes));
-        new(&out->uuid_val_) Uuid();
-        RETURN_NOT_OK(out->uuid_val_.DecodeFromComparable(bytes));
+        new(&out->uuid_val_) Uuid(VERIFY_RESULT(Uuid::FromComparable(bytes)));
       } else {
         RETURN_NOT_OK(DecodeComplementZeroEncodedStr(slice, nullptr));
       }
@@ -1047,10 +1088,8 @@ Status KeyEntryValue::DecodeKey(Slice* slice, KeyEntryValue* out) {
 }
 
 Status PrimitiveValue::DecodeFromValue(const Slice& rocksdb_slice) {
-  if (rocksdb_slice.empty()) {
-    return STATUS(Corruption, "Cannot decode a value from an empty slice");
-  }
-  rocksdb::Slice slice(rocksdb_slice);
+  RSTATUS_DCHECK(!rocksdb_slice.empty(), Corruption, "Cannot decode a value from an empty slice");
+  Slice slice(rocksdb_slice);
   this->~PrimitiveValue();
   // Ensure we are not leaving the object in an invalid state in case e.g. an exception is thrown
   // due to inability to allocate memory.
@@ -1215,9 +1254,7 @@ Status PrimitiveValue::DecodeFromValue(const Slice& rocksdb_slice) {
         return STATUS_FORMAT(Corruption, "Invalid number of bytes to decode Uuid: $0, need $1",
             slice.size(), kUuidSize);
       }
-      Slice slice_temp(slice.data(), slice.size());
-      new(&uuid_val_) Uuid();
-      RETURN_NOT_OK(uuid_val_.DecodeFromComparableSlice(slice_temp));
+      new(&uuid_val_) Uuid(VERIFY_RESULT(Uuid::FromComparable(slice)));
       type_ = value_type;
       return Status::OK();
     }
@@ -1227,8 +1264,8 @@ Status PrimitiveValue::DecodeFromValue(const Slice& rocksdb_slice) {
     case ValueEntryType::kMaxByte:
       return STATUS_FORMAT(Corruption, "$0 is not allowed in a RocksDB PrimitiveValue", value_type);
   }
-  FATAL_INVALID_ENUM_VALUE(ValueEntryType, value_type);
-  return Status::OK();
+  RSTATUS_DCHECK(
+      false, Corruption, "Wrong value type $0 in $1", value_type, rocksdb_slice.ToDebugHexString());
 }
 
 POD_FACTORY(Double, double);
@@ -1538,8 +1575,12 @@ bool PrimitiveValue::IsPrimitive() const {
   return IsPrimitiveValueType(type_);
 }
 
+bool PrimitiveValue::IsTombstone() const {
+  return type_ == ValueEntryType::kTombstone;
+}
+
 bool PrimitiveValue::IsTombstoneOrPrimitive() const {
-  return IsPrimitiveValueType(type_) || type_ == ValueEntryType::kTombstone;
+  return IsPrimitive() || IsTombstone();
 }
 
 bool KeyEntryValue::IsInfinity() const {
@@ -1677,18 +1718,16 @@ SortOrder SortOrderFromColumnSchemaSortingType(SortingType sorting_type) {
   return SortOrder::kAscending;
 }
 
-PrimitiveValue PrimitiveValue::FromQLValuePB(
-    const LWQLValuePB& value, CheckIsCollate check_is_collate) {
-  return DoFromQLValuePB(value, check_is_collate);
+PrimitiveValue PrimitiveValue::FromQLValuePB(const LWQLValuePB& value) {
+  return DoFromQLValuePB(value);
 }
 
-PrimitiveValue PrimitiveValue::FromQLValuePB(
-    const QLValuePB& value, CheckIsCollate check_is_collate) {
-  return DoFromQLValuePB(value, check_is_collate);
+PrimitiveValue PrimitiveValue::FromQLValuePB(const QLValuePB& value) {
+  return DoFromQLValuePB(value);
 }
 
 template <class PB>
-PrimitiveValue PrimitiveValue::DoFromQLValuePB(const PB& value, CheckIsCollate check_is_collate) {
+PrimitiveValue PrimitiveValue::DoFromQLValuePB(const PB& value) {
   switch (value.value_case()) {
     case QLValuePB::kInt8Value:
       return PrimitiveValue::Int32(value.int8_value());
@@ -1712,16 +1751,7 @@ PrimitiveValue PrimitiveValue::DoFromQLValuePB(const PB& value, CheckIsCollate c
       return PrimitiveValue::VarInt(value.varint_value());
     case QLValuePB::kStringValue: {
       const auto& val = value.string_value();
-      // In both Postgres and YCQL, character value cannot have embedded \0 byte.
-      // Redis allows embedded \0 byte but it does not use QLValuePB so will not
-      // come here to pick up 'is_collate'. Therefore, if the value is not empty
-      // and the first byte is \0, it indicates this is a collation encoded string.
-      if (!val.empty() && val[0] == '\0' && check_is_collate) {
-        // An empty collation encoded string is at least 3 bytes.
-        CHECK_GE(val.size(), 3);
-        return PrimitiveValue(val, true /* is_collate */);
-      }
-      return PrimitiveValue(val);
+      return PrimitiveValue(val, IsCollationEncodedString(val));
     }
     case QLValuePB::kBinaryValue:
       // TODO consider using dedicated encoding for binary (not string) to avoid overhead of
@@ -2187,13 +2217,7 @@ KeyEntryValue KeyEntryValue::DoFromQLValuePB(const PB& value, SortingType sortin
       return KeyEntryValue::VarInt(value.varint_value(), sort_order);
     case QLValuePB::kStringValue: {
       const auto& val = value.string_value();
-      // In both Postgres and YCQL, character value cannot have embedded \0 byte.
-      // Redis allows embedded \0 byte but it does not use QLValuePB so will not
-      // come here to pick up 'is_collate'. Therefore, if the value is not empty
-      // and the first byte is \0, it indicates this is a collation encoded string.
-      if (!val.empty() && val[0] == '\0' && sorting_type != SortingType::kNotSpecified) {
-        // An empty collation encoded string is at least 3 bytes.
-        CHECK_GE(val.size(), 3);
+      if (sorting_type != SortingType::kNotSpecified && IsCollationEncodedString(val)) {
         return KeyEntryValue(val, sort_order, true /* is_collate */);
       }
       return KeyEntryValue(val, sort_order);
@@ -2238,7 +2262,7 @@ KeyEntryValue KeyEntryValue::DoFromQLValuePB(const PB& value, SortingType sortin
     }
 
     case QLValuePB::kVirtualValue:
-      return KeyEntryValue(VirtualValueToKeyEntryType(value.virtual_value()));
+      return FromQLVirtualValue(value.virtual_value());
     case QLValuePB::kGinNullValue:
       return KeyEntryValue::GinNull(value.gin_null_value());
 
@@ -2258,8 +2282,28 @@ KeyEntryValue KeyEntryValue::FromQLValuePB(const QLValuePB& value, SortingType s
   return DoFromQLValuePB(value, sorting_type);
 }
 
+KeyEntryValue KeyEntryValue::FromQLValuePBForKey(const QLValuePB& value, SortingType sorting_type) {
+  if (IsNull(value)) {
+    return KeyEntryValue::NullValue(sorting_type);
+  }
+  return DoFromQLValuePB(value, sorting_type);
+}
+
 KeyEntryValue KeyEntryValue::FromQLValuePB(const LWQLValuePB& value, SortingType sorting_type) {
   return DoFromQLValuePB(value, sorting_type);
+}
+
+KeyEntryValue KeyEntryValue::FromQLValuePBForKey(
+    const LWQLValuePB& value,
+    SortingType sorting_type) {
+  if (IsNull(value)) {
+    return KeyEntryValue::NullValue(sorting_type);
+  }
+  return DoFromQLValuePB(value, sorting_type);
+}
+
+KeyEntryValue KeyEntryValue::FromQLVirtualValue(QLVirtualValuePB value) {
+  return KeyEntryValue(VirtualValueToKeyEntryType(value));
 }
 
 std::string KeyEntryValue::ToString(AutoDecodeKeys auto_decode_keys) const {

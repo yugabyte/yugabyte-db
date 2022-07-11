@@ -31,7 +31,11 @@ const colourStyles = {
     ...styles,
     backgroundColor: '#E5E5E9',
     borderRadius: '6px',
-    padding: '5px 8px'
+    padding: '5px 8px',
+    maxWidth: "calc(100% - 10px)",
+    position: "relative",
+    top: "initial",
+    transform: "none",
   }),
   multiValue: (styles) => ({
     ...styles,
@@ -58,10 +62,11 @@ const colourStyles = {
     },
     cursor: 'pointer'
   }),
-  menu: (styles) => ({
-    ...styles,
-    marginTop: '1px'
-  }),
+  menu: (base) => ({
+    ...base,
+    width: "max-content",
+    minWidth: "100%"
+}),
   dropdownIndicator: (styles) => ({
     ...styles,
     cursor: 'pointer',
@@ -75,26 +80,16 @@ const colourStyles = {
 };
 
 const Control = ({ children, hasValue, menuIsOpen, ...props }) => {
-  const chipStyle = {
-    backgroundColor: '#E5E5E9',
-    borderRadius: '6px',
-    padding: '7.5px 11px 7.5px 11px',
-    marginLeft: '10px',
-    fontFamily: 'Inter',
-    fontStyle: 'normal',
-    fontWeight: '500',
-    fontSize: '12px'
-  };
-
   const labelStyle = {
     fontFamily: 'Inter',
     fontStyle: 'normal',
     fontSize: '14px'
   };
+  const { selectProps: { customLabel} } = props;
+
   return (
     <components.Control {...props}>
-      <span style={labelStyle}>Status:</span>
-      {!hasValue && !menuIsOpen && <div style={chipStyle}>All</div>}
+      {hasValue && customLabel && <span style={labelStyle}>{customLabel}</span> }
       {children}
     </components.Control>
   );
@@ -110,6 +105,10 @@ const MultiValueRemove = (props) => {
     </components.MultiValueRemove>
   );
 };
+
+const SingleValue = (props) => {
+  return <components.SingleValue className="YBSingleValue" {...props} />;
+}
 
 const DropdownIndicator = (props) => {
   const indicatorStyle = {
@@ -146,11 +145,12 @@ const animatedComponents = makeAnimated({
   MultiValueRemove,
   DropdownIndicator,
   ClearIndicator,
-  IndicatorSeparator: () => null
+  IndicatorSeparator: () => null,
+  SingleValue
 });
 
 export const YBMultiSelectRedesiged = (props) => {
-  const { options, value, onChange, placeholder, name, className, isMulti = true } = props;
+  const { options, value, onChange, placeholder, name, className, isMulti = true, customLabel, isClearable = false } = props;
   return (
     <Select
       className={className}
@@ -163,6 +163,8 @@ export const YBMultiSelectRedesiged = (props) => {
       onChange={onChange}
       components={animatedComponents}
       styles={colourStyles}
+      customLabel={customLabel}
+      isClearable={isClearable}
     />
   );
 };

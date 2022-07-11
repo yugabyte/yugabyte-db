@@ -166,7 +166,7 @@ constexpr int32_t kNoBound = kint32max;
 constexpr int kNumTablets = 2;
 
 const std::string kKeyspaceName = "my_keyspace";
-const std::string kPgsqlKeyspaceID = "1234";
+const std::string kPgsqlKeyspaceID = "1234567890abcdef1234567890abcdef";
 const std::string kPgsqlKeyspaceName = "psql" + kKeyspaceName;
 
 } // namespace
@@ -2126,7 +2126,7 @@ TEST_F(ClientTest, TestServerTooBusyRetry) {
 
   // Introduce latency in each scan to increase the likelihood of
   // ERROR_SERVER_TOO_BUSY.
-  FLAGS_TEST_scanner_inject_latency_on_each_batch_ms = 10;
+  FLAGS_TEST_scanner_inject_latency_on_each_batch_ms = 10 * kTimeMultiplier;
 
   // Reduce the service queue length of each tablet server in order to increase
   // the likelihood of ERROR_SERVER_TOO_BUSY.
@@ -2176,7 +2176,7 @@ TEST_F(ClientTest, TestServerTooBusyRetry) {
         }
         --running_threads;
       });
-      std::this_thread::sleep_for(10ms);
+      std::this_thread::sleep_for(10ms * kTimeMultiplier);
     }
 
     for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
@@ -2198,7 +2198,7 @@ TEST_F(ClientTest, TestServerTooBusyRetry) {
         idle_threads.pop_back();
       }
     }
-    std::this_thread::sleep_for(10ms);
+    std::this_thread::sleep_for(10ms * kTimeMultiplier);
   }
   thread_holder.JoinAll();
 }
@@ -2487,7 +2487,7 @@ TEST_F(ClientTest, BadMasterAddress) {
     opts.SetMasterAddresses(master_addr);
 
     AsyncClientInitialiser async_init(
-        "test-client", /* num_reactors= */ 1, /* timeout_seconds= */ 1, "UUID", &opts,
+        "test-client", /* timeout= */ 1s, "UUID", &opts,
         /* metric_entity= */ nullptr, /* parent_mem_tracker= */ nullptr, messenger.get());
     async_init.Start();
     async_init.get_client_future().wait_for(1s);

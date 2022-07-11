@@ -64,6 +64,7 @@ export const AssociatedBackups: FC<AssociatedBackupsProps> = ({
         DEFAULT_SORT_COLUMN,
         DEFAULT_SORT_DIRECTION,
         undefined,
+        undefined,
         storageConfigData.configUUID
       ),
     {

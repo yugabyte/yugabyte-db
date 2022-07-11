@@ -40,7 +40,9 @@
 
 #include "yb/gutil/strings/util.h"
 
+#include "yb/util/multi_drive_test_env.h"
 #include "yb/util/status.h"
+#include "yb/util/result.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 
@@ -50,6 +52,17 @@ DECLARE_string(fs_data_dirs);
 DECLARE_string(fs_wal_dirs);
 
 namespace yb {
+
+namespace {
+
+bool HasDirsPrefixString(const vector<string>& dirs, const string& path) {
+  if (dirs.size() != 1) {
+    return false;
+  }
+  return HasPrefixString(dirs[0], path);
+}
+
+} // namespace
 
 class FsManagerTestBase : public YBTest {
  public:
@@ -82,15 +95,11 @@ class FsManagerTestBase : public YBTest {
   }
 
   void ValidateRootDataPaths(const string& data_path, const string& wal_path) {
-    ASSERT_TRUE(HasPrefixString(fs_manager()->GetConsensusMetadataDir(), data_path));
-    ASSERT_TRUE(HasPrefixString(fs_manager()->GetRaftGroupMetadataDir(), data_path));
-    vector<string> data_dirs = fs_manager()->GetDataRootDirs();
-    ASSERT_EQ(1, data_dirs.size());
-    ASSERT_TRUE(HasPrefixString(data_dirs[0], data_path));
+    ASSERT_TRUE(HasDirsPrefixString(fs_manager()->GetConsensusMetadataDirs(), data_path));
+    ASSERT_TRUE(HasDirsPrefixString(fs_manager()->GetRaftGroupMetadataDirs(), data_path));
+    ASSERT_TRUE(HasDirsPrefixString(fs_manager()->GetDataRootDirs(), data_path));
     if (!wal_path.empty()) {
-      vector<string> wal_dirs = fs_manager()->GetWalRootDirs();
-      ASSERT_EQ(1, wal_dirs.size());
-      ASSERT_TRUE(HasPrefixString(wal_dirs[0], wal_path));
+      ASSERT_TRUE(HasDirsPrefixString(fs_manager()->GetWalRootDirs(), wal_path));
     }
   }
 
@@ -131,7 +140,7 @@ class FsManagerTestBase : public YBTest {
 
   void EnsureDataDirNotPresent() {
     std::vector <std::string> data_dirs = fs_manager()->GetDataRootDirs();
-    for (auto data_dir : data_dirs) {
+    for (const auto& data_dir : data_dirs) {
       bool is_dir = false;
       ASSERT_NOK(env_->IsDirectory(data_dir, &is_dir));
       ASSERT_FALSE(is_dir);
@@ -190,11 +199,10 @@ TEST_F(FsManagerTestBase, TestDuplicatePaths) {
 }
 
 TEST_F(FsManagerTestBase, TestListTablets) {
-  vector<string> tablet_ids;
-  ASSERT_OK(fs_manager()->ListTabletIds(&tablet_ids));
+  auto tablet_ids = ASSERT_RESULT(fs_manager()->ListTabletIds());
   ASSERT_EQ(0, tablet_ids.size());
 
-  string path = fs_manager()->GetRaftGroupMetadataDir();
+  string path = fs_manager()->GetRaftGroupMetadataDirs()[0];
   std::unique_ptr<WritableFile> writer;
   ASSERT_OK(env_->NewWritableFile(
       JoinPathSegments(path, "foo.tmp"), &writer));
@@ -205,7 +213,7 @@ TEST_F(FsManagerTestBase, TestListTablets) {
   ASSERT_OK(env_->NewWritableFile(
       JoinPathSegments(path, "a_tablet_sort_of"), &writer));
 
-  ASSERT_OK(fs_manager()->ListTabletIds(&tablet_ids));
+  tablet_ids = ASSERT_RESULT(fs_manager()->ListTabletIds());
   ASSERT_EQ(1, tablet_ids.size()) << tablet_ids;
 }
 
@@ -290,55 +298,21 @@ TEST_F(FsManagerTestBase, TestLogDirAlsoDeleted) {
   ASSERT_FALSE(is_dir);
 }
 
-class FailedEmuEnv : public EnvWrapper {
- public:
-  FailedEmuEnv() : EnvWrapper(Env::Default()) { }
+TEST_F(FsManagerTestBase, MultiDriveWithoutMeta) {
+  auto paths = { GetTestPath("d1"), GetTestPath("d2") };
+  ReinitFsManager(paths, paths);
+  ASSERT_OK(fs_manager()->CreateInitialFileSystemLayout());
+  ASSERT_OK(env_->DeleteRecursively(fs_manager()->GetRaftGroupMetadataDirs()[0]));
 
-  Status NewRandomAccessFile(const std::string& f,
-                             std::unique_ptr<RandomAccessFile>* r) override {
-    if (IsFailed(f)) {
-      return STATUS(IOError, "Test Error");
-    }
-    return target()->NewRandomAccessFile(f, r);
-  }
-
-  Status NewTempWritableFile(const WritableFileOptions& o, const std::string& t,
-                             std::string* f, std::unique_ptr<WritableFile>* r) override {
-    if (IsFailed(t)) {
-      return STATUS(IOError, "Test Error");
-    }
-    return target()->NewTempWritableFile(o, t, f, r);
-  }
-
-  void AddFailedPath(const std::string& path) {
-    std::lock_guard<std::mutex> lock(data_mutex_);
-    failed_set_.emplace(path);
-  }
-
- private:
-  bool IsFailed(const std::string& filename) const {
-    std::lock_guard<std::mutex> lock(data_mutex_);
-    if (failed_set_.empty()) {
-      return false;
-    }
-    auto it = failed_set_.lower_bound(filename);
-    if ((it == failed_set_.end() || *it != filename) && it != failed_set_.begin()) {
-      --it;
-    }
-    return boost::starts_with(filename, *it);
-  }
-
-  std::set<std::string> failed_set_ GUARDED_BY(data_mutex_);
-  mutable std::mutex data_mutex_;
-};
+  // Deleted tablet-meta should be created
+  ASSERT_OK(fs_manager()->CheckAndOpenFileSystemRoots());
+  ASSERT_OK(fs_manager()->ListTabletIds());
+}
 
 class FsManagerTestDriveFault : public YBTest {
  public:
-  FsManagerTestDriveFault()
-      : metric_entity_(METRIC_ENTITY_server.Instantiate(&metric_registry_, "FsManagerTest")) {}
-
   void SetUp() override {
-    FailedEmuEnv* new_env = new FailedEmuEnv();
+    MultiDriveTestEnv* new_env = new MultiDriveTestEnv();
     env_.reset(new_env);
     new_env->AddFailedPath(GetTestPath(kFailedDrive));
     YBTest::SetUp();
@@ -364,7 +338,7 @@ class FsManagerTestDriveFault : public YBTest {
     opts.wal_paths = wal_paths;
     opts.data_paths = data_paths;
     opts.server_type = kServerType;
-    opts.metric_entity = metric_entity_;
+    opts.metric_registry = &metric_registry_;
     fs_manager_ = std::make_unique<FsManager>(env_.get(), opts);
   }
 
@@ -377,7 +351,6 @@ class FsManagerTestDriveFault : public YBTest {
  private:
   std::unique_ptr<FsManager> fs_manager_;
   MetricRegistry metric_registry_;
-  scoped_refptr<MetricEntity> metric_entity_;
 };
 
 TEST_F(FsManagerTestDriveFault, SingleDriveFault) {

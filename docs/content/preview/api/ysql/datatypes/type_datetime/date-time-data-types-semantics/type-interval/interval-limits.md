@@ -8,8 +8,7 @@ menu:
     identifier: interval-limits
     parent: type-interval
     weight: 20
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 {{< tip title="Download and install the date-time utilities code." >}}

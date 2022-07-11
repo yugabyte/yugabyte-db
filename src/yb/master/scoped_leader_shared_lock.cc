@@ -83,6 +83,7 @@ ScopedLeaderSharedLock::ScopedLeaderSharedLock(
       line_number_(line_number),
       function_name_(function_name) {
   int64_t catalog_leader_ready_term;
+  bool catalog_loaded;
   {
     // Check if the catalog manager is running.
     std::lock_guard<simple_spinlock> l(catalog_->state_lock_);
@@ -92,6 +93,7 @@ ScopedLeaderSharedLock::ScopedLeaderSharedLock(
       return;
     }
     catalog_leader_ready_term = catalog_->leader_ready_term_;
+    catalog_loaded = catalog_->is_catalog_loaded_;
   }
 
   string uuid = catalog_->master_->fs_manager()->uuid();
@@ -135,6 +137,10 @@ ScopedLeaderSharedLock::ScopedLeaderSharedLock(
         catalog_leader_ready_term, cstate.current_term());
     return;
   }
+  if (!catalog_loaded) {
+    leader_status_ = STATUS_SUBSTITUTE(ServiceUnavailable, "Catalog manager is not loaded");
+    return;
+  }
 }
 
 ScopedLeaderSharedLock::ScopedLeaderSharedLock(
@@ -156,8 +162,11 @@ void ScopedLeaderSharedLock::Unlock() {
       decltype(leader_shared_lock_) lock;
       lock.swap(leader_shared_lock_);
     }
-    auto finish = std::chrono::steady_clock::now();
+    if (IsSanitizer()) {
+      return;
+    }
 
+    auto finish = std::chrono::steady_clock::now();
     bool need_stack_trace = finish > start_ + 1ms * FLAGS_master_leader_lock_stack_trace_ms;
     bool need_warning =
         need_stack_trace || (finish > start_ + 1ms * FLAGS_master_log_lock_warning_ms);

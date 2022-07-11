@@ -106,8 +106,8 @@ class MetricsTest : public YBTest {
       gauge->set_value(values[i]);
       ASSERT_OK(gauge->WriteForPrometheus(&writer, attrs[i], MetricPrometheusOptions()));
     }
-    ASSERT_EQ(writer.per_table_values_[kTableId][name], expected_aggregation);
-    ASSERT_EQ(writer.per_table_attributes_[kTableId], expected_attrs);
+    ASSERT_EQ(writer.tables_[kTableId].values[name], expected_aggregation);
+    ASSERT_EQ(writer.tables_[kTableId].attributes, expected_attrs);
   }
 
   std::string dumpPrometheusWriterOutput(const PrometheusWriter& w) { return w.output_->str(); }

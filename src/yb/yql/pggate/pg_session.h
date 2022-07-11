@@ -16,13 +16,15 @@
 
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include <boost/optional.hpp>
-#include <boost/unordered_set.hpp>
 
 #include "yb/client/client_fwd.h"
+#include "yb/client/tablet_server.h"
 
 #include "yb/common/pg_types.h"
 #include "yb/common/transaction.h"
@@ -55,18 +57,56 @@ YB_STRONGLY_TYPED_BOOL(UseCatalogSession);
 class PgTxnManager;
 class PgSession;
 
+struct LightweightTableYbctid {
+  LightweightTableYbctid(PgOid table_id_, const std::string_view& ybctid_)
+      : table_id(table_id_), ybctid(ybctid_) {}
+  LightweightTableYbctid(PgOid table_id_, const Slice& ybctid_)
+      : LightweightTableYbctid(table_id_, static_cast<std::string_view>(ybctid_)) {}
+
+  PgOid table_id;
+  std::string_view ybctid;
+};
+
 struct TableYbctid {
   TableYbctid(PgOid table_id_, std::string ybctid_)
       : table_id(table_id_), ybctid(std::move(ybctid_)) {}
+
+  explicit operator LightweightTableYbctid() const {
+    return LightweightTableYbctid(table_id, static_cast<std::string_view>(ybctid));
+  }
 
   PgOid table_id;
   std::string ybctid;
 };
 
-struct PgForeignKeyReference {
-  PgForeignKeyReference(PgOid table_id, std::string ybctid);
-  PgOid table_id;
-  std::string ybctid;
+struct TableYbctidComparator {
+  using is_transparent = void;
+
+  bool operator()(const LightweightTableYbctid& l, const LightweightTableYbctid& r) const {
+    return l.table_id == r.table_id && l.ybctid == r.ybctid;
+  }
+
+  template<class T1, class T2>
+  bool operator()(const T1& l, const T2& r) const {
+    return (*this)(AsLightweightTableYbctid(l), AsLightweightTableYbctid(r));
+  }
+
+ private:
+  static const LightweightTableYbctid& AsLightweightTableYbctid(
+      const LightweightTableYbctid& value) {
+    return value;
+  }
+
+  static LightweightTableYbctid AsLightweightTableYbctid(const TableYbctid& value) {
+    return LightweightTableYbctid(value);
+  }
+};
+
+struct TableYbctidHasher {
+  using is_transparent = void;
+
+  size_t operator()(const LightweightTableYbctid& value) const;
+  size_t operator()(const TableYbctid& value) const;
 };
 
 // This class is not thread-safe as it is mostly used by a single-threaded PostgreSQL backend
@@ -93,23 +133,23 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   // Operations on Session.
   //------------------------------------------------------------------------------------------------
 
-  CHECKED_STATUS ConnectDatabase(const std::string& database_name);
+  Status ConnectDatabase(const std::string& database_name);
 
-  CHECKED_STATUS IsDatabaseColocated(const PgOid database_oid, bool *colocated);
+  Status IsDatabaseColocated(const PgOid database_oid, bool *colocated);
 
   //------------------------------------------------------------------------------------------------
   // Operations on Database Objects.
   //------------------------------------------------------------------------------------------------
 
   // API for database operations.
-  CHECKED_STATUS DropDatabase(const std::string& database_name, PgOid database_oid);
+  Status DropDatabase(const std::string& database_name, PgOid database_oid);
 
-  CHECKED_STATUS GetCatalogMasterVersion(uint64_t *version);
+  Status GetCatalogMasterVersion(uint64_t *version);
 
   // API for sequences data operations.
-  CHECKED_STATUS CreateSequencesDataTable();
+  Status CreateSequencesDataTable();
 
-  CHECKED_STATUS InsertSequenceTuple(int64_t db_oid,
+  Status InsertSequenceTuple(int64_t db_oid,
                                      int64_t seq_oid,
                                      uint64_t ysql_catalog_version,
                                      int64_t last_val,
@@ -127,25 +167,25 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
                                                      int64_t seq_oid,
                                                      uint64_t ysql_catalog_version);
 
-  CHECKED_STATUS DeleteSequenceTuple(int64_t db_oid, int64_t seq_oid);
+  Status DeleteSequenceTuple(int64_t db_oid, int64_t seq_oid);
 
-  CHECKED_STATUS DeleteDBSequences(int64_t db_oid);
+  Status DeleteDBSequences(int64_t db_oid);
 
   //------------------------------------------------------------------------------------------------
   // Operations on Tablegroup.
   //------------------------------------------------------------------------------------------------
 
-  CHECKED_STATUS DropTablegroup(const PgOid database_oid,
+  Status DropTablegroup(const PgOid database_oid,
                                 PgOid tablegroup_oid);
 
   // API for schema operations.
   // TODO(neil) Schema should be a sub-database that have some specialized property.
-  CHECKED_STATUS CreateSchema(const std::string& schema_name, bool if_not_exist);
-  CHECKED_STATUS DropSchema(const std::string& schema_name, bool if_exist);
+  Status CreateSchema(const std::string& schema_name, bool if_not_exist);
+  Status DropSchema(const std::string& schema_name, bool if_exist);
 
   // API for table operations.
-  CHECKED_STATUS DropTable(const PgObjectId& table_id);
-  CHECKED_STATUS DropIndex(
+  Status DropTable(const PgObjectId& table_id);
+  Status DropIndex(
       const PgObjectId& index_id,
       client::YBTableName* indexed_table_name = nullptr);
   Result<PgTableDescPtr> LoadTable(const PgObjectId& table_id);
@@ -153,15 +193,15 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
       const PgObjectId& table_id, InvalidateOnPgClient invalidate_on_pg_client);
 
   // Start operation buffering. Buffering must not be in progress.
-  CHECKED_STATUS StartOperationsBuffering();
+  Status StartOperationsBuffering();
   // Flush all pending buffered operation and stop further buffering.
   // Buffering must be in progress.
-  CHECKED_STATUS StopOperationsBuffering();
+  Status StopOperationsBuffering();
   // Drop all pending buffered operations and stop further buffering. Buffering may be in any state.
   void ResetOperationsBuffering();
 
   // Flush all pending buffered operations. Buffering mode remain unchanged.
-  CHECKED_STATUS FlushBufferedOperations();
+  Status FlushBufferedOperations();
   // Drop all pending buffered operations. Buffering mode remain unchanged.
   void DropBufferedOperations();
 
@@ -233,6 +273,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   void InvalidateForeignKeyReferenceCache() {
     fk_reference_cache_.clear();
     fk_reference_intent_.clear();
+    fk_intent_region_local_tables_.clear();
   }
 
   // Check if initdb has already been run before. Needed to make initdb idempotent.
@@ -245,23 +286,24 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   // the shared memory has not been initialized (e.g. in initdb).
   Result<uint64_t> GetSharedAuthKey();
 
-  using YbctidReader = LWFunction<Status(std::vector<TableYbctid>*)>;
+  using YbctidReader =
+      LWFunction<Status(std::vector<TableYbctid>*, const std::unordered_set<PgOid>&)>;
   Result<bool> ForeignKeyReferenceExists(
-      PgOid table_id, const Slice& ybctid, const YbctidReader& reader);
-  void AddForeignKeyReferenceIntent(PgOid table_id, const Slice& ybctid);
-  void AddForeignKeyReference(PgOid table_id, const Slice& ybctid);
+      const LightweightTableYbctid& key, const YbctidReader& reader);
+  void AddForeignKeyReferenceIntent(const LightweightTableYbctid& key, bool is_region_local);
+  void AddForeignKeyReference(const LightweightTableYbctid& key);
 
   // Deletes the row referenced by ybctid from FK reference cache.
-  void DeleteForeignKeyReference(PgOid table_id, const Slice& ybctid);
+  void DeleteForeignKeyReference(const LightweightTableYbctid& key);
 
-  CHECKED_STATUS PatchStatus(const Status& status, const PgObjectIds& relations);
+  Status PatchStatus(const Status& status, const PgObjectIds& relations);
 
   Result<int> TabletServerCount(bool primary_only = false);
 
   // Sets the specified timeout in the rpc service.
   void SetTimeout(int timeout_ms);
 
-  CHECKED_STATUS ValidatePlacement(const string& placement_info);
+  Status ValidatePlacement(const string& placement_info);
 
   void TrySetCatalogReadPoint(const ReadHybridTime& read_ht);
 
@@ -271,11 +313,13 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   bool ShouldUseFollowerReads() const;
 
-  CHECKED_STATUS SetActiveSubTransaction(SubTransactionId id);
-  CHECKED_STATUS RollbackSubTransaction(SubTransactionId id);
+  Status SetActiveSubTransaction(SubTransactionId id);
+  Status RollbackToSubTransaction(SubTransactionId id);
 
   void ResetHasWriteOperationsInDdlMode();
   bool HasWriteOperationsInDdlMode() const;
+
+  Result<bool> CheckIfPitrActive();
 
  private:
   Result<PerformFuture> FlushOperations(
@@ -283,8 +327,24 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   class RunHelper;
 
-  Result<PerformFuture> Perform(
-      BufferableOperations ops, UseCatalogSession use_catalog_session);
+  Result<PerformFuture> Perform(BufferableOperations ops,
+                                UseCatalogSession use_catalog_session,
+                                bool ensure_read_time_set_for_current_txn_serial_no = false);
+
+  void ProcessPerformOnTxnSerialNo(uint64_t txn_serial_no,
+                                   bool force_set_read_time_for_current_txn_serial_no,
+                                   tserver::PgPerformOptionsPB* options);
+
+  struct TxnSerialNoPerformInfo {
+    TxnSerialNoPerformInfo() : TxnSerialNoPerformInfo(0, ReadHybridTime()) {}
+
+    TxnSerialNoPerformInfo(uint64_t txn_serial_no_, const ReadHybridTime& read_time_)
+        : txn_serial_no(txn_serial_no_), read_time(read_time_) {
+    }
+
+    const uint64_t txn_serial_no;
+    const ReadHybridTime read_time;
+  };
 
   PgClient& pg_client_;
 
@@ -305,8 +365,10 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   CoarseTimePoint invalidate_table_cache_time_;
   std::unordered_map<PgObjectId, PgTableDescPtr, PgObjectIdHash> table_cache_;
-  boost::unordered_set<PgForeignKeyReference> fk_reference_cache_;
-  boost::unordered_set<PgForeignKeyReference> fk_reference_intent_;
+  using TableYbctidSet = std::unordered_set<TableYbctid, TableYbctidHasher, TableYbctidComparator>;
+  TableYbctidSet fk_reference_cache_;
+  TableYbctidSet fk_reference_intent_;
+  std::unordered_set<PgOid> fk_intent_region_local_tables_;
 
   // Should write operations be buffered?
   bool buffering_enabled_ = false;
@@ -316,6 +378,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   const tserver::TServerSharedObject* const tserver_shared_object_;
   const YBCPgCallbacks& pg_callbacks_;
   bool has_write_ops_in_ddl_mode_ = false;
+  std::variant<TxnSerialNoPerformInfo> last_perform_on_txn_serial_no_;
 };
 
 }  // namespace pggate

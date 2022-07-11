@@ -9,7 +9,7 @@ import com.yugabyte.yw.common.alerts.SmtpData;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.AlertingData;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.CustomerConfig;
+import com.yugabyte.yw.models.configs.CustomerConfig;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -70,7 +70,7 @@ public class EmailHelper {
       SmtpData smtpData,
       Map<String, String> content)
       throws MessagingException {
-    LOG.info("Sending email: '{}' to '{}'", subject, destinations);
+    LOG.info("Sending email: '{}'", subject);
 
     Session session =
         Session.getInstance(

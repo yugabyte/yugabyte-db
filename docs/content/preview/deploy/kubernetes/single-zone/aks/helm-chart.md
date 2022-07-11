@@ -13,9 +13,7 @@ aliases:
   - /preview/deploy/kubernetes/aks/
   - /preview/deploy/kubernetes/aks/helm-chart/
   - /preview/deploy/kubernetes/single-zone/aks/
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 
@@ -247,8 +245,8 @@ $ helm search repo yugabytedb/yugabyte --version {{<yb-version version="preview"
 ```
 
 ```output
-NAME                    CHART VERSION   APP VERSION     DESCRIPTION
-yugabytedb/yugabyte     2.13.0           2.13.0.1-b2    YugabyteDB is the high-performance distributed ...
+NAME                 CHART VERSION  APP VERSION   DESCRIPTION
+yugabytedb/yugabyte  {{<yb-version version="preview" format="short">}}          {{<yb-version version="preview" format="build">}}  YugabyteDB is the high-performance distributed ...
 ```
 
 #### Create the namespace
@@ -271,6 +269,7 @@ Next, install YugabyteDB in the `yb-demo` namespace by running the following com
 
 ```sh
 $ helm install yb-demo -n yb-demo yugabytedb/yugabyte \
+ --version {{<yb-version version="preview" format="short">}} \
  --set storage.master.count=1 \
  --set storage.tserver.count=1 \
  --set storage.master.storageClass=default \

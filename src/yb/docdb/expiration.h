@@ -35,6 +35,10 @@ struct Expiration {
     ttl(new_ttl),
     write_ht(new_write_ht) {}
 
+  explicit operator bool() const {
+    return ttl != ValueControlFields::kMaxTtl;
+  }
+
   MonoDelta ttl;
   HybridTime write_ht = HybridTime::kMin;
 

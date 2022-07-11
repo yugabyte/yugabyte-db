@@ -16,6 +16,7 @@ import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.SystemdUpgradeParams;
+import com.yugabyte.yw.forms.ThirdpartySoftwareUpgradeParams;
 import com.yugabyte.yw.forms.TlsToggleParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -31,6 +32,7 @@ import java.util.Map;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import play.mvc.Http.Status;
+import com.yugabyte.yw.common.Util;
 
 @Slf4j
 public class UpgradeUniverseHandler {
@@ -68,6 +70,41 @@ public class UpgradeUniverseHandler {
   public UUID upgradeSoftware(
       SoftwareUpgradeParams requestParams, Customer customer, Universe universe) {
     UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+
+    // Defaults to false, but we need to extract the variable in case the user wishes to perform
+    // a downgrade with a runtime configuration override. We perform this check before verifying the
+    // general
+    // SoftwareUpgradeParams to avoid introducing an API parameter.
+    boolean isUniverseDowngradeAllowed =
+        runtimeConfigFactory.forUniverse(universe).getBoolean("yb.upgrade.allow_downgrades");
+
+    String currentVersion = userIntent.ybSoftwareVersion;
+
+    String desiredUpgradeVersion = requestParams.ybSoftwareVersion;
+
+    if (currentVersion != null) {
+
+      if (Util.compareYbVersions(currentVersion, desiredUpgradeVersion, true) > 0) {
+
+        if (!isUniverseDowngradeAllowed) {
+
+          String msg =
+              String.format(
+                  "DB version downgrades are not recommended,"
+                      + " %s"
+                      + " would downgrade from"
+                      + " %s"
+                      + ". Aborting."
+                      + " To override this check and force a downgrade, please set the runtime"
+                      + " config yb.upgrade.allow_downgrades"
+                      + " to true"
+                      + " (using the script set-runtime-config.sh if necessary).",
+                  desiredUpgradeVersion, currentVersion);
+
+          throw new PlatformServiceException(Status.BAD_REQUEST, msg);
+        }
+      }
+    }
 
     // Verify request params
     requestParams.verifyParams(universe);
@@ -174,7 +211,39 @@ public class UpgradeUniverseHandler {
         universe);
   }
 
+  void mergeResizeNodeParamsWithIntent(ResizeNodeParams requestParams, Universe universe) {
+    UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+    requestParams.universeUUID = universe.universeUUID;
+    requestParams.expectedUniverseVersion = universe.version;
+    requestParams.rootCA = universeDetails.rootCA;
+    requestParams.clientRootCA = universeDetails.clientRootCA;
+    // Merging existent intent with that of from request.
+    for (UniverseDefinitionTaskParams.Cluster requestCluster : requestParams.clusters) {
+      UniverseDefinitionTaskParams.Cluster cluster =
+          universeDetails.getClusterByUuid(requestCluster.uuid);
+      UserIntent requestIntent = requestCluster.userIntent;
+      requestCluster.userIntent = cluster.userIntent;
+      if (requestIntent.instanceType != null) {
+        requestCluster.userIntent.instanceType = requestIntent.instanceType;
+      }
+      if (requestIntent.deviceInfo != null && requestIntent.deviceInfo.volumeSize != null) {
+        requestCluster.userIntent.deviceInfo.volumeSize = requestIntent.deviceInfo.volumeSize;
+      }
+    }
+  }
+
   public UUID resizeNode(ResizeNodeParams requestParams, Customer customer, Universe universe) {
+    // Verify request params
+    requestParams.verifyParams(universe);
+    // Update request params with additional metadata for upgrade task
+    mergeResizeNodeParamsWithIntent(requestParams, universe);
+
+    return submitUpgradeTask(
+        TaskType.ResizeNode, CustomerTask.TaskType.ResizeNode, requestParams, customer, universe);
+  }
+
+  public UUID thirdpartySoftwareUpgrade(
+      ThirdpartySoftwareUpgradeParams requestParams, Customer customer, Universe universe) {
     // Verify request params
     requestParams.verifyParams(universe);
     // Update request params with additional metadata for upgrade task
@@ -182,7 +251,11 @@ public class UpgradeUniverseHandler {
     requestParams.expectedUniverseVersion = universe.version;
 
     return submitUpgradeTask(
-        TaskType.ResizeNode, CustomerTask.TaskType.ResizeNode, requestParams, customer, universe);
+        TaskType.ThirdpartySoftwareUpgrade,
+        CustomerTask.TaskType.ThirdpartySoftwareUpgrade,
+        requestParams,
+        customer,
+        universe);
   }
 
   // Enable/Disable TLS on Cluster
@@ -308,6 +381,20 @@ public class UpgradeUniverseHandler {
     return submitUpgradeTask(
         TaskType.SystemdUpgrade,
         CustomerTask.TaskType.SystemdUpgrade,
+        requestParams,
+        customer,
+        universe);
+  }
+
+  public UUID rebootUniverse(
+      UpgradeTaskParams requestParams, Customer customer, Universe universe) {
+    requestParams.verifyParams(universe);
+    requestParams.universeUUID = universe.universeUUID;
+    requestParams.expectedUniverseVersion = universe.version;
+
+    return submitUpgradeTask(
+        TaskType.RebootUniverse,
+        CustomerTask.TaskType.RebootUniverse,
         requestParams,
         customer,
         universe);

@@ -239,7 +239,7 @@ Status ConvertI32ToDouble(PTypePtr source, RTypePtr target) {
 
 // Conversion from int64 to others.
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertI64ToI8(PTypePtr source, RTypePtr target) {
+Status ConvertI64ToI8(PTypePtr source, RTypePtr target) {
   // TODO(neil) Overflow? When we truely support expressions, these loose-ends must be fixed.
   if (IsNull(*source)) {
     SetNull(&*target);
@@ -250,7 +250,7 @@ CHECKED_STATUS ConvertI64ToI8(PTypePtr source, RTypePtr target) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertI64ToI16(PTypePtr source, RTypePtr target) {
+Status ConvertI64ToI16(PTypePtr source, RTypePtr target) {
   // TODO(neil) Overflow? When we truely support expressions, these loose-ends must be fixed.
   if (IsNull(*source)) {
     SetNull(&*target);
@@ -689,7 +689,7 @@ Status ConvertToMinTimeuuid(PTypePtr source, RTypePtr target) {
 // The following functions are for conversions from VarInt to the other numeric types.
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertVarintToI8(PTypePtr source, RTypePtr target) {
+Status ConvertVarintToI8(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
   } else {
@@ -703,7 +703,7 @@ CHECKED_STATUS ConvertVarintToI8(PTypePtr source, RTypePtr target) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertVarintToI16(PTypePtr source, RTypePtr target) {
+Status ConvertVarintToI16(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
   } else {
@@ -717,7 +717,7 @@ CHECKED_STATUS ConvertVarintToI16(PTypePtr source, RTypePtr target) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertVarintToI32(PTypePtr source, RTypePtr target) {
+Status ConvertVarintToI32(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
   } else {
@@ -731,7 +731,7 @@ CHECKED_STATUS ConvertVarintToI32(PTypePtr source, RTypePtr target) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertVarintToI64(PTypePtr source, RTypePtr target) {
+Status ConvertVarintToI64(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
   } else {
@@ -742,7 +742,7 @@ CHECKED_STATUS ConvertVarintToI64(PTypePtr source, RTypePtr target) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertVarintToFloat(PTypePtr source, RTypePtr target) {
+Status ConvertVarintToFloat(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
   } else {
@@ -754,7 +754,7 @@ CHECKED_STATUS ConvertVarintToFloat(PTypePtr source, RTypePtr target) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertVarintToDouble(PTypePtr source, RTypePtr target) {
+Status ConvertVarintToDouble(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
   } else {

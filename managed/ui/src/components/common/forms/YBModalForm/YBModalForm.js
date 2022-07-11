@@ -6,6 +6,7 @@ import { Modal, Button } from 'react-bootstrap';
 import { YBButton } from '../fields';
 import { Formik } from 'formik';
 //Icons
+import { isFunction } from 'lodash';
 import BackIcon from './images/back.svg';
 
 export default class YBModalForm extends Component {
@@ -27,7 +28,8 @@ export default class YBModalForm extends Component {
       headerClassName,
       normalizeFooter,
       pullRightFooter,
-      showBackButton
+      showBackButton,
+      backBtnCallbackFn
     } = this.props;
 
     let footerButtonClass = '';
@@ -63,7 +65,9 @@ export default class YBModalForm extends Component {
                 <Modal.Title>
                   {showBackButton && (
                     <Button className="modal-back-btn">
-                      <img alt="Back" src={BackIcon} className="cursor-pointer" onClick={onHide} />
+                      <img alt="Back" src={BackIcon} className="cursor-pointer" onClick={()=>{
+                        isFunction(backBtnCallbackFn) ? backBtnCallbackFn() : onHide()
+                      }} />
                     </Button>
                   )}
                   {title}

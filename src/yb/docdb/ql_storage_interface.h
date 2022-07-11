@@ -38,7 +38,7 @@ class YQLStorageIf {
 
   //------------------------------------------------------------------------------------------------
   // CQL Support.
-  virtual CHECKED_STATUS GetIterator(
+  virtual Status GetIterator(
       const QLReadRequestPB& request,
       const Schema& projection,
       std::reference_wrapper<const DocReadContext> doc_read_context,
@@ -48,7 +48,7 @@ class YQLStorageIf {
       const QLScanSpec& spec,
       std::unique_ptr<YQLRowwiseIteratorIf>* iter) const = 0;
 
-  virtual CHECKED_STATUS BuildYQLScanSpec(
+  virtual Status BuildYQLScanSpec(
       const QLReadRequestPB& request,
       const ReadHybridTime& read_time,
       const Schema& schema,
@@ -69,7 +69,7 @@ class YQLStorageIf {
   // - Create and init can be used to create iterator once and initialize with different ybctid for
   //   different execution.
   // - Doc_key needs to be changed to allow reusing iterator.
-  virtual CHECKED_STATUS CreateIterator(
+  virtual Status CreateIterator(
       const Schema& projection,
       std::reference_wrapper<const DocReadContext> doc_read_context,
       const TransactionOperationContext& txn_op_context,
@@ -77,13 +77,13 @@ class YQLStorageIf {
       const ReadHybridTime& read_time,
       std::unique_ptr<YQLRowwiseIteratorIf>* iter) const = 0;
 
-  virtual CHECKED_STATUS InitIterator(YQLRowwiseIteratorIf* doc_iter,
+  virtual Status InitIterator(YQLRowwiseIteratorIf* doc_iter,
                                       const PgsqlReadRequestPB& request,
                                       const Schema& schema,
                                       const QLValuePB& ybctid) const = 0;
 
   // Create iterator for querying by partition and range key.
-  virtual CHECKED_STATUS GetIterator(
+  virtual Status GetIterator(
       const PgsqlReadRequestPB& request,
       const Schema& projection,
       std::reference_wrapper<const DocReadContext> doc_read_context,
@@ -94,7 +94,7 @@ class YQLStorageIf {
       std::unique_ptr<YQLRowwiseIteratorIf>* iter) const = 0;
 
   // Create iterator for querying by ybctid.
-  virtual CHECKED_STATUS GetIterator(
+  virtual Status GetIterator(
       uint64 stmt_id,
       const Schema& projection,
       std::reference_wrapper<const DocReadContext> doc_read_context,

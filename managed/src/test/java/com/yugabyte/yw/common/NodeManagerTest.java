@@ -55,6 +55,7 @@ import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.forms.CertsRotateParams.CertRotationType;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
@@ -68,6 +69,7 @@ import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
@@ -132,6 +134,7 @@ public class NodeManagerTest extends FakeDBApplication {
 
   private final String DOCKER_NETWORK = "yugaware_bridge";
   private final String MASTER_ADDRESSES = "10.0.0.1:7100,10.0.0.2:7100,10.0.0.3:7100";
+  private final String[] NODE_IPS = {"10.0.0.1", "10.0.0.2", "10.0.0.3"};
   private final String fakeMountPath1 = "/fake/path/d0";
   private final String fakeMountPath2 = "/fake/path/d1";
   private final String fakeMountPaths = fakeMountPath1 + "," + fakeMountPath2;
@@ -499,7 +502,6 @@ public class NodeManagerTest extends FakeDBApplication {
         .thenReturn(ApiUtils.DEFAULT_ACCESS_KEY_CODE);
     when(runtimeConfigFactory.forProvider(any())).thenReturn(mockConfig);
     when(runtimeConfigFactory.forUniverse(any())).thenReturn(app.config());
-    when(mockConfigHelper.getGravitonInstancePrefixList()).thenReturn(ImmutableList.of("m6g."));
     createTempFile("node_manager_test_ca.crt", "test-cert");
   }
 
@@ -671,14 +673,14 @@ public class NodeManagerTest extends FakeDBApplication {
                 .forUniverse(Universe.getOrBadRequest(configureParams.universeUUID))
                 .getInt(NodeManager.POSTGRES_MAX_MEM_MB)
             > 0) {
-      gflags.put("postmaster_cgroup", NodeManager.YSQL_CGROUP_PATH);
+      gflags.put("postmaster_cgroup", GFlagsUtil.YSQL_CGROUP_PATH);
     }
     return gflags;
   }
 
   private List<String> nodeCommand(
-      NodeManager.NodeCommandType type, NodeTaskParams params, TestData testData) {
-    return nodeCommand(type, params, testData, new UserIntent());
+      NodeManager.NodeCommandType type, NodeTaskParams params, TestData testData, String nodeIp) {
+    return nodeCommand(type, params, testData, new UserIntent(), nodeIp);
   }
 
   private void addInstanceTags(
@@ -711,7 +713,8 @@ public class NodeManagerTest extends FakeDBApplication {
       NodeManager.NodeCommandType type,
       NodeTaskParams params,
       TestData testData,
-      UserIntent userIntent) {
+      UserIntent userIntent,
+      String nodeIp) {
     Common.CloudType cloud = testData.cloudType;
     List<String> expectedCommand = new ArrayList<>();
     expectedCommand.add("instance");
@@ -814,6 +817,20 @@ public class NodeManagerTest extends FakeDBApplication {
           expectedCommand.add("--package");
           expectedCommand.add("/yb/release.tar.gz");
         }
+        String ybcPackage = null;
+        Map<String, String> ybcFlags = new HashMap<>();
+
+        boolean canConfigureYbc =
+            CommonUtils.canConfigureYbc(Universe.getOrBadRequest(params.universeUUID));
+        if (canConfigureYbc) {
+          ybcPackage = userIntent.ybcPackagePath;
+          ybcFlags.put("v", "1");
+          ybcFlags.put("server_address", nodeIp);
+          ybcFlags.put("server_port", "18018");
+          ybcFlags.put("yb_tserver_address", nodeIp);
+          ybcFlags.put("log_dir", "/home/yugabyte/controller/logs");
+          ybcFlags.put("yb_master_address", nodeIp);
+        }
 
         // boolean useHostname = !NodeManager.isIpAddress(configureParams.nodeName);
         boolean useHostname = false;
@@ -837,6 +854,11 @@ public class NodeManagerTest extends FakeDBApplication {
             case None:
               break;
           }
+        }
+
+        if (configureParams.ybSoftwareVersion != null) {
+          expectedCommand.add("--num_releases_to_keep");
+          expectedCommand.add("3");
         }
 
         Map<String, String> gflags = new HashMap<>(configureParams.gflags);
@@ -873,6 +895,7 @@ public class NodeManagerTest extends FakeDBApplication {
                 || (configureParams.rootAndClientRootCASame
                     && configureParams.enableClientToNodeEncrypt)) {
               gflags.put("certs_dir", certsDir);
+              ybcFlags.put("certs_dir_name", certsDir);
             }
             if (!configureParams.rootAndClientRootCASame
                 && configureParams.enableClientToNodeEncrypt) {
@@ -888,6 +911,7 @@ public class NodeManagerTest extends FakeDBApplication {
               gflags.put("allow_insecure_connections", "true");
               if (EncryptionInTransitUtil.isRootCARequired(configureParams)) {
                 gflags.put("certs_dir", certsDir);
+                ybcFlags.put("certs_dir_name", certsDir);
               }
               if (EncryptionInTransitUtil.isClientRootCARequired(configureParams)) {
                 gflags.put("certs_for_client_dir", certsForClientDir);
@@ -900,6 +924,7 @@ public class NodeManagerTest extends FakeDBApplication {
               gflags.put("allow_insecure_connections", allowInsecureString);
               if (EncryptionInTransitUtil.isRootCARequired(configureParams)) {
                 gflags.put("certs_dir", certsDir);
+                ybcFlags.put("certs_dir_name", certsDir);
               }
               if (EncryptionInTransitUtil.isClientRootCARequired(configureParams)) {
                 gflags.put("certs_for_client_dir", certsForClientDir);
@@ -916,6 +941,7 @@ public class NodeManagerTest extends FakeDBApplication {
               gflags.put("allow_insecure_connections", allowInsecureString);
               if (EncryptionInTransitUtil.isRootCARequired(configureParams)) {
                 gflags.put("certs_dir", certsDir);
+                ybcFlags.put("certs_dir_name", certsDir);
               }
               if (EncryptionInTransitUtil.isClientRootCARequired(configureParams)) {
                 gflags.put("certs_for_client_dir", certsForClientDir);
@@ -977,6 +1003,7 @@ public class NodeManagerTest extends FakeDBApplication {
                 Map<String, String> gflagMap = new HashMap<>();
                 if (EncryptionInTransitUtil.isRootCARequired(configureParams)) {
                   gflagMap.put("certs_dir", certsNodeDir);
+                  ybcFlags.put("certs_dir_name", certsNodeDir);
                 }
                 if (EncryptionInTransitUtil.isClientRootCARequired(configureParams)) {
                   gflagMap.put("certs_for_client_dir", certsForClientDir);
@@ -995,11 +1022,18 @@ public class NodeManagerTest extends FakeDBApplication {
             && configureParams.type != Certs) {
           expectedCommand.add("--gflags");
           expectedCommand.add(Json.stringify(Json.toJson(gflags)));
+          if (canConfigureYbc) {
+            expectedCommand.add("--ybc_flags");
+            expectedCommand.add(Json.stringify(Json.toJson(ybcFlags)));
+          }
 
           expectedCommand.add("--tags");
           expectedCommand.add("override_gflags");
         }
 
+        if (canConfigureYbc) {
+          expectedCommand.add("--configure_ybc");
+        }
         expectedCommand.add("--extra_gflags");
         expectedCommand.add(
             Json.stringify(
@@ -1035,6 +1069,8 @@ public class NodeManagerTest extends FakeDBApplication {
         ChangeInstanceType.Params citTaskParams = (ChangeInstanceType.Params) params;
         expectedCommand.add("--instance_type");
         expectedCommand.add(citTaskParams.instanceType);
+        expectedCommand.add("--pg_max_mem_mb");
+        expectedCommand.add("0");
         break;
       case Transfer_XCluster_Certs:
         TransferXClusterCerts.Params txccTaskParams = (TransferXClusterCerts.Params) params;
@@ -1045,7 +1081,7 @@ public class NodeManagerTest extends FakeDBApplication {
           expectedCommand.add(txccTaskParams.rootCertPath.toString());
         }
         expectedCommand.add("--replication_config_name");
-        expectedCommand.add(txccTaskParams.replicationConfigName);
+        expectedCommand.add(txccTaskParams.replicationGroupName);
         if (txccTaskParams.producerCertsDirOnTarget != null) {
           expectedCommand.add("--producer_certs_dir");
           expectedCommand.add(txccTaskParams.producerCertsDirOnTarget.toString());
@@ -1118,6 +1154,7 @@ public class NodeManagerTest extends FakeDBApplication {
 
   @Test
   public void testChangeInstanceTypeCommand() {
+    int idx = 0;
     for (TestData t : testData) {
       ChangeInstanceType.Params params = new ChangeInstanceType.Params();
       buildValidParams(
@@ -1128,10 +1165,11 @@ public class NodeManagerTest extends FakeDBApplication {
       List<String> expectedCommand = t.baseCommand;
       params.instanceType = t.NewInstanceType;
       expectedCommand.addAll(
-          nodeCommand(NodeManager.NodeCommandType.Change_Instance_Type, params, t));
+          nodeCommand(NodeManager.NodeCommandType.Change_Instance_Type, params, t, NODE_IPS[idx]));
 
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Change_Instance_Type, params);
       verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
+      idx++;
     }
   }
 
@@ -1139,6 +1177,7 @@ public class NodeManagerTest extends FakeDBApplication {
   @Parameters({"true, false", "false, false", "true, true", "false, true"})
   @TestCaseName("{method}(isCopy:{0},isCustomProducerCertsDir:{1}) [{index}]")
   public void testTransferXClusterCertsCommand(boolean isCopy, boolean isCustomProducerCertsDir) {
+    int idx = 0;
     for (TestData t : testData) {
       TransferXClusterCerts.Params params = new TransferXClusterCerts.Params();
       buildValidParams(
@@ -1153,22 +1192,24 @@ public class NodeManagerTest extends FakeDBApplication {
       } else {
         params.action = TransferXClusterCerts.Params.Action.REMOVE;
       }
-      params.replicationConfigName = "universe-uuid_MyRepl1";
+      params.replicationGroupName = "universe-uuid_MyRepl1";
       if (isCustomProducerCertsDir) {
         params.producerCertsDirOnTarget = new File("custom-producer-dir");
       }
       expectedCommand.addAll(
-          nodeCommand(NodeManager.NodeCommandType.Transfer_XCluster_Certs, params, t));
+          nodeCommand(
+              NodeManager.NodeCommandType.Transfer_XCluster_Certs, params, t, NODE_IPS[idx]));
 
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Transfer_XCluster_Certs, params);
       verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
+      idx++;
     }
   }
 
   private void runAndVerifyNodeCommand(
-      TestData t, NodeTaskParams params, NodeManager.NodeCommandType cmdType) {
+      TestData t, NodeTaskParams params, NodeManager.NodeCommandType cmdType, String nodeIp) {
     List<String> expectedCommand = t.baseCommand;
-    expectedCommand.addAll(nodeCommand(cmdType, params, t));
+    expectedCommand.addAll(nodeCommand(cmdType, params, t, nodeIp));
 
     nodeManager.nodeCommand(cmdType, params);
     verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
@@ -1176,6 +1217,7 @@ public class NodeManagerTest extends FakeDBApplication {
 
   @Test
   public void testCreateRootVolumesCommand() {
+    int idx = 0;
     for (TestData t : testData) {
       CreateRootVolumes.Params params = new CreateRootVolumes.Params();
       buildValidParams(
@@ -1187,12 +1229,15 @@ public class NodeManagerTest extends FakeDBApplication {
       params.subnetId = t.zone.subnet;
       params.numVolumes = 1;
 
-      runAndVerifyNodeCommand(t, params, NodeManager.NodeCommandType.Create_Root_Volumes);
+      runAndVerifyNodeCommand(
+          t, params, NodeManager.NodeCommandType.Create_Root_Volumes, NODE_IPS[idx]);
+      idx++;
     }
   }
 
   @Test
   public void testReplaceRootVolumeCommand() {
+    int idx = 0;
     for (TestData t : testData) {
       ReplaceRootVolume.Params params = new ReplaceRootVolume.Params();
       buildValidParams(
@@ -1203,12 +1248,15 @@ public class NodeManagerTest extends FakeDBApplication {
       addValidDeviceInfo(t, params);
       params.replacementDisk = t.replacementVolume;
 
-      runAndVerifyNodeCommand(t, params, NodeManager.NodeCommandType.Replace_Root_Volume);
+      runAndVerifyNodeCommand(
+          t, params, NodeManager.NodeCommandType.Replace_Root_Volume, NODE_IPS[idx]);
+      idx++;
     }
   }
 
   @Test
   public void testProvisionNodeCommand() {
+    int idx = 0;
     for (TestData t : testData) {
       AnsibleSetupServer.Params params = new AnsibleSetupServer.Params();
       buildValidParams(
@@ -1220,15 +1268,18 @@ public class NodeManagerTest extends FakeDBApplication {
       params.subnetId = t.zone.subnet;
 
       List<String> expectedCommand = t.baseCommand;
-      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Provision, params, t));
+      expectedCommand.addAll(
+          nodeCommand(NodeManager.NodeCommandType.Provision, params, t, NODE_IPS[idx]));
 
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Provision, params);
       verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
+      idx++;
     }
   }
 
   @Test
   public void testCreateNodeCommandSecondarySubnet() {
+    int idx = 0;
     for (TestData t : testData) {
       when(mockConfig.getBoolean("yb.cloud.enabled")).thenReturn(true);
       AnsibleCreateServer.Params params = new AnsibleCreateServer.Params();
@@ -1242,10 +1293,12 @@ public class NodeManagerTest extends FakeDBApplication {
       params.secondarySubnetId = "testSubnet";
 
       List<String> expectedCommand = t.baseCommand;
-      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Create, params, t));
+      expectedCommand.addAll(
+          nodeCommand(NodeManager.NodeCommandType.Create, params, t, NODE_IPS[idx]));
 
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Create, params);
       verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
+      idx++;
     }
   }
 
@@ -1254,7 +1307,7 @@ public class NodeManagerTest extends FakeDBApplication {
     String packagePath = "/tmp/third-party";
     new File(packagePath).mkdir();
     when(mockAppConfig.getString("yb.thirdparty.packagePath")).thenReturn(packagePath);
-
+    int idx = 0;
     for (TestData t : testData) {
       AnsibleSetupServer.Params params = new AnsibleSetupServer.Params();
       buildValidParams(
@@ -1266,10 +1319,12 @@ public class NodeManagerTest extends FakeDBApplication {
       params.subnetId = t.zone.subnet;
 
       List<String> expectedCommand = t.baseCommand;
-      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Provision, params, t));
+      expectedCommand.addAll(
+          nodeCommand(NodeManager.NodeCommandType.Provision, params, t, NODE_IPS[idx]));
 
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Provision, params);
       verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
+      idx++;
     }
 
     File file = new File(packagePath);
@@ -1310,6 +1365,7 @@ public class NodeManagerTest extends FakeDBApplication {
 
   @Test
   public void testProvisionWithAWSTags() {
+    int idx = 0;
     for (TestData t : testData) {
       AnsibleSetupServer.Params params = new AnsibleSetupServer.Params();
       UUID univUUID = createUniverse().universeUUID;
@@ -1324,11 +1380,12 @@ public class NodeManagerTest extends FakeDBApplication {
       ArrayList<String> expectedCommandArrayList = new ArrayList<>();
       expectedCommandArrayList.addAll(t.baseCommand);
       expectedCommandArrayList.addAll(
-          nodeCommand(NodeManager.NodeCommandType.Provision, params, t));
+          nodeCommand(NodeManager.NodeCommandType.Provision, params, t, NODE_IPS[idx]));
 
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Provision, params);
       verify(shellProcessHandler, times(1))
           .run(eq(expectedCommandArrayList), anyMap(), anyString());
+      idx++;
     }
   }
 
@@ -1339,6 +1396,7 @@ public class NodeManagerTest extends FakeDBApplication {
   }
 
   private void runAndTestProvisionWithAccessKeyAndSG(String sgId) {
+    int idx = 0;
     for (TestData t : testData) {
       t.region.setSecurityGroupId(sgId);
       t.region.update();
@@ -1376,7 +1434,8 @@ public class NodeManagerTest extends FakeDBApplication {
       }
 
       List<String> expectedCommand = new ArrayList<>(t.baseCommand);
-      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Provision, params, t));
+      expectedCommand.addAll(
+          nodeCommand(NodeManager.NodeCommandType.Provision, params, t, NODE_IPS[idx]));
       List<String> accessKeyCommands =
           new ArrayList<>(
               ImmutableList.of(
@@ -1407,6 +1466,7 @@ public class NodeManagerTest extends FakeDBApplication {
 
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Provision, params);
       verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
+      idx++;
     }
   }
 
@@ -1442,6 +1502,7 @@ public class NodeManagerTest extends FakeDBApplication {
 
   @Test
   public void testCreateNodeCommand() {
+    int idx = 0;
     for (TestData t : testData) {
       AnsibleCreateServer.Params params = new AnsibleCreateServer.Params();
       buildValidParams(
@@ -1453,15 +1514,18 @@ public class NodeManagerTest extends FakeDBApplication {
       params.subnetId = t.zone.subnet;
 
       List<String> expectedCommand = t.baseCommand;
-      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Create, params, t));
+      expectedCommand.addAll(
+          nodeCommand(NodeManager.NodeCommandType.Create, params, t, NODE_IPS[idx]));
 
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Create, params);
       verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
+      idx++;
     }
   }
 
   @Test
   public void testCreateNodeCommandWithoutAssignPublicIP() {
+    int idx = 0;
     for (TestData t : testData) {
       AnsibleCreateServer.Params params = new AnsibleCreateServer.Params();
       buildValidParams(
@@ -1476,13 +1540,15 @@ public class NodeManagerTest extends FakeDBApplication {
       }
 
       List<String> expectedCommand = t.baseCommand;
-      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Create, params, t));
+      expectedCommand.addAll(
+          nodeCommand(NodeManager.NodeCommandType.Create, params, t, NODE_IPS[idx]));
       if (t.cloudType.equals(Common.CloudType.aws)) {
         Predicate<String> stringPredicate = p -> p.equals("--assign_public_ip");
         expectedCommand.removeIf(stringPredicate);
       }
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Create, params);
       verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
+      idx++;
     }
   }
 
@@ -1491,7 +1557,7 @@ public class NodeManagerTest extends FakeDBApplication {
     String packagePath = "/tmp/third-party";
     new File(packagePath).mkdir();
     when(mockAppConfig.getString("yb.thirdparty.packagePath")).thenReturn(packagePath);
-
+    int idx = 0;
     for (TestData t : testData) {
       AnsibleCreateServer.Params params = new AnsibleCreateServer.Params();
       buildValidParams(
@@ -1503,10 +1569,12 @@ public class NodeManagerTest extends FakeDBApplication {
       params.subnetId = t.zone.subnet;
 
       List<String> expectedCommand = t.baseCommand;
-      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Create, params, t));
+      expectedCommand.addAll(
+          nodeCommand(NodeManager.NodeCommandType.Create, params, t, NODE_IPS[idx]));
 
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Create, params);
       verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
+      idx++;
     }
 
     File file = new File(packagePath);
@@ -1515,6 +1583,7 @@ public class NodeManagerTest extends FakeDBApplication {
 
   @Test
   public void testCreateWithAWSTags() {
+    int idx = 0;
     for (TestData t : testData) {
       AnsibleCreateServer.Params params = new AnsibleCreateServer.Params();
       UUID univUUID = createUniverse().universeUUID;
@@ -1528,15 +1597,18 @@ public class NodeManagerTest extends FakeDBApplication {
 
       ArrayList<String> expectedCommandArrayList = new ArrayList<>();
       expectedCommandArrayList.addAll(t.baseCommand);
-      expectedCommandArrayList.addAll(nodeCommand(NodeManager.NodeCommandType.Create, params, t));
+      expectedCommandArrayList.addAll(
+          nodeCommand(NodeManager.NodeCommandType.Create, params, t, NODE_IPS[idx]));
 
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Create, params);
       verify(shellProcessHandler, times(1))
           .run(eq(expectedCommandArrayList), anyMap(), anyString());
+      idx++;
     }
   }
 
   private void runAndTestCreateWithAccessKeyAndSG(String sgId) {
+    int idx = 0;
     for (TestData t : testData) {
       t.region.setSecurityGroupId(sgId);
       t.region.update();
@@ -1576,7 +1648,8 @@ public class NodeManagerTest extends FakeDBApplication {
       }
 
       List<String> expectedCommand = new ArrayList<>(t.baseCommand);
-      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Create, params, t));
+      expectedCommand.addAll(
+          nodeCommand(NodeManager.NodeCommandType.Create, params, t, NODE_IPS[idx]));
       List<String> accessKeyCommands =
           new ArrayList<>(
               ImmutableList.of(
@@ -1601,6 +1674,7 @@ public class NodeManagerTest extends FakeDBApplication {
 
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Create, params);
       verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
+      idx++;
     }
   }
 
@@ -1618,6 +1692,7 @@ public class NodeManagerTest extends FakeDBApplication {
 
   @Test
   public void testCreateNodeCommandWithCMK() {
+    int idx = 0;
     for (TestData t : testData) {
       AnsibleCreateServer.Params params = new AnsibleCreateServer.Params();
       buildValidParams(
@@ -1632,14 +1707,17 @@ public class NodeManagerTest extends FakeDBApplication {
       }
 
       List<String> expectedCommand = t.baseCommand;
-      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Create, params, t));
+      expectedCommand.addAll(
+          nodeCommand(NodeManager.NodeCommandType.Create, params, t, NODE_IPS[idx]));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Create, params);
       verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
+      idx++;
     }
   }
 
   @Test
   public void testCreateNodeCommandWithIAM() {
+    int idx = 0;
     for (TestData t : testData) {
       AnsibleCreateServer.Params params = new AnsibleCreateServer.Params();
       buildValidParams(
@@ -1654,9 +1732,11 @@ public class NodeManagerTest extends FakeDBApplication {
       }
 
       List<String> expectedCommand = t.baseCommand;
-      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Create, params, t));
+      expectedCommand.addAll(
+          nodeCommand(NodeManager.NodeCommandType.Create, params, t, NODE_IPS[idx]));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Create, params);
       verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
+      idx++;
     }
   }
 
@@ -1698,6 +1778,7 @@ public class NodeManagerTest extends FakeDBApplication {
 
   @Test
   public void testConfigureNodeCommand() {
+    int idx = 0;
     for (TestData t : testData) {
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
       buildValidParams(
@@ -1709,15 +1790,18 @@ public class NodeManagerTest extends FakeDBApplication {
       params.isMasterInShellMode = true;
       params.ybSoftwareVersion = "0.0.1";
       List<String> expectedCommand = t.baseCommand;
-      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params, t));
+      expectedCommand.addAll(
+          nodeCommand(NodeManager.NodeCommandType.Configure, params, t, NODE_IPS[idx]));
 
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
       verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
+      idx++;
     }
   }
 
   @Test
   public void testConfigureNodeCommandWithRf1() {
+    int idx = 0;
     for (TestData t : testData) {
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
       buildValidParams(
@@ -1732,10 +1816,11 @@ public class NodeManagerTest extends FakeDBApplication {
       UserIntent userIntent = new UserIntent();
       userIntent.replicationFactor = 1;
       expectedCommand.addAll(
-          nodeCommand(NodeManager.NodeCommandType.Configure, params, t, userIntent));
+          nodeCommand(NodeManager.NodeCommandType.Configure, params, t, userIntent, NODE_IPS[idx]));
 
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
       verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
+      idx++;
     }
   }
 
@@ -1763,6 +1848,7 @@ public class NodeManagerTest extends FakeDBApplication {
 
   @Test
   public void testConfigureNodeCommandWithAccessKey() {
+    int idx = 0;
     for (TestData t : testData) {
       // Create AccessKey
       AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
@@ -1794,7 +1880,8 @@ public class NodeManagerTest extends FakeDBApplication {
 
       // Set up expected command
       List<String> expectedCommand = t.baseCommand;
-      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params, t));
+      expectedCommand.addAll(
+          nodeCommand(NodeManager.NodeCommandType.Configure, params, t, NODE_IPS[idx]));
       List<String> accessKeyCommand =
           ImmutableList.of(
               "--vars_file",
@@ -1809,11 +1896,13 @@ public class NodeManagerTest extends FakeDBApplication {
 
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
       verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
+      idx++;
     }
   }
 
   @Test
   public void testConfigureNodeCommandWithSetTxnTableWaitCountFlag() {
+    int idx = 0;
     for (TestData t : testData) {
       // Set up TaskParams
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
@@ -1832,10 +1921,11 @@ public class NodeManagerTest extends FakeDBApplication {
 
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(
-          nodeCommand(NodeManager.NodeCommandType.Configure, params, t, userIntent));
+          nodeCommand(NodeManager.NodeCommandType.Configure, params, t, userIntent, NODE_IPS[idx]));
 
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
       verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
+      idx++;
     }
   }
 
@@ -1915,6 +2005,7 @@ public class NodeManagerTest extends FakeDBApplication {
 
   @Test
   public void testSoftwareUpgradeWithDownloadNodeCommand() {
+    int idx = 0;
     for (TestData t : testData) {
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
       buildValidParams(
@@ -1933,14 +2024,17 @@ public class NodeManagerTest extends FakeDBApplication {
         params.deviceInfo.mountPoints = fakeMountPaths;
       }
       List<String> expectedCommand = t.baseCommand;
-      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params, t));
+      expectedCommand.addAll(
+          nodeCommand(NodeManager.NodeCommandType.Configure, params, t, NODE_IPS[idx]));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
       verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
+      idx++;
     }
   }
 
   @Test
   public void testSoftwareUpgradeWithInstallNodeCommand() {
+    int idx = 0;
     for (TestData t : testData) {
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
       buildValidParams(
@@ -1959,9 +2053,11 @@ public class NodeManagerTest extends FakeDBApplication {
         params.deviceInfo.mountPoints = fakeMountPaths;
       }
       List<String> expectedCommand = t.baseCommand;
-      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params, t));
+      expectedCommand.addAll(
+          nodeCommand(NodeManager.NodeCommandType.Configure, params, t, NODE_IPS[idx]));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
       verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
+      idx++;
     }
   }
 
@@ -1992,6 +2088,7 @@ public class NodeManagerTest extends FakeDBApplication {
 
   @Test
   public void testGFlagRemove() {
+    int idx = 0;
     for (TestData t : testData) {
       for (String serverType : ImmutableList.of(MASTER.toString(), TSERVER.toString())) {
         AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
@@ -2014,10 +2111,12 @@ public class NodeManagerTest extends FakeDBApplication {
         }
 
         List<String> expectedCommand = new ArrayList<>(t.baseCommand);
-        expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params, t));
+        expectedCommand.addAll(
+            nodeCommand(NodeManager.NodeCommandType.Configure, params, t, NODE_IPS[idx]));
         nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
         verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
       }
+      idx++;
     }
   }
 
@@ -2080,6 +2179,7 @@ public class NodeManagerTest extends FakeDBApplication {
 
   @Test
   public void testGFlagsUpgradeForMasterNodeCommand() {
+    int idx = 0;
     for (TestData t : testData) {
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
       buildValidParams(
@@ -2099,9 +2199,11 @@ public class NodeManagerTest extends FakeDBApplication {
         params.deviceInfo.mountPoints = fakeMountPaths;
       }
       List<String> expectedCommand = t.baseCommand;
-      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params, t));
+      expectedCommand.addAll(
+          nodeCommand(NodeManager.NodeCommandType.Configure, params, t, NODE_IPS[idx]));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
       verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
+      idx++;
     }
   }
 
@@ -2109,6 +2211,7 @@ public class NodeManagerTest extends FakeDBApplication {
   @Parameters({"true, false", "false, true", "true, true"})
   @TestCaseName("{method}(enabledYSQL:{0},enabledYCQL:{1}) [{index}]")
   public void testEnableYSQLNodeCommand(boolean ysqlEnabled, boolean ycqlEnabled) {
+    int idx = 0;
     for (TestData t : testData) {
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
       buildValidParams(
@@ -2126,14 +2229,17 @@ public class NodeManagerTest extends FakeDBApplication {
         params.deviceInfo.mountPoints = fakeMountPaths;
       }
       List<String> expectedCommand = t.baseCommand;
-      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params, t));
+      expectedCommand.addAll(
+          nodeCommand(NodeManager.NodeCommandType.Configure, params, t, NODE_IPS[idx]));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
       verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
+      idx++;
     }
   }
 
   @Test
   public void testEnableNodeToNodeTLSNodeCommand() throws IOException, NoSuchAlgorithmException {
+    int idx = 0;
     for (TestData t : testData) {
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
       params.nodeName = t.node.getNodeName();
@@ -2148,7 +2254,8 @@ public class NodeManagerTest extends FakeDBApplication {
         params.deviceInfo.mountPoints = fakeMountPaths;
       }
       List<String> expectedCommand = t.baseCommand;
-      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params, t));
+      expectedCommand.addAll(
+          nodeCommand(NodeManager.NodeCommandType.Configure, params, t, NODE_IPS[idx]));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
       verify(shellProcessHandler, times(1))
           .run(
@@ -2164,6 +2271,7 @@ public class NodeManagerTest extends FakeDBApplication {
       expectedCommand.set(serverCertPathIndex, actualCommand.get(serverCertPathIndex));
       expectedCommand.set(serverKeyPathIndex, actualCommand.get(serverKeyPathIndex));
       assertEquals(expectedCommand, actualCommand);
+      idx++;
     }
   }
 
@@ -2171,6 +2279,7 @@ public class NodeManagerTest extends FakeDBApplication {
   public void testCustomCertNodeCommand() throws IOException, NoSuchAlgorithmException {
     Customer customer = ModelFactory.testCustomer();
     ModelFactory.newProvider(customer, Common.CloudType.onprem);
+    int idx = 0;
     for (TestData t : testData) {
       if (t.cloudType == Common.CloudType.onprem) {
         t.privateKey = null;
@@ -2188,7 +2297,8 @@ public class NodeManagerTest extends FakeDBApplication {
         params.deviceInfo.mountPoints = fakeMountPaths;
       }
       List<String> expectedCommand = t.baseCommand;
-      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params, t));
+      expectedCommand.addAll(
+          nodeCommand(NodeManager.NodeCommandType.Configure, params, t, NODE_IPS[idx]));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
       verify(shellProcessHandler, times(1))
           .run(
@@ -2204,11 +2314,13 @@ public class NodeManagerTest extends FakeDBApplication {
       expectedCommand.set(serverCertPathIndex, actualCommand.get(serverCertPathIndex));
       expectedCommand.set(serverKeyPathIndex, actualCommand.get(serverKeyPathIndex));
       assertEquals(expectedCommand, actualCommand);
+      idx++;
     }
   }
 
   @Test
   public void testEnableClientToNodeTLSNodeCommand() throws IOException, NoSuchAlgorithmException {
+    int idx = 0;
     for (TestData t : testData) {
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
       buildValidParams(
@@ -2227,7 +2339,8 @@ public class NodeManagerTest extends FakeDBApplication {
         params.deviceInfo.mountPoints = fakeMountPaths;
       }
       List<String> expectedCommand = t.baseCommand;
-      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params, t));
+      expectedCommand.addAll(
+          nodeCommand(NodeManager.NodeCommandType.Configure, params, t, NODE_IPS[idx]));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
       verify(shellProcessHandler, times(1))
           .run(
@@ -2243,6 +2356,7 @@ public class NodeManagerTest extends FakeDBApplication {
       expectedCommand.set(serverCertPathIndex, actualCommand.get(serverCertPathIndex));
       expectedCommand.set(serverKeyPathIndex, actualCommand.get(serverKeyPathIndex));
       assertEquals(expectedCommand, actualCommand);
+      idx++;
     }
   }
 
@@ -2252,6 +2366,7 @@ public class NodeManagerTest extends FakeDBApplication {
 
   @Test
   public void testEnableAllTLSNodeCommand() throws IOException, NoSuchAlgorithmException {
+    int idx = 0;
     for (TestData t : testData) {
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
       buildValidParams(
@@ -2271,7 +2386,8 @@ public class NodeManagerTest extends FakeDBApplication {
         params.deviceInfo.mountPoints = fakeMountPaths;
       }
       List<String> expectedCommand = t.baseCommand;
-      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params, t));
+      expectedCommand.addAll(
+          nodeCommand(NodeManager.NodeCommandType.Configure, params, t, NODE_IPS[idx]));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
       verify(shellProcessHandler, times(1))
           .run(
@@ -2287,11 +2403,13 @@ public class NodeManagerTest extends FakeDBApplication {
       expectedCommand.set(serverCertPathIndex, actualCommand.get(serverCertPathIndex));
       expectedCommand.set(serverKeyPathIndex, actualCommand.get(serverKeyPathIndex));
       assertEquals(expectedCommand, actualCommand);
+      idx++;
     }
   }
 
   @Test
   public void testGlobalDefaultCallhome() {
+    int idx = 0;
     for (TestData t : testData) {
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
       buildValidParams(
@@ -2308,9 +2426,11 @@ public class NodeManagerTest extends FakeDBApplication {
         params.deviceInfo.mountPoints = fakeMountPaths;
       }
       List<String> expectedCommand = t.baseCommand;
-      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params, t));
+      expectedCommand.addAll(
+          nodeCommand(NodeManager.NodeCommandType.Configure, params, t, NODE_IPS[idx]));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
       verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
+      idx++;
     }
   }
 
@@ -2334,6 +2454,7 @@ public class NodeManagerTest extends FakeDBApplication {
 
   @Test
   public void testDestroyNodeCommand() {
+    int idx = 0;
     for (TestData t : testData) {
       AnsibleDestroyServer.Params params = new AnsibleDestroyServer.Params();
       params.nodeIP = "1.1.1.1";
@@ -2344,14 +2465,17 @@ public class NodeManagerTest extends FakeDBApplication {
               createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
       assertNotNull(params.nodeUuid);
       List<String> expectedCommand = t.baseCommand;
-      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Destroy, params, t));
+      expectedCommand.addAll(
+          nodeCommand(NodeManager.NodeCommandType.Destroy, params, t, NODE_IPS[idx]));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Destroy, params);
       verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
+      idx++;
     }
   }
 
   @Test
   public void testListNodeCommand() {
+    int idx = 0;
     for (TestData t : testData) {
       NodeTaskParams params = new NodeTaskParams();
       buildValidParams(
@@ -2361,9 +2485,11 @@ public class NodeManagerTest extends FakeDBApplication {
               createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
 
       List<String> expectedCommand = t.baseCommand;
-      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.List, params, t));
+      expectedCommand.addAll(
+          nodeCommand(NodeManager.NodeCommandType.List, params, t, NODE_IPS[idx]));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.List, params);
       verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
+      idx++;
     }
   }
 
@@ -2387,6 +2513,7 @@ public class NodeManagerTest extends FakeDBApplication {
 
   @Test
   public void testControlNodeCommand() {
+    int idx = 0;
     for (TestData t : testData) {
       AnsibleClusterServerCtl.Params params = new AnsibleClusterServerCtl.Params();
       buildValidParams(
@@ -2398,9 +2525,11 @@ public class NodeManagerTest extends FakeDBApplication {
       params.command = "create";
 
       List<String> expectedCommand = t.baseCommand;
-      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Control, params, t));
+      expectedCommand.addAll(
+          nodeCommand(NodeManager.NodeCommandType.Control, params, t, NODE_IPS[idx]));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Control, params);
       verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
+      idx++;
     }
   }
 
@@ -2424,6 +2553,7 @@ public class NodeManagerTest extends FakeDBApplication {
 
   @Test
   public void testDockerNodeCommandWithDockerNetwork() {
+    int idx = 0;
     for (TestData t : testData) {
       NodeTaskParams params = new NodeTaskParams();
       buildValidParams(
@@ -2433,14 +2563,17 @@ public class NodeManagerTest extends FakeDBApplication {
               createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
 
       List<String> expectedCommand = t.baseCommand;
-      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.List, params, t));
+      expectedCommand.addAll(
+          nodeCommand(NodeManager.NodeCommandType.List, params, t, NODE_IPS[idx]));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.List, params);
       verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
+      idx++;
     }
   }
 
   @Test
   public void testSetInstanceTags() {
+    int idx = 0;
     for (TestData t : testData) {
       InstanceActions.Params params = new InstanceActions.Params();
       UUID univUUID = createUniverse().universeUUID;
@@ -2451,14 +2584,17 @@ public class NodeManagerTest extends FakeDBApplication {
         setInstanceTags(params);
       }
       List<String> expectedCommand = t.baseCommand;
-      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Tags, params, t));
+      expectedCommand.addAll(
+          nodeCommand(NodeManager.NodeCommandType.Tags, params, t, NODE_IPS[idx]));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Tags, params);
       verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
+      idx++;
     }
   }
 
   @Test
   public void testRemoveInstanceTags() {
+    int idx = 0;
     for (TestData t : testData) {
       InstanceActions.Params params = new InstanceActions.Params();
       UUID univUUID = createUniverse().universeUUID;
@@ -2470,21 +2606,25 @@ public class NodeManagerTest extends FakeDBApplication {
         params.deleteTags = "Remove,Also";
       }
       List<String> expectedCommand = t.baseCommand;
-      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Tags, params, t));
+      expectedCommand.addAll(
+          nodeCommand(NodeManager.NodeCommandType.Tags, params, t, NODE_IPS[idx]));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Tags, params);
       verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
+      idx++;
     }
   }
 
   @Test
   public void testEmptyInstanceTags() {
+    int idx = 0;
     for (TestData t : testData) {
       InstanceActions.Params params = new InstanceActions.Params();
       UUID univUUID = createUniverse().universeUUID;
       Universe universe = Universe.saveDetails(univUUID, ApiUtils.mockUniverseUpdater(t.cloudType));
       buildValidParams(t, params, universe);
       List<String> expectedCommand = t.baseCommand;
-      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Tags, params, t));
+      expectedCommand.addAll(
+          nodeCommand(NodeManager.NodeCommandType.Tags, params, t, NODE_IPS[idx]));
       try {
         nodeManager.nodeCommand(NodeManager.NodeCommandType.Tags, params);
         assertNotEquals(t.cloudType, Common.CloudType.aws);
@@ -2493,11 +2633,13 @@ public class NodeManagerTest extends FakeDBApplication {
           assertThat(re.getMessage(), allOf(notNullValue(), is("Invalid instance tags")));
         }
       }
+      idx++;
     }
   }
 
   @Test
   public void testDiskUpdateCommand() {
+    int idx = 0;
     for (TestData t : testData) {
       InstanceActions.Params params = new InstanceActions.Params();
       buildValidParams(
@@ -2513,14 +2655,17 @@ public class NodeManagerTest extends FakeDBApplication {
       }
       params.deviceInfo.volumeSize = 500;
       List<String> expectedCommand = t.baseCommand;
-      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Disk_Update, params, t));
+      expectedCommand.addAll(
+          nodeCommand(NodeManager.NodeCommandType.Disk_Update, params, t, NODE_IPS[idx]));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Disk_Update, params);
       verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
+      idx++;
     }
   }
 
   @Test
   public void testConfigureNodeCommandInShellMode() {
+    int idx = 0;
     for (TestData t : testData) {
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
       buildValidParams(
@@ -2537,15 +2682,18 @@ public class NodeManagerTest extends FakeDBApplication {
       }
 
       List<String> expectedCommand = t.baseCommand;
-      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params, t));
+      expectedCommand.addAll(
+          nodeCommand(NodeManager.NodeCommandType.Configure, params, t, NODE_IPS[idx]));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
       verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
+      idx++;
     }
   }
 
   @Test
   @Parameters({"true", "false"})
   public void testYEDISNodeCommand(boolean enableYEDIS) {
+    int idx = 0;
     for (TestData t : testData) {
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
       buildValidParams(
@@ -2562,9 +2710,11 @@ public class NodeManagerTest extends FakeDBApplication {
         params.deviceInfo.mountPoints = fakeMountPaths;
       }
       List<String> expectedCommand = t.baseCommand;
-      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params, t));
+      expectedCommand.addAll(
+          nodeCommand(NodeManager.NodeCommandType.Configure, params, t, NODE_IPS[idx]));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
       verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
+      idx++;
     }
   }
 
@@ -2582,6 +2732,7 @@ public class NodeManagerTest extends FakeDBApplication {
   @Parameters({"MASTER, true", "MASTER, false", "TSERVER, true", "TSERVER, false"})
   @TestCaseName("testGFlagsEraseMastersWhenInShell_Type:{0}_InShell:{1}")
   public void testGFlagsEraseMastersWhenInShell(String serverType, boolean isMasterInShellMode) {
+    int idx = 0;
     for (TestData t : testData) {
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
 
@@ -2601,9 +2752,11 @@ public class NodeManagerTest extends FakeDBApplication {
       params.setProperty("processType", serverType);
 
       List<String> expectedCommand = t.baseCommand;
-      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params, t));
+      expectedCommand.addAll(
+          nodeCommand(NodeManager.NodeCommandType.Configure, params, t, NODE_IPS[idx]));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
       verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
+      idx++;
     }
   }
 
@@ -2709,6 +2862,7 @@ public class NodeManagerTest extends FakeDBApplication {
   public void testToggleTlsCopyCertsWithParams(
       boolean enableNodeToNodeEncrypt, boolean enableClientToNodeEncrypt)
       throws IOException, NoSuchAlgorithmException {
+    int idx = 0;
     for (TestData data : testData) {
       if (data.cloudType == Common.CloudType.gcp) {
         data.privateKey = null;
@@ -2737,7 +2891,8 @@ public class NodeManagerTest extends FakeDBApplication {
         nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
         List<String> expectedCommand = data.baseCommand;
         expectedCommand.addAll(
-            nodeCommand(NodeManager.NodeCommandType.Configure, params, data, userIntent));
+            nodeCommand(
+                NodeManager.NodeCommandType.Configure, params, data, userIntent, NODE_IPS[idx]));
         verify(shellProcessHandler, times(1))
             .run(
                 captor.capture(),
@@ -2755,6 +2910,7 @@ public class NodeManagerTest extends FakeDBApplication {
       } catch (RuntimeException re) {
         assertNull(re.getMessage());
       }
+      idx++;
     }
   }
 
@@ -2762,6 +2918,7 @@ public class NodeManagerTest extends FakeDBApplication {
   @Parameters({"0", "-1", "1"})
   @TestCaseName("testToggleTlsRound1GFlagsUpdateWhenNodeToNodeChange:{0}")
   public void testToggleTlsRound1GFlagsUpdate(int nodeToNodeChange) {
+    int idx = 0;
     for (TestData data : testData) {
       UUID universeUuid = createUniverse().universeUUID;
       UserIntent userIntent =
@@ -2788,8 +2945,10 @@ public class NodeManagerTest extends FakeDBApplication {
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
       List<String> expectedCommand = data.baseCommand;
       expectedCommand.addAll(
-          nodeCommand(NodeManager.NodeCommandType.Configure, params, data, userIntent));
+          nodeCommand(
+              NodeManager.NodeCommandType.Configure, params, data, userIntent, NODE_IPS[idx]));
       verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
+      idx++;
     }
   }
 
@@ -2797,6 +2956,7 @@ public class NodeManagerTest extends FakeDBApplication {
   @Parameters({"0", "-1", "1"})
   @TestCaseName("testToggleTlsRound2GFlagsUpdateWhenNodeToNodeChange:{0}")
   public void testToggleTlsRound2GFlagsUpdate(int nodeToNodeChange) {
+    int idx = 0;
     for (TestData data : testData) {
       UUID universeUuid = createUniverse().universeUUID;
       UserIntent userIntent =
@@ -2823,8 +2983,10 @@ public class NodeManagerTest extends FakeDBApplication {
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
       List<String> expectedCommand = data.baseCommand;
       expectedCommand.addAll(
-          nodeCommand(NodeManager.NodeCommandType.Configure, params, data, userIntent));
+          nodeCommand(
+              NodeManager.NodeCommandType.Configure, params, data, userIntent, NODE_IPS[idx]));
       verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
+      idx++;
     }
   }
 
@@ -3014,6 +3176,7 @@ public class NodeManagerTest extends FakeDBApplication {
   @TestCaseName("testCertsRotateWithValidParams_Action:{0}_CertType:{1}")
   public void testCertsRotateWithValidParams(String action, String certType)
       throws IOException, NoSuchAlgorithmException {
+    int idx = 0;
     for (TestData data : testData) {
       UUID universeUuid = createUniverse().universeUUID;
       UserIntent userIntent =
@@ -3043,8 +3206,10 @@ public class NodeManagerTest extends FakeDBApplication {
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
       List<String> expectedCommand = data.baseCommand;
       expectedCommand.addAll(
-          nodeCommand(NodeManager.NodeCommandType.Configure, params, data, userIntent));
+          nodeCommand(
+              NodeManager.NodeCommandType.Configure, params, data, userIntent, NODE_IPS[idx]));
       verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
+      idx++;
     }
   }
 
@@ -3053,6 +3218,7 @@ public class NodeManagerTest extends FakeDBApplication {
   @TestCaseName("testCertsRotateCopyCerts_rootCA:{0}_clientRootCA:{1}")
   public void testCertsRotateCopyCerts(boolean isRootCA, boolean isClientRootCA)
       throws IOException, NoSuchAlgorithmException {
+    int idx = 0;
     for (TestData data : testData) {
       UUID universeUuid = createUniverse().universeUUID;
       UserIntent userIntent =
@@ -3087,7 +3253,8 @@ public class NodeManagerTest extends FakeDBApplication {
         nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
         List<String> expectedCommand = data.baseCommand;
         expectedCommand.addAll(
-            nodeCommand(NodeManager.NodeCommandType.Configure, params, data, userIntent));
+            nodeCommand(
+                NodeManager.NodeCommandType.Configure, params, data, userIntent, NODE_IPS[idx]));
         verify(shellProcessHandler, times(1))
             .run(
                 captor.capture(),
@@ -3115,6 +3282,7 @@ public class NodeManagerTest extends FakeDBApplication {
       } catch (RuntimeException re) {
         assertNull(re.getMessage());
       }
+      idx++;
     }
   }
 
@@ -3161,6 +3329,7 @@ public class NodeManagerTest extends FakeDBApplication {
 
   @Test
   public void testCronCheckWithAccessKey() {
+    int idx = 0;
     for (TestData t : testData) {
       // Create AccessKey
       AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
@@ -3192,7 +3361,8 @@ public class NodeManagerTest extends FakeDBApplication {
           });
 
       List<String> expectedCommand = new ArrayList<>(t.baseCommand);
-      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.CronCheck, params, t));
+      expectedCommand.addAll(
+          nodeCommand(NodeManager.NodeCommandType.CronCheck, params, t, NODE_IPS[idx]));
       List<String> accessKeyCommands =
           new ArrayList<>(
               ImmutableList.of(
@@ -3208,6 +3378,7 @@ public class NodeManagerTest extends FakeDBApplication {
 
       nodeManager.nodeCommand(NodeManager.NodeCommandType.CronCheck, params);
       verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
+      idx++;
     }
   }
 
@@ -3385,6 +3556,7 @@ public class NodeManagerTest extends FakeDBApplication {
 
   @Test
   public void testDeleteRootVolumes() {
+    int idx = 0;
     for (TestData t : testData) {
       NodeTaskParams params = new NodeTaskParams();
       buildValidParams(
@@ -3394,9 +3566,10 @@ public class NodeManagerTest extends FakeDBApplication {
               createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
       List<String> expectedCommand = new ArrayList<>(t.baseCommand);
       expectedCommand.addAll(
-          nodeCommand(NodeManager.NodeCommandType.Delete_Root_Volumes, params, t));
+          nodeCommand(NodeManager.NodeCommandType.Delete_Root_Volumes, params, t, NODE_IPS[idx]));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Delete_Root_Volumes, params);
       verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
+      idx++;
     }
   }
 
@@ -3453,7 +3626,6 @@ public class NodeManagerTest extends FakeDBApplication {
               universe.getUniverseDetails().getClusterByUuid(nodeDetails.placementUuid).userIntent;
           userIntent.enableNodeToNodeEncrypt = true;
         });
-
     nodeManager.nodeCommand(NodeManager.NodeCommandType.Precheck, nodeTaskParams);
     ArgumentCaptor<List> arg = ArgumentCaptor.forClass(List.class);
     verify(shellProcessHandler).run(arg.capture(), any(), anyString());

@@ -24,8 +24,12 @@ interface BackupDeleteProps {
 }
 
 export const BackupDeleteModal: FC<BackupDeleteProps> = ({ backupsList, visible, onHide }) => {
+  const queryClient = useQueryClient();
   const delBackup = useMutation((backupList: IBackup[]) => deleteBackup(backupList), {
-    onSuccess: () => onHide(),
+    onSuccess: () => {
+      onHide();
+      queryClient.invalidateQueries('backups');
+    },
     onError: () => {
       toast.error('Unable to delete backup');
       onHide();
@@ -36,9 +40,9 @@ export const BackupDeleteModal: FC<BackupDeleteProps> = ({ backupsList, visible,
     <YBModalForm
       visible={visible}
       title="Delete Backup"
+      className="backup-modal"
       showCancelButton={true}
       onHide={onHide}
-      className="backup-modal"
       onFormSubmit={async (_values: any, { setSubmitting }: { setSubmitting: Function }) => {
         await delBackup.mutateAsync(backupsList);
         setSubmitting(false);

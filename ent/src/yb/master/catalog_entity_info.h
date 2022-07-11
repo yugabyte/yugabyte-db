@@ -51,6 +51,10 @@ struct PersistentCDCStreamInfo : public Persistent<
     return pb.state() == SysCDCStreamEntryPB::DELETED;
   }
 
+  bool is_deleting_metadata() const {
+    return pb.state() == SysCDCStreamEntryPB::DELETING_METADATA;
+  }
+
   const google::protobuf::RepeatedPtrField<CDCStreamOptionsPB> options() const {
     return pb.options();
   }
@@ -111,7 +115,7 @@ class UniverseReplicationInfo : public RefCountedThreadSafe<UniverseReplicationI
   void SetSetupUniverseReplicationErrorStatus(const Status& status);
 
   // Get the Status of the last error from the current SetupUniverseReplication.
-  CHECKED_STATUS GetSetupUniverseReplicationErrorStatus() const;
+  Status GetSetupUniverseReplicationErrorStatus() const;
 
  private:
   friend class RefCountedThreadSafe<UniverseReplicationInfo>;

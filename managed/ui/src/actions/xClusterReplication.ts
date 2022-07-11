@@ -34,65 +34,62 @@ export function createXClusterReplication(
   });
 }
 
-export function getXclusterConfig(
-  uuid: string
-) {
+export function getXclusterConfig(uuid: string) {
   const customerId = localStorage.getItem('customerId');
-  return axios.get(`${ROOT_URL}/customers/${customerId}/xcluster_configs/${uuid}`).then((resp) => resp.data);
+  return axios
+    .get(`${ROOT_URL}/customers/${customerId}/xcluster_configs/${uuid}`)
+    .then((resp) => resp.data);
 }
 
-export function changeXClusterStatus(
-  replication: IReplication,
-  status: IReplicationStatus
-) {
+export function changeXClusterStatus(replication: IReplication, status: IReplicationStatus) {
   const customerId = localStorage.getItem('customerId');
   return axios.put(`${ROOT_URL}/customers/${customerId}/xcluster_configs/${replication.uuid}`, {
     status
   });
 }
 
-export function editXclusterName(
-  replication: IReplication
-) {
+export function editXclusterName(replication: IReplication) {
   const customerId = localStorage.getItem('customerId');
   return axios.put(`${ROOT_URL}/customers/${customerId}/xcluster_configs/${replication.uuid}`, {
     name: replication.name
   });
 }
 
-export function editXClusterTables(
-  replication: IReplication
-) {
+export function editXClusterTables(replication: IReplication) {
   const customerId = localStorage.getItem('customerId');
   return axios.put(`${ROOT_URL}/customers/${customerId}/xcluster_configs/${replication.uuid}`, {
     tables: replication.tables
   });
 }
 
-export function deleteXclusterConfig(
-  uuid: string
-) {
+export function deleteXclusterConfig(uuid: string) {
   const customerId = localStorage.getItem('customerId');
   return axios.delete(`${ROOT_URL}/customers/${customerId}/xcluster_configs/${uuid}`);
 }
 
-export function queryLagMetricsForUniverse(nodePrefix: string | undefined, replicationUUID: string) {
+export function queryLagMetricsForUniverse(
+  nodePrefix: string | undefined,
+  replicationUUID: string
+) {
+
+
   const DEFAULT_GRAPH_FILTER = {
-    start: moment().utc().subtract('1','hour').format('X'),
-    end:  moment().utc().format('X'),
+    start: moment().utc().subtract('1', 'hour').format('X'),
+    end: moment().utc().format('X'),
     nodePrefix,
     metrics: ['tserver_async_replication_lag_micros'],
     xClusterConfigUuid: replicationUUID
   };
-  
+
   const customerUUID = localStorage.getItem('customerId');
   return axios.post(`${ROOT_URL}/customers/${customerUUID}/metrics`, DEFAULT_GRAPH_FILTER);
 }
 
-export function queryLagMetricsForTable(tableName: string, nodePrefix: string | undefined) {
+export function queryLagMetricsForTable(tableId: string, nodePrefix: string | undefined) {
   const DEFAULT_GRAPH_FILTER = {
-    start: moment().utc().subtract('1', 'minute').format('X'),
-    tableName,
+    start: moment().utc().subtract('1', 'hour').format('X'),
+    end: moment().utc().format('X'),
+    tableId,
     nodePrefix,
     metrics: ['tserver_async_replication_lag_micros']
   };
@@ -105,25 +102,25 @@ export function fetchTaskProgress(taskUUID: string) {
 }
 
 const DEFAULT_TASK_REFETCH_INTERVAL = 1000;
-type callbackFunc = (err: boolean, data: any) => void
+type callbackFunc = (err: boolean, data: any) => void;
 
-export function fetchTaskUntilItCompletes(taskUUID: string, callback: callbackFunc, interval = DEFAULT_TASK_REFETCH_INTERVAL) {
+export function fetchTaskUntilItCompletes(
+  taskUUID: string,
+  callback: callbackFunc,
+  interval = DEFAULT_TASK_REFETCH_INTERVAL
+) {
   async function retryTask() {
     try {
       const resp = await fetchTaskProgress(taskUUID);
       const { percent, status } = resp.data;
       if (status === 'Failed' || status === 'Failure') {
         callback(true, resp);
-      }
-      else if (percent === 100) {
+      } else if (percent === 100) {
         callback(false, resp.data);
+      } else {
+        setTimeout(retryTask, interval);
       }
-      else {
-        setTimeout(retryTask, interval)
-      }
-    }
-    catch {
-    }
+    } catch {}
   }
   return retryTask();
 }

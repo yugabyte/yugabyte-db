@@ -29,7 +29,6 @@ import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.common.FakeApi;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.PlatformInstance;
 import com.yugabyte.yw.models.Users;
@@ -67,6 +66,7 @@ import play.test.Helpers;
 public class PlatformTest extends FakeDBApplication {
   Customer customer;
   Users user;
+  private String authToken;
   String clusterKey;
   Application remoteApp;
   PlatformInstance localInstance;
@@ -85,7 +85,8 @@ public class PlatformTest extends FakeDBApplication {
   @Before
   public void setup() {
     customer = ModelFactory.testCustomer();
-    user = ModelFactory.testUser(customer);
+    user = ModelFactory.testUser(customer, Users.Role.SuperAdmin);
+    authToken = user.createAuthToken();
     localEBeanServer = Ebean.getDefaultServer();
     fakeApi = new FakeApi(app, localEBeanServer);
     clusterKey = createClusterKey();
@@ -100,7 +101,9 @@ public class PlatformTest extends FakeDBApplication {
 
   @After
   public void tearDown() throws IOException {
-    Util.listFiles(backupDir, PlatformReplicationHelper.BACKUP_FILE_PATTERN).forEach(File::delete);
+    com.yugabyte.yw.common.utils.FileUtils.listFiles(
+            backupDir, PlatformReplicationHelper.BACKUP_FILE_PATTERN)
+        .forEach(File::delete);
     backupDir.toFile().delete();
     stopRemoteApp();
   }
@@ -142,6 +145,7 @@ public class PlatformTest extends FakeDBApplication {
         app.injector().instanceOf(PlatformReplicationManager.class);
 
     Ebean.register(localEBeanServer, true);
+
     assertTrue("sendBackup failed", replicationManager.sendBackup(remoteInstance));
 
     assertTrue(fakeDump.exists());
@@ -170,7 +174,7 @@ public class PlatformTest extends FakeDBApplication {
             .toFile();
     assertTrue(uploadedFile.exists());
     String uploadedContents = FileUtils.readFileToString(uploadedFile, Charset.defaultCharset());
-    assertTrue(FileUtils.contentEquals(backupFile, uploadedFile));
+    assertTrue("Actual:" + uploadedContents, FileUtils.contentEquals(backupFile, uploadedFile));
   }
 
   private File createFakeDump() throws IOException {
@@ -188,7 +192,6 @@ public class PlatformTest extends FakeDBApplication {
 
   private PlatformInstance createPlatformInstance(
       UUID configUUID, String remoteAcmeOrg, boolean isLocal, boolean isLeader) {
-    String authToken = user.createAuthToken();
     String uri = "/api/settings/ha/config/" + configUUID.toString() + "/instance";
     JsonNode body =
         Json.newObject()

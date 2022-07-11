@@ -303,7 +303,7 @@ size_t FastEncodeUnsignedVarInt(uint64_t v, uint8_t *dest) {
   return n;
 }
 
-CHECKED_STATUS FastDecodeUnsignedVarInt(
+Status FastDecodeUnsignedVarInt(
     const uint8_t* src, size_t src_size, uint64_t* v, size_t* decoded_size) {
   if (src_size == 0) {
     return STATUS(Corruption, "Cannot decode a variable-length integer of zero size");

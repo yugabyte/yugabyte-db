@@ -2,14 +2,11 @@
 
 package com.yugabyte.yw.forms;
 
-import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.models.helpers.TimeUnit;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 import java.util.UUID;
 import org.yb.CommonTypes.TableType;
 import play.data.validation.Constraints;
@@ -46,12 +43,18 @@ public class BackupRequestParams extends UniverseTaskParams {
   @ApiModelProperty(value = "Is SSE")
   public boolean sse = false;
 
+  @ApiModelProperty(value = "Disable checksum")
+  public Boolean disableChecksum = false;
+
   @ApiModelProperty(value = "Backup info")
   public List<KeyspaceTable> keyspaceTableList;
 
   // The number of concurrent commands to run on nodes over SSH
   @ApiModelProperty(value = "Number of concurrent commands to run on nodes over SSH")
   public int parallelism = 8;
+
+  @ApiModelProperty(value = "Don't add -m flag during gsutil upload dir command")
+  public boolean disableParallelism = false;
 
   @ApiModelProperty(value = "Customer UUID")
   public UUID customerUUID = null;

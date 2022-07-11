@@ -58,6 +58,7 @@ import org.yb.Type;
 import org.yb.annotations.InterfaceAudience;
 import org.yb.annotations.InterfaceStability;
 import org.yb.master.CatalogEntityInfo;
+import org.yb.master.MasterReplicationOuterClass;
 import org.yb.tserver.TserverTypes;
 import org.yb.util.Pair;
 
@@ -66,7 +67,7 @@ import org.yb.util.Pair;
  * <p>
  * This class acts as a wrapper around {@link AsyncYBClient}. The {@link Deferred} objects are
  * joined against using the default admin operation timeout
- * (see {@link org.yb.client.YBClient.YBClientBuilder#defaultAdminOperationTimeoutMs(long)} (long)}).
+ * (see {@link org.yb.client.YBClient.YBClientBuilder#defaultAdminOperationTimeoutMs(long)}(long)}).
  */
 @InterfaceAudience.Public
 @InterfaceStability.Evolving
@@ -1437,14 +1438,20 @@ public class YBClient implements AutoCloseable {
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
+  /**
+   * It is the same as {@link AsyncYBClient#setupUniverseReplication(String, Map, Set)}
+   * except that it is synchronous.
+   *
+   * @see AsyncYBClient#setupUniverseReplication(String, Map, Set)
+   */
   public SetupUniverseReplicationResponse setupUniverseReplication(
     String replicationGroupName,
-    Set<String> sourceTableIDs,
+    Map<String, String> sourceTableIdsBootstrapIdMap,
     Set<CommonNet.HostPortPB> sourceMasterAddresses) throws Exception {
     Deferred<SetupUniverseReplicationResponse> d =
       asyncClient.setupUniverseReplication(
         replicationGroupName,
-        sourceTableIDs,
+        sourceTableIdsBootstrapIdMap,
         sourceMasterAddresses);
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
@@ -1465,19 +1472,19 @@ public class YBClient implements AutoCloseable {
 
   public AlterUniverseReplicationResponse alterUniverseReplicationAddTables(
     String replicationGroupName,
-    Set<String> sourceTableIDsToAdd) throws Exception {
+    Map<String, String> sourceTableIdsToAddBootstrapIdMap) throws Exception {
     Deferred<AlterUniverseReplicationResponse> d =
       asyncClient.alterUniverseReplicationAddTables(
-        replicationGroupName, sourceTableIDsToAdd);
+        replicationGroupName, sourceTableIdsToAddBootstrapIdMap);
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
   public AlterUniverseReplicationResponse alterUniverseReplicationRemoveTables(
     String replicationGroupName,
-    Set<String> sourceTableIDsToRemove) throws Exception {
+    Set<String> sourceTableIdsToRemove) throws Exception {
     Deferred<AlterUniverseReplicationResponse> d =
       asyncClient.alterUniverseReplicationRemoveTables(
-        replicationGroupName, sourceTableIDsToRemove);
+        replicationGroupName, sourceTableIdsToRemove);
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
@@ -1530,11 +1537,33 @@ public class YBClient implements AutoCloseable {
   }
 
   public SetCheckpointResponse commitCheckpoint(YBTable table, String streamId,
-                                             String tabletId,
-                                             long term,
-                                             long index) throws Exception {
-    Deferred<SetCheckpointResponse> d = asyncClient
-      .setCheckpoint(table, streamId, tabletId, term, index);
+                                                String tabletId,
+                                                long term,
+                                                long index,
+                                                boolean initialCheckpoint) throws Exception {
+    Deferred<SetCheckpointResponse> d = asyncClient.setCheckpoint(table, streamId, tabletId, term,
+      index, initialCheckpoint);
+    d.addErrback(new Callback<Exception, Exception>() {
+      @Override
+      public Exception call(Exception o) throws Exception {
+        o.printStackTrace();
+        throw o;
+      }
+    });
+    d.addCallback(setCheckpointResponse -> {
+      return setCheckpointResponse;
+    });
+    return d.join(2 * getDefaultAdminOperationTimeoutMs());
+  }
+
+  public SetCheckpointResponse bootstrapTablet(YBTable table, String streamId,
+                                               String tabletId,
+                                               long term,
+                                               long index,
+                                               boolean initialCheckpoint,
+                                               boolean bootstrap) throws Exception {
+    Deferred<SetCheckpointResponse> d = asyncClient.setCheckpointWithBootstrap(table, streamId,
+        tabletId, term, index, initialCheckpoint, bootstrap);
     d.addErrback(new Callback<Exception, Exception>() {
       @Override
       public Exception call(Exception o) throws Exception {
@@ -1549,12 +1578,16 @@ public class YBClient implements AutoCloseable {
   }
 
   public DeleteUniverseReplicationResponse deleteUniverseReplication(
-    String replicationGroupName) throws Exception {
+    String replicationGroupName, boolean ignoreErrors) throws Exception {
     Deferred<DeleteUniverseReplicationResponse> d =
-      asyncClient.deleteUniverseReplication(replicationGroupName);
+        asyncClient.deleteUniverseReplication(replicationGroupName, ignoreErrors);
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
+  public DeleteUniverseReplicationResponse deleteUniverseReplication(
+    String replicationGroupName) throws Exception {
+    return deleteUniverseReplication(replicationGroupName, false /* ignoreErrors */);
+  }
 
   public GetUniverseReplicationResponse getUniverseReplication(
     String replicationGrouopName) throws Exception {
@@ -1563,9 +1596,61 @@ public class YBClient implements AutoCloseable {
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
-  public BootstrapUniverseResponse bootstrapUniverse(List<String> tableIDs) throws Exception {
+  public BootstrapUniverseResponse bootstrapUniverse(
+    final HostAndPort hostAndPort, List<String> tableIds) throws Exception {
     Deferred<BootstrapUniverseResponse> d =
-      asyncClient.bootstrapUniverse(tableIDs);
+      asyncClient.bootstrapUniverse(hostAndPort, tableIds);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  /**
+   * It checks whether a bootstrap flow is required to set up replication or in case an existing
+   * stream has fallen far behind.
+   *
+   * @param tabletIds List of tablet IDs to check if the log for the next operation is available
+   * @param streamId  The optional stream id refers to an existing stream containing the passed
+   *                  tablet ids
+   *
+   * @return {@link IsBootstrapRequiredResponse} which contains a boolean showing whether a
+   * bootstrap is required
+   */
+  public IsBootstrapRequiredResponse isBootstrapRequired(
+    List<String> tabletIds, String streamId) throws Exception {
+    Deferred<IsBootstrapRequiredResponse> d =
+      asyncClient.isBootstrapRequired(tabletIds, streamId);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  /**
+   * It is the same as {@link #isBootstrapRequired(List, String)} except that
+   * {@code streamId} is null.
+   *
+   * @see #isBootstrapRequired(List, String)
+   */
+  public IsBootstrapRequiredResponse isBootstrapRequired(List<String> tabletIds) throws Exception {
+    return isBootstrapRequired(tabletIds, null);
+  }
+
+  /**
+   * @see AsyncYBClient#listCDCStreams(String, String, MasterReplicationOuterClass.IdTypePB)
+   */
+  public ListCDCStreamsResponse listCDCStreams(
+      String tableId,
+      String namespaceId,
+      MasterReplicationOuterClass.IdTypePB idType) throws Exception {
+    Deferred<ListCDCStreamsResponse> d =
+        asyncClient.listCDCStreams(tableId, namespaceId, idType);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  /**
+   * @see AsyncYBClient#deleteCDCStream(Set, boolean, boolean)
+   */
+  public DeleteCDCStreamResponse deleteCDCStream(Set<String> streamIds,
+                                                 boolean ignoreErrors,
+                                                 boolean forceDelete) throws Exception {
+    Deferred<DeleteCDCStreamResponse> d =
+      asyncClient.deleteCDCStream(streamIds, ignoreErrors, forceDelete);
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 

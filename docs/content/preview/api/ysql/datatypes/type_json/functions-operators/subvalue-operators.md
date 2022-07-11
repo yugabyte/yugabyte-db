@@ -8,8 +8,7 @@ menu:
     identifier: subvalue-operators
     parent: json-functions-operators
     weight: 12
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 **Purpose:** Read a JSON value at a specified path. The `>` variants return a `json` or `jsonb` value, according to the data type of the input. And the `>>` variants return a `text` value. The `#>` and `#>>` variants differ from `->` and `->>` variants in how the path is specified.

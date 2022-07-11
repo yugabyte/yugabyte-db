@@ -16,16 +16,15 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.NodeActionType;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
-import java.util.Arrays;
 import java.util.Collection;
-import java.util.HashSet;
+import java.util.Collections;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.StringUtils;
 
 // Allows the removal of the instance from a universe. That node is already not part of the
 // universe and is in Removed state.
@@ -74,20 +73,23 @@ public class ReleaseInstanceFromUniverse extends UniverseTaskBase {
 
       taskParams().azUuid = currentNode.azUuid;
       taskParams().placementUuid = currentNode.placementUuid;
-
+      taskParams().nodeUuid = currentNode.nodeUuid;
+      Collection<NodeDetails> currentNodeDetails = Collections.singleton(currentNode);
       // Wait for Master Leader before doing Master operations, like blacklisting.
       createWaitForMasterLeaderTask().setSubTaskGroupType(SubTaskGroupType.ReleasingInstance);
-      // Create a task for removal of this server from blacklist on master leader.
-      createModifyBlackListTask(
-              Arrays.asList(currentNode), false /* isAdd */, false /* isLeaderBlacklist */)
-          .setSubTaskGroupType(SubTaskGroupType.ReleasingInstance);
-
+      // If the node fails in Adding state during ADD action, IP may not be available.
+      // Check to make sure that the node IP is available.
+      if (Util.getNodeIp(universe, currentNode) != null) {
+        // Create a task for removal of this server from blacklist on master leader.
+        createModifyBlackListTask(
+                currentNodeDetails, false /* isAdd */, false /* isLeaderBlacklist */)
+            .setSubTaskGroupType(SubTaskGroupType.ReleasingInstance);
+      }
       UserIntent userIntent =
           universe.getUniverseDetails().getClusterByUuid(currentNode.placementUuid).userIntent;
-      boolean isOnprem = userIntent.providerType.equals(CloudType.onprem);
-      if (instanceExists(taskParams()) || isOnprem) {
-        Collection<NodeDetails> currentNodeDetails = new HashSet<>(Arrays.asList(currentNode));
-        if (isOnprem) {
+      // Method instanceExists also checks for on-prem.
+      if (instanceExists(taskParams())) {
+        if (userIntent.providerType == CloudType.onprem) {
           // Stop master and tservers.
           createStopServerTasks(currentNodeDetails, "master", true /* isForceDelete */)
               .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);

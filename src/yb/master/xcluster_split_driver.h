@@ -14,7 +14,7 @@
 #define YB_MASTER_XCLUSTER_SPLIT_DRIVER_H
 
 #include "yb/common/entity_ids_types.h"
-#include "yb/master/catalog_entity_info.h"
+#include "yb/master/tablet_split_fwd.h"
 #include "yb/util/status.h"
 
 namespace yb {
@@ -23,10 +23,10 @@ namespace master {
 class XClusterSplitDriverIf {
  public:
   virtual ~XClusterSplitDriverIf() {}
-  virtual CHECKED_STATUS UpdateXClusterConsumerOnTabletSplit(
+  virtual Status UpdateXClusterConsumerOnTabletSplit(
       const TableId& consumer_table_id, const SplitTabletIds& split_tablet_ids) = 0;
 
-  virtual CHECKED_STATUS UpdateXClusterProducerOnTabletSplit(
+  virtual Status UpdateXClusterProducerOnTabletSplit(
       const TableId& producer_table_id, const SplitTabletIds& split_tablet_ids) = 0;
 };
 

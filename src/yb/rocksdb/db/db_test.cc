@@ -4780,7 +4780,7 @@ class ModelDB: public DB {
   }
 
  private:
-  CHECKED_STATUS NotSupported() const {
+  Status NotSupported() const {
     return STATUS(NotSupported, "Not supported in Model DB");
   }
 
@@ -5176,7 +5176,7 @@ class DBWriter : public DBHolder {
       return bytes_count_ / (stop_time_ - start_time_).ToSeconds();
     }
 
-    CHECKED_STATUS Verify() const {
+    Status Verify() const {
       SCHECK_GT(bytes_count_, 0, IllegalState, "Bytes count must be greater than zero");
       SCHECK_LT(start_time_, stop_time_, IllegalState, "Start time must be less than stop time");
       return Status::OK();
@@ -5196,7 +5196,7 @@ class DBWriter : public DBHolder {
     write_options_.IncreaseParallelism(4);
   }
 
-  CHECKED_STATUS InitRate(boost::optional<double> rate_bytes_per_sec = boost::none) {
+  Status InitRate(boost::optional<double> rate_bytes_per_sec = boost::none) {
     if (rate_bytes_per_sec) {
       write_reference_rate_bytes_per_sec_ = *rate_bytes_per_sec;
       SCHECK_GT(write_reference_rate_bytes_per_sec_, 0.0,
@@ -5208,7 +5208,7 @@ class DBWriter : public DBHolder {
     return Status::OK();
   }
 
-  CHECKED_STATUS ExecWrite() {
+  Status ExecWrite() {
     env_->bytes_written_ = 0;
     DestroyAndReopen(write_options_);
     WriteOptions wo;
@@ -5228,7 +5228,7 @@ class DBWriter : public DBHolder {
     return write_stat_.Verify();
   }
 
-  CHECKED_STATUS ExecWriteWithNewRateLimiter(double rate_bytes_per_sec) {
+  Status ExecWriteWithNewRateLimiter(double rate_bytes_per_sec) {
     write_options_.rate_limiter.reset(
       NewGenericRateLimiter(static_cast<int64_t>(rate_bytes_per_sec)));
     RETURN_NOT_OK(ExecWrite());
@@ -5237,7 +5237,7 @@ class DBWriter : public DBHolder {
     return Status::OK();
   }
 
-  CHECKED_STATUS MeasureWrite(double rate_ratio, double max_rate_ratio) {
+  Status MeasureWrite(double rate_ratio, double max_rate_ratio) {
     SCHECK_GT(rate_ratio, 0.0, IllegalState, "Rate ratio must be greater than zero");
     SCHECK_LE(rate_ratio, max_rate_ratio,
               IllegalState, "Max rate ratio must be greater than rate ratio");
@@ -5245,7 +5245,7 @@ class DBWriter : public DBHolder {
     return CheckRatio(write_stat_, max_rate_ratio);
   }
 
-  CHECKED_STATUS CheckRatio(const WriteStat& period, double expected_ratio) const {
+  Status CheckRatio(const WriteStat& period, double expected_ratio) const {
     SCHECK_GT(write_reference_rate_bytes_per_sec_, 0.0,
               IllegalState, "Reference rate must be greater than zero");
     auto ratio = VERIFY_RESULT(period.GetRate()) / write_reference_rate_bytes_per_sec_;
@@ -5828,8 +5828,8 @@ TEST_F(DBTest, DynamicLevelCompressionPerLevel) {
   ColumnFamilyMetaData cf_meta;
   db_->GetColumnFamilyMetaData(&cf_meta);
   for (auto file : cf_meta.levels[4].files) {
-    listener->SetExpectedFileName(dbname_ + file.name);
-    ASSERT_OK(dbfull()->DeleteFile(file.name));
+    listener->SetExpectedFileName(dbname_ + file.Name());
+    ASSERT_OK(dbfull()->DeleteFile(file.Name()));
   }
   listener->VerifyMatchedCount(cf_meta.levels[4].files.size());
 

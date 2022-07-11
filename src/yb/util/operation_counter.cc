@@ -81,7 +81,7 @@ uint64_t RWOperationCounter::GetOpCounter() const {
 }
 
 uint64_t RWOperationCounter::Update(uint64_t delta) {
-  uint64_t result = counters_.fetch_add(delta, std::memory_order::memory_order_acq_rel) + delta;
+  uint64_t result = counters_.fetch_add(delta, std::memory_order::acq_rel) + delta;
   VLOG(2) << "[" << this << "] Update(" << static_cast<int64_t>(delta) << "), result = " << result;
   // Ensure that there is no underflow in either counter.
   DCHECK_EQ((result & (kStopDelta >> 1u)), 0); // Counter of DisableAndWaitForOps() calls.

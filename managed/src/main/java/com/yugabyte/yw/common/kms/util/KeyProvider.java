@@ -12,6 +12,7 @@ package com.yugabyte.yw.common.kms.util;
 
 import com.yugabyte.yw.common.kms.algorithms.SupportedAlgorithmInterface;
 import com.yugabyte.yw.common.kms.services.EncryptionAtRestService;
+import com.yugabyte.yw.common.kms.services.GcpEARService;
 import com.yugabyte.yw.common.kms.services.AwsEARService;
 import com.yugabyte.yw.common.kms.services.SmartKeyEARService;
 import com.yugabyte.yw.common.kms.services.HashicorpEARService;
@@ -29,7 +30,10 @@ public enum KeyProvider {
   SMARTKEY(SmartKeyEARService.class),
 
   @EnumValue("HASHICORP")
-  HASHICORP(HashicorpEARService.class);
+  HASHICORP(HashicorpEARService.class),
+
+  @EnumValue("GCP")
+  GCP(GcpEARService.class);
 
   private final Class<?> providerService;
 

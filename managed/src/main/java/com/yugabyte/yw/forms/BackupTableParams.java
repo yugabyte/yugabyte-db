@@ -9,14 +9,18 @@ import com.yugabyte.yw.models.Backup.StorageConfigType;
 import com.yugabyte.yw.models.helpers.TimeUnit;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import lombok.NoArgsConstructor;
+import org.apache.commons.collections.CollectionUtils;
 import org.yb.CommonTypes.TableType;
 import play.data.validation.Constraints;
 
 @ApiModel(description = "Backup table parameters")
+@NoArgsConstructor
 public class BackupTableParams extends TableManagerParams {
   public enum ActionType {
     CREATE,
@@ -42,6 +46,9 @@ public class BackupTableParams extends TableManagerParams {
 
   @ApiModelProperty(value = "Full Table type backup")
   public Boolean isFullBackup = false;
+
+  @ApiModelProperty(value = "Disable checksum")
+  public Boolean disableChecksum = false;
 
   @ApiModelProperty(value = "Backup type")
   public TableType backupType;
@@ -92,6 +99,9 @@ public class BackupTableParams extends TableManagerParams {
   @ApiModelProperty(value = "Number of concurrent commands to run on nodes over SSH")
   public int parallelism = 8;
 
+  @ApiModelProperty(value = "Don't add -m flag during gsutil upload dir command")
+  public boolean disableParallelism = false;
+
   // The associated schedule UUID (if applicable)
   @ApiModelProperty(value = "Schedule UUID")
   public UUID scheduleUUID = null;
@@ -127,6 +137,36 @@ public class BackupTableParams extends TableManagerParams {
   public TimeUnit expiryTimeUnit = TimeUnit.DAYS;
 
   @JsonIgnore
+  public BackupTableParams(BackupRequestParams backupRequestParams) {
+    this.customerUuid = backupRequestParams.customerUUID;
+    // Todo: Should it always be set to true?
+    this.ignoreErrors = true;
+    //    this.ignoreErrors = backupRequestParams.ignoreErrors;
+    this.storageConfigUUID = backupRequestParams.storageConfigUUID;
+    this.universeUUID = backupRequestParams.universeUUID;
+    this.sse = backupRequestParams.sse;
+    this.parallelism = backupRequestParams.parallelism;
+    this.timeBeforeDelete = backupRequestParams.timeBeforeDelete;
+    this.expiryTimeUnit = backupRequestParams.expiryTimeUnit;
+    this.backupType = backupRequestParams.backupType;
+    this.isFullBackup = CollectionUtils.isEmpty(backupRequestParams.keyspaceTableList);
+    this.scheduleUUID = backupRequestParams.scheduleUUID;
+    this.disableChecksum = backupRequestParams.disableChecksum;
+    this.useTablespaces = backupRequestParams.useTablespaces;
+    this.disableParallelism = backupRequestParams.disableParallelism;
+  }
+
+  @JsonIgnore
+  public BackupTableParams(BackupRequestParams backupRequestParams, String keySpace) {
+    this(backupRequestParams);
+    this.setKeyspace(keySpace);
+    this.tableNameList = new ArrayList<>();
+    this.tableUUIDList = new ArrayList<>();
+    this.setTableName(null);
+    this.tableUUID = null;
+  }
+
+  @JsonIgnore
   public Set<String> getTableNames() {
     Set<String> tableNames = new HashSet<>();
     if (tableUUIDList != null && !tableUUIDList.isEmpty()) {
@@ -147,4 +187,8 @@ public class BackupTableParams extends TableManagerParams {
   public void setFullBackup(boolean isFullBackup) {
     this.isFullBackup = isFullBackup;
   }
+
+  @JsonIgnore public List<UUID> targetAsyncReplicationRelationships;
+
+  @JsonIgnore public List<UUID> sourceAsyncReplicationRelationships;
 }

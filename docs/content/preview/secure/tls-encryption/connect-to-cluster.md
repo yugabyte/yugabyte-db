@@ -1,7 +1,7 @@
 ---
 title: Connect clients to YugabyteDB clusters
-headerTitle: Connect to Clusters
-linkTitle: Connect to Clusters
+headerTitle: Connect to clusters
+linkTitle: Connect to clusters
 description: Connect clients to remote YugabyteDB clusters that have client-to-server encryption enabled.
 image: /images/section_icons/secure/tls-encryption/connect-to-cluster.png
 aliases:
@@ -11,8 +11,7 @@ menu:
     identifier: connect-to-cluster
     parent: tls-encryption
     weight: 40
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 You can connect CLIs, tools, and APIs to a remote YugabyteDB cluster when client-to-server encryption is enabled.
@@ -142,4 +141,3 @@ ycqlsh> DESCRIBE KEYSPACES;
 
 system_schema  system_auth  system
 ```
-

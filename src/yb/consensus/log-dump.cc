@@ -135,6 +135,8 @@ void PrintIdOnly(const LogEntryPB& entry) {
            << "@" << entry.replicate().hybrid_time() << "\t";
       cout << "REPLICATE "
            << OperationType_Name(entry.replicate().op_type());
+      cout << ", SIZE: "
+           << entry.replicate().ByteSizeLong();
       break;
     }
     default:
@@ -179,7 +181,7 @@ Status PrintSegment(const scoped_refptr<ReadableLogSegment>& segment) {
   if (print_type == DONT_PRINT) return Status::OK();
 
   Schema tablet_schema;
-  RETURN_NOT_OK(SchemaFromPB(segment->header().unused_schema(), &tablet_schema));
+  RETURN_NOT_OK(SchemaFromPB(segment->header().schema(), &tablet_schema));
 
   for (const auto& entry : read_entries.entries) {
 
@@ -255,7 +257,7 @@ Status FilterLogSegment(const string& segment_path) {
   Schema tablet_schema;
   const auto& segment_header = segment->header();
 
-  RETURN_NOT_OK(SchemaFromPB(segment->header().unused_schema(), &tablet_schema));
+  RETURN_NOT_OK(SchemaFromPB(segment->header().schema(), &tablet_schema));
 
   auto log_options = LogOptions();
   log_options.env = env;
@@ -318,7 +320,7 @@ Status FilterLogSegment(const string& segment_path) {
       output_wal_dir,
       "log-dump-tool",
       tablet_schema,
-      segment_header.unused_schema_version(),
+      segment_header.schema_version(),
       /* table_metric_entity */ nullptr,
       /* tablet_metric_entity */ nullptr,
       log_thread_pool.get(),

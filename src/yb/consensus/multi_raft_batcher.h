@@ -34,7 +34,6 @@ namespace consensus {
 
 using HeartbeatResponseCallback = std::function<void(const Status&)>;
 
-
 // - MultiRaftHeartbeatBatcher is responsible for the batching of heartbeats
 //   among peers that are communicating with remote peers at the same tserver
 // - It is also responsible for periodically sending out these batched requests
@@ -46,9 +45,10 @@ using HeartbeatResponseCallback = std::function<void(const Status&)>;
 //   but only a single batch is being built at any given time
 class MultiRaftHeartbeatBatcher : public std::enable_shared_from_this<MultiRaftHeartbeatBatcher> {
  public:
-  MultiRaftHeartbeatBatcher(const yb::HostPort& hostport,
+  MultiRaftHeartbeatBatcher(const HostPort& hostport,
                             rpc::ProxyCache* proxy_cache,
-                            rpc::Messenger* messenger);
+                            rpc::Messenger* messenger,
+                            std::atomic<int>* running_calls);
 
   ~MultiRaftHeartbeatBatcher();
 
@@ -63,13 +63,9 @@ class MultiRaftHeartbeatBatcher : public std::enable_shared_from_this<MultiRaftH
                          ConsensusResponsePB* response,
                          HeartbeatResponseCallback callback);
 
- private:
-  // Tracks a single peers ConsensusResponsePB as well as its ProcessResponse callback.
-  struct ResponseCallbackData {
-    ConsensusResponsePB* resp;
-    HeartbeatResponseCallback callback;
-  };
+  void Shutdown();
 
+ private:
   // Tracks all the metadata for a single batch request, including a list of all
   // ResponseCallbackData registered by each local peer with this batch in AddRequestToBatch().
   struct MultiRaftConsensusData;
@@ -93,8 +89,9 @@ class MultiRaftHeartbeatBatcher : public std::enable_shared_from_this<MultiRaftH
   std::mutex mutex_;
 
   std::shared_ptr<MultiRaftConsensusData> current_batch_ GUARDED_BY(mutex_);
-};
 
+  std::atomic<int>* running_calls_;
+};
 
 // MultiRaftManager is responsible for managing all MultiRaftHeartbeatBatchers
 // for a given tserver (utilizes a mapping between a hostport and the corresponding batcher).
@@ -106,9 +103,14 @@ class MultiRaftManager: public std::enable_shared_from_this<MultiRaftManager> {
                    rpc::ProxyCache* proxy_cache,
                    CloudInfoPB local_peer_cloud_info_pb);
 
+  ~MultiRaftManager();
+
   // Add a batcher with the given hostport (if one does not already exist)
   // and returns the newly created batcher.
   MultiRaftHeartbeatBatcherPtr AddOrGetBatcher(const RaftPeerPB& remote_peer_pb);
+
+  void StartShutdown();
+  void CompleteShutdown();
 
  private:
   rpc::Messenger* messenger_;
@@ -124,6 +126,9 @@ class MultiRaftManager: public std::enable_shared_from_this<MultiRaftManager> {
   // MultiRaftBatchers will be shared for the same remote peer info.
   std::unordered_map<HostPort, std::weak_ptr<MultiRaftHeartbeatBatcher>,
                      HostPortHash> batchers_ GUARDED_BY(mutex_);
+
+  bool shutdown_ = false;
+  std::atomic<int> running_calls_{0};
 };
 
 }   // namespace consensus

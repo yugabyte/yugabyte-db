@@ -8,8 +8,12 @@ import static org.mockito.MockitoAnnotations.initMocks;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yugabyte.yw.common.services.YBClientService;
+import com.yugabyte.yw.models.configs.data.CustomerConfigData;
+import java.io.IOException;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import org.junit.Before;
@@ -21,12 +25,14 @@ import org.mockito.Mock;
 @RunWith(JUnitParamsRunner.class)
 public class BackupUtilTest extends FakeDBApplication {
 
-  private static final List<String> CONFIG_LOCATIONS =
-      Arrays.asList(
-          "s3://backups.yugabyte.com/test/username/common",
-          "s3://backups.yugabyte.com/test/username/1",
-          "s3://backups.yugabyte.com/test/username/2",
-          "s3://backups.yugabyte.com/test/username/3");
+  private static final Map<String, String> REGION_LOCATIONS =
+      new HashMap<String, String>() {
+        {
+          put("us-west1", "s3://backups.yugabyte.com/test/user/reg1");
+          put("us-west2", "s3://backups.yugabyte.com/test/user/reg2");
+          put("us-east1", "s3://backups.yugabyte.com/test/user/reg3");
+        }
+      };
 
   @InjectMocks BackupUtil backupUtil;
 
@@ -54,6 +60,7 @@ public class BackupUtilTest extends FakeDBApplication {
         "Duration between the cron schedules cannot be less than 1 hour", exception.getMessage());
   }
 
+  @SuppressWarnings("unused")
   private Object[] paramsToValidateFrequency() {
     return new Object[] {4800000L, 3600000L};
   }
@@ -64,6 +71,7 @@ public class BackupUtilTest extends FakeDBApplication {
     BackupUtil.validateBackupFrequency(frequency);
   }
 
+  @SuppressWarnings("unused")
   private Object[] paramsToInvalidateFrequency() {
     return new Object[] {1200000L, 2400000L};
   }
@@ -78,49 +86,31 @@ public class BackupUtilTest extends FakeDBApplication {
   }
 
   @SuppressWarnings("unused")
-  private Object[] getStorageConfigData() {
+  private Object[] getBackupSuccessData() {
+    String backupSuccessWithNoRegions = "backup/backup_success_with_no_regions.json";
 
-    String validConfigData = "backup/storage_location_valid_config.json";
-
-    String configDataWithBackupLocationMissing =
-        "backup/storage_location_config_missing_location.json";
-
-    String configDataWithBackupLocationEmpty = "backup/storage_location_config_empty_location.json";
-
-    String configDataWithRegionLocationMissing =
-        "backup/storage_location_config_missing_region_location.json";
-
-    String configDataWithRegionLocationEmpty =
-        "backup/storage_location_config_empty_region_location.json";
+    String backupSuccessWithRegions = "backup/backup_success_with_regions.json";
 
     return new Object[] {
-      new Object[] {validConfigData, true, 4},
-      new Object[] {configDataWithBackupLocationMissing, false, 0},
-      new Object[] {configDataWithBackupLocationEmpty, false, 0},
-      new Object[] {configDataWithRegionLocationMissing, true, 1},
-      new Object[] {configDataWithRegionLocationEmpty, true, 1}
+      new Object[] {backupSuccessWithNoRegions, 0},
+      new Object[] {backupSuccessWithRegions, 3}
     };
   }
 
   @Test
-  @Parameters(method = "getStorageConfigData")
-  public void testGetStorageLocationList(
-      String dataFile, boolean isValid, int expectedLocationsCount) throws Exception {
+  @Parameters(method = "getBackupSuccessData")
+  public void testExtractbackupLocations(String dataFile, int expectedCount) throws IOException {
     ObjectMapper mapper = new ObjectMapper();
-    JsonNode configData = mapper.readTree(TestUtils.readResource(dataFile));
-    List<String> expectedLocations = CONFIG_LOCATIONS.subList(0, expectedLocationsCount);
-    if (isValid) {
-      List<String> actualLocations = backupUtil.getStorageLocationList(configData);
-      assertEquals(expectedLocations.size(), actualLocations.size());
-      for (String location : actualLocations) {
-        assertTrue(expectedLocations.contains(location));
-      }
+    JsonNode locations = mapper.readTree(TestUtils.readResource(dataFile));
+    List<BackupUtil.RegionLocations> actualLocations =
+        BackupUtil.extractPerRegionLocationsFromBackupScriptResponse(locations);
+    if (expectedCount == 0) {
+      assertTrue(actualLocations.size() == 0);
     } else {
-      try {
-        List<String> actualLocations = backupUtil.getStorageLocationList(configData);
-      } catch (PlatformServiceException ex) {
-        assertTrue(true);
-      }
+      Map<String, String> regionLocations = new HashMap<>();
+      actualLocations.forEach(aL -> regionLocations.put(aL.REGION, aL.LOCATION));
+      assertEquals(regionLocations.size(), REGION_LOCATIONS.size());
+      assertTrue(regionLocations.equals(REGION_LOCATIONS));
     }
   }
 }

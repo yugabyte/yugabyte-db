@@ -22,6 +22,8 @@ import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import java.util.concurrent.BrokenBarrierException;
 import java.util.concurrent.CyclicBarrier;
 import java.util.List;
@@ -34,6 +36,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.yugabyte.util.PSQLException;
+
+import org.yb.CommonNet.CloudInfoPB;
 import org.yb.client.LeaderStepDownResponse;
 import org.yb.client.LocatedTablet;
 import org.yb.client.ModifyClusterConfigLiveReplicas;
@@ -60,8 +64,6 @@ public class TestTablespaceProperties extends BasePgSQLTest {
   private static final int MASTER_REFRESH_TABLESPACE_INFO_SECS = 2;
 
   private static final int MASTER_LOAD_BALANCER_WAIT_TIME_MS = 60 * 1000;
-
-  private static final int TRANSACTION_TABLE_NUM_TABLETS = 4;
 
   private static final int LOAD_BALANCER_MAX_CONCURRENT = 10;
 
@@ -95,11 +97,6 @@ public class TestTablespaceProperties extends BasePgSQLTest {
                           Integer.toString(MASTER_REFRESH_TABLESPACE_INFO_SECS));
     builder.addMasterFlag("auto_create_local_transaction_tables", "true");
     builder.addMasterFlag("TEST_name_transaction_tables_with_tablespace_id", "true");
-
-    // Default behavior is to scale based on number of CPU cores, which will make
-    // load balancing transaction tables too much time and time out tests.
-    builder.addMasterFlag("transaction_table_num_tablets",
-                          Integer.toString(TRANSACTION_TABLE_NUM_TABLETS));
 
     // We wait for the load balancer whenever it gets triggered anyways, so there's
     // no concerns about the load balancer taking too many resources.
@@ -552,6 +549,8 @@ public class TestTablespaceProperties extends BasePgSQLTest {
     client.waitForReplicaCount(getTableFromName(table), 2, 30_000);
 
     List<LocatedTablet> tabletLocations = getTableFromName(table).getTabletsLocations(30_000);
+    String errorMsg = "Invalid custom placement for table '" + table + "': "
+        + getPlacementInfoString(tabletLocations);
 
     // Get tablets for table.
     for (LocatedTablet tablet : tabletLocations) {
@@ -561,15 +560,15 @@ public class TestTablespaceProperties extends BasePgSQLTest {
       for (LocatedTablet.Replica replica : replicas) {
         final String role = replica.getRole();
         assertFalse(role, role.contains("READ_REPLICA"));
-        org.yb.CommonNet.CloudInfoPB cloudInfo = replica.getCloudInfo();
-        if (cloudInfo.getPlacementCloud().equals("cloud1")) {
-          assertTrue(cloudInfo.getPlacementRegion().equals("region1"));
-          assertTrue(cloudInfo.getPlacementZone().equals("zone1"));
+        CloudInfoPB cloudInfo = replica.getCloudInfo();
+        if ("cloud1".equals(cloudInfo.getPlacementCloud())) {
+          assertEquals(errorMsg, "region1", cloudInfo.getPlacementRegion());
+          assertEquals(errorMsg, "zone1", cloudInfo.getPlacementZone());
           continue;
         }
-        assertTrue(cloudInfo.getPlacementCloud().equals("cloud2"));
-        assertTrue(cloudInfo.getPlacementRegion().equals("region2"));
-        assertTrue(cloudInfo.getPlacementZone().equals("zone2"));
+        assertEquals(errorMsg, "cloud2", cloudInfo.getPlacementCloud());
+        assertEquals(errorMsg, "region2", cloudInfo.getPlacementRegion());
+        assertEquals(errorMsg, "zone2", cloudInfo.getPlacementZone());
       }
     }
   }
@@ -579,26 +578,53 @@ public class TestTablespaceProperties extends BasePgSQLTest {
     client.waitForReplicaCount(getTableFromName(table), 3, 30_000);
 
     List<LocatedTablet> tabletLocations = getTableFromName(table).getTabletsLocations(30_000);
+    String errorMsg = "Invalid default placement for table '" + table + "': "
+        + getPlacementInfoString(tabletLocations);
+
     // Get tablets for table.
     for (LocatedTablet tablet : tabletLocations) {
       List<LocatedTablet.Replica> replicas = tablet.getReplicas();
       // Verify that tablets can be present in any zone.
       for (LocatedTablet.Replica replica : replicas) {
-        org.yb.CommonNet.CloudInfoPB cloudInfo = replica.getCloudInfo();
-        if (cloudInfo.getPlacementCloud().equals("cloud1")) {
-          assertTrue(cloudInfo.getPlacementRegion().equals("region1"));
-          assertTrue(cloudInfo.getPlacementZone().equals("zone1"));
+        CloudInfoPB cloudInfo = replica.getCloudInfo();
+        if ("cloud1".equals(cloudInfo.getPlacementCloud())) {
+          assertEquals(errorMsg, "region1", cloudInfo.getPlacementRegion());
+          assertEquals(errorMsg, "zone1", cloudInfo.getPlacementZone());
           continue;
-        } else if (cloudInfo.getPlacementCloud().equals("cloud2")) {
-          assertTrue(cloudInfo.getPlacementRegion().equals("region2"));
-          assertTrue(cloudInfo.getPlacementZone().equals("zone2"));
+        } else if ("cloud2".equals(cloudInfo.getPlacementCloud())) {
+          assertEquals(errorMsg, "region2", cloudInfo.getPlacementRegion());
+          assertEquals(errorMsg, "zone2", cloudInfo.getPlacementZone());
           continue;
         }
-        assertTrue(cloudInfo.getPlacementCloud().equals("cloud3"));
-        assertTrue(cloudInfo.getPlacementRegion().equals("region3"));
-        assertTrue(cloudInfo.getPlacementZone().equals("zone3"));
+        assertEquals(errorMsg, "cloud3", cloudInfo.getPlacementCloud());
+        assertEquals(errorMsg, "region3", cloudInfo.getPlacementRegion());
+        assertEquals(errorMsg, "zone3", cloudInfo.getPlacementZone());
       }
     }
+  }
+
+  public String getPlacementInfoString(List<LocatedTablet> locatedTablets) {
+    StringBuilder sb = new StringBuilder("[");
+    for (LocatedTablet tablet : locatedTablets) {
+      sb.append("[");
+      List<LocatedTablet.Replica> replicas = new ArrayList<>(tablet.getReplicas());
+      // Somewhat dirty but would do.
+      replicas
+          .sort((r1, r2) -> r1.getCloudInfo().toString().compareTo(r2.getCloudInfo().toString()));
+      for (LocatedTablet.Replica replica : replicas) {
+        if (sb.charAt(sb.length() - 1) != '[') {
+          sb.append(", ");
+        }
+        sb.append("{\n");
+        sb.append(Stream.<String>of(replica.getCloudInfo().toString().trim().split("\n"))
+            .map((s) -> " " + s)
+            .collect(Collectors.joining(",\n")));
+        sb.append("\n}");
+      }
+      sb.append("]");
+    }
+    sb.append("]");
+    return sb.toString();
   }
 
   public String getTablespaceTransactionTableName() throws Exception {
@@ -642,7 +668,7 @@ public class TestTablespaceProperties extends BasePgSQLTest {
     miniCluster.startTServer(readReplicaPlacement);
     miniCluster.waitForTabletServers(expectedTServers);
 
-    org.yb.CommonNet.CloudInfoPB cloudInfo0 = org.yb.CommonNet.CloudInfoPB.newBuilder()
+    CloudInfoPB cloudInfo0 = CloudInfoPB.newBuilder()
             .setPlacementCloud("cloud1")
             .setPlacementRegion("region1")
             .setPlacementZone("zone1")
@@ -715,7 +741,7 @@ public class TestTablespaceProperties extends BasePgSQLTest {
       List<LocatedTablet.Replica> replicas = tablet.getReplicas();
       // Verify that tablets can be present in any zone.
       for (LocatedTablet.Replica replica : replicas) {
-        org.yb.CommonNet.CloudInfoPB cloudInfo = replica.getCloudInfo();
+        CloudInfoPB cloudInfo = replica.getCloudInfo();
         final String errorMsg = "Unexpected cloud.region.zone: " + cloudInfo.toString();
 
         if (replica.getRole().contains("READ_REPLICA")) {
@@ -725,9 +751,9 @@ public class TestTablespaceProperties extends BasePgSQLTest {
           assertFalse(foundLiveReplica);
           foundLiveReplica = true;
         }
-        assertTrue(errorMsg, cloudInfo.getPlacementCloud().equals("cloud1"));
-        assertTrue(errorMsg, cloudInfo.getPlacementRegion().equals("region1"));
-        assertTrue(errorMsg, cloudInfo.getPlacementZone().equals("zone1"));
+        assertEquals(errorMsg, "cloud1", cloudInfo.getPlacementCloud());
+        assertEquals(errorMsg, "region1", cloudInfo.getPlacementRegion());
+        assertEquals(errorMsg, "zone1", cloudInfo.getPlacementZone());
       }
       // A live replica must be found.
       assertTrue(foundLiveReplica);

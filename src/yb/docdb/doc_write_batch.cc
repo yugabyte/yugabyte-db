@@ -30,7 +30,9 @@
 #include "yb/rocksdb/write_batch.h"
 #include "yb/rocksutil/write_batch_formatter.h"
 #include "yb/server/hybrid_clock.h"
+
 #include "yb/util/bytes_formatter.h"
+#include "yb/util/checked_narrow_cast.h"
 #include "yb/util/enums.h"
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
@@ -43,6 +45,31 @@ using yb::server::HybridClock;
 namespace yb {
 namespace docdb {
 
+// Lazily creates iterator on demand.
+struct DocWriteBatch::LazyIterator {
+ public:
+  std::unique_ptr<IntentAwareIterator> iterator;
+  const DocDB* doc_db;
+  const DocPath* doc_path;
+  const ReadHybridTime* read_ht;
+  CoarseTimePoint deadline;
+  rocksdb::QueryId query_id;
+
+  IntentAwareIterator& Iterator() {
+    if (!iterator) {
+      iterator = CreateIntentAwareIterator(
+          *doc_db,
+          BloomFilterMode::USE_BLOOM_FILTER,
+          doc_path->encoded_doc_key().AsSlice(),
+          query_id,
+          TransactionOperationContext(),
+          deadline,
+          *read_ht);
+    }
+    return *iterator;
+  }
+};
+
 DocWriteBatch::DocWriteBatch(const DocDB& doc_db,
                              InitMarkerBehavior init_marker_behavior,
                              std::atomic<int64_t>* monotonic_counter)
@@ -50,7 +77,7 @@ DocWriteBatch::DocWriteBatch(const DocDB& doc_db,
       init_marker_behavior_(init_marker_behavior),
       monotonic_counter_(monotonic_counter) {}
 
-Status DocWriteBatch::SeekToKeyPrefix(LazyIterator* iter, bool has_ancestor) {
+Status DocWriteBatch::SeekToKeyPrefix(LazyIterator* iter, HasAncestor has_ancestor) {
   subdoc_exists_ = false;
   current_entry_.value_type = ValueEntryType::kInvalid;
 
@@ -61,10 +88,10 @@ Status DocWriteBatch::SeekToKeyPrefix(LazyIterator* iter, bool has_ancestor) {
     subdoc_exists_ = current_entry_.value_type != ValueEntryType::kTombstone;
     return Status::OK();
   }
-  return SeekToKeyPrefix(iter->Iterator(), has_ancestor);
+  return SeekToKeyPrefix(&iter->Iterator(), has_ancestor);
 }
 
-Status DocWriteBatch::SeekToKeyPrefix(IntentAwareIterator* doc_iter, bool has_ancestor) {
+Status DocWriteBatch::SeekToKeyPrefix(IntentAwareIterator* doc_iter, HasAncestor has_ancestor) {
   const auto prev_subdoc_ht = current_entry_.doc_hybrid_time;
   const auto prev_key_prefix_exact = current_entry_.found_exact_key_prefix;
 
@@ -164,7 +191,7 @@ Result<bool> DocWriteBatch::SetPrimitiveInternalHandleUserTimestamp(
   }
   // Seek for the older version of the key that we're about to write to. This is essentially a
   // NOOP if we've already performed the seek due to the cache.
-  RETURN_NOT_OK(SeekToKeyPrefix(iter));
+  RETURN_NOT_OK(SeekToKeyPrefix(iter, HasAncestor::kFalse));
   // We'd like to include tombstones in our timestamp comparisons as well.
   if (!current_entry_.found_exact_key_prefix) {
     return true;
@@ -198,12 +225,13 @@ Status AppendToKeySafely(
 
 }  // namespace
 
-CHECKED_STATUS DocWriteBatch::SetPrimitiveInternal(
+Status DocWriteBatch::SetPrimitiveInternal(
     const DocPath& doc_path,
     const ValueControlFields& control_fields,
     const ValueRef& value,
     LazyIterator* iter,
-    const bool is_deletion) {
+    const bool is_deletion,
+    std::optional<IntraTxnWriteId> write_id) {
   UpdateMaxValueTtl(control_fields.ttl);
 
   // The write_id is always incremented by one for each new element of the write batch.
@@ -222,8 +250,10 @@ CHECKED_STATUS DocWriteBatch::SetPrimitiveInternal(
   // We need the write_id component of DocHybridTime to disambiguate between writes in the same
   // WriteBatch, as they will have the same HybridTime when committed. E.g. if we insert, delete,
   // and re-insert the same column in one WriteBatch, we need to know the order of these operations.
-  const auto write_id = static_cast<IntraTxnWriteId>(put_batch_.size());
-  const DocHybridTime hybrid_time = DocHybridTime(HybridTime::kMax, write_id);
+  IntraTxnWriteId ht_write_id = write_id
+      ? *write_id
+      : VERIFY_RESULT(checked_narrow_cast<IntraTxnWriteId>(put_batch_.size()));
+  DocHybridTime hybrid_time(HybridTime::kMax, ht_write_id);
 
   auto num_subkeys = doc_path.num_subkeys();
   for (size_t subkey_index = 0; subkey_index < num_subkeys; ++subkey_index) {
@@ -282,7 +312,7 @@ CHECKED_STATUS DocWriteBatch::SetPrimitiveInternal(
           return STATUS(IllegalState, "Expected object subdocument type. $0");
         }
         RETURN_NOT_OK(AppendToKeySafely(subkey, doc_path, &key_prefix_));
-        RETURN_NOT_OK(SeekToKeyPrefix(iter, true));
+        RETURN_NOT_OK(SeekToKeyPrefix(iter, HasAncestor::kTrue));
         if (is_deletion && !subdoc_exists_) {
           // A parent subdocument of the value we're trying to delete, or that value itself, does
           // not exist, nothing to do.
@@ -310,8 +340,10 @@ CHECKED_STATUS DocWriteBatch::SetPrimitiveInternal(
       // Add the parent key to key/value batch before appending the encoded HybridTime to it.
       // (We replicate key/value pairs without the HybridTime and only add it before writing to
       // RocksDB.)
-      put_batch_.emplace_back(
-          key_prefix_.ToStringBuffer(), string(1, ValueEntryTypeAsChar::kObject));
+      put_batch_.push_back({
+        .key = key_prefix_.ToStringBuffer(),
+        .value = std::string(1, ValueEntryTypeAsChar::kObject),
+      });
 
       // Update our local cache to record the fact that we're adding this subdocument, so that
       // future operations in this DocWriteBatch don't have to add it or look for it in RocksDB.
@@ -321,19 +353,27 @@ CHECKED_STATUS DocWriteBatch::SetPrimitiveInternal(
   }
 
   // We need to handle the user timestamp if present.
-  if (VERIFY_RESULT(SetPrimitiveInternalHandleUserTimestamp(control_fields, iter))) {
+  if (VERIFY_RESULT(SetPrimitiveInternalHandleUserTimestamp(control_fields, iter)) || write_id) {
     // The key in the key/value batch does not have an encoded HybridTime.
-    put_batch_.emplace_back(key_prefix_.ToStringBuffer(), std::string());
-    auto& encoded_value = put_batch_.back().second;
+    DocWriteBatchEntry* kv_pair_ptr;
+    if (write_id) {
+      put_batch_[*write_id].key = key_prefix_.ToStringBuffer();
+      kv_pair_ptr = &put_batch_[*write_id];
+    } else {
+      put_batch_.push_back({
+        .key = key_prefix_.ToStringBuffer(),
+        .value = std::string(),
+      });
+      kv_pair_ptr = &put_batch_.back();
+    }
+    auto& encoded_value = kv_pair_ptr->value;
     control_fields.AppendEncoded(&encoded_value);
     size_t prefix_len = encoded_value.size();
 
     if (value.encoded_value()) {
       encoded_value.assign(value.encoded_value()->cdata(), value.encoded_value()->size());
     } else {
-      AppendEncodedValue(
-        value.value_pb(), CheckIsCollate(value.sorting_type() != SortingType::kNotSpecified),
-        &encoded_value);
+      AppendEncodedValue(value.value_pb(), &encoded_value);
       if (value.custom_value_type() != ValueEntryType::kInvalid) {
         encoded_value[prefix_len] = static_cast<char>(value.custom_value_type());
       }
@@ -352,7 +392,24 @@ Status DocWriteBatch::SetPrimitive(
     const DocPath& doc_path,
     const ValueControlFields& control_fields,
     const ValueRef& value,
-    LazyIterator* iter) {
+    std::unique_ptr<IntentAwareIterator> intent_iter) {
+  LazyIterator iter = {
+    .iterator = std::move(intent_iter),
+    .doc_db = nullptr,
+    .doc_path = nullptr,
+    .read_ht = nullptr,
+    .deadline = {},
+    .query_id = {},
+  };
+  return DoSetPrimitive(doc_path, control_fields, value, &iter, /* write_id= */ {});
+}
+
+Status DocWriteBatch::DoSetPrimitive(
+    const DocPath& doc_path,
+    const ValueControlFields& control_fields,
+    const ValueRef& value,
+    LazyIterator* iter,
+    std::optional<IntraTxnWriteId> write_id) {
   DOCDB_DEBUG_LOG("Called SetPrimitive with doc_path=$0, value=$1",
                   doc_path.ToString(), value.ToString());
   current_entry_.doc_hybrid_time = DocHybridTime::kMin;
@@ -370,7 +427,7 @@ Status DocWriteBatch::SetPrimitive(
     if (required_init_markers()) {
       // Navigate to the root of the document. We don't yet know whether the document exists or when
       // it was last updated.
-      RETURN_NOT_OK(SeekToKeyPrefix(iter, false));
+      RETURN_NOT_OK(SeekToKeyPrefix(iter, HasAncestor::kFalse));
       DOCDB_DEBUG_LOG("Top-level document exists: $0", subdoc_exists_);
       if (!subdoc_exists_ && is_deletion) {
         DOCDB_DEBUG_LOG("We're performing a deletion, and the document is not present. "
@@ -379,7 +436,7 @@ Status DocWriteBatch::SetPrimitive(
       }
     }
   }
-  return SetPrimitiveInternal(doc_path, control_fields, value, iter, is_deletion);
+  return SetPrimitiveInternal(doc_path, control_fields, value, iter, is_deletion, write_id);
 }
 
 Status DocWriteBatch::SetPrimitive(const DocPath& doc_path,
@@ -387,24 +444,19 @@ Status DocWriteBatch::SetPrimitive(const DocPath& doc_path,
                                    const ValueRef& value,
                                    const ReadHybridTime& read_ht,
                                    CoarseTimePoint deadline,
-                                   rocksdb::QueryId query_id) {
+                                   rocksdb::QueryId query_id,
+                                   std::optional<IntraTxnWriteId> write_id) {
   DOCDB_DEBUG_LOG("Called with doc_path=$0, value=$1", doc_path.ToString(), value.ToString());
 
-  std::function<std::unique_ptr<IntentAwareIterator>()> createrator =
-    [doc_path, query_id, deadline, read_ht, this]() {
-      return yb::docdb::CreateIntentAwareIterator(
-          doc_db_,
-          BloomFilterMode::USE_BLOOM_FILTER,
-          doc_path.encoded_doc_key().AsSlice(),
-          query_id,
-          TransactionOperationContext(),
-          deadline,
-          read_ht);
-    };
-
-  LazyIterator iter(&createrator);
-
-  return SetPrimitive(doc_path, control_fields, value, &iter);
+  LazyIterator iter = {
+    .iterator = nullptr,
+    .doc_db = &doc_db_,
+    .doc_path = &doc_path,
+    .read_ht = &read_ht,
+    .deadline = deadline,
+    .query_id = query_id,
+  };
+  return DoSetPrimitive(doc_path, control_fields, value, &iter, write_id);
 }
 
 Status DocWriteBatch::ExtendSubDocument(
@@ -555,7 +607,7 @@ Status DocWriteBatch::ReplaceRedisInList(
   if (dir == Direction::kForward) {
     // Ensure we seek directly to indices and skip init marker if it exists.
     key_prefix_.AppendKeyEntryType(KeyEntryType::kArrayIndex);
-    RETURN_NOT_OK(SeekToKeyPrefix(iter.get(), false));
+    RETURN_NOT_OK(SeekToKeyPrefix(iter.get(), HasAncestor::kFalse));
   } else {
     // We would like to seek past the entire list and go backwards.
     key_prefix_.AppendKeyEntryType(KeyEntryType::kMaxByte);
@@ -652,7 +704,7 @@ Status DocWriteBatch::ReplaceCqlInList(
       deadline,
       read_ht);
 
-  RETURN_NOT_OK(SeekToKeyPrefix(iter.get(), false));
+  RETURN_NOT_OK(SeekToKeyPrefix(iter.get(), HasAncestor::kFalse));
 
   if (!iter->valid()) {
     return STATUS(QLError, "Unable to replace items in empty list.");
@@ -676,7 +728,7 @@ Status DocWriteBatch::ReplaceCqlInList(
 
   // Seek past init marker if it exists.
   key_prefix_.AppendKeyEntryType(KeyEntryType::kArrayIndex);
-  RETURN_NOT_OK(SeekToKeyPrefix(iter.get(), false));
+  RETURN_NOT_OK(SeekToKeyPrefix(iter.get(), HasAncestor::kFalse));
 
   FetchKeyResult key_data;
   while (true) {
@@ -724,7 +776,7 @@ Status DocWriteBatch::ReplaceCqlInList(
   }
 }
 
-CHECKED_STATUS DocWriteBatch::DeleteSubDoc(
+Status DocWriteBatch::DeleteSubDoc(
     const DocPath& doc_path,
     const ReadHybridTime& read_ht,
     const CoarseTimePoint deadline,
@@ -743,8 +795,8 @@ void DocWriteBatch::MoveToWriteBatchPB(KeyValueWriteBatchPB *kv_pb) {
   kv_pb->mutable_write_pairs()->Reserve(narrow_cast<int>(put_batch_.size()));
   for (auto& entry : put_batch_) {
     KeyValuePairPB* kv_pair = kv_pb->add_write_pairs();
-    kv_pair->mutable_key()->swap(entry.first);
-    kv_pair->mutable_value()->swap(entry.second);
+    kv_pair->mutable_key()->swap(entry.key);
+    kv_pair->mutable_value()->swap(entry.value);
   }
   if (has_ttl()) {
     kv_pb->set_ttl(ttl_ns());
@@ -755,8 +807,8 @@ void DocWriteBatch::TEST_CopyToWriteBatchPB(KeyValueWriteBatchPB *kv_pb) const {
   kv_pb->mutable_write_pairs()->Reserve(narrow_cast<int>(put_batch_.size()));
   for (auto& entry : put_batch_) {
     KeyValuePairPB* kv_pair = kv_pb->add_write_pairs();
-    kv_pair->mutable_key()->assign(entry.first);
-    kv_pair->mutable_value()->assign(entry.second);
+    kv_pair->mutable_key()->assign(entry.key);
+    kv_pair->mutable_value()->assign(entry.value);
   }
   if (has_ttl()) {
     kv_pb->set_ttl(ttl_ns());

@@ -10,7 +10,10 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/master/yql_functions_vtable.h"
+
+#include <boost/asio/ip/address.hpp>
 
 #include "yb/common/ql_type.h"
 #include "yb/common/schema.h"

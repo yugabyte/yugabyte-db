@@ -59,16 +59,18 @@ public class SoftwareUpgrade extends UpgradeTaskBase {
                   .forUniverse(universe)
                   .getLong("yb.dbmem.checks.mem_available_limit_kb");
           createAvailabeMemoryCheck(nodes.getRight(), Util.AVAILABLE_MEMORY, memAvailableLimit)
-              .setSubTaskGroupType(getTaskSubGroupType());
+              .setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
 
           String newVersion = taskParams().ybSoftwareVersion;
 
+          createPackageInstallTasks(nodes.getRight());
           // Download software to all nodes.
           createDownloadTasks(nodes.getRight(), newVersion);
           // Install software on nodes.
           createUpgradeTaskFlow(
               (nodes1, processTypes) ->
-                  createSoftwareInstallTasks(nodes1, getSingle(processTypes), newVersion),
+                  createSoftwareInstallTasks(
+                      nodes1, getSingle(processTypes), newVersion, getTaskSubGroupType()),
               nodes,
               SOFTWARE_UPGRADE_CONTEXT);
           // Run YSQL upgrade on the universe.
@@ -85,7 +87,8 @@ public class SoftwareUpgrade extends UpgradeTaskBase {
             "AnsibleConfigureServers (%s) for: %s",
             SubTaskGroupType.DownloadingSoftware, taskParams().nodePrefix);
 
-    SubTaskGroup downloadTaskGroup = getTaskExecutor().createSubTaskGroup(subGroupDescription);
+    SubTaskGroup downloadTaskGroup =
+        getTaskExecutor().createSubTaskGroup(subGroupDescription, executor);
     for (NodeDetails node : nodes) {
       downloadTaskGroup.addSubTask(
           getAnsibleConfigureServerTask(
@@ -93,5 +96,20 @@ public class SoftwareUpgrade extends UpgradeTaskBase {
     }
     downloadTaskGroup.setSubTaskGroupType(SubTaskGroupType.DownloadingSoftware);
     getRunnableTask().addSubTaskGroup(downloadTaskGroup);
+  }
+
+  private void createPackageInstallTasks(List<NodeDetails> nodes) {
+    String subGroupDescription =
+        String.format(
+            "AnsibleConfigureServers (%s) for: %s",
+            SubTaskGroupType.UpdatePackage, taskParams().nodePrefix);
+    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup(subGroupDescription, executor);
+    for (NodeDetails node : nodes) {
+      subTaskGroup.addSubTask(
+          getAnsibleConfigureServerTask(
+              node, ServerType.TSERVER, UpgradeTaskSubType.PackageReInstall, null));
+    }
+    subTaskGroup.setSubTaskGroupType(SubTaskGroupType.UpdatePackage);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
   }
 }

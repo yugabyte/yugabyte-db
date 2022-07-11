@@ -40,11 +40,14 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
   int col_count = 0;
   CHECK_YBC_STATUS(YBCPgNewCreateTable(kDefaultDatabase, kDefaultSchema, tabname,
                                        kDefaultDatabaseOid, tab_oid,
-                                       false /* is_shared_table */, true /* if_not_exist */,
-                                       false /* add_primary_key */, true /* colocated */,
+                                       false /* is_shared_table */,
+                                       true /* if_not_exist */,
+                                       false /* add_primary_key */,
+                                       true /* is_colocated_via_database */,
                                        kInvalidOid /* tablegroup_id */,
                                        kColocationIdNotSet /* colocation_id */,
                                        kInvalidOid /* tablespace_id */,
+                                       false /* is_matview */,
                                        kInvalidOid /* matview_pg_table_id */,
                                        &pg_stmt));
   CHECK_YBC_STATUS(YBCTestCreateTableAddColumn(pg_stmt, "hash_key", ++col_count,
@@ -68,8 +71,8 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
 
   // INSERT ----------------------------------------------------------------------------------------
   // Allocate new insert.
-  CHECK_YBC_STATUS(YBCPgNewInsert(kDefaultDatabaseOid, tab_oid,
-                                  false /* is_single_row_txn */, &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewInsert(kDefaultDatabaseOid, tab_oid, false /* is_single_row_txn */,
+                                  false /* is_region_local */, &pg_stmt));
 
   // Allocate constant expressions.
   // TODO(neil) We can also allocate expression with bind.
@@ -125,8 +128,8 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
 
   // SELECT ----------------------------------------------------------------------------------------
   LOG(INFO) << "Test SELECTing from non-partitioned table WITH RANGE values";
-  CHECK_YBC_STATUS(YBCPgNewSelect(kDefaultDatabaseOid, tab_oid,
-                                  NULL /* prepare_params */, &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewSelect(kDefaultDatabaseOid, tab_oid, NULL /* prepare_params */,
+                                  false /* is_region_local */, &pg_stmt));
 
   // Specify the selected expressions.
   YBCPgExpr colref;
@@ -207,8 +210,8 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
 
   // SELECT ----------------------------------------------------------------------------------------
   LOG(INFO) << "Test SELECTing from non-partitioned table WITHOUT RANGE values";
-  CHECK_YBC_STATUS(YBCPgNewSelect(kDefaultDatabaseOid, tab_oid,
-                                  NULL /* prepare_params */, &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewSelect(kDefaultDatabaseOid, tab_oid, NULL /* prepare_params */,
+                                  false /* is_region_local */, &pg_stmt));
 
   // Specify the selected expressions.
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 1, DataType::INT64, &colref));

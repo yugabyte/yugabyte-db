@@ -148,7 +148,7 @@ const std::shared_future<client::YBClient*>& MasterTabletServer::client_future()
   return master_->async_client_initializer().get_client_future();
 }
 
-CHECKED_STATUS MasterTabletServer::GetLiveTServers(
+Status MasterTabletServer::GetLiveTServers(
     std::vector<master::TSInformationPB> *live_tservers) const {
   return Status::OK();
 }
@@ -158,6 +158,12 @@ const std::shared_ptr<MemTracker>& MasterTabletServer::mem_tracker() const {
 }
 
 void MasterTabletServer::SetPublisher(rpc::Publisher service) {
+}
+
+client::TransactionPool& MasterTabletServer::TransactionPool() {
+  LOG(FATAL) << "Unexpected call of TransactionPool()";
+  client::TransactionPool* temp = nullptr;
+  return *temp;
 }
 
 } // namespace master

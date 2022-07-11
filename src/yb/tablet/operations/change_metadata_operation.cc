@@ -137,6 +137,7 @@ Status ChangeMetadataOperation::DoReplicated(int64_t leader_term, Status* comple
     ADD_TABLE,
     REMOVE_TABLE,
     BACKFILL_DONE,
+    ADD_MULTIPLE_TABLES,
   };
 
   MetadataChange metadata_change = MetadataChange::NONE;
@@ -167,6 +168,13 @@ Status ChangeMetadataOperation::DoReplicated(int64_t leader_term, Status* comple
     metadata_change = MetadataChange::NONE;
     if (++num_operations == 1) {
       metadata_change = MetadataChange::BACKFILL_DONE;
+    }
+  }
+
+  if (request()->add_multiple_tables_size()) {
+    metadata_change = MetadataChange::NONE;
+    if (++num_operations == 1) {
+      metadata_change = MetadataChange::ADD_MULTIPLE_TABLES;
     }
   }
 
@@ -202,6 +210,11 @@ Status ChangeMetadataOperation::DoReplicated(int64_t leader_term, Status* comple
                                    << num_operations;
       RETURN_NOT_OK(tablet->MarkBackfillDone(request()->backfill_done_table_id()));
       break;
+    case MetadataChange::ADD_MULTIPLE_TABLES:
+      DCHECK_EQ(1, num_operations) << "Invalid number of change metadata operations: "
+                                   << num_operations;
+      RETURN_NOT_OK(tablet->AddMultipleTables(request()->add_multiple_tables()));
+      break;
   }
 
   // Now that all of the changes have been applied and the commit is durable
@@ -215,7 +228,7 @@ Status ChangeMetadataOperation::DoAborted(const Status& status) {
   return status;
 }
 
-CHECKED_STATUS SyncReplicateChangeMetadataOperation(
+Status SyncReplicateChangeMetadataOperation(
     const ChangeMetadataRequestPB* req,
     TabletPeer* tablet_peer,
     int64_t term) {

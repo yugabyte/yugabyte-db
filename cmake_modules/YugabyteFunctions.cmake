@@ -131,33 +131,6 @@ function(DETECT_BREW)
   set(LINUXBREW_LIB_DIR "${LINUXBREW_DIR}/lib" PARENT_SCOPE)
 endfunction()
 
-# Ensures that the YB_COMPILER_TYPE environment variable matches the auto-detected compiler family.
-# Also this sets the convienience variables IS_GCC and IS_CLANG.
-function(INIT_COMPILER_TYPE_FROM_BUILD_ROOT)
-  get_filename_component(BUILD_ROOT_BASENAME "${CMAKE_CURRENT_BINARY_DIR}" NAME)
-
-  if ("$ENV{YB_COMPILER_TYPE}" STREQUAL "")
-    # TODO: deduplicate this.
-    string(REGEX MATCH "^.*-zapcc-.*$" RE_MATCH_RESULT "${BUILD_ROOT_BASENAME}")
-    if (NOT "${RE_MATCH_RESULT}" STREQUAL "")
-      set(ENV{YB_COMPILER_TYPE} "zapcc")
-    else()
-      string(REGEX MATCH "^.*-gcc-.*$" RE_MATCH_RESULT "${BUILD_ROOT_BASENAME}")
-      if (NOT "${RE_MATCH_RESULT}" STREQUAL "")
-        set(ENV{YB_COMPILER_TYPE} "gcc")
-      else()
-        string(REGEX MATCH "^.*-clang-.*$" RE_MATCH_RESULT "${BUILD_ROOT_BASENAME}")
-        if (NOT "${RE_MATCH_RESULT}" STREQUAL "")
-          set(ENV{YB_COMPILER_TYPE} "clang")
-        endif()
-      endif()
-    endif()
-  endif()
-
-  # Make sure we can use $ENV{YB_COMPILER_TYPE} and ${YB_COMPILER_TYPE} interchangeably.
-  SET(YB_COMPILER_TYPE "$ENV{YB_COMPILER_TYPE}" PARENT_SCOPE)
-endfunction()
-
 # Makes sure that we are using a supported compiler family.
 function(EXPECT_COMPILER_TYPE_TO_BE_SET)
   if (NOT DEFINED YB_COMPILER_TYPE OR "${YB_COMPILER_TYPE}" STREQUAL "")
@@ -171,25 +144,19 @@ function(VALIDATE_COMPILER_TYPE)
     set(ENV{YB_COMPILER_TYPE} "${COMPILER_FAMILY}")
   endif()
 
-  if ("$ENV{YB_COMPILER_TYPE}" STREQUAL "zapcc")
-    if (NOT IS_CLANG)
-      message(FATAL_ERROR
-              "Compiler type is zapcc but the compiler family is '${COMPILER_FAMILY}' "
-              "(expected to be clang)")
-    endif()
-  endif()
-
-  if("${YB_COMPILER_TYPE}" MATCHES "^gcc.*$" AND NOT IS_GCC)
+  if(NOT "${YB_COMPILER_TYPE}" MATCHES "^${COMPILER_FAMILY}([0-9]*)$")
     message(FATAL_ERROR
             "Compiler type '${YB_COMPILER_TYPE}' does not match the compiler family "
             "'${COMPILER_FAMILY}'.")
   endif()
 
-  if(("${YB_COMPILER_TYPE}" STREQUAL "gcc8" AND NOT "${COMPILER_VERSION}" MATCHES "^8[.].*$") OR
-     ("${YB_COMPILER_TYPE}" STREQUAL "gcc9" AND NOT "${COMPILER_VERSION}" MATCHES "^9[.].*$"))
+  # On macOS, we use the compiler type of simply "clang", without a major version suffix.
+  # On Linux, we validate that the major version in the compiler type matches the actual one.
+  if(NOT "${YB_COMPILER_TYPE}" STREQUAL "clang" AND
+     NOT "${COMPILER_VERSION}" MATCHES "^${CMAKE_MATCH_1}[.].*$")
     message(FATAL_ERROR
-            "Invalid compiler version '${COMPILER_VERSION}' for compiler type "
-            "'${YB_COMPILER_TYPE}'.")
+            "Compiler version ${COMPILER_VERSION} does not match the major version "
+            "${CMAKE_MATCH_1} from the compiler type ${YB_COMPILER_TYPE}.")
   endif()
 
   if (NOT IS_GCC AND
@@ -404,6 +371,11 @@ macro(YB_SETUP_CLANG)
       endif()
       ADD_CXX_FLAGS("-isystem ${CLANG_INCLUDE_DIR}")
     endif()
+
+    if ("${COMPILER_VERSION}" VERSION_GREATER_EQUAL "12.0.0")
+      ADD_LINKER_FLAGS("-fuse-ld=lld")
+      ADD_LINKER_FLAGS("-lunwind")
+    endif()
   endif()
 
   ADD_CXX_FLAGS("-nostdinc++")
@@ -413,11 +385,6 @@ macro(YB_SETUP_CLANG)
   ADD_LINKER_FLAGS("-L${LIBCXX_DIR}/lib")
   if(NOT EXISTS "${LIBCXX_DIR}/lib")
     message(FATAL_ERROR "libc++ library directory does not exist: '${LIBCXX_DIR}/lib'")
-  endif()
-
-  if("${COMPILER_VERSION}" MATCHES "^7[.]*" AND NOT USING_LINUXBREW)
-    # A special linker flag needed only with the Clang 7 build not using Linuxbrew.
-    ADD_LINKER_FLAGS("-lgcc_s")
   endif()
 endmacro()
 
@@ -704,11 +671,11 @@ function(parse_build_root_basename)
   # -----------------------------------------------------------------------------------------------
 
   set(YB_LINKING_TYPE "${CMAKE_MATCH_5}")
-  if(NOT "${YB_LINKING_TYPE}" MATCHES "^(static|dynamic)$")
+  if(NOT "${YB_LINKING_TYPE}" MATCHES "^(dynamic|thin-lto|full-lto)$")
     message(
         FATAL_ERROR
         "Invalid linking type from the build root basename '${YB_BUILD_ROOT_BASENAME}': "
-        "'${YB_LINKING_TYPE}'. Expected 'static' or 'dynamic'.")
+        "'${YB_LINKING_TYPE}'. Expected 'dynamic', 'thin-lto', or 'full-lto'.")
   endif()
   set(YB_LINKING_TYPE "${YB_LINKING_TYPE}" PARENT_SCOPE)
 
@@ -741,16 +708,13 @@ macro(enable_lto_if_needed)
     message(FATAL_ERROR "YB_BUILD_TYPE not defined")
   endif()
 
-  if("${YB_BUILD_TYPE}" STREQUAL "release" AND
-     "${COMPILER_FAMILY}" STREQUAL "clang" AND
-     "${YB_COMPILER_TYPE}" STREQUAL "clang12" AND
-     USING_LINUXBREW AND
-     NOT APPLE)
-    message("Enabling full LTO and lld linker")
-    ADD_CXX_FLAGS("-flto=full -fuse-ld=lld")
+  if("${YB_LINKING_TYPE}" MATCHES "^(thin|full)-lto$")
+    message("Enabling ${CMAKE_MATCH_1} LTO based on linking type: ${YB_LINKING_TYPE}")
+    ADD_CXX_FLAGS("-flto=${CMAKE_MATCH_1} -fuse-ld=lld")
   else()
     message("Not enabling LTO: "
             "YB_BUILD_TYPE=${YB_BUILD_TYPE}, "
+            "YB_LINKING_TYPE=${YB_LINKING_TYPE}, "
             "COMPILER_FAMILY=${COMPILER_FAMILY}, "
             "USING_LINUXBREW=${USING_LINUXBREW}, "
             "APPLE=${APPLE}")

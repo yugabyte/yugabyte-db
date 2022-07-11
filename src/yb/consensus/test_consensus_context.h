@@ -37,7 +37,7 @@ class TestConsensusContext : public ConsensusContext {
 
   void ListenNumSSTFilesChanged(std::function<void()> listener) override {}
 
-  CHECKED_STATUS CheckOperationAllowed(
+  Status CheckOperationAllowed(
       const OpId& op_id, consensus::OperationType op_type) override {
     return Status::OK();
   }

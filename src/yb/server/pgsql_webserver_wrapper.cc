@@ -48,50 +48,37 @@ static const char *METRIC_TYPE_SERVER = "server";
 static const char *METRIC_ID_YB_YSQLSERVER = "yb.ysqlserver";
 
 static const char *PSQL_SERVER_CONNECTION_TOTAL = "yb_ysqlserver_connection_total";
-static const char *PSQL_SERVER_CONNECTION = "yb_ysqlserver_connection_info";
-
-static const char *CONN_BACKEND_TYPE = "backend_type";
-static const char *CONN_BACKEND_STATUS = "backend_status";
-static const char *CONN_APPLICATION_NAME = "application_name";
+static const char *PSQL_SERVER_ACTIVE_CONNECTION_TOTAL = "yb_ysqlserver_active_connection_total";
 
 namespace {
-// A helper function to init an empty AttributeMap and fills
-// it with proper default lables.
-MetricEntity::AttributeMap initEmptyAttributes() {
-  MetricEntity::AttributeMap connAttri;
-  connAttri[EXPORTED_INSTANCE] = prometheus_attr[EXPORTED_INSTANCE];
-  connAttri[METRIC_TYPE] = prometheus_attr[METRIC_TYPE];
-  connAttri[METRIC_ID] = prometheus_attr[METRIC_ID];
-  return connAttri;
-}
 
 void emitConnectionMetrics(PrometheusWriter *pwriter) {
   pgCallbacks.pullRpczEntries();
   rpczEntry *entry = *rpczResultPointer;
 
   uint64_t tot_connections = 0;
+  uint64_t tot_active_connections = 0;
   for (int i = 0; i < *num_backends; ++i, ++entry) {
     if (entry->proc_id > 0) {
-      auto connAttri = initEmptyAttributes();
-
-      connAttri[CONN_BACKEND_TYPE] = entry->backend_type;
-      connAttri[CONN_BACKEND_STATUS] = entry->backend_status;
-      connAttri[CONN_APPLICATION_NAME] = entry->application_name;
-
-      std::ostringstream errMsg;
-      errMsg << "Cannot publish connection metric to Promethesu-metrics endpoint for DB: "
-             << (entry->db_name ? entry->db_name : "Unknown DB");
-
-      WARN_NOT_OK(
-          pwriter->WriteSingleEntryNonTable(connAttri, PSQL_SERVER_CONNECTION, 1), errMsg.str());
+      if (entry->backend_active != 0u) {
+        tot_active_connections++;
+      }
       tot_connections++;
     }
   }
 
+  std::ostringstream errMsg;
+  errMsg << "Cannot publish connection metric to Promethesu-metrics endpoint";
+
+  WARN_NOT_OK(
+      pwriter->WriteSingleEntryNonTable(
+          prometheus_attr, PSQL_SERVER_ACTIVE_CONNECTION_TOTAL, tot_active_connections),
+      errMsg.str());
+
   WARN_NOT_OK(
       pwriter->WriteSingleEntryNonTable(
           prometheus_attr, PSQL_SERVER_CONNECTION_TOTAL, tot_connections),
-      "Cannot publish connection count metrics to Prometheus-metrics endpoint");
+      errMsg.str());
   pgCallbacks.freeRpczEntries();
 }
 
@@ -138,6 +125,10 @@ static void PgMetricsHandler(const Webserver::WebRequest &req, Webserver::WebRes
 }
 
 static void DoWriteStatArrayElemToJson(JsonWriter *writer, YsqlStatementStat *stat) {
+  writer->String("query_id");
+  // Use Int64 for this uint64 field to keep consistent output with PG.
+  writer->Int64(stat->query_id);
+
   writer->String("query");
   writer->String(stat->query);
 

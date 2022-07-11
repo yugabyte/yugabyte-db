@@ -15,6 +15,7 @@
 #define YB_GEN_YRPC_SUBSTITUTIONS_H
 
 #include <map>
+#include <string>
 
 #include "yb/gen_yrpc/gen_yrpc_fwd.h"
 

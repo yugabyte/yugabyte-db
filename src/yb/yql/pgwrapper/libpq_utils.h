@@ -70,8 +70,12 @@ Result<T> GetValue(PGresult* result, int row, int column) {
   return GetValueImpl(result, row, column, static_cast<T*>(nullptr));
 }
 
+const std::string& DefaultColumnSeparator();
+const std::string& DefaultRowSeparator();
+
 Result<std::string> ToString(PGresult* result, int row, int column);
-Result<std::string> RowToString(PGresult* result, int row);
+Result<std::string> RowToString(
+    PGresult* result, int row, const std::string& sep = DefaultColumnSeparator());
 void LogResult(PGresult* result);
 
 std::string PqEscapeLiteral(const std::string& input);
@@ -84,28 +88,12 @@ class PGConn {
   PGConn(PGConn&& rhs);
   PGConn& operator=(PGConn&& rhs);
 
-  static Result<PGConn> Connect(
-      const HostPort& host_port,
-      bool simple_query_protocol = false) {
-    return Connect(host_port, "" /* db_name */, simple_query_protocol);
-  }
-  static Result<PGConn> Connect(
-      const HostPort& host_port,
-      const std::string& db_name,
-      bool simple_query_protocol = false) {
-    return Connect(host_port, db_name, "postgres" /* user */, simple_query_protocol);
-  }
-  static Result<PGConn> Connect(
-      const HostPort& host_port,
-      const std::string& db_name,
-      const std::string& user,
-      bool simple_query_protocol = false);
   // Pass in an optional conn_str_for_log for logging purposes. This is used in case
   // conn_str contains sensitive information (e.g. password).
   static Result<PGConn> Connect(
       const std::string& conn_str,
-      bool simple_query_protocol = false,
-      const boost::optional<std::string>& conn_str_for_log = boost::none) {
+      bool simple_query_protocol,
+      const std::string& conn_str_for_log) {
     return Connect(conn_str,
                    CoarseMonoClock::Now() + MonoDelta::FromSeconds(60) /* deadline */,
                    simple_query_protocol,
@@ -114,13 +102,13 @@ class PGConn {
   static Result<PGConn> Connect(
       const std::string& conn_str,
       CoarseTimePoint deadline,
-      bool simple_query_protocol = false,
-      const boost::optional<std::string>& conn_str_for_log = boost::none);
+      bool simple_query_protocol,
+      const std::string& conn_str_for_log);
 
-  CHECKED_STATUS Execute(const std::string& command, bool show_query_in_error = true);
+  Status Execute(const std::string& command, bool show_query_in_error = true);
 
   template <class... Args>
-  CHECKED_STATUS ExecuteFormat(const std::string& format, Args&&... args) {
+  Status ExecuteFormat(const std::string& format, Args&&... args) {
     return Execute(Format(format, std::forward<Args>(args)...));
   }
 
@@ -133,7 +121,11 @@ class PGConn {
 
   // Fetches data matrix of specified size. I.e. exact number of rows and columns are expected.
   Result<PGResultPtr> FetchMatrix(const std::string& command, int rows, int columns);
-  Result<std::string> FetchRowAsString(const std::string& command);
+  Result<std::string> FetchRowAsString(
+      const std::string& command, const std::string& sep = DefaultColumnSeparator());
+  Result<std::string> FetchAllAsString(const std::string& command,
+      const std::string& column_sep = DefaultColumnSeparator(),
+      const std::string& row_sep = DefaultRowSeparator());
 
   template <class T>
   Result<T> FetchValue(const std::string& command) {
@@ -141,14 +133,14 @@ class PGConn {
     return GetValue<T>(res.get(), 0, 0);
   }
 
-  CHECKED_STATUS StartTransaction(IsolationLevel isolation_level);
-  CHECKED_STATUS CommitTransaction();
-  CHECKED_STATUS RollbackTransaction();
+  Status StartTransaction(IsolationLevel isolation_level);
+  Status CommitTransaction();
+  Status RollbackTransaction();
 
   // Would this query use an index [only] scan?
   Result<bool> HasIndexScan(const std::string& query);
 
-  CHECKED_STATUS CopyBegin(const std::string& command);
+  Status CopyBegin(const std::string& command);
   Result<PGResultPtr> CopyEnd();
 
   void CopyStartRow(int16_t columns);
@@ -177,6 +169,28 @@ class PGConn {
   PGConnPtr impl_;
   bool simple_query_protocol_;
   std::unique_ptr<CopyData> copy_data_;
+};
+
+// Settings to pass to PGConnBuilder.
+struct PGConnSettings {
+  constexpr static const char* kDefaultUser = "postgres";
+
+  const std::string& host;
+  uint16_t port;
+  const std::string& dbname = std::string();
+  const std::string& user = kDefaultUser;
+  const std::string& password = std::string();
+  size_t connect_timeout = 0;
+};
+
+class PGConnBuilder {
+ public:
+  explicit PGConnBuilder(const PGConnSettings& settings);
+  Result<PGConn> Connect(bool simple_query_protocol = false) const;
+
+ private:
+  const std::string conn_str_;
+  const std::string conn_str_for_log_;
 };
 
 bool HasTryAgain(const Status& status);

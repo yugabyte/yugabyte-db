@@ -12,8 +12,7 @@ menu:
     identifier: ycqlsh
     parent: admin
     weight: 2460
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Overview

@@ -37,6 +37,7 @@
 #include <list>
 #include <mutex>
 #include <set>
+#include <shared_mutex>
 #include <string>
 #include <thread>
 
@@ -77,8 +78,9 @@ using namespace std::literals;
 using namespace std::placeholders;
 using namespace yb::size_literals;
 
-using std::string;
+using std::shared_lock;
 using std::shared_ptr;
+using std::string;
 using strings::Substitute;
 
 DECLARE_int32(num_connections_to_server);

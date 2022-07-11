@@ -442,12 +442,12 @@ class TestPeerMapManager {
     InsertOrDie(&peers_, peer_uuid, peer);
   }
 
-  CHECKED_STATUS GetPeerByIdx(int idx, std::shared_ptr<RaftConsensus>* peer_out) const {
+  Status GetPeerByIdx(int idx, std::shared_ptr<RaftConsensus>* peer_out) const {
     CHECK_LT(idx, config_.peers_size());
     return GetPeerByUuid(config_.peers(idx).permanent_uuid(), peer_out);
   }
 
-  CHECKED_STATUS GetPeerByUuid(const std::string& peer_uuid,
+  Status GetPeerByUuid(const std::string& peer_uuid,
                        std::shared_ptr<RaftConsensus>* peer_out) const {
     std::lock_guard<simple_spinlock> lock(lock_);
     if (!FindCopy(peers_, peer_uuid, peer_out)) {
@@ -708,7 +708,7 @@ class TestDriver : public ConsensusRoundCallback {
 // testing RaftConsensusState. Does not actually support running transactions.
 class MockOperationFactory : public TestConsensusContext {
  public:
-  CHECKED_STATUS StartReplicaOperation(
+  Status StartReplicaOperation(
       const scoped_refptr<ConsensusRound>& round, HybridTime propagated_hybrid_time) override {
     return StartReplicaOperationMock(round.get());
   }
@@ -727,7 +727,7 @@ class TestOperationFactory : public TestConsensusContext {
     consensus_ = consensus;
   }
 
-  CHECKED_STATUS StartReplicaOperation(
+  Status StartReplicaOperation(
       const scoped_refptr<ConsensusRound>& round, HybridTime propagated_hybrid_time) override {
     auto txn = new TestDriver(pool_.get(), round);
     txn->round_->SetCallback(txn);
@@ -776,70 +776,70 @@ class CounterHooks : public Consensus::ConsensusFaultHooks {
         pre_shutdown_calls_(0),
         post_shutdown_calls_(0) {}
 
-  virtual CHECKED_STATUS PreStart() override {
+  virtual Status PreStart() override {
     if (current_hook_.get()) RETURN_NOT_OK(current_hook_->PreStart());
     std::lock_guard<simple_spinlock> lock(lock_);
     pre_start_calls_++;
     return Status::OK();
   }
 
-  virtual CHECKED_STATUS PostStart() override {
+  virtual Status PostStart() override {
     if (current_hook_.get()) RETURN_NOT_OK(current_hook_->PostStart());
     std::lock_guard<simple_spinlock> lock(lock_);
     post_start_calls_++;
     return Status::OK();
   }
 
-  virtual CHECKED_STATUS PreConfigChange() override {
+  virtual Status PreConfigChange() override {
     if (current_hook_.get()) RETURN_NOT_OK(current_hook_->PreConfigChange());
     std::lock_guard<simple_spinlock> lock(lock_);
     pre_config_change_calls_++;
     return Status::OK();
   }
 
-  virtual CHECKED_STATUS PostConfigChange() override {
+  virtual Status PostConfigChange() override {
     if (current_hook_.get()) RETURN_NOT_OK(current_hook_->PostConfigChange());
     std::lock_guard<simple_spinlock> lock(lock_);
     post_config_change_calls_++;
     return Status::OK();
   }
 
-  virtual CHECKED_STATUS PreReplicate() override {
+  virtual Status PreReplicate() override {
     if (current_hook_.get()) RETURN_NOT_OK(current_hook_->PreReplicate());
     std::lock_guard<simple_spinlock> lock(lock_);
     pre_replicate_calls_++;
     return Status::OK();
   }
 
-  virtual CHECKED_STATUS PostReplicate() override {
+  virtual Status PostReplicate() override {
     if (current_hook_.get()) RETURN_NOT_OK(current_hook_->PostReplicate());
     std::lock_guard<simple_spinlock> lock(lock_);
     post_replicate_calls_++;
     return Status::OK();
   }
 
-  virtual CHECKED_STATUS PreUpdate() override {
+  virtual Status PreUpdate() override {
     if (current_hook_.get()) RETURN_NOT_OK(current_hook_->PreUpdate());
     std::lock_guard<simple_spinlock> lock(lock_);
     pre_update_calls_++;
     return Status::OK();
   }
 
-  virtual CHECKED_STATUS PostUpdate() override {
+  virtual Status PostUpdate() override {
     if (current_hook_.get()) RETURN_NOT_OK(current_hook_->PostUpdate());
     std::lock_guard<simple_spinlock> lock(lock_);
     post_update_calls_++;
     return Status::OK();
   }
 
-  virtual CHECKED_STATUS PreShutdown() override {
+  virtual Status PreShutdown() override {
     if (current_hook_.get()) RETURN_NOT_OK(current_hook_->PreShutdown());
     std::lock_guard<simple_spinlock> lock(lock_);
     pre_shutdown_calls_++;
     return Status::OK();
   }
 
-  virtual CHECKED_STATUS PostShutdown() override {
+  virtual Status PostShutdown() override {
     if (current_hook_.get()) RETURN_NOT_OK(current_hook_->PostShutdown());
     std::lock_guard<simple_spinlock> lock(lock_);
     post_shutdown_calls_++;

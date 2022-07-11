@@ -7,12 +7,21 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import { capitalize } from 'lodash';
+import { capitalize, lowerCase } from 'lodash';
 import moment from 'moment';
 import pluralize from 'pluralize';
 import { isDefinedNotNull } from '../../../utils/ObjectUtils';
-import { IStorageConfig, TableType } from '../common/IBackup';
+import { Backup_Options_Type, IStorageConfig } from '../common/IBackup';
+import { TableType } from '../../../redesign/helpers/dtos';
 import { IBackupSchedule } from '../common/IBackupSchedule';
+
+export const MILLISECONDS_IN = {
+  YEARS: 31_536_000_000, //365 days
+  MONTHS: 2_629_800_000, //30 days
+  DAYS: 86_400_000,
+  HOURS: 3_600_000,
+  MINUTES: 60_000
+};
 
 export const getTimeDurationArr = (msecs: number, dtype: any) => {
   const time = moment.duration(msecs, dtype);
@@ -28,15 +37,22 @@ export const getTimeDurationArr = (msecs: number, dtype: any) => {
 };
 
 export const getReadableTime = (msecs: number, prefix = '', dtype = 'millisecond') => {
+  if (msecs === 0) {
+    return '-';
+  }
   const reducedTimeArray = getTimeDurationArr(msecs, dtype);
-
   return isDefinedNotNull(reducedTimeArray[1])
     ? `${prefix}${reducedTimeArray[1][0]}
-         ${pluralize(reducedTimeArray[1][1], reducedTimeArray[1][0])}
-         ${reducedTimeArray[0][0]}
-         ${pluralize(reducedTimeArray[0][1], reducedTimeArray[0][0])}`
+    ${pluralize(reducedTimeArray[1][1], reducedTimeArray[1][0])}
+    ${reducedTimeArray[0][0]}
+    ${pluralize(reducedTimeArray[0][1], reducedTimeArray[0][0])}`
     : `${prefix}${reducedTimeArray[0][0]}
-         ${pluralize(reducedTimeArray[0][1], reducedTimeArray[0][0])}`;
+    ${pluralize(reducedTimeArray[0][1], reducedTimeArray[0][0])}`;
+};
+
+export const convertMsecToTimeFrame = (msec: number, dType: string, prefix = '') => {
+  const timeFrame = msec / MILLISECONDS_IN[dType];
+  return `${prefix} ${timeFrame} ${pluralize(dType, timeFrame).toLowerCase()}`;
 };
 
 export const convertScheduleToFormValues = (
@@ -44,33 +60,63 @@ export const convertScheduleToFormValues = (
   storage_configs: IStorageConfig[]
 ) => {
   const formValues = {
-    policy_name: '', // set to empty until api supports ot
+    scheduleName: schedule.scheduleName,
     use_cron_expression: !!schedule.cronExpression,
     cron_expression: schedule.cronExpression ?? '',
     api_type: {
-      value: schedule.taskParams.backupType,
-      label: schedule.taskParams.backupType === TableType.PGSQL_TABLE_TYPE ? 'YSQL' : 'YCQL'
+      value: schedule.backupInfo.backupType,
+      label: schedule.backupInfo.backupType === TableType.PGSQL_TABLE_TYPE ? 'YSQL' : 'YCQL'
     },
-    // backup_tables: Backup_Options_Type.ALL,
-    duration_period: 1,
-    // duration_type: DURATION_OPTIONS[0],
-    selected_ycql_tables: [],
-    keep_indefinitely: schedule.taskParams.timeBeforeDelete === 0,
-    parallel_threads: schedule.taskParams.parallelism
+    selected_ycql_tables: [] as any[],
+    keep_indefinitely: schedule.backupInfo.timeBeforeDelete === 0,
+    parallel_threads: schedule.backupInfo.parallelism ?? 8,
+    scheduleObj: schedule
   };
 
-  if (!schedule.cronExpression) {
-    const policyInterval = getTimeDurationArr(schedule.frequency, 'millisecond');
-    const i = policyInterval.length - 1;
-    formValues['policy_interval'] = policyInterval[i][0];
-    formValues['policy_interval_type'] = {
-      label: capitalize(policyInterval[i][1]) + 's',
-      value: capitalize(policyInterval[i][1]) + 's'
+
+  if (schedule.backupInfo?.fullBackup) {
+    formValues['db_to_backup'] = {
+      value: null,
+      label: `All ${
+        schedule.backupInfo?.backupType === TableType.PGSQL_TABLE_TYPE ? 'Databases' : 'Keyspaces'
+      }`
     };
+  } else {
+    formValues['db_to_backup'] = schedule.backupInfo?.keyspaceList.map((k) => {
+      return { value: k.keyspace, label: k.keyspace };
+    })[0];
+
+    if (schedule.backupInfo.backupType === TableType.YQL_TABLE_TYPE) {
+      formValues['backup_tables'] =
+        schedule.backupInfo?.keyspaceList.length > 0 &&
+        schedule.backupInfo?.keyspaceList[0].tablesList.length > 0
+          ? Backup_Options_Type.CUSTOM
+          : Backup_Options_Type.ALL;
+
+      if (formValues['backup_tables'] === Backup_Options_Type.CUSTOM) {
+        schedule.backupInfo.keyspaceList.forEach((k: any) => {
+          k.tablesList.forEach((table: string, index: number) => {
+            formValues['selected_ycql_tables'].push({
+              tableUUID: k.tableUUIDList[index],
+              tableName: table,
+              keySpace: k.keyspace,
+              isIndexTable: k.isIndexTable
+            });
+          });
+        });
+      }
+    }
+  }
+
+  if (!schedule.cronExpression) {
+    formValues['policy_interval'] =
+      schedule.frequency / MILLISECONDS_IN[schedule.frequencyTimeUnit];
+    const interval_type = capitalize(lowerCase(schedule.frequencyTimeUnit));
+    formValues['policy_interval_type'] = { value: interval_type, label: interval_type };
   }
 
   const s_config = storage_configs.find(
-    (c) => c.configUUID === schedule.taskParams.storageConfigUUID
+    (c) => c.configUUID === schedule.backupInfo.storageConfigUUID
   );
 
   if (s_config) {
@@ -81,14 +127,11 @@ export const convertScheduleToFormValues = (
     };
   }
 
-  if (schedule.taskParams.timeBeforeDelete !== 0) {
-    const retention_duration = getTimeDurationArr(schedule.taskParams.timeBeforeDelete, 'second');
-    const j = retention_duration.length - 1;
-    formValues['retention_interval'] = retention_duration[j][0];
-    formValues['retention_interval_type'] = {
-      label: capitalize(retention_duration[j][1]) + 's',
-      value: capitalize(retention_duration[j][1]) + 's'
-    };
+  if (schedule.backupInfo.timeBeforeDelete !== 0) {
+    formValues['retention_interval'] =
+      schedule.backupInfo.timeBeforeDelete / MILLISECONDS_IN[schedule.backupInfo.expiryTimeUnit];
+    const interval_type = capitalize(lowerCase(schedule.backupInfo.expiryTimeUnit));
+    formValues['retention_interval_type'] = { value: interval_type, label: interval_type };
   }
 
   return formValues;

@@ -8,8 +8,7 @@ menu:
     identifier: architecture-docdb-async-replication
     parent: architecture-docdb-replication
     weight: 1150
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 xCluster replication enables asynchronous replication between independent YugabyteDB clusters.
@@ -34,7 +33,7 @@ The replication could be unidirectional from a source cluster (aka the master cl
 
 The source-sink deployment architecture is shown in the diagram below:
 
-<img src="https://github.com/yugabyte/yugabyte-db/raw/master/architecture/design/images/2DC-source-sink-deployment.png" style="max-width:750px;"/>
+<img src="/images/architecture/replication/2DC-source-sink-deployment.png" style="max-width:750px;"/>
 
 ### Active-Active
 
@@ -42,13 +41,13 @@ The replication of data can be bi-directional between two clusters. In this case
 
 {{< note title="Note" >}}
 
-The multi-master deployment is built internally using two master-slave unidirectional replication streams as a building block. Special care is taken to ensure that the timestamps are assigned to ensure last writer wins semantics and the data arriving from the replication stream is not re-replicated. 
+The multi-master deployment is built internally using two master-slave unidirectional replication streams as a building block. Special care is taken to ensure that the timestamps are assigned to ensure last writer wins semantics and the data arriving from the replication stream is not re-replicated.
 
 {{</note >}}
 
 The architecture diagram is shown below:
 
-<img src="https://github.com/yugabyte/yugabyte-db/raw/master/architecture/design/images/2DC-multi-master-deployment.png" style="max-width:750px;"/>
+<img src="/images/architecture/replication/2DC-multi-master-deployment.png" style="max-width:750px;"/>
 
 ## Features and limitations
 

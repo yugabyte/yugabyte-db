@@ -2806,7 +2806,7 @@ IndexBuildHeapRangeScanInternal(Relation heapRelation,
 			{
 				if (bfinfo->bfinstr)
 					exec_params->bfinstr = pstrdup(bfinfo->bfinstr);
-				*exec_params->statement_read_time = bfinfo->read_time;
+				exec_params->backfill_read_time = bfinfo->read_time;
 				exec_params->partition_key = pstrdup(bfinfo->row_bounds->partition_key);
 				exec_params->out_param = bfresult;
 				exec_params->is_index_backfill = true;
@@ -3424,7 +3424,17 @@ validate_index(Oid heapId, Oid indexId, Snapshot snapshot)
 
 	/* Open and lock the parent heap relation */
 	heapRelation = heap_open(heapId, ShareUpdateExclusiveLock);
-	/* And the target index relation */
+
+	/*
+	 * Switch to the table owner's userid, so that any index functions are run
+	 * as that user.  Also lock down security-restricted operations and
+	 * arrange to make GUC variable changes local to this command.
+	 */
+	GetUserIdAndSecContext(&save_userid, &save_sec_context);
+	SetUserIdAndSecContext(heapRelation->rd_rel->relowner,
+						   save_sec_context | SECURITY_RESTRICTED_OPERATION);
+	save_nestlevel = NewGUCNestLevel();
+
 	indexRelation = index_open(indexId, RowExclusiveLock);
 
 	/*
@@ -3436,16 +3446,6 @@ validate_index(Oid heapId, Oid indexId, Snapshot snapshot)
 
 	/* mark build is concurrent just for consistency */
 	indexInfo->ii_Concurrent = true;
-
-	/*
-	 * Switch to the table owner's userid, so that any index functions are run
-	 * as that user.  Also lock down security-restricted operations and
-	 * arrange to make GUC variable changes local to this command.
-	 */
-	GetUserIdAndSecContext(&save_userid, &save_sec_context);
-	SetUserIdAndSecContext(heapRelation->rd_rel->relowner,
-						   save_sec_context | SECURITY_RESTRICTED_OPERATION);
-	save_nestlevel = NewGUCNestLevel();
 
 	/*
 	 * Scan the index and gather up all the TIDs into a tuplesort object.
@@ -3958,6 +3958,9 @@ reindex_index(Oid indexId, bool skip_constraint_checks, char persistence,
 	Relation	iRel,
 				heapRelation;
 	Oid			heapId;
+	Oid			save_userid;
+	int			save_sec_context;
+	int			save_nestlevel;
 	IndexInfo  *indexInfo;
 	volatile bool skipped_constraint = false;
 	PGRUsage	ru0;
@@ -3970,6 +3973,16 @@ reindex_index(Oid indexId, bool skip_constraint_checks, char persistence,
 	 */
 	heapId = IndexGetRelation(indexId, false);
 	heapRelation = heap_open(heapId, ShareLock);
+
+	/*
+	 * Switch to the table owner's userid, so that any index functions are run
+	 * as that user.  Also lock down security-restricted operations and
+	 * arrange to make GUC variable changes local to this command.
+	 */
+	GetUserIdAndSecContext(&save_userid, &save_sec_context);
+	SetUserIdAndSecContext(heapRelation->rd_rel->relowner,
+						   save_sec_context | SECURITY_RESTRICTED_OPERATION);
+	save_nestlevel = NewGUCNestLevel();
 
 	/*
 	 * Open the target index relation and get an exclusive lock on it, to
@@ -3993,6 +4006,51 @@ reindex_index(Oid indexId, bool skip_constraint_checks, char persistence,
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("cannot reindex temporary tables of other sessions")));
+
+	/*
+	 * YB pk indexes share the same storage as their tables, so it is not
+	 * possible to reindex them.
+	 */
+	if (iRel->rd_index->indisprimary && IsYBRelation(iRel))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("cannot reindex nontemporary pk indexes"),
+				 errdetail("Primary key indexes share the same storage as their"
+						   " table for Yugabyte-backed relations.")));
+
+	/*
+	 * Supporting shared index could be complicated, so skip for now.
+	 */
+	if (iRel->rd_rel->relisshared)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("cannot reindex shared system indexes")));
+
+	/*
+	 * Since YB REINDEX currently doesn't take locks, it is not a safe
+	 * operation.  Chance of failure or corruption is relatively high.
+	 * Mitigate negative affects by making it a two-step process:
+	 * 1. run the reindex on nonpublic index
+	 * 2. make the index public
+	 * In case (1) fails (e.g. duplicate key violation), things can be fixed or
+	 * changed then reindexed again.  After manually checking the reindex has
+	 * no corruption (since the index build is not online), (2) can be done.
+	 *
+	 * Checking indisvalid helps catch reindex on public index, but it is not
+	 * foolproof.  For example, the index could be made public while the
+	 * reindex is happening.
+	 *
+	 * indisvalid and indisready should be true for best chance of avoiding
+	 * corruption.
+	 */
+	if (IndexIsValid(iRel->rd_index) && IsYBRelation(iRel))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("cannot reindex public indexes"),
+				 errdetail("For safety, indexes should not be serving reads"
+						   " during REINDEX."),
+				 errhint("Run UPDATE pg_index SET indisvalid = false WHERE"
+						 " indexrelid = '<index_name>'::regclass.")));
 
 	/*
 	 * Also check for active uses of the index in the current transaction; we
@@ -4025,9 +4083,14 @@ reindex_index(Oid indexId, bool skip_constraint_checks, char persistence,
 			indexInfo->ii_ExclusionStrats = NULL;
 		}
 
-		/* We'll build a new physical relation for the index */
-		RelationSetNewRelfilenode(iRel, persistence, InvalidTransactionId,
-								  InvalidMultiXactId);
+		if (IsYBRelation(heapRelation))
+			YbTruncate(iRel);
+		else
+		{
+			/* We'll build a new physical relation for the index */
+			RelationSetNewRelfilenode(iRel, persistence, InvalidTransactionId,
+									  InvalidMultiXactId);
+		}
 
 		/* Initialize the index and rebuild */
 		/* Note: we do not need to re-establish pkey setting */
@@ -4128,6 +4191,12 @@ reindex_index(Oid indexId, bool skip_constraint_checks, char persistence,
 				 errdetail_internal("%s",
 									pg_rusage_show(&ru0))));
 
+	/* Roll back any GUC changes executed by index functions */
+	AtEOXact_GUC(false, save_nestlevel);
+
+	/* Restore userid and security context */
+	SetUserIdAndSecContext(save_userid, save_sec_context);
+
 	/* Close rels, but keep locks */
 	index_close(iRel, NoLock);
 	heap_close(heapRelation, NoLock);
@@ -4163,6 +4232,8 @@ reindex_index(Oid indexId, bool skip_constraint_checks, char persistence,
  *
  * REINDEX_REL_FORCE_INDEXES_PERMANENT: if true, set the persistence of the
  * rebuilt indexes to permanent.
+ *
+ * REINDEX_REL_YB_DROP_AND_CREATE: if true, drop and create the index.
  *
  * Returns true if any indexes were rebuilt (including toast table's index
  * when relevant).  Note that a CommandCounterIncrement will occur after each
@@ -4272,8 +4343,17 @@ reindex_relation(Oid relid, int flags, int options)
 		{
 			Oid			indexOid = lfirst_oid(indexId);
 
-			if (IsYBRelationById(indexOid))
+			if (flags & REINDEX_REL_YB_DROP_AND_CREATE)
 			{
+				/*
+				 * This code path is invoked during REFRESH MATERIALIZED VIEW
+				 * when we swap the target and transient tables.  A reindex will
+				 * not work because the indexes' DocDB metadata will still be
+				 * pointing to the old table, which will be dropped.
+				 */
+				Assert(rel->rd_rel->relkind == RELKIND_MATVIEW &&
+					   IsYBRelation(rel));
+
 				Relation new_rel = heap_open(YbGetStorageRelid(rel), AccessExclusiveLock);
 				AttrNumber *new_to_old_attmap = convert_tuples_by_name_map(RelationGetDescr(new_rel),
 											  	RelationGetDescr(rel),
@@ -4288,7 +4368,7 @@ reindex_relation(Oid relid, int flags, int options)
 					RelationSetIndexList(rel, doneIndexes, InvalidOid);
 
 				reindex_index(indexOid, !(flags & REINDEX_REL_CHECK_CONSTRAINTS),
-						  persistence, options);
+							  persistence, options);
 			}
 
 			CommandCounterIncrement();

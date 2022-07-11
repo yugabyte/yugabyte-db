@@ -207,14 +207,14 @@ Status MetricRegistry::WriteAsJson(JsonWriter* writer,
   return Status::OK();
 }
 
-CHECKED_STATUS MetricRegistry::WriteForPrometheus(PrometheusWriter* writer,
-                                                  const MetricPrometheusOptions& opts) const {
+Status MetricRegistry::WriteForPrometheus(PrometheusWriter* writer,
+                                          const MetricPrometheusOptions& opts) const {
   return WriteForPrometheus(writer, {""}, opts);  // Include all metrics.
 }
 
-CHECKED_STATUS MetricRegistry::WriteForPrometheus(PrometheusWriter* writer,
-                                                  const vector<string>& requested_metrics,
-                                                  const MetricPrometheusOptions& opts) const {
+Status MetricRegistry::WriteForPrometheus(PrometheusWriter* writer,
+                                          const vector<string>& requested_metrics,
+                                          const MetricPrometheusOptions& opts) const {
   EntityMap entities;
   {
     std::lock_guard<simple_spinlock> l(lock_);
@@ -374,7 +374,7 @@ void StringGauge::WriteValue(JsonWriter* writer) const {
   writer->String(value());
 }
 
-CHECKED_STATUS StringGauge::WriteForPrometheus(
+Status StringGauge::WriteForPrometheus(
     PrometheusWriter* writer, const MetricEntity::AttributeMap& attr,
     const MetricPrometheusOptions& opts) const {
   if (prototype_->level() < opts.level) {
@@ -431,7 +431,7 @@ Status Counter::WriteAsJson(JsonWriter* writer,
   return Status::OK();
 }
 
-CHECKED_STATUS Counter::WriteForPrometheus(
+Status Counter::WriteForPrometheus(
     PrometheusWriter* writer, const MetricEntity::AttributeMap& attr,
     const MetricPrometheusOptions& opts) const {
   if (prototype_->level() < opts.level) {
@@ -569,7 +569,7 @@ Status Histogram::WriteAsJson(JsonWriter* writer,
   return Status::OK();
 }
 
-CHECKED_STATUS Histogram::WriteForPrometheus(
+Status Histogram::WriteForPrometheus(
     PrometheusWriter* writer, const MetricEntity::AttributeMap& attr,
     const MetricPrometheusOptions& opts) const {
   if (prototype_->level() < opts.level) {

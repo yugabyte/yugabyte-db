@@ -10,8 +10,7 @@ menu:
     identifier: ref-postgres-jdbc-driver
     parent: drivers
     weight: 600
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -276,7 +275,7 @@ Connection conn = DriverManager.getConnection("jdbc:postgresql://localhost:5433/
 conn.setAutoCommit(false);
 Statement stmt = conn.createStatement();
 try {
-  
+
   PreparedStatement pstmt = connection.prepareStatement("INSERT INTO employees (id, name, age, language) VALUES (?, ?, ?, ?)");
   pstmt.setInt(1, 1);
   pstmt.setString(2, "John");

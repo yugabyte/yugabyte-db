@@ -156,6 +156,10 @@ class MockTableBuilder : public TableBuilder {
     return TableProperties();
   }
 
+  const std::string& LastKey() const override {
+    return (--table_.end())->first;
+  }
+
  private:
   uint32_t id_;
   MockTableFileSystem* file_system_;

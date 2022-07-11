@@ -43,6 +43,7 @@
 
 #include "yb/server/webserver.h"
 
+#include <cds/init.h>
 #include <stdio.h>
 
 #include <algorithm>
@@ -53,7 +54,6 @@
 #include <vector>
 
 #include <boost/algorithm/string.hpp>
-#include <cds/init.h>
 #include <glog/logging.h>
 #include <squeasel.h>
 
@@ -99,6 +99,9 @@ DEFINE_uint64(webserver_compression_threshold_kb, 4,
               "Default value is 4KB");
 TAG_FLAG(webserver_compression_threshold_kb, advanced);
 TAG_FLAG(webserver_compression_threshold_kb, runtime);
+
+DEFINE_test_flag(bool, mini_cluster_mode, false,
+                 "Enable special fixes for MiniCluster test cluster.");
 
 namespace yb {
 
@@ -389,6 +392,12 @@ int Webserver::RunPathHandler(const PathHandler& handler,
     req.query_string = request_info->query_string;
     BuildArgumentMap(request_info->query_string, &req.parsed_args);
   }
+
+  if (FLAGS_TEST_mini_cluster_mode) {
+    // Pass custom G-flags into the request handler.
+    req.parsed_args["TEST_custom_varz"] = opts_.TEST_custom_varz;
+  }
+
   req.request_method = request_info->request_method;
   if (req.request_method == "POST") {
     const char* content_len_str = sq_get_header(connection, "Content-Length");

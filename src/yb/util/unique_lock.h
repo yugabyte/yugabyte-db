@@ -35,6 +35,7 @@ class SCOPED_CAPABILITY UniqueLock {
   explicit UniqueLock(Mutex &mutex) ACQUIRE(mutex) : unique_lock_(mutex) {}
 
   explicit UniqueLock(Mutex &mutex, std::defer_lock_t defer) : unique_lock_(mutex, defer) {}
+  UniqueLock(UniqueLock&& rhs) = default;
 
   ~UniqueLock() RELEASE() = default;
 

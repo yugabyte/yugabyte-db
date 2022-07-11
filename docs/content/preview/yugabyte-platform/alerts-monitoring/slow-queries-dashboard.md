@@ -3,29 +3,24 @@ headerTitle: Slow Queries dashboard
 linkTitle: Slow Queries dashboard
 description: Slow Queries dashboard
 menu:
-  preview:
+  preview_yugabyte-platform:
     parent: alerts-monitoring
     identifier: slow-queries-dashboard
     weight: 10
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
-Use the Slow Queries dashboard to analyze statistics of past queries on your YugabyteDB universes. You can use this data for the following:
+Use the **Slow Queries** dashboard to analyze statistics of past queries on your YugabyteDB universes. You can use this data for the following:
 
 - Visually identifying slower running database operations.
 - Evaluating query execution times over time.
 - Discovering potential queries for memory optimization.
 
-All user roles — `Super Admin`, `Admin`, and `Read-only` — are granted access to use the Slow Queries dashboard.
-
-{{< note title="Note" >}}
+All user roles — `Super Admin`, `Admin`, and `Read-only` — are granted permissions to use the **Slow Queries** dashboard.
 
 Note that slow queries are not available for YCQL.
 
-{{< /note >}}
-
-The following table describes the column values.
+The following table describes the **Slow Queries** column values.
 
 | Column          | Description                                                  |
 | --------------- | ------------------------------------------------------------ |
@@ -33,7 +28,7 @@ The following table describes the column values.
 | Database        | The YSQL database used by the query.                         |
 | User            | The name of role used to access YSQL database.               |
 | Count           | The total number of times this type of query has executed.   |
-| Total time      | The total duration (in milliseconds) of all iterations of this query has taken. |
+| Total time      | The total duration (in milliseconds) this query has taken.   |
 | Rows            | The total number of database table rows returned across all iterations of this query |
 | Avg Exec Time   | Average or mean execution time (in milliseconds) for this query. |
 | Min Exec Time   | Minimum execution time (in milliseconds) for this query.     |

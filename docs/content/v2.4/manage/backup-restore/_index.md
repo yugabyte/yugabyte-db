@@ -10,6 +10,7 @@ menu:
     identifier: backup-restore
     parent: manage
     weight: 702
+type: indexpage
 ---
 
 YugabyteDB is a distributed database that internally replicates data. It is possible to place the regions in separate fault domains, therefore backups for the purpose of data redundancy are not necessary. However, it is an operational best practice to have a backup strategy. For example, an error in the application layer could cause it to write bad data into the database. In such a scenario, it is essential to be able to restore the database from a backup to a state before the application error was introduced.

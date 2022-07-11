@@ -3,13 +3,13 @@ title: Read Committed isolation level
 headerTitle: Read Committed isolation level
 linkTitle: Read Committed
 description: Details about the Read Committed isolation level
+beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   preview:
     identifier: architecture-read-committed
     parent: architecture-acid-transactions
     weight: 1153
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Read Committed is one of the three isolation levels in PostgreSQL, and also its default. A unique property of this isolation level is that clients don't need retry logic for serialization errors (40001) in applications when using this isolation level.
@@ -57,7 +57,7 @@ The **recheck steps** are as follows:
 
 ## Usage
 
-By setting the gflag `yb_enable_read_committed_isolation=true`, the Read Committed isolation in YSQL will actually map to the Read Committed implementation in DocDB. If set to false, it will have the earlier behavior of mapping Read Committed to REPEATABLE READ.
+By setting the tserver gflag `yb_enable_read_committed_isolation=true`, the Read Committed isolation in YSQL will actually map to the Read Committed implementation in DocDB. If set to false, it will have the earlier behavior of mapping Read Committed to REPEATABLE READ.
 
 The following ways can be used to start a Read Committed transaction after setting the gflag:
 

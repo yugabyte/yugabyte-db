@@ -99,7 +99,7 @@ class ConsensusRound : public RefCountedThreadSafe<ConsensusRound> {
   // preparing it. See KUDU-597 for details.
   //
   // If this round has not been bound to any term, this is a no-op.
-  CHECKED_STATUS CheckBoundTerm(int64_t current_term) const;
+  Status CheckBoundTerm(int64_t current_term) const;
 
   std::string ToString() const;
 

@@ -281,20 +281,20 @@ class TabletTestPreBase : public YBTabletTest {
                       TimeSeries *ts = nullptr);
 
   // Inserts a single test row within a transaction.
-  CHECKED_STATUS InsertTestRow(LocalTabletWriter* writer, int32_t key_idx, int32_t val);
+  Status InsertTestRow(LocalTabletWriter* writer, int32_t key_idx, int32_t val);
 
-  CHECKED_STATUS UpdateTestRow(LocalTabletWriter* writer, int32_t key_idx, int32_t new_val);
+  Status UpdateTestRow(LocalTabletWriter* writer, int32_t key_idx, int32_t new_val);
 
-  CHECKED_STATUS UpdateTestRowToNull(LocalTabletWriter* writer, int32_t key_idx);
+  Status UpdateTestRowToNull(LocalTabletWriter* writer, int32_t key_idx);
 
-  CHECKED_STATUS DeleteTestRow(LocalTabletWriter* writer, int32_t key_idx);
+  Status DeleteTestRow(LocalTabletWriter* writer, int32_t key_idx);
 
   void VerifyTestRows(int32_t first_row, int32_t expected_count);
 
   // Iterate through the full table, stringifying the resulting rows
   // into the given vector. This is only useful in tests which insert
   // a very small number of rows.
-  CHECKED_STATUS IterateToStringList(vector<string> *out);
+  Status IterateToStringList(vector<string> *out);
 
   // Because some types are small we need to
   // make sure that we don't overflow the type on inserts

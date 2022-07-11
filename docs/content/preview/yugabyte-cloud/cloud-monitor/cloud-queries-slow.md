@@ -1,16 +1,15 @@
 ---
-title: View slow YSQL queries
-linkTitle: Slow YSQL queries
+title: View slow queries
+linkTitle: Slow queries
 description: View slow running queries that have run on your YugabyteDB Managed cluster.
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 menu:
-  preview:
+  preview_yugabyte-cloud:
     identifier: cloud-queries-slow
     parent: cloud-monitor
     weight: 300
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Evaluate the performance of slow queries that have run on your cluster using the **Slow Queries** option on the cluster **Performance** tab. Use this data to:
@@ -23,6 +22,16 @@ Slow queries are not available for YCQL.
 
 ![Cluster Slow Queries](/images/yb-cloud/cloud-clusters-slow.png)
 
-To filter the query list, enter query text in the filter field. To sort the list by column, click the column heading. Click **Options** to select the columns to display.
+To filter the query list, enter query text in the filter field. To sort the list by column, click the column heading. Click **Edit Options** to select the columns to display.
 
 To view query details, click the right-arrow button for the query in the list to display the **Query Details** sheet.
+
+The following table describes the **Slow Queries** column values.
+
+| Column          | Description                                                  |
+| --------------- | ------------------------------------------------------------ |
+| User            | The name of role used to access YSQL database.               |
+| Total time      | The total duration (in milliseconds) of all iterations this query has taken. |
+| Count           | The total number of times this type of query has executed.   |
+| Rows            | The total number of database table rows returned across all iterations of this query |
+| Database        | The YSQL database used by the query.                         |

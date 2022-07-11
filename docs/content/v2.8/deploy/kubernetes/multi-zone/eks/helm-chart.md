@@ -9,9 +9,7 @@ menu:
     name: Amazon EKS
     identifier: k8s-mz-eks-1
     weight: 627
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -154,12 +152,12 @@ $ helm repo update
 Validate that you have the updated chart version.
 
 ```sh
-$ helm search repo yugabytedb/yugabyte
+$ helm search repo yugabytedb/yugabyte --version {{<yb-version version="v2.8" format="short">}}
 ```
 
 ```output
 NAME                    CHART VERSION   APP VERSION     DESCRIPTION
-yugabytedb/yugabyte     2.8.4           2.8.4.0-b30    YugabyteDB is the high-performance distributed ...
+yugabytedb/yugabyte     {{<yb-version version="v2.8" format="short">}}           {{<yb-version version="v2.8" format="build">}}    YugabyteDB is the high-performance distributed ...
 ```
 
 ### Create override files
@@ -273,18 +271,21 @@ Now create the overall YugabyteDB cluster in such a way that one third of the no
 
 ```sh
 $ helm install yb-demo-us-east-1a yugabytedb/yugabyte \
+ --version {{<yb-version version="v2.8" format="short">}} \
  --namespace yb-demo-us-east-1a \
  -f overrides-us-east-1a.yaml --wait
 ```
 
 ```sh
 $ helm install yb-demo-us-east-1b yugabytedb/yugabyte \
+ --version {{<yb-version version="v2.8" format="short">}} \
  --namespace yb-demo-us-east-1b \
  -f overrides-us-east-1b.yaml --wait
 ```
 
 ```sh
 $ helm install yb-demo-us-east-1c yugabytedb/yugabyte \
+ --version {{<yb-version version="v2.8" format="short">}} \
  --namespace yb-demo-us-east-1c \
  -f overrides-us-east-1c.yaml --wait
 ```

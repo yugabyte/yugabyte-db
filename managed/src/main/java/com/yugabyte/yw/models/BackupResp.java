@@ -21,6 +21,7 @@ public class BackupResp {
   UUID universeUUID;
   UUID scheduleUUID;
   UUID customerUUID;
+  UUID kmsConfigUUID;
   UUID taskUUID;
   String universeName;
   Boolean isStorageConfigPresent;

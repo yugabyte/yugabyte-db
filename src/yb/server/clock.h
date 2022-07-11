@@ -62,7 +62,7 @@ class Clock : public ClockBase {
  public:
 
   // Initializes the clock.
-  virtual CHECKED_STATUS Init() = 0;
+  virtual Status Init() = 0;
 
   // Update the clock with a transaction timestamp originating from
   // another server. For instance replicas can call this so that,

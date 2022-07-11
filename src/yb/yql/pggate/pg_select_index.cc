@@ -15,17 +15,12 @@
 
 #include "yb/yql/pggate/pg_select_index.h"
 
-#include "yb/client/yb_op.h"
-
 #include "yb/util/status_format.h"
 
 #include "yb/yql/pggate/util/pg_doc_data.h"
 
 namespace yb {
 namespace pggate {
-
-using std::make_shared;
-using std::list;
 
 //--------------------------------------------------------------------------------------------------
 // PgSelectIndex
@@ -34,8 +29,9 @@ using std::list;
 PgSelectIndex::PgSelectIndex(PgSession::ScopedRefPtr pg_session,
                              const PgObjectId& table_id,
                              const PgObjectId& index_id,
-                             const PgPrepareParameters *prepare_params)
-    : PgSelect(pg_session, table_id, index_id, prepare_params) {
+                             const PgPrepareParameters *prepare_params,
+                             bool is_region_local)
+    : PgSelect(pg_session, table_id, index_id, prepare_params, is_region_local) {
 }
 
 Result<PgTableDescPtr> PgSelectIndex::LoadTable() {

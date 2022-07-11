@@ -5,29 +5,30 @@ description: Connect to YugabyteDB Managed clusters from your desktop using a cl
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 menu:
-  preview:
+  preview_yugabyte-cloud:
     identifier: connect-client-shell
     parent: cloud-connect
     weight: 20
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
-Connect to your YugabyteDB cluster from your desktop using the YugabyteDB [ysqlsh](../../../admin/ysqlsh/) and [ycqlsh](../../../admin/ycqlsh) client shells installed on your computer. Because YugabyteDB is PostgreSQL-compatible, you can also use [psql](https://www.postgresql.org/docs/current/app-psql.html) to connect.
+Connect to your YugabyteDB cluster from your desktop using the YugabyteDB [ysqlsh](../../../admin/ysqlsh/) and [ycqlsh](../../../admin/ycqlsh) client shells installed on your computer. Because YugabyteDB is compatible with PostgreSQL and Cassandra, you can also use [psql](https://www.postgresql.org/docs/current/app-psql.html) and third-party tools to connect.
 
-You can download and install the YugabyteDB Client Shell and connect to your database by following the steps below for either YSQL or YCQL.
+{{< warning title="IP allow list" >}}
 
-Before you can connect using a shell, you need to add your computer to an IP allow list for the cluster. Refer to [Assign IP Allow Lists](../../cloud-secure-clusters/add-connections/).
+Before you can connect using a shell or other client, you need to add your computer to a cluster IP allow list. Refer to [IP allow lists](../../cloud-secure-clusters/add-connections/).
+
+{{< /warning >}}
 
 {{< note title="Note" >}}
 
-You must add your computer to the cluster [IP allow list](../../cloud-secure-clusters/add-connections/) before you can connect from a remote shell.
-
-When connecting via Yugabyte Client Shell, ensure you are running the latest versions of the shells (Yugabyte Client 2.6 or later). See [How do I connect to my cluster?](../../cloud-faq/#how-do-i-connect-to-my-cluster) in the FAQ for details.
+When connecting via a Yugabyte client shell, ensure you are running the latest versions of the shells (Yugabyte Client 2.6 or later). See [How do I connect to my cluster?](../../../faq/yugabytedb-managed-faq/#how-do-i-connect-to-my-cluster) in the FAQ for details.
 
 {{< /note >}}
 
-## Connect via Client Shell
+## Connect using a client shell
+
+Use the ysqlsh and ycqlsh shells to connect to and interact with YuagbyteDB using the YSQL and YCQL APIs respectively. You can download and install the YugabyteDB client shells and connect to your database using the following steps for either YSQL or YCQL.
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
@@ -46,10 +47,10 @@ When connecting via Yugabyte Client Shell, ensure you are running the latest ver
 
 <div class="tab-content">
   <div id="ysqlsh" class="tab-pane fade show active" role="tabpanel" aria-labelledby="ysqlsh-tab">
-    {{% includeMarkdown "connect/ysql.md" /%}}
+  {{% includeMarkdown "connect/ysql.md" %}}
   </div>
   <div id="ycqlsh" class="tab-pane fade" role="tabpanel" aria-labelledby="ycqlsh-tab">
-    {{% includeMarkdown "connect/ycql.md" /%}}
+  {{% includeMarkdown "connect/ycql.md" %}}
   </div>
 </div>
 
@@ -76,22 +77,18 @@ For information on using other SSL modes, refer to [SSL modes in YSQL](../../clo
 
 ## Connect using third party clients
 
-Because YugabyteDB is PostgreSQL-compatible, you can use third-party PostgreSQL clients to connect to your YugabyteDB clusters in YugabyteDB Managed.
+Because YugabyteDB is compatible with PostgreSQL and Cassandra, you can use third-party clients to connect to your YugabyteDB clusters in YugabyteDB Managed.
 
-To connect, follow the client's configuration steps for PostgreSQL, and use the following values:
+To connect, follow the client's configuration steps for PostgreSQL or Cassandra, and use the following values:
 
 - **host** as shown on the **Settings** tab for your cluster
-- **port** 5433
-- **username** and **password** of a user with permissions for the cluster
+- **port** 5433 for YSQL, 9042 for YCQL
+- **database** name; the default YSQL database is yugabyte
+- **username** and **password** of a user with permissions for the database; the default user is admin
 
-For detailed steps for configuring popular third party tools, see [Third party tools](../../../tools/). In that section, configuration steps are included for the following tools:
+Your client may also require the use of the cluster's certificate. Refer to [Download the cluster certificate](../../cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate).
 
-- DBeaver
-- DbSchema
-- pgAdmin
-- SQL Workbench/J
-- TablePlus
-- Visual Studio Workbench
+For detailed steps for configuring popular third party tools, see [Third party tools](../../../tools/).
 
 ## Related information
 

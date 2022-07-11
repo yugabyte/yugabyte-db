@@ -3,11 +3,12 @@ title: Sample datasets
 linkTitle: Sample datasets
 description: Sample datasets
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
-section: REFERENCE
 menu:
   v2.4:
-   identifier: sample-data
-   weight: 2950
+    identifier: sample-data
+    parent: reference
+    weight: 2950
+type: indexpage
 ---
 
 Use these sample datasets to explore and learn YugabyteDB. All of these are PostgreSQL-compatible, so you can use them to compare between PostgreSQL and YugabyteDB.
@@ -25,7 +26,7 @@ Use these sample datasets to explore and learn YugabyteDB. All of these are Post
           </div>
       </a>
   </div>
-  
+
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
       <a class="section-link icon-offset" href="northwind/">
           <div class="head">

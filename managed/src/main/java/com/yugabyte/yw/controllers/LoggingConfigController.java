@@ -8,6 +8,7 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.common.logging.LogUtil;
 import com.yugabyte.yw.common.ValidatingFormFactory;
+import com.yugabyte.yw.forms.AuditLoggingConfig;
 import com.yugabyte.yw.forms.PlatformLoggingConfig;
 import com.yugabyte.yw.forms.PlatformResults;
 import io.swagger.annotations.Api;
@@ -56,8 +57,28 @@ public class LoggingConfigController extends Controller {
       }
     }
     Integer newMaxHistory = data.getMaxHistory();
-    LogUtil.updateLoggingContext(newLevel, newRolloverPattern, newMaxHistory);
-    LogUtil.updateLoggingConfig(sConfigFactory, newLevel, newRolloverPattern, newMaxHistory);
+    LogUtil.updateApplicationLoggingContext(newLevel, newRolloverPattern, newMaxHistory);
+    LogUtil.updateApplicationLoggingConfig(
+        sConfigFactory, newLevel, newRolloverPattern, newMaxHistory);
+    return PlatformResults.withData(data);
+  }
+
+  @ApiOperation(
+      value = "Set Audit Logging Level",
+      response = AuditLoggingConfig.class,
+      nickname = "setAuditLoggingSettings")
+  @ApiImplicitParams({
+    @ApiImplicitParam(
+        name = "Audit Logging Config",
+        value = "Audit Logging config to be updated",
+        required = true,
+        dataType = "com.yugabyte.yw.forms.AuditLoggingConfig",
+        paramType = "body")
+  })
+  public Result setAuditLoggingSettings() throws JoranException {
+    AuditLoggingConfig data = formFactory.getFormDataOrBadRequest(AuditLoggingConfig.class).get();
+    LogUtil.updateAuditLoggingContext(data);
+    LogUtil.updateAuditLoggingConfig(sConfigFactory, data);
     return PlatformResults.withData(data);
   }
 }

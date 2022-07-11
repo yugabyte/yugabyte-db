@@ -106,7 +106,7 @@ class RpcServerBase {
   // Return the hostname of this server
   const std::string get_hostname() const;
 
-  virtual CHECKED_STATUS ReloadKeysAndCertificates() { return Status::OK(); }
+  virtual Status ReloadKeysAndCertificates() { return Status::OK(); }
 
  protected:
   RpcServerBase(std::string name,
@@ -116,15 +116,16 @@ class RpcServerBase {
                 const scoped_refptr<Clock>& clock = nullptr);
   virtual ~RpcServerBase();
 
-  CHECKED_STATUS Init();
-  CHECKED_STATUS RegisterService(
+  virtual Status Init();
+  virtual Status Start();
+
+  Status RegisterService(
       size_t queue_limit, rpc::ServiceIfPtr rpc_impl,
       rpc::ServicePriority priority = rpc::ServicePriority::kNormal);
-  CHECKED_STATUS Start();
-  CHECKED_STATUS StartRpcServer();
-  void Shutdown();
+  Status StartRpcServer();
+  virtual void Shutdown();
   void SetConnectionContextFactory(rpc::ConnectionContextFactoryPtr connection_context_factory);
-  virtual CHECKED_STATUS SetupMessengerBuilder(rpc::MessengerBuilder* builder);
+  virtual Status SetupMessengerBuilder(rpc::MessengerBuilder* builder);
 
   const std::string name_;
   std::shared_ptr<MemTracker> mem_tracker_;
@@ -142,12 +143,12 @@ class RpcServerBase {
 
   ServerBaseOptions options_;
 
-  virtual CHECKED_STATUS DumpServerInfo(const std::string& path,
+  virtual Status DumpServerInfo(const std::string& path,
                         const std::string& format) const;
 
   bool initialized_;
  private:
-  CHECKED_STATUS StartMetricsLogging();
+  Status StartMetricsLogging();
   void MetricsLoggingThread();
 
   scoped_refptr<Thread> metrics_logging_thread_;
@@ -165,19 +166,22 @@ YB_STRONGLY_TYPED_BOOL(RpcOnly);
 // and provides a common interface for server-type-agnostic functions.
 class RpcAndWebServerBase : public RpcServerBase {
  public:
-  const Webserver *web_server() const { return web_server_.get(); }
+  const Webserver* web_server() const { return web_server_.get(); }
+
+  // Get writable Web Server object for test scenarios.
+  Webserver* TEST_web_server() { return web_server_.get(); }
 
   FsManager* fs_manager() { return fs_manager_.get(); }
 
   // Return the first HTTP address that this server has bound to.
-  // FATALs if the server is not started.
-  Endpoint first_http_address() const;
+  // Return an error status if the server is not started.
+  Result<Endpoint> first_http_address() const;
 
   // Return a PB describing the status of the server (version info, bound ports, etc)
   void GetStatusPB(ServerStatusPB* status) const override;
 
   // Centralized method to get the Registration information for either the Master or Tserver.
-  virtual CHECKED_STATUS GetRegistration(
+  virtual Status GetRegistration(
       ServerRegistrationPB* reg, RpcOnly rpc_only = RpcOnly::kFalse) const;
 
  protected:
@@ -192,14 +196,14 @@ class RpcAndWebServerBase : public RpcServerBase {
 
   virtual void DisplayGeneralInfoIcons(std::stringstream* output);
 
-  virtual CHECKED_STATUS DisplayRpcIcons(std::stringstream* output);
+  virtual Status DisplayRpcIcons(std::stringstream* output);
 
   static void DisplayIconTile(std::stringstream* output, const std::string icon,
                               const std::string caption, const std::string url);
 
-  CHECKED_STATUS Init();
-  CHECKED_STATUS Start();
-  void Shutdown();
+  Status Init() override;
+  Status Start() override;
+  void Shutdown() override;
 
   std::unique_ptr<FsManager> fs_manager_;
   std::unique_ptr<Webserver> web_server_;

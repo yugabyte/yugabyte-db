@@ -46,8 +46,6 @@
 #include "yb/yql/pggate/pggate_thread_local_vars.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
-DECLARE_bool(client_suppress_created_logs);
-
 DEFINE_int32(ysql_client_read_write_timeout_ms, -1, "Timeout for YSQL's yb-client read/write "
              "operations. Falls back on max(client_read_write_timeout_ms, 600s) if set to -1." );
 DEFINE_int32(pggate_num_connections_to_server, 1,
@@ -63,6 +61,11 @@ DECLARE_int32(num_connections_to_server);
 DECLARE_int32(delay_alter_sequence_sec);
 
 DECLARE_int32(client_read_write_timeout_ms);
+
+DEFINE_bool(ysql_enable_reindex, false,
+            "Enable REINDEX INDEX statement.");
+TAG_FLAG(ysql_enable_reindex, advanced);
+TAG_FLAG(ysql_enable_reindex, hidden);
 
 namespace yb {
 namespace pggate {
@@ -137,13 +140,17 @@ void YBCInitPgGate(const YBCPgTypeEntity *data_type_table, int count, PgCallback
 void YBCDestroyPgGate() {
   if (pgapi_shutdown_done.exchange(true)) {
     LOG(DFATAL) << __PRETTY_FUNCTION__ << " should only be called once";
-  } else {
-    pggate::PgApiImpl* local_pgapi = pgapi;
-    pgapi = nullptr; // YBCPgIsYugaByteEnabled() must return false from now on.
-    delete local_pgapi;
-    ClearGlobalPgMemctxMap();
-    VLOG(1) << __PRETTY_FUNCTION__ << " finished";
+    return;
   }
+  {
+    std::unique_ptr<pggate::PgApiImpl> local_pgapi(pgapi);
+    pgapi = nullptr; // YBCPgIsYugaByteEnabled() must return false from now on.
+  }
+  VLOG(1) << __PRETTY_FUNCTION__ << " finished";
+}
+
+void YBCInterruptPgGate() {
+  pgapi->Interrupt();
 }
 
 const YBCPgCallbacks *YBCGetPgCallbacks() {
@@ -206,6 +213,17 @@ bool YBCPgAllowForPrimaryKey(const YBCPgTypeEntity *type_entity) {
   return false;
 }
 
+YBCStatus YBCGetPgggateHeapConsumption(int64_t *consumption) {
+  if (pgapi) {
+#ifdef TCMALLOC_ENABLED
+    *consumption = pgapi->GetMemTracker().GetTCMallocActualHeapSizeBytes();
+#else
+    *consumption = 0;
+#endif
+  }
+  return YBCStatusOK();
+}
+
 //--------------------------------------------------------------------------------------------------
 // DDL Statements.
 //--------------------------------------------------------------------------------------------------
@@ -223,7 +241,7 @@ YBCStatus YBCPgNewCreateDatabase(const char *database_name,
                                  const YBCPgOid database_oid,
                                  const YBCPgOid source_database_oid,
                                  const YBCPgOid next_oid,
-                                 const bool colocated,
+                                 bool colocated,
                                  YBCPgStatement *handle) {
   return ToYBCStatus(pgapi->NewCreateDatabase(
       database_name, database_oid, source_database_oid, next_oid, colocated, handle));
@@ -368,10 +386,11 @@ YBCStatus YBCPgNewCreateTable(const char *database_name,
                               bool is_shared_table,
                               bool if_not_exist,
                               bool add_primary_key,
-                              const bool colocated,
+                              bool is_colocated_via_database,
                               const YBCPgOid tablegroup_oid,
                               const YBCPgOid colocation_id,
                               const YBCPgOid tablespace_oid,
+                              bool is_matview,
                               const YBCPgOid matview_pg_table_oid,
                               YBCPgStatement *handle) {
   const PgObjectId table_id(database_oid, table_oid);
@@ -380,8 +399,8 @@ YBCStatus YBCPgNewCreateTable(const char *database_name,
   const PgObjectId matview_pg_table_id(database_oid, matview_pg_table_oid);
   return ToYBCStatus(pgapi->NewCreateTable(
       database_name, schema_name, table_name, table_id, is_shared_table,
-      if_not_exist, add_primary_key, colocated, tablegroup_id, colocation_id, tablespace_id,
-      matview_pg_table_id, handle));
+      if_not_exist, add_primary_key, is_colocated_via_database, tablegroup_id, colocation_id,
+      tablespace_id, is_matview, matview_pg_table_id, handle));
 }
 
 YBCStatus YBCPgCreateTableAddColumn(YBCPgStatement handle, const char *attr_name, int attr_num,
@@ -478,26 +497,12 @@ YBCStatus YBCPgExecTruncateTable(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->ExecTruncateTable(handle));
 }
 
-YBCStatus YBCPgIsTableColocated(const YBCPgOid database_oid,
-                                const YBCPgOid table_oid,
-                                bool *colocated) {
-  const PgObjectId table_id(database_oid, table_oid);
-  PgTableDescPtr table_desc;
-  YBCStatus status = ExtractValueFromResult(pgapi->LoadTable(table_id), &table_desc);
-  if (status) {
-    return status;
-  } else {
-    *colocated = table_desc->IsColocated();
-    return YBCStatusOK();
-  }
-}
-
-YBCStatus YBCPgGetSomeTableProperties(YBCPgTableDesc table_desc,
-                                      YBCPgTableProperties *properties) {
+YBCStatus YBCPgGetTableProperties(YBCPgTableDesc table_desc,
+                                  YbTableProperties properties) {
   CHECK_NOTNULL(properties)->num_tablets = table_desc->GetPartitionCount();
   properties->num_hash_key_columns = table_desc->num_hash_key_columns();
   properties->is_colocated = table_desc->IsColocated();
-  properties->tablegroup_oid = 0; /* Isn't set here. */
+  properties->tablegroup_oid = table_desc->GetTablegroupOid();
   properties->colocation_id = table_desc->GetColocationId();
   return YBCStatusOK();
 }
@@ -619,9 +624,18 @@ YBCStatus YBCPgDmlAddRowLowerBound(YBCPgStatement handle,
                                                     is_inclusive));
 }
 
-YBCStatus YBCPgDmlBindColumnCondBetween(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value,
-    YBCPgExpr attr_value_end) {
-  return ToYBCStatus(pgapi->DmlBindColumnCondBetween(handle, attr_num, attr_value, attr_value_end));
+YBCStatus YBCPgDmlBindColumnCondBetween(YBCPgStatement handle,
+                                        int attr_num,
+                                        YBCPgExpr attr_value,
+                                        bool start_inclusive,
+                                        YBCPgExpr attr_value_end,
+                                        bool end_inclusive) {
+  return ToYBCStatus(pgapi->DmlBindColumnCondBetween(handle,
+                                                     attr_num,
+                                                     attr_value,
+                                                     start_inclusive,
+                                                     attr_value_end,
+                                                     end_inclusive));
 }
 
 YBCStatus YBCPgDmlBindColumnCondIn(YBCPgStatement handle, int attr_num, int n_attr_values,
@@ -687,10 +701,11 @@ YBCStatus YBCPgBuildYBTupleId(const YBCPgYBTupleIdDescriptor *source, uint64_t *
 
 YBCStatus YBCPgNewSample(const YBCPgOid database_oid,
                          const YBCPgOid table_oid,
-                         const int targrows,
+                         int targrows,
+                         bool is_region_local,
                          YBCPgStatement *handle) {
   const PgObjectId table_id(database_oid, table_oid);
-  return ToYBCStatus(pgapi->NewSample(table_id, targrows, handle));
+  return ToYBCStatus(pgapi->NewSample(table_id, targrows, is_region_local, handle));
 }
 
 YBCStatus YBCPgInitRandomState(YBCPgStatement handle, double rstate_w, uint64_t rand_state) {
@@ -712,10 +727,11 @@ YBCStatus YBCPgGetEstimatedRowCount(YBCPgStatement handle, double *liverows, dou
 // INSERT Operations -------------------------------------------------------------------------------
 YBCStatus YBCPgNewInsert(const YBCPgOid database_oid,
                          const YBCPgOid table_oid,
-                         const bool is_single_row_txn,
+                         bool is_single_row_txn,
+                         bool is_region_local,
                          YBCPgStatement *handle) {
   const PgObjectId table_id(database_oid, table_oid);
-  return ToYBCStatus(pgapi->NewInsert(table_id, is_single_row_txn, handle));
+  return ToYBCStatus(pgapi->NewInsert(table_id, is_single_row_txn, is_region_local, handle));
 }
 
 YBCStatus YBCPgExecInsert(YBCPgStatement handle) {
@@ -744,9 +760,10 @@ YBCStatus YBCPgInsertStmtSetIsBackfill(YBCPgStatement handle, const bool is_back
 YBCStatus YBCPgNewUpdate(const YBCPgOid database_oid,
                          const YBCPgOid table_oid,
                          bool is_single_row_txn,
+                         bool is_region_local,
                          YBCPgStatement *handle) {
   const PgObjectId table_id(database_oid, table_oid);
-  return ToYBCStatus(pgapi->NewUpdate(table_id, is_single_row_txn, handle));
+  return ToYBCStatus(pgapi->NewUpdate(table_id, is_single_row_txn, is_region_local, handle));
 }
 
 YBCStatus YBCPgExecUpdate(YBCPgStatement handle) {
@@ -757,9 +774,10 @@ YBCStatus YBCPgExecUpdate(YBCPgStatement handle) {
 YBCStatus YBCPgNewDelete(const YBCPgOid database_oid,
                          const YBCPgOid table_oid,
                          bool is_single_row_txn,
+                         bool is_region_local,
                          YBCPgStatement *handle) {
   const PgObjectId table_id(database_oid, table_oid);
-  return ToYBCStatus(pgapi->NewDelete(table_id, is_single_row_txn, handle));
+  return ToYBCStatus(pgapi->NewDelete(table_id, is_single_row_txn, is_region_local, handle));
 }
 
 YBCStatus YBCPgExecDelete(YBCPgStatement handle) {
@@ -774,9 +792,11 @@ YBCStatus YBCPgDeleteStmtSetIsPersistNeeded(YBCPgStatement handle, const bool is
 YBCStatus YBCPgNewTruncateColocated(const YBCPgOid database_oid,
                                     const YBCPgOid table_oid,
                                     bool is_single_row_txn,
+                                    bool is_region_local,
                                     YBCPgStatement *handle) {
   const PgObjectId table_id(database_oid, table_oid);
-  return ToYBCStatus(pgapi->NewTruncateColocated(table_id, is_single_row_txn, handle));
+  return ToYBCStatus(pgapi->NewTruncateColocated(
+      table_id, is_single_row_txn, is_region_local, handle));
 }
 
 YBCStatus YBCPgExecTruncateColocated(YBCPgStatement handle) {
@@ -787,11 +807,12 @@ YBCStatus YBCPgExecTruncateColocated(YBCPgStatement handle) {
 YBCStatus YBCPgNewSelect(const YBCPgOid database_oid,
                          const YBCPgOid table_oid,
                          const YBCPgPrepareParameters *prepare_params,
+                         bool is_region_local,
                          YBCPgStatement *handle) {
   const PgObjectId table_id(database_oid, table_oid);
   const PgObjectId index_id(database_oid,
                             prepare_params ? prepare_params->index_oid : kInvalidOid);
-  return ToYBCStatus(pgapi->NewSelect(table_id, index_id, prepare_params, handle));
+  return ToYBCStatus(pgapi->NewSelect(table_id, index_id, prepare_params, is_region_local, handle));
 }
 
 YBCStatus YBCPgSetForwardScan(YBCPgStatement handle, bool is_forward_scan) {
@@ -943,6 +964,14 @@ YBCStatus YBCPgResetTransactionReadPoint() {
   return ToYBCStatus(pgapi->ResetTransactionReadPoint());
 }
 
+double YBCGetTransactionPriority() {
+  return pgapi->GetTransactionPriority();
+}
+
+TxnPriorityRequirement YBCGetTransactionPriorityType() {
+  return pgapi->GetTransactionPriorityType();
+}
+
 YBCStatus YBCPgRestartReadPoint() {
   return ToYBCStatus(pgapi->RestartReadPoint());
 }
@@ -991,8 +1020,8 @@ YBCStatus YBCPgSetActiveSubTransaction(uint32_t id) {
   return ToYBCStatus(pgapi->SetActiveSubTransaction(id));
 }
 
-YBCStatus YBCPgRollbackSubTransaction(uint32_t id) {
-  return ToYBCStatus(pgapi->RollbackSubTransaction(id));
+YBCStatus YBCPgRollbackToSubTransaction(uint32_t id) {
+  return ToYBCStatus(pgapi->RollbackToSubTransaction(id));
 }
 
 //------------------------------------------------------------------------------------------------
@@ -1025,9 +1054,10 @@ YBCStatus YBCForeignKeyReferenceExists(const YBCPgYBTupleIdDescriptor *source, b
   });
 }
 
-YBCStatus YBCAddForeignKeyReferenceIntent(const YBCPgYBTupleIdDescriptor *source) {
-  return ProcessYbctid(*source, [](auto table_id, const auto& ybctid) {
-    pgapi->AddForeignKeyReferenceIntent(table_id, ybctid);
+YBCStatus YBCAddForeignKeyReferenceIntent(
+    const YBCPgYBTupleIdDescriptor *source, bool relation_is_region_local) {
+  return ProcessYbctid(*source, [relation_is_region_local](auto table_id, const auto& ybctid) {
+    pgapi->AddForeignKeyReferenceIntent(table_id, relation_is_region_local, ybctid);
     return Status::OK();
   });
 }
@@ -1046,11 +1076,6 @@ bool YBCIsInitDbModeEnvVarSet() {
 }
 
 void YBCInitFlags() {
-  if (YBCIsInitDbModeEnvVarSet()) {
-    // Suppress log spew during initdb.
-    FLAGS_client_suppress_created_logs = true;
-  }
-
   SetAtomicFlag(GetAtomicFlag(&FLAGS_pggate_num_connections_to_server),
                 &FLAGS_num_connections_to_server);
 
@@ -1079,6 +1104,7 @@ const YBCPgGFlagsAccessor* YBCGetGFlags() {
   static YBCPgGFlagsAccessor accessor = {
       .log_ysql_catalog_versions               = &FLAGS_log_ysql_catalog_versions,
       .ysql_disable_index_backfill             = &FLAGS_ysql_disable_index_backfill,
+      .ysql_enable_reindex                     = &FLAGS_ysql_enable_reindex,
       .ysql_max_read_restart_attempts          = &FLAGS_ysql_max_read_restart_attempts,
       .ysql_max_write_restart_attempts         = &FLAGS_ysql_max_write_restart_attempts,
       .ysql_output_buffer_size                 = &FLAGS_ysql_output_buffer_size,
@@ -1103,11 +1129,15 @@ void YBCSetTimeout(int timeout_ms, void* extra) {
            : FLAGS_ysql_client_read_write_timeout_ms);
   // We set the rpc timeouts as a min{STATEMENT_TIMEOUT,
   // FLAGS(_ysql)?_client_read_write_timeout_ms}.
-  if (timeout_ms <= 0) {
+  // Note that 0 is a valid value of timeout_ms, meaning no timeout in Postgres.
+  if (timeout_ms < 0) {
     // The timeout is not valid. Use the default GFLAG value.
     return;
+  } else if (timeout_ms == 0) {
+    timeout_ms = default_client_timeout_ms;
+  } else {
+    timeout_ms = std::min(timeout_ms, default_client_timeout_ms);
   }
-  timeout_ms = std::min(timeout_ms, default_client_timeout_ms);
 
   // The statement timeout is lesser than default_client_timeout, hence the rpcs would
   // need to use a shorter timeout.
@@ -1195,6 +1225,15 @@ void YBCRegisterSysTableForPrefetching(
   pgapi->RegisterSysTableForPrefetching(
       PgObjectId(database_oid, table_oid),
       index_oid == kPgInvalidOid ? PgObjectId() : PgObjectId(database_oid, index_oid));
+}
+
+YBCStatus YBCPgCheckIfPitrActive(bool* is_active) {
+  auto res = pgapi->CheckIfPitrActive();
+  if (res.ok()) {
+    *is_active = *res;
+    return YBCStatusOK();
+  }
+  return ToYBCStatus(res.status());
 }
 
 } // extern "C"

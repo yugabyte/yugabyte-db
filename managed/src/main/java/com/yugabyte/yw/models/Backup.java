@@ -4,18 +4,17 @@ package com.yugabyte.yw.models;
 
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_WRITE;
-import static java.lang.Math.abs;
 import static com.yugabyte.yw.models.helpers.CommonUtils.performPagedQuery;
 import static com.yugabyte.yw.models.helpers.CommonUtils.appendInClause;
 import static com.yugabyte.yw.models.helpers.CommonUtils.appendLikeClause;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.Sets;
 import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.forms.BackupTableParams;
+import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.filters.BackupFilter;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.TimeUnit;
@@ -286,6 +285,9 @@ public class Backup extends Model {
     Universe universe = Universe.maybeGet(params.universeUUID).orElse(null);
     if (universe != null) {
       backup.universeName = universe.name;
+      if (universe.getUniverseDetails().encryptionAtRestConfig.kmsConfigUUID != null) {
+        params.kmsConfigUUID = universe.getUniverseDetails().encryptionAtRestConfig.kmsConfigUUID;
+      }
     }
     backup.state = BackupState.InProgress;
     backup.category = category;
@@ -303,13 +305,13 @@ public class Backup extends Model {
       for (BackupTableParams childBackup : params.backupList) {
         childBackup.backupUuid = backup.backupUUID;
         if (childBackup.storageLocation == null) {
-          BackupUtil.updateDefaultStorageLocation(childBackup, customerUUID);
+          BackupUtil.updateDefaultStorageLocation(childBackup, customerUUID, backup.category);
         }
       }
     } else if (params.storageLocation == null) {
       params.backupUuid = backup.backupUUID;
       // We would derive the storage location based on the parameters
-      BackupUtil.updateDefaultStorageLocation(params, customerUUID);
+      BackupUtil.updateDefaultStorageLocation(params, customerUUID, backup.category);
     }
     CustomerConfig storageConfig = CustomerConfig.get(customerUUID, params.storageConfigUUID);
     if (storageConfig != null) {
@@ -361,7 +363,7 @@ public class Backup extends Model {
       UUID customerUUID, UUID universeUUID) {
     return fetchByUniverseUUID(customerUUID, universeUUID)
         .stream()
-        .filter(b -> b.backupInfo.actionType == BackupTableParams.ActionType.CREATE)
+        .filter(b -> !Backup.IN_PROGRESS_STATES.contains(b.state))
         .collect(Collectors.toList());
   }
 
@@ -649,6 +651,16 @@ public class Backup extends Model {
       orExpr.raw(queryStringInner, filter.getKeyspaceList());
       orExpr.raw(queryStringOuter, filter.getKeyspaceList());
       query.endOr();
+    }
+    if (filter.isOnlyShowDeletedUniverses()) {
+      String universeNotExists =
+          "t0.universe_uuid not in" + "(select U.universe_uuid from universe U)";
+      query.raw(universeNotExists);
+    }
+    if (filter.isOnlyShowDeletedConfigs()) {
+      String configNotExists =
+          "t0.storage_config_uuid not in" + "(select C.config_uuid from customer_config C)";
+      query.raw(configNotExists);
     }
     return query;
   }

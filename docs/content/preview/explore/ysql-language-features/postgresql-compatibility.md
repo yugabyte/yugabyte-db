@@ -8,8 +8,7 @@ menu:
     identifier: explore-ysql-postgresql-compatibility
     parent: explore-ysql-language-features
     weight: 70
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 YugabyteDB is a PostgreSQL compatible distributed database that supports the majority of PostgreSQL syntax. This means that existing applications built on PostgreSQL can often be migrated to YugabyteDB without changing application code.
 
@@ -29,4 +28,3 @@ The following PostgreSQL features are not supported in YugabyteDB:
 - Drop primary key
 - XML Functions
 - XA syntax
-

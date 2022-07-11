@@ -168,6 +168,14 @@ IndexNext(IndexScanState *node)
 	/*
 	 * ok, now that we have what we need, fetch the next tuple.
 	 */
+	MemoryContext oldcontext;
+	/*
+	 * To handle dead tuple for temp table, we shouldn't store its index
+	 * in per-tuple memory context.
+	 */
+	if (IsYBRelation(node->ss.ss_currentRelation))
+		oldcontext = MemoryContextSwitchTo(
+			node->ss.ps.ps_ExprContext->ecxt_per_tuple_memory);
 	while ((tuple = index_getnext(scandesc, direction)) != NULL)
 	{
 		CHECK_FOR_INTERRUPTS();
@@ -189,14 +197,16 @@ IndexNext(IndexScanState *node)
 		if (scandesc->xs_recheck)
 		{
 			econtext->ecxt_scantuple = slot;
-			if (!ExecQualAndReset(node->indexqualorig, econtext))
+			if (!ExecQual(node->indexqualorig, econtext))
 			{
+				ResetExprContext(econtext);
 				/* Fails recheck, so drop it and loop back for another */
 				InstrCountFiltered2(node, 1);
 				continue;
 			}
 		}
-
+		if (IsYBRelation(node->ss.ss_currentRelation))
+			MemoryContextSwitchTo(oldcontext);
 		return slot;
 	}
 
@@ -205,6 +215,8 @@ IndexNext(IndexScanState *node)
 	 * the scan..
 	 */
 	node->iss_ReachedEnd = true;
+	if (IsYBRelation(node->ss.ss_currentRelation))
+		MemoryContextSwitchTo(oldcontext);
 	return ExecClearTuple(slot);
 }
 

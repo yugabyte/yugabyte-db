@@ -676,6 +676,20 @@ EXPLAIN (COSTS FALSE) EXECUTE single_row_delete (1);
 
 DROP TRIGGER single_row_update_trigger ON single_row;
 --
+-- Test stored procedure
+--
+CREATE PROCEDURE update_single_row_proc(pk int, new_v1 int, inc_v2 int) AS $$
+  UPDATE single_row SET v1 = new_v1, v2 = v2 + inc_v2 WHERE k = pk;
+$$ LANGUAGE SQL;
+CALL update_single_row_proc(1, 2, 3);
+SELECT * FROM single_row WHERE k = 1;
+ k | v1 | v2
+---+----+----
+ 1 |  2 |  6
+(1 row)
+
+DROP PROCEDURE update_single_row_proc;
+--
 -- Test table with composite primary key.
 --
 CREATE TABLE single_row_comp_key (v int, k1 int, k2 int, PRIMARY KEY (k1 HASH, k2 ASC));
@@ -1202,10 +1216,11 @@ EXPLAIN (COSTS FALSE) UPDATE single_row_complex_returning SET v1 = v1 + 1 WHERE 
 ---------------------------------------------------------------------------------------
  Update on single_row_complex_returning
    InitPlan 1 (returns $0)
-     ->  Aggregate
+     ->  Finalize Aggregate
            ->  Seq Scan on single_row_complex_returning single_row_complex_returning_1
+                 Partial Aggregate: true
    ->  Result
-(5 rows)
+(6 rows)
 
 -- (12) Mutable function
 EXPLAIN (COSTS FALSE) UPDATE single_row_complex_returning SET v1 = v1 + 1 WHERE k = 1 RETURNING assign_one_plus_param_to_v1(1);

@@ -21,6 +21,7 @@ import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.VMImageUpgradeParams.VmUpgradeTaskType;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.util.Arrays;
@@ -93,9 +94,11 @@ public class StartNodeInUniverse extends UniverseDefinitionTaskBase {
         // the master comes up as a shell master.
         createConfigureServerTasks(
                 ImmutableList.of(currentNode),
-                true /* isShell */,
-                true /* updateMasterAddrs */,
-                true /* isMaster */)
+                params -> {
+                  params.isMasterInShellMode = true;
+                  params.updateMasterAddrsOnly = true;
+                  params.isMaster = true;
+                })
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
         // Set gflags for master.
@@ -138,9 +141,22 @@ public class StartNodeInUniverse extends UniverseDefinitionTaskBase {
               new HashSet<NodeDetails>(Arrays.asList(currentNode)), ServerType.TSERVER)
           .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
 
-      // Update all server conf files with new master information.
+      // Start yb-controller process
+      if (CommonUtils.canConfigureYbc(universe)) {
+        createStartYbcTasks(Arrays.asList(currentNode))
+            .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
+
+        // Wait for yb-controller to be responsive on each node.
+        createWaitForYbcServerTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      }
+
       if (masterAdded) {
+        // Update all server conf files with new master information.
         createMasterInfoUpdateTask(universe, currentNode);
+
+        // Update the master addresses on the target universes whose source universe belongs to
+        // this task.
+        createXClusterConfigUpdateMasterAddressesTask();
       }
 
       // Update node state to running

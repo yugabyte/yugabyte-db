@@ -58,7 +58,7 @@ public class UniverseClustersController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
 
     UniverseConfigureTaskParams taskParams =
-        bindFormDataToTaskParams(request(), UniverseConfigureTaskParams.class);
+        bindFormDataToTaskParams(ctx(), request(), UniverseConfigureTaskParams.class);
 
     taskParams.clusterOperation = UniverseConfigureTaskParams.ClusterOperationType.CREATE;
     taskParams.currentClusterType = ClusterType.PRIMARY;
@@ -105,7 +105,7 @@ public class UniverseClustersController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
     UniverseConfigureTaskParams taskParams =
-        bindFormDataToTaskParams(request(), UniverseConfigureTaskParams.class);
+        bindFormDataToTaskParams(ctx(), request(), UniverseConfigureTaskParams.class);
 
     taskParams.clusterOperation = UniverseConfigureTaskParams.ClusterOperationType.EDIT;
     taskParams.currentClusterType = ClusterType.PRIMARY;
@@ -144,7 +144,7 @@ public class UniverseClustersController extends AuthenticatedController {
         universeCRUDHandler.createCluster(
             customer,
             universe,
-            bindFormDataToTaskParams(request(), UniverseDefinitionTaskParams.class));
+            bindFormDataToTaskParams(ctx(), request(), UniverseDefinitionTaskParams.class));
 
     auditService()
         .createAuditEntryWithReqBody(
@@ -204,7 +204,7 @@ public class UniverseClustersController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
     UniverseConfigureTaskParams taskParams =
-        bindFormDataToTaskParams(request(), UniverseConfigureTaskParams.class);
+        bindFormDataToTaskParams(ctx(), request(), UniverseConfigureTaskParams.class);
 
     taskParams.clusterOperation = UniverseConfigureTaskParams.ClusterOperationType.EDIT;
     taskParams.currentClusterType = ClusterType.ASYNC;

@@ -55,6 +55,7 @@ message ReplicationInfoPB {
   optional PlacementInfoPB live_replicas = 1;
   repeated PlacementInfoPB read_replicas = 2;
   repeated CloudInfoPB affinitized_leaders = 3;
+  repeated CloudInfoListPB multi_affinitized_leaders = 4;
 }
 
 message BackfillJobPB {
@@ -153,6 +154,10 @@ message SysTablesEntryPB {
 
   // True if the table is colocated (including tablegroups, excluding YSQL system tables).
   optional bool colocated = 25 [ default = false ];
+
+  // For materialized views:
+  optional bytes matview_pg_table_id = 36; // The PG OID of a materialized view
+  optional bool is_matview = 37 [ default = false ]; // True if the table is a materialized view.
 
   optional uint32 fully_applied_schema_version = 23;
   repeated IndexInfoPB fully_applied_indexes = 26;
@@ -435,6 +440,7 @@ message SysCDCStreamEntryPB {
     DELETING = 1;
     // Currently DELETED is not being used because we delete streams entries from sys catalog.
     DELETED = 2;
+    DELETING_METADATA = 4;
   }
   repeated string table_id = 1;
   repeated CDCStreamOptionsPB options = 2;

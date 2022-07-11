@@ -45,6 +45,8 @@ DEFAULT_SSH_PORT = 22
 DEFAULT_SSH_USER = 'centos'
 # Timeout in seconds.
 SSH_TIMEOUT = 45
+# Retry in seconds
+SSH_RETRY_DELAY = 10
 
 RSA_KEY_LENGTH = 2048
 RELEASE_VERSION_FILENAME = "version.txt"
@@ -650,7 +652,8 @@ def validate_cron_status(host_name, port, username, ssh_key_file):
         ssh_client.close()
 
 
-def remote_exec_command(host_name, port, username, ssh_key_file, cmd, timeout=SSH_TIMEOUT):
+def remote_exec_command(host_name, port, username, ssh_key_file, cmd,
+                        timeout=SSH_TIMEOUT, retries_on_failure=3, retry_delay=SSH_RETRY_DELAY):
     """This method will execute the given cmd on remote host and return the output.
     Args:
         host_name (str): SSH host IP address
@@ -658,7 +661,9 @@ def remote_exec_command(host_name, port, username, ssh_key_file, cmd, timeout=SS
         username (str): SSH username
         ssh_key_file (str): SSH key file
         cmd (str): Command to run
-        timeout (int): Time in seconds to wait before erroring
+        timeout (int): Time in seconds to wait before aborting
+        retries_on_failure (int): Number of times to retry
+        retry_delay (int): Time in seconds to wait between subsequent retries
     Returns:
         rc (int): returncode
         stdout (str): output log
@@ -667,24 +672,33 @@ def remote_exec_command(host_name, port, username, ssh_key_file, cmd, timeout=SS
     ssh_key = paramiko.RSAKey.from_private_key_file(ssh_key_file)
     ssh_client = get_ssh_client()
 
-    try:
-        ssh_client.connect(hostname=host_name,
-                           username=username,
-                           pkey=ssh_key,
-                           port=port,
-                           timeout=timeout,
-                           banner_timeout=timeout)
+    while retries_on_failure >= 0:
+        try:
+            logging.info("Attempt #{} to execute remote command...".format(retries_on_failure + 1))
+            ssh_client.connect(hostname=host_name,
+                               username=username,
+                               pkey=ssh_key,
+                               port=port,
+                               timeout=timeout,
+                               banner_timeout=timeout)
 
-        _, stdout, stderr = ssh_client.exec_command(cmd)
-        return stdout.channel.recv_exit_status(), stdout.readlines(), stderr.readlines()
-    except (paramiko.ssh_exception, socket.timeout, socket.error) as e:
-        logging.error("Failed to execute remote command: {}".format(e))
-        return 1, None, None  # treat this as a non-zero return code
-    finally:
-        ssh_client.close()
+            _, stdout, stderr = ssh_client.exec_command(cmd)
+            return stdout.channel.recv_exit_status(), stdout.readlines(), stderr.readlines()
+        except (paramiko.ssh_exception.NoValidConnectionsError,
+                paramiko.ssh_exception.AuthenticationException,
+                paramiko.ssh_exception.SSHException,
+                socket.timeout, socket.error) as e:
+            logging.error("Failed to execute remote command: {}".format(e))
+            retries_on_failure -= 1
+            time.sleep(retry_delay)
+        finally:
+            ssh_client.close()
+
+    return 1, None, None  # treat this as a non-zero return code
 
 
-def scp_to_tmp(filepath, host, user, port, private_key):
+def scp_to_tmp(filepath, host, user, port, private_key,
+               retries=3, retry_delay=SSH_RETRY_DELAY):
     dest_path = os.path.join("/tmp", os.path.basename(filepath))
     logging.info("[app] Copying local '{}' to remote '{}'".format(
         filepath, dest_path))
@@ -699,24 +713,39 @@ def scp_to_tmp(filepath, host, user, port, private_key):
         "-vvvv",
         filepath, "{}@{}:{}".format(user, host, dest_path)
     ]
-    # Save the debug output to temp files.
-    out_fd, out_name = tempfile.mkstemp(text=True)
-    err_fd, err_name = tempfile.mkstemp(text=True)
-    # Start the scp and redirect out and err.
-    proc = subprocess.Popen(scp_cmd, stdout=out_fd, stderr=err_fd)
-    # Wait for finish and cleanup FDs.
-    proc.wait()
-    os.close(out_fd)
-    os.close(err_fd)
-    # In case of errors, copy over the tmp output.
-    if proc.returncode != 0:
-        timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-        shutil.copyfile(out_name, "/tmp/{}-{}.out".format(host, timestamp))
-        shutil.copyfile(err_name, "/tmp/{}-{}.err".format(host, timestamp))
-    # Cleanup the temp files now that they are clearly not needed.
-    os.remove(out_name)
-    os.remove(err_name)
-    return proc.returncode
+
+    rc = 0
+    while retries > 0:
+        # Save the debug output to temp files.
+        out_fd, out_name = tempfile.mkstemp(text=True)
+        err_fd, err_name = tempfile.mkstemp(text=True)
+        # Start the scp and redirect out and err.
+        proc = subprocess.Popen(scp_cmd, stdout=out_fd, stderr=err_fd)
+        # Wait for finish and cleanup FDs.
+        proc.wait()
+        os.close(out_fd)
+        os.close(err_fd)
+        rc = proc.returncode
+
+        # In case of errors, copy over the tmp output.
+        if rc != 0:
+            timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+            basename = f"/tmp/{host}-{timestamp}"
+            logging.warning(f"Command '{' '.join(scp_cmd)}' failed with exit code {rc}")
+
+            for ext, name in {'out': out_name, 'err': err_name}.items():
+                logging.warning(f"Dumping std{ext} to {basename}.{ext}")
+                shutil.move(name, f"{basename}.out")
+
+            retries -= 1
+            time.sleep(retry_delay)
+        else:
+            # Cleanup the temp files now that they are clearly not needed.
+            os.remove(out_name)
+            os.remove(err_name)
+            break
+
+    return rc
 
 
 def get_or_create(getter):
@@ -793,3 +822,9 @@ def get_mount_roots(ssh_options, paths):
     return ",".join(
         [mroot.strip() for mroot in mount_roots if mroot.strip()]
     )
+
+
+def get_public_key_content(private_key_file):
+    rsa_key = validated_key_file(private_key_file)
+    public_key_content = format_rsa_key(rsa_key, public_key=True)
+    return public_key_content

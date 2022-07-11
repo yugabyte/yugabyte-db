@@ -174,8 +174,8 @@ public class SupportBundleControllerTest extends FakeDBApplication {
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
 
-    List<ObjectNode> supportBundlesResponse = Json.fromJson(json, List.class);
-    assertEquals(supportBundlesResponse.size(), 2);
+    List<SupportBundle> supportBundles = Json.fromJson(json, List.class);
+    assertEquals(supportBundles.size(), 2);
     assertAuditEntry(0, customer.uuid);
   }
 
@@ -185,8 +185,8 @@ public class SupportBundleControllerTest extends FakeDBApplication {
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
 
-    List<ObjectNode> supportBundlesResponse = Json.fromJson(json, List.class);
-    assertEquals(supportBundlesResponse.size(), 0);
+    List<SupportBundle> supportBundles = Json.fromJson(json, List.class);
+    assertEquals(supportBundles.size(), 0);
     assertAuditEntry(0, customer.uuid);
   }
 
@@ -212,13 +212,7 @@ public class SupportBundleControllerTest extends FakeDBApplication {
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
 
-    ObjectNode supportBundleResponse = Json.fromJson(json, ObjectNode.class);
-    assertTrue(supportBundleResponse.has("creationDate"));
-    assertTrue(supportBundleResponse.has("expirationDate"));
-    supportBundleResponse.remove("creationDate");
-    supportBundleResponse.remove("expirationDate");
-
-    SupportBundle supportBundle = Json.fromJson(supportBundleResponse, SupportBundle.class);
+    SupportBundle supportBundle = Json.fromJson(json, SupportBundle.class);
     assertEquals(supportBundle, sb1);
     assertAuditEntry(0, customer.uuid);
   }
@@ -441,12 +435,10 @@ public class SupportBundleControllerTest extends FakeDBApplication {
               universe.setUniverseDetails(universeDetails);
             });
 
-    Result result =
-        assertPlatformException(
-            () -> createSupportBundle(customer.uuid, universe.universeUUID, bodyJson));
+    Result result = createSupportBundle(customer.uuid, universe.universeUUID, bodyJson);
     JsonNode json = Json.parse(contentAsString(result));
-    assertEquals(BAD_REQUEST, result.status());
-    assertAuditEntry(0, customer.uuid);
+    assertEquals(OK, result.status());
+    assertAuditEntry(1, customer.uuid);
   }
 
   @Test

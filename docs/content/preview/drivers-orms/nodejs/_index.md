@@ -1,28 +1,33 @@
 ---
-title: NodeJS drivers and ORMs
-headerTitle: NodeJS
-headcontent: Prerequisites and CRUD examples for building applications in NodeJS.
-linkTitle: NodeJS
-description: NodeJS Drivers and ORMs support for YugabyteDB.
+title: Node.js drivers and ORMs
+headerTitle: Node.js
+linkTitle: Node.js
+description: Node.js Drivers and ORMs support for YugabyteDB.
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
     identifier: nodejs-drivers
     parent: drivers-orms
     weight: 570
-isTocNested: true
-showAsideToc: true
+type: indexpage
 ---
+
 The following projects are recommended for implementing Node applications using the YugabyteDB YSQL API.
 
-| Project | Type | Support | Examples |
-| :------ | :--- | :------ | :------- |
-| [node-postgres](postgres-node-driver) | Node.JS Driver | Full | [Hello World](/preview/quick-start/build-apps/nodejs/ysql-pg/) <br />[CRUD](postgres-node-driver) |
-| [Sequelize](sequelize) | ORM | Full | [Hello World](/preview/quick-start/build-apps/nodejs/ysql-sequelize/) <br />[CRUD](sequelize) |
+## Supported Projects
+
+| Project | Documentation and Guides | Latest Driver Version | Supported YugabyteDB Version |
+| :------ | :----------------------- | :----------------------- | :--------------------|
+| node-postgres Driver| [Documentation](postgres-node-driver) <br /> [Hello World App](../../quick-start/build-apps/nodejs/ysql-pg/) | [8.7.3](https://www.npmjs.com/package/pg) | 2.6 and above |
+
+| Project | Documentation and Guides | Example Apps |
+| :------ | :----------------------- | :----------- |
+| Sequelize | [Documentation](sequelize) <br /> [Hello World App](../../quick-start/build-apps/nodejs/ysql-sequelize/) | [Sequelize ORM App](https://github.com/YugabyteDB-Samples/orm-examples/tree/master/node/sequelize) |
+| Prisma | [Documentation](prisma) <br /> [Hello World App](../../quick-start/build-apps/nodejs/ysql-prisma/) <br /> | [Prisma ORM App](https://github.com/yugabyte/orm-examples/tree/master/node/prisma)
 
 Learn how to establish a connection to a YugabyteDB database and begin basic CRUD operations using the **Hello World** examples.
 
-For fully-runnable code snippets and explanations of common operations, see the project page **CRUD** example. Before running CRUD examples, make sure you have installed the prerequisites.
+For fully-runnable code snippets and explanations of common operations, see the  **example apps**. Before running the example apps, make sure you have installed the prerequisites.
 
 ## Prerequisites
 
@@ -45,4 +50,9 @@ To develop Node.js applications for YugabyteDB, you need the following:
 
 - **YugabyteDB cluster**
   - Create a free cluster on [YugabyteDB Managed](https://www.yugabyte.com/cloud/). Refer to [Create a free cluster](../../yugabyte-cloud/cloud-basics/create-clusters-free/). Note that YugabyteDB Managed requires SSL.
-  - Alternatively, set up a standalone YugabyteDB cluster by following the steps in [Install YugabyteDB](/preview/quick-start/install/macos).
+  - Alternatively, set up a standalone YugabyteDB cluster by following the steps in [Install YugabyteDB](../../quick-start/install/macos).
+
+## Next steps
+
+- Learn how to build NodeJS applications using [Sequelize](sequelize/).
+- Learn how to use [Prisma](prisma/) with YugabyteDB.

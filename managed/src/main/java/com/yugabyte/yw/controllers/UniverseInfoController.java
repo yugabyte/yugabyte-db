@@ -19,6 +19,7 @@ import com.yugabyte.yw.cloud.UniverseResourceDetails.Context;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.TriggerHealthCheckResult;
@@ -160,11 +161,7 @@ public class UniverseInfoController extends AuthenticatedController {
     log.info("Slow queries for customer {}, universe {}", customerUUID, universeUUID);
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
-    Optional<String> optUsername = request().getHeaders().get(YSQL_USERNAME_HEADER);
-    Optional<String> optPassword = request().getHeaders().get(YSQL_PASSWORD_HEADER);
-    JsonNode resultNode =
-        universeInfoHandler.getSlowQueries(
-            universe, optUsername.orElse(null), optPassword.map(Util::decodeBase64).orElse(null));
+    JsonNode resultNode = universeInfoHandler.getSlowQueries(universe);
     return Results.ok(resultNode);
   }
 
@@ -260,7 +257,7 @@ public class UniverseInfoController extends AuthenticatedController {
           Path targetFile = Paths.get(storagePath + "/" + tarFileName);
           File file =
               universeInfoHandler.downloadNodeLogs(customer, universe, node, targetFile).toFile();
-          InputStream is = Util.getInputStreamOrFail(file);
+          InputStream is = FileUtils.getInputStreamOrFail(file);
           file.delete(); // TODO: should this be done in finally?
           // return the file to client
           response().setHeader("Content-Disposition", "attachment; filename=" + file.getName());

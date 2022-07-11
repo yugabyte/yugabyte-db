@@ -74,8 +74,15 @@ DEFINE_bool(pgsql_consistent_transactional_paging, true,
 DEFINE_test_flag(int32, slowdown_pgsql_aggregate_read_ms, 0,
                  "If set > 0, slows down the response to pgsql aggregate read by this amount.");
 
-DEFINE_int32(max_packed_row_columns, -1,
-             "Max number of columns in packed row. -1 to disable.");
+DEFINE_bool(ysql_enable_packed_row, false, "Whether packed row is enabled for YSQL.");
+
+DEFINE_uint64(
+    ysql_packed_row_size_limit, 0,
+    "Packed row size limit for YSQL in bytes. 0 to make this equal to SSTable block size.");
+
+DEFINE_test_flag(bool, ysql_suppress_ybctid_corruption_details, false,
+                 "Whether to show less details on ybctid corruption error status message.  Useful "
+                 "during tests that require consistent output.");
 
 namespace yb {
 namespace docdb {
@@ -83,7 +90,7 @@ namespace docdb {
 namespace {
 
 // Compatibility: accept column references from a legacy nodes as a list of column ids only
-CHECKED_STATUS CreateProjection(const Schema& schema,
+Status CreateProjection(const Schema& schema,
                                 const PgsqlColumnRefsPB& column_refs,
                                 Schema* projection) {
   // Create projection of non-primary key columns. Primary key columns are implicitly read by DocDB.
@@ -99,7 +106,7 @@ CHECKED_STATUS CreateProjection(const Schema& schema,
   return schema.CreateProjectionByIdsIgnoreMissing(column_ids, projection);
 }
 
-CHECKED_STATUS CreateProjection(
+Status CreateProjection(
     const Schema& schema,
     const google::protobuf::RepeatedPtrField<PgsqlColRefPB> &column_refs,
     Schema* projection) {
@@ -124,7 +131,7 @@ void AddIntent(const std::string& encoded_key, WaitPolicy wait_policy, KeyValueW
   out->set_wait_policy(wait_policy);
 }
 
-CHECKED_STATUS AddIntent(const PgsqlExpressionPB& ybctid, WaitPolicy wait_policy,
+Status AddIntent(const PgsqlExpressionPB& ybctid, WaitPolicy wait_policy,
                          KeyValueWriteBatchPB* out) {
   const auto &val = ybctid.value().binary_value();
   SCHECK(!val.empty(), InternalError, "empty ybctid");
@@ -258,7 +265,7 @@ Status PgsqlWriteOperation::Init(PgsqlResponsePB* response) {
   // Initialize operation inputs.
   response_ = response;
 
-  doc_key_ = VERIFY_RESULT(FetchDocKey(doc_read_context_.schema, request_));
+  doc_key_ = VERIFY_RESULT(FetchDocKey(doc_read_context_->schema, request_));
   encoded_doc_key_ = doc_key_->EncodeAsRefCntPrefix();
 
   return Status::OK();
@@ -315,9 +322,9 @@ Result<bool> PgsqlWriteOperation::HasDuplicateUniqueIndexValue(
 Result<bool> PgsqlWriteOperation::HasDuplicateUniqueIndexValue(
     const DocOperationApplyData& data, ReadHybridTime read_time) {
   // Set up the iterator to read the current primary key associated with the index key.
-  DocPgsqlScanSpec spec(doc_read_context_.schema, request_.stmt_id(), *doc_key_);
-  DocRowwiseIterator iterator(doc_read_context_.schema,
-                              doc_read_context_,
+  DocPgsqlScanSpec spec(doc_read_context_->schema, request_.stmt_id(), *doc_key_);
+  DocRowwiseIterator iterator(doc_read_context_->schema,
+                              *doc_read_context_,
                               txn_op_context_,
                               data.doc_write_batch->doc_db(),
                               data.deadline,
@@ -443,12 +450,15 @@ Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data, IsUps
     }
   }
 
-  bool pack_row = request_.column_values().size() <= FLAGS_max_packed_row_columns;
+  bool pack_row = FLAGS_ysql_enable_packed_row;
   const SchemaPacking& schema_packing = VERIFY_RESULT(
-      doc_read_context_.schema_packing_storage.GetPacking(request_.schema_version()));
-  RowPacker row_packer(request_.schema_version(), schema_packing);
+      doc_read_context_->schema_packing_storage.GetPacking(request_.schema_version()));
+  RowPacker row_packer(request_.schema_version(), schema_packing, FLAGS_ysql_packed_row_size_limit);
+  IntraTxnWriteId packed_row_write_id;
 
-  if (!pack_row) {
+  if (pack_row) {
+    packed_row_write_id = data.doc_write_batch->ReserveWriteId();
+  } else {
     RETURN_NOT_OK(data.doc_write_batch->SetPrimitive(
         DocPath(encoded_doc_key_.as_slice(), KeyEntryValue::kLivenessColumn),
         ValueControlFields(), ValueRef(ValueEntryType::kNullLow), data.read_time, data.deadline,
@@ -464,15 +474,13 @@ Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data, IsUps
               "Illegal write instruction");
 
     const ColumnId column_id(column_value.column_id());
-    const ColumnSchema& column = VERIFY_RESULT(doc_read_context_.schema.column_by_id(column_id));
+    const ColumnSchema& column = VERIFY_RESULT(doc_read_context_->schema.column_by_id(column_id));
 
     // Evaluate column value.
     QLExprResult expr_result;
     RETURN_NOT_OK(EvalExpr(column_value.expr(), table_row, expr_result.Writer()));
 
-    if (pack_row) {
-      RETURN_NOT_OK(row_packer.AddValue(column_id, expr_result.Value()));
-    } else {
+    if (!pack_row || !VERIFY_RESULT(row_packer.AddValue(column_id, expr_result.Value()))) {
       // Inserting into specified column.
       DocPath sub_path(encoded_doc_key_.as_slice(), KeyEntryValue::MakeColumnId(column_id));
       RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
@@ -486,7 +494,8 @@ Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data, IsUps
     RETURN_NOT_OK(data.doc_write_batch->SetPrimitive(
         DocPath(encoded_doc_key_.as_slice()),
         ValueControlFields(), ValueRef(encoded_value),
-        data.read_time, data.deadline, request_.stmt_id()));
+        data.read_time, data.deadline, request_.stmt_id(),
+        packed_row_write_id));
   }
 
   RETURN_NOT_OK(PopulateResultSet(table_row));
@@ -512,7 +521,7 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
   bool skipped = true;
 
   if (request_.has_ybctid_column_value()) {
-    DocPgExprExecutor expr_exec(&doc_read_context_.schema);
+    DocPgExprExecutor expr_exec(&doc_read_context_->schema);
     std::vector<QLExprResult> results;
     int num_exprs = 0;
     int cur_expr = 0;
@@ -538,7 +547,7 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
         return STATUS(InternalError, "column id missing", column_value.DebugString());
       }
       const ColumnId column_id(column_value.column_id());
-      const ColumnSchema& column = VERIFY_RESULT(doc_read_context_.schema.column_by_id(column_id));
+      const ColumnSchema& column = VERIFY_RESULT(doc_read_context_->schema.column_by_id(column_id));
       // Evaluate column value.
       QLExprResult expr_result;
 
@@ -551,7 +560,7 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
                "Unsupported DocDB Expression");
 
         RETURN_NOT_OK(EvalExpr(
-            column_value.expr(), table_row, expr_result.Writer(), &doc_read_context_.schema));
+            column_value.expr(), table_row, expr_result.Writer(), &doc_read_context_->schema));
       }
 
       // Update RETURNING values
@@ -587,7 +596,7 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
         }
         const ColumnId column_id(column_value.column_id());
         const ColumnSchema& column = VERIFY_RESULT(
-            doc_read_context_.schema.column_by_id(column_id));
+            doc_read_context_->schema.column_by_id(column_id));
 
         // Check column-write operator.
         CHECK(GetTSWriteInstruction(column_value.expr()) == bfpg::TSOpcode::kScalarInsert)
@@ -669,10 +678,10 @@ Status PgsqlWriteOperation::ReadColumns(const DocOperationApplyData& data,
   // Filter the columns using primary key.
   if (doc_key_) {
     Schema projection;
-    RETURN_NOT_OK(CreateProjection(doc_read_context_.schema, request_.column_refs(), &projection));
+    RETURN_NOT_OK(CreateProjection(doc_read_context_->schema, request_.column_refs(), &projection));
     DocPgsqlScanSpec spec(projection, request_.stmt_id(), *doc_key_);
     DocRowwiseIterator iterator(projection,
-                                doc_read_context_,
+                                *doc_read_context_,
                                 txn_op_context_,
                                 data.doc_write_batch->doc_db(),
                                 data.deadline,
@@ -1041,11 +1050,15 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const YQLStorageIf& ql_storage,
       if (!VERIFY_RESULT(table_iter_->SeekTuple(tuple_id->binary_value()))) {
         DocKey doc_key;
         RETURN_NOT_OK(doc_key.DecodeFrom(tuple_id->binary_value()));
-        return STATUS_FORMAT(
-            Corruption,
-            "ybctid $0 not found in indexed table. index table id is $1",
-            doc_key,
-            request_.index_request().table_id());
+        if (FLAGS_TEST_ysql_suppress_ybctid_corruption_details) {
+          return STATUS(Corruption, "ybctid not found in indexed table");
+        } else {
+          return STATUS_FORMAT(
+              Corruption,
+              "ybctid $0 not found in indexed table. index table id is $1",
+              doc_key,
+              request_.index_request().table_id());
+        }
       }
       row.Clear();
       RETURN_NOT_OK(table_iter_->NextRow(projection, &row));

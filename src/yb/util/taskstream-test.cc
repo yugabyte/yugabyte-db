@@ -68,7 +68,7 @@ namespace yb {
 
 namespace {
 
-static CHECKED_STATUS BuildMinMaxTestPool(
+static Status BuildMinMaxTestPool(
     int min_threads, int max_threads, std::unique_ptr<ThreadPool> *pool) {
   return ThreadPoolBuilder("test").set_min_threads(min_threads)
       .set_max_threads(max_threads)

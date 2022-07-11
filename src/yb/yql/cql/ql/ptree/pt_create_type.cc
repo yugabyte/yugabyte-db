@@ -42,7 +42,7 @@ PTTypeField::~PTTypeField() {
 }
 
 
-CHECKED_STATUS PTTypeField::Analyze(SemContext *sem_context) {
+Status PTTypeField::Analyze(SemContext *sem_context) {
 
   // Save context state, and set "this" as current type field in the context.
   SymbolEntry cached_entry = *sem_context->current_processing_id();
@@ -86,7 +86,7 @@ PTCreateType::PTCreateType(MemoryContext *memctx,
 PTCreateType::~PTCreateType() {
 }
 
-CHECKED_STATUS PTCreateType::Analyze(SemContext *sem_context) {
+Status PTCreateType::Analyze(SemContext *sem_context) {
   SemState sem_state(sem_context);
 
   // Processing type name.

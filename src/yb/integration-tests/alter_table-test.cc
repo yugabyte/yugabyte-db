@@ -559,7 +559,7 @@ TEST_P(AlterTableTest, DISABLED_TestCompactionAfterDrop) {
   ASSERT_OK(table_alterer->DropColumn("c1")->Alter());
 
   LOG(INFO) << "Forcing compaction";
-  tablet_peer_->tablet()->ForceRocksDBCompactInTest();
+  tablet_peer_->tablet()->TEST_ForceRocksDBCompact();
 
   docdb_dump = tablet_peer_->tablet()->TEST_DocDBDumpStr();
 

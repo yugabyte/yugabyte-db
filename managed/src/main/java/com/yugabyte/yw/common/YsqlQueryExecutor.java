@@ -2,10 +2,12 @@
 
 package com.yugabyte.yw.common;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.libs.Json.newObject;
 import static play.libs.Json.toJson;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
@@ -14,6 +16,9 @@ import com.yugabyte.yw.forms.DatabaseSecurityFormData;
 import com.yugabyte.yw.forms.DatabaseUserFormData;
 import com.yugabyte.yw.forms.RunQueryFormData;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CommonUtils;
+import com.yugabyte.yw.models.helpers.NodeDetails;
+
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
@@ -51,6 +56,11 @@ public class YsqlQueryExecutor {
           + "SET current_version = current_version + 1 WHERE db_oid = 1;";
 
   @Inject RuntimeConfigFactory runtimeConfigFactory;
+  @Inject NodeUniverseManager nodeUniverseManager;
+
+  private String wrapJsonAgg(String query) {
+    return String.format("SELECT jsonb_agg(x) FROM (%s) as x", query);
+  }
 
   private String getQueryType(String queryString) {
     String[] queryParts = queryString.split(" ");
@@ -58,6 +68,15 @@ public class YsqlQueryExecutor {
     if (command.equals("TRUNCATE") || command.equals("DROP"))
       return command + " " + queryParts[1].toUpperCase();
     return command;
+  }
+
+  // TODO This is a temporary workaround until it is fixed in the server side.
+  private String removeQueryFromErrorMessage(String errMsg, String queryString) {
+    // An error message contains the actual query sent to the server.
+    if (errMsg != null) {
+      errMsg = errMsg.replace(queryString, "<Query>");
+    }
+    return errMsg;
   }
 
   private List<Map<String, Object>> resultSetToMap(ResultSet result) throws SQLException {
@@ -119,7 +138,36 @@ public class YsqlQueryExecutor {
         }
       }
     } catch (SQLException | RuntimeException e) {
-      response.put("error", e.getMessage());
+      response.put("error", removeQueryFromErrorMessage(e.getMessage(), queryParams.query));
+    }
+    return response;
+  }
+
+  public JsonNode executeQueryInNodeShell(
+      Universe universe, RunQueryFormData queryParams, NodeDetails node) {
+    ObjectNode response = newObject();
+    response.put("type", "ysql");
+    String queryType = getQueryType(queryParams.query);
+    String queryString =
+        queryType.equals("SELECT") ? wrapJsonAgg(queryParams.query) : queryParams.query;
+
+    ShellResponse shellResponse =
+        nodeUniverseManager
+            .runYsqlCommand(node, universe, queryParams.db_name, queryString)
+            .processErrors("Ysql Query Execution Error");
+    try {
+      ObjectMapper objectMapper = new ObjectMapper();
+      if (queryType.equals("SELECT")) {
+        JsonNode jsonNode =
+            objectMapper.readTree(CommonUtils.extractJsonisedSqlResponse(shellResponse));
+        response.set("result", jsonNode);
+      } else {
+        response.put("queryType", queryType);
+      }
+
+    } catch (Exception e) {
+      LOG.error(e.getMessage(), e);
+      response.put("error", "Failed to parse response: " + e.getMessage());
     }
     return response;
   }

@@ -92,6 +92,15 @@ const autoLogin = (params) => {
   browserHistory.push('/');
 };
 
+export const setCookiesFromLocalStorage = () => {
+  const storageItems = ['authToken', 'apiToken', 'customerId', 'userId', 'asdfasd'];
+  storageItems.forEach((item) => {
+    if (localStorage.getItem(item)) {
+      Cookies.set(item, localStorage.getItem(item));
+    }
+  });
+};
+
 /**
  * Checks that url query parameters contains only authToken, customerUUID,
  * and userUUID. If additional parameters are in url, returns false
@@ -112,7 +121,12 @@ axios.interceptors.response.use(
     const isAllowedUrl = /.+\/(login|register)$/i.test(error.request.responseURL);
     const isUnauthorised = error.response?.status === 403;
     if (isUnauthorised && !isAllowedUrl) {
-      browserHistory.push('/login');
+      //redirect to users current page
+      const searchParam = new URLSearchParams(window.location.search);
+      const location = searchParam.get('redirectUrl') || window.location.pathname;
+      browserHistory.push(
+        location && location !== '/' ? `/login?redirectUrl=${location}` : '/login'
+      );
     }
     return Promise.reject(error);
   }

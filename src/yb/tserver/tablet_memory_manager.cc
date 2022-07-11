@@ -167,7 +167,7 @@ TabletMemoryManager::TabletMemoryManager(
   ConfigureBackgroundTask(options);
 }
 
-CHECKED_STATUS TabletMemoryManager::Init() {
+Status TabletMemoryManager::Init() {
   if (background_task_) {
     RETURN_NOT_OK(background_task_->Init());
   }

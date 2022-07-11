@@ -11,7 +11,6 @@ import { IBackup } from './IBackup';
 
 interface Schedule_Task_Params extends Pick<IBackup, 'backupType' | 'sse' | 'storageConfigUUID'> {
   firstTry: boolean;
-  keyspace?: string;
   encryptionAtRestConfig: {
     encryptionAtRestEnabled: boolean;
   };
@@ -21,6 +20,10 @@ interface Schedule_Task_Params extends Pick<IBackup, 'backupType' | 'sse' | 'sto
   useTablespaces: boolean;
   parallelism: number;
   tableUUIDList: string[];
+  universeUUID: string;
+  fullBackup: boolean;
+  keyspaceList: IBackup['responseList'];
+  expiryTimeUnit: string;
 }
 
 export interface IBackupSchedule extends Pick<IBackup, 'customerUUID' | 'universeUUID'> {
@@ -31,6 +34,9 @@ export interface IBackupSchedule extends Pick<IBackup, 'customerUUID' | 'univers
   runningState: boolean;
   cronExpression: string;
   status: 'Active' | 'Stopped' | 'Paused';
-  keyspaceTableList: IBackup['responseList'];
-  taskParams: Schedule_Task_Params;
+  backupInfo: Schedule_Task_Params;
+  scheduleName: string;
+  prevCompletedTask: number;
+  nextExpectedTask: number;
+  frequencyTimeUnit: string;
 }

@@ -4,13 +4,12 @@ linkTitle: Apache Kafka
 description: Apache Kafka
 aliases:
   - /preview/integrations
-section: INTEGRATIONS
 menu:
   preview:
     identifier: apache-kafka
+    parent: integrations
     weight: 571
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 This document describes how to use the [Kafka Connect Sink Connector for YugabyteDB](https://github.com/yugabyte/yb-kafka-connector) to store events from Apache Kafka into YugabyteDB via [YSQL](../../api/ysql/) and [YCQL](../../api/ycql/) APIs.

@@ -102,6 +102,7 @@ _copyPlannedStmt(const PlannedStmt *from)
 	COPY_NODE_FIELD(utilityStmt);
 	COPY_LOCATION_FIELD(stmt_location);
 	COPY_LOCATION_FIELD(stmt_len);
+	COPY_SCALAR_FIELD(yb_num_referenced_relations);
 
 	return newnode;
 }
@@ -3344,18 +3345,6 @@ _copyOptSplit(const OptSplit *from)
 	return newnode;
 }
 
-static OptTableGroup *
-_copyOptTableGroup(const OptTableGroup *from)
-{
-	OptTableGroup *newnode = makeNode(OptTableGroup);
-
-	COPY_SCALAR_FIELD(has_tablegroup);
-	COPY_STRING_FIELD(tablegroup_name);
-
-	return newnode;
-}
-
-
 /*
  * CopyCreateStmtFields
  *
@@ -3375,7 +3364,7 @@ CopyCreateStmtFields(const CreateStmt *from, CreateStmt *newnode)
 	COPY_NODE_FIELD(options);
 	COPY_SCALAR_FIELD(oncommit);
 	COPY_STRING_FIELD(tablespacename);
-	COPY_NODE_FIELD(tablegroup);
+	COPY_STRING_FIELD(tablegroupname);
 	COPY_SCALAR_FIELD(if_not_exists);
 	COPY_NODE_FIELD(split_options);
 }
@@ -3490,7 +3479,6 @@ _copyIndexStmt(const IndexStmt *from)
 	COPY_SCALAR_FIELD(relationId);
 	COPY_STRING_FIELD(accessMethod);
 	COPY_STRING_FIELD(tableSpace);
-	COPY_NODE_FIELD(tablegroup);
 	COPY_NODE_FIELD(indexParams);
 	COPY_NODE_FIELD(indexIncludingParams);
 	COPY_NODE_FIELD(options);
@@ -5753,9 +5741,6 @@ copyObjectImpl(const void *from)
 			break;
 		case T_OptSplit:
 			retval = _copyOptSplit(from);
-			break;
-		case T_OptTableGroup:
-			retval = _copyOptTableGroup(from);
 			break;
 
 			/*

@@ -8,6 +8,7 @@ import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.controllers.handlers.UpgradeUniverseHandler;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
+import com.yugabyte.yw.forms.ThirdpartySoftwareUpgradeParams;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
@@ -210,6 +211,34 @@ public class UpgradeUniverseController extends AuthenticatedController {
   }
 
   /**
+   * API that upgrades third-party software on nodes in the universe. Supports only rolling upgrade.
+   *
+   * @param customerUuid ID of customer
+   * @param universeUuid ID of universe
+   * @return Result of update operation with task id
+   */
+  @ApiOperation(
+      value = "Upgrade third-party software",
+      notes = "Queues a task to perform upgrade third-party software in a universe.",
+      nickname = "upgradeThirdpartySoftware",
+      response = YBPTask.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "thirdparty_software_upgrade_params",
+          value = "Thirdparty Software Upgrade Params",
+          dataType = "com.yugabyte.yw.forms.ThirdpartySoftwareUpgradeParams",
+          required = true,
+          paramType = "body"))
+  public Result upgradeThirdpartySoftware(UUID customerUuid, UUID universeUuid) {
+    return requestHandler(
+        upgradeUniverseHandler::thirdpartySoftwareUpgrade,
+        ThirdpartySoftwareUpgradeParams.class,
+        Audit.ActionType.ThirdpartySoftwareUpgrade,
+        customerUuid,
+        universeUuid);
+  }
+
+  /**
    * API that upgrades VM Image for AWS and GCP based universes. Supports only rolling upgrade of
    * the universe.
    *
@@ -233,7 +262,10 @@ public class UpgradeUniverseController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUuid);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUuid, customer);
 
-    if (!runtimeConfigFactory.forUniverse(universe).getBoolean("yb.cloud.enabled")) {
+    // TODO yb.cloud.enabled is redundant here because many tests set it during runtime,
+    // to enable this method in cloud. Clean it up later when the tests are fixed.
+    if (!runtimeConfigFactory.forUniverse(universe).getBoolean("yb.cloud.enabled")
+        && !runtimeConfigFactory.forUniverse(universe).getBoolean("yb.upgrade.vmImage")) {
       throw new PlatformServiceException(METHOD_NOT_ALLOWED, "VM image upgrade is disabled.");
     }
 
@@ -274,6 +306,34 @@ public class UpgradeUniverseController extends AuthenticatedController {
         universeUUID);
   }
 
+  /**
+   * API that reboots all nodes in the universe. Only supports rolling upgrade.
+   *
+   * @param customerUUID ID of customer
+   * @param universeUUID ID of universe
+   * @return Result of update operation with task id
+   */
+  @ApiOperation(
+      value = "Reboot universe",
+      notes = "Queues a task to perform a rolling reboot in a universe.",
+      nickname = "rebootUniverse",
+      response = YBPTask.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "upgrade_task_params",
+          value = "Upgrade Task Params",
+          dataType = "com.yugabyte.yw.forms.UpgradeTaskParams",
+          required = true,
+          paramType = "body"))
+  public Result rebootUniverse(UUID customerUUID, UUID universeUUID) {
+    return requestHandler(
+        upgradeUniverseHandler::rebootUniverse,
+        UpgradeTaskParams.class,
+        Audit.ActionType.RebootUniverse,
+        customerUUID,
+        universeUUID);
+  }
+
   private <T extends UpgradeTaskParams> Result requestHandler(
       IUpgradeUniverseHandlerMethod<T> serviceMethod,
       Class<T> type,
@@ -283,7 +343,7 @@ public class UpgradeUniverseController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUuid);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUuid, customer);
     T requestParams =
-        UniverseControllerRequestBinder.bindFormDataToUpgradeTaskParams(request(), type);
+        UniverseControllerRequestBinder.bindFormDataToUpgradeTaskParams(ctx(), request(), type);
 
     log.info(
         "Upgrade for universe {} [ {} ] customer {}.",

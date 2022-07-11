@@ -50,8 +50,8 @@ namespace yb {
 namespace pggate {
 namespace {
 
-void FetchUniqueConstraintName(PgOid relation_id, char* dest, size_t max_size) {
-  CHECK(false) << "Not implemented";
+void YbPgMemUpdateMax() {
+  CHECK(true) << "Skip execution in test";
 }
 
 YBCPgMemctx global_test_memctx = nullptr;
@@ -143,9 +143,9 @@ Status PggateTest::Init(const char *test_name, int num_tablet_servers) {
   int count = 0;
   YBCTestGetTypeTable(&type_table, &count);
   YBCPgCallbacks callbacks;
-  callbacks.FetchUniqueConstraintName = &FetchUniqueConstraintName;
   callbacks.GetCurrentYbMemctx = &GetCurrentTestYbMemctx;
   callbacks.GetDebugQueryString = &GetDebugQueryStringStub;
+  callbacks.YbPgMemUpdateMax = &YbPgMemUpdateMax;
 
   {
     auto proxy = cluster_->GetProxy<tserver::TabletServerServiceProxy>(cluster_->tablet_server(0));

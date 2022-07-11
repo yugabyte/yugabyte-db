@@ -53,7 +53,7 @@ YQLVirtualTable::YQLVirtualTable(const TableName& table_name,
 
 YQLVirtualTable::~YQLVirtualTable() = default;
 
-CHECKED_STATUS YQLVirtualTable::GetIterator(
+Status YQLVirtualTable::GetIterator(
     const QLReadRequestPB& request,
     const Schema& projection,
       std::reference_wrapper<const docdb::DocReadContext> doc_read_context,
@@ -74,7 +74,7 @@ CHECKED_STATUS YQLVirtualTable::GetIterator(
   return Status::OK();
 }
 
-CHECKED_STATUS YQLVirtualTable::BuildYQLScanSpec(
+Status YQLVirtualTable::BuildYQLScanSpec(
     const QLReadRequestPB& request,
     const ReadHybridTime& read_time,
     const Schema& schema,

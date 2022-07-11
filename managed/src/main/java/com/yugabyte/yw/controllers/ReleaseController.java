@@ -10,9 +10,9 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ReleaseManager.ReleaseMetadata;
 import com.yugabyte.yw.common.ValidatingFormFactory;
-import com.yugabyte.yw.forms.ReleaseFormData;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
+import com.yugabyte.yw.forms.ReleaseFormData;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Region;
@@ -26,8 +26,10 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import org.apache.commons.collections.CollectionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
@@ -53,7 +55,7 @@ public class ReleaseController extends AuthenticatedController {
         paramType = "body")
   })
   public Result create(UUID customerUUID) {
-    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Customer.getOrBadRequest(customerUUID);
 
     Iterator<Map.Entry<String, JsonNode>> it = request().body().asJson().fields();
     List<ReleaseFormData> versionDataList = new ArrayList<>();
@@ -92,18 +94,18 @@ public class ReleaseController extends AuthenticatedController {
       responseContainer = "Map",
       nickname = "getListOfReleases")
   public Result list(UUID customerUUID, Boolean includeMetadata) {
-    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Customer.getOrBadRequest(customerUUID);
     Map<String, Object> releases = releaseManager.getReleaseMetadata();
 
-    // Filter out any deleted releases
+    // Filter out any deleted releases.
     Map<String, Object> filtered =
         releases
             .entrySet()
             .stream()
             .filter(f -> !Json.toJson(f.getValue()).get("state").asText().equals("DELETED"))
-            .collect(Collectors.toMap(p -> p.getKey(), p -> p.getValue()));
-    return PlatformResults.withData(
-        includeMetadata ? CommonUtils.maskObject(filtered) : filtered.keySet());
+            .collect(
+                Collectors.toMap(Entry::getKey, entry -> CommonUtils.maskObject(entry.getValue())));
+    return PlatformResults.withData(includeMetadata ? filtered : filtered.keySet());
   }
 
   @ApiOperation(
@@ -111,10 +113,13 @@ public class ReleaseController extends AuthenticatedController {
       response = Object.class,
       responseContainer = "Map",
       nickname = "getListOfRegionReleases")
-  public Result listByRegion(
-      UUID customerUUID, UUID providerUUID, UUID regionUUID, Boolean includeMetadata) {
-    Customer customer = Customer.getOrBadRequest(customerUUID);
-    Region region = Region.getOrBadRequest(customerUUID, providerUUID, regionUUID);
+  public Result listByProvider(UUID customerUUID, UUID providerUUID, Boolean includeMetadata) {
+    Customer.getOrBadRequest(customerUUID);
+    List<Region> regionList = Region.getByProvider(providerUUID);
+    if (CollectionUtils.isEmpty(regionList) || regionList.get(0) == null) {
+      throw new PlatformServiceException(BAD_REQUEST, "No Regions configured for provider.");
+    }
+    Region region = regionList.get(0);
     Map<String, Object> releases = releaseManager.getReleaseMetadata();
     Architecture arch = region.getArchitecture();
     // Old region without architecture. Return all releases.
@@ -125,16 +130,16 @@ public class ReleaseController extends AuthenticatedController {
       return list(customerUUID, includeMetadata);
     }
 
-    // Filter for active and matching region releases
+    // Filter for active and matching region releases.
     Map<String, Object> filtered =
         releases
             .entrySet()
             .stream()
             .filter(f -> !Json.toJson(f.getValue()).get("state").asText().equals("DELETED"))
             .filter(f -> releaseManager.metadataFromObject(f.getValue()).matchesRegion(region))
-            .collect(Collectors.toMap(p -> p.getKey(), p -> p.getValue()));
-    return PlatformResults.withData(
-        includeMetadata ? CommonUtils.maskObject(filtered) : filtered.keySet());
+            .collect(
+                Collectors.toMap(Entry::getKey, entry -> CommonUtils.maskObject(entry.getValue())));
+    return PlatformResults.withData(includeMetadata ? filtered : filtered.keySet());
   }
 
   @ApiOperation(
@@ -150,7 +155,7 @@ public class ReleaseController extends AuthenticatedController {
         paramType = "body")
   })
   public Result update(UUID customerUUID, String version) {
-    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Customer.getOrBadRequest(customerUUID);
 
     ObjectNode formData;
     ReleaseManager.ReleaseMetadata m = releaseManager.getReleaseByVersion(version);
@@ -180,7 +185,7 @@ public class ReleaseController extends AuthenticatedController {
 
   @ApiOperation(value = "Refresh a release", response = YBPSuccess.class)
   public Result refresh(UUID customerUUID) {
-    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Customer.getOrBadRequest(customerUUID);
 
     LOG.info("ReleaseController: refresh");
     try {

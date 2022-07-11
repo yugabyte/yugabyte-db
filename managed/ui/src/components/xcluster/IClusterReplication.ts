@@ -1,17 +1,22 @@
+import { TableType } from '../../redesign/helpers/dtos';
+
 export interface IReplicationTable {
   tableUUID: string;
+  pgSchemaName: string;
   tableName: string;
-  tableType: string;
+  tableType: TableType;
   keySpace: string;
   sizeBytes: string;
 }
 
 export enum IReplicationStatus {
   INIT = 'Init',
+  RUNNING = 'Running',
   UPDATING = 'Updating',
-  FAILED = 'Failed',
   PAUSED = 'Paused',
-  RUNNING = 'Running'
+  DELETED_UNIVERSE = 'DeletedUniverse',
+  DELETED = 'Deleted',
+  FAILED = 'Failed'
 }
 
 export interface IReplication {

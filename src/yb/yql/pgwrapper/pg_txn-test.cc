@@ -24,12 +24,19 @@ using namespace std::literals;
 
 DECLARE_bool(TEST_fail_in_apply_if_no_metadata);
 DECLARE_bool(TEST_follower_pause_update_consensus_requests);
+DECLARE_bool(yb_enable_read_committed_isolation);
 
 namespace yb {
 namespace pgwrapper {
 
 class PgTxnTest : public PgMiniTestBase {
 
+ protected:
+  void AssertEffectiveIsolationLevel(PGConn* conn, const string& expected) {
+    auto value = ASSERT_RESULT(
+        conn->FetchValue<std::string>("SHOW yb_effective_transaction_isolation_level"));
+    ASSERT_EQ(value, expected);
+  }
 };
 
 TEST_F(PgTxnTest, YB_DISABLE_TEST_IN_SANITIZERS(EmptyUpdate)) {
@@ -41,6 +48,74 @@ TEST_F(PgTxnTest, YB_DISABLE_TEST_IN_SANITIZERS(EmptyUpdate)) {
   ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
   ASSERT_OK(conn.Execute("UPDATE test SET value = 'a' WHERE key = 'b'"));
   ASSERT_OK(conn.CommitTransaction());
+}
+
+TEST_F(PgTxnTest, YB_DISABLE_TEST_IN_SANITIZERS(ShowEffectiveYBIsolationLevel)) {
+
+  auto conn = ASSERT_RESULT(Connect());
+  AssertEffectiveIsolationLevel(&conn, "repeatable read");
+
+  ASSERT_OK(conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL READ UNCOMMITTED"));
+  AssertEffectiveIsolationLevel(&conn, "repeatable read");
+  ASSERT_OK(conn.Execute("ROLLBACK"));
+
+  ASSERT_OK(conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED"));
+  AssertEffectiveIsolationLevel(&conn, "repeatable read");
+  ASSERT_OK(conn.Execute("ROLLBACK"));
+
+  ASSERT_OK(conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
+  AssertEffectiveIsolationLevel(&conn, "repeatable read");
+  ASSERT_OK(conn.Execute("ROLLBACK"));
+
+  ASSERT_OK(conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE"));
+  AssertEffectiveIsolationLevel(&conn, "serializable");
+  ASSERT_OK(conn.Execute("ROLLBACK"));
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED"));
+  AssertEffectiveIsolationLevel(&conn, "repeatable read");
+  ASSERT_OK(conn.Execute("ROLLBACK"));
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("SET TRANSACTION ISOLATION LEVEL READ COMMITTED"));
+  AssertEffectiveIsolationLevel(&conn, "repeatable read");
+  ASSERT_OK(conn.Execute("ROLLBACK"));
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
+  AssertEffectiveIsolationLevel(&conn, "repeatable read");
+  ASSERT_OK(conn.Execute("ROLLBACK"));
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE"));
+  AssertEffectiveIsolationLevel(&conn, "serializable");
+  ASSERT_OK(conn.Execute("ROLLBACK"));
+
+  FLAGS_yb_enable_read_committed_isolation = true;
+  ASSERT_OK(RestartCluster());
+
+  conn = ASSERT_RESULT(Connect());
+  AssertEffectiveIsolationLevel(&conn, "read committed");
+  ASSERT_OK(conn.Execute("ROLLBACK"));
+
+  ASSERT_OK(conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL READ UNCOMMITTED"));
+  AssertEffectiveIsolationLevel(&conn, "read committed");
+  ASSERT_OK(conn.Execute("ROLLBACK"));
+
+  ASSERT_OK(conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED"));
+  AssertEffectiveIsolationLevel(&conn, "read committed");
+  ASSERT_OK(conn.Execute("ROLLBACK"));
+
+  ASSERT_OK(conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
+  AssertEffectiveIsolationLevel(&conn, "repeatable read");
+  ASSERT_OK(conn.Execute("ROLLBACK"));
+
+  ASSERT_OK(conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE"));
+  AssertEffectiveIsolationLevel(&conn, "serializable");
+  ASSERT_OK(conn.Execute("ROLLBACK"));
+
+  // TODO(read committed): test cases with "BEGIN" followed by "SET TRANSACTION ISOLATION LEVEL".
+  // This can be done after #12494 is fixed.
 }
 
 class PgTxnRF1Test : public PgTxnTest {

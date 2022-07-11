@@ -79,15 +79,15 @@ class Synchronizer {
     return std::bind(&Synchronizer::StatusCB, this, std::placeholders::_1);
   }
 
-  CHECKED_STATUS Wait() {
+  Status Wait() {
     return WaitUntil(std::chrono::steady_clock::time_point::max());
   }
 
-  CHECKED_STATUS WaitFor(const MonoDelta& delta) {
+  Status WaitFor(const MonoDelta& delta) {
     return WaitUntil(std::chrono::steady_clock::now() + delta.ToSteadyDuration());
   }
 
-  CHECKED_STATUS WaitUntil(const std::chrono::steady_clock::time_point& time);
+  Status WaitUntil(const std::chrono::steady_clock::time_point& time);
 
   void Reset();
 

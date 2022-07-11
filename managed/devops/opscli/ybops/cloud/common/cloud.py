@@ -50,6 +50,7 @@ class AbstractCloud(AbstractCommandParser):
     SSH_RETRY_COUNT = 180
     SSH_WAIT_SECONDS = 5
     SSH_TIMEOUT_SECONDS = 10
+    MOUNT_PATH_PREFIX = "/mnt/d"
 
     def __init__(self, name):
         super(AbstractCloud, self).__init__(name)
@@ -163,26 +164,26 @@ class AbstractCloud(AbstractCommandParser):
             "process": process,
             "command": command
         }
+        if args.systemd_services:
+            updated_vars.update({"systemd_services": args.systemd_services})
         updated_vars.update(extra_vars)
         updated_vars.update(get_ssh_host_port(host_info, args.custom_ssh_port))
         remote_shell = RemoteShell(updated_vars)
+        if args.num_volumes:
+            volume_cnt = remote_shell.run_command(
+                "df | awk '{{print $6}}' | egrep '^{}[0-9]+' | wc -l".format(
+                    AbstractCloud.MOUNT_PATH_PREFIX
+                )
+            )
+            if int(volume_cnt.stdout) < int(args.num_volumes):
+                raise YBOpsRuntimeError(
+                    "Not all data volumes attached: needed {} found {}".format(
+                        args.num_volumes, volume_cnt.stdout
+                    )
+                )
 
         if process == "thirdparty" or process == "platform-services":
             self.setup_ansible(args).run("yb-server-ctl.yml", updated_vars, host_info)
-            return
-
-        if args.systemd_services:
-            if command == "start":
-                remote_shell.run_command(
-                    "sudo systemctl enable yb-{}".format(process)
-                )
-            remote_shell.run_command(
-                "sudo systemctl {} yb-{}".format(command, process)
-            )
-            if command == "stop":
-                remote_shell.run_command(
-                    "sudo systemctl disable yb-{}".format(process)
-                )
             return
 
         if os.environ.get("YB_USE_FABRIC", False):
@@ -636,7 +637,8 @@ class AbstractCloud(AbstractCommandParser):
         if args.mount_points:
             return args.mount_points
         else:
-            return ",".join(["/mnt/d{}".format(i) for i in range(args.num_volumes)])
+            return ",".join(["{}{}".format(AbstractCloud.MOUNT_PATH_PREFIX, i)
+                             for i in range(args.num_volumes)])
 
     def expand_file_system(self, args, ssh_options):
         remote_shell = RemoteShell(ssh_options)

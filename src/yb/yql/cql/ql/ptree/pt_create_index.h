@@ -85,12 +85,12 @@ class PTCreateIndex : public PTCreateTable {
     return where_clause_;
   }
 
-  CHECKED_STATUS AppendIndexColumn(SemContext *sem_context, PTColumnDefinition *column);
+  Status AppendIndexColumn(SemContext *sem_context, PTColumnDefinition *column);
 
-  virtual CHECKED_STATUS ToTableProperties(TableProperties *table_properties) const override;
+  virtual Status ToTableProperties(TableProperties *table_properties) const override;
 
   // Node semantics analysis.
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
+  virtual Status Analyze(SemContext *sem_context) override;
   void PrintSemanticAnalysisResult(SemContext *sem_context);
 
   const std::shared_ptr<std::set<uint32>>& where_clause_column_refs() const {
@@ -131,7 +131,7 @@ class IdxPredicateState {
     : column_refs_(std::make_shared<std::set<uint32>>()) {
   }
 
-  CHECKED_STATUS AnalyzeColumnOp(SemContext *sem_context,
+  Status AnalyzeColumnOp(SemContext *sem_context,
                                  const PTRelationExpr *expr,
                                  const ColumnDesc *col_desc,
                                  PTExprPtr value,

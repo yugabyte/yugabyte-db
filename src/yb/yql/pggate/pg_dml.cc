@@ -30,25 +30,22 @@
 namespace yb {
 namespace pggate {
 
-using namespace std::literals;  // NOLINT
-using std::list;
-
-// TODO(neil) This should be derived from a GFLAGS.
-static MonoDelta kSessionTimeout = 60s;
-
 //--------------------------------------------------------------------------------------------------
 // PgDml
 //--------------------------------------------------------------------------------------------------
 
-PgDml::PgDml(PgSession::ScopedRefPtr pg_session, const PgObjectId& table_id)
-    : PgStatement(std::move(pg_session)), table_id_(table_id) {
+PgDml::PgDml(PgSession::ScopedRefPtr pg_session,
+             const PgObjectId& table_id,
+             bool is_region_local)
+    : PgStatement(std::move(pg_session)), table_id_(table_id), is_region_local_(is_region_local) {
 }
 
 PgDml::PgDml(PgSession::ScopedRefPtr pg_session,
              const PgObjectId& table_id,
              const PgObjectId& index_id,
-             const PgPrepareParameters *prepare_params)
-    : PgDml(pg_session, table_id) {
+             const PgPrepareParameters *prepare_params,
+             bool is_region_local)
+    : PgDml(pg_session, table_id, is_region_local) {
 
   if (prepare_params) {
     prepare_params_ = *prepare_params;
@@ -338,7 +335,11 @@ Result<bool> PgDml::ProcessSecondaryIndexRequest(const PgExecParameters *exec_pa
   }
 
   // Update request with the new batch of ybctids to fetch the next batch of rows.
-  RETURN_NOT_OK(doc_op_->PopulateDmlByYbctidOps(*ybctids));
+  auto i = ybctids->begin();
+  RETURN_NOT_OK(doc_op_->PopulateDmlByYbctidOps(make_lw_function(
+      [&i, end = ybctids->end()] {
+        return i != end ? *i++ : Slice();
+      })));
   AtomicFlagSleepMs(&FLAGS_TEST_inject_delay_between_prepare_ybctid_execute_batch_ybctid_ms);
   return true;
 }

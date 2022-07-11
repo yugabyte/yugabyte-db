@@ -85,7 +85,7 @@ class MasterPathHandlers {
     "#B8860B", "#006400", "#FF6347"
   };
 
-  CHECKED_STATUS Register(Webserver* server);
+  Status Register(Webserver* server);
 
   std::string BytesToHumanReadable (uint64_t bytes);
 
@@ -192,6 +192,7 @@ class MasterPathHandlers {
   void CallIfLeaderOrPrintRedirect(const Webserver::WebRequest& req, Webserver::WebResponse* resp,
                                    const Webserver::PathHandlerCallback& callback);
   void RedirectToLeader(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
+  Result<std::string> GetLeaderAddress(const Webserver::WebRequest& req);
   void RootHandler(const Webserver::WebRequest& req,
                    Webserver::WebResponse* resp);
   void HandleTabletServers(const Webserver::WebRequest& req,
@@ -225,7 +226,7 @@ class MasterPathHandlers {
   // Calcuates number of leaders/followers per table.
   void CalculateTabletMap(TabletCountMap* tablet_map);
 
-  CHECKED_STATUS CalculateTServerTree(TServerTree* tserver_tree);
+  Status CalculateTServerTree(TServerTree* tserver_tree);
 
   std::vector<TabletInfoPtr> GetNonSystemTablets();
 

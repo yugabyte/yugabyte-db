@@ -79,7 +79,7 @@ class QLProcessor : public Rescheduler {
 
   // Prepare a SQL statement (parse and analyze). A reference to the statement string is saved in
   // the parse tree.
-  CHECKED_STATUS Prepare(const std::string& stmt, ParseTreePtr* parse_tree,
+  Status Prepare(const std::string& stmt, ParseTreePtr* parse_tree,
                          bool reparsed = false, const MemTrackerPtr& mem_tracker = nullptr,
                          const bool internal = false);
 
@@ -107,7 +107,7 @@ class QLProcessor : public Rescheduler {
   CoarseTimePoint GetDeadline() const override;
 
   // Check whether the current user has the required permissions for the parser tree node.
-  CHECKED_STATUS CheckNodePermissions(const TreeNode* tnode);
+  Status CheckNodePermissions(const TreeNode* tnode);
 
   //------------------------------------------------------------------------------------------------
   // Environment (YBClient) that processor uses to execute statement.
@@ -135,12 +135,12 @@ class QLProcessor : public Rescheduler {
   friend class TestQLProcessor;
 
   // Parse a SQL statement and generate a parse tree.
-  CHECKED_STATUS Parse(const std::string& stmt, ParseTreePtr* parse_tree,
+  Status Parse(const std::string& stmt, ParseTreePtr* parse_tree,
                        bool reparsed = false, const MemTrackerPtr& mem_tracker = nullptr,
                        const bool internal = false);
 
   // Semantically analyze a parse tree.
-  CHECKED_STATUS Analyze(ParseTreePtr* parse_tree);
+  Status Analyze(ParseTreePtr* parse_tree);
 
   void RunAsyncDone(const std::string& stmt, const StatementParameters& params,
                     const ParseTree* parse_tree, StatementExecutedCallback cb,

@@ -102,7 +102,7 @@ class CDCSDKStreamTest : public CDCSDKTestBase {
     std::string value;
   };
 
-  CHECKED_STATUS DeleteCDCStream(const std::string& db_stream_id) {
+  Status DeleteCDCStream(const std::string& db_stream_id) {
     RpcController delete_rpc;
     delete_rpc.set_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_write_rpc_timeout_ms));
 

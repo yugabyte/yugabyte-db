@@ -60,8 +60,8 @@ class LocalTabletWriter : public WriteQueryContext {
   explicit LocalTabletWriter(Tablet* tablet);
   ~LocalTabletWriter();
 
-  CHECKED_STATUS Write(QLWriteRequestPB* req);
-  CHECKED_STATUS WriteBatch(Batch* batch);
+  Status Write(QLWriteRequestPB* req);
+  Status WriteBatch(Batch* batch);
 
  private:
   void Submit(std::unique_ptr<Operation> operation, int64_t term) override;

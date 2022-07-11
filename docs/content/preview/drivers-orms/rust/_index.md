@@ -9,10 +9,8 @@ menu:
     identifier: rust-drivers
     parent: drivers-orms
     weight: 570
-isTocNested: true
-showAsideToc: true
+type: indexpage
 ---
-
 Following are the recommended projects for implementing Rust Applications for YugabyteDB YSQL API.
 
 | Project | Type | Support Level |
@@ -21,7 +19,7 @@ Following are the recommended projects for implementing Rust Applications for Yu
 
 ## Build a Hello World app
 
-Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in [Build an Application](/preview/quick-start/build-apps/rust/ysql-dieesel) in the Quick Start section.
+Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in [Build an Application](/preview/quick-start/build-apps/rust/ysql-diesel) in the Quick Start section.
 
 ## Prerequisites for building a Rust application
 

@@ -99,6 +99,21 @@ CREATE INDEX gin_relopts_test ON array_index_op_test USING gin (i)
 CREATE TABLE concur_heap (f1 text, f2 text);
 -- empty table
 CREATE INDEX CONCURRENTLY concur_index1 ON concur_heap(f2,f1);
+CREATE INDEX CONCURRENTLY IF NOT EXISTS concur_index1 ON concur_heap(f2,f1);
+INSERT INTO concur_heap VALUES  ('a','b');
+INSERT INTO concur_heap VALUES  ('b','b');
+-- unique index
+CREATE UNIQUE INDEX CONCURRENTLY concur_index2 ON concur_heap(f1);
+CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS concur_index2 ON concur_heap(f1);
+-- check if constraint is set up properly to be enforced
+INSERT INTO concur_heap VALUES ('b','x');
+-- check if constraint is enforced properly at build time
+CREATE UNIQUE INDEX CONCURRENTLY concur_index3 ON concur_heap(f2);
+-- test that expression indexes and partial indexes work concurrently
+CREATE INDEX CONCURRENTLY concur_index4 on concur_heap(f2) WHERE f1='a';
+CREATE INDEX CONCURRENTLY concur_index5 on concur_heap(f2) WHERE f1='x';
+-- here we also check that you can default the index name
+CREATE INDEX CONCURRENTLY on concur_heap((f2||f1));
 
 -- You can't do a concurrent index build in a transaction
 BEGIN;
@@ -109,3 +124,21 @@ COMMIT;
 BEGIN;
 CREATE INDEX std_index on concur_heap(f2);
 COMMIT;
+
+-- Failed builds are left invalid by VACUUM FULL, fixed by REINDEX
+-- YB note: VACUUM and REINDEX TABLE are not yet supported
+VACUUM FULL concur_heap;
+REINDEX TABLE concur_heap;
+
+--
+-- REINDEX (VERBOSE)
+--
+CREATE TABLE reindex_verbose(id integer primary key);
+\set VERBOSITY terse
+REINDEX (VERBOSE) TABLE reindex_verbose;
+DROP TABLE reindex_verbose;
+
+--
+-- REINDEX SCHEMA
+--
+REINDEX SCHEMA schema_to_reindex; -- failure, schema does not exist

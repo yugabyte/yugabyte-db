@@ -87,7 +87,7 @@ PTCreateRole::PTCreateRole(MemoryContext* memctx,
 PTCreateRole::~PTCreateRole() {
 }
 
-CHECKED_STATUS PTCreateRole::Analyze(SemContext* sem_context) {
+Status PTCreateRole::Analyze(SemContext* sem_context) {
   SemState sem_state(sem_context);
   RETURN_NOT_AUTH_ENABLED(sem_context);
   RETURN_NOT_OK(sem_context->CheckHasAllRolesPermission(loc(), PermissionType::CREATE_PERMISSION));

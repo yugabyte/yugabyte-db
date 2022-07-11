@@ -27,7 +27,7 @@ using std::vector;
 //--------------------------------------------------------------------------------------------------
 // CQL support
 
-CHECKED_STATUS ExecBfunc(
+Status ExecBfunc(
     bfql::BFOpcode opcode, std::vector<QLValuePB>* params, QLValuePB* result) {
   return bfql::BFExecApi<QLValuePB, QLValuePB>::ExecQLOpcode(opcode, params, result);
 }
@@ -35,12 +35,12 @@ CHECKED_STATUS ExecBfunc(
 //--------------------------------------------------------------------------------------------------
 // PGSQL support
 
-CHECKED_STATUS ExecBfunc(
+Status ExecBfunc(
     bfpg::BFOpcode opcode, std::vector<QLValuePB>* params, QLValuePB *result) {
   return bfpg::BFExecApi<QLValuePB, QLValuePB>::ExecPgsqlOpcode(opcode, params, result);
 }
 
-CHECKED_STATUS ExecBfunc(
+Status ExecBfunc(
     bfpg::BFOpcode opcode, std::vector<LWQLValuePB>* params, LWQLValuePB *result) {
   return bfpg::BFExecApi<LWQLValuePB, LWQLValuePB>::ExecPgsqlOpcode(opcode, params, result);
 }

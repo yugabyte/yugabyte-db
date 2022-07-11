@@ -139,14 +139,14 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // Load all tablet metadata blocks from disk, and open their respective tablets.
   // Upon return of this method all existing tablets are registered, but
   // the bootstrap is performed asynchronously.
-  CHECKED_STATUS Init();
-  CHECKED_STATUS Start();
+  Status Init();
+  Status Start();
 
   // Waits for all the bootstraps to complete.
   // Returns Status::OK if all tablets bootstrapped successfully. If
   // the bootstrap of any tablet failed returns the failure reason for
   // the first tablet whose bootstrap failed.
-  CHECKED_STATUS WaitForAllBootstrapsToFinish();
+  Status WaitForAllBootstrapsToFinish();
 
   // Starts shutdown process.
   void StartShutdown();
@@ -186,7 +186,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // value. If not, 'error_code' is set to CAS_FAILED and a non-OK Status is
   // returned.
   // If `hide_only` is true, then just hide tablet instead of deleting it.
-  CHECKED_STATUS DeleteTablet(
+  Status DeleteTablet(
       const TabletId& tablet_id,
       tablet::TabletDataState delete_type,
       tablet::ShouldAbortActiveTransactions should_abort_active_txns,
@@ -208,19 +208,19 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
                             std::shared_ptr<tablet::TabletPeer>* tablet_peer) const
       REQUIRES_SHARED(mutex_);
 
-  CHECKED_STATUS GetTabletPeer(
+  Status GetTabletPeer(
       const TabletId& tablet_id,
       std::shared_ptr<tablet::TabletPeer>* tablet_peer) const override;
 
   const NodeInstancePB& NodeInstance() const override;
 
-  CHECKED_STATUS GetRegistration(ServerRegistrationPB* reg) const override;
+  Status GetRegistration(ServerRegistrationPB* reg) const override;
 
   // Initiate remote bootstrap of the specified tablet.
   // See the StartRemoteBootstrap() RPC declaration in consensus.proto for details.
   // Currently this runs the entire procedure synchronously.
   // TODO: KUDU-921: Run this procedure on a background thread.
-  virtual CHECKED_STATUS
+  virtual Status
       StartRemoteBootstrap(const consensus::StartRemoteBootstrapRequestPB& req) override;
 
   // Generate a tablet report.
@@ -291,9 +291,9 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // Set the number of tablets which are waiting to be bootstrapped and can go to RUNNING
   // state in the response proto. Also set the total number of runnable tablets on this tserver.
   // If the tablet manager itself is not initialized, then INT_MAX is set for both.
-  CHECKED_STATUS GetNumTabletsPendingBootstrap(IsTabletServerReadyResponsePB* resp) const;
+  Status GetNumTabletsPendingBootstrap(IsTabletServerReadyResponsePB* resp) const;
 
-  CHECKED_STATUS RunAllLogGC();
+  Status RunAllLogGC();
 
   // Creates and updates the map of table to the set of tablets assigned per table per disk
   // for both data and wal directories.
@@ -324,7 +324,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   TabletMemoryManager* tablet_memory_manager() { return mem_manager_.get(); }
 
-  CHECKED_STATUS UpdateSnapshotsInfo(const master::TSSnapshotsInfoPB& info);
+  Status UpdateSnapshotsInfo(const master::TSSnapshotsInfoPB& info);
 
   // Background task that verifies the data on each tablet for consistency.
   void VerifyTabletData();
@@ -339,7 +339,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   tablet::TabletOptions* TEST_tablet_options() { return &tablet_options_; }
 
   // Trigger asynchronous compactions concurrently on the provided tablets.
-  CHECKED_STATUS TriggerCompactionAndWait(const TabletPtrs& tablets);
+  Status TriggerCompactionAndWait(const TabletPtrs& tablets);
 
  private:
   FRIEND_TEST(TsTabletManagerTest, TestPersistBlocks);
@@ -370,7 +370,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   typedef std::unordered_map<std::string, TabletReportState> DirtyMap;
 
   // Returns Status::OK() iff state_ == MANAGER_RUNNING.
-  CHECKED_STATUS CheckRunningUnlocked(boost::optional<TabletServerErrorPB::Code>* error_code) const
+  Status CheckRunningUnlocked(boost::optional<TabletServerErrorPB::Code>* error_code) const
       REQUIRES_SHARED(mutex_);
 
   // Registers the start of a tablet state transition by inserting the tablet
@@ -381,7 +381,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // transition by some other operation.
   // On success, returns OK and populates 'deleter' with an object that removes
   // the map entry on destruction.
-  CHECKED_STATUS StartTabletStateTransition(
+  Status StartTabletStateTransition(
       const TabletId& tablet_id, const std::string& reason,
       scoped_refptr<TransitionInProgressDeleter>* deleter);
 
@@ -391,7 +391,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
       const TabletId& tablet_id);
 
   // Open a tablet meta from the local file system by loading its superblock.
-  CHECKED_STATUS OpenTabletMeta(const TabletId& tablet_id,
+  Status OpenTabletMeta(const TabletId& tablet_id,
                         scoped_refptr<tablet::RaftGroupMetadata>* metadata);
 
   // Open a tablet whose metadata has already been loaded/created.
@@ -419,7 +419,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // registered, a FATAL message is logged, causing a process crash.
   // Calls to this method are expected to be externally synchronized, typically
   // using the transition_in_progress_ map.
-  CHECKED_STATUS RegisterTablet(const TabletId& tablet_id,
+  Status RegisterTablet(const TabletId& tablet_id,
                                 const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
                                 RegisterTabletPeerMode mode);
 
@@ -453,10 +453,10 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   // Handle the case on startup where we find a tablet that is not in ready state. Generally, we
   // tombstone the replica.
-  CHECKED_STATUS HandleNonReadyTabletOnStartup(
+  Status HandleNonReadyTabletOnStartup(
       const scoped_refptr<tablet::RaftGroupMetadata>& meta);
 
-  CHECKED_STATUS StartSubtabletsSplit(
+  Status StartSubtabletsSplit(
       const tablet::RaftGroupMetadata& source_tablet_meta, SplitTabletsCreationMetaData* tcmetas);
 
   // Creates tablet peer and schedules opening the tablet.
@@ -587,8 +587,6 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   std::unique_ptr<consensus::MultiRaftManager> multi_raft_manager_;
 
-  boost::optional<yb::client::AsyncClientInitialiser> async_client_init_;
-
   TabletPeers shutting_down_peers_;
 
   std::shared_ptr<TabletMemoryManager> mem_manager_;
@@ -596,6 +594,12 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   std::unordered_set<std::string> bootstrap_source_addresses_;
 
   std::atomic<int32_t> num_tablets_being_remote_bootstrapped_{0};
+
+  // Gauge to monitor applied split operations.
+  scoped_refptr<yb::AtomicGauge<uint64_t>> ts_split_op_apply_;
+
+  // Gauge to monitor post-split compactions that have been started.
+  scoped_refptr<yb::AtomicGauge<uint64_t>> ts_split_compaction_added_;
 
   mutable simple_spinlock snapshot_schedule_allowed_history_cutoff_mutex_;
   std::unordered_map<SnapshotScheduleId, HybridTime, SnapshotScheduleIdHash>
@@ -659,7 +663,7 @@ Status HandleReplacingStaleTablet(scoped_refptr<tablet::RaftGroupMetadata> meta,
                                   const std::string& uuid,
                                   const int64_t& leader_term);
 
-CHECKED_STATUS ShutdownAndTombstoneTabletPeerNotOk(
+Status ShutdownAndTombstoneTabletPeerNotOk(
     const Status& status, const tablet::TabletPeerPtr& tablet_peer,
     const tablet::RaftGroupMetadataPtr& meta, const std::string& uuid, const char* msg,
     TSTabletManager* ts_tablet_manager = nullptr);

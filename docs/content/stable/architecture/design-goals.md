@@ -8,8 +8,7 @@ menu:
     identifier: architecture-design-goals
     parent: architecture
     weight: 1105
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 This page outlines the design goals with which YugabyteDB has been built.
@@ -38,7 +37,7 @@ YugabyteDB supports multi-row transactions with three isolation levels: `Seriali
 - The [YSQL](../../api/ysql/) API supports `Serializable`, `Snapshot` (default<sup>$</sup>) and `Read Committed` Isolation using the PostgreSQL isolation level syntax of `SERIALIZABLE`, `REPEATABLE READ` and `READ COMMITTED` respectively.
 - The [YCQL](../../api/ycql/dml_transaction/) API supports only `Snapshot Isolation` (default) using the `BEGIN TRANSACTION` syntax.
 
-<sup>$</sup> - `READ COMMITTED` is the default isolation level in PostgreSQL and YSQL. If `yb_enable_read_committed_isolation=true`, `READ COMMITTED` is mapped to Read Committed of YugabyteDB's transactional layer (i.e., a statement will see all rows that are committed before it begins). But, by default `yb_enable_read_committed_isolation=false` and in this case Read Committed of YugabyteDB's transactional layer maps to Snapshot Isolation. Essentially this boils down to the fact that Snapshot Isolation is the default in YSQL.
+<sup>$</sup> - `READ COMMITTED` is the default isolation level in PostgreSQL and YSQL. If the tserver gflag `yb_enable_read_committed_isolation=true`, `READ COMMITTED` is mapped to Read Committed of YugabyteDB's transactional layer (i.e., a statement will see all rows that are committed before it begins). But, by default the tserver gflag `yb_enable_read_committed_isolation=false` and in this case Read Committed of YugabyteDB's transactional layer maps to Snapshot Isolation. Essentially this boils down to the fact that Snapshot Isolation is the default in YSQL. Read Committed support is currently in [Beta](/preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag).
 
 {{< tip title="YSQL vs PostgreSQL isolation levels" >}}
 

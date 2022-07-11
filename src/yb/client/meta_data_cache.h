@@ -44,10 +44,10 @@ class YBMetaDataCache {
   // Opens the table with the given name or id. If the table has been opened before, returns the
   // previously opened table from cached_tables_. If the table has not been opened before
   // in this client, this will do an RPC to ensure that the table exists and look up its schema.
-  CHECKED_STATUS GetTable(const YBTableName& table_name,
+  Status GetTable(const YBTableName& table_name,
                           std::shared_ptr<YBTable>* table,
                           bool* cache_used);
-  CHECKED_STATUS GetTable(const TableId& table_id,
+  Status GetTable(const TableId& table_id,
                           std::shared_ptr<YBTable>* table,
                           bool* cache_used);
 
@@ -58,7 +58,7 @@ class YBMetaDataCache {
   // Opens the type with the given name. If the type has been opened before, returns the
   // previously opened type from cached_types_. If the type has not been opened before
   // in this client, this will do an RPC to ensure that the type exists and look up its info.
-  CHECKED_STATUS GetUDType(const std::string &keyspace_name,
+  Status GetUDType(const std::string &keyspace_name,
                            const std::string &type_name,
                            std::shared_ptr<QLType> *ql_type,
                            bool *cache_used);
@@ -73,7 +73,7 @@ class YBMetaDataCache {
   // ObjectType::ROLE.
   // If the permission is not found, and check_mode is RETRY, this method will refresh the
   // permissions cache and retry.
-  CHECKED_STATUS HasResourcePermission(const std::string &canonical_resource,
+  Status HasResourcePermission(const std::string &canonical_resource,
                                        const ql::ObjectType &object_type,
                                        const RoleName &role_name,
                                        const PermissionType &permission,
@@ -81,7 +81,7 @@ class YBMetaDataCache {
                                        const TableName &table,
                                        const CacheCheckMode check_mode);
 
-  CHECKED_STATUS WaitForPermissionCache();
+  Status WaitForPermissionCache();
   Result<bool> RoleCanLogin(const RoleName& role_name);
   Result<std::string> RoleSaltedHash(const RoleName& role_name);
 
@@ -89,7 +89,7 @@ class YBMetaDataCache {
   // table.
   // If the role has not the permission on neither the keyspace nor the table, and check_mode is
   // RETRY, this method will cause the permissions cache to be refreshed before retrying the check.
-  CHECKED_STATUS HasTablePermission(const NamespaceName &keyspace_name,
+  Status HasTablePermission(const NamespaceName &keyspace_name,
       const TableName &table_name,
       const RoleName &role_name,
       const PermissionType permission,

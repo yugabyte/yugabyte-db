@@ -4,12 +4,11 @@ headerTitle: Install Yugabyte Platform software - Kubernetes
 linkTitle: Install software
 description: Install Yugabyte Platform software in your Kubernetes environment.
 menu:
-  stable:
+  stable_yugabyte-platform:
     parent: install-yugabyte-platform
     identifier: install-software-2-kubernetes
     weight: 77
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -73,14 +72,14 @@ You install Yugabyte Platform on a Kubernetes cluster as follows:
     To search for the available chart version, run this command:
 
     ```sh
-    helm search repo yugabytedb/yugaware -l
+    helm search repo yugabytedb/yugaware --version {{<yb-version version="stable" format="short">}}
     ```
 
-    The latest Helm Chart version and App version will be displayed:
+    The Helm Chart version and App version will be displayed:
 
     ```output
     NAME                 CHART VERSION  APP VERSION  DESCRIPTION
-    yugabytedb/yugaware  2.12.2         2.12.2.0-b58  YugaWare is YugaByte Database's Orchestration a...
+    yugabytedb/yugaware  {{<yb-version version="stable" format="short">}}         {{<yb-version version="stable" format="build">}}  YugaWare is YugaByte Database's Orchestration a...
     ```
 
 1. Run the following `helm install` command to install the Yugabyte Platform (`yugaware`) Helm chart:
@@ -135,6 +134,7 @@ You can customize Yugabyte Platform on a Kubernetes cluster in a number of ways,
 
   ```sh
   helm install yw-test yugabytedb/yugaware -n yb-platform \
+  --version {{<yb-version version="stable" format="short">}} \
   --set yugaware.service.annotations."cloud\.google\.com\/load-balancer-type"="Internal"
   ```
 

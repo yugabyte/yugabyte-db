@@ -9,8 +9,7 @@ menu:
   preview:
     parent: troubleshoot-cluster
     weight: 828
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Suppose you have a cluster running and now a tserver or master process/node has failed.

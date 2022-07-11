@@ -9,8 +9,7 @@ menu:
     parent: api-ysql-exprs
 aliases:
   - /preview/api/ysql/exprs/func_nextval
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis
@@ -103,3 +102,4 @@ nextval
 - [`DROP SEQUENCE`](../../the-sql-language/statements/ddl_drop_sequence)
 - [`currval()`](../func_currval)
 - [`lastval()`](../func_lastval)
+- [`setval()`](../func_setval)

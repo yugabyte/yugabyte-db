@@ -13,10 +13,11 @@
 
 package org.yb.cdc;
 
-import org.apache.log4j.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class CDCConsoleSubscriber {
-  private static final Logger LOG = Logger.getLogger(CDCConsoleSubscriber.class);
+  private static final Logger LOG = LoggerFactory.getLogger(CDCConsoleSubscriber.class);
 
   private ConcurrentLogConnector connector;
 

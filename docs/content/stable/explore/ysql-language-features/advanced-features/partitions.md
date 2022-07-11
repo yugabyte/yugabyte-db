@@ -8,8 +8,7 @@ menu:
     identifier: advanced-features-partitions
     parent: advanced-features
     weight: 225
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 This section describes how to partition tables in YugabyteDB using YSQL.

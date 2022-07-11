@@ -336,7 +336,7 @@ export function createNodeInstancesResponse(result) {
   };
 }
 
-export function createAccessKey(providerUUID, regionUUID, keyInfo) {
+export function createAccessKey(providerUUID, regionUUID, keyInfo, ntpServers, setUpChrony) {
   const formValues = {
     keyCode: keyInfo.code,
     regionUUID: regionUUID,
@@ -349,7 +349,9 @@ export function createAccessKey(providerUUID, regionUUID, keyInfo) {
     installNodeExporter: keyInfo.installNodeExporter,
     nodeExporterUser: keyInfo.nodeExporterUser,
     nodeExporterPort: keyInfo.nodeExporterPort,
-    skipProvisioning: keyInfo.skipProvisioning
+    skipProvisioning: keyInfo.skipProvisioning,
+    ntpServers,
+    setUpChrony
   };
   const url = getProviderEndpoint(providerUUID) + '/access_keys';
   const request = axios.post(url, formValues);

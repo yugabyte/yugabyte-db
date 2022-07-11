@@ -170,6 +170,14 @@ public class ApiUtils {
     };
   }
 
+  public static Universe.UniverseUpdater mockUniverseUpdater(boolean updateInProgress) {
+    return universe -> {
+      UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+      universeDetails.updateInProgress = updateInProgress;
+      universe.setUniverseDetails(universeDetails);
+    };
+  }
+
   public static Universe.UniverseUpdater mockUniverseUpdater(final UUID rootCA) {
     return universe -> {
       UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
@@ -285,7 +293,7 @@ public class ApiUtils {
     };
   }
 
-  public static Universe.UniverseUpdater mockUniverseUpdaterWithActiveYSQLNode() {
+  public static Universe.UniverseUpdater mockUniverseUpdaterWithActiveYSQLNode(UUID azUUID) {
     return new Universe.UniverseUpdater() {
       @Override
       public void run(Universe universe) {
@@ -295,8 +303,10 @@ public class ApiUtils {
         userIntent.enableYSQL = true;
         userIntent.numNodes = 1;
         universeDetails.nodeDetailsSet = new HashSet<>();
-        universeDetails.nodeDetailsSet.add(
-            getDummyNodeDetailsWithPlacement(universeDetails.getPrimaryCluster().uuid));
+        NodeDetails node =
+            getDummyNodeDetailsWithPlacement(universeDetails.getPrimaryCluster().uuid);
+        node.azUuid = azUUID;
+        universeDetails.nodeDetailsSet.add(node);
         universeDetails.upsertPrimaryCluster(userIntent, pi);
         universe.setUniverseDetails(universeDetails);
       }
@@ -392,6 +402,18 @@ public class ApiUtils {
     };
   }
 
+  public static Universe.UniverseUpdater mockUniverseUpdaterWithHelmNamingStyle(
+      boolean newNamingStyle) {
+    return new Universe.UniverseUpdater() {
+      @Override
+      public void run(Universe universe) {
+        UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+        details.useNewHelmNamingStyle = newNamingStyle;
+        universe.setUniverseDetails(details);
+      }
+    };
+  }
+
   public static UserIntent getDefaultUserIntent(Customer customer) {
     Provider p = ModelFactory.awsProvider(customer);
     return getDefaultUserIntent(p);
@@ -473,6 +495,10 @@ public class ApiUtils {
       nodeDetailsSet.add(node);
     }
     return nodeDetailsSet;
+  }
+
+  public static NodeDetails getDummyNodeDetails(int idx) {
+    return getDummyNodeDetails(idx, NodeState.Live);
   }
 
   public static NodeDetails getDummyNodeDetails(int idx, NodeDetails.NodeState state) {

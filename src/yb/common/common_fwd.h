@@ -35,6 +35,7 @@ class IndexMap;
 class Partition;
 class PartitionSchema;
 class PgsqlScanSpec;
+class QLResultSet;
 class QLRow;
 class QLRowBlock;
 class QLScanSpec;
@@ -66,6 +67,7 @@ struct TransactionOperationContext;
 struct TransactionStatusResult;
 
 using ColocationId = uint32_t;
+using SchemaVersion = uint32_t;
 
 using QLTypePtr = std::shared_ptr<QLType>;
 

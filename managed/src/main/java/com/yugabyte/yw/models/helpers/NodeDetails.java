@@ -75,6 +75,8 @@ public class NodeDetails {
     // Set when a new node is provisioned and configured but before it is added into
     // the existing cluster.
     ToJoinCluster(REMOVE),
+    // Set when reprovision node.
+    Reprovisioning(),
     // Set after the node (without any configuration) is created using the IaaS provider at the
     // end of the provision step before it is set up and configured.
     Provisioned(DELETE),
@@ -94,8 +96,12 @@ public class NodeDetails {
     Starting(START, REMOVE),
     // Set when node has been stopped and no longer has a master or a tserver running.
     Stopped(START, REMOVE, QUERY),
-    // Set when node is unreachable but has not been Removed from the universe.
+    // Nodes are never set to Unreachable, this is just one of the possible return values in a
+    // status query.
     Unreachable(),
+    // Nodes are never set to MetricsUnavailable, this is just one of the possible return values in
+    // a status query
+    MetricsUnavailable(),
     // Set when a node is marked for removal. Note that we will wait to get all its data out.
     ToBeRemoved(REMOVE),
     // Set when a node is about to be removed (unjoined) from the cluster.
@@ -103,7 +109,7 @@ public class NodeDetails {
     // Set after the node has been removed (unjoined) from the cluster.
     Removed(ADD, RELEASE),
     // Set when node is about to enter the Live state from Removed/Decommissioned state.
-    Adding(DELETE),
+    Adding(DELETE, RELEASE),
     // Set when a stopped/removed node is about to enter the Decommissioned state.
     // The actions in Removed state should apply because of the transition from Removed to
     // BeingDecommissioned.
@@ -123,7 +129,9 @@ public class NodeDetails {
     Terminating(RELEASE, DELETE),
     // Set after the node has been terminated in the IaaS provider.
     // If the node is still hanging around due to failure, it can be deleted.
-    Terminated(DELETE);
+    Terminated(DELETE),
+    // Set when the node is being rebooted
+    Rebooting();
 
     private final NodeActionType[] allowedActions;
 
@@ -178,6 +186,12 @@ public class NodeDetails {
 
   @ApiModelProperty(value = "Tablet server RPC port")
   public int tserverRpcPort = 9100;
+
+  @ApiModelProperty(value = "Yb controller HTTP port")
+  public int ybControllerHttpPort = 14000;
+
+  @ApiModelProperty(value = "Yb controller RPC port")
+  public int ybControllerRpcPort = 18018;
 
   // True if this node is a Redis server, along with port info.
   @ApiModelProperty(value = "True if this node is a REDIS server")
@@ -290,6 +304,7 @@ public class NodeDetails {
   @JsonIgnore
   public boolean isActive() {
     return !(state == NodeState.Unreachable
+        || state == NodeState.MetricsUnavailable
         || state == NodeState.ToBeRemoved
         || state == NodeState.Removing
         || state == NodeState.Removed

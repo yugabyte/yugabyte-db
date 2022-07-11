@@ -6,8 +6,7 @@ menu:
   v2.4:
     parent: api-yedis
     weight: 2555
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis
@@ -17,10 +16,10 @@ This command unsubscribes the client from the specified pattern(s). If no patter
 
 ## See also
 
-[`keys`](../keys/), 
-[`pubsub`](../pubsub/), 
-[`publish`](../publish/), 
-[`subscribe`](../subscribe/), 
-[`unsubscribe`](../unsubscribe/), 
-[`psubscribe`](../psubscribe/), 
+[`keys`](../keys/),
+[`pubsub`](../pubsub/),
+[`publish`](../publish/),
+[`subscribe`](../subscribe/),
+[`unsubscribe`](../unsubscribe/),
+[`psubscribe`](../psubscribe/),
 [`punsubscribe`](../punsubscribe/)

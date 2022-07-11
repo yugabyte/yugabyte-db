@@ -11,13 +11,6 @@
 
 package com.yugabyte.yw.scheduler;
 
-import static com.cronutils.model.CronType.UNIX;
-
-import akka.actor.ActorSystem;
-import com.cronutils.model.Cron;
-import com.cronutils.model.definition.CronDefinitionBuilder;
-import com.cronutils.model.time.ExecutionTime;
-import com.cronutils.parser.CronParser;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Inject;
@@ -27,20 +20,24 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.BackupUniverse;
 import com.yugabyte.yw.commissioner.tasks.CreateBackup;
 import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
-import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackup;
+import com.yugabyte.yw.commissioner.tasks.params.ScheduledAccessKeyRotateParams;
+import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackupYb;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RunExternalScript;
+import com.yugabyte.yw.common.AccessKeyRotationUtil;
+import com.yugabyte.yw.common.PlatformScheduler;
+import com.yugabyte.yw.common.TaskInfoManager;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.ScheduleTask;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.TaskType;
-import java.time.Instant;
-import java.time.ZoneId;
-import java.time.ZonedDateTime;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -49,43 +46,50 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Collectors;
+
 import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
-import scala.concurrent.ExecutionContext;
-import scala.concurrent.duration.Duration;
 
 @Singleton
 @Slf4j
 public class Scheduler {
 
-  private static final int YB_SCHEDULER_INTERVAL = 2;
-  private static final int MIN_TO_SEC = 60;
+  private static final int YB_SCHEDULER_INTERVAL = Util.YB_SCHEDULER_INTERVAL;
 
-  private final ActorSystem actorSystem;
-  private final ExecutionContext executionContext;
-
-  private final AtomicBoolean running = new AtomicBoolean(false);
+  private final PlatformScheduler platformScheduler;
 
   private final Commissioner commissioner;
 
+  @Inject AccessKeyRotationUtil accessKeyRotationUtil;
+
+  private final TaskInfoManager taskInfoManager;
+
   @Inject
-  Scheduler(ActorSystem actorSystem, ExecutionContext executionContext, Commissioner commissioner) {
-    this.actorSystem = actorSystem;
-    this.executionContext = executionContext;
+  Scheduler(
+      PlatformScheduler platformScheduler,
+      Commissioner commissioner,
+      TaskInfoManager taskInfoManager) {
+    this.platformScheduler = platformScheduler;
     this.commissioner = commissioner;
+    this.taskInfoManager = taskInfoManager;
+  }
+
+  public void init() {
+    resetRunningStatus();
+    // Update next expected task for active schedule which got expired due to platform downtime.
+    updateExpiredNextScheduledTaskTime();
+    // start scheduler
+    start();
   }
 
   public void start() {
     log.info("Starting scheduling service");
-    this.actorSystem
-        .scheduler()
-        .schedule(
-            Duration.create(0, TimeUnit.MINUTES), // initialDelay
-            Duration.create(YB_SCHEDULER_INTERVAL, TimeUnit.MINUTES), // interval
-            this::scheduleRunner,
-            this.executionContext);
+    platformScheduler.schedule(
+        getClass().getSimpleName(),
+        Duration.ZERO,
+        Duration.ofMinutes(YB_SCHEDULER_INTERVAL),
+        this::scheduleRunner);
   }
 
   /** Resets every schedule's running state to false in case of platform restart. */
@@ -100,14 +104,21 @@ public class Scheduler {
             });
   }
 
+  /** Updates expired next expected task time of active schedules in case of platform restarts. */
+  public void updateExpiredNextScheduledTaskTime() {
+    Schedule.getAll()
+        .forEach(
+            (schedule) -> {
+              if (schedule.getStatus().equals(Schedule.State.Active)
+                  && Util.isTimeExpired(schedule.getNextScheduleTaskTime())) {
+                schedule.updateNextScheduleTaskTime(Schedule.nextExpectedTaskTime(null, schedule));
+              }
+            });
+  }
+
   /** Iterates through all the schedule entries and runs the tasks that are due to be scheduled. */
   @VisibleForTesting
   void scheduleRunner() {
-    if (!running.compareAndSet(false, true)) {
-      log.info("Previous run of scheduler is still underway");
-      return;
-    }
-
     try {
       if (HighAvailabilityConfig.isFollower()) {
         log.debug("Skipping scheduler for follower platform");
@@ -116,9 +127,10 @@ public class Scheduler {
 
       log.info("Running scheduler");
       for (Schedule schedule : Schedule.getAllActive()) {
-        Date currentTime = new Date();
         long frequency = schedule.getFrequency();
         String cronExpression = schedule.getCronExpression();
+        Date expectedScheduleTaskTime = schedule.getNextScheduleTaskTime();
+        boolean backlogStatus = schedule.getBacklogStatus();
         if (cronExpression == null && frequency == 0) {
           log.error(
               "Scheduled task does not have a recurrence specified {}", schedule.getScheduleUUID());
@@ -127,8 +139,6 @@ public class Scheduler {
         try {
           schedule.setRunningState(true);
           TaskType taskType = schedule.getTaskType();
-          // TODO: Come back and maybe address if using relations between schedule and
-          //  schedule_task is a better approach.
           ScheduleTask lastTask = ScheduleTask.getLastTask(schedule.getScheduleUUID());
           Date lastScheduledTime = null;
           Date lastCompletedTime = null;
@@ -136,68 +146,50 @@ public class Scheduler {
             lastScheduledTime = lastTask.getScheduledTime();
             lastCompletedTime = lastTask.getCompletedTime();
           }
-          boolean shouldRunTask = false;
-          boolean alreadyRunning = false;
-          long diff;
 
-          // Check if task needs to be scheduled again.
-          if (lastScheduledTime != null) {
-            diff = Math.abs(currentTime.getTime() - lastScheduledTime.getTime());
-            if (lastCompletedTime == null) {
-              alreadyRunning = true;
-            }
-          } else {
-            diff = Long.MAX_VALUE;
+          // Check if the previous scheduled task is still running.
+          boolean alreadyRunning = false;
+          if (lastScheduledTime != null && lastCompletedTime == null) {
+            alreadyRunning = true;
           }
-          // If frequency if specified, check if the task needs to be scheduled.
-          // The check sees the difference between the last scheduled task and the current
-          // time. If the diff is greater than the frequency, means we need to run the task
-          // again.
-          if (frequency != 0L && diff > frequency) {
-            shouldRunTask = true;
+
+          // Update expected scheduled time if it is expired or null.
+          if (expectedScheduleTaskTime == null || Util.isTimeExpired(expectedScheduleTaskTime)) {
+            Date nextScheduleTaskTime =
+                Schedule.nextExpectedTaskTime(expectedScheduleTaskTime, schedule);
+            expectedScheduleTaskTime =
+                expectedScheduleTaskTime == null ? nextScheduleTaskTime : expectedScheduleTaskTime;
+            schedule.updateNextScheduleTaskTime(nextScheduleTaskTime);
           }
-          // In the case frequency is not defined and we have a cron expression, we compute
-          // solely in accordance to the cron execution time. If the execution time is within the
-          // scheduler interval, we run the task.
-          else if (cronExpression != null) {
-            CronParser unixCronParser =
-                new CronParser(CronDefinitionBuilder.instanceDefinitionFor(UNIX));
-            Cron parsedUnixCronExpression = unixCronParser.parse(cronExpression);
-            Instant now = Instant.now();
-            // LocalDateTime now = LocalDateTime.ofInstant(Instant.now(), ZoneId.of("UTC"));
-            ZonedDateTime utcNow = now.atZone(ZoneId.of("UTC"));
-            ExecutionTime executionTime = ExecutionTime.forCron(parsedUnixCronExpression);
-            long timeFromLastExecution =
-                executionTime.timeFromLastExecution(utcNow).get().getSeconds();
-            if (timeFromLastExecution < YB_SCHEDULER_INTERVAL * MIN_TO_SEC) {
-              // In case the last task was completed, or the last task was never even scheduled,
-              // we run the task. If the task was scheduled, but didn't complete, we skip this
-              // iteration completely.
-              shouldRunTask = true;
-              if (lastScheduledTime != null && lastCompletedTime == null) {
-                log.warn(
-                    "Previous scheduled task still running, skipping this iteration's task. "
-                        + "Will try again next at {}.",
-                    executionTime.nextExecution(utcNow).get());
-              }
-            }
-          }
-          if (shouldRunTask) {
-            if (taskType == TaskType.BackupUniverse) {
-              this.runBackupTask(schedule, alreadyRunning);
-            }
-            if (taskType == TaskType.MultiTableBackup) {
-              this.runMultiTableBackupsTask(schedule, alreadyRunning);
-            }
-            if (taskType == TaskType.ExternalScript && !alreadyRunning) {
-              this.runExternalScriptTask(schedule);
-            }
-            if (taskType == TaskType.CreateBackup) {
-              this.runCreateBackupTask(schedule, alreadyRunning);
+
+          boolean shouldRunTask = Util.isTimeExpired(expectedScheduleTaskTime);
+
+          if (shouldRunTask || backlogStatus) {
+            switch (taskType) {
+              case BackupUniverse:
+                this.runBackupTask(schedule, alreadyRunning);
+                break;
+              case MultiTableBackup:
+                this.runMultiTableBackupsTask(schedule, alreadyRunning);
+                break;
+              case ExternalScript:
+                this.runExternalScriptTask(schedule, alreadyRunning);
+                break;
+              case CreateBackup:
+                this.runCreateBackupTask(schedule, alreadyRunning);
+                break;
+              case CreateAndRotateAccessKey:
+                this.runAccessKeyRotation(schedule, alreadyRunning);
+              default:
+                log.error(
+                    "Cannot schedule task {} for scheduler {}",
+                    taskType,
+                    schedule.getScheduleUUID());
+                break;
             }
           }
         } catch (Exception e) {
-          log.error("Error runnning schedule {} ", schedule.scheduleUUID, e);
+          log.error("Error running schedule {} ", schedule.scheduleUUID, e);
         } finally {
           schedule.setRunningState(false);
         }
@@ -209,8 +201,6 @@ public class Scheduler {
           });
     } catch (Exception e) {
       log.error("Error Running scheduler thread", e);
-    } finally {
-      running.set(false);
     }
   }
 
@@ -282,14 +272,19 @@ public class Scheduler {
   }
 
   private void runDeleteBackupTask(Customer customer, Backup backup) {
-    if (backup.state != Backup.BackupState.Completed) {
-      log.warn("Cannot delete backup {} since it is not in completed state.", backup.backupUUID);
+    if (Backup.IN_PROGRESS_STATES.contains(backup.state)) {
+      log.warn("Cannot delete backup {} since it is in a progress state", backup.backupUUID);
+      return;
+    } else if (taskInfoManager.isDeleteBackupTaskAlreadyPresent(customer.uuid, backup.backupUUID)) {
+      log.warn(
+          "Cannot delete backup {} since a delete backup task is already present",
+          backup.backupUUID);
       return;
     }
-    DeleteBackup.Params taskParams = new DeleteBackup.Params();
+    DeleteBackupYb.Params taskParams = new DeleteBackupYb.Params();
     taskParams.customerUUID = customer.getUuid();
     taskParams.backupUUID = backup.backupUUID;
-    UUID taskUUID = commissioner.submit(TaskType.DeleteBackup, taskParams);
+    UUID taskUUID = commissioner.submit(TaskType.DeleteBackupYb, taskParams);
     log.info("Submitted task to delete backup {}, task uuid = {}.", backup.backupUUID, taskUUID);
     CustomerTask.create(
         customer,
@@ -300,7 +295,7 @@ public class Scheduler {
         "Backup");
   }
 
-  private void runExternalScriptTask(Schedule schedule) {
+  private void runExternalScriptTask(Schedule schedule, boolean alreadyRunning) {
     JsonNode params = schedule.getTaskParams();
     RunExternalScript.Params taskParams = Json.fromJson(params, RunExternalScript.Params.class);
     Customer customer = Customer.getOrBadRequest(taskParams.customerUUID);
@@ -313,6 +308,22 @@ public class Scheduler {
           "External script scheduler is stopped for the universe {} as universe was deleted.",
           taskParams.universeUUID);
       return;
+    }
+    if (alreadyRunning
+        || universe.getUniverseDetails().updateInProgress
+        || universe.getUniverseDetails().universePaused) {
+      if (!alreadyRunning) {
+        schedule.updateBacklogStatus(true);
+      }
+      String stateLogMsg = CommonUtils.generateStateLogMsg(universe, alreadyRunning);
+      log.warn(
+          "Cannot run External Script task on universe {} due to the state {}",
+          taskParams.universeUUID.toString(),
+          stateLogMsg);
+      return;
+    }
+    if (schedule.getBacklogStatus()) {
+      schedule.updateBacklogStatus(false);
     }
     UUID taskUUID = commissioner.submit(TaskType.ExternalScript, taskParams);
     ScheduleTask.create(taskUUID, schedule.getScheduleUUID());
@@ -327,5 +338,75 @@ public class Scheduler {
         "Submitted external script task with task uuid = {} for universe {}.",
         taskUUID,
         universe.universeUUID);
+  }
+
+  private void runAccessKeyRotation(Schedule schedule, boolean alreadyRunning) {
+    JsonNode params = schedule.getTaskParams();
+    ScheduledAccessKeyRotateParams taskParams =
+        Json.fromJson(params, ScheduledAccessKeyRotateParams.class);
+    UUID providerUUID = taskParams.getProviderUUID();
+    UUID customerUUID = taskParams.getCustomerUUID();
+    boolean rotateAllUniverses = taskParams.isRotateAllUniverses();
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
+
+    List<UUID> universeUUIDs =
+        rotateAllUniverses
+            ? customer
+                .getUniversesForProvider(providerUUID)
+                .stream()
+                .map(universe -> universe.universeUUID)
+                .collect(Collectors.toList())
+            : taskParams.getUniverseUUIDs();
+
+    // filter out deleted universes
+    universeUUIDs = accessKeyRotationUtil.removeDeletedUniverses(universeUUIDs);
+    if (universeUUIDs.size() == 0) {
+      log.info(
+          "Scheduled access key rotation is stopped for schedule {} "
+              + "as all universes are deleted.",
+          schedule.getScheduleUUID());
+      schedule.stopSchedule();
+      return;
+    }
+
+    // filter out paused universes
+    universeUUIDs = accessKeyRotationUtil.removePausedUniverses(universeUUIDs);
+    if (universeUUIDs.size() == 0) {
+      log.info(
+          "Scheduled access key rotation is skipped for schedule {} "
+              + "as all universes are paused.",
+          schedule.getScheduleUUID());
+      schedule.updateBacklogStatus(true);
+      return;
+    }
+
+    if (alreadyRunning) {
+      log.warn(
+          "Did not run scheduled access key rotation for schedule {} "
+              + "due to ongoing scheduled rotation task",
+          schedule.getScheduleUUID());
+      return;
+    }
+
+    if (schedule.getBacklogStatus()) {
+      schedule.updateBacklogStatus(false);
+    }
+
+    taskParams.setUniverseUUIDs(universeUUIDs);
+    UUID taskUUID = commissioner.submit(TaskType.CreateAndRotateAccessKey, taskParams);
+    ScheduleTask.create(taskUUID, schedule.getScheduleUUID());
+    CustomerTask.create(
+        customer,
+        providerUUID,
+        taskUUID,
+        CustomerTask.TargetType.Provider,
+        CustomerTask.TaskType.CreateAndRotateAccessKey,
+        provider.name);
+    log.info(
+        "Submitted create and rotate accesss key task with task uuid = {} "
+            + "for provider uuid = {}.",
+        taskUUID,
+        providerUUID);
   }
 }

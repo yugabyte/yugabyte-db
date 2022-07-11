@@ -18,10 +18,8 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
-import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
-import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -29,25 +27,19 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.yb.CommonTypes.TableType;
-import org.yb.client.YBClient;
 
 @Slf4j
 @Abortable
 @Retryable
 public class CreateUniverse extends UniverseDefinitionTaskBase {
-
-  private static final String MIN_WRITE_READ_TABLE_CREATION_RELEASE = "2.6.0.0";
 
   @Inject
   protected CreateUniverse(BaseTaskDependencies baseTaskDependencies) {
@@ -57,14 +49,6 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
   // In-memory password store for ysqlPassword and ycqlPassword.
   private static final Cache<UUID, AuthPasswords> passwordStore =
       CacheBuilder.newBuilder().expireAfterAccess(2, TimeUnit.DAYS).maximumSize(1000).build();
-
-  private String ysqlPassword;
-  private String ycqlPassword;
-  private String ysqlCurrentPassword = Util.DEFAULT_YSQL_PASSWORD;
-  private String ysqlUsername = Util.DEFAULT_YSQL_USERNAME;
-  private String ycqlCurrentPassword = Util.DEFAULT_YCQL_PASSWORD;
-  private String ycqlUsername = Util.DEFAULT_YCQL_USERNAME;
-  private String ysqlDb = Util.YUGABYTE_DB;
 
   @AllArgsConstructor
   private static class AuthPasswords {
@@ -187,75 +171,12 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       createSetNodeStateTasks(taskParams().nodeDetailsSet, NodeDetails.NodeState.Live)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
-      // Wait for a Master Leader to be elected.
-      createWaitForMasterLeaderTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-
-      // Persist the placement info into the YB master leader.
-      createPlacementInfoTask(null /* blacklistNodes */)
-          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-
-      // Manage encryption at rest
-      SubTaskGroup manageEncryptionKeyTask = createManageEncryptionAtRestTask();
-      if (manageEncryptionKeyTask != null) {
-        manageEncryptionKeyTask.setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      // Start ybc process on all the nodes
+      if (CommonUtils.canConfigureYbc(universe)) {
+        createStartYbcProcessTasks(taskParams().nodeDetailsSet);
       }
 
-      // Wait for a master leader to hear from all the tservers.
-      createWaitForTServerHeartBeatsTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-
-      // Update the swamper target file.
-      createSwamperTargetUpdateTask(false /* removeFile */);
-
-      if (primaryCluster.userIntent.enableYEDIS) {
-        // Create a simple redis table.
-        createTableTask(
-                TableType.REDIS_TABLE_TYPE,
-                YBClient.REDIS_DEFAULT_TABLE_NAME,
-                null /* table details */,
-                true /* ifNotExist */)
-            .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-      }
-
-      if (primaryCluster.userIntent.enableYSQL
-          && CommonUtils.isReleaseEqualOrAfter(
-              MIN_WRITE_READ_TABLE_CREATION_RELEASE, primaryCluster.userIntent.ybSoftwareVersion)) {
-        // Create read-write test table
-        List<NodeDetails> tserverLiveNodes =
-            universe
-                .getUniverseDetails()
-                .getNodesInCluster(primaryCluster.uuid)
-                .stream()
-                .filter(nodeDetails -> nodeDetails.isTserver)
-                .collect(Collectors.toList());
-        createReadWriteTestTableTask(tserverLiveNodes.size(), true)
-            .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-      }
-
-      // Update the DNS entry for all the nodes once, using the primary cluster type.
-      createDnsManipulationTask(DnsManager.DnsCommandType.Create, false, primaryCluster.userIntent)
-          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-
-      // Create alert definitions.
-      createUnivCreateAlertDefinitionsTask()
-          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-
-      // Change admin password for Admin user, as specified.
-      if (isYCQLAuthEnabled || isYSQLAuthEnabled) {
-        createChangeAdminPasswordTask(
-                primaryCluster,
-                ysqlPassword,
-                ysqlCurrentPassword,
-                ysqlUsername,
-                ysqlDb,
-                ycqlPassword,
-                ycqlCurrentPassword,
-                ycqlUsername)
-            .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-      }
-
-      // Marks the update of this universe as a success only if all the tasks before it succeeded.
-      createMarkUniverseUpdateSuccessTasks()
-          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      createConfigureUniverseTasks(primaryCluster);
 
       // Run all the tasks.
       getRunnableTask().runSubTasks();

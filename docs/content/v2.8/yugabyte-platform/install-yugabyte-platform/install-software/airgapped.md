@@ -4,12 +4,11 @@ headerTitle: Install Yugabyte Platform software - Airgapped
 linkTitle: Install software
 description: Install Yugabyte Platform software in your on-premises, airgapped environment.
 menu:
-  v2.8:
+  v2.8_yugabyte-platform:
     parent: install-yugabyte-platform
     identifier: install-software-3-airgapped
     weight: 77
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
@@ -66,7 +65,7 @@ $ wget --trust-server-names https://get.replicated.com/airgap
 Download the `yugaware` binary and change the following number, as required:
 
 ```sh
-$ wget https://downloads.yugabyte.com/releases/2.8.2.0/yugaware-2.8.2.0-b51-linux-x86_64.airgap
+$ wget https://downloads.yugabyte.com/releases/{{<yb-version version="v2.8">}}/yugaware-{{<yb-version version="v2.8" format="build">}}-linux-x86_64.airgap
 ```
 
 Switch to the following directory:

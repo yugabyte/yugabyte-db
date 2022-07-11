@@ -47,16 +47,16 @@ YB_STRONGLY_TYPED_BOOL(RecursiveCopy);
 //          determine whether this file exists, or if the path is invalid.
 // IOError if an IO Error was encountered.
 // Uses specified `env` environment implementation to do the actual file existence checking.
-inline CHECKED_STATUS CheckFileExistsResult(const Status& status) {
+inline Status CheckFileExistsResult(const Status& status) {
   return status;
 }
 
-inline CHECKED_STATUS CheckFileExistsResult(bool exists) {
+inline Status CheckFileExistsResult(bool exists) {
   return exists ? Status::OK() : STATUS(NotFound, "");
 }
 
 template <class Env>
-inline CHECKED_STATUS FileExists(Env* env, const std::string& path) {
+inline Status FileExists(Env* env, const std::string& path) {
   return CheckFileExistsResult(env->FileExists(path));
 }
 
@@ -68,7 +68,7 @@ using yb::env_util::CopyFile;
 // recursive_copy specifies whether the copy should be recursive.
 // Returns error status in case of I/O errors.
 template <class TEnv>
-CHECKED_STATUS CopyDirectory(
+Status CopyDirectory(
     TEnv* env, const string& src_dir, const string& dest_dir, UseHardLinks use_hard_links,
     CreateIfMissing create_if_missing, RecursiveCopy recursive_copy = RecursiveCopy::kTrue) {
   RETURN_NOT_OK_PREPEND(

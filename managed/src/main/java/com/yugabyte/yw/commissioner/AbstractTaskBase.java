@@ -2,14 +2,15 @@
 
 package com.yugabyte.yw.commissioner;
 
-import static com.yugabyte.yw.common.ShellResponse.ERROR_CODE_EXECUTION_CANCELLED;
-import static com.yugabyte.yw.common.ShellResponse.ERROR_CODE_SUCCESS;
+import static com.yugabyte.yw.common.PlatformExecutorFactory.SHUTDOWN_TIMEOUT_MINUTES;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.util.concurrent.MoreExecutors;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.TaskExecutor.RunnableTask;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
+import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.RestoreManagerYb;
@@ -28,7 +29,6 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeStatus;
 import java.time.Duration;
 import java.util.UUID;
-import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
@@ -116,7 +116,8 @@ public abstract class AbstractTaskBase implements ITask {
   @Override
   public void terminate() {
     if (executor != null && !executor.isShutdown()) {
-      MoreExecutors.shutdownAndAwaitTermination(executor, 5, TimeUnit.MINUTES);
+      MoreExecutors.shutdownAndAwaitTermination(
+          executor, SHUTDOWN_TIMEOUT_MINUTES, TimeUnit.MINUTES);
     }
   }
 
@@ -131,16 +132,6 @@ public abstract class AbstractTaskBase implements ITask {
   @Override
   public void setUserTaskUUID(UUID userTaskUUID) {
     this.userTaskUUID = userTaskUUID;
-  }
-
-  /** @param response : ShellResponse object */
-  public void processShellResponse(ShellResponse response) {
-    if (response.code == ERROR_CODE_EXECUTION_CANCELLED) {
-      throw new CancellationException((response.message != null) ? response.message : "error");
-    }
-    if (response.code != ERROR_CODE_SUCCESS) {
-      throw new RuntimeException((response.message != null) ? response.message : "error");
-    }
   }
 
   /**
@@ -211,7 +202,11 @@ public abstract class AbstractTaskBase implements ITask {
 
   // Returns a SubTaskGroup to which subtasks can be added.
   protected SubTaskGroup createSubTaskGroup(String name) {
-    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup(name);
+    return createSubTaskGroup(name, SubTaskGroupType.Invalid);
+  }
+
+  protected SubTaskGroup createSubTaskGroup(String name, SubTaskGroupType subTaskGroupType) {
+    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup(name, subTaskGroupType, false);
     subTaskGroup.setSubTaskExecutor(executor);
     return subTaskGroup;
   }

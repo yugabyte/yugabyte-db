@@ -4,27 +4,27 @@
 
 ### Microservice-oriented architectures
 
-There are some microservices that require a stream of changes to the data. For example, a search system powered by a service such as Elasticsearch may be used in conjunction with the database stores the transactions. The search system requires a stream of changes made to the data in YugabyteDB.
+There are some microservices that require a stream of changes to the data. For example, a search system powered by a service such as [Elasticsearch](https://www.elastic.co/elasticsearch/) may be used in conjunction with the database which stores the transactions. The search system requires a stream of changes made to the data in YugabyteDB.
 
 ### Asynchronous replication to remote systems
 
 Remote systems such as caches and analytics pipelines may subscribe to the stream of changes, transform them and consume these changes.
 
-### Two data center deployments
+### Two datacenter deployments
 
 Two datacenter deployments in YugabyteDB leverage change data capture at the core.
 
-> Note that in this design, the terms "data center", "cluster" and "universe" will be used interchangeably. We assume here that each YB universe is deployed in a single data-center.
+> Note that in this design, the terms "datacenter", "cluster" and "universe" will be used interchangeably. We assume here that each YB universe is deployed in a single datacenter.
 
 ## Setting up CDC
 
-To set up CDC we use the CDC Streams, the commands for which can be found under [yb-admin](../../docs/content/latest/admin/yb-admin.md#change-data-capture-cdc-commands).
+To set up CDC we use the CDC Streams, the commands for which can be found under [yb-admin](https://docs.yugabyte.com/preview/admin/yb-admin/#change-data-capture-cdc-commands).
 
 ### Debezium
 
-[Debezium](https://debezium.io/) is the connector we are using to pull data out of YugabyteDB, it is an open-source distributed platform which we can point out to our database by providing some configuration and it will start collecting the change events from the database and publish it to Kafka.
+[Debezium](https://debezium.io/) is the connector we are using to pull data out of YugabyteDB. Debezium is an open-source distributed platform at which we can point our database by providing some configuration. Debezium will start collecting the change events from the database and publish them to Kafka.
 
-We need to provide the configuration values in the json format, the important ones are explained here:
+We need to provide the configuration values in the JSON format, the important ones are explained here:
 
 **Example:**
 
@@ -56,7 +56,7 @@ We need to provide the configuration values in the json format, the important on
 }
 ```
 
-For a list of complete parameters that can be configured see [Debezium Connector for YugabyteDB](../../docs/content/latest/integrations/cdc/debezium-for-cdc.md).
+For a list of complete parameters that can be configured see [Debezium Connector for YugabyteDB](https://docs.yugabyte.com/preview/integrations/cdc/debezium/).
 
 ## Design
 

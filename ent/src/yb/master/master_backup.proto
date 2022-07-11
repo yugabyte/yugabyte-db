@@ -70,14 +70,23 @@ message TabletRestorationPB {
   optional SysSnapshotEntryPB.State state = 2;
 }
 
+message MasterRestorationMetadataPB {
+  optional bytes id = 1;
+  optional SysRowEntryType type = 2;
+}
+
 message SysRestorationEntryPB {
   optional SysSnapshotEntryPB.State state = 1 [ default = UNKNOWN ];
   repeated TabletRestorationPB tablet_restorations = 2;
   optional bytes snapshot_id = 8;
-
+  optional bytes schedule_id = 4;
+  optional bool is_sys_catalog_restored = 5;
+  optional fixed64 restore_at_ht = 6;
+  optional int64 version = 7;
   // Time when restoration finished. Computed on master after received response from the last
   // tablet.
   optional fixed64 complete_time_ht = 3;
+  repeated MasterRestorationMetadataPB master_metadata = 9;
 }
 
 message RestorationInfoPB {

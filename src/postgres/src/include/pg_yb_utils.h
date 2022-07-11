@@ -182,8 +182,7 @@ extern Bitmapset *YBGetTablePrimaryKeyBms(Relation rel);
  */
 extern Bitmapset *YBGetTableFullPrimaryKeyBms(Relation rel);
 
-extern bool YBIsDatabaseColocated(Oid dbId);
-extern bool YBIsTableColocated(Oid dbId, Oid relationId);
+extern bool YbIsDatabaseColocated(Oid dbid);
 
 /*
  * Check if a relation has row triggers that may reference the old row.
@@ -213,6 +212,11 @@ extern bool IsYBReadCommitted();
  * Whether to allow users to use SAVEPOINT commands at the query layer.
  */
 extern bool YBSavepointsEnabled();
+
+/*
+ * Whether the per database catalog version mode is enabled.
+ */
+extern bool YBIsDBCatalogVersionMode();
 
 /*
  * Given a status returned by YB C++ code, reports that status as a PG/YSQL
@@ -279,7 +283,7 @@ extern void YBCAbortTransaction();
 
 extern void YBCSetActiveSubTransaction(SubTransactionId id);
 
-extern void YBCRollbackSubTransaction(SubTransactionId id);
+extern void YBCRollbackToSubTransaction(SubTransactionId id);
 
 /*
  * Return true if we want to allow PostgreSQL's own locking. This is needed
@@ -413,6 +417,14 @@ extern int yb_index_state_flags_update_delay;
  */
 extern bool yb_enable_expression_pushdown;
 
+/*
+ * YSQL guc variable that is used to enable the use of Postgres's selectivity
+ * functions and YSQL table statistics.
+ * e.g. 'SET yb_enable_optimizer_statistics = true'
+ * See also the corresponding entries in guc.c.
+ */
+extern bool yb_enable_optimizer_statistics;
+
 //------------------------------------------------------------------------------
 // GUC variables needed by YB via their YB pointers.
 extern int StatementTimeout;
@@ -495,18 +507,24 @@ YBCPgYBTupleIdDescriptor* YBCCreateYBTupleIdDescriptor(Oid db_oid, Oid table_oid
 void YBCFillUniqueIndexNullAttribute(YBCPgYBTupleIdDescriptor* descr);
 
 /*
- * Fetch YBCPgTableDesc and YBCPgTableProperties for the given table.
+ * Lazily loads yb_table_properties field in Relation.
  *
- * If allow_missing is true, existence precheck will be done and table
- * missing in DocDB will result in desc set to NULL.
- * Otherwise, DocDB will be queried unconditionally and the table missing
- * will trigger an error.
+ * YbGetTableProperties expects the table to be present in the DocDB, while
+ * YbTryGetTableProperties queries the DocDB first and returns NULL if not found.
+ *
+ * Both calls returns the same yb_table_properties field from Relation
+ * for convenience (can be NULL for the second call).
+ *
+ * Note that these calls will rarely send out RPC because of
+ * Relation/TableDesc cache.
+ *
+ * TODO(alex):
+ *    An optimization we could use is to amend RelationBuildDesc or
+ *    ScanPgRelation to do a custom RPC fetching YB properties as well.
+ *    However, TableDesc cache makes this low-priority.
  */
-void
-YbGetTableDescAndProps(Oid table_oid,
-					   bool allow_missing,
-					   YBCPgTableDesc *desc,
-					   YBCPgTableProperties *props);
+YbTableProperties YbGetTableProperties(Relation rel);
+YbTableProperties YbTryGetTableProperties(Relation rel);
 
 /*
  * Check whether the given libc locale is supported in YugaByte mode.
@@ -590,6 +608,12 @@ Oid YbGetStorageRelid(Relation relation);
 bool IsYbDbAdminUser(Oid member);
 
 /*
+ * Check whether the user ID is of a user who has the yb_db_admin role
+ * (excluding superusers).
+ */
+bool IsYbDbAdminUserNosuper(Oid member);
+
+/*
  * Check unsupported system columns and report error.
  */
 void YbCheckUnsupportedSystemColumns(Var *var, const char *colname, RangeTblEntry *rte);
@@ -598,5 +622,10 @@ void YbCheckUnsupportedSystemColumns(Var *var, const char *colname, RangeTblEntr
  * Register system table for prefetching.
  */
 void YbRegisterSysTableForPrefetching(int sys_table_id);
+
+/*
+ * Returns true if the relation is a non-system relation in the same region.
+ */
+bool YBCIsRegionLocal(Relation rel);
 
 #endif /* PG_YB_UTILS_H */

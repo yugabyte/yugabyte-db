@@ -12,9 +12,7 @@ menu:
 aliases:
   - /preview/deploy/kubernetes/operator-hub/
   - /preview/deploy/kubernetes/oss/operator-hub/
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -34,12 +32,6 @@ showAsideToc: true
     <a href="{{< relref "./operator-hub.md" >}}" class="nav-link active">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Operator Hub
-    </a>
-  </li>
-  <li>
-    <a href="{{< relref "./rook-operator.md" >}}" class="nav-link">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
-      Rook operator
     </a>
   </li>
 </ul>

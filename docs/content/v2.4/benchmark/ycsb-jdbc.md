@@ -8,8 +8,7 @@ menu:
     identifier: ycsb-1-ysql
     parent: benchmark
     weight: 5
-showAsideToc: true
-isTocNested: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -39,7 +38,7 @@ isTocNested: true
 
 {{< note title="Note" >}}
 
-For more information about YCSB, see: 
+For more information about YCSB, see:
 
 * YCSB Wiki: https://github.com/brianfrankcooper/YCSB/wiki
 * Workload info: https://github.com/brianfrankcooper/YCSB/wiki/Core-Workloads

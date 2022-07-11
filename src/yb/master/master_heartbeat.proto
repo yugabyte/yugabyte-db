@@ -180,6 +180,9 @@ message TSHeartbeatRequestPB {
   reserved 13;
 
   repeated TabletDriveStorageMetadataPB storage_metadata = 14;
+
+  // Tablet server has at least one faulty drive.
+  optional bool faulty_drive = 15;
 }
 
 message TSHeartbeatResponsePB {
@@ -234,6 +237,9 @@ message TSHeartbeatResponsePB {
   // Version of transaction tables and their placements, so that the TS knows when
   // to update the cached list of status tablet ids in the transaction manager.
   optional uint64 transaction_tables_version = 18;
+
+  // Specify whether or not the cluster is a producer of a valid replication stream.
+  optional bool xcluster_enabled_on_producer = 19;
 }
 
 service MasterHeartbeat {

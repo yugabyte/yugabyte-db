@@ -2729,6 +2729,10 @@ die(SIGNAL_ARGS)
 		ProcDiePending = true;
 	}
 
+	if (IsYugaByteEnabled()) {
+		YBCInterruptPgGate();
+	}
+
 	/* If we're still here, waken anything waiting on the process latch */
 	SetLatch(MyLatch);
 
@@ -4541,6 +4545,35 @@ yb_attempt_to_restart_on_error(int attempt,
 typedef void(*YBFunctor)(const void*);
 
 static void
+yb_exec_query_wrapper_one_attempt(
+	MemoryContext exec_context,
+	YBQueryRestartData* restart_data,
+	YBFunctor functor,
+	const void* functor_context,
+	int attempt,
+	bool* retry)
+{
+	elog(DEBUG2, "yb_exec_query_wrapper attempt %d for %s", attempt, restart_data->query_string);
+	YBSaveOutputBufferPosition(
+		!yb_is_begin_transaction(restart_data->command_tag));
+	PG_TRY();
+	{
+		(*functor)(functor_context);
+		/*
+			* Stop retrying if successful. Note, break or return could not be
+			* used here, they would prevent PG_END_TRY();
+			*/
+		*retry = false;
+	}
+	PG_CATCH();
+	{
+		YBResetOperationsBuffering();
+		yb_attempt_to_restart_on_error(attempt, restart_data, exec_context);
+	}
+	PG_END_TRY();
+}
+
+static void
 yb_exec_query_wrapper(MemoryContext exec_context,
 					  YBQueryRestartData* restart_data,
 					  YBFunctor functor,
@@ -4549,24 +4582,8 @@ yb_exec_query_wrapper(MemoryContext exec_context,
 	bool retry = true;
 	for (int attempt = 0; retry; ++attempt)
 	{
-		elog(DEBUG2, "yb_exec_query_wrapper attempt %d for %s", attempt, restart_data->query_string);
-		YBSaveOutputBufferPosition(
-			!yb_is_begin_transaction(restart_data->command_tag));
-		PG_TRY();
-		{
-			(*functor)(functor_context);
-			/*
-			 * Stop retrying if successful. Note, break or return could not be
-			 * used here, they would prevent PG_END_TRY();
-			 */
-			retry = false;
-		}
-		PG_CATCH();
-		{
-			YBResetOperationsBuffering();
-			yb_attempt_to_restart_on_error(attempt, restart_data, exec_context);
-		}
-		PG_END_TRY();
+		yb_exec_query_wrapper_one_attempt(
+			exec_context, restart_data, functor, functor_context, attempt, &retry);
 	}
 }
 

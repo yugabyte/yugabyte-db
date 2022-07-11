@@ -7,8 +7,7 @@ menu:
   preview:
     identifier: cmd_call
     parent: statements
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis
@@ -34,10 +33,10 @@ Use the `CALL` statement to execute a stored procedure.
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/call_procedure,subprogram_arg,arg_name.grammar.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/call_procedure,subprogram_arg,arg_name.grammar.md" /%}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/call_procedure,subprogram_arg,arg_name.diagram.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/call_procedure,subprogram_arg,arg_name.diagram.md" /%}}
   </div>
 </div>
 

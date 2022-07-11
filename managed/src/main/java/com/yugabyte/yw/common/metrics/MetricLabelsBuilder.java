@@ -24,6 +24,7 @@ public class MetricLabelsBuilder {
   public static String[] UNIVERSE_LABELS = {
     KnownAlertLabels.UNIVERSE_UUID.labelName(),
     KnownAlertLabels.UNIVERSE_NAME.labelName(),
+    KnownAlertLabels.NODE_PREFIX.labelName(),
     KnownAlertLabels.SOURCE_UUID.labelName(),
     KnownAlertLabels.SOURCE_NAME.labelName(),
     KnownAlertLabels.SOURCE_TYPE.labelName()
@@ -38,6 +39,7 @@ public class MetricLabelsBuilder {
   public MetricLabelsBuilder appendUniverse(Universe universe) {
     labels.put(KnownAlertLabels.UNIVERSE_UUID.labelName(), universe.universeUUID.toString());
     labels.put(KnownAlertLabels.UNIVERSE_NAME.labelName(), universe.name);
+    labels.put(KnownAlertLabels.NODE_PREFIX.labelName(), universe.getUniverseDetails().nodePrefix);
     return this;
   }
 

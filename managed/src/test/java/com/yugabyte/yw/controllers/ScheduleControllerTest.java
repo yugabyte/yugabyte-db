@@ -21,12 +21,12 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.EditBackupScheduleParams;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.ScheduleTask;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.Schedule.State;
+import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.TimeUnit;
 import java.util.List;
@@ -393,5 +393,52 @@ public class ScheduleControllerTest extends FakeDBApplication {
     JsonNode schedulesJson = Json.parse(contentAsString(result));
     ArrayNode response = (ArrayNode) schedulesJson.get("entities");
     assertEquals(response.size(), 3);
+  }
+
+  @Test
+  public void testGetPagedSchedulesListFilteredWithUniverseList() {
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("universeUUID", defaultUniverse.universeUUID.toString());
+    bodyJson.put("storageConfigUUID", customerConfig.configUUID.toString());
+    bodyJson.put("cronExpression", "0 */2 * * *");
+    bodyJson.put("scheduleName", "schedule-1");
+    Result r = createBackupSchedule(bodyJson, null);
+    assertOk(r);
+    Universe universe2 = ModelFactory.createUniverse("universe-2", defaultCustomer.getCustomerId());
+    bodyJson.put("universeUUID", universe2.universeUUID.toString());
+    r = createBackupSchedule(bodyJson, null);
+    assertOk(r);
+    ObjectNode bodyJson2 = Json.newObject();
+    bodyJson2.put("direction", "ASC");
+    bodyJson2.put("sortBy", "scheduleUUID");
+    bodyJson2.put("offset", 0);
+    ObjectNode filters = Json.newObject();
+    filters.set("status", Json.newArray().add("Active"));
+    bodyJson2.set("filter", filters);
+    Result result = getPagedSchedulesList(defaultCustomer.uuid, bodyJson2);
+    assertOk(result);
+    JsonNode schedulesJson = Json.parse(contentAsString(result));
+    ArrayNode response = (ArrayNode) schedulesJson.get("entities");
+    assertEquals(3, response.size());
+    result = getPagedSchedulesList(defaultCustomer.uuid, bodyJson2);
+    assertOk(result);
+    filters.set("universeUUIDList", Json.newArray().add(defaultUniverse.universeUUID.toString()));
+    bodyJson2.set("filter", filters);
+    result = getPagedSchedulesList(defaultCustomer.uuid, bodyJson2);
+    schedulesJson = Json.parse(contentAsString(result));
+    response = (ArrayNode) schedulesJson.get("entities");
+    assertEquals(2, response.size());
+    filters.set("universeUUIDList", Json.newArray().add(universe2.universeUUID.toString()));
+    bodyJson2.set("filter", filters);
+    result = getPagedSchedulesList(defaultCustomer.uuid, bodyJson2);
+    schedulesJson = Json.parse(contentAsString(result));
+    response = (ArrayNode) schedulesJson.get("entities");
+    assertEquals(1, response.size());
+    filters.set("universeUUIDList", Json.newArray().add(UUID.randomUUID().toString()));
+    bodyJson2.set("filter", filters);
+    result = getPagedSchedulesList(defaultCustomer.uuid, bodyJson2);
+    schedulesJson = Json.parse(contentAsString(result));
+    response = (ArrayNode) schedulesJson.get("entities");
+    assertEquals(0, response.size());
   }
 }

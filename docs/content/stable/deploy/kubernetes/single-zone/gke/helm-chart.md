@@ -9,9 +9,7 @@ menu:
     name: Google Kubernetes Engine
     identifier: k8s-gke-1
     weight: 623
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -122,8 +120,8 @@ $ helm search repo yugabytedb/yugabyte --version {{<yb-version version="stable" 
 **Output:**
 
 ```output
-NAME                    CHART VERSION   APP VERSION     DESCRIPTION
-yugabytedb/yugabyte     2.12.2           2.12.2.0-b58    YugabyteDB is the high-performance distributed ...
+NAME                 CHART VERSION  APP VERSION   DESCRIPTION
+yugabytedb/yugabyte  {{<yb-version version="stable" format="short">}}          {{<yb-version version="stable" format="build">}}  YugabyteDB is the high-performance distributed ...
 ```
 
 ### Install YugabyteDB
@@ -215,7 +213,7 @@ $ helm history yb-demo -n yb-demo
 
 ```output
 REVISION  UPDATED                   STATUS    CHART           APP VERSION   DESCRIPTION
-1         Tue Apr 21 17:29:01 2020  deployed  yugabyte-2.12.2  2.12.2.0-b58  Install complete
+1         Tue Apr 21 17:29:01 2020  deployed  yugabyte-{{<yb-version version="stable" format="short">}}  {{<yb-version version="stable" format="build">}}  Install complete
 ```
 
 ## Connect using YugabyteDB shells

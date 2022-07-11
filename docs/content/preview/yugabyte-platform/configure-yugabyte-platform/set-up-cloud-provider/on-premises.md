@@ -1,17 +1,16 @@
 ---
 title: Configure the on-premises cloud provider
 headerTitle: Configure the on-premises cloud provider
-linkTitle: Configure the cloud provider
+linkTitle: Configure cloud providers
 description: Configure the on-premises cloud provider.
 aliases:
   - /preview/deploy/enterprise-edition/configure-cloud-providers/onprem
 menu:
-  preview:
+  preview_yugabyte-platform:
     identifier: set-up-cloud-provider-6-on-premises
     parent: configure-yugabyte-platform
     weight: 20
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -73,10 +72,6 @@ Configuring the on-premises provider consists of a number of steps.
 
 ### Complete the provider information
 
-You start by completing the fields of the **Provider Info** form shown in the following illustration: 
-
-### {#on-premise-provider-info}
-
 You need to navigate to **Configs > Infrastructure > On-Premises Datacenters**, click either **Add Configuration** or **Edit Provider**, and then complete the fields of the **Provider Info** form shown in the following illustration:
 
 ![Configure On-Premises Cloud Provider](/images/ee/onprem/configure-onprem-1.png)
@@ -97,18 +92,23 @@ You need to navigate to **Configs > Infrastructure > On-Premises Datacenters**, 
   - Sudo user requires a password.
   - The SSH user is not a sudo user.
 
-- Use the **SSH Key** field to enter the full content of the private key available to the SSH user for gaining access via SSH into your instances. 
+- Use the **SSH Key** field to enter the full content of the private key available to the SSH user for gaining access via SSH into your instances.
 
-  Ensure that the SSH key is pasted correctly in the RSA format: you need to paste the SSH RSA PEM key entry including the RSA key header such as `-----BEGIN RSA PRIVATE KEY-----` and footer such as `-----END RSA PRIVATE KEY-----`. 
+  Ensure that the SSH key is pasted correctly in the RSA format: you need to paste the SSH RSA PEM key entry including the RSA key header such as `-----BEGIN RSA PRIVATE KEY-----` and footer such as `-----END RSA PRIVATE KEY-----`.
 
 - Enable the **Air Gap Install** field if you want the installation to run in an air-gapped mode without expecting any internet access.
 
-- Optionally, you may enable **Advanced** and complete the following: 
+- Optionally, you may enable **Advanced** and complete the following:
 
   - Use the **Desired Home Directory** field to specify the home directory of the `yugabyte` user. The default value is `/home/yugabyte`.
   - Use the **Node Exporter Port** field to specify the port number for the node exporter. The default value is 9300.
   - Enable **Install Node Exporter** if you want the node exporter installed. You can skip this step if you have node exporter already installed on the nodes. Ensure you have provided the correct port number for skipping the installation.
   - The **Node Exporter User** field allows you to override the default Prometheus user. This is useful when the user is preprovisioned on nodes (when the user creation is disabled). If overridden, the installer checks whether or not the user exists and creates the user if it does not exist.
+
+- **NTP Setup** lets you to customize the Network Time Protocol server, as follows:
+
+  - Select **Manually add NTP Servers** to provide your own NTP servers and allow the cluster nodes to connect to those NTP servers.
+  - Select **Don’t set up NTP** to prevent YugabyteDB Anywhere from performing any NTP configuration on the cluster nodes. For data consistency, ensure that NTP is correctly configured on your machine image.
 
 ### Configure hardware for YugabyteDB nodes
 
@@ -197,6 +197,7 @@ For each node, perform the following:
 * [Install Prometheus node exporter](#install-prometheus-node-exporter)
 * [Install backup utilities](#install-backup-utilities)
 * [Set crontab permissions](#set-crontab-permissions)
+* [Install systemd-related database service unit files (optional)](#install-systemd-related-database-service-unit-files)
 
 ##### Set up time synchronization
 
@@ -245,15 +246,17 @@ Physical nodes (or cloud instances) are installed with a standard Centos 7 serve
     sudo chronyc makestep   # (force instant sync to NTP server)
     ```
 
-1. Add a new `yugabyte:yugabyte` user and group (sudo is required):
+1. Add a new `yugabyte:yugabyte` user and group with the default login shell `/bin/bash` that you set via the `-s` flag (sudo is required):
 
-    ```sh
-    sudo useradd yugabyte   # (add group yugabyte + create /home/yugabyte)
+    ```bash
+    sudo useradd -s /bin/bash -m yugabyte   # (add user yugabyte and create /home/yugabyte)
     sudo passwd yugabyte   # (add a password to the yugabyte user)
     sudo su - yugabyte   # (change to yugabyte user for execution of next steps)
     ```
 
-    <br>Ensure that the `yugabyte` user has permissions to SSH into the YugabyteDB nodes (as defined in `/etc/ssh/sshd_config`).
+    <br>
+
+    Ensure that the `yugabyte` user has permissions to SSH into the YugabyteDB nodes (as defined in `/etc/ssh/sshd_config`).
 
 1. Copy the SSH public key to each DB node.
 
@@ -514,11 +517,261 @@ If YugabyteDB Anywhere will be using **cron jobs**, make sure the yugabyte user 
 YugabyteDB Anywhere **systemd services** to perform the monitoring operations mentioned above, then make sure ...
 -->
 
-You have finished configuring your on-premises cloud provider. Proceed to [Configure the backup target](../../backup-target/), or [Create deployments](../../../create-deployments/).
+You have finished configuring your on-premises cloud provider. Proceed to [Configure the backup target](../../backup-target/) or [Create deployments](../../../create-deployments/).
+
+##### Install systemd-related database service unit files
+
+As an alternative to setting crontab permissions, you can install systemd-specific database service unit files, as follows:
+
+1. Enable the `yugabyte` user to run the following commands as sudo or root:
+
+   ```sh
+   yugabyte ALL=(ALL:ALL) NOPASSWD: /bin/systemctl start yb-master, \
+   /bin/systemctl stop yb-master, \
+   /bin/systemctl restart yb-master, \
+   /bin/systemctl enable yb-master, \
+   /bin/systemctl disable yb-master, \
+   /bin/systemctl start yb-tserver, \
+   /bin/systemctl stop yb-tserver, \
+   /bin/systemctl restart yb-tserver, \
+   /bin/systemctl enable yb-tserver, \
+   /bin/systemctl disable yb-tserver, \
+   /bin/systemctl start yb-zip_purge_yb_logs.timer, \
+   /bin/systemctl stop yb-zip_purge_yb_logs.timer, \
+   /bin/systemctl restart yb-zip_purge_yb_logs.timer, \
+   /bin/systemctl enable yb-zip_purge_yb_logs.timer, \
+   /bin/systemctl disable yb-zip_purge_yb_logs.timer, \
+   /bin/systemctl start yb-clean_cores.timer, \
+   /bin/systemctl stop yb-clean_cores.timer, \
+   /bin/systemctl restart yb-clean_cores.timer, \
+   /bin/systemctl enable yb-clean_cores.timer, \
+   /bin/systemctl disable yb-clean_cores.timer, \
+   /bin/systemctl start yb-collect_metrics.timer, \
+   /bin/systemctl stop yb-collect_metrics.timer, \
+   /bin/systemctl restart yb-collect_metrics.timer, \
+   /bin/systemctl enable yb-collect_metrics.timer, \
+   /bin/systemctl disable yb-collect_metrics.timer, \
+   /bin/systemctl start yb-zip_purge_yb_logs, \
+   /bin/systemctl stop yb-zip_purge_yb_logs, \
+   /bin/systemctl restart yb-zip_purge_yb_logs, \
+   /bin/systemctl enable yb-zip_purge_yb_logs, \
+   /bin/systemctl disable yb-zip_purge_yb_logs, \
+   /bin/systemctl start yb-clean_cores, \
+   /bin/systemctl stop yb-clean_cores, \
+   /bin/systemctl restart yb-clean_cores, \
+   /bin/systemctl enable yb-clean_cores, \
+   /bin/systemctl disable yb-clean_cores, \
+   /bin/systemctl start yb-collect_metrics, \
+   /bin/systemctl stop yb-collect_metrics, \
+   /bin/systemctl restart yb-collect_metrics, \
+   /bin/systemctl enable yb-collect_metrics, \
+   /bin/systemctl disable yb-collect_metrics, \
+   /bin/systemctl daemon-reload
+   ```
+
+2. Ensure that you have root access and add the following service and timer files to the `/etc/systemd/system` directory (set their ownerships to the `yugabyte` user and 0644 permissions):<br><br>
+
+   `yb-master.service`
+
+   ```sh
+   [Unit]
+   Description=Yugabyte master service
+   Requires=network-online.target
+   After=network.target network-online.target multi-user.target
+   StartLimitInterval=100
+   StartLimitBurst=10
+
+   [Path]
+   PathExists=/home/yugabyte/master/bin/yb-master
+   PathExists=/home/yugabyte/master/conf/server.conf
+
+   [Service]
+   User=yugabyte
+   Group=yugabyte
+   # Start
+   ExecStart=/home/yugabyte/master/bin/yb-master --flagfile /home/yugabyte/master/conf/server.conf
+   Restart=on-failure
+   RestartSec=5
+   # Stop -> SIGTERM - 10s - SIGKILL (if not stopped) [matches existing cron behavior]
+   KillMode=process
+   TimeoutStopFailureMode=terminate
+   KillSignal=SIGTERM
+   TimeoutStopSec=10
+   FinalKillSignal=SIGKILL
+   # Logs
+   StandardOutput=syslog
+   StandardError=syslog
+   # ulimit
+   LimitCORE=infinity
+   LimitNOFILE=1048576
+   LimitNPROC=12000
+
+   [Install]
+   WantedBy=default.target
+   ```
+
+   <br><br>
+
+   `yb-tserver.service`
+
+   ```sh
+   [Unit]
+   Description=Yugabyte tserver service
+   Requires=network-online.target
+   After=network.target network-online.target multi-user.target
+   StartLimitInterval=100
+   StartLimitBurst=10
+
+   [Path]
+   PathExists=/home/yugabyte/tserver/bin/yb-tserver
+   PathExists=/home/yugabyte/tserver/conf/server.conf
+
+   [Service]
+   User=yugabyte
+   Group=yugabyte
+   # Start
+   ExecStart=/home/yugabyte/tserver/bin/yb-tserver --flagfile /home/yugabyte/tserver/conf/server.conf
+   Restart=on-failure
+   RestartSec=5
+   # Stop -> SIGTERM - 10s - SIGKILL (if not stopped) [matches existing cron behavior]
+   KillMode=process
+   TimeoutStopFailureMode=terminate
+   KillSignal=SIGTERM
+   TimeoutStopSec=10
+   FinalKillSignal=SIGKILL
+   # Logs
+   StandardOutput=syslog
+   StandardError=syslog
+   # ulimit
+   LimitCORE=infinity
+   LimitNOFILE=1048576
+   LimitNPROC=12000
+
+   [Install]
+   WantedBy=default.target
+   ```
+
+   <br><br>`yb-zip_purge_yb_logs.service`
+
+   ```sh
+   [Unit]
+   Description=Yugabyte logs
+   Wants=yb-zip_purge_yb_logs.timer
+
+   [Service]
+   User=yugabyte
+   Group=yugabyte
+   Type=oneshot
+   WorkingDirectory=/home/yugabyte/bin
+   ExecStart=/bin/sh /home/yugabyte/bin/zip_purge_yb_logs.sh
+
+   [Install]
+   WantedBy=multi-user.target
+   ```
+
+   <br><br>
+
+   `yb-zip_purge_yb_logs.timer`
+
+   ```sh
+   [Unit]
+   Description=Yugabyte logs
+   Requires=yb-zip_purge_yb_logs.service
+
+   [Timer]
+   User=yugabyte
+   Group=yugabyte
+   Unit=yb-zip_purge_yb_logs.service
+   # Run hourly at minute 0 (beginning) of every hour
+   OnCalendar=00/1:00
+
+   [Install]
+   WantedBy=timers.target
+   ```
+
+   <br><br>
+
+   `yb-clean_cores.service`
+
+   ```sh
+   [Unit]
+   Description=Yugabyte clean cores
+   Wants=yb-clean_cores.timer
+
+   [Service]
+   User=yugabyte
+   Group=yugabyte
+   Type=oneshot
+   WorkingDirectory=/home/yugabyte/bin
+   ExecStart=/bin/sh /home/yugabyte/bin/clean_cores.sh
+
+   [Install]
+   WantedBy=multi-user.target
+   ```
+
+   <br><br>
+
+   `yb-clean_cores.timer`
+
+   ```sh
+   [Unit]
+   Description=Yugabyte clean cores
+   Requires=yb-clean_cores.service
+
+   [Timer]
+   User=yugabyte
+   Group=yugabyte
+   Unit=yb-clean_cores.service
+   # Run every 10 minutes offset by 5 (5, 15, 25...)
+   OnCalendar=*:0/10:30
+
+   [Install]
+   WantedBy=timers.target
+   ```
+
+   <br><br>
+
+   `yb-collect_metrics.service`
+
+   ```sh
+   [Unit]
+   Description=Yugabyte collect metrics
+   Wants=yb-collect_metrics.timer
+
+   [Service]
+   User=yugabyte
+   Group=yugabyte
+   Type=oneshot
+   WorkingDirectory=/home/yugabyte/bin
+   ExecStart=/bin/bash /home/yugabyte/bin/collect_metrics_wrapper.sh
+
+   [Install]
+   WantedBy=multi-user.target
+   ```
+
+   <br><br>
+
+   `yb-collect_metrics.timer`
+
+   ```sh
+   [Unit]
+   Description=Yugabyte collect metrics
+   Requires=yb-collect_metrics.service
+
+   [Timer]
+   User=yugabyte
+   Group=yugabyte
+   Unit=yb-collect_metrics.service
+   # Run every 1 minute
+   OnCalendar=*:0/1:0
+
+   [Install]
+   WantedBy=timers.target
+   ```
 
 ## Remove YugabyteDB components from the server
 
-As described in [Eliminate an unresponsive node](../../../create-deployments/remove-nodes/), when a node enters an undesirable state, you can delete such node, with YugabyteDB Anywhere clearing up all the remaining artifacts except the `prometheus` and `yugabyte` user.
+As described in [Eliminate an unresponsive node](../../../manage-deployments/remove-nodes/), when a node enters an undesirable state, you can delete such node, with YugabyteDB Anywhere clearing up all the remaining artifacts except the `prometheus` and `yugabyte` user.
 
 You can manually remove Yugabyte components from existing server images. Before attempting this, you have to determine whether or not YugabyteDB Anywhere is operational. If it is, you either need to delete the universe or delete the nodes from the universe.
 

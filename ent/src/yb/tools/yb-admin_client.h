@@ -29,6 +29,10 @@ namespace enterprise {
 YB_DEFINE_ENUM(ListSnapshotsFlag, (SHOW_DETAILS)(NOT_SHOW_RESTORED)(SHOW_DELETED)(JSON));
 using ListSnapshotsFlags = EnumBitSet<ListSnapshotsFlag>;
 
+// Constants for disabling tablet splitting during PITR restores.
+static constexpr double kPitrSplitDisableDurationSecs = 600;
+static constexpr double kPitrSplitDisableCheckFreqMs = 500;
+
 class ClusterAdminClient : public yb::tools::ClusterAdminClient {
   typedef yb::tools::ClusterAdminClient super;
  public:
@@ -39,11 +43,11 @@ class ClusterAdminClient : public yb::tools::ClusterAdminClient {
       : super(init_master_addrs, timeout) {}
 
   // Snapshot operations.
-  CHECKED_STATUS ListSnapshots(const ListSnapshotsFlags& flags);
-  CHECKED_STATUS CreateSnapshot(const std::vector<client::YBTableName>& tables,
+  Status ListSnapshots(const ListSnapshotsFlags& flags);
+  Status CreateSnapshot(const std::vector<client::YBTableName>& tables,
                                 const bool add_indexes = true,
                                 const int flush_timeout_secs = 0);
-  CHECKED_STATUS CreateNamespaceSnapshot(const TypedNamespaceName& ns);
+  Status CreateNamespaceSnapshot(const TypedNamespaceName& ns);
   Result<rapidjson::Document> ListSnapshotRestorations(
       const TxnSnapshotRestorationId& restoration_id);
   Result<rapidjson::Document> CreateSnapshotSchedule(const client::YBTableName& keyspace,
@@ -52,87 +56,90 @@ class ClusterAdminClient : public yb::tools::ClusterAdminClient {
   Result<rapidjson::Document> DeleteSnapshotSchedule(const SnapshotScheduleId& schedule_id);
   Result<rapidjson::Document> RestoreSnapshotSchedule(
       const SnapshotScheduleId& schedule_id, HybridTime restore_at);
-  CHECKED_STATUS RestoreSnapshot(const std::string& snapshot_id,
+  Status RestoreSnapshot(const std::string& snapshot_id,
                                  HybridTime timestamp);
-  CHECKED_STATUS DeleteSnapshot(const std::string& snapshot_id);
+  Status DeleteSnapshot(const std::string& snapshot_id);
 
-  CHECKED_STATUS CreateSnapshotMetaFile(const std::string& snapshot_id,
+  Status CreateSnapshotMetaFile(const std::string& snapshot_id,
                                         const std::string& file_name);
-  CHECKED_STATUS ImportSnapshotMetaFile(const std::string& file_name,
+  Status ImportSnapshotMetaFile(const std::string& file_name,
                                         const TypedNamespaceName& keyspace,
                                         const std::vector<client::YBTableName>& tables);
-  CHECKED_STATUS ListReplicaTypeCounts(const client::YBTableName& table_name);
+  Status ListReplicaTypeCounts(const client::YBTableName& table_name);
 
-  CHECKED_STATUS SetPreferredZones(const std::vector<string>& preferred_zones);
+  Status SetPreferredZones(const std::vector<string>& preferred_zones);
 
-  CHECKED_STATUS RotateUniverseKey(const std::string& key_path);
+  Status RotateUniverseKey(const std::string& key_path);
 
-  CHECKED_STATUS DisableEncryption();
+  Status DisableEncryption();
 
-  CHECKED_STATUS IsEncryptionEnabled();
+  Status IsEncryptionEnabled();
 
-  CHECKED_STATUS AddUniverseKeyToAllMasters(
+  Status AddUniverseKeyToAllMasters(
       const std::string& key_id, const std::string& universe_key);
 
-  CHECKED_STATUS AllMastersHaveUniverseKeyInMemory(const std::string& key_id);
+  Status AllMastersHaveUniverseKeyInMemory(const std::string& key_id);
 
-  CHECKED_STATUS RotateUniverseKeyInMemory(const std::string& key_id);
+  Status RotateUniverseKeyInMemory(const std::string& key_id);
 
-  CHECKED_STATUS DisableEncryptionInMemory();
+  Status DisableEncryptionInMemory();
 
-  CHECKED_STATUS WriteUniverseKeyToFile(const std::string& key_id, const std::string& file_name);
+  Status WriteUniverseKeyToFile(const std::string& key_id, const std::string& file_name);
 
-  CHECKED_STATUS CreateCDCStream(const TableId& table_id);
+  Status CreateCDCStream(const TableId& table_id);
 
-  CHECKED_STATUS CreateCDCSDKDBStream(const TypedNamespaceName& ns,
+  Status CreateCDCSDKDBStream(const TypedNamespaceName& ns,
                                       const std::string& CheckPointType);
 
-  CHECKED_STATUS DeleteCDCStream(const std::string& stream_id, bool force_delete = false);
+  Status DeleteCDCStream(const std::string& stream_id, bool force_delete = false);
 
-  CHECKED_STATUS DeleteCDCSDKDBStream(const std::string& db_stream_id);
+  Status DeleteCDCSDKDBStream(const std::string& db_stream_id);
 
-  CHECKED_STATUS ListCDCStreams(const TableId& table_id);
+  Status ListCDCStreams(const TableId& table_id);
 
-  CHECKED_STATUS ListCDCSDKStreams(const std::string& namespace_name);
+  Status ListCDCSDKStreams(const std::string& namespace_name);
 
-  CHECKED_STATUS GetCDCDBStreamInfo(const std::string& db_stream_id);
+  Status GetCDCDBStreamInfo(const std::string& db_stream_id);
 
-  CHECKED_STATUS SetupUniverseReplication(const std::string& producer_uuid,
+  Status SetupUniverseReplication(const std::string& producer_uuid,
                                           const std::vector<std::string>& producer_addresses,
                                           const std::vector<TableId>& tables,
                                           const std::vector<std::string>& producer_bootstrap_ids);
 
-  CHECKED_STATUS DeleteUniverseReplication(const std::string& producer_id,
+  Status DeleteUniverseReplication(const std::string& producer_id,
                                            bool ignore_errors = false);
 
-  CHECKED_STATUS AlterUniverseReplication(
+  Status AlterUniverseReplication(
       const std::string& producer_uuid,
       const std::vector<std::string>& producer_addresses,
       const std::vector<TableId>& add_tables,
       const std::vector<TableId>& remove_tables,
       const std::vector<std::string>& producer_bootstrap_ids_to_add,
-      const std::string& new_producer_universe_id);
+      const std::string& new_producer_universe_id,
+      bool remove_table_ignore_errors = false);
 
-  CHECKED_STATUS RenameUniverseReplication(const std::string& old_universe_name,
+  Status RenameUniverseReplication(const std::string& old_universe_name,
                                            const std::string& new_universe_name);
 
-  CHECKED_STATUS WaitForSetupUniverseReplicationToFinish(const string& producer_uuid);
+  Status WaitForSetupUniverseReplicationToFinish(const string& producer_uuid);
 
-  CHECKED_STATUS SetUniverseReplicationEnabled(const std::string& producer_id,
+  Status SetUniverseReplicationEnabled(const std::string& producer_id,
                                                bool is_enabled);
 
-  CHECKED_STATUS BootstrapProducer(const std::vector<TableId>& table_id);
+  Status BootstrapProducer(const std::vector<TableId>& table_id);
 
  private:
   Result<TxnSnapshotId> SuitableSnapshotId(
       const SnapshotScheduleId& schedule_id, HybridTime restore_at, CoarseTimePoint deadline);
 
-  CHECKED_STATUS SendEncryptionRequest(const std::string& key_path, bool enable_encryption);
+  Status SendEncryptionRequest(const std::string& key_path, bool enable_encryption);
 
   Result<HostPort> GetFirstRpcAddressForTS();
 
   void CleanupEnvironmentOnSetupUniverseReplicationFailure(
     const std::string& producer_uuid, const Status& failure_status);
+
+  Status DisableTabletSplitsDuringRestore(CoarseTimePoint deadline);
 
   DISALLOW_COPY_AND_ASSIGN(ClusterAdminClient);
 };

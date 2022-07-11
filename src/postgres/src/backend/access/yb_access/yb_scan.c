@@ -203,12 +203,14 @@ static void ybcBindColumnCondBetween(YbScanDesc ybScan, TupleDesc bind_desc,
 	if (is_hashed)
 	{
 		HandleYBStatus(YBCPgDmlBindHashCodes(ybScan->handle, start_valid,
-											start_inclusive, value, end_valid,
-											end_inclusive, value_end));
+											 start_inclusive, value, end_valid,
+											 end_inclusive, value_end));
 		return;
 	}
 
-  HandleYBStatus(YBCPgDmlBindColumnCondBetween(ybScan->handle, attnum, ybc_expr, ybc_expr_end));
+	HandleYBStatus(YBCPgDmlBindColumnCondBetween(ybScan->handle, attnum,
+												 ybc_expr, start_inclusive,
+												 ybc_expr_end, end_inclusive));
 }
 
 /*
@@ -433,8 +435,8 @@ ybcSetupScanPlan(bool xs_want_itup, YbScanDesc ybScan, YbScanPlan scan_plan)
 	/*
 	 * Setup control-parameters for Yugabyte preparing statements for different
 	 * types of scan.
-	 * - "querying_colocated_table": Support optimizations for (system and
-	 *   user) colocated tables
+	 * - "querying_colocated_table": Support optimizations for (system,
+	 *   user database and tablegroup) colocated tables
 	 * - "index_oid, index_only_scan, use_secondary_index": Different index
 	 *   scans.
 	 * NOTE: Primary index is a special case as there isn't a primary index
@@ -442,25 +444,8 @@ ybcSetupScanPlan(bool xs_want_itup, YbScanDesc ybScan, YbScanPlan scan_plan)
 	 */
 
 	ybScan->prepare_params.querying_colocated_table =
-		IsSystemRelation(relation);
-	if (!ybScan->prepare_params.querying_colocated_table &&
-		MyDatabaseColocated)
-	{
-		bool colocated = false;
-		bool notfound;
-		HandleYBStatusIgnoreNotFound(YBCPgIsTableColocated(MyDatabaseId,
-														   YbGetStorageRelid(relation),
-														   &colocated),
-									 &notfound);
-		ybScan->prepare_params.querying_colocated_table |= colocated;
-	}
-	else if (!ybScan->prepare_params.querying_colocated_table)
-	{
-		Oid tablegroupId = InvalidOid;
-		if (YbTablegroupCatalogExists)
-			tablegroupId = get_tablegroup_oid_by_table_oid(RelationGetRelid(relation));
-		ybScan->prepare_params.querying_colocated_table |= (tablegroupId != InvalidOid);
-	}
+		IsSystemRelation(relation) ||
+		YbGetTableProperties(relation)->is_colocated;
 
 	if (index)
 	{
@@ -831,9 +816,12 @@ static void
 ybcBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan) {
 	Relation relation = ybScan->relation;
 	Relation index = ybScan->index;
-	Oid		 dboid = YBCGetDatabaseOid(relation);
 
-	HandleYBStatus(YBCPgNewSelect(dboid, YbGetStorageRelid(relation), &ybScan->prepare_params, &ybScan->handle));
+	HandleYBStatus(YBCPgNewSelect(YBCGetDatabaseOid(relation),
+								  YbGetStorageRelid(relation),
+								  &ybScan->prepare_params,
+								  YBCIsRegionLocal(relation),
+								  &ybScan->handle));
 
 	if (IsSystemRelation(relation))
 	{
@@ -921,11 +909,11 @@ ybcBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan) {
 		if (ybScan->key[i].sk_flags & SK_ROW_HEADER)
 		{
 			int j = 0;
-			ScanKey subkeys = (ScanKey) 
+			ScanKey subkeys = (ScanKey)
 					DatumGetPointer(ybScan->key[i].sk_argument);
 			int last_att_no = YBFirstLowInvalidAttributeNumber;
 
-			/* 
+			/*
 			 * We can only push down right now if the primary key columns
 			 * are specified in the correct order and the primary key
 			 * has no hashed columns. We also need to ensure that
@@ -956,7 +944,7 @@ ybcBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan) {
 				last_att_no = current->sk_attno;
 
 				/* Make sure that there are no hash key columns. */
-				if (index->rd_indoption[current->sk_attno - 1] 
+				if (index->rd_indoption[current->sk_attno - 1]
 					& INDOPTION_HASH)
 				{
 					can_pushdown = false;
@@ -965,7 +953,7 @@ ybcBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan) {
 				count++;
 			}
 			while((subkeys[j++].sk_flags & SK_ROW_END) == 0);
-			
+
 			/*
 			 * Make sure that the primary key has no hash columns in order
 			 * to push down.
@@ -1013,15 +1001,15 @@ ybcBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan) {
 				 * applies to the RHS of (row key) <= (row key values)
 				 * expressions.
 				 */
-				bool is_direction_asc = 
+				bool is_direction_asc =
 									(index->rd_indoption[
-										subkeys[0].sk_attno - 1] 
+										subkeys[0].sk_attno - 1]
 										& INDOPTION_DESC) == 0;
 				bool gt = strategy == BTGreaterEqualStrategyNumber
 								|| strategy == BTGreaterStrategyNumber;
 				bool is_inclusive = strategy != BTGreaterStrategyNumber
 										&& strategy != BTLessStrategyNumber;
-				
+
 				bool is_point_scan = (count == index->rd_index->indnatts)
 										&& (strategy == BTEqualStrategyNumber);
 
@@ -1871,81 +1859,106 @@ void ybcCostEstimate(RelOptInfo *baserel, Selectivity selectivity,
 }
 
 /*
- * Evaluate the selectivity for some qualified cols given the hash and primary key cols.
- * TODO this should look into the actual operators and distinguish, for instance
- * equality and inequality conditions (for ASC/DESC columns) better.
+ * Evaluate the selectivity for yb_hash_code qualifiers.
+ * Returns 1.0 if there are no yb_hash_code comparison expressions for this
+ * index.
  */
-static double ybcIndexEvalClauseSelectivity(Relation index, Bitmapset *qual_cols,
-                                            bool is_unique_idx,
-                                            Bitmapset *hash_key,
-                                            Bitmapset *primary_key,
-											List *hashed_qinfos)
+static double ybcEvalHashSelectivity(List *hashed_qinfos)
 {
+	bool greatest_set = false;
+	int greatest = 0;
 
+	bool lowest_set = false;
+	int lowest = USHRT_MAX;
+	double selectivity;
+	ListCell * lc;
+
+	foreach(lc, hashed_qinfos)
 	{
-		bool greatest_set = false;
-		int greatest = 0;
+		IndexQualInfo *qinfo = (IndexQualInfo *) lfirst(lc);
+		RestrictInfo *rinfo = qinfo->rinfo;
+		Expr	   *clause = rinfo->clause;
 
-		bool lowest_set = false;
-		int lowest = USHRT_MAX;
-		bool hashed_valid = false;
-		ListCell * lc;
-
-		foreach(lc, hashed_qinfos)
+		if (!IsA(qinfo->other_operand, Const))
 		{
-			hashed_valid = true;
-			IndexQualInfo *qinfo = (IndexQualInfo *) lfirst(lc);
-			RestrictInfo *rinfo = qinfo->rinfo;
-			Expr	   *clause = rinfo->clause;
-
-			if (!IsA(qinfo->other_operand, Const))
-			{
-				continue;
-			}
-
-			int strategy;
-			Oid lefttype;
-			Oid righttype;
-			get_op_opfamily_properties(((OpExpr*) clause)->opno,
-				 INTEGER_LSM_FAM_OID, false, &strategy,
-				&lefttype, &righttype);
-
-			int signed_val = ((Const*) qinfo->other_operand)->constvalue;
-			signed_val = signed_val < 0 ? 0 : signed_val;
-			uint32_t val = signed_val > USHRT_MAX ? USHRT_MAX : signed_val;
-
-			switch (strategy)
-			{
-				case BTLessStrategyNumber: switch_fallthrough();
-				case BTLessEqualStrategyNumber:
-					greatest_set = true;
-					greatest = val > greatest ? val : greatest;
-					break;
-				case BTGreaterEqualStrategyNumber: switch_fallthrough();
-				case BTGreaterStrategyNumber:
-					lowest_set = true;
-					lowest = val < lowest ? val : lowest;
-					break;
-				case BTEqualStrategyNumber:
-					return YBC_SINGLE_KEY_SELECTIVITY;
-				default:
-					break;
-			}
-
-			if (greatest == lowest && greatest_set && lowest_set)
-			{
-				break;
-			}
+			continue;
 		}
 
-		if (hashed_valid)
+		int strategy;
+		Oid lefttype;
+		Oid righttype;
+		get_op_opfamily_properties(((OpExpr*) clause)->opno,
+								   INTEGER_LSM_FAM_OID,
+								   false,
+								   &strategy,
+								   &lefttype,
+								   &righttype);
+
+		int signed_val = ((Const*) qinfo->other_operand)->constvalue;
+		signed_val = signed_val < 0 ? 0 : signed_val;
+		uint32_t val = signed_val > USHRT_MAX ? USHRT_MAX : signed_val;
+
+		/*
+		 * The goal here is to calculate selectivity based on qualifiers.
+		 *
+		 * 1. yb_hash_code(hash_col) -- Single Key selectivity
+		 * 2. yb_hash_code(hash_col) >= ABC and yb_hash_code(hash_col) <= XYZ
+		 *    This specifically means that we return all the hash codes between
+		 *    ABC and XYZ. YBCEvalHashValueSelectivity takes in ABC and XYZ as
+		 *    arguments and finds the number of buckets to search to return what
+		 *    is required. If it needs to search 16 buckets out of 48 buckets
+		 *    then the selectivity is 0.33 which YBCEvalHashValueSelectivity
+		 *    returns.
+		 */
+		switch (strategy)
 		{
-			greatest = greatest_set ? greatest : INT32_MAX;
-			lowest = lowest_set ? lowest : INT32_MIN;
-			return YBCEvalHashValueSelectivity(lowest, greatest);
+			case BTLessStrategyNumber: switch_fallthrough();
+			case BTLessEqualStrategyNumber:
+				greatest_set = true;
+				greatest = val > greatest ? val : greatest;
+				break;
+			case BTGreaterEqualStrategyNumber: switch_fallthrough();
+			case BTGreaterStrategyNumber:
+				lowest_set = true;
+				lowest = val < lowest ? val : lowest;
+				break;
+			case BTEqualStrategyNumber:
+				return YBC_SINGLE_KEY_SELECTIVITY;
+			default:
+				break;
+		}
+
+		if (greatest == lowest && greatest_set && lowest_set)
+		{
+			break;
 		}
 	}
 
+	if (!greatest_set && !lowest_set)
+	{
+		return 1.0;
+	}
+
+	greatest = greatest_set ? greatest : INT32_MAX;
+	lowest = lowest_set ? lowest : INT32_MIN;
+
+	selectivity = YBCEvalHashValueSelectivity(lowest, greatest);
+#ifdef SELECTIVITY_DEBUG
+	elog(DEBUG4, "yb_hash_code selectivity is %f", selectivity);
+#endif
+	return selectivity;
+}
+
+
+/*
+ * Evaluate the selectivity for some qualified cols given the hash and primary key cols.
+ */
+static double ybcIndexEvalClauseSelectivity(Relation index,
+											Bitmapset *qual_cols,
+											bool is_unique_idx,
+                                            Bitmapset *hash_key,
+                                            Bitmapset *primary_key)
+{
 	/*
 	 * If there is no search condition, or not all of the hash columns have
 	 * search conditions, it will be a full-table scan.
@@ -1974,8 +1987,9 @@ Oid ybc_get_attcollation(TupleDesc desc, AttrNumber attnum)
 	return attnum > 0 ? TupleDescAttr(desc, attnum - 1)->attcollation : InvalidOid;
 }
 
-void ybcIndexCostEstimate(IndexPath *path, Selectivity *selectivity,
-						  Cost *startup_cost, Cost *total_cost)
+void ybcIndexCostEstimate(struct PlannerInfo *root, IndexPath *path,
+						  Selectivity *selectivity, Cost *startup_cost,
+						  Cost *total_cost)
 {
 	Relation	index = RelationIdGetRelation(path->indexinfo->indexoid);
 	bool		isprimary = index->rd_index->indisprimary;
@@ -1987,7 +2001,9 @@ void ybcIndexCostEstimate(IndexPath *path, Selectivity *selectivity,
 	bool        is_unique = index->rd_index->indisunique;
 	bool        is_partial_idx = path->indexinfo->indpred != NIL && path->indexinfo->predOK;
 	Bitmapset  *const_quals = NULL;
-	List	   *hashed_qinfos = NULL;
+	List	   *hashed_qinfos = NIL;
+	List	   *clauses = NULL;
+	double 		baserel_rows_estimate;
 
 	/* Primary-index scans are always covered in Yugabyte (internally) */
 	bool       is_uncovered_idx_scan = !index->rd_index->indisprimary &&
@@ -2050,27 +2066,48 @@ void ybcIndexCostEstimate(IndexPath *path, Selectivity *selectivity,
 		{
 			hashed_qinfos = lappend(hashed_qinfos, qinfo);
 		}
+		else
+		{
+			clauses = lappend(clauses, rinfo);
+		}
+	}
+	if (hashed_qinfos != NIL)
+	{
+		*selectivity = ybcEvalHashSelectivity(hashed_qinfos);
+		baserel_rows_estimate = baserel->tuples * (*selectivity);
+	}
+	else
+	{
+		if (yb_enable_optimizer_statistics)
+		{
+			*selectivity = clauselist_selectivity(root /* PlannerInfo */,
+												clauses,
+												path->indexinfo->rel->relid /* varrelid */,
+												JOIN_INNER,
+												NULL /* SpecialJoinInfo */);
+			baserel_rows_estimate = baserel->tuples * (*selectivity) >= 1
+				? baserel->tuples * (*selectivity)
+				: 1;
+		}
+		else
+		{
+			*selectivity = ybcIndexEvalClauseSelectivity(index,
+														scan_plan.sk_cols,
+														is_unique,
+														scan_plan.hash_key,
+														scan_plan.primary_key);
+			baserel_rows_estimate = baserel->tuples * (*selectivity);
+		}
 	}
 
 
-	/*
-	 * If there is no search condition, or not all of the hash columns have search conditions, it
-	 * will be a full-table scan. Otherwise, it will be either a primary key lookup or range scan
-	 * on a hash key.
-	 */
-
-	*selectivity = ybcIndexEvalClauseSelectivity(index, scan_plan.sk_cols,
-												is_unique,
-												scan_plan.hash_key,
-												scan_plan.primary_key, hashed_qinfos);
-	path->path.rows = baserel->tuples * (*selectivity);
+	path->path.rows = baserel_rows_estimate;
 
 	/*
 	 * For partial indexes, scale down the rows to account for the predicate.
 	 * Do this after setting the baserel rows since this does not apply to base rel.
-	 * TODO: this should be evaluated based on the index condition in the future.
 	 */
-	if (is_partial_idx)
+	if (!yb_enable_optimizer_statistics && is_partial_idx)
 	{
 		*selectivity *= YBC_PARTIAL_IDX_PRED_SELECTIVITY;
 	}
@@ -2080,21 +2117,22 @@ void ybcIndexCostEstimate(IndexPath *path, Selectivity *selectivity,
 					startup_cost, total_cost,
 					path->indexinfo->reltablespace);
 
-	/*
-	 * Try to evaluate the number of rows this baserel might return.
-	 * We cannot rely on the join conditions here (e.g. t1.c1 = t2.c2) because
-	 * they may not be applied if another join path is chosen.
-	 * So only use the t1.c1 = <const_value> quals (filtered above) for this.
-	 */
-	double const_qual_selectivity = ybcIndexEvalClauseSelectivity(index,
-																  const_quals,
-																  is_unique,
-																  scan_plan.
-																  hash_key,
-																  scan_plan.
-																  primary_key,
-																  NULL);
-	double baserel_rows_estimate = const_qual_selectivity * baserel->tuples;
+	if (!yb_enable_optimizer_statistics)
+	{
+		/*
+		 * Try to evaluate the number of rows this baserel might return.
+		 * We cannot rely on the join conditions here (e.g. t1.c1 = t2.c2) because
+		 * they may not be applied if another join path is chosen.
+		 * So only use the t1.c1 = <const_value> quals (filtered above) for this.
+		 */
+		double const_qual_selectivity = ybcIndexEvalClauseSelectivity(index,
+																	  const_quals,
+																	  is_unique,
+																	  scan_plan.hash_key,
+																	  scan_plan.primary_key);
+		baserel_rows_estimate = const_qual_selectivity * baserel->tuples;
+	}
+
 	if (baserel_rows_estimate < baserel->rows)
 	{
 		baserel->rows = baserel_rows_estimate;
@@ -2114,6 +2152,7 @@ HeapTuple YBCFetchTuple(Relation relation, Datum ybctid)
 	HandleYBStatus(YBCPgNewSelect(YBCGetDatabaseOid(relation),
 								  YbGetStorageRelid(relation),
 								  NULL /* prepare_params */,
+								  YBCIsRegionLocal(relation),
 								  &ybc_stmt));
 
 	/* Bind ybctid to identify the current row. */
@@ -2202,9 +2241,10 @@ YBCLockTuple(Relation relation, Datum ybctid, RowMarkType mode, LockWaitPolicy w
 
 	YBCPgStatement ybc_stmt;
 	HandleYBStatus(YBCPgNewSelect(YBCGetDatabaseOid(relation),
-																RelationGetRelid(relation),
-																NULL /* prepare_params */,
-																&ybc_stmt));
+								RelationGetRelid(relation),
+								NULL /* prepare_params */,
+								YBCIsRegionLocal(relation),
+								&ybc_stmt));
 
 	/* Bind ybctid to identify the current row. */
 	YBCPgExpr ybctid_expr = YBCNewConstant(ybc_stmt, BYTEAOID, InvalidOid, ybctid, false);
@@ -2214,7 +2254,7 @@ YBCLockTuple(Relation relation, Datum ybctid, RowMarkType mode, LockWaitPolicy w
 	exec_params.limit_count = 1;
 	exec_params.rowmark = mode;
 	exec_params.wait_policy = wait_policy;
-  exec_params.statement_read_time = estate->yb_exec_params.statement_read_time;
+  exec_params.statement_in_txn_limit = estate->yb_exec_params.statement_in_txn_limit;
 
 	HTSU_Result res = HeapTupleMayBeUpdated;
 	MemoryContext exec_context = GetCurrentMemoryContext();
@@ -2291,7 +2331,11 @@ ybBeginSample(Relation rel, int targrows)
 	/*
 	 * Create new sampler command
 	 */
-	HandleYBStatus(YBCPgNewSample(dboid, relid, targrows, &ybSample->handle));
+	HandleYBStatus(YBCPgNewSample(dboid,
+								  relid,
+								  targrows,
+								  YBCIsRegionLocal(rel),
+								  &ybSample->handle));
 
 	/*
 	 * Set up the scan targets. We need to return all "real" columns.

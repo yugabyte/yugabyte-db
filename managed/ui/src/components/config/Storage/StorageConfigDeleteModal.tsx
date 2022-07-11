@@ -59,6 +59,7 @@ export const StorageConfigDeleteModal: FC<StorageConfigDeleteModalProps> = ({
         'createTime',
         'DESC',
         undefined,
+        undefined,
         configUUID
       ),
     {

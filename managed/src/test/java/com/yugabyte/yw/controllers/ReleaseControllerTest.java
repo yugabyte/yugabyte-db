@@ -71,15 +71,8 @@ public class ReleaseControllerTest extends FakeDBApplication {
     return getReleases(customerUUID, false);
   }
 
-  private Result getReleasesRegion(UUID customerUUID, UUID providerUUID, UUID regionUUID) {
-    String uri =
-        "/api/customers/"
-            + customerUUID
-            + "/providers/"
-            + providerUUID
-            + "/regions/"
-            + regionUUID
-            + "/releases";
+  private Result getReleasesProvider(UUID customerUUID, UUID providerUUID) {
+    String uri = "/api/customers/" + customerUUID + "/providers/" + providerUUID + "/releases";
     return FakeApiHelper.doRequestWithAuthToken("GET", uri, user.createAuthToken());
   }
 
@@ -417,7 +410,7 @@ public class ReleaseControllerTest extends FakeDBApplication {
   public void testGetReleasesByRegionOld() {
     mockNewReleaseData(true);
     when(mockRegion.getArchitecture()).thenReturn(null);
-    Result result = getReleasesRegion(customer.uuid, provider.uuid, region.uuid);
+    Result result = getReleasesProvider(customer.uuid, provider.uuid);
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
     Set<String> versions = ImmutableSet.of("0.0.2", "0.0.3", "0.0.4", "0.0.5", "0.0.6");
@@ -433,7 +426,7 @@ public class ReleaseControllerTest extends FakeDBApplication {
     mockNewReleaseData(true);
     region.setArchitecture(Architecture.valueOf("x86_64"));
     region.update();
-    Result result = getReleasesRegion(customer.uuid, provider.uuid, region.uuid);
+    Result result = getReleasesProvider(customer.uuid, provider.uuid);
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
     Set<String> versions = ImmutableSet.of("0.0.2", "0.0.3", "0.0.4", "0.0.6");
@@ -449,7 +442,7 @@ public class ReleaseControllerTest extends FakeDBApplication {
     mockNewReleaseData(true);
     region.setArchitecture(Architecture.valueOf("arm64"));
     region.update();
-    Result result = getReleasesRegion(customer.uuid, provider.uuid, region.uuid);
+    Result result = getReleasesProvider(customer.uuid, provider.uuid);
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
     Set<String> versions = ImmutableSet.of("0.0.3", "0.0.5", "0.0.6");
@@ -465,7 +458,7 @@ public class ReleaseControllerTest extends FakeDBApplication {
     mockNewReleaseData(false);
     region.setArchitecture(Architecture.valueOf("arm64"));
     region.update();
-    Result result = getReleasesRegion(customer.uuid, provider.uuid, region.uuid);
+    Result result = getReleasesProvider(customer.uuid, provider.uuid);
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
     Set<String> versions = ImmutableSet.of();

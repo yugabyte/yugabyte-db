@@ -8,8 +8,7 @@ menu:
     identifier: typecasting-between-date-time-values
     parent: api-ysql-datatypes-datetime
     weight: 70
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 See the [table](../../type_datetime/#synopsis) at the start of the overall "Date and time data types" section. It lists six data types, but quotes the [PostgreSQL documentation](https://www.postgresql.org/docs/11/datatype-datetime.html#DATATYPE-DATETIME-TABLE) that recommends that you avoid using the _timetz_ datatype. This leaves five _date-time_ data types that are recommended for use. Each of the two axes of the [Summary table](#summary-table) below lists these five data types  along with the _text_ data type—so there are _thirty-six_ cells.

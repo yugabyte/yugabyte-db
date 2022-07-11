@@ -41,6 +41,42 @@ constexpr typename std::underlying_type<E>::type to_underlying(E e) {
   return static_cast<typename std::underlying_type<E>::type>(e);
 }
 
+template <typename E>
+class EnumIterator {
+ public:
+  using iterator_category = std::forward_iterator_tag;
+  using difference_type = std::size_t;
+  using value_type = E;
+  using pointer = E*;
+  using reference = E&;
+
+  EnumIterator() : index_(0) {}
+  explicit EnumIterator(size_t index) : index_(index) {}
+
+  value_type operator*() const { return Array(static_cast<E*>(nullptr))[index_]; }
+
+  EnumIterator& operator++() { index_++; return *this; }
+
+  friend bool operator== (const EnumIterator& a, const EnumIterator& b) {
+    return a.index_ == b.index_;
+  }
+
+  friend bool operator!= (const EnumIterator& a, const EnumIterator& b) {
+    return a.index_ != b.index_;
+  }
+
+ private:
+  size_t index_;
+};
+
+template <typename E>
+class AllEnumItemsIterable {
+ public:
+  using const_iterator = EnumIterator<E>;
+  const_iterator begin() const { return EnumIterator<E>(); }
+  const_iterator end() const { return EnumIterator<E>(NumEnumElements(static_cast<E*>(nullptr))); }
+};
+
 // YB_DEFINE_ENUM
 // -----------------------------------------------------------------------------------------------
 
@@ -64,6 +100,10 @@ constexpr typename std::underlying_type<E>::type to_underlying(E e) {
 
 #define YB_ENUM_ITEM(s, data, elem) \
     BOOST_PP_CAT(BOOST_PP_APPLY(data), YB_ENUM_ITEM_NAME(elem)) YB_ENUM_ITEM_VALUE(elem),
+
+#define YB_ENUM_LIST_ITEM(s, data, elem) \
+    BOOST_PP_TUPLE_ELEM(2, 0, data):: \
+        BOOST_PP_CAT(BOOST_PP_APPLY(BOOST_PP_TUPLE_ELEM(2, 1, data)), YB_ENUM_ITEM_NAME(elem))
 
 #define YB_ENUM_LIST_ITEM(s, data, elem) \
     BOOST_PP_TUPLE_ELEM(2, 0, data):: \
@@ -111,16 +151,25 @@ constexpr typename std::underlying_type<E>::type to_underlying(E e) {
       BOOST_PP_SEQ_SIZE(list); \
   constexpr __attribute__((unused)) size_t BOOST_PP_CAT(k, BOOST_PP_CAT(enum_name, MapSize)) =  \
       YB_ENUM_MAP_SIZE(enum_name, prefix, list); \
-  constexpr __attribute__((unused)) std::initializer_list<enum_name> \
-      BOOST_PP_CAT(k, BOOST_PP_CAT(enum_name, List)) = {\
-          YB_ENUM_ITEMS(enum_name, prefix, list) \
-  };\
-  /* Functions returning kEnumMapSize and kEnumList that could be used in templates. */ \
+  constexpr __attribute__((unused)) \
+      enum_name BOOST_PP_CAT(k, BOOST_PP_CAT(enum_name, Array))[] = { \
+        YB_ENUM_ITEMS(enum_name, prefix, list) \
+      }; \
+  inline __attribute__((unused)) const enum_name* Array(enum_name*) { \
+    return BOOST_PP_CAT(k, BOOST_PP_CAT(enum_name, Array)); \
+  } \
+  inline __attribute__((unused)) auto BOOST_PP_CAT(enum_name, List)() { \
+    return ::yb::AllEnumItemsIterable<enum_name>(); \
+  } \
+  /* Functions returning kElementsIn, kEnumMapSize, and kEnumList for use in templates. */ \
+  constexpr __attribute__((unused)) size_t NumEnumElements(enum_name*) { \
+    return BOOST_PP_CAT(kElementsIn, enum_name); \
+  } \
   constexpr __attribute__((unused)) size_t MapSize(enum_name*) { \
     return BOOST_PP_CAT(k, BOOST_PP_CAT(enum_name, MapSize)); \
   } \
-  constexpr __attribute__((unused)) auto List(enum_name*) { \
-    return BOOST_PP_CAT(k, BOOST_PP_CAT(enum_name, List)); \
+  inline __attribute__((unused)) auto List(enum_name*) { \
+    return ::yb::AllEnumItemsIterable<enum_name>(); \
   } \
   /**/
 

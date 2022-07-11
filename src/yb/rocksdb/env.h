@@ -136,18 +136,18 @@ struct EnvOptions : public yb::FileSystemOptions {
 class RocksDBFileFactory {
  public:
   virtual ~RocksDBFileFactory() {}
-  virtual CHECKED_STATUS NewSequentialFile(const std::string& f, unique_ptr<SequentialFile>* r,
+  virtual Status NewSequentialFile(const std::string& f, unique_ptr<SequentialFile>* r,
                                            const EnvOptions& options) = 0;
-  virtual CHECKED_STATUS NewRandomAccessFile(const std::string& f,
+  virtual Status NewRandomAccessFile(const std::string& f,
                                              unique_ptr<RandomAccessFile>* r,
                                              const EnvOptions& options) = 0;
-  virtual CHECKED_STATUS NewWritableFile(const std::string& f, unique_ptr<WritableFile>* r,
+  virtual Status NewWritableFile(const std::string& f, unique_ptr<WritableFile>* r,
                                          const EnvOptions& options) = 0;
-  virtual CHECKED_STATUS ReuseWritableFile(const std::string& fname,
+  virtual Status ReuseWritableFile(const std::string& fname,
                                    const std::string& old_fname,
                                    unique_ptr<WritableFile>* result,
                                    const EnvOptions& options) = 0;
-  virtual CHECKED_STATUS GetFileSize(const std::string& fname, uint64_t* size) = 0;
+  virtual Status GetFileSize(const std::string& fname, uint64_t* size) = 0;
 
   // Does the file factory produce plaintext files.
   virtual bool IsPlainText() const = 0;

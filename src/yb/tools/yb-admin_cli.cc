@@ -83,13 +83,13 @@ constexpr auto kBlacklistAdd = "ADD";
 constexpr auto kBlacklistRemove = "REMOVE";
 constexpr int32 kDefaultRpcPort = 9100;
 
-CHECKED_STATUS GetUniverseConfig(ClusterAdminClientClass* client,
+Status GetUniverseConfig(ClusterAdminClientClass* client,
                                  const ClusterAdminCli::CLIArguments&) {
   RETURN_NOT_OK_PREPEND(client->GetUniverseConfig(), "Unable to get universe config");
   return Status::OK();
 }
 
-CHECKED_STATUS ChangeBlacklist(ClusterAdminClientClass* client,
+Status ChangeBlacklist(ClusterAdminClientClass* client,
                                const ClusterAdminCli::CLIArguments& args, bool blacklist_leader,
                                const std::string& errStr) {
   if (args.size() < 2) {
@@ -109,7 +109,7 @@ CHECKED_STATUS ChangeBlacklist(ClusterAdminClientClass* client,
   return Status::OK();
 }
 
-CHECKED_STATUS MasterLeaderStepDown(
+Status MasterLeaderStepDown(
     ClusterAdminClientClass* client,
     const ClusterAdminCli::CLIArguments& args) {
   const auto leader_uuid = VERIFY_RESULT(client->GetMasterLeaderUuid());
@@ -117,7 +117,7 @@ CHECKED_STATUS MasterLeaderStepDown(
       leader_uuid, args.size() > 0 ? args[0] : std::string());
 }
 
-CHECKED_STATUS LeaderStepDown(
+Status LeaderStepDown(
     ClusterAdminClientClass* client,
     const ClusterAdminCli::CLIArguments& args) {
   if (args.size() < 1) {
@@ -140,7 +140,7 @@ template <class Enum>
 Result<std::pair<int, EnumBitSet<Enum>>> GetValueAndFlags(
     const CLIArgumentsIterator& begin,
     const CLIArgumentsIterator& end,
-    const std::initializer_list<Enum>& flags_list) {
+    const AllEnumItemsIterable<Enum>& flags_list) {
   std::pair<int, EnumBitSet<Enum>> result;
   bool seen_value = false;
   for (auto iter = begin; iter != end; iter = ++iter) {
@@ -175,7 +175,7 @@ YB_DEFINE_ENUM(AddIndexes, (ADD_INDEXES));
 Result<pair<int, bool>> GetTimeoutAndAddIndexesFlag(
     CLIArgumentsIterator begin,
     const CLIArgumentsIterator& end) {
-  auto temp_pair = VERIFY_RESULT(GetValueAndFlags(begin, end, kAddIndexesList));
+  auto temp_pair = VERIFY_RESULT(GetValueAndFlags(begin, end, AddIndexesList()));
   return std::make_pair(temp_pair.first, temp_pair.second.Test(AddIndexes::ADD_INDEXES));
 }
 
@@ -242,6 +242,11 @@ Status ClusterAdminCli::Run(int argc, char** argv) {
   s = commands_[cmd->second].action_(command_args);
   if (!s.ok()) {
     cerr << "Error running " << cmd->first << ": " << s << endl;
+    if (s.IsInvalidArgument()) {
+      cerr << Format(
+                  "Usage: $0 $1 $2", args[0], cmd->first, commands_[cmd->second].usage_arguments_)
+           << endl;
+    }
     return STATUS(RuntimeError, "Error running command");
   }
   return Status::OK();
@@ -382,7 +387,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
         const auto table_name  = VERIFY_RESULT(ResolveSingleTableName(
             client, args.begin(), args.end(),
             [&arguments](auto i, const auto& end) -> Status {
-              arguments = VERIFY_RESULT(GetValueAndFlags(i, end, kListTabletsFlagsList));
+              arguments = VERIFY_RESULT(GetValueAndFlags(i, end, ListTabletsFlagsList()));
               return Status::OK();
             }));
         RETURN_NOT_OK_PREPEND(
@@ -847,14 +852,15 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
-      "disable_tablet_splitting", " <disable_duration_ms>",
+      "disable_tablet_splitting", " <disable_duration_ms> <feature_name>",
       [client](const CLIArguments& args) -> Status {
         if (args.size() < 1) {
           return ClusterAdminCli::kInvalidArguments;
         }
         const int64_t disable_duration_ms = VERIFY_RESULT(CheckedStoll(args[0]));
-        RETURN_NOT_OK_PREPEND(client->DisableTabletSplitting(disable_duration_ms),
-                              "Unable to disable tablet splitting");
+        const std::string feature_name = args[1];
+        RETURN_NOT_OK_PREPEND(client->DisableTabletSplitting(disable_duration_ms, feature_name),
+                              Format("Unable to disable tablet splitting for $0", feature_name));
         return Status::OK();
       });
 

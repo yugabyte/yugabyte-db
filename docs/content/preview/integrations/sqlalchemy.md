@@ -3,20 +3,17 @@ title: Using SQLAlchemy with YugabyteDB
 linkTitle: SQLAlchemy
 description: Using SQLAlchemy with YugabyteDB
 aliases:
-section: INTEGRATIONS
 menu:
   preview:
     identifier: sqlalchemy
+    parent: integrations
     weight: 571
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 This document describes how to use [SQLAlchemy](https://www.sqlalchemy.org/), a Python SQL tool and object-relational mapping (ORM) tool, with YugabetyDB.
 
 ## Prerequisites
-
-Before you can start using SQLAlchemy, ensure that you have the following available:
 
 - YugabyteDB version 2.6 or later (see [YugabyteDB Quick Start Guide](/preview/quick-start/)).
 
@@ -30,7 +27,7 @@ Before you can start using SQLAlchemy, ensure that you have the following availa
   pip3 install sqlalchemy
   ```
 
-  You can verify the installation as follows:
+  Verify the installation as follows:
 
   - Open the Python prompt by executing the following command:
 
@@ -60,13 +57,13 @@ Before you can start using SQLAlchemy, ensure that you have the following availa
   pip3 install psycopg2-binary
   ```
 
-## Using SQLAlchemy
+## Use SQLAlchemy
 
-You can start using SQLAlchemy with YugabyteDB as follows:
+Start using SQLAlchemy with YugabyteDB as follows:
 
 - Create a demo project and add a `main.py` and `config.py` files to it.
 
-- Add the followingn code to the `config.py` file:
+- Add the following code to the `config.py` file:
 
   ```python
   db_user = 'yugabyte'
@@ -76,7 +73,7 @@ You can start using SQLAlchemy with YugabyteDB as follows:
   db_port = 5433
   ```
 
-- Add the followingn code to the `main.py` file:
+- Add the following code to the `main.py` file:
 
   ```python
   import config as cfg
@@ -120,11 +117,11 @@ You can start using SQLAlchemy with YugabyteDB as follows:
   python3 main.py
   ```
 
-## Testing the code
+## Test the code
 
-You can verify the code execution by looking for the changes inside the database, as follows:
+Verify the code execution by looking for the changes inside the database as follows:
 
--  Navigate to your YugabyteDB installation directory by running the following command:
+- Navigate to your YugabyteDB installation directory by running the following command:
 
   ```shell
   cd /<path-to-yugabytedb>
@@ -163,7 +160,5 @@ You can verify the code execution by looking for the changes inside the database
 
 Consider the following limitations:
 
-- Since YugabyteDB does not support savepoints in transactions, you cannot use savepoints with SQLAlchemy ORM.
-- Due to the distributed nature of YugabyteDB, rows returned by a query might not be in sequential or expected order. It is, therefore, recommended that you use the `orderby()` function to avoid the wrong data when executing functions such as `first()`.
+- Because of the distributed nature of YugabyteDB, rows returned by a query might not be in sequential or expected order. It is, therefore, recommended that you use the `orderby()` function to avoid the wrong data when executing functions such as `first()`.
 - YugabyteDB does not support columns that contain a `PRIMARY KEY` of type `user_defined_type`.
-

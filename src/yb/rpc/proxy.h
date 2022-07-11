@@ -137,13 +137,13 @@ class Proxy {
 
   // The same as AsyncRequest(), except that the call blocks until the call
   // finishes. If the call fails, returns a non-OK result.
-  CHECKED_STATUS SyncRequest(const RemoteMethod* method,
+  Status SyncRequest(const RemoteMethod* method,
                              std::shared_ptr<const OutboundMethodMetrics> method_metrics,
                              const google::protobuf::Message& req,
                              google::protobuf::Message* resp,
                              RpcController* controller);
 
-  CHECKED_STATUS SyncRequest(const RemoteMethod* method,
+  Status SyncRequest(const RemoteMethod* method,
                              std::shared_ptr<const OutboundMethodMetrics> method_metrics,
                              const LightweightMessage& request,
                              LightweightMessage* resp,
@@ -173,7 +173,7 @@ class Proxy {
                       ResponseCallback callback,
                       bool force_run_callback_on_reactor);
 
-  CHECKED_STATUS DoSyncRequest(const RemoteMethod* method,
+  Status DoSyncRequest(const RemoteMethod* method,
                                std::shared_ptr<const OutboundMethodMetrics> method_metrics,
                                AnyMessageConstPtr req,
                                AnyMessagePtr resp,

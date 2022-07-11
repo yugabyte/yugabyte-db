@@ -429,7 +429,7 @@ ColumnSchema ColumnSchemaFromPB(const ColumnSchemaPB& pb) {
                       SortingType(pb.sorting_type()), pb.pg_type_oid());
 }
 
-CHECKED_STATUS ColumnPBsToColumnTuple(
+Status ColumnPBsToColumnTuple(
     const RepeatedPtrField<ColumnSchemaPB>& column_pbs,
     vector<ColumnSchema>* columns , vector<ColumnId>* column_ids, int* num_key_columns) {
   columns->reserve(column_pbs.size());
@@ -487,7 +487,7 @@ void SchemaToColumnPBs(const Schema& schema,
 }
 
 Result<UsePrivateIpMode> GetPrivateIpMode() {
-  for (auto i : kUsePrivateIpModeList) {
+  for (auto i : UsePrivateIpModeList()) {
     if (FLAGS_use_private_ip == ToCString(i)) {
       return i;
     }
@@ -561,7 +561,7 @@ static const std::string kSplitChildTabletIdsCategoryName = "split child tablet 
 StatusCategoryRegisterer split_child_tablet_ids_category_registerer(
     StatusCategoryDescription::Make<SplitChildTabletIdsTag>(&kSplitChildTabletIdsCategoryName));
 
-std::string SplitChildTabletIdsTag::ToMessage(Value value) {
+std::string SplitChildTabletIdsTag::ToMessage(const Value& value) {
   return Format("Split child tablet IDs: $0", value);
 }
 

@@ -70,7 +70,7 @@ include_directories(${YB_BUILD_ROOT}/postgres/include/server)
 set(MASTER_SRCS
   async_flush_tablets_task.cc
   async_rpc_tasks.cc
-  call_home.cc
+  master_call_home.cc
   backfill_index.cc
   catalog_manager.cc
   catalog_manager_util.cc
@@ -133,6 +133,7 @@ set(MASTER_SRCS
   yql_views_vtable.cc
   yql_partitions_vtable.cc
   ysql_transaction_ddl.cc
+  ysql_tablegroup_manager.cc
   ysql_tablespace_manager.cc
   ${MASTER_SRCS_EXTENSIONS})
 
@@ -215,3 +216,9 @@ add_executable(yb-master master_main.cc)
 target_link_libraries(yb-master
   master
   ${YB_BASE_LIBS})
+
+# Generate master_flags.xml
+set(MASTER_FLAGS_METADATA_FILE ${YB_BUILD_ROOT}/master_flags.xml)
+add_custom_command(TARGET yb-master POST_BUILD
+  COMMAND "${BUILD_SUPPORT_DIR}/gen_flags_metadata_wrapper" "yb-master" "${MASTER_FLAGS_METADATA_FILE}"
+  BYPRODUCTS "${MASTER_FLAGS_METADATA_FILE}")

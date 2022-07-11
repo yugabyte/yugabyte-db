@@ -94,6 +94,7 @@ class ToggleUniverseState extends Component {
                 <li>Any configured alerts and health checks will not be triggered.</li>
                 <li>Scheduled backups will be stopped.</li>
                 <li>Any changes to universe configuration are not allowed.</li>
+                <li>For Azure universes IP-addresses of any instance can be changed on restart.</li>
                 <li>
                   All data in the cluster will be saved and the cluster can be unpaused at any time.
                 </li>

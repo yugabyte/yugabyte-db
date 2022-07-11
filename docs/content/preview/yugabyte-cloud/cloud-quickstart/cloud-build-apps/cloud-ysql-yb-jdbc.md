@@ -4,14 +4,12 @@ headerTitle: Build a Java application
 linkTitle: Java
 description: Build a simple Java application using the YugabyteDB JDBC Driver and using the YSQL API to connect to and interact with a YugabyteDB Managed cluster.
 menu:
-  preview:
+  preview_yugabyte-cloud:
     parent: cloud-build-apps
     name: Java
     identifier: cloud-java
     weight: 100
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 The following tutorial shows a small [Java application](https://github.com/yugabyte/yugabyte-simple-java-app) that connects to a YugabyteDB cluster using the topology-aware [Yugabyte JDBC driver](../../../../integrations/jdbc-driver/) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB Managed in Java.
@@ -23,8 +21,7 @@ This tutorial requires the following.
 ### YugabyteDB Managed
 
 - You have a cluster deployed in YugabyteDB Managed. To get started, use the [Quick start](../../).
-- You downloaded the cluster CA certificate. Refer to [Download your cluster certificate](../../../cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate).
-- You have added your computer to the cluster IP allow list. Refer to [Assign IP Allow Lists](../../../cloud-secure-clusters/add-connections/).
+- You downloaded the cluster CA certificate and added your computer to the cluster IP allow list. Refer to [Before you begin](../cloud-add-ip/).
 
 ### Other packages
 
@@ -36,7 +33,7 @@ This tutorial requires the following.
 Clone the sample application to your computer:
 
 ```sh
-git clone https://github.com/yugabyte/yugabyte-simple-java-app.git && cd yugabyte-simple-java-app
+git clone https://github.com/YugabyteDB-Samples/yugabyte-simple-java-app.git && cd yugabyte-simple-java-app
 ```
 
 ## Provide connection parameters
@@ -69,7 +66,7 @@ Start the application.
 $ java -cp target/yugabyte-simple-java-app-1.0-SNAPSHOT.jar SampleApp
 ```
 
-If you are running the application on a free or single node cluster, the driver displays a warning that the load balance failed and will fall back to a regular connection.
+If you are running the application on a Sandbox or single node cluster, the driver displays a warning that the load balance failed and will fall back to a regular connection.
 
 You should see output similar to the following:
 

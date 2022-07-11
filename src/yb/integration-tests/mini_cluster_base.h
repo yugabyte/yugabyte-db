@@ -61,6 +61,9 @@ class MiniClusterBase {
 
   template<class Options>
   int32_t NumTabletsPerTransactionTable(Options options) {
+    if (options.transaction_table_num_tablets > 0) {
+      return options.transaction_table_num_tablets;
+    }
     return std::max(2, static_cast<int32_t>(options.num_tablet_servers));
   }
  private:

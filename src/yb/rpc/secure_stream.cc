@@ -132,7 +132,7 @@ class ExtensionConfigurator {
     X509V3_set_ctx(&ctx_, cert, cert, nullptr, nullptr, 0);
   }
 
-  CHECKED_STATUS Add(int nid, const char* value) {
+  Status Add(int nid, const char* value) {
     X509_EXTENSION *ex = X509V3_EXT_conf_nid(nullptr, &ctx_, nid, value);
     if (!ex) {
       return SSL_STATUS(InvalidArgument, "Failed to create extension: $0");
@@ -289,14 +289,14 @@ class SecureContext::Impl {
   Impl(const Impl&) = delete;
   void operator=(const Impl&) = delete;
 
-  CHECKED_STATUS AddCertificateAuthorityFile(const std::string& file) EXCLUDES(mutex_);
+  Status AddCertificateAuthorityFile(const std::string& file) EXCLUDES(mutex_);
 
-  CHECKED_STATUS UseCertificates(
+  Status UseCertificates(
       const std::string& ca_cert_file, const Slice& certificate_data,
       const Slice& pkey_data) EXCLUDES(mutex_);
 
   // Generates and uses temporary keys, should be used only during testing.
-  CHECKED_STATUS TEST_GenerateKeys(int bits, const std::string& common_name,
+  Status TEST_GenerateKeys(int bits, const std::string& common_name,
                                    MatchingCertKeyPair matching_cert_key_pair) EXCLUDES(mutex_);
 
   Result<SSLPtr> Create(rpc::UseCertificateKeyPair use_certificate_key_pair)
@@ -315,14 +315,14 @@ class SecureContext::Impl {
   }
 
  private:
-  CHECKED_STATUS AddCertificateAuthorityFileUnlocked(const std::string& file) REQUIRES(mutex_);
+  Status AddCertificateAuthorityFileUnlocked(const std::string& file) REQUIRES(mutex_);
 
-  CHECKED_STATUS UseCertificateKeyPair(
+  Status UseCertificateKeyPair(
       const Slice& certificate_data, const Slice& pkey_data) REQUIRES(mutex_);
 
-  CHECKED_STATUS UseCertificateKeyPair(X509Ptr&& certificate, EVP_PKEYPtr&& pkey) REQUIRES(mutex_);
+  Status UseCertificateKeyPair(X509Ptr&& certificate, EVP_PKEYPtr&& pkey) REQUIRES(mutex_);
 
-  CHECKED_STATUS AddCertificateAuthority(X509* cert) REQUIRES(mutex_);
+  Status AddCertificateAuthority(X509* cert) REQUIRES(mutex_);
 
   Result<SSLPtr> Create(
       const X509Ptr& certificate, const EVP_PKEYPtr& pkey,
@@ -516,11 +516,11 @@ class SecureRefiner : public StreamRefiner {
     stream_ = stream;
   }
 
-  CHECKED_STATUS Handshake() override;
-  CHECKED_STATUS Init();
+  Status Handshake() override;
+  Status Init();
 
-  CHECKED_STATUS Send(OutboundDataPtr data) override;
-  CHECKED_STATUS ProcessHeader() override;
+  Status Send(OutboundDataPtr data) override;
+  Status ProcessHeader() override;
   Result<ReadBufferFull> Read(StreamReadBuffer* out) override;
 
   std::string ToString() const override {
@@ -532,14 +532,14 @@ class SecureRefiner : public StreamRefiner {
   }
 
   static int VerifyCallback(int preverified, X509_STORE_CTX* store_context);
-  CHECKED_STATUS Verify(bool preverified, X509_STORE_CTX* store_context);
+  Status Verify(bool preverified, X509_STORE_CTX* store_context);
   bool MatchEndpoint(X509* cert, GENERAL_NAMES* gens);
   bool MatchUid(X509* cert, GENERAL_NAMES* gens);
   bool MatchUidEntry(const Slice& value, const char* name);
   Result<bool> WriteEncrypted(OutboundDataPtr data);
   void DecryptReceived();
 
-  CHECKED_STATUS Established(RefinedStreamState state) {
+  Status Established(RefinedStreamState state) {
     VLOG_WITH_PREFIX(4) << "Established with state: " << state << ", used cipher: "
                         << SSL_get_cipher_name(ssl_.get());
 

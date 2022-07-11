@@ -3,7 +3,9 @@ package com.yugabyte.yw.forms;
 
 import com.yugabyte.yw.models.XClusterConfig;
 import java.util.UUID;
+import lombok.NoArgsConstructor;
 
+@NoArgsConstructor
 public class XClusterConfigTaskParams extends UniverseDefinitionTaskParams {
 
   public XClusterConfig xClusterConfig;

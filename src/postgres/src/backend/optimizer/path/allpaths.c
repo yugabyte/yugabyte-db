@@ -1287,6 +1287,9 @@ set_append_rel_size(PlannerInfo *root, RelOptInfo *rel,
 		/* We have at least one live child. */
 		has_live_children = true;
 
+		if (!childRTE->inh)
+			root->yb_num_referenced_relations++;
+
 		/*
 		 * If any live child is not parallel-safe, treat the whole appendrel
 		 * as not parallel-safe.  In future we might be able to generate plans

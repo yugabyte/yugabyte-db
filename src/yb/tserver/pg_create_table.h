@@ -34,8 +34,8 @@ class PgCreateTable {
  public:
   explicit PgCreateTable(const PgCreateTableRequestPB& req);
 
-  CHECKED_STATUS Prepare();
-  CHECKED_STATUS Exec(
+  Status Prepare();
+  Status Exec(
       client::YBClient* client, const TransactionMetadata* transaction_metadata,
       CoarseTimePoint deadline);
 
@@ -44,7 +44,7 @@ class PgCreateTable {
   }
 
  private:
-  CHECKED_STATUS AddColumn(const PgCreateColumnPB& req);
+  Status AddColumn(const PgCreateColumnPB& req);
   void EnsureYBbasectidColumnCreated();
   Result<std::vector<std::string>> BuildSplitRows(const client::YBSchema& schema);
 
@@ -59,7 +59,7 @@ class PgCreateTable {
   bool ybbasectid_added_ = false;
 };
 
-CHECKED_STATUS CreateSequencesDataTable(client::YBClient* client, CoarseTimePoint deadline);
+Status CreateSequencesDataTable(client::YBClient* client, CoarseTimePoint deadline);
 
 }  // namespace tserver
 }  // namespace yb

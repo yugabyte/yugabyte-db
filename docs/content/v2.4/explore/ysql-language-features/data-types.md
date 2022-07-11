@@ -9,8 +9,7 @@ menu:
     identifier: explore-ysql-language-features-data-types
     parent: explore-ysql-language-features
     weight: 150
-isTocNested: false
-showAsideToc: true
+type: docs
 ---
 
 This section covers the data types supported in YSQL, from the basic data types to the `SERIAL` pseudo-type (for implementing an auto-incrementing primary key column in a table), arrays and composite types. The [JSONB document data type](../../json-support) is covered in a separate section.
@@ -376,4 +375,3 @@ yugabyte=# SELECT (item).name FROM on_hand WHERE (item).price > 0.99;
  fuzzy dice
 (1 row)
 ```
-

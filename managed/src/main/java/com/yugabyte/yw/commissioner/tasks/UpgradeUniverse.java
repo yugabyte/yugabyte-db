@@ -36,15 +36,14 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
-import com.yugabyte.yw.forms.VMImageUpgradeParams.VmUpgradeTaskType;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
@@ -681,21 +680,10 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
             .setSubTaskGroupType(subGroupType);
       }
       // Conditional Provisioning
-      createSetupServerTasks(
-              nodeList,
-              true /* isSystemdUpgrade */,
-              VmUpgradeTaskType.None,
-              false /*ignoreUseCustomImageConfig*/)
+      createSetupServerTasks(nodeList, p -> p.isSystemdUpgrade = true)
           .setSubTaskGroupType(SubTaskGroupType.Provisioning);
       // Conditional Configuring
-      createConfigureServerTasks(
-              nodeList,
-              false,
-              false,
-              false,
-              true /* isSystemdUpgrade */,
-              VmUpgradeTaskType.None,
-              false /*ignoreUseCustomImageConfig*/)
+      createConfigureServerTasks(nodeList, params -> params.isSystemdUpgrade = true)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       subGroupType = SubTaskGroupType.ConfigureUniverse;
 
@@ -825,7 +813,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
         List<NodeDetails> nodeList = Collections.singletonList(node);
 
         createSetupServerTasks(nodeList).setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
-        createConfigureServerTasks(nodeList, false /* isShell */, false, false)
+        createConfigureServerTasks(nodeList, params -> {})
             .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
 
         processTypes.forEach(
@@ -934,7 +922,10 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
     if (taskParams().taskType == UpgradeTaskType.Software) {
       createServerControlTask(node, processType, "stop").setSubTaskGroupType(subGroupType);
       createSoftwareInstallTasks(
-          Collections.singletonList(node), processType, taskParams().ybSoftwareVersion);
+          Collections.singletonList(node),
+          processType,
+          taskParams().ybSoftwareVersion,
+          subGroupType);
     } else if (taskParams().taskType == UpgradeTaskType.GFlags) {
       createServerConfFileUpdateTasks(Collections.singletonList(node), processType);
       // Stop is done after conf file update to reduce unavailability.
@@ -1030,7 +1021,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
     createServerControlTasks(nodes, processType, "stop").setSubTaskGroupType(subGroupType);
 
     if (taskParams().taskType == UpgradeTaskType.Software) {
-      createSoftwareInstallTasks(nodes, processType, taskParams().ybSoftwareVersion);
+      createSoftwareInstallTasks(nodes, processType, taskParams().ybSoftwareVersion, subGroupType);
     }
 
     if (isActiveProcess) {

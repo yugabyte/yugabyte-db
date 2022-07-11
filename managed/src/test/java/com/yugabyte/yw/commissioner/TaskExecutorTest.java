@@ -10,9 +10,8 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
@@ -20,7 +19,6 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 import static play.inject.Bindings.bind;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -41,7 +39,6 @@ import com.yugabyte.yw.models.helpers.TaskType;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
@@ -75,7 +72,6 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
   @Override
   protected Application provideApplication() {
     mockConfig = mock(Config.class);
-    when(mockConfig.getString(anyString())).thenReturn("");
     return configureApplication(
             new GuiceApplicationBuilder()
                 .disable(SwaggerModule.class)

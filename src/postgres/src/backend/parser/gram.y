@@ -265,7 +265,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 	PartitionBoundSpec	*partboundspec;
 	RoleSpec			*rolespec;
 	OptSplit			*splitopt;
-	OptTableGroup		*grpopt;
+	char				*grpopt;
 	RowBounds			*rowbounds;
 }
 
@@ -333,6 +333,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 				create_extension_opt_item alter_extension_opt_item
 
 %type <ival>	opt_lock lock_type cast_context
+%type <ival>	opt_concurrently
 %type <ival>	vacuum_option_list vacuum_option_elem
 				analyze_option_list analyze_option_elem
 %type <defelt>	drop_option
@@ -470,7 +471,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 %type <node>	overlay_placing substr_from substr_for
 
 %type <boolean> opt_instead
-%type <boolean> opt_unique opt_concurrently opt_verbose opt_full opt_concurrently_matview
+%type <boolean> opt_unique opt_verbose opt_full opt_concurrently_matview
 %type <boolean> opt_freeze opt_analyze opt_default opt_recheck
 %type <defelt>	opt_binary opt_oids copy_delimiter
 
@@ -912,6 +913,7 @@ stmt :
 			| CreateExtensionStmt
 			| CreateFunctionStmt
 			| CreateGroupStmt
+			| CreatePLangStmt
 			| CreateMatViewStmt
 			| CreateOpClassStmt
 			| CreateOpFamilyStmt
@@ -932,6 +934,7 @@ stmt :
 			| DropOpClassStmt
 			| DropOpFamilyStmt
 			| DropOwnedStmt
+			| DropPLangStmt
 			| DropRoleStmt
 			| DropStmt
 			| DropTableSpaceStmt
@@ -1001,18 +1004,16 @@ stmt :
 			| CreateAssertStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateConversionStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreatePublicationStmt { parser_ybc_not_support(@1, "This statement"); }
-			| CreatePLangStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateSubscriptionStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateStatsStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateTransformStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DropAssertStmt { parser_ybc_not_support(@1, "This statement"); }
-			| DropPLangStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DropSubscriptionStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DropTransformStmt { parser_ybc_not_support(@1, "This statement"); }
 			| ListenStmt { parser_ybc_warn_ignored(@1, "LISTEN", 1872); }
 			| LoadStmt { parser_ybc_not_support(@1, "This statement"); }
 			| NotifyStmt { parser_ybc_warn_ignored(@1, "NOTIFY", 1872); }
-			| ReindexStmt { parser_ybc_not_support(@1, "This statement"); }
+			| ReindexStmt
 			| SecLabelStmt { parser_ybc_not_support(@1, "This statement"); }
 			| UnlistenStmt { parser_ybc_warn_ignored(@1, "UNLISTEN", 1872); }
 		;
@@ -3336,7 +3337,7 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 					n->tablespacename = $12;
 					n->if_not_exists = false;
 					n->split_options = $13;
-					n->tablegroup = $14;
+					n->tablegroupname = $14;
 					if ($13 && $2 == RELPERSISTENCE_TEMP)
 					{
 						ereport(WARNING, (errmsg("Split options on TEMP table will be ignored")));
@@ -3376,7 +3377,7 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 					n->tablespacename = $15;
 					n->if_not_exists = true;
 					n->split_options = $16;
-					n->tablegroup = $17;
+					n->tablegroupname = $17;
 					if ($16 && $2 == RELPERSISTENCE_TEMP)
 					{
 						ereport(WARNING, (errmsg("Split options on TEMP table will be ignored")));
@@ -3417,7 +3418,7 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 					n->tablespacename = $11;
 					n->if_not_exists = false;
 					n->split_options = $12;
-					n->tablegroup = $13;
+					n->tablegroupname = $13;
 					if ($12 && $2 == RELPERSISTENCE_TEMP)
 					{
 						ereport(WARNING, (errmsg("Split options on TEMP table will be ignored")));
@@ -3458,7 +3459,7 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 					n->tablespacename = $14;
 					n->if_not_exists = true;
 					n->split_options = $15;
-					n->tablegroup = $16;
+					n->tablegroupname = $16;
 					if ($15 && $2 == RELPERSISTENCE_TEMP)
 					{
 						ereport(WARNING, (errmsg("Split options on TEMP table will be ignored")));
@@ -3499,7 +3500,7 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 					n->tablespacename = $13;
 					n->if_not_exists = false;
 					n->split_options = $14;
-					n->tablegroup = $15;
+					n->tablegroupname = $15;
 					if ($14 && $2 == RELPERSISTENCE_TEMP)
 					{
 						ereport(WARNING, (errmsg("Split options on TEMP table will be ignored")));
@@ -3540,7 +3541,7 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 					n->tablespacename = $16;
 					n->if_not_exists = true;
 					n->split_options = $17;
-					n->tablegroup = $18;
+					n->tablegroupname = $18;
 					if ($17 && $2 == RELPERSISTENCE_TEMP)
 					{
 						ereport(WARNING, (errmsg("Split options on TEMP table will be ignored")));
@@ -4302,22 +4303,11 @@ OptTableGroup:
 			TABLEGROUP name
 				{
 					parser_ybc_beta_feature(@1, "tablegroup", true);
-					$$ = makeNode(OptTableGroup);
-					$$->has_tablegroup = true;
-					$$->tablegroup_name = $2;
-				}
-			| NO TABLEGROUP
-				{
-					/* This is only intended for indexes. */
-
-					parser_ybc_beta_feature(@1, "tablegroup", true);
-					$$ = makeNode(OptTableGroup);
-					$$->has_tablegroup = false;
-					$$->tablegroup_name = NULL;
+					$$ = $2;
 				}
 			| /*EMPTY*/
 				{
-					$$ = (OptTableGroup*) NULL;
+					$$ = NULL;
 				}
 		;
 
@@ -4560,6 +4550,9 @@ opt_concurrently_matview:
 					$$ = true;
 				}
 			| NONCONCURRENTLY
+				{
+					$$ = false;
+				}
 			| /*EMPTY*/
 				{
 					$$ = false;
@@ -4718,7 +4711,6 @@ NumericOnly_list:	NumericOnly						{ $$ = list_make1($1); }
 CreatePLangStmt:
 			CREATE opt_or_replace opt_trusted opt_procedural LANGUAGE NonReservedWord_or_Sconst
 			{
-				parser_ybc_not_support(@1, "CREATE LANGUAGE");
 				CreatePLangStmt *n = makeNode(CreatePLangStmt);
 				n->replace = $2;
 				n->plname = $6;
@@ -4732,7 +4724,6 @@ CreatePLangStmt:
 			| CREATE opt_or_replace opt_trusted opt_procedural LANGUAGE NonReservedWord_or_Sconst
 			  HANDLER handler_name opt_inline_handler opt_validator
 			{
-				parser_ybc_not_support(@1, "CREATE LANGUAGE");
 				CreatePLangStmt *n = makeNode(CreatePLangStmt);
 				n->replace = $2;
 				n->plname = $6;
@@ -4776,7 +4767,6 @@ opt_validator:
 DropPLangStmt:
 			DROP opt_procedural LANGUAGE NonReservedWord_or_Sconst opt_drop_behavior
 				{
-					parser_ybc_not_support(@1, "DROP LANGUAGE");
 					DropStmt *n = makeNode(DropStmt);
 					n->removeType = OBJECT_LANGUAGE;
 					n->objects = list_make1(makeString($4));
@@ -4787,7 +4777,6 @@ DropPLangStmt:
 				}
 			| DROP opt_procedural LANGUAGE IF_P EXISTS NonReservedWord_or_Sconst opt_drop_behavior
 				{
-					parser_ybc_not_support(@1, "DROP LANGUAGE");
 					DropStmt *n = makeNode(DropStmt);
 					n->removeType = OBJECT_LANGUAGE;
 					n->objects = list_make1(makeString($6));
@@ -7948,13 +7937,13 @@ defacl_privilege_target:
  *
  *		QUERY: CREATE INDEX
  *
- * Note: we cannot put TABLESPACE / TABLEGROUP / SPLIT clause after WHERE clause
+ * Note: we cannot put TABLESPACE / SPLIT clause after WHERE clause
  * unless we are willing to make them fully reserved words.
  *****************************************************************************/
 
 IndexStmt:	CREATE opt_unique INDEX opt_concurrently opt_index_name
 			ON relation_expr access_method_clause '(' yb_index_params ')'
-			opt_include opt_reloptions OptTableSpace OptSplit OptTableGroup where_clause
+			opt_include opt_reloptions OptTableSpace OptSplit where_clause
 				{
 					IndexStmt *n = makeNode(IndexStmt);
 					n->unique = $2;
@@ -7968,8 +7957,7 @@ IndexStmt:	CREATE opt_unique INDEX opt_concurrently opt_index_name
 					n->options = $13;
 					n->tableSpace = $14;
 					n->split_options = $15;
-					n->tablegroup = $16;
-					n->whereClause = $17;
+					n->whereClause = $16;
 					n->excludeOpNames = NIL;
 					n->idxcomment = NULL;
 					n->indexOid = InvalidOid;
@@ -7984,7 +7972,7 @@ IndexStmt:	CREATE opt_unique INDEX opt_concurrently opt_index_name
 				}
 			| CREATE opt_unique INDEX opt_concurrently IF_P NOT EXISTS index_name
 			ON relation_expr access_method_clause '(' yb_index_params ')'
-			opt_include opt_reloptions OptTableSpace OptSplit OptTableGroup where_clause
+			opt_include opt_reloptions OptTableSpace OptSplit where_clause
 				{
 					IndexStmt *n = makeNode(IndexStmt);
 					n->unique = $2;
@@ -7998,8 +7986,7 @@ IndexStmt:	CREATE opt_unique INDEX opt_concurrently opt_index_name
 					n->options = $16;
 					n->tableSpace = $17;
 					n->split_options = $18;
-					n->tablegroup = $19;
-					n->whereClause = $20;
+					n->whereClause = $19;
 					n->excludeOpNames = NIL;
 					n->idxcomment = NULL;
 					n->indexOid = InvalidOid;
@@ -8022,16 +8009,17 @@ opt_unique:
 opt_concurrently:
 			CONCURRENTLY
 				{
-					parser_ybc_not_support(@1, "CREATE INDEX CONCURRENTLY");
-					$$ = true;
+					$$ = YB_CONCURRENCY_EXPLICIT_ENABLED;
 				}
 			| NONCONCURRENTLY
 				{
-					$$ = false;
+					$$ = YB_CONCURRENCY_DISABLED;
 				}
 			| /*EMPTY*/
 				{
-					$$ = !*YBCGetGFlags()->ysql_disable_index_backfill;
+					$$ = *YBCGetGFlags()->ysql_disable_index_backfill
+						? YB_CONCURRENCY_DISABLED
+						: YB_CONCURRENCY_IMPLICIT_ENABLED;
 				}
 		;
 
@@ -9139,17 +9127,26 @@ DropTransformStmt: DROP TRANSFORM opt_if_exists FOR Typename LANGUAGE name opt_d
 ReindexStmt:
 			REINDEX reindex_target_type qualified_name
 				{
-					parser_ybc_not_support(@1, "REINDEX");
+					if (!*YBCGetGFlags()->ysql_enable_reindex)
+						parser_ybc_not_support(@1, "REINDEX");
 					ReindexStmt *n = makeNode(ReindexStmt);
 					n->kind = $2;
 					n->relation = $3;
 					n->name = NULL;
 					n->options = 0;
+
+					/* Only support INDEX target. */
+					if (n->kind != REINDEX_OBJECT_INDEX)
+					{
+						Assert(n->kind == REINDEX_OBJECT_TABLE);
+						parser_ybc_not_support(@2, "REINDEX TABLE");
+					}
+
 					$$ = (Node *)n;
 				}
 			| REINDEX reindex_target_multitable name
 				{
-					parser_ybc_not_support(@1, "REINDEX");
+					parser_ybc_not_support(@1, "REINDEX SCHEMA/DATABASE/SYSTEM");
 					ReindexStmt *n = makeNode(ReindexStmt);
 					n->kind = $2;
 					n->name = $3;
@@ -9159,17 +9156,29 @@ ReindexStmt:
 				}
 			| REINDEX '(' reindex_option_list ')' reindex_target_type qualified_name
 				{
-					parser_ybc_not_support(@1, "REINDEX");
+					if (!*YBCGetGFlags()->ysql_enable_reindex)
+						parser_ybc_not_support(@1, "REINDEX");
 					ReindexStmt *n = makeNode(ReindexStmt);
 					n->kind = $5;
 					n->relation = $6;
 					n->name = NULL;
 					n->options = $3;
+
+					/* Only support INDEX target. */
+					if (n->kind != REINDEX_OBJECT_INDEX)
+					{
+						Assert(n->kind == REINDEX_OBJECT_TABLE);
+						parser_ybc_not_support(@5, "REINDEX TABLE");
+					}
+					/* Only support VERBOSE option. */
+					if (!(n->options & REINDEXOPT_VERBOSE))
+						parser_ybc_not_support(@3, "REINDEX");
+
 					$$ = (Node *)n;
 				}
 			| REINDEX '(' reindex_option_list ')' reindex_target_multitable name
 				{
-					parser_ybc_not_support(@1, "REINDEX");
+					parser_ybc_not_support(@1, "REINDEX SCHEMA/DATABASE/SYSTEM");
 					ReindexStmt *n = makeNode(ReindexStmt);
 					n->kind = $5;
 					n->name = $6;
@@ -9511,7 +9520,6 @@ RenameStmt: ALTER AGGREGATE aggregate_with_argtypes RENAME TO name
 				}
 			| ALTER INDEX qualified_name RENAME TO name
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER INDEX", 1130);
 					RenameStmt *n = makeNode(RenameStmt);
 					n->renameType = OBJECT_INDEX;
 					n->relation = $3;
@@ -9522,7 +9530,6 @@ RenameStmt: ALTER AGGREGATE aggregate_with_argtypes RENAME TO name
 				}
 			| ALTER INDEX IF_P EXISTS qualified_name RENAME TO name
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER INDEX", 1130);
 					RenameStmt *n = makeNode(RenameStmt);
 					n->renameType = OBJECT_INDEX;
 					n->relation = $5;

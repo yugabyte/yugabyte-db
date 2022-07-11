@@ -47,6 +47,7 @@
 #include "yb/common/snapshot.h"
 
 #include "yb/docdb/docdb_fwd.h"
+#include "yb/docdb/docdb_compaction_context.h"
 
 #include "yb/fs/fs_manager.h"
 
@@ -71,19 +72,21 @@ extern const std::string kIntentsSubdir;
 extern const std::string kIntentsDBSuffix;
 extern const std::string kSnapshotsDirSuffix;
 
-  // Table info.
+YB_STRONGLY_TYPED_BOOL(Primary);
+
 struct TableInfo {
   // Table id, name and type.
   std::string table_id;
   std::string namespace_name;
   std::string table_name;
   TableType table_type;
+  Uuid cotable_id; // table_id as Uuid
 
   // The table schema, secondary index map, index info (for index table only) and schema version.
   const std::unique_ptr<docdb::DocReadContext> doc_read_context;
   std::unique_ptr<IndexMap> index_map;
   std::unique_ptr<IndexInfo> index_info;
-  uint32_t schema_version = 0;
+  SchemaVersion schema_version = 0;
 
   // Partition schema of the table.
   PartitionSchema partition_schema;
@@ -98,23 +101,25 @@ struct TableInfo {
   uint32_t wal_retention_secs = 0;
 
   TableInfo();
-  TableInfo(std::string table_id,
+  TableInfo(Primary primary,
+            std::string table_id,
             std::string namespace_name,
             std::string table_name,
             TableType table_type,
             const Schema& schema,
             const IndexMap& index_map,
             const boost::optional<IndexInfo>& index_info,
-            uint32_t schema_version,
+            SchemaVersion schema_version,
             PartitionSchema partition_schema);
   TableInfo(const TableInfo& other,
             const Schema& schema,
             const IndexMap& index_map,
             const std::vector<DeletedColumn>& deleted_cols,
-            uint32_t schema_version);
+            SchemaVersion schema_version);
+  TableInfo(const TableInfo& other, SchemaVersion min_schema_version);
   ~TableInfo();
 
-  CHECKED_STATUS LoadFromPB(const TableInfoPB& pb);
+  Status LoadFromPB(const TableId& primary_table_id, const TableInfoPB& pb);
   void ToPB(TableInfoPB* pb) const;
 
   std::string ToString() const {
@@ -122,6 +127,10 @@ struct TableInfo {
     ToPB(&pb);
     return pb.ShortDebugString();
   }
+
+  // If schema version is kLatestSchemaVersion, then latest possible schema packing is returned.
+  static Result<docdb::CompactionSchemaInfo> Packing(
+      const TableInfoPtr& self, uint32_t schema_version, HybridTime history_cutoff);
 
   const Schema& schema() const;
 };
@@ -138,14 +147,17 @@ struct KvStoreInfo {
         rocksdb_dir(rocksdb_dir_),
         snapshot_schedules(snapshot_schedules_.begin(), snapshot_schedules_.end()) {}
 
-  CHECKED_STATUS LoadFromPB(const KvStoreInfoPB& pb,
+  Status LoadFromPB(const KvStoreInfoPB& pb,
                             const TableId& primary_table_id,
                             bool local_superblock);
 
-  CHECKED_STATUS LoadTablesFromPB(
+  Status LoadTablesFromPB(
       const google::protobuf::RepeatedPtrField<TableInfoPB>& pbs, const TableId& primary_table_id);
 
   void ToPB(const TableId& primary_table_id, KvStoreInfoPB* pb) const;
+
+  // Updates colocation map with new table info.
+  void UpdateColocationMap(const TableInfoPtr& table_info);
 
   KvStoreId kv_store_id;
 
@@ -167,6 +179,9 @@ struct KvStoreInfo {
   // KV-stores.
   std::unordered_map<TableId, TableInfoPtr> tables;
 
+  // Mapping form colocation id to table info.
+  std::unordered_map<ColocationId, TableInfoPtr> colocation_to_table;
+
   std::unordered_set<SnapshotScheduleId, SnapshotScheduleIdHash> snapshot_schedules;
 };
 
@@ -183,7 +198,8 @@ struct RaftGroupMetadataData {
 // At startup, the TSTabletManager will load a RaftGroupMetadata for each
 // super block found in the tablets/ directory, and then instantiate
 // Raft groups from this data.
-class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
+class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
+                          public docdb::SchemaPackingProvider {
  public:
   // Create metadata for a new Raft group. This assumes that the given superblock
   // has not been written before, and writes out the initial superblock with
@@ -203,7 +219,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
   // provided 'schema'.
   //
   // This is mostly useful for tests which instantiate Raft groups directly.
-  static Result<RaftGroupMetadataPtr> LoadOrCreate(const RaftGroupMetadataData& data);
+  static Result<RaftGroupMetadataPtr> TEST_LoadOrCreate(const RaftGroupMetadataData& data);
 
   Result<TableInfoPtr> GetTableInfo(const TableId& table_id) const;
   Result<TableInfoPtr> GetTableInfoUnlocked(const TableId& table_id) const;
@@ -239,9 +255,11 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
 
   std::shared_ptr<IndexMap> index_map(const TableId& table_id = "") const;
 
-  uint32_t schema_version(const TableId& table_id = "") const;
+  SchemaVersion schema_version(const TableId& table_id = "") const;
 
   const std::string& indexed_table_id(const TableId& table_id = "") const;
+
+  bool is_index(const TableId& table_id = "") const;
 
   bool is_local_index(const TableId& table_id = "") const;
 
@@ -274,11 +292,15 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
   // Returns the wal retention time for the primary table.
   uint32_t wal_retention_secs() const;
 
-  CHECKED_STATUS set_cdc_min_replicated_index(int64 cdc_min_replicated_index);
+  Status set_cdc_min_replicated_index(int64 cdc_min_replicated_index);
+
+  Status set_cdc_sdk_min_checkpoint_op_id(const OpId& cdc_min_checkpoint_op_id);
 
   int64_t cdc_min_replicated_index() const;
 
-  CHECKED_STATUS SetIsUnderTwodcReplicationAndFlush(bool is_under_twodc_replication);
+  OpId cdc_sdk_min_checkpoint_op_id() const;
+
+  Status SetIsUnderTwodcReplicationAndFlush(bool is_under_twodc_replication);
 
   bool is_under_twodc_replication() const;
 
@@ -321,7 +343,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
   void SetSchema(const Schema& schema,
                  const IndexMap& index_map,
                  const std::vector<DeletedColumn>& deleted_cols,
-                 const uint32_t version,
+                 const SchemaVersion version,
                  const TableId& table_id = "");
 
   void SetPartitionSchema(const PartitionSchema& partition_schema);
@@ -338,7 +360,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
                 const IndexMap& index_map,
                 const PartitionSchema& partition_schema,
                 const boost::optional<IndexInfo>& index_info,
-                const uint32_t schema_version);
+                const SchemaVersion schema_version);
 
   void RemoveTable(const TableId& table_id);
 
@@ -355,7 +377,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
   void SetRestorationHybridTime(HybridTime value);
   HybridTime restoration_hybrid_time() const;
 
-  CHECKED_STATUS Flush();
+  Status Flush();
 
   // Mark the superblock to be in state 'delete_type', sync it to disk, and
   // then delete all of the rowsets in this tablet.
@@ -372,7 +394,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
   // actually deleted from disk or not. For example, in some cases, the tablet may have been
   // already deleted (and are here on a retry) and this operation essentially ends up being a no-op;
   // in such a case, 'was_deleted' will be set to FALSE.
-  CHECKED_STATUS DeleteTabletData(TabletDataState delete_type, const yb::OpId& last_logged_opid);
+  Status DeleteTabletData(TabletDataState delete_type, const yb::OpId& last_logged_opid);
 
   // Return true if this metadata references no regular data DB nor intents DB and is
   // already marked as tombstoned. If this is the case, then calling DeleteTabletData
@@ -384,20 +406,20 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
   // TABLET_DATA_DELETED.
   // Returns Status::InvalidArgument if the list of orphaned blocks is not empty.
   // Returns Status::IllegalState if the tablet data state is not TABLET_DATA_DELETED.
-  CHECKED_STATUS DeleteSuperBlock();
+  Status DeleteSuperBlock();
 
   FsManager *fs_manager() const { return fs_manager_; }
 
   OpId tombstone_last_logged_opid() const;
 
   // Loads the currently-flushed superblock from disk into the given protobuf.
-  CHECKED_STATUS ReadSuperBlockFromDisk(RaftGroupReplicaSuperBlockPB* superblock) const;
+  Status ReadSuperBlockFromDisk(RaftGroupReplicaSuperBlockPB* superblock) const;
 
   // Sets *superblock to the serialized form of the current metadata.
   void ToSuperBlock(RaftGroupReplicaSuperBlockPB* superblock) const;
 
   // Fully replace a superblock (used for bootstrap).
-  CHECKED_STATUS ReplaceSuperBlock(const RaftGroupReplicaSuperBlockPB &pb);
+  Status ReplaceSuperBlock(const RaftGroupReplicaSuperBlockPB &pb);
 
   // Returns a new WAL dir path to be used for new Raft group `raft_group_id` which will be created
   // as a result of this Raft group splitting.
@@ -451,6 +473,15 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
 
   bool UsePartialRangeKeyIntents() const;
 
+  // versions is a map from table id to min schema version that should be kept for this table.
+  Status OldSchemaGC(const std::unordered_map<Uuid, SchemaVersion, UuidHash>& versions);
+
+  Result<docdb::CompactionSchemaInfo> CotablePacking(
+      const Uuid& cotable_id, uint32_t schema_version, HybridTime history_cutoff) override;
+
+  Result<docdb::CompactionSchemaInfo> ColocationPacking(
+      ColocationId colocation_id, uint32_t schema_version, HybridTime history_cutoff) override;
+
  private:
   typedef simple_spinlock MutexType;
 
@@ -468,17 +499,17 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
   // Constructor for loading an existing Raft group.
   RaftGroupMetadata(FsManager* fs_manager, RaftGroupId raft_group_id);
 
-  CHECKED_STATUS LoadFromDisk();
+  Status LoadFromDisk();
 
   // Update state of metadata to that of the given superblock PB.
-  CHECKED_STATUS LoadFromSuperBlock(const RaftGroupReplicaSuperBlockPB& superblock,
+  Status LoadFromSuperBlock(const RaftGroupReplicaSuperBlockPB& superblock,
                                     bool local_superblock);
 
-  CHECKED_STATUS ReadSuperBlock(RaftGroupReplicaSuperBlockPB *pb);
+  Status ReadSuperBlock(RaftGroupReplicaSuperBlockPB *pb);
 
   // Fully replace superblock.
   // Requires 'flush_lock_'.
-  CHECKED_STATUS SaveToDiskUnlocked(const RaftGroupReplicaSuperBlockPB &pb);
+  Status SaveToDiskUnlocked(const RaftGroupReplicaSuperBlockPB &pb);
 
   // Requires 'data_mutex_'.
   void ToSuperBlockUnlocked(RaftGroupReplicaSuperBlockPB* superblock) const REQUIRES(data_mutex_);
@@ -533,6 +564,9 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
   // The minimum index that has been replicated by the cdc service.
   int64_t cdc_min_replicated_index_ GUARDED_BY(data_mutex_) = std::numeric_limits<int64_t>::max();
 
+  // The minimum CDCSDK checkpoint Opid that has been consumed by client.
+  OpId cdc_sdk_min_checkpoint_op_id_ GUARDED_BY(data_mutex_);
+
   bool is_under_twodc_replication_ GUARDED_BY(data_mutex_) = false;
 
   bool hidden_ GUARDED_BY(data_mutex_) = false;
@@ -549,7 +583,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
   DISALLOW_COPY_AND_ASSIGN(RaftGroupMetadata);
 };
 
-CHECKED_STATUS MigrateSuperblock(RaftGroupReplicaSuperBlockPB* superblock);
+Status MigrateSuperblock(RaftGroupReplicaSuperBlockPB* superblock);
 
 // Checks whether tablet data storage is ready for function, i.e. its creation or bootstrap process
 // has been completed and tablet is not deleted and not in process of being deleted.

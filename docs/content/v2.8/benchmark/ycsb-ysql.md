@@ -9,8 +9,7 @@ menu:
     identifier: ycsb-2-ysql
     parent: benchmark
     weight: 5
-showAsideToc: true
-isTocNested: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

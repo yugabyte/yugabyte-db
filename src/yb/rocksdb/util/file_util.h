@@ -31,15 +31,15 @@ namespace rocksdb {
 
 // Copy a file up to a specified size. If passed size is 0 - copy the whole file.
 // Will return "file too small" error status if `size` is larger than size of the source file.
-CHECKED_STATUS CopyFile(
+Status CopyFile(
     Env* env, const std::string& source, const std::string& destination, uint64_t size = 0);
 
 // Recursively delete the specified directory.
-CHECKED_STATUS DeleteRecursively(Env* env, const std::string& dirname);
+Status DeleteRecursively(Env* env, const std::string& dirname);
 
 // Deletes SST file by `fname`. If `db_options` has a file manager and `path_id` is 0 then
 // it schedules file deletion instead of deleting it immediately.
-CHECKED_STATUS DeleteSSTFile(
+Status DeleteSSTFile(
     const DBOptions* db_options, const std::string& fname, uint32_t path_id);
 
 }  // namespace rocksdb

@@ -482,7 +482,7 @@ struct BatchTimeseriesDataSource {
   std::atomic<int64_t> last_emitted_ts{-1};
 };
 
-CHECKED_STATUS RunBatchTimeSeriesTest(
+Status RunBatchTimeSeriesTest(
     ExternalMiniCluster* cluster, CppCassandraDriver* driver, const int num_splits,
     const MonoDelta timeout) {
   const auto kWriterThreads = 4;

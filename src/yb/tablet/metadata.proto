@@ -70,6 +70,9 @@ message TableInfoPB {
   repeated DeletedColumnPB deleted_cols = 9;
 
   repeated docdb.SchemaPackingPB old_schema_packings = 11;
+
+  // CDC WAL retention time in secs of the table.
+  optional uint32 wal_retention_secs = 12;
 }
 
 // KV-store meta data. Single KV-store is backed by one or two RocksDB instances, depending on
@@ -194,6 +197,10 @@ message RaftGroupReplicaSuperBlockPB {
   repeated bytes split_child_tablet_ids = 30;
 
   repeated bytes active_restorations = 31;
+
+  // Minimum checkpoint op id for cdcsdk streams. This value is used to retain intents
+  // with op id larger than this one.
+  optional OpIdPB cdc_sdk_min_checkpoint_op_id = 33;
 }
 
 message FilePB {

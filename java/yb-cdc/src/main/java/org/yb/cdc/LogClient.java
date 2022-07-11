@@ -13,7 +13,8 @@
 
 package org.yb.cdc;
 
-import org.apache.log4j.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.yb.client.YBTable;
 
 public class LogClient implements OutputClient {
@@ -23,7 +24,7 @@ public class LogClient implements OutputClient {
   long writes = 0;
   long snapshotRecords = 0;
 
-  private static final Logger LOG = Logger.getLogger(LogClient.class);
+  private static final Logger LOG = LoggerFactory.getLogger(LogClient.class);
 
   @Override
   public void applyChange(YBTable table, CdcService.CDCSDKProtoRecordPB changeRecord) {

@@ -75,7 +75,7 @@ class BackupTxnTest : public TransactionTestBase<MiniCluster> {
     TransactionTestBase::DoBeforeTearDown();
   }
 
-  CHECKED_STATUS WaitAllSnapshotsDeleted() {
+  Status WaitAllSnapshotsDeleted() {
     RETURN_NOT_OK(snapshot_util_->WaitAllSnapshotsDeleted());
     // Check if deleted in DocDB.
     return WaitFor([this]() -> Result<bool> {

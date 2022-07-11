@@ -39,7 +39,7 @@ class TransactionStatusManagerMock : public TransactionStatusManager {
     return HybridTime::kInvalid;
   }
 
-  boost::optional<CommitMetadata> LocalCommitData(const TransactionId& id) override {
+  boost::optional<TransactionLocalState> LocalTxnData(const TransactionId& id) override {
     return boost::none;
   }
 

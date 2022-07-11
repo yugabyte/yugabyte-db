@@ -42,13 +42,16 @@ public class ResizeNodeParams extends UpgradeTaskParams {
           "Only ROLLING_UPGRADE option is supported for resizing node (changing VM type).");
     }
 
-    UserIntent newUserIntent = getPrimaryCluster().userIntent;
-    UserIntent currentUserIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    for (Cluster cluster : clusters) {
+      UserIntent newUserIntent = cluster.userIntent;
+      UserIntent currentUserIntent =
+          universe.getUniverseDetails().getClusterByUuid(cluster.uuid).userIntent;
 
-    String errorStr =
-        checkResizeIsPossible(currentUserIntent, newUserIntent, isSkipInstanceChecking());
-    if (errorStr != null) {
-      throw new IllegalArgumentException(errorStr);
+      String errorStr =
+          checkResizeIsPossible(currentUserIntent, newUserIntent, isSkipInstanceChecking());
+      if (errorStr != null) {
+        throw new IllegalArgumentException(errorStr);
+      }
     }
   }
 
@@ -70,7 +73,7 @@ public class ResizeNodeParams extends UpgradeTaskParams {
       return "Should have both intents, but got: " + currentUserIntent + ", " + newUserIntent;
     }
     // Check valid provider.
-    if (!SUPPORTED_CLOUD_TYPES.contains(newUserIntent.providerType)) {
+    if (!SUPPORTED_CLOUD_TYPES.contains(currentUserIntent.providerType)) {
       return "Smart resizing is only supported for AWS / GCP, It is: "
           + currentUserIntent.providerType.toString();
     }
@@ -84,8 +87,10 @@ public class ResizeNodeParams extends UpgradeTaskParams {
             + " got "
             + newUserIntent.deviceInfo.volumeSize;
       }
-      if (!Objects.equals(
-          currentUserIntent.deviceInfo.numVolumes, newUserIntent.deviceInfo.numVolumes)) {
+      // If numVolumes is specified in the newUserIntent,
+      // make sure it is the same as the current value.
+      if (newUserIntent.deviceInfo.numVolumes != null
+          && !newUserIntent.deviceInfo.numVolumes.equals(currentUserIntent.deviceInfo.numVolumes)) {
         return "Number of volumes cannot be changed. It was "
             + currentUserIntent.deviceInfo.numVolumes
             + " got "

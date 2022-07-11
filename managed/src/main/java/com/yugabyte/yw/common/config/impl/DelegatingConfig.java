@@ -129,10 +129,9 @@ public class DelegatingConfig implements Config {
     throw new UnsupportedOperationException();
   }
 
-  @Deprecated
   @Override
   public ConfigValue getValue(String path) {
-    throw new UnsupportedOperationException();
+    return delegate().getValue(path);
   }
 
   @Deprecated
@@ -364,5 +363,10 @@ public class DelegatingConfig implements Config {
   @Override
   public List<Duration> getDurationList(String path) {
     return delegate().getDurationList(path);
+  }
+
+  @Override
+  public String toString() {
+    return SettableRuntimeConfigFactory.toRedactedString(delegate());
   }
 }

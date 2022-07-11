@@ -13,8 +13,6 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
@@ -28,11 +26,11 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.CertificateInfo;
-import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.MetricKey;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.File;
@@ -126,10 +124,6 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
         ModelFactory.createBackup(
             defaultCustomer.uuid, defaultUniverse.universeUUID, s3StorageConfig.configUUID);
     b.transitionState(Backup.BackupState.Completed);
-    ShellResponse shellResponse = new ShellResponse();
-    shellResponse.message = "{\"success\": true}";
-    shellResponse.code = 0;
-    when(mockTableManager.deleteBackup(any())).thenReturn(shellResponse);
     DestroyUniverse.Params taskParams = new DestroyUniverse.Params();
     taskParams.universeUUID = defaultUniverse.universeUUID;
     taskParams.customerUUID = defaultCustomer.uuid;
@@ -138,10 +132,10 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
     taskParams.isDeleteAssociatedCerts = Boolean.FALSE;
     TaskInfo taskInfo = submitTask(taskParams, 4);
     assertEquals(Success, taskInfo.getTaskState());
-    verify(mockTableManager, times(1)).deleteBackup(any());
-    Result result =
-        assertPlatformException(() -> Backup.getOrBadRequest(defaultCustomer.uuid, b.backupUUID));
-    AssertHelper.assertBadRequest(result, "Invalid customer or backup UUID");
+
+    Backup backup = Backup.get(defaultCustomer.uuid, b.backupUUID);
+    // Backup state should be QueuedForDeletion.
+    assertEquals(Backup.BackupState.QueuedForDeletion, backup.state);
     assertFalse(Universe.checkIfUniverseExists(defaultUniverse.name));
   }
 
@@ -163,8 +157,6 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
     b.setTaskUUID(taskInfo.getTaskUUID());
 
     Backup backup = Backup.get(defaultCustomer.uuid, b.backupUUID);
-    verify(mockTableManager, times(0)).deleteBackup(any());
-    // Backup should be in COMPLETED state.
     assertEquals(Backup.BackupState.Completed, backup.state);
     assertFalse(Universe.checkIfUniverseExists(defaultUniverse.name));
   }
@@ -213,9 +205,8 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
     b.setTaskUUID(taskInfo.getTaskUUID());
 
     Backup backup = Backup.get(defaultCustomer.uuid, b.backupUUID);
-    verify(mockTableManager, times(0)).deleteBackup(any());
-    // Backup should be in COMPLETED state.
-    assertEquals(Backup.BackupState.Completed, backup.state);
+    // We will deleting any backup object associated with the universe.
+    assertEquals(Backup.BackupState.QueuedForDeletion, backup.state);
     assertFalse(Universe.checkIfUniverseExists(defaultUniverse.name));
   }
 }

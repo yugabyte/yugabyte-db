@@ -109,12 +109,52 @@ message GetCDCDBStreamInfoResponsePB {
 }
 
 message UpdateCDCStreamRequestPB {
+  message StreamUpdateInfo {
+    optional bytes stream_id = 1;
+    optional SysCDCStreamEntryPB entry = 2;
+  }
+
   optional bytes stream_id = 1;
   optional SysCDCStreamEntryPB entry = 2;
+  // For batch update.
+  repeated StreamUpdateInfo streams = 3;
 }
 
 message UpdateCDCStreamResponsePB {
   optional MasterErrorPB error = 1;
+}
+
+message IsBootstrapRequiredRequestPB {
+  repeated string table_ids = 1;
+  repeated string stream_ids = 2;
+}
+
+message IsBootstrapRequiredResponsePB {
+  message TableResult {
+    optional bytes table_id = 1;
+    optional bool bootstrap_required = 2;
+  }
+  optional MasterErrorPB error = 1;
+  repeated TableResult results = 2;
+}
+
+message GetUDTypeMetadataRequestPB {
+  // The table namespace (if empty - uses default namespace).
+ optional NamespaceIdentifierPB namespace = 1;
+ optional bool pg_enum_info = 2 [default = false];
+}
+
+message PgEnumInfoPB {
+  // PG enum Oid.
+ required uint32 oid = 1;
+ // PG enum label.
+ required string label = 2;
+}
+
+message GetUDTypeMetadataResponsePB {
+ // The error, if an error occurred with this request.
+ optional MasterErrorPB error = 1;
+ repeated PgEnumInfoPB enums = 2;
 }
 
 message SetupUniverseReplicationRequestPB {
@@ -151,6 +191,8 @@ message AlterUniverseReplicationRequestPB {
 
   // Optional bootstrap ids for the add table operation.
   repeated string producer_bootstrap_ids_to_add = 6;
+
+  optional bool remove_table_ignore_errors = 8 [default = false];
 }
 
 message AlterUniverseReplicationResponsePB {
@@ -212,6 +254,7 @@ message UpdateConsumerOnProducerSplitResponsePB {
 service MasterReplication {
   option (yb.rpc.custom_service_name) = "yb.master.MasterService";
 
+  // Tablet-level Replication.
   rpc ValidateReplicationInfo(ValidateReplicationInfoRequestPB)
       returns (ValidateReplicationInfoResponsePB);
 
@@ -221,9 +264,11 @@ service MasterReplication {
   rpc ListCDCStreams(ListCDCStreamsRequestPB) returns (ListCDCStreamsResponsePB);
   rpc GetCDCStream(GetCDCStreamRequestPB) returns (GetCDCStreamResponsePB);
   rpc GetCDCDBStreamInfo(GetCDCDBStreamInfoRequestPB) returns (GetCDCDBStreamInfoResponsePB);
-  rpc UpdateCDCStream (UpdateCDCStreamRequestPB)
-      returns (UpdateCDCStreamResponsePB);
+  rpc UpdateCDCStream (UpdateCDCStreamRequestPB) returns (UpdateCDCStreamResponsePB);
+  rpc IsBootstrapRequired (IsBootstrapRequiredRequestPB) returns (IsBootstrapRequiredResponsePB);
+  rpc GetUDTypeMetadata(GetUDTypeMetadataRequestPB) returns (GetUDTypeMetadataResponsePB);
 
+  // Cluster-level Replication.
   rpc SetupUniverseReplication(SetupUniverseReplicationRequestPB)
       returns (SetupUniverseReplicationResponsePB);
   rpc DeleteUniverseReplication(DeleteUniverseReplicationRequestPB)
@@ -236,6 +281,7 @@ service MasterReplication {
       returns (GetUniverseReplicationResponsePB);
   rpc IsSetupUniverseReplicationDone(IsSetupUniverseReplicationDoneRequestPB)
       returns (IsSetupUniverseReplicationDoneResponsePB);
+
   rpc UpdateConsumerOnProducerSplit(UpdateConsumerOnProducerSplitRequestPB)
       returns (UpdateConsumerOnProducerSplitResponsePB);
 

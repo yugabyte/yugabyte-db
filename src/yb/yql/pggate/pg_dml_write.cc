@@ -15,26 +15,10 @@
 
 #include "yb/yql/pggate/pg_dml_write.h"
 
-#include "yb/client/yb_op.h"
-
 #include "yb/gutil/casts.h"
 
 namespace yb {
 namespace pggate {
-
-using std::make_shared;
-using std::shared_ptr;
-using std::string;
-using namespace std::literals;  // NOLINT
-
-using client::YBSession;
-using client::YBMetaDataCache;
-using client::YBTable;
-using client::YBTableName;
-using client::YBPgsqlWriteOp;
-
-// TODO(neil) This should be derived from a GFLAGS.
-static MonoDelta kSessionTimeout = 60s;
 
 //--------------------------------------------------------------------------------------------------
 // PgDmlWrite
@@ -42,8 +26,10 @@ static MonoDelta kSessionTimeout = 60s;
 
 PgDmlWrite::PgDmlWrite(PgSession::ScopedRefPtr pg_session,
                        const PgObjectId& table_id,
-                       const bool is_single_row_txn)
-    : PgDml(std::move(pg_session), table_id), is_single_row_txn_(is_single_row_txn) {
+                       bool is_single_row_txn,
+                       bool is_region_local)
+    : PgDml(std::move(pg_session), table_id, is_region_local),
+      is_single_row_txn_(is_single_row_txn) {
 }
 
 PgDmlWrite::~PgDmlWrite() {
@@ -152,7 +138,8 @@ Status PgDmlWrite::SetWriteTime(const HybridTime& write_time) {
 }
 
 void PgDmlWrite::AllocWriteRequest() {
-  auto write_op = ArenaMakeShared<PgsqlWriteOp>(arena_ptr(), &arena(), !is_single_row_txn_);
+  auto write_op = ArenaMakeShared<PgsqlWriteOp>(arena_ptr(), &arena(), !is_single_row_txn_,
+                                                is_region_local_);
 
   write_req_ = std::shared_ptr<LWPgsqlWriteRequestPB>(write_op, &write_op->write_request());
   write_req_->set_stmt_type(stmt_type());

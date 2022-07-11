@@ -9,9 +9,7 @@ menu:
     name: NodeJS
     identifier: nodejs-2
     weight: 551
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -44,7 +42,7 @@ This tutorial assumes that you have:
 ## Clone the orm-examples repository
 
 ```sh
-$ git clone https://github.com/yugabyte/orm-examples.git
+$ git clone https://github.com/YugabyteDB-Samples/orm-examples.git
 ```
 
 This repository has a node.js example that implements a simple REST API server. The scenario is that of an e-commerce application. Database access in this application is managed through the Sequelize ORM. It consists of the following.

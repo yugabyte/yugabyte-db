@@ -83,15 +83,7 @@ public class RemoveNodeFromUniverse extends UniverseTaskBase {
       createSetNodeStateTask(currentNode, NodeState.Removing)
           .setSubTaskGroupType(SubTaskGroupType.RemovingNode);
 
-      boolean instanceAlive = false;
-      try {
-        instanceAlive = instanceExists(taskParams());
-      } catch (Exception e) {
-        log.info(
-            "Instance {} in universe {} not found, assuming dead",
-            taskParams().nodeName,
-            universe.name);
-      }
+      boolean instanceAlive = instanceExists(taskParams());
 
       if (instanceAlive) {
         // Remove the master on this node from master quorum and update its state from YW DB,
@@ -172,6 +164,10 @@ public class RemoveNodeFromUniverse extends UniverseTaskBase {
       // Remove master status (even when it does not exists or is not reachable).
       createUpdateNodeProcessTask(taskParams().nodeName, ServerType.MASTER, false)
           .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+
+      // Update the master addresses on the target universes whose source universe belongs to
+      // this task.
+      createXClusterConfigUpdateMasterAddressesTask();
 
       // Remove its tserver status in DB.
       createUpdateNodeProcessTask(taskParams().nodeName, ServerType.TSERVER, false)

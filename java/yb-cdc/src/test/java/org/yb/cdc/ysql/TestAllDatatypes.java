@@ -13,8 +13,9 @@
 
 package org.yb.cdc.ysql;
 
-import org.apache.log4j.Logger;
 import org.junit.runner.RunWith;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.yb.cdc.CdcService;
 import org.yb.cdc.CdcService.RowMessage.Op;
 import org.yb.cdc.common.CDCBaseClass;
@@ -33,7 +34,7 @@ import java.util.List;
 
 @RunWith(value = YBTestRunnerNonTsanOnly.class)
 public class TestAllDatatypes extends CDCBaseClass {
-  private final Logger LOG = Logger.getLogger(TestAllDatatypes.class);
+  private final Logger LOG = LoggerFactory.getLogger(TestAllDatatypes.class);
 
   public void assertRecordsOnly(ExpectedRecordYSQL<?>[] expectedRecords,
                                 CDCSubscriber testSubscriber) throws Exception {
@@ -91,6 +92,8 @@ public class TestAllDatatypes extends CDCBaseClass {
     statement.execute("create table testtsrange (a int primary key, b tsrange);");
     statement.execute("create table testtstzrange (a int primary key, b tstzrange);");
     statement.execute("create table testdaterange (a int primary key, b daterange);");
+    statement.execute("CREATE TYPE coupon_discount_type AS ENUM ('FIXED','PERCENTAGE');");
+    statement.execute("create table testdiscount (a int primary key, b coupon_discount_type);");
   }
 
   @Before
@@ -171,6 +174,8 @@ public class TestAllDatatypes extends CDCBaseClass {
       tstzrangeSub.createStream("proto");
       CDCSubscriber daterangeSub = new CDCSubscriber("testdaterange", getMasterAddresses());
       daterangeSub.createStream("proto");
+      CDCSubscriber udtSub = new CDCSubscriber("testdiscount", getMasterAddresses());
+      udtSub.createStream("proto");
 
       TestUtils.runSqlScript(connection, "sql_datatype_script/complete_datatype_test.sql");
 
@@ -519,6 +524,11 @@ public class TestAllDatatypes extends CDCBaseClass {
         new ExpectedRecordYSQL<>(-1, "", Op.COMMIT)
       };
       assertRecordsOnly(expectedRecordsDateRange, daterangeSub);
+
+      ExpectedRecordYSQL<?>[] expectedRecordsUDT = new ExpectedRecordYSQL[] {
+        new ExpectedRecordYSQL<>(1, "FIXED", Op.INSERT),
+      };
+      assertRecordsOnly(expectedRecordsUDT, udtSub);
     } catch (Exception e) {
       LOG.error("Failed to test all datatypes", e);
       fail();
@@ -533,7 +543,6 @@ public class TestAllDatatypes extends CDCBaseClass {
 
       CDCSubscriber testSubscriber = new CDCSubscriber("testdefault", getMasterAddresses());
       testSubscriber.createStream("proto");
-
       assertEquals(1, statement.executeUpdate("insert into testdefault values (1);"));
 
       List<CdcService.CDCSDKProtoRecordPB> outputList = new ArrayList<>();

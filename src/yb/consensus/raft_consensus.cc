@@ -940,7 +940,8 @@ Status RaftConsensus::ElectionLostByProtege(const std::string& election_lost_by_
   }
 
   if (start_election) {
-    return StartElection({ElectionMode::NORMAL_ELECTION});
+    return StartElection(LeaderElectionData{
+        .mode = ElectionMode::NORMAL_ELECTION, .must_be_committed_opid = OpId()});
   }
 
   return Status::OK();
@@ -982,7 +983,7 @@ void RaftConsensus::RunLeaderElectionResponseRpcCallback(
 
 void RaftConsensus::ReportFailureDetectedTask() {
   auto scope_exit = ScopeExit([this] {
-    outstanding_report_failure_task_.clear(std::memory_order_release);
+    outstanding_report_failure_task_.store(false, std::memory_order_release);
   });
 
   MonoTime now;
@@ -1013,7 +1014,8 @@ void RaftConsensus::ReportFailureDetectedTask() {
 
   // Start an election.
   LOG_WITH_PREFIX(INFO) << "ReportFailDetected: Starting NORMAL_ELECTION...";
-  Status s = StartElection({ElectionMode::NORMAL_ELECTION});
+  Status s = StartElection(LeaderElectionData{
+      .mode = ElectionMode::NORMAL_ELECTION, .must_be_committed_opid = OpId()});
   if (PREDICT_FALSE(!s.ok())) {
     LOG_WITH_PREFIX(WARNING) << "Failed to trigger leader election: " << s.ToString();
   }
@@ -1021,7 +1023,7 @@ void RaftConsensus::ReportFailureDetectedTask() {
 
 void RaftConsensus::ReportFailureDetected() {
   if (FLAGS_raft_disallow_concurrent_outstanding_report_failure_tasks &&
-      outstanding_report_failure_task_.test_and_set(std::memory_order_acq_rel)) {
+      outstanding_report_failure_task_.exchange(true, std::memory_order_acq_rel)) {
     VLOG(4)
         << "Returning from ReportFailureDetected as there is already an outstanding report task.";
   } else {
@@ -1030,7 +1032,7 @@ void RaftConsensus::ReportFailureDetected() {
         std::bind(&RaftConsensus::ReportFailureDetectedTask, shared_from_this()));
     WARN_NOT_OK(s, "Failed to submit failure detected task");
     if (!s.ok()) {
-      outstanding_report_failure_task_.clear(std::memory_order_release);
+      outstanding_report_failure_task_.store(false, std::memory_order_release);
     }
   }
 }
@@ -1547,8 +1549,10 @@ Status RaftConsensus::Update(ConsensusRequestPB* request,
   // StartElection will ensure the pending election will be started just once only even if
   // UpdateReplica happens in multiple threads in parallel.
   if (result.start_election) {
-    RETURN_NOT_OK(StartElection(
-        {consensus::ElectionMode::ELECT_EVEN_IF_LEADER_IS_ALIVE, true /* pending_commit */}));
+    RETURN_NOT_OK(StartElection(LeaderElectionData{
+        .mode = consensus::ElectionMode::ELECT_EVEN_IF_LEADER_IS_ALIVE,
+        .pending_commit = true,
+        .must_be_committed_opid = OpId()}));
   }
 
   RETURN_NOT_OK(ExecuteHook(POST_UPDATE));
@@ -3051,10 +3055,11 @@ Status RaftConsensus::ReplicateConfigChangeUnlocked(const ReplicateMsgPtr& repli
                                                     const RaftConfigPB& new_config,
                                                     ChangeConfigType type,
                                                     StdStatusCallback client_cb) {
-  LOG(INFO) << "Setting replicate pending config " << new_config.ShortDebugString()
-            << ", type = " << ChangeConfigType_Name(type);
+  LOG_WITH_PREFIX(INFO) << "Setting replicate pending config " << new_config.ShortDebugString()
+                        << ", type = " << ChangeConfigType_Name(type);
 
-  RETURN_NOT_OK(state_->SetPendingConfigUnlocked(new_config));
+  // We will set pending config op id below once we have it.
+  RETURN_NOT_OK(state_->SetPendingConfigUnlocked(new_config, OpId()));
 
   if (type == CHANGE_ROLE &&
       PREDICT_FALSE(FLAGS_TEST_inject_delay_leader_change_role_append_secs)) {
@@ -3070,13 +3075,18 @@ Status RaftConsensus::ReplicateConfigChangeUnlocked(const ReplicateMsgPtr& repli
   round->SetCallback(MakeNonTrackedRoundCallback(round.get(), std::move(client_cb)));
   auto status = AppendNewRoundToQueueUnlocked(round);
   if (!status.ok()) {
-    // We could just cancel pending config, because there is could be only one pending config.
+    // We could just cancel pending config, because there could be only one pending config that
+    // we've just set above and it corresponds to replicate_ref.
     auto clear_status = state_->ClearPendingConfigUnlocked();
     if (!clear_status.ok()) {
       LOG(WARNING) << "Could not clear pending config: " << clear_status;
     }
+    return status;
   }
-  return status;
+
+  RETURN_NOT_OK(state_->SetPendingConfigOpIdUnlocked(round->id()));
+
+  return Status::OK();
 }
 
 void RaftConsensus::RefreshConsensusQueueAndPeersUnlocked() {
@@ -3333,10 +3343,6 @@ yb::OpId RaftConsensus::GetLastCommittedOpId() {
   return state_->GetCommittedOpIdUnlocked();
 }
 
-yb::OpId RaftConsensus::GetLastCDCedOpId() {
-  return queue_->GetCDCConsumerOpIdForIntentRemoval();
-}
-
 yb::OpId RaftConsensus::GetLastAppliedOpId() {
   auto lock = state_->LockForRead();
   return state_->GetLastAppliedOpIdUnlocked();
@@ -3375,7 +3381,7 @@ void RaftConsensus::NonTrackedRoundReplicationFinished(ConsensusRound* round,
     LOG_WITH_PREFIX(INFO) << op_str << " replication failed: " << status << "\n" << GetStackTrace();
 
     // Clear out the pending state (ENG-590).
-    if (IsChangeConfigOperation(op_type)) {
+    if (IsChangeConfigOperation(op_type) && state_->GetPendingConfigOpIdUnlocked() == round->id()) {
       WARN_NOT_OK(state_->ClearPendingConfigUnlocked(), "Could not clear pending state");
     }
   } else if (IsChangeConfigOperation(op_type)) {

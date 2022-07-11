@@ -13,9 +13,7 @@ menu:
     name: Node.js
     identifier: nodejs-1
     weight: 551
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -29,6 +27,12 @@ showAsideToc: true
     <a href="{{< relref "./ysql-sequelize.md" >}}" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - Sequelize
+    </a>
+  </li>
+  <li>
+    <a href="{{< relref "./ysql-prisma.md" >}}" class="nav-link">
+      <i class="icon-cassandra" aria-hidden="true"></i>
+      YSQL - Prisma
     </a>
   </li>
   <li>
@@ -47,12 +51,12 @@ Are you using YugabyteDB Managed? Install the [prerequisites](#prerequisites), t
 
 ## Prerequisites
 
-This tutorial assumes that you have:
+This tutorial assumes that you have installed the following:
 
-- installed YugabyteDB and created a cluster. Refer to [Quick Start](../../../../quick-start/).
-- installed a recent version of [`node`](https://nodejs.org/en/download/).
-- installed the [`node-postgres` driver](../../../../reference/drivers/ysql-client-drivers/#node-postgres).
-- installed the [async](https://github.com/caolan/async) utility to work with asynchronous Javascript.
+- A YugabyteDB cluster. Refer to [Quick Start](../../../../quick-start/).
+- A recent version of [`node`](https://nodejs.org/en/download/).
+- [`node-postgres`](../../../../reference/drivers/ysql-client-drivers/#node-postgres) driver.
+- [async](https://github.com/caolan/async) utility to work with asynchronous Javascript.
 
 To install the node-postgres driver, run the following command:
 
@@ -75,8 +79,8 @@ var pg = require('pg');
 const async = require('async');
 const assert = require('assert');
 
-var conString = "postgres://postgres@localhost:5433/postgres";
-var client = new pg.Client(conString);
+var connectionString = "postgres://postgres@localhost:5433/postgres";
+var client = new pg.Client(connectionString);
 
 async.series([
   function connect(next) {
@@ -206,6 +210,8 @@ const config = {
   },
 }
 ```
+
+If you have created a cluster on [YugabyteDB Managed](https://www.yugabyte.com/cloud/), [follow the steps](../../../yugabyte-cloud/cloud-connect/connect-applications/) to obtain the cluster connection parameters and SSL Root certificate.
 
 ### Create a sample Node.js application with SSL
 

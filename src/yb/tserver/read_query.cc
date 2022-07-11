@@ -107,10 +107,10 @@ class ReadQuery : public std::enable_shared_from_this<ReadQuery>, public rpc::Th
   virtual ~ReadQuery() = default;
 
  private:
-  CHECKED_STATUS DoPerform();
+  Status DoPerform();
 
   // Picks read based for specified read context.
-  CHECKED_STATUS DoPickReadTime(server::Clock* clock);
+  Status DoPickReadTime(server::Clock* clock);
 
   bool transactional() const;
 
@@ -118,7 +118,7 @@ class ReadQuery : public std::enable_shared_from_this<ReadQuery>, public rpc::Th
 
   ReadHybridTime FormRestartReadHybridTime(const HybridTime& restart_time) const;
 
-  CHECKED_STATUS PickReadTime(server::Clock* clock);
+  Status PickReadTime(server::Clock* clock);
 
   bool IsForBackfill() const;
   bool IsPgsqlFollowerReadAtAFollower() const;
@@ -128,7 +128,7 @@ class ReadQuery : public std::enable_shared_from_this<ReadQuery>, public rpc::Th
   Result<ReadHybridTime> DoRead();
   Result<ReadHybridTime> DoReadImpl();
 
-  CHECKED_STATUS Complete();
+  Status Complete();
 
   void UpdateConsistentPrefixMetrics();
 
@@ -185,7 +185,7 @@ ReadHybridTime ReadQuery::FormRestartReadHybridTime(const HybridTime& restart_ti
   return result;
 }
 
-CHECKED_STATUS ReadQuery::PickReadTime(server::Clock* clock) {
+Status ReadQuery::PickReadTime(server::Clock* clock) {
   auto result = DoPickReadTime(clock);
   if (!result.ok()) {
     TRACE(result.ToString());
@@ -206,7 +206,11 @@ bool ReadQuery::IsForBackfill() const {
   return false;
 }
 
-CHECKED_STATUS ReadQuery::DoPerform() {
+Status ReadQuery::DoPerform() {
+  if (req_->include_trace()) {
+    context_.EnsureTraceCreated();
+  }
+  ADOPT_TRACE(context_.trace());
   TRACE("Start Read");
   TRACE_EVENT1("tserver", "TabletServiceImpl::Read", "tablet_id", req_->tablet_id());
   VLOG(2) << "Received Read RPC: " << req_->DebugString();
@@ -376,6 +380,10 @@ CHECKED_STATUS ReadQuery::DoPerform() {
     write.set_unused_tablet_id(""); // For backward compatibility.
     write_batch.set_deprecated_may_have_metadata(true);
     write.set_batch_idx(req_->batch_idx());
+    if (req_->has_subtransaction() && req_->subtransaction().has_subtransaction_id()) {
+      write_batch.mutable_subtransaction()->set_subtransaction_id(
+          req_->subtransaction().subtransaction_id());
+    }
     // TODO(dtxn) write request id
 
     RETURN_NOT_OK(leader_peer.peer->tablet()->CreateReadIntents(
@@ -399,7 +407,7 @@ CHECKED_STATUS ReadQuery::DoPerform() {
   return Complete();
 }
 
-CHECKED_STATUS ReadQuery::DoPickReadTime(server::Clock* clock) {
+Status ReadQuery::DoPickReadTime(server::Clock* clock) {
   if (!read_time_) {
     safe_ht_to_read_ = VERIFY_RESULT(abstract_tablet_->SafeTime(require_lease_));
     // If the read time is not specified, then it is a single-shard read.
@@ -441,7 +449,7 @@ bool ReadQuery::IsPgsqlFollowerReadAtAFollower() const {
           req_->consistency_level() == YBConsistencyLevel::CONSISTENT_PREFIX);
 }
 
-CHECKED_STATUS ReadQuery::Complete() {
+Status ReadQuery::Complete() {
   for (;;) {
     resp_->Clear();
     context_.ResetRpcSidecars();

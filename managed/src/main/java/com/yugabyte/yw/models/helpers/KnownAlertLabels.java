@@ -32,7 +32,8 @@ public enum KnownAlertLabels {
   RESULT,
   ALERTNAME,
   MESSAGE,
-  MAINTENANCE_WINDOW_UUIDS;
+  MAINTENANCE_WINDOW_UUIDS,
+  ALERT_EXPRESSION;
 
   public String labelName() {
     return name().toLowerCase();

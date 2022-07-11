@@ -443,10 +443,10 @@ class MetricType {
 class Metric : public RefCountedThreadSafe<Metric> {
  public:
   // All metrics must be able to render themselves as JSON.
-  virtual CHECKED_STATUS WriteAsJson(JsonWriter* writer,
+  virtual Status WriteAsJson(JsonWriter* writer,
                                      const MetricJsonOptions& opts) const = 0;
 
-  virtual CHECKED_STATUS WriteForPrometheus(
+  virtual Status WriteForPrometheus(
       PrometheusWriter* writer, const MetricEntity::AttributeMap& attr,
       const MetricPrometheusOptions& opts) const = 0;
 
@@ -496,7 +496,7 @@ class MetricRegistry {
   //
   // See the MetricJsonOptions struct definition above for options changing the
   // output of this function.
-  CHECKED_STATUS WriteAsJson(JsonWriter* writer,
+  Status WriteAsJson(JsonWriter* writer,
                      const std::vector<std::string>& requested_metrics,
                      const MetricJsonOptions& opts) const;
 
@@ -504,7 +504,7 @@ class MetricRegistry {
   //
   // See the MetricPrometheusOptions struct definition above for options changing the
   // output of this function.
-  CHECKED_STATUS WriteForPrometheus(PrometheusWriter* writer,
+  Status WriteForPrometheus(PrometheusWriter* writer,
                      const MetricPrometheusOptions& opts) const;
   // Writes metrics in this registry to 'writer'.
   //
@@ -516,7 +516,7 @@ class MetricRegistry {
   //
   // See the MetricPrometheusOptions struct definition above for options changing the
   // output of this function.
-  CHECKED_STATUS WriteForPrometheus(PrometheusWriter* writer,
+  Status WriteForPrometheus(PrometheusWriter* writer,
                      const std::vector<std::string>& requested_metrics,
                      const MetricPrometheusOptions& opts) const;
 
@@ -682,7 +682,7 @@ class Gauge : public Metric {
   }
 
   virtual ~Gauge() {}
-  virtual CHECKED_STATUS WriteAsJson(JsonWriter* w,
+  virtual Status WriteAsJson(JsonWriter* w,
                              const MetricJsonOptions& opts) const override;
  protected:
   virtual void WriteValue(JsonWriter* writer) const = 0;
@@ -698,7 +698,7 @@ class StringGauge : public Gauge {
   std::string value() const;
   void set_value(const std::string& value);
 
-  CHECKED_STATUS WriteForPrometheus(
+  Status WriteForPrometheus(
       PrometheusWriter* writer, const MetricEntity::AttributeMap& attr,
       const MetricPrometheusOptions& opts) const override;
  protected:
@@ -739,7 +739,7 @@ class AtomicGauge : public Gauge {
     IncrementBy(-amount);
   }
 
-  CHECKED_STATUS WriteForPrometheus(
+  Status WriteForPrometheus(
       PrometheusWriter* writer, const MetricEntity::AttributeMap& attr,
       const MetricPrometheusOptions& opts) const override {
     if (prototype_->level() < opts.level) {
@@ -836,7 +836,7 @@ class FunctionGauge : public Gauge {
     });
   }
 
-  CHECKED_STATUS WriteForPrometheus(
+  Status WriteForPrometheus(
       PrometheusWriter* writer, const MetricEntity::AttributeMap& attr,
       const MetricPrometheusOptions& opts) const override {
     if (prototype_->level() < opts.level) {
@@ -887,10 +887,10 @@ class Counter : public Metric {
   int64_t value() const;
   void Increment();
   void IncrementBy(int64_t amount);
-  virtual CHECKED_STATUS WriteAsJson(JsonWriter* w,
+  virtual Status WriteAsJson(JsonWriter* w,
                              const MetricJsonOptions& opts) const override;
 
-  CHECKED_STATUS WriteForPrometheus(
+  Status WriteForPrometheus(
       PrometheusWriter* writer, const MetricEntity::AttributeMap& attr,
       const MetricPrometheusOptions& opts) const override;
 
@@ -933,9 +933,9 @@ class MillisLag : public Metric {
   virtual void UpdateTimestampInMilliseconds(int64_t timestamp) {
     timestamp_ms_ = timestamp;
   }
-  virtual CHECKED_STATUS WriteAsJson(JsonWriter* w,
+  virtual Status WriteAsJson(JsonWriter* w,
       const MetricJsonOptions& opts) const override;
-  virtual CHECKED_STATUS WriteForPrometheus(
+  virtual Status WriteForPrometheus(
       PrometheusWriter* writer, const MetricEntity::AttributeMap& attr,
       const MetricPrometheusOptions& opts) const override;
 
@@ -964,10 +964,10 @@ class AtomicMillisLag : public MillisLag {
     atomic_timestamp_ms_.store(timestamp, std::memory_order_release);
   }
 
-  CHECKED_STATUS WriteAsJson(JsonWriter* w,
+  Status WriteAsJson(JsonWriter* w,
                              const MetricJsonOptions& opts) const override;
 
-  CHECKED_STATUS WriteForPrometheus(
+  Status WriteForPrometheus(
       PrometheusWriter* writer, const MetricEntity::AttributeMap& attr,
       const MetricPrometheusOptions& opts) const override {
     if (prototype_->level() < opts.level) {
@@ -1031,16 +1031,16 @@ class Histogram : public Metric {
   // or IncrementBy()).
   uint64_t TotalCount() const;
 
-  virtual CHECKED_STATUS WriteAsJson(JsonWriter* w,
+  virtual Status WriteAsJson(JsonWriter* w,
                              const MetricJsonOptions& opts) const override;
 
-  CHECKED_STATUS WriteForPrometheus(
+  Status WriteForPrometheus(
       PrometheusWriter* writer, const MetricEntity::AttributeMap& attr,
       const MetricPrometheusOptions& opts) const override;
 
   // Returns a snapshot of this histogram including the bucketed values and counts.
   // Resets the bucketed counts, but not the total count/sum.
-  CHECKED_STATUS GetAndResetHistogramSnapshotPB(HistogramSnapshotPB* snapshot,
+  Status GetAndResetHistogramSnapshotPB(HistogramSnapshotPB* snapshot,
                                 const MetricJsonOptions& opts) const;
 
 

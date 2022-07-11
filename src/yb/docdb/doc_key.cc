@@ -288,7 +288,7 @@ class DecodeDocKeyCallback {
 
   void SetHash(...) const {}
 
-  void SetCoTableId(const Uuid cotable_id) const {}
+  void SetCoTableId(const Uuid& cotable_id) const {}
 
   void SetColocationId(const ColocationId colocation_id) const {}
 
@@ -308,7 +308,7 @@ class DummyCallback {
 
   void SetHash(...) const {}
 
-  void SetCoTableId(const Uuid cotable_id) const {}
+  void SetCoTableId(const Uuid& cotable_id) const {}
 
   void SetColocationId(const ColocationId colocation_id) const {}
 
@@ -332,7 +332,7 @@ class EncodedSizesCallback {
 
   void SetHash(...) const {}
 
-  void SetCoTableId(const Uuid cotable_id) const {}
+  void SetCoTableId(const Uuid& cotable_id) const {}
 
   void SetColocationId(const ColocationId colocation_id) const {}
 
@@ -399,7 +399,7 @@ Result<std::pair<size_t, bool>> DocKey::EncodedSizeAndHashPresent(Slice slice, D
   return std::make_pair(decoder.left_input().cdata() - initial_begin, hash_present);
 }
 
-Result<std::pair<size_t, size_t>> DocKey::EncodedHashPartAndDocKeySizes(
+Result<DocKeySizes> DocKey::EncodedHashPartAndDocKeySizes(
     Slice slice,
     AllowSpecial allow_special) {
   auto initial_begin = slice.data();
@@ -407,8 +407,10 @@ Result<std::pair<size_t, size_t>> DocKey::EncodedHashPartAndDocKeySizes(
   EncodedSizesCallback callback(&decoder);
   RETURN_NOT_OK(DoDecode(
       &decoder, DocKeyPart::kWholeDocKey, allow_special, callback));
-  return std::make_pair(callback.range_group_start() - initial_begin,
-                        decoder.left_input().data() - initial_begin);
+  return DocKeySizes {
+    .hash_part_size = static_cast<size_t>(callback.range_group_start() - initial_begin),
+    .doc_key_size = static_cast<size_t>(decoder.left_input().data() - initial_begin),
+  };
 }
 
 class DocKey::DecodeFromCallback {
@@ -430,7 +432,8 @@ class DocKey::DecodeFromCallback {
       key_->hash_ = hash;
     }
   }
-  void SetCoTableId(const Uuid cotable_id) const {
+
+  void SetCoTableId(const Uuid& cotable_id) const {
     key_->cotable_id_ = cotable_id;
   }
 
@@ -702,7 +705,7 @@ class DecodeSubDocKeyCallback {
  public:
   explicit DecodeSubDocKeyCallback(boost::container::small_vector_base<Slice>* out) : out_(out) {}
 
-  CHECKED_STATUS DecodeDocKey(Slice* slice) const {
+  Status DecodeDocKey(Slice* slice) const {
     return DocKey::PartiallyDecode(slice, out_);
   }
 
@@ -735,7 +738,7 @@ class SubDocKey::DecodeCallback {
  public:
   explicit DecodeCallback(SubDocKey* key) : key_(key) {}
 
-  CHECKED_STATUS DecodeDocKey(Slice* slice) const {
+  Status DecodeDocKey(Slice* slice) const {
     return key_->doc_key_.DecodeFrom(slice);
   }
 
@@ -875,8 +878,8 @@ Status SubDocKey::DecodeDocKeyAndSubKeyEnds(
     SCHECK_GE(slice.size(), id_size + 1, Corruption,
               Format("Cannot have exclusively ID in key $0", slice.ToDebugHexString()));
     // Identify table tombstone.
-    if (slice[0] == KeyEntryTypeAsChar::kColocationId &&
-        slice[id_size] == KeyEntryTypeAsChar::kGroupEnd) {
+    if ((slice[0] == KeyEntryTypeAsChar::kColocationId || slice[0] == KeyEntryTypeAsChar::kTableId)
+        && slice[id_size] == KeyEntryTypeAsChar::kGroupEnd) {
       SCHECK_GE(slice.size(), id_size + 2, Corruption,
                 Format("Space for kHybridTime expected in key $0", slice.ToDebugHexString()));
       SCHECK_EQ(slice[id_size + 1], KeyEntryTypeAsChar::kHybridTime, Corruption,
@@ -885,9 +888,10 @@ Status SubDocKey::DecodeDocKeyAndSubKeyEnds(
       // shouldn't count as an end.
       slice.remove_prefix(id_size + 1);
     } else {
+      slice.remove_prefix(id_size);
       auto doc_key_size = VERIFY_RESULT(DocKey::EncodedSize(slice, DocKeyPart::kWholeDocKey));
       slice.remove_prefix(doc_key_size);
-      out->push_back(doc_key_size);
+      out->push_back(id_size + doc_key_size);
     }
   } else {
     slice.remove_prefix(out->back());
@@ -1229,7 +1233,7 @@ Result<bool> DocKeyDecoder::DecodeCotableId(Uuid* uuid) {
   }
 
   if (uuid) {
-    RETURN_NOT_OK(uuid->DecodeFromComparableSlice(Slice(input_.data(), kUuidSize)));
+    *uuid = VERIFY_RESULT(Uuid::FromComparable(input_.Prefix(kUuidSize)));
   }
   input_.remove_prefix(kUuidSize);
 

@@ -46,6 +46,7 @@ DECLARE_uint64(rocksdb_max_file_size_for_compaction);
 DECLARE_int32(rocksdb_level0_slowdown_writes_trigger);
 DECLARE_int32(rocksdb_level0_stop_writes_trigger);
 DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
+DECLARE_int32(test_random_seed);
 
 using namespace std::literals; // NOLINT
 
@@ -356,8 +357,11 @@ TEST_F(DocOperationTest, TestRedisSetKVWithTTL) {
   redis_write_operation_pb.mutable_key_value()->add_value("xyz");
   RedisWriteOperation redis_write_operation(redis_write_operation_pb);
   auto doc_write_batch = MakeDocWriteBatch();
-  ASSERT_OK(redis_write_operation.Apply(
-      {&doc_write_batch, CoarseTimePoint::max() /* deadline */, ReadHybridTime()}));
+  ASSERT_OK(redis_write_operation.Apply(docdb::DocOperationApplyData{
+      .doc_write_batch = &doc_write_batch,
+      .deadline = CoarseTimePoint::max(),
+      .read_time = ReadHybridTime(),
+      .restart_read_ht = nullptr}));
 
   ASSERT_OK(WriteToRocksDB(doc_write_batch, HybridTime::FromMicros(1000)));
 
@@ -766,7 +770,11 @@ std::pair<It, It> GetIteratorRange(const It begin, const It end, const It it, QL
 class DocOperationScanTest : public DocOperationTest {
  protected:
   DocOperationScanTest() {
-    Seed(&rng_);
+    if (FLAGS_test_random_seed == 0) {
+      Seed(&rng_);
+    } else {
+      rng_.seed(FLAGS_test_random_seed);
+    }
   }
 
   void InitSchema(SortingType range_column_sorting) {
@@ -886,7 +894,7 @@ class DocOperationScanTest : public DocOperationTest {
               doc_read_context_.schema, doc_read_context_, txn_op_context, doc_db(),
               CoarseTimePoint::max() /* deadline */, read_ht);
           ASSERT_OK(ql_iter.Init(ql_scan_spec));
-          LOG(INFO) << "Expected rows: " << yb::ToString(expected_rows);
+          LOG(INFO) << "Expected rows: " << AsString(expected_rows);
           it = expected_rows.begin();
           while (ASSERT_RESULT(ql_iter.HasNext())) {
             QLTableRow value_map;
@@ -1258,8 +1266,7 @@ TEST_F(DocOperationTest, EarlyFilesFilteredBeforeBigFile) {
   ASSERT_EQ(kExpectedBigFiles, CountBigFiles(files, kMaxFileSize));
 
   // Files will be ordered from latest to earliest, so select the nth file from the back.
-  auto last_to_discard =
-      rocksdb::TableFileNameToNumber(files[files.size() - kNumFilesToExpire].name);
+  auto last_to_discard = files[files.size() - kNumFilesToExpire].name_id;
 
   SetMaxFileSizeForCompaction(kMaxFileSize);
 

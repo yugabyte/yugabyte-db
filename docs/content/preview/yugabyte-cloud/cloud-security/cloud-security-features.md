@@ -4,19 +4,18 @@ linkTitle: Security architecture
 description: Security architecture of YugabyteDB Managed.
 image: /images/section_icons/index/secure.png
 menu:
-  preview:
+  preview_yugabyte-cloud:
     parent: cloud-security
     identifier: cloud-security-features
 weight: 10
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 YugabyteDB Managed is a fully managed YugabyteDB-as-a-Service that allows you to run YugabyteDB clusters on public cloud providers such as Google Cloud Platform (GCP) and Amazon Web Services (AWS), with more public cloud provider options coming soon. YugabyteDB Managed runs on top of [YugabyteDB Anywhere](../../../yugabyte-platform/overview/). It is responsible for creating and managing customer YugabyteDB clusters deployed on cloud provider infrastructure.
 
 ![YugabyteDB Managed high-level architecture](/images/yb-cloud/cloud-security-diagram.png)
 
-All customer clusters are firewalled from each other. Outside connections are also firewalled according to the [IP allow list](../../cloud-secure-clusters/add-connections/) rules that you assign to your clusters. You can also connect standard (that is, not free) clusters to virtual private clouds (VPCs) on the public cloud provider of your choice (subject to the IP allow list rules).
+All customer clusters are firewalled from each other. Outside connections are also firewalled according to the [IP allow list](../../cloud-secure-clusters/add-connections/) rules that you assign to your clusters. You can also connect Dedicated (that is, not Sandbox) clusters to virtual private clouds (VPCs) on the public cloud provider of your choice (subject to the IP allow list rules).
 
 ## Infrastructure security
 

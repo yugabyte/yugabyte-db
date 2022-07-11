@@ -8,8 +8,7 @@ menu:
     identifier: colocated-tables-2-linux
     parent: explore
     weight: 245
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

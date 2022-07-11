@@ -20,13 +20,7 @@ namespace yb {
 
 class Status;
 
-#define CHECKED_STATUS MUST_USE_RESULT ::yb::Status
-
-#ifdef __clang__
 #define NODISCARD_CLASS [[nodiscard]] // NOLINT
-#else
-#define NODISCARD_CLASS // NOLINT
-#endif
 
 template<class TValue>
 class NODISCARD_CLASS Result;

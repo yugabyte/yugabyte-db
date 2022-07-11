@@ -48,7 +48,7 @@ class PTDmlUsingClauseElement : public TreeNode {
   }
 
   // Node semantics analysis.
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
+  virtual Status Analyze(SemContext *sem_context) override;
 
   const PTExprPtr value() {
     return value_;

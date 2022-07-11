@@ -254,7 +254,7 @@ Result<std::unique_ptr<addrinfo, AddrinfoDeleter>> HostToInetAddrInfo(const std:
 }
 
 template <typename F>
-CHECKED_STATUS ResolveInetAddresses(const std::string& host, F func) {
+Status ResolveInetAddresses(const std::string& host, F func) {
   boost::optional<IpAddress> fast_resolve = TryFastResolve(host);
   if (fast_resolve) {
     func(*fast_resolve);

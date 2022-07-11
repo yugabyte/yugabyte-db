@@ -188,13 +188,15 @@ readonly -a VALID_COMPILER_TYPES=(
   clang10
   clang11
   clang12
-  zapcc
+  clang13
+  clang14
 )
 make_regex_from_list VALID_COMPILER_TYPES "${VALID_COMPILER_TYPES[@]}"
 
 readonly -a VALID_LINKING_TYPES=(
   dynamic
-  static
+  thin-lto
+  full-lto
 )
 make_regex_from_list VALID_LINKING_TYPES "${VALID_LINKING_TYPES[@]}"
 
@@ -333,6 +335,23 @@ normalize_build_type() {
   fi
 }
 
+decide_whether_to_use_linuxbrew() {
+  expect_vars_to_be_set YB_COMPILER_TYPE build_type
+  if [[ -z ${YB_USE_LINUXBREW:-} ]]; then
+    if [[ -n ${predefined_build_root:-} ]]; then
+      if [[ ${predefined_build_root##*/} == *-linuxbrew-* ]]; then
+        YB_USE_LINUXBREW=1
+      fi
+    elif [[ -n ${YB_LINUXBREW_DIR:-} ||
+            ( ${YB_COMPILER_TYPE} =~ ^clang[0-9]+$ &&
+              $build_type == "release" &&
+              "$( uname -m )" == "x86_64" ) ]]; then
+      YB_USE_LINUXBREW=1
+    fi
+    export YB_USE_LINUXBREW=${YB_USE_LINUXBREW:-0}
+  fi
+}
+
 # Sets the build directory based on the given build type (the build_type variable) and the value of
 # the YB_COMPILER_TYPE environment variable.
 set_build_root() {
@@ -356,33 +375,13 @@ set_build_root() {
 
   BUILD_ROOT=$YB_BUILD_PARENT_DIR/$build_type-$YB_COMPILER_TYPE
 
-  if [[ -z ${YB_USE_LINUXBREW:-} ]]; then
-    if [[ -n ${predefined_build_root:-} ]]; then
-      if [[ ${predefined_build_root##*/} == *-linuxbrew-* ]]; then
-        YB_USE_LINUXBREW=1
-      else
-        YB_USE_LINUXBREW=0
-      fi
-    elif [[ -n ${YB_LINUXBREW_DIR:-} || ${YB_COMPILER_TYPE} =~ ^gcc5?$ ]]; then
-      YB_USE_LINUXBREW=1
-    elif [[ ${YB_COMPILER_TYPE} == "clang12" ]]; then
-      # For Clang 12 in particular, we have prebuilt third-party archives with and without
-      # Linuxbrew. Use Linuxbrew by default for the release build.
-      if [[ $build_type == "release" && "$( uname -m )" == "x86_64" ]]; then
-        YB_USE_LINUXBREW=1
-      else
-        YB_USE_LINUXBREW=0
-      fi
-    fi
-    export YB_USE_LINUXBREW=${YB_USE_LINUXBREW:-0}
-  fi
-  # Now we've finalized our decision about whether we are using Linuxbrew.
+  decide_whether_to_use_linuxbrew
 
   if using_linuxbrew; then
     BUILD_ROOT+="-linuxbrew"
   fi
 
-  BUILD_ROOT+="-dynamic"
+  BUILD_ROOT+="-${YB_LINKING_TYPE:-dynamic}"
   if is_apple_silicon; then
     # Append the target architecture (x86_64 or arm64).
     BUILD_ROOT+=-${YB_TARGET_ARCH}
@@ -496,12 +495,10 @@ set_default_compiler_type() {
     if is_mac; then
       YB_COMPILER_TYPE=clang
     elif [[ $OSTYPE =~ ^linux ]]; then
-      if [[ ${build_type:-} == "tsan" ]]; then
-        # TODO: upgrade Clang version used for TSAN as well.
-        YB_COMPILER_TYPE=clang7
-      elif [[ $( uname -m ) == "aarch64" ]] || ! is_redhat_family; then
-        # TODO: produce a third-party build for aarch64 with Clang 12, and on Ubuntu.
-        YB_COMPILER_TYPE=clang11
+      detect_architecture
+      if [[ ${build_type} =~ ^(debug|fastdebug|release)$ &&
+            ${YB_TARGET_ARCH} == "x86_64" ]]; then
+        YB_COMPILER_TYPE=clang13
       else
         YB_COMPILER_TYPE=clang12
       fi
@@ -917,7 +914,7 @@ put_path_entry_first() {
   export PATH=$path_entry:$PATH
 }
 
-add_path_entry() {
+add_path_entry_last() {
   expect_num_args 1 "$@"
   local path_entry=$1
   if [[ $PATH != *:$path_entry && $PATH != $path_entry:* && $PATH != *:$path_entry:* ]]; then
@@ -995,6 +992,8 @@ find_compiler_by_type() {
         fi
         cc_executable=$gcc_bin_dir/gcc
         cxx_executable=$gcc_bin_dir/g++
+        # This is needed for other tools, such as "as" (the assembler).
+        put_path_entry_first "$gcc_bin_dir"
       else
         # shellcheck disable=SC2230
         cc_executable=$(which "gcc-$gcc_major_version")
@@ -1066,15 +1065,6 @@ find_compiler_by_type() {
             break
           fi
         done
-      fi
-    ;;
-    zapcc)
-      if [[ -n ${YB_ZAPCC_INSTALL_PATH:-} ]]; then
-        cc_executable=$YB_ZAPCC_INSTALL_PATH/bin/zapcc
-        cxx_executable=$YB_ZAPCC_INSTALL_PATH/bin/zapcc++
-      else
-        cc_executable=zapcc
-        cxx_executable=zapcc++
       fi
     ;;
     *)
@@ -1223,6 +1213,7 @@ download_thirdparty() {
 }
 
 download_toolchain() {
+  expect_vars_to_be_set YB_COMPILER_TYPE
   local toolchain_urls=()
   local linuxbrew_url=""
   if [[ -n ${YB_THIRDPARTY_DIR:-} && -f "$YB_THIRDPARTY_DIR/linuxbrew_url.txt" ]]; then
@@ -1246,6 +1237,18 @@ download_toolchain() {
 
   if [[ -n ${linuxbrew_url:-} ]]; then
     toolchain_urls+=( "$linuxbrew_url" )
+  fi
+  if [[ -z ${YB_LLVM_TOOLCHAIN_URL:-} &&
+        ${YB_COMPILER_TYPE:-} =~ ^clang[0-9]+$ ]] && is_linux; then
+    YB_LLVM_TOOLCHAIN_URL=$(
+      python3 -m llvm_installer --print-url "--llvm-major-version=${YB_COMPILER_TYPE#clang}"
+    )
+    if [[ ${YB_LLVM_TOOLCHAIN_URL} != https://* ]]; then
+      fatal "Failed to determine LLVM toolchain URL using the llvm-installer utility." \
+            "YB_LLVM_TOOLCHAIN_URL=${YB_LLVM_TOOLCHAIN_URL}. See" \
+            "https://github.com/yugabyte/llvm-installer for details."
+    fi
+    export YB_LLVM_TOOLCHAIN_URL
   fi
   if [[ -n ${YB_LLVM_TOOLCHAIN_URL:-} ]]; then
     toolchain_urls+=( "${YB_LLVM_TOOLCHAIN_URL}" )
@@ -1271,7 +1274,7 @@ download_toolchain() {
     fi
 
     download_and_extract_archive "$toolchain_url" "$toolchain_dir_parent"
-    if "$is_linuxbrew"; then
+    if [[ ${is_linuxbrew} == "true" ]]; then
       if [[ -n ${YB_LINUXBREW_DIR:-} &&
             $YB_LINUXBREW_DIR != "$extracted_dir" ]]; then
         log_thirdparty_and_toolchain_details
@@ -1283,7 +1286,7 @@ download_toolchain() {
       save_brew_path_to_build_dir
     fi
 
-    if "$is_llvm"; then
+    if [[ ${is_llvm} == "true" ]]; then
       if [[ -n ${YB_LLVM_TOOLCHAIN_DIR:-} &&
             $YB_LLVM_TOOLCHAIN_DIR != "$extracted_dir" ]]; then
         log_thirdparty_and_toolchain_details
@@ -1376,6 +1379,7 @@ save_thirdparty_info_to_build_dir() {
 save_paths_to_build_dir() {
   save_brew_path_to_build_dir
   save_thirdparty_info_to_build_dir
+  save_llvm_toolchain_path_to_build_dir
 }
 
 detect_linuxbrew() {
@@ -1391,7 +1395,10 @@ detect_linuxbrew() {
     return
   fi
 
-  if ! "$is_clean_build" && [[ -n ${BUILD_ROOT:-} && -f $BUILD_ROOT/linuxbrew_path.txt ]]; then
+  if [[ ${is_clean_build} != "true" &&
+        -n ${BUILD_ROOT:-} &&
+        -f $BUILD_ROOT/linuxbrew_path.txt ]]
+  then
     YB_LINUXBREW_DIR=$(<"$BUILD_ROOT/linuxbrew_path.txt")
     export YB_LINUXBREW_DIR
     yb_linuxbrew_dir_origin=" (from file '$BUILD_ROOT/linuxbrew_path.txt')"
@@ -1814,6 +1821,9 @@ find_or_download_thirdparty() {
   if [[ -n ${YB_THIRDPARTY_DIR:-} ]]; then
     finalize_yb_thirdparty_dir
     if [[ -d $YB_THIRDPARTY_DIR ]]; then
+      if [[ ! -f "${BUILD_ROOT}/thirdparty_path.txt" ]]; then
+        save_thirdparty_info_to_build_dir
+      fi
       return
     fi
   fi
@@ -1964,7 +1974,6 @@ handle_predefined_build_root() {
     local _dash_linuxbrew=${BASH_REMATCH[$group_idx]}
 
     (( group_idx+=2 ))
-    # _linking_type is unused. We always use dynamic linking, but we plan to support static linking.
     # shellcheck disable=SC2034
     local _linking_type=${BASH_REMATCH[$group_idx]}
 
@@ -2000,6 +2009,17 @@ handle_predefined_build_root() {
   elif [[ $YB_COMPILER_TYPE != "$_compiler_type" ]]; then
     fatal "Compiler type from the build root ('$_compiler_type' from '$predefined_build_root') " \
           "does not match YB_COMPILER_TYPE ('$YB_COMPILER_TYPE')."
+  fi
+
+  if [[ -z ${YB_LINKING_TYPE:-} ]]; then
+    export YB_LINKING_TYPE=$_linking_type
+    if ! "$handle_predefined_build_root_quietly"; then
+      log "Automatically setting linking type to '$YB_LINKING_TYPE' based on predefined build" \
+          "root ('$basename')"
+    fi
+  elif [[ $YB_LINKING_TYPE != "$_linking_type" ]]; then
+    fatal "Compiler type from the build root ('$_linking_type' from '$predefined_build_root') " \
+          "does not match YB_LINKING_TYPE ('$YB_LINKING_TYPE')."
   fi
 
   local use_linuxbrew
@@ -2189,6 +2209,7 @@ activate_virtualenv() {
      ! "$yb_readonly_virtualenv"; then
     log "YB_RECREATE_VIRTUALENV is set, deleting virtualenv at '$virtualenv_dir'"
     rm -rf "$virtualenv_dir"
+    # We don't want to be re-creating the virtual environment over and over again.
     unset YB_RECREATE_VIRTUALENV
   fi
 
@@ -2437,19 +2458,20 @@ set_prebuilt_thirdparty_url() {
       if [[ -f $thirdparty_url_file_path ]]; then
         rm -f "$thirdparty_url_file_path"
       fi
-      local is_linuxbrew_arg=""
+      local thirdparty_tool_cmd_line=(
+        "$YB_BUILD_SUPPORT_DIR/thirdparty_tool"
+        --save-thirdparty-url-to-file "$thirdparty_url_file_path"
+        --compiler-type "$YB_COMPILER_TYPE"
+      )
       if [[ -n ${YB_USE_LINUXBREW:-} ]]; then
-        if [[ $YB_USE_LINUXBREW == "1" ]]; then
-          is_linuxbrew_arg="--is-linuxbrew=true"
-        else
-          is_linuxbrew_arg="--is-linuxbrew=false"
-        fi
+        # See arg_str_to_bool in Python code for how the boolean parameter is interpreted.
+        thirdparty_tool_cmd_line+=( "--is-linuxbrew=$YB_USE_LINUXBREW" )
       fi
-      "$YB_BUILD_SUPPORT_DIR/thirdparty_tool" \
-          --save-thirdparty-url-to-file "$thirdparty_url_file_path" \
-          --save-llvm-url-to-file "$llvm_url_file_path" \
-          --compiler-type "$YB_COMPILER_TYPE" \
-          $is_linuxbrew_arg
+      if [[ ${YB_LINKING_TYPE:-dynamic} != "dynamic" ]]; then
+        # Transform "thin-lto" or "full-lto" into "thin" or "full" respectively.
+        thirdparty_tool_cmd_line+=( "--lto=${YB_LINKING_TYPE%%-lto}" )
+      fi
+      "${thirdparty_tool_cmd_line[@]}"
       YB_THIRDPARTY_URL=$(<"$BUILD_ROOT/thirdparty_url.txt")
       export YB_THIRDPARTY_URL
       yb_thirdparty_url_origin=" (determined automatically based on the OS and compiler type)"
@@ -2581,9 +2603,30 @@ is_apple_silicon() {
   return 1
 }
 
-should_use_lto() {
-  using_linuxbrew && [[ "${YB_COMPILER_TYPE}" == "clang12" && "${build_type}" == "release" ]]
+validate_clangd_index_format() {
+  expect_num_args 1 "$@"
+  local format=$1
+  if [[ ! ${format} =~ ^(binary|yaml)$ ]]; then
+    fatal "Invalid Clangd index format specified: ${format} (expected 'binary' or 'yaml')"
+  fi
 }
+
+build_clangd_index() {
+  expect_num_args 1 "$@"
+  local format=$1
+  validate_clangd_index_format "${format}"
+  local clangd_index_path=${BUILD_ROOT}/clangd_index.${format}
+  log "Building Clangd index at ${clangd_index_path}"
+  (
+    set -x
+    time "${YB_LLVM_TOOLCHAIN_DIR}/bin/clangd-indexer" \
+        --executor=all-TUs \
+        "--format=${format}" \
+        "${BUILD_ROOT}/compile_commands.json" \
+        >"${clangd_index_path}"
+  )
+}
+
 
 # -------------------------------------------------------------------------------------------------
 # Initialization

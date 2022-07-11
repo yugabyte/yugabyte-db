@@ -420,7 +420,8 @@ public class TestYsqlMetrics extends BasePgSQLTest {
       AggregatedValue stat = getStatementStat(query);
       assertEquals(1, stat.count);
       while(result.next()) {
-        if(result.isLast()) {
+        final String row = result.getString(1);
+        if(row.contains("Execution Time")) {
           double query_time = Double.parseDouble(result.getString(1).replaceAll("[^\\d.]", ""));
           // As stat.total_time indicates total time of EXPLAIN query,
           // actual query total time is a little bit less.
@@ -429,6 +430,109 @@ public class TestYsqlMetrics extends BasePgSQLTest {
         }
       }
     }
+  }
+
+  /**
+   * This test does basic memory stats verification in relative method.
+   * We don't verify the actual max memory values as they can be platform dependent.
+   * Instead, we verify that a small query's max memory usage output is smaller that a
+   * big query's.
+   * It also does basic tests to ensure the newly added cutomized logic
+   * for memory stats doesn't break existing EXPLAIN ANALYZE's execution for DDLs.
+   */
+  @Test
+  public void testExplainMaxMemory() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("CREATE TABLE tst (c1 INT);");
+      statement.execute("PREPARE demo(int) AS "
+        + "SELECT m1 FROM "
+        + "(SELECT MAX(c1) AS m1 FROM "
+        + "(SELECT * FROM tst LIMIT $1 "
+        + ") AS t0 "
+        + "GROUP BY c1) AS t1 "
+        + "ORDER BY m1;"
+      );
+
+      // Verify INSERT output
+      {
+        final boolean hasRs = statement.execute(
+                "EXPLAIN ANALYZE INSERT INTO tst SELECT s FROM generate_series(1, 1000000) s;");
+        assertTrue(hasRs);
+        final ResultSet insertResult = statement.getResultSet();
+        final long maxMemInsert = findMaxMemInExplain(insertResult);
+        assertTrue(maxMemInsert != 0);
+      }
+
+      // Verify that the absolute and relative values of the max memory output are within
+      // expectation.
+      {
+        final long maxMem_1 = runExplainAnalyze(statement, 1);
+        final long maxMem_1K = runExplainAnalyze(statement, 1000);
+        final long maxMem_1M = runExplainAnalyze(statement, 1000 * 1000);
+        assertTrue(maxMem_1 < maxMem_1K && maxMem_1K < maxMem_1M);
+      }
+
+      // Verify that there is no memory leakage in the tracking system.
+      // If the tracking logic is not accurate and has errors, it will accumulate and shows in the
+      // output.
+      {
+        final long maxMemSimpleStart = runExplainAnalyze(statement, 1000);
+
+        final String query = buildExplainAnalyzeDemoQuery(1000);
+        int loopN = 100;
+        while (loopN-- > 0) {
+          statement.executeQuery(query);
+        }
+
+        final long maxMemSimpleEnd = runExplainAnalyze(statement, 1000);
+        assertEquals(maxMemSimpleEnd, maxMemSimpleStart);
+      }
+
+      // The following tests only verifies EXPLAIN ANALYZE can be properly executed
+      // as the actual output values are highly platform dependent.
+      statement.execute("EXPLAIN ANALYZE UPDATE tst SET c1 = c1 + 1 WHERE c1 < 1000;");
+      statement.execute("EXPLAIN ANALYZE DELETE FROM tst WHERE c1 < 1000;");
+
+      statement.execute("BEGIN;");
+      statement.execute("EXPLAIN ANALYZE DECLARE decl CURSOR FOR SELECT * FROM tst limit 1000;");
+      statement.execute("END;");
+
+      statement.execute("EXPLAIN ANALYZE VALUES (1), (2), (3);");
+      statement.execute(
+        "EXPLAIN ANALYZE CREATE TABLE cre_tst AS SELECT * FROM tst limit 100;");
+      statement.execute(
+        "EXPLAIN ANALYZE CREATE MATERIALIZED VIEW cre_view AS SELECT * FROM tst limit 100;");
+    }
+  }
+
+  /**
+   * Validate the EXPLAIN output, and return maximum memory consumption found.
+   **/
+  private long runExplainAnalyze(Statement statement, final int limit) throws Exception {
+    final String explainQuery = buildExplainAnalyzeDemoQuery(limit);
+    final ResultSet result = statement.executeQuery(explainQuery);
+    return findMaxMemInExplain(result);
+  }
+
+  private final String buildExplainAnalyzeDemoQuery(final int limit) {
+    return "explain analyze execute demo(" + limit + ");";
+  }
+
+  /**
+   * Find the max memory in the EXPLAIN output in bytes. Throws exception if there is no max mem
+   * found.
+   */
+  private long findMaxMemInExplain(final ResultSet result) throws Exception {
+    while(result.next()) {
+      final String row = result.getString(1);
+      if (row.contains("Peak Memory Usage")) {
+        final String[] tks = row.split(" ");
+        long maxMem = Long.valueOf(tks[tks.length - 2]);
+        return maxMem;
+      }
+    }
+
+    throw new Exception("No max memory consumption found in the EXPLAIN output.");
   }
 
   private void testStatement(Statement statement,

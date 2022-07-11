@@ -444,7 +444,7 @@ RpcAndWebServerBase::RpcAndWebServerBase(
     : RpcServerBase(name, options, metric_namespace, std::move(mem_tracker), clock),
       web_server_(new Webserver(options_.CompleteWebserverOptions(), name_)) {
   FsManagerOpts fs_opts;
-  fs_opts.metric_entity = metric_entity_;
+  fs_opts.metric_registry = metric_registry_.get();
   fs_opts.parent_mem_tracker = mem_tracker_;
   fs_opts.wal_paths = options.fs_opts.wal_paths;
   fs_opts.data_paths = options.fs_opts.data_paths;
@@ -458,10 +458,10 @@ RpcAndWebServerBase::~RpcAndWebServerBase() {
   Shutdown();
 }
 
-Endpoint RpcAndWebServerBase::first_http_address() const {
+Result<Endpoint> RpcAndWebServerBase::first_http_address() const {
   std::vector<Endpoint> addrs;
-  WARN_NOT_OK(web_server_->GetBoundAddresses(&addrs),
-              "Couldn't get bound webserver addresses");
+  RETURN_NOT_OK_PREPEND(web_server_->GetBoundAddresses(&addrs),
+                        "Couldn't get bound webserver addresses");
   CHECK(!addrs.empty()) << "Not bound";
   return addrs[0];
 }

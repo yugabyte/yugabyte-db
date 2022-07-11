@@ -1,32 +1,30 @@
 package com.yugabyte.yw.common.supportbundle;
 
-import com.typesafe.config.Config;
-import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
-import com.yugabyte.yw.models.Customer;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.SupportBundleUtil;
-import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
+import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.InstanceType;
+import com.yugabyte.yw.models.helpers.NodeDetails;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Date;
 import java.util.List;
-import java.util.Arrays;
-import java.util.ArrayList;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-import java.util.UUID;
-import java.io.IOException;
-import java.text.SimpleDateFormat;
-import java.text.ParseException;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
@@ -168,19 +166,9 @@ class UniverseLogsComponent implements SupportBundleComponent {
     command.add(String.valueOf(maxDepth));
     command.add("-type");
     command.add(fileType);
-    String cmd = String.join(" ", command);
 
-    ShellResponse shellOutput = this.nodeUniverseManager.runCommand(node, universe, cmd);
-    String cmdOutput = shellOutput.message;
-    List<String> cmdOutputList = Arrays.asList(cmdOutput.trim().split("\n", 0));
-    // Removes all warnings before string "Command output:"
-    int lastIndex = 0;
-    for (int i = 0; i < cmdOutputList.size(); ++i) {
-      if (cmdOutputList.get(i).contains("Command output:")) {
-        lastIndex = i;
-      }
-    }
-    return cmdOutputList.subList(lastIndex + 1, cmdOutputList.size());
+    ShellResponse shellOutput = this.nodeUniverseManager.runCommand(node, universe, command);
+    return Arrays.asList(shellOutput.extractRunCommandOutput().trim().split("\n", 0));
   }
 
   // Filters a list of log file paths with a regex pattern and between given start and end dates

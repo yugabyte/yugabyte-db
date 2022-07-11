@@ -44,10 +44,10 @@ class TabletComponent {
   Result<TabletScopedRWOperationPauses> StartShutdownRocksDBs(
       DisableFlushOnShutdown disable_flush_on_shutdown);
 
-  CHECKED_STATUS CompleteShutdownRocksDBs(
+  Status CompleteShutdownRocksDBs(
       Destroy destroy, TabletScopedRWOperationPauses* ops_pauses);
 
-  CHECKED_STATUS OpenRocksDBs();
+  Status OpenRocksDBs();
 
   std::string LogPrefix() const;
 

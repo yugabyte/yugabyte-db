@@ -24,6 +24,7 @@
 #include "yb/common/column_id.h"
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/hybrid_time.h"
+#include "yb/common/ql_datatype.h"
 
 #include "yb/docdb/docdb_fwd.h"
 
@@ -42,8 +43,6 @@ namespace docdb {
 // PREPEND prepends the arguments one by one (PREPEND a b c) will prepend [c b a] to the list,
 // while PREPEND_BLOCK prepends the arguments together, so it will prepend [a b c] to the list.
 YB_DEFINE_ENUM(ListExtendOrder, (APPEND)(PREPEND_BLOCK)(PREPEND))
-
-YB_STRONGLY_TYPED_BOOL(CheckIsCollate);
 
 // A necessary use of a forward declaration to avoid circular inclusion.
 class SubDocument;
@@ -96,11 +95,9 @@ class PrimitiveValue {
   explicit PrimitiveValue(const Uuid& uuid);
 
   // Construct a primitive value from a QLValuePB.
-  static PrimitiveValue FromQLValuePB(
-      const QLValuePB& value, CheckIsCollate check_is_collate = CheckIsCollate::kTrue);
+  static PrimitiveValue FromQLValuePB(const QLValuePB& value);
 
-  static PrimitiveValue FromQLValuePB(
-      const LWQLValuePB& value, CheckIsCollate check_is_collate = CheckIsCollate::kTrue);
+  static PrimitiveValue FromQLValuePB(const LWQLValuePB& value);
 
   // Set a primitive value in a QLValuePB.
   void ToQLValuePB(const std::shared_ptr<QLType>& ql_type, QLValuePB* ql_val) const;
@@ -115,7 +112,7 @@ class PrimitiveValue {
 
   // Decodes a primitive value from the given slice representing a RocksDB value in our value
   // encoding format. Expects the entire slice to be consumed and returns an error otherwise.
-  CHECKED_STATUS DecodeFromValue(const rocksdb::Slice& rocksdb_slice);
+  Status DecodeFromValue(const rocksdb::Slice& rocksdb_slice);
 
   static PrimitiveValue Double(double v);
   static PrimitiveValue Float(float v);
@@ -140,6 +137,8 @@ class PrimitiveValue {
   // indicates an empty data structure of a certain type (object, array), or a tombstone. This
   // method can tell whether what's stored here is an actual primitive value.
   bool IsPrimitive() const;
+
+  bool IsTombstone() const;
 
   bool IsTombstoneOrPrimitive() const;
 
@@ -281,7 +280,7 @@ class PrimitiveValue {
 
  private:
   template <class PB>
-  static PrimitiveValue DoFromQLValuePB(const PB& value, CheckIsCollate check_is_collate);
+  static PrimitiveValue DoFromQLValuePB(const PB& value);
 
 
   // This is used in both the move constructor and the move assignment operator. Assumes this object
@@ -306,8 +305,9 @@ inline std::ostream& operator<<(std::ostream& out, const SortOrder sort_order) {
 // SortingType::kDescending gets converted to SortOrder::kDescending.
 SortOrder SortOrderFromColumnSchemaSortingType(SortingType sorting_type);
 
-void AppendEncodedValue(const QLValuePB& value, CheckIsCollate check_is_collate, ValueBuffer* out);
-void AppendEncodedValue(const QLValuePB& value, CheckIsCollate check_is_collate, std::string* out);
+void AppendEncodedValue(const QLValuePB& value, ValueBuffer* out);
+void AppendEncodedValue(const QLValuePB& value, std::string* out);
+size_t EncodedValueSize(const QLValuePB& value);
 
 class KeyEntryValue {
  public:
@@ -347,9 +347,10 @@ class KeyEntryValue {
 
   // Decodes a primitive value from the given slice representing a RocksDB key in our key encoding
   // format and consumes a prefix of the slice.
-  static CHECKED_STATUS DecodeKey(Slice* slice, KeyEntryValue* out);
+  static Status DecodeKey(Slice* slice, KeyEntryValue* out);
 
-  CHECKED_STATUS DecodeFromKey(Slice* slice);
+  Status DecodeFromKey(Slice* slice);
+  static Result<KeyEntryValue> FullyDecodeFromKey(const Slice& slice);
 
   void ToQLValuePB(const std::shared_ptr<QLType>& ql_type, QLValuePB* ql_val) const;
 
@@ -387,7 +388,10 @@ class KeyEntryValue {
   static KeyEntryValue NullValue(SortingType sorting_type);
 
   static KeyEntryValue FromQLValuePB(const QLValuePB& value, SortingType sorting_type);
+  static KeyEntryValue FromQLValuePBForKey(const QLValuePB& value, SortingType sorting_type);
   static KeyEntryValue FromQLValuePB(const LWQLValuePB& value, SortingType sorting_type);
+  static KeyEntryValue FromQLValuePBForKey(const LWQLValuePB& value, SortingType sorting_type);
+  static KeyEntryValue FromQLVirtualValue(QLVirtualValuePB value);
 
   static KeyEntryValue Double(double d, SortOrder sort_order = SortOrder::kAscending);
   static KeyEntryValue Float(float f, SortOrder sort_order = SortOrder::kAscending);

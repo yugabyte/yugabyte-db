@@ -59,7 +59,7 @@ namespace tserver {
     (FinishTransaction) \
     (InsertSequenceTuple) \
     (ReadSequenceTuple) \
-    (RollbackSubTransaction) \
+    (RollbackToSubTransaction) \
     (SetActiveSubTransaction) \
     (TruncateTable) \
     (UpdateSequenceTuple) \
@@ -85,11 +85,11 @@ class PgClientSession : public std::enable_shared_from_this<PgClientSession> {
 
   uint64_t id() const;
 
-  CHECKED_STATUS Perform(
+  Status Perform(
       const PgPerformRequestPB& req, PgPerformResponsePB* resp, rpc::RpcContext* context);
 
   #define PG_CLIENT_SESSION_METHOD_DECLARE(r, data, method) \
-  CHECKED_STATUS method( \
+  Status method( \
       const BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), RequestPB)& req, \
       BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), ResponsePB)* resp, \
       rpc::RpcContext* context);
@@ -101,14 +101,14 @@ class PgClientSession : public std::enable_shared_from_this<PgClientSession> {
 
   Result<const TransactionMetadata*> GetDdlTransactionMetadata(
       bool use_transaction, CoarseTimePoint deadline);
-  CHECKED_STATUS BeginTransactionIfNecessary(
+  Status BeginTransactionIfNecessary(
       const PgPerformOptionsPB& options, CoarseTimePoint deadline);
   Result<client::YBTransactionPtr> RestartTransaction(
       client::YBSession* session, client::YBTransaction* transaction);
 
   Result<std::pair<client::YBSession*, UsedReadTimePtr>> SetupSession(
       const PgPerformRequestPB& req, CoarseTimePoint deadline);
-  CHECKED_STATUS ProcessResponse(
+  Status ProcessResponse(
       const PgClientSessionOperations& operations, const PgPerformRequestPB& req,
       PgPerformResponsePB* resp, rpc::RpcContext* context);
   void ProcessReadTimeManipulation(ReadTimeManipulation manipulation);

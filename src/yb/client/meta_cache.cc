@@ -574,6 +574,17 @@ void RemoteTablet::GetRemoteTabletServers(
   }
 }
 
+bool RemoteTablet::IsLocalRegion() {
+  auto tservers = GetRemoteTabletServers(internal::IncludeFailedReplicas::kTrue);
+  for (const auto &tserver : tservers) {
+    LOG(INFO) << "TSERVER" << tserver->ToString();
+    if (!tserver->IsLocalRegion()) {
+      return false;
+    }
+  }
+  return true;
+}
+
 bool RemoteTablet::MarkTServerAsLeader(const RemoteTabletServer* server) {
   bool found = false;
   std::lock_guard<rw_spinlock> lock(mutex_);
@@ -721,7 +732,7 @@ class LookupRpc : public internal::ClientMasterRpcBase, public RequestCleanup {
 
   // Subclasses can override VerifyResponse for implementing additional response checks. Called
   // from Finished if there are no errors passed in response.
-  virtual CHECKED_STATUS VerifyResponse() { return Status::OK(); }
+  virtual Status VerifyResponse() { return Status::OK(); }
 
   int64_t request_no() const {
     return request_no_;
@@ -745,7 +756,7 @@ class LookupRpc : public internal::ClientMasterRpcBase, public RequestCleanup {
                                     ProcessedTablesMap::mapped_type* processed_table) = 0;
 
  private:
-  virtual CHECKED_STATUS ProcessTabletLocations(
+  virtual Status ProcessTabletLocations(
      const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& locations,
      boost::optional<PartitionListVersion> table_partition_list_version) = 0;
 
@@ -807,11 +818,11 @@ void LookupRpc::SendRpc() {
 
 namespace {
 
-CHECKED_STATUS GetFirstErrorForTabletById(const master::GetTabletLocationsResponsePB& resp) {
+Status GetFirstErrorForTabletById(const master::GetTabletLocationsResponsePB& resp) {
   return resp.errors_size() > 0 ? StatusFromPB(resp.errors(0).status()) : Status::OK();
 }
 
-CHECKED_STATUS GetFirstErrorForTabletById(const master::GetTableLocationsResponsePB& resp) {
+Status GetFirstErrorForTabletById(const master::GetTableLocationsResponsePB& resp) {
   // There are no per-tablet lookup errors inside GetTableLocationsResponsePB.
   return Status::OK();
 }
@@ -1040,25 +1051,7 @@ Status MetaCache::ProcessTabletLocations(
 
           CHECK(tablets_by_id_.emplace(tablet_id, remote).second);
           if (tablets_by_key) {
-            auto emplace_result = tablets_by_key->emplace(partition.partition_key_start(), remote);
-            if (!emplace_result.second) {
-              const auto& old_tablet = emplace_result.first->second;
-              if (old_tablet->split_depth() < remote->split_depth()) {
-                // Only replace with tablet of higher split_depth.
-                emplace_result.first->second = remote;
-              } else {
-                // If split_depth is the same - it should be the same tablet.
-                if (old_tablet->split_depth() == loc.split_depth()
-                    && old_tablet->tablet_id() != tablet_id) {
-                  const auto error_msg = Format(
-                      "Can't replace tablet $0 with $1 at partition_key_start $2, split_depth $3",
-                      old_tablet->tablet_id(), tablet_id, loc.partition().partition_key_start(),
-                      old_tablet->split_depth());
-                  LOG_WITH_PREFIX(DFATAL) << error_msg;
-                  // Just skip updating this tablet for release build.
-                }
-              }
-            }
+            (*tablets_by_key)[partition.partition_key_start()] = remote;
           }
           MaybeUpdateClientRequests(*remote);
         }
@@ -1120,7 +1113,8 @@ void MetaCache::MaybeUpdateClientRequests(const RemoteTablet& tablet) {
     tablet_requests.emplace(
         tablet.tablet_id(),
         YBClient::Data::TabletRequests {
-            .request_id_seq = kInitializeFromMinRunning
+            .request_id_seq = kInitializeFromMinRunning,
+            .running_requests = {}
         });
     return;
   }

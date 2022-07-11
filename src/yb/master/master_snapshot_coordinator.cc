@@ -21,7 +21,9 @@
 
 #include "yb/common/snapshot.h"
 
+#include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/doc_key.h"
+#include "yb/docdb/rocksdb_writer.h"
 #include "yb/docdb/value.h"
 #include "yb/docdb/value_type.h"
 
@@ -31,6 +33,7 @@
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/master_util.h"
 #include "yb/master/restoration_state.h"
+#include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/snapshot_coordinator_context.h"
 #include "yb/master/snapshot_schedule_state.h"
 #include "yb/master/snapshot_state.h"
@@ -68,10 +71,19 @@ DEFINE_bool(schedule_snapshot_rpcs_out_of_band, true,
             " background scheduling.");
 TAG_FLAG(schedule_snapshot_rpcs_out_of_band, runtime);
 
+DEFINE_bool(schedule_restoration_rpcs_out_of_band, true,
+            "Should tablet restoration RPCs be scheduled out of band from the periodic"
+            " background scheduling.");
+TAG_FLAG(schedule_restoration_rpcs_out_of_band, runtime);
+
 DEFINE_bool(skip_crash_on_duplicate_snapshot, false,
             "Should we not crash when we get a create snapshot request with the same "
             "id as one of the previous snapshots.");
 TAG_FLAG(skip_crash_on_duplicate_snapshot, runtime);
+
+DEFINE_test_flag(int32, delay_sys_catalog_restore_on_followers_secs, 0,
+                 "Sleep for these many seconds on followers during sys catalog restore");
+TAG_FLAG(TEST_delay_sys_catalog_restore_on_followers_secs, runtime);
 
 DECLARE_bool(allow_consecutive_restore);
 
@@ -81,7 +93,6 @@ namespace master {
 namespace {
 
 YB_DEFINE_ENUM(Bound, (kFirst)(kLast));
-YB_DEFINE_ENUM(RestorePhase, (kInitial)(kPostSysCatalogLoad));
 
 void SubmitWrite(
     docdb::KeyValueWriteBatchPB&& write_batch, int64_t leader_term,
@@ -98,13 +109,20 @@ void SubmitWrite(
   context->Submit(query.release()->PrepareSubmit(), leader_term);
 }
 
-CHECKED_STATUS SynchronizedWrite(
+Status SynchronizedWrite(
     docdb::KeyValueWriteBatchPB&& write_batch, int64_t leader_term, CoarseTimePoint deadline,
     SnapshotCoordinatorContext* context) {
   auto synchronizer = std::make_shared<Synchronizer>();
   SubmitWrite(std::move(write_batch), leader_term, context, synchronizer);
   return synchronizer->WaitUntil(ToSteady(deadline));
 }
+
+struct RestorationData {
+  TxnSnapshotId snapshot_id;
+  TxnSnapshotRestorationId restoration_id;
+  HybridTime restore_at;
+  std::optional<int64_t> db_oid;
+};
 
 struct NoOp {
   template <class... Args>
@@ -150,8 +168,8 @@ auto MakeDoneCallback(
 
 class MasterSnapshotCoordinator::Impl {
  public:
-  explicit Impl(SnapshotCoordinatorContext* context)
-      : context_(*context), poller_(std::bind(&Impl::Poll, this)) {}
+  explicit Impl(SnapshotCoordinatorContext* context, enterprise::CatalogManager* cm)
+      : context_(*context), cm_(cm), poller_(std::bind(&Impl::Poll, this)) {}
 
   Result<TxnSnapshotId> Create(
       const SysRowEntries& entries, bool imported, int64_t leader_term, CoarseTimePoint deadline) {
@@ -206,7 +224,7 @@ class MasterSnapshotCoordinator::Impl {
     return operation->snapshot_id;
   }
 
-  CHECKED_STATUS CreateReplicated(
+  Status CreateReplicated(
       int64_t leader_term, const tablet::SnapshotOperation& operation) {
     // TODO(txn_backup) retain logs with this operation while doing snapshot
     auto id = VERIFY_RESULT(FullyDecodeTxnSnapshotId(operation.request()->snapshot_id()));
@@ -273,19 +291,26 @@ class MasterSnapshotCoordinator::Impl {
     }
   }
 
-  CHECKED_STATUS Load(tablet::Tablet* tablet) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    RETURN_NOT_OK(EnumerateSysCatalog(tablet, context_.schema(), SysRowEntryType::SNAPSHOT,
-        [this](const Slice& id, const Slice& data) NO_THREAD_SAFETY_ANALYSIS -> Status {
-      return LoadEntry<SysSnapshotEntryPB>(id, data, &snapshots_);
-    }));
-    return EnumerateSysCatalog(tablet, context_.schema(), SysRowEntryType::SNAPSHOT_SCHEDULE,
-        [this](const Slice& id, const Slice& data) NO_THREAD_SAFETY_ANALYSIS -> Status {
-      return LoadEntry<SnapshotScheduleOptionsPB>(id, data, &schedules_);
+  template <class Pb, class Map>
+  Status LoadEntryOfType(
+      tablet::Tablet* tablet, const SysRowEntryType& type, Map* m) REQUIRES(mutex_) {
+    return EnumerateSysCatalog(tablet, context_.schema(), type,
+        [this, &m](const Slice& id, const Slice& data) NO_THREAD_SAFETY_ANALYSIS -> Status {
+          return LoadEntry<Pb>(id, data, m);
     });
   }
 
-  CHECKED_STATUS ApplyWritePair(Slice key, const Slice& value) {
+  Status Load(tablet::Tablet* tablet) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    RETURN_NOT_OK(LoadEntryOfType<SysSnapshotEntryPB>(
+        tablet, SysRowEntryType::SNAPSHOT, &snapshots_));
+    RETURN_NOT_OK(LoadEntryOfType<SnapshotScheduleOptionsPB>(
+        tablet, SysRowEntryType::SNAPSHOT_SCHEDULE, &schedules_));
+    return LoadEntryOfType<SysRestorationEntryPB>(
+        tablet, SysRowEntryType::SNAPSHOT_RESTORATION, &restorations_);
+  }
+
+  Status ApplyWritePair(Slice key, const Slice& value) {
     docdb::SubDocKey sub_doc_key;
     RETURN_NOT_OK(sub_doc_key.FullyDecodeFrom(key, docdb::HybridTimeRequired::kFalse));
 
@@ -307,21 +332,26 @@ class MasterSnapshotCoordinator::Impl {
                   << AsString(sub_doc_key.doc_key().range_group());;
     }
 
-    if (first_key.GetInt32() == SysRowEntryType::SNAPSHOT) {
-      return DoApplyWrite<SysSnapshotEntryPB>(
-          sub_doc_key.doc_key().range_group()[1].GetString(), value, &snapshots_);
-    }
+    switch (first_key.GetInt32()) {
+      case SysRowEntryType::SNAPSHOT:
+        return DoApplyWrite<SysSnapshotEntryPB>(
+            sub_doc_key.doc_key().range_group()[1].GetString(), value, &snapshots_);
 
-    if (first_key.GetInt32() == SysRowEntryType::SNAPSHOT_SCHEDULE) {
-      return DoApplyWrite<SnapshotScheduleOptionsPB>(
-          sub_doc_key.doc_key().range_group()[1].GetString(), value, &schedules_);
-    }
+      case SysRowEntryType::SNAPSHOT_SCHEDULE:
+        return DoApplyWrite<SnapshotScheduleOptionsPB>(
+            sub_doc_key.doc_key().range_group()[1].GetString(), value, &schedules_);
 
-    return Status::OK();
+      case SysRowEntryType::SNAPSHOT_RESTORATION:
+        return DoApplyWrite<SysRestorationEntryPB>(
+            sub_doc_key.doc_key().range_group()[1].GetString(), value, &restorations_);
+
+      default:
+        return Status::OK();
+    }
   }
 
   template <class Pb, class Map>
-  CHECKED_STATUS DoApplyWrite(const std::string& id_str, const Slice& value, Map* map) {
+  Status DoApplyWrite(const std::string& id_str, const Slice& value, Map* map) {
     docdb::Value decoded_value;
     RETURN_NOT_OK(decoded_value.Decode(value));
 
@@ -350,7 +380,7 @@ class MasterSnapshotCoordinator::Impl {
     return LoadEntry<Pb>(id_str, decoded_value.primitive_value().GetString(), map);
   }
 
-  CHECKED_STATUS ListSnapshots(
+  Status ListSnapshots(
       const TxnSnapshotId& snapshot_id, bool list_deleted, ListSnapshotsResponsePB* resp) {
     std::lock_guard<std::mutex> lock(mutex_);
     if (snapshot_id.IsNil()) {
@@ -370,7 +400,7 @@ class MasterSnapshotCoordinator::Impl {
     return snapshot.ToPB(resp->add_snapshots());
   }
 
-  CHECKED_STATUS Delete(
+  Status Delete(
       const TxnSnapshotId& snapshot_id, int64_t leader_term, CoarseTimePoint deadline) {
     VLOG_WITH_FUNC(4) << snapshot_id << ", " << leader_term;
 
@@ -385,7 +415,7 @@ class MasterSnapshotCoordinator::Impl {
     return synchronizer->WaitUntil(ToSteady(deadline));
   }
 
-  CHECKED_STATUS DeleteReplicated(
+  Status DeleteReplicated(
       int64_t leader_term, const tablet::SnapshotOperation& operation) {
     auto snapshot_id = VERIFY_RESULT(FullyDecodeTxnSnapshotId(operation.request()->snapshot_id()));
     VLOG_WITH_FUNC(4) << leader_term << ", " << snapshot_id;
@@ -417,7 +447,7 @@ class MasterSnapshotCoordinator::Impl {
     return Status::OK();
   }
 
-  CHECKED_STATUS RestoreSysCatalogReplicated(
+  Status RestoreSysCatalogReplicated(
       int64_t leader_term, const tablet::SnapshotOperation& operation, Status* complete_status) {
     auto restoration = std::make_shared<SnapshotScheduleRestoration>(SnapshotScheduleRestoration {
       .snapshot_id = VERIFY_RESULT(FullyDecodeTxnSnapshotId(operation.request()->snapshot_id())),
@@ -427,6 +457,12 @@ class MasterSnapshotCoordinator::Impl {
       .op_id = operation.op_id(),
       .write_time = operation.hybrid_time(),
       .term = leader_term,
+      .schedules = {},
+      .non_system_obsolete_tablets = {},
+      .non_system_obsolete_tables = {},
+      .non_system_objects_to_restore = {},
+      .existing_system_tables = {},
+      .restoring_system_tables = {},
     });
     {
       std::lock_guard<std::mutex> lock(mutex_);
@@ -449,9 +485,14 @@ class MasterSnapshotCoordinator::Impl {
                              snapshot.schedule_id());
       }
       std::swap(restoration->schedules[0], restoration->schedules[this_idx]);
-      if (leader_term >= 0) {
-        postponed_restores_.push_back(restoration);
-      }
+    }
+    // Inject artificial delay on followers for tests.
+    if (leader_term < 0 && FLAGS_TEST_delay_sys_catalog_restore_on_followers_secs > 0) {
+      SleepFor(MonoDelta::FromSeconds(FLAGS_TEST_delay_sys_catalog_restore_on_followers_secs));
+    }
+    // Disable concurrent RPCs to the master leader for the duration of sys catalog restore.
+    if (leader_term >= 0) {
+      context_.PrepareRestore();
     }
     LOG_SLOW_EXECUTION(INFO, 1000, "Restore sys catalog took") {
       RETURN_NOT_OK_PREPEND(
@@ -461,7 +502,7 @@ class MasterSnapshotCoordinator::Impl {
     return Status::OK();
   }
 
-  CHECKED_STATUS ListRestorations(
+  Status ListRestorations(
       const TxnSnapshotRestorationId& restoration_id, const TxnSnapshotId& snapshot_id,
       ListSnapshotRestorationsResponsePB* resp) {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -482,7 +523,7 @@ class MasterSnapshotCoordinator::Impl {
       const TxnSnapshotId& snapshot_id, HybridTime restore_at, int64_t leader_term) {
     auto restoration_id = TxnSnapshotRestorationId::GenerateRandom();
     RETURN_NOT_OK(DoRestore(
-        snapshot_id, restore_at, restoration_id, {}, RestorePhase::kInitial, leader_term));
+        snapshot_id, restore_at, restoration_id, RestorePhase::kInitial, leader_term));
     return restoration_id;
   }
 
@@ -498,7 +539,7 @@ class MasterSnapshotCoordinator::Impl {
     return schedule.id();
   }
 
-  CHECKED_STATUS ListSnapshotSchedules(
+  Status ListSnapshotSchedules(
       const SnapshotScheduleId& snapshot_schedule_id, ListSnapshotSchedulesResponsePB* resp) {
     std::lock_guard<std::mutex> lock(mutex_);
     if (snapshot_schedule_id.IsNil()) {
@@ -512,7 +553,7 @@ class MasterSnapshotCoordinator::Impl {
     return FillSchedule(schedule, resp->add_schedules());
   }
 
-  CHECKED_STATUS DeleteSnapshotSchedule(
+  Status DeleteSnapshotSchedule(
       const SnapshotScheduleId& snapshot_schedule_id, int64_t leader_term,
       CoarseTimePoint deadline) {
     docdb::KeyValueWriteBatchPB write_batch;
@@ -526,13 +567,13 @@ class MasterSnapshotCoordinator::Impl {
       options.set_delete_time(context_.Clock()->Now().ToUint64());
       auto* value = pair->mutable_value();
       value->push_back(docdb::ValueEntryTypeAsChar::kString);
-      pb_util::AppendPartialToString(options, value);
+      RETURN_NOT_OK(pb_util::AppendPartialToString(options, value));
     }
 
     return SynchronizedWrite(std::move(write_batch), leader_term, deadline, &context_);
   }
 
-  CHECKED_STATUS FillHeartbeatResponse(TSHeartbeatResponsePB* resp) {
+  Status FillHeartbeatResponse(TSHeartbeatResponsePB* resp) {
     std::lock_guard<std::mutex> lock(mutex_);
     auto* out = resp->mutable_snapshots_info();
     for (const auto& schedule : schedules_) {
@@ -561,42 +602,118 @@ class MasterSnapshotCoordinator::Impl {
     return Status::OK();
   }
 
+  void VerifyRestoration(RestorationState* restoration) REQUIRES(mutex_) {
+    auto schedule_result = FindSnapshotSchedule(restoration->schedule_id());
+    LOG_IF(DFATAL, !schedule_result.ok())
+        << "Snapshot schedule not found for pending restore with id "
+        << restoration->restoration_id() << ", status: " << schedule_result.status();
+    auto status = context_.VerifyRestoredObjects(
+        restoration->MasterMetadata(), (*schedule_result).options().filter().tables().tables());
+    LOG_IF(DFATAL, !status.ok()) << "Verify restoration failed: " << status;
+    LOG(INFO) << "PITR: Master metadata verified successsfully for restoration "
+              << restoration->restoration_id();
+  }
+
+  boost::optional<yb::master::SnapshotState&> ValidateRestoreAndGetSnapshot(
+      RestorationState* restoration) REQUIRES(mutex_) {
+    // Ignore if already completed.
+    if (restoration->complete_time()) {
+      return boost::none;
+    }
+    // If the restore is still undergoing the sys catalog phase.
+    if (!restoration->IsSysCatalogRestorationDone()) {
+      return boost::none;
+    }
+    // If the snapshot to restore is not ok.
+    auto snapshot = FindSnapshot(restoration->snapshot_id());
+    if (!snapshot.ok()) {
+      LOG(DFATAL) << "Snapshot not found for pending restore with id "
+                  << restoration->restoration_id();
+      return boost::none;
+    }
+
+    return *snapshot;
+  }
+
+  void SendPendingRestoreRpcs(
+      const vector<RestorationData>& postponed_restores, int64_t term) {
+    for (const auto& restoration : postponed_restores) {
+      LOG(INFO) << "PITR: Issuing pending tserver RPCs for restoration "
+                << restoration.restoration_id;
+      auto status = DoRestore(restoration.snapshot_id, restoration.restore_at,
+                              restoration.restoration_id,
+                              RestorePhase::kPostSysCatalogLoad, term,
+                              restoration.db_oid);
+      LOG_IF(DFATAL, !status.ok())
+          << "Failed to restore tablets for restoration "
+          << restoration.restoration_id << ": " << status;
+    }
+  }
+
+  std::optional<int64_t> ComputeDbOid(RestorationState* restoration) REQUIRES(mutex_) {
+    std::optional<int64_t> db_oid;
+    bool contains_sequences_data = false;
+    for (const auto& id_and_type : restoration->MasterMetadata()) {
+      if (id_and_type.second == SysRowEntryType::NAMESPACE &&
+          id_and_type.first == kPgSequencesDataNamespaceId) {
+        contains_sequences_data = true;
+      }
+    }
+    if (contains_sequences_data) {
+      for (const auto& id_and_type : restoration->MasterMetadata()) {
+        if (id_and_type.second == SysRowEntryType::NAMESPACE &&
+            id_and_type.first != kPgSequencesDataNamespaceId) {
+          auto db_oid_res = GetPgsqlDatabaseOid(id_and_type.first);
+          LOG_IF(DFATAL, !db_oid_res.ok())
+              << "Unable to obtain db_oid for namespace id "
+              << id_and_type.first << ": " << db_oid_res.status();
+          db_oid = static_cast<int64_t>(*db_oid_res);
+          LOG(INFO) << "DB OID of restoring database " << *db_oid;
+          // TODO(Sanket): In future can enhance to pass a list of db_oids.
+          break;
+        }
+      }
+      LOG_IF(DFATAL, !db_oid)
+          << "Unable to fetch db oid for the restoring database";
+    }
+    return db_oid;
+  }
+
   void SysCatalogLoaded(int64_t term) {
     if (term == OpId::kUnknownTerm) {
       // Do nothing on follower.
       return;
     }
-    decltype(postponed_restores_) postponed_restores;
+    // Issue pending restoration rpcs.
+    vector<RestorationData> postponed_restores;
     {
-      std::lock_guard<std::mutex> lock(mutex_);
-      auto filter = [term, &postponed_restores](const auto& restoration) {
-        if (restoration->term == term) {
-          postponed_restores.push_back(restoration);
+      std::lock_guard<decltype(mutex_)> lock(mutex_);
+      // TODO(pitr) cancel restorations.
+      for (const auto& restoration : restorations_) {
+        auto snapshot = ValidateRestoreAndGetSnapshot(restoration.get());
+        if (!snapshot) {
+          continue;
         }
-        // TODO(pitr) cancel restorations
-        return restoration->term <= term;
-      };
-      postponed_restores_.erase(
-          std::remove_if(postponed_restores_.begin(), postponed_restores_.end(), filter),
-          postponed_restores_.end());
-    }
-    for (const auto& restoration : postponed_restores) {
-      // TODO(pitr) Notify user about failures.
-      auto status = context_.VerifyRestoredObjects(*restoration);
-      LOG_IF(DFATAL, !status.ok()) << "Verify restoration failed: " << status;
-      std::vector<TabletId> restore_tablets;
-      for (const auto& id_and_type : restoration->non_system_objects_to_restore) {
-        if (id_and_type.second == SysRowEntryType::TABLET) {
-          restore_tablets.push_back(id_and_type.first);
+        // If it is PITR restore, then verify restoration and add to the queue for rpcs.
+        if (!restoration->schedule_id().IsNil()) {
+          VerifyRestoration(restoration.get());
+          auto db_oid = ComputeDbOid(restoration.get());
+          postponed_restores.push_back(RestorationData {
+            .snapshot_id = restoration->snapshot_id(),
+            .restoration_id = restoration->restoration_id(),
+            .restore_at = restoration->restore_at(),
+            .db_oid = db_oid,
+          });
         }
+        // Set the throttling limits.
+        restoration->Throttler().RefreshLimit(
+            GetRpcLimit(FLAGS_max_concurrent_restoration_rpcs,
+                        FLAGS_max_concurrent_restoration_rpcs_per_tserver, term));
+        // Set the current term so that the snapshot coordinator can pick it up.
+        restoration->SetLeaderTerm(term);
       }
-      status = DoRestore(restoration->snapshot_id, restoration->restore_at,
-                         restoration->restoration_id, restore_tablets,
-                         RestorePhase::kPostSysCatalogLoad, term);
-      LOG_IF(DFATAL, !status.ok())
-          << "Failed to restore tablets for restoration "
-          << restoration->restoration_id << ": " << status;
     }
+    SendPendingRestoreRpcs(postponed_restores, term);
   }
 
   Result<SnapshotSchedulesToObjectIdsMap> MakeSnapshotSchedulesToObjectIdsMap(
@@ -641,6 +758,59 @@ class MasterSnapshotCoordinator::Impl {
     return false;
   }
 
+  bool IsPitrActive() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    for (const auto& schedule : schedules_) {
+      if (!schedule->deleted()) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  Result<docdb::KeyValuePairPB> UpdateRestorationAndGetWritePair(
+      SnapshotScheduleRestoration* restoration) {
+    std::lock_guard<decltype(mutex_)> lock(mutex_);
+    RestorationState* restoration_ptr =
+        VERIFY_RESULT(GetRestorationPtrOrNull(restoration->restoration_id));
+    // Won't be found on followers.
+    if (!restoration_ptr) {
+      LOG(INFO) << "Constructing new restoration state for id " << restoration->restoration_id;
+      SnapshotState& snapshot = VERIFY_RESULT(FindSnapshot(restoration->snapshot_id));
+      if (!VERIFY_RESULT(snapshot.Complete())) {
+        return STATUS(IllegalState, "The snapshot state is not complete",
+                      restoration->snapshot_id.ToString(),
+                      MasterError(MasterErrorPB::SNAPSHOT_IS_NOT_READY));
+      }
+      auto restoration_state = std::make_unique<RestorationState>(
+          &context_, restoration->restoration_id, &snapshot,
+          restoration->restore_at, IsSysCatalogRestored::kTrue,
+          GetRpcLimit(FLAGS_max_concurrent_restoration_rpcs,
+                      FLAGS_max_concurrent_restoration_rpcs_per_tserver, restoration->term));
+      restoration_ptr = restorations_.emplace(std::move(restoration_state)).first->get();
+    }
+    // Set the phase to post sys catalog restoration.
+    restoration_ptr->SetSysCatalogRestored(IsSysCatalogRestored::kTrue);
+    // Reset the tablet list since it could have changed from the time of snapshot
+    // to restoration time. Also, set the metadata for verifying restoration
+    // post sys catalog load.
+    std::vector<TabletId> restore_tablets;
+    for (const auto& id_and_type : restoration->non_system_objects_to_restore) {
+      restoration_ptr->MutableMasterMetadata()->emplace(id_and_type.first, id_and_type.second);
+      if (id_and_type.second == SysRowEntryType::TABLET) {
+        restore_tablets.push_back(id_and_type.first);
+      }
+    }
+    LOG(INFO) << "PITR: " << restoration->restoration_id
+              << ", tablets to restore: " << AsString(restore_tablets);
+    restoration_ptr->InitTabletIds(restore_tablets);
+    // Prepare write batch.
+    docdb::KeyValuePairPB restore_kv;
+    RETURN_NOT_OK(restoration_ptr->StoreToKeyValuePair(&restore_kv));
+
+    return restore_kv;
+  }
+
   void Start() {
     {
       std::lock_guard<std::mutex> lock(mutex_);
@@ -655,7 +825,7 @@ class MasterSnapshotCoordinator::Impl {
 
  private:
   template <class Pb, class Map>
-  CHECKED_STATUS LoadEntry(const Slice& id_slice, const Slice& data, Map* map) REQUIRES(mutex_) {
+  Status LoadEntry(const Slice& id_slice, const Slice& data, Map* map) REQUIRES(mutex_) {
     VLOG(2) << __func__ << "(" << id_slice.ToDebugString() << ", " << data.ToDebugString() << ")";
 
     auto id = Uuid::TryFullyDecode(id_slice);
@@ -667,7 +837,7 @@ class MasterSnapshotCoordinator::Impl {
   }
 
   template <class Pb, class Map>
-  CHECKED_STATUS LoadEntry(
+  Status LoadEntry(
       const typename Map::key_type& id, const Pb& data, Map* map)
       REQUIRES(mutex_) {
     VLOG(1) << __func__ << "(" << id << ", " << data.ShortDebugString() << ")";
@@ -704,6 +874,16 @@ class MasterSnapshotCoordinator::Impl {
                     MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
     }
     return **it;
+  }
+
+  Result<RestorationState*> GetRestorationPtrOrNull(
+      const TxnSnapshotRestorationId& restoration_id) REQUIRES(mutex_) {
+    auto restoration_result = FindRestoration(restoration_id);
+    if (!restoration_result.ok() && restoration_result.status().IsNotFound()) {
+      return nullptr;
+    }
+    RETURN_NOT_OK(restoration_result);
+    return &*restoration_result;
   }
 
   Result<SnapshotScheduleState&> FindSnapshotSchedule(
@@ -765,6 +945,50 @@ class MasterSnapshotCoordinator::Impl {
     }
   }
 
+  void ExecuteRestoreOperations(
+      const TabletRestoreOperations& operations, int64_t leader_term) {
+    if (operations.empty()) {
+      return;
+    }
+
+    size_t num_operations = operations.size();
+    LOG(INFO) << "Number of tablet restore operations to be executed " << num_operations;
+    std::vector<TabletId> tablet_ids;
+    tablet_ids.reserve(num_operations);
+    for (const auto& operation : operations) {
+      tablet_ids.push_back(operation.tablet_id);
+    }
+    auto tablet_infos = context_.GetTabletInfos(tablet_ids);
+    for (size_t i = 0; i != num_operations; ++i) {
+      ExecuteRestoreOperation(
+          operations[i], tablet_infos[i], leader_term);
+    }
+  }
+
+  void ExecuteRestoreOperation(
+      const TabletRestoreOperation& operation, const TabletInfoPtr& tablet_info,
+      int64_t leader_term) {
+    auto snapshot_id_str = operation.snapshot_id.AsSlice().ToBuffer();
+    // If this tablet did not participate in snapshot, i.e. was deleted.
+    // We just change hybrid hybrid time limit and clear hide state.
+    auto task = context_.CreateAsyncTabletSnapshotOp(
+        tablet_info, operation.is_tablet_part_of_snapshot ? snapshot_id_str : std::string(),
+        tserver::TabletSnapshotOpRequestPB::RESTORE_ON_TABLET,
+        MakeDoneCallback(&mutex_, restorations_, operation.restoration_id, operation.tablet_id,
+                          std::bind(&Impl::FinishRestoration, this, _1, leader_term)));
+    task->SetSnapshotHybridTime(operation.restore_at);
+    task->SetRestorationId(operation.restoration_id);
+    if (operation.sys_catalog_restore_needed) {
+      task->SetMetadata(tablet_info->table()->LockForRead()->pb);
+    }
+    // For sequences_data_table, we should set partial restore and db_oid.
+    if (tablet_info->table()->id() == kPgSequencesDataTableId) {
+      LOG_IF(DFATAL, !operation.db_oid) << "DB OID not found for restoring database";
+      task->SetDbOid(*operation.db_oid);
+    }
+    context_.ScheduleTabletSnapshotOp(task);
+  }
+
   struct PollSchedulesData {
     std::vector<TxnSnapshotId> delete_snapshots;
     SnapshotScheduleOperations schedule_operations;
@@ -776,9 +1000,14 @@ class MasterSnapshotCoordinator::Impl {
     if (leader_term < 0) {
       return;
     }
+    SCOPED_LEADER_SHARED_LOCK(l, cm_);
+    if (!l.catalog_status().ok() || !l.leader_status().ok()) {
+      return;
+    }
     VLOG(4) << __func__ << "()";
     std::vector<TxnSnapshotId> cleanup_snapshots;
     TabletSnapshotOperations operations;
+    TabletRestoreOperations restore_operations;
     PollSchedulesData schedules_data;
     {
       std::lock_guard<std::mutex> lock(mutex_);
@@ -798,12 +1027,29 @@ class MasterSnapshotCoordinator::Impl {
         }
       }
       PollSchedulesPrepare(&schedules_data);
+      for (const auto& r : restorations_) {
+        auto snapshot = ValidateRestoreAndGetSnapshot(r.get());
+        if (!snapshot || r->GetLeaderTerm() != leader_term) {
+          continue;
+        }
+        r->Throttler().RefreshLimit(
+            GetRpcLimit(FLAGS_max_concurrent_restoration_rpcs,
+                        FLAGS_max_concurrent_restoration_rpcs_per_tserver, leader_term));
+        auto tablets = (*snapshot).tablet_ids();
+        std::unordered_set<TabletId> tablets_snapshot(tablets.begin(), tablets.end());
+        std::optional<int64_t> db_oid = std::nullopt;
+        if (!snapshot->schedule_id().IsNil()) {
+          db_oid = ComputeDbOid(r.get());
+        }
+        r->PrepareOperations(&restore_operations, tablets_snapshot, db_oid);
+      }
     }
     for (const auto& id : cleanup_snapshots) {
       CleanupObject(leader_term, id, snapshots_, EncodedSnapshotKey(id, &context_));
     }
     ExecuteOperations(operations, leader_term);
     PollSchedulesComplete(schedules_data, leader_term);
+    ExecuteRestoreOperations(restore_operations, leader_term);
   }
 
   void TryDeleteSnapshot(SnapshotState* snapshot, PollSchedulesData* data) {
@@ -944,7 +1190,7 @@ class MasterSnapshotCoordinator::Impl {
     context_.Submit(query.release()->PrepareSubmit(), leader_term);
   }
 
-  CHECKED_STATUS ExecuteScheduleOperation(
+  Status ExecuteScheduleOperation(
       const SnapshotScheduleOperation& operation, int64_t leader_term,
       const std::weak_ptr<Synchronizer>& synchronizer = std::weak_ptr<Synchronizer>()) {
     auto entries = CollectEntries(operation.filter);
@@ -1047,7 +1293,7 @@ class MasterSnapshotCoordinator::Impl {
     context_.Submit(std::move(operation), leader_term);
   }
 
-  CHECKED_STATUS SubmitRestore(
+  Status SubmitRestore(
       const TxnSnapshotId& snapshot_id, HybridTime restore_at,
       const TxnSnapshotRestorationId& restoration_id, int64_t leader_term) {
     auto synchronizer = std::make_shared<Synchronizer>();
@@ -1118,8 +1364,21 @@ class MasterSnapshotCoordinator::Impl {
   };
 
   void FinishRestoration(RestorationState* restoration, int64_t leader_term) REQUIRES(mutex_) {
-    if (!restoration->AllTabletsDone()) {
-      return;
+    bool tablet_list_empty = restoration->Empty();
+
+    if (!tablet_list_empty) {
+      bool batch_done = restoration->Throttler().RemoveOutstandingTask();
+      if (!restoration->AllTabletsDone()) {
+        if (FLAGS_schedule_restoration_rpcs_out_of_band && batch_done) {
+          // Send another batch. This prevents having to wait for the regular cycle
+          // of master snapshot coordinator which can be too slow.
+          context_.Scheduler().io_service().post([this]() {
+            LOG(INFO) << "Rescheduling restoration RPCs out of band.";
+            Poll();
+          });
+        }
+        return;
+      }
     }
 
     last_restorations_update_ht_ = context_.Clock()->Now();
@@ -1161,6 +1420,21 @@ class MasterSnapshotCoordinator::Impl {
       task->SetRestorationTime(restoration->complete_time());
       context_.ScheduleTabletSnapshotOp(task);
     }
+    // Update restoration entry to sys catalog.
+    LOG(INFO) << "Marking restoration " << restoration->restoration_id()
+              << " as complete in sys catalog";
+    docdb::KeyValueWriteBatchPB write_batch;
+    auto status = restoration->StoreToWriteBatch(&write_batch);
+    if (!status.ok()) {
+      LOG(DFATAL) << "Failed to prepare write batch for snapshot: " << status;
+      return;
+    }
+    SubmitWrite(std::move(write_batch), leader_term, &context_);
+
+    // Enable tablet splitting again.
+    if (restoration->schedule_id()) {
+      context_.EnableTabletSplitting("PITR");
+    }
   }
 
   void UpdateSchedule(const SnapshotState& snapshot) REQUIRES(mutex_) {
@@ -1191,7 +1465,7 @@ class MasterSnapshotCoordinator::Impl {
     (**it).SnapshotFinished(snapshot.id(), status);
   }
 
-  CHECKED_STATUS FillSchedule(const SnapshotScheduleState& schedule, SnapshotScheduleInfoPB* out)
+  Status FillSchedule(const SnapshotScheduleState& schedule, SnapshotScheduleInfoPB* out)
       REQUIRES(mutex_) {
     RETURN_NOT_OK(schedule.ToPB(out));
     const auto& index = snapshots_.get<ScheduleTag>();
@@ -1206,13 +1480,53 @@ class MasterSnapshotCoordinator::Impl {
     return context_.CollectEntriesForSnapshot(filter.tables().tables());
   }
 
-  CHECKED_STATUS DoRestore(
+  Status ConsecutiveRestoreCheck(
+      const SnapshotState& snapshot, HybridTime restore_at,
+      const TxnSnapshotRestorationId& restoration_id) REQUIRES(mutex_) {
+    SnapshotScheduleState& schedule =
+        VERIFY_RESULT(FindSnapshotSchedule(snapshot.schedule_id()));
+
+    // Find the latest restore.
+    HybridTime latest_restore_ht = HybridTime::kMin;
+    for (const auto& restoration_ht : schedule.options().restoration_times()) {
+      if (HybridTime::FromPB(restoration_ht) > latest_restore_ht) {
+        latest_restore_ht = HybridTime::FromPB(restoration_ht);
+      }
+    }
+    LOG(INFO) << "Last successful restoration completed at "
+              << latest_restore_ht;
+
+    if (restore_at <= latest_restore_ht) {
+      LOG(INFO) << "Restore with id " << restoration_id << " not supported "
+                << "because it is consecutive. Attempting to restore to "
+                << restore_at << " while last successful restoration completed at "
+                << latest_restore_ht;
+      return STATUS_FORMAT(NotSupported,
+                            "Cannot restore before the previous restoration time. "
+                              "A Restoration was performed at $0 and the requested "
+                              "restoration is for $1 which is before the last restoration.",
+                            latest_restore_ht, restore_at);
+    }
+    return Status::OK();
+  }
+
+  Status SubmitRestoreWrite(RestorationState* restoration, int64_t leader_term) REQUIRES(mutex_) {
+    LOG(INFO) << "Writing restoration " << restoration->restoration_id()
+              << " entry to sys catalog";
+    docdb::KeyValueWriteBatchPB write_batch;
+    RETURN_NOT_OK(restoration->StoreToWriteBatch(&write_batch));
+    SubmitWrite(std::move(write_batch), leader_term, &context_);
+    return Status::OK();
+  }
+
+  Status DoRestore(
       const TxnSnapshotId& snapshot_id, HybridTime restore_at,
-      const TxnSnapshotRestorationId& restoration_id, const std::vector<TabletId>& restore_tablets,
-      RestorePhase phase, int64_t leader_term) {
-    TabletInfos tablet_infos;
+      const TxnSnapshotRestorationId& restoration_id, RestorePhase phase, int64_t leader_term,
+      std::optional<int64_t> db_oid = std::nullopt) {
+    TabletRestoreOperations operations;
     bool restore_sys_catalog;
     std::unordered_set<TabletId> snapshot_tablets;
+    bool tablet_list_empty = false;
     {
       std::lock_guard<std::mutex> lock(mutex_);
       SnapshotState& snapshot = VERIFY_RESULT(FindSnapshot(snapshot_id));
@@ -1222,51 +1536,40 @@ class MasterSnapshotCoordinator::Impl {
       }
       restore_sys_catalog = phase == RestorePhase::kInitial && !snapshot.schedule_id().IsNil();
       if (!FLAGS_allow_consecutive_restore && restore_sys_catalog) {
-        SnapshotScheduleState& schedule =
-            VERIFY_RESULT(FindSnapshotSchedule(snapshot.schedule_id()));
-
-        // Find the latest restore.
-        HybridTime latest_restore_ht = HybridTime::kMin;
-        for (const auto& restoration_ht : schedule.options().restoration_times()) {
-          if (HybridTime::FromPB(restoration_ht) > latest_restore_ht) {
-            latest_restore_ht = HybridTime::FromPB(restoration_ht);
-          }
-        }
-        LOG(INFO) << "Last successful restoration completed at "
-                  << latest_restore_ht;
-
-        if (restore_at <= latest_restore_ht) {
-          LOG(INFO) << "Restore with id " << restoration_id << " not supported "
-                    << "because it is consecutive. Attempting to restore to "
-                    << restore_at << " while last successful restoration completed at "
-                    << latest_restore_ht;
-          return STATUS_FORMAT(NotSupported,
-                               "Cannot restore before the previous restoration time. "
-                                  "A Restoration was performed at $0 and the requested "
-                                  "restoration is for $1 which is before the last restoration.",
-                               latest_restore_ht, restore_at);
-        }
+        RETURN_NOT_OK(ConsecutiveRestoreCheck(snapshot, restore_at, restoration_id));
       }
+      // Get the restoration state. Construct if in initial phase.
       RestorationState* restoration_ptr;
       if (phase == RestorePhase::kInitial) {
-        auto restoration = std::make_unique<RestorationState>(&context_, restoration_id, &snapshot);
+        LOG(INFO) << "Creating a new restoration entry with id " << restoration_id;
+        // We mark sys catalog restoration phase to be complete in case of restorations
+        // from external backups where we don't need to restore the sys catalog.
+        auto restoration = std::make_unique<RestorationState>(
+            &context_, restoration_id, &snapshot, restore_at,
+            (snapshot.schedule_id().IsNil() ? IsSysCatalogRestored::kTrue :
+                                              IsSysCatalogRestored::kFalse),
+            GetRpcLimit(FLAGS_max_concurrent_restoration_rpcs,
+                        FLAGS_max_concurrent_restoration_rpcs_per_tserver, leader_term));
         restoration_ptr = restorations_.emplace(std::move(restoration)).first->get();
         last_restorations_update_ht_ = context_.Clock()->Now();
       } else {
         restoration_ptr = &VERIFY_RESULT(FindRestoration(restoration_id)).get();
       }
+
       if (!restore_sys_catalog) {
-        if (phase == RestorePhase::kPostSysCatalogLoad) {
-          LOG(INFO)
-              << "PITR: " << restoration_id << " restore tablets: " << AsString(restore_tablets);
-          // New tablets could be changed between restoration point and snapshot time.
-          // So we take tablets list from actual catalog state.
-          restoration_ptr->InitTabletIds(restore_tablets);
+        // Persist and replicate restoration entry to the sys catalog.
+        // This ensures that followers can continue RPCs if this leader fails.
+        // For PITR restorations, it is persisted as part of RESTORE_SYS_CATALOG operation.
+        if (phase == RestorePhase::kInitial) {
+          // Update the current leader term so that snapshot coordinator can pick it up.
+          restoration_ptr->SetLeaderTerm(leader_term);
+          RETURN_NOT_OK(SubmitRestoreWrite(restoration_ptr, leader_term));
         }
-        tablet_infos = restoration_ptr->PrepareOperations();
+        tablet_list_empty = restoration_ptr->Empty();
+        auto tablet_ids = snapshot.tablet_ids();
+        snapshot_tablets.insert(tablet_ids.begin(), tablet_ids.end());
+        restoration_ptr->PrepareOperations(&operations, snapshot_tablets, db_oid);
       }
-      auto tablet_ids = snapshot.tablet_ids();
-      snapshot_tablets.insert(tablet_ids.begin(), tablet_ids.end());
     }
 
     // If sys catalog is restored, then tablets data will be restored after that using postponed
@@ -1275,28 +1578,10 @@ class MasterSnapshotCoordinator::Impl {
       return SubmitRestore(snapshot_id, restore_at, restoration_id, leader_term);
     }
 
-    auto snapshot_id_str = snapshot_id.AsSlice().ToBuffer();
-    SendMetadata send_metadata(phase == RestorePhase::kPostSysCatalogLoad);
-    LOG(INFO) << "PITR: " << restoration_id << " restore tablets: " << AsString(tablet_infos);
-    for (const auto& tablet : tablet_infos) {
-      // If this tablet did not participate in snapshot, i.e. was deleted.
-      // We just change hybrid hybrid time limit and clear hide state.
-      auto task = context_.CreateAsyncTabletSnapshotOp(
-          tablet, snapshot_tablets.count(tablet->id()) ? snapshot_id_str : std::string(),
-          tserver::TabletSnapshotOpRequestPB::RESTORE_ON_TABLET,
-          MakeDoneCallback(&mutex_, restorations_, restoration_id, tablet->tablet_id(),
-                           std::bind(&Impl::FinishRestoration, this, _1, leader_term)));
-      task->SetSnapshotHybridTime(restore_at);
-      task->SetRestorationId(restoration_id);
-      if (send_metadata) {
-        task->SetMetadata(tablet->table()->LockForRead()->pb);
-      }
-
-      context_.ScheduleTabletSnapshotOp(task);
-    }
+    ExecuteRestoreOperations(operations, leader_term);
 
     // For empty tablet list, finish the restore.
-    if (tablet_infos.empty()) {
+    if (tablet_list_empty) {
       std::lock_guard<std::mutex> lock(mutex_);
       RestorationState* restoration_ptr = &VERIFY_RESULT(FindRestoration(restoration_id)).get();
       if (restoration_ptr) {
@@ -1337,6 +1622,7 @@ class MasterSnapshotCoordinator::Impl {
   }
 
   SnapshotCoordinatorContext& context_;
+  enterprise::CatalogManager* cm_;
   std::mutex mutex_;
   class ScheduleTag;
   using Snapshots = boost::multi_index_container<
@@ -1387,13 +1673,11 @@ class MasterSnapshotCoordinator::Impl {
   HybridTime last_restorations_update_ht_ GUARDED_BY(mutex_);
   Schedules schedules_ GUARDED_BY(mutex_);
   rpc::Poller poller_;
-
-  // Restores postponed until sys catalog is reloaed.
-  std::vector<SnapshotScheduleRestorationPtr> postponed_restores_ GUARDED_BY(mutex_);
 };
 
-MasterSnapshotCoordinator::MasterSnapshotCoordinator(SnapshotCoordinatorContext* context)
-    : impl_(new Impl(context)) {}
+MasterSnapshotCoordinator::MasterSnapshotCoordinator(
+    SnapshotCoordinatorContext* context, enterprise::CatalogManager* cm)
+    : impl_(new Impl(context, cm)) {}
 
 MasterSnapshotCoordinator::~MasterSnapshotCoordinator() {}
 
@@ -1491,6 +1775,15 @@ void MasterSnapshotCoordinator::SysCatalogLoaded(int64_t term) {
 Result<TxnSnapshotId> MasterSnapshotCoordinator::CreateForSchedule(
     const SnapshotScheduleId& schedule_id, int64_t leader_term, CoarseTimePoint deadline) {
   return impl_->CreateForSchedule(schedule_id, leader_term, deadline);
+}
+
+Result<docdb::KeyValuePairPB> MasterSnapshotCoordinator::UpdateRestorationAndGetWritePair(
+    SnapshotScheduleRestoration* restoration) {
+  return impl_->UpdateRestorationAndGetWritePair(restoration);
+}
+
+bool MasterSnapshotCoordinator::IsPitrActive() {
+  return impl_->IsPitrActive();
 }
 
 } // namespace master

@@ -105,18 +105,18 @@ class WhereExprState {
       func_ops_(func_ops) {
   }
 
-  CHECKED_STATUS AnalyzeColumnOp(SemContext *sem_context,
+  Status AnalyzeColumnOp(SemContext *sem_context,
                                  const PTRelationExpr *expr,
                                  const ColumnDesc *col_desc,
                                  PTExprPtr value,
                                  PTExprListNodePtr args = nullptr);
 
-  CHECKED_STATUS AnalyzeColumnFunction(SemContext *sem_context,
+  Status AnalyzeColumnFunction(SemContext *sem_context,
                                        const PTRelationExpr *expr,
                                        PTExprPtr value,
                                        PTBcallPtr call);
 
-  CHECKED_STATUS AnalyzePartitionKeyOp(SemContext *sem_context,
+  Status AnalyzePartitionKeyOp(SemContext *sem_context,
                                        const PTRelationExpr *expr,
                                        PTExprPtr value);
 
@@ -207,7 +207,7 @@ class PTDmlStmt : public PTCollection {
   }
 
   // Node semantics analysis.
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
+  virtual Status Analyze(SemContext *sem_context) override;
 
   virtual ExplainPlanPB AnalysisResultToPB() = 0;
 
@@ -396,7 +396,7 @@ class PTDmlStmt : public PTCollection {
   std::string PartitionKeyToString(const MCList<PartitionKeyOp>& conds);
 
   // Lookup table from the metadata database.
-  CHECKED_STATUS LookupTable(SemContext *sem_context);
+  Status LookupTable(SemContext *sem_context);
 
   // Load table schema into symbol table.
   static void LoadSchema(SemContext *sem_context,
@@ -405,25 +405,25 @@ class PTDmlStmt : public PTCollection {
                          bool is_index);
 
   // Semantic-analyzing the where clause.
-  CHECKED_STATUS AnalyzeWhereClause(SemContext *sem_context);
+  Status AnalyzeWhereClause(SemContext *sem_context);
 
   // Semantic-analyzing the if clause.
-  CHECKED_STATUS AnalyzeIfClause(SemContext *sem_context);
+  Status AnalyzeIfClause(SemContext *sem_context);
 
   // Semantic-analyzing the USING TTL clause.
-  CHECKED_STATUS AnalyzeUsingClause(SemContext *sem_context);
+  Status AnalyzeUsingClause(SemContext *sem_context);
 
   // Semantic-analyzing the indexes for write operations.
-  CHECKED_STATUS AnalyzeIndexesForWrites(SemContext *sem_context);
+  Status AnalyzeIndexesForWrites(SemContext *sem_context);
 
   // Protected functions.
-  CHECKED_STATUS AnalyzeWhereExpr(SemContext *sem_context, PTExpr *expr);
+  Status AnalyzeWhereExpr(SemContext *sem_context, PTExpr *expr);
 
   // Semantic-analyzing the bind variables for hash columns.
-  CHECKED_STATUS AnalyzeHashColumnBindVars(SemContext *sem_context);
+  Status AnalyzeHashColumnBindVars(SemContext *sem_context);
 
   // Semantic-analyzing the modified columns for inter-statement dependency.
-  CHECKED_STATUS AnalyzeColumnArgs(SemContext *sem_context);
+  Status AnalyzeColumnArgs(SemContext *sem_context);
 
   // Does column_args_ contain static columns only (i.e. writing static column only)?
   bool StaticColumnArgsOnly() const;

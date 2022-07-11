@@ -1,17 +1,16 @@
 ---
 title: Configure the Microsoft Azure cloud provider
 headerTitle: Configure the Microsoft Azure cloud provider
-linkTitle: Configure the cloud provider
+linkTitle: Configure cloud providers
 description: Configure the Microsoft Azure cloud provider
 aliases:
   - /preview/deploy/enterprise-edition/configure-cloud-providers/azure
 menu:
-  preview:
+  preview_yugabyte-platform:
     identifier: set-up-cloud-provider-3-azure
     parent: configure-yugabyte-platform
     weight: 20
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -85,7 +84,7 @@ When the configuration is completed, you can see all the resources managed by Yu
 
 You configure the Microsoft Azure cloud provider by completing the fields of the configuration page shown in the following illustration:
 
-![Prepare Azure cloud to install YugabyteDB Anywhere](/images/yb-platform/install/azure/platform-azure-prepare-cloud-env-4.png)
+![Prepare Azure cloud to install YugabyteDB Anywhere](/images/yb-platform/install/azure/platform-azure-prepare-cloud-env-4.png)<br><br>
 
 - **Provider Name** translates to an internal YugabyteDB Anywhere tag used for organizing cloud providers.
 - **Subscription ID** is required for cost management. The virtual machine resources managed by YugabyteDB Anywhere are tagged with this subscription.
@@ -96,7 +95,13 @@ You configure the Microsoft Azure cloud provider by completing the fields of the
 - **Client ID** represents the [ID of an application](https://docs.microsoft.com/en-us/azure/active-directory/develop/howto-create-service-principal-portal#option-2-create-a-new-application-secret) registered in your Azure Active Directory.
 - **Client Secret** represents the secret of an application registered in your Azure Active Directory.
 - **Private DNS zone** lets you use a custom domain name for the nodes in your universe. For details and instructions, see [How to define a private DNS zone](#how-to-define-a-private-dns-zone).
-- **Virtual Network Setup** allows you to customize your network, including the virtual network.
+- **Virtual Network Setup** allows you to customize your network, including the virtual network, as follows:
+  - Select an existing Virtual Private Cloud (VPC).
+  - Create a new VPC, with certain limitations. For example, an attempt to configure more than one Azure cloud provider with the **Create a new VPC** option enabled will result in a silent failure.
+- **NTP Setup** lets you to customize the Network Time Protocol server, as follows:
+  - Select **Use provider’s NTP server** to enable cluster nodes to connect to the Azure internal time servers. For more information, consult the Microsoft Azure documentation such as [Time sync for Linux VMs in Azure](https://docs.microsoft.com/en-us/azure/virtual-machines/linux/time-sync).
+  - Select **Manually add NTP Servers** to provide your own NTP servers and allow the cluster nodes to connect to those NTP servers.
+  - Select **Don’t set up NTP** to prevent YugabyteDB Anywhere from performing any NTP configuration on the cluster nodes. For data consistency, ensure that NTP is correctly configured on your machine image.
 
 ### How to obtain Azure resource IDs
 
@@ -166,6 +171,8 @@ You can specify a region as follows:
 
 Typically, it takes a few minutes for the cloud provider to be configured. When the configuration completes, you will be ready to create a YugabyteDB universe on Azure.
 
+If you encounter problems, see [Troubleshoot Azure cloud provider configuration](../../../troubleshoot/cloud-provider-config-issues/#azure-cloud-provider-configuration-problems).
+
 ### How to use a shared image gallery
 
 You can use shared image galleries as an alternative to using marketplace image URNs. A gallery allows you to provide your own custom image to use for creating universe instances. For more information on shared image galleries, refer to [Store and share images in an Azure Compute Gallery](https://docs.microsoft.com/en-us/azure/virtual-machines/shared-image-galleries).
@@ -191,4 +198,3 @@ You set up a shared gallery image on Azure as follows:
 1. To use the image in YugabyteDB Anywhere, enter the image version's resource ID into the **Marketplace Image URN / Shared Gallery Image ID** field of the **Specify Region Info** dialog.
 
    <br>The gallery image ID could be defined by a full URL containing a subscription ID, a resource group name, and the resource name itself. If the subscription ID or the resource group is different from the default values, YugabyteDB Anywhere will use them instead.
-

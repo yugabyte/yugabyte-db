@@ -9,9 +9,7 @@ menu:
     name: Azure Kubernetes Service
     identifier: k8s-aks-1
     weight: 624
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 
@@ -239,12 +237,12 @@ Hang tight while we grab the latest from your chart repositories...
 ```
 
 ```sh
-$ helm search repo yugabytedb/yugabyte
+$ helm search repo yugabytedb/yugabyte --version {{<yb-version version="v2.8" format="short">}}
 ```
 
 ```output
 NAME                    CHART VERSION   APP VERSION     DESCRIPTION
-yugabytedb/yugabyte     2.8.4           2.8.4.0-b30    YugabyteDB is the high-performance distributed ...
+yugabytedb/yugabyte     {{<yb-version version="v2.8" format="short">}}           {{<yb-version version="v2.8" format="build">}}    YugabyteDB is the high-performance distributed ...
 ```
 
 #### Create the namespace
@@ -267,6 +265,7 @@ Next, install YugabyteDB in the `yb-demo` namespace by running the following com
 
 ```sh
 $ helm install yb-demo -n yb-demo yugabytedb/yugabyte \
+ --version {{<yb-version version="v2.8" format="short">}} \
  --set storage.master.count=1 \
  --set storage.tserver.count=1 \
  --set storage.master.storageClass=default \

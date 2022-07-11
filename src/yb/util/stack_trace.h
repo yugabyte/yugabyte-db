@@ -145,7 +145,7 @@ std::vector<Result<StackTrace>> ThreadStacks(const std::vector<ThreadIdForStack>
 // Set which POSIX signal number should be used internally for triggering
 // stack traces. If the specified signal handler is already in use, this
 // returns an error, and stack traces will be disabled.
-CHECKED_STATUS SetStackTraceSignal(int signum);
+Status SetStackTraceSignal(int signum);
 
 }  // namespace yb
 

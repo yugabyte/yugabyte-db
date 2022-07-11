@@ -2,13 +2,12 @@
 title: DROP DATABASE statement [YSQL]
 headerTitle: DROP DATABASE
 linkTitle: DROP DATABASE
-description: Use the DROP DATABASE statement to remove a database and all of its associated objects from the system. 
+description: Use the DROP DATABASE statement to remove a database and all of its associated objects from the system.
 menu:
   v2.8:
     identifier: ddl_drop_database
     parent: statements
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis
@@ -34,10 +33,10 @@ Use the `DROP DATABASE` statement to remove a database and all of its associated
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/drop_database.grammar.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/drop_database.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/drop_database.diagram.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/drop_database.diagram.md" %}}
   </div>
 </div>
 

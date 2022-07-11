@@ -73,7 +73,7 @@ extern bool yb_binary_restore;
 
 typedef struct YBCStatusStruct* YBCStatus;
 
-extern YBCStatus YBCStatusOK;
+extern YBCStatus YBCStatusOKValue;
 bool YBCStatusIsOK(YBCStatus s);
 bool YBCStatusIsNotFound(YBCStatus s);
 bool YBCStatusIsDuplicateKey(YBCStatus s);
@@ -84,7 +84,11 @@ void YBCFreeStatus(YBCStatus s);
 size_t YBCStatusMessageLen(YBCStatus s);
 const char* YBCStatusMessageBegin(YBCStatus s);
 const char* YBCStatusCodeAsCString(YBCStatus s);
-char* DupYBStatusMessage(YBCStatus status, bool message_only);
+
+typedef const char* (*GetUniqueConstraintNameFn)(unsigned int);
+
+const char* BuildYBStatusMessage(YBCStatus status,
+                                 GetUniqueConstraintNameFn get_constraint_name);
 
 bool YBCIsRestartReadError(uint16_t txn_errcode);
 

@@ -19,21 +19,28 @@ CREATE TABLEGROUP tgroup1;
 CREATE TABLEGROUP tgroup2;
 CREATE TABLEGROUP tgroup3;
 CREATE TABLE tgroup_test1 (col1 int, col2 int) TABLEGROUP tgroup1;
+CREATE INDEX ON tgroup_test1(col2);
 CREATE TABLE tgroup_test2 (col1 int, col2 int) TABLEGROUP tgroup1;
 CREATE TABLE nogroup (col1 int) NO TABLEGROUP; -- fail
+CREATE TABLE nogroup (col1 int);
+-- TODO(alex): Create a table with a primary key
 SELECT grpname FROM pg_yb_tablegroup;
-SELECT relname
-    FROM (SELECT relname, unnest(reloptions) AS opts FROM pg_class) s
-    WHERE opts LIKE '%tablegroup%';
-CREATE INDEX ON tgroup_test1(col2);
+
+SELECT cl.relname, tg.grpname
+    FROM pg_class cl, yb_table_properties(cl.oid) props
+    LEFT JOIN pg_yb_tablegroup tg ON tg.oid = props.tablegroup_oid
+    WHERE cl.oid >= 16384
+    ORDER BY cl.relname;
+
 CREATE TABLE tgroup_test3 (col1 int, col2 int) TABLEGROUP tgroup2;
--- Index opt out - should not show up in following SELECT
-CREATE INDEX ON tgroup_test3(col1) NO TABLEGROUP;
--- Index explicitly specify tablegroup other than that of indexed table
-CREATE INDEX ON tgroup_test3(col1) TABLEGROUP tgroup1;
-SELECT s.relname, pg_yb_tablegroup.grpname
-    FROM (SELECT relname, unnest(reloptions) AS opts FROM pg_class) s, pg_yb_tablegroup
-    WHERE opts LIKE CONCAT('%tablegroup_oid=', CAST(pg_yb_tablegroup.oid AS text), '%');
+CREATE INDEX ON tgroup_test3(col1);
+
+SELECT cl.relname, tg.grpname
+    FROM pg_class cl, yb_table_properties(cl.oid) props
+    LEFT JOIN pg_yb_tablegroup tg ON tg.oid = props.tablegroup_oid
+    WHERE cl.oid >= 16384
+    ORDER BY cl.relname;
+
 -- These should fail.
 CREATE TABLEGROUP tgroup1;
 CREATE TABLE tgroup_test (col1 int, col2 int) TABLEGROUP bad_tgroupname;
@@ -41,6 +48,8 @@ CREATE TABLE tgroup_optout (col1 int, col2 int) WITH (colocated=false) TABLEGROU
 CREATE TABLE tgroup_optout (col1 int, col2 int) WITH (colocated=true) TABLEGROUP tgroup1;
 CREATE TABLE tgroup_optout (col1 int, col2 int) WITH (colocated=false) TABLEGROUP bad_tgroupname;
 CREATE TEMP TABLE tgroup_temp (col1 int, col2 int) TABLEGROUP tgroup1;
+CREATE INDEX ON tgroup_test3(col1) TABLEGROUP tgroup1; -- fail
+CREATE INDEX ON tgroup_test3(col1) NO TABLEGROUP; -- fail
 
 --
 -- Cannot drop dependent objects
@@ -59,12 +68,14 @@ ALTER TABLE bob_table OWNER TO bob;
 ALTER TABLE bob_table_2 OWNER TO bob;
 ALTER TABLE bob_table_3 OWNER TO bob;
 ALTER TABLE alice_table OWNER TO alice;
+
 -- Fails
 \set VERBOSITY terse \\ -- suppress dependency details.
 DROP TABLEGROUP alice_grp;  -- because bob_table depends on alice_grp
 DROP USER alice;            -- because alice still owns tablegroups
 DROP OWNED BY alice;        -- because bob's tables depend on alice's tablegroups
 \set VERBOSITY default
+
 -- Succeeds
 DROP TABLEGROUP alice_grp_3 CASCADE;
 DROP TABLE bob_table;
@@ -78,18 +89,13 @@ DROP USER alice;              -- we dropped all of alice's entities, so we can r
 SELECT relname FROM pg_class WHERE relname LIKE 'bob%';
 
 --
--- Usage of WITH tablegroup_oid for CREATE TABLE/INDEX. These all fail.
+-- Usage of WITH tablegroup_oid reloption, this legacy syntax no longer works.
 --
 
 CREATE TABLE tgroup_with1 (col1 int, col2 int) WITH (tablegroup_oid=16385);
-CREATE TABLE tgroup_with2 (col1 int, col2 int) WITH (tablegroup_oid=16385, colocated=true);
-CREATE TABLE tgroup_with2 (col1 int, col2 int) WITH (tablegroup_oid=16385, colocated=false);
 CREATE TABLE tgroup_with3 (col1 int, col2 int) WITH (tablegroup_oid=16385) TABLEGROUP tgroup1;
-CREATE TABLE tgroup_with4 (col1 int, col2 int) WITH (tablegroup_oid=123);
 
 CREATE INDEX ON tgroup_test1(col1) WITH (tablegroup_oid=123);
-CREATE INDEX ON tgroup_test1(col1) WITH (tablegroup_oid=123, colocated=true);
-CREATE INDEX ON tgroup_test1(col1) WITH (tablegroup_oid=123) TABLEGROUP tgroup1;
 
 --
 -- Usage of SPLIT clause with TABLEGROUP should fail
@@ -97,8 +103,7 @@ CREATE INDEX ON tgroup_test1(col1) WITH (tablegroup_oid=123) TABLEGROUP tgroup1;
 CREATE TABLE tgroup_split (col1 int PRIMARY KEY) SPLIT INTO 3 TABLETS TABLEGROUP tgroup1;
 CREATE TABLE tgroup_split (col1 int, col2 text) SPLIT INTO 3 TABLETS TABLEGROUP tgroup1;
 CREATE INDEX ON tgroup_test1(col1) SPLIT AT VALUES((10), (20), (30));
-CREATE INDEX ON tgroup_test1(col1) SPLIT AT VALUES((10), (20), (30)) TABLEGROUP tgroup2;
-CREATE INDEX ON tgroup_test1(col1) SPLIT AT VALUES((10), (20), (30)) NO TABLEGROUP; -- should succeed
+
 --
 -- Test describes
 --
@@ -124,8 +129,6 @@ CREATE TABLEGROUP tgroup_describe1;
 CREATE TABLEGROUP tgroup_describe2;
 CREATE TABLE tgroup_describe (col1 int) TABLEGROUP tgroup_describe1;
 CREATE INDEX ON tgroup_describe(col1);
-CREATE INDEX ON tgroup_describe(col1) NO TABLEGROUP;
-CREATE INDEX ON tgroup_describe(col1) TABLEGROUP tgroup_describe2;
 \d tgroup_describe
 --
 -- DROP TABLEGROUP
@@ -142,7 +145,6 @@ DROP TABLEGROUP bad_tgroupname;
 -- This drop should work now.
 DROP TABLE tgroup_test1;
 DROP TABLE tgroup_test2;
-DROP INDEX tgroup_test3_col1_idx1;
 DROP TABLEGROUP tgroup1;
 DROP TABLEGROUP IF EXISTS tgroup1;
 -- Create a tablegroup with the name of a dropped tablegroup.

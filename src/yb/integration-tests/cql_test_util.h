@@ -162,16 +162,16 @@ class CassandraFuture {
 
   bool Ready() const;
 
-  CHECKED_STATUS Wait();
+  Status Wait();
 
-  CHECKED_STATUS WaitFor(MonoDelta duration);
+  Status WaitFor(MonoDelta duration);
 
   CassandraResult Result();
 
   CassandraPrepared Prepared();
 
  private:
-  CHECKED_STATUS CheckErrorCode();
+  Status CheckErrorCode();
 
   CassFuturePtr future_;
 };
@@ -230,11 +230,11 @@ class CassandraSession {
  public:
   CassandraSession() = default;
 
-  CHECKED_STATUS Connect(CassCluster* cluster);
+  Status Connect(CassCluster* cluster);
 
   static Result<CassandraSession> Create(CassCluster* cluster);
 
-  CHECKED_STATUS Execute(const CassandraStatement& statement);
+  Status Execute(const CassandraStatement& statement);
 
   Result<CassandraResult> ExecuteWithResult(const CassandraStatement& statement);
 
@@ -242,10 +242,10 @@ class CassandraSession {
 
   CassandraFuture ExecuteGetFuture(const std::string& query);
 
-  CHECKED_STATUS ExecuteQuery(const std::string& query);
+  Status ExecuteQuery(const std::string& query);
 
   template <class... Args>
-  CHECKED_STATUS ExecuteQueryFormat(const std::string& query, Args&&... args) {
+  Status ExecuteQueryFormat(const std::string& query, Args&&... args) {
     return ExecuteQuery(Format(query, std::forward<Args>(args)...));
   }
 
@@ -254,7 +254,7 @@ class CassandraSession {
   Result<std::string> ExecuteAndRenderToString(const std::string& statement);
 
   template <class Action>
-  CHECKED_STATUS ExecuteAndProcessOneRow(
+  Status ExecuteAndProcessOneRow(
       const CassandraStatement& statement, const Action& action) {
     auto result = VERIFY_RESULT(ExecuteWithResult(statement));
     auto iterator = result.CreateIterator();
@@ -270,7 +270,7 @@ class CassandraSession {
   }
 
   template <class Action>
-  CHECKED_STATUS ExecuteAndProcessOneRow(const std::string& query, const Action& action) {
+  Status ExecuteAndProcessOneRow(const std::string& query, const Action& action) {
     return ExecuteAndProcessOneRow(CassandraStatement(query), action);
   }
 
@@ -283,7 +283,7 @@ class CassandraSession {
     return result;
   }
 
-  CHECKED_STATUS ExecuteBatch(const CassandraBatch& batch);
+  Status ExecuteBatch(const CassandraBatch& batch);
 
   CassandraFuture SubmitBatch(const CassandraBatch& batch);
 
@@ -310,6 +310,8 @@ class CppCassandraDriver {
   ~CppCassandraDriver();
 
   Result<CassandraSession> CreateSession();
+
+  void EnableTLS(const std::vector<std::string>& ca_certs);
 
  private:
   CassCluster* cass_cluster_ = nullptr;

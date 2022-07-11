@@ -63,7 +63,7 @@ static constexpr size_t kHexBase = 16;
 
 //--------------------------------------------------------------------------------------------------
 template<typename SetResult, typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS SetNumericResult(SetResult set_result, PTypePtr source, DataType target_datatype,
+Status SetNumericResult(SetResult set_result, PTypePtr source, DataType target_datatype,
                                 RTypePtr target) {
   auto source_datatype = InternalToDataType(source->value_case());
   if (!QLType::IsExplicitlyConvertible(target_datatype, source_datatype)) {
@@ -117,7 +117,7 @@ CHECKED_STATUS SetNumericResult(SetResult set_result, PTypePtr source, DataType 
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS SetStringResult(PTypePtr source, RTypePtr target) {
+Status SetStringResult(PTypePtr source, RTypePtr target) {
   auto source_datatype = InternalToDataType(source->value_case());
   if (!QLType::IsExplicitlyConvertible(DataType::STRING, source_datatype)) {
     return STATUS_SUBSTITUTE(QLError, "Cannot convert $0 to $1",
@@ -186,7 +186,7 @@ CHECKED_STATUS SetStringResult(PTypePtr source, RTypePtr target) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS SetTimestampResult(PTypePtr source, RTypePtr target) {
+Status SetTimestampResult(PTypePtr source, RTypePtr target) {
   auto source_datatype = InternalToDataType(source->value_case());
   if (!QLType::IsExplicitlyConvertible(DataType::TIMESTAMP, source_datatype)) {
     return STATUS_SUBSTITUTE(QLError, "Cannot convert $0 to $1",
@@ -216,7 +216,7 @@ CHECKED_STATUS SetTimestampResult(PTypePtr source, RTypePtr target) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS SetDateResult(PTypePtr source, RTypePtr target) {
+Status SetDateResult(PTypePtr source, RTypePtr target) {
   DataType source_datatype = InternalToDataType(source->value_case());
   if (!QLType::IsExplicitlyConvertible(DataType::DATE, source_datatype)) {
     return STATUS_SUBSTITUTE(QLError, "Cannot convert $0 to $1",
@@ -245,7 +245,7 @@ CHECKED_STATUS SetDateResult(PTypePtr source, RTypePtr target) {
 }
 
 template<typename RTypePtr, typename StrToNum, typename SetTarget>
-CHECKED_STATUS StringToNumeric(const string& str_val, RTypePtr target, StrToNum strToNum,
+Status StringToNumeric(const string& str_val, RTypePtr target, StrToNum strToNum,
                                SetTarget setTarget) {
   auto result = strToNum(str_val);
   RETURN_NOT_OK(result);
@@ -254,7 +254,7 @@ CHECKED_STATUS StringToNumeric(const string& str_val, RTypePtr target, StrToNum 
 
 //--------------------------------------------------------------------------------------------------
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertI8ToI8(PTypePtr source, RTypePtr target) {
+Status ConvertI8ToI8(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
   } else {
@@ -264,7 +264,7 @@ CHECKED_STATUS ConvertI8ToI8(PTypePtr source, RTypePtr target) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertI8ToI16(PTypePtr source, RTypePtr target) {
+Status ConvertI8ToI16(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
   } else {
@@ -274,7 +274,7 @@ CHECKED_STATUS ConvertI8ToI16(PTypePtr source, RTypePtr target) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertI8ToI32(PTypePtr source, RTypePtr target) {
+Status ConvertI8ToI32(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
   } else {
@@ -284,7 +284,7 @@ CHECKED_STATUS ConvertI8ToI32(PTypePtr source, RTypePtr target) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertI8ToI64(PTypePtr source, RTypePtr target) {
+Status ConvertI8ToI64(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
   } else {
@@ -294,7 +294,7 @@ CHECKED_STATUS ConvertI8ToI64(PTypePtr source, RTypePtr target) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertI8ToFloat(PTypePtr source, RTypePtr target) {
+Status ConvertI8ToFloat(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
   } else {
@@ -304,7 +304,7 @@ CHECKED_STATUS ConvertI8ToFloat(PTypePtr source, RTypePtr target) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertI8ToDouble(PTypePtr source, RTypePtr target) {
+Status ConvertI8ToDouble(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
   } else {
@@ -315,7 +315,7 @@ CHECKED_STATUS ConvertI8ToDouble(PTypePtr source, RTypePtr target) {
 
 // Conversion from int16 to others.
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertI16ToI8(PTypePtr source, RTypePtr target) {
+Status ConvertI16ToI8(PTypePtr source, RTypePtr target) {
   // TODO(neil) Overflow? When we truely support expressions, these loose-ends must be fixed.
   if (IsNull(*source)) {
     SetNull(&*target);
@@ -326,7 +326,7 @@ CHECKED_STATUS ConvertI16ToI8(PTypePtr source, RTypePtr target) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertI16ToI16(PTypePtr source, RTypePtr target) {
+Status ConvertI16ToI16(PTypePtr source, RTypePtr target) {
   // TODO(neil) Overflow? When we truely support expressions, these loose-ends must be fixed.
   if (IsNull(*source)) {
     SetNull(&*target);
@@ -337,7 +337,7 @@ CHECKED_STATUS ConvertI16ToI16(PTypePtr source, RTypePtr target) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertI16ToI32(PTypePtr source, RTypePtr target) {
+Status ConvertI16ToI32(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
   } else {
@@ -347,7 +347,7 @@ CHECKED_STATUS ConvertI16ToI32(PTypePtr source, RTypePtr target) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertI16ToI64(PTypePtr source, RTypePtr target) {
+Status ConvertI16ToI64(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
   } else {
@@ -357,7 +357,7 @@ CHECKED_STATUS ConvertI16ToI64(PTypePtr source, RTypePtr target) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertI16ToFloat(PTypePtr source, RTypePtr target) {
+Status ConvertI16ToFloat(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
   } else {
@@ -367,7 +367,7 @@ CHECKED_STATUS ConvertI16ToFloat(PTypePtr source, RTypePtr target) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertI16ToDouble(PTypePtr source, RTypePtr target) {
+Status ConvertI16ToDouble(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
   } else {
@@ -378,7 +378,7 @@ CHECKED_STATUS ConvertI16ToDouble(PTypePtr source, RTypePtr target) {
 
 // Conversion from int32 to others.
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertI32ToI8(PTypePtr source, RTypePtr target) {
+Status ConvertI32ToI8(PTypePtr source, RTypePtr target) {
   // TODO(neil) Overflow? When we truely support expressions, these loose-ends must be fixed.
   if (IsNull(*source)) {
     SetNull(&*target);
@@ -389,7 +389,7 @@ CHECKED_STATUS ConvertI32ToI8(PTypePtr source, RTypePtr target) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertI32ToI16(PTypePtr source, RTypePtr target) {
+Status ConvertI32ToI16(PTypePtr source, RTypePtr target) {
   // TODO(neil) Overflow? When we truely support expressions, these loose-ends must be fixed.
   if (IsNull(*source)) {
     SetNull(&*target);
@@ -400,7 +400,7 @@ CHECKED_STATUS ConvertI32ToI16(PTypePtr source, RTypePtr target) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertI32ToI32(PTypePtr source, RTypePtr target) {
+Status ConvertI32ToI32(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
   } else {
@@ -410,7 +410,7 @@ CHECKED_STATUS ConvertI32ToI32(PTypePtr source, RTypePtr target) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertI32ToI64(PTypePtr source, RTypePtr target) {
+Status ConvertI32ToI64(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
   } else {
@@ -420,7 +420,7 @@ CHECKED_STATUS ConvertI32ToI64(PTypePtr source, RTypePtr target) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertI32ToFloat(PTypePtr source, RTypePtr target) {
+Status ConvertI32ToFloat(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
   } else {
@@ -430,7 +430,7 @@ CHECKED_STATUS ConvertI32ToFloat(PTypePtr source, RTypePtr target) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertI32ToDouble(PTypePtr source, RTypePtr target) {
+Status ConvertI32ToDouble(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
   } else {
@@ -441,7 +441,7 @@ CHECKED_STATUS ConvertI32ToDouble(PTypePtr source, RTypePtr target) {
 
 // Conversion from int64 to others.
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertI64ToI8(PTypePtr source, RTypePtr target) {
+Status ConvertI64ToI8(PTypePtr source, RTypePtr target) {
   // TODO(neil) Overflow? When we truely support expressions, these loose-ends must be fixed.
   if (IsNull(*source)) {
     SetNull(&*target);
@@ -452,7 +452,7 @@ CHECKED_STATUS ConvertI64ToI8(PTypePtr source, RTypePtr target) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertI64ToI16(PTypePtr source, RTypePtr target) {
+Status ConvertI64ToI16(PTypePtr source, RTypePtr target) {
   // TODO(neil) Overflow? When we truely support expressions, these loose-ends must be fixed.
   if (IsNull(*source)) {
     SetNull(&*target);
@@ -463,7 +463,7 @@ CHECKED_STATUS ConvertI64ToI16(PTypePtr source, RTypePtr target) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertI64ToI32(PTypePtr source, RTypePtr target) {
+Status ConvertI64ToI32(PTypePtr source, RTypePtr target) {
   // TODO(neil) Overflow? When we truely support expressions, these loose-ends must be fixed.
   if (IsNull(*source)) {
     SetNull(&*target);
@@ -474,7 +474,7 @@ CHECKED_STATUS ConvertI64ToI32(PTypePtr source, RTypePtr target) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertI64ToI64(PTypePtr source, RTypePtr target) {
+Status ConvertI64ToI64(PTypePtr source, RTypePtr target) {
   // TODO(neil) Overflow? When we truely support expressions, these loose-ends must be fixed.
   if (IsNull(*source)) {
     SetNull(&*target);
@@ -485,7 +485,7 @@ CHECKED_STATUS ConvertI64ToI64(PTypePtr source, RTypePtr target) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertI64ToFloat(PTypePtr source, RTypePtr target) {
+Status ConvertI64ToFloat(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
   } else {
@@ -495,7 +495,7 @@ CHECKED_STATUS ConvertI64ToFloat(PTypePtr source, RTypePtr target) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertI64ToDouble(PTypePtr source, RTypePtr target) {
+Status ConvertI64ToDouble(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
   } else {
@@ -506,7 +506,7 @@ CHECKED_STATUS ConvertI64ToDouble(PTypePtr source, RTypePtr target) {
 
 // Conversion from float to others.
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertFloatToFloat(PTypePtr source, RTypePtr target) {
+Status ConvertFloatToFloat(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
   } else {
@@ -516,7 +516,7 @@ CHECKED_STATUS ConvertFloatToFloat(PTypePtr source, RTypePtr target) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertFloatToDouble(PTypePtr source, RTypePtr target) {
+Status ConvertFloatToDouble(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
   } else {
@@ -527,7 +527,7 @@ CHECKED_STATUS ConvertFloatToDouble(PTypePtr source, RTypePtr target) {
 
 // Conversion from double to others.
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertDoubleToFloat(PTypePtr source, RTypePtr target) {
+Status ConvertDoubleToFloat(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
   } else {
@@ -537,7 +537,7 @@ CHECKED_STATUS ConvertDoubleToFloat(PTypePtr source, RTypePtr target) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertDoubleToDouble(PTypePtr source, RTypePtr target) {
+Status ConvertDoubleToDouble(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
   } else {
@@ -549,7 +549,7 @@ CHECKED_STATUS ConvertDoubleToDouble(PTypePtr source, RTypePtr target) {
 //--------------------------------------------------------------------------------------------------
 // The following functions are for timestamp conversion.
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertTimestampToI64(PTypePtr source, RTypePtr target) {
+Status ConvertTimestampToI64(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
   } else {
@@ -559,7 +559,7 @@ CHECKED_STATUS ConvertTimestampToI64(PTypePtr source, RTypePtr target) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertI64ToTimestamp(PTypePtr source, RTypePtr target) {
+Status ConvertI64ToTimestamp(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
   } else {
@@ -569,7 +569,7 @@ CHECKED_STATUS ConvertI64ToTimestamp(PTypePtr source, RTypePtr target) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertTimestampToString(PTypePtr source, RTypePtr target) {
+Status ConvertTimestampToString(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
   } else {
@@ -579,7 +579,7 @@ CHECKED_STATUS ConvertTimestampToString(PTypePtr source, RTypePtr target) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertStringToTimestamp(PTypePtr source, RTypePtr target) {
+Status ConvertStringToTimestamp(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
   } else {
@@ -593,7 +593,7 @@ CHECKED_STATUS ConvertStringToTimestamp(PTypePtr source, RTypePtr target) {
 //--------------------------------------------------------------------------------------------------
 // The following functions are for string conversion.
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertStringToString(PTypePtr source, RTypePtr target) {
+Status ConvertStringToString(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
   } else {
@@ -603,7 +603,7 @@ CHECKED_STATUS ConvertStringToString(PTypePtr source, RTypePtr target) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertStringToInet(PTypePtr source, RTypePtr target) {
+Status ConvertStringToInet(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
   } else {
@@ -616,7 +616,7 @@ CHECKED_STATUS ConvertStringToInet(PTypePtr source, RTypePtr target) {
 //--------------------------------------------------------------------------------------------------
 // The following functions are for boolean conversion.
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertBoolToBool(PTypePtr source, RTypePtr target) {
+Status ConvertBoolToBool(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
   } else {
@@ -629,7 +629,7 @@ CHECKED_STATUS ConvertBoolToBool(PTypePtr source, RTypePtr target) {
 // The following functions are for conversions to blob / binary from other datatypes.
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertStringToBlob(PTypePtr source, RTypePtr target) {
+Status ConvertStringToBlob(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
   } else {
@@ -640,7 +640,7 @@ CHECKED_STATUS ConvertStringToBlob(PTypePtr source, RTypePtr target) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertBoolToBlob(PTypePtr source, RTypePtr target) {
+Status ConvertBoolToBlob(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
   } else {
@@ -651,7 +651,7 @@ CHECKED_STATUS ConvertBoolToBlob(PTypePtr source, RTypePtr target) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertInt8ToBlob(PTypePtr source, RTypePtr target) {
+Status ConvertInt8ToBlob(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
   } else {
@@ -662,7 +662,7 @@ CHECKED_STATUS ConvertInt8ToBlob(PTypePtr source, RTypePtr target) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertInt16ToBlob(PTypePtr source, RTypePtr target) {
+Status ConvertInt16ToBlob(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
   } else {
@@ -675,7 +675,7 @@ CHECKED_STATUS ConvertInt16ToBlob(PTypePtr source, RTypePtr target) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertInt32ToBlob(PTypePtr source, RTypePtr target) {
+Status ConvertInt32ToBlob(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
   } else {
@@ -688,7 +688,7 @@ CHECKED_STATUS ConvertInt32ToBlob(PTypePtr source, RTypePtr target) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertInt64ToBlob(PTypePtr source, RTypePtr target) {
+Status ConvertInt64ToBlob(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
   } else {
@@ -701,12 +701,12 @@ CHECKED_STATUS ConvertInt64ToBlob(PTypePtr source, RTypePtr target) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertVarintToBlob(PTypePtr source, RTypePtr target) {
+Status ConvertVarintToBlob(PTypePtr source, RTypePtr target) {
   return STATUS(RuntimeError, "Not yet implemented");
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertFloatToBlob(PTypePtr source, RTypePtr target) {
+Status ConvertFloatToBlob(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
   } else {
@@ -719,7 +719,7 @@ CHECKED_STATUS ConvertFloatToBlob(PTypePtr source, RTypePtr target) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertDoubleToBlob(PTypePtr source, RTypePtr target) {
+Status ConvertDoubleToBlob(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
   } else {
@@ -732,22 +732,22 @@ CHECKED_STATUS ConvertDoubleToBlob(PTypePtr source, RTypePtr target) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertDecimalToBlob(PTypePtr source, RTypePtr target) {
+Status ConvertDecimalToBlob(PTypePtr source, RTypePtr target) {
   return STATUS(RuntimeError, "Not yet implemented");
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertDateToBlob(PTypePtr source, RTypePtr target) {
+Status ConvertDateToBlob(PTypePtr source, RTypePtr target) {
   return STATUS(RuntimeError, "Not yet implemented");
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertTimeToBlob(PTypePtr source, RTypePtr target) {
+Status ConvertTimeToBlob(PTypePtr source, RTypePtr target) {
   return STATUS(RuntimeError, "Not yet implemented");
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertTimestampToBlob(PTypePtr source, RTypePtr target) {
+Status ConvertTimestampToBlob(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
   } else {
@@ -763,7 +763,7 @@ CHECKED_STATUS ConvertTimestampToBlob(PTypePtr source, RTypePtr target) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertUuidToBlob(PTypePtr source, RTypePtr target) {
+Status ConvertUuidToBlob(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
   } else {
@@ -774,7 +774,7 @@ CHECKED_STATUS ConvertUuidToBlob(PTypePtr source, RTypePtr target) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertTimeuuidToBlob(PTypePtr source, RTypePtr target) {
+Status ConvertTimeuuidToBlob(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
   } else {
@@ -785,34 +785,34 @@ CHECKED_STATUS ConvertTimeuuidToBlob(PTypePtr source, RTypePtr target) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertInetToBlob(PTypePtr source, RTypePtr target) {
+Status ConvertInetToBlob(PTypePtr source, RTypePtr target) {
   return STATUS(RuntimeError, "Not yet implemented");
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertListToBlob(PTypePtr source, RTypePtr target) {
+Status ConvertListToBlob(PTypePtr source, RTypePtr target) {
   return STATUS(RuntimeError, "Not yet implemented");
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertMapToBlob(PTypePtr source, RTypePtr target) {
+Status ConvertMapToBlob(PTypePtr source, RTypePtr target) {
   return STATUS(RuntimeError, "Not yet implemented");
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertSetToBlob(PTypePtr source, RTypePtr target) {
+Status ConvertSetToBlob(PTypePtr source, RTypePtr target) {
   return STATUS(RuntimeError, "Not yet implemented");
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertTupleToBlob(PTypePtr source, RTypePtr target) {
+Status ConvertTupleToBlob(PTypePtr source, RTypePtr target) {
   return STATUS(RuntimeError, "Not yet implemented");
 }
 
 // The following functions are for conversions from blob / binary to other datatypes.
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertBlobToString(PTypePtr source, RTypePtr target) {
+Status ConvertBlobToString(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
   } else {
@@ -822,7 +822,7 @@ CHECKED_STATUS ConvertBlobToString(PTypePtr source, RTypePtr target) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertBlobToBool(PTypePtr source, RTypePtr target) {
+Status ConvertBlobToBool(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
   } else {
@@ -836,7 +836,7 @@ CHECKED_STATUS ConvertBlobToBool(PTypePtr source, RTypePtr target) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertBlobToInt8(PTypePtr source, RTypePtr target) {
+Status ConvertBlobToInt8(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
   } else {
@@ -850,7 +850,7 @@ CHECKED_STATUS ConvertBlobToInt8(PTypePtr source, RTypePtr target) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertBlobToInt16(PTypePtr source, RTypePtr target) {
+Status ConvertBlobToInt16(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
   } else {
@@ -867,7 +867,7 @@ CHECKED_STATUS ConvertBlobToInt16(PTypePtr source, RTypePtr target) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertBlobToInt32(PTypePtr source, RTypePtr target) {
+Status ConvertBlobToInt32(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
   } else {
@@ -884,7 +884,7 @@ CHECKED_STATUS ConvertBlobToInt32(PTypePtr source, RTypePtr target) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertBlobToInt64(PTypePtr source, RTypePtr target) {
+Status ConvertBlobToInt64(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
   } else {
@@ -901,12 +901,12 @@ CHECKED_STATUS ConvertBlobToInt64(PTypePtr source, RTypePtr target) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertBlobToVarint(PTypePtr source, RTypePtr target) {
+Status ConvertBlobToVarint(PTypePtr source, RTypePtr target) {
   return STATUS(RuntimeError, "Not yet implemented");
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertBlobToFloat(PTypePtr source, RTypePtr target) {
+Status ConvertBlobToFloat(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
   } else {
@@ -923,7 +923,7 @@ CHECKED_STATUS ConvertBlobToFloat(PTypePtr source, RTypePtr target) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertBlobToDouble(PTypePtr source, RTypePtr target) {
+Status ConvertBlobToDouble(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
   } else {
@@ -940,22 +940,22 @@ CHECKED_STATUS ConvertBlobToDouble(PTypePtr source, RTypePtr target) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertBlobToDecimal(PTypePtr source, RTypePtr target) {
+Status ConvertBlobToDecimal(PTypePtr source, RTypePtr target) {
   return STATUS(RuntimeError, "Not yet implemented");
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertBlobToDate(PTypePtr source, RTypePtr target) {
+Status ConvertBlobToDate(PTypePtr source, RTypePtr target) {
   return STATUS(RuntimeError, "Not yet implemented");
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertBlobToTime(PTypePtr source, RTypePtr target) {
+Status ConvertBlobToTime(PTypePtr source, RTypePtr target) {
   return STATUS(RuntimeError, "Not yet implemented");
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertBlobToTimestamp(PTypePtr source, RTypePtr target) {
+Status ConvertBlobToTimestamp(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
   } else {
@@ -976,7 +976,7 @@ CHECKED_STATUS ConvertBlobToTimestamp(PTypePtr source, RTypePtr target) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertBlobToUuid(PTypePtr source, RTypePtr target) {
+Status ConvertBlobToUuid(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
   } else {
@@ -984,15 +984,13 @@ CHECKED_STATUS ConvertBlobToUuid(PTypePtr source, RTypePtr target) {
     if (blob.size() != kSizeUuid) {
       return STATUS(QLError, "The blob string is not valid for UUID type.");
     }
-    Uuid target_val;
-    RETURN_NOT_OK(target_val.FromBytes(blob));
-    QLValue::set_uuid_value(target_val, &*target);
+    QLValue::set_uuid_value(VERIFY_RESULT(Uuid::FromSlice(blob)), &*target);
   }
   return Status::OK();
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertBlobToTimeuuid(PTypePtr source, RTypePtr target) {
+Status ConvertBlobToTimeuuid(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
   } else {
@@ -1000,42 +998,40 @@ CHECKED_STATUS ConvertBlobToTimeuuid(PTypePtr source, RTypePtr target) {
     if (blob.size() != kSizeUuid) {
       return STATUS(QLError, "The blob string is not valid for UUID type.");
     }
-    Uuid target_val;
-    RETURN_NOT_OK(target_val.FromBytes(blob));
-    QLValue::set_timeuuid_value(target_val, &*target);
+    QLValue::set_timeuuid_value(VERIFY_RESULT(Uuid::FromSlice(blob)), &*target);
   }
   return Status::OK();
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertBlobToInet(PTypePtr source, RTypePtr target) {
+Status ConvertBlobToInet(PTypePtr source, RTypePtr target) {
   return STATUS(RuntimeError, "Not yet implemented");
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertBlobToList(PTypePtr source, RTypePtr target) {
+Status ConvertBlobToList(PTypePtr source, RTypePtr target) {
   return STATUS(RuntimeError, "Not yet implemented");
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertBlobToMap(PTypePtr source, RTypePtr target) {
+Status ConvertBlobToMap(PTypePtr source, RTypePtr target) {
   return STATUS(RuntimeError, "Not yet implemented");
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertBlobToSet(PTypePtr source, RTypePtr target) {
+Status ConvertBlobToSet(PTypePtr source, RTypePtr target) {
   return STATUS(RuntimeError, "Not yet implemented");
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertBlobToTuple(PTypePtr source, RTypePtr target) {
+Status ConvertBlobToTuple(PTypePtr source, RTypePtr target) {
   return STATUS(RuntimeError, "Not yet implemented");
 }
 
 //--------------------------------------------------------------------------------------------------
 // The following functions are for conversions between date-time datatypes.
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertTimeuuidToDate(PTypePtr source, RTypePtr target) {
+Status ConvertTimeuuidToDate(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
     return Status::OK();
@@ -1044,7 +1040,7 @@ CHECKED_STATUS ConvertTimeuuidToDate(PTypePtr source, RTypePtr target) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertTimestampToDate(PTypePtr source, RTypePtr target) {
+Status ConvertTimestampToDate(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
     return Status::OK();
@@ -1053,17 +1049,17 @@ CHECKED_STATUS ConvertTimestampToDate(PTypePtr source, RTypePtr target) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertTimeuuidToTime(PTypePtr source, RTypePtr target) {
+Status ConvertTimeuuidToTime(PTypePtr source, RTypePtr target) {
   return STATUS(RuntimeError, "Not yet implemented");
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertTimestampToTime(PTypePtr source, RTypePtr target) {
+Status ConvertTimestampToTime(PTypePtr source, RTypePtr target) {
   return STATUS(RuntimeError, "Not yet implemented");
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertDateToTimestamp(PTypePtr source, RTypePtr target) {
+Status ConvertDateToTimestamp(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
     return Status::OK();
@@ -1072,7 +1068,7 @@ CHECKED_STATUS ConvertDateToTimestamp(PTypePtr source, RTypePtr target) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertTimeuuidToTimestamp(PTypePtr source, RTypePtr target) {
+Status ConvertTimeuuidToTimestamp(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
     return Status::OK();
@@ -1081,7 +1077,7 @@ CHECKED_STATUS ConvertTimeuuidToTimestamp(PTypePtr source, RTypePtr target) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertDateToUnixTimestamp(PTypePtr source, RTypePtr target) {
+Status ConvertDateToUnixTimestamp(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
   } else {
@@ -1091,7 +1087,7 @@ CHECKED_STATUS ConvertDateToUnixTimestamp(PTypePtr source, RTypePtr target) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertTimestampToUnixTimestamp(PTypePtr source, RTypePtr target) {
+Status ConvertTimestampToUnixTimestamp(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
   } else {
@@ -1104,7 +1100,7 @@ CHECKED_STATUS ConvertTimestampToUnixTimestamp(PTypePtr source, RTypePtr target)
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertTimeuuidToUnixTimestamp(PTypePtr source, RTypePtr target) {
+Status ConvertTimeuuidToUnixTimestamp(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
   } else {
@@ -1117,7 +1113,7 @@ CHECKED_STATUS ConvertTimeuuidToUnixTimestamp(PTypePtr source, RTypePtr target) 
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertToMaxTimeuuid(PTypePtr source, RTypePtr target) {
+Status ConvertToMaxTimeuuid(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     return STATUS(RuntimeError, "Cannot get max timeuuid of null");
   } else {
@@ -1133,7 +1129,7 @@ CHECKED_STATUS ConvertToMaxTimeuuid(PTypePtr source, RTypePtr target) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertToMinTimeuuid(PTypePtr source, RTypePtr target) {
+Status ConvertToMinTimeuuid(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     return STATUS(RuntimeError, "Cannot get max timeuuid of null");
   } else {
@@ -1152,7 +1148,7 @@ CHECKED_STATUS ConvertToMinTimeuuid(PTypePtr source, RTypePtr target) {
 // The following functions are for conversions from VarInt to the other numeric types.
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertVarintToI8(PTypePtr source, RTypePtr target) {
+Status ConvertVarintToI8(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
   } else {
@@ -1166,7 +1162,7 @@ CHECKED_STATUS ConvertVarintToI8(PTypePtr source, RTypePtr target) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertVarintToI16(PTypePtr source, RTypePtr target) {
+Status ConvertVarintToI16(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
   } else {
@@ -1180,7 +1176,7 @@ CHECKED_STATUS ConvertVarintToI16(PTypePtr source, RTypePtr target) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertVarintToI32(PTypePtr source, RTypePtr target) {
+Status ConvertVarintToI32(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
   } else {
@@ -1194,7 +1190,7 @@ CHECKED_STATUS ConvertVarintToI32(PTypePtr source, RTypePtr target) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertVarintToI64(PTypePtr source, RTypePtr target) {
+Status ConvertVarintToI64(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
   } else {
@@ -1205,7 +1201,7 @@ CHECKED_STATUS ConvertVarintToI64(PTypePtr source, RTypePtr target) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertVarintToFloat(PTypePtr source, RTypePtr target) {
+Status ConvertVarintToFloat(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
   } else {
@@ -1217,7 +1213,7 @@ CHECKED_STATUS ConvertVarintToFloat(PTypePtr source, RTypePtr target) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertVarintToDouble(PTypePtr source, RTypePtr target) {
+Status ConvertVarintToDouble(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
   } else {
@@ -1229,7 +1225,7 @@ CHECKED_STATUS ConvertVarintToDouble(PTypePtr source, RTypePtr target) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertI8ToVarint(PTypePtr source, RTypePtr target) {
+Status ConvertI8ToVarint(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
   } else {
@@ -1240,7 +1236,7 @@ CHECKED_STATUS ConvertI8ToVarint(PTypePtr source, RTypePtr target) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertI16ToVarint(PTypePtr source, RTypePtr target) {
+Status ConvertI16ToVarint(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
   } else {
@@ -1251,7 +1247,7 @@ CHECKED_STATUS ConvertI16ToVarint(PTypePtr source, RTypePtr target) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertI32ToVarint(PTypePtr source, RTypePtr target) {
+Status ConvertI32ToVarint(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
   } else {
@@ -1262,7 +1258,7 @@ CHECKED_STATUS ConvertI32ToVarint(PTypePtr source, RTypePtr target) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertI64ToVarint(PTypePtr source, RTypePtr target) {
+Status ConvertI64ToVarint(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
   } else {
@@ -1272,37 +1268,37 @@ CHECKED_STATUS ConvertI64ToVarint(PTypePtr source, RTypePtr target) {
 }
 
 template<typename RTypePtr>
-CHECKED_STATUS ToInt32(int64_t val, RTypePtr target) {
+Status ToInt32(int64_t val, RTypePtr target) {
   target->set_int32_value(static_cast<int32_t>(val));
   return Status::OK();
 }
 
 template<typename RTypePtr>
-CHECKED_STATUS ToInt64(int64_t val, RTypePtr target) {
+Status ToInt64(int64_t val, RTypePtr target) {
   target->set_int64_value(val);
   return Status::OK();
 }
 
 template<typename RTypePtr>
-CHECKED_STATUS ToInt16(int16_t val, RTypePtr target) {
+Status ToInt16(int16_t val, RTypePtr target) {
   target->set_int16_value(val);
   return Status::OK();
 }
 
 template<typename RTypePtr>
-CHECKED_STATUS ToFloat(float val, RTypePtr target) {
+Status ToFloat(float val, RTypePtr target) {
   target->set_float_value(val);
   return Status::OK();
 }
 
 template<typename RTypePtr>
-CHECKED_STATUS ToDouble(double val, RTypePtr target) {
+Status ToDouble(double val, RTypePtr target) {
   target->set_double_value(val);
   return Status::OK();
 }
 
 template<typename RTypePtr, typename PTypePtr, typename StrToNum, typename ToNumeric>
-CHECKED_STATUS ConvertToNumeric(PTypePtr source, RTypePtr target, const DataType& data_type,
+Status ConvertToNumeric(PTypePtr source, RTypePtr target, const DataType& data_type,
                                 StrToNum strToNum, ToNumeric toNumeric) {
   if (IsNull(*source)) {
     SetNull(&*target);
@@ -1316,31 +1312,31 @@ CHECKED_STATUS ConvertToNumeric(PTypePtr source, RTypePtr target, const DataType
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertToI32(PTypePtr source, RTypePtr target) {
+Status ConvertToI32(PTypePtr source, RTypePtr target) {
   return ConvertToNumeric(source, target, DataType::INT32, CheckedStoi,
                           ToInt32<RTypePtr>);
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertToI16(PTypePtr source, RTypePtr target) {
+Status ConvertToI16(PTypePtr source, RTypePtr target) {
   return ConvertToNumeric(source, target, DataType::INT16, CheckedStoi,
                           ToInt16<RTypePtr>);
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertToI64(PTypePtr source, RTypePtr target) {
+Status ConvertToI64(PTypePtr source, RTypePtr target) {
   return ConvertToNumeric(source, target, DataType::INT64, CheckedStoll,
                           ToInt64<RTypePtr>);
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertToDouble(PTypePtr source, RTypePtr target) {
+Status ConvertToDouble(PTypePtr source, RTypePtr target) {
   return ConvertToNumeric(source, target, DataType::DOUBLE, CheckedStold,
                           ToDouble<RTypePtr>);
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertToFloat(PTypePtr source, RTypePtr target) {
+Status ConvertToFloat(PTypePtr source, RTypePtr target) {
   return ConvertToNumeric(source, target, DataType::FLOAT, CheckedStold,
                           ToFloat<RTypePtr>);
 }
@@ -1348,7 +1344,7 @@ CHECKED_STATUS ConvertToFloat(PTypePtr source, RTypePtr target) {
 YB_DEFINE_ENUM(ConvertDecimalVia, (kUnknown)(kString)(kVarint)(kDecimal)(kInt64)(kDouble));
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertToDecimal(PTypePtr source, RTypePtr target) {
+Status ConvertToDecimal(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
     return Status::OK();
@@ -1443,7 +1439,7 @@ CHECKED_STATUS ConvertToDecimal(PTypePtr source, RTypePtr target) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertToString(PTypePtr source, RTypePtr target) {
+Status ConvertToString(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
     return Status::OK();
@@ -1452,7 +1448,7 @@ CHECKED_STATUS ConvertToString(PTypePtr source, RTypePtr target) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertToTimestamp(PTypePtr source, RTypePtr target) {
+Status ConvertToTimestamp(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
     return Status::OK();
@@ -1461,7 +1457,7 @@ CHECKED_STATUS ConvertToTimestamp(PTypePtr source, RTypePtr target) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ConvertToDate(PTypePtr source, RTypePtr target) {
+Status ConvertToDate(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
     return Status::OK();

@@ -4,12 +4,11 @@ headerTitle: LDAP authentication
 linkTitle: LDAP authentication
 description: Configuring YugabyteDB Anywhere to use an external LDAP authentication service.
 menu:
-  preview:
+  preview_yugabyte-platform:
     identifier: ldap-authentication-platform
     parent: security
     weight: 25
-isTocNested: false
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -27,7 +26,7 @@ You enable LDAP authentication in the YugabyteDB cluster by setting the LDAP con
 
 This section describes how to configure YugabyteDB Anywhere to use an LDAP server such as Active Directory with TLS.
 
-For more information on LDAP in YugabyteDB, refer to [LDAP Authentication](../../../secure/authentication/ldap-authentication/).
+For more information on LDAP in YugabyteDB, refer to [LDAP authentication](../../../secure/authentication/ldap-authentication/).
 
 ## Bind to the LDAP server using TLS
 
@@ -132,10 +131,8 @@ Consider the following example:
     exampledb=# \conninfo
     ```
 
-    Expect the followingn output:
-    
+    Expect the following output:
+
     ```output
     You are connected to database "exampledb" as user "adam" on host "localhost" at port "5433".
     ```
-    
-    

@@ -5,7 +5,7 @@
 --
 -- Test yb_is_database_colocated.
 SELECT yb_is_database_colocated();
- yb_is_database_colocated 
+ yb_is_database_colocated
 --------------------------
  f
 (1 row)
@@ -28,14 +28,14 @@ CREATE DATABASE test_yb_obj_props_clc COLOCATED = true;
 --
 -- Test yb_is_database_colocated.
 SELECT yb_is_database_colocated();
- yb_is_database_colocated 
+ yb_is_database_colocated
 --------------------------
  t
 (1 row)
 
 --
 -- Test yb_table_properties.
-CREATE TABLE clc_temp_tbl (h INT PRIMARY KEY) WITH (colocated=true) SPLIT INTO 5 TABLETS;
+CREATE TABLE clc_temp_tbl (h INT PRIMARY KEY) WITH (colocated=true);
 CREATE TABLE clc_temp_tbl_2 (h INT PRIMARY KEY) WITH (colocated=true, colocation_id=100500);
 SELECT c.relname, props.*
 FROM pg_class c, yb_table_properties(c.oid) props

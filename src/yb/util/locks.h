@@ -256,48 +256,6 @@ class percpu_rwlock {
   padded_lock *locks_;
 };
 
-// Simple implementation of the SharedLock API, which is not available in
-// the standard library until C++14. Defers error checking to the underlying
-// mutex.
-
-template <typename Mutex>
-class shared_lock {
- public:
-  shared_lock()
-      : m_(nullptr) {
-  }
-
-  explicit shared_lock(Mutex& m) // NOLINT
-      : m_(&m) {
-    m_->lock_shared();
-  }
-
-  shared_lock(Mutex& m, std::try_to_lock_t t) // NOLINT
-      : m_(nullptr) {
-    if (m.try_lock_shared()) {
-      m_ = &m;
-    }
-  }
-
-  bool owns_lock() const {
-    return m_;
-  }
-
-  void swap(shared_lock& other) {
-    std::swap(m_, other.m_);
-  }
-
-  ~shared_lock() {
-    if (m_ != nullptr) {
-      m_->unlock_shared();
-    }
-  }
-
- private:
-  Mutex* m_;
-  DISALLOW_COPY_AND_ASSIGN(shared_lock<Mutex>);
-};
-
 template <class Container>
 auto ToVector(const Container& container, std::mutex* mutex) {
   std::vector<typename Container::value_type> result;

@@ -13,10 +13,11 @@
 
 package com.yugabyte.sample.common.metrics;
 
-import org.apache.log4j.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class Metric {
-  private static final Logger LOG = Logger.getLogger(Metric.class);
+  private static final Logger LOG = LoggerFactory.getLogger(Metric.class);
   String name;
   private final Object lock = new Object();
   private long curOpCount = 0;

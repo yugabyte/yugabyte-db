@@ -165,9 +165,33 @@ Status TwoDCTestBase::VerifyUniverseReplicationDeleted(MiniCluster* consumer_clu
   }, MonoDelta::FromMilliseconds(timeout), "Verify universe replication deleted");
 }
 
+Status TwoDCTestBase::VerifyUniverseReplicationFailed(MiniCluster* consumer_cluster,
+    YBClient* consumer_client, const std::string& producer_id,
+    master::IsSetupUniverseReplicationDoneResponsePB* resp) {
+  return LoggedWaitFor([=]() -> Result<bool> {
+    master::IsSetupUniverseReplicationDoneRequestPB req;
+    req.set_producer_id(producer_id);
+    resp->Clear();
+
+    auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
+        &consumer_client->proxy_cache(),
+        VERIFY_RESULT(consumer_cluster->GetLeaderMiniMaster())->bound_rpc_addr());
+    rpc::RpcController rpc;
+    rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
+
+    Status s = master_proxy->IsSetupUniverseReplicationDone(req, resp, &rpc);
+
+    if (!s.ok() || resp->has_error()) {
+      LOG(WARNING) << "Encountered error while waiting for setup_universe_replication to complete: "
+                   << (!s.ok() ? s.ToString() : "resp=" + resp->error().status().message());
+    }
+    return resp->has_done() && resp->done();
+  }, MonoDelta::FromSeconds(kRpcTimeout), "Verify universe replication failed");
+}
+
 Status TwoDCTestBase::GetCDCStreamForTable(
     const std::string& table_id, master::ListCDCStreamsResponsePB* resp) {
-  return LoggedWaitFor([=]() -> Result<bool> {
+  return LoggedWaitFor([this, table_id, resp]() -> Result<bool> {
     master::ListCDCStreamsRequestPB req;
     req.set_table_id(table_id);
     resp->Clear();
@@ -215,38 +239,10 @@ Status TwoDCTestBase::DeleteUniverseReplication(
   return Status::OK();
 }
 
-size_t TwoDCTestBase::NumProducerTabletsPolled(MiniCluster* cluster) {
-  size_t size = 0;
-  for (const auto& mini_tserver : cluster->mini_tablet_servers()) {
-    size_t new_size = 0;
-    auto* tserver = dynamic_cast<tserver::enterprise::TabletServer*>(mini_tserver->server());
-    CDCConsumer* cdc_consumer;
-    if (tserver && (cdc_consumer = tserver->GetCDCConsumer())) {
-      auto tablets_running = cdc_consumer->TEST_producer_tablets_running();
-      new_size = tablets_running.size();
-    }
-    size += new_size;
-  }
-  return size;
-}
-
 Status TwoDCTestBase::CorrectlyPollingAllTablets(
     MiniCluster* cluster, uint32_t num_producer_tablets) {
-  return LoggedWaitFor([=]() -> Result<bool> {
-    static int i = 0;
-    constexpr int kNumIterationsWithCorrectResult = 5;
-    auto cur_tablets = NumProducerTabletsPolled(cluster);
-    if (cur_tablets == num_producer_tablets) {
-      if (i++ == kNumIterationsWithCorrectResult) {
-        i = 0;
-        return true;
-      }
-    } else {
-      i = 0;
-    }
-    LOG(INFO) << "Tablets being polled: " << cur_tablets;
-    return false;
-  }, MonoDelta::FromSeconds(kRpcTimeout), "Num producer tablets being polled");
+  return cdc::CorrectlyPollingAllTablets(
+      cluster, num_producer_tablets, MonoDelta::FromSeconds(kRpcTimeout));
 }
 
 Status TwoDCTestBase::WaitForSetupUniverseReplicationCleanUp(string producer_uuid) {

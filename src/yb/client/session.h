@@ -103,7 +103,7 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
   // operations are restarted and last read point indicates the operations do need to be restarted,
   // the read point will be updated to restart read-time. Otherwise, the read point will be set to
   // the current time.
-  void SetReadPoint(Restart restart);
+  void RestartNonTxnReadPoint(Restart restart);
 
   void SetReadPoint(const ReadHybridTime& read_time);
 
@@ -173,10 +173,10 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
 
   // For production code use async variants of the following functions instead.
   FlushStatus TEST_FlushAndGetOpsErrors();
-  CHECKED_STATUS TEST_Flush();
-  CHECKED_STATUS TEST_ApplyAndFlush(YBOperationPtr yb_op);
-  CHECKED_STATUS TEST_ApplyAndFlush(const std::vector<YBOperationPtr>& ops);
-  CHECKED_STATUS TEST_ReadSync(std::shared_ptr<YBOperation> yb_op);
+  Status TEST_Flush();
+  Status TEST_ApplyAndFlush(YBOperationPtr yb_op);
+  Status TEST_ApplyAndFlush(const std::vector<YBOperationPtr>& ops);
+  Status TEST_ReadSync(std::shared_ptr<YBOperation> yb_op);
 
   // Abort the unflushed or in-flight operations in the session.
   void Abort();
@@ -185,7 +185,7 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
   // Returns Status::IllegalState() if 'force' is false and there are still pending
   // operations. If 'force' is true batcher_ is aborted even if there are pending
   // operations.
-  CHECKED_STATUS Close(bool force = false);
+  Status Close(bool force = false);
 
   // Return true if there are operations which have not yet been delivered to the
   // cluster. This may include buffered operations (i.e those that have not yet been

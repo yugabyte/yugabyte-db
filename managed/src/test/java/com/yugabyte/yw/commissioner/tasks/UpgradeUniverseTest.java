@@ -224,6 +224,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
                 return new GetMasterClusterConfigResponse(1111, "", configBuilder.build(), null);
               });
     } catch (Exception ignored) {
+      fail();
     }
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     when(mockYBClient.getClientWithConfig(any())).thenReturn(mockClient);
@@ -232,6 +233,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
         .thenReturn(HostAndPort.fromString("10.0.0.2").withDefaultPort(7000));
     IsServerReadyResponse okReadyResp = new IsServerReadyResponse(0, "", null, 0, 0);
     try {
+      when(mockClient.waitForMaster(any(HostAndPort.class), anyLong())).thenReturn(true);
       when(mockClient.isServerReady(any(HostAndPort.class), anyBoolean())).thenReturn(okReadyResp);
       when(mockClient.setFlag(any(HostAndPort.class), anyString(), anyString(), anyBoolean()))
           .thenReturn(true);
@@ -239,6 +241,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
       when(listMastersResponse.getMasters()).thenReturn(Collections.emptyList());
       when(mockClient.listMasters()).thenReturn(listMastersResponse);
     } catch (Exception ignored) {
+      fail();
     }
     ShellResponse dummyShellResponse = new ShellResponse();
     when(mockNodeManager.nodeCommand(any(), any())).thenReturn(dummyShellResponse);
@@ -1160,6 +1163,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
           Cluster primaryCluster = universeDetails.getPrimaryCluster();
           UserIntent userIntent = primaryCluster.userIntent;
           userIntent.regionList = ImmutableList.of(region.uuid, secondRegion.uuid);
+          userIntent.provider = defaultProvider.uuid.toString();
 
           PlacementInfo pi = primaryCluster.placementInfo;
           PlacementInfoUtil.addPlacementZone(az4.uuid, pi, 1, 2, false);

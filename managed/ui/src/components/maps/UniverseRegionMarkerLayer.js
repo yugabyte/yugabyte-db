@@ -4,7 +4,7 @@ import React, { Component } from 'react';
 import { Marker, FeatureGroup, Polygon } from 'react-leaflet';
 import { divIcon } from 'leaflet';
 import MapMarker from './MapMarker';
-import { getPointsOnCircle } from '../../utils/ObjectUtils';
+import { getPointsOnCircle, isDefinedNotNull } from '../../utils/ObjectUtils';
 import './stylesheets/universeRegionMarkerLayer.scss';
 import {
   getPrimaryCluster,
@@ -27,6 +27,14 @@ export default class UniverseRegionMarkerLayer extends Component {
     placementRegions.forEach(function (regionItem, regionIdx) {
       const regionMarkerIcon = divIcon({ className: 'universe-region-marker' });
       const currentRegion = clusterRegions.find((region) => region.uuid === regionItem.uuid);
+      if (!isDefinedNotNull(currentRegion)) {
+        // Should not occur. This means some cluster nodes are placed in regions not specific for the
+        // cluster.
+        console.error(
+          `Region ${regionItem.code} is used for one or more nodes, but it is not specified in the cluster regions list.`
+        );
+        return;
+      }
       const regionLatLong = [currentRegion.latitude, currentRegion.longitude];
       const azPoints = getPointsOnCircle(regionItem.azList.length, regionLatLong, 2);
       azPoints.forEach(function (azPoint) {

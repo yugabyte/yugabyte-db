@@ -80,6 +80,7 @@ set(DOCDB_SRCS
         doc_rowwise_iterator.cc
         doc_write_batch_cache.cc
         doc_write_batch.cc
+        doc_ql_filefilter.cc
         expiration.cc
         compaction_file_filter.cc
         intent_aware_iterator.cc
@@ -92,10 +93,10 @@ set(DOCDB_SRCS
         rocksdb_writer.cc
         shared_lock_manager.cc
         subdocument.cc
-        subdoc_reader.cc
         transaction_dump.cc
         transaction_status_cache.cc
         value.cc
+        wait_queue.cc
         kv_debug.cc
         )
 

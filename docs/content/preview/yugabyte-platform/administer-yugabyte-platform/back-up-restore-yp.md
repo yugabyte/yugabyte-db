@@ -2,14 +2,13 @@
 title: Back up and restore YugabyteDB Anywhere
 headerTitle: Back up and restore YugabyteDB Anywhere
 linkTitle: Back up YugabyteDB Anywhere
-description: Use a script file to back up and restore YugabyteDB Anywhere.
+description: Use a script to back up and restore YugabyteDB Anywhere.
 menu:
-  preview:
+  preview_yugabyte-platform:
     identifier: back-up-restore-yp
     parent: administer-yugabyte-platform
     weight: 10
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -49,7 +48,7 @@ To back up the YugabyteDB Anywhere server, perform the following:
     ./yb_platform_backup.sh create --output <output_path> [--data_dir <data_dir>] [--exclude_prometheus]
     ```
 
-    *create* runs the backup of the YugabyteDB Anywhere server.<br>
+    <br>*create* runs the backup of the YugabyteDB Anywhere server.<br>
 
     *output_path* specifies the location for the `.tar` output file.<br>
 
@@ -79,7 +78,7 @@ To restore the YugabyteDB Anywhere content from your saved backup, perform the f
     ./yb_platform_backup.sh restore --input <input_path> [--destination <destination>]
     ```
 
-    *restore* restores the YugabyteDB Anywhere content.<br>
+    <br>*restore* restores the YugabyteDB Anywhere content.<br>
 
     *input_path* is the path to the input `.tar` file.<br>
 

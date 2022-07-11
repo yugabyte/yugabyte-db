@@ -23,7 +23,7 @@
 namespace yb {
 namespace pggate {
 
-CHECKED_STATUS WriteColumn(const QLValuePB& col_value, faststring *buffer);
+Status WriteColumn(const QLValuePB& col_value, faststring *buffer);
 
 class PgDocData : public PgWire {
  public:

@@ -12,30 +12,25 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.datastax.driver.core.Cluster;
 import com.datastax.driver.core.Session;
-import com.google.api.client.util.Throwables;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.TableDetails;
 import io.swagger.annotations.ApiModelProperty;
 import java.net.InetSocketAddress;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
-import java.util.Random;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
-
 import org.apache.commons.lang3.StringUtils;
 import org.yb.CommonTypes.TableType;
 import org.yb.client.YBClient;
@@ -46,8 +41,9 @@ public class CreateTable extends AbstractTaskBase {
 
   private static final Pattern YSQLSH_CREATE_TABLE_SUCCESS =
       Pattern.compile("Command output:.*CREATE TABLE", Pattern.DOTALL);
-  private static final int RETRY_DELAY_SEC = 5;
-  private static final int MAX_TIMEOUT_SEC = 60;
+  private static final long RETRY_DELAY_SEC = 30;
+  private static final long MIN_RETRY_COUNT = 3;
+  private static final long TOTAL_ATTEMPTS_DURATION_SEC = TimeUnit.MINUTES.toSeconds(10);
 
   // To use for the Cassandra client
   private Cluster cassandraCluster;
@@ -93,8 +89,8 @@ public class CreateTable extends AbstractTaskBase {
 
     boolean tableCreated = false;
     int attempt = 0;
-    Instant timeout = Instant.now().plusSeconds(MAX_TIMEOUT_SEC);
-    while (Instant.now().isBefore(timeout) || attempt < 2) {
+    Instant timeout = Instant.now().plusSeconds(TOTAL_ATTEMPTS_DURATION_SEC);
+    while (Instant.now().isBefore(timeout) || attempt < MIN_RETRY_COUNT) {
       NodeDetails randomTServer = CommonUtils.getARandomLiveTServer(universe);
       ShellResponse response =
           nodeUniverseManager.runYsqlCommand(
@@ -107,7 +103,7 @@ public class CreateTable extends AbstractTaskBase {
             randomTServer.nodeName,
             response.code,
             response.message);
-        waitFor(Duration.ofMillis(RETRY_DELAY_SEC));
+        waitFor(Duration.ofSeconds(RETRY_DELAY_SEC));
       } else {
         tableCreated = true;
         break;

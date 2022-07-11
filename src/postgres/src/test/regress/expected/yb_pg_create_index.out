@@ -87,17 +87,29 @@ ERROR:  ybgin indexes do not support reloption fastupdate
 CREATE TABLE concur_heap (f1 text, f2 text);
 -- empty table
 CREATE INDEX CONCURRENTLY concur_index1 ON concur_heap(f2,f1);
-ERROR:  CREATE INDEX CONCURRENTLY not supported yet
-LINE 1: CREATE INDEX CONCURRENTLY concur_index1 ON concur_heap(f2,f1...
-                     ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
+CREATE INDEX CONCURRENTLY IF NOT EXISTS concur_index1 ON concur_heap(f2,f1);
+NOTICE:  relation "concur_index1" already exists, skipping
+INSERT INTO concur_heap VALUES  ('a','b');
+INSERT INTO concur_heap VALUES  ('b','b');
+-- unique index
+CREATE UNIQUE INDEX CONCURRENTLY concur_index2 ON concur_heap(f1);
+CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS concur_index2 ON concur_heap(f1);
+NOTICE:  relation "concur_index2" already exists, skipping
+-- check if constraint is set up properly to be enforced
+INSERT INTO concur_heap VALUES ('b','x');
+ERROR:  duplicate key value violates unique constraint "concur_index2"
+-- check if constraint is enforced properly at build time
+CREATE UNIQUE INDEX CONCURRENTLY concur_index3 ON concur_heap(f2);
+ERROR:  Aborted: ERROR:  duplicate key value violates unique constraint "concur_index3"
+-- test that expression indexes and partial indexes work concurrently
+CREATE INDEX CONCURRENTLY concur_index4 on concur_heap(f2) WHERE f1='a';
+CREATE INDEX CONCURRENTLY concur_index5 on concur_heap(f2) WHERE f1='x';
+-- here we also check that you can default the index name
+CREATE INDEX CONCURRENTLY on concur_heap((f2||f1));
 -- You can't do a concurrent index build in a transaction
 BEGIN;
 CREATE INDEX CONCURRENTLY concur_index7 ON concur_heap(f1);
-ERROR:  CREATE INDEX CONCURRENTLY not supported yet
-LINE 1: CREATE INDEX CONCURRENTLY concur_index7 ON concur_heap(f1);
-                     ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
+ERROR:  CREATE INDEX CONCURRENTLY cannot run inside a transaction block
 COMMIT;
 -- But you can do a regular index build in a transaction
 BEGIN;
@@ -106,3 +118,25 @@ NOTICE:  making create index for table "concur_heap" nonconcurrent
 DETAIL:  Create index in transaction block cannot be concurrent.
 HINT:  Consider running it outside of a transaction block. See https://github.com/yugabyte/yugabyte-db/issues/6240.
 COMMIT;
+-- Failed builds are left invalid by VACUUM FULL, fixed by REINDEX
+-- YB note: VACUUM and REINDEX TABLE are not yet supported
+VACUUM FULL concur_heap;
+WARNING:  VACUUM will be ignored
+REINDEX TABLE concur_heap;
+ERROR:  REINDEX TABLE not supported yet
+LINE 1: REINDEX TABLE concur_heap;
+                ^
+HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
+--
+-- REINDEX (VERBOSE)
+--
+CREATE TABLE reindex_verbose(id integer primary key);
+\set VERBOSITY terse
+REINDEX (VERBOSE) TABLE reindex_verbose;
+ERROR:  REINDEX TABLE not supported yet at character 19
+DROP TABLE reindex_verbose;
+--
+-- REINDEX SCHEMA
+--
+REINDEX SCHEMA schema_to_reindex; -- failure, schema does not exist
+ERROR:  REINDEX SCHEMA/DATABASE/SYSTEM not supported yet at character 1

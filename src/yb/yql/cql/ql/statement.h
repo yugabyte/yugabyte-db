@@ -44,11 +44,11 @@ class Statement {
   const std::string& text() const { return text_; }
 
   // Prepare the statement for execution. Optionally return prepared result if requested.
-  CHECKED_STATUS Prepare(QLProcessor *processor, const MemTrackerPtr& mem_tracker = nullptr,
+  Status Prepare(QLProcessor *processor, const MemTrackerPtr& mem_tracker = nullptr,
                          const bool internal = false, PreparedResult::UniPtr *result = nullptr);
 
   // Execute the prepared statement.
-  CHECKED_STATUS ExecuteAsync(QLProcessor* processor, const StatementParameters& params,
+  Status ExecuteAsync(QLProcessor* processor, const StatementParameters& params,
                               StatementExecutedCallback cb) const;
 
   // Validate and return the parse tree.

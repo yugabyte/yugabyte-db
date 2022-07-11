@@ -78,7 +78,7 @@ class SecureConnectionTest : public client::KeyValueTableTest<MiniCluster> {
     return JoinPathSegments(root_dir, sub_dir);
   }
 
-  CHECKED_STATUS CreateClient() override {
+  Status CreateClient() override {
     auto host = "127.0.0.52";
     client_ = VERIFY_RESULT(DoCreateClient(host, host, &secure_context_));
     return Status::OK();

@@ -86,7 +86,7 @@ message CreateTableRequestPB {
   optional bool is_pg_shared_table = 15 [ default = false ];  // Is this a shared table?
 
   // Is this a colocated table? This field is only applicable for a colocated database.
-  optional bool colocated = 17 [ default = true ];
+  optional bool is_colocated_via_database = 17 [ default = true ];
 
   // This is only applicable for tablegroups. Eventually colocated will be deprecated.
   optional bytes tablegroup_id = 19;
@@ -104,6 +104,8 @@ message CreateTableRequestPB {
 
   // This field should be used to create or restore table with a fixed set of partitions.
   repeated PartitionPB partitions = 22;
+
+  optional bool is_matview = 26;
 
   optional bytes matview_pg_table_id = 24;
 }
@@ -200,8 +202,10 @@ message GetTableSchemaResponsePB {
   // For index table: information about this index.
   optional IndexInfoPB index_info = 12;
 
-  // True if table is colocated.
+  // True if table is colocated (including tablegroups, excluding YSQL system tables).
   optional bool colocated = 13;
+
+  optional bytes tablegroup_id = 16;
 
   optional bool is_compatible_with_previous_version = 14 [default = false];
 
@@ -209,7 +213,7 @@ message GetTableSchemaResponsePB {
 }
 
 message GetTablegroupSchemaRequestPB {
-  required TablegroupIdentifierPB parent_tablegroup = 1;
+  required TablegroupIdentifierPB tablegroup = 1;
 }
 
 message GetTablegroupSchemaResponsePB {
@@ -325,6 +329,7 @@ message AlterTableRequestPB {
     ADD_COLUMN = 1;
     DROP_COLUMN = 2;
     RENAME_COLUMN = 3;
+    SET_COLUMN_PG_TYPE = 5;
 
     // TODO(KUDU-861): this will subsume RENAME_COLUMN, but not yet implemented
     // on the master side.
@@ -346,6 +351,12 @@ message AlterTableRequestPB {
     required string new_name = 2;
   }
 
+  message SetColumnPgType {
+    // Name of the column for which to update the pg_type_oid.
+    required string name = 1;
+    required uint32 pg_type_oid = 2;
+  }
+
   message Step {
     optional StepType type = 1 [ default = UNKNOWN ];
 
@@ -353,6 +364,7 @@ message AlterTableRequestPB {
     optional AddColumn add_column = 2;
     optional DropColumn drop_column = 3;
     optional RenameColumn rename_column = 4;
+    optional SetColumnPgType set_column_pg_type = 5;
   }
 
   required TableIdentifierPB table = 1;
@@ -372,6 +384,9 @@ message AlterTableRequestPB {
 
   // DDL Dependent upon Transaction success (abort removes). Used by YSQL.
   optional TransactionMetadataPB transaction = 9;
+
+  // If set, updates the pgschema_name in SchemaPB.
+  optional string pgschema_name = 10;
 }
 
 message AlterTableResponsePB {
@@ -527,7 +542,7 @@ message CreateTablegroupResponsePB {
 
 message DeleteTablegroupRequestPB {
   required bytes id = 1;
-  required bytes namespace_id = 2;
+  optional bytes namespace_id_UNUSED = 2 [ deprecated = true ];
 }
 
 message DeleteTablegroupResponsePB {

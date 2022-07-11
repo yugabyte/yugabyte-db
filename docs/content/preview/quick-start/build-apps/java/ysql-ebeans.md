@@ -9,9 +9,7 @@ menu:
     name: Java
     identifier: java-7
     weight: 550
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -92,7 +90,7 @@ This tutorial assumes that you have:
 ## Clone the "orm-examples" repository
 
 ```sh
-$ git clone https://github.com/yugabyte/orm-examples.git && cd orm-examples/java/ebeans
+$ git clone https://github.com/YugabyteDB-Samples/orm-examples.git && cd orm-examples/java/ebeans
 ```
 
 ## Database configuration

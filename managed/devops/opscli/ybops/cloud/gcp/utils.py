@@ -6,11 +6,9 @@
 #
 # https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 
-import httplib2
 import logging
 import os
 import requests
-import six
 import socket
 import time
 import json
@@ -64,26 +62,22 @@ def gcp_exception_handler(e):
     if isinstance(e, (http_client.BadStatusLine,
                       http_client.IncompleteRead,
                       http_client.ResponseNotReady)):
-        logging.warn('Caught HTTP error %s, retrying: %s', type(e).__name__, e)
+        logging.warning('Caught HTTP error %s, retrying: %s', type(e).__name__, e)
     elif isinstance(e, socket.error):
         # Note: this also catches ssl.SSLError flavors of:
         # ssl.SSLError: ('The read operation timed out',)
-        logging.warn('Caught socket error, retrying: %s', e)
+        logging.warning('Caught socket error, retrying: %s', e)
     elif isinstance(e, socket.gaierror):
-        logging.warn('Caught socket address error, retrying: %s', e)
-    elif isinstance(e, socket.timeout):
-        logging.warn('Caught socket timeout error, retrying: %s', e)
-    elif isinstance(e, httplib2.ServerNotFoundError):
-        logging.warn('Caught server not found error, retrying: %s', e)
+        logging.warning('Caught socket address error, retrying: %s', e)
     elif isinstance(e, ValueError):
         # oauth2client tries to JSON-decode the response, which can result
         # in a ValueError if the response was invalid. Until that is fixed in
         # oauth2client, need to handle it here.
-        logging.warn('Response content was invalid (%s), retrying', e)
+        logging.warning('Response content was invalid (%s), retrying', e)
     elif (isinstance(e, oauth2client.client.HttpAccessTokenRefreshError) and
           (e.status == TOO_MANY_REQUESTS or
            e.status >= 500)):
-        logging.warn('Caught transient credential refresh error (%s), retrying', e)
+        logging.warning('Caught transient credential refresh error (%s), retrying', e)
     else:
         return False
     return True
@@ -513,7 +507,8 @@ class GoogleCloudAdmin():
         # If these are not provided, then get_application_default will try to use the service
         # account associated with the instance we're running on, if one exists.
         self.credentials = oauth2client.client.GoogleCredentials.get_application_default()
-        self.compute = discovery.build("compute", "beta", credentials=self.credentials)
+        self.compute = discovery.build(
+            "compute", "beta", credentials=self.credentials, num_retries=3)
         # If we have specified a GCE_PROJECT, use that, else, try the instance metadata, else fail.
         self.project = os.environ.get("GCE_PROJECT") or GcpMetadata.project()
         if self.project is None:
@@ -523,7 +518,9 @@ class GoogleCloudAdmin():
         self.metadata = metadata
         self.waiter = Waiter(self.project, self.compute)
 
-    def network(self, dest_vpc_id=None, host_vpc_id=None, per_region_meta={}):
+    def network(self, dest_vpc_id=None, host_vpc_id=None, per_region_meta=None):
+        if per_region_meta is None:
+            per_region_meta = {}
         return NetworkManager(
             self.project, self.compute, self.metadata, dest_vpc_id, host_vpc_id, per_region_meta)
 

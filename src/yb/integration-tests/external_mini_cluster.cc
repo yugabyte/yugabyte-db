@@ -728,7 +728,7 @@ Status ExternalMiniCluster::ChangeConfig(ExternalMaster* master,
 
 // We look for the exact master match. Since it is possible to stop/restart master on
 // a given host/port, we do not want a stale master pointer input to match a newer master.
-int ExternalMiniCluster::GetIndexOfMaster(ExternalMaster* master) const {
+int ExternalMiniCluster::GetIndexOfMaster(const ExternalMaster* master) const {
   for (size_t i = 0; i < masters_.size(); i++) {
     if (masters_[i].get() == master) {
       return narrow_cast<int>(i);
@@ -737,7 +737,7 @@ int ExternalMiniCluster::GetIndexOfMaster(ExternalMaster* master) const {
   return -1;
 }
 
-Status ExternalMiniCluster::PingMaster(ExternalMaster* master) const {
+Status ExternalMiniCluster::PingMaster(const ExternalMaster* master) const {
   int index = GetIndexOfMaster(master);
   server::PingRequestPB req;
   server::PingResponsePB resp;
@@ -1302,7 +1302,7 @@ Result<bool> ExternalMiniCluster::is_ts_stale(int ts_idx, MonoDelta deadline) {
   return is_stale;
 }
 
-CHECKED_STATUS ExternalMiniCluster::WaitForMasterToMarkTSAlive(int ts_idx, MonoDelta deadline) {
+Status ExternalMiniCluster::WaitForMasterToMarkTSAlive(int ts_idx, MonoDelta deadline) {
   RETURN_NOT_OK(WaitFor([&]() -> Result<bool> {
     return !VERIFY_RESULT(is_ts_stale(ts_idx));
   }, deadline * kTimeMultiplier, "Is TS Alive", 1s));
@@ -1310,7 +1310,7 @@ CHECKED_STATUS ExternalMiniCluster::WaitForMasterToMarkTSAlive(int ts_idx, MonoD
   return Status::OK();
 }
 
-CHECKED_STATUS ExternalMiniCluster::WaitForMasterToMarkTSDead(int ts_idx, MonoDelta deadline) {
+Status ExternalMiniCluster::WaitForMasterToMarkTSDead(int ts_idx, MonoDelta deadline) {
   RETURN_NOT_OK(WaitFor([&]() -> Result<bool> {
     return is_ts_stale(ts_idx);
   }, deadline * kTimeMultiplier, "Is TS dead", 1s));
@@ -1885,13 +1885,13 @@ struct GlobalLogTailerState {
 
 class ExternalDaemon::LogTailerThread {
  public:
-  LogTailerThread(const string line_prefix,
+  LogTailerThread(const std::string& line_prefix,
                   const int child_fd,
                   ostream* const out)
       : id_(global_state()->next_log_tailer_id.fetch_add(1)),
         stopped_(CreateStoppedFlagForId(id_)),
         thread_desc_(Substitute("log tailer thread for prefix $0", line_prefix)),
-        thread_([=] {
+        thread_([this, line_prefix, child_fd, out] {
           VLOG(1) << "Starting " << thread_desc_;
           FILE* const fp = fdopen(child_fd, "rb");
           char buf[65536];

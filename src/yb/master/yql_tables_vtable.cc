@@ -63,9 +63,8 @@ Result<std::shared_ptr<QLRowBlock>> YQLTablesVTable::RetrieveData(
     RETURN_NOT_OK(SetColumnValue(kFlags, flags_set, &row));
 
     // Create appropriate table uuid entry.
-    Uuid uuid;
     // Note: table id is in host byte order.
-    RETURN_NOT_OK(uuid.FromHexString(table->id()));
+    auto uuid = VERIFY_RESULT(Uuid::FromHexString(table->id()));
     RETURN_NOT_OK(SetColumnValue(kId, uuid, &row));
 
     // Set the values for the table properties.

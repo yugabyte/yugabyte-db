@@ -251,11 +251,6 @@ public class MiniYBCluster implements AutoCloseable {
 
     commonFlags.add("--yb_num_shards_per_tserver=" + clusterParameters.numShardsPerTServer);
     commonFlags.add("--ysql_num_shards_per_tserver=" + clusterParameters.numShardsPerTServer);
-
-    if (clusterParameters.replicationFactor > 0) {
-      commonFlags.add("--replication_factor=" + clusterParameters.replicationFactor);
-    }
-
     commonFlags.add("--enable_ysql=" + clusterParameters.startYsqlProxy);
 
     return commonFlags;
@@ -649,11 +644,17 @@ public class MiniYBCluster implements AutoCloseable {
           "--tserver_unresponsive_timeout_ms=" +
           clusterParameters.tserverHeartbeatTimeoutMsOpt.get());
     }
+
     if (clusterParameters.yqlSystemPartitionsVtableRefreshSecsOpt.isPresent()) {
       masterCmdLine.add(
           "--partitions_vtable_cache_refresh_secs=" +
           clusterParameters.yqlSystemPartitionsVtableRefreshSecsOpt.get());
     }
+
+    if (clusterParameters.replicationFactor > 0) {
+      masterCmdLine.add("--replication_factor=" + clusterParameters.replicationFactor);
+    }
+
     addFlagsFromEnv(masterCmdLine, "YB_EXTRA_MASTER_FLAGS");
     return masterCmdLine;
   }

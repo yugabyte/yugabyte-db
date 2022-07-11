@@ -35,7 +35,7 @@ class LocalOutboundCall : public OutboundCall {
                     AnyMessagePtr response_storage, RpcController* controller,
                     std::shared_ptr<RpcMetrics> rpc_metrics, ResponseCallback callback);
 
-  CHECKED_STATUS SetRequestParam(AnyMessageConstPtr req, const MemTrackerPtr& mem_tracker) override;
+  Status SetRequestParam(AnyMessageConstPtr req, const MemTrackerPtr& mem_tracker) override;
 
   const std::shared_ptr<LocalYBInboundCall>& CreateLocalInboundCall();
 
@@ -72,7 +72,7 @@ class LocalYBInboundCall : public YBInboundCall, public RpcCallParams {
   const Endpoint& local_address() const override;
   CoarseTimePoint GetClientDeadline() const override { return deadline_; }
 
-  CHECKED_STATUS ParseParam(RpcCallParams* params) override;
+  Status ParseParam(RpcCallParams* params) override;
 
   size_t ObjectSize() const override { return sizeof(*this); }
 

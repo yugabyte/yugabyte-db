@@ -18,6 +18,7 @@
 
 #include <functional>
 #include <string>
+#include <vector>
 
 #include <boost/asio/ip/address.hpp>
 #include <boost/asio/ip/address_v4.hpp>
@@ -45,7 +46,7 @@ class InetAddress {
   InetAddress(const InetAddress& other);
 
   // Fills in strval with the string representation of an IPv4 or IPv6 address.
-  CHECKED_STATUS ToString(std::string* strval) const;
+  Status ToString(std::string* strval) const;
 
   // Returns string representation of an IPv4 or IPv6 address. This method doesn't return a
   // Status for usecases in the code where we don't support returning a status.
@@ -67,7 +68,7 @@ class InetAddress {
 
   // Give a slice holding raw bytes in network byte order, build the appropriate InetAddress
   // object. If size_hint is specified, it indicates the number of bytes to decode from the slice.
-  CHECKED_STATUS FromSlice(const Slice& slice, size_t size_hint = 0);
+  Status FromSlice(const Slice& slice, size_t size_hint = 0);
 
   const boost::asio::ip::address& address() const {
     return boost_addr_;
@@ -109,7 +110,7 @@ class InetAddress {
 };
 
 void FilterAddresses(const string &transform_spec,
-                     vector<boost::asio::ip::address> *addresses);
+                     std::vector<boost::asio::ip::address> *addresses);
 
 } // namespace yb
 

@@ -151,8 +151,8 @@ void CDCPoller::DoPoll() {
       nullptr, /* RemoteTablet: will get this from 'req' */
       producer_client_->client.get(),
       &req,
-      [=](const Status &status, cdc::GetChangesResponsePB &&new_resp) {
-        auto retained = rpcs->Unregister(&poll_handle_);
+      [this](const Status &status, cdc::GetChangesResponsePB &&new_resp) {
+        auto retained = rpcs_->Unregister(&poll_handle_);
         auto resp = std::make_shared<cdc::GetChangesResponsePB>(std::move(new_resp));
         WARN_NOT_OK(thread_pool_->SubmitFunc(std::bind(&CDCPoller::HandlePoll, this,
                                                        status, resp)),

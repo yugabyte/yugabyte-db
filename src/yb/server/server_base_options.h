@@ -125,7 +125,7 @@ class ServerBaseOptions {
   mutable std::mutex master_addresses_mtx_;
 };
 
-CHECKED_STATUS DetermineMasterAddresses(
+Status DetermineMasterAddresses(
     const std::string& master_addresses_flag_name, const std::string& master_addresses_flag,
     uint64_t master_replication_factor, MasterAddresses* master_addresses,
     std::string* master_addresses_resolved_str);

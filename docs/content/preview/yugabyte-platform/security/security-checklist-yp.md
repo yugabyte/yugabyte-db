@@ -4,12 +4,11 @@ headerTitle: Security checklist
 linkTitle: Security checklist
 description: Security measures that can be implemented to protect your YugabyteDB Anywhere and YugabyteDB universes.
 menu:
-  preview:
+  preview_yugabyte-platform:
     parent: security
     identifier: security-checklist-yp
     weight: 10
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 You can apply security measures to protect your YugabyteDB Anywhere and YugabyteDB universes.
@@ -22,7 +21,7 @@ For more information, see [Encryption in transit](../enable-encryption-in-transi
 
 ## Enable encryption at rest
 
-[Encryption at rest](https://en.wikipedia.org/wiki/Data_at_rest#Encryption) ensures that data at rest, stored on disk, is protected. You can configure YugabyteDB with a user-generated symmetric key to perform cluster-wide encryption.
+Encryption at rest ensures that data at rest, stored on disk, is protected. You can configure YugabyteDB with a user-generated symmetric key to perform cluster-wide encryption.
 For more information, see [Enable encryption at rest](../enable-encryption-at-rest).
 
 ## Configure role-based access control

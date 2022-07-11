@@ -139,7 +139,7 @@ void TransactionTestBase<MiniClusterType>::CreateTable() {
 }
 
 template <class MiniClusterType>
-CHECKED_STATUS TransactionTestBase<MiniClusterType>::CreateTable(const Schema& schema) {
+Status TransactionTestBase<MiniClusterType>::CreateTable(const Schema& schema) {
   Schema new_schema { schema };
   new_schema.mutable_table_properties()->SetTransactional(
       GetIsolationLevel() != IsolationLevel::NON_TRANSACTIONAL);

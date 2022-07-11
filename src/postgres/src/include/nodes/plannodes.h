@@ -99,6 +99,14 @@ typedef struct PlannedStmt
 	/* statement location in source string (copied from Query) */
 	int			stmt_location;	/* start location, or -1 if unknown */
 	int			stmt_len;		/* length in bytes; 0 means "rest of string" */
+
+	/* YB specific fields */
+
+	/*
+	 * Number of relations that are still referenced by the plan after
+	 * constraint exclusion and partition pruning.
+	 */
+	int		yb_num_referenced_relations;
 } PlannedStmt;
 
 /* macro for fetching the Plan associated with a SubPlan node */

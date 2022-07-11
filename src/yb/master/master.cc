@@ -83,8 +83,12 @@ DEFINE_int32(master_rpc_timeout_ms, 1500,
              "Timeout for retrieving master registration over RPC.");
 TAG_FLAG(master_rpc_timeout_ms, experimental);
 
+DEFINE_int32(master_yb_client_default_timeout_ms, 60000,
+             "Default timeout for the YBClient embedded into the master.");
+
 METRIC_DEFINE_entity(cluster);
 
+using namespace std::literals;
 using std::min;
 using std::shared_ptr;
 using std::vector;
@@ -173,7 +177,9 @@ Status Master::Init() {
 
   RETURN_NOT_OK(ThreadPoolBuilder("init").set_max_threads(1).Build(&init_pool_));
 
-  RETURN_NOT_OK(RpcAndWebServerBase::Init());
+  RETURN_NOT_OK(DbServerBase::Init());
+
+  RETURN_NOT_OK(fs_manager_->ListTabletIds());
 
   RETURN_NOT_OK(path_handlers_->Register(web_server_.get()));
 
@@ -182,27 +188,9 @@ Status Master::Init() {
     shared_object().SetHostEndpoint(bound_addresses.front(), get_hostname());
   }
 
-  async_client_init_ = std::make_unique<client::AsyncClientInitialiser>(
-      "master_client", 0 /* num_reactors */,
-      // TODO: use the correct flag
-      60, // FLAGS_tserver_yb_client_default_timeout_ms / 1000,
-      "" /* tserver_uuid */,
-      &options(),
-      metric_entity(),
-      mem_tracker(),
-      messenger());
-  async_client_init_->builder()
-      .set_master_address_flag_name("master_addresses")
-      .default_admin_operation_timeout(MonoDelta::FromMilliseconds(FLAGS_master_rpc_timeout_ms))
-      .AddMasterAddressSource([this] {
-    return catalog_manager_->GetMasterAddresses();
-  });
-  async_client_init_->Start();
-
   cdc_state_client_init_ = std::make_unique<client::AsyncClientInitialiser>(
-      "cdc_state_client", 0 /* num_reactors */,
-      // TODO: use the correct flag
-      60, // FLAGS_tserver_yb_client_default_timeout_ms / 1000,
+      "cdc_state_client",
+      default_client_timeout(),
       "" /* tserver_uuid */,
       &options(),
       metric_entity(),
@@ -218,6 +206,24 @@ Status Master::Init() {
 
   state_ = kInitialized;
   return Status::OK();
+}
+
+MonoDelta Master::default_client_timeout() {
+  return std::chrono::milliseconds(FLAGS_master_yb_client_default_timeout_ms);
+}
+
+const std::string& Master::permanent_uuid() const {
+  static std::string empty_uuid;
+  return empty_uuid;
+}
+
+void Master::SetupAsyncClientInit(client::AsyncClientInitialiser* async_client_init) {
+  async_client_init->builder()
+      .set_master_address_flag_name("master_addresses")
+      .default_admin_operation_timeout(MonoDelta::FromMilliseconds(FLAGS_master_rpc_timeout_ms))
+      .AddMasterAddressSource([this] {
+        return catalog_manager_->GetMasterAddresses();
+  });
 }
 
 Status Master::Start() {
@@ -276,7 +282,7 @@ Status Master::StartAsync() {
 
   RETURN_NOT_OK(maintenance_manager_->Init());
   RETURN_NOT_OK(RegisterServices());
-  RETURN_NOT_OK(RpcAndWebServerBase::Start());
+  RETURN_NOT_OK(DbServerBase::Start());
 
   // Now that we've bound, construct our ServerRegistrationPB.
   RETURN_NOT_OK(InitMasterRegistration());
@@ -518,10 +524,6 @@ Status Master::GoIntoShellMode() {
   maintenance_manager_->Shutdown();
   RETURN_NOT_OK(catalog_manager_impl()->GoIntoShellMode());
   return Status::OK();
-}
-
-const std::shared_future<client::YBClient*>& Master::client_future() const {
-  return async_client_init_->get_client_future();
 }
 
 scoped_refptr<MetricEntity> Master::metric_entity_cluster() {

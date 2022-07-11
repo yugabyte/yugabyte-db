@@ -290,7 +290,7 @@ class PTExpr : public TreeNode {
                                        PTBaseTypePtr data_type);
 
   // Predicate for updating counter.  Only '+' and '-' expression support counter update.
-  virtual CHECKED_STATUS CheckCounterUpdateSupport(SemContext *sem_context) const;
+  virtual Status CheckCounterUpdateSupport(SemContext *sem_context) const;
 
   // All expressions must define this Analyze() function, which does the following steps.
   // - Call Analyze() on child treenodes to run semantic analysis on the child nodes. The child
@@ -299,48 +299,48 @@ class PTExpr : public TreeNode {
   // - Run semantic analysis on this node.
   // - The main job of semantics analysis is to run type resolution to find the correct values for
   //   ql_type and internal_type_ for expressions.
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override = 0;
+  virtual Status Analyze(SemContext *sem_context) override = 0;
 
   // Check if this expression represents a column in an INDEX table.
   bool CheckIndexColumn(SemContext *sem_context);
 
   // Check if an operator is allowed in the current context before analyzing it.
-  virtual CHECKED_STATUS CheckOperator(SemContext *sem_context);
+  virtual Status CheckOperator(SemContext *sem_context);
 
   // The following functions are called to setup the states before analyzing an operand.
-  virtual CHECKED_STATUS SetupSemStateForOp1(SemState *sem_state);
-  virtual CHECKED_STATUS SetupSemStateForOp2(SemState *sem_state);
-  virtual CHECKED_STATUS SetupSemStateForOp3(SemState *sem_state);
+  virtual Status SetupSemStateForOp1(SemState *sem_state);
+  virtual Status SetupSemStateForOp2(SemState *sem_state);
+  virtual Status SetupSemStateForOp3(SemState *sem_state);
 
   // These functions are called by analyze to run type resolution on this expression.
-  virtual CHECKED_STATUS AnalyzeOperator(SemContext *sem_context);
-  virtual CHECKED_STATUS AnalyzeOperator(SemContext *sem_context,
+  virtual Status AnalyzeOperator(SemContext *sem_context);
+  virtual Status AnalyzeOperator(SemContext *sem_context,
                                          PTExprPtr op1);
-  virtual CHECKED_STATUS AnalyzeOperator(SemContext *sem_context,
+  virtual Status AnalyzeOperator(SemContext *sem_context,
                                          PTExprPtr op1,
                                          PTExprPtr op2);
-  virtual CHECKED_STATUS AnalyzeOperator(SemContext *sem_context,
+  virtual Status AnalyzeOperator(SemContext *sem_context,
                                          PTExprPtr op1,
                                          PTExprPtr op2,
                                          PTExprPtr op3);
 
   // Analyze LHS expression.
-  virtual CHECKED_STATUS CheckLhsExpr(SemContext *sem_context);
+  virtual Status CheckLhsExpr(SemContext *sem_context);
 
   // Analyze RHS expression.
-  virtual CHECKED_STATUS CheckRhsExpr(SemContext *sem_context);
+  virtual Status CheckRhsExpr(SemContext *sem_context);
 
   // Check if left and right values are compatible.
-  virtual CHECKED_STATUS CheckInequalityOperands(SemContext *sem_context,
+  virtual Status CheckInequalityOperands(SemContext *sem_context,
                                                  PTExprPtr lhs,
                                                  PTExprPtr rhs);
   // Check if left and right values are compatible.
-  virtual CHECKED_STATUS CheckEqualityOperands(SemContext *sem_context,
+  virtual Status CheckEqualityOperands(SemContext *sem_context,
                                                PTExprPtr lhs,
                                                PTExprPtr rhs);
 
   // Compare this node datatype with the expected type from the parent treenode.
-  virtual CHECKED_STATUS CheckExpectedTypeCompatibility(SemContext *sem_context);
+  virtual Status CheckExpectedTypeCompatibility(SemContext *sem_context);
 
   // Access function for descriptor.
   const ColumnDesc *index_desc() const {
@@ -408,7 +408,7 @@ class PTCollectionExpr : public PTExpr {
   }
 
   // Fill in udtype_field_values collection, copying values in accordance to UDT field order
-  CHECKED_STATUS InitializeUDTValues(const QLTypePtr& expected_type,
+  Status InitializeUDTValues(const QLTypePtr& expected_type,
                                      ProcessContextBase* process_context);
 
   int size() const {
@@ -427,7 +427,7 @@ class PTCollectionExpr : public PTExpr {
     return udtype_field_values_;
   }
 
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
+  virtual Status Analyze(SemContext *sem_context) override;
 
   // Support for shared_ptr.
   template<typename... TypeArgs>
@@ -471,7 +471,7 @@ class PTExpr0 : public expr_class {
     return MCMakeShared<PTExpr0>(memctx, std::forward<TypeArgs>(args)...);
   }
 
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override {
+  virtual Status Analyze(SemContext *sem_context) override {
     // Before traversing the expression, check if this whole expression is actually a column.
     if (this->CheckIndexColumn(sem_context)) {
       return Status::OK();
@@ -520,7 +520,7 @@ class PTExpr1 : public expr_class {
     return op1_;
   }
 
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override {
+  virtual Status Analyze(SemContext *sem_context) override {
     // Before traversing the expression, check if this whole expression is actually a column.
     if (this->CheckIndexColumn(sem_context)) {
       return Status::OK();
@@ -586,7 +586,7 @@ class PTExpr2 : public expr_class {
     return op2_;
   }
 
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override {
+  virtual Status Analyze(SemContext *sem_context) override {
     // Before traversing the expression, check if this whole expression is actually a column.
     if (this->CheckIndexColumn(sem_context)) {
       return Status::OK();
@@ -662,7 +662,7 @@ class PTExpr3 : public expr_class {
     return op3_;
   }
 
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override {
+  virtual Status Analyze(SemContext *sem_context) override {
     // Before traversing the expression, check if this whole expression is actually a column.
     if (this->CheckIndexColumn(sem_context)) {
       return Status::OK();
@@ -783,7 +783,7 @@ class PTExprConst : public PTExpr0<itype, ytype>,
   }
 
   using PTExpr0<itype, ytype>::AnalyzeOperator;
-  virtual CHECKED_STATUS AnalyzeOperator(SemContext *sem_context) override {
+  virtual Status AnalyzeOperator(SemContext *sem_context) override {
     // Nothing to do: constant expressions should be initialized with valid data type already
     return Status::OK();
   };
@@ -844,20 +844,20 @@ class PTLiteralString : public PTLiteral<MCSharedPtr<MCString>> {
   explicit PTLiteralString(MCSharedPtr<MCString> value);
   virtual ~PTLiteralString();
 
-  CHECKED_STATUS ToInt64(int64_t *value, bool negate) const;
-  CHECKED_STATUS ToDouble(long double *value, bool negate) const;
-  CHECKED_STATUS ToDecimal(util::Decimal *value, bool negate) const;
-  CHECKED_STATUS ToDecimal(std::string *value, bool negate) const;
-  CHECKED_STATUS ToVarInt(std::string *value, bool negate) const;
+  Status ToInt64(int64_t *value, bool negate) const;
+  Status ToDouble(long double *value, bool negate) const;
+  Status ToDecimal(util::Decimal *value, bool negate) const;
+  Status ToDecimal(std::string *value, bool negate) const;
+  Status ToVarInt(std::string *value, bool negate) const;
 
   std::string ToString() const;
 
-  CHECKED_STATUS ToString(std::string *value) const;
-  CHECKED_STATUS ToTimestamp(int64_t *value) const;
-  CHECKED_STATUS ToDate(uint32_t *value) const;
-  CHECKED_STATUS ToTime(int64_t *value) const;
+  Status ToString(std::string *value) const;
+  Status ToTimestamp(int64_t *value) const;
+  Status ToDate(uint32_t *value) const;
+  Status ToTime(int64_t *value) const;
 
-  CHECKED_STATUS ToInetaddress(InetAddress *value) const;
+  Status ToInetaddress(InetAddress *value) const;
 };
 
 // Class representing a json operator.
@@ -884,7 +884,7 @@ class PTJsonOperator : public PTExpr {
   }
 
   // Node semantics analysis.
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
+  virtual Status Analyze(SemContext *sem_context) override;
 
   const PTExprPtr& arg() const {
     return arg_;
@@ -929,14 +929,14 @@ class PTLogicExpr : public PTExpr {
   }
 
   // Setup states before analyzing operand.
-  virtual CHECKED_STATUS SetupSemStateForOp1(SemState *sem_state) override;
-  virtual CHECKED_STATUS SetupSemStateForOp2(SemState *sem_state) override;
+  virtual Status SetupSemStateForOp1(SemState *sem_state) override;
+  virtual Status SetupSemStateForOp2(SemState *sem_state) override;
 
   // Analyze this operator.
   using PTExpr::AnalyzeOperator;
-  virtual CHECKED_STATUS AnalyzeOperator(SemContext *sem_context,
+  virtual Status AnalyzeOperator(SemContext *sem_context,
                                          PTExprPtr op1) override;
-  virtual CHECKED_STATUS AnalyzeOperator(SemContext *sem_context,
+  virtual Status AnalyzeOperator(SemContext *sem_context,
                                          PTExprPtr op1,
                                          PTExprPtr op2) override;
 };
@@ -957,18 +957,18 @@ class PTRelationExpr : public PTExpr {
   }
 
   // Setup states before analyzing operands.
-  virtual CHECKED_STATUS SetupSemStateForOp1(SemState *sem_state) override;
-  virtual CHECKED_STATUS SetupSemStateForOp2(SemState *sem_state) override;
-  virtual CHECKED_STATUS SetupSemStateForOp3(SemState *sem_state) override;
+  virtual Status SetupSemStateForOp1(SemState *sem_state) override;
+  virtual Status SetupSemStateForOp2(SemState *sem_state) override;
+  virtual Status SetupSemStateForOp3(SemState *sem_state) override;
 
   // Analyze this operator after all operands were analyzed.
-  virtual CHECKED_STATUS AnalyzeOperator(SemContext *sem_context) override;
-  virtual CHECKED_STATUS AnalyzeOperator(SemContext *sem_context,
+  virtual Status AnalyzeOperator(SemContext *sem_context) override;
+  virtual Status AnalyzeOperator(SemContext *sem_context,
                                          PTExprPtr op1) override;
-  virtual CHECKED_STATUS AnalyzeOperator(SemContext *sem_context,
+  virtual Status AnalyzeOperator(SemContext *sem_context,
                                          PTExprPtr op1,
                                          PTExprPtr op2) override;
-  virtual CHECKED_STATUS AnalyzeOperator(SemContext *sem_context,
+  virtual Status AnalyzeOperator(SemContext *sem_context,
                                          PTExprPtr op1,
                                          PTExprPtr op2,
                                          PTExprPtr op3) override;
@@ -994,11 +994,11 @@ class PTOperatorExpr : public PTExpr {
   }
 
   // Setup states before analyzing operands.
-  virtual CHECKED_STATUS SetupSemStateForOp1(SemState *sem_state) override;
+  virtual Status SetupSemStateForOp1(SemState *sem_state) override;
 
   // Analyze this operator after all operands were analyzed.
   using PTExpr::AnalyzeOperator;
-  virtual CHECKED_STATUS AnalyzeOperator(SemContext *sem_context, PTExprPtr op1) override;
+  virtual Status AnalyzeOperator(SemContext *sem_context, PTExprPtr op1) override;
 };
 
 //--------------------------------------------------------------------------------------------------
@@ -1027,7 +1027,7 @@ class PTRef : public PTOperator0 {
   void PrintSemanticAnalysisResult(SemContext *sem_context);
 
   using PTOperatorExpr::AnalyzeOperator;
-  virtual CHECKED_STATUS AnalyzeOperator(SemContext *sem_context) override;
+  virtual Status AnalyzeOperator(SemContext *sem_context) override;
 
   // Add the name of column that is being referenced to output parameter.
   void CollectReferencedIndexColnames(MCSet<std::string> *col_names) const override {
@@ -1056,7 +1056,7 @@ class PTRef : public PTOperator0 {
   }
 
   // Analyze LHS expression.
-  virtual CHECKED_STATUS CheckLhsExpr(SemContext *sem_context) override;
+  virtual Status CheckLhsExpr(SemContext *sem_context) override;
 
  private:
   PTQualifiedNamePtr name_;
@@ -1089,7 +1089,7 @@ class PTJsonColumnWithOperators : public PTOperator0 {
   }
 
   using PTOperatorExpr::AnalyzeOperator;
-  virtual CHECKED_STATUS AnalyzeOperator(SemContext *sem_context) override;
+  virtual Status AnalyzeOperator(SemContext *sem_context) override;
 
   // Access function for name.
   const PTQualifiedNamePtr& name() const {
@@ -1119,7 +1119,7 @@ class PTJsonColumnWithOperators : public PTOperator0 {
   }
 
   // Analyze LHS expression.
-  CHECKED_STATUS CheckLhsExpr(SemContext *sem_context) override;
+  Status CheckLhsExpr(SemContext *sem_context) override;
 
  private:
   PTQualifiedNamePtr name_;
@@ -1156,7 +1156,7 @@ class PTSubscriptedColumn : public PTOperator0 {
   void PrintSemanticAnalysisResult(SemContext *sem_context);
 
   using PTOperatorExpr::AnalyzeOperator;
-  virtual CHECKED_STATUS AnalyzeOperator(SemContext *sem_context) override;
+  virtual Status AnalyzeOperator(SemContext *sem_context) override;
 
   // Access function for name.
   const PTQualifiedNamePtr& name() const {
@@ -1182,7 +1182,7 @@ class PTSubscriptedColumn : public PTOperator0 {
   }
 
   // Analyze LHS expression.
-  virtual CHECKED_STATUS CheckLhsExpr(SemContext *sem_context) override;
+  virtual Status CheckLhsExpr(SemContext *sem_context) override;
 
  private:
   PTQualifiedNamePtr name_;
@@ -1213,7 +1213,7 @@ class PTAllColumns : public PTOperator0 {
   }
 
   using PTOperatorExpr::AnalyzeOperator;
-  virtual CHECKED_STATUS AnalyzeOperator(SemContext *sem_context) override;
+  virtual Status AnalyzeOperator(SemContext *sem_context) override;
 
   // Node type.
   virtual TreeNodeOpcode opcode() const override {
@@ -1259,10 +1259,10 @@ class PTExprAlias : public PTOperator1 {
     return MCMakeShared<PTExprAlias>(memctx, std::forward<TypeArgs>(args)...);
   }
 
-  virtual CHECKED_STATUS SetupSemStateForOp1(SemState *sem_state) override;
+  virtual Status SetupSemStateForOp1(SemState *sem_state) override;
 
   using PTOperatorExpr::AnalyzeOperator;
-  virtual CHECKED_STATUS AnalyzeOperator(SemContext *sem_context, PTExprPtr op1) override;
+  virtual Status AnalyzeOperator(SemContext *sem_context, PTExprPtr op1) override;
 
   std::string QLName(QLNameOption option = QLNameOption::kUserOriginalName) const override {
     return alias_->c_str();
@@ -1312,7 +1312,7 @@ class PTBindVar : public PTExpr {
   }
 
   // Node semantics analysis.
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
+  virtual Status Analyze(SemContext *sem_context) override;
   void PrintSemanticAnalysisResult(SemContext *sem_context);
 
   // Access functions for position.

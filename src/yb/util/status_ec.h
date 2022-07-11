@@ -57,6 +57,26 @@ class IntegralBackedErrorTag {
   }
 };
 
+class StringBackedErrorTag {
+ public:
+  typedef typename std::string Value;
+  typedef uint64_t SizeType;
+
+  static Value Decode(const uint8_t* source);
+
+  static size_t DecodeSize(const uint8_t* source) {
+    return Load<SizeType, LittleEndian>(source) + sizeof(SizeType);
+  }
+
+  static size_t EncodedSize(const Value& value);
+
+  static uint8_t* Encode(const Value& value, uint8_t* out);
+
+  static std::string DecodeToString(const uint8_t* source) {
+    return Decode(source);
+  }
+};
+
 class StringVectorBackedErrorTag {
  public:
   typedef typename std::vector<std::string> Value;
@@ -203,11 +223,14 @@ struct StatusCategoryDescription {
   std::function<size_t(const uint8_t*)> decode_size;
   std::function<std::string(const uint8_t*)> to_string;
 
-  StatusCategoryDescription() = default;
-
   template <class Tag>
   static StatusCategoryDescription Make(const std::string* name_) {
-    return StatusCategoryDescription{Tag::kCategory, name_, &Tag::DecodeSize, &Tag::DecodeToString};
+    return StatusCategoryDescription {
+      .id = Tag::kCategory,
+      .name = name_,
+      .decode_size = &Tag::DecodeSize,
+      .to_string = &Tag::DecodeToString
+    };
   }
 };
 

@@ -111,10 +111,10 @@ class BulkLoadTask : public Runnable {
                const YBTable *table, YBPartitionGenerator *partition_generator);
   void Run();
  private:
-  CHECKED_STATUS PopulateColumnValue(const string &column,
+  Status PopulateColumnValue(const string &column,
                                      const DataType data_type,
                                      QLExpressionPB *column_value);
-  CHECKED_STATUS InsertRow(const string &row,
+  Status InsertRow(const string &row,
                            const Schema &schema,
                            uint32_t schema_version,
                            const IndexMap& index_map,
@@ -139,15 +139,15 @@ class CompactionTask: public Runnable {
 
 class BulkLoad {
  public:
-  CHECKED_STATUS RunBulkLoad();
+  Status RunBulkLoad();
 
  private:
-  CHECKED_STATUS InitYBBulkLoad();
-  CHECKED_STATUS InitDBUtil(const TabletId &tablet_id);
-  CHECKED_STATUS FinishTabletProcessing(const TabletId &tablet_id,
+  Status InitYBBulkLoad();
+  Status InitDBUtil(const TabletId &tablet_id);
+  Status FinishTabletProcessing(const TabletId &tablet_id,
                                         vector<pair<TabletId, string>> rows);
-  CHECKED_STATUS RetryableSubmit(vector<pair<TabletId, string>> rows);
-  CHECKED_STATUS CompactFiles();
+  Status RetryableSubmit(vector<pair<TabletId, string>> rows);
+  Status CompactFiles();
 
   std::unique_ptr<YBClient> client_;
   shared_ptr<YBTable> table_;
@@ -327,10 +327,11 @@ Status BulkLoadTask::InsertRow(const string &row,
       req, std::make_shared<docdb::DocReadContext>(schema, schema_version),
       index_map, nullptr /* unique_index_key_schema */, TransactionOperationContext());
   RETURN_NOT_OK(op.Init(&resp));
-  RETURN_NOT_OK(op.Apply({
-      doc_write_batch,
-      CoarseTimePoint::max() /* deadline */,
-      ReadHybridTime::SingleTime(HybridTime::FromMicros(kYugaByteMicrosecondEpoch))}));
+  RETURN_NOT_OK(op.Apply(docdb::DocOperationApplyData{
+      .doc_write_batch = doc_write_batch,
+      .deadline = CoarseTimePoint::max(),
+      .read_time = ReadHybridTime::SingleTime(HybridTime::FromMicros(kYugaByteMicrosecondEpoch)),
+      .restart_read_ht = nullptr}));
   return Status::OK();
 }
 
@@ -367,7 +368,7 @@ Status BulkLoad::CompactFiles() {
   vector<string> sst_files;
   sst_files.reserve(live_files_metadata.size());
   for (const rocksdb::LiveFileMetaData& file : live_files_metadata) {
-    sst_files.push_back(file.name);
+    sst_files.push_back(file.Name());
   }
 
   // Batch the files for compaction.
@@ -486,7 +487,7 @@ Status BulkLoad::FinishTabletProcessing(const TabletId &tablet_id,
 }
 
 
-CHECKED_STATUS BulkLoad::InitDBUtil(const TabletId &tablet_id) {
+Status BulkLoad::InitDBUtil(const TabletId &tablet_id) {
   db_fixture_.reset(new BulkLoadDocDBUtil(tablet_id, FLAGS_base_dir,
                                           FLAGS_memtable_size_bytes,
                                           FLAGS_bulk_load_num_memtables,

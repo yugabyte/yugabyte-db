@@ -11,12 +11,16 @@ import {
   fetchTaskUntilItCompletes,
   getUniverseInfo
 } from '../../../actions/xClusterReplication';
+import { formatSchemaName } from '../../../utils/Formatters';
 import { YBButton } from '../../common/forms/fields';
-import { IReplication, IReplicationTable } from '../IClusterReplication';
-import { formatBytes, GetCurrentLagForTable, YSQL_TABLE_TYPE } from '../ReplicationUtils';
+import { formatBytes, GetCurrentLagForTable } from '../ReplicationUtils';
 import DeleteReplicactionTableModal from './DeleteReplicactionTableModal';
 
+import { TableType, TABLE_TYPE_MAP } from '../../../redesign/helpers/dtos';
+import { IReplication, IReplicationTable } from '../IClusterReplication';
+
 import './ReplicationDetailsTable.scss';
+
 interface props {
   replication: IReplication;
 }
@@ -32,7 +36,7 @@ export function ReplicationDetailsTable({ replication }: props) {
   };
 
   const { data: tablesInSourceUniverse, isLoading: isTablesLoading } = useQuery(
-    [replication.sourceUniverseUUID, 'tables'],
+    ['xcluster', replication.sourceUniverseUUID, 'tables'],
     () => fetchTablesInUniverse(replication.sourceUniverseUUID).then((res) => res.data)
   );
 
@@ -76,7 +80,7 @@ export function ReplicationDetailsTable({ replication }: props) {
   }
 
   const tablesInReplication = tablesInSourceUniverse
-    .map((tables: IReplicationTable) => {
+    ?.map((tables: IReplicationTable) => {
       return {
         ...tables,
         tableUUID: tables.tableUUID.replaceAll('-', '')
@@ -91,7 +95,7 @@ export function ReplicationDetailsTable({ replication }: props) {
       <div className="replication-divider" />
       <Row>
         <Col lg={6}>
-          {tablesInReplication.length} of {tablesInSourceUniverse.length} tables replicated
+          {tablesInReplication?.length} of {tablesInSourceUniverse?.length} tables replicated
         </Col>
         <Col lg={6}>
           <div style={{ float: 'right' }}>
@@ -117,20 +121,26 @@ export function ReplicationDetailsTable({ replication }: props) {
               tableContainerClass="add-to-table-container"
             >
               <TableHeaderColumn dataField="tableUUID" isKey={true} hidden />
-              <TableHeaderColumn dataField="tableName" width="30%">
+              <TableHeaderColumn dataField="tableName" width="25%">
                 Name
               </TableHeaderColumn>
               <TableHeaderColumn
+                dataField="pgSchemaName"
+                width="15%"
+                dataFormat={(cell: string, row: IReplicationTable) =>
+                  formatSchemaName(row.tableType, cell)
+                }
+              >
+                Schema Name
+              </TableHeaderColumn>
+              <TableHeaderColumn
                 dataField="tableType"
-                width="20%"
-                dataFormat={(cell) => {
-                  if (cell === YSQL_TABLE_TYPE) return 'YSQL';
-                  return 'YCQL';
-                }}
+                width="15%"
+                dataFormat={(cell: TableType) => TABLE_TYPE_MAP[cell]}
               >
                 Type
               </TableHeaderColumn>
-              <TableHeaderColumn dataField="keySpace" width="20%">
+              <TableHeaderColumn dataField="keySpace" width="15%">
                 Keyspace
               </TableHeaderColumn>
               <TableHeaderColumn
@@ -145,7 +155,7 @@ export function ReplicationDetailsTable({ replication }: props) {
                   <span className="lag-text">
                     <GetCurrentLagForTable
                       replicationUUID={replication.uuid}
-                      tableName={row.tableName}
+                      tableUUID={row.tableUUID}
                       nodePrefix={universeInfo?.data.universeDetails.nodePrefix}
                       enabled={isActiveTab}
                       sourceUniverseUUID={replication.sourceUniverseUUID}
@@ -153,7 +163,7 @@ export function ReplicationDetailsTable({ replication }: props) {
                   </span>
                 )}
               >
-                Current lag (ms)
+                Current lag
               </TableHeaderColumn>
               <TableHeaderColumn
                 dataField="action"

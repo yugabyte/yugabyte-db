@@ -133,7 +133,7 @@ Status SplitTablet(master::CatalogManagerIf* catalog_mgr, const tablet::Tablet& 
   tablet.TEST_db()->GetProperty(rocksdb::DB::Properties::kAggregatedTableProperties, &properties);
   LOG(INFO) << "DB properties: " << properties;
 
-  return catalog_mgr->SplitTablet(tablet_id, true /* is_manual_split */);
+  return catalog_mgr->SplitTablet(tablet_id, master::ManualSplit::kTrue);
 }
 
 Status DoSplitTablet(master::CatalogManagerIf* catalog_mgr, const tablet::Tablet& tablet) {
@@ -225,9 +225,6 @@ Result<std::pair<docdb::DocKeyHash, docdb::DocKeyHash>>
     TabletSplitITestBase<MiniClusterType>::WriteRows(
         client::TableHandle* table, const uint32_t num_rows,
         const int32_t start_key, const int32_t start_value, client::YBSessionPtr session) {
-  auto min_hash_code = std::numeric_limits<docdb::DocKeyHash>::max();
-  auto max_hash_code = std::numeric_limits<docdb::DocKeyHash>::min();
-
   LOG(INFO) << "Writing " << num_rows << " rows...";
 
   auto txn = this->CreateTransaction();
@@ -237,22 +234,31 @@ Result<std::pair<docdb::DocKeyHash, docdb::DocKeyHash>>
   } else {
     session = this->CreateSession(txn);
   }
+
+  vector<client::YBqlWriteOpPtr> ops;
+  ops.reserve(num_rows);
   for (int32_t i = start_key, v = start_value;
        i < start_key + static_cast<int32_t>(num_rows);
        ++i, ++v) {
-    client::YBqlWriteOpPtr op = VERIFY_RESULT(
+    ops.push_back(VERIFY_RESULT(
         client::kv_table_test::WriteRow(table,
                                         session,
                                         i /* key */,
                                         v /* value */,
                                         client::WriteOpType::INSERT,
-                                        client::Flush::kFalse));
-    const auto hash_code = op->GetHashCode();
-    min_hash_code = std::min(min_hash_code, hash_code);
-    max_hash_code = std::max(max_hash_code, hash_code);
+                                        client::Flush::kFalse)));
     YB_LOG_EVERY_N_SECS(INFO, 10) << "Rows written: " << start_key << "..." << i;
   }
   RETURN_NOT_OK(session->TEST_Flush());
+
+  auto min_hash_code = std::numeric_limits<docdb::DocKeyHash>::max();
+  auto max_hash_code = std::numeric_limits<docdb::DocKeyHash>::min();
+  for (const auto& op : ops) {
+    const auto hash_code = op->GetHashCode();
+    min_hash_code = std::min(min_hash_code, hash_code);
+    max_hash_code = std::max(max_hash_code, hash_code);
+  }
+
   if (txn) {
     RETURN_NOT_OK(txn->CommitFuture().get());
     LOG(INFO) << "Committed: " << txn->id();
@@ -328,6 +334,19 @@ void TabletSplitITestBase<MiniClusterType>::CheckTableKeysInRange(const size_t n
   ASSERT_EQ(keys.size(), num_keys);
 }
 
+template <class MiniClusterType>
+Result<bool> TabletSplitITestBase<MiniClusterType>::IsSplittingComplete(
+    yb::master::MasterAdminProxy* master_proxy) {
+  rpc::RpcController controller;
+  controller.set_timeout(kRpcTimeout);
+  master::IsTabletSplittingCompleteRequestPB is_tablet_splitting_complete_req;
+  master::IsTabletSplittingCompleteResponsePB is_tablet_splitting_complete_resp;
+
+  RETURN_NOT_OK(master_proxy->IsTabletSplittingComplete(is_tablet_splitting_complete_req,
+      &is_tablet_splitting_complete_resp, &controller));
+  return is_tablet_splitting_complete_resp.is_tablet_splitting_complete();
+}
+
 template class TabletSplitITestBase<MiniCluster>;
 template class TabletSplitITestBase<ExternalMiniCluster>;
 
@@ -379,6 +398,22 @@ Result<tserver::GetSplitKeyResponsePB> TabletSplitITest::GetSplitKey(const std::
   controller.set_timeout(kRpcTimeout);
   tserver::GetSplitKeyResponsePB resp;
   RETURN_NOT_OK(ts_service_proxy->GetSplitKey(req, &resp, &controller));
+  return resp;
+}
+
+Result<master::SplitTabletResponsePB> TabletSplitITest::SendMasterSplitTabletRpcSync(
+    const std::string& tablet_id) {
+  auto master = cluster_->mini_master();
+  auto master_admin_proxy =
+      std::make_unique<master::MasterAdminProxy>(proxy_cache_.get(), master->bound_rpc_addr());
+
+  master::SplitTabletRequestPB req;
+  req.set_tablet_id(tablet_id);
+
+  rpc::RpcController controller;
+  controller.set_timeout(kRpcTimeout);
+  master::SplitTabletResponsePB resp;
+  RETURN_NOT_OK(master_admin_proxy->SplitTablet(req, &resp, &controller));
   return resp;
 }
 
@@ -434,7 +469,7 @@ Status TabletSplitITest::WaitForTabletSplitCompletion(
     return num_peers_running == num_replicas_online * expected_total_tablets &&
            num_peers_split == num_replicas_online * expected_split_tablets &&
            num_peers_leader_ready == expected_total_tablets;
-  }, split_completion_timeout_, "Wait for tablet split to be completed");
+  }, split_completion_timeout_sec_, "Wait for tablet split to be completed");
   if (!s.ok()) {
     for (const auto& peer : peers) {
       const auto tablet = peer->shared_tablet();
@@ -673,7 +708,7 @@ Status TabletSplitITest::CheckPostSplitTabletReplicasData(
         },
         15s * kTimeMultiplier,
         Format(
-            "Waiting for tablet replica $0 to apply all ops from leader ...", peer->LogPrefix())));
+             "Waiting for tablet replica $0 to apply all ops from leader ...", peer->LogPrefix())));
     LOG(INFO) << "Last applied op id for " << peer->LogPrefix() << ": "
               << AsString(peer->shared_consensus()->GetLastAppliedOpId());
 
@@ -745,7 +780,8 @@ Status TabletSplitExternalMiniClusterITest::SplitTablet(const std::string& table
   rpc::RpcController rpc;
   rpc.set_timeout(30s * kTimeMultiplier);
 
-  RETURN_NOT_OK(cluster_->GetMasterProxy<master::MasterAdminProxy>().SplitTablet(req, &resp, &rpc));
+  RETURN_NOT_OK(
+      cluster_->GetLeaderMasterProxy<master::MasterAdminProxy>().SplitTablet(req, &resp, &rpc));
   if (resp.has_error()) {
     RETURN_NOT_OK(StatusFromPB(resp.error().status()));
   }

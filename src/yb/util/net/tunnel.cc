@@ -132,7 +132,7 @@ class Tunnel::Impl {
         << "Tunnel shutdown has not been started";
   }
 
-  CHECKED_STATUS Start(const Endpoint& local, const Endpoint& remote,
+  Status Start(const Endpoint& local, const Endpoint& remote,
                        AddressChecker address_checker) {
     auto acceptor = std::make_shared<boost::asio::ip::tcp::acceptor>(io_context_);
     boost::system::error_code ec;

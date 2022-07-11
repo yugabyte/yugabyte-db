@@ -149,6 +149,13 @@ DEFINE_int32(compaction_priority_step_size, 5,
 DEFINE_int32(small_compaction_extra_priority, 1,
              "Small compaction will get small_compaction_extra_priority extra priority.");
 
+DEFINE_int32(automatic_compaction_extra_priority, 50,
+             "Assigns automatic compactions extra priority when automatic tablet splits are "
+             "enabled. This deprioritizes manual compactions including those induced by the "
+             "tserver (e.g. post-split compactions). Suggested value between 0 and 50.");
+
+DECLARE_bool(enable_automatic_tablet_splitting);
+
 DEFINE_bool(rocksdb_use_logging_iterator, false,
             "Wrap newly created RocksDB iterators in a logging wrapper");
 
@@ -242,6 +249,7 @@ bool operator==(const StateTickers& lhs, const StateTickers& rhs) {
     return YB_STRUCT_EQUALS(tasks, files, bytes);
 }
 
+constexpr int kNoDiskPriority = 0;
 constexpr int kTopDiskCompactionPriority = 100;
 constexpr int kTopDiskFlushPriority = 200;
 constexpr int kShuttingDownPriority = 200;
@@ -394,7 +402,7 @@ class DBImpl::CompactionTask : public ThreadPoolTask {
   }
 
   int CalculateGroupNoPriority(int active_tasks) const override {
-    return kFlushPriority - active_tasks;
+    return kTopDiskCompactionPriority - active_tasks;
   }
 
  private:
@@ -417,6 +425,13 @@ class DBImpl::CompactionTask : public ThreadPoolTask {
 
     if (!db_impl_->IsLargeCompaction(*compaction_)) {
       result += FLAGS_small_compaction_extra_priority;
+    }
+
+    // Adding extra priority to automatic compactions can have a large positive impact on
+    // performance for situations with many manual major compactions (e.g. insert-heavy workloads
+    // with tablet splitting enabled).
+    if (FLAGS_enable_automatic_tablet_splitting && !compaction_->is_manual_compaction()) {
+      result += FLAGS_automatic_compaction_extra_priority;
     }
 
     return result;
@@ -2119,10 +2134,12 @@ Status DBImpl::CompactRange(const CompactRangeOptions& options,
   auto cfd = cfh->cfd();
   bool exclusive = options.exclusive_manual_compaction;
 
-  Status s = FlushMemTable(cfd, FlushOptions());
-  if (!s.ok()) {
-    LogFlush(db_options_.info_log);
-    return s;
+  if (!options.skip_flush) {
+    Status s = FlushMemTable(cfd, FlushOptions());
+    if (!s.ok()) {
+      LogFlush(db_options_.info_log);
+      return s;
+    }
   }
 
   int max_level_with_files = 0;
@@ -2137,6 +2154,7 @@ Status DBImpl::CompactRange(const CompactRangeOptions& options,
     }
   }
 
+  Status s;
   int final_output_level = 0;
   if (cfd->ioptions()->compaction_style == kCompactionStyleUniversal &&
       cfd->NumberLevels() > 1) {
@@ -5810,6 +5828,11 @@ Result<std::string> DBImpl::GetMiddleKey() {
   return default_cf_handle_->cfd()->current()->GetMiddleKey();
 }
 
+yb::Result<TableReader*> DBImpl::TEST_GetLargestSstTableReader() {
+  InstrumentedMutexLock lock(&mutex_);
+  return default_cf_handle_->cfd()->current()->TEST_GetLargestSstTableReader();
+}
+
 void DBImpl::TEST_SwitchMemtable() {
   std::lock_guard<InstrumentedMutex> lock(mutex_);
   WriteContext context;
@@ -6066,6 +6089,12 @@ UserFrontierPtr DBImpl::GetFlushedFrontier() {
   return accumulated;
 }
 
+UserFrontierPtr DBImpl::CalcMemTableFrontier(UpdateUserValueType frontier_type) {
+  InstrumentedMutexLock l(&mutex_);
+  auto cfd = default_cf_handle_->cfd();
+  return cfd->imm()->GetFrontier(cfd->mem()->GetFrontier(frontier_type), frontier_type);
+}
+
 UserFrontierPtr DBImpl::GetMutableMemTableFrontier(UpdateUserValueType type) {
   InstrumentedMutexLock l(&mutex_);
   UserFrontierPtr accumulated;
@@ -6143,8 +6172,7 @@ Status DBImpl::CheckConsistency() {
 
   std::string corruption_messages;
   for (const auto& md : metadata) {
-    // md.name has a leading "/".
-    std::string base_file_path = md.db_path + md.name;
+    std::string base_file_path = md.FullName();
     uint64_t base_fsize = 0;
     Status s = env_->GetFileSize(base_file_path, &base_fsize);
     if (!s.ok() &&
@@ -6153,7 +6181,7 @@ Status DBImpl::CheckConsistency() {
     }
     if (!s.ok()) {
       corruption_messages +=
-          "Can't access " + md.name + ": " + s.ToString() + "\n";
+          "Can't access " + md.Name() + ": " + s.ToString() + "\n";
     } else if (base_fsize != md.base_size) {
       corruption_messages += "Sst base file size mismatch: " + base_file_path +
                              ". Size recorded in manifest " +
@@ -6167,7 +6195,7 @@ Status DBImpl::CheckConsistency() {
       const uint64_t md_data_size = md.total_size - md.base_size;
       if (!s.ok()) {
         corruption_messages +=
-            "Can't access " + TableBaseToDataFileName(md.name) + ": " + s.ToString() + "\n";
+            "Can't access " + data_file_path + ": " + s.ToString() + "\n";
       } else if (data_fsize != md_data_size) {
         corruption_messages += "Sst data file size mismatch: " + data_file_path +
             ". Data size based on total and base size recorded in manifest " +

@@ -16,10 +16,11 @@ package com.yugabyte.sample.common.metrics;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-import org.apache.log4j.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class MetricsTracker extends Thread {
-  private static final Logger LOG = Logger.getLogger(MetricsTracker.class);
+  private static final Logger LOG = LoggerFactory.getLogger(MetricsTracker.class);
 
   // Interface to print custom messages.
   public static interface StatusMessageAppender {

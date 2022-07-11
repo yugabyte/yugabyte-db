@@ -89,7 +89,7 @@ void SeekToLowerBound(const SliceKeyBound& lower_bound, IntentAwareIterator* ite
 // num_values_observed is used for queries on indices, and keeps track of the number of primitive
 // values observed thus far. In a query with lower index bound k, ignore the first k primitive
 // values before building the subdocument.
-CHECKED_STATUS BuildSubDocument(
+Status BuildSubDocument(
     IntentAwareIterator* iter,
     const GetRedisSubDocumentData& data,
     DocHybridTime low_ts,

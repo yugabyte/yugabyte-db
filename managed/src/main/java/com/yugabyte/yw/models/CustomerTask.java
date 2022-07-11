@@ -139,6 +139,9 @@ public class CustomerTask extends Model {
     @EnumValue("SystemdUpgrade")
     SystemdUpgrade,
 
+    @EnumValue("RebootUniverse")
+    RebootUniverse,
+
     @Deprecated
     @EnumValue("UpgradeSoftware")
     UpgradeSoftware,
@@ -230,7 +233,22 @@ public class CustomerTask extends Model {
     Abort,
 
     @EnumValue("CreateSupportBundle")
-    CreateSupportBundle;
+    CreateSupportBundle,
+
+    @EnumValue("CreateTableSpaces")
+    CreateTableSpaces,
+
+    @EnumValue("ThirdpartySoftwareUpgrade")
+    ThirdpartySoftwareUpgrade,
+
+    @EnumValue("RotateAccessKey")
+    RotateAccessKey,
+
+    @EnumValue("CreateAndRotateAccessKey")
+    CreateAndRotateAccessKey,
+
+    @EnumValue("RunApiTriggeredHooks")
+    RunApiTriggeredHooks;
 
     public String toString(boolean completed) {
       switch (this) {
@@ -327,6 +345,22 @@ public class CustomerTask extends Model {
           return completed ? "Task aborted " : "Aborting task ";
         case CreateSupportBundle:
           return completed ? "Created Support Bundle in " : "Creating Support Bundle in ";
+        case ThirdpartySoftwareUpgrade:
+          return completed
+              ? "Upgraded third-party software for "
+              : "Upgrading third-party software for ";
+        case CreateTableSpaces:
+          return completed ? "Created tablespaces in " : "Creating tablespaces in ";
+        case RotateAccessKey:
+          return completed ? "Rotated Access Key" : "Rotating Access Key";
+        case RebootUniverse:
+          return completed ? "Rebooted " : "Rebooting ";
+        case CreateAndRotateAccessKey:
+          return completed
+              ? "Creating Access Key and Rotation Tasks"
+              : "Created New Access Key and Rotation Tasks";
+        case RunApiTriggeredHooks:
+          return completed ? "Ran API Triggered Hooks" : "Running API Triggered Hooks";
         default:
           return null;
       }
@@ -352,6 +386,10 @@ public class CustomerTask extends Model {
           return "Start Master Process on";
         case PrecheckNode:
           return "Precheck";
+        case RebootUniverse:
+          return "Reboot";
+        case RestartUniverse:
+          return "Restart";
         default:
           return toFriendlyTypeName();
       }

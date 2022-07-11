@@ -12,8 +12,7 @@ menu:
     weight: 500
 aliases:
   - /preview/api/ysql/keywords
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 | Keywords | Usage | Exceptions |

@@ -110,26 +110,26 @@ class SubDocument : public PrimitiveValue {
 
   // Interpret the SubDocument as a RedisSet.
   // Assume current subdocument is of map type (kObject type)
-  CHECKED_STATUS ConvertToRedisSet();
+  Status ConvertToRedisSet();
 
   // Interpret the SubDocument as a RedisTS.
   // Assume current subdocument is of map type (kObject type)
-  CHECKED_STATUS ConvertToRedisTS();
+  Status ConvertToRedisTS();
 
   // Interpret the SubDocument as a RedisSortedSet.
   // Assume current subdocument is of map type (kObject type)
-  CHECKED_STATUS ConvertToRedisSortedSet();
+  Status ConvertToRedisSortedSet();
 
   // Interpret the SubDocument as a RedisSortedSet.
   // Assume current subdocument is of map type (kObject type)
-  CHECKED_STATUS ConvertToRedisList();
+  Status ConvertToRedisList();
 
   // @return The child subdocument of an object at the given key, or nullptr if this subkey does not
   //         exist or this subdocument is not an object.
   SubDocument* GetChild(const KeyEntryValue& key);
 
   // Returns the number of children for this subdocument.
-  CHECKED_STATUS NumChildren(size_t *num_children);
+  Status NumChildren(size_t *num_children);
 
   const SubDocument* GetChild(const KeyEntryValue& key) const;
 
@@ -145,8 +145,10 @@ class SubDocument : public PrimitiveValue {
   // Set the child subdocument of an object to the given value.
   void SetChild(const KeyEntryValue& key, SubDocument&& value);
 
+  SubDocument& AllocateChild(const KeyEntryValue& key);
+
   void SetChildPrimitive(const KeyEntryValue& key, PrimitiveValue&& value) {
-    SetChild(key, SubDocument(value));
+    SetChild(key, SubDocument(std::move(value)));
   }
 
   void SetChildPrimitive(const KeyEntryValue& key, const PrimitiveValue& value) {
@@ -173,7 +175,7 @@ class SubDocument : public PrimitiveValue {
 
  private:
 
-  CHECKED_STATUS ConvertToCollection(ValueEntryType value_type);
+  Status ConvertToCollection(ValueEntryType value_type);
 
   // Common code used by move constructor and move assignment.
   void MoveFrom(SubDocument* other);

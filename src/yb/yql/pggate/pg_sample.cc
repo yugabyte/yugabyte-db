@@ -27,9 +27,11 @@ using std::make_shared;
 //--------------------------------------------------------------------------------------------------
 
 PgSample::PgSample(PgSession::ScopedRefPtr pg_session,
-                   const int targrows,
-                   const PgObjectId& table_id)
-    : PgDmlRead(pg_session, table_id, PgObjectId(), nullptr), targrows_(targrows) {}
+                   int targrows,
+                   const PgObjectId& table_id,
+                   bool is_region_local)
+    : PgDmlRead(pg_session, table_id, PgObjectId(), nullptr, is_region_local),
+      targrows_(targrows) {}
 
 PgSample::~PgSample() {
 }
@@ -40,11 +42,12 @@ Status PgSample::Prepare() {
   bind_ = PgTable(nullptr);
 
   // Setup sample picker as secondary index query
-  secondary_index_query_ = std::make_unique<PgSamplePicker>(pg_session_, table_id_);
+  secondary_index_query_ = std::make_unique<PgSamplePicker>(
+      pg_session_, table_id_, is_region_local_);
   RETURN_NOT_OK(secondary_index_query_->Prepare());
 
   // Prepare read op to fetch rows
-  auto read_op = ArenaMakeShared<PgsqlReadOp>(arena_ptr(), &arena(), *target_);
+  auto read_op = ArenaMakeShared<PgsqlReadOp>(arena_ptr(), &arena(), *target_, is_region_local_);
   read_req_ = std::shared_ptr<LWPgsqlReadRequestPB>(read_op, &read_op->read_request());
   doc_op_ = make_shared<PgDocReadOp>(pg_session_, &target_, std::move(read_op));
 
@@ -81,8 +84,9 @@ Status PgSample::GetEstimatedRowCount(double *liverows, double *deadrows) {
 //--------------------------------------------------------------------------------------------------
 
 PgSamplePicker::PgSamplePicker(PgSession::ScopedRefPtr pg_session,
-                               const PgObjectId& table_id)
-    : PgSelectIndex(pg_session, table_id, PgObjectId(), nullptr) {}
+                               const PgObjectId& table_id,
+                               bool is_region_local)
+    : PgSelectIndex(pg_session, table_id, PgObjectId(), nullptr, is_region_local) {}
 
 PgSamplePicker::~PgSamplePicker() {
 }
@@ -90,7 +94,7 @@ PgSamplePicker::~PgSamplePicker() {
 Status PgSamplePicker::Prepare() {
   target_ = PgTable(VERIFY_RESULT(pg_session_->LoadTable(table_id_)));
   bind_ = PgTable(nullptr);
-  auto read_op = ArenaMakeShared<PgsqlReadOp>(arena_ptr(), &arena(), *target_);
+  auto read_op = ArenaMakeShared<PgsqlReadOp>(arena_ptr(), &arena(), *target_, is_region_local_);
   read_req_ = std::shared_ptr<LWPgsqlReadRequestPB>(read_op, &read_op->read_request());
   doc_op_ = make_shared<PgDocReadOp>(pg_session_, &target_, std::move(read_op));
   return Status::OK();

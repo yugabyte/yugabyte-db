@@ -288,7 +288,6 @@ static void binary_upgrade_extension_member(PQExpBuffer upgrade_buffer,
 static const char *getAttrName(int attrnum, TableInfo *tblInfo);
 static const char *fmtCopyColumnList(const TableInfo *ti, PQExpBuffer buffer);
 static bool nonemptyReloptions(const char *reloptions);
-static bool YbHasReloptionsToInclude(const char *reloptions);
 static void YbAppendReloptions2(PQExpBuffer buffer, bool newline_before,
 						const char *reloptions1, const char *reloptions1_prefix,
 						const char *reloptions2, const char *reloptions2_prefix,
@@ -303,11 +302,10 @@ static void appendReloptionsArrayAH(PQExpBuffer buffer, const char *reloptions,
 static char *get_synchronized_snapshot(Archive *fout);
 static void setupDumpWorker(Archive *AHX);
 static TableInfo *getRootTableInfo(TableInfo *tbinfo);
-static bool pgYbTablegroupTableExists(Archive *fout);
-static bool pgTablegroupTableExists(Archive *fout);
+static bool catalogTableExists(Archive *fout, char *tablename);
 
 static void getYbTablePropertiesAndReloptions(Archive *fout,
-						YBCPgTableProperties *properties,
+						YbTableProperties properties,
 						PQExpBuffer reloptions_buf, Oid reloid, const char* relname);
 static bool isDatabaseColocated(Archive *fout);
 
@@ -834,8 +832,8 @@ main(int argc, char **argv)
 		dopt.outputBlobs = true;
 
 	/* Update pg_tablegroup existence variables */
-	pg_yb_tablegroup_exists = pgYbTablegroupTableExists(fout);
-	pg_tablegroup_exists = pgTablegroupTableExists(fout);
+	pg_yb_tablegroup_exists = catalogTableExists(fout, "pg_yb_tablegroup");
+	pg_tablegroup_exists = catalogTableExists(fout, "pg_tablegroup");
 
 	/*
 	 * Now scan the database and create DumpableObject structs for all the
@@ -1183,6 +1181,15 @@ setup_connection(Archive *AH, const char *dumpencoding,
 	if (dopt->include_yb_metadata) {
 		ExecuteSqlStatement(AH, "SET yb_format_funcs_include_yb_metadata = true");
 	}
+
+	/*
+	 * Hack to avoid issue #12251 which fails if we perform "BEGIN" followed by
+	 * "SET TRANSACTION ISOLATION LEVEL" when yb_enable_read_committed_isolation
+	 * is true.
+	 *
+	 * TODO(Piyush): Remove this hack once the issue is fixed properly
+	 */
+	ExecuteSqlStatement(AH, "SET DEFAULT_TRANSACTION_ISOLATION TO 'repeatable read'");
 
 	/*
 	 * Start transaction-snapshot mode transaction to dump consistent data.
@@ -5916,37 +5923,15 @@ getFuncs(Archive *fout, int *numFuncs)
 	return finfo;
 }
 
-/*
- * pgYbTablegroupTableExists returns true if the pg_yb_tablegroup table has been created.
- */
-static bool pgYbTablegroupTableExists(Archive *fout) {
+static bool catalogTableExists(Archive *fout, char *tablename)
+{
 	PQExpBuffer query = createPQExpBuffer();
 	PGresult   *res;
 
 	appendPQExpBuffer(query,
-					  "SELECT 1 FROM pg_class WHERE relname = 'pg_yb_tablegroup' "
-					  "AND relnamespace = 'pg_catalog'::regnamespace");
-
-	res = ExecuteSqlQuery(fout, query->data, PGRES_TUPLES_OK);
-
-	bool exists = (PQntuples(res) == 1);
-
-	destroyPQExpBuffer(query);
-	PQclear(res);
-
-	return exists;
-}
-
-/*
- * pgTablegroupTableExists returns true if the pg_tablegroup table has been created.
- */
-static bool pgTablegroupTableExists(Archive *fout) {
-	PQExpBuffer query = createPQExpBuffer();
-	PGresult   *res;
-
-	appendPQExpBuffer(query,
-					  "SELECT 1 FROM pg_class WHERE relname = 'pg_tablegroup' "
-					  "AND relnamespace = 'pg_catalog'::regnamespace");
+					  "SELECT 1 FROM pg_class WHERE relname = '%s' "
+					  "AND relnamespace = 'pg_catalog'::regnamespace",
+					  tablename);
 
 	res = ExecuteSqlQuery(fout, query->data, PGRES_TUPLES_OK);
 
@@ -6769,6 +6754,7 @@ getTablegroups(Archive *fout, int *numTablegroups)
 	int			i_grpinitacl;
 	int			i_grpinitracl;
 	int			i_grpoptions;
+	int			i_grptablespace;
 
 	if (!pg_yb_tablegroup_exists && !pg_tablegroup_exists)
 	{
@@ -6790,21 +6776,25 @@ getTablegroups(Archive *fout, int *numTablegroups)
 
 	/* Select all tablegroups from pg_tablegroup or pg_yb_tablegroup table */
 	appendPQExpBuffer(query,
-						"SELECT grpname, tg.oid, grpoptions, "
-						"(%s grpowner) AS owner, "
-						"%s AS acl, "
-						"%s AS racl, "
-						"%s AS initacl, "
-						"%s AS initracl "
-						"FROM %s AS tg "
-						"LEFT JOIN pg_init_privs pip ON "
-						"tg.oid = pip.objoid",
-						username_subquery,
-						acl_subquery->data,
-						racl_subquery->data,
-						init_acl_subquery->data,
-						init_racl_subquery->data,
-						pg_yb_tablegroup_exists ? "pg_yb_tablegroup" : "pg_tablegroup");
+					  "SELECT grpname, tg.oid, grpoptions, "
+					  "(%s grpowner) AS owner, "
+					  "(%s) AS grptablespace, "
+					  "%s AS acl, "
+					  "%s AS racl, "
+					  "%s AS initacl, "
+					  "%s AS initracl "
+					  "FROM %s AS tg "
+					  "LEFT JOIN pg_init_privs pip ON "
+					  "tg.oid = pip.objoid",
+					  username_subquery,
+					  pg_yb_tablegroup_exists ?
+						  "SELECT spcname FROM pg_tablespace t WHERE t.oid = grptablespace" :
+						  "NULL",
+					  acl_subquery->data,
+					  racl_subquery->data,
+					  init_acl_subquery->data,
+					  init_racl_subquery->data,
+					  pg_yb_tablegroup_exists ? "pg_yb_tablegroup" : "pg_tablegroup");
 
 	destroyPQExpBuffer(acl_subquery);
 	destroyPQExpBuffer(racl_subquery);
@@ -6826,6 +6816,7 @@ getTablegroups(Archive *fout, int *numTablegroups)
 	i_grpracl = PQfnumber(res, "racl");
 	i_grpinitacl = PQfnumber(res, "initacl");
 	i_grpinitracl = PQfnumber(res, "initracl");
+	i_grptablespace = PQfnumber(res, "grptablespace");
 
 	for (i = 0; i < ntups; i++)
 	{
@@ -6838,6 +6829,7 @@ getTablegroups(Archive *fout, int *numTablegroups)
 
 		tbinfo[i].dobj.name = pg_strdup(PQgetvalue(res, i, i_grpname));
 		tbinfo[i].grpowner = pg_strdup(PQgetvalue(res, i, i_grpowner));
+		tbinfo[i].grptablespace = pg_strdup(PQgetvalue(res, i, i_grptablespace));
 
 		tbinfo[i].grpacl = pg_strdup(PQgetvalue(res, i, i_grpacl));
 		tbinfo[i].grpracl = pg_strdup(PQgetvalue(res, i, i_grpracl));
@@ -15780,8 +15772,7 @@ dumpTablegroup(Archive *fout, TablegroupInfo *tginfo)
 					 tginfo->dobj.dumpId,	/* dump ID */
 					 tginfo->dobj.name,		/* Name */
 					 NULL,  				/* Namespace */
-					 /* TODO: timothy-e: dump tablespaces for tablegroups */
-					 NULL,					/* Tablespace */
+					 tginfo->grptablespace,	/* Tablespace */
 					 tginfo->grpowner,		/* Owner */
 					 false,					/* with oids */
 					 "TABLEGROUP",			/* Desc */
@@ -16186,11 +16177,11 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 		}
 
 		/* Get the table properties from YB, if relevant. */
-		YBCPgTableProperties *yb_properties = NULL;
+		YbTableProperties yb_properties = NULL;
 		if (dopt->include_yb_metadata &&
 			(tbinfo->relkind == RELKIND_RELATION || tbinfo->relkind == RELKIND_INDEX))
 		{
-			yb_properties = (YBCPgTableProperties *) pg_malloc(sizeof(YBCPgTableProperties));
+			yb_properties = (YbTableProperties) pg_malloc(sizeof(YbTablePropertiesData));
 		}
 		PQExpBuffer yb_reloptions = createPQExpBuffer();
 		getYbTablePropertiesAndReloptions(fout, yb_properties, yb_reloptions,
@@ -17052,13 +17043,13 @@ dumpConstraint(Archive *fout, ConstraintInfo *coninfo)
 			appendPQExpBufferChar(q, ')');
 
 			/* Get the table and index properties from YB, if relevant. */
-			YBCPgTableProperties *yb_table_properties = NULL;
-			YBCPgTableProperties *yb_index_properties = NULL;
+			YbTableProperties yb_table_properties = NULL;
+			YbTableProperties yb_index_properties = NULL;
 			if (dopt->include_yb_metadata &&
 				(coninfo->contype == 'u'))
 			{
-				yb_table_properties = (YBCPgTableProperties *) pg_malloc(sizeof(YBCPgTableProperties));
-				yb_index_properties = (YBCPgTableProperties *) pg_malloc(sizeof(YBCPgTableProperties));
+				yb_table_properties = (YbTableProperties) pg_malloc(sizeof(YbTablePropertiesData));
+				yb_index_properties = (YbTableProperties) pg_malloc(sizeof(YbTablePropertiesData));
 			}
 			PQExpBuffer yb_table_reloptions = createPQExpBuffer();
 			PQExpBuffer yb_index_reloptions = createPQExpBuffer();
@@ -18840,56 +18831,6 @@ nonemptyReloptions(const char *reloptions)
 	return (reloptions != NULL && strlen(reloptions) > 2);
 }
 
-/*
- * Check if a reloptions array is nonempty and has any options
- * except for the excluded ones.
- */
-static bool
-YbHasReloptionsToInclude(const char *reloptions)
-{
-	if (!nonemptyReloptions(reloptions))
-		return false;
-
-	char	  **options;
-	int			noptions;
-
-	if (!parsePGArray(reloptions, &options, &noptions))
-	{
-		if (options)
-			free(options);
-		return false;
-	}
-
-	bool has_included_values = false;
-
-	for (int i = 0; i < noptions && !has_included_values; i++)
-	{
-		char	   *option = options[i];
-
-		/*
-		 * Each array element should have the form name=value.  If the "=" is
-		 * missing for some reason, treat it like an empty value.
-		 */
-		char	   *name = option;
-		char	   *separator = strchr(option, '=');
-		if (separator)
-			*separator = '\0';
-
-		/*
-		 * We ignore the reloption for tablegroup_oid.
-		 * It is appended seperately as a TABLEGROUP clause.
-		 */
-		if (strcmp(name, "tablegroup_oid") != 0)
-			has_included_values = true;
-	}
-
-	if (options)
-		free(options);
-
-	return has_included_values;
-}
-
-
 static void
 YbAppendReloptions2(PQExpBuffer buffer, bool newline_before,
 				   const char *reloptions1, const char *reloptions1_prefix,
@@ -18915,14 +18856,14 @@ YbAppendReloptions3(PQExpBuffer buffer, bool newline_before,
 
 	const char *with = newline_before ? "\nWITH (" : " WITH (";
 
-	if (YbHasReloptionsToInclude(reloptions1))
+	if (nonemptyReloptions(reloptions1))
 	{
 		appendPQExpBufferStr(buffer, with);
 		appendReloptionsArrayAH(buffer, reloptions1, reloptions1_prefix, fout);
 		addwith = false;
 		addcomma = true;
 	}
-	if (YbHasReloptionsToInclude(reloptions2))
+	if (nonemptyReloptions(reloptions2))
 	{
 		if (addwith)
 			appendPQExpBufferStr(buffer, with);
@@ -18932,7 +18873,7 @@ YbAppendReloptions3(PQExpBuffer buffer, bool newline_before,
 		addwith = false;
 		addcomma = true;
 	}
-	if (YbHasReloptionsToInclude(reloptions3))
+	if (nonemptyReloptions(reloptions3))
 	{
 		if (addwith)
 			appendPQExpBufferStr(buffer, with);
@@ -18972,7 +18913,7 @@ appendReloptionsArrayAH(PQExpBuffer buffer, const char *reloptions,
  * 					reloptions, will be '{}' if properties are not allocated.
  */
 static void
-getYbTablePropertiesAndReloptions(Archive *fout, YBCPgTableProperties *properties,
+getYbTablePropertiesAndReloptions(Archive *fout, YbTableProperties properties,
 								  PQExpBuffer reloptions_buf,
 								  Oid reloid, const char* relname)
 {

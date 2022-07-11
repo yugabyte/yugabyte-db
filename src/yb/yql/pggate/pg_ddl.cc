@@ -15,7 +15,6 @@
 
 #include "yb/yql/pggate/pg_ddl.h"
 
-#include "yb/client/yb_op.h"
 #include "yb/client/yb_table_name.h"
 
 #include "yb/common/common.pb.h"
@@ -38,13 +37,7 @@ DECLARE_int32(max_num_tablets_for_table);
 namespace yb {
 namespace pggate {
 
-using std::make_shared;
-using std::shared_ptr;
-using std::string;
 using namespace std::literals;  // NOLINT
-
-using client::YBSession;
-using client::YBMetaDataCache;
 
 // TODO(neil) This should be derived from a GFLAGS.
 static MonoDelta kDdlTimeout = 60s * kTimeMultiplier;
@@ -168,10 +161,11 @@ PgCreateTable::PgCreateTable(PgSession::ScopedRefPtr pg_session,
                              bool is_shared_table,
                              bool if_not_exist,
                              bool add_primary_key,
-                             const bool colocated,
+                             bool is_colocated_via_database,
                              const PgObjectId& tablegroup_oid,
                              const ColocationId colocation_id,
                              const PgObjectId& tablespace_oid,
+                             bool is_matview,
                              const PgObjectId& matview_pg_table_oid)
     : PgDdl(pg_session) {
   table_id.ToPB(req_.mutable_table_id());
@@ -182,13 +176,14 @@ PgCreateTable::PgCreateTable(PgSession::ScopedRefPtr pg_session,
                                strcmp(schema_name, "information_schema") == 0);
   req_.set_is_shared_table(is_shared_table);
   req_.set_if_not_exist(if_not_exist);
-  req_.set_colocated(colocated);
+  req_.set_is_colocated_via_database(is_colocated_via_database);
   req_.set_schema_name(schema_name);
   tablegroup_oid.ToPB(req_.mutable_tablegroup_oid());
   if (colocation_id != kColocationIdNotSet) {
     req_.set_colocation_id(colocation_id);
   }
   tablespace_oid.ToPB(req_.mutable_tablespace_oid());
+  req_.set_is_matview(is_matview);
   matview_pg_table_oid.ToPB(req_.mutable_matview_pg_table_oid());
 
   // Add internal primary key column to a Postgres table without a user-specified primary key.
@@ -196,7 +191,8 @@ PgCreateTable::PgCreateTable(PgSession::ScopedRefPtr pg_session,
     // For regular user table, ybrowid should be a hash key because ybrowid is a random uuid.
     // For colocated or sys catalog table, ybrowid should be a range key because they are
     // unpartitioned tables in a single tablet.
-    bool is_hash = !(req_.is_pg_catalog_table() || colocated || tablegroup_oid.IsValid());
+    bool is_hash =
+        !req_.is_pg_catalog_table() && !is_colocated_via_database && !tablegroup_oid.IsValid();
     CHECK_OK(AddColumn("ybrowid", static_cast<int32_t>(PgSystemAttrNum::kYBRowId),
                        YB_YQL_DATA_TYPE_BINARY, is_hash, true /* is_range */));
   }

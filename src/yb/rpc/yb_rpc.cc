@@ -160,7 +160,7 @@ Result<ProcessCallsResult> YBInboundConnectionContext::ProcessCalls(
 
 namespace {
 
-CHECKED_STATUS ThrottleRpcStatus(const MemTrackerPtr& throttle_tracker, const YBInboundCall& call) {
+Status ThrottleRpcStatus(const MemTrackerPtr& throttle_tracker, const YBInboundCall& call) {
   if (ShouldThrottleRpc(throttle_tracker, call.request_data().size(), "Rejecting RPC call: ")) {
     return STATUS_FORMAT(ServiceUnavailable, "Call rejected due to memory pressure: $0", call);
   } else {
@@ -391,20 +391,21 @@ void YBInboundCall::LogTrace() const {
       // The traces may also be too large to fit in a log message.
       LOG(WARNING) << ToString() << " took " << total_time << "ms (client timeout "
                    << header_.timeout_ms << "ms).";
-      std::string s = trace_->DumpToString(1, true);
-      if (!s.empty()) {
-        LOG(WARNING) << "Trace:\n" << s;
+      if (trace_) {
+        LOG(WARNING) << "Trace:\n" << trace_->DumpToString(1, true);
       }
       return;
     }
   }
 
   if (PREDICT_FALSE(
-          trace_->must_print() ||
+          (trace_ && trace_->must_print()) ||
           FLAGS_rpc_dump_all_traces ||
           total_time > FLAGS_rpc_slow_query_threshold_ms)) {
     LOG(INFO) << ToString() << " took " << total_time << "ms. Trace:";
-    trace_->Dump(&LOG(INFO), true);
+    if (trace_) {
+      trace_->Dump(&LOG(INFO), true);
+    }
   }
 }
 
@@ -435,6 +436,8 @@ Status YBInboundCall::ParseParam(RpcCallParams* params) {
 
   if (PREDICT_FALSE(FLAGS_TEST_yb_inbound_big_calls_parse_delay_ms > 0 &&
           implicit_cast<ssize_t>(request_data_.size()) > FLAGS_rpc_throttle_threshold_bytes)) {
+    LOG(INFO) << Format("Sleeping for $0ms due to FLAGS_TEST_yb_inbound_big_calls_parse_delay_ms",
+                        FLAGS_TEST_yb_inbound_big_calls_parse_delay_ms);
     std::this_thread::sleep_for(FLAGS_TEST_yb_inbound_big_calls_parse_delay_ms * 1ms);
   }
 
@@ -481,7 +484,11 @@ void YBInboundCall::Respond(AnyMessageConstPtr response, bool is_success) {
   TRACE_EVENT_FLOW_END0("rpc", "InboundCall", this);
   Status s = SerializeResponseBuffer(response, is_success);
   if (PREDICT_FALSE(!s.ok())) {
-    RespondFailure(ErrorStatusPB::ERROR_APPLICATION, s);
+    if (is_success) {
+      RespondFailure(ErrorStatusPB::ERROR_APPLICATION, s);
+    } else {
+      LOG(DFATAL) << "Failed to serialize failure: " << s;
+    }
     return;
   }
 

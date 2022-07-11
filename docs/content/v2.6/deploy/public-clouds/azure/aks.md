@@ -8,8 +8,7 @@ menu:
     identifier: deploy-in-azure-2-aks
     parent: public-clouds
     weight: 650
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

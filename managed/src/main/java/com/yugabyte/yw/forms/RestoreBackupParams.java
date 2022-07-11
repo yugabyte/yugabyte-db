@@ -2,11 +2,14 @@ package com.yugabyte.yw.forms;
 
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import lombok.NoArgsConstructor;
 import org.yb.CommonTypes.TableType;
 import play.data.validation.Constraints;
 
+@NoArgsConstructor
 public class RestoreBackupParams extends UniverseTaskParams {
 
   public enum ActionType {
@@ -41,6 +44,12 @@ public class RestoreBackupParams extends UniverseTaskParams {
   @ApiModelProperty(value = "Alter load balancer state")
   public boolean alterLoadBalancer = true;
 
+  @ApiModelProperty(value = "Disable checksum")
+  public Boolean disableChecksum = false;
+
+  @ApiModelProperty(value = "Is tablespaces information included")
+  public Boolean useTablespaces = false;
+
   // The number of concurrent commands to run on nodes over SSH
   @ApiModelProperty(value = "Number of concurrent commands to run on nodes over SSH")
   public int parallelism = 8;
@@ -73,5 +82,18 @@ public class RestoreBackupParams extends UniverseTaskParams {
 
     @ApiModelProperty(value = "Is SSE")
     public boolean sse = false;
+  }
+
+  public RestoreBackupParams(
+      RestoreBackupParams otherParams, BackupStorageInfo backupStorageInfo, ActionType actionType) {
+    this.customerUUID = otherParams.customerUUID;
+    this.universeUUID = otherParams.universeUUID;
+    this.storageConfigUUID = otherParams.storageConfigUUID;
+    this.restoreTimeStamp = otherParams.restoreTimeStamp;
+    this.kmsConfigUUID = otherParams.kmsConfigUUID;
+    this.parallelism = otherParams.parallelism;
+    this.actionType = actionType;
+    this.backupStorageInfoList = new ArrayList<>();
+    this.backupStorageInfoList.add(backupStorageInfo);
   }
 }

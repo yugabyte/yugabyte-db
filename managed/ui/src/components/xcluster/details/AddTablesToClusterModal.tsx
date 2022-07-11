@@ -8,11 +8,13 @@ import {
   editXClusterTables,
   fetchTaskUntilItCompletes
 } from '../../../actions/xClusterReplication';
+import { formatSchemaName } from '../../../utils/Formatters';
 import { YBModalForm } from '../../common/forms';
 import { YBButton, YBInputField } from '../../common/forms/fields';
 import { YBLoading } from '../../common/indicators';
+
+import { TableType, TABLE_TYPE_MAP } from '../../../redesign/helpers/dtos';
 import { IReplication, IReplicationTable } from '../IClusterReplication';
-import { YSQL_TABLE_TYPE } from '../ReplicationUtils';
 
 import './AddTableToClusterModal.scss';
 
@@ -24,7 +26,7 @@ interface Props {
 
 export function AddTablesToClusterModal({ visible, onHide, replication }: Props) {
   const { data: tables, isLoading: isTablesLoading } = useQuery(
-    [replication.sourceUniverseUUID, 'tables'],
+    ['xcluster', replication.sourceUniverseUUID, 'tables'],
     () => fetchTablesInUniverse(replication.sourceUniverseUUID).then((res) => res.data)
   );
 
@@ -68,14 +70,14 @@ export function AddTablesToClusterModal({ visible, onHide, replication }: Props)
     return <YBLoading />;
   }
 
-  const tablesInSourceUniverse = tables.map((tables: IReplicationTable) => {
+  const tablesInSourceUniverse = tables?.map((tables: IReplicationTable) => {
     return {
       ...tables,
       tableUUID: tables.tableUUID.replaceAll('-', '')
     };
   });
 
-  const tablesNotInReplication = tablesInSourceUniverse.filter(
+  const tablesNotInReplication = tablesInSourceUniverse?.filter(
     (t: IReplicationTable) => !replication.tables.includes(t.tableUUID)
   );
 
@@ -159,17 +161,23 @@ export function AddTablesToClusterModal({ visible, onHide, replication }: Props)
                   onSelectAll: handleSelectAll
                 }}
               >
-                <TableHeaderColumn dataField="tableUUID" isKey={true} hidden />
-                <TableHeaderColumn dataField="tableName" width="50%">
-                  Name
+                <TableHeaderColumn dataField="tableUUID" hidden isKey={true} />
+                <TableHeaderColumn dataField="tableName" width="30%">
+                  Table Name
+                </TableHeaderColumn>
+                <TableHeaderColumn
+                  dataField="pgSchemaName"
+                  width="20%"
+                  dataFormat={(cell: string, row: IReplicationTable) =>
+                    formatSchemaName(row.tableType, cell)
+                  }
+                >
+                  Schema Name
                 </TableHeaderColumn>
                 <TableHeaderColumn
                   dataField="tableType"
                   width="20%"
-                  dataFormat={(cell) => {
-                    if (cell === YSQL_TABLE_TYPE) return 'YSQL';
-                    return 'YCQL';
-                  }}
+                  dataFormat={(cell: TableType) => TABLE_TYPE_MAP[cell]}
                 >
                   Type
                 </TableHeaderColumn>

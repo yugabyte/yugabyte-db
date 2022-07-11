@@ -35,15 +35,15 @@ class PgsqlWriteOperation :
     public DocExprExecutor {
  public:
   PgsqlWriteOperation(std::reference_wrapper<const PgsqlWriteRequestPB> request,
-                      const DocReadContext& doc_read_context,
+                      DocReadContextPtr doc_read_context,
                       const TransactionOperationContext& txn_op_context)
       : DocOperationBase(request),
-        doc_read_context_(doc_read_context),
+        doc_read_context_(std::move(doc_read_context)),
         txn_op_context_(txn_op_context) {
   }
 
   // Initialize PgsqlWriteOperation. Content of request will be swapped out by the constructor.
-  CHECKED_STATUS Init(PgsqlResponsePB* response);
+  Status Init(PgsqlResponsePB* response);
   bool RequireReadSnapshot() const override {
     // For YSQL the the standard operations (INSERT/UPDATE/DELETE) will read/check the primary key.
     // We use UPSERT stmt type for specific requests when we can guarantee we can skip the read.
@@ -72,7 +72,7 @@ class PgsqlWriteOperation :
       HybridTime min_hybrid_time);
 
   // Execute write.
-  CHECKED_STATUS Apply(const DocOperationApplyData& data) override;
+  Status Apply(const DocOperationApplyData& data) override;
 
  private:
   void ClearResponse() override {
@@ -82,29 +82,29 @@ class PgsqlWriteOperation :
   }
 
   // Insert, update, delete, and colocated truncate operations.
-  CHECKED_STATUS ApplyInsert(
+  Status ApplyInsert(
       const DocOperationApplyData& data, IsUpsert is_upsert = IsUpsert::kFalse);
-  CHECKED_STATUS ApplyUpdate(const DocOperationApplyData& data);
-  CHECKED_STATUS ApplyDelete(const DocOperationApplyData& data, const bool is_persist_needed);
-  CHECKED_STATUS ApplyTruncateColocated(const DocOperationApplyData& data);
+  Status ApplyUpdate(const DocOperationApplyData& data);
+  Status ApplyDelete(const DocOperationApplyData& data, const bool is_persist_needed);
+  Status ApplyTruncateColocated(const DocOperationApplyData& data);
 
-  CHECKED_STATUS DeleteRow(const DocPath& row_path, DocWriteBatch* doc_write_batch,
+  Status DeleteRow(const DocPath& row_path, DocWriteBatch* doc_write_batch,
                            const ReadHybridTime& read_ht, CoarseTimePoint deadline);
 
   // Reading current row before operating on it.
-  CHECKED_STATUS ReadColumns(const DocOperationApplyData& data,
+  Status ReadColumns(const DocOperationApplyData& data,
                              QLTableRow* table_row);
 
-  CHECKED_STATUS PopulateResultSet(const QLTableRow& table_row);
+  Status PopulateResultSet(const QLTableRow& table_row);
 
   // Reading path to operate on.
-  CHECKED_STATUS GetDocPaths(GetDocPathsMode mode,
+  Status GetDocPaths(GetDocPathsMode mode,
                              DocPathsToLock *paths,
                              IsolationLevel *level) const override;
 
   //------------------------------------------------------------------------------------------------
   // Context.
-  const DocReadContext& doc_read_context_;
+  DocReadContextPtr doc_read_context_;
   const TransactionOperationContext txn_op_context_;
 
   // Input arguments.
@@ -153,9 +153,9 @@ class PgsqlReadOperation : public DocExprExecutor {
                          faststring *result_buffer,
                          HybridTime *restart_read_ht);
 
-  CHECKED_STATUS GetTupleId(QLValuePB *result) const override;
+  Status GetTupleId(QLValuePB *result) const override;
 
-  CHECKED_STATUS GetIntents(const Schema& schema, KeyValueWriteBatchPB* out);
+  Status GetIntents(const Schema& schema, KeyValueWriteBatchPB* out);
 
  private:
   // Execute a READ operator for a given scalar argument.
@@ -186,17 +186,17 @@ class PgsqlReadOperation : public DocExprExecutor {
                                HybridTime *restart_read_ht,
                                bool *has_paging_state);
 
-  CHECKED_STATUS PopulateResultSet(const QLTableRow& table_row,
+  Status PopulateResultSet(const QLTableRow& table_row,
                                    faststring *result_buffer);
 
-  CHECKED_STATUS EvalAggregate(const QLTableRow& table_row);
+  Status EvalAggregate(const QLTableRow& table_row);
 
-  CHECKED_STATUS PopulateAggregate(const QLTableRow& table_row,
+  Status PopulateAggregate(const QLTableRow& table_row,
                                    faststring *result_buffer);
 
   // Checks whether we have processed enough rows for a page and sets the appropriate paging
   // state in the response object.
-  CHECKED_STATUS SetPagingStateIfNecessary(const YQLRowwiseIteratorIf* iter,
+  Status SetPagingStateIfNecessary(const YQLRowwiseIteratorIf* iter,
                                            size_t fetched_rows,
                                            const size_t row_count_limit,
                                            const bool scan_time_exceeded,

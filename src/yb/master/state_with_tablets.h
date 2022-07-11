@@ -58,7 +58,7 @@ class StateWithTablets {
   // Otherwise all tablets should be in the same state, which is returned.
   Result<SysSnapshotEntryPB::State> AggregatedState() const;
 
-  CHECKED_STATUS AnyFailure() const;
+  Status AnyFailure() const;
   Result<bool> Complete() const;
   bool AllTabletsDone() const;
   bool PassedSinceCompletion(const MonoDelta& duration) const;
@@ -69,8 +69,16 @@ class StateWithTablets {
   void SetInitialTabletsState(SysSnapshotEntryPB::State state);
 
   // Initialize tablet states from serialized data.
-  void InitTablets(
-      const google::protobuf::RepeatedPtrField<SysSnapshotEntryPB::TabletSnapshotPB>& tablets);
+  template<class Tablets>
+  void InitTablets(const Tablets& tablets) {
+    for (const auto& tablet : tablets) {
+      tablets_.emplace(tablet.id(), tablet.state());
+      if (tablet.state() == initial_state_) {
+        ++num_tablets_in_initial_state_;
+      }
+    }
+    CheckCompleteness();
+  }
 
   template <class TabletIds>
   void InitTabletIds(const TabletIds& tablet_ids, SysSnapshotEntryPB::State state) {
@@ -137,7 +145,7 @@ class StateWithTablets {
 
   virtual bool IsTerminalFailure(const Status& status) = 0;
 
-  virtual CHECKED_STATUS CheckDoneStatus(const Status& status) {
+  virtual Status CheckDoneStatus(const Status& status) {
     return status;
   }
 

@@ -91,17 +91,25 @@ ybcGetForeignRelSize(PlannerInfo *root,
 	ybc_plan = (YbFdwPlanState *) palloc0(sizeof(YbFdwPlanState));
 
 	/* Set the estimate for the total number of rows (tuples) in this table. */
-	if (baserel->tuples == 0)
-		baserel->tuples = YBC_DEFAULT_NUM_ROWS;
+	if (yb_enable_optimizer_statistics)
+	{
+		set_baserel_size_estimates(root, baserel);
+	}
+	else
+	{
+		if (baserel->tuples == 0)
+			baserel->tuples = YBC_DEFAULT_NUM_ROWS;
 
-	/*
-	 * Initialize the estimate for the number of rows returned by this query.
-	 * This does not yet take into account the restriction clauses, but it will
-	 * be updated later by ybcIndexCostEstimate once it inspects the clauses.
-	 */
-	baserel->rows = baserel->tuples;
+		/*
+		* Initialize the estimate for the number of rows returned by this query.
+		* This does not yet take into account the restriction clauses, but it will
+		* be updated later by ybcIndexCostEstimate once it inspects the clauses.
+		*/
+		baserel->rows = baserel->tuples;
+	}
 
 	baserel->fdw_private = ybc_plan;
+
 
 	/*
 	 * Test any indexes of rel for applicability also.
@@ -306,9 +314,10 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 
 	node->fdw_state = (void *) ybc_state;
 	HandleYBStatus(YBCPgNewSelect(YBCGetDatabaseOid(relation),
-				   YbGetStorageRelid(relation),
-				   NULL /* prepare_params */,
-				   &ybc_state->handle));
+								  YbGetStorageRelid(relation),
+								  NULL /* prepare_params */,
+								  YBCIsRegionLocal(relation),
+								  &ybc_state->handle));
 	ybc_state->exec_params = &estate->yb_exec_params;
 
 	ybc_state->exec_params->rowmark = -1;
@@ -705,6 +714,17 @@ ybcEndForeignScan(ForeignScanState *node)
 	ybcFreeStatementObject(ybc_state);
 }
 
+/*
+ * ybcExplainForeignScan
+ *		Produce extra output for EXPLAIN of a ForeignScan on a foreign table
+ */
+static void
+ybcExplainForeignScan(ForeignScanState *node, ExplainState *es)
+{
+	if (node->yb_fdw_aggs != NIL)
+		ExplainPropertyBool("Partial Aggregate", true, es);
+}
+
 /* ------------------------------------------------------------------------- */
 /*  FDW declaration */
 
@@ -724,9 +744,9 @@ ybc_fdw_handler()
 	fdwroutine->IterateForeignScan = ybcIterateForeignScan;
 	fdwroutine->ReScanForeignScan  = ybcReScanForeignScan;
 	fdwroutine->EndForeignScan     = ybcEndForeignScan;
+	fdwroutine->ExplainForeignScan = ybcExplainForeignScan;
 
 	/* TODO: These are optional but we should support them eventually. */
-	/* fdwroutine->ExplainForeignScan = ybcExplainForeignScan; */
 	/* fdwroutine->AnalyzeForeignTable = ybcAnalyzeForeignTable; */
 	/* fdwroutine->IsForeignScanParallelSafe = ybcIsForeignScanParallelSafe; */
 

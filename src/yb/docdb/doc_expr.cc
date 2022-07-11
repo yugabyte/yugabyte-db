@@ -42,7 +42,7 @@ DocExprExecutor::DocExprExecutor() {}
 
 DocExprExecutor::~DocExprExecutor() {}
 
-CHECKED_STATUS DocExprExecutor::EvalColumnRef(ColumnIdRep col_id,
+Status DocExprExecutor::EvalColumnRef(ColumnIdRep col_id,
                                               const QLTableRow* table_row,
                                               QLExprResultWriter result_writer) {
   // Return NULL value if row is not provided.
@@ -64,14 +64,14 @@ CHECKED_STATUS DocExprExecutor::EvalColumnRef(ColumnIdRep col_id,
   return STATUS_SUBSTITUTE(InvalidArgument, "Invalid column ID: $0", col_id);
 }
 
-CHECKED_STATUS DocExprExecutor::GetTupleId(QLValuePB *result) const {
+Status DocExprExecutor::GetTupleId(QLValuePB *result) const {
   SetNull(result);
   return Status::OK();
 }
 
 //--------------------------------------------------------------------------------------------------
 
-CHECKED_STATUS DocExprExecutor::EvalTSCall(const QLBCallPB& tscall,
+Status DocExprExecutor::EvalTSCall(const QLBCallPB& tscall,
                                            const QLTableRow& table_row,
                                            QLValuePB *result,
                                            const Schema *schema) {
@@ -194,14 +194,14 @@ CHECKED_STATUS DocExprExecutor::EvalTSCall(const QLBCallPB& tscall,
   return Status::OK();
 }
 
-CHECKED_STATUS DocExprExecutor::EvalTSCall(const PgsqlBCallPB& ql_expr,
+Status DocExprExecutor::EvalTSCall(const PgsqlBCallPB& ql_expr,
                                            const QLTableRow& table_row,
                                            QLValuePB *result,
                                            const Schema *schema) {
   return DoEvalTSCall(ql_expr, table_row, result, schema);
 }
 
-CHECKED_STATUS DocExprExecutor::EvalTSCall(const LWPgsqlBCallPB& ql_expr,
+Status DocExprExecutor::EvalTSCall(const LWPgsqlBCallPB& ql_expr,
                           const QLTableRow& table_row,
                           LWQLValuePB *result,
                           const Schema *schema) {
@@ -209,7 +209,7 @@ CHECKED_STATUS DocExprExecutor::EvalTSCall(const LWPgsqlBCallPB& ql_expr,
 }
 
 template <class Expr, class Res>
-CHECKED_STATUS DocExprExecutor::DoEvalTSCall(const Expr& tscall,
+Status DocExprExecutor::DoEvalTSCall(const Expr& tscall,
                                              const QLTableRow& table_row,
                                              Res *result,
                                              const Schema *schema) {
@@ -296,7 +296,7 @@ CHECKED_STATUS DocExprExecutor::DoEvalTSCall(const Expr& tscall,
 //--------------------------------------------------------------------------------------------------
 
 template <class Val>
-CHECKED_STATUS DocExprExecutor::EvalCount(Val *aggr_count) {
+Status DocExprExecutor::EvalCount(Val *aggr_count) {
   if (IsNull(*aggr_count)) {
     aggr_count->set_int64_value(1);
   } else {
@@ -306,7 +306,7 @@ CHECKED_STATUS DocExprExecutor::EvalCount(Val *aggr_count) {
 }
 
 template <class Val>
-CHECKED_STATUS DocExprExecutor::EvalSum(const Val& val, Val *aggr_sum) {
+Status DocExprExecutor::EvalSum(const Val& val, Val *aggr_sum) {
   if (IsNull(val)) {
     return Status::OK();
   }
@@ -354,7 +354,7 @@ CHECKED_STATUS DocExprExecutor::EvalSum(const Val& val, Val *aggr_sum) {
 }
 
 template <class Expr, class Val, class Extractor>
-CHECKED_STATUS DocExprExecutor::EvalSumInt(
+Status DocExprExecutor::EvalSumInt(
     const Expr& operand, const QLTableRow& table_row, Val *aggr_sum,
     const Extractor& extractor) {
   ExprResult<Val> arg_result(aggr_sum);
@@ -375,7 +375,7 @@ CHECKED_STATUS DocExprExecutor::EvalSumInt(
 }
 
 template <class Expr, class Val, class Extractor, class Setter>
-CHECKED_STATUS DocExprExecutor::EvalSumReal(
+Status DocExprExecutor::EvalSumReal(
     const Expr& operand, const QLTableRow& table_row, Val *aggr_sum,
     const Extractor& extractor, const Setter& setter) {
   ExprResult<Val> arg_result(aggr_sum);
@@ -396,7 +396,7 @@ CHECKED_STATUS DocExprExecutor::EvalSumReal(
 }
 
 template <class Val>
-CHECKED_STATUS DocExprExecutor::EvalMax(const Val& val, Val *aggr_max) {
+Status DocExprExecutor::EvalMax(const Val& val, Val *aggr_max) {
   if (!IsNull(val) && (IsNull(*aggr_max) || *aggr_max < val)) {
     *aggr_max = val;
   }
@@ -404,7 +404,7 @@ CHECKED_STATUS DocExprExecutor::EvalMax(const Val& val, Val *aggr_max) {
 }
 
 template <class Val>
-CHECKED_STATUS DocExprExecutor::EvalMin(const Val& val, Val *aggr_min) {
+Status DocExprExecutor::EvalMin(const Val& val, Val *aggr_min) {
   if (!IsNull(val) && (IsNull(*aggr_min) || *aggr_min > val)) {
     *aggr_min = val;
   }
@@ -412,7 +412,7 @@ CHECKED_STATUS DocExprExecutor::EvalMin(const Val& val, Val *aggr_min) {
 }
 
 template <class Val>
-CHECKED_STATUS DocExprExecutor::EvalAvg(const Val& val, Val *aggr_avg) {
+Status DocExprExecutor::EvalAvg(const Val& val, Val *aggr_avg) {
   if (IsNull(val)) {
     return Status::OK();
   }
@@ -505,7 +505,7 @@ void UnpackUDTAndFrozen(const QLType::SharedPtr& type, QLValuePB* value) {
 
 } // namespace
 
-CHECKED_STATUS DocExprExecutor::EvalParametricToJson(const QLExpressionPB& operand,
+Status DocExprExecutor::EvalParametricToJson(const QLExpressionPB& operand,
                                                      const QLTableRow& table_row,
                                                      QLValuePB *result,
                                                      const Schema *schema) {

@@ -54,7 +54,7 @@ namespace master {
         : catalog_manager_(catalog_manager), term_(term) {} \
     \
   private: \
-    CHECKED_STATUS Visit( \
+    Status Visit( \
         const key_type& key, \
         const entry_pb_name& metadata) override REQUIRES(mutex); \
     \

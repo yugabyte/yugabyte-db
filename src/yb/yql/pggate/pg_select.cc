@@ -15,8 +15,6 @@
 
 #include "yb/yql/pggate/pg_select.h"
 
-#include "yb/client/yb_op.h"
-
 #include "yb/yql/pggate/pg_select_index.h"
 #include "yb/yql/pggate/util/pg_doc_data.h"
 
@@ -30,8 +28,9 @@ using std::make_shared;
 //--------------------------------------------------------------------------------------------------
 
 PgSelect::PgSelect(PgSession::ScopedRefPtr pg_session, const PgObjectId& table_id,
-                   const PgObjectId& index_id, const PgPrepareParameters *prepare_params)
-    : PgDmlRead(pg_session, table_id, index_id, prepare_params) {}
+                   const PgObjectId& index_id, const PgPrepareParameters *prepare_params,
+                   bool is_region_local)
+    : PgDmlRead(pg_session, table_id, index_id, prepare_params, is_region_local) {}
 
 PgSelect::~PgSelect() {
 }
@@ -54,12 +53,12 @@ Status PgSelect::Prepare() {
     bind_ = PgTable(nullptr);
 
     // Create secondary index query.
-    secondary_index_query_ =
-      std::make_unique<PgSelectIndex>(pg_session_, table_id_, index_id_, &prepare_params_);
+    secondary_index_query_ = std::make_unique<PgSelectIndex>(
+        pg_session_, table_id_, index_id_, &prepare_params_, is_region_local_);
   }
 
   // Allocate READ requests to send to DocDB.
-  auto read_op = ArenaMakeShared<PgsqlReadOp>(arena_ptr(), &arena(), *target_);
+  auto read_op = ArenaMakeShared<PgsqlReadOp>(arena_ptr(), &arena(), *target_, is_region_local_);
   read_req_ = std::shared_ptr<LWPgsqlReadRequestPB>(read_op, &read_op->read_request());
 
   auto doc_op = std::make_shared<PgDocReadOp>(pg_session_, &target_, std::move(read_op));

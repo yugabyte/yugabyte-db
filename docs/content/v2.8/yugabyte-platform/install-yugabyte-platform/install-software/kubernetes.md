@@ -4,12 +4,11 @@ headerTitle: Install Yugabyte Platform software - Kubernetes
 linkTitle: Install software
 description: Install Yugabyte Platform software in your Kubernetes environment.
 menu:
-  v2.8:
+  v2.8_yugabyte-platform:
     parent: install-yugabyte-platform
     identifier: install-software-2-kubernetes
     weight: 77
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -73,26 +72,26 @@ You install Yugabyte Platform on a Kubernetes cluster as follows:
     To search for the available chart version, run this command:
 
     ```sh
-    helm search repo yugabytedb/yugaware -l
+    helm search repo yugabytedb/yugaware --version {{<yb-version version="v2.8" format="short">}}
     ```
 
-    The latest Helm Chart version and App version will be displayed:
+    The Helm Chart version and App version will be displayed:
 
     ```output
     NAME                 CHART VERSION  APP VERSION  DESCRIPTION
-    yugabytedb/yugaware  2.8.2          2.8.2.0-b51  YugaWare is YugaByte Database's Orchestration a...
+    yugabytedb/yugaware {{<yb-version version="v2.8" format="short">}}          {{<yb-version version="v2.8" format="build">}}  YugaWare is YugaByte Database's Orchestration a...
     ```
 
 1. Run the following `helm install` command to install the Yugabyte Platform (`yugaware`) Helm chart:
 
     ```sh
-    helm install yw-test yugabytedb/yugaware --version 2.8.2 -n yb-platform --wait
+    helm install yw-test yugabytedb/yugaware --version{{<yb-version version="v2.8" format="short">}} -n yb-platform --wait
     ```
 
 1. Optionally, set the TLS version for Nginx frontend by using `ssl_protocols` operational directive in the Helm installation, as follows:
 
     ```sh
-    helm install yw-test yugabytedb/yugaware --version 2.8.2 -n yb-platform --wait --set tls.sslProtocols="TLSv1.2"
+    helm install yw-test yugabytedb/yugaware --version{{<yb-version version="v2.8" format="short">}} -n yb-platform --wait --set tls.sslProtocols="TLSv1.2"
     ```
 
 1. Use the following command to check the service:
@@ -116,6 +115,7 @@ You can customize Yugabyte Platform on a Kubernetes cluster in a number of ways,
 
   ```sh
   helm install yw-test yugabytedb/yugaware -n yb-platform \
+    --version {{<yb-version version="v2.8" format="short">}} \
     --set yugaware.resources.requests.cpu=2 \
     --set yugaware.resources.requests.memory=4Gi \
     --set yugaware.resources.limits.cpu=2 \
@@ -134,6 +134,7 @@ You can customize Yugabyte Platform on a Kubernetes cluster in a number of ways,
 
     ```sh
   helm install yw-test yugabytedb/yugaware -n yb-platform \
+    --version {{<yb-version version="v2.8" format="short">}} \
     --set yugaware.service.annotations."cloud\.google\.com\/load-balancer-type"="Internal"
     ```
 

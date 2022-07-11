@@ -9,8 +9,7 @@ menu:
     identifier: normal-distribution-analysis-reports
     parent: analyzing-a-normal-distribution
     weight: 200
-isTocNested: true
-showAsideToc: true
+type: indexpage
 ---
 **This page links to the following reports**<br>
 &#160;&#160;&#160;&#160;&#160;&#160;&#160;<br>

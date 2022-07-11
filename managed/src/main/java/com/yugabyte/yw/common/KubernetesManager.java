@@ -11,7 +11,6 @@ import io.fabric8.kubernetes.api.model.PodStatus;
 import io.fabric8.kubernetes.api.model.Secret;
 import io.fabric8.kubernetes.api.model.Service;
 import java.io.File;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -212,14 +211,23 @@ public abstract class KubernetesManager {
 
   /** @return the first that exists of loadBalancer.hostname, loadBalancer.ip, clusterIp */
   public abstract String getPreferredServiceIP(
-      Map<String, String> config, String namespace, boolean isMaster);
+      Map<String, String> config,
+      String universePrefix,
+      String namespace,
+      boolean isMaster,
+      boolean newNamingStyle);
 
   public abstract List<Node> getNodeInfos(Map<String, String> config);
 
   public abstract Secret getSecret(
       Map<String, String> config, String secretName, @Nullable String namespace);
 
-  public abstract void updateNumNodes(Map<String, String> config, String namespace, int numNodes);
+  public abstract void updateNumNodes(
+      Map<String, String> config,
+      String universePrefix,
+      String namespace,
+      int numNodes,
+      boolean newNamingStyle);
 
   public abstract void deleteStorage(
       Map<String, String> config, String universePrefix, String namespace);

@@ -5,12 +5,11 @@ description: Add users to YugabyteDB Managed clusters
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 menu:
-  preview:
+  preview_yugabyte-cloud:
     identifier: add-users
     parent: cloud-secure-clusters
     weight: 350
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Add database users to provide team members and applications access to the cluster's YugabyteDB database.
@@ -45,6 +44,12 @@ Add database users as follows:
 1. Grant the user any roles they require using the GRANT statement.
 1. Authorize their network so that they can access the cluster. Refer to [Assign IP allow lists](../../cloud-secure-clusters/add-connections/).
 1. Send them the credentials.
+
+{{< note title="Database users and case sensitivity" >}}
+
+Like SQL and CQL, both YSQL and YCQL are case-insensitive by default. When specifying an identifier, such as the name of a table or role, YSQL and YCQL automatically convert the identifier to lowercase. For example, `CREATE ROLE Alice` creates the role "alice". To use a case-sensitive name, enclose the name in quotes. For example, to create the role "Alice", use `CREATE ROLE "Alice"`.
+
+{{< /note >}}
 
 #### YSQL
 

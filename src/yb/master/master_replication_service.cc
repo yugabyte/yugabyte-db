@@ -39,6 +39,7 @@ class MasterReplicationServiceImpl : public MasterServiceBase, public MasterRepl
     (DeleteUniverseReplication)
     (GetCDCStream)
     (GetUniverseReplication)
+    (GetUDTypeMetadata)
     (IsSetupUniverseReplicationDone)
     (UpdateConsumerOnProducerSplit)
     (ListCDCStreams)
@@ -46,6 +47,7 @@ class MasterReplicationServiceImpl : public MasterServiceBase, public MasterRepl
     (SetupUniverseReplication)
     (UpdateCDCStream)
     (GetCDCDBStreamInfo)
+    (IsBootstrapRequired)
   )
 };
 

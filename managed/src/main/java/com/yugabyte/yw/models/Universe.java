@@ -9,6 +9,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.net.HostAndPort;
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.PortType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -386,6 +387,17 @@ public class Universe extends Model {
   }
 
   /**
+   * Checks if all nodes in universe have the node state 'Live'
+   *
+   * @return true if all nodes are in LIVE state
+   */
+  public boolean allNodesLive() {
+    return getNodes()
+        .stream()
+        .allMatch(nodeDetails -> nodeDetails.state.equals(NodeDetails.NodeState.Live));
+  }
+
+  /**
    * Checks if there is any node in a transit state across the universe.
    *
    * @return true if there is any such node.
@@ -469,6 +481,26 @@ public class Universe extends Model {
         .stream()
         .filter(server -> primaryNodes.contains(server))
         .collect(Collectors.toList());
+  }
+
+  /**
+   * Return the list of live TServers in the primary cluster. TODO: junit tests for this
+   * functionality (UniverseTest.java)
+   *
+   * @return a list of TServer nodes
+   */
+  public List<NodeDetails> getLiveTServersInPrimaryCluster() {
+    List<NodeDetails> servers = getTServersInPrimaryCluster();
+    List<NodeDetails> filteredServers =
+        servers
+            .stream()
+            .filter(nodeDetails -> nodeDetails.state.equals(NodeDetails.NodeState.Live))
+            .collect(Collectors.toList());
+
+    if (filteredServers.isEmpty()) {
+      LOG.trace("No live nodes for getLiveTServersInPrimaryCluster in universe {}", universeUUID);
+    }
+    return filteredServers;
   }
 
   /**
@@ -597,6 +629,16 @@ public class Universe extends Model {
   }
 
   /**
+   * It returns a comma separated list of <privateIp:tserverHTTPPort> for all tservers in the
+   * primary cluster of this universe.
+   *
+   * @return A comma separated string of 'host:port'
+   */
+  public String getTserverAddresses() {
+    return getHostPortsString(getTServersInPrimaryCluster(), ServerType.TSERVER, PortType.RPC);
+  }
+
+  /**
    * Returns the certificate path in case node to node TLS is enabled.
    *
    * @return path to the certfile.
@@ -686,9 +728,7 @@ public class Universe extends Model {
     for (NodeDetails node : serverNodes) {
       // Only get secondary if dual net legacy is false.
       boolean shouldGetSecondary =
-          this.getConfig().getOrDefault(DUAL_NET_LEGACY, "true").equals("false")
-              ? getSecondary
-              : false;
+          this.getConfig().getOrDefault(DUAL_NET_LEGACY, "true").equals("false") && getSecondary;
       String nodeIp =
           shouldGetSecondary ? node.cloudInfo.secondary_private_ip : node.cloudInfo.private_ip;
       // In case the secondary IP is null, just re-assign to primary.
@@ -757,6 +797,21 @@ public class Universe extends Model {
    */
   public Collection<NodeDetails> getNodesInCluster(UUID clusterUUID) {
     return getUniverseDetails().getNodesInCluster(clusterUUID);
+  }
+
+  /**
+   * Get deployment mode of node (on-prem/kubernetes/cloud provider)
+   *
+   * @param node - node to get info on
+   * @return Get deployment details
+   */
+  public Common.CloudType getNodeDeploymentMode(NodeDetails node) {
+    if (node == null) {
+      throw new RuntimeException("node must be nonnull");
+    }
+    UniverseDefinitionTaskParams.Cluster cluster =
+        getUniverseDetails().getClusterByUuid(node.placementUuid);
+    return cluster.userIntent.providerType;
   }
 
   /**
@@ -880,6 +935,27 @@ public class Universe extends Model {
 
   public static boolean existsRelease(String version) {
     return universeDetailsIfReleaseExists(version).size() != 0;
+  }
+
+  static Set<UUID> getUniverseUUIDsForCustomer(Long customerId) {
+    return find.query()
+        .select("universeUUID")
+        .where()
+        .eq("customer_id", customerId)
+        .findList()
+        .stream()
+        .map(Universe::getUniverseUUID)
+        .collect(Collectors.toSet());
+  }
+
+  static Set<Universe> getUniversesForCustomer(Long customerId) {
+    return find.query()
+        .where()
+        .eq("customer_id", customerId)
+        .findSet()
+        .stream()
+        .peek(Universe::fillUniverseDetails)
+        .collect(Collectors.toSet());
   }
 
   static boolean isUniversePaused(UUID uuid) {

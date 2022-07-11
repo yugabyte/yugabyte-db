@@ -11,33 +11,25 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
-import org.yb.CommonTypes.TableType;
-import org.yb.client.YBClient;
 
 @Slf4j
 public class CreateKubernetesUniverse extends KubernetesTaskBase {
-
-  private String ysqlPassword;
-  private String ycqlPassword;
-  private String ysqlCurrentPassword = Util.DEFAULT_YSQL_PASSWORD;
-  private String ysqlUsername = Util.DEFAULT_YSQL_USERNAME;
-  private String ycqlCurrentPassword = Util.DEFAULT_YCQL_PASSWORD;
-  private String ycqlUsername = Util.DEFAULT_YCQL_USERNAME;
-  private String ysqlDb = Util.YUGABYTE_DB;
 
   @Inject
   protected CreateKubernetesUniverse(BaseTaskDependencies baseTaskDependencies) {
@@ -50,15 +42,15 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
       // Verify the task params.
       verifyParams(UniverseOpType.CREATE);
 
-      if (taskParams().getPrimaryCluster().userIntent.enableYCQL
-          && taskParams().getPrimaryCluster().userIntent.enableYCQLAuth) {
-        ycqlPassword = taskParams().getPrimaryCluster().userIntent.ycqlPassword;
-        taskParams().getPrimaryCluster().userIntent.ycqlPassword = Util.redactString(ycqlPassword);
+      Cluster primaryCluster = taskParams().getPrimaryCluster();
+
+      if (primaryCluster.userIntent.enableYCQL && primaryCluster.userIntent.enableYCQLAuth) {
+        ycqlPassword = primaryCluster.userIntent.ycqlPassword;
+        primaryCluster.userIntent.ycqlPassword = Util.redactString(ycqlPassword);
       }
-      if (taskParams().getPrimaryCluster().userIntent.enableYSQL
-          && taskParams().getPrimaryCluster().userIntent.enableYSQLAuth) {
-        ysqlPassword = taskParams().getPrimaryCluster().userIntent.ysqlPassword;
-        taskParams().getPrimaryCluster().userIntent.ysqlPassword = Util.redactString(ysqlPassword);
+      if (primaryCluster.userIntent.enableYSQL && primaryCluster.userIntent.enableYSQLAuth) {
+        ysqlPassword = primaryCluster.userIntent.ysqlPassword;
+        primaryCluster.userIntent.ysqlPassword = Util.redactString(ysqlPassword);
       }
 
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
@@ -66,7 +58,7 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
       // Set all the in-memory node names first.
       setNodeNames(universe);
 
-      PlacementInfo pi = taskParams().getPrimaryCluster().placementInfo;
+      PlacementInfo pi = primaryCluster.placementInfo;
 
       selectNumMastersAZ(pi);
 
@@ -74,9 +66,12 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
       writeUserIntentToUniverse();
 
       Provider provider =
-          Provider.get(UUID.fromString(taskParams().getPrimaryCluster().userIntent.provider));
+          Provider.getOrBadRequest(
+              UUID.fromString(taskParams().getPrimaryCluster().userIntent.provider));
 
       KubernetesPlacement placement = new KubernetesPlacement(pi);
+
+      boolean newNamingStyle = taskParams().useNewHelmNamingStyle;
 
       String masterAddresses =
           PlacementInfoUtil.computeMasterAddresses(
@@ -84,69 +79,60 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
               placement.masters,
               taskParams().nodePrefix,
               provider,
-              taskParams().communicationPorts.masterRpcPort);
+              taskParams().communicationPorts.masterRpcPort,
+              newNamingStyle);
 
       boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
 
-      createPodsTask(placement, masterAddresses);
+      createPodsTask(placement, masterAddresses, /*isReadOnlyCluster*/ false);
 
-      createSingleKubernetesExecutorTask(KubernetesCommandExecutor.CommandType.POD_INFO, pi);
+      createSingleKubernetesExecutorTask(
+          KubernetesCommandExecutor.CommandType.POD_INFO, pi, /*isReadOnlyCluster*/ false);
 
       Set<NodeDetails> tserversAdded =
-          getPodsToAdd(placement.tservers, null, ServerType.TSERVER, isMultiAz);
+          getPodsToAdd(placement.tservers, null, ServerType.TSERVER, isMultiAz, false);
+
+      // Check if we need to create read cluster pods also.
+      List<Cluster> readClusters = taskParams().getReadOnlyClusters();
+      if (readClusters.size() > 1) {
+        String msg = "Expected at most 1 read cluster but found " + readClusters.size();
+        log.error(msg);
+        throw new RuntimeException(msg);
+      } else if (readClusters.size() == 1) {
+        Cluster readCluster = readClusters.get(0);
+        PlacementInfo readClusterPI = readCluster.placementInfo;
+        Provider readClusterProvider =
+            Provider.getOrBadRequest(UUID.fromString(readCluster.userIntent.provider));
+        CloudType readClusterProviderType = readCluster.userIntent.providerType;
+        if (readClusterProviderType != CloudType.kubernetes) {
+          String msg =
+              String.format(
+                  "Read replica clusters provider type is expected to be kubernetes but found %s",
+                  readClusterProviderType.name());
+          log.error(msg);
+          throw new IllegalArgumentException(msg);
+        }
+
+        KubernetesPlacement readClusterPlacement = new KubernetesPlacement(readClusterPI);
+        // Skip choosing masters from read cluster.
+        boolean isReadClusterMultiAz = PlacementInfoUtil.isMultiAZ(readClusterProvider);
+        createPodsTask(readClusterPlacement, masterAddresses, true);
+        createSingleKubernetesExecutorTask(
+            KubernetesCommandExecutor.CommandType.POD_INFO, readClusterPI, true);
+        tserversAdded.addAll(
+            getPodsToAdd(
+                readClusterPlacement.tservers,
+                null,
+                ServerType.TSERVER,
+                isReadClusterMultiAz,
+                true));
+      }
 
       // Wait for new tablet servers to be responsive.
       createWaitForServersTasks(tserversAdded, ServerType.TSERVER)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
-      // Wait for a Master Leader to be elected.
-      createWaitForMasterLeaderTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-
-      // Persist the placement info into the YB master leader.
-      createPlacementInfoTask(null /* blacklistNodes */)
-          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-
-      // Manage encryption at rest
-      SubTaskGroup manageEncryptionKeyTask = createManageEncryptionAtRestTask();
-      if (manageEncryptionKeyTask != null) {
-        manageEncryptionKeyTask.setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-      }
-
-      // Wait for a master leader to hear from all the tservers.
-      createWaitForTServerHeartBeatsTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-
-      createSwamperTargetUpdateTask(false);
-
-      // Create a simple redis table.
-      if (taskParams().getPrimaryCluster().userIntent.enableYEDIS) {
-        createTableTask(
-                TableType.REDIS_TABLE_TYPE,
-                YBClient.REDIS_DEFAULT_TABLE_NAME,
-                null /* table details */,
-                true /* ifNotExist */)
-            .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-      }
-
-      Cluster primaryCluster = taskParams().getPrimaryCluster();
-
-      // Change admin password for Admin user, as specified.
-      if ((primaryCluster.userIntent.enableYSQL && primaryCluster.userIntent.enableYSQLAuth)
-          || (primaryCluster.userIntent.enableYCQL && primaryCluster.userIntent.enableYCQLAuth)) {
-        createChangeAdminPasswordTask(
-                primaryCluster,
-                ysqlPassword,
-                ysqlCurrentPassword,
-                ysqlUsername,
-                ysqlDb,
-                ycqlPassword,
-                ycqlCurrentPassword,
-                ycqlUsername)
-            .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-      }
-
-      // Marks the update of this universe as a success only if all the tasks before it succeeded.
-      createMarkUniverseUpdateSuccessTasks()
-          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      createConfigureUniverseTasks(primaryCluster);
 
       // Run all the tasks.
       getRunnableTask().runSubTasks();

@@ -186,10 +186,14 @@ bool GetTabletPeer(TabletServer* tserver, const Webserver::WebRequest& req,
   return true;
 }
 
-bool TabletBootstrapping(const std::shared_ptr<TabletPeer>& peer, const string& tablet_id,
+bool TabletReady(const std::shared_ptr<TabletPeer>& peer, const string& tablet_id,
                          std::stringstream* out) {
-  if (peer->state() == tablet::BOOTSTRAPPING) {
+  auto state = peer->state();
+  if (state == tablet::BOOTSTRAPPING) {
     (*out) << "Tablet " << EscapeForHtmlToString(tablet_id) << " is still bootstrapping";
+    return false;
+  } else if (state == tablet::NOT_STARTED) {
+    (*out) << "Tablet " << EscapeForHtmlToString(tablet_id) << " has not yet started";
     return false;
   }
   return true;
@@ -203,7 +207,7 @@ bool LoadTablet(TabletServer* tserver,
                 std::stringstream* out) {
   if (!GetTabletID(req, tablet_id, out)) return false;
   if (!GetTabletPeer(tserver, req, peer, *tablet_id, out)) return false;
-  if (!TabletBootstrapping(*peer, *tablet_id, out)) return false;
+  if (!TabletReady(*peer, *tablet_id, out)) return false;
   return true;
 }
 

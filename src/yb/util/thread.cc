@@ -518,7 +518,7 @@ void ThreadMgr::ThreadPathHandler(const WebCallbackRegistry::WebRequest& req,
       RenderThreadCategoryRows(*category, groups.data());
     }
 
-    for (auto g : kStackTraceGroupList) {
+    for (auto g : StackTraceGroupList()) {
       *output << groups[to_underlying(g)];
     }
     (*output) << "</table>";

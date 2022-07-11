@@ -81,13 +81,16 @@ Status TabletServer::RegisterServices() {
   });
 #endif
 
+  cdc_service_ = std::make_shared<CDCServiceImpl>(
+      tablet_manager_.get(), metric_entity(), metric_registry());
+
   RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(
       FLAGS_ts_backup_svc_queue_length,
       std::make_unique<TabletServiceBackupImpl>(tablet_manager_.get(), metric_entity())));
 
   RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(
       FLAGS_xcluster_svc_queue_length,
-      std::make_unique<CDCServiceImpl>(tablet_manager_.get(), metric_entity(), metric_registry())));
+      cdc_service_));
 
   return super::RegisterServices();
 }
@@ -96,7 +99,7 @@ Status TabletServer::SetupMessengerBuilder(rpc::MessengerBuilder* builder) {
   RETURN_NOT_OK(super::SetupMessengerBuilder(builder));
   if (!FLAGS_cert_node_filename.empty()) {
     secure_context_ = VERIFY_RESULT(server::SetupSecureContext(
-        server::DefaultRootDir(*fs_manager_),
+        fs_manager_->GetDefaultRootDir(),
         FLAGS_cert_node_filename,
         server::SecureContextType::kInternal,
         builder));
@@ -167,7 +170,7 @@ Status TabletServer::ReloadKeysAndCertificates() {
 
   RETURN_NOT_OK(server::ReloadSecureContextKeysAndCertificates(
         secure_context_.get(),
-        server::DefaultRootDir(*fs_manager_),
+        fs_manager_->GetDefaultRootDir(),
         server::SecureContextType::kInternal,
         options_.HostsString()));
 
@@ -176,6 +179,23 @@ Status TabletServer::ReloadKeysAndCertificates() {
     RETURN_NOT_OK(cdc_consumer_->ReloadCertificates());
   }
 
+  for (const auto& reloader : certificate_reloaders_) {
+    RETURN_NOT_OK(reloader());
+  }
+
+  return Status::OK();
+}
+
+void TabletServer::RegisterCertificateReloader(CertificateReloader reloader) {
+  certificate_reloaders_.push_back(std::move(reloader));
+}
+
+Status TabletServer::SetCDCServiceEnabled() {
+  if (!cdc_service_) {
+    LOG(WARNING) << "CDC Service Not Registered";
+  } else {
+    cdc_service_->SetCDCServiceEnabled();
+  }
   return Status::OK();
 }
 

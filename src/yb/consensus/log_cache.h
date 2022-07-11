@@ -138,7 +138,7 @@ class LogCache {
   // callback fires.
   //
   // Returns non-OK if the Log append itself fails.
-  CHECKED_STATUS AppendOperations(const ReplicateMsgs& msgs, const yb::OpId& committed_op_id,
+  Status AppendOperations(const ReplicateMsgs& msgs, const yb::OpId& committed_op_id,
                                   RestartSafeCoarseTimePoint batch_mono_time,
                                   const StatusCallback& callback);
 
@@ -179,8 +179,6 @@ class LogCache {
 
   // Start memory tracking of following operations in case they are still present in cache.
   void TrackOperationsMemory(const OpIds& op_ids);
-
-  CHECKED_STATUS FlushIndex();
 
   Result<OpId> TEST_GetLastOpIdWithType(int64_t max_allowed_index, OperationType op_type);
 

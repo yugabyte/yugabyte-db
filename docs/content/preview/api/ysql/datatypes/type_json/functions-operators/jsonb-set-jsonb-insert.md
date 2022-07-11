@@ -8,8 +8,7 @@ menu:
     identifier: jsonb-set-jsonb-insert
     parent: json-functions-operators
     weight: 210
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 **Purpose**: Use `jsonb_set()` to change a JSON value that is the value of an existing key-value pair in a JSON _object_ or the value at an existing index in a JSON array. Use `jsonb_insert()` to insert a value, either as the value for a key that doesn't yet exist in a JSON _object_ or beyond the end or before the start of the index range, for a JSON _array_.

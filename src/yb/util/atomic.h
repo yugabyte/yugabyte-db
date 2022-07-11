@@ -382,7 +382,7 @@ AtomicUniquePtr<T> MakeAtomicUniquePtr(Args&&... args) {
 template <class T>
 T GetAtomicFlag(T* flag) {
   std::atomic<T>& atomic_flag = *pointer_cast<std::atomic<T>*>(flag);
-  return atomic_flag.load(std::memory_order::memory_order_relaxed);
+  return atomic_flag.load(std::memory_order::relaxed);
 }
 
 template <class U, class T>
@@ -417,6 +417,12 @@ template<typename T>
 void UpdateAtomicMax(std::atomic<T>* max_holder, T new_value) {
   auto current_max = max_holder->load(std::memory_order_acquire);
   while (new_value > current_max && !max_holder->compare_exchange_weak(current_max, new_value)) {}
+}
+
+template<typename T>
+void UpdateAtomicMin(std::atomic<T>* min_holder, T value) {
+  auto current_min = min_holder->load(std::memory_order_acquire);
+  while (value < current_min && !min_holder->compare_exchange_weak(current_min, value)) {}
 }
 
 class AtomicTryMutex {

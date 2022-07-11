@@ -78,8 +78,8 @@ class TSTabletManager;
 
 class RemoteBootstrapComponent {
  public:
-  virtual CHECKED_STATUS CreateDirectories(const std::string& db_dir, FsManager* fs) = 0;
-  virtual CHECKED_STATUS Download() = 0;
+  virtual Status CreateDirectories(const std::string& db_dir, FsManager* fs) = 0;
+  virtual Status Download() = 0;
 
   virtual ~RemoteBootstrapComponent() = default;
 };
@@ -109,7 +109,7 @@ class RemoteBootstrapClient {
   // If the consensus metadata exists on disk for this tablet, and if
   // 'caller_term' is lower than the current term stored in that consensus
   // metadata, then this method will fail with a Status::InvalidArgument error.
-  CHECKED_STATUS SetTabletToReplace(const scoped_refptr<tablet::RaftGroupMetadata>& meta,
+  Status SetTabletToReplace(const scoped_refptr<tablet::RaftGroupMetadata>& meta,
                                     int64_t caller_term);
 
   // Start up a remote bootstrap session to bootstrap from the specified
@@ -120,7 +120,7 @@ class RemoteBootstrapClient {
   // ts_manager pointer allows the bootstrap function to assign non-random
   // data and wal directories for the bootstrapped tablets.
   // TODO: Rename these parameters to bootstrap_source_*.
-  CHECKED_STATUS Start(const std::string& bootstrap_peer_uuid,
+  Status Start(const std::string& bootstrap_peer_uuid,
                        rpc::ProxyCache* proxy_cache,
                        const HostPort& bootstrap_peer_addr,
                        scoped_refptr<tablet::RaftGroupMetadata>* metadata,
@@ -128,19 +128,19 @@ class RemoteBootstrapClient {
 
   // Runs a "full" remote bootstrap, copying the physical layout of a tablet
   // from the leader of the specified consensus configuration.
-  CHECKED_STATUS FetchAll(tablet::TabletStatusListener* status_listener);
+  Status FetchAll(tablet::TabletStatusListener* status_listener);
 
   // After downloading all files successfully, write out the completed
   // replacement superblock.
-  CHECKED_STATUS Finish();
+  Status Finish();
 
   // Verify that the remote bootstrap was completed successfully by verifying that the ChangeConfig
   // request was propagated.
-  CHECKED_STATUS VerifyChangeRoleSucceeded(
+  Status VerifyChangeRoleSucceeded(
       const std::shared_ptr<consensus::Consensus>& shared_consensus);
 
   // Removes session at server.
-  CHECKED_STATUS Remove();
+  Status Remove();
 
  private:
   FRIEND_TEST(RemoteBootstrapRocksDBClientTest, TestBeginEndSession);
@@ -156,23 +156,23 @@ class RemoteBootstrapClient {
   void UpdateStatusMessage(const std::string& message);
 
   // Download all WAL files sequentially.
-  CHECKED_STATUS DownloadWALs();
+  Status DownloadWALs();
 
   // Download a single WAL file.
   // Assumes the WAL directories have already been created.
   // WAL file is opened with options so that it will fsync() on close.
-  CHECKED_STATUS DownloadWAL(uint64_t wal_segment_seqno);
+  Status DownloadWAL(uint64_t wal_segment_seqno);
 
   // Write out the Consensus Metadata file based on the ConsensusStatePB
   // downloaded as part of initiating the remote bootstrap session.
-  CHECKED_STATUS WriteConsensusMetadata();
+  Status WriteConsensusMetadata();
 
-  CHECKED_STATUS CreateTabletDirectories(const std::string& db_dir, FsManager* fs);
+  Status CreateTabletDirectories(const std::string& db_dir, FsManager* fs);
 
-  CHECKED_STATUS DownloadRocksDBFiles();
+  Status DownloadRocksDBFiles();
 
   // End the remote bootstrap session.
-  CHECKED_STATUS EndRemoteSession();
+  Status EndRemoteSession();
 
   // Return standard log prefix.
   const std::string& LogPrefix() const {

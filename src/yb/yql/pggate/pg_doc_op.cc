@@ -59,7 +59,7 @@ class PgDocReadOpCached : private PgDocReadOpCachedHelper, public PgDocOp {
       : PgDocOp(pg_session, &dummy_table), data_(move(data)) {
   }
 
-  CHECKED_STATUS GetResult(std::list<PgDocResult> *rowsets) override {
+  Status GetResult(std::list<PgDocResult> *rowsets) override {
     if (data_) {
       for (const auto& d : *data_) {
         rowsets->emplace_back(d);
@@ -69,7 +69,7 @@ class PgDocReadOpCached : private PgDocReadOpCachedHelper, public PgDocOp {
     return Status::OK();
   }
 
-  CHECKED_STATUS ExecuteInit(const PgExecParameters* exec_params) override {
+  Status ExecuteInit(const PgExecParameters* exec_params) override {
     return Status::OK();
   }
 
@@ -82,7 +82,7 @@ class PgDocReadOpCached : private PgDocReadOpCachedHelper, public PgDocOp {
   }
 
  protected:
-  CHECKED_STATUS DoPopulateDmlByYbctidOps(const std::vector<Slice>& ybctids) override {
+  Status DoPopulateDmlByYbctidOps(const YbctidGenerator& generator) override {
     return Status::OK();
   }
 
@@ -96,13 +96,8 @@ class PgDocReadOpCached : private PgDocReadOpCachedHelper, public PgDocOp {
   }
 
  private:
-  CHECKED_STATUS SendRequestImpl(bool force_non_bufferable) override {
-    return STATUS(InternalError, "SendRequestImpl is not defined for PgDocReadOpCached");
-  }
-
-  Result<std::list<PgDocResult>> ProcessResponseImpl(
-      const rpc::CallResponsePtr& response) override {
-    return STATUS(InternalError, "ProcessResponseImpl is not defined for PgDocReadOpCached");
+  Status CompleteProcessResponse() override {
+    return STATUS(InternalError, "CompleteProcessResponse is not defined for PgDocReadOpCached");
   }
 
   PrefetchedDataHolder data_;
@@ -201,9 +196,33 @@ Status PgDocResult::ProcessSparseSystemColumns(std::string *reservoir) {
 
 //--------------------------------------------------------------------------------------------------
 
-PgDocOp::PgDocOp(const PgSession::ScopedRefPtr& pg_session, PgTable* table)
-    : pg_session_(pg_session), table_(*table) {
+PgDocResponse::PgDocResponse(PerformFuture future, uint64_t in_txn_limit)
+    : holder_(PerformInfo{.future = std::move(future), .in_txn_limit = in_txn_limit}) {}
+
+PgDocResponse::PgDocResponse(ProviderPtr provider)
+    : holder_(std::move(provider)) {}
+
+bool PgDocResponse::Valid() const {
+  return std::holds_alternative<PerformInfo>(holder_)
+      ? std::get<PerformInfo>(holder_).future.Valid()
+      : static_cast<bool>(std::get<ProviderPtr>(holder_));
 }
+
+Result<PgDocResponse::Data> PgDocResponse::Get() {
+  if (std::holds_alternative<PerformInfo>(holder_)) {
+    auto& info = std::get<PerformInfo>(holder_);
+    return Data(VERIFY_RESULT(info.future.Get()), info.in_txn_limit);
+  }
+  // Detach provider pointer after first usage to make PgDocResponse::Valid return false.
+  ProviderPtr provider;
+  std::get<ProviderPtr>(holder_).swap(provider);
+  return provider->Get();
+}
+
+//--------------------------------------------------------------------------------------------------
+
+PgDocOp::PgDocOp(const PgSession::ScopedRefPtr& pg_session, PgTable* table, const Sender& sender)
+    : pg_session_(pg_session), table_(*table), sender_(sender) {}
 
 PgDocOp::~PgDocOp() {
   // Wait for result in case request was sent.
@@ -233,8 +252,7 @@ Result<RequestSent> PgDocOp::Execute(bool force_non_bufferable) {
   // This refers to the sequence of operations between this layer and the underlying tablet
   // server / DocDB layer, not to the sequence of operations between the PostgreSQL layer and this
   // layer.
-  exec_status_ = SendRequest(force_non_bufferable);
-  RETURN_NOT_OK(exec_status_);
+  RETURN_NOT_OK(SendRequest(force_non_bufferable));
   return RequestSent(response_.Valid());
 }
 
@@ -245,8 +263,7 @@ Status PgDocOp::GetResult(list<PgDocResult> *rowsets) {
   if (!end_of_data_) {
     // Send request now in case prefetching was suppressed.
     if (suppress_next_result_prefetching_ && !response_.Valid()) {
-      exec_status_ = SendRequest(true /* force_non_bufferable */);
-      RETURN_NOT_OK(exec_status_);
+      RETURN_NOT_OK(SendRequest(true /* force_non_bufferable */));
     }
 
     DCHECK(response_.Valid());
@@ -258,8 +275,7 @@ Status PgDocOp::GetResult(list<PgDocResult> *rowsets) {
     rowsets->splice(rowsets->end(), rows);
     // Prefetch next portion of data if needed.
     if (!(end_of_data_ || suppress_next_result_prefetching_)) {
-      exec_status_ = SendRequest(true /* force_non_bufferable */);
-      RETURN_NOT_OK(exec_status_);
+      RETURN_NOT_OK(SendRequest(true /* force_non_bufferable */));
     }
   }
 
@@ -339,32 +355,38 @@ Status PgDocOp::SendRequestImpl(bool force_non_bufferable) {
 
   // Send at most "parallelism_level_" number of requests at one time.
   size_t send_count = std::min(parallelism_level_, active_op_count_);
-  response_ = VERIFY_RESULT(pg_session_->RunAsync(
-      pgsql_ops_.data(), send_count, *table_, &GetReadTime(), force_non_bufferable));
-
+  response_ = VERIFY_RESULT(sender_(
+      pg_session_.get(), pgsql_ops_.data(), send_count,
+      *table_, GetInTxnLimit(), force_non_bufferable));
   return Status::OK();
 }
 
 Result<std::list<PgDocResult>> PgDocOp::ProcessResponse(
-    const Result<rpc::CallResponsePtr>& response) {
+    const Result<PgDocResponse::Data>& response) {
+  VLOG(1) << __PRETTY_FUNCTION__ << ": Received response for request " << this;
   // Check operation status.
   DCHECK(exec_status_.ok());
-  if (response.ok()) {
-    auto result = ProcessResponseImpl(*response);
-    if (result.ok()) {
-      return result;
-    }
-    exec_status_ = result.status();
-  } else {
-    exec_status_ = response.status();
+  auto result = ProcessResponseImpl(response);
+  if (result.ok()) {
+    return result;
   }
+  exec_status_ = result.status();
   return exec_status_;
 }
 
-Result<std::list<PgDocResult>> PgDocOp::ProcessResponseResult(
-    const rpc::CallResponsePtr& response) {
-  VLOG(1) << __PRETTY_FUNCTION__ << ": Received response for request " << this;
+Result<std::list<PgDocResult>> PgDocOp::ProcessResponseImpl(
+    const Result<PgDocResponse::Data>& response) {
+  if (!response.ok()) {
+    return response.status();
+  }
+  const auto& data = *response;
+  auto result = VERIFY_RESULT(ProcessCallResponse(*data.response));
+  GetInTxnLimit() = data.in_txn_limit;
+  RETURN_NOT_OK(CompleteProcessResponse());
+  return result;
+}
 
+Result<std::list<PgDocResult>> PgDocOp::ProcessCallResponse(const rpc::CallResponse& response) {
   // Process data coming from tablet server.
   std::list<PgDocResult> result;
   bool no_sorting_order = batch_row_orders_.empty();
@@ -406,7 +428,7 @@ Result<std::list<PgDocResult>> PgDocOp::ProcessResponseResult(
     if (!op_response->has_rows_data_sidecar()) {
       continue;
     }
-    auto rows_data = VERIFY_RESULT(response->GetSidecarHolder(op_response->rows_data_sidecar()));
+    auto rows_data = VERIFY_RESULT(response.GetSidecarHolder(op_response->rows_data_sidecar()));
     if (no_sorting_order) {
       result.emplace_back(std::move(rows_data));
     } else {
@@ -423,9 +445,9 @@ Result<std::list<PgDocResult>> PgDocOp::ProcessResponseResult(
   return result;
 }
 
-uint64_t& PgDocOp::GetReadTime() {
-  return (read_time_ || !exec_params_.statement_read_time)
-      ? read_time_ : *exec_params_.statement_read_time;
+uint64_t& PgDocOp::GetInTxnLimit() {
+  return exec_params_.statement_in_txn_limit ? *exec_params_.statement_in_txn_limit
+                                             : in_txn_limit_;
 }
 
 Status PgDocOp::CreateRequests() {
@@ -437,8 +459,8 @@ Status PgDocOp::CreateRequests() {
   return CompleteRequests();
 }
 
-Status PgDocOp::PopulateDmlByYbctidOps(const std::vector<Slice>& ybctids) {
-  RETURN_NOT_OK(DoPopulateDmlByYbctidOps(ybctids));
+Status PgDocOp::PopulateDmlByYbctidOps(const YbctidGenerator& generator) {
+  RETURN_NOT_OK(DoPopulateDmlByYbctidOps(generator));
   request_population_completed_ = true;
   return CompleteRequests();
 }
@@ -450,13 +472,26 @@ Status PgDocOp::CompleteRequests() {
   return Status::OK();
 }
 
+Result<PgDocResponse> PgDocOp::DefaultSender(
+    PgSession* session, const PgsqlOpPtr* ops, size_t ops_count, const PgTableDesc& table,
+    uint64_t in_txn_limit, bool force_non_bufferable) {
+  auto result = VERIFY_RESULT(session->RunAsync(
+      ops, ops_count, table, &in_txn_limit, force_non_bufferable));
+  return PgDocResponse(std::move(result), in_txn_limit);
+}
+
 //-------------------------------------------------------------------------------------------------
 
 PgDocReadOp::PgDocReadOp(const PgSession::ScopedRefPtr& pg_session,
                          PgTable* table,
                          PgsqlReadOpPtr read_op)
-    : PgDocOp(pg_session, table), read_op_(std::move(read_op)) {
-}
+    : PgDocOp(pg_session, table), read_op_(std::move(read_op)) {}
+
+PgDocReadOp::PgDocReadOp(const PgSession::ScopedRefPtr& pg_session,
+                         PgTable* table,
+                         PgsqlReadOpPtr read_op,
+                         const Sender& sender)
+    : PgDocOp(pg_session, table, sender), read_op_(std::move(read_op)) {}
 
 Status PgDocReadOp::ExecuteInit(const PgExecParameters *exec_params) {
   SCHECK(pgsql_ops_.empty(),
@@ -474,24 +509,14 @@ Status PgDocReadOp::ExecuteInit(const PgExecParameters *exec_params) {
   SetRequestPrefetchLimit();
   SetBackfillSpec();
   SetRowMark();
-  SetReadTime();
+  SetReadTimeForBackfill();
   return Status::OK();
 }
 
-Result<std::list<PgDocResult>> PgDocReadOp::ProcessResponseImpl(
-    const rpc::CallResponsePtr& response) {
-  // Process result from tablet server and check result status.
-  auto result = VERIFY_RESULT(ProcessResponseResult(response));
-
-  // Process paging state and check status.
-  RETURN_NOT_OK(ProcessResponseReadStates());
-  return result;
-}
-
 Result<bool> PgDocReadOp::DoCreateRequests() {
-  // All information from the SQL request has been collected and setup. This code populate
+  // All information from the SQL request has been collected and setup. This code populates
   // Protobuf requests before sending them to DocDB. For performance reasons, requests are
-  // constructed differently for different statement.
+  // constructed differently for different statements.
   if (read_op_->read_request().has_sampling_state()) {
     VLOG(1) << __PRETTY_FUNCTION__ << ": Preparing sampling requests ";
     return PopulateSamplingOps();
@@ -524,9 +549,7 @@ Result<bool> PgDocReadOp::DoCreateRequests() {
   }
 }
 
-Status PgDocReadOp::DoPopulateDmlByYbctidOps(const std::vector<Slice>& ybctids) {
-  // This function is called only when ybctids were returned from INDEX.
-  //
+Status PgDocReadOp::DoPopulateDmlByYbctidOps(const YbctidGenerator& generator) {
   // NOTE on a typical process.
   // 1- Statement:
   //    SELECT xxx FROM <table> WHERE ybctid IN (SELECT ybctid FROM INDEX);
@@ -545,58 +568,63 @@ Status PgDocReadOp::DoPopulateDmlByYbctidOps(const std::vector<Slice>& ybctids) 
   // 6- Repeat step 2 thru 5 for the next batch of 1024 ybctids till done.
   RETURN_NOT_OK(InitializeYbctidOperators());
   const auto& partition_keys = table_->GetPartitions();
-
   // Begin a batch of ybctids.
   end_of_data_ = false;
   // Assign ybctid values.
-  for (const Slice& ybctid : ybctids) {
+  while (true) {
+    auto ybctid = generator();
+    if (ybctid.empty()) {
+      break;
+    }
     // Find partition. The partition index is the boundary order minus 1.
     // - For hash partitioning, we use hashcode to find the right index.
     // - For range partitioning, we pass partition key to seek the index.
-    SCHECK(ybctid.size() > 0, InternalError, "Invalid ybctid value");
-    // TODO(tsplit): what if table partition is changed during PgDocReadOp lifecycle before or after
-    // the following lines?
-    const size_t partition = VERIFY_RESULT(table_->FindPartitionIndex(ybctid));
-    SCHECK(partition < table_->GetPartitionCount(), InternalError,
-           "Ybctid value is not within partition boundary");
+    const auto partition = VERIFY_RESULT(table_->FindPartitionIndex(ybctid));
 
     // Assign ybctids to operators.
     auto& read_req = GetReadReq(partition);
-    if (!read_req.has_ybctid_column_value()) {
-      // We must set "ybctid_column_value" in the request for two reasons.
-      // - "client::yb_op" uses it to set the hash_code.
-      // - Rolling upgrade: Older server will read only "ybctid_column_value" as it doesn't know
-      //   of ybctid-batching operation.
-      pgsql_ops_[partition]->set_active(true);
-      read_req.set_is_forward_scan(true);
-      read_req.mutable_ybctid_column_value()->mutable_value()->dup_binary_value(ybctid);
-
-      // For every read operation set partition boundary. In case a tablet is split between
-      // preparing requests and executing them, docDB will return a paging state for pggate to
-      // contiunue till the end of current tablet is reached.
-      std::string upper_bound;
-      if (partition < partition_keys.size() - 1) {
-        upper_bound = partition_keys[partition + 1];
-      }
-      RETURN_NOT_OK(table_->SetScanBoundary(&read_req,
-                                            partition_keys[partition],
-                                            /* lower_bound_is_inclusive */ true,
-                                            upper_bound,
-                                            /* upper_bound_is_inclusive */ false));
-    }
 
     // Append ybctid and its order to batch_arguments.
     // The "ybctid" values are returned in the same order as the row in the IndexTable. To keep
     // track of this order, each argument is assigned an order-number.
-    auto batch_arg = read_req.add_batch_arguments();
+    auto* batch_arg = read_req.add_batch_arguments();
     batch_arg->set_order(batch_row_ordering_counter_);
-    batch_arg->mutable_ybctid()->mutable_value()->dup_binary_value(ybctid);
+    auto* arg_value = batch_arg->mutable_ybctid()->mutable_value();
+    arg_value->dup_binary_value(ybctid);
+    const auto arena_ybctid = arg_value->binary_value();
 
     // Remember the order number for each request.
     batch_row_orders_[partition].push_back(batch_row_ordering_counter_);
 
     // Increment counter for the next row.
-    batch_row_ordering_counter_++;
+    ++batch_row_ordering_counter_;
+
+    // We must set "ybctid_column_value" in the request for two reasons:
+    // - "client::yb_op" uses it to set the hash_code.
+    // - Rolling upgrade: Older server will read only "ybctid_column_value" as it doesn't know
+    //   of ybctid-batching operation.
+    // Note: lowest ybctid per partition must be used to correctly handle possible dynamic table
+    // splitting.
+    if (!read_req.has_ybctid_column_value()) {
+      pgsql_ops_[partition]->set_active(true);
+      read_req.set_is_forward_scan(true);
+      read_req.mutable_ybctid_column_value()->mutable_value()->ref_binary_value(arena_ybctid);
+
+      // For every read operation set partition boundary. In case a tablet is split between
+      // preparing requests and executing them, DocDB will return a paging state for pggate to
+      // continue till the end of current tablet is reached.
+      const std::string default_upper_bound;
+      const auto& upper_bound = (partition < partition_keys.size() - 1)
+          ? partition_keys[partition + 1]
+          : default_upper_bound;
+      RETURN_NOT_OK(table_->SetScanBoundary(&read_req,
+                                            partition_keys[partition],
+                                            /* lower_bound_is_inclusive */ true,
+                                            upper_bound,
+                                            /* upper_bound_is_inclusive */ false));
+    } else if (arena_ybctid < read_req.ybctid_column_value().value().binary_value()) {
+      read_req.mutable_ybctid_column_value()->mutable_value()->ref_binary_value(arena_ybctid);
+    }
   }
 
   // Done creating request, but not all partition or operator has arguments (inactive).
@@ -848,7 +876,7 @@ Status PgDocReadOp::SetScanPartitionBoundary() {
   return Status::OK();
 }
 
-Status PgDocReadOp::ProcessResponseReadStates() {
+Status PgDocReadOp::CompleteProcessResponse() {
   // For each read_op, set up its request for the next batch of data or make it in-active.
   bool has_more_data = false;
   auto send_count = std::min(parallelism_level_, active_op_count_);
@@ -1006,10 +1034,12 @@ void PgDocReadOp::SetBackfillSpec() {
   }
 }
 
-void PgDocReadOp::SetReadTime() {
+void PgDocReadOp::SetReadTimeForBackfill() {
   if (exec_params_.is_index_backfill) {
     read_op_->read_request().set_is_for_backfill(true);
-    read_op_->set_read_time(ReadHybridTime::FromUint64(GetReadTime()));
+    // TODO: Change to RSTATUS_DCHECK
+    DCHECK(exec_params_.backfill_read_time);
+    read_op_->set_read_time(ReadHybridTime::FromUint64(exec_params_.backfill_read_time));
   }
 }
 
@@ -1067,15 +1097,9 @@ PgDocWriteOp::PgDocWriteOp(const PgSession::ScopedRefPtr& pg_session,
     : PgDocOp(pg_session, table), write_op_(std::move(write_op)) {
 }
 
-Result<std::list<PgDocResult>> PgDocWriteOp::ProcessResponseImpl(
-    const rpc::CallResponsePtr& response) {
-  // Process result from tablet server and check result status.
-  auto result = VERIFY_RESULT(ProcessResponseResult(response));
-
-  // End execution and return result.
+Status PgDocWriteOp::CompleteProcessResponse() {
   end_of_data_ = true;
-  VLOG(1) << __PRETTY_FUNCTION__ << ": Received response for request " << this;
-  return result;
+  return Status::OK();
 }
 
 Result<bool> PgDocWriteOp::DoCreateRequests() {

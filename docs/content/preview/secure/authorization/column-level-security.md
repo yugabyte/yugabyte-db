@@ -1,17 +1,13 @@
 ---
-title: Column-Level Security
-headerTitle: Column-Level Security
-linkTitle: Column-Level Security
-description: Column-Level Security in YugabyteDB
+title: Column-level security
+description: Column-level security in YugabyteDB
 menu:
   preview:
-    name: Column-Level Security
+    name: Column-level security
     identifier: ysql-column-level-security
     parent: authorization
     weight: 755
-type: page
-isTocNested: false
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

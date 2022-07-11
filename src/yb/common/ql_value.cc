@@ -374,16 +374,13 @@ Status QLValue::Deserialize(
     case UUID: {
       string bytes;
       RETURN_NOT_OK(CQLDecodeBytes(len, data, &bytes));
-      Uuid uuid;
-      RETURN_NOT_OK(uuid.FromBytes(bytes));
-      set_uuid_value(uuid);
+      set_uuid_value(VERIFY_RESULT(Uuid::FromSlice(bytes)));
       return Status::OK();
     }
     case TIMEUUID: {
       string bytes;
       RETURN_NOT_OK(CQLDecodeBytes(len, data, &bytes));
-      Uuid uuid;
-      RETURN_NOT_OK(uuid.FromBytes(bytes));
+      Uuid uuid = VERIFY_RESULT(Uuid::FromSlice(bytes));
       RETURN_NOT_OK(uuid.IsTimeUuid());
       set_timeuuid_value(uuid);
       return Status::OK();
@@ -704,29 +701,23 @@ InetAddress QLValue::inetaddress_value(const LWQLValuePB& pb) {
 }
 
 Uuid QLValue::timeuuid_value(const QLValuePB& pb) {
-  Uuid timeuuid;
-  CHECK_OK(timeuuid.FromBytes(timeuuid_value_pb(pb)));
+  Uuid timeuuid = CHECK_RESULT(Uuid::FromSlice(timeuuid_value_pb(pb)));
   CHECK_OK(timeuuid.IsTimeUuid());
   return timeuuid;
 }
 
 Uuid QLValue::timeuuid_value(const LWQLValuePB& pb) {
-  Uuid timeuuid;
-  CHECK_OK(timeuuid.FromSlice(timeuuid_value_pb(pb)));
+  Uuid timeuuid = CHECK_RESULT(Uuid::FromSlice(timeuuid_value_pb(pb)));
   CHECK_OK(timeuuid.IsTimeUuid());
   return timeuuid;
 }
 
 Uuid QLValue::uuid_value(const QLValuePB& pb) {
-  Uuid uuid;
-  CHECK_OK(uuid.FromBytes(uuid_value_pb(pb)));
-  return uuid;
+  return CHECK_RESULT(Uuid::FromSlice(uuid_value_pb(pb)));
 }
 
 Uuid QLValue::uuid_value(const LWQLValuePB& pb) {
-  Uuid uuid;
-  CHECK_OK(uuid.FromSlice(uuid_value_pb(pb)));
-  return uuid;
+  return CHECK_RESULT(Uuid::FromSlice(uuid_value_pb(pb)));
 }
 
 util::VarInt QLValue::varint_value(const QLValuePB& pb) {
@@ -771,7 +762,7 @@ void QLValue::set_timeuuid_value(const Uuid& val) {
 }
 
 template<typename num_type, typename data_type>
-CHECKED_STATUS QLValue::CQLDeserializeNum(
+Status QLValue::CQLDeserializeNum(
     size_t len, data_type (*converter)(const void*), void (QLValue::*setter)(num_type),
     Slice* data) {
   num_type value = 0;
@@ -781,7 +772,7 @@ CHECKED_STATUS QLValue::CQLDeserializeNum(
 }
 
 template<typename float_type, typename data_type>
-CHECKED_STATUS QLValue::CQLDeserializeFloat(
+Status QLValue::CQLDeserializeFloat(
     size_t len, data_type (*converter)(const void*), void (QLValue::*setter)(float_type),
     Slice* data) {
   float_type value = 0.0;

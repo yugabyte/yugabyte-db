@@ -1,19 +1,17 @@
 ---
-title: JDBC drivers
-linkTitle: JDBC drivers
+title: Connect an app
+linkTitle: Connect an app
 description: JDBC drivers for YSQL
-headcontent: JDBC drivers for YSQL
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
-    name: JDBC drivers
     identifier: postgres-jdbc-driver
     parent: java-drivers
     weight: 500
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
-For Java applications, the JDBC driver provides database connectivity through the standard JDBC application program interface (APIs) available on the Java platform. YugabyteDB supports the cluster- and topology-aware YugabyteDB Smart JDBC Driver, and this driver is recommended for building Java applications with YugabyteDB. Yugabyte also provides full support for the [PostgreSQL JDBC Driver](https://jdbc.postgresql.org/).
+
+For Java applications, the JDBC driver provides database connectivity through the standard JDBC application program interface (APIs) available on the Java platform. YugabyteDB supports the cluster- and topology-aware YugabyteDB Smart JDBC Driver, which is recommended for building Java applications with YugabyteDB. Yugabyte also provides full support for the [PostgreSQL JDBC Driver](https://jdbc.postgresql.org/).
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
@@ -81,13 +79,13 @@ Example JDBC URL for connecting to YugabyteDB can be seen below.
 Connection conn = DriverManager.getConnection("jdbc:postgresql://localhost:5433/yugabyte","yugabyte", "yugabyte");
 ```
 
-| JDBC Params | Description | Default |
-| :---------- | :---------- | :------ |
-| hostname  | hostname of the YugabyteDB instance | localhost
-| port |  Listen port for YSQL | 5433
-| database | database name | yugabyte
-| user | user for connecting to the database | yugabyte
-| password | password for connecting to the database | yugabyte
+| JDBC parameter | Description | Default |
+| :------------- | :---------- | :------ |
+| hostname | Hostname of the YugabyteDB instance | localhost |
+| port | Listen port for YSQL | 5433 |
+| database | Database name | yugabyte |
+| user | Username for connecting to the database | yugabyte |
+| password | Password for connecting to the database | yugabyte |
 
 Example JDBC URL for connecting to YugabyteDB cluster enabled with on the wire SSL encryption.
 
@@ -96,11 +94,11 @@ string yburl = "jdbc://postgresql://hostname:port/database?user=yugabyte&passwor
 Connection conn = DriverManager.getConnection(yburl);
 ```
 
-| JDBC Params | Description | Default |
-| :---------- | :---------- | :------ |
-| ssl  | Enable SSL client connection   | false
-| sslmode | SSL mode  | require
-| sslrootcert | path to the root certificate on your computer | ~/.postgresql/
+| JDBC parameter | Description | Default |
+| :------------- | :---------- | :------ |
+| ssl | Enable SSL client connection | false |
+| sslmode | SSL mode | require |
+| sslrootcert | Path to the root certificate on your computer | ~/.postgresql/ |
 
 If you created a cluster on [YugabyteDB Managed](https://www.yugabyte.com/cloud/), [follow the steps](/preview/yugabyte-cloud/cloud-connect/connect-applications/) to download the database credentials and SSL Root certificate.
 
@@ -109,7 +107,6 @@ If you created a cluster on [YugabyteDB Managed](https://www.yugabyte.com/cloud/
 Create a new Java class called `QuickStartApp.java` in the base package directory of your project. Copy the following sample code to set up a YugabyteDB table and query the table contents from the Java client. Replace the connection string `yburl` with your cluster credentials and SSL certificate if required.
 
 ```java
-
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
@@ -149,7 +146,7 @@ public class QuickStartApp {
 
 When you run the Project, `QuickStartApp.java` should output something like the following:
 
-```text
+```output
 Connected to the YugabyteDB Cluster successfully.
 Created table employee
 Inserted data: INSERT INTO employee (id, name, age, language) VALUES (1, 'John', 35, 'Java');
