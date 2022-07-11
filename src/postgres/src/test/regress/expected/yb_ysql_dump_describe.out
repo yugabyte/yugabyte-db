@@ -58,11 +58,12 @@
  yugabyte             | Superuser, Create role, Create DB, Replication, Bypass RLS | {}
  yugabyte_test        | Superuser, Create role, Create DB, Bypass RLS              | {}
 
-  List of schemas
-  Name  |  Owner
---------+----------
- public | postgres
-(1 row)
+      List of schemas
+   Name    |     Owner
+-----------+---------------
+ hint_plan | yugabyte_test
+ public    | postgres
+(2 rows)
 
                                      List of tablegroups
      Name     |        Owner         | Access privileges | Description | Tablespace | Options

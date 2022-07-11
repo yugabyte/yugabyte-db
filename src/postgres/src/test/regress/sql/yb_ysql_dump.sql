@@ -121,3 +121,7 @@ CREATE INDEX ON tr2(c DESC) SPLIT AT VALUES ((100.5), (1.5));
 
 -- Range-partitioned table with multi-column key
 CREATE INDEX ON tr2(c ASC, b DESC, a ASC) SPLIT AT VALUES ((-5.12, 'z', 1), (-0.75, 'l'), (2.5, 'a', 100));
+
+------------------------------------
+-- Extensions
+CREATE EXTENSION pg_hint_plan;
