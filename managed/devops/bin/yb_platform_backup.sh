@@ -156,8 +156,9 @@ create_backup() {
   db_port="${7}"
   verbose="${8}"
   prometheus_host="${9}"
-  k8s_namespace="${10}"
-  k8s_pod="${11}"
+  prometheus_port="${10}"
+  k8s_namespace="${11}"
+  k8s_pod="${12}"
   include_releases_flag="**/releases/**"
 
   mkdir -p "${output_path}"
@@ -217,7 +218,7 @@ create_backup() {
     trap 'run_sudo_cmd "rm -rf ${data_dir}/${PROMETHEUS_SNAPSHOT_DIR}"' RETURN
     echo "Creating prometheus snapshot..."
     set_prometheus_data_dir "${prometheus_host}" "${data_dir}"
-    snapshot_dir=$(curl -X POST "http://${prometheus_host}:9090/api/v1/admin/tsdb/snapshot" |
+    snapshot_dir=$(curl -X POST "http://${prometheus_host}:${prometheus_port}/api/v1/admin/tsdb/snapshot" |
       python -c "import sys, json; print(json.load(sys.stdin)['data']['name'])")
     mkdir -p "$data_dir/$PROMETHEUS_SNAPSHOT_DIR"
     run_sudo_cmd "cp -aR ${PROMETHEUS_DATA_DIR}/snapshots/${snapshot_dir} \
@@ -340,6 +341,7 @@ print_backup_usage() {
   echo "  -h, --db_host=HOST             postgres host (default: localhost)"
   echo "  -P, --db_port=PORT             postgres port (default: 5432)"
   echo "  -n, --prometheus_host=HOST     prometheus host (default: localhost)"
+  echo "  -t, --prometheus_port=PORT     prometheus port (default: 9090)"
   echo "  --k8s_namespace                kubernetes namespace"
   echo "  --k8s_pod                      kubernetes pod"
   echo "  -?, --help                     show create help, then exit"
@@ -394,6 +396,7 @@ db_username=postgres
 db_host=localhost
 db_port=5432
 prometheus_host=localhost
+prometheus_port=9090
 k8s_namespace=""
 k8s_pod=""
 data_dir=/opt/yugabyte
@@ -459,6 +462,10 @@ case $command in
           prometheus_host=$2
           shift 2
           ;;
+        -t|--prometheus_port)
+          prometheus_port=$2
+          shift 2
+          ;;
         --k8s_namespace)
           k8s_namespace=$2
           shift 2
@@ -482,7 +489,8 @@ case $command in
     validate_k8s_args "${k8s_namespace}" "${k8s_pod}"
 
     create_backup "$output_path" "$data_dir" "$exclude_prometheus" "$exclude_releases" \
-    "$db_username" "$db_host" "$db_port" "$verbose" "$prometheus_host" "$k8s_namespace" "$k8s_pod"
+    "$db_username" "$db_host" "$db_port" "$verbose" "$prometheus_host" "$prometheus_port" \
+    "$k8s_namespace" "$k8s_pod"
     exit 0
     ;;
   restore)

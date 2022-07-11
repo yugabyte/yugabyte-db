@@ -50,6 +50,7 @@
 #include "yb/util/monotime.h"
 #include "yb/util/path_util.h"
 #include "yb/util/result.h"
+#include "yb/util/std_util.h"
 
 DEFINE_bool(enable_log_retention_by_op_idx, true,
             "If true, logs will be retained based on an op id passed by the cdc service");
@@ -347,7 +348,7 @@ int64_t LogReader::GetMinReplicateIndex() const {
 Result<scoped_refptr<ReadableLogSegment>> LogReader::GetSegmentBySequenceNumber(
     const int64_t seq) const {
   std::lock_guard<simple_spinlock> lock(lock_);
-  scoped_refptr<ReadableLogSegment> segment = VERIFY_RESULT(segments_.Get(seq));
+  const scoped_refptr<ReadableLogSegment> segment = VERIFY_RESULT(segments_.Get(seq));
   SCHECK_FORMAT(
       segment->header().sequence_number() == seq, InternalError,
       "Expected segment to contain segment number $0 but got $1", seq,
@@ -419,9 +420,7 @@ Status LogReader::ReadReplicatesInRange(
       SleepFor(MonoDelta::FromMilliseconds(FLAGS_TEST_get_changes_read_loop_delay_ms));
     }
 
-    LogIndexEntry index_entry;
-    RETURN_NOT_OK_PREPEND(log_index_->GetEntry(index, &index_entry),
-                          Substitute("Failed to read log index for op $0", index));
+    auto index_entry = VERIFY_RESULT(GetIndexEntry(index));
 
     if (index == starting_at && starting_op_segment_seq_num != nullptr) {
       *starting_op_segment_seq_num = index_entry.segment_sequence_number;
@@ -490,19 +489,11 @@ Status LogReader::ReadReplicatesInRange(
 }
 
 Result<yb::OpId> LogReader::LookupOpId(int64_t op_index) const {
-  LogIndexEntry index_entry;
-  RETURN_NOT_OK_PREPEND(log_index_->GetEntry(op_index, &index_entry),
-                        strings::Substitute("Failed to read log index for op $0", op_index));
-  return index_entry.op_id;
+  return VERIFY_RESULT(GetIndexEntry(op_index)).op_id;
 }
 
-Result<int64_t> LogReader::LookupHeader(int64_t op_index) const {
-  LogIndexEntry index_entry;
-  Status st = log_index_->GetEntry(op_index, &index_entry);
-  if (st.IsNotFound()) {
-    return -1;
-  }
-  return index_entry.segment_sequence_number;
+Result<int64_t> LogReader::LookupOpWalSegmentNumber(int64_t op_index) const {
+  return VERIFY_RESULT(GetIndexEntry(op_index)).segment_sequence_number;
 }
 
 Status LogReader::GetSegmentsSnapshot(SegmentSequence* segments) const {
@@ -592,6 +583,133 @@ string LogReader::ToString() const {
                           !entry->HasFooter() ? "NONE" : entry->footer().ShortDebugString()));
   }
   return ret;
+}
+
+namespace {
+
+// Logs message like:
+// $log_prefix Requested op_index ... that is not in log index cache, loading index from WAL
+// segment(s) ...
+// or
+// $log_prefix Requested op_index ... that is not in log index cache, no more WAL segments to
+// load index from, min_indexed_segment_number: ...
+void LogLoadingFromSegmentsMessage(
+    const std::string& log_prefix, const SegmentSequence& segments, const int64_t op_index,
+    const int64_t min_indexed_segment_number) {
+  const auto msg_prefix = Format("Requested op_index $0 that is not in log index cache", op_index);
+
+  if (segments.empty()) {
+    VLOG(5) << log_prefix << Format(
+        "$0, no more WAL segments to load index from, min_indexed_segment_number: $1", msg_prefix,
+        min_indexed_segment_number);
+    return;
+  }
+
+  const auto segment_to_str = [](const ReadableLogSegmentPtr& segment) {
+    return Format(
+        "#$0 (footer: $1)", segment->header().sequence_number(),
+        segment->HasFooter() ? segment->footer().ShortDebugString() : "---");
+  };
+
+  // We've already checked that segments is not empty, so failure to get back/front might mean
+  // memory corruption.
+  const auto segments_range_str =
+      segments.size() == 1
+          ? Format("WAL segment $0", segment_to_str(CHECK_RESULT(segments.back())))
+          : Format(
+                "WAL segments $0 .. $1", segment_to_str(CHECK_RESULT(segments.back())),
+                segment_to_str(CHECK_RESULT(segments.front())));
+
+  LOG(INFO) << log_prefix << Format("$0, loading index from $1", msg_prefix, segments_range_str);
+}
+
+} // namespace
+
+Result<LogIndexEntry> LogReader::GetIndexEntry(const int64_t op_index) const {
+  LogIndexEntry index_entry;
+
+  auto s = log_index_->GetEntry(op_index, &index_entry);
+  if (PREDICT_TRUE(s.ok())) {
+    return index_entry;
+  }
+  if (!s.IsIncomplete()) {
+    // This is an actual failure rather than log index is not yet loaded into LogIndex cache.
+    return s;
+  }
+
+  VLOG_WITH_PREFIX(2) << "Trying to lazy load log index from WAL segments for op index "
+                      << op_index;
+
+  {
+    // Prevent concurrent lazy loading of the index.
+    std::lock_guard<std::mutex> lock(load_index_mutex_);
+
+    SegmentSequence segments_to_load_index;
+    // Detect segments to cover op_index for lazy loading index from them.
+    {
+      std::lock_guard<simple_spinlock> lock(lock_);
+
+      const auto min_indexed_segment_number = log_index_->GetMinIndexedSegmentNumber();
+      SegmentSequence::const_reverse_iterator it;
+      if (min_indexed_segment_number == LogIndex::kNoIndexForFullWalSegment) {
+        // Load index starting from the latest available segment.
+        it = segments_.rbegin();
+      } else {
+        const auto result = segments_.iter_at(min_indexed_segment_number);
+        if (result.ok()) {
+          // Load index starting from the next segment (in reverse order).
+          // Note that std::make_reverse_iterator return reverse iterator to the element before
+          // element at `it`.
+          it = std::make_reverse_iterator(*result);
+        } else if (result.status().IsNotFound()) {
+          // Already GCed, nothing to load.
+          it = segments_.rend();
+        } else {
+          // Unexpected error - return to the caller to handle.
+          return result.status();
+        }
+      }
+
+      for (; it != segments_.rend(); ++it) {
+        const ReadableLogSegmentPtr segment = *it;
+        const auto seg_num = segment->header().sequence_number();
+
+        // Stop loading at the segment in which all operations have Raft indexes lower than
+        // op_index.
+        if (segment->HasFooter() && segment->footer().max_replicate_index() < op_index) {
+          VLOG_WITH_PREFIX(2) << "Will stop loading at segment "
+                              << seg_num << ", max_replicate_index: "
+                              << segment->footer().max_replicate_index();
+          break;
+        }
+        RETURN_NOT_OK(segments_to_load_index.push_front(seg_num, segment));
+      }
+
+      LogLoadingFromSegmentsMessage(
+          LogPrefix(), segments_to_load_index, op_index, min_indexed_segment_number);
+    }
+
+    // Load index starting from latest WAL segment.
+    for (auto it = segments_to_load_index.rbegin(); it != segments_to_load_index.rend(); ++it) {
+      const auto stop_loading = !VERIFY_RESULT(log_index_->LoadFromSegment(it->get()));
+      if (stop_loading) {
+        // Concurrent log GC happened and removed at least beginning of just loaded segment, no
+        // need to continue loading.
+        break;
+      }
+    }
+  }
+
+  s = log_index_->GetEntry(op_index, &index_entry);
+  if (s.IsIncomplete()) {
+    s = s.CloneAndReplaceCode(Status::kNotFound);
+  }
+  RETURN_NOT_OK(s);
+  return index_entry;
+}
+
+Result<LogIndexEntry> LogReader::TEST_GetIndexEntry(const int64_t index) const {
+  return GetIndexEntry(index);
 }
 
 }  // namespace log

@@ -78,7 +78,7 @@ This tutorial assumes that you have:
 ## Clone the "orm-examples" repository
 
 ```sh
-$ git clone https://github.com/yugabyte/orm-examples.git && cd orm-examples/java/ebeans
+$ git clone https://github.com/YugabyteDB-Samples/orm-examples.git && cd orm-examples/java/ebeans
 ```
 
 ## Database configuration

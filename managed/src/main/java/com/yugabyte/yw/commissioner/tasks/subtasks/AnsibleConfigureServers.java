@@ -87,6 +87,8 @@ public class AnsibleConfigureServers extends NodeTaskBase {
 
     // In case a node doesn't have custom AMI, ignore the value of USE_CUSTOM_IMAGE config.
     public boolean ignoreUseCustomImageConfig = false;
+
+    public boolean updatePackages = false;
   }
 
   @Override

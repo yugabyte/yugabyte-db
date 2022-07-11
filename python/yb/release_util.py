@@ -203,10 +203,10 @@ class ReleaseUtil(object):
             self.build_type
         ]
         compiler_type = get_compiler_type_from_build_root(self.build_root)
-        # Make the clang12 release package the default, and append the compiler type for all other
+        # Make Clang-based release packages the default, and append the compiler type for all other
         # compiler types so we can still use them with the appropriate support from the downstream
         # tooling.
-        if compiler_type != 'clang12':
+        if compiler_type not in ['clang12', 'clang13']:
             components.append(compiler_type)
         release_name = "-".join(components)
 

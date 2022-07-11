@@ -481,5 +481,29 @@ TEST_F(TestPBUtil, TestPBRequiredToRepeated) {
   ASSERT_OK(env_->DeleteFile(path_));
 }
 
+TEST_F(TestPBUtil, TestPBRequiredToOptional) {
+  // Write the file with required fields.
+  {
+    TestObjectRequiredPB pb;
+    pb.set_string1(kTestString + "1");
+    pb.set_string2(kTestString + "2");
+    pb.mutable_record()->set_text(kTestString);
+    ASSERT_OK(WritePBContainerToPath(env_.get(), path_, pb, OVERWRITE, SYNC));
+  }
+
+  // Read it back as optional fields, should validate and contain the expected values.
+  TestObjectOptionalPB pb;
+  ASSERT_OK(ReadPBContainerFromPath(env_.get(), path_, &pb));
+  ASSERT_TRUE(pb.has_string1());
+  ASSERT_TRUE(pb.has_string2());
+  ASSERT_TRUE(pb.has_record());
+  ASSERT_TRUE(pb.record().has_text());
+  ASSERT_EQ(kTestString + "1", pb.string1());
+  ASSERT_EQ(kTestString + "2", pb.string2());
+  ASSERT_EQ(kTestString, pb.record().text());
+
+  // Delete the file.
+  ASSERT_OK(env_->DeleteFile(path_));
+}
 } // namespace pb_util
 } // namespace yb

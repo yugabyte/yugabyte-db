@@ -16,6 +16,7 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.YbcBackupUtil;
+import com.yugabyte.yw.common.YbcManager;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.common.services.YbcClientService;
 import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
@@ -29,6 +30,7 @@ import com.yugabyte.yw.models.configs.data.CustomerConfigStorageWithRegionsData;
 import java.time.Duration;
 import java.util.Date;
 import java.util.UUID;
+import java.util.concurrent.CancellationException;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
@@ -49,6 +51,7 @@ public class BackupTableYbc extends AbstractTaskBase {
 
   private final YbcClientService ybcService;
   private final YbcBackupUtil ybcBackupUtil;
+  private final YbcManager ybcManager;
   private YbcClient ybcClient;
   private long totalTimeTaken = 0L;
   private long totalSizeinBytes = 0L;
@@ -63,10 +66,12 @@ public class BackupTableYbc extends AbstractTaskBase {
   public BackupTableYbc(
       BaseTaskDependencies baseTaskDependencies,
       YbcClientService ybcService,
-      YbcBackupUtil ybcBackupUtil) {
+      YbcBackupUtil ybcBackupUtil,
+      YbcManager ybcManager) {
     super(baseTaskDependencies);
     this.ybcService = ybcService;
     this.ybcBackupUtil = ybcBackupUtil;
+    this.ybcManager = ybcManager;
   }
 
   @Override
@@ -82,13 +87,9 @@ public class BackupTableYbc extends AbstractTaskBase {
         baseLogMessage =
             ybcBackupUtil.getBaseLogMessage(tableParams.backupUuid, tableParams.getKeyspace());
         taskID = ybcBackupUtil.getYbcTaskID(tableParams.backupUuid, tableParams.getKeyspace());
+        ybcClient = ybcBackupUtil.getYbcClient(tableParams.universeUUID);
         try {
-          ybcClient = ybcBackupUtil.getYbcClient(tableParams.universeUUID);
-        } catch (PlatformServiceException e) {
-          Throwables.propagate(e);
-        }
-        // Send create backup request to yb-controller
-        try {
+          // Send create backup request to yb-controller
           BackupServiceTaskCreateRequest backupServiceTaskCreateRequest =
               ybcBackupUtil.createYbcBackupRequest(tableParams);
           BackupServiceTaskCreateResponse response =
@@ -105,38 +106,29 @@ public class BackupTableYbc extends AbstractTaskBase {
                     "%s YB-controller returned non-zero exit status %s",
                     baseLogMessage, response.getStatus().getErrorMessage()));
           }
-        } catch (PlatformServiceException e) {
-          log.error("{} Failed with error {}", baseLogMessage, e.getMessage());
-          Backup backup =
-              Backup.getOrBadRequest(taskParams().customerUuid, taskParams().backupUuid);
-          backup.transitionState(Backup.BackupState.Failed);
-          Throwables.propagate(e);
-        }
-
-        // Poll create backup progress on yb-controller and handle result
-        try {
+          // Poll create backup progress on yb-controller and handle result
           pollTaskProgress(tableParams);
           handleBackupResult(tableParams, idx);
-        } catch (PlatformServiceException e) {
+        } catch (Exception e) {
           log.error("{} Failed with error {}", baseLogMessage, e.getMessage());
-          Backup backup =
-              Backup.getOrBadRequest(taskParams().customerUuid, taskParams().backupUuid);
-          // If abort task called, set state to Stopped.
-          if (e.getResult().status() == ControllerStatus.ABORT_VALUE) {
-            backup.transitionState(Backup.BackupState.Stopped);
-          } else {
-            backup.transitionState(Backup.BackupState.Failed);
-          }
-          // TODO: Vipul bansal call task delete here.
           Throwables.propagate(e);
         }
+        ybcManager.deleteYbcBackupTask(tableParams.universeUUID, taskID);
         idx++;
       }
-      // TODO: Vipul bansal call task delete here too.
       Backup backup = Backup.getOrBadRequest(taskParams().customerUuid, taskParams().backupUuid);
       backup.setCompletionTime(new Date(backup.getCreateTime().getTime() + totalTimeTaken));
       backup.setTotalBackupSize(totalSizeinBytes);
       backup.transitionState(Backup.BackupState.Completed);
+    } catch (CancellationException ce) {
+      ybcManager.abortBackupTask(taskParams().customerUuid, taskParams().backupUuid, taskID);
+      // Backup stopped state will be updated in the main createBackup task
+      Throwables.propagate(ce);
+    } catch (Exception e) {
+      ybcManager.deleteYbcBackupTask(taskParams().universeUUID, taskID);
+      Backup backup = Backup.getOrBadRequest(taskParams().customerUuid, taskParams().backupUuid);
+      backup.transitionState(Backup.BackupState.Failed);
+      Throwables.propagate(e);
     } finally {
       if (ybcClient != null) {
         ybcClient.close();

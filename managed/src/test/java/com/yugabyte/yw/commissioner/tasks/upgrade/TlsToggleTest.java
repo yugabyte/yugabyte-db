@@ -9,6 +9,7 @@ import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -382,7 +383,7 @@ public class TlsToggleTest extends UpgradeTaskTest {
     defaultUniverse.refresh();
     verify(mockNodeManager, times(0)).nodeCommand(any(), any());
     assertEquals(Failure, taskInfo.getTaskState());
-    assertEquals(1, taskInfo.getSubTasks().size());
+    assertTrue(taskInfo.getSubTasks().isEmpty());
   }
 
   @Test
@@ -396,7 +397,7 @@ public class TlsToggleTest extends UpgradeTaskTest {
     defaultUniverse.refresh();
     verify(mockNodeManager, times(0)).nodeCommand(any(), any());
     assertEquals(Failure, taskInfo.getTaskState());
-    assertEquals(1, taskInfo.getSubTasks().size());
+    assertTrue(taskInfo.getSubTasks().isEmpty());
   }
 
   @Test
@@ -411,7 +412,7 @@ public class TlsToggleTest extends UpgradeTaskTest {
     defaultUniverse.refresh();
     verify(mockNodeManager, times(0)).nodeCommand(any(), any());
     assertEquals(Failure, taskInfo.getTaskState());
-    assertEquals(1, taskInfo.getSubTasks().size());
+    assertTrue(taskInfo.getSubTasks().isEmpty());
   }
 
   @Test

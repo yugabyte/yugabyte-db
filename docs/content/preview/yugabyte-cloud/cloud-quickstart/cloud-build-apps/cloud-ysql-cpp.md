@@ -31,7 +31,7 @@ The following tutorial shows a small [C++ application](https://github.com/yugaby
 Clone the sample application to your computer:
 
 ```sh
-git clone https://github.com/yugabyte/yugabyte-simple-cpp-app && cd yugabyte-simple-cpp-app
+git clone https://github.com/YugabyteDB-Samples/yugabyte-simple-cpp-app.git && cd yugabyte-simple-cpp-app
 ```
 
 ## Provide connection parameters

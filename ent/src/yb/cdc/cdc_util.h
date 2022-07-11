@@ -20,6 +20,7 @@
 
 #include "yb/common/entity_ids_types.h"
 #include "yb/util/format.h"
+#include "yb/gutil/strings/stringpiece.h"
 
 namespace yb {
 namespace cdc {
@@ -76,6 +77,19 @@ struct CDCCreationState {
 
 inline size_t hash_value(const ProducerTabletInfo& p) noexcept {
   return ProducerTabletInfo::Hash()(p);
+}
+
+inline bool IsAlterReplicationUniverseId(const string& universe_uuid) {
+  return GStringPiece(universe_uuid).ends_with(".ALTER");
+}
+
+inline string GetOriginalReplicationUniverseId(const string& universe_uuid) {
+  // Remove the .ALTER suffix from universe_uuid if applicable.
+  GStringPiece clean_universe_id(universe_uuid);
+  if (clean_universe_id.ends_with(".ALTER")) {
+    clean_universe_id.remove_suffix(sizeof(".ALTER")-1 /* exclude \0 ending */);
+  }
+  return clean_universe_id.ToString();
 }
 
 } // namespace cdc
