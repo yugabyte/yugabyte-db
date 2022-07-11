@@ -36,7 +36,7 @@ The following tutorial shows a small [Ruby application](https://github.com/yugab
 Clone the sample application to your computer:
 
 ```sh
-git clone https://github.com/yugabyte/yugabyte-simple-ruby-app && cd yugabyte-simple-ruby-app
+git clone https://github.com/YugabyteDB-Samples/yugabyte-simple-ruby-app.git && cd yugabyte-simple-ruby-app
 ```
 
 ## Provide connection parameters
