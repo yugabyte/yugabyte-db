@@ -85,7 +85,9 @@ import psycopg2
 
 # Create the database connection.
 
-conn = psycopg2.connect("host=127.0.0.1 port=5433 dbname=yugabyte user=yugabyte password=yugabyte")
+connString = "host=127.0.0.1 port=5433 dbname=yugabyte user=yugabyte password=yugabyte"
+
+conn = psycopg2.connect(connString)
 
 # Open a cursor to perform database operations.
 # The default mode for psycopg2 is "autocommit=false".
