@@ -2,7 +2,7 @@
 title: Monitor cluster activity
 linkTitle: Cluster activity
 description: View the activity on your cluster.
-headcontent:
+headcontent: View the activity on your cluster
 image: /images/section_icons/deploy/enterprise.png
 menu:
   preview_yugabyte-cloud:
