@@ -11,11 +11,20 @@ aliases:
   - /preview/explore/change-data-capture/cdcsdk-server
 menu:
   preview:
-    parent: change-data-capture
+    parent: explore-change-data-capture
     identifier: cdcsdk-server
     weight: 580
 type: docs
 ---
+
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li>
+    <a href="../cdcsdk-server/" class="nav-link active">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL
+    </a>
+  </li>
+</ul>
 
 Yugabyte CDCSDK Server is an open source project that provides a streaming platform for change data capture from YugabyteDB. The server is based on [Debezium](https://github.com/yugabyte/cdcsdk-server/blob/main/debezium.io). CDCSDK Server uses [debezium-yugabytedb-connector](https://github.com/yugabyte/debezium-connector-yugabytedb) to capture change events. It supports a YugabyteDB instance as a source and supports the following sinks:
 * Kafka
