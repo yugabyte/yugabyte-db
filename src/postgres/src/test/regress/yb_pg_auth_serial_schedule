@@ -7,10 +7,10 @@
 # `yb_pg_int8` is a dependency for `yb_pg_privileges`
 test: yb_pg_int8
 
-test: yb_pg_roleattributes
 test: yb_pg_rolenames
-test: yb_pg_password
+test: yb_pg_roleattributes
 test: yb_pg_privileges
 test: yb_pg_init_privs
 test: yb_pg_rowsecurity
+test: yb_pg_password
 test: yb_roles
