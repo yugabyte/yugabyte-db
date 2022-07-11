@@ -20,7 +20,8 @@ input value:       anyelement
 return value:      jsonb
 ```
 
-**Notes:** The syntax _"order by... nulls first"_ within the parentheses of the aggregate function (a generic feature of aggregate functions) isn't useful here because the order of the _key-value_ pairs of a JSON _object_ has no semantic significance. (The `::text` typecast of a `jsonb` _object_ uses the convention of ordering the pairs alphabetically by the key_.
+**Notes:** The syntax _"order by... nulls first"_ within the parentheses of the aggregate function (a generic feature of aggregate functions) isn't useful here because the order of the _key-value_ pairs of a JSON _object_ has no semantic significance. (The `::text` typecast of a `jsonb` _object_ uses the convention of ordering the pairs alphabetically by the _key_.
+
 ```plpgsql
 do $body$
 declare
