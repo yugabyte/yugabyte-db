@@ -1,3 +1,3 @@
-```ebnf
+```output.ebnf
 rollback ::= ROLLBACK [ TRANSACTION | WORK ]
 ```
