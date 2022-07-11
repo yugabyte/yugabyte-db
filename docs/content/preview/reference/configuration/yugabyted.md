@@ -81,7 +81,7 @@ Use the `yugabyted start` command to start a one-node YugabyteDB cluster in your
 ```sh
 Usage: yugabyted start [flags]
 
-Examples: 
+Examples:
 # Create a single-node local cluster:
 yugabyted start
 
@@ -129,7 +129,7 @@ controls where the logs of the YugabyteDB nodes are stored.
 
 #### Advanced Flags
 
-Advanced flags can be set by using the configuration file in the `--config` flag. Following the advance flags support for the `start` command - 
+Advanced flags can be set by using the configuration file in the `--config` flag. Following the advance flags support for the `start` command -
 
 --ycql_port *ycql-port*
 : The port on which YCQL will run.
@@ -635,7 +635,7 @@ Step 1: Stop the first node by using `yugabyted stop` command
 bin/yugabyted stop
 ```
 
-Step 2: Download the [YugabyteDB 2.15.0.0](https://download.yugabyte.com/) release on the home directory
+Step 2: Download the current [YugabyteDB preview release](https://download.yugabyte.com/).
 
 Step 3: Start the YugabyteDB node by using `yugabyted start` command by providing the necessary cloud information
 
@@ -650,7 +650,7 @@ configure command to specify the data placement constraint on the cluster -
 bin/yugabyted configure --fault_tolerance=zone
 ```
 
-For manually specifying the data placement constraint, use the below command - 
+For manually specifying the data placement constraint, use the below command -
 
 ```sh
 ./yugabyted configure --fault_tolerance=zone --data_placement_constraint=aws.us-east.us-east-1a,aws.us-east.us-east-2a,aws.us-east.us-east-3a --rf=3
