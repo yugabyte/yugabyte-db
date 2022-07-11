@@ -38,6 +38,7 @@ class WritableLogSegment;
 
 struct LogAnchor;
 struct LogEntryMetadata;
+struct LogIndexBlock;
 struct LogIndexEntry;
 struct LogMetrics;
 struct LogOptions;

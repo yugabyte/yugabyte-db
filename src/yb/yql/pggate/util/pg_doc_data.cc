@@ -15,8 +15,6 @@
 
 #include "yb/yql/pggate/util/pg_doc_data.h"
 
-#include "yb/client/client.h"
-
 #include "yb/common/ql_value.h"
 
 #include "yb/util/format.h"

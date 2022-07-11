@@ -165,8 +165,9 @@ class LogTest : public LogTestBase {
   Result<std::unique_ptr<LogReader>> GetLogCopyReader(const size_t copy_idx) {
     const auto log_copy_dir = GetLogCopyPath(copy_idx);
     std::unique_ptr<LogReader> copied_log_reader;
+    auto log_index = VERIFY_RESULT(LogIndex::NewLogIndex(log_copy_dir));
     RETURN_NOT_OK(LogReader::Open(
-        fs_manager_->env(), make_scoped_refptr<LogIndex>(log_copy_dir), "Log reader: ",
+        fs_manager_->env(), log_index, "Log reader: ",
         log_copy_dir, /* table_metric_entity = */ nullptr,
         /* tablet_metric_entity = */ nullptr, &copied_log_reader));
 
@@ -452,9 +453,10 @@ void LogTest::DoCorruptionTest(CorruptionType type, CorruptionPosition place,
   // Open a new reader -- we don't reuse the existing LogReader from log_
   // because it has a cached header.
   std::unique_ptr<LogReader> reader;
-  ASSERT_OK(LogReader::Open(fs_manager_->env(),
-                            make_scoped_refptr(new LogIndex(log_->wal_dir_)), "Log reader: ",
-                            tablet_wal_path_, nullptr, nullptr, &reader));
+  auto log_index = ASSERT_RESULT(LogIndex::NewLogIndex(log_->wal_dir_));
+  ASSERT_OK(LogReader::Open(
+      fs_manager_->env(), log_index, "Log reader: ", tablet_wal_path_,
+      /* table_metric_entity = */ nullptr, /* tablet_metric_entity = */ nullptr, &reader));
   ASSERT_EQ(1, reader->num_segments());
 
   SegmentSequence segments;
@@ -735,41 +737,38 @@ TEST_F(LogTest, TestGCOfIndexChunks) {
   FLAGS_log_min_segments_to_retain = 4;
   BuildLog();
 
+  const auto entries_per_chunk = TEST_GetEntriesPerIndexChunk();
   // Append some segments which cross from one index chunk into another.
-  // 999990-999994        \___ the first index
-  // 999995-999999        /    chunk points to these
-  // 1000000-100004       \_
-  // 1000005-100009        _|- the second index chunk points to these
-  // 1000010-<still open> /
+  // entries_per_chunk-10 ... entries_per_chunk-6        \___ the first index
+  // entries_per_chunk-5  ... entries_per_chunk-1        /    chunk points to these
+  // entries_per_chunk    ... entries_per_chunk+4       \_
+  // entries_per_chunk+5  ... entries_per_chunk+9        _|- the second index chunk points to these
+  // entries_per_chunk+10 ... <still open>              /
   const int kNumTotalSegments = 5;
   const int kNumOpsPerSegment = 5;
-  OpIdPB op_id = MakeOpId(1, 999990);
+  OpIdPB op_id = MakeOpId(1, entries_per_chunk - 10);
   ASSERT_OK(AppendMultiSegmentSequence(kNumTotalSegments, kNumOpsPerSegment,
-                                              &op_id, nullptr));
+                                              &op_id, /* anchors = */ nullptr));
 
   // Run a GC on an op in the second index chunk. We should remove only the
   // earliest segment, because we are set to retain 4.
   int num_gced_segments = 0;
-  ASSERT_OK(log_->GC(1000006, &num_gced_segments));
+  ASSERT_OK(log_->GC(entries_per_chunk + 6, &num_gced_segments));
   ASSERT_EQ(1, num_gced_segments);
 
   // And we should still be able to read ops in the retained segment, even though
   // the GC index was higher.
-  auto loaded_op = ASSERT_RESULT(log_->GetLogReader()->LookupOpId(999995));
-  ASSERT_EQ(yb::OpId(1, 999995), loaded_op);
+  auto loaded_op = ASSERT_RESULT(log_->GetLogReader()->LookupOpId(entries_per_chunk - 5));
+  ASSERT_EQ(yb::OpId(1, entries_per_chunk - 5), loaded_op);
 
   // If we drop the retention count down to 1, we can now GC, and the log index
   // chunk should also be GCed.
   FLAGS_log_min_segments_to_retain = 1;
-  ASSERT_OK(log_->GC(1000003, &num_gced_segments));
+  ASSERT_OK(log_->GC(entries_per_chunk + 3, &num_gced_segments));
   ASSERT_EQ(1, num_gced_segments);
 
-  auto result = log_->GetLogReader()->LookupOpId(999995);
-// This test relies on kEntriesPerIndexChunk being 1000000, and that's no longer
-// the case after D1719 (2fe27d886390038bc734ea28638a1b1435e7d0d4) on Mac.
-#if !defined(__APPLE__)
-  ASSERT_TRUE(!result.ok() && result.status().IsNotFound()) << "unexpected status: " << result;
-#endif
+  auto result = log_->GetLogReader()->LookupOpId(entries_per_chunk - 5);
+  ASSERT_TRUE(!result.ok() && result.status().IsNotFound()) << "unexpected result: " << result;
 }
 
 // Tests that we can append FLUSH_MARKER messages to the log queue to make sure
@@ -1452,48 +1451,62 @@ namespace {
 
 Status CheckLogIndex(
     LogReader* log_reader,
-    const std::map<int64_t, std::pair<OpId, LogEntryMetadata>>& op_id_with_entry_meta_by_idx) {
-  auto* copied_log_index = log_reader->TEST_GetLogIndex();
-  LogIndexEntry index_entry;
-  int64_t first_op_idx = -1;
-  int64_t last_op_idx = -1;
-  for (const auto& op_id_with_entry_meta : op_id_with_entry_meta_by_idx) {
+    const std::map<int64_t, std::pair<OpId, LogEntryMetadata>>& op_id_with_entry_meta_by_idx,
+    const int64_t last_op_index) {
+  if (op_id_with_entry_meta_by_idx.empty()) {
+    // Nothing to verify.
+    return Status::OK();
+  }
+  const auto min_op_idx = op_id_with_entry_meta_by_idx.begin()->first;
+  const auto max_op_idx = op_id_with_entry_meta_by_idx.rbegin()->first;
+  VLOG(1) << "op_id_with_min_index: " << op_id_with_entry_meta_by_idx.begin()->second.first
+          << " op_id_with_max_index: " << op_id_with_entry_meta_by_idx.rbegin()->second.first
+          << " entries: " << op_id_with_entry_meta_by_idx.size();
+
+  // We iterate in reverse order on purpose in order to verify log index lazy loading logic (see
+  // LogReader::GetIndexEntry).
+  for (auto iter = op_id_with_entry_meta_by_idx.rbegin();
+       iter != op_id_with_entry_meta_by_idx.rend(); ++iter) {
+    const auto& op_id_with_entry_meta = *iter;
     const auto& op_id = op_id_with_entry_meta.second.first;
     const auto& entry_meta = op_id_with_entry_meta.second.second;
-    RETURN_NOT_OK(copied_log_index->TEST_OpenChunkForIndex(op_id.index));
-    RETURN_NOT_OK_PREPEND(
-        copied_log_index->GetEntry(op_id.index, &index_entry), Format("op_id: $0", op_id));
+    VLOG(1) << "op_id_with_entry_meta: " << AsString(op_id_with_entry_meta);
+    SCHECK_EQ(op_id_with_entry_meta.first, op_id.index, InternalError, "op index mismatch");
+    const auto index_entry = log_reader->TEST_GetIndexEntry(op_id.index);
+    if (!index_entry.ok()) {
+      if (index_entry.status().IsNotFound() && op_id.index > last_op_index) {
+        // This is OK to get NotFound for operation index that could be overwritten.
+        continue;
+      }
+      return index_entry.status();
+    }
     SCHECK_EQ(
-        index_entry.op_id.index, op_id.index, InternalError, Format("index of op_id: $0", op_id));
+        index_entry->op_id.index, op_id.index, InternalError, Format("index of op_id: $0", op_id));
     SCHECK_GE(
-        index_entry.op_id.term, op_id.term, InternalError, Format("term of op_id: $0", op_id));
+        index_entry->op_id.term, op_id.term, InternalError, Format("term of op_id: $0", op_id));
     // Operation could be rewritten in higher term, then we don't expect offset and segment
     // number to match, it will be checked once we get to ops with the same index from that
     // higher term.
-    if (index_entry.op_id.term == op_id.term) {
+    if (index_entry->op_id.term == op_id.term) {
       SCHECK_EQ(
-          index_entry.segment_sequence_number, entry_meta.active_segment_sequence_number,
+          index_entry->segment_sequence_number, entry_meta.active_segment_sequence_number,
           InternalError, Format("segment_sequence_number for op_id: $0", op_id));
       SCHECK_EQ(
-          index_entry.offset_in_segment, entry_meta.offset, InternalError,
+          index_entry->offset_in_segment, entry_meta.offset, InternalError,
           Format("offset_in_segment for op_id: $0", op_id));
     }
-
-    if (first_op_idx < 0) {
-      first_op_idx = op_id.index;
-    }
-    last_op_idx = op_id.index;
   }
-  SCHECK_GT(first_op_idx, 0, InternalError, "first_op_idx");
-  SCHECK_GT(last_op_idx, 0, InternalError, "last_op_idx");
+  SCHECK_GT(min_op_idx, 0, InternalError, "min_op_idx");
+  SCHECK_GT(max_op_idx, 0, InternalError, "max_op_idx");
 
-  if (first_op_idx > 1) {
-    // GetEntry is not supported for zero index, so only check for first_op_idx > 1.
-    const auto s = copied_log_index->GetEntry(first_op_idx - 1, &index_entry);
-    SCHECK(
-        s.IsNotFound(), InternalError,
-        Format("Expected NotFound error for getting op by index before the first one, but got: $0, "
-        "first_op_idx: $1, index_entry: $2", s, first_op_idx, index_entry));
+  if (min_op_idx > 1) {
+    // GetEntry is not supported for zero index, so only check for min_op_idx > 1.
+    const auto result = log_reader->TEST_GetIndexEntry(min_op_idx - 1);
+    SCHECK_FORMAT(
+        !result.ok() && result.status().IsNotFound(), InternalError,
+        "Expected NotFound error for getting op by index before the minimal one, but got: $0, "
+        "min_op_idx: $1",
+        result, min_op_idx);
   }
   return Status::OK();
 }
@@ -1523,14 +1536,15 @@ TEST_F(LogTest, CopyUpTo) {
   constexpr auto kLogCopyIdx = 0;
   const auto log_copy_path = GetLogCopyPath(kLogCopyIdx);
   for (size_t copy_num_ops = 1; copy_num_ops <= ops.size(); ++copy_num_ops) {
-    const auto& op = ops[copy_num_ops - 1];
-    const auto& up_to_op_id = op.id;
+    const auto& max_included_op = ops[copy_num_ops - 1];
+    const auto& max_included_op_id = max_included_op.id;
     ASSERT_OK(options_.env->DeleteRecursively(log_copy_path));
-    ASSERT_OK(log_->CopyTo(log_copy_path, up_to_op_id));
+    VLOG(1) << "max_included_op_id: " << AsString(max_included_op_id);
+    ASSERT_OK(log_->CopyTo(log_copy_path, max_included_op_id));
 
     auto log_copy_reader = ASSERT_RESULT(GetLogCopyReader(kLogCopyIdx));
     auto copied_segments = ASSERT_RESULT(
-        GetSegmentsAndCheckMaxOpIndex(log_copy_reader.get(), up_to_op_id.index));
+        GetSegmentsAndCheckMaxOpIndex(log_copy_reader.get(), max_included_op_id.index));
 
     // Copied log segments (except might be the last one that could be truncated) should match log
     // segments of the original log.
@@ -1574,14 +1588,15 @@ TEST_F(LogTest, CopyUpTo) {
     }
 
     if (num_ops_copied > copy_num_ops) {
-      LOG(INFO) << "up_to_op_id: " << AsString(up_to_op_id) << ", copied ops tail:";
+      LOG(INFO) << "max_included_op_id: " << AsString(max_included_op_id) << ", copied ops tail:";
       for (auto i = copy_num_ops - 1; i < num_ops_copied; ++i) {
         LOG(INFO) << i << ": " << ops[i].id;
       }
     }
     ASSERT_EQ(num_ops_copied, copy_num_ops);
 
-    ASSERT_OK(CheckLogIndex(log_copy_reader.get(), op_id_with_entry_meta_by_idx));
+    ASSERT_OK(CheckLogIndex(
+        log_copy_reader.get(), op_id_with_entry_meta_by_idx, max_included_op_id.index));
   }
 
   ASSERT_OK(log_->Close());

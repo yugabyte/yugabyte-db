@@ -38,7 +38,7 @@ In this walkthrough, you will:
 1. On your computer, clone the Spring PetClinic sample application built with Spring Data YugabyteDB:
 
     ```sh
-    $ git clone https://github.com/yugabyte/petclinic-spring-data-yugabytedb.git
+    $ git clone https://github.com/YugabyteDB-Samples/petclinic-spring-data-yugabytedb.git
     ```
 
     ```output

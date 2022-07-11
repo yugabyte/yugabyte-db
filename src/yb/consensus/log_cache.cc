@@ -393,12 +393,16 @@ Result<ReadOpsResult> LogCache::ReadOps(int64_t after_op_index,
         next_index++;
       }
     } else {
-      starting_op_segment_seq_num = VERIFY_RESULT(log_->GetLogReader()->LookupHeader(next_index));
-
-      if ((starting_op_segment_seq_num != -1)) {
+      const auto seg_num_result = log_->GetLogReader()->LookupOpWalSegmentNumber(next_index);
+      if (seg_num_result.ok()) {
+        starting_op_segment_seq_num = *seg_num_result;
         RETURN_NOT_OK(UpdateResultHeaderSchemaFromSegment(
             log_->GetLogReader(), starting_op_segment_seq_num, &result));
+      } else if (!seg_num_result.status().IsNotFound()) {
+        // Unexpected error - to be handled by the caller.
+        return seg_num_result.status();
       }
+
       // Pull contiguous messages from the cache until the size limit is achieved.
       for (; iter != cache_.end(); ++iter) {
         if (to_op_index > 0 && next_index > to_op_index) {
@@ -473,10 +477,6 @@ size_t LogCache::EvictSomeUnlocked(int64_t stop_after_index, int64_t bytes_to_ev
   VLOG_WITH_PREFIX_UNLOCKED(1) << "Evicting log cache: after state: " << ToStringUnlocked();
 
   return bytes_evicted;
-}
-
-Status LogCache::FlushIndex() {
-  return log_->FlushIndex();
 }
 
 void LogCache::AccountForMessageRemovalUnlocked(const CacheEntry& entry) {

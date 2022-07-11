@@ -15,10 +15,6 @@
 
 #include "yb/yql/pggate/pg_tabledesc.h"
 
-#include "yb/client/schema.h"
-#include "yb/client/table.h"
-#include "yb/client/yb_op.h"
-
 #include "yb/common/partition.h"
 #include "yb/common/pg_system_attr.h"
 #include "yb/common/schema.h"

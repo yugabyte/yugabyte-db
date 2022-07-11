@@ -27,7 +27,7 @@ The following tutorial shows a small [C# application](https://github.com/yugabyt
 Clone the sample application to your computer:
 
 ```sh
-git clone https://github.com/yugabyte/yugabyte-simple-csharp-app && cd yugabyte-simple-csharp-app
+git clone https://github.com/YugabyteDB-Samples/yugabyte-simple-csharp-app.git && cd yugabyte-simple-csharp-app
 ```
 
 The `yugabyte-simple-csharp-app.csproj` file includes the following package reference to include the driver:

@@ -27,7 +27,7 @@ In addition to the latest version of [Node.js](https://nodejs.org/en/download/),
 Clone the sample application to your computer:
 
 ```sh
-git clone https://github.com/yugabyte/yugabyte-simple-node-app && cd yugabyte-simple-node-app
+git clone https://github.com/YugabyteDB-Samples/yugabyte-simple-node-app.git && cd yugabyte-simple-node-app
 ```
 
 ## Provide connection parameters

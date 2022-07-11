@@ -30,7 +30,7 @@ The following tutorial shows a small [C application](https://github.com/yugabyte
 Clone the sample application to your computer:
 
 ```sh
-git clone https://github.com/yugabyte/yugabyte-simple-c-app && cd yugabyte-simple-c-app
+git clone https://github.com/YugabyteDB-Samples/yugabyte-simple-c-app.git && cd yugabyte-simple-c-app
 ```
 
 ## Provide connection parameters

@@ -18,11 +18,13 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include <boost/optional.hpp>
 
 #include "yb/client/client_fwd.h"
+#include "yb/client/tablet_server.h"
 
 #include "yb/common/pg_types.h"
 #include "yb/common/transaction.h"
@@ -325,8 +327,24 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   class RunHelper;
 
-  Result<PerformFuture> Perform(
-      BufferableOperations ops, UseCatalogSession use_catalog_session);
+  Result<PerformFuture> Perform(BufferableOperations ops,
+                                UseCatalogSession use_catalog_session,
+                                bool ensure_read_time_set_for_current_txn_serial_no = false);
+
+  void ProcessPerformOnTxnSerialNo(uint64_t txn_serial_no,
+                                   bool force_set_read_time_for_current_txn_serial_no,
+                                   tserver::PgPerformOptionsPB* options);
+
+  struct TxnSerialNoPerformInfo {
+    TxnSerialNoPerformInfo() : TxnSerialNoPerformInfo(0, ReadHybridTime()) {}
+
+    TxnSerialNoPerformInfo(uint64_t txn_serial_no_, const ReadHybridTime& read_time_)
+        : txn_serial_no(txn_serial_no_), read_time(read_time_) {
+    }
+
+    const uint64_t txn_serial_no;
+    const ReadHybridTime read_time;
+  };
 
   PgClient& pg_client_;
 
@@ -360,6 +378,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   const tserver::TServerSharedObject* const tserver_shared_object_;
   const YBCPgCallbacks& pg_callbacks_;
   bool has_write_ops_in_ddl_mode_ = false;
+  std::variant<TxnSerialNoPerformInfo> last_perform_on_txn_serial_no_;
 };
 
 }  // namespace pggate

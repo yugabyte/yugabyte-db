@@ -377,7 +377,7 @@ class UniverseReplicationLoader : public Visitor<PersistentUniverseReplicationIn
       // Add any failed universes to be cleared
       if (l->is_deleted_or_failed() ||
           l->pb.state() == SysUniverseReplicationEntryPB::DELETING ||
-          GStringPiece(l->pb.producer_id()).ends_with(".ALTER")) {
+          cdc::IsAlterReplicationUniverseId(l->pb.producer_id())) {
         catalog_manager_->universes_to_clear_.push_back(ri->id());
       }
 
@@ -3554,44 +3554,91 @@ bool CatalogManager::CDCStreamExistsUnlocked(const CDCStreamId& stream_id) {
   return true;
 }
 
+Status CatalogManager::UpdateCDCStreams(
+    const std::vector<CDCStreamId>& stream_ids,
+    const std::vector<yb::master::SysCDCStreamEntryPB>& update_entries) {
+  RSTATUS_DCHECK(stream_ids.size() > 0, InvalidArgument, "No stream ID provided.");
+  RSTATUS_DCHECK(stream_ids.size() == update_entries.size(), InvalidArgument,
+                 "Mismatched number of stream IDs and update entries provided.");
+
+  // Map CDCStreamId to (CDCStreamInfo, SysCDCStreamEntryPB). CDCStreamId is sorted in
+  // increasing order in the map.
+  std::map<CDCStreamId, std::pair<scoped_refptr<CDCStreamInfo>,
+                                  yb::master::SysCDCStreamEntryPB>> id_to_update_infos;
+  {
+    SharedLock lock(mutex_);
+    for (size_t i = 0; i < stream_ids.size(); i++) {
+      auto stream_id = stream_ids[i];
+      auto entry = update_entries[i];
+      auto stream = FindPtrOrNull(cdc_stream_map_, stream_id);
+      if (stream == nullptr) {
+        return STATUS(NotFound, "Could not find CDC stream", stream_id,
+                      MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
+      }
+      id_to_update_infos[stream_id] = {stream, entry};
+    }
+  }
+
+  // Acquire CDCStreamInfo::WriteLock in increasing order of CDCStreamId to avoid deadlock.
+  std::vector<CDCStreamInfo::WriteLock> stream_locks;
+  std::vector<scoped_refptr<CDCStreamInfo>> streams_to_update;
+  stream_locks.reserve(stream_ids.size());
+  streams_to_update.reserve(stream_ids.size());
+  for (const auto& id_to_update_info : id_to_update_infos) {
+    auto stream = id_to_update_info.second.first;
+    auto entry = id_to_update_info.second.second;
+
+    stream_locks.push_back(stream->LockForWrite());
+    auto& stream_lock = stream_locks.back();
+    if (stream_lock->is_deleting()) {
+      return STATUS(NotFound, "CDC stream has been deleted", stream->id(),
+                    MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
+    }
+    stream_lock.mutable_data()->pb.CopyFrom(entry);
+    streams_to_update.push_back(stream);
+  }
+
+  // First persist changes in sys catalog, then commit changes in the order of lock acquiring.
+  RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), streams_to_update));
+  for (auto& stream_lock : stream_locks) {
+    stream_lock.Commit();
+  }
+
+  return Status::OK();
+}
+
 Status CatalogManager::UpdateCDCStream(const UpdateCDCStreamRequestPB *req,
                                        UpdateCDCStreamResponsePB* resp,
                                        rpc::RpcContext* rpc) {
   LOG(INFO) << "UpdateCDCStream from " << RequestorString(rpc)
             << ": " << req->DebugString();
 
-  // Check fields.
-  if (!req->has_stream_id()) {
-    return STATUS(InvalidArgument, "Stream ID must be provided",
-                  req->ShortDebugString(), MasterError(MasterErrorPB::INVALID_REQUEST));
-  }
-  if (!req->has_entry()) {
-    return STATUS(InvalidArgument, "CDC Stream Entry must be provided",
-                  req->ShortDebugString(), MasterError(MasterErrorPB::INVALID_REQUEST));
+  std::vector<CDCStreamId> stream_ids;
+  std::vector<yb::master::SysCDCStreamEntryPB> update_entries;
+  stream_ids.reserve(req->streams_size() > 0 ? req->streams_size() : 1);
+  update_entries.reserve(req->streams_size() > 0 ? req->streams_size() : 1);
+
+  if (req->streams_size() == 0) {
+    // Support backwards compatibility for single stream update.
+    if (!req->has_stream_id()) {
+      return STATUS(InvalidArgument, "Stream ID must be provided",
+                    req->ShortDebugString(), MasterError(MasterErrorPB::INVALID_REQUEST));
+    }
+    if (!req->has_entry()) {
+      return STATUS(InvalidArgument, "CDC Stream Entry must be provided",
+                    req->ShortDebugString(), MasterError(MasterErrorPB::INVALID_REQUEST));
+    }
+    stream_ids.push_back(req->stream_id());
+    update_entries.push_back(req->entry());
+  } else {
+    // Process batch update.
+    for (const auto& stream : req->streams()) {
+      stream_ids.push_back(stream.stream_id());
+      update_entries.push_back(stream.entry());
+    }
   }
 
-  scoped_refptr<CDCStreamInfo> stream;
-  {
-    SharedLock lock(mutex_);
-    stream = FindPtrOrNull(cdc_stream_map_, req->stream_id());
-  }
-  if (stream == nullptr) {
-    return STATUS(NotFound, "Could not find CDC stream", req->ShortDebugString(),
-                  MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
-  }
-
-  auto stream_lock = stream->LockForWrite();
-  if (stream_lock->is_deleting()) {
-    return STATUS(NotFound, "CDC stream has been deleted", req->ShortDebugString(),
-                  MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
-  }
-
-  stream_lock.mutable_data()->pb.CopyFrom(req->entry());
-  // Also need to persist changes in sys catalog.
-  RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), stream));
-
-  stream_lock.Commit();
-
+  RETURN_NOT_OK(UpdateCDCStreams(stream_ids, update_entries));
   return Status::OK();
 }
 
@@ -4088,6 +4135,13 @@ Status CatalogManager::AddValidatedTableAndCreateCdcStreams(
     options.emplace(cdc::kSourceType, CDCRequestSource_Name(cdc::CDCRequestSource::XCLUSTER));
     options.emplace(cdc::kCheckpointType, CDCCheckpointType_Name(cdc::CDCCheckpointType::IMPLICIT));
 
+    // Keep track of the bootstrap_id, table_id, and options of streams to update after
+    // the last GetCDCStreamCallback finishes. Will be updated by multiple async
+    // GetCDCStreamCallback.
+    auto stream_update_infos = std::make_shared<StreamUpdateInfos>();
+    stream_update_infos->reserve(validated_tables.size());
+    auto update_infos_lock = std::make_shared<std::mutex>();
+
     for (const auto& table : validated_tables) {
       string producer_bootstrap_id;
       auto it = table_bootstrap_ids.find(table);
@@ -4100,7 +4154,7 @@ Status CatalogManager::AddValidatedTableAndCreateCdcStreams(
         cdc_rpc->client()->GetCDCStream(producer_bootstrap_id, table_id, stream_options,
             std::bind(&enterprise::CatalogManager::GetCDCStreamCallback, this,
                 producer_bootstrap_id, table_id, stream_options, universe->id(), table, cdc_rpc,
-                std::placeholders::_1));
+                std::placeholders::_1, stream_update_infos, update_infos_lock));
       } else {
         cdc_rpc->client()->CreateCDCStream(
             table, options,
@@ -4413,7 +4467,9 @@ void CatalogManager::GetCDCStreamCallback(
     const std::string& universe_id,
     const TableId& table,
     std::shared_ptr<CDCRpcTasks> cdc_rpc,
-    const Status& s) {
+    const Status& s,
+    std::shared_ptr<StreamUpdateInfos> stream_update_infos,
+    std::shared_ptr<std::mutex> update_infos_lock) {
   if (!s.ok()) {
     LOG(ERROR) << "Unable to find bootstrap id " << bootstrap_id;
     AddCDCStreamToUniverseAndInitConsumer(universe_id, table, s);
@@ -4427,21 +4483,39 @@ void CatalogManager::GetCDCStreamCallback(
       return;
     }
     // todo check options
-    AddCDCStreamToUniverseAndInitConsumer(universe_id, table, bootstrap_id, [&] () {
-        // Extra callback on universe setup success - update the producer to let it know that
-        // the bootstrapping is complete.
-        SysCDCStreamEntryPB new_entry;
-        new_entry.add_table_id(*table_id);
-        new_entry.mutable_options()->Reserve(narrow_cast<int>(options->size()));
-        for (const auto& option : *options) {
-          auto new_option = new_entry.add_options();
-          new_option->set_key(option.first);
-          new_option->set_value(option.second);
-        }
-        new_entry.set_state(master::SysCDCStreamEntryPB::ACTIVE);
+    {
+      std::lock_guard<std::mutex> lock(*update_infos_lock);
+      stream_update_infos->push_back({bootstrap_id, *table_id, *options});
+    }
+    AddCDCStreamToUniverseAndInitConsumer(universe_id, table, bootstrap_id,
+        [&] () {
+          // Extra callback on universe setup success - update the producer to let it know that
+          // the bootstrapping is complete. This callback will only be called once among all
+          // the GetCDCStreamCallback calls, and we update all streams in batch at once.
+          std::lock_guard<std::mutex> lock(*update_infos_lock);
 
-        WARN_NOT_OK(cdc_rpc->client()->UpdateCDCStream(bootstrap_id, new_entry),
-                  "Unable to update CDC stream options");
+          std::vector<CDCStreamId> update_bootstrap_ids;
+          std::vector<SysCDCStreamEntryPB> update_entries;
+          for (const auto& update_info : *stream_update_infos) {
+            auto update_bootstrap_id = std::get<0>(update_info);
+            auto update_table_id = std::get<1>(update_info);
+            auto update_options = std::get<2>(update_info);
+            SysCDCStreamEntryPB new_entry;
+            new_entry.add_table_id(update_table_id);
+            new_entry.mutable_options()->Reserve(narrow_cast<int>(update_options.size()));
+            for (const auto& option : update_options) {
+              auto new_option = new_entry.add_options();
+              new_option->set_key(option.first);
+              new_option->set_value(option.second);
+            }
+            new_entry.set_state(master::SysCDCStreamEntryPB::ACTIVE);
+
+            update_bootstrap_ids.push_back(update_bootstrap_id);
+            update_entries.push_back(new_entry);
+          }
+          WARN_NOT_OK(cdc_rpc->client()->UpdateCDCStream(update_bootstrap_ids, update_entries),
+                      "Unable to update CDC stream options");
+          stream_update_infos->clear();
       });
   }
 }
@@ -4514,8 +4588,7 @@ void CatalogManager::AddCDCStreamToUniverseAndInitConsumer(
           LOG(ERROR) << "Error registering subscriber: " << s;
           l.mutable_data()->pb.set_state(SysUniverseReplicationEntryPB::FAILED);
         } else {
-          GStringPiece original_producer_id(universe->id());
-          if (original_producer_id.ends_with(".ALTER")) {
+          if (cdc::IsAlterReplicationUniverseId(universe->id())) {
             // Don't enable ALTER universes, merge them into the main universe instead.
             merge_alter = true;
           } else {
@@ -4538,18 +4611,17 @@ void CatalogManager::AddCDCStreamToUniverseAndInitConsumer(
   }
 
   if (validated_all_tables) {
-    GStringPiece final_id(universe->id());
+    string final_id = cdc::GetOriginalReplicationUniverseId(universe->id());
     // If this is an 'alter', merge back into primary command now that setup is a success.
     if (merge_alter) {
-      final_id.remove_suffix(sizeof(".ALTER")-1 /* exclude \0 ending */);
-      MergeUniverseReplication(universe, final_id.ToString());
+      MergeUniverseReplication(universe, final_id);
     }
     // Update the in-memory cache of consumer tables.
     LockGuard lock(mutex_);
     for (const auto& info : consumer_info) {
       auto c_table_id = info.consumer_table_id;
       auto c_stream_id = info.stream_id;
-      xcluster_consumer_tables_to_stream_map_[c_table_id].emplace(final_id.ToString(), c_stream_id);
+      xcluster_consumer_tables_to_stream_map_[c_table_id].emplace(final_id, c_stream_id);
     }
   }
 }
@@ -5455,7 +5527,7 @@ Status CatalogManager::IsSetupUniverseReplicationDone(
     return STATUS(InvalidArgument, "Producer universe ID must be provided",
                   req->ShortDebugString(), MasterError(MasterErrorPB::INVALID_REQUEST));
   }
-  bool isAlterRequest = GStringPiece(req->producer_id()).ends_with(".ALTER");
+  bool isAlterRequest = cdc::IsAlterReplicationUniverseId(req->producer_id());
 
   GetUniverseReplicationRequestPB universe_req;
   GetUniverseReplicationResponsePB universe_resp;

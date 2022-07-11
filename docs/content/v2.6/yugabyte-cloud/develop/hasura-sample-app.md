@@ -41,7 +41,7 @@ $ hasura update-cli --version v2.0.0-beta.2
 The Realtime Poll application is available from the Yugabyte GraphQL Apps repo.
 
 ```sh
-$ git clone https://github.com/yugabyte/yugabyte-graphql-apps
+$ git clone https://github.com/YugabyteDB-Samples/yugabyte-graphql-apps.git
 $ cd yugabyte-graphql-apps/realtime-poll
 ```
 

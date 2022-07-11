@@ -65,6 +65,7 @@
 
 #include "yb/util/async_util.h"
 #include "yb/util/countdown_latch.h"
+#include "yb/util/crc.h"
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/env_util.h"
@@ -594,7 +595,7 @@ Status Log::Init() {
   std::lock_guard<percpu_rwlock> write_lock(state_lock_);
   CHECK_EQ(kLogInitialized, log_state_);
   // Init the index
-  log_index_.reset(new LogIndex(wal_dir_));
+  log_index_ = VERIFY_RESULT(LogIndex::NewLogIndex(wal_dir_));
   // Reader for previous segments.
   RETURN_NOT_OK(LogReader::Open(get_env(),
                                 log_index_,
@@ -676,7 +677,7 @@ Status Log::CloseCurrentSegment() {
 
   footer_builder_.set_close_timestamp_micros(close_timestamp_micros);
 
-  auto status = active_segment_->WriteFooterAndClose(footer_builder_);
+  auto status = active_segment_->WriteIndexWithFooterAndClose(log_index_.get(), &footer_builder_);
 
   if (status.ok() && metrics_) {
       metrics_->wal_size->IncrementBy(active_segment_->Size());
@@ -922,6 +923,7 @@ Status Log::EnsureInitialNewSegmentAllocated() {
   RETURN_NOT_OK(AsyncAllocateSegment());
   RETURN_NOT_OK(allocation_status_.Get());
   RETURN_NOT_OK(SwitchToAllocatedSegment());
+  log_index_->SetMinIndexedSegmentNumber(active_segment_sequence_number_);
 
   RETURN_NOT_OK(appender_->Init());
   log_state_ = LogState::kLogWriting;
@@ -1314,15 +1316,12 @@ Status Log::DeleteOnDiskData(Env* env,
   return Status::OK();
 }
 
-Status Log::FlushIndex() {
-  if (!log_index_) {
-    return Status::OK();
-  }
-  return log_index_->Flush();
-}
-
 Result<SegmentOpIdRelation> Log::GetSegmentOpIdRelation(
     ReadableLogSegment* segment, const OpId& op_id) {
+  if (!op_id.is_valid_not_empty()) {
+    return SegmentOpIdRelation::kOpIdAfterSegment;
+  }
+
   const auto& footer = segment->footer();
   VLOG_WITH_PREFIX_AND_FUNC(2) << "footer.has_max_replicate_index(): "
                                << footer.has_max_replicate_index()
@@ -1351,7 +1350,7 @@ Result<SegmentOpIdRelation> Log::GetSegmentOpIdRelation(
     return SegmentOpIdRelation::kOpIdBeforeSegment;
   }
 
-  // first_op_id <= up_to_op_id
+  RSTATUS_DCHECK_LE(first_op_id, op_id, InternalError, "Expected first_op_id <= op_id");
 
   const auto last_replicate = std::find_if(
       read_entries.entries.crbegin(), read_entries.entries.crend(), has_replicate);
@@ -1365,15 +1364,15 @@ Result<SegmentOpIdRelation> Log::GetSegmentOpIdRelation(
     return SegmentOpIdRelation::kOpIdIsLast;
   }
 
-  // first_op_id <= up_to_op_id < last_op_id
+  RSTATUS_DCHECK_LE(first_op_id, op_id, InternalError, "Expected first_op_id <= op_id");
+  RSTATUS_DCHECK_LT(op_id, last_op_id, InternalError, "Expected op_id < last_op_id");
   return SegmentOpIdRelation::kOpIdIsInsideAndNotLast;
 }
 
 Result<bool> Log::CopySegmentUpTo(
-    ReadableLogSegment* segment, const std::string& dest_wal_dir, const OpId& up_to_op_id) {
-  SegmentOpIdRelation relation = up_to_op_id.valid() && !up_to_op_id.empty()
-                                     ? VERIFY_RESULT(GetSegmentOpIdRelation(segment, up_to_op_id))
-                                     : SegmentOpIdRelation::kOpIdAfterSegment;
+    ReadableLogSegment* segment, const std::string& dest_wal_dir,
+    const OpId& max_included_op_id) {
+  SegmentOpIdRelation relation = VERIFY_RESULT(GetSegmentOpIdRelation(segment, max_included_op_id));
   auto* const env = options_.env;
   const auto sequence_number = segment->header().sequence_number();
   const auto file_name = FsManager::GetWalSegmentFileName(sequence_number);
@@ -1400,29 +1399,20 @@ Result<bool> Log::CopySegmentUpTo(
       return stop;
 
     case SegmentOpIdRelation::kOpIdIsInsideAndNotLast:
-      // Copy part of the segment up to up_to_op_id.
-      std::unique_ptr<WritableFile> dest_file;
-      auto opts = GetNewSegmentWritableFileOptions();
-      RETURN_NOT_OK(env->NewWritableFile(opts, dest_path, &dest_file));
-      std::shared_ptr<WritableFile> shared_dest_file(dest_file.release());
-
-      // Rebuild log index for this segment, it might be not necessary after
-      // https://github.com/yugabyte/yugabyte-db/issues/10960 is fixed.
-      auto copied_log_index = make_scoped_refptr(new LogIndex(dest_wal_dir));
-      RETURN_NOT_OK(
-          segment->CopyTo(up_to_op_id, dest_path, shared_dest_file, copied_log_index.get()));
-      RETURN_NOT_OK(copied_log_index->Flush());
+      // Copy part of the segment up to and including max_included_op_id.
+      RETURN_NOT_OK(segment->CopyTo(
+          env, GetNewSegmentWritableFileOptions(), dest_path, max_included_op_id));
 
       VLOG_WITH_PREFIX(1) << Format(
-          "Copied $0 to $1, up to $2", src_path, dest_path, up_to_op_id);
-      return false;
+          "Copied $0 to $1, up to $2", src_path, dest_path, max_included_op_id);
+      return true;
   }
   FATAL_INVALID_ENUM_VALUE(SegmentOpIdRelation, relation);
 }
 
-Status Log::CopyTo(const std::string& dest_wal_dir, const OpId up_to_op_id) {
+Status Log::CopyTo(const std::string& dest_wal_dir, const OpId max_included_op_id) {
   VLOG_WITH_PREFIX_AND_FUNC(1) << "dest_wal_dir: " << dest_wal_dir
-                               << " up_to_op_id: " << AsString(up_to_op_id);
+                               << " max_included_op_id: " << AsString(max_included_op_id);
   // We mainly need log_copy_mutex_ to simplify managing of log_copy_min_index_.
   std::lock_guard<decltype(log_copy_mutex_)> log_copy_lock(log_copy_mutex_);
   auto se = ScopeExit([this]() {
@@ -1459,28 +1449,35 @@ Status Log::CopyTo(const std::string& dest_wal_dir, const OpId up_to_op_id) {
     RETURN_NOT_OK(segments.pop_back());
 
     // At this point all segments in `segments` are closed and immutable.
-    // Looking for first non-empty segment.
-    auto it =
-        std::find_if(segments.begin(), segments.end(), [](const ReadableLogSegmentPtr& segment) {
-          // Check whether segment is not empty.
-          return segment->readable_up_to() > segment->first_entry_offset();
-        });
-    if (it != segments.end()) {
-      // We've found first non-empty segment to copy, set an anchor for Log GC.
-      log_copy_min_index_ = VERIFY_RESULT((*it)->ReadFirstEntryMetadata()).op_id.index;
+    // Looking for first op index.
+    for (auto& segment : segments) {
+      if (segment->readable_to_offset() <= segment->first_entry_offset()) {
+        // Segment definitely has no entries.
+        continue;
+      }
+      auto result = segment->ReadFirstReplicateEntryOpId();
+      if (result.ok()) {
+        // We've found first non-empty segment to copy, set an anchor for Log GC.
+        // Note that concurrent modifications to log_copy_min_index_ are not possible, because the
+        // whole function holds log_copy_mutex_ lock.
+        log_copy_min_index_ = result->index;
+        break;
+      }
+      if (result.status().IsNotFound()) {
+        // No entries.
+        continue;
+      }
+      // Failure.
+      return result.status();
     }
   }
 
-  RETURN_NOT_OK_PREPEND(env_util::CreateDirIfMissing(options_.env, dest_wal_dir),
-                        Format("Failed to create tablet WAL dir $0", dest_wal_dir));
-
-  const auto has_op_id_limit = up_to_op_id.valid() && !up_to_op_id.empty();
-
-  RETURN_NOT_OK(
-      log_index->CopyTo(options_.env, dest_wal_dir, has_op_id_limit ? up_to_op_id.index : -1));
+  RETURN_NOT_OK_PREPEND(
+      options_.env->CreateDir(dest_wal_dir),
+      Format("Failed to create tablet WAL dir $0", dest_wal_dir));
 
   for (const auto& segment : segments) {
-    if (VERIFY_RESULT(CopySegmentUpTo(segment.get(), dest_wal_dir, up_to_op_id))) {
+    if (VERIFY_RESULT(CopySegmentUpTo(segment.get(), dest_wal_dir, max_included_op_id))) {
       break;
     }
   }
