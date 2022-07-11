@@ -131,8 +131,9 @@ static bool agtype_extract_scalar(agtype_container *agtc, agtype_value *res);
 static agtype_value *execute_array_access_operator(agtype *array,
                                                    agtype_value *array_value,
                                                    agtype *array_index);
-static agtype_value *execute_array_access_operator_internal(
-    agtype *array, agtype_value *array_value, int64 array_index);
+static agtype_value *execute_array_access_operator_internal(agtype *array,
+                                                            agtype_value *array_value,
+                                                            int64 array_index);
 static agtype_value *execute_map_access_operator(agtype *map,
                                                  agtype_value* map_value,
                                                  agtype *key);
@@ -2911,21 +2912,22 @@ static agtype_value *execute_array_access_operator(agtype *array,
         array, array_value, array_index_value->val.int_value);
 }
 
-static agtype_value *execute_array_access_operator_internal(
-    agtype *array, agtype_value *array_value, int64 array_index)
+static agtype_value *execute_array_access_operator_internal(agtype *array,
+                                                            agtype_value *array_value,
+                                                            int64 array_index)
 {
     agtype_value *array_element_value = NULL;
     uint32 size = (array_value == NULL) ? AGT_ROOT_COUNT(array) :
                                           array_value->val.array.num_elems;
 
     /* adjust for negative index values */
-    if (index < 0)
+    if (array_index < 0)
     {
         array_index = size + array_index;
     }
 
     /* check array bounds */
-    if ((array_index >= size) || (index < 0))
+    if ((array_index >= size) || (array_index < 0))
     {
         return NULL;
     }

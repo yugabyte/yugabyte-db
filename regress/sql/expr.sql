@@ -144,6 +144,21 @@ $$RETURN null IN 'str' $$) AS r(c boolean);
 SELECT * FROM cypher('expr',
 $$RETURN 'str' IN 'str' $$) AS r(c boolean);
 
+-- list access
+SELECT * FROM cypher('expr',
+$$RETURN [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10][0]$$) AS r(c agtype);
+SELECT * FROM cypher('expr',
+$$RETURN [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10][5]$$) AS r(c agtype);
+SELECT * FROM cypher('expr',
+$$RETURN [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10][10]$$) AS r(c agtype);
+SELECT * FROM cypher('expr',
+$$RETURN [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10][-1]$$) AS r(c agtype);
+SELECT * FROM cypher('expr',
+$$RETURN [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10][-3]$$) AS r(c agtype);
+-- should return null
+SELECT * FROM cypher('expr',
+$$RETURN [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10][11]$$) AS r(c agtype);
+
 -- list slice
 SELECT * FROM cypher('expr',
 $$RETURN [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10][0..]$$) AS r(c agtype);
@@ -157,6 +172,15 @@ SELECT * FROM cypher('expr',
 $$RETURN [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10][0..1]$$) AS r(c agtype);
 SELECT * FROM cypher('expr',
 $$RETURN [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10][9..10]$$) AS r(c agtype);
+SELECT * FROM cypher('expr',
+$$RETURN [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10][-1..]$$) AS r(c agtype);
+SELECT * FROM cypher('expr',
+$$RETURN [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10][-1..11]$$) AS r(c agtype);
+SELECT * FROM cypher('expr',
+$$RETURN [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10][-3..11]$$) AS r(c agtype);
+-- this one should return null
+SELECT * FROM cypher('expr',
+$$RETURN [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10][-1..10]$$) AS r(c agtype);
 SELECT agtype_access_slice('[0]'::agtype, 'null'::agtype, '1'::agtype);
 SELECT agtype_access_slice('[0]'::agtype, '0'::agtype, 'null'::agtype);
 -- should error - ERROR:  slice must access a list
