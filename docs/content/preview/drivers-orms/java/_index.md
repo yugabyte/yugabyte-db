@@ -16,25 +16,18 @@ The following projects can be used to implement Java applications using the Yuga
 
 ## Supported Projects
 
-| Project | Documentation and Guides | Latest Driver Version | Supported YugabyteDB Version |
+| Driver | Documentation and Guides | Latest Driver Version | Supported YugabyteDB Version |
 | ------- | ------------------------ | ------------------------ | ---------------------|
-| PostgreSQL JDBC Driver | [Documentation](postgres-jdbc)<br />[Hello World App](/preview/quick-start/build-apps/java/ysql-jdbc)<br /> [Reference Page](../../reference/drivers/java/postgres-jdbc-reference/) | [42.3.4](https://mvnrepository.com/artifact/org.postgresql/postgresql/42.2.14) | 2.4 and above
-| YugabyteDB Smart Driver [Recommended] | [Documentation](yugabyte-jdbc)<br />[Hello World App](/preview/quick-start/build-apps/java/ysql-yb-jdbc)<br />[Blog](https://dev.to/yugabyte/yugabytedb-jdbc-smart-driver-for-proxyless-halb-2k8a)<br />[Reference Page](../../reference/drivers/java/yugabyte-jdbc-reference/) | [42.3.4](https://mvnrepository.com/artifact/com.yugabyte/jdbc-yugabytedb/42.3.2) | 2.8 and above
+| YugabyteDB JDBC Driver [Recommended] | [Documentation](yugabyte-jdbc)<br />[Hello World App](../../quick-start/build-apps/java/ysql-yb-jdbc)<br />[Blog](https://dev.to/yugabyte/yugabytedb-jdbc-smart-driver-for-proxyless-halb-2k8a)<br />[Reference Page](../../reference/drivers/java/yugabyte-jdbc-reference/) | [42.3.4](https://mvnrepository.com/artifact/com.yugabyte/jdbc-yugabytedb/42.3.2) | 2.8 and above
+| PostgreSQL JDBC Driver | [Documentation](postgres-jdbc)<br />[Hello World App](../../quick-start/build-apps/java/ysql-jdbc)<br /> [Reference Page](../../reference/drivers/java/postgres-jdbc-reference/) | [42.3.4](https://mvnrepository.com/artifact/org.postgresql/postgresql/42.2.14) | 2.4 and above
 
-| Project | Documentation and Guides | Example Apps |
+| Projects | Documentation and Guides | Example Apps |
 | ------- | ------------------------ | ------------ |
-| Hibernate | [Documentation](hibernate)<br />[Hello World App](/preview/quick-start/build-apps/java/ysql-hibernate)<br />[Blog](https://blog.yugabyte.com/run-the-rest-version-of-spring-petclinic-with-angular-and-distributed-sql-on-gke/)<br /> | [Hibernate ORM App](https://github.com/yugabyte/orm-examples/tree/master/java/hibernate)
+| Ebean ORM | [Documentation](ebean)<br /> [Hello World App](/preview/quick-start/build-apps/java/ysql-ebean)<br /> [Blog](https://blog.yugabyte.com/ebean-orm-yugabytedb/)| [Ebean ORM App](https://github.com/yugabyte/orm-examples/tree/master/java/ebean)
+| Hibernate ORM | [Documentation](hibernate)<br />[Hello World App](/preview/quick-start/build-apps/java/ysql-hibernate)<br />[Blog](https://blog.yugabyte.com/run-the-rest-version-of-spring-petclinic-with-angular-and-distributed-sql-on-gke/)<br /> | [Hibernate ORM App](https://github.com/yugabyte/orm-examples/tree/master/java/hibernate)
 | Spring Data YugabyteDB | [Documentation](../../integrations/spring-framework/sdyb/)<br />[Hello World App](../../quick-start/build-apps/java/ysql-sdyb/)<br />[Blog](https://blog.yugabyte.com/spring-data-yugabytedb-getting-started/) | [Spring Data YugabyteDB Sample App](https://github.com/yugabyte/spring-data-yugabytedb-example)
 | Spring Data JPA | [Documentation](../../integrations/spring-framework/sd-jpa/)<br />[Hello World App](../../quick-start/build-apps/java/ysql-spring-data/)<br />[Blog](https://blog.yugabyte.com/run-the-rest-version-of-spring-petclinic-with-angular-and-distributed-sql-on-gke/) | [Spring Data JPA App](https://github.com/yugabyte/orm-examples/tree/master/java/spring)
 
-<!--
-| Project (* Recommended) | Type | Support | Examples |
-| :------ | :--- | :------ | :------- |
-| [YugabyteDB JDBC Driver*](yugabyte-jdbc) | JDBC Driver | Full | [Hello World](/preview/quick-start/build-apps/java/ysql-yb-jdbc) <br />[CRUD](yugabyte-jdbc) |
-| [PostgreSQL JDBC Driver](/preview/reference/drivers/java/postgres-jdbc-reference/) | JDBC Driver | Full | [Hello World](/preview/quick-start/build-apps/java/ysql-jdbc) <br />[CRUD](postgres-jdbc)|
-| [Hibernate*](hibernate) | ORM |  Full | [Hello World](/preview/quick-start/build-apps/java/ysql-hibernate) <br />[CRUD](hibernate/#working-with-domain-objects) |
-| [Spring Data YugabyteDB*](/preview/integrations/spring-framework/sdyb/) | Framework |  Full | [Hello World](/preview/quick-start/build-apps/java/ysql-sdyb) |
--->
 Learn how to establish a connection to a YugabyteDB database and begin basic CRUD operations using the **Hello World** examples.
 
 For fully-runnable code snippets and explanations of common operations, see the **example apps**. Before running the example apps, make sure you have installed the prerequisites.
@@ -58,5 +51,5 @@ To develop Java applications for YugabyteDB, you need the following:
 
 ## Next steps
 
-- Learn how to build Java applications using [Hibernate ORM](hibernate/).
+- Learn how to build Java applications using [Ebean ORM](ebean/).
 - Learn how to [develop Spring Boot applications](/preview/integrations/spring-framework/sdyb/) using the Spring Data YugabyteDB project.
