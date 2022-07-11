@@ -5,23 +5,24 @@
 # This suite includes all tests on datatypes that are enabled for YugaByte.
 ####################################################################################################
 
+test: yb_char
+test: yb_pg_text
+test: yb_pg_bit
+test: yb_bytea
+test: yb_pg_uuid
+test: yb_pg_tstypes
+
 # Chain of dependencies for yb_pg_tsearch
 test: yb_pg_create_function_1
 test: yb_pg_create_type
 test: yb_pg_create_table
 test: yb_pg_copy
 
-test: yb_pg_bit
-test: yb_char
-test: yb_pg_text
-test: yb_bytea
-test: yb_pg_tstypes
-test: yb_pg_uuid
+test: yb_pg_collate
+test: yb_collate_icu_utf8
+
 test: yb_pg_tsearch
 test: yb_pg_tsdicts
-
-test: yb_pg_collate
-test: yb_pg_collate_icu_utf8
 
 # TODO(neil) Must build postgres with --with-libxml
 # test: yb_pg_xml
