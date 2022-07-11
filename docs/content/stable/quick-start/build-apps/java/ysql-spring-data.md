@@ -38,9 +38,9 @@ type: docs
     </a>
   </li>
    <li>
-    <a href="../ysql-ebeans/" class="nav-link">
+    <a href="../ysql-ebean/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - Ebeans
+      YSQL - Ebean
     </a>
   </li>
   <li>
