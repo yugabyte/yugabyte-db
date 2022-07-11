@@ -1,9 +1,9 @@
 ---
-title: Indexes and Constraints
-headerTitle: Indexes and Constraints
-linkTitle: Indexes and Constraints
-description: Explore Indexes and Constraints in YSQL and YCQL
-headcontent: Explore Indexes and Constraints in YSQL and YCQL
+title: Indexes and constraints
+headerTitle: Indexes and constraints
+linkTitle: Indexes and constraints
+description: Explore indexes and constraints in YSQL and YCQL
+headcontent: Explore indexes and constraints in YSQL and YCQL
 image: /images/section_icons/explore/monitoring.png
 menu:
   preview:
@@ -117,7 +117,7 @@ type: indexpage
         <div class="title">Other constraints</div>
       </div>
       <div class="body">
-          Explore CHECK and NOT NULL constraints to optimize your database performance.
+          Explore CHECK, UNIQUE, and NOT NULL constraints to optimize your database performance.
       </div>
     </a>
  </div>

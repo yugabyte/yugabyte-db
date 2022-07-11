@@ -30,8 +30,9 @@ type: docs
   </li>
 </ul>
 
-Partial Indexes allow you to improve the query performance by reducing the index size. The smaller index size will be faster to scan and easier to maintain, thereby requiring lesser storage.
-Indexing works by specifying the rows defined by a conditional expression(called the predicate of the partial index), typically in the `WHERE` clause of the table.
+Partial indexes allow you to improve query performance by reducing the index size. A smaller index is faster to scan, easier to maintain, and requires less storage.
+
+Partial indexing works by specifying the rows defined by a conditional expression (called the predicate of the partial index), typically in the `WHERE` clause of the table.
 
 ## Syntax
 
@@ -39,20 +40,22 @@ Indexing works by specifying the rows defined by a conditional expression(called
 CREATE INDEX index_name ON table_name(column_list) WHERE condition;
 ```
 
-The `WHERE` clause in the syntax specifies which rows need to be added to the index.
+The `WHERE` clause specifies which rows need to be added to the index.
 
 ## Example
 
-This example uses the `customers` table from the [Northwind sample database](/preview/sample-data/northwind/). Follow the steps to create a local [cluster](/preview/quick-start/) or in [YugabyteDB Managed](/preview/yugabyte-cloud/cloud-connect/), and [install](/preview/sample-data/northwind/#install-the-northwind-sample-database) the sample Northwind database.
+This example uses the `customers` table from the [Northwind sample database](../../../sample-data/northwind/).
 
-- View the contents of the `customers` table.
+Create a cluster [locally](../../../quick-start/) or in [YugabyteDB Managed](../../../yugabyte-cloud/cloud-basics/create-clusters-free/) and [install](../../../sample-data/northwind/#install-the-northwind-sample-database) the sample Northwind database.
+
+View the contents of the `customers` table:
 
 ```sql
 SELECT * FROM customers LIMIT 3;
 ```
 
 ```output
-customer_id |       company_name        |  contact_name  |    contact_title    |           address           |   city    | region | postal_code | country |     phone      |      fax
+ customer_id |       company_name        |  contact_name  |    contact_title    |           address           |   city    | region | postal_code | country |     phone      |      fax
 -------------+---------------------------+----------------+---------------------+-----------------------------+-----------+--------+-------------+---------+----------------+----------------
  FAMIA       | Familia Arquibaldo        | Aria Cruz      | Marketing Assistant | Rua Orós, 92                | Sao Paulo | SP     | 05442-030   | Brazil  | (11) 555-9857  |
  VINET       | Vins et alcools Chevalier | Paul Henriot   | Accounting Manager  | 59 rue de l'Abbaye          | Reims     |        | 51100       | France  | 26.47.15.10    | 26.47.15.11
@@ -60,47 +63,44 @@ customer_id |       company_name        |  contact_name  |    contact_title    |
 (3 rows)
 ```
 
-- Let's say you want to query the subset of customers who are `Sales Managers` in the `USA`. The query plan using the `EXPLAIN` statement would look like the following:
+Suppose you want to query the subset of customers who are Sales Managers in the USA. The query plan using the `EXPLAIN` statement would look like the following:
 
 ```sql
 northwind=# EXPLAIN SELECT * FROM customers where (country = 'USA' and contact_title = 'Sales Manager');
 ```
 
 ```output
-                                     QUERY PLAN
---------------------------------------------------------------------------------------------------------
+                                    QUERY PLAN
+-----------------------------------------------------------------------------------------------
  Seq Scan on customers  (cost=0.00..105.00 rows=1000 width=738)
-   Filter: (((country)::text = 'USA'::text) AND ((contact_title)::text = 'Sales Manager'::text))
+  Filter: (((country)::text = 'USA'::text) AND ((contact_title)::text = 'Sales Manager'::text))
 (2 rows)
 ```
 
-Without creating the partial index, querying the `customers` table with the `WHERE` clause will sequentially scan all the rows. Creating a partial index will limit the number of rows to be scanned for the same query.
+Without creating a partial index, querying the `customers` table with the `WHERE` clause scans all the rows sequentially. Creating a partial index limits the number of rows to be scanned for the same query.
 
-- Create a partial index on the columns `country` and `city` from the `customers` table as follows:
+Create a partial index on the columns `country` and `city` from the `customers` table as follows:
 
 ```sql
 northwind=# CREATE INDEX index_country ON customers(country) WHERE(contact_title = 'Sales Manager');
 ```
 
-- Verify with the `EXPLAIN` statment that the number of rows will be significantly less compared to the original query plan.
+Verify with the `EXPLAIN` statement that the number of rows is significantly less compared to the original query plan.
 
 ```sql
 northwind=# EXPLAIN SELECT * FROM customers where (country = 'USA' and contact_title = 'Sales Manager');
 ```
 
 ```output
-                                      QUERY PLAN
----------------------------------------------------------------------------------------
+                                  QUERY PLAN
+---------------------------------------------------------------------------------
  Index Scan using index_country on customers  (cost=0.00..5.00 rows=10 width=738)
-   Index Cond: ((country)::text = 'USA'::text)
+  Index Cond: ((country)::text = 'USA'::text)
 (2 rows)
-
 ```
 
 ## Learn more
 
 - [SQL Puzzle: Partial Versus Expression Indexes](https://blog.yugabyte.com/sql-puzzle-partial-versus-expression-indexes/)
-
 - [The Benefit of Partial Indexes in Distributed SQL Databases](https://blog.yugabyte.com/the-benefit-of-partial-indexes-in-distributed-sql-databases/)
-
-- [Indexes on JSON attributes](/preview/explore/json-support/jsonb-ysql/#6-indexes-on-json-attributes)
+- [Indexes on JSON attributes](../../json-support/jsonb-ysql/#6-indexes-on-json-attributes)
