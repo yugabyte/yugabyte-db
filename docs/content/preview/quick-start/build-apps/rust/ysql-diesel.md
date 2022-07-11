@@ -42,7 +42,7 @@ This tutorial assumes that you have:
 ## Clone the "orm-examples" repository
 
 ```sh
-$ git clone https://github.com/yugabyte/orm-examples.git && cd orm-examples/rust/diesel
+$ git clone https://github.com/YugabyteDB-Samples/orm-examples.git && cd orm-examples/rust/diesel
 ```
 
 Build the REST API server (written using Diesel and Rocket) as follows:

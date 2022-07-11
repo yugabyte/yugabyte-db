@@ -28,7 +28,7 @@ In addition to [Go (tested with version 1.17.6)](https://go.dev/dl/), this tutor
 Clone the sample application to your computer:
 
 ```sh
-git clone https://github.com/yugabyte/yugabyte-simple-go-app.git && cd yugabyte-simple-go-app
+git clone https://github.com/YugabyteDB-Samples/yugabyte-simple-go-app.git && cd yugabyte-simple-go-app
 ```
 
 ## Provide connection parameters

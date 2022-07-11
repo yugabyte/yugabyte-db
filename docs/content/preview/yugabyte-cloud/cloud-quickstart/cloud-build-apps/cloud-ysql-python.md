@@ -28,7 +28,7 @@ The following tutorial shows a small [Python application](https://github.com/yug
 Clone the sample application to your computer:
 
 ```sh
-git clone https://github.com/yugabyte/yugabyte-simple-python-app.git && cd yugabyte-simple-python-app
+git clone https://github.com/YugabyteDB-Samples/yugabyte-simple-python-app.git && cd yugabyte-simple-python-app
 ```
 
 ## Provide connection parameters

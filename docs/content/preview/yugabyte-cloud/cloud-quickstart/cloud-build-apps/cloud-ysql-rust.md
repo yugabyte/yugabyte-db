@@ -27,7 +27,7 @@ The following tutorial shows a small [Rust application](https://github.com/yugab
 Clone the sample application to your computer:
 
 ```sh
-git clone https://github.com/yugabyte/yugabyte-simple-rust-app && cd yugabyte-simple-rust-app
+git clone https://github.com/YugabyteDB-Samples/yugabyte-simple-rust-app.git && cd yugabyte-simple-rust-app
 ```
 
 ## Provide connection parameters
