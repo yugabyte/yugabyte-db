@@ -4,12 +4,11 @@ headerTitle: Enable encryption in transit
 linkTitle: Enable encryption in transit
 description: Use YugabyteDB Anywhere to enable encryption in transit (TLS) on a YugabyteDB universe and connect to clients.
 menu:
-  preview:
+  preview_yugabyte-platform:
     parent: security
     identifier: enable-encryption-in-transit
     weight: 29
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 YugabyteDB Anywhere allows you to protect data in transit by using the following:
@@ -138,7 +137,9 @@ In addition, verify the following:
 
    ![add-cert](/images/yp/encryption-in-transit/add-cert.png)<br><br>
 
-1. Upload the custom CA root certificate as the root certificate. If you do not have the root certificate, contact your CA.
+1. Upload the custom CA root certificate as the root certificate. 
+
+   If you do not have the root certificate but instead have an intermediate certificate, you need to create a bundle by executing the `cat intermediate-ca.crt root-ca.crt > bundle.crt` command, and then using this bundle as the root certificate.
 
 1. Enter the file paths for each of the certificates on the nodes. These are the paths from the previous step.
 

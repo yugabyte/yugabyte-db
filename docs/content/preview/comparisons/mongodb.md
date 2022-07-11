@@ -6,11 +6,10 @@ description: Compare MongoDB with YugabyteDB.
 aliases:
   - /comparisons/mongodb/
 menu:
-  preview:
+  preview_faq:
     parent: comparisons
     weight: 1090
-isTocNested: false
-showAsideToc: true
+type: docs
 ---
 
 Even though it has improved its transactional capabilities over the last few years, MongoDB is still architecturally not a good fit for transactional applications with strict guarantees on low latency and high throughput. Using transactions in MongoDB today essentially means giving up on high performance and horizontal scalability. Yugabyte believe this is a compromise fast-growing online services should not be forced to make. As shown in the table below, we architected YugabyteDB to simultaneously deliver transactional guarantees, high performance and linear scalability. A 3-node YugabyteDB cluster supports both single-shard and multi-shard transactions and seamlessly scales out on-demand (in single region as well as across multiple regions) to increase write throughput without compromising low latency reads.

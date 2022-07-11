@@ -8,8 +8,7 @@ menu:
     identifier: timestamptz-interval-day-arithmetic
     parent: timezone-sensitive-operations
     weight: 20
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 The [moment-moment overloads of the "-" operator for _timestamptz_, _timestamp_, and _time_](../../../date-time-data-types-semantics/type-interval/interval-arithmetic/moment-moment-overloads-of-minus/) section recommends that you avoid arithmetic that uses _hybrid interval_ semantics—in other words that you perform _interval_ arithmetic using only values that have just one of the fields of the internal _[&#91;mm. dd, ss&#93;](../../../date-time-data-types-semantics/type-interval/interval-representation/)_ representation tuple non-zero. The section [Defining and using custom domain types to specialize the native interval functionality](../../../date-time-data-types-semantics/type-interval/custom-interval-domains/) explains a coding practice that supports this recommendation.
@@ -327,4 +326,3 @@ The resulting _timestamptz_ values when a pure days _'1 day'::interval_ value is
 - If, in the reigning timezone, the addition does not cross a Daylight Savings Time transition, then the result is given simply by adding _24_ hours, just as it is when a pure seconds _interval_ value is used.
 - If, in the reigning timezone, the addition _does_ cross the "fall back" moment, then the result is given by adding _more than_ _24_ hours. The delta is equal to the size of the "fall back" amount.
 {{< /tip >}}
-

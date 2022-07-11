@@ -8,8 +8,7 @@ menu:
     identifier: interval-utilities
     parent: type-interval
     weight: 100
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 {{< tip title="Download the '.zip' file to create the reusable code that supports the pedagogy of the overall 'date-time' major section." >}}
@@ -48,7 +47,7 @@ The code presented on this page defines two user-defined types, _interval_parame
 
 The code that the remainder of this section presents defines the _interval_parameterization_t_ and _interval_mm_dd_ss_t_ types, and all but one of the six mutual transformation functions. The design of the five functions that are shown here is straightforward—but it does depend on knowing that the internal representation of an _interval_ value is a _[\[mm, dd, ss\]](../interval-representation/)_ tuple that uses four-byte integers to record the _months_ and _days_ fields and an eight-byte integer to record the _seconds_ field as a microseconds value.
 
-The section [Modeling the internal representation and comparing the model with the actual implementation](../interval-representation/internal-representation-model/) defines and tests the function that the present page doesn't show: _function interval_mm_dd_ss(interval_parameterization_t)_. It implements, using PL/pgSQL, the rather complex algorithm that PostgreSQL, and therefore YSQL, use in their C code to transform a value, presented as a _text_ literal, to the internal _interval_ representation. 
+The section [Modeling the internal representation and comparing the model with the actual implementation](../interval-representation/internal-representation-model/) defines and tests the function that the present page doesn't show: _function interval_mm_dd_ss(interval_parameterization_t)_. It implements, using PL/pgSQL, the rather complex algorithm that PostgreSQL, and therefore YSQL, use in their C code to transform a value, presented as a _text_ literal, to the internal _interval_ representation.
 
 Here's an example of such a _text_ literal:
 
@@ -125,7 +124,7 @@ In the context of the _date-time_ data types, _double precision_ values always r
 ```plpgsql
 drop function if exists approx_equals(double precision, double precision) cascade;
 
-create function approx_equals(v1 in double precision, v2 in double precision) 
+create function approx_equals(v1 in double precision, v2 in double precision)
   returns boolean
   language plpgsql
 as $body$
@@ -173,7 +172,7 @@ from c3;
 This is the result:
 
 ```output
-        orig        |     recovered      | native_equals | approx_equals 
+        orig        |     recovered      | native_equals | approx_equals
 --------------------+--------------------+---------------+---------------
    234.567000000000 |   234.567000000000 | false         | true
 ```
@@ -188,15 +187,15 @@ When you define an _interval_ value using either the _::interval_ typecast of a 
 
 ```plpgsql
 select
-  '5 years 4 months'              ::interval as i1,  
-  '40 days'                       ::interval as i2,  
+  '5 years 4 months'              ::interval as i1,
+  '40 days'                       ::interval as i2,
   '9 hours 30 minutes 45 seconds' ::interval as i3;
 ```
 
 This is the result:
 
 ```output
-       i1       |   i2    |    i3    
+       i1       |   i2    |    i3
 ----------------+---------+----------
  5 years 4 mons | 40 days | 09:30:45
 ```
@@ -205,8 +204,8 @@ And try this, using the _make_interval()_ approach:
 
 ```plpgsql
 select
-  make_interval(years=>5, months=>4)          as i1,  
-  make_interval(days=>40)                     as i2,  
+  make_interval(years=>5, months=>4)          as i1,
+  make_interval(days=>40)                     as i2,
   make_interval(hours=>9, mins=>30, secs=>45) as i3;
 ```
 
@@ -274,7 +273,7 @@ select interval_parameterization(yy=>5, mm=>6)::text;
 This is the result:
 
 ```output
- interval_parameterization 
+ interval_parameterization
 ---------------------------
  (5,6,0,0,0,0)
 ```
@@ -297,7 +296,7 @@ declare
   hh constant interval not null := p.hh::text ||' hours';
   mi constant interval not null := p.mi::text ||' minutes';
   ss constant interval not null := p.ss::text ||' seconds';
-begin  
+begin
   return yy + mm + dd + hh + mi + ss;
 end;
 $body$;
@@ -314,7 +313,7 @@ select interval_value(interval_parameterization(mm=>2.345, dd=>3.456))::text;
 This is the result:
 
 ```output
-      interval_value       
+      interval_value
 ---------------------------
  2 mons 13 days 19:20:38.4
 ```
@@ -353,7 +352,7 @@ select parameterization('2 months 13 days 19:20:38.4'::interval)::text;
 This is the result:
 
 ```output
- parameterization 
+ parameterization
 --------------------------------------
  (0,2,13,19,20,38.4)
 ```
@@ -505,7 +504,7 @@ create function interval_value(i in interval_mm_dd_ss_t)
   returns interval
   language plpgsql
 as $body$
-begin  
+begin
   return make_interval(months=>i.mm, days=>i.dd, secs=>i.ss);
 end;
 $body$;
@@ -536,7 +535,7 @@ select extract(hours from '123 months 234 days 34567.123456 seconds'::interval) 
 This is the result:
 
 ```output
- extracted hours 
+ extracted hours
 -----------------
                9
 ```
@@ -650,7 +649,7 @@ Yugabyte staff members have carefully considered the practical value of the nati
 They believe that the use-cases where the functionality will be useful are rare—and that, rather, a "strict equals" notion, that requires pairwise equality of the individual fields of the [_\[mm, dd, ss\]_ internal representations](../interval-representation/) of the _interval_ values that are compared, will generally be more valuable.
 {{< /tip >}}
 
-See the section [Comparing two _interval_ values](../interval-arithmetic/interval-interval-comparison/) for the larger discussion on this topic. 
+See the section [Comparing two _interval_ values](../interval-arithmetic/interval-interval-comparison/) for the larger discussion on this topic.
 
 Create the _strict_equals()_ function thus:
 
@@ -900,7 +899,7 @@ select
 This is the result:
 
 ```output
- all the same 
+ all the same
 --------------
  true
 ```

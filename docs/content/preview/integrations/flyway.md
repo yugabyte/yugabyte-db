@@ -3,13 +3,12 @@ title: Flyway
 linkTitle: Flyway
 description: Using Flyway with YugabyteDB
 aliases:
-section: INTEGRATIONS
 menu:
   preview:
     identifier: flyway
+    parent: integrations
     weight: 571
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 [Flyway](https://flywaydb.org/) provides the means to manage schema changes to a YugabyteDB database, among others.
@@ -113,8 +112,3 @@ To check the state of the database and run the migration, execute the following 
 ```shell
  ./flyway migrate
 ```
-
-
-
-
-

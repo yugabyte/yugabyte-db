@@ -8,8 +8,7 @@ menu:
     identifier: docdb-persistence
     parent: docdb
     weight: 1146
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Once data is replicated using Raft across a majority of the YugabyteDB tablet-peers, it is applied to each tablet peer’s local DocDB document storage layer.
@@ -184,7 +183,7 @@ The entries in DocDB at this point will look like the following:
 Delete a single column from a row.
 
 ```sql
-T4: DELETE msg_props       
+T4: DELETE msg_props
       FROM msgs
      WHERE user_id = 'user1'
        AND msg_id = 10;

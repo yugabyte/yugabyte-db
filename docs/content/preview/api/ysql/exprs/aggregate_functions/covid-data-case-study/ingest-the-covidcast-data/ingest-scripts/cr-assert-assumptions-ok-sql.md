@@ -8,8 +8,7 @@ menu:
     identifier: cr-assert-assumptions-ok-sql
     parent: ingest-scripts
     weight: 30
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 The background for the tests that this procedure performs is explained in the section [Check that the values from the .csv files do indeed conform to the stated rules](../../check-data-conforms-to-the-rules/).

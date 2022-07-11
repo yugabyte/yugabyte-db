@@ -9,9 +9,7 @@ menu:
     name: Java
     identifier: java-3
     weight: 550
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -58,7 +56,7 @@ This tutorial assumes that you have:
 ## Clone the "orm-examples" repository
 
 ```sh
-$ git clone https://github.com/yugabyte/orm-examples.git
+$ git clone https://github.com/YugabyteDB-Samples/orm-examples.git
 ```
 
 The [Using ORMs with YugabyteDB `orm-examples` repository](https://github.com/yugabyte/orm-examples) has a [Spring Boot](https://spring.io/projects/spring-boot) example that implements a simple REST API server. The scenario is that of an e-commerce application. Database access in this application is managed through [Spring Data JPA](https://spring.io/projects/spring-data-jpa), which internally uses Hibernate as the JPA provider. It consists of the following:
@@ -206,7 +204,7 @@ yugabyte=# SELECT * FROM orderline;
 ```
 
 ```output
- order_id                             | product_id | units 
+ order_id                             | product_id | units
 --------------------------------------+------------+-------
  45659918-bbfd-4a75-a202-6feff13e186b |          1 |     2
  f19b64ec-359a-47c2-9014-3c324510c52c |          1 |     2
@@ -239,7 +237,7 @@ $ curl http://localhost:8080/users
     }
   ],
   ...
-}  
+}
 ```
 
 ```sh
@@ -263,7 +261,7 @@ $ curl http://localhost:8080/products
     }
   ],
   ...
-}  
+}
 ```
 
 ```sh
@@ -301,7 +299,7 @@ $ curl http://localhost:8080/orders
     }
   ],
   ...
-}  
+}
 ```
 
 ## Explore the source

@@ -96,6 +96,9 @@ DEFINE_bool(sort_automatic_tablet_splitting_candidates, true,
             "Whether we should sort candidates for new automatic tablet splits, so the largest "
             "candidates are picked first.");
 
+DEFINE_test_flag(bool, skip_partitioning_version_validation, false,
+                 "When set, skips partitioning_version checks to prevent tablet splitting.");
+
 namespace yb {
 namespace master {
 
@@ -158,7 +161,11 @@ Status TabletSplitManager::ValidateTabletAgainstDisabledList(const TabletId& tab
                                      &disable_splitting_for_small_key_range_tablet_until_);
 }
 
-Status TabletSplitManager::ValidateIndexTablePartitioning(const TableInfo& table) {
+Status TabletSplitManager::ValidatePartitioningVersion(const TableInfo& table) {
+  if (PREDICT_FALSE(FLAGS_TEST_skip_partitioning_version_validation)) {
+    return Status::OK();
+  }
+
   if (!table.is_index()) {
     return Status::OK();
   }
@@ -175,15 +182,21 @@ Status TabletSplitManager::ValidateIndexTablePartitioning(const TableInfo& table
 
   // Check partition key version is valid for tablet splitting
   const auto& table_properties = table_locked->schema().table_properties();
-  if (table_properties.has_partition_key_version() &&
-      table_properties.partition_key_version() > 0) {
+  if (table_properties.has_partitioning_version() &&
+      table_properties.partitioning_version() > 0) {
     return Status::OK();
   }
 
-  return STATUS_FORMAT(NotSupported,
-                       "Tablet splitting is not supported for the index table"
-                       " \"$0\" with table_id \"$1\". Please, rebuild the index!",
-                       table.name(), table.id());
+  // TODO(tsplit): the message won't appear within automatic tablet splitting loop without vlog is
+  // enabled for this module. It might be a good point to spawn this message once (or periodically)
+  // to the logs to understand why the automatic splitting is not happen (this might be useful
+  // for other types of messages as well).
+  const auto msg = Format(
+      "Tablet splitting is not supported for the index table"
+      " \"$0\" with table_id \"$1\". Please, rebuild the index!",
+      table.name(), table.id());
+  VLOG(1) << msg;
+  return STATUS(NotSupported, msg);
 }
 
 Status TabletSplitManager::ValidateSplitCandidateTable(
@@ -275,7 +288,7 @@ Status TabletSplitManager::ValidateSplitCandidateTable(
                             "Backfill operation in progress, table_id: $0", table.id());
   }
 
-  return ValidateIndexTablePartitioning(table);
+  return ValidatePartitioningVersion(table);
 }
 
 Status TabletSplitManager::ValidateSplitCandidateTablet(

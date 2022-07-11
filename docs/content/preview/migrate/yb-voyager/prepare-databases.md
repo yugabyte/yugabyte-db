@@ -8,7 +8,6 @@ menu:
     identifier: prepare-databases
     parent: yb-voyager
     weight: 103
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
  -->

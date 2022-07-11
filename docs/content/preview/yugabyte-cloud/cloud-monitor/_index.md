@@ -5,11 +5,12 @@ linkTitle: Alerts and monitoring
 description: Set alerts and monitor your YugabyteDB Managed clusters.
 image: /images/section_icons/explore/monitoring.png
 headcontent: Set alerts and monitor cluster performance and activity.
-section: YUGABYTEDB MANAGED
 menu:
-  preview:
+  preview_yugabyte-cloud:
+    parent: yugabytedb-managed
     identifier: cloud-monitor
     weight: 100
+type: indexpage
 ---
 
 Use YugabyteDB Managed alerts and monitoring to monitor cluster performance and be notified of potential problems.

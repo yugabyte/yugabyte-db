@@ -761,7 +761,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // Add the az uuid.
       params.azUuid = node.azUuid;
       // The service and the command we want to run.
-      params.process = "yb-controller";
+      params.process = "controller";
       params.command = "start";
       params.placementUuid = node.placementUuid;
       // Set the InstanceType
@@ -1645,7 +1645,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       String softwareVersion) {
     AnsibleConfigureServers.Params params =
         getAnsibleConfigureServerParams(node, processType, UpgradeTaskType.Software, taskSubType);
-    if (softwareVersion == null) {
+    if (taskSubType == UpgradeTaskSubType.PackageReInstall) {
+      params.updatePackages = true;
+    } else if (softwareVersion == null) {
       UserIntent userIntent =
           getUniverse(true).getUniverseDetails().getClusterByUuid(node.placementUuid).userIntent;
       params.ybSoftwareVersion = userIntent.ybSoftwareVersion;

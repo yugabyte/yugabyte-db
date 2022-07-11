@@ -9,8 +9,7 @@ menu:
     identifier: type-interval
     parent: date-time-data-types-semantics
     weight: 40
-isTocNested: true
-showAsideToc: true
+type: indexpage
 ---
 
 ## Why does the interval data type exist?
@@ -56,7 +55,7 @@ This is the result:
 
 ```output
  date:        integer
- 
+
  time:        interval
  timestamp:   interval
  timestamptz: interval
@@ -83,7 +82,7 @@ select
 This is the result:
 
 ```output
- interval 1 | interval 2 
+ interval 1 | interval 2
 ------------+------------
  01:16:06.2 | 29 days
 ```
@@ -176,7 +175,7 @@ begin
 
     -- Just before 29-Feb in a leap year.
     t0               constant timestamptz := '2020-02-26 12:00:00';
-    
+
     t0_plus_30_days  constant timestamptz := t0 + i_30_days;
     t0_plus_1_month  constant timestamptz := t0 + i_1_month;
   begin

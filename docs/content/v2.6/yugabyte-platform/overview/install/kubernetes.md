@@ -6,12 +6,11 @@ description: Installing Yugabyte Platform on Kubernetes
 image: /images/section_icons/deploy/enterprise.png
 headcontent: Installing Yugabyte Platform on Kubernetes
 menu:
-  v2.6:
+  v2.6_yugabyte-platform:
     identifier: install-2-k8s
     parent: overview-yp
     weight: 20
-isTocNested: true
-showAsideToc: false
+type: docs
 ---
 
 Select your installation type to see the installation flow. Click on the elements to see detailed steps.
@@ -46,5 +45,3 @@ Select your installation type to see the installation flow. Click on the element
     <area target="_blank" alt="K8s pre-reqs" title="K8s pre-reqs" href="/preview/yugabyte-platform/install-yugabyte-platform/prepare-environment/kubernetes/" coords="323,257,576,496" shape="rect">
     <area target="_blank" alt="Install K8s" title="Install K8s" href="/preview/yugabyte-platform/install-yugabyte-platform/install-software/kubernetes/#install-yugabyte-platform-on-a-kubernetes-cluster" coords="346,1032,551,1166" shape="rect">
 </map>
-
-

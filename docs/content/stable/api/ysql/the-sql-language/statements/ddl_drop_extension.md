@@ -8,8 +8,7 @@ menu:
   stable:
     identifier: ddl_drop_extension
     parent: statements
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

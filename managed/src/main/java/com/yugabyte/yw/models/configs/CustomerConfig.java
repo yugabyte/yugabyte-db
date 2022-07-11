@@ -392,7 +392,7 @@ public class CustomerConfig extends Model {
 
   // TODO: Should be removed later if we remove "ObjectNode data" and use
   // @JsonSubTypes.
-  private static Class<? extends CustomerConfigData> getDataClass(ConfigType type, String name) {
+  public static Class<? extends CustomerConfigData> getDataClass(ConfigType type, String name) {
     if (type == ConfigType.STORAGE) {
       if (NAME_S3.equals(name)) {
         return CustomerConfigStorageS3Data.class;

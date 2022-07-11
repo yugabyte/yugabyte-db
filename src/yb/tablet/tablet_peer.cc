@@ -39,6 +39,7 @@
 #include <vector>
 
 #include <gflags/gflags.h>
+#include <glog/logging.h>
 
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
@@ -60,6 +61,7 @@
 #include "yb/rocksdb/db/memtable.h"
 
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/periodic.h"
 #include "yb/rpc/strand.h"
 #include "yb/rpc/thread_pool.h"
 
@@ -105,6 +107,10 @@ DEFINE_int32(cdc_min_replicated_index_considered_stale_secs, 900,
     "value to max int64 to avoid retaining any logs");
 
 DEFINE_bool(propagate_safe_time, true, "Propagate safe time to read from leader to followers");
+
+DEFINE_int32(wait_queue_poll_interval_ms, 1000,
+             "The interval duration between wait queue polls to fetch transaction statuses of "
+             "active blockers.");
 
 DECLARE_int32(ysql_transaction_abort_timeout_ms);
 
@@ -218,6 +224,18 @@ Status TabletPeer::InitTabletPeer(
     service_thread_pool_ = &messenger->ThreadPool();
     strand_.reset(new rpc::Strand(&messenger->ThreadPool()));
     messenger_ = messenger;
+    if (tablet_->wait_queue()) {
+      std::weak_ptr<TabletPeer> weak_self = shared_from(this);
+      wait_queue_heartbeater_ = rpc::PeriodicTimer::Create(
+        messenger_,
+        [weak_self]() {
+          if (auto shared_self = weak_self.lock()) {
+            shared_self->PollWaitQueue();
+          }
+        },
+        FLAGS_wait_queue_poll_interval_ms * 1ms);
+      wait_queue_heartbeater_->Start();
+    }
 
     tablet->SetMemTableFlushFilterFactory([log] {
       auto largest_log_op_index = log->GetLatestEntryOpId().index;
@@ -431,6 +449,10 @@ consensus::RaftConfigPB TabletPeer::RaftConfig() const {
 
 bool TabletPeer::StartShutdown() {
   LOG_WITH_PREFIX(INFO) << "Initiating TabletPeer shutdown";
+
+  if (wait_queue_heartbeater_) {
+    wait_queue_heartbeater_->Stop();
+  }
 
   {
     std::lock_guard<decltype(lock_)> lock(lock_);
@@ -1004,7 +1026,8 @@ Status TabletPeer::reset_cdc_min_replicated_index_if_stale() {
   std::lock_guard<decltype(cdc_min_replicated_index_lock_)> l(cdc_min_replicated_index_lock_);
   auto seconds_since_last_refresh =
       MonoTime::Now().GetDeltaSince(cdc_min_replicated_index_refresh_time_).ToSeconds();
-  if (seconds_since_last_refresh > FLAGS_cdc_min_replicated_index_considered_stale_secs) {
+  if (seconds_since_last_refresh >
+      GetAtomicFlag(&FLAGS_cdc_min_replicated_index_considered_stale_secs)) {
     LOG_WITH_PREFIX(INFO) << "Resetting cdc min replicated index. Seconds since last update: "
                           << seconds_since_last_refresh;
     RETURN_NOT_OK(set_cdc_min_replicated_index_unlocked(std::numeric_limits<int64_t>::max()));
@@ -1377,6 +1400,13 @@ bool TabletPeer::CanBeDeleted() {
 
 rpc::Scheduler& TabletPeer::scheduler() const {
   return messenger_->scheduler();
+}
+
+void TabletPeer::PollWaitQueue() const {
+  if (tablet()) {
+    DCHECK_NOTNULL(tablet()->wait_queue());
+    tablet()->wait_queue()->PollBlockerStatus(clock_->Now());
+  }
 }
 
 }  // namespace tablet

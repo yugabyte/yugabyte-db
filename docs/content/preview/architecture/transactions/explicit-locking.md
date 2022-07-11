@@ -8,8 +8,7 @@ menu:
     identifier: architecture-transactions-explicit-locking
     parent: architecture-acid-transactions
     weight: 1153
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 YugabyteDB supports explicit locking. The transactions layer of YugabyteDB supports both optimistic and pessimistic locks.

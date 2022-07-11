@@ -446,3 +446,6 @@ DELETE  /customers/:cUUID/hook_scopes/:hsUUID/hooks/:hUUID                     c
 POST /customers/:cUUID/node_agents                                             com.yugabyte.yw.controllers.NodeAgentController.register(cUUID: java.util.UUID)
 GET /customers/:cUUID/node_agents/:nUUID                                       com.yugabyte.yw.controllers.NodeAgentController.get(cUUID: java.util.UUID, nUUID: java.util.UUID)
 DELETE /customers/:cUUID/node_agents/:nUUID                                    com.yugabyte.yw.controllers.NodeAgentController.unregister(cUUID: java.util.UUID, nUUID: java.util.UUID)
+
+# List buckets API
+GET     /customers/:cUUID/cloud/:cloud/buckets                                 com.yugabyte.yw.controllers.CustomerConfigController.listBuckets(cUUID: java.util.UUID, cloud: String)

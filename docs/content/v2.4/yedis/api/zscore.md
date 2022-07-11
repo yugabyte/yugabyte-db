@@ -6,15 +6,14 @@ menu:
   v2.4:
     parent: api-yedis
     weight: 2545
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis
 
 <b>`ZSCORE key member`</b><br>
-Returns the score of the member in the sorted set at key. If member does not exist in the sorted set, 
-or key does not exist, null is returned. If `key` is associated with non sorted set data, 
+Returns the score of the member in the sorted set at key. If member does not exist in the sorted set,
+or key does not exist, null is returned. If `key` is associated with non sorted set data,
 an error is returned.
 
 ## Return value

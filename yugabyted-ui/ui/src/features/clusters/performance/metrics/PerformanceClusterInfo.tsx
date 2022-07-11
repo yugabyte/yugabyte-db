@@ -49,14 +49,13 @@ export const PerformanceClusterInfo: FC<ClusterInfoProps> = ({ cluster, region }
   const { t } = useTranslation();
 
   const clusterSpec = cluster?.spec;
-  const diskPerNode = clusterSpec?.cluster_info?.node_info.disk_size_gb ?? 0;
   const regionInfo = clusterSpec?.cluster_region_info?.filter(
     (regInfo) => regInfo?.placement_info?.cloud_info?.region === region
   )[0];
   const numNodes = region ? regionInfo?.placement_info?.num_nodes ?? 0 : clusterSpec?.cluster_info?.num_nodes ?? 0;
-  const totalDiskSize = diskPerNode * numNodes;
-  const totalNumCores = (clusterSpec?.cluster_info?.node_info.num_cores ?? 0) * numNodes;
-  const totalRam = (clusterSpec?.cluster_info?.node_info?.memory_mb ?? 0) * numNodes;
+  const totalDiskSize = clusterSpec?.cluster_info?.node_info.disk_size_gb ?? 0;
+  const averageCpuUsage = clusterSpec?.cluster_info?.node_info.cpu_usage ?? 0;
+  const totalRamUsageMb = clusterSpec?.cluster_info?.node_info?.memory_mb ?? 0;
 
   const getRamText = (value: number | undefined) => {
     return value ? t('units.GB', { value: convertMBtoGB(value, true) }) : '';
@@ -98,7 +97,7 @@ export const PerformanceClusterInfo: FC<ClusterInfoProps> = ({ cluster, region }
             {t('clusterDetail.overview.totalVcpu')}
           </Typography>
           <Typography variant="body2" className={classes.value}>
-            {totalNumCores}
+            {averageCpuUsage}
           </Typography>
         </div>
         <div>
@@ -106,7 +105,7 @@ export const PerformanceClusterInfo: FC<ClusterInfoProps> = ({ cluster, region }
             {t('clusterDetail.totalRam')}
           </Typography>
           <Typography variant="body2" className={classes.value}>
-            {getRamText(totalRam)}
+            {getRamText(totalRamUsageMb)}
           </Typography>
         </div>
         <div>

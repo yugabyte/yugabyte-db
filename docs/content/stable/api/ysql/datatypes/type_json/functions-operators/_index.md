@@ -10,8 +10,7 @@ menu:
     identifier: json-functions-operators
     parent: api-ysql-datatypes-json
     weight: 50
-isTocNested: true
-showAsideToc: true
+type: indexpage
 ---
 
 **On this page**<br>

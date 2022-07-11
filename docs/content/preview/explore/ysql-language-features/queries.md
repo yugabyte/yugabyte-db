@@ -8,8 +8,7 @@ menu:
     identifier: explore-ysql-language-features-queries-joins
     parent: explore-ysql-language-features
     weight: 210
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 This section describes how to query YugabyteDB using the YSQL `SELECT` statement and its clauses.

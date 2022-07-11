@@ -5,15 +5,14 @@ linkTitle: Manual import
 description: Migrate PostgreSQL data to YugabyteDB.
 image: /images/section_icons/develop/learn.png
 headcontent: Migrate PostgreSQL data to YugabyteDB using ysql_dump.
+aliases:
+  - /preview/migrate/migrate-from-postgresql/
 menu:
   preview:
     identifier: manual-import
     parent: migrate
     weight: 200
-aliases:
-  - /preview/migrate/migrate-from-postgresql/
-isTocNested: true
-showAsideToc: true
+type: indexpage
 ---
 
 The steps below cover how to manually migrate PostgreSQL data and applications to YugabyteDB.

@@ -2,14 +2,13 @@
 title: case study—using aggregate functions to demonstrate the "68–95–99.7" rule
 linkTitle: case study—percentile_cont() and the "68–95–99.7" rule
 headerTitle: Case study—using aggregate functions to demonstrate the "68–95–99.7" rule
-description: Case study to show the use of percentile_cont() to illustrate the well-known "68–95–99.7" rule about a normal distribution. 
+description: Case study to show the use of percentile_cont() to illustrate the well-known "68–95–99.7" rule about a normal distribution.
 menu:
   v2.4:
     identifier: case-study-the-68–95–997-rule
     parent: aggregate-functions
     weight: 100
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 This case study shows the use of aggregate functions to demonstrate the so-called "68–95–99.7 rule"—described in [this Wikipedia article](https://en.wikipedia.org/wiki/68–95–99.7_rule). This case-study  focuses on just one part of the rule:
@@ -45,7 +44,7 @@ The table function _"the_6827_rule()"_, below, uses the following approach:
 
 - _Firstly_, it determines the one sigma boundaries ordinarily by using the [`avg()`](../function-syntax-semantics/avg-count-max-min-sum/#avg) and [`stddev_pop()`](../function-syntax-semantics/variance-stddev/#stddev-pop) aggregate functions.
 
-- _Secondly_, it determines these boundaries by invoking the [`percentile_cont()`](../function-syntax-semantics/mode-percentile-disc-percentile-cont/#percentile-disc-percentile-cont) aggregate function with putative [`percent_rank()`](../../window_functions/function-syntax-semantics/percent-rank-cume-dist-ntile/#percent-rank) input values corresponding, respectively, to the fraction of the table's values that lie below _"mean - one standard deviation"_ and below _"mean + one standard deviation"_. 
+- _Secondly_, it determines these boundaries by invoking the [`percentile_cont()`](../function-syntax-semantics/mode-percentile-disc-percentile-cont/#percentile-disc-percentile-cont) aggregate function with putative [`percent_rank()`](../../window_functions/function-syntax-semantics/percent-rank-cume-dist-ntile/#percent-rank) input values corresponding, respectively, to the fraction of the table's values that lie below _"mean - one standard deviation"_ and below _"mean + one standard deviation"_.
 
 ```plpgsql
 drop function if exists the_6827_rule() cascade;

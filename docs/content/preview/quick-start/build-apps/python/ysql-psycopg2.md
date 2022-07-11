@@ -14,9 +14,7 @@ menu:
     name: Python
     identifier: python-1
     weight: 553
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -87,7 +85,9 @@ import psycopg2
 
 # Create the database connection.
 
-conn = psycopg2.connect("host=127.0.0.1 port=5433 dbname=yugabyte user=yugabyte password=yugabyte")
+connString = "host=127.0.0.1 port=5433 dbname=yugabyte user=yugabyte password=yugabyte"
+
+conn = psycopg2.connect(connString)
 
 # Open a cursor to perform database operations.
 # The default mode for psycopg2 is "autocommit=false".

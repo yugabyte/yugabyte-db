@@ -8,8 +8,7 @@ menu:
     identifier: jsonb-typeof
     parent: json-functions-operators
     weight: 250
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 **Purpose:** Return the data type of the JSON value as a SQL `text` value.

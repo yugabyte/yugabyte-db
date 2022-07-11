@@ -5,11 +5,7 @@ linkTitle: Explore
 description: Explore the features of YugabyteDB on macOS, Linux, Docker, and Kubernetes.
 headcontent:
 image: /images/section_icons/index/explore.png
-section: YUGABYTEDB CORE
-menu:
-  v2.8:
-    identifier: explore
-    weight: 540
+type: indexpage
 ---
 
 {{< tip title="Tip" >}}

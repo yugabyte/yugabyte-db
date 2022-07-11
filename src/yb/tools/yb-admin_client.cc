@@ -1271,7 +1271,9 @@ Status ClusterAdminClient::ListTables(bool include_db_type,
 struct FollowerDetails {
   string uuid;
   string host_port;
-  FollowerDetails(const string &u, const string &hp) : uuid(u), host_port(hp) {}
+  string peer_role;
+  FollowerDetails(const string &u, const string &hp, const string &role) :
+    uuid(u), host_port(hp), peer_role(role) {}
 };
 
 Status ClusterAdminClient::ListTablets(
@@ -1318,7 +1320,8 @@ Status ClusterAdminClient::ListTablets(
             HostPortPBToString(replica.ts_info().private_rpc_addresses(0));
           if (json) {
             follower_list.push_back(
-                FollowerDetails(replica.ts_info().permanent_uuid(), follower_host_port));
+                FollowerDetails(replica.ts_info().permanent_uuid(), follower_host_port,
+                  PeerRole_Name(replica.role())));
           } else {
             if (!follower_list_str.empty()) {
               follower_list_str += ",";
@@ -1342,6 +1345,8 @@ Status ClusterAdminClient::ListTablets(
       rapidjson::Value json_leader(rapidjson::kObjectType);
       AddStringField("uuid", leader_uuid, &json_leader, &document.GetAllocator());
       AddStringField("endpoint", leader_host_port, &json_leader, &document.GetAllocator());
+      AddStringField("role", PeerRole_Name(PeerRole::LEADER), &json_leader,
+          &document.GetAllocator());
       json_tablet.AddMember(rapidjson::StringRef("leader"), json_leader, document.GetAllocator());
       if (followers) {
         rapidjson::Value json_followers(rapidjson::kArrayType);
@@ -1350,6 +1355,7 @@ Status ClusterAdminClient::ListTablets(
           rapidjson::Value json_follower(rapidjson::kObjectType);
           AddStringField("uuid", follower.uuid, &json_follower, &document.GetAllocator());
           AddStringField("endpoint", follower.host_port, &json_follower, &document.GetAllocator());
+          AddStringField("role", follower.peer_role, &json_follower, &document.GetAllocator());
           json_followers.PushBack(json_follower, document.GetAllocator());
         }
         json_tablet.AddMember(rapidjson::StringRef("followers"), json_followers,

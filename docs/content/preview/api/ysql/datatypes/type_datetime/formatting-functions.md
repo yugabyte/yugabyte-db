@@ -9,8 +9,7 @@ menu:
     identifier: date-time-formatting-functions
     parent: api-ysql-datatypes-datetime
     weight: 100
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 This page describes all of the _date-time_ formatting functions, both in the direction _date-time_ value to _text_ value and in the direction _text_ value to _date-time_ value. The functions use a so-called _template_ to determine, in the to _text_ value direction, how the _date-time_ value will be rendered as a _text_ value and, in the to _date-time_ value direction, how the to-be-converted _text_ value is to be interpreted. The template, in turn, is made up of a mixture of pre-defined so-called _template patterns_ and free text, intermingled in a user-defined order. See the section [Date-time template patterns](#date-time-template-patterns). The effects of these template patterns, again in turn, can be modified. See the section [Date-time template pattern modifiers](#date-time-template-pattern-modifiers).
@@ -68,6 +67,7 @@ If you want to output the double quote character within the free text, then you 
 select
   to_char('2021-05-17'::timestamp, '"Here is the \"year\" c\o\m\p\o\n\e\n\t of a date\\time value:" yyyy');
 ```
+
 This is the result:
 
 ```output
@@ -398,7 +398,7 @@ The _"Too long"_ tests still fail. but the _"Too short"_ tests now succeed.
 
 {{< tip title="Avoid using 'years' substring values less than one to specify BC in 'to_date()' and 'to_timestamp()'." >}}
 
-The section "Usage notes for date/time formatting" on the page "9.8. Data Type Formatting Functions" just under <a href="https://www.postgresql.org/docs/11/functions-formatting.html#FUNCTIONS-FORMATTING-DATETIMEMOD-TABLE" target="_blank">Table 9.25. Template Pattern Modifiers for Date/Time Formatting <i class="fas fa-external-link-alt"></i></a> says this:
+The section "Usage notes for date/time formatting" on the page "9.8. Data Type Formatting Functions" just under [Table 9.25. Template Pattern Modifiers for Date/Time Formatting](https://www.postgresql.org/docs/11/functions-formatting.html#FUNCTIONS-FORMATTING-DATETIMEMOD-TABLE) says this:
 
 > In to_timestamp and to_date, negative years are treated as signifying BC. If you write both a negative year and an explicit BC field, you get AD again. An input of year zero is treated as 1 BC.
 
@@ -681,6 +681,7 @@ with c as (select '0020-05-03 BC'::timestamp as t)
     to_char(t, 'FMMMth "month ("FMMonth")", FMDDth "day", FMYYYY AD')  as "using FM"
 from c;
 ```
+
 This is the result:
 
 ```output
@@ -721,6 +722,7 @@ Here are the results:
   Monday   , 01st February , 2,021 | Lundi, 01st Février, 2,021
   Monday   , 01st February , 2,021 | Maanantai, 01st Helmikuu, 2,021
 ```
+
 ### The FX modifier
 
 The _to_date()_ and _to_timestamp()_ functions treat runs of spaces as a single space in the to-be-converted _text_ value unless the _FX_ modifier is used. Try this:
@@ -1105,7 +1107,6 @@ Notice the descriptions of the _D_ and _ID_ patterns from the table in the subse
 | ------- | --------------------------------------------------- |
 | _D_     | Day of the week, Sunday (1) to Saturday (7).        |
 | _ID_    | ISO 8601 day of the week, Monday (1) to Sunday (7). |
-
 
 And notice the descriptions of the _dow_ and _isodow_ keywords from the table in the subsection [List of keywords](../functions/miscellaneous/extract/#list-of-keywords) on the [Function extract() | date_part() returns double precision](../functions/miscellaneous/extract/) page:
 

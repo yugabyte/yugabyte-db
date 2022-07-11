@@ -8,8 +8,7 @@ menu:
     identifier: bit-and-or-bool-and-or
     parent: aggregate-function-syntax-semantics
     weight: 30
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 These four functions bear a strong mutual family resemblance and so they are all described in the same section.

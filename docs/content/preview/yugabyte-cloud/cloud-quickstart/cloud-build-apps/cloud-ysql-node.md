@@ -2,15 +2,14 @@
 title: Build a Node.js application that uses YSQL
 headerTitle: Build a Node.js application
 description: Build a simple Node.js application using the driver and using the YSQL API to connect to and interact with a YugabyteDB Managed cluster.
+headContent: "Client driver: node-postgres"
 menu:
-  preview:
+  preview_yugabyte-cloud:
     parent: cloud-build-apps
     name: Node.js
     identifier: cloud-node
     weight: 400
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 The following tutorial shows a small [Node.js application](https://github.com/yugabyte/yugabyte-simple-node-app) that connects to a YugabyteDB cluster using the [node-postgres module](../../../../reference/drivers/ysql-client-drivers/#node-postgres) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB Managed in Node.js.
@@ -29,7 +28,7 @@ In addition to the latest version of [Node.js](https://nodejs.org/en/download/),
 Clone the sample application to your computer:
 
 ```sh
-git clone https://github.com/yugabyte/yugabyte-simple-node-app && cd yugabyte-simple-node-app
+git clone https://github.com/YugabyteDB-Samples/yugabyte-simple-node-app.git && cd yugabyte-simple-node-app
 ```
 
 ## Provide connection parameters
@@ -40,7 +39,7 @@ The application needs to establish a connection to the YugabyteDB cluster. To do
 
 2. Set the following configuration parameter constants:
 
-    - **host** - the host name of your YugabyteDB cluster. To obtain a YugabyteDB Managed cluster host name, sign in to YugabyteDB Managed, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Network Access**.
+    - **host** - the host name of your YugabyteDB cluster. To obtain a YugabyteDB Managed cluster host name, sign in to YugabyteDB Managed, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Connection Parameters**.
     - **port** - the port number that will be used by the driver (the default YugabyteDB YSQL port is 5433).
     - **database** - the name of the database you are connecting to (the default database is named `yugabyte`).
     - **user** and **password** - the username and password for the YugabyteDB database. If you are using the credentials you created when deploying a cluster in YugabyteDB Managed, these can be found in the credentials file you downloaded.

@@ -6,8 +6,7 @@ menu:
   v2.4:
     parent: api-yedis
     weight: 2551
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis
@@ -32,8 +31,8 @@ $ PUBLISH channel message
 
 ## See also
 
-[`pubsub`](../pubsub/), 
-[`subscribe`](../subscribe/), 
-[`unsubscribe`](../unsubscribe/), 
-[`psubscribe`](../psubscribe/), 
+[`pubsub`](../pubsub/),
+[`subscribe`](../subscribe/),
+[`unsubscribe`](../unsubscribe/),
+[`psubscribe`](../psubscribe/),
 [`punsubscribe`](../punsubscribe/)

@@ -8,8 +8,7 @@ menu:
     identifier: build-apps-csharp-3-ysql
     parent: build-apps
     weight: 556
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -54,7 +53,7 @@ The tutorial assumes that you have:
 ## Clone the "orm-examples" repository
 
 ```sh
-$ git clone https://github.com/yugabyte/orm-examples.git && cd orm-examples/csharp/entityframework
+$ git clone https://github.com/YugabyteDB-Samples/orm-examples.git && cd orm-examples/csharp/entityframework
 ```
 
 ## Database configuration

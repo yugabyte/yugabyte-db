@@ -9,8 +9,7 @@ menu:
   preview:
     identifier: client-drivers-yedis-java
     parent: develop-yedis
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Maven

@@ -2,15 +2,14 @@
 title: Audit account activity
 linkTitle: Audit account activity
 description: Monitor activity in YugabyteDB Managed.
-headcontent:
+headcontent: Monitor account and cluster activity in YugabyteDB Managed
 image: /images/section_icons/deploy/enterprise.png
 menu:
-  preview:
+  preview_yugabyte-cloud:
     identifier: cloud-activity
     parent: cloud-secure-clusters
     weight: 500
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Audit your account activity using the **Activity** tab on the **Admin** page, which lists the source, activity, user, and time of the activity.

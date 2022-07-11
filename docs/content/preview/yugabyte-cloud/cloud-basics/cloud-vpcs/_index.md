@@ -9,10 +9,11 @@ aliases:
   - /preview/yugabyte-cloud/cloud-network/vpc-peers/
   - /preview/yugabyte-cloud/cloud-secure-clusters/cloud-vpcs/
 menu:
-  preview:
+  preview_yugabyte-cloud:
     identifier: cloud-vpcs
     parent: cloud-basics
     weight: 20
+type: indexpage
 ---
 
 A Virtual Private Cloud (VPC) network allows applications running on instances on the same cloud provider as your YugabyteDB Managed clusters to communicate with those clusters without traversing the public internet; all traffic stays in the cloud provider's network.

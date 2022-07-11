@@ -4,12 +4,11 @@ headerTitle: Upgrade YugabyteDB Anywhere installation on Kubernetes
 linkTitle: Upgrade Kubernetes installation
 description: Upgrade YugabyteDB Anywhere installation on Kubernetes
 menu:
-  preview:
+  preview_yugabyte-platform:
     identifier: upgrade-yp-kubernetes
     parent: upgrade
     weight: 80
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 You can use [Helm](https://helm.sh/) to upgrade your YugabyteDB Anywhere installed on [Kubernetes](https://kubernetes.io/) to a newer version.

@@ -7,8 +7,7 @@ menu:
     identifier: hasura
     parent: graphql
     weight: 582
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Use the [Hasura GraphQL Engine](https://hasura.io) with YugabyteDB to power your GraphQL applications with a distributed SQL database.
@@ -101,16 +100,16 @@ $ ./bin/ysqlsh
 1. Copy the YSQL statements below into the shell and press **Enter**.
 
 ```plpgsql
-INSERT INTO author(name) VALUES ('John Doe'), ('Jane Doe'); 
-INSERT INTO article(title, content, rating, author_id) 
+INSERT INTO author(name) VALUES ('John Doe'), ('Jane Doe');
+INSERT INTO article(title, content, rating, author_id)
 VALUES ('Jane''s First Book', 'Lorem ipsum', 10, 2);
-INSERT INTO article(title, content, rating, author_id) 
+INSERT INTO article(title, content, rating, author_id)
 VALUES ('John''s First Book', 'dolor sit amet', 8, 1);
-INSERT INTO article(title, content, rating, author_id) 
+INSERT INTO article(title, content, rating, author_id)
 VALUES ('Jane''s Second Book', 'consectetur adipiscing elit', 7, 2);
-INSERT INTO article(title, content, rating, author_id) 
+INSERT INTO article(title, content, rating, author_id)
 VALUES ('Jane''s Third Book', 'sed do eiusmod tempor', 8, 2);
-INSERT INTO article(title, content, rating, author_id) 
+INSERT INTO article(title, content, rating, author_id)
 VALUES ('John''s Second Book', 'incididunt ut labore', 9, 1);
 SELECT * FROM author ORDER BY id;
 SELECT * FROM article ORDER BY id;

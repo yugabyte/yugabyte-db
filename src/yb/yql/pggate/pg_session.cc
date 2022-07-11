@@ -22,15 +22,6 @@
 
 #include <boost/functional/hash.hpp>
 
-#include "yb/client/batcher.h"
-#include "yb/client/error.h"
-#include "yb/client/schema.h"
-#include "yb/client/table.h"
-#include "yb/client/tablet_server.h"
-#include "yb/client/transaction.h"
-#include "yb/client/yb_op.h"
-#include "yb/client/yb_table_name.h"
-
 #include "yb/common/pg_types.h"
 #include "yb/common/pgsql_error.h"
 #include "yb/common/placement_info.h"
@@ -71,22 +62,6 @@ DEFINE_test_flag(bool, ysql_ignore_add_fk_reference, false,
                  "Don't fill YSQL's internal cache for FK check to force read row from a table");
 namespace yb {
 namespace pggate {
-
-using std::make_shared;
-using std::unique_ptr;
-using std::shared_ptr;
-using std::string;
-
-using client::YBMetaDataCache;
-using client::YBSchema;
-using client::YBOperation;
-using client::YBTable;
-using client::YBTableName;
-using client::YBTableType;
-
-using yb::master::GetNamespaceInfoResponsePB;
-
-using yb::tserver::TServerSharedObject;
 
 namespace {
 
@@ -303,7 +278,7 @@ size_t TableYbctidHasher::operator()(const TableYbctid& value) const {
 
 PgSession::PgSession(
     PgClient* pg_client,
-    const string& database_name,
+    const std::string& database_name,
     scoped_refptr<PgTxnManager> pg_txn_manager,
     scoped_refptr<server::HybridClock> clock,
     const tserver::TServerSharedObject* tserver_shared_object,
@@ -323,7 +298,7 @@ PgSession::~PgSession() = default;
 
 //--------------------------------------------------------------------------------------------------
 
-Status PgSession::ConnectDatabase(const string& database_name) {
+Status PgSession::ConnectDatabase(const std::string& database_name) {
   connected_database_ = database_name;
   return Status::OK();
 }
@@ -336,7 +311,7 @@ Status PgSession::IsDatabaseColocated(const PgOid database_oid, bool *colocated)
 
 //--------------------------------------------------------------------------------------------------
 
-Status PgSession::DropDatabase(const string& database_name, PgOid database_oid) {
+Status PgSession::DropDatabase(const std::string& database_name, PgOid database_oid) {
   tserver::PgDropDatabaseRequestPB req;
   req.set_database_name(database_name);
   req.set_database_oid(database_oid);
@@ -524,14 +499,21 @@ Result<PerformFuture> PgSession::FlushOperations(BufferableOperations ops, bool 
         false /* read_only */, txn_priority_requirement, &in_txn_limit));
   }
 
-  return Perform(std::move(ops), UseCatalogSession::kFalse);
+  // In case of flushing of non-transactional operations it is required to set read time with the
+  // very first (and all further) request as flushing is done asynchronously (i.e. YSQL may send
+  // multiple bunch of operations in parallel). As a result PgClientService is unable to use read
+  // time from remote t-server or generate its own.
+  const auto ensure_read_time_set_for_current_txn_serial_no = !transactional;
+  return Perform(
+      std::move(ops), UseCatalogSession::kFalse, ensure_read_time_set_for_current_txn_serial_no);
 }
 
 Result<PerformFuture> PgSession::Perform(
-    BufferableOperations ops, UseCatalogSession use_catalog_session) {
+    BufferableOperations ops,
+    UseCatalogSession use_catalog_session,
+    bool ensure_read_time_set_for_current_txn_serial_no) {
   DCHECK(!ops.empty());
   tserver::PgPerformOptionsPB options;
-
   if (use_catalog_session) {
     if (catalog_read_time_) {
       if (*catalog_read_time_) {
@@ -542,7 +524,9 @@ Result<PerformFuture> PgSession::Perform(
     }
     options.set_use_catalog_session(true);
   } else {
-    pg_txn_manager_->SetupPerformOptions(&options);
+    const auto txn_serial_no = pg_txn_manager_->SetupPerformOptions(&options);
+    ProcessPerformOnTxnSerialNo(
+        txn_serial_no, ensure_read_time_set_for_current_txn_serial_no, &options);
   }
   bool global_transaction = yb_force_global_transaction;
   for (auto i = ops.operations.begin(); !global_transaction && i != ops.operations.end(); ++i) {
@@ -556,6 +540,22 @@ Result<PerformFuture> PgSession::Perform(
     promise->set_value(result);
   });
   return PerformFuture(promise->get_future(), this, std::move(ops.relations));
+}
+
+void PgSession::ProcessPerformOnTxnSerialNo(uint64_t txn_serial_no,
+                                            bool ensure_read_time_set_for_current_txn_serial_no,
+                                            tserver::PgPerformOptionsPB* options) {
+  if (txn_serial_no != std::get<0>(last_perform_on_txn_serial_no_).txn_serial_no) {
+    last_perform_on_txn_serial_no_.emplace<0>(
+        txn_serial_no,
+        ensure_read_time_set_for_current_txn_serial_no
+            ? ReadHybridTime::FromHybridTimeRange(clock_->NowRange())
+            : ReadHybridTime());
+  }
+  const auto& read_time = std::get<0>(last_perform_on_txn_serial_no_).read_time;
+  if (ensure_read_time_set_for_current_txn_serial_no && read_time && !options->has_read_time()) {
+    read_time.ToPB(options->mutable_read_time());
+  }
 }
 
 Result<uint64_t> PgSession::GetSharedCatalogVersion() {
@@ -715,7 +715,7 @@ bool PgSession::HasWriteOperationsInDdlMode() const {
   return has_write_ops_in_ddl_mode_ && pg_txn_manager_->IsDdlMode();
 }
 
-Status PgSession::ValidatePlacement(const string& placement_info) {
+Status PgSession::ValidatePlacement(const std::string& placement_info) {
   tserver::PgValidatePlacementRequestPB req;
 
   Result<PlacementInfoConverter::Placement> result =

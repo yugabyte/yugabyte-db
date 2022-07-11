@@ -7,8 +7,7 @@ menu:
   stable:
     identifier: perf_prepare
     parent: statements
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

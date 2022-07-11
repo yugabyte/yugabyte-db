@@ -1,10 +1,13 @@
 package com.yugabyte.yw.commissioner.tasks;
 
+import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
+
 import java.util.Collection;
 import java.util.UUID;
 
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.params.NodeAccessTaskParams;
@@ -16,12 +19,13 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseAccessKey;
 import com.yugabyte.yw.commissioner.tasks.subtasks.VerifyNodeSSHAccess;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import com.yugabyte.yw.commissioner.ITask.Retryable;
+import com.yugabyte.yw.models.helpers.PlatformMetrics;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -30,6 +34,7 @@ import lombok.extern.slf4j.Slf4j;
 public class RotateAccessKey extends UniverseTaskBase {
 
   @Inject NodeManager nodeManager;
+  @Inject MetricService metricService;
 
   @Inject
   protected RotateAccessKey(BaseTaskDependencies baseTaskDependencies) {
@@ -134,11 +139,14 @@ public class RotateAccessKey extends UniverseTaskBase {
             .setSubTaskGroupType(subtaskGroupType);
       }
       getRunnableTask().runSubTasks();
+      metricService.setOkStatusMetric(
+          buildMetricTemplate(PlatformMetrics.SSH_KEY_ROTATION_STATUS, universe));
     } catch (Exception e) {
       log.error(
           "Access Key Rotation failed for universe: {} with uuid {}",
           universe.name,
           universe.universeUUID);
+      setSSHKeyRotationFailureMetric(universe);
       throw new RuntimeException(e);
     } finally {
       unlockUniverseForUpdate();
@@ -198,6 +206,7 @@ public class RotateAccessKey extends UniverseTaskBase {
 
   private void checkPausedOrNonLiveNodes(Universe universe, AccessKey newAccessKey) {
     if (universe.getUniverseDetails().universePaused) {
+      setSSHKeyRotationFailureMetric(universe);
       throw new RuntimeException(
           "The universe "
               + universe.name
@@ -206,6 +215,7 @@ public class RotateAccessKey extends UniverseTaskBase {
               + newAccessKey.getKeyCode()
               + " after resuming it!");
     } else if (!universe.allNodesLive()) {
+      setSSHKeyRotationFailureMetric(universe);
       throw new RuntimeException(
           "The universe "
               + universe.name
@@ -214,5 +224,10 @@ public class RotateAccessKey extends UniverseTaskBase {
               + newAccessKey.getKeyCode()
               + " after fixing node status!");
     }
+  }
+
+  private void setSSHKeyRotationFailureMetric(Universe universe) {
+    metricService.setFailureStatusMetric(
+        buildMetricTemplate(PlatformMetrics.SSH_KEY_ROTATION_STATUS, universe));
   }
 }

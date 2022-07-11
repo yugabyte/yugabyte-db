@@ -8,8 +8,7 @@ menu:
     identifier: ttl-data-expiration-ysql
     parent: learn
     weight: 581
-showAsideToc: true
-isTocNested: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

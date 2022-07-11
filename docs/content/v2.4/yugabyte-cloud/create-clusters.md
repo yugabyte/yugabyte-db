@@ -10,8 +10,7 @@ menu:
     identifier: create-clusters
     parent: yugabyte-cloud
     weight: 641
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 As a fully-managed YugabyteDB-as-a-service, Yugabyte Cloud makes it easy for you to create a YugabyteDB cluster without

@@ -14,9 +14,7 @@ menu:
     name: Java
     identifier: java-1
     weight: 550
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -58,9 +56,9 @@ showAsideToc: true
     </a>
   </li>
   <li>
-    <a href="../ysql-ebeans/" class="nav-link">
+    <a href="../ysql-ebean/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - Ebeans
+      YSQL - Ebean
     </a>
   </li>
   <li>

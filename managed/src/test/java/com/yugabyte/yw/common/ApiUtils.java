@@ -170,6 +170,14 @@ public class ApiUtils {
     };
   }
 
+  public static Universe.UniverseUpdater mockUniverseUpdater(boolean updateInProgress) {
+    return universe -> {
+      UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+      universeDetails.updateInProgress = updateInProgress;
+      universe.setUniverseDetails(universeDetails);
+    };
+  }
+
   public static Universe.UniverseUpdater mockUniverseUpdater(final UUID rootCA) {
     return universe -> {
       UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();

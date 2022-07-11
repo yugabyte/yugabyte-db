@@ -8,8 +8,7 @@ menu:
     identifier: download-date-time-utilities
     parent: api-ysql-datatypes-datetime
     weight: 140
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 {{< tip title="Download the '.zip' file and install the reusable code that the 'date-time' major section describes and uses." >}}
 

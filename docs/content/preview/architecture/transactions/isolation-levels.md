@@ -10,8 +10,7 @@ menu:
     identifier: architecture-isolation-levels
     parent: architecture-acid-transactions
     weight: 1152
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Transaction isolation is foundational to handling concurrent transactions in databases. The [SQL-92 standard](https://en.wikipedia.org/wiki/SQL-92) defines four levels of transaction isolation. These are, in decreasing order of strictness: SERIALIZABLE, REPEATABLE READ, READ COMMITTED, and READ UNCOMMITTED.

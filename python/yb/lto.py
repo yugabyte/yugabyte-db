@@ -168,10 +168,11 @@ def process_original_link_cmd(original_link_cmd: List[str]) -> List[str]:
     assert original_link_cmd[0] == ':'
     assert original_link_cmd[1] == '&&'
     assert original_link_cmd[2].endswith('/compiler-wrappers/c++')
-    assert original_link_cmd[-2] == '&&'
-    assert original_link_cmd[-1] == ':'
+    end_index = original_link_cmd[2:].index('&&') + 2
+    assert end_index > 3
+    assert end_index < len(original_link_cmd)
 
-    return original_link_cmd[3:-2]
+    return original_link_cmd[3:end_index]
 
 
 def is_yb_library(rel_path: str) -> bool:

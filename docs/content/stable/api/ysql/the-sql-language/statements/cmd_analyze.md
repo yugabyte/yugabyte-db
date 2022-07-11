@@ -8,8 +8,7 @@ menu:
   stable:
     identifier: cmd_analyze
     parent: statements
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

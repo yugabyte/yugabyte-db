@@ -96,6 +96,7 @@ set(DOCDB_SRCS
         transaction_dump.cc
         transaction_status_cache.cc
         value.cc
+        wait_queue.cc
         kv_debug.cc
         )
 

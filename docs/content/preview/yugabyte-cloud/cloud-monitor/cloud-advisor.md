@@ -2,16 +2,15 @@
 title: Performance Advisor
 linkTitle: Performance Advisor
 description: Scan your cluster to discover performance optimizations.
-headcontent:
+headcontent: Scan your cluster to discover performance optimizations
 image: /images/section_icons/deploy/enterprise.png
 beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
-  preview:
+  preview_yugabyte-cloud:
     identifier: cloud-advisor
     parent: cloud-monitor
     weight: 400
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Use Performance Advisor to scan your cluster for potential optimizations.

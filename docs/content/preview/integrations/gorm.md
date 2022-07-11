@@ -3,13 +3,12 @@ title: Using GORM with YugabyteDB
 linkTitle: GORM
 description: Using GORM with YugabyteDB
 aliases:
-section: INTEGRATIONS
 menu:
   preview:
     identifier: gorm
+    parent: integrations
     weight: 571
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 This document describes how to use [GORM](https://gorm.io/index.html), an object-relational mapping library for Golang, with YugabyteDB.
@@ -143,6 +142,3 @@ id  | name  | age | language
 1   | John  | 35  | Golang-GORM
 (2 rows)
 ```
-
-
-

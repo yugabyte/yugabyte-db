@@ -74,25 +74,6 @@ bool GetProducerTabletKeys(
   return true;
 }
 
-void PopulateTsAddresses(
-    const TabletLocationsPB& producer, std::unordered_set<HostPort, HostPortHash>* tserver_addrs) {
-  // For external CDC Consumers, populate the list of TServers they can connect to as proxies.
-  for (const auto& replica : producer.replicas()) {
-    // Use the public IP addresses since we're cross-universe
-    for (const auto& addr : replica.ts_info().broadcast_addresses()) {
-      tserver_addrs->insert(HostPortFromPB(addr));
-    }
-    // Rarely a viable setup for production replication, but used in testing...
-    if (replica.ts_info().broadcast_addresses_size() == 0) {
-      LOG(WARNING) << "No public broadcast addresses found for "
-                   << replica.ts_info().permanent_uuid() << ".  Using private addresses instead.";
-      for (const auto& addr : replica.ts_info().private_rpc_addresses()) {
-        tserver_addrs->insert(HostPortFromPB(addr));
-      }
-    }
-  }
-}
-
 // We can optimize if we have the same tablet count in the producer and consumer table by
 // mapping key ranges to each other. Due to tablet splitting it may be possible that the keys dont
 // match even when the count of range is the same. Return true if a mapping was possible.
@@ -181,7 +162,6 @@ Status InitCDCStream(
     const std::string& producer_table_id,
     const std::string& consumer_table_id,
     const std::map<std::string, KeyRange>& consumer_tablet_keys,
-    std::unordered_set<HostPort, HostPortHash>* tserver_addrs,
     cdc::StreamEntryPB* stream_entry,
     std::shared_ptr<CDCRpcTasks>
         cdc_rpc_tasks) {
@@ -198,12 +178,6 @@ Status InitCDCStream(
   LOG(INFO) << Format(
       "For producer table id $0 and consumer table id $1, same num tablets: $2", producer_table_id,
       consumer_table_id, stream_entry->local_tserver_optimized());
-
-  // Create the mapping between consumer and producer tablets.
-  for (int i = 0; i < producer_table_locations.size(); i++) {
-    const auto& producer = producer_table_locations.Get(i);
-    PopulateTsAddresses(producer, tserver_addrs);
-  }
 
   return Status::OK();
 }

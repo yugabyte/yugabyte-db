@@ -1,0 +1,22 @@
+baseurl = 'https://docs.yugabyte.com'
+languageCode = 'en-us'
+title = 'YugabyteDB Docs'
+googleAnalytics = 'UA-104956980-3'
+# Highlighting config (Pygments)
+pygmentsCodefences = true
+pygmentsStyle = 'pygments'
+resourceDir = 'docs/resources'
+
+[frontmatter]
+  date = [ ':git', ':default' ]
+
+[module]
+  [module.hugoVersion]
+    extended = true
+    min = "0.73.0"
+  [[module.imports]]
+    path = "github.com/google/docsy"
+    disable = false
+  [[module.imports]]
+    path = "github.com/google/docsy/dependencies"
+    disable = false

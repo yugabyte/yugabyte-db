@@ -1,6 +1,8 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.queries;
 
+import static play.mvc.Http.Status.SERVICE_UNAVAILABLE;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -9,12 +11,14 @@ import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.RunQueryFormData;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -25,14 +29,17 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.ThreadPoolExecutor;
 import lombok.extern.slf4j.Slf4j;
+import play.Configuration;
 import play.libs.Json;
 
 @Slf4j
 @Singleton
 public class QueryHelper {
-  public static final Integer QUERY_EXECUTOR_THREAD_POOL = 5;
-
+  private static final int THREAD_POOL_SIZE = 50;
+  private static final int TASK_QUEUE_SIZE = 500;
+  private static final String RESET_QUERY_SQL = "SELECT pg_stat_statements_reset()";
   private static final String SLOW_QUERY_STATS_UNLIMITED_SQL =
       "SELECT a.rolname, t.datname, t.queryid, "
           + "t.query, t.calls, t.total_time, t.rows, t.min_time, t.max_time, t.mean_time, t.stddev_time, "
@@ -43,40 +50,58 @@ public class QueryHelper {
   public static final String QUERY_STATS_SLOW_QUERIES_LIMIT_KEY =
       "yb.query_stats.slow_queries.limit";
   private final RuntimeConfigFactory runtimeConfigFactory;
-
-  private final PlatformExecutorFactory platformExecutorFactory;
+  private final ExecutorService threadPool;
+  private final Configuration appConfig;
 
   public enum QueryApi {
     YSQL,
     YCQL
   }
 
+  private enum QueryAction {
+    FETCH_LIVE_QUERIES,
+    FETCH_SLOW_QUERIES,
+    RESET_STATS
+  }
+
   @Inject
   public QueryHelper(
-      RuntimeConfigFactory runtimeConfigFactory, PlatformExecutorFactory platformExecutorFactory) {
+      Configuration appConfig,
+      RuntimeConfigFactory runtimeConfigFactory,
+      PlatformExecutorFactory platformExecutorFactory) {
+    this(appConfig, runtimeConfigFactory, createExecutor(appConfig, platformExecutorFactory));
+  }
+
+  QueryHelper(
+      Configuration appConfig,
+      RuntimeConfigFactory runtimeConfigFactory,
+      ExecutorService threadPool) {
+    this.appConfig = appConfig;
     this.runtimeConfigFactory = runtimeConfigFactory;
-    this.platformExecutorFactory = platformExecutorFactory;
+    this.threadPool = threadPool;
   }
 
   @Inject YsqlQueryExecutor ysqlQueryExecutor;
 
   public JsonNode liveQueries(Universe universe) {
-    return query(universe, false);
+    return queryUniverseNodes(universe, QueryAction.FETCH_LIVE_QUERIES);
   }
 
   public JsonNode slowQueries(Universe universe) throws IllegalArgumentException {
-    return query(universe, true);
+    return queryUniverseNodes(universe, QueryAction.FETCH_SLOW_QUERIES);
   }
 
   public JsonNode resetQueries(Universe universe) {
-    RunQueryFormData ysqlQuery = new RunQueryFormData();
-    ysqlQuery.query = "SELECT pg_stat_statements_reset()";
-    ysqlQuery.db_name = "postgres";
-    return ysqlQueryExecutor.executeQueryInNodeShell(universe, ysqlQuery);
+    return queryUniverseNodes(universe, QueryAction.RESET_STATS);
   }
 
-  public JsonNode query(Universe universe, boolean fetchSlowQueries)
+  /** Runs provided {@link QueryAction QueryAction} on every node in the provided universe. */
+  public JsonNode queryUniverseNodes(Universe universe, QueryAction queryAction)
       throws IllegalArgumentException {
+    if (queriesWillExceedTaskQueue(universe)) {
+      throw new PlatformServiceException(
+          SERVICE_UNAVAILABLE, "Not enough room to queue the requested tasks");
+    }
     final Config config = runtimeConfigFactory.forUniverse(universe);
     int ysqlErrorCount = 0;
     int ycqlErrorCount = 0;
@@ -84,65 +109,79 @@ public class QueryHelper {
     ObjectNode ysqlJson = Json.newObject();
     ObjectNode ycqlJson = Json.newObject();
     Set<Future<JsonNode>> futures = new HashSet<>();
-    ExecutorService threadPool =
-        platformExecutorFactory.createFixedExecutor(
-            getClass().getSimpleName(),
-            QUERY_EXECUTOR_THREAD_POOL,
-            Executors.defaultThreadFactory());
-    try {
-      ysqlJson.putArray("queries");
-      ycqlJson.putArray("queries");
-      for (NodeDetails node : universe.getNodes()) {
-        if (node.isActive() && node.isTserver) {
-          String ip = null;
-          CloudSpecificInfo cloudInfo = node.cloudInfo;
 
-          if (cloudInfo != null) {
-            ip =
-                node.cloudInfo.private_ip == null
-                    ? node.cloudInfo.private_dns
-                    : node.cloudInfo.private_ip;
-          }
+    ysqlJson.putArray("queries");
+    ycqlJson.putArray("queries");
+    for (NodeDetails node : universe.getNodes()) {
+      if (node.isActive() && node.isTserver) {
+        String ip = null;
+        CloudSpecificInfo cloudInfo = node.cloudInfo;
 
-          if (ip == null) {
-            log.error("Node {} does not have a private IP or DNS name, skipping", node.nodeName);
-            continue;
-          }
+        if (cloudInfo != null) {
+          ip =
+              node.cloudInfo.private_ip == null
+                  ? node.cloudInfo.private_dns
+                  : node.cloudInfo.private_ip;
+        }
 
-          Callable<JsonNode> callable;
+        if (ip == null) {
+          log.error("Node {} does not have a private IP or DNS name, skipping", node.nodeName);
+          continue;
+        }
 
-          if (fetchSlowQueries) {
-            callable =
-                () -> {
-                  RunQueryFormData ysqlQuery = new RunQueryFormData();
-                  ysqlQuery.query = slowQuerySqlWithLimit(config);
-                  ysqlQuery.db_name = "postgres";
-                  return ysqlQueryExecutor.executeQueryInNodeShell(universe, ysqlQuery);
-                };
+        Callable<JsonNode> callable;
 
-            Future<JsonNode> future = threadPool.submit(callable);
-            futures.add(future);
-          } else {
-            callable =
-                new LiveQueryExecutor(node.nodeName, ip, node.ysqlServerHttpPort, QueryApi.YSQL);
+        switch (queryAction) {
+          case FETCH_SLOW_QUERIES:
+            {
+              callable =
+                  () -> {
+                    RunQueryFormData ysqlQuery = new RunQueryFormData();
+                    ysqlQuery.query = slowQuerySqlWithLimit(config);
+                    ysqlQuery.db_name = "postgres";
+                    return ysqlQueryExecutor.executeQueryInNodeShell(universe, ysqlQuery, node);
+                  };
 
-            Future<JsonNode> future = threadPool.submit(callable);
-            futures.add(future);
+              Future<JsonNode> future = threadPool.submit(callable);
+              futures.add(future);
+              break;
+            }
+          case FETCH_LIVE_QUERIES:
+            {
+              callable =
+                  new LiveQueryExecutor(node.nodeName, ip, node.ysqlServerHttpPort, QueryApi.YSQL);
 
-            callable =
-                new LiveQueryExecutor(node.nodeName, ip, node.yqlServerHttpPort, QueryApi.YCQL);
-            future = threadPool.submit(callable);
-            futures.add(future);
-          }
+              Future<JsonNode> future = threadPool.submit(callable);
+              futures.add(future);
+
+              callable =
+                  new LiveQueryExecutor(node.nodeName, ip, node.yqlServerHttpPort, QueryApi.YCQL);
+              future = threadPool.submit(callable);
+              futures.add(future);
+              break;
+            }
+          case RESET_STATS:
+            {
+              callable =
+                  () -> {
+                    RunQueryFormData ysqlQuery = new RunQueryFormData();
+                    ysqlQuery.query = RESET_QUERY_SQL;
+                    ysqlQuery.db_name = "postgres";
+                    return ysqlQueryExecutor.executeQueryInNodeShell(universe, ysqlQuery, node);
+                  };
+              Future<JsonNode> future = threadPool.submit(callable);
+              futures.add(future);
+              break;
+            }
+          default:
+            throw new RuntimeException("Unexpected QueryType: " + queryAction);
         }
       }
+    }
 
-      if (futures.isEmpty()) {
-        throw new IllegalStateException(
-            "None of the nodes are accessible by either private IP or DNS");
-      }
-    } finally {
-      threadPool.shutdown();
+    if (futures.isEmpty()) {
+      throw new IllegalStateException(
+          "None of the nodes are accessible by either private IP or DNS");
     }
 
     try {
@@ -166,7 +205,7 @@ public class QueryHelper {
             }
           }
         } else {
-          if (fetchSlowQueries) {
+          if (queryAction == QueryAction.FETCH_SLOW_QUERIES) {
             // TODO: PLAT-3977 group by queryid instead of query
             // TODO: PLAT-3986 Sort and limit the merged data
             JsonNode ysqlResponse = response.get("result");
@@ -257,6 +296,32 @@ public class QueryHelper {
     responseJson.set("ycql", ycqlJson);
 
     return responseJson;
+  }
+
+  private static ExecutorService createExecutor(
+      Configuration appConfig, PlatformExecutorFactory platformExecutorFactory) {
+    int threadPoolSize =
+        appConfig.getInt("yb.queryHelper.threadPoolSize") != null
+            ? appConfig.getInt("yb.queryHelper.threadPoolSize")
+            : THREAD_POOL_SIZE;
+    int taskQueueSize =
+        appConfig.getInt("yb.queryHelper.taskQueueSize") != null
+            ? appConfig.getInt("yb.queryHelper.taskQueueSize")
+            : TASK_QUEUE_SIZE;
+    return platformExecutorFactory.createFixedExecutor(
+        "Query-Helper-Thread-Pool",
+        threadPoolSize,
+        taskQueueSize,
+        Executors.defaultThreadFactory());
+  }
+
+  /** Check if running a query per node will exceed the remaining task queue room */
+  private boolean queriesWillExceedTaskQueue(Universe universe) {
+    Collection<NodeDetails> universeNodes = universe.getNodes();
+    ThreadPoolExecutor executor = (ThreadPoolExecutor) threadPool;
+    int unallocatedTaskQueueSpots =
+        appConfig.getInt("yb.queryHelper.taskQueueSize") - executor.getQueue().size();
+    return universeNodes.size() > unallocatedTaskQueueSpots;
   }
 
   @VisibleForTesting

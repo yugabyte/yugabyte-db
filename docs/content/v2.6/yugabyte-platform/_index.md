@@ -4,11 +4,12 @@ linkTitle: Yugabyte Platform
 description: Yugabyte Platform
 headcontent: Build your own YugabyteDB-as-a-Service on any cloud or Kubernetes infrastructure.
 image: /images/section_icons/deploy/public-clouds.png
-section: YUGABYTE PLATFORM
 menu:
-  v2.6:
+  v2.6_yugabyte-platform:
+    parent: yugabytedb-anywhere
     identifier: yugabyte-platform
     weight: 600
+type: indexpage
 ---
 
 <div class="row">
@@ -72,7 +73,7 @@ menu:
       </div>
     </a>
   </div>
-  
+
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="alerts-monitoring/">
       <div class="head">
@@ -84,7 +85,7 @@ menu:
       </div>
     </a>
   </div>
-  
+
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="create-deployments/">
       <div class="head">
@@ -96,7 +97,7 @@ menu:
       </div>
     </a>
   </div>
-  
+
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="security/">
       <div class="head">

@@ -2,14 +2,24 @@
 title: Prisma
 linkTitle: Prisma
 description: Prisma
-section: INTEGRATIONS
 menu:
   preview:
     identifier: prisma-integration
+    parent: integrations
     weight: 571
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
+
+{{< warning title="Old Prisma version" >}}
+
+This tutorial uses [Prisma 1](https://v1.prisma.io/docs/1.34/) which is in maintenance mode. If you are new to Prisma, check out the [Prisma ORM](https://www.prisma.io/).
+
+The following YugabyteDB documentation uses the current Prisma ORM:
+
+* [ Hello World Example](/preview/drivers-orms/nodejs/prisma/)
+* [ CRUD Example](/preview/quick-start/build-apps/nodejs/ysql-prisma/)
+
+{{< /warning >}}
 
 Explore how you can use Prisma and its GraphQL support to interact with YugabyteDB. You can build a GraphQL server and then use the Prisma client to write data to and run queries on a YugabyteDB database. Also, you can explore the Prisma's ORM functionality.
 
@@ -335,4 +345,3 @@ docker rm <container-id>
 ```
 
 To list running containers, execute `docker ps`.
-

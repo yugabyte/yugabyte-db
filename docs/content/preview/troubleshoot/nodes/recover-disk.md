@@ -9,8 +9,7 @@ menu:
   preview:
     parent: troubleshoot-nodes
     weight: 40
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 YugabyteDB can be configured to use multiple storage disks by setting the [`--fs_data_dirs`](../../../reference/configuration/yb-tserver/) flag.

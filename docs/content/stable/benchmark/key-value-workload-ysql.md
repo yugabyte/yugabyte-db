@@ -10,8 +10,7 @@ menu:
     identifier: key-value-workload-2-ysql
     parent: benchmark
     weight: 6
-showAsideToc: true
-isTocNested: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

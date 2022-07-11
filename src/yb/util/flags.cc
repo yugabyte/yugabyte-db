@@ -77,6 +77,16 @@ TAG_FLAG(heap_profile_path, advanced);
 DEFINE_int32(svc_queue_length_default, 50, "Default RPC queue length for a service");
 TAG_FLAG(svc_queue_length_default, advanced);
 
+// This provides a more accurate representation of default gFlag values for application like
+// yb-master which override the hard coded values at process startup time.
+DEFINE_bool(
+    dump_flags_xml, false,
+    "Dump a XLM document describing all of gFlags used in this binary. Differs from helpxml by "
+    "displaying the current runtime value as the default instead of the hard coded values from the "
+    "flag definitions. ");
+TAG_FLAG(dump_flags_xml, stable);
+TAG_FLAG(dump_flags_xml, advanced);
+
 // Tag a bunch of the flags that we inherit from glog/gflags.
 
 //------------------------------------------------------------
@@ -232,7 +242,10 @@ void AppendXMLTag(const char* tag, const string& txt, string* r) {
   strings::SubstituteAndAppend(r, "<$0>$1</$0>", tag, EscapeForHtmlToString(txt));
 }
 
-static string DescribeOneFlagInXML(const CommandLineFlagInfo& flag) {
+YB_STRONGLY_TYPED_BOOL(OnlyDisplayDefaultFlagValue);
+
+static string DescribeOneFlagInXML(
+    const CommandLineFlagInfo& flag, OnlyDisplayDefaultFlagValue only_display_default_values) {
   unordered_set<FlagTag> tags;
   GetFlagTags(flag.name, &tags);
   vector<string> tags_str;
@@ -247,15 +260,20 @@ static string DescribeOneFlagInXML(const CommandLineFlagInfo& flag) {
   AppendXMLTag("file", flag.filename, &r);
   AppendXMLTag("name", flag.name, &r);
   AppendXMLTag("meaning", flag.description, &r);
-  AppendXMLTag("default", flag.default_value, &r);
-  AppendXMLTag("current", flag.current_value, &r);
+  if (only_display_default_values) {
+    // use the current value as the default
+    AppendXMLTag("default", flag.current_value, &r);
+  } else {
+    AppendXMLTag("default", flag.default_value, &r);
+    AppendXMLTag("current", flag.current_value, &r);
+  }
   AppendXMLTag("type", flag.type, &r);
   AppendXMLTag("tags", JoinStrings(tags_str, ","), &r);
   r += "</flag>";
   return r;
 }
 
-void DumpFlagsXML() {
+void DumpFlagsXML(OnlyDisplayDefaultFlagValue only_display_default_values) {
   vector<CommandLineFlagInfo> flags;
   GetAllFlags(&flags);
 
@@ -269,11 +287,11 @@ void DumpFlagsXML() {
       EscapeForHtmlToString(google::ProgramUsage())) << endl;
 
   for (const CommandLineFlagInfo& flag : flags) {
-    cout << DescribeOneFlagInXML(flag) << std::endl;
+    cout << DescribeOneFlagInXML(flag, only_display_default_values) << std::endl;
   }
 
   cout << "</AllFlags>" << endl;
-  exit(1);
+  exit(0);
 }
 
 void ShowVersionAndExit() {
@@ -287,7 +305,9 @@ int ParseCommandLineFlags(int* argc, char*** argv, bool remove_flags) {
   int ret = google::ParseCommandLineNonHelpFlags(argc, argv, remove_flags);
 
   if (FLAGS_helpxml) {
-    DumpFlagsXML();
+    DumpFlagsXML(OnlyDisplayDefaultFlagValue::kFalse);
+  } else if (FLAGS_dump_flags_xml) {
+    DumpFlagsXML(OnlyDisplayDefaultFlagValue::kTrue);
   } else if (FLAGS_dump_metrics_json) {
     std::stringstream s;
     JsonWriter w(&s, JsonWriter::PRETTY);

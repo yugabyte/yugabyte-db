@@ -10,6 +10,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.yugabyte.yw.common.PlatformServiceException;
 
 import org.apache.commons.io.FileUtils;
+import org.apache.commons.lang3.time.DateUtils;
 
 import io.ebean.Finder;
 import io.ebean.Model;
@@ -17,6 +18,7 @@ import io.ebean.annotation.DbJson;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import io.swagger.annotations.ApiModelProperty.AccessMode;
+import lombok.Getter;
 
 import java.io.File;
 import java.nio.charset.Charset;
@@ -138,7 +140,19 @@ public class AccessKey extends Model {
       required = false,
       accessMode = AccessMode.READ_WRITE)
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
+  @Getter
   public Date expirationDate;
+
+  @JsonIgnore
+  public void setExpirationDate(int expirationThresholdDays) {
+    this.expirationDate = DateUtils.addDays(this.creationDate, expirationThresholdDays);
+  }
+
+  @JsonIgnore
+  public void updateExpirationDate(int expirationThresholdDays) {
+    this.setExpirationDate(expirationThresholdDays);
+    this.save();
+  }
 
   @Column(nullable = false)
   @ApiModelProperty(
@@ -146,6 +160,7 @@ public class AccessKey extends Model {
       required = false,
       accessMode = AccessMode.READ_ONLY)
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
+  @Getter
   public Date creationDate;
 
   public void setCreationDate() {

@@ -8,8 +8,7 @@ menu:
     identifier: yb-ts-cli
     parent: admin
     weight: 2466
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 `yb-ts-cli` is a command line tool that can be used to perform an operation on a particular tablet server (`yb-tserver`). Some of the commands perform operations similar to [`yb-admin` commands](../yb-admin/). The `yb-admin` commands focus on cluster administration, the `yb-ts-cli` commands apply to specific YB-TServer nodes.

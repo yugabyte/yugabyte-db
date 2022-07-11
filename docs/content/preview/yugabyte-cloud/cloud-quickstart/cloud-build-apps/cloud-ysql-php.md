@@ -2,15 +2,14 @@
 title: Build a PHP application that uses YSQL
 headerTitle: Build a PHP application
 description: Build a small PHP application using the php-pgsql driver and using the YSQL API to connect to and interact with a YugabyteDB Managed cluster.
+headContent: "Client driver: php-pgsql"
 menu:
-  preview:
+  preview_yugabyte-cloud:
     parent: cloud-build-apps
     name: PHP
     identifier: cloud-php
     weight: 900
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 The following tutorial shows a small [PHP application](https://github.com/yugabyte/yugabyte-simple-php-app) that connects to a YugabyteDB cluster using the [php-pgsql](../../../../reference/drivers/ysql-client-drivers/#php-pgsql) driver and performs basic SQL operations. Use the application as a template to get started with YugabyteDB Managed in PHP.
@@ -33,7 +32,7 @@ The following tutorial shows a small [PHP application](https://github.com/yugaby
 Clone the sample application to your computer:
 
 ```sh
-git clone https://github.com/yugabyte/yugabyte-simple-php-app && cd yugabyte-simple-php-app
+git clone https://github.com/YugabyteDB-Samples/yugabyte-simple-php-app.git && cd yugabyte-simple-php-app
 ```
 
 ## Provide connection parameters
@@ -44,7 +43,7 @@ The application needs to establish a connection to the YugabyteDB cluster. To do
 
 1. Set the following configuration-related constants:
 
-    - **HOST** - the host name of your YugabyteDB cluster. To obtain a YugabyteDB Managed cluster host name, sign in to YugabyteDB Managed, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Network Access**.
+    - **HOST** - the host name of your YugabyteDB cluster. To obtain a YugabyteDB Managed cluster host name, sign in to YugabyteDB Managed, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Connection Parameters**.
     - **PORT** - the port number for the driver to use; this is already set to the default YugabyteDB YSQL port (5433).
     - **DB_NAME** - the name of the database to connect to (the default database is named `yugabyte`).
     - **USER** and **PASSWORD** - the username and password for the YugabyteDB database. If you are using the credentials you created when deploying a cluster in YugabyteDB Managed, these can be found in the credentials file you downloaded.
