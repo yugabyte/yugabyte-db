@@ -914,6 +914,7 @@ PowerWithUpperLimit(double base, int exp, double upper_limit)
 
 bool yb_enable_create_with_table_oid = false;
 int yb_index_state_flags_update_delay = 1000;
+bool yb_make_next_ddl_statement_nonbreaking = false;
 
 //------------------------------------------------------------------------------
 // YB Debug utils.
@@ -983,9 +984,20 @@ static ProcessUtility_hook_type prev_ProcessUtility = NULL;
 static int ddl_nesting_level = 0;
 
 static void
+YBResetEnableNonBreakingDDLMode()
+{
+	/*
+	 * Reset yb_make_next_ddl_statement_nonbreaking to avoid its further side
+	 * effect that may not be intended.
+	 */
+	yb_make_next_ddl_statement_nonbreaking = false;
+}
+
+static void
 YBResetDdlState()
 {
 	ddl_nesting_level = 0;
+	YBResetEnableNonBreakingDDLMode();
 	YBCPgClearSeparateDdlTxnMode();
 }
 
@@ -1011,6 +1023,7 @@ YBDecrementDdlNestingLevel(bool is_catalog_version_increment, bool is_breaking_c
 	ddl_nesting_level--;
 	if (ddl_nesting_level == 0)
 	{
+		YBResetEnableNonBreakingDDLMode();
 		const bool increment_done =
 			is_catalog_version_increment &&
 			YBCPgHasWriteOperationsInDdlTxnMode() &&
@@ -1354,6 +1367,12 @@ static void YBTxnDdlProcessUtility(
 	bool is_txn_ddl = IsTransactionalDdlStatement(pstmt,
 	                                              &is_catalog_version_increment,
 	                                              &is_breaking_catalog_change);
+	/*
+	 * If yb_make_next_ddl_statement_nonbreaking is true, then no DDL statement
+	 * will cause a breaking catalog change.
+	 */
+	if (yb_make_next_ddl_statement_nonbreaking)
+		is_breaking_catalog_change = false;
 
 	if (is_txn_ddl) {
 		YBIncrementDdlNestingLevel();
