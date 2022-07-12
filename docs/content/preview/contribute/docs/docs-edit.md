@@ -34,9 +34,9 @@ If you need to edit syntax diagrams, see [Edit syntax diagrams](../syntax-diagra
 
 1. Commit your changes.
 
-  ```sh
-  git commit -A -m "Your commit message here"
-  ```
+    ```sh
+    git commit -A -m "Your commit message here"
+    ```
 
 1. Push your changes to your fork.
 
@@ -48,17 +48,19 @@ At this point, you're ready to [create a pull request](#make-a-pr).
 
 ## Add a new page
 
+If you can, copy an existing page in the location you want the new page to be, and adjust.
+
 Adding a new page is similar in most ways to editing an existing page, with the added complexity of sorting out the _frontmatter_ so that the page works correctly in the site, including showing up in the left-side navigation menu. See [how docs pages are structured](../docs-page-structure/) for more information.
 
-_More content in this section is coming soon._
+_More content in this section is forthcoming._
 
 ## Make a pull request {#make-a-pr}
 
 After you've made your changes, make a pull request by telling GitHub to compare a branch _on your fork_ to the master branch on the main repository.
 
-### Use the PR preview build
+### Use the PR preview build {#preview-build}
 
-Preview builds take 10-15 minutes to build.
+Preview builds take 5 minutes to build.
 
 All PR previews on the main repository are of the form `https://deploy-preview-ABCDE--infallible-bardeen-164bc9.netlify.app/` where ABCDE is the pull request number.
 
