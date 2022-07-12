@@ -553,7 +553,6 @@ RelationBuildTupleDesc(Relation relation)
 	AttrDefault *attrdef = NULL;
 	AttrMissing *attrmiss = NULL;
 	int			ndef = 0;
-	bool		index_ok;
 
 	/* copy some fields from pg_class row to rd_att */
 	relation->rd_att->tdtypeid = relation->rd_rel->reltype;
@@ -581,15 +580,12 @@ RelationBuildTupleDesc(Relation relation)
 	/*
 	 * Open pg_attribute and begin a scan.  Force heap scan if we haven't yet
 	 * built the critical relcache entries (this includes initdb and startup
-	 * without a pg_internal.init file), or we are building the tuple descriptor
-	 * of the pg_attribute_relid_attnum_index relation.
+	 * without a pg_internal.init file).
 	 */
-	index_ok = criticalRelcachesBuilt &&
-			  RelationGetRelid(relation) != AttributeRelidNumIndexId;
 	pg_attribute_desc = heap_open(AttributeRelationId, AccessShareLock);
 	pg_attribute_scan = systable_beginscan(pg_attribute_desc,
 										   AttributeRelidNumIndexId,
-										   index_ok,
+										   criticalRelcachesBuilt,
 										   NULL,
 										   2, skey);
 
@@ -1322,7 +1318,6 @@ YBLoadRelations()
 		/* Ignore update of existing sys relation as it can't be changed without DB upgrade. */
 		if (tmp_rel && IsSystemRelation(tmp_rel))
 			continue;
-
 		/* get information from the pg_class_tuple */
 		Form_pg_class relp  = (Form_pg_class) GETSTRUCT(pg_class_tuple);
 
@@ -1815,8 +1810,6 @@ YBPreloadRelCache()
 		YBPreloadCatalogCache(PROCOID, PROCNAMEARGSNSP); // pg_proc
 		YBPreloadCatalogCache(INHERITSRELID, -1);        // pg_inherits
 	}
-
-	criticalRelcachesBuilt = true;
 }
 
 /*
@@ -1842,7 +1835,7 @@ RelationBuildDesc(Oid targetRelId, bool insertIt)
 	/*
 	 * find the tuple in pg_class corresponding to the given relation id
 	 */
-	pg_class_tuple = ScanPgRelation(targetRelId, targetRelId != ClassOidIndexId, false);
+	pg_class_tuple = ScanPgRelation(targetRelId, true, false);
 
 	/*
 	 * if no such tuple exists, return NULL
@@ -2980,8 +2973,7 @@ RelationReloadNailed(Relation relation)
 			relation->rd_isvalid = true;
 
 			pg_class_tuple = ScanPgRelation(RelationGetRelid(relation),
-											RelationGetRelid(relation) != ClassOidIndexId,
-											false);
+											true, false);
 			relp = (Form_pg_class) GETSTRUCT(pg_class_tuple);
 			memcpy(relation->rd_rel, relp, CLASS_TUPLE_SIZE);
 			heap_freetuple(pg_class_tuple);
@@ -4642,25 +4634,25 @@ static void
 load_critical_index(Oid indexoid, Oid heapoid)
 {
 	Relation	ird;
-	if (IsYugaByteEnabled())
-	{
-		/* TODO We do not support/use critical indexes in YugaByte mode yet */
-		return;
-	}
-
 	/*
 	 * We must lock the underlying catalog before locking the index to avoid
 	 * deadlock, since RelationBuildDesc might well need to read the catalog,
 	 * and if anyone else is exclusive-locking this catalog and index they'll
 	 * be doing it in that order.
 	 */
+
 	LockRelationOid(heapoid, AccessShareLock);
 	LockRelationOid(indexoid, AccessShareLock);
-	ird = RelationBuildDesc(indexoid, true);
+	if (IsYugaByteEnabled())
+	{
+		RelationIdCacheLookup(indexoid, ird);
+	} else
+		ird = RelationBuildDesc(indexoid, true);
 	if (ird == NULL)
 		elog(PANIC, "could not open critical system index %u", indexoid);
 	ird->rd_isnailed = true;
 	ird->rd_refcnt = 1;
+
 	UnlockRelationOid(indexoid, AccessShareLock);
 	UnlockRelationOid(heapoid, AccessShareLock);
 }
@@ -6571,15 +6563,6 @@ load_relcache_init_file(bool shared)
 	int num_critical_shared_indexes = NUM_CRITICAL_SHARED_INDEXES;
 	int num_critical_local_indexes = NUM_CRITICAL_LOCAL_INDEXES;
 
-	/*
-	 * TODO We do not support/use critical indexes in YugaByte mode yet so set
-	 * the expected number of indexes to 0 so we do not fail here.
-	 */
-	if (IsYugaByteEnabled())
-	{
-		num_critical_shared_indexes = 0;
-		num_critical_local_indexes  = 0;
-	}
 	if (shared)
 	{
 		if (nailed_rels != NUM_CRITICAL_SHARED_RELS ||
