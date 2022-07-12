@@ -11,11 +11,11 @@ menu:
 type: docs
 ---
 
-{{< note title="YSQL support" >}}
+{{< warning title="YSQL support" >}}
 
 YugabyteDB version 2.6 provides point-in-time recovery support only for YCQL keyspaces. Support for YSQL databases is provided since version 2.8.
 
-{{< /note >}}
+{{< /warning >}}
 
 Point-in-time recovery (PITR) in YugabyteDB enables recovery from a user or software error, while minimizing recovery point objective (RPO), recovery time objective (RTO), and overall impact on the cluster.
 
@@ -79,7 +79,7 @@ The following output is a unique ID of the newly-created snapshot schedule:
 }
 ```
 
-You can use this ID to [delete the schedule](#deleting-a-schedule) or [restore to a point in time](#restoring-to-a-point-in-time).
+You can use this ID to [delete the schedule](#delete-a-schedule) or [restore to a point in time](#restore-to-a-point-in-time).
 
 ### Delete a schedule
 

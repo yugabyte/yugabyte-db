@@ -77,7 +77,7 @@ The following output is a unique ID of the newly-created snapshot schedule:
 }
 ```
 
-You can use this ID to [delete the schedule](#deleting-a-schedule) or [restore to a point in time](#restoring-to-a-point-in-time).
+You can use this ID to [delete the schedule](#delete-a-schedule) or [restore to a point in time](#restore-to-a-point-in-time).
 
 ### Delete a schedule
 
