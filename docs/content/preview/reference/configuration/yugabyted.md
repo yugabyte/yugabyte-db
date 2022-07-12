@@ -17,7 +17,7 @@ The `yugabyted` executable file is located in the YugabyteDB home's `bin` direct
 
 {{< note title="Note" >}}
 
-- yugabyted supports both single-node and multi-node clusters (using the `join` option in the `start` command). However, the ability to create multi-node clusters is currently in [BETA](../../../faq/general/#what-is-the-definition-of-the-beta-feature-tag).
+- yugabyted supports both single-node and multi-node clusters (using the `join` option in the `start` command).
 
 - yugabyted is not recommended for production deployments. For production deployments with fully-distributed multi-node clusters, use [`yb-tserver`](../yb-tserver/) and [`yb-master`](../yb-master/) directly. Refer to [Deploy YugabyteDB](../../../deploy).
 
@@ -61,6 +61,7 @@ $ ./bin/yugabyted start -h
 The following commands are available:
 
 - [start](#start)
+- [configure](#configure)
 - [stop](#stop)
 - [destroy](#destroy)
 - [status](#status)
@@ -73,23 +74,19 @@ The following commands are available:
 
 ### start
 
-Use the `yugabyted start` command to start a one-node YugabyteDB cluster in your local environment. This one-node cluster includes [`yb-tserver`](../yb-tserver/) and [`yb-master`](../yb-master/) services.
+Use the `yugabyted start` command to start a one-node YugabyteDB cluster in your local environment. This allows developers to quickly get started with a YugabyteDB cluster for running [YSQL](../../../architecture/layered-architecture/#yugabyte-sql-ysql) and [YCQL](../../../architecture/layered-architecture/#yugabyte-cloud-ql-ycql) workloads.
 
 #### Syntax
 
 ```sh
-Usage: yugabyted start [-h] [--config CONFIG] [--data_dir DATA_DIR]
-                                [--base_dir BASE_DIR] [--log_dir LOG_DIR]
-                                [--ycql_port YCQL_PORT]
-                                [--ysql_port YSQL_PORT]
-                                [--master_rpc_port MASTER_RPC_PORT]
-                                [--tserver_rpc_port TSERVER_RPC_PORT]
-                                [--master_webserver_port MASTER_WEBSERVER_PORT]
-                                [--tserver_webserver_port TSERVER_WEBSERVER_PORT]
-                                [--webserver_port WEBSERVER_PORT]
-                                [--listen LISTEN] [--join JOIN]
-                                [--daemon BOOL] [--callhome BOOL] [--ui BOOL]
-                                [--initial_scripts_dir INITIAL_SCRIPTS_DIR]
+Usage: yugabyted start [flags]
+
+Examples:
+# Create a single-node local cluster:
+yugabyted start
+
+# Create a single-node locally and join other nodes that are part of the same cluster:
+yugabyted start --join=host:port,[host:port]
 ```
 
 #### Flags
@@ -97,17 +94,42 @@ Usage: yugabyted start [-h] [--config CONFIG] [--data_dir DATA_DIR]
 -h, --help
 : Print the command line help and exit.
 
---config *config-file*
-: The path to the configuration file.
+--advertise_address *bind-ip*
+: IP address or local hostname on which yugabyted will listen.
 
---data_dir *data-directory*
-: The directory where yugabyted stores data. Must be an absolute path. Changing the value of this flag after the cluster has already been created is not supported.
+--join *master-ip*
+: The IP address of the existing `yugabyted` server to which the new `yugabyted` server will join.
+
+--config *config-file*
+: Yugabyted configuration file path.
 
 --base_dir *base-directory*
 : The directory where yugabyted stores data, configurations, and logs. Must be an absolute path.
 
+--data_dir *data-directory*
+: The directory where yugabyted stores data. Must be an absolute path. Can be
+configured to a directory different from the one where configurations and logs are stored.
+
 --log_dir *log-directory*
-: The directory to store yugabyted logs. Must be an absolute path.
+: The directory to store yugabyted logs. Must be an absolute path. This flag controls where the logs of the YugabyteDB nodes are stored.
+
+--background *bool*
+: Enable or disable running `yugabyted` in the background as a daemon. Does not persist on restart.
+Default: `true`
+
+--cloud_location *cloud-location*
+: Cloud location of the Yugabyted node in the format `cloudprovider.region.zone`. This information is used for multi-zone, multi-region and multi-cloud deployments of YugabyteDB clusters.
+
+--fault_tolerance *fault_tolerance*
+: Determines the fault tolerance constraint to be applied on the data placement policy of the YugabyteDB cluster. This flag can accept the following values - none, zone, region, and cloud.
+
+--ui *bool*
+: Enable or disable the webserver UI.
+Default: `false`
+
+#### Advanced Flags
+
+Advanced flags can be set by using the configuration file in the `--config` flag. The advance flags support for the `start` command is as follows:
 
 --ycql_port *ycql-port*
 : The port on which YCQL will run.
@@ -130,21 +152,9 @@ Usage: yugabyted start [-h] [--config CONFIG] [--data_dir DATA_DIR]
 --webserver_port *webserver-port*
 : The port on which main webserver will run.
 
---listen *bind-ip*
-: The IP address or localhost name to which `yugabyted` will listen.
-
---join *master-ip*
-: This feature is currently in [BETA](../../../faq/general/#what-is-the-definition-of-the-beta-feature-tag).
-: The IP address of the existing `yugabyted` server to which the new `yugabyted` server will join.
-
---daemon *bool*
-: Enable or disable running `yugabyted` in the background as a daemon. Does not persist on restart. Default is `true`.
-
 --callhome *bool*
-: Enable or disable the "call home" feature that sends analytics data to Yugabyte. Default is `true`.
-
---ui *bool*
-: Enable or disable the webserver UI. Default is `false`.
+: Enable or disable the *call home* feature that sends analytics data to Yugabyte.
+Default: `true`.
 
 --master_flags *master_flags*
 : Specify extra [master flags](../../../reference/configuration/yb-master#configuration-flags) as a set of key value pairs. Format (key=value,key=value).
@@ -165,6 +175,54 @@ Usage: yugabyted start [-h] [--config CONFIG] [--data_dir DATA_DIR]
 : The directory from where yugabyted reads initialization scripts.
 : Script format - YSQL `.sql`, YCQL `.cql`.
 : Initialization scripts are executed in sorted name order.
+
+#### Deprecated Flags
+
+--daemon *bool*
+: Enable or disable running `yugabyted` in the background as a daemon. Does not persist on restart.
+Default: `true`.
+
+--listen *bind-ip*
+: The IP address or localhost name to which `yugabyted` will listen.
+
+-----
+
+### configure
+
+Use the `yugabyted configure` command to configure the data placement constraints on the YugabyteDB cluster.
+
+#### Syntax
+
+```sh
+Usage: yugabyted configure [flags]
+
+Examples:
+# create a multi zone YugabyteDB cluster
+yugabyted configure --fault_tolerance=zone
+```
+
+#### Flags
+
+-h | --help
+: Print the command line help and exit.
+
+--fault_tolerance *fault_tolerance*
+: Specify the fault tolerance associated with cluster. This flag can accept one of these values - zone, region, or cloud. `For example`: When the flag is configured with `zone`, `--fault_tolerance=zone`, Yugabyted will apply the `zone` data placement constraint on the YugabyteDB cluster to place the data in 3 different zones, if available.
+
+--data_placement_constraint *data-placement-constraint*
+: Specify the data placement constraint to be applied on the YugabyteDB cluster. This is an optional flag. This flag takes the comma-seperated values in the format `cloud.region.zone`.
+
+--rf *replication-factor*
+: Specify the replication factor of the cluster. This is an optional flag which takes a value of `3` or `5`.
+
+--config *config-file*
+: The path to the configuration file of the yugabyted server that needs to be stopped.
+
+--data_dir *data-directory*
+: The data directory for the yugabyted server that needs to be stopped.
+
+--base_dir *base-directory*
+: The base directory for the yugabyted server that needs to be stopped.
 
 -----
 
@@ -300,7 +358,7 @@ Usage: yugabyted collect_logs [-h] [--config CONFIG]
 : The data directory for the yugabyted server whose logs are desired.
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server that whose logs are desired.
+: The base directory for the yugabyted server whose logs are desired.
 
 -----
 
@@ -465,4 +523,134 @@ Destroy the above multi-node cluster.
 bin/yugabyted destroy --base_dir=/Users/username/yugabyte-2.3.3.0/data1
 bin/yugabyted destroy --base_dir=/Users/username/yugabyte-2.3.3.0/data2
 bin/yugabyted destroy --base_dir=/Users/username/yugabyte-2.3.3.0/data3
+```
+
+### Create a multi-zone cluster
+
+#### Multi-node deployment
+
+Create a multi-node cluster for YugabyteDB. Start the first Yugabyted node by running the `yugabyted start` command, pass in the `--cloud_location` and `--fault_tolerance` flag for setting the node location details. Run the following command:
+
+```sh
+bin/yugabyted start --advertise_address=<host-ip> --cloud_location=aws.us-east.us-east-1a --fault_tolerance=zone
+```
+
+Start the second and the third node on two separate VMs:
+
+```sh
+bin/yugabyted start --advertise_address=<host-ip> --join=<ip-address-first-yugabyted-node> --cloud_location=aws.us-east.us-east-2a --fault_tolerance=zone
+
+bin/yugabyted start --advertise_address=<host-ip> --join=<ip-address-first-yugabyted-node> --cloud_location=aws.us-east.us-east-3a --fault_tolerance=zone
+```
+
+After starting the Yugabyted processes on all the nodes, configure the data placement constraint of the YugabyteDB cluster:
+
+```sh
+bin/yugabyted configure --fault_tolerance=zone
+```
+
+This command will automatically determine the data placement constraint based on the `--cloud_location` of each node in the cluster. If there are 3 or more zones available in the cluster, configure command will be successful in configuring the cluster to survive at least 1 availability zone failure. Otherwise, it will print the appropriate warning messages.
+
+Also, the replication factor of the cluster will be set to a default of `3`.
+
+The data placement constraint can be manually set with the `--data_placement_constraint` flag, which takes the comma-separated value of `cloud.region.zone`. An example usage is as follows:
+
+```sh
+bin/yugabyted configure --fault_tolerance=zone --data_placement_constraint=aws.us-east.us-east-1a,aws.us-east.us-east-2a,aws.us-east.us-east-3a
+```
+
+Replication factor of the YugabyteDB cluster can be manually set with `--rf` flag. An example usage is as follows:
+
+```sh
+./yugabyted configure --fault_tolerance=zone --data_placement_constraint=aws.us-east.us-east-1a,aws.us-east.us-east-2a,aws.us-east.us-east-3a --rf=3
+```
+
+### Create a multi-region cluster
+
+Create a multi-node cluster for YugabyteDB. Start the first Yugabyted node by running the `yugabyted start` command, pass in the `--cloud_location` and `--fault_tolerance` flag for setting the node location details. Run the following command -
+
+```sh
+bin/yugabyted start --advertise_address=<host-ip> --cloud_location=aws.us-east.us-east-1a --fault_tolerance=region
+```
+
+Start the second and the third node on two separate VMs -
+
+```sh
+bin/yugabyted start --advertise_address=<host-ip> --join=<ip-address-first-yugabyted-node> --cloud_location=aws.us-west.us-west-1a --fault_tolerance=region
+
+bin/yugabyted start --advertise_address=<host-ip> --join=<ip-address-first-yugabyted-node> --cloud_location=aws.us-central.us-central-1a --fault_tolerance=region
+```
+
+After starting the Yugabyted processes on all the nodes, configure the data placement constraint of the YugabyteDB cluster:
+
+```sh
+bin/yugabyted configure --fault_tolerance=region
+```
+
+This command will automatically determine the data placement constraint based on the `--cloud_location` of each node in the cluster. If there are 3 or more regions available in the cluster, configure command will be successful in configuring the cluster to survive at least 1 region failure. Otherwise, it will print the appropriate warning messages.
+
+Also, the replication factor of the cluster will be set to a default of `3`.
+
+The data placement constraint can be manually set with `--data_placement_constraint` flag, which takes the comma-separated value of `cloud.region.zone`. An example usage is as follows:
+
+```sh
+bin/yugabyted configure --fault_tolerance=zone --data_placement_constraint=aws.us-east.us-east-1a,aws.us-west.us-west-1a,aws.us-central.us-central-1a
+```
+
+Replication factor of the YugabyteDB cluster can be manually set with `--rf` flag. An example usage is as follows:
+
+```sh
+./yugabyted configure --fault_tolerance=zone --data_placement_constraint=aws.us-east.us-east-1a,aws.us-west.us-west-1a,aws.us-central.us-central-1a --rf=3
+```
+
+-----
+
+## YugabyteDB cluster upgrade
+
+To use the latest features of the database and apply the latest security fixes, it's prudent to upgrade your YugabyteDB cluster to the latest available release when its available. This section describes about rolling out upgrades to your YugabyteDB cluster using yugabyted. Upgrading an existing YugabyteDB cluster includes the following steps:
+
+- Step 1: Download the current [YugabyteDB preview release](https://download.yugabyte.com/).
+
+- Step 2: Stop the running YugabyteDB node, using `yugabyted stop` command.
+
+- Step 3: Start the new YugabyteDB process by executing the `yugabyted start` command from the `bin` directory. Use the previously configured `--base_dir` while restarting the YugabyteDB instance.
+
+Repeat the above steps on all the nodes of a YugabyteDB cluster, one node at a time.
+
+### Examples
+
+#### Steps for upgrading a YugabyteDB cluster from a single zone to a multi zone configuration
+
+{{< note title="Note" >}}
+
+- Multi-zone, Multi-region deployment is supported in the latest [YugabyteDB 2.15.0.0](https://download.yugabyte.com/) release.
+
+{{< /note >}}
+
+These steps assume that you already have a running YugabyteDB cluster deployed using `yugabyted`.
+
+Step 1: Stop the first node by using `yugabyted stop` command.
+
+```sh
+bin/yugabyted stop
+```
+
+Step 2: Download the current [YugabyteDB preview release](https://download.yugabyte.com/).
+
+Step 3: Start the YugabyteDB node by using `yugabyted start` command by providing the necessary cloud information
+
+```sh
+bin/yugabyted start --advertise_address=<host-ip> --cloud_location=aws.us-east.us-east-1a --fault_tolerance=zone
+```
+
+Repeat the above steps on all the nodes of a YugabyteDB cluster, one node at a time. After completing them successfully, run the following configure command, to specify the data placement constraint on the cluster:
+
+```sh
+bin/yugabyted configure --fault_tolerance=zone
+```
+
+For manually specifying the data placement constraint, use the following command:
+
+```sh
+./yugabyted configure --fault_tolerance=zone --data_placement_constraint=aws.us-east.us-east-1a,aws.us-east.us-east-2a,aws.us-east.us-east-3a --rf=3
 ```
