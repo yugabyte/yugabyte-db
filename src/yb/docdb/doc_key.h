@@ -398,7 +398,7 @@ class DocKeyDecoder {
   Result<bool> DecodeCotableId(Uuid* uuid = nullptr);
   Result<bool> DecodeColocationId(ColocationId* colocation_id = nullptr);
 
-  Result<bool> HasPrimitiveValue();
+  Result<bool> HasPrimitiveValue(AllowSpecial allow_special = AllowSpecial::kFalse);
 
   Result<bool> DecodeHashCode(
       uint16_t* out = nullptr, AllowSpecial allow_special = AllowSpecial::kFalse);

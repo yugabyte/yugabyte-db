@@ -8,6 +8,7 @@ import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.ConfigHelper;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
@@ -16,6 +17,8 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
+
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.extern.slf4j.Slf4j;
@@ -42,13 +45,20 @@ public class ResizeNodeParams extends UpgradeTaskParams {
           "Only ROLLING_UPGRADE option is supported for resizing node (changing VM type).");
     }
 
+    RuntimeConfigFactory runtimeConfigFactory =
+        Play.current().injector().instanceOf(RuntimeConfigFactory.class);
+    boolean allowUnsupportedInstances =
+        runtimeConfigFactory
+            .forUniverse(universe)
+            .getBoolean("yb.internal.allow_unsupported_instances");
+
     for (Cluster cluster : clusters) {
       UserIntent newUserIntent = cluster.userIntent;
       UserIntent currentUserIntent =
           universe.getUniverseDetails().getClusterByUuid(cluster.uuid).userIntent;
 
       String errorStr =
-          checkResizeIsPossible(currentUserIntent, newUserIntent, isSkipInstanceChecking());
+          checkResizeIsPossible(currentUserIntent, newUserIntent, allowUnsupportedInstances);
       if (errorStr != null) {
         throw new IllegalArgumentException(errorStr);
       }
@@ -58,17 +68,13 @@ public class ResizeNodeParams extends UpgradeTaskParams {
   /**
    * Checks if smart resize is available
    *
-   * @param currentUserIntent
-   * @param newUserIntent
+   * @param currentUserIntent current user intent
+   * @param newUserIntent desired user intent
+   * @param allowUnsupportedInstances boolean to skip instance type checking
    * @return null if available, otherwise returns error message
    */
   public static String checkResizeIsPossible(
-      UserIntent currentUserIntent, UserIntent newUserIntent) {
-    return checkResizeIsPossible(currentUserIntent, newUserIntent, false);
-  }
-
-  private static String checkResizeIsPossible(
-      UserIntent currentUserIntent, UserIntent newUserIntent, boolean skipInstanceChecking) {
+      UserIntent currentUserIntent, UserIntent newUserIntent, boolean allowUnsupportedInstances) {
     if (currentUserIntent == null || newUserIntent == null) {
       return "Should have both intents, but got: " + currentUserIntent + ", " + newUserIntent;
     }
@@ -107,14 +113,14 @@ public class ResizeNodeParams extends UpgradeTaskParams {
       return "ResizeNode operation is not supported for instances with ephemeral drives";
     }
     // Checking new instance is valid.
-    if (!newInstanceTypeCode.equals(currentUserIntent.instanceType) && !skipInstanceChecking) {
+    if (!newInstanceTypeCode.equals(currentUserIntent.instanceType)) {
       String provider = currentUserIntent.provider;
       List<InstanceType> instanceTypes =
           InstanceType.findByProvider(
               Provider.getOrBadRequest(UUID.fromString(provider)),
               Play.current().injector().instanceOf(Config.class),
-              Play.current().injector().instanceOf(ConfigHelper.class));
-      log.info(instanceTypes.toString());
+              Play.current().injector().instanceOf(ConfigHelper.class),
+              allowUnsupportedInstances);
       InstanceType newInstanceType =
           instanceTypes
               .stream()
@@ -122,19 +128,13 @@ public class ResizeNodeParams extends UpgradeTaskParams {
               .findFirst()
               .orElse(null);
       if (newInstanceType == null) {
-        return "Provider "
-            + currentUserIntent.providerType
-            + " does not have the intended instance type "
-            + newInstanceTypeCode;
+        return String.format(
+            "Provider %s of type %s does not contain the intended instance type '%s'",
+            currentUserIntent.provider, currentUserIntent.providerType, newInstanceTypeCode);
       }
     }
 
     return null;
-  }
-
-  @VisibleForTesting
-  protected boolean isSkipInstanceChecking() {
-    return false;
   }
 
   public static class Converter extends BaseConverter<ResizeNodeParams> {}

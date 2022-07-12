@@ -41,11 +41,7 @@ Refer to the Grammar section for [CREATE TABLE](../../../api/ycql/ddl_create_tab
 
 ## Examples
 
-To run the examples, do the following:
-
-- For local clusters, follow the steps in [Quick Start](../../../quick-start/) to install YugabyteDB, and use the [YCQL shell](../../../admin/ycqlsh/).
-
-- For YugabyteDB Managed, create a cluster and [connect using cloud shell](../../../yugabyte-cloud/cloud-connect/connect-cloud-shell/).
+Create a cluster [locally](../../../quick-start/) or in [YugabyteDB Managed](../../../yugabyte-cloud/cloud-basics/create-clusters-free/) and connect to the cluster using [ycqlsh](../../../admin/ycqlsh/) for local clusters, or [using cloud shell](../../../yugabyte-cloud/cloud-connect/connect-cloud-shell/) for YugabyteDB Managed.
 
 ### Column constraint
 
@@ -64,9 +60,9 @@ To run the examples, do the following:
     ```
 
     ```output
-    user_id | full_name
+     user_id | full_name
     ---------+-----------
-          1 |       Rose
+           1 |       Rose
     ```
 
 The second entry with `Rose` as the `full_name` overrides the first entry because the `user_id` is the same.
@@ -94,11 +90,11 @@ The second entry with `Rose` as the `full_name` overrides the first entry becaus
     ```
 
     ```output
-    supplier_id | device_id | model_year | device_name
+     supplier_id | device_id | model_year | device_name
     -------------+-----------+------------+-------------
-              1 |       101 |       2013 |      iPhone
-              1 |       102 |       2001 |     Samsung
-              1 |       102 |       2011 |       Pixel
+               1 |       101 |       2013 |      iPhone
+               1 |       102 |       2001 |     Samsung
+               1 |       102 |       2011 |       Pixel
 
     (3 rows)
     ```
@@ -111,13 +107,11 @@ The second entry with `Rose` as the `full_name` overrides the first entry becaus
     ```
 
     ```output
-    SELECT * FROM devices;
-
-    supplier_id | device_id | model_year | device_name
+     supplier_id | device_id | model_year | device_name
     -------------+-----------+------------+-------------
-              1 |       101 |       2013 |      iPhone
-              1 |       102 |       2001 |     Samsung
-              1 |       102 |       2011 |    MotoRazr
+               1 |       101 |       2013 |      iPhone
+               1 |       102 |       2001 |     Samsung
+               1 |       102 |       2011 |    MotoRazr
     ```
 
 The row with `device_name` Pixel is replaced with MotoRazr.

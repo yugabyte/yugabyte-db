@@ -308,6 +308,7 @@ static void getYbTablePropertiesAndReloptions(Archive *fout,
 						YbTableProperties properties,
 						PQExpBuffer reloptions_buf, Oid reloid, const char* relname);
 static bool isDatabaseColocated(Archive *fout);
+static char *getYbSplitClause(Archive *fout, TableInfo *tbinfo);
 
 int
 main(int argc, char **argv)
@@ -16204,10 +16205,8 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 			else if (yb_properties->num_tablets > 1)
 			{
 				/* For range-table. */
-				write_msg(NULL, "WARNING: exporting SPLIT clause for range-split relations is not "
-								"yet supported. Table '%s' will be created with default (1) "
-								"tablets instead of %" PRIu64 ".\n",
-						  qualrelname, yb_properties->num_tablets);
+				char *range_split_clause = getYbSplitClause(fout, tbinfo);
+				appendPQExpBuffer(q, "\n%s", range_split_clause);
 			}
 			/* else - single shard table - supported, no need to add anything */
 
@@ -18997,4 +18996,27 @@ isDatabaseColocated(Archive *fout)
 	PQclear(res);
 	destroyPQExpBuffer(query);
 	return is_colocated;
+}
+
+/*
+ * Load the YB range-partitioned table SPLIT AT Clause from the YB server.
+ * The table is identified by the Relation OID.
+ */
+static char *
+getYbSplitClause(Archive *fout, TableInfo *tbinfo)
+{
+	PQExpBuffer query = createPQExpBuffer();
+
+	/* Retrieve the range split SPLIT AT clause from the YB server. */
+	appendPQExpBuffer(query,
+					  "SELECT * FROM yb_get_range_split_clause(%u)",
+					  tbinfo->dobj.catId.oid);
+	PGresult* res = ExecuteSqlQueryForSingleRow(fout, query->data);
+	int i_range_split_clause = PQfnumber(res, "range_split_clause");
+
+	char *range_split_clause = PQgetvalue(res, 0, i_range_split_clause);
+
+	PQclear(res);
+	destroyPQExpBuffer(query);
+	return range_split_clause;
 }

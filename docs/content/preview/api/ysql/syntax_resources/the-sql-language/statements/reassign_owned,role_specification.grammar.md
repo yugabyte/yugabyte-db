@@ -1,4 +1,4 @@
-```ebnf
+```output.ebnf
 reassign_owned ::= REASSIGN OWNED BY role_specification [ , ... ] TO 
                    role_specification
 

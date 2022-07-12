@@ -9,7 +9,7 @@ menu:
   preview:
     identifier: api-ysql-reserved-names
     parent: api-ysql
-    weight: 4600
+    weight: 600
 aliases:
   - /preview/api/ysql/reserved_names
 type: docs

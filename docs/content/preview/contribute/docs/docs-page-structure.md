@@ -42,7 +42,11 @@ showRightNav: true
 | `headerTitle` | Title text to appear as the page title |
 | `linkTitle` | Title text to display in the navigation bar and breadcrumbs |
 | `description` | Description text to display in search results |
-| `headcontent` | Subtitle text below the headerTitle (index pages only) |
+| `headcontent` | Subtitle text below the headerTitle |
+| `menu` | Needs a menu name as defined in `menus.toml`. |
+| `identifier` | ID for the page. The page identifier must be unique within the scope of the menu. |
+| `parent` | The page's parent in the left nav. Required unless the page is a top-level page. |
+| `weight` | Determines menu ordering. Pages of lower weight display higher in the menu. Entries of equal weight are ordered alphabetically. |
 | `type` | Must be `docs` or `indexpage`. See [types of pages](#types-of-pages). |
 
 ### Optional frontmatter attributes
@@ -51,11 +55,12 @@ showRightNav: true
 | :--------: | :-----: | :---------- |
 | `image` | N/A | Optional icon displayed next to the title (index pages only) |
 | `showRightNav` | (depends) | Controls display of the TOC on the right. For pages of `type: docs`, default is true. For pages of `type: indexpage`, default is false. |
+| `layout` | (depends) | On pages of `type: indexpage` (where the filename is _not_ `_index.*`), set `layout: list` to get Hugo to render the page `image`. You may also need to set `layout: single` on files of `type: docs` with a name of `_index.*` to force Hugo to render them as regular pages. |
 
 ## Types of pages
 
 There are two different types of documentation pages: index pages, and content pages.
 
-**Index pages** have links to subtopics in a topic. These pages are generally named `_index.html` or `_index.md`.
+**Index pages** have links to subtopics in a topic. These pages are generally named `_index.html` or `_index.md`, and have `type: indexpage` in their frontmatter.
 
-**Content pages** contain information about topics. These pages are named in the format `my-docs-page.md`.
+**Content pages** contain information about topics. These pages are named in the format `my-docs-page.md`, and have `type: docs` in their frontmatter.
