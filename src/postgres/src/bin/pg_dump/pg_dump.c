@@ -626,7 +626,7 @@ main(int argc, char **argv)
 	 * mode.  This is not exposed as a separate option, but kept separate
 	 * internally for clarity.
 	 */
-	if (dopt.binary_upgrade)
+	if (dopt.binary_upgrade || dopt.include_yb_metadata)
 		dopt.sequence_data = 1;
 
 	if (dopt.dataOnly && dopt.schemaOnly)
