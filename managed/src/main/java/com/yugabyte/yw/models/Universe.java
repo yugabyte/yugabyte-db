@@ -50,6 +50,7 @@ import javax.persistence.Transient;
 import javax.persistence.UniqueConstraint;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 import org.yb.client.YBClient;
 import play.api.Play;
 import play.data.validation.Constraints;
@@ -80,6 +81,8 @@ public class Universe extends Model {
 
   public static Universe getValidUniverseOrBadRequest(UUID universeUUID, Customer customer) {
     Universe universe = getOrBadRequest(universeUUID);
+    MDC.put("universe-id", universeUUID.toString());
+    MDC.put("cluster-id", universeUUID.toString());
     checkUniverseInCustomer(universeUUID, customer);
     return universe;
   }

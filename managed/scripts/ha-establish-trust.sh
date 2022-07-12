@@ -24,7 +24,7 @@ if [ "$1" == "--help" ]; then
   print_usage
 fi
 
-./set-runtime-config.sh http://localhost:9000 72573d44-1ee6-40ee-85e0-aba82797f5b0 yb.ha.ws "{ssl.trustManager {
+./set-runtime-config.sh $1 $2 yb.ha.ws "{ssl.trustManager {
  stores += {
     type = PEM
     data = \"\"\"$(keytool -printcert -sslserver $3 -rfc | tr -d '\r' | tac | awk '/-----END CERTIFICATE-----/{f=1} f; /-----BEGIN CERTIFICATE-----/{exit}' | tac)\"\"\"
