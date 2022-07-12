@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.Builder;
@@ -132,7 +133,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
         createNonRollingUpgradeTaskFlow(lambda, mastersAndTServers, context);
         break;
       case NON_RESTART_UPGRADE:
-        createNonRestartUpgradeTaskFlow(lambda, mastersAndTServers);
+        createNonRestartUpgradeTaskFlow(lambda, mastersAndTServers, context);
         break;
     }
   }
@@ -292,6 +293,9 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
         }
       }
 
+      if (context.postAction != null) {
+        context.postAction.accept(node);
+      }
       createSetNodeStateTask(node, NodeState.Live).setSubTaskGroupType(subGroupType);
     }
 
@@ -373,27 +377,40 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       createWaitForServersTasks(nodes, processType)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
     }
+    if (context.postAction != null) {
+      nodes.forEach(context.postAction);
+    }
 
     createSetNodeStateTasks(nodes, NodeState.Live).setSubTaskGroupType(subGroupType);
   }
 
   public void createNonRestartUpgradeTaskFlow(
       IUpgradeSubTask nonRestartUpgradeLambda,
-      Pair<List<NodeDetails>, List<NodeDetails>> mastersAndTServers) {
+      Pair<List<NodeDetails>, List<NodeDetails>> mastersAndTServers,
+      UpgradeContext context) {
     createNonRestartUpgradeTaskFlow(
-        nonRestartUpgradeLambda, mastersAndTServers.getLeft(), mastersAndTServers.getRight());
+        nonRestartUpgradeLambda,
+        mastersAndTServers.getLeft(),
+        mastersAndTServers.getRight(),
+        context);
   }
 
   public void createNonRestartUpgradeTaskFlow(
       IUpgradeSubTask nonRestartUpgradeLambda,
       List<NodeDetails> masterNodes,
-      List<NodeDetails> tServerNodes) {
-    createNonRestartUpgradeTaskFlow(nonRestartUpgradeLambda, masterNodes, ServerType.MASTER);
-    createNonRestartUpgradeTaskFlow(nonRestartUpgradeLambda, tServerNodes, ServerType.TSERVER);
+      List<NodeDetails> tServerNodes,
+      UpgradeContext context) {
+    createNonRestartUpgradeTaskFlow(
+        nonRestartUpgradeLambda, masterNodes, ServerType.MASTER, context);
+    createNonRestartUpgradeTaskFlow(
+        nonRestartUpgradeLambda, tServerNodes, ServerType.TSERVER, context);
   }
 
   protected void createNonRestartUpgradeTaskFlow(
-      IUpgradeSubTask nonRestartUpgradeLambda, List<NodeDetails> nodes, ServerType processType) {
+      IUpgradeSubTask nonRestartUpgradeLambda,
+      List<NodeDetails> nodes,
+      ServerType processType,
+      UpgradeContext context) {
     if ((nodes == null) || nodes.isEmpty()) {
       return;
     }
@@ -402,6 +419,9 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     NodeState nodeState = getNodeState();
     createSetNodeStateTasks(nodes, nodeState).setSubTaskGroupType(subGroupType);
     nonRestartUpgradeLambda.run(nodes, Collections.singleton(processType));
+    if (context.postAction != null) {
+      nodes.forEach(context.postAction);
+    }
     createSetNodeStateTasks(nodes, NodeState.Live).setSubTaskGroupType(subGroupType);
   }
 
@@ -562,5 +582,6 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     boolean reconfigureMaster;
     boolean runBeforeStopping;
     boolean processInactiveMaster;
+    Consumer<NodeDetails> postAction;
   }
 }

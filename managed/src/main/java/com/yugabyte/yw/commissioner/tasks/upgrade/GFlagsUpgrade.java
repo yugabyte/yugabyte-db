@@ -90,7 +90,8 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
                   .setSubTaskGroupType(getTaskSubGroupType());
             },
             masterNodes,
-            tServerNodes);
+            tServerNodes,
+            DEFAULT_CONTEXT);
         break;
     }
   }

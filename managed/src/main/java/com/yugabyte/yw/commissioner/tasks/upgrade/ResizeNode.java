@@ -81,6 +81,16 @@ public class ResizeNode extends UpgradeTaskBase {
                       .reconfigureMaster(userIntent.replicationFactor > 1)
                       .runBeforeStopping(false)
                       .processInactiveMaster(false)
+                      .postAction(
+                          node -> {
+                            if (instanceTypeIsChanging) {
+                              // Persist the new instance type in the node details.
+                              node.cloudInfo.instance_type = newInstanceType;
+                              createNodeDetailsUpdateTask(node, false)
+                                  .setSubTaskGroupType(
+                                      UserTaskDetails.SubTaskGroupType.ChangeInstanceType);
+                            }
+                          })
                       .build());
             } else {
               // Only disk resizing, could be done without restarts.
@@ -89,7 +99,8 @@ public class ResizeNode extends UpgradeTaskBase {
                       createUpdateDiskSizeTasks(nodez)
                           .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ResizingDisk),
                   new ArrayList<>(nodes),
-                  ServerType.EITHER);
+                  ServerType.EITHER,
+                  DEFAULT_CONTEXT);
             }
 
             Integer newDiskSize = null;
@@ -160,11 +171,6 @@ public class ResizeNode extends UpgradeTaskBase {
 
         // Change the instance type.
         createChangeInstanceTypeTask(node, cluster.userIntent.instanceType)
-            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ChangeInstanceType);
-
-        // Persist the new instance type in the node details.
-        node.cloudInfo.instance_type = newInstanceType;
-        createNodeDetailsUpdateTask(node, false)
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ChangeInstanceType);
       }
     }
