@@ -984,10 +984,10 @@ class ControlScript(object):
                     Output.print_and_log(Output.ANIMATION_SUCCESS +
                             " User Authentication enabled.")
                 else:
-                    Output.print_and_log(Output.ANIMATION_FAIL +
-                            " User Authentication not enabled.")
-                    Output.print_and_log(Output.ANIMATION_FAIL +
-                            " SSL Authentication not enabled.")
+                    Output.print_and_log(Output.make_yellow(Output.ANIMATION_WARNING +
+                        " WARNING:") + " Cluster started in an insecure mode without " +
+                        "authentication and encryption enabled. For non-production use only, " +
+                        "not to be used without firewalls blocking the internet traffic.")
 
                 # Persist the config after successful start
                 self.configs.save_configs()
