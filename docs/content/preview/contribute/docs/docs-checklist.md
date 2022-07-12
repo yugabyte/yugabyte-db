@@ -18,9 +18,10 @@ type: docs
   * Internal users: please file Platform and Cloud issues in Jira.
 * Docs are written in Markdown and built using the Hugo static site generator.
 * For live previews as you work, install the command-line tools (macOS), Node.js, and Hugo. (See [How to build the docs](../docs-build/).)
-* Pull requests
-  * Open PRs against a fork of the yugabyte-db/docs repository, project Documentation.
-  * Assign a member of the docs team as a reviewer.
+* Pull requests:
+  * Open PRs against a fork of the yugabyte/yugabyte-db repository.
+  * Add tag "area/documentation".
+  * Internal users: add to project Documentation, and assign a member of the docs team as a reviewer.
 
 ## File docs issues and make suggestions {#file-tickets}
 
