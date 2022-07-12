@@ -27,6 +27,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import org.apache.commons.io.FilenameUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Files;
@@ -129,7 +130,7 @@ public class InternalHAController extends Controller {
     if (filePart == null) {
       return ApiResponse.error(BAD_REQUEST, "backup file not found in request");
     }
-    String fileName = filePart.getFilename();
+    String fileName = FilenameUtils.getName(filePart.getFilename());
     File temporaryFile = (File) filePart.getFile();
     String leader = leaders[0];
     String sender = senders[0];
