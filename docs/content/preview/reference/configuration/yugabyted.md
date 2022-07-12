@@ -74,7 +74,7 @@ The following commands are available:
 
 ### start
 
-Use the `yugabyted start` command to start a one-node YugabyteDB cluster in your local environment. This allows developers to quickly get started with YugabyteDB cluster for running [YSQL](/preview/architecture/layered-architecture/#yugabyte-sql-ysql) and [YCQL](/preview/architecture/layered-architecture/#yugabyte-cloud-ql-ycql) workloads.
+Use the `yugabyted start` command to start a one-node YugabyteDB cluster in your local environment. This allows developers to quickly get started with a YugabyteDB cluster for running [YSQL](../../../architecture/layered-architecture/#yugabyte-sql-ysql) and [YCQL](/preview/architecture/layered-architecture/#yugabyte-cloud-ql-ycql) workloads.
 
 #### Syntax
 
@@ -101,7 +101,7 @@ yugabyted start --join=host:port,[host:port]
 : The IP address of the existing `yugabyted` server to which the new `yugabyted` server will join.
 
 --config *config-file*
-: Yugabyted Configuration file path.
+: Yugabyted configuration file path.
 
 --base_dir *base-directory*
 : The directory where yugabyted stores data, configurations, and logs. Must be an absolute path.
@@ -122,7 +122,7 @@ controls where the logs of the YugabyteDB nodes are stored.
 :  Cloud location of the Yugabyted node in form of `cloudprovider.region.zone`. This information is used for multi-zone, multi-region and multi-cloud deployments of YugabyteDB Clusters.
 
 --fault_tolerance *fault_tolerance*
-: Determines the fault tolerance constraint to be applied on the data placement policy of the YugabyteDB cluster. This flag can take on the following values - None, Zone, Region and Cloud.
+: Determines the fault tolerance constraint to be applied on the data placement policy of the YugabyteDB cluster. This flag can take on the following values - None, Zone, Region, and Cloud.
 
 --ui *bool*
 : Enable or disable the webserver UI. Default is `false`.
