@@ -405,6 +405,117 @@ $$RETURN [0][0..-2147483649]$$) as r(a agtype);
  []
 (1 row)
 
+-- access and slice operators nested
+SELECT * from cypher('expr', $$ WITH [0, 1, [2, 3, 4], 5, [6, 7, 8], 9] as l RETURN l[0] $$) as (results agtype);
+ results 
+---------
+ 0
+(1 row)
+
+SELECT * from cypher('expr', $$ WITH [0, 1, [2, 3, 4], 5, [6, 7, 8], 9] as l RETURN l[2] $$) as (results agtype);
+  results  
+-----------
+ [2, 3, 4]
+(1 row)
+
+SELECT * from cypher('expr', $$ WITH [0, 1, [2, 3, 4], 5, [6, 7, 8], 9] as l RETURN l[-1] $$) as (results agtype);
+ results 
+---------
+ 9
+(1 row)
+
+SELECT * from cypher('expr', $$ WITH [0, 1, [2, 3, 4], 5, [6, 7, 8], 9] as l RETURN l[2][-2] $$) as (results agtype);
+ results 
+---------
+ 3
+(1 row)
+
+SELECT * from cypher('expr', $$ WITH [0, 1, [2, 3, 4], 5, [6, 7, 8], 9] as l RETURN l[2][-2..] $$) as (results agtype);
+ results 
+---------
+ [3, 4]
+(1 row)
+
+SELECT * from cypher('expr', $$ WITH [0, 1, [2, 3, 4], 5, [6, 7, 8], 9] as l RETURN l[-2..] $$) as (results agtype);
+    results     
+----------------
+ [[6, 7, 8], 9]
+(1 row)
+
+SELECT * from cypher('expr', $$ WITH [0, 1, [2, 3, 4], 5, [6, 7, 8], 9] as l RETURN l[-2..][-1..][-1..] $$) as (results agtype);
+ results 
+---------
+ [9]
+(1 row)
+
+SELECT * from cypher('expr', $$ WITH [0, 1, [2, 3, 4], 5, [6, 7, 8], 9] as l RETURN l[-2..][-1..][0] $$) as (results agtype);
+ results 
+---------
+ 9
+(1 row)
+
+SELECT * from cypher('expr', $$ WITH [0, 1, [2, 3, 4], 5, [6, 7, 8], 9] as l RETURN l[-2..][-1..][-1] $$) as (results agtype);
+ results 
+---------
+ 9
+(1 row)
+
+SELECT * from cypher('expr', $$ WITH [0, 1, [2, 3, 4], 5, [6, 7, 8], 9] as l RETURN l[-2..][-2..-1] $$) as (results agtype);
+   results   
+-------------
+ [[6, 7, 8]]
+(1 row)
+
+SELECT * from cypher('expr', $$ WITH [0, 1, [2, 3, 4], 5, [6, 7, 8], 9] as l RETURN l[-4..-2] $$) as (results agtype);
+    results     
+----------------
+ [[2, 3, 4], 5]
+(1 row)
+
+SELECT * from cypher('expr', $$ WITH [0, 1, [2, 3, 4], 5, [6, 7, 8], 9] as l RETURN l[-4..-2][-2] $$) as (results agtype);
+  results  
+-----------
+ [2, 3, 4]
+(1 row)
+
+SELECT * from cypher('expr', $$ WITH [0, 1, [2, 3, 4], 5, [6, 7, 8], 9] as l RETURN l[-4..-2][0] $$) as (results agtype);
+  results  
+-----------
+ [2, 3, 4]
+(1 row)
+
+SELECT * from cypher('expr', $$ WITH [0, 1, [2, 3, 4], 5, [6, 7, 8], 9] as l RETURN l[-4..-2][-2][-2..] $$) as (results agtype);
+ results 
+---------
+ [3, 4]
+(1 row)
+
+SELECT * from cypher('expr', $$ WITH [0, 1, [2, 3, 4], 5, [6, 7, 8], 9] as l RETURN l[-4..-2][-2][-2..][0] $$) as (results agtype);
+ results 
+---------
+ 3
+(1 row)
+
+-- empty list
+SELECT * from cypher('expr', $$ WITH [0, 1, [2, 3, 4], 5, [6, 7, 8], 9] as l RETURN l[-2..][-1..][-2..-2] $$) as (results agtype);
+ results 
+---------
+ []
+(1 row)
+
+-- should return null
+SELECT * from cypher('expr', $$ WITH [0, 1, [2, 3, 4], 5, [6, 7, 8], 9] as l RETURN l[2][3] $$) as (results agtype);
+ results 
+---------
+ 
+(1 row)
+
+SELECT * from cypher('expr', $$ WITH [0, 1, [2, 3, 4], 5, [6, 7, 8], 9] as l RETURN l[-2..][-1..][-2] $$) as (results agtype);
+ results 
+---------
+ 
+(1 row)
+
 --
 -- String operators
 --

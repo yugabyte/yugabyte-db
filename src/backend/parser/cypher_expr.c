@@ -94,8 +94,7 @@ static Node *transform_FuncCall(cypher_parsestate *cpstate, FuncCall *fn);
 static Node *transform_WholeRowRef(ParseState *pstate, RangeTblEntry *rte,
                                    int location);
 static ArrayExpr *make_agtype_array_expr(List *args);
-static Node *transform_column_ref_for_indirection(cypher_parsestate *cpstate,
-                                                  ColumnRef *cr);
+
 /* transform a cypher expression */
 Node *transform_cypher_expr(cypher_parsestate *cpstate, Node *expr,
                             ParseExprKind expr_kind)
@@ -703,57 +702,15 @@ static ArrayExpr *make_agtype_array_expr(List *args)
     return newa;
 }
 
-/*
- * Transforms a column ref for indirection. Try to find the rte that the
- * columnRef is references and pass the properties of that rte as what the
- * columnRef is referencing. Otherwise, reference the Var
- */
-static Node *transform_column_ref_for_indirection(cypher_parsestate *cpstate,
-                                                  ColumnRef *cr)
-{
-    ParseState *pstate = (ParseState *)cpstate;
-    RangeTblEntry *rte = NULL;
-    Node *field1 = linitial(cr->fields);
-    char *relname = NULL;
-    Node *node = NULL;
-
-    Assert(IsA(field1, String));
-    relname = strVal(field1);
-
-    // locate the referenced RTE
-    rte = find_rte(cpstate, relname);
-    if (rte == NULL)
-    {
-        /*
-         * This column ref is referencing something that was created in
-         * a previous query and is a variable.
-         */
-        return transform_cypher_expr_recurse(cpstate, (Node *)cr);
-    }
-
-    // try to identify the properties column of the RTE
-    node = scanRTEForColumn(pstate, rte, "properties", cr->location, 0, NULL);
-
-    if (node == NULL)
-    {
-        ereport(ERROR,
-                (errcode(ERRCODE_UNDEFINED_OBJECT),
-                 errmsg("could not find rte for %s", relname)));
-
-    }
-
-    return node;
-}
-
 static Node *transform_A_Indirection(cypher_parsestate *cpstate,
                                      A_Indirection *a_ind)
 {
     int location;
-    ListCell *lc;
-    Node *ind_arg_expr;
+    ListCell *lc = NULL;
+    Node *ind_arg_expr = NULL;
     FuncExpr *func_expr = NULL;
-    Oid func_access_oid;
-    Oid func_slice_oid;
+    Oid func_access_oid = InvalidOid;
+    Oid func_slice_oid = InvalidOid;
     List *args = NIL;
     bool is_access = false;
 
@@ -766,20 +723,16 @@ static Node *transform_A_Indirection(cypher_parsestate *cpstate,
     func_slice_oid = get_ag_func_oid("agtype_access_slice", 3, AGTYPEOID,
                                      AGTYPEOID, AGTYPEOID);
 
-    if (IsA(a_ind->arg, ColumnRef))
-    {
-        ColumnRef *cr = (ColumnRef *)a_ind->arg;
+    /* transform indirection argument expression */
+    ind_arg_expr = transform_cypher_expr_recurse(cpstate, a_ind->arg);
 
-        ind_arg_expr = transform_column_ref_for_indirection(cpstate, cr);
-    }
-    else
-    {
-        ind_arg_expr = transform_cypher_expr_recurse(cpstate, a_ind->arg);
-    }
-
+    /* get the location of the expression */
     location = exprLocation(ind_arg_expr);
 
+    /* add the expression as the first entry */
     args = lappend(args, ind_arg_expr);
+
+    /* iterate through the indirections */
     foreach (lc, a_ind->indirection)
     {
         Node *node = lfirst(lc);
@@ -799,12 +752,21 @@ static Node *transform_A_Indirection(cypher_parsestate *cpstate,
                                          InvalidOid, InvalidOid,
                                          COERCE_EXPLICIT_CALL);
 
+                func_expr->funcvariadic = true;
+                func_expr->location = location;
+
+                /*
+                 * The result of this function is the input to the next access
+                 * or slice operator. So we need to start out with a new arg
+                 * list with this function expression.
+                 */
+                args = lappend(NIL, func_expr);
+
                 /* we are no longer working on an access */
                 is_access = false;
 
-                func_expr->funcvariadic = true;
-
             }
+
             /* add slice bounds to args */
             if (!indices->lidx)
             {
@@ -832,11 +794,18 @@ static Node *transform_A_Indirection(cypher_parsestate *cpstate,
                 node = transform_cypher_expr_recurse(cpstate, indices->uidx);
             }
             args = lappend(args, node);
+
             /* wrap and close it */
             func_expr = makeFuncExpr(func_slice_oid, AGTYPEOID, args,
                                      InvalidOid, InvalidOid,
                                      COERCE_EXPLICIT_CALL);
             func_expr->location = location;
+
+            /*
+             * The result of this function is the input to the next access
+             * or slice operator. So we need to start out with a new arg
+             * list with this function expression.
+             */
             args = lappend(NIL, func_expr);
         }
         /* is this a string or index?*/
@@ -844,6 +813,7 @@ static Node *transform_A_Indirection(cypher_parsestate *cpstate,
         {
             /* we are working on an access */
             is_access = true;
+
             /* is this an index? */
             if (IsA(node, A_Indices))
             {

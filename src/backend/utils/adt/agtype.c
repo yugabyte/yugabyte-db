@@ -512,9 +512,11 @@ static void agtype_typecast_object(agtype_in_state *state, char *annotation)
                 last_updated_value->type = AGTV_VERTEX;
         }
         else
+        {
             ereport(ERROR,
-                (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                 errmsg("object is not a vertex")));
+                    (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                     errmsg("object is not a vertex")));
+        }
 
     }
     /* check for a cast to an edge */
@@ -529,15 +531,19 @@ static void agtype_typecast_object(agtype_in_state *state, char *annotation)
                 last_updated_value->type = AGTV_EDGE;
         }
         else
+        {
             ereport(ERROR,
-                (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                 errmsg("object is not a edge")));
+                    (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                     errmsg("object is not a edge")));
+        }
     }
     /* otherwise this isn't a supported typecast */
     else
+    {
         ereport(ERROR,
                 (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
                  errmsg("invalid annotation value for object")));
+    }
 }
 
 /* function to handle array typecasts */
@@ -582,17 +588,19 @@ static void agtype_typecast_array(agtype_in_state *state, char *annotation)
                 last_updated_value->type = AGTV_PATH;
         }
         else
+        {
             ereport(ERROR,
-                (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                 errmsg("array is not a valid path")));
-
+                    (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                     errmsg("array is not a valid path")));
+        }
     }
     /* otherwise this isn't a supported typecast */
     else
+    {
         ereport(ERROR,
                 (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
                  errmsg("invalid annotation value for object")));
-
+    }
 }
 
 /* helper function to check if an object fits a vertex */
@@ -609,7 +617,9 @@ static bool is_object_vertex(agtype_value *agtv)
 
     /* we need 3 pairs for a vertex */
     if (agtv->val.object.num_pairs != 3)
+    {
         return false;
+    }
 
     /* iterate through all pairs */
     for (i = 0; i < agtv->val.object.num_pairs; i++)
@@ -626,20 +636,28 @@ static bool is_object_vertex(agtype_value *agtv)
         if (key_len == 2 &&
             pg_strncasecmp(key_val, "id", key_len) == 0 &&
             value->type == AGTV_INTEGER)
+        {
             has_id = true;
+        }
         /* check for a label of type string */
         else if (key_len == 5 &&
-            pg_strncasecmp(key_val, "label", key_len) == 0 &&
-            value->type == AGTV_STRING)
+                 pg_strncasecmp(key_val, "label", key_len) == 0 &&
+                 value->type == AGTV_STRING)
+        {
             has_label = true;
+        }
         /* check for properties of type object */
         else if (key_len == 10 &&
-            pg_strncasecmp(key_val, "properties", key_len) == 0 &&
-            value->type == AGTV_OBJECT)
+                 pg_strncasecmp(key_val, "properties", key_len) == 0 &&
+                 value->type == AGTV_OBJECT)
+        {
             has_properties = true;
+        }
         /* if it gets to this point, it can't be a vertex */
         else
+        {
             return false;
+        }
     }
     return (has_id && has_label && has_properties);
 }
@@ -660,7 +678,9 @@ static bool is_object_edge(agtype_value *agtv)
 
     /* we need 5 pairs for an edge */
     if (agtv->val.object.num_pairs != 5)
+    {
         return false;
+    }
 
     /* iterate through the pairs */
     for (i = 0; i < agtv->val.object.num_pairs; i++)
@@ -677,30 +697,42 @@ static bool is_object_edge(agtype_value *agtv)
         if (key_len == 2 &&
             pg_strncasecmp(key_val, "id", key_len) == 0 &&
             value->type == AGTV_INTEGER)
+        {
             has_id = true;
+        }
         /* check for a label of type string */
         else if (key_len == 5 &&
-            pg_strncasecmp(key_val, "label", key_len) == 0 &&
-            value->type == AGTV_STRING)
+                 pg_strncasecmp(key_val, "label", key_len) == 0 &&
+                 value->type == AGTV_STRING)
+        {
             has_label = true;
+        }
         /* check for properties of type object */
         else if (key_len == 10 &&
-            pg_strncasecmp(key_val, "properties", key_len) == 0 &&
-            value->type == AGTV_OBJECT)
+                 pg_strncasecmp(key_val, "properties", key_len) == 0 &&
+                 value->type == AGTV_OBJECT)
+        {
             has_properties = true;
+        }
         /* check for a start_id of type integer */
         else if (key_len == 8 &&
-            pg_strncasecmp(key_val, "start_id", key_len) == 0 &&
-            value->type == AGTV_INTEGER)
+                 pg_strncasecmp(key_val, "start_id", key_len) == 0 &&
+                 value->type == AGTV_INTEGER)
+        {
             has_start_id = true;
+        }
         /* check for an end_id of type integer */
         else if (key_len == 6 &&
-            pg_strncasecmp(key_val, "end_id", key_len) == 0 &&
-            value->type == AGTV_INTEGER)
+                 pg_strncasecmp(key_val, "end_id", key_len) == 0 &&
+                 value->type == AGTV_INTEGER)
+        {
             has_end_id = true;
+        }
         /* if it gets to this point, it can't be an edge */
         else
+        {
             return false;
+        }
     }
     return (has_id && has_label && has_properties &&
             has_start_id && has_end_id);
@@ -2917,8 +2949,25 @@ static agtype_value *execute_array_access_operator_internal(agtype *array,
                                                             int64 array_index)
 {
     agtype_value *array_element_value = NULL;
-    uint32 size = (array_value == NULL) ? AGT_ROOT_COUNT(array) :
-                                          array_value->val.array.num_elems;
+    uint32 size = 0;
+
+    /* get the size of the array, given the type of the input */
+    if (array_value == NULL)
+    {
+        size = AGT_ROOT_COUNT(array);
+    }
+    else if (array_value->type == AGTV_ARRAY)
+    {
+        size = array_value->val.array.num_elems;
+    }
+    else if (array_value->type == AGTV_BINARY)
+    {
+        size = AGTYPE_CONTAINER_SIZE(array_value->val.binary.data);
+    }
+    else
+    {
+        elog(ERROR, "execute_array_access_operator_internal: unexpected type");
+    }
 
     /* adjust for negative index values */
     if (array_index < 0)
@@ -3424,32 +3473,45 @@ Datum agtype_access_slice(PG_FUNCTION_ARGS)
     agtype_value *lidx_value = NULL;
     agtype_value *uidx_value = NULL;
     agtype_in_state result;
-    agtype *array;
+    agtype *array = NULL;
     int64 upper_index = 0;
     int64 lower_index = 0;
-    uint32 array_size;
-    int64 i;
+    uint32 array_size = 0;
+    int64 i = 0;
 
     /* return null if the array to slice is null */
     if (PG_ARGISNULL(0))
+    {
         PG_RETURN_NULL();
+    }
+
     /* return an error if both indices are NULL */
     if (PG_ARGISNULL(1) && PG_ARGISNULL(2))
+    {
         ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
                         errmsg("slice start and/or end is required")));
+    }
+
     /* get the array parameter and verify that it is a list */
     array = AG_GET_ARG_AGTYPE_P(0);
     if (!AGT_ROOT_IS_ARRAY(array) || AGT_ROOT_IS_SCALAR(array))
+    {
         ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
                         errmsg("slice must access a list")));
+    }
+
+    /* get its size */
     array_size = AGT_ROOT_COUNT(array);
+
     /* if we don't have a lower bound, make it 0 */
     if (PG_ARGISNULL(1))
+    {
         lower_index = 0;
+    }
     else
     {
         lidx_value = get_ith_agtype_value_from_container(
-            &AG_GET_ARG_AGTYPE_P(1)->root, 0);
+            &(AG_GET_ARG_AGTYPE_P(1))->root, 0);
         /* adjust for AGTV_NULL */
         if (lidx_value->type == AGTV_NULL)
         {
@@ -3457,13 +3519,16 @@ Datum agtype_access_slice(PG_FUNCTION_ARGS)
             lidx_value = NULL;
         }
     }
+
     /* if we don't have an upper bound, make it the size of the array */
     if (PG_ARGISNULL(2))
+    {
         upper_index = array_size;
+    }
     else
     {
         uidx_value = get_ith_agtype_value_from_container(
-            &AG_GET_ARG_AGTYPE_P(2)->root, 0);
+            &(AG_GET_ARG_AGTYPE_P(2))->root, 0);
         /* adjust for AGTV_NULL */
         if (uidx_value->type == AGTV_NULL)
         {
@@ -3471,34 +3536,59 @@ Datum agtype_access_slice(PG_FUNCTION_ARGS)
             uidx_value = NULL;
         }
     }
+
     /* if both indices are NULL (AGTV_NULL) return an error */
     if (lidx_value == NULL && uidx_value == NULL)
+    {
         ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
                         errmsg("slice start and/or end is required")));
+    }
+
     /* key must be an integer or NULL */
     if ((lidx_value != NULL && lidx_value->type != AGTV_INTEGER) ||
         (uidx_value != NULL && uidx_value->type != AGTV_INTEGER))
+    {
         ereport(ERROR,
                 (errmsg("array slices must resolve to an integer value")));
+    }
+
     /* set indices if not already set */
     if (lidx_value)
+    {
         lower_index = lidx_value->val.int_value;
+    }
     if (uidx_value)
+    {
         upper_index = uidx_value->val.int_value;
+    }
+
     /* adjust for negative and out of bounds index values */
     if (lower_index < 0)
+    {
         lower_index = array_size + lower_index;
+    }
     if (lower_index < 0)
+    {
         lower_index = 0;
+    }
     if (lower_index > array_size)
+    {
         lower_index = array_size;
+    }
     if (upper_index < 0)
+    {
         upper_index = array_size + upper_index;
+    }
     if (upper_index < 0)
+    {
         upper_index = 0;
+    }
     if (upper_index > array_size)
+    {
         upper_index = array_size;
+    }
 
+    /* build our result array */
     memset(&result, 0, sizeof(agtype_in_state));
 
     result.res = push_agtype_value(&result.parse_state, WAGT_BEGIN_ARRAY,
@@ -3506,9 +3596,10 @@ Datum agtype_access_slice(PG_FUNCTION_ARGS)
 
     /* get array elements */
     for (i = lower_index; i < upper_index; i++)
-        result.res = push_agtype_value(
-            &result.parse_state, WAGT_ELEM,
+    {
+        result.res = push_agtype_value(&result.parse_state, WAGT_ELEM,
             get_ith_agtype_value_from_container(&array->root, i));
+    }
 
     result.res = push_agtype_value(&result.parse_state, WAGT_END_ARRAY, NULL);
 
@@ -6743,7 +6834,9 @@ Datum age_split(PG_FUNCTION_ARGS)
         agtv_result = result.res;
     }
     else
+    {
         elog(ERROR, "split() unexpected error");
+    }
 
     PG_RETURN_POINTER(agtype_value_to_agtype(agtv_result));
 }
