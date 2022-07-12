@@ -25,6 +25,8 @@ import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.BundleDetails.ComponentType;
 
 import io.swagger.annotations.Api;
+import io.swagger.annotations.ApiImplicitParam;
+import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
 import java.io.InputStream;
@@ -56,6 +58,13 @@ public class SupportBundleController extends AuthenticatedController {
       value = "Create support bundle for specific universe",
       nickname = "createSupportBundle",
       response = YBPTask.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "supportBundle",
+          value = "post support bundle info",
+          paramType = "body",
+          dataType = "com.yugabyte.yw.forms.SupportBundleFormData",
+          required = true))
   public Result create(UUID customerUUID, UUID universeUUID) {
     JsonNode requestBody = request().body().asJson();
     SupportBundleFormData bundleData =
@@ -125,7 +134,7 @@ public class SupportBundleController extends AuthenticatedController {
   @ApiOperation(
       value = "Download support bundle",
       nickname = "downloadSupportBundle",
-      response = SupportBundle.class,
+      response = String.class,
       produces = "application/x-compressed")
   public Result download(UUID customerUUID, UUID universeUUID, UUID bundleUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
@@ -191,8 +200,7 @@ public class SupportBundleController extends AuthenticatedController {
       value = "List all components available in support bundle",
       response = ComponentType.class,
       responseContainer = "List",
-      nickname = "listSupportBundleComponents",
-      produces = "application/json")
+      nickname = "listSupportBundleComponents")
   public Result getComponents(UUID customerUUID) {
     EnumSet<ComponentType> components = EnumSet.allOf(ComponentType.class);
     return PlatformResults.withData(components);
