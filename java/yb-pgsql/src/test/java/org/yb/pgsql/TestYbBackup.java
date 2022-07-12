@@ -752,4 +752,30 @@ public class TestYbBackup extends BasePgSQLTest {
       stmt.execute("DROP DATABASE yb2");
     }
   }
+
+  @Test
+  public void testSequence() throws Exception {
+    String backupDir = null;
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE test_tbl (k SERIAL PRIMARY KEY, v INT)");
+      stmt.execute("INSERT INTO test_tbl(v) SELECT * FROM generate_series(1, 50)");
+
+      YBBackupUtil.runYbBackupCreate("--keyspace", "ysql.yugabyte");
+    }
+
+    YBBackupUtil.runYbBackupRestore("--keyspace", "ysql.yb2");
+
+    try (Connection connection2 = getConnectionBuilder().withDatabase("yb2").connect();
+         Statement stmt = connection2.createStatement()) {
+      stmt.execute("INSERT INTO test_tbl(v) VALUES (200)");
+      // In YB, default sequence cache size is 100,
+      // so the expected number generated from test_tbl's sequence after restore should be 101.
+      assertQuery(stmt, "SELECT * FROM test_tbl WHERE v = 200", new Row(101, 200));
+    }
+
+    // Cleanup.
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP DATABASE yb2");
+    }
+  }
 }
