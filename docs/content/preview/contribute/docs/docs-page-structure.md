@@ -42,7 +42,7 @@ showRightNav: true
 | `headerTitle` | Title text to appear as the page title |
 | `linkTitle` | Title text to display in the navigation bar and breadcrumbs |
 | `description` | Description text to display in search results |
-| `headcontent` | Subtitle text below the headerTitle (index pages only) |
+| `headcontent` | Subtitle text below the headerTitle |
 | `menu` | Needs a menu name as defined in `menus.toml`. |
 | `identifier` | ID for the page. The page identifier must be unique within the scope of the menu. |
 | `parent` | The page's parent in the left nav. Required unless the page is a top-level page. |
