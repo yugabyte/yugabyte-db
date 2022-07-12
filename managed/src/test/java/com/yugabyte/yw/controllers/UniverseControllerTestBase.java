@@ -225,8 +225,6 @@ public class UniverseControllerTestBase extends WithApplication {
 
     when(mockAppConfig.getString("yb.storage.path"))
         .thenReturn("/tmp/" + this.getClass().getSimpleName());
-    when(mockAppConfig.getInt("yb.queryHelper.threadPoolSize")).thenReturn(50);
-    when(mockAppConfig.getInt("yb.queryHelper.taskQueueSize")).thenReturn(500);
 
     when(mockRuntimeConfig.getString("yb.storage.path"))
         .thenReturn("/tmp/" + this.getClass().getSimpleName());
