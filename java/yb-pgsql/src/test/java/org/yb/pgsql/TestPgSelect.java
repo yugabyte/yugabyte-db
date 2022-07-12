@@ -595,9 +595,6 @@ public class TestPgSelect extends BasePgSQLTest {
 
       //--------------------------------------------------------------------------------------------
       // Test join where one join column is null *and* the other table has null rows for it.
-      // TODO This should not matter because null == null is false per SQL semantics, but in DocDB
-      //      null == null is true, so we still require filtering here (but only for rows where the
-      //      respective column is null, not for the rest.
 
       // Inner join (on t1.b this time), expect no rows.
       query = "select * from t2 inner join t1 on t2.b = t1.b where t2.a = 3";
@@ -607,8 +604,8 @@ public class TestPgSelect extends BasePgSQLTest {
                  explainOutput.contains("Index Cond: (a = 3)"));
       assertTrue("Expect pushdown for t2 pkey",
                  explainOutput.contains("Index Cond: (b = t2.b)"));
-      assertTrue("Expect to filter only the 2 null rows",
-                 explainOutput.contains("Rows Removed by Index Recheck: 2"));
+      assertFalse("Expect not to filter any rows by Index Recheck",
+                 explainOutput.contains("Rows Removed by Index Recheck"));
 
       // Outer join (on t1.b this time), expect one row.
       query = "select * from t2 full outer join t1 on t2.b = t1.b where t2.a = 3";
@@ -618,8 +615,8 @@ public class TestPgSelect extends BasePgSQLTest {
                  explainOutput.contains("Index Cond: (a = 3)"));
       assertTrue("Expect pushdown for t2 pkey",
                  explainOutput.contains("Index Cond: (t2.b = b)"));
-      assertTrue("Expect to filter only the 2 null rows",
-                  explainOutput.contains("Rows Removed by Index Recheck: 2"));
+      assertFalse("Expect not to filter any rows by Index Recheck",
+                 explainOutput.contains("Rows Removed by Index Recheck"));
 
       statement.execute("DROP TABLE t1");
       statement.execute("DROP TABLE t2");
