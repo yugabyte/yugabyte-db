@@ -928,8 +928,8 @@ class AutomaticTabletSplitITest : public TabletSplitITest {
 
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_validate_all_tablet_candidates) = false;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_outstanding_tablet_split_limit) = 5;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_outstanding_tablet_split_limit_per_tserver) = 5;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_outstanding_tablet_split_limit) = 0; // no limit
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_outstanding_tablet_split_limit_per_tserver) = 0; // no limit
   }
 
  protected:
