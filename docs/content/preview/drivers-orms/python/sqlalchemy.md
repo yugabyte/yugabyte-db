@@ -42,8 +42,8 @@ The following sections demonstrate how to perform common tasks required for Pyth
 To download and install SQLAlchemy to your project, use the following command.
 
 ```shell
-  pip3 install sqlalchemy
-  ```
+pip3 install sqlalchemy
+```
 
 You can verify the installation as follows:
 
@@ -111,33 +111,31 @@ To start with SQLAlchemy, in your project directory, create 4 Python files - `co
    from model import Employee
    from base import Base
    from sqlalchemy import Table, Column, Integer, String, DateTime, ForeignKey
-   ```
 
-# create connection
-engine = create_engine('postgresql://{0}:{1}@{2}:{3}/{4}'.format(cfg.db_user, cfg.db_password, cfg.db_host, cfg.db_port, cfg.database))
+    # create connection
+    engine = create_engine('postgresql://{0}:{1}@{2}:{3}/{4}'.format(cfg.db_user, cfg.db_password, cfg.db_host, cfg.db_port, cfg.database))
 
-# create metadata
-Base.metadata.create_all(engine)
+    # create metadata
+    Base.metadata.create_all(engine)
 
-# create session
-Session = sessionmaker(bind=engine)
-session = Session()
+    # create session
+    Session = sessionmaker(bind=engine)
+    session = Session()
 
-# insert data
-tag_1 = Employee(name='Bob', age=21, language='Python')
-tag_2 = Employee(name='John', age=35, language='Java')
-tag_3 = Employee(name='Ivy', age=27, language='C++')
+    # insert data
+    tag_1 = Employee(name='Bob', age=21, language='Python')
+    tag_2 = Employee(name='John', age=35, language='Java')
+    tag_3 = Employee(name='Ivy', age=27, language='C++')
 
-session.add_all([tag_1, tag_2, tag_3])
+    session.add_all([tag_1, tag_2, tag_3])
 
-# Read the inserted data
+    # Read the inserted data
 
-print('Query returned:')
-for instance in session.query(Employee):
-    print("Name: %s Age: %s Language: %s"%(instance.name, instance.age, instance.language))
-session.commit()
+    print('Query returned:')
+    for instance in session.query(Employee):
+        print("Name: %s Age: %s Language: %s"%(instance.name, instance.age, instance.language))
+    session.commit()
 
-```
 
 When you run the `main.py` file, you should get the output similar to the following.
 
