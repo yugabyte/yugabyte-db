@@ -8346,7 +8346,7 @@ Status CatalogManager::ListNamespaces(const ListNamespacesRequestPB* req,
 Status CatalogManager::GetNamespaceInfo(const GetNamespaceInfoRequestPB* req,
                                         GetNamespaceInfoResponsePB* resp,
                                         rpc::RpcContext* rpc) {
-  LOG(INFO) << __func__ << " from " << RequestorString(rpc) << ": " << req->ShortDebugString();
+  VLOG(1) << __func__ << " from " << RequestorString(rpc) << ": " << req->ShortDebugString();
 
   // Look up the namespace and verify if it exists.
   TRACE("Looking up namespace");
