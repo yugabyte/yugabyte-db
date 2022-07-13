@@ -90,7 +90,7 @@ Because the stack creates a security group that restricts access to the database
 
     ![Upload template](/images/deploy/aws/aws-cf-upload-template.png)
 
-4. Provide the required parameters. Each of these fields is prefilled with information from the configuration YAML file that was uploaded. `LatestAmiId` refers to the id of the machine image to use, see [Find a Linux AMI](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/finding-an-ami.html).
+4. Provide the required parameters. Each of these fields is prefilled with information from the configuration YAML file that was uploaded. `LatestAmiId` refers to the ID of the machine image to use, see [Find a Linux AMI](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/finding-an-ami.html).
 
     ![Provide Parameters](/images/deploy/aws/aws-cf-provide-parameters.png)
 

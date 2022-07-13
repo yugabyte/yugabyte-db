@@ -70,7 +70,7 @@ $ aws cloudformation describe-stacks \
   --region <aws-region>
 ```
 
-From this output, you can get the VPC ID and YugabyteDB admin URL.
+From this output, you can get the VPC ID and YugabyteDB Admin URL.
 
 Because the stack creates a security group that restricts access to the database, you might need to update the security group inbound rules if you have trouble connecting to the DB.
 
@@ -80,7 +80,7 @@ Because the stack creates a security group that restricts access to the database
 
     ![Cloud Formation dashboard](/images/deploy/aws/aws-cf-initial-dashboard.png)
 
-2. Prepare template using the downloaded template
+2. Prepare a template using the downloaded template.
 
     ![Prepare template](/images/deploy/aws/aws-cf-prepare-template.png)
 
@@ -88,11 +88,11 @@ Because the stack creates a security group that restricts access to the database
 
     ![Upload template](/images/deploy/aws/aws-cf-upload-template.png)
 
-4. Provide the required parameters. Each of these fields is prefilled with information from the configuration YAML file that was uploaded. `LatestAmiId` refers to the id of the machine image to use, see [Find a Linux AMI](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/finding-an-ami.html).
+4. Provide the required parameters. Each of these fields is prefilled with information from the configuration YAML file that was uploaded. `LatestAmiId` refers to the ID of the machine image to use, see [Find a Linux AMI](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/finding-an-ami.html).
 
     ![Provide Parameters](/images/deploy/aws/aws-cf-provide-parameters.png)
 
-5. Configure Stack options. For more information, see [Setting AWS CloudFormation stack options](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/cfn-console-add-tags.html).
+5. Configure stack options. For more information, see [Setting AWS CloudFormation stack options](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/cfn-console-add-tags.html).
 
     ![Configure options](/images/deploy/aws/aws-cf-configure-options.png)
 
