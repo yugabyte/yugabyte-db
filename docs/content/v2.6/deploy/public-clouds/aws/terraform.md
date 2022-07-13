@@ -13,19 +13,19 @@ type: docs
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/preview/deploy/public-clouds/aws/cloudformation" class="nav-link">
+    <a href="../cloudformation" class="nav-link">
       <i class="icon-shell"></i>
       CloudFormation
     </a>
   </li>
   <li >
-    <a href="/preview/deploy/public-clouds/aws/terraform" class="nav-link active">
+    <a href="../terraform" class="nav-link active">
       <i class="icon-shell"></i>
       Terraform
     </a>
   </li>
   <li>
-    <a href="/preview/deploy/public-clouds/aws/manual-deployment" class="nav-link">
+    <a href="../manual-deployment" class="nav-link">
       <i class="icon-shell"></i>
       Manual deployment
     </a>
@@ -34,15 +34,17 @@ type: docs
 
 ## Prerequisites
 
-1. Download and install [terraform](https://www.terraform.io/downloads.html).
+Download and install [Terraform](https://www.terraform.io/downloads.html).
 
-2. Verify by the `terraform` command, it should print a help message that looks similar to that shown below.
+Verify the installation using the `terraform` command.
 
 ```sh
 $ terraform
 ```
 
-```
+You should see output similar to the following.
+
+```output
 Usage: terraform [--version] [--help] <command> [args]
 ...
 Common commands:
@@ -53,11 +55,11 @@ Common commands:
     fmt                Rewrites config files to canonical format
 ```
 
-## 1. Create a terraform config file
+## Create a Terraform configuration file
 
-Create a terraform config file called `yugabyte-db-config.tf` and add following details to it. The terraform module can be found in the [terraform-aws-yugabyte github repository](https://github.com/yugabyte/terraform-aws-yugabyte).
+Create a Terraform configuration file called `yugabyte-db-config.tf` and add the following details to it. The Terraform module can be found in the [terraform-aws-yugabyte GitHub repository](https://github.com/yugabyte/terraform-aws-yugabyte).
 
-```sh
+```terraform
 provider "aws" {
   # Configure your AWS account credentials here.
   access_key = "ACCESS_KEY_HERE"
@@ -93,9 +95,9 @@ module "yugabyte-db-cluster" {
 }
 ```
 
-**NOTE:** If you do not have a custom security group, you would need to remove the `${var.custom_security_group_id}` variable in `main.tf`, so that the `aws_instance` looks as follows:
+If you do not have a custom security group, you would need to remove the `${var.custom_security_group_id}` variable in `main.tf`, so that the `aws_instance` looks as follows:
 
-```sh
+```terraform
 resource "aws_instance" "yugabyte_nodes" {
   count                       = "${var.num_instances}"
   ...
@@ -104,10 +106,9 @@ resource "aws_instance" "yugabyte_nodes" {
     "${aws_security_group.yugabyte_intra.id}",
     "${var.custom_security_group_id}"
   ]
-
 ```
 
-## 2. Create a cluster
+## Create a cluster
 
 Init terraform first if you have not already done so.
 
@@ -115,47 +116,51 @@ Init terraform first if you have not already done so.
 $ terraform init
 ```
 
-Now run the following to create the instances and bring up the cluster.
+Run the following to create the instances and bring up the cluster:
 
 ```sh
 $ terraform apply
 ```
 
-Once the cluster is created, you can go to the URL `http://<node ip or dns name>:7000` to view the UI. You can find the node's ip or dns by running the following:
+After the cluster is created, you can go to the URL `http://<node ip or dns name>:7000` to view the UI. You can find the node's IP or DNS by running the following:
 
 ```sh
 $ terraform state show aws_instance.yugabyte_nodes[0]
 ```
 
-You can access the cluster UI by going to any of the following URLs.
-
-You can check the state of the nodes at any point by running the following command.
+You can check the state of the nodes at any point by running the following command:
 
 ```sh
 $ terraform show
 ```
 
-## 3. Verify resources created
+## Verify resources created
 
 The following resources are created by this module:
 
-- `module.yugabyte-db-cluster.aws_instance.yugabyte_nodes` The AWS instances.
+- `module.yugabyte-db-cluster.aws_instance.yugabyte_nodes`
 
-For cluster named `test-cluster`, the instances will be named `yb-ce-test-cluster-n1`, `yb-ce-test-cluster-n2`, `yb-ce-test-cluster-n3`.
+    The AWS instances.
 
-- `module.yugabyte-db-cluster.aws_security_group.yugabyte` The security group that allows the various clients to access the YugabyteDB cluster.
+    For a cluster named `test-cluster`, the instances are named `yb-ce-test-cluster-n1`, `yb-ce-test-cluster-n2`, `yb-ce-test-cluster-n3`.
 
-For cluster named `test-cluster`, this security group will be named `yb-ce-test-cluster` with the ports 7000, 9000, 9042 and 6379 open to all other instances in the same security group.
+- `module.yugabyte-db-cluster.aws_security_group.yugabyte`
 
-- `module.yugabyte-db-cluster.aws_security_group.yugabyte_intra` The security group that allows communication internal to the cluster.
+    The security group that allows the various clients to access the YugabyteDB cluster.
 
-For cluster named `test-cluster`, this security group will be named `yb-ce-test-cluster-intra` with the ports 7100, 9100 open to all other instances in the same security group.
+    For a cluster named `test-cluster`, this security group is named `yb-ce-test-cluster`, with the ports 7000, 9000, 9042, and 6379 open to all other instances in the same security group.
+
+- `module.yugabyte-db-cluster.aws_security_group.yugabyte_intra`
+
+    The security group that allows communication internal to the cluster.
+
+    For a cluster named `test-cluster`, this security group is named `yb-ce-test-cluster-intra` with the ports 7100, 9100 open to all other instances in the same security group.
 
 - `module.yugabyte-db-cluster.null_resource.create_yugabyte_universe` A local script that configures the newly created instances to form a new YugabyteDB universe.
 
-## 4. [Optional] Destroy the cluster
+## [Optional] Destroy the cluster
 
-To destroy what you just created, you can run the following command.
+To destroy what you just created, you can run the following command:
 
 ```sh
 $ terraform destroy
