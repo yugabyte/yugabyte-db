@@ -223,5 +223,5 @@ dbms_utility_get_time(PG_FUNCTION_ARGS)
 	struct timeval tv;
 
 	gettimeofday(&tv,NULL);
-	PG_RETURN_INT32((int32) (tv.tv_sec*1000000+tv.tv_usec)/10000);
+	PG_RETURN_INT32((int32) ((int64) tv.tv_sec * 100 + tv.tv_usec / 10000));
 }
