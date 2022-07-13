@@ -744,7 +744,7 @@ class YBTSConfig:
             logging.info("Loading TS config via Web UI on {}:{}".format(tserver_ip, web_port))
 
         url = "{}:{}/varz".format(tserver_ip, web_port)
-        output = self.backup.run_program(['curl', url], num_retry=10)
+        output = self.backup.run_program(['curl', url, '--silent', '--show-error'], num_retry=10)
 
         # Read '--placement_region'.
         if read_region:

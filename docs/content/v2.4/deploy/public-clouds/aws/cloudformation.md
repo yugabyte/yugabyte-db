@@ -13,19 +13,19 @@ type: docs
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/preview/deploy/public-clouds/aws/cloudformation" class="nav-link active">
+    <a href="../cloudformation" class="nav-link active">
       <i class="icon-shell"></i>
       CloudFormation
     </a>
   </li>
   <li >
-    <a href="/preview/deploy/public-clouds/aws/terraform" class="nav-link">
+    <a href="../terraform" class="nav-link">
       <i class="icon-shell"></i>
       Terraform
     </a>
   </li>
   <li>
-    <a href="/preview/deploy/public-clouds/aws/manual-deployment" class="nav-link">
+    <a href="../manual-deployment" class="nav-link">
       <i class="icon-shell"></i>
       Manual deployment
     </a>
@@ -46,9 +46,7 @@ $ wget https://raw.githubusercontent.com/yugabyte/aws-cloudformation/master/yuga
 
 {{< note title="Note" >}}
 
-When using an instance with local disks (not EBS), the `.yaml` file needs to be changed for YugabyteDB to recognize the local disks.
-Here is an example using [i3 instance types](https://github.com/yugabyte/aws-cloudformation/blob/master/yugabyte_cloudformation_i3_example.yaml)
-that formats and mounts the nvme ssd automatically for each host and installs YugabyteDB on that mount.
+When using an instance with local disks (as opposed to EBS), the `.yaml` file needs to be changed for YugabyteDB to recognize the local disks, as per [this example](https://github.com/yugabyte/aws-cloudformation/blob/master/yugabyte_ephemeral_nvme_cloudformation.yaml) that demonstrates the use of different instance types.
 
 {{< /note >}}
 
@@ -72,43 +70,36 @@ $ aws cloudformation describe-stacks \
   --region <aws-region>
 ```
 
-From this output, you will be able to get the VPC id and YugabyteDB admin URL.
+From this output, you can get the VPC ID and YugabyteDB Admin URL.
 
-Because the stack creates a security group that restricts access to the database, you might need to update the security group inbound rules if you have trouble connecting to it.
-if you have trouble connecting to the DB.
+Because the stack creates a security group that restricts access to the database, you might need to update the security group inbound rules if you have trouble connecting to the DB.
 
 ## AWS Console
 
 1. Navigate to your AWS console and open the CloudFormation dashboard. Click **Create Stack**.
 
-<img title="Cloud Formation dashboard" class="expandable-image" src="/images/deploy/aws/aws-cf-initial-dashboard.png" />
-<br>
+    ![Cloud Formation dashboard](/images/deploy/aws/aws-cf-initial-dashboard.png)
 
-2. Prepare template using the downloaded template
+2. Prepare a template using the downloaded template.
 
-<img title="Prepare template" class="expandable-image" src="/images/deploy/aws/aws-cf-prepare-template.png" />
-<br>
+    ![Prepare template](/images/deploy/aws/aws-cf-prepare-template.png)
 
 3. Specify the template file downloaded in Prerequisites: `yugabyte_cloudformation.yaml`
 
-<img title="Upload template" class="expandable-image" src="/images/deploy/aws/aws-cf-upload-template.png" />
-<br>
+    ![Upload template](/images/deploy/aws/aws-cf-upload-template.png)
 
-4. Provide the required parameters. Each of these fields are prefilled with information from the configuration YAML file that was uploaded. `LatestAmiId` refers to the id of the machine image to use, see [more](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/finding-an-ami.html).
+4. Provide the required parameters. Each of these fields is prefilled with information from the configuration YAML file that was uploaded. `LatestAmiId` refers to the ID of the machine image to use, see [Find a Linux AMI](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/finding-an-ami.html).
 
-<img title="Provide Parameters" class="expandable-image" src="/images/deploy/aws/aws-cf-provide-parameters.png" />
-<br>
+    ![Provide Parameters](/images/deploy/aws/aws-cf-provide-parameters.png)
 
-5. Configure Stack options. For more information about these options, click [here](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/cfn-console-add-tags.html).
+5. Configure stack options. For more information, see [Setting AWS CloudFormation stack options](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/cfn-console-add-tags.html).
 
-<img title="Configure options" class="expandable-image" src="/images/deploy/aws/aws-cf-configure-options.png" />
-<br>
+    ![Configure options](/images/deploy/aws/aws-cf-configure-options.png)
 
-6. Finalize changes before creation
+6. Finalize changes before creation.
 
-<img title="Review stack" class="expandable-image" src="/images/deploy/aws/aws-cf-review-stack.png" />
-<br>
+    ![Review stack](/images/deploy/aws/aws-cf-review-stack.png)
 
-7. Check stack output in dashboard
+7. Check stack output in the dashboard.
 
-<img title="Check output" class="expandable-image" src="/images/deploy/aws/aws-cf-check-output.png" />
+    ![Check output](/images/deploy/aws/aws-cf-check-output.png)
