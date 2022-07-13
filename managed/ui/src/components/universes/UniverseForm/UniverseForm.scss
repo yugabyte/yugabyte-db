@@ -202,8 +202,17 @@
     padding-bottom: 10px;
   }
 
-  .throughput-field .form-item-label {
+  .volume-info-c .form-item-label {
     min-width: 170px !important;
+    font-weight: 500;
+  }
+
+  .volume-info,
+  .volume-info .form-group,
+  .volume-info .yb-field-group {
+    display: flex;
+    align-items: center;
+    width: 100%;
   }
 }
 

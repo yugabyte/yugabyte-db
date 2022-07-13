@@ -1,6 +1,8 @@
 --
 -- MONEY
 --
+-- Note that we assume lc_monetary has been set to C.
+--
 
 SET LC_MONETARY TO 'en_US.UTF-8';
 
@@ -229,6 +231,8 @@ SELECT (-12345678901234567)::numeric::money;
 -- Cast from money
 SELECT '12345678901234567'::money::numeric;
 SELECT '-12345678901234567'::money::numeric;
+SELECT '92233720368547758.07'::money::numeric;
+SELECT '-92233720368547758.08'::money::numeric;
 
 --
 -- Test for PRIMARY KEY

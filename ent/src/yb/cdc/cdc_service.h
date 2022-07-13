@@ -147,6 +147,10 @@ class CDCServiceImpl : public CDCServiceIf {
                            IsBootstrapRequiredResponsePB* resp,
                            rpc::RpcContext rpc) override;
 
+  void CheckReplicationDrain(const CheckReplicationDrainRequestPB* req,
+                             CheckReplicationDrainResponsePB* resp,
+                             rpc::RpcContext context) override;
+
   void Shutdown() override;
 
   // Gets the associated metrics entity object stored in the additional metadata of the tablet.

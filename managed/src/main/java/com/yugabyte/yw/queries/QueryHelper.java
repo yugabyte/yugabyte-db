@@ -37,8 +37,6 @@ import play.libs.Json;
 @Slf4j
 @Singleton
 public class QueryHelper {
-  private static final int THREAD_POOL_SIZE = 50;
-  private static final int TASK_QUEUE_SIZE = 500;
   private static final String RESET_QUERY_SQL = "SELECT pg_stat_statements_reset()";
   private static final String SLOW_QUERY_STATS_UNLIMITED_SQL =
       "SELECT a.rolname, t.datname, t.queryid, "
@@ -49,9 +47,11 @@ public class QueryHelper {
       "yb.query_stats.slow_queries.order_by";
   public static final String QUERY_STATS_SLOW_QUERIES_LIMIT_KEY =
       "yb.query_stats.slow_queries.limit";
+
+  public static final String QUERY_STATS_TASK_QUEUE_SIZE_CONF_KEY = "yb.query_stats.queue_capacity";
+
   private final RuntimeConfigFactory runtimeConfigFactory;
   private final ExecutorService threadPool;
-  private final Configuration appConfig;
 
   public enum QueryApi {
     YSQL,
@@ -66,17 +66,11 @@ public class QueryHelper {
 
   @Inject
   public QueryHelper(
-      Configuration appConfig,
-      RuntimeConfigFactory runtimeConfigFactory,
-      PlatformExecutorFactory platformExecutorFactory) {
-    this(appConfig, runtimeConfigFactory, createExecutor(appConfig, platformExecutorFactory));
+      RuntimeConfigFactory runtimeConfigFactory, PlatformExecutorFactory platformExecutorFactory) {
+    this(runtimeConfigFactory, createExecutor(platformExecutorFactory));
   }
 
-  QueryHelper(
-      Configuration appConfig,
-      RuntimeConfigFactory runtimeConfigFactory,
-      ExecutorService threadPool) {
-    this.appConfig = appConfig;
+  QueryHelper(RuntimeConfigFactory runtimeConfigFactory, ExecutorService threadPool) {
     this.runtimeConfigFactory = runtimeConfigFactory;
     this.threadPool = threadPool;
   }
@@ -98,11 +92,11 @@ public class QueryHelper {
   /** Runs provided {@link QueryAction QueryAction} on every node in the provided universe. */
   public JsonNode queryUniverseNodes(Universe universe, QueryAction queryAction)
       throws IllegalArgumentException {
-    if (queriesWillExceedTaskQueue(universe)) {
+    final Config config = runtimeConfigFactory.forUniverse(universe);
+    if (queriesWillExceedTaskQueue(config, universe)) {
       throw new PlatformServiceException(
           SERVICE_UNAVAILABLE, "Not enough room to queue the requested tasks");
     }
-    final Config config = runtimeConfigFactory.forUniverse(universe);
     int ysqlErrorCount = 0;
     int ycqlErrorCount = 0;
     ObjectNode responseJson = Json.newObject();
@@ -298,29 +292,16 @@ public class QueryHelper {
     return responseJson;
   }
 
-  private static ExecutorService createExecutor(
-      Configuration appConfig, PlatformExecutorFactory platformExecutorFactory) {
-    int threadPoolSize =
-        appConfig.getInt("yb.queryHelper.threadPoolSize") != null
-            ? appConfig.getInt("yb.queryHelper.threadPoolSize")
-            : THREAD_POOL_SIZE;
-    int taskQueueSize =
-        appConfig.getInt("yb.queryHelper.taskQueueSize") != null
-            ? appConfig.getInt("yb.queryHelper.taskQueueSize")
-            : TASK_QUEUE_SIZE;
-    return platformExecutorFactory.createFixedExecutor(
-        "Query-Helper-Thread-Pool",
-        threadPoolSize,
-        taskQueueSize,
-        Executors.defaultThreadFactory());
+  private static ExecutorService createExecutor(PlatformExecutorFactory platformExecutorFactory) {
+    return platformExecutorFactory.createExecutor("query_stats", Executors.defaultThreadFactory());
   }
 
   /** Check if running a query per node will exceed the remaining task queue room */
-  private boolean queriesWillExceedTaskQueue(Universe universe) {
+  private boolean queriesWillExceedTaskQueue(Config config, Universe universe) {
     Collection<NodeDetails> universeNodes = universe.getNodes();
     ThreadPoolExecutor executor = (ThreadPoolExecutor) threadPool;
-    int unallocatedTaskQueueSpots =
-        appConfig.getInt("yb.queryHelper.taskQueueSize") - executor.getQueue().size();
+    int taskQueueSize = config.getInt(QUERY_STATS_TASK_QUEUE_SIZE_CONF_KEY);
+    int unallocatedTaskQueueSpots = taskQueueSize - executor.getQueue().size();
     return universeNodes.size() > unallocatedTaskQueueSpots;
   }
 

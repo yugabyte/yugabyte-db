@@ -251,6 +251,22 @@ message UpdateConsumerOnProducerSplitResponsePB {
   optional MasterErrorPB error = 1;
 }
 
+message WaitForReplicationDrainRequestPB {
+  repeated bytes stream_ids = 1;
+  optional uint64 target_time = 2;
+}
+
+message WaitForReplicationDrainResponsePB {
+  // Metadata regarding replication status of a stream set up on a tablet.
+  message UndrainedStreamInfoPB {
+    required bytes stream_id = 1;
+    required bytes tablet_id = 2;
+  }
+
+  optional MasterErrorPB error = 1;
+  repeated UndrainedStreamInfoPB undrained_stream_info = 2;
+}
+
 service MasterReplication {
   option (yb.rpc.custom_service_name) = "yb.master.MasterService";
 
@@ -267,6 +283,8 @@ service MasterReplication {
   rpc UpdateCDCStream (UpdateCDCStreamRequestPB) returns (UpdateCDCStreamResponsePB);
   rpc IsBootstrapRequired (IsBootstrapRequiredRequestPB) returns (IsBootstrapRequiredResponsePB);
   rpc GetUDTypeMetadata(GetUDTypeMetadataRequestPB) returns (GetUDTypeMetadataResponsePB);
+  rpc WaitForReplicationDrain (WaitForReplicationDrainRequestPB)
+      returns (WaitForReplicationDrainResponsePB);
 
   // Cluster-level Replication.
   rpc SetupUniverseReplication(SetupUniverseReplicationRequestPB)

@@ -349,7 +349,7 @@ components:
 
               db {
                 default.host="{{repl HostPrivateIpAddress "db" "postgres" }}"
-                default.port='{{repl ConfigOption "db_external_port"}}'
+                default.port="{{repl ConfigOption "db_external_port"}}"
                 default.username="postgres"
                 default.password="{{repl ConfigOption "dbpass"}}"
                 default.logStatements=true
@@ -394,8 +394,6 @@ components:
                 devops.home = /opt/yugabyte/devops
                 metrics.host="{{repl HostPrivateIpAddress "prometheus" "prom/prometheus" }}"
                 metrics.port="{{repl ConfigOption "prometheus_external_port"}}"
-                metrics.url = "http://"${yb.metrics.host}":"${yb.metrics.port}"/api/v1"
-                metrics.management.url = "http://"${yb.metrics.host}":"${yb.metrics.port}"/-"
                 storage.path = /opt/yugabyte/yugaware/data
                 docker.network = bridge
                 seedData = false
