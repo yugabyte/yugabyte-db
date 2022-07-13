@@ -8,6 +8,7 @@ aliases:
 menu:
   preview_faq:
     parent: comparisons
+    identifier: comparisons-dynamodb
     weight: 1105
 type: docs
 ---

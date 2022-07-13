@@ -351,6 +351,14 @@
     showSection = true
 
 [[preview_faq]]
+  name = "Comparisons"
+  weight = 1
+  identifier = "comparisons"
+  [preview_faq.params]
+    showSection = true
+    hideLink = true
+
+[[preview_faq]]
   name = "FAQ"
   weight = 2
   identifier = "faq"

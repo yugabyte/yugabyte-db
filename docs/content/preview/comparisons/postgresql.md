@@ -8,6 +8,7 @@ aliases:
 menu:
   preview_faq:
     parent: comparisons
+    identifier: comparisons-postgresql
     weight: 1128
 type: docs
 ---

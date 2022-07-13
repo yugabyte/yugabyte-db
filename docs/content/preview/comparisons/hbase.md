@@ -8,6 +8,7 @@ aliases:
 menu:
   preview_faq:
     parent: comparisons
+    identifier: comparisons-hbase
     weight: 1130
 type: docs
 ---

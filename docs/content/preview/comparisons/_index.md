@@ -14,6 +14,7 @@ menu:
     weight: 2710
 type: indexpage
 ---
+
 ## Distributed SQL databases
 
 Feature | [CockroachDB](cockroachdb/) | [TiDB](tidb/) | [Vitess](vitess/) | [Amazon Aurora](amazon-aurora/)  | [Google Cloud Spanner](google-spanner/) | YugabyteDB

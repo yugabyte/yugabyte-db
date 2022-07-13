@@ -7,6 +7,7 @@ aliases:
 menu:
   preview_faq:
     parent: comparisons
+    identifier: comparisons-redis
     weight: 1129
 type: docs
 ---

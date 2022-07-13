@@ -8,6 +8,7 @@ aliases:
 menu:
   preview_faq:
     parent: comparisons
+    identifier: comparisons-tidb
     weight: 1076
 type: docs
 ---

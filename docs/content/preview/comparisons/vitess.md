@@ -8,6 +8,7 @@ aliases:
 menu:
   preview_faq:
     parent: comparisons
+    identifier: comparisons-vitess
     weight: 1077
 type: docs
 ---

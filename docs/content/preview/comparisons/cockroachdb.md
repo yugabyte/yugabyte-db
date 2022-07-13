@@ -8,6 +8,7 @@ aliases:
 menu:
   preview_faq:
     parent: comparisons
+    identifier: comparisons-cockroachdb
     weight: 1075
 type: docs
 ---
