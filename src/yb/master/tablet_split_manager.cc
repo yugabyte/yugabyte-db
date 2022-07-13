@@ -420,6 +420,9 @@ class OutstandingSplitState {
   }
 
   bool CanSplitMoreOnReplicas(const TabletReplicaMap& replicas) const {
+    if (FLAGS_outstanding_tablet_split_limit_per_tserver == 0) {
+      return true;
+    }
     for (const auto& location : replicas) {
       auto it = ts_to_ongoing_splits_.find(location.first);
       if (it != ts_to_ongoing_splits_.end() &&
