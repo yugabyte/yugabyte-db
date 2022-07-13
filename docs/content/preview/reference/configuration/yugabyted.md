@@ -623,34 +623,34 @@ Repeat the above steps on all the nodes of a YugabyteDB cluster, one node at a t
 
 {{< note title="Note" >}}
 
-- Multi-zone, Multi-region deployment is supported in the latest [YugabyteDB 2.15.0.0](https://download.yugabyte.com/) release.
+Multi-zone, Multi-region deployment is supported in the latest [YugabyteDB 2.15.0.0](https://download.yugabyte.com/) release.
 
 {{< /note >}}
 
-These steps assume that you already have a running YugabyteDB cluster deployed using `yugabyted`.
+The following steps assume that you already have a running YugabyteDB cluster deployed using `yugabyted`.
 
-Step 1: Stop the first node by using `yugabyted stop` command.
+- Step 1: Stop the first node by using `yugabyted stop` command.
 
-```sh
-bin/yugabyted stop
-```
+  ```sh
+  bin/yugabyted stop
+  ```
 
-Step 2: Download the current [YugabyteDB preview release](https://download.yugabyte.com/).
+- Step 2: Download the current [YugabyteDB preview release](https://download.yugabyte.com/).
 
-Step 3: Start the YugabyteDB node by using `yugabyted start` command by providing the necessary cloud information
+- Step 3: Start the YugabyteDB node by using `yugabyted start` command by providing the necessary cloud information
 
-```sh
-bin/yugabyted start --advertise_address=<host-ip> --cloud_location=aws.us-east.us-east-1a --fault_tolerance=zone
-```
+  ```sh
+  bin/yugabyted start --advertise_address=<host-ip> --cloud_location=aws.us-east.us-east-1a --fault_tolerance=zone
+  ```
 
-Repeat the above steps on all the nodes of a YugabyteDB cluster, one node at a time. After completing them successfully, run the following configure command, to specify the data placement constraint on the cluster:
+- Step 4: Repeat *Step 3* on all the nodes of a YugabyteDB cluster, one node at a time. After completing them successfully, specify the data placement constraint on the cluster using the following configure command:
 
-```sh
-bin/yugabyted configure --fault_tolerance=zone
-```
+  ```sh
+  bin/yugabyted configure --fault_tolerance=zone
+  ```
 
-For manually specifying the data placement constraint, use the following command:
+  For manually specifying the data placement constraint, use the following command:
 
-```sh
-./yugabyted configure --fault_tolerance=zone --data_placement_constraint=aws.us-east.us-east-1a,aws.us-east.us-east-2a,aws.us-east.us-east-3a --rf=3
-```
+  ```sh
+  ./yugabyted configure --fault_tolerance=zone --data_placement_constraint=aws.us-east.us-east-1a,aws.us-east.us-east-2a,aws.us-east.us-east-3a --rf=3
+  ```
