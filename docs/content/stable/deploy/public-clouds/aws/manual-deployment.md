@@ -118,7 +118,7 @@ The following steps are a guide to help use the additional volumes (install a fi
 
 #### Locate drives
 
-On each of the nodes, locate the SSD devices to be used as the data directories for YugabyteDB to store data on (such as RAFT/txn logs, SSTable files, logs, etc.).
+On each of the nodes, locate the SSD devices to be used as the data directories for YugabyteDB to store data on (such as RAFT/txn logs, SSTable files, logs, and so on).
 
 ```sh
 $ lsblk
@@ -144,7 +144,7 @@ Notice that the 370G partition is on `nvme1n1`, but its MOUNTPOINT column is emp
 
 #### Create file system
 
-Create XFS file system on those devices. The filesystem on the drives does not have to be XFS. It could be ext4 also, for instance. But we have primarily tested with XFS.
+Create XFS file system on those devices. The filesystem on the drives does not have to be XFS. It could be Ext4 also, for instance. But we have primarily tested with XFS.
 
 You can run the following command on each node OR use the sample loop.
 
@@ -495,7 +495,7 @@ done
 
 ## 5. Start YB-Master servers
 
-Note: On the first time that all three YB-Master servers are started, it creates the cluster. If a YB-Master server is restarted (after cluster has been created), such as during a rolling upgrade of software, it automatically rejoins the cluster.
+Note: The first time that all three YB-Master servers are started, it creates a cluster. If a YB-Master server is restarted (after the cluster has been created), such as during a rolling upgrade of software, it automatically rejoins the cluster.
 
 ```sh
 for ip in $MASTER_NODES; do \
@@ -619,7 +619,7 @@ ssh -i $PEM $ADMIN_USER@$MASTER1 \
     aws.us-west.us-west-2c
 ```
 
-Looking again at the cluster configuration you should see `affinitized_leaders` added:
+Looking again at the cluster configuration, you should see `affinitized_leaders` added:
 
 ```json
 replication_info {
@@ -777,7 +777,7 @@ When workload is running, verify activity across various tablet-servers in the M
 http://<master-ip>:7000/tablet-servers
 ```
 
-When workload is running, verify active YCQL or YEDIS RPC calls from this links on the `utilz` page.
+When workload is running, verify active YCQL or YEDIS RPC calls from the following link on the `utilz` page.
 
 ```sh
 http://<any-tserver-ip>:9000/utilz

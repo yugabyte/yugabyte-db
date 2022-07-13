@@ -57,7 +57,7 @@ Common commands:
 
 ## Set the Azure credentials
 
-Export the required credentials in current shell with following commands:
+Export the required credentials in your current shell using the following commands:
 
 ```sh
 echo "Setting environment variables for Terraform"
@@ -72,7 +72,7 @@ which is licensed under the MIT
 license. https://github.com/MicrosoftDocs/azure-docs/blob/master/LICENSE-CODE
 -->
 
-For instructions on installing Terraform and configuring it for Azure, see [Quickstart: Install and configure Terraform to provision Azure resources](https://docs.microsoft.com/en-gb/azure/virtual-machines/linux/terraform-install-configure).
+For instructions on installing Terraform and configuring it for Azure, see [Quickstart: Configure Terraform in Azure Cloud Shell with Bash](https://docs.microsoft.com/en-gb/azure/virtual-machines/linux/terraform-install-configure).
 
 ## Create a Terraform configuration file
 
