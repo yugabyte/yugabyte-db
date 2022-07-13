@@ -286,13 +286,13 @@
 [[preview]]
   name = "Misc"
   identifier = "misc"
-	parent = "reference"
+  parent = "reference"
 
 [[preview]]
   name = "Contribute"
   weight = 13
   identifier = "contribute"
-	url = "/preview/contribute/"
+  url = "/preview/contribute/"
   [preview.params]
     showSection = true
 
@@ -308,7 +308,7 @@
   name = "YugabyteDB Anywhere"
   weight = 1
   parent = "view-all-products"
-	url = "/preview/yugabyte-platform/overview/"
+  url = "/preview/yugabyte-platform/overview/"
   [preview.params]
     showSection = true
 
@@ -316,7 +316,7 @@
   name = "YugabyteDB Managed"
   weight = 2
   parent = "view-all-products"
-	url = "/preview/yugabyte-cloud/cloud-overview/"
+  url = "/preview/yugabyte-cloud/cloud-overview/"
   [preview.params]
     showSection = true
 
@@ -477,7 +477,7 @@
 
 [[stable]]
   name = "Troubleshoot"
-	parent = "launch-and-manage"
+  parent = "launch-and-manage"
   url = "/preview/troubleshoot/"
 
 [[stable]]
@@ -505,7 +505,7 @@
 [[stable]]
   name = "Misc"
   identifier = "misc"
-	parent = "reference"
+  parent = "reference"
 
 [[stable]]
   name = "YEDIS"
@@ -523,7 +523,7 @@
   name = "Contribute"
   weight = 13
   identifier = "contribute"
-	url = "/preview/contribute/"
+  url = "/preview/contribute/"
   [stable.params]
     showSection = true
 
@@ -539,7 +539,7 @@
   name = "YugabyteDB Anywhere"
   weight = 1
   parent = "view-all-products"
-	url = "/stable/yugabyte-platform/overview/"
+  url = "/stable/yugabyte-platform/overview/"
   [stable.params]
     showSection = true
 
@@ -547,7 +547,7 @@
   name = "YugabyteDB Managed"
   weight = 2
   parent = "view-all-products"
-	url = "/preview/yugabyte-cloud/cloud-overview/"
+  url = "/preview/yugabyte-cloud/cloud-overview/"
   [stable.params]
     showSection = true
 
@@ -641,7 +641,7 @@
 
 [["v2.8"]]
   name = "Troubleshoot"
-	parent = "launch-and-manage"
+  parent = "launch-and-manage"
   url = "/preview/troubleshoot/"
 
 [["v2.8"]]
@@ -670,7 +670,7 @@
 [["v2.8"]]
   name = "Misc"
   identifier = "misc"
-	parent = "reference"
+  parent = "reference"
 
 [["v2.8"]]
   name = "YEDIS"
@@ -688,7 +688,7 @@
   name = "Contribute"
   weight = 13
   identifier = "contribute"
-	url = "/preview/contribute/"
+  url = "/preview/contribute/"
   ["v2.8".params]
     showSection = true
 
@@ -704,7 +704,7 @@
   name = "YugabyteDB Anywhere"
   weight = 1
   parent = "view-all-products"
-	url = "/v2.8/yugabyte-platform/overview/"
+  url = "/v2.8/yugabyte-platform/overview/"
   ["v2.8".params]
     showSection = true
 
@@ -712,7 +712,7 @@
   name = "YugabyteDB Managed"
   weight = 2
   parent = "view-all-products"
-	url = "/preview/yugabyte-cloud/cloud-overview/"
+  url = "/preview/yugabyte-cloud/cloud-overview/"
   ["v2.8".params]
     showSection = true
 
@@ -796,7 +796,7 @@
 
 [["v2.6"]]
   name = "Troubleshoot"
-	parent = "launch-and-manage"
+  parent = "launch-and-manage"
   url = "/preview/troubleshoot/"
 
 [["v2.6"]]
@@ -826,13 +826,13 @@
 [["v2.6"]]
   name = "Misc"
   identifier = "misc"
-	parent = "reference"
+  parent = "reference"
 
 [["v2.6"]]
   name = "Contribute"
   weight = 13
   identifier = "contribute"
-	url = "/preview/contribute/"
+  url = "/preview/contribute/"
   ["v2.6".params]
     showSection = true
 
@@ -848,7 +848,7 @@
   name = "YugabyteDB Anywhere"
   weight = 1
   parent = "view-all-products"
-	url = "/v2.6/yugabyte-platform/overview/"
+  url = "/v2.6/yugabyte-platform/overview/"
   ["v2.6".params]
     showSection = true
 
@@ -856,7 +856,7 @@
   name = "YugabyteDB Managed"
   weight = 2
   parent = "view-all-products"
-	url = "/preview/yugabyte-cloud/cloud-overview/"
+  url = "/preview/yugabyte-cloud/cloud-overview/"
   ["v2.6".params]
     showSection = true
 
@@ -940,7 +940,7 @@
 
 [["v2.4"]]
   name = "Troubleshoot"
-	parent = "launch-and-manage"
+  parent = "launch-and-manage"
   url = "/preview/troubleshoot/"
 
 [["v2.4"]]
@@ -962,13 +962,13 @@
 [["v2.4"]]
   name = "Misc"
   identifier = "misc"
-	parent = "reference"
+  parent = "reference"
 
 [["v2.4"]]
   name = "Contribute"
   weight = 13
   identifier = "contribute"
-	url = "/preview/contribute/"
+  url = "/preview/contribute/"
   ["v2.4".params]
     showSection = true
 
@@ -984,7 +984,7 @@
   name = "YugabyteDB Anywhere"
   weight = 1
   parent = "view-all-products"
-	url = "/v2.4/yugabyte-platform/overview/"
+  url = "/v2.4/yugabyte-platform/overview/"
   ["v2.4".params]
     showSection = true
 
@@ -992,7 +992,7 @@
   name = "YugabyteDB Managed"
   weight = 2
   parent = "view-all-products"
-	url = "/preview/yugabyte-cloud/cloud-overview/"
+  url = "/preview/yugabyte-cloud/cloud-overview/"
   ["v2.4".params]
     showSection = true
 
