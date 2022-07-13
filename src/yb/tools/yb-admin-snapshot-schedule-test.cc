@@ -241,7 +241,9 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
 
   Result<std::string> PreparePg(
       bool colocated = false, MonoDelta interval = kInterval, MonoDelta retention = kRetention) {
-    RETURN_NOT_OK(PrepareCommon());
+    if (!cluster_) {
+      RETURN_NOT_OK(PrepareCommon());
+    }
 
     auto conn = VERIFY_RESULT(PgConnect());
     if (colocated) {
@@ -400,6 +402,18 @@ class YbAdminSnapshotScheduleTestWithYsql : public YbAdminSnapshotScheduleTest {
     // SHOULD BE REMOVED ONCE GH#12796 IS FIXED.
     SleepFor(MonoDelta::FromSeconds(4 * kTimeMultiplier));
     return Timestamp(VERIFY_RESULT(WallClock()->Now()).time_point);
+  }
+
+  void TestPgsqlDropDefault();
+};
+
+class YbAdminSnapshotScheduleTestWithYsqlAndPackedRow : public YbAdminSnapshotScheduleTestWithYsql {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
+    YbAdminSnapshotScheduleTestWithYsql::UpdateMiniClusterOptions(opts);
+    opts->extra_tserver_flags.emplace_back("--ysql_enable_packed_row=true");
+    opts->extra_master_flags.emplace_back("--ysql_enable_packed_row=true");
+    opts->extra_master_flags.emplace_back("--timestamp_history_retention_interval_sec=0");
   }
 };
 
@@ -1038,6 +1052,26 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlSetDefault),
 
 TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlDropDefault),
           YbAdminSnapshotScheduleTestWithYsql) {
+  TestPgsqlDropDefault();
+}
+
+// Check that postgres sys catalog schema is correctly restored during PITR.
+TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlDropDefaultWithPackedRow),
+          YbAdminSnapshotScheduleTestWithYsqlAndPackedRow) {
+  ASSERT_OK(PrepareCommon());
+  ASSERT_OK(CompactTablets(cluster_.get()));
+  TestPgsqlDropDefault();
+  ASSERT_OK(CompactTablets(cluster_.get()));
+
+  auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+  ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD COLUMN v2 TEXT DEFAULT 'v2_default'"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (100500)"));
+  auto value = ASSERT_RESULT(
+      conn.FetchRowAsString("SELECT value, v2 FROM test_table WHERE key=100500"));
+  ASSERT_EQ(value, "default_value, v2_default");
+}
+
+void YbAdminSnapshotScheduleTestWithYsql::TestPgsqlDropDefault() {
   auto schedule_id = ASSERT_RESULT(PreparePg());
 
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
