@@ -671,7 +671,11 @@ class NodeChecker():
         else:
             cmd = 'curl -s {}'.format(endpoint)
 
-        return self._check_output(cmd).strip()
+        output = self._check_output(cmd).strip()
+        if has_errors(output):
+            logging.info("HTTP request to {} returned error: {}".format(endpoint, output))
+            return None
+        return output
 
     def check_yb_version(self, ip_address, process, port, expected):
         logging.info("Checking YB Version on node {} process {}".format(self.node, process))
