@@ -2102,6 +2102,18 @@ static struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 
+	{
+		{"yb_make_next_ddl_statement_nonbreaking", PGC_SUSET, CUSTOM_OPTIONS,
+			gettext_noop("When set, the next ddl statement will not cause "
+						 "running transactions to abort. This only affects "
+						 "the next ddl statement and resets automatically."),
+			NULL
+		},
+		&yb_make_next_ddl_statement_nonbreaking,
+		false,
+		NULL, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, false, NULL, NULL, NULL
@@ -4651,6 +4663,7 @@ static const char *const map_old_guc_names[] = {
  */
 static const char *const YbDbAdminVariables[] = {
 	"session_replication_role",
+	"yb_make_next_ddl_statement_nonbreaking",
 };
 
 

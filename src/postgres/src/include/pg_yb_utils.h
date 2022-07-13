@@ -425,6 +425,13 @@ extern bool yb_enable_expression_pushdown;
  */
 extern bool yb_enable_optimizer_statistics;
 
+/*
+ * Enables nonbreaking DDL mode in which a DDL statement is not considered as
+ * a "breaking catalog change" and therefore will not cause running transactions
+ * to abort.
+ */
+extern bool yb_make_next_ddl_statement_nonbreaking;
+
 //------------------------------------------------------------------------------
 // GUC variables needed by YB via their YB pointers.
 extern int StatementTimeout;
