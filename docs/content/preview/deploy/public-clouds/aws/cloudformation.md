@@ -72,7 +72,7 @@ $ aws cloudformation describe-stacks \
   --region <aws-region>
 ```
 
-From this output, you can get the VPC ID and YugabyteDB admin URL.
+From this output, you can get the VPC ID and YugabyteDB Admin URL.
 
 Because the stack creates a security group that restricts access to the database, you might need to update the security group inbound rules if you have trouble connecting to the DB.
 
@@ -82,7 +82,7 @@ Because the stack creates a security group that restricts access to the database
 
     ![Cloud Formation dashboard](/images/deploy/aws/aws-cf-initial-dashboard.png)
 
-2. Prepare template using the downloaded template
+2. Prepare a template using the downloaded template.
 
     ![Prepare template](/images/deploy/aws/aws-cf-prepare-template.png)
 
@@ -94,7 +94,7 @@ Because the stack creates a security group that restricts access to the database
 
     ![Provide Parameters](/images/deploy/aws/aws-cf-provide-parameters.png)
 
-5. Configure Stack options. For more information, see [Setting AWS CloudFormation stack options](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/cfn-console-add-tags.html).
+5. Configure stack options. For more information, see [Setting AWS CloudFormation stack options](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/cfn-console-add-tags.html).
 
     ![Configure options](/images/deploy/aws/aws-cf-configure-options.png)
 
