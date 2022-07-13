@@ -4,7 +4,10 @@ package com.yugabyte.yw.forms;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
@@ -12,11 +15,15 @@ import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import java.util.UUID;
+import lombok.extern.slf4j.Slf4j;
+import play.libs.Json;
 import play.mvc.Http.Status;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 @JsonDeserialize(converter = CertsRotateParams.Converter.class)
+@Slf4j
 public class CertsRotateParams extends UpgradeTaskParams {
 
   public enum CertRotationType {
@@ -312,6 +319,31 @@ public class CertsRotateParams extends UpgradeTaskParams {
           Status.BAD_REQUEST,
           "Kubernetes universes supports only SelfSigned or HashicorpVault certificates.");
     }
+  }
+
+  public static CertsRotateParams mergeUniverseDetails(
+      TlsConfigUpdateParams original, UniverseDefinitionTaskParams univDetails) {
+
+    // TODO: fix this in a more general way so that we don't have to keep this in sync
+    // with new fields defined in these methods.
+    ObjectNode node = JsonNodeFactory.instance.objectNode();
+    node.put("rootCA", (original.rootCA != null) ? original.rootCA.toString() : null);
+    node.put(
+        "clientRootCA", (original.clientRootCA != null) ? original.clientRootCA.toString() : null);
+    node.put("selfSignedServerCertRotate", original.selfSignedServerCertRotate);
+    node.put("selfSignedClientCertRotate", original.selfSignedClientCertRotate);
+    node.put("rootAndClientRootCASame", original.rootAndClientRootCASame);
+
+    // UpgradeOption needs special handling because it has a JsonProperty
+    node.put("upgradeOption", Json.toJson(original.upgradeOption).asText());
+
+    node.put("sleepAfterMasterRestartMillis", original.sleepAfterMasterRestartMillis);
+    node.put("sleepAfterTServerRestartMillis", original.sleepAfterTServerRestartMillis);
+
+    JsonNode universeDetailsJson = Json.toJson(univDetails);
+    CommonUtils.deepMerge(universeDetailsJson, Json.toJson(node));
+
+    return Json.fromJson(universeDetailsJson, CertsRotateParams.class);
   }
 
   public static class Converter extends BaseConverter<CertsRotateParams> {}
