@@ -112,7 +112,7 @@ Init terraform first if you haven't already done so.
 $ terraform init
 ```
 
-To check what changes are going to happen in environment run the following:
+To check what changes are going to happen in your environment, run the following:
 
 ```sh
 $ terraform plan
@@ -148,7 +148,7 @@ The following resources are created by this module:
 
 - `module.terraform-gcp-yugabyte.google_compute_firewall.Yugabyte-Firewall`
 
-    The firewall rule that allows the various clients to access the YugabyteDB cluster.
+    The firewall rule that allows various clients to access the YugabyteDB cluster.
 
     For a cluster named `test-cluster`, this firewall rule is named `default-yugabyte-test-cluster-firewall` with the ports 7000, 9000, 9042, and 6379 open to all.
 
