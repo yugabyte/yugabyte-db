@@ -623,7 +623,7 @@ Repeat the above steps on all the nodes of a YugabyteDB cluster, one node at a t
 
 {{< note title="Note" >}}
 
-Multi-zone, Multi-region deployment is supported in the latest [YugabyteDB 2.15.0.0](https://download.yugabyte.com/) release.
+Multi-zone, multi-region deployment is supported in the latest [YugabyteDB 2.15.0.0](https://download.yugabyte.com/) release.
 
 {{< /note >}}
 
