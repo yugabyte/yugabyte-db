@@ -8,6 +8,7 @@ import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
@@ -20,7 +21,10 @@ import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.common.CertificateHelper;
 import com.yugabyte.yw.common.TestHelper;
 import com.yugabyte.yw.forms.CertsRotateParams;
+import com.yugabyte.yw.forms.TlsConfigUpdateParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
 import com.yugabyte.yw.models.CertificateInfo;
@@ -30,6 +34,7 @@ import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
@@ -38,6 +43,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
+import lombok.extern.slf4j.Slf4j;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -46,8 +52,10 @@ import org.mockito.InjectMocks;
 import org.mockito.MockitoAnnotations;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
+import play.libs.Json;
 
 @RunWith(JUnitParamsRunner.class)
+@Slf4j
 public class CertsRotateTest extends UpgradeTaskTest {
 
   @Rule public MockitoRule rule = MockitoJUnit.rule();
@@ -660,5 +668,68 @@ public class CertsRotateTest extends UpgradeTaskTest {
         rotateClientRootCA,
         isRootCARequired,
         isClientRootCARequired);
+  }
+
+  @Test
+  public void testCertsRotateMerge() {
+
+    // prepare dummy univ details
+    UUID rootCAUUID = UUID.randomUUID();
+    UUID clientCAUUID = UUID.randomUUID();
+    UniverseDefinitionTaskParams univParams = new UniverseDefinitionTaskParams();
+    univParams.allowInsecure = false;
+    univParams.nodePrefix = "foo";
+    univParams.setTxnTableWaitCountFlag = true;
+    univParams.rootAndClientRootCASame = false;
+    univParams.rootCA = rootCAUUID;
+    univParams.clientRootCA = null;
+    univParams.expectedUniverseVersion = -1;
+
+    univParams.clusters = new ArrayList<>();
+    UserIntent userIntent = new UserIntent();
+    userIntent.replicationFactor = 1;
+    userIntent.numNodes = 4;
+    userIntent.assignPublicIP = false;
+    userIntent.masterGFlags = new HashMap<>();
+    userIntent.masterGFlags.put("flag", "value");
+    userIntent.tserverGFlags.put("flag", "value");
+    univParams.clusters.add(new Cluster(ClusterType.PRIMARY, userIntent));
+
+    // prepare dummy tls update params
+    TlsConfigUpdateParams tlsUpdateParams = new TlsConfigUpdateParams();
+    tlsUpdateParams.allowInsecure = true;
+    tlsUpdateParams.clientRootCA = clientCAUUID;
+    tlsUpdateParams.upgradeOption = UpgradeOption.NON_ROLLING_UPGRADE;
+    tlsUpdateParams.setTxnTableWaitCountFlag = false;
+    tlsUpdateParams.rootAndClientRootCASame = true;
+    tlsUpdateParams.rootCA = null;
+
+    // verify merged params
+    CertsRotateParams certsParams =
+        CertsRotateParams.mergeUniverseDetails(tlsUpdateParams, univParams);
+    log.info("certs param is {}", Json.toJson(certsParams));
+    assertNotNull(certsParams);
+    UniverseDefinitionTaskParams certsUnivParams =
+        Json.fromJson(Json.toJson(certsParams), UniverseDefinitionTaskParams.class);
+    log.info("certs param univ params is {}", Json.toJson(certsUnivParams));
+    assertNotNull(certsUnivParams);
+    assertNotNull(univParams);
+
+    // Compare just the UniverseDefinitionTaskParams part of certsRotateParams and univParams
+    // The only parts that we expect to change are the tls related fields
+    univParams.rootAndClientRootCASame = tlsUpdateParams.rootAndClientRootCASame;
+    univParams.clientRootCA = tlsUpdateParams.clientRootCA;
+    univParams.rootCA = tlsUpdateParams.rootCA;
+    String certsUnivString = Json.toJson(certsUnivParams).toString();
+    String univString = Json.toJson(univParams).toString();
+    log.info("certs params univ definition is {}.", certsUnivString);
+    log.info("original univ definition is {}.", univString);
+    assertEquals(certsUnivString, univString);
+
+    // verify that certs-specific fields in certs rotate params match the tls update params
+    assertEquals(certsParams.rootCA, tlsUpdateParams.rootCA);
+    assertEquals(certsParams.clientRootCA, tlsUpdateParams.clientRootCA);
+    assertEquals(certsParams.rootAndClientRootCASame, tlsUpdateParams.rootAndClientRootCASame);
+    assertEquals(certsParams.upgradeOption, tlsUpdateParams.upgradeOption);
   }
 }
