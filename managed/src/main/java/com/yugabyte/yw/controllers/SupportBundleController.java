@@ -22,10 +22,13 @@ import com.yugabyte.yw.models.SupportBundle;
 import com.yugabyte.yw.models.SupportBundle.SupportBundleStatusType;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.models.helpers.BundleDetails.ComponentType;
+
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
 import java.io.InputStream;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
@@ -182,5 +185,16 @@ public class SupportBundleController extends AuthenticatedController {
             ctx(), Audit.TargetType.SupportBundle, bundleUUID.toString(), Audit.ActionType.Delete);
     log.info("Successfully deleted the support bundle: " + bundleUUID.toString());
     return YBPSuccess.empty();
+  }
+
+  @ApiOperation(
+      value = "List all components available in support bundle",
+      response = ComponentType.class,
+      responseContainer = "List",
+      nickname = "listSupportBundleComponents",
+      produces = "application/json")
+  public Result getComponents(UUID customerUUID) {
+    EnumSet<ComponentType> components = EnumSet.allOf(ComponentType.class);
+    return PlatformResults.withData(components);
   }
 }
