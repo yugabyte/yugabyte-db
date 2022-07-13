@@ -487,7 +487,7 @@ If `enable_automatic_tablet_splitting` is `true`, this value will be overridden 
 
 ##### --enable_automatic_tablet_splitting
 
-Enables YugabyteDB to [automatically split tablets](../../../architecture/docdb-sharding/tablet-splitting/#automatic-tablet-splitting) while online, based on the specified tablet threshold sizes configured below.
+Enables YugabyteDB to [automatically split tablets](../../../architecture/docdb-sharding/tablet-splitting/#automatic-tablet-splitting), based on the specified tablet threshold sizes configured below.
 
 Default: `false`
 
@@ -547,13 +547,13 @@ Default: `0`
 
 ##### --outstanding_tablet_split_limit
 
-Limits the number of total outstanding tablet splits. Limitation is disabled if value is set to `0`. Limit includes tablets that are still performing post-split compactions.
+Limits the number of total outstanding tablet splits. Limitation is disabled if value is set to `0`. Limit includes tablets that are performing post-split compactions.
 
 Default: `1`
 
 ##### --outstanding_tablet_split_limit_per_tserver
 
-Limits the number of outstanding tablet splits per node. Limitation is disabled if value is set to `0`. Limit includes tablets that are still performing post-split compactions.
+Limits the number of outstanding tablet splits per node. Limitation is disabled if value is set to `0`. Limit includes tablets that are performing post-split compactions.
 
 Default: `1`
 
@@ -569,11 +569,11 @@ Enables automatic tablet splitting for tables that are part of an xCluster repli
 
 Default: `false`
 
-##### --enable_tablet_split_of_xcluster_bootstrapping_tables
+{{< note title="Note" >}}
 
-Enables automatic tablet splitting for tables that are part of an xCluster replication setup and are currently being bootstrapped for xCluster.
+To enable tablet splitting on cross cluster replicated tables, this flag should be set to `true` on both the producer and consumer clusters, as they will perform splits independently of each other. Both the producer and consumer clusters must be running v2.14.0+ to enable the feature (relevant in case of cluster upgrades).
 
-Default: `false`
+{{< /note >}}
 
 ##### --prevent_split_for_ttl_tables_for_seconds
 
