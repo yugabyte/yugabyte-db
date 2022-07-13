@@ -29,8 +29,8 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_INTEGRATION_TESTS_EXTERNAL_MINI_CLUSTER_H_
-#define YB_INTEGRATION_TESTS_EXTERNAL_MINI_CLUSTER_H_
+
+#pragma once
 
 #include <string.h>
 #include <sys/types.h>
@@ -854,5 +854,6 @@ T ExternalMiniCluster::GetProxy(ExternalDaemon* daemon) {
 
 Status RestartAllMasters(ExternalMiniCluster* cluster);
 
+Status CompactTablets(ExternalMiniCluster* cluster);
+
 }  // namespace yb
-#endif  // YB_INTEGRATION_TESTS_EXTERNAL_MINI_CLUSTER_H_

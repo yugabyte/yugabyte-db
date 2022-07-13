@@ -22,84 +22,99 @@ Status FetchState::SetPrefix(const Slice& prefix) {
   }
   prefix_ = prefix;
   finished_ = false;
-  last_deleted_key_bytes_.clear();
-  last_deleted_key_write_time_ = DocHybridTime::kInvalid;
-  RETURN_NOT_OK(Update());
-  return NextNonDeletedEntry();
+  key_write_stack_.clear();
+  num_rows_ = 0;
+  return Next(MoveForward::kFalse);
 }
 
-Result<bool> FetchState::IsDeletedRowEntry() {
-  // Because Postgres doesn't have a concept of frozen types, kGroupEnd will only demarcate the
-  // end of hashed and range components. It is reasonable to assume then that if the last byte
-  // is kGroupEnd then it does not have any subkeys.
-  bool no_subkey =
-      key()[key().size() - 1] == docdb::KeyEntryTypeAsChar::kGroupEnd;
-
-  return no_subkey && VERIFY_RESULT(IsDeletedEntry());
-}
-
-Result<bool> FetchState::IsDeletedEntry() {
-  return VERIFY_RESULT(docdb::Value::IsTombstoned(value()));
-}
-
-bool FetchState::IsDeletedSinceInsertion() {
-  if (last_deleted_key_bytes_.size() == 0) {
-    return false;
-  }
-  return key().starts_with(last_deleted_key_bytes_.AsSlice()) &&
-          FullKey().write_time < last_deleted_key_write_time_;
-}
-
-Status FetchState::Update() {
+Result<bool> FetchState::Update() {
   if (!iterator_->valid()) {
     finished_ = true;
-    return Status::OK();
+    return true;
   }
   key_ = VERIFY_RESULT(iterator_->FetchKey());
-  if (VERIFY_RESULT(IsDeletedRowEntry())) {
-    last_deleted_key_write_time_ = key_.write_time;
-    last_deleted_key_bytes_ = key_.key;
-  }
-  if (!key_.key.starts_with(prefix_)) {
+  auto rest_of_key = key_.key;
+  if (!rest_of_key.starts_with(prefix_)) {
     finished_ = true;
-    return Status::OK();
+    return true;
   }
 
-  return Status::OK();
-}
-
-Status FetchState::NextNonDeletedEntry() {
-  while (!finished()) {
-    if (VERIFY_RESULT(IsDeletedEntry()) || IsDeletedSinceInsertion()) {
-      RETURN_NOT_OK(NextEntry());
-      continue;
+  rest_of_key.remove_prefix(prefix_.size());
+  for (auto i = key_write_stack_.begin(); i != key_write_stack_.end(); ++i) {
+    if (!rest_of_key.starts_with(i->key.AsSlice())) {
+      key_write_stack_.erase(i, key_write_stack_.end());
+      break;
     }
-    break;
+    if (i->time > key_.write_time) {
+      // This key-value entry is outdated and we should pick the next one.
+      return false;
+    }
+    rest_of_key.remove_prefix(i->key.size());
+  }
+
+  auto alive_row = !VERIFY_RESULT(docdb::Value::IsTombstoned(value()));
+  if (key_write_stack_.empty()) {
+    // Empty stack means new row, i.e. doc key. So rest_of_key is not updated and matches
+    // full key, that contains doc key.
+    if (alive_row) {
+      ++num_rows_;
+    }
+    auto doc_key_size = VERIFY_RESULT(
+        docdb::DocKey::EncodedHashPartAndDocKeySizes(rest_of_key)).doc_key_size;
+    key_write_stack_.push_back(KeyWriteEntry {
+      .key = KeyBuffer(rest_of_key.Prefix(doc_key_size)),
+      // If doc key does not have its own write time, then we use min time to avoid ignoring
+      // updates for other columns.
+      .time = doc_key_size == rest_of_key.size() ? key_.write_time : DocHybridTime::kMin,
+    });
+    rest_of_key.remove_prefix(doc_key_size);
+  }
+
+  // See comment for key_write_stack_ field.
+  if (!rest_of_key.empty()) {
+    // If we have multiple subkeys in rest_of_key, it is NOT necessary to split them.
+    // Since complete subkey cannot be prefix of another subkey.
+    key_write_stack_.push_back(KeyWriteEntry {
+      .key = KeyBuffer(rest_of_key),
+      .time = key_.write_time,
+    });
+  }
+
+  return alive_row;
+}
+
+Status FetchState::Next(MoveForward move_forward) {
+  while (!finished()) {
+    if (move_forward) {
+      iterator_->SeekPastSubKey(key_.key);
+    } else {
+      move_forward = MoveForward::kTrue;
+    }
+    if (VERIFY_RESULT(Update())) {
+      break;
+    }
   }
   return Status::OK();
 }
 
-Status RestorePatch::ProcessEqualEntries(
-    const Slice& existing_key, const Slice& existing_value,
-    const Slice& restoring_key, const Slice& restoring_value) {
+Status RestorePatch::ProcessCommonEntry(
+    const Slice& key, const Slice& existing_value, const Slice& restoring_value) {
   if (restoring_value.compare(existing_value)) {
     IncrementTicker(RestoreTicker::kUpdates);
-    AddKeyValue(restoring_key, restoring_value, doc_batch_);
+    AddKeyValue(key, restoring_value, doc_batch_);
   }
   return Status::OK();
 }
 
-Status RestorePatch::ProcessRestoringLessThanExisting(
-    const Slice& existing_key, const Slice& existing_value,
+Status RestorePatch::ProcessRestoringOnlyEntry(
     const Slice& restoring_key, const Slice& restoring_value) {
   IncrementTicker(RestoreTicker::kInserts);
   AddKeyValue(restoring_key, restoring_value, doc_batch_);
   return Status::OK();
 }
 
-Status RestorePatch::ProcessRestoringGreaterThanExisting(
-    const Slice& existing_key, const Slice& existing_value,
-    const Slice& restoring_key, const Slice& restoring_value) {
+Status RestorePatch::ProcessExistingOnlyEntry(
+    const Slice& existing_key, const Slice& existing_value) {
   char tombstone_char = docdb::ValueEntryTypeAsChar::kTombstone;
   Slice tombstone(&tombstone_char, 1);
   IncrementTicker(RestoreTicker::kDeletes);
@@ -119,19 +134,17 @@ Status RestorePatch::PatchCurrentStateFromRestoringState() {
     }
     auto compare_result = restoring_state_->key().compare(existing_state_->key());
     if (compare_result == 0) {
-      RETURN_NOT_OK(ProcessEqualEntries(existing_state_->key(), existing_state_->value(),
-                                        restoring_state_->key(), restoring_state_->value()));
+      RETURN_NOT_OK(ProcessCommonEntry(
+          existing_state_->key(), existing_state_->value(), restoring_state_->value()));
       RETURN_NOT_OK(restoring_state_->Next());
       RETURN_NOT_OK(existing_state_->Next());
     } else if (compare_result < 0) {
-      RETURN_NOT_OK(ProcessRestoringLessThanExisting(
-          existing_state_->key(), existing_state_->value(),
+      RETURN_NOT_OK(ProcessRestoringOnlyEntry(
           restoring_state_->key(), restoring_state_->value()));
       RETURN_NOT_OK(restoring_state_->Next());
     } else {
-      RETURN_NOT_OK(ProcessRestoringGreaterThanExisting(
-          existing_state_->key(), existing_state_->value(),
-          restoring_state_->key(), restoring_state_->value()));
+      RETURN_NOT_OK(ProcessExistingOnlyEntry(
+          existing_state_->key(), existing_state_->value()));
       RETURN_NOT_OK(existing_state_->Next());
     }
   }
@@ -141,8 +154,8 @@ Status RestorePatch::PatchCurrentStateFromRestoringState() {
       RETURN_NOT_OK(restoring_state_->Next());
       continue;
     }
-    RETURN_NOT_OK(ProcessRestoringLessThanExisting(
-        Slice(), Slice(), restoring_state_->key(), restoring_state_->value()));
+    RETURN_NOT_OK(ProcessRestoringOnlyEntry(
+        restoring_state_->key(), restoring_state_->value()));
     RETURN_NOT_OK(restoring_state_->Next());
   }
 
@@ -151,8 +164,8 @@ Status RestorePatch::PatchCurrentStateFromRestoringState() {
       RETURN_NOT_OK(existing_state_->Next());
       continue;
     }
-    RETURN_NOT_OK(ProcessRestoringGreaterThanExisting(
-        existing_state_->key(), existing_state_->value(), Slice(), Slice()));
+    RETURN_NOT_OK(ProcessExistingOnlyEntry(
+        existing_state_->key(), existing_state_->value()));
     RETURN_NOT_OK(existing_state_->Next());
   }
 

@@ -27,17 +27,19 @@
 
 namespace yb {
 
+YB_STRONGLY_TYPED_BOOL(MoveForward);
+
 class FetchState {
  public:
   explicit FetchState(const docdb::DocDB& doc_db, const ReadHybridTime& read_time)
       : iterator_(CreateIntentAwareIterator(
-          doc_db,
-          docdb::BloomFilterMode::DONT_USE_BLOOM_FILTER,
-          boost::none,
-          rocksdb::kDefaultQueryId,
-          TransactionOperationContext(),
-          CoarseTimePoint::max(),
-          read_time)) {
+            doc_db,
+            docdb::BloomFilterMode::DONT_USE_BLOOM_FILTER,
+            boost::none,
+            rocksdb::kDefaultQueryId,
+            TransactionOperationContext(),
+            CoarseTimePoint::max(),
+            read_time)) {
   }
 
   Status SetPrefix(const Slice& prefix);
@@ -54,37 +56,37 @@ class FetchState {
     return iterator_->value();
   }
 
-  docdb::FetchKeyResult FullKey() const {
+  size_t num_rows() const {
+    return num_rows_;
+  }
+
+  const docdb::FetchKeyResult& FullKey() const {
     return key_;
   }
 
-  Status NextEntry() {
-    iterator_->SeekPastSubKey(key_.key);
-    return Update();
-  }
-
-  Status Next() {
-    RETURN_NOT_OK(NextEntry());
-    return NextNonDeletedEntry();
-  }
-
-  // Returns true if the entry corresponds to a deleted row
-  // in rocksdb.
-  Result<bool> IsDeletedRowEntry();
-
-  // Returns true if it has been deleted since the time it was inserted.
-  bool IsDeletedSinceInsertion();
+  // Fetch next valid key-value entry.
+  // When step is true, always move from the current entry.
+  Status Next(MoveForward move_forward = MoveForward::kTrue);
 
  private:
-  Status Update();
-  Status NextNonDeletedEntry();
-  Result<bool> IsDeletedEntry();
+  // Updates internal state in accordance to new key-value entry.
+  // Returns false if current key-value entry should be ignored, true otherwise.
+  Result<bool> Update();
+
+  struct KeyWriteEntry {
+    KeyBuffer key; // Contains key part that corresponds to this entry.
+    DocHybridTime time;
+  };
 
   std::unique_ptr<docdb::IntentAwareIterator> iterator_;
   Slice prefix_;
   docdb::FetchKeyResult key_;
-  KeyBuffer last_deleted_key_bytes_;
-  DocHybridTime last_deleted_key_write_time_;
+  size_t num_rows_ = 0;
+  // Store stack of subkeys for the current row.
+  // I.e. the first entry is related to row, the second is related to column in this row.
+  // And so on.
+  // Hybrid times in the stack should be in nondecreasing order.
+  boost::container::small_vector<KeyWriteEntry, 8> key_write_stack_;
   bool finished_ = false;
 };
 
@@ -124,23 +126,20 @@ class RestorePatch {
  protected:
   void IncrementTicker(RestoreTicker ticker) { tickers_[static_cast<size_t>(ticker)]++; }
 
+  virtual Status ProcessCommonEntry(
+      const Slice& key, const Slice& existing_value, const Slice& restoring_value);
+
+  Status ProcessRestoringOnlyEntry(
+      const Slice& restoring_key, const Slice& restoring_value);
+
+  virtual Status ProcessExistingOnlyEntry(
+      const Slice& existing_key, const Slice& existing_value);
+
  private:
   FetchState* existing_state_;
   FetchState* restoring_state_;
   docdb::DocWriteBatch* doc_batch_;
   std::array<size_t, kRestoreTickerMapSize> tickers_ = { 0, 0, 0 };
-
-  virtual Status ProcessEqualEntries(
-      const Slice& existing_key, const Slice& existing_value,
-      const Slice& restoring_key, const Slice& restoring_value);
-
-  Status ProcessRestoringLessThanExisting(
-      const Slice& existing_key, const Slice& existing_value,
-      const Slice& restoring_key, const Slice& restoring_value);
-
-  Status ProcessRestoringGreaterThanExisting(
-      const Slice& existing_key, const Slice& existing_value,
-      const Slice& restoring_key, const Slice& restoring_value);
 
   virtual Result<bool> ShouldSkipEntry(const Slice& key, const Slice& value) = 0;
 };
