@@ -2671,6 +2671,10 @@ export default class ClusterFields extends Component {
                     </Col>
                   </>
                 )}
+              </Col>
+            </Row>
+            <Row>
+              <Col sm={12} md={12} lg={6}>
                 {!this.checkVolumeSizeRestrictions() && (
                   <div className="has-error">
                     <div className="help-block standard-error">
