@@ -226,6 +226,7 @@ class DocRowwiseIterator : public YQLRowwiseIteratorIf {
 
   mutable std::unique_ptr<DocDBTableReader> doc_reader_ = nullptr;
 
+  TableType table_type_;
   mutable bool ignore_ttl_ = false;
 
   bool debug_dump_ = false;
