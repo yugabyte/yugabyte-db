@@ -637,7 +637,7 @@ The following steps assume that you already have a running YugabyteDB cluster de
 
 - Step 2: Download the current [YugabyteDB preview release](https://download.yugabyte.com/).
 
-- Step 3: Start the YugabyteDB node by using `yugabyted start` command by providing the necessary cloud information
+- Step 3: Start the YugabyteDB node by using `yugabyted start` command by providing the necessary cloud information as follows:
 
   ```sh
   bin/yugabyted start --advertise_address=<host-ip> --cloud_location=aws.us-east.us-east-1a --fault_tolerance=zone
