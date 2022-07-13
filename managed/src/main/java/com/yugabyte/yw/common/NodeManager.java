@@ -1161,7 +1161,7 @@ public class NodeManager extends DevopsBase {
               break;
             case UPDATE_CERT_DIRS:
               {
-                Map<String, String> gflags = new HashMap<>();
+                Map<String, String> gflags = new HashMap<>(taskParam.gflags);
                 if (EncryptionInTransitUtil.isRootCARequired(taskParam)) {
                   gflags.put("certs_dir", certsNodeDir);
                 }
