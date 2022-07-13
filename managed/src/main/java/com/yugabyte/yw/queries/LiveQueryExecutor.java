@@ -7,31 +7,38 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.annotations.VisibleForTesting;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.forms.LiveQueriesParams;
 import java.util.UUID;
 import java.util.concurrent.Callable;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import play.api.Play;
 import play.libs.Json;
 
+@Slf4j
 public class LiveQueryExecutor implements Callable<JsonNode> {
-  public static final Logger LOG = LoggerFactory.getLogger(LiveQueryExecutor.class);
 
   private final ApiHelper apiHelper;
   // hostname can be either IP address or DNS
-  private String hostName;
-  private String nodeName;
-  private int port;
-  private QueryHelper.QueryApi apiType;
+  private final String hostName;
+  private final String nodeName;
+  private final int port;
+  private final QueryHelper.QueryApi apiType;
 
   public LiveQueryExecutor(String nodeName, String hostName, int port, QueryHelper.QueryApi api) {
+    this(nodeName, hostName, port, api, Play.current().injector().instanceOf(ApiHelper.class));
+  }
+
+  @VisibleForTesting
+  LiveQueryExecutor(
+      String nodeName, String hostName, int port, QueryHelper.QueryApi api, ApiHelper apiHelper) {
     this.nodeName = nodeName;
     this.hostName = hostName;
     this.port = port;
     this.apiType = api;
-    this.apiHelper = Play.current().injector().instanceOf(ApiHelper.class);
+    this.apiHelper = apiHelper;
   }
 
   @Override
@@ -45,7 +52,7 @@ public class LiveQueryExecutor implements Callable<JsonNode> {
         return processYCQLRowData(response);
       }
     } catch (Exception e) {
-      LOG.error("Exception while fetching url: {}; message: {}", url, e.getStackTrace());
+      log.error(String.format("Exception while fetching url: %s", url), e);
       ObjectNode errorJson = Json.newObject();
       errorJson.put("error", e.getMessage());
       errorJson.put("type", apiType == QueryHelper.QueryApi.YSQL ? "ysql" : "ycql");
@@ -80,16 +87,19 @@ public class LiveQueryExecutor implements Callable<JsonNode> {
             rowData.put("appName", params.application_name);
             rowData.put("clientHost", params.host);
             rowData.put("clientPort", params.port);
+
+            ArrayNode ysqlArray;
             if (!responseJson.has("ysql")) {
-              ArrayNode ysqlArray = responseJson.putArray("ysql");
-              ysqlArray.add(rowData);
+              ysqlArray = responseJson.putArray("ysql");
             } else {
-              ArrayNode ysqlArray = (ArrayNode) responseJson.get("ysql");
-              ysqlArray.add(rowData);
+              ysqlArray = (ArrayNode) responseJson.get("ysql");
             }
-          } catch (JsonProcessingException exception) {
+
+            ysqlArray.add(rowData);
+          } catch (JsonProcessingException e) {
             // Try to process all connections even if there is an exception
-            LOG.error("Unable to process JSON from YSQL query. {}", objNode.asText());
+            log.error(
+                String.format("Unable to process JSON from YSQL query: %s", objNode.asText()), e);
           }
         }
       }
@@ -98,7 +108,8 @@ public class LiveQueryExecutor implements Callable<JsonNode> {
   }
 
   // Similar to above helper function except for YCQL connection info
-  private JsonNode processYCQLRowData(JsonNode response) {
+  @VisibleForTesting
+  JsonNode processYCQLRowData(JsonNode response) {
     ObjectNode responseJson = Json.newObject();
     ObjectMapper mapper = new ObjectMapper();
     if (response.has("inbound_connections")) {
@@ -120,9 +131,22 @@ public class LiveQueryExecutor implements Callable<JsonNode> {
                 }
                 queryStringBuilder.append(callDetail.get("sql_string").asText());
               }
-              String keyspace =
-                  params.connection_details.cql_connection_details.get("keyspace").asText();
-              String[] splitIp = params.remote_ip.split(":");
+              String keyspace = StringUtils.EMPTY;
+              if (params.connection_details != null
+                  && params.connection_details.cql_connection_details != null
+                  && params.connection_details.cql_connection_details.has("keyspace")) {
+                keyspace =
+                    params.connection_details.cql_connection_details.get("keyspace").asText();
+              }
+              String clientHost = StringUtils.EMPTY;
+              String clientPort = StringUtils.EMPTY;
+              int hostPortDelimiterIndex = params.remote_ip.lastIndexOf(":");
+              if (hostPortDelimiterIndex < 0) {
+                log.warn("Invalid remove_ip field in response: {}", params.remote_ip);
+              } else {
+                clientHost = params.remote_ip.substring(0, hostPortDelimiterIndex);
+                clientPort = params.remote_ip.substring(hostPortDelimiterIndex + 1);
+              }
               // Random UUID intended for table row key
               rowData.put("id", UUID.randomUUID().toString());
               rowData.put("nodeName", nodeName);
@@ -131,20 +155,22 @@ public class LiveQueryExecutor implements Callable<JsonNode> {
               rowData.put("query", queryStringBuilder.toString());
               rowData.put("type", query.cql_details.type);
               rowData.put("elapsedMillis", query.elapsed_millis);
-              rowData.put("clientHost", splitIp[0]);
-              rowData.put("clientPort", splitIp[1]);
+              rowData.put("clientHost", clientHost);
+              rowData.put("clientPort", clientPort);
 
+              ArrayNode ycqlArray;
               if (!responseJson.has("ycql")) {
-                ArrayNode ycqlArray = responseJson.putArray("ycql");
-                ycqlArray.add(rowData);
+                ycqlArray = responseJson.putArray("ycql");
               } else {
-                ArrayNode ycqlArray = (ArrayNode) responseJson.get("ycql");
-                ycqlArray.add(rowData);
+                ycqlArray = (ArrayNode) responseJson.get("ycql");
               }
+
+              ycqlArray.add(rowData);
             }
           }
-        } catch (JsonProcessingException exception) {
-          LOG.error("Unable to process JSON from YCQL query connection", objNode.asText());
+        } catch (JsonProcessingException e) {
+          log.error(
+              String.format("Unable to process JSON from YCQL query: %s", objNode.asText()), e);
         }
       }
     }
