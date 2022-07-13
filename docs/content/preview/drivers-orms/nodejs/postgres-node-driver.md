@@ -19,6 +19,13 @@ type: docs
     </a>
   </li>
 
+   <li >
+    <a href="/preview/drivers-orms/nodejs/postgres-node-driver/" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YugabyteDB node-postgres Driver
+    </a>
+  </li>
+
 </ul>
 
 The [PostgreSQL node-postgres driver](https://node-postgres.com/) is the official Node.js driver for PostgreSQL which can be used to connect with YugabyteDB YSQL API. Because YugabyteDB YSQL API has is fully compatible with PostgreSQL node-postgres (pg) driver, it allows Node.js programmers to connect to the YugabyteDB database to execute DMLs and DDLs using the node-postgres APIs.
