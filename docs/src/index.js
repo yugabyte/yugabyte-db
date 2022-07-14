@@ -209,8 +209,10 @@ $(document).ready(() => {
   yugabyteResizeHeaderMenu();
 
   // For Section nav.
-  $(document).on('click', 'li.submenu.section i', (event) => {
-    $(event.currentTarget).parent('li.submenu.section').toggleClass('open');
+  $(document).on('click', 'li.submenu.section a, li.submenu.section i', (event) => {
+    if (typeof event.target.href === 'undefined' || event.target.href === '') {
+      $(event.currentTarget).parent('li.submenu.section').toggleClass('open');
+    }
   });
 
   $(document).on('click', 'li.submenu:not(.section) i', (event) => {
