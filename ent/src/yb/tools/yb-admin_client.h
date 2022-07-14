@@ -128,6 +128,9 @@ class ClusterAdminClient : public yb::tools::ClusterAdminClient {
 
   Status BootstrapProducer(const std::vector<TableId>& table_id);
 
+  Status WaitForReplicationDrain(const std::vector<CDCStreamId>& stream_ids,
+                                 const string& target_time);
+
  private:
   Result<TxnSnapshotId> SuitableSnapshotId(
       const SnapshotScheduleId& schedule_id, HybridTime restore_at, CoarseTimePoint deadline);
