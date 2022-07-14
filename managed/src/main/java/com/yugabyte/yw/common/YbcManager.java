@@ -16,6 +16,8 @@ import org.yb.ybc.BackupServiceNfsDirDeleteResponse;
 import java.util.UUID;
 import org.yb.ybc.BackupServiceTaskAbortRequest;
 import org.yb.ybc.BackupServiceTaskAbortResponse;
+import org.yb.ybc.BackupServiceTaskCreateRequest;
+import org.yb.ybc.BackupServiceTaskCreateResponse;
 import org.yb.ybc.BackupServiceTaskDeleteRequest;
 import org.yb.ybc.BackupServiceTaskDeleteResponse;
 import org.yb.ybc.BackupServiceTaskResultRequest;
@@ -155,6 +157,58 @@ public class YbcManager {
       LOG.info("Task {} is successfully deleted on Yb-controller.", taskID);
     } catch (Exception e) {
       LOG.error("Task {} deletion failed with error: {}", taskID, e.getMessage());
+    } finally {
+      ybcClientService.closeClient(ybcClient);
+    }
+  }
+
+  public String downloadSuccessMarker(
+      BackupServiceTaskCreateRequest downloadSuccessMarkerRequest,
+      UUID universeUUID,
+      String taskID) {
+    YbcClient ybcClient = null;
+    String successMarker = null;
+    try {
+      ybcClient = ybcBackupUtil.getYbcClient(universeUUID);
+      BackupServiceTaskCreateResponse downloadSuccessMarkerResponse =
+          ybcClient.restoreNamespace(downloadSuccessMarkerRequest);
+      if (!downloadSuccessMarkerResponse.getStatus().getCode().equals(ControllerStatus.OK)) {
+        throw new Exception(
+            String.format(
+                "Failed to send download success marker request, failure status: {}",
+                downloadSuccessMarkerResponse.getStatus().getCode().name()));
+      }
+      BackupServiceTaskResultRequest downloadSuccessMarkerResultRequest =
+          BackupServiceTaskResultRequest.newBuilder().setTaskId(taskID).build();
+      BackupServiceTaskResultResponse downloadSuccessMarkerResultResponse = null;
+      int numRetries = 0;
+      while (numRetries < MAX_RETRIES) {
+        downloadSuccessMarkerResultResponse =
+            ybcClient.backupServiceTaskResult(downloadSuccessMarkerResultRequest);
+        if (!downloadSuccessMarkerResultResponse
+            .getTaskStatus()
+            .equals(ControllerStatus.IN_PROGRESS)) {
+          break;
+        }
+        Thread.sleep(WAIT_EACH_ATTEMPT_MS);
+        numRetries++;
+      }
+      if (!downloadSuccessMarkerResultResponse.getTaskStatus().equals(ControllerStatus.OK)) {
+        throw new Exception(
+            String.format(
+                "Failed to download success marker, failure status: {}",
+                downloadSuccessMarkerResultResponse.getTaskStatus().name()));
+      }
+      LOG.info("Task {} on YB-Controller to fetch success marker is successful", taskID);
+      successMarker = downloadSuccessMarkerResultResponse.getMetadataJson();
+      deleteYbcBackupTask(universeUUID, taskID);
+      return successMarker;
+    } catch (Exception e) {
+      LOG.error(
+          "Task {} on YB-Controller to fetch success marker for restore failed. Error: {}",
+          taskID,
+          e.getMessage());
+      return successMarker;
     } finally {
       ybcClientService.closeClient(ybcClient);
     }

@@ -203,34 +203,15 @@ public class GCPUtil implements CloudUtil {
     return bucketList;
   }
 
-  @Override
-  public CloudStoreSpec createCloudStoreSpec(
-      CustomerConfigData configData, String bucket, String cloudDir) {
+  public Map<String, String> getRegionLocationsMap(CustomerConfigData configData) {
+    Map<String, String> regionLocationsMap = new HashMap<>();
     CustomerConfigStorageGCSData gcsData = (CustomerConfigStorageGCSData) configData;
-    Map<String, String> gcsCredsMap = createCredsMapYbc(gcsData);
-    return YbcBackupUtil.buildCloudStoreSpec(bucket, cloudDir, gcsCredsMap, Util.GCS);
-  }
-
-  @Override
-  public JsonNode readFileFromCloud(String location, CustomerConfigData configData)
-      throws Exception {
-    CustomerConfigStorageGCSData gcsData = (CustomerConfigStorageGCSData) configData;
-    Storage storage = getStorageService((CustomerConfigStorageGCSData) configData);
-
-    String[] splitValues = getSplitLocationValue(location);
-    String bucket = splitValues[0];
-    String cloudDir = splitValues.length > 1 ? splitValues[1] : "";
-    BlobId blobId = BlobId.of(bucket, cloudDir);
-    Blob blob = storage.get(blobId);
-
-    ObjectMapper mapper = new ObjectMapper();
-    JsonNode json = mapper.readTree(new String(blob.getContent()));
-    return json;
-  }
-
-  public String createDirPath(String bucket, String dir) {
-    StringJoiner joiner = new StringJoiner("/");
-    joiner.add("gs:/").add(bucket).add(dir);
-    return joiner.toString();
+    if (CollectionUtils.isNotEmpty(gcsData.regionLocations)) {
+      gcsData
+          .regionLocations
+          .stream()
+          .forEach(rL -> regionLocationsMap.put(rL.region, rL.location));
+    }
+    return regionLocationsMap;
   }
 }

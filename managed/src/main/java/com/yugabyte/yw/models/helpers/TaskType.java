@@ -295,6 +295,8 @@ public enum TaskType {
 
   RestoreUniverseKeysYb("subtasks.RestoreUniverseKeysYb"),
 
+  RestoreUniverseKeysYbc("subtasks.RestoreUniverseKeysYbc"),
+
   WaitForLeadersOnPreferredOnly("subtasks.WaitForLeadersOnPreferredOnly"),
 
   EnableEncryptionAtRest("subtasks.EnableEncryptionAtRest"),
