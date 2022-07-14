@@ -4,12 +4,9 @@ headerTitle: USE
 linkTitle: USE
 description: Use the USE statement to specify a default keyspace for the current client session.
 menu:
-  preview:
+  stable:
     parent: api-cassandra
     weight: 1290
-aliases:
-  - /preview/api/cassandra/ddl_use
-  - /preview/api/ycql/ddl_use
 type: docs
 ---
 

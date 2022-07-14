@@ -4,7 +4,7 @@ headerTitle: Read replicas
 linkTitle: Read replicas
 description: Read replicas
 menu:
-  preview:
+  stable:
     name: Read replicas
     identifier: explore-multi-region-deployments-read-replicas-ysql
     parent: explore-multi-region-deployments

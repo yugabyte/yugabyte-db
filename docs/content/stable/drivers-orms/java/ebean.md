@@ -5,7 +5,7 @@ description: Java ORM support for YugabyteDB
 headcontent: Java ORM support for YugabyteDB
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
-  preview:
+  stable:
     identifier: java-orm-ebean
     parent: java-drivers
     weight: 600

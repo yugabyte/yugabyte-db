@@ -6,7 +6,7 @@ description: Explore indexes and constraints in YSQL and YCQL
 headcontent: Explore indexes and constraints in YSQL and YCQL
 image: /images/section_icons/explore/monitoring.png
 menu:
-  preview:
+  stable:
     identifier: explore-indexes-constraints
     parent: explore
     weight: 245

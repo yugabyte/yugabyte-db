@@ -3,10 +3,8 @@ title: Deploy on Microsoft Azure using Azure Kubernetes Service
 headerTitle: Microsoft Azure
 linkTitle: Microsoft Azure
 description: Deploy on Microsoft Azure Kubernetes Service (AKS)
-aliases:
-  - /deploy/public-clouds/azure/
 menu:
-  preview:
+  stable:
     identifier: deploy-in-azure-2-aks
     parent: public-clouds
     weight: 650

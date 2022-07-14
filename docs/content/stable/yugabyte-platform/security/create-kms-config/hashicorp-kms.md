@@ -3,10 +3,8 @@ title: Create a KMS configuration using HashiCorp Vault
 headerTitle: Create a KMS configuration using HashiCorp Vault
 linkTitle: Create a KMS configuration
 description: Use YugabyteDB Anywhere to create a KMS configuration for HashiCorp Vault.
-aliases:
-  - /preview/yugabyte-platform/security/create-kms-config
 menu:
-  preview_yugabyte-platform:
+  stable_yugabyte-platform:
     parent: security
     identifier: create-kms-config-3-hashicorp-kms
     weight: 27

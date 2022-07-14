@@ -3,10 +3,8 @@ title: Prepare the Kubernetes environment
 headerTitle: Prepare the Kubernetes environment
 linkTitle: Prepare the environment
 description: Prepare the Kubernetes environment for YugabyteDB Anywhere.
-aliases:
-  - /preview/deploy/enterprise-edition/prepare-environment/
 menu:
-  preview_yugabyte-platform:
+  stable_yugabyte-platform:
     parent: install-yugabyte-platform
     identifier: prepare-environment-4-kubernetes
     weight: 55

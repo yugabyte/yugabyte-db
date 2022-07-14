@@ -4,9 +4,8 @@ headerTitle: Upgrade YugabyteDB Anywhere
 linkTitle: Upgrade
 description: Upgrade YugabyteDB Anywhere.
 image: /images/section_icons/manage/enterprise.png
-aliases:
 menu:
-  preview_yugabyte-platform:
+  stable_yugabyte-platform:
     parent: yugabytedb-anywhere
     identifier: upgrade
     weight: 649

@@ -4,12 +4,8 @@ headerTitle: Debezium connector for YugabyteDB
 linkTitle: Debezium connector
 description: Debezium is an open source distributed platform used to capture the changes in a database.
 beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
-aliases:
-  - /preview/explore/change-data-capture/debezium-connector-yugabytedb-ysql
-  - /preview/explore/change-data-capture/debezium-connector
-  - /preview/explore/change-data-capture/debezium
 menu:
-  preview:
+  stable:
     parent: explore-change-data-capture
     identifier: debezium-connector-yugabytedb
     weight: 580

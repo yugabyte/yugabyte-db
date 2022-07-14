@@ -4,7 +4,7 @@ headerTitle: Install YugabyteDB Anywhere software - Kubernetes
 linkTitle: Install software
 description: Install YugabyteDB Anywhere software in your Kubernetes environment.
 menu:
-  preview_yugabyte-platform:
+  stable_yugabyte-platform:
     parent: install-yugabyte-platform
     identifier: install-software-2-kubernetes
     weight: 77

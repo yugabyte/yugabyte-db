@@ -4,7 +4,7 @@ headerTitle: extended_timezone_names — unrestricted full projection
 linkTitle: Unrestricted full projection
 description: Table. [YSQL]
 menu:
-  preview:
+  stable:
     identifier: unrestricted-full-projection
     parent: extended-timezone-names
     weight: 10

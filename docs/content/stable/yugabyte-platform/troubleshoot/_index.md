@@ -4,12 +4,8 @@ linkTitle: Troubleshoot
 description: Troubleshoot
 image: /images/section_icons/troubleshoot/troubleshoot.png
 headcontent: Diagnose and troubleshoot issues that arise from YugabyteDB universes and YugabyteDB Anywhere.
-aliases:
-  - /troubleshoot/enterprise-edition/
-  - /preview/troubleshoot/enterprise-edition/
-  - /preview/troubleshoot/yugabyte-platform/
 menu:
-  preview_yugabyte-platform:
+  stable_yugabyte-platform:
     parent: yugabytedb-anywhere
     identifier: troubleshoot-yp
     weight: 648

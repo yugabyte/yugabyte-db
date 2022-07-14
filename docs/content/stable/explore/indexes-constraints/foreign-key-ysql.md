@@ -4,13 +4,10 @@ linkTitle: Foreign keys
 description: Defining Foreign key constraint in YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
-  preview:
+  stable:
     identifier: foreign-key-ysql
     parent: explore-indexes-constraints
     weight: 210
-aliases:
-  - /preview/explore/ysql-language-features/constraints/
-  - /preview/explore/indexes-constraints/constraints/
 type: docs
 ---
 

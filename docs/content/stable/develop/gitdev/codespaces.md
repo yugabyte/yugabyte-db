@@ -3,7 +3,7 @@ title: Codespaces
 linkTitle: Codespaces
 description: GitHub Codespaces integrated development environment
 menu:
-  preview:
+  stable:
     identifier: codespaces
     parent: gitdev
     weight: 591

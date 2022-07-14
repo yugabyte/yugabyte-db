@@ -5,10 +5,8 @@ linkTitle: Administer
 description: Administer YugabyteDB Anywhere
 image: /images/section_icons/manage/enterprise.png
 headcontent:
-aliases:
-  - /preview/yugabyte-platform/administer-yp
 menu:
-  preview_yugabyte-platform:
+  stable_yugabyte-platform:
     parent: yugabytedb-anywhere
     identifier: administer-yugabyte-platform
     weight: 649

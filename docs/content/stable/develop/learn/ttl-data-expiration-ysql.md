@@ -3,12 +3,8 @@ title: TTL for data expiration in YSQL
 headerTitle: TTL for data expiration
 linkTitle: 9. TTL for data expiration
 description: Learn how to use TTL for data expiration in YSQL.
-aliases:
-  - /develop/learn/ttl-data-expiry/
-  - /preview/develop/learn/ttl-data-expiry/
-  - /preview/develop/learn/ttl-data-expiration/
 menu:
-  preview:
+  stable:
     identifier: ttl-data-expiration-ysql
     parent: learn
     weight: 581

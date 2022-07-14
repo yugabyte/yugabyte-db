@@ -5,13 +5,8 @@ linkTitle: Observability
 description: Observability in YugabyteDB.
 headcontent: Observability in YugabyteDB.
 image: /images/section_icons/secure/authorization.png
-aliases:
-  - /preview/explore/observability-docker/
-  - /preview/explore/observability-docker/macos
-  - /preview/explore/observability-docker/linux
-  - /preview/explore/observability-docker/docker
 menu:
-  preview:
+  stable:
     identifier: explore-observability
     parent: explore
     weight: 310

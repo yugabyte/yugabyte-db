@@ -5,10 +5,8 @@ linkTitle: Real-world examples
 description: Run real-world YugabyteDB example applications for e-commerce and IoT.
 headcontent:
 image: /images/section_icons/index/develop.png
-aliases:
-  - /develop/realworld-apps/
 menu:
-  preview:
+  stable:
     identifier: realworld-apps
     parent: develop
     weight: 580

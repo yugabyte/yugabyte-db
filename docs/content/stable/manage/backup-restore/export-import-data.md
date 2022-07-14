@@ -3,11 +3,8 @@ title: Export and import for YSQL
 headerTitle: Export and import
 linkTitle: Export and import
 description: Export and import for YSQL
-aliases:
-  - /preview/manage/backup-restore/back-up-data/
-  - /preview/manage/backup-restore/restore-data/
 menu:
-  preview:
+  stable:
     identifier: export-import-data
     parent: backup-restore
     weight: 703

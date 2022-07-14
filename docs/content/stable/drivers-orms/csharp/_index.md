@@ -5,7 +5,7 @@ linkTitle: C#
 description: C# Drivers and ORMs support for YugabyteDB.
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
-  preview:
+  stable:
     identifier: csharp-drivers
     parent: drivers-orms
     weight: 570

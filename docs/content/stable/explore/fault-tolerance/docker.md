@@ -3,10 +3,8 @@ title: Explore fault tolerance on Docker
 headerTitle: Fault tolerance
 linkTitle: Fault tolerance
 description: Simulate fault tolerance and resilience in a local three-node YugabyteDB cluster on Docker.
-aliases:
-  - /preview/explore/fault-tolerance-docker/
 menu:
-  preview:
+  stable:
     identifier: fault-tolerance-3-docker
     parent: explore
     weight: 215

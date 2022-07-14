@@ -4,7 +4,7 @@ linkTitle: Migration steps
 description: Overview of the process for migrating data to YugabyteDB.
 beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
-  preview:
+  stable:
     identifier: migration-steps
     parent: yb-voyager
     weight: 101

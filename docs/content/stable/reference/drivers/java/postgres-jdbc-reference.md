@@ -5,7 +5,7 @@ description: JDBC Drivers for YSQL
 headcontent: JDBC Drivers for YSQL
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
-  preview:
+  stable:
     name: JDBC Drivers
     identifier: ref-postgres-jdbc-driver
     parent: drivers

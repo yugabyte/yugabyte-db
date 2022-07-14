@@ -4,12 +4,10 @@ linkTitle: Cursors
 description: Using Cursors in YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
-  preview:
+  stable:
     identifier: advanced-features-cursor
     parent: advanced-features
     weight: 220
-aliases:
-  - /preview/explore/ysql-language-features/cursor/
 type: docs
 ---
 

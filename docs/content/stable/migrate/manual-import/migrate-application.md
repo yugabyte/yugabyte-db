@@ -4,12 +4,10 @@ headerTitle: Migrate a PostgreSQL application
 linkTitle: Migrate a PostgreSQL application
 description: How to migrate an application written for PostgreSQL to YugabyteDB.
 menu:
-  preview:
+  stable:
     identifier: migrate-postgresql-app
     parent: manual-import
     weight: 202
-aliases:
-  - /preview/migrate/migrate-from-postgresql/migrate-application/
 type: docs
 ---
 

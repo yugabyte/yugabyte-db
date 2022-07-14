@@ -4,11 +4,9 @@ headerTitle: SET SESSION AUTHORIZATION
 linkTitle: SET SESSION AUTHORIZATION
 description: Use the SET SESSION AUTHORIZATION statement to set the current user and session user of the current session to be the specified user.
 menu:
-  preview:
+  stable:
     identifier: dcl_set_session_authorization
     parent: statements
-aliases:
-  - /preview/api/ysql/commands/dcl_set_session_authorization/
 type: docs
 ---
 

@@ -6,12 +6,10 @@ description: YSQL API keywords.
 summary: Reference for YSQL API
 image: /images/section_icons/api/ysql.png
 menu:
-  preview:
+  stable:
     identifier: api-ysql-keywords
     parent: api-ysql
     weight: 500
-aliases:
-  - /preview/api/ysql/keywords
 type: docs
 ---
 

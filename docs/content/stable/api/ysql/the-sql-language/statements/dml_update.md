@@ -4,11 +4,9 @@ headerTitle: UPDATE
 linkTitle: UPDATE
 description: Use UPDATE to modify values of specified columns in all rows that meet certain conditions. When conditions are not provided in WHERE clause, all rows update.
 menu:
-  preview:
+  stable:
     identifier: dml_update
     parent: statements
-aliases:
-  - /preview/api/ysql/commands/dml_update/
 type: docs
 ---
 

@@ -4,7 +4,7 @@ linkTitle: int-results
 headerTitle: Output from running do_ntile(), do_percent_rank(), and do_cume_dist() on t4.int_score
 description: Part of the code kit for the "Analyzing a normal distribution" section within the YSQL window functions documentation (reports of results).
 menu:
-  preview:
+  stable:
     identifier: int-results
     parent: normal-distribution-analysis-reports
     weight: 40

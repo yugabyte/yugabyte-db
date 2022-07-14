@@ -4,13 +4,10 @@ linkTitle: Partial indexes
 description: Using Partial indexes in YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
-  preview:
+  stable:
     identifier: partial-index-ysql
     parent: explore-indexes-constraints
     weight: 240
-aliases:
-  - /preview/explore/ysql-language-features/indexes-1/
-  - /preview/explore/indexes-constraints/indexes-1/
 type: docs
 ---
 

@@ -4,11 +4,10 @@ headerTitle: PL/pgSQL's execution model
 linkTitle: PL/pgSQL's execution model
 description: Describes PL/pgSQL's execution model [YSQL].
 menu:
-  preview:
+  stable:
     identifier: plpgsql-execution-model
     parent: user-defined-subprograms-and-anon-blocks
     weight: 40
-aliases:
 type: docs
 ---
 

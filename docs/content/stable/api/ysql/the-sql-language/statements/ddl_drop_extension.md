@@ -5,11 +5,9 @@ linkTitle: DROP EXTENSION
 summary: Remove an extension
 description: Use the DROP EXTENSION statement to remove an extension from the database
 menu:
-  preview:
+  stable:
     identifier: ddl_drop_extension
     parent: statements
-aliases:
-  - /preview/api/ysql/commands/ddl_drop_extension/
 type: docs
 ---
 

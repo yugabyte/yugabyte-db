@@ -4,13 +4,8 @@ headerTitle: CDCSDK Server
 linkTitle: CDCSDK Server
 description: A ready-to-use application for capturing changes in a database.
 beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
-aliases:
-  - /preview/explore/change-data-capture/cdcsdk-server-ysql
-  - /preview/explore/change-data-capture/cdcsdk-server-debezium
-  - /preview/explore/change-data-capture/debezium-server-yugabyte
-  - /preview/explore/change-data-capture/cdcsdk-server
 menu:
-  preview:
+  stable:
     parent: explore-change-data-capture
     identifier: cdcsdk-server
     weight: 580

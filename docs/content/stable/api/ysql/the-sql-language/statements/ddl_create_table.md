@@ -4,11 +4,9 @@ headerTitle: CREATE TABLE
 linkTitle: CREATE TABLE
 description: Use the CREATE TABLE statement to create a table in a database.
 menu:
-  preview:
+  stable:
     identifier: ddl_create_table
     parent: statements
-aliases:
-  - /preview/api/ysql/commands/ddl_create_table/
 type: docs
 ---
 

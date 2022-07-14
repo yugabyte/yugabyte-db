@@ -3,10 +3,8 @@ title: Delete a universe
 headerTitle: Delete a universe
 linkTitle: Delete a universe
 description: Use YugabyteDB Anywhere to delete a universe.
-aliases:
-  - /preview/manage/enterprise-edition/delete-universe/
 menu:
-  preview_yugabyte-platform:
+  stable_yugabyte-platform:
     identifier: delete-universe
     parent: manage-deployments
     weight: 70

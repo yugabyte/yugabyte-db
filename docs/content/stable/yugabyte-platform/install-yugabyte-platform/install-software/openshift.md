@@ -4,7 +4,7 @@ headerTitle: Install YugabyteDB Anywhere software - OpenShift
 linkTitle: Install software
 description: Install YugabyteDB Anywhere software in your OpenShift environment
 menu:
-  preview_yugabyte-platform:
+  stable_yugabyte-platform:
     parent: install-yugabyte-platform
     identifier: install-software-2-openshift
     weight: 77
@@ -161,9 +161,9 @@ Alternatively, you can create an instance of YugabyteDB Anywhere via the command
   ```shell
   oc new-project yb-platform
   ```
-  
+
   <br>Expect the following output:
-  
+
   ```output
   Now using project "yb-platform" on server "web-console-address"
   ```
@@ -197,9 +197,9 @@ Alternatively, you can create an instance of YugabyteDB Anywhere via the command
       create: false
   EOF
   ```
-  
+
   <br>Expect the following output:
-  
+
   ```output
   ybplatform.yugabyte.com/ybplatform-sample created
   ```
@@ -209,9 +209,9 @@ Alternatively, you can create an instance of YugabyteDB Anywhere via the command
   ```shell
   oc get pods -n yb-platform -l app=ybplatform-sample-yugaware
   ```
-  
+
   <br>Expect the following output:
-  
+
   ```output
   NAME                         READY  STATUS  RESTARTS  AGE
   Ybplatform-sample-yugaware-0  5/5   Running  0        22s
@@ -287,9 +287,9 @@ To create a YugabyteDB Anywhere instance, perform the following:
   ```shell
   oc new-project yb-platform
   ```
-  
+
   <br>Expect the following output:
-  
+
   ```output
   Now using project "yb-platform" on server "web-console-address"
   ```
@@ -299,9 +299,9 @@ To create a YugabyteDB Anywhere instance, perform the following:
   ```shell
   oc create -f yugabyte-k8s-secret.yml -n yb-platform
   ```
-  
+
   <br>Expect the following output:
-  
+
   ```output
   secret/yugabyte-k8s-pull-secret created
   ```
@@ -311,9 +311,9 @@ To create a YugabyteDB Anywhere instance, perform the following:
   ```shell
   helm repo add yugabytedb https://charts.yugabyte.com
   ```
-  
+
   <br>Expect the following output:
-  
+
   ```output
   "yugabytedb" has been added to your repositories
   ```
@@ -323,14 +323,14 @@ To create a YugabyteDB Anywhere instance, perform the following:
   ```shell
   helm search repo yugabytedb/yugaware --version {{<yb-version version="preview" format="short">}}
   ```
-  
+
   <br>Expect the following output:
-  
+
     ```output
     NAME                 CHART VERSION  APP VERSION  DESCRIPTION
     yugabytedb/yugaware {{<yb-version version="preview" format="short">}}          {{<yb-version version="preview" format="build">}}  YugaWare is YugaByte Database's Orchestration a...
     ```
-  
+
 - Verify the StorageClass setting for your cluster by executing the following command as admin user:
 
   ```shell

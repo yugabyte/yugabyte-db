@@ -5,11 +5,9 @@ linkTitle: SHOW TRANSACTION
 description: Use the SHOW TRANSACTION ISOLATION LEVEL statement to show the current transaction isolation level.
 summary: SHOW TRANSACTION
 menu:
-  preview:
+  stable:
     identifier: txn_show
     parent: statements
-aliases:
-  - /preview/api/ysql/commands/txn_show/
 type: docs
 ---
 

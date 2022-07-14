@@ -4,7 +4,7 @@ linkTitle: Migration steps
 description: Run the steps to ensure a successful migration.
 beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
-  preview:
+  stable:
     identifier: migrate-steps
     parent: yb-voyager
     weight: 102

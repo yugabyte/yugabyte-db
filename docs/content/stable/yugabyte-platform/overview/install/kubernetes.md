@@ -6,7 +6,7 @@ description: Installing YugabyteDB Anywhere on Kubernetes
 image: /images/section_icons/deploy/enterprise.png
 headcontent: Installing YugabyteDB Anywhere on Kubernetes
 menu:
-  preview_yugabyte-platform:
+  stable_yugabyte-platform:
     identifier: install-2-k8s
     parent: overview-yp
     weight: 20

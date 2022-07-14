@@ -5,7 +5,7 @@ linkTitle: Host-based authentication
 description: Manage access control for localhost, remote hosts, and clients for YSQL.
 image: /images/section_icons/secure/authentication.png
 menu:
-  preview:
+  stable:
     identifier: host-based-authentication
     parent: authentication
     weight: 733

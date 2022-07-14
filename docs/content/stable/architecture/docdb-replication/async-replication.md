@@ -3,11 +3,8 @@ title: xCluster replication
 headerTitle: xCluster replication
 linkTitle: xCluster replication
 description: Asynchronous replication between multiple YugabyteDB clusters.
-aliases:
-  - /preview/architecture/docdb/2dc-deployments/
-  - /preview/architecture/2dc-deployments/
 menu:
-  preview:
+  stable:
     identifier: architecture-docdb-async-replication
     parent: architecture-docdb-replication
     weight: 1150

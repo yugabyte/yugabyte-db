@@ -7,7 +7,7 @@ beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 image: /images/section_icons/develop/learn.png
 headcontent: Migrate to YugabyteDB with YugabyteDB Voyager.
 menu:
-  preview:
+  stable:
     identifier: yb-voyager
     parent: migrate
     weight: 100

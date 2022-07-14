@@ -5,7 +5,7 @@ description: Python Drivers for YSQL
 headcontent: Python Drivers for YSQL
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
-  preview:
+  stable:
     name: Python Drivers
     identifier: ref-yugabyte-psycopg2-driver
     parent: drivers

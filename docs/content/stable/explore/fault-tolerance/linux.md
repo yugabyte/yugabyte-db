@@ -3,10 +3,8 @@ title: Explore fault tolerance on Linux
 headerTitle: Fault tolerance
 linkTitle: Fault tolerance
 description: Simulate fault tolerance and resilience in a local three-node YugabyteDB cluster on Linux.
-aliases:
-  - /preview/explore/fault-tolerance-linux/
 menu:
-  preview:
+  stable:
     identifier: fault-tolerance-2-linux
     parent: explore
     weight: 215

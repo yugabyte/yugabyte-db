@@ -4,11 +4,9 @@ headerTitle: SELECT
 linkTitle: SELECT
 description: Use the SELECT statement to retrieve rows of specified columns that meet a given condition from a table.
 menu:
-  preview:
+  stable:
     identifier: dml_select
     parent: statements
-aliases:
-  - /preview/api/ysql/commands/dml_select/
 type: docs
 ---
 

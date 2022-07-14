@@ -4,7 +4,7 @@ headerTitle: pgAdmin
 linkTitle: pgAdmin
 description: Administer and manage YugabyteDB distributed SQL databases using pgAdmin.
 menu:
-  preview:
+  stable:
     identifier: pgadmin
     parent: tools
     weight: 10

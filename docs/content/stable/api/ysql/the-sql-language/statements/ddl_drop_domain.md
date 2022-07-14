@@ -4,11 +4,9 @@ headerTitle: DROP DOMAIN
 linkTitle: DROP DOMAIN
 description: Use the DROP DOMAIN statement to remove a domain from the database.
 menu:
-  preview:
+  stable:
     identifier: ddl_drop_domain
     parent: statements
-aliases:
-  - /preview/api/ysql/commands/ddl_drop_domain/
 type: docs
 ---
 

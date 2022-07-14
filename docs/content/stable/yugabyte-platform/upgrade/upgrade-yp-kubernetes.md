@@ -4,7 +4,7 @@ headerTitle: Upgrade YugabyteDB Anywhere installation on Kubernetes
 linkTitle: Upgrade Kubernetes installation
 description: Upgrade YugabyteDB Anywhere installation on Kubernetes
 menu:
-  preview_yugabyte-platform:
+  stable_yugabyte-platform:
     identifier: upgrade-yp-kubernetes
     parent: upgrade
     weight: 80

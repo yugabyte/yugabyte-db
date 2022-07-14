@@ -5,11 +5,8 @@ linkTitle: Third party tools
 description: Interactive third party clients that you can use with YugabyteDB.
 headcontent: Use popular third party clients with YugabyteDB.
 image: /images/section_icons/troubleshoot/troubleshoot.png
-aliases:
-  - /develop/tools/
-  - /preview/develop/tools/
 menu:
-  preview:
+  stable:
     identifier: tools
     parent: reference
     weight: 2900

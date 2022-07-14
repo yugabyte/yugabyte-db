@@ -5,7 +5,7 @@ description: Track planning and execution statistics for all SQL statements exec
 headerTitle: Get query statistics using pg_stat_statements
 image: /images/section_icons/index/develop.png
 menu:
-  preview:
+  stable:
     identifier: pg-stat-statements
     parent: query-tuning
     weight: 200

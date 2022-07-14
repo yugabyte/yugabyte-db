@@ -4,11 +4,9 @@ headerTitle: PREPARE
 linkTitle: PREPARE
 description: Use the PREPARE statement to create a handle to a prepared statement by parsing, analyzing, and rewriting (but not executing) the target statement.
 menu:
-  preview:
+  stable:
     identifier: perf_prepare
     parent: statements
-aliases:
-  - /preview/api/ysql/commands/perf_prepare/
 type: docs
 ---
 

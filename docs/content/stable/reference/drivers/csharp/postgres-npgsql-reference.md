@@ -5,7 +5,7 @@ description: C# Drivers for YSQL
 headcontent: C# Drivers for YSQL
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
-  preview:
+  stable:
     name: C# Drivers
     identifier: ref-postgres-npgsql-driver
     parent: drivers

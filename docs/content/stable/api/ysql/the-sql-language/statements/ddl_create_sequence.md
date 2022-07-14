@@ -4,11 +4,9 @@ headerTitle: CREATE SEQUENCE
 linkTitle: CREATE SEQUENCE
 description: Use the CREATE SEQUENCE statement to create a sequence in the current schema.
 menu:
-  preview:
+  stable:
     identifier: ddl_create_sequence
     parent: statements
-aliases:
-  - /preview/api/ysql/commands/ddl_create_sequence/
 type: docs
 ---
 

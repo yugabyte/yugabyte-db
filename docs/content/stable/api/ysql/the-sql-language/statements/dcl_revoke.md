@@ -4,11 +4,9 @@ headerTitle: REVOKE
 linkTitle: REVOKE
 description: Use the REVOKE statement to remove access privileges from one or more roles.
 menu:
-  preview:
+  stable:
     identifier: dcl_revoke
     parent: statements
-aliases:
-  - /preview/api/ysql/commands/dcl_revoke/
 type: docs
 ---
 

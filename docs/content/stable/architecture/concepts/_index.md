@@ -5,10 +5,8 @@ linkTitle: Key concepts
 description: Learn about the YugabyteDB query, transaction, sharding, replication, and persistence layers.
 image: /images/section_icons/architecture/concepts.png
 headcontent: Learn about the YugabyteDB query, transaction, sharding, replication, and persistence layers.
-aliases:
-  - /architecture/concepts/
 menu:
-  preview:
+  stable:
     identifier: key-concepts
     parent: architecture
     weight: 1106

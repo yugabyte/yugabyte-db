@@ -6,7 +6,7 @@ description: Cluster management in YugabyteDB
 headcontent: Cluster management in YugabyteDB
 image: /images/section_icons/manage/enterprise.png
 menu:
-  preview:
+  stable:
     identifier: explore-cluster-management
     parent: explore
     weight: 290

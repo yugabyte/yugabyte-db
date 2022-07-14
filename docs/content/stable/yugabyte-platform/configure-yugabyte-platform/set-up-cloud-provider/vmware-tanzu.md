@@ -3,11 +3,8 @@ title: Configure the VMware Tanzu cloud provider
 headerTitle: Configure the VMware Tanzu cloud provider
 linkTitle: Configure cloud providers
 description: Configure the VMware Tanzu cloud provider
-aliases:
-  - /deploy/pivotal-cloud-foundry/
-  - /preview/deploy/pivotal-cloud-foundry/
 menu:
-  preview_yugabyte-platform:
+  stable_yugabyte-platform:
     identifier: set-up-cloud-provider-4-vmware-tanzu
     parent: configure-yugabyte-platform
     weight: 20

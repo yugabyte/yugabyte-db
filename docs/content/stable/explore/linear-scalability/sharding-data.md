@@ -5,7 +5,7 @@ linkTitle: Sharding Data Across Nodes
 description: Sharding Data Across Nodes in YugabyteDB
 headcontent: Sharding Data Across Nodes in YugabyteDB
 menu:
-  preview:
+  stable:
     name: Sharding Data
     identifier: explore-transactions-sharding-data-1-ysql
     parent: explore-scalability

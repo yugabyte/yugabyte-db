@@ -3,14 +3,8 @@ title: Explore fault tolerance on macOS
 headerTitle: Fault tolerance
 linkTitle: Fault tolerance
 description: Simulate fault tolerance and resilience in a local three-node YugabyteDB cluster on macOS.
-aliases:
-  - /explore/fault-tolerance/
-  - /preview/explore/fault-tolerance/
-  - /preview/explore/cloud-native/fault-tolerance/
-  - /preview/explore/postgresql/fault-tolerance/
-  - /preview/explore/fault-tolerance-macos/
 menu:
-  preview:
+  stable:
     identifier: fault-tolerance-1-macos
     parent: explore
     weight: 215

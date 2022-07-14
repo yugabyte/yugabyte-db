@@ -4,13 +4,10 @@ headerTitle: yb-master
 linkTitle: yb-master
 description: YugabyteDB Master Server (yb-master) binary and configuration flags to manage cluster metadata and coordinate cluster-wide operations.
 menu:
-  preview:
+  stable:
     identifier: yb-master
     parent: configuration
     weight: 2450
-aliases:
-  - /preview/admin/yb-master
-  - /preview/deploy/reference/configuration/yb-master
 type: docs
 ---
 

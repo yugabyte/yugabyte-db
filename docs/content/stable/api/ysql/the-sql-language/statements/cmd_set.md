@@ -4,11 +4,9 @@ headerTitle: SET
 linkTitle: SET
 description: Use the SET statement to update a run-time control parameter.
 menu:
-  preview:
+  stable:
     identifier: cmd_set
     parent: statements
-aliases:
-  - /preview/api/ysql/commands/cmd_set/
 type: docs
 ---
 

@@ -5,12 +5,10 @@ linkTitle: SQL statements
 description: List of PostgreSQL-compatible SQL statements supported by Yugabyte SQL (YSQL)
 image: /images/section_icons/api/ysql.png
 menu:
-  preview:
+  stable:
     identifier: statements
     parent: the-sql-language
     weight: 100
-aliases:
-  - /preview/api/ysql/commands/
 type: indexpage
 ---
 The YSQL statements are compatible with the SQL dialect that PostgreSQL supports. The sidebar lists all of the YSQL statements in alphabetical order. The following tables list them by catagory.

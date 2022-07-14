@@ -3,10 +3,8 @@ title: Use YugabyteDB Anywhere to edit a universe
 headerTitle: Edit a universe
 linkTitle: Edit a universe
 description: Use YugabyteDB Anywhere to edit a universe.
-aliases:
-  - /preview/manage/enterprise-edition/edit-universe/
 menu:
-  preview_yugabyte-platform:
+  stable_yugabyte-platform:
     identifier: edit-universe
     parent: manage-deployments
     weight: 60

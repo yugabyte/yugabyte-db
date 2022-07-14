@@ -6,7 +6,7 @@ description: Object-Level Audit Logging in YSQL.
 headcontent: Object-Level Audit Logging in YSQL.
 image: /images/section_icons/secure/authentication.png
 menu:
-  preview:
+  stable:
     name: Object-Level Audit Logging
     identifier: object-audit-logging-1-ysql
     parent: audit-logging

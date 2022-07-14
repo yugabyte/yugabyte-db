@@ -6,7 +6,7 @@ description: Write-heavy workloads in YugabyteDB.
 headcontent: Write-heavy workloads in YugabyteDB.
 image: <div class="icon"><i class="fas fa-file-invoice-dollar"></i></div>
 menu:
-  preview:
+  stable:
     name: Write-heavy workloads
     identifier: develop-quality-of-service-write-heavy-workloads
     parent: develop-quality-of-service

@@ -4,14 +4,11 @@ headerTitle: Open source Kubernetes
 linkTitle: Open source Kubernetes
 description: Deploy YugabyteDB on Kubernetes clusters using Operator Hub and Operator Lifecycle Manager (OLM).
 menu:
-  preview:
+  stable:
     parent: deploy-kubernetes-sz
     name: Open Source
     identifier: k8s-oss-3
     weight: 621
-aliases:
-  - /preview/deploy/kubernetes/operator-hub/
-  - /preview/deploy/kubernetes/oss/operator-hub/
 type: docs
 ---
 

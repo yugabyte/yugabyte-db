@@ -3,10 +3,8 @@ title: Universe creation
 headerTitle: Universe creation
 linkTitle: Universe creation
 description: Learn how YugabyteDB creates a universe with YB-TServer and YB-Master nodes.
-aliases:
-  - /architecture/core-functions/universe-creation/
 menu:
-  preview:
+  stable:
     identifier: universe-creation
     parent: core-functions
     weight: 1182

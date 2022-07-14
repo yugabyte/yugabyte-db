@@ -4,11 +4,9 @@ headerTitle: CREATE OPERATOR
 linkTitle: CREATE OPERATOR
 description: Use the CREATE OPERATOR statement to create an operator.
 menu:
-  preview:
+  stable:
     identifier: ddl_create_operator
     parent: statements
-aliases:
-  - /preview/api/ysql/commands/ddl_create_operator/
 type: docs
 ---
 

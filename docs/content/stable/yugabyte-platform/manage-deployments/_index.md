@@ -5,7 +5,7 @@ linkTitle: Manage deployments
 description: Manage YugabyteDB universe deployments
 image: /images/section_icons/quick_start/sample_apps.png
 menu:
-  preview_yugabyte-platform:
+  stable_yugabyte-platform:
     parent: yugabytedb-anywhere
     identifier: manage-deployments
     weight: 644

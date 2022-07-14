@@ -5,10 +5,8 @@ linkTitle: Manage
 description:
 image: /images/section_icons/quick_start/sample_apps.png
 headcontent:
-aliases:
-  - /preview/manage/
 menu:
-  preview:
+  stable:
     identifier: manage
     parent: launch-and-manage
     weight: 900

@@ -2,11 +2,10 @@
 title: Analyzing Queries with EXPLAIN
 linkTitle: Analyzing queries with EXPLAIN
 description: Query optimization with EXPLAIN and EXPLAIN ANALYZE
-aliases:
 headerTitle: Analyzing Queries with EXPLAIN
 image: /images/section_icons/index/develop.png
 menu:
-  preview:
+  stable:
     identifier: explain-analyze
     parent: query-tuning
     weight: 400

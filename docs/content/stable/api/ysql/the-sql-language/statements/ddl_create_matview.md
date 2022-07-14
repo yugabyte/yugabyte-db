@@ -4,11 +4,9 @@ headerTitle: CREATE MATERIALIZED VIEW
 linkTitle: CREATE MATERIALIZED VIEW
 description: Use the CREATE MATERIALIZED VIEW statement to create a materialized view.
 menu:
-  preview:
+  stable:
     identifier: ddl_create_matview
     parent: statements
-aliases:
-  - /preview/api/ysql/commands/ddl_create_matview/
 type: docs
 ---
 

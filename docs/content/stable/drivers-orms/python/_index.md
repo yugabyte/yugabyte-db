@@ -5,7 +5,7 @@ linkTitle: Python
 description: Python Drivers and ORMs support for YugabyteDB.
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
-  preview:
+  stable:
     identifier: python-drivers
     parent: drivers-orms
     weight: 570

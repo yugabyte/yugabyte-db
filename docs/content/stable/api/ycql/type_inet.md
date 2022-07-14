@@ -4,12 +4,9 @@ headerTitle: INET type
 linkTitle: INET
 description: Use the INET data type to specify columns for data of IP addresses.
 menu:
-  preview:
+  stable:
     parent: api-cassandra
     weight: 1410
-aliases:
-  - /preview/api/cassandra/type_inet
-  - /preview/api/ycql/type_inet
 type: docs
 ---
 

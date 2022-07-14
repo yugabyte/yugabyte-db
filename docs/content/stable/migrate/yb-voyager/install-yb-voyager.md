@@ -6,7 +6,7 @@ description: Explore the prerequisites, YugabyteDB Voyager installation, and so 
 beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 image: /images/section_icons/develop/learn.png
 menu:
-  preview:
+  stable:
     identifier: install-yb-voyager
     parent: yb-voyager
     weight: 101

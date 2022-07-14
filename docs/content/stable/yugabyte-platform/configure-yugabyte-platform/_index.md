@@ -6,7 +6,7 @@ description: Configure YugabyteDB Anywhere.
 image: /images/section_icons/deploy/manual-deployment.png
 headcontent: Configure YugabyteDB Anywhere.
 menu:
-  preview_yugabyte-platform:
+  stable_yugabyte-platform:
     parent: yugabytedb-anywhere
     identifier: configure-yugabyte-platform
     weight: 642

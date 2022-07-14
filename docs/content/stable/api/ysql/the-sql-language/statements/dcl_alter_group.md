@@ -4,11 +4,9 @@ headerTitle: ALTER GROUP
 linkTitle: ALTER GROUP
 description: Use the `ALTER GROUP` statement to alter attributes for a group (role).
 menu:
-  preview:
+  stable:
     identifier: dcl_alter_group
     parent: statements
-aliases:
-  - /preview/api/ysql/commands/dcl_alter_group/
 type: docs
 ---
 

@@ -3,7 +3,7 @@ title: Gitpod
 linkTitle: Gitpod
 description: Gitpod integrated development environment
 menu:
-  preview:
+  stable:
     identifier: gitpod
     parent: gitdev
     weight: 592

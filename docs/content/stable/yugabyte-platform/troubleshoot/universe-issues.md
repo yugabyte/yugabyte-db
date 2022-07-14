@@ -3,11 +3,8 @@ title: Troubleshoot universe issues
 headerTitle: Troubleshoot universe issues
 linkTitle: Universe issues
 description: Troubleshoot universe issues
-aliases:
-  - /troubleshoot/enterprise-edition/universes/
-  - /preview/troubleshoot/enterprise-edition/universes/
 menu:
-  preview_yugabyte-platform:
+  stable_yugabyte-platform:
     identifier: universe-issues
     parent: troubleshoot-yp
     weight: 20

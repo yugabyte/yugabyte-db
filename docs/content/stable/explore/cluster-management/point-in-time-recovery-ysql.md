@@ -4,11 +4,8 @@ headerTitle: Point-in-time recovery
 linkTitle: Point-in-time recovery
 description: Restore data from a specific point in time in YugabyteDB for YSQL
 beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
-aliases:
-  - /preview/explore/backup-restore/point-in-time-recovery-ysql
-  - /preview/explore/backup-restore/point-in-time-recovery
 menu:
-  preview:
+  stable:
     identifier: cluster-management-point-in-time-recovery-ysql
     parent: explore-cluster-management
     weight: 704

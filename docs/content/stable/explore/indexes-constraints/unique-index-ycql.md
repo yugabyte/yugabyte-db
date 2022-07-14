@@ -4,13 +4,10 @@ linkTitle: Unique indexes
 description: Using Unique indexes in YCQL
 image: /images/section_icons/secure/create-roles.png
 menu:
-  preview:
+  stable:
     identifier: unique-index-ycql
     parent: explore-indexes-constraints
     weight: 231
-aliases:
-  - /preview/explore/ysql-language-features/indexes-1/
-  - /preview/explore/indexes-constraints/indexes-1/
 type: docs
 ---
 

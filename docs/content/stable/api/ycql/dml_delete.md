@@ -4,12 +4,9 @@ headerTitle: DELETE
 linkTitle: DELETE
 description: Use the DELETE statement to remove rows from a specified table that meet a given condition.
 menu:
-  preview:
+  stable:
     parent: api-cassandra
     weight: 1330
-aliases:
-  - /preview/api/cassandra/ddl_delete
-  - /preview/api/ycql/ddl_delete
 type: docs
 ---
 

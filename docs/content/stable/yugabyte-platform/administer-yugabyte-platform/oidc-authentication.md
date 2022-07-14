@@ -4,7 +4,7 @@ headerTitle: Enable YugabyteDB Anywhere SSO authentication via OIDC
 description: Use OIDC to enable SSO login to YugabyteDB Anywhere.
 linkTitle: Configure authentication
 menu:
-  preview_yugabyte-platform:
+  stable_yugabyte-platform:
     identifier: oidc-authentication
     parent: administer-yugabyte-platform
     weight: 20

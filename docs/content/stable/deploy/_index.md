@@ -5,11 +5,8 @@ linkTitle: Deploy
 description: Deploy to any public cloud or private data center of your choice.
 headcontent: Deploy to any public cloud or private data center of your choice.
 image: /images/section_icons/index/deploy.png
-aliases:
-  - /deploy/
-  - /preview/deploy/
 menu:
-  preview:
+  stable:
     identifier: deploy
     parent: launch-and-manage
 type: indexpage

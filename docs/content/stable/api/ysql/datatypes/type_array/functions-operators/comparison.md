@@ -4,7 +4,7 @@ linkTitle: Array comparison
 headerTitle: Operators for comparing two arrays
 description: Operators for comparing two arrays
 menu:
-  preview:
+  stable:
     identifier: array-comparison
     parent: array-functions-operators
     weight: 20

@@ -5,10 +5,8 @@ linkTitle: Install
 description: Installing YugabyteDB Anywhere on public cloud
 image: /images/section_icons/deploy/enterprise.png
 headcontent: Installing YugabyteDB Anywhere on public cloud
-aliases:
-  - /preview/yugabyte-platform/overview/install/
 menu:
-  preview_yugabyte-platform:
+  stable_yugabyte-platform:
     identifier: install-1-public-cloud
     parent: overview-yp
     weight: 20

@@ -6,12 +6,10 @@ description: Benchmark YCQL performance with large datasets
 image: /images/section_icons/architecture/concepts.png
 headcontent: Benchmark YugabyteDB with large data sets.
 menu:
-  preview:
+  stable:
     identifier: large-datasets-1-ycql
     parent: benchmark
     weight: 7
-aliases:
-  - /benchmark/large-datasets/
 type: docs
 ---
 

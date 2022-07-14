@@ -4,11 +4,9 @@ headerTitle: DROP OPERATOR CLASS
 linkTitle: DROP OPERATOR CLASS
 description: Use the DROP OPERATOR CLASS statement to remove an operator class.
 menu:
-  preview:
+  stable:
     identifier: ddl_drop_operator_class
     parent: statements
-aliases:
-  - /preview/api/ysql/commands/ddl_drop_operator_class/
 type: docs
 ---
 

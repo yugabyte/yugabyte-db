@@ -6,7 +6,7 @@ description: Explore core SQL features in YSQL
 headcontent: Explore core SQL features in YSQL
 image: /images/section_icons/api/ysql.png
 menu:
-  preview:
+  stable:
     identifier: explore-ysql-language-features
     parent: explore
     weight: 200

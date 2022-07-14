@@ -5,7 +5,7 @@ description: Go Drivers for YSQL
 headcontent: Go Drivers for YSQL
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
-  preview:
+  stable:
     name: Go Drivers
     identifier: ref-yb-pgx-go-driver
     parent: drivers

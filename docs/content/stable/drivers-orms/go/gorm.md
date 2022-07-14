@@ -5,7 +5,7 @@ description: Go ORM support for YugabyteDB
 headcontent: Go ORM support for YugabyteDB
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
-  preview:
+  stable:
     identifier: go-orm
     parent: go-drivers
     weight: 400

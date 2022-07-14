@@ -4,7 +4,7 @@ headerTitle: Enable high availability
 linkTitle: Enable high availability
 description: Enable YugabyteDB Anywhere's high availabilit
 menu:
-  preview_yugabyte-platform:
+  stable_yugabyte-platform:
     identifier: platform-high-availability
     parent: manage-deployments
     weight: 40
@@ -94,7 +94,7 @@ You can make a standby instance active as follows:
 
 1. Click **Continue**.<br>
 The restore take a few seconds, after which expect to be logged out.
-    
+
 1. Login using credentials that you had configured on the previously active instance.
 
 You should be able to see that all of the data has been restored into the instance, including universes, users, metrics, alerts, task history, cloud providers, and so on.

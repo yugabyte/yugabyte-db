@@ -6,7 +6,7 @@ description: Isolation Levels in YugabyteDB.
 headcontent: Isolation Levels in YugabyteDB.
 image: <div class="icon"><i class="fas fa-file-invoice-dollar"></i></div>
 menu:
-  preview:
+  stable:
     name: Isolation Levels
     identifier: explore-transactions-isolation-levels-1-ysql
     parent: explore-transactions

@@ -4,11 +4,9 @@ headerTitle: BEGIN
 linkTitle: BEGIN
 description: Use the `BEGIN` statement to start a transaction with the default (or given) isolation level.
 menu:
-  preview:
+  stable:
     identifier: txn_begin
     parent: statements
-aliases:
-  - /preview/api/ysql/commands/txn_begin/
 type: docs
 ---
 

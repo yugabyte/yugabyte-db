@@ -6,7 +6,7 @@ description: Multi-Region Deployments in YugabyteDB.
 headcontent: Multi-Region Deployments in YugabyteDB.
 image: /images/section_icons/secure/authorization.png
 menu:
-  preview:
+  stable:
     identifier: explore-multi-region-deployments
     parent: explore
     weight: 270

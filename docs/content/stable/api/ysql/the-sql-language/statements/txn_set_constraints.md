@@ -5,11 +5,9 @@ linkTitle: SET CONSTRAINTS
 summary: SET CONSTRAINTS
 description: Use the `SET CONSTRAINTS` statement to set the timing of constraint checking within the current transaction.
 menu:
-  preview:
+  stable:
     identifier: txn_set_constraints
     parent: statements
-aliases:
-  - /preview/api/ysql/commands/txn_set_constraints/
 type: docs
 ---
 

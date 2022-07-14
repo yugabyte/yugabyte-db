@@ -4,7 +4,7 @@ headerTitle: Authorization
 linkTitle: Authorization
 description: Use the role-based access control (RBAC) model in YugabyteDB Anywhere to manage users and roles.
 menu:
-  preview_yugabyte-platform:
+  stable_yugabyte-platform:
     parent: security
     identifier: authorization-platform
     weight: 27

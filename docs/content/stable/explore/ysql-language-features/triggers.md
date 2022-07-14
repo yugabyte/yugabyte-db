@@ -4,7 +4,7 @@ linkTitle: Triggers
 description: Triggers in YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
-  preview:
+  stable:
     identifier: explore-ysql-language-features-triggers
     parent: explore-ysql-language-features
     weight: 310

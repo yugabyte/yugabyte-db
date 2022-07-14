@@ -5,12 +5,10 @@ headerTitle: Signature and purpose of each window function
 description: This section summarizes the signature and purpose of each of the YSQL window functions and links to their individual accounts.
 image: /images/section_icons/api/ysql.png
 menu:
-  preview:
+  stable:
     identifier: window-function-syntax-semantics
     parent: window-functions
     weight: 30
-aliases:
-  - /preview/api/ysql/exprs/window_functions
 type: indexpage
 ---**On this page**<br>
 &#160;&#160;&#160;&#160;&#160;&#160;&#160;[Aggregate function variants](./#aggregate-function-variants)<br>

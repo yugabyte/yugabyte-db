@@ -4,11 +4,9 @@ headerTitle: yb_hash_code()
 linkTitle: yb_hash_code()
 description: Returns the partition hash code for a given set of expressions.
 menu:
-  preview:
+  stable:
     identifier: api-ysql-exprs-yb_hash_code
     parent: api-ysql-exprs
-aliases:
-  - /preview/api/ysql/exprs/func_yb_hash_code
 type: docs
 ---
 

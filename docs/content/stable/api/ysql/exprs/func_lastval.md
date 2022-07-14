@@ -4,11 +4,9 @@ headerTitle: lastval()
 linkTitle: lastval()
 description: Returns the value returned from the last call to nextval(), for any sequence, in the current session.
 menu:
-  preview:
+  stable:
     identifier: api-ysql-exprs-lastval
     parent: api-ysql-exprs
-aliases:
-  - /preview/api/ysql/exprs/func_lastval
 type: docs
 ---
 

@@ -4,7 +4,7 @@ headerTitle: Uninstall the YugabyteDB Anywhere software
 linkTitle: Uninstall software
 description: Uninstall the YugabyteDB Anywhere software.
 menu:
-  preview_yugabyte-platform:
+  stable_yugabyte-platform:
     identifier: uninstall-software
     parent: install-yugabyte-platform
     weight: 80

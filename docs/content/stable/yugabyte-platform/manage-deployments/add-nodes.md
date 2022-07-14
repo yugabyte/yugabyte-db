@@ -3,10 +3,8 @@ title: Use YugabyteDB Anywhere to recover a node
 headerTitle: Recover a node
 linkTitle: Recover a node
 description: Use YugabyteDB Anywhere to recover a decommissioned node.
-aliases:
-  - /preview/manage/enterprise-edition/create-universe-multi-region
 menu:
-  preview_yugabyte-platform:
+  stable_yugabyte-platform:
     identifier: add-nodes
     parent: manage-deployments
     weight: 30

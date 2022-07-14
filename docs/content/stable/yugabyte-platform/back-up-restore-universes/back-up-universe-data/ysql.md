@@ -3,13 +3,8 @@ title: Back up data universe YSQL data
 headerTitle: Back up universe YSQL data
 linkTitle: Back up universe data
 description: Use YugabyteDB Anywhere to back up data in YSQL tables.
-aliases:
-  - /preview/manage/enterprise-edition/backup-restore
-  - /preview/manage/enterprise-edition/back-up-restore-data
-  - /preview/yugabyte-platform/manage/backup-restore-data
-  - /preview/yugabyte-platform/back-up-restore-universes/back-up-universe-data/
 menu:
-  preview_yugabyte-platform:
+  stable_yugabyte-platform:
     parent: back-up-restore-universes
     identifier: back-up-universe-data-1-ysql
     weight: 20

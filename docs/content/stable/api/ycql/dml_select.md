@@ -4,12 +4,9 @@ headerTitle: SELECT
 linkTitle: SELECT
 description: Use the SELECT statement to retrieve (part of) rows of specified columns that meet a given condition from a table.
 menu:
-  preview:
+  stable:
     parent: api-cassandra
     weight: 1310
-aliases:
-  - /preview/api/cassandra/dml_select
-  - /preview/api/ycql/dml_select
 type: docs
 ---
 

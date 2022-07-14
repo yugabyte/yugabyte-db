@@ -5,7 +5,7 @@ linkTitle: Configure
 description: Configuring YugabyteDB Anywhere on Google Cloud Platform
 image: /images/section_icons/deploy/enterprise.png
 menu:
-  preview_yugabyte-platform:
+  stable_yugabyte-platform:
     identifier: configure-2-gcp
     parent: overview-yp
     weight: 40

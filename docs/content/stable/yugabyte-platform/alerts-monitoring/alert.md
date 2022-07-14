@@ -3,7 +3,7 @@ headerTitle: Alerts
 linkTitle: Alerts
 description: Use alerts
 menu:
-  preview_yugabyte-platform:
+  stable_yugabyte-platform:
     identifier: alert
     parent: alerts-monitoring
     weight: 10

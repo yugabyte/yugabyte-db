@@ -4,7 +4,7 @@ linkTitle: Expression indexes
 description: Using expression indexes in YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
-  preview:
+  stable:
     identifier: expression-index-ysql
     parent: explore-indexes-constraints
     weight: 250

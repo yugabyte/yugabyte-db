@@ -4,11 +4,9 @@ headerTitle: ALTER DATABASE
 linkTitle: ALTER DATABASE
 description: Use the ALTER DATABASE statement to redefine the attributes of a database.
 menu:
-  preview:
+  stable:
     identifier: ddl_alter_db
     parent: statements
-aliases:
-  - /preview/api/ysql/commands/ddl_alter_db/
 type: docs
 ---
 

@@ -4,7 +4,7 @@ linkTitle: Connect an app
 description: C# drivers for YSQL
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
-  preview:
+  stable:
     identifier: postgres-npgsql-driver
     parent: csharp-drivers
     weight: 400

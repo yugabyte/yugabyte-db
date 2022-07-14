@@ -4,13 +4,10 @@ linkTitle: Other constraints
 description: Other constraints in YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
-  preview:
+  stable:
     identifier: other-constraints
     parent: explore-indexes-constraints
     weight: 270
-aliases:
-  - /preview/explore/ysql-language-features/constraints/
-  - /preview/explore/indexes-constraints/constraints/
 type: docs
 ---
 

@@ -5,12 +5,10 @@ linkTitle: sysbench
 description: Benchmark YSQL performance using sysbench.
 headcontent: Benchmark YSQL performance using sysbench.
 menu:
-  preview:
+  stable:
     identifier: sysbench-ysql
     parent: benchmark
     weight: 5
-aliases:
-  - /benchmark/sysbench/
 type: docs
 ---
 <ul class="nav nav-tabs-alt nav-tabs-yb">

@@ -4,11 +4,10 @@ headerTitle: Immutable function examples
 linkTitle: Immutable function examples
 description: Shows four code examples of immutable function to illustrate the semantics if this volatility setting [YSQL].
 menu:
-  preview:
+  stable:
     identifier: immutable-function-examples
     parent: alterable-function-only-attributes
     weight: 10
-aliases:
 type: docs
 ---
 

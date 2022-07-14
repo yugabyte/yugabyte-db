@@ -3,12 +3,8 @@ title: Schedule universe YSQL data backups
 headerTitle: Schedule universe YSQL data backups
 linkTitle: Schedule data backups
 description: Use YugabyteDB Anywhere to create scheduled backups of universe YSQL data.
-aliases:
-  - /preview/manage/enterprise-edition/schedule-backups/
-  - /preview/manage/enterprise-edition/schedule-data-backup/
-  - /preview/yugabyte-platform/back-up-restore-universes/schedule-data-backups/
 menu:
-  preview_yugabyte-platform:
+  stable_yugabyte-platform:
     identifier: schedule-data-backups-1-ysql
     parent: back-up-restore-universes
     weight: 40

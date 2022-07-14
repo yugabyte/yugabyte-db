@@ -4,7 +4,7 @@ headerTitle: setval()
 linkTitle: setval()
 description: Set and return the value for the specified sequence.
 menu:
-  preview:
+  stable:
     identifier: api-ysql-exprs-setval
     parent: api-ysql-exprs
 type: docs

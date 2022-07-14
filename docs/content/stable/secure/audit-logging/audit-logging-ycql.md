@@ -4,7 +4,7 @@ headerTitle: Configure audit logging in YCQL
 description: Configure audit logging in YCQL.
 image: /images/section_icons/secure/authentication.png
 menu:
-  preview:
+  stable:
     name: Configure audit logging
     identifier: enable-audit-logging-2-ycql
     parent: audit-logging

@@ -5,7 +5,7 @@ linkTitle: Read Committed
 description: Details about the Read Committed isolation level
 beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
-  preview:
+  stable:
     identifier: architecture-read-committed
     parent: architecture-acid-transactions
     weight: 1153

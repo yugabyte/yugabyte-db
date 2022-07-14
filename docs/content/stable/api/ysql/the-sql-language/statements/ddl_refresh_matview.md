@@ -4,11 +4,9 @@ headerTitle: REFRESH MATERIALIZED VIEW
 linkTitle: REFRESH MATERIALIZED VIEW
 description: Use the REFRESH MATERIALIZED VIEW statement to refresh the contents of a materialized view.
 menu:
-  preview:
+  stable:
     identifier: ddl_refresh_matview
     parent: statements
-aliases:
-  - /preview/api/ysql/commands/ddl_refresh_matview/
 type: docs
 ---
 

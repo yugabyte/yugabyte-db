@@ -3,10 +3,8 @@ title: Configure the Kubernetes cloud provider
 headerTitle: Configure the Kubernetes cloud provider
 linkTitle: Configure cloud providers
 description: Configure the Kubernetes cloud provider
-aliases:
-  - /preview/deploy/enterprise-edition/configure-cloud-providers/kubernetes
 menu:
-  preview_yugabyte-platform:
+  stable_yugabyte-platform:
     identifier: set-up-cloud-provider-5-kubernetes
     parent: configure-yugabyte-platform
     weight: 20

@@ -4,11 +4,9 @@ headerTitle: DO
 linkTitle: DO
 description: Use the DO statement to execute an anonymous code block or, in other words, a transient anonymous function in a procedural language.
 menu:
-  preview:
+  stable:
     identifier: cmd_do
     parent: statements
-aliases:
-  - /preview/api/ysql/commands/cmd_do/
 type: docs
 ---
 

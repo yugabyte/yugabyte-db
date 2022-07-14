@@ -4,12 +4,9 @@ headerTitle: DROP TYPE
 linkTitle: DROP TYPE
 description: Use the DROP TYPE statement to remove an existing user-defined data type.
 menu:
-  preview:
+  stable:
     parent: api-cassandra
     weight: 1280
-aliases:
-  - /preview/api/cassandra/ddl_drop_type
-  - /preview/api/ycql/ddl_drop_type
 type: docs
 ---
 

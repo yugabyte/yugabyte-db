@@ -5,12 +5,10 @@ linkTitle: YCSB
 description: Benchmark YSQL performance with YCSB using the new YSQL binding.
 headcontent: Benchmark YSQL performance using YCSB.
 menu:
-  preview:
+  stable:
     identifier: ycsb-2-ysql
     parent: benchmark
     weight: 5
-aliases:
-  - /benchmark/ycsb/
 type: docs
 ---
 

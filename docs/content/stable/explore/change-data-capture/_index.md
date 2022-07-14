@@ -7,7 +7,7 @@ headcontent: Capture changes made to data in the database
 image: /images/section_icons/index/develop.png
 beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
-  preview:
+  stable:
     identifier: explore-change-data-capture
     parent: explore
     weight: 299

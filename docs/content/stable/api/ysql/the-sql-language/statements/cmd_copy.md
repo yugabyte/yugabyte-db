@@ -4,11 +4,9 @@ headerTitle: COPY
 linkTitle: COPY
 description: Transfer data between tables and files with the COPY, COPY TO, and COPY FROM statements.
 menu:
-  preview:
+  stable:
     identifier: cmd_copy
     parent: statements
-aliases:
-  - /preview/api/ysql/commands/cmd_copy/
 type: docs
 ---
 

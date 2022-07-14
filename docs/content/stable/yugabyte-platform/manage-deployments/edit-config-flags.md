@@ -3,11 +3,8 @@ title: Edit configuration flags
 headerTitle: Edit configuration flags
 linkTitle: Edit configuration flags
 description: Use YugabyteDB Anywhere to edit configuration flags.
-aliases:
-  - /preview/manage/enterprise-edition/edit-flags/
-  - /preview/manage/enterprise-edition/edit-config-flags/
 menu:
-  preview_yugabyte-platform:
+  stable_yugabyte-platform:
     identifier: edit-config-flags
     parent: manage-deployments
     weight: 50

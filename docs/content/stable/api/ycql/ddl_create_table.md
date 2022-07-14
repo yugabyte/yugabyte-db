@@ -4,12 +4,9 @@ headerTitle: CREATE TABLE
 linkTitle: CREATE TABLE
 description: Use the CREATE TABLE statement to create a new table in a keyspace.
 menu:
-  preview:
+  stable:
     parent: api-cassandra
     weight: 1240
-aliases:
-  - /preview/api/cassandra/ddl_create_table
-  - /preview/api/ycql/ddl_create_table
 type: docs
 ---
 

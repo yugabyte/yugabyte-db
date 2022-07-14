@@ -4,11 +4,9 @@ headerTitle: EXPLAIN
 linkTitle: EXPLAIN
 description: Use the EXPLAIN statement to show the execution plan for an statement. If the ANALYZE option is used, the statement will be executed, rather than just planned.
 menu:
-  preview:
+  stable:
     identifier: perf_explain
     parent: statements
-aliases:
-  - /preview/api/ysql/commands/perf_explain/
 type: docs
 ---
 

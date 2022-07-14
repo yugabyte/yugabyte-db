@@ -4,7 +4,7 @@ linkTitle: compare-dp-results
 headerTitle: Output from running do_compare_dp_results.sql on dp_results
 description: Part of the code kit for the "Analyzing a normal distribution" section within the YSQL window functions documentation (reports of results).
 menu:
-  preview:
+  stable:
     identifier: compare-dp-results
     parent: normal-distribution-analysis-reports
     weight: 30

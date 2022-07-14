@@ -6,12 +6,10 @@ description: Data types
 summary: YSQL data type overview and specification.
 image: /images/section_icons/api/ysql.png
 menu:
-  preview:
+  stable:
     identifier: api-ysql-datatypes
     parent: api-ysql
     weight: 400
-aliases:
-  - /preview/api/ysql/datatypes/
 type: indexpage
 ---
 

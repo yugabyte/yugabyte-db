@@ -4,11 +4,9 @@ headerTitle: GRANT
 linkTitle: GRANT
 description: Use the GRANT statement to grant access privileges on database objects as well as to assign membership in roles.
 menu:
-  preview:
+  stable:
     identifier: dcl_grant
     parent: statements
-aliases:
-  - /preview/api/ysql/commands/dcl_grant/
 type: docs
 ---
 

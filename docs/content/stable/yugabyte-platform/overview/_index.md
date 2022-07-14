@@ -5,10 +5,8 @@ linkTitle: Overview
 description: Overview of YugabyteDB Anywhere and its architecture.
 image: /images/section_icons/deploy/enterprise.png
 headcontent: Overview of YugabyteDB Anywhere and architecture.
-aliases:
-  - /preview/yugabyte-platform/
 menu:
-  preview_yugabyte-platform:
+  stable_yugabyte-platform:
     parent: yugabytedb-anywhere
     identifier: overview-yp
     weight: 10

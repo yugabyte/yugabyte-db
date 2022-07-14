@@ -5,7 +5,7 @@ linkTitle: ysql_dumpall
 description: ysql_dumpall
 headcontent: Back up all YSQL databases and roles into a SQL script file.
 menu:
-  preview:
+  stable:
     identifier: ysql-dumpall
     parent: admin
     weight: 2468

@@ -10,7 +10,7 @@ aliases:
 menu:
   preview_faq:
     identifier: comparisons
-    parent: faq
+    parent: comparisons-home
     weight: 2710
 type: indexpage
 ---

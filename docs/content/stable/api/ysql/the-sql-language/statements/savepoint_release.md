@@ -4,11 +4,9 @@ headerTitle: RELEASE SAVEPOINT
 linkTitle: RELEASE SAVEPOINT
 description: Use the `RELEASE SAVEPOINT` statement to release a savepoint.
 menu:
-  preview:
+  stable:
     identifier: savepoint_release
     parent: statements
-aliases:
-  - /preview/api/ysql/commands/savepoint_release/
 type: docs
 ---
 

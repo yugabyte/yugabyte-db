@@ -5,10 +5,8 @@ linkTitle: Drivers and ORMs
 description: Connect your applications with supported drivers and ORMs
 headcontent: Drivers and ORMs for YugabyteDB
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
-aliases:
-  - /drivers-orms/
 menu:
-  preview:
+  stable:
     identifier: drivers-orms
     parent: develop
     weight: 570

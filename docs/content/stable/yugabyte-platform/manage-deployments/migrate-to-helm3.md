@@ -3,10 +3,8 @@ title: Migrate from Helm 2 to Helm 3
 headerTitle: Migrate from Helm 2 to Helm 3
 linkTitle: Migrate to Helm 3
 description: Migrate your YugabyteDB universes and YugabyteDB Anywhere from Helm 2 to Helm 3.
-aliases:
-  - /preview/manage/enterprise-edition/migrate-to-helm3/
 menu:
-  preview_yugabyte-platform:
+  stable_yugabyte-platform:
     identifier: migrate-to-helm3
     parent: manage-deployments
     weight: 90

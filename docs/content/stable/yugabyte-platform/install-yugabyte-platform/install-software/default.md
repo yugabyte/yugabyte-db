@@ -3,10 +3,8 @@ title: Install YugabyteDB Anywhere
 headerTitle: Install YugabyteDB Anywhere
 linkTitle: Install software
 description: Install the YugabyteDB Anywhere software.
-aliases:
-  - /preview/yugabyte-platform/install-yugabyte-platform/install-software/
 menu:
-  preview_yugabyte-platform:
+  stable_yugabyte-platform:
     parent: install-yugabyte-platform
     identifier: install-software-1-default
     weight: 77

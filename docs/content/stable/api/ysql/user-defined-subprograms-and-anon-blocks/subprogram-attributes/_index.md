@@ -5,11 +5,10 @@ linkTitle: Subprogram attributes
 description: Describes and categorizes the various attributes that characterize user-defined functions and procedures [YSQL].
 image: /images/section_icons/api/subsection.png
 menu:
-  preview:
+  stable:
     identifier: subprogram-attributes
     parent: user-defined-subprograms-and-anon-blocks
     weight: 10
-aliases:
 type: indexpage
 showRightNav: true
 ---

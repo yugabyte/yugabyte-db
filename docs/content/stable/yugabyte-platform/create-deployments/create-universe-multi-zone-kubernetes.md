@@ -4,7 +4,7 @@ headerTitle: Create a multi-zone universe with Kubernetes
 linkTitle: Multi-zone universe
 description: Use YugabyteDB Anywhere and Kubernetes to create a YugabyteDB universe that spans multiple availability zones.
 menu:
-  preview_yugabyte-platform:
+  stable_yugabyte-platform:
     identifier: create-multi-zone-universe-kubernetes
     parent: create-deployments
     weight: 20

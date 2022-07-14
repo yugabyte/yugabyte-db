@@ -3,11 +3,8 @@ title: Aggregations in YugabyteDB YSQL
 headerTitle: Aggregations
 linkTitle: 5. Aggregations
 description: Learn how YugabyteDB YSQL supports standard aggregation functions.
-aliases:
-  - /develop/learn/aggregations/
-  - /preview/develop/learn/aggregations/
 menu:
-  preview:
+  stable:
     identifier: aggregations-2-ysql
     parent: learn
     weight: 567
