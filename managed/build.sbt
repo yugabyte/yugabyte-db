@@ -395,7 +395,9 @@ libraryDependencies ++= Seq(
   "io.netty" % "netty-tcnative-boringssl-static" % "2.0.44.Final",
   "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % "2.9.10",
   "org.slf4j" % "slf4j-ext" % "1.7.26",
-  "net.minidev" % "json-smart" % "2.4.8"
+  "net.minidev" % "json-smart" % "2.4.8",
+  // Overrides to address vulnerability in swagger-play2
+  "com.typesafe.akka" %% "akka-actor" % "2.5.16"
 )
 // https://mvnrepository.com/artifact/eu.unicredit/sbt-swagger-codegen-lib
 //libraryDependencies += "eu.unicredit" %% "sbt-swagger-codegen-lib" % "0.0.12"
