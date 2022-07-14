@@ -35,7 +35,7 @@ ruamel.yaml.clib==0.2.6
 semantic-version==2.8.5
 shutilwhich==1.1.0
 six==1.16.0
-sys-detection==1.2.0
+sys-detection==1.3.0
 toml==0.10.2
 typed-ast==1.5.1
 typing-extensions==3.10.0.2
@@ -44,3 +44,4 @@ urllib3==1.26.7
 wrapt==1.12.1
 yugabyte-pycommon==1.9.15
 zipp==3.6.0
+llvm_installer==1.1.3

@@ -170,6 +170,20 @@ public class CustomerConfigService {
     return UUID.fromString(schedule.getTaskParams().get("universeUUID").asText());
   }
 
+  /**
+   * masks the data in the passed configuration
+   *
+   * @param unmaskedConfig
+   * @param maskStr
+   * @return
+   */
+  public CustomerConfig getConfigMasked(CustomerConfig unmaskedConfig) {
+    if (unmaskedConfig == null) return null;
+    CustomerConfig maskedConfig = unmaskedConfig;
+    maskedConfig.setData(unmaskedConfig.getMaskedData());
+    return maskedConfig;
+  }
+
   // For test purposes only.
   @Deprecated
   public void setConfigValidator(CustomerConfigValidator configValidator) {

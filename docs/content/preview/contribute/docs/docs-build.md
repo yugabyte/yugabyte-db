@@ -16,7 +16,7 @@ type: docs
 
 To run the docs site locally and edit the docs, you'll need:
 
-* **A text editor**, such as [Visual Studio Code](https://code.visualstudio.com)
+* **A text editor**, such as [Visual Studio Code](https://code.visualstudio.com).
 
 * **Command-line tools for Xcode** on macOS.
 
@@ -24,7 +24,6 @@ To run the docs site locally and edit the docs, you'll need:
     $ xcode-select --install
     ```
 
-    \
     Xcode is many gigabytes. Install the command-line tools unless you actually need the full Xcode.
 
 * [**Homebrew**](https://brew.sh) on macOS or Linux.
@@ -37,7 +36,9 @@ To run the docs site locally and edit the docs, you'll need:
 
 * **Hugo**: `brew install hugo` gets you the latest version.
 
-* **A GitHub account**
+* **Go**: `brew install go` gets you the latest version.
+
+* **A GitHub account**.
 
 * **Git client**: The system Git binary is out of date, but works. If you like, you can use Homebrew to get a newer version (`brew install git`).
 
@@ -80,10 +81,11 @@ To get the docs site running in a live-reload server on your local machine, run 
 ```sh
 cd yugabyte-db/docs  # Make sure this is YOUR fork.
 npm ci               # Only necessary the first time you clone the repo.
-npm start            # Builds the docs and launches the live-reload server.
+hugo mod clean       # Only necessary the first time you clone the repo.
+npm start            # Build the docs and launch the live-reload server.
 ```
 
-The live-reload server runs at <http://localhost:1313/> unless port 1313 is already in use. Check the output from the `npm start` command to verify the port in use.
+The live-reload server runs at <http://localhost:1313/> unless port 1313 is already in use. Check the output from the `npm start` command to verify the port.
 
 When you're done, type Ctrl-C stop the server.
 

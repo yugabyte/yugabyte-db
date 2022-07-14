@@ -34,9 +34,10 @@ The following libraries are officially supported by YugabyteDB.
 | :-------------------------- | :------------ | :----------- |
 | [YugabyteDB JDBC Smart Driver*](java/yugabyte-jdbc) [Recommended] | Full | [CRUD Example](java/yugabyte-jdbc/) |
 | [PostgreSQL JDBC Driver](java/postgres-jdbc/) | Full | [CRUD Example](java/postgres-jdbc/) |
-| [Hibernate](java/hibernate/) | Full | [CRUD Example](java/hibernate/#step-1-add-the-hibernate-orm-dependency) |
-| [Spring Data YugabyteDB](/preview/integrations/spring-framework/sdyb/) | Full | [CRUD Example](/preview/integrations/spring-framework/sdyb/#examples) |
-| Spring Data JPA | Full | [CRUD Example](/preview/quick-start/build-apps/java/ysql-spring-data/) |
+| [Ebean](java/ebean/) | Full | [CRUD Example](java/ebean/) |
+| [Hibernate](java/hibernate/) | Full | [CRUD Example](java/hibernate/) |
+| [Spring Data YugabyteDB](../integrations/spring-framework/sdyb/) | Full | [CRUD Example](../integrations/spring-framework/sdyb/#examples) |
+| [Spring Data JPA](../spring-framework/sd-jpa/) | Full | [CRUD Example](../quick-start/build-apps/java/ysql-spring-data/) |
 <!-- | Micronaut | Beta |  | -->
 <!-- | Quarkus | Beta |  | -->
 <!-- | MyBatis | Full |  | -->
@@ -45,7 +46,8 @@ The following libraries are officially supported by YugabyteDB.
 
 | Driver/ORM | Support Level | Example apps |
 | :--------- | :------------ | :----------- |
-| [PGX](go/pgx/) [Recommended] | Full | [CRUD Example](go/pgx/) |
+| [YugabyteDB PGX](go/yb-pgx/) [Recommended] | Full | [CRUD Example](go/yb-pgx/) |
+| [PGX](go/pgx/) | Full | [CRUD Example](go/pgx/) |
 | [PQ](go/pq/) | Full | [CRUD Example](go/pq/) |
 | [GORM](go/gorm/) | Full | [CRUD Example](go/gorm/) |
 | [PG](go/pg/) | Full | [CRUD Example](go/pg/) |
@@ -75,9 +77,9 @@ The following libraries are officially supported by YugabyteDB.
 
 ### [Python](python/)
 
-| Driver/ORM (* Recommended) | Support Level | Example apps |
+| Driver/ORM | Support Level | Example apps |
 | :------------------------- | :------------ | :----------- |
-| [Yugabyte Psycopg2*](python/yugabyte-psycopg2/) [Recommended] | Full | [CRUD Example](python/yugabyte-psycopg2/) |
+| [Yugabyte Psycopg2](python/yugabyte-psycopg2/) [Recommended] | Full | [CRUD Example](python/yugabyte-psycopg2/) |
 | [PostgreSQL Psycopg2](python/postgres-psycopg2/) | Full | [CRUD Example](python/postgres-psycopg2/) |
 | aiopg | Full | [Quick Start](/preview/quick-start/build-apps/python/ysql-aiopg/) |
 | [Django](python/django/) | Full | [CRUD Example](python/django/) |

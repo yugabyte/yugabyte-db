@@ -2,7 +2,7 @@
 title: Choose a topology
 linkTitle: Choose a topology
 description: Overview of topologies available in YugabyteDB Managed.
-headcontent:
+headcontent: Deployment and replication options in YugabyteDB Managed
 menu:
   preview_yugabyte-cloud:
     identifier: create-clusters-topology

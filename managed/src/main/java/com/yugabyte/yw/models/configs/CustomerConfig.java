@@ -194,9 +194,14 @@ public class CustomerConfig extends Model {
   }
 
   public static CustomerConfig createWithFormData(UUID customerUUID, JsonNode formData) {
+    CustomerConfig customerConfig = createInstance(customerUUID, formData);
+    customerConfig.save();
+    return customerConfig;
+  }
+
+  public static CustomerConfig createInstance(UUID customerUUID, JsonNode formData) {
     CustomerConfig customerConfig = Json.fromJson(formData, CustomerConfig.class);
     customerConfig.customerUUID = customerUUID;
-    customerConfig.save();
     return customerConfig;
   }
 

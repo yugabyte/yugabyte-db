@@ -3,11 +3,9 @@
 package com.yugabyte.yw.common.services;
 
 import javax.inject.Singleton;
-import lombok.extern.slf4j.Slf4j;
 import org.yb.client.YbcClient;
 
 @Singleton
-@Slf4j
 public class YbcClientService {
 
   private YbcClient getClient(String nodeIp, int ybcPort) {
@@ -36,6 +34,8 @@ public class YbcClientService {
   }
 
   public void closeClient(YbcClient client) {
-    client.close();
+    if (client != null) {
+      client.close();
+    }
   }
 }

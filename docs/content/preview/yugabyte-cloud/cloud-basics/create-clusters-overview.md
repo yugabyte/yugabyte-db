@@ -2,7 +2,7 @@
 title: Plan your cluster
 linkTitle: Plan your cluster
 description: Plan a cluster in YugabyteDB Managed.
-headcontent:
+headcontent: Before deploying a production cluster, you need to consider the following factors
 image: /images/section_icons/deploy/enterprise.png
 menu:
   preview_yugabyte-cloud:
@@ -11,8 +11,6 @@ menu:
     weight: 10
 type: docs
 ---
-
-Before deploying a production cluster, you need to consider the following factors.
 
 ## Best practices
 

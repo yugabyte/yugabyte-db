@@ -198,6 +198,13 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
                                                UpdateConsumerOnProducerSplitResponsePB* resp,
                                                rpc::RpcContext* rpc);
 
+  // Wait for replication to drain on CDC streams.
+  typedef std::pair<CDCStreamId, TabletId> StreamTabletIdPair;
+  typedef boost::hash<StreamTabletIdPair> StreamTabletIdHash;
+  Status WaitForReplicationDrain(const WaitForReplicationDrainRequestPB* req,
+                                         WaitForReplicationDrainResponsePB* resp,
+                                         rpc::RpcContext* rpc);
+
   // Find all the CDC streams that have been marked as DELETED.
   Status FindCDCStreamsMarkedAsDeleting(std::vector<scoped_refptr<CDCStreamInfo>>* streams);
 
@@ -220,6 +227,10 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   // Delete specified CDC streams metadata.
   Status CleanUpCDCStreamsMetadata(const std::vector<scoped_refptr<CDCStreamInfo>>& streams);
+
+  Status UpdateCDCStreams(
+      const std::vector<CDCStreamId>& stream_ids,
+      const std::vector<yb::master::SysCDCStreamEntryPB>& update_entries);
 
   bool IsCdcEnabled(const TableInfo& table_info) const override;
 
@@ -438,13 +449,17 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   void GetColocatedTabletSchemaCallback(
       const std::string& universe_id, const std::shared_ptr<std::vector<client::YBTableInfo>>& info,
       const std::unordered_map<TableId, std::string>& producer_bootstrap_ids, const Status& s);
+  typedef std::vector<std::tuple<
+      CDCStreamId, TableId, std::unordered_map<std::string, std::string>>> StreamUpdateInfos;
   void GetCDCStreamCallback(const CDCStreamId& bootstrap_id,
                             std::shared_ptr<TableId> table_id,
                             std::shared_ptr<std::unordered_map<std::string, std::string>> options,
                             const std::string& universe_id,
                             const TableId& table,
                             std::shared_ptr<CDCRpcTasks> cdc_rpc,
-                            const Status& s);
+                            const Status& s,
+                            std::shared_ptr<StreamUpdateInfos> stream_update_infos,
+                            std::shared_ptr<std::mutex> update_infos_lock);
   void AddCDCStreamToUniverseAndInitConsumer(const std::string& universe_id, const TableId& table,
                                              const Result<CDCStreamId>& stream_id,
                                              std::function<void()> on_success_cb = nullptr);

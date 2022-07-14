@@ -21,23 +21,23 @@
  */
 export interface ClusterNodeInfo  {
   /**
-   * The number of cores for each node
-   * @type {number}
-   * @memberof ClusterNodeInfo
-   */
-  num_cores: number;
-  /**
-   * The amount of RAM (MB) for each node
+   * The total amount of RAM (MB) used by all nodes
    * @type {number}
    * @memberof ClusterNodeInfo
    */
   memory_mb: number;
   /**
-   * The size of disk (GB) of each node
+   * The total size of disk (GB)
    * @type {number}
    * @memberof ClusterNodeInfo
    */
   disk_size_gb: number;
+  /**
+   * The average CPU usage over all nodes
+   * @type {number}
+   * @memberof ClusterNodeInfo
+   */
+  cpu_usage?: number;
 }
 
 

@@ -2,7 +2,7 @@
 title: View slow queries
 linkTitle: Slow queries
 description: View slow running queries that have run on your YugabyteDB Managed cluster.
-headcontent:
+headcontent: View slow running queries that have run on your cluster
 image: /images/section_icons/deploy/enterprise.png
 menu:
   preview_yugabyte-cloud:

@@ -425,6 +425,13 @@ extern bool yb_enable_expression_pushdown;
  */
 extern bool yb_enable_optimizer_statistics;
 
+/*
+ * Enables nonbreaking DDL mode in which a DDL statement is not considered as
+ * a "breaking catalog change" and therefore will not cause running transactions
+ * to abort.
+ */
+extern bool yb_make_next_ddl_statement_nonbreaking;
+
 //------------------------------------------------------------------------------
 // GUC variables needed by YB via their YB pointers.
 extern int StatementTimeout;
@@ -627,5 +634,15 @@ void YbRegisterSysTableForPrefetching(int sys_table_id);
  * Returns true if the relation is a non-system relation in the same region.
  */
 bool YBCIsRegionLocal(Relation rel);
+
+/*
+ * Return NULL for all non-range-partitioned tables.
+ * Return an empty string for one-tablet range-partitioned tables.
+ * Return SPLIT AT VALUES clause string (i.e. SPLIT AT VALUES(...))
+ * for all range-partitioned tables with more than one tablet.
+ * Return an empty string when duplicate split points exist
+ * after tablet splitting.
+ */
+extern Datum yb_get_range_split_clause(PG_FUNCTION_ARGS);
 
 #endif /* PG_YB_UTILS_H */

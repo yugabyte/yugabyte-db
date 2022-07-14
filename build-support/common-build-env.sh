@@ -343,7 +343,7 @@ decide_whether_to_use_linuxbrew() {
         YB_USE_LINUXBREW=1
       fi
     elif [[ -n ${YB_LINUXBREW_DIR:-} ||
-            ( ${YB_COMPILER_TYPE} == "clang12" &&
+            ( ${YB_COMPILER_TYPE} =~ ^clang[0-9]+$ &&
               $build_type == "release" &&
               "$( uname -m )" == "x86_64" ) ]]; then
       YB_USE_LINUXBREW=1
@@ -495,7 +495,13 @@ set_default_compiler_type() {
     if is_mac; then
       YB_COMPILER_TYPE=clang
     elif [[ $OSTYPE =~ ^linux ]]; then
-      YB_COMPILER_TYPE=clang12
+      detect_architecture
+      if [[ ${build_type} =~ ^(debug|fastdebug|release)$ &&
+            ${YB_TARGET_ARCH} == "x86_64" ]]; then
+        YB_COMPILER_TYPE=clang13
+      else
+        YB_COMPILER_TYPE=clang12
+      fi
     else
       fatal "Cannot set default compiler type on OS $OSTYPE"
     fi
@@ -1207,6 +1213,7 @@ download_thirdparty() {
 }
 
 download_toolchain() {
+  expect_vars_to_be_set YB_COMPILER_TYPE
   local toolchain_urls=()
   local linuxbrew_url=""
   if [[ -n ${YB_THIRDPARTY_DIR:-} && -f "$YB_THIRDPARTY_DIR/linuxbrew_url.txt" ]]; then
@@ -1230,6 +1237,18 @@ download_toolchain() {
 
   if [[ -n ${linuxbrew_url:-} ]]; then
     toolchain_urls+=( "$linuxbrew_url" )
+  fi
+  if [[ -z ${YB_LLVM_TOOLCHAIN_URL:-} &&
+        ${YB_COMPILER_TYPE:-} =~ ^clang[0-9]+$ ]] && is_linux; then
+    YB_LLVM_TOOLCHAIN_URL=$(
+      python3 -m llvm_installer --print-url "--llvm-major-version=${YB_COMPILER_TYPE#clang}"
+    )
+    if [[ ${YB_LLVM_TOOLCHAIN_URL} != https://* ]]; then
+      fatal "Failed to determine LLVM toolchain URL using the llvm-installer utility." \
+            "YB_LLVM_TOOLCHAIN_URL=${YB_LLVM_TOOLCHAIN_URL}. See" \
+            "https://github.com/yugabyte/llvm-installer for details."
+    fi
+    export YB_LLVM_TOOLCHAIN_URL
   fi
   if [[ -n ${YB_LLVM_TOOLCHAIN_URL:-} ]]; then
     toolchain_urls+=( "${YB_LLVM_TOOLCHAIN_URL}" )
@@ -1255,7 +1274,7 @@ download_toolchain() {
     fi
 
     download_and_extract_archive "$toolchain_url" "$toolchain_dir_parent"
-    if "$is_linuxbrew"; then
+    if [[ ${is_linuxbrew} == "true" ]]; then
       if [[ -n ${YB_LINUXBREW_DIR:-} &&
             $YB_LINUXBREW_DIR != "$extracted_dir" ]]; then
         log_thirdparty_and_toolchain_details
@@ -1267,7 +1286,7 @@ download_toolchain() {
       save_brew_path_to_build_dir
     fi
 
-    if "$is_llvm"; then
+    if [[ ${is_llvm} == "true" ]]; then
       if [[ -n ${YB_LLVM_TOOLCHAIN_DIR:-} &&
             $YB_LLVM_TOOLCHAIN_DIR != "$extracted_dir" ]]; then
         log_thirdparty_and_toolchain_details
@@ -2442,7 +2461,6 @@ set_prebuilt_thirdparty_url() {
       local thirdparty_tool_cmd_line=(
         "$YB_BUILD_SUPPORT_DIR/thirdparty_tool"
         --save-thirdparty-url-to-file "$thirdparty_url_file_path"
-        --save-llvm-url-to-file "$llvm_url_file_path"
         --compiler-type "$YB_COMPILER_TYPE"
       )
       if [[ -n ${YB_USE_LINUXBREW:-} ]]; then

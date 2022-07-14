@@ -66,7 +66,7 @@ K8S_CLIENT_CERT_FILE_PATH = os.path.join(K8S_CLIENT_CERTS_PATH, "yugabytedb.crt"
 RECENT_FAILURE_THRESHOLD_SEC = 8 * 60
 FATAL_TIME_THRESHOLD_MINUTES = 12
 DISK_UTILIZATION_THRESHOLD_PCT = 80
-FD_THRESHOLD_PCT = 50
+FD_THRESHOLD_PCT = 70
 SSH_TIMEOUT_SEC = 10
 CMD_TIMEOUT_SEC = 20
 MAX_THREADS = 10
@@ -671,7 +671,11 @@ class NodeChecker():
         else:
             cmd = 'curl -s {}'.format(endpoint)
 
-        return self._check_output(cmd).strip()
+        output = self._check_output(cmd).strip()
+        if has_errors(output):
+            logging.info("HTTP request to {} returned error: {}".format(endpoint, output))
+            return None
+        return output
 
     def check_yb_version(self, ip_address, process, port, expected):
         logging.info("Checking YB Version on node {} process {}".format(self.node, process))

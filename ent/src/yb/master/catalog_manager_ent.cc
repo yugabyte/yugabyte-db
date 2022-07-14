@@ -84,6 +84,7 @@
 
 #include "yb/util/cast.h"
 #include "yb/util/date_time.h"
+#include "yb/util/debug-util.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
@@ -154,6 +155,12 @@ DEFINE_bool(enable_replicate_transaction_status_table, false,
 DEFINE_int32(xcluster_parent_tablet_deletion_task_retry_secs, 30,
              "Frequency at which the bg task will verify parent tablets retained for xCluster "
              "replication and determine if they can be cleaned up.");
+
+DEFINE_int32(wait_replication_drain_retry_timeout_ms, 2000,
+             "Timeout in milliseconds in between CheckReplicationDrain calls to tservers "
+             "in case of retries.");
+DEFINE_test_flag(bool, hang_wait_replication_drain, false,
+                 "Used in tests to temporarily block WaitForReplicationDrain.");
 
 namespace yb {
 
@@ -377,7 +384,7 @@ class UniverseReplicationLoader : public Visitor<PersistentUniverseReplicationIn
       // Add any failed universes to be cleared
       if (l->is_deleted_or_failed() ||
           l->pb.state() == SysUniverseReplicationEntryPB::DELETING ||
-          GStringPiece(l->pb.producer_id()).ends_with(".ALTER")) {
+          cdc::IsAlterReplicationUniverseId(l->pb.producer_id())) {
         catalog_manager_->universes_to_clear_.push_back(ri->id());
       }
 
@@ -3554,44 +3561,91 @@ bool CatalogManager::CDCStreamExistsUnlocked(const CDCStreamId& stream_id) {
   return true;
 }
 
+Status CatalogManager::UpdateCDCStreams(
+    const std::vector<CDCStreamId>& stream_ids,
+    const std::vector<yb::master::SysCDCStreamEntryPB>& update_entries) {
+  RSTATUS_DCHECK(stream_ids.size() > 0, InvalidArgument, "No stream ID provided.");
+  RSTATUS_DCHECK(stream_ids.size() == update_entries.size(), InvalidArgument,
+                 "Mismatched number of stream IDs and update entries provided.");
+
+  // Map CDCStreamId to (CDCStreamInfo, SysCDCStreamEntryPB). CDCStreamId is sorted in
+  // increasing order in the map.
+  std::map<CDCStreamId, std::pair<scoped_refptr<CDCStreamInfo>,
+                                  yb::master::SysCDCStreamEntryPB>> id_to_update_infos;
+  {
+    SharedLock lock(mutex_);
+    for (size_t i = 0; i < stream_ids.size(); i++) {
+      auto stream_id = stream_ids[i];
+      auto entry = update_entries[i];
+      auto stream = FindPtrOrNull(cdc_stream_map_, stream_id);
+      if (stream == nullptr) {
+        return STATUS(NotFound, "Could not find CDC stream", stream_id,
+                      MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
+      }
+      id_to_update_infos[stream_id] = {stream, entry};
+    }
+  }
+
+  // Acquire CDCStreamInfo::WriteLock in increasing order of CDCStreamId to avoid deadlock.
+  std::vector<CDCStreamInfo::WriteLock> stream_locks;
+  std::vector<scoped_refptr<CDCStreamInfo>> streams_to_update;
+  stream_locks.reserve(stream_ids.size());
+  streams_to_update.reserve(stream_ids.size());
+  for (const auto& id_to_update_info : id_to_update_infos) {
+    auto stream = id_to_update_info.second.first;
+    auto entry = id_to_update_info.second.second;
+
+    stream_locks.push_back(stream->LockForWrite());
+    auto& stream_lock = stream_locks.back();
+    if (stream_lock->is_deleting()) {
+      return STATUS(NotFound, "CDC stream has been deleted", stream->id(),
+                    MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
+    }
+    stream_lock.mutable_data()->pb.CopyFrom(entry);
+    streams_to_update.push_back(stream);
+  }
+
+  // First persist changes in sys catalog, then commit changes in the order of lock acquiring.
+  RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), streams_to_update));
+  for (auto& stream_lock : stream_locks) {
+    stream_lock.Commit();
+  }
+
+  return Status::OK();
+}
+
 Status CatalogManager::UpdateCDCStream(const UpdateCDCStreamRequestPB *req,
                                        UpdateCDCStreamResponsePB* resp,
                                        rpc::RpcContext* rpc) {
   LOG(INFO) << "UpdateCDCStream from " << RequestorString(rpc)
             << ": " << req->DebugString();
 
-  // Check fields.
-  if (!req->has_stream_id()) {
-    return STATUS(InvalidArgument, "Stream ID must be provided",
-                  req->ShortDebugString(), MasterError(MasterErrorPB::INVALID_REQUEST));
-  }
-  if (!req->has_entry()) {
-    return STATUS(InvalidArgument, "CDC Stream Entry must be provided",
-                  req->ShortDebugString(), MasterError(MasterErrorPB::INVALID_REQUEST));
+  std::vector<CDCStreamId> stream_ids;
+  std::vector<yb::master::SysCDCStreamEntryPB> update_entries;
+  stream_ids.reserve(req->streams_size() > 0 ? req->streams_size() : 1);
+  update_entries.reserve(req->streams_size() > 0 ? req->streams_size() : 1);
+
+  if (req->streams_size() == 0) {
+    // Support backwards compatibility for single stream update.
+    if (!req->has_stream_id()) {
+      return STATUS(InvalidArgument, "Stream ID must be provided",
+                    req->ShortDebugString(), MasterError(MasterErrorPB::INVALID_REQUEST));
+    }
+    if (!req->has_entry()) {
+      return STATUS(InvalidArgument, "CDC Stream Entry must be provided",
+                    req->ShortDebugString(), MasterError(MasterErrorPB::INVALID_REQUEST));
+    }
+    stream_ids.push_back(req->stream_id());
+    update_entries.push_back(req->entry());
+  } else {
+    // Process batch update.
+    for (const auto& stream : req->streams()) {
+      stream_ids.push_back(stream.stream_id());
+      update_entries.push_back(stream.entry());
+    }
   }
 
-  scoped_refptr<CDCStreamInfo> stream;
-  {
-    SharedLock lock(mutex_);
-    stream = FindPtrOrNull(cdc_stream_map_, req->stream_id());
-  }
-  if (stream == nullptr) {
-    return STATUS(NotFound, "Could not find CDC stream", req->ShortDebugString(),
-                  MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
-  }
-
-  auto stream_lock = stream->LockForWrite();
-  if (stream_lock->is_deleting()) {
-    return STATUS(NotFound, "CDC stream has been deleted", req->ShortDebugString(),
-                  MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
-  }
-
-  stream_lock.mutable_data()->pb.CopyFrom(req->entry());
-  // Also need to persist changes in sys catalog.
-  RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), stream));
-
-  stream_lock.Commit();
-
+  RETURN_NOT_OK(UpdateCDCStreams(stream_ids, update_entries));
   return Status::OK();
 }
 
@@ -4088,6 +4142,13 @@ Status CatalogManager::AddValidatedTableAndCreateCdcStreams(
     options.emplace(cdc::kSourceType, CDCRequestSource_Name(cdc::CDCRequestSource::XCLUSTER));
     options.emplace(cdc::kCheckpointType, CDCCheckpointType_Name(cdc::CDCCheckpointType::IMPLICIT));
 
+    // Keep track of the bootstrap_id, table_id, and options of streams to update after
+    // the last GetCDCStreamCallback finishes. Will be updated by multiple async
+    // GetCDCStreamCallback.
+    auto stream_update_infos = std::make_shared<StreamUpdateInfos>();
+    stream_update_infos->reserve(validated_tables.size());
+    auto update_infos_lock = std::make_shared<std::mutex>();
+
     for (const auto& table : validated_tables) {
       string producer_bootstrap_id;
       auto it = table_bootstrap_ids.find(table);
@@ -4100,7 +4161,7 @@ Status CatalogManager::AddValidatedTableAndCreateCdcStreams(
         cdc_rpc->client()->GetCDCStream(producer_bootstrap_id, table_id, stream_options,
             std::bind(&enterprise::CatalogManager::GetCDCStreamCallback, this,
                 producer_bootstrap_id, table_id, stream_options, universe->id(), table, cdc_rpc,
-                std::placeholders::_1));
+                std::placeholders::_1, stream_update_infos, update_infos_lock));
       } else {
         cdc_rpc->client()->CreateCDCStream(
             table, options,
@@ -4413,7 +4474,9 @@ void CatalogManager::GetCDCStreamCallback(
     const std::string& universe_id,
     const TableId& table,
     std::shared_ptr<CDCRpcTasks> cdc_rpc,
-    const Status& s) {
+    const Status& s,
+    std::shared_ptr<StreamUpdateInfos> stream_update_infos,
+    std::shared_ptr<std::mutex> update_infos_lock) {
   if (!s.ok()) {
     LOG(ERROR) << "Unable to find bootstrap id " << bootstrap_id;
     AddCDCStreamToUniverseAndInitConsumer(universe_id, table, s);
@@ -4427,21 +4490,39 @@ void CatalogManager::GetCDCStreamCallback(
       return;
     }
     // todo check options
-    AddCDCStreamToUniverseAndInitConsumer(universe_id, table, bootstrap_id, [&] () {
-        // Extra callback on universe setup success - update the producer to let it know that
-        // the bootstrapping is complete.
-        SysCDCStreamEntryPB new_entry;
-        new_entry.add_table_id(*table_id);
-        new_entry.mutable_options()->Reserve(narrow_cast<int>(options->size()));
-        for (const auto& option : *options) {
-          auto new_option = new_entry.add_options();
-          new_option->set_key(option.first);
-          new_option->set_value(option.second);
-        }
-        new_entry.set_state(master::SysCDCStreamEntryPB::ACTIVE);
+    {
+      std::lock_guard<std::mutex> lock(*update_infos_lock);
+      stream_update_infos->push_back({bootstrap_id, *table_id, *options});
+    }
+    AddCDCStreamToUniverseAndInitConsumer(universe_id, table, bootstrap_id,
+        [&] () {
+          // Extra callback on universe setup success - update the producer to let it know that
+          // the bootstrapping is complete. This callback will only be called once among all
+          // the GetCDCStreamCallback calls, and we update all streams in batch at once.
+          std::lock_guard<std::mutex> lock(*update_infos_lock);
 
-        WARN_NOT_OK(cdc_rpc->client()->UpdateCDCStream(bootstrap_id, new_entry),
-                  "Unable to update CDC stream options");
+          std::vector<CDCStreamId> update_bootstrap_ids;
+          std::vector<SysCDCStreamEntryPB> update_entries;
+          for (const auto& update_info : *stream_update_infos) {
+            auto update_bootstrap_id = std::get<0>(update_info);
+            auto update_table_id = std::get<1>(update_info);
+            auto update_options = std::get<2>(update_info);
+            SysCDCStreamEntryPB new_entry;
+            new_entry.add_table_id(update_table_id);
+            new_entry.mutable_options()->Reserve(narrow_cast<int>(update_options.size()));
+            for (const auto& option : update_options) {
+              auto new_option = new_entry.add_options();
+              new_option->set_key(option.first);
+              new_option->set_value(option.second);
+            }
+            new_entry.set_state(master::SysCDCStreamEntryPB::ACTIVE);
+
+            update_bootstrap_ids.push_back(update_bootstrap_id);
+            update_entries.push_back(new_entry);
+          }
+          WARN_NOT_OK(cdc_rpc->client()->UpdateCDCStream(update_bootstrap_ids, update_entries),
+                      "Unable to update CDC stream options");
+          stream_update_infos->clear();
       });
   }
 }
@@ -4514,8 +4595,7 @@ void CatalogManager::AddCDCStreamToUniverseAndInitConsumer(
           LOG(ERROR) << "Error registering subscriber: " << s;
           l.mutable_data()->pb.set_state(SysUniverseReplicationEntryPB::FAILED);
         } else {
-          GStringPiece original_producer_id(universe->id());
-          if (original_producer_id.ends_with(".ALTER")) {
+          if (cdc::IsAlterReplicationUniverseId(universe->id())) {
             // Don't enable ALTER universes, merge them into the main universe instead.
             merge_alter = true;
           } else {
@@ -4538,18 +4618,17 @@ void CatalogManager::AddCDCStreamToUniverseAndInitConsumer(
   }
 
   if (validated_all_tables) {
-    GStringPiece final_id(universe->id());
+    string final_id = cdc::GetOriginalReplicationUniverseId(universe->id());
     // If this is an 'alter', merge back into primary command now that setup is a success.
     if (merge_alter) {
-      final_id.remove_suffix(sizeof(".ALTER")-1 /* exclude \0 ending */);
-      MergeUniverseReplication(universe, final_id.ToString());
+      MergeUniverseReplication(universe, final_id);
     }
     // Update the in-memory cache of consumer tables.
     LockGuard lock(mutex_);
     for (const auto& info : consumer_info) {
       auto c_table_id = info.consumer_table_id;
       auto c_stream_id = info.stream_id;
-      xcluster_consumer_tables_to_stream_map_[c_table_id].emplace(final_id.ToString(), c_stream_id);
+      xcluster_consumer_tables_to_stream_map_[c_table_id].emplace(final_id, c_stream_id);
     }
   }
 }
@@ -5455,7 +5534,7 @@ Status CatalogManager::IsSetupUniverseReplicationDone(
     return STATUS(InvalidArgument, "Producer universe ID must be provided",
                   req->ShortDebugString(), MasterError(MasterErrorPB::INVALID_REQUEST));
   }
-  bool isAlterRequest = GStringPiece(req->producer_id()).ends_with(".ALTER");
+  bool isAlterRequest = cdc::IsAlterReplicationUniverseId(req->producer_id());
 
   GetUniverseReplicationRequestPB universe_req;
   GetUniverseReplicationResponsePB universe_resp;
@@ -5598,6 +5677,155 @@ Status CatalogManager::UpdateConsumerOnProducerSplit(
                             "Updating cluster config in sys-catalog"));
   l.Commit();
 
+  return Status::OK();
+}
+
+Status CatalogManager::WaitForReplicationDrain(const WaitForReplicationDrainRequestPB *req,
+                                               WaitForReplicationDrainResponsePB *resp,
+                                               rpc::RpcContext *rpc) {
+  LOG(INFO) << "WaitForReplicationDrain from " << RequestorString(rpc)
+            << ": " << req->DebugString();
+  if (req->stream_ids_size() == 0) {
+    return STATUS(InvalidArgument, "No stream ID provided",
+                  req->ShortDebugString(), MasterError(MasterErrorPB::INVALID_REQUEST));
+  }
+  MicrosecondsInt64 target_time = req->has_target_time()
+      ? req->target_time()
+      : GetCurrentTimeMicros();
+  if (!req->target_time()) {
+    LOG(INFO) << "WaitForReplicationDrain: target_time unspecified. Default to " << target_time;
+  }
+
+  // Find all streams to check for replication drain.
+  std::unordered_set<CDCStreamId> filter_stream_ids(req->stream_ids().begin(),
+                                                    req->stream_ids().end());
+  std::unordered_set<CDCStreamId> found_stream_ids;
+  std::vector<scoped_refptr<CDCStreamInfo>> streams;
+  {
+    std::vector<scoped_refptr<CDCStreamInfo>> all_streams;
+    GetAllCDCStreams(&all_streams);
+    for (const auto& stream : all_streams) {
+      if (filter_stream_ids.find(stream->id()) == filter_stream_ids.end()) {
+        continue;
+      }
+      streams.push_back(stream);
+      found_stream_ids.insert(stream->id());
+    }
+  }
+
+  // Verify that all specified stream_ids are found.
+  std::ostringstream not_found_streams;
+  for (const auto& stream_id : filter_stream_ids) {
+    if (found_stream_ids.find(stream_id) == found_stream_ids.end()) {
+      not_found_streams << stream_id << ",";
+    }
+  }
+  if (!not_found_streams.str().empty()) {
+    string stream_ids = not_found_streams.str();
+    stream_ids.pop_back();  // Remove the last comma.
+    return STATUS(InvalidArgument, Format("Streams not found: $0", stream_ids),
+                  req->ShortDebugString(), MasterError(MasterErrorPB::INVALID_REQUEST));
+  }
+
+  // Keep track of the drained (stream_id, tablet_id) tuples.
+  std::unordered_set<StreamTabletIdPair, StreamTabletIdHash> drained_stream_tablet_ids;
+
+  // Calculate deadline and interval for each CallReplicationDrain call to tservers.
+  CoarseTimePoint deadline = rpc->GetClientDeadline();
+  if (deadline == CoarseTimePoint::max()) {
+    deadline = CoarseMonoClock::now() + MonoDelta::FromMilliseconds(FLAGS_master_rpc_timeout_ms);
+  }
+  auto timeout = MonoDelta::FromMilliseconds(
+      GetAtomicFlag(&FLAGS_wait_replication_drain_retry_timeout_ms));
+
+  while (true) {
+    // 1. Construct the request to be sent to each tserver. Meanwhile, collect all tuples that
+    //    are not marked as drained in previous iterations.
+    std::unordered_set<StreamTabletIdPair, StreamTabletIdHash> undrained_stream_tablet_ids;
+    std::unordered_map<std::shared_ptr<cdc::CDCServiceProxy>,
+                       cdc::CheckReplicationDrainRequestPB> proxy_to_request;
+    for (const auto& stream : streams) {
+      for (const auto& table_id : stream->table_id()) {
+        auto table_info = VERIFY_RESULT(FindTableById(table_id));
+        RSTATUS_DCHECK(table_info != nullptr, NotFound, "Table ID not found: " + table_id);
+
+        for (const auto& tablet : table_info->GetTablets()) {
+          // (1) If tuple is marked as drained in a previous iteration, skip it.
+          // (2) Otherwise, check if it is drained in the current iteration.
+          if (drained_stream_tablet_ids.find({stream->id(), tablet->id()}) !=
+              drained_stream_tablet_ids.end()) {
+            continue;
+          }
+          undrained_stream_tablet_ids.insert({stream->id(), tablet->id()});
+
+          // Update the relevant request. Skip if relevant tserver/proxy is not ready yet.
+          auto ts_result = tablet->GetLeader();
+          if (ts_result.ok()) {
+            std::shared_ptr<cdc::CDCServiceProxy> proxy;
+            auto s = (*ts_result)->GetProxy(&proxy);
+            if (s.ok()) {
+              auto& tablet_req = proxy_to_request[proxy];
+              auto stream_info = tablet_req.add_stream_info();
+              stream_info->set_stream_id(stream->id());
+              stream_info->set_tablet_id(tablet->id());
+            }
+          }
+        }
+      }
+    }
+
+    // For testing tserver leadership changes.
+    TEST_PAUSE_IF_FLAG(TEST_hang_wait_replication_drain);
+
+    // 2. Call CheckReplicationDrain on each tserver.
+    for (auto& proxy_request : proxy_to_request) {
+      if (deadline - CoarseMonoClock::Now() <= timeout) {
+        break;  // Too close to deadline.
+      }
+      auto& cdc_service = proxy_request.first;
+      auto& tablet_req = proxy_request.second;
+      tablet_req.set_target_time(target_time);
+      cdc::CheckReplicationDrainResponsePB tablet_resp;
+      rpc::RpcController tablet_rpc;
+      tablet_rpc.set_timeout(timeout);
+
+      Status s = cdc_service->CheckReplicationDrain(tablet_req, &tablet_resp, &tablet_rpc);
+      if (!s.ok()) {
+        LOG(WARNING) << "CheckReplicationDrain responded with non-ok status: " << s;
+      } else if (tablet_resp.has_error()) {
+        LOG(WARNING) << "CheckReplicationDrain responded with error: "
+                     << tablet_resp.error().DebugString();
+      } else {
+        // Update the two lists of (stream ID, tablet ID) pairs.
+        for (const auto& stream_info : tablet_resp.drained_stream_info()) {
+          undrained_stream_tablet_ids.erase({stream_info.stream_id(), stream_info.tablet_id()});
+          drained_stream_tablet_ids.insert({stream_info.stream_id(), stream_info.tablet_id()});
+        }
+      }
+    }
+
+    // 3. Check if all current undrained tuples are marked as drained, or it is too close
+    //    to deadline. If so, prepare the response and terminate the loop.
+    if (undrained_stream_tablet_ids.empty() ||
+        deadline - CoarseMonoClock::Now() <= timeout * 2) {
+      std::ostringstream output_stream;
+      output_stream << "WaitForReplicationDrain from " << RequestorString(rpc) << " finished.";
+      if (!undrained_stream_tablet_ids.empty()) {
+        output_stream << " Found undrained streams:";
+      }
+
+      for (const auto& stream_tablet_id : undrained_stream_tablet_ids) {
+        output_stream << "\n\tStream: " << stream_tablet_id.first
+                      << ", Tablet: " << stream_tablet_id.second;
+        auto undrained_stream_info = resp->add_undrained_stream_info();
+        undrained_stream_info->set_stream_id(stream_tablet_id.first);
+        undrained_stream_info->set_tablet_id(stream_tablet_id.second);
+      }
+      LOG(INFO) << output_stream.str();
+      break;
+    }
+    SleepFor(timeout);
+  }
   return Status::OK();
 }
 

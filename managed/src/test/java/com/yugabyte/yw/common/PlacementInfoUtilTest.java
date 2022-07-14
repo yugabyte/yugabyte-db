@@ -990,7 +990,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     "aws, 0, 10, m3.medium, m3.medium, true",
     "gcp, 0, 10, m3.medium, m3.medium, true",
     "aws, 0, 10, m3.medium, c4.medium, true",
-    "aws, 0, -10, m3.medium, m3.medium, false", // decrease volume
+    "aws, 0, -10, m3.medium, m3.medium, true", // decrease volume still true (not checked here)
     "aws, 1, 10, m3.medium, m3.medium, false", // change num of volumes
     "azu, 0, 10, m3.medium, m3.medium, false", // wrong provider
     "aws, 0, 10, m3.medium, fake_type, false", // unknown instance type
@@ -1054,7 +1054,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     primaryCluster.userIntent.instanceType = newInstType;
     PlacementInfoUtil.updateUniverseDefinition(
         udtp, t.customer.getCustomerId(), udtp.getPrimaryCluster().uuid, EDIT);
-    assertEquals(true, udtp.nodesResizeAvailable); // checking initially available
+    assertTrue(udtp.nodesResizeAvailable); // checking initially available
     udtp.getPrimaryCluster().userIntent.numNodes++;
     PlacementInfoUtil.updateUniverseDefinition(
         udtp, t.customer.getCustomerId(), udtp.getPrimaryCluster().uuid, EDIT);
@@ -1063,6 +1063,24 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     PlacementAZ az = udtp.getPrimaryCluster().placementInfo.azStream().findFirst().get();
     az.isAffinitized = !az.isAffinitized;
     assertEquals(false, udtp.nodesResizeAvailable); // placement changed
+
+    // Reset to original.
+    udtp = Universe.getOrBadRequest(universe.getUniverseUUID()).getUniverseDetails();
+    udtp.universeUUID = universe.universeUUID;
+    // Adding a node that will be eventually removed due to numNodes > actual count.
+    NodeDetails firstNode = udtp.nodeDetailsSet.iterator().next();
+    NodeDetails nodeToAdd = new NodeDetails();
+    nodeToAdd.nodeIdx = udtp.nodeDetailsSet.size();
+    nodeToAdd.state = ToBeAdded;
+    nodeToAdd.placementUuid = firstNode.placementUuid;
+    nodeToAdd.cloudInfo = firstNode.cloudInfo;
+    nodeToAdd.azUuid = firstNode.azUuid;
+    nodeToAdd.isTserver = true;
+    udtp.nodeDetailsSet.add(nodeToAdd);
+    udtp.getPrimaryCluster().userIntent.deviceInfo.volumeSize++;
+    PlacementInfoUtil.updateUniverseDefinition(
+        udtp, t.customer.getCustomerId(), udtp.getPrimaryCluster().uuid, EDIT);
+    assertTrue(udtp.nodesResizeAvailable);
   }
 
   private void createInstanceType(UUID providerId, String type) {

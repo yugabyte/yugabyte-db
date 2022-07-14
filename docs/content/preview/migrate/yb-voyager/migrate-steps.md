@@ -84,20 +84,20 @@ Prepare your target YugabyteDB cluster by creating a database, and a user for yo
 
 ### Create a user
 
-1. Create a user with [`yb_superuser`](../../../yugabyte-cloud/cloud-secure-clusters/cloud-users/#admin-and-yb-superuser) role.
+1. Create a user with [`SUPERUSER`](../../../api/ysql/the-sql-language/statements/dcl_create_role/#syntax) role.
 
-   - For YugabyteDB Managed or YugabyteDB Anywhere versions (2.13.1 and above) or (2.12.4 and above), create a user with `yb_superuser` role using the following command:
+   - For a local YugabyteDB cluster or YugabyteDB Anywhere versions below 2.13.1 or 2.12.4, create a user and role with the superuser privileges using the following command:
 
-   ```sql
-   CREATE USER ybvoyager PASSWORD 'password';
-   GRANT yb_superuser TO ybvoyager;
-   ```
+     ```sql
+     CREATE USER ybvoyager SUPERUSER PASSWORD 'password';
+     ```
 
-   - For YugabyteDB Anywhere versions below (2.13.1 or 2.12.4), create a user and role with the superuser privileges.
+   - For YugabyteDB Managed or YugabyteDB Anywhere versions (2.13.1 and above) or (2.12.4 and above), create a user with [`yb_superuser`](../../../yugabyte-cloud/cloud-secure-clusters/cloud-users/#admin-and-yb-superuser) role using the following command:
 
-   ```sql
-   CREATE USER ybvoyager SUPERUSER PASSWORD 'password';
-   ```
+     ```sql
+     CREATE USER ybvoyager PASSWORD 'password';
+     GRANT yb_superuser TO ybvoyager;
+     ```
 
 1. Capture the user and database details in environment variables.
 

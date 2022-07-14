@@ -449,6 +449,7 @@
       "faultToleranceNone": "None",
       "faultToleranceInstance": "Node Level",
       "faultToleranceAZ": "Availability Zone Level",
+      "faultToleranceRegion": "Region Level",
       "backups": "Backups",
       "every24Hours": "Every 24 hours",
       "backupsDisabled": "Backups Disabled",
@@ -607,7 +608,7 @@
       "docsConnectCluster": "How to connect to your cluster",
       "docsExamplesTutorials": "Examples and tutorials",
       "docsQuickStart": "Quick start guide",
-      "infrastructureBrief": "{{region}} • Nodes ({{nodes}}), Total vCPU ({{vcpu}})",
+      "infrastructureBrief": "{{region}} • Nodes ({{nodes}}), Average CPU Usage ({{cpu}})",
       "totalRam": "TOTAL RAM",
       "totalDiskSize": "TOTAL DISK SIZE",
       "tabOverview": "Overview",
@@ -707,8 +708,9 @@
         "sum" : "sum",
         "provider": "Provider",
         "totalNodes": "Total Nodes",
-        "totalVcpu": "TOTAL vCPU",
-        "regions": "Regions"
+        "averageCpu": "Average CPU Usage",
+        "regions": "Regions",
+        "ramUsed": "RAM Used"
       },
       "tables": {
         "numTables": "{{count}} Table",
@@ -1141,6 +1143,9 @@
       "dateCreated": "Date Created",
       "encryption": "Encryption",
       "inTransitAtRest": "In-transit/At-rest",
+      "inTransit": "In-transit",
+      "atRest": "At-rest",
+      "none": "None",
       "storageUsed": "{{used}} of {{total}} GB Used",
       "aCluster": "a cluster",
       "clusterDeleteInProgress": "Cluster deletion in progress.",

@@ -244,6 +244,11 @@ YBCStatus YBCPgTableExists(const YBCPgOid database_oid,
                            const YBCPgOid table_oid,
                            bool *exists);
 
+YBCStatus YBCGetSplitPoints(YBCPgTableDesc table_desc,
+                            const YBCPgTypeEntity **type_entities,
+                            YBCPgTypeAttrs *type_attrs_arr,
+                            YBCPgSplitDatum *split_points);
+
 // INDEX -------------------------------------------------------------------------------------------
 // Create and drop index "database_name.schema_name.index_name()".
 // - When "schema_name" is NULL, the index "database_name.index_name" is created.

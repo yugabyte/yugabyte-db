@@ -85,11 +85,11 @@ components:
             static_val: '/var/lib/postgresql/data/yugaware'
         ports:
           - private_port: "5432"
-            public_port: "5432"
+            public_port: '{{repl ConfigOption "db_external_port"}}'
         volumes:
           - host_path: '{{repl ConfigOption "storage_path"}}/postgresql'
             container_path: /var/lib/postgresql/data
-            owner: 999
+            owner: "999"
         publish_events:
           - name: Postgres started
             trigger: exec
@@ -122,7 +122,7 @@ components:
             permission: "0777"
         ports:
           - private_port: "9090"
-            public_port: "9090"
+            public_port: '{{repl ConfigOption "prometheus_external_port"}}'
         entrypoint: [ "/bin/sh", "-c", "rm -rf /prometheus/lock && \
           cp /prometheus_configs/default_prometheus.yml /prometheus_configs/prometheus.yml && \
           exec /bin/prometheus \
@@ -156,14 +156,14 @@ components:
                 - job_name: 'prometheus'
                   scrape_timeout:  {{repl ConfigOption "prometheus_scrape_timeout"}}
                   static_configs:
-                      - targets: ['{{repl HostPrivateIpAddress "prometheus" "prom/prometheus" }}:9090']
+                      - targets: ['{{repl HostPrivateIpAddress "prometheus" "prom/prometheus" }}:{{repl ConfigOption "prometheus_external_port"}}']
 
                 - job_name: 'platform'
                   scrape_timeout:  {{repl ConfigOption "prometheus_scrape_timeout"}}
                   metrics_path: "/api/v1/prometheus_metrics"
                   static_configs:
                     - targets: [
-                      '{{repl HostPrivateIpAddress "prometheus" "prom/prometheus" }}:9000'
+                      '{{repl HostPrivateIpAddress "prometheus" "prom/prometheus" }}:{{repl ConfigOption "app_external_port"}}'
                     ]
 
                 - job_name: "node"
@@ -330,7 +330,7 @@ components:
             when: '{{repl ConfigOptionEquals "enable_proxy" "1"}}'
         ports:
           - private_port: "9000"
-            public_port: "9000"
+            public_port: '{{repl ConfigOption "app_external_port"}}'
         publish_events:
           - name: YugaWare started
             trigger: container-start
@@ -349,6 +349,7 @@ components:
 
               db {
                 default.host="{{repl HostPrivateIpAddress "db" "postgres" }}"
+                default.port="{{repl ConfigOption "db_external_port"}}"
                 default.username="postgres"
                 default.password="{{repl ConfigOption "dbpass"}}"
                 default.logStatements=true
@@ -392,6 +393,7 @@ components:
               yb {
                 devops.home = /opt/yugabyte/devops
                 metrics.host="{{repl HostPrivateIpAddress "prometheus" "prom/prometheus" }}"
+                metrics.port="{{repl ConfigOption "prometheus_external_port"}}"
                 storage.path = /opt/yugabyte/yugaware/data
                 docker.network = bridge
                 seedData = false
@@ -482,6 +484,11 @@ config:
         value_cmd:
           name: dbpass_cmd
           value_at: 0
+      - name: db_external_port
+        title: Postgres Database Port
+        type: text
+        value: ""
+        default: "5432"
   - name: app
     title: Application config
     description: Configure your yugaware application
@@ -513,8 +520,13 @@ config:
         title: Support Origin URL
         type: text
         value: ""
-        default: http://localhost:9000
-        help_text: Specify protocol-host-port to be whitelisted in the CORS filter. Omit port if default
+        default: http://localhost
+        help_text: Specify protocol-host to be whitelisted in the CORS filter.
+      - name: app_external_port
+        title: Yugaware Application Port
+        type: text
+        value: ""
+        default: "9000"
       - name: nginx_external_port
         title: Yugaware UI Port
         type: text
@@ -565,17 +577,22 @@ config:
         title: Enable Custom Hooks
         help_text: Enable the use of custom hooks on Platform
         type: bool
-        default: false
+        default: "0"
       - name: enable_sudo
         title: Enable Superuser Privilege for Executing Custom Hooks
         help_text: Enable the use of sudo when executing custom hooks on Platform
         type: bool
-        default: false
+        default: "0"
 
   - name: metrics
     title: Metrics config
     description: Configure your yugabyte metrics
     items:
+      - name: prometheus_external_port
+        title: Metrics port
+        type: text
+        value: ""
+        default: "9090"
       - name: prometheus_retention
         title: Amount of time to retain the metrics, default to 15 days
         type: text

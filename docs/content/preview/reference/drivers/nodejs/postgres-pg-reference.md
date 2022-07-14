@@ -10,8 +10,7 @@ menu:
     identifier: ref-postgres-pg-driver
     parent: drivers
     weight: 600
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

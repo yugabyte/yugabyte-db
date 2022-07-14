@@ -1401,12 +1401,15 @@ ClusterSpec:
       items:
         $ref: '#/ClusterRegionInfo'
       nullable: true
+    encryption_info:
+      $ref: '#/EncryptionInfo'
   required:
     - name
     - cloud_info
     - cluster_info
     - network_info
     - software_info
+    - encryption_info
 PrivateClusterSpec:
   title: Private Cluster Specification
   description: Private Cluster spec
@@ -2267,10 +2270,11 @@ CloudEnum:
   title: Cloud Enum
   description: Which cloud the cluster is deployed in
   type: string
-  default: GCP
+  default: MANUAL
   enum:
     - AWS
     - GCP
+    - MANUAL
 ArchitectureEnum:
   title: Architecture Enum
   description: Architecture type
@@ -2610,6 +2614,17 @@ SoftwareInfo:
       type: string
       format: uuid
       nullable: true
+EncryptionInfo:
+  title: Encryption Info
+  description: Cluster encryption info
+  type: object
+  properties:
+    encryption_at_rest:
+      type: boolean
+      default: false
+    encryption_in_transit:
+      type: boolean
+      default: false
 ClusterFaultTolerance:
   title: Cluster Fault Tolerance
   description: The level of fault tolerance for the cluster
@@ -2625,23 +2640,22 @@ ClusterNodeInfo:
   description: Node level information
   type: object
   properties:
-    num_cores:
-      description: The number of cores for each node
-      type: integer
-      minimum: 1
-      maximum: 96
-      default: 4
     memory_mb:
-      description: The amount of RAM (MB) for each node
-      type: integer
-      minimum: 2048
-      default: 16384
+      description: The total amount of RAM (MB) used by all nodes
+      type: number
+      format: double
+      default: 0
     disk_size_gb:
-      description: The size of disk (GB) of each node
+      description: The total size of disk (GB)
       type: integer
       minimum: 10
       maximum: 4096
       default: 256
+    cpu_usage:
+      description: The average CPU usage over all nodes
+      type: number
+      format: double
+      default: 0
   required:
     - num_cores
     - memory_mb

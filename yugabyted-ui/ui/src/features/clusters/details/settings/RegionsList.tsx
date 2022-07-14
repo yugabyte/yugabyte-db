@@ -53,7 +53,7 @@ export const RegionsList: FC<RegionsListProps> = ({ cluster, regions }) => {
       region: regionObj?.placement_info?.cloud_info?.region,
       vpc_id: regionObj?.placement_info?.vpc_id ?? '-',
       nodes: regionObj?.placement_info?.num_nodes,
-      vCPU_per_node: cluster?.spec?.cluster_info?.node_info?.num_cores,
+      vCPU_per_node: cluster?.spec?.cluster_info?.node_info?.cpu_usage,
       ram_per_node: cluster?.spec?.cluster_info?.node_info?.memory_mb,
       disk_per_node: cluster?.spec?.cluster_info?.node_info?.disk_size_gb
     };

@@ -280,9 +280,9 @@ class PgOperationBuffer::Impl {
       RETURN_NOT_OK(Flush());
     } else {
       RETURN_NOT_OK(SendBuffer(make_lw_function(
-          [transactional, &result](BufferableOperations ops, bool txn) {
+          [transactional, &result](BufferableOperations* ops, bool txn) {
             if (txn == transactional) {
-              ops.Swap(&result);
+              ops->Swap(&result);
               return true;
             }
             return false;
@@ -308,7 +308,7 @@ class PgOperationBuffer::Impl {
     return Status::OK();
   }
 
-  using SendInterceptor = LWFunction<bool(BufferableOperations, bool)>;
+  using SendInterceptor = LWFunction<bool(BufferableOperations*, bool)>;
 
   Status SendBuffer() {
     return SendBufferImpl(nullptr /* interceptor */);
@@ -345,7 +345,7 @@ class PgOperationBuffer::Impl {
                               BufferableOperations ops,
                               bool transactional,
                               size_t ops_count) {
-    if (!ops.empty() && !(interceptor && (*interceptor)(std::move(ops), transactional))) {
+    if (!ops.empty() && !(interceptor && (*interceptor)(&ops, transactional))) {
       EnsureCapacity(&in_flight_ops_, buffering_settings_);
       // In case max_in_flight_operations < max_batch_size, the number of in-flight operations will
       // be equal to max_batch_size after sending single buffer. So use max of these values for

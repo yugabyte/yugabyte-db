@@ -16,6 +16,7 @@ import sys
 import time
 import traceback
 import uuid
+import socket
 import tempfile
 import tarfile
 import operator
@@ -107,7 +108,9 @@ PREREQS_ERROR_MSGS = {
     'max_user_processes' :'max user processes ulimits value set low.' \
         ' Please set soft and hard limits to {}.'.format(MAX_PROC[OS_NAME]),
     'transparent_hugepages' :'Transparent hugepages disabled. Please enable transparent_hugepages.',
-    'ntp' :'ntp package missing. We recommend installing ntp package.'
+    'ntp/chrony' :'ntp/chrony package is missing for clock synchronization. For centos 7, ' +
+        'we recommend installing either ntp or chrony package and for centos 8, ' +
+        'we recommend installing chrony package.'
 }
 QUICK_START_LINKS = {
     'mac' : 'https://docs.yugabyte.com/latest/quick-start/install/macos/',
@@ -115,7 +118,8 @@ QUICK_START_LINKS = {
 }
 LINUX_PREREQS_CMDS = {
     'transparent_hugepages' : 'cat /sys/kernel/mm/transparent_hugepage/enabled',
-    'ntp' : 'ntpd'
+    'ntp' : 'which ntpd',
+    'chrony' : 'which chronyd',
 }
 MAC_PREREQS_CMDS = {
 }
@@ -643,10 +647,12 @@ class ControlScript(object):
             prereqs_warn.add('transparent_hugepages')
             prereqs_warn_flag = True
 
-        ntp_check = run_process(shlex.split(LINUX_PREREQS_CMDS.get('ntp')), shell=True)
+        ntp_check = run_process(shlex.split(LINUX_PREREQS_CMDS.get('ntp')))
+        chrony_check = run_process(shlex.split(LINUX_PREREQS_CMDS.get('chrony')))
         ntp_exit_code = ntp_check[2]
-        if ntp_exit_code == 127:
-            prereqs_warn.add('ntp')
+        chrony_exit_code = chrony_check[2]
+        if ntp_exit_code != 0 and chrony_exit_code != 0:
+            prereqs_warn.add('ntp/chrony')
             prereqs_warn_flag = True
 
         return (prereqs_failed_flag, prereqs_failed, prereqs_warn_flag, prereqs_warn)
@@ -830,7 +836,7 @@ class ControlScript(object):
         yb_master_cmd = [find_binary_location("yb-master")] + \
             common_gflags + \
             [
-                "--rpc_bind_addresses={}:{}".format(advertise_ip, master_rpc_port),
+                "--rpc_bind_addresses={}:{}".format(bind_ip, master_rpc_port),
                 "--server_broadcast_addresses={}:{}".format(advertise_ip, master_rpc_port),
                 "--replication_factor=1",
                 "--use_initial_sys_catalog_snapshot",
@@ -984,10 +990,10 @@ class ControlScript(object):
                     Output.print_and_log(Output.ANIMATION_SUCCESS +
                             " User Authentication enabled.")
                 else:
-                    Output.print_and_log(Output.ANIMATION_FAIL +
-                            " User Authentication not enabled.")
-                    Output.print_and_log(Output.ANIMATION_FAIL +
-                            " SSL Authentication not enabled.")
+                    Output.print_and_log(Output.make_yellow(Output.ANIMATION_WARNING +
+                        " WARNING:") + " Cluster started in an insecure mode without " +
+                        "authentication and encryption enabled. For non-production use only, " +
+                        "not to be used without firewalls blocking the internet traffic.")
 
                 # Persist the config after successful start
                 self.configs.save_configs()
@@ -1833,6 +1839,25 @@ class ControlScript(object):
             Output.log("Failed to find java: {}".format(e), logging.ERROR)
             return False
 
+    def find_ip_address_of_node(self):
+
+        host_name = self.find_hostname_of_node()
+        host_ip = socket.gethostbyname(host_name)
+
+        return host_ip
+
+    def find_hostname_of_node(self):
+        fqdn = socket.getfqdn()
+
+        if "localhost" in fqdn:
+            fqdn = socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET,
+                                  socket.SOCK_DGRAM, socket.IPPROTO_IP,
+                                  socket.AI_CANONNAME)[0][3]
+            if "localhost" in fqdn:
+                fqdn = socket.gethostname()
+
+        return fqdn
+
     # Parse config file and input args. Validate them and save any new configs.
     def validate_and_set_configs(self, args):
 
@@ -1945,7 +1970,10 @@ class ControlScript(object):
                         ": --listen and --advertise_address flags " +
                         "are same. --listen is depricated. Can't have different values for them.")
                     has_errors = True
-                self.configs.saved_data["advertise_address"] = args.listen
+                args.advertise_address = args.listen
+
+            if args.advertise_address is None:
+                args.advertise_address = self.find_ip_address_of_node()
 
             if args.daemon is not None:
                 if args.background is not None and \

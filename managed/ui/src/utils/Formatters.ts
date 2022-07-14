@@ -1,4 +1,5 @@
-import { isDefinedNotNull } from "./ObjectUtils";
+import { TableType } from '../redesign/helpers/dtos';
+import { isDefinedNotNull } from './ObjectUtils';
 
 /**
  * Format the duration into _d _h _m _s _ms format.
@@ -53,10 +54,11 @@ export const formatDuration = (milliseconds: number) => {
   }
 
   let allocatedDuration = 0;
-  durationUnits.forEach((durationUnit) => {
-    durationUnit.value = Math.floor(
-      (absoluteMilliseconds - allocatedDuration) / durationUnit.baseUnitFactor
-    );
+  durationUnits.forEach((durationUnit, index) => {
+    durationUnit.value =
+      index === durationUnits.length - 1
+        ? Math.ceil((absoluteMilliseconds - allocatedDuration) / durationUnit.baseUnitFactor)
+        : Math.floor((absoluteMilliseconds - allocatedDuration) / durationUnit.baseUnitFactor);
     allocatedDuration += durationUnit.value * durationUnit.baseUnitFactor;
   });
 
@@ -79,3 +81,5 @@ export const formatLagMetric = (milliseconds: number) => {
 
   return formatDuration(milliseconds);
 };
+export const formatSchemaName = (tableType: TableType, schemaName: string) =>
+  tableType === TableType.PGSQL_TABLE_TYPE ? schemaName : '-';

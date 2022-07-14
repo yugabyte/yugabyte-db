@@ -322,8 +322,9 @@ public class PlatformReplicationManager {
 
   public boolean saveReplicationData(String fileName, File uploadedFile, URL leader, URL sender) {
     Path replicationDir = replicationHelper.getReplicationDirFor(leader.getHost());
-    Path saveAsFile = Paths.get(replicationDir.toString(), fileName);
-    if (replicationDir.toFile().exists() || replicationDir.toFile().mkdirs()) {
+    Path saveAsFile = Paths.get(replicationDir.toString(), fileName).normalize();
+    if ((replicationDir.toFile().exists() || replicationDir.toFile().mkdirs())
+        && saveAsFile.toString().startsWith(replicationDir.toString())) {
       try {
         FileUtils.moveFile(uploadedFile.toPath(), saveAsFile);
         log.debug(
@@ -338,10 +339,11 @@ public class PlatformReplicationManager {
       }
     } else {
       log.error(
-          "Could create folder {} to store platform backup received from leader {} via {}",
+          "Couldn't create folder {} to store platform backup received from leader {} via {} to {}",
           replicationDir,
           leader.toString(),
-          sender.toString());
+          sender.toString(),
+          saveAsFile.toString());
     }
 
     return false;

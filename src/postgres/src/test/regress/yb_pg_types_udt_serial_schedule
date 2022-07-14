@@ -7,6 +7,11 @@
 # Dependency for `yb_pg_rowtypes`
 test: yb_pg_int8
 
+# Enum types
+test: yb_pg_enum
+# Range types
+test: yb_pg_rangetypes
+
 # Chain of dependencies for `yb_pg_rowtypes`
 test: yb_pg_create_function_1
 test: yb_pg_create_type
@@ -23,10 +28,5 @@ test: yb_alter_type
 
 # Composite types
 test: yb_pg_rowtypes
-# Enum types
-test: yb_pg_enum
-# Range types
-test: yb_pg_rangetypes
 # Base types
 test: yb_base_type
-# Also, `yb_pg_create_type` belongs in this category, but it is placed above.

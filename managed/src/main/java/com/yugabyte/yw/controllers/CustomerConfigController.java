@@ -78,7 +78,7 @@ public class CustomerConfigController extends AuthenticatedController {
             Objects.toString(customerConfig.configUUID, null),
             Audit.ActionType.Create,
             request().body().asJson());
-    return PlatformResults.withData(customerConfig);
+    return PlatformResults.withData(this.customerConfigService.getConfigMasked(customerConfig));
   }
 
   @ApiOperation(
@@ -216,7 +216,7 @@ public class CustomerConfigController extends AuthenticatedController {
             Objects.toString(customerConfig.configUUID, null),
             Audit.ActionType.Update,
             request().body().asJson());
-    return PlatformResults.withData(unmaskedConfig);
+    return PlatformResults.withData(this.customerConfigService.getConfigMasked(unmaskedConfig));
   }
 
   @ApiOperation(
@@ -252,7 +252,7 @@ public class CustomerConfigController extends AuthenticatedController {
             Objects.toString(customerConfig.configUUID, null),
             Audit.ActionType.Update,
             request().body().asJson());
-    return PlatformResults.withData(unmaskedConfig);
+    return PlatformResults.withData(this.customerConfigService.getConfigMasked(unmaskedConfig));
   }
 
   @ApiOperation(

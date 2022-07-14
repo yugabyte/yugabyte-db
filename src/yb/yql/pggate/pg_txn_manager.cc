@@ -13,10 +13,6 @@
 
 #include "yb/yql/pggate/pg_txn_manager.h"
 
-#include "yb/client/client.h"
-#include "yb/client/session.h"
-#include "yb/client/transaction.h"
-
 #include "yb/common/common.pb.h"
 #include "yb/common/transaction_priority.h"
 #include "yb/common/ybc_util.h"
@@ -123,19 +119,8 @@ int* YBCStatementTimeoutPtr = nullptr;
 
 }
 
-using namespace std::literals;
-using namespace std::placeholders;
-
 namespace yb {
 namespace pggate {
-
-using client::YBTransaction;
-using client::AsyncClientInitialiser;
-using client::TransactionManager;
-using client::YBTransactionPtr;
-using client::YBSession;
-using client::YBSessionPtr;
-using client::LocalTabletFilter;
 
 #if defined(__APPLE__) && !defined(NDEBUG)
 // We are experiencing more slowness in tests on macOS in debug mode.
@@ -332,6 +317,8 @@ Status PgTxnManager::RestartTransaction() {
 
 /* This is called at the start of each statement in READ COMMITTED isolation level */
 Status PgTxnManager::ResetTransactionReadPoint() {
+  RSTATUS_DCHECK(!ddl_mode_, IllegalState,
+                 "READ COMMITTED semantics don't apply to DDL transactions");
   read_time_manipulation_ = tserver::ReadTimeManipulation::RESET;
   read_time_for_follower_reads_ = HybridTime();
   RETURN_NOT_OK(UpdateReadTimeForFollowerReadsIfRequired());
@@ -421,7 +408,7 @@ std::string PgTxnManager::TxnStateDebugStr() const {
       isolation_level);
 }
 
-void PgTxnManager::SetupPerformOptions(tserver::PgPerformOptionsPB* options) {
+uint64_t PgTxnManager::SetupPerformOptions(tserver::PgPerformOptionsPB* options) {
   if (!ddl_mode_ && !txn_in_progress_) {
     ++txn_serial_no_;
   }
@@ -444,11 +431,17 @@ void PgTxnManager::SetupPerformOptions(tserver::PgPerformOptionsPB* options) {
     options->set_defer_read_point(true);
     need_defer_read_point_ = false;
   }
-  options->set_read_time_manipulation(read_time_manipulation_);
-  read_time_manipulation_ = tserver::ReadTimeManipulation::NONE;
+  if (!ddl_mode_) {
+    // The state in read_time_manipulation_ is only for kPlain transactions. And if YSQL switches to
+    // kDdl mode for sometime, we should keep read_time_manipulation_ as is so that once YSQL
+    // switches back to kDdl mode, the read_time_manipulation_ is not lost.
+    options->set_read_time_manipulation(read_time_manipulation_);
+    read_time_manipulation_ = tserver::ReadTimeManipulation::NONE;
+  }
   if (read_time_for_follower_reads_) {
     ReadHybridTime::SingleTime(read_time_for_follower_reads_).ToPB(options->mutable_read_time());
   }
+  return txn_serial_no_;
 }
 
 double PgTxnManager::GetTransactionPriority() const {

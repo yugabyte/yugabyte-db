@@ -26,6 +26,9 @@
 namespace yb {
 namespace pggate {
 
+// decode collation encoded string
+void DecodeCollationEncodedString(const char** text, int64_t* text_len);
+
 class PgDml;
 
 using DataTranslator = void(*)(

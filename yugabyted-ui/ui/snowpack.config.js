@@ -22,7 +22,7 @@ module.exports = {
       dest: (req, res) => {
         return proxy.web(req, res, {
           hostname: 'localhost',
-          port: 1323,
+          port: 7002,
         })
       }
     },

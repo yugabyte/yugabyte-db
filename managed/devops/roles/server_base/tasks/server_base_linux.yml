@@ -97,6 +97,19 @@
       linux_packages: "{{ linux_packages + azure_packages }}"
     when: cloud_type == "azu"
 
+  - name: Install epel-release repo on centos if not present
+    become: yes
+    become_method: sudo
+    yum:
+      name: epel-release
+      state: latest
+      update_cache: yes
+    register: result
+    until: result.rc == 0
+    retries: "{{ yum_retry_count }}"
+    when: ansible_os_family == 'RedHat' and "epel-release not in ansible_facts.packages"
+    tags: yb-prebuilt-ami
+
   - block:
     - name: Find all yum repos
       find:

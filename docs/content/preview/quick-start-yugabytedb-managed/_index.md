@@ -118,26 +118,28 @@ To connect to your cluster, do the following:
 
 The following tutorial shows a small [Java application](https://github.com/yugabyte/yugabyte-simple-java-app) that connects to a YugabyteDB cluster using the topology-aware [Yugabyte JDBC driver](../integrations/jdbc-driver/) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB Managed in Java.
 
+For examples using other popular languages, refer to [Build an application](../yugabyte-cloud/cloud-quickstart/cloud-build-apps/).
+
 ### Prerequisites
 
 This tutorial requires the following.
 
-#### YugabyteDB Managed
+- YugabyteDB Managed
 
-- You have a cluster deployed in YugabyteDB Managed.
-- You downloaded the cluster CA certificate and added your computer to the cluster IP allow list. Refer to [Before you begin](../yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-add-ip/).
+  - You have a cluster deployed in YugabyteDB Managed.
+  - You downloaded the cluster CA certificate and added your computer to the cluster IP allow list. Refer to [Before you begin](../yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-add-ip/).
 
-#### Other packages
+- Other packages
 
-- Java Development Kit (JDK) 1.8, or later, is installed. JDK installers for Linux and macOS can be downloaded from [Oracle](http://jdk.java.net/), [Adoptium (OpenJDK)](https://adoptium.net/), or [Azul Systems (OpenJDK)](https://www.azul.com/downloads/?package=jdk). Homebrew users on macOS can install using `brew install openjdk`.
-- [Apache Maven](https://maven.apache.org/index.html) 3.3 or later, is installed.
+  - Java Development Kit (JDK) 1.8, or later, is installed. JDK installers for Linux and macOS can be downloaded from [Oracle](http://jdk.java.net/), [Adoptium (OpenJDK)](https://adoptium.net/), or [Azul Systems (OpenJDK)](https://www.azul.com/downloads/?package=jdk). Homebrew users on macOS can install using `brew install openjdk`.
+  - [Apache Maven](https://maven.apache.org/index.html) 3.3 or later, is installed.
 
 ### Clone the application from GitHub
 
 Clone the sample application to your computer:
 
 ```sh
-git clone https://github.com/yugabyte/yugabyte-simple-java-app.git && cd yugabyte-simple-java-app
+git clone https://github.com/YugabyteDB-Samples/yugabyte-simple-java-app.git && cd yugabyte-simple-java-app
 ```
 
 ### Provide connection parameters
@@ -148,11 +150,11 @@ The application needs to establish a connection to the YugabyteDB cluster. To do
 
 2. Set the following configuration parameters:
 
-    - **host** - the host name of your YugabyteDB cluster. To obtain a YugabyteDB Managed cluster host name, sign in to YugabyteDB Managed, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Network Access**.
+    - **host** - the host name of your YugabyteDB cluster. To obtain a YugabyteDB Managed cluster host name, sign in to YugabyteDB Managed, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Connection Parameters**.
     - **port** - the port number that will be used by the JDBC driver (the default YugabyteDB YSQL port is 5433).
     - **dbUser** and **dbPassword** - the username and password for the YugabyteDB database. If you are using the credentials you created when deploying a cluster in YugabyteDB Managed, these can be found in the credentials file you downloaded.
     - **sslMode** - the SSL mode to use. YugabyteDB Managed [requires SSL connections](../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql); use `verify-full`.
-    - **sslRootCert** - the full path to the YugabyteDB Managed cluster CA certificate.
+    - **sslRootCert** - the full path to the YugabyteDB Managed [cluster CA certificate](../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/).
 
 3. Save the file.
 

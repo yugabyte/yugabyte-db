@@ -25,6 +25,8 @@
 #include "yb/common/pg_types.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/ybc-internal.h"
+#include "yb/common/partition.h"
+#include "yb/common/schema.h"
 
 #include "yb/util/atomic.h"
 #include "yb/util/flag_tags.h"
@@ -33,6 +35,10 @@
 #include "yb/util/status.h"
 #include "yb/util/thread.h"
 #include "yb/util/yb_partition.h"
+
+#include "yb/docdb/doc_key.h"
+#include "yb/docdb/primitive_value.h"
+#include "yb/docdb/value_type.h"
 
 #include "yb/yql/pggate/pg_env.h"
 #include "yb/yql/pggate/pg_expr.h"
@@ -45,8 +51,6 @@
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/pggate_thread_local_vars.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
-
-DECLARE_bool(client_suppress_created_logs);
 
 DEFINE_int32(ysql_client_read_write_timeout_ms, -1, "Timeout for YSQL's yb-client read/write "
              "operations. Falls back on max(client_read_write_timeout_ms, 600s) if set to -1." );
@@ -506,7 +510,97 @@ YBCStatus YBCPgGetTableProperties(YBCPgTableDesc table_desc,
   properties->is_colocated = table_desc->IsColocated();
   properties->tablegroup_oid = table_desc->GetTablegroupOid();
   properties->colocation_id = table_desc->GetColocationId();
+  properties->num_range_key_columns = table_desc->num_range_key_columns();
   return YBCStatusOK();
+}
+
+// ql_value is modified in-place.
+static void DecodeCollationEncodedString(QLValuePB *ql_value) {
+  const char* text = ql_value->string_value().c_str();
+  int64_t text_len = ql_value->string_value().size();
+  pggate::DecodeCollationEncodedString(&text, &text_len);
+  ql_value->set_string_value(std::string(text, text_len));
+}
+
+// This function checks for the existence of next KeyEntryValue in decoder,
+// and decodes it if exists, or returns bad status if it doesn't exist.
+static Status CheckAndDecodeKeyEntryValue(docdb::DocKeyDecoder& decoder,
+                                          docdb::KeyEntryValue *v) {
+  bool has_next_key_entry_value =
+      VERIFY_RESULT(decoder.HasPrimitiveValue(docdb::AllowSpecial::kTrue));
+
+  if (has_next_key_entry_value) {
+    RETURN_NOT_OK(decoder.DecodeKeyEntryValue(v));
+    return Status::OK();
+  }
+
+  return STATUS(Corruption, "Expected a KeyEntryValue");
+}
+
+static Status GetSplitPoints(YBCPgTableDesc table_desc,
+                             const YBCPgTypeEntity **type_entities,
+                             YBCPgTypeAttrs *type_attrs_arr,
+                             YBCPgSplitDatum *split_datums) {
+  CHECK(table_desc->IsRangePartitioned());
+  const Schema& schema = table_desc->schema();
+  const auto& column_ids = table_desc->partition_schema().range_schema().column_ids;
+  size_t num_range_key_columns = table_desc->num_range_key_columns();
+  size_t num_splits = table_desc->GetPartitionCount() - 1;
+  docdb::KeyEntryValue v;
+
+  // decode DocKeys
+  const auto& partitions_bounds = table_desc->GetPartitions();
+  for (size_t split_idx = 0; split_idx < num_splits; ++split_idx) {
+    // +1 skip the first empty string lower bound partition key
+    const std::string& column_bounds = partitions_bounds[split_idx + 1];
+    docdb::DocKeyDecoder decoder(column_bounds);
+
+    for (size_t col_idx = 0; col_idx < num_range_key_columns; ++col_idx) {
+      RETURN_NOT_OK(CheckAndDecodeKeyEntryValue(decoder, &v));
+      size_t split_datum_idx = split_idx * num_range_key_columns + col_idx;
+      if (v.IsInfinity()) {
+        // deal with boundary cases: MINVALUE and MAXVALUE
+        if (v.type() == docdb::KeyEntryType::kLowest) {
+          split_datums[split_datum_idx].datum_kind = YB_YQL_DATUM_LIMIT_MIN;
+        } else {
+          CHECK(v.type() == docdb::KeyEntryType::kHighest);
+          split_datums[split_datum_idx].datum_kind = YB_YQL_DATUM_LIMIT_MAX;
+        }
+      } else {
+        CHECK(!docdb::IsSpecialKeyEntryType(v.type()));
+        split_datums[split_datum_idx].datum_kind = YB_YQL_DATUM_STANDARD_VALUE;
+        // Convert from KeyEntryValue to QLValuePB
+        auto column_schema_result = VERIFY_RESULT(schema.column_by_id(column_ids[col_idx]));
+        QLValuePB ql_value;
+        v.ToQLValuePB(column_schema_result.get().type(), &ql_value);
+
+        // Decode Collation
+        if (v.type() == docdb::KeyEntryType::kCollString ||
+            v.type() == docdb::KeyEntryType::kCollStringDescending) {
+          DecodeCollationEncodedString(&ql_value);
+        }
+
+        // Convert from QLValuePB to datum
+        bool is_null;
+        RETURN_NOT_OK(PgValueFromPB(type_entities[col_idx], type_attrs_arr[col_idx], ql_value,
+                                    &split_datums[split_datum_idx].datum, &is_null));
+        CHECK(!is_null);
+      }
+    }
+  }
+
+  return Status::OK();
+}
+
+// table_desc is expected to be a PgTableDesc of a range-partitioned table.
+// split_datums are expected to have an allocated size:
+// num_splits * num_range_key_columns, and it is used to
+// store each split point value.
+YBCStatus YBCGetSplitPoints(YBCPgTableDesc table_desc,
+                            const YBCPgTypeEntity **type_entities,
+                            YBCPgTypeAttrs *type_attrs_arr,
+                            YBCPgSplitDatum *split_datums) {
+  return ToYBCStatus(GetSplitPoints(table_desc, type_entities, type_attrs_arr, split_datums));
 }
 
 YBCStatus YBCPgTableExists(const YBCPgOid database_oid,
@@ -1078,11 +1172,6 @@ bool YBCIsInitDbModeEnvVarSet() {
 }
 
 void YBCInitFlags() {
-  if (YBCIsInitDbModeEnvVarSet()) {
-    // Suppress log spew during initdb.
-    FLAGS_client_suppress_created_logs = true;
-  }
-
   SetAtomicFlag(GetAtomicFlag(&FLAGS_pggate_num_connections_to_server),
                 &FLAGS_num_connections_to_server);
 

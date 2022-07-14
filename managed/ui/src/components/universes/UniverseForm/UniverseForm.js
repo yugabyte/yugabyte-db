@@ -387,6 +387,40 @@ class UniverseForm extends Component {
     return null;
   };
 
+  getCurrentCluster = () => {
+    const {
+      universe
+    } = this.props;
+    return this.state.currentView === 'Primary'
+      ? getPrimaryCluster(universe.currentUniverse.data.universeDetails.clusters)
+      : getReadOnlyCluster(universe.currentUniverse.data.universeDetails.clusters);
+  }
+
+  getNewCluster = () => {
+    const {
+      universe: { universeConfigTemplate },
+    } = this.props;
+    return this.state.currentView === 'Primary'
+           ? getPrimaryCluster(universeConfigTemplate.data.clusters)
+           : getReadOnlyCluster(universeConfigTemplate.data.clusters);
+  }
+
+  isResizePossible = () => {
+    const {
+      universe: { universeConfigTemplate },
+    } = this.props;
+    if (getPromiseState(universeConfigTemplate).isSuccess() &&
+        this.state.currentView === 'Primary' &&
+        universeConfigTemplate.data.nodesResizeAvailable) {
+      const currentCluster = this.getCurrentCluster();
+      const newCluster = this.getNewCluster();
+      return currentCluster && newCluster &&
+        newCluster.userIntent.deviceInfo.volumeSize >
+             currentCluster.userIntent.deviceInfo.volumeSize;
+    }
+    return false;
+  }
+
   getYEDISstate = (clusterType) => {
     const { formValues, universe } = this.props;
 
@@ -783,10 +817,7 @@ class UniverseForm extends Component {
         )
       : [];
 
-    const resizePossible =
-      getPromiseState(universeConfigTemplate).isSuccess() &&
-      this.state.currentView === 'Primary' &&
-      universeConfigTemplate.data.nodesResizeAvailable;
+    const resizePossible = this.isResizePossible();
 
     const existingNodeRemains =
       existingPrimaryNodes.length &&

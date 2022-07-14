@@ -3,6 +3,7 @@ title: Build a Go application that uses YSQL
 headerTitle: Build a Go application
 linkTitle: Go
 description: Build a simple Go application using the Go PostgreSQL driver and using the YSQL API to connect to and interact with a YugabyteDB Managed cluster.
+headContent: "Client driver: Go PostgreSQL"
 menu:
   preview_yugabyte-cloud:
     parent: cloud-build-apps
@@ -28,7 +29,7 @@ In addition to [Go (tested with version 1.17.6)](https://go.dev/dl/), this tutor
 Clone the sample application to your computer:
 
 ```sh
-git clone https://github.com/yugabyte/yugabyte-simple-go-app.git && cd yugabyte-simple-go-app
+git clone https://github.com/YugabyteDB-Samples/yugabyte-simple-go-app.git && cd yugabyte-simple-go-app
 ```
 
 ## Provide connection parameters
@@ -39,7 +40,7 @@ The application needs to establish a connection to the YugabyteDB cluster. To do
 
 2. Set the following configuration parameter constants:
 
-    - **host** - the host name of your YugabyteDB cluster. To obtain a YugabyteDB Managed cluster host name, sign in to YugabyteDB Managed, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Network Access**.
+    - **host** - the host name of your YugabyteDB cluster. To obtain a YugabyteDB Managed cluster host name, sign in to YugabyteDB Managed, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Connection Parameters**.
     - **port** - the port number that will be used by the driver (the default YugabyteDB YSQL port is 5433).
     - **dbName** - the name of the database you are connecting to (the default database is named `yugabyte`).
     - **dbUser** and **dbPassword** - the username and password for the YugabyteDB database. If you are using the credentials you created when deploying a cluster in YugabyteDB Managed, these can be found in the credentials file you downloaded.

@@ -161,8 +161,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
         .setDatabase("yugabyte")
         .setEnvVars(getPgRegressEnvVars())
         .getProcessBuilder();
-    pgRegress.start(procBuilder);
-    pgRegress.stop();
+    pgRegress.run(procBuilder);
   }
 
   public void runPgRegressTest(File inputDir, String schedule) throws Exception {

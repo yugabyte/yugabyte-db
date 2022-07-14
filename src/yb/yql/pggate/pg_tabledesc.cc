@@ -15,10 +15,6 @@
 
 #include "yb/yql/pggate/pg_tabledesc.h"
 
-#include "yb/client/schema.h"
-#include "yb/client/table.h"
-#include "yb/client/yb_op.h"
-
 #include "yb/common/partition.h"
 #include "yb/common/pg_system_attr.h"
 #include "yb/common/schema.h"
@@ -164,6 +160,14 @@ const client::YBTableName& PgTableDesc::table_name() const {
   return table_name_;
 }
 
+size_t PgTableDesc::num_range_key_columns() const {
+  // skip system column: ybidxbasectid/ybuniqueidxkeysuffix of INDEX/UNIQUE INDEX
+  if (IsIndex()) {
+    return schema().num_range_key_columns() - 1;
+  }
+  return schema().num_range_key_columns();
+}
+
 size_t PgTableDesc::num_hash_key_columns() const {
   return schema().num_hash_key_columns();
 }
@@ -186,6 +190,10 @@ const Schema& PgTableDesc::schema() const {
 
 uint32_t PgTableDesc::schema_version() const {
   return resp_.version();
+}
+
+bool PgTableDesc::IsIndex() const {
+  return resp_.has_index_info();
 }
 
 }  // namespace pggate
