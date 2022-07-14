@@ -1,4 +1,4 @@
-```ebnf
+```output.ebnf
 copy_from ::= COPY table_name [ ( column_name [ , ... ] ) ]  FROM 
               { 'filename' | PROGRAM 'command' | STDIN } 
               [ [ WITH ] ( option [ , ... ] ) ]
@@ -20,4 +20,7 @@ copy_option ::= FORMAT format_name
                 | FORCE_NULL ( column_names )
                 | ENCODING 'encoding_name'
                 | ROWS_PER_TRANSACTION integer
+                | DISABLE_FK_CHECK
+                | REPLACE
+                | SKIP integer
 ```

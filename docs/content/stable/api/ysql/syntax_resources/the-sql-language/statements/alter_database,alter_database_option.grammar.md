@@ -1,4 +1,4 @@
-```ebnf
+```output.ebnf
 alter_database ::= ALTER DATABASE name 
                    [ [ WITH ] alter_database_option [ ... ]
                      | RENAME TO name

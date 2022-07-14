@@ -55,7 +55,7 @@ Common commands:
     fmt                Rewrites config files to canonical format
 ```
 
-## 1. Create a Terraform configuration file
+## Create a Terraform configuration file
 
 Create a Terraform configuration file called `yugabyte-db-config.tf` and add the following details to it. The Terraform module can be found in the [terraform-aws-yugabyte GitHub repository](https://github.com/yugabyte/terraform-aws-yugabyte).
 
@@ -108,7 +108,7 @@ resource "aws_instance" "yugabyte_nodes" {
   ]
 ```
 
-## 2. Create a cluster
+## Create a cluster
 
 Init terraform first if you have not already done so.
 
@@ -134,7 +134,7 @@ You can check the state of the nodes at any point by running the following comma
 $ terraform show
 ```
 
-## 3. Verify resources created
+## Verify resources created
 
 The following resources are created by this module:
 

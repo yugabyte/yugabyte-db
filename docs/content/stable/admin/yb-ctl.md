@@ -129,6 +129,8 @@ Specifies the data directory for YugabyteDB.
 
 Default: `$HOME/yugabyte-data/`
 
+Changing the value of this flag after the cluster has already been created is not supported.
+
 ##### --master_flags
 
 Specifies a list of YB-Master flags, separated by commas.
@@ -143,7 +145,7 @@ For details and examples, see [Create a local cluster with custom flags](#create
 
 **Example**
 
-To enable [YSQL authentication](../../secure/enable-authentication/ysql), you can use the `--tserver_flags` flag to add the `yb-tserver` [`--ysql_enable-auth`](../yb-tserver/#ysql-enable-auth) flag to the `yb-ctl create | start | restart` commands.
+To enable [YSQL authentication](../../secure/enable-authentication/ysql/), you can use the `--tserver_flags` flag to add the `yb-tserver` [`--ysql_enable-auth`](../yb-tserver/#ysql-enable-auth) flag to the `yb-ctl create | start | restart` commands.
 
 ```sh
 $./bin/yb-ctl create --tserver_flags "ysql_enable_auth=true"

@@ -85,7 +85,7 @@ To proceed, complete the fields of the **Advanced Restore** dialog shown in the 
 
 - Optionally, specify the number of parallel threads that are allowed to run. This can be any number between 1 and 100.
 
-- Optionally, if the backup involved universes that had [encryption at rest enabled](https://docs.yugabyte.com/preview/yugabyte-platform/security/enable-encryption-at-rest), then select the KMS configuration to use.
+- Optionally, if the backup involved universes that had [encryption at rest enabled](/preview/yugabyte-platform/security/enable-encryption-at-rest), then select the KMS configuration to use.
 
 - If you do not select **Rename databases in this backup before restoring**, then click **Restore** to start the restore process immediately.<br>
 

@@ -13,19 +13,19 @@ type: docs
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="../azure-arm" class="nav-link active">
+    <a href="../azure-arm/" class="nav-link active">
       <i class="icon-shell"></i>
       Azure ARM template
     </a>
   </li>
   <li >
-    <a href="../aks" class="nav-link">
+    <a href="../aks/" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Azure Kubernetes Service (AKS)
     </a>
   </li>
   <li>
-    <a href="../terraform" class="nav-link">
+    <a href="../terraform/" class="nav-link">
       <i class="icon-shell"></i>
       Terraform
     </a>
@@ -140,7 +140,7 @@ The key's randomart image is:
 1. Under newly created Resource groups, select **Add**.
 1. In opened marketplace, search for Template deployment (deploy using custom templates) and click **Create**.
 1. Click **Build your own template in the editor**.
-1. Click **Load file** in the Specify template section and upload the `yugabyte_deployment.json` file from cloned repo.
+1. Click **Load file** in the Specify template section and upload the `yugabyte_deployment.json` file from the cloned repository.
 1. Click **Save** at the bottom of the window.
 1. Provide the required details.
 1. Check the **Terms and Condition** checkbox and click **Purchase**.

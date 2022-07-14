@@ -2,7 +2,7 @@
 title: Create a KMS configuration using AWS KMS
 headerTitle: Create a KMS configuration using AWS KMS
 linkTitle: Create a KMS configuration
-description: Use Yugabyte Platform to create a KMS configuration for Amazon Web Services (AWS) KMS.
+description: Use YugabyteDB Anywhere to create a KMS configuration for Amazon Web Services (AWS) KMS.
 menu:
   stable_yugabyte-platform:
     parent: security
@@ -29,9 +29,7 @@ type: docs
 
 </ul>
 
-Encryption at rest uses universe keys to encrypt and decrypt universe data keys. You can use the Yugabyte Platform UI to create key management service (KMS) configurations for generating the required universe keys for one or more YugabyteDB universes. Encryption at rest in Yugabyte Platform supports the use of [Amazon Web Services (AWS) KMS](https://aws.amazon.com/kms/).
-
-{{< note title="Note" >}}
+Encryption at rest uses universe keys to encrypt and decrypt universe data keys. You can use the YugabyteDB Anywhere UI to create key management service (KMS) configurations for generating the required universe keys for one or more YugabyteDB universes. Encryption at rest in YugabyteDB Anywhere supports the use of [Amazon Web Services (AWS) KMS](https://aws.amazon.com/kms/).
 
 The AWS user associated with a KMS configuration requires the following minimum Identity and Access Management (IAM) KMS-related permissions:
 
@@ -41,12 +39,11 @@ The AWS user associated with a KMS configuration requires the following minimum 
 - `kms:CreateAlias`
 - `kms:DeleteAlias`
 - `kms:UpdateAlias`
-
-{{< /note >}}
+- `kms:TagResource`
 
 You can create a KMS configuration that uses AWS KMS as follows:
 
-1. Use the Yugabyte Platform UI to navigate to **Configs > Security > Encryption At Rest** to access the list of existing configurations.
+1. Use the YugabyteDB Anywhere UI to navigate to **Configs > Security > Encryption At Rest** to access the list of existing configurations.
 
 2. Click **Create New Config**.
 
@@ -90,6 +87,8 @@ You can create a KMS configuration that uses AWS KMS as follows:
         }
     ```
 
-5. Click **Save**. Your new configuration should appear in the list of configurations. A saved KMS configuration can only be deleted if it is not in use by any existing universes.
+5. Click **Save**.<br>
+
+    Your new configuration should appear in the list of configurations. A saved KMS configuration can only be deleted if it is not in use by any existing universes.
 
 6. Optionally, to confirm that the information is correct, click **Show details**. Note that sensitive configuration values are displayed partially masked.

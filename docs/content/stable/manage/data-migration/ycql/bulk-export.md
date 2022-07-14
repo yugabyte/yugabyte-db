@@ -20,7 +20,7 @@ type: docs
   </li>
 </ul>
 
-This page documents bulk export for YugabyteDB’s [Cassandra-compatible YCQL API](../../../../api/ycql). To export data from a YugabyteDB (or an Apache Cassandra) table, you can use the [`cassandra-unloader`](https://github.com/yugabyte/cassandra-loader#cassandra-unloader) tool.
+This page documents bulk export for YugabyteDB’s [Cassandra-compatible YCQL API](../../../../api/ycql/). To export data from a YugabyteDB (or an Apache Cassandra) table, you can use the [`cassandra-unloader`](https://github.com/yugabyte/cassandra-loader#cassandra-unloader) tool.
 
 We will first create a source YugabyteDB table and populate it with data. Then you will export the data out using the cassandra-unloader tool. We will use a generic gaming user profile use case as a running example to illustrate the export process.
 

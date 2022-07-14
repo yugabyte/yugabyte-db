@@ -1,8 +1,12 @@
 ---
-title: Case study—implementing a stopwatch with SQL [YSQL]
-headerTitle: Case study—implementing a stopwatch with SQL
-linkTitle: Case study—SQL stopwatch
-description: Case study—using YSQL to implement a stopwatch
+title: >
+  Case study: implementing a stopwatch with SQL [YSQL]
+headerTitle: >
+  Case study: implementing a stopwatch with SQL
+linkTitle: >
+  Case study: SQL stopwatch
+description: >
+  Case study: using YSQL to implement a stopwatch
 menu:
   stable:
     identifier: stopwatch
@@ -77,7 +81,6 @@ from c;
 The result is _true_. This reflects the fact that _extract()_ accesses the internal representation of the _timestamptz_ value and this is normalized to UTC when it's recorded.
 
 Notice that, if you insist, you could subtract the start _timestamptz_ value directly from the finish _timestamptz_ value to produce an _interval_ value. But you’d have to reason rather more carefully to prove that your timing results are unaffected by the session’s timezone setting—particularly in the rare, but perfectly possible, event that a daylight savings boundary is crossed, in the regime of the session’s _TimeZone_ setting, while the to-be-timed operations execute. (Reasoning does show that these tricky details don’t affect the outcome. But it would be unkind to burden readers of your code with needing to understand this when a more obviously correct approach is available.) Further, the _duration_as_text()_ user-defined function (below) to format the result using appropriate units would be a little bit harder to write when you start with an _interval_ value than when you start with a scalar seconds value.
-
 
 ## How to note the wall-clock time so that you can read it back after several SQL statements have completed
 
@@ -380,7 +383,6 @@ $body$;
 
 This is a simple wrapper for _stopwatch_reading_as_dp()_ that returns the elapsed time since the stopwatch was started as a _text_ value by applying the function _duration_as_text()_ to the _stopwatch_reading_as_dp()_ return value:
 
-
 ```plpgsql
 drop function if exists stopwatch_reading() cascade;
 
@@ -567,6 +569,7 @@ then you'll get this new result:
 ----------
  Hello 17
 ```
+
 {{< /tip >}}
 
 ### End-to-end test
@@ -617,5 +620,5 @@ In this example, session creation cost explains the fact that the reported time,
 The code that this page explains isn't referenced elsewhere in the overall _[date-time](../../type_datetime/)_ section. You might like to install it in any database that you use for development and testing. (This is strongly encouraged.) For this reason, it's bundled for a one-touch installation, separately from the [downloadable date-time utilities code](../download-date-time-utilities/).
 
 {{< tip title="Download the code kit" >}}
-Get it from [HERE](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/date-time-utilities/stopwatch.zip). It has a _README_ that points you to the master-install script and that recommends installing it centrally for use by any user of that database.
+Get the code kit from [this download link](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/date-time-utilities/stopwatch.zip). It has a _README_ that points you to the master-install script and that recommends installing it centrally for use by any user of that database.
 {{< /tip >}}
