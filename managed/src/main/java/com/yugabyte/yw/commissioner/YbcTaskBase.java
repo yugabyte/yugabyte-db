@@ -2,12 +2,9 @@
 
 package com.yugabyte.yw.commissioner;
 
-import com.yugabyte.yw.commissioner.AbstractTaskBase;
-import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.YbcBackupUtil;
 import com.yugabyte.yw.common.services.YbcClientService;
-import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import java.time.Duration;
 import javax.inject.Inject;
@@ -41,13 +38,6 @@ public abstract class YbcTaskBase extends AbstractTaskBase {
   @Override
   public UniverseTaskParams taskParams() {
     return (UniverseTaskParams) taskParams;
-  }
-
-  @Override
-  public void initialize(ITaskParams params) {
-    super.initialize(params);
-    // Create the threadpool for the subtasks to use.
-    createThreadpool();
   }
 
   public void pollTaskProgress(YbcClient ybcClient, String taskId) {

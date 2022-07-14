@@ -5,9 +5,11 @@ package com.yugabyte.yw.models.configs.validators;
 import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageNFSData;
+import com.yugabyte.yw.models.configs.data.CustomerConfigStorageNFSData.RegionLocations;
 import com.yugabyte.yw.models.helpers.CustomerConfigConsts;
 import java.util.regex.Pattern;
 import javax.inject.Inject;
+import org.apache.commons.lang.StringUtils;
 
 public class CustomerConfigStorageNFSValidator extends ConfigDataValidator {
 
@@ -28,6 +30,18 @@ public class CustomerConfigStorageNFSValidator extends ConfigDataValidator {
     if (!pattern.matcher(value).matches()) {
       String errorMsg = "Invalid field value '" + value + "'.";
       throwBeanValidatorError(CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME, errorMsg);
+    }
+    if (nfsData.regionLocations != null) {
+      for (RegionLocations location : nfsData.regionLocations) {
+        if (StringUtils.isEmpty(location.region)) {
+          throwBeanValidatorError(
+              CustomerConfigConsts.REGION_FIELDNAME, "This field cannot be empty.");
+        }
+        if (!pattern.matcher(location.location).matches()) {
+          String errorMsg = "Invalid field value '" + value + "'.";
+          throwBeanValidatorError(CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME, errorMsg);
+        }
+      }
     }
   }
 }

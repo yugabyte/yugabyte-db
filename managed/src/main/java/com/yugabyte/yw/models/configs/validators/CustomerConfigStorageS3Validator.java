@@ -11,8 +11,7 @@ import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.models.configs.CloudClientsFactory;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data;
-import com.yugabyte.yw.models.configs.data.CustomerConfigStorageWithRegionsData;
-import com.yugabyte.yw.models.configs.data.CustomerConfigStorageWithRegionsData.RegionLocation;
+import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data.RegionLocations;
 import com.yugabyte.yw.models.helpers.CustomerConfigConsts;
 import java.util.Arrays;
 import java.util.Collection;
@@ -20,7 +19,7 @@ import javax.inject.Inject;
 import org.apache.commons.lang.StringUtils;
 import play.libs.Json;
 
-public class CustomerConfigStorageS3Validator extends CustomerConfigStorageWithRegionsValidator {
+public class CustomerConfigStorageS3Validator extends CustomerConfigStorageValidator {
 
   // Adding http here since S3-compatible storages may use it in endpoint.
   private static final Collection<String> S3_URL_SCHEMES =
@@ -70,7 +69,15 @@ public class CustomerConfigStorageS3Validator extends CustomerConfigStorageWithR
         validateBucket(
             s3Client, CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME, s3data.backupLocation);
         if (s3data.regionLocations != null) {
-          for (RegionLocation location : s3data.regionLocations) {
+          for (RegionLocations location : s3data.regionLocations) {
+            if (StringUtils.isEmpty(location.region)) {
+              throwBeanValidatorError(
+                  CustomerConfigConsts.REGION_FIELDNAME, "This field cannot be empty.");
+            }
+            validateUrl(
+                CustomerConfigConsts.AWS_HOST_BASE_FIELDNAME, location.awsHostBase, true, true);
+            validateUrl(
+                CustomerConfigConsts.REGION_LOCATION_FIELDNAME, location.location, true, false);
             validateBucket(
                 s3Client, CustomerConfigConsts.REGION_LOCATION_FIELDNAME, location.location);
           }

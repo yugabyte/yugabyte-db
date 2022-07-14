@@ -4,13 +4,14 @@ package com.yugabyte.yw.models.configs.data;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import io.swagger.annotations.ApiModelProperty;
-import javax.validation.constraints.NotNull;
-import javax.validation.constraints.Size;
+import java.util.List;
+import javax.validation.Valid;
 
-public class CustomerConfigStorageNFSData extends CustomerConfigData {
-  @ApiModelProperty(value = "Backup location", example = "/mnt/storage")
-  @JsonProperty("BACKUP_LOCATION")
-  @NotNull
-  @Size(min = 1)
-  public String backupLocation;
+public class CustomerConfigStorageNFSData extends CustomerConfigStorageData {
+  @Valid
+  @ApiModelProperty(value = "Region locations for multi-region backups")
+  @JsonProperty("REGION_LOCATIONS")
+  public List<RegionLocations> regionLocations;
+
+  public static class RegionLocations extends RegionLocationsBase {}
 }
