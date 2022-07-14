@@ -241,7 +241,7 @@ body {
             border: 2px solid $secondary;
 
             &::before {
-              content: '';
+              content: "";
               width: 15px;
               height: 15px;
               position: absolute;
@@ -325,7 +325,7 @@ ol {
 
   &:not(#api-header) {
     &::before {
-      content: '';
+      content: "";
       background-color: var(--theme-color);
       position: absolute;
       height: 100%;
@@ -378,7 +378,6 @@ ol {
   }
 
   &:hover {
-    display: block;
     display: block;
     position: absolute;
   }
@@ -525,8 +524,6 @@ div.tag {
 }
 
 div.operation {
-  padding-top: 60px;
-  margin-top: -60px;
   padding-top: 90px;
   margin-top: -60px;
 }
@@ -618,18 +615,8 @@ div.operation {
   }
 
   .header-menu {
-    display: block;
-    position: absolute;
-    flex-direction: column !important;
-    top: 40px;
     background: var(--theme-color);
-    height: unset !important;
     align-items: baseline;
-    display: flex !important;
-    flex-flow: row !important;
-    position: relative;
-    top: inherit;
-    height: inherit !important;
 
     li {
       background: var(--theme-color);
@@ -646,7 +633,6 @@ div.operation {
   }
 
   .header-link.active {
-    display: none;
     display: inherit !important;
 
     &:hover {
@@ -751,7 +737,7 @@ div.operation {
     >header {
       .navbar-expand {
         .td-search-input {
-          width: 500px !important;
+          width: 500px;
         }
       }
     }
@@ -806,7 +792,7 @@ div.operation {
     height: 14px;
     position: relative;
     border: 2px solid #000;
-    content: '';
+    content: "";
     right: inherit;
     border-right: 0;
     border-left: 0;
@@ -823,7 +809,7 @@ div.operation {
       background: #000;
       width: 20px;
       position: absolute;
-      content: '';
+      content: "";
     }
   }
 
@@ -885,6 +871,10 @@ div.operation {
     }
 
     >li {
+      li {
+        padding: 5px 15px;
+      }
+
       >a {
         display: inline-block;
       }
@@ -895,7 +885,7 @@ div.operation {
 
     >li.dropdown {
       &::after {
-        content: '';
+        content: "";
         width: 10px;
         height: 10px;
         position: absolute;
@@ -956,7 +946,7 @@ div.operation {
       position: fixed;
       width: 100%;
       height: 100%;
-      content: '';
+      content: "";
       display: block !important;
       top: 4.7rem;
     }
@@ -996,7 +986,7 @@ div.operation {
       position: fixed;
       width: 100%;
       height: 100%;
-      content: '';
+      content: "";
       display: block !important;
       top: 4.7rem;
       max-height: 84px;
@@ -1005,6 +995,8 @@ div.operation {
   }
 
   ul.header-submenu {
+    background: none;
+
     &:not(.open) {
       display: none !important;
     }
@@ -1043,7 +1035,7 @@ div.operation {
       background: var(--theme-color);
       width: 20px;
       position: absolute;
-      content: '';
+      content: "";
       transform: rotate(45deg);
     }
 
@@ -1055,7 +1047,7 @@ div.operation {
       background: var(--theme-color);
       width: 20px;
       position: absolute;
-      content: '';
+      content: "";
       transform: rotate(45deg);
       transform: rotate(-45deg);
     }
