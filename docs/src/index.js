@@ -221,7 +221,12 @@ $(document).ready(() => {
   $(document).on('click', '.td-toc #TableOfContents a,.td-content h2 a,.td-content h3 a,.td-content h4 a', (event) => {
     const linkHref = $(event.currentTarget).attr('href');
     window.location.hash = linkHref;
-    $('html, body').scrollTop(($(linkHref).offset().top) - 70);
+
+    if ($(window).width() > 767) {
+      $('html, body').scrollTop(($(linkHref).offset().top) - 70);
+    } else {
+      $('html, body').scrollTop(($(linkHref).offset().top) - 140);
+    }
 
     return false;
   });
