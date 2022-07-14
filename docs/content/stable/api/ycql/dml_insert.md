@@ -267,7 +267,7 @@ See examples in [batch docs](../batch#row-status).
 ## See also
 
 - [`CREATE TABLE`](../ddl_create_table)
-- [`DELETE`](../dml_delete)
-- [`SELECT`](../dml_select)
-- [`UPDATE`](../dml_update)
+- [`DELETE`](../dml_delete/)
+- [`SELECT`](../dml_select/)
+- [`UPDATE`](../dml_update/)
 - [`Expression`](..#expressions)

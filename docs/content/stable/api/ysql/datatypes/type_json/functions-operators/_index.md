@@ -11,13 +11,8 @@ menu:
     parent: api-ysql-datatypes-json
     weight: 50
 type: indexpage
+showRightNav: true
 ---
-
-**On this page**<br>
-&#160;&#160;&#160;&#160;[Convert a SQL value to a JSON value](#convert-a-sql-value-to-a-json-value)<br>
-&#160;&#160;&#160;&#160;[Convert a JSON value to another JSON value](#convert-a-json-value-to-another-json-value)<br>
-&#160;&#160;&#160;&#160;[Convert a JSON value to a SQL value](#convert-a-json-value-to-a-sql-value)<br>
-&#160;&#160;&#160;&#160;[Get a property of a JSON value](#get-a-property-of-a-json-value)
 
 **Notes:** For an alphabetical listing of the JSON functions and operators, see the listing in the navigation bar.
 

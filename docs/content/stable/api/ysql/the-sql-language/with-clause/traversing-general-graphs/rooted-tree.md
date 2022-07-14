@@ -1,7 +1,7 @@
 ---
 title: Using a recursive CTE to traverse a rooted tree
 headerTitle: Finding the paths in a rooted tree
-linkTitle: rooted tree
+linkTitle: Rooted tree
 description: This section shows how to use a recursive CTE to traverse a rooted tree.
 menu:
   stable:

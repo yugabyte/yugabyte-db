@@ -2,7 +2,7 @@
 title: Prepare the Kubernetes environment
 headerTitle: Prepare the Kubernetes environment
 linkTitle: Prepare the environment
-description: Prepare the Kubernetes environment for Yugabyte Platform.
+description: Prepare the Kubernetes environment for YugabyteDB Anywhere.
 menu:
   stable_yugabyte-platform:
     parent: install-yugabyte-platform
@@ -14,42 +14,42 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li>
-    <a href="/preview/yugabyte-platform/install-yugabyte-platform/prepare-environment/aws" class="nav-link">
+    <a href="../aws/" class="nav-link">
       <i class="fab fa-aws" aria-hidden="true"></i>
       AWS
     </a>
   </li>
 
   <li>
-    <a href="/preview/yugabyte-platform/install-yugabyte-platform/prepare-environment/gcp" class="nav-link">
+    <a href="../gcp/" class="nav-link">
        <i class="fab fa-google" aria-hidden="true"></i>
       GCP
     </a>
   </li>
 
   <li>
-    <a href="/preview/yugabyte-platform/install-yugabyte-platform/prepare-environment/azure" class="nav-link">
+    <a href="../azure/" class="nav-link">
       <i class="icon-azure" aria-hidden="true"></i>
       &nbsp;&nbsp; Azure
     </a>
   </li>
 
   <li>
-    <a href="/preview/yugabyte-platform/install-yugabyte-platform/prepare-environment/kubernetes" class="nav-link active">
+    <a href="../kubernetes/" class="nav-link active">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
 
 <li>
-    <a href="/preview/yugabyte-platform/install-yugabyte-platform/prepare-environment/openshift" class="nav-link">
+    <a href="../openshift/" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       OpenShift
     </a>
  </li>
 
   <li>
-    <a href="/preview/yugabyte-platform/install-yugabyte-platform/prepare-environment/on-premises" class="nav-link">
+    <a href="../on-premises/" class="nav-link">
       <i class="fas fa-building" aria-hidden="true"></i>
       On-premises
     </a>
@@ -57,17 +57,17 @@ type: docs
 
 </ul>
 
-The Yugabyte Platform Helm chart has been tested using the following software versions:
+The YugabyteDB Anywhere Helm chart has been tested using the following software versions:
 
 - Kubernetes 1.18 or later.
 - Helm 3.4 or later.
-- Ability to pull Yugabyte Platform Docker image from quay.io repository
+- Ability to pull YugabyteDB Anywhere Docker image from quay.io repository
 
 
 Before installing the YugabyteDB Admin Console, verify you have the following:
 
 - A Kubernetes cluster configured with [Helm](https://helm.sh/).
-- A Kubernetes node with minimum 4 CPU core and 15 GB RAM can be allocated to Yugabyte Platform.
+- A Kubernetes node with minimum 4 CPU core and 15 GB RAM can be allocated to YugabyteDB Anywhere.
 - A Kubernetes secret obtained from [Yugabyte](https://www.yugabyte.com/platform/#request-trial-form).
 
 To confirm that `helm` is configured correctly, run the following command:

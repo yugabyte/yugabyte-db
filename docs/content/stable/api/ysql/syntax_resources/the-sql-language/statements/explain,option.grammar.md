@@ -1,4 +1,4 @@
-```ebnf
+```output.ebnf
 explain ::= EXPLAIN [ [ ANALYZE ] [ VERBOSE ] | ( option [ , ... ] ) ] 
             sql_stmt
 

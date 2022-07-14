@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-The following subsections provide the conceptual background for the accounts of the _date-time_ data types that the table shown in the [Synopsis](../intro/#synopsis) lists and for the operations that the _date-time_ operators and built-in SQL functions perform.
+The following subsections provide the conceptual background for the accounts of the _date-time_ data types that the table shown in the [Synopsis](../../type_datetime/) lists and for the operations that the _date-time_ operators and built-in SQL functions perform.
 
 - [Absolute time and the UTC Time Standard](#absolute-time-and-the-utc-time-standard)
 - [Wall-clock-time and local time](#wall-clock-time-and-local-time)
@@ -72,7 +72,7 @@ It quietly succeeds and produces the obvious result. (The _::text_ typecast of a
  4713-01-01 00:00:00 BC | 294276-01-01 00:00:00
 ```
 
-The values, _4713 BC_ and _294276_ AD, are given in the [table](../intro/#synopsis) in the _"Introduction"_ section to the present _date-time_ data types major section.
+The values, _4713 BC_ and _294276_ AD, are given in the [table](../../type_datetime/) in the _"Introduction"_ section to the present _date-time_ data types major section.
 
 ## Wall-clock-time and local time
 
@@ -278,7 +278,7 @@ It is now understood that the observable phenomena like day, month, and year can
 This realization is formalized in PostgreSQL (and therefore in YSQL) as the so-called _proleptic Gregorian calendar_.
 
 {{< note title="The proleptic Gregorian calendar." >}}
-<a href="https://www.postgresql.org/docs/11/datetime-units-history.html" target="_blank">The proleptic Gregorian calendar <i class="fas fa-external-link-alt"></i></a> implements the notion of the Western calendar month with its  idiosyncrasies: February has 29 days in a  leap year and otherwise 28 days; and the other months have either 30 or 31 days. (Lunar months have vanished from the discourse.) So, while one year is usually 365 days, it is sometimes 366 days. The calendar is a mapping between the number of seconds before or after midnight 1970, on the Greenwich Meridian, and the year, calendar month, date, and time of day (in hours, minutes, and seconds) on that same meridian. The mapping cannot be a formula. Rather, it can only be an elaborate look-up table.
+[The proleptic Gregorian calendar](https://www.postgresql.org/docs/11/datetime-units-history.html) implements the notion of the Western calendar month with its idiosyncrasies: February has 29 days in a  leap year and otherwise 28 days; and the other months have either 30 or 31 days. (Lunar months have vanished from the discourse.) So, while one year is usually 365 days, it is sometimes 366 days. The calendar is a mapping between the number of seconds before or after midnight 1970, on the Greenwich Meridian, and the year, calendar month, date, and time of day (in hours, minutes, and seconds) on that same meridian. The mapping cannot be a formula. Rather, it can only be an elaborate look-up table.
 {{< /note >}}
 
 This mapping is exposed in the seconds-to-calendar direction by the built-in function _to_timestamp()_. The return data type is [_timestamptz_](../date-time-data-types-semantics/type-timestamp/) so that the result can be correctly expressed for any chosen timezone. And the mapping is implemented in the calendar-to-seconds direction by _extract&nbsp;epoch_.
@@ -310,7 +310,7 @@ Briefly, _clock-time_ is caesium units—or, by convention, seconds, minutes, an
 
 When you ask "How long did the Apollo 11 mission last from launch to splashdown in the Pacific Ocean?" you prefer the answer to use _clock-time-semantics_:
 
->  _exactly twenty-seven hours, 18 minutes and 35 seconds_.
+> _exactly twenty-seven hours, 18 minutes and 35 seconds_.
 
 In the same spirit, the time it will take to get to Mars is best expressed (according to current estimates) as:
 

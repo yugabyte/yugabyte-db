@@ -14,21 +14,21 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="../gcp-deployment-manager" class="nav-link active">
+    <a href="../gcp-deployment-manager/" class="nav-link active">
       <i class="icon-shell"></i>
       Google Cloud Deployment Manager
     </a>
   </li>
 
   <li>
-    <a href="../gke" class="nav-link">
+    <a href="../gke/" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Google Kubernetes Engine (GKE)
     </a>
   </li>
 
   <li >
-    <a href="../terraform" class="nav-link">
+    <a href="../terraform/" class="nav-link">
       <i class="icon-shell"></i>
       Terraform
     </a>

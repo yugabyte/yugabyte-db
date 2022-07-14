@@ -7,7 +7,6 @@ headcontent: Get started building applications based on YugabyteDB.
 image: /images/section_icons/index/develop.png
 type: indexpage
 ---
-
 <div class="row">
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
@@ -71,6 +70,18 @@ type: indexpage
       </div>
       <div class="body">
         Best practices for data modeling and cluster configuration.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="quality-of-service">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/explore/fault_tolerance.png" aria-hidden="true" />
+        <div class="title">Quality of service</div>
+      </div>
+      <div class="body">
+        Handle scenarios with heavy load, and implement rate-limiting when running multi-tenant services.
       </div>
     </a>
   </div>

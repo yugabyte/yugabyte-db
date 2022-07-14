@@ -18,7 +18,7 @@ This applies only in those syntax contexts where _pg_timezone_abbrevs.abbrev_ is
 {{< /tip >}}</br>
 
 {{< tip title="Download and install the date-time utilities code." >}}
-The code on this page depends on the code presented in the [_extended_timezone_names_ view](../../../extended-timezone-names/) section. This is included in the larger [code kit](../../../../download-date-time-utilities/) that includes all of the reusable code that the overall _[date-time](../../../../../type_datetime)_ section describes and uses.
+The code on this page depends on the code presented in the [_extended_timezone_names_ view](../../../extended-timezone-names/) section. This is included in the larger [code kit](../../../../download-date-time-utilities/) that includes all of the reusable code that the overall _[date-time](../../../../../type_datetime/)_ section describes and uses.
 {{< /tip >}}
 
 The page for [Rule 3](../rule-3) tested with a string that's found uniquely in _pg_timezone_abbrevs.abbrev_. It established that for the second two syntax contexts (the _at time zone_ operator and the _text_ literal for a _timestamptz_ value), the string _is_ looked up in this column; and that for the first syntax context (the _set timezone_ statement) this column is _not_ searched.
