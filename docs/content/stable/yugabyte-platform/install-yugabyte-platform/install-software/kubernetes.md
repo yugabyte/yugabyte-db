@@ -72,32 +72,32 @@ You install YugabyteDB Anywhere on a Kubernetes cluster as follows:
     <br>To search for the available chart version, run the following command:
 
     ```sh
-    helm search repo yugabytedb/yugaware --version {{<yb-version version="preview" format="short">}}
+    helm search repo yugabytedb/yugaware --version {{<yb-version version="stable" format="short">}}
     ```
 
     <br>The latest Helm chart version and application version is displayed via the output similar to the following:
 
     ```output
     NAME                 CHART VERSION  APP VERSION  DESCRIPTION
-    yugabytedb/yugaware {{<yb-version version="preview" format="short">}}          {{<yb-version version="preview" format="build">}}  YugaWare is YugaByte Database's Orchestration a...
+    yugabytedb/yugaware {{<yb-version version="stable" format="short">}}          {{<yb-version version="stable" format="build">}}  YugaWare is YugaByte Database's Orchestration a...
     ```
 
 1. Run the following `helm install` command to install the YugabyteDB Anywhere (`yugaware`) Helm chart:
 
     ```sh
-    helm install yw-test yugabytedb/yugaware --version {{<yb-version version="preview" format="short">}} -n yb-platform --wait
+    helm install yw-test yugabytedb/yugaware --version {{<yb-version version="stable" format="short">}} -n yb-platform --wait
     ```
 
 1. Optionally, set the TLS version for Nginx frontend by using `ssl_protocols` operational directive in the Helm installation, as follows:
 
     ```sh
-    helm install yw-test yugabytedb/yugaware --version {{<yb-version version="preview" format="short">}} -n yb-platform --wait --set tls.sslProtocols="TLSv1.2"
+    helm install yw-test yugabytedb/yugaware --version {{<yb-version version="stable" format="short">}} -n yb-platform --wait --set tls.sslProtocols="TLSv1.2"
     ```
 
     <br>In addition, you may provide a custom TLS certificate in the Helm chart, as follows:
 
     ```sh
-    helm install yw-test yugabytedb/yugaware --version {{<yb-version version="preview" format="short">}} -n yb-platform --wait --set tls.sslProtocols="TLSv1.2" tls.certificate="LS0tLS1CRUdJTiBDRVJUSUZJQ..." tls.key="LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0t..."
+    helm install yw-test yugabytedb/yugaware --version {{<yb-version version="stable" format="short">}} -n yb-platform --wait --set tls.sslProtocols="TLSv1.2" tls.certificate="LS0tLS1CRUdJTiBDRVJUSUZJQ..." tls.key="LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0t..."
     ```
 
     <br>where `certificate` and `key` are set to full string values of your custom certificate and its corresponding key.
@@ -150,7 +150,7 @@ You can customize YugabyteDB Anywhere on a Kubernetes cluster in a number of way
 
   ```sh
   helm install yw-test yugabytedb/yugaware -n yb-platform \
-    --version {{<yb-version version="preview" format="short">}} \
+    --version {{<yb-version version="stable" format="short">}} \
     --set yugaware.resources.requests.cpu=2 \
     --set yugaware.resources.requests.memory=4Gi \
     --set yugaware.resources.limits.cpu=2 \
@@ -169,7 +169,7 @@ You can customize YugabyteDB Anywhere on a Kubernetes cluster in a number of way
 
   ```sh
   helm install yw-test yugabytedb/yugaware -n yb-platform \
-  --version {{<yb-version version="preview" format="short">}} \
+  --version {{<yb-version version="stable" format="short">}} \
   --set yugaware.service.annotations."cloud\.google\.com\/load-balancer-type"="Internal"
   ```
 

@@ -128,12 +128,12 @@ $ helm repo update
 #### Validate the chart version
 
 ```sh
-$ helm search repo yugabytedb/yugabyte --version {{<yb-version version="stable" format="short">}}
+$ helm search repo yugabytedb/yugabyte --version {{<yb-version version="v2.12" format="short">}}
 ```
 
 ```output
 NAME                 CHART VERSION  APP VERSION   DESCRIPTION
-yugabytedb/yugabyte  {{<yb-version version="stable" format="short">}}          {{<yb-version version="stable" format="build">}}  YugabyteDB is the high-performance distributed ...
+yugabytedb/yugabyte  {{<yb-version version="v2.12" format="short">}}          {{<yb-version version="v2.12" format="build">}}  YugabyteDB is the high-performance distributed ...
 ```
 
 Now you are ready to create a local YugabyteDB cluster.
@@ -148,7 +148,7 @@ $ helm install yb-demo yugabytedb/yugabyte \
 --set resource.master.requests.cpu=0.5,resource.master.requests.memory=0.5Gi,\
 resource.tserver.requests.cpu=0.5,resource.tserver.requests.memory=0.5Gi,\
 replicas.master=1,replicas.tserver=1 --namespace yb-demo\
---version {{<yb-version version="stable" format="short">}}
+--version {{<yb-version version="v2.12" format="short">}}
 ```
 
 Note that in Minikube, the LoadBalancers for `yb-master-ui` and `yb-tserver-service` will remain in pending state since load balancers are not available in a Minikube environment. If you would like to turn off these services then pass the `enableLoadBalancer=False` flag as shown below.
@@ -158,7 +158,7 @@ $ helm install yb-demo yugabytedb/yugabyte \
 --set resource.master.requests.cpu=0.5,resource.master.requests.memory=0.5Gi,\
 resource.tserver.requests.cpu=0.5,resource.tserver.requests.memory=0.5Gi,\
 replicas.master=1,replicas.tserver=1,enableLoadBalancer=False --namespace yb-demo\
---version {{<yb-version version="stable" format="short">}}
+--version {{<yb-version version="v2.12" format="short">}}
 ```
 
 ### Check cluster status with kubectl

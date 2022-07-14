@@ -282,12 +282,12 @@ $ helm repo update
 Validate that you have the updated chart version.
 
 ```sh
-$ helm search repo yugabytedb/yugabyte --version {{<yb-version version="stable" format="short">}}
+$ helm search repo yugabytedb/yugabyte --version {{<yb-version version="v2.12" format="short">}}
 ```
 
 ```output
 NAME                 CHART VERSION  APP VERSION   DESCRIPTION
-yugabytedb/yugabyte  {{<yb-version version="stable" format="short">}}          {{<yb-version version="stable" format="build">}}  YugabyteDB is the high-performance distributed ...
+yugabytedb/yugabyte  {{<yb-version version="v2.12" format="short">}}          {{<yb-version version="v2.12" format="build">}}  YugabyteDB is the high-performance distributed ...
 ```
 
 ### Create override files
@@ -399,7 +399,7 @@ Now create the overall YugabyteDB cluster in such a way that one third of the no
 $ helm install yb-demo-us-west1-b yugabytedb/yugabyte \
  --namespace yb-demo-us-west1-b \
  -f overrides-us-west1-b.yaml \
- --version {{<yb-version version="stable" format="short">}} \
+ --version {{<yb-version version="v2.12" format="short">}} \
  --kube-context gke_yugabyte_us-west1-b_yugabytedb1 --wait
 ```
 
@@ -407,7 +407,7 @@ $ helm install yb-demo-us-west1-b yugabytedb/yugabyte \
 $ helm install yb-demo-us-central1-b yugabytedb/yugabyte \
  --namespace yb-demo-us-central1-b \
  -f overrides-us-central1-b.yaml \
- --version {{<yb-version version="stable" format="short">}} \
+ --version {{<yb-version version="v2.12" format="short">}} \
  --kube-context gke_yugabyte_us-central1-b_yugabytedb2 --wait
 ```
 
@@ -415,7 +415,7 @@ $ helm install yb-demo-us-central1-b yugabytedb/yugabyte \
 $ helm install yb-demo-us-east1-b yugabytedb/yugabyte \
  --namespace yb-demo-us-east1-b \
  -f overrides-us-east1-b.yaml \
- --version {{<yb-version version="stable" format="short">}} \
+ --version {{<yb-version version="v2.12" format="short">}} \
  --kube-context gke_yugabyte_us-east1-b_yugabytedb3 --wait
 ```
 

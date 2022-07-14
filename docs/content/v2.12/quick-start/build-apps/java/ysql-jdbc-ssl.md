@@ -77,7 +77,7 @@ This tutorial assumes that:
    --set resource.master.requests.cpu=0.5,resource.master.requests.memory=0.5Gi,\
    resource.tserver.requests.cpu=0.5,resource.tserver.requests.memory=0.5Gi,\
    replicas.master=1,replicas.tserver=1,tls.enabled=true --namespace yb-demo\
-   --version {{<yb-version version="stable" format="short">}}
+   --version {{<yb-version version="v2.12" format="short">}}
    ```
 
 1. Verify that SSL is enabled using `ysqlsh`.

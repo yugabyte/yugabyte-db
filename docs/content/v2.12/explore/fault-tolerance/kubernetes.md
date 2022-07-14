@@ -60,7 +60,7 @@ Create a new YugabyteDB cluster.
 
 ```sh
 $ helm install yb-demo yugabytedb/yugabyte \
---version {{<yb-version version="stable" format="short">}} \
+--version {{<yb-version version="v2.12" format="short">}} \
 --set resource.master.requests.cpu=0.5,resource.master.requests.memory=0.5Gi,\
 resource.tserver.requests.cpu=0.5,resource.tserver.requests.memory=0.5Gi --namespace yb-demo
 ```

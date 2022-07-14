@@ -72,26 +72,26 @@ You install Yugabyte Platform on a Kubernetes cluster as follows:
     To search for the available chart version, run this command:
 
     ```sh
-    helm search repo yugabytedb/yugaware --version {{<yb-version version="stable" format="short">}}
+    helm search repo yugabytedb/yugaware --version {{<yb-version version="v2.12" format="short">}}
     ```
 
     The Helm Chart version and App version will be displayed:
 
     ```output
     NAME                 CHART VERSION  APP VERSION  DESCRIPTION
-    yugabytedb/yugaware  {{<yb-version version="stable" format="short">}}         {{<yb-version version="stable" format="build">}}  YugaWare is YugaByte Database's Orchestration a...
+    yugabytedb/yugaware  {{<yb-version version="v2.12" format="short">}}         {{<yb-version version="v2.12" format="build">}}  YugaWare is YugaByte Database's Orchestration a...
     ```
 
 1. Run the following `helm install` command to install the Yugabyte Platform (`yugaware`) Helm chart:
 
     ```sh
-    helm install yw-test yugabytedb/yugaware --version {{<yb-version version="stable" format="short">}} -n yb-platform --wait
+    helm install yw-test yugabytedb/yugaware --version {{<yb-version version="v2.12" format="short">}} -n yb-platform --wait
     ```
 
 1. Optionally, set the TLS version for Nginx frontend by using `ssl_protocols` operational directive in the Helm installation, as follows:
 
     ```sh
-    helm install yw-test yugabytedb/yugaware --version {{<yb-version version="stable" format="short">}} -n yb-platform --wait --set tls.sslProtocols="TLSv1.2"
+    helm install yw-test yugabytedb/yugaware --version {{<yb-version version="v2.12" format="short">}} -n yb-platform --wait --set tls.sslProtocols="TLSv1.2"
     ```
 
 1. Use the following command to check the service:
@@ -120,7 +120,7 @@ You can customize Yugabyte Platform on a Kubernetes cluster in a number of ways,
     --set yugaware.resources.limits.cpu=2 \
     --set yugaware.resources.limits.memory=4Gi \
     --set prometheus.resources.requests.mem=6Gi \
-    --version {{<yb-version version="stable" format="short">}}
+    --version {{<yb-version version="v2.12" format="short">}}
   ```
 
 - You can disable the public-facing load balancer by providing the annotations to Yugabyte Platform service for disabling that load balancer. Since every cloud provider has different annontations for doing this, refer to the following documentation:
@@ -134,7 +134,7 @@ You can customize Yugabyte Platform on a Kubernetes cluster in a number of ways,
 
   ```sh
   helm install yw-test yugabytedb/yugaware -n yb-platform \
-  --version {{<yb-version version="stable" format="short">}} \
+  --version {{<yb-version version="v2.12" format="short">}} \
   --set yugaware.service.annotations."cloud\.google\.com\/load-balancer-type"="Internal"
   ```
 

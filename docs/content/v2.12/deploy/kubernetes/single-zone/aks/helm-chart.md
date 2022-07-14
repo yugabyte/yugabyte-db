@@ -237,12 +237,12 @@ Hang tight while we grab the latest from your chart repositories...
 ```
 
 ```sh
-$ helm search repo yugabytedb/yugabyte --version {{<yb-version version="stable" format="short">}}
+$ helm search repo yugabytedb/yugabyte --version {{<yb-version version="v2.12" format="short">}}
 ```
 
 ```output
 NAME                 CHART VERSION  APP VERSION   DESCRIPTION
-yugabytedb/yugabyte  {{<yb-version version="stable" format="short">}}          {{<yb-version version="stable" format="build">}}  YugabyteDB is the high-performance distributed ...
+yugabytedb/yugabyte  {{<yb-version version="v2.12" format="short">}}          {{<yb-version version="v2.12" format="build">}}  YugabyteDB is the high-performance distributed ...
 ```
 
 #### Create the namespace
@@ -265,7 +265,7 @@ Next, install YugabyteDB in the `yb-demo` namespace by running the following com
 
 ```sh
 $ helm install yb-demo -n yb-demo yugabytedb/yugabyte \
- --version {{<yb-version version="stable" format="short">}} \
+ --version {{<yb-version version="v2.12" format="short">}} \
  --set storage.master.count=1 \
  --set storage.tserver.count=1 \
  --set storage.master.storageClass=default \
