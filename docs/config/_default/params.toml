@@ -72,6 +72,7 @@ version_menu = "Releases"
 # Custom params, regardless of theme
 [yb]
   terms_of_service = "https://www.yugabyte.com/terms-of-service/"
+  preview_version = "v2.15"
 
 # Header logo link
 [yb.navbar_logo]
