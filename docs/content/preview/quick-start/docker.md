@@ -215,9 +215,9 @@ Perform the following to create a sample Java project:
     mvn install
     ```
 
-### Create the sample Java application
+### Create a sample Java application
 
-The following steps demonstrate how to create two java applications, `UniformLoadBalance` and `TopologyAwareLoadBalance`. In each, you can create connections in one of two ways: using the `DriverManager.getConnection()` API or using `YBClusterAwareDataSource` and `HikariPool`. Both approaches are described.
+The following steps demonstrate how to create two Java applications, `UniformLoadBalance` and `TopologyAwareLoadBalance`. In each, you can create connections in one of two ways: using the `DriverManager.getConnection()` API or using `YBClusterAwareDataSource` and `HikariPool`. Both approaches are described.
 
 #### Uniform load balancing
 
