@@ -46,7 +46,7 @@ For details, see the [Yugabyte Support Services Agreement](https://www.yugabyte.
 | Release series | Released | End of maintenance support | End of Life (EOL) |
 | :------------- | :------- | :------------------------- | :---------------- |
 | [v2.15](release-notes/v2.15/) ![PREVIEW](/images/releases/preview.png) | June 27, 2022 | n/a | n/a |
-| [v2.12](release-notes/v2.14/) ![CURRENT STABLE](/images/releases/current-stable.png) | July 15, 2022 | July 15, 2023 | January 15, 2024 |
+| [v2.14](release-notes/v2.14/) ![CURRENT STABLE](/images/releases/current-stable.png) | July 14, 2022 | July 14, 2023 | January 14, 2024 |
 | [v2.12](release-notes/v2.12/) | February 22, 2022 | February 22, 2023 | August 22, 2023 |
 | [v2.8](release-notes/v2.8/) | November 15, 2021 | November 15, 2022 | June 15, 2023 |
 | [v2.6](release-notes/v2.6/) | July 5, 2021 | July 5, 2022 | January 5, 2023 |
