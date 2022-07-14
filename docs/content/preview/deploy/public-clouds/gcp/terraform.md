@@ -40,15 +40,17 @@ type: docs
 
 ## Prerequisites
 
-1. Download and install [terraform](https://www.terraform.io/downloads.html).
+Download and install [Terraform](https://www.terraform.io/downloads.html).
 
-2. Verify by the `terraform` command, it should print a help message that looks similar to that shown below.
+Verify the installation using the `terraform` command.
 
 ```sh
 $ terraform
 ```
 
-```
+You should see output similar to the following.
+
+```output
 Usage: terraform [--version] [--help] <command> [args]
 ...
 Common commands:
@@ -59,103 +61,110 @@ Common commands:
     fmt                Rewrites config files to canonical format
 ```
 
-## 1. Create a terraform configuration file
+## Create a terraform configuration file
 
-* First, create a terraform file with provider details.
+1. Create a terraform file with provider details.
 
-```
-  provider "google"
-  {
-    # Provide your Creadentilals
-    credentials = "${file("yugabyte-pcf-bc8114281026.json")}"
+    ```terraform
+    provider "google"
+    {
+      # Provide your Creadentilals
+      credentials = "${file("yugabyte-pcf-bc8114281026.json")}"
 
-    # The name of your GCP project
-    project = "<Your-GCP-Project-Name>"
-  }
-```
+      # The name of your GCP project
+      project = "<Your-GCP-Project-Name>"
+    }
+    ```
 
-  **NOTE:** :- You can get credentials file by following steps given [here](https://cloud.google.com/docs/authentication/getting-started)
+    To obtain your credentials file, refer to [Getting started with authentication](https://cloud.google.com/docs/authentication/getting-started) in the GCP documentation.
 
-* Now add the Yugabyte Terraform module to your file.
+1. Add the Yugabyte Terraform module to your file.
 
-```
-  module "yugabyte-db-cluster" {
-  source = "github.com/Yugabyte/terraform-gcp-yugabyte.git"
+    ```terraform
+    module "yugabyte-db-cluster"
+    {
+      source = "github.com/Yugabyte/terraform-gcp-yugabyte.git"
 
-  # The name of the cluster to be created.
-  cluster_name = "test-cluster"
+      # The name of the cluster to be created.
+      cluster_name = "test-cluster"
 
-   # key pair.
-  ssh_private_key = "SSH_PRIVATE_KEY_HERE"
-  ssh_public_key = "SSH_PUBLIC_KEY_HERE"
-  ssh_user = "SSH_USER_NAME_HERE"
+      # key pair.
+      ssh_private_key = "SSH_PRIVATE_KEY_HERE"
+      ssh_public_key = "SSH_PUBLIC_KEY_HERE"
+      ssh_user = "SSH_USER_NAME_HERE"
 
-  # The region name where the nodes should be spawned.
-  region_name = "YOUR_VPC_REGION"
+      # The region name where the nodes should be spawned.
+      region_name = "YOUR_VPC_REGION"
 
-  # Replication factor.
-  replication_factor = "3"
+      # Replication factor.
+      replication_factor = "3"
 
-  # The number of nodes in the cluster, this cannot be lower than the replication factor.
-  node_count = "3"
-  }
-```
+      # The number of nodes in the cluster, this cannot be lower than the replication factor.
+      node_count = "3"
+    }
+    ```
 
-## 2. Create a cluster
+## Create a cluster
 
-Init terraform first if you have not already done so.
+Init terraform first if you haven't already done so.
 
 ```sh
 $ terraform init
 ```
 
-To check what changes are going to happen in environment run the following
+To check what changes are going to happen in your environment, run the following:
 
 ```sh
 $ terraform plan
 ```
 
-Now run the following to create the instances and bring up the cluster.
+Run the following to create the instances and bring up the cluster:
 
 ```sh
 $ terraform apply
 ```
 
-Once the cluster is created, you can go to the URL `http://<node ip or dns name>:7000` to view the UI. You can find the node's ip or dns by running the following:
+After the cluster is created, go to the URL `http://<node ip or dns name>:7000` to view the UI. You can find the node's IP or DNS by running the following:
 
 ```sh
 $ terraform state show google_compute_instance.yugabyte_node[0]
 ```
 
-You can access the cluster UI by going to any of the following URLs.
-
-You can check the state of the nodes at any point by running the following command.
+You can check the state of the nodes at any point by running the following command:
 
 ```sh
 $ terraform show
 ```
 
-## 3. Verify resources created
+## Verify resources created
 
 The following resources are created by this module:
 
-- `module.terraform-gcp-yugabyte.google_compute_instance.yugabyte_node` The GCP VM instances.
+- `module.terraform-gcp-yugabyte.google_compute_instance.yugabyte_node`
 
-For cluster named `test-cluster`, the instances will be named `yugabyte-test-cluster-n1`, `yugabyte-test-cluster-n2`, `yugabyte-test-cluster-n3`.
+    The GCP VM instances.
 
-- `module.terraform-gcp-yugabyte.google_compute_firewall.Yugabyte-Firewall` The firwall rule that allows the various clients to access the YugabyteDB cluster.
+    For a cluster named `test-cluster`, the instances are named `yugabyte-test-cluster-n1`, `yugabyte-test-cluster-n2`, and `yugabyte-test-cluster-n3`.
 
-For cluster named `test-cluster`, this firewall rule will be named `default-yugabyte-test-cluster-firewall` with the ports 7000, 9000, 9042 and 6379 open to all.
+- `module.terraform-gcp-yugabyte.google_compute_firewall.Yugabyte-Firewall`
 
-- `module.terraform-gcp-yugabyte.google_compute_firewall.Yugabyte-Intra-Firewall` The firewall rule that allows communication internal to the cluster.
+    The firewall rule that allows various clients to access the YugabyteDB cluster.
 
-For cluster named `test-cluster`, this firewall rule will be named `default-yugabyte-test-cluster-intra-firewall` with the ports 7100, 9100 open to all other vm instances in the same network.
+    For a cluster named `test-cluster`, this firewall rule is named `default-yugabyte-test-cluster-firewall` with the ports 7000, 9000, 9042, and 6379 open to all.
 
-- `module.terraform-gcp-yugabyte.null_resource.create_yugabyte_universe` A local script that configures the newly created instances to form a new YugabyteDB universe.
+- `module.terraform-gcp-yugabyte.google_compute_firewall.Yugabyte-Intra-Firewall`
 
-## 4. Destroy the cluster (optional)
+    The firewall rule that allows communication internal to the cluster.
 
-To destroy what you just created, you can run the following command.
+    For a cluster named `test-cluster`, this firewall rule is named `default-yugabyte-test-cluster-intra-firewall` with the ports 7100 and 9100 open to all other VM instances in the same network.
+
+- `module.terraform-gcp-yugabyte.null_resource.create_yugabyte_universe`
+
+    A local script that configures the newly created instances to form a new YugabyteDB universe.
+
+## Destroy the cluster (optional)
+
+To destroy what you just created, run the following command:
 
 ```sh
 $ terraform destroy

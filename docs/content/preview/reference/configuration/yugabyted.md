@@ -495,7 +495,7 @@ Combinations of environment variables and their uses.
 Create a single-node cluster with a given base dir and listen address. Note the need to provide a fully-qualified directory path for the base dir parameter.
 
 ```sh
-bin/yugabyted start --base_dir=/Users/username/yugabyte-2.3.3.0/data1 --listen=127.0.0.1
+./bin/yugabyted start --base_dir=/Users/username/yugabyte-2.3.3.0/data1 --listen=127.0.0.1
 ```
 
 ### Pass additional flags to YB-TServer
@@ -503,7 +503,7 @@ bin/yugabyted start --base_dir=/Users/username/yugabyte-2.3.3.0/data1 --listen=1
 Create a single-node cluster and set additional flags for the YB-TServer process.
 
 ```sh
-bin/yugabyted start --tserver_flags="pg_yb_session_timeout_ms=1200000,ysql_max_connections=400"
+./bin/yugabyted start --tserver_flags="pg_yb_session_timeout_ms=1200000,ysql_max_connections=400"
 ```
 
 ### Create a multi-node cluster
@@ -511,8 +511,8 @@ bin/yugabyted start --tserver_flags="pg_yb_session_timeout_ms=1200000,ysql_max_c
 Add two more nodes to the cluster using the `join` option.
 
 ```sh
-bin/yugabyted start --base_dir=/Users/username/yugabyte-2.3.3.0/data2 --listen=127.0.0.2 --join=127.0.0.1
-bin/yugabyted start --base_dir=/Users/username/yugabyte-2.3.3.0/data3 --listen=127.0.0.3 --join=127.0.0.1
+./bin/yugabyted start --base_dir=/Users/username/yugabyte-2.3.3.0/data2 --listen=127.0.0.2 --join=127.0.0.1
+./bin/yugabyted start --base_dir=/Users/username/yugabyte-2.3.3.0/data3 --listen=127.0.0.3 --join=127.0.0.1
 ```
 
 ### Destroy a multi-node cluster
@@ -520,9 +520,9 @@ bin/yugabyted start --base_dir=/Users/username/yugabyte-2.3.3.0/data3 --listen=1
 Destroy the above multi-node cluster.
 
 ```sh
-bin/yugabyted destroy --base_dir=/Users/username/yugabyte-2.3.3.0/data1
-bin/yugabyted destroy --base_dir=/Users/username/yugabyte-2.3.3.0/data2
-bin/yugabyted destroy --base_dir=/Users/username/yugabyte-2.3.3.0/data3
+./bin/yugabyted destroy --base_dir=/Users/username/yugabyte-2.3.3.0/data1
+./bin/yugabyted destroy --base_dir=/Users/username/yugabyte-2.3.3.0/data2
+./bin/yugabyted destroy --base_dir=/Users/username/yugabyte-2.3.3.0/data3
 ```
 
 ### Create a multi-zone cluster
@@ -532,21 +532,21 @@ bin/yugabyted destroy --base_dir=/Users/username/yugabyte-2.3.3.0/data3
 Create a multi-node cluster for YugabyteDB. Start the first Yugabyted node by running the `yugabyted start` command, pass in the `--cloud_location` and `--fault_tolerance` flag for setting the node location details. Run the following command:
 
 ```sh
-bin/yugabyted start --advertise_address=<host-ip> --cloud_location=aws.us-east.us-east-1a --fault_tolerance=zone
+./bin/yugabyted start --advertise_address=<host-ip> --cloud_location=aws.us-east.us-east-1a --fault_tolerance=zone
 ```
 
 Start the second and the third node on two separate VMs:
 
 ```sh
-bin/yugabyted start --advertise_address=<host-ip> --join=<ip-address-first-yugabyted-node> --cloud_location=aws.us-east.us-east-2a --fault_tolerance=zone
+./bin/yugabyted start --advertise_address=<host-ip> --join=<ip-address-first-yugabyted-node> --cloud_location=aws.us-east.us-east-2a --fault_tolerance=zone
 
-bin/yugabyted start --advertise_address=<host-ip> --join=<ip-address-first-yugabyted-node> --cloud_location=aws.us-east.us-east-3a --fault_tolerance=zone
+./bin/yugabyted start --advertise_address=<host-ip> --join=<ip-address-first-yugabyted-node> --cloud_location=aws.us-east.us-east-3a --fault_tolerance=zone
 ```
 
 After starting the Yugabyted processes on all the nodes, configure the data placement constraint of the YugabyteDB cluster:
 
 ```sh
-bin/yugabyted configure --fault_tolerance=zone
+./bin/yugabyted configure --fault_tolerance=zone
 ```
 
 This command will automatically determine the data placement constraint based on the `--cloud_location` of each node in the cluster. If there are 3 or more zones available in the cluster, configure command will be successful in configuring the cluster to survive at least 1 availability zone failure. Otherwise, it will print the appropriate warning messages.
@@ -556,13 +556,13 @@ Also, the replication factor of the cluster will be set to a default of `3`.
 The data placement constraint can be manually set with the `--data_placement_constraint` flag, which takes the comma-separated value of `cloud.region.zone`. An example usage is as follows:
 
 ```sh
-bin/yugabyted configure --fault_tolerance=zone --data_placement_constraint=aws.us-east.us-east-1a,aws.us-east.us-east-2a,aws.us-east.us-east-3a
+./bin/yugabyted configure --fault_tolerance=zone --data_placement_constraint=aws.us-east.us-east-1a,aws.us-east.us-east-2a,aws.us-east.us-east-3a
 ```
 
 Replication factor of the YugabyteDB cluster can be manually set with `--rf` flag. An example usage is as follows:
 
 ```sh
-./yugabyted configure --fault_tolerance=zone --data_placement_constraint=aws.us-east.us-east-1a,aws.us-east.us-east-2a,aws.us-east.us-east-3a --rf=3
+./bin/yugabyted configure --fault_tolerance=zone --data_placement_constraint=aws.us-east.us-east-1a,aws.us-east.us-east-2a,aws.us-east.us-east-3a --rf=3
 ```
 
 ### Create a multi-region cluster
@@ -570,21 +570,21 @@ Replication factor of the YugabyteDB cluster can be manually set with `--rf` fla
 Create a multi-node cluster for YugabyteDB. Start the first Yugabyted node by running the `yugabyted start` command, pass in the `--cloud_location` and `--fault_tolerance` flag for setting the node location details. Run the following command -
 
 ```sh
-bin/yugabyted start --advertise_address=<host-ip> --cloud_location=aws.us-east.us-east-1a --fault_tolerance=region
+./bin/yugabyted start --advertise_address=<host-ip> --cloud_location=aws.us-east.us-east-1a --fault_tolerance=region
 ```
 
 Start the second and the third node on two separate VMs -
 
 ```sh
-bin/yugabyted start --advertise_address=<host-ip> --join=<ip-address-first-yugabyted-node> --cloud_location=aws.us-west.us-west-1a --fault_tolerance=region
+./bin/yugabyted start --advertise_address=<host-ip> --join=<ip-address-first-yugabyted-node> --cloud_location=aws.us-west.us-west-1a --fault_tolerance=region
 
-bin/yugabyted start --advertise_address=<host-ip> --join=<ip-address-first-yugabyted-node> --cloud_location=aws.us-central.us-central-1a --fault_tolerance=region
+./bin/yugabyted start --advertise_address=<host-ip> --join=<ip-address-first-yugabyted-node> --cloud_location=aws.us-central.us-central-1a --fault_tolerance=region
 ```
 
 After starting the Yugabyted processes on all the nodes, configure the data placement constraint of the YugabyteDB cluster:
 
 ```sh
-bin/yugabyted configure --fault_tolerance=region
+./bin/yugabyted configure --fault_tolerance=region
 ```
 
 This command will automatically determine the data placement constraint based on the `--cloud_location` of each node in the cluster. If there are 3 or more regions available in the cluster, configure command will be successful in configuring the cluster to survive at least 1 region failure. Otherwise, it will print the appropriate warning messages.
@@ -594,13 +594,13 @@ Also, the replication factor of the cluster will be set to a default of `3`.
 The data placement constraint can be manually set with `--data_placement_constraint` flag, which takes the comma-separated value of `cloud.region.zone`. An example usage is as follows:
 
 ```sh
-bin/yugabyted configure --fault_tolerance=zone --data_placement_constraint=aws.us-east.us-east-1a,aws.us-west.us-west-1a,aws.us-central.us-central-1a
+./bin/yugabyted configure --fault_tolerance=zone --data_placement_constraint=aws.us-east.us-east-1a,aws.us-west.us-west-1a,aws.us-central.us-central-1a
 ```
 
 Replication factor of the YugabyteDB cluster can be manually set with `--rf` flag. An example usage is as follows:
 
 ```sh
-./yugabyted configure --fault_tolerance=zone --data_placement_constraint=aws.us-east.us-east-1a,aws.us-west.us-west-1a,aws.us-central.us-central-1a --rf=3
+./bin/yugabyted configure --fault_tolerance=zone --data_placement_constraint=aws.us-east.us-east-1a,aws.us-west.us-west-1a,aws.us-central.us-central-1a --rf=3
 ```
 
 -----
@@ -623,34 +623,34 @@ Repeat the above steps on all the nodes of a YugabyteDB cluster, one node at a t
 
 {{< note title="Note" >}}
 
-- Multi-zone, Multi-region deployment is supported in the latest [YugabyteDB 2.15.0.0](https://download.yugabyte.com/) release.
+Multi-zone, multi-region deployment is supported in the latest [YugabyteDB 2.15.0.0](https://download.yugabyte.com/) release.
 
 {{< /note >}}
 
-These steps assume that you already have a running YugabyteDB cluster deployed using `yugabyted`.
+The following steps assume that you already have a running YugabyteDB cluster deployed using `yugabyted`.
 
-Step 1: Stop the first node by using `yugabyted stop` command.
+- Step 1: Stop the first node by using `yugabyted stop` command:
 
-```sh
-bin/yugabyted stop
-```
+  ```sh
+  ./bin/yugabyted stop
+  ```
 
-Step 2: Download the current [YugabyteDB preview release](https://download.yugabyte.com/).
+- Step 2: Download the current [YugabyteDB preview release](https://download.yugabyte.com/).
 
-Step 3: Start the YugabyteDB node by using `yugabyted start` command by providing the necessary cloud information
+- Step 3: Start the YugabyteDB node by using `yugabyted start` command by providing the necessary cloud information as follows:
 
-```sh
-bin/yugabyted start --advertise_address=<host-ip> --cloud_location=aws.us-east.us-east-1a --fault_tolerance=zone
-```
+  ```sh
+  ./bin/yugabyted start --advertise_address=<host-ip> --cloud_location=aws.us-east.us-east-1a --fault_tolerance=zone
+  ```
 
-Repeat the above steps on all the nodes of a YugabyteDB cluster, one node at a time. After completing them successfully, run the following configure command, to specify the data placement constraint on the cluster:
+- Step 4: Repeat *Step 3* on all the nodes of a YugabyteDB cluster, one node at a time. After completing them successfully, specify the data placement constraint on the cluster using the following configure command:
 
-```sh
-bin/yugabyted configure --fault_tolerance=zone
-```
+  ```sh
+  ./bin/yugabyted configure --fault_tolerance=zone
+  ```
 
-For manually specifying the data placement constraint, use the following command:
+  For manually specifying the data placement constraint, use the following command:
 
-```sh
-./yugabyted configure --fault_tolerance=zone --data_placement_constraint=aws.us-east.us-east-1a,aws.us-east.us-east-2a,aws.us-east.us-east-3a --rf=3
-```
+  ```sh
+  ./bin/yugabyted configure --fault_tolerance=zone --data_placement_constraint=aws.us-east.us-east-1a,aws.us-east.us-east-2a,aws.us-east.us-east-3a --rf=3
+  ```

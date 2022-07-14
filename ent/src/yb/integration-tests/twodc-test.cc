@@ -93,6 +93,8 @@ DECLARE_bool(TEST_exit_unfinished_deleting);
 DECLARE_bool(TEST_exit_unfinished_merging);
 DECLARE_int32(transaction_table_num_tablets);
 DECLARE_bool(enable_replicate_transaction_status_table);
+DECLARE_bool(TEST_block_get_changes);
+DECLARE_bool(TEST_hang_wait_replication_drain);
 namespace yb {
 
 using client::YBClient;
@@ -2510,6 +2512,228 @@ TEST_P(TwoDCTest, TestNonZeroLagMetricsWithoutGetChange) {
   ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
 
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
+}
+
+class TwoDCTestWaitForReplicationDrain : public TwoDCTest {
+ public:
+  void SetUpTablesAndReplication(
+      std::vector<std::shared_ptr<client::YBTable>>* producer_tables,
+      std::vector<std::shared_ptr<client::YBTable>>* consumer_tables,
+      uint32_t num_tables = 3,
+      uint32_t num_tablets_per_table = 3,
+      uint32_t replication_factor = 3,
+      uint32_t num_masters = 1,
+      uint32_t num_tservers = 3) {
+    std::vector<uint32_t> table_vector(num_tables);
+    for (size_t i = 0; i < num_tables; i++) {
+      table_vector[i] = num_tablets_per_table;
+    }
+    producer_tables->clear();
+    consumer_tables->clear();
+    producer_tables->reserve(num_tables);
+    consumer_tables->reserve(num_tables);
+
+    // Set up tables.
+    auto tables = ASSERT_RESULT(SetUpWithParams(
+        table_vector, table_vector, replication_factor, num_masters, num_tservers));
+    for (size_t i = 0; i < tables.size(); i++) {
+      if (i % 2 == 0) {
+        producer_tables->push_back(tables[i]);
+      } else {
+        consumer_tables->push_back(tables[i]);
+      }
+    }
+
+    // Set up replication.
+    master::GetUniverseReplicationResponsePB resp;
+    ASSERT_OK(SetupUniverseReplication(
+        producer_cluster(), consumer_cluster(), consumer_client(),
+        kUniverseId, *producer_tables));
+    ASSERT_OK(VerifyUniverseReplication(
+        consumer_cluster(), consumer_client(), kUniverseId, &resp));
+  }
+
+  void TearDown() override {
+    ASSERT_OK(DeleteUniverseReplication(kUniverseId));
+    TwoDCTest::TearDown();
+  }
+
+  void PopulateRequestStreamIds(
+      const std::vector<std::shared_ptr<client::YBTable>>& producer_tables,
+      master::WaitForReplicationDrainRequestPB* req) {
+    for (const auto& producer_table : producer_tables) {
+      master::ListCDCStreamsResponsePB list_resp;
+      ASSERT_OK(GetCDCStreamForTable(producer_table->id(), &list_resp));
+      ASSERT_EQ(list_resp.streams_size(), 1);
+      ASSERT_EQ(list_resp.streams(0).table_id(0), producer_table->id());
+      req->add_stream_ids(list_resp.streams(0).stream_id());
+    }
+  }
+
+  Status SetupStatus(Status api_status,
+                     const master::WaitForReplicationDrainResponsePB& api_resp,
+                     int expected_num_nondrained) {
+    if (!api_status.ok()) {
+      return api_status;
+    }
+    if (api_resp.has_error()) {
+      return STATUS(IllegalState,
+          Format("WiatForReplicationDrain returned error: $0", api_resp.error().DebugString()));
+    }
+    if (api_resp.undrained_stream_info_size() != expected_num_nondrained) {
+      return STATUS(IllegalState,
+          Format("Mismatched number of non-drained streams. Expected $0, got $1.",
+                 expected_num_nondrained, api_resp.undrained_stream_info_size()));
+    }
+    return Status::OK();
+  }
+
+  Status WaitForReplicationDrain(
+    const std::shared_ptr<master::MasterReplicationProxy>& master_proxy,
+    const master::WaitForReplicationDrainRequestPB& req,
+    int expected_num_nondrained,
+    int timeout_secs = kRpcTimeout) {
+    master::WaitForReplicationDrainResponsePB resp;
+    rpc::RpcController rpc;
+    rpc.set_timeout(MonoDelta::FromSeconds(timeout_secs));
+    auto s = master_proxy->WaitForReplicationDrain(req, &resp, &rpc);
+    return SetupStatus(s, resp, expected_num_nondrained);
+  }
+
+  std::shared_ptr<std::promise<Status>> WaitForReplicationDrainAsync(
+    const std::shared_ptr<master::MasterReplicationProxy>& master_proxy,
+    const master::WaitForReplicationDrainRequestPB& req,
+    int expected_num_nondrained,
+    int timeout_secs = kRpcTimeout) {
+    // Return a promise that will be set to a status indicating whether the API completes
+    // with the expected response.
+    auto promise = std::make_shared<std::promise<Status>>();
+    std::thread async_task(
+        [this, expected_num_nondrained, timeout_secs, promise, &master_proxy, &req]() {
+          auto s = WaitForReplicationDrain(
+              master_proxy, req, expected_num_nondrained, timeout_secs);
+          promise->set_value(s);
+        });
+    async_task.detach();
+    return promise;
+  }
+};
+
+INSTANTIATE_TEST_CASE_P(
+    TwoDCTestParams, TwoDCTestWaitForReplicationDrain,
+    ::testing::Values(
+        TwoDCTestParams(1, true, true), TwoDCTestParams(1, false, true),
+        TwoDCTestParams(0, true, true), TwoDCTestParams(0, false, true)));
+
+TEST_P(TwoDCTestWaitForReplicationDrain, TestBlockGetChanges) {
+  constexpr uint32_t kNumTables = 3;
+  constexpr uint32_t kNumTablets = 3;
+  constexpr int kRpcTimeoutShort = 30;
+  std::vector<std::shared_ptr<client::YBTable>> producer_tables;
+  std::vector<std::shared_ptr<client::YBTable>> consumer_tables;
+  master::WaitForReplicationDrainRequestPB req;
+
+  SetUpTablesAndReplication(&producer_tables, &consumer_tables, kNumTables, kNumTablets);
+  PopulateRequestStreamIds(producer_tables, &req);
+  auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
+      &producer_client()->proxy_cache(),
+      ASSERT_RESULT(producer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
+
+  // 1. Replication is caught-up initially.
+  ASSERT_OK(WaitForReplicationDrain(master_proxy, req, 0));
+
+  // 2. Replication is caught-up when some data is written.
+  for (uint32_t i = 0; i < producer_tables.size(); i++) {
+    WriteWorkload(0, 50*(i+1), producer_client(), producer_tables[i]->name());
+    ASSERT_OK(VerifyWrittenRecords(producer_tables[i]->name(), consumer_tables[i]->name()));
+  }
+  ASSERT_OK(WaitForReplicationDrain(master_proxy, req, 0));
+
+  // 3. Replication is not caught-up when GetChanges are blocked while producer
+  // keeps taking writes.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_block_get_changes) = true;
+  for (uint32_t i = 0; i < producer_tables.size(); i++) {
+    WriteWorkload(50*(i+1), 100*(i+1), producer_client(), producer_tables[i]->name());
+  }
+  ASSERT_OK(WaitForReplicationDrain(
+      master_proxy, req, kNumTables * kNumTablets, kRpcTimeoutShort));
+
+  // 4. Replication is caught-up when GetChanges are unblocked.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_block_get_changes) = false;
+  ASSERT_OK(WaitForReplicationDrain(master_proxy, req, 0));
+}
+
+TEST_P(TwoDCTestWaitForReplicationDrain, TestWithTargetTime) {
+  constexpr uint32_t kNumTables = 3;
+  constexpr uint32_t kNumTablets = 3;
+  std::vector<std::shared_ptr<client::YBTable>> producer_tables;
+  std::vector<std::shared_ptr<client::YBTable>> consumer_tables;
+  master::WaitForReplicationDrainRequestPB req;
+
+  SetUpTablesAndReplication(&producer_tables, &consumer_tables, kNumTables, kNumTablets);
+  PopulateRequestStreamIds(producer_tables, &req);
+  auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
+      &producer_client()->proxy_cache(),
+      ASSERT_RESULT(producer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
+
+  // 1. Write some data and verify that replication is caught-up.
+  auto past_checkpoint = GetCurrentTimeMicros();
+  for (uint32_t i = 0; i < producer_tables.size(); i++) {
+    WriteWorkload(0, 50*(i+1), producer_client(), producer_tables[i]->name());
+  }
+  ASSERT_OK(WaitForReplicationDrain(master_proxy, req, 0));
+
+  // 2. Verify that replication is caught-up to a checkpoint in the past.
+  req.set_target_time(past_checkpoint);
+  ASSERT_OK(WaitForReplicationDrain(master_proxy, req, 0));
+
+  // 3. Set a checkpoint in the future. Verify that API waits until passing this
+  // checkpoint before responding.
+  int timeout_secs = kRpcTimeout;
+  auto time_to_wait = MonoDelta::FromSeconds(timeout_secs / 2.0);
+  auto future_checkpoint = GetCurrentTimeMicros() + time_to_wait.ToMicroseconds();
+  req.set_target_time(future_checkpoint);
+  ASSERT_OK(WaitForReplicationDrain(master_proxy, req, 0));
+  ASSERT_GT(GetCurrentTimeMicros(), future_checkpoint);
+}
+
+TEST_P(TwoDCTestWaitForReplicationDrain, TestProducerChange) {
+  constexpr uint32_t kNumTables = 3;
+  constexpr uint32_t kNumTablets = 3;
+  std::vector<std::shared_ptr<client::YBTable>> producer_tables;
+  std::vector<std::shared_ptr<client::YBTable>> consumer_tables;
+  master::WaitForReplicationDrainRequestPB req;
+
+  SetUpTablesAndReplication(&producer_tables, &consumer_tables, kNumTables, kNumTablets);
+  PopulateRequestStreamIds(producer_tables, &req);
+  auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
+      &producer_client()->proxy_cache(),
+      ASSERT_RESULT(producer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
+
+  // 1. Write some data and verify that replication is caught-up.
+  for (uint32_t i = 0; i < producer_tables.size(); i++) {
+    WriteWorkload(0, 50*(i+1), producer_client(), producer_tables[i]->name());
+  }
+  ASSERT_OK(WaitForReplicationDrain(master_proxy, req, 0));
+
+  // 2. Verify that producer shutdown does not impact the API.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_hang_wait_replication_drain) = true;
+  auto drain_api_promise = WaitForReplicationDrainAsync(master_proxy, req, 0);
+  auto drain_api_future = drain_api_promise->get_future();
+  producer_cluster()->mini_tablet_server(0)->Shutdown();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_hang_wait_replication_drain) = false;
+  ASSERT_OK(producer_cluster()->mini_tablet_server(0)->Start());
+  ASSERT_OK(drain_api_future.get());
+
+  // 3. Verify that producer rebalancing does not impact the API.
+  auto num_tservers = narrow_cast<int>(producer_cluster()->num_tablet_servers());
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_hang_wait_replication_drain) = true;
+  drain_api_promise = WaitForReplicationDrainAsync(master_proxy, req, 0);
+  drain_api_future = drain_api_promise->get_future();
+  ASSERT_OK(producer_cluster()->AddTabletServer());
+  ASSERT_OK(producer_cluster()->WaitForTabletServerCount(num_tservers + 1));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_hang_wait_replication_drain) = false;
+  ASSERT_OK(drain_api_future.get());
 }
 
 } // namespace enterprise

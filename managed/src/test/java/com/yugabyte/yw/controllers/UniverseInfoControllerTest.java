@@ -84,7 +84,6 @@ import play.mvc.Result;
 @RunWith(JUnitParamsRunner.class)
 public class UniverseInfoControllerTest extends UniverseControllerTestBase {
   @Mock PlatformExecutorFactory mockPlatformExecutorFactory;
-  @Mock ExecutorService executorService;
 
   @Test
   public void testGetMasterLeaderWithValidParams() {
@@ -243,9 +242,7 @@ public class UniverseInfoControllerTest extends UniverseControllerTestBase {
     when(mockRuntimeConfig.getString(QueryHelper.QUERY_STATS_SLOW_QUERIES_ORDER_BY_KEY))
         .thenReturn("total_time");
     when(mockRuntimeConfig.getInt(QueryHelper.QUERY_STATS_SLOW_QUERIES_LIMIT_KEY)).thenReturn(200);
-    when(mockPlatformExecutorFactory.createFixedExecutor(anyString(), anyInt(), anyInt(), any()))
-        .thenReturn(executorService);
-    QueryHelper queryHelper = new QueryHelper(mockAppConfig, null, mockPlatformExecutorFactory);
+    QueryHelper queryHelper = new QueryHelper(null, mockPlatformExecutorFactory);
     String actualSql = queryHelper.slowQuerySqlWithLimit(mockRuntimeConfig);
     assertEquals(
         "SELECT a.rolname, t.datname, t.queryid, t.query, t.calls, t.total_time, t.rows,"

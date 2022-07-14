@@ -29,7 +29,7 @@
 namespace yb {
 namespace docdb {
 
-void SetValueFromQLBinaryWrapper(
+Status SetValueFromQLBinaryWrapper(
     QLValuePB ql_value,
     const int pg_data_type,
     const std::unordered_map<uint32_t, string>& enum_oid_label_map,

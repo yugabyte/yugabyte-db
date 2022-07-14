@@ -198,6 +198,13 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
                                                UpdateConsumerOnProducerSplitResponsePB* resp,
                                                rpc::RpcContext* rpc);
 
+  // Wait for replication to drain on CDC streams.
+  typedef std::pair<CDCStreamId, TabletId> StreamTabletIdPair;
+  typedef boost::hash<StreamTabletIdPair> StreamTabletIdHash;
+  Status WaitForReplicationDrain(const WaitForReplicationDrainRequestPB* req,
+                                         WaitForReplicationDrainResponsePB* resp,
+                                         rpc::RpcContext* rpc);
+
   // Find all the CDC streams that have been marked as DELETED.
   Status FindCDCStreamsMarkedAsDeleting(std::vector<scoped_refptr<CDCStreamInfo>>* streams);
 

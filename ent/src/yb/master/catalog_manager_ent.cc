@@ -84,6 +84,7 @@
 
 #include "yb/util/cast.h"
 #include "yb/util/date_time.h"
+#include "yb/util/debug-util.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
@@ -154,6 +155,12 @@ DEFINE_bool(enable_replicate_transaction_status_table, false,
 DEFINE_int32(xcluster_parent_tablet_deletion_task_retry_secs, 30,
              "Frequency at which the bg task will verify parent tablets retained for xCluster "
              "replication and determine if they can be cleaned up.");
+
+DEFINE_int32(wait_replication_drain_retry_timeout_ms, 2000,
+             "Timeout in milliseconds in between CheckReplicationDrain calls to tservers "
+             "in case of retries.");
+DEFINE_test_flag(bool, hang_wait_replication_drain, false,
+                 "Used in tests to temporarily block WaitForReplicationDrain.");
 
 namespace yb {
 
@@ -5670,6 +5677,155 @@ Status CatalogManager::UpdateConsumerOnProducerSplit(
                             "Updating cluster config in sys-catalog"));
   l.Commit();
 
+  return Status::OK();
+}
+
+Status CatalogManager::WaitForReplicationDrain(const WaitForReplicationDrainRequestPB *req,
+                                               WaitForReplicationDrainResponsePB *resp,
+                                               rpc::RpcContext *rpc) {
+  LOG(INFO) << "WaitForReplicationDrain from " << RequestorString(rpc)
+            << ": " << req->DebugString();
+  if (req->stream_ids_size() == 0) {
+    return STATUS(InvalidArgument, "No stream ID provided",
+                  req->ShortDebugString(), MasterError(MasterErrorPB::INVALID_REQUEST));
+  }
+  MicrosecondsInt64 target_time = req->has_target_time()
+      ? req->target_time()
+      : GetCurrentTimeMicros();
+  if (!req->target_time()) {
+    LOG(INFO) << "WaitForReplicationDrain: target_time unspecified. Default to " << target_time;
+  }
+
+  // Find all streams to check for replication drain.
+  std::unordered_set<CDCStreamId> filter_stream_ids(req->stream_ids().begin(),
+                                                    req->stream_ids().end());
+  std::unordered_set<CDCStreamId> found_stream_ids;
+  std::vector<scoped_refptr<CDCStreamInfo>> streams;
+  {
+    std::vector<scoped_refptr<CDCStreamInfo>> all_streams;
+    GetAllCDCStreams(&all_streams);
+    for (const auto& stream : all_streams) {
+      if (filter_stream_ids.find(stream->id()) == filter_stream_ids.end()) {
+        continue;
+      }
+      streams.push_back(stream);
+      found_stream_ids.insert(stream->id());
+    }
+  }
+
+  // Verify that all specified stream_ids are found.
+  std::ostringstream not_found_streams;
+  for (const auto& stream_id : filter_stream_ids) {
+    if (found_stream_ids.find(stream_id) == found_stream_ids.end()) {
+      not_found_streams << stream_id << ",";
+    }
+  }
+  if (!not_found_streams.str().empty()) {
+    string stream_ids = not_found_streams.str();
+    stream_ids.pop_back();  // Remove the last comma.
+    return STATUS(InvalidArgument, Format("Streams not found: $0", stream_ids),
+                  req->ShortDebugString(), MasterError(MasterErrorPB::INVALID_REQUEST));
+  }
+
+  // Keep track of the drained (stream_id, tablet_id) tuples.
+  std::unordered_set<StreamTabletIdPair, StreamTabletIdHash> drained_stream_tablet_ids;
+
+  // Calculate deadline and interval for each CallReplicationDrain call to tservers.
+  CoarseTimePoint deadline = rpc->GetClientDeadline();
+  if (deadline == CoarseTimePoint::max()) {
+    deadline = CoarseMonoClock::now() + MonoDelta::FromMilliseconds(FLAGS_master_rpc_timeout_ms);
+  }
+  auto timeout = MonoDelta::FromMilliseconds(
+      GetAtomicFlag(&FLAGS_wait_replication_drain_retry_timeout_ms));
+
+  while (true) {
+    // 1. Construct the request to be sent to each tserver. Meanwhile, collect all tuples that
+    //    are not marked as drained in previous iterations.
+    std::unordered_set<StreamTabletIdPair, StreamTabletIdHash> undrained_stream_tablet_ids;
+    std::unordered_map<std::shared_ptr<cdc::CDCServiceProxy>,
+                       cdc::CheckReplicationDrainRequestPB> proxy_to_request;
+    for (const auto& stream : streams) {
+      for (const auto& table_id : stream->table_id()) {
+        auto table_info = VERIFY_RESULT(FindTableById(table_id));
+        RSTATUS_DCHECK(table_info != nullptr, NotFound, "Table ID not found: " + table_id);
+
+        for (const auto& tablet : table_info->GetTablets()) {
+          // (1) If tuple is marked as drained in a previous iteration, skip it.
+          // (2) Otherwise, check if it is drained in the current iteration.
+          if (drained_stream_tablet_ids.find({stream->id(), tablet->id()}) !=
+              drained_stream_tablet_ids.end()) {
+            continue;
+          }
+          undrained_stream_tablet_ids.insert({stream->id(), tablet->id()});
+
+          // Update the relevant request. Skip if relevant tserver/proxy is not ready yet.
+          auto ts_result = tablet->GetLeader();
+          if (ts_result.ok()) {
+            std::shared_ptr<cdc::CDCServiceProxy> proxy;
+            auto s = (*ts_result)->GetProxy(&proxy);
+            if (s.ok()) {
+              auto& tablet_req = proxy_to_request[proxy];
+              auto stream_info = tablet_req.add_stream_info();
+              stream_info->set_stream_id(stream->id());
+              stream_info->set_tablet_id(tablet->id());
+            }
+          }
+        }
+      }
+    }
+
+    // For testing tserver leadership changes.
+    TEST_PAUSE_IF_FLAG(TEST_hang_wait_replication_drain);
+
+    // 2. Call CheckReplicationDrain on each tserver.
+    for (auto& proxy_request : proxy_to_request) {
+      if (deadline - CoarseMonoClock::Now() <= timeout) {
+        break;  // Too close to deadline.
+      }
+      auto& cdc_service = proxy_request.first;
+      auto& tablet_req = proxy_request.second;
+      tablet_req.set_target_time(target_time);
+      cdc::CheckReplicationDrainResponsePB tablet_resp;
+      rpc::RpcController tablet_rpc;
+      tablet_rpc.set_timeout(timeout);
+
+      Status s = cdc_service->CheckReplicationDrain(tablet_req, &tablet_resp, &tablet_rpc);
+      if (!s.ok()) {
+        LOG(WARNING) << "CheckReplicationDrain responded with non-ok status: " << s;
+      } else if (tablet_resp.has_error()) {
+        LOG(WARNING) << "CheckReplicationDrain responded with error: "
+                     << tablet_resp.error().DebugString();
+      } else {
+        // Update the two lists of (stream ID, tablet ID) pairs.
+        for (const auto& stream_info : tablet_resp.drained_stream_info()) {
+          undrained_stream_tablet_ids.erase({stream_info.stream_id(), stream_info.tablet_id()});
+          drained_stream_tablet_ids.insert({stream_info.stream_id(), stream_info.tablet_id()});
+        }
+      }
+    }
+
+    // 3. Check if all current undrained tuples are marked as drained, or it is too close
+    //    to deadline. If so, prepare the response and terminate the loop.
+    if (undrained_stream_tablet_ids.empty() ||
+        deadline - CoarseMonoClock::Now() <= timeout * 2) {
+      std::ostringstream output_stream;
+      output_stream << "WaitForReplicationDrain from " << RequestorString(rpc) << " finished.";
+      if (!undrained_stream_tablet_ids.empty()) {
+        output_stream << " Found undrained streams:";
+      }
+
+      for (const auto& stream_tablet_id : undrained_stream_tablet_ids) {
+        output_stream << "\n\tStream: " << stream_tablet_id.first
+                      << ", Tablet: " << stream_tablet_id.second;
+        auto undrained_stream_info = resp->add_undrained_stream_info();
+        undrained_stream_info->set_stream_id(stream_tablet_id.first);
+        undrained_stream_info->set_tablet_id(stream_tablet_id.second);
+      }
+      LOG(INFO) << output_stream.str();
+      break;
+    }
+    SleepFor(timeout);
+  }
   return Status::OK();
 }
 

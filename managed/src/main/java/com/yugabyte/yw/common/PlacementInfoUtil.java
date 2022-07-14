@@ -396,18 +396,8 @@ public class PlacementInfoUtil {
       ClusterOperationType clusterOpType,
       boolean allowGeoPartitioning,
       @Nullable Boolean regionsChanged) {
-    Cluster cluster = taskParams.getClusterByUuid(placementUuid);
-    taskParams.nodesResizeAvailable = false;
-
-    // Create node details set if needed.
-    if (taskParams.nodeDetailsSet == null) {
-      taskParams.nodeDetailsSet = new HashSet<>();
-    }
-
     Universe universe = null;
-    if (taskParams.universeUUID == null) {
-      taskParams.universeUUID = UUID.randomUUID();
-    } else {
+    if (taskParams.universeUUID != null) {
       universe =
           Universe.maybeGet(taskParams.universeUUID)
               .orElseGet(
@@ -417,6 +407,72 @@ public class PlacementInfoUtil {
                         taskParams.universeUUID);
                     return null;
                   });
+    }
+    Cluster cluster = taskParams.getClusterByUuid(placementUuid);
+    Cluster oldCluster = universe == null ? null : universe.getCluster(placementUuid);
+    boolean checkResizePossible = false;
+    boolean isSamePlacementInRequest = false;
+    boolean allowUnsupportedInstances = false;
+
+    if (universe != null) {
+      RuntimeConfigFactory runtimeConfigFactory =
+          Play.current().injector().instanceOf(RuntimeConfigFactory.class);
+
+      allowUnsupportedInstances =
+          runtimeConfigFactory
+              .forUniverse(universe)
+              .getBoolean("yb.internal.allow_unsupported_instances");
+    }
+
+    if (oldCluster != null) {
+      // Checking resize restrictions (provider, instance, etc).
+      // We should skip volume size check here because this request could happen while disk is
+      // decreased and a later increase will not cause such request.
+      checkResizePossible =
+          ResizeNodeParams.checkResizeIsPossible(
+                  oldCluster.userIntent, cluster.userIntent, allowUnsupportedInstances, false)
+              == null;
+      isSamePlacementInRequest =
+          isSamePlacement(oldCluster.placementInfo, cluster.placementInfo)
+              && oldCluster.userIntent.numNodes == cluster.userIntent.numNodes;
+    }
+    updateUniverseDefinition(
+        universe,
+        taskParams,
+        customerId,
+        placementUuid,
+        clusterOpType,
+        allowGeoPartitioning,
+        regionsChanged);
+    if (oldCluster != null) {
+      // Besides restrictions, resize is only available if no nodes are added/removed.
+      // Need to check whether original placement or eventual placement is equal to current.
+      // We check original placement from request because it could be full move
+      // (which still could be resized).
+      taskParams.nodesResizeAvailable =
+          checkResizePossible
+              && (isSamePlacementInRequest
+                  || isSamePlacement(oldCluster.placementInfo, cluster.placementInfo));
+    }
+  }
+
+  private static void updateUniverseDefinition(
+      Universe universe,
+      UniverseDefinitionTaskParams taskParams,
+      Long customerId,
+      UUID placementUuid,
+      ClusterOperationType clusterOpType,
+      boolean allowGeoPartitioning,
+      @Nullable Boolean regionsChanged) {
+    Cluster cluster = taskParams.getClusterByUuid(placementUuid);
+
+    // Create node details set if needed.
+    if (taskParams.nodeDetailsSet == null) {
+      taskParams.nodeDetailsSet = new HashSet<>();
+    }
+
+    if (taskParams.universeUUID == null) {
+      taskParams.universeUUID = UUID.randomUUID();
     }
 
     String universeName =
@@ -516,24 +572,6 @@ public class PlacementInfoUtil {
                 + " cluster in universe "
                 + universe.universeUUID);
       }
-
-      // Checking resize restrictions (provider, instance, volume size, etc).
-      RuntimeConfigFactory runtimeConfigFactory =
-          Play.current().injector().instanceOf(RuntimeConfigFactory.class);
-      boolean allowUnsupportedInstances =
-          runtimeConfigFactory
-              .forUniverse(universe)
-              .getBoolean("yb.internal.allow_unsupported_instances");
-      String checkResizePossible =
-          ResizeNodeParams.checkResizeIsPossible(
-              oldCluster.userIntent, cluster.userIntent, allowUnsupportedInstances);
-
-      // Besides restrictions, resize is only available if no nodes are added/removed.
-      taskParams.nodesResizeAvailable =
-          isSamePlacement(oldCluster.placementInfo, cluster.placementInfo)
-              && oldCluster.userIntent.numNodes == cluster.userIntent.numNodes
-              && checkResizePossible == null;
-
       // If only disk size was changed (used by nodes resize) - no need to proceed
       // (otherwise nodes set will be modified).
       if (checkOnlyNodeResize(oldCluster, cluster)) {
@@ -640,7 +678,6 @@ public class PlacementInfoUtil {
 
       if (!changeNodeStates && oldCluster != null && !oldCluster.areTagsSame(cluster)) {
         LOG.info("No node config change needed, only instance tags changed.");
-
         return;
       }
 

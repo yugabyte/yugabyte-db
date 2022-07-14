@@ -744,7 +744,7 @@ class YBTSConfig:
             logging.info("Loading TS config via Web UI on {}:{}".format(tserver_ip, web_port))
 
         url = "{}:{}/varz".format(tserver_ip, web_port)
-        output = self.backup.run_program(['curl', url], num_retry=10)
+        output = self.backup.run_program(['curl', url, '--silent', '--show-error'], num_retry=10)
 
         # Read '--placement_region'.
         if read_region:
@@ -2346,7 +2346,17 @@ class YBBackup:
         # In case if the binary is absent on other host, script will fail during execution.
         try:
             host_ip = self.get_main_host_ip()
-            if self.args.no_ssh:
+            if self.is_k8s():
+                k8s_details = KubernetesDetails(host_ip, self.k8s_pod_fqdn_to_cfg)
+                return self.run_program([
+                    'kubectl',
+                    'exec',
+                    '-t',
+                    '-n={}'.format(k8s_details.namespace),
+                    # For k8s, pick the first qualified name, if given a CNAME.
+                    'command -v %s /dev/null' % (XXH64HASH_TOOL_PATH)],
+                    env=k8s_details.env_config)
+            elif self.args.no_ssh:
                 self.run_program([
                     'command', '-v', XXH64HASH_TOOL_PATH, '/dev/null'
                 ])

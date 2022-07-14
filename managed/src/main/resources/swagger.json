@@ -5925,6 +5925,33 @@
       "required" : [ "bundleDetails", "bundleUUID", "creationDate", "endDate", "expirationDate", "path", "scopeUUID", "startDate", "status" ],
       "type" : "object"
     },
+    "SupportBundleFormData" : {
+      "description" : "Support bundle form metadata",
+      "properties" : {
+        "components" : {
+          "description" : "List of components to be included in the support bundle",
+          "items" : {
+            "enum" : [ "UniverseLogs", "ApplicationLogs", "OutputFiles", "ErrorFiles", "GFlags", "Instance", "ConsensusMeta", "TabletMeta" ],
+            "type" : "string"
+          },
+          "type" : "array"
+        },
+        "endDate" : {
+          "description" : "End date to filter logs till",
+          "example" : "2022-01-26",
+          "format" : "date-time",
+          "type" : "string"
+        },
+        "startDate" : {
+          "description" : "Start date to filter logs from",
+          "example" : "2022-01-25",
+          "format" : "date-time",
+          "type" : "string"
+        }
+      },
+      "required" : [ "components", "endDate", "startDate" ],
+      "type" : "object"
+    },
     "SystemdUpgradeParams" : {
       "properties" : {
         "allowInsecure" : {
@@ -12303,6 +12330,36 @@
         "tags" : [ "Schedule management" ]
       }
     },
+    "/api/v1/customers/{cUUID}/support_bundle/components" : {
+      "get" : {
+        "description" : "",
+        "operationId" : "listSupportBundleComponents",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "enum" : [ "UniverseLogs", "ApplicationLogs", "OutputFiles", "ErrorFiles", "GFlags", "Instance", "ConsensusMeta", "TabletMeta" ],
+                "type" : "string"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "List all components available in support bundle",
+        "tags" : [ "Support Bundle management" ]
+      }
+    },
     "/api/v1/customers/{cUUID}/tasks/{tUUID}" : {
       "get" : {
         "description" : "",
@@ -13865,6 +13922,14 @@
           "name" : "uniUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "description" : "post support bundle info",
+          "in" : "body",
+          "name" : "supportBundle",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/SupportBundleFormData"
+          }
         } ],
         "responses" : {
           "200" : {
@@ -13983,7 +14048,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/SupportBundle"
+              "type" : "string"
             }
           }
         },
