@@ -2,7 +2,7 @@
 title: Prepare the Amazon Web Services (AWS) cloud environment
 headerTitle: Prepare the Amazon Web Services (AWS) cloud environment
 linkTitle: Prepare the environment
-description: Prepare the Amazon Web Services (AWS) environment for the Yugabyte Platform.
+description: Prepare the Amazon Web Services (AWS) environment for YugabyteDB Anywhere.
 menu:
   stable_yugabyte-platform:
     identifier: prepare-environment-1-aws
@@ -14,42 +14,42 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li>
-    <a href="/preview/yugabyte-platform/install-yugabyte-platform/prepare-environment/aws" class="nav-link active">
+    <a href="../aws/" class="nav-link active">
       <i class="fab fa-aws" aria-hidden="true"></i>
       AWS
     </a>
   </li>
 
   <li>
-    <a href="/preview/yugabyte-platform/install-yugabyte-platform/prepare-environment/gcp" class="nav-link">
+    <a href="../gcp/" class="nav-link">
        <i class="fab fa-google" aria-hidden="true"></i>
       GCP
     </a>
   </li>
 
   <li>
-    <a href="/preview/yugabyte-platform/install-yugabyte-platform/prepare-environment/azure" class="nav-link">
+    <a href="../azure/" class="nav-link">
       <i class="icon-azure" aria-hidden="true"></i>
       &nbsp;&nbsp; Azure
     </a>
   </li>
 
   <li>
-    <a href="/preview/yugabyte-platform/install-yugabyte-platform/prepare-environment/kubernetes" class="nav-link">
+    <a href="../kubernetes/" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
 
 <li>
-    <a href="/preview/yugabyte-platform/install-yugabyte-platform/prepare-environment/openshift" class="nav-link">
+    <a href="../openshift/" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       OpenShift
     </a>
  </li>
 
   <li>
-    <a href="/preview/yugabyte-platform/install-yugabyte-platform/prepare-environment/on-premises" class="nav-link">
+    <a href="../on-premises/" class="nav-link">
       <i class="fas fa-building" aria-hidden="true"></i>
       On-premises
     </a>
@@ -59,28 +59,33 @@ type: docs
 
 ## Create a new security group (optional)
 
-In order to access Yugabyte Platform from outside the AWS environment, you would need to enable access by assigning an appropriate security group to the Yugabyte Platform machine. You will at minimum need to:
+In order to access YugabyteDB Anywhere from outside the AWS environment, you would need to enable access by assigning an appropriate security group to the server hosting YugabyteDB Anywhere. At a minimum, you need to be able to do the following:
 
-- Access the Yugabyte Platform instance over SSH (port `tcp:22`)
-- Check, manage, and upgrade Yugabyte Platform (port `tcp:8800`)
-- View the Yugabyte Platform console (port `tcp:80`)
+- Access the YugabyteDB Anywhere instance over SSH (port `tcp:22`).
+- Check, manage, and upgrade YugabyteDB Anywhere (port `tcp:8800`).
+- View the YugabyteDB Anywhere UI (port `tcp:80`).
 
-If you are using your own custom VPCs (self-managed configuration), the following additional TCP ports must be accessible: 7000, 7100, 9000, 9100, 11000, 12000, 9300, 9042, 5433, and 6379. For more information on ports used by YugabyteDB, refer to [Default ports](../../../../reference/configuration/default-ports).
+If you are using your own Virtual Private Cloud (VPC) as a self-managed configuration, the following additional TCP ports must be accessible: 7000, 7100, 9000, 9100, 11000, 12000, 13000, 9300, 9042, 5433, 6379, 54422. For more information on ports used by YugabyteDB, refer to [Default ports](../../../../reference/configuration/default-ports).
 
-To create a security group that enables these, go to **EC2 > Security Groups**, click **Create Security Group** and then add the following values:
+To create a security group that enables these, use the Amazon console to navigate to **EC2 > Security Groups**, click **Create Security Group**, and then add the following values:
 
-- For the name, enter `yugaware-sg` (you can change the name if you want).
-- Add a description (for example, `Security group for Yugabyte Platform access`).
-- Add the appropriate IP addresses to the **Source IP ranges** field. To allow access from any machine, add `0.0.0.0/0` but note that this is not very secure.
-- Add the ports `22`, `8800`, and `80` to the **Port Range** field. The **Protocol** selected must be `TCP`. For a self-managed configuration, also add the 7000, 7100, 9000, 9100, 11000, 12000, 9300, 9042, 5433, and 6379 TCP ports.
+- Enter a meaningful name (for example, `yugaware-sg`).
 
-You should see something like the screenshot below. Click **Create** next.
+- Add a description (for example, Security group for YugabyteDB Anywhere access).
+
+- Add the appropriate IP addresses to the **Source** field. To allow access from any computer, add `0.0.0.0/0` but note that this is not very secure.
+
+- Add the ports 22, 8800, and 80 to the **Port Range** field. The **Protocol** selected must be TCP.
+
+  For a self-managed configuration, also add the previously listed TCP ports.
+
+You should see a configuration similar to the one shown in the following illustration:
 
 ![Create security group](/images/ee/aws-setup/yugaware-aws-create-sg.png)
 
 ## Create an IAM role (optional)
 
-In order for Yugabyte Platform to manage YugabyteDB nodes, limited access to your AWS infrastructure is required. To grant the required access, you can provide a set of credentials when configuring the AWS provider, as described in [Configure the AWS cloud provider](../../../configure-yugabyte-platform/set-up-cloud-provider/aws). Alternatively, the EC2 instance where the Yugabyte Platform will be running can be brought up with an IAM role with enough permissions to take all the actions required by Yugabyte Platform. Here is a sample of such a role:
+In order for YugabyteDB Anywhere to manage YugabyteDB nodes, limited access to your AWS infrastructure is required. To grant the required access, you can provide a set of credentials when configuring the AWS provider, as described in [Configure the AWS cloud provider](../../../configure-yugabyte-platform/set-up-cloud-provider/aws/). Alternatively, the EC2 instance where the YugabyteDB Anywhere will be running can be brought up with an IAM role with enough permissions to take all the actions required by YugabyteDB Anywhere. The following is a sample of such a role:
 
 ```sh
 {
@@ -129,7 +134,18 @@ In order for Yugabyte Platform to manage YugabyteDB nodes, limited access to you
                 "ec2:DeleteKeyPair",
                 "ec2:DescribeVpcPeeringConnections",
                 "ec2:DescribeRouteTables",
-                "ec2:DescribeInternetGateways"
+                "ec2:DescribeInternetGateways",
+                "ec2:AssociateRouteTable",
+                "ec2:AttachInternetGateway",
+                "ec2:CreateInternetGateway",
+                "ec2:CreateRoute",
+                "ec2:CreateSubnet",
+                "ec2:CreateVpc",
+                "ec2:CreateVpcPeeringConnection",
+                "ec2:DisassociateRouteTable",
+                "ec2:ModifyVpcAttribute",
+                "ec2:GetConsoleOutput",
+                "ec2:DescribeInstanceTypes"
             ],
             "Resource": "*"
         }
@@ -137,9 +153,9 @@ In order for Yugabyte Platform to manage YugabyteDB nodes, limited access to you
 }
 ```
 
-## Provision an instance for Yugabyte Platform
+## Provision an instance for YugabyteDB Anywhere
 
-Create an instance to run the Yugabyte Platform server. To do this, navigate to **EC2 > Instances**, click **Launch Instance**, and enter the following values:
+You need to create an instance to run the YugabyteDB Anywhere server. To do this, navigate to **EC2 > Instances**, click **Launch Instance**, and enter the following values:
 
 - Change the boot disk image to Ubuntu Server 16.04, as shown in the following illustration: <br><br>
 ![Image](/images/ee/aws-setup/yugaware-create-instance-os.png)
@@ -150,7 +166,7 @@ Create an instance to run the Yugabyte Platform server. To do this, navigate to 
 
   Ensure that **Auto-assign Public IP** is enabled (if it is disabled, the instance would not be accessible from outside AWS).
 
-  If you created an IAM role, as described in [Create an IAM role](#create-an-iam-role-(optional)), or already had the IAM role that you would like to use, include this information under **IAM role**. See [Deploy the YugabyteDB universe using an IAM role](#deploy-the-yugabytedb-universe-using-an-iam-role) for more information.
+  If you created an IAM role, as described in [Create an IAM role](#create-an-iam-role-optional), or already had the IAM role that you would like to use, include this information under **IAM role**. See [Deploy the YugabyteDB universe using an IAM role](#deploy-the-yugabytedb-universe-using-an-iam-role) for more information.
 
 - Increase the root storage volume size to at least 100GiB.
 
@@ -162,7 +178,7 @@ Create an instance to run the Yugabyte Platform server. To do this, navigate to 
 
   Ensure that you have the SSH access key because it is required for enabling `ssh` access to the computer. In this example, assume that the key pair is `~/.ssh/yugaware.pem`.
 
-- Click **Launch** to launch the Yugabyte Platform server.
+- Click **Launch** to launch the YugabyteDB Anywhere server.
 
   You should see an instance being created, as shown in the following illustration:<br><br>
 
@@ -170,25 +186,25 @@ Create an instance to run the Yugabyte Platform server. To do this, navigate to 
 
 ### Deploy the YugabyteDB universe using an IAM role
 
-If you are planning to use an IAM role while deploying the universe in your AWS account, you need to attach the IAM role to the Yugabyte Platform VM before launching the instance, as follows:
+If you are planning to use an IAM role while deploying the universe in your AWS account, you need to attach the IAM role to the YugabyteDB Anywhere VM before launching the instance, as follows:
 
-1. Navigate to **EC2 > New Instance > Confirm Instance Details > Attach the IAM role**.
-2. Set the **IAM role** field to your IAM role (for example, ec2-admin-access).
-3. Set the **Metadata accessible** field to Enabled.
-4. Set the **Metadata version** field to V1 and V2 (token optional).
-5. Set the **Metadata token response hop limit** field to 3, as per the following illustration:
+- Navigate to **EC2 > New Instance > Confirm Instance Details > Attach the IAM role**.
+- Set the **IAM role** field to your IAM role (for example, ec2-admin-access).
+- Set the **Metadata accessible** field to Enabled.
+- Set the **Metadata version** field to V1 and V2 (token optional).
+- Set the **Metadata token response hop limit** field to 3, as per the following illustration:<br><br>
 
   ![AIM for AWS](/images/ee/aws-setup/iam-for-aws.png)
 
-If you are configuring an existing instance of Yugabyte Platform, start by attaching the IAM role as follows:
+If you are configuring an existing instance of YugabyteDB Anywhere, start by attaching the IAM role as follows:
 
-1. Navigate to **EC2 > Instances**.
-2. Select the instance.
-3. Navigate to **Actions > Security > Modify IAM role**.
-4. Add the IAM role.
-5. Click **Save**.
+- Navigate to **EC2 > Instances**.
+- Select the instance.
+- Navigate to **Actions > Security > Modify IAM role**.
+- Add the IAM role.
+- Click **Save**.
 
-Then execute the following command to change metadata options (replace `NNNNNNN` with the instance ID and `us-west-2` with the region in which this EC2 VM is deployed):
+Finally, execute the following command to change metadata options (replace `NNNNNNN` with the instance ID and `us-west-2` with the region in which this EC2 VM is deployed):
 
 ```shell
 aws ec2 modify-instance-metadata-options --instance-id i-NNNNNNN --http-put-response-hop-limit 3 --http-endpoint enabled --region us-west-2
@@ -196,7 +212,7 @@ aws ec2 modify-instance-metadata-options --instance-id i-NNNNNNN --http-put-resp
 
 For more information, see [Configure the instance metadata service](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/configuring-instance-metadata-service.html).
 
-When you create an AWS cloud provider, as described in [Configure the AWS cloud provider](../../../configure-yugabyte-platform/set-up-cloud-provider/aws), you need to  complete the following fields in the **Cloud Provider Configuration > AWS** screen:
+When you create an AWS cloud provider, as described in [Configure the AWS cloud provider](../../../configure-yugabyte-platform/set-up-cloud-provider/aws/), you need to complete the following fields in the **Configs > Cloud Provider Configuration > AWS** page of the YugabyteDB Anywhere UI:
 
 - Set the **Credential Type** field to Use IAM Role on instance.
 - Set the **VPC Setup** field to Create a new VPC.

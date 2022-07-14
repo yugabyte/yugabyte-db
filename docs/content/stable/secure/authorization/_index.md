@@ -1,7 +1,7 @@
 ---
-title: Role-Based Access Control in YugabyteDB
-headerTitle: Role-Based Access Control
-linkTitle: Role-Based Access Control
+title: Role-based access control in YugabyteDB
+headerTitle: Role-based access control
+linkTitle: Role-based access control
 description: Enable authorization using role-based access control in YugabyteDB.
 headcontent: Enable authorization using role-based access control in YugabyteDB.
 image: /images/section_icons/secure/authorization.png
@@ -37,7 +37,7 @@ type: indexpage
     </a>
   </div>
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="ysql-grant-permissions">
+    <a class="section-link icon-offset" href="ysql-grant-permissions/">
       <div class="head">
         <img class="icon" src="/images/section_icons/secure/grant-permissions.png" aria-hidden="true" />
         <div class="title">Grant privileges</div>
@@ -48,21 +48,21 @@ type: indexpage
     </a>
   </div>
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="row-level-security">
+    <a class="section-link icon-offset" href="row-level-security/">
       <div class="head">
         <img class="icon" src="/images/section_icons/secure/grant-permissions.png" aria-hidden="true" />
-        <div class="title">Row-Level Security (RLS)</div>
+        <div class="title">Row-level security</div>
       </div>
       <div class="body">
-          Using row-level security policies in YugabyteDB.
+          Using row-level security (RLS) policies in YugabyteDB.
       </div>
     </a>
   </div>
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="column-level-security">
+    <a class="section-link icon-offset" href="column-level-security/">
       <div class="head">
         <img class="icon" src="/images/section_icons/secure/grant-permissions.png" aria-hidden="true" />
-        <div class="title">Column-Level Security</div>
+        <div class="title">Column-level security</div>
       </div>
       <div class="body">
           Restricting column-level permissions in YugabyteDB.

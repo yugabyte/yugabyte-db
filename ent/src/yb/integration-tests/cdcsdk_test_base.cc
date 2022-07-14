@@ -218,13 +218,17 @@ Result<YBTableName> CDCSDKTestBase::CreateTable(
     bool colocated,
     const int table_oid,
     const bool enum_value,
-    const std::string& enum_suffix) {
+    const std::string& enum_suffix,
+    const std::string& schema_name) {
   auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
 
   if (enum_value) {
+    if (schema_name != "public") {
+      RETURN_NOT_OK(conn.ExecuteFormat("create schema $0;", schema_name));
+    }
     RETURN_NOT_OK(conn.ExecuteFormat(
-        "CREATE TYPE coupon_discount_type$0 AS ENUM ('FIXED$1','PERCENTAGE$2');", enum_suffix,
-        enum_suffix, enum_suffix));
+        "CREATE TYPE $0.coupon_discount_type$1 AS ENUM ('FIXED$2','PERCENTAGE$3');",
+        schema_name, enum_suffix, enum_suffix, enum_suffix));
   }
 
   std::string table_oid_string = "";
@@ -234,10 +238,11 @@ Result<YBTableName> CDCSDKTestBase::CreateTable(
     table_oid_string = Format("table_oid = $0,", table_oid);
   }
   RETURN_NOT_OK(conn.ExecuteFormat(
-      "CREATE TABLE $0($1 int $2, $3 $4) WITH ($5colocated = $6) "
-      "SPLIT INTO $7 TABLETS",
-      table_name + enum_suffix, kKeyColumnName, (add_primary_key) ? "PRIMARY KEY" : "",
-      kValueColumnName, enum_value ? ("coupon_discount_type" + enum_suffix) : "int",
+      "CREATE TABLE $0.$1($2 int $3, $4 $5) WITH ($6colocated = $7) "
+      "SPLIT INTO $8 TABLETS",
+      schema_name, table_name + enum_suffix, kKeyColumnName, (add_primary_key) ? "PRIMARY KEY" : "",
+      kValueColumnName,
+      enum_value ? (schema_name + "." + "coupon_discount_type" + enum_suffix) : "int",
       table_oid_string, colocated, num_tablets));
   return GetTable(cluster, namespace_name, table_name + enum_suffix);
 }

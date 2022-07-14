@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-`yb-ts-cli` is a command line tool that can be used to perform an operation on a particular tablet server (`yb-tserver`). Some of the commands perform operations similar to [`yb-admin` commands](../yb-admin). The `yb-admin` commands focus on cluster administration, the `yb-ts-cli` commands apply to specific YB-TServer nodes.
+`yb-ts-cli` is a command line tool that can be used to perform an operation on a particular tablet server (`yb-tserver`). Some of the commands perform operations similar to [`yb-admin` commands](../yb-admin/). The `yb-admin` commands focus on cluster administration, the `yb-ts-cli` commands apply to specific YB-TServer nodes.
 
 `yb-ts-cli` is a binary file installed with YugabyteDB and is located in the `bin` directory of the YugabyteDB home directory.
 
@@ -48,6 +48,7 @@ The following commands are available:
 * [flush_all_tablets](#flush-all-tablets)
 * [flush_tablet](#flush-tablet)
 * [list_tablets](#list-tablets)
+* [reload_certificates](#reload-certificates)
 * [set_flag](#set-flag)
 * [status](#status)
 
@@ -188,6 +189,18 @@ yb-ts-cli [ --server_address=<host>:<port> ] list_tablets
 ```
 
 * *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
+
+##### reload_certificates
+
+Trigger a reload of TLS certificates and private keys from disk on the specified (master or tablet) server.
+
+**Syntax**
+
+```sh
+yb-ts-cli [ --server_address=<host>:<port> ] reload_certificates
+```
+
+* *host*:*port*: The *host* and *port* of the master or tablet server. Default is `localhost:9100`.
 
 ##### set_flag
 

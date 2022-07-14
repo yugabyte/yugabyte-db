@@ -1,4 +1,3 @@
-/*** Right nav. ***/
 @supports (position: sticky) {
   .td-sidebar-toc {
     top: 8rem;
@@ -7,16 +6,22 @@
   }
 }
 
-.td-toc > nav > ul:first-child > li:first-child::before {
-  content: 'On this page';
-  font-weight: normal;
-  font-size: 18px;
-  padding-bottom: 5px;
-  display: block;
-  margin-bottom: 0;
-  color: #000 !important;
-}
+.td-toc {
+  > nav > ul:first-child > li:first-child::before {
+    content: 'On this page';
+    font-weight: normal;
+    font-size: 18px;
+    padding-bottom: 5px;
+    display: block;
+    margin-bottom: 0;
+    color: #000 !important;
+  }
 
-.td-toc li ul {
-  padding-left: 7px;
+  li ul {
+    padding-left: 7px;
+  }
+
+  .active-scroll {
+    color: $primary !important;
+  }
 }

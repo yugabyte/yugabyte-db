@@ -31,7 +31,7 @@ transaction_block ::= BEGIN TRANSACTION
 
 Where
 
-- `insert`, `update`, and `delete` are [INSERT](../dml_insert), [UPDATE](../dml_update), and [DELETE](../dml_delete) statements.
+- `insert`, `update`, and `delete` are [INSERT](../dml_insert), [UPDATE](../dml_update/), and [DELETE](../dml_delete/) statements.
 
 ### ANSI SQL syntax
 
@@ -143,5 +143,5 @@ ycqlsh:example> SELECT account_name, account_type, balance, writetime(balance) F
 ## See also
 
 - [`INSERT`](../dml_insert)
-- [`UPDATE`](../dml_update)
-- [`DELETE`](../dml_delete)
+- [`UPDATE`](../dml_update/)
+- [`DELETE`](../dml_delete/)

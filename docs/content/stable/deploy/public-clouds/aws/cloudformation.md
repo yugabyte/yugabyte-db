@@ -13,19 +13,19 @@ type: docs
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="../cloudformation" class="nav-link active">
+    <a href="../cloudformation/" class="nav-link active">
       <i class="icon-shell"></i>
       CloudFormation
     </a>
   </li>
   <li >
-    <a href="../terraform" class="nav-link">
+    <a href="../terraform/" class="nav-link">
       <i class="icon-shell"></i>
       Terraform
     </a>
   </li>
   <li>
-    <a href="../manual-deployment" class="nav-link">
+    <a href="../manual-deployment/" class="nav-link">
       <i class="icon-shell"></i>
       Manual deployment
     </a>

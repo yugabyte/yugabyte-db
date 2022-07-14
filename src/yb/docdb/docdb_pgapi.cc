@@ -1247,7 +1247,8 @@ Status SetValueFromQLBinaryHelper(
         label = enum_oid_label_map.at((uint32_t)enum_oid);
         VLOG(1) << "For enum oid: " << enum_oid << " found label" << label;
       } else {
-        LOG(DFATAL) << "For enum oid: " << enum_oid << " no label found in cache";
+        return STATUS_SUBSTITUTE(
+            CacheMissError, "For enum oid: $0 no label found in cache", enum_oid);
       }
       cdc_datum_message->set_datum_string(label.c_str(), strlen(label.c_str()));
       break;
@@ -1814,7 +1815,6 @@ Status SetValueFromQLBinaryHelper(
       cdc_datum_message->set_datum_string("");
       break;
   }
-
   return Status::OK();
 }
 

@@ -7,6 +7,7 @@
 @import "./_release_notes.scss";
 @import "./_tabs.scss";
 @import "./_old_tabs.scss";
+@import "./_tables.scss";
 @import "./_search.scss";
 @import "./_footer.scss";
 
@@ -327,23 +328,6 @@ h4,
           letter-spacing: -0.025em;
         }
       }
-    }
-
-    table {
-      padding: 2.5em 0;
-    }
-
-    table tbody,
-    table thead {
-      border-bottom: 1px solid rgba(158, 159, 165, 0.5);
-      border-right: 1px solid rgba(158, 159, 165, 0.5);
-      border-left: 1px solid rgba(158, 159, 165, 0.5);
-    }
-
-    .table-striped tbody tr:nth-of-type(odd),
-    > table tbody tr:nth-of-type(odd),
-    .td-box .row.section > table tbody tr:nth-of-type(odd) {
-      background: rgb(248, 248, 249);
     }
   }
 }

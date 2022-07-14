@@ -1,7 +1,7 @@
 ---
-title: Overview
-headerTitle: Overview
-linkTitle: Overview
+title: YugabyteDB Anywhere
+headerTitle: YugabyteDB Anywhere
+linkTitle: YugabyteDB Anywhere
 description: Overview of YugabyteDB Anywhere and its architecture.
 image: /images/section_icons/deploy/enterprise.png
 headcontent: Overview of YugabyteDB Anywhere and architecture.

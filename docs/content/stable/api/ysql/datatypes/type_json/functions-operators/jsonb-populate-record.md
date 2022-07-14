@@ -24,7 +24,7 @@ return value:      anyelement
 
 Use this `ysqlsh` script to create the required types _"t1"_ and _"t2"_, and then to execute the `ASSERT`.
 
-```
+```plpgsql
 create type t1 as ( d int, e text);
 create type t2 as (a int, b text[], c t1);
 

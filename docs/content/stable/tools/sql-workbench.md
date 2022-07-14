@@ -7,7 +7,7 @@ menu:
   stable:
     identifier: sql-workbench
     parent: tools
-    weight: 2740
+    weight: 70
 type: docs
 ---
 
@@ -28,7 +28,7 @@ To use SQL Workbench/J with YugabyteDB, you need to have YugabyteDB up and runni
 
 ### YugabyteDB
 
-Your YugabyteDB cluster should be up and running. If you are new to YugabyteDB, you can quickly create a local cluster by following the steps in [Quick start](../../../quick-start/install).
+Your YugabyteDB cluster should be up and running. Refer to [YugabyteDB prerequisites](../#yugabytedb-prerequisites).
 
 ### Java runtime environment (JRE)
 
@@ -55,25 +55,25 @@ YugabyteDB is PostgreSQL-compatible, so when working with SQL Workbench/J, use t
 
 1. Launch the SQL Workbench/J application. The **Select Connection Profile** pop-up window appears.
 
-![Select connection profile](/images/develop/tools/sql-workbench/sql-wb_connection-profile.png)
+    ![Select connection profile](/images/develop/tools/sql-workbench/sql-wb_connection-profile.png)
 
 2. Click **Manage Drivers** (in the lower left of the window) to open the **Manage Drivers** window.
 
-![Manage drivers](/images/develop/tools/sql-workbench/sql-wb-manage-drivers.png)
+    ![Manage drivers](/images/develop/tools/sql-workbench/sql-wb-manage-drivers.png)
 
 3. In the list of drivers, select `PostgreSQL` and then edit the fields for the driver:
 
     - **Name**:`PostgreSQL (for YugabyteDB)`
     - **Library**: Displays the location of the PostgreSQL JDBC driver's JAR file. [For a new configuration, browse to the location of the file and click **Choose**.] When installed, the default location of the JRE or JDK is:
 
-      ```
+      ```sh
       \Library\Java\Extensions\<jdbc-driver>.jar`
       ```
 
     - **Classname**: `org.postgresql.Driver`
     - **Sample URL**: `jdbc:postgresql:127.0.0.1:5433/name_of_database` (based on YugabyteDB default values). When opening the driver configuration initially, this field displays
 
-        ```
+        ```sh
        jdbc:postgresql://host:port/name_of_database
         ```
 

@@ -10,8 +10,7 @@ menu:
     parent: window-functions
     weight: 30
 type: indexpage
----
-**On this page**<br>
+---**On this page**<br>
 &#160;&#160;&#160;&#160;&#160;&#160;&#160;[Aggregate function variants](./#aggregate-function-variants)<br>
 &#160;&#160;&#160;&#160;&#160;&#160;&#160;[`frame_clause` sensitivity](./#frame-clause-sensitivity)<br>
 &#160;&#160;&#160;&#160;&#160;&#160;&#160;[Window functions that return an `int` or `double precision` value as a "classifier" of the position of the row within the window](./#window-functions-that-return-an-int-or-double-precision-value-as-a-classifier-of-the-rank-of-the-row-within-its-window)<br>
@@ -35,7 +34,7 @@ This property is marked by _"Y"_ in the column _"agg?"_ in the following tables;
 
 {{< note title="Functions with both a 'window' and an 'aggregate' variant" >}}
 
-The definitive description of the use, as an aggregate function, of a window function that has such a variant, is described within the [Aggregate functions](../../aggregate_functions) major section in the section [Within-group hypothetical-set aggregate functions
+The definitive description of the use, as an aggregate function, of a window function that has such a variant, is described within the [Aggregate functions](../../aggregate_functions/) major section in the section [Within-group hypothetical-set aggregate functions
 ](../../aggregate_functions/function-syntax-semantics/rank-dense-rank-percent-rank-cume-dist/).
 
 {{< /note >}}

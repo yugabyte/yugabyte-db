@@ -23,7 +23,7 @@
 
                 <li class="section{{- if .HasChildren }} submenu parent-menu{{- end }}{{- if .Params.hideLink }} unlink-list{{- end }}{{ $viewAll }}{{- if .Params.classes }} {{ .Params.classes }}{{- end }}">
                   {{ if not .Params.hideLink }}
-                    <a href="{{ if .URL }}{{ .URL }}{{ else }}javascript:void(0){{ end }}" title="{{- if .Title }}{{.Title}}{{else}}{{.Name}}{{- end }}" data-identifier="{{ .Identifier }}"{{- if .Params.newTab }}target="_blank" rel="noopener"{{- end }}>{{ .Name }}</a>
+                    <a {{ if .URL }}href="{{ .URL }}"{{ else }}role="button"{{- end }} title="{{- if .Title }}{{.Title}}{{else}}{{.Name}}{{- end }}" data-identifier="{{ .Identifier }}"{{- if .Params.newTab }}target="_blank" rel="noopener"{{- end }}>{{ .Name }}</a>
                   {{ end }}
 
                   {{- if and (.HasChildren) (not .Params.hideChildren) }}
@@ -44,13 +44,13 @@
       <ul class="left-bottom-nav">
         {{ range .Site.Menus.leftbottom }}
           <li class="bottom-link{{- if .HasChildren }} section submenu parent-menu{{- end }}{{- if .Params.classes }} {{ .Params.classes }}{{- end }}">
-            <a href="{{ if .URL }}{{ .URL }}{{ else }}javascript:void(0){{ end }}" title="{{ .Name }}"{{- if .Params.newTab }}target="_blank" rel="noopener"{{- end }}>{{ .Pre }}{{ .Name }}</a>
+            <a {{ if .URL }}href="{{ .URL }}"{{ else }}role="button"{{- end }} title="{{ .Name }}"{{- if .Params.newTab }}target="_blank" rel="noopener"{{- end }}>{{ .Pre }}{{ .Name }}</a>
             {{ .Post }}
             {{- if .HasChildren }}
               <ul class="internal animated list">
                 {{- range .Children }}
                   <li class="bottom-link{{- if .Params.classes }} {{ .Params.classes }}{{- end }}">
-                    <a href="{{ if .URL }}{{ .URL }}{{ else }}javascript:void(0){{ end }}" title="{{ .Name }}"{{- if .Params.newTab }}target="_blank" rel="noopener"{{- end }}>{{ .Pre }}{{ .Name }}</a>
+                    <a {{ if .URL }}href="{{ .URL }}"{{ else }}role="button"{{- end }} title="{{ .Name }}"{{- if .Params.newTab }}target="_blank" rel="noopener"{{- end }}>{{ .Pre }}{{ .Name }}</a>
                   </li>
                 {{- end }}
               </ul>
@@ -77,7 +77,7 @@
       {{- if not .Params.hide }}
         {{ if le (len (where (first (add $index 1) $currentMenu.Children) "Name" .Name)) 1 }}
           <li class="{{- if .HasChildren }}submenu{{- end }}{{- if .Params.classes }} {{ .Params.classes }}{{- end }}">
-            <a href="{{- if .URL }}{{ .URL }}{{- else }}javascript:void(0){{ end }}" class="link{{if $currentPage.IsMenuCurrent $docVersion . }} active{{end}}" title="{{- if .Title }}{{.Title}}{{else}}{{.Name}}{{- end }}"{{- if .Params.newTab }}target="_blank" rel="noopener"{{- end }}>
+            <a {{ if .URL }}href="{{ .URL }}"{{ else }}role="button"{{- end }} class="link{{if $currentPage.IsMenuCurrent $docVersion . }} active{{end}}" title="{{- if .Title }}{{.Title}}{{else}}{{.Name}}{{- end }}"{{- if .Params.newTab }}target="_blank" rel="noopener"{{- end }}>
               {{ .Name }}
             </a>
 
