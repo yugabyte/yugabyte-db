@@ -4233,8 +4233,6 @@ reindex_index(Oid indexId, bool skip_constraint_checks, char persistence,
  * REINDEX_REL_FORCE_INDEXES_PERMANENT: if true, set the persistence of the
  * rebuilt indexes to permanent.
  *
- * REINDEX_REL_YB_DROP_AND_CREATE: if true, drop and create the index.
- *
  * Returns true if any indexes were rebuilt (including toast table's index
  * when relevant).  Note that a CommandCounterIncrement will occur after each
  * index rebuild.
@@ -4343,16 +4341,16 @@ reindex_relation(Oid relid, int flags, int options)
 		{
 			Oid			indexOid = lfirst_oid(indexId);
 
-			if (flags & REINDEX_REL_YB_DROP_AND_CREATE)
+			if (IsYBRelation(rel) &&
+			    rel->rd_rel->relkind == RELKIND_MATVIEW &&
+			    (flags & REINDEX_REL_SUPPRESS_INDEX_USE))
 			{
 				/*
 				 * This code path is invoked during REFRESH MATERIALIZED VIEW
-				 * when we swap the target and transient tables.  A reindex will
+				 * when we swap the target and transient tables. A reindex will
 				 * not work because the indexes' DocDB metadata will still be
 				 * pointing to the old table, which will be dropped.
 				 */
-				Assert(rel->rd_rel->relkind == RELKIND_MATVIEW &&
-					   IsYBRelation(rel));
 
 				Relation new_rel = heap_open(YbGetStorageRelid(rel), AccessExclusiveLock);
 				AttrNumber *new_to_old_attmap = convert_tuples_by_name_map(RelationGetDescr(new_rel),
