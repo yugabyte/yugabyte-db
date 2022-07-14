@@ -20,7 +20,7 @@ ExecStart={{yb_home_dir}}/controller/bin/yb-controller-server \
 Restart=on-failure
 RestartSec=5
 # Stop -> SIGTERM - 10s - SIGKILL (if not stopped) [matches existing cron behavior]
-KillMode=process
+KillMode=control-group
 TimeoutStopFailureMode=terminate
 KillSignal=SIGTERM
 TimeoutStopSec=10

@@ -51,6 +51,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.PersistResizeNode;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PersistSystemdUpgrade;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ResetUniverseVersion;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RestoreBackupYb;
+import com.yugabyte.yw.commissioner.tasks.subtasks.RestoreBackupYbc;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RestoreUniverseKeys;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RestoreUniverseKeysYb;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ResumeServer;
@@ -1853,31 +1854,42 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   protected void createAllRestoreSubtasks(
-      RestoreBackupParams restoreBackupParams, SubTaskGroupType subTaskGroupType) {
+      RestoreBackupParams restoreBackupParams, SubTaskGroupType subTaskGroupType, boolean isYbc) {
     if (restoreBackupParams.alterLoadBalancer) {
       createLoadBalancerStateChangeTask(false).setSubTaskGroupType(subTaskGroupType);
     }
 
     if (restoreBackupParams.backupStorageInfoList != null) {
-      for (RestoreBackupParams.BackupStorageInfo backupStorageInfo :
-          restoreBackupParams.backupStorageInfoList) {
-        // If KMS is enabled, it needs to restore the keys first.
-        if (KmsConfig.get(restoreBackupParams.kmsConfigUUID) != null) {
-          RestoreBackupParams restoreKeyParams =
+      if (isYbc) {
+        for (RestoreBackupParams.BackupStorageInfo backupStorageInfo :
+            restoreBackupParams.backupStorageInfoList) {
+          RestoreBackupParams restoreDataParams =
               new RestoreBackupParams(
-                  restoreBackupParams,
-                  backupStorageInfo,
-                  RestoreBackupParams.ActionType.RESTORE_KEYS);
-          createRestoreBackupTask(restoreKeyParams).setSubTaskGroupType(subTaskGroupType);
+                  restoreBackupParams, backupStorageInfo, RestoreBackupParams.ActionType.RESTORE);
 
-          createEncryptedUniverseKeyRestoreTaskYb(restoreKeyParams)
-              .setSubTaskGroupType(subTaskGroupType);
+          createRestoreBackupYbcTask(restoreDataParams).setSubTaskGroupType(subTaskGroupType);
         }
-        // Restore the data.
-        RestoreBackupParams restoreDataParams =
-            new RestoreBackupParams(
-                restoreBackupParams, backupStorageInfo, RestoreBackupParams.ActionType.RESTORE);
-        createRestoreBackupTask(restoreDataParams).setSubTaskGroupType(subTaskGroupType);
+      } else {
+        for (RestoreBackupParams.BackupStorageInfo backupStorageInfo :
+            restoreBackupParams.backupStorageInfoList) {
+          // If KMS is enabled, it needs to restore the keys first.
+          if (KmsConfig.get(restoreBackupParams.kmsConfigUUID) != null) {
+            RestoreBackupParams restoreKeyParams =
+                new RestoreBackupParams(
+                    restoreBackupParams,
+                    backupStorageInfo,
+                    RestoreBackupParams.ActionType.RESTORE_KEYS);
+            createRestoreBackupTask(restoreKeyParams).setSubTaskGroupType(subTaskGroupType);
+
+            createEncryptedUniverseKeyRestoreTaskYb(restoreKeyParams)
+                .setSubTaskGroupType(subTaskGroupType);
+          }
+          // Restore the data.
+          RestoreBackupParams restoreDataParams =
+              new RestoreBackupParams(
+                  restoreBackupParams, backupStorageInfo, RestoreBackupParams.ActionType.RESTORE);
+          createRestoreBackupTask(restoreDataParams).setSubTaskGroupType(subTaskGroupType);
+        }
       }
     }
 
@@ -1910,6 +1922,16 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   public SubTaskGroup createRestoreBackupTask(RestoreBackupParams taskParams) {
     SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("RestoreBackupYb", executor);
     RestoreBackupYb task = createTask(RestoreBackupYb.class);
+    task.initialize(taskParams);
+    task.setUserTaskUUID(userTaskUUID);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  public SubTaskGroup createRestoreBackupYbcTask(RestoreBackupParams taskParams) {
+    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("RestoreBackupYbc", executor);
+    RestoreBackupYbc task = createTask(RestoreBackupYbc.class);
     task.initialize(taskParams);
     task.setUserTaskUUID(userTaskUUID);
     subTaskGroup.addSubTask(task);

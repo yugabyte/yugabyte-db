@@ -856,15 +856,15 @@ Result<EnumOidLabelMap> CDCServiceImpl::GetEnumMapFromCache(const NamespaceName&
 Result<EnumOidLabelMap> CDCServiceImpl::UpdateCacheAndGetEnumMap(const NamespaceName& ns_name) {
   std::lock_guard<decltype(mutex_)> l(mutex_);
   if (enumlabel_cache_.find(ns_name) == enumlabel_cache_.end()) {
-    RETURN_NOT_OK(UpdateEnumMapInCacheUnlocked(ns_name));
+    return UpdateEnumMapInCacheUnlocked(ns_name);
   }
   return enumlabel_cache_.at(ns_name);
 }
 
-Status CDCServiceImpl::UpdateEnumMapInCacheUnlocked(const NamespaceName& ns_name) {
+Result<EnumOidLabelMap> CDCServiceImpl::UpdateEnumMapInCacheUnlocked(const NamespaceName& ns_name) {
   EnumOidLabelMap enum_oid_label_map = VERIFY_RESULT(client()->GetPgEnumOidLabelMap(ns_name));
   enumlabel_cache_[ns_name] = enum_oid_label_map;
-  return Status::OK();
+  return enumlabel_cache_[ns_name];
 }
 
 Status CDCServiceImpl::CreateCDCStreamForNamespace(
@@ -944,11 +944,6 @@ Status CDCServiceImpl::CreateCDCStreamForNamespace(
     }
     stream_ids.push_back(std::move(stream_id));
     table_ids.push_back(table_iter.table_id());
-  }
-
-  {
-    std::lock_guard<decltype(mutex_)> l(mutex_);
-    RETURN_NOT_OK(UpdateEnumMapInCacheUnlocked(req->namespace_name()));
   }
 
   // Add stream to cache.
@@ -1353,16 +1348,33 @@ void CDCServiceImpl::GetChanges(const GetChangesRequestPB* req,
     auto namespace_name = tablet_peer->tablet()->metadata()->namespace_name();
 
     auto enum_map_result = GetEnumMapFromCache(namespace_name);
-
-    if (!enum_map_result.ok()) {
-      RPC_STATUS_RETURN_ERROR(
-          enum_map_result.status(), resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
-    }
+    RPC_CHECK_AND_RETURN_ERROR(
+        enum_map_result.ok(), enum_map_result.status(), resp->mutable_error(),
+        CDCErrorPB::INTERNAL_ERROR, context);
 
     s = cdc::GetChangesForCDCSDK(
         req->stream_id(), req->tablet_id(), cdc_sdk_op_id, record, tablet_peer, mem_tracker,
         *enum_map_result, &msgs_holder, resp, &commit_timestamp, &cached_schema,
         &last_streamed_op_id, &last_readable_index, get_changes_deadline);
+    // This specific error from the docdb_pgapi layer is used to identify enum cache entry is out of
+    // date, hence we need to repopulate.
+    if (s.IsCacheMissError()) {
+      {
+        // Recreate the enum cache entry for the corresponding namespace.
+        std::lock_guard<decltype(mutex_)> l(mutex_);
+        enum_map_result = UpdateEnumMapInCacheUnlocked(namespace_name);
+        RPC_CHECK_AND_RETURN_ERROR(
+            enum_map_result.ok(), enum_map_result.status(), resp->mutable_error(),
+            CDCErrorPB::INTERNAL_ERROR, context);
+      }
+      // Clean all the records which got added in the resp, till the enum cache miss failure is
+      // encountered.
+      resp->clear_cdc_sdk_proto_records();
+      s = cdc::GetChangesForCDCSDK(
+          req->stream_id(), req->tablet_id(), cdc_sdk_op_id, record, tablet_peer, mem_tracker,
+          *enum_map_result, &msgs_holder, resp, &commit_timestamp, &cached_schema,
+          &last_streamed_op_id, &last_readable_index, get_changes_deadline);
+    }
 
     impl_->UpdateCDCStateMetadata(
         producer_tablet, commit_timestamp, cached_schema, last_streamed_op_id);
