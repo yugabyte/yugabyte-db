@@ -1,7 +1,7 @@
 {
     "dbtype": "ysql",
     "backup_spec": "bar",
-    "backup_size": "396606",
+    "backup_size": 45346,
     "snapshot_details": [
       {
         "type": "NAMESPACE",
@@ -29,10 +29,6 @@
       }
     ],
     "cloud_store_spec": {
-      "default_backup_location": {
-        "bucket": "def_bucket",
-        "cloud_dir": "default\/foo\/keyspace-bar\/"
-      },
       "region_location_map": {
         "us-west1": {
           "bucket": "reg1_bucket",
