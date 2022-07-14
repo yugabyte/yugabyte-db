@@ -2,16 +2,16 @@
 title: Manage YugabyteDB
 headerTitle: Manage
 linkTitle: Manage
-description: Manage YugabyteDB clusters.
+description:
 image: /images/section_icons/quick_start/sample_apps.png
 headcontent:
 menu:
   stable:
     identifier: manage
     parent: launch-and-manage
+    weight: 900
 type: indexpage
 ---
-
 <div class="row">
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="backup-restore/">

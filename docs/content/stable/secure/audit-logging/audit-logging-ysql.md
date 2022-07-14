@@ -1,13 +1,11 @@
 ---
-title: Configure Audit Logging in YSQL
-headerTitle: Configure Audit Logging in YSQL
-linkTitle: Configure Audit Logging in YSQL
-description: Configure Audit Logging in YSQL.
-headcontent: Configure Audit Logging in YSQL.
+title: Configure audit logging in YSQL
+headerTitle: Configure audit logging in YSQL
+description: Configure audit logging in YSQL.
 image: /images/section_icons/secure/authentication.png
 menu:
   stable:
-    name: Configure Audit Logging
+    name: Configure audit logging
     identifier: enable-audit-logging-1-ysql
     parent: audit-logging
     weight: 755
@@ -16,13 +14,13 @@ type: docs
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/preview/secure/audit-logging/audit-logging-ysql" class="nav-link active">
+    <a href="../audit-logging-ysql/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
   <li >
-    <a href="/preview/secure/audit-logging/audit-logging-ycql" class="nav-link">
+    <a href="../audit-logging-ycql/" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>

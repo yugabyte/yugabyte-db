@@ -12,6 +12,7 @@ menu:
     weight: 580
 type: indexpage
 ---
+
 The following examples illustrate how real-world, end-to-end applications can be built using YugabyteDB and its ecosystem integrations with Apache Spark, Apache Kafka, Spring Boot and KairosDB, just to name a few.
 
 <div class="row">

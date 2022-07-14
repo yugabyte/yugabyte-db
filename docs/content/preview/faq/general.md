@@ -226,9 +226,10 @@ A post on our blog titled [Practical Tradeoffs in Google Cloud Spanner, Azure Co
 
 ## How many major releases YugabyteDB has had so far?
 
-YugabyteDB has had the following major releases:
+YugabyteDB has had the following major (stable) releases:
 
-- [v2.12](https://blog.yugabyte.com/) in February 2022. (There was no v2.10 release.)
+- [v2.14](https://blog.yugabyte.com/) in July 2022.
+- [v2.12](https://blog.yugabyte.com/announcing-yugabytedb-2-12/) in February 2022. (There was no v2.10 release.)
 - [v2.8](https://blog.yugabyte.com/announcing-yugabytedb-2-8/) in November 2021.
 - [v2.6](https://blog.yugabyte.com/announcing-yugabytedb-2-6/) in July 2021.
 - [v2.4](https://blog.yugabyte.com/announcing-yugabytedb-2-4/) in January 2021.

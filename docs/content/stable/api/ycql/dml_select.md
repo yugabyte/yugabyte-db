@@ -302,6 +302,6 @@ SELECT * FROM sensor_data WHERE device_id = 1 ORDER BY sensor_id ASC, ts ASC;
 
 - [`CREATE TABLE`](../ddl_create_table)
 - [`INSERT`](../dml_insert)
-- [`UPDATE`](../dml_update)
-- [`DELETE`](../dml_delete)
+- [`UPDATE`](../dml_update/)
+- [`DELETE`](../dml_delete/)
 - [`Expression`](..#expressions)

@@ -1,4 +1,4 @@
-```ebnf
+```output.ebnf
 create_user ::= CREATE USER role_name 
                 [ [ WITH ] role_option [ , ... ] ]
 

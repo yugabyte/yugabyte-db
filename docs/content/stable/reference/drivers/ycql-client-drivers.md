@@ -61,11 +61,11 @@ To build Java applications with this driver, you must add the following Maven de
 <dependency>
   <groupId>com.yugabyte</groupId>
   <artifactId>java-driver-core</artifactId>
-  <version>4.6.0-yb-6</version>
+  <version>4.6.0-yb-11</version>
 </dependency>
 ```
 
-For details, see the [Maven repository contents](https://mvnrepository.com/artifact/com.yugabyte/cassandra-driver-core/4.6.0-yb-6).
+For details, see the [Maven repository contents](https://mvnrepository.com/artifact/com.yugabyte/java-driver-core/4.6.0-yb-11).
 
 ### Yugabyte Java Driver for YCQL 3.10
 

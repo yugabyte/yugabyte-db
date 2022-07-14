@@ -12,7 +12,6 @@ menu:
     weight: 1120
 type: indexpage
 ---
-
 {{< note title="Note" >}}
 
 YugabyteDB's distributed ACID transaction architecture is inspired by <a href="https://research.google.com/archive/spanner-osdi2012.pdf">Google Spanner</a>.

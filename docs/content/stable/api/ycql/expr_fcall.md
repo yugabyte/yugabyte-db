@@ -26,22 +26,22 @@ function_call ::= function_name '(' [ arguments ... ] ')'
 |----------|-------------|---------------|-------------|
 | BlobAs\<Type> | \<Type> | ([`BLOB`](../type_blob)) | Converts a value from `BLOB` |
 | \<Type>AsBlob | [`BLOB`](../type_blob) | (\<Type>) | Converts a value to `BLOB` |
-| [DateOf](../function_datetime/#dateof) | [`TIMESTAMP`](../type_datetime) | ([`TIMEUUID`](../type_uuid)) | Conversion |
-| MaxTimeUuid | [`TIMEUUID`](../type_uuid) | ([`TIMESTAMP`](../type_datetime)) | Returns the associated max time uuid  |
-| MinTimeUuid | [`TIMEUUID`](../type_uuid) | ([`TIMESTAMP`](../type_datetime)) | Returns the associated min time uuid  |
-| [CurrentDate](../function_datetime/#currentdate-currenttime-and-currenttimestamp) | [`DATE`](../type_datetime) | () | Return the system current date |
-| [CurrentTime](../function_datetime/#currentdate-currenttime-and-currenttimestamp) | [`TIME`](../type_datetime) | () | Return the system current time of day |
-| [CurrentTimestamp](../function_datetime/#currentdate-currenttime-and-currenttimestamp) | [`TIMESTAMP`](../type_datetime) | () | Return the system current timestamp |
+| [DateOf](../function_datetime/#dateof) | [`TIMESTAMP`](../type_datetime/) | ([`TIMEUUID`](../type_uuid)) | Conversion |
+| [MaxTimeUuid](../function_datetime/#maxtimeuuid-timestamp) | [`TIMEUUID`](../type_uuid) | ([`TIMESTAMP`](../type_datetime)) | Returns the associated max time uuid  |
+| [MinTimeUuid](../function_datetime/#mintimeuuid-timestamp) | [`TIMEUUID`](../type_uuid) | ([`TIMESTAMP`](../type_datetime)) | Returns the associated min time uuid  |
+| [CurrentDate](../function_datetime/#currentdate-currenttime-and-currenttimestamp) | [`DATE`](../type_datetime/) | () | Return the system current date |
+| [CurrentTime](../function_datetime/#currentdate-currenttime-and-currenttimestamp) | [`TIME`](../type_datetime/) | () | Return the system current time of day |
+| [CurrentTimestamp](../function_datetime/#currentdate-currenttime-and-currenttimestamp) | [`TIMESTAMP`](../type_datetime/) | () | Return the system current timestamp |
 | [Now](../function_datetime/#now) | [`TIMEUUID`](../type_uuid) | () | Returns the UUID of the current timestamp |
 | [TTL](#ttl-function) | [`BIGINT`](../type_int) | (\<AnyType>) | Get time-to-live of a column |
-| [ToDate](../function_datetime/#todate) | [`DATE`](../type_datetime) | ([`TIMESTAMP`](../type_datetime)) | Conversion |
-| [ToDate](../function_datetime/#todate) | [`DATE`](../type_datetime) | ([`TIMEUUID`](../type_uuid)) | Conversion |
-| ToTime | [`TIME`](../type_datetime) | ([`TIMESTAMP`](../type_datetime))  | Conversion |
-| ToTime | [`TIME`](../type_datetime) | ([`TIMEUUID`](../type_uuid) | Conversion |
-| [ToTimestamp](../function_datetime/#totimestamp) | ([`TIMESTAMP`](../type_datetime))  | ([`DATE`](../type_datetime)) | Conversion |
-| [ToTimestamp](../function_datetime/#totimestamp) | ([`TIMESTAMP`](../type_datetime)) | (`TIMEUUID`) | Conversion |
-| [ToUnixTimestamp](../function_datetime/#tounixtimestamp) | [`BIGINT`](../type_int) | ([`DATE`](../type_datetime)) | Conversion |
-| [ToUnixTimestamp](../function_datetime/#tounixtimestamp) | [`BIGINT`](../type_int) | ([`TIMESTAMP`](../type_datetime))  | Conversion |
+| [ToDate](../function_datetime/#todate) | [`DATE`](../type_datetime/) | ([`TIMESTAMP`](../type_datetime/)) | Conversion |
+| [ToDate](../function_datetime/#todate) | [`DATE`](../type_datetime/) | ([`TIMEUUID`](../type_uuid)) | Conversion |
+| ToTime | [`TIME`](../type_datetime/) | ([`TIMESTAMP`](../type_datetime/))  | Conversion |
+| ToTime | [`TIME`](../type_datetime/) | ([`TIMEUUID`](../type_uuid) | Conversion |
+| [ToTimestamp](../function_datetime/#totimestamp) | ([`TIMESTAMP`](../type_datetime/))  | ([`DATE`](../type_datetime/)) | Conversion |
+| [ToTimestamp](../function_datetime/#totimestamp) | ([`TIMESTAMP`](../type_datetime/)) | (`TIMEUUID`) | Conversion |
+| [ToUnixTimestamp](../function_datetime/#tounixtimestamp) | [`BIGINT`](../type_int) | ([`DATE`](../type_datetime/)) | Conversion |
+| [ToUnixTimestamp](../function_datetime/#tounixtimestamp) | [`BIGINT`](../type_int) | ([`TIMESTAMP`](../type_datetime/))  | Conversion |
 | [ToUnixTimestamp](../function_datetime/#tounixtimestamp) | [`BIGINT`](../type_int) | ([`TIMEUUID`](../type_uuid)) | Conversion |
 | [UnixTimestampOf](../function_datetime/#unixtimestampof) | [`BIGINT`](../type_int) | ([`TIMEUUID`](../type_uuid)) | Conversion |
 | [UUID](../function_datetime/#uuid) | [`UUID`](../type_uuid) | () | Returns a version 4 UUID |

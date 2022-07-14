@@ -33,28 +33,30 @@ Use the `CALL` statement to execute a stored procedure.
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/call_procedure,procedure_argument,argument_name.grammar.md" %}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/call_procedure,subprogram_arg,arg_name.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/call_procedure,procedure_argument,argument_name.diagram.md" %}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/call_procedure,subprogram_arg,arg_name.diagram.md" %}}
   </div>
 </div>
-**Note:** The syntax and semantics of the `procedure_argument` (for example how to use the named parameter invocation style to avoid providing actual arguments for defaulted parameters) is the same for invoking a user-defined`FUNCTION`. A function cannot be invoked with the `CALL` statement. Rather, it's invoked as (part of) an expression in DML statements like `SELECT`.
 
+{{< tip title="The syntax and semantics of 'subprogram_arg' are the same for function invocation as for 'CALL'." >}}
+The syntax and semantics of the _subprogram_arg_ rule (for example how to use the named parameter invocation style to avoid providing actual arguments for defaulted parameters) are the same for invoking a function as for `CALL`. A function cannot be invoked with the `CALL` statement. Rather, it's invoked as (part of) an expression in DML statements like `SELECT` or in PL/pgSQL source code.
+{{< /tip >}}
 
 ## Semantics
 
 `CALL` executes a stored procedure. If the procedure has any output parameters, then a result row will be returned, containing the values of those parameters.
 
-The caller must have _both_ the `USAGE` privilege on the schema in which the to-be-called procedure exists _and_ the  `EXECUTE` privilege on it. If the caller lacks the required `USAGE` privilege, then it causes this error:
+The caller must have _both_ the _usage_ privilege on the schema in which the to-be-called procedure exists _and_ the  _execute_ privilege on it. If the caller lacks the required _usage_ privilege, then it causes this error:
 
-```
+```output
 42501: permission denied for schema %"
 ```
 
-If the caller has the required `USAGE` privilege but lacks the required `EXECUTE` privilege, then it causes this error:
+If the caller has the required _usage_ privilege but lacks the required _execute_ privilege, then it causes this error:
 
-```
+```output
 42501: permission denied for procedure %
 ```
 
@@ -62,13 +64,13 @@ If the caller has the required `USAGE` privilege but lacks the required `EXECUTE
 
 If `CALL` is executed in a transaction block, then it cannot execute transaction control statements. The attempt causes this runtime error:
 
-```
+```output
 2D000: invalid transaction termination
 ```
 
-Transaction control statements are  allowed when `CALL` is invoked with `AUTOCOMMIT` set to `on`—in which case the procedure executes in its own transaction.
+Transaction control statements are  allowed when `CALL` is invoked with _autocommit_ set to _on_—in which case the procedure executes in its own transaction.
 
-## Example
+## Simple example
 
 Create a simple procedure
 
@@ -93,7 +95,7 @@ call p('Forty-two', 42);
 ```
 This is the result:
 
-```
+```output
 INFO:  Result: Forty-two: 42
 ```
 Omit the second defaulted parameter:
@@ -104,7 +106,7 @@ call p('"int_val" default is');
 
 This is the result:
 
-```
+```output
 INFO:  Result: "int_val" default is: 17
 ```
 
@@ -116,7 +118,7 @@ call p();
 
 This is the result:
 
-```
+```output
 INFO:  Result: Caption: 17
 ```
 
@@ -128,7 +130,7 @@ call p(caption => 'Forty-two', int_val=>42);
 
 This is the result:
 
-```
+```output
 INFO:  Result: Forty-two: 42
 ```
 
@@ -140,7 +142,7 @@ call p(int_val=>99);
 
 This is the result:
 
-```
+```output
 INFO:  Result: Caption: 99
 ```
 
@@ -152,18 +154,20 @@ call p(99);
 
 It causes this error:
 
-```
+```output
 42883: procedure p(integer) does not exist
 ```
 In this case, this generic hint:
 
-```
+```output
 You might need to add explicit type casts.
 ```
 
 isn't helpful.
 
-Create a procedure with `INOUT` formal parameters.
+## Example with 'inout' arguments
+
+Create a procedure with `INOUT` arguments.
 
 ```plpgsql
 drop procedure if exists x(int, int, int, int, int);
@@ -192,13 +196,39 @@ call x(10, 20, 30, 40, 50);
 ```
 This is the result:
 
-```
+```output
  a  | b  | c  | d  | e
 ----+----+----+----+----
  11 | 22 | 33 | 44 | 55
 ```
-You cannot create a procedure with `OUT` formal parameters. The attempt causes the error
 
+Here's how to invoke procedure _x()_ in PLpgSQL:
+
+```plpgsql
+do $body$
+declare
+  a_var int not null := 10;
+  b_var int not null := 20;
+  c_var int not null := 30;
+  d_var int not null := 40;
+  e_var int not null := 50;
+begin
+  call x(a_var, b_var, c_var, d_var, e_var);
+  raise info 'Result: %, %, %, %, %', a_var, b_var, c_var, d_var, e_var;
+end;
+$body$;
 ```
+
+This is the result:
+
+```output
+INFO:  Result: 11, 22, 33, 44, 55
+```
+
+You cannot create a procedure with `OUT` formal arguments. The attempt causes the error
+
+```output
 0A000: procedures cannot have OUT arguments
 ```
+
+This is tracked by [Github Issue #12348](https://github.com/yugabyte/yugabyte-db/issues/12348).

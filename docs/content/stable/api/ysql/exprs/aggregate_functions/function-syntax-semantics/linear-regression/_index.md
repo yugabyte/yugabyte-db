@@ -68,13 +68,13 @@ If, for a particular input row, _either_ the expression for _"y"_, _or_ the expr
 
 The same test table recipe serves for illustrating all of the functions for linear regression analysis. The design is straightforward. Noise is added to a pure linear function, thus:
 
-```
+```output
   y = slope*x + intercept + delta
 ```
 
 where _"delta"_ is picked, for each _"x"_ value from a pseudorandom normal distribution with specified mean and standard deviation.
 
-The procedure _"populate_t()"_ lets you try different values for _"slope"_, _"intercept"_, and for the size and variability of _"delta"_. It uses the function `normal_rand()`, brought by the [tablefunc](../../../../extensions/#tablefunc) extension.
+The procedure _"populate_t()"_ lets you try different values for _"slope"_, _"intercept"_, and for the size and variability of _"delta"_. It uses the function `normal_rand()`, brought by the [tablefunc](../../../../../../explore/ysql-language-features/pg-extensions/#tablefunc-example) extension.
 
 ```plpgsql
 drop procedure if exists populate_t(

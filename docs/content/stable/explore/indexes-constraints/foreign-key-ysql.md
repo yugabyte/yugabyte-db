@@ -1,6 +1,6 @@
 ---
-title: Foreign key
-linkTitle: Foreign key
+title: Foreign keys
+linkTitle: Foreign keys
 description: Defining Foreign key constraint in YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
@@ -51,9 +51,7 @@ Defining the `CONSTRAINT` clause and naming the foreign key is optional. If you 
 
 ## Examples
 
-- To run the examples below, follow these steps to create a local [cluster](/preview/quick-start/) or in [Yugabyte Cloud](/preview/yugabyte-cloud/cloud-connect/).
-
-- Use the [YSQL shell](/preview/admin/ysqlsh/) for local clusters, or [Connect using Cloud shell](/preview/yugabyte-cloud/cloud-connect/connect-cloud-shell/) for Yugabyte Cloud, to create a database.
+Create a cluster [locally](../../../quick-start/) or in [YugabyteDB Managed](../../../yugabyte-cloud/cloud-basics/create-clusters-free/) and connect to the cluster using [ysqlsh](../../../admin/ysqlsh/) for local clusters, or [using cloud shell](../../../yugabyte-cloud/cloud-connect/connect-cloud-shell/) for YugabyteDB Managed.
 
 The following example creates two tables:
 
@@ -78,7 +76,7 @@ CREATE TABLE contacts(
 );
 ```
 
-In the preceding example, the parent table is `employees` and the child table is `contacts`. Each employee has any number of contacts, and each contact belongs to no more than one employee. The `employee_no` column in the `contacts` table is the foreign key column that references the primary key column with the same name in the `employees` table. The `fk_employee` foreign key constraint in the `contacts` table defines the `employee_no` as the foreign key. By default, `NO ACTION` is applied because `fk_employee` is not associated with any action.
+The parent table is `employees` and the child table is `contacts`. Each employee has any number of contacts, and each contact belongs to no more than one employee. The `employee_no` column in the `contacts` table is the foreign key column that references the primary key column with the same name in the `employees` table. The `fk_employee` foreign key constraint in the `contacts` table defines the `employee_no` as the foreign key. By default, `NO ACTION` is applied because `fk_employee` is not associated with any action.
 
 The following example shows how to create the same `contacts` table with a `CASCADE` action `ON DELETE`:
 
@@ -99,7 +97,7 @@ CREATE TABLE contacts(
 
 ## Use ALTER TABLE to add or drop a Foreign Key Constraint
 
-YSQL enables you to add a foreign key constraint to an existing table by using the `ALTER TABLE` statement, as demonstrated by the following syntax:
+You can add a foreign key constraint to an existing table by using the `ALTER TABLE` statement, using the following syntax:
 
 ```sql
 ALTER TABLE child_table

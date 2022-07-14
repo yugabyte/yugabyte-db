@@ -37,7 +37,7 @@ You would first need to choose a Replication Factor (RF). You would need at leas
 
 Note that YugabyteDB works with both hostnames or IP addresses. IP addresses are preferred at this point as they are more extensively tested.
 
-See the [yb-master command reference](../manual-deployment/start-masters) for more information.
+See the [yb-master command reference](../manual-deployment/start-masters/) for more information.
 
 ## Hardware requirements
 
@@ -64,7 +64,7 @@ For typical OLTP workloads, YugabyteDB performance improves with more aggregate 
 
 Memory depends on your application query pattern. Writes require memory but only up to a certain point (say 4GB, but if you have a write-heavy workload you may need a little more). Beyond that, more memory generally helps improve the read throughput and latencies by caching data in the internal cache. If you do not have enough memory to fit the read working set, then you will typically experience higher read latencies because data has to be read from disk. Having a faster disk could help in some of these cases.
 
-YugabyteDB explicitly manages a block cache, and doesn't need the entire data set to fit in memory. It does not rely on OS to keep data in its buffers. If you give YugabyteDB sufficient memory data accessed and present in block cache will stay in memory.
+YugabyteDB explicitly manages a block cache, and doesn't need the entire data set to fit in memory. It doesn't rely on the OS to keep data in its buffers. If you give YugabyteDB sufficient memory, data accessed and present in block cache stays in memory.
 
 ### Verify support for SSE2
 
@@ -96,6 +96,10 @@ Write-heavy applications usually require more disk IOPS (especially if the size 
 
 YugabyteDB uses per-tablet [size tiered compaction](../../architecture/concepts/yb-tserver/). Therefore the typical space amplification in YugabyteDB tends to be in the 10-20% range.
 
+YugabyteDB stores data compressed by default. The effectiveness of compression depends on the data set. For example, if the data has already been compressed, then the additional compression at the storage layer of YugabyteDB will not be very effective.
+
+Plan for about 20% headroom on each node to allow space for miscellaneous overheads such as temporary additional space needed for compactions, metadata overheads, etc.
+
 ### Network
 
 Below is a minimal list of default ports (along with the network access required) in order to use YugabyteDB.
@@ -122,7 +126,7 @@ The above deployment uses the various default ports listed [here](../../referenc
 
 {{< note title="Note" >}}
 
-For Yugabyte Platform, the SSH port is changed for added security.
+For YugabyteDB Anywhere, the SSH port is changed for added security.
 
 {{< /note >}}
 
@@ -148,7 +152,7 @@ In practice, the clock drift would have to be orders of magnitude higher in orde
 
 ## Security checklist
 
-For a list of best practices, see [security checklist](../../secure/security-checklist).
+For a list of best practices, see [security checklist](../../secure/security-checklist/).
 
 ## Running on public clouds
 

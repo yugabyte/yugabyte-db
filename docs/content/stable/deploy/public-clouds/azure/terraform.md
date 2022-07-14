@@ -159,7 +159,9 @@ The following resources are created by this module:
 
     A local script that configures the newly created instances to form a new YugabyteDB universe.
 
-- `module.azure-yugabyte.azurerm_network_interface.Yugabyte-NIC` The Azure network interface for VM instance.
+- `module.azure-yugabyte.azurerm_network_interface.Yugabyte-NIC`
+
+    The Azure network interface for VM instance.
 
     For a cluster named `test-cluster`, the network interface is named `yugabyte-test-cluster-NIC-1`, `yugabyte-test-cluster-NIC-2`, and `yugabyte-test-cluster-NIC-3`.
 
