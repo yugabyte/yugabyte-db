@@ -271,7 +271,9 @@ target_link_libraries(yb-tserver
 #########################################
 set(TSERVER_FLAGS_METADATA_FILE ${YB_BUILD_ROOT}/tserver_flags.xml)
 add_custom_command(TARGET yb-tserver POST_BUILD
-  COMMAND "${BUILD_SUPPORT_DIR}/gen_flags_metadata_wrapper" "yb-tserver" "${TSERVER_FLAGS_METADATA_FILE}"
+  COMMAND "${BUILD_SUPPORT_DIR}/gen_flags_metadata_wrapper"
+    "--program_name" "yb-tserver"
+    "--output_file_path" "${TSERVER_FLAGS_METADATA_FILE}"
   BYPRODUCTS "${TSERVER_FLAGS_METADATA_FILE}")
 
 #########################################
