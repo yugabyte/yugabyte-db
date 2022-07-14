@@ -347,7 +347,8 @@ class CDCServiceImpl : public CDCServiceIf {
   Result<EnumOidLabelMap> UpdateCacheAndGetEnumMap(const NamespaceName& ns_name);
 
   // Update enum map in cache.
-  Status UpdateEnumMapInCacheUnlocked(const NamespaceName& ns_name) REQUIRES(mutex_);
+  Result<EnumOidLabelMap> UpdateEnumMapInCacheUnlocked(const NamespaceName& ns_name)
+      REQUIRES(mutex_);
 
   rpc::Rpcs rpcs_;
 

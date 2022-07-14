@@ -84,6 +84,7 @@ message AppStatusPB {
     COMBINED_ERROR = 29;
     SNAPSHOT_TOO_OLD = 30;
     DEPRECATED_HOST_UNREACHABLE = 31;
+    CACHE_MISS_ERROR = 32;
   }
 
   required ErrorCode code = 1;
