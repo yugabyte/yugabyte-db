@@ -41,14 +41,12 @@ using std::vector;
 namespace yb {
 namespace docdb {
 
-void SetValueFromQLBinaryWrapper(
+Status SetValueFromQLBinaryWrapper(
     QLValuePB ql_value, const int pg_data_type,
     const std::unordered_map<uint32_t, string>& enum_oid_label_map,
     DatumMessagePB* cdc_datum_message) {
-  WARN_NOT_OK(
-      yb::docdb::SetValueFromQLBinary(
-          ql_value, pg_data_type, enum_oid_label_map, cdc_datum_message),
-      "Failed");
+  return yb::docdb::SetValueFromQLBinary(
+      ql_value, pg_data_type, enum_oid_label_map, cdc_datum_message);
 }
 
 DocDBRocksDBUtil::DocDBRocksDBUtil() : doc_read_context_(Schema(), 1) {}
