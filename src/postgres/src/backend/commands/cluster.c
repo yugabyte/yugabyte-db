@@ -1268,14 +1268,14 @@ swap_relation_files(Oid r1, Oid r2, bool target_is_pg_class,
 
 		if (IsYugaByteEnabled())
 		{
-			/* 
+			/*
 			 * If this swap is happening during a REFRESH MATVIEW,
 			 * correctly mark the transient relation as a MATVIEW
 			 * so that it is dropped in YB mode.
 			 */
-			if (relform1->relkind == RELKIND_MATVIEW) 
+			if (relform1->relkind == RELKIND_MATVIEW)
 				relform2->relkind = RELKIND_MATVIEW;
-			else if (relform2->relkind == RELKIND_MATVIEW) 
+			else if (relform2->relkind == RELKIND_MATVIEW)
 				relform1->relkind = RELKIND_MATVIEW;
 		}
 
@@ -1625,13 +1625,6 @@ finish_heap_swap(Oid OIDOldHeap, Oid OIDNewHeap,
 		reindex_flags |= REINDEX_REL_FORCE_INDEXES_UNLOGGED;
 	else if (newrelpersistence == RELPERSISTENCE_PERMANENT)
 		reindex_flags |= REINDEX_REL_FORCE_INDEXES_PERMANENT;
-
-	/*
-	 * For YB materialized views, we need to drop and create the index instead
-	 * of reindexing the same index.
-	 */
-	if (IsYBRelationById(OIDOldHeap))
-		reindex_flags |= REINDEX_REL_YB_DROP_AND_CREATE;
 
 	reindex_relation(OIDOldHeap, reindex_flags, 0);
 
