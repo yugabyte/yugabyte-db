@@ -21,6 +21,7 @@ import com.amazonaws.services.s3.model.ListObjectsV2Result;
 import com.amazonaws.services.s3.model.MultiObjectDeleteException;
 import com.amazonaws.services.s3.model.MultiObjectDeleteException.DeleteError;
 import com.fasterxml.jackson.databind.JsonNode;
+import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import java.util.List;
 import java.util.ArrayList;
@@ -39,6 +40,11 @@ public class AWSUtil {
 
   // This method is a way to check if given S3 config can extract objects.
   public static Boolean canCredentialListObjects(JsonNode configData, List<String> locations) {
+    if (CollectionUtils.isEmpty(locations)
+        || (configData.has("IAM_INSTANCE_PROFILE")
+            && configData.get("IAM_INSTANCE_PROFILE").asBoolean(false) == true)) {
+      return true;
+    }
     for (String location : locations) {
       try {
         AmazonS3 s3Client = createS3Client(configData);

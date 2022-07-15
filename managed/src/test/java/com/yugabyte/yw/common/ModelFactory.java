@@ -237,6 +237,26 @@ public class ModelFactory {
     return CustomerConfig.createWithFormData(customer.uuid, formData);
   }
 
+  public static JsonNode getS3ConfigFormData(String configName) {
+    return Json.parse(
+        "{\"configName\": \""
+            + configName
+            + "\", \"name\": \"S3\","
+            + " \"type\": \"STORAGE\", \"data\": {\"BACKUP_LOCATION\": \"s3://foo\","
+            + " \"AWS_ACCESS_KEY_ID\": \"A-KEY\", \"AWS_SECRET_ACCESS_KEY\": \"A-SECRET\"}}");
+  }
+
+  public static CustomerConfig createS3StorageConfigWithIAM(Customer customer, String configName) {
+    JsonNode formData =
+        Json.parse(
+            "{\"configName\": \""
+                + configName
+                + "\", \"name\": \"S3\","
+                + " \"type\": \"STORAGE\", \"data\": {\"BACKUP_LOCATION\": \"s3://foo\","
+                + " \"IAM_INSTANCE_PROFILE\": \"true\"}}");
+    return CustomerConfig.createWithFormData(customer.uuid, formData);
+  }
+
   public static CustomerConfig createNfsStorageConfig(Customer customer, String configName) {
     JsonNode formData =
         Json.parse(

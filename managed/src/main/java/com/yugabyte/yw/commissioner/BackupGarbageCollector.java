@@ -168,11 +168,34 @@ public class BackupGarbageCollector {
         try {
           switch (customerConfig.name) {
             case S3:
-              backupLocations = backupUtil.getBackupLocations(backup);
-              AWSUtil.deleteKeyIfExists(customerConfig.data, backupLocations.get(0));
-              AWSUtil.deleteStorage(customerConfig.data, backupLocations);
-              backup.delete();
-              log.info("Backup {} is successfully deleted", backupUUID);
+              if (customerConfig.data.has("IAM_INSTANCE_PROFILE")
+                  && (customerConfig.data.get("IAM_INSTANCE_PROFILE").asBoolean(false) == true)) {
+                if (isUniversePresent(backup)) {
+                  BackupTableParams backupParams = backup.getBackupInfo();
+                  List<BackupTableParams> backupList =
+                      backupParams.backupList == null
+                          ? ImmutableList.of(backupParams)
+                          : backupParams.backupList;
+                  boolean success = deleteScriptBackup(backupList);
+                  if (success) {
+                    backup.delete();
+                    log.info("Backup {} is successfully deleted", backupUUID);
+                  } else {
+                    backup.transitionState(BackupState.FailedToDelete);
+                  }
+                } else {
+                  backup.transitionState(BackupState.FailedToDelete);
+                  log.info(
+                      "Cannot delete S3 IAM Backup {} as universe is not present",
+                      backup.backupUUID);
+                }
+              } else {
+                backupLocations = backupUtil.getBackupLocations(backup);
+                AWSUtil.deleteKeyIfExists(customerConfig.data, backupLocations.get(0));
+                AWSUtil.deleteStorage(customerConfig.data, backupLocations);
+                backup.delete();
+                log.info("Backup {} is successfully deleted", backupUUID);
+              }
               break;
             case GCS:
               backupLocations = backupUtil.getBackupLocations(backup);
@@ -195,7 +218,7 @@ public class BackupGarbageCollector {
                     backupParams.backupList == null
                         ? ImmutableList.of(backupParams)
                         : backupParams.backupList;
-                if (deleteNFSBackup(backupList)) {
+                if (deleteScriptBackup(backupList)) {
                   backup.delete();
                   log.info("Backup {} is successfully deleted", backupUUID);
                 } else {
@@ -238,17 +261,17 @@ public class BackupGarbageCollector {
     return universe.isPresent();
   }
 
-  private boolean deleteNFSBackup(List<BackupTableParams> backupList) {
+  private boolean deleteScriptBackup(List<BackupTableParams> backupList) {
     boolean success = true;
     for (BackupTableParams childBackupParams : backupList) {
-      if (!deleteChildNFSBackups(childBackupParams)) {
+      if (!deleteChildScriptBackups(childBackupParams)) {
         success = false;
       }
     }
     return success;
   }
 
-  private boolean deleteChildNFSBackups(BackupTableParams backupTableParams) {
+  private boolean deleteChildScriptBackups(BackupTableParams backupTableParams) {
     ShellResponse response = tableManagerYb.deleteBackup(backupTableParams);
     JsonNode jsonNode = null;
     try {
@@ -269,7 +292,7 @@ public class BackupGarbageCollector {
           jsonNode.has("error"));
       return false;
     } else {
-      log.info("NFS Backup deleted successfully STDOUT: " + response.message);
+      log.info("Backup deleted successfully STDOUT: " + response.message);
       return true;
     }
   }
