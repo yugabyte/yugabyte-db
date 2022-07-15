@@ -35,17 +35,12 @@ To create a Sandbox cluster:
 
 1. On the **Clusters** page, click **Add Cluster** to start the **Create Cluster** wizard.
 
-1. Select **Sandbox** and click **Choose** to display the **General Settings** page.
+1. Select **Sandbox** and click **Choose**.
 
 1. Set the following options:
 
     - **Cluster Name**: Enter a name for the cluster.
     - **Provider**: Choose a cloud provider - AWS or GCP.
-
-1. Click **Next** to display the **Cluster Setup** page.
-
-1. Set the following option:
-
     - **Region**: Choose the Region where the cluster will be located.
 
 1. Click **Next** to display the **DB Credentials** page.
