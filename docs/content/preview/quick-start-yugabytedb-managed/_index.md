@@ -60,7 +60,9 @@ To create your Sandbox cluster:
 
 1. Select Sandbox and click **Choose**.
 
-1. Enter a name for the cluster, choose the cloud provider (AWS or GCP), and choose the region in which to deploy the cluster, then click **Next**.
+1. Enter a name for the cluster, choose the cloud provider (AWS or GCP), then click **Next**.
+
+1. Select **Choose a region and size your cluster**, choose the region in which to deploy the cluster, then click **Next**.
 
     <!-- 1. Click **Add Current IP Address**. The IP address of your machine is added to the IP allow list. This allows you to connect to your sandbox cluster from applications and your desktop after it is created.
 
