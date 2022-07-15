@@ -239,7 +239,7 @@ void MasterPathHandlers::CallIfLeaderOrPrintRedirect(
     SCOPED_LEADER_SHARED_LOCK(l, master_->catalog_manager_impl());
 
     // If we are not the master leader, redirect the URL.
-    if (!l.first_failed_status().ok()) {
+    if (!l.IsInitializedAndIsLeader()) {
       RedirectToLeader(req, resp);
       return;
     }
@@ -1573,7 +1573,7 @@ void MasterPathHandlers::RootHandler(const Webserver::WebRequest& req,
   // First check if we are the master leader. If not, make a curl call to the master leader and
   // return that as the UI payload.
   SCOPED_LEADER_SHARED_LOCK(l, master_->catalog_manager_impl());
-  if (!l.first_failed_status().ok()) {
+  if (!l.IsInitializedAndIsLeader()) {
     // We are not the leader master, retrieve the response from the leader master.
     RedirectToLeader(req, resp);
     return;
@@ -2000,13 +2000,13 @@ void MasterPathHandlers::HandleCheckIfLeader(const Webserver::WebRequest& req,
     SCOPED_LEADER_SHARED_LOCK(l, master_->catalog_manager_impl());
 
     // If we are not the master leader.
-    if (!l.first_failed_status().ok()) {
+    if (!l.IsInitializedAndIsLeader()) {
       resp->code = 503;
       return;
     }
 
     jw.String("STATUS");
-    jw.String(l.leader_status().CodeAsString());
+    jw.String(Status().CodeAsString());
     jw.EndObject();
     return;
   }

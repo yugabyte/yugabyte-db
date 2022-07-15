@@ -70,7 +70,7 @@ void MasterServiceBase::HandleOnLeader(
     const char* function_name,
     HoldCatalogLock hold_catalog_lock) {
   ScopedLeaderSharedLock l(server_->catalog_manager_impl(), file_name, line_number, function_name);
-  if (FLAGS_TEST_timeout_non_leader_master_rpcs && !l.leader_status().ok()) {
+  if (FLAGS_TEST_timeout_non_leader_master_rpcs && !l.IsInitializedAndIsLeader()) {
     std::this_thread::sleep_until(rpc->GetClientDeadline());
   }
   if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, rpc)) {

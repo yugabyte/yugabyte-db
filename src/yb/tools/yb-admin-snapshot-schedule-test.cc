@@ -142,8 +142,8 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
 
   Status RestoreSnapshotSchedule(const std::string& schedule_id, Timestamp restore_at) {
     return WaitRestorationDone(
-        VERIFY_RESULT(
-            StartRestoreSnapshotSchedule(schedule_id, restore_at)), 40s * kTimeMultiplier);
+        VERIFY_RESULT(StartRestoreSnapshotSchedule(schedule_id, restore_at)),
+        40s * kTimeMultiplier);
   }
 
   Status WaitRestorationDone(const std::string& restoration_id, MonoDelta timeout) {
@@ -338,6 +338,7 @@ class YbAdminSnapshotScheduleTestWithYsql : public YbAdminSnapshotScheduleTest {
     opts->extra_tserver_flags.emplace_back("--ysql_num_shards_per_tserver=1");
     opts->extra_master_flags.emplace_back("--log_ysql_catalog_versions=true");
     opts->extra_master_flags.emplace_back("--vmodule=master_heartbeat_service=1");
+    opts->extra_master_flags.emplace_back("--consensus_rpc_timeout_ms=5000");
     opts->num_masters = 3;
   }
 
