@@ -340,7 +340,7 @@ public class AlertControllerTest extends FakeDBApplication {
         MetricKey.builder()
             .customerUuid(customer.getUuid())
             .name(PlatformMetrics.ALERT_MANAGER_CHANNEL_STATUS.getMetricName())
-            .targetUuid(createdChannel.getUuid())
+            .sourceUuid(createdChannel.getUuid())
             .build(),
         null);
   }
