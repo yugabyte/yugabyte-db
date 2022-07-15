@@ -30,13 +30,10 @@
 namespace yb {
 namespace rpc {
 
-class ConnectionContextWithCallId : public ConnectionContextBase {
+class ConnectionContextWithCallId : public ConnectionContextBase,
+                                    public InboundCall::CallProcessedListener {
  protected:
   ConnectionContextWithCallId();
-
-  InboundCall::CallProcessedListener call_processed_listener() {
-    return std::bind(&ConnectionContextWithCallId::CallProcessed, this, std::placeholders::_1);
-  }
 
   CHECKED_STATUS Store(InboundCall* call);
   void DumpPB(const DumpRunningRpcsRequestPB& req, RpcConnectionPB* resp) override;
@@ -52,7 +49,7 @@ class ConnectionContextWithCallId : public ConnectionContextBase {
 
   bool Idle(std::string* reason_not_idle = nullptr) override;
 
-  void CallProcessed(InboundCall* call);
+  void CallProcessed(InboundCall* call) override;
   void QueueResponse(const ConnectionPtr& conn, InboundCallPtr call) override;
 
   // Calls which have been received on the server and are currently
