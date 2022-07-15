@@ -74,7 +74,6 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
     mockConfig = mock(Config.class);
     return configureApplication(
             new GuiceApplicationBuilder()
-                .disable(SwaggerModule.class)
                 .disable(GuiceModule.class)
                 .configure(testDatabase())
                 .overrides(
