@@ -2790,36 +2790,39 @@ Status YbAdminSnapshotScheduleFailoverTests::ClusterRestartTest(bool replay_unco
   auto schedule_id = VERIFY_RESULT(PrepareCql());
   LOG(INFO) << "Snapshot schedule id " << schedule_id;
 
-  auto conn = VERIFY_RESULT(CqlConnect(client::kTableName.namespace_name()));
+  std::string restoration_id;
+  {
+    // Don't keep the CassandraSession open during the restart. Doing so exposes a data race inside
+    // the cassandra-cpp-driver library.
+    auto conn = VERIFY_RESULT(CqlConnect(client::kTableName.namespace_name()));
 
-  // Create a table with large number of tablets.
-  RETURN_NOT_OK(conn.ExecuteQueryFormat(
-      "CREATE TABLE $0 (key INT PRIMARY KEY, value TEXT) WITH TABLETS = 24",
-      client::kTableName.table_name()));
+    // Create a table with large number of tablets.
+    RETURN_NOT_OK(conn.ExecuteQueryFormat(
+        "CREATE TABLE $0 (key INT PRIMARY KEY, value TEXT) WITH TABLETS = 24",
+        client::kTableName.table_name()));
 
-  // Insert some data.
-  RETURN_NOT_OK(conn.ExecuteQueryFormat(
-      "INSERT INTO $0 (key, value) values (1, 'before')",
-      client::kTableName.table_name()));
+    // Insert some data.
+    RETURN_NOT_OK(conn.ExecuteQueryFormat(
+        "INSERT INTO $0 (key, value) values (1, 'before')", client::kTableName.table_name()));
 
-  LOG(INFO) << "Created Keyspace and table";
+    LOG(INFO) << "Created Keyspace and table";
 
-  // Record time for restoring.
-  Timestamp time(VERIFY_RESULT(WallClock()->Now()).time_point);
+    // Record time for restoring.
+    Timestamp time(VERIFY_RESULT(WallClock()->Now()).time_point);
 
-  // Drop the table.
-  RETURN_NOT_OK(conn.ExecuteQueryFormat(
-      "DROP TABLE $0", client::kTableName.table_name()));
-  LOG(INFO) << "Dropped the table";
+    // Drop the table.
+    RETURN_NOT_OK(conn.ExecuteQueryFormat("DROP TABLE $0", client::kTableName.table_name()));
+    LOG(INFO) << "Dropped the table";
 
-  // Now start restore to the noted time. Since the RPCs are slow, we can restart
-  // the cluster in the meantime.
-  RETURN_NOT_OK(
-      cluster_->SetFlagOnMasters("TEST_delay_sys_catalog_restore_on_followers_secs", "2"));
-  auto restoration_id = VERIFY_RESULT(StartRestoreSnapshotSchedule(schedule_id, time));
+    // Now start restore to the noted time. Since the RPCs are slow, we can restart
+    // the cluster in the meantime.
+    RETURN_NOT_OK(
+        cluster_->SetFlagOnMasters("TEST_delay_sys_catalog_restore_on_followers_secs", "2"));
+    restoration_id = VERIFY_RESULT(StartRestoreSnapshotSchedule(schedule_id, time));
 
-  // Wait for a second to flush.
-  SleepFor(MonoDelta::FromSeconds(1));
+    // Wait for a second to flush.
+    SleepFor(MonoDelta::FromSeconds(1));
+  }
 
   LOG(INFO) << "Now restarting cluster";
   cluster_->Shutdown();
@@ -2834,6 +2837,7 @@ Status YbAdminSnapshotScheduleFailoverTests::ClusterRestartTest(bool replay_unco
   RETURN_NOT_OK(WaitRestorationDone(restoration_id, 120s * kTimeMultiplier));
 
   // Validate data.
+  auto conn = VERIFY_RESULT(CqlConnect(client::kTableName.namespace_name()));
   auto select_expr = Format("SELECT * FROM $0", client::kTableName.table_name());
   auto rows = VERIFY_RESULT(conn.ExecuteAndRenderToString(select_expr));
   LOG(INFO) << "Data after restoration: " << rows;
