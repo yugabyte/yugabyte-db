@@ -22,30 +22,34 @@ type: docs
 
 [Diesel](https://diesel.rs/) is a safe, extensible object-relational mapping (ORM) tool and query builder for [Rust](https://www.rust-lang.org/). Diesel lets you create safe and composable abstractions over queries, and eliminates the possibility of incorrect database interactions at compile time. It's designed to be abstracted over, enabling you to write reusable code and think in terms of your problem domain.
 
-YugabyteDB's YSQL API is fully compatible with Diesel ORM for data persistence in Rust applications. This page provides details for getting started with Diesel ORM for connecting to YugabyteDB.
+YugabyteDB's YSQL API is fully compatible with Diesel ORM for data persistence in Rust applications.
 
-## Prerequisites
+## CRUD operations
 
-Ensure you have a recent version of [Rust](https://www.rust-lang.org/tools/install) and [Cargo](https://doc.rust-lang.org/cargo/getting-started/installation.html) installed.
+Learn how to establish a connection to a YugabyteDB database and begin basic CRUD operations using the steps on the [Build an application](../../../quick-start/build-apps/rust/ysql-diesel/) page under the Quick start section.
 
-## Create a new Rust-Diesel project
+The following sections break down the quick start example to demonstrate how to perform common tasks required for Rust application development using Diesel.
 
-1. Create a new project using the following command:
+### Step 1: Add the Diesel ORM dependency
+
+<!-- 1. Create a new project using the following command:
 
    ```shell
    $ cargo new --lib diesel_demo && cd diesel_demo
-   ```
+   ``` -->
 
-1. Add the following dependencies to the project's `Cargo.toml` file, in the `[dependencies]` section:
+Add the following dependencies to the project's `Cargo.toml` file, in the `[dependencies]` section:
 
-   ```toml
-   diesel = { version = "1.4.4", features = ["postgres"] }
-   dotenv = "0.15.0"
-   ```
+```toml
+diesel = { version = "1.4.4", features = ["postgres"] }
+dotenv = "0.15.0"
+```
+
+### Step 2: Set up the project and configure the database
 
 1. Install the Diesel command-line interface for PostgreSQL:
 
-   ```shell
+   ```sh
    $ cargo install diesel_cli --no-default-features --features postgres
    ```
 
@@ -57,19 +61,19 @@ Ensure you have a recent version of [Rust](https://www.rust-lang.org/tools/insta
 
 1. Execute the following command to finish setting up the project:
 
-   ```shell
+   ```sh
    $ diesel setup
    ```
 
    This creates an empty migrations directory that you can use to manage your schema. It also creates the `ysql_diesel` database.
 
-## Build the REST API
+### Step 3: Build the REST API
 
 Migrations allow you to evolve the database schema over time. Each migration can be applied via `up.sql`, or reverted via `down.sql`. To create a migration, do the following:
 
 1. Create an employee table using the following command:
 
-   ```shell
+   ```sh
    $ diesel migration generate create_employee
    ```
 
@@ -109,7 +113,7 @@ table! {
 
    {{</note>}}
 
-1. Create a file called `src/models.rs`, to contain the structure of data to be queried for Employee and data to be inserted for employee as a `NewEmployee`, and add the following code:
+1. Create a file called `src/models.rs`, to contain the structure of data to be queried for Employee and data to be inserted for employee as a new employee, and add the following code:
 
    ```rs
    use crate::schema::employee;
@@ -227,7 +231,7 @@ table! {
    }
    ```
 
-1. Create a rust file `show_employees.rs`, to prompts you to enter the number of employees to display employees information according to the order of employee IDs. Add the following code to the file:
+1. Create a rust file `show_employees.rs`, to display employees information according to the order of employee IDs. Add the following code to the file:
 
    ```rs
    extern crate diesel_demo;
@@ -279,11 +283,11 @@ table! {
    }
    ```
 
-## Run the APIs
+### Step 4: Run the APIs
 
 1. Run the following command to insert the data:
 
-   ```shell
+   ```sh
    $ cargo run --bin insert_employee
    ```
 
@@ -304,31 +308,34 @@ table! {
    Employee Inserted with id 1.
    ```
 
-1. Run the following command to output the data:
+### Step 5: Run the application and verify the results
 
-   ```shell
-   $ cargo run --bin  show_employees
-   ```
+Run the following command to output the data:
 
-   This prompts you to enter number of employees to display. Enter `2` and get the first two employees' data:
+```sh
+$ cargo run --bin  show_employees
+```
 
-   ```output
-   Displaying details of first 2 employees according to id:
+This prompts you to enter the number of employees to display. Enter `2` and get the first two employees' data:
 
-   1.
-   Employee id: 1
-   First Name: "John"
-   Last Name: "Smith"
-   Email: "jsmith@example.com"
+```output
+Displaying details of first 2 employees according to id:
+
+1.
+Employee id: 1
+First Name: "John"
+Last Name: "Smith"
+Email: "jsmith@example.com"
 
 
-   2.
-   Employee id: 2
-   First Name: "Tom"
-   Last Name: "Stewart"
-   Email: "tstewart@example.com"
-   ```
+2.
+Employee id: 2
+First Name: "Tom"
+Last Name: "Stewart"
+Email: "tstewart@example.com"
+```
 
 ## Next steps
 
-- Explore [Scaling applications](../../explore/linear-scalability/) with YugabyteDB.
+- Explore [Scaling applications](../../../explore/linear-scalability/) with YugabyteDB.
+- Learn how to [develop Rust applications with YugabyteDB Managed](../../../yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-rust/).
