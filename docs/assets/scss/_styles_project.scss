@@ -424,7 +424,7 @@ body:not(.td-home) .td-main main {
     color: #3176d9;
 
     i {
-      color: var(--theme-color);
+      color: $secondary;
       margin-left: 5px;
       font-size: 12px;
     }
