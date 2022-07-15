@@ -43,10 +43,7 @@ public class TransactionUtilTest extends PlatformGuiceApplicationBaseTest {
     mockConfig = mock(Config.class);
     when(mockConfig.getString(anyString())).thenReturn("");
     return super.configureApplication(
-            new GuiceApplicationBuilder()
-                .disable(SwaggerModule.class)
-                .disable(GuiceModule.class)
-                .configure(testDatabase()))
+            new GuiceApplicationBuilder().disable(GuiceModule.class).configure(testDatabase()))
         .overrides(
             bind(RuntimeConfigFactory.class)
                 .toInstance(new DummyRuntimeConfigFactoryImpl(mockConfig)))
