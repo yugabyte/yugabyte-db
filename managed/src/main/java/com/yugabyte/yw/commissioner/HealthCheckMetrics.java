@@ -13,10 +13,7 @@ package com.yugabyte.yw.commissioner;
 import static com.yugabyte.yw.common.metrics.MetricService.DEFAULT_METRIC_EXPIRY_SEC;
 import static com.yugabyte.yw.models.helpers.CommonUtils.nowPlusWithoutMillis;
 
-import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
-import com.google.inject.Inject;
-import com.google.inject.Singleton;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.HealthCheck.Details;
@@ -24,8 +21,6 @@ import com.yugabyte.yw.models.Metric;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
-import io.prometheus.client.CollectorRegistry;
-import io.prometheus.client.Gauge;
 import java.time.temporal.ChronoUnit;
 import java.util.Collections;
 import java.util.List;
@@ -33,10 +28,8 @@ import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
 
-@Singleton
 @Slf4j
 public class HealthCheckMetrics {
-  public static final String kUnivMetricName = "yb_univ_health_status";
   public static final String kUnivUUIDLabel = "univ_uuid";
   public static final String kUnivNameLabel = "univ_name";
   public static final String kCheckLabel = "check_name";
@@ -64,6 +57,7 @@ public class HealthCheckMetrics {
 
   public static final List<PlatformMetrics> HEALTH_CHECK_METRICS_WITHOUT_STATUS =
       ImmutableList.<PlatformMetrics>builder()
+          .add(PlatformMetrics.YB_UNIV_HEALTH_STATUS)
           .add(PlatformMetrics.HEALTH_CHECK_MASTER_DOWN)
           .add(PlatformMetrics.HEALTH_CHECK_MASTER_VERSION_MISMATCH)
           .add(PlatformMetrics.HEALTH_CHECK_MASTER_ERROR_LOGS)
@@ -88,32 +82,7 @@ public class HealthCheckMetrics {
           .addAll(HEALTH_CHECK_METRICS_WITHOUT_STATUS)
           .build();
 
-  private Gauge healthMetric;
-
-  @VisibleForTesting
-  HealthCheckMetrics(CollectorRegistry registry) {
-    this.initialize(registry);
-  }
-
-  @Inject
-  public HealthCheckMetrics() {
-    this(CollectorRegistry.defaultRegistry);
-  }
-
-  private void initialize(CollectorRegistry registry) {
-    try {
-      healthMetric =
-          Gauge.build(kUnivMetricName, "Boolean result of health checks")
-              .labelNames(kUnivUUIDLabel, kUnivNameLabel, kNodeLabel, kCheckLabel)
-              .register(registry);
-    } catch (IllegalArgumentException e) {
-      log.warn("Failed to build prometheus gauge for name: " + kUnivMetricName);
-    }
-  }
-
-  public Gauge getHealthMetric() {
-    return healthMetric;
-  }
+  private HealthCheckMetrics() {}
 
   public static PlatformMetrics getCountMetricByCheckName(String checkName, boolean isMaster) {
     switch (checkName) {
@@ -209,5 +178,21 @@ public class HealthCheckMetrics {
               return result;
             })
         .collect(Collectors.toList());
+  }
+
+  public static Metric buildLegacyNodeMetric(
+      Customer customer, Universe universe, String node, String checkName, Double value) {
+    return new Metric()
+        .setExpireTime(nowPlusWithoutMillis(DEFAULT_METRIC_EXPIRY_SEC, ChronoUnit.SECONDS))
+        .setType(Metric.Type.GAUGE)
+        .setName(PlatformMetrics.YB_UNIV_HEALTH_STATUS.getMetricName())
+        .setHelp("Boolean result of health checks")
+        .setCustomerUUID(customer.getUuid())
+        .setSourceUuid(universe.getUniverseUUID())
+        .setLabel(kUnivNameLabel, universe.name)
+        .setLabel(kUnivUUIDLabel, universe.getUniverseUUID().toString())
+        .setKeyLabel(kNodeLabel, node)
+        .setKeyLabel(kCheckLabel, checkName)
+        .setValue(value);
   }
 }

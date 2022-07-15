@@ -61,7 +61,6 @@ import com.yugabyte.yw.models.filters.MetricFilter;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import com.yugabyte.yw.models.helpers.TaskType;
-import io.prometheus.client.Gauge;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -166,8 +165,6 @@ public class HealthChecker {
 
   final ApplicationLifecycle lifecycle;
 
-  private final HealthCheckMetrics healthMetrics;
-
   private final NodeUniverseManager nodeUniverseManager;
 
   private volatile boolean shutdown;
@@ -183,8 +180,7 @@ public class HealthChecker {
       MetricService metricService,
       RuntimeConfigFactory runtimeConfigFactory,
       ApplicationLifecycle lifecycle,
-      NodeUniverseManager nodeUniverseManager,
-      HealthCheckMetrics healthMetrics) {
+      NodeUniverseManager nodeUniverseManager) {
     this(
         environment,
         actorSystem,
@@ -195,7 +191,6 @@ public class HealthChecker {
         metricService,
         runtimeConfigFactory,
         lifecycle,
-        healthMetrics,
         nodeUniverseManager,
         createUniverseExecutor(runtimeConfigFactory.globalRuntimeConf()),
         createNodeExecutor(runtimeConfigFactory.globalRuntimeConf()));
@@ -211,7 +206,6 @@ public class HealthChecker {
       MetricService metricService,
       RuntimeConfigFactory runtimeConfigFactory,
       ApplicationLifecycle lifecycle,
-      HealthCheckMetrics healthMetrics,
       NodeUniverseManager nodeUniverseManager,
       ExecutorService universeExecutor,
       ExecutorService nodeExecutor) {
@@ -224,7 +218,6 @@ public class HealthChecker {
     this.metricService = metricService;
     this.runtimeConfigFactory = runtimeConfigFactory;
     this.lifecycle = lifecycle;
-    this.healthMetrics = healthMetrics;
     this.universeExecutor = universeExecutor;
     this.nodeExecutor = nodeExecutor;
     this.nodeUniverseManager = nodeUniverseManager;
@@ -338,15 +331,10 @@ public class HealthChecker {
           // instead of user limit for file descriptors
           metrics.addAll(nodeCustomMetrics);
         }
-        if (null == healthMetrics.getHealthMetric()) {
-          continue;
-        }
 
-        Gauge.Child prometheusVal =
-            healthMetrics
-                .getHealthMetric()
-                .labels(u.universeUUID.toString(), u.name, node, checkName);
-        prometheusVal.set(checkResult ? 1 : 0);
+        Metric healthCheckStatusMetric =
+            HealthCheckMetrics.buildLegacyNodeMetric(c, u, node, checkName, checkResult ? 1D : 0D);
+        metrics.add(healthCheckStatusMetric);
       }
 
       healthScriptMetrics.addAll(
@@ -837,9 +825,21 @@ public class HealthChecker {
     List<NodeData> result = new ArrayList<>();
 
     for (NodeInfo nodeInfo : nodes) {
+      NodeData nodeStatus =
+          new NodeData()
+              .setNode(nodeInfo.nodeHost)
+              .setNodeName(nodeInfo.nodeName)
+              .setMessage("Node")
+              .setTimestamp(new Date());
       try {
         CompletableFuture<Details> future = nodeChecks.get(nodeInfo.getNodeName());
         result.addAll(future.get().getData());
+        result.add(
+            nodeStatus
+                .setDetails(Collections.singletonList("Node check succeeded"))
+                // We do not want this check to be displayed, unless node check fails.
+                .setMetricsOnly(true)
+                .setHasError(false));
       } catch (Exception e) {
         // In case error comes from python script - we're getting python wrapper output.
         // Let's remove it for readability
@@ -858,12 +858,8 @@ public class HealthChecker {
                 + ":"
                 + message);
         result.add(
-            new NodeData()
-                .setNode(nodeInfo.nodeHost)
-                .setNodeName(nodeInfo.nodeName)
-                .setMessage("Node")
+            nodeStatus
                 .setDetails(Collections.singletonList("Error: " + message))
-                .setTimestamp(new Date())
                 .setHasError(true));
       }
     }
