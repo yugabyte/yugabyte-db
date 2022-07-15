@@ -500,53 +500,61 @@ static Datum make_scalar_key(const agtype_value *scalarVal, bool is_key)
     char buf[MAXINT8LEN + 1];
     switch (scalarVal->type)
     {
-        case AGTV_NULL:
-            Assert(!is_key);
-            item = make_text_key(AGT_GIN_FLAG_NULL, "", 0);
-            break;
-        case AGTV_INTEGER:
-            Assert(!is_key);
-            pg_lltoa(scalarVal->val.int_value, buf);
-            item = make_text_key(AGT_GIN_FLAG_NUM, buf, MAXINT8LEN + 1);
-            break;
-        case AGTV_FLOAT:
-            Assert(!is_key);
-            cstr = float8out_internal(scalarVal->val.float_value);
-            item = make_text_key(AGT_GIN_FLAG_NUM, cstr, strlen(cstr));
-            break;
-        case AGTV_BOOL:
-            Assert(!is_key);
-            item = make_text_key(AGT_GIN_FLAG_BOOL,
-                                 scalarVal->val.boolean ? "t" : "f", 1);
-            break;
-        case AGTV_NUMERIC:
-            Assert(!is_key);
-            /*
-             * A normalized textual representation, free of trailing zeroes,
-             * is required so that numerically equal values will produce equal
-             * strings.
-             *
-             * It isn't ideal that numerics are stored in a relatively bulky
-             * textual format.  However, it's a notationally convenient way of
-             * storing a "union" type in the GIN B-Tree, and indexing Jsonb
-             * strings takes precedence.
-             */
-            cstr = numeric_normalize(scalarVal->val.numeric);
-            item = make_text_key(AGT_GIN_FLAG_NUM, cstr, strlen(cstr));
-            pfree(cstr);
-            break;
-        case AGTV_STRING:
-            item = make_text_key(is_key ? AGT_GIN_FLAG_KEY : AGT_GIN_FLAG_STR,
-                                 scalarVal->val.string.val,
-                                 scalarVal->val.string.len);
-            break;
-        case AGTV_VERTEX:
-        case AGTV_EDGE:
-        case AGTV_PATH:
-            elog(ERROR, "agtype type: %d is not a scalar", scalarVal->type);
-        default:
-            elog(ERROR, "unrecognized agtype type: %d", scalarVal->type);
-            break;
+    case AGTV_NULL:
+        Assert(!is_key);
+        item = make_text_key(AGT_GIN_FLAG_NULL, "", 0);
+        break;
+    case AGTV_INTEGER:
+    {
+        char *result;
+
+        Assert(!is_key);
+
+        pg_lltoa(scalarVal->val.int_value, buf);
+
+        result = pstrdup(buf);
+        item = make_text_key(AGT_GIN_FLAG_NUM, result, strlen(result));
+        break;
+    }
+    case AGTV_FLOAT:
+        Assert(!is_key);
+        cstr = float8out_internal(scalarVal->val.float_value);
+        item = make_text_key(AGT_GIN_FLAG_NUM, cstr, strlen(cstr));
+        break;
+    case AGTV_BOOL:
+        Assert(!is_key);
+        item = make_text_key(AGT_GIN_FLAG_BOOL,
+                             scalarVal->val.boolean ? "t" : "f", 1);
+        break;
+    case AGTV_NUMERIC:
+        Assert(!is_key);
+        /*
+         * A normalized textual representation, free of trailing zeroes,
+         * is required so that numerically equal values will produce equal
+         * strings.
+         *
+         * It isn't ideal that numerics are stored in a relatively bulky
+         * textual format.  However, it's a notationally convenient way of
+         * storing a "union" type in the GIN B-Tree, and indexing Jsonb
+         * strings takes precedence.
+         */
+        cstr = numeric_normalize(scalarVal->val.numeric);
+        item = make_text_key(AGT_GIN_FLAG_NUM, cstr, strlen(cstr));
+        pfree(cstr);
+        break;
+    case AGTV_STRING:
+        item = make_text_key(is_key ? AGT_GIN_FLAG_KEY : AGT_GIN_FLAG_STR,
+                             scalarVal->val.string.val,
+                             scalarVal->val.string.len);
+        break;
+    case AGTV_VERTEX:
+    case AGTV_EDGE:
+    case AGTV_PATH:
+        elog(ERROR, "agtype type: %d is not a scalar", scalarVal->type);
+        break;
+    default:
+        elog(ERROR, "unrecognized agtype type: %d", scalarVal->type);
+        break;
     }
 
     return item;

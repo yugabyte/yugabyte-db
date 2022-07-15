@@ -6,6 +6,7 @@ SET search_path TO ag_catalog;
 SET enable_mergejoin = ON;
 SET enable_hashjoin = ON;
 SET enable_nestloop = ON;
+SET enable_seqscan = false;
 
 SELECT create_graph('cypher_index');
 
@@ -131,19 +132,19 @@ SELECT * FROM cypher('cypher_index', $$ MATCH(n) DETACH DELETE n $$) AS (a agtyp
  * Section 2: Graphid Indices to Improve Join Performance
  */
 SELECT * FROM cypher('cypher_index', $$
-    CREATE (us:Country {name: "United States"}),
-        (ca:Country {name: "Canada"}),
-        (mx:Country {name: "Mexico"}),
-        (us)<-[:has_city]-(:City {name:"New York", country_code:"US"}),
-        (us)<-[:has_city]-(:City {name:"San Fransisco", country_code:"US"}),
-        (us)<-[:has_city]-(:City {name:"Los Angeles", country_code:"US"}),
-        (us)<-[:has_city]-(:City {name:"Seattle", country_code:"US"}),
-        (ca)<-[:has_city]-(:City {name:"Vancouver", country_code:"CA"}),
-        (ca)<-[:has_city]-(:City {name:"Toroto", country_code:"CA"}),
-        (ca)<-[:has_city]-(:City {name:"Montreal", country_code:"CA"}),
-        (mx)<-[:has_city]-(:City {name:"Mexico City", country_code:"MX"}),
-        (mx)<-[:has_city]-(:City {name:"Monterrey", country_code:"MX"}),
-        (mx)<-[:has_city]-(:City {name:"Tijuana", country_code:"MX"})
+    CREATE (us:Country {name: "United States", country_code: "US", life_expectancy: 78.79, gdp: 20.94::numeric}),
+        (ca:Country {name: "Canada", country_code: "CA", life_expectancy: 82.05, gdp: 1.643::numeric}),
+        (mx:Country {name: "Mexico", country_code: "MX", life_expectancy: 75.05, gdp: 1.076::numeric}),
+        (us)<-[:has_city]-(:City {city_id: 1, name:"New York", west_coast: false, country_code:"US"}),
+        (us)<-[:has_city]-(:City {city_id: 2, name:"San Fransisco", west_coast: true, country_code:"US"}),
+        (us)<-[:has_city]-(:City {city_id: 3, name:"Los Angeles", west_coast: true, country_code:"US"}),
+        (us)<-[:has_city]-(:City {city_id: 4, name:"Seattle", west_coast: true, country_code:"US"}),
+        (ca)<-[:has_city]-(:City {city_id: 5, name:"Vancouver", west_coast: true, country_code:"CA"}),
+        (ca)<-[:has_city]-(:City {city_id: 6, name:"Toroto", west_coast: false, country_code:"CA"}),
+        (ca)<-[:has_city]-(:City {city_id: 7, name:"Montreal", west_coast: false, country_code:"CA"}),
+        (mx)<-[:has_city]-(:City {city_id: 8, name:"Mexico City", west_coast: false, country_code:"MX"}),
+        (mx)<-[:has_city]-(:City {city_id: 9, name:"Monterrey", west_coast: false, country_code:"MX"}),
+        (mx)<-[:has_city]-(:City {city_id: 10, name:"Tijuana", west_coast: false, country_code:"MX"})
 $$) as (n agtype);
 
 ALTER TABLE cypher_index."Country" ADD PRIMARY KEY (id);
@@ -201,16 +202,40 @@ SET enable_nestloop = ON;
 --
 -- Section 3: Agtype GIN Indices to Improve WHERE clause Performance
 --
-CREATE INDEX load_city_gid_idx
+CREATE INDEX load_city_gin_idx
 ON cypher_index."City" USING gin (properties);
 
-SELECT COUNT(*) FROM cypher('cypher_index', $$
-    MATCH (c:City {country_code: "AD"})
+CREATE INDEX load_country_gin_idx
+ON cypher_index."Country" USING gin (properties);
+
+
+SELECT * FROM cypher('cypher_index', $$
+    MATCH (c:City {city_id: 1})
     RETURN c
 $$) as (n agtype);
 
-DROP INDEX load_city_gid_idx;
+SELECT * FROM cypher('cypher_index', $$
+    MATCH (:Country {country_code: "US"})<-[]-(city:City)
+    RETURN city
+$$) as (n agtype);
 
+SELECT * FROM cypher('cypher_index', $$
+    MATCH (c:City {west_coast: true})
+    RETURN c
+$$) as (n agtype);
+
+SELECT * FROM cypher('cypher_index', $$
+    MATCH (c:Country {life_expectancy: 82.05})
+    RETURN c
+$$) as (n agtype);
+
+SELECT * FROM cypher('cypher_index', $$
+    MATCH (c:Country {gdp: 20.94::numeric})
+    RETURN c
+$$) as (n agtype);
+
+DROP INDEX cypher_index.load_city_gin_idx;
+DROP INDEX cypher_index.load_country_gin_idx;
 --
 -- Section 4: Index use with WHERE clause
 --
