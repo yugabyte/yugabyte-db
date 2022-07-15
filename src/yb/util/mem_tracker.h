@@ -362,6 +362,9 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
   std::string LogUsage(
       const std::string& prefix = "", int64_t usage_threshold = 0, int indent = 0) const;
 
+  // Logs the hard and soft memory limits. Does not include children.
+  void LogMemoryLimits() const;
+
   void EnableLogging(bool enable, bool log_stack) {
     enable_logging_ = enable;
     log_stack_ = log_stack;
