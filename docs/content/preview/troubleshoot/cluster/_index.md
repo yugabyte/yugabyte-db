@@ -1,7 +1,7 @@
 ---
-title: Cluster level issues
-linkTitle: Cluster level issues
-description: Cluster level issues
+title: Cluster-level issues
+linkTitle: Cluster-level issues
+description: Cluster-level issues
 image: /images/section_icons/quick_start/create_cluster.png
 headcontent: Diagnostics and solutions for typical YugabyteDB cluster issues.
 aliases:
@@ -19,10 +19,10 @@ type: indexpage
     <a class="section-link icon-offset" href="connect-ycql/">
       <div class="head">
         <img class="icon" src="/images/section_icons/troubleshoot/troubleshoot.png" aria-hidden="true" />
-        <div class="title">Cannot connect to YCQL API</div>
+        <div class="title">YCQL API connection problems</div>
       </div>
       <div class="body">
-        Troubleshoot connecting to the Cassandra-compatible YCQL API service.
+        Troubleshoot issues related to connecting to the Cassandra-compatible YCQL API service.
       </div>
     </a>
   </div>
@@ -31,10 +31,10 @@ type: indexpage
     <a class="section-link icon-offset" href="connect-yedis/">
       <div class="head">
         <img class="icon" src="/images/section_icons/troubleshoot/troubleshoot.png" aria-hidden="true" />
-        <div class="title">Cannot connect to YEDIS API</div>
+        <div class="title">YEDIS API connection problems</div>
       </div>
       <div class="body">
-        Troubleshoot connecting to the Redis-compatible YEDIS API service.
+        Troubleshoot issues related to connecting to the Redis-compatible YEDIS API service.
       </div>
     </a>
   </div>
@@ -45,10 +45,10 @@ type: indexpage
     <a class="section-link icon-offset" href="recover_server/">
       <div class="head">
         <img class="icon" src="/images/section_icons/troubleshoot/troubleshoot.png" aria-hidden="true" />
-        <div class="title">Recover failed tserver/master/node</div>
+        <div class="title">Recover failed T-Server, Master, and node</div>
       </div>
       <div class="body">
-        Recovering failed nodes to get the cluster back on optimal settings.
+        Recover failed nodes to get the cluster back on optimal settings.
       </div>
     </a>
   </div>
