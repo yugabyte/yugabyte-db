@@ -67,8 +67,27 @@
       owner: "{{ create_user.name }}"
       group: "{{ create_user.group | default(omit) }}"
     when: home_stat.stat.isdir is defined
-  when: user_existence_check_result.rc != 0
   tags: yb-prebuilt-ami
+
+- name: Make authorized directory
+  file:
+    path: "{{ create_user.home_dir }}/.ssh2/authorized_keys"
+    state: directory
+    mode: 0700
+    owner: "{{ create_user.name  }}"
+    group: "{{ create_user.group  }}"
+  when: ssh_type == "ssh2"
+
+- name: Allow AMI building to connect as yugabyte
+  copy:
+    remote_src: yes
+    src: "/home/{{ ssh_user }}/.ssh2/authorized_keys"
+    dest: "/home/{{ create_user.name }}/.ssh2"
+    owner: "{{ create_user.group }}"
+    mode: 0400
+  become: yes
+  tags: yb-prebuilt-ami
+  when: ssh_type == "ssh2"
 
 - name: Allow AMI building to connect as yugabyte
   copy:
@@ -79,6 +98,7 @@
     mode: 0400
   become: yes
   tags: yb-prebuilt-ami
+  when: ssh_type != "ssh2"
 
 - name: "Setup {{ create_user.name }} ssh"
   include: setup-ssh.yml
