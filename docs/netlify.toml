@@ -172,6 +172,11 @@
 # since archiving from /preview removes aliases
 
 [[redirects]]
+  from = "/stable/quick-start/"
+  to = "/preview/quick-start//#install-yugabytedb"
+  force = true
+
+[[redirects]]
   from = "/stable/quick-start/install/"
   to = "/preview/quick-start/#install-yugabytedb"
   force = true
