@@ -140,7 +140,7 @@ public class AlertManagerTest extends FakeDBApplication {
             MetricKey.builder()
                 .customerUuid(defaultCustomer.getUuid())
                 .name(PlatformMetrics.ALERT_MANAGER_STATUS.getMetricName())
-                .targetUuid(defaultCustomer.getUuid())
+                .sourceUuid(defaultCustomer.getUuid())
                 .build(),
             1.0);
     Metric channelStatus =
@@ -149,7 +149,7 @@ public class AlertManagerTest extends FakeDBApplication {
             MetricKey.builder()
                 .customerUuid(defaultCustomer.getUuid())
                 .name(PlatformMetrics.ALERT_MANAGER_CHANNEL_STATUS.getMetricName())
-                .targetUuid(defaultChannel.getUuid())
+                .sourceUuid(defaultChannel.getUuid())
                 .build(),
             1.0);
   }
@@ -171,7 +171,7 @@ public class AlertManagerTest extends FakeDBApplication {
             MetricKey.builder()
                 .customerUuid(defaultCustomer.getUuid())
                 .name(PlatformMetrics.ALERT_MANAGER_CHANNEL_STATUS.getMetricName())
-                .targetUuid(defaultChannel.getUuid())
+                .sourceUuid(defaultChannel.getUuid())
                 .build(),
             0.0);
   }
@@ -264,7 +264,7 @@ public class AlertManagerTest extends FakeDBApplication {
             MetricKey.builder()
                 .customerUuid(defaultCustomer.getUuid())
                 .name(PlatformMetrics.ALERT_MANAGER_STATUS.getMetricName())
-                .targetUuid(defaultCustomer.getUuid())
+                .sourceUuid(defaultCustomer.getUuid())
                 .build(),
             0.0);
 
@@ -281,7 +281,7 @@ public class AlertManagerTest extends FakeDBApplication {
             MetricKey.builder()
                 .customerUuid(defaultCustomer.getUuid())
                 .name(PlatformMetrics.ALERT_MANAGER_STATUS.getMetricName())
-                .targetUuid(defaultCustomer.getUuid())
+                .sourceUuid(defaultCustomer.getUuid())
                 .build(),
             1.0);
   }
