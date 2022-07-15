@@ -16,7 +16,7 @@ The `BOOLEAN` data type represents three different states: `TRUE`, `FALSE`, or `
 
 ## Description
 
-```
+```ebnf
 type_specification ::= { BOOLEAN | BOOL }
 literal ::= { TRUE | true | 't' | 'y' | 'yes' | 'on' | 1 |
               FALSE | false | 'f' | 'n' | 'no' | 'off' | 0 }

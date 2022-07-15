@@ -144,7 +144,8 @@ Result<boost::optional<SubDocument>> TEST_GetSubDocument(
                   iter->read_time().ToString());
   iter->SeekToLastDocKey();
   SchemaPackingStorage schema_packing_storage;
-  DocDBTableReader doc_reader(iter.get(), deadline, projection, schema_packing_storage);
+  DocDBTableReader doc_reader(
+      iter.get(), deadline, projection, TableType::YQL_TABLE_TYPE, schema_packing_storage);
   RETURN_NOT_OK(doc_reader.UpdateTableTombstoneTime(sub_doc_key));
 
   iter->Seek(sub_doc_key);
@@ -158,10 +159,12 @@ Result<boost::optional<SubDocument>> TEST_GetSubDocument(
 DocDBTableReader::DocDBTableReader(
     IntentAwareIterator* iter, CoarseTimePoint deadline,
     const std::vector<KeyEntryValue>* projection,
+    TableType table_type,
     std::reference_wrapper<const SchemaPackingStorage> schema_packing_storage)
     : iter_(iter),
       deadline_info_(deadline),
       projection_(projection),
+      table_type_(table_type),
       schema_packing_storage_(schema_packing_storage) {
   if (projection_) {
     auto projection_size = projection_->size();
@@ -355,9 +358,8 @@ class DocDBTableReader::GetHelper {
       }
     }
 
-    if (!packed_column_data_ || packed_column_data_.row->doc_ht < key_result.write_time) {
-      RETURN_NOT_OK(ProcessEntry(
-         subkeys, reader_.iter_->value(), key_result.write_time, check_exist_only));
+    if (VERIFY_RESULT(ProcessEntry(
+            subkeys, reader_.iter_->value(), key_result.write_time, check_exist_only))) {
       packed_column_data_.row = nullptr;
     }
     if (check_exist_only && Found()) {
@@ -382,14 +384,15 @@ class DocDBTableReader::GetHelper {
   }
 
   // Process DB entry.
-  Status ProcessEntry(
+  // Return true if entry value was accepted.
+  Result<bool> ProcessEntry(
       Slice subkeys, Slice value_slice, const DocHybridTime& write_time,
       CheckExistOnly check_exist_only) {
     subkeys = CleanupState(subkeys);
     if (state_.back().write_time >= write_time) {
       VLOG_WITH_PREFIX_AND_FUNC(4)
           << "State: " << AsString(state_) << ", write_time: " << write_time;
-      return Status::OK();
+      return false;
     }
     auto control_fields = VERIFY_RESULT(ValueControlFields::Decode(&value_slice));
     RETURN_NOT_OK(AllocateNewStateEntries(
@@ -427,21 +430,31 @@ class DocDBTableReader::GetHelper {
     return Status::OK();
   }
 
-  Status ApplyEntryValue(
+  // Return true if entry value was accepted.
+  Result<bool> ApplyEntryValue(
       const Slice& value_slice, const ValueControlFields& control_fields,
       CheckExistOnly check_exist_only) {
-    VLOG_WITH_FUNC(4)
+    VLOG_WITH_PREFIX_AND_FUNC(4)
         << "State: " << AsString(state_) << ", value: " << value_slice.ToDebugHexString();
     auto& current = state_.back();
-    if (!IsObsolete(current.expiration, reader_.iter_->read_time().read) &&
-        VERIFY_RESULT(TryDecodeValue(
-            reader_.iter_->read_time().read, control_fields, current.write_time.hybrid_time(),
-            current.expiration, value_slice, current.out))) {
-      last_found_ = column_index_;
-    } else if (!check_exist_only && state_.size() > (reader_.projection_ ? 2 : 1)) {
+    if (!IsObsolete(current.expiration, reader_.iter_->read_time().read)) {
+      if (VERIFY_RESULT(TryDecodeValue(
+              reader_.iter_->read_time().read, control_fields, current.write_time.hybrid_time(),
+              current.expiration, value_slice, current.out))) {
+        last_found_ = column_index_;
+        return true;
+      }
+      if (reader_.table_type_ == TableType::PGSQL_TABLE_TYPE) {
+        return false;
+      }
+    }
+
+    // When projection is specified we should always report projection columns, even when they are
+    // nulls.
+    if (!check_exist_only && state_.size() > (reader_.projection_ ? 2 : 1)) {
       state_[state_.size() - 2].out->DeleteChild(current.key_value);
     }
-    return Status::OK();
+    return true;
   }
 
   Result<bool> NextColumn() {
@@ -541,7 +554,7 @@ class DocDBTableReader::GetHelper {
       return PackedColumnData();
     }
 
-    VLOG_WITH_PREFIX_AND_FUNC(4) << "Packed row: " << slice->ToDebugHexString();
+    VLOG_WITH_PREFIX_AND_FUNC(4) << "Packed row " << column_id << ": " << slice->ToDebugHexString();
     return PackedColumnData {
       .row = &packed_row_data_,
       .encoded_value = slice->empty() ? NullSlice() : *slice,

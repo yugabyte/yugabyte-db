@@ -25,7 +25,7 @@ data_type_2_value A data_type_1_value
 
 The fact that one is legal does not imply that the other is. The legality of each is informed by its own mental model; and each requires its own test.
 
-The [start page](../../../type_datetime) of the overall _date-time_ section explains why _timetz_ is not covered. So there are five _date-time_ data types to consider here and therefore twenty-five overloads to test. (You can't assume that you can always compare values of the same data type. For example, if the data type represents the latitude and longitude of a location, then you can't ask which location is greater than the other.)
+The [start page](../../../type_datetime/) of the overall _date-time_ section explains why _timetz_ is not covered. So there are five _date-time_ data types to consider here and therefore twenty-five overloads to test. (You can't assume that you can always compare values of the same data type. For example, if the data type represents the latitude and longitude of a location, then you can't ask which location is greater than the other.)
 
 The following code implements all of the tests. The design of the code (it tests the legal comparisons and the illegal comparisons separately) was informed by _ad hoc_ tests during its development.
 

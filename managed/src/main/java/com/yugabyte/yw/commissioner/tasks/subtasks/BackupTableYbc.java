@@ -2,16 +2,12 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
-import play.libs.Json;
-
-import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
-
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.api.client.util.Throwables;
 import com.google.common.net.HostAndPort;
-import com.yugabyte.yw.commissioner.AbstractTaskBase;
+import com.yugabyte.yw.commissioner.YbcTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -45,12 +41,11 @@ import org.yb.ybc.BackupServiceTaskResultRequest;
 import org.yb.ybc.BackupServiceTaskResultResponse;
 import org.yb.ybc.BackupServiceTaskStage;
 import org.yb.ybc.ControllerStatus;
+import play.libs.Json;
 
 @Slf4j
-public class BackupTableYbc extends AbstractTaskBase {
+public class BackupTableYbc extends YbcTaskBase {
 
-  private final YbcClientService ybcService;
-  private final YbcBackupUtil ybcBackupUtil;
   private final YbcManager ybcManager;
   private YbcClient ybcClient;
   private long totalTimeTaken = 0L;
@@ -58,19 +53,13 @@ public class BackupTableYbc extends AbstractTaskBase {
   private String baseLogMessage = null;
   private String taskID = null;
 
-  // Time to wait (in millisec) between each poll to ybc.
-  private static final int WAIT_EACH_ATTEMPT_MS = 15000;
-  private static final int MAX_TASK_RETRIES = 10;
-
   @Inject
   public BackupTableYbc(
       BaseTaskDependencies baseTaskDependencies,
       YbcClientService ybcService,
       YbcBackupUtil ybcBackupUtil,
       YbcManager ybcManager) {
-    super(baseTaskDependencies);
-    this.ybcService = ybcService;
-    this.ybcBackupUtil = ybcBackupUtil;
+    super(baseTaskDependencies, ybcService, ybcBackupUtil);
     this.ybcManager = ybcManager;
   }
 
@@ -106,8 +95,17 @@ public class BackupTableYbc extends AbstractTaskBase {
                     "%s YB-controller returned non-zero exit status %s",
                     baseLogMessage, response.getStatus().getErrorMessage()));
           }
-          // Poll create backup progress on yb-controller and handle result
-          pollTaskProgress(tableParams);
+        } catch (PlatformServiceException e) {
+          log.error("{} Failed with error {}", baseLogMessage, e.getMessage());
+          Backup backup =
+              Backup.getOrBadRequest(taskParams().customerUuid, taskParams().backupUuid);
+          backup.transitionState(Backup.BackupState.Failed);
+          Throwables.propagate(e);
+        }
+
+        // Poll create backup progress on yb-controller and handle result
+        try {
+          pollTaskProgress(ybcClient, taskID);
           handleBackupResult(tableParams, idx);
         } catch (Exception e) {
           log.error("{} Failed with error {}", baseLogMessage, e.getMessage());
@@ -133,84 +131,6 @@ public class BackupTableYbc extends AbstractTaskBase {
       if (ybcClient != null) {
         ybcClient.close();
       }
-    }
-  }
-
-  /**
-   * Periodically poll task progress for create backup
-   *
-   * @param tableParams
-   */
-  private void pollTaskProgress(BackupTableParams tableParams) {
-
-    BackupServiceTaskProgressRequest backupServiceTaskProgressRequest =
-        ybcBackupUtil.createYbcBackupTaskProgressRequest(taskID);
-    boolean retriesExhausted = false;
-    while (true) {
-      BackupServiceTaskProgressResponse backupServiceTaskProgressResponse =
-          ybcClient.backupServiceTaskProgress(backupServiceTaskProgressRequest);
-
-      switch (backupServiceTaskProgressResponse.getTaskStatus()) {
-        case NOT_STARTED:
-          log.info(String.format("%s %s", baseLogMessage, ControllerStatus.NOT_STARTED.toString()));
-          break;
-        case IN_PROGRESS:
-          logProgressResponse(backupServiceTaskProgressResponse);
-          break;
-        case COMPLETE:
-        case OK:
-        case NOT_FOUND:
-          log.info(String.format("%s task complete.", baseLogMessage));
-          return;
-        default:
-          if (!retriesExhausted
-              && backupServiceTaskProgressResponse.getRetryCount() <= MAX_TASK_RETRIES) {
-            log.info(
-                "{} Number of retries {}",
-                baseLogMessage,
-                backupServiceTaskProgressResponse.getRetryCount());
-            log.error(
-                "{} Last error message: {}",
-                baseLogMessage,
-                backupServiceTaskProgressResponse.getTaskStatus().name());
-            retriesExhausted =
-                (backupServiceTaskProgressResponse.getRetryCount() >= MAX_TASK_RETRIES);
-            waitFor(Duration.ofMillis(WAIT_EACH_ATTEMPT_MS));
-            break;
-          }
-          throw new PlatformServiceException(
-              backupServiceTaskProgressResponse.getTaskStatus().getNumber(),
-              String.format(
-                  "%s Failed with error %s",
-                  baseLogMessage, backupServiceTaskProgressResponse.getTaskStatus().name()));
-      }
-      waitFor(Duration.ofMillis(WAIT_EACH_ATTEMPT_MS));
-    }
-  }
-
-  /**
-   * Logging progress response for UPLOAD stage
-   *
-   * @param progressResponse
-   */
-  private void logProgressResponse(BackupServiceTaskProgressResponse progressResponse) {
-    BackupServiceTaskStage taskStage = progressResponse.getStage();
-
-    log.info("{} Number of retries {}", baseLogMessage, progressResponse.getRetryCount());
-
-    log.info("{} Current task stage - {}", baseLogMessage, taskStage.name());
-
-    if (taskStage.equals(BackupServiceTaskStage.UPLOAD)) {
-      log.info(
-          "{} {} ops completed out of {} total",
-          baseLogMessage,
-          progressResponse.getCompletedOps(),
-          progressResponse.getTotalOps());
-      log.info("{} {} bytes transferred", baseLogMessage, progressResponse.getBytesTransferred());
-    }
-
-    if (taskStage.equals(BackupServiceTaskStage.TASK_COMPLETE)) {
-      log.info("{} Task is complete.", baseLogMessage);
     }
   }
 

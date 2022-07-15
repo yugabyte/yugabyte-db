@@ -152,7 +152,7 @@ This shortcode strips trailing whitespace from the input file.
 ````
 
 {{< tip >}}
-For more information on highlight options, see the [Hugo docs](https://gohugo.io/content-management/syntax-highlighting/#highlighting-in-code-fences)
+For more information on highlight options, see the Hugo docs on [highlighting in code fences](https://gohugo.io/content-management/syntax-highlighting/#highlighting-in-code-fences) and [supported syntax highlighting languages](https://gohugo.io/content-management/syntax-highlighting/#list-of-chroma-highlighting-languages).
 {{< /tip >}}
 
 ### includeFile

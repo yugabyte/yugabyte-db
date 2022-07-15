@@ -9,7 +9,7 @@ menu:
   stable:
     identifier: api-ysql-reserved-names
     parent: api-ysql
-    weight: 4600
+    weight: 600
 type: docs
 ---
 

@@ -1,29 +1,26 @@
 ---
-title: Using DBeaver with YugabyteDB YSQL
-headerTitle: Using DBeaver with YSQL
+title: Using DBeaver
 linkTitle: DBeaver
 description: Use the DBeaver multi-platform database tool to explore and query YugabyteDB.
 menu:
   stable:
-    identifier: dbeaver-ysql
+    identifier: dbeaver-1-ysql
     parent: tools
-    weight: 2710
+    weight: 40
 type: docs
 ---
-
-
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/preview/tools/dbeaver-ysql/" class="nav-link active">
+    <a href="../dbeaver-ysql/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
 
   <li >
-    <a href="/preview/tools/dbeaver-ycql/" class="nav-link">
+    <a href="../dbeaver-ycql/" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
@@ -33,7 +30,7 @@ type: docs
 
 [DBeaver](https://dbeaver.io/) is a free [open source](https://github.com/dbeaver/dbeaver) multi-platform, cross-platform database tool for developers, SQL programmers, and database administrators. DBeaver supports various databases including PostgreSQL, MariaDB, MySQL, YugabyteDB. In addition, there are plugins and extensions for other databases that support the JDBC driver. [DBeaver Enterprise Edition](https://dbeaver.com/) supports non-JDBC data sources and allows you to explore Yugabyte YCQL tables.
 
-![img](/images/develop/tools/dbeaver/dbeaver-view.png)
+![DBeaver](/images/develop/tools/dbeaver/dbeaver-view.png)
 
 ## Prerequisites
 
@@ -51,15 +48,15 @@ Before you can start using DBeaver with YSQL, you need to perform the following:
   - Download the distribution package for your OS from [DBeaver Downloads](https://dbeaver.io/download/).
   - Start the installation by following instructions in [DBeaver Installation](https://github.com/dbeaver/dbeaver/wiki/Installation).
 
-## Creating a YugabyteDB YSQL Connection
+## Create a YSQL connection
 
 You can create a connection as follows:
 
 - Launch DBeaver.
 - Navigate to **Database > New Connection** to open the **Connect to database** window shown in the following illustration.
-- In the **Select your databas**e list, select **YugabyteDB**, and then click **Next**.
-
-![img](/images/develop/tools/dbeaver/dbeaver-select-db.png)
+- In the **Select your database** list, select **YugabyteDB**, and then click **Next**.\
+\
+    ![DBeaver Select Database](/images/develop/tools/dbeaver/dbeaver-select-db.png)
 
 - Use **Connection Settings** to specify the following:
   - **Host**: localhost
@@ -69,14 +66,16 @@ You can create a connection as follows:
   - **Password**: leave blank if YSQL authentication is not enabled. If enabled, add the password for yugabyte (default is yugabyte).
   - Select **Show all databases**.
 
-- Click **Test Connection** to verify that the connection is successful, as shown in the following illustration:
-
-![img](/images/develop/tools/dbeaver/dbeaver-connected.png)
+- Click **Test Connection** to verify that the connection is successful, as shown in the following illustration:\
+\
+    ![DBeaver Test connection](/images/develop/tools/dbeaver/dbeaver-connected.png)
 
 DBeaver's **Database Navigator** should display **Yugabyte - localhost**.
 
 You can expand the list to see all databases available to the Yugabyte User, as shown in the following illustration:
 
-![img](/images/develop/tools/dbeaver/dbeaver-localhost.png)
+![DBeaver](/images/develop/tools/dbeaver/dbeaver-localhost.png)
 
-For sample databases to explore YugabyteDB using DBeaver, see [Sample data](/preview/sample-data/).
+## What's Next
+
+For sample databases to explore YugabyteDB using DBeaver, see [Sample datasets](/preview/sample-data/).

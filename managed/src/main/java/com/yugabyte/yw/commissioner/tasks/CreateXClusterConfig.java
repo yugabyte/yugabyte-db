@@ -8,6 +8,7 @@ import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.RestoreBackupParams;
 import com.yugabyte.yw.models.Backup;
+import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
@@ -191,7 +192,9 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
       // Restore to the target universe.
       RestoreBackupParams restoreBackupParams = getRestoreBackupParams(backupRequestParams, backup);
       createAllRestoreSubtasks(
-          restoreBackupParams, UserTaskDetails.SubTaskGroupType.RestoringBackup);
+          restoreBackupParams,
+          UserTaskDetails.SubTaskGroupType.RestoringBackup,
+          backup.category.equals(BackupCategory.YB_CONTROLLER));
       // Set the restore time for the tables in the DB.
       createSetRestoreTimeTask(tableIdsNeedBootstrap)
           .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.RestoringBackup);
@@ -399,6 +402,7 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
     restoreTaskParams.useTablespaces = backupRequestParams.useTablespaces;
     restoreTaskParams.parallelism = backupRequestParams.parallelism;
     restoreTaskParams.disableChecksum = backupRequestParams.disableChecksum;
+    restoreTaskParams.category = backup.category;
     // Set storage info.
     restoreTaskParams.backupStorageInfoList = new ArrayList<>();
     RestoreBackupParams.BackupStorageInfo backupStorageInfo =

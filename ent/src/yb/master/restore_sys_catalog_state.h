@@ -32,8 +32,6 @@
 namespace yb {
 namespace master {
 
-struct PgCatalogTableData;
-
 // Utility class to restore sys catalog.
 // Initially we load tables and tablets into it, then match schedule filter.
 class RestoreSysCatalogState {
@@ -161,26 +159,6 @@ class RestoreSysCatalogState {
   Objects restoring_objects_;
   Objects existing_objects_;
   RetainedExistingTables retained_existing_tables_;
-};
-
-class PgCatalogRestorePatch : public RestorePatch {
- public:
-  PgCatalogRestorePatch(
-      FetchState* existing_state, FetchState* restoring_state,
-      docdb::DocWriteBatch* doc_batch, const PgCatalogTableData& table,
-      tablet::TableInfo* pg_yb_catalog_meta)
-      : RestorePatch(existing_state, restoring_state, doc_batch),
-        table_(table), pg_yb_catalog_meta_(pg_yb_catalog_meta) {}
-
- private:
-  Status ProcessEqualEntries(
-      const Slice& existing_key, const Slice& existing_value,
-      const Slice& restoring_key, const Slice& restoring_value) override;
-
-  Result<bool> ShouldSkipEntry(const Slice& key, const Slice& value) override;
-
-  const PgCatalogTableData& table_;
-  tablet::TableInfo* pg_yb_catalog_meta_;
 };
 
 }  // namespace master

@@ -10,7 +10,6 @@ menu:
     parent: api-ysql-exprs
 type: indexpage
 ---
-
 If you are already familiar with aggregate functions, then you can skip straight to the [syntax and semantics](./invocation-syntax-semantics/) section or the section that lists all of [the YSQL aggregate functions](./function-syntax-semantics/) and that links, in turn, to the definitive account of each function.
 
 This page has only the [Synopsis](./#synopsis) section and the section [Organization of the aggregate functions documentation](./#organization-of-the-aggregate-functions-documentation) section.

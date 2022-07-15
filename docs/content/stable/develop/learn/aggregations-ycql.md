@@ -14,14 +14,14 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/preview/develop/learn/aggregations-ysql" class="nav-link">
+    <a href="../aggregations-ysql/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
 
   <li >
-    <a href="/preview/develop/learn/aggregations-ycql" class="nav-link active">
+    <a href="../aggregations-ycql/" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
@@ -67,7 +67,7 @@ INSERT INTO store.products (ProductID, ProductName, SupplierID, CategoryID, Unit
 ycqlsh> SELECT COUNT(ProductID) FROM store.products;
 ```
 
-```
+```output
  count(productid)
 ------------------
                 5
@@ -81,7 +81,7 @@ ycqlsh> SELECT COUNT(ProductID) FROM store.products;
 ycqlsh> SELECT COUNT(ProductID) as num_products FROM store.products;
 ```
 
-```
+```output
  num_products
 --------------
             5
@@ -97,7 +97,7 @@ You can do this as shown below.
 ycqlsh> SELECT COUNT(ProductID) as supplier1_num_products FROM store.products WHERE SupplierID=1;
 ```
 
-```
+```output
  supplier1_num_products
 ------------------------
                       3
@@ -115,7 +115,7 @@ The standard aggregate functions of `min`, `max`, `sum`, `avg` and `count` are b
 ycqlsh> SELECT SUM(Quantity) FROM store.products;
 ```
 
-```
+```output
  sum(quantity)
 ---------------
             96
@@ -129,7 +129,7 @@ ycqlsh> SELECT SUM(Quantity) FROM store.products;
 ycqlsh> SELECT MIN(Price), MAX(Price) FROM store.products;
 ```
 
-```
+```output
  min(price) | max(price)
 ------------+------------
          10 |         22
@@ -143,7 +143,7 @@ ycqlsh> SELECT MIN(Price), MAX(Price) FROM store.products;
 ycqlsh> SELECT AVG(price) FROM store.products;
 ```
 
-```
+```output
  system.avg(price)
 -------------------
              18.07

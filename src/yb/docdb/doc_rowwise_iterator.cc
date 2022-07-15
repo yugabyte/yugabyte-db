@@ -1212,6 +1212,7 @@ Status DocRowwiseIterator::Init(TableType table_type, const Slice& sub_doc_key) 
   db_iter_->Seek(row_key_);
   row_ready_ = false;
   has_bound_key_ = false;
+  table_type_ = table_type;
   if (table_type == TableType::PGSQL_TABLE_TYPE) {
     ignore_ttl_ = true;
   }
@@ -1329,12 +1330,14 @@ Status DocRowwiseIterator::DoInit(const T& doc_spec) {
 }
 
 Status DocRowwiseIterator::Init(const QLScanSpec& spec) {
-  return DoInit(dynamic_cast<const DocQLScanSpec&>(spec));
+  table_type_ = TableType::YQL_TABLE_TYPE;
+  return DoInit(down_cast<const DocQLScanSpec&>(spec));
 }
 
 Status DocRowwiseIterator::Init(const PgsqlScanSpec& spec) {
+  table_type_ = TableType::PGSQL_TABLE_TYPE;
   ignore_ttl_ = true;
-  return DoInit(dynamic_cast<const DocPgsqlScanSpec&>(spec));
+  return DoInit(down_cast<const DocPgsqlScanSpec&>(spec));
 }
 
 Status DocRowwiseIterator::AdvanceIteratorToNextDesiredRow() const {
@@ -1443,7 +1446,7 @@ Result<bool> DocRowwiseIterator::HasNext() const {
     }
     if (doc_reader_ == nullptr) {
       doc_reader_ = std::make_unique<DocDBTableReader>(
-          db_iter_.get(), deadline_, &projection_subkeys_,
+          db_iter_.get(), deadline_, &projection_subkeys_, table_type_,
           doc_read_context_.schema_packing_storage);
       RETURN_NOT_OK(doc_reader_->UpdateTableTombstoneTime(doc_key));
       if (!ignore_ttl_) {

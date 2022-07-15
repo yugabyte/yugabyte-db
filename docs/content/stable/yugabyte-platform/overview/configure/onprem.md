@@ -1,8 +1,8 @@
 ---
-title: Configure OnPrem
-headerTitle: Configure OnPrem
+title: Configure on-premises
+headerTitle: Configure on-premises
 linkTitle: Configure
-description: Configuring Yugabyte Platform on On-Premises
+description: Configuring YugabyteDB Anywhere on-premises
 image: /images/section_icons/deploy/enterprise.png
 menu:
   stable_yugabyte-platform:
@@ -12,40 +12,40 @@ menu:
 type: docs
 ---
 
-Select your cloud provider to see the steps for configuration of database nodes. Click on the elements to see detailed steps.
+For overview of how to configure database nodes, select one of the following cloud providers:
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li>
-    <a href="/preview/yugabyte-platform/overview/configure/aws" class="nav-link">
+    <a href="../aws/" class="nav-link">
       <i class="fab fa-aws"></i>
       AWS
     </a>
   </li>
 
   <li>
-    <a href="/preview/yugabyte-platform/overview/configure/gcp" class="nav-link">
+    <a href="../gcp/" class="nav-link">
       <i class="fab fa-google" aria-hidden="true"></i>
       GCP
     </a>
   </li>
 
   <li>
-    <a href="/preview/yugabyte-platform/overview/configure/azure" class="nav-link">
+    <a href="../azure/" class="nav-link">
       <i class="fab fa-windows" aria-hidden="true"></i>
       Azure
     </a>
   </li>
 
   <li>
-    <a href="/preview/yugabyte-platform/overview/configure/kubernetes" class="nav-link">
+    <a href="../kubernetes/" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
 
   <li>
-    <a href="/preview/yugabyte-platform/overview/configure/onprem" class="nav-link active">
+    <a href="../onprem/" class="nav-link active">
       <i class="fas fa-building"></i>
       On-premises
     </a>
@@ -53,10 +53,12 @@ Select your cloud provider to see the steps for configuration of database nodes.
 
 </ul>
 
+<br>Click elements of the following chart to access detailed steps:
+
 <img src="/images/ee/flowchart/yb-configure-onprem.png" usemap="#image-map">
 
 <map name="image-map">
-    <area target="_blank" alt="Configure yugabyte platform" title="Configure yugabyte platform" href="/preview/yugabyte-platform/configure-yugabyte-platform/" coords="378,60,520,198" shape="rect">
+    <area target="_blank" alt="Configure YugabyteDB Anywhere" title="Configure YugabyteDB Anywhere" href="/preview/yugabyte-platform/configure-yugabyte-platform/" coords="378,60,520,198" shape="rect">
     <area target="_blank" alt="Create admin user" title="Create admin user" href="/preview/yugabyte-platform/configure-yugabyte-platform/create-admin-user/" coords="296,260,607,320" shape="rect">
     <area target="_blank" alt="On prem cloud provider" title="On prem cloud provider" href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises/" coords="247,369,653,424" shape="rect">
     <area target="_blank" alt="configure on prem provider-1" title="configure on prem provider-1" href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises/#step-1-configure-the-on-premises-provider" coords="204,1230,425,1331" shape="rect">

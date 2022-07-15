@@ -26,7 +26,7 @@ Data type | Description |
 
 ## Description
 
-```
+```ebnf
 text_literal ::= "'" [ '' | letter ...] "'"
 ```
 

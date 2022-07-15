@@ -1,7 +1,10 @@
 ---
-title: Case study—using a recursive CTE to compute Bacon Numbers on IMDb data
-headerTitle: Case study—using a recursive CTE to compute Bacon Numbers for actors listed in the IMDb
-linkTitle: case study—Bacon Numbers from IMDb
+title: >
+  Case study: using a recursive CTE to compute Bacon Numbers on IMDb data
+headerTitle: >
+  Case study: using a recursive CTE to compute Bacon Numbers for actors listed in the IMDb
+linkTitle: >
+  Case study: Bacon Numbers from IMDb
 description: Case study showing how to use a recursive CTE to solve the "Six Degrees of Kevin Bacon" problem using IMDb data.
 image: /images/section_icons/api/ysql.png
 menu:
@@ -10,6 +13,7 @@ menu:
     parent: with-clause
     weight: 60
 type: indexpage
+showRightNav: true
 ---
 
 The Bacon Numbers problem, sometimes referred to as "The Six_Degrees of Kevin Bacon" (see [this Wikipedia article](https://en.wikipedia.org/wiki/Six_Degrees_of_Kevin_Bacon)), is a specific formulation of the general problem of tracing paths in an undirected cyclic graph. It is a well-known set-piece exercise in graph analysis and is a popular assignment task in computer science courses. Most frequently, solutions are implemented in an "if-then-else" language like Java. Interestingly, solutions can be implemented in SQL and, as this section will show, the amount of SQL needed is remarkably small.

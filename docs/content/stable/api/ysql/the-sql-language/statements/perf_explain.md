@@ -42,7 +42,7 @@ Use the `EXPLAIN` statement to show the execution plan for an statement. If the 
 
 ## Semantics
 
-Where statement is the target statement (see more [here](../dml_select)).
+Where statement is the target statement (see more [here](../dml_select/)).
 
 ### ANALYZE
 
@@ -107,4 +107,4 @@ yugabyte=# EXPLAIN ANALYZE SELECT * FROM sample WHERE k1 = 2 and floor(k2 + 1.5)
 ## See also
 
 - [`INSERT`](../dml_insert)
-- [`SELECT`](../dml_select)
+- [`SELECT`](../dml_select/)

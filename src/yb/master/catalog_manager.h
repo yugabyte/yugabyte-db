@@ -770,6 +770,12 @@ class CatalogManager :
   Status WaitForWorkerPoolTests(
       const MonoDelta& timeout = MonoDelta::FromSeconds(10)) const override;
 
+  Result<scoped_refptr<UDTypeInfo>> FindUDTypeById(
+      const UDTypeId& udt_id) const EXCLUDES(mutex_);
+
+  Result<scoped_refptr<UDTypeInfo>> FindUDTypeByIdUnlocked(
+      const UDTypeId& udt_id) const REQUIRES_SHARED(mutex_);
+
   Result<scoped_refptr<NamespaceInfo>> FindNamespaceUnlocked(
       const NamespaceIdentifierPB& ns_identifier) const REQUIRES_SHARED(mutex_);
 

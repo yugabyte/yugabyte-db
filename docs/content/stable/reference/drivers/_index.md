@@ -1,7 +1,7 @@
 ---
-title: YugabyteDB drivers
-headerTitle: Drivers
-linkTitle: Drivers
+title: YugabyteDB Drivers and ORMs
+headerTitle: Drivers and ORMs
+linkTitle: Drivers and ORMs
 description: Use drivers to power applications with YugabyteDB.
 headcontent: Use drivers to power applications with YugabyteDB.
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
@@ -12,7 +12,6 @@ menu:
     weight: 2750
 type: indexpage
 ---
-
 <div class="row">
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">

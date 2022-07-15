@@ -14,7 +14,7 @@ type: docs
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/preview/deploy/kubernetes/multi-cluster/gke/helm-chart" class="nav-link active">
+    <a href="../helm-chart/" class="nav-link active">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Helm chart
     </a>
@@ -397,25 +397,25 @@ Now create the overall YugabyteDB cluster in such a way that one third of the no
 
 ```sh
 $ helm install yb-demo-us-west1-b yugabytedb/yugabyte \
+ --version {{<yb-version version="stable" format="short">}} \
  --namespace yb-demo-us-west1-b \
  -f overrides-us-west1-b.yaml \
- --version {{<yb-version version="stable" format="short">}} \
  --kube-context gke_yugabyte_us-west1-b_yugabytedb1 --wait
 ```
 
 ```sh
 $ helm install yb-demo-us-central1-b yugabytedb/yugabyte \
+ --version {{<yb-version version="stable" format="short">}} \
  --namespace yb-demo-us-central1-b \
  -f overrides-us-central1-b.yaml \
- --version {{<yb-version version="stable" format="short">}} \
  --kube-context gke_yugabyte_us-central1-b_yugabytedb2 --wait
 ```
 
 ```sh
 $ helm install yb-demo-us-east1-b yugabytedb/yugabyte \
+ --version {{<yb-version version="stable" format="short">}} \
  --namespace yb-demo-us-east1-b \
  -f overrides-us-east1-b.yaml \
- --version {{<yb-version version="stable" format="short">}} \
  --kube-context gke_yugabyte_us-east1-b_yugabytedb3 --wait
 ```
 
@@ -496,7 +496,7 @@ $ kubectl exec -n yb-demo-us-west1-b --context gke_yugabyte_us-west1-b_yugabyted
 -it yb-tserver-0 -- ycqlsh yb-tserver-0.yb-tservers.yb-demo-us-west1-b
 ```
 
-You can follow the [Explore YSQL](../../../../../quick-start/explore/ysql) tutorial and then go to the `http://<external-ip>:7000/tablet-servers` page of the yb-master Admin UI to confirm that tablet peers and their leaders are placed evenly across all three zones for both user data and system data.
+You can follow the [Explore YSQL](../../../../../quick-start/explore/ysql/) tutorial and then go to the `http://<external-ip>:7000/tablet-servers` page of the yb-master Admin UI to confirm that tablet peers and their leaders are placed evenly across all three zones for both user data and system data.
 
 ![mz-ybtserver](/images/deploy/kubernetes/gke-multicluster-ybtserver.png)
 

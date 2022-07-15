@@ -1,7 +1,7 @@
 ---
 title: Common code for traversing all kinds of graph
 headerTitle: Common code for traversing all kinds of graph
-linkTitle: common code
+linkTitle: Common code
 description: This section presents common helper code for traversing all kinds of graph
 menu:
   stable:

@@ -71,4 +71,4 @@ As an example, let us assume the user wants to insert into a table T1 that had a
 
 ![write_path_io](/images/architecture/write_path_io.png)
 
-Note that the above scenario has been greatly simplified by assuming that the user application sends the write query to a random YugabyteDB server, which then routes the request appropriately. In practice, the use of the YugabyteDB smart client is recommended for removing the extra network hop.
+Note that the above scenario has been greatly simplified by assuming that the user application sends the write query to a random YugabyteDB server, which then routes the request appropriately. Specifically for YCQL, the use of the YugabyteDB smart client is recommended for removing the extra network hop.

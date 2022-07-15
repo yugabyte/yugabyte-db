@@ -72,7 +72,7 @@ To run the workload generator tool, you must have:
 - Java runtime or JDK installed.
 - Set the environment variable  $ENDPOINTS to the IP addresses (including hosts and ports) for the nodes of the cluster.
 
-```
+```output
 ENDPOINTS="X.X.X.X:9042,X.X.X.X:9042,X.X.X.X:9042"
 ```
 
@@ -120,11 +120,11 @@ $ java -jar ./yb-sample-apps.jar  \
 
 ### Expected results
 
-Name    | Observation
---------|------
-(Read) Ops/sec | ~150k
-(Read) Latency | ~1.66 ms/op
-CPU (User + Sys) | 60%
+| Name | Observation |
+| :--- | :---------- |
+| (Read) Ops/sec | ~150k |
+| (Read) Latency | ~1.66 ms/op |
+| CPU (User + Sys) | 60% |
 
 ## Batch write-heavy KV workload
 
@@ -146,8 +146,8 @@ $ java -jar ./yb-sample-apps.jar      \
 
 ### Expected results
 
-Name    | Observation
---------|------
-(Batch Write) Ops/sec | ~140k
-(Batch Write) Latency | ~9.0 ms/op
-CPU (User + Sys) | 80%
+| Name | Observation |
+| :--- | :---------- |
+| (Batch Write) Ops/sec | ~140k |
+| (Batch Write) Latency | ~9.0 ms/op |
+| CPU (User + Sys) | 80% |

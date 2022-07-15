@@ -1,4 +1,4 @@
-```ebnf
+```output.ebnf
 alter_sequence ::= ALTER SEQUENCE [ IF EXISTS ] sequence_name 
                    alter_sequence_options
 
