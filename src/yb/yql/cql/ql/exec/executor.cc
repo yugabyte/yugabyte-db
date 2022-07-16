@@ -959,11 +959,13 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode, TnodeContext* tnode_conte
   req->set_is_aggregate(tnode->is_aggregate());
   Result<uint64_t> max_rows_estimate = WhereClauseToPB(req, tnode->key_where_ops(),
                                                        tnode->where_ops(),
+                                                       tnode->multi_col_where_ops(),
                                                        tnode->subscripted_col_where_ops(),
                                                        tnode->json_col_where_ops(),
                                                        tnode->partition_key_ops(),
                                                        tnode->func_ops(),
                                                        tnode_context);
+
   if (PREDICT_FALSE(!max_rows_estimate)) {
     return exec_context_->Error(tnode, max_rows_estimate.status(), ErrorCode::INVALID_ARGUMENTS);
   }
@@ -2223,6 +2225,7 @@ bool UpdateIndexesLocally(const PTDmlStmt *tnode, const QLWriteRequestPB& req) {
           case QLExpressionPB::ExprCase::kCondition: FALLTHROUGH_INTENDED;
           case QLExpressionPB::ExprCase::kBocall: FALLTHROUGH_INTENDED;
           case QLExpressionPB::ExprCase::kBindId: FALLTHROUGH_INTENDED;
+          case QLExpressionPB::ExprCase::kTuple: FALLTHROUGH_INTENDED;
           case QLExpressionPB::ExprCase::EXPR_NOT_SET:
             return false;
         }

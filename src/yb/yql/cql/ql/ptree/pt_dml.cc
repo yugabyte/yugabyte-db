@@ -68,6 +68,7 @@ PTDmlStmt::PTDmlStmt(MemoryContext *memctx,
       func_ops_(memctx),
       key_where_ops_(memctx),
       where_ops_(memctx),
+      multi_col_where_ops_(memctx),
       subscripted_col_where_ops_(memctx),
       json_col_where_ops_(memctx),
       partition_key_ops_(memctx),
@@ -94,6 +95,7 @@ PTDmlStmt::PTDmlStmt(MemoryContext *memctx, const PTDmlStmt& other, bool copy_if
       func_ops_(memctx),
       key_where_ops_(memctx),
       where_ops_(memctx),
+      multi_col_where_ops_(memctx),
       subscripted_col_where_ops_(memctx),
       json_col_where_ops_(memctx),
       partition_key_ops_(memctx),
@@ -282,7 +284,7 @@ Status PTDmlStmt::AnalyzeWhereExpr(SemContext *sem_context, PTExpr *expr) {
   ColumnOpCounter partition_key_counter;
   WhereExprState where_state(&where_ops_, &key_where_ops_, &subscripted_col_where_ops_,
                              &json_col_where_ops_, &partition_key_ops_, &op_counters,
-                             &partition_key_counter, opcode(), &func_ops_);
+                             &partition_key_counter, opcode(), &func_ops_, &multi_col_where_ops_);
 
   SemState sem_state(sem_context, QLType::Create(BOOL), InternalType::kBoolValue);
   sem_state.SetWhereState(&where_state);
@@ -513,6 +515,110 @@ bool PTDmlStmt::StaticColumnArgsOnly() const {
 }
 
 //--------------------------------------------------------------------------------------------------
+
+Status WhereExprState::AnalyzeMultiColumnOp(
+    SemContext* sem_context,
+    const PTRelationExpr* expr,
+    const std::vector<const ColumnDesc*>
+        col_descs,
+    PTExprPtr value) {
+  for (const auto& col_desc : col_descs) {
+    if (col_desc == nullptr) {
+      return STATUS(InternalError, "Column does not exist");
+    }
+  }
+
+  if (col_descs.empty()) {
+    return sem_context->Error(expr, "No range columns specified", ErrorCode::CQL_STATEMENT_INVALID);
+  }
+
+  if (statement_type_ != TreeNodeOpcode::kPTSelectStmt) {
+    return sem_context->Error(
+        expr, "Operator not supported for write operations",
+        ErrorCode::FEATURE_NOT_YET_IMPLEMENTED);
+  }
+
+  if (expr->ql_op() != QL_OP_IN) {
+    return sem_context->Error(
+        expr, "Multi-column relation not supported for the operator",
+        ErrorCode::CQL_STATEMENT_INVALID);
+  }
+
+  if (!value->has_no_column_ref()) {
+    return sem_context->Error(
+        value,
+        "Argument of this opreator cannot reference a column",
+        ErrorCode::CQL_STATEMENT_INVALID);
+  }
+
+  if (value->expr_op() != ExprOperator::kCollection) {
+    if (value->expr_op() == ExprOperator::kBindVar) {
+      return sem_context->Error(
+          value, "Bind format not supported", ErrorCode::FEATURE_NOT_SUPPORTED);
+    }
+    return sem_context->Error(
+        value, "Invalid operand for IN clause", ErrorCode::CQL_STATEMENT_INVALID);
+  }
+
+  const auto options = static_cast<const PTCollectionExpr*>(value.get());
+
+  for (const auto& option : options->values()) {
+    if (option->expr_op() != ExprOperator::kCollection) {
+      if (option->expr_op() == ExprOperator::kBindVar) {
+        return sem_context->Error(
+            option, "Bind format not supported", ErrorCode::FEATURE_NOT_SUPPORTED);
+      }
+      return sem_context->Error(
+          option, "Invalid operand for IN clause", ErrorCode::CQL_STATEMENT_INVALID);
+    }
+
+    const auto option_as_collection = static_cast<const PTCollectionExpr*>(option.get());
+    if (option_as_collection->values().size() != col_descs.size()) {
+      return sem_context->Error(
+          option, "Columns and value size mismatch for IN clause",
+          ErrorCode::CQL_STATEMENT_INVALID);
+    }
+  }
+
+  int idx = -1;
+  for (const auto& col_desc : col_descs) {
+    if (sem_context->void_primary_key_condition() && col_desc->is_primary()) {
+      // Drop the key condition from where clause as instructed.
+      return Status::OK();
+    }
+    if (!col_desc->is_primary() || col_desc->is_hash()) {
+      return sem_context->Error(
+          expr,
+          Format(
+              "Multi-column relations can only be applied to clustering columns but was applied "
+              "to: $0",
+              col_desc->name()),
+          ErrorCode::CQL_STATEMENT_INVALID);
+    }
+    if (idx != -1 && (idx + 1) != static_cast<int>(col_desc->index())) {
+      if (idx == static_cast<int>(col_desc->index())) {
+        // repeating column
+        return sem_context->Error(
+            expr,
+            Format("Column \"$0\" appeared twice in a relation", col_desc->name()),
+            ErrorCode::CQL_STATEMENT_INVALID);
+      }
+      return sem_context->Error(
+          expr, "Clustering columns must appear in the PRIMARY KEY order in multi-column relations",
+          ErrorCode::CQL_STATEMENT_INVALID);
+    }
+    idx = static_cast<int>(col_desc->index());
+    ColumnOpCounter& counter = op_counters_->at(col_desc->index());
+    counter.increase_in();
+    if (!counter.is_valid()) {
+      return sem_context->Error(
+          expr, "Illogical condition for where clause", ErrorCode::CQL_STATEMENT_INVALID);
+    }
+  }
+  multi_colum_ops_->emplace_back(col_descs, value, expr->ql_op());
+
+  return Status::OK();
+}
 
 Status WhereExprState::AnalyzeColumnOp(SemContext *sem_context,
                                        const PTRelationExpr *expr,
