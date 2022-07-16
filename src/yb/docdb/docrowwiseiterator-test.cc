@@ -35,6 +35,7 @@
 #include "yb/util/test_util.h"
 
 DECLARE_bool(TEST_docdb_sort_weak_intents);
+DECLARE_bool(disable_hybrid_scan);
 
 namespace yb {
 namespace docdb {
@@ -61,6 +62,10 @@ class DocRowwiseIteratorTest : public DocDBTestBase {
     ASSERT_OK(kSchemaForIteratorTests.CreateProjectionByNames({"c", "d", "e"},
         &kProjectionForIteratorTests));
   }
+
+  void InsertPopulationData();
+
+  void InsertTestRangeData();
 };
 
 const std::string kStrKey1 = "row1";
@@ -90,6 +95,877 @@ const Schema DocRowwiseIteratorTest::kSchemaForIteratorTests({
     }, 2);
 
 Schema DocRowwiseIteratorTest::kProjectionForIteratorTests;
+
+constexpr int32_t kFixedHashCode = 0;
+
+const KeyBytes GetKeyBytes(
+    string hash_key, string range_key1, string range_key2, string range_key3) {
+  return DocKey(
+             kFixedHashCode, KeyEntryValues(hash_key),
+             KeyEntryValues(range_key1, range_key2, range_key3))
+      .Encode();
+}
+
+const Schema population_schema(
+    {ColumnSchema(
+         "country", DataType::STRING, /* is_nullable = */ false, true, false, false, 0,
+         SortingType::kAscending),
+     ColumnSchema(
+         "state", DataType::STRING, /* is_nullable = */ false, false, false, false, 0,
+         SortingType::kAscending),
+     ColumnSchema(
+         "city", DataType::STRING, /* is_nullable = */ false, false, false, false, 0,
+         SortingType::kAscending),
+     ColumnSchema(
+         "area", DataType::STRING, /* is_nullable = */ false, false, false, false, 0,
+         SortingType::kAscending),
+     // Non-key columns
+     ColumnSchema("population", DataType::INT64, true)},
+    {10_ColId, 20_ColId, 30_ColId, 40_ColId, 50_ColId}, 4);
+
+const std::string INDIA = "INDIA";
+const std::string CG = "CG";
+const std::string BHILAI = "BHILAI";
+const std::string DURG = "DURG";
+const std::string RPR = "RPR";
+const std::string KA = "KA";
+const std::string BLR = "BLR";
+const std::string MLR = "MLR";
+const std::string MYSORE = "MYSORE";
+const std::string TN = "TN";
+const std::string CHENNAI = "CHENNAI";
+const std::string MADURAI = "MADURAI";
+const std::string OOTY = "OOTY";
+
+const std::string AREA1 = "AREA1";
+const std::string AREA2 = "AREA2";
+
+void DocRowwiseIteratorTest::InsertPopulationData() {
+  ASSERT_OK(SetPrimitive(
+      DocPath(GetKeyBytes(INDIA, CG, BHILAI, AREA1), KeyEntryValue::MakeColumnId(50_ColId)),
+      QLValue::PrimitiveInt64(10), HybridTime::FromMicros(1000)));
+  ASSERT_OK(SetPrimitive(
+      DocPath(GetKeyBytes(INDIA, CG, DURG, AREA1), KeyEntryValue::MakeColumnId(50_ColId)),
+      QLValue::PrimitiveInt64(10), HybridTime::FromMicros(1000)));
+  ASSERT_OK(SetPrimitive(
+      DocPath(GetKeyBytes(INDIA, CG, RPR, AREA1), KeyEntryValue::MakeColumnId(50_ColId)),
+      QLValue::PrimitiveInt64(10), HybridTime::FromMicros(1000)));
+  ASSERT_OK(SetPrimitive(
+      DocPath(GetKeyBytes(INDIA, KA, BLR, AREA1), KeyEntryValue::MakeColumnId(50_ColId)),
+      QLValue::PrimitiveInt64(10), HybridTime::FromMicros(1000)));
+  ASSERT_OK(SetPrimitive(
+      DocPath(GetKeyBytes(INDIA, KA, MLR, AREA1), KeyEntryValue::MakeColumnId(50_ColId)),
+      QLValue::PrimitiveInt64(10), HybridTime::FromMicros(1000)));
+  ASSERT_OK(SetPrimitive(
+      DocPath(GetKeyBytes(INDIA, KA, MYSORE, AREA1), KeyEntryValue::MakeColumnId(50_ColId)),
+      QLValue::PrimitiveInt64(10), HybridTime::FromMicros(1000)));
+  ASSERT_OK(SetPrimitive(
+      DocPath(GetKeyBytes(INDIA, TN, CHENNAI, AREA1), KeyEntryValue::MakeColumnId(50_ColId)),
+      QLValue::PrimitiveInt64(10), HybridTime::FromMicros(1000)));
+  ASSERT_OK(SetPrimitive(
+      DocPath(GetKeyBytes(INDIA, TN, MADURAI, AREA1), KeyEntryValue::MakeColumnId(50_ColId)),
+      QLValue::PrimitiveInt64(10), HybridTime::FromMicros(1000)));
+  ASSERT_OK(SetPrimitive(
+      DocPath(GetKeyBytes(INDIA, TN, OOTY, AREA1), KeyEntryValue::MakeColumnId(50_ColId)),
+      QLValue::PrimitiveInt64(10), HybridTime::FromMicros(1000)));
+
+  ASSERT_OK(SetPrimitive(
+      DocPath(GetKeyBytes(INDIA, CG, BHILAI, AREA2), KeyEntryValue::MakeColumnId(50_ColId)),
+      QLValue::PrimitiveInt64(10), HybridTime::FromMicros(1000)));
+  ASSERT_OK(SetPrimitive(
+      DocPath(GetKeyBytes(INDIA, CG, DURG, AREA2), KeyEntryValue::MakeColumnId(50_ColId)),
+      QLValue::PrimitiveInt64(10), HybridTime::FromMicros(1000)));
+  ASSERT_OK(SetPrimitive(
+      DocPath(GetKeyBytes(INDIA, CG, RPR, AREA2), KeyEntryValue::MakeColumnId(50_ColId)),
+      QLValue::PrimitiveInt64(10), HybridTime::FromMicros(1000)));
+  ASSERT_OK(SetPrimitive(
+      DocPath(GetKeyBytes(INDIA, KA, BLR, AREA2), KeyEntryValue::MakeColumnId(50_ColId)),
+      QLValue::PrimitiveInt64(10), HybridTime::FromMicros(1000)));
+  ASSERT_OK(SetPrimitive(
+      DocPath(GetKeyBytes(INDIA, KA, MLR, AREA2), KeyEntryValue::MakeColumnId(50_ColId)),
+      QLValue::PrimitiveInt64(10), HybridTime::FromMicros(1000)));
+  ASSERT_OK(SetPrimitive(
+      DocPath(GetKeyBytes(INDIA, KA, MYSORE, AREA2), KeyEntryValue::MakeColumnId(50_ColId)),
+      QLValue::PrimitiveInt64(10), HybridTime::FromMicros(1000)));
+  ASSERT_OK(SetPrimitive(
+      DocPath(GetKeyBytes(INDIA, TN, CHENNAI, AREA2), KeyEntryValue::MakeColumnId(50_ColId)),
+      QLValue::PrimitiveInt64(10), HybridTime::FromMicros(1000)));
+  ASSERT_OK(SetPrimitive(
+      DocPath(GetKeyBytes(INDIA, TN, MADURAI, AREA2), KeyEntryValue::MakeColumnId(50_ColId)),
+      QLValue::PrimitiveInt64(10), HybridTime::FromMicros(1000)));
+  ASSERT_OK(SetPrimitive(
+      DocPath(GetKeyBytes(INDIA, TN, OOTY, AREA2), KeyEntryValue::MakeColumnId(50_ColId)),
+      QLValue::PrimitiveInt64(10), HybridTime::FromMicros(1000)));
+}
+
+const KeyBytes GetKeyBytes(int32_t hash_key, int32_t range_key1, int32_t range_key2) {
+  return DocKey(kFixedHashCode, KeyEntryValues(hash_key), KeyEntryValues(range_key1, range_key2))
+      .Encode();
+}
+
+const Schema test_range_schema(
+    {ColumnSchema(
+         "h", DataType::INT32, /* is_nullable = */ false, true, false, false, 0,
+         SortingType::kAscending),
+     ColumnSchema(
+         "r1", DataType::INT32, /* is_nullable = */ false, false, false, false, 0,
+         SortingType::kAscending),
+     ColumnSchema(
+         "r2", DataType::INT32, /* is_nullable = */ false, false, false, false, 0,
+         SortingType::kAscending),
+     // Non-key columns
+     ColumnSchema("payload", DataType::INT32, true)},
+    {10_ColId, 11_ColId, 12_ColId, 13_ColId}, 3);
+
+void DocRowwiseIteratorTest::InsertTestRangeData() {
+  int h = 5;
+  for (int r1 = 5; r1 < 8; r1++) {
+    for (int r2 = 4; r2 < 9; r2++) {
+      ASSERT_OK(SetPrimitive(
+          DocPath(GetKeyBytes(h, r1, r2), KeyEntryValue::MakeColumnId(13_ColId)),
+          QLValue::Primitive(r2), HybridTime::FromMicros(1000)));
+    }
+  }
+}
+
+TEST_F(DocRowwiseIteratorTest, ClusteredFilterTestRange) {
+  InsertTestRangeData();
+  DocReadContext doc_read_context(test_range_schema, 1);
+
+  DocRowwiseIterator iter(
+      test_range_schema, doc_read_context, kNonTransactionalOperationContext, doc_db(),
+      CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(2000));
+  const std::vector<KeyEntryValue> hashed_components{KeyEntryValue::Int32(5)};
+
+  QLConditionPB cond;
+  auto ids = cond.add_operands()->mutable_tuple();
+  ids->add_elems()->set_column_id(11_ColId);
+  ids->add_elems()->set_column_id(12_ColId);
+  cond.set_op(QL_OP_IN);
+  auto options = cond.add_operands()->mutable_value()->mutable_list_value();
+
+  auto option1 = options->add_elems()->mutable_tuple_value();
+  option1->add_elems()->set_int32_value(5);
+  option1->add_elems()->set_int32_value(6);
+
+  DocQLScanSpec spec(
+      test_range_schema, kFixedHashCode, kFixedHashCode, hashed_components, &cond, nullptr,
+      rocksdb::kDefaultQueryId);
+  ASSERT_OK(iter.Init(spec));
+
+  QLTableRow row;
+  QLValue value;
+  ASSERT_TRUE(ASSERT_RESULT(iter.HasNext()));
+  ASSERT_OK(iter.NextRow(&row));
+
+  ASSERT_OK(row.GetValue(test_range_schema.column_id(0), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(5, value.int32_value());
+
+  ASSERT_OK(row.GetValue(test_range_schema.column_id(1), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(5, value.int32_value());
+
+  ASSERT_OK(row.GetValue(test_range_schema.column_id(2), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(6, value.int32_value());
+
+  ASSERT_OK(row.GetValue(test_range_schema.column_id(3), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(6, value.int32_value());
+
+  ASSERT_FALSE(ASSERT_RESULT(iter.HasNext()));
+}
+
+TEST_F(DocRowwiseIteratorTest, ClusteredFilterHybridScanTest) {
+  InsertPopulationData();
+  DocReadContext doc_read_context(population_schema, 1);
+
+  DocRowwiseIterator iter(
+      population_schema, doc_read_context, kNonTransactionalOperationContext, doc_db(),
+      CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(2000));
+  const std::vector<KeyEntryValue> hashed_components{KeyEntryValue(INDIA)};
+
+  QLConditionPB cond;
+  auto ids = cond.add_operands()->mutable_tuple();
+  ids->add_elems()->set_column_id(20_ColId);
+  ids->add_elems()->set_column_id(30_ColId);
+  ids->add_elems()->set_column_id(40_ColId);
+  cond.set_op(QL_OP_IN);
+  auto options = cond.add_operands()->mutable_value()->mutable_list_value();
+
+  auto option1 = options->add_elems()->mutable_tuple_value();
+  option1->add_elems()->set_string_value(CG);
+  option1->add_elems()->set_string_value(DURG);
+  option1->add_elems()->set_string_value(AREA1);
+
+  auto option2 = options->add_elems()->mutable_tuple_value();
+  option2->add_elems()->set_string_value(KA);
+  option2->add_elems()->set_string_value(MYSORE);
+  option2->add_elems()->set_string_value(AREA1);
+
+  DocQLScanSpec spec(
+      population_schema, kFixedHashCode, kFixedHashCode, hashed_components, &cond, nullptr,
+      rocksdb::kDefaultQueryId);
+  ASSERT_OK(iter.Init(spec));
+
+  QLTableRow row;
+  QLValue value;
+  ASSERT_TRUE(ASSERT_RESULT(iter.HasNext()));
+  ASSERT_OK(iter.NextRow(&row));
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(0), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(INDIA, value.string_value());
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(1), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(CG, value.string_value());
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(2), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(DURG, value.string_value());
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(3), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(AREA1, value.string_value());
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(4), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(10, value.int64_value());
+
+  ASSERT_TRUE(ASSERT_RESULT(iter.HasNext()));
+  ASSERT_OK(iter.NextRow(&row));
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(0), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(INDIA, value.string_value());
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(1), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(KA, value.string_value());
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(2), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(MYSORE, value.string_value());
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(3), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(AREA1, value.string_value());
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(4), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(10, value.int64_value());
+
+  ASSERT_FALSE(ASSERT_RESULT(iter.HasNext()));
+}
+
+TEST_F(DocRowwiseIteratorTest, ClusteredFilterSubsetColTest) {
+  InsertPopulationData();
+  DocReadContext doc_read_context(population_schema, 1);
+
+  DocRowwiseIterator iter(
+      population_schema, doc_read_context, kNonTransactionalOperationContext, doc_db(),
+      CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(2000));
+  const std::vector<KeyEntryValue> hashed_components{KeyEntryValue(INDIA)};
+
+  QLConditionPB cond;
+  auto ids = cond.add_operands()->mutable_tuple();
+  ids->add_elems()->set_column_id(20_ColId);
+  ids->add_elems()->set_column_id(30_ColId);
+  cond.set_op(QL_OP_IN);
+  auto options = cond.add_operands()->mutable_value()->mutable_list_value();
+
+  auto option1 = options->add_elems()->mutable_tuple_value();
+  option1->add_elems()->set_string_value(CG);
+  option1->add_elems()->set_string_value(DURG);
+
+  auto option2 = options->add_elems()->mutable_tuple_value();
+  option2->add_elems()->set_string_value(KA);
+  option2->add_elems()->set_string_value(MYSORE);
+
+  DocQLScanSpec spec(
+      population_schema, kFixedHashCode, kFixedHashCode, hashed_components, &cond, nullptr,
+      rocksdb::kDefaultQueryId);
+  ASSERT_OK(iter.Init(spec));
+
+  QLTableRow row;
+  QLValue value;
+  ASSERT_TRUE(ASSERT_RESULT(iter.HasNext()));
+  ASSERT_OK(iter.NextRow(&row));
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(0), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(INDIA, value.string_value());
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(1), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(CG, value.string_value());
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(2), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(DURG, value.string_value());
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(3), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(AREA1, value.string_value());
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(4), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(10, value.int64_value());
+
+  ASSERT_TRUE(ASSERT_RESULT(iter.HasNext()));
+  ASSERT_OK(iter.NextRow(&row));
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(0), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(INDIA, value.string_value());
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(1), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(CG, value.string_value());
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(2), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(DURG, value.string_value());
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(3), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(AREA2, value.string_value());
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(4), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(10, value.int64_value());
+
+  ASSERT_TRUE(ASSERT_RESULT(iter.HasNext()));
+  ASSERT_OK(iter.NextRow(&row));
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(0), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(INDIA, value.string_value());
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(1), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(KA, value.string_value());
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(2), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(MYSORE, value.string_value());
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(3), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(AREA1, value.string_value());
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(4), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(10, value.int64_value());
+
+  ASSERT_TRUE(ASSERT_RESULT(iter.HasNext()));
+  ASSERT_OK(iter.NextRow(&row));
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(0), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(INDIA, value.string_value());
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(1), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(KA, value.string_value());
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(2), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(MYSORE, value.string_value());
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(3), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(AREA2, value.string_value());
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(4), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(10, value.int64_value());
+
+  ASSERT_FALSE(ASSERT_RESULT(iter.HasNext()));
+}
+
+TEST_F(DocRowwiseIteratorTest, ClusteredFilterSubsetColTest2) {
+  InsertPopulationData();
+  DocReadContext doc_read_context(population_schema, 1);
+
+  DocRowwiseIterator iter(
+      population_schema, doc_read_context, kNonTransactionalOperationContext, doc_db(),
+      CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(2000));
+  const std::vector<KeyEntryValue> hashed_components{KeyEntryValue(INDIA)};
+
+  QLConditionPB cond;
+  auto ids = cond.add_operands()->mutable_tuple();
+  ids->add_elems()->set_column_id(30_ColId);
+  ids->add_elems()->set_column_id(40_ColId);
+  cond.set_op(QL_OP_IN);
+  auto options = cond.add_operands()->mutable_value()->mutable_list_value();
+
+  auto option1 = options->add_elems()->mutable_tuple_value();
+  option1->add_elems()->set_string_value(DURG);
+  option1->add_elems()->set_string_value(AREA1);
+
+  auto option2 = options->add_elems()->mutable_tuple_value();
+  option2->add_elems()->set_string_value(MYSORE);
+  option2->add_elems()->set_string_value(AREA1);
+
+  DocQLScanSpec spec(
+      population_schema, kFixedHashCode, kFixedHashCode, hashed_components, &cond, nullptr,
+      rocksdb::kDefaultQueryId);
+  ASSERT_OK(iter.Init(spec));
+
+  QLTableRow row;
+  QLValue value;
+  ASSERT_TRUE(ASSERT_RESULT(iter.HasNext()));
+  ASSERT_OK(iter.NextRow(&row));
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(0), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(INDIA, value.string_value());
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(1), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(CG, value.string_value());
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(2), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(DURG, value.string_value());
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(3), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(AREA1, value.string_value());
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(4), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(10, value.int64_value());
+
+  ASSERT_TRUE(ASSERT_RESULT(iter.HasNext()));
+  ASSERT_OK(iter.NextRow(&row));
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(0), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(INDIA, value.string_value());
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(1), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(KA, value.string_value());
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(2), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(MYSORE, value.string_value());
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(3), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(AREA1, value.string_value());
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(4), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(10, value.int64_value());
+
+  ASSERT_FALSE(ASSERT_RESULT(iter.HasNext()));
+}
+
+TEST_F(DocRowwiseIteratorTest, ClusteredFilterMultiInTest) {
+  InsertPopulationData();
+  DocReadContext doc_read_context(population_schema, 1);
+
+  DocRowwiseIterator iter(
+      population_schema, doc_read_context, kNonTransactionalOperationContext, doc_db(),
+      CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(2000));
+  const std::vector<KeyEntryValue> hashed_components{KeyEntryValue(INDIA)};
+
+  QLConditionPB cond;
+  cond.set_op(QL_OP_AND);
+  auto cond1 = cond.add_operands()->mutable_condition();
+  auto cond2 = cond.add_operands()->mutable_condition();
+
+  auto ids = cond1->add_operands()->mutable_tuple();
+  ids->add_elems()->set_column_id(20_ColId);
+  ids->add_elems()->set_column_id(30_ColId);
+  cond1->set_op(QL_OP_IN);
+
+  auto options = cond1->add_operands()->mutable_value()->mutable_list_value();
+  auto option1 = options->add_elems()->mutable_tuple_value();
+  option1->add_elems()->set_string_value(CG);
+  option1->add_elems()->set_string_value(DURG);
+  auto option2 = options->add_elems()->mutable_tuple_value();
+  option2->add_elems()->set_string_value(KA);
+  option2->add_elems()->set_string_value(MYSORE);
+
+  cond2->add_operands()->set_column_id(40_ColId);
+  cond2->set_op(QL_OP_IN);
+  auto cond2_options = cond2->add_operands()->mutable_value()->mutable_list_value();
+  cond2_options->add_elems()->set_string_value(AREA1);
+
+  DocQLScanSpec spec(
+      population_schema, kFixedHashCode, kFixedHashCode, hashed_components, &cond, nullptr,
+      rocksdb::kDefaultQueryId);
+  ASSERT_OK(iter.Init(spec));
+
+  QLTableRow row;
+  QLValue value;
+  ASSERT_TRUE(ASSERT_RESULT(iter.HasNext()));
+  ASSERT_OK(iter.NextRow(&row));
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(0), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(INDIA, value.string_value());
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(1), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(CG, value.string_value());
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(2), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(DURG, value.string_value());
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(3), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(AREA1, value.string_value());
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(4), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(10, value.int64_value());
+
+  ASSERT_TRUE(ASSERT_RESULT(iter.HasNext()));
+  ASSERT_OK(iter.NextRow(&row));
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(0), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(INDIA, value.string_value());
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(1), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(KA, value.string_value());
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(2), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(MYSORE, value.string_value());
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(3), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(AREA1, value.string_value());
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(4), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(10, value.int64_value());
+
+  ASSERT_FALSE(ASSERT_RESULT(iter.HasNext()));
+}
+
+TEST_F(DocRowwiseIteratorTest, ClusteredFilterEmptyInTest) {
+  InsertPopulationData();
+  DocReadContext doc_read_context(population_schema, 1);
+
+  DocRowwiseIterator iter(
+      population_schema, doc_read_context, kNonTransactionalOperationContext, doc_db(),
+      CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(2000));
+  const std::vector<KeyEntryValue> hashed_components{KeyEntryValue(INDIA)};
+
+  QLConditionPB cond;
+  cond.set_op(QL_OP_AND);
+  auto cond1 = cond.add_operands()->mutable_condition();
+  auto cond2 = cond.add_operands()->mutable_condition();
+
+  auto ids = cond1->add_operands()->mutable_tuple();
+  ids->add_elems()->set_column_id(20_ColId);
+  ids->add_elems()->set_column_id(30_ColId);
+  cond1->set_op(QL_OP_IN);
+
+  cond1->add_operands()->mutable_value()->mutable_list_value();
+
+  cond2->add_operands()->set_column_id(40_ColId);
+  cond2->set_op(QL_OP_IN);
+  auto cond2_options = cond2->add_operands()->mutable_value()->mutable_list_value();
+  cond2_options->add_elems()->set_string_value(AREA1);
+
+  DocQLScanSpec spec(
+      population_schema, kFixedHashCode, kFixedHashCode, hashed_components, &cond, nullptr,
+      rocksdb::kDefaultQueryId);
+  ASSERT_OK(iter.Init(spec));
+
+  ASSERT_FALSE(ASSERT_RESULT(iter.HasNext()));
+}
+
+TEST_F(DocRowwiseIteratorTest, ClusteredFilterDiscreteScanTest) {
+  FLAGS_disable_hybrid_scan = true;
+  InsertPopulationData();
+  DocReadContext doc_read_context(population_schema, 1);
+
+  DocRowwiseIterator iter(
+      population_schema, doc_read_context, kNonTransactionalOperationContext, doc_db(),
+      CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(2000));
+  const std::vector<KeyEntryValue> hashed_components{KeyEntryValue(INDIA)};
+
+  QLConditionPB cond;
+  auto ids = cond.add_operands()->mutable_tuple();
+  ids->add_elems()->set_column_id(20_ColId);
+  ids->add_elems()->set_column_id(30_ColId);
+  ids->add_elems()->set_column_id(40_ColId);
+  cond.set_op(QL_OP_IN);
+  auto options = cond.add_operands()->mutable_value()->mutable_list_value();
+
+  auto option1 = options->add_elems()->mutable_tuple_value();
+  option1->add_elems()->set_string_value(CG);
+  option1->add_elems()->set_string_value(DURG);
+  option1->add_elems()->set_string_value(AREA1);
+
+  auto option2 = options->add_elems()->mutable_tuple_value();
+  option2->add_elems()->set_string_value(KA);
+  option2->add_elems()->set_string_value(MYSORE);
+  option2->add_elems()->set_string_value(AREA1);
+
+  DocQLScanSpec spec(
+      population_schema, kFixedHashCode, kFixedHashCode, hashed_components, &cond, nullptr,
+      rocksdb::kDefaultQueryId);
+  ASSERT_OK(iter.Init(spec));
+
+  QLTableRow row;
+  QLValue value;
+  ASSERT_TRUE(ASSERT_RESULT(iter.HasNext()));
+  ASSERT_OK(iter.NextRow(&row));
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(0), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(INDIA, value.string_value());
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(1), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(CG, value.string_value());
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(2), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(DURG, value.string_value());
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(3), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(AREA1, value.string_value());
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(4), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(10, value.int64_value());
+
+  ASSERT_TRUE(ASSERT_RESULT(iter.HasNext()));
+  ASSERT_OK(iter.NextRow(&row));
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(0), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(INDIA, value.string_value());
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(1), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(KA, value.string_value());
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(2), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(MYSORE, value.string_value());
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(3), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(AREA1, value.string_value());
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(4), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(10, value.int64_value());
+
+  ASSERT_FALSE(ASSERT_RESULT(iter.HasNext()));
+}
+
+TEST_F(DocRowwiseIteratorTest, ClusteredFilterRangeScanTest) {
+  FLAGS_disable_hybrid_scan = true;
+  InsertPopulationData();
+  DocReadContext doc_read_context(population_schema, 1);
+
+  DocRowwiseIterator iter(
+      population_schema, doc_read_context, kNonTransactionalOperationContext, doc_db(),
+      CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(2000));
+  const std::vector<KeyEntryValue> hashed_components{KeyEntryValue(INDIA)};
+
+  QLConditionPB cond;
+  auto ids = cond.add_operands()->mutable_tuple();
+  ids->add_elems()->set_column_id(30_ColId);
+  ids->add_elems()->set_column_id(40_ColId);
+  cond.set_op(QL_OP_IN);
+  auto options = cond.add_operands()->mutable_value()->mutable_list_value();
+
+  auto option1 = options->add_elems()->mutable_tuple_value();
+  option1->add_elems()->set_string_value(DURG);
+  option1->add_elems()->set_string_value(AREA1);
+
+  auto option2 = options->add_elems()->mutable_tuple_value();
+  option2->add_elems()->set_string_value(MYSORE);
+  option2->add_elems()->set_string_value(AREA1);
+
+  DocQLScanSpec spec(
+      population_schema, kFixedHashCode, kFixedHashCode, hashed_components, &cond, nullptr,
+      rocksdb::kDefaultQueryId);
+  ASSERT_OK(iter.Init(spec));
+
+  QLTableRow row;
+  QLValue value;
+  ASSERT_TRUE(ASSERT_RESULT(iter.HasNext()));
+  ASSERT_OK(iter.NextRow(&row));
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(0), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(INDIA, value.string_value());
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(1), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(CG, value.string_value());
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(2), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(DURG, value.string_value());
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(3), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(AREA1, value.string_value());
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(4), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(10, value.int64_value());
+
+  ASSERT_TRUE(ASSERT_RESULT(iter.HasNext()));
+  ASSERT_OK(iter.NextRow(&row));
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(0), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(INDIA, value.string_value());
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(1), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(KA, value.string_value());
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(2), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(MLR, value.string_value());
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(3), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(AREA1, value.string_value());
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(4), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(10, value.int64_value());
+
+  ASSERT_TRUE(ASSERT_RESULT(iter.HasNext()));
+  ASSERT_OK(iter.NextRow(&row));
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(0), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(INDIA, value.string_value());
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(1), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(KA, value.string_value());
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(2), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(MYSORE, value.string_value());
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(3), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(AREA1, value.string_value());
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(4), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(10, value.int64_value());
+
+  ASSERT_TRUE(ASSERT_RESULT(iter.HasNext()));
+  ASSERT_OK(iter.NextRow(&row));
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(0), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(INDIA, value.string_value());
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(1), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(TN, value.string_value());
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(2), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(MADURAI, value.string_value());
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(3), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(AREA1, value.string_value());
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(4), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(10, value.int64_value());
+
+  ASSERT_FALSE(ASSERT_RESULT(iter.HasNext()));
+}
+
+TEST_F(DocRowwiseIteratorTest, SimpleRangeScanTest) {
+  FLAGS_disable_hybrid_scan = true;
+  InsertPopulationData();
+  DocReadContext doc_read_context(population_schema, 1);
+
+  DocRowwiseIterator iter(
+      population_schema, doc_read_context, kNonTransactionalOperationContext, doc_db(),
+      CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(2000));
+  const std::vector<KeyEntryValue> hashed_components{KeyEntryValue(INDIA)};
+
+  QLConditionPB cond;
+  cond.add_operands()->set_column_id(20_ColId);
+  cond.set_op(QL_OP_IN);
+  auto options = cond.add_operands()->mutable_value()->mutable_list_value();
+  options->add_elems()->set_string_value(CG);
+
+  DocQLScanSpec spec(
+      population_schema, kFixedHashCode, kFixedHashCode, hashed_components, &cond, nullptr,
+      rocksdb::kDefaultQueryId);
+  ASSERT_OK(iter.Init(spec));
+
+  QLTableRow row;
+  QLValue value;
+  ASSERT_TRUE(ASSERT_RESULT(iter.HasNext()));
+  ASSERT_OK(iter.NextRow(&row));
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(1), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(CG, value.string_value());
+
+  ASSERT_TRUE(ASSERT_RESULT(iter.HasNext()));
+  ASSERT_OK(iter.NextRow(&row));
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(1), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(CG, value.string_value());
+
+  ASSERT_TRUE(ASSERT_RESULT(iter.HasNext()));
+  ASSERT_OK(iter.NextRow(&row));
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(1), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(CG, value.string_value());
+
+  ASSERT_TRUE(ASSERT_RESULT(iter.HasNext()));
+  ASSERT_OK(iter.NextRow(&row));
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(1), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(CG, value.string_value());
+
+  ASSERT_TRUE(ASSERT_RESULT(iter.HasNext()));
+  ASSERT_OK(iter.NextRow(&row));
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(1), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(CG, value.string_value());
+
+  ASSERT_TRUE(ASSERT_RESULT(iter.HasNext()));
+  ASSERT_OK(iter.NextRow(&row));
+
+  ASSERT_OK(row.GetValue(population_schema.column_id(1), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(CG, value.string_value());
+
+  ASSERT_FALSE(ASSERT_RESULT(iter.HasNext()));
+}
 
 TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorTest) {
   // Row 1

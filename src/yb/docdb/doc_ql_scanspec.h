@@ -26,6 +26,9 @@
 namespace yb {
 namespace docdb {
 
+using Option = std::vector<KeyEntryValue>;  // an option in an IN/EQ clause
+using OptionList = std::vector<Option>;     // all the options in an IN/EQ clause
+
 // DocDB variant of QL scanspec.
 class DocQLScanSpec : public QLScanSpec {
  public:
@@ -65,9 +68,7 @@ class DocQLScanSpec : public QLScanSpec {
     return query_id_;
   }
 
-  const std::shared_ptr<std::vector<std::vector<KeyEntryValue>>>& range_options() const {
-    return range_options_;
-  }
+  const std::shared_ptr<std::vector<OptionList>>& range_options() const { return range_options_; }
 
   bool include_static_columns() const {
     return include_static_columns_;
@@ -87,13 +88,17 @@ class DocQLScanSpec : public QLScanSpec {
     return range_bounds_indexes_;
   }
 
+  const std::vector<size_t> range_options_num_cols() const {
+    return range_options_num_cols_;
+  }
+
  private:
   static const DocKey& DefaultStartDocKey();
 
   // Return inclusive lower/upper range doc key considering the start_doc_key.
   Result<KeyBytes> Bound(const bool lower_bound) const;
 
-  // Initialize range_options_ if hashed_components_ in set and all range columns have one or more
+  // Initialize range_options_ if hashed_components_ is set and all range columns have one or more
   // options (i.e. using EQ/IN conditions). Otherwise range_options_ will stay null and we will
   // only use the range_bounds for scanning.
   void InitRangeOptions(const QLConditionPB& condition);
@@ -109,29 +114,33 @@ class DocQLScanSpec : public QLScanSpec {
   // The scan range within the hash key when a WHERE condition is specified.
   const std::unique_ptr<const QLScanRange> range_bounds_;
 
-  // Indexes of columns that have range bounds such as c2 < 4 AND c2 >= 1
+  // Ids of columns that have range bounds such as c2 < 4 AND c2 >= 1.
   std::vector<ColumnId> range_bounds_indexes_;
 
   // Schema of the columns to scan.
   const Schema& schema_;
 
   // Hash code to scan at (interpreted as lower bound if hashed_components_ are empty)
-  // hash values are positive int16_t
+  // hash values are positive int16_t.
   const boost::optional<int32_t> hash_code_;
 
   // Max hash code to scan at (upper bound, only useful if hashed_components_ are empty)
-  // hash values are positive int16_t
+  // hash values are positive int16_t.
   const boost::optional<int32_t> max_hash_code_;
 
   // The hashed_components are owned by the caller of QLScanSpec.
   const std::vector<KeyEntryValue>* hashed_components_;
 
   // The range value options if set. (possibly more than one due to IN conditions).
-  std::shared_ptr<std::vector<std::vector<KeyEntryValue>>> range_options_;
+  std::shared_ptr<std::vector<OptionList>> range_options_;
 
-  // Indexes of columns that have range option filters such as
-  // c2 IN (1, 5, 6, 9)
+  // Ids of columns that have range option filters such as c2 IN (1, 5, 6, 9).
   std::vector<ColumnId> range_options_indexes_;
+
+  // Stores the number of columns involved in a range option filter.
+  // For filter: A in (..) AND (C, D) in (...) AND E in (...) where A, B, C, D, E are
+  // range columns, range_options_num_cols_ will contain [1, 0, 2, 2, 1].
+  std::vector<size_t> range_options_num_cols_;
 
   // Does the scan include static columns also?
   const bool include_static_columns_;

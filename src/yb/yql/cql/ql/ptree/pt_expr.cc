@@ -272,10 +272,13 @@ Status PTExpr::CheckEqualityOperands(SemContext *sem_context,
 
 
 Status PTExpr::CheckLhsExpr(SemContext *sem_context) {
-  if (op_ != ExprOperator::kRef && op_ != ExprOperator::kBcall) {
-    return sem_context->Error(this,
-                              "Only column refs and builtin calls are allowed for left hand value",
-                              ErrorCode::CQL_STATEMENT_INVALID);
+  if (op_ != ExprOperator::kRef && op_ != ExprOperator::kBcall &&
+      op_ != ExprOperator::kCollection) {
+    return sem_context->Error(
+        this,
+        "Only column refs, collections of column refs and builtin calls are allowed for left hand "
+        "value",
+        ErrorCode::CQL_STATEMENT_INVALID);
   }
   return Status::OK();
 }
@@ -482,6 +485,18 @@ Status PTCollectionExpr::Analyze(SemContext *sem_context) {
   }
 
   RETURN_NOT_OK(CheckOperator(sem_context));
+
+  // TODO(arpan): looks clumsy, how to do this more cleanly?
+  if (ql_type_->main() == DataType::TUPLE && ql_type_->params().size() != values_.size()) {
+    for (const auto &value : values_) {
+      PTRef *ref = static_cast<PTRef *>(value.get());
+      RETURN_NOT_OK(ref->AnalyzeOperator(sem_context));
+      if (ref->desc()) {
+        ql_type_->add_param(ref->ql_type());
+      }
+    }
+  }
+
   const shared_ptr<QLType>& expected_type = sem_context->expr_expected_ql_type();
 
   // If no expected type is given, use type inferred during parsing
@@ -496,7 +511,7 @@ Status PTCollectionExpr::Analyze(SemContext *sem_context) {
   }
 
   const MCSharedPtr<MCString>& bindvar_name = sem_context->bindvar_name();
-
+  size_t i = 0;
   // Checking type parameters.
   switch (expected_type->main()) {
     case MAP: {
@@ -609,9 +624,29 @@ Status PTCollectionExpr::Analyze(SemContext *sem_context) {
     }
 
     case TUPLE:
-      return sem_context->Error(this, "Tuple type not supported yet",
-                                ErrorCode::FEATURE_NOT_SUPPORTED);
-
+      i = 0;
+      if (values_.size() != expected_type->params().size()) {
+        return sem_context->Error(
+            this,
+            Format(
+                "Expected $0 elements in value tuple, but got $1", expected_type->params().size(),
+                values_.size()),
+            ErrorCode::INVALID_ARGUMENTS);
+      }
+      for (const auto &elem : values_) {
+        SemState sem_state(sem_context);
+        sem_state.set_allowing_column_refs(false);
+        const shared_ptr<QLType> &val_type = expected_type->param_type(i);
+        // NULL value in the TUPLE is allowed for right operand of IN/NOT IN operators only.
+        sem_state.SetExprState(
+            val_type, YBColumnSchema::ToInternalDataType(val_type), bindvar_name, nullptr,
+            NullIsAllowed(is_in_operand()));
+        RETURN_NOT_OK(elem->Analyze(sem_context));
+        RETURN_NOT_OK(elem->CheckRhsExpr(sem_context));
+        ++i;
+        sem_state.ResetContextState();
+      }
+      break;
     default:
       return sem_context->Error(this, ErrorCode::DATATYPE_MISMATCH);
   }
@@ -828,7 +863,6 @@ Status PTRelationExpr::SetupSemStateForOp2(SemState *sem_state) {
   if (!sem_state->bindvar_name()) {
     sem_state->set_bindvar_name(PTBindVar::default_bindvar_name());
   }
-
   return Status::OK();
 }
 
@@ -939,11 +973,11 @@ Status PTRelationExpr::AnalyzeOperator(SemContext *sem_context,
   WhereExprState *where_state = sem_context->where_state();
   if (where_state != nullptr) {
     // CheckLhsExpr already checks that this is either kRef or kBcall
-    DCHECK(op1->index_desc() != nullptr ||
-           op1->expr_op() == ExprOperator::kRef ||
-           op1->expr_op() == ExprOperator::kSubColRef ||
-           op1->expr_op() == ExprOperator::kJsonOperatorRef ||
-           op1->expr_op() == ExprOperator::kBcall);
+    DCHECK(
+        op1->index_desc() != nullptr || op1->expr_op() == ExprOperator::kRef ||
+        op1->expr_op() == ExprOperator::kSubColRef ||
+        op1->expr_op() == ExprOperator::kJsonOperatorRef ||
+        op1->expr_op() == ExprOperator::kBcall || op1->expr_op() == ExprOperator::kCollection);
     if (op1->index_desc()) {
       return where_state->AnalyzeColumnOp(sem_context, this, op1->index_desc(), op2);
     } else if (op1->expr_op() == ExprOperator::kRef) {
@@ -978,6 +1012,14 @@ Status PTRelationExpr::AnalyzeOperator(SemContext *sem_context,
         return sem_context->Error(loc(), "Builtin call not allowed in where clause",
                                   ErrorCode::CQL_STATEMENT_INVALID);
       }
+    } else if (op1->expr_op() == ExprOperator::kCollection) {
+      const PTCollectionExpr *collection_expr = static_cast<const PTCollectionExpr *>(op1.get());
+      std::vector<const ColumnDesc *> col_descs;
+      for (auto &value : collection_expr->values()) {
+        PTRef *ref = static_cast<PTRef *>(value.get());
+        col_descs.push_back(ref->desc());
+      }
+      return where_state->AnalyzeMultiColumnOp(sem_context, this, col_descs, op2);
     }
   }
 
@@ -996,7 +1038,6 @@ Status PTRelationExpr::AnalyzeOperator(SemContext *sem_context,
         ErrorCode::FEATURE_NOT_SUPPORTED);
     }
   }
-
   return Status::OK();
 }
 
