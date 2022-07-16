@@ -95,6 +95,7 @@ Status WriteColumn(const QLValuePB& col_value, faststring *buffer) {
     case InternalType::kMapValue:
     case InternalType::kSetValue:
     case InternalType::kFrozenValue:
+    case InternalType::kTupleValue:
       // Postgres does not have these datatypes.
       return STATUS_FORMAT(Corruption,
           "Unexpected data was read from database: col_value.type()=$0", col_value.value_case());

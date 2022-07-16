@@ -315,7 +315,7 @@ using namespace yb::ql;
                           a_expr b_expr ctext_expr c_expr AexprConst bindvar
                           collection_expr target_el in_expr
                           func_expr func_application func_arg_expr
-                          inactive_a_expr inactive_c_expr
+                          inactive_a_expr inactive_c_expr implicit_row
 
 %type <PRoleOption>       RoleOption
 
@@ -324,7 +324,7 @@ using namespace yb::ql;
 %type <PCollectionExpr>   // An expression for CQL collections:
                           //  - Map/Set/List/Tuple/Frozen/User-Defined Types.
                           map_elems map_expr set_elems set_expr list_elems list_expr
-                          tuple_elems tuple_expr
+                          in_operand_elems in_operand tuple_elems
 
 %type <PExprListNode>     // A list of expressions.
                           target_list opt_target_list
@@ -579,7 +579,7 @@ using namespace yb::ql;
                           locked_rels_list extract_list overlay_list position_list substr_list
                           trim_list opt_interval interval_second OptSeqOptList SeqOptList
                           rowsfrom_item rowsfrom_list opt_col_def_list ExclusionConstraintList
-                          ExclusionConstraintElem row explicit_row implicit_row
+                          ExclusionConstraintElem row explicit_row
                           type_list NumericOnly_list
                           func_alias_clause generic_option_list alter_generic_option_list
                           copy_generic_opt_list copy_generic_opt_arg_list
@@ -3571,6 +3571,9 @@ c_expr:
   | func_expr {
     $$ = $1;
   }
+  | implicit_row {
+    $$ = $1;
+  }
   | inactive_c_expr {
     PARSER_UNSUPPORTED(@1);
   }
@@ -3588,8 +3591,6 @@ inactive_c_expr:
   | ARRAY select_with_parens {
   }
   | explicit_row {
-  }
-  | implicit_row {
   }
   | GROUPING '(' expr_list ')' {
   }
@@ -3974,13 +3975,8 @@ frame_bound:
 // without conflicting with the parenthesized a_expr production.  Without the
 // ROW keyword, there must be more than one a_expr inside the parens.
 row:
-  ROW '(' expr_list ')' {
-    $$ = $3;
-  }
-  | ROW '(' ')' {
-  }
-  | '(' expr_list ',' a_expr ')' {
-  }
+  explicit_row {}
+  | implicit_row {}
 ;
 
 explicit_row:
@@ -3991,8 +3987,21 @@ explicit_row:
   }
 ;
 
+tuple_elems:
+  a_expr {
+    $$ = MAKE_NODE(@1, PTCollectionExpr, DataType::TUPLE);
+    $$->AddElement($1);
+  }
+  | tuple_elems ',' a_expr {
+    $1->AddElement($3);
+    $$ = $1;
+  }
+;
+
 implicit_row:
-  '(' expr_list ',' a_expr ')' {
+  '(' tuple_elems ',' a_expr ')' {
+    $2->AddElement($4);
+    $$ = $2;
   }
 ;
 
@@ -4415,23 +4424,23 @@ list_expr:
   }
 ;
 
-tuple_elems:
-  tuple_elems ',' a_expr {
+in_operand_elems:
+  in_operand_elems ',' a_expr {
     $1->AddElement($3);
     $$ = $1;
   }
   | a_expr {
-    $$ = MAKE_NODE(@1, PTCollectionExpr, DataType::TUPLE);
+    $$ = MAKE_NODE(@1, PTCollectionExpr, DataType::LIST);
     $$->AddElement($1);
   }
 ;
 
-tuple_expr:
-  '(' tuple_elems ')' {
+in_operand:
+  '(' in_operand_elems ')' {
     $$ = $2;
   }
   | '(' ')' {
-    $$ = MAKE_NODE(@1, PTCollectionExpr, DataType::TUPLE);
+    $$ = MAKE_NODE(@1, PTCollectionExpr, DataType::LIST);
   }
 ;
 
@@ -4453,7 +4462,7 @@ collection_expr:
 ;
 
 in_expr:
-  tuple_expr {
+  in_operand {
     $1->set_is_in_operand();
     $$ = $1;
   }
