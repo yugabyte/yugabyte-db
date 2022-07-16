@@ -463,8 +463,9 @@ InternalType YBColumnSchema::ToInternalDataType(const std::shared_ptr<QLType>& q
       return InternalType::kFrozenValue;
     case GIN_NULL:
       return InternalType::kGinNullValue;
+    case TUPLE:
+      return InternalType::kTupleValue;
 
-    case TUPLE: FALLTHROUGH_INTENDED; // TODO (mihnea) Tuple type not fully supported yet
     case NULL_VALUE_TYPE: FALLTHROUGH_INTENDED;
     case UNKNOWN_DATA:
       return InternalType::VALUE_NOT_SET;

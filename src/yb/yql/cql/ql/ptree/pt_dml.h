@@ -30,6 +30,8 @@
 #include "yb/yql/cql/ql/ptree/ptree_fwd.h"
 #include "yb/yql/cql/ql/ptree/tree_node.h"
 
+#include "yb/yql/cql/ql/ptree/column_arg.h"
+
 namespace yb {
 namespace ql {
 
@@ -93,7 +95,8 @@ class WhereExprState {
                  MCVector<ColumnOpCounter> *op_counters,
                  ColumnOpCounter *partition_key_counter,
                  TreeNodeOpcode statement_type,
-                 MCList<FuncOp> *func_ops)
+                 MCList<FuncOp> *func_ops,
+                 MCList<MultiColumnOp> *multi_col_ops)
     : ops_(ops),
       key_ops_(key_ops),
       subscripted_col_ops_(subscripted_col_ops),
@@ -102,7 +105,8 @@ class WhereExprState {
       op_counters_(op_counters),
       partition_key_counter_(partition_key_counter),
       statement_type_(statement_type),
-      func_ops_(func_ops) {
+      func_ops_(func_ops),
+      multi_colum_ops_(multi_col_ops) {
   }
 
   Status AnalyzeColumnOp(SemContext *sem_context,
@@ -110,6 +114,11 @@ class WhereExprState {
                                  const ColumnDesc *col_desc,
                                  PTExprPtr value,
                                  PTExprListNodePtr args = nullptr);
+
+  Status AnalyzeMultiColumnOp(SemContext *sem_context,
+                                      const PTRelationExpr *expr,
+                                      const std::vector<const ColumnDesc *> col_desc,
+                                      PTExprPtr value);
 
   Status AnalyzeColumnFunction(SemContext *sem_context,
                                        const PTRelationExpr *expr,
@@ -148,6 +157,8 @@ class WhereExprState {
   TreeNodeOpcode statement_type_;
 
   MCList<FuncOp> *func_ops_;
+
+  MCList<MultiColumnOp> *multi_colum_ops_;
 };
 
 //--------------------------------------------------------------------------------------------------
@@ -252,6 +263,10 @@ class PTDmlStmt : public PTCollection {
 
   const MCList<ColumnOp>& where_ops() const {
     return where_ops_;
+  }
+
+  const MCList<MultiColumnOp> &multi_col_where_ops() const {
+    return multi_col_where_ops_;
   }
 
   const MCList<SubscriptedColumnOp>& subscripted_col_where_ops() const {
@@ -455,6 +470,7 @@ class PTDmlStmt : public PTCollection {
   MCList<FuncOp> func_ops_;
   MCVector<ColumnOp> key_where_ops_;
   MCList<ColumnOp> where_ops_;
+  MCList<MultiColumnOp> multi_col_where_ops_;
   MCList<SubscriptedColumnOp> subscripted_col_where_ops_;
   MCList<JsonColumnOp> json_col_where_ops_;
 
