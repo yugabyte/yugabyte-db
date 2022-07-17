@@ -9,6 +9,7 @@ import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.RestoreBackupParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupCategory;
+import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
@@ -79,11 +80,19 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
                 createSetupSourceCertificateTask(
                     targetUniverse, xClusterConfig.getReplicationGroupName(), cert));
 
+        Set<String> tableIdsNeedBootstrap =
+            getTablesNeedBootstrap()
+                .stream()
+                .map(tableConfig -> tableConfig.tableId)
+                .collect(Collectors.toSet());
+        checkBootstrapRequired(tableIdsNeedBootstrap);
+
         // If at least one YSQL table needs bootstrap, it must be done for all tables in that
         // keyspace.
         if (tableType == CommonTypes.TableType.PGSQL_TABLE_TYPE
             && getTablesNeedBootstrap().size() > 0) {
-          xClusterConfig.setNeedBootstrapForTables(xClusterConfig.getTables(), true);
+          xClusterConfig.setNeedBootstrapForTables(
+              xClusterConfig.getTables(), true /* needBootstrap */);
         }
 
         // Replication for tables that do NOT need bootstrapping.
@@ -92,17 +101,14 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
                 .stream()
                 .map(tableConfig -> tableConfig.tableId)
                 .collect(Collectors.toSet());
-        boolean isXClusterConfigCreated = false;
         if (tableIdsNotNeedBootstrap.size() > 0) {
           // Set up the replication config.
           createXClusterConfigSetupTask(tableIdsNotNeedBootstrap)
               .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
-          isXClusterConfigCreated = true;
         }
 
         // Add the subtasks to set up replication for tables that need bootstrapping.
-        addSubtasksForTablesNeedBootstrap(
-            targetUniverse, requestedTablesInfoList, isXClusterConfigCreated);
+        addSubtasksForTablesNeedBootstrap(targetUniverse, requestedTablesInfoList);
 
         createXClusterConfigSetStatusTask(XClusterConfigStatusType.Running)
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
@@ -135,8 +141,7 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
 
   private void addSubtasksForTablesNeedBootstrap(
       Universe targetUniverse,
-      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTablesInfoList,
-      boolean isXClusterConfigCreated) {
+      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTablesInfoList) {
     XClusterConfig xClusterConfig = taskParams().xClusterConfig;
     CommonTypes.TableType tableType = requestedTablesInfoList.get(0).getTableType();
     String namespace = requestedTablesInfoList.get(0).getNamespace().getName();
@@ -199,7 +204,7 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
       createSetRestoreTimeTask(tableIdsNeedBootstrap)
           .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.RestoringBackup);
 
-      if (isXClusterConfigCreated) {
+      if (getTablesNotNeedBootstrap().size() > 0) {
         // It means the xCluster config is already created for tables without bootstrap.
         // We need to add the bootstrapped tables to the created xCluster config.
         createXClusterConfigModifyTablesTask(tableIdsNeedBootstrap, null /* tableIdsToRemove */)
@@ -341,8 +346,30 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
   private BackupRequestParams getBackupRequestParams(
       Set<String> tableIdsNeedBootstrap,
       List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tablesInfoList) {
-    BackupRequestParams backupRequestParams =
-        taskParams().createFormData.bootstrapParams.backupRequestParams;
+    BackupRequestParams backupRequestParams;
+    if (taskParams().createFormData.bootstrapParams.backupRequestParams != null) {
+      backupRequestParams = taskParams().createFormData.bootstrapParams.backupRequestParams;
+    } else {
+      // In case the user does not pass the backup parameters, use the default values.
+      backupRequestParams = new BackupRequestParams();
+      backupRequestParams.customerUUID =
+          Customer.get(
+                  Universe.getOrBadRequest(getXClusterConfigFromTaskParams().sourceUniverseUUID)
+                      .customerId)
+              .uuid;
+      // Use the last storage config used for a successful backup as the default one.
+      Optional<Backup> latestCompletedBackupOptional =
+          Backup.fetchLatestByState(backupRequestParams.customerUUID, Backup.BackupState.Completed);
+      if (!latestCompletedBackupOptional.isPresent()) {
+        throw new RuntimeException(
+            "bootstrapParams in XClusterConfigCreateFormData is null, and storageConfigUUID "
+                + "cannot be determined based on the latest successful backup");
+      }
+      backupRequestParams.storageConfigUUID = latestCompletedBackupOptional.get().storageConfigUUID;
+      log.info(
+          "storageConfigUUID {} will be used for bootstrapping",
+          backupRequestParams.storageConfigUUID);
+    }
     // These parameters are pre-set. Others either come from the user, or the defaults are good.
     backupRequestParams.universeUUID = taskParams().xClusterConfig.sourceUniverseUUID;
     backupRequestParams.backupType = tablesInfoList.get(0).getTableType();
