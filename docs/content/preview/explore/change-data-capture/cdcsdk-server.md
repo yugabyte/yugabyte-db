@@ -280,7 +280,7 @@ Note: This is the IAM policy for the user account and not a bucket policy.
 
 ## Record structure
 
-By default, the YugabyteDB connector generates a [complex record](../change-data-capture/debezium-connector-yugabytedb.md#data-change-events) in JSON with key and value information including payload. A sophisticated sink can use the information to generate appropriate commands in the receiving system.
+By default, the YugabyteDB connector generates a [complex record](../debezium-connector-yugabytedb/#data-change-events) in JSON with key and value information including payload. A sophisticated sink can use the information to generate appropriate commands in the receiving system.
 
 Simple sinks expect simple key/value JSON objects, where key is the column name and value is the contents of the column. For simple sinks, set `cdcsdk.server.transforms=FLATTEN`. With this configuration, the record structure will only emit the payload as simple JSON.
 
