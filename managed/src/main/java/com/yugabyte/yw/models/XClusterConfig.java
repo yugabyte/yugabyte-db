@@ -24,6 +24,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import javax.persistence.CascadeType;
 import javax.persistence.Column;
 import javax.persistence.Entity;
@@ -412,6 +413,13 @@ public class XClusterConfig extends Model {
         .where()
         .eq("source_universe_uuid", sourceUniverseUUID)
         .findList();
+  }
+
+  public static List<XClusterConfig> getByUniverseUuid(UUID universeUuid) {
+    return Stream.concat(
+            getBySourceUniverseUUID(universeUuid).stream(),
+            getByTargetUniverseUUID(universeUuid).stream())
+        .collect(Collectors.toList());
   }
 
   public static List<XClusterConfig> getBetweenUniverses(

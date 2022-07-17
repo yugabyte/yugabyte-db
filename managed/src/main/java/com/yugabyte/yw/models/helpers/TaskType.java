@@ -246,7 +246,7 @@ public enum TaskType {
 
   DeleteReplication("subtasks.xcluster.DeleteReplication"),
 
-  DeleteXClusterConfigFromDb("subtasks.xcluster.DeleteXClusterConfigFromDb"),
+  DeleteXClusterConfigEntry("subtasks.xcluster.DeleteXClusterConfigEntry"),
 
   SetRestoreTime("subtasks.xcluster.SetRestoreTime"),
 
