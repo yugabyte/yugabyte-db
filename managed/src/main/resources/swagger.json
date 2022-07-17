@@ -8238,7 +8238,7 @@
           "type" : "string"
         },
         "tables" : {
-          "description" : "Source Universe table IDs",
+          "description" : "Source universe table IDs",
           "example" : "[000033df000030008000000000004006, 000033df00003000800000000000400b]",
           "items" : {
             "type" : "string"
@@ -8312,6 +8312,21 @@
         }
       },
       "required" : [ "lag", "tableDetails" ],
+      "type" : "object"
+    },
+    "XClusterConfigNeedBootstrapFormData" : {
+      "properties" : {
+        "tables" : {
+          "description" : "Source universe table IDs to check whether they need bootstrap",
+          "example" : "[000033df00003000800000000000400b]",
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array",
+          "uniqueItems" : true
+        }
+      },
+      "required" : [ "tables" ],
       "type" : "object"
     },
     "XClusterTableConfig" : {
@@ -13486,6 +13501,49 @@
         "tags" : [ "Backups", "Table management" ]
       }
     },
+    "/api/v1/customers/{cUUID}/universes/{uniUUID}/need_bootstrap" : {
+      "get" : {
+        "description" : "",
+        "operationId" : "needBootstrapTable",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "uniUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "description" : "XCluster Need Bootstrap Form Data",
+          "in" : "body",
+          "name" : "xcluster_need_bootstrap_form_data",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/XClusterConfigNeedBootstrapFormData"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "additionalProperties" : {
+                "type" : "object"
+              },
+              "type" : "object"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Whether tables need bootstrap before setting up cross cluster replication",
+        "tags" : [ "Asynchronous Replication" ]
+      }
+    },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/pause" : {
       "post" : {
         "description" : "",
@@ -15605,6 +15663,49 @@
           "apiKeyAuth" : [ ]
         } ],
         "summary" : "Edit xcluster config",
+        "tags" : [ "Asynchronous Replication" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/xcluster_configs/{xccUUID}/need_bootstrap" : {
+      "get" : {
+        "description" : "",
+        "operationId" : "NeedBootstrapXClusterConfig",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "xccUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "description" : "XCluster Need Bootstrap Form Data",
+          "in" : "body",
+          "name" : "xcluster_need_bootstrap_form_data",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/XClusterConfigNeedBootstrapFormData"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "additionalProperties" : {
+                "type" : "object"
+              },
+              "type" : "object"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Whether tables in an xCluster replication config have fallen far behind and need bootstrap",
         "tags" : [ "Asynchronous Replication" ]
       }
     },

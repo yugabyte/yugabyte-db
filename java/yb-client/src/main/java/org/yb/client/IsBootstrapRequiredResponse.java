@@ -1,32 +1,33 @@
 package org.yb.client;
 
-import java.util.List;
-import org.yb.cdc.CdcService;
+
+import java.util.Map;
+import org.yb.master.MasterTypes.MasterErrorPB;
 
 public class IsBootstrapRequiredResponse extends YRpcResponse {
-  private final CdcService.CDCErrorPB cdcError;
-  private final boolean bootstrapRequired;
+  private final MasterErrorPB error;
+  private final Map<String, Boolean> results;
 
   public IsBootstrapRequiredResponse(
-    long elapsedMillis, String tsUUID, CdcService.CDCErrorPB cdcError, boolean bootstrapRequired) {
+    long elapsedMillis, String tsUUID, MasterErrorPB error, Map<String, Boolean> results) {
     super(elapsedMillis, tsUUID);
-    this.cdcError = cdcError;
-    this.bootstrapRequired = bootstrapRequired;
+    this.error = error;
+    this.results = results;
   }
 
   public boolean hasError() {
-    return cdcError != null;
+    return error != null;
   }
 
   public String errorMessage() {
-    if (cdcError == null) {
+    if (error == null) {
       return "";
     }
 
-    return cdcError.getStatus().getMessage();
+    return error.getStatus().getMessage();
   }
 
-  public boolean bootstrapRequired() {
-    return bootstrapRequired;
+  public Map<String, Boolean> getResults() {
+    return results;
   }
 }
