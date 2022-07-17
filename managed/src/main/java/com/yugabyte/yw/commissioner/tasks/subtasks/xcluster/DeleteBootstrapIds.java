@@ -50,13 +50,7 @@ public class DeleteBootstrapIds extends XClusterConfigTaskBase {
   public void run() {
     log.info("Running {}", getName());
 
-    // Each delete bootstrap IDs task must belong to a parent xCluster config.
-    XClusterConfig xClusterConfig = taskParams().xClusterConfig;
-    if (xClusterConfig == null) {
-      throw new RuntimeException(
-          "taskParams().xClusterConfig is null. Each delete bootstrap IDs subtask must belong "
-              + "to an xCluster config");
-    }
+    XClusterConfig xClusterConfig = getXClusterConfigFromTaskParams();
 
     if (xClusterConfig.sourceUniverseUUID == null) {
       log.info("Skipped {}: the source universe is destroyed", getName());

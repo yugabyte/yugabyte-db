@@ -280,12 +280,12 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     return createDeleteReplicationTask(false /* ignoreErrors */);
   }
 
-  protected SubTaskGroup createDeleteXClusterConfigFromDbTask(boolean forceDelete) {
-    return createDeleteXClusterConfigFromDbTask(taskParams().xClusterConfig, forceDelete);
+  protected SubTaskGroup createDeleteXClusterConfigEntryTask(boolean forceDelete) {
+    return createDeleteXClusterConfigEntryTask(taskParams().xClusterConfig, forceDelete);
   }
 
-  protected SubTaskGroup createDeleteXClusterConfigFromDbTask() {
-    return createDeleteXClusterConfigFromDbTask(false /* forceDelete */);
+  protected SubTaskGroup createDeleteXClusterConfigEntryTask() {
+    return createDeleteXClusterConfigEntryTask(false /* forceDelete */);
   }
 
   protected SubTaskGroup createXClusterConfigSyncTask() {
@@ -468,7 +468,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
   }
 
   protected void createDeleteXClusterConfigSubtasks() {
-    createDeleteXClusterConfigSubtasks(taskParams().xClusterConfig);
+    createDeleteXClusterConfigSubtasks(getXClusterConfigFromTaskParams());
   }
 
   protected void upgradeMismatchedXClusterCertsGFlags(
