@@ -126,7 +126,7 @@ You can run `cassandra-loader` and queue up the files for upload one at a time, 
 
 For additional options, consult [cassandra-loader options](https://github.com/yugabyte/cassandra-loader#options).
 
-## Export Data
+## Export data
 
 You can install `cassandra-unloader` as follows:
 
