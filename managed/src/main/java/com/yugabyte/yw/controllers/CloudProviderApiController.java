@@ -222,13 +222,36 @@ public class CloudProviderApiController extends AuthenticatedController {
       response = YBPTask.class)
   public Result accessKeysRotation(UUID customerUUID, UUID providerUUID) {
     RotateAccessKeyFormData params = parseJsonAndValidate(RotateAccessKeyFormData.class);
-    List<UUID> universeUUIDs = params.universeUUIDs;
+    Customer customer = Customer.getOrBadRequest(customerUUID);
     String newKeyCode = params.newKeyCode;
+    boolean rotateAllUniverses = params.rotateAllUniverses;
+    if (!rotateAllUniverses && params.universeUUIDs.size() == 0) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Need to specify universeUUIDs"
+              + " for access key rotation or set rotateAllUniverses to true!");
+    }
+    List<UUID> universeUUIDs =
+        rotateAllUniverses
+            ? customer
+                .getUniversesForProvider(providerUUID)
+                .stream()
+                .map(universe -> universe.universeUUID)
+                .collect(Collectors.toList())
+            : params.universeUUIDs;
+
     // fail if provider is a manually provisioned one
     accessKeyRotationUtil.failManuallyProvisioned(providerUUID, newKeyCode);
     // create access key rotation task for each of the universes
     Map<UUID, UUID> tasks =
         accessManager.rotateAccessKey(customerUUID, providerUUID, universeUUIDs, newKeyCode);
+
+    // contains taskUUID and resourceUUID (universeUUID) for each universe
+    List<YBPTask> tasksResponseList = new ArrayList<YBPTask>();
+    tasks.forEach(
+        (universeUUID, taskUUID) -> {
+          tasksResponseList.add(new YBPTask(taskUUID, universeUUID));
+        });
     auditService()
         .createAuditEntryWithReqBody(
             ctx(),
@@ -237,12 +260,6 @@ public class CloudProviderApiController extends AuthenticatedController {
             Audit.ActionType.RotateAccessKey,
             request().body().asJson(),
             null);
-    // contains taskUUID and resourceUUID (universeUUID) for each universe
-    List<YBPTask> tasksResponseList = new ArrayList<YBPTask>();
-    tasks.forEach(
-        (universeUUID, taskUUID) -> {
-          tasksResponseList.add(new YBPTask(taskUUID, universeUUID));
-        });
     return PlatformResults.withData(tasksResponseList);
   }
 
