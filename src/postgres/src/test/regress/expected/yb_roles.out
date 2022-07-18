@@ -6,10 +6,10 @@ CREATE OPERATOR FAMILY alt_opf1 USING hash;
 SET SESSION AUTHORIZATION regress_priv_user;
 CREATE EXTENSION pgcrypto; -- should fail
 ERROR:  permission denied to create extension "pgcrypto"
-HINT:  Must be superuser or yb_extension role member to create this extension.
+HINT:  Must be superuser or a member of the yb_extension role to create this extension.
 CREATE EXTENSION orafce; -- should fail
 ERROR:  permission denied to create extension "orafce"
-HINT:  Must be superuser or yb_extension role member to create this extension.
+HINT:  Must be superuser or a member of the yb_extension role to create this extension.
 \c -
 GRANT yb_extension TO regress_priv_user;
 SET SESSION AUTHORIZATION regress_priv_user;
@@ -22,7 +22,7 @@ ALTER EXTENSION pg_trgm UPDATE TO '1.4';
 DROP EXTENSION pg_trgm;
 ALTER OPERATOR FAMILY alt_opf1 USING hash ADD -- should fail
   OPERATOR 1 < (int1, int2);
-ERROR:  must be superuser or yb_extension role member to alter an operator family
+ERROR:  must be superuser or a member of the yb_extension role to alter an operator family
 \c -
 DROP USER regress_priv_user;
 --
@@ -33,7 +33,7 @@ CREATE USER regress_priv_user2;
 SET SESSION AUTHORIZATION regress_priv_user1;
 CREATE FOREIGN DATA WRAPPER useless; -- should fail
 ERROR:  permission denied to create foreign-data wrapper "useless"
-HINT:  Must be superuser or yb_fdw role member to create a foreign-data wrapper.
+HINT:  Must be superuser or a member of the yb_fdw role to create a foreign-data wrapper.
 \c -
 GRANT yb_fdw TO regress_priv_user1 WITH ADMIN OPTION;
 GRANT yb_extension TO regress_priv_user1;
@@ -42,7 +42,7 @@ CREATE FOREIGN DATA WRAPPER useless;
 ALTER FOREIGN DATA WRAPPER useless NO VALIDATOR;
 ALTER FOREIGN DATA WRAPPER useless OWNER TO regress_priv_user2; -- should fail
 ERROR:  permission denied to change owner of foreign-data wrapper "useless"
-HINT:  Must be superuser or yb_fdw role member to change owner of a foreign-data wrapper.
+HINT:  Must be superuser or a member of the yb_fdw role to change owner of a foreign-data wrapper.
 GRANT yb_fdw TO regress_priv_user2;
 ALTER FOREIGN DATA WRAPPER useless OWNER TO regress_priv_user2;
 CREATE SERVER s1 FOREIGN DATA WRAPPER useless; -- should fail, since the owner changed
@@ -103,6 +103,6 @@ DROP EXTENSION orafce;
 REVOKE yb_db_admin FROM regress_priv_user;
 CREATE EXTENSION PGAudit;
 ERROR:  permission denied to create event trigger "pgaudit_ddl_command_end"
-HINT:  Must be superuser or yb_db_admin role member to create an event trigger.
+HINT:  Must be superuser or a member of the yb_db_admin role to create an event trigger.
 DROP EXTENSION PGAudit;
 ERROR:  extension "pgaudit" does not exist

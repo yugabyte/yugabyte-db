@@ -183,8 +183,8 @@ DefineType(ParseState *pstate, List *names, List *parameters)
 	if (!(IsYbExtensionUser(GetUserId()) && creating_extension) && !superuser())
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-				 errmsg("must be superuser or yb_extension role member to "
-				 		"create a base type")));
+				 errmsg("must be superuser or a member of the yb_extension "
+				 		"role to create a base type")));
 
 	/* Convert list of names to a name and namespace */
 	typeNamespace = QualifiedNameGetCreationNamespace(names, &typeName);
