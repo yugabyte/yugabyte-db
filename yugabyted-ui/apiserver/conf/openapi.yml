@@ -2583,7 +2583,7 @@ paths:
           $ref: '#/components/responses/ApiError'
         '500':
           $ref: '#/components/responses/ApiError'
-  /public/accounts/{accountId}/projects/{projectId}/clusters/{clusterId}/tables:
+  /tables:
     get:
       description: Get list of tables per YB API (YCQL/YSQL)
       operationId: getClusterTables
@@ -2591,33 +2591,6 @@ paths:
       tags:
         - cluster-info
       parameters:
-        - name: accountId
-          in: path
-          description: ID of the associated account
-          required: true
-          style: simple
-          explode: false
-          schema:
-            type: string
-            format: uuid
-        - name: projectId
-          in: path
-          description: ID of the associated project
-          required: true
-          style: simple
-          explode: false
-          schema:
-            type: string
-            format: uuid
-        - name: clusterId
-          in: path
-          description: ID of the cluster
-          required: true
-          style: simple
-          explode: false
-          schema:
-            type: string
-            format: uuid
         - name: api
           in: query
           description: Which DB API to get tables for (YCQL/YSQL)
