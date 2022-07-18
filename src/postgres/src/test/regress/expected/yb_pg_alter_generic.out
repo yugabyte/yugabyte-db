@@ -289,7 +289,7 @@ CREATE ROLE regress_alter_generic_user5 NOSUPERUSER;
 CREATE OPERATOR FAMILY alt_opf5 USING btree;
 SET ROLE regress_alter_generic_user5;
 ALTER OPERATOR FAMILY alt_opf5 USING btree ADD OPERATOR 1 < (int4, int2), FUNCTION 1 btint42cmp(int4, int2);
-ERROR:  must be superuser or yb_extension role member to alter an operator family
+ERROR:  must be superuser or a member of the yb_extension role to alter an operator family
 RESET ROLE;
 ERROR:  current transaction is aborted, commands ignored until end of transaction block
 DROP OPERATOR FAMILY alt_opf5 USING btree;
