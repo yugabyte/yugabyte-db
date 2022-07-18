@@ -73,8 +73,10 @@ public class SoftwareUpgrade extends UpgradeTaskBase {
                       nodes1, getSingle(processTypes), newVersion, getTaskSubGroupType()),
               nodes,
               SOFTWARE_UPGRADE_CONTEXT);
-          // Run YSQL upgrade on the universe.
-          createRunYsqlUpgradeTask(newVersion).setSubTaskGroupType(getTaskSubGroupType());
+          if (taskParams().upgradeSystemCatalog) {
+            // Run YSQL upgrade on the universe.
+            createRunYsqlUpgradeTask(newVersion).setSubTaskGroupType(getTaskSubGroupType());
+          }
           // Update software version in the universe metadata.
           createUpdateSoftwareVersionTask(newVersion, false /*isSoftwareUpdateViaVm*/)
               .setSubTaskGroupType(getTaskSubGroupType());
