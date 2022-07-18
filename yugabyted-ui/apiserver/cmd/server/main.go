@@ -313,8 +313,7 @@ func main() {
     e.GET("/api/nodes", c.GetClusterNodes)
 
     // GetClusterTables - Get list of DB tables per YB API (YCQL/YSQL)
-    e.GET("/api/public/accounts/:accountId/projects/:projectId/clusters/:clusterId/tables",
-        c.GetClusterTables)
+    e.GET("/api/tables", c.GetClusterTables)
 
     // GetClusterTablespaces - Get list of DB tables for YSQL
     e.GET("/api/public/accounts/:accountId/projects/:projectId/"+
