@@ -344,7 +344,7 @@ You have successfully executed a basic Python application that works with Yugaby
 
   {{% tab header="NodeJS" lang="nodejs" %}}
 
-The following tutorial shows a small [Node.js application](https://github.com/yugabyte/yugabyte-simple-node-app) that connects to a YugabyteDB cluster using the [node-postgres module](../drivers-orms/nodejs/) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB Managed in Node.js.
+The following tutorial shows a small [Node.js application](https://github.com/yugabyte/yugabyte-simple-node-app) that connects to a YugabyteDB cluster using the [node-postgres driver](../drivers-orms/nodejs/) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB Managed in Node.js.
 
 This tutorial requires the following:
 
