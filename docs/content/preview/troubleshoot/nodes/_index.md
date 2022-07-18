@@ -13,6 +13,8 @@ type: indexpage
 ---
 
 <div class="row">
+
+
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="check-processes/">
       <div class="head">
@@ -41,13 +43,14 @@ type: indexpage
     <a class="section-link icon-offset" href="check-stats/">
       <div class="head">
         <img class="icon" src="/images/section_icons/troubleshoot/troubleshoot.png" aria-hidden="true" />
-        <div class="title">Get system stats</div>
+        <div class="title">Get system statistics</div>
       </div>
       <div class="body">
         Get state information and metrics for YugabyteDB processes.
       </div>
     </a>
   </div>
+  
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link glyphicon-floppy-disk" href="recover-disk/">
       <div class="head">
@@ -59,4 +62,19 @@ type: indexpage
       </div>
     </a>
   </div>
+  
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link glyphicon-floppy-disk" href="trouble-common/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/troubleshoot/troubleshoot.png" aria-hidden="true" />
+        <div class="title">Review common error messages</div>
+      </div>
+      <div class="body">
+        Familiarize yourself with error messages that are common to all YugabytDB components.
+      </div>
+    </a>
+  </div>  
+  
+  
+  
 </div>

@@ -12,6 +12,7 @@ type: docs
 When a YB-TServer process or node has failed, YugabyteDB automatically triggers a remote bootstrap for most types of tablet data corruption or failures. However, there is still a number of cases where this automatic mechanism might not be able to help.
 
 One major cause of such case would be a condition that leads to a code path encoded as a crash (for example, `CHECK` or `FATAL`) or the cause of a crash is unknown (for example, code errors that lead to `SIGSEGV`).
+
 In all of these cases, the root cause would likely repeat itself when the process is restarted.
 Moreover, when using YugabyteDB Anywhere, crashed processes are automatically restarted to ensure minimum downtime.
 
