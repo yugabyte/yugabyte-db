@@ -37,7 +37,7 @@ disk_usage:
   operator: "/ 1073741824"
   filters:
     saved_name: "node_filesystem_free_bytes|node_filesystem_size_bytes"
-    mountpoint: "/mnt/.*"
+    mountpoint: "/mnt/d[0-9]+"
   group_by: saved_name
   panel_group: "Node Metrics"
   layout:
