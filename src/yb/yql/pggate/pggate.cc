@@ -407,10 +407,6 @@ PgApiImpl::PgApiImpl(
           new PgTxnManager(
               &pg_client_, clock_, tserver_shared_object_.get(), pg_callbacks_)) {
   CHECK_OK(interrupter_->Start());
-  if (pg_callbacks_.YbPgMemUpdateMax) {
-    mem_tracker_->AssignUpdateMaxMemFunctor(pg_callbacks_.YbPgMemUpdateMax);
-  }
-
   CHECK_OK(clock_->Init());
 
   // Setup type mapping.

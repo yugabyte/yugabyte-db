@@ -219,10 +219,10 @@ bool YBCPgAllowForPrimaryKey(const YBCPgTypeEntity *type_entity) {
   return false;
 }
 
-YBCStatus YBCGetPgggateHeapConsumption(int64_t *consumption) {
+YBCStatus YBCGetPgggateCurrentAllocatedBytes(int64_t *consumption) {
   if (pgapi) {
 #ifdef TCMALLOC_ENABLED
-    *consumption = pgapi->GetMemTracker().GetTCMallocActualHeapSizeBytes();
+    *consumption = pgapi->GetMemTracker().GetTCMallocCurrentAllocatedBytes();
 #else
     *consumption = 0;
 #endif

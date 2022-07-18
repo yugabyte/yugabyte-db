@@ -50,10 +50,6 @@ namespace yb {
 namespace pggate {
 namespace {
 
-void YbPgMemUpdateMax() {
-  CHECK(true) << "Skip execution in test";
-}
-
 YBCPgMemctx global_test_memctx = nullptr;
 
 YBCPgMemctx GetCurrentTestYbMemctx() {
@@ -145,7 +141,6 @@ Status PggateTest::Init(const char *test_name, int num_tablet_servers) {
   YBCPgCallbacks callbacks;
   callbacks.GetCurrentYbMemctx = &GetCurrentTestYbMemctx;
   callbacks.GetDebugQueryString = &GetDebugQueryStringStub;
-  callbacks.YbPgMemUpdateMax = &YbPgMemUpdateMax;
 
   {
     auto proxy = cluster_->GetProxy<tserver::TabletServerServiceProxy>(cluster_->tablet_server(0));
