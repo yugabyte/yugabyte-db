@@ -82,8 +82,10 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
 
           createUpgradeTask(userIntent, universe, pi);
 
-          createRunYsqlUpgradeTask(taskParams().ybSoftwareVersion)
-              .setSubTaskGroupType(getTaskSubGroupType());
+          if (taskParams().upgradeSystemCatalog) {
+            createRunYsqlUpgradeTask(taskParams().ybSoftwareVersion)
+                .setSubTaskGroupType(getTaskSubGroupType());
+          }
 
           createUpdateSoftwareVersionTask(taskParams().ybSoftwareVersion)
               .setSubTaskGroupType(getTaskSubGroupType());
