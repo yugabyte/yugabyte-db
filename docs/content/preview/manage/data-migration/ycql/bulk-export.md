@@ -28,7 +28,7 @@ A typical workflow is to start with creating a source YugabyteDB table and popul
 
 ## Create source table
 
-The following example represent the schema of the destination YugabyteDB table:
+The following example represents the schema of the destination YugabyteDB table:
 
 ```sql
 CREATE KEYSPACE load;
