@@ -20,7 +20,7 @@ You can enable and disable encryption at rest in a YugabyteDB cluster with a sel
 Note that encryption can be applied at the following levels: 
 
 - At the database layer, in which case the encryption process and its associated capabilities, such as key rotation, are cluster-wide.
-- At the file system level, in which case it is the responsibility of the operations team's to manage the process manually on every node. It is important to note that the degree to which file systems or external encryption mechanisms support online operations can vary (for example, when the database processes are still running).
+- At the file system level, in which case it is the responsibility of the operations teams to manage the process manually on every node. It is important to note that the degree to which file systems or external encryption mechanisms support online operations can vary (for example, when the database processes are still running).
 
 ## Enable encryption
 
