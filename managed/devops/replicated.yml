@@ -412,6 +412,7 @@ components:
                 url = "{{repl if ConfigOptionEquals "https_enabled" "1"}}https://{{repl else}}http://{{repl end}}{{repl ConfigOption "hostname"}}{{repl if and (ConfigOptionNotEquals "nginx_external_port" "80") (ConfigOptionNotEquals "nginx_external_port" "443")}}:{{repl ConfigOption "nginx_external_port"}}{{repl end}}"
                 security.custom_hooks.enable_custom_hooks = {{repl if ConfigOptionEquals "enable_custom_hooks" "1"}}true{{repl else}}false{{repl end}}
                 security.custom_hooks.enable_sudo = {{repl if ConfigOptionEquals "enable_sudo" "1"}}true{{repl else}}false{{repl end}}
+                security.ssh2_enabled = false
               }
 
   - name: nginx

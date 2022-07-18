@@ -75,7 +75,8 @@ public class AWSUtil implements CloudUtil {
 
   // This method is a way to check if given S3 config can extract objects.
   public boolean canCredentialListObjects(CustomerConfigData configData, List<String> locations) {
-    if (CollectionUtils.isEmpty(locations)) {
+    if (CollectionUtils.isEmpty(locations)
+        || ((CustomerConfigStorageS3Data) configData).isIAMInstanceProfile) {
       return true;
     }
     for (String location : locations) {

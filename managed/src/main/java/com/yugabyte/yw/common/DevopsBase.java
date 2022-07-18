@@ -12,6 +12,7 @@ package com.yugabyte.yw.common;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.models.Provider;
@@ -36,6 +37,8 @@ public abstract class DevopsBase {
   @Inject ShellProcessHandler shellProcessHandler;
 
   @Inject RuntimeConfigFactory runtimeConfigFactory;
+
+  @Inject play.Configuration appConfig;
 
   protected JsonNode parseShellResponse(ShellResponse response, String command) {
     if (response.code == 0) {
@@ -114,6 +117,10 @@ public abstract class DevopsBase {
     Region region = null;
     if (regionUUID != null) {
       region = Region.get(regionUUID);
+    }
+
+    if (runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.security.ssh2_enabled")) {
+      commandArgs.add("--ssh2_enabled");
     }
 
     Provider provider = null;

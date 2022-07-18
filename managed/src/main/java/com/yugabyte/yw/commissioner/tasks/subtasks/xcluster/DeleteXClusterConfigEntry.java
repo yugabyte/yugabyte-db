@@ -7,12 +7,12 @@ import com.yugabyte.yw.models.XClusterConfig;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
-/** It creates a subtask to delete the xCluster config from Platform DB. */
+/** It is the subtask to delete the xCluster config entry from the Platform DB. */
 @Slf4j
-public class DeleteXClusterConfigFromDb extends XClusterConfigTaskBase {
+public class DeleteXClusterConfigEntry extends XClusterConfigTaskBase {
 
   @Inject
-  protected DeleteXClusterConfigFromDb(BaseTaskDependencies baseTaskDependencies) {
+  protected DeleteXClusterConfigEntry(BaseTaskDependencies baseTaskDependencies) {
     super(baseTaskDependencies);
   }
 
@@ -26,7 +26,7 @@ public class DeleteXClusterConfigFromDb extends XClusterConfigTaskBase {
   @Override
   public String getName() {
     return String.format(
-        "%s (xClusterConfig=%s, forceDelete=%s)",
+        "%s(xClusterConfig=%s,forceDelete=%s)",
         super.getName(), taskParams().xClusterConfig, taskParams().forceDelete);
   }
 
@@ -39,21 +39,12 @@ public class DeleteXClusterConfigFromDb extends XClusterConfigTaskBase {
   public void run() {
     log.info("Running {}", getName());
 
-    // The xClusterConfig field in taskParams must be set.
-    XClusterConfig xClusterConfig = taskParams().xClusterConfig;
-    if (xClusterConfig == null) {
-      throw new RuntimeException(
-          "taskParams().xClusterConfig is null. Each DeleteXClusterConfig subtask must belong to "
-              + "an xCluster config");
-    }
+    XClusterConfig xClusterConfig = getXClusterConfigFromTaskParams();
 
-    // Force delete when it is requested by the user or target universe is deleted.
-    boolean forceDelete = taskParams().forceDelete || xClusterConfig.targetUniverseUUID == null;
-
-    if (!forceDelete && xClusterConfig.status != XClusterConfig.XClusterConfigStatusType.Deleted) {
+    if (!isInMustDeleteStatus(xClusterConfig) && !taskParams().forceDelete) {
       String errMsg =
           String.format(
-              "xCluster config (%s) is in %s state, not in Deleted "
+              "xCluster config (%s) is in %s state, not in a MustDelete "
                   + "state; To delete it, you must use forceDelete",
               xClusterConfig.uuid, xClusterConfig.status);
       throw new RuntimeException(errMsg);

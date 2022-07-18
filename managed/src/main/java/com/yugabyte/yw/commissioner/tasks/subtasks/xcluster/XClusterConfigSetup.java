@@ -66,12 +66,7 @@ public class XClusterConfigSetup extends XClusterConfigTaskBase {
     log.info("Running {}", getName());
 
     // Each replication setup task must belong to a parent xCluster config.
-    XClusterConfig xClusterConfig = taskParams().xClusterConfig;
-    if (xClusterConfig == null) {
-      throw new RuntimeException(
-          "taskParams().xClusterConfig is null. Each modify tables subtask must belong to an "
-              + "xCluster config");
-    }
+    XClusterConfig xClusterConfig = getXClusterConfigFromTaskParams();
     // TableIds in the task parameters must not be null or empty.
     if (taskParams().tableIds == null || taskParams().tableIds.isEmpty()) {
       throw new RuntimeException(

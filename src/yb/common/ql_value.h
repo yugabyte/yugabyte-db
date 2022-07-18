@@ -134,6 +134,7 @@ class QLValue {
   QLVALUE_PRIMITIVE_GETTER(list);
   QLVALUE_PRIMITIVE_GETTER(frozen);
   QLVALUE_PRIMITIVE_GETTER(gin_null);
+  QLVALUE_PRIMITIVE_GETTER(tuple);
   #undef QLVALUE_PRIMITIVE_GETTER
 
   static Timestamp timestamp_value(const QLValuePB& pb);
@@ -591,6 +592,9 @@ inline void AppendToKey(const QLValue &value_pb, std::string *bytes) {
 void ConcatStrings(const std::string& lhs, const std::string& rhs, QLValuePB* result);
 void ConcatStrings(const std::string& lhs, const std::string& rhs, QLValue* result);
 void ConcatStrings(const Slice& lhs, const Slice& rhs, LWQLValuePB* result);
+
+vector<QLValuePB> SortTuplesbyOrdering(
+    const QLSeqValuePB& options, const std::vector<bool>& reverse);
 
 #define YB_SET_INT_VALUE(ql_valuepb, input, bits) \
   case DataType::BOOST_PP_CAT(INT, bits): { \

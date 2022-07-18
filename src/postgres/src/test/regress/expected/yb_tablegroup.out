@@ -187,6 +187,57 @@ ERROR:  Cannot use TABLEGROUP with SPLIT.
 CREATE INDEX ON tgroup_test1(col1) SPLIT AT VALUES((10), (20), (30));
 ERROR:  Cannot use TABLEGROUP with SPLIT.
 --
+-- Test CREATE INDEX with hash columns
+--
+CREATE TABLEGROUP tgroup_hash_index_test; 
+CREATE TABLE tbl (r1 int, r2 int, v1 int, v2 int,
+PRIMARY KEY (r1, r2)) TABLEGROUP tgroup_hash_index_test;
+CREATE INDEX idx_tbl ON tbl (r1 hash);
+ERROR:  cannot create a hash partitioned index in a TABLEGROUP
+CREATE INDEX idx2_tbl ON tbl ((r1, r2) hash);
+ERROR:  cannot create a hash partitioned index in a TABLEGROUP
+CREATE INDEX idx3_tbl ON tbl (r1 hash, r2 asc);
+ERROR:  cannot create a hash partitioned index in a TABLEGROUP
+CREATE UNIQUE INDEX unique_idx_tbl ON tbl (r1 hash);
+ERROR:  cannot create a hash partitioned index in a TABLEGROUP
+CREATE UNIQUE INDEX unique_idx2_tbl ON tbl ((r1, r2) hash);
+ERROR:  cannot create a hash partitioned index in a TABLEGROUP
+CREATE UNIQUE INDEX unique_idx3_tbl ON tbl (r1 hash, r2 asc);
+ERROR:  cannot create a hash partitioned index in a TABLEGROUP
+\d tbl
+                Table "public.tbl"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ r1     | integer |           | not null |
+ r2     | integer |           | not null |
+ v1     | integer |           |          |
+ v2     | integer |           |          |
+Indexes:
+    "tbl_pkey" PRIMARY KEY, lsm (r1 ASC, r2 ASC)
+Tablegroup: "tgroup_hash_index_test"
+
+-- Make sure nothing bad happens to UNIQUE constraints after disabling HASH columns
+-- for tablegroup indexes
+CREATE TABLE tbl2 (r1 int PRIMARY KEY, r2 int, v1 int, v2 int, UNIQUE(v1))
+TABLEGROUP tgroup_hash_index_test;
+ALTER TABLE tbl2 ADD CONSTRAINT unique_v2_tbl2 UNIQUE(v2);
+\d tbl2
+                Table "public.tbl2"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ r1     | integer |           | not null |
+ r2     | integer |           |          |
+ v1     | integer |           |          |
+ v2     | integer |           |          |
+Indexes:
+    "tbl2_pkey" PRIMARY KEY, lsm (r1 ASC)
+    "tbl2_v1_key" UNIQUE CONSTRAINT, lsm (v1 ASC), tablegroup "tgroup_hash_index_test"
+    "unique_v2_tbl2" UNIQUE CONSTRAINT, lsm (v2 ASC), tablegroup "tgroup_hash_index_test"
+Tablegroup: "tgroup_hash_index_test"
+
+DROP TABLE tbl, tbl2;
+DROP TABLEGROUP tgroup_hash_index_test;
+--
 -- Test describes
 --
 CREATE TABLE tgroup_test4 (col1 int, col2 int) TABLEGROUP tgroup2;

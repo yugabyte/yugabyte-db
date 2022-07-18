@@ -13,8 +13,9 @@ from azure.mgmt.compute import ComputeManagementClient
 from azure.mgmt.compute.models import DiskCreateOption
 from azure.mgmt.privatedns import PrivateDnsManagementClient
 from msrestazure.azure_exceptions import CloudError
-from ybops.utils import validated_key_file, format_rsa_key, DNS_RECORD_SET_TTL, MIN_MEM_SIZE_GB, \
+from ybops.utils import DNS_RECORD_SET_TTL, MIN_MEM_SIZE_GB, \
     MIN_NUM_CORES
+from ybops.utils.ssh import format_rsa_key, validated_key_file
 from threading import Thread
 
 import logging
@@ -573,7 +574,7 @@ class AzureCloudAdmin():
                             instance_type, ssh_user, nsg, image, vol_type, server_type,
                             region, nic_id, tags, disk_iops, disk_throughput, is_edit=False):
         disk_names = [vm_name + "-Disk-" + str(i) for i in range(1, num_vols + 1)]
-        private_key = validated_key_file(private_key_file)
+        private_key, _ = validated_key_file(private_key_file)
 
         shared_gallery_image_match = GALLERY_IMAGE_ID_REGEX.match(image)
         if shared_gallery_image_match:

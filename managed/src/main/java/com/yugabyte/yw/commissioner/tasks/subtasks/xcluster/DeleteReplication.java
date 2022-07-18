@@ -47,13 +47,7 @@ public class DeleteReplication extends XClusterConfigTaskBase {
   public void run() {
     log.info("Running {}", getName());
 
-    // Each delete replication task must belong to a parent xCluster config.
-    XClusterConfig xClusterConfig = taskParams().xClusterConfig;
-    if (xClusterConfig == null) {
-      throw new RuntimeException(
-          "taskParams().xClusterConfig is null. Each delete replication subtask must belong "
-              + "to an xCluster config");
-    }
+    XClusterConfig xClusterConfig = getXClusterConfigFromTaskParams();
 
     if (xClusterConfig.targetUniverseUUID == null) {
       log.info("Skipped {}: the target universe is destroyed", getName());
@@ -99,9 +93,11 @@ public class DeleteReplication extends XClusterConfigTaskBase {
             e.getMessage());
       }
 
-      // Set status of the xCluster config to `Deleted`.
-      xClusterConfig.status = XClusterConfig.XClusterConfigStatusType.Deleted;
-      xClusterConfig.update();
+      // Set status of the xCluster config to `Deleted` if required.
+      if (!isInMustDeleteStatus(xClusterConfig)) {
+        xClusterConfig.status = XClusterConfig.XClusterConfigStatusType.Deleted;
+        xClusterConfig.update();
+      }
 
       if (HighAvailabilityConfig.get().isPresent()) {
         getUniverse(true).incrementVersion();
