@@ -501,8 +501,6 @@ class PgApiImpl {
   void ClearSeparateDdlTxnMode();
   CHECKED_STATUS SetActiveSubTransaction(SubTransactionId id);
   CHECKED_STATUS RollbackSubTransaction(SubTransactionId id);
-  double GetTransactionPriority() const;
-  TxnPriorityRequirement GetTransactionPriorityType() const;
 
   //------------------------------------------------------------------------------------------------
   // Expressions.

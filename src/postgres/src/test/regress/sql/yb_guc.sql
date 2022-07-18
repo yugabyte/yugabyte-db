@@ -53,39 +53,6 @@ EXPLAIN SELECT j FROM test_scan;
 set enable_indexonlyscan = off;
 EXPLAIN SELECT j FROM test_scan;
 
--- Show transaction priority. As it is not possible to have a deterministic
--- yb_transaction_priority, we set yb_transaction_priority_lower_bound and
--- yb_transaction_priority_upper_bound to be the same, which forces
--- yb_transaction_priority to be equal to those two.
-set yb_transaction_priority_lower_bound = 0.4;
-set yb_transaction_priority_upper_bound = 0.4;
-BEGIN TRANSACTION;
-INSERT INTO test_scan (i, j) values (1, 1), (2, 2), (3, 3);
-show yb_transaction_priority;
-COMMIT;
-
--- Trying to set yb_transaction_priority will be an error
-set yb_transaction_priority = 0.3; -- ERROR
-
--- High priority transaction
-set yb_transaction_priority_lower_bound = 0.4;
-set yb_transaction_priority_upper_bound = 0.4;
-BEGIN TRANSACTION;
-SELECT i, j FROM test_scan WHERE i = 1 FOR UPDATE;
-show yb_transaction_priority;
-COMMIT;
-
--- Highest priority transaction
-set yb_transaction_priority_upper_bound = 1;
-set yb_transaction_priority_lower_bound = 1;
-BEGIN TRANSACTION;
-SELECT i, j FROM test_scan WHERE i = 1 FOR UPDATE;
-show yb_transaction_priority;
-COMMIT;
-
--- Showing yb_transaction_priority outside a transaction block
-show yb_transaction_priority;
-
 -- SET LOCAL is restricted by a function SET option
 create or replace function myfunc(int) returns text as $$
 begin

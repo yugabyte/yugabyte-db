@@ -87,19 +87,6 @@ uint64_t ConvertHighPriorityTxnBound(double value) {
   return ConvertBound(value, yb::kHighPriTxnLowerBound, yb::kHighPriTxnUpperBound);
 }
 
-// Convert uint64_t value in range [minValue, maxValue] to double value in range 0..1
-double ToTxnPriority(uint64_t value, uint64_t minValue, uint64_t maxValue) {
-  if (value <= minValue) {
-    return 0.0;
-  }
-
-  if (value >= maxValue) {
-    return 1.0;
-  }
-
-  return static_cast<double>(value - minValue) / (maxValue - minValue);
-}
-
 } // namespace
 
 extern "C" {
@@ -586,30 +573,6 @@ std::string PgTxnManager::TxnStateDebugStr() const {
       deferrable,
       txn_in_progress,
       pg_isolation_level);
-}
-
-double PgTxnManager::GetTransactionPriority() const {
-  auto priority = txn_->GetPriority();
-  if (priority <= yb::kRegularTxnUpperBound) {
-    return ToTxnPriority(priority,
-                         yb::kRegularTxnLowerBound,
-                         yb::kRegularTxnUpperBound);
-  }
-
-  return ToTxnPriority(priority,
-                       yb::kHighPriTxnLowerBound,
-                       yb::kHighPriTxnUpperBound);
-}
-
-TxnPriorityRequirement PgTxnManager::GetTransactionPriorityType() const {
-  auto priority = txn_->GetPriority();
-  if (priority <= yb::kRegularTxnUpperBound) {
-    return kLowerPriorityRange;
-  }
-  if (priority < yb::kHighPriTxnUpperBound) {
-    return kHigherPriorityRange;
-  }
-  return kHighestPriority;
 }
 
 }  // namespace pggate
