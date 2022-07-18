@@ -5870,6 +5870,9 @@
           "enum" : [ "Rolling", "Non-Rolling", "Non-Restart" ],
           "type" : "string"
         },
+        "upgradeSystemCatalog" : {
+          "type" : "boolean"
+        },
         "useNewHelmNamingStyle" : {
           "type" : "boolean"
         },
@@ -5887,7 +5890,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "clusters", "creatingUser", "kubernetesUpgradeSupported", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption", "ybSoftwareVersion" ],
+      "required" : [ "clusters", "creatingUser", "kubernetesUpgradeSupported", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption", "upgradeSystemCatalog", "ybSoftwareVersion" ],
       "type" : "object"
     },
     "SupportBundle" : {
