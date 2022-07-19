@@ -105,6 +105,30 @@ CREATE TABLE tgroup_split (col1 int, col2 text) SPLIT INTO 3 TABLETS TABLEGROUP 
 CREATE INDEX ON tgroup_test1(col1) SPLIT AT VALUES((10), (20), (30));
 
 --
+-- Test CREATE INDEX with hash columns
+--
+CREATE TABLEGROUP tgroup_hash_index_test; 
+CREATE TABLE tbl (r1 int, r2 int, v1 int, v2 int,
+PRIMARY KEY (r1, r2)) TABLEGROUP tgroup_hash_index_test;
+CREATE INDEX idx_tbl ON tbl (r1 hash);
+CREATE INDEX idx2_tbl ON tbl ((r1, r2) hash);
+CREATE INDEX idx3_tbl ON tbl (r1 hash, r2 asc);
+CREATE UNIQUE INDEX unique_idx_tbl ON tbl (r1 hash);
+CREATE UNIQUE INDEX unique_idx2_tbl ON tbl ((r1, r2) hash);
+CREATE UNIQUE INDEX unique_idx3_tbl ON tbl (r1 hash, r2 asc);
+\d tbl
+
+-- Make sure nothing bad happens to UNIQUE constraints after disabling HASH columns
+-- for tablegroup indexes
+CREATE TABLE tbl2 (r1 int PRIMARY KEY, r2 int, v1 int, v2 int, UNIQUE(v1))
+TABLEGROUP tgroup_hash_index_test;
+ALTER TABLE tbl2 ADD CONSTRAINT unique_v2_tbl2 UNIQUE(v2);
+\d tbl2
+
+DROP TABLE tbl, tbl2;
+DROP TABLEGROUP tgroup_hash_index_test;
+
+--
 -- Test describes
 --
 CREATE TABLE tgroup_test4 (col1 int, col2 int) TABLEGROUP tgroup2;

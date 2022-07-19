@@ -35,6 +35,7 @@ class UniverseLogsComponent implements SupportBundleComponent {
   private final NodeUniverseManager nodeUniverseManager;
   protected final Config config;
   private final SupportBundleUtil supportBundleUtil;
+  public final String NODE_UTILS_SCRIPT = "bin/node_utils.sh";
 
   @Inject
   UniverseLogsComponent(
@@ -116,18 +117,26 @@ class UniverseLogsComponent implements SupportBundleComponent {
           config.getString("yb.support_bundle.universe_logs_regex_pattern");
 
       // Get and filter master log files that fall within given dates
-      List<String> masterLogFilePaths =
-          getNodeFilePaths(node, universe, nodeHomeDir + "/master/logs", 1, "f");
-      masterLogFilePaths =
-          filterFilePathsBetweenDates(
-              masterLogFilePaths, universeLogsRegexPattern, startDate, endDate);
+      String masterLogsPath = nodeHomeDir + "/master/logs";
+      List<String> masterLogFilePaths = new ArrayList<>();
+      if (checkNodeIfFileExists(node, universe, masterLogsPath)) {
+        masterLogFilePaths =
+            getNodeFilePaths(node, universe, masterLogsPath, /*maxDepth*/ 1, /*fileType*/ "f");
+        masterLogFilePaths =
+            filterFilePathsBetweenDates(
+                masterLogFilePaths, universeLogsRegexPattern, startDate, endDate);
+      }
 
       // Get and filter tserver log files that fall within given dates
-      List<String> tserverLogFilePaths =
-          getNodeFilePaths(node, universe, nodeHomeDir + "/tserver/logs", 1, "f");
-      tserverLogFilePaths =
-          filterFilePathsBetweenDates(
-              tserverLogFilePaths, universeLogsRegexPattern, startDate, endDate);
+      String tserverLogsPath = nodeHomeDir + "/tserver/logs";
+      List<String> tserverLogFilePaths = new ArrayList<>();
+      if (checkNodeIfFileExists(node, universe, tserverLogsPath)) {
+        tserverLogFilePaths =
+            getNodeFilePaths(node, universe, tserverLogsPath, /*maxDepth*/ 1, /*fileType*/ "f");
+        tserverLogFilePaths =
+            filterFilePathsBetweenDates(
+                tserverLogFilePaths, universeLogsRegexPattern, startDate, endDate);
+      }
 
       // Combine both master and tserver files to download all the files together
       List<String> allLogFilePaths =
@@ -156,7 +165,39 @@ class UniverseLogsComponent implements SupportBundleComponent {
     }
   }
 
-  // Gets a list of all the absolute file paths at a given remote directory
+  /**
+   * Checks if a file or directory exists on the node in the universe
+   *
+   * @param node
+   * @param universe
+   * @param remotePath
+   * @return true if file/directory exists, else false
+   */
+  public boolean checkNodeIfFileExists(NodeDetails node, Universe universe, String remotePath) {
+    List<String> params = new ArrayList<>();
+    params.add("check_file_exists");
+    params.add(remotePath);
+
+    ShellResponse scriptOutput =
+        this.nodeUniverseManager.runScript(node, universe, NODE_UTILS_SCRIPT, params);
+
+    if (scriptOutput.extractRunCommandOutput().trim().equals("1")) {
+      return true;
+    } else {
+      return false;
+    }
+  }
+
+  /**
+   * Gets a list of all the absolute file paths at a given remote directory
+   *
+   * @param node
+   * @param universe
+   * @param remoteDirPath
+   * @param maxDepth
+   * @param fileType
+   * @return list of strings of all the absolute file paths
+   */
   public List<String> getNodeFilePaths(
       NodeDetails node, Universe universe, String remoteDirPath, int maxDepth, String fileType) {
     List<String> command = new ArrayList<>();

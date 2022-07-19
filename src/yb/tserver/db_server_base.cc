@@ -22,6 +22,7 @@
 #include "yb/tserver/tserver_util_fwd.h"
 #include "yb/tserver/tserver_shared_mem.h"
 
+#include "yb/util/mem_tracker.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/shared_mem.h"
 #include "yb/util/status_log.h"
@@ -35,6 +36,7 @@ DbServerBase::DbServerBase(
     : RpcAndWebServerBase(std::move(name), options, metrics_namespace, std::move(mem_tracker)),
       shared_object_(new tserver::TServerSharedObject(
           CHECK_RESULT(tserver::TServerSharedObject::Create()))) {
+  MemTracker::GetRootTracker()->LogMemoryLimits();
 }
 
 DbServerBase::~DbServerBase() {

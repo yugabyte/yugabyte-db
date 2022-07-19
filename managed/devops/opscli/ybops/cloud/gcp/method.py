@@ -18,7 +18,7 @@ from ybops.cloud.common.method import (AbstractInstancesMethod, AbstractAccessMe
                                        DeleteRootVolumesMethod)
 from ybops.cloud.gcp.utils import GCP_PERSISTENT, GCP_SCRATCH
 from ybops.common.exceptions import YBOpsRuntimeError, get_exception_message
-from ybops.utils import format_rsa_key, validated_key_file
+from ybops.utils.ssh import format_rsa_key, validated_key_file
 
 
 class GcpReplaceRootVolumeMethod(ReplaceRootVolumeMethod):

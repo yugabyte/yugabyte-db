@@ -1337,6 +1337,40 @@ TEST_F(XClusterAdminCliTest, TestDeleteCDCStreamWithAlterUniverse) {
                                 "ignore-errors"));
 }
 
+TEST_F(XClusterAdminCliTest, TestWaitForReplicationDrain) {
+  client::TableHandle producer_table;
+
+  // Create an identical table on the producer.
+  client::kv_table_test::CreateTable(
+      Transactional::kTrue, NumTablets(), producer_cluster_client_.get(), &producer_table);
+
+  // Setup universe replication.
+  ASSERT_OK(RunAdminToolCommand("setup_universe_replication",
+                                kProducerClusterId,
+                                producer_cluster_->GetMasterAddresses(),
+                                producer_table->id()));
+  ASSERT_OK(CheckTableIsBeingReplicated({producer_table->id()}));
+  string stream_id = ASSERT_RESULT(GetRecentStreamId(producer_cluster_.get()));
+
+  // API should succeed with correctly formatted arguments.
+  ASSERT_OK(RunAdminToolCommand(producer_cluster_.get(),
+                                "wait_for_replication_drain", stream_id));
+  ASSERT_OK(RunAdminToolCommand(producer_cluster_.get(),
+                                "wait_for_replication_drain", stream_id, GetCurrentTimeMicros()));
+  ASSERT_OK(RunAdminToolCommand(producer_cluster_.get(),
+                                "wait_for_replication_drain", stream_id, "minus", "3s"));
+
+  // API should fail with an invalid stream ID.
+  ASSERT_NOK(RunAdminToolCommand(producer_cluster_.get(),
+                                 "wait_for_replication_drain", "abc"));
+
+  // API should fail with an invalid target_time format.
+  ASSERT_NOK(RunAdminToolCommand(producer_cluster_.get(),
+                                 "wait_for_replication_drain", stream_id, 123));
+  ASSERT_NOK(RunAdminToolCommand(producer_cluster_.get(),
+                                 "wait_for_replication_drain", stream_id, "minus", "hello"));
+}
+
 TEST_F(XClusterAdminCliTest, TestDeleteCDCStreamWithBootstrap) {
   const int kStreamUuidLength = 32;
   client::TableHandle producer_table;

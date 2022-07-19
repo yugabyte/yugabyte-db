@@ -24,8 +24,6 @@ DECLARE_bool(disable_hybrid_scan);
 
 namespace yb {
 
-using std::unordered_map;
-using std::pair;
 using std::vector;
 
 //-------------------------------------- QL scan range --------------------------------------
@@ -37,7 +35,13 @@ QLScanRange::QLScanRange(const Schema& schema, const QLConditionPB& condition)
 template <class Value>
 struct ColumnValue {
   bool lhs_is_column = false;
+
+  // single column
   ColumnId column_id;
+
+  // grouped columns
+  const std::vector<ColumnId> column_ids;
+
   const Value* value = nullptr;
 
   explicit operator bool() const {
@@ -55,9 +59,10 @@ auto GetColumnValue(const Col& col) {
     ++it;
     if (it->expr_case() == decltype(it->expr_case())::kValue) {
       return ResultType {
-        .lhs_is_column = true,
-        .column_id = column_id,
-        .value = &it->value(),
+          .lhs_is_column = true,
+          .column_id = column_id,
+          .column_ids = {},
+          .value = &it->value(),
       };
     }
     return ResultType();
@@ -67,10 +72,30 @@ auto GetColumnValue(const Col& col) {
     ++it;
     if (it->expr_case() == decltype(it->expr_case())::kColumnId) {
       return ResultType {
-        .lhs_is_column = false,
-        .column_id = ColumnId(it->column_id()),
-        .value = value,
+          .lhs_is_column = false,
+          .column_id = ColumnId(it->column_id()),
+          .column_ids = {},
+          .value = value,
       };
+    }
+    return ResultType();
+  }
+  if (it->expr_case() == decltype(it->expr_case())::kTuple) {
+    std::vector<ColumnId> column_ids;
+    for (const auto& elem : it->tuple().elems()) {
+      DCHECK(elem.has_column_id());
+      column_ids.emplace_back(ColumnId(elem.column_id()));
+    }
+    ++it;
+
+    if (it->expr_case() == decltype(it->expr_case())::kValue) {
+      auto result = ResultType {
+          .lhs_is_column = true,
+          .column_id = ColumnId(0),
+          .column_ids = column_ids,
+          .value = &it->value(),
+      };
+      return result;
     }
     return ResultType();
   }
@@ -97,9 +122,30 @@ void QLScanRange::Init(const Cond& condition) {
   bool has_range_column = false;
   using ExprCase = decltype(operands.begin()->expr_case());
   for (const auto& operand : operands) {
-    if (operand.expr_case() == ExprCase::kColumnId &&
-        schema_.is_range_column(ColumnId(operand.column_id()))) {
-      has_range_column = true;
+    std::vector<int> column_ids;
+    if (operand.expr_case() == ExprCase::kColumnId) {
+      column_ids.push_back(operand.column_id());
+    } else if (operand.expr_case() == ExprCase::kTuple) {
+      for (auto const& elem : operand.tuple().elems()) {
+        DCHECK(elem.has_column_id());
+        column_ids.push_back(elem.column_id());
+      }
+    }
+    if (column_ids.empty()) {
+      continue;
+    }
+
+    // For operand.expr_case() == ExprCase::kColumnId, there will be just one column and
+    // for operand.expr_case() == ExprCase::kTuple, all the columns are given to be range columns,
+    // so in order to set has_range_column as true it suffices to find a single range column.
+    for (auto id : column_ids) {
+      if (schema_.is_range_column(ColumnId(id))) {
+        has_range_column = true;
+        break;
+      }
+    }
+
+    if (has_range_column) {
       break;
     }
   }
@@ -227,13 +273,52 @@ void QLScanRange::Init(const Cond& condition) {
           // IN arguments should have already been de-duplicated and ordered by the executor.
           auto in_size = column_value.value->list_value().elems().size();
           if (in_size > 0) {
-            auto& range = ranges_[column_value.column_id];
-            QLLowerBound lower_bound(*column_value.value->list_value().elems().begin(), true);
-            range.min_bound = lower_bound;
-            auto last = column_value.value->list_value().elems().end();
-            --last;
-            QLUpperBound upper_bound(*last, true);
-            range.max_bound = upper_bound;
+            ColumnId col_id = column_value.column_id;
+            if (col_id != ColumnId(0)) {
+              auto& range = ranges_[col_id];
+              QLLowerBound lower_bound(*column_value.value->list_value().elems().begin(), true);
+              range.min_bound = lower_bound;
+              auto last = column_value.value->list_value().elems().end();
+              --last;
+              QLUpperBound upper_bound(*last, true);
+              range.max_bound = upper_bound;
+            } else {
+              std::vector<ColumnId> col_ids = column_value.column_ids;
+              const auto& options = column_value.value->list_value().elems();
+              size_t num_cols = col_ids.size();
+              auto options_itr = options.begin();
+
+              auto lower = *options.begin();
+              auto upper = *options.begin();
+
+              while(options_itr != options.end()) {
+                DCHECK(options_itr->has_tuple_value());
+                DCHECK_EQ(num_cols, options_itr->tuple_value().elems().size());
+                auto tuple_itr = options_itr->tuple_value().elems().begin();
+                auto l_itr = lower.mutable_tuple_value()->mutable_elems()->begin();
+                auto u_itr = upper.mutable_tuple_value()->mutable_elems()->begin();
+                while(tuple_itr != options_itr->tuple_value().elems().end()) {
+                  if (*l_itr > *tuple_itr) {
+                    *l_itr = *tuple_itr;
+                  }
+                  if (*u_itr < *tuple_itr) {
+                    *u_itr = *tuple_itr;
+                  }
+                  ++tuple_itr;
+                  ++l_itr;
+                  ++u_itr;
+                }
+                ++options_itr;
+              }
+
+              auto l_itr = lower.tuple_value().elems().begin();
+              auto u_itr = upper.tuple_value().elems().begin();
+              for (size_t i = 0; i < col_ids.size(); ++i, ++l_itr, ++u_itr) {
+                auto& range = ranges_[col_ids[i]];
+                range.min_bound = QLLowerBound(*l_itr, true);
+                range.max_bound = QLUpperBound(*u_itr, true);
+              }
+            }
           }
           has_in_range_options_ = true;
         }

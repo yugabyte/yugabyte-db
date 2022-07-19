@@ -36,6 +36,7 @@
 #include "yb/util/memory/mc_types.h"
 
 #include "yb/yql/cql/ql/exec/exec_fwd.h"
+#include "yb/yql/cql/ql/ptree/column_arg.h"
 #include "yb/yql/cql/ql/ptree/ptree_fwd.h"
 #include "yb/yql/cql/ql/ptree/pt_expr_types.h"
 #include "yb/yql/cql/ql/util/util_fwd.h"
@@ -375,6 +376,7 @@ class Executor : public QLExprExecutor {
   Result<uint64_t> WhereClauseToPB(QLReadRequestPB *req,
                                    const MCVector<ColumnOp>& key_where_ops,
                                    const MCList<ColumnOp>& where_ops,
+                                   const MCList<MultiColumnOp>& multi_col_where_ops,
                                    const MCList<SubscriptedColumnOp>& subcol_where_ops,
                                    const MCList<JsonColumnOp>& jsoncol_where_ops,
                                    const MCList<PartitionKeyOp>& partition_key_ops,
@@ -391,7 +393,8 @@ class Executor : public QLExprExecutor {
   Status WhereKeyToPB(QLReadRequestPB *req, const Schema& schema, const QLRow& key);
 
   // Convert an expression op in where clause to protobuf.
-  Status WhereOpToPB(QLConditionPB *condition, const ColumnOp& col_op);
+  Status WhereColumnOpToPB(QLConditionPB *condition, const ColumnOp &col_op);
+  Status WhereMultiColumnOpToPB(QLConditionPB *condition, const MultiColumnOp &col_op);
   Status WhereSubColOpToPB(QLConditionPB *condition, const SubscriptedColumnOp& subcol_op);
   Status WhereJsonColOpToPB(QLConditionPB *condition, const JsonColumnOp& jsoncol_op);
   Status FuncOpToPB(QLConditionPB *condition, const FuncOp& func_op);

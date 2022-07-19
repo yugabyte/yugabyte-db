@@ -818,7 +818,7 @@ Status SysCatalogTable::ReadYsqlCatalogVersion(TableId ysql_catalog_table_id,
                                                    {} /* read_hybrid_time */,
                                                    ysql_catalog_table_id));
   QLTableRow source_row;
-  ColumnId version_col_id = VERIFY_RESULT(schema.ColumnIdByName("current_version"));
+  ColumnId version_col_id = VERIFY_RESULT(schema.ColumnIdByName(kCurrentVersionColumnName));
   ColumnId last_breaking_version_col_id =
       VERIFY_RESULT(schema.ColumnIdByName("last_breaking_version"));
 

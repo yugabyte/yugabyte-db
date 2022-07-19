@@ -12,7 +12,6 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.TransferXClusterCerts;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.BootstrapProducer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.CheckBootstrapRequired;
-import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.DeleteReplication;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.SetRestoreTime;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigModifyTables;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigRename;
@@ -37,16 +36,19 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import javax.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.WireProtocol.AppStatusPB.ErrorCode;
 import org.yb.cdc.CdcConsumer;
 import org.yb.client.GetMasterClusterConfigResponse;
+import org.yb.client.IsBootstrapRequiredResponse;
 import org.yb.client.IsSetupUniverseReplicationDoneResponse;
 import org.yb.client.YBClient;
 import org.yb.master.CatalogEntityInfo;
@@ -280,12 +282,12 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     return createDeleteReplicationTask(false /* ignoreErrors */);
   }
 
-  protected SubTaskGroup createDeleteXClusterConfigFromDbTask(boolean forceDelete) {
-    return createDeleteXClusterConfigFromDbTask(taskParams().xClusterConfig, forceDelete);
+  protected SubTaskGroup createDeleteXClusterConfigEntryTask(boolean forceDelete) {
+    return createDeleteXClusterConfigEntryTask(taskParams().xClusterConfig, forceDelete);
   }
 
-  protected SubTaskGroup createDeleteXClusterConfigFromDbTask() {
-    return createDeleteXClusterConfigFromDbTask(false /* forceDelete */);
+  protected SubTaskGroup createDeleteXClusterConfigEntryTask() {
+    return createDeleteXClusterConfigEntryTask(false /* forceDelete */);
   }
 
   protected SubTaskGroup createXClusterConfigSyncTask() {
@@ -468,7 +470,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
   }
 
   protected void createDeleteXClusterConfigSubtasks() {
-    createDeleteXClusterConfigSubtasks(taskParams().xClusterConfig);
+    createDeleteXClusterConfigSubtasks(getXClusterConfigFromTaskParams());
   }
 
   protected void upgradeMismatchedXClusterCertsGFlags(
@@ -570,16 +572,21 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
   /**
    * It creates a group of subtasks to check if bootstrap is required for all the tables in the
    * xCluster config of this task.
+   *
+   * <p>It creates separate subtasks for each table to increase parallelism because current coreDB
+   * implementation can check one table in one RPC call.
+   *
+   * @param tableIds A set of table IDs to check whether they require bootstrap
+   * @return The created subtask group
    */
-  protected SubTaskGroup createCheckBootstrapRequiredTask() {
+  protected SubTaskGroup createCheckBootstrapRequiredTask(Set<String> tableIds) {
     SubTaskGroup subTaskGroup =
         getTaskExecutor().createSubTaskGroup("CheckBootstrapRequired", executor);
-    for (XClusterTableConfig table : taskParams().xClusterConfig.tables) {
+    for (String tableId : tableIds) {
       CheckBootstrapRequired.Params bootstrapRequiredParams = new CheckBootstrapRequired.Params();
       bootstrapRequiredParams.universeUUID = taskParams().xClusterConfig.sourceUniverseUUID;
       bootstrapRequiredParams.xClusterConfig = taskParams().xClusterConfig;
-      bootstrapRequiredParams.tableId = table.tableId;
-      bootstrapRequiredParams.streamId = table.streamId;
+      bootstrapRequiredParams.tableIds = Collections.singleton(tableId);
 
       CheckBootstrapRequired task = createTask(CheckBootstrapRequired.class);
       task.initialize(bootstrapRequiredParams);
@@ -587,6 +594,56 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     }
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
+  }
+
+  protected void checkBootstrapRequired(Set<String> tableIds) {
+    XClusterConfig xClusterConfig = getXClusterConfigFromTaskParams();
+    log.info(
+        "Running checkBootstrapRequired with (sourceUniverse={},xClusterUuid={},tableIds={})",
+        xClusterConfig.sourceUniverseUUID,
+        xClusterConfig,
+        tableIds);
+
+    Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.targetUniverseUUID);
+    String targetUniverseMasterAddresses = targetUniverse.getMasterAddresses();
+    String targetUniverseCertificate = targetUniverse.getCertificateNodetoNode();
+    try (YBClient client =
+        ybService.getClient(targetUniverseMasterAddresses, targetUniverseCertificate)) {
+      // If xCluster config state is not Init, sync the stream ids to make sure the right one is
+      // passed to the IsBootstrapRequired API.
+      if (xClusterConfig.status != XClusterConfig.XClusterConfigStatusType.Init) {
+        GetMasterClusterConfigResponse clusterConfigResp = client.getMasterClusterConfig();
+        if (clusterConfigResp.hasError()) {
+          throw new RuntimeException(
+              String.format(
+                  "Failed to getMasterClusterConfig from target universe (%s) for xCluster "
+                      + "config %s: %s",
+                  targetUniverse.universeUUID, xClusterConfig, clusterConfigResp.errorMessage()));
+        }
+        updateStreamIdsFromTargetUniverseClusterConfig(
+            clusterConfigResp.getConfig(), xClusterConfig, tableIds);
+      }
+
+      // Check whether bootstrap is required.
+      Map<String, Boolean> isBootstrapRequiredMap = isBootstrapRequired(tableIds, xClusterConfig);
+      log.debug("IsBootstrapRequired result is {}", isBootstrapRequiredMap);
+
+      // Persist whether bootstrap is required.
+      Map<Boolean, List<String>> tableIdsPartitionedByNeedBootstrap =
+          isBootstrapRequiredMap
+              .keySet()
+              .stream()
+              .collect(Collectors.partitioningBy(isBootstrapRequiredMap::get));
+      xClusterConfig.setNeedBootstrapForTables(
+          tableIdsPartitionedByNeedBootstrap.get(true), true /* needBootstrap */);
+      xClusterConfig.setNeedBootstrapForTables(
+          tableIdsPartitionedByNeedBootstrap.get(false), false /* needBootstrap */);
+    } catch (Exception e) {
+      log.error("{} hit error : {}", getName(), e.getMessage());
+      throw new RuntimeException(e);
+    }
+
+    log.info("Completed checkBootstrapRequired");
   }
 
   /**
@@ -597,7 +654,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
    * method to have the most updated values.
    *
    * @return A set of tables that need to be bootstrapped
-   * @see #createCheckBootstrapRequiredTask()
+   * @see #createCheckBootstrapRequiredTask(Set)
    */
   protected Set<XClusterTableConfig> getTablesNeedBootstrap() {
     return taskParams()
@@ -669,11 +726,10 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
       YBClient client, UUID universeUuid) throws Exception {
     GetMasterClusterConfigResponse clusterConfigResp = client.getMasterClusterConfig();
     if (clusterConfigResp.hasError()) {
-      String errMsg =
+      throw new RuntimeException(
           String.format(
               "Failed to getMasterClusterConfig from target universe (%s): %s",
-              universeUuid, clusterConfigResp.errorMessage());
-      throw new RuntimeException(errMsg);
+              universeUuid, clusterConfigResp.errorMessage()));
     }
     return clusterConfigResp.getConfig();
   }
@@ -688,11 +744,10 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
             .getProducerMapMap()
             .get(xClusterConfig.getReplicationGroupName());
     if (replicationGroup == null) {
-      String errMsg =
+      throw new RuntimeException(
           String.format(
               "No replication group found with name (%s) in universe (%s) cluster config",
-              xClusterConfig.getReplicationGroupName(), xClusterConfig.targetUniverseUUID);
-      throw new RuntimeException(errMsg);
+              xClusterConfig.getReplicationGroupName(), xClusterConfig.targetUniverseUUID));
     }
 
     // Parse stream map and convert to a map from source table id to stream id.
@@ -709,47 +764,165 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
       Set<String> platformMissing = Sets.difference(streamMap.keySet(), tableIdsWithReplication);
       Set<String> clusterConfigMissing =
           Sets.difference(tableIdsWithReplication, streamMap.keySet());
-      String errMsg =
+      throw new RuntimeException(
           String.format(
-              "Detected mismatch table set in Platform and target universe (%s) cluster config "
-                  + "for xCluster config (%s): (missing tables on Platform=%s, missing tables in "
-                  + "cluster config=%s).",
+              "Detected mismatch table set in Platform and target universe (%s) cluster "
+                  + "config for xCluster config (%s): (missing tables on Platform=%s, "
+                  + "missing tables in cluster config=%s).",
               xClusterConfig.targetUniverseUUID,
               xClusterConfig.uuid,
               platformMissing,
-              clusterConfigMissing);
-      throw new RuntimeException(errMsg);
+              clusterConfigMissing));
     }
 
     // Persist streamIds.
     for (String tableId : tableIds) {
       Optional<XClusterTableConfig> tableConfig = xClusterConfig.maybeGetTableById(tableId);
       String streamId = streamMap.get(tableId);
-      if (tableConfig.isPresent()) {
-        if (tableConfig.get().streamId == null) {
-          tableConfig.get().streamId = streamId;
-          log.info(
-              "StreamId {} for table {} in xCluster config {} is set",
-              streamId,
-              tableId,
-              xClusterConfig.name);
-        } else {
-          if (!tableConfig.get().streamId.equals(streamId)) {
-            String errMsg =
-                String.format(
-                    "Bootstrap id (%s) for table (%s) is different from stream id (%s) in the "
-                        + "cluster config for xCluster config (%s)",
-                    tableConfig.get().streamId, tableId, streamId, xClusterConfig.uuid);
-            throw new RuntimeException(errMsg);
-          }
-        }
-      } else {
-        String errMsg =
+      if (!tableConfig.isPresent()) {
+        throw new RuntimeException(
             String.format(
-                "Could not find tableId (%s) in the xCluster config with uuid (%s)",
-                tableId, xClusterConfig.uuid);
-        throw new RuntimeException(errMsg);
+                "Could not find tableId (%s) in the xCluster config %s", tableId, xClusterConfig));
+      }
+      if (tableConfig.get().streamId == null) {
+        tableConfig.get().streamId = streamId;
+        tableConfig.get().save();
+        log.info(
+            "StreamId for table {} in xCluster config {} is set to {}",
+            tableId,
+            xClusterConfig.uuid,
+            streamId);
+      } else {
+        if (!tableConfig.get().streamId.equals(streamId)) {
+          throw new RuntimeException(
+              String.format(
+                  "Bootstrap id (%s) for table (%s) is different from stream id (%s) in the "
+                      + "cluster config for xCluster config (%s)",
+                  tableConfig.get().streamId, tableId, streamId, xClusterConfig.uuid));
+        }
       }
     }
+  }
+
+  /**
+   * It creates the required parameters to make IsBootstrapRequired API call and then makes the
+   * call.
+   *
+   * <p>Currently, IsBootstrapRequired supports one table at a time.
+   *
+   * @param ybService The YBClientService object to get a yb client from
+   * @param tableIds The table IDs of tables to check whether they need bootstrap
+   * @param xClusterConfig The config to check if an existing stream has fallen far behind
+   * @param sourceUniverseUuid The UUID of the universe that {@code tableIds} belong to
+   * @return A map of tableId to a boolean showing whether that table needs bootstrapping
+   */
+  private static Map<String, Boolean> isBootstrapRequired(
+      YBClientService ybService,
+      Set<String> tableIds,
+      @Nullable XClusterConfig xClusterConfig,
+      UUID sourceUniverseUuid)
+      throws Exception {
+    log.debug(
+        "XClusterConfigTaskBase.isBootstrapRequired is called with xClusterConfig={}, "
+            + "tableIds={}, and universeUuid={}",
+        xClusterConfig,
+        tableIds,
+        sourceUniverseUuid);
+
+    // If there is no table to check return an empty map.
+    if (tableIds.isEmpty()) {
+      return new HashMap<>();
+    }
+
+    // Create tableIdStreamId map to pass to the IsBootstrapRequired API.
+    Map<String, String> tableIdStreamIdMap;
+    if (xClusterConfig != null) {
+      tableIdStreamIdMap = xClusterConfig.getTableIdStreamIdMap(tableIds);
+    } else {
+      tableIdStreamIdMap = new HashMap<>();
+      tableIds.forEach(tableId -> tableIdStreamIdMap.put(tableId, null));
+    }
+
+    Universe sourceUniverse = Universe.getOrBadRequest(sourceUniverseUuid);
+    String sourceUniverseMasterAddresses = sourceUniverse.getMasterAddresses();
+    String sourceUniverseCertificate = sourceUniverse.getCertificateNodetoNode();
+    try (YBClient client =
+        ybService.getClient(sourceUniverseMasterAddresses, sourceUniverseCertificate)) {
+      Map<String, Boolean> isBootstrapRequiredMap = new HashMap<>();
+      // Currently, only one table can be passed to the IsBootstrapRequired API.
+      for (Map.Entry<String, String> entry : tableIdStreamIdMap.entrySet()) {
+        Map<String, String> tableIdStreamIdMapSingleEntry =
+            Collections.singletonMap(entry.getKey(), entry.getValue());
+        // Check whether bootstrap is required.
+        IsBootstrapRequiredResponse resp =
+            client.isBootstrapRequired(tableIdStreamIdMapSingleEntry);
+        if (resp.hasError()) {
+          throw new RuntimeException(
+              String.format(
+                  "IsBootstrapRequired RPC call with %s has errors in xCluster config %s: %s",
+                  xClusterConfig, tableIdStreamIdMapSingleEntry, resp.errorMessage()));
+        }
+        Map<String, Boolean> isBootstrapRequiredResult = resp.getResults();
+        log.debug(
+            "IsBootstrapRequired RPC call with {} returned {}",
+            tableIdStreamIdMapSingleEntry,
+            isBootstrapRequiredResult);
+        // Parse the result.
+        Iterator<Map.Entry<String, Boolean>> it = isBootstrapRequiredResult.entrySet().iterator();
+        if (!it.hasNext()) {
+          throw new IllegalStateException(
+              "Called IsBootstrapRequired for one table but the result is empty");
+        }
+        Map.Entry<String, Boolean> resultEntry = it.next();
+        String tableId = resultEntry.getKey();
+        Boolean needBootstrap = resultEntry.getValue();
+        if (it.hasNext()) {
+          throw new IllegalStateException(
+              String.format(
+                  "Called IsBootstrapRequired for one table but results for %d tables are "
+                      + "returned",
+                  isBootstrapRequiredResult.size()));
+        }
+        if (!tableId.equals(entry.getKey())) {
+          throw new IllegalStateException(
+              String.format(
+                  "Called IsBootstrapRequired for tableId %s but the result is for tableId %s",
+                  entry.getKey(), tableId));
+        }
+        if (isBootstrapRequiredMap.containsKey(tableId)) {
+          throw new IllegalStateException(
+              String.format("The result for tableId %s is already received", tableId));
+        }
+        isBootstrapRequiredMap.put(tableId, needBootstrap);
+      }
+      return isBootstrapRequiredMap;
+    }
+  }
+
+  /**
+   * It checks whether the replication of tables can be started without bootstrap.
+   *
+   * @see #isBootstrapRequired(YBClientService, Set, XClusterConfig, UUID)
+   */
+  public static Map<String, Boolean> isBootstrapRequired(
+      YBClientService ybService, Set<String> tableIds, UUID sourceUniverseUuid) throws Exception {
+    return isBootstrapRequired(ybService, tableIds, null /* xClusterConfig */, sourceUniverseUuid);
+  }
+
+  /**
+   * It checks whether the replication of tables in an existing xCluster config has fallen behind.
+   *
+   * @see #isBootstrapRequired(YBClientService, Set, XClusterConfig, UUID)
+   */
+  public static Map<String, Boolean> isBootstrapRequired(
+      YBClientService ybService, Set<String> tableIds, XClusterConfig xClusterConfig)
+      throws Exception {
+    return isBootstrapRequired(
+        ybService, tableIds, xClusterConfig, xClusterConfig.sourceUniverseUUID);
+  }
+
+  protected Map<String, Boolean> isBootstrapRequired(
+      Set<String> tableIds, XClusterConfig xClusterConfig) throws Exception {
+    return isBootstrapRequired(this.ybService, tableIds, xClusterConfig);
   }
 }

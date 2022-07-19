@@ -2711,4 +2711,32 @@ Status RestartAllMasters(ExternalMiniCluster* cluster) {
   return Status::OK();
 }
 
+Status CompactTablets(ExternalMiniCluster* cluster) {
+  for (auto* daemon : cluster->master_daemons()) {
+    master::CompactSysCatalogRequestPB req;
+    master::CompactSysCatalogResponsePB resp;
+    rpc::RpcController controller;
+    controller.set_timeout(60s * kTimeMultiplier);
+
+    auto proxy = cluster->GetProxy<master::MasterAdminProxy>(daemon);
+    RETURN_NOT_OK(proxy.CompactSysCatalog(req, &resp, &controller));
+  }
+
+  for (auto* daemon : cluster->tserver_daemons()) {
+    tserver::FlushTabletsRequestPB req;
+    tserver::FlushTabletsResponsePB resp;
+    rpc::RpcController controller;
+    controller.set_timeout(10s * kTimeMultiplier);
+
+    req.set_dest_uuid(daemon->uuid());
+    req.set_operation(tserver::FlushTabletsRequestPB::COMPACT);
+    req.set_all_tablets(true);
+
+    auto proxy = cluster->GetProxy<tserver::TabletServerAdminServiceProxy>(daemon);
+    RETURN_NOT_OK(proxy.FlushTablets(req, &resp, &controller));
+  }
+
+  return Status::OK();
+}
+
 }  // namespace yb

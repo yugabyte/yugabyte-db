@@ -4738,6 +4738,13 @@ ATRewriteTables(AlterTableStmt *parsetree, List **wqueue, LOCKMODE lockmode)
 						 errmsg("cannot rewrite table \"%s\" used as a catalog table",
 								RelationGetRelationName(OldHeap))));
 
+			if (IsYBBackedRelation(OldHeap))
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("Rewriting of YB table is not yet implemented"),
+						 errhint("See https://github.com/YugaByte/yugabyte-db/issues/13278. "
+						         "Click '+' on the description to raise its priority")));
+
 			/*
 			 * Don't allow rewrite on temp tables of other backends ... their
 			 * local buffer manager is not going to cope.

@@ -149,6 +149,120 @@ Status ValidateSysCatalogTables(
   return Status::OK();
 }
 
+struct PgCatalogTableData {
+  std::array<uint8_t, kUuidSize + 1> prefix;
+  const TableName* name;
+  uint32_t pg_table_oid;
+
+  Status SetTableId(const TableId& table_id) {
+    Uuid cotable_id = VERIFY_RESULT(Uuid::FromHexString(table_id));
+    prefix[0] = docdb::KeyEntryTypeAsChar::kTableId;
+    cotable_id.EncodeToComparable(&prefix[1]);
+    pg_table_oid = VERIFY_RESULT(GetPgsqlTableOid(table_id));
+    return Status::OK();
+  }
+
+  bool IsPgYbCatalogMeta() const {
+    // We reset name to nullptr for pg_yb_catalog_meta table.
+    return name == nullptr;
+  }
+};
+
+class PgCatalogRestorePatch : public RestorePatch {
+ public:
+  PgCatalogRestorePatch(
+      FetchState* existing_state, FetchState* restoring_state,
+      docdb::DocWriteBatch* doc_batch, const PgCatalogTableData& table,
+      tablet::TableInfo* pg_yb_catalog_meta)
+      : RestorePatch(existing_state, restoring_state, doc_batch),
+        table_(table), pg_yb_catalog_meta_(pg_yb_catalog_meta) {}
+
+  Status Finish() {
+    if (!catalog_version_doc_path_) {
+      return Status::OK();
+    }
+    QLValuePB value_pb;
+    value_pb.set_int64_value(catalog_version_);
+    LOG(INFO) << "PITR: Incrementing pg_yb_catalog version to " << catalog_version_;
+    return DocBatch()->SetPrimitive(
+        *catalog_version_doc_path_, docdb::ValueRef(value_pb, SortingType::kNotSpecified));
+  }
+
+ private:
+  Status ProcessCommonEntry(
+      const Slice& key, const Slice& existing_value, const Slice& restoring_value) override {
+    if (!table_.IsPgYbCatalogMeta()) {
+      return RestorePatch::ProcessCommonEntry(key, existing_value, restoring_value);
+    }
+    return ProcessCatalogVersionEntry(key, existing_value);
+  }
+
+  Status ProcessExistingOnlyEntry(
+      const Slice& existing_key, const Slice& existing_value) override {
+    if (!table_.IsPgYbCatalogMeta()) {
+      return RestorePatch::ProcessExistingOnlyEntry(existing_key, existing_value);
+    }
+    return ProcessCatalogVersionEntry(existing_key, existing_value);
+  }
+
+  Result<bool> ShouldSkipEntry(const Slice& key, const Slice& value) override {
+    return false;
+  }
+
+  Status HandleSchemaVersionValue(
+      const docdb::DocKey& doc_key, ColumnId column_id, const Slice& existing_value) {
+    docdb::Value value;
+    RETURN_NOT_OK(value.Decode(existing_value));
+    auto new_version = value.primitive_value().GetInt64() + 1;
+    if (!catalog_version_doc_path_ || catalog_version_ < new_version) {
+      catalog_version_doc_path_.emplace(
+          doc_key.Encode(), docdb::KeyEntryValue::MakeColumnId(column_id));
+      catalog_version_ = new_version;
+    }
+    return Status::OK();
+  }
+
+  Status ProcessCatalogVersionEntry(const Slice& key, const Slice& full_value) {
+    docdb::SubDocKey sub_doc_key;
+    RETURN_NOT_OK(sub_doc_key.FullyDecodeFrom(key, docdb::HybridTimeRequired::kFalse));
+    if (sub_doc_key.subkeys().empty()) {
+      auto value_slice = full_value;
+      RETURN_NOT_OK(docdb::ValueControlFields::Decode(&value_slice));
+      SCHECK(value_slice.TryConsumeByte(docdb::ValueEntryTypeAsChar::kPackedRow),
+             Corruption, "Packed row expected: $0", full_value.ToDebugHexString());
+      const docdb::SchemaPacking& packing = VERIFY_RESULT(
+          pg_yb_catalog_meta_->doc_read_context->schema_packing_storage.GetPacking(&value_slice));
+      auto column_id = VERIFY_RESULT(
+          pg_yb_catalog_meta_->schema().ColumnIdByName(kCurrentVersionColumnName));
+      auto value = packing.GetValue(column_id, value_slice);
+      if (!value) {
+        return STATUS_FORMAT(
+            Corruption, "$0 missing in $1", kCurrentVersionColumnName,
+            full_value.ToDebugHexString());
+      }
+      return HandleSchemaVersionValue(sub_doc_key.doc_key(), column_id, *value);
+    }
+    SCHECK_EQ(sub_doc_key.subkeys().size(), 1U, Corruption, "Wrong number of subdoc keys");
+    const auto& first_subkey = sub_doc_key.subkeys()[0];
+    if (first_subkey.type() == docdb::KeyEntryType::kColumnId) {
+      auto column_id = first_subkey.GetColumnId();
+      const ColumnSchema& column = VERIFY_RESULT(pg_yb_catalog_meta_->schema().column_by_id(
+          column_id));
+      if (column.name() == kCurrentVersionColumnName) {
+        return HandleSchemaVersionValue(sub_doc_key.doc_key(), column_id, full_value);
+      }
+    }
+    return Status::OK();
+  }
+
+  // Should be alive while this object is alive.
+  const PgCatalogTableData& table_;
+  // Should be alive while this object is alive.
+  tablet::TableInfo* pg_yb_catalog_meta_;
+  std::optional<docdb::DocPath> catalog_version_doc_path_;
+  int64_t catalog_version_;
+};
+
 } // namespace
 
 RestoreSysCatalogState::RestoreSysCatalogState(SnapshotScheduleRestoration* restoration)
@@ -625,20 +739,6 @@ void RestoreSysCatalogState::WriteToRocksDB(
   yb::WriteToRocksDB(write_batch, write_time, op_id, tablet, restore_kv);
 }
 
-struct PgCatalogTableData {
-  std::array<uint8_t, kUuidSize + 1> prefix;
-  const TableName* name;
-  uint32_t pg_table_oid;
-
-  Status SetTableId(const TableId& table_id) {
-    Uuid cotable_id = VERIFY_RESULT(Uuid::FromHexString(table_id));
-    prefix[0] = docdb::KeyEntryTypeAsChar::kTableId;
-    cotable_id.EncodeToComparable(&prefix[1]);
-    pg_table_oid = VERIFY_RESULT(GetPgsqlTableOid(table_id));
-    return Status::OK();
-  }
-};
-
 Status RestoreSysCatalogState::IncrementLegacyCatalogVersion(
     const docdb::DocReadContext& doc_read_context, const docdb::DocDB& doc_db,
     docdb::DocWriteBatch* write_batch) {
@@ -728,17 +828,22 @@ Status RestoreSysCatalogState::ProcessPgCatalogRestores(
 
     RETURN_NOT_OK(restore_patch.PatchCurrentStateFromRestoringState());
 
+    RETURN_NOT_OK(restore_patch.Finish());
+
     size_t total_changes = restore_patch.TotalTickerCount();
 
-    if (total_changes != 0 || VLOG_IS_ON(3)) {
-      LOG(INFO) << "PITR: Pg system table: " << AsString(table.name) << ", "
-                << restore_patch.TickersToString();
-    }
-    if (table.pg_table_oid == kPgYbMigrationTableOid && total_changes != 0) {
-      LOG(INFO) << "PITR: YSQL upgrade was performed since the restore time"
-                << ", total changes: " << total_changes;
+    LOG_IF(INFO, total_changes || VLOG_IS_ON(3))
+        << "PITR: Pg system table " << AsString(table.name) << ": "
+        << restore_patch.TickersToString();
+
+    // During migration we insert a new row to migration table, so it is enough to check number of
+    // rows in this table to understand whether it was modified or not.
+    if (table.pg_table_oid == kPgYbMigrationTableOid &&
+        restoring_state.num_rows() != existing_state.num_rows()) {
+      LOG(INFO) << "PITR: YSQL upgrade was performed since the restore time, restoring rows: "
+                << restoring_state.num_rows() << ", existing rows: " << existing_state.num_rows();
       return STATUS(
-          NotSupported, "Unable to restore as YSQL upgrade was performed since the restore time.");
+          NotSupported, "Unable to restore as YSQL upgrade was performed since the restore time");
     }
   }
 
@@ -753,43 +858,6 @@ bool RestoreSysCatalogState::IsYsqlRestoration() {
       return true;
     }
   }
-  return false;
-}
-
-Status PgCatalogRestorePatch::ProcessEqualEntries(
-    const Slice& existing_key, const Slice& existing_value,
-    const Slice& restoring_key, const Slice& restoring_value) {
-  if (table_.name != nullptr) {
-    if (restoring_value.compare(existing_value)) {
-      IncrementTicker(RestoreTicker::kUpdates);
-      AddKeyValue(restoring_key, restoring_value, DocBatch());
-    }
-  } else {
-    docdb::SubDocKey sub_doc_key;
-    RETURN_NOT_OK(sub_doc_key.FullyDecodeFrom(
-        restoring_key, docdb::HybridTimeRequired::kFalse));
-    SCHECK_EQ(sub_doc_key.subkeys().size(), 1U, Corruption, "Wrong number of subdoc keys");
-    if (sub_doc_key.subkeys()[0].type() == docdb::KeyEntryType::kColumnId) {
-      auto column_id = sub_doc_key.subkeys()[0].GetColumnId();
-      const ColumnSchema& column = VERIFY_RESULT(pg_yb_catalog_meta_->schema().column_by_id(
-          column_id));
-      if (column.name() == "current_version") {
-        docdb::Value value;
-        RETURN_NOT_OK(value.Decode(existing_value));
-        docdb::DocPath path(sub_doc_key.doc_key().Encode(), sub_doc_key.subkeys());
-        QLValuePB value_pb;
-        value_pb.set_int64_value(value.primitive_value().GetInt64() + 1);
-        LOG(INFO) << "PITR: Incrementing pg_yb_catalog version to "
-                  << value.primitive_value().GetInt64() + 1;
-        RETURN_NOT_OK(DocBatch()->SetPrimitive(
-            path, docdb::ValueRef(value_pb, SortingType::kNotSpecified)));
-      }
-    }
-  }
-  return Status::OK();
-}
-
-Result<bool> PgCatalogRestorePatch::ShouldSkipEntry(const Slice& key, const Slice& value) {
   return false;
 }
 
