@@ -9,8 +9,6 @@ menu:
     name: Scala
     identifier: scala-1
     weight: 558
-aliases:
-  - /preview/quick-start/build-apps/scala/
 type: docs
 ---
 

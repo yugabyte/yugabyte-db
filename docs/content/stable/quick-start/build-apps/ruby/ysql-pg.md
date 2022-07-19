@@ -3,11 +3,6 @@ title: Build a Ruby application that uses YSQL
 headerTitle: Build a Ruby application
 linkTitle: Ruby
 description: Build a Ruby application that uses Ruby PostgreSQL driver and YSQL.
-aliases:
-  - /develop/client-drivers/ruby/
-  - /preview/develop/client-drivers/ruby/
-  - /preview/develop/build-apps/ruby/
-  - /preview/quick-start/build-apps/ruby/
 menu:
   stable:
     parent: build-apps

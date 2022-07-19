@@ -3,10 +3,6 @@ title: Build a C++ application that uses YSQL
 headerTitle: Build a C++ application
 linkTitle: C++
 description: Build a C++ application that uses the YSQL API.
-aliases:
-  - /develop/client-drivers/cpp/
-  - /preview/develop/client-drivers/cpp/
-  - /preview/quick-start/build-apps/cpp/
 menu:
   stable:
     identifier: build-apps-cpp-1-ysql

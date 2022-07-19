@@ -3,8 +3,6 @@ title: Build a Go application that uses YCQL
 headerTitle: Build a Go application
 linkTitle: Go
 description: Build a sample Go application with the Yugabyte Go Driver for YCQL.
-aliases:
-  - /preview/develop/client-drivers/cassandra/go/
 menu:
   stable:
     parent: build-apps

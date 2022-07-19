@@ -3,11 +3,6 @@ title: Build a Java application that uses YSQL
 headerTitle: Build a Java application
 linkTitle: Java
 description: Build a sample Java application with the Yugabyte JDBC Driver and use the YSQL API to connect to and interact with YugabyteDB.
-aliases:
-  - /develop/client-drivers/java/
-  - /preview/develop/client-drivers/java/
-  - /preview/develop/build-apps/java/
-  - /preview/quick-start/build-apps/java/
 menu:
   stable:
     parent: build-apps

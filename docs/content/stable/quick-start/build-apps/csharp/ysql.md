@@ -3,7 +3,6 @@ title: Build a C# application that uses YSQL
 headerTitle: Build a C# application
 linkTitle: C#
 description: Use C# to build a YugabyteDB application that uses YSQL
-aliases:
 menu:
   stable:
     identifier: build-apps-csharp-1-ysql
