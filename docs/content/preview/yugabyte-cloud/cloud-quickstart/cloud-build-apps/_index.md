@@ -19,7 +19,15 @@ Applications connect to and interact with YugabyteDB using API client libraries 
 
 {{< youtube id="uC0sJ_XPhCw" title="Create a sample application for YugabyteDB Managed" >}}
 
-Because the YugabyteDB YSQL API is PostgreSQL-compatible, and the YCQL API has roots in the Apache Cassandra CQL, YugabyteDB supports many third-party drivers. For details about supported client drivers (by programming language), see <a href="../../../reference/drivers/">Drivers</a>.
+Because the YugabyteDB YSQL API is PostgreSQL-compatible, and the YCQL API has roots in the Apache Cassandra CQL, YugabyteDB supports many third-party drivers. For details about supported client drivers (by programming language), see [Drivers and ORMs](../../../drivers-orms/).
+
+{{< note title="Note" >}}
+
+To take advantage of smart driver load balancing features when connecting to clusters in YugabyteDB Managed, applications using smart drivers must be deployed in a VPC that has been peered with the cluster VPC. For information on VPC networking in YugabyteDB Managed, refer to [VPC network](../../cloud-basics/cloud-vpcs/).
+
+For applications that access the cluster from a non-peered network, use the upstream PostgreSQL driver instead; in this case, the cluster performs the load balancing. Applications that use smart drivers from non-peered networks fall back to the upstream driver behaviour automatically.
+
+{{< /note >}}
 
 For more advanced applications, including Spring and GraphQL examples, refer to [Example applications](../../cloud-examples/).
 
