@@ -914,6 +914,10 @@ public class Universe extends Model {
     return getUniverseDetails().updateInProgress;
   }
 
+  public boolean isYbcEnabled() {
+    return getUniverseDetails().enableYbc;
+  }
+
   public boolean nodeExists(String host, int port) {
     return getUniverseDetails()
         .nodeDetailsSet
