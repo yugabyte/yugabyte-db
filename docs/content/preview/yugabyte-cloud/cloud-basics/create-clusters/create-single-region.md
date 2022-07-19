@@ -22,8 +22,8 @@ Single-region dedicated clusters support multi-node and highly available deploym
 
 Single-region dedicated clusters include the following features:
 
-- No limit on cluster size - choose any cluster size based on your use case.
 - Multi node [replication factor](../../../../architecture/docdb-replication/replication/) (RF) of 3 clusters with availability zone and node level fault tolerance.
+- No limit on cluster size - choose any cluster size based on your use case.
 - Horizontal and vertical scaling - add or remove nodes and vCPUs, and add storage to suit your production loads.
 - VPC networking support.
 - Automated and on-demand backups.
@@ -32,8 +32,8 @@ Single-region dedicated clusters include the following features:
 
 ## Prerequisites
 
-- Create a billing profile and add a payment method before you can create a Dedicated cluster. Refer to [Manage your billing profile and payment method](../../../cloud-admin/cloud-billing-profile/).
 - If you want to use dedicated VPCs for network isolation and security, create the VPC before you create your cluster. YugabyteDB Managed supports AWC and GCP for peering. Refer to [VPC networking](../../cloud-vpcs/).
+- Create a billing profile and add a payment method before you can create a Dedicated cluster. Refer to [Manage your billing profile and payment method](../../../cloud-admin/cloud-billing-profile/).
 
 ## Create a single-region cluster
 
