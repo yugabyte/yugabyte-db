@@ -12,6 +12,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.Com
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesWaitForPod;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
@@ -20,6 +21,7 @@ import com.yugabyte.yw.models.helpers.PlacementInfo;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -49,9 +51,9 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     public Map<UUID, Integer> tservers;
     public Map<UUID, Map<String, String>> configs;
 
-    public KubernetesPlacement(PlacementInfo pi) {
+    public KubernetesPlacement(PlacementInfo pi, boolean isReadOnlyCluster) {
       placementInfo = pi;
-      masters = PlacementInfoUtil.getNumMasterPerAZ(pi);
+      masters = isReadOnlyCluster ? new HashMap<>() : PlacementInfoUtil.getNumMasterPerAZ(pi);
       tservers = PlacementInfoUtil.getNumTServerPerAZ(pi);
       // Mapping of the deployment zone and its corresponding Kubeconfig.
       configs = PlacementInfoUtil.getConfigPerAZ(pi);
@@ -73,12 +75,14 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     String ybSoftwareVersion;
     if (isReadOnlyCluster) {
       ybSoftwareVersion = taskParams().getReadOnlyClusters().get(0).userIntent.ybSoftwareVersion;
-      String primaryClusterVersion =
-          Universe.getOrBadRequest(taskParams().universeUUID)
-              .getUniverseDetails()
-              .getPrimaryCluster()
-              .userIntent
-              .ybSoftwareVersion;
+      Cluster primaryCluster = taskParams().getPrimaryCluster();
+      if (primaryCluster == null) {
+        primaryCluster =
+            Universe.getOrBadRequest(taskParams().universeUUID)
+                .getUniverseDetails()
+                .getPrimaryCluster();
+      }
+      String primaryClusterVersion = primaryCluster.userIntent.ybSoftwareVersion;
       if (!primaryClusterVersion.equals(ybSoftwareVersion)) {
         String msg =
             String.format(
@@ -94,16 +98,12 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
 
     boolean edit = currPlacement != null;
 
-    Provider provider;
-    if (isReadOnlyCluster) {
-      provider =
-          Provider.getOrBadRequest(
-              UUID.fromString(taskParams().getReadOnlyClusters().get(0).userIntent.provider));
-    } else {
-      provider =
-          Provider.getOrBadRequest(
-              UUID.fromString(taskParams().getPrimaryCluster().userIntent.provider));
-    }
+    Provider provider =
+        isReadOnlyCluster
+            ? Provider.getOrBadRequest(
+                UUID.fromString(taskParams().getReadOnlyClusters().get(0).userIntent.provider))
+            : Provider.getOrBadRequest(
+                UUID.fromString(taskParams().getPrimaryCluster().userIntent.provider));
     boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
     Map<UUID, Map<String, String>> activeDeploymentConfigs =
         PlacementInfoUtil.getConfigPerAZ(activeZones);
@@ -266,12 +266,21 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       int waitTime,
       boolean masterChanged,
       boolean tserverChanged,
-      boolean newNamingStyle) {
-
+      boolean newNamingStyle,
+      boolean isReadOnlyCluster) {
+    Cluster primaryCluster = taskParams().getPrimaryCluster();
+    if (primaryCluster == null) {
+      primaryCluster =
+          Universe.getOrBadRequest(taskParams().universeUUID)
+              .getUniverseDetails()
+              .getPrimaryCluster();
+    }
     boolean edit = currPlacement != null;
-    Provider provider =
-        Provider.getOrBadRequest(
-            UUID.fromString(taskParams().getPrimaryCluster().userIntent.provider));
+    String providerStr =
+        isReadOnlyCluster
+            ? taskParams().getReadOnlyClusters().get(0).userIntent.provider
+            : primaryCluster.userIntent.provider;
+    Provider provider = Provider.getOrBadRequest(UUID.fromString(providerStr));
     boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
     String nodePrefix = taskParams().nodePrefix;
 
@@ -353,14 +362,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
         int tserverPartition = tserverChanged ? (edit ? currNumTservers : newNumTservers) : 0;
         masterPartition = serverType == ServerType.MASTER ? partition : masterPartition;
         tserverPartition = serverType == ServerType.TSERVER ? partition : tserverPartition;
-
         NodeDetails node =
-            getKubernetesNodeName(
-                partition,
-                azCode,
-                serverType,
-                isMultiAz, /*isReadOnlyCluster*/
-                false); // TODO handle readonly cluster
+            getKubernetesNodeName(partition, azCode, serverType, isMultiAz, isReadOnlyCluster);
         boolean isLeaderBlacklistValidRF = isLeaderBlacklistValidRF(node.nodeName);
         List<NodeDetails> nodeList = new ArrayList<>();
         nodeList.add(node);
@@ -385,7 +388,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
             config,
             masterPartition,
             tserverPartition,
-            /*isReadOnlyCluster*/ false);
+            isReadOnlyCluster);
         String podName =
             getPodName(partition, azCode, serverType, nodePrefix, isMultiAz, newNamingStyle);
         createKubernetesWaitForPodTask(
@@ -393,7 +396,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
             podName,
             azCode,
             config,
-            /*isReadOnlyCluster*/ false);
+            isReadOnlyCluster);
 
         createWaitForServersTasks(nodeList, serverType)
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
@@ -417,12 +420,18 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       String masterAddresses,
       KubernetesPlacement newPlacement,
       boolean userIntentChange,
-      Provider provider) {
-
-    String ybSoftwareVersion = taskParams().getPrimaryCluster().userIntent.ybSoftwareVersion;
+      boolean isMultiAz,
+      boolean isReadOnlyCluster) {
+    Cluster primaryCluster = taskParams().getPrimaryCluster();
+    if (primaryCluster == null) {
+      primaryCluster =
+          Universe.getOrBadRequest(taskParams().universeUUID)
+              .getUniverseDetails()
+              .getPrimaryCluster();
+    }
+    String ybSoftwareVersion = primaryCluster.userIntent.ybSoftwareVersion;
 
     boolean edit = newPlacement != null;
-    boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
 
     // If no config in new placement, delete deployment.
     SubTaskGroup helmDeletes =
@@ -479,24 +488,30 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
                 masterAddresses,
                 ybSoftwareVersion,
                 config,
-                /*isReadOnlyCluster*/ false));
+                isReadOnlyCluster));
         podsWait.addSubTask(
             createKubernetesCheckPodNumTask(
                 KubernetesCheckNumPod.CommandType.WAIT_FOR_PODS,
                 azCode,
                 config,
                 newPlacement.tservers.get(azUUID) + newPlacement.masters.getOrDefault(azUUID, 0),
-                /*isReadOnlyCluster*/ false));
+                isReadOnlyCluster));
       } else {
         // Delete the helm deployments.
         helmDeletes.addSubTask(
             createKubernetesExecutorTask(
-                KubernetesCommandExecutor.CommandType.HELM_DELETE, azCode, config, false));
+                KubernetesCommandExecutor.CommandType.HELM_DELETE,
+                azCode,
+                config,
+                isReadOnlyCluster));
 
         // Delete the PVs created for the deployments.
         volumeDeletes.addSubTask(
             createKubernetesExecutorTask(
-                KubernetesCommandExecutor.CommandType.VOLUME_DELETE, azCode, config, false));
+                KubernetesCommandExecutor.CommandType.VOLUME_DELETE,
+                azCode,
+                config,
+                isReadOnlyCluster));
 
         // If the namespace is configured at the AZ, we don't delete
         // it, as it is not created by us.
@@ -504,7 +519,10 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
           // Delete the namespaces of the deployments.
           namespaceDeletes.addSubTask(
               createKubernetesExecutorTask(
-                  KubernetesCommandExecutor.CommandType.NAMESPACE_DELETE, azCode, config, false));
+                  KubernetesCommandExecutor.CommandType.NAMESPACE_DELETE,
+                  azCode,
+                  config,
+                  isReadOnlyCluster));
         }
       }
     }
@@ -645,19 +663,17 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       int tserverPartition,
       boolean isReadOnlyCluster) {
     KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
-    UniverseDefinitionTaskParams.Cluster primary;
-    if (isReadOnlyCluster) {
-      primary =
+    Cluster primaryCluster = taskParams().getPrimaryCluster();
+    if (primaryCluster == null) {
+      primaryCluster =
           Universe.getOrBadRequest(taskParams().universeUUID)
               .getUniverseDetails()
               .getPrimaryCluster();
-      params.providerUUID =
-          UUID.fromString(taskParams().getReadOnlyClusters().get(0).userIntent.provider);
-    } else {
-      primary = taskParams().getPrimaryCluster();
-      params.providerUUID = UUID.fromString(primary.userIntent.provider);
     }
-
+    params.providerUUID =
+        isReadOnlyCluster
+            ? UUID.fromString(taskParams().getReadOnlyClusters().get(0).userIntent.provider)
+            : UUID.fromString(primaryCluster.userIntent.provider);
     params.commandType = commandType;
     params.nodePrefix = taskParams().nodePrefix;
     params.universeUUID = taskParams().universeUUID;
@@ -688,8 +704,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     }
     params.masterPartition = masterPartition;
     params.tserverPartition = tserverPartition;
-    params.enableNodeToNodeEncrypt = primary.userIntent.enableNodeToNodeEncrypt;
-    params.enableClientToNodeEncrypt = primary.userIntent.enableClientToNodeEncrypt;
+    params.enableNodeToNodeEncrypt = primaryCluster.userIntent.enableNodeToNodeEncrypt;
+    params.enableClientToNodeEncrypt = primaryCluster.userIntent.enableClientToNodeEncrypt;
     params.serverType = serverType;
     params.isReadOnlyCluster = isReadOnlyCluster;
     KubernetesCommandExecutor task = createTask(KubernetesCommandExecutor.class);
@@ -735,18 +751,17 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     SubTaskGroup subTaskGroup =
         getTaskExecutor().createSubTaskGroup(commandType.getSubTaskGroupName(), executor);
     KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
-    UniverseDefinitionTaskParams.Cluster primary;
-    if (isReadOnlyCluster) {
-      primary =
+    Cluster primaryCluster = taskParams().getPrimaryCluster();
+    if (primaryCluster == null) {
+      primaryCluster =
           Universe.getOrBadRequest(taskParams().universeUUID)
               .getUniverseDetails()
               .getPrimaryCluster();
-      params.providerUUID =
-          UUID.fromString(taskParams().getReadOnlyClusters().get(0).userIntent.provider);
-    } else {
-      primary = taskParams().getPrimaryCluster();
-      params.providerUUID = UUID.fromString(primary.userIntent.provider);
     }
+    params.providerUUID =
+        isReadOnlyCluster
+            ? UUID.fromString(taskParams().getReadOnlyClusters().get(0).userIntent.provider)
+            : UUID.fromString(primaryCluster.userIntent.provider);
     params.commandType = commandType;
     params.nodePrefix = taskParams().nodePrefix;
     params.universeUUID = taskParams().universeUUID;
@@ -777,8 +792,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     }
     params.masterPartition = masterPartition;
     params.tserverPartition = tserverPartition;
-    params.enableNodeToNodeEncrypt = primary.userIntent.enableNodeToNodeEncrypt;
-    params.enableClientToNodeEncrypt = primary.userIntent.enableClientToNodeEncrypt;
+    params.enableNodeToNodeEncrypt = primaryCluster.userIntent.enableNodeToNodeEncrypt;
+    params.enableClientToNodeEncrypt = primaryCluster.userIntent.enableClientToNodeEncrypt;
     params.serverType = serverType;
     params.isReadOnlyCluster = isReadOnlyCluster;
     KubernetesCommandExecutor task = createTask(KubernetesCommandExecutor.class);
@@ -797,8 +812,14 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     SubTaskGroup subTaskGroup =
         getTaskExecutor().createSubTaskGroup(commandType.getSubTaskGroupName(), executor);
     KubernetesWaitForPod.Params params = new KubernetesWaitForPod.Params();
-    UniverseDefinitionTaskParams.Cluster primary = taskParams().getPrimaryCluster();
-    params.providerUUID = UUID.fromString(primary.userIntent.provider);
+    Cluster primaryCluster = taskParams().getPrimaryCluster();
+    if (primaryCluster == null) {
+      primaryCluster =
+          Universe.getOrBadRequest(taskParams().universeUUID)
+              .getUniverseDetails()
+              .getPrimaryCluster();
+    }
+    params.providerUUID = UUID.fromString(primaryCluster.userIntent.provider);
     params.commandType = commandType;
     params.nodePrefix = taskParams().nodePrefix;
 
@@ -833,16 +854,14 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       int numPods,
       boolean isReadOnlyCluster) {
     KubernetesCheckNumPod.Params params = new KubernetesCheckNumPod.Params();
-    UniverseDefinitionTaskParams.Cluster primary;
-    if (isReadOnlyCluster) {
-      primary =
+    Cluster primaryCluster = taskParams().getPrimaryCluster();
+    if (primaryCluster == null) {
+      primaryCluster =
           Universe.getOrBadRequest(taskParams().universeUUID)
               .getUniverseDetails()
               .getPrimaryCluster();
-    } else {
-      primary = taskParams().getPrimaryCluster();
     }
-    params.providerUUID = UUID.fromString(primary.userIntent.provider);
+    params.providerUUID = UUID.fromString(primaryCluster.userIntent.provider);
     params.commandType = commandType;
     params.nodePrefix = taskParams().nodePrefix;
     if (az != null) {

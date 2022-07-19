@@ -537,10 +537,11 @@ public class PlacementInfoUtil {
     // Verify the provided edit parameters, if in edit universe case, and get the mode.
     // Otherwise it is a primary or readonly cluster creation phase changes.
     LOG.info(
-        "Placement={}, numNodes={}, AZ={}.",
+        "Placement={}, numNodes={}, AZ={} OpType={}.",
         cluster.placementInfo,
         taskParams.nodeDetailsSet.size(),
-        taskParams.userAZSelected);
+        taskParams.userAZSelected,
+        clusterOpType);
 
     // If user AZ Selection is made for Edit get a new configuration from placement info.
     if (taskParams.userAZSelected && universe != null) {
