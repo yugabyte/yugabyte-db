@@ -168,22 +168,40 @@
   to = "/preview/yedis/"
   force = true
 
+# Make sure stable and preview quick-starts don't get redirected.
+# (All other versions get redirected to preview.)
+
+[[redirects]]
+  from = "/stable/quick-start/*"
+  to = "/stable/quick-start/:splat"
+  status = 200
+
+[[redirects]]
+  from = "/preview/quick-start/*"
+  to = "/preview/quick-start/:splat"
+  status = 200
+
 # Stable quick-starts need defaults,
 # since archiving from /preview removes aliases
 
 [[redirects]]
   from = "/stable/quick-start/install/"
-  to = "/preview/quick-start/#install-yugabytedb"
+  to = "/stable/quick-start/#install-yugabytedb"
   force = true
 
 [[redirects]]
   from = "/stable/quick-start/create-local-cluster/"
-  to = "/preview/quick-start/#create-a-local-cluster"
+  to = "/stable/quick-start/#create-a-local-cluster"
   force = true
 
 [[redirects]]
   from = "/stable/quick-start/explore/"
   to = "/stable/quick-start/explore/ysql/"
+  force = true
+
+[[redirects]]
+  from = ":version/quick-start/*"
+  to = "/preview/quick-start-yugabytedb-managed/"
   force = true
 
 # Yugabyte Extensions top hit
