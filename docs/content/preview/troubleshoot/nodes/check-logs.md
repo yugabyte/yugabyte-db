@@ -16,7 +16,7 @@ YugabyteDB has an extensive error-handling mechanism, with logging being one of 
 
 The logs for each node are written to a subdirectory of the YugabyteDB `yugabyte-data` directory and may vary depending on your deployment, as follows:
 
-- When you use `yb-ctl` to create local YugabyteDB clusters on a single host (for example, your computer), the default location for each node is `/yugabyte-data/node-<node_nr>/`. For a 3-node cluster, the `yb-ctl` utility creates three directories: `node-1`, `node-2` and `node-3`.
+- When you use `yb-ctl` to create local YugabyteDB clusters on a single host (for example, your computer), the default location for each node is `/yugabyte-data/node-<node_nr>/`. For a 3-node cluster, the `yb-ctl` utility creates three directories: `node-1`, `node-2`, `node-3`.
 - For a multi-node cluster deployment to multiple hosts, the location where YugabyteDB disks are set up can vary (for example, `/home/centos/`, `/mnt/`, or another directory) on each node (host).
 - When using the `--fs_data_dirs` flag with multiple directories, logs are saved in the first directory in the list.
 - When using YugabyteDB Anywhere, logs are located in `/home/yugabyte/{master,tserver}/logs`. This is a symlink to the first directory in `--fs_data_dirs` list.
@@ -27,7 +27,7 @@ In this document, the YugabyteDB `yugabyte-data` directory is represented by `<y
 
 ## YB-Master logs
 
-The YB-Master service manages system metadata, such as namespaces (databases or keyspaces) and tables. It also handles DDL statements such as `CREATE TABLE`, `DROP TABLE`, `ALTER TABLE`, `KEYSPACE/TYPE`.  It also manages users, permissions, and coordinate background operations, such as load balancing. You can access these logs as follows:
+The YB-Master service manages system metadata, such as namespaces (databases or keyspaces) and tables. It also handles Data Definition Language (DDL) statements such as `CREATE TABLE`, `DROP TABLE`, `ALTER TABLE`, `KEYSPACE/TYPE`. In addition, it manages users, permissions, and coordinate background operations, such as load balancing. You can access these logs as follows:
 
 ```sh
 cd <yugabyte-data-directory>/disk1/yb-data/master/logs/

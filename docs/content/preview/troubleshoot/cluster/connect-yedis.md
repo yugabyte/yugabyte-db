@@ -20,11 +20,11 @@ You should ensure that the expected YugabyteDB processes are on the current node
 
 Additionally, depending on the setup, you might expect a master process to also be running on this node.
 
-For detailed instructions, see [Check Processes](../../nodes/check-processes/).
+For detailed instructions, see [Check processes](../../nodes/check-processes/).
 
 ## Is the Redis-compatible YEDIS API running?
 
-If the tserver process is running, execute the following command to verify that the YEDIS API is enabled and listening on the Redis port (default `6379`):
+If the YB-TServer process is running, execute the following command to verify that the YEDIS API is enabled and listening on the Redis port (default `6379`):
 
 ```sh
 lsof -i :6379
@@ -37,7 +37,7 @@ yb-tserve 81590 centos   92u  IPv4 0xdeadbeef      0t0  TCP localhost:6379 (LIST
 
 You may need to install `lsof` first.
 
-When running a local cluster with `yb-ctl`, you should see all the nodes here with different IP addresses, as per the following example:
+When running a local cluster with `yb-ctl`, you should see all the nodes with different IP addresses, as per the following example:
 
 ```sh
 lsof -i :6379
@@ -60,10 +60,15 @@ Use `redis-cli` to connect to the local node, as follows:
 ./redis-cli -h <yb-local-address>
 ```
 
-Depending on your configuration, you may need to install `redis-cli`; otherwise, it is available in the YugabyteDB `bin` directory.
+Depending on your configuration, you may need to install `redis-cli`. For more information, see [Initialize YEDIS API and connect with redis-cli](../../yedis/quick-start/#1-initialize-yedis-api-and-connect-with-redis-cli).
 
 In the preceding command, `<yb-local-address>` is the address where the YEDIS service is listening (for example, as returned by `lsof`).
 
-If `redis-cli` can connect, the issue is likely a network issue with the original client not being able to access this node where YugabyteDB is running. For more information, see [Cannot access Master or TServer endpoints](#cannot-access-master-or-tserver-endpoints).
+If `redis-cli` can connect, the issue is likely a network issue with the original client not being able to access this node where YugabyteDB is running. 
 
-Otherwise, you might need to run `./yb-admin --master_addresses <master-ip-addresses> setup_redis_table"`. The `yb-admin` tool is available in the YugabyteDB `bin` directory.
+Otherwise, you might need to use the the `yb-admin` tool to run the following command: 
+
+```sh
+.bin/yb-admin --master_addresses <master-ip-addresses> setup_redis_table
+```
+

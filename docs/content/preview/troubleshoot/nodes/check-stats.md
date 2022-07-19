@@ -10,7 +10,7 @@ menu:
 type: docs
 ---
 
-There some system statistics that might help with troublshooting.
+There are some system statistics that might help with troublshooting.
 
 ## Host resource usage
 
@@ -34,11 +34,11 @@ Mem: 251G
 Disk: /dev/sda2       208G  5.1G  203G   3% /
 ```
 
-Generally, common tools like `top` or `iostat` may be useful.
+Generally, common tools such as `top` or `iostat` may be useful.
 
 ### Auditd
 
-If `top` reports high CPU usage for the `auditd` process, it may have rules auditing some system calls frequently used YugabyteDB which can significantly affect performance. You can try temporarily disabling `audit` by running the following command on each YugabyteDB node:
+If `top` reports high CPU usage for the `auditd` process, it may have rules auditing some system calls frequently used by YugabyteDB which can significantly affect performance. You can try temporarily disabling `audit` by running the following command on each YugabyteDB node:
 
 ```sh
 auditctl -e 0

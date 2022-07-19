@@ -16,7 +16,7 @@ There is a number of steps you can take to investigate and troubleshoot the perf
 
 ## Files on a YugabyteDB cluster
 
-Learing about the default locations of files on a YugabyteDB cluster can help with troubleshooting the cluster performance issues. 
+Learning about the default locations of files on a YugabyteDB cluster can help with troubleshooting the cluster performance issues. 
 
 Note that the following locations are applicable to clusters installed via YugabyteDB Anywhere.
 
@@ -64,10 +64,7 @@ If YugabyteDB was run with `--fs_data_dirs=/mnt/d0,/mnt/d1`, you can find transa
 To print the contents of the WAL, use the `log-dump` utility, as follows:
 
 ```sh
-pwd
-/home/yugabyte
-
-./tserver/bin/log-dump /mnt/d0/yb-data/tserver/wals/table-e85a116bc557403e82f57037e7b13879/tablet-05bef5ed6fb74cabb420b648b6f850e3/
+./home/yugabyte/tserver/bin/log-dump /mnt/d0/yb-data/tserver/wals/table-e85a116bc557403e82f57037e7b13879/tablet-05bef5ed6fb74cabb420b648b6f850e3/
 
 # use -print_entries=pb to print the entire contents of each record
 ```
@@ -76,13 +73,10 @@ pwd
 
 The database (also known as SSTable) files are located at `/mnt/d*/yb-data/{master|tserver}/data`.
 
-To print the contents of the SSTable files, use the `log-dump` utility, as follows:
+You can print the contents of the SSTable files as follows:
 
 ```sh
-pwd
-/home/yugabyte
-
-./tserver/bin/ldb dump --compression_type=snappy --db=/mnt/d0/yb-data/tserver/wals/table-e85a116bc557403e82f57037e7b13879/tablet-05bef5ed6fb74cabb420b648b6f850e3/
+./home/yugabyte/tserver/bin/ldb dump --compression_type=snappy --db=/mnt/d0/yb-data/tserver/data/table-e85a116bc557403e82f57037e7b13879/tablet-05bef5ed6fb74cabb420b648b6f850e3/
 ```
 
 ### Debug logs

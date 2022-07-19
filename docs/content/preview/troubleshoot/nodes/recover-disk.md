@@ -23,7 +23,7 @@ In a multi-zone setup with a replication factor (RF) of `3`: YugabyteDB tries to
 
 ## Failed disk replacement
 
-The following are steps to replace a failed disk:
+To replace a failed disk, perform the following steps:
 
 1. Stop the YB-TServer node.
 2. Replace the disks that have failed.

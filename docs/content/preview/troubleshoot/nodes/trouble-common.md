@@ -59,11 +59,11 @@ Snapshot too old: Snapshot too old. Read point: { physical: 1628678717824559 }, 
 
 When the command takes a long time to be processed, a compaction may have occurred and have deleted some rows at the snapshot the dump was started on. For large backups, it is recommended to use [distributed snapshots](../../../manage/backup-restore/snapshot-ysql/), which are more efficient and fast.
 
-If you really need to use `ysql_dump`, you can increase the [`--timestamp_history_retention_interval_sec`](../../../reference/configuration/yb-tserver/#timestamp-history-retention-interval-sec) gflag in YT-TServer and retry.
+If you really need to use `ysql_dump`, you can increase the [`--timestamp_history_retention_interval_sec`](../../../reference/configuration/yb-tserver/#timestamp-history-retention-interval-sec) gflag in YB-TServer and retry.
 
-## Not able to perform operations using yb-admin after enabling encryption at transit
+## Not able to perform operations using yb-admin after enabling encryption in transit
 
-After configuring [encryption at transit](../../../secure/tls-encryption/) for a YugabyteDB cluster, you may encounter the following error when trying to use `yb-admin`:
+After configuring [encryption in transit](../../../secure/tls-encryption/) for a YugabyteDB cluster, you may encounter the following error when trying to use `yb-admin`:
 
 ```sh
 ./bin/yb-admin -master_addresses <master-addresses> list_all_masters
@@ -71,11 +71,14 @@ After configuring [encryption at transit](../../../secure/tls-encryption/) for a
 
 ```output
 Unable to establish connection to leader master at [MASTERIP1:7100,MASTERIP2:7100,MASTERIP3:7100].
-Please verify the addresses.\n\n: Could not locate the leader master: GetLeaderMasterRpc(addrs: [MASTERIP1:7100, MASTERIP2:7100, MASTERIP3:7100], num_attempts: 338)
+Please verify the addresses.
+Could not locate the leader master: GetLeaderMasterRpc(addrs: [MASTERIP1:7100, MASTERIP2:7100, MASTERIP3:7100], num_attempts: 338)
 passed its deadline 79595.999s (passed: 60.038s): Network error (yb/util/net/socket.cc:535):
-recvmsg got EOF from remote (system error 108)\nTimed out (yb/rpc/rpc.cc:211):
+recvmsg got EOF from remote (system error 108)
+Timed out (yb/rpc/rpc.cc:211):
 Unable to establish connection to leader master at [MASTERIP1:7100,MASTERIP2:7100,MASTERIP3:7100].
-Please verify the addresses.\n\n: Could not locate the leader master: GetLeaderMasterRpc(addrs: [MASTERIP1:7100, MASTERIP2:7100, MASTERIP3:7100]
+Please verify the addresses.
+Could not locate the leader master: GetLeaderMasterRpc(addrs: [MASTERIP1:7100, MASTERIP2:7100, MASTERIP3:7100]
 ```
 
 To remedy the situation, you should pass the location of your certificates directory via `--certs_dir_name` on the `yb-admin` command.
@@ -114,4 +117,4 @@ SELECT * FROM system.peers_v2;
  (ql error -2)
 ```
 
-The most likely reason is that you are not using one of YugabyteDB forks of the Cassandra client drivers. The `system.peers_v2` table does not exist in YugabyteDB. To resolve this issue, you should check the [drivers page](../../../reference/drivers/ycql-client-drivers/) to find a driver for your client language.
+The most likely reason is that you are not using one of the YugabyteDB forks of the Cassandra client drivers. The `system.peers_v2` table does not exist in YugabyteDB. To resolve this issue, you should check the [drivers page](../../../reference/drivers/ycql-client-drivers/) to find a driver for your client language.

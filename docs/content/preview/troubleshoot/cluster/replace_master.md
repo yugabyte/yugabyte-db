@@ -23,7 +23,7 @@ Examples included in this document use the following scenario:
 - A new YB-Master server (`M4`) will replace `M1`.
 - The default master RPC port is `7100`
 
-If the master to be replaced is already dead (for example, the VM was terminated), you would need to perform the `REMOVE` step first, and then the `ADD` step.
+If the YB-Master to be replaced is already dead (for example, the VM was terminated), you would need to perform the `REMOVE` step first, and then the `ADD` step.
 
 1. Start the replacement YB-Master server in standby mode by setting the `--master_addresses` flag to an empty string (`""`), as follows: 
 
@@ -31,7 +31,7 @@ If the master to be replaced is already dead (for example, the VM was terminated
    ./bin/yb-master --master_addresses="" --fs_data_dirs=<your_data_directories> [any other flags you would typically pass to this master process]
    ```
 
-   When the `--master_addresses` is `""`, this master server starts without joining any existing master quorum. The node will be added to the master quorum in a later step.
+   When the `--master_addresses` is `""`, this YB-Master server starts without joining any existing master quorum. The node will be added to the master quorum in a later step.
 
 2. Add the replacement YB-Master server into the existing cluster by running the [`yb-admin change_master_config ADD_SERVER`](../../../admin/yb-admin/#change-master-config) command, as follows:
 
@@ -39,7 +39,7 @@ If the master to be replaced is already dead (for example, the VM was terminated
    ./bin/yb-admin -master_addresses M1:7100,M2:7100,M3:7100 change_master_config ADD_SERVER M4 7100
    ```
 
-3. Remove the failed YB-Master server from the cluster by using the [`yb-admin change_master_config REMOVE_SERVER`](../../../admin/yb-admin/#change-master-config`) command, as follows:
+3. Remove the failed YB-Master server from the cluster by using the [`yb-admin change_master_config REMOVE_SERVER`](../../../admin/yb-admin/#change-master-config) command, as follows:
 
    ```sh
    ./yb-admin -master_addresses M1:7100,M2:7100,M3:7100,M4:7100 change_master_config REMOVE_SERVER M1 7100
@@ -53,4 +53,4 @@ If the master to be replaced is already dead (for example, the VM was terminated
    ./yb-admin -master_addresses M2:7100,M3:7100,M4:7100 list_all_masters
    ```
 
-Until [#1542](https://github.com/yugabyte/yugabyte-db/issues/1542) is implemented, the TS will by default only be aware of the masters that are encoded in the `--tserver_master_addrs` flag with which they are started. If any of those masters are still part of the active quorum, then they will propagate the new master quorum via heartbeats. If none of the current masters are present in the TS flag, then the TS will not be able to join the cluster. Therefore, it is important to update `--tserver_master_addrs` on every TS to the new set of master addresses, `M2:7100,M3:7100,M4:7100`.
+Until [#1542](https://github.com/yugabyte/yugabyte-db/issues/1542) is implemented, the YB-TServer by default can only be aware of the YB-Master servers that are encoded in the `--tserver_master_addrs` flag with which they are started. If any of those YB-Master servers are still part of the active quorum, then they can propagate the new master quorum via heartbeats. If none of the current YB-Master servers are present in the YB-TServer flag, then the YB-TServer cannot join the cluster. Therefore, it is important to update `--tserver_master_addrs` on every YB-TServer to the new set of master addresses as `M2:7100,M3:7100,M4:7100`.

@@ -19,7 +19,7 @@ You should ensure that the expected YugabyteDB processes are on the current node
 
 Additionally, depending on the setup, you might expect a YB-Master process to also be running on this node.
 
-For detailed instructions, see [Check processes](../../nodes/check-processes/).
+For detailed instructions, see [Check YugabyteDB servers](../../nodes/check-processes/).
 
 ## Is the Cassandra-compatible YCQL API running?
 
@@ -65,5 +65,4 @@ In the preceding command, `<yb-local-address>` is the address where the Yugabyte
 
 If `ycqlsh` can connect, the issue is likely a network issue with the original client not being able to access the node where YugabyteDB is running. 
 
-See also [Are Master or TServer endpoints accessible?](../../nodes/check-processes#cannot-access-master-or-tserver-endpoints)
-
+See also [Are YB-Master and YB-TServer endpoints accessible?](../../nodes/check-processes#are-the-yb-master-and-yb-tserver-endpoints-accessible)

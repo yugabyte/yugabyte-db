@@ -52,7 +52,7 @@ type: indexpage
       </div>
     </a>
   </div>
-  
+
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="replace_tserver/">
       <div class="head">
@@ -64,7 +64,7 @@ type: indexpage
       </div>
     </a>
   </div>  
-  
+
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="replace_master/">
       <div class="head">
@@ -76,18 +76,18 @@ type: indexpage
       </div>
     </a>
   </div>    
-
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="replace_failed_peers/">
       <div class="head">
         <img class="icon" src="/images/section_icons/troubleshoot/troubleshoot.png" aria-hidden="true" />
-        <div class="title">Replace a failed peers</div>
+        <div class="title">Replace failed peers</div>
       </div>
       <div class="body">
         Perform manual remote bootstrap of failed peers.
       </div>
     </a>
   </div>    
+
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="failed_tablets/">

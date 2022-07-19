@@ -20,7 +20,7 @@ To verify whether or not the servers are running, you need to connect to the loc
 ps aux | grep yb-tserver
 ```
 
-If you are expecting a YB-Master servers on this node, execute the following command:
+If you are expecting a YB-Master server on this node, execute the following command:
 
 ```sh
 $ ps aux | grep yb-master

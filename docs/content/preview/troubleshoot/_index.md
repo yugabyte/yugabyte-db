@@ -13,7 +13,7 @@ type: indexpage
 
 Typically, troubleshooting involves a number of steps that are rather consistent regardless of the particular situation. These steps include the following:
 
-1. Verifying that YugabyteDB is running: you need to ensure that the expected YugabyteDB processes are running on the current node. At a minimum, the YB-TServer process must be running to be able to connect to the node with a YCQL client or application.
+1. Verifying that YugabyteDB is running: you need to ensure that the expected YugabyteDB processes are running on the current node. At a minimum, the YB-TServer process must be running to be able to connect to the node with a client or application.
 
    Additionally, depending on the setup, you might expect a YB-Master process to run on this node.
 
@@ -56,5 +56,5 @@ Typically, troubleshooting involves a number of steps that are rather consistent
       </div>
     </a>
   </div>
-  
+
 </div>

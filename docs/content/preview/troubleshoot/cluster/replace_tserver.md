@@ -29,7 +29,7 @@ You can replace a failed YB-TServer in a YugabyteDB cluster, as follows:
    ~/master/bin/yb-admin -master_addresses $MASTERS get_load_move_completion
    ```
 
-   Loading and rebalancing will complete if only data from the failed YB-TServer has someplace to be stored. You would need to start the new YB-TServer first, or ensure your remaining YB-TServers have enough capacity and are in the correct placement zones.
+   Loading and rebalancing will complete only if data from the failed YB-TServer has someplace to be stored. You would need to start the new YB-TServer first, or ensure your remaining YB-TServers have enough capacity and are in the correct placement zones.
 
    For details on using this command, see [`get_load_move_completion`](../../../admin/yb-admin/#get-load-move-completion).
 

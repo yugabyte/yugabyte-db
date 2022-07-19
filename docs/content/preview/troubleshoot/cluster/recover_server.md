@@ -46,5 +46,4 @@ This is to handle the case if the `yb-tserver` restarts at some point in the fut
 
 ## Planned cluster changes
 
-You might choose to perform planned cluster changes, such as moving the entire cluster to a brand new set of nodes (for example, move from machines of type A to type B. For instructions on how to do this, see [Changing cluster config](../../../manage/change-cluster-config/).
-
+You might choose to perform planned cluster changes, such as moving the entire cluster to a brand new set of nodes (for example, move from machines of type A to type B). For instructions on how to do this, see [Change cluster configuration](../../../manage/change-cluster-config/).
