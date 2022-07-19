@@ -9,7 +9,7 @@ type: docs
 <div class="custom-tabs tabs-style-2">
   <ul class="tabs-name">
     <li>
-      <a href="../../quick-start-yugabytedb-managed/" class="nav-link">
+      <a href="/preview/quick-start-yugabytedb-managed/" class="nav-link">
         Use a cloud cluster
       </a>
     </li>
