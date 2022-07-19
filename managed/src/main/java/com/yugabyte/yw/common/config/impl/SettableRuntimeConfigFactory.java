@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 YugaByte, Inc. and Contributors
+ * Copyright 2022 YugaByte, Inc. and Contributors
  *
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
  * may not use this file except in compliance with the License. You
@@ -48,6 +48,14 @@ public class SettableRuntimeConfigFactory implements RuntimeConfigFactory {
 
   private final Config appConfig;
 
+  // We need to do this because appConfig is preResolved by playFramework
+  // So setting references to global or universe scoped config in reference.conf or application.conf
+  // wont resolve to unexpected.
+  // This helps us avoid unnecessary migrations of config keys.
+  private static final Config UNRESOLVED_STATIC_CONFIG =
+      ConfigFactory.parseString(
+          "\n" + "yb {\n" + "  upgrade.vmImage = ${yb.cloud.enabled}\n" + "}\n");
+
   @Inject
   public SettableRuntimeConfigFactory(
       Config appConfig, EbeanDynamicEvolutions ebeanDynamicEvolutions, YBFlywayInit ybFlywayInit) {
@@ -71,7 +79,7 @@ public class SettableRuntimeConfigFactory implements RuntimeConfigFactory {
   public RuntimeConfig<Universe> forUniverse(Universe universe) {
     Customer customer = Customer.get(universe.customerId);
     RuntimeConfig<Universe> config =
-        new RuntimeConfig<Universe>(
+        new RuntimeConfig<>(
             universe,
             getConfigForScope(universe.universeUUID, "Scoped Config (" + universe + ")")
                 .withFallback(getConfigForScope(customer.uuid, "Scoped Config (" + customer + ")"))
@@ -108,6 +116,7 @@ public class SettableRuntimeConfigFactory implements RuntimeConfigFactory {
   private Config globalConfig() {
     Config config =
         getConfigForScope(GLOBAL_SCOPE_UUID, "Global Runtime Config (" + GLOBAL_SCOPE_UUID + ")")
+            .withFallback(UNRESOLVED_STATIC_CONFIG)
             .withFallback(appConfig);
     LOG.trace("globalConfig : {}", toRedactedString(config));
     return config;

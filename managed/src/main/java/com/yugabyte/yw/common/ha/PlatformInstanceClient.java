@@ -1,15 +1,14 @@
 /*
- * Copyright 2021 YugaByte, Inc. and Contributors
+ * Copyright 2022 YugaByte, Inc. and Contributors
  *
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
  * may not use this file except in compliance with the License. You
  * may obtain a copy of the License at
  *
- * https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0
- * .txt
+ * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-package com.yugabyte.yw.common;
+package com.yugabyte.yw.common.ha;
 
 import static scala.compat.java8.JFunction.func;
 
@@ -18,7 +17,9 @@ import akka.stream.javadsl.Source;
 import akka.util.ByteString;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableMap;
+import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.controllers.HAAuthenticator;
 import com.yugabyte.yw.controllers.ReverseInternalHAController;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
@@ -26,6 +27,7 @@ import java.io.File;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import lombok.Getter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
@@ -37,6 +39,7 @@ public class PlatformInstanceClient {
 
   private static final Logger LOG = LoggerFactory.getLogger(PlatformInstanceClient.class);
 
+  @Getter(onMethod_ = {@VisibleForTesting})
   private final ApiHelper apiHelper;
 
   private final String remoteAddress;

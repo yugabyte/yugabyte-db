@@ -16,7 +16,9 @@ import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static play.inject.Bindings.bind;
 import static play.libs.Files.singletonTemporaryFileCreator;
 import static play.test.Helpers.contentAsString;
 import static play.test.Helpers.fakeRequest;
@@ -57,6 +59,7 @@ import org.junit.rules.TemporaryFolder;
 import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnitRunner;
 import play.Application;
+import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;
 import play.mvc.Http;
 import play.mvc.Result;
@@ -66,6 +69,7 @@ import play.test.Helpers;
 public class PlatformTest extends FakeDBApplication {
   Customer customer;
   Users user;
+  private String authToken;
   String clusterKey;
   Application remoteApp;
   PlatformInstance localInstance;
@@ -81,10 +85,22 @@ public class PlatformTest extends FakeDBApplication {
   private FakeApi fakeApi;
   EbeanServer localEBeanServer;
 
+  private PlatformInstanceClientFactory mockPlatformInstanceClientFactory =
+      mock(PlatformInstanceClientFactory.class);
+
+  @Override
+  protected GuiceApplicationBuilder configureApplication(GuiceApplicationBuilder builder) {
+    return super.configureApplication(
+        builder.overrides(
+            bind(PlatformInstanceClientFactory.class)
+                .toInstance(mockPlatformInstanceClientFactory)));
+  }
+
   @Before
   public void setup() {
     customer = ModelFactory.testCustomer();
-    user = ModelFactory.testUser(customer);
+    user = ModelFactory.testUser(customer, Users.Role.SuperAdmin);
+    authToken = user.createAuthToken();
     localEBeanServer = Ebean.getDefaultServer();
     fakeApi = new FakeApi(app, localEBeanServer);
     clusterKey = createClusterKey();
@@ -137,12 +153,13 @@ public class PlatformTest extends FakeDBApplication {
   public void testSendBackups() throws IOException {
     FakeApi remoteFakeApi = startRemoteApp();
     UUID remoteConfigUUID = createHAConfig(remoteFakeApi, clusterKey);
-    setupProxyingApiHelper(remoteFakeApi);
+    setupProxyingApiHelper(remoteFakeApi, clusterKey);
     File fakeDump = createFakeDump();
     PlatformReplicationManager replicationManager =
         app.injector().instanceOf(PlatformReplicationManager.class);
 
     Ebean.register(localEBeanServer, true);
+
     assertTrue("sendBackup failed", replicationManager.sendBackup(remoteInstance));
 
     assertTrue(fakeDump.exists());
@@ -171,7 +188,7 @@ public class PlatformTest extends FakeDBApplication {
             .toFile();
     assertTrue(uploadedFile.exists());
     String uploadedContents = FileUtils.readFileToString(uploadedFile, Charset.defaultCharset());
-    assertTrue(FileUtils.contentEquals(backupFile, uploadedFile));
+    assertTrue("Actual:" + uploadedContents, FileUtils.contentEquals(backupFile, uploadedFile));
   }
 
   private File createFakeDump() throws IOException {
@@ -189,7 +206,6 @@ public class PlatformTest extends FakeDBApplication {
 
   private PlatformInstance createPlatformInstance(
       UUID configUUID, String remoteAcmeOrg, boolean isLocal, boolean isLeader) {
-    String authToken = user.createAuthToken();
     String uri = "/api/settings/ha/config/" + configUUID.toString() + "/instance";
     JsonNode body =
         Json.newObject()
@@ -219,7 +235,9 @@ public class PlatformTest extends FakeDBApplication {
     return UUID.fromString(haConfigJson.get("uuid").asText());
   }
 
-  private void setupProxyingApiHelper(FakeApi remoteFakeApi) {
+  private void setupProxyingApiHelper(FakeApi remoteFakeApi, String clusterKey) {
+    when(mockPlatformInstanceClientFactory.getClient(anyString(), anyString()))
+        .thenReturn(new PlatformInstanceClient(mockApiHelper, clusterKey, REMOTE_ACME_ORG));
     when(mockApiHelper.multipartRequest(anyString(), anyMap(), anyList()))
         .thenAnswer(
             invocation -> {
