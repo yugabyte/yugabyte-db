@@ -168,6 +168,14 @@
   to = "/preview/yedis/"
   force = true
 
+# Make sure stable quick-start (local) doesn't get redirected.
+# (All other versions get redirected to preview.)
+
+[[redirects]]
+  from = "/stable/quick-start/"
+  to = "/stable/quick-start/"
+  status = 200
+
 # Stable quick-starts need defaults,
 # since archiving from /preview removes aliases
 
