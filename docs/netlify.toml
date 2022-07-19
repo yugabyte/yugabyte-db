@@ -168,12 +168,17 @@
   to = "/preview/yedis/"
   force = true
 
-# Make sure stable quick-start (local) doesn't get redirected.
+# Make sure stable and preview quick-starts don't get redirected.
 # (All other versions get redirected to preview.)
 
 [[redirects]]
   from = "/stable/quick-start/*"
   to = "/stable/quick-start/:splat"
+  status = 200
+
+[[redirects]]
+  from = "/preview/quick-start/*"
+  to = "/preview/quick-start/:splat"
   status = 200
 
 # Stable quick-starts need defaults,
