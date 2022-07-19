@@ -59,6 +59,8 @@ typedef enum ag_node_tag
     cypher_integer_const_t,
     // sub patterns
     cypher_sub_pattern_t,
+    // procedure calls
+    cypher_call_t,
     // create data structures
     cypher_create_target_nodes_t,
     cypher_create_path_t,

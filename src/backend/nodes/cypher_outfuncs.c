@@ -296,6 +296,17 @@ void out_cypher_sub_pattern(StringInfo str, const ExtensibleNode *node)
     WRITE_NODE_FIELD(pattern);
 }
 
+// serialization function for the cypher_call ExtensibleNode.
+void out_cypher_call(StringInfo str, const ExtensibleNode *node)
+{
+    DEFINE_AG_NODE(cypher_call);
+
+    WRITE_NODE_FIELD(funccall);
+    WRITE_NODE_FIELD(funcexpr);
+    WRITE_NODE_FIELD(where);
+    WRITE_NODE_FIELD(yield_items);
+}
+
 // serialization function for the cypher_create_target_nodes ExtensibleNode.
 void out_cypher_create_target_nodes(StringInfo str, const ExtensibleNode *node)
 {

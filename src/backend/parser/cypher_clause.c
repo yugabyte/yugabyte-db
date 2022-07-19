@@ -198,6 +198,9 @@ static void handle_prev_clause(cypher_parsestate *cpstate, Query *query,
                                cypher_clause *clause, bool first_rte);
 static TargetEntry *placeholder_target_entry(cypher_parsestate *cpstate,
                                              char *name);
+
+static List *makeTargetListFromRTE(ParseState *pstate, RangeTblEntry *rte);
+
 static Query *transform_cypher_sub_pattern(cypher_parsestate *cpstate,
                                            cypher_clause *clause);
 // set and remove clause
@@ -260,6 +263,12 @@ static cypher_clause *convert_merge_to_match(cypher_merge *merge);
 static void
 transform_cypher_merge_mark_tuple_position(List *target_list,
                                            cypher_create_path *path);
+
+//call...[yield]
+static Query *transform_cypher_call_stmt(cypher_parsestate *cpstate,
+                                      cypher_clause *clause);
+static Query *transform_cypher_call_subquery(cypher_parsestate *cpstate,
+                                          cypher_clause *clause);
 
 // transform
 #define PREV_CYPHER_CLAUSE_ALIAS    "_"
@@ -371,6 +380,10 @@ Query *transform_cypher_clause(cypher_parsestate *cpstate,
     else if (is_ag_node(self, cypher_unwind))
     {
         result = transform_cypher_unwind(cpstate, clause);
+    }
+    else if (is_ag_node(self, cypher_call))
+    {
+        result = transform_cypher_call_stmt(cpstate, clause);
     }
     else
     {
@@ -999,6 +1012,211 @@ transform_cypher_union_tree(cypher_parsestate *cpstate, cypher_clause *clause,
 
         return (Node *)op;
     }//end else (is not leaf)
+}
+
+/*
+ * Function that takes a cypher call and returns the yielded result
+ * This function also catches some cases that should fail that could not
+ * be picked up by the grammar. transform_cypher_call_subquery handles the
+ * call transformation itself.
+ */
+static Query * transform_cypher_call_stmt(cypher_parsestate *cpstate,
+                                          cypher_clause *clause)
+{
+    ParseState *pstate = (ParseState *)cpstate;
+    cypher_call *self = (cypher_call *)clause->self;
+
+    if (!clause->prev && !clause->next) /* CALL [YIELD] -- the most simple call */
+    {
+        if (self->where) /* Error check for WHERE clause after YIELD without RETURN */
+        {
+            Assert(self->yield_items);
+
+            ereport(ERROR,
+                    (errcode(ERRCODE_SYNTAX_ERROR),
+                     errmsg("Cannot use standalone CALL with WHERE"),
+                     errhint("Instead use `CALL ... WITH * WHERE ... RETURN *`"),
+                     parser_errposition(pstate,
+                                        exprLocation((Node *) self->where))));
+        }
+
+        return transform_cypher_call_subquery(cpstate, clause);
+    }
+    else /* subqueries */
+    {
+        if (!self->yield_items)
+        {
+            ereport(ERROR,
+                    (errcode(ERRCODE_SYNTAX_ERROR),
+                     errmsg("Procedure call inside a query does not support naming results implicitly"),
+                     errhint("Name explicitly using `YIELD` instead"),
+                     parser_errposition(pstate,
+                                        exprLocation((Node *) self))));
+        }
+        Assert(self->yield_items);
+
+        if (!clause->next)
+        {
+            ereport(ERROR,
+                    (errcode(ERRCODE_SYNTAX_ERROR),
+                     errmsg("Query cannot conclude with CALL"),
+                     errhint("Must be RETURN or an update clause"),
+                     parser_errposition(pstate,
+                                        exprLocation((Node *) self))));
+        }
+
+        return transform_cypher_clause_with_where(cpstate,
+                                                  transform_cypher_call_subquery,
+                                                  clause);
+    }
+
+    return NULL;
+}
+
+/*
+ * Helper routine for transform_cypher_call_stmt. This routine transforms the
+ * call statement and handles the YIELD clause.
+ */
+static Query *transform_cypher_call_subquery(cypher_parsestate *cpstate,
+                                             cypher_clause *clause)
+{
+    ParseState *pstate = (ParseState *)cpstate;
+    ParseState *p_child_parse_state = make_parsestate(NULL);
+    cypher_call *self = (cypher_call *)clause->self;
+    Query *query;
+    char *colName;
+    FuncExpr *node = NULL;
+    TargetEntry *tle;
+
+    Expr *where_qual = NULL;
+
+    query = makeNode(Query);
+    query->commandType = CMD_SELECT;
+
+    if (clause->prev)
+    {
+        /* we want to retain all previous range table entries */
+        handle_prev_clause(cpstate, query, clause->prev, false);
+    }
+
+    /* transform the funccall and store it in a funcexpr node */
+    node = castNode( FuncExpr, transform_cypher_expr(cpstate, (Node *) self->funccall,
+                                                     EXPR_KIND_FROM_FUNCTION));
+
+    /* retrieve the column name from funccall */
+    colName = strVal(linitial(self->funccall->funcname));
+
+    /* make a targetentry from the funcexpr node */
+    tle = makeTargetEntry((Expr *) node,
+                          (AttrNumber) p_child_parse_state->p_next_resno++,
+                           colName,
+                           false);
+
+    if (self->yield_items) /* if there are yield items, we need to check them */
+    {
+        List *yield_targetList;
+        ListCell *lc;
+
+        yield_targetList = list_make1(tle);
+
+        foreach (lc, self->yield_items)
+        {
+            ResTarget *target = NULL;
+            ColumnRef *var = NULL;
+            TargetEntry *yielded_tle = NULL;
+
+            target = (ResTarget *) lfirst(lc);
+
+            if (!IsA(target->val, ColumnRef))
+            {
+                ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                                errmsg("YIELD item must be ColumnRef"),
+                                parser_errposition(&cpstate->pstate, 0)));
+            }
+
+            var = (ColumnRef *) target->val;
+
+            /* check if the restarget variable exists in the yield_targetList*/
+            if (findTarget(yield_targetList, strVal(linitial(var->fields))) != NULL)
+            {
+                /* check if an alias exists. if one does, we check if it is
+                   already declared in the targetlist */
+                if (target->name)
+                {
+                    if (findTarget(query->targetList, target->name) != NULL)
+                    {
+                        ereport(ERROR,
+                                (errcode(ERRCODE_DUPLICATE_ALIAS),
+                                        errmsg("duplicate variable \"%s\"", target->name),
+                                        parser_errposition((ParseState *) cpstate, exprLocation((Node *) target))));
+                    }
+                    else
+                    {
+                        yielded_tle = makeTargetEntry((Expr *) node,
+                                                      (AttrNumber) pstate->p_next_resno++,
+                                                       target->name,
+                                                       false);
+                        query->targetList = lappend(query->targetList, yielded_tle);
+                    }
+                }
+                else/* if there is no alias, we check if the variable is already declared */
+                {
+                    if (findTarget(query->targetList, strVal(linitial(var->fields))) != NULL)
+                    {
+                        ereport(ERROR,
+                                (errcode(ERRCODE_DUPLICATE_ALIAS),
+                                        errmsg("duplicate variable \"%s\"", colName),
+                                        parser_errposition((ParseState *) cpstate, exprLocation((Node *) target))));
+                    }
+                    else
+                    {
+                        yielded_tle = makeTargetEntry((Expr *) node,
+                                                      (AttrNumber) pstate->p_next_resno++,
+                                                       colName,
+                                                       false);
+                        query->targetList = lappend(query->targetList, yielded_tle);
+                    }
+                }
+            }
+            else
+            {
+                /* if the yield_item is not found and we return an error */
+                ereport(ERROR,
+                        (errcode(ERRCODE_INVALID_COLUMN_REFERENCE),
+                         errmsg("Unknown CALL output"),
+                         parser_errposition(pstate, exprLocation((Node *) target))));
+            }
+        }
+    }
+    else /* if there are no yield items this must be a solo call */
+    {
+        tle = makeTargetEntry((Expr *) node,
+                                    (AttrNumber) pstate->p_next_resno++,
+                                     colName,
+                                     false);
+        query->targetList =  list_make1(tle);
+    }
+
+
+
+    markTargetListOrigins(pstate, query->targetList);
+
+    query->rtable = cpstate->pstate.p_rtable;
+    query->jointree = makeFromExpr(cpstate->pstate.p_joinlist, (Node *)where_qual);
+    query->hasAggs = pstate->p_hasAggs;
+
+    assign_query_collations(pstate, query);
+
+    /* this must be done after collations, for reliable comparison of exprs */
+    if (pstate->p_hasAggs ||
+        query->groupClause || query->groupingSets || query->havingQual)
+    {
+        parse_check_aggregates(pstate, query);
+    }
+
+    free_parsestate(p_child_parse_state);
+
+    return query;
 }
 
 /*
@@ -1927,8 +2145,22 @@ static Query *transform_cypher_clause_with_where(cypher_parsestate *cpstate,
 {
     ParseState *pstate = (ParseState *)cpstate;
     Query *query;
-    cypher_match *self = (cypher_match *)clause->self;
-    Node *where = self->where;
+    Node *self = clause->self;
+    cypher_match *match_self;
+    cypher_call *call_self;
+    Node *where;
+
+
+    if (is_ag_node(self, cypher_call))
+    {
+        call_self = (cypher_call*) clause->self;
+        where = call_self->where;
+    }
+    else
+    {
+        match_self = (cypher_match*) clause->self;
+        where = match_self->where;
+    }
 
     if (where)
     {
@@ -1948,8 +2180,27 @@ static Query *transform_cypher_clause_with_where(cypher_parsestate *cpstate,
         markTargetListOrigins(pstate, query->targetList);
 
         query->rtable = pstate->p_rtable;
-        query->jointree = makeFromExpr(pstate->p_joinlist, NULL);
 
+        if (is_ag_node(clause, cypher_call))
+        {
+            cypher_call *call = (cypher_call *)clause->self;
+
+            if (call->where != NULL)
+            {
+                Expr *where_qual = NULL;
+
+                where_qual = (Expr *)transform_cypher_expr(cpstate, call->where,
+                                                           EXPR_KIND_WHERE);
+
+                where_qual = (Expr *)coerce_to_boolean(pstate, (Node *)where_qual,
+                                               "WHERE");
+                query->jointree = makeFromExpr(pstate->p_joinlist, (Node *)where_qual);
+            }
+        }
+        else
+        {
+            query->jointree = makeFromExpr(pstate->p_joinlist, NULL);
+        }
         assign_query_collations(pstate, query);
     }
     else

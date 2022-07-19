@@ -331,17 +331,98 @@ cypher_stmt:
 call_stmt:
     CALL expr_func_norm
         {
-            ereport(ERROR,
-                    (errcode(ERRCODE_SYNTAX_ERROR),
-                     errmsg("CALL not supported yet"),
-                     ag_scanner_errposition(@1, scanner)));
+            cypher_call *n = make_ag_node(cypher_call);
+            n->funccall = castNode (FuncCall, $2);
+
+            $$ = (Node *)n;
+        }
+    | CALL expr '.' expr
+        {
+            cypher_call *n = make_ag_node(cypher_call);
+
+            if (IsA($4, FuncCall) && IsA($2, ColumnRef))
+            {
+                FuncCall *fc = (FuncCall*)$4;
+                ColumnRef *cr = (ColumnRef*)$2;
+                List *fields = cr->fields;
+                Value *string = linitial(fields);
+
+                /*
+                 * A function can only be qualified with a single schema. So, we
+                 * check to see that the function isn't already qualified. There
+                 * may be unforeseen cases where we might need to remove this in
+                 * the future.
+                 */
+                if (list_length(fc->funcname) == 1)
+                {
+                    fc->funcname = lcons(string, fc->funcname);
+                    $$ = (Node*)fc;
+                }
+                else
+                    ereport(ERROR,
+                            (errcode(ERRCODE_SYNTAX_ERROR),
+                             errmsg("function already qualified"),
+                             ag_scanner_errposition(@1, scanner)));
+
+                n->funccall = fc;
+                $$ = (Node *)n;
+            }
+            else
+            {
+                ereport(ERROR,
+                        (errcode(ERRCODE_SYNTAX_ERROR),
+                         errmsg("CALL statement must be a qualified function"),
+                         ag_scanner_errposition(@1, scanner)));
+            }
         }
     | CALL expr_func_norm YIELD yield_item_list where_opt
         {
-            ereport(ERROR,
-                    (errcode(ERRCODE_SYNTAX_ERROR),
-                     errmsg("CALL... [YIELD] not supported yet"),
-                     ag_scanner_errposition(@1, scanner)));
+            cypher_call *n = make_ag_node(cypher_call);
+            n->funccall = castNode (FuncCall, $2);
+            n->yield_items = $4;
+            n->where = $5;
+            $$ = (Node *)n;
+        }
+    | CALL expr '.' expr YIELD yield_item_list where_opt
+        {
+            cypher_call *n = make_ag_node(cypher_call);
+
+            if (IsA($4, FuncCall) && IsA($2, ColumnRef))
+            {
+                FuncCall *fc = (FuncCall*)$4;
+                ColumnRef *cr = (ColumnRef*)$2;
+                List *fields = cr->fields;
+                Value *string = linitial(fields);
+
+                /*
+                 * A function can only be qualified with a single schema. So, we
+                 * check to see that the function isn't already qualified. There
+                 * may be unforeseen cases where we might need to remove this in
+                 * the future.
+                 */
+                if (list_length(fc->funcname) == 1)
+                {
+                    fc->funcname = lcons(string, fc->funcname);
+                    $$ = (Node*)fc;
+                }
+                else
+                    ereport(ERROR,
+                            (errcode(ERRCODE_SYNTAX_ERROR),
+                             errmsg("function already qualified"),
+                             ag_scanner_errposition(@1, scanner)));
+
+                n->funccall = fc;
+                n->yield_items = $6;
+                n->where = $7;
+                $$ = (Node *)n;
+            }
+            else
+            {
+                ereport(ERROR,
+                        (errcode(ERRCODE_SYNTAX_ERROR),
+                         errmsg("CALL statement must be a qualified function"),
+                         ag_scanner_errposition(@1, scanner)));
+            }
         }
     ;
 
@@ -359,13 +440,30 @@ yield_item_list:
 yield_item:
     expr AS var_name
         {
+            ResTarget *n;
 
+            n = makeNode(ResTarget);
+            n->name = $3;
+            n->indirection = NIL;
+            n->val = $1;
+            n->location = @1;
+
+            $$ = (Node *)n;
         }
     | expr
         {
+            ResTarget *n;
 
+            n = makeNode(ResTarget);
+            n->name = NULL;
+            n->indirection = NIL;
+            n->val = $1;
+            n->location = @1;
+
+            $$ = (Node *)n;
         }
     ;
+
 
 semicolon_opt:
     /* empty */
@@ -419,6 +517,10 @@ query_part_last:
         {
             $$ = lappend(list_concat($1, $2), $3);
         }
+    | reading_clause_list call_stmt
+        {
+            $$ = list_concat($1, list_make1($2));
+        }
     ;
 
 reading_clause_list:
@@ -435,6 +537,7 @@ reading_clause_list:
 reading_clause:
     match
     | unwind
+    | call_stmt
     ;
 
 updating_clause_list_0:
@@ -462,7 +565,6 @@ updating_clause:
     | remove
     | delete
     | merge
-    | call_stmt
     ;
 
 cypher_varlen_opt:

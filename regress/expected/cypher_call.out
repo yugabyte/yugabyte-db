@@ -1,0 +1,203 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+LOAD 'age';
+SET search_path TO ag_catalog;
+SELECT create_graph('cypher_call');
+NOTICE:  graph "cypher_call" has been created
+ create_graph 
+--------------
+ 
+(1 row)
+
+SELECT * FROM cypher('cypher_call', $$CREATE ({n: 'a'})$$) as (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('cypher_call', $$CREATE ({n: 'b'})$$) as (a agtype);
+ a 
+---
+(0 rows)
+
+CREATE SCHEMA call_stmt_test;
+CREATE FUNCTION call_stmt_test.add_agtype(agtype, agtype) RETURNS agtype
+    AS 'select $1 + $2;'
+    LANGUAGE SQL
+    IMMUTABLE
+    RETURNS NULL ON NULL INPUT;
+/* 
+ * CALL (solo) 
+ */
+SELECT * FROM cypher('cypher_call', $$CALL sqrt(64)$$) as (sqrt agtype);
+ sqrt 
+------
+ 8.0
+(1 row)
+
+/*  CALL RETURN, should fail */
+SELECT * FROM cypher('cypher_call', $$CALL sqrt(64) RETURN sqrt$$) as (sqrt agtype); 
+ERROR:  Procedure call inside a query does not support naming results implicitly
+LINE 2: SELECT * FROM cypher('cypher_call', $$CALL sqrt(64) RETURN s...
+                                             ^
+HINT:  Name explicitly using `YIELD` instead
+/* CALL YIELD */
+SELECT * FROM cypher('cypher_call', $$CALL sqrt(64) YIELD sqrt$$) as (sqrt agtype);
+ sqrt 
+------
+ 8.0
+(1 row)
+
+/* incorrect variable should fail */
+SELECT * FROM cypher('cypher_call', $$CALL sqrt(64) YIELD squirt$$) as (sqrt agtype);
+ERROR:  Unknown CALL output
+LINE 2: ... FROM cypher('cypher_call', $$CALL sqrt(64) YIELD squirt$$) ...
+                                                             ^
+/* qualified name */
+SELECT * FROM cypher('cypher_call', $$CALL call_stmt_test.add_agtype(1,2)$$) as (sqrt agtype);
+ sqrt 
+------
+ 3
+(1 row)
+
+/* non-existent schema should fail */
+SELECT * FROM cypher('cypher_call', $$CALL ag_catalog.add_agtype(1,2)$$) as (sqrt agtype);
+ERROR:  function ag_catalog.add_agtype(agtype, agtype) does not exist
+LINE 2: ...cypher('cypher_call', $$CALL ag_catalog.add_agtype(1,2)$$) a...
+                                                             ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+/* CALL YIELD WHERE, should fail */
+SELECT * FROM cypher('cypher_call', $$CALL sqrt(64) YIELD sqrt WHERE sqrt > 1$$) as (sqrt agtype);
+ERROR:  Cannot use standalone CALL with WHERE
+LINE 2: ...r('cypher_call', $$CALL sqrt(64) YIELD sqrt WHERE sqrt > 1$$...
+                                                             ^
+HINT:  Instead use `CALL ... WITH * WHERE ... RETURN *`
+/*
+ * subquery
+ */
+ /* CALL YIELD UPDATE/RETURN */
+SELECT * FROM cypher('cypher_call', $$ CALL sqrt(64) YIELD sqrt RETURN sqrt $$) as (sqrt agtype);
+ sqrt 
+------
+ 8.0
+(1 row)
+
+/* Unrecognized YIELD, correct RETURN, should fail*/
+SELECT * FROM cypher('cypher_call', $$ CALL sqrt(64) YIELD squirt RETURN sqrt $$) as (sqrt agtype);
+ERROR:  Unknown CALL output
+LINE 2: ...FROM cypher('cypher_call', $$ CALL sqrt(64) YIELD squirt RET...
+                                                             ^
+/* CALL YIELD WHERE RETURN */
+SELECT * FROM cypher('cypher_call', $$CALL sqrt(64) YIELD sqrt WHERE sqrt > 1 RETURN sqrt $$) as (a agtype);
+  a  
+-----
+ 8.0
+(1 row)
+
+/* MATCH CALL RETURN, should fail */
+SELECT * FROM cypher('cypher_call', $$ MATCH (a) CALL sqrt(64) RETURN sqrt $$) as (sqrt agtype);
+ERROR:  Procedure call inside a query does not support naming results implicitly
+LINE 2: SELECT * FROM cypher('cypher_call', $$ MATCH (a) CALL sqrt(6...
+                                             ^
+HINT:  Name explicitly using `YIELD` instead
+/* MATCH CALL YIELD RETURN */
+SELECT * FROM cypher('cypher_call', $$ MATCH (a) CALL sqrt(64) YIELD sqrt RETURN a, sqrt $$) as (a agtype, sqrt agtype);
+                                   a                                    | sqrt 
+------------------------------------------------------------------------+------
+ {"id": 281474976710657, "label": "", "properties": {"n": "a"}}::vertex | 8.0
+ {"id": 281474976710658, "label": "", "properties": {"n": "b"}}::vertex | 8.0
+(2 rows)
+
+/* MATCH CALL YIELD WHERE UPDATE/RETURN */
+SELECT * FROM cypher('cypher_call', $$ CALL sqrt(64) YIELD sqrt WHERE sqrt > 1 CREATE ({n:'c'}) $$) as (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('cypher_call', $$ MATCH (a) CALL sqrt(64) YIELD sqrt WHERE a.n = 'c' DELETE (a) $$) as (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('cypher_call', $$ MATCH (a) CALL sqrt(64) YIELD sqrt WHERE a.n = 'c' RETURN a $$) as (a agtype);
+ a 
+---
+(0 rows)
+
+/* CALL MATCH YIELD WHERE UPDATE/RETURN */
+SELECT * FROM cypher('cypher_call', $$ CALL sqrt(64) YIELD sqrt WHERE sqrt > 1 CREATE ({n:'c'}) $$) as (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('cypher_call', $$ CALL sqrt(64) YIELD sqrt MATCH (a) WHERE a.n = 'c' DELETE (a) $$) as (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('cypher_call', $$ CALL sqrt(64) YIELD sqrt MATCH (a) WHERE a.n = 'c' RETURN a $$) as (a agtype);
+ a 
+---
+(0 rows)
+
+/* Multiple Calls: CALL YIELD CALL YIELD... RETURN */
+SELECT * FROM cypher('cypher_call', $$ CALL sqrt(64) YIELD sqrt CALL agtype_sum(2,2) YIELD agtype_sum RETURN sqrt, agtype_sum $$) as (sqrt agtype, agtype_sum agtype);
+ sqrt | agtype_sum 
+------+------------
+ 8.0  | 4
+(1 row)
+
+/* should fail */
+SELECT * FROM cypher('cypher_call', $$ CALL sqrt(64) YIELD sqrt CALL sqrt(81) YIELD sqrt RETURN sqrt, sqrt $$) as (a agtype, b agtype);
+ERROR:  duplicate variable "sqrt"
+LINE 2: ..., $$ CALL sqrt(64) YIELD sqrt CALL sqrt(81) YIELD sqrt RETUR...
+                                                             ^
+/* Aliasing: CALL YIELD AS CALL YIELD AS ... UPDATE/RETURN */
+SELECT * FROM cypher('cypher_call', $$ CALL sqrt(64) YIELD sqrt CALL sqrt(81) YIELD sqrt AS sqrt1 RETURN sqrt, sqrt1 $$) as (sqrt agtype, sqrt1 agtype);
+ sqrt | sqrt1 
+------+-------
+ 8.0  | 9.0
+(1 row)
+
+SELECT * FROM cypher('cypher_call', $$ CALL sqrt(64) YIELD sqrt AS sqrt1 CALL sqrt(81) YIELD sqrt RETURN sqrt, sqrt1 $$) as (sqrt agtype, sqrt1 agtype);
+ sqrt | sqrt1 
+------+-------
+ 9.0  | 8.0
+(1 row)
+
+/* duplicated alias should fail */
+SELECT * FROM cypher('cypher_call', $$ CALL sqrt(64) YIELD sqrt AS sqrt1 CALL sqrt(81) YIELD sqrt AS sqrt1 RETURN sqrt1, sqrt1 $$) as (a agtype, b agtype);
+ERROR:  duplicate variable "sqrt1"
+LINE 2: ... sqrt(64) YIELD sqrt AS sqrt1 CALL sqrt(81) YIELD sqrt AS sq...
+                                                             ^
+SELECT * FROM cypher('cypher_call', $$ CALL sqrt(64) YIELD sqrt CALL agtype_sum(2,2) YIELD agtype_sum AS sqrt RETURN sqrt, sqrt $$) as (a agtype, b agtype);
+ERROR:  duplicate variable "sqrt"
+LINE 1: ...LL sqrt(64) YIELD sqrt CALL agtype_sum(2,2) YIELD agtype_sum...
+                                                             ^
+DROP SCHEMA call_stmt_test CASCADE;
+NOTICE:  drop cascades to function call_stmt_test.add_agtype(agtype,agtype)
+SELECT drop_graph('cypher_call', true);
+NOTICE:  drop cascades to 2 other objects
+DETAIL:  drop cascades to table cypher_call._ag_label_vertex
+drop cascades to table cypher_call._ag_label_edge
+NOTICE:  graph "cypher_call" has been dropped
+ drop_graph 
+------------
+ 
+(1 row)
+

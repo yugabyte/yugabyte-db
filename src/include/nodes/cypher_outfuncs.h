@@ -65,6 +65,10 @@ void out_cypher_integer_const(StringInfo str, const ExtensibleNode *node);
 // sub pattern
 void out_cypher_sub_pattern(StringInfo str, const ExtensibleNode *node);
 
+// procedure call
+
+void out_cypher_call(StringInfo str, const ExtensibleNode *node);
+
 // create private data structures
 void out_cypher_create_target_nodes(StringInfo str, const ExtensibleNode *node);
 void out_cypher_create_path(StringInfo str, const ExtensibleNode *node);

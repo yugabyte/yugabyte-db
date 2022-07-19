@@ -236,6 +236,20 @@ typedef struct cypher_create_path
     char *var_name;
 } cypher_create_path;
 
+/*
+ * procedure call
+ */
+
+typedef struct cypher_call
+{
+    ExtensibleNode extensible;
+    FuncCall *funccall; /*from the parser */
+    FuncExpr *funcexpr; /*transformed */
+
+    Node *where;
+    List *yield_items; // optional yield subclause
+} cypher_call;
+
 #define CYPHER_CLAUSE_FLAG_NONE 0x0000
 #define CYPHER_CLAUSE_FLAG_TERMINAL 0x0001
 #define CYPHER_CLAUSE_FLAG_PREVIOUS_CLAUSE 0x0002

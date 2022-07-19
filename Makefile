@@ -88,6 +88,7 @@ REGRESS = scan \
           cypher_with \
           cypher_vle \
           cypher_union \
+	  cypher_call \
           cypher_merge \
           age_load \
           index \
