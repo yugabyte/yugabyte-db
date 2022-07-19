@@ -719,7 +719,10 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
                 FakeApiHelper.doRequestWithAuthTokenAndBody(
                     "PUT", editAPIEndpoint, user.createAuthToken(), editMultipleOperations));
     assertEquals(contentAsString(result), BAD_REQUEST, result.status());
-    assertResponseError("Must perform one edit operation at a time", result);
+    assertResponseError(
+        "Exactly one edit request (either editName, editStatus, "
+            + "editTables) is allowed in one call.",
+        result);
     assertNoTasksCreated();
     assertAuditEntry(0, customer.uuid);
 
@@ -789,7 +792,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
                 FakeApiHelper.doRequestWithAuthTokenAndBody(
                     "PUT", editAPIEndpoint, user.createAuthToken(), editTablesRequest));
     assertEquals(contentAsString(result), BAD_REQUEST, result.status());
-    assertResponseError("Table set must be non-empty", result);
+    assertResponseError("Must specify an edit operation", result);
     assertNoTasksCreated();
     assertAuditEntry(0, customer.uuid);
 

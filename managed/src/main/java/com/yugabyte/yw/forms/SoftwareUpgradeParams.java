@@ -16,6 +16,7 @@ import play.mvc.Http.Status;
 public class SoftwareUpgradeParams extends UpgradeTaskParams {
 
   public String ybSoftwareVersion = null;
+  public boolean upgradeSystemCatalog = true;
 
   public SoftwareUpgradeParams() {}
 

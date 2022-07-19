@@ -295,12 +295,6 @@ void MemTracker::CreateRootTracker() {
   root_tracker = std::make_shared<MemTracker>(
       limit, "root", std::move(consumption_functor), nullptr /* parent */, AddToParent::kTrue,
       CreateMetrics::kFalse);
-
-  LOG(INFO) << StringPrintf("MemTracker: hard memory limit is %.6f GB",
-                            (static_cast<float>(limit) / (1024.0 * 1024.0 * 1024.0)));
-  LOG(INFO) << StringPrintf("MemTracker: soft memory limit is %.6f GB",
-                            (static_cast<float>(root_tracker->soft_limit_) /
-                                (1024.0 * 1024.0 * 1024.0)));
 }
 
 shared_ptr<MemTracker> MemTracker::CreateTracker(int64_t byte_limit,
@@ -815,6 +809,13 @@ string MemTracker::LogUsage(const string& prefix, int64_t usage_threshold, int i
     }
   }
   return ss.str();
+}
+
+void MemTracker::LogMemoryLimits() const {
+  LOG(INFO) << StringPrintf("MemTracker: hard memory limit is %.6f GB",
+                            (static_cast<float>(limit_) / (1024.0 * 1024.0 * 1024.0)));
+  LOG(INFO) << StringPrintf("MemTracker: soft memory limit is %.6f GB",
+                            (static_cast<float>(soft_limit_) / (1024.0 * 1024.0 * 1024.0)));
 }
 
 void MemTracker::LogUpdate(bool is_consume, int64_t bytes) const {

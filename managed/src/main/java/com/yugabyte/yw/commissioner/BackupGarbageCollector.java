@@ -21,6 +21,7 @@ import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.configs.CustomerConfig;
+import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import java.time.Duration;
@@ -150,6 +151,30 @@ public class BackupGarbageCollector {
           switch (customerConfig.name) {
               // for cases S3, NFS, GCS, we get Util from CloudUtil class
             case S3:
+              CustomerConfigStorageS3Data s3Data =
+                  (CustomerConfigStorageS3Data) customerConfig.getDataObject();
+              if (s3Data.isIAMInstanceProfile) {
+                if (isUniversePresent(backup)) {
+                  BackupTableParams backupParams = backup.getBackupInfo();
+                  List<BackupTableParams> backupList =
+                      backupParams.backupList == null
+                          ? ImmutableList.of(backupParams)
+                          : backupParams.backupList;
+                  boolean success = deleteScriptBackup(backupList);
+                  if (success) {
+                    backup.delete();
+                    log.info("Backup {} is successfully deleted", backupUUID);
+                  } else {
+                    backup.transitionState(BackupState.FailedToDelete);
+                  }
+                } else {
+                  backup.transitionState(BackupState.FailedToDelete);
+                  log.info(
+                      "Cannot delete S3 IAM Backup {} as universe is not present",
+                      backup.backupUUID);
+                }
+                break;
+              }
             case GCS:
             case AZ:
               CloudUtil cloudUtil = CloudUtil.getCloudUtil(customerConfig.name);
@@ -170,7 +195,7 @@ public class BackupGarbageCollector {
                 if (backup.category.equals(BackupCategory.YB_CONTROLLER)) {
                   success = ybcManager.deleteNfsDirectory(backup);
                 } else {
-                  success = deleteNFSBackup(backupList);
+                  success = deleteScriptBackup(backupList);
                 }
                 if (success) {
                   backup.delete();
@@ -215,17 +240,17 @@ public class BackupGarbageCollector {
     return universe.isPresent();
   }
 
-  private boolean deleteNFSBackup(List<BackupTableParams> backupList) {
+  private boolean deleteScriptBackup(List<BackupTableParams> backupList) {
     boolean success = true;
     for (BackupTableParams childBackupParams : backupList) {
-      if (!deleteChildNFSBackups(childBackupParams)) {
+      if (!deleteChildScriptBackups(childBackupParams)) {
         success = false;
       }
     }
     return success;
   }
 
-  private boolean deleteChildNFSBackups(BackupTableParams backupTableParams) {
+  private boolean deleteChildScriptBackups(BackupTableParams backupTableParams) {
     ShellResponse response = tableManagerYb.deleteBackup(backupTableParams);
     JsonNode jsonNode = null;
     try {
@@ -246,7 +271,7 @@ public class BackupGarbageCollector {
           jsonNode.has("error"));
       return false;
     } else {
-      log.info("NFS Backup deleted successfully STDOUT: " + response.message);
+      log.info("Backup deleted successfully STDOUT: " + response.message);
       return true;
     }
   }

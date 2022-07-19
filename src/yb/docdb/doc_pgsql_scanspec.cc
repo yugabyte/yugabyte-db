@@ -126,8 +126,8 @@ DocPgsqlScanSpec::DocPgsqlScanSpec(
       schema_.num_range_key_columns() > 0 &&
       range_bounds_ && range_bounds_->has_in_range_options()) {
     DCHECK(condition);
-    range_options_ = std::make_shared<std::vector<std::vector<KeyEntryValue>>>(
-        schema_.num_range_key_columns());
+    range_options_ = std::make_shared<std::vector<OptionList>>(schema_.num_range_key_columns());
+    range_options_num_cols_ = std::vector<size_t>(schema_.num_range_key_columns(), 0);
     InitRangeOptions(*condition);
 
     if (FLAGS_disable_hybrid_scan) {
@@ -177,9 +177,11 @@ void DocPgsqlScanSpec::InitRangeOptions(const PgsqlConditionPB& condition) {
       SortingType sortingType = schema_.column(col_idx).sorting_type();
       range_options_indexes_.emplace_back(condition.operands(0).column_id());
 
+      range_options_num_cols_[col_idx - num_hash_cols] = 1;
+
       if (condition.op() == QL_OP_EQUAL) {
         auto pv = KeyEntryValue::FromQLValuePBForKey(condition.operands(1).value(), sortingType);
-        (*range_options_)[col_idx - num_hash_cols].push_back(std::move(pv));
+        (*range_options_)[col_idx - num_hash_cols].push_back({pv});
       } else { // QL_OP_IN
         DCHECK_EQ(condition.op(), QL_OP_IN);
         DCHECK(condition.operands(1).value().has_list_value());
@@ -194,7 +196,7 @@ void DocPgsqlScanSpec::InitRangeOptions(const PgsqlConditionPB& condition) {
           int elem_idx = is_reverse_order ? opt_size - i - 1 : i;
           const auto &elem = options.elems(elem_idx);
           auto pv = KeyEntryValue::FromQLValuePBForKey(elem, sortingType);
-          (*range_options_)[col_idx - num_hash_cols].push_back(std::move(pv));
+          (*range_options_)[col_idx - num_hash_cols].push_back({pv});
         }
       }
 

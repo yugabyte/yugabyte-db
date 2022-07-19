@@ -48,8 +48,6 @@ DEFINE_bool(use_node_hostname_for_local_tserver, false,
 
 DECLARE_uint64(max_clock_skew_usec);
 
-DECLARE_bool(ysql_forward_rpcs_to_local_tserver);
-
 namespace {
 
 // Local copies that can be modified.

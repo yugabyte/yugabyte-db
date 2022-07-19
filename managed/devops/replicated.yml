@@ -17,22 +17,25 @@ backup:
 monitors:
   cpuacct: []
   memory: []
+host_requirements:
+  disk_space: 50GB
+  docker_space: 10GB
 custom_requirements:
   - id: check_free_space
-    message: Ensure there is sufficient space for platform installation.
-    details: Must have at least 16 GB space available.
+    message: Ensure there is sufficient space for platform installation
+    details: Must have at least 40 GB space available.
     results:
       - status: success
         message:
-          default_message: Directory {{.directory}} has enough space available.
+          default_message: Directory {{.directory}} has enough space available
           args:
             directory: '{{repl ConfigOption "storage_path"}}'
         condition:
           status_code: 0
-          bool_expr: '{{repl Trim .Result | ParseFloat | lt 16e9 }}'
+          bool_expr: '{{repl Trim .Result | ParseFloat | lt 40e9 }}'
       - status: error
         message:
-          default_message: Directory {{.directory}} has {{.bytes}} space available. Please increase disk space to at least 16 GB.
+          default_message: Directory {{.directory}} has {{.bytes}} space available. Please increase disk space to at least 40 GB
           args:
             directory: '{{repl ConfigOption "storage_path"}}'
             bytes: '{{repl ParseFloat .Result | HumanSize }}'
@@ -49,6 +52,37 @@ custom_requirements:
       data:
         cluster: false
         dir: '{{repl ConfigOption "storage_path"}}'
+  - id: check_replicated_free_space
+    message: '/var/lib/replicated has enough total space'
+    details: Directory must have at least 15GB total space.
+    results:
+      - status: success
+        message:
+          default_message: Total space requirement met for directory {{.directory}}
+          args:
+            directory: /var/lib/replicated
+        condition:
+          status_code: 0
+          bool_expr: '{{repl Trim .Result | ParseFloat | lt 15e9 }}'
+      - status: error
+        message:
+          default_message: Directory {{.directory}} has {{.bytes}} space available. Please increase disk space to at least 15 GB
+          args:
+            directory: /var/lib/replicated
+            bytes: '{{repl ParseFloat .Result | HumanSize }}'
+        condition:
+          status_code: 0
+      - status: warn
+        message:
+          default_message: 'Invalid status code {{.status}}. Error: {{.error}}'
+          args:
+            status: '{{repl .StatusCode }}'
+            error: '{{repl .Error }}'
+    command:
+      id: disk_space_available
+      data:
+        cluster: false
+        dir: /var/lib/replicated
 cmds:
   - name: dbpass_cmd
     cmd: random
@@ -412,6 +446,7 @@ components:
                 url = "{{repl if ConfigOptionEquals "https_enabled" "1"}}https://{{repl else}}http://{{repl end}}{{repl ConfigOption "hostname"}}{{repl if and (ConfigOptionNotEquals "nginx_external_port" "80") (ConfigOptionNotEquals "nginx_external_port" "443")}}:{{repl ConfigOption "nginx_external_port"}}{{repl end}}"
                 security.custom_hooks.enable_custom_hooks = {{repl if ConfigOptionEquals "enable_custom_hooks" "1"}}true{{repl else}}false{{repl end}}
                 security.custom_hooks.enable_sudo = {{repl if ConfigOptionEquals "enable_sudo" "1"}}true{{repl else}}false{{repl end}}
+                security.ssh2_enabled = false
               }
 
   - name: nginx
@@ -479,7 +514,7 @@ config:
     items:
       - name: dbpass
         title: Password
-        type: text
+        type: password
         required: true
         value_cmd:
           name: dbpass_cmd
