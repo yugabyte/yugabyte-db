@@ -248,6 +248,8 @@ public enum TaskType {
 
   DeleteXClusterConfigEntry("subtasks.xcluster.DeleteXClusterConfigEntry"),
 
+  SetReplicationPaused("subtasks.xcluster.SetReplicationPaused"),
+
   SetRestoreTime("subtasks.xcluster.SetRestoreTime"),
 
   XClusterConfigSetup("subtasks.xcluster.XClusterConfigSetup"),

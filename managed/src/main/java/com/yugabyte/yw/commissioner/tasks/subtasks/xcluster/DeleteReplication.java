@@ -95,8 +95,7 @@ public class DeleteReplication extends XClusterConfigTaskBase {
 
       // Set status of the xCluster config to `Deleted` if required.
       if (!isInMustDeleteStatus(xClusterConfig)) {
-        xClusterConfig.status = XClusterConfig.XClusterConfigStatusType.Deleted;
-        xClusterConfig.update();
+        xClusterConfig.setStatus(XClusterConfig.XClusterConfigStatusType.Deleted);
       }
 
       if (HighAvailabilityConfig.get().isPresent()) {
