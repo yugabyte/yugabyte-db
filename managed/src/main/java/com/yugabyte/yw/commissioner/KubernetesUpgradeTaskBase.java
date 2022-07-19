@@ -99,19 +99,19 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
 
   public void createUpgradeTask(
       Universe universe,
-      PlacementInfo placementInfo,
       String softwareVersion,
       boolean isMasterChanged,
       boolean isTServerChanged) {
+    UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+    PlacementInfo placementInfo = universeDetails.getPrimaryCluster().placementInfo;
     createSingleKubernetesExecutorTask(
         CommandType.POD_INFO, placementInfo, /*isReadOnlyCluster*/ false);
-    // TODO upgrade of read cluster.
 
-    KubernetesPlacement placement = new KubernetesPlacement(placementInfo);
+    KubernetesPlacement placement =
+        new KubernetesPlacement(placementInfo, /*isReadOnlyCluster*/ false);
     Provider provider =
         Provider.getOrBadRequest(
             UUID.fromString(taskParams().getPrimaryCluster().userIntent.provider));
-    UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
     boolean newNamingStyle = taskParams().useNewHelmNamingStyle;
 
     String masterAddresses =
@@ -133,7 +133,8 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
           taskParams().sleepAfterMasterRestartMillis,
           isMasterChanged,
           isTServerChanged,
-          newNamingStyle);
+          newNamingStyle,
+          /*isReadOnlyCluster*/ false);
     }
 
     if (isTServerChanged) {
@@ -150,8 +151,31 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
           taskParams().sleepAfterTServerRestartMillis,
           false, // master change is false since it has already been upgraded.
           isTServerChanged,
-          newNamingStyle);
+          newNamingStyle,
+          /*isReadOnlyCluster*/ false);
 
+      // Handle read cluster upgrade.
+      if (universeDetails.getReadOnlyClusters().size() != 0) {
+        PlacementInfo readClusterPlacementInfo =
+            universeDetails.getReadOnlyClusters().get(0).placementInfo;
+        createSingleKubernetesExecutorTask(
+            CommandType.POD_INFO, readClusterPlacementInfo, /*isReadOnlyCluster*/ true);
+
+        KubernetesPlacement readClusterPlacement =
+            new KubernetesPlacement(readClusterPlacementInfo, /*isReadOnlyCluster*/ true);
+
+        upgradePodsTask(
+            readClusterPlacement,
+            masterAddresses,
+            null,
+            ServerType.TSERVER,
+            softwareVersion,
+            taskParams().sleepAfterTServerRestartMillis,
+            false, // master change is false since it has already been upgraded.
+            isTServerChanged,
+            newNamingStyle,
+            /*isReadOnlyCluster*/ true);
+      }
       createLoadBalancerStateChangeTask(true).setSubTaskGroupType(getTaskSubGroupType());
     }
   }

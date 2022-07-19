@@ -570,8 +570,13 @@ public class UniverseCRUDHandler {
     Cluster cluster = getOnlyReadReplicaOrBadRequest(taskParams.getReadOnlyClusters());
     PlacementInfoUtil.updatePlacementInfo(
         taskParams.getNodesInCluster(cluster.uuid), cluster.placementInfo);
-    return submitEditUniverse(
-        customer, u, taskParams, TaskType.EditUniverse, CustomerTask.TargetType.Cluster);
+    TaskType taskType = TaskType.EditUniverse;
+    if (cluster.userIntent.providerType.equals(Common.CloudType.kubernetes)) {
+      taskType = TaskType.EditKubernetesUniverse;
+      notHelm2LegacyOrBadRequest(u);
+      checkHelmChartExists(cluster.userIntent.ybSoftwareVersion);
+    }
+    return submitEditUniverse(customer, u, taskParams, taskType, CustomerTask.TargetType.Cluster);
   }
 
   /** Merge node exporter related information from current universe details to the task params */

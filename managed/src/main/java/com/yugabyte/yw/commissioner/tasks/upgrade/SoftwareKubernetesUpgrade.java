@@ -6,7 +6,6 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.KubernetesUpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
-import com.yugabyte.yw.models.helpers.PlacementInfo;
 import javax.inject.Inject;
 
 public class SoftwareKubernetesUpgrade extends KubernetesUpgradeTaskBase {
@@ -33,10 +32,7 @@ public class SoftwareKubernetesUpgrade extends KubernetesUpgradeTaskBase {
           // Verify the request params and fail if invalid
           taskParams().verifyParams(getUniverse());
           // Create Kubernetes Upgrade Task
-          PlacementInfo placementInfo =
-              getUniverse().getUniverseDetails().getPrimaryCluster().placementInfo;
-          createUpgradeTask(
-              getUniverse(), placementInfo, taskParams().ybSoftwareVersion, true, true);
+          createUpgradeTask(getUniverse(), taskParams().ybSoftwareVersion, true, true);
           if (taskParams().upgradeSystemCatalog) {
             // Run YSQL upgrade on the universe
             createRunYsqlUpgradeTask(taskParams().ybSoftwareVersion)
