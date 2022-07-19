@@ -4,19 +4,13 @@ name: yb-ctl-test
 # events but only for the master branch
 on:
   push:
-    branches:
-      - master
-    paths:
-      - '**/yb-ctl*'
-      - '!docs/**'
-
   pull_request:
     branches:
       - master
     paths:
       - '**/yb-ctl*'
       - '!docs/**'
-       
+
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
   yb-ctl-test:

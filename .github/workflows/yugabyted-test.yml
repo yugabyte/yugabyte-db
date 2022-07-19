@@ -2,12 +2,6 @@ name: yugabyted-test
 
 on:
   push:
-    branches:
-      - master
-    paths:
-      - '**/yugabyted*'
-      - '!docs/**'
-
   pull_request:
     branches:
       - master
