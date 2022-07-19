@@ -719,15 +719,6 @@ public class CommonUtils {
     return stateLogMsg;
   }
 
-  public static boolean canConfigureYbc(Universe universe) {
-    if (universe == null) {
-      return false;
-    }
-    String ybcPackagePath =
-        universe.getUniverseDetails().getPrimaryCluster().userIntent.ybcPackagePath;
-    return StringUtils.isNotEmpty(ybcPackagePath);
-  }
-
   /** Get the user sending the API request from the HTTP context. */
   public static Users getUserFromContext(Http.Context ctx) {
     return ((UserWithFeatures) ctx.args.get("user")).getUser();
