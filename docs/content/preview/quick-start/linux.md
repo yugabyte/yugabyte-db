@@ -11,7 +11,7 @@ type: docs
 <div class="custom-tabs tabs-style-2">
   <ul class="tabs-name">
     <li>
-      <a href="../../quick-start-yugabytedb-managed/" class="nav-link">
+      <a href="/preview/quick-start-yugabytedb-managed/" class="nav-link">
         Use a cloud cluster
       </a>
     </li>
@@ -80,10 +80,10 @@ Before installing YugabyteDB, ensure that you have the following available:
     ```output
     Python 3.7.3
     ```
-    
-    By default, CentOS 8 does not have an unversioned system-wide `python` command. To fix this, set `python3` as the alternative for `python` by running `sudo alternatives --set python /usr/bin/python3`. 
+
+    By default, CentOS 8 does not have an unversioned system-wide `python` command. To fix this, set `python3` as the alternative for `python` by running `sudo alternatives --set python /usr/bin/python3`.
     Starting from Ubuntu 20.04, `python` is not available anymore. Install `sudo apt install python-is-python3`.
-    
+
 1. `wget` or `curl`.
 
     The instructions use the `wget` command to download files. If you prefer to use `curl`, you can replace `wget` with `curl -O`.
@@ -111,11 +111,11 @@ You download YugabyteDB as follows:
     ```
 
     Or:
-    
+
     ```sh
     wget https://downloads.yugabyte.com/releases/{{< yb-version version="preview">}}/yugabyte-{{< yb-version version="preview" format="build">}}-el8-aarch64.tar.gz
     ```
-    
+
 1. Extract the package and then change directories to the YugabyteDB home.
 
     ```sh
@@ -123,7 +123,7 @@ You download YugabyteDB as follows:
     ```
 
     Or:
-    
+
     ```sh
     tar xvfz yugabyte-{{< yb-version version="preview" format="build">}}-el8-aarch64.tar.gz && cd yugabyte-{{< yb-version version="preview">}}/
     ```
@@ -454,22 +454,22 @@ The following steps demonstrate how to create two Java applications, `UniformLoa
         HikariConfig config = new HikariConfig(poolProperties);
         config.validate();
         HikariDataSource hikariDataSource = new HikariDataSource(config);
-    
+
         System.out.println("Wait for some time for Hikari Pool to setup and create the connections...");
         System.out.println("You can verify the load balancing by visiting http://<host>:13000/rpcz as discussed before.");
         System.out.println("Enter a integer to continue once verified:");
         int x = new Scanner(System.in).nextInt();
-    
+
         System.out.println("Closing the Hikari Connection Pool!!");
         hikariDataSource.close();
-    
+
       }
-    
+
     }
     ```
-    
+
     When using `DriverManager.getConnection()`, you need to include the `load-balance=true` property in the connection URL. In the case of `YBClusterAwareDataSource`, load balancing is enabled by default, but you must set property `dataSource.topologyKeys`.
-    
+
 1. Run the application, as follows:
 
     ```sh

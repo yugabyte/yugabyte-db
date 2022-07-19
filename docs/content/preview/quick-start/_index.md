@@ -12,7 +12,7 @@ type: docs
 <div class="custom-tabs tabs-style-2">
   <ul class="tabs-name">
     <li>
-      <a href="../quick-start-yugabytedb-managed/" class="nav-link">
+      <a href="/preview/quick-start-yugabytedb-managed/" class="nav-link">
         Use a cloud cluster
       </a>
     </li>
@@ -110,7 +110,7 @@ Before installing YugabyteDB, ensure that you have the following available:
     ```
 
     If this file does not exist, create the following two files:
-    
+
     - `/Library/LaunchDaemons/limit.maxfiles.plist` and insert the following:
 
       ```xml
@@ -137,7 +137,7 @@ Before installing YugabyteDB, ensure that you have the following available:
       ```
 
     - `/Library/LaunchDaemons/limit.maxproc.plist` and insert the following:
-    
+
       ```xml
       <?xml version="1.0" encoding="UTF-8"?>
       <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -160,15 +160,15 @@ Before installing YugabyteDB, ensure that you have the following available:
         </dict>
       </plist>
       ```
-    
+
 
     Ensure that the `plist` files are owned by `root:wheel` and have permissions `-rw-r--r--`. To take effect, you need to reboot your computer or run the following commands:
-    
+
       ```sh
     sudo launchctl load -w /Library/LaunchDaemons/limit.maxfiles.plist
     sudo launchctl load -w /Library/LaunchDaemons/limit.maxproc.plist
       ```
-    
+
     You might need to `unload` the service before loading it.
 
 ### Download YugabyteDB
@@ -514,22 +514,22 @@ The following steps demonstrate how to create two Java applications, `UniformLoa
         HikariConfig config = new HikariConfig(poolProperties);
         config.validate();
         HikariDataSource hikariDataSource = new HikariDataSource(config);
-    
+
         System.out.println("Wait for some time for Hikari Pool to setup and create the connections...");
         System.out.println("You can verify the load balancing by visiting http://<host>:13000/rpcz as discussed before.");
         System.out.println("Enter a integer to continue once verified:");
         int x = new Scanner(System.in).nextInt();
-    
+
         System.out.println("Closing the Hikari Connection Pool!!");
         hikariDataSource.close();
-    
+
       }
-    
+
     }
     ```
-    
+
     When using `DriverManager.getConnection()`, you need to include the `load-balance=true` property in the connection URL. In the case of `YBClusterAwareDataSource`, load balancing is enabled by default, but you must set property `dataSource.topologyKeys`.
-    
+
 1. Run the application, as follows:
 
     ```sh
