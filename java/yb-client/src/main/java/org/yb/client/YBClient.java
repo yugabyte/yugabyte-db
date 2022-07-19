@@ -1607,28 +1607,16 @@ public class YBClient implements AutoCloseable {
    * It checks whether a bootstrap flow is required to set up replication or in case an existing
    * stream has fallen far behind.
    *
-   * @param tabletIds List of tablet IDs to check if the log for the next operation is available
-   * @param streamId  The optional stream id refers to an existing stream containing the passed
-   *                  tablet ids
-   *
-   * @return {@link IsBootstrapRequiredResponse} which contains a boolean showing whether a
-   * bootstrap is required
+   * @param tableIdsStreamIdMap A map of table ids to their corresponding stream id if any
+   * @return A deferred object that yields a {@link IsBootstrapRequiredResponse} which contains
+   *         a map of each table id to a boolean showing whether bootstrap is required for that
+   *         table
    */
   public IsBootstrapRequiredResponse isBootstrapRequired(
-    List<String> tabletIds, String streamId) throws Exception {
+      Map<String, String> tableIdsStreamIdMap) throws Exception {
     Deferred<IsBootstrapRequiredResponse> d =
-      asyncClient.isBootstrapRequired(tabletIds, streamId);
+        asyncClient.isBootstrapRequired(tableIdsStreamIdMap);
     return d.join(getDefaultAdminOperationTimeoutMs());
-  }
-
-  /**
-   * It is the same as {@link #isBootstrapRequired(List, String)} except that
-   * {@code streamId} is null.
-   *
-   * @see #isBootstrapRequired(List, String)
-   */
-  public IsBootstrapRequiredResponse isBootstrapRequired(List<String> tabletIds) throws Exception {
-    return isBootstrapRequired(tabletIds, null);
   }
 
   /**

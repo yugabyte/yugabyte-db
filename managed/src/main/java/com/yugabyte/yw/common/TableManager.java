@@ -434,6 +434,9 @@ public class TableManager extends DevopsBase {
     if (backupTableParams.disableParallelism) {
       commandArgs.add("--disable_parallelism");
     }
+    if (runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.security.ssh2_enabled")) {
+      commandArgs.add("--ssh2_enabled");
+    }
   }
 
   @Override

@@ -16,7 +16,7 @@
 A wrapper to generate gFlags metadata for yb-master and yb-tserver.
 """
 
-import sys
+import argparse
 import os
 import logging
 import time
@@ -24,29 +24,29 @@ import time
 from yugabyte_pycommon import init_logging, run_program, WorkDirContext  # type: ignore
 
 
-def main():
-    if len(sys.argv) != 3:
-        print("Usage: {} <program_name> <output_file_path>".format(sys.argv[0]))
-        sys.exit(1)
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--program_name', type=str, help="Program name")
+    parser.add_argument('--output_file_path', type=str, help="Path to output file")
+    args = parser.parse_args()
+
     start_time_sec = time.time()
     build_root = os.environ['YB_BUILD_ROOT']
-    program_name = sys.argv[1]
-    flags_metadata_file = sys.argv[2]
 
     with WorkDirContext(build_root):
         content = run_program(
                     [
-                        os.path.join(build_root, 'bin', program_name),
+                        os.path.join(build_root, 'bin', args.program_name),
                         "--dump_flags_xml",
                     ],
                     shell=True
                 )
 
-        with open(flags_metadata_file, 'w+', encoding='utf-8') as f:
+        with open(args.output_file_path, 'w+', encoding='utf-8') as f:
             f.write(content.stdout)
 
     elapsed_time_sec = time.time() - start_time_sec
-    logging.info("Generated flags_metadata for %s in %.1f sec", program_name, elapsed_time_sec)
+    logging.info("Generated flags_metadata for %s in %.1f sec", args.program_name, elapsed_time_sec)
 
 
 if __name__ == '__main__':

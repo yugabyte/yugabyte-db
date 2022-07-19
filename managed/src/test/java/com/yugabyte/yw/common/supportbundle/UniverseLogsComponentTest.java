@@ -102,6 +102,12 @@ public class UniverseLogsComponentTest extends FakeDBApplication {
     String fakeShellOutput = "Command output:\n" + String.join("\n", fakeLogsList);
     ShellResponse fakeShellResponse = ShellResponse.create(0, fakeShellOutput);
     when(mockNodeUniverseManager.runCommand(any(), any(), any())).thenReturn(fakeShellResponse);
+    // Generate a fake shell response containing the output of the "check file exists" script
+    // Mocks the server response as "file existing"
+    String fakeShellRunScriptOutput = "Command output:\n1";
+    ShellResponse fakeShellRunScriptResponse = ShellResponse.create(0, fakeShellRunScriptOutput);
+    when(mockNodeUniverseManager.runScript(any(), any(), any(), any()))
+        .thenReturn(fakeShellRunScriptResponse);
     lenient()
         .when(mockUniverseInfoHandler.downloadNodeFile(any(), any(), any(), any(), any(), any()))
         .thenReturn(null);

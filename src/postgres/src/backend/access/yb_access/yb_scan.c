@@ -522,6 +522,10 @@ ybcSetupScanPlan(bool xs_want_itup, YbScanDesc ybScan, YbScanPlan scan_plan)
 		}
 		else if (ybScan->key[i].sk_flags & SK_IS_HASHED)
 		{
+			/*
+			 * No corresponding user table column to be assigned to the
+			 * yb_hash_code search key slot.
+			 */
 			ybScan->target_key_attnums[i] = InvalidAttrNumber;
 			scan_plan->bind_key_attnums[i] = InvalidAttrNumber;
 		}
@@ -1345,11 +1349,20 @@ ybcInitColumnFilter(YbColumnFilter *filter, YbScanDesc ybScan, Scan *pg_scan_pla
 	if (!pg_scan_plan)
 		return;
 
-	Bitmapset *items = NULL;
-	/* Collect bound key attributes */
+	/*
+	 * Start with an empty bms to represent "no column" instead of NULL, which
+	 * would indicate "all the columns".
+	 */
+	Bitmapset *items = bms_del_member(bms_make_singleton(0), 0);
+
+	/*
+	 * Collect bound key attributes. Skip InvalidAttrNumber in the yb_hash_code
+	 * search key slot so that it is not treated as "a whole row var".
+	 */
 	AttrNumber *sk_attno = ybScan->target_key_attnums;
-	for (AttrNumber *sk_attno_end = sk_attno + ybScan->nkeys; sk_attno != sk_attno_end; ++sk_attno)
-		items = bms_add_member(items, *sk_attno - min_attr + 1);
+	for (int i = 0; i < ybScan->nkeys; i++)
+		if (!IsHashCodeSearch(ybScan->key[i].sk_flags))
+			items = bms_add_member(items, sk_attno[i] - min_attr + 1);
 
 	ListCell *lc;
 	Index target_relid =

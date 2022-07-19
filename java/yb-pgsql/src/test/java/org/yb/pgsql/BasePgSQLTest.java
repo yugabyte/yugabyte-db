@@ -745,6 +745,11 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return row.getString(0);
   }
 
+  protected int getNumTableColumns(Statement stmt, String tableName) throws Exception {
+    return getSingleRow(stmt, "SELECT relnatts FROM pg_class WHERE relname = '" +
+                                     tableName + "'").getInt(0);
+  }
+
   protected long getMetricCounter(String metricName) throws Exception {
     return getMetric(metricName).count;
   }
