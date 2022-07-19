@@ -2772,6 +2772,31 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestEnumWithMultipleTablets)) {
   }
 }
 
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSetCDCCheckpointWithHigherTserverThanTablet)) {
+  // Create a cluster where the number of tservers are 5 (tserver-1, tserver-2, tserver-3,
+  // tserver-4, tserver-5). Create table with tablet split 3(tablet-1, tablet-2, tablet-3).
+  // Consider the tablet-1 LEADER is in tserver-3, tablet-2 LEADER in tserver-4 and tablet-3 LEADER
+  // is in tserver-5. Consider cdc proxy connection is created with tserver-1. calling
+  // setCDCCheckpoint from tserver-1 should PASS.
+  // Since number of tablets is lesser than the number of tservers, there must be atleast 2 tservers
+  // which do not host any of the tablet. But still, calling setCDCCheckpoint any of the
+  // tserver, even the ones not hosting tablet, should PASS.
+  ASSERT_OK(SetUpWithParams(5, 1, false));
+
+  const uint32_t num_tablets = 3;
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), num_tablets);
+  std::string table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream());
+
+  for (uint32_t idx = 0; idx < num_tablets; idx++) {
+    auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets, OpId::Min(), true, idx));
+    ASSERT_FALSE(resp.has_error());
+  }
+}
+
 }  // namespace enterprise
 }  // namespace cdc
 }  // namespace yb
