@@ -32,11 +32,11 @@ type: docs
 
 [go-pg](https://github.com/go-pg/pg) is a Golang ORM for PostgreSQL.
 
-## CRUD operations with PG ORM
+## CRUD operations
 
-Learn how to establish a connection to a YugabyteDB database and begin basic CRUD operations using the steps in the [Build an application](../../../quick-start/build-apps/go/ysql-pg) page under the Quick start section.
+Learn how to establish a connection to a YugabyteDB database and begin basic CRUD operations using the steps in the [Build an application](../../../quick-start/build-apps/go/ysql-pg) page.
 
-The following sections break down the quick start example to demonstrate how to perform common tasks required for Go application development using go-pg.
+The following sections break down the example to demonstrate how to perform common tasks required for Go application development using go-pg.
 
 ### Step 1: Import the ORM package
 
