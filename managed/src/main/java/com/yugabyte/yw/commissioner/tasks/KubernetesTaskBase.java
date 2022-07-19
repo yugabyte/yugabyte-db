@@ -316,16 +316,14 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       int newNumMasters = newPlacement.masters.getOrDefault(azUUID, 0);
       int newNumTservers = newPlacement.tservers.getOrDefault(azUUID, 0);
 
-      // In case serverType=tserver we only want to roll the old pods and not the new ones.
-      int numPods =
-          serverType == ServerType.MASTER
-              ? newNumMasters
-              : (newNumTservers > currNumTservers) ? currNumTservers : newNumTservers;
+      int numPods = serverType == ServerType.MASTER ? newNumMasters : newNumTservers;
 
       if (edit) {
         currNumMasters = currPlacement.masters.getOrDefault(azUUID, 0);
         currNumTservers = currPlacement.tservers.getOrDefault(azUUID, 0);
         if (serverType == ServerType.TSERVER) {
+          // Since we only want to roll the old pods and not the new ones.
+          numPods = newNumTservers > currNumTservers ? currNumTservers : newNumTservers;
           if (currNumTservers == 0) {
             continue;
           }
