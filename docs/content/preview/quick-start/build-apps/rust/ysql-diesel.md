@@ -1,7 +1,7 @@
 ---
 title: Build a Rust application that uses Diesel and YSQL
 headerTitle: Build a Rust application
-linkTitle: Java
+linkTitle: Rust
 description: Build a sample Rust application that uses Diesel and YSQL API to connect to and interact with YugabyteDB.
 menu:
   preview:
