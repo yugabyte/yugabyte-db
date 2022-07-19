@@ -220,8 +220,7 @@ public class DestroyUniverse extends UniverseTaskBase {
     // even when there is an error.
     xClusterConfigs.forEach(
         xClusterConfig -> {
-          xClusterConfig.status = XClusterConfig.XClusterConfigStatusType.DeletedUniverse;
-          xClusterConfig.update();
+          xClusterConfig.setStatus(XClusterConfig.XClusterConfigStatusType.DeletedUniverse);
         });
 
     Map<UUID, List<XClusterConfig>> otherUniverseUuidToXClusterConfigsMap =

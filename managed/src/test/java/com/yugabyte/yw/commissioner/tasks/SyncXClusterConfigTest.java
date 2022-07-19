@@ -266,7 +266,8 @@ public class SyncXClusterConfigTest extends CommissionerBaseTest {
       assertEquals(expectedXClusterConfig.targetUniverseUUID, actual.targetUniverseUUID);
       assertEquals(expectedXClusterConfig.tables, actual.getTables());
       if (expectedIsPaused) {
-        assertEquals(XClusterConfigStatusType.Paused, actual.status);
+        assertEquals(XClusterConfigStatusType.Running, actual.status);
+        assertTrue(actual.paused);
       } else {
         assertEquals(XClusterConfigStatusType.Running, actual.status);
       }
@@ -308,7 +309,8 @@ public class SyncXClusterConfigTest extends CommissionerBaseTest {
     assertEquals(createFormData.sourceUniverseUUID, actual.sourceUniverseUUID);
     assertEquals(createFormData.targetUniverseUUID, actual.targetUniverseUUID);
     assertEquals(expectedTables, actual.getTables());
-    assertEquals(XClusterConfigStatusType.Paused, actual.status);
+    assertEquals(XClusterConfigStatusType.Running, actual.status);
+    assertTrue(actual.paused);
 
     targetUniverse = Universe.getOrBadRequest(targetUniverseUUID);
     assertEquals(1, targetUniverse.version);
@@ -339,7 +341,8 @@ public class SyncXClusterConfigTest extends CommissionerBaseTest {
     assertEquals(createFormData.sourceUniverseUUID, actual.sourceUniverseUUID);
     assertEquals(createFormData.targetUniverseUUID, actual.targetUniverseUUID);
     assertEquals(createFormData.tables, actual.getTables());
-    assertEquals(XClusterConfigStatusType.Paused, actual.status);
+    assertEquals(XClusterConfigStatusType.Running, actual.status);
+    assertTrue(actual.paused);
 
     targetUniverse = Universe.getOrBadRequest(targetUniverseUUID);
     assertEquals(1, targetUniverse.version);

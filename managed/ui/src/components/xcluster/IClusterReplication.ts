@@ -32,4 +32,5 @@ export interface IReplication {
   createTime: string;
   modifyTime: string;
   status?: IReplicationStatus;
+  paused: boolean;
 }

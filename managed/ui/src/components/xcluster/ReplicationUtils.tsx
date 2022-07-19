@@ -25,17 +25,15 @@ export const getReplicationStatus = (replication: IReplication) => {
         </span>
       );
     case IReplicationStatus.RUNNING:
-      return (
-        <span className="replication-status-text success">
-          <i className="fa fa-check" />
-          Enabled
-        </span>
-      );
-    case IReplicationStatus.PAUSED:
-      return (
+      return replication.paused ? (
         <span className="replication-status-text paused">
           <i className="fa fa-pause-circle-o" />
           Paused
+        </span>
+      ) : (
+        <span className="replication-status-text success">
+          <i className="fa fa-check" />
+          Enabled
         </span>
       );
     case IReplicationStatus.INIT:
