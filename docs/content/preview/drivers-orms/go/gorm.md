@@ -32,11 +32,11 @@ type: docs
 
 [GORM](https://gorm.io/) is the ORM library for Golang.
 
-## CRUD operations with GORM
+## CRUD operations
 
-Learn how to establish a connection to a YugabyteDB database and begin basic CRUD operations using the steps on the [Build an application](../../../quick-start/build-apps/go/ysql-gorm) page under the Quick start section.
+Learn how to establish a connection to a YugabyteDB database and begin basic CRUD operations using the steps on the [Build an application](../../../quick-start/build-apps/go/ysql-gorm) page.
 
-The following sections break down the quick start example to demonstrate how to perform common tasks required for Go application development using GORM.
+The following sections break down the example to demonstrate how to perform common tasks required for Go application development using GORM.
 
 ### Step 1: Import the ORM package
 
