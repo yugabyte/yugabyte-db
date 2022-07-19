@@ -2,9 +2,7 @@
 title: YugabyteDB Quick start
 headerTitle: Quick start
 linkTitle: Quick start
-description: Get started using YugabyteDB in less than five minutes on Linux.
-aliases:
-  - /quick-start/linux/
+description: Get started using YugabyteDB in less than five minutes on Docker.
 type: docs
 ---
 
@@ -35,13 +33,13 @@ The local cluster setup on a single host is intended for development and learnin
         macOS
       </a>
     </li>
-    <li class="active">
+    <li>
       <a href="../linux/" class="nav-link">
         <i class="fab fa-linux" aria-hidden="true"></i>
         Linux
       </a>
     </li>
-    <li>
+    <li class="active">
       <a href="../docker/" class="nav-link">
         <i class="fab fa-docker" aria-hidden="true"></i>
         Docker
@@ -57,142 +55,96 @@ The local cluster setup on a single host is intended for development and learnin
 </div>
 
 
+Note that the Docker option to run local clusters is recommended only for advanced Docker users. This is due to the fact that running stateful applications such as YugabyteDB in Docker is more complex and error-prone than running stateless applications.
+
 ## Install YugabyteDB
 
-Installing YugabyteDB involves completing [prerequisites](#prerequisites) and [downloading the YugabyteDB package](#download-yugabytedb).
+Installing YugabyteDB involves completing [prerequisites](#prerequisites) and them performing the actual [installation](#install).
 
 ### Prerequisites
 
-Before installing YugabyteDB, ensure that you have the following available:
+Before installing YugabyteDB, ensure that you have the Docker runtime installed on your localhost. To download and install Docker, select one of the following environments:
 
-1. One of the following operating systems:
+<i class="fab fa-apple" aria-hidden="true"></i> [Docker for Mac](https://store.docker.com/editions/community/docker-ce-desktop-mac)
 
-    * <i class="icon-centos"></i> CentOS 7 or later
+<i class="fab fa-centos"></i> [Docker for CentOS](https://store.docker.com/editions/community/docker-ce-server-centos)
 
-    * <i class="icon-ubuntu"></i> Ubuntu 16.04 or later
+<i class="fab fa-ubuntu"></i> [Docker for Ubuntu](https://store.docker.com/editions/community/docker-ce-server-ubuntu)
 
-1. Python 3. To check the version, execute the following command:
+<i class="icon-debian"></i> [Docker for Debian](https://store.docker.com/editions/community/docker-ce-server-debian)
 
-    ```sh
-    python --version
-    ```
+<i class="fab fa-windows" aria-hidden="true"></i> [Docker for Windows](https://store.docker.com/editions/community/docker-ce-desktop-windows)
 
-    ```output
-    Python 3.7.3
-    ```
+### Install
 
-    By default, CentOS 8 does not have an unversioned system-wide `python` command. To fix this, set `python3` as the alternative for `python` by running `sudo alternatives --set python /usr/bin/python3`.
-    Starting from Ubuntu 20.04, `python` is not available anymore. Install `sudo apt install python-is-python3`.
-
-1. `wget` or `curl`.
-
-    The instructions use the `wget` command to download files. If you prefer to use `curl`, you can replace `wget` with `curl -O`.
-
-    To install `wget`:
-
-    * On CentOS, run `yum install wget`
-    * On Ubuntu, run `apt install wget`
-
-    To install `curl`:
-
-    * On CentOS, run `yum install curl`
-    * On Ubuntu, run `apt install curl`
-
-1. Since each tablet maps to its own file, it is easy to create a very large number of files in the current shell by experimenting with several hundred tables and several tablets per table. You need to [configure ulimit values](../../deploy/manual-deployment/system-config/#ulimits).
-
-### Download YugabyteDB
-
-You download YugabyteDB as follows:
-
-1. Download the YugabyteDB package using the following `wget` command:
-
-    ```sh
-    wget https://downloads.yugabyte.com/releases/{{< yb-version version="preview">}}/yugabyte-{{< yb-version version="preview" format="build">}}-linux-x86_64.tar.gz
-    ```
-
-    Or:
-
-    ```sh
-    wget https://downloads.yugabyte.com/releases/{{< yb-version version="preview">}}/yugabyte-{{< yb-version version="preview" format="build">}}-el8-aarch64.tar.gz
-    ```
-
-1. Extract the package and then change directories to the YugabyteDB home.
-
-    ```sh
-    tar xvfz yugabyte-{{< yb-version version="preview" format="build">}}-linux-x86_64.tar.gz && cd yugabyte-{{< yb-version version="preview">}}/
-    ```
-
-    Or:
-
-    ```sh
-    tar xvfz yugabyte-{{< yb-version version="preview" format="build">}}-el8-aarch64.tar.gz && cd yugabyte-{{< yb-version version="preview">}}/
-    ```
-
-### Configure YugabyteDB
-
-To configure YugabyteDB, run the following shell script:
+Pull the YugabyteDB container by executing the following command:
 
 ```sh
-./bin/post_install.sh
+docker pull yugabytedb/yugabyte:{{< yb-version version="stable" format="build">}}
 ```
 
 ## Create a local cluster
 
-To create a single-node local cluster with a replication factor (RF) of 1, run the following command:
+To create a 1-node cluster with a replication factor (RF) of 1, run the following command:
 
 ```sh
-./bin/yugabyted start
+docker run -d --name yugabyte  -p7000:7000 -p9000:9000 -p5433:5433 -p9042:9042\
+ yugabytedb/yugabyte:latest bin/yugabyted start\
+ --daemon=false
 ```
 
-After the cluster has been created, clients can connect to the YSQL and YCQL APIs at http://localhost:5433 and http://localhost:9042 respectively. You can also check `~/var/data` to see the data directory and `~/var/logs` to see the logs directory.
+In the preceding `docker run` command, the data stored in YugabyteDB does not persist across container restarts. To make YugabyteDB persist data across restarts, you can add a volume mount option to the docker run command, as follows:
 
-If you have previously installed YugabyteDB 2.8 or later and created a cluster on the same computer, you may need to [upgrade the YSQL system catalog](../../manage/upgrade-deployment/#upgrade-the-ysql-system-catalog) to run the latest features.
+- Create a `~/yb_data` directory by executing the following command:
+
+  ```sh
+  mkdir ~/yb_data
+  ```
+
+- Run Docker with the volume mount option by executing the following command:
+
+  ```sh
+  docker run -d --name yugabyte \
+           -p7000:7000 -p9000:9000 -p5433:5433 -p9042:9042 \
+           -v ~/yb_data:/home/yugabyte/yb_data \
+           yugabytedb/yugabyte:latest bin/yugabyted start \
+           --base_dir=/home/yugabyte/yb_data --daemon=false
+  ```
+
+Clients can now connect to the YSQL and YCQL APIs at http://localhost:5433 and http://localhost:9042 respectively.
 
 ### Check cluster status
 
-Execute the following command to check the cluster status:
+Run the following command to check the cluster status:
 
 ```sh
-./bin/yugabyted status
+docker ps
 ```
 
-Expect an output similar to the following:
-
-
 ```output
-+--------------------------------------------------------------------------------------------------+
-|                                            yugabyted                                             |
-+--------------------------------------------------------------------------------------------------+
-| Status              : Running. Leader Master is present                                          |
-| Web console         : http://127.0.0.1:7000                                                      |
-| JDBC                : jdbc:postgresql://127.0.0.1:5433/yugabyte?user=yugabyte&password=yugabyte  |
-| YSQL                : bin/ysqlsh   -U yugabyte -d yugabyte                                       |
-| YCQL                : bin/ycqlsh   -u cassandra                                                  |
-| Data Dir            : /Users/myuser/var/data                                                     |
-| Log Dir             : /Users/myuser/var/logs                                                     |
-| Universe UUID       : fad6c687-e1dc-4dfd-af4b-380021e19be3                                       |
-+--------------------------------------------------------------------------------------------------+
+CONTAINER ID        IMAGE                 COMMAND                  CREATED             STATUS              PORTS                                                                                                                                                                     NAMES
+5088ca718f70        yugabytedb/yugabyte   "bin/yugabyted start…"   46 seconds ago      Up 44 seconds       0.0.0.0:5433->5433/tcp, 6379/tcp, 7100/tcp, 0.0.0.0:7000->7000/tcp, 0.0.0.0:9000->9000/tcp, 7200/tcp, 9100/tcp, 10100/tcp, 11000/tcp, 0.0.0.0:9042->9042/tcp, 12000/tcp   yugabyte
 ```
 
 ### Check cluster status with Admin UI
 
-The cluster you have created consists of two processes: [YB-Master](../architecture/concepts/yb-master/) which keeps track of various metadata (list of tables, users, roles, permissions, and so on) and [YB-TServer](../architecture/concepts/yb-tserver/) which is responsible for the actual end-user requests for data updates and queries.
+The cluster you have created consists of two processes: [YB-Master](../../architecture/concepts/yb-master/) which keeps track of various metadata (list of tables, users, roles, permissions, and so on) and [YB-TServer](../../architecture/concepts/yb-tserver/) which is responsible for the actual end user requests for data updates and queries.
 
-Each of the processes exposes its own Admin UI that can be used to check the status of the corresponding process, and perform certain administrative operations. The [YB-Master Admin UI](../../reference/configuration/yb-master/#admin-ui) is available at <http://127.0.0.1:7000> and the [YB-TServer Admin UI](../../reference/configuration/yb-tserver/#admin-ui) is available at <http://127.0.0.1:9000>.
+Each of the processes exposes its own Admin UI that can be used to check the status of the corresponding process, as well as perform certain administrative operations. The [yb-master Admin UI](../../reference/configuration/yb-master/#admin-ui) is available at http://localhost:7000 and the [yb-tserver Admin UI](../../reference/configuration/yb-tserver/#admin-ui) is available at http://localhost:9000. To avoid port conflicts, you should make sure other processes on your machine do not have these ports mapped to `localhost`.
 
 #### Overview and YB-Master status
 
 The following illustration shows the YB-Master home page with a cluster with a replication factor of 1, a single node, and no tables. The YugabyteDB version is also displayed.
 
-![master-home](/images/admin/master-home-binary-rf1.png)
+![master-home](/images/admin/master-home-docker-rf1.png)
 
-The **Masters** section highlights the 1 YB-Master along with its corresponding cloud, region, and zone placement.
+The **Masters** section shows the 1 YB-Master along with its corresponding cloud, region, and zone placement.
 
 #### YB-TServer status
 
-Click **See all nodes** to open the **Tablet Servers** page that lists the YB-TServer along with the time since it last connected to the YB-Master using regular heartbeats. Because there are no user tables, **User Tablet-Peers / Leaders** is 0. As tables are added, new tablets (also known as shards) will be created automatically and distributed evenly across all the available tablet servers.
+Click **See all nodes** to open the **Tablet Servers** page that lists the YB-TServer along with the time since it last connected to the YB-Master using regular heartbeats, as per the following illustration:
 
-![master-home](/images/admin/master-tservers-list-binary-rf1.png)
+![master-home](/images/admin/master-tservers-list-docker-rf1.png)
 
 ## Build a Java application
 
@@ -208,8 +160,7 @@ Before building a Java application, perform the following:
   ./bin/yb-ctl create --rf 3 --placement_info "aws.us-west.us-west-2a,aws.us-west.us-west-2a,aws.us-west.us-west-2b"
   ```
 
-- Ensure that Java Development Kit (JDK) 1.8 or later is installed. JDK installers can be downloaded from [OpenJDK](http://jdk.java.net/).
-
+- Ensure that Java Development Kit (JDK) 1.8 or later is installed.  JDK installers can be downloaded from [OpenJDK](http://jdk.java.net/).
 - Ensure that [Apache Maven](https://maven.apache.org/index.html) 3.3 or later is installed.
 
 ### Create and configure the Java project
@@ -228,7 +179,7 @@ Perform the following to create a sample Java project:
     cd DriverDemo
     ```
 
-1. Open the `pom.xml` file in a text editor and add the following block below the `<url>` element:
+1. Open the `pom.xml` file in a text editor and add the following below the `<url>` element:
 
     ```xml
     <properties>
@@ -300,7 +251,7 @@ The following steps demonstrate how to create two Java applications, `UniformLoa
       }
 
       public static void makeConnectionUsingDriverManager() {
-        //List to store the connections so that they can be closed at the end
+        // List to store the connections so that they can be closed at the end
         List<Connection> connectionList = new ArrayList<>();
 
         System.out.println("Lets create 6 connections using DriverManager");
