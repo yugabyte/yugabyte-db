@@ -399,6 +399,18 @@ public class Backup extends Model {
     return Backup.find.query().where().eq("task_uuid", taskUUID).findList();
   }
 
+  public static Optional<Backup> fetchLatestByState(UUID customerUuid, BackupState state) {
+    return Backup.find
+        .query()
+        .where()
+        .eq("customer_uuid", customerUuid)
+        .eq("state", state)
+        .orderBy("create_time DESC")
+        .findList()
+        .stream()
+        .findFirst();
+  }
+
   public static Map<Customer, List<Backup>> getExpiredBackups() {
     // Get current timestamp.
     Date now = new Date();

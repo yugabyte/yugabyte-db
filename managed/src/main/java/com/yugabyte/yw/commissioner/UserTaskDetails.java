@@ -61,11 +61,14 @@ public class UserTaskDetails {
     // Bootstrapping Region
     BootstrappingRegion,
 
-    // Bootstrapping a source universe to set up xCluster replication
+    // Checkpointing a table on the source universe to set up xCluster replication.
     BootstrappingProducer,
 
     // Creating Access Key
     CreateAccessKey,
+
+    // Deleting all the xCluster replications and cleaning up their states on the universes.
+    DeleteXClusterReplication,
 
     // Rotate access key to all nodes of a universe
     RotateAccessKey,
@@ -194,7 +197,7 @@ public class UserTaskDetails {
     RunningHooks,
 
     // Updating Packages
-    UpdatePackage;
+    UpdatePackage
   }
 
   public List<SubTaskDetails> taskDetails;
@@ -283,6 +286,12 @@ public class UserTaskDetails {
       case CreateAccessKey:
         title = "Creating AccessKey";
         description = "Set up AccessKey in the given Provider Vault";
+        break;
+      case DeleteXClusterReplication:
+        title = "Deleting XCluster Replication";
+        description =
+            "Deleting xCluster replications and cleaning up their corresponding states "
+                + "on the participating universes.";
         break;
       case InitializeCloudMetadata:
         title = "Initializing Cloud Metadata";

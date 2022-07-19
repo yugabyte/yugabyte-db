@@ -26,7 +26,8 @@ type: docs
   </li>
 </ul>
 
-Yugabyte CDCSDK Server is an open source project that provides a streaming platform for change data capture from YugabyteDB. The server is based on [Debezium](https://github.com/yugabyte/cdcsdk-server/blob/main/debezium.io). CDCSDK Server uses [debezium-yugabytedb-connector](https://github.com/yugabyte/debezium-connector-yugabytedb) to capture change events. It supports a YugabyteDB instance as a source and supports the following sinks:
+Yugabyte CDCSDK Server is an open source project that provides a streaming platform for change data capture from YugabyteDB. The server is based on [Debezium](https://github.com/yugabyte/cdcsdk-server/tree/main/cdcsdk-server). CDCSDK Server uses [debezium-yugabytedb-connector](https://github.com/yugabyte/debezium-connector-yugabytedb) to capture change events. It supports a YugabyteDB instance as a source and supports the following sinks:
+
 * Kafka
 * HTTP REST Endpoint
 * AWS S3
@@ -43,7 +44,8 @@ Yugabyte CDCSDK Server is an open source project that provides a streaming platf
 
 ### Engine
 
-A [Debezium Engine](https://debezium.io/documentation/reference/1.9/development/engine.html) implementation is the unit of work. It implements a pipeline consisting of a source, sink, and simple transforms. The only supported source is YugabyteDB. The source is assigned a set of tablets that is polled at a configurable interval. An engine’s workflow is as follows:
+A [Debezium Engine](https://debezium.io/documentation/reference/1.9/development/engine.html) implementation is the unit of work. It implements a pipeline consisting of a source, sink, and simple transforms. The only supported source is YugabyteDB. The source is assigned a set of tablets that is polled at a configurable interval. An engine's workflow is as follows:
+
 * Connect to the CDCSDK stream.
 * Get a list of tables and filter based on the include list.
 * Get and record a list of tablets.
@@ -53,10 +55,11 @@ A [Debezium Engine](https://debezium.io/documentation/reference/1.9/development/
 
 The CDCSDK server hosts a Debezium Engine. The implementation is based on the [Debezium Server](https://debezium.io/documentation/reference/1.9/operations/debezium-server.html). It uses the Quarkus framework and extensions to provide a server shell, metrics, and alerts. By default, a server runs one Engine implementation in a thread. A server can also run in multi-threaded mode wherein multiple engines are assigned to a thread each. The server splits tablets into groups in a deterministic manner. Each group of tablets is assigned to an Engine.
 
-## Quick Start
+## Quick start
 
 ### Create a CDCSDK stream in YugabyteDB
-Use [yb-admin](../../admin/yb-admin/#createchangedatastream) to create a CDC stream. If successful, the operation returns the stream ID; note the ID, as it is used in later steps. For example:
+
+Use [yb-admin](../../../admin/yb-admin/#create-change-data-stream) to create a CDC stream. If successful, the operation returns the stream ID; note the ID, as it is used in later steps. For example:
 
 ```output
 CDC Stream ID: d540f5e4890c4d3b812933cbfd703ed3
@@ -64,7 +67,7 @@ CDC Stream ID: d540f5e4890c4d3b812933cbfd703ed3
 
 ### Download and run CDCSDK Server
 
-Download CDCSDK Server from the GitHub project [Releases](https://github.com/yugabyte/cdcsdk-server/releases) page. Each releases includes a tar.gz file named CDCSDK Server.
+Download CDCSDK Server from the GitHub project [Releases](https://github.com/yugabyte/cdcsdk-server/releases) page. Each release includes a tar.gz file named CDCSDK Server.
 
 The archive has the following layout:
 
@@ -95,10 +98,10 @@ touch conf/application.properties
 ## Configuration
 
 The main configuration file is `conf/application.properties`, which includes the following sections:
+
 * `cdcsdk.source` is for configuring the source connector.
 * `cdcsdk.sink` is for the sink system configuration.
 * `cdcsdk.transforms` is for the configuration of message transformations.
-
 
 ### Configure using environment variables
 
@@ -117,12 +120,11 @@ Using environment variables for configuration can be useful when running in cont
 | `quarkus.log.level` | INFO | The default log level for every log category. |
 | `quarkus.log.console.json` | true | Determines whether to enable the JSON console formatting extension, which disables "normal" console formatting. |
 
-
 ### Source configuration
 
-The `cdcsdk.source` configurations are nothing but the Debezium Connector's configurations only where you can specify the `cdcsdk.source` as a prefix to any of the connector's configurations. For a complete list of the Debezium configurations, see [Debezium Connector for YugabyteDB configurations](../change-data-capture/debezium-connector-yugabytedb/#connector-configuration-properties).
+The `cdcsdk.source` configurations are nothing but the Debezium Connector's configurations only where you can specify the `cdcsdk.source` as a prefix to any of the connector's configurations. For a complete list of the Debezium configurations, see [Debezium Connector for YugabyteDB configurations](../debezium-connector-yugabytedb/#connector-configuration-properties).
 
-Sample Configuration when YugabyteDB is started on a local machine:
+Following is a sample configuration when YugabyteDB is started on a local machine:
 
 ```properties
 cdcsdk.source.connector.class=io.debezium.connector.yugabytedb.YugabyteDBConnector
@@ -142,7 +144,7 @@ cdcsdk.source.snapshot.mode=never
 
 The Kafka sink adapter supports pass-through configuration. This means that all Kafka producer configuration properties are passed to the producer with the prefix removed. At least bootstrap.servers, key.serializer and value.serializer properties must be provided. The topic is set by CDCSDK Server.
 
-Example Configuration:
+Example configuration is as follows:
 
 ```properties
 cdcsdk.sink.type=kafka
@@ -153,7 +155,9 @@ cdcsdk.sink.kafka.producer.value.serializer=org.apache.kafka.common.serializatio
 
 #### Confluent Cloud
 
-Confluent Cloud deployment of Kafka, also requires SSL configuration. Example configuration:
+Confluent Cloud deployment of Kafka, also requires SSL configuration.
+
+Example configuration is as follows:
 
 ```properties
 cdcsdk.sink.type=kafka
@@ -206,7 +210,7 @@ Amazon S3 Sink supports a single table at a time. Specifically `cdcsdk.source.ta
 
 #### Mapping records to S3 objects
 
-The Amazon S3 Sink only supports [create events](../change-data-capture/debezium-connector-yugabytedb.md#create-events) in the CDC Stream. It writes `payload.after` fields to a file in S3.
+The Amazon S3 Sink only supports [create events](../debezium-connector-yugabytedb/#create-events) in the CDC Stream. It writes `payload.after` fields to a file in S3.
 
 The filename in S3 is generated as `${cdcsdk.sink.s3.basedir}/${cdcsdk.sink.s3.pattern}`. Pattern can contain placeholders to customize the filenames, as follows:
 
@@ -280,7 +284,7 @@ Note: This is the IAM policy for the user account and not a bucket policy.
 
 ## Record structure
 
-By default, the YugabyteDB connector generates a [complex record](../change-data-capture/debezium-connector-yugabytedb.md#data-change-events) in JSON with key and value information including payload. A sophisticated sink can use the information to generate appropriate commands in the receiving system.
+By default, the YugabyteDB connector generates a [complex record](../debezium-connector-yugabytedb/#data-change-events) in JSON with key and value information including payload. A sophisticated sink can use the information to generate appropriate commands in the receiving system.
 
 Simple sinks expect simple key/value JSON objects, where key is the column name and value is the contents of the column. For simple sinks, set `cdcsdk.server.transforms=FLATTEN`. With this configuration, the record structure will only emit the payload as simple JSON.
 
@@ -319,11 +323,11 @@ The following REST endpoints are exposed:
 * `/q/health/ready` - The application is ready to serve requests.
 
 All of the health REST endpoints return a simple JSON object with two fields:
+
 * `status` — The overall result of all the health check procedures.
 * `checks` — An array of individual checks.
 
 The general status of the health check is computed as a logical AND of all the declared health check procedures.
-
 
 ```output
 curl http://localhost:8080/q/health/live

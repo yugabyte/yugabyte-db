@@ -1,6 +1,8 @@
 package com.yugabyte.yw.common;
 
+import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.concurrent.KeyLock;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -275,6 +277,9 @@ public class NodeUniverseManager extends DevopsBase {
       commandArgs.add(node.cloudInfo.private_ip);
       commandArgs.add("--key");
       commandArgs.add(getAccessKey(node, universe));
+      if (runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.security.ssh2_enabled")) {
+        commandArgs.add("--ssh2_enabled");
+      }
     } else {
       throw new RuntimeException("Cloud type unknown");
     }

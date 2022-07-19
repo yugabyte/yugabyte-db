@@ -17,6 +17,7 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteCertificate;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RemoveUniverseEntry;
 import com.yugabyte.yw.common.DnsManager;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseTaskParams;
@@ -204,36 +205,27 @@ public class DestroyUniverse extends UniverseTaskBase {
    * locked by this task is a no-op.
    */
   private void createDeleteXClusterConfigSubtasksAndLockOtherUniverses() {
-    List<XClusterConfig> xClusterConfigsAsSource =
-        XClusterConfig.getBySourceUniverseUUID(params().universeUUID);
-    List<XClusterConfig> xClusterConfigsAsTarget =
-        XClusterConfig.getByTargetUniverseUUID(params().universeUUID);
-    Map<Boolean, List<XClusterConfig>> allXClusterConfigsPartitionedByOtherUniverseExists =
-        Stream.concat(xClusterConfigsAsSource.stream(), xClusterConfigsAsTarget.stream())
-            .collect(
-                Collectors.partitioningBy(
-                    xClusterConfig ->
-                        xClusterConfig.status
-                            != XClusterConfig.XClusterConfigStatusType.DeletedUniverse));
-
-    // Delete xCluster configs from Platform DB whose other universe is already destroyed.
-    allXClusterConfigsPartitionedByOtherUniverseExists.get(false).forEach(Model::delete);
-
     // XCluster configs whose other universe exists.
-    List<XClusterConfig> allXClusterConfigs =
-        allXClusterConfigsPartitionedByOtherUniverseExists.get(true);
+    List<XClusterConfig> xClusterConfigs =
+        XClusterConfig.getByUniverseUuid(params().universeUUID)
+            .stream()
+            .filter(
+                xClusterConfig ->
+                    xClusterConfig.status
+                        != XClusterConfig.XClusterConfigStatusType.DeletedUniverse)
+            .collect(Collectors.toList());
 
     // Set xCluster configs status to DeleteUniverse. We do not use the corresponding subtask to
     // do this because it might get into an error until that point, but we want to set this state
     // even when there is an error.
-    allXClusterConfigs.forEach(
+    xClusterConfigs.forEach(
         xClusterConfig -> {
           xClusterConfig.status = XClusterConfig.XClusterConfigStatusType.DeletedUniverse;
           xClusterConfig.update();
         });
 
     Map<UUID, List<XClusterConfig>> otherUniverseUuidToXClusterConfigsMap =
-        allXClusterConfigs
+        xClusterConfigs
             .stream()
             .collect(
                 Collectors.groupingBy(
@@ -271,7 +263,10 @@ public class DestroyUniverse extends UniverseTaskBase {
       UUID otherUniverseUuid, List<XClusterConfig> xClusterConfigs) {
     try {
       // Lock the other universe.
-      lockUniverse(otherUniverseUuid, -1 /* expectedUniverseVersion */);
+      if (lockUniverseIfExist(otherUniverseUuid, -1 /* expectedUniverseVersion */) == null) {
+        log.info("Other universe is deleted; No further action is needed");
+        return;
+      }
 
       // Create the subtasks to delete all the xCluster configs.
       xClusterConfigs.forEach(this::createDeleteXClusterConfigSubtasks);

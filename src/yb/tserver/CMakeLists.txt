@@ -150,27 +150,6 @@ ADD_YB_LIBRARY(tserver_service_proto
   NONLINK_DEPS ${TSERVER_YRPC_TGTS})
 
 #########################################
-# tserver_forward_service_proto
-#########################################
-
-YRPC_GENERATE(
-  TSERVER_FORWARD_RPC_SRCS TSERVER_FORWARD_RPC_HDRS TSERVER_FORWARD_RPC_TGTS
-  SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
-  BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
-  PROTO_FILES tserver_forward_service.proto)
-set(TSERVER_FORWARD_RPC_LIBS
-  yrpc
-  yb_common_proto
-  protobuf
-  remote_bootstrap_proto
-  rpc_header_proto
-  tserver_proto)
-ADD_YB_LIBRARY(tserver_forward_service_proto
-  SRCS ${TSERVER_FORWARD_RPC_SRCS}
-  DEPS ${TSERVER_FORWARD_RPC_LIBS}
-  NONLINK_DEPS ${TSERVER_YRPC_TGTS})
-
-#########################################
 # tserver_util
 #########################################
 
@@ -220,7 +199,6 @@ set(TSERVER_DEPS
   tserver_proto
   tserver_admin_proto
   tserver_service_proto
-  tserver_forward_service_proto
   remote_bootstrap_proto
   master_rpc
   master_proto
@@ -271,7 +249,9 @@ target_link_libraries(yb-tserver
 #########################################
 set(TSERVER_FLAGS_METADATA_FILE ${YB_BUILD_ROOT}/tserver_flags.xml)
 add_custom_command(TARGET yb-tserver POST_BUILD
-  COMMAND "${BUILD_SUPPORT_DIR}/gen_flags_metadata_wrapper" "yb-tserver" "${TSERVER_FLAGS_METADATA_FILE}"
+  COMMAND "${BUILD_SUPPORT_DIR}/gen_flags_metadata_wrapper"
+    "--program_name" "yb-tserver"
+    "--output_file_path" "${TSERVER_FLAGS_METADATA_FILE}"
   BYPRODUCTS "${TSERVER_FLAGS_METADATA_FILE}")
 
 #########################################

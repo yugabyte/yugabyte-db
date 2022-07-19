@@ -37,6 +37,8 @@ public class TransferXClusterCerts extends NodeTaskBase {
     public String replicationGroupName;
     // The target universe will look into this directory for mismatched certificates.
     public File producerCertsDirOnTarget;
+    // Whether ignore errors while doing transfer cert operation.
+    public boolean ignoreErrors;
 
     public enum Action {
       // Transfer the certificate to the node.
@@ -61,12 +63,13 @@ public class TransferXClusterCerts extends NodeTaskBase {
   @Override
   public String getName() {
     return String.format(
-        "%s %s(action=%s, replicationGroupName=%s, rootCertPath=%s)",
+        "%s %s(action=%s, replicationGroupName=%s, rootCertPath=%s, ignoreErrors=%b)",
         super.getName(),
         this.getClass().getSimpleName(),
         taskParams().action,
         taskParams().replicationGroupName,
-        taskParams().rootCertPath);
+        taskParams().rootCertPath,
+        taskParams().ignoreErrors);
   }
 
   @Override
@@ -74,22 +77,29 @@ public class TransferXClusterCerts extends NodeTaskBase {
     log.info(
         "Running Transfer XCluster Certs {} against node {}", getName(), taskParams().nodeName);
 
-    Params params = taskParams();
-
-    if (params.action == Params.Action.COPY && params.rootCertPath == null) {
+    // Check that task parameters are valid.
+    if (taskParams().action == Params.Action.COPY && taskParams().rootCertPath == null) {
       throw new IllegalArgumentException("taskParams().rootCertPath must not be null");
     }
-    if (params.action == Params.Action.COPY && !params.rootCertPath.exists()) {
+    if (taskParams().action == Params.Action.COPY && !taskParams().rootCertPath.exists()) {
       throw new IllegalArgumentException(
-          String.format("file \"%s\" does not exist", params.rootCertPath));
+          String.format("file \"%s\" does not exist", taskParams().rootCertPath));
     }
-
-    if (StringUtils.isBlank(params.replicationGroupName)) {
+    if (StringUtils.isBlank(taskParams().replicationGroupName)) {
       throw new IllegalArgumentException("taskParams().replicationConfigName must have a value");
     }
 
-    getNodeManager()
-        .nodeCommand(NodeCommandType.Transfer_XCluster_Certs, taskParams())
-        .processErrors();
+    try {
+      getNodeManager()
+          .nodeCommand(NodeCommandType.Transfer_XCluster_Certs, taskParams())
+          .processErrors();
+    } catch (Exception e) {
+      log.error("{} hit error : {}", getName(), e.getMessage());
+      if (!taskParams().ignoreErrors) {
+        throw new RuntimeException(e);
+      } else {
+        log.debug("Error ignored because `ignoreErrors` is true");
+      }
+    }
   }
 }

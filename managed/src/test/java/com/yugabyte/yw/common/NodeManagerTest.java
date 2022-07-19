@@ -502,6 +502,7 @@ public class NodeManagerTest extends FakeDBApplication {
         .thenReturn(ApiUtils.DEFAULT_ACCESS_KEY_CODE);
     when(runtimeConfigFactory.forProvider(any())).thenReturn(mockConfig);
     when(runtimeConfigFactory.forUniverse(any())).thenReturn(app.config());
+    when(runtimeConfigFactory.globalRuntimeConf()).thenReturn(mockConfig);
     createTempFile("node_manager_test_ca.crt", "test-cert");
   }
 

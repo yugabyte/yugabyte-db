@@ -436,6 +436,11 @@ message QLJsonOperationPB {
   required QLExpressionPB operand = 2;
 }
 
+// Tuple expression in LHS of IN operation (in future for =, >, < too).
+message QLTupleExpressionPB {
+  repeated QLExpressionPB elems = 1;
+}
+
 // An expression in a WHERE condition
 message QLExpressionPB {
   oneof expr {
@@ -448,6 +453,7 @@ message QLExpressionPB {
     QLBCallPB tscall = 7;                   // Tablet server builtin calls.
     QLBCallPB bocall = 8;                   // Builtin operator calls.
     QLJsonColumnOperationsPB json_column = 9; // Json column operators.
+    QLTupleExpressionPB tuple = 10;           // Tuple expression in LHS.
   }
 }
 

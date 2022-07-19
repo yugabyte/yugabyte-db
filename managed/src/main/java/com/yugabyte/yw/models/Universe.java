@@ -29,6 +29,8 @@ import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.SqlQuery;
 import io.ebean.annotation.DbJson;
+import io.ebean.annotation.Transactional;
+import io.ebean.annotation.TxIsolation;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
@@ -171,6 +173,27 @@ public class Universe extends Model {
         .filter(c -> c != null && c.userIntent != null)
         .map(c -> c.userIntent.ybSoftwareVersion)
         .collect(Collectors.toList());
+  }
+
+  @Transactional(isolation = TxIsolation.REPEATABLE_READ)
+  @Override
+  public boolean delete() {
+    // Delete xCluster configs without universes.
+    XClusterConfig.getByUniverseUuid(universeUUID)
+        .stream()
+        .filter(
+            xClusterConfig -> {
+              if (xClusterConfig.sourceUniverseUUID == null) {
+                return true;
+              } else {
+                if (universeUUID.equals(xClusterConfig.sourceUniverseUUID)) {
+                  return xClusterConfig.targetUniverseUUID == null;
+                }
+                return false;
+              }
+            })
+        .forEach(Model::delete);
+    return super.delete();
   }
 
   public static final Finder<UUID, Universe> find = new Finder<UUID, Universe>(Universe.class) {};
