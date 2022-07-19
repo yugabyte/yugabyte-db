@@ -89,12 +89,17 @@ typedef struct YbScanDescData
 	YBCPgExecParameters *exec_params;
 
 	/*
-	 * Flag used for bailing out from scan early. Currently used to bail out from scans where
-	 * one of the bind conditions is a search array and is empty.
-	 * Consider an example query,
-	 * select c1,c2 from test where c1 = XYZ AND c2 = ANY(ARRAY[]::integer[]);
-	 * The second bind condition c2 = ANY(ARRAY[]::integer[]) will never be satisfied. Hence when,
-	 * this is detected, we bail out from creating and sending a request to docDB
+	 * Flag used for bailing out from scan early. Currently used to bail out
+	 * from scans where one of the bind conditions is:
+	 *   - A comparison operator with null, e.g.: c = null, etc.
+	 *   - A search array and is empty.
+	 *     Consider an example query,
+	 *       select c1,c2 from test
+	 *       where c1 = XYZ AND c2 = ANY(ARRAY[]::integer[]);
+	 *     The second bind condition c2 = ANY(ARRAY[]::integer[]) will never be
+	 *     satisfied.
+	 * Hence when, such condition is detected, we bail out from creating and
+	 * sending a request to docDB.
 	 */
 	bool quit_scan;
 } YbScanDescData;
