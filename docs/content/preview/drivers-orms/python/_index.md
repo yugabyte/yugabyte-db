@@ -13,7 +13,7 @@ type: indexpage
 ---
 The following projects can be used to implement Python applications using the YugabyteDB YSQL API.
 
-## Supported Projects
+## Supported projects
 
 | Project | Documentation and Guides | Latest Driver Version | Supported YugabyteDB Version |
 | ------- | ------------------------ | ------------------------ | ---------------------|
@@ -49,9 +49,9 @@ To develop Python applications for YugabyteDB, you need the following:
 
 - **YugabyteDB cluster**
   - Create a free cluster on [YugabyteDB Managed](https://www.yugabyte.com/cloud/). Refer to [Create a free cluster](../../yugabyte-cloud/cloud-basics/create-clusters-free/). Note that YugabyteDB Managed requires SSL.
-  - Alternatively, set up a standalone YugabyteDB cluster by following the steps in [Install YugabyteDB](../../quick-start/install/macos).
+  - Alternatively, set up a standalone YugabyteDB cluster by following the steps in [Install YugabyteDB](../../quick-start/).
 
 ## Next steps
 
-- Learn how to build Python applications using [Django ORM](django).
-- Learn how to [use SQLAlchemy with YugabyteDB](sqlalchemy)
+- Learn how to build Python applications using [Django ORM](django/).
+- Learn how to [use SQLAlchemy with YugabyteDB](sqlalchemy/)

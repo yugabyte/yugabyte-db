@@ -14,7 +14,7 @@ type: indexpage
 
 The following projects can be used to implement Java applications using the YugabyteDB YSQL API.
 
-## Supported Projects
+## Supported projects
 
 | Driver | Documentation and Guides | Latest Driver Version | Supported YugabyteDB Version |
 | ------- | ------------------------ | ------------------------ | ---------------------|
@@ -47,9 +47,9 @@ To develop Java applications for YugabyteDB, you need the following:
 
 - **YugabyteDB cluster**
   - Create a free cluster on [YugabyteDB Managed](https://www.yugabyte.com/managed/). Refer to [Create a free cluster](../../yugabyte-cloud/cloud-basics/create-clusters-free/). Note that YugabyteDB Managed requires SSL.
-  - Alternatively, set up a standalone YugabyteDB cluster by following the steps in [Install YugabyteDB](/preview/quick-start/install/macos).
+  - Alternatively, set up a standalone YugabyteDB cluster by following the steps in [Install YugabyteDB](../../quick-start/).
 
 ## Next steps
 
 - Learn how to build Java applications using [Ebean ORM](ebean/).
-- Learn how to [develop Spring Boot applications](/preview/integrations/spring-framework/sdyb/) using the Spring Data YugabyteDB project.
+- Learn how to [develop Spring Boot applications](../../integrations/spring-framework/sdyb/) using the Spring Data YugabyteDB project.

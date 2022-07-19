@@ -14,7 +14,7 @@ type: indexpage
 
 The following projects can be used to implement Golang applications using the YugabyteDB YSQL API.
 
-## Supported Projects
+## Supported projects
 
 | Project | Documentation and Guides | Latest Driver Version | Supported YugabyteDB Version |
 | ------- | ------------------------ | ------------------------ | ---------------------|
@@ -46,9 +46,9 @@ To develop Golang applications for YugabyteDB, you need the following:
 
 - **YugabyteDB cluster**
   - Create a free cluster on [YugabyteDB Managed](https://www.yugabyte.com/cloud/). Refer to [Create a free cluster](../../yugabyte-cloud/cloud-basics/create-clusters-free/). Note that YugabyteDB Managed requires SSL.
-  - Alternatively, set up a standalone YugabyteDB cluster by following the steps in [Install YugabyteDB](/preview/quick-start/install/macos).
+  - Alternatively, set up a standalone YugabyteDB cluster by following the steps in [Install YugabyteDB](../../quick-start/).
 
 ## Next steps
 
 - Learn how to build Go applications using [GORM](gorm).
-- Learn how to run Go applications with YugabyteDB using [GORM](/preview/integrations/gorm/).
+- Learn how to run Go applications with YugabyteDB using [GORM](../../integrations/gorm/).

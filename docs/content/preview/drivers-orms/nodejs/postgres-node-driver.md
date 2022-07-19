@@ -25,9 +25,9 @@ The [PostgreSQL node-postgres driver](https://node-postgres.com/) is the officia
 
 ## CRUD operations
 
-Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in [Build an Application](/preview/quick-start/build-apps/nodejs/ysql-pg/) in the Quick Start section.
+Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in [Build an Application](/preview/quick-start/build-apps/nodejs/ysql-pg/) page.
 
-The following sections break down the quick start example to demonstrate how to perform common tasks required for Node.js application development using the PostgreSQL node-postgres driver.
+The following sections break down the example to demonstrate how to perform common tasks required for Node.js application development using the PostgreSQL node-postgres driver.
 
 ### Step 1: Install the driver dependency and async utility
 

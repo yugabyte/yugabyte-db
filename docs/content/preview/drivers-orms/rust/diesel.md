@@ -26,9 +26,9 @@ YugabyteDB's YSQL API is fully compatible with Diesel ORM for data persistence i
 
 ## CRUD operations
 
-Learn how to establish a connection to a YugabyteDB database and begin basic CRUD operations using the steps on the [Build an application](../../../quick-start/build-apps/rust/ysql-diesel/) page under the Quick start section.
+Learn how to establish a connection to a YugabyteDB database and begin basic CRUD operations using the steps on the [Build an application](../../../quick-start/build-apps/rust/ysql-diesel/) page.
 
-The following sections break down the quick start example to demonstrate how to perform common tasks required for Rust application development using Diesel.
+The following sections break down the example to demonstrate how to perform common tasks required for Rust application development using Diesel.
 
 ### Step 1: Add the Diesel ORM dependency
 
@@ -98,7 +98,7 @@ Migrations allow you to evolve the database schema over time. Each migration can
 
    {{<note title="Note">}}
 
-When you run `diesel setup` while [Creating a new Rust-Diesel project](#create-a-new-rust-diesel-project), it creates a file called `diesel.toml`. This file tells Diesel to create and maintain a file tracking your schema. After running the migrations, `src/schema.rs` gets populated with employee table information by the Diesel ORM as follows:
+When you run `diesel setup` while [setting up a new Rust-Diesel project](#step-2-set-up-the-project-and-configure-the-database), it creates a file called `diesel.toml`. This file tells Diesel to create and maintain a file tracking your schema. After running the migrations, `src/schema.rs` gets populated with employee table information by the Diesel ORM as follows:
 
 ```rust
 table! {
