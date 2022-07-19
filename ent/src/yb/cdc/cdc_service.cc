@@ -1040,10 +1040,21 @@ Result<SetCDCCheckpointResponsePB> CDCServiceImpl::SetCDCCheckpoint(
   std::shared_ptr<tablet::TabletPeer> tablet_peer;
   auto s = tablet_manager_->GetTabletPeer(req.tablet_id(), &tablet_peer);
 
-  if (s.IsNotFound()) {
-    RETURN_NOT_OK_SET_CODE(s, CDCError(CDCErrorPB::TABLET_NOT_FOUND));
-  } else if (tablet_peer->LeaderStatus() == consensus::LeaderStatus::NOT_LEADER) {
-    RETURN_NOT_OK_SET_CODE(s, CDCError(CDCErrorPB::NOT_LEADER));
+  // Case-1 The connected tserver does not contain the requested tablet_id.
+  // Case-2 The connected tserver does not contain the tablet LEADER.
+  if (s.IsNotFound() || !IsTabletPeerLeader(tablet_peer)) {
+    // Get tablet LEADER.
+    auto result = GetLeaderTServer(req.tablet_id());
+    RETURN_NOT_OK_SET_CODE(result, CDCError(CDCErrorPB::NOT_LEADER));
+    auto ts_leader = *result;
+    auto cdc_proxy = GetCDCServiceProxy(ts_leader);
+
+    rpc::RpcController rpc;
+    rpc.set_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_read_rpc_timeout_ms));
+    SetCDCCheckpointResponsePB resp;
+    auto status = cdc_proxy->SetCDCCheckpoint(req, &resp, &rpc);
+    RETURN_NOT_OK_SET_CODE(status, CDCError(CDCErrorPB::INTERNAL_ERROR));
+    return SetCDCCheckpointResponsePB();
   } else if (!s.ok()) {
     RETURN_NOT_OK_SET_CODE(s, CDCError(CDCErrorPB::LEADER_NOT_READY));
   }
