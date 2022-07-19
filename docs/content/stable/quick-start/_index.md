@@ -1,10 +1,9 @@
 ---
-title: YugabyteDB Quick start
+title: YugabyteDB Quick Start
 headerTitle: Quick start
 linkTitle: Quick start
-description: Get started using YugabyteDB in less than five minutes on Linux.
-aliases:
-  - /quick-start/linux/
+description: Get started using YugabyteDB in less than five minutes on macOS.
+layout: single
 type: docs
 ---
 
@@ -16,7 +15,7 @@ type: docs
       </a>
     </li>
     <li class="active">
-      <a href="../../quick-start/" class="nav-link">
+      <a href="../quick-start/" class="nav-link">
         Use a local cluster
       </a>
     </li>
@@ -25,30 +24,30 @@ type: docs
 
 Test YugabyteDB's APIs and core features by creating a local cluster on a single host.
 
-The local cluster setup on a single host is intended for development and learning. For production deployment, performance benchmarking, or deploying a true multi-node on multi-host setup, see [Deploy YugabyteDB](../../deploy/).
+The local cluster setup on a single host is intended for development and learning. For production deployment, performance benchmarking, or deploying a true multi-node on multi-host setup, see [Deploy YugabyteDB](../deploy/).
 
 <div class="custom-tabs tabs-style-1">
   <ul class="tabs-name">
-    <li>
-      <a href="../" class="nav-link">
+    <li class="active">
+      <a href="../quick-start/" class="nav-link">
         <i class="fab fa-apple" aria-hidden="true"></i>
         macOS
       </a>
     </li>
-    <li class="active">
-      <a href="../linux/" class="nav-link">
+    <li>
+      <a href="../quick-start/linux/" class="nav-link">
         <i class="fab fa-linux" aria-hidden="true"></i>
         Linux
       </a>
     </li>
     <li>
-      <a href="../docker/" class="nav-link">
+      <a href="../quick-start/docker/" class="nav-link">
         <i class="fab fa-docker" aria-hidden="true"></i>
         Docker
       </a>
     </li>
     <li>
-      <a href="../kubernetes/" class="nav-link">
+      <a href="../quick-start/kubernetes/" class="nav-link">
         <i class="fas fa-cubes" aria-hidden="true"></i>
         Kubernetes
       </a>
@@ -56,20 +55,15 @@ The local cluster setup on a single host is intended for development and learnin
   </ul>
 </div>
 
-
 ## Install YugabyteDB
 
-Installing YugabyteDB involves completing [prerequisites](#prerequisites) and [downloading the YugabyteDB package](#download-yugabytedb).
+Installing YugabyteDB involves completing [prerequisites](#prerequisites) and [downloading the packaged database](#download-yugabytedb).
 
 ### Prerequisites
 
 Before installing YugabyteDB, ensure that you have the following available:
 
-1. One of the following operating systems:
-
-    * <i class="icon-centos"></i> CentOS 7 or later
-
-    * <i class="icon-ubuntu"></i> Ubuntu 16.04 or later
+1. <i class="fab fa-apple" aria-hidden="true"></i> macOS 10.12 or later.
 
 1. Python 3. To check the version, execute the following command:
 
@@ -81,60 +75,115 @@ Before installing YugabyteDB, ensure that you have the following available:
     Python 3.7.3
     ```
 
-    By default, CentOS 8 does not have an unversioned system-wide `python` command. To fix this, set `python3` as the alternative for `python` by running `sudo alternatives --set python /usr/bin/python3`.
-    Starting from Ubuntu 20.04, `python` is not available anymore. Install `sudo apt install python-is-python3`.
-
 1. `wget` or `curl`.
 
-    The instructions use the `wget` command to download files. If you prefer to use `curl`, you can replace `wget` with `curl -O`.
+    Note that the following instructions use the `wget` command to download files. If you prefer to use `curl` (included in macOS), you can replace `wget` with `curl -O`.
 
-    To install `wget`:
+    To install `wget` on your Mac, you can run the following command if you use Homebrew:
 
-    * On CentOS, run `yum install wget`
-    * On Ubuntu, run `apt install wget`
+    ```sh
+    brew install wget
+    ```
 
-    To install `curl`:
+1. Since each tablet maps to its own file, it is easy to create a very large number of files in the current shell by experimenting with several hundred tables and several tablets per table. Execute the following command to ensure that the limit is set to a large number:
 
-    * On CentOS, run `yum install curl`
-    * On Ubuntu, run `apt install curl`
+    ```sh
+    launchctl limit
+    ```
 
-1. Since each tablet maps to its own file, it is easy to create a very large number of files in the current shell by experimenting with several hundred tables and several tablets per table. You need to [configure ulimit values](../../deploy/manual-deployment/system-config/#ulimits).
+    It is recommended to have at least the following soft and hard limits:
+
+    ```output
+    maxproc     2500        2500
+    maxfiles    1048576     1048576
+    ```
+
+    Edit `/etc/sysctl.conf`, if it exists, to include the following:
+
+    ```sh
+    kern.maxfiles=1048576
+    kern.maxproc=2500
+    kern.maxprocperuid=2500
+    kern.maxfilesperproc=1048576
+    ```
+
+    If this file does not exist, create the following two files:
+
+    - `/Library/LaunchDaemons/limit.maxfiles.plist` and insert the following:
+
+      ```xml
+      <?xml version="1.0" encoding="UTF-8"?>
+      <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+      <plist version="1.0">
+        <dict>
+          <key>Label</key>
+            <string>limit.maxfiles</string>
+          <key>ProgramArguments</key>
+            <array>
+              <string>launchctl</string>
+              <string>limit</string>
+              <string>maxfiles</string>
+              <string>1048576</string>
+              <string>1048576</string>
+            </array>
+          <key>RunAtLoad</key>
+            <true/>
+          <key>ServiceIPC</key>
+            <false/>
+        </dict>
+      </plist>
+      ```
+
+    - `/Library/LaunchDaemons/limit.maxproc.plist` and insert the following:
+
+      ```xml
+      <?xml version="1.0" encoding="UTF-8"?>
+      <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+      <plist version="1.0">
+        <dict>
+          <key>Label</key>
+            <string>limit.maxproc</string>
+          <key>ProgramArguments</key>
+            <array>
+              <string>launchctl</string>
+              <string>limit</string>
+              <string>maxproc</string>
+              <string>2500</string>
+              <string>2500</string>
+            </array>
+          <key>RunAtLoad</key>
+            <true/>
+          <key>ServiceIPC</key>
+            <false/>
+        </dict>
+      </plist>
+      ```
+
+
+    Ensure that the `plist` files are owned by `root:wheel` and have permissions `-rw-r--r--`. To take effect, you need to reboot your computer or run the following commands:
+
+      ```sh
+    sudo launchctl load -w /Library/LaunchDaemons/limit.maxfiles.plist
+    sudo launchctl load -w /Library/LaunchDaemons/limit.maxproc.plist
+      ```
+
+    You might need to `unload` the service before loading it.
 
 ### Download YugabyteDB
 
 You download YugabyteDB as follows:
 
-1. Download the YugabyteDB package using the following `wget` command:
+1. Download the YugabyteDB `tar.gz` file by executing the following `wget` command:
 
     ```sh
-    wget https://downloads.yugabyte.com/releases/{{< yb-version version="preview">}}/yugabyte-{{< yb-version version="preview" format="build">}}-linux-x86_64.tar.gz
+    wget https://downloads.yugabyte.com/releases/{{< yb-version version="stable">}}/yugabyte-{{< yb-version version="stable" format="build">}}-darwin-x86_64.tar.gz
     ```
 
-    Or:
+1. Extract the package and then change directories to the YugabyteDB home, as follows:
 
     ```sh
-    wget https://downloads.yugabyte.com/releases/{{< yb-version version="preview">}}/yugabyte-{{< yb-version version="preview" format="build">}}-el8-aarch64.tar.gz
+    tar xvfz yugabyte-{{< yb-version version="stable" format="build">}}-darwin-x86_64.tar.gz && cd yugabyte-{{< yb-version version="stable">}}/
     ```
-
-1. Extract the package and then change directories to the YugabyteDB home.
-
-    ```sh
-    tar xvfz yugabyte-{{< yb-version version="preview" format="build">}}-linux-x86_64.tar.gz && cd yugabyte-{{< yb-version version="preview">}}/
-    ```
-
-    Or:
-
-    ```sh
-    tar xvfz yugabyte-{{< yb-version version="preview" format="build">}}-el8-aarch64.tar.gz && cd yugabyte-{{< yb-version version="preview">}}/
-    ```
-
-### Configure YugabyteDB
-
-To configure YugabyteDB, run the following shell script:
-
-```sh
-./bin/post_install.sh
-```
 
 ## Create a local cluster
 
@@ -144,9 +193,19 @@ To create a single-node local cluster with a replication factor (RF) of 1, run t
 ./bin/yugabyted start
 ```
 
+{{<note title="Note for macOS Monterey" >}}
+
+macOS Monterey enables AirPlay receiving by default, which listens on port 7000. This conflicts with YugabyteDB and causes `yugabyted start` to fail. To resolve the issue, you can disable AirPlay receiving, then start YugabyteDB, and then, optionally, re-enable AirPlay receiving. Alternatively, you can change the default port number using the `--master_webserver_port` flag when you start the cluster as follows:
+
+```sh
+./bin/yugabyted start --master_webserver_port=9999
+```
+
+{{< /note >}}
+
 After the cluster has been created, clients can connect to the YSQL and YCQL APIs at http://localhost:5433 and http://localhost:9042 respectively. You can also check `~/var/data` to see the data directory and `~/var/logs` to see the logs directory.
 
-If you have previously installed YugabyteDB 2.8 or later and created a cluster on the same computer, you may need to [upgrade the YSQL system catalog](../../manage/upgrade-deployment/#upgrade-the-ysql-system-catalog) to run the latest features.
+If you have previously installed YugabyteDB version 2.8 or later and created a cluster on the same computer, you may need to [upgrade the YSQL system catalog](../manage/upgrade-deployment/#upgrade-the-ysql-system-catalog) to run the latest features.
 
 ### Check cluster status
 
@@ -178,7 +237,7 @@ Expect an output similar to the following:
 
 The cluster you have created consists of two processes: [YB-Master](../architecture/concepts/yb-master/) which keeps track of various metadata (list of tables, users, roles, permissions, and so on) and [YB-TServer](../architecture/concepts/yb-tserver/) which is responsible for the actual end-user requests for data updates and queries.
 
-Each of the processes exposes its own Admin UI that can be used to check the status of the corresponding process, and perform certain administrative operations. The [YB-Master Admin UI](../../reference/configuration/yb-master/#admin-ui) is available at <http://127.0.0.1:7000> and the [YB-TServer Admin UI](../../reference/configuration/yb-tserver/#admin-ui) is available at <http://127.0.0.1:9000>.
+Each of the processes exposes its own Admin UI that can be used to check the status of the corresponding process, as well as perform certain administrative operations. The [YB-Master Admin UI](../reference/configuration/yb-master/#admin-ui) is available at [http://127.0.0.1:7000](http://127.0.0.1:7000) (replace the port number if you've started `yugabyted` with the `--master_webserver_port` flag) and the [YB-TServer Admin UI](../reference/configuration/yb-tserver/#admin-ui) is available at [http://127.0.0.1:9000](http://127.0.0.1:9000).
 
 #### Overview and YB-Master status
 
@@ -186,7 +245,7 @@ The following illustration shows the YB-Master home page with a cluster with a r
 
 ![master-home](/images/admin/master-home-binary-rf1.png)
 
-The **Masters** section highlights the 1 YB-Master along with its corresponding cloud, region, and zone placement.
+The **Masters** section displays the 1 YB-Master along with its corresponding cloud, region, and zone placement.
 
 #### YB-TServer status
 
@@ -209,7 +268,6 @@ Before building a Java application, perform the following:
   ```
 
 - Ensure that Java Development Kit (JDK) 1.8 or later is installed. JDK installers can be downloaded from [OpenJDK](http://jdk.java.net/).
-
 - Ensure that [Apache Maven](https://maven.apache.org/index.html) 3.3 or later is installed.
 
 ### Create and configure the Java project
@@ -300,7 +358,7 @@ The following steps demonstrate how to create two Java applications, `UniformLoa
       }
 
       public static void makeConnectionUsingDriverManager() {
-        //List to store the connections so that they can be closed at the end
+        // List to store the connections so that they can be closed at the end
         List<Connection> connectionList = new ArrayList<>();
 
         System.out.println("Lets create 6 connections using DriverManager");
@@ -437,7 +495,7 @@ The following steps demonstrate how to create two Java applications, `UniformLoa
 
         Properties poolProperties = new Properties();
         poolProperties.setProperty("dataSourceClassName", "com.yugabyte.ysql.YBClusterAwareDataSource");
-        // The pool will create  10 connections to the servers
+        // The pool will create 10 connections to the servers
         poolProperties.setProperty("maximumPoolSize", String.valueOf(10));
         poolProperties.setProperty("dataSource.serverName", "127.0.0.1");
         poolProperties.setProperty("dataSource.portNumber", "5433");

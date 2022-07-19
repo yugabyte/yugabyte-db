@@ -2,9 +2,7 @@
 title: YugabyteDB Quick start
 headerTitle: Quick start
 linkTitle: Quick start
-description: Get started using YugabyteDB in less than five minutes on Linux.
-aliases:
-  - /quick-start/linux/
+description: Get started using YugabyteDB in less than five minutes on Kubernetes (Minikube).
 type: docs
 ---
 
@@ -35,7 +33,7 @@ The local cluster setup on a single host is intended for development and learnin
         macOS
       </a>
     </li>
-    <li class="active">
+    <li>
       <a href="../linux/" class="nav-link">
         <i class="fab fa-linux" aria-hidden="true"></i>
         Linux
@@ -47,7 +45,7 @@ The local cluster setup on a single host is intended for development and learnin
         Docker
       </a>
     </li>
-    <li>
+    <li class="active">
       <a href="../kubernetes/" class="nav-link">
         <i class="fas fa-cubes" aria-hidden="true"></i>
         Kubernetes
@@ -59,140 +57,182 @@ The local cluster setup on a single host is intended for development and learnin
 
 ## Install YugabyteDB
 
-Installing YugabyteDB involves completing [prerequisites](#prerequisites) and [downloading the YugabyteDB package](#download-yugabytedb).
+Installing YugabyteDB involves completing [prerequisites](#prerequisites), [starting Kubernetes](#start-kubernetes), and [downloading Helm chart](#download-yugabytedb-helm-chart).
 
 ### Prerequisites
 
-Before installing YugabyteDB, ensure that you have the following available:
+Before installing YugabyteDB, ensure that you have the following installed:
 
-1. One of the following operating systems:
+- [Minikube](https://github.com/kubernetes/minikube) on your localhost machine.
 
-    * <i class="icon-centos"></i> CentOS 7 or later
+    The Kubernetes version used by Minikube should be 1.18.0 or later. The default Kubernetes version being used by Minikube displays when you run the `minikube start` command. To install Minikube, see [Install Minikube](https://kubernetes.io/docs/tasks/tools/install-minikube/) in the Kubernetes documentation.
 
-    * <i class="icon-ubuntu"></i> Ubuntu 16.04 or later
+- [kubectl](https://kubernetes.io/docs/reference/kubectl/overview/).
 
-1. Python 3. To check the version, execute the following command:
+    To install `kubectl`, see [Install kubectl](https://kubernetes.io/docs/tasks/tools/install-kubectl/) in the Kubernetes documentation.
+
+- [Helm 3.4 or later](https://helm.sh/).
+
+    To install `helm`, see [Install helm](https://helm.sh/docs/intro/install/) in the Helm documentation.
+
+### Start Kubernetes
+
+To start Kubernetes, perform the following:
+
+- Start Kubernetes using Minikube by running the following command. Note that minikube by default brings up a single-node Kubernetes environment with 2GB RAM, 2 CPUS, and a disk of 20GB. You should start minkube with at least 8GB RAM, 4 CPUs and 40GB disk, as follows:
 
     ```sh
-    python --version
+    minikube start --memory=8192 --cpus=4 --disk-size=40g --vm-driver=virtualbox
     ```
 
     ```output
-    Python 3.7.3
+    ...
+    Configuring environment for Kubernetes v1.14.2 on Docker 18.09.6
+    ...
     ```
 
-    By default, CentOS 8 does not have an unversioned system-wide `python` command. To fix this, set `python3` as the alternative for `python` by running `sudo alternatives --set python /usr/bin/python3`.
-    Starting from Ubuntu 20.04, `python` is not available anymore. Install `sudo apt install python-is-python3`.
-
-1. `wget` or `curl`.
-
-    The instructions use the `wget` command to download files. If you prefer to use `curl`, you can replace `wget` with `curl -O`.
-
-    To install `wget`:
-
-    * On CentOS, run `yum install wget`
-    * On Ubuntu, run `apt install wget`
-
-    To install `curl`:
-
-    * On CentOS, run `yum install curl`
-    * On Ubuntu, run `apt install curl`
-
-1. Since each tablet maps to its own file, it is easy to create a very large number of files in the current shell by experimenting with several hundred tables and several tablets per table. You need to [configure ulimit values](../../deploy/manual-deployment/system-config/#ulimits).
-
-### Download YugabyteDB
-
-You download YugabyteDB as follows:
-
-1. Download the YugabyteDB package using the following `wget` command:
+- Review Kubernetes dashboard by running the following command:
 
     ```sh
-    wget https://downloads.yugabyte.com/releases/{{< yb-version version="preview">}}/yugabyte-{{< yb-version version="preview" format="build">}}-linux-x86_64.tar.gz
+    minikube dashboard
     ```
 
-    Or:
+- Confirm that your kubectl is configured correctly by running the following command:
 
     ```sh
-    wget https://downloads.yugabyte.com/releases/{{< yb-version version="preview">}}/yugabyte-{{< yb-version version="preview" format="build">}}-el8-aarch64.tar.gz
+    kubectl version
     ```
 
-1. Extract the package and then change directories to the YugabyteDB home.
+    ```output
+    Client Version: version.Info{Major:"1", Minor:"14+", GitVersion:"v1.14.10-dispatcher", ...}
+    Server Version: version.Info{Major:"1", Minor:"14", GitVersion:"v1.14.2", ...}
+    ```
+
+- Confirm that your Helm is configured correctly by running the following command:
 
     ```sh
-    tar xvfz yugabyte-{{< yb-version version="preview" format="build">}}-linux-x86_64.tar.gz && cd yugabyte-{{< yb-version version="preview">}}/
+    helm version
     ```
 
-    Or:
+    ```output
+    version.BuildInfo{Version:"v3.0.3", GitCommit:"...", GitTreeState:"clean", GoVersion:"go1.13.6"}
+    ```
+
+### Download YugabyteDB Helm chart
+
+To start YugabyteDB Helm chart, perform the following:
+
+- Add the charts repository using the following command:
 
     ```sh
-    tar xvfz yugabyte-{{< yb-version version="preview" format="build">}}-el8-aarch64.tar.gz && cd yugabyte-{{< yb-version version="preview">}}/
+    helm repo add yugabytedb https://charts.yugabyte.com
     ```
 
-### Configure YugabyteDB
+- Fetch updates from the repository by running the following command:
 
-To configure YugabyteDB, run the following shell script:
+    ```sh
+    helm repo update
+    ```
 
-```sh
-./bin/post_install.sh
-```
+- Validate the chart version, as follows:
+
+    ```sh
+    helm search repo yugabytedb/yugabyte --version {{<yb-version version="stable" format="short">}}
+    ```
+
+    ```output
+    NAME                 CHART VERSION  APP VERSION   DESCRIPTION
+  yugabytedb/yugabyte  {{<yb-version version="stable" format="short">}}          {{<yb-version version="stable" format="build">}}  YugabyteDB is the high-performance distributed ...
+  ```
+
+Now you are ready to create a local YugabyteDB cluster.
 
 ## Create a local cluster
 
-To create a single-node local cluster with a replication factor (RF) of 1, run the following command:
+Create a YugabyteDB cluster in Minikube using the following commands. Note that for Helm, you have to first create a namespace:
 
 ```sh
-./bin/yugabyted start
+kubectl create namespace yb-demo
+helm install yb-demo yugabytedb/yugabyte \
+--version {{<yb-version version="stable" format="short">}} \
+--set resource.master.requests.cpu=0.5,resource.master.requests.memory=0.5Gi,\
+resource.tserver.requests.cpu=0.5,resource.tserver.requests.memory=0.5Gi,\
+replicas.master=1,replicas.tserver=1 --namespace yb-demo
 ```
 
-After the cluster has been created, clients can connect to the YSQL and YCQL APIs at http://localhost:5433 and http://localhost:9042 respectively. You can also check `~/var/data` to see the data directory and `~/var/logs` to see the logs directory.
-
-If you have previously installed YugabyteDB 2.8 or later and created a cluster on the same computer, you may need to [upgrade the YSQL system catalog](../../manage/upgrade-deployment/#upgrade-the-ysql-system-catalog) to run the latest features.
-
-### Check cluster status
-
-Execute the following command to check the cluster status:
+Since load balancers are not available in a Minikube environment, the LoadBalancers for `yb-master-ui` and `yb-tserver-service` remain in pending state. To disable these services, you can pass the `enableLoadBalancer=False` flag, as follows:
 
 ```sh
-./bin/yugabyted status
+helm install yb-demo yugabytedb/yugabyte \
+--version {{<yb-version version="stable" format="short">}} \
+--set resource.master.requests.cpu=0.5,resource.master.requests.memory=0.5Gi,\
+resource.tserver.requests.cpu=0.5,resource.tserver.requests.memory=0.5Gi,\
+replicas.master=1,replicas.tserver=1,enableLoadBalancer=False --namespace yb-demo
 ```
 
-Expect an output similar to the following:
+### Check cluster status with kubectl
 
+Run the following command to verify that you have two services with one running pod in each: one YB-Master pod (`yb-master-0`) and one YB-Tserver pod (`yb-tserver-0`). For details on the roles of these pods in a YugabyteDB cluster (also known as universe), see [Universe](../../architecture/concepts/universe/).
+
+```sh
+kubectl --namespace yb-demo get pods
+```
 
 ```output
-+--------------------------------------------------------------------------------------------------+
-|                                            yugabyted                                             |
-+--------------------------------------------------------------------------------------------------+
-| Status              : Running. Leader Master is present                                          |
-| Web console         : http://127.0.0.1:7000                                                      |
-| JDBC                : jdbc:postgresql://127.0.0.1:5433/yugabyte?user=yugabyte&password=yugabyte  |
-| YSQL                : bin/ysqlsh   -U yugabyte -d yugabyte                                       |
-| YCQL                : bin/ycqlsh   -u cassandra                                                  |
-| Data Dir            : /Users/myuser/var/data                                                     |
-| Log Dir             : /Users/myuser/var/logs                                                     |
-| Universe UUID       : fad6c687-e1dc-4dfd-af4b-380021e19be3                                       |
-+--------------------------------------------------------------------------------------------------+
+NAME           READY     STATUS              RESTARTS   AGE
+yb-master-0    0/2       ContainerCreating   0          5s
+yb-tserver-0   0/2       ContainerCreating   0          4s
+```
+
+Eventually, all the pods will have the Running state, as per the following output:
+
+```output
+NAME           READY     STATUS    RESTARTS   AGE
+yb-master-0    2/2       Running   0          13s
+yb-tserver-0   2/2       Running   0          12s
+```
+
+To check the status of the three services, run the following command:
+
+```sh
+kubectl --namespace yb-demo get services
+```
+
+```output
+NAME                 TYPE           CLUSTER-IP     EXTERNAL-IP   PORT(S)                                        AGE
+yb-master-ui         LoadBalancer   10.98.66.255   <pending>     7000:31825/TCP                                 119s
+yb-masters           ClusterIP      None           <none>        7100/TCP,7000/TCP                              119s
+yb-tserver-service   LoadBalancer   10.106.5.69    <pending>     6379:31320/TCP,9042:30391/TCP,5433:30537/TCP   119s
+yb-tservers          ClusterIP      None           <none>        7100/TCP,9000/TCP,6379/TCP,9042/TCP,5433/TCP   119s
 ```
 
 ### Check cluster status with Admin UI
 
-The cluster you have created consists of two processes: [YB-Master](../architecture/concepts/yb-master/) which keeps track of various metadata (list of tables, users, roles, permissions, and so on) and [YB-TServer](../architecture/concepts/yb-tserver/) which is responsible for the actual end-user requests for data updates and queries.
+The cluster you have created consists of two processes: [YB-Master](../../architecture/concepts/yb-master/) that keeps track of various metadata (list of tables, users, roles, permissions, and so on) and [YB-TServer](../../architecture/concepts/yb-tserver/) that is responsible for the actual end-user requests for data updates and queries.
 
-Each of the processes exposes its own Admin UI that can be used to check the status of the corresponding process, and perform certain administrative operations. The [YB-Master Admin UI](../../reference/configuration/yb-master/#admin-ui) is available at <http://127.0.0.1:7000> and the [YB-TServer Admin UI](../../reference/configuration/yb-tserver/#admin-ui) is available at <http://127.0.0.1:9000>.
+Each of the processes exposes its own Admin UI that can be used to check the status of the corresponding process and perform certain administrative operations.
+
+To access the Admin UI, you first need to set up port forwarding for port 7000, as follows:
+
+```sh
+kubectl --namespace yb-demo port-forward svc/yb-master-ui 7000:7000
+```
+
+Now you can view the [yb-master-0 Admin UI](../../reference/configuration/yb-master/#admin-ui) at http://localhost:7000.
 
 #### Overview and YB-Master status
 
 The following illustration shows the YB-Master home page with a cluster with a replication factor of 1, a single node, and no tables. The YugabyteDB version is also displayed.
 
-![master-home](/images/admin/master-home-binary-rf1.png)
+![master-home](/images/admin/master-home-kubernetes-rf1.png)
 
-The **Masters** section highlights the 1 YB-Master along with its corresponding cloud, region, and zone placement.
+The **Masters** section shows the 1 YB-Master along with its corresponding cloud, region, and zone placement.
 
 #### YB-TServer status
 
-Click **See all nodes** to open the **Tablet Servers** page that lists the YB-TServer along with the time since it last connected to the YB-Master using regular heartbeats. Because there are no user tables, **User Tablet-Peers / Leaders** is 0. As tables are added, new tablets (also known as shards) will be created automatically and distributed evenly across all the available tablet servers.
+Click **See all nodes** to open the **Tablet Servers** page that lists the YB-TServer along with the time since it last connected to the YB-Master using regular heartbeats, as per the following illustration:
 
-![master-home](/images/admin/master-tservers-list-binary-rf1.png)
+![tserver-list](/images/admin/master-tservers-list-kubernetes-rf1.png)
 
 ## Build a Java application
 
@@ -209,7 +249,6 @@ Before building a Java application, perform the following:
   ```
 
 - Ensure that Java Development Kit (JDK) 1.8 or later is installed. JDK installers can be downloaded from [OpenJDK](http://jdk.java.net/).
-
 - Ensure that [Apache Maven](https://maven.apache.org/index.html) 3.3 or later is installed.
 
 ### Create and configure the Java project
@@ -300,7 +339,7 @@ The following steps demonstrate how to create two Java applications, `UniformLoa
       }
 
       public static void makeConnectionUsingDriverManager() {
-        //List to store the connections so that they can be closed at the end
+        // List to store the connections so that they can be closed at the end
         List<Connection> connectionList = new ArrayList<>();
 
         System.out.println("Lets create 6 connections using DriverManager");
