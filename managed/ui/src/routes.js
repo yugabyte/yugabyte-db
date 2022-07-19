@@ -125,7 +125,9 @@ axios.interceptors.response.use(
       const searchParam = new URLSearchParams(window.location.search);
       const location = searchParam.get('redirectUrl') || window.location.pathname;
       browserHistory.push(
-        location && location !== '/' ? `/login?redirectUrl=${location}` : '/login'
+        location && !['/', '/login'].includes(location)
+          ? `/login?redirectUrl=${location}`
+          : '/login'
       );
     }
     return Promise.reject(error);

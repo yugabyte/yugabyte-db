@@ -1898,27 +1898,17 @@ export default class ClusterFields extends Component {
           );
         } else if (isInGcp) {
           storageTypeSelector = (
-            <>
-              <span className="volume-info form-group-shrinked">
-                <Field
-                  name={`${clusterType}.storageType`}
-                  component={YBSelectWithLabel}
-                  options={gcpTypesList}
-                  label="Storage Type (SSD)"
-                  defaultValue={DEFAULT_STORAGE_TYPES['GCP']}
-                  onInputChanged={self.storageTypeChanged}
-                  readOnlySelect={isFieldReadOnly}
-                />
-              </span>
-              {this.state.gcpInstanceWithEphemeralStorage &&
-                (featureFlags.test['pausedUniverse'] ||
-                  featureFlags.released['pausedUniverse']) && (
-                  <span className="gcp-ephemeral-storage-warning">
-                    ! Selected instance type is with ephemeral storage, If you will pause this
-                    universe your data will get lost.
-                  </span>
-                )}
-            </>
+            <span className="volume-info form-group-shrinked">
+              <Field
+                name={`${clusterType}.storageType`}
+                component={YBSelectWithLabel}
+                options={gcpTypesList}
+                label="Storage Type (SSD)"
+                defaultValue={DEFAULT_STORAGE_TYPES['GCP']}
+                onInputChanged={self.storageTypeChanged}
+                readOnlySelect={isFieldReadOnly}
+              />
+            </span>
           );
         } else if (isInAzu) {
           storageTypeSelector = (
@@ -2654,7 +2644,7 @@ export default class ClusterFields extends Component {
 
           <Row className="form-sub-field volume-info-c">
             <Row>
-              <Col sm={12} md={12} lg={6}>
+              <Col sm={12} md={12} lg={6} className="volume-type-row">
                 {deviceDetail && (
                   <>
                     <Col sm={6} className="noPaddingLeft">
@@ -2671,6 +2661,20 @@ export default class ClusterFields extends Component {
                     </Col>
                   </>
                 )}
+              </Col>
+            </Row>
+            <Row>
+              <Col sm={12} md={12} lg={6}>
+                {isDefinedNotNull(currentProvider) &&
+                  currentProvider.code === 'gcp' &&
+                  this.state.gcpInstanceWithEphemeralStorage &&
+                  (featureFlags.test['pausedUniverse'] ||
+                    featureFlags.released['pausedUniverse']) && (
+                    <span className="gcp-ephemeral-storage-warning">
+                      ! Selected instance type is with ephemeral storage, If you will pause this
+                      universe your data will get lost.
+                    </span>
+                  )}
               </Col>
             </Row>
             <Row>
