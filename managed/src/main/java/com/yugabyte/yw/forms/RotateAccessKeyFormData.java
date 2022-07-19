@@ -6,9 +6,10 @@ import javax.validation.constraints.Size;
 import java.util.List;
 
 public class RotateAccessKeyFormData {
-  @NotNull()
-  @Size(min = 1)
+
   public List<UUID> universeUUIDs;
+
+  @NotNull public boolean rotateAllUniverses;
 
   @NotNull
   @Size(min = 1)

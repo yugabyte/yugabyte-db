@@ -56,7 +56,6 @@
 #include "yb/tserver/tserver_fwd.h"
 #include "yb/tserver/tserver_admin.pb.h"
 #include "yb/tserver/tserver_admin.service.h"
-#include "yb/tserver/tserver_forward_service.service.h"
 #include "yb/tserver/tserver_service.service.h"
 
 namespace yb {
@@ -323,19 +322,6 @@ class ConsensusServiceImpl : public consensus::ConsensusServiceIf {
   void CompleteUpdateConsensusResponse(std::shared_ptr<tablet::TabletPeer> tablet_peer,
                                        consensus::ConsensusResponsePB* resp);
   TabletPeerLookupIf* tablet_manager_;
-};
-
-class TabletServerForwardServiceImpl : public TabletServerForwardServiceIf {
- public:
-  TabletServerForwardServiceImpl(TabletServiceImpl *impl,
-                                 TabletServerIf* server);
-
-  void Write(const WriteRequestPB* req, WriteResponsePB* resp, rpc::RpcContext context) override;
-
-  void Read(const ReadRequestPB* req, ReadResponsePB* resp, rpc::RpcContext context) override;
-
- private:
-  TabletServerIf *const server_;
 };
 
 }  // namespace tserver

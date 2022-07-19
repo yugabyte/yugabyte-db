@@ -32,16 +32,16 @@ type: docs
 
 YugabyteDB supports the following types of reads:
 
-- [Follower reads](../../multi-region-deployments/follower-reads-ycql/) that enable spreading the read workload across all replicas in the primary cluster.
+- [Follower reads](../../ysql-language-features/going-beyond-sql/follower-reads-ycql/) that enable spreading the read workload across all replicas in the primary cluster.
 - Observer reads that use read replicas. The latter obtain their data via [asynchronous replication](../asynchronous-replication-ycql) which allows for the read workload to be offloaded from the primary cluster. Read replicas are created as a separate cluster that may be located in a different region, possibly closer to the consumers of the data which would result in lower-latency access and enhanced support of analytics workloads.
 
 A datacenter (also known as universe) can have one primary cluster and several read replica clusters.
 
-Stale reads are possible with an upper bound on the amount of staleness. Reads are guaranteed to be timeline-consistent. You need to set the consistency level to `ONE` in your application to work with follower reads or observer reads. In addition, you have to set the application’s local datacenter to the read replica cluster’s region.
+Stale reads are possible with an upper bound on the amount of staleness. Reads are guaranteed to be timeline-consistent. You need to set the consistency level to `ONE` in your application to work with follower reads or observer reads. In addition, you have to set the application’s local datacenter to the read replica cluster's region.
 
 ## Prerequisites
 
-Ensure that you have downloaded and configured YugabyteDB, as described in [Quick Start](/preview/quick-start/install/macos/).
+Ensure that you have downloaded and configured YugabyteDB, as described in [Quick Start](/preview/quick-start/).
 
 {{< note title="Note" >}}
 

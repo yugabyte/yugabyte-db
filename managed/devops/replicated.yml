@@ -514,7 +514,7 @@ config:
     items:
       - name: dbpass
         title: Password
-        type: text
+        type: password
         required: true
         value_cmd:
           name: dbpass_cmd
