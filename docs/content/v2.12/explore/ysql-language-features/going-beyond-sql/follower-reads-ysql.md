@@ -49,9 +49,9 @@ The table describes what the expected behavior is when a read happens from a fol
 
 ### Read from follower conditions
 
-- If the follower’s safe-time is at least `<current_time> - <staleness>`, then the follower may serve the read without any delay.
+- If the follower's safe-time is at least `<current_time> - <staleness>`, the follower may serve the read without any delay.
 
-- If the follower is not yet caught up to `<current_time> - <staleness>`, then the read will be redirected to a different replica transparently from the end-user. The end user may see a slight increase in latency depending on the location of the replica which satisfies the read.
+- If the follower is not yet caught up to `<current_time> - <staleness>`, the read will be redirected to a different replica transparently from the end-user. The end user may see a slight increase in latency depending on the location of the replica which satisfies the read.
 
 ### Read-only transaction conditions
 
