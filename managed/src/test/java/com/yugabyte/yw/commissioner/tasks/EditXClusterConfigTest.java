@@ -292,7 +292,8 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
     assertNotNull(taskInfo);
     assertEquals(Success, taskInfo.getTaskState());
 
-    assertEquals(XClusterConfigStatusType.Paused, xClusterConfig.status);
+    assertEquals(XClusterConfigStatusType.Running, xClusterConfig.status);
+    assertTrue(xClusterConfig.paused);
 
     targetUniverse = Universe.getOrBadRequest(targetUniverseUUID);
     assertEquals(1, targetUniverse.version);
@@ -324,7 +325,8 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
     TaskInfo taskInfo = submitTask(xClusterConfig, editFormData);
     assertNotNull(taskInfo);
     assertEquals(Success, taskInfo.getTaskState());
-    assertEquals(XClusterConfigStatusType.Paused, xClusterConfig.status);
+    assertEquals(XClusterConfigStatusType.Running, xClusterConfig.status);
+    assertTrue(xClusterConfig.paused);
 
     targetUniverse = Universe.getOrBadRequest(targetUniverseUUID);
     assertEquals(2, targetUniverse.version);
@@ -338,7 +340,8 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
   @Test
   public void testResume() {
     XClusterConfig xClusterConfig =
-        XClusterConfig.create(createFormData, XClusterConfigStatusType.Paused);
+        XClusterConfig.create(createFormData, XClusterConfigStatusType.Running);
+    xClusterConfig.disable();
 
     try {
       SetUniverseReplicationEnabledResponse mockEditResponse =
@@ -354,6 +357,7 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
     assertNotNull(taskInfo);
     assertEquals(Success, taskInfo.getTaskState());
     assertEquals(XClusterConfigStatusType.Running, xClusterConfig.status);
+    assertFalse(xClusterConfig.paused);
 
     targetUniverse = Universe.getOrBadRequest(targetUniverseUUID);
     assertEquals(1, targetUniverse.version);
@@ -367,7 +371,8 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
   @Test
   public void testResumeHAEnabled() {
     XClusterConfig xClusterConfig =
-        XClusterConfig.create(createFormData, XClusterConfigStatusType.Paused);
+        XClusterConfig.create(createFormData, XClusterConfigStatusType.Running);
+    xClusterConfig.disable();
 
     HighAvailabilityConfig.create("test-cluster-key");
 
@@ -385,6 +390,7 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
     assertNotNull(taskInfo);
     assertEquals(Success, taskInfo.getTaskState());
     assertEquals(XClusterConfigStatusType.Running, xClusterConfig.status);
+    assertFalse(xClusterConfig.paused);
 
     targetUniverse = Universe.getOrBadRequest(targetUniverseUUID);
     assertEquals(2, targetUniverse.version);
@@ -400,7 +406,7 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
     XClusterConfig xClusterConfig =
         XClusterConfig.create(createFormData, XClusterConfigStatusType.Running);
 
-    String pauseResumeErrMsg = "failed to set status";
+    String pauseResumeErrMsg = "failed to pause/enable replication";
 
     try {
       AppStatusPB.Builder appStatusBuilder =
@@ -423,12 +429,10 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
     assertNotNull(taskInfo);
     assertEquals(Failure, taskInfo.getTaskState());
 
-    assertEquals(TaskType.XClusterConfigSetStatus, taskInfo.getSubTasks().get(1).getTaskType());
+    assertEquals(TaskType.SetReplicationPaused, taskInfo.getSubTasks().get(1).getTaskType());
     String taskErrMsg = taskInfo.getSubTasks().get(1).getTaskDetails().get("errorString").asText();
-    String expectedErrMsg =
-        String.format(
-            "Failed to set XClusterConfig(%s) status: %s", xClusterConfig.uuid, pauseResumeErrMsg);
-    assertThat(taskErrMsg, containsString(expectedErrMsg));
+    assertThat(taskErrMsg, containsString("Failed to pause/enable XClusterConfig"));
+    assertThat(taskErrMsg, containsString(pauseResumeErrMsg));
     assertEquals(XClusterConfigStatusType.Failed, xClusterConfig.status);
 
     targetUniverse = Universe.getOrBadRequest(targetUniverseUUID);

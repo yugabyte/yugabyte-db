@@ -71,7 +71,7 @@ export function ReplicationDetails({ params }: Props) {
     (replication: IReplication) => {
       return changeXClusterStatus(
         replication,
-        replication.status === IReplicationStatus.PAUSED
+        replication.paused
           ? IReplicationStatus.RUNNING
           : IReplicationStatus.PAUSED
       );
@@ -134,7 +134,7 @@ export function ReplicationDetails({ params }: Props) {
               <Row className="details-actions-button">
                 <YBButton
                   btnText={`${
-                    replication.status === IReplicationStatus.RUNNING ? 'Pause' : 'Enable'
+                    replication.paused ? 'Enable' : 'Pause'
                   } Replication`}
                   btnClass={'btn btn-orange replication-status-button'}
                   disabled={ isChangeDisabled(replication?.status) }
