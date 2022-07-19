@@ -173,17 +173,22 @@
 
 [[redirects]]
   from = "/stable/quick-start/install/"
-  to = "/preview/quick-start/#install-yugabytedb"
+  to = "/stable/quick-start/#install-yugabytedb"
   force = true
 
 [[redirects]]
   from = "/stable/quick-start/create-local-cluster/"
-  to = "/preview/quick-start/#create-a-local-cluster"
+  to = "/stable/quick-start/#create-a-local-cluster"
   force = true
 
 [[redirects]]
   from = "/stable/quick-start/explore/"
   to = "/stable/quick-start/explore/ysql/"
+  force = true
+
+[[redirects]]
+  from = ":version/quick-start/*"
+  to = "/preview/quick-start-yugabytedb-managed/"
   force = true
 
 # Yugabyte Extensions top hit
