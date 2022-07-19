@@ -14,11 +14,11 @@ type: indexpage
 
 The following projects are recommended for implementing Rust applications using the YugabyteDB YSQL API.
 
-## Supported Projects
+## Supported projects
 
 | Project | Documentation and Guides | Example Apps |
 | ------- | ------------------------ | ------------ |
-| Diesel | [Documentation](diesel/) | [Hello World](../../quick-start/build-apps/rust/ysql-diesel) |
+| Diesel | [Documentation](diesel/) | [Hello World](../../quick-start/build-apps/rust/ysql-diesel/) |
 
 Learn how to establish a connection to a YugabyteDB database and begin basic CRUD operations using the **Hello World** examples.
 
@@ -46,7 +46,7 @@ To develop Rust applications for YugabyteDB, you need the following:
   This creates the project as `HelloWorld-rust` which consists of a `Cargo.toml` file (project metadata) and a `src` directory containing the main code file, `main.rs`.
 
 - **YugabyteDB cluster**
-  - Create a free cluster on [YugabyteDB Managed](https://www.yugabyte.com/cloud/). Refer to [Create a free cluster](../../yugabyte-cloud/cloud-basics/create-clusters-free/). Note that YugabyteDB Managed requires SSL.
+  - Create a free cluster on [YugabyteDB Managed](https://www.yugabyte.com/cloud/). Refer to [Use a cloud cluster](../../quick-start-yugabytedb-managed/). Note that YugabyteDB Managed requires SSL.
   - Alternatively, set up a standalone YugabyteDB cluster by following the steps in [Install YugabyteDB](../../quick-start/).
 
 ## Next steps
