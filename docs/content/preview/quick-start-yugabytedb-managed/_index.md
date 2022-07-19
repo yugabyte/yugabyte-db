@@ -696,7 +696,7 @@ You have successfully executed a basic Ruby application that works with Yugabyte
 
   {{% tab header="Rust" lang="rust" %}}
 
-The following tutorial shows a small [Rust application](https://github.com/yugabyte/yugabyte-simple-rust-app) that connects to a YugabyteDB cluster using the [Rust-Postgres driver](../drivers-orms/rust/) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB Managed in Rust.
+The following tutorial shows a small [Rust application](https://github.com/yugabyte/yugabyte-simple-rust-app) that connects to a YugabyteDB cluster using the [Rust-Postgres driver](../reference/drivers/ysql-client-drivers/#rust-postgres) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB Managed in Rust.
 
 This tutorial requires the following:
 
