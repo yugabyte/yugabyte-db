@@ -123,9 +123,7 @@ Below is a minimal list of default ports (along with the network access required
   - 9042 for YCQL
   - 6379 for YEDIS
 
-### Default ports reference
-
-The above deployment uses the various default ports listed [here](../../reference/configuration/default-ports/).
+This deployment uses YugabyteDB [default ports](../../reference/configuration/default-ports/).
 
 {{< note title="Note" >}}
 
