@@ -12,7 +12,9 @@ import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.eq;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -20,6 +22,7 @@ import static play.inject.Bindings.bind;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ModelFactory;
@@ -122,12 +125,14 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     defaultUniverse = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
     defaultUniverse = updateUniverseDetails("small");
     new File(CERTS_DIR).mkdirs();
+    Config spyConf = spy(app.config());
+    doReturn(CERTS_DIR).when(spyConf).getString("yb.storage.path");
     defaultCert =
         CertificateInfo.get(
             CertificateHelper.createRootCA(
+                spyConf,
                 defaultUniverse.getUniverseDetails().nodePrefix,
-                defaultProvider.customerUUID,
-                CERTS_DIR));
+                defaultProvider.customerUUID));
     defaultUniverse.updateConfig(
         ImmutableMap.of(Universe.HELM2_LEGACY, Universe.HelmLegacy.V3.toString()));
   }

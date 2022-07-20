@@ -183,15 +183,7 @@ public class UpgradeUniverseHandler {
       if (rootCert.certType == CertConfigType.SelfSigned
           || rootCert.certType == CertConfigType.HashicorpVault) {
         CertificateHelper.createClientCertificate(
-            requestParams.rootCA,
-            String.format(
-                CertificateHelper.CERT_PATH,
-                runtimeConfigFactory.staticApplicationConf().getString("yb.storage.path"),
-                customer.uuid.toString(),
-                requestParams.rootCA.toString()),
-            CertificateHelper.DEFAULT_CLIENT,
-            null,
-            null);
+            runtimeConfigFactory.staticApplicationConf(), customer.uuid, requestParams.rootCA);
       }
     }
 
@@ -283,9 +275,9 @@ public class UpgradeUniverseHandler {
         if (requestParams.rootCA == null) {
           requestParams.rootCA =
               CertificateHelper.createRootCA(
+                  runtimeConfigFactory.staticApplicationConf(),
                   universeDetails.nodePrefix,
-                  customer.uuid,
-                  runtimeConfigFactory.staticApplicationConf().getString("yb.storage.path"));
+                  customer.uuid);
         }
       } else {
         // If certificate already present then use the same as upgrade cannot rotate certs
@@ -307,9 +299,9 @@ public class UpgradeUniverseHandler {
             // and rootCA and clientRootCA needs to be different
             requestParams.clientRootCA =
                 CertificateHelper.createClientRootCA(
+                    runtimeConfigFactory.staticApplicationConf(),
                     universeDetails.nodePrefix,
-                    customer.uuid,
-                    runtimeConfigFactory.staticApplicationConf().getString("yb.storage.path"));
+                    customer.uuid);
           }
         }
       } else {
@@ -330,15 +322,7 @@ public class UpgradeUniverseHandler {
         if (cert.certType == CertConfigType.SelfSigned
             || cert.certType == CertConfigType.HashicorpVault) {
           CertificateHelper.createClientCertificate(
-              requestParams.rootCA,
-              String.format(
-                  CertificateHelper.CERT_PATH,
-                  runtimeConfigFactory.staticApplicationConf().getString("yb.storage.path"),
-                  customer.uuid.toString(),
-                  requestParams.rootCA.toString()),
-              CertificateHelper.DEFAULT_CLIENT,
-              null,
-              null);
+              runtimeConfigFactory.staticApplicationConf(), customer.uuid, requestParams.rootCA);
         }
       }
     }
