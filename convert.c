@@ -536,7 +536,7 @@ orafce_to_single_byte(PG_FUNCTION_ARGS)
 	dst = (text *) palloc0(VARHDRSZ + srclen);
 	d = VARDATA(dst);
 
-	while (*s && (s - VARDATA_ANY(src) < srclen))
+	while (s - VARDATA_ANY(src) < srclen)
 	{
 		char   *u = s;
 		int		clen;
