@@ -145,6 +145,8 @@ class IdMapping {
   // Should be used when allocated on the heap.
   size_t memory_footprint_including_this() const;
 
+  friend bool operator==(const IdMapping& lhs, const IdMapping& rhs);
+
  private:
   int slot(int key) const {
     return key & mask_;
