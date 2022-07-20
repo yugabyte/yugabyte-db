@@ -166,7 +166,7 @@ For a list of best practices, see [security checklist](../../secure/security-che
 - For the C5 instance family, use gp3 EBS (SSD) disks that are **at least 250GB** in size, larger if more IOPS are needed.
   - The number of IOPS are proportional to the size of the disk.
   - In our testing, gp3 EBS SSDs provide the best performance for a given cost among the various EBS disk options.
-- Avoid running on [T2 instance types](https://aws.amazon.com/ec2/instance-types/t2/). The T2 instance types are burstable instance types. Their baseline performance and ability to burst are governed by CPU Credits, which makes it hard to get steady performance.
+- Avoid running on [T2 instance types](https://aws.amazon.com/ec2/instance-types/t2/). The T2 instance types are burstable instance types. Their baseline performance and ability to burst are governed by CPU credits, which makes it hard to get steady performance.
 - Use VPC peering for multi-region deployments and connectivity to S3 object stores.
 
 ### Google Cloud
