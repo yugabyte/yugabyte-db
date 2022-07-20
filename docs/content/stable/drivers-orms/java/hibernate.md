@@ -15,14 +15,14 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/preview/drivers-orms/java/ebean/" class="nav-link ">
+    <a href="../ebean/" class="nav-link ">
       <i class="icon-java-bold" aria-hidden="true"></i>
       Ebean ORM
     </a>
   </li>
 
   <li >
-    <a href="/preview/drivers-orms/java/hibernate" class="nav-link active">
+    <a href="../hibernate" class="nav-link active">
       <i class="icon-java-bold" aria-hidden="true"></i>
       Hibernate ORM
     </a>
@@ -65,7 +65,7 @@ implementation 'org.hibernate:hibernate-core:5.4.19.Final'
 implementation 'org.hibernate:hibernate-annotations:3.5.6-Final'
 ```
 
-Note: Hibernate ORM can be used with the [YugabyteDB JDBC driver](../yugabyte-jdbc) and the [PostgreSQL JDBC Driver](../postgres-jdbc).
+Note: Hibernate ORM can be used with the [YugabyteDB JDBC driver](../yugabyte-jdbc/) and the [PostgreSQL JDBC Driver](../postgres-jdbc/).
 
 ### Step 2: Implementing ORM mapping for YugabyteDB
 
@@ -232,5 +232,5 @@ Query returned: name=John, age=35, language: Java
 
 ## Next Steps
 
-- Explore [Scaling Java Applications](/preview/explore/linear-scalability) with YugabyteDB.
-- Learn how to [develop Java applications with YugabyteDB Managed](/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-yb-jdbc/).
+- Explore [Scaling Java Applications](../../../explore/linear-scalability) with YugabyteDB.
+- Learn how to [develop Java applications with YugabyteDB Managed](../../../yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-yb-jdbc/).

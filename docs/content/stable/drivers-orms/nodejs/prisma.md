@@ -14,13 +14,13 @@ type: docs
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/preview/drivers-orms/nodejs/sequelize/" class="nav-link">
+    <a href="../sequelize/" class="nav-link">
       <i class="fab fa-node-js" aria-hidden="true"></i>
       Sequelize
     </a>
   </li>
   <li>
-    <a href="/preview/drivers-orms/nodejs/prisma/" class="nav-link active">
+    <a href="../prisma/" class="nav-link active">
       <i class="fab fa-node-js" aria-hidden="true"></i>
       Prisma
     </a>

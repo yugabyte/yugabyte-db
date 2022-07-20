@@ -14,14 +14,14 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/preview/drivers-orms/python/django/" class="nav-link">
+    <a href="../django/" class="nav-link">
       <i class="icon-java-bold" aria-hidden="true"></i>
       Django ORM
     </a>
   </li>
 
   <li >
-    <a href="/preview/drivers-orms/python/sqlalchemy/" class="nav-link active">
+    <a href="../sqlalchemy/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       SQLAlchemy ORM
     </a>

@@ -8,7 +8,7 @@ menu:
   stable:
     identifier: sequelize-1
     parent: nodejs-drivers
-    weight: 600
+    weight: 500
 type: docs
 ---
 
@@ -20,7 +20,7 @@ type: docs
     </a>
   </li>
   <li >
-    <a href="/preview/drivers-orms/nodejs/prisma/" class="nav-link ">
+    <a href="../prisma/" class="nav-link ">
       <i class="fab fa-node-js" aria-hidden="true"></i>
       Prisma
     </a>

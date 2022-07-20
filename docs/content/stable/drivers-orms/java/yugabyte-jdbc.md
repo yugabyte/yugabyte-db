@@ -16,14 +16,14 @@ For Java applications, the JDBC driver provides database connectivity through th
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/preview/drivers-orms/java/yugabyte-jdbc/" class="nav-link active">
+    <a href="../yugabyte-jdbc/" class="nav-link active">
       <i class="icon-java-bold" aria-hidden="true"></i>
       YugabyteDB JDBC Driver
     </a>
   </li>
 
   <li >
-    <a href="/preview/drivers-orms/java/postgres-jdbc/" class="nav-link">
+    <a href="../postgres-jdbc/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       PostgreSQL JDBC Driver
     </a>
@@ -165,4 +165,4 @@ To learn more about the driver, refer to the [architecture documentation of Smar
 ## Next steps
 
 - Learn how to build Java applications using [Hibernate ORM](../hibernate/).
-- Learn more about configuring YugabyteDB JDBC Driver load balancing options in [YugabyteDB JDBC reference section](/preview/reference/drivers/java/yugabyte-jdbc-reference/#load-balancing).
+- Learn more about configuring YugabyteDB JDBC Driver load balancing options in [YugabyteDB JDBC reference section](../../../reference/drivers/java/yugabyte-jdbc-reference/#load-balancing).
