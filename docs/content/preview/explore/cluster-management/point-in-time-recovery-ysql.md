@@ -8,7 +8,7 @@ aliases:
   - /preview/explore/backup-restore/point-in-time-recovery
 menu:
   preview:
-    identifier: cluster-management-point-in-time-recovery-ysql
+    identifier: cluster-management-point-in-time-recovery
     parent: explore-cluster-management
     weight: 704
 type: docs
@@ -45,7 +45,7 @@ This document contains examples that are deliberately simplified. In many of the
 
 The process of undoing data changes involves creating and taking a snapshot of a table, and then performing a restore from either an absolute or relative time.
 
-Before attempting a restore, you need to confirm that there is no restore in progress for the subject keyspace or table; if multiple restore commands are issued, the data might enter an inconsistent state. For details, see [Restore to a point in time](../../../manage/backup-restore/point-in-time-recovery/#restore-to-a-point-in-time).  
+Before attempting a restore, you need to confirm that there is no restore in progress for the subject keyspace or table; if multiple restore commands are issued, the data might enter an inconsistent state. For details, see [Restore to a point in time](../../../manage/backup-restore/point-in-time-recovery/#restore-to-a-point-in-time).
 
 ### Create and snapshot a table
 
