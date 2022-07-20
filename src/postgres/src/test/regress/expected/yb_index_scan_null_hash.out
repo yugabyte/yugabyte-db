@@ -13,7 +13,7 @@ CREATE INDEX i_nulltest_ba ON nulltest ((b, a) HASH);
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF)
 /*+ IndexScan(t1) NestLoop(t2 t1) Leading((t2 t1)) */
 SELECT * FROM nulltest t1 JOIN nulltest2 t2 ON t1.a = t2.x;
-                                 QUERY PLAN                                 
+                                 QUERY PLAN
 ----------------------------------------------------------------------------
  Nested Loop (actual rows=0 loops=1)
    ->  Seq Scan on nulltest2 t2 (actual rows=1 loops=1)
@@ -24,29 +24,33 @@ SELECT * FROM nulltest t1 JOIN nulltest2 t2 ON t1.a = t2.x;
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF)
 /*+ IndexScan(t1) NestLoop(t2 t1) Leading((t2 t1)) */
 SELECT * FROM nulltest t1 JOIN nulltest2 t2 ON t1.a <= t2.x;
-                                 QUERY PLAN                                  
------------------------------------------------------------------------------
+                           QUERY PLAN
+----------------------------------------------------------------
  Nested Loop (actual rows=0 loops=1)
+   Join Filter: (t1.a <= t2.x)
+   Rows Removed by Join Filter: 4
    ->  Seq Scan on nulltest2 t2 (actual rows=1 loops=1)
-   ->  Index Scan using i_nulltest_ba on nulltest t1 (actual rows=0 loops=1)
-         Index Cond: (a <= t2.x)
-(4 rows)
+   ->  Materialize (actual rows=4 loops=1)
+         ->  YB Seq Scan on nulltest t1 (actual rows=4 loops=1)
+(6 rows)
 
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF)
 /*+ IndexScan(t1) NestLoop(t2 t1) Leading((t2 t1)) */
 SELECT * FROM nulltest t1 JOIN nulltest2 t2 ON t1.a BETWEEN t2.x AND t2.x + 2;
-                                 QUERY PLAN                                  
------------------------------------------------------------------------------
+                           QUERY PLAN
+----------------------------------------------------------------
  Nested Loop (actual rows=0 loops=1)
+   Join Filter: ((t1.a >= t2.x) AND (t1.a <= (t2.x + 2)))
+   Rows Removed by Join Filter: 4
    ->  Seq Scan on nulltest2 t2 (actual rows=1 loops=1)
-   ->  Index Scan using i_nulltest_ba on nulltest t1 (actual rows=0 loops=1)
-         Index Cond: ((a >= t2.x) AND (a <= (t2.x + 2)))
-(4 rows)
+   ->  Materialize (actual rows=4 loops=1)
+         ->  YB Seq Scan on nulltest t1 (actual rows=4 loops=1)
+(6 rows)
 
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF)
 /*+ IndexScan(t1) NestLoop(t2 t1) Leading((t2 t1)) */
 SELECT * FROM nulltest t1 JOIN nulltest2 t2 ON (t1.a, t1.b) = (t2.x, t2.y);
-                                 QUERY PLAN                                  
+                                 QUERY PLAN
 -----------------------------------------------------------------------------
  Nested Loop (actual rows=0 loops=1)
    ->  Seq Scan on nulltest2 t2 (actual rows=1 loops=1)
@@ -57,7 +61,7 @@ SELECT * FROM nulltest t1 JOIN nulltest2 t2 ON (t1.a, t1.b) = (t2.x, t2.y);
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF)
 /*+ IndexScan(t1) NestLoop(t2 t1) Leading((t2 t1)) */
 SELECT * FROM nulltest t1 JOIN nulltest2 t2 ON (t1.a, t1.b) <= (t2.x, t2.y);
-                                 QUERY PLAN                                  
+                                 QUERY PLAN
 -----------------------------------------------------------------------------
  Nested Loop (actual rows=0 loops=1)
    ->  Seq Scan on nulltest2 t2 (actual rows=1 loops=1)
@@ -68,7 +72,7 @@ SELECT * FROM nulltest t1 JOIN nulltest2 t2 ON (t1.a, t1.b) <= (t2.x, t2.y);
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF)
 /*+ IndexScan(t1) */
 SELECT * FROM nulltest t1 WHERE (a, b) <= (null, 1);
-                              QUERY PLAN                               
+                              QUERY PLAN
 -----------------------------------------------------------------------
  Index Scan using i_nulltest_ba on nulltest t1 (actual rows=0 loops=1)
    Index Cond: (ROW(a, b) <= ROW(NULL::integer, 1))
@@ -77,7 +81,7 @@ SELECT * FROM nulltest t1 WHERE (a, b) <= (null, 1);
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF)
 /*+ IndexScan(t1) */
 SELECT a FROM nulltest t1 WHERE a IN (null, null);
-                              QUERY PLAN                              
+                              QUERY PLAN
 ----------------------------------------------------------------------
  Index Scan using i_nulltest_a on nulltest t1 (actual rows=0 loops=1)
    Index Cond: (a = ANY ('{NULL,NULL}'::integer[]))
@@ -86,7 +90,7 @@ SELECT a FROM nulltest t1 WHERE a IN (null, null);
 -- Should return 1s
 /*+ IndexScan(t1) */
 SELECT a FROM nulltest t1 WHERE a IN (null, 1);
- a 
+ a
 ---
  1
  1
@@ -95,7 +99,7 @@ SELECT a FROM nulltest t1 WHERE a IN (null, 1);
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF)
 /*+ IndexScan(t1) */
 SELECT a FROM nulltest t1 WHERE a IN (null, 1);
-                              QUERY PLAN                              
+                              QUERY PLAN
 ----------------------------------------------------------------------
  Index Scan using i_nulltest_a on nulltest t1 (actual rows=2 loops=1)
    Index Cond: (a = ANY ('{NULL,1}'::integer[]))
@@ -103,7 +107,7 @@ SELECT a FROM nulltest t1 WHERE a IN (null, 1);
 
 /*+ IndexScan(t1) */
 SELECT a FROM nulltest t1 WHERE (a, b) <= (2, null);
- a 
+ a
 ---
  1
  1
@@ -112,7 +116,7 @@ SELECT a FROM nulltest t1 WHERE (a, b) <= (2, null);
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF)
 /*+ IndexScan(t1) */
 SELECT a FROM nulltest t1 WHERE (a, b) <= (2, null);
-                              QUERY PLAN                               
+                              QUERY PLAN
 -----------------------------------------------------------------------
  Index Scan using i_nulltest_ba on nulltest t1 (actual rows=2 loops=1)
    Index Cond: (ROW(a, b) <= ROW(2, NULL::integer))
@@ -122,18 +126,17 @@ SELECT a FROM nulltest t1 WHERE (a, b) <= (2, null);
 -- Should return nulls
 /*+ IndexScan(t1) */
 SELECT a FROM nulltest t1 WHERE a IS NULL;
- a 
+ a
 ---
-  
-  
+
+
 (2 rows)
 
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF)
 /*+ IndexScan(t1) */
 SELECT a FROM nulltest t1 WHERE a IS NULL;
-                              QUERY PLAN                              
+                              QUERY PLAN
 ----------------------------------------------------------------------
  Index Scan using i_nulltest_a on nulltest t1 (actual rows=2 loops=1)
    Index Cond: (a IS NULL)
 (2 rows)
-
