@@ -16,7 +16,6 @@ import sys
 import time
 import traceback
 import uuid
-import socket
 import tempfile
 import tarfile
 import operator
@@ -836,7 +835,7 @@ class ControlScript(object):
         yb_master_cmd = [find_binary_location("yb-master")] + \
             common_gflags + \
             [
-                "--rpc_bind_addresses={}:{}".format(bind_ip, master_rpc_port),
+                "--rpc_bind_addresses={}:{}".format(advertise_ip, master_rpc_port),
                 "--server_broadcast_addresses={}:{}".format(advertise_ip, master_rpc_port),
                 "--replication_factor=1",
                 "--use_initial_sys_catalog_snapshot",
@@ -1839,25 +1838,6 @@ class ControlScript(object):
             Output.log("Failed to find java: {}".format(e), logging.ERROR)
             return False
 
-    def find_ip_address_of_node(self):
-
-        host_name = self.find_hostname_of_node()
-        host_ip = socket.gethostbyname(host_name)
-
-        return host_ip
-
-    def find_hostname_of_node(self):
-        fqdn = socket.getfqdn()
-
-        if "localhost" in fqdn:
-            fqdn = socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET,
-                                  socket.SOCK_DGRAM, socket.IPPROTO_IP,
-                                  socket.AI_CANONNAME)[0][3]
-            if "localhost" in fqdn:
-                fqdn = socket.gethostname()
-
-        return fqdn
-
     # Parse config file and input args. Validate them and save any new configs.
     def validate_and_set_configs(self, args):
 
@@ -1970,10 +1950,7 @@ class ControlScript(object):
                         ": --listen and --advertise_address flags " +
                         "are same. --listen is depricated. Can't have different values for them.")
                     has_errors = True
-                args.advertise_address = args.listen
-
-            if args.advertise_address is None:
-                args.advertise_address = self.find_ip_address_of_node()
+                self.configs.saved_data["advertise_address"] = args.listen
 
             if args.daemon is not None:
                 if args.background is not None and \
