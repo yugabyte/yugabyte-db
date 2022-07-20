@@ -143,8 +143,6 @@ public class CertificateController extends AuthenticatedController {
             runtimeConfigFactory.staticApplicationConf().getString("yb.storage.path"),
             certContent,
             keyContent,
-            certStart,
-            certExpiry,
             certType,
             customCertInfo,
             customServerCertData);
@@ -176,7 +174,12 @@ public class CertificateController extends AuthenticatedController {
     LOG.info("CertificateController: creating self signed certificate with label {}", certLabel);
     UUID certUUID =
         CertificateHelper.createRootCA(
-            certLabel, customerUUID, appConfig.getString("yb.storage.path"));
+            runtimeConfigFactory.staticApplicationConf(), certLabel, customerUUID);
+
+    if (certUUID == null) {
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "Root certificate creation failed");
+    }
+
     auditService()
         .createAuditEntryWithReqBody(
             ctx(),
@@ -205,7 +208,12 @@ public class CertificateController extends AuthenticatedController {
 
     CertificateDetails result =
         CertificateHelper.createClientCertificate(
-            rootCA, null, formData.get().username, certStart, certExpiry);
+            runtimeConfigFactory.staticApplicationConf(),
+            rootCA,
+            null,
+            formData.get().username,
+            certStart,
+            certExpiry);
 
     auditService()
         .createAuditEntryWithReqBody(
@@ -228,7 +236,7 @@ public class CertificateController extends AuthenticatedController {
 
       if (info.certType == CertConfigType.HashicorpVault) {
         EncryptionInTransitUtil.fetchLatestCAForHashicorpPKI(
-            info, runtimeConfigFactory.staticApplicationConf().getString("yb.storage.path"));
+            info, runtimeConfigFactory.staticApplicationConf());
       }
 
       String certContents = CertificateHelper.getCertPEMFileContents(rootCA);

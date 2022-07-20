@@ -689,7 +689,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         // Generate wildcard node cert and client cert and set them in override file
         CertificateInfo certInfo = CertificateInfo.get(u.getUniverseDetails().rootCA);
         CertificateProviderInterface certProvider =
-            EncryptionInTransitUtil.getCertificateProviderInstance(certInfo);
+            EncryptionInTransitUtil.getCertificateProviderInstance(
+                certInfo, runtimeConfigFactory.staticApplicationConf());
 
         Map<String, Object> rootCA = new HashMap<>();
         rootCA.put("cert", rootCert);
