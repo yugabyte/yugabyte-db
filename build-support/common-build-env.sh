@@ -159,6 +159,8 @@ readonly -a VALID_BUILD_TYPES=(
   tsan
   tsan_slow
   pvs
+  prof_gen
+  prof_use
 )
 make_regex_from_list VALID_BUILD_TYPES "${VALID_BUILD_TYPES[@]}"
 
@@ -344,7 +346,7 @@ decide_whether_to_use_linuxbrew() {
       fi
     elif [[ -n ${YB_LINUXBREW_DIR:-} ||
             ( ${YB_COMPILER_TYPE} =~ ^clang[0-9]+$ &&
-              $build_type == "release" &&
+               $build_type =~ ^(release|prof_(gen|use))$ &&
               "$( uname -m )" == "x86_64" ) ]]; then
       YB_USE_LINUXBREW=1
     fi
@@ -643,6 +645,9 @@ set_cmake_build_type_and_compiler_type() {
     tsan_slow)
       cmake_build_type=debug
     ;;
+    prof_gen|prof_use)
+      cmake_build_type=release
+    ;;
     *)
       cmake_build_type=$build_type
   esac
@@ -655,9 +660,14 @@ set_cmake_build_type_and_compiler_type() {
   readonly YB_COMPILER_TYPE
   export YB_COMPILER_TYPE
 
-  if [[ $build_type =~ ^asan|tsan|tsan_slow$ && $YB_COMPILER_TYPE == gcc* ]]; then
+  if [[ $build_type =~ ^(asan|tsan|tsan_slow)$ && $YB_COMPILER_TYPE == gcc* ]]; then
     fatal "Build type $build_type not supported with compiler type $YB_COMPILER_TYPE." \
           "Sanitizers are only supported with Clang."
+  fi
+
+  if [[ $build_type =~ ^(prof_gen|prof_use)$ && $YB_COMPILER_TYPE == gcc* ]]; then
+    fatal "Build type $build_type not supported with compiler type $YB_COMPILER_TYPE." \
+          "PGO works only with Clang for now."
   fi
 
   # We need to set CMAKE_C_COMPILER and CMAKE_CXX_COMPILER outside of CMake. We used to do that from
