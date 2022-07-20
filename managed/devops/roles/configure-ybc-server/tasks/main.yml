@@ -56,6 +56,11 @@
       user: "yugabyte"
       state: absent
 
+  - name: Determine system or user scope
+    stat:
+      path: /etc/systemd/system/yb-controller.service
+    register: systemd_system
+
   - name: User mode systemd
     block:
     - name: Stop existing running controller
@@ -81,9 +86,9 @@
         state: started
         enabled: yes
         scope: user
-    when: ansible_os_family != 'RedHat' or ansible_distribution_major_version != '7'
+    when: not systemd_system.stat.exists
 
-  - name: System (RHEL7) systemd units
+  - name: System systemd units
     block:
     - name: Enable yb-controller service
       shell:
@@ -97,7 +102,7 @@
     - name: Perform daemon-reload for the new services
       shell:
         cmd: "sudo systemctl daemon-reload"
-    when: ansible_os_family == 'RedHat' and ansible_distribution_major_version == '7'
+    when: systemd_system.stat.exists
 
   tags:
     - override_gflags
