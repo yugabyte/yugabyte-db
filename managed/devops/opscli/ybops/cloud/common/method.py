@@ -730,7 +730,10 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
         ansible = self.cloud.setup_ansible(args)
         ansible.run("preprovision.yml", self.extra_vars, host_info)
 
-        if not args.disable_custom_ssh and use_default_port and not args.ssh2_enabled:
+        # Disabling custom_ssh_port for onprem provider when ssh2_enabled, because
+        # we won't be able to know whether the nodes used are having openssh/tectia server.
+        if not args.disable_custom_ssh and use_default_port and \
+                not (args.ssh2_enabled and self.cloud.name == "onprem"):
             ansible.run("use_custom_ssh_port.yml", self.extra_vars, host_info)
 
 
