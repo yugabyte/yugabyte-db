@@ -2,7 +2,7 @@
 title: Prepare the OpenShift environment
 headerTitle: Prepare the OpenShift environment
 linkTitle: Prepare the environment
-description: Prepare the OpenShift environment for Yugabyte Platform
+description: Prepare the OpenShift environment for YugabyteDB Anywhere
 menu:
   stable_yugabyte-platform:
     identifier: prepare-environment-4-OpenShift
@@ -14,42 +14,42 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li>
-    <a href="/preview/yugabyte-platform/install-yugabyte-platform/prepare-environment/aws" class="nav-link">
+    <a href="../aws/" class="nav-link">
       <i class="fab fa-aws" aria-hidden="true"></i>
       AWS
     </a>
   </li>
 
   <li>
-    <a href="/preview/yugabyte-platform/install-yugabyte-platform/prepare-environment/gcp" class="nav-link">
+    <a href="../gcp/" class="nav-link">
        <i class="fab fa-google" aria-hidden="true"></i>
       GCP
     </a>
   </li>
 
   <li>
-    <a href="/preview/yugabyte-platform/install-yugabyte-platform/prepare-environment/azure" class="nav-link">
+    <a href="../azure/" class="nav-link">
       <i class="icon-azure" aria-hidden="true"></i>
       &nbsp;&nbsp; Azure
     </a>
   </li>
 
   <li>
-    <a href="/preview/yugabyte-platform/install-yugabyte-platform/prepare-environment/kubernetes" class="nav-link">
+    <a href="../kubernetes/" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
 
 <li>
-    <a href="/preview/yugabyte-platform/install-yugabyte-platform/prepare-environment/openshift" class="nav-link active">
+    <a href="../openshift/" class="nav-link active">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       OpenShift
     </a>
  </li>
 
   <li>
-    <a href="/preview/yugabyte-platform/install-yugabyte-platform/prepare-environment/on-premises" class="nav-link">
+    <a href="../on-premises/" class="nav-link">
       <i class="fas fa-building" aria-hidden="true"></i>
       On-premises
     </a>
@@ -61,7 +61,7 @@ To prepare the environment for OpenShift, you start by provisioning the OpenShif
 
 The recommended OpenShift Container Platform (OCP) version is 4.6, with backward compatibility assumed but not guaranteed.
 
-You should have 18 vCPU and 32 GB of memory available for testing Yugabyte Platform. This can be three or more nodes equivalent to Google Platform's n1-standard-8 (8 vCPU, 30 GB memory).
+You should have 18 vCPU and 32 GB of memory available for testing YugabyteDB Anywhere. This can be three or more nodes equivalent to Google Cloud Platform's n1-standard-8 (8 vCPU, 30 GB memory).
 
 For more information and examples on provisioning OpenShift clusters on GCP, see the following:
 

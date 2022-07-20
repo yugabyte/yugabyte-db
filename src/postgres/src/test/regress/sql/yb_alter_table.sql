@@ -21,3 +21,29 @@ ALTER TABLE pg_tablespace OWNER TO regress_alter_table_user1; -- should fail
 ---
 ALTER INDEX index_table_other RENAME TO index_table_other_new;
 RESET SESSION AUTHORIZATION;
+
+---
+--- Verify alter table which requires table rewrite
+---
+
+--- Table without primary key index
+--- Empty table case
+CREATE TABLE no_pk_tbl(k INT);
+ALTER TABLE no_pk_tbl ADD COLUMN s1 TIMESTAMP DEFAULT clock_timestamp();
+ALTER TABLE no_pk_tbl ADD COLUMN v1 SERIAL;
+--- Non-empty case
+INSERT INTO no_pk_tbl VALUES(1), (2), (3);
+ALTER TABLE no_pk_tbl ADD COLUMN s2 TIMESTAMP DEFAULT clock_timestamp();
+ALTER TABLE no_pk_tbl ADD COLUMN v2 SERIAL;
+DROP TABLE no_pk_tbl;
+
+--- Table with primary key index
+--- Empty table case
+CREATE TABLE pk_tbl(k INT PRIMARY KEY);
+ALTER TABLE pk_tbl ADD COLUMN s1 TIMESTAMP DEFAULT clock_timestamp();
+ALTER TABLE pk_tbl ADD COLUMN v1 SERIAL;
+--- Non-empty case
+INSERT INTO pk_tbl VALUES(1), (2), (3);
+ALTER TABLE pk_tbl ADD COLUMN s2 TIMESTAMP DEFAULT clock_timestamp();
+ALTER TABLE pk_tbl ADD COLUMN v2 SERIAL;
+DROP TABLE pk_tbl;

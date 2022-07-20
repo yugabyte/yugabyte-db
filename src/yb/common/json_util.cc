@@ -165,7 +165,8 @@ Status ConvertQLValuePBToRapidJson(const QLValuePB& ql_value_pb,
       }
     }
     break;
-
+    case QLValuePB::ValueCase::kTupleValue:
+      FALLTHROUGH_INTENDED;
     default:
         return STATUS_SUBSTITUTE(
             QLError, "Unexpected value type: $0", ql_value_pb.ShortDebugString());

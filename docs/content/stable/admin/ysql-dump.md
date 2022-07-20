@@ -1,5 +1,5 @@
 ---
-title: ysql_dump - back up a YSQL database
+title: ysql_dump
 headerTitle: ysql_dump
 linkTitle: ysql_dump
 description: Back up a specified YSQL database into plain-text, SQL script file.
@@ -14,7 +14,7 @@ type: docs
 
 `ysql_dump` is a utility for backing up a YugabyteDB database into a plain-text, SQL script file. `ysql_dump` makes consistent backups, even if the database is being used concurrently. `ysql_dump` does not block other users accessing the database (readers or writers).
 
-`ysql_dump` only dumps a single database. To backup global objects that are common to all databases in a cluster, such as roles, use [`ysql_dumpall`](../ysql-dumpall).
+`ysql_dump` only dumps a single database. To backup global objects that are common to all databases in a cluster, such as roles, use [`ysql_dumpall`](../ysql-dumpall/).
 
 Dumps are output in plain-text, SQL script files. Script dumps are plain-text files containing the SQL statements required to reconstruct the database to the state it was in at the time it was saved. To restore from such a script, import it using the [`ysqlsh \i`](../ysqlsh/#-i-filename-include-filename) command. Script files can be used to reconstruct the database even on other machines and other architectures; with some modifications, even on other SQL database products.
 
@@ -294,7 +294,7 @@ This utility also uses the environment variables supported by `libpq`.
 
 ## Diagnostics
 
-`ysql_dump` internally executes `SELECT` statements. If you have problems running `ysql_dump`, make sure you are able to select information from the database using, for example, [`ysqlsh`](../ysqlsh). Also, any default connection settings and environment variables used by the `libpq` front-end library will apply.
+`ysql_dump` internally executes `SELECT` statements. If you have problems running `ysql_dump`, make sure you are able to select information from the database using, for example, [`ysqlsh`](../ysqlsh/). Also, any default connection settings and environment variables used by the `libpq` front-end library will apply.
 
 The database activity of `ysql_dump` is normally collected by the statistics collector. If this is undesirable, you can set parameter `track_counts` to `false` using `PGOPTIONS` or the [`ALTER USER`](../../api/ysql/the-sql-language/statements/dcl_alter_user) statement.
 
@@ -350,5 +350,5 @@ $ ysql_dump -T 'ts_*' mydb > objects_mydb.sql
 
 ## See also
 
-- [ysql_dumpall](../ysql-dumpall)
-- [ysqlsh](../ysqlsh)
+- [ysql_dumpall](../ysql-dumpall/)
+- [ysqlsh](../ysqlsh/)

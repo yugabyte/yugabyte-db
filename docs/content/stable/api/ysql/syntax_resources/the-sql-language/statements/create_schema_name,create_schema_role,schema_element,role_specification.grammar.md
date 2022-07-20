@@ -1,4 +1,4 @@
-```ebnf
+```output.ebnf
 create_schema_name ::= CREATE SCHEMA [ IF NOT EXISTS ] schema_name 
                        [ AUTHORIZATION role_specification ] 
                        [ schema_element [ ... ] ]

@@ -9,45 +9,44 @@ menu:
     name: Python Drivers
     identifier: ref-postgres-psycopg2-driver
     parent: drivers
-    weight: 600
+    weight: 660
 type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li >
-    <a href="/preview/reference/drivers/python/postgres-psycopg2-reference" class="nav-link active">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      PostgreSQL Psycopg2
-    </a>
-  </li>
     <li >
     <a href="/preview/reference/drivers/python/yugabyte-psycopg2-reference" class="nav-link ">
       <i class="icon-java-bold" aria-hidden="true"></i>
       YugabyteDB Psycopg2
     </a>
   </li>
-
+  <li >
+    <a href="/preview/reference/drivers/python/postgres-psycopg2-reference" class="nav-link active">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      PostgreSQL Psycopg2
+    </a>
+  </li>
 </ul>
 
 Psycopg is the most popular PostgreSQL database adapter for the Python programming language. Its main features are the complete implementation of the Python DB API 2.0 specification and the thread safety (several threads can share the same connection). YugabyteDB has full support for [Psycopg2](https://www.psycopg.org/).
 
-## Fundamentals of PostgreSQL Psycopg driver
+## Fundamentals
 
-Learn how to establish a connection to YugabyteDB database and begin simple CRUD operations using the steps in [Build an Application](/preview/quick-start/build-apps/python/ysql-psycopg2) in the Quick Start section.
+Learn how to establish a connection to YugabyteDB database and begin CRUD operations using the steps in [Build an Application](/preview/quick-start/build-apps/python/ysql-psycopg2) in the Quick start section.
 
-Let us break down the quick start example and understand how to perform the common tasks required for Python App development using the PostgreSQL Psycopg driver.
+Let us break down the quick start example and understand how to perform the common tasks required for Python application development using the PostgreSQL Psycopg driver.
 
 ### Download the Driver Dependency
 
-Building Psycopg requires a few prerequisites (a C compiler, some development packages): please check the [install](https://www.psycopg.org/docs/install.html#install-from-source) and the [faq](https://www.psycopg.org/docs/faq.html#faq-compile) documents in the doc dir or online for the details.
+Building Psycopg requires a few prerequisites (a C compiler, some development packages). Check the [installation instructions](https://www.psycopg.org/docs/install.html#install-from-source) and the [FAQ](https://www.psycopg.org/docs/faq.html#faq-compile) for details.
 
-If prerequisites are met, you can install psycopg like any other Python package, using ``pip`` to download it from [PyPI](https://pypi.org/project/psycopg2/):
+If prerequisites are met, you can install psycopg like any other Python package, using pip to download it from [PyPI](https://pypi.org/project/psycopg2/):
 
 ```sh
 $ pip install psycopg2
 ```
 
-or using ``setup.py`` if you have downloaded the source package locally:
+Or, you can use the setup.py script if you've downloaded the source package locally:
 
 ```sh
 $ python setup.py build
@@ -60,56 +59,59 @@ You can also obtain a stand-alone package, not requiring a compiler or external 
 $ pip install psycopg2-binary
 ```
 
-The binary package is a practical choice for development and testing but in production it is advised to use the package built from sources.
+The binary package is a practical choice for development and testing but in production it is recommended to use the package built from sources.
 
-### Connect to YugabyteDB Database
+### Connect to YugabyteDB database
 
-Python Apps can connect to and query the YugabyteDB database. To do that first import the psycopg2 package.
+Python applications can connect to and query the YugabyteDB database using the following:
 
-```python
-import psycopg2
-```
+- Import the psycopg2 package.
 
-The Connection details can be provided as a string or a dictionary.
-Connection String
+   ```python
+   import psycopg2
+   ```
 
-```python
-"dbname=database_name host=hostname port=port user=username  password=password"
-```
+- The Connection details can be provided as a string or a dictionary.
 
-Connection Dictionary
+   Connection String
 
-```python
-user = 'username', password='xxx', host = 'hostname', port = 'port', dbname = 'database_name'
-```
+   ```python
+   "dbname=database_name host=hostname port=port user=username  password=password"
+   ```
 
-Example URL for connecting to YugabyteDB can be seen below.
+   Connection Dictionary
 
-```python
-conn = psycopg2.connect(dbname='yugabyte',host='localhost',port='5433',user='yugabyte',password='yugabyte')
-```
+   ```python
+   user = 'username', password='xxx', host = 'hostname', port = 'port', dbname = 'database_name'
+   ```
 
-| Params | Description | Default |
-| :---------- | :---------- | :------ |
+The following table describes the connection parameters required to connect to the YugabyteDB database
+
+| Parameters | Description | Default |
+| :-------------- | :------------------------- | :---------- |
 | host  | hostname of the YugabyteDB instance | localhost
 | port |  Listen port for YSQL | 5433
-| database/dbname | database name | yugabyte
-| user | user for connecting to the database | yugabyte
-| password | password for connecting to the database | yugabyte
+| database/dbname | Database name | yugabyte
+| user | User for connecting to the database | yugabyte
+| password | Password for the user | yugabyte
 
-### Create a Cursor
+The following is an example connection string for connecting to YugabyteDB.
 
-To execute any sql commands, a cursor needs to be created after connection is made. It allows Python code to execute PostgreSQL command in a database session. Cursors are created by the ``connection.cursor()`` method: they are bound to the connection for the entire lifetime and all the commands are executed in the context of the database session wrapped by the connection.
+   ```python
+   conn = psycopg2.connect(dbname='yugabyte',host='localhost',port='5433',user='yugabyte',password='yugabyte')
+   ```
+
+### Create a cursor
+
+To execute any sql commands, a cursor needs to be created after a connection is made. It allows Python code to execute PostgreSQL commands in a database session. Cursors are created by the `connection.cursor()` method; they are bound to the connection for the entire lifetime, and all the commands are executed in the context of the database session wrapped by the connection.
 
 ```python
 cur = conn.cursor()
 ```
 
-### Create Table
+### Create table
 
-Tables can be created in YugabyteDB by passing the `CREATE TABLE` DDL statement to the `cursor.execute(statement)` method.
-
-For example
+Tables can be created in YugabyteDB by passing the `CREATE TABLE` DDL statement to the `cursor.execute(statement)` method, using the following example:
 
 ```sql
 CREATE TABLE IF NOT EXISTS employee (id int PRIMARY KEY, name varchar, age int, language text)
@@ -127,9 +129,9 @@ cur.execute('CREATE TABLE IF NOT EXISTS employee (id int PRIMARY KEY, name varch
 
 #### Insert Data
 
-In order to write data into YugabyteDB, execute the `INSERT` statement using the `cursor.execute(statement)` method.
+To write data into YugabyteDB, execute the `INSERT` statement using the `cursor.execute(statement)` method.
 
-For example
+For example,
 
 ```sql
 INSERT INTO employee VALUES (1, 'John', 35, 'Java')
@@ -162,9 +164,9 @@ try {
 
 #### Query Data
 
-In order to query data from YugabyteDB tables, execute the `SELECT` statement using `cursor.execute(statement)` method followed by `cursor.fetchall()` method. `fetchall()` fetches all the rows of a query result, returning them as a list of tuples. An empty list is returned if there is no more record to fetch.
+To query data from YugabyteDB tables, execute the `SELECT` statement using `cursor.execute(statement)` method followed by `cursor.fetchall()` method. `fetchall()` fetches all the rows of a query result, returning them as a list of tuples. An empty list is returned if there are no records to fetch.
 
-For example
+For example,
 
 ```sql
 SELECT * from employee;

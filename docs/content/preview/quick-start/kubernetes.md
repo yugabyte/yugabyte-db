@@ -11,7 +11,7 @@ type: docs
 <div class="custom-tabs tabs-style-2">
   <ul class="tabs-name">
     <li>
-      <a href="../../quick-start-yugabytedb-managed/" class="nav-link">
+      <a href="/preview/quick-start-yugabytedb-managed/" class="nav-link">
         Use a cloud cluster
       </a>
     </li>
@@ -56,28 +56,35 @@ The local cluster setup on a single host is intended for development and learnin
   </ul>
 </div>
 
+
 ## Install YugabyteDB
+
+Installing YugabyteDB involves completing [prerequisites](#prerequisites), [starting Kubernetes](#start-kubernetes), and [downloading Helm chart](#download-yugabytedb-helm-chart).
 
 ### Prerequisites
 
-- [Minikube](https://github.com/kubernetes/minikube) is installed on your localhost machine.
+Before installing YugabyteDB, ensure that you have the following installed:
 
-    The Kubernetes version used by Minikube should be v1.18.0 or later. The default Kubernetes version being used by Minikube displays when you run the `minikube start` command. To install Minikube, see [Install Minikube](https://kubernetes.io/docs/tasks/tools/install-minikube/) in the Kubernetes documentation.
+- [Minikube](https://github.com/kubernetes/minikube) on your localhost machine.
 
-- [kubectl](https://kubernetes.io/docs/reference/kubectl/overview/) is installed.
+    The Kubernetes version used by Minikube should be 1.18.0 or later. The default Kubernetes version being used by Minikube displays when you run the `minikube start` command. To install Minikube, see [Install Minikube](https://kubernetes.io/docs/tasks/tools/install-minikube/) in the Kubernetes documentation.
+
+- [kubectl](https://kubernetes.io/docs/reference/kubectl/overview/).
 
     To install `kubectl`, see [Install kubectl](https://kubernetes.io/docs/tasks/tools/install-kubectl/) in the Kubernetes documentation.
 
-- [Helm 3.4 or later](https://helm.sh/) is installed.
+- [Helm 3.4 or later](https://helm.sh/).
 
     To install `helm`, see [Install helm](https://helm.sh/docs/intro/install/) in the Helm documentation.
 
 ### Start Kubernetes
 
-- Start Kubernetes using Minikube by running the following command. Note that minikube by default brings up a single-node Kubernetes environment with 2GB RAM, 2 CPUS, and a disk of 20GB. We recommend starting minkube with at least 8GB RAM, 4 CPUs and 40GB disk as shown below.
+To start Kubernetes, perform the following:
+
+- Start Kubernetes using Minikube by running the following command. Note that minikube by default brings up a single-node Kubernetes environment with 2GB RAM, 2 CPUS, and a disk of 20GB. You should start minkube with at least 8GB RAM, 4 CPUs and 40GB disk, as follows:
 
     ```sh
-    $ minikube start --memory=8192 --cpus=4 --disk-size=40g --vm-driver=virtualbox
+    minikube start --memory=8192 --cpus=4 --disk-size=40g --vm-driver=virtualbox
     ```
 
     ```output
@@ -86,16 +93,16 @@ The local cluster setup on a single host is intended for development and learnin
     ...
     ```
 
-- Review Kubernetes dashboard by running the following command.
+- Review Kubernetes dashboard by running the following command:
 
     ```sh
-    $ minikube dashboard
+    minikube dashboard
     ```
 
-- Confirm that your kubectl is configured correctly by running the following command.
+- Confirm that your kubectl is configured correctly by running the following command:
 
     ```sh
-    $ kubectl version
+    kubectl version
     ```
 
     ```output
@@ -103,64 +110,62 @@ The local cluster setup on a single host is intended for development and learnin
     Server Version: version.Info{Major:"1", Minor:"14", GitVersion:"v1.14.2", ...}
     ```
 
-- Confirm that your Helm is configured correctly by running the following command.
+- Confirm that your Helm is configured correctly by running the following command:
 
     ```sh
-    $ helm version
+    helm version
     ```
 
     ```output
     version.BuildInfo{Version:"v3.0.3", GitCommit:"...", GitTreeState:"clean", GoVersion:"go1.13.6"}
     ```
 
-### Download YugabyteDB Helm Chart
+### Download YugabyteDB Helm chart
 
-#### Add charts repository
+To start YugabyteDB Helm chart, perform the following:
 
-To add the YugabyteDB charts repository, run the following command.
+- Add the charts repository using the following command:
 
-```sh
-$ helm repo add yugabytedb https://charts.yugabyte.com
-```
+    ```sh
+    helm repo add yugabytedb https://charts.yugabyte.com
+    ```
 
-#### Fetch updates from the repository
+- Fetch updates from the repository by running the following command:
 
-Make sure that you have the latest updates to the repository by running the following command.
+    ```sh
+    helm repo update
+    ```
 
-```sh
-$ helm repo update
-```
+- Validate the chart version, as follows:
 
-#### Validate the chart version
+    ```sh
+    helm search repo yugabytedb/yugabyte --version {{<yb-version version="preview" format="short">}}
+    ```
 
-```sh
-$ helm search repo yugabytedb/yugabyte --version {{<yb-version version="preview" format="short">}}
-```
-
-```output
-NAME                 CHART VERSION  APP VERSION   DESCRIPTION
-yugabytedb/yugabyte  {{<yb-version version="preview" format="short">}}          {{<yb-version version="preview" format="build">}}  YugabyteDB is the high-performance distributed ...
-```
+    ```output
+    NAME                 CHART VERSION  APP VERSION   DESCRIPTION
+  yugabytedb/yugabyte  {{<yb-version version="preview" format="short">}}          {{<yb-version version="preview" format="build">}}  YugabyteDB is the high-performance distributed ...
+  ```
 
 Now you are ready to create a local YugabyteDB cluster.
 
 ## Create a local cluster
 
-Create a YugabyteDB cluster in Minikube using the commands below. Note that for Helm, you have to first create a namespace.
+Create a YugabyteDB cluster in Minikube using the following commands. Note that for Helm, you have to first create a namespace:
 
 ```sh
-$ kubectl create namespace yb-demo
-$ helm install yb-demo yugabytedb/yugabyte \
+kubectl create namespace yb-demo
+helm install yb-demo yugabytedb/yugabyte \
 --version {{<yb-version version="preview" format="short">}} \
 --set resource.master.requests.cpu=0.5,resource.master.requests.memory=0.5Gi,\
 resource.tserver.requests.cpu=0.5,resource.tserver.requests.memory=0.5Gi,\
 replicas.master=1,replicas.tserver=1 --namespace yb-demo
 ```
 
-Note that in Minikube, the LoadBalancers for `yb-master-ui` and `yb-tserver-service` will remain in pending state since load balancers are not available in a Minikube environment. If you would like to turn off these services then pass the `enableLoadBalancer=False` flag as shown below.
+Since load balancers are not available in a Minikube environment, the LoadBalancers for `yb-master-ui` and `yb-tserver-service` remain in pending state. To disable these services, you can pass the `enableLoadBalancer=False` flag, as follows:
 
 ```sh
-$ helm install yb-demo yugabytedb/yugabyte \
+helm install yb-demo yugabytedb/yugabyte \
 --version {{<yb-version version="preview" format="short">}} \
 --set resource.master.requests.cpu=0.5,resource.master.requests.memory=0.5Gi,\
 resource.tserver.requests.cpu=0.5,resource.tserver.requests.memory=0.5Gi,\
@@ -169,10 +174,10 @@ replicas.master=1,replicas.tserver=1,enableLoadBalancer=False --namespace yb-dem
 
 ### Check cluster status with kubectl
 
-Run the following command to see that you now have two services with one pod each — 1 yb-master pod (`yb-master-0`) and 1 yb-tserver pod (`yb-tserver-0`) running. For details on the roles of these pods in a YugabyteDB cluster (aka Universe), see [Universe](../../architecture/concepts/universe/) in the Concepts section.
+Run the following command to verify that you have two services with one running pod in each: one YB-Master pod (`yb-master-0`) and one YB-Tserver pod (`yb-tserver-0`). For details on the roles of these pods in a YugabyteDB cluster (also known as universe), see [Universe](../../architecture/concepts/universe/).
 
 ```sh
-$ kubectl --namespace yb-demo get pods
+kubectl --namespace yb-demo get pods
 ```
 
 ```output
@@ -181,7 +186,7 @@ yb-master-0    0/2       ContainerCreating   0          5s
 yb-tserver-0   0/2       ContainerCreating   0          4s
 ```
 
-Eventually, all the pods will have the `Running` state.
+Eventually, all the pods will have the Running state, as per the following output:
 
 ```output
 NAME           READY     STATUS    RESTARTS   AGE
@@ -189,10 +194,10 @@ yb-master-0    2/2       Running   0          13s
 yb-tserver-0   2/2       Running   0          12s
 ```
 
-To see the status of the three services, run the following command.
+To check the status of the three services, run the following command:
 
 ```sh
-$ kubectl --namespace yb-demo get services
+kubectl --namespace yb-demo get services
 ```
 
 ```output
@@ -205,29 +210,29 @@ yb-tservers          ClusterIP      None           <none>        7100/TCP,9000/T
 
 ### Check cluster status with Admin UI
 
-Under the hood, the cluster you have just created consists of two processes: [YB-Master](../../architecture/concepts/yb-master/) which keeps track of various metadata (list of tables, users, roles, permissions, and so on), and [YB-TServer](../../architecture/concepts/yb-tserver/) which is responsible for the actual end user requests for data updates and queries.
+The cluster you have created consists of two processes: [YB-Master](../../architecture/concepts/yb-master/) that keeps track of various metadata (list of tables, users, roles, permissions, and so on) and [YB-TServer](../../architecture/concepts/yb-tserver/) that is responsible for the actual end-user requests for data updates and queries.
 
-Each of the processes exposes its own Admin UI that can be used to check the status of the corresponding process, and perform certain administrative operations.
+Each of the processes exposes its own Admin UI that can be used to check the status of the corresponding process and perform certain administrative operations.
 
-To get access to the Admin UI, you first need to set up port forwarding for port 7000:
+To access the Admin UI, you first need to set up port forwarding for port 7000, as follows:
 
 ```sh
-$ kubectl --namespace yb-demo port-forward svc/yb-master-ui 7000:7000
+kubectl --namespace yb-demo port-forward svc/yb-master-ui 7000:7000
 ```
 
-Now, you can view the [yb-master-0 Admin UI](../../reference/configuration/yb-master/#admin-ui) at <http://localhost:7000>.
+Now you can view the [yb-master-0 Admin UI](../../reference/configuration/yb-master/#admin-ui) at http://localhost:7000.
 
 #### Overview and YB-Master status
 
-The YB-Master home page shows that you have a cluster (or universe) with a replication factor of 1, a single node, and no tables. The YugabyteDB version is also displayed.
+The following illustration shows the YB-Master home page with a cluster with a replication factor of 1, a single node, and no tables. The YugabyteDB version is also displayed.
 
 ![master-home](/images/admin/master-home-kubernetes-rf1.png)
 
-The **Masters** section highlights the 1 YB-Master along with its corresponding cloud, region, and zone placement.
+The **Masters** section shows the 1 YB-Master along with its corresponding cloud, region, and zone placement.
 
 #### YB-TServer status
 
-Click **See all nodes** to go to the **Tablet Servers** page, which lists the YB-TServer along with the time since it last connected to the YB-Master using regular heartbeats.
+Click **See all nodes** to open the **Tablet Servers** page that lists the YB-TServer along with the time since it last connected to the YB-Master using regular heartbeats, as per the following illustration:
 
 ![tserver-list](/images/admin/master-tservers-list-kubernetes-rf1.png)
 
@@ -235,34 +240,36 @@ Click **See all nodes** to go to the **Tablet Servers** page, which lists the YB
 
 ### Prerequisites
 
-This tutorial assumes that:
+Before building a Java application, perform the following:
 
-- YugabyteDB is up and running. Using the [yb-ctl](/preview/admin/yb-ctl/#root) utility, create a universe with a 3-node RF-3 cluster with some fictitious geo-locations assigned.
+- While YugabyteDB is running, use the [yb-ctl](/preview/admin/yb-ctl/#root) utility to create a universe with a 3-node RF-3 cluster with some fictitious geo-locations assigned, as follows:
 
   ```sh
-  $ cd <path-to-yugabytedb-installation>
+  cd <path-to-yugabytedb-installation>
 
   ./bin/yb-ctl create --rf 3 --placement_info "aws.us-west.us-west-2a,aws.us-west.us-west-2a,aws.us-west.us-west-2b"
   ```
 
-- Java Development Kit (JDK) 1.8, or later, is installed. JDK installers can be downloaded from [OpenJDK](http://jdk.java.net/).
-- [Apache Maven](https://maven.apache.org/index.html) 3.3 or later, is installed.
+- Ensure that Java Development Kit (JDK) 1.8 or later is installed. JDK installers can be downloaded from [OpenJDK](http://jdk.java.net/).
+- Ensure that [Apache Maven](https://maven.apache.org/index.html) 3.3 or later is installed.
 
 ### Create and configure the Java project
 
-1. Create a project called "DriverDemo".
+Perform the following to create a sample Java project:
+
+1. Create a project called DriverDemo, as follows:
 
     ```sh
-    $ mvn archetype:generate \
+    mvn archetype:generate \
         -DgroupId=com.yugabyte \
         -DartifactId=DriverDemo \
         -DarchetypeArtifactId=maven-archetype-quickstart \
         -DinteractiveMode=false
 
-    $ cd DriverDemo
+    cd DriverDemo
     ```
 
-1. Open the pom.xml file in a text editor and add the following below the `<url>` element.
+1. Open the `pom.xml` file in a text editor and add the following block below the `<url>` element:
 
     ```xml
     <properties>
@@ -271,7 +278,7 @@ This tutorial assumes that:
     </properties>
     ```
 
-1. Add the following dependencies for the driver HikariPool within the `<dependencies>` element in `pom.xml`.
+1. Add the following dependencies for the driver HikariPool within the `<dependencies>` element in `pom.xml`:
 
     ```xml
     <dependency>
@@ -288,24 +295,24 @@ This tutorial assumes that:
     </dependency>
     ```
 
-1. Save and close `pom.xml`.
+1. Save and close the `pom.xml` file.
 
-1. Install the added dependency.
+1. Install the added dependency by executing the following command:
 
     ```sh
-    $ mvn install
+    mvn install
     ```
 
-### Create the sample Java application
+### Create a sample Java application
 
-You'll create two java applications, `UniformLoadBalance` and `TopologyAwareLoadBalance`. In each, you can create connections in two ways: using the `DriverManager.getConnection()` API, or using `YBClusterAwareDataSource` and `HikariPool`. This example shows both approaches.
+The following steps demonstrate how to create two Java applications, `UniformLoadBalance` and `TopologyAwareLoadBalance`. In each, you can create connections in one of two ways: using the `DriverManager.getConnection()` API or using `YBClusterAwareDataSource` and `HikariPool`. Both approaches are described.
 
 #### Uniform load balancing
 
-1. Create a file called `./src/main/java/com/yugabyte/UniformLoadBalanceApp.java`.
+1. Create a file called `./src/main/java/com/yugabyte/UniformLoadBalanceApp.java` by executing the following command:
 
     ```sh
-    $ touch ./src/main/java/com/yugabyte/UniformLoadBalanceApp.java
+    touch ./src/main/java/com/yugabyte/UniformLoadBalanceApp.java
     ```
 
 1. Paste the following into `UniformLoadBalanceApp.java`:
@@ -334,7 +341,7 @@ You'll create two java applications, `UniformLoadBalance` and `TopologyAwareLoad
       }
 
       public static void makeConnectionUsingDriverManager() {
-        //List to store the connections so that they can be closed at the end
+        // List to store the connections so that they can be closed at the end
         List<Connection> connectionList = new ArrayList<>();
 
         System.out.println("Lets create 6 connections using DriverManager");
@@ -366,7 +373,7 @@ You'll create two java applications, `UniformLoadBalance` and `TopologyAwareLoad
 
         Properties poolProperties = new Properties();
         poolProperties.setProperty("dataSourceClassName", "com.yugabyte.ysql.YBClusterAwareDataSource");
-        //the pool will create  10 connections to the servers
+        // The pool will create  10 connections to the servers
         poolProperties.setProperty("maximumPoolSize", String.valueOf(10));
         poolProperties.setProperty("dataSource.serverName", "127.0.0.1");
         poolProperties.setProperty("dataSource.portNumber", "5433");
@@ -394,11 +401,9 @@ You'll create two java applications, `UniformLoadBalance` and `TopologyAwareLoad
     }
     ```
 
-    {{< note title="Note">}}
-When using `DriverManager.getConnection()`, you need to include the `load-balance=true` property in the connection URL. In the case of `YBClusterAwareDataSource`, load balancing is enabled by default.
-    {{< /note >}}
+    When using `DriverManager.getConnection()`, you need to include the `load-balance=true` property in the connection URL. In the case of `YBClusterAwareDataSource`, load balancing is enabled by default.
 
-1. Run the application.
+1. Run the application, as follows:
 
     ```sh
     mvn -q package exec:java -DskipTests -Dexec.mainClass=com.yugabyte.UniformLoadBalanceApp
@@ -406,10 +411,10 @@ When using `DriverManager.getConnection()`, you need to include the `load-balanc
 
 #### Topology-aware load balancing
 
-1. Create a file called `./src/main/java/com/yugabyte/TopologyAwareLoadBalanceApp.java`.
+1. Create a file called `./src/main/java/com/yugabyte/TopologyAwareLoadBalanceApp.java` by executing the following command:
 
     ```sh
-    $ touch ./src/main/java/com/yugabyte/TopologyAwareLoadBalanceApp.java
+    touch ./src/main/java/com/yugabyte/TopologyAwareLoadBalanceApp.java
     ```
 
 1. Paste the following into `TopologyAwareLoadBalanceApp.java`:
@@ -439,7 +444,7 @@ When using `DriverManager.getConnection()`, you need to include the `load-balanc
       }
 
       public static void makeConnectionUsingDriverManager() {
-        //List to store the connections so that they can be closed at the end
+        // List to store the connections so that they can be closed at the end
         List<Connection> connectionList = new ArrayList<>();
 
         System.out.println("Lets create 6 connections using DriverManager");
@@ -473,7 +478,7 @@ When using `DriverManager.getConnection()`, you need to include the `load-balanc
 
         Properties poolProperties = new Properties();
         poolProperties.setProperty("dataSourceClassName", "com.yugabyte.ysql.YBClusterAwareDataSource");
-        //the pool will create  10 connections to the servers
+        // The pool will create  10 connections to the servers
         poolProperties.setProperty("maximumPoolSize", String.valueOf(10));
         poolProperties.setProperty("dataSource.serverName", "127.0.0.1");
         poolProperties.setProperty("dataSource.portNumber", "5433");
@@ -487,8 +492,6 @@ When using `DriverManager.getConnection()`, you need to include the `load-balanc
         // If you want to load balance between specific geo locations using topology keys
         String geoLocations = "aws.us-west.us-west-2a";
         poolProperties.setProperty("dataSource.topologyKeys", geoLocations);
-
-
         HikariConfig config = new HikariConfig(poolProperties);
         config.validate();
         HikariDataSource hikariDataSource = new HikariDataSource(config);
@@ -506,11 +509,9 @@ When using `DriverManager.getConnection()`, you need to include the `load-balanc
     }
     ```
 
-    {{< note title="Note" >}}
-When using `DriverManager.getConnection()`, you need to include the `load-balance=true` property in the connection URL. In the case of `YBClusterAwareDataSource`, load balancing is enabled by default, but you must set property `dataSource.topologyKeys`.
-    {{< /note >}}
+    When using `DriverManager.getConnection()`, you need to include the `load-balance=true` property in the connection URL. In the case of `YBClusterAwareDataSource`, load balancing is enabled by default, but you must set property `dataSource.topologyKeys`.
 
-1. Run the application.
+1. Run the application, as follows:
 
     ```sh
      mvn -q package exec:java -DskipTests -Dexec.mainClass=com.yugabyte.TopologyAwareLoadBalanceApp

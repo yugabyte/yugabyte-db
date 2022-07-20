@@ -1,13 +1,13 @@
 ---
-title: Point-in-Time Recovery
+title: Point-in-time recovery
 headerTitle: Point-in-time recovery
 linkTitle: Point-in-time recovery
-description: Restore data from a specific point in time in YugabyteDB
+description: Restore data to a specific point in time in YugabyteDB
 menu:
   stable:
     identifier: point-in-time-recovery
     parent: backup-restore
-    weight: 704
+    weight: 705
 type: docs
 ---
 
@@ -200,6 +200,12 @@ This limitation will be removed in an upcoming release, and is tracked in issue 
 
 PITR functionality has several limitations, primarily related to interactions with other YugabyteDB features. Most of these limitations will be addressed in upcoming releases; refer to each limitation's corresponding tracking issue for details.
 
+###  CDC
+
+Using PITR and [CDC](../../../explore/change-data-capture/) together is currently not supported.
+
+Tracking issue: [12773](https://github.com/yugabyte/yugabyte-db/issues/12773)
+
 ### xCluster replication
 
 The combination of PITR and [xCluster replication](../../../explore/multi-region-deployments/asynchronous-replication-ysql/) is not fully tested, and is considered beta.
@@ -213,15 +219,9 @@ xCluster does not replicate any commands related to PITR. If you have two cluste
 
 Tracking issue: [10820](https://github.com/yugabyte/yugabyte-db/issues/10820)
 
-### Sequences
-
-`CREATE SEQUENCE` and `DROP SEQUENCE` commands are not reverted by PITR. For example, if you restore to a point in time before a sequence was dropped, the sequence will not restored.
-
-PITR support for sequences is available starting with version 2.14.
-
 ### Tablegroups
 
-Using PITR with [tablegroups](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/ysql-tablegroups.md) is not currently supported.
+Using PITR with [tablegroups](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/ysql-tablegroups.md) is not currently supported. If you attempt to create a PITR schedule within a cluster with tablegroups, you'll get an error. Attempting to create a tablegroup if a schedule exists on _any of the databases_ will also produce an error.
 
 Tracking issue: [11924](https://github.com/yugabyte/yugabyte-db/issues/11924)
 
@@ -235,9 +235,15 @@ Tracking issue for YSQL roles and permissions: [10349](https://github.com/yugaby
 
 Tracking issue for YCQL: [8453](https://github.com/yugabyte/yugabyte-db/issues/8453)
 
+{{< note title="Special case for tablespaces" >}}
+
+Tablespaces are crucial for geo-partitioned deployments. Trying to restore a database that relies on a removed tablespace will lead to unexpected behavior, so the `DROP TABLESPACE` command is currently disallowed if a schedule exists on _any_ of the databases in the cluster.
+
+{{< /note >}}
+
 ### YSQL system catalog upgrade
 
-You can't use PITR to restore to a state before the most recent [YSQL system catalog upgrade](../../../admin/yb-admin/#upgrade-ysql-system-catalog). You can still use [distributed snapshots](../../../manage/backup-restore/snapshot-ysql/) to restore in this scenario.
+You can't use PITR to restore to a state before the most recent [YSQL system catalog upgrade](../../../admin/yb-admin/#upgrade-ysql-system-catalog). Trying to do so will produce an error. You can still use [distributed snapshots](../../../manage/backup-restore/snapshot-ysql/) to restore in this scenario.
 
 Tracking issue: [13158](https://github.com/yugabyte/yugabyte-db/issues/13158)
 
@@ -245,6 +251,6 @@ This limitation applies only to YSQL databases. YCQL is not affected.
 
 ### Other limitations
 
-* Using `TRUNCATE` command is not recommended for databases with a snapshot schedule. Restoring a database that was previously truncated can lead to an inconsistent state. Tracking issue: [7129](https://github.com/yugabyte/yugabyte-db/issues/7129).
+* The `TRUNCATE` command is disallowed for databases with a snapshot schedule. Tracking issue: [7129](https://github.com/yugabyte/yugabyte-db/issues/7129).
 * PITR works only with _in-cluster_ distributed snapshots. PITR support for off-cluster backups is under consideration for the future. Tracking issue: [8847](https://github.com/yugabyte/yugabyte-db/issues/8847).
 * You can't modify a snapshot schedule once it's created. If you need to change the interval or the retention period, delete the snapshot and recreate it with the new parameters. Tracking issue: [8417](https://github.com/yugabyte/yugabyte-db/issues/8417).

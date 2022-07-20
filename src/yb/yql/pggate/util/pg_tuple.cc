@@ -14,7 +14,7 @@
 
 #include "yb/yql/pggate/util/pg_tuple.h"
 
-#include "yb/client/client.h"
+#include <glog/logging.h>
 
 #include "yb/common/ybc-internal.h"
 

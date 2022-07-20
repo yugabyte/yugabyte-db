@@ -23,20 +23,26 @@ import com.amazonaws.services.s3.model.Bucket;
 import com.amazonaws.services.s3.model.DeleteObjectsRequest;
 import com.amazonaws.services.s3.model.GetBucketLocationRequest;
 import com.amazonaws.services.s3.model.DeleteObjectsRequest.KeyVersion;
+import com.amazonaws.services.s3.model.GetObjectRequest;
 import com.amazonaws.services.s3.model.ListObjectsV2Result;
+import com.amazonaws.services.s3.model.S3Object;
 import com.amazonaws.services.s3.model.S3ObjectSummary;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageWithRegionsData;
+import java.io.InputStream;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.StringJoiner;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
@@ -69,7 +75,8 @@ public class AWSUtil implements CloudUtil {
 
   // This method is a way to check if given S3 config can extract objects.
   public boolean canCredentialListObjects(CustomerConfigData configData, List<String> locations) {
-    if (CollectionUtils.isEmpty(locations)) {
+    if (CollectionUtils.isEmpty(locations)
+        || ((CustomerConfigStorageS3Data) configData).isIAMInstanceProfile) {
       return true;
     }
     for (String location : locations) {
@@ -262,12 +269,37 @@ public class AWSUtil implements CloudUtil {
     } else {
       cloudDir = commonDir.concat("/");
     }
-    Map<String, String> s3CredsMap = createCredsMapYbc(s3Data, commonDir, bucket);
+    Map<String, String> s3CredsMap = createCredsMapYbc(s3Data, bucket);
     return YbcBackupUtil.buildCloudStoreSpec(bucket, cloudDir, s3CredsMap, Util.S3);
   }
 
-  private Map<String, String> createCredsMapYbc(
-      CustomerConfigData configData, String commonDir, String bucket) {
+  @Override
+  public CloudStoreSpec createCloudStoreSpec(
+      CustomerConfigData configData, String bucket, String cloudDir) {
+    CustomerConfigStorageS3Data s3Data = (CustomerConfigStorageS3Data) configData;
+    Map<String, String> s3CredsMap = createCredsMapYbc(s3Data, bucket);
+    return YbcBackupUtil.buildCloudStoreSpec(bucket, cloudDir, s3CredsMap, Util.S3);
+  }
+
+  @Override
+  public JsonNode readFileFromCloud(String location, CustomerConfigData configData)
+      throws Exception {
+    CustomerConfigStorageS3Data s3Data = (CustomerConfigStorageS3Data) configData;
+
+    AmazonS3 client = createS3Client(s3Data);
+    String[] splitValues = getSplitLocationValue(location);
+    String bucket = splitValues[0];
+    String cloudDir = splitValues.length > 1 ? splitValues[1] : "";
+    GetObjectRequest objectRequest = new GetObjectRequest(bucket, cloudDir);
+    S3Object s3Object = client.getObject(objectRequest);
+    InputStream s3Stream = s3Object.getObjectContent();
+
+    ObjectMapper mapper = new ObjectMapper();
+    JsonNode json = mapper.readTree(s3Stream);
+    return json;
+  }
+
+  private Map<String, String> createCredsMapYbc(CustomerConfigData configData, String bucket) {
     CustomerConfigStorageS3Data s3Data = (CustomerConfigStorageS3Data) configData;
     Map<String, String> s3CredsMap = new HashMap<>();
     s3CredsMap.put(YBC_AWS_ACCESS_KEY_ID_FIELDNAME, s3Data.awsAccessKeyId);
@@ -312,5 +344,12 @@ public class AWSUtil implements CloudUtil {
       log.error("Error while listing S3 buckets {}", e.getMessage());
     }
     return bucketHostBaseMap;
+  }
+
+  @Override
+  public String createDirPath(String bucket, String dir) {
+    StringJoiner joiner = new StringJoiner("/");
+    joiner.add("s3:/").add(bucket).add(dir);
+    return joiner.toString();
   }
 }

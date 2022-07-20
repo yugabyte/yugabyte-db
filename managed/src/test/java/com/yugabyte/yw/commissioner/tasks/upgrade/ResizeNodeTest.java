@@ -23,6 +23,8 @@ import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
+import com.yugabyte.yw.models.InstanceType;
+import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
@@ -53,6 +55,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
 
   private static final String DEFAULT_INSTANCE_TYPE = "c3.medium";
   private static final String NEW_INSTANCE_TYPE = "c4.medium";
+  private static final String NEW_READ_ONLY_INSTANCE_TYPE = "c3.small";
 
   private static final int DEFAULT_VOLUME_SIZE = 100;
   private static final int NEW_VOLUME_SIZE = 200;
@@ -104,15 +107,24 @@ public class ResizeNodeTest extends UpgradeTaskTest {
               userIntent.deviceInfo.numVolumes = 1;
               userIntent.deviceInfo.volumeSize = DEFAULT_VOLUME_SIZE;
               userIntent.instanceType = DEFAULT_INSTANCE_TYPE;
+              userIntent.provider = defaultProvider.uuid.toString();
+              universe
+                  .getNodes()
+                  .forEach(node -> node.cloudInfo.instance_type = DEFAULT_INSTANCE_TYPE);
             });
-
     try {
       when(mockYBClient.getClientWithConfig(any())).thenReturn(mockClient);
       ListMastersResponse listMastersResponse = mock(ListMastersResponse.class);
       when(listMastersResponse.getMasters()).thenReturn(Collections.emptyList());
       when(mockClient.listMasters()).thenReturn(listMastersResponse);
+      when(mockConfigHelper.getAWSInstancePrefixesSupported())
+          .thenReturn(Arrays.asList("c5.", "c5d.", "c4.", "c3."));
     } catch (Exception ignored) {
     }
+
+    createInstanceType(defaultProvider.uuid, DEFAULT_INSTANCE_TYPE);
+    createInstanceType(defaultProvider.uuid, NEW_INSTANCE_TYPE);
+    createInstanceType(defaultProvider.uuid, NEW_READ_ONLY_INSTANCE_TYPE);
   }
 
   @Override
@@ -245,6 +257,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     userIntent.deviceInfo.volumeSize = DEFAULT_VOLUME_SIZE;
     userIntent.instanceType = DEFAULT_INSTANCE_TYPE;
     userIntent.providerType = curIntent.providerType;
+    userIntent.provider = curIntent.provider;
     PlacementInfo pi = new PlacementInfo();
     PlacementInfoUtil.addPlacementZone(az1.uuid, pi, 1, 1, false);
     PlacementInfoUtil.addPlacementZone(az2.uuid, pi, 1, 1, false);
@@ -254,6 +267,14 @@ public class ResizeNodeTest extends UpgradeTaskTest {
         Universe.saveDetails(
             defaultUniverse.universeUUID,
             ApiUtils.mockUniverseUpdaterWithReadReplica(userIntent, pi));
+
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.universeUUID,
+            universe ->
+                universe
+                    .getNodes()
+                    .forEach(node -> node.cloudInfo.instance_type = DEFAULT_INSTANCE_TYPE));
 
     ResizeNodeParams taskParams = createResizeParams();
     taskParams.clusters =
@@ -283,6 +304,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     userIntent.deviceInfo.volumeSize = DEFAULT_VOLUME_SIZE;
     userIntent.instanceType = DEFAULT_INSTANCE_TYPE;
     userIntent.providerType = curIntent.providerType;
+    userIntent.provider = curIntent.provider;
     PlacementInfo pi = new PlacementInfo();
     PlacementInfoUtil.addPlacementZone(az1.uuid, pi, 1, 1, false);
     PlacementInfoUtil.addPlacementZone(az2.uuid, pi, 1, 1, false);
@@ -292,6 +314,14 @@ public class ResizeNodeTest extends UpgradeTaskTest {
         Universe.saveDetails(
             defaultUniverse.universeUUID,
             ApiUtils.mockUniverseUpdaterWithReadReplica(userIntent, pi));
+
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.universeUUID,
+            universe ->
+                universe
+                    .getNodes()
+                    .forEach(node -> node.cloudInfo.instance_type = DEFAULT_INSTANCE_TYPE));
 
     ResizeNodeParams taskParams = createResizeParams();
     List<UniverseDefinitionTaskParams.Cluster> copyPrimaryCluster =
@@ -306,11 +336,12 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     taskParams.getPrimaryCluster().userIntent.deviceInfo.volumeSize = NEW_VOLUME_SIZE;
     taskParams.getPrimaryCluster().userIntent.instanceType = NEW_INSTANCE_TYPE;
     taskParams.getReadOnlyClusters().get(0).userIntent.deviceInfo.volumeSize = 250;
-    taskParams.getReadOnlyClusters().get(0).userIntent.instanceType = "c3.small";
+    taskParams.getReadOnlyClusters().get(0).userIntent.instanceType = NEW_READ_ONLY_INSTANCE_TYPE;
     taskParams.getReadOnlyClusters().get(0).userIntent.providerType = Common.CloudType.aws;
     TaskInfo taskInfo = submitTask(taskParams);
     assertEquals(Success, taskInfo.getTaskState());
-    assertUniverseDataForReadReplicaClusters(true, true, true, true, 250, "c3.small");
+    assertUniverseDataForReadReplicaClusters(
+        true, true, true, true, 250, NEW_READ_ONLY_INSTANCE_TYPE);
   }
 
   @Test
@@ -328,6 +359,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     userIntent.deviceInfo.volumeSize = DEFAULT_VOLUME_SIZE;
     userIntent.instanceType = DEFAULT_INSTANCE_TYPE;
     userIntent.providerType = curIntent.providerType;
+    userIntent.provider = curIntent.provider;
     PlacementInfo pi = new PlacementInfo();
     PlacementInfoUtil.addPlacementZone(az1.uuid, pi, 1, 1, false);
     PlacementInfoUtil.addPlacementZone(az2.uuid, pi, 1, 1, false);
@@ -337,6 +369,13 @@ public class ResizeNodeTest extends UpgradeTaskTest {
         Universe.saveDetails(
             defaultUniverse.universeUUID,
             ApiUtils.mockUniverseUpdaterWithReadReplica(userIntent, pi));
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.universeUUID,
+            universe ->
+                universe
+                    .getNodes()
+                    .forEach(node -> node.cloudInfo.instance_type = DEFAULT_INSTANCE_TYPE));
 
     ResizeNodeParams taskParams = createResizeParams();
     taskParams.clusters =
@@ -393,21 +432,32 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     int volumeSize = increaseVolume ? NEW_VOLUME_SIZE : DEFAULT_VOLUME_SIZE;
     String instanceType = changeInstance ? NEW_INSTANCE_TYPE : DEFAULT_INSTANCE_TYPE;
     Universe universe = Universe.getOrBadRequest(defaultUniverse.universeUUID);
-    UniverseDefinitionTaskParams.UserIntent newIntent =
-        universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    UniverseDefinitionTaskParams.Cluster primaryCluster =
+        universe.getUniverseDetails().getPrimaryCluster();
+    UniverseDefinitionTaskParams.UserIntent newIntent = primaryCluster.userIntent;
     if (primaryChanged) {
       assertEquals(volumeSize, newIntent.deviceInfo.volumeSize.intValue());
       assertEquals(instanceType, newIntent.instanceType);
+      for (NodeDetails nodeDetails : universe.getNodesInCluster(primaryCluster.uuid)) {
+        assertEquals(instanceType, nodeDetails.cloudInfo.instance_type);
+      }
     }
     if (!universe.getUniverseDetails().getReadOnlyClusters().isEmpty()) {
-      UniverseDefinitionTaskParams.UserIntent readonlyIntent =
-          universe.getUniverseDetails().getReadOnlyClusters().get(0).userIntent;
+      UniverseDefinitionTaskParams.Cluster readonlyCluster =
+          universe.getUniverseDetails().getReadOnlyClusters().get(0);
+      UniverseDefinitionTaskParams.UserIntent readonlyIntent = readonlyCluster.userIntent;
       if (readonlyChanged) {
         assertEquals(volumeSize, readonlyIntent.deviceInfo.volumeSize.intValue());
         assertEquals(instanceType, readonlyIntent.instanceType);
+        for (NodeDetails nodeDetails : universe.getNodesInCluster(readonlyCluster.uuid)) {
+          assertEquals(instanceType, nodeDetails.cloudInfo.instance_type);
+        }
       } else {
         assertEquals(DEFAULT_VOLUME_SIZE, readonlyIntent.deviceInfo.volumeSize.intValue());
         assertEquals(DEFAULT_INSTANCE_TYPE, readonlyIntent.instanceType);
+        for (NodeDetails nodeDetails : universe.getNodesInCluster(readonlyCluster.uuid)) {
+          assertEquals(DEFAULT_INSTANCE_TYPE, nodeDetails.cloudInfo.instance_type);
+        }
       }
     }
   }
@@ -542,7 +592,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
       nodeUpgradeTasks.addAll(RESIZE_VOLUME_SEQ);
     }
     if (changeInstance) {
-      nodeUpgradeTasks.addAll(UPDATE_INSTANCE_TYPE_SEQ);
+      nodeUpgradeTasks.add(TaskType.ChangeInstanceType);
     }
     List<UniverseDefinitionTaskBase.ServerType> processTypes =
         onlyTserver ? ImmutableList.of(TSERVER) : ImmutableList.of(MASTER, TSERVER);
@@ -590,6 +640,9 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     for (ServerType processType : processTypes) {
       taskTypesSequence.add(index++, TaskType.WaitForFollowerLag);
     }
+    if (changeInstance) {
+      taskTypesSequence.add(index++, TaskType.UpdateNodeDetails);
+    }
   }
 
   private TaskInfo submitTask(ResizeNodeParams requestParams) {
@@ -597,14 +650,19 @@ public class ResizeNodeTest extends UpgradeTaskTest {
   }
 
   private ResizeNodeParams createResizeParams() {
-    ResizeNodeParams taskParams =
-        new ResizeNodeParams() {
-          @Override
-          protected boolean isSkipInstanceChecking() {
-            return true;
-          }
-        };
+    ResizeNodeParams taskParams = new ResizeNodeParams();
+    RuntimeConfigEntry.upsertGlobal("yb.internal.allow_unsupported_instances", "true");
     taskParams.universeUUID = defaultUniverse.universeUUID;
     return taskParams;
+  }
+
+  private void createInstanceType(UUID providerId, String type) {
+    InstanceType.InstanceTypeDetails instanceTypeDetails = new InstanceType.InstanceTypeDetails();
+    InstanceType.VolumeDetails volumeDetails = new InstanceType.VolumeDetails();
+    volumeDetails.volumeType = InstanceType.VolumeType.SSD;
+    volumeDetails.volumeSizeGB = 100;
+    volumeDetails.mountPath = "/";
+    instanceTypeDetails.volumeDetailsList = Collections.singletonList(volumeDetails);
+    InstanceType.upsert(providerId, type, 1, 100d, instanceTypeDetails);
   }
 }

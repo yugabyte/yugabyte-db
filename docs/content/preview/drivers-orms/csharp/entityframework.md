@@ -24,11 +24,11 @@ type: docs
 
 [EntityFramework](https://docs.microsoft.com/en-us/ef/) is a popular ORM provider for C# applications, and is widely used by C# Developers for database access. YugabyteDB provides full support for the EntityFramework ORM.
 
-## CRUD operations with EntityFramework
+## CRUD operations
 
-Learn how to establish a connection to a YugabyteDB database and begin basic CRUD operations using the steps on the [Build an application](../../../quick-start/build-apps/csharp/ysql-entity-framework/) page under the Quick start section.
+Learn how to establish a connection to a YugabyteDB database and begin basic CRUD operations using the steps on the [Build an application](../../../quick-start/build-apps/csharp/ysql-entity-framework/) page.
 
-The following sections break down the quick start example to demonstrate how to perform common tasks required for C# application development using EntityFramework.
+The following sections break down the example to demonstrate how to perform common tasks required for C# application development using EntityFramework.
 
 ### Step 1: Add the ORM dependency
 

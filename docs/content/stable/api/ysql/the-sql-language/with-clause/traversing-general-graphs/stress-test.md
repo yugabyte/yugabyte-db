@@ -73,7 +73,7 @@ select node_1, node_2 from edges order by node_1, node_2;
 
 This is the result:
 
-```plpgsql
+```output
  node_1 | node_2
 --------+--------
  n001   | n002
@@ -117,9 +117,9 @@ The whitespace was added by hand to group the results into the sets of five edge
 
 ## The number of paths in a maximally connected graph grows very much faster than linearly with the number of nodes
 
-Recall how the logic of the recursive CTE from [`cr-find-paths-with-nocycle-check.sql`](../undirected-cyclic-graph/#cr-find-paths-with-nocycle-check-sql)  is expressed:
+Recall how the logic of the recursive CTE from [`cr-find-paths-with-nocycle-check.sql`](../undirected-cyclic-graph/#cr-find-paths-with-nocycle-check-sql) is expressed:
 
-```
+```sql
 with
   recursive paths(path) as (
     select array[start_node, node_2]
@@ -139,7 +139,7 @@ with
 
 Using node "_n001"_ as the start node for the six-node example maximally connected graph, the result of the non-recursive term will be _five_ paths. Then, the result of the first repeat of the recursive term will be _four_ longer paths for each of the input five paths because the cycle prevention logic will exclude, for each input path in turn, the node that can be reached from its terminal that has already been found. And so it goes on: the result of the next repeat of the recursive term will be _three_ longer paths for each input path; the next result will be _two_ longer paths for each input path; the next result will be _one_ longer path for each input path; and the next repeat will find no paths so that the repetition will end. The number of paths that each repetition finds will therefore grow like this:
 
-```
+```output
 Repeat number    Number of paths Found
             0                        5  -- non-recursive term
             1                5*4 =  20  -- 1st recursive term
@@ -167,7 +167,7 @@ order by 1;
 
 This is the result:
 
-```
+```output
  repeat_nr |  n
 -----------+-----
          0 |   5
@@ -228,7 +228,7 @@ select t from total_paths_versus_number_of_nodes(20);
 
 This is the result:
 
-```
+```output
  no. of nodes   no. of paths
  ------------   ------------
             4             15
@@ -301,6 +301,7 @@ begin
 end;
 $body$;
 ```
+
 The stress-test kernel must spool the output to a file whose name encodes the present number of nodes and method name. A well-known pattern comes to the rescue: use a table function to write the script that turns on spooling and invoke that script. This is the function:
 
 ##### `cr-start-spooling-script.sql`
@@ -370,7 +371,7 @@ Decide on the number of nodes, for example 7. And choose the method, for example
 
 This will produce the `7-nodes--prune-false.txt` spool file. It will look like this:
 
-```
+```output.text
  prune-false -- 7 nodes
 
  elapsed time: 40 ms.
@@ -380,7 +381,7 @@ This will produce the `7-nodes--prune-false.txt` spool file. It will look like t
 
 Of course, the reported elapsed time that you see will doubtless differ from _"40 ms"_.
 
-### Implement scripts to execute the stress-test kernel for each method for each of the numbers of nodes in the range of interest.
+### Implement scripts to execute the stress-test kernel for each method for each of the numbers of nodes in the range of interest
 
 First, implement a script to invoke each of the three methods for a particular, pre-set, value of `:nr_nodes`. Get a clean slate for the "paths" tables before each timing test by dropping and re-creating each of them.
 
@@ -436,6 +437,7 @@ _Save this script_.
 \set nr_nodes 10
 \i do-stress-test-for-all-methods.sql
 ```
+
 Then invoke `do-stress-test-kernel.sql` by hand for each of the three methods, setting the number of nodes to _11_. You'll see that each of _"pure-with"_ and _"prune-false"_ fails, with error messages that reflect the fact that the implementation can't handle as many as _9,864,100_ nodes. But _"prune-true"_ completes without error very quickly.
 
 Finally, invoke `do-stress-test-kernel.sql` by hand using the  _"prune-true"_ method and _100_ nodes. You'll see that it completes without error in about the same time as for any smaller number of nodes.
@@ -445,7 +447,7 @@ Here are the results:
 _The elapsed times are in seconds._
 
 | no. of nodes | no. of paths | pure-with | prune-false | prune-true |
-| ---- | ---------- | --------- | --------- | ---- |
+| -----------: | -----------: | --------: | ----------: | ---------: |
 |    4 |         15 |       0.1 |       0.1 |  0.2 |
 |    5 |         64 |       0.1 |       0.1 |  0.2 |
 |    6 |        325 |       0.1 |       0.2 |  0.2 |

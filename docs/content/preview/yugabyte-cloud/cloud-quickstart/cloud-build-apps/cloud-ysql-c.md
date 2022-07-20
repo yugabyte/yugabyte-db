@@ -2,6 +2,7 @@
 title: Build a C application that uses YSQL
 headerTitle: Build a C application
 description: Build a small C application using the libpq driver and using the YSQL API to connect to and interact with a YugabyteDB Managed cluster.
+headContent: "Client driver: libpq"
 menu:
   preview_yugabyte-cloud:
     parent: cloud-build-apps
@@ -30,7 +31,7 @@ The following tutorial shows a small [C application](https://github.com/yugabyte
 Clone the sample application to your computer:
 
 ```sh
-git clone https://github.com/yugabyte/yugabyte-simple-c-app && cd yugabyte-simple-c-app
+git clone https://github.com/YugabyteDB-Samples/yugabyte-simple-c-app.git && cd yugabyte-simple-c-app
 ```
 
 ## Provide connection parameters
@@ -41,7 +42,7 @@ The application needs to establish a connection to the YugabyteDB cluster. To do
 
 2. Set the following configuration-related macros:
 
-    - **HOST** - the host name of your YugabyteDB cluster. To obtain a YugabyteDB Managed cluster host name, sign in to YugabyteDB Managed, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Network Access**.
+    - **HOST** - the host name of your YugabyteDB cluster. To obtain a YugabyteDB Managed cluster host name, sign in to YugabyteDB Managed, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Connection Parameters**.
     - **PORT** - the port number that will be used by the driver (the default YugabyteDB YSQL port is 5433).
     - **DB_NAME** - the name of the database you are connecting to (the default database is named `yugabyte`).
     - **USER** and **PASSWORD** - the username and password for the YugabyteDB database. If you are using the credentials you created when deploying a cluster in YugabyteDB Managed, these can be found in the credentials file you downloaded.

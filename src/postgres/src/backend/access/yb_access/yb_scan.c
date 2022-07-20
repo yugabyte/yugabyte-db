@@ -522,6 +522,10 @@ ybcSetupScanPlan(bool xs_want_itup, YbScanDesc ybScan, YbScanPlan scan_plan)
 		}
 		else if (ybScan->key[i].sk_flags & SK_IS_HASHED)
 		{
+			/*
+			 * No corresponding user table column to be assigned to the
+			 * yb_hash_code search key slot.
+			 */
 			ybScan->target_key_attnums[i] = InvalidAttrNumber;
 			scan_plan->bind_key_attnums[i] = InvalidAttrNumber;
 		}
@@ -608,6 +612,62 @@ static bool IsSearchNull(int sk_flags) {
  */
 static bool IsSearchArray(int sk_flags) {
 	return sk_flags == SK_SEARCHARRAY;
+}
+
+/*
+ * Is the condition never TRUE because of c {=|<|<=|>=|>} NULL, etc.?
+ */
+static bool IsNeverTrueNullCond(int sk_flags) {
+	return (sk_flags & SK_ISNULL) != 0
+		&& (sk_flags & (SK_SEARCHNULL | SK_SEARCHNOTNULL)) == 0;
+}
+
+/*
+ * Check whether the conditions lead to empty result regardless of the values
+ * in the index because of always FALSE or UNKNOWN conditions.
+ * Return true if the combined key conditions are unsatisfiable.
+ */
+static bool
+checkEmptyResultCondition(int nkeys, ScanKey key) {
+	for (int i = 0; i < nkeys; i++)
+	{
+		ScanKey skey = &key[i];
+		if (IsNeverTrueNullCond(skey->sk_flags))
+		{
+			return true;
+		}
+		if (skey->sk_flags & SK_ROW_HEADER)
+		{
+			ScanKey subkey = (ScanKey) DatumGetPointer(skey->sk_argument);
+
+			/*
+			 * ROW value comparison: ROW(x, y, z) {<|<=|>|>=} ROW(a, b, c)
+			 * is equivalent to:
+			 *   (x {<|>} a) OR (x = a AND y {<|>} b)
+			 *     OR (x = a AND y = b AND z {<|<=|>|>=} c)
+			 * when a is NULL then each OR'ed term is either UNKNOWN or FALSE,
+			 * hence the entire comparison results in UNKNOWN if the first item
+			 * in the ROW value is NULL.
+			 */
+			if (skey->sk_strategy != BTEqualStrategyNumber
+				&& IsNeverTrueNullCond(subkey->sk_flags))
+				return true;
+
+			/*
+			 * In case of equality, ROW(x, y, z, ...) = ROW(a, b, c, ...)
+			 * is equivalent to:
+			 *   (x = a) AND (y = b) AND (z = c) ...
+			 * NULL at any position makes the entire comparision either UNKNOWN
+			 * or FALSE.
+			 */
+			for (; !(subkey->sk_flags & SK_ROW_END); subkey++)
+			{
+				if (IsNeverTrueNullCond(subkey->sk_flags))
+					return true;
+			}
+		}
+	}
+	return false;
 }
 
 static bool
@@ -1345,11 +1405,20 @@ ybcInitColumnFilter(YbColumnFilter *filter, YbScanDesc ybScan, Scan *pg_scan_pla
 	if (!pg_scan_plan)
 		return;
 
-	Bitmapset *items = NULL;
-	/* Collect bound key attributes */
+	/*
+	 * Start with an empty bms to represent "no column" instead of NULL, which
+	 * would indicate "all the columns".
+	 */
+	Bitmapset *items = bms_del_member(bms_make_singleton(0), 0);
+
+	/*
+	 * Collect bound key attributes. Skip InvalidAttrNumber in the yb_hash_code
+	 * search key slot so that it is not treated as "a whole row var".
+	 */
 	AttrNumber *sk_attno = ybScan->target_key_attnums;
-	for (AttrNumber *sk_attno_end = sk_attno + ybScan->nkeys; sk_attno != sk_attno_end; ++sk_attno)
-		items = bms_add_member(items, *sk_attno - min_attr + 1);
+	for (int i = 0; i < ybScan->nkeys; i++)
+		if (!IsHashCodeSearch(ybScan->key[i].sk_flags))
+			items = bms_add_member(items, sk_attno[i] - min_attr + 1);
 
 	ListCell *lc;
 	Index target_relid =
@@ -1468,30 +1537,37 @@ ybcBeginScan(
 	ybScan->key   = key;
 	ybScan->nkeys = nkeys;
 	ybScan->exec_params = NULL;
-	ybScan->quit_scan = false;
 	ybScan->relation = relation;
 	ybScan->index = index;
 
 	/* Setup the scan plan */
 	YbScanPlanData	scan_plan;
 	ybcSetupScanPlan(xs_want_itup, ybScan, &scan_plan);
-
-	/* Setup binds for the scan-key */
 	ybcSetupScanKeys(ybScan, &scan_plan);
-	ybcBindScanKeys(ybScan, &scan_plan);
 
-	/* Setup the scan targets with respect to postgres scan plan (i.e. set only required targets) */
-	ybcSetupTargets(ybScan, &scan_plan, pg_scan_plan);
+	/* Indicate bail out if there's an unsatisfiable condition  */
+	ybScan->quit_scan = checkEmptyResultCondition(nkeys, key);
 
-	/*
-	 * Set the current syscatalog version (will check that we are up to date).
-	 * Avoid it for syscatalog tables so that we can still use this for
-	 * refreshing the caches when we are behind.
-	 * Note: This works because we do not allow modifying schemas (alter/drop)
-	 * for system catalog tables.
-	 */
-	if (!IsSystemRelation(relation))
-		HandleYBStatus(YBCPgSetCatalogCacheVersion(ybScan->handle, yb_catalog_cache_version));
+	if (!ybScan->quit_scan) {
+		/* Setup binds for the scan-key */
+		ybcBindScanKeys(ybScan, &scan_plan);
+
+		/*
+		 * Setup the scan targets with respect to postgres scan plan
+		 * (i.e. set only required targets)
+		 */
+		ybcSetupTargets(ybScan, &scan_plan, pg_scan_plan);
+
+		/*
+		 * Set the current syscatalog version (will check that we are up to date).
+		 * Avoid it for syscatalog tables so that we can still use this for
+		 * refreshing the caches when we are behind.
+		 * Note: This works because we do not allow modifying schemas (alter/drop)
+		 * for system catalog tables.
+		 */
+		if (!IsSystemRelation(relation))
+			HandleYBStatus(YBCPgSetCatalogCacheVersion(ybScan->handle, yb_catalog_cache_version));
+	}
 
 	bms_free(scan_plan.hash_key);
 	bms_free(scan_plan.primary_key);

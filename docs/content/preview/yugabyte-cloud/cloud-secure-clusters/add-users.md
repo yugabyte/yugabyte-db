@@ -2,7 +2,7 @@
 title: Add database users
 linkTitle: Add database users
 description: Add users to YugabyteDB Managed clusters
-headcontent:
+headcontent: Provide team members and applications access to the cluster's YugabyteDB database
 image: /images/section_icons/deploy/enterprise.png
 menu:
   preview_yugabyte-cloud:
@@ -11,8 +11,6 @@ menu:
     weight: 350
 type: docs
 ---
-
-Add database users to provide team members and applications access to the cluster's YugabyteDB database.
 
 When you create a cluster in YugabyteDB Managed, you set up the database admin credentials, which you use to access the YugabyteDB database. Use this account to:
 

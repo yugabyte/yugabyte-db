@@ -10,7 +10,6 @@ menu:
     parent: api-ysql-exprs
 type: indexpage
 ---
-
 If you are already familiar with window functions, then you can skip straight to the [syntax and semantics](./invocation-syntax-semantics/) section or the section that lists all of [the YSQL window functions](./function-syntax-semantics/) and that links, in turn, to the definitive account of each function.
 
 This page has only the [Synopsis](./#synopsis) section and the section [Organization of the window functions documentation](./#organization-of-the-window-functions-documentation) section.

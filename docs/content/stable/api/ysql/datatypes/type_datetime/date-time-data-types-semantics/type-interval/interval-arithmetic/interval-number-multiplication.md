@@ -12,7 +12,7 @@ type: docs
 ---
 
 {{< tip title="Download and install the date-time utilities code." >}}
-The code on this page depends on the code presented in the section [User-defined _interval_ utility functions](../../interval-utilities/). This is included in the larger [code kit](../../../../download-date-time-utilities/) that includes all of the reusable code that the overall _[date-time](../../../../../type_datetime)_ section describes and uses.
+The code on this page depends on the code presented in the section [User-defined _interval_ utility functions](../../interval-utilities/). This is included in the larger [code kit](../../../../download-date-time-utilities/) that includes all of the reusable code that the overall _[date-time](../../../../../type_datetime/)_ section describes and uses.
 {{< /tip >}}
 
 This section presents a PL/pgSQL implementation of the model that explains how multiplying or dividing an _interval_ value by a number works. Make sure that you have read the section [Adding or subtracting a pair of _interval_ values](../interval-interval-addition/) before reading this section.

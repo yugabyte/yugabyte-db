@@ -2,7 +2,7 @@
 title: Create a read replica cluster
 headerTitle: Create a read replica cluster
 linkTitle: Read replica cluster
-description: Use Yugabyte Platform to create a read replica cluster.
+description: Use YugabyteDB Anywhere to create a read replica cluster.
 menu:
   stable_yugabyte-platform:
     identifier: create-read-replica-cluster
@@ -11,18 +11,17 @@ menu:
 type: docs
 ---
 
-You can create a universe that includes both a primary cluster and a [read replica](../../../architecture/docdb-replication/read-replicas) cluster in a hybrid cloud deployment, as well as dynamically add, edit, and remove a read replica cluster. The example presented in this document shows how to deploy a universe with primary cluster in Oregon (US-West) and read replica cluster in Northern Virginia (US-East).
+You can create a universe that includes both a primary cluster and a [read replica](../../../architecture/docdb-replication/read-replicas/) cluster in a hybrid cloud deployment, as well as dynamically add, edit, and remove a read replica cluster. The example presented in this document shows how to deploy a universe with primary cluster in Oregon (US-West) and read replica cluster in Northern Virginia (US-East).
 
 {{< note title="Note" >}}
 
-- YSQL read replica support is currently in Beta.
-- Yugabyte Platform does not support read replica configuration for Kubernetes and OpenShift cloud providers.
+- YugabyteDB Anywhere does not support read replica configuration for Kubernetes and OpenShift cloud providers.
 
 {{< /note >}}
 
 ## Create the universe
 
-You start by navigating to **Dashboard** and clicking **Create Universe**. Use the **Primary Cluster > Cloud Configuration** page to enter the following values to create a primary cluster on [GCP](../../configure-yugabyte-platform/set-up-cloud-provider/gcp) provider:
+You start by navigating to **Dashboard** and clicking **Create Universe**. Use the **Primary Cluster > Cloud Configuration** page to enter the following values to create a primary cluster on [GCP](../../configure-yugabyte-platform/set-up-cloud-provider/gcp/) provider:
 
 - Enter a universe name as helloworld3.
 - Enter the set of regions as Oregon.
@@ -67,7 +66,7 @@ This confirms that you created a hybrid cloud deployment with the primary cluste
 
 ## Add, remove, edit a read replica cluster
 
-Yugabyte Platform allows you to dynamically add, modify, and remove a read replica cluster from an
+YugabyteDB Anywhere allows you to dynamically add, modify, and remove a read replica cluster from an
 existing universe.
 
 Create a new universe called helloworld4 with a primary cluster identical to helloworld3 but without any read replica cluster. Click **Create** and wait for the universe to be ready. Once this is done,

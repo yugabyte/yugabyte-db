@@ -30,6 +30,4 @@ type: docs
 
 </ul>
 
-YSQL read replicas support is currently in Beta.
-
-No documentation is available at this time.
+Documentation for YSQL read replicas is forthcoming.

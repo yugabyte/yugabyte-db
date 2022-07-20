@@ -1328,8 +1328,8 @@ bool DocKeyDecoder::GroupEnded() const {
   return input_.empty() || input_[0] == KeyEntryTypeAsChar::kGroupEnd;
 }
 
-Result<bool> DocKeyDecoder::HasPrimitiveValue() {
-  return docdb::HasPrimitiveValue(&input_, AllowSpecial::kFalse);
+Result<bool> DocKeyDecoder::HasPrimitiveValue(AllowSpecial allow_special) {
+  return docdb::HasPrimitiveValue(&input_, allow_special);
 }
 
 Status DocKeyDecoder::DecodeToRangeGroup() {

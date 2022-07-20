@@ -81,6 +81,8 @@ class ClusterAdminCli {
   virtual void RegisterCommandHandlers(ClusterAdminClientClass* client);
 
  private:
+  Status RunCommand(
+      const Command& command, const CLIArguments& command_args, const std::string& program_name);
   std::vector<Command> commands_;
   std::map<std::string, size_t> command_indexes_;
 };

@@ -20,7 +20,7 @@ type: docs
     </a>
   </li>
   <li>
-    <a href="../ysql-entity-framework/" class="nav-link">
+    <a href="../ysql-entity-framework/" class="nav-link ">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - Entity Framework
     </a>
@@ -34,22 +34,23 @@ type: docs
 
 </ul>
 
-{{< tip title="Yugabyte Cloud requires SSL" >}}
+{{< tip title="YugabyteDB Managed requires SSL" >}}
 
-Are you using Yugabyte Cloud? Install the [prerequisites](#prerequisites), then go to the [Use C# with SSL](#use-c-with-ssl) section.
+Are you using YugabyteDB Managed? Install the [prerequisites](#prerequisites), then go to the [Use C# with SSL](#use-c-with-ssl) section.
 
 {{</ tip >}}
 
 ## Prerequisites
 
-This tutorial assumes that you have:
+This tutorial assumes that you have installed the following:
 
-- installed YugabyteDB, created a universe, and are able to interact with it using the YSQL shell (`ysqlsh`). If not, follow the steps in [Quick start](../../../../quick-start/).
-- installed Visual Studio.
+- YugabyteDB, created a universe, and are able to interact with it using the YSQL shell (`ysqlsh`). If not, follow the steps in [Quick start](../../../../quick-start/).
+- Visual Studio.
+- [.NET SDK 6.0](https://dotnet.microsoft.com/en-us/download) or later.
 
 {{< warning title="Warning" >}}
 
-On every new connection the NpgSQL driver also makes [extra system table queries to map types](https://github.com/npgsql/npgsql/issues/1486), which adds significant overhead. To turn off this behavior, set the following option in your connection string builder:
+On every new connection, the Npgsql driver also makes [extra system table queries to map types](https://github.com/npgsql/npgsql/issues/1486), which adds significant overhead. To turn off this behavior, set the following option in your connection string builder:
 
 ```csharp
 connStringBuilder.ServerCompatibilityMode = ServerCompatibilityMode.NoTypeLoading;
@@ -59,15 +60,16 @@ connStringBuilder.ServerCompatibilityMode = ServerCompatibilityMode.NoTypeLoadin
 
 ## Create a sample C# application
 
-In Visual Studio, create a new project and choose **Console Application as template**. Follow the instructions to save the project.
+To create the sample C# application, do the following:
 
-First, install the Npgsql driver in your Visual Studio project:
+1. In Visual Studio, create a new C# application, and choose [Console Application](https://docs.microsoft.com/en-us/dotnet/core/tutorials/with-visual-studio?pivots=dotnet-6-0) as template. Follow the instructions to save the project.
 
-1. Open your Project Solution View
-1. Right-click on **Packages** and click **Add Packages**
-1. Search for `Npgsql` and click **Add Package**
+1. Add the Npgsql package to your project as follows:
 
-Next, copy the contents below to your `Program.cs` file:
+   - Right-click on **Dependencies** and click **Manage Nuget Packages**.
+   - Search for `Npgsql` and click **Add Package**.
+
+1. Copy the following code to your `Program.cs` file:
 
 ```csharp
 using System;
@@ -79,7 +81,8 @@ namespace Yugabyte_CSharp_Demo
     {
         static void Main(string[] args)
         {
-            NpgsqlConnection conn = new NpgsqlConnection("host=localhost;port=5433;database=yb_demo;user id=yugabyte;password=");
+           var connStringBuilder = "host=localhost;port=5433;database=yugabyte;user id=yugabyte;password="
+           NpgsqlConnection conn = new NpgsqlConnection(connStringBuilder)
 
             try
             {
@@ -123,9 +126,9 @@ namespace Yugabyte_CSharp_Demo
 
 ### Run the C# application
 
-Run the C# app. Select `Run -> Start Without Debugging`.
+To run the application, choose **Run -> Start Without Debugging**.
 
-You should see the following as the output:
+You should see the following output:
 
 ```output
 Created table Employee
@@ -137,36 +140,20 @@ John  35   CSharp
 
 ## Use C# with SSL
 
-The client driver supports several SSL modes, as follows:
-
-| SSL mode | Client driver behavior |
-| :------- | :--------------------- |
-| disable | Supported |
-| allow | Not Supported |
-| prefer | Supported |
-| require | Supported  |
-| verify-ca | Supported <br/> (Self-signed certificates aren't supported.) |
-| verify-full | Supported <br/> (Self-signed certificates aren't supported.) |
-
-{{< note title="SSL mode support" >}}
-
-The Npgsql driver does not support the strings `verify-ca` and `verify-full` when specifying the SSL mode.
-
-The .NET Npgsql driver validates certificates differently from other PostgreSQL drivers. When you specify SSL mode `require`, the driver verifies the certificate by default (like the `verify-ca` or `verify-full` modes), and fails for self-signed certificates. You can override this by specifying "Trust Server Certificate=true", in which case it bypasses walking the certificate chain to validate trust and hence works like other drivers' `require` mode. In this case, the Root-CA certificate is not required to be configured.
-
-{{< /note >}}
+Refer to [Configure SSL/TLS](../../../../reference/drivers/csharp/postgres-npgsql-reference/#configure-ssl-tls) for information on supported SSL modes and examples for setting up your connection strings.
 
 ### Create a sample C# application with SSL
 
-In Visual Studio, create a new project and choose **Console Application as template**. Follow the instructions to save the project.
+To create the sample C# application, do the following:
 
-First, install the Npgsql driver in your Visual Studio project, replacing the values in the `connStringBuilder` object as appropriate for your cluster::
+1. In Visual Studio, create a new C# application, and choose [Console Application](https://docs.microsoft.com/en-us/dotnet/core/tutorials/with-visual-studio?pivots=dotnet-6-0) as the template. Follow the instructions to save the project.
 
-1. Open your Project Solution View
-1. Right-click on **Packages** and click **Add Packages**
-1. Search for `Npgsql` and click **Add Package**
+1. Add the Npgsql package to your project as follows:
 
-Next, copy the contents below to your `Program.cs` file, :
+   - Right-click on **Dependencies** and click **Manage Nuget Packages**.
+   - Search for `Npgsql` and click **Add Package**.
+
+1. Copy the following code to your `Program.cs` file, and replace the values in the `connStringBuilder` object as appropriate for your cluster.
 
 ```csharp
 using System;
@@ -181,11 +168,11 @@ namespace Yugabyte_CSharp_Demo
           var connStringBuilder = new NpgsqlConnectionStringBuilder();
            connStringBuilder.Host = "22420e3a-768b-43da-8dcb-xxxxxx.aws.ybdb.io";
            connStringBuilder.Port = 5433;
-           connStringBuilder.SslMode = SslMode.Require;
+           connStringBuilder.SslMode = SslMode.VerifyFull;
+           connStringBuilder.RootCertificate = "/root.crt" //Provide full path to your root CA.
            connStringBuilder.Username = "admin";
            connStringBuilder.Password = "xxxxxx";
            connStringBuilder.Database = "yugabyte";
-           connStringBuilder.TrustServerCertificate = true;
            CRUD(connStringBuilder.ConnectionString);
        }
        static void CRUD(string connString)
@@ -237,9 +224,9 @@ namespace Yugabyte_CSharp_Demo
 
 ### Run the C# SSL application
 
-Run the C# app. Select `Run -> Start Without Debugging`.
+To run the application, choose **Run -> Start Without Debugging**.
 
-You should see the following as the output:
+You should see the following output:
 
 ```output
 Created table Employee

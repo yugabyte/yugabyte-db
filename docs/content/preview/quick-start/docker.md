@@ -11,7 +11,7 @@ type: docs
 <div class="custom-tabs tabs-style-2">
   <ul class="tabs-name">
     <li>
-      <a href="../../quick-start-yugabytedb-managed/" class="nav-link">
+      <a href="/preview/quick-start-yugabytedb-managed/" class="nav-link">
         Use a cloud cluster
       </a>
     </li>
@@ -56,17 +56,16 @@ The local cluster setup on a single host is intended for development and learnin
   </ul>
 </div>
 
-{{< note title="Note" >}}
 
-The Docker option to run local clusters is recommended only for advanced Docker users. This is because running stateful apps like YugabyteDB in Docker is more complex and error-prone than stateless apps.
-
-{{< /note >}}
+Note that the Docker option to run local clusters is recommended only for advanced Docker users. This is due to the fact that running stateful applications such as YugabyteDB in Docker is more complex and error-prone than running stateless applications.
 
 ## Install YugabyteDB
 
+Installing YugabyteDB involves completing [prerequisites](#prerequisites) and them performing the actual [installation](#install).
+
 ### Prerequisites
 
-You must have the Docker runtime installed on your localhost. Follow the links below to download and install Docker if you have not done so already.
+Before installing YugabyteDB, ensure that you have the Docker runtime installed on your localhost. To download and install Docker, select one of the following environments:
 
 <i class="fab fa-apple" aria-hidden="true"></i> [Docker for Mac](https://store.docker.com/editions/community/docker-ce-desktop-mac)
 
@@ -80,46 +79,48 @@ You must have the Docker runtime installed on your localhost. Follow the links b
 
 ### Install
 
-Pull the YugabyteDB container.
+Pull the YugabyteDB container by executing the following command:
 
 ```sh
-$ docker pull yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}}
+docker pull yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}}
 ```
 
 ## Create a local cluster
 
-To create a 1-node cluster with a replication factor (RF) of 1, run the following command.
+To create a 1-node cluster with a replication factor (RF) of 1, run the following command:
 
 ```sh
-$ docker run -d --name yugabyte  -p7000:7000 -p9000:9000 -p5433:5433 -p9042:9042\
+docker run -d --name yugabyte  -p7000:7000 -p9000:9000 -p5433:5433 -p9042:9042\
  yugabytedb/yugabyte:latest bin/yugabyted start\
  --daemon=false
 ```
 
-In the preceding `docker run` command, the data stored in YugabyteDB doesn't persist across container restarts. To make YugabyteDB persist data across restarts, add a volume mount option to the docker run command.
+In the preceding `docker run` command, the data stored in YugabyteDB does not persist across container restarts. To make YugabyteDB persist data across restarts, you can add a volume mount option to the docker run command, as follows:
 
-First, create a `~/yb_data` directory:
+- Create a `~/yb_data` directory by executing the following command:
 
-```sh
-$ mkdir ~/yb_data
-```
+  ```sh
+  mkdir ~/yb_data
+  ```
 
-Next, run docker with the volume mount option:
+- Run Docker with the volume mount option by executing the following command:
 
-```sh
-$ docker run -d --name yugabyte \
-         -p7000:7000 -p9000:9000 -p5433:5433 -p9042:9042 \
-         -v ~/yb_data:/home/yugabyte/yb_data \
-         yugabytedb/yugabyte:latest bin/yugabyted start \
-         --base_dir=/home/yugabyte/yb_data --daemon=false
-```
+  ```sh
+  docker run -d --name yugabyte \
+           -p7000:7000 -p9000:9000 -p5433:5433 -p9042:9042 \
+           -v ~/yb_data:/home/yugabyte/yb_data \
+           yugabytedb/yugabyte:latest bin/yugabyted start \
+           --base_dir=/home/yugabyte/yb_data --daemon=false
+  ```
 
-Clients can now connect to the YSQL and YCQL APIs at `localhost:5433` and `localhost:9042` respectively.
+Clients can now connect to the YSQL and YCQL APIs at http://localhost:5433 and http://localhost:9042 respectively.
 
 ### Check cluster status
 
+Run the following command to check the cluster status:
+
 ```sh
-$ docker ps
+docker ps
 ```
 
 ```output
@@ -129,21 +130,21 @@ CONTAINER ID        IMAGE                 COMMAND                  CREATED      
 
 ### Check cluster status with Admin UI
 
-Under the hood, the cluster you have just created consists of two processes: [YB-Master](../../architecture/concepts/yb-master/) which keeps track of various metadata (list of tables, users, roles, permissions, and so on), and [YB-TServer](../../architecture/concepts/yb-tserver/) which is responsible for the actual end user requests for data updates and queries.
+The cluster you have created consists of two processes: [YB-Master](../../architecture/concepts/yb-master/) which keeps track of various metadata (list of tables, users, roles, permissions, and so on) and [YB-TServer](../../architecture/concepts/yb-tserver/) which is responsible for the actual end user requests for data updates and queries.
 
-Each of the processes exposes its own Admin UI that can be used to check the status of the corresponding process, and perform certain administrative operations. The [yb-master Admin UI](../../reference/configuration/yb-master/#admin-ui) is available at <http://localhost:7000> and the [yb-tserver Admin UI](../../reference/configuration/yb-tserver/#admin-ui) is available at <http://localhost:9000>. To avoid port conflicts, you should make sure other processes on your machine do not have these ports mapped to `localhost`.
+Each of the processes exposes its own Admin UI that can be used to check the status of the corresponding process, as well as perform certain administrative operations. The [yb-master Admin UI](../../reference/configuration/yb-master/#admin-ui) is available at http://localhost:7000 and the [yb-tserver Admin UI](../../reference/configuration/yb-tserver/#admin-ui) is available at http://localhost:9000. To avoid port conflicts, you should make sure other processes on your machine do not have these ports mapped to `localhost`.
 
 #### Overview and YB-Master status
 
-The YB-Master home page shows that you have a cluster (or universe) with a replication factor of 1, a single node, and no tables. The YugabyteDB version is also displayed.
+The following illustration shows the YB-Master home page with a cluster with a replication factor of 1, a single node, and no tables. The YugabyteDB version is also displayed.
 
 ![master-home](/images/admin/master-home-docker-rf1.png)
 
-The **Masters** section highlights the 1 YB-Master along with its corresponding cloud, region, and zone placement.
+The **Masters** section shows the 1 YB-Master along with its corresponding cloud, region, and zone placement.
 
 #### YB-TServer status
 
-Click **See all nodes** to go to the **Tablet Servers** page, which lists the YB-TServer along with the time since it last connected to the YB-Master using regular heartbeats.
+Click **See all nodes** to open the **Tablet Servers** page that lists the YB-TServer along with the time since it last connected to the YB-Master using regular heartbeats, as per the following illustration:
 
 ![master-home](/images/admin/master-tservers-list-docker-rf1.png)
 
@@ -151,34 +152,36 @@ Click **See all nodes** to go to the **Tablet Servers** page, which lists the YB
 
 ### Prerequisites
 
-This tutorial assumes that:
+Before building a Java application, perform the following:
 
-- YugabyteDB is up and running. Using the [yb-ctl](/preview/admin/yb-ctl/#root) utility, create a universe with a 3-node RF-3 cluster with some fictitious geo-locations assigned.
+- While YugabyteDB is running, use the [yb-ctl](/preview/admin/yb-ctl/#root) utility to create a universe with a 3-node RF-3 cluster with some fictitious geo-locations assigned, as follows:
 
   ```sh
-  $ cd <path-to-yugabytedb-installation>
+  cd <path-to-yugabytedb-installation>
 
   ./bin/yb-ctl create --rf 3 --placement_info "aws.us-west.us-west-2a,aws.us-west.us-west-2a,aws.us-west.us-west-2b"
   ```
 
-- Java Development Kit (JDK) 1.8, or later, is installed. JDK installers can be downloaded from [OpenJDK](http://jdk.java.net/).
-- [Apache Maven](https://maven.apache.org/index.html) 3.3 or later, is installed.
+- Ensure that Java Development Kit (JDK) 1.8 or later is installed.  JDK installers can be downloaded from [OpenJDK](http://jdk.java.net/).
+- Ensure that [Apache Maven](https://maven.apache.org/index.html) 3.3 or later is installed.
 
 ### Create and configure the Java project
 
-1. Create a project called "DriverDemo".
+Perform the following to create a sample Java project:
+
+1. Create a project called DriverDemo, as follows:
 
     ```sh
-    $ mvn archetype:generate \
+    mvn archetype:generate \
         -DgroupId=com.yugabyte \
         -DartifactId=DriverDemo \
         -DarchetypeArtifactId=maven-archetype-quickstart \
         -DinteractiveMode=false
 
-    $ cd DriverDemo
+    cd DriverDemo
     ```
 
-1. Open the pom.xml file in a text editor and add the following below the `<url>` element.
+1. Open the `pom.xml` file in a text editor and add the following below the `<url>` element:
 
     ```xml
     <properties>
@@ -187,7 +190,7 @@ This tutorial assumes that:
     </properties>
     ```
 
-1. Add the following dependencies for the driver HikariPool within the `<dependencies>` element in `pom.xml`.
+1. Add the following dependencies for the driver HikariPool within the `<dependencies>` element in `pom.xml`:
 
     ```xml
     <dependency>
@@ -204,24 +207,24 @@ This tutorial assumes that:
     </dependency>
     ```
 
-1. Save and close `pom.xml`.
+1. Save and close the `pom.xml` file.
 
-1. Install the added dependency.
+1. Install the added dependency by executing the following command:
 
     ```sh
-    $ mvn install
+    mvn install
     ```
 
-### Create the sample Java application
+### Create a sample Java application
 
-You'll create two java applications, `UniformLoadBalance` and `TopologyAwareLoadBalance`. In each, you can create connections in two ways: using the `DriverManager.getConnection()` API, or using `YBClusterAwareDataSource` and `HikariPool`. This example shows both approaches.
+The following steps demonstrate how to create two Java applications, `UniformLoadBalance` and `TopologyAwareLoadBalance`. In each, you can create connections in one of two ways: using the `DriverManager.getConnection()` API or using `YBClusterAwareDataSource` and `HikariPool`. Both approaches are described.
 
 #### Uniform load balancing
 
-1. Create a file called `./src/main/java/com/yugabyte/UniformLoadBalanceApp.java`.
+1. Create a file called `./src/main/java/com/yugabyte/UniformLoadBalanceApp.java` by executing the following command:
 
     ```sh
-    $ touch ./src/main/java/com/yugabyte/UniformLoadBalanceApp.java
+    touch ./src/main/java/com/yugabyte/UniformLoadBalanceApp.java
     ```
 
 1. Paste the following into `UniformLoadBalanceApp.java`:
@@ -250,7 +253,7 @@ You'll create two java applications, `UniformLoadBalance` and `TopologyAwareLoad
       }
 
       public static void makeConnectionUsingDriverManager() {
-        //List to store the connections so that they can be closed at the end
+        // List to store the connections so that they can be closed at the end
         List<Connection> connectionList = new ArrayList<>();
 
         System.out.println("Lets create 6 connections using DriverManager");
@@ -282,7 +285,7 @@ You'll create two java applications, `UniformLoadBalance` and `TopologyAwareLoad
 
         Properties poolProperties = new Properties();
         poolProperties.setProperty("dataSourceClassName", "com.yugabyte.ysql.YBClusterAwareDataSource");
-        //the pool will create  10 connections to the servers
+        // The pool will create  10 connections to the servers
         poolProperties.setProperty("maximumPoolSize", String.valueOf(10));
         poolProperties.setProperty("dataSource.serverName", "127.0.0.1");
         poolProperties.setProperty("dataSource.portNumber", "5433");
@@ -310,11 +313,9 @@ You'll create two java applications, `UniformLoadBalance` and `TopologyAwareLoad
     }
     ```
 
-    {{< note title="Note">}}
-When using `DriverManager.getConnection()`, you need to include the `load-balance=true` property in the connection URL. In the case of `YBClusterAwareDataSource`, load balancing is enabled by default.
-    {{< /note >}}
+    When using `DriverManager.getConnection()`, you need to include the `load-balance=true` property in the connection URL. In the case of `YBClusterAwareDataSource`, load balancing is enabled by default.
 
-1. Run the application.
+1. Run the application, as follows:
 
     ```sh
     mvn -q package exec:java -DskipTests -Dexec.mainClass=com.yugabyte.UniformLoadBalanceApp
@@ -322,10 +323,10 @@ When using `DriverManager.getConnection()`, you need to include the `load-balanc
 
 #### Topology-aware load balancing
 
-1. Create a file called `./src/main/java/com/yugabyte/TopologyAwareLoadBalanceApp.java`.
+1. Create a file called `./src/main/java/com/yugabyte/TopologyAwareLoadBalanceApp.java` by executing the following command:
 
     ```sh
-    $ touch ./src/main/java/com/yugabyte/TopologyAwareLoadBalanceApp.java
+    touch ./src/main/java/com/yugabyte/TopologyAwareLoadBalanceApp.java
     ```
 
 1. Paste the following into `TopologyAwareLoadBalanceApp.java`:
@@ -355,7 +356,7 @@ When using `DriverManager.getConnection()`, you need to include the `load-balanc
       }
 
       public static void makeConnectionUsingDriverManager() {
-        //List to store the connections so that they can be closed at the end
+        // List to store the connections so that they can be closed at the end
         List<Connection> connectionList = new ArrayList<>();
 
         System.out.println("Lets create 6 connections using DriverManager");
@@ -389,7 +390,7 @@ When using `DriverManager.getConnection()`, you need to include the `load-balanc
 
         Properties poolProperties = new Properties();
         poolProperties.setProperty("dataSourceClassName", "com.yugabyte.ysql.YBClusterAwareDataSource");
-        //the pool will create  10 connections to the servers
+        // The pool will create  10 connections to the servers
         poolProperties.setProperty("maximumPoolSize", String.valueOf(10));
         poolProperties.setProperty("dataSource.serverName", "127.0.0.1");
         poolProperties.setProperty("dataSource.portNumber", "5433");
@@ -403,8 +404,6 @@ When using `DriverManager.getConnection()`, you need to include the `load-balanc
         // If you want to load balance between specific geo locations using topology keys
         String geoLocations = "aws.us-west.us-west-2a";
         poolProperties.setProperty("dataSource.topologyKeys", geoLocations);
-
-
         HikariConfig config = new HikariConfig(poolProperties);
         config.validate();
         HikariDataSource hikariDataSource = new HikariDataSource(config);
@@ -422,11 +421,9 @@ When using `DriverManager.getConnection()`, you need to include the `load-balanc
     }
     ```
 
-    {{< note title="Note" >}}
-When using `DriverManager.getConnection()`, you need to include the `load-balance=true` property in the connection URL. In the case of `YBClusterAwareDataSource`, load balancing is enabled by default, but you must set property `dataSource.topologyKeys`.
-    {{< /note >}}
+    When using `DriverManager.getConnection()`, you need to include the `load-balance=true` property in the connection URL. In the case of `YBClusterAwareDataSource`, load balancing is enabled by default, but you must set property `dataSource.topologyKeys`.
 
-1. Run the application.
+1. Run the application, as follows:
 
     ```sh
      mvn -q package exec:java -DskipTests -Dexec.mainClass=com.yugabyte.TopologyAwareLoadBalanceApp

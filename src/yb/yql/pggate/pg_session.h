@@ -24,6 +24,7 @@
 #include <boost/optional.hpp>
 
 #include "yb/client/client_fwd.h"
+#include "yb/client/tablet_server.h"
 
 #include "yb/common/pg_types.h"
 #include "yb/common/transaction.h"

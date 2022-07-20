@@ -67,6 +67,7 @@ If you want to output the double quote character within the free text, then you 
 select
   to_char('2021-05-17'::timestamp, '"Here is the \"year\" c\o\m\p\o\n\e\n\t of a date\\time value:" yyyy');
 ```
+
 This is the result:
 
 ```output
@@ -397,7 +398,7 @@ The _"Too long"_ tests still fail. but the _"Too short"_ tests now succeed.
 
 {{< tip title="Avoid using 'years' substring values less than one to specify BC in 'to_date()' and 'to_timestamp()'." >}}
 
-The section "Usage notes for date/time formatting" on the page "9.8. Data Type Formatting Functions" just under <a href="https://www.postgresql.org/docs/11/functions-formatting.html#FUNCTIONS-FORMATTING-DATETIMEMOD-TABLE" target="_blank">Table 9.25. Template Pattern Modifiers for Date/Time Formatting <i class="fas fa-external-link-alt"></i></a> says this:
+The section "Usage notes for date/time formatting" on the page "9.8. Data Type Formatting Functions" just under [Table 9.25. Template Pattern Modifiers for Date/Time Formatting](https://www.postgresql.org/docs/11/functions-formatting.html#FUNCTIONS-FORMATTING-DATETIMEMOD-TABLE) says this:
 
 > In to_timestamp and to_date, negative years are treated as signifying BC. If you write both a negative year and an explicit BC field, you get AD again. An input of year zero is treated as 1 BC.
 
@@ -680,6 +681,7 @@ with c as (select '0020-05-03 BC'::timestamp as t)
     to_char(t, 'FMMMth "month ("FMMonth")", FMDDth "day", FMYYYY AD')  as "using FM"
 from c;
 ```
+
 This is the result:
 
 ```output
@@ -720,6 +722,7 @@ Here are the results:
   Monday   , 01st February , 2,021 | Lundi, 01st Février, 2,021
   Monday   , 01st February , 2,021 | Maanantai, 01st Helmikuu, 2,021
 ```
+
 ### The FX modifier
 
 The _to_date()_ and _to_timestamp()_ functions treat runs of spaces as a single space in the to-be-converted _text_ value unless the _FX_ modifier is used. Try this:
@@ -1104,7 +1107,6 @@ Notice the descriptions of the _D_ and _ID_ patterns from the table in the subse
 | ------- | --------------------------------------------------- |
 | _D_     | Day of the week, Sunday (1) to Saturday (7).        |
 | _ID_    | ISO 8601 day of the week, Monday (1) to Sunday (7). |
-
 
 And notice the descriptions of the _dow_ and _isodow_ keywords from the table in the subsection [List of keywords](../functions/miscellaneous/extract/#list-of-keywords) on the [Function extract() | date_part() returns double precision](../functions/miscellaneous/extract/) page:
 

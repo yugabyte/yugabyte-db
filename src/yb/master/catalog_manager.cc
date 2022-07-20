@@ -4816,6 +4816,23 @@ Result<scoped_refptr<NamespaceInfo>> CatalogManager::FindNamespace(
   return FindNamespaceUnlocked(ns_identifier);
 }
 
+Result<scoped_refptr<UDTypeInfo>> CatalogManager::FindUDTypeById(
+    const UDTypeId& udt_id) const {
+  SharedLock lock(mutex_);
+  return FindUDTypeByIdUnlocked(udt_id);
+}
+
+Result<scoped_refptr<UDTypeInfo>> CatalogManager::FindUDTypeByIdUnlocked(
+    const UDTypeId& udt_id) const {
+  scoped_refptr<UDTypeInfo> tp = FindPtrOrNull(udtype_ids_map_, udt_id);
+  if (tp == nullptr) {
+    VLOG_WITH_FUNC(4) << "UDType not found: " << udt_id << "\n" << GetStackTrace();
+    return STATUS(NotFound, "UDType identifier not found", udt_id,
+                  MasterError(MasterErrorPB::TYPE_NOT_FOUND));
+  }
+  return tp;
+}
+
 Result<TableDescription> CatalogManager::DescribeTable(
     const TableIdentifierPB& table_identifier, bool succeed_if_create_in_progress) {
   TRACE("Looking up table");
@@ -5211,7 +5228,9 @@ Status CatalogManager::DeleteTable(
             << req->ShortDebugString();
 
   scoped_refptr<TableInfo> table = VERIFY_RESULT(FindTable(req->table()));
-  bool result = IsCdcEnabled(*table);
+
+  // For now, only disable dropping YCQL tables under xCluster replication.
+  bool result = table->GetTableType() == YQL_TABLE_TYPE && IsCdcEnabled(*table);
   if (!FLAGS_enable_delete_truncate_xcluster_replicated_table && result) {
     return STATUS(NotSupported,
                   "Cannot delete a table in replication.",
@@ -8346,7 +8365,7 @@ Status CatalogManager::ListNamespaces(const ListNamespacesRequestPB* req,
 Status CatalogManager::GetNamespaceInfo(const GetNamespaceInfoRequestPB* req,
                                         GetNamespaceInfoResponsePB* resp,
                                         rpc::RpcContext* rpc) {
-  LOG(INFO) << __func__ << " from " << RequestorString(rpc) << ": " << req->ShortDebugString();
+  VLOG(1) << __func__ << " from " << RequestorString(rpc) << ": " << req->ShortDebugString();
 
   // Look up the namespace and verify if it exists.
   TRACE("Looking up namespace");
@@ -8438,6 +8457,7 @@ Status CatalogManager::CreateUDType(const CreateUDTypeRequestPB* req,
     tp = FindPtrOrNull(udtype_names_map_, std::make_pair(ns->id(), req->name()));
 
     if (tp != nullptr) {
+      resp->set_id(tp->id());
       s = STATUS_SUBSTITUTE(AlreadyPresent,
           "Type '$0.$1' already exists", ns->name(), req->name());
       LOG(WARNING) << "Found type: " << tp->id() << ". Failed creating type with error: "

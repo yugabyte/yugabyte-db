@@ -134,3 +134,8 @@ reset enable_bitmapscan;
 reset enable_indexonlyscan;
 
 drop table gist_tbl;
+
+-- Also check that use_physical_tlist doesn't trigger in such cases.
+explain (verbose, costs off)
+select count(*) from gist_tbl;
+select count(*) from gist_tbl;

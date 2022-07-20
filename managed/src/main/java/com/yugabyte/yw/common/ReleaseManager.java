@@ -251,10 +251,13 @@ public class ReleaseManager {
   // This regex needs to support old style packages with -ee as well as new style packages without.
   // There are previously existing YW deployments that will have the old packages and users will
   // need to still be able to use said universes and their existing YB releases.
-  final Pattern ybPackagePattern =
-      Pattern.compile("[^.]+yugabyte-(?:ee-)?(.*)-(alma|centos)(.*).tar.gz");
+  static final Pattern ybPackagePattern =
+      Pattern.compile("yugabyte-(?:ee-)?(.*)-(alma|centos)(.*).tar.gz");
 
-  final Pattern ybHelmChartPattern = Pattern.compile("[^.]+yugabyte-(.*)-helm.tar.gz");
+  final Pattern ybHelmChartPattern = Pattern.compile("yugabyte-(.*)-helm.tar.gz");
+
+  static final Pattern ybVersionPattern =
+      Pattern.compile("(.*)(\\d+.\\d+.\\d+(.\\d+)?)(-(b(\\d+)|(\\w+)))?(.*)");
 
   public Map<String, String> getReleaseFiles(String releasesPath, Predicate<Path> fileFilter) {
     Map<String, String> fileMap = new HashMap<>();
@@ -331,7 +334,19 @@ public class ReleaseManager {
   public static Map<String, ReleaseMetadata> formDataToReleaseMetadata(
       List<ReleaseFormData> versionDataList) {
 
-    // Input validation
+    // Input validation - Note that input version must be in the correct format because a UI
+    // exception is thrown otherwise - make use of this to check package naming convention.
+
+    // Validating release names requires three checks:
+    // 1. Proper formatting of the .tar.gz package name (yugabyte-(centos|alma).tar.gz).
+    // 2. Proper formatting of the DB version in the .tar.gz package name.
+    // 3. Equality of the DB version in the .tar.gz package name with the
+    // DB version specified in the Version field.
+
+    // We create regexes to check for the first two conditions, and use contains to
+    // check for the last condition. A runtime exception is thrown if any condition is not met
+    // to validate release names.
+
     for (ReleaseFormData versionData : versionDataList) {
       if (versionData.version == null) {
         throw new RuntimeException("Version is not specified");
@@ -354,6 +369,32 @@ public class ReleaseManager {
         if (!versionData.s3.paths.x86_64.startsWith("s3://")) {
           throw new RuntimeException("S3 path should be prefixed with s3://");
         }
+
+        String packageName =
+            versionData
+                .s3
+                .paths
+                .x86_64
+                .split("/")[(versionData.s3.paths.x86_64.split("/")).length - 1];
+
+        Matcher packagePatternMatcher = ybPackagePattern.matcher(packageName);
+
+        Matcher versionPatternMatcher = ybVersionPattern.matcher(packageName);
+
+        if (!packagePatternMatcher.find()) {
+
+          throw new RuntimeException(
+              "The package name of the .tar.gz file is improperly formatted. Please"
+                  + " check to make sure that you have typed in the package name correctly.");
+        }
+
+        if (!versionPatternMatcher.find()) {
+
+          throw new RuntimeException(
+              "The version of DB in your package name is improperly formatted. Please"
+                  + " check to make sure that you have typed in the DB version correctly"
+                  + " in the package name.");
+        }
       }
 
       if (versionData.gcs != null) {
@@ -366,6 +407,32 @@ public class ReleaseManager {
         }
         if (!versionData.gcs.paths.x86_64.startsWith("gs://")) {
           throw new RuntimeException("GCS path should be prefixed with gs://");
+        }
+
+        String packageName =
+            versionData
+                .gcs
+                .paths
+                .x86_64
+                .split("/")[(versionData.gcs.paths.x86_64.split("/")).length - 1];
+
+        Matcher packagePatternMatcher = ybPackagePattern.matcher(packageName);
+
+        Matcher versionPatternMatcher = ybVersionPattern.matcher(packageName);
+
+        if (!packagePatternMatcher.find()) {
+
+          throw new RuntimeException(
+              "The package name of the .tar.gz file is improperly formatted. Please"
+                  + " check to make sure that you have typed in the package name correctly.");
+        }
+
+        if (!versionPatternMatcher.find()) {
+
+          throw new RuntimeException(
+              "The version of DB in your package name is improperly formatted. Please"
+                  + " check to make sure that you have typed in the DB version correctly"
+                  + " in the package name.");
         }
       }
 
@@ -446,13 +513,117 @@ public class ReleaseManager {
     String ybHelmChartPath = appConfig.getString("yb.helm.packagePath");
     if (ybReleasesPath != null && !ybReleasesPath.isEmpty()) {
       Map<String, Object> currentReleases = getReleaseMetadata();
-      copyFiles(ybReleasePath, ybReleasesPath, ybPackagePattern, currentReleases.keySet());
-      copyFiles(ybHelmChartPath, ybReleasesPath, ybHelmChartPattern, currentReleases.keySet());
+
+      // Local copy pattern to account for the presence of characters prior to the file name itself.
+      // (ensures that all local releases get imported prior to version checking).
+      Pattern ybPackagePatternCopy =
+          Pattern.compile("[^.]+yugabyte-(?:ee-)?(.*)-(alma|centos)(.*).tar.gz");
+
+      Pattern ybHelmChartPatternCopy = Pattern.compile("[^.]+yugabyte-(.*)-helm.tar.gz");
+
+      copyFiles(ybReleasePath, ybReleasesPath, ybPackagePatternCopy, currentReleases.keySet());
+      copyFiles(ybHelmChartPath, ybReleasesPath, ybHelmChartPatternCopy, currentReleases.keySet());
       Map<String, ReleaseMetadata> localReleases = getLocalReleases(ybReleasesPath);
       localReleases.keySet().removeAll(currentReleases.keySet());
       LOG.debug("Current releases: [ {} ]", currentReleases.keySet().toString());
       LOG.debug("Local releases: [ {} ]", localReleases.keySet());
+
+      // As described in the diff, we don't touch the currrent releases that have already been
+      // imported. We
+      // perform the same checks that we did in the import dialog case here prior to the import).
+
+      // If there is an error for one release, there is still a possibility that the user has
+      // imported multiple
+      // releases locally, and that the other ones have been named properly. We err on the cautious
+      // side, and
+      // immediately throw a Runtime Exception. The user will be able to import local releases only
+      // if all of
+      // them are properly formatted, and none otherwise.
+
       if (!localReleases.isEmpty()) {
+
+        Pattern ybPackagePatternRequiredInChartPath =
+            Pattern.compile("(.*)yugabyte-(?:ee-)?(.*)-(helm)(.*).tar.gz");
+
+        Pattern ybVersionPatternRequired =
+            Pattern.compile("^(\\d+.\\d+.\\d+(.\\d+)?)(-(b(\\d+)|(\\w+)))?$");
+
+        for (String version : localReleases.keySet()) {
+
+          String associatedFilePath = localReleases.get(version).filePath;
+
+          String associatedChartPath = localReleases.get(version).chartPath;
+
+          String filePackageName =
+              associatedFilePath.split("/")[(associatedFilePath.split("/")).length - 1];
+
+          String chartPackageName =
+              associatedChartPath.split("/")[(associatedChartPath.split("/")).length - 1];
+
+          Matcher versionPatternMatcher = ybVersionPatternRequired.matcher(version);
+
+          Matcher packagePatternFileMatcher = ybPackagePattern.matcher(filePackageName);
+
+          Matcher packagePatternChartMatcher =
+              ybPackagePatternRequiredInChartPath.matcher(chartPackageName);
+
+          Matcher versionPatternMatcherInPackageNameFilePath =
+              ybVersionPattern.matcher(filePackageName);
+
+          Matcher versionPatternMatcherInPackageNameChartPath =
+              ybVersionPattern.matcher(chartPackageName);
+
+          if (!versionPatternMatcher.find()) {
+
+            throw new RuntimeException(
+                "The version name in the folder of the imported local release is improperly "
+                    + "formatted. Please check to make sure that the folder with the version name "
+                    + "is named correctly.");
+          }
+
+          if (!versionPatternMatcherInPackageNameFilePath.find()) {
+
+            throw new RuntimeException(
+                "In the file path, the version of DB in your package name in the imported "
+                    + "local release is improperly formatted. Please "
+                    + " check to make sure that you have named the .tar.gz file with "
+                    + " the appropriate DB version.");
+          }
+
+          if (!filePackageName.contains(version)) {
+
+            throw new RuntimeException(
+                "The version of DB that you have specified in the folder name in the "
+                    + "imported local release does not match the version of DB in the "
+                    + "package name in the imported local release (specifed through the "
+                    + "file path). Please make sure that you have named the directory and "
+                    + ".tar.gz file appropriately so that the DB version in the package "
+                    + "name matches the DB version in the folder name.");
+          }
+
+          if (!associatedChartPath.equals("")) {
+
+            if (!versionPatternMatcherInPackageNameChartPath.find()) {
+
+              throw new RuntimeException(
+                  "In the chart path, the version of DB in your package name in the imported "
+                      + "local release is improperly formatted. Please "
+                      + " check to make sure that you have named the .tar.gz file with "
+                      + " the appropriate DB version.");
+            }
+
+            if (!chartPackageName.contains(version)) {
+
+              throw new RuntimeException(
+                  "The version of DB that you have specified in the folder name in the "
+                      + "imported local release does not match the version of DB in the "
+                      + "package name in the imported local release (specifed through the "
+                      + "chart path). Please make sure that you have named the directory and "
+                      + ".tar.gz file appropriately so that the DB version in the package "
+                      + "name matches the DB version in the folder name.");
+            }
+          }
+        }
         LOG.info("Importing local releases: [ {} ]", Json.toJson(localReleases));
         localReleases.forEach(currentReleases::put);
         configHelper.loadConfigToDB(ConfigHelper.ConfigType.SoftwareReleases, currentReleases);

@@ -16,7 +16,9 @@ import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static play.inject.Bindings.bind;
 import static play.libs.Files.singletonTemporaryFileCreator;
 import static play.test.Helpers.contentAsString;
 import static play.test.Helpers.fakeRequest;
@@ -57,6 +59,7 @@ import org.junit.rules.TemporaryFolder;
 import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnitRunner;
 import play.Application;
+import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;
 import play.mvc.Http;
 import play.mvc.Result;
@@ -81,6 +84,17 @@ public class PlatformTest extends FakeDBApplication {
   private static final String REMOTE_ACME_ORG = "http://remote.acme.org";
   private FakeApi fakeApi;
   EbeanServer localEBeanServer;
+
+  private PlatformInstanceClientFactory mockPlatformInstanceClientFactory =
+      mock(PlatformInstanceClientFactory.class);
+
+  @Override
+  protected GuiceApplicationBuilder configureApplication(GuiceApplicationBuilder builder) {
+    return super.configureApplication(
+        builder.overrides(
+            bind(PlatformInstanceClientFactory.class)
+                .toInstance(mockPlatformInstanceClientFactory)));
+  }
 
   @Before
   public void setup() {
@@ -139,7 +153,7 @@ public class PlatformTest extends FakeDBApplication {
   public void testSendBackups() throws IOException {
     FakeApi remoteFakeApi = startRemoteApp();
     UUID remoteConfigUUID = createHAConfig(remoteFakeApi, clusterKey);
-    setupProxyingApiHelper(remoteFakeApi);
+    setupProxyingApiHelper(remoteFakeApi, clusterKey);
     File fakeDump = createFakeDump();
     PlatformReplicationManager replicationManager =
         app.injector().instanceOf(PlatformReplicationManager.class);
@@ -221,7 +235,9 @@ public class PlatformTest extends FakeDBApplication {
     return UUID.fromString(haConfigJson.get("uuid").asText());
   }
 
-  private void setupProxyingApiHelper(FakeApi remoteFakeApi) {
+  private void setupProxyingApiHelper(FakeApi remoteFakeApi, String clusterKey) {
+    when(mockPlatformInstanceClientFactory.getClient(anyString(), anyString()))
+        .thenReturn(new PlatformInstanceClient(mockApiHelper, clusterKey, REMOTE_ACME_ORG));
     when(mockApiHelper.multipartRequest(anyString(), anyMap(), anyList()))
         .thenAnswer(
             invocation -> {

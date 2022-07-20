@@ -331,4 +331,4 @@ yugabyte=# SELECT id, c1, c2 FROM sample ORDER BY c1;
 
 - [`COPY`](../cmd_copy)
 - [`CREATE TABLE`](../ddl_create_table)
-- [`SELECT`](../dml_select)
+- [`SELECT`](../dml_select/)

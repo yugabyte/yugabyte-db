@@ -161,8 +161,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
         .setDatabase("yugabyte")
         .setEnvVars(getPgRegressEnvVars())
         .getProcessBuilder();
-    pgRegress.start(procBuilder);
-    pgRegress.stop();
+    pgRegress.run(procBuilder);
   }
 
   public void runPgRegressTest(File inputDir, String schedule) throws Exception {
@@ -744,6 +743,11 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     Row row = Row.fromResultSet(rs);
     assertFalse("Result set has more than one row", rs.next());
     return row.getString(0);
+  }
+
+  protected int getNumTableColumns(Statement stmt, String tableName) throws Exception {
+    return getSingleRow(stmt, "SELECT relnatts FROM pg_class WHERE relname = '" +
+                                     tableName + "'").getInt(0);
   }
 
   protected long getMetricCounter(String metricName) throws Exception {

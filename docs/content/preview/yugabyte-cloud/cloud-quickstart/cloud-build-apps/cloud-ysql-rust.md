@@ -2,6 +2,7 @@
 title: Build a Rust application that uses YSQL
 headerTitle: Build a Rust application
 description: Build a small Rust application using the Rust-Postgres driver and using the YSQL API to connect to and interact with a YugabyteDB Managed cluster.
+headContent: "Client driver: Rust-Postgres"
 menu:
   preview_yugabyte-cloud:
     parent: cloud-build-apps
@@ -27,7 +28,7 @@ The following tutorial shows a small [Rust application](https://github.com/yugab
 Clone the sample application to your computer:
 
 ```sh
-git clone https://github.com/yugabyte/yugabyte-simple-rust-app && cd yugabyte-simple-rust-app
+git clone https://github.com/YugabyteDB-Samples/yugabyte-simple-rust-app.git && cd yugabyte-simple-rust-app
 ```
 
 ## Provide connection parameters
@@ -38,7 +39,7 @@ The application needs to establish a connection to the YugabyteDB cluster. To do
 
 2. Set the following configuration-related constants:
 
-    - **HOST** - the host name of your YugabyteDB cluster. To obtain a YugabyteDB Managed cluster host name, sign in to YugabyteDB Managed, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Network Access**.
+    - **HOST** - the host name of your YugabyteDB cluster. To obtain a YugabyteDB Managed cluster host name, sign in to YugabyteDB Managed, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Connection Parameters**.
     - **PORT** - the port number that will be used by the driver (the default YugabyteDB YSQL port is 5433).
     - **DB_NAME** - the name of the database you are connecting to (the default database is named `yugabyte`).
     - **USER** and **PASSWORD** - the username and password for the YugabyteDB database. If you are using the credentials you created when deploying a cluster in YugabyteDB Managed, these can be found in the credentials file you downloaded.

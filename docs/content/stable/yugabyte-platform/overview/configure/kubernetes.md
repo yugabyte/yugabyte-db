@@ -2,9 +2,9 @@
 title: Configure Kubernetes
 headerTitle: Configure Kubernetes
 linkTitle: Configure
-description: Configuring Yugabyte Platform on Kubernetes
+description: Configuring YugabyteDB Anywhere on Kubernetes
 image: /images/section_icons/deploy/enterprise.png
-headcontent: Configuring Yugabyte Platform on Kubernetes
+headcontent: Configuring YugabyteDB Anywhere on Kubernetes
 menu:
   stable_yugabyte-platform:
     identifier: configure-4-k8s
@@ -13,48 +13,47 @@ menu:
 type: docs
 ---
 
-Select your cloud provider to see the steps for configuration of database nodes. Click on the elements to see detailed steps.
-
-## Configure Yugabyte Platform
+For overview of how to configure database nodes, select one of the following cloud providers:
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
-
   <li>
-    <a href="/preview/yugabyte-platform/overview/configure/aws" class="nav-link">
+    <a href="../aws/" class="nav-link">
       <i class="fab fa-aws"></i>
       AWS
     </a>
   </li>
 
   <li>
-    <a href="/preview/yugabyte-platform/overview/configure/gcp" class="nav-link">
+    <a href="../gcp/" class="nav-link">
       <i class="fab fa-google" aria-hidden="true"></i>
       GCP
     </a>
   </li>
 
   <li>
-    <a href="/preview/yugabyte-platform/overview/configure/azure" class="nav-link">
+    <a href="../azure/" class="nav-link">
       <i class="fab fa-windows" aria-hidden="true"></i>
       Azure
     </a>
   </li>
 
   <li>
-    <a href="/preview/yugabyte-platform/overview/configure/kubernetes" class="nav-link active">
+    <a href="../kubernetes/" class="nav-link active">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
 
   <li>
-    <a href="/preview/yugabyte-platform/overview/configure/onprem" class="nav-link">
+    <a href="../onprem/" class="nav-link">
       <i class="fas fa-building"></i>
       On-premises
     </a>
   </li>
 
 </ul>
+
+<br>Click elements of the following chart to access detailed steps:
 
 <img src="/images/ee/flowchart/yb-configure-k8s.png" usemap="#image-map">
 

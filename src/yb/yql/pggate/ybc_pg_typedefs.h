@@ -333,7 +333,6 @@ typedef struct PgCallbacks {
   YBCPgMemctx (*GetCurrentYbMemctx)();
   const char* (*GetDebugQueryString)();
   void (*WriteExecOutParam)(PgExecOutParam *, const YbcPgExecOutParamValue *);
-  void (*YbPgMemUpdateMax)();
 } YBCPgCallbacks;
 
 typedef struct PgGFlagsAccessor {
@@ -354,6 +353,7 @@ typedef struct YbTablePropertiesData {
   bool is_colocated; /* via database or tablegroup, but not for system tables */
   YBCPgOid tablegroup_oid; /* InvalidOid if none */
   YBCPgOid colocation_id; /* 0 if not colocated */
+  size_t num_range_key_columns;
 } YbTablePropertiesData;
 
 typedef struct YbTablePropertiesData* YbTableProperties;
@@ -379,6 +379,12 @@ typedef struct PgColumnInfo {
   bool is_primary;
   bool is_hash;
 } YBCPgColumnInfo;
+
+// Hold info of range split value
+typedef struct PgRangeSplitDatum {
+  uint64_t datum;
+  YBCPgDatumKind datum_kind;
+} YBCPgSplitDatum;
 
 #ifdef __cplusplus
 }  // extern "C"

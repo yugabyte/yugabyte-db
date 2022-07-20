@@ -17,14 +17,14 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/preview/explore/transactions/scaling-transactions/" class="nav-link active">
+    <a href="../scaling-transactions/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
 
   <li >
-    <a href="/preview/explore/transactions/distributed-transactions-ycql/" class="nav-link">
+    <a href="../distributed-transactions-ycql/" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
@@ -136,7 +136,7 @@ CREATE TABLE order_details (
 
 In this tutorial, you'll explore automatic sharding inside YugabyteDB. First, you'll create some tables to understand how automatic sharding works. Then, you'll insert entries one by one, and examine how the data gets distributed across the various nodes.
 
-This tutorial uses the [yugabyted](../../../reference/configuration/yugabyted) cluster management utility.
+This tutorial uses the [yugabyted](../../../reference/configuration/yugabyted/) cluster management utility.
 
 ### Create a universe
 
@@ -191,7 +191,7 @@ ycqlsh> CREATE KEYSPACE ybdemo_keyspace;
 ycqlsh> CREATE TABLE ybdemo_keyspace.cassandrakeyvalue (k text PRIMARY KEY, v blob);
 ```
 
-By default, [yugabyted](../../../reference/configuration/yugabyted) creates one tablet per node per table. So for a 3 node cluster, 3 tablets are created for the above table; one on every node. Every such tablet is replicated 3 times for fault tolerance, so that makes the total number of nodes to be 3*3=9. Every node thus contains 3 tablets, one of which it is the leader and the remaining 2 of which it is the follower.
+By default, [yugabyted](../../../reference/configuration/yugabyted/) creates one tablet per node per table. So for a 3 node cluster, 3 tablets are created for the above table; one on every node. Every such tablet is replicated 3 times for fault tolerance, so that makes the total number of nodes to be 3*3=9. Every node thus contains 3 tablets, one of which it is the leader and the remaining 2 of which it is the follower.
 
 ### Explore tablets
 

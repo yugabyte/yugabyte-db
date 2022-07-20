@@ -1,6 +1,7 @@
 ---
-title: recursive CTE—SQL syntax and semantics
-linkTitle: recursive CTE
+title: >
+  Recursive CTE: SQL syntax and semantics
+linkTitle: Recursive CTE
 headerTitle: The recursive CTE
 description: This section specifies the syntax and semantics of the recursive CTE
 menu:
@@ -17,7 +18,7 @@ The optional `RECURSIVE` keyword fundamentally changes the meaning of a CTE. The
 
 When the optional `RECURSIVE` keyword is used, the [`common_table_expression`](../../../syntax_resources/grammar_diagrams/#common-table-expression) must be a `SELECT` statement—and this must have a specific form as the `UNION` or `UNION ALL` of the so-called _non-recursive term_ and the _recursive term_, thus:
 
-```
+```output.sql
 with
   recursive r(c1, c2, ...) as (
 
@@ -35,6 +36,7 @@ with
   )
 select ... from r ...;
 ```
+
 The following minimal example is found in very many articles and in the documentation for several SQL databases.
 
 ```plpgsql
@@ -57,11 +59,12 @@ with
   )
 select n from r order by n;
 ```
+
 Notice that the parentheses that surround the _non-recursive term_ and the _recursive term_ are not required. They are used for clarity. See the section [The _recursive term_ must be parenthesised to allow this to use a WITH clause](#the-recursive-term-must-be-parenthesised-to-allow-this-to-use-a-with-clause) for a scenario where the parentheses _are_ essential.
 
 This is the result:
 
-```
+```output
  n
 ---
  1
@@ -140,7 +143,7 @@ order by n desc;
 
 This is the result:
 
-```
+```output
  n
 ----
  99
@@ -184,14 +187,14 @@ order by n desc;
 
 causes a _42601_ syntax error to be reported for the line `recursive r(n) as...` If you remove this:
 
-```
+```output.sql
 a1(n) as (
     select 42),
 ```
 
 then the statement executes without error to produce this result:
 
-```
+```output
  n
 ----
  99
@@ -232,7 +235,7 @@ select n from r order by n;
 
 Notice that this is simply a _syntax_ example. Using `WITH` clauses within the recursive and non-recursive terms brings no value. The statement executes without error and produces this result:
 
-```
+```output
  n
 ---
  1
@@ -244,7 +247,7 @@ Notice that this is simply a _syntax_ example. Using `WITH` clauses within the r
 
 Next, first, remove the parenthesis pair that surrounds the _non-recursive term_. The statement runs without error to produce the same result. Now, re-instate this pair and remove the parenthesis pair that surrounds the _recursive term_. You get the generic _42601_ syntax error, reported for this line:
 
-```
+```output.sql
 with a2(n) as (
 ```
 
@@ -272,9 +275,10 @@ select n from r order by n;
 
 It causes this specific error:
 
-```
+```output
 42P19: aggregate functions are not allowed in a recursive query's recursive term
 ```
+
 The restriction, more carefully stated, disallows aggregate functions when the `FROM` list item is the recursive self-reference. By extension, the keywords `GROUP BY` and `HAVING` are also disallowed when the `FROM` list item is the recursive self-reference.
 
 Here is an example that executes without error that uses an aggregate function on a `FROM` list item that is _not_ the recursive self-reference:
@@ -302,9 +306,9 @@ with
 select n from r order by n;
 ```
 
-This is the results:
+This is the result:
 
-```
+```output
  n
 ---
  1
@@ -365,6 +369,7 @@ create table final_results(n int primary key);
 create table previous_results(n int primary key);
 create table temp_results(n int primary key);
 ```
+
 Now create the procedure:
 
 ```plpgsql
@@ -432,9 +437,10 @@ with
   )
 select c1, c2 from r order by c1, c2;
 ```
+
 This is the result:
 
-```
+```output
  c1 | c2
 ----+----
   0 |  1
@@ -485,6 +491,7 @@ create table temp_results(
   c2 int not null,
   constraint temp_results_pk primary key(c1, c2));
 ```
+
 Now create the procedure:
 
 ```plggsql

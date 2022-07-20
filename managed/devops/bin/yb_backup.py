@@ -80,6 +80,8 @@ SLEEP_IN_LEADERS_SEARCHING_ROUND_SEC = 20  # 5*(100 + 20) sec = 10 minutes
 
 CREATE_SNAPSHOT_TIMEOUT_SEC = 60 * 60  # hour
 RESTORE_SNAPSHOT_TIMEOUT_SEC = 24 * 60 * 60  # day
+XXH64HASH_TOOL_PATH = '/usr/bin/xxh64sum'
+XXH64_FILE_EXT = 'xxh64'
 SHA_TOOL_PATH = '/usr/bin/sha256sum'
 SHA_FILE_EXT = 'sha256'
 # Try to read home dir from environment variable, else assume it's /home/yugabyte.
@@ -346,14 +348,6 @@ def replace_last_substring(s, old, new):
 
 def strip_dir(dir_path):
     return dir_path.rstrip('/\\')
-
-
-def checksum_path(file_path):
-    return file_path + '.' + SHA_FILE_EXT
-
-
-def checksum_path_downloaded(file_path):
-    return checksum_path(file_path) + '.downloaded'
 
 
 # TODO: get rid of this sed / test program generation in favor of a more maintainable solution.
@@ -750,7 +744,7 @@ class YBTSConfig:
             logging.info("Loading TS config via Web UI on {}:{}".format(tserver_ip, web_port))
 
         url = "{}:{}/varz".format(tserver_ip, web_port)
-        output = self.backup.run_program(['curl', url], num_retry=10)
+        output = self.backup.run_program(['curl', url, '--silent', '--show-error'], num_retry=10)
 
         # Read '--placement_region'.
         if read_region:
@@ -910,6 +904,10 @@ class YBManifest:
         properties['start-time'] = self.backup.timer.start_time_str()
         properties['end-time'] = self.backup.timer.end_time_str()
         properties['size-in-bytes'] = self.backup.calc_size_in_bytes(snapshot_bucket)
+        properties['check-sums'] = not self.backup.args.disable_checksums
+        if not self.backup.args.disable_checksums:
+            properties['hash-algorithm'] = XXH64_FILE_EXT \
+                if self.backup.xxh64sum_binary_present else SHA_FILE_EXT
 
     def init_locations(self, tablet_leaders, snapshot_bucket):
         locations = self.body['locations']
@@ -966,16 +964,18 @@ class YBManifest:
                 tablet_location[tablet_id] = loc
 
     def is_pg_based_backup(self):
-        pg_based_backup = self.body['properties'].get('pg-based-backup')
-        if pg_based_backup is None:
-            pg_based_backup = False
-        return pg_based_backup
+        assert 'properties' in self.body
+        return self.body['properties'].get('pg-based-backup', False)
 
     def get_backup_size(self):
         return self.body['properties'].get('size-in-bytes')
 
     def get_locations(self):
         return self.body['locations'].keys()
+
+    def get_hash_algorithm(self):
+        assert 'properties' in self.body
+        return self.body['properties'].get('hash-algorithm', SHA_FILE_EXT)
 
 
 class YBBackup:
@@ -995,6 +995,7 @@ class YBBackup:
         self.ip_to_ssh_key_map = {}
         self.secondary_to_primary_ip_map = {}
         self.region_to_location = {}
+        self.xxh64sum_binary_present = None
         self.database_version = YBVersion("unknown")
         self.manifest = YBManifest(self)
         self.parse_arguments()
@@ -1174,6 +1175,7 @@ class YBBackup:
             help="Repeatable directory/bucket for a region. For 'create' mode it should be "
                  "related to a '--region'. For 'restore' it's not used.")
 
+        parser.add_argument('--ssh2_enabled', action='store_true', default=False)
         parser.add_argument(
             '--no_auto_name',
             action='store_true',
@@ -1376,6 +1378,10 @@ class YBBackup:
 
             for i in range(len(self.args.region)):
                 self.region_to_location[self.args.region[i]] = self.args.region_location[i]
+
+        if self.args.mac:
+            XXH64HASH_TOOL_PATH = '/usr/bin/xxhsum'
+            SHA_TOOL_PATH = '/usr/bin/shasum'
 
     def table_names_str(self, delimeter='.', space=' '):
         return get_table_names_str(self.args.keyspace, self.args.table, delimeter, space)
@@ -1921,6 +1927,9 @@ class YBBackup:
 
     def upload_file_from_local(self, dest_ip, src, dest):
         output = ''
+        ssh_key_flag = '-i'
+        if self.args.ssh2_enabled:
+            ssh_key_flag = '-K'
         if self.is_k8s():
             k8s_details = KubernetesDetails(dest_ip, self.k8s_pod_fqdn_to_cfg)
             output += self.run_program([
@@ -1946,7 +1955,7 @@ class YBBackup:
                         '-S', ssh_wrapper_path,
                         '-o', 'StrictHostKeyChecking=no',
                         '-o', 'UserKnownHostsFile=/dev/null',
-                        '-i', ssh_key_path,
+                        ssh_key_flag, ssh_key_path,
                         '-P', self.args.ssh_port,
                         '-q',
                         src,
@@ -1957,7 +1966,7 @@ class YBBackup:
                     ['scp',
                         '-o', 'StrictHostKeyChecking=no',
                         '-o', 'UserKnownHostsFile=/dev/null',
-                        '-i', ssh_key_path,
+                        ssh_key_flag, ssh_key_path,
                         '-P', self.args.ssh_port,
                         '-q',
                         src,
@@ -1968,6 +1977,9 @@ class YBBackup:
 
     def download_file_to_local(self, src_ip, src, dest):
         output = ''
+        ssh_key_flag = '-i'
+        if self.args.ssh2_enabled:
+            ssh_key_flag = '-K'
         if self.is_k8s():
             k8s_details = KubernetesDetails(src_ip, self.k8s_pod_fqdn_to_cfg)
             output += self.run_program([
@@ -1993,7 +2005,7 @@ class YBBackup:
                         '-S', ssh_wrapper_path,
                         '-o', 'StrictHostKeyChecking=no',
                         '-o', 'UserKnownHostsFile=/dev/null',
-                        '-i', ssh_key_path,
+                        ssh_key_flag, ssh_key_path,
                         '-P', self.args.ssh_port,
                         '-q',
                         '%s@%s:%s' % (self.args.ssh_user, src_ip, src),
@@ -2003,7 +2015,7 @@ class YBBackup:
                     ['scp',
                         '-o', 'StrictHostKeyChecking=no',
                         '-o', 'UserKnownHostsFile=/dev/null',
-                        '-i', ssh_key_path,
+                        ssh_key_flag, ssh_key_path,
                         '-P', self.args.ssh_port,
                         '-q',
                         '%s@%s:%s' % (self.args.ssh_user, src_ip, src),
@@ -2062,20 +2074,27 @@ class YBBackup:
                 ssh_key_path = self.ip_to_ssh_key_map.get(server_ip, ssh_key_path)
             change_user_cmd = 'sudo -u %s' % (self.args.remote_user) \
                 if self.needs_change_user() else ''
-            return self.run_program([
-                'ssh',
-                '-o', 'StrictHostKeyChecking=no',
+            ssh_key_flag = '-K' if self.args.ssh2_enabled else '-i'
+            ssh_only_args = [
                 '-o', 'UserKnownHostsFile=/dev/null',
                 # Control flags here are for ssh multiplexing (reuse the same ssh connections).
                 '-o', 'ControlMaster=auto',
                 '-o', 'ControlPath=~/.ssh/ssh-%r@%h:%p',
                 '-o', 'ControlPersist=1m',
-                '-i', ssh_key_path,
+            ] if not self.args.ssh2_enabled else []
+            ssh_command = [
+                'ssh',
+                '-o', 'StrictHostKeyChecking=no'
+            ]
+            ssh_command.extend(ssh_only_args)
+            ssh_command.extend([
+                ssh_key_flag, ssh_key_path,
                 '-p', self.args.ssh_port,
                 '-q',
                 '%s@%s' % (self.args.ssh_user, server_ip),
-                'cd / && %s bash -c ' % (change_user_cmd) + pipes.quote(cmd)],
-                num_retry=num_retries)
+                'cd / && %s bash -c ' % (change_user_cmd) + pipes.quote(cmd)
+            ])
+            return self.run_program(ssh_command, num_retry=num_retries)
         else:
             return self.run_program(['bash', '-c', cmd])
 
@@ -2336,18 +2355,70 @@ class YBBackup:
 
         return tserver_ip_to_tablet_id_to_snapshot_dirs
 
+    def check_if_xxh64bin_present(self):
+        # Checking the xxh64 binaries on single node(master leader).
+        # In case if the binary is absent on other host, script will fail during execution.
+        try:
+            host_ip = self.get_main_host_ip()
+            if self.is_k8s():
+                k8s_details = KubernetesDetails(host_ip, self.k8s_pod_fqdn_to_cfg)
+                return self.run_program([
+                    'kubectl',
+                    'exec',
+                    '-t',
+                    '-n={}'.format(k8s_details.namespace),
+                    # For k8s, pick the first qualified name, if given a CNAME.
+                    'command -v %s /dev/null' % (XXH64HASH_TOOL_PATH)],
+                    env=k8s_details.env_config)
+            elif self.args.no_ssh:
+                self.run_program([
+                    'command', '-v', XXH64HASH_TOOL_PATH, '/dev/null'
+                ])
+            else:
+                ssh_key_path = self.args.ssh_key_path
+                if self.ip_to_ssh_key_map:
+                    ssh_key_path = self.ip_to_ssh_key_map.get(host_ip, ssh_key_path)
+                self.run_program([
+                    'ssh',
+                    '-o', 'StrictHostKeyChecking=no',
+                    '-o', 'UserKnownHostsFile=/dev/null',
+                    '-o', 'ControlMaster=auto',
+                    '-o', 'ControlPath=~/.ssh/ssh-%r@%h:%p',
+                    '-o', 'ControlPersist=1m',
+                    '-i', ssh_key_path,
+                    '-p', self.args.ssh_port,
+                    '-q',
+                    '%s@%s' % (self.args.ssh_user, host_ip),
+                    'command -v %s /dev/null' % (XXH64HASH_TOOL_PATH)
+                ])
+            self.xxh64sum_binary_present = True
+        except subprocess.CalledProcessError as e:
+            self.xxh64sum_binary_present = False
+            logging.warning(
+                "Tool {} not found on host {}. Error: {}".format(XXH64HASH_TOOL_PATH, host_ip, e))
+
     def create_checksum_cmd_not_quoted(self, file_path, checksum_file_path):
-        prefix = pipes.quote(SHA_TOOL_PATH) if not self.args.mac else '/usr/bin/shasum'
+        assert self.xxh64sum_binary_present is not None
+        tool_path = XXH64HASH_TOOL_PATH if self.xxh64sum_binary_present else SHA_TOOL_PATH
+        prefix = pipes.quote(tool_path)
         return "{} {} > {}".format(prefix, file_path, checksum_file_path)
 
     def create_checksum_cmd(self, file_path, checksum_file_path):
         return self.create_checksum_cmd_not_quoted(
             pipes.quote(file_path), pipes.quote(checksum_file_path))
 
+    def checksum_path(self, file_path):
+        assert self.xxh64sum_binary_present is not None
+        ext = XXH64_FILE_EXT if self.xxh64sum_binary_present else SHA_FILE_EXT
+        return file_path + '.' + ext
+
+    def checksum_path_downloaded(self, file_path):
+        return self.checksum_path(file_path) + '.downloaded'
+
     def create_checksum_cmd_for_dir(self, dir_path):
         return self.create_checksum_cmd_not_quoted(
             os.path.join(pipes.quote(strip_dir(dir_path)), '[!i]*'),
-            pipes.quote(checksum_path(strip_dir(dir_path))))
+            pipes.quote(self.checksum_path(strip_dir(dir_path))))
 
     def prepare_upload_command(self, parallel_commands, snapshot_filepath, tablet_id,
                                tserver_ip, snapshot_dir):
@@ -2366,8 +2437,8 @@ class YBBackup:
                          snapshot_dir, tserver_ip))
             create_checksum_cmd = self.create_checksum_cmd_for_dir(snapshot_dir)
 
-            target_checksum_filepath = checksum_path(target_tablet_filepath)
-            snapshot_dir_checksum = checksum_path(strip_dir(snapshot_dir))
+            target_checksum_filepath = self.checksum_path(target_tablet_filepath)
+            snapshot_dir_checksum = self.checksum_path(strip_dir(snapshot_dir))
             logging.info('Uploading %s from tablet server %s to %s URL %s' % (
                          snapshot_dir_checksum, tserver_ip, self.args.storage_type,
                          target_checksum_filepath))
@@ -2411,9 +2482,9 @@ class YBBackup:
         # Download the data to a tmp directory and then move it in place.
         cmd = self.storage.download_dir_cmd(source_filepath, snapshot_dir_tmp)
 
-        source_checksum_filepath = checksum_path(
+        source_checksum_filepath = self.checksum_path(
             os.path.join(snapshot_filepath, 'tablet-%s' % (old_tablet_id)))
-        snapshot_dir_checksum = checksum_path_downloaded(strip_dir(snapshot_dir))
+        snapshot_dir_checksum = self.checksum_path_downloaded(strip_dir(snapshot_dir))
         cmd_checksum = self.storage.download_file_cmd(
             source_checksum_filepath, snapshot_dir_checksum)
 
@@ -2422,7 +2493,7 @@ class YBBackup:
         # chain to be retried.
         check_checksum_cmd = compare_checksums_cmd(
             snapshot_dir_checksum,
-            checksum_path(strip_dir(snapshot_dir_tmp)),
+            self.checksum_path(strip_dir(snapshot_dir_tmp)),
             error_on_failure=True)
 
         rmcmd = ['rm', '-rf', snapshot_dir]
@@ -2601,8 +2672,9 @@ class YBBackup:
         :param src_path: local metadata file path
         :param dest_path: destination metadata file path
         """
-        src_checksum_path = checksum_path(src_path)
-        dest_checksum_path = checksum_path(dest_path)
+        if not self.args.disable_checksums:
+            src_checksum_path = self.checksum_path(src_path)
+            dest_checksum_path = self.checksum_path(dest_path)
 
         if self.args.local_yb_admin_binary:
             if not os.path.exists(src_path):
@@ -2820,6 +2892,10 @@ class YBBackup:
         Creates a backup of the given table by creating a snapshot and uploading it to the provided
         backup location.
         """
+        if not self.args.disable_checksums:
+            # Define a tool for checksum calculation.
+            self.check_if_xxh64bin_present()
+
         if not self.args.keyspace:
             raise BackupException('Need to specify --keyspace')
 
@@ -2926,24 +3002,27 @@ class YBBackup:
         """
         if self.args.local_yb_admin_binary:
             if not self.args.disable_checksums:
-                checksum_downloaded = checksum_path_downloaded(target_path)
+                checksum_downloaded = self.checksum_path_downloaded(target_path)
                 self.run_program(
-                    self.storage.download_file_cmd(checksum_path(src_path), checksum_downloaded))
+                    self.storage.download_file_cmd(self.checksum_path(src_path),
+                                                   checksum_downloaded))
             self.run_program(
                 self.storage.download_file_cmd(src_path, target_path))
 
             if not self.args.disable_checksums:
                 self.run_program(
-                    self.create_checksum_cmd(target_path, checksum_path(target_path)))
+                    self.create_checksum_cmd(target_path, self.checksum_path(target_path)))
                 check_checksum_res = self.run_program(
-                    compare_checksums_cmd(checksum_downloaded, checksum_path(target_path))).strip()
+                    compare_checksums_cmd(checksum_downloaded,
+                                          self.checksum_path(target_path))).strip()
         else:
             server_ip = self.get_main_host_ip()
 
             if not self.args.disable_checksums:
-                checksum_downloaded = checksum_path_downloaded(target_path)
+                checksum_downloaded = self.checksum_path_downloaded(target_path)
                 self.run_ssh_cmd(
-                    self.storage.download_file_cmd(checksum_path(src_path), checksum_downloaded),
+                    self.storage.download_file_cmd(self.checksum_path(src_path),
+                                                   checksum_downloaded),
                     server_ip)
             self.run_ssh_cmd(
                 self.storage.download_file_cmd(src_path, target_path),
@@ -2951,13 +3030,17 @@ class YBBackup:
 
             if not self.args.disable_checksums:
                 self.run_ssh_cmd(
-                    self.create_checksum_cmd(target_path, checksum_path(target_path)),
+                    self.create_checksum_cmd(target_path, self.checksum_path(target_path)),
                     server_ip)
                 check_checksum_res = self.run_ssh_cmd(
-                    compare_checksums_cmd(checksum_downloaded, checksum_path(target_path)),
+                    compare_checksums_cmd(checksum_downloaded, self.checksum_path(target_path)),
                     server_ip).strip()
 
-        if (not self.args.disable_checksums) and check_checksum_res != 'correct':
+        # Todo: Fix the condition. Will be fixed, as part of migration of common
+        # ssh_librabry(yugabyte-db/managed/devops/opscli/ybops/utils/ssh.py).
+        if (not self.args.disable_checksums) and \
+            (check_checksum_res != 'correct' and
+             (self.args.ssh2_enabled and 'correct' not in check_checksum_res)):
             raise BackupException('Check-sum for {} is {}'.format(
                 target_path, check_checksum_res))
 
@@ -2974,10 +3057,24 @@ class YBBackup:
         else:
             self.create_remote_tmp_dir(self.get_main_host_ip())
 
+        if not self.args.disable_checksums:
+            # Define a tool for checksum calculation.
+            self.check_if_xxh64bin_present()
+
         src_manifest_path = os.path.join(self.args.backup_location, MANIFEST_FILE_NAME)
         manifest_path = os.path.join(self.get_tmp_dir(), MANIFEST_FILE_NAME)
         try:
-            self.download_file(src_manifest_path, manifest_path)
+            try:
+                self.download_file(src_manifest_path, manifest_path)
+            except subprocess.CalledProcessError as ex:
+                if self.xxh64sum_binary_present:
+                    # Possibly old checksum tool was used for the backup.
+                    # Try again with the old tool.
+                    logging.warning("Try to use " + SHA_TOOL_PATH + " for Manifest")
+                    self.xxh64sum_binary_present = False
+                    self.download_file(src_manifest_path, manifest_path)
+                else:
+                    raise ex
             self.download_file_from_server(
                 self.get_main_host_ip(), manifest_path, self.get_tmp_dir())
             self.manifest.load_from_file(manifest_path)
@@ -2988,8 +3085,14 @@ class YBBackup:
                              "a backup from an older version, ignoring: {}".
                              format(src_manifest_path, ex))
 
-        if not self.manifest.is_loaded():
+        if self.manifest.is_loaded():
+            if not self.args.disable_checksums and \
+                self.manifest.get_hash_algorithm() == XXH64_FILE_EXT \
+                    and not self.xxh64sum_binary_present:
+                raise BackupException("Manifest references unavailable tool " + XXH64HASH_TOOL_PATH)
+        else:
             self.manifest.create_by_default(self.args.backup_location)
+            self.xxh64sum_binary_present = False
 
         if self.args.verbose:
             logging.info("{} manifest: {}".format(
@@ -3059,6 +3162,11 @@ class YBBackup:
                 old_db_name = self.run_program(cmd).strip()
             else:
                 old_db_name = self.run_ssh_cmd(cmd, self.get_main_host_ip()).strip()
+
+            if self.args.ssh2_enabled:
+                # Todo: Fix the condition. Will be fixed, as part of migration of common
+                # ssh_librabry(yugabyte-db/managed/devops/opscli/ybops/utils/ssh.py).
+                old_db_name = old_db_name.splitlines()[-1]
 
             if old_db_name:
                 new_db_name = keyspace_name(self.args.keyspace[0])

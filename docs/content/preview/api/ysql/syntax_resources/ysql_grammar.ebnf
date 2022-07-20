@@ -90,12 +90,28 @@ a_revoke_schema = 'REVOKE' [ 'GRANT' 'OPTION' 'FOR' ]
                             [ 'CASCADE' | 'RESTRICT' ] ;
 
 (* 'ALTER' 'DOMAIN' *)
-
 alter_domain_default = 'ALTER' 'DOMAIN' name
     ( 'SET' 'DEFAULT' expression | 'DROP' 'DEFAULT' ) ;
 
 alter_domain_rename = 'ALTER' 'DOMAIN' name
     'RENAME' 'TO' name ;
+
+(* 'ALTER' 'FUNCTION' *)
+alter_function = 'ALTER' 'FUNCTION' subprogram_name '(' [ subprogram_signature ] ')' \
+                 ( special_fn_and_proc_attribute |
+                   ( ( alterable_fn_and_proc_attribute | alterable_fn_only_attribute ) { ( alterable_fn_and_proc_attribute | alterable_fn_only_attribute ) } ['RESTRICT'] ) ) ;
+
+
+special_fn_and_proc_attribute = (
+    'RENAME' 'TO' subprogram_name
+    | ( 'OWNER' 'TO' ( role_name | 'CURRENT_ROLE' | 'CURRENT_USER' | 'SESSION_USER' ) )
+    | 'SET' 'SCHEMA' schema_name
+    | ['NO'] 'DEPENDS' 'ON' 'EXTENSION' extension_name ) ;
+
+(* 'ALTER' 'GROUP' *)
+alter_group = 'ALTER' 'GROUP' role_specification ( 'ADD' | 'DROP' ) 'USER' role_name { ',' role_name } ;
+
+alter_group_rename = 'ALTER' 'GROUP' role_name 'RENAME' 'TO' new_role_name ;
 
 (* 'ALTER' 'FOREIGN' 'DATA' 'WRAPPER' *)
 alter_foreign_data_wrapper = 'ALTER' 'FOREIGN' 'DATA' 'WRAPPER' fdw_name 
@@ -130,6 +146,11 @@ alter_policy = 'ALTER' 'POLICY' name 'ON' table_name
                [ 'WITH' 'CHECK' '(' check_expression ')' ] ;
 
 alter_policy_rename = 'ALTER' 'POLICY' name 'ON' table_name 'RENAME' 'TO' new_name ;
+
+(* 'ALTER' 'PROCEDURE' *)
+alter_procedure = 'ALTER' 'PROCEDURE' subprogram_name '(' [ subprogram_signature ] ')' \
+                 ( special_fn_and_proc_attribute |
+                   ( alterable_fn_and_proc_attribute { alterable_fn_and_proc_attribute } ['RESTRICT'] ) ) ;
 
 (* 'ALTER' 'ROLE' *)
 alter_role = 'ALTER' 'ROLE' role_specification [ [ 'WITH' ] alter_role_option { ',' alter_role_option } ] ;
@@ -236,11 +257,9 @@ begin = 'BEGIN' [ 'TRANSACTION' | 'WORK' ] { transaction_mode } ;
 
 (* 'CALL' *)
 
-call_procedure = 'CALL' qualified_name '(' [ procedure_argument { ',' procedure_argument } ] ')' ;
+call_procedure = 'CALL' subprogram_name '(' [ subprogram_arg { ',' subprogram_arg } ] ')' ;
 
-procedure_argument = [ argument_name '=>' ] expression ;
-
-argument_name = '<Text Literal>' ;
+subprogram_arg = [ arg_name '=>' ] expression ;
 
 (* 'COMMENT' *)
 comment_on = 'COMMENT' 'ON' (
@@ -258,7 +277,7 @@ comment_on = 'COMMENT' 'ON' (
   'EVENT' 'TRIGGER' object_name |
   'FOREIGN' 'DATA' 'WRAPPER' object_name |
   'FOREIGN' 'TABLE' object_name |
-  'FUNCTION' function_name [ '(' function_signature ')' ] |
+  'FUNCTION' subprogram_name '(' [ subprogram_signature ] ')'|
   'INDEX' object_name |
   'LARGE' 'OBJECT' large_object_oid |
   'MATERIALIZED' 'VIEW' object_name |
@@ -267,10 +286,10 @@ comment_on = 'COMMENT' 'ON' (
   'OPERATOR' 'FAMILY' object_name 'USING' index_method |
   'POLICY' policy_name 'ON' table_name |
   [ 'PROCEDURAL' ] 'LANGUAGE' object_name |
-  'PROCEDURE' procedure_name [ '(' [ [ argmode ] [ argname ] argtype { ',' argtype } ] ')' ] |
+  'PROCEDURE' subprogram_name '(' [ subprogram_signature ] ')' |
   'PUBLICATION' object_name |
   'ROLE' object_name |
-  'ROUTINE' routine_name [ '(' [ [ argmode ] [ argname ] argtype { ',' argtype } ] ')' ] |
+  'ROUTINE' subprogram_name '(' [ subprogram_signature ] ')' |
   'RULE' rule_name 'ON' table_name |
   'SCHEMA' object_name |
   'SEQUENCE' object_name |
@@ -283,7 +302,7 @@ comment_on = 'COMMENT' 'ON' (
   'TEXT' 'SEARCH' 'DICTIONARY' object_name |
   'TEXT' 'SEARCH' 'PARSER' object_name |
   'TEXT' 'SEARCH' 'TEMPLATE' object_name |
-  'TRANSFORM' 'FOR' type_name 'LANGUAGE' lang_name |
+  (* 'TRANSFORM' 'FOR' type_name 'LANGUAGE' lang_name | bllewell: n/a except with implementation langauges like C *)
   'TRIGGER' trigger_name 'ON' table_name |
   'TYPE' object_name |
   'VIEW' object_name
@@ -320,7 +339,6 @@ copy_option =
     | 'SKIP' integer ) ;
 
 (* 'CREATE' 'AGGREGATE' *)
-
 create_aggregate = create_aggregate_normal
                  | create_aggregate_order_by
                  | create_aggregate_old ;
@@ -342,7 +360,7 @@ create_aggregate_old = 'CREATE' 'AGGREGATE' aggregate_name
                        'STYPE' '=' state_data_type
                        { ',' aggregate_old_option } ')' ;
 
-aggregate_arg = [ aggregate_argmode ] [ argname ] argtype ;
+aggregate_arg = [ aggregate_arg_mode ] [ arg_name ] arg_type ;
 
 aggregate_normal_option = 'SSPACE' '=' state_data_size
                         | 'FINALFUNC' '=' ffunc
@@ -390,14 +408,13 @@ aggregate_old_option = 'SSPACE' '=' state_data_size
                      | 'SORTOP' '=' sort_operator ;
 
 (* 'CREATE' 'CAST' *)
-
 create_cast = create_cast_with_function
             | create_cast_without_function
             | create_cast_with_inout ;
 
 create_cast_with_function = 'CREATE' 'CAST' '(' cast_signature ')'
-                            'WITH' 'FUNCTION' function_name
-                            [ '(' function_signature ')' ]
+                            'WITH' 'FUNCTION' subprogram_name
+                            [ '(' subprogram_signature ')' ]
                             [ 'AS' 'ASSIGNMENT' | 'AS' 'IMPLICIT' ] ;
 
 create_cast_without_function = 'CREATE' 'CAST' '(' cast_signature ')'
@@ -411,7 +428,6 @@ create_cast_with_inout = 'CREATE' 'CAST' '(' cast_signature ')'
 cast_signature = source_type 'AS' target_type ;
 
 (* 'CREATE' 'DATABASE' *)
-
 create_database = 'CREATE' 'DATABASE' name [ create_database_options ] ;
 
 create_database_options =  [ 'WITH' ] [ 'OWNER' [ '=' ] user_name ]  \
@@ -420,7 +436,7 @@ create_database_options =  [ 'WITH' ] [ 'OWNER' [ '=' ] user_name ]  \
                              [ 'LC_COLLATE' [ '=' ] lc_collate ]  \
                              [ 'LC_CTYPE' [ '=' ] lc_ctype ]  \
                              [ 'ALLOW_CONNECTIONS' [ '=' ] allowconn ]  \
-                             [ 'CONNECTION_LIMIT' [ '=' ] connlimit ]  \
+                             [ 'CONNECTION' 'LIMIT' [ '=' ] connlimit ]  \
                              [ 'IS_TEMPLATE' [ '=' ] istemplate ] \
                              [ 'COLOCATED' [ '=' ] ('true' | 'false') ] ;
 
@@ -431,42 +447,62 @@ create_domain = 'CREATE' 'DOMAIN' name [ 'AS' ] data_type
 domain_constraint = [ 'CONSTRAINT' constraint_name ]
     ( 'NOT' 'NULL' | 'NULL' | 'CHECK' '(' expression ')' ) ;
 
-(* CREATE EXTENSION *)
+(* 'CREATE' 'EXTENSION' *)
 create_extension = 'CREATE' 'EXTENSION' [ 'IF' 'NOT' 'EXISTS' ]
                    extension_name [ 'WITH' ]
                    [ 'SCHEMA' schema_name ]
                    [ 'VERSION' version ]
                    [ 'CASCADE' ] ;
 
-(* CREATE FUNCTION *)
+(* 'CREATE' 'FUNCTION' *)
 create_function =  'CREATE' [ 'OR' 'REPLACE' ] 'FUNCTION'
-                   function_name '(' [ arg_decl { ',' arg_decl } ] ')' \
-                   [ 'RETURNS' data_type
-                   | 'RETURNS' 'TABLE' '(' ( column_name data_type ) { ',' ( column_name data_type ) } ')' ] \
-                   function_attribute { function_attribute } ;
+                   subprogram_name '(' [ arg_decl_with_dflt { ',' arg_decl_with_dflt } ] ')' \
+                   ( 'RETURNS' data_type
+                   | 'RETURNS' 'TABLE' '(' ( column_name data_type ) { ',' ( column_name data_type ) } ')' ) \
+                   ( unalterable_fn_attribute | alterable_fn_only_attribute | alterable_fn_and_proc_attribute )
+                   { ( unalterable_fn_attribute | alterable_fn_only_attribute | alterable_fn_and_proc_attribute ) } ;
 
-arg_decl = [ argmode ] [ argname ] argtype [ ( 'DEFAULT' | '=' ) expression ] ;
+arg_decl_with_dflt = arg_decl [ ( 'DEFAULT' | '=' ) expression ] ;
 
-function_attribute =  ( 'WINDOW'
-                      | 'IMMUTABLE' | 'STABLE' | 'VOLATILE' | [ 'NOT' ] 'LEAKPROOF'
-                      | 'CALLED' 'ON' 'NULL' 'INPUT' | 'RETURNS' 'NULL' 'ON' 'NULL' 'INPUT' | 'STRICT'
-                      | 'PARALLEL' ( 'UNSAFE' | 'RESTRICTED' | 'SAFE' )
-                      | 'COST' int_literal
-                      | 'ROWS' int_literal
-                      | 'TRANSFORM' ( 'FOR' 'TYPE' type_name ) { ',' ( 'FOR' 'TYPE' type_name ) }
-                      | 'SET' configuration_parameter ( 'TO' value | '=' value | 'FROM' 'CURRENT' )
-                      | [ 'EXTERNAL' ] 'SECURITY' security_kind
-                      | 'LANGUAGE' lang_name
-                      | 'AS' implementation_definition
-                      ) ;
+arg_decl = [ arg_name ] [ arg_mode ] arg_type;
 
-security_kind = 'INVOKER' | 'DEFINER' ;
+subprogram_signature = arg_decl { ',' arg_decl } ;
 
+fn_invocation = subprogram_name '(' [ subprogram_arg { ',' subprogram_arg } ] ')' ;
+
+subprogram_call_signature = arg_type { ',' arg_type } ;
+
+unalterable_fn_attribute = 'WINDOW'
+                            (* | ( 'TRANSFORM' ( 'FOR' 'TYPE' type_name ) { ',' ( 'FOR' 'TYPE' type_name ) } bllewell: n/a except with implementation langauges like C *)
+                            | 'LANGUAGE' lang_name
+                            | 'AS' implementation_definition
+;
 lang_name = 'SQL' | 'PLPGSQL' | 'C' ;
 
 implementation_definition := "'" sql_stmt_list "'" |"'" plpgsql_block_stmt "'" | ( "'" obj_file"'" [ ',' "'" link_symbol "'" ] ) ;
 
 sql_stmt_list = sql_stmt ';' { sql_stmt ';' } ;
+
+alterable_fn_and_proc_attribute =  ( 
+                      'SET' configuration_parameter ( 'TO' value | '=' value | 'FROM' 'CURRENT' )
+                      | 'RESET' configuration_parameter
+                      | 'RESET' 'ALL'
+                      | [ 'EXTERNAL' ] 'SECURITY' ( 'INVOKER' | 'DEFINER' )
+                      ) ;
+
+alterable_fn_only_attribute =  ( volatility
+                      | on_null_input
+                      | 'PARALLEL' parallel_mode
+                      | [ 'NOT' ] 'LEAKPROOF'
+                      | 'COST' int_literal
+                      | 'ROWS' int_literal
+                      ) ;
+
+volatility = ( 'IMMUTABLE' | 'STABLE' | 'VOLATILE' ) ;
+
+on_null_input = ('CALLED' 'ON' 'NULL' 'INPUT' | 'RETURNS' 'NULL' 'ON' 'NULL' 'INPUT' | 'STRICT' ) ;
+
+parallel_mode = ( 'UNSAFE' | 'RESTRICTED' | 'SAFE' );
 
 (* 'CREATE' 'FOREIGN' 'DATA' 'WRAPPER' *)
 create_foreign_data_wrapper = 'CREATE' 'FOREIGN' 'DATA' 'WRAPPER' fdw_name 
@@ -509,7 +545,7 @@ create_matview = 'CREATE' 'MATERIALIZED' 'VIEW' [ 'IF' 'NOT' 'EXISTS' ] \
 
 (* 'CREATE' 'OPERATOR' *)
 create_operator = 'CREATE' 'OPERATOR' operator_name '('
-                  ( 'FUNCTION' '=' function_name | 'PROCEDURE' '=' procedure_name )
+                  ( 'FUNCTION' '=' subprogram_name | 'PROCEDURE' '=' subprogram_name )
                   { ',' operator_option } ')' ;
 
 operator_option = 'LEFTARG' '=' left_type
@@ -529,7 +565,7 @@ create_operator_class = 'CREATE' 'OPERATOR' 'CLASS' operator_class_name [ 'DEFAU
 operator_class_as = 'OPERATOR' strategy_number operator_name [ '(' operator_signature ')' ]
                     [ 'FOR' 'SEARCH' ]
                   | 'FUNCTION' support_number [ '(' op_type { ',' op_type } ')' ]
-                    function_name '(' function_signature ')'
+                    subprogram_name '(' subprogram_signature ')'
                   | 'STORAGE' storage_type ;
 
 (* 'CREATE' 'POLICY' *)
@@ -543,15 +579,13 @@ create_policy = 'CREATE' 'POLICY' name 'ON' table_name
 
 (* 'CREATE' 'PROCEDURE' *)
 create_procedure =  'CREATE' [ 'OR' 'REPLACE' ] 'PROCEDURE'
-                    name '(' [ arg_decl { ',' arg_decl } ] ')'
-                    procedure_attribute { procedure_attribute } ;
+                    subprogram_name '(' [ arg_decl_with_dflt { ',' arg_decl_with_dflt } ] ')' \
+                    ( unalterable_proc_attribute |  alterable_fn_and_proc_attribute )
+                    { ( unalterable_proc_attribute |  alterable_fn_and_proc_attribute ) } ;
 
-procedure_attribute = ( 'TRANSFORM' ( 'FOR' 'TYPE' type_name ) { ',' ( 'FOR' 'TYPE' type_name ) }
-                      | 'SET' configuration_parameter ( 'TO' value | '=' value | 'FROM' 'CURRENT' )
-                      | [ 'EXTERNAL' ] 'SECURITY' security_kind
-                      | 'LANGUAGE' lang_name
-                      | 'AS' implementation_definition
-                      ) ;
+unalterable_proc_attribute =  (* ( 'TRANSFORM' ( 'FOR' 'TYPE' type_name ) { ',' ( 'FOR' 'TYPE' type_name ) } bllewell: n/a except with implementation langauges like C *)
+                              | 'LANGUAGE' lang_name
+                              | 'AS' implementation_definition;
 
 (* 'CREATE' 'RULE' *)
 create_rule = 'CREATE' [ 'OR' 'REPLACE' ] 'RULE' rule_name 'AS' 'ON' rule_event
@@ -695,7 +729,7 @@ create_trigger = 'CREATE' 'TRIGGER' name
                       [ 'NOT' 'DEFERRABLE' ]
                       [ 'FOR' [ 'EACH' ] ( 'ROW' | 'STATEMENT' ) ]
                       [ 'WHEN' '(' boolean_expression ')' ] \
-                      'EXECUTE' ( 'FUNCTION' | 'PROCEDURE' ) function_name '(' function_arguments ')' ;
+                      'EXECUTE' ( 'FUNCTION' | 'PROCEDURE' ) subprogram_name '(' [ subprogram_signature ] ')' ;
 
 event = ( 'INSERT' | 'UPDATE' [ 'OF' column_name { ',' column_name } ] | 'DELETE' | 'TRUNCATE' ) ;
 
@@ -804,14 +838,11 @@ drop_foreign_data_wrapper = 'DROP' 'FOREIGN' 'DATA' 'WRAPPER' [ 'IF' 'EXISTS' ] 
 drop_foreign_table = 'DROP' 'FOREIGN' 'TABLE' [ 'IF' 'EXISTS' ] table_name
                      [ 'CASCADE' | 'RESTRICT' ] ;
 
-(* DROP FUNCTION *)
-drop_function = 'DROP' ( 'FUNCTION' | 'PROCEDURE' ) [ 'IF' 'EXISTS' ] \
-                        ( name [ '(' [ argtype_decl { ',' argtype_decl } ] ')' ] )
-                  { ',' ( name [ '(' [ argtype_decl { ',' argtype_decl } ] ')' ] ) }
+(* 'DROP' 'FUNCTION' *)
+drop_function = 'DROP' 'FUNCTION' [ 'IF' 'EXISTS' ] \
+                        ( subprogram_name '(' [ subprogram_signature ] ')' )
+                  { ',' ( subprogram_name '(' [ subprogram_signature ] ')' ) }
                   [ 'CASCADE' | 'RESTRICT' ] ;
-
-argtype_decl = [ argmode ] [ argname ] argtype;
-
 
 (* 'DROP' 'GROUP' *)
 drop_group = 'DROP' 'GROUP' [ 'IF' 'EXISTS' ] role_name { ',' role_name } ;
@@ -836,8 +867,8 @@ drop_policy = 'DROP' 'POLICY' [ 'IF' 'EXISTS' ] name 'ON' table_name [ 'CASCADE'
 
 (* 'DROP' 'PROCEDURE' *)
 drop_procedure = 'DROP' 'PROCEDURE' [ 'IF' 'EXISTS' ] \
-                        ( name [ '(' [ argtype_decl { ',' argtype_decl } ] ')' ] )
-                  { ',' ( name [ '(' [ argtype_decl { ',' argtype_decl } ] ')' ] ) }
+                        ( subprogram_name '(' [ subprogram_signature ] ')' )
+                  { ',' ( subprogram_name '(' [ subprogram_signature ] ')' ) }
                   [ 'CASCADE' | 'RESTRICT' ] ;
 
 (* 'DROP' 'ROLE' *)
@@ -867,7 +898,7 @@ drop_type = 'DROP' 'TYPE' [ 'IF' 'EXISTS' ] type_name { ',' type_name }
 (* 'DROP' 'USER' *)
 drop_user = 'DROP' 'USER' [ 'IF' 'EXISTS' ] role_name { ',' role_name } ;
 
-(* DROP TRIGGER *)
+(* 'DROP' 'TRIGGER' *)
 drop_trigger = 'DROP' 'TRIGGER' [ 'IF' 'EXISTS' ] name 'ON' table_name [ 'CASCADE' | 'RESTRICT' ] ;
 
 (* 'END' 'TRANSACTION' *)
@@ -1135,7 +1166,6 @@ update_item = ( column_name '=' column_value
 column_value = expression | 'DEFAULT' ;
 
 (* 'VALUES' *)
-
 values = 'VALUES' '(' expression_list ')' { ',' '(' expression_list ')' } \
             [ 'ORDER' 'BY' ( order_expr { ',' order_expr } ) ] \
             [ 'LIMIT' ( integer | 'ALL' ) ] \
@@ -1207,17 +1237,12 @@ grouping_element = '(' ')' | '(' expression { ',' expression } ')' | 'ROLLUP' '(
 having_clause = 'HAVING' ( boolean_expression ) ;
 
 (* Supporting rules *)
-
-qualified_name = [ [ database_name '.' ] schema_name '.' ] '<Text Literal>' ;
-
-database_name = '<Text Literal>' ;
-
-schema_name = '<Text Literal>' ;
-
+qualified_name = [ [ database_name '.' ] schema_name '.' ] name ;
+role_name = name ;
+database_name = name ;
+schema_name = name ;
 table_name = qualified_name ;
-
-column_name = '<Text Literal>' ;
-
+column_name = name ;
 object_name = name ;
 access_method_name = name ;
 relation_name = qualified_name ;
@@ -1225,8 +1250,7 @@ aggregate_name = qualified_name ;
 constraint_name = qualified_name ;
 operator_name = qualified_name ;
 policy_name = qualified_name ;
-procedure_name = qualified_name ;
-routine_name = qualified_name ;
+subprogram_name = qualified_name ;
 rule_name = qualified_name ;
 trigger_name = qualified_name ;
 
@@ -1234,13 +1258,11 @@ domain_name = qualified_name ;
 
 index_method = '<Text Literal>';
 
-argmode = ( 'IN' | 'OUT' | 'INOUT' | 'VARIADIC' ) ;
+arg_mode = ( 'IN' | 'OUT' | 'INOUT' | 'VARIADIC' ) ;
 
-argname = name ;
+arg_name = name ;
 
-argtype = type_name ;
-
-function_arguments = [ text_literal { ',' text_literal } ] ;
+arg_type = type_name ;
 
 text_literal = '<Text Literal>' ;
 
@@ -1270,103 +1292,64 @@ boolean = 'TRUE' | 'FALSE' ;
 
 (* TODO(jason): change the below when issue #1557 is closed or closing *)
 collation = ( '"default"' | '"C"' | '"POSIX"' | '"ucs_basic"' ) ;
-
 type_name = qualified_name ;
-
 attribute_name = '<Text Literal>' ;
-
 data_type = type_name ;
-
 label = '<Text Literal>' ;
-
 subtype = type_name ;
-
 operator_class_name = qualified_name ;
-
 subtype_operator_class = operator_class_name ;
-
-function_name = qualified_name ;
-
-canonical_function = function_name ;
-
-subtype_diff_function = function_name ;
-
-input_function = function_name ;
-
-output_function = function_name ;
-
-receive_function = function_name ;
-
-send_function = function_name ;
-
-type_modifier_input_function = function_name ;
-
-type_modifier_output_function = function_name ;
-
+canonical_function = subprogram_name ;
+subtype_diff_function = subprogram_name ;
+input_function = subprogram_name ;
+output_function = subprogram_name ;
+receive_function = subprogram_name ;
+send_function = subprogram_name ;
+type_modifier_input_function = subprogram_name ;
+type_modifier_output_function = subprogram_name ;
 internallength = ( '-2' | '-1' | '<non-negative integer>' ) ;
-
 alignment = ( 'CHAR' | 'INT2' | 'INT4' | 'DOUBLE' ) ;
-
 storage = ( 'PLAIN' | 'EXTERNAL' | 'EXTENDED' | 'MAIN' ) ;
-
 like_type = type_name ;
-
 category = '<character>' ;
-
 preferred = boolean ;
-
 default = '<type value>' ;
-
 element = type_name ;
-
 delimiter = '<character>' ;
-
 collatable = boolean ;
-
 param_name = '<Text Literal>' ;
-
 param_value = '<Text Literal>' ;
-
 code = '<Text Literal>' ;
-
-aggregate_argmode = 'IN' | 'VARIADIC' ;
-sfunc = function_name ;
+aggregate_arg_mode = 'IN' | 'VARIADIC' ;
+sfunc = subprogram_name ;
 state_data_type = type_name ;
 base_type = type_name ;
 state_data_size = '<non-negative integer>' ;
-ffunc = function_name ;
-combinefunc = function_name ;
-serialfunc = function_name ;
-deserialfunc = function_name ;
+ffunc = subprogram_name ;
+combinefunc = subprogram_name ;
+serialfunc = subprogram_name ;
+deserialfunc = subprogram_name ;
 initial_condition = '<Text Literal>' ;
-msfunc = function_name ;
-minvfunc = function_name ;
+msfunc = subprogram_name ;
+minvfunc = subprogram_name ;
 mstate_data_type = type_name ;
 mstate_data_size = '<non-negative integer>' ;
-mffunc = function_name ;
+mffunc = subprogram_name ;
 minitial_condition = '<Text literal>' ;
 sort_operator = operator_name ;
-
-function_signature =
-                   | [ argmode ] [ argname ] argtype { ',' [ argmode ] [ argname ] argtype } ;
-
 source_type = type_name ;
 target_type = type_name ;
-
 com_op = operator_name ;
 neg_op = operator_name ;
-res_proc = procedure_name ;
-join_proc = procedure_name ;
-
+res_proc = subprogram_name ;
+join_proc = subprogram_name ;
 strategy_number = '<positive integer>' ;
 support_number = '<positive integer>' ;
 op_type = data_type ;
 storage_type = data_type ;
-
 using_expression = expression ;
 check_expression = expression ;
 new_name = name ;
-
 version = '<text literal>' ;
 extension_name = name ;
 
@@ -1397,17 +1380,17 @@ demo-1-irrelevant-for-ysql-syntax = ( a 'K' b { ',' a 'K' b } ) ;
 demo-2-irrelevant-for-ysql-syntax = ( ( a 'K' b ) { ',' ( a 'K' b ) } ) ;
 *)
 
-(* 'SAVEPOINTS'*)
+(* 'SAVEPOINTS' *)
 savepoint_create := ( 'SAVEPOINT' name ) ;
 
 savepoint_release := ( 'RELEASE' [ 'SAVEPOINT' ] name ) ;
 
 savepoint_rollback := ( 'ROLLBACK' ['WORK' | 'TRANSACTION' ] 'TO' [ 'SAVEPOINT' ] name ) ;
 
-(* -------------------------------------------------------------------------------------------------------------------------------------- ))
-(* PL/pgSQL language                                                                                                                      ))
+(* -------------------------------------------------------------------------------------------------------------------------------------- *)
+(* PL/pgSQL language                                                                                                                      *)
 
-COMMENTED OUT -- bllewell W.i.P.
+(* bllewell W.i.P. Not harmful to expose just on the "Grammar Diagrams" page *)
 
 plpgsql_block_stmt = [ '<<' name '>>' ] [ plpgsql_declaration_section ] plpgsql_executable_section [ plpgsql_exception_section ] 'END' [name] ';' ;
 
@@ -1427,4 +1410,3 @@ plpgsql_exception_section = 'EXCEPTION' ( plpgsql_handler { plpgsql_handler } ) 
 
 plpgsql_handler = 'WHEN' ( name | 'OTHERS' ) 'THEN' ( plpgsql_stmt { plpgsql_stmt } ) ;
 
-*)

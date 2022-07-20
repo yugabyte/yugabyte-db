@@ -246,7 +246,9 @@ public enum TaskType {
 
   DeleteReplication("subtasks.xcluster.DeleteReplication"),
 
-  DeleteXClusterConfigFromDb("subtasks.xcluster.DeleteXClusterConfigFromDb"),
+  DeleteXClusterConfigEntry("subtasks.xcluster.DeleteXClusterConfigEntry"),
+
+  SetReplicationPaused("subtasks.xcluster.SetReplicationPaused"),
 
   SetRestoreTime("subtasks.xcluster.SetRestoreTime"),
 
@@ -286,6 +288,8 @@ public enum TaskType {
   BackupUniverseKeys("subtasks.BackupUniverseKeys"),
 
   RestoreBackupYb("subtasks.RestoreBackupYb"),
+
+  RestoreBackupYbc("subtasks.RestoreBackupYbc"),
 
   RestoreUniverseKeys("subtasks.RestoreUniverseKeys"),
 

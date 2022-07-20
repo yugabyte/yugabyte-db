@@ -3,6 +3,7 @@
 package com.yugabyte.yw.controllers.handlers;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.yugabyte.yw.commissioner.Commissioner;
@@ -25,23 +26,23 @@ import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.Mockito;
 
 @RunWith(JUnitParamsRunner.class)
 public class UpgradeUniverseHandlerTest {
+  private static final String DEFAULT_INSTANCE_TYPE = "type1";
+  private static final String NEW_INSTANCE_TYPE = "type2";
   private UpgradeUniverseHandler handler;
-  private Commissioner mockCommissioner;
 
   @Before
   public void setUp() {
-    mockCommissioner = Mockito.mock(Commissioner.class);
+    Commissioner mockCommissioner = mock(Commissioner.class);
     when(mockCommissioner.submit(any(TaskType.class), any(ITaskParams.class)))
         .thenReturn(UUID.randomUUID());
     handler =
         new UpgradeUniverseHandler(
             mockCommissioner,
-            Mockito.mock(KubernetesManagerFactory.class),
-            Mockito.mock(RuntimeConfigFactory.class));
+            mock(KubernetesManagerFactory.class),
+            mock(RuntimeConfigFactory.class));
   }
 
   private static Object[] tlsToggleCustomTypeNameParams() {
@@ -89,7 +90,7 @@ public class UpgradeUniverseHandlerTest {
     intent.deviceInfo.volumeSize = 100;
     intent.deviceInfo.numVolumes = 2;
     intent.replicationFactor = 35;
-    intent.instanceType = "type1";
+    intent.instanceType = DEFAULT_INSTANCE_TYPE;
     UUID universeCA = UUID.randomUUID();
     Universe universe = new Universe();
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
@@ -104,13 +105,7 @@ public class UpgradeUniverseHandlerTest {
     universe.getUniverseDetails().rootCA = universeCA;
     universe.getUniverseDetails().clientRootCA = universeCA;
 
-    ResizeNodeParams resizeNodeParams =
-        new ResizeNodeParams() {
-          @Override
-          protected boolean isSkipInstanceChecking() {
-            return true;
-          }
-        };
+    ResizeNodeParams resizeNodeParams = new ResizeNodeParams();
     resizeNodeParams.upgradeOption = UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE;
     resizeNodeParams.rootCA = UUID.randomUUID();
     resizeNodeParams.clientRootCA = UUID.randomUUID();
@@ -118,7 +113,7 @@ public class UpgradeUniverseHandlerTest {
         new UniverseDefinitionTaskParams.UserIntent();
     requestIntent.deviceInfo = new DeviceInfo();
     requestIntent.deviceInfo.volumeSize = 150;
-    requestIntent.instanceType = "type2";
+    requestIntent.instanceType = NEW_INSTANCE_TYPE;
     resizeNodeParams.clusters =
         Collections.singletonList(
             new UniverseDefinitionTaskParams.Cluster(
@@ -131,7 +126,7 @@ public class UpgradeUniverseHandlerTest {
     UniverseDefinitionTaskParams.UserIntent submitIntent =
         resizeNodeParams.getPrimaryCluster().userIntent;
     Assert.assertEquals(35, submitIntent.replicationFactor);
-    Assert.assertEquals("type2", submitIntent.instanceType);
+    Assert.assertEquals(NEW_INSTANCE_TYPE, submitIntent.instanceType);
     Assert.assertEquals(150, submitIntent.deviceInfo.volumeSize.intValue());
     Assert.assertEquals(2, submitIntent.deviceInfo.numVolumes.intValue());
   }

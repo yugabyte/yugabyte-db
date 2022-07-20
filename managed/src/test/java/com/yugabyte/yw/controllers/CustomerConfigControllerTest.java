@@ -326,7 +326,13 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
             "PUT", url, defaultUser.createAuthToken(), bodyJson);
     assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));
-    assertEquals("s3://foo", json.get("data").get(BACKUP_LOCATION_FIELDNAME).textValue());
+    JsonNode responseData = json.get("data");
+    assertEquals("s3://foo", responseData.get(BACKUP_LOCATION_FIELDNAME).textValue());
+
+    // sensitive fields should have been masked in edit storage config flow
+    assertEquals(
+        CommonUtils.getMaskedValue("AWS_ACCESS_KEY_ID", "A-KEY"),
+        responseData.get("AWS_ACCESS_KEY_ID").textValue());
   }
 
   @Test
@@ -675,6 +681,12 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     assertEquals(
         fromDb.data.get("AWS_SECRET_ACCESS_KEY").textValue(),
         newFromDb.data.get("AWS_SECRET_ACCESS_KEY").textValue());
+
+    String sensitiveKey = "AWS_ACCESS_KEY_ID";
+    String maskedValue =
+        CommonUtils.getMaskedValue(sensitiveKey, newFromDb.getData().get(sensitiveKey).textValue());
+    JsonNode resultNode = Json.parse(contentAsString(result));
+    assertEquals(maskedValue, resultNode.get("data").get(sensitiveKey).textValue());
   }
 
   @Test

@@ -3,7 +3,7 @@ title: Deploy YugabyteDB clusters in public clouds
 headerTitle: Public clouds
 linkTitle: Public clouds
 description: Deploy YugabyteDB clusters in public clouds, including Amazon Web Services (AWS), Google Cloud Platform (GCP), and Microsoft Azure.
-headcontent: Here are some easy ways to deploy YugabyteDB in the various public clouds.
+headcontent: Deploy YugabyteDB in public clouds
 image: /images/section_icons/deploy/public-clouds.png
 menu:
   stable:
@@ -12,7 +12,6 @@ menu:
     weight: 630
 type: indexpage
 ---
-
 <div class="row">
     <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="aws/cloudformation/">

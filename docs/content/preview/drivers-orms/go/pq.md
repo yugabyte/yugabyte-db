@@ -38,11 +38,11 @@ For Go Applications, most drivers provide database connectivity through the stan
 
 The [PQ driver](https://github.com/lib/pq/) is a popular driver for PostgreSQL. Use the driver to connect to YugabyteDB to execute DMLs and DDLs using the standard `database/sql` package.
 
-## CRUD operations with PQ driver
+## CRUD operations
 
-Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in the [Build an application](../../../quick-start/build-apps/go/ysql-pq) page under the Quick start section.
+Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in the [Build an application](../../../quick-start/build-apps/go/ysql-pq) page.
 
-The following sections break down the quick start example to demonstrate how to perform common tasks required for Go application development using the PQ driver.
+The following sections break down the example to demonstrate how to perform common tasks required for Go application development using the PQ driver.
 
 ### Step 1: Import the driver package
 

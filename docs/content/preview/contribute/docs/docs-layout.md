@@ -37,8 +37,8 @@ Reference docs should be comprehensive and, above all, accurate. This applies to
 
 Here are some examples of reference docs in our documentation:
 
-* [Replication in DocDB](https://docs.yugabyte.com/preview/architecture/docdb-replication/replication/)
-* SQL reference sample: [CREATE TABLE [YSQL]](https://docs.yugabyte.com/preview/api/ysql/the-sql-language/statements/ddl_create_table/)
+* [Replication in DocDB](/preview/architecture/docdb-replication/replication/)
+* SQL reference sample: [CREATE TABLE [YSQL]](/preview/api/ysql/the-sql-language/statements/ddl_create_table/)
 
 ### Design docs on GitHub
 

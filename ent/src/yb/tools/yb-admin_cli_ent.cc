@@ -673,6 +673,27 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
                               "Unable to bootstrap CDC producer");
         return Status::OK();
       });
+
+  Register(
+      "wait_for_replication_drain",
+      Format(" <comma_separated_list_of_stream_ids>"
+             " [<timestamp> | $0 <interval>]", kMinus),
+      [client](const CLIArguments& args) -> Status {
+        RETURN_NOT_OK(CheckArgumentsCount(args.size(), 1, 3));
+        vector<CDCStreamId> stream_ids;
+        boost::split(stream_ids, args[0], boost::is_any_of(","));
+        string target_time;
+        if (args.size() == 2) {
+          target_time = args[1];
+        } else if (args.size() == 3) {
+          if (args[1] != kMinus) {
+            return ClusterAdminCli::kInvalidArguments;
+          }
+          target_time = "-" + args[2];
+        }
+
+        return client->WaitForReplicationDrain(stream_ids, target_time);
+      });
 }  // NOLINT -- a long function but that is OK
 
 }  // namespace enterprise

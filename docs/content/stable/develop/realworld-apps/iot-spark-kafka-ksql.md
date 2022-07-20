@@ -51,7 +51,7 @@ App architecture with the SKY stack is shown below. The Kafka Connect Sink Conne
 
 ## Data store
 
-Stores all the user-facing data. YugabyteDB is used here, with the Cassandra-compatible [YCQL](../../../api/ycql) as the programming language.
+Stores all the user-facing data. YugabyteDB is used here, with the Cassandra-compatible [YCQL](../../../api/ycql/) as the programming language.
 
 All the data is stored in the keyspace `TrafficKeySpace`:
 

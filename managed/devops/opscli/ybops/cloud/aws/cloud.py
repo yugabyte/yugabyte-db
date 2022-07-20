@@ -28,7 +28,8 @@ from ybops.cloud.aws.utils import (AwsBootstrapClient, YbVpcComponents,
                                    query_vpc, update_disk, get_image_arch, get_root_label)
 from ybops.cloud.common.cloud import AbstractCloud
 from ybops.common.exceptions import YBOpsRuntimeError
-from ybops.utils import (format_rsa_key, is_valid_ip_address, validated_key_file)
+from ybops.utils import is_valid_ip_address
+from ybops.utils.ssh import (format_rsa_key, validated_key_file)
 
 
 class AwsCloud(AbstractCloud):

@@ -1,8 +1,8 @@
 ---
-title: Troubleshoot YugabyteDB Managed
+title: Troubleshoot
 linkTitle: Troubleshoot
 description: Troubleshoot issues in YugabyteDB Managed.
-headcontent:
+headcontent: Diagnose and troubleshoot issues with YugabyteDB clusters and YugabyteDB Managed
 image: /images/section_icons/index/quick_start.png
 menu:
   preview_yugabyte-cloud:
@@ -55,6 +55,21 @@ Connection error: ('Unable to connect to any servers', {'44.144.44.4': Connectio
 Ensure you are using the `--ssl` option and the path to the cluster CA certificate is correct. YCQL connections require the `--ssl` option and the use of the certificate.
 
 For information on connecting to clusters using a client shell, refer to [Connect via client shells](../cloud-connect/connect-client-shell/).
+
+### Remaining connection slots are reserved
+
+If your application returns the error:
+
+```output
+org.postgresql.util.PSQLException: FATAL: remaining connection slots are reserved for non-replication superuser connections
+```
+
+Your application has reached the limit of available connections for the cluster:
+
+- Sandbox clusters support up to 10 simultaneous connections.
+- Dedicated clusters support 10 simultaneous connections per vCPU. For example, a 3-node cluster with 4 vCPUs per node can support 10 x 3 x 4 = 120 connections.
+
+A solution would be to use a connection pooler. Depending on your use case, you may also want to consider scaling your cluster.
 
 ### Application fails to connect
 

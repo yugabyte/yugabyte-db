@@ -4,6 +4,7 @@ package com.yugabyte.yw.common;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.models.configs.CloudClientsFactory;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import java.util.List;
@@ -13,6 +14,7 @@ import play.api.Play;
 public interface CloudUtil extends StorageUtil {
 
   public static final String KEY_LOCATION_SUFFIX = Util.KEY_LOCATION_SUFFIX;
+  public static final String SUCCESS = "success";
 
   public void deleteKeyIfExists(CustomerConfigData configData, String defaultBackupLocation)
       throws Exception;
@@ -24,6 +26,9 @@ public interface CloudUtil extends StorageUtil {
       throws Exception;
 
   public <T> T listBuckets(CustomerConfigData configData);
+
+  public JsonNode readFileFromCloud(String location, CustomerConfigData configData)
+      throws Exception;
 
   public static <T extends CloudUtil> T getCloudUtil(String configType) {
     switch (configType) {

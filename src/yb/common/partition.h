@@ -186,6 +186,17 @@ class Partition {
 class PartitionSchema {
  public:
 
+  struct RangeSplit {
+    explicit RangeSplit(const std::string& bounds) : column_bounds(bounds) {}
+
+    std::string column_bounds;
+  };
+
+  struct RangeSchema {
+    std::vector<ColumnId> column_ids;
+    std::vector<RangeSplit> splits;
+  };
+
   static constexpr int32_t kPartitionKeySize = 2;
   static constexpr int32_t kMaxPartitionKey = std::numeric_limits<uint16_t>::max();
 
@@ -235,6 +246,8 @@ class PartitionSchema {
   bool IsHashPartitioning() const;
 
   YBHashSchema hash_schema() const;
+
+  const RangeSchema& range_schema() const;
 
   bool IsRangePartitioning() const {
     return range_schema_.column_ids.size() > 0;
@@ -343,17 +356,6 @@ class PartitionSchema {
   bool IsSimplePKRangePartitioning(const Schema& schema) const;
 
  private:
-
-  struct RangeSplit {
-    explicit RangeSplit(const std::string& bounds) : column_bounds(bounds) {}
-
-    std::string column_bounds;
-  };
-
-  struct RangeSchema {
-    std::vector<ColumnId> column_ids;
-    std::vector<RangeSplit> splits;
-  };
 
   struct HashBucketSchema {
     std::vector<ColumnId> column_ids;

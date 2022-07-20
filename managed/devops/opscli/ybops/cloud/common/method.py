@@ -22,14 +22,15 @@ import datetime
 
 from pprint import pprint
 from ybops.common.exceptions import YBOpsRuntimeError
-from ybops.utils import get_ssh_host_port, wait_for_ssh, get_path_from_yb, \
-    generate_random_password, validated_key_file, format_rsa_key, validate_cron_status, \
-    get_public_key_content, remote_exec_command,  \
+from ybops.utils import get_path_from_yb, \
+    generate_random_password, validate_cron_status, \
     YB_SUDO_PASS, DEFAULT_MASTER_HTTP_PORT, DEFAULT_MASTER_RPC_PORT, DEFAULT_TSERVER_HTTP_PORT, \
-    DEFAULT_TSERVER_RPC_PORT, DEFAULT_CQL_PROXY_RPC_PORT, DEFAULT_REDIS_PROXY_RPC_PORT, \
-    DEFAULT_SSH_USER
+    DEFAULT_TSERVER_RPC_PORT, DEFAULT_CQL_PROXY_RPC_PORT, DEFAULT_REDIS_PROXY_RPC_PORT
 from ansible_vault import Vault
-from ybops.utils import generate_rsa_keypair, scp_to_tmp, remote_exec_command
+from ybops.utils.ssh import wait_for_ssh, format_rsa_key, validated_key_file, \
+    generate_rsa_keypair, scp_to_tmp, get_public_key_content, \
+    get_ssh_host_port, DEFAULT_SSH_USER
+from ybops.utils import remote_exec_command
 
 
 class ConsoleLoggingErrorHandler(object):
@@ -81,6 +82,7 @@ class AbstractMethod(object):
         self.parser.add_argument("--vault_password_file", default=None)
         self.parser.add_argument("--ask_sudo_pass", action='store_true', default=False)
         self.parser.add_argument("--vars_file", default=None)
+        self.parser.add_argument("--ssh2_enabled", action='store_true', default=False)
 
     def preprocess_args(self, args):
         """Hook for pre-processing args before actually executing the callback. Useful for shared
@@ -196,7 +198,8 @@ class AbstractInstancesMethod(AbstractMethod):
             "instance_name": args.search_pattern,
             "tags": args.tags,
             "skip_tags": args.skip_tags,
-            "private_key_file": args.private_key_file
+            "private_key_file": args.private_key_file,
+            "ssh2_enabled": args.ssh2_enabled
         }
         if args.vars_file:
             updated_args["vars_file"] = args.vars_file
@@ -261,7 +264,7 @@ class AbstractInstancesMethod(AbstractMethod):
                 if wait_for_ssh(self.extra_vars["ssh_host"],
                                 self.extra_vars["ssh_port"],
                                 self.extra_vars["ssh_user"],
-                                args.private_key_file):
+                                args.private_key_file, ssh2_enabled=args.ssh2_enabled):
                     return host_info
 
             sys.stdout.write('.')
@@ -307,7 +310,7 @@ class VerifySSHConnection(AbstractInstancesMethod):
                                       args.custom_ssh_port,
                                       args.ssh_user,
                                       args.private_key_file,
-                                      ssh_retries)
+                                      ssh_retries, ssh2_enabled=args.ssh2_enabled)
         if oldKeyConnects:
             print("SSH connection verification successful")
             return
@@ -322,7 +325,7 @@ class VerifySSHConnection(AbstractInstancesMethod):
                                           args.custom_ssh_port,
                                           args.ssh_user,
                                           args.new_private_key_file,
-                                          ssh_retries)
+                                          ssh_retries, ssh2_enabled=args.ssh2_enabled)
             if newKeyConnects:
                 print("New key already connects " +
                       "whereas old key does not")
@@ -361,7 +364,7 @@ class AddAuthorizedKey(AbstractInstancesMethod):
                                       args.custom_ssh_port,
                                       args.ssh_user,
                                       args.new_private_key_file,
-                                      ssh_retries)
+                                      ssh_retries, ssh2_enabled=args.ssh2_enabled)
         if newKeyConnects:
             print("Given SSH key already exists " +
                   "for user {} in instance: {}".format(
@@ -388,7 +391,7 @@ class AddAuthorizedKey(AbstractInstancesMethod):
                                       args.custom_ssh_port,
                                       args.ssh_user,
                                       args.new_private_key_file,
-                                      ssh_retries)
+                                      ssh_retries, ssh2_enabled=args.ssh2_enabled)
         if newKeyConnects:
             print("Add access key successful")
         else:
@@ -426,7 +429,7 @@ class RemoveAuthorizedKey(AbstractInstancesMethod):
                                       args.custom_ssh_port,
                                       args.ssh_user,
                                       args.old_private_key_file,
-                                      ssh_retries)
+                                      ssh_retries, ssh2_enabled=args.ssh2_enabled)
 
         if not oldKeyConnects:
             print("SSH key already removed/does not " +
@@ -454,7 +457,7 @@ class RemoveAuthorizedKey(AbstractInstancesMethod):
                                       args.custom_ssh_port,
                                       args.ssh_user,
                                       args.old_private_key_file,
-                                      ssh_retries)
+                                      ssh_retries, ssh2_enabled=args.ssh2_enabled)
         if not oldKeyConnects:
             print("Remove access key successful")
         else:
@@ -727,7 +730,7 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
         ansible = self.cloud.setup_ansible(args)
         ansible.run("preprovision.yml", self.extra_vars, host_info)
 
-        if not args.disable_custom_ssh and use_default_port:
+        if not args.disable_custom_ssh and use_default_port and not args.ssh2_enabled:
             ansible.run("use_custom_ssh_port.yml", self.extra_vars, host_info)
 
 
@@ -828,7 +831,8 @@ class UpdateDiskMethod(AbstractInstancesMethod):
         ssh_options = {
             # TODO: replace with args.ssh_user when it's setup in the flow
             "ssh_user": self.extra_vars["ssh_user"],
-            "private_key_file": args.private_key_file
+            "private_key_file": args.private_key_file,
+            "ssh2_enabled": args.ssh2_enabled
         }
         ssh_options.update(get_ssh_host_port(host_info, args.custom_ssh_port))
         self.cloud.expand_file_system(args, ssh_options)
@@ -935,7 +939,7 @@ class CronCheckMethod(AbstractInstancesMethod):
         ssh_options.update(get_ssh_host_port(host_info, args.custom_ssh_port))
         if not args.systemd_services and not validate_cron_status(
                 ssh_options['ssh_host'], ssh_options['ssh_port'], ssh_options['ssh_user'],
-                ssh_options['private_key_file']):
+                ssh_options['private_key_file'], ssh2_enabled=args.ssh2_enabled):
             raise YBOpsRuntimeError(
                 'Failed to find cronjobs on host {}'.format(ssh_options['ssh_host']))
 
@@ -1004,7 +1008,8 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
         self.parser.add_argument('--gcs_credentials_json')
         self.parser.add_argument('--http_remote_download', action="store_true")
         self.parser.add_argument('--http_package_checksum', default='')
-
+        self.parser.add_argument('--update_packages', action="store_true", default=False)
+        self.parser.add_argument('--ssh_user_update_packages')
         # Development flag for itests.
         self.parser.add_argument('--itest_s3_package_path',
                                  help="Path to download packages for itest. Only for AWS/onprem.")
@@ -1202,7 +1207,8 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
                         self.extra_vars["private_ip"],
                         self.extra_vars["ssh_user"],
                         self.extra_vars["ssh_port"],
-                        args.private_key_file)
+                        args.private_key_file,
+                        ssh2_enabled=args.ssh2_enabled)
                     logging.info("[app] Copying package {} to {} took {:.3f} sec".format(
                         args.package, args.search_pattern, time.time() - start_time))
 
@@ -1215,15 +1221,26 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
                                 self.extra_vars["private_ip"],
                                 self.extra_vars["ssh_user"],
                                 self.extra_vars["ssh_port"],
-                                args.private_key_file)
+                                args.private_key_file,
+                                ssh2_enabled=args.ssh2_enabled)
                             logging.info("[app] Copying package {} to {} took {:.3f} sec".format(
                                 ybc_package_path, args.search_pattern, time.time() - start_time))
 
-        logging.info("Configuring Instance: {}".format(args.search_pattern))
+        # Update packages as "sudo" user as part of software upgrade.
+        if args.update_packages:
+            # Defaulting to sudo user, in case not provided as part of seeting up provider
+            self.extra_vars["ssh_user"] = args.ssh_user_update_packages if \
+                args.ssh_user_update_packages else self.SSH_USER
+            self.cloud.setup_ansible(args).run(
+                "reinstall-package.yml", self.extra_vars, host_info)
+            # As the Update package run as a seprate subtask returning, need not to
+            # configure the clusters as part of the same
+            return
         ssh_options = {
             # TODO: replace with args.ssh_user when it's setup in the flow
             "ssh_user": self.get_ssh_user(),
-            "private_key_file": args.private_key_file
+            "private_key_file": args.private_key_file,
+            "ssh2_enabled": args.ssh2_enabled
         }
         ssh_options.update(get_ssh_host_port(host_info, args.custom_ssh_port))
 
@@ -1321,7 +1338,8 @@ class InitYSQLMethod(AbstractInstancesMethod):
         ssh_options = {
             # TODO: replace with args.ssh_user when it's setup in the flow
             "ssh_user": "yugabyte",
-            "private_key_file": args.private_key_file
+            "private_key_file": args.private_key_file,
+            "ssh2_enabled": args.ssh2_enabled
         }
         host_info = self.cloud.get_host_info(args)
         if not host_info:
@@ -1565,7 +1583,8 @@ class TransferXClusterCerts(AbstractInstancesMethod):
         host_info = self.cloud.get_host_info(args)
         ssh_options = {
             "ssh_user": self.ssh_user,
-            "private_key_file": args.private_key_file
+            "private_key_file": args.private_key_file,
+            "ssh2_enabled": args.ssh2_enabled
         }
         ssh_options.update(get_ssh_host_port(host_info, args.custom_ssh_port))
 
@@ -1611,7 +1630,7 @@ class RebootInstancesMethod(AbstractInstancesMethod):
                                 self.extra_vars["ssh_port"],
                                 self.extra_vars["ssh_user"],
                                 args.private_key_file,
-                                'sudo reboot')
+                                'sudo reboot', ssh2_enabled=args.ssh2_enabled)
         self.wait_for_host(args, False)
 
 

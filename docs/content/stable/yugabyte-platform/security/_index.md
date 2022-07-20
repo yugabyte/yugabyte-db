@@ -2,9 +2,9 @@
 title: Security
 headerTitle: Security
 linkTitle: Security
-description: Secure Yugabyte Platform and YugabyteDB universes.
+description: Secure YugabyteDB Anywhere and YugabyteDB universes.
 image: /images/section_icons/index/secure.png
-headcontent: Secure Yugabyte Platform and your YugabyteDB universes.
+headcontent: Secure YugabyteDB Anywhere and your YugabyteDB universes.
 menu:
   stable_yugabyte-platform:
     parent: yugabytedb-anywhere
@@ -22,7 +22,7 @@ type: indexpage
         <div class="title">Security checklist</div>
       </div>
       <div class="body">
-        Security considerations for Yugabyte Platform and YugabyteDB universes.
+        Security considerations for YugabyteDB Anywhere and YugabyteDB universes.
       </div>
     </a>
   </div>
@@ -34,7 +34,7 @@ type: indexpage
         <div class="title">Customize ports</div>
       </div>
       <div class="body">
-        Customize ports
+        Customize ports.
       </div>
     </a>
   </div>
@@ -43,7 +43,7 @@ type: indexpage
     <a class="section-link icon-offset" href="ldap-authentication-platform/">
       <div class="head">
         <img class="icon" src="/images/section_icons/secure/authentication.png" aria-hidden="true" />
-        <div class="title">LDAP Authentication</div>
+        <div class="title">LDAP authentication</div>
       </div>
       <div class="body">
         Use an external LDAP service to perform client authentication.
@@ -58,7 +58,7 @@ type: indexpage
         <div class="title">Authorization platform</div>
       </div>
       <div class="body">
-        Use Yugabyte Platform to manage users and roles.
+        Use YugabyteDB Anywhere to manage users and roles.
       </div>
     </a>
   </div>
@@ -70,7 +70,7 @@ type: indexpage
         <div class="title">Create a KMS configuration</div>
       </div>
       <div class="body">
-        Key management system.
+        Use key management system.
       </div>
     </a>
   </div>
@@ -82,7 +82,7 @@ type: indexpage
         <div class="title">Enable encryption at rest</div>
       </div>
       <div class="body">
-        Use Yugabyte Platform to enable encryption at rest and protect data in storage.
+        Use YugabyteDB Anywhere to enable encryption at rest and protect data in storage.
       </div>
     </a>
   </div>
@@ -94,7 +94,7 @@ type: indexpage
         <div class="title">Enable encryption in transit (TLS)</div>
       </div>
       <div class="body">
-        Use Yugabyte Platform to enable encryption in transit using TLS and protect data between nodes and clients.
+        Use YugabyteDB Anywhere to enable encryption in transit using TLS and protect data between nodes and clients.
       </div>
     </a>
   </div>

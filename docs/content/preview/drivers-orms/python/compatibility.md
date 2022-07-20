@@ -1,4 +1,4 @@
----
+<!-- ---
 title: Supported versions
 linkTitle: Supported versions
 description: Supported versions of Python drivers, ORMs and AppDev frameworks
@@ -27,4 +27,4 @@ type: docs
 | 2.9.3 | 2.13 (latest) | full |
 | 2.9.3 | 2.12 (stable) | full |
 | 2.9.3 | 2.8 | full |
-| 2.9.3 | 2.6 | full |
+| 2.9.3 | 2.6 | full | -->

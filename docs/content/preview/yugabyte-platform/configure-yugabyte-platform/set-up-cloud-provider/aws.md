@@ -107,7 +107,9 @@ Integrating with hosted zones can make YugabyteDB universes easily discoverable.
 You can customize your network, including the virtual network, as follows:
 
 - Select an existing Virtual Private Cloud (VPC).
-- Create a new VPC, with certain limitations. For example, an attempt to configure more than one AWS cloud provider with the **Create a new VPC** option enabled will result in a silent failure.
+- Create a new VPC. Note that this option is considered beta and is not recommended for production use cases, as creating a new VPC can silently fail if there are any classless inter-domain routing (CIDR) conflicts. For example, the following will result in a silent failure: 
+  - Configure more than one AWS cloud provider with different CIDR block prefixes and selecting the **Create a new VPC** option.
+  - Creating a new VPC with an CIDR block that overlaps with any of the existing subnets.
 
 ### NTP setup
 
@@ -115,7 +117,7 @@ You can customize the Network Time Protocol server, as follows:
 
 - Select **Use provider’s NTP server** to enable cluster nodes to connect to the AWS internal time servers. For more information, consult the AWS documentation such as [Keeping time with Amazon time sync service](https://aws.amazon.com/blogs/aws/keeping-time-with-amazon-time-sync-service/).
 - Select **Manually add NTP Servers** to provide your own NTP servers and allow the cluster nodes to connect to those NTP servers.
-- Select **Don’t set up NTP** to prevent YugabyteDB Anywhere from performing any NTP configuration on the cluster nodes. For data consistency, ensure that NTP is correctly configured on your machine image. Note that **Use AWS Time Sync** must be disabled during the universe creation; otherwise **Don’t set up NTP** will be overridden.
+- Select **Don’t set up NTP** to prevent YugabyteDB Anywhere from performing any NTP configuration on the cluster nodes. For data consistency, ensure that NTP is correctly configured on your machine image.
 
 ## Global deployment
 
@@ -127,7 +129,7 @@ If you choose to use YugabyteDB Anywhere to configure, own, and manage a full cr
 
 You have an option to provide the following:
 
-- A custom classless inter-domain routing (CIDR) block for each regional VPC. If not provided, YugabyteDB Anywhere will choose defaults, aiming to not overlap across regions.
+- A custom CIDR block for each regional VPC. If not provided, YugabyteDB Anywhere will choose defaults, aiming to not overlap across regions.
 
 - A custom Amazon Machine Image (AMI) ID to use in each region. For a non-exhaustive list of options, see Ubuntu 18 and Oracle Linux 8 support. If you do not provide any values, a recent x86 CentOS image is used. For additional information, see [CentOS on AWS](https://wiki.centos.org/Cloud/AWS) and [Ubuntu 18 and Oracle Linux 8 support](#ubuntu-18-and-oracle-linux-8-support).<br>
 

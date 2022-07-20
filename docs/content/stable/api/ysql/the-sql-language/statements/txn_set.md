@@ -45,7 +45,7 @@ Use the `SET TRANSACTION` statement to set the current transaction isolation lev
 
 Supports Serializable, Snapshot and Read Committed Isolation<sup>$</sup> using the PostgreSQL isolation level syntax of `SERIALIZABLE`, `REPEATABLE READ` and `READ COMMITTED` respectively. PostgreSQL's `READ UNCOMMITTED` also maps to Read Committed Isolation.
 
-<sup>$</sup> Read Committed Isolation is supported only if the tserver gflag `yb_enable_read_committed_isolation` is set to `true`. By default this gflag is `false` and in this case the Read Committed isolation level of Yugabyte's transactional layer falls back to the stricter Snapshot Isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot Isolation). Read Committed support is currently in [Beta](/preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag).
+<sup>$</sup> Read Committed Isolation is supported only if the gflag `yb_enable_read_committed_isolation` is set to `true`. By default this gflag is `false` and in this case the Read Committed isolation level of Yugabyte's transactional layer falls back to the stricter Snapshot Isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot Isolation). Read Committed support is currently in [Beta](/preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag).
 
 ### *transaction_mode*
 
@@ -69,13 +69,13 @@ Maps to Snapshot Isolation of YugabyteDB.
 
 Default in PostgreSQL and YSQL.
 
-If the tserver gflag `yb_enable_read_committed_isolation=true`, `READ COMMITTED` is mapped to Read Committed of YugabyteDB's transactional layer (i.e., a statement will see all rows that are committed before it begins). But, by default the tserver gflag `yb_enable_read_committed_isolation=false` and in this case Read Committed of YugabyteDB's transactional layer falls back to the stricter Snapshot Isolation. Read Committed support is currently in [Beta](/preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag).
+If `yb_enable_read_committed_isolation=true`, `READ COMMITTED` is mapped to Read Committed of YugabyteDB's transactional layer (i.e., a statement will see all rows that are committed before it begins). But, by default `yb_enable_read_committed_isolation=false` and in this case Read Committed of YugabyteDB's transactional layer falls back to the stricter Snapshot Isolation. Read Committed support is currently in [Beta](/preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag).
 
 Essentially this boils down to the fact that Snapshot Isolation is the default in YSQL.
 
 #### READ UNCOMMITTED
 
-`READ UNCOMMITTED` maps to Read Committed of YugabyteDB's transactional layer (note that Read Committed in the transactional layer might in turn map to Snapshot Isolation if the tserver gflag `yb_enable_read_committed_isolation=false`).
+`READ UNCOMMITTED` maps to Read Committed of YugabyteDB's transactional layer (note that Read Committed in the transactional layer might in turn map to Snapshot Isolation if `yb_enable_read_committed_isolation=false`).
 
 In PostgreSQL, `READ UNCOMMITTED` is mapped to `READ COMMITTED`.
 

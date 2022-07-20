@@ -51,6 +51,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.PersistResizeNode;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PersistSystemdUpgrade;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ResetUniverseVersion;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RestoreBackupYb;
+import com.yugabyte.yw.commissioner.tasks.subtasks.RestoreBackupYbc;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RestoreUniverseKeys;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RestoreUniverseKeysYb;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ResumeServer;
@@ -82,7 +83,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckMemory;
 import com.yugabyte.yw.commissioner.tasks.subtasks.nodes.UpdateNodeProcess;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.DeleteBootstrapIds;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.DeleteReplication;
-import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.DeleteXClusterConfigFromDb;
+import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.DeleteXClusterConfigEntry;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigUpdateMasterAddresses;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.NodeManager;
@@ -319,14 +320,20 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   private Universe lockUniverseForUpdate(
-      UUID universeUuid, int expectedUniverseVersion, UniverseUpdater updater) {
+      UUID universeUuid, int expectedUniverseVersion, UniverseUpdater updater, boolean checkExist) {
     // Perform the update. If unsuccessful, this will throw a runtime exception which we do not
     // catch as we want to fail.
-    Universe universe = saveUniverseDetails(universeUuid, updater);
+    Universe universe = saveUniverseDetails(universeUuid, updater, checkExist);
     lockedUniversesUuid.add(universeUuid);
     log.trace("Locked universe {} at version {}.", universeUuid, expectedUniverseVersion);
     // Return the universe object that we have already updated.
     return universe;
+  }
+
+  private Universe lockUniverseForUpdate(
+      UUID universeUuid, int expectedUniverseVersion, UniverseUpdater updater) {
+    return lockUniverseForUpdate(
+        universeUuid, expectedUniverseVersion, updater, false /* checkExist */);
   }
 
   private Universe lockUniverseForUpdate(int expectedUniverseVersion, UniverseUpdater updater) {
@@ -542,6 +549,13 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   public Universe lockUniverse(UUID universeUuid, int expectedUniverseVersion) {
     UniverseUpdater updater = getLockingUniverseUpdater(expectedUniverseVersion, false);
     return lockUniverseForUpdate(universeUuid, expectedUniverseVersion, updater);
+  }
+
+  public Universe lockUniverseIfExist(UUID universeUuid, int expectedUniverseVersion) {
+    UniverseUpdater updater =
+        getLockingUniverseUpdater(expectedUniverseVersion, false /*checkSuccess*/);
+    return lockUniverseForUpdate(
+        universeUuid, expectedUniverseVersion, updater, true /* checkExist */);
   }
 
   public Universe unlockUniverseForUpdate(UUID universeUuid) {
@@ -1853,31 +1867,42 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   protected void createAllRestoreSubtasks(
-      RestoreBackupParams restoreBackupParams, SubTaskGroupType subTaskGroupType) {
+      RestoreBackupParams restoreBackupParams, SubTaskGroupType subTaskGroupType, boolean isYbc) {
     if (restoreBackupParams.alterLoadBalancer) {
       createLoadBalancerStateChangeTask(false).setSubTaskGroupType(subTaskGroupType);
     }
 
     if (restoreBackupParams.backupStorageInfoList != null) {
-      for (RestoreBackupParams.BackupStorageInfo backupStorageInfo :
-          restoreBackupParams.backupStorageInfoList) {
-        // If KMS is enabled, it needs to restore the keys first.
-        if (KmsConfig.get(restoreBackupParams.kmsConfigUUID) != null) {
-          RestoreBackupParams restoreKeyParams =
+      if (isYbc) {
+        for (RestoreBackupParams.BackupStorageInfo backupStorageInfo :
+            restoreBackupParams.backupStorageInfoList) {
+          RestoreBackupParams restoreDataParams =
               new RestoreBackupParams(
-                  restoreBackupParams,
-                  backupStorageInfo,
-                  RestoreBackupParams.ActionType.RESTORE_KEYS);
-          createRestoreBackupTask(restoreKeyParams).setSubTaskGroupType(subTaskGroupType);
+                  restoreBackupParams, backupStorageInfo, RestoreBackupParams.ActionType.RESTORE);
 
-          createEncryptedUniverseKeyRestoreTaskYb(restoreKeyParams)
-              .setSubTaskGroupType(subTaskGroupType);
+          createRestoreBackupYbcTask(restoreDataParams).setSubTaskGroupType(subTaskGroupType);
         }
-        // Restore the data.
-        RestoreBackupParams restoreDataParams =
-            new RestoreBackupParams(
-                restoreBackupParams, backupStorageInfo, RestoreBackupParams.ActionType.RESTORE);
-        createRestoreBackupTask(restoreDataParams).setSubTaskGroupType(subTaskGroupType);
+      } else {
+        for (RestoreBackupParams.BackupStorageInfo backupStorageInfo :
+            restoreBackupParams.backupStorageInfoList) {
+          // If KMS is enabled, it needs to restore the keys first.
+          if (KmsConfig.get(restoreBackupParams.kmsConfigUUID) != null) {
+            RestoreBackupParams restoreKeyParams =
+                new RestoreBackupParams(
+                    restoreBackupParams,
+                    backupStorageInfo,
+                    RestoreBackupParams.ActionType.RESTORE_KEYS);
+            createRestoreBackupTask(restoreKeyParams).setSubTaskGroupType(subTaskGroupType);
+
+            createEncryptedUniverseKeyRestoreTaskYb(restoreKeyParams)
+                .setSubTaskGroupType(subTaskGroupType);
+          }
+          // Restore the data.
+          RestoreBackupParams restoreDataParams =
+              new RestoreBackupParams(
+                  restoreBackupParams, backupStorageInfo, RestoreBackupParams.ActionType.RESTORE);
+          createRestoreBackupTask(restoreDataParams).setSubTaskGroupType(subTaskGroupType);
+        }
       }
     }
 
@@ -1910,6 +1935,16 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   public SubTaskGroup createRestoreBackupTask(RestoreBackupParams taskParams) {
     SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("RestoreBackupYb", executor);
     RestoreBackupYb task = createTask(RestoreBackupYb.class);
+    task.initialize(taskParams);
+    task.setUserTaskUUID(userTaskUUID);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  public SubTaskGroup createRestoreBackupYbcTask(RestoreBackupParams taskParams) {
+    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("RestoreBackupYbc", executor);
+    RestoreBackupYbc task = createTask(RestoreBackupYbc.class);
     task.initialize(taskParams);
     task.setUserTaskUUID(userTaskUUID);
     subTaskGroup.addSubTask(task);
@@ -2460,9 +2495,14 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @return true if we should increment the version, false otherwise
    */
   protected boolean shouldIncrementVersion(UUID universeUuid) {
+    Optional<Universe> universe = Universe.maybeGet(universeUuid);
+    if (!universe.isPresent()) {
+      return false;
+    }
+
     final VersionCheckMode mode =
         runtimeConfigFactory
-            .forUniverse(Universe.getOrBadRequest(universeUuid))
+            .forUniverse(universe.get())
             .getEnum(VersionCheckMode.class, "yb.universe_version_check_mode");
 
     if (mode == VersionCheckMode.NEVER) {
@@ -2607,9 +2647,15 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @return the updated universe
    */
   protected static Universe saveUniverseDetails(
-      UUID universeUUID, boolean shouldIncrementVersion, UniverseUpdater updater) {
+      UUID universeUUID,
+      boolean shouldIncrementVersion,
+      UniverseUpdater updater,
+      boolean checkExist) {
     Universe.UNIVERSE_KEY_LOCK.acquireLock(universeUUID);
     try {
+      if (checkExist && !Universe.maybeGet(universeUUID).isPresent()) {
+        return null;
+      }
       if (shouldIncrementVersion) {
         incrementClusterConfigVersion(universeUUID);
       }
@@ -2619,9 +2665,15 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     }
   }
 
+  protected Universe saveUniverseDetails(
+      UUID universeUUID, UniverseUpdater updater, boolean checkExist) {
+    return UniverseTaskBase.saveUniverseDetails(
+        universeUUID, shouldIncrementVersion(universeUUID), updater, checkExist);
+  }
+
   protected Universe saveUniverseDetails(UUID universeUUID, UniverseUpdater updater) {
     return UniverseTaskBase.saveUniverseDetails(
-        universeUUID, shouldIncrementVersion(universeUUID), updater);
+        universeUUID, shouldIncrementVersion(universeUUID), updater, false /* checkExist */);
   }
 
   protected Universe saveUniverseDetails(UniverseUpdater updater) {
@@ -2647,15 +2699,14 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   // --------------------------------------------------------------------------------
   protected SubTaskGroup createDeleteReplicationTask(
       XClusterConfig xClusterConfig, boolean ignoreErrors) {
-    SubTaskGroup subTaskGroup =
-        getTaskExecutor().createSubTaskGroup("XClusterConfigDelete", executor);
-    DeleteReplication.Params deleteXClusterConfigParams = new DeleteReplication.Params();
-    deleteXClusterConfigParams.universeUUID = xClusterConfig.targetUniverseUUID;
-    deleteXClusterConfigParams.xClusterConfig = xClusterConfig;
-    deleteXClusterConfigParams.ignoreErrors = ignoreErrors;
+    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("DeleteReplication", executor);
+    DeleteReplication.Params deleteReplicationParams = new DeleteReplication.Params();
+    deleteReplicationParams.universeUUID = xClusterConfig.targetUniverseUUID;
+    deleteReplicationParams.xClusterConfig = xClusterConfig;
+    deleteReplicationParams.ignoreErrors = ignoreErrors;
 
     DeleteReplication task = createTask(DeleteReplication.class);
-    task.initialize(deleteXClusterConfigParams);
+    task.initialize(deleteReplicationParams);
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
@@ -2677,25 +2728,25 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return subTaskGroup;
   }
 
-  protected SubTaskGroup createDeleteXClusterConfigFromDbTask(
+  protected SubTaskGroup createDeleteXClusterConfigEntryTask(
       XClusterConfig xClusterConfig, boolean forceDelete) {
     SubTaskGroup subTaskGroup =
-        getTaskExecutor().createSubTaskGroup("DeleteXClusterConfigFromDb", executor);
-    DeleteXClusterConfigFromDb.Params deleteXClusterConfigFromDbParams =
-        new DeleteXClusterConfigFromDb.Params();
-    deleteXClusterConfigFromDbParams.universeUUID = xClusterConfig.targetUniverseUUID;
-    deleteXClusterConfigFromDbParams.xClusterConfig = xClusterConfig;
-    deleteXClusterConfigFromDbParams.forceDelete = forceDelete;
+        getTaskExecutor().createSubTaskGroup("DeleteXClusterConfigEntry", executor);
+    DeleteXClusterConfigEntry.Params DeleteXClusterConfigEntryParams =
+        new DeleteXClusterConfigEntry.Params();
+    DeleteXClusterConfigEntryParams.universeUUID = xClusterConfig.targetUniverseUUID;
+    DeleteXClusterConfigEntryParams.xClusterConfig = xClusterConfig;
+    DeleteXClusterConfigEntryParams.forceDelete = forceDelete;
 
-    DeleteXClusterConfigFromDb task = createTask(DeleteXClusterConfigFromDb.class);
-    task.initialize(deleteXClusterConfigFromDbParams);
+    DeleteXClusterConfigEntry task = createTask(DeleteXClusterConfigEntry.class);
+    task.initialize(DeleteXClusterConfigEntryParams);
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
   }
 
   protected SubTaskGroup createTransferXClusterCertsRemoveTasks(
-      XClusterConfig xClusterConfig, File producerCertsDir) {
+      XClusterConfig xClusterConfig, File producerCertsDir, boolean ignoreErrors) {
     SubTaskGroup subTaskGroup =
         getTaskExecutor().createSubTaskGroup("TransferXClusterCerts", executor);
     Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.targetUniverseUUID);
@@ -2710,6 +2761,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       if (producerCertsDir != null) {
         transferParams.producerCertsDirOnTarget = producerCertsDir;
       }
+      transferParams.ignoreErrors = ignoreErrors;
 
       TransferXClusterCerts transferXClusterCertsTask = createTask(TransferXClusterCerts.class);
       transferXClusterCertsTask.initialize(transferParams);
@@ -2719,26 +2771,35 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return subTaskGroup;
   }
 
+  protected SubTaskGroup createTransferXClusterCertsRemoveTasks(
+      XClusterConfig xClusterConfig, File producerCertsDir) {
+    return createTransferXClusterCertsRemoveTasks(
+        xClusterConfig, producerCertsDir, false /* ignoreErrors */);
+  }
+
   protected void createDeleteXClusterConfigSubtasks(XClusterConfig xClusterConfig) {
     // Delete the replication CDC streams on the target universe.
     createDeleteReplicationTask(xClusterConfig, true /* ignoreErrors */)
-        .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+        .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.DeleteXClusterReplication);
 
     // Delete bootstrap IDs created by bootstrap universe subtask.
     // forceDelete is true to prevent errors until the user can choose if they want forceDelete.
     createDeleteBootstrapIdsTask(xClusterConfig, true /* forceDelete */)
-        .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+        .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.DeleteXClusterReplication);
 
     // If target universe is destroyed, ignore creating this subtask.
     if (xClusterConfig.targetUniverseUUID != null) {
       // Delete the source universe root cert from the target universe.
-      createTransferXClusterCertsRemoveTasks(xClusterConfig, null /* producerCertsDir */)
-          .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+      createTransferXClusterCertsRemoveTasks(
+              xClusterConfig,
+              null /* producerCertsDir */,
+              xClusterConfig.status == XClusterConfig.XClusterConfigStatusType.DeletedUniverse)
+          .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.DeleteXClusterReplication);
     }
 
     // Delete the xCluster config from DB.
-    createDeleteXClusterConfigFromDbTask(xClusterConfig, false /* forceDelete */)
-        .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+    createDeleteXClusterConfigEntryTask(xClusterConfig, false /* forceDelete */)
+        .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.DeleteXClusterReplication);
   }
 
   /**

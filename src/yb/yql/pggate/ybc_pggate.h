@@ -71,7 +71,7 @@ YBCStatus YBCGetSharedAuthKey(uint64_t* auth_key);
 // Get access to callbacks.
 const YBCPgCallbacks* YBCGetPgCallbacks();
 
-YBCStatus YBCGetPgggateHeapConsumption(int64_t *consumption);
+YBCStatus YBCGetPgggateCurrentAllocatedBytes(int64_t *consumption);
 
 //--------------------------------------------------------------------------------------------------
 // DDL Statements
@@ -243,6 +243,11 @@ YBCStatus YBCPgSetCatalogCacheVersion(YBCPgStatement handle, uint64_t catalog_ca
 YBCStatus YBCPgTableExists(const YBCPgOid database_oid,
                            const YBCPgOid table_oid,
                            bool *exists);
+
+YBCStatus YBCGetSplitPoints(YBCPgTableDesc table_desc,
+                            const YBCPgTypeEntity **type_entities,
+                            YBCPgTypeAttrs *type_attrs_arr,
+                            YBCPgSplitDatum *split_points);
 
 // INDEX -------------------------------------------------------------------------------------------
 // Create and drop index "database_name.schema_name.index_name()".

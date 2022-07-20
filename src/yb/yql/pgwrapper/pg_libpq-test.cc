@@ -2711,5 +2711,50 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersion),
   ASSERT_NOK(conn_test.Fetch("SELECT * FROM t"));
 }
 
+TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(NonBreakingDDLMode)) {
+  const string kDatabaseName = "yugabyte";
+
+  auto conn1 = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+  auto conn2 = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+  ASSERT_OK(conn1.Execute("CREATE TABLE t1(a int)"));
+  ASSERT_OK(conn1.Execute("CREATE TABLE t2(a int)"));
+  ASSERT_OK(conn1.Execute("BEGIN"));
+  auto res = ASSERT_RESULT(conn1.Fetch("SELECT * FROM t1"));
+  ASSERT_EQ(0, PQntuples(res.get()));
+  ASSERT_OK(conn2.Execute("REVOKE ALL ON t2 FROM public"));
+  // Wait for the new catalog version to propagate to TServers.
+  std::this_thread::sleep_for(2s);
+  // REVOKE is a breaking catalog change, the running transaction on conn1 is aborted.
+  auto result = conn1.Fetch("SELECT * FROM t1");
+  ASSERT_NOK(result);
+  auto status = ResultToStatus(result);
+  const string msg = "catalog snapshot used for this transaction has been invalidated";
+  ASSERT_TRUE(status.ToString().find(msg) != std::string::npos);
+  ASSERT_OK(conn1.Execute("ABORT"));
+
+  // Let's start over, but this time use yb_make_next_ddl_statement_nonbreaking to suppress the
+  // breaking catalog change and the SELECT command on conn1 runs successfully.
+  ASSERT_OK(conn1.Execute("BEGIN"));
+  res = ASSERT_RESULT(conn1.Fetch("SELECT * FROM t1"));
+  ASSERT_EQ(0, PQntuples(res.get()));
+  ASSERT_OK(conn2.Execute("SET yb_make_next_ddl_statement_nonbreaking TO TRUE"));
+  ASSERT_OK(conn2.Execute("REVOKE ALL ON t2 FROM public"));
+  // Wait for the new catalog version to propagate to TServers.
+  std::this_thread::sleep_for(2s);
+  res = ASSERT_RESULT(conn1.Fetch("SELECT * FROM t1"));
+  ASSERT_EQ(0, PQntuples(res.get()));
+
+  // Verify that the session variable yb_make_next_ddl_statement_nonbreaking auto-resets to false.
+  // As a result, the running transaction on conn1 is aborted.
+  ASSERT_OK(conn2.Execute("REVOKE ALL ON t2 FROM public"));
+  // Wait for the new catalog version to propagate to TServers.
+  std::this_thread::sleep_for(2s);
+  result = conn1.Fetch("SELECT * FROM t1");
+  ASSERT_NOK(result);
+  status = ResultToStatus(result);
+  ASSERT_TRUE(status.ToString().find(msg) != std::string::npos);
+  ASSERT_OK(conn1.Execute("ABORT"));
+}
+
 } // namespace pgwrapper
 } // namespace yb

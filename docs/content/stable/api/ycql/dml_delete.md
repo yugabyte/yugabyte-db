@@ -56,7 +56,7 @@ Where
 - The `if_expression` can only apply to non-key columns (regular columns).
 - The `if_expression` can contain any logical and boolean operators.
 - Deleting only some column values from a row is not yet supported.
-- `IF EXISTS` and `IF NOT EXISTS` options are mostly for symmetry with the [`INSERT`](../dml_insert) and [`UPDATE`](../dml_update) commands.
+- `IF EXISTS` and `IF NOT EXISTS` options are mostly for symmetry with the [`INSERT`](../dml_insert) and [`UPDATE`](../dml_update/) commands.
   - `IF EXISTS` works like a normal delete but additionally returns whether the delete was applied (a row was found with that primary key).
   - `IF NOT EXISTS` is effectively a no-op since rows that do not exist cannot be deleted (but returns whether no row was found with that primary key).
 
@@ -286,7 +286,7 @@ See examples in [batch docs](../batch#row-status).
 
 - [`CREATE TABLE`](../ddl_create_table)
 - [`INSERT`](../dml_insert)
-- [`SELECT`](../dml_select)
-- [`UPDATE`](../dml_update)
+- [`SELECT`](../dml_select/)
+- [`UPDATE`](../dml_update/)
 - [`TRUNCATE`](../dml_truncate)
 - [`Expression`](..#expressions)

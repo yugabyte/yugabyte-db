@@ -569,6 +569,7 @@ static int	wal_block_size;
 static bool data_checksums;
 static bool integer_datetimes;
 static bool assert_enabled;
+static char *yb_effective_transaction_isolation_level_string;
 
 /* should be static, but commands/variable.c needs to get at this */
 char	   *role_string;
@@ -2098,6 +2099,18 @@ static struct config_bool ConfigureNamesBool[] =
 		},
 		&enable_choose_custom_plan_for_partition_pruning,
 		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_make_next_ddl_statement_nonbreaking", PGC_SUSET, CUSTOM_OPTIONS,
+			gettext_noop("When set, the next ddl statement will not cause "
+						 "running transactions to abort. This only affects "
+						 "the next ddl statement and resets automatically."),
+			NULL
+		},
+		&yb_make_next_ddl_statement_nonbreaking,
+		false,
 		NULL, NULL, NULL
 	},
 
@@ -4045,6 +4058,17 @@ static struct config_string ConfigureNamesString[] =
 		"default",
 		check_XactIsoLevel, assign_XactIsoLevel, show_XactIsoLevel
 	},
+	{
+		{"yb_effective_transaction_isolation_level", PGC_INTERNAL, CLIENT_CONN_STATEMENT,
+			gettext_noop("Shows the effective YugabyteDB transaction isolation level used by the current "
+									 "active transaction in the session."),
+			NULL,
+			GUC_NO_RESET_ALL | GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
+		},
+		&yb_effective_transaction_isolation_level_string,
+		"default",
+		NULL, NULL, show_yb_effective_transaction_isolation_level
+	},
 
 	{
 		{"unix_socket_group", PGC_POSTMASTER, CONN_AUTH_SETTINGS,
@@ -4639,6 +4663,7 @@ static const char *const map_old_guc_names[] = {
  */
 static const char *const YbDbAdminVariables[] = {
 	"session_replication_role",
+	"yb_make_next_ddl_statement_nonbreaking",
 };
 
 

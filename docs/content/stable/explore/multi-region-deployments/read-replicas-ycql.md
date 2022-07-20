@@ -33,7 +33,7 @@ type: docs
 YugabyteDB supports the following types of reads:
 
 - [Follower reads](../../multi-region-deployments/follower-reads-ycql/) that enable spreading the read workload across all replicas in the primary cluster.
-- Observer reads that use read replicas. The latter obtain their data via [asynchronous replication](../asynchronous-replication-ycql) which allows for the read workload to be offloaded from the primary cluster. Read replicas are created as a separate cluster that may be located in a different region, possibly closer to the consumers of the data which would result in lower-latency access and enhanced support of analytics workloads.
+- Observer reads that use read replicas. The latter obtain their data via [asynchronous replication](../asynchronous-replication-ycql/) which allows for the read workload to be offloaded from the primary cluster. Read replicas are created as a separate cluster that may be located in a different region, possibly closer to the consumers of the data which would result in lower-latency access and enhanced support of analytics workloads.
 
 A datacenter (also known as universe) can have one primary cluster and several read replica clusters.
 
@@ -81,7 +81,7 @@ The following command instructs the masters to create three replicas for each ta
 $ ./bin/yb-admin -master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 modify_placement_info c.r.z1,c.r.z2,c.r.z3 3 live
 ```
 
-The following illustration demonstrates the primary cluster visible via [Yugabyte Platform](/preview/yugabyte-platform/):
+The following illustration demonstrates the primary cluster visible via [YugabyteDB Anywhere](/preview/yugabyte-platform/):
 
 ![img](/images/explore/multi-region-deployments/read-replicas1.png)
 
@@ -124,7 +124,7 @@ Output:
 11166 [Thread-1] INFO com.yugabyte.sample.common.metrics.MetricsTracker - Read: 5066.60 ops/sec (0.20 ms/op), 45479 total ops | Write: 1731.19 ops/sec (0.58 ms/op), 16918 total ops | Uptime: 10026 ms | maxWrittenKey: 1 | maxGeneratedKey: 2 |
 ```
 
-The following illustration demonstrates the read and write statistics in the primary cluster visible via [Yugabyte Platform](/preview/yugabyte-platform/):
+The following illustration demonstrates the read and write statistics in the primary cluster visible via [YugabyteDB Anywhere](/preview/yugabyte-platform/):
 
 ![img](/images/explore/multi-region-deployments/read-replicas2.png)
 
@@ -169,7 +169,7 @@ Output:
 10778 [Thread-1] INFO com.yugabyte.sample.common.metrics.MetricsTracker - Read: 4801.54 ops/sec (0.21 ms/op), 44256 total ops | Write: 1637.30 ops/sec (0.61 ms/op), 15635 total ops | Uptime: 10026 ms | maxWrittenKey: 1 | maxGeneratedKey: 2 |
 ```
 
-The following illustration demonstrates the reads spread across all the replicas for the tablet visible via [Yugabyte Platform](/preview/yugabyte-platform/):
+The following illustration demonstrates the reads spread across all the replicas for the tablet visible via [YugabyteDB Anywhere](/preview/yugabyte-platform/):
 
 ![img](/images/explore/multi-region-deployments/read-replicas3.png)
 
@@ -185,7 +185,7 @@ The following commands add three new nodes to a read replica cluster in region `
 ./bin/yb-admin -master_addresses 127.0.0.1:7100,127.0.0.2,127.0.0.3 add_read_replica_placement_info c.r2.z21:1,c.r2.z22:1,c.r2.z23:1 3 rr
 ```
 
-The following illustration demonstrates the setup of two clusters, one of which is primary and another one is read replica visible via [Yugabyte Platform](/preview/yugabyte-platform/):
+The following illustration demonstrates the setup of two clusters, one of which is primary and another one is read replica visible via [YugabyteDB Anywhere](/preview/yugabyte-platform/):
 
 ![img](/images/explore/multi-region-deployments/read-replicas4.png)
 
@@ -201,7 +201,7 @@ java -jar ./yb-sample-apps.jar --workload CassandraKeyValue \
                                --value_size 1024 --local_reads --with_local_dc r
 ```
 
-The following illustration demonstrates the result of exectuting the preceding command (visible via [Yugabyte Platform](/preview/yugabyte-platform/):):
+The following illustration demonstrates the result of exectuting the preceding command (visible via [YugabyteDB Anywhere](/preview/yugabyte-platform/):):
 
 ![img](/images/explore/multi-region-deployments/read-replicas5.png)
 
@@ -217,7 +217,7 @@ java -jar ./yb-sample-apps.jar --workload CassandraKeyValue \
                                --value_size 1024 --local_reads --with_local_dc r2
 ```
 
-The following illustration demonstrates the result of exectuting the preceding command (visible via [Yugabyte Platform](/preview/yugabyte-platform/)):
+The following illustration demonstrates the result of exectuting the preceding command (visible via [YugabyteDB Anywhere](/preview/yugabyte-platform/)):
 
 ![img](/images/explore/multi-region-deployments/read-replicas6.png)
 
@@ -245,7 +245,7 @@ The following command stops a node in the read replica cluster:
 ./bin/yb-ctl stop_node 6
 ```
 
-The following illustration demonstrates the stopped node visible via [Yugabyte Platform](/preview/yugabyte-platform/):
+The following illustration demonstrates the stopped node visible via [YugabyteDB Anywhere](/preview/yugabyte-platform/):
 
 ![img](/images/explore/multi-region-deployments/read-replicas7.png)
 
@@ -257,7 +257,7 @@ The following command stops another node in the read replica cluster:
 ./bin/yb-ctl stop_node 5
 ```
 
-The following illustration demonstrates two stopped nodes visible via [Yugabyte Platform](/preview/yugabyte-platform/):
+The following illustration demonstrates two stopped nodes visible via [YugabyteDB Anywhere](/preview/yugabyte-platform/):
 
 ![img](/images/explore/multi-region-deployments/read-replicas8.png)
 
@@ -267,7 +267,7 @@ The following command stops the last node in the read replica cluster which caus
 ./bin/yb-ctl stop_node 4
 ```
 
-The following illustration demonstrates all stopped nodes in the read replica cluster and activation of nodes in the primary cluster visible via [Yugabyte Platform](/preview/yugabyte-platform/):
+The following illustration demonstrates all stopped nodes in the read replica cluster and activation of nodes in the primary cluster visible via [YugabyteDB Anywhere](/preview/yugabyte-platform/):
 
 ![img](/images/explore/multi-region-deployments/read-replicas9.png)
 
@@ -279,7 +279,7 @@ The following command stops one of the nodes in the primary cluster:
 ./bin/yb-ctl stop_node 3
 ```
 
-The following illustration demonstrates the state of nodes, with read load rebalanced to the remaining nodes visible via [Yugabyte Platform](/preview/yugabyte-platform/):
+The following illustration demonstrates the state of nodes, with read load rebalanced to the remaining nodes visible via [YugabyteDB Anywhere](/preview/yugabyte-platform/):
 
 ![img](/images/explore/multi-region-deployments/read-replicas10.png)
 
@@ -289,7 +289,7 @@ The following command stops one more node in the primary cluster:
 ./bin/yb-ctl stop_node 2
 ```
 
-The following illustration demonstrates that the entire read load moved to the one remaining node visible via [Yugabyte Platform](/preview/yugabyte-platform/):
+The following illustration demonstrates that the entire read load moved to the one remaining node visible via [YugabyteDB Anywhere](/preview/yugabyte-platform/):
 
 ![img](/images/explore/multi-region-deployments/read-replicas11.png)
 

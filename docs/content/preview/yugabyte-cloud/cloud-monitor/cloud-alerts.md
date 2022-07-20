@@ -2,7 +2,7 @@
 title: Alerts
 linkTitle: Alerts
 description: Set alerts for activity in your account.
-headcontent:
+headcontent: Set alerts for activity in your account
 image: /images/section_icons/deploy/enterprise.png
 menu:
   preview_yugabyte-cloud:
@@ -24,7 +24,7 @@ To monitor clusters in real time, use the performance metrics on the cluster [Ov
 
 - When an alert triggers, YugabyteDB Managed sends an email notification once, regardless of how long the condition lasts.
 
-- When an alert triggers, a notification displays on the **Notifications** page. Once the alert condition resolves, the notification dismisses automatically.
+- When an alert triggers, a notification displays on the **Notifications** page. After the alert condition resolves, the notification dismisses automatically.
 
 - Alerts are enabled for all clusters in your account.
 
@@ -125,7 +125,7 @@ If your cluster generates this alert, you may need to rate limit your queries. L
 - Reduce query parallelism.
 - If needed, set the driver execution to "sync" rather than "async" to serialize queries.
 
-If your cluster generates this alert but isn’t under a very large workload, contact {{% support-cloud %}}.
+If your cluster generates this alert but isn't under a very large workload, contact {{% support-cloud %}}.
 
 ### Billing alerts
 

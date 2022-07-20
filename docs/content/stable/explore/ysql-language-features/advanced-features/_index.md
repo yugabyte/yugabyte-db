@@ -11,7 +11,6 @@ menu:
     weight: 320
 type: indexpage
 ---
-
 <div class="row">
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
@@ -69,18 +68,6 @@ type: indexpage
       </div>
       <div class="body">
           Use Collations in YSQL to learn sorting and comparing data in a database.
-      </div>
-    </a>
-  </div>
-
-   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="extensions/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true"/>
-        <div class="title">Extensions</div>
-      </div>
-      <div class="body">
-          Use PostgreSQL's extensions supported by YugabyteDB in YSQL.
       </div>
     </a>
   </div>

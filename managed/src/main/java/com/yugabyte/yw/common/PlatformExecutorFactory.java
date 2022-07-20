@@ -84,12 +84,6 @@ public class PlatformExecutorFactory {
     return createExecutor(poolName, poolSize, poolSize, Duration.ZERO, 0, namedThreadFactory);
   }
 
-  public ExecutorService createFixedExecutor(
-      String poolName, int poolSize, int queueCapacity, ThreadFactory namedThreadFactory) {
-    return createExecutor(
-        poolName, poolSize, poolSize, Duration.ZERO, queueCapacity, namedThreadFactory);
-  }
-
   public ExecutorService createExecutor(
       String poolName,
       int corePoolSize,

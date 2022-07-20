@@ -24,10 +24,7 @@
 
 #include <ev++.h>
 
-#include "yb/client/client.h"
-#include "yb/client/client_fwd.h"
 #include "yb/client/client_utils.h"
-#include "yb/client/tablet_server.h"
 
 #include "yb/common/partition.h"
 #include "yb/common/pg_system_attr.h"
@@ -47,7 +44,6 @@
 #include "yb/server/secure.h"
 
 #include "yb/tserver/pg_client.pb.h"
-#include "yb/tserver/tserver_forward_service.proxy.h"
 #include "yb/tserver/tserver_shared_mem.h"
 
 #include "yb/util/enums.h"
@@ -81,20 +77,13 @@
 
 using namespace std::literals;
 
-DECLARE_string(rpc_bind_addresses);
 DECLARE_bool(use_node_to_node_encryption);
 DECLARE_string(certs_dir);
 DECLARE_bool(node_to_node_encryption_use_client_certificates);
-DECLARE_bool(ysql_forward_rpcs_to_local_tserver);
-DECLARE_bool(use_node_hostname_for_local_tserver);
 DECLARE_int32(backfill_index_client_rpc_timeout_ms);
 
 namespace yb {
 namespace pggate {
-
-using docdb::PrimitiveValue;
-using docdb::KeyEntryType;
-
 namespace {
 
 struct TableHolder {
@@ -311,7 +300,6 @@ Status FetchExistingYbctids(PgSession::ScopedRefPtr session,
 } // namespace
 
 using std::make_shared;
-using client::YBSession;
 
 //--------------------------------------------------------------------------------------------------
 
@@ -419,10 +407,6 @@ PgApiImpl::PgApiImpl(
           new PgTxnManager(
               &pg_client_, clock_, tserver_shared_object_.get(), pg_callbacks_)) {
   CHECK_OK(interrupter_->Start());
-  if (pg_callbacks_.YbPgMemUpdateMax) {
-    mem_tracker_->AssignUpdateMaxMemFunctor(pg_callbacks_.YbPgMemUpdateMax);
-  }
-
   CHECK_OK(clock_->Init());
 
   // Setup type mapping.
@@ -1198,7 +1182,7 @@ Status PgApiImpl::ProcessYBTupleId(const YBCPgYBTupleIdDescriptor& descr,
         }
 
         if (attr->is_null) {
-          values->emplace_back(KeyEntryType::kNullLow);
+          values->emplace_back(docdb::KeyEntryType::kNullLow);
         } else {
           if (attr->attr_num == to_underlying(PgSystemAttrNum::kYBRowId)) {
             expr_pb->mutable_value()->set_binary_value(pg_session_->GenerateNewRowid());

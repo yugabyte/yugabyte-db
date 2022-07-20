@@ -18,8 +18,6 @@
 
 #include <mutex>
 
-#include "yb/client/client_fwd.h"
-#include "yb/client/transaction.h"
 #include "yb/common/clock.h"
 #include "yb/common/transaction.h"
 #include "yb/gutil/ref_counted.h"
