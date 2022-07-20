@@ -16,8 +16,8 @@ This tutorial uses [Prisma 1](https://v1.prisma.io/docs/1.34/) which is in maint
 
 The following YugabyteDB documentation uses the current Prisma ORM:
 
-* [ Hello World Example](/preview/drivers-orms/nodejs/prisma/)
-* [ CRUD Example](/preview/quick-start/build-apps/nodejs/ysql-prisma/)
+- [Hello World Example](../drivers-orms/nodejs/prisma/)
+- [CRUD Example](../develop/build-apps/additional-examples/nodejs/ysql-prisma/)
 
 {{< /warning >}}
 
@@ -135,59 +135,59 @@ For details on writing data with the Prisma client, see [Writing Data (JavaScrip
 
 1. Create a user Jane with three postings:
 
-```graphql
-mutation {
-  createUser(data: {
-    name: "Jane Doe"
-    handle: "jane"
-    posts: {
-      create: [
-        {
-           text: "Jane's First Post"
-           views: 10
-        },
-        {
-           text:"Jane's Second Post"
-	         views: 80
-        },
-        {
-           text:"Jane's Third Post"
-           views: 25
+    ```graphql
+    mutation {
+      createUser(data: {
+        name: "Jane Doe"
+        handle: "jane"
+        posts: {
+          create: [
+            {
+              text: "Jane's First Post"
+              views: 10
+            },
+            {
+              text:"Jane's Second Post"
+              views: 80
+            },
+            {
+              text:"Jane's Third Post"
+              views: 25
+            }
+          ]
         }
-      ]
+      }) {
+        id
+      }
     }
-  }) {
-    id
-  }
-}
-```
+    ```
 
-2. Create a user John with two postings:
+1. Create a user John with two postings:
 
-```graphql
-mutation {
-  createUser(data: {
-    name: "John Doe"
-    handle: "john"
-    posts: {
-      create: [
-        {
-           text: "John's First Post"
-           views: 15
-        },
-        {
-           text:"John's Second Post"
-           views: 20
+    ```graphql
+    mutation {
+      createUser(data: {
+        name: "John Doe"
+        handle: "john"
+        posts: {
+          create: [
+            {
+              text: "John's First Post"
+              views: 15
+            },
+            {
+              text:"John's Second Post"
+              views: 20
+            }
+          ]
         }
-      ]
+      }) {
+        id
+      }
     }
-  }) {
-    id
-  }
-}
-```
+    ```
 
-![Create user John with two postings](/images/develop/graphql/prisma/create-user-john.png)
+    ![Create user John with two postings](/images/develop/graphql/prisma/create-user-john.png)
 
 ## 6. Query the data
 
@@ -241,7 +241,7 @@ For details on using the Prisma client to read data, see [Reading Data (JavaScri
 
 ![Results - get all posts, ordered alphabetically](/images/develop/graphql/prisma/query-get-all-users-alpha.png)
 
-### Get all posts – ordered by popularity.
+### Get all posts – ordered by popularity
 
 ```graphql
 {
@@ -273,46 +273,46 @@ npm install --save prisma-client-lib
 
 1. Create a file:
 
-```sh
-touch index.js
-```
+    ```sh
+    touch index.js
+    ```
 
-2. Add the following JavaScript code to `index.js`:
+1. Add the following JavaScript code to `index.js`:
 
-```js
-const { prisma } = require('./generated/prisma-client')
+    ```js
+    const { prisma } = require('./generated/prisma-client')
 
-// A `main` function so that you can use async/await
-async function main() {
+    // A `main` function so that you can use async/await
+    async function main() {
 
-  // Create a new user called `Alice`
-  const alice = await prisma.createUser({ name: 'Alice Doe', handle: 'alice' })
-  console.log(`Created new user: ${alice.name} (ID: ${alice.id})`)
+      // Create a new user called `Alice`
+      const alice = await prisma.createUser({ name: 'Alice Doe', handle: 'alice' })
+      console.log(`Created new user: ${alice.name} (ID: ${alice.id})`)
 
-  // Create a new post for 'Alice'
+      // Create a new post for 'Alice'
 
-  const alicesPost = await prisma.createPost({ text: 'Alice\'s First Post', views: 0, author: {connect: {id : alice.id} }})
-  console.log(`Created new post: ${alicesPost.text} (ID: ${alicesPost.id})`)
+      const alicesPost = await prisma.createPost({ text: 'Alice\'s First Post', views: 0, author: {connect: {id : alice.id} }})
+      console.log(`Created new post: ${alicesPost.text} (ID: ${alicesPost.id})`)
 
-  // Get all users ordered by name and print them to the console
-  console.log("All Users:")
-  console.log(await prisma.users({ orderBy: 'name_DESC' }))
+      // Get all users ordered by name and print them to the console
+      console.log("All Users:")
+      console.log(await prisma.users({ orderBy: 'name_DESC' }))
 
-  // Get all of Alice's posts (just one)
-  console.log("Alice's Posts:")
-  console.log(await prisma.user( {handle : 'alice'}).posts());
-}
+      // Get all of Alice's posts (just one)
+      console.log("Alice's Posts:")
+      console.log(await prisma.user( {handle : 'alice'}).posts());
+    }
 
-main().catch(e => console.error(e))
-```
+    main().catch(e => console.error(e))
+    ```
 
-The preceding code creates a new user `Alice` and a new post for that user. Finally, it lists all users, and then all posts by the new user Alice.
+    The preceding code creates a new user `Alice` and a new post for that user. Finally, it lists all users, and then all posts by the new user Alice.
 
-3. Run the file:
+1. Run the file:
 
-```sh
-node index.js
-```
+    ```sh
+    node index.js
+    ```
 
 ![Prisma ORM results](/images/develop/graphql/prisma/prisma-orm-results.png)
 

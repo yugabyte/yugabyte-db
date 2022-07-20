@@ -64,7 +64,7 @@ Because YugabyteDB clusters can have servers in different regions and availabili
 
 ## Quick start
 
-Learn how to establish a connection to YugabyteDB database and begin CRUD operations using the steps from [Build a Go application](../../../../quick-start/build-apps/go/ysql-yb-pgx/).
+Learn how to establish a connection to YugabyteDB database and begin CRUD operations using the steps from [Build a Go application](../../../../develop/build-apps/additional-examples/go/ysql-yb-pgx/).
 
 This page provides details for getting started with [YugabyteDB PGX driver](https://github.com/yugabyte/pgx) for connecting to YugabyteDB YSQL API.
 
@@ -252,8 +252,8 @@ You can either `Acquire` a connection from pool and execute queries on it, or us
 ```go
 conn, err := pool.Acquire(context.Background())
 if err != nil {
-	fmt.Fprintf(os.Stderr, "Unable to connect to database: %v\n", err)
-	os.Exit(1)
+  fmt.Fprintf(os.Stderr, "Unable to connect to database: %v\n", err)
+  os.Exit(1)
 }
 defer conn.Release()
 
@@ -275,7 +275,7 @@ you need the root certificate (`ca.crt`) of the YugabyteDB Cluster.
 To generate these certificates and install them while launching the cluster, follow the instructions in
 [Create server certificates](../../../../secure/tls-encryption/server-certificates/).
 
-Because a YugabyteDB Managed cluster is always configured with SSL/TLS, you don't have to generate any certificate but only set the client-side SSL configuration. To fetch your root certificate, refer to [CA certificate](../../../../quick-start/build-apps/go/ysql-pgx/#ca-certificate).
+Because a YugabyteDB Managed cluster is always configured with SSL/TLS, you don't have to generate any certificate but only set the client-side SSL configuration. To fetch your root certificate, refer to [CA certificate](../../../../develop/build-apps/additional-examples/go/ysql-pgx/#ca-certificate).
 For a YugabyteDB Managed cluster, or a YugabyteDB cluster with SSL/TLS enabled, set the SSL-related
 environment variables as below at the client side.
 

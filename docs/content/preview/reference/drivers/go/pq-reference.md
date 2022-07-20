@@ -44,8 +44,8 @@ the standard `database/sql` package.
 
 ## Fundamentals of PQ Driver
 
-Learn how to establish a connection to YugabyteDB database and begin simple CRUD operations using
-the steps in the [Build an application](../../../../quick-start/build-apps/go/ysql-pq) page under the
+Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using
+the steps in the [Build an application](../../../../develop/build-apps/additional-examples/go/ysql-pq) page under the
 Quick start section.
 
 Let us break down the quick start example and understand how to perform the common tasks required
