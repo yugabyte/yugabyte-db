@@ -582,6 +582,23 @@ if ("${YB_BUILD_TYPE}" MATCHES "^(asan|tsan)$")
 endif()
 
 set(BUILD_SHARED_LIBS ON)
+if ("${YB_BUILD_TYPE}" STREQUAL "prof_gen")
+  ADD_CXX_FLAGS("-fprofile-instr-generate -DYB_PROFGEN")
+endif ()
+
+if ("${YB_BUILD_TYPE}" STREQUAL "prof_use")
+  if (NOT YB_PGO_DATA_PATH)
+    message (SEND_ERROR "Pgo data path is not set.")
+  endif()
+  ADD_CXX_FLAGS("-fprofile-instr-use=${YB_PGO_DATA_PATH}")
+  # Even with the fresh profile data we might get warnings like
+  # warning: Function control flow change detected (hash mismatch)
+  #    [-Wbackend-plugin]
+  # Silencing it for now.
+  ADD_CXX_FLAGS("-Wno-backend-plugin")
+  ADD_CXX_FLAGS("-Wno-profile-instr-unprofiled")
+  ADD_CXX_FLAGS("-Wno-profile-instr-out-of-date")
+endif ()
 
 # Position independent code is only necessary when producing shared objects.
 ADD_CXX_FLAGS(-fPIC)
