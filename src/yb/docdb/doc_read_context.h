@@ -58,6 +58,12 @@ struct DocReadContext {
     schema_packing_storage.ToPB(schema_version, out->mutable_old_schema_packings());
   }
 
+  // Should account for every field in DocReadContext.
+  static bool TEST_Equals(const DocReadContext& lhs, const DocReadContext& rhs) {
+    return Schema::TEST_Equals(lhs.schema, rhs.schema) &&
+        lhs.schema_packing_storage == rhs.schema_packing_storage;
+  }
+
   Schema schema;
   SchemaPackingStorage schema_packing_storage;
 };

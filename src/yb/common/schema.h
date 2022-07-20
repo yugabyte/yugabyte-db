@@ -89,6 +89,8 @@ struct DeletedColumn {
 
   static Status FromPB(const DeletedColumnPB& col, DeletedColumn* ret);
   void CopyToPB(DeletedColumnPB* pb) const;
+
+  friend bool operator==(const DeletedColumn&, const DeletedColumn&) = default;
 };
 
 // The schema for a given column.
@@ -282,6 +284,9 @@ class ColumnSchema {
   // Returns the memory usage of this object including the object itself.
   // Should be used when allocated on the heap.
   size_t memory_footprint_including_this() const;
+
+  // Should account for every field in ColumnSchema.
+  static bool TEST_Equals(const ColumnSchema& lhs, const ColumnSchema& rhs);
 
  private:
   friend class SchemaBuilder;
@@ -1019,6 +1024,10 @@ class Schema {
   size_t memory_footprint_including_this() const;
 
   static ColumnId first_column_id();
+
+  // Should account for every field in Schema.
+  // TODO: Some of them should be in Equals too?
+  static bool TEST_Equals(const Schema& lhs, const Schema& rhs);
 
  private:
 

@@ -86,6 +86,9 @@ using std::shared_ptr;
 
 using strings::Substitute;
 
+using yb::util::DereferencedEqual;
+using yb::util::MapsEqual;
+
 namespace yb {
 namespace tablet {
 
@@ -256,23 +259,48 @@ Result<docdb::CompactionSchemaInfo> TableInfo::Packing(
   };
 }
 
+bool TableInfo::TEST_Equals(const TableInfo& lhs, const TableInfo& rhs) {
+  return YB_STRUCT_EQUALS(table_id,
+                          namespace_name,
+                          table_name,
+                          table_type,
+                          cotable_id,
+                          schema_version,
+                          deleted_cols,
+                          wal_retention_secs) &&
+         DereferencedEqual(lhs.doc_read_context,
+                           rhs.doc_read_context,
+                           &docdb::DocReadContext::TEST_Equals) &&
+         DereferencedEqual(lhs.index_map,
+                           rhs.index_map,
+                           IndexMap::TEST_Equals) &&
+         DereferencedEqual(lhs.index_info,
+                           rhs.index_info,
+                           IndexInfo::TEST_Equals) &&
+         lhs.partition_schema.Equals(rhs.partition_schema);
+}
+
 Status KvStoreInfo::LoadTablesFromPB(
     const google::protobuf::RepeatedPtrField<TableInfoPB>& pbs, const TableId& primary_table_id) {
   tables.clear();
   for (const auto& table_pb : pbs) {
-    auto table_info = std::make_shared<TableInfo>();
+    const TableId table_id = table_pb.table_id();
+    TableInfoPtr& table_info =
+        tables.emplace(table_id, std::make_shared<TableInfo>()).first->second;
+
     RETURN_NOT_OK(table_info->LoadFromPB(primary_table_id, table_pb));
-    if (table_info->table_id != primary_table_id) {
-      // TODO(alex): cotable_id should be loaded from PB schema, do we need this section?
-      if (table_pb.schema().table_properties().is_ysql_catalog_table()) {
+
+    const Schema& schema = table_info->schema();
+    if (table_id != primary_table_id) {
+      if (schema.table_properties().is_ysql_catalog_table()) {
         // TODO(#79): when adding for multiple KV-stores per Raft group support - check if we need
         // to set cotable ID.
         table_info->doc_read_context->schema.set_cotable_id(table_info->cotable_id);
       }
-      // Colocation ID is already set in schema.
-      // TODO(alex): We don't have this info when master starts up?
     }
-    tables[table_info->table_id] = std::move(table_info);
+    if (schema.has_colocation_id()) {
+      colocation_to_table.emplace(schema.colocation_id(), table_info);
+    }
   }
   return Status::OK();
 }
@@ -351,6 +379,20 @@ void KvStoreInfo::UpdateColocationMap(const TableInfoPtr& table_info) {
   if (colocation_id) {
     colocation_to_table.emplace(colocation_id, table_info);
   }
+}
+
+bool KvStoreInfo::TEST_Equals(const KvStoreInfo& lhs, const KvStoreInfo& rhs) {
+  auto eq = [](const auto& lhs, const auto& rhs) {
+    return DereferencedEqual(lhs, rhs, TableInfo::TEST_Equals);
+  };
+  return YB_STRUCT_EQUALS(kv_store_id,
+                          rocksdb_dir,
+                          lower_bound_key,
+                          upper_bound_key,
+                          has_been_fully_compacted,
+                          snapshot_schedules) &&
+         MapsEqual(lhs.tables, rhs.tables, eq) &&
+         MapsEqual(lhs.colocation_to_table, rhs.colocation_to_table, eq);
 }
 
 namespace {
