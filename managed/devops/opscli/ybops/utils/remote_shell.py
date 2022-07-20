@@ -18,8 +18,20 @@ CONNECTION_ATTEMPTS = 5
 CONNECTION_ATTEMPT_DELAY_SEC = 3
 
 
+class RemoteShellOutput(object):
+    """
+        RemoteShellOutput class converts the o/p in the standard format
+        with o/p, err, exited status attached to it.
+    """
+
+    def __init__(self):
+        self.stdout = None
+        self.exited = False
+        self.stderr = None
+
+
 class RemoteShell(object):
-    """RemoteShell class is used run remote shell commands against nodes using fabric.
+    """RemoteShell class is used run remote shell commands against nodes using paramiko.
     """
 
     def __init__(self, options):
@@ -37,17 +49,27 @@ class RemoteShell(object):
         )
 
     def run_command_raw(self, command):
+        result = RemoteShellOutput()
         try:
             output = self.ssh_conn.exec_command(command, output_only=True)
-            return output
+            result.stdout = output
+            result.exited = 0
         except Exception as e:
-            raise YBOpsRuntimeError(
-                "Remote shell command '{}' failed with "
-                "error '{}'".format(command.encode('utf-8'), e)
-            )
+            result.stderr = e
+            result.exited = 1
+
+        return result
 
     def run_command(self, command):
         result = self.run_command_raw(command)
+
+        if result.exited:
+            raise YBOpsRuntimeError(
+                "Remote shell command '{}' failed with "
+                "return code '{}' and error '{}'".format(command.encode('utf-8'),
+                                                         result.stderr,
+                                                         result.exited)
+            )
         return result
 
     def put_file(self, local_path, remote_path):
