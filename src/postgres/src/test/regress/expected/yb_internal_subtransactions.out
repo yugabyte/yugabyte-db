@@ -57,14 +57,13 @@ SELECT /*+ IndexScan(t subtrans_foo_pkey) */ * FROM subtrans_foo t WHERE k > 0 A
 
 EXPLAIN (COSTS OFF)
 SELECT /*+ IndexScan(t subtrans_foo_pkey) */ * FROM subtrans_foo t WHERE k > 0 AND v > 0 ORDER BY k;
-                         QUERY PLAN
-------------------------------------------------------------
+              QUERY PLAN
+---------------------------------------
  Sort
    Sort Key: k
-   ->  Index Scan using subtrans_foo_pkey on subtrans_foo t
-         Index Cond: (k > 0)
-         Filter: (v > 0)
-(5 rows)
+   ->  YB Seq Scan on subtrans_foo t
+         Filter: ((k > 0) AND (v > 0))
+(4 rows)
 
 -- Index scan using the secondary index that triggered the unique violation
 SELECT /*+ IndexScan(t subtrans_foo_v_key) */ * FROM subtrans_foo t WHERE k > 0 AND v > 0 ORDER BY k;
@@ -75,14 +74,13 @@ SELECT /*+ IndexScan(t subtrans_foo_v_key) */ * FROM subtrans_foo t WHERE k > 0 
 
 EXPLAIN (COSTS OFF)
 SELECT /*+ IndexScan(t subtrans_foo_v_key) */ * FROM subtrans_foo t WHERE k > 0 AND v > 0 ORDER BY k;
-                         QUERY PLAN
--------------------------------------------------------------
+              QUERY PLAN
+---------------------------------------
  Sort
    Sort Key: k
-   ->  Index Scan using subtrans_foo_v_key on subtrans_foo t
-         Index Cond: (v > 0)
-         Filter: (k > 0)
-(5 rows)
+   ->  YB Seq Scan on subtrans_foo t
+         Filter: ((k > 0) AND (v > 0))
+(4 rows)
 
 -- Test that each buffering eligible operations are executed in the intended
 -- procedure block section.

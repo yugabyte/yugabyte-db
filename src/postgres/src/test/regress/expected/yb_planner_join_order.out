@@ -161,8 +161,9 @@ EXPLAIN (COSTS false) SELECT * FROM t_10000 t3 INNER JOIN t_1000 t2 ON t3.id = t
          ->  Hash
                ->  Seq Scan on t_100 t1
    ->  Index Scan using t_10000_pkey on t_10000 t3
-         Index Cond: ((id = t2.id) AND (id < 10))
-(8 rows)
+         Index Cond: (id = t2.id)
+         Filter: (id < 10)
+(9 rows)
 
 call update_sizes(0, 0, 0, 0);
 select pg_sleep(1);
@@ -191,17 +192,18 @@ EXPLAIN (COSTS false) SELECT * FROM t_1000000 t4 INNER JOIN t_100 t1 ON t4.id = 
 EXPLAIN (COSTS false) SELECT * FROM t_10000 t3 INNER JOIN t_1000 t2 ON t3.id = t2.id
                                                INNER JOIN t_100 t1 ON t2.val = t1.val
                                                WHERE t3.id < 10;
-                          QUERY PLAN
----------------------------------------------------------------
+                         QUERY PLAN
+-------------------------------------------------------------
  Merge Join
    Merge Cond: (t2.val = t1.val)
    ->  Sort
          Sort Key: t2.val
          ->  Nested Loop
-               ->  Seq Scan on t_1000 t2
-               ->  Index Scan using t_10000_pkey on t_10000 t3
-                     Index Cond: ((id = t2.id) AND (id < 10))
+               ->  Seq Scan on t_10000 t3
+                     Filter: (id < 10)
+               ->  Index Scan using t_1000_pkey on t_1000 t2
+                     Index Cond: (id = t3.id)
    ->  Sort
          Sort Key: t1.val
          ->  Seq Scan on t_100 t1
-(11 rows)
+(12 rows)
