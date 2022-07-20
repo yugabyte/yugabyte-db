@@ -13,30 +13,28 @@ type: docs
 
 You can use [Replicated](https://www.replicated.com/) to upgrade your YugabyteDB Anywhere to a newer version.
 
-To start the upgrade, you need to login to the Replicated Admin Console via https://:8800 and then perform the following:
+To start the upgrade, log in to the Replicated Admin Console via <https://:8800> and then perform the following:
 
-- Navigate to **Dashboard** and click **View release history** to open **Release History**, as shown in the following illustration:<br><br>
-  ![image](/images/yb-platform/upgrade-replicated1.png)
+- Navigate to **Dashboard** and click **View release history** to open **Release History**, as shown in the following illustration:
 
+    ![image](/images/yb-platform/upgrade-replicated1.png)
 
+- Find the required release version and click the corresponding **Install**.
 
-<br>
+    If the required version is not in the list, click **Check for updates** to refresh of a list of releases available in the channel to which you are subscribed, and then click **Install** corresponding to the release.
 
-- Find the required release version and click the corresponding **Install**.<br>
+    There is a possibility that the required release version is in a different channel (for example, you want to upgrade from 2.4.*n* release family to 2.6.*n*). In this case, you start by updating the channel, as follows:
 
-  If the required version is not in the list, click **Check for updates** to refresh of a list of releases available in the channel to which you are subscribed, and then click **Install** corresponding to the release.<br>
+    - Click the gear icon and select **View License**, as per the following illustration:
 
-  There is a possiblity that the required release version is in a different channel (for example, you want to upgrade from 2.4.*n* release family to 2.6.*n*). In this case, you start by updating the channel, as follows:
-  - Click the gear icon and select **View License**, as per the following illustration:<br><br>
+      ![image](/images/yb-platform/upgrade-replicated2.png)
 
-    ![image](/images/yb-platform/upgrade-replicated2.png)
+    - In the **License** view, click **change** for **Release Channel**, as per the following illustration:
 
-  - In the **License** view, click **change** for **Release Channel**, as per the following illustration:<br><br>
+      ![image](/images/yb-platform/upgrade-replicated3.png)
 
-    ![image](/images/yb-platform/upgrade-replicated3.png)
+      Note that if you do not have permissions to access the new release channel, you should contact Yugabyte Support.
 
-    <br><br>Note that if you do not have permissions to access the new release channel, you should contact Yugabyte Support.
+    - Click **Sync License**.
 
-  - Click **Sync License**.
-
-  - Navigate back to **Release History**, locate the release you need, and then click the corresponding **Install**.
+    - Navigate back to **Release History**, locate the release you need, and then click the corresponding **Install**.
