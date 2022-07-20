@@ -5,7 +5,7 @@ description: YugabyteDB Managed frequently asked questions.
 headcontent:
 image: /images/section_icons/index/quick_start.png
 aliases:
-  - /preview/preview/yugabyte-cloud/cloud-faq/
+  - /preview/yugabyte-cloud/cloud-faq/
 menu:
   preview_faq:
     identifier: yugabytedb-managed-faq
