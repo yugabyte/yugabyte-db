@@ -171,7 +171,7 @@ For a list of best practices, see [security checklist](../../secure/security-che
 
 ### Google Cloud
 
-- Use the N2 high-cpu instance family. As a second choice, the N2 standard instance family works too.
+- Use the N2 high-CPU instance family. As a second choice, the N2 standard instance family works too.
 - Recommended instance types are `n2-highcpu-16` and `n2-highcpu-32`.
 - [Local SSDs](https://cloud.google.com/compute/docs/disks/#localssds) are the preferred storage option. Local SSDs provide improved performance over attached disks, but the data is not replicated, and can be lost if the node fails. This option is ideal for databases (like YugabyteDB) that manage their own replication and can guarantee high availability (HA). For more details on these tradeoffs, refer to [Local vs remote SSDs](../../deploy/kubernetes/best-practices/#local-vs-remote-ssds).
   - Each local SSD is 375 GB in size, but you can attach up to eight local SSD devices for 3 TB of total local SSD storage space per instance.
