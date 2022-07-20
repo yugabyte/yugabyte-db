@@ -1233,8 +1233,9 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
                 args.ssh_user_update_packages else self.SSH_USER
             self.cloud.setup_ansible(args).run(
                 "reinstall-package.yml", self.extra_vars, host_info)
-            # Falling back to "yugabyte" user
-            self.extra_vars["ssh_user"] = self.get_ssh_user()
+            # As the Update package run as a seprate subtask returning, need not to
+            # configure the clusters as part of the same
+            return
         ssh_options = {
             # TODO: replace with args.ssh_user when it's setup in the flow
             "ssh_user": self.get_ssh_user(),
