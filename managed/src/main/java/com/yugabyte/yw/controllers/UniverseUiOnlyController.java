@@ -82,9 +82,9 @@ public class UniverseUiOnlyController extends AuthenticatedController {
   }
 
   /**
-   * @deprecated - Use UniverseClustersController.createAll that configures and creates creates all
-   *     clusters for a universe in one-shot. API that binds the UniverseDefinitionTaskParams class
-   *     by merging the UserIntent with the generated taskParams.
+   * @deprecated - Use UniverseClustersController.createAll that configures and creates all clusters
+   *     for a universe in one-shot. API that binds the UniverseDefinitionTaskParams class by
+   *     merging the UserIntent with the generated taskParams.
    * @param customerUUID the ID of the customer configuring the Universe.
    * @return UniverseDefinitionTasksParams in a serialized form
    */

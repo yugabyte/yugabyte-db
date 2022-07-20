@@ -52,6 +52,7 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -71,6 +72,7 @@ import java.util.stream.Collectors;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import play.libs.Json;
 import play.mvc.Http;
 import play.mvc.Http.Status;
 
@@ -568,8 +570,13 @@ public class UniverseCRUDHandler {
     Cluster cluster = getOnlyReadReplicaOrBadRequest(taskParams.getReadOnlyClusters());
     PlacementInfoUtil.updatePlacementInfo(
         taskParams.getNodesInCluster(cluster.uuid), cluster.placementInfo);
-    return submitEditUniverse(
-        customer, u, taskParams, TaskType.EditUniverse, CustomerTask.TargetType.Cluster);
+    TaskType taskType = TaskType.EditUniverse;
+    if (cluster.userIntent.providerType.equals(Common.CloudType.kubernetes)) {
+      taskType = TaskType.EditKubernetesUniverse;
+      notHelm2LegacyOrBadRequest(u);
+      checkHelmChartExists(cluster.userIntent.ybSoftwareVersion);
+    }
+    return submitEditUniverse(customer, u, taskParams, taskType, CustomerTask.TargetType.Cluster);
   }
 
   /** Merge node exporter related information from current universe details to the task params */
@@ -1237,6 +1244,9 @@ public class UniverseCRUDHandler {
 
   public UUID tlsConfigUpdate(
       Customer customer, Universe universe, TlsConfigUpdateParams taskParams) {
+
+    LOG.info("tlsConfigUpdate: {}", Json.toJson(CommonUtils.maskObject(taskParams)));
+
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
     UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
 
@@ -1360,15 +1370,11 @@ public class UniverseCRUDHandler {
                 runtimeConfigFactory.staticApplicationConf().getString("yb.storage.path"));
       }
 
-      CertsRotateParams certsRotateParams = new CertsRotateParams();
-      certsRotateParams.rootCA = isRootCA ? taskParams.rootCA : null;
-      certsRotateParams.clientRootCA = isClientRootCA ? taskParams.clientRootCA : null;
-      certsRotateParams.selfSignedServerCertRotate = taskParams.selfSignedServerCertRotate;
-      certsRotateParams.selfSignedClientCertRotate = taskParams.selfSignedClientCertRotate;
-      certsRotateParams.rootAndClientRootCASame = taskParams.rootAndClientRootCASame;
-      certsRotateParams.upgradeOption = taskParams.upgradeOption;
-      certsRotateParams.sleepAfterMasterRestartMillis = taskParams.sleepAfterMasterRestartMillis;
-      certsRotateParams.sleepAfterTServerRestartMillis = taskParams.sleepAfterTServerRestartMillis;
+      CertsRotateParams certsRotateParams =
+          CertsRotateParams.mergeUniverseDetails(taskParams, universe.getUniverseDetails());
+
+      LOG.info("CertsRotateParams : {}", Json.toJson(CommonUtils.maskObject(certsRotateParams)));
+
       return upgradeUniverseHandler.rotateCerts(certsRotateParams, customer, universe);
     }
 

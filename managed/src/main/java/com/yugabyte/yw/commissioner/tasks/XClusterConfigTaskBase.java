@@ -12,6 +12,7 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.TransferXClusterCerts;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.BootstrapProducer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.CheckBootstrapRequired;
+import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.SetReplicationPaused;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.SetRestoreTime;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigModifyTables;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigRename;
@@ -83,9 +84,6 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     STATUS_TO_ALLOWED_TASKS.put(
         XClusterConfigStatusType.Updating, ImmutableList.of(TaskType.DeleteXClusterConfig));
     STATUS_TO_ALLOWED_TASKS.put(
-        XClusterConfigStatusType.Paused,
-        ImmutableList.of(TaskType.EditXClusterConfig, TaskType.DeleteXClusterConfig));
-    STATUS_TO_ALLOWED_TASKS.put(
         XClusterConfigStatusType.DeletedUniverse, ImmutableList.of(TaskType.DeleteXClusterConfig));
     STATUS_TO_ALLOWED_TASKS.put(
         XClusterConfigStatusType.Deleted, ImmutableList.of(TaskType.DeleteXClusterConfig));
@@ -142,8 +140,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
   }
 
   protected void setXClusterConfigStatus(XClusterConfigStatusType status) {
-    taskParams().xClusterConfig.status = status;
-    taskParams().xClusterConfig.update();
+    taskParams().xClusterConfig.setStatus(status);
   }
 
   public static boolean isInMustDeleteStatus(XClusterConfig xClusterConfig) {
@@ -195,24 +192,18 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
   }
 
   /**
-   * It creates a subtask to set the status of an xCluster config and save it in the Platform DB. If
-   * the xCluster config is running/paused, it also makes an RPC call to pause/enable the xCluster
-   * config.
+   * It creates a subtask to set the status of an xCluster config and save it in the Platform DB.
    *
-   * @param currentStatus The current xCluster config status (before setting it to `Updating`); This
-   *     is optional and will be used to detect if an RPC call is required.
    * @param desiredStatus The xCluster config will have this status
    * @return The created subtask group; it can be used to assign a subtask group type to this
    *     subtask
    */
-  protected SubTaskGroup createXClusterConfigSetStatusTask(
-      XClusterConfigStatusType currentStatus, XClusterConfigStatusType desiredStatus) {
+  protected SubTaskGroup createXClusterConfigSetStatusTask(XClusterConfigStatusType desiredStatus) {
     SubTaskGroup subTaskGroup =
         getTaskExecutor().createSubTaskGroup("XClusterConfigSetStatus", executor);
     XClusterConfigSetStatus.Params setStatusParams = new XClusterConfigSetStatus.Params();
     setStatusParams.universeUUID = taskParams().xClusterConfig.targetUniverseUUID;
     setStatusParams.xClusterConfig = taskParams().xClusterConfig;
-    setStatusParams.currentStatus = currentStatus;
     setStatusParams.desiredStatus = desiredStatus;
 
     XClusterConfigSetStatus task = createTask(XClusterConfigSetStatus.class);
@@ -222,16 +213,29 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     return subTaskGroup;
   }
 
-  /** @see #createXClusterConfigSetStatusTask(XClusterConfigStatusType, XClusterConfigStatusType) */
-  protected SubTaskGroup createXClusterConfigSetStatusTask(XClusterConfigStatusType desiredStatus) {
-    return createXClusterConfigSetStatusTask(null, desiredStatus);
+  /**
+   * It makes an RPC call to pause/enable the xCluster config and saves it in the Platform DB.
+   *
+   * @param pause Whether to pause replication
+   * @return The created subtask group
+   */
+  protected SubTaskGroup createSetReplicationPausedTask(boolean pause) {
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup("SetReplicationPaused", executor);
+    SetReplicationPaused.Params setReplicationPausedParams = new SetReplicationPaused.Params();
+    setReplicationPausedParams.universeUUID = taskParams().xClusterConfig.targetUniverseUUID;
+    setReplicationPausedParams.xClusterConfig = taskParams().xClusterConfig;
+    setReplicationPausedParams.pause = pause;
+
+    SetReplicationPaused task = createTask(SetReplicationPaused.class);
+    task.initialize(setReplicationPausedParams);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
   }
 
-  /** @see #createXClusterConfigSetStatusTask(XClusterConfigStatusType, XClusterConfigStatusType) */
-  protected SubTaskGroup createXClusterConfigSetStatusTask(
-      XClusterConfigStatusType currentStatus, String desiredStatus) {
-    return createXClusterConfigSetStatusTask(
-        currentStatus, XClusterConfigStatusType.valueOf(desiredStatus));
+  protected SubTaskGroup createSetReplicationPausedTask(String status) {
+    return createSetReplicationPausedTask(status.equals("Paused"));
   }
 
   protected SubTaskGroup createXClusterConfigModifyTablesTask(
@@ -748,6 +752,14 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
           String.format(
               "No replication group found with name (%s) in universe (%s) cluster config",
               xClusterConfig.getReplicationGroupName(), xClusterConfig.targetUniverseUUID));
+    }
+
+    // Ensure disable stream state is in sync with Platform's point of view.
+    if (replicationGroup.getDisableStream() != xClusterConfig.paused) {
+      throw new RuntimeException(
+          String.format(
+              "Detected mismatched disable state for replication group %s and xCluster config %s",
+              replicationGroup, xClusterConfig));
     }
 
     // Parse stream map and convert to a map from source table id to stream id.

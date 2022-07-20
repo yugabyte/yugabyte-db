@@ -14,10 +14,7 @@ type: docs
 You can create a universe that includes both a primary cluster and a [read replica](../../../architecture/docdb-replication/read-replicas/) cluster in a hybrid cloud deployment, as well as dynamically add, edit, and remove a read replica cluster. The example presented in this document shows how to deploy a universe with primary cluster in Oregon (US-West) and read replica cluster in Northern Virginia (US-East).
 
 {{< note title="Note" >}}
-
-- YSQL read replica support is currently in Beta.
-- YugabyteDB Anywhere does not support read replica configuration for Kubernetes and OpenShift cloud providers.
-
+YugabyteDB Anywhere does not support read replica configuration for Kubernetes and OpenShift cloud providers.
 {{< /note >}}
 
 ## Create the universe

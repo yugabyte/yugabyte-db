@@ -71,7 +71,6 @@ public class XClusterConfig extends Model {
     Init("Init"),
     Running("Running"),
     Updating("Updating"),
-    Paused("Paused"),
     DeletedUniverse("DeletedUniverse"),
     Deleted("Deleted"),
     Failed("Failed");
@@ -88,6 +87,9 @@ public class XClusterConfig extends Model {
       return this.status;
     }
   }
+
+  @ApiModelProperty(value = "Whether this xCluster replication config is paused")
+  public boolean paused;
 
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
   @ApiModelProperty(
@@ -118,6 +120,8 @@ public class XClusterConfig extends Model {
         + this.targetUniverseUUID
         + ",status="
         + this.status
+        + ",paused="
+        + this.paused
         + ")";
   }
 
@@ -355,6 +359,35 @@ public class XClusterConfig extends Model {
     replicationGroupName = getReplicationGroupName(sourceUniverseUUID, configName);
   }
 
+  public void setStatus(XClusterConfigStatusType status) {
+    this.status = status;
+    update();
+  }
+
+  public void enable() {
+    if (!paused) {
+      log.info("xCluster config {} is already enabled", this);
+    }
+    paused = false;
+    update();
+  }
+
+  public void disable() {
+    if (paused) {
+      log.info("xCluster config {} is already disabled", this);
+    }
+    paused = true;
+    update();
+  }
+
+  public void setPaused(boolean paused) {
+    if (paused) {
+      disable();
+    } else {
+      enable();
+    }
+  }
+
   @Transactional
   public static XClusterConfig create(
       String name,
@@ -367,6 +400,7 @@ public class XClusterConfig extends Model {
     xClusterConfig.sourceUniverseUUID = sourceUniverseUUID;
     xClusterConfig.targetUniverseUUID = targetUniverseUUID;
     xClusterConfig.status = status;
+    xClusterConfig.paused = false;
     xClusterConfig.createTime = new Date();
     xClusterConfig.modifyTime = new Date();
     xClusterConfig.setReplicationGroupName();
@@ -400,8 +434,7 @@ public class XClusterConfig extends Model {
   public static XClusterConfig create(
       XClusterConfigCreateFormData createFormData, XClusterConfigStatusType status) {
     XClusterConfig xClusterConfig = create(createFormData);
-    xClusterConfig.status = status;
-    xClusterConfig.update();
+    xClusterConfig.setStatus(status);
     if (status == XClusterConfigStatusType.Running) {
       xClusterConfig.setReplicationSetupDone(createFormData.tables);
     }

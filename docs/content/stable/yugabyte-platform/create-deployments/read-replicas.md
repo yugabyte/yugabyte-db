@@ -15,7 +15,6 @@ You can create a universe that includes both a primary cluster and a [read repli
 
 {{< note title="Note" >}}
 
-- YSQL read replica support is currently in Beta.
 - YugabyteDB Anywhere does not support read replica configuration for Kubernetes and OpenShift cloud providers.
 
 {{< /note >}}

@@ -44,7 +44,6 @@
 #include "yb/server/secure.h"
 
 #include "yb/tserver/pg_client.pb.h"
-#include "yb/tserver/tserver_forward_service.proxy.h"
 #include "yb/tserver/tserver_shared_mem.h"
 
 #include "yb/util/enums.h"
@@ -78,12 +77,9 @@
 
 using namespace std::literals;
 
-DECLARE_string(rpc_bind_addresses);
 DECLARE_bool(use_node_to_node_encryption);
 DECLARE_string(certs_dir);
 DECLARE_bool(node_to_node_encryption_use_client_certificates);
-DECLARE_bool(ysql_forward_rpcs_to_local_tserver);
-DECLARE_bool(use_node_hostname_for_local_tserver);
 DECLARE_int32(backfill_index_client_rpc_timeout_ms);
 
 namespace yb {
@@ -411,10 +407,6 @@ PgApiImpl::PgApiImpl(
           new PgTxnManager(
               &pg_client_, clock_, tserver_shared_object_.get(), pg_callbacks_)) {
   CHECK_OK(interrupter_->Start());
-  if (pg_callbacks_.YbPgMemUpdateMax) {
-    mem_tracker_->AssignUpdateMaxMemFunctor(pg_callbacks_.YbPgMemUpdateMax);
-  }
-
   CHECK_OK(clock_->Init());
 
   // Setup type mapping.

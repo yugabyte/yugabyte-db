@@ -45,7 +45,6 @@ set(CLIENT_SRCS
   client_utils.cc
   error.cc
   error_collector.cc
-  forward_rpc.cc
   in_flight_op.cc
   meta_cache.cc
   meta_data_cache.cc
@@ -78,7 +77,6 @@ set(CLIENT_LIBS
   server_process
   tserver_proto
   tserver_service_proto
-  tserver_forward_service_proto
   tserver_util
   yb_util
   gutil
