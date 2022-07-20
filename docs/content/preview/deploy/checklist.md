@@ -80,11 +80,11 @@ $ cat /proc/cpuinfo | grep sse2
 ### Disks
 
 - SSDs (solid state disks) are required.
-- Both local or remote attached storage work with YugabyteDB. Since YugabyteDB internally replicates data for fault tolerance, remote attached storage which does its own additional replication is not a requirement. Local disks often offer better performance at a lower cost.
+- Both local or remote attached storage work with YugabyteDB. Because YugabyteDB internally replicates data for fault tolerance, remote attached storage which does its own additional replication is not a requirement. Local disks often offer better performance at a lower cost.
 - Multi-disk nodes
 
-- Do not use RAID across multiple disks. YugabyteDB can natively handle multi-disk nodes (JBOD).
-- Create a data directory on each of the data disks and specify a comma separated list of those directories to the yb-master and yb-tserver servers via the `--fs_data_dirs` flag.
+  - Do not use RAID across multiple disks. YugabyteDB can natively handle multi-disk nodes (JBOD).
+  - Create a data directory on each of the data disks and specify a comma separated list of those directories to the yb-master and yb-tserver servers via the `--fs_data_dirs` flag.
 
 - Mount settings
 
@@ -110,19 +110,18 @@ Below is a minimal list of default ports (along with the network access required
 
 - Each of the nodes in the YugabyteDB cluster must be able to communicate with each other using TCP/IP on the following ports.
 
-    7100 for YB-Master RPC communication
+  - 7100 for YB-Master RPC communication
+  - 9100 for YB-TServer RPC communication
 
-    9100 for YB-TServer RPC communication
+- To view the cluster dashboard, you need to be able to navigate to the following ports on the nodes.
 
-- In order to view the cluster dashboard, you need to be able to navigate to the following ports on the nodes.
-
-    7000 for viewing the YB-Master Admin UI
+  - 7000 for viewing the YB-Master Admin UI
 
 - To use the database from the app, the following ports need to be accessible from the app (or CLIs).
 
-    5433 for YSQL
-    9042 for YCQL
-    6379 for YEDIS
+  - 5433 for YSQL
+  - 9042 for YCQL
+  - 6379 for YEDIS
 
 ### Default ports reference
 
