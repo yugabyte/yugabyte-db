@@ -30,7 +30,7 @@ For example, if your overall retention target for PITR is three days, you can us
 * Snapshots are taken daily.
 * Each snapshot is kept for three days.
 
-By default, the history retention period is controlled by the [history retention interval flag ](../../../reference/configuration/yb-tserver/#timestamp-history-retention-interval-sec) applied cluster-wide to every YSQL database and YCQL keyspace.
+By default, the history retention period is controlled by the [history retention interval flag](../../../reference/configuration/yb-tserver/#timestamp-history-retention-interval-sec) applied cluster-wide to every YSQL database and YCQL keyspace.
 
 However, when [PITR is enabled](#create-a-schedule) for a database or a keyspace, YugabyteDB adjusts the history retention for that database or keyspace based on the interval between the snapshots. You are not required to manually set the cluster-wide flag in order to use PITR.
 
