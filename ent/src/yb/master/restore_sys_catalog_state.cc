@@ -268,6 +268,104 @@ class PgCatalogRestorePatch : public RestorePatch {
 RestoreSysCatalogState::RestoreSysCatalogState(SnapshotScheduleRestoration* restoration)
     : restoration_(*restoration) {}
 
+Status RestoreSysCatalogState::PatchAndAddRestoringTablets() {
+  faststring buffer;
+  for (auto& split_tablet : restoration_.non_system_tablets_to_restore) {
+    auto& split_info = split_tablet.second;
+    // CASE: 1
+    // If master has fewer than 2 children registered then writes (if any) are still
+    // going to the parent and it is safe to restore the parent and hide the children (if any).
+    // Some examples:
+    //
+    // Example#1: Non-colocated split tablet that has finished split completely as of restore time
+    //                                 t1
+    //                               /   \
+    //                              t11   t12       <-- Restoring time
+    //                              / \    /  \
+    //                          t111 t112 t121 t122 <-- Present time
+    // If we are restoring to a state when t1 was completely split into t11 and t12 then
+    // in the restoring state, the split map will contain two entries
+    // one each for t11 and t12. Both the entries will only have the parent
+    // but no children. It is safe to restore just the parent.
+    //
+    // Example#2: Colocated or not split tablet
+    //                                 t1 (colocated or not split) <-- Present and Restoring time
+    // If we are restoring a colocated tablet then the split map will only contain one entry
+    // for t1 that will only have the parent but no children.
+    //
+    // Example#3: Non-colocated split tablet in the middle of a split as of restore time
+    // If both the children are not registered on the master as of the time to restore
+    // then all the writes are still going to the parent and it is safe to restore
+    // the parent. We also HIDE the children if any.
+    if (VLOG_IS_ON(3)) {
+      VLOG(3) << "Parent tablet id " << split_info.parent.first
+              << ", pb " << split_info.parent.second->ShortDebugString();
+      for (const auto& child : split_info.children) {
+        VLOG(3) << "Child tablet id " << child.first
+                << ", pb " << child.second->ShortDebugString();
+      }
+    }
+    if (split_info.children.size() < 2) {
+      // Clear the children info from the protobuf.
+      split_info.parent.second->clear_split_tablet_ids();
+      // If it is a colocated tablet, then set the schedules that prevent
+      // its colocated tables from getting deleted. Also, add to-be hidden table ids
+      // in its colocated list as they won't be present previously.
+      RETURN_NOT_OK(PatchColocatedTablet(split_info.parent.first, split_info.parent.second));
+      RETURN_NOT_OK(AddRestoringEntry(split_info.parent.first, split_info.parent.second,
+                                      &buffer, SysRowEntryType::TABLET));
+      // Hide the child tablets.
+      for (auto& child : split_info.children) {
+        FillHideInformation(child.second->table_id(), child.second);
+        RETURN_NOT_OK(AddRestoringEntry(child.first, child.second, &buffer,
+                                        SysRowEntryType::TABLET, DoTsRestore::kFalse));
+      }
+    } else {
+      // CASE: 2
+      // If master has both the children registered then we restore as if this split
+      // is complete i.e. we restore both the children and hide the parent.
+      // This works because at the time when restore was initiated, we waited
+      // for splits to complete, so at current time split children are ready and parent is hidden.
+      // Thus it's safe to restore the children and use hybrid time filter to
+      // ensure only restored rows are visible. This takes care of all the race conditions
+      // associated with selectively restoring either only the parent or children depending on
+      // the stage at which splitting is at.
+
+      // There should be exactly 2 children.
+      RSTATUS_DCHECK_EQ(split_info.children.size(), 2, IllegalState,
+                        "More than two children tablets exist for the parent tablet");
+
+      // Restore the child tablets.
+      for (const auto& child : split_info.children) {
+        child.second->clear_split_tablet_ids();
+        child.second->set_split_parent_tablet_id(split_info.parent.first);
+        RETURN_NOT_OK(AddRestoringEntry(child.first, child.second,
+                                        &buffer, SysRowEntryType::TABLET));
+      }
+      // Hide the parent tablet.
+      FillHideInformation(split_info.parent.second->table_id(), split_info.parent.second);
+      RETURN_NOT_OK(AddRestoringEntry(split_info.parent.first, split_info.parent.second, &buffer,
+                                      SysRowEntryType::TABLET, DoTsRestore::kFalse));
+    }
+  }
+
+  return Status::OK();
+}
+
+void RestoreSysCatalogState::FillHideInformation(
+    TableId table_id, SysTabletsEntryPB* pb, bool set_hide_time) {
+  auto it = retained_existing_tables_.find(table_id);
+  if (it != retained_existing_tables_.end()) {
+    if (set_hide_time) {
+      pb->set_hide_hybrid_time(restoration_.write_time.ToUint64());
+    }
+    auto& out_schedules = *pb->mutable_retained_by_snapshot_schedules();
+    for (const auto& schedule_id : it->second) {
+      out_schedules.Add()->assign(schedule_id.AsSlice().cdata(), schedule_id.size());
+    }
+  }
+}
+
 Result<bool> RestoreSysCatalogState::PatchRestoringEntry(
     const std::string& id, SysNamespaceEntryPB* pb) {
   return true;
@@ -293,7 +391,7 @@ Result<bool> RestoreSysCatalogState::PatchRestoringEntry(
               << ", restoring version " << pb->version();
   }
 
-  // Patch the partition version if changed.
+  // Patch the partition version.
   if (pb->partition_list_version() != it->second.partition_list_version()) {
     LOG(INFO) << "PITR: Patching the partition list version for table " << id
               << ". Existing version " << it->second.partition_list_version()
@@ -304,14 +402,11 @@ Result<bool> RestoreSysCatalogState::PatchRestoringEntry(
   return true;
 }
 
-Result<bool> RestoreSysCatalogState::PatchRestoringEntry(
+Status RestoreSysCatalogState::PatchColocatedTablet(
     const std::string& id, SysTabletsEntryPB* pb) {
   if (!pb->colocated()) {
-    return true;
+    return Status::OK();
   }
-  // If it is a colocated tablet, then set the schedules that prevent
-  // its colocated tables from getting deleted. Also, add to-be hidden table ids
-  // in its colocated list as they won't be present previously.
   auto it = existing_objects_.tablets.find(id);
   // Since we are not allowed to drop the database on which schedule was set,
   // it implies that the colocated tablet for the colocated database must always be present.
@@ -342,20 +437,62 @@ Result<bool> RestoreSysCatalogState::PatchRestoringEntry(
   }
   if (colocated_table_deleted) {
     // Set schedules that retain.
-    auto it = retained_existing_tables_.find(found_table_id);
-    if (it != retained_existing_tables_.end()) {
-      auto& out_schedules = *pb->mutable_retained_by_snapshot_schedules();
-      for (const auto& schedule_id : it->second) {
-        LOG(INFO) << "PITR: " << schedule_id << " schedule retains colocated tablet " << id;
-        out_schedules.Add()->assign(schedule_id.AsSlice().cdata(), schedule_id.size());
-      }
+    FillHideInformation(found_table_id, pb, false /* set_hide_time */);
+  }
+  return Status::OK();
+}
+
+void RestoreSysCatalogState::AddTabletToSplitRelationshipsMap(
+    const std::string& id, SysTabletsEntryPB* pb) {
+  // If this tablet has a parent tablet then add it as a child of that parent.
+  // Otherwise add it as a parent.
+  VLOG_WITH_FUNC(1) << "Tablet id " << id << ", pb " << pb->ShortDebugString();
+  bool has_live_parent = false;
+  if (pb->has_split_parent_tablet_id()) {
+    auto it = restoring_objects_.tablets.find(pb->split_parent_tablet_id());
+    if (it != restoring_objects_.tablets.end()) {
+      has_live_parent = !TabletDeleted(it->second);
     }
   }
-  return true;
+  if (has_live_parent) {
+    restoration_.non_system_tablets_to_restore[pb->split_parent_tablet_id()]
+        .children.emplace(id, pb);
+  } else {
+    auto& split_info = restoration_.non_system_tablets_to_restore[id];
+    split_info.parent.first = id;
+    split_info.parent.second = pb;
+  }
+}
+
+Result<bool> RestoreSysCatalogState::PatchRestoringEntry(
+    const std::string& id, SysTabletsEntryPB* pb) {
+  AddTabletToSplitRelationshipsMap(id, pb);
+  // Don't add this entry to the write batch yet, we write
+  // them once split relationships are known for all tablets
+  // as a separate step.
+  return false;
 }
 
 template <class PB>
 Status RestoreSysCatalogState::AddRestoringEntry(
+    const std::string& id, PB* pb, faststring* buffer, SysRowEntryType type,
+    DoTsRestore send_restore_rpc) {
+  VLOG_WITH_FUNC(1) << SysRowEntryType_Name(type) << ": " << id << ", " << pb->ShortDebugString();
+
+  auto& entry = *entries_.mutable_entries()->Add();
+  entry.set_type(type);
+  entry.set_id(id);
+  RETURN_NOT_OK(pb_util::SerializeToString(*pb, buffer));
+  entry.set_data(buffer->data(), buffer->size());
+  if (send_restore_rpc) {
+    restoration_.non_system_objects_to_restore.emplace(id, type);
+  }
+
+  return Status::OK();
+}
+
+template <class PB>
+Status RestoreSysCatalogState::PatchAndAddRestoringEntry(
     const std::string& id, PB* pb, faststring* buffer) {
   auto type = GetEntryType<PB>::value;
   VLOG_WITH_FUNC(1) << SysRowEntryType_Name(type) << ": " << id << ", " << pb->ShortDebugString();
@@ -363,14 +500,8 @@ Status RestoreSysCatalogState::AddRestoringEntry(
   if (!VERIFY_RESULT(PatchRestoringEntry(id, pb))) {
     return Status::OK();
   }
-  auto& entry = *entries_.mutable_entries()->Add();
-  entry.set_type(type);
-  entry.set_id(id);
-  RETURN_NOT_OK(pb_util::SerializeToString(*pb, buffer));
-  entry.set_data(buffer->data(), buffer->size());
-  restoration_.non_system_objects_to_restore.emplace(id, type);
 
-  return Status::OK();
+  return AddRestoringEntry(id, pb, buffer, type);
 }
 
 bool RestoreSysCatalogState::AreAllSequencesDataObjectsEmpty(
@@ -395,14 +526,16 @@ Status RestoreSysCatalogState::AddSequencesDataEntries(
     std::unordered_map<NamespaceId, SysNamespaceEntryPB>* seq_namespace,
     std::unordered_map<TableId, SysTablesEntryPB>* seq_table,
     std::unordered_map<TabletId, SysTabletsEntryPB>* seq_tablets) {
-  faststring namespace_buffer, table_buffer;
+  faststring buffer;
   RETURN_NOT_OK(AddRestoringEntry(
-      seq_namespace->begin()->first, &seq_namespace->begin()->second, &namespace_buffer));
+      seq_namespace->begin()->first, &seq_namespace->begin()->second,
+      &buffer, SysRowEntryType::NAMESPACE));
   RETURN_NOT_OK(AddRestoringEntry(
-      seq_table->begin()->first, &seq_table->begin()->second, &table_buffer));
+      seq_table->begin()->first, &seq_table->begin()->second,
+      &buffer, SysRowEntryType::TABLE));
   for (auto& id_and_pb : *seq_tablets) {
-    faststring buffer;
-    RETURN_NOT_OK(AddRestoringEntry(id_and_pb.first, &id_and_pb.second, &buffer));
+    RETURN_NOT_OK(AddRestoringEntry(
+        id_and_pb.first, &id_and_pb.second, &buffer, SysRowEntryType::TABLET));
   }
   return Status::OK();
 }
@@ -462,8 +595,10 @@ Status RestoreSysCatalogState::Process() {
   RETURN_NOT_OK_PREPEND(DetermineEntries(
       &restoring_objects_, nullptr,
       [this, &buffer](const auto& id, auto* pb) {
-        return AddRestoringEntry(id, pb, &buffer);
+        return PatchAndAddRestoringEntry(id, pb, &buffer);
   }), "Determine restoring entries failed");
+
+  RETURN_NOT_OK(PatchAndAddRestoringTablets());
 
   return Status::OK();
 }
@@ -692,14 +827,8 @@ Status RestoreSysCatalogState::PrepareTabletCleanup(
 
   QLWriteRequestPB write_request;
 
-  auto it = retained_existing_tables_.find(pb.table_id());
-  if (it != retained_existing_tables_.end()) {
-    pb.set_hide_hybrid_time(restoration_.write_time.ToUint64());
-    auto& out_schedules = *pb.mutable_retained_by_snapshot_schedules();
-    for (const auto& schedule_id : it->second) {
-      out_schedules.Add()->assign(schedule_id.AsSlice().cdata(), schedule_id.size());
-    }
-  }
+  FillHideInformation(pb.table_id(), &pb);
+
   RETURN_NOT_OK(FillSysCatalogWriteRequest(
       SysRowEntryType::TABLET, id, pb.SerializeAsString(),
       QLWriteRequestPB::QL_STMT_UPDATE, schema, &write_request));

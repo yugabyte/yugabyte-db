@@ -21,6 +21,7 @@
 #include "yb/docdb/docdb.pb.h"
 #include "yb/gutil/ref_counted.h"
 
+#include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/master_fwd.h"
 #include "yb/master/master_heartbeat.fwd.h"
 #include "yb/master/master_types.pb.h"
@@ -44,10 +45,21 @@ struct SnapshotScheduleRestoration {
   std::vector<std::pair<TabletId, SysTabletsEntryPB>> non_system_obsolete_tablets;
   std::vector<std::pair<TableId, SysTablesEntryPB>> non_system_obsolete_tables;
   std::unordered_map<std::string, SysRowEntryType> non_system_objects_to_restore;
-  // YSQL pg_catalog_tables in the current state (as of restore request time).
+  // YSQL pg_catalog tables as of the current time.
   std::unordered_map<TableId, TableName> existing_system_tables;
-  // YSQL pg_catalog_tables present in the snapshot to restore to.
+  // YSQL pg_catalog tables as of time in the past to which we are restoring.
   std::unordered_set<TableId> restoring_system_tables;
+  // Captures split relationships between tablets.
+  struct SplitTabletInfo {
+    std::pair<TabletId, SysTabletsEntryPB*> parent;
+    std::unordered_map<TabletId, SysTabletsEntryPB*> children;
+  };
+  // Tablets as of the restoring time with their parent-child relationships.
+  // Map from parent tablet id -> information about parent and children.
+  // For colocated tablets or tablets that have not been split as of restoring time,
+  // only the 'parent' field of SplitTabletInfo above will be populated and 'children'
+  // map of SplitTabletInfo will be empty.
+  std::unordered_map<TabletId, SplitTabletInfo> non_system_tablets_to_restore;
 };
 
 // Class that coordinates transaction aware snapshots at master.
