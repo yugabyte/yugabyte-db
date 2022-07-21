@@ -599,12 +599,12 @@ public class Util {
     return currentTime.compareTo(date) >= 0 ? true : false;
   }
 
-  public static synchronized String getOrCreateDir(Path dirPath) {
+  public static synchronized Path getOrCreateDir(Path dirPath) {
     // Parent of path ending with a path component separator is the path itself.
     File dir = dirPath.toFile();
     if (!dir.exists() && !dir.mkdirs() && !dir.exists()) {
       throw new RuntimeException("Failed to create " + dirPath);
     }
-    return dirPath.toString();
+    return dirPath;
   }
 }

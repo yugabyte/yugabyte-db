@@ -43,6 +43,11 @@ public class FakeApiHelper {
     return doRequestWithAuthToken(method, url, getAuthToken());
   }
 
+  public static Result doGetRequestNoAuth(String url) {
+    Http.RequestBuilder request = Helpers.fakeRequest("GET", url);
+    return route(request);
+  }
+
   public static Result doRequestWithAuthToken(String method, String url, String authToken) {
     Http.RequestBuilder request =
         Helpers.fakeRequest(method, url).header(TokenAuthenticator.AUTH_TOKEN_HEADER, authToken);

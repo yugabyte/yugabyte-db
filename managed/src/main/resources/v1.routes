@@ -447,8 +447,11 @@ POST    /customers/:cUUID/hook_scopes/:hsUUID/hooks/:hUUID                     c
 DELETE  /customers/:cUUID/hook_scopes/:hsUUID/hooks/:hUUID                     com.yugabyte.yw.controllers.HookScopeController.removeHook(cUUID: java.util.UUID, hsUUID: java.util.UUID, hUUID: java.util.UUID)
 
 # Node Agent API
-POST /customers/:cUUID/node_agents                                             com.yugabyte.yw.controllers.NodeAgentController.register(cUUID: java.util.UUID)
-GET /customers/:cUUID/node_agents/:nUUID                                       com.yugabyte.yw.controllers.NodeAgentController.get(cUUID: java.util.UUID, nUUID: java.util.UUID)
+POST   /customers/:cUUID/node_agents                                           com.yugabyte.yw.controllers.NodeAgentController.register(cUUID: java.util.UUID)
+GET    /customers/:cUUID/node_agents/:nUUID                                    com.yugabyte.yw.controllers.NodeAgentController.get(cUUID: java.util.UUID, nUUID: java.util.UUID)                  
+PUT    /customers/:cUUID/node_agents/:nUUID                                    com.yugabyte.yw.controllers.NodeAgentController.update(cUUID: java.util.UUID, nUUID: java.util.UUID)
+PUT    /customers/:cUUID/node_agents/:nUUID/state                              com.yugabyte.yw.controllers.NodeAgentController.updateState(cUUID: java.util.UUID, nUUID: java.util.UUID)
+GET    /customers/:cUUID/node_agents/:nUUID/state                              com.yugabyte.yw.controllers.NodeAgentPingController.getState(cUUID: java.util.UUID, nUUID: java.util.UUID)
 DELETE /customers/:cUUID/node_agents/:nUUID                                    com.yugabyte.yw.controllers.NodeAgentController.unregister(cUUID: java.util.UUID, nUUID: java.util.UUID)
 
 # List buckets API
