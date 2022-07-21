@@ -42,9 +42,6 @@ export interface GetClusterMetricForQuery {
   end_time?: number;
 }
 export interface GetClusterTablesForQuery {
-  accountId: string;
-  projectId: string;
-  clusterId: string;
   api?: GetClusterTablesApiEnum;
 }
 export interface GetClusterTablespacesForQuery {
@@ -308,7 +305,7 @@ export const getClusterTablesAxiosRequest = (
 ) => {
   return Axios<ClusterTableListResponse>(
     {
-      url: '/public/accounts/{accountId}/projects/{projectId}/clusters/{clusterId}/tables'.replace(`{${'accountId'}}`, encodeURIComponent(String(requestParameters.accountId))).replace(`{${'projectId'}}`, encodeURIComponent(String(requestParameters.projectId))).replace(`{${'clusterId'}}`, encodeURIComponent(String(requestParameters.clusterId))),
+      url: '/tables',
       method: 'GET',
       params: {
         api: requestParameters['api'],
@@ -323,7 +320,7 @@ export const getClusterTablesQueryKey = (
   pageParam = -1,
   version = 1,
 ) => [
-  `/v${version}/public/accounts/{accountId}/projects/{projectId}/clusters/{clusterId}/tables`,
+  `/v${version}/tables`,
   pageParam,
   ...(requestParametersQuery ? [requestParametersQuery] : [])
 ];

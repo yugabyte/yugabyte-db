@@ -556,9 +556,9 @@ Status ClusterAdminClient::DisableTabletSplitsDuringRestore(CoarseTimePoint dead
 
   while (CoarseMonoClock::Now() < std::min(splitting_disabled_until, deadline)) {
     // Wait for existing split operations to complete.
-    const auto resp =
-        VERIFY_RESULT_PREPEND(IsTabletSplittingCompleteInternal(),
-                              "Tablet splitting did not complete. Cannot restore.");
+    const auto resp = VERIFY_RESULT_PREPEND(
+        IsTabletSplittingCompleteInternal(true /* wait_for_parent_deletion */),
+        "Tablet splitting did not complete. Cannot restore.");
     if (resp.is_tablet_splitting_complete()) {
       break;
     }

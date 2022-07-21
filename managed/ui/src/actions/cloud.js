@@ -63,6 +63,7 @@ export const RESET_PROVIDER_BOOTSTRAP = 'RESET_PROVIDER_BOOTSTRAP';
 
 export const LIST_ACCESS_KEYS = 'LIST_ACCESS_KEYS';
 export const LIST_ACCESS_KEYS_RESPONSE = 'LIST_ACCESS_KEYS_RESPONSE';
+export const LIST_ACCESS_KEYS_REQUEST_COMPLETED = 'LIST_ACCESS_KEYS_REQUEST_COMPLETED';
 
 export const GET_EBS_TYPE_LIST = 'GET_EBS_TYPES';
 export const GET_EBS_TYPE_LIST_RESPONSE = 'GET_EBS_TYPES_RESPONSE';
@@ -519,6 +520,12 @@ export function listAccessKeysResponse(response) {
     type: LIST_ACCESS_KEYS_RESPONSE,
     payload: response
   };
+}
+
+export function listAccessKeysReqCompleted(){
+  return {
+    type: LIST_ACCESS_KEYS_REQUEST_COMPLETED
+  }
 }
 
 export function getEBSTypeList() {

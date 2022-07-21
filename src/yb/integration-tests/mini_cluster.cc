@@ -443,7 +443,7 @@ ssize_t MiniCluster::LeaderMasterIdx() {
         continue;
       }
       SCOPED_LEADER_SHARED_LOCK(l, master->master()->catalog_manager_impl());
-      if (l.catalog_status().ok() && l.leader_status().ok()) {
+      if (l.IsInitializedAndIsLeader()) {
         return i;
       }
     }

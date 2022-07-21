@@ -1041,6 +1041,7 @@ TEST_F(AutomaticTabletSplitITest, IsTabletSplittingComplete) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_size_threshold_bytes) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_disable_compactions) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_deleting_split_tablets) = true;
 
   CreateSingleTablet();
   ASSERT_OK(WriteRows(1000, 1));
@@ -1053,27 +1054,42 @@ TEST_F(AutomaticTabletSplitITest, IsTabletSplittingComplete) {
       proxy_cache_.get(), client_->GetMasterLeaderAddress());
 
   // No splits at the beginning.
-  ASSERT_TRUE(ASSERT_RESULT(IsSplittingComplete(master_admin_proxy.get())));
+  ASSERT_TRUE(ASSERT_RESULT(IsSplittingComplete(master_admin_proxy.get(),
+                                                false /* wait_for_parent_deletion */)));
 
   // Create a split task by pausing when trying to get split key. IsTabletSplittingComplete should
   // include this ongoing task.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_tserver_get_split_key) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = true;
   std::this_thread::sleep_for(FLAGS_catalog_manager_bg_task_wait_ms * 2ms);
-  ASSERT_FALSE(ASSERT_RESULT(IsSplittingComplete(master_admin_proxy.get())));
+  ASSERT_FALSE(ASSERT_RESULT(IsSplittingComplete(master_admin_proxy.get(),
+                                                 false /* wait_for_parent_deletion */)));
 
   // Now let the split occur on master but not tserver.
   // IsTabletSplittingComplete should include splits that are only complete on master.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_tablet_split_probability) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_tserver_get_split_key) = false;
-  ASSERT_FALSE(ASSERT_RESULT(IsSplittingComplete(master_admin_proxy.get())));
+  ASSERT_FALSE(ASSERT_RESULT(IsSplittingComplete(master_admin_proxy.get(),
+                                                 false /* wait_for_parent_deletion */)));
 
-  // Verify that the split finishes, and that IsTabletSplittingComplete returns true even though
-  // compactions are not done.
+  // Verify that the split finishes, and that IsTabletSplittingComplete returns true (even though
+  // compactions are not done) if wait_for_parent_deletion is false .
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_tablet_split_probability) = 0;
+  ASSERT_OK(WaitForTabletSplitCompletion(2 /* expected_non_split_tablets */,
+                                         1 /* expected_split_tablets */));
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    return VERIFY_RESULT(IsSplittingComplete(master_admin_proxy.get(),
+                                             false /* wait_for_parent_deletion */));
+  }, MonoDelta::FromMilliseconds(FLAGS_catalog_manager_bg_task_wait_ms * 2),
+    "IsTabletSplittingComplete did not return true."));
+
+  // Re-enable deletion of children and check that IsTabletSplittingComplete returns true if
+  // wait_for_parent_deletion is true.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_deleting_split_tablets) = false;
   ASSERT_OK(WaitForTabletSplitCompletion(2));
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
-    return VERIFY_RESULT(IsSplittingComplete(master_admin_proxy.get()));
+    return VERIFY_RESULT(IsSplittingComplete(master_admin_proxy.get(),
+                                             true /* wait_for_parent_deletion */));
   }, MonoDelta::FromMilliseconds(FLAGS_catalog_manager_bg_task_wait_ms * 2),
     "IsTabletSplittingComplete did not return true."));
 }
