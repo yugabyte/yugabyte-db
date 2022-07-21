@@ -110,6 +110,8 @@
   weight = 14
   identifier = "view-all-products"
   parent = "documentation"
+  [main.params]
+    excludeVersion = true
 
 [[main]]
   name = "YugabyteDB Anywhere"
