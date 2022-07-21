@@ -176,7 +176,7 @@ class MultiThreadedWriter : public MultiThreadedAction {
   // object's lifetime.
   MultiThreadedWriter(
       int64_t num_keys, int64_t start_key, int num_writer_threads, SessionFactory* session_factory,
-      std::atomic_bool* stop_flag, int value_size, size_t max_num_write_errors);
+      std::atomic<bool>* stop_flag, int value_size, size_t max_num_write_errors);
 
   void Start() override;
   std::atomic<int64_t>* InsertionPoint() { return &inserted_up_to_inclusive_; }
@@ -318,8 +318,8 @@ class MultiThreadedReader : public MultiThreadedAction {
                       std::atomic<int64_t>* insertion_point,
                       const KeyIndexSet* inserted_keys,
                       const KeyIndexSet* failed_keys,
-                      std::atomic_bool* stop_flag, int value_size,
-                      int max_num_read_errors,
+                      std::atomic<bool>* stop_flag, int value_size,
+                      size_t max_num_read_errors,
                       MultiThreadedReaderOptions options = MultiThreadedReaderOptions{
                           MultiThreadedReaderOption::kStopOnEmptyRead,
                           MultiThreadedReaderOption::kStopOnExtraRead,
@@ -328,7 +328,7 @@ class MultiThreadedReader : public MultiThreadedAction {
   void IncrementReadErrorCount(ReadStatus read_status);
 
   int64_t num_reads() { return num_reads_; }
-  int64_t num_read_errors() { return num_read_errors_.load(); }
+  size_t num_read_errors() { return num_read_errors_.load(); }
 
   // Returns read status that caused stop of the reader.
   ReadStatus read_status_stopped() { return read_status_stopped_; }
@@ -349,8 +349,8 @@ class MultiThreadedReader : public MultiThreadedAction {
   const KeyIndexSet* failed_keys_;
 
   std::atomic<int64_t> num_reads_;
-  std::atomic<int64_t> num_read_errors_;
-  const int max_num_read_errors_;
+  std::atomic<size_t> num_read_errors_;
+  const size_t max_num_read_errors_;
   MultiThreadedReaderOptions options_;
   ReadStatus read_status_stopped_ = ReadStatus::kOk;
 };
