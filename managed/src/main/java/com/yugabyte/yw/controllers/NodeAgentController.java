@@ -3,6 +3,7 @@
 package com.yugabyte.yw.controllers;
 
 import com.yugabyte.yw.controllers.handlers.NodeAgentHandler;
+import com.yugabyte.yw.forms.NodeAgentForm;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.models.Audit;
@@ -20,9 +21,8 @@ public class NodeAgentController extends AuthenticatedController {
 
   public Result register(UUID customerUuid) {
     Customer.getOrBadRequest(customerUuid);
-    NodeAgent nodeAgent = parseJsonAndValidate(NodeAgent.class);
-    nodeAgent.customerUuid = customerUuid;
-    nodeAgentHandler.register(nodeAgent);
+    NodeAgentForm payload = parseJsonAndValidate(NodeAgentForm.class);
+    NodeAgent nodeAgent = nodeAgentHandler.register(customerUuid, payload);
     auditService()
         .createAuditEntryWithReqBody(
             ctx(),
@@ -34,6 +34,29 @@ public class NodeAgentController extends AuthenticatedController {
 
   public Result get(UUID customerUuid, UUID nodeUuid) {
     NodeAgent nodeAgent = nodeAgentHandler.get(customerUuid, nodeUuid);
+    return PlatformResults.withData(nodeAgent);
+  }
+
+  public Result updateState(UUID customerUuid, UUID nodeUuid) {
+    NodeAgentForm payload = parseJsonAndValidate(NodeAgentForm.class);
+    NodeAgent nodeAgent = nodeAgentHandler.updateState(customerUuid, nodeUuid, payload);
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.NodeAgent,
+            nodeUuid.toString(),
+            Audit.ActionType.UpdateNodeAgent);
+    return PlatformResults.withData(nodeAgent);
+  }
+
+  public Result update(UUID customerUuid, UUID nodeUuid) {
+    NodeAgent nodeAgent = nodeAgentHandler.updateRegistration(customerUuid, nodeUuid);
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.NodeAgent,
+            nodeAgent.uuid.toString(),
+            Audit.ActionType.UpdateNodeAgent);
     return PlatformResults.withData(nodeAgent);
   }
 
