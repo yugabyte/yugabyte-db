@@ -81,7 +81,7 @@ public class AppInit {
     Configuration appConfig = application.configuration();
     String mode = appConfig.getString("yb.mode", "PLATFORM");
 
-    String version = configHelper.getCurrentVersion(application);
+    String version = ConfigHelper.getCurrentVersion(application);
 
     String previousSoftwareVersion =
         configHelper
