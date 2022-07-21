@@ -19,10 +19,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.common.EmailFixtures;
-import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.alerts.AlertChannelEmailParams;
-import com.yugabyte.yw.models.configs.CustomerConfig;
-
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
