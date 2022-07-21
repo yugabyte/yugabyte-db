@@ -2514,6 +2514,117 @@ TEST_P(TwoDCTest, TestNonZeroLagMetricsWithoutGetChange) {
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
 }
 
+TEST_P(TwoDCTest, DeleteTableChecksCQL) {
+  YB_SKIP_TEST_IN_TSAN();
+  // Create 3 tables with 1 tablet each.
+  constexpr int kNT = 1;
+  std::vector<uint32_t> tables_vector = {kNT, kNT, kNT};
+  auto tables = ASSERT_RESULT(SetUpWithParams(tables_vector, tables_vector, 1));
+  std::vector<std::shared_ptr<client::YBTable>> producer_tables;
+  std::vector<std::shared_ptr<client::YBTable>> consumer_tables;
+  producer_tables.reserve(tables.size() / 2);
+  consumer_tables.reserve(tables.size() / 2);
+  for (size_t i = 0; i < tables.size(); ++i) {
+    if (i % 2 == 0) {
+      producer_tables.push_back(tables[i]);
+    } else {
+      consumer_tables.push_back(tables[i]);
+    }
+  }
+
+  // 1. Write some data.
+  for (const auto& producer_table : producer_tables) {
+    LOG(INFO) << "Writing records for table " << producer_table->name().ToString();
+    WriteWorkload(0, 100, producer_client(), producer_table->name());
+  }
+
+  // Verify data is written on the producer.
+  for (const auto& producer_table : producer_tables) {
+    auto producer_results = ScanToStrings(producer_table->name(), producer_client());
+    ASSERT_EQ(100, producer_results.size());
+  }
+
+  // Set aside one table for AlterUniverseReplication.
+  std::shared_ptr<client::YBTable> producer_alter_table, consumer_alter_table;
+  producer_alter_table = producer_tables.back();
+  producer_tables.pop_back();
+  consumer_alter_table = consumer_tables.back();
+  consumer_tables.pop_back();
+
+  // 2a. Setup replication.
+  ASSERT_OK(SetupUniverseReplication(producer_cluster(), consumer_cluster(), consumer_client(),
+                                     kUniverseId, producer_tables));
+
+  // Verify everything is setup correctly.
+  master::GetUniverseReplicationResponsePB get_universe_replication_resp;
+  ASSERT_OK(VerifyUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId,
+      &get_universe_replication_resp));
+  ASSERT_OK(CorrectlyPollingAllTablets(
+      consumer_cluster(), narrow_cast<uint32_t>(producer_tables.size() * kNT)));
+
+  // 2b. Alter Replication
+  {
+    auto* consumer_leader_mini_master = ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster());
+    auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
+        &consumer_client()->proxy_cache(),
+        consumer_leader_mini_master->bound_rpc_addr());
+    master::AlterUniverseReplicationRequestPB alter_req;
+    master::AlterUniverseReplicationResponsePB alter_resp;
+    alter_req.set_producer_id(kUniverseId);
+    alter_req.add_producer_table_ids_to_add(producer_alter_table->id());
+    rpc::RpcController rpc;
+    rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
+    ASSERT_OK(master_proxy->AlterUniverseReplication(alter_req, &alter_resp, &rpc));
+    ASSERT_FALSE(alter_resp.has_error());
+    // Wait until we have the new table listed in the existing universe config.
+    ASSERT_OK(LoggedWaitFor(
+        [&]() -> Result<bool> {
+          master::GetUniverseReplicationResponsePB tmp_resp;
+          RETURN_NOT_OK(VerifyUniverseReplication(consumer_cluster(), consumer_client(),
+                                                  kUniverseId, &tmp_resp));
+          return tmp_resp.entry().tables_size() == static_cast<int64>(producer_tables.size() + 1);
+        },
+        MonoDelta::FromSeconds(kRpcTimeout), "Verify table created with alter."));
+
+    ASSERT_OK(CorrectlyPollingAllTablets(
+        consumer_cluster(), narrow_cast<uint32_t>((producer_tables.size() + 1) * kNT)));
+  }
+  producer_tables.push_back(producer_alter_table);
+  consumer_tables.push_back(consumer_alter_table);
+
+  auto data_replicated_correctly = [&](size_t num_results) -> Result<bool> {
+    for (const auto& consumer_table : consumer_tables) {
+      LOG(INFO) << "Checking records for table " << consumer_table->name().ToString();
+      auto consumer_results = ScanToStrings(consumer_table->name(), consumer_client());
+
+      if (num_results != consumer_results.size()) {
+        return false;
+      }
+    }
+    return true;
+  };
+  ASSERT_OK(WaitFor([&]() -> Result<bool> { return data_replicated_correctly(100); },
+                    MonoDelta::FromSeconds(20), "IsDataReplicatedCorrectly"));
+
+  // Attempt to destroy the producer and consumer tables.
+  for (size_t i = 0; i < producer_tables.size(); ++i) {
+    string producer_table_id = producer_tables[i]->id();
+    string consumer_table_id = consumer_tables[i]->id();
+    ASSERT_NOK(producer_client()->DeleteTable(producer_table_id));
+    ASSERT_NOK(consumer_client()->DeleteTable(consumer_table_id));
+  }
+
+  // Delete replication, afterwards table deletions are no longer blocked.
+  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
+
+  for (size_t i = 0; i < producer_tables.size(); ++i) {
+    string producer_table_id = producer_tables[i]->id();
+    string consumer_table_id = consumer_tables[i]->id();
+    ASSERT_OK(producer_client()->DeleteTable(producer_table_id));
+    ASSERT_OK(consumer_client()->DeleteTable(consumer_table_id));
+  }
+}
+
 class TwoDCTestWaitForReplicationDrain : public TwoDCTest {
  public:
   void SetUpTablesAndReplication(

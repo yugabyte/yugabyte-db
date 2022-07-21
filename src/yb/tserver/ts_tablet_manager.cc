@@ -170,6 +170,10 @@ DEFINE_test_flag(uint64, crash_if_remote_bootstrap_sessions_per_table_greater_th
 DEFINE_test_flag(bool, crash_before_apply_tablet_split_op, false,
                  "Crash inside TSTabletManager::ApplyTabletSplit before doing anything");
 
+DEFINE_test_flag(bool, crash_before_source_tablet_mark_split_done, false,
+                 "Crash inside TSTabletManager::ApplyTabletSplit "
+                 "before marked TABLET_DATA_SPLIT_COMPLETED");
+
 DEFINE_test_flag(bool, force_single_tablet_failure, false,
                  "Force exactly one tablet to a failed state.");
 
@@ -930,6 +934,10 @@ Status TSTabletManager::ApplyTabletSplit(
 
     tcmeta.raft_group_metadata->set_tablet_data_state(TABLET_DATA_READY);
     RETURN_NOT_OK(tcmeta.raft_group_metadata->Flush());
+  }
+
+  if (PREDICT_FALSE(FLAGS_TEST_crash_before_source_tablet_mark_split_done)) {
+    LOG(FATAL) << "Crashing due to FLAGS_TEST_crash_before_source_tablet_mark_split_done";
   }
 
   meta.SetSplitDone(split_op_id, request->new_tablet1_id(), request->new_tablet2_id());

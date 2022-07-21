@@ -69,7 +69,7 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
           Provider.getOrBadRequest(
               UUID.fromString(taskParams().getPrimaryCluster().userIntent.provider));
 
-      KubernetesPlacement placement = new KubernetesPlacement(pi);
+      KubernetesPlacement placement = new KubernetesPlacement(pi, /*isReadOnlyCluster*/ false);
 
       boolean newNamingStyle = taskParams().useNewHelmNamingStyle;
 
@@ -113,7 +113,8 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
           throw new IllegalArgumentException(msg);
         }
 
-        KubernetesPlacement readClusterPlacement = new KubernetesPlacement(readClusterPI);
+        KubernetesPlacement readClusterPlacement =
+            new KubernetesPlacement(readClusterPI, /*isReadOnlyCluster*/ true);
         // Skip choosing masters from read cluster.
         boolean isReadClusterMultiAz = PlacementInfoUtil.isMultiAZ(readClusterProvider);
         createPodsTask(readClusterPlacement, masterAddresses, true);

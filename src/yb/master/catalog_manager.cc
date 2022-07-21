@@ -5228,7 +5228,9 @@ Status CatalogManager::DeleteTable(
             << req->ShortDebugString();
 
   scoped_refptr<TableInfo> table = VERIFY_RESULT(FindTable(req->table()));
-  bool result = IsCdcEnabled(*table);
+
+  // For now, only disable dropping YCQL tables under xCluster replication.
+  bool result = table->GetTableType() == YQL_TABLE_TYPE && IsCdcEnabled(*table);
   if (!FLAGS_enable_delete_truncate_xcluster_replicated_table && result) {
     return STATUS(NotSupported,
                   "Cannot delete a table in replication.",

@@ -2254,6 +2254,47 @@ TEST_F(TabletSplitExternalMiniClusterITest, CrashesAfterChildLogCopy) {
   CHECK_OK(non_faulted_follower->Restart());
 }
 
+class TabletSplitExternalMiniClusterCrashITest :
+    public TabletSplitExternalMiniClusterITest,
+    public testing::WithParamInterface<std::string> {
+ public:
+  void TestCrashServer(ExternalTabletServer *const server_to_crash, const TabletId& tablet_id) {
+    ASSERT_OK(cluster_->SetFlag(
+        server_to_crash, GetParam(), "true"));
+
+    CHECK_OK(SplitTablet(tablet_id));
+    CHECK_OK(cluster_->WaitForTSToCrash(server_to_crash));
+  }
+};
+
+TEST_P(TabletSplitExternalMiniClusterCrashITest, CrashLeaderTest) {
+  // Test crashing tserver hosting the tablet leader at different point
+  // during tablet splitting and restart.
+  CreateSingleTablet();
+  CHECK_OK(WriteRowsAndFlush());
+
+  const auto tablet_id = CHECK_RESULT(GetOnlyTestTabletId());
+  const auto leader_idx = CHECK_RESULT(cluster_->GetTabletLeaderIndex(tablet_id));
+  auto* const leader = cluster_->tablet_server(leader_idx);
+
+  TestCrashServer(leader, tablet_id);
+
+  CHECK_OK(leader->Restart());
+  ASSERT_OK(cluster_->WaitForTabletsRunning(leader, 20s * kTimeMultiplier));
+
+  ASSERT_OK(WaitForTabletsExcept(2, leader_idx, tablet_id));
+
+  // Check number of rows is correct after recovery.
+  ASSERT_OK(CheckRowsCount(kDefaultNumRows));
+
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    return WriteRows(kDefaultNumRows, kDefaultNumRows + 1).ok();
+  }, 20s * kTimeMultiplier, "Write rows after faulted leader resurrection."));
+
+  ASSERT_OK(CheckRowsCount(kDefaultNumRows * 2));
+  CheckTableKeysInRange(kDefaultNumRows * 2);
+}
+
 class TabletSplitRemoteBootstrapEnabledTest : public TabletSplitExternalMiniClusterITest {
  protected:
   void SetFlags() override {
@@ -3073,4 +3114,10 @@ INSTANTIATE_TEST_CASE_P(
     ::testing::ValuesIn(kPartitioningArray),
     TestParamToString<Partitioning>);
 
+INSTANTIATE_TEST_CASE_P(
+    TabletSplitExternalMiniClusterITest,
+    TabletSplitExternalMiniClusterCrashITest,
+    ::testing::Values(
+        "TEST_crash_before_apply_tablet_split_op",
+        "TEST_crash_before_source_tablet_mark_split_done"));
 }  // namespace yb

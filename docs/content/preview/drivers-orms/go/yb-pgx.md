@@ -40,9 +40,9 @@ The [YugabyteDB PGX driver](https://pkg.go.dev/github.com/yugabyte/pgx) is a Go 
 
 ## CRUD operations
 
-Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in the [Build an application](../../../quick-start/build-apps/go/ysql-yb-pgx) page under the Quick start section.
+Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in the [Build an application](../../../quick-start/build-apps/go/ysql-yb-pgx) page.
 
-The following sections break down the quick start example to demonstrate how to perform common tasks required for Go application development using the YugabyteDB PGX driver.
+The following sections break down the example to demonstrate how to perform common tasks required for Go application development using the YugabyteDB PGX driver.
 
 ### Step 1: Import the driver package
 

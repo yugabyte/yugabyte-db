@@ -10,6 +10,7 @@
 
 package com.yugabyte.yw.controllers;
 
+import static com.yugabyte.yw.common.ha.PlatformInstanceClientFactory.YB_HA_WS_KEY;
 import static com.yugabyte.yw.models.ScopedRuntimeConfig.GLOBAL_SCOPE_UUID;
 
 import com.google.common.collect.ImmutableSet;
@@ -273,7 +274,7 @@ public class RuntimeConfController extends AuthenticatedController {
   private void postConfigChange(UUID customerUUID, UUID scopeUUID, String path) {
     try {
       if (GLOBAL_SCOPE_UUID.equals(scopeUUID)) {
-        if (path.equals("yb.ha.ws")) {
+        if (path.equals(YB_HA_WS_KEY)) {
           platformInstanceClientFactory.refreshWsClient(path);
           // } else if (path.equals("")) {
           // invoke handler;

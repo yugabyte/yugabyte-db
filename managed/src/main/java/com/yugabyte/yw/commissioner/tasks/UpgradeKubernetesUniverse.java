@@ -15,6 +15,7 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
@@ -58,7 +59,7 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
       taskParams().useNewHelmNamingStyle = universe.getUniverseDetails().useNewHelmNamingStyle;
 
       UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
-      PlacementInfo pi = universe.getUniverseDetails().getPrimaryCluster().placementInfo;
+      PlacementInfo primaryPI = universe.getUniverseDetails().getPrimaryCluster().placementInfo;
 
       if (taskParams().taskType == UpgradeTaskParams.UpgradeTaskType.Software) {
         if (taskParams().ybSoftwareVersion == null || taskParams().ybSoftwareVersion.isEmpty()) {
@@ -73,30 +74,58 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
 
       preTaskActions();
 
-      switch (taskParams().taskType) {
-        case Software:
-          log.info(
-              "Upgrading software version to {} in universe {}",
-              taskParams().ybSoftwareVersion,
-              universe.name);
+      KubernetesPlacement primaryPlacement = new KubernetesPlacement(primaryPI, false);
+      Provider provider =
+          Provider.getOrBadRequest(
+              UUID.fromString(taskParams().getPrimaryCluster().userIntent.provider));
+      UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+      boolean newNamingStyle = taskParams().useNewHelmNamingStyle;
+      String masterAddresses =
+          PlacementInfoUtil.computeMasterAddresses(
+              primaryPI,
+              primaryPlacement.masters,
+              taskParams().nodePrefix,
+              provider,
+              universeDetails.communicationPorts.masterRpcPort,
+              newNamingStyle);
 
-          createUpgradeTask(userIntent, universe, pi);
+      for (UniverseDefinitionTaskParams.Cluster cluster : taskParams().clusters) {
+        PlacementInfo pi = cluster.placementInfo;
+        switch (taskParams().taskType) {
+          case Software:
+            log.info(
+                "Upgrading software version to {} in universe {}",
+                taskParams().ybSoftwareVersion,
+                universe.name);
 
-          if (taskParams().upgradeSystemCatalog) {
-            createRunYsqlUpgradeTask(taskParams().ybSoftwareVersion)
+            createUpgradeTask(
+                cluster.userIntent,
+                universe,
+                pi,
+                cluster.clusterType == ClusterType.ASYNC,
+                masterAddresses);
+
+            if (taskParams().upgradeSystemCatalog) {
+              createRunYsqlUpgradeTask(taskParams().ybSoftwareVersion)
+                  .setSubTaskGroupType(getTaskSubGroupType());
+            }
+
+            createUpdateSoftwareVersionTask(taskParams().ybSoftwareVersion)
                 .setSubTaskGroupType(getTaskSubGroupType());
-          }
+            break;
+          case GFlags:
+            log.info("Upgrading GFlags in universe {}", universe.name);
+            updateGFlagsPersistTasks(taskParams().masterGFlags, taskParams().tserverGFlags)
+                .setSubTaskGroupType(getTaskSubGroupType());
 
-          createUpdateSoftwareVersionTask(taskParams().ybSoftwareVersion)
-              .setSubTaskGroupType(getTaskSubGroupType());
-          break;
-        case GFlags:
-          log.info("Upgrading GFlags in universe {}", universe.name);
-          updateGFlagsPersistTasks(taskParams().masterGFlags, taskParams().tserverGFlags)
-              .setSubTaskGroupType(getTaskSubGroupType());
-
-          createUpgradeTask(userIntent, universe, pi);
-          break;
+            createUpgradeTask(
+                userIntent,
+                universe,
+                pi,
+                cluster.clusterType == ClusterType.ASYNC,
+                masterAddresses);
+            break;
+        }
       }
 
       // Marks update of this universe as a success only if all the tasks before it succeeded.
@@ -134,43 +163,38 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
     }
   }
 
-  private void createUpgradeTask(UserIntent userIntent, Universe universe, PlacementInfo pi) {
+  private void createUpgradeTask(
+      UserIntent userIntent,
+      Universe universe,
+      PlacementInfo pi,
+      boolean isReadOnlyCluster,
+      String masterAddresses) {
     String ybSoftwareVersion = null;
     boolean masterChanged = false;
     boolean tserverChanged = false;
     if (taskParams().taskType == UpgradeTaskParams.UpgradeTaskType.Software) {
       ybSoftwareVersion = taskParams().ybSoftwareVersion;
-      masterChanged = true;
+      if (!isReadOnlyCluster) {
+        masterChanged = true;
+      }
       tserverChanged = true;
     } else {
       ybSoftwareVersion = userIntent.ybSoftwareVersion;
       if (!taskParams().masterGFlags.equals(userIntent.masterGFlags)) {
-        masterChanged = true;
+        if (!isReadOnlyCluster) {
+          masterChanged = true;
+        }
       }
       if (!taskParams().tserverGFlags.equals(userIntent.tserverGFlags)) {
         tserverChanged = true;
       }
     }
 
-    createSingleKubernetesExecutorTask(CommandType.POD_INFO, pi, false);
+    createSingleKubernetesExecutorTask(CommandType.POD_INFO, pi, isReadOnlyCluster);
 
-    KubernetesPlacement placement = new KubernetesPlacement(pi);
-
-    Provider provider =
-        Provider.get(UUID.fromString(taskParams().getPrimaryCluster().userIntent.provider));
-
-    UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+    KubernetesPlacement placement = new KubernetesPlacement(pi, isReadOnlyCluster);
 
     boolean newNamingStyle = taskParams().useNewHelmNamingStyle;
-
-    String masterAddresses =
-        PlacementInfoUtil.computeMasterAddresses(
-            pi,
-            placement.masters,
-            taskParams().nodePrefix,
-            provider,
-            universeDetails.communicationPorts.masterRpcPort,
-            newNamingStyle);
 
     if (masterChanged) {
       userIntent.masterGFlags = taskParams().masterGFlags;
@@ -183,7 +207,8 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
           taskParams().sleepAfterMasterRestartMillis,
           masterChanged,
           tserverChanged,
-          newNamingStyle);
+          newNamingStyle,
+          isReadOnlyCluster);
     }
     if (tserverChanged) {
       createLoadBalancerStateChangeTask(false /*enable*/)
@@ -199,7 +224,8 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
           taskParams().sleepAfterTServerRestartMillis,
           false /* master change is false since it has already been upgraded.*/,
           tserverChanged,
-          newNamingStyle);
+          newNamingStyle,
+          isReadOnlyCluster);
 
       createLoadBalancerStateChangeTask(true /*enable*/).setSubTaskGroupType(getTaskSubGroupType());
     }
