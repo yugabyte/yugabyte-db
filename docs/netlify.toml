@@ -139,7 +139,7 @@
 
 [[redirects]]
   from = "/:version/integrations/*"
-  to = "/preview/integrations/"
+  to = "/preview/integrations/:splat"
   force = true
 
 # (this is the old version of integrations)
