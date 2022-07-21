@@ -9,7 +9,7 @@
 {{ end }}
 
 {{ if eq $versionDir "" }}
-  {{ $versionDir = "preview" }}
+  {{ $versionDir = .Site.Params.yb.preview_version }}
 {{ end }}
 
 {{ $leftNavName := $versionDir }}
