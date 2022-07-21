@@ -127,7 +127,7 @@ libraryDependencies ++= Seq(
   "com.google.inject.extensions" % "guice-multibindings" % "4.2.3",
   "org.mockito" % "mockito-core" % "2.13.0",
   "org.mockito" % "mockito-inline" % "3.8.0" % Test,
-  "org.mindrot" % "jbcrypt" % "0.4",
+  "org.mindrot" % "jbcrypt" % "0.4" % Test,
   "org.postgresql" % "postgresql" % "42.2.25",
   "net.logstash.logback" % "logstash-logback-encoder" % "6.2",
   "org.codehaus.janino" % "janino" % "3.1.6",
