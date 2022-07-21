@@ -32,7 +32,7 @@ type: docs
 
 ## CRUD operations
 
-Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in the [Build an application](../../../quick-start/build-apps/python/ysql-django/) page.
+Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in the [Build an application](../../../develop/build-apps/python/ysql-django/) page.
 
 The following sections demonstrate how to perform common tasks required for Python application development using the Django ORM.
 

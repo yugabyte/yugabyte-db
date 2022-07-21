@@ -55,7 +55,7 @@ The Yugabyte Psycopg2 driver can be configured with pooling as well.
 
 ## Quick start
 
-Learn how to establish a connection to YugabyteDB database and begin CRUD operations using the steps in [Build an Application](/preview/quick-start/build-apps/java/ysql-yb-jdbc) in the Quick Start section.
+Learn how to establish a connection to YugabyteDB database and begin CRUD operations using the steps in [Build an Application](/preview/develop/build-apps/java/ysql-yb-jdbc) in the Quick Start section.
 
 ## Download the driver dependency
 
@@ -141,8 +141,8 @@ To use the driver, do the following:
 
 ## Try it out
 
-This tutorial shows how to use the Yugabyte Psycopg2 driver with YugabyteDB. You’ll start by creating a 3 node cluster with a replication factor of 3. This tutorial uses the [yb-ctl](/preview/admin/yb-ctl/#root) utility.
-Next, you’ll use Python shell terminal, to demonstrate the driver's load balancing features by running few python scripts.
+This tutorial shows how to use the Yugabyte Psycopg2 driver with YugabyteDB. It starts by creating a 3 node cluster with a replication factor of 3. This tutorial uses the [yb-ctl](/preview/admin/yb-ctl/#root) utility.
+Next, you use Python shell terminal, to demonstrate the driver's load balancing features by running few python scripts.
 
 {{< note title="Note">}}
 The driver requires YugabyteDB version 2.7.2.0 or higher

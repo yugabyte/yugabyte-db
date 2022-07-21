@@ -26,7 +26,7 @@ type: docs
 
 ## CRUD operations
 
-Learn how to establish a connection to a YugabyteDB database and begin basic CRUD operations using the steps on the [Build an application](../../../quick-start/build-apps/csharp/ysql-entity-framework/) page.
+Learn how to establish a connection to a YugabyteDB database and begin basic CRUD operations using the steps on the [Build an application](../../../develop/build-apps/csharp/ysql-entity-framework/) page.
 
 The following sections break down the example to demonstrate how to perform common tasks required for C# application development using EntityFramework.
 
