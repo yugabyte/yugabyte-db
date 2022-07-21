@@ -73,6 +73,7 @@ version_menu = "Releases"
 [yb]
   terms_of_service = "https://www.yugabyte.com/terms-of-service/"
   preview_version = "v2.15"
+  preview_version_slug = "preview"
 
 # Header logo link
 [yb.navbar_logo]
