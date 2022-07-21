@@ -127,6 +127,7 @@ void RWCLock::WriteLockThreadChanged() {
   MutexLock l(lock_);
   DCHECK(write_locked_);
   last_writer_tid_ = Thread::CurrentThreadId();
+  last_writer_tid_for_stack_ = Thread::CurrentThreadIdForStack();
 #endif
 }
 
@@ -140,9 +141,11 @@ void RWCLock::WriteLock() {
   while (write_locked_) {
     if (!no_mutators_.TimedWait(first_wait ? kFirstWait : kSecondWait)) {
       std::ostringstream ss;
-      ss << "Too long write lock wait, last writer stack: " << last_writer_stacktrace_.Symbolize();
+      ss << "Too long write lock wait, last writer TID: " << last_writer_tid_
+         << ", last writer stack: " << last_writer_stacktrace_.Symbolize();
       if (VLOG_IS_ON(1) || !first_wait) {
-        ss << "current thread stack: " << GetStackTrace();
+        ss << "\n\nlast writer current stack: " << DumpThreadStack(last_writer_tid_for_stack_);
+        ss << "\n\ncurrent thread stack: " << GetStackTrace();
       }
       (first_wait ? LOG(WARNING) : LOG(FATAL)) << ss.str();
     }
@@ -156,6 +159,7 @@ void RWCLock::WriteLock() {
 #ifndef NDEBUG
   last_writelock_acquire_time_ = GetCurrentTimeMicros();
   last_writer_tid_ = Thread::CurrentThreadId();
+  last_writer_tid_for_stack_ = Thread::CurrentThreadIdForStack();
   last_writer_stacktrace_.Collect();
 #endif // NDEBUG
   write_locked_ = true;

@@ -62,9 +62,12 @@
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/integration-tests/mini_cluster.h"
 
+#include "yb/master/catalog_manager_if.h"
 #include "yb/master/master_client.proxy.h"
 #include "yb/master/master_cluster.proxy.h"
+#include "yb/master/mini_master.h"
 
 #include "yb/rpc/rpc_fwd.h"
 
@@ -1135,6 +1138,22 @@ Status GetTableLocations(ExternalMiniCluster* cluster,
   rpc.set_timeout(timeout);
   RETURN_NOT_OK(cluster->GetMasterProxy<master::MasterClientProxy>().GetTableLocations(
       req, table_locations, &rpc));
+  if (table_locations->has_error()) {
+    return StatusFromPB(table_locations->error().status());
+  }
+  return Status::OK();
+}
+
+Status GetTableLocations(MiniCluster* cluster,
+                         const YBTableName& table_name,
+                         const RequireTabletsRunning require_tablets_running,
+                         master::GetTableLocationsResponsePB* table_locations) {
+  master::GetTableLocationsRequestPB req;
+  table_name.SetIntoTableIdentifierPB(req.mutable_table());
+  req.set_require_tablets_running(require_tablets_running);
+  req.set_max_returned_locations(std::numeric_limits<int32_t>::max());
+  auto& catalog_manager = VERIFY_RESULT(cluster->GetLeaderMiniMaster())->catalog_manager();
+  RETURN_NOT_OK(catalog_manager.GetTableLocations(&req, table_locations));
   if (table_locations->has_error()) {
     return StatusFromPB(table_locations->error().status());
   }
