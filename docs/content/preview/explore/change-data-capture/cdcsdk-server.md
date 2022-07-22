@@ -95,6 +95,16 @@ touch conf/application.properties
 ./run.sh
 ```
 
+### Run CDCSDK Server using Docker
+
+The CDCSDK Server can also be run inside a docker container with the help of all the configuration properties passed to the container in the form of environment variables, check [Configuration](#configure-using-environment-variables) for more information.
+
+```sh
+docker run -it --rm --name cdcsdk-server -p 8080:8080 \
+  -e <CONFIGURATION>
+  quay.io/yugabyte/cdcsdk-server:latest
+```
+
 ## Configuration
 
 The main configuration file is `conf/application.properties`, which includes the following sections:
@@ -142,7 +152,12 @@ cdcsdk.source.snapshot.mode=never
 
 ### Apache Kafka
 
-The Kafka sink adapter supports pass-through configuration. This means that all Kafka producer configuration properties are passed to the producer with the prefix removed. At least bootstrap.servers, key.serializer and value.serializer properties must be provided. The topic is set by CDCSDK Server.
+The Kafka sink adapter supports pass-through configuration. This means that all Kafka producer configuration properties are passed to the producer with the prefix removed. The topic is set by CDCSDK Server.
+
+| Property | Default | Description |
+| :--- | :--- | :--- |
+| `cdcsdk.sink.type` | `kafka` | This must be set to `kafka` only. |
+| `cdcsdk.sink.kafka.producer.*` | | The Kafka producer related configuration. At least `bootstrap.servers`, `key.serializer` and `value.serializer` properties must be provided. |
 
 Example configuration is as follows:
 
@@ -190,7 +205,7 @@ The HTTP client streams changes to any HTTP server for additional processing, wi
 
 ### Amazon S3
 
-The Amazon S3 Sink streams changes to an AWS S3 bucket. Only Inserts are supported. The available configuration options are:
+The Amazon S3 Sink streams changes to an AWS S3 bucket. Only **Inserts** are supported. The available configuration options are:
 
 | Property | Default | Description |
 | :--- | :--- | :--- |
@@ -204,7 +219,7 @@ The Amazon S3 Sink streams changes to an AWS S3 bucket. Only Inserts are support
 
 {{< note title="Note" >}}
 
-Amazon S3 Sink supports a single table at a time. Specifically `cdcsdk.source.table.include.list` should contain only one table at a time. If multiple tables need to be exported to Amazon S3, set up multiple CDCSDK servers that read from the same CDC Stream ID but write to different S3 locations.
+Amazon S3 Sink supports a single table at a time. Specifically `cdcsdk.source.table.include.list` should contain only one table at a time. If multiple tables need to be exported to Amazon S3, multiple CDCSDK servers that read from the same CDC Stream ID but write to different S3 locations should be setup.
 
 {{< /note >}}
 
@@ -349,4 +364,44 @@ curl http://localhost:8080/q/health/ready
     "checks": [
     ]
 }
+```
+### Metrics
+
+CDCSDK Server exposes metrics through a REST ENDPOINT: `q/metrics`. To view metrics, execute the following:
+
+```sh
+curl localhost:8080/q/metrics/
+```
+
+Refer to [Quarkus-Micrometer docs](https://quarkus.io/guides/micrometer#configuration-reference) for configuration options.
+
+#### System metrics
+There are a number of system metrics to monitor JVM performance such as
+
+* `jvm_gc_*`
+* `jvm_memory_*`
+* `jvm_threads_*`
+
+#### Application metrics
+
+Application metrics are the ones having the prefix `cdcsdk_`. The following metrics for the application are available:
+
+| Metric | Description |
+| :--- | :--- |
+| `cdcsdk_server_health` | A status code for the health of the server.<br> `0`: Healthy<br> `1`: Not Healthy<br><br> In the future, more states will be available for different causes. |
+| `cdcsdk_sink_totalBytesWritten` | Number of bytes written by the sink since the start of the application. |
+| `cdcsdk_sink_totalRecordsWritten` | Number of records written by the sink since the start of the application. |
+
+#### Integration with Prometheus
+
+Prometheus uses a pull model to get metrics from applications, this means that Prometheus will scrape or watch endpoints to pull the metrics from.
+
+The following job configuration will enable prometheus installation to scrape from CDCSDK Server:
+
+```
+- job_name: 'cdcsdk-server-metrics'
+   metrics_path: '/q/metrics'
+   scrape_interval: 3s
+   static_configs:
+     - targets: ['HOST:8080']
 ```
