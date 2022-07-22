@@ -56,13 +56,10 @@ public class KubernetesWaitForPod extends AbstractTaskBase {
     public UUID providerUUID;
     public CommandType commandType;
     public UUID universeUUID;
-    // TODO(bhavin192): nodePrefix can be removed as we are not doing
-    // any sort of Helm operation here. Or we might want to use it for
-    // some sort of label based selection.
-
-    // We use the nodePrefix as Helm Chart's release name,
-    // so we would need that for any sort helm operations.
-    public String nodePrefix;
+    // TODO(bhavin192): helmReleaseName can be removed as we are not
+    // doing any sort of Helm operation here. Or we might want to use
+    // it for some sort of label based selection.
+    public String helmReleaseName;
     public String namespace;
     public String podName = null;
     public Map<String, String> config = null;
