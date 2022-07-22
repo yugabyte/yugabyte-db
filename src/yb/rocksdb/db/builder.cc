@@ -90,7 +90,7 @@ std::unique_ptr<TableBuilder> NewTableBuilder(
 
 namespace {
   Status CreateWritableFileWriter(const std::string& filename, const EnvOptions& env_options,
-      const Env::IOPriority io_priority, Env* env,
+      const yb::IOPriority io_priority, Env* env,
       std::shared_ptr<WritableFileWriter>* file_writer) {
     unique_ptr<WritableFile> file;
     Status s = NewWritableFile(env, filename, &file, env_options);
@@ -120,7 +120,7 @@ Status BuildTable(const std::string& dbname,
                   bool paranoid_file_checks,
                   InternalStats* internal_stats,
                   BoundaryValuesExtractor* boundary_values_extractor,
-                  const Env::IOPriority io_priority,
+                  const yb::IOPriority io_priority,
                   TableProperties* table_properties) {
   // Reports the IOStats for flush for every following bytes.
   const size_t kReportFlushIOStatsEvery = 1048576;
