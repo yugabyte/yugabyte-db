@@ -21,6 +21,8 @@
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_ttl_util.h"
 #include "yb/docdb/key_bounds.h"
+#include "yb/docdb/packed_row.h"
+#include "yb/docdb/schema_packing.h"
 #include "yb/docdb/value.h"
 #include "yb/docdb/value_type.h"
 

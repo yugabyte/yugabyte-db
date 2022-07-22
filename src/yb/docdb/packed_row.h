@@ -25,6 +25,7 @@
 #include "yb/common/column_id.h"
 
 #include "yb/docdb/docdb.fwd.h"
+#include "yb/docdb/docdb_fwd.h"
 
 #include "yb/util/byte_buffer.h"
 #include "yb/util/kv_util.h"
@@ -66,94 +67,6 @@ namespace docdb {
 // The rationale for this format is to have ability to extract column value with O(1) complexity.
 // Also it helps us to avoid storing common data for all rows, and put it to a single schema info.
 
-struct ColumnPackingData {
-  ColumnId id;
-
-  // Number of varlen columns before this one.
-  size_t num_varlen_columns_before;
-
-  // Offset of this column from previous varlen column. I.e. sum of sizes of fixed length columns
-  // after previous varlen column.
-  size_t offset_after_prev_varlen_column;
-
-  // Fixed size of this column, 0 if it is varlen column.
-  size_t size;
-
-  // Whether column is nullable.
-  bool nullable;
-
-  static ColumnPackingData FromPB(const ColumnPackingPB& pb);
-  void ToPB(ColumnPackingPB* out) const;
-
-  bool varlen() const {
-    return size == 0;
-  }
-
-  std::string ToString() const;
-};
-
-class SchemaPacking {
- public:
-  explicit SchemaPacking(const Schema& schema);
-  explicit SchemaPacking(const SchemaPackingPB& pb);
-
-  size_t columns() const {
-    return columns_.size();
-  }
-
-  const ColumnPackingData& column_packing_data(size_t idx) const {
-    return columns_[idx];
-  }
-
-  // Size of prefix before actual data.
-  size_t prefix_len() const {
-    return varlen_columns_count_ * sizeof(uint32_t);
-  }
-
-  size_t varlen_columns_count() const {
-    return varlen_columns_count_;
-  }
-
-  bool SkippedColumn(ColumnId column_id) const;
-  Slice GetValue(size_t idx, const Slice& packed) const;
-  std::optional<Slice> GetValue(ColumnId column_id, const Slice& packed) const;
-  void ToPB(SchemaPackingPB* out) const;
-
-  std::string ToString() const;
-
- private:
-  std::vector<ColumnPackingData> columns_;
-  std::unordered_map<ColumnId, int64_t, boost::hash<ColumnId>> column_to_idx_;
-  size_t varlen_columns_count_;
-};
-
-class SchemaPackingStorage {
- public:
-  SchemaPackingStorage();
-  explicit SchemaPackingStorage(const SchemaPackingStorage& rhs, SchemaVersion min_schema_version);
-
-  Result<const SchemaPacking&> GetPacking(SchemaVersion schema_version) const;
-  Result<const SchemaPacking&> GetPacking(Slice* packed_row) const;
-
-  void AddSchema(SchemaVersion version, const Schema& schema);
-
-  Status LoadFromPB(const google::protobuf::RepeatedPtrField<SchemaPackingPB>& schemas);
-
-  // Copy all schema packings except schema_version_to_skip to out.
-  void ToPB(
-      SchemaVersion schema_version_to_skip,
-      google::protobuf::RepeatedPtrField<SchemaPackingPB>* out);
-
-  size_t SchemaCount() const {
-    return version_to_schema_packing_.size();
-  }
-
-  bool HasVersionBelow(SchemaVersion version) const;
-
- private:
-  std::unordered_map<SchemaVersion, SchemaPacking> version_to_schema_packing_;
-};
-
 class RowPacker {
  public:
   RowPacker(SchemaVersion version, std::reference_wrapper<const SchemaPacking> packing,
@@ -167,9 +80,7 @@ class RowPacker {
     return idx_ == 0;
   }
 
-  bool Finished() const {
-    return idx_ == packing_.columns();
-  }
+  bool Finished() const;
 
   void Restart();
 
