@@ -754,17 +754,7 @@ class UniverseForm extends Component {
       );
     }
 
-    const selectedProviderUUID = this.props?.formValues?.primary?.provider;
-    const selectedProvider = this.props?.cloud?.providers?.data?.find(
-      (provider) => provider.uuid === selectedProviderUUID
-    );
-
-    if (
-      this.state.currentView === 'Primary' &&
-      type !== 'Edit' &&
-      type !== 'Async' &&
-      (selectedProvider === undefined || selectedProvider?.code !== 'kubernetes')
-    ) {
+    if (this.state.currentView === 'Primary' && type !== 'Edit' && type !== 'Async') {
       asyncReplicaBtn = (
         <YBButton
           btnClass="btn btn-default universe-form-submit-btn"
