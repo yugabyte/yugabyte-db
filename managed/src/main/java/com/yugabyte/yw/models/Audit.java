@@ -216,6 +216,9 @@ public class Audit extends Model {
     @EnumValue("Configure")
     Configure,
 
+    @EnumValue("Update Options")
+    UpdateOptions,
+
     @EnumValue("Refresh Pricing")
     RefreshPricing,
 

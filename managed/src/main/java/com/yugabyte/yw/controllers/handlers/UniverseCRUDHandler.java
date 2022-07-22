@@ -31,10 +31,12 @@ import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 import com.yugabyte.yw.common.certmgmt.providers.VaultPKI;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.password.PasswordPolicyService;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.DiskIncreaseFormData;
+import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.TlsConfigUpdateParams;
 import com.yugabyte.yw.forms.TlsToggleParams;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
@@ -69,6 +71,7 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import javax.annotation.Nullable;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -95,7 +98,7 @@ public class UniverseCRUDHandler {
 
   @Inject UpgradeUniverseHandler upgradeUniverseHandler;
 
-  private static enum OpType {
+  private enum OpType {
     CONFIGURE,
     CREATE,
     UPDATE
@@ -118,6 +121,66 @@ public class UniverseCRUDHandler {
     return trimData;
   }
 
+  public Set<UniverseDefinitionTaskParams.UpdateOptions> getUpdateOptions(
+      Customer customer, UniverseConfigureTaskParams taskParams) {
+    Cluster cluster =
+        taskParams.getCurrentClusterType().equals(UniverseDefinitionTaskParams.ClusterType.PRIMARY)
+            ? taskParams.getPrimaryCluster()
+            : taskParams.getReadOnlyClusters().get(0);
+    return getUpdateOptions(
+        taskParams, cluster, PlacementInfoUtil.getUniverseForParams(taskParams));
+  }
+
+  private Set<UniverseDefinitionTaskParams.UpdateOptions> getUpdateOptions(
+      UniverseConfigureTaskParams taskParams, Cluster cluster, @Nullable Universe universe) {
+    if (taskParams.clusterOperation == UniverseConfigureTaskParams.ClusterOperationType.CREATE
+        || universe == null) {
+      return Collections.singleton(UniverseDefinitionTaskParams.UpdateOptions.UPDATE);
+    }
+    Cluster currentCluster = universe.getCluster(cluster.uuid);
+    Set<UniverseDefinitionTaskParams.UpdateOptions> result = new HashSet<>();
+    Set<NodeDetails> nodesInCluster = taskParams.getNodesInCluster(cluster.uuid);
+    boolean hasChangedNodes = false;
+    boolean hasRemainingNodes = false;
+
+    boolean smartResizePossible =
+        ResizeNodeParams.checkResizeIsPossible(
+            currentCluster.userIntent, cluster.userIntent, universe, true);
+
+    for (NodeDetails node : nodesInCluster) {
+      if (node.state == NodeState.ToBeAdded || node.state == NodeState.ToBeRemoved) {
+        hasChangedNodes = true;
+      } else {
+        hasRemainingNodes = true;
+      }
+    }
+    if (!hasRemainingNodes) {
+      result.add(UniverseDefinitionTaskParams.UpdateOptions.FULL_MOVE);
+      if (!PlacementInfoUtil.isSamePlacement(currentCluster.placementInfo, cluster.placementInfo)) {
+        smartResizePossible = false;
+      }
+    } else {
+      if (hasChangedNodes || !cluster.areTagsSame(currentCluster)) {
+        result.add(UniverseDefinitionTaskParams.UpdateOptions.UPDATE);
+      } else if (GFlagsUtil.checkGFlagsByIntentChange(
+          currentCluster.userIntent, cluster.userIntent)) {
+        result.add(UniverseDefinitionTaskParams.UpdateOptions.GFLAGS_UPGRADE);
+      }
+    }
+    if (smartResizePossible
+        && (result.isEmpty()
+            || result.equals(
+                Collections.singleton(UniverseDefinitionTaskParams.UpdateOptions.FULL_MOVE)))) {
+      if (cluster.userIntent.instanceType == null
+          || cluster.userIntent.instanceType.equals(currentCluster.userIntent.instanceType)) {
+        result.add(UniverseDefinitionTaskParams.UpdateOptions.SMART_RESIZE_NON_RESTART);
+      } else {
+        result.add(UniverseDefinitionTaskParams.UpdateOptions.SMART_RESIZE);
+      }
+    }
+    return result;
+  }
+
   public void configure(Customer customer, UniverseConfigureTaskParams taskParams) {
     if (taskParams.currentClusterType == null) {
       throw new PlatformServiceException(BAD_REQUEST, "currentClusterType must be set");
@@ -128,11 +191,11 @@ public class UniverseCRUDHandler {
 
     // TODO(Rahul): When we support multiple read only clusters, change clusterType to cluster
     //  uuid.
-    Cluster c =
+    Cluster cluster =
         taskParams.getCurrentClusterType().equals(UniverseDefinitionTaskParams.ClusterType.PRIMARY)
             ? taskParams.getPrimaryCluster()
             : taskParams.getReadOnlyClusters().get(0);
-    UniverseDefinitionTaskParams.UserIntent primaryIntent = c.userIntent;
+    UniverseDefinitionTaskParams.UserIntent primaryIntent = cluster.userIntent;
 
     checkGeoPartitioningParameters(customer, taskParams, OpType.CONFIGURE);
 
@@ -141,16 +204,23 @@ public class UniverseCRUDHandler {
     if (StringUtils.isEmpty(primaryIntent.accessKeyCode)) {
       primaryIntent.accessKeyCode = appConfig.getString("yb.security.default.access.key");
     }
-    if (PlacementInfoUtil.checkIfNodeParamsValid(taskParams, c)) {
+    if (PlacementInfoUtil.checkIfNodeParamsValid(taskParams, cluster)) {
       try {
-        PlacementInfoUtil.updateUniverseDefinition(taskParams, customer.getCustomerId(), c.uuid);
+        Universe universe = PlacementInfoUtil.getUniverseForParams(taskParams);
+        PlacementInfoUtil.updateUniverseDefinition(
+            taskParams, universe, customer.getCustomerId(), cluster.uuid);
+        try {
+          taskParams.updateOptions = getUpdateOptions(taskParams, cluster, universe);
+        } catch (Exception e) {
+          LOG.error("Failed to calculate update options", e);
+        }
       } catch (IllegalStateException | UnsupportedOperationException e) {
         throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
       }
     } else {
       throw new PlatformServiceException(
           BAD_REQUEST,
-          "Invalid Node/AZ combination for given instance type " + c.userIntent.instanceType);
+          "Invalid Node/AZ combination for given instance type " + cluster.userIntent.instanceType);
     }
   }
 

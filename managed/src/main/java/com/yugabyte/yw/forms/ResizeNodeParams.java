@@ -44,10 +44,6 @@ public class ResizeNodeParams extends UpgradeTaskParams {
 
     RuntimeConfigFactory runtimeConfigFactory =
         Play.current().injector().instanceOf(RuntimeConfigFactory.class);
-    boolean allowUnsupportedInstances =
-        runtimeConfigFactory
-            .forUniverse(universe)
-            .getBoolean("yb.internal.allow_unsupported_instances");
 
     for (Cluster cluster : clusters) {
       UserIntent newUserIntent = cluster.userIntent;
@@ -55,7 +51,8 @@ public class ResizeNodeParams extends UpgradeTaskParams {
           universe.getUniverseDetails().getClusterByUuid(cluster.uuid).userIntent;
 
       String errorStr =
-          checkResizeIsPossible(currentUserIntent, newUserIntent, allowUnsupportedInstances, true);
+          getResizeIsPossibleError(
+              currentUserIntent, newUserIntent, universe, runtimeConfigFactory, true);
       if (errorStr != null) {
         throw new IllegalArgumentException(errorStr);
       }
@@ -67,15 +64,68 @@ public class ResizeNodeParams extends UpgradeTaskParams {
    *
    * @param currentUserIntent current user intent
    * @param newUserIntent desired user intent
-   * @param allowUnsupportedInstances boolean to skip instance type checking
+   * @param universe current universe
+   * @param verifyVolumeSize whether to check volume size
+   * @return
+   */
+  public static boolean checkResizeIsPossible(
+      UserIntent currentUserIntent,
+      UserIntent newUserIntent,
+      Universe universe,
+      boolean verifyVolumeSize) {
+
+    RuntimeConfigFactory runtimeConfigFactory =
+        Play.current().injector().instanceOf(RuntimeConfigFactory.class);
+
+    return checkResizeIsPossible(
+        currentUserIntent, newUserIntent, universe, runtimeConfigFactory, verifyVolumeSize);
+  }
+
+  /**
+   * Checks if smart resize is available
+   *
+   * @param currentUserIntent current user intent
+   * @param newUserIntent desired user intent
+   * @param universe current universe
+   * @param runtimeConfigFactory config factory
+   * @param verifyVolumeSize whether to check volume size
+   * @return
+   */
+  public static boolean checkResizeIsPossible(
+      UserIntent currentUserIntent,
+      UserIntent newUserIntent,
+      Universe universe,
+      RuntimeConfigFactory runtimeConfigFactory,
+      boolean verifyVolumeSize) {
+    String res =
+        getResizeIsPossibleError(
+            currentUserIntent, newUserIntent, universe, runtimeConfigFactory, verifyVolumeSize);
+    if (res != null) {
+      log.debug("resize is forbidden: " + res);
+    }
+    return res == null;
+  }
+
+  /**
+   * Checks if smart resize is available and returns error message
+   *
+   * @param currentUserIntent current user intent
+   * @param newUserIntent desired user intent
+   * @param universe current universe
    * @param verifyVolumeSize whether to check volume size
    * @return null if available, otherwise returns error message
    */
-  public static String checkResizeIsPossible(
+  private static String getResizeIsPossibleError(
       UserIntent currentUserIntent,
       UserIntent newUserIntent,
-      boolean allowUnsupportedInstances,
+      Universe universe,
+      RuntimeConfigFactory runtimeConfigFactory,
       boolean verifyVolumeSize) {
+
+    boolean allowUnsupportedInstances =
+        runtimeConfigFactory
+            .forUniverse(universe)
+            .getBoolean("yb.internal.allow_unsupported_instances");
     if (currentUserIntent == null || newUserIntent == null) {
       return "Should have both intents, but got: " + currentUserIntent + ", " + newUserIntent;
     }
