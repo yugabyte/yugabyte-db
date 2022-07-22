@@ -243,4 +243,3 @@ To run the application and insert a new row, execute the following steps:
 ## Next steps
 
 - Explore [scaling Java applications](../../../explore/linear-scalability/) with YugabyteDB.
-- Learn how to [develop Java applications with Yugabyte Cloud](/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-yb-jdbc/).

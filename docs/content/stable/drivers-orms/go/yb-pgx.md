@@ -54,7 +54,7 @@ import (
 )
 ```
 
-Optionally, you can choose to import the pgxpool package instead. Refer to [Using pgxpool API](/preview/reference/drivers/go/yb-pgx-reference/#using-pgxpool-api) to learn more.
+Optionally, you can choose to import the pgxpool package instead. Refer to [Using pgxpool API](../../../reference/drivers/go/yb-pgx-reference/#using-pgxpool-api) to learn more.
 
 ### Step 2: Set up the database connection
 

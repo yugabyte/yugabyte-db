@@ -42,8 +42,8 @@ The following libraries are officially supported by YugabyteDB.
 | [PostgreSQL JDBC Driver](java/postgres-jdbc/) | Full | [CRUD Example](java/postgres-jdbc/) |
 | [Ebean](java/ebean/) | Full | [CRUD Example](java/ebean/) |
 | [Hibernate](java/hibernate/) | Full | [CRUD Example](java/hibernate/) |
-| [Spring Data YugabyteDB](../integrations/spring-framework/sdyb/) | Full | [CRUD Example](../integrations/spring-framework/sdyb/#examples) |
-| [Spring Data JPA](../integrations/spring-framework/sd-jpa/) | Full | [CRUD Example](../quick-start/build-apps/java/ysql-spring-data/) |
+| [Spring Data YugabyteDB](/preview/integrations/spring-framework/sdyb/) | Full | [CRUD Example](../quick-start/build-apps/java/ysql-sdyb/) |
+| [Spring Data JPA](/preview/integrations/spring-framework/sd-jpa/) | Full | [CRUD Example](../quick-start/build-apps/java/ysql-spring-data/) |
 <!-- | Micronaut | Beta |  | -->
 <!-- | Quarkus | Beta |  | -->
 <!-- | MyBatis | Full |  | -->

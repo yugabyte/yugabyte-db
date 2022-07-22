@@ -233,4 +233,3 @@ Query returned: name=John, age=35, language: Java
 ## Next Steps
 
 - Explore [Scaling Java Applications](../../../explore/linear-scalability) with YugabyteDB.
-- Learn how to [develop Java applications with YugabyteDB Managed](../../../yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-yb-jdbc/).

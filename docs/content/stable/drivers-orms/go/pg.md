@@ -131,4 +131,3 @@ fmt.Println(emp)
 ## Next steps
 
 - Explore [Scaling Go Applications](../../../explore/linear-scalability/) with YugabyteDB.
-- Learn how to [develop Go applications with YugabyteDB Managed](../../../yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-go/).
