@@ -168,18 +168,11 @@
   to = "/preview/yedis/"
   force = true
 
-# Make sure stable and preview quick-starts don't get redirected.
-# (All other versions get redirected to preview.)
-
+# This link is super common, so just redirect...
 [[redirects]]
-  from = "/stable/quick-start/*"
-  to = "/stable/quick-start/:splat"
-  status = 200
-
-[[redirects]]
-  from = "/preview/quick-start/*"
-  to = "/preview/quick-start/:splat"
-  status = 200
+  from = "/preview/quick-start/install/"
+  to = "/preview/quick-start/#install-yugabytedb"
+  force = true
 
 # Stable quick-starts need defaults,
 # since archiving from /preview removes aliases
@@ -198,6 +191,21 @@
   from = "/stable/quick-start/explore/"
   to = "/stable/quick-start/explore/ysql/"
   force = true
+
+# Make sure stable and preview quick-starts don't get redirected.
+# (All other versions get redirected to preview.)
+
+[[redirects]]
+  from = "/stable/quick-start/*"
+  to = "/stable/quick-start/:splat"
+  status = 200
+
+[[redirects]]
+  from = "/preview/quick-start/*"
+  to = "/preview/quick-start/:splat"
+  status = 200
+
+# Redirect all other quick-starts to preview
 
 [[redirects]]
   from = ":version/quick-start/*"

@@ -251,7 +251,7 @@ To access sample applications that use the Yugabyte JDBC driver, visit [Yugabyte
 
 To use the samples, complete the following steps:
 
-- Install YugabyteDB by following instructions provided in [Quick Start Guide](/preview/quick-start/install/).
+- Install YugabyteDB by following instructions provided in [Quick Start Guide](/preview/quick-start/#install-yugabytedb).
 
 - Build the examples by running `mvn package`.
 

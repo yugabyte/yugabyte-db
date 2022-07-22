@@ -47,7 +47,7 @@ You can monitor your local YugabyteDB cluster with a local instance of [Promethe
 
 For details on the metrics targets for YugabyteDB, see [Monitoring with Prometheus](../../../reference/configuration/default-ports/#monitoring-with-prometheus).
 
-If you haven't installed YugabyteDB yet, do so first by following the [Quick Start](../../../quick-start/install/) guide.
+If you haven't installed YugabyteDB yet, do so first by following the [Quick Start](../../../quick-start/#install-yugabytedb) guide.
 
 ## 1. Create universe
 

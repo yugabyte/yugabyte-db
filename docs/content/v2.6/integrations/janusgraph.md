@@ -14,7 +14,7 @@ In this tutorial, you are first going to setup [JanusGraph](https://janusgraph.o
 
 ## 1. Start local cluster
 
-Start a cluster on your [local computer](../../quick-start/install/). Check that you are able to connect to YugabyteDB using `ycqlsh` by executing the following:
+Start a cluster on your [local computer](../../quick-start/#install-yugabytedb). Check that you are able to connect to YugabyteDB using `ycqlsh` by executing the following:
 
 ```sh
 $ ycqlsh

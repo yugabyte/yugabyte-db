@@ -79,7 +79,7 @@ For building and using this project, the following tools must be installed on yo
 
 1. Install YugabyteDB and create the database table.
 
-    [Install YugabyteDB and start a local cluster](../../../quick-start/install/).
+    [Install YugabyteDB and start a local cluster](../../../quick-start/#install-yugabytedb).
     Create a database and table by running the following command. You can find `ycqlsh` in the `bin`  subdirectory located inside the YugabyteDB installation folder.
 
     ```sql

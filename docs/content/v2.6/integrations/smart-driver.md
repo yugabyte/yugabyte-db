@@ -148,7 +148,7 @@ To access a sample application that uses Yugabyte Smart Driver, visit [YugabyteD
 
 To be able to use the samples, you need to complete the following steps:
 
-- Install YugabyteDB by following instructions provided in [Quick Start Guide](/preview/quick-start/install/).
+- Install YugabyteDB by following instructions provided in [Quick Start Guide](/preview/quick-start/#install-yugabytedb).
 
 - Build the examples by running `mvn package`.
 
