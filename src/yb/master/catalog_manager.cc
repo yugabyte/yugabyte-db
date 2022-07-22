@@ -494,6 +494,10 @@ DEFINE_bool(batch_ysql_system_tables_metadata, false,
             "a create database is performed one by one or batched together");
 TAG_FLAG(batch_ysql_system_tables_metadata, runtime);
 
+DEFINE_test_flag(bool, pause_split_child_registration,
+                 false, "Pause split after registering one child");
+TAG_FLAG(TEST_pause_split_child_registration, runtime);
+
 namespace yb {
 namespace master {
 
@@ -6075,6 +6079,7 @@ Result<TabletInfoPtr> CatalogManager::RegisterNewTabletForSplit(
     RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), table, new_tablet, source_tablet_info));
 
     MAYBE_FAULT(FLAGS_TEST_crash_after_creating_single_split_tablet);
+    TEST_PAUSE_IF_FLAG(TEST_pause_split_child_registration);
 
     table->AddTablet(new_tablet);
     // TODO: We use this pattern in other places, but what if concurrent thread accesses not yet
