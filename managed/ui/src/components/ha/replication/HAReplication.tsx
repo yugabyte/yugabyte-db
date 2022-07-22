@@ -2,7 +2,8 @@ import React, { FC, useState } from 'react';
 import { YBLoading } from '../../common/indicators';
 import { HAErrorPlaceholder } from '../compounds/HAErrorPlaceholder';
 import { HAReplicationForm } from './HAReplicationForm';
-import { HAReplicationView } from './HAReplicationView';
+import { HAReplicationViewContainer } from './HAReplicationViewContainer';
+
 import { useLoadHAConfiguration } from '../hooks/useLoadHAConfiguration';
 
 export const HAReplication: FC = () => {
@@ -18,7 +19,7 @@ export const HAReplication: FC = () => {
   if (isLoading) {
     return <YBLoading />;
   }
-  
+
   if (error) {
     return <HAErrorPlaceholder error={error} configUUID={config?.uuid!} />;
   }
@@ -33,7 +34,9 @@ export const HAReplication: FC = () => {
         <HAReplicationForm config={config} schedule={schedule} backToViewMode={backToViewMode} />
       );
     } else {
-      return <HAReplicationView config={config} schedule={schedule} editConfig={editConfig} />;
+      return (
+        <HAReplicationViewContainer config={config} schedule={schedule} editConfig={editConfig} />
+      );
     }
   }
 
