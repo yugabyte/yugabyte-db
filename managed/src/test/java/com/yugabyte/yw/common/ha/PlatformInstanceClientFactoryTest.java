@@ -131,7 +131,7 @@ public class PlatformInstanceClientFactoryTest extends FakeDBApplication {
         String.format(
             "    {\n"
                 + "      ssl {\n"
-                + "        acceptAnyCert = false\n"
+                + "        loose.acceptAnyCert = false\n"
                 + "        trustManager {\n"
                 + "          stores += {\n"
                 + "            type = PEM\n"
