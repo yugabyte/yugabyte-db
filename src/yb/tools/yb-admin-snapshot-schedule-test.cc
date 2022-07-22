@@ -66,17 +66,29 @@ const std::string old_sys_catalog_snapshot_name = "initial_sys_catalog_snapshot_
 
 class YbAdminSnapshotScheduleTest : public AdminTestBase {
  public:
-  Result<rapidjson::Document> GetSnapshotSchedule(const std::string& id = std::string()) {
-    auto out = VERIFY_RESULT(id.empty() ? CallJsonAdmin("list_snapshot_schedules")
-                                        : CallJsonAdmin("list_snapshot_schedules", id));
-    auto schedules = VERIFY_RESULT(Get(&out, "schedules")).get().GetArray();
-    if (schedules.Empty()) {
-      return STATUS(NotFound, "Snapshot schedule not found");
+  Result<rapidjson::Document> GetSnapshotSchedule(
+      const std::string& id = std::string()) {
+    auto deadline = CoarseMonoClock::now() + 10s * kTimeMultiplier;
+    for (;;) {
+      auto result = id.empty() ? CallJsonAdmin("list_snapshot_schedules")
+                               : CallJsonAdmin("list_snapshot_schedules", id);
+      if (!result.ok()) {
+        if (result.status().ToString().find("Not the leader") != std::string::npos &&
+            CoarseMonoClock::now() < deadline) {
+          continue;
+        }
+        return result.status();
+      }
+
+      auto schedules = VERIFY_RESULT(Get(&*result, "schedules")).get().GetArray();
+      if (schedules.Empty()) {
+        return STATUS(NotFound, "Snapshot schedule not found");
+      }
+      SCHECK_EQ(schedules.Size(), 1U, NotFound, "Wrong schedules number");
+      rapidjson::Document document;
+      document.CopyFrom(schedules[0], document.GetAllocator());
+      return document;
     }
-    SCHECK_EQ(schedules.Size(), 1U, NotFound, "Wrong schedules number");
-    rapidjson::Document result;
-    result.CopyFrom(schedules[0], result.GetAllocator());
-    return result;
   }
 
   Result<rapidjson::Document> ListSnapshots() {
@@ -102,15 +114,8 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
     rapidjson::Document result;
     RETURN_NOT_OK(WaitFor([this, id, num_snapshots, &result]() -> Result<bool> {
       // If there's a master leader failover then we should wait for the next cycle.
-      auto schedule_result = GetSnapshotSchedule(id);
-      if (!schedule_result.ok()) {
-        if (schedule_result.status().ToString().find("Not the leader") !=
-            std::string::npos) {
-          return false;
-        }
-        return schedule_result.status();
-      }
-      auto snapshots = VERIFY_RESULT(Get(&*schedule_result, "snapshots")).get().GetArray();
+      auto schedule = VERIFY_RESULT(GetSnapshotSchedule(id));
+      auto snapshots = VERIFY_RESULT(Get(&schedule, "snapshots")).get().GetArray();
       if (snapshots.Size() < num_snapshots) {
         return false;
       }
@@ -128,6 +133,27 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
       return snapshot_ht <= current_ht;
     }, duration, "Wait Snapshot Time Elapses"));
     return result;
+  }
+
+  Status WaitNewSnapshot(const std::string& id = {}) {
+    LOG(INFO) << "WaitNewSnapshot, schedule id: " << id;
+    std::string last_snapshot_id;
+    return WaitFor([this, &id, &last_snapshot_id]() -> Result<bool> {
+      // If there's a master leader failover then we should wait for the next cycle.
+      auto schedule = VERIFY_RESULT(GetSnapshotSchedule(id));
+      auto snapshots = VERIFY_RESULT(Get(&schedule, "snapshots")).get().GetArray();
+      if (snapshots.Empty()) {
+        return false;
+      }
+      auto snapshot_id = VERIFY_RESULT(
+          Get(&snapshots[snapshots.Size() - 1], "id")).get().GetString();
+      LOG(INFO) << "WaitNewSnapshot, last snapshot id: " << snapshot_id;
+      if (last_snapshot_id.empty()) {
+        last_snapshot_id = snapshot_id;
+        return false;
+      }
+      return last_snapshot_id != snapshot_id;
+    }, kInterval * 5, "Wait new schedule snapshot");
   }
 
   Result<std::string> StartRestoreSnapshotSchedule(
@@ -413,6 +439,7 @@ class YbAdminSnapshotScheduleTestWithYsqlAndPackedRow : public YbAdminSnapshotSc
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
     YbAdminSnapshotScheduleTestWithYsql::UpdateMiniClusterOptions(opts);
     opts->extra_tserver_flags.emplace_back("--ysql_enable_packed_row=true");
+    opts->extra_tserver_flags.emplace_back("--timestamp_history_retention_interval_sec=0");
     opts->extra_master_flags.emplace_back("--ysql_enable_packed_row=true");
     opts->extra_master_flags.emplace_back("--timestamp_history_retention_interval_sec=0");
   }
@@ -1070,6 +1097,37 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlDropDefaultW
   auto value = ASSERT_RESULT(
       conn.FetchRowAsString("SELECT value, v2 FROM test_table WHERE key=100500"));
   ASSERT_EQ(value, "default_value, v2_default");
+}
+
+// Check that we restore cleaned metadata correctly.
+TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlAddColumnCompactWithPackedRow),
+          YbAdminSnapshotScheduleTestWithYsqlAndPackedRow) {
+  auto schedule_id = ASSERT_RESULT(PreparePg());
+  auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+  for (;;) {
+    auto status = conn.Execute("CREATE TABLE test_table (key INT PRIMARY KEY, value TEXT)");
+    if (status.ok()) {
+      break;
+    }
+    if (status.message().ToBuffer().find("Snapshot too old") != std::string::npos) {
+      continue;
+    }
+    ASSERT_OK(status);
+  }
+  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (1, 'one')"));
+  ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD COLUMN v2 TEXT"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (2, 'two', 'dva')"));
+
+  auto time = ASSERT_RESULT(GetCurrentTime());
+
+  ASSERT_OK(WaitNewSnapshot());
+
+  ASSERT_OK(conn.Execute("ALTER TABLE test_table DROP COLUMN v2"));
+
+  ASSERT_OK(CompactTablets(cluster_.get()));
+  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
+  auto res = ASSERT_RESULT(conn.FetchAllAsString("SELECT * FROM test_table ORDER BY key"));
+  ASSERT_EQ(res, "1, one, NULL; 2, two, dva");
 }
 
 void YbAdminSnapshotScheduleTestWithYsql::TestPgsqlDropDefault() {
