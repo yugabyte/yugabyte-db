@@ -40,7 +40,7 @@ Ebean ORM can be used with the [YugabyteDB JDBC driver](../yugabyte-jdbc/) and t
 
 Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in the [Build an application](../../../quick-start/build-apps/java/ysql-ebean/) page under the Quick start section.
 
-The following sections demonstrate how to perform common tasks required for Java-based [Play Framework](https://www.playframework.com/documentation/2.8.x/api/java/index.html) application development using the Ebean ORM.
+The following sections demonstrate how to perform common tasks required for Java-based [Play Framework](https://www.playframework.com/documentation/2.8.x/api/java/index.html/) application development using the Ebean ORM.
 
 ### Create a new Java-based Play Framework project
 

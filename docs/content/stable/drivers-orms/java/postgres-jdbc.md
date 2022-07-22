@@ -39,7 +39,7 @@ PostgreSQL JDBC Drivers are available as a maven dependency, and you can downloa
 
 ### Maven dependency
 
-If you are using [Maven](https://maven.apache.org/guides/development/guide-building-maven.html), add the following to your `pom.xml` of your project.
+If you are using [Maven](https://maven.apache.org/guides/development/guide-building-maven.html/), add the following to your `pom.xml` of your project.
 
 ```xml
 <!-- https://mvnrepository.com/artifact/org.postgresql/postgresql -->
@@ -52,7 +52,7 @@ If you are using [Maven](https://maven.apache.org/guides/development/guide-build
 
 ### Gradle Dependency
 
-If you are using [Gradle](https://docs.gradle.org/current/samples/sample_building_java_applications.html), add the following dependencies to your `build.gradle` file:
+If you are using [Gradle](https://docs.gradle.org/current/samples/sample_building_java_applications.html/), add the following dependencies to your `build.gradle` file:
 
 ```java
 // https://mvnrepository.com/artifact/org.postgresql/postgresql

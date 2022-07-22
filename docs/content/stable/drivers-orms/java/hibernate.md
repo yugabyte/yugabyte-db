@@ -42,7 +42,7 @@ Java developers are often required to store the domain objects of a Java applica
 
 ### Step 1: Add the Hibernate ORM dependency
 
-If you're using [Maven](https://maven.apache.org/guides/development/guide-building-maven.html), add the following to your project's `pom.xml` file.
+If you're using [Maven](https://maven.apache.org/guides/development/guide-building-maven.html/), add the following to your project's `pom.xml` file.
 
 ```xml
 <dependency>
@@ -58,7 +58,7 @@ If you're using [Maven](https://maven.apache.org/guides/development/guide-buildi
 </dependency>
 ```
 
-If you're using [Gradle](https://docs.gradle.org/current/samples/sample_building_java_applications.html), add the following dependencies to your `build.gradle` file:
+If you're using [Gradle](https://docs.gradle.org/current/samples/sample_building_java_applications.html/), add the following dependencies to your `build.gradle` file:
 
 ```java
 implementation 'org.hibernate:hibernate-core:5.4.19.Final'
@@ -232,4 +232,4 @@ Query returned: name=John, age=35, language: Java
 
 ## Next Steps
 
-- Explore [Scaling Java Applications](../../../explore/linear-scalability) with YugabyteDB.
+- Explore [Scaling Java Applications](../../../explore/linear-scalability/) with YugabyteDB.
