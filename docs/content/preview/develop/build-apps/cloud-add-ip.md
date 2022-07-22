@@ -2,7 +2,7 @@
 title: Before you begin
 headerTitle: Before you begin
 description: Obtain your cluster certificate and add your computer to the IP allow list.
-headcontent: Deploy a cluster in the cloud or locally
+headcontent: Using a cluster in YugabyteDB Managed
 menu:
   preview:
     parent: build-apps
@@ -12,13 +12,9 @@ menu:
 type: docs
 ---
 
-## Deploy a cluster
-
 The tutorials assume you have deployed a YugabyteDB cluster in YugabyteDB Managed or locally. Refer to [Quick start](../../../quick-start-yugabytedb-managed/).
 
-## Using YugabyteDB Managed
-
-In addition, if you are using YugabyteDB Managed, you need the following to run the sample applications:
+In addition, **if you are using YugabyteDB Managed**, you need the following to run the sample applications:
 
 - The cluster CA certificate
 - Your computer added to the cluster IP allow list
@@ -31,7 +27,7 @@ For applications that access the cluster from a non-peered network, use the upst
 
 {{< /note >}}
 
-### Download your cluster certificate
+## Download your cluster certificate
 
 YugabyteDB Managed uses TLS 1.2 for communicating with clusters, and digital certificates to verify the identity of clusters. The [cluster CA certificate](../../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/) is used to verify the identity of the cluster when you connect to it from an application or client.
 
@@ -43,7 +39,7 @@ To download the certificate to the computer that will be connecting to the clust
 1. Click **YugabyteDB Client Shell** or **Connect to your Application**.
 1. Click **Download CA Cert** to download the cluster `root.crt` certificate to your computer.
 
-### Add your computer to the cluster IP allow list
+## Add your computer to the cluster IP allow list
 
 Access to YugabyteDB Managed clusters is limited to IP addresses that you explicitly allow using [IP allow lists](../../../yugabyte-cloud/cloud-secure-clusters/add-connections/). To enable applications to connect to your cluster, you need to add your computer's IP address to the cluster IP allow list.
 

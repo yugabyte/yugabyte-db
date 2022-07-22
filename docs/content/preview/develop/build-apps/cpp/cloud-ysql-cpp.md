@@ -34,7 +34,9 @@ git clone https://github.com/YugabyteDB-Samples/yugabyte-simple-cpp-app.git && c
 
 ## Provide connection parameters
 
-The application needs to establish a connection to the YugabyteDB cluster. To do this:
+If your cluster is running on YugabyteDB Managed, you need to modify the connection parameters so that the application can establish a connection to the YugabyteDB cluster. (You can skip this step if your cluster is running locally and listening on 127.0.0.1:5433.)
+
+To do this:
 
 1. Open the `sample-app.cpp` file.
 
