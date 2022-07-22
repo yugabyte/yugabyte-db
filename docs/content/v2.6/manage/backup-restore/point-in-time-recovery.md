@@ -11,125 +11,187 @@ menu:
 type: docs
 ---
 
-The point-in-time recovery feature allows you to restore the state of your cluster's data from a specific point in time. This can be relative, such as "three hours ago", or an absolute timestamp.
+{{< warning title="YSQL support" >}}
 
-_Point-in-time recovery_ (also referred to here as PITR) and _incremental backups_ go hand in hand. These two features help in recovering from a number of error or failure scenarios by allowing the database to be restored to a specific point in time (in the past).
+YugabyteDB version 2.6 provides point-in-time recovery support only for YCQL keyspaces. Support for YSQL databases is provided since version 2.8.
 
-Point-in-time recoveries and incremental backups depend on _full backups_ (also referred to as base backups). A full backup, as the name suggests, is a complete transactional backup of data up to a certain point in time. The entire data set in the database is backed up for all of the namespaces and tables you selected. Full backups are resource-intensive, and can consume considerable amounts of CPU time, bandwidth, and disk space.
+{{< /warning >}}
 
-To learn more about YugabyteDB's point-in-time recovery feature, refer to the [Recovery scenarios](#recovery-scenarios), [Features](#features), [Use cases](#use-cases), and [Limitations](#limitations) sections on this page. For more details on the `yb-admin` commands, refer to the [Backup and snapshot commands](../../../admin/yb-admin#backup-and-snapshot-commands) section of the yb-admin documentation.
+Point-in-time recovery (PITR) in YugabyteDB enables recovery from a user or software error, while minimizing recovery point objective (RPO), recovery time objective (RTO), and overall impact on the cluster.
 
-## Try out the PITR feature
+PITR is particularly applicable to the following:
 
-There are several recovery scenarios [for YSQL](../../../explore/backup-restore/point-in-time-recovery-ysql/) and [for YCQL](../../../explore/backup-restore/point-in-time-recovery-ycql/) in the Explore section.
+* DDL errors, such as an accidental table removal.
+* DML errors, such as execution of an incorrect update statement against one of the tables.
 
-## Recovery scenarios
+Typically, you know when the data was corrupted and would want to restore to the closest possible uncorrupted state. With PITR, you can achieve that by providing a timestamp to which to restore. You can specify the time with the precision of up to 1 microsecond, far more precision than is possible with the regular snapshots that are typically taken hourly or daily.
 
-### App and operator errors
+PITR in YugabyteDB is based on a combination of the flashback capability and periodic [distributed snapshots](../snapshot-ysql).
 
-Point in time recovery allows recovery from the following scenarios by restoring the database to a point in time before the error occurred. The errors could be any of the following:
+Flashback provides means to rewind the data back in time. At any moment, YugabyteDB stores not only the latest state of the data, but also the recent history of changes. With flashback, you can rollback to any point in time in the history retention period. The history is also preserved when a snapshot is taken, which means that by creating snapshots periodically, you effectively increase the flashback retention.
 
-* DDL errors: For example, a table is dropped by mistake
-* DML errors: For example, an erroneous UPDATE statement is run on the table
+For example, if your overall retention target for PITR is three days, you can use the following configuration:
 
-In both cases, you restore the table to a point in time before the error occurred.
+* History retention interval is 24 hours.
+* Snapshots are taken daily.
+* Each snapshot is kept for three days.
 
-### Disk or filesystem corruption
+By default, the history retention period is controlled by the [history retention interval flag](../../../reference/configuration/yb-tserver/#timestamp-history-retention-interval-sec) applied cluster-wide to every YCQL keyspace.
 
-Data loss can happen due to one of the following reasons:
+However, when [PITR is enabled](#create-a-schedule) for a keyspace, YugabyteDB adjusts the history retention for that keyspace based on the interval between the snapshots. You are not required to manually set the cluster-wide flag in order to use PITR.
 
-* Loss or failure of a disk
-* Deletion of DB data files; for example, through operator error
-* Bugs in the database software; for example, due to a software upgrade
+There are no technical limitations on the retention target. However, when you increase the number of stored snapshots, you also increase the amount of space required for the keyspace. The actual overhead depends on the workload, therefore it is recommended to estimate it by running tests based on your applications.
 
-In a distributed SQL database such as YugabyteDB, the first two scenarios can be mitigated due to the presence of live replicas, as it's highly unlikely the same issue occurs on all nodes. However, for the third scenario, point in time recovery is an important solution.
+The preceding sample configuration ensures that at any moment there is a continuous change history maintained for the last three days. When you trigger a restore, YugabyteDB selects the closest snapshot to the timestamp you provide, and then uses flashback in that snapshot.
 
-### Disasters
+For example, snapshots are taken daily at 11:00 PM, current time is 5:00 PM on April 14th, and you want to restore to 3:00 PM on April 12th. YugabyteDB performs the following:
 
-This is the scenario in which the data in the entire source cluster is lost irrecoverably, and a restore needs to be performed from a remote location. While the likelihood of this scenario is low, it's still important to understand the probability of correlated failures. For example, loss due to a natural disaster has a very low probability of occurrence in a multi-region deployment, but its probability increases with the proximity of the replicas.
+1. Locates the snapshot taken on April 12th, which is the closest snapshot taken after the restore time, and restores that snapshot.
+1. Flashes back 8 hours to restore to the state at 3:00 PM, as opposed to 11:00 PM, which is when the snapshot was taken.
 
-## Features
+![Point-In-Time Recovery](/images/manage/backup-restore/pitr.png)
 
-{{< note title="Not all features are implemented yet" >}}
+## Enable and disable PITR
 
-As this feature is in active development, not all features are implemented yet. Refer to the [Limitations](#limitations) section for details.
+YugabyteDB exposes the PITR functionality through a set of [snapshot schedule](../../../admin/yb-admin/#backup-and-snapshot-commands) commands. A schedule is an entity that automatically manages periodic snapshots for a keyspace, and enables PITR for the same keyspace.
 
-{{< /note >}}
+Creating a snapshot schedule for a keyspace effectively enables PITR for that keyspace. You cannot recover to point in time unless you create a schedule.
 
-This section describes the features that enable PITR and incremental backups.
+### Create a schedule
 
-### Flashback database
+To create a schedule and enable PITR, use the [`create_snapshot_schedule`](../../../admin/yb-admin/#create-snapshot-schedule) command with the following parameters:
 
-The flashback database feature allows restoring an existing database or an existing backup to a specific point in time in the past, up to some maximum time history. For example, if a database is configured for flashback up to the last 25 hours, you can restore this database back to a point in time that is up to 25 hours ago.
+* Interval between snapshots (in minutes).
+* Retention time for every snapshot (in minutes).
+* The name of the keyspace.
 
-**Notes**:
+Assuming the retention target is three days, you can execute the following command to create a schedule that produces a snapshot once a day (every 1,440 minutes) and retains it for three days (4,320 minutes):
 
-* The time granularity of the point in time that one can restore to (1 second, 1 minute etc) is a separate parameter / specification.
-* This feature does not help with reducing the size of backups, since this would be comparable to a full backup
+```sh
+./bin/yb-admin create_snapshot_schedule 1440 4320 <keyspace_name>
+```
 
-### Incremental backups
+The following output is a unique ID of the newly-created snapshot schedule:
 
-Incremental backups only extract and backup the updates that occur after a specified point in time in the past. For example, all the changes that happened in the last hour. Note that the database should have been configured with the maximum history retention window (similar to the [flashback database](#flashback-database) option). Thus, if a database is configured to retain 25 hours of historical updates, then the largest possible incremental backup is 25 hours.
+```output.json
+{
+  "schedule_id": "6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256"
+}
+```
 
-Incremental backups should cover the following scenarios:
+You can use this ID to [delete the schedule](#delete-a-schedule) or [restore to a point in time](#restore-to-a-point-in-time).
 
-* All changes as a result of DML statements such as INSERT, UPDATE, DELETE
-* DDL statements, such as creation of new tables and dropping of existing tables
-* Any updates for tables that may get dropped in that time interval
+### Delete a schedule
 
-This feature helps dealing with developer and operator error recovery (mentioned in the Scenarios section A).
-The restore should also include any DDL changes, such as create/drop/alter tables.
-The time granularity of the point in time that one can restore to (1 second, 1 minute etc) is a separate parameter / specification.
-Differential incremental backups require applying multiple incremental backups on top of a base backup
+To delete a schedule and disable PITR, use the following [`delete_snapshot_schedule`](../../../admin/yb-admin/#delete-snapshot-schedule) command that takes the ID of the schedule to be deleted as a parameter:
 
-Compared to flashbacks, incremental backups:
+```sh
+./bin/yb-admin delete_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256
+```
 
-* Often run more frequently, since the data set size is reduced.
-* Can handle a disaster-recovery scenario.
+### List schedules
 
-There are two types of incremental backups, _differential_ and _cumulative_. Although YugayteDB supports both types, we recommend differential incremental backups.
+To see a list of schedules that currently exist in the cluster, use the following [`list_snapshot_schedules`](../../../admin/yb-admin/#list-snapshot-schedules) command:
 
-#### Differential incremental backups
+```sh
+./bin/yb-admin list_snapshot_schedules
+```
 
-Each differential incremental backup only contains the updates that occurred after the previous incremental backup. All changes since last incremental. A point-in-time recovery operation in this case would involve restoring the latest base backup, followed by applying every differential incremental backup taken since that base backup.
+```output.json
+{
+  "schedules": [
+    {
+      "id": "6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256",
+      "options": {
+        "interval": "60.000s",
+        "retention": "600.000s"
+      },
+      "snapshots": [
+        {
+          "id": "386740da-dc17-4e4a-9a2b-976968b1deb5",
+          "snapshot_time_utc": "2021-04-28T13:35:32.499002+0000"
+        },
+        {
+          "id": "aaf562ca-036f-4f96-b193-f0baead372e5",
+          "snapshot_time_utc": "2021-04-28T13:36:37.501633+0000",
+          "previous_snapshot_time_utc": "2021-04-28T13:35:32.499002+0000"
+        }
+      ]
+    }
+  ]
+}
+```
 
-#### Cumulative incremental backups
+You can also use the same command to view the information about a particular schedule by providing its ID as a parameter, as follows:
 
-Each cumulative incremental backup contains all changes since the last base backup. The timestamp of the last base backup is specified by the operator. In this case, the point-in-time recovery operation involves restoring the latest base backup, followed by applying the latest cumulative incremental backup.
+```sh
+./bin/yb-admin list_snapshot_schedules 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256
+```
 
-## Use cases
+## Restore to a point in time
 
-The following table provides a quick comparison of the intended usage patterns.
+{{< warning title="Stop workloads before restoring" >}}
 
-| Scenario | In-cluster flashback DB | Off-cluster flashback DB | Incremental backup |
-| :------- | :---------------------- | :----------------------- | :----------------- |
-| **Disk/file corruption** | Handled by replication in cluster | Handled by replication in cluster | Handled by replication in cluster |
-| **App/operator error** | Yes | Yes | Yes |
-| **RPO** | Very low | High | Medium |
-| **RTO** | Very low | High | High |
-| **Disaster Recovery** | No (replication in cluster) | Yes | Yes |
-| **Impact / Cost** | Very low | High (snapshot and copy) | Medium |
+Stop all the application workloads before you restore to a point in time. Transactions running concurrently with the restore operation can lead to data inconsistency.
+
+This requirement will be removed in an upcoming release, and is tracked in issue [12853](https://github.com/yugabyte/yugabyte-db/issues/12853).
+
+{{< /warning >}}
+
+If a keyspace has an associated snapshot schedule, you can use that schedule to restore the keyspace to a particular point in time by using the [`restore_snapshot_schedule`](../../../admin/yb-admin/#restore-snapshot-schedule) command with the following parameters:
+
+* The ID of the schedule.
+
+* Target restore time, with the following two options:
+
+  * Restore to an absolute time, providing a specific timestamp in one of the following formats:
+
+    * [Unix timestamp](https://www.unixtimestamp.com) in seconds, milliseconds, or microseconds.
+    * [YCQL timestamp](../../../api/ycql/type_datetime/#timestamp).
+
+    For example, the following command restores to 1:00 PM PDT on May 1st 2022 using a Unix timestamp:
+
+    ```sh
+    ./bin/yb-admin restore_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 \
+                                             1651435200
+    ```
+
+    The following is an equivalent command that uses a YCQL timestamp:
+
+    ```sh
+    ./bin/yb-admin restore_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 \
+                                             2022-05-01 13:00-0700
+    ```
+
+  * Restore to a time that is relative to the current (for example, to 10 minutes ago from now) by specifying how much time back you would like to roll a database or keyspace.
+
+    For example, to restore to 5 minutes ago, run the following command:
+
+    ```sh
+    ./bin/yb-admin restore_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 \
+                                             minus 5m
+    ```
+
+    Or, to restore to 1 hour ago, use the following:
+
+    ```sh
+    ./bin/yb-admin restore_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 \
+                                             minus 1h
+    ```
+
+    For detailed information on the relative time formatting, refer to the [`restore_snapshot_schedule` reference](../../../admin/yb-admin/#restore-snapshot-schedule).
 
 ## Limitations
 
-This feature is in active development. YSQL and YCQL support different features, as detailed in the sections that follow.
+PITR functionality has several limitations, primarily related to interactions with other YugabyteDB features. Most of these limitations will be addressed in upcoming releases; refer to each limitation's corresponding tracking issue for details.
 
-### YSQL limitations
+### Global objects
 
-Currently, you can **restore data only**. The feature doesn't support metadata; in other words, restoring past operations such as CREATE, ALTER, TRUNCATE, and DROP TABLE is unsupported.
+PITR doesn't support global objects, such as roles and permissions, because they're not currently backed up by the distributed snapshots. If you alter or drop a global object, then try to restore to a point in time before the change, the object will _not_ be restored.
 
-Development for this feature is tracked in [issue 7120](https://github.com/yugabyte/yugabyte-db/issues/7120). Support for undoing certain metadata operations is forthcoming.
+Tracking issue: [8453](https://github.com/yugabyte/yugabyte-db/issues/8453)
 
-### YCQL limitations
+### Other limitations
 
-Currently, you can recover from the following YCQL operations:
-
-* Data changes
-* CREATE and DROP TABLE
-* ALTER TABLE (including ADD, DROP, and RENAME COLUMN)
-* CREATE and DROP INDEX
-
-Development for this feature is tracked in [issue 7120](https://github.com/yugabyte/yugabyte-db/issues/7120). Some forthcoming features include:
-
-* YCQL roles and permissions
-* Support for automatic tablet splitting
+* PITR works only with _in-cluster_ distributed snapshots. PITR support for off-cluster backups is under consideration for the future. Tracking issue: [8847](https://github.com/yugabyte/yugabyte-db/issues/8847).
+* You can't modify a snapshot schedule once it's created. If you need to change the interval or the retention period, delete the snapshot and recreate it with the new parameters. Tracking issue: [8417](https://github.com/yugabyte/yugabyte-db/issues/8417).
