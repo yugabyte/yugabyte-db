@@ -24,12 +24,13 @@ import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import java.util.Collections;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 import play.libs.Json;
 import play.mvc.Result;
 
@@ -105,6 +106,38 @@ public class UniverseUiOnlyController extends AuthenticatedController {
             Audit.ActionType.Configure,
             request().body().asJson());
     return PlatformResults.withData(taskParams);
+  }
+
+  @ApiOperation(
+      value = "Get available update options list",
+      notes = "Returns a list of available update options for current state ",
+      nickname = "getUpdateOptions",
+      response = Set.class,
+      hidden = true)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "config_params",
+          value = "configure params",
+          dataType = "com.yugabyte.yw.forms.UniverseConfigureTaskParams",
+          required = true,
+          paramType = "body"))
+  public Result getUpdateOptions(UUID customerUUID) {
+    // Verify the customer with this universe is present.
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+
+    UniverseConfigureTaskParams taskParams =
+        bindFormDataToTaskParams(ctx(), request(), UniverseConfigureTaskParams.class);
+
+    Set<UniverseDefinitionTaskParams.UpdateOptions> options =
+        universeCRUDHandler.getUpdateOptions(customer, taskParams);
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.Universe,
+            Objects.toString(taskParams.universeUUID, null),
+            Audit.ActionType.UpdateOptions,
+            request().body().asJson());
+    return PlatformResults.withData(options);
   }
 
   /**
