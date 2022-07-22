@@ -1,0 +1,27 @@
+<h2>Master gflags</h2>
+
+<p>Here's a list of all the master gflags:</p>
+{{/*
+{{ range .Site.Data.masterGflags.GFlags }}
+  `{{ .name }}`: {{ .meaning }} Default is `{{ .default }}`.
+{{ end }}
+*/}}
+
+<table>
+  <thead>
+    <tr>
+      <th>GFlag</th>
+      <th>Default value</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody>
+{{ range .Site.Data.masterGflags }}
+<tr>
+  <td>{{ .name }}</td>
+  <td>{{ .default }}</td>
+  <td>{{ .meaning }}</td>
+</tr>
+{{ end }}
+  </tbody>
+</table>
