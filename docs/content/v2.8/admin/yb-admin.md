@@ -990,7 +990,7 @@ In both cases, the output is similar to the following:
 
 #### delete_snapshot_schedule
 
-Deletes the snapshot schedule with this ID. Note, this will also remove all of the snapshots associated with the schedule!
+Deletes the snapshot schedule with the given ID, **and all of the snapshots** associated with that schedule.
 
 Returns a JSON object with the schedule_id that was just deleted.
 
@@ -1000,7 +1000,7 @@ Returns a JSON object with the schedule_id that was just deleted.
 yb-admin delete_snapshot_schedule <schedule-id>
 ```
 
-Where _schedule-id_ is the snapshot schedule's unique identifier.
+Where *schedule-id* is the snapshot schedule's unique identifier.
 
 **Example**
 
@@ -1009,10 +1009,11 @@ Where _schedule-id_ is the snapshot schedule's unique identifier.
     delete_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256
 ```
 
-The output should show the snapshot ID we just deleted.
-```output
+The output should show the schedule ID we just deleted.
+
+```output.json
 {
-    "snapshot_id": "6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256"
+    "schedule_id": "6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256"
 }
 ```
 

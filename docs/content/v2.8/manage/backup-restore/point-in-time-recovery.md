@@ -67,7 +67,7 @@ Assuming the retention target is three days, you can execute the following comma
 
 The following output is a unique ID of the newly-created snapshot schedule:
 
-```json
+```output.json
 {
   "schedule_id": "6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256"
 }
@@ -91,7 +91,7 @@ To see a list of schedules that currently exist in the cluster, use the followin
 ./bin/yb-admin list_snapshot_schedules
 ```
 
-```json
+```output.json
 {
   "schedules": [
     {
