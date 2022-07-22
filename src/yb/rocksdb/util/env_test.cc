@@ -1023,7 +1023,7 @@ TEST_F(EnvPosixTest, WritableFileWrapper) {
     Status Flush() override { inc(3); return Status::OK(); }
     Status Sync() override { inc(4); return Status::OK(); }
     Status Fsync() override { inc(5); return Status::OK(); }
-    void SetIOPriority(Env::IOPriority pri) override { inc(6); }
+    void SetIOPriority(yb::IOPriority pri) override { inc(6); }
     uint64_t GetFileSize() override { inc(7); return 0; }
     void GetPreallocationStatus(size_t* block_size,
                                 size_t* last_allocated_block) override {
@@ -1075,7 +1075,7 @@ TEST_F(EnvPosixTest, WritableFileWrapper) {
     ASSERT_OK(w.Flush());
     ASSERT_OK(w.Sync());
     ASSERT_OK(w.Fsync());
-    w.SetIOPriority(Env::IOPriority::IO_HIGH);
+    w.SetIOPriority(yb::IOPriority::kHigh);
     w.GetFileSize();
     w.GetPreallocationStatus(nullptr, nullptr);
     w.GetUniqueId(nullptr);

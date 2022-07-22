@@ -296,7 +296,7 @@ class MockWritableFile : public WritableFile {
 
  private:
   inline size_t RequestToken(size_t bytes) {
-    if (rate_limiter_ && io_priority_ < Env::IO_TOTAL) {
+    if (rate_limiter_ && io_priority_ < yb::IOPriority::kTotal) {
       bytes = std::min(bytes,
           static_cast<size_t>(rate_limiter_->GetSingleBurstBytes()));
       rate_limiter_->Request(bytes, io_priority_);
