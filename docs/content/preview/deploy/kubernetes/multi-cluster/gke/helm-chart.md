@@ -23,58 +23,56 @@ type: docs
   </li>
 </ul>
 
-The instructions on this page highlight how to deploy a single multi-region YugabyteDB cluster that spans three [GKE](https://cloud.google.com/kubernetes-engine/docs/) clusters, each running in a different region. Each region also has an internal DNS load balancer set to [global access](https://cloud.google.com/kubernetes-engine/docs/how-to/internal-load-balancing#global_access). This configuration allows pods in one GKE cluster to discover pods in another GKE cluster without exposing any of the DNS information to the world outside your GKE project.
+You can deploy a single multi-region YugabyteDB cluster that spans three [GKE](https://cloud.google.com/kubernetes-engine/docs/) clusters, each running in a different region. Each region also has an internal DNS load balancer set to [global access](https://cloud.google.com/kubernetes-engine/docs/how-to/internal-load-balancing#global_access). This configuration allows pods in one GKE cluster to discover pods in another GKE cluster without exposing any of the DNS information to the world outside your GKE project.
 
-We will use the standard single-zone YugabyteDB Helm Chart to deploy one third of the nodes in the database cluster in each of the 3 GKE clusters.
+In the example provided in this document, you will use the standard single-zone YugabyteDB Helm chart to deploy one third of the nodes in the database cluster in each of the three GKE clusters.
 
 ## Prerequisites
 
-You must have 3 GKE clusters with Helm configured. If you have not installed the Helm client (`helm`), see [Installing Helm](https://helm.sh/docs/intro/install/).
+You must have three GKE clusters with Helm configured. If you have not installed the Helm client (`helm`), see [Install Helm](https://helm.sh/docs/intro/install/).
 
 The YugabyteDB Helm chart has been tested with the following software versions:
 
-- GKE running Kubernetes 1.18 (or later) with nodes such that a total of 12 CPU cores and 45 GB RAM can be allocated to YugabyteDB. This can be three nodes with 4 CPU core and 15 GB RAM allocated to YugabyteDB. `n1-standard-8` is the minimum instance type that meets these criteria.
-- Helm 3.4 or later
-- YugabyteDB Docker image (yugabytedb/yugabyte) 2.1.0 or later
-- For optimal performance, ensure you've set the appropriate [system limits using `ulimit`](../../../../manual-deployment/system-config/#ulimits) on each node in your Kubernetes cluster.
+- GKE running Kubernetes 1.20 or later with nodes such that a total of 12 CPU cores and 45 GB RAM can be allocated to YugabyteDB. This can be three nodes with 4 CPU core and 15 GB RAM allocated to YugabyteDB. `n1-standard-8` is the minimum instance type that meets these criteria.
+- Helm 3.4 or later.
+- YugabyteDB Docker image (yugabytedb/yugabyte) 2.1.0 or later.
+- For optimal performance, ensure you have set the appropriate [system limits using `ulimit`](../../../../manual-deployment/system-config/#ulimits) on each node in your Kubernetes cluster.
 
-The following steps show how to meet these prerequisites.
+The following steps show how to meet these prerequisites:
 
 - Download and install the [Google Cloud SDK](https://cloud.google.com/sdk/downloads/).
 
-- Configure defaults for gcloud
+- Configure defaults for `gcloud`.
 
-Set the project ID as `yugabyte`. You can change this as per your need.
+- Set the project ID to `yugabyte`. You can change this as per your need.
 
-```sh
-$ gcloud config set project yugabyte
-```
+  ```sh
+  gcloud config set project yugabyte
+  ```
 
-- Install `kubectl`
+- Install the `kubectl`command line tool by running the following command:
 
-After installing Cloud SDK, install the `kubectl` command line tool by running the following command.
+  ```sh
+  gcloud components install kubectl
+  ```
 
-```sh
-$ gcloud components install kubectl
-```
+  Note that GKE is usually two or three major releases behind the upstream or OSS Kubernetes release. This means you have to make sure that you have the latest `kubectl` version that is compatible across different Kubernetes distributions.
 
-Note that GKE is usually 2 or 3 major releases behind the upstream/OSS Kubernetes release. This means you have to make sure that you have the latest `kubectl` version that is compatible across different Kubernetes distributions if that's what you intend to.
+- Ensure `helm` is installed by using the Helm version command:
 
-- Ensure `helm` is installed
+  ```sh
+  helm version
+  ```
 
-First, check to see if Helm is installed by using the Helm version command.
+  Expect an output similar to the following output:
 
-```sh
-$ helm version
-```
+  ```output
+  version.BuildInfo{Version:"v3.0.3", GitCommit:"ac925eb7279f4a6955df663a0128044a8a6b7593", GitTreeState:"clean", GoVersion:"go1.13.6"}
+  ```
 
-You should see something similar to the following output. Note that the `tiller` server side component has been removed in Helm 3.
+  Note that the `tiller` server side component has been removed in Helm 3.
 
-```output
-version.BuildInfo{Version:"v3.0.3", GitCommit:"ac925eb7279f4a6955df663a0128044a8a6b7593", GitTreeState:"clean", GoVersion:"go1.13.6"}
-```
-
-## 1. Create GKE clusters
+## Create GKE clusters
 
 ### Create clusters
 
@@ -212,7 +210,7 @@ spec:
     k8s-app: kube-dns
   sessionAffinity: None
   type: LoadBalancer
- ```
+```
 
 ### Apply the configuration to every cluster
 
