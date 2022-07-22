@@ -19,8 +19,7 @@
 #include <unordered_map>
 #include <unordered_set>
 
-#include "yb/client/async_initializer.h"
-#include "yb/client/client_fwd.h"
+#include "yb/client/tablet_server.h"
 
 #include "yb/common/pg_types.h"
 #include "yb/common/transaction.h"

@@ -1,8 +1,8 @@
 ---
-title: Create YSQL extensions in YugabyteDB Managed
+title: Create YSQL extensions
 linkTitle: Create extensions
 description: Add extensions to a YugabyteDB Managed cluster.
-headcontent:
+headcontent: Extend the functionality of your cluster using PostgreSQL extensions
 image: /images/section_icons/deploy/enterprise.png
 menu:
   preview_yugabyte-cloud:
@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-Extend the functionality of your cluster using PostgreSQL extensions. YugabyteDB comes bundled with a number of extensions that are tested to work with YSQL. For a list of bundled extensions, refer to [PostgreSQL extensions](../../../explore/ysql-language-features/pg-extensions/).
+YugabyteDB is bundled with a number of [PostgreSQL extensions](../../../explore/ysql-language-features/pg-extensions/) that are tested to work with YSQL.
 
 ## Loading extensions
 

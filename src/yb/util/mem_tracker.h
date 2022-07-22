@@ -152,9 +152,6 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
   ~MemTracker();
 
   #ifdef TCMALLOC_ENABLED
-  /* The properties definition can be found here:
-   * https://github.com/google/tcmalloc/blob/master/tcmalloc/malloc_extension.h#L226
-   */
   static int64_t GetTCMallocProperty(const char* prop) {
     size_t value;
     if (!MallocExtension::instance()->GetNumericProperty(prop, &value)) {
@@ -173,7 +170,8 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
   }
 
   static int64_t GetTCMallocActualHeapSizeBytes() {
-    return GetTCMallocCurrentHeapSizeBytes();
+    return GetTCMallocCurrentHeapSizeBytes() -
+           GetTCMallocProperty("tcmalloc.pageheap_unmapped_bytes");
   }
   #endif
 
@@ -363,6 +361,9 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
   // Logs the usage of this tracker and all of its children (recursively).
   std::string LogUsage(
       const std::string& prefix = "", int64_t usage_threshold = 0, int indent = 0) const;
+
+  // Logs the hard and soft memory limits. Does not include children.
+  void LogMemoryLimits() const;
 
   void EnableLogging(bool enable, bool log_stack) {
     enable_logging_ = enable;

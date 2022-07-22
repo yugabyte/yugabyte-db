@@ -47,13 +47,13 @@ You can choose the method to use to authenticate a particular client connection 
 
 YugabyteDB stores authentication credentials internally in the YB-Master system tables. The authentication mechanisms available to clients depend on what is supported and exposed by the YSQL, YCQL, and YEDIS APIs.
 
-Read more about [how to enable authentication in YugabyteDB](../../../secure/authentication).
+Read more about [how to enable authentication in YugabyteDB](../../../secure/authentication/).
 
 ## Authorization
 
 YugabyteDB provides role-based access control (RBAC), consisting of a collection of privileges on resources given to roles.
 
-Read more about [authorization in YugabyteDB](../../../secure/authorization).
+Read more about [authorization in YugabyteDB](../../../secure/authorization/).
 
 ### Roles
 
@@ -146,7 +146,7 @@ Server-to-server encryption is enabled using the `--use_node_to_node_encryption`
 
 Client-to-server encryption requires that server-to-server encryption be enabled, and is enabled using the `--use_client_to_server_encryption` flag.
 
-Read more about enabling [Encryption in transit](../../../secure/tls-encryption) in YugabyteDB.
+Read more about enabling [Encryption in transit](../../../secure/tls-encryption/) in YugabyteDB.
 
 ### Encryption at rest
 
@@ -164,7 +164,7 @@ To encrypt column data, you use the `PGP_SYM_ENCRYPT` function when inserting da
 yugabyte=# insert into employees values (1, 'joe', '56 grove st',  20000, PGP_SYM_ENCRYPT('AC-22001', 'AES_KEY'));
 ```
 
-Read more about enabling [column-level encryption](../../../secure/column-level-encryption) in YugabyteDB.
+Read more about enabling [column-level encryption](../../../secure/column-level-encryption/) in YugabyteDB.
 
 ## Auditing
 
@@ -172,7 +172,7 @@ Use audit logging to produce audit logs needed to comply with government, financ
 
 You enable audit logging using the `--ysql_pg_conf` TServer flag.
 
-Read more about [audit logging](../../../secure/audit-logging) in YugabyteDB.
+Read more about [audit logging](../../../secure/audit-logging/) in YugabyteDB.
 
 ### Session logging
 

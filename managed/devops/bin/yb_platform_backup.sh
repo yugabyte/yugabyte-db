@@ -156,8 +156,9 @@ create_backup() {
   db_port="${7}"
   verbose="${8}"
   prometheus_host="${9}"
-  k8s_namespace="${10}"
-  k8s_pod="${11}"
+  prometheus_port="${10}"
+  k8s_namespace="${11}"
+  k8s_pod="${12}"
   include_releases_flag="**/releases/**"
 
   mkdir -p "${output_path}"
@@ -189,16 +190,58 @@ create_backup() {
       echo "Failed"
       return
     fi
+
+    # The version_metadata.json file is always present in the container, so
+    # we don't need to check if the file exists before copying it to the output path.
+
+    # Note that the copied path is version_metadata_backup.json and not version_metadata.json
+    # because executing yb_platform_backup.sh with the kubectl command will first execute the
+    # script in the container, making the version metadata file already be renamed to
+    # version_metadata_backup.json and placed at location
+    # /opt/yugabyte/yugaware/version_metadata_backup.json in the container. We extract this file
+    # from the container to our local machine for version checking.
+
+    version_path="/opt/yugabyte/yugaware/version_metadata_backup.json"
+
+    fl="version_metadata_backup.json"
+
+    # Copy version_metadata_backup.json from container to local machine.
+    kubectl cp "${k8s_pod}:${version_path}" "${output_path}/${fl}" -n "${k8s_namespace}" -c yugaware
+
+    # Delete version_metadata_backup.json from container.
+    kubectl -n "${k8s_namespace}" exec -it "${k8s_pod}" -c yugaware -- \
+      /bin/bash -c "rm /opt/yugabyte/yugaware/version_metadata_backup.json"
+
     echo "Copying backup from container"
     # Copy backup archive from container to local machine.
     kubectl -n "${k8s_namespace}" -c yugaware cp \
       "${k8s_pod}:${backup_file}" "${output_path}/${backup_file}"
+
     # Delete backup archive from container.
     kubectl -n "${k8s_namespace}" exec -it "${k8s_pod}" -c yugaware -- \
       /bin/bash -c "rm /opt/yugabyte/yugaware/backup*.tgz"
     echo "Done"
     return
   fi
+
+  name="yugaware"
+
+  version_path=""
+
+  if [ -f ../../src/main/resources/version_metadata.json ]; then
+
+      version_path="../../src/main/resources/version_metadata.json"
+  else
+
+      # The version_metadata.json file is always present in the container, so
+      # we don't need to check if the file exists before copying it to the output path.
+      version_path="/opt/yugabyte/yugaware/conf/version_metadata.json"
+
+  fi
+
+  command="cat ${version_path}"
+
+  docker_aware_cmd "${name}" "${command}" > "${output_path}/version_metadata_backup.json"
 
   if [[ "$exclude_releases" = true ]]; then
     include_releases_flag=""
@@ -217,7 +260,7 @@ create_backup() {
     trap 'run_sudo_cmd "rm -rf ${data_dir}/${PROMETHEUS_SNAPSHOT_DIR}"' RETURN
     echo "Creating prometheus snapshot..."
     set_prometheus_data_dir "${prometheus_host}" "${data_dir}"
-    snapshot_dir=$(curl -X POST "http://${prometheus_host}:9090/api/v1/admin/tsdb/snapshot" |
+    snapshot_dir=$(curl -X POST "http://${prometheus_host}:${prometheus_port}/api/v1/admin/tsdb/snapshot" |
       python -c "import sys, json; print(json.load(sys.stdin)['data']['name'])")
     mkdir -p "$data_dir/$PROMETHEUS_SNAPSHOT_DIR"
     run_sudo_cmd "cp -aR ${PROMETHEUS_DATA_DIR}/snapshots/${snapshot_dir} \
@@ -254,15 +297,40 @@ restore_backup() {
   data_dir="${8}"
   k8s_namespace="${9}"
   k8s_pod="${10}"
+  disable_version_check="${11}"
   prometheus_dir_regex="^${PROMETHEUS_SNAPSHOT_DIR}/$"
+
+  m_path=""
+
+  if [ -f ../../src/main/resources/version_metadata.json ]; then
+
+      m_path="../../src/main/resources/version_metadata.json"
+
+  else
+
+      # The version_metadata.json file is always present in the container, so
+      # we don't need to check if the file exists before copying it to the output path.
+      m_path="/opt/yugabyte/yugaware/conf/version_metadata.json"
+
+  fi
+
+  input_path_rel=$(dirname ${input_path})
+  r_pth="${input_path_rel}/version_metadata_backup.json"
+  r_path_current="${input_path_rel}/version_metadata.json"
 
   # Perform K8s restore.
   if [[ -n "${k8s_namespace}" ]] || [[ -n "${k8s_pod}" ]]; then
+
     # Copy backup archive to container.
     echo "Copying backup to container"
     kubectl -n "${k8s_namespace}" -c yugaware cp \
       "${input_path}" "${k8s_pod}:/opt/yugabyte/yugaware/"
     echo "Done"
+
+    # Copy version_metadata_backup.json to container.
+    kubectl -n "${k8s_namespace}" -c yugaware cp \
+      "${r_pth}" "${k8s_pod}:/opt/yugabyte/yugaware/"
+
     # Determine backup archive filename.
     # Note: There is a slight race condition here. It will always use the most recent backup file.
     backup_file=$(kubectl -n "${k8s_namespace}" -c yugaware exec -it "${k8s_pod}" -c yugaware -- \
@@ -274,12 +342,69 @@ restore_backup() {
       verbose_flag="-v"
     fi
     backup_script="/opt/yugabyte/devops/bin/yb_platform_backup.sh"
-    kubectl -n "${k8s_namespace}" exec -it "${k8s_pod}" -c yugaware -- /bin/bash -c \
-      "${backup_script} restore ${verbose_flag} --input /opt/yugabyte/yugaware/${backup_file}"
+
+    #Passing in the required argument for --disable_version_check if set to true, since
+    #the script is called again within the Kubernetes container.
+    d="--disable_version_check"
+    cont_path="/opt/yugabyte/yugaware"
+
+    if [ "$disable_version_check" != true ]; then
+      kubectl -n "${k8s_namespace}" exec -it "${k8s_pod}" -c yugaware -- /bin/bash -c \
+        "${backup_script} restore ${verbose_flag} --input ${cont_path}/${backup_file}"
+    else
+      kubectl -n "${k8s_namespace}" exec -it "${k8s_pod}" -c yugaware -- /bin/bash -c \
+        "${backup_script} restore ${verbose_flag} --input ${cont_path}/${backup_file} ${d}"
+    fi
+
+    # Delete version_metadata_backup.json from container.
+    kubectl -n "${k8s_namespace}" exec -it "${k8s_pod}" -c yugaware -- \
+      /bin/bash -c "rm /opt/yugabyte/yugaware/version_metadata_backup.json"
+
+    # Delete version_metadata.json from container (it already exists at conf folder)
+    kubectl -n "${k8s_namespace}" exec -it "${k8s_pod}" -c yugaware -- \
+      /bin/bash -c "rm /opt/yugabyte/yugaware/version_metadata.json"
+
     # Delete backup archive from container.
     kubectl -n "${k8s_namespace}" exec -it "${k8s_pod}" -c yugaware -- \
       /bin/bash -c "rm /opt/yugabyte/yugaware/backup*.tgz"
     return
+  fi
+
+  name="yugaware"
+
+  command="cat ${m_path}"
+
+  docker_aware_cmd "${name}" "${command}" > "${input_path_rel}/version_metadata.json"
+
+  sub_command_1="'import json, sys; print(json.load(sys.stdin)[\"version_number\"])'"
+
+  sub_command_2="'import json, sys; print(json.load(sys.stdin)[\"build_number\"])'"
+
+  vers_command="eval cat ${r_path_current} | python -c ${sub_command_1}"
+
+  build_command="eval cat ${r_path_current} | python -c ${sub_command_2}"
+
+  cp1=$(${vers_command})
+
+  cp2=$(${build_command})
+
+  curr_platform_version=${cp1}-${cp2}
+
+  # The version_metadata.json file is always present in a release package, and it would have
+  # been stored during create_backup(), so we don't need to check if the file exists before
+  # restoring it from the restore path.
+  bp1=$(cat ${r_pth} | python -c 'import json,sys; print(json.load(sys.stdin)["version_number"])')
+  bp2=$(cat ${r_pth} | python -c 'import json,sys; print(json.load(sys.stdin)["build_number"])')
+  back_plat_version=${bp1}-${bp2}
+
+  if [ ${curr_platform_version} != ${back_plat_version} ] && [ "$disable_version_check" != true ]
+  then
+    echo "Your backups were created on a platform of version ${back_plat_version}, and you are
+    attempting to restore these backups on a platform of version ${curr_platform_version},
+    which is a mismatch. Please restore your platform instance exactly back to
+    ${back_plat_version} to proceed, or override this check by running the script with the
+    command line argument --disable_version_check true"
+    exit 1
   fi
 
   modify_service yb-platform stop
@@ -340,6 +465,7 @@ print_backup_usage() {
   echo "  -h, --db_host=HOST             postgres host (default: localhost)"
   echo "  -P, --db_port=PORT             postgres port (default: 5432)"
   echo "  -n, --prometheus_host=HOST     prometheus host (default: localhost)"
+  echo "  -t, --prometheus_port=PORT     prometheus port (default: 9090)"
   echo "  --k8s_namespace                kubernetes namespace"
   echo "  --k8s_pod                      kubernetes pod"
   echo "  -?, --help                     show create help, then exit"
@@ -361,6 +487,7 @@ print_restore_usage() {
   echo "  --k8s_namespace                kubernetes namespace"
   echo "  --k8s_pod                      kubernetes pod"
   echo "  -?, --help                     show restore help, then exit"
+  echo "  --disable_version_check         disable the backup version check (default: false)"
   echo
 }
 
@@ -394,10 +521,12 @@ db_username=postgres
 db_host=localhost
 db_port=5432
 prometheus_host=localhost
+prometheus_port=9090
 k8s_namespace=""
 k8s_pod=""
 data_dir=/opt/yugabyte
 verbose=false
+disable_version_check=false
 
 case $command in
   -?|--help)
@@ -459,6 +588,10 @@ case $command in
           prometheus_host=$2
           shift 2
           ;;
+        -t|--prometheus_port)
+          prometheus_port=$2
+          shift 2
+          ;;
         --k8s_namespace)
           k8s_namespace=$2
           shift 2
@@ -482,7 +615,8 @@ case $command in
     validate_k8s_args "${k8s_namespace}" "${k8s_pod}"
 
     create_backup "$output_path" "$data_dir" "$exclude_prometheus" "$exclude_releases" \
-    "$db_username" "$db_host" "$db_port" "$verbose" "$prometheus_host" "$k8s_namespace" "$k8s_pod"
+    "$db_username" "$db_host" "$db_port" "$verbose" "$prometheus_host" "$prometheus_port" \
+    "$k8s_namespace" "$k8s_pod"
     exit 0
     ;;
   restore)
@@ -543,6 +677,11 @@ case $command in
           k8s_pod=$2
           shift 2
           ;;
+        --disable_version_check)
+          disable_version_check=true
+          set -x
+          shift
+          ;;
         -?|--help)
           print_restore_usage
           exit 0
@@ -565,7 +704,7 @@ case $command in
     validate_k8s_args "${k8s_namespace}" "${k8s_pod}"
 
     restore_backup "$input_path" "$destination" "$db_host" "$db_port" "$db_username" "$verbose" \
-    "$prometheus_host" "$data_dir" "$k8s_namespace" "$k8s_pod"
+    "$prometheus_host" "$data_dir" "$k8s_namespace" "$k8s_pod" "$disable_version_check"
     exit 0
     ;;
   *)

@@ -128,5 +128,5 @@ Use the `CREATE TRIGGER` statement to create a trigger.
 
 - [`DROP TRIGGER`](../ddl_drop_trigger)
 - [`INSERT`](../dml_insert)
-- [`UPDATE`](../dml_update)
-- [`DELETE`](../dml_delete)
+- [`UPDATE`](../dml_update/)
+- [`DELETE`](../dml_delete/)

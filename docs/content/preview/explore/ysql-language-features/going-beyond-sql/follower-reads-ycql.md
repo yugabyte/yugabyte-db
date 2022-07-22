@@ -105,7 +105,7 @@ ycqlsh> SELECT k FROM ybdemo_keyspace.cassandrakeyvalue;
 
 ## 3. Strongly consistent reads from tablet leaders
 
-When performing strongly consistent reads as a part of the above command, all reads will be served by the tablet leader of the tablet that contains the key `key:0`. If you browse to the <a href='http://127.0.0.1:7000/tablet-servers' target="_blank">tablet-servers</a> page, you will see that all the requests are indeed being served by one tserver, as shown in the following illustration:
+When performing strongly consistent reads as a part of the above command, all reads will be served by the tablet leader of the tablet that contains the key `key:0`. If you browse to the [tablet-servers](http://127.0.0.1:7000/tablet-servers) page, you will see that all the requests are indeed being served by one tserver, as shown in the following illustration:
 
 ![Reads from the tablet leader](/images/ce/tunable-reads-leader.png)
 
@@ -124,7 +124,7 @@ $ java -jar ./yb-sample-apps.jar --workload CassandraKeyValue \
                                     --local_reads
 ```
 
-This can be easily seen by refreshing the <a href='http://127.0.0.1:7000/tablet-servers' target="_blank">tablet-servers</a> page, where you will see that the writes are served by a single YB-TServer that is the leader of the tablet for the key `key:0` while multiple YB-TServers which are replicas serve the reads.
+This can be easily seen by refreshing the [tablet-servers](http://127.0.0.1:7000/tablet-servers) page, where you will see that the writes are served by a single YB-TServer that is the leader of the tablet for the key `key:0` while multiple YB-TServers which are replicas serve the reads.
 
 ![Reads from the tablet follower](/images/ce/tunable-reads-followers.png)
 

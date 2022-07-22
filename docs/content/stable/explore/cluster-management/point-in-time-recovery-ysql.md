@@ -3,10 +3,9 @@ title: Point-in-Time Recovery for YSQL
 headerTitle: Point-in-time recovery
 linkTitle: Point-in-time recovery
 description: Restore data from a specific point in time in YugabyteDB for YSQL
-beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   stable:
-    identifier: cluster-management-point-in-time-recovery-ysql
+    identifier: cluster-management-point-in-time-recovery
     parent: explore-cluster-management
     weight: 704
 type: docs
@@ -14,32 +13,36 @@ type: docs
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/preview/explore/cluster-management/point-in-time-recovery-ysql" class="nav-link active">
+    <a href="../point-in-time-recovery-ysql/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
   <li >
-    <a href="/preview/explore/cluster-management/point-in-time-recovery-ycql" class="nav-link">
+    <a href="../point-in-time-recovery-ycql/" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
   </li>
 </ul>
 
-The point-in-time recovery feature allows you to restore the state of your cluster's data (and [certain types](../../../manage/backup-restore/point-in-time-recovery/#limitations) of metadata) from a specific point in time. This can be relative, such as "three hours ago", or an absolute timestamp.
+Point-in-time recovery (PITR) allows you to restore the state of your cluster's data and [certain types](../../../manage/backup-restore/point-in-time-recovery/#limitations) of metadata from a specific point in time. This can be relative, such as "three hours ago", or an absolute timestamp.
 
-Refer to [Features](../../../manage/backup-restore/point-in-time-recovery/#features), [Use cases](../../../manage/backup-restore/point-in-time-recovery/#use-cases), and [Limitations](../../../manage/backup-restore/point-in-time-recovery/#limitations) for details on this feature. For more details on the `yb-admin` commands, refer to the [Backup and snapshot commands](../../../admin/yb-admin/#backup-and-snapshot-commands) section of the yb-admin documentation.
+For more information, see [Point-in-time recovery](../../../manage/backup-restore/point-in-time-recovery/#features). For details on the `yb-admin` commands, refer to the [Backup and snapshot commands](../../../admin/yb-admin/#backup-and-snapshot-commands) section of the yb-admin documentation.
 
-You can try out the PITR feature by creating a database and populating it, creating a snapshot schedule, and restoring (be sure to check out the [limitations](../../../manage/backup-restore/point-in-time-recovery/#limitations)!) from a snapshot on the schedule.
+You can try out the PITR feature by creating a database and populating it, creating a snapshot schedule, and restoring from a snapshot on the schedule.
 
-{{< tip title="Examples are simplified" >}}
+{{< note title="Note" >}}
 
-The examples on this page are deliberately simple. In many of the scenarios presented, you could drop the index or table to recover. Consider the examples as part of an effort to undo a larger schema change, such as a database migration, which has performed several operations.
+This document contains examples that are deliberately simplified. In many of the scenarios, you could drop the index or table to recover. Consider the examples as part of an effort to undo a larger schema change, such as a database migration, which has performed several operations.
 
-{{< /tip >}}
+{{< /note >}}
 
 ## Undo data changes
+
+The process of undoing data changes involves creating and taking a snapshot of a table, and then performing a restore from either an absolute or relative time.
+
+Before attempting a restore, you need to confirm that there is no restore in progress for the subject keyspace or table; if multiple restore commands are issued, the data might enter an inconsistent state. For details, see [Restore to a point in time](../../../manage/backup-restore/point-in-time-recovery/#restore-to-a-point-in-time).
 
 ### Create and snapshot a table
 
@@ -48,7 +51,7 @@ Create and populate a table, look at a timestamp to which you'll restore, and th
 1. Start the YSQL shell and connect to your local instance:
 
     ```sh
-    $ bin/ysqlsh -h 127.0.0.1
+    ./bin/ysqlsh -h 127.0.0.1
     ```
 
 1. Create a table and populate some sample data:
@@ -81,13 +84,13 @@ Create and populate a table, look at a timestamp to which you'll restore, and th
     (4 rows)
     ```
 
-1. At a terminal prompt, create a snapshot schedule for the database from a shell prompt. In this example, the schedule is one snapshot every minute, and each snapshot is retained for ten minutes.
+1. At a terminal prompt, create a snapshot schedule for the database from a shell prompt. In the following example, the schedule is one snapshot every minute, and each snapshot is retained for ten minutes:
 
     ```sh
-    $ bin/yb-admin -master_addresses <master_addresses> create_snapshot_schedule 1 10 ysql.yugabyte
+    ./bin/yb-admin create_snapshot_schedule 1 10 ysql.yugabyte
     ```
 
-    ```output
+    ```output.json
     {
         "schedule_id": "0e4ceb83-fe3d-43da-83c3-013a8ef592ca"
     }
@@ -96,10 +99,10 @@ Create and populate a table, look at a timestamp to which you'll restore, and th
 1. Verify that a snapshot has happened:
 
     ```sh
-    $ bin/yb-admin -master_addresses <master_addresses> list_snapshot_schedules
+    ./bin/yb-admin list_snapshot_schedules
     ```
 
-    ```output
+    ```output.json
     {
         "schedules": [
             {
@@ -121,10 +124,10 @@ Create and populate a table, look at a timestamp to which you'll restore, and th
 
 ### Restore from an absolute time
 
-1. From a command prompt, get a timestamp.
+1. From a command prompt, get a timestamp:
 
     ```sh
-    $ python -c 'import datetime; print datetime.datetime.now().strftime("%s%f")'
+    python -c 'import datetime; print datetime.datetime.now().strftime("%s%f")'
     ```
 
     ```output
@@ -152,13 +155,13 @@ Create and populate a table, look at a timestamp to which you'll restore, and th
     (5 rows)
     ```
 
-1. Restore the snapshot schedule to the timestamp you obtained before you added the data, at a terminal prompt.
+1. Restore the snapshot schedule to the timestamp you obtained before you added the data, at a terminal prompt:
 
     ```sh
-    $ bin/yb-admin -master_addresses <master_addresses> restore_snapshot_schedule 0e4ceb83-fe3d-43da-83c3-013a8ef592ca 1620418817729963
+    ./bin/yb-admin restore_snapshot_schedule 0e4ceb83-fe3d-43da-83c3-013a8ef592ca 1620418817729963
     ```
 
-    ```output
+    ```output.json
     {
         "snapshot_id": "2287921b-1cf9-4bbc-ad38-e309f86f72e9",
         "restoration_id": "1c5ef7c3-a33a-46b5-a64e-3fa0c72709eb"
@@ -168,7 +171,7 @@ Create and populate a table, look at a timestamp to which you'll restore, and th
 1. Next, verify the restoration is in `RESTORED` state (you'll see more snapshots in the list, as well):
 
     ```sh
-    $ bin/yb-admin -master_addresses <master_addresses> list_snapshots
+    ./bin/yb-admin list_snapshots
     ```
 
     ```output
@@ -226,25 +229,25 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 
 ### Undo table creation
 
-1. At a terminal prompt, create a snapshot schedule for the database. In this example, the schedule is on the default `yugabyte` database, one snapshot every minute, and each snapshot is retained for ten minutes.
+1. At a terminal prompt, create a snapshot schedule for the database. In this example, the schedule is on the default `yugabyte` database, one snapshot every minute, and each snapshot is retained for ten minutes:
 
     ```sh
-    $ bin/yb-admin -master_addresses <master_addresses> create_snapshot_schedule 1 10 ysql.yugabyte
+    ./bin/yb-admin create_snapshot_schedule 1 10 ysql.yugabyte
     ```
 
-    ```output
+    ```output.json
     {
       "schedule_id": "1ccb7e8b-4032-48b9-ac94-9f425d270a97"
     }
     ```
 
-1. Verify that a snapshot has happened.
+1. Verify that a snapshot has happened:
 
     ```sh
-    $ bin/yb-admin -master_addresses <master_addresses> list_snapshot_schedules
+    ./bin/yb-admin list_snapshot_schedules
     ```
 
-    ```output
+    ```output.json
     {
       "schedules": [
           {
@@ -265,23 +268,23 @@ In addition to data changes, you can also use PITR to recover from metadata chan
     }
     ```
 
-1. To restore from an absolute time, get a timestamp from the command prompt. You'll create a table, then restore to this time to undo the table creation.
+1. To restore from an absolute time, get a timestamp from the command prompt. You'll create a table, then restore to this time to undo the table creation:
 
     ```sh
-    $ python -c 'import datetime; print datetime.datetime.now().strftime("%s%f")'
+    python -c 'import datetime; print datetime.datetime.now().strftime("%s%f")'
     ```
 
     ```output
     1627943076717734
     ```
 
-1. Start the YSQL shell and connect to your local instance.
+1. Start the YSQL shell and connect to your local instance:
 
     ```sh
-    $ bin/ysqlsh -h 127.0.0.1
+    ./bin/ysqlsh -h 127.0.0.1
     ```
 
-1. Create a table and populate some sample data.
+1. Create a table and populate some sample data:
 
     ```sql
     CREATE TABLE employees (
@@ -311,23 +314,23 @@ In addition to data changes, you can also use PITR to recover from metadata chan
     (4 rows)
     ```
 
-1. Restore the snapshot schedule to the timestamp you obtained before you created the table, at a terminal prompt.
+1. Restore the snapshot schedule to the timestamp you obtained before you created the table, at a terminal prompt:
 
     ```sh
-    $ bin/yb-admin -master_addresses <master_addresses> restore_snapshot_schedule 1ccb7e8b-4032-48b9-ac94-9f425d270a97 1627943076717734
+    ./bin/yb-admin restore_snapshot_schedule 1ccb7e8b-4032-48b9-ac94-9f425d270a97 1627943076717734
     ```
 
-    ```output
+    ```output.json
     {
       "snapshot_id": "5911ba63-9bde-4170-917e-2ee06a686e12",
       "restoration_id": "e059741e-1cff-4cf7-99c5-3c351c0ce22b"
     }
     ```
 
-1. Next, verify the restoration is in `RESTORED` state (you'll see more snapshots in the list, as well).
+1. Verify the restoration is in `RESTORED` state (you'll see more snapshots in the list, as well):
 
     ```sh
-    $ bin/yb-admin -master_addresses <master_addresses> list_snapshots
+    ./bin/yb-admin list_snapshots
     ```
 
     ```output
@@ -342,10 +345,10 @@ In addition to data changes, you can also use PITR to recover from metadata chan
     e059741e-1cff-4cf7-99c5-3c351c0ce22b    RESTORED
     ```
 
-1. Verify that the table no longer exists.
+1. Verify that the table no longer exists:
 
     ```sh
-    $ bin/ysqlsh -d yugabyte;
+    ./bin/ysqlsh -d yugabyte;
     ```
 
     ```sql
@@ -357,25 +360,25 @@ In addition to data changes, you can also use PITR to recover from metadata chan
     ```
 
 ### Undo table deletion
-1. At a terminal prompt, create a snapshot schedule for the database. In this example, the schedule is on the default `yugabyte` database, one snapshot every minute, and each snapshot is retained for ten minutes.
+1. At a terminal prompt, create a snapshot schedule for the database. In this example, the schedule is on the default `yugabyte` database, one snapshot every minute, and each snapshot is retained for ten minutes:
 
     ```sh
-    $ bin/yb-admin -master_addresses <master_addresses> create_snapshot_schedule 1 10 ysql.yugabyte
+    ./bin/yb-admin create_snapshot_schedule 1 10 ysql.yugabyte
     ```
 
-    ```output
+    ```output.json
     {
       "schedule_id": "b4217ea5-56dc-4daf-afea-743460ece241"
     }
     ```
 
-1. Start the YSQL shell and connect to your local instance.
+1. Start the YSQL shell and connect to your local instance:
 
     ```sh
-    $ bin/ysqlsh -h 127.0.0.1
+    ./bin/ysqlsh -h 127.0.0.1
     ```
 
-1. Create a table and populate some sample data.
+1. Create a table and populate some sample data:
 
     ```sql
     CREATE TABLE employees (
@@ -405,13 +408,13 @@ In addition to data changes, you can also use PITR to recover from metadata chan
     (4 rows)
     ```
 
-1. Verify that a snapshot has happened since table creation.
+1. Verify that a snapshot has happened since table creation:
 
     ```sh
-    $ bin/yb-admin -master_addresses <master_addresses> list_snapshot_schedules
+    ./bin/yb-admin list_snapshot_schedules
     ```
 
-    ```output
+    ```output.json
       {
       "schedules": [
           {
@@ -442,39 +445,39 @@ In addition to data changes, you can also use PITR to recover from metadata chan
       }
     ```
 
-1. To restore from an absolute time, get a timestamp from the command prompt. You'll delete the table, then restore to this time to undo the delete.
+1. To restore from an absolute time, get a timestamp from the command prompt. You'll delete the table, then restore to this time to undo the delete:
 
     ```sh
-    $ python -c 'import datetime; print datetime.datetime.now().strftime("%s%f")'
+    python -c 'import datetime; print datetime.datetime.now().strftime("%s%f")'
     ```
 
     ```output
     1627990118725202
     ```
 
-1. Drop this table.
+1. Drop this table:
 
     ```sql
     drop table employees;
     ```
 
-1. Restore the snapshot schedule to the timestamp you obtained before you deleted the table, at a terminal prompt.
+1. Restore the snapshot schedule to the timestamp you obtained before you deleted the table, at a terminal prompt:
 
     ```sh
-    $ bin/yb-admin -master_addresses <master_addresses> restore_snapshot_schedule b4217ea5-56dc-4daf-afea-743460ece241 1627990118725202
+    ./bin/yb-admin restore_snapshot_schedule b4217ea5-56dc-4daf-afea-743460ece241 1627990118725202
     ```
 
-    ```output
+    ```output.json
     {
       "snapshot_id": "663cec5d-48e7-4f27-89ac-94c2dd0a3c32",
       "restoration_id": "eda28aa5-10bc-431d-ade9-44c9b8d1810e"
     }
     ```
 
-1. Next, verify the restoration is in `RESTORED` state (you'll see more snapshots in the list, as well).
+1. Verify the restoration is in `RESTORED` state (you'll see more snapshots in the list, as well):
 
     ```sh
-    $ bin/yb-admin -master_addresses <master_addresses> list_snapshots
+    ./bin/yb-admin list_snapshots
     ```
 
     ```output
@@ -490,10 +493,10 @@ In addition to data changes, you can also use PITR to recover from metadata chan
     eda28aa5-10bc-431d-ade9-44c9b8d1810e    RESTORED
     ```
 
-1. Verify that the table exists with the data.
+1. Verify that the table exists with the data:
 
     ```sh
-    $ bin/ysqlsh -d yugabyte;
+    ./bin/ysqlsh -d yugabyte;
     ```
 
     ```sql
@@ -514,25 +517,25 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 
 #### Undo column addition
 
-1. At a terminal prompt, create a snapshot schedule for the database. In this example, the schedule is on the default `yugabyte` database, one snapshot every minute, and each snapshot is retained for ten minutes.
+1. At a terminal prompt, create a snapshot schedule for the database. In this example, the schedule is on the default `yugabyte` database, one snapshot every minute, and each snapshot is retained for ten minutes:
 
     ```sh
-    $ bin/yb-admin -master_addresses <master_addresses> create_snapshot_schedule 1 10 ysql.yugabyte
+    ./bin/yb-admin create_snapshot_schedule 1 10 ysql.yugabyte
     ```
 
-    ```output
+    ```output.json
     {
       "schedule_id": "47fd40c3-1c2f-4e1b-b64b-6c2c9f698946"
     }
     ```
 
-1. Start the YSQL shell and connect to your local instance.
+1. Start the YSQL shell and connect to your local instance:
 
     ```sh
-    $ bin/ysqlsh -h 127.0.0.1
+    ./bin/ysqlsh -h 127.0.0.1
     ```
 
-1. Create a table and populate some sample data.
+1. Create a table and populate some sample data:
 
     ```sql
     CREATE TABLE employees (
@@ -562,13 +565,13 @@ In addition to data changes, you can also use PITR to recover from metadata chan
     (4 rows)
     ```
 
-1. Verify that a snapshot has happened since table creation.
+1. Verify that a snapshot has happened since table creation:
 
     ```sh
-    $ bin/yb-admin -master_addresses <master_addresses> list_snapshot_schedules
+    ./bin/yb-admin list_snapshot_schedules
     ```
 
-    ```output
+    ```output.json
     {
       "schedules": [
           {
@@ -604,17 +607,17 @@ In addition to data changes, you can also use PITR to recover from metadata chan
       }
     ```
 
-1. To restore from an absolute time, get a timestamp from the command prompt. You'll add a column to the table, then restore to this time in order to undo the column addition.
+1. To restore from an absolute time, get a timestamp from the command prompt. You'll add a column to the table, then restore to this time in order to undo the column addition:
 
     ```sh
-    $ python -c 'import datetime; print datetime.datetime.now().strftime("%s%f")'
+    python -c 'import datetime; print datetime.datetime.now().strftime("%s%f")'
     ```
 
     ```output
     1627992256752809
     ```
 
-1. Using the same database, alter your table by adding a column.
+1. Using the same database, alter your table by adding a column:
 
     ```sql
     alter table employees add column v2 int;
@@ -631,23 +634,23 @@ In addition to data changes, you can also use PITR to recover from metadata chan
     (4 rows)
     ```
 
-1. At a terminal prompt, restore the snapshot schedule to the timestamp you obtained before you added the column.
+1. At a terminal prompt, restore the snapshot schedule to the timestamp you obtained before you added the column:
 
     ```sh
-    $ bin/yb-admin -master_addresses <master_addresses> restore_snapshot_schedule 47fd40c3-1c2f-4e1b-b64b-6c2c9f698946 1627992256752809
+    ./bin/yb-admin restore_snapshot_schedule 47fd40c3-1c2f-4e1b-b64b-6c2c9f698946 1627992256752809
     ```
 
-    ```output
+    ```output.json
     {
       "snapshot_id": "db876700-d553-49e4-a0d1-4c88e52d8a78",
       "restoration_id": "c240d26c-cbeb-46eb-b9ea-0a3e6a734ecf"
     }
     ```
 
-1. Next, verify the restoration is in `RESTORED` state (you'll see more snapshots in the list, as well):
+1. Verify the restoration is in `RESTORED` state (you'll see more snapshots in the list, as well):
 
     ```sh
-    $ bin/yb-admin -master_addresses <master_addresses> list_snapshots
+    ./bin/yb-admin list_snapshots
     ```
 
     ```output
@@ -665,7 +668,7 @@ In addition to data changes, you can also use PITR to recover from metadata chan
     c240d26c-cbeb-46eb-b9ea-0a3e6a734ecf    RESTORED
     ```
 
-1. Check that the v2 column is gone.
+1. Check that the v2 column is gone:
 
     ```sql
     select * from employees;
@@ -684,22 +687,22 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 
 #### Undo column deletion
 
-1. At a terminal prompt, create a snapshot schedule for the database. In this example, the schedule is on the default `yugabyte` database, one snapshot every minute, and each snapshot is retained for ten minutes.
+1. At a terminal prompt, create a snapshot schedule for the database. In this example, the schedule is on the default `yugabyte` database, one snapshot every minute, and each snapshot is retained for ten minutes:
 
     ```sh
-    $ bin/yb-admin -master_addresses <master_addresses> create_snapshot_schedule 1 10 ysql.yugabyte
+    ./bin/yb-admin create_snapshot_schedule 1 10 ysql.yugabyte
     ```
 
-    ```output
+    ```output.json
     {
       "schedule_id": "064d1734-377c-4842-a95e-88ce68c93ca9"
     }
     ```
 
-1. Start the YSQL shell and connect to your local instance.
+1. Start the YSQL shell and connect to your local instance:
 
     ```sh
-    $ bin/ysqlsh -h 127.0.0.1
+    bin/ysqlsh -h 127.0.0.1
     ```
 
 1. Create a table and populate some sample data:
@@ -732,13 +735,13 @@ In addition to data changes, you can also use PITR to recover from metadata chan
     (4 rows)
     ```
 
-1. Verify that a snapshot has happened since table creation.
+1. Verify that a snapshot has happened since table creation:
 
     ```sh
-    $ bin/yb-admin -master_addresses <master_addresses> list_snapshot_schedules
+    ./bin/yb-admin list_snapshot_schedules
     ```
 
-    ```output
+    ```output.json
     {
       "schedules": [
           {
@@ -769,17 +772,17 @@ In addition to data changes, you can also use PITR to recover from metadata chan
     }
     ```
 
-1. To restore from an absolute time, get a timestamp from the command prompt. You'll remove a column from the table, then restore to this time to get the column back.
+1. To restore from an absolute time, get a timestamp from the command prompt. You'll remove a column from the table, then restore to this time to get the column back:
 
     ```sh
-    $ python -c 'import datetime; print datetime.datetime.now().strftime("%s%f")'
+    python -c 'import datetime; print datetime.datetime.now().strftime("%s%f")'
     ```
 
     ```output
     1627993283589019
     ```
 
-1. Using the same database, alter your table by dropping a column.
+1. Using the same database, alter your table by dropping a column:
 
     ```sql
     alter table employees drop salary;
@@ -800,7 +803,7 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 1. Restore the snapshot schedule to the timestamp you obtained before you dropped the column, at a terminal prompt.
 
     ```sh
-    $ bin/yb-admin -master_addresses <master_addresses> restore_snapshot_schedule 064d1734-377c-4842-a95e-88ce68c93ca9 1627993283589019
+    ./bin/yb-admin restore_snapshot_schedule 064d1734-377c-4842-a95e-88ce68c93ca9 1627993283589019
     ```
 
     ```output
@@ -810,10 +813,10 @@ In addition to data changes, you can also use PITR to recover from metadata chan
     }
     ```
 
-1. Next, verify the restoration is in `RESTORED` state (you'll see more snapshots in the list, as well):
+1. Verify the restoration is in `RESTORED` state (you'll see more snapshots in the list, as well):
 
     ```sh
-    $ bin/yb-admin -master_addresses <master_addresses> list_snapshots
+    ./bin/yb-admin list_snapshots
     ```
 
     ```output
@@ -828,7 +831,7 @@ In addition to data changes, you can also use PITR to recover from metadata chan
     3601225d-21ff-45e8-bebc-ff84c058d290    RESTORED
     ```
 
-1. Verify that the salary column is back.
+1. Verify that the salary column is back:
 
     ```sql
     select * from employees;
@@ -847,22 +850,22 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 
 ### Undo index creation
 
-1. At a terminal prompt, create a snapshot schedule for the database. In this example, the schedule is on the default `yugabyte` database, one snapshot every minute, and each snapshot is retained for ten minutes.
+1. At a terminal prompt, create a snapshot schedule for the database. In this example, the schedule is on the default `yugabyte` database, one snapshot every minute, and each snapshot is retained for ten minutes:
 
     ```sh
-    $ bin/yb-admin -master_addresses <master_addresses> create_snapshot_schedule 1 10 ysql.yugabyte
+    ./bin/yb-admin create_snapshot_schedule 1 10 ysql.yugabyte
     ```
 
-    ```output
+    ```output.json
     {
       "schedule_id": "dcbe46e3-8108-4d50-8601-423b27d230b1"
     }
     ```
 
-1. Start the YSQL shell and connect to your local instance.
+1. Start the YSQL shell and connect to your local instance:
 
     ```sh
-    $ bin/ysqlsh -h 127.0.0.1
+    ./bin/ysqlsh -h 127.0.0.1
     ```
 
 1. Create a table and populate some sample data:
@@ -895,13 +898,13 @@ In addition to data changes, you can also use PITR to recover from metadata chan
     (4 rows)
     ```
 
-1. Verify that a snapshot has happened since table creation.
+1. Verify that a snapshot has happened since table creation:
 
     ```sh
-    $ bin/yb-admin -master_addresses <master_addresses> list_snapshot_schedules
+    ./bin/yb-admin list_snapshot_schedules
     ```
 
-    ```output
+    ```output.json
     {
       "schedules": [
           {
@@ -932,17 +935,17 @@ In addition to data changes, you can also use PITR to recover from metadata chan
     }
     ```
 
-1. To restore from an absolute time, get a timestamp from the command prompt. You'll create an index on the table, then restore to this time to undo the index creation.
+1. To restore from an absolute time, get a timestamp from the command prompt. You'll create an index on the table, then restore to this time to undo the index creation:
 
     ```sh
-    $ python -c 'import datetime; print datetime.datetime.now().strftime("%s%f")'
+    python -c 'import datetime; print datetime.datetime.now().strftime("%s%f")'
     ```
 
     ```output
     1627994453375139
     ```
 
-1. Create an index on the table.
+1. Create an index on the table:
 
     ```sql
     create index t1_index on employees (employee_no);
@@ -962,10 +965,10 @@ In addition to data changes, you can also use PITR to recover from metadata chan
          "t1_index" lsm (employee_no HASH)
     ```
 
-1. Restore the snapshot schedule to the timestamp you obtained before you created the index, at a terminal prompt.
+1. Restore the snapshot schedule to the timestamp you obtained before you created the index, at a terminal prompt:
 
     ```sh
-    $ bin/yb-admin -master_addresses <master_addresses> restore_snapshot_schedule dcbe46e3-8108-4d50-8601-423b27d230b1 1627994453375139
+    ./bin/yb-admin restore_snapshot_schedule dcbe46e3-8108-4d50-8601-423b27d230b1 1627994453375139
     ```
 
     ```output
@@ -975,10 +978,10 @@ In addition to data changes, you can also use PITR to recover from metadata chan
     }
     ```
 
-1. Next, verify the restoration is in `RESTORED` state (you'll see more snapshots in the list, as well):
+1. Verify the restoration is in `RESTORED` state (you'll see more snapshots in the list, as well):
 
     ```sh
-    $ bin/yb-admin -master_addresses <master_addresses> list_snapshots
+    ./bin/yb-admin list_snapshots
     ```
 
     ```output
@@ -995,7 +998,7 @@ In addition to data changes, you can also use PITR to recover from metadata chan
     f7943fe6-d6fb-45e1-9086-2de864543d62    RESTORED
     ```
 
-1. Verify that the index is gone.
+1. Verify that the index is gone:
 
     ```sql
     \d employees;
@@ -1013,8 +1016,4 @@ In addition to data changes, you can also use PITR to recover from metadata chan
          "employees_pkey" PRIMARY KEY, lsm (employee_no HASH)
     ```
 
-{{< tip title="Other metadata changes" >}}
-
-Along similar lines, you can also undo index deletions and alter table rename columns.
-
-{{< /tip >}}
+Along similar lines, you can undo index deletions and alter table rename columns.

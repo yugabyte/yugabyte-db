@@ -1,7 +1,7 @@
 ---
 title: Build a Rust application that uses Diesel and YSQL
 headerTitle: Build a Rust application
-linkTitle: Java
+linkTitle: Rust
 description: Build a sample Rust application that uses Diesel and YSQL API to connect to and interact with YugabyteDB.
 menu:
   preview:
@@ -42,7 +42,7 @@ This tutorial assumes that you have:
 ## Clone the "orm-examples" repository
 
 ```sh
-$ git clone https://github.com/yugabyte/orm-examples.git && cd orm-examples/rust/diesel
+$ git clone https://github.com/YugabyteDB-Samples/orm-examples.git && cd orm-examples/rust/diesel
 ```
 
 Build the REST API server (written using Diesel and Rocket) as follows:

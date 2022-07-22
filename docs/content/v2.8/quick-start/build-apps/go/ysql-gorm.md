@@ -84,7 +84,7 @@ go get github.com/lib/pq/hstore
 Clone the Yugabyte [`orm-examples` repository](https://github.com/yugabyte/orm-examples) by running the following command.
 
 ```sh
-$ git clone https://github.com/yugabyte/orm-examples.git
+$ git clone https://github.com/YugabyteDB-Samples/orm-examples.git
 ```
 
 Run the following `export` command to specify the `GOPATH` environment variable.

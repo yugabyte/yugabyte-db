@@ -1,6 +1,6 @@
 ---
-title: grouping sets, rollup, cube
-linkTitle: grouping sets, rollup, cube
+title: Grouping sets, rollup, cube
+linkTitle: Grouping sets, rollup, cube
 headerTitle: Using the GROUPING SETS, ROLLUP, and CUBE syntax for aggregate function invocation
 description: Explains the GROUPING SETS, ROLLUP, and CUBE syntax and semantics for aggregate function invocation.
 menu:

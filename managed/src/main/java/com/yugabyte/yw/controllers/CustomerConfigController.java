@@ -5,7 +5,10 @@ package com.yugabyte.yw.controllers;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.DeleteCustomerConfig;
 import com.yugabyte.yw.commissioner.tasks.DeleteCustomerStorageConfig;
+import com.yugabyte.yw.common.CloudUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.ConfigHelper.ConfigType;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.customer.config.CustomerConfigUI;
 import com.yugabyte.yw.forms.PlatformResults;
@@ -17,6 +20,8 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.CustomerConfig.ConfigState;
+import com.yugabyte.yw.models.configs.data.CustomerConfigData;
+import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.swagger.annotations.Api;
@@ -24,11 +29,14 @@ import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import javax.inject.Inject;
+import org.apache.commons.lang.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import play.libs.Json;
 import play.mvc.Result;
 
 @Api(
@@ -70,7 +78,7 @@ public class CustomerConfigController extends AuthenticatedController {
             Objects.toString(customerConfig.configUUID, null),
             Audit.ActionType.Create,
             request().body().asJson());
-    return PlatformResults.withData(customerConfig);
+    return PlatformResults.withData(this.customerConfigService.getConfigMasked(customerConfig));
   }
 
   @ApiOperation(
@@ -208,7 +216,7 @@ public class CustomerConfigController extends AuthenticatedController {
             Objects.toString(customerConfig.configUUID, null),
             Audit.ActionType.Update,
             request().body().asJson());
-    return PlatformResults.withData(unmaskedConfig);
+    return PlatformResults.withData(this.customerConfigService.getConfigMasked(unmaskedConfig));
   }
 
   @ApiOperation(
@@ -244,6 +252,33 @@ public class CustomerConfigController extends AuthenticatedController {
             Objects.toString(customerConfig.configUUID, null),
             Audit.ActionType.Update,
             request().body().asJson());
-    return PlatformResults.withData(unmaskedConfig);
+    return PlatformResults.withData(this.customerConfigService.getConfigMasked(unmaskedConfig));
+  }
+
+  @ApiOperation(
+      value = "List buckets with provided credentials",
+      response = Object.class,
+      nickname = "listBuckets")
+  @ApiImplicitParams({
+    @ApiImplicitParam(
+        name = "Credentials",
+        value = "Credentials to list buckets",
+        required = true,
+        dataType = "com.yugabyte.yw.models.configs.data.CustomerConfigData",
+        paramType = "body")
+  })
+  public Result listBuckets(UUID customerUUID, String cloud) {
+    Customer.getOrBadRequest(customerUUID);
+    CustomerConfigData configData = null;
+    try {
+      Class<? extends CustomerConfigData> configClass =
+          CustomerConfig.getDataClass(CustomerConfig.ConfigType.STORAGE, cloud);
+      configData = parseJson(configClass);
+    } catch (NullPointerException e) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, String.format("Unsupported cloud type %s", cloud));
+    }
+    CloudUtil cloudUtil = CloudUtil.getCloudUtil(cloud);
+    return PlatformResults.withData(cloudUtil.listBuckets(configData));
   }
 }

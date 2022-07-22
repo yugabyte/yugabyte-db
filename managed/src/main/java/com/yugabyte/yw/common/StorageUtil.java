@@ -13,6 +13,11 @@ public interface StorageUtil {
   public CloudStoreSpec createCloudStoreSpec(
       String backupLocation, String commonDir, CustomerConfigData configData);
 
+  public CloudStoreSpec createCloudStoreSpec(
+      CustomerConfigData configData, String bucket, String cloudDir);
+
+  public String createDirPath(String bucket, String dir);
+
   public static <T extends StorageUtil> T getStorageUtil(String configType) {
     switch (configType) {
       case Util.S3:

@@ -68,7 +68,7 @@ public class DeleteXClusterConfigTest extends CommissionerBaseTest {
       ImmutableList.of(
           TaskType.DeleteReplication,
           TaskType.DeleteBootstrapIds,
-          TaskType.DeleteXClusterConfigFromDb,
+          TaskType.DeleteXClusterConfigEntry,
           TaskType.UniverseUpdateSucceeded,
           TaskType.UniverseUpdateSucceeded);
 

@@ -127,7 +127,7 @@ libraryDependencies ++= Seq(
   "com.google.inject.extensions" % "guice-multibindings" % "4.2.3",
   "org.mockito" % "mockito-core" % "2.13.0",
   "org.mockito" % "mockito-inline" % "3.8.0" % Test,
-  "org.mindrot" % "jbcrypt" % "0.4",
+  "org.mindrot" % "jbcrypt" % "0.4" % Test,
   "org.postgresql" % "postgresql" % "42.2.25",
   "net.logstash.logback" % "logstash-logback-encoder" % "6.2",
   "org.codehaus.janino" % "janino" % "3.1.6",
@@ -170,8 +170,11 @@ libraryDependencies ++= Seq(
   "commons-io" % "commons-io" % "2.8.0",
   "commons-codec" % "commons-codec" % "1.15",
   "com.google.apis" % "google-api-services-compute" % "v1-rev20220506-1.32.1",
+  "com.google.apis" % "google-api-services-iam" % "v1-rev20211104-1.32.1",
   "com.google.cloud" % "google-cloud-compute" % "1.9.1",
   "com.google.cloud" % "google-cloud-storage" % "2.2.1",
+  "com.google.cloud" % "google-cloud-kms" % "2.4.4",
+  "com.google.cloud" % "google-cloud-resourcemanager" % "1.4.0",
   "org.projectlombok" % "lombok" % "1.18.20",
   "com.squareup.okhttp3" % "okhttp" % "4.9.2",
   "com.squareup.okhttp3" % "mockwebserver" % "4.9.2" % Test,
@@ -377,8 +380,8 @@ runPlatform := {
   Project.extract(newState).runTask(runPlatformTask, newState)
 }
 
-libraryDependencies += "org.yb" % "yb-client" % "0.8.20-SNAPSHOT"
-libraryDependencies += "org.yb" % "ybc-client" % "0.0.1"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.21-SNAPSHOT"
+libraryDependencies += "org.yb" % "ybc-client" % "0.0.4"
 
 libraryDependencies ++= Seq(
   // We wont use swagger-ui jar since we want to change some of the assets:
@@ -392,13 +395,15 @@ libraryDependencies ++= Seq(
   "io.netty" % "netty-tcnative-boringssl-static" % "2.0.44.Final",
   "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % "2.9.10",
   "org.slf4j" % "slf4j-ext" % "1.7.26",
-  "net.minidev" % "json-smart" % "2.4.8"
+  "net.minidev" % "json-smart" % "2.4.8",
+  // Overrides to address vulnerability in swagger-play2
+  "com.typesafe.akka" %% "akka-actor" % "2.5.16"
 )
 // https://mvnrepository.com/artifact/eu.unicredit/sbt-swagger-codegen-lib
 //libraryDependencies += "eu.unicredit" %% "sbt-swagger-codegen-lib" % "0.0.12"
 
 
-dependencyOverrides += "com.google.protobuf" % "protobuf-java" % "latest.integration"
+dependencyOverrides += "com.google.protobuf" % "protobuf-java" % "3.19.4"
 dependencyOverrides += "com.google.guava" % "guava" % "23.0"
 dependencyOverrides += "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.9.10"
 dependencyOverrides += "com.fasterxml.jackson.dataformat" % "jackson-dataformat-cbor" % "2.9.10"

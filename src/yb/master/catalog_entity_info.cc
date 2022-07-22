@@ -722,23 +722,29 @@ void TableInfo::AbortTasksAndCloseIfRequested(bool close) {
 }
 
 void TableInfo::WaitTasksCompletion() {
-  int wait_time = 5;
+  const int kMaxWaitMs = 30000;
+  int wait_time_ms = 5;
   while (1) {
     std::vector<std::shared_ptr<server::MonitoredTask>> waiting_on_for_debug;
+    bool at_max_wait = wait_time_ms >= kMaxWaitMs;
     {
       SharedLock<decltype(lock_)> l(lock_);
       if (pending_tasks_.empty()) {
         break;
-      } else if (VLOG_IS_ON(1)) {
+      } else if (VLOG_IS_ON(1) || at_max_wait) {
         waiting_on_for_debug.reserve(pending_tasks_.size());
         waiting_on_for_debug.assign(pending_tasks_.cbegin(), pending_tasks_.cend());
       }
     }
     for (const auto& task : waiting_on_for_debug) {
-      VLOG(1) << "Waiting for Aborting task " << task.get() << " " << task->description();
+      if (at_max_wait) {
+        LOG(WARNING) << "Long wait for aborting task " << task.get() << " " << task->description();
+      } else {
+        VLOG(1) << "Waiting for aborting task " << task.get() << " " << task->description();
+      }
     }
-    base::SleepForMilliseconds(wait_time);
-    wait_time = std::min(wait_time * 5 / 4, 10000);
+    base::SleepForMilliseconds(wait_time_ms);
+    wait_time_ms = std::min(wait_time_ms * 5 / 4, kMaxWaitMs);
   }
 }
 
@@ -783,7 +789,7 @@ TabletInfos TableInfo::GetTablets(IncludeInactive include_inactive) const {
   return result;
 }
 
-bool TableInfo::HasOutstandingSplits() const {
+bool TableInfo::HasOutstandingSplits(bool wait_for_parent_deletion) const {
   SharedLock<decltype(lock_)> l(lock_);
   DCHECK(!colocated());
   std::unordered_set<TabletId> partitions_tablets;
@@ -794,8 +800,14 @@ bool TableInfo::HasOutstandingSplits() const {
                                    << " belonging to table " << id() << " is not yet running";
       return true;
     }
-    partitions_tablets.insert(p.second->tablet_id());
+    if (wait_for_parent_deletion) {
+      partitions_tablets.insert(p.second->tablet_id());
+    }
   }
+  if (!wait_for_parent_deletion) {
+    return false;
+  }
+
   for (const auto& p : tablets_) {
     // If any parents have not been deleted yet, the split is not yet complete.
     if (!partitions_tablets.contains(p.second->tablet_id())) {

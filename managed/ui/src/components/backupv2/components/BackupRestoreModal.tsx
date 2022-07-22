@@ -17,7 +17,7 @@
 
 import React, { FC, useState } from 'react';
 import { Alert, Col, Row } from 'react-bootstrap';
-import { getKMSConfigs, IBackup, IUniverse, Keyspace_Table, restoreEntireBackup } from '..';
+import { getKMSConfigs, IBackup, ITable, IUniverse, Keyspace_Table, restoreEntireBackup } from '..';
 import { YBModalForm } from '../../common/forms';
 import {
   FormatUnixTimeStampTimeToTimezone,
@@ -42,7 +42,8 @@ import { components } from 'react-select';
 import { Badge_Types, StatusBadge } from '../../common/badge/StatusBadge';
 import { YBSearchInput } from '../../common/forms/fields/YBSearchInput';
 import { find, isFunction } from 'lodash';
-import { BACKUP_API_TYPES, TableType } from '../common/IBackup';
+import { BACKUP_API_TYPES } from '../common/IBackup';
+import { TableType } from '../../../redesign/helpers/dtos';
 import clsx from 'clsx';
 import './BackupRestoreModal.scss';
 
@@ -163,7 +164,13 @@ export const BackupRestoreModal: FC<RestoreModalProps> = ({ backup_details, onHi
     options.setFieldValue('should_rename_keyspace', true, false);
     options.setFieldValue('disable_keyspace_rename', true, false);
 
-    const fetchKeyspace = await fetchTablesInUniverse(values['targetUniverseUUID'].value);
+    let fetchKeyspace: { data: ITable[] } = { data: [] };
+    try {
+      fetchKeyspace = await fetchTablesInUniverse(values['targetUniverseUUID'].value);
+    } catch (ex) {
+      setIsFetchingTables(false);
+      toast.error(`unable to fetch database for "${values['targetUniverseUUID'].label}"`);
+    }
     setIsFetchingTables(false);
 
     const keyspaceInForm = backup_details!.responseList.map(
@@ -177,8 +184,9 @@ export const BackupRestoreModal: FC<RestoreModalProps> = ({ backup_details, onHi
       isFunction(options.setSubmitting) && options.setSubmitting(true);
       return;
     }
-
-    const keyspaceInTargetUniverse = fetchKeyspace.data.map((k: any) => k.keySpace);
+    const keyspaceInTargetUniverse = fetchKeyspace.data
+      .filter((k) => k.tableType === values['backup']['backupType'])
+      .map((k) => k.keySpace);
     let hasErrors = false;
 
     keyspaceInForm.forEach((k: string, index: number) => {
@@ -192,7 +200,11 @@ export const BackupRestoreModal: FC<RestoreModalProps> = ({ backup_details, onHi
     options.setFieldValue('should_rename_keyspace', hasErrors, false);
     options.setFieldValue('disable_keyspace_rename', hasErrors, false);
 
-    setOverrideSubmitLabel(hasErrors ? TEXT_RENAME_DATABASE : TEXT_RESTORE);
+    if (hasErrors) {
+      options.setFieldValue('searchText', '', false);
+    }
+
+    setOverrideSubmitLabel(hasErrors && currentStep === 0 ? TEXT_RENAME_DATABASE : TEXT_RESTORE);
 
     isFunction(options.setSubmitting) && options.setSubmitting(false);
 
@@ -479,6 +491,7 @@ export function RenameKeyspace({
       <Row>
         <Col lg={12} className="no-padding">
           <YBSearchInput
+            val={values['searchText']}
             placeHolder="Search keyspace"
             onValueChanged={(e: React.ChangeEvent<HTMLInputElement>) => {
               setFieldValue('searchText', e.target.value);
@@ -491,7 +504,6 @@ export function RenameKeyspace({
           Databases in this backup
         </Col>
       </Row>
-
       <FieldArray
         name="keyspaces"
         render={({ form: { errors } }) =>
@@ -517,6 +529,9 @@ export function RenameKeyspace({
                   <Field
                     name={`keyspaces[${index}]`}
                     component={YBInputField}
+                    input={{
+                      value: values['keyspaces'][`${index}`]
+                    }}
                     onValueChanged={(val: any) => setFieldValue(`keyspaces[${index}]`, val)}
                     placeHolder="Add new name"
                   />

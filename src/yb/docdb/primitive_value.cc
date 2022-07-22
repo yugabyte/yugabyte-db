@@ -657,6 +657,7 @@ void DoAppendEncodedValue(const QLValuePB& value, Buffer* out) {
 
     case QLValuePB::kMapValue: FALLTHROUGH_INTENDED;
     case QLValuePB::kSetValue: FALLTHROUGH_INTENDED;
+    case QLValuePB::kTupleValue: FALLTHROUGH_INTENDED;
     case QLValuePB::kListValue:
       break;
 
@@ -1792,6 +1793,7 @@ PrimitiveValue PrimitiveValue::DoFromQLValuePB(const PB& value) {
 
     case QLValuePB::kMapValue: FALLTHROUGH_INTENDED;
     case QLValuePB::kSetValue: FALLTHROUGH_INTENDED;
+    case QLValuePB::kTupleValue: FALLTHROUGH_INTENDED;
     case QLValuePB::kListValue:
       break;
 
@@ -2270,6 +2272,7 @@ KeyEntryValue KeyEntryValue::DoFromQLValuePB(const PB& value, SortingType sortin
     case QLValuePB::kMapValue: FALLTHROUGH_INTENDED;
     case QLValuePB::kSetValue: FALLTHROUGH_INTENDED;
     case QLValuePB::kListValue: FALLTHROUGH_INTENDED;
+    case QLValuePB::kTupleValue: FALLTHROUGH_INTENDED;
     case QLValuePB::VALUE_NOT_SET:
       break;
     // default: fall through

@@ -44,7 +44,6 @@ class TabletServerBackupServiceProxy;
 class TabletServerIf;
 class TabletServerOptions;
 class TabletServerServiceProxy;
-class TabletServerForwardServiceProxy;
 class TabletServiceImpl;
 class TabletServerPathHandlers;
 

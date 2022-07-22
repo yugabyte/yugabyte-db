@@ -51,7 +51,6 @@ Status InitCDCStream(
     const std::string& producer_table_id,
     const std::string& consumer_table_id,
     const std::map<std::string, KeyRange>& consumer_tablet_keys,
-    std::unordered_set<HostPort, HostPortHash>* tserver_addrs,
     cdc::StreamEntryPB* stream_entry,
     std::shared_ptr<CDCRpcTasks> cdc_rpc_tasks);
 

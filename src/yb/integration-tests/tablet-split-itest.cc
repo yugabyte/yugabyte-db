@@ -928,8 +928,8 @@ class AutomaticTabletSplitITest : public TabletSplitITest {
 
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_validate_all_tablet_candidates) = false;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_outstanding_tablet_split_limit) = 5;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_outstanding_tablet_split_limit_per_tserver) = 5;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_outstanding_tablet_split_limit) = 0; // no limit
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_outstanding_tablet_split_limit_per_tserver) = 0; // no limit
   }
 
  protected:
@@ -1041,6 +1041,7 @@ TEST_F(AutomaticTabletSplitITest, IsTabletSplittingComplete) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_size_threshold_bytes) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_disable_compactions) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_deleting_split_tablets) = true;
 
   CreateSingleTablet();
   ASSERT_OK(WriteRows(1000, 1));
@@ -1053,27 +1054,42 @@ TEST_F(AutomaticTabletSplitITest, IsTabletSplittingComplete) {
       proxy_cache_.get(), client_->GetMasterLeaderAddress());
 
   // No splits at the beginning.
-  ASSERT_TRUE(ASSERT_RESULT(IsSplittingComplete(master_admin_proxy.get())));
+  ASSERT_TRUE(ASSERT_RESULT(IsSplittingComplete(master_admin_proxy.get(),
+                                                false /* wait_for_parent_deletion */)));
 
   // Create a split task by pausing when trying to get split key. IsTabletSplittingComplete should
   // include this ongoing task.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_tserver_get_split_key) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = true;
   std::this_thread::sleep_for(FLAGS_catalog_manager_bg_task_wait_ms * 2ms);
-  ASSERT_FALSE(ASSERT_RESULT(IsSplittingComplete(master_admin_proxy.get())));
+  ASSERT_FALSE(ASSERT_RESULT(IsSplittingComplete(master_admin_proxy.get(),
+                                                 false /* wait_for_parent_deletion */)));
 
   // Now let the split occur on master but not tserver.
   // IsTabletSplittingComplete should include splits that are only complete on master.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_tablet_split_probability) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_tserver_get_split_key) = false;
-  ASSERT_FALSE(ASSERT_RESULT(IsSplittingComplete(master_admin_proxy.get())));
+  ASSERT_FALSE(ASSERT_RESULT(IsSplittingComplete(master_admin_proxy.get(),
+                                                 false /* wait_for_parent_deletion */)));
 
-  // Verify that the split finishes, and that IsTabletSplittingComplete returns true even though
-  // compactions are not done.
+  // Verify that the split finishes, and that IsTabletSplittingComplete returns true (even though
+  // compactions are not done) if wait_for_parent_deletion is false .
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_tablet_split_probability) = 0;
+  ASSERT_OK(WaitForTabletSplitCompletion(2 /* expected_non_split_tablets */,
+                                         1 /* expected_split_tablets */));
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    return VERIFY_RESULT(IsSplittingComplete(master_admin_proxy.get(),
+                                             false /* wait_for_parent_deletion */));
+  }, MonoDelta::FromMilliseconds(FLAGS_catalog_manager_bg_task_wait_ms * 2),
+    "IsTabletSplittingComplete did not return true."));
+
+  // Re-enable deletion of children and check that IsTabletSplittingComplete returns true if
+  // wait_for_parent_deletion is true.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_deleting_split_tablets) = false;
   ASSERT_OK(WaitForTabletSplitCompletion(2));
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
-    return VERIFY_RESULT(IsSplittingComplete(master_admin_proxy.get()));
+    return VERIFY_RESULT(IsSplittingComplete(master_admin_proxy.get(),
+                                             true /* wait_for_parent_deletion */));
   }, MonoDelta::FromMilliseconds(FLAGS_catalog_manager_bg_task_wait_ms * 2),
     "IsTabletSplittingComplete did not return true."));
 }
@@ -2254,6 +2270,47 @@ TEST_F(TabletSplitExternalMiniClusterITest, CrashesAfterChildLogCopy) {
   CHECK_OK(non_faulted_follower->Restart());
 }
 
+class TabletSplitExternalMiniClusterCrashITest :
+    public TabletSplitExternalMiniClusterITest,
+    public testing::WithParamInterface<std::string> {
+ public:
+  void TestCrashServer(ExternalTabletServer *const server_to_crash, const TabletId& tablet_id) {
+    ASSERT_OK(cluster_->SetFlag(
+        server_to_crash, GetParam(), "true"));
+
+    CHECK_OK(SplitTablet(tablet_id));
+    CHECK_OK(cluster_->WaitForTSToCrash(server_to_crash));
+  }
+};
+
+TEST_P(TabletSplitExternalMiniClusterCrashITest, CrashLeaderTest) {
+  // Test crashing tserver hosting the tablet leader at different point
+  // during tablet splitting and restart.
+  CreateSingleTablet();
+  CHECK_OK(WriteRowsAndFlush());
+
+  const auto tablet_id = CHECK_RESULT(GetOnlyTestTabletId());
+  const auto leader_idx = CHECK_RESULT(cluster_->GetTabletLeaderIndex(tablet_id));
+  auto* const leader = cluster_->tablet_server(leader_idx);
+
+  TestCrashServer(leader, tablet_id);
+
+  CHECK_OK(leader->Restart());
+  ASSERT_OK(cluster_->WaitForTabletsRunning(leader, 20s * kTimeMultiplier));
+
+  ASSERT_OK(WaitForTabletsExcept(2, leader_idx, tablet_id));
+
+  // Check number of rows is correct after recovery.
+  ASSERT_OK(CheckRowsCount(kDefaultNumRows));
+
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    return WriteRows(kDefaultNumRows, kDefaultNumRows + 1).ok();
+  }, 20s * kTimeMultiplier, "Write rows after faulted leader resurrection."));
+
+  ASSERT_OK(CheckRowsCount(kDefaultNumRows * 2));
+  CheckTableKeysInRange(kDefaultNumRows * 2);
+}
+
 class TabletSplitRemoteBootstrapEnabledTest : public TabletSplitExternalMiniClusterITest {
  protected:
   void SetFlags() override {
@@ -3073,4 +3130,10 @@ INSTANTIATE_TEST_CASE_P(
     ::testing::ValuesIn(kPartitioningArray),
     TestParamToString<Partitioning>);
 
+INSTANTIATE_TEST_CASE_P(
+    TabletSplitExternalMiniClusterITest,
+    TabletSplitExternalMiniClusterCrashITest,
+    ::testing::Values(
+        "TEST_crash_before_apply_tablet_split_op",
+        "TEST_crash_before_source_tablet_mark_split_done"));
 }  // namespace yb

@@ -52,7 +52,10 @@ version_menu = "Releases"
   version = "v2.15 (Preview)"
 [[versions]]
   url = "/stable/"
-  version = "v2.12 (Stable)"
+  version = "v2.14 (Stable)"
+[[versions]]
+  url = "/v2.12/"
+  version = "v2.12"
 [[versions]]
   url = "/v2.8/"
   version = "v2.8"
@@ -69,6 +72,7 @@ version_menu = "Releases"
 # Custom params, regardless of theme
 [yb]
   terms_of_service = "https://www.yugabyte.com/terms-of-service/"
+  preview_version = "v2.15"
 
 # Header logo link
 [yb.navbar_logo]

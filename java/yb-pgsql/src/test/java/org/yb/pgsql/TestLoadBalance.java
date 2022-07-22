@@ -21,11 +21,14 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.yb.client.TestUtils;
+import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.minicluster.MiniYBDaemon;
 import org.yb.util.YBTestRunnerNonTsanOnly;
 
 import java.sql.Connection;
 import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -41,6 +44,13 @@ public class TestLoadBalance extends BasePgSQLTest {
     ConnectionBuilder cb = new ConnectionBuilder(miniCluster);
     cb.setLoadBalance(true);
     return cb;
+  }
+
+  @Override
+  protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder){
+    super.customizeMiniClusterBuilder(builder);
+    builder.numTservers(7);
+    builder.replicationFactor(3);
   }
 
   @Test
@@ -92,7 +102,7 @@ public class TestLoadBalance extends BasePgSQLTest {
     List<Connection> connList = new ArrayList<>();
     try {
       Map<String, Integer> hostToNumConnections = new HashMap<>();
-      for (int i = 0; i < 10; i++) {
+      for (int i = 0; i < 14; i++) {
         Connection c = getConnectionBuilder().connect();
         connList.add(c);
         String host = ((PgConnection)c).getQueryExecutor().getHostSpec().getHost();
@@ -110,9 +120,9 @@ public class TestLoadBalance extends BasePgSQLTest {
       Integer numConns = hostToNumConnections.get(firstHost);
       hostToNumConnections.put(firstHost, numConns+1);
       clb.printHostToConnMap();
-      AssertionWrappers.assertEquals(3, hostToNumConnections.size());
+      AssertionWrappers.assertEquals(7, hostToNumConnections.size());
       for (Map.Entry<String, Integer> e : hostToNumConnections.entrySet()) {
-        AssertionWrappers.assertTrue(e.getValue() >= 3);
+        AssertionWrappers.assertTrue(e.getValue() >= 2);
       }
     } finally {
       for (Connection c : connList) c.close();
@@ -134,9 +144,9 @@ public class TestLoadBalance extends BasePgSQLTest {
         }
       }
     }
-    Thread[] threads = new Thread[10];
-    ConnectionRunnable[] runnables = new ConnectionRunnable[10];
-    for(int i=0; i< 10; i++) {
+    Thread[] threads = new Thread[14];
+    ConnectionRunnable[] runnables = new ConnectionRunnable[14];
+    for(int i=0; i< 14; i++) {
       runnables[i] = new ConnectionRunnable();
       threads[i] = new Thread(runnables[i]);
     }
@@ -147,7 +157,7 @@ public class TestLoadBalance extends BasePgSQLTest {
       t.join();
     }
     Map<String, Integer> hostToNumConnections = new HashMap<>();
-    for (int i = 0; i < 10; i++) {
+    for (int i = 0; i < 14; i++) {
       AssertionWrappers.assertNull(runnables[i].ex);
       Connection c = runnables[i].conn;
       String host = ((PgConnection)c).getQueryExecutor().getHostSpec().getHost();
@@ -162,7 +172,88 @@ public class TestLoadBalance extends BasePgSQLTest {
       c.close();
     }
     for (Map.Entry<String, Integer> e : hostToNumConnections.entrySet()) {
-      AssertionWrappers.assertTrue(e.getValue() >= 3);
+      AssertionWrappers.assertTrue(e.getValue() >= 2);
     }
   }
+
+  @Test
+  public void TestWithBlacklistedServer() throws Exception{
+
+    Map<HostAndPort, MiniYBDaemon> hostPortsDaemonMap = miniCluster.getTabletServers();
+    Map<String, Integer> hostPorts = new HashMap<>();
+    for (Map.Entry<HostAndPort, MiniYBDaemon> e : hostPortsDaemonMap.entrySet()) {
+      hostPorts.put(e.getKey().getHost(), e.getKey().getPort());
+    }
+
+    Statement st = connection.createStatement();
+    st.execute("create table users (id int, name varchar(20))");
+    String insertStmt = "insert into users(id, name) select generate_series(1,10000),'Username'";
+    st.execute(insertStmt);
+
+    ResultSet rs = st.executeQuery("select * from yb_servers()");
+    int rows = 0;
+    while (rs.next()) {
+      ++rows;
+    }
+    AssertionWrappers.assertTrue("Expected 7 tservers, found " + rows, rows == 7);
+
+    Map.Entry<String, Integer> e = hostPorts.entrySet().iterator().next();
+    String decommissionedServer = e.getKey() + ":" + String.valueOf(e.getValue());
+    LOG.info("Decommissioning/Blacklisting the server: " + decommissionedServer);
+
+    // Decommission/Blacklist the server
+    runProcess(
+      TestUtils.findBinary("yb-admin"),
+      "--master_addresses",
+      masterAddresses,
+      "change_blacklist",
+      "ADD",
+      decommissionedServer);
+
+    rs = st.executeQuery("select * from yb_servers()");
+    rows = 0;
+    while (rs.next()) {
+      ++rows;
+    }
+    AssertionWrappers.assertTrue("Expected 7 tservers, found " + rows, rows == 7);
+
+    AssertionWrappers.assertTrue("Expected 6 tservers not found",
+      verifyResultUntil(10, 3000, e.getKey(), 6));
+
+    runProcess(
+      TestUtils.findBinary("yb-admin"),
+      "--master_addresses",
+      masterAddresses,
+      "change_blacklist",
+      "REMOVE",
+      decommissionedServer);
+  }
+
+  private boolean verifyResultUntil(int retries, int retryIntervalMilis,
+    String decommissionedServer, int numTservers) throws SQLException {
+    boolean found = false;
+    int rows = 0;
+    Statement st = connection.createStatement();
+
+    for (int i = 0; i < retries; i++) {
+      ResultSet rs = st.executeQuery("select * from yb_servers()");
+      rows = 0;
+      found = false;
+      while (rs.next()) {
+        ++rows;
+        String host = rs.getString(1).trim();
+        if (host.contains(decommissionedServer)) {
+          found = true;
+        }
+      }
+      if (!found && rows == numTservers) {
+        return true;
+      }
+      try {
+        Thread.sleep(retryIntervalMilis);
+      } catch (InterruptedException ie) {}
+    }
+    return !found && rows == numTservers;
+  }
+
 }

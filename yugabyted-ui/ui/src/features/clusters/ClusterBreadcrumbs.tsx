@@ -25,7 +25,6 @@ export const ClusterBreadcrumbs: FC = () => {
   const { accountId, projectId, clusterId } = useParams<App.RouteParams>();
 
   const { data: clusterData } = useGetClusterQuery(
-    { accountId, projectId, clusterId },
     {
       query: {
         enabled: !!clusterId && clusterId !== 'new' // skip clusters list and new cluster wizard pages

@@ -55,12 +55,7 @@ public class BootstrapProducer extends XClusterConfigTaskBase {
     log.info("Running {}", getName());
 
     // Each bootstrap producer task must belong to a parent xCluster config.
-    XClusterConfig xClusterConfig = taskParams().xClusterConfig;
-    if (xClusterConfig == null) {
-      throw new RuntimeException(
-          "taskParams().xClusterConfig is null. Each bootstrap subtask must belong to an "
-              + "xCluster config");
-    }
+    XClusterConfig xClusterConfig = getXClusterConfigFromTaskParams();
 
     Universe sourceUniverse = Universe.getOrBadRequest(taskParams().universeUUID);
     String sourceUniverseMasterAddresses = sourceUniverse.getMasterAddresses();

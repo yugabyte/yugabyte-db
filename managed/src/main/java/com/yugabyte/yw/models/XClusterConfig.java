@@ -17,6 +17,7 @@ import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.Collection;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -24,6 +25,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import javax.persistence.CascadeType;
 import javax.persistence.Column;
 import javax.persistence.Entity;
@@ -69,7 +71,6 @@ public class XClusterConfig extends Model {
     Init("Init"),
     Running("Running"),
     Updating("Updating"),
-    Paused("Paused"),
     DeletedUniverse("DeletedUniverse"),
     Deleted("Deleted"),
     Failed("Failed");
@@ -86,6 +87,9 @@ public class XClusterConfig extends Model {
       return this.status;
     }
   }
+
+  @ApiModelProperty(value = "Whether this xCluster replication config is paused")
+  public boolean paused;
 
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
   @ApiModelProperty(
@@ -116,6 +120,8 @@ public class XClusterConfig extends Model {
         + this.targetUniverseUUID
         + ",status="
         + this.status
+        + ",paused="
+        + this.paused
         + ")";
   }
 
@@ -125,6 +131,36 @@ public class XClusterConfig extends Model {
         .stream()
         .filter(tableConfig -> tableConfig.tableId.equals(tableId))
         .findAny();
+  }
+
+  public XClusterTableConfig getTableById(String tableId) {
+    Optional<XClusterTableConfig> tableConfig = maybeGetTableById(tableId);
+    if (!tableConfig.isPresent()) {
+      throw new IllegalArgumentException(
+          String.format(
+              "Table with id (%s) does not belong to the xClusterConfig %s", tableId, this));
+    }
+    return tableConfig.get();
+  }
+
+  public Set<XClusterTableConfig> getTablesById(Set<String> tableIds) {
+    Map<String, XClusterTableConfig> tableConfigMap =
+        this.tables
+            .stream()
+            .collect(
+                Collectors.toMap(tableConfig -> tableConfig.tableId, tableConfig -> tableConfig));
+    Set<XClusterTableConfig> tableConfigs = new HashSet<>();
+    tableIds.forEach(
+        tableId -> {
+          XClusterTableConfig tableConfig = tableConfigMap.get(tableId);
+          if (tableConfig == null) {
+            throw new IllegalArgumentException(
+                String.format(
+                    "Table with id (%s) does not belong to the xClusterConfig %s", tableId, this));
+          }
+          tableConfigs.add(tableConfig);
+        });
+    return tableConfigs;
   }
 
   public Set<XClusterTableConfig> getTableDetails() {
@@ -210,6 +246,15 @@ public class XClusterConfig extends Model {
         .collect(Collectors.toSet());
   }
 
+  @JsonIgnore
+  public Map<String, String> getTableIdStreamIdMap(Set<String> tableIds) {
+    Set<XClusterTableConfig> tableConfigs = getTablesById(tableIds);
+    Map<String, String> tableIdStreamIdMap = new HashMap<>();
+    tableConfigs.forEach(
+        tableConfig -> tableIdStreamIdMap.put(tableConfig.tableId, tableConfig.streamId));
+    return tableIdStreamIdMap;
+  }
+
   @Transactional
   public void setReplicationSetupDone(Collection<String> tableIds, boolean replicationSetupDone) {
     // Ensure there is no duplicate in the tableIds collection.
@@ -276,7 +321,7 @@ public class XClusterConfig extends Model {
   }
 
   @Transactional
-  public void setNeedBootstrapForTables(Set<String> tableIds, boolean needBootstrap) {
+  public void setNeedBootstrapForTables(Collection<String> tableIds, boolean needBootstrap) {
     ensureTableIdsExist(tableIds);
     this.tables
         .stream()
@@ -314,6 +359,35 @@ public class XClusterConfig extends Model {
     replicationGroupName = getReplicationGroupName(sourceUniverseUUID, configName);
   }
 
+  public void setStatus(XClusterConfigStatusType status) {
+    this.status = status;
+    update();
+  }
+
+  public void enable() {
+    if (!paused) {
+      log.info("xCluster config {} is already enabled", this);
+    }
+    paused = false;
+    update();
+  }
+
+  public void disable() {
+    if (paused) {
+      log.info("xCluster config {} is already disabled", this);
+    }
+    paused = true;
+    update();
+  }
+
+  public void setPaused(boolean paused) {
+    if (paused) {
+      disable();
+    } else {
+      enable();
+    }
+  }
+
   @Transactional
   public static XClusterConfig create(
       String name,
@@ -326,6 +400,7 @@ public class XClusterConfig extends Model {
     xClusterConfig.sourceUniverseUUID = sourceUniverseUUID;
     xClusterConfig.targetUniverseUUID = targetUniverseUUID;
     xClusterConfig.status = status;
+    xClusterConfig.paused = false;
     xClusterConfig.createTime = new Date();
     xClusterConfig.modifyTime = new Date();
     xClusterConfig.setReplicationGroupName();
@@ -359,8 +434,7 @@ public class XClusterConfig extends Model {
   public static XClusterConfig create(
       XClusterConfigCreateFormData createFormData, XClusterConfigStatusType status) {
     XClusterConfig xClusterConfig = create(createFormData);
-    xClusterConfig.status = status;
-    xClusterConfig.update();
+    xClusterConfig.setStatus(status);
     if (status == XClusterConfigStatusType.Running) {
       xClusterConfig.setReplicationSetupDone(createFormData.tables);
     }
@@ -412,6 +486,13 @@ public class XClusterConfig extends Model {
         .where()
         .eq("source_universe_uuid", sourceUniverseUUID)
         .findList();
+  }
+
+  public static List<XClusterConfig> getByUniverseUuid(UUID universeUuid) {
+    return Stream.concat(
+            getBySourceUniverseUUID(universeUuid).stream(),
+            getByTargetUniverseUUID(universeUuid).stream())
+        .collect(Collectors.toList());
   }
 
   public static List<XClusterConfig> getBetweenUniverses(
@@ -470,6 +551,16 @@ public class XClusterConfig extends Model {
                     tableId, this.uuid));
           }
         });
+  }
+
+  public void ensureTableIdsExist(Collection<String> tableIds) {
+    Set<String> tableIdSet = new HashSet<>(tableIds);
+    // Ensure there is no duplicate in the tableIds collection.
+    if (tableIds.size() != tableIdSet.size()) {
+      String errMsg = String.format("There are duplicate values in tableIds: %s", tableIds);
+      throw new RuntimeException(errMsg);
+    }
+    ensureTableIdsExist(tableIdSet);
   }
 
   public static <T> Set<T> intersectionOf(Set<T> firstSet, Set<T> secondSet) {

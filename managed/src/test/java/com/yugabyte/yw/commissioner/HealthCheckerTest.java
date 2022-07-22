@@ -8,9 +8,9 @@ import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.notNullValue;
+import static org.hamcrest.Matchers.nullValue;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -46,6 +46,7 @@ import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.HealthCheck;
 import com.yugabyte.yw.models.HealthCheck.Details.NodeData;
+import com.yugabyte.yw.models.Metric;
 import com.yugabyte.yw.models.MetricKey;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
@@ -57,7 +58,6 @@ import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.ebean.Model;
-import io.prometheus.client.CollectorRegistry;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
@@ -84,8 +84,6 @@ public class HealthCheckerTest extends FakeDBApplication {
   @Rule public MockitoRule rule = MockitoJUnit.rule();
 
   private static final String YB_ALERT_TEST_EMAIL = "test@yugabyte.com";
-  private static final String dummyNode = "127.1.1.1";
-  private static final String dummyNodeName = "name";
   private static final String dummyCheck = "check";
 
   private HealthChecker healthChecker;
@@ -102,9 +100,7 @@ public class HealthCheckerTest extends FakeDBApplication {
   private AccessKey accessKey;
   private CustomerConfig customerConfig;
 
-  private CollectorRegistry testRegistry;
   private HealthCheckerReport report;
-  private HealthCheckMetrics healthMetrics;
 
   @Mock private EmailHelper mockEmailHelper;
 
@@ -122,30 +118,11 @@ public class HealthCheckerTest extends FakeDBApplication {
     defaultProvider = ModelFactory.awsProvider(defaultCustomer);
     kubernetesProvider = ModelFactory.kubernetesProvider(defaultCustomer);
 
-    ShellResponse dummyShellResponse =
-        ShellResponse.create(
-            0,
-            "Command output:\n{\"data\":"
-                + "[{\"node\":\""
-                + dummyNode
-                + "\", \"has_error\": true,"
-                + " \"message\":\""
-                + dummyCheck
-                + "\", \"has_warning\": true,"
-                + " \"node_name\": \""
-                + dummyNodeName
-                + "\","
-                + "\"timestamp\":\"2022-03-01 09:22:23\"}]}");
-    when(mockNodeUniverseManager.runCommand(any(), any(), anyString(), any()))
-        .thenReturn(dummyShellResponse);
-
     ShellResponse dummyShellUploadResponse = ShellResponse.create(0, "");
     when(mockNodeUniverseManager.uploadFileToNode(any(), any(), anyString(), any(), any(), any()))
         .thenReturn(dummyShellUploadResponse);
 
-    testRegistry = new CollectorRegistry();
     report = spy(new HealthCheckerReport());
-    healthMetrics = new HealthCheckMetrics(testRegistry);
 
     when(mockRuntimeConfig.getInt("yb.health.max_num_parallel_checks")).thenReturn(11);
     when(mockruntimeConfigFactory.forUniverse(any())).thenReturn(mockConfigUniverseScope);
@@ -174,7 +151,6 @@ public class HealthCheckerTest extends FakeDBApplication {
             metricService,
             mockruntimeConfigFactory,
             null,
-            healthMetrics,
             mockNodeUniverseManager,
             executorService,
             executorService) {
@@ -277,17 +253,34 @@ public class HealthCheckerTest extends FakeDBApplication {
             u, defaultCustomer, true, false, false, expectedEmail));
     verifyNodeUniverseManager(uploadCount, invocationsCount * u.getNodes().size());
 
-    String[] labels = {
-      HealthCheckMetrics.kUnivUUIDLabel, HealthCheckMetrics.kUnivNameLabel,
-      HealthCheckMetrics.kNodeLabel, HealthCheckMetrics.kCheckLabel
-    };
-    String[] labelValues = {u.universeUUID.toString(), u.name, dummyNode, dummyCheck};
-    Double val =
-        testRegistry.getSampleValue(HealthCheckMetrics.kUnivMetricName, labels, labelValues);
-    if (shouldFail) {
-      assertNull(val);
+    u.getNodes()
+        .forEach(
+            node -> {
+              assertCheckStatusMetricValue(node.cloudInfo.private_ip, "Node", !shouldFail);
+              if (!shouldFail) {
+                assertCheckStatusMetricValue(node.cloudInfo.private_ip, dummyCheck, false);
+              } else {
+                assertCheckStatusMetricValue(node.cloudInfo.private_ip, dummyCheck, null);
+              }
+            });
+  }
+
+  private void assertCheckStatusMetricValue(String node, String checkName, Boolean value) {
+    Metric checkStatusMetric =
+        metricService.get(
+            MetricKey.builder()
+                .customerUuid(defaultCustomer.getUuid())
+                .name(PlatformMetrics.YB_UNIV_HEALTH_STATUS.getMetricName())
+                .sourceUuid(universe.getUniverseUUID())
+                .sourceLabel(HealthCheckMetrics.kNodeLabel, node)
+                .sourceLabel(HealthCheckMetrics.kCheckLabel, checkName)
+                .build());
+
+    if (value == null) {
+      assertThat(checkStatusMetric, nullValue());
     } else {
-      assertEquals(val.intValue(), 1);
+      Double val = checkStatusMetric.getValue();
+      assertEquals(val.intValue(), value ? 0 : 1);
     }
   }
 
@@ -304,9 +297,25 @@ public class HealthCheckerTest extends FakeDBApplication {
 
   @Test
   public void testCheckSingleUniverse_NoEmail() {
+    mockBadHealthResponse();
     Universe u = setupUniverse("univ1");
     setupAlertingData(null, false, false);
     testSingleUniverse(u, null, false, 1);
+  }
+
+  @Test
+  public void testCheckStatusMetricsCleaned() {
+    mockBadHealthResponse();
+    Universe u = setupUniverse("univ1");
+    setupAlertingData(null, false, false);
+    testSingleUniverse(u, null, false, 1);
+
+    ShellResponse dummyShellResponseFail = ShellResponse.create(1, "Should error");
+    doAnswer(i -> dummyShellResponseFail)
+        .when(mockNodeUniverseManager)
+        .runCommand(any(), any(), anyString(), any());
+
+    testSingleUniverse(u, null, true, 2);
   }
 
   @Test
@@ -318,6 +327,7 @@ public class HealthCheckerTest extends FakeDBApplication {
 
   @Test
   public void testCheckSingleUniverse_YbEmail() {
+    mockBadHealthResponse();
     Universe u = setupUniverse("univ1");
     setupAlertingData(null, true, false);
     testSingleUniverse(u, YB_ALERT_TEST_EMAIL, false, 1);
@@ -347,6 +357,7 @@ public class HealthCheckerTest extends FakeDBApplication {
 
   @Test
   public void testCheckSingleUniverse_CustomEmail() {
+    mockBadHealthResponse();
     Universe u = setupUniverse("univ1");
     String email = "foo@yugabyte.com";
     setupAlertingData(email, false, false);
@@ -355,6 +366,7 @@ public class HealthCheckerTest extends FakeDBApplication {
 
   @Test
   public void testCheckSingleUniverse_DisabledAlerts1() {
+    mockBadHealthResponse();
     String email = "foo@yugabyte.com";
     Universe u = setupDisabledAlertsConfig(email, 0);
     testSingleUniverse(u, email, false, 1);
@@ -362,6 +374,7 @@ public class HealthCheckerTest extends FakeDBApplication {
 
   @Test
   public void testCheckSingleUniverse_DisabledAlerts2() {
+    mockBadHealthResponse();
     String email = "foo@yugabyte.com";
     Universe u = setupDisabledAlertsConfig(email, Long.MAX_VALUE);
     testSingleUniverse(u, null, false, 1);
@@ -369,6 +382,7 @@ public class HealthCheckerTest extends FakeDBApplication {
 
   @Test
   public void testCheckSingleUniverse_DisabledAlerts3() {
+    mockBadHealthResponse();
     long now = System.currentTimeMillis() / 1000;
     String email = "foo@yugabyte.com";
     Universe u = setupDisabledAlertsConfig(email, now + 1000);
@@ -377,6 +391,7 @@ public class HealthCheckerTest extends FakeDBApplication {
 
   @Test
   public void testCheckSingleUniverse_DisabledAlerts4() {
+    mockBadHealthResponse();
     long now = System.currentTimeMillis() / 1000;
     String email = "foo@yugabyte.com";
     Universe u = setupDisabledAlertsConfig(email, now - 10);
@@ -385,6 +400,7 @@ public class HealthCheckerTest extends FakeDBApplication {
 
   @Test
   public void testCheckSingleUniverse_MultipleEmails() {
+    mockBadHealthResponse();
     Universe u = setupUniverse("univ1");
     String email = "foo@yugabyte.com";
     setupAlertingData(email, true, false);
@@ -393,6 +409,7 @@ public class HealthCheckerTest extends FakeDBApplication {
 
   @Test
   public void testCheckSingleUniverse_MultipleUniversesIndividually() {
+    mockBadHealthResponse();
     Universe univ1 = setupUniverse("univ1");
     setupAlertingData(null, false, false);
     testSingleUniverse(univ1, null, false, 1);
@@ -505,6 +522,7 @@ public class HealthCheckerTest extends FakeDBApplication {
     when(mockEmailHelper.getDestinations(defaultCustomer.uuid))
         .thenReturn(Collections.singletonList(YB_ALERT_TEST_EMAIL));
     setupAlertingData(YB_ALERT_TEST_EMAIL, false, false);
+    mockBadHealthResponse();
 
     // Setup some waits.
     long waitMs = 500;
@@ -635,7 +653,7 @@ public class HealthCheckerTest extends FakeDBApplication {
         MetricKey.builder()
             .customerUuid(defaultCustomer.getUuid())
             .name(PlatformMetrics.HEALTH_CHECK_NOTIFICATION_STATUS.getMetricName())
-            .targetUuid(u.getUniverseUUID())
+            .sourceUuid(u.getUniverseUUID())
             .build(),
         0.0);
   }
@@ -655,19 +673,45 @@ public class HealthCheckerTest extends FakeDBApplication {
   }
 
   private void mockGoodHealthResponse() {
-    ShellResponse dummyShellResponse =
-        ShellResponse.create(
-            0,
-            ("{''error'': false, ''data'': [ {''node'':''"
-                    + dummyNode
-                    + "'', ''has_error'': false, ''message'':''"
-                    + dummyCheck
-                    + "'', ''has_warning'': false, ''node_name'': ''"
-                    + dummyNodeName
-                    + "'', ''timestamp'': '''' } ] }")
-                .replace("''", "\""));
     when(mockNodeUniverseManager.runCommand(any(), any(), anyString(), any()))
-        .thenReturn(dummyShellResponse);
+        .thenAnswer(
+            i -> {
+              NodeDetails nodeDetails = i.getArgument(0);
+
+              return ShellResponse.create(
+                  0,
+                  ("{''error'': false, ''data'': [ {''node'':''"
+                          + nodeDetails.cloudInfo.private_ip
+                          + "'', ''has_error'': false, ''message'':''"
+                          + dummyCheck
+                          + "'', ''details'': [], ''has_warning'': false, ''node_name'': ''"
+                          + nodeDetails.nodeName
+                          + "'', ''timestamp'': '''' } ] }")
+                      .replace("''", "\""));
+            });
+  }
+
+  private void mockBadHealthResponse() {
+    when(mockNodeUniverseManager.runCommand(any(), any(), anyString(), any()))
+        .thenAnswer(
+            i -> {
+              NodeDetails nodeDetails = i.getArgument(0);
+
+              return ShellResponse.create(
+                  0,
+                  "Command output:\n{\"data\":"
+                      + "[{\"node\":\""
+                      + nodeDetails.cloudInfo.private_ip
+                      + "\", \"has_error\": true,"
+                      + " \"message\":\""
+                      + dummyCheck
+                      + "\", \"details\": [\"Some details\"],"
+                      + " \"has_warning\": true,"
+                      + " \"node_name\": \""
+                      + nodeDetails.nodeName
+                      + "\","
+                      + "\"timestamp\":\"2022-03-01 09:22:23\"}]}");
+            });
   }
 
   @Test
@@ -694,7 +738,7 @@ public class HealthCheckerTest extends FakeDBApplication {
         MetricKey.builder()
             .customerUuid(defaultCustomer.getUuid())
             .name(PlatformMetrics.HEALTH_CHECK_STATUS.getMetricName())
-            .targetUuid(u.getUniverseUUID())
+            .sourceUuid(u.getUniverseUUID())
             .build(),
         1.0);
 
@@ -703,7 +747,7 @@ public class HealthCheckerTest extends FakeDBApplication {
         MetricKey.builder()
             .customerUuid(defaultCustomer.getUuid())
             .name(PlatformMetrics.HEALTH_CHECK_NOTIFICATION_STATUS.getMetricName())
-            .targetUuid(u.getUniverseUUID())
+            .sourceUuid(u.getUniverseUUID())
             .build(),
         1.0);
 
@@ -712,7 +756,7 @@ public class HealthCheckerTest extends FakeDBApplication {
         MetricKey.builder()
             .customerUuid(defaultCustomer.getUuid())
             .name(PlatformMetrics.ALERT_MANAGER_STATUS.getMetricName())
-            .targetUuid(u.getUniverseUUID())
+            .sourceUuid(u.getUniverseUUID())
             .build(),
         0.0);
   }
@@ -766,7 +810,7 @@ public class HealthCheckerTest extends FakeDBApplication {
         MetricKey.builder()
             .customerUuid(defaultCustomer.getUuid())
             .name(PlatformMetrics.HEALTH_CHECK_STATUS.getMetricName())
-            .targetUuid(u.getUniverseUUID())
+            .sourceUuid(u.getUniverseUUID())
             .build(),
         0.0);
   }
@@ -793,7 +837,7 @@ public class HealthCheckerTest extends FakeDBApplication {
         MetricKey.builder()
             .customerUuid(defaultCustomer.getUuid())
             .name(PlatformMetrics.HEALTH_CHECK_STATUS.getMetricName())
-            .targetUuid(u.getUniverseUUID())
+            .sourceUuid(u.getUniverseUUID())
             .build(),
         0.0);
   }

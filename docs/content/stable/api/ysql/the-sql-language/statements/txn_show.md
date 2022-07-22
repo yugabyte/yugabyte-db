@@ -2,7 +2,7 @@
 title: SHOW TRANSACTION statement [YSQL]
 headerTitle: SHOW TRANSACTION
 linkTitle: SHOW TRANSACTION
-description: Use the SHOW TRANSACTION statement to show the current transaction isolation level.
+description: Use the SHOW TRANSACTION ISOLATION LEVEL statement to show the current transaction isolation level.
 summary: SHOW TRANSACTION
 menu:
   stable:
@@ -13,7 +13,7 @@ type: docs
 
 ## Synopsis
 
-Use the `SHOW TRANSACTION` statement to show the current transaction isolation level.
+Use the `SHOW TRANSACTION ISOLATION LEVEL` statement to show the current transaction isolation level.
 
 ## Syntax
 
@@ -45,7 +45,7 @@ Use the `SHOW TRANSACTION` statement to show the current transaction isolation l
 
 Supports Serializable, Snapshot and Read Committed Isolation<sup>$</sup> using the PostgreSQL isolation level syntax of `SERIALIZABLE`, `REPEATABLE READ` and `READ COMMITTED` respectively. PostgreSQL's `READ UNCOMMITTED` also maps to Read Committed Isolation.
 
-<sup>$</sup> Read Committed Isolation is supported only if the tserver gflag `yb_enable_read_committed_isolation` is set to `true`. By default this gflag is `false` and in this case the Read Committed isolation level of Yugabyte's transactional layer falls back to the stricter Snapshot Isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot Isolation). Read Committed support is currently in [Beta](/preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag).
+<sup>$</sup> Read Committed Isolation is supported only if the gflag `yb_enable_read_committed_isolation` is set to `true`. By default this gflag is `false` and in this case the Read Committed isolation level of Yugabyte's transactional layer falls back to the stricter Snapshot Isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot Isolation). Read Committed support is currently in [Beta](/preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag).
 
 ### TRANSACTION ISOLATION LEVEL
 

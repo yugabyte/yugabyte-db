@@ -12,7 +12,6 @@ menu:
 type: indexpage
 ---
 
-
 ##  Ingest the .csv files, check the assumptions, and combine the interesting values into a single table
 
 Here are the steps:

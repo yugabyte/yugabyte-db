@@ -22,7 +22,7 @@ import {
   editBackupSchedule,
   getScheduledBackupList
 } from '../common/BackupScheduleAPI';
-import { TABLE_TYPE_MAP } from '../common/IBackup';
+import { TABLE_TYPE_MAP } from '../../../redesign/helpers/dtos';
 import { IBackupSchedule } from '../common/IBackupSchedule';
 import { BackupCreateModal } from '../components/BackupCreateModal';
 
@@ -300,13 +300,13 @@ const ScheduledBackupCard: FC<ScheduledBackupCardProps> = ({
             <Col lg={3}>
               <div className="info-title">DATABASE NAME</div>
               <div className="info-val">
-                {wrapTableName(schedule.backupInfo?.keyspaceList.map((k) => k.keyspace))}
+                {wrapTableName(schedule.backupInfo?.keyspaceList?.map((k) => k.keyspace))}
               </div>
             </Col>
             <Col lg={3}>
               <div className="info-title">TABLES</div>
               <div className="info-val">
-                {wrapTableName(schedule.backupInfo?.keyspaceList[0]?.tablesList)}
+                {wrapTableName(schedule.backupInfo?.keyspaceList?.[0]?.tablesList)}
               </div>
             </Col>
           </Row>

@@ -139,6 +139,7 @@ Datadog
 datasource
 datasources
 datetime
+Debezium
 Debian
 Decompressor
 decryptable

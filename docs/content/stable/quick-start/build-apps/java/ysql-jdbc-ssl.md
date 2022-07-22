@@ -32,15 +32,27 @@ type: docs
     </a>
   </li>
   <li >
+    <a href="../ysql-hibernate/" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL - Hibernate
+    </a>
+  </li>
+  <li >
+    <a href="../ysql-sdyb/" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL - Spring Data YugabyteDB
+    </a>
+  </li>
+  <li >
     <a href="../ysql-spring-data/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - Spring Data JPA
     </a>
   </li>
-   <li>
-    <a href="../ysql-ebeans/" class="nav-link">
+  <li>
+    <a href="../ysql-ebean/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - Ebeans
+      YSQL - Ebean
     </a>
   </li>
   <li>
@@ -74,10 +86,10 @@ This tutorial assumes that:
    ```sh
    $ kubectl create namespace yb-demo
    $ helm install yb-demo yugabytedb/yugabyte \
+   --version {{<yb-version version="stable" format="short">}} \
    --set resource.master.requests.cpu=0.5,resource.master.requests.memory=0.5Gi,\
    resource.tserver.requests.cpu=0.5,resource.tserver.requests.memory=0.5Gi,\
-   replicas.master=1,replicas.tserver=1,tls.enabled=true --namespace yb-demo\
-   --version {{<yb-version version="stable" format="short">}}
+   replicas.master=1,replicas.tserver=1,tls.enabled=true --namespace yb-demo
    ```
 
 1. Verify that SSL is enabled using `ysqlsh`.

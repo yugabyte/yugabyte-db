@@ -8,34 +8,30 @@
 #
 # https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 
-
+import os
 import logging
-import time
 
 from ybops.common.exceptions import YBOpsRuntimeError
-from fabric import Connection
-from paramiko.ssh_exception import NoValidConnectionsError
+from ybops.utils.ssh import SSHClient
 
 CONNECTION_ATTEMPTS = 5
 CONNECTION_ATTEMPT_DELAY_SEC = 3
 
 
-def retry_network_errors(command):
-    attempt = 0
-    while True:
-        try:
-            result = command()
-            return result
-        except NoValidConnectionsError as e:
-            attempt += 1
-            logging.warning("Connection attempt {} failed: {}".format(attempt, e.errors))
-            if attempt >= CONNECTION_ATTEMPTS:
-                raise e
-            time.sleep(CONNECTION_ATTEMPT_DELAY_SEC)
+class RemoteShellOutput(object):
+    """
+        RemoteShellOutput class converts the o/p in the standard format
+        with o/p, err, exited status attached to it.
+    """
+
+    def __init__(self):
+        self.stdout = None
+        self.exited = False
+        self.stderr = None
 
 
 class RemoteShell(object):
-    """RemoteShell class is used run remote shell commands against nodes using fabric.
+    """RemoteShell class is used run remote shell commands against nodes using paramiko.
     """
 
     def __init__(self, options):
@@ -44,15 +40,25 @@ class RemoteShell(object):
         assert options["ssh_port"] is not None, 'ssh_port is required option'
         assert options["private_key_file"] is not None, 'private_key_file is required option'
 
-        self.ssh_conn = Connection(
-            host=options.get("ssh_host"),
-            user=options.get("ssh_user"),
-            port=options.get("ssh_port"),
-            connect_kwargs={'key_filename': [options.get("private_key_file")]}
+        self.ssh_conn = SSHClient(ssh2_enabled=options["ssh2_enabled"])
+        self.ssh_conn.connect(
+            options.get("ssh_host"),
+            options.get("ssh_user"),
+            options.get("private_key_file"),
+            options.get("ssh_port")
         )
 
     def run_command_raw(self, command):
-        return retry_network_errors(lambda: self.ssh_conn.run(command, hide=True, warn=True))
+        result = RemoteShellOutput()
+        try:
+            output = self.ssh_conn.exec_command(command, output_only=True)
+            result.stdout = output
+            result.exited = 0
+        except Exception as e:
+            result.stderr = e
+            result.exited = 1
+
+        return result
 
     def run_command(self, command):
         result = self.run_command_raw(command)
@@ -61,17 +67,16 @@ class RemoteShell(object):
             raise YBOpsRuntimeError(
                 "Remote shell command '{}' failed with "
                 "return code '{}' and error '{}'".format(command.encode('utf-8'),
-                                                         result.stderr.encode('utf-8'),
+                                                         result.stderr,
                                                          result.exited)
             )
-
         return result
 
     def put_file(self, local_path, remote_path):
-        return retry_network_errors(lambda: self.ssh_conn.put(local_path, remote_path))
+        self.ssh_conn.upload_file_to_remote_server(local_path, remote_path)
 
     # Checks if the file exists on the remote, and if not, it puts it there.
     def put_file_if_not_exists(self, local_path, remote_path, file_name):
         result = self.run_command('ls ' + remote_path)
-        if file_name not in result.stdout:
+        if file_name not in result:
             self.put_file(local_path, os.path.join(remote_path, file_name))

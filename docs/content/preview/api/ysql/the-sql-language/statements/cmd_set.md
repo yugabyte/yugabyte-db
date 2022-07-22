@@ -44,7 +44,13 @@ Use the `SET` statement to update a run-time control parameter.
 
 ## Semantics
 
-Although the values of a parameter can be set, displayed, and reset, the effect of these parameters are not yet supported in YugabyteDB. The default settings and behaviors will be used for the moment.
+The parameter values that you set with this statement apply just within the scope of a single session and for no longer than the session's duration. It's also possible to set the default values for such parameters at the level of the entire cluster or at the level of a particular database. For example:
+
+```plpgsql
+alter database demo set timezone = 'America/Los_Angeles';
+```
+
+See [`ALTER DATABASE`](../ddl_alter_db/).
 
 ### SESSION
 

@@ -496,6 +496,10 @@ DEFINE_bool(batch_ysql_system_tables_metadata, false,
             "a create database is performed one by one or batched together");
 TAG_FLAG(batch_ysql_system_tables_metadata, runtime);
 
+DEFINE_test_flag(bool, pause_split_child_registration,
+                 false, "Pause split after registering one child");
+TAG_FLAG(TEST_pause_split_child_registration, runtime);
+
 namespace yb {
 namespace master {
 
@@ -2037,11 +2041,12 @@ Result<shared_ptr<TablespaceIdToReplicationInfoMap>> CatalogManager::GetYsqlTabl
   // each tablespace.
   string placement_uuid;
   {
-    auto l = ClusterConfig()->LockForRead();
+    auto cluster_config = ClusterConfig()->LockForRead();
     // TODO(deepthi.srinivasan): Read-replica placements are not supported as
     // of now.
-    placement_uuid = l->pb.replication_info().live_replicas().placement_uuid();
+    placement_uuid = cluster_config->pb.replication_info().live_replicas().placement_uuid();
   }
+
   if (!placement_uuid.empty()) {
     for (auto& iter : *tablespace_map) {
       if (iter.second) {
@@ -2304,10 +2309,13 @@ void CatalogManager::RefreshTablespaceInfoPeriodically() {
     return;
   }
 
-  if (!CheckIsLeaderAndReady().IsOk()) {
-    LOG(INFO) << "No longer the leader, so cancelling tablespace info task";
-    tablespace_bg_task_running_ = false;
-    return;
+  {
+    SCOPED_LEADER_SHARED_LOCK(l, this);
+    if (!l.IsInitializedAndIsLeader()) {
+      LOG(INFO) << "No longer the leader, so cancelling tablespace info task";
+      tablespace_bg_task_running_ = false;
+      return;
+    }
   }
 
   // Refresh the tablespace info in memory.
@@ -2323,8 +2331,13 @@ void CatalogManager::RefreshTablespaceInfoPeriodically() {
 Status CatalogManager::DoRefreshTablespaceInfo() {
   VLOG(2) << "Running RefreshTablespaceInfoPeriodically task";
 
-  // First refresh the tablespace info in memory.
-  auto tablespace_info = VERIFY_RESULT(GetYsqlTablespaceInfo());
+  shared_ptr<TablespaceIdToReplicationInfoMap> tablespace_info;
+  {
+    SCOPED_LEADER_SHARED_LOCK(l, this);
+    RETURN_NOT_OK(l.first_failed_status());
+    // First refresh the tablespace info in memory.
+    tablespace_info = VERIFY_RESULT(GetYsqlTablespaceInfo());
+  }
 
   // Clear tablespace ids for transaction tables mapped to missing tablespaces.
   RETURN_NOT_OK(UpdateTransactionStatusTableTablespaces(*tablespace_info));
@@ -4816,6 +4829,23 @@ Result<scoped_refptr<NamespaceInfo>> CatalogManager::FindNamespace(
   return FindNamespaceUnlocked(ns_identifier);
 }
 
+Result<scoped_refptr<UDTypeInfo>> CatalogManager::FindUDTypeById(
+    const UDTypeId& udt_id) const {
+  SharedLock lock(mutex_);
+  return FindUDTypeByIdUnlocked(udt_id);
+}
+
+Result<scoped_refptr<UDTypeInfo>> CatalogManager::FindUDTypeByIdUnlocked(
+    const UDTypeId& udt_id) const {
+  scoped_refptr<UDTypeInfo> tp = FindPtrOrNull(udtype_ids_map_, udt_id);
+  if (tp == nullptr) {
+    VLOG_WITH_FUNC(4) << "UDType not found: " << udt_id << "\n" << GetStackTrace();
+    return STATUS(NotFound, "UDType identifier not found", udt_id,
+                  MasterError(MasterErrorPB::TYPE_NOT_FOUND));
+  }
+  return tp;
+}
+
 Result<TableDescription> CatalogManager::DescribeTable(
     const TableIdentifierPB& table_identifier, bool succeed_if_create_in_progress) {
   TRACE("Looking up table");
@@ -5211,7 +5241,9 @@ Status CatalogManager::DeleteTable(
             << req->ShortDebugString();
 
   scoped_refptr<TableInfo> table = VERIFY_RESULT(FindTable(req->table()));
-  bool result = IsCdcEnabled(*table);
+
+  // For now, only disable dropping YCQL tables under xCluster replication.
+  bool result = table->GetTableType() == YQL_TABLE_TYPE && IsCdcEnabled(*table);
   if (!FLAGS_enable_delete_truncate_xcluster_replicated_table && result) {
     return STATUS(NotSupported,
                   "Cannot delete a table in replication.",
@@ -6076,6 +6108,7 @@ Result<TabletInfoPtr> CatalogManager::RegisterNewTabletForSplit(
     RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), table, new_tablet, source_tablet_info));
 
     MAYBE_FAULT(FLAGS_TEST_crash_after_creating_single_split_tablet);
+    TEST_PAUSE_IF_FLAG(TEST_pause_split_child_registration);
 
     table->AddTablet(new_tablet);
     // TODO: We use this pattern in other places, but what if concurrent thread accesses not yet
@@ -7592,13 +7625,8 @@ void CatalogManager::ProcessPendingNamespace(
   // Ensure that we are currently the Leader before handling DDL operations.
   {
     SCOPED_LEADER_SHARED_LOCK(l, this);
-    if (!l.catalog_status().ok()) {
-      LOG(WARNING) << "Catalog status failure: " << l.catalog_status().ToString();
-      // Don't try again, we have to reset in-memory state after losing leader election.
-      return;
-    }
-    if (!l.leader_status().ok()) {
-      LOG(WARNING) << "Leader status failure: " << l.leader_status().ToString();
+    if (!l.IsInitializedAndIsLeader()) {
+      LOG(WARNING) << l.failed_status_string();
       // Don't try again, we have to reset in-memory state after losing leader election.
       return;
     }
@@ -8346,7 +8374,7 @@ Status CatalogManager::ListNamespaces(const ListNamespacesRequestPB* req,
 Status CatalogManager::GetNamespaceInfo(const GetNamespaceInfoRequestPB* req,
                                         GetNamespaceInfoResponsePB* resp,
                                         rpc::RpcContext* rpc) {
-  LOG(INFO) << __func__ << " from " << RequestorString(rpc) << ": " << req->ShortDebugString();
+  VLOG(1) << __func__ << " from " << RequestorString(rpc) << ": " << req->ShortDebugString();
 
   // Look up the namespace and verify if it exists.
   TRACE("Looking up namespace");
@@ -8438,6 +8466,7 @@ Status CatalogManager::CreateUDType(const CreateUDTypeRequestPB* req,
     tp = FindPtrOrNull(udtype_names_map_, std::make_pair(ns->id(), req->name()));
 
     if (tp != nullptr) {
+      resp->set_id(tp->id());
       s = STATUS_SUBSTITUTE(AlreadyPresent,
           "Type '$0.$1' already exists", ns->name(), req->name());
       LOG(WARNING) << "Found type: " << tp->id() << ". Failed creating type with error: "
@@ -8709,7 +8738,7 @@ Status CatalogManager::IsTabletSplittingComplete(
     }
   }
   for (const auto& table : tables) {
-    if (!tablet_split_manager_.IsTabletSplittingComplete(*table)) {
+    if (!tablet_split_manager_.IsTabletSplittingComplete(*table, req->wait_for_parent_deletion())) {
       resp->set_is_tablet_splitting_complete(false);
       return Status::OK();
     }
@@ -11156,7 +11185,7 @@ void CatalogManager::RebuildYQLSystemPartitions() {
   if (YQLPartitionsVTable::GeneratePartitionsVTableWithBgTask() ||
       YQLPartitionsVTable::GeneratePartitionsVTableOnChanges()) {
     SCOPED_LEADER_SHARED_LOCK(l, this);
-    if (l.catalog_status().ok() && l.leader_status().ok()) {
+    if (l.IsInitializedAndIsLeader()) {
       if (system_partitions_tablet_ != nullptr) {
         Status s;
         if (YQLPartitionsVTable::GeneratePartitionsVTableWithBgTask()) {

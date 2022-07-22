@@ -91,6 +91,16 @@ message LogSegmentHeaderPB {
   optional uint32 schema_version = 8;
 }
 
+// A header for a log index block that are stored inside WAL segment file.
+message LogIndexBlockHeaderPB {
+  required int64 start_op_index = 1;
+  required int32 num_entries = 2;
+  required int64 size = 3;
+  required bool is_last_block = 4;
+  // CRC32C over log index block of size `size` that follows the serialized header.
+  required fixed32 crc32c = 5;
+}
+
 // A footer for a log segment.
 //
 // Log segment footers might not be present (e.g. if the server crashed) so they should contain no
@@ -116,4 +126,8 @@ message LogSegmentFooterPB {
   // during bootstrap, so this field will be reset to the time of the bootstrap in each log segment
   // on a newly-restarted server, rather than copied over from the old log segments.
   optional int64 close_timestamp_micros = 4;
+
+  // Offset of the first index block. Absence means there is no log index stored in this log
+  // segment.
+  optional int64 index_start_offset = 5;
 }

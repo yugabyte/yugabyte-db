@@ -72,13 +72,11 @@ DEFINE_bool(enable_tablet_split_of_xcluster_replicated_tables, false,
             "When set, it enables automatic tablet splitting for tables that are part of an "
             "xCluster replication setup");
 TAG_FLAG(enable_tablet_split_of_xcluster_replicated_tables, runtime);
-TAG_FLAG(enable_tablet_split_of_xcluster_replicated_tables, hidden);
 
 DEFINE_bool(enable_tablet_split_of_xcluster_bootstrapping_tables, false,
             "When set, it enables automatic tablet splitting for tables that are part of an "
             "xCluster replication setup and are currently being bootstrapped for xCluster.");
 TAG_FLAG(enable_tablet_split_of_xcluster_bootstrapping_tables, runtime);
-TAG_FLAG(enable_tablet_split_of_xcluster_bootstrapping_tables, hidden);
 
 DEFINE_uint64(tablet_split_limit_per_table, 256,
               "Limit of the number of tablets per table for tablet splitting. Limitation is "
@@ -422,6 +420,9 @@ class OutstandingSplitState {
   }
 
   bool CanSplitMoreOnReplicas(const TabletReplicaMap& replicas) const {
+    if (FLAGS_outstanding_tablet_split_limit_per_tserver == 0) {
+      return true;
+    }
     for (const auto& location : replicas) {
       auto it = ts_to_ongoing_splits_.find(location.first);
       if (it != ts_to_ongoing_splits_.end() &&
@@ -664,7 +665,8 @@ bool TabletSplitManager::IsRunning() {
   return is_running_;
 }
 
-bool TabletSplitManager::IsTabletSplittingComplete(const TableInfo& table) {
+bool TabletSplitManager::IsTabletSplittingComplete(
+    const TableInfo& table, bool wait_for_parent_deletion) {
   // It is important to check that is_running_ is false BEFORE checking for outstanding splits.
   // Otherwise, we could have the following order of events:
   // 1. Thread A: Tablet split manager enqueues a split for table T.
@@ -693,7 +695,7 @@ bool TabletSplitManager::IsTabletSplittingComplete(const TableInfo& table) {
     }
   }
 
-  return !table.HasOutstandingSplits();
+  return !table.HasOutstandingSplits(wait_for_parent_deletion);
 }
 
 void TabletSplitManager::DisableSplittingFor(

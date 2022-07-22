@@ -90,7 +90,7 @@ Build options:
     Force Maven to download all Java dependencies to the local repository
 
   --target, --targets
-    Pass the given target or set of targets to make.
+    Pass the given target or set of targets to make or ninja.
   --rebuild-file <source_file_to_rebuild>
     The .o file corresponding to the given source file will be deleted from the build directory
     before the build.
@@ -130,8 +130,6 @@ Build options:
 
   --no-ccache
     Do not use ccache. Useful when debugging build scripts or compiler/linker options.
-  --static
-    Force a static build.
   --generate-build-debug-scripts, --gen-build-debug-scripts, --gbds
     Specify this to generate one-off shell scripts that could be used to re-run and understand
     failed compilation commands.
@@ -151,7 +149,7 @@ Build options:
   --export-compile-commands-cxx-only, --ccmdscxx
     Only export the compilation commands for C++ code. Compilation database generation for Postgres
     C code can be time-consuming and this
-  --linuxbrew, --no-linuxbrew
+  --linuxbrew or --no-linuxbrew
     Specify in order to do a Linuxbrew based build, or specifically prohibit doing so. This
     influences the choice of prebuilt third-party archive. This can also be specified using the
     YB_USE_LINUXBREW environment variable.
@@ -161,6 +159,26 @@ Build options:
     Build a static Clangd index using clangd-indexer.
   --clangd-index-format <format>
     Clangd index format ("binary" or "yaml"). A YAML index can be moved to another directory.
+  --mvn-opts <maven_options>
+    Specify additional Maven options for Java build/tests.
+  --lto <lto_type>, --thin-lto, --full-lto, --no-lto
+    LTO (link time optimization) type, e.g. "thin" (faster to link) or "full" (faster code; see
+    https://llvm.org/docs/LinkTimeOptimization.html and https://clang.llvm.org/docs/ThinLTO.html).
+    Can also be specified by setting environment variable YB_LINKING_TYPE to thin-lto or full-lto.
+    Set YB_LINKING_TYPE to 'dynamic' to disable LTO.
+  --no-initdb
+    Skip the initdb step. The initdb build step is mostly single-threaded and can be executed on a
+    low-CPU build machine even if the majority of the build is being executed on a high-CPU host.
+  --skip-test-log-rewrite
+    Skip rewriting the test log.
+
+Linting options:
+
+  --shellcheck
+    Check various Bash scripts in the codebase.
+  --java-lint
+    Run a simple shell-based "linter" on our Java code that verifies that we are importing the right
+    methods for assertions and using the right test runners. We exit the script after this step.
 
 Test options:
 
@@ -226,33 +244,19 @@ Test options:
     generated. Only works in non-release mode.
   --cmake-unit-tests
     Run our unit tests for CMake code. This should be much faster than running the build.
-  --lto <lto_type>, --thin-lto, --full-lto, --no-lto
-    LTO (link time optimization) type, e.g. "thin" (faster to link) or "full" (faster code; see
-    https://llvm.org/docs/LinkTimeOptimization.html and https://clang.llvm.org/docs/ThinLTO.html).
-    Can also be specified by setting environment variable YB_LINKING_TYPE to thin-lto or full-lto.
-    Set YB_LINKING_TYPE to 'dynamic' to disable LTO.
-  --no-initdb
-    Skip the initdb step. The initdb build step is mostly single-threaded and can be executed on a
-    low-CPU build machine even if the majority of the build is being executed on a high-CPU host.
   --
     Pass all arguments after -- to repeat_unit_test.
 
-General options:
+  --extra-daemon-flags, --extra-daemon-args <extra_daemon_flags>
+    Extra flags to pass to mini-cluster daemons (master/tserver). Note that bash-style quoting won't
+    work here -- they are naively split on spaces.
+
+Debug options:
 
   --verbose
     Show debug output
   --bash-debug
     Show detailed debug information for each command executed by this script.
-  --mvn-opts <maven_options>
-    Specify additional Maven options for Java build/tests.
-  --shellcheck
-    Check various Bash scripts in the codebase.
-  --java-lint
-    Run a simple shell-based "linter" on our Java code that verifies that we are importing the right
-    methods for assertions and using the right test runners. We exit the script after this step.
-  --extra-daemon-flags, --extra-daemon-args <extra_daemon_flags>
-    Extra flags to pass to mini-cluster daemons (master/tserver). Note that bash-style quoting won't
-    work here -- they are naively split on spaces.
   --super-bash-debug
     Log the location of every command executed in this script
 
@@ -1195,6 +1199,9 @@ while [[ $# -gt 0 ]]; do
     --no-initdb)
       export YB_SKIP_INITIAL_SYS_CATALOG_SNAPSHOT=1
     ;;
+    --skip-test-log-rewrite)
+      export YB_SKIP_TEST_LOG_REWRITE=1
+    ;;
     *)
       if [[ $1 =~ ^(YB_[A-Z0-9_]+|postgres_FLAGS_[a-zA-Z0-9_]+)=(.*)$ ]]; then
         env_var_name=${BASH_REMATCH[1]}
@@ -1462,6 +1469,8 @@ fi
 # -------------------------------------------------------------------------------------------------
 
 find_or_download_ysql_snapshots
+activate_virtualenv
+set_pythonpath
 find_or_download_thirdparty
 detect_toolchain
 find_make_or_ninja_and_update_cmake_opts
@@ -1503,7 +1512,6 @@ fi
 # error.
 trap cleanup EXIT
 
-activate_virtualenv
 check_python_script_syntax
 
 set_java_home

@@ -326,7 +326,7 @@ Status Master::WaitUntilCatalogManagerIsLeaderAndReadyForTests(const MonoDelta& 
   const int kMaxBackoffMs = 256;
   do {
     SCOPED_LEADER_SHARED_LOCK(l, catalog_manager_.get());
-    if (l.catalog_status().ok() && l.leader_status().ok()) {
+    if (l.IsInitializedAndIsLeader()) {
       return Status::OK();
     }
     l.Unlock();

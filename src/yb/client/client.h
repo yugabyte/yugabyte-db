@@ -92,7 +92,6 @@ class TabletLocationsPB;
 namespace tserver {
 class LocalTabletServer;
 class TabletServerServiceProxy;
-class TabletServerForwardServiceProxy;
 }
 
 namespace client {
@@ -530,8 +529,8 @@ class YBClient {
   void DeleteNotServingTablet(const TabletId& tablet_id, StdStatusCallback callback);
 
   // Update a CDC stream's options.
-  Status UpdateCDCStream(const CDCStreamId& stream_id,
-                                 const master::SysCDCStreamEntryPB& new_entry);
+  Status UpdateCDCStream(const std::vector<CDCStreamId>& stream_ids,
+                         const std::vector<master::SysCDCStreamEntryPB>& new_entries);
 
   Result<bool> IsBootstrapRequired(const TableId& table_id,
                                    const boost::optional<CDCStreamId>& stream_id = boost::none);
@@ -560,22 +559,6 @@ class YBClient {
   void SetLocalTabletServer(const std::string& ts_uuid,
                             const std::shared_ptr<tserver::TabletServerServiceProxy>& proxy,
                             const tserver::LocalTabletServer* local_tserver);
-
-  internal::RemoteTabletServer* GetLocalTabletServer();
-
-  // Sets the node local forward service proxy. This proxy is used to forward the rpcs to the
-  // appropriate tablet server.
-  void SetNodeLocalForwardProxy(
-      const std::shared_ptr<tserver::TabletServerForwardServiceProxy>& proxy);
-
-  // Returns the node local forward service proxy.
-  std::shared_ptr<tserver::TabletServerForwardServiceProxy>& GetNodeLocalForwardProxy();
-
-  // Sets the host port of the node local tserver.
-  void SetNodeLocalTServerHostPort(const ::yb::HostPort& hostport);
-
-  // Returns the host port of the node local tserver.
-  const ::yb::HostPort& GetNodeLocalTServerHostPort();
 
   // List only those tables whose names pass a substring match on 'filter'.
   //

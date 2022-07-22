@@ -25,7 +25,7 @@ export const ClusterStats: FC<{ data: ClusterData[] }> = ({ data }) => {
       const numNodes = cluster.spec.cluster_info.num_nodes;
       clusterNum++;
       clusterNodes += numNodes;
-      clusterCores += numNodes * cluster.spec.cluster_info.node_info.num_cores;
+      clusterCores += numNodes * (cluster.spec.cluster_info.node_info.cpu_usage ?? 0);
     }
     if (cluster.info) {
       if (cluster.info.state === 'Paused') {

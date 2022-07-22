@@ -602,16 +602,12 @@ class MasterSnapshotCoordinator::Impl {
     return Status::OK();
   }
 
-  void VerifyRestoration(RestorationState* restoration) REQUIRES(mutex_) {
+  Status VerifyRestoration(RestorationState* restoration) REQUIRES(mutex_) {
     auto schedule_result = FindSnapshotSchedule(restoration->schedule_id());
-    LOG_IF(DFATAL, !schedule_result.ok())
-        << "Snapshot schedule not found for pending restore with id "
-        << restoration->restoration_id() << ", status: " << schedule_result.status();
-    auto status = context_.VerifyRestoredObjects(
-        restoration->MasterMetadata(), (*schedule_result).options().filter().tables().tables());
-    LOG_IF(DFATAL, !status.ok()) << "Verify restoration failed: " << status;
-    LOG(INFO) << "PITR: Master metadata verified successsfully for restoration "
-              << restoration->restoration_id();
+    RETURN_NOT_OK_PREPEND(schedule_result, "Snapshot schedule not found.");
+
+    return context_.VerifyRestoredObjects(
+        restoration->MasterMetadata(), schedule_result->options().filter().tables().tables());
   }
 
   boost::optional<yb::master::SnapshotState&> ValidateRestoreAndGetSnapshot(
@@ -684,6 +680,7 @@ class MasterSnapshotCoordinator::Impl {
       // Do nothing on follower.
       return;
     }
+
     // Issue pending restoration rpcs.
     vector<RestorationData> postponed_restores;
     {
@@ -696,7 +693,20 @@ class MasterSnapshotCoordinator::Impl {
         }
         // If it is PITR restore, then verify restoration and add to the queue for rpcs.
         if (!restoration->schedule_id().IsNil()) {
-          VerifyRestoration(restoration.get());
+          auto status = VerifyRestoration(restoration.get());
+          if (status.ok()) {
+            LOG(INFO) << "PITR: Master metadata verified successfully for restoration "
+                      << restoration->restoration_id();
+          } else {
+            // We've had some instances in the past when verification failed but there was no issue
+            // with restore. Especially with tablet splitting. In Retail mode just log an error and
+            // proceed.
+            auto error_msg = Format(
+                "PITR: Master metadata verified failed for restoration $0, status: $1",
+                restoration->restoration_id(), status);
+            LOG(DFATAL) << error_msg;
+          }
+
           auto db_oid = ComputeDbOid(restoration.get());
           postponed_restores.push_back(RestorationData {
             .snapshot_id = restoration->snapshot_id(),
@@ -1001,7 +1011,7 @@ class MasterSnapshotCoordinator::Impl {
       return;
     }
     SCOPED_LEADER_SHARED_LOCK(l, cm_);
-    if (!l.catalog_status().ok() || !l.leader_status().ok()) {
+    if (!l.IsInitializedAndIsLeader()) {
       return;
     }
     VLOG(4) << __func__ << "()";

@@ -336,7 +336,7 @@ void TabletSplitITestBase<MiniClusterType>::CheckTableKeysInRange(const size_t n
 
 template <class MiniClusterType>
 Result<bool> TabletSplitITestBase<MiniClusterType>::IsSplittingComplete(
-    yb::master::MasterAdminProxy* master_proxy) {
+    yb::master::MasterAdminProxy* master_proxy, bool wait_for_parent_deletion) {
   rpc::RpcController controller;
   controller.set_timeout(kRpcTimeout);
   master::IsTabletSplittingCompleteRequestPB is_tablet_splitting_complete_req;

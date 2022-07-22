@@ -5,22 +5,19 @@ package com.yugabyte.yw.commissioner;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
-import com.yugabyte.yw.common.AWSUtil;
-import com.yugabyte.yw.common.AZUtil;
 import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.FakeDBApplication;
-import com.yugabyte.yw.common.GCPUtil;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TableManagerYb;
+import com.yugabyte.yw.common.YbcManager;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.forms.BackupTableParams;
@@ -33,17 +30,12 @@ import com.yugabyte.yw.models.configs.CustomerConfig.ConfigState;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
-import lombok.extern.slf4j.Slf4j;
-import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
-import org.mockito.MockedStatic;
-import org.mockito.Mockito;
 import org.mockito.junit.MockitoJUnitRunner;
 
-@Slf4j
 @RunWith(MockitoJUnitRunner.class)
 public class BackupGarbageCollectorTest extends FakeDBApplication {
 
@@ -57,6 +49,7 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
   private CustomerConfigService customerConfigService;
   private TableManagerYb tableManagerYb;
   private BackupUtil mockBackupUtil;
+  private YbcManager mockYbcManager;
 
   @Before
   public void setUp() {
@@ -71,7 +64,8 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
             customerConfigService,
             mockRuntimeConfigFactory,
             tableManagerYb,
-            mockBackupUtil);
+            mockBackupUtil,
+            mockYbcManager);
   }
 
   @Test
@@ -276,6 +270,43 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
         () ->
             customerConfigService.getOrBadRequest(defaultCustomer.uuid, customerConfig.configUUID));
     backup.refresh();
+    assertEquals(BackupState.FailedToDelete, backup.state);
+  }
+
+  @Test
+  public void testDeleteIAMS3BackupSuccess() {
+    CustomerConfig customerConfig =
+        ModelFactory.createS3StorageConfigWithIAM(defaultCustomer, "TEST12");
+    BackupTableParams bp = new BackupTableParams();
+    bp.storageConfigUUID = customerConfig.configUUID;
+    bp.universeUUID = defaultUniverse.universeUUID;
+    Backup backup = Backup.create(defaultCustomer.uuid, bp);
+    backup.transitionState(BackupState.QueuedForDeletion);
+    ShellResponse shellResponse = new ShellResponse();
+    shellResponse.message = "{\"success\": true}";
+    shellResponse.code = 0;
+    when(mockTableManagerYb.deleteBackup(any())).thenReturn(shellResponse);
+    backupGC.scheduleRunner();
+    assertThrows(
+        PlatformServiceException.class,
+        () -> Backup.getOrBadRequest(defaultCustomer.uuid, backup.backupUUID));
+  }
+
+  @Test
+  public void testDeleteIAMS3BackupFailure() {
+    CustomerConfig customerConfig =
+        ModelFactory.createS3StorageConfigWithIAM(defaultCustomer, "TEST13");
+    BackupTableParams bp = new BackupTableParams();
+    bp.storageConfigUUID = customerConfig.configUUID;
+    bp.universeUUID = defaultUniverse.universeUUID;
+    Backup backup = Backup.create(defaultCustomer.uuid, bp);
+    backup.transitionState(BackupState.QueuedForDeletion);
+    ShellResponse shellResponse = new ShellResponse();
+    shellResponse.message = "{\"error\": true}";
+    shellResponse.code = 2;
+    when(mockTableManagerYb.deleteBackup(any())).thenReturn(shellResponse);
+    backupGC.scheduleRunner();
+    backup = Backup.getOrBadRequest(defaultCustomer.uuid, backup.backupUUID);
     assertEquals(BackupState.FailedToDelete, backup.state);
   }
 }

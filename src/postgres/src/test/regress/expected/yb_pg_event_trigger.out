@@ -89,7 +89,7 @@ set role regress_evt_user;
 create event trigger regress_event_trigger_noperms on ddl_command_start
    execute procedure test_event_trigger();
 ERROR:  permission denied to create event trigger "regress_event_trigger_noperms"
-HINT:  Must be superuser or yb_db_admin role member to create an event trigger.
+HINT:  Must be superuser or a member of the yb_db_admin role to create an event trigger.
 reset role;
 -- test enabling and disabling
 alter event trigger regress_event_trigger disable;
@@ -142,7 +142,7 @@ NOTICE:  test_event_trigger: ddl_command_end ALTER DEFAULT PRIVILEGES
 -- alter owner to non-superuser should fail
 alter event trigger regress_event_trigger owner to regress_evt_user;
 ERROR:  permission denied to change owner of event trigger "regress_event_trigger"
-HINT:  The owner of an event trigger must be a superuser or yb_db_admin role member.
+HINT:  The owner of an event trigger must be a superuser or a member of the yb_db_admin role.
 -- alter owner to superuser should work
 alter role regress_evt_user superuser;
 alter event trigger regress_event_trigger owner to regress_evt_user;

@@ -9,7 +9,7 @@ menu:
   stable:
     identifier: api-ysql-keywords
     parent: api-ysql
-    weight: 4500
+    weight: 500
 type: docs
 ---
 

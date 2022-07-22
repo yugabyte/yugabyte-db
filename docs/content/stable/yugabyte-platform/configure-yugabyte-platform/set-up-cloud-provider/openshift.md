@@ -1,7 +1,7 @@
 ---
-title: Configure the OpenShift Cloud Provider
-headerTitle: Configure the OpenShift Cloud Provider
-linkTitle: Configure the cloud provider
+title: Configure the OpenShift cloud provider
+headerTitle: Configure the OpenShift cloud provider
+linkTitle: Configure cloud providers
 description: Configure the OpenShift cloud provider
 menu:
   stable_yugabyte-platform:
@@ -13,47 +13,47 @@ type: docs
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
-    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/aws" class="nav-link">
+    <a href="../aws/" class="nav-link">
       <i class="fab fa-aws"></i>
       AWS
     </a>
   </li>
 
   <li>
-    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/gcp" class="nav-link">
+    <a href="../gcp/" class="nav-link">
       <i class="fab fa-google" aria-hidden="true"></i>
       GCP
     </a>
   </li>
 
   <li>
-    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/azure" class="nav-link">
+    <a href="../azure/" class="nav-link">
       <i class="icon-azure" aria-hidden="true"></i>
       &nbsp;&nbsp; Azure
     </a>
   </li>
 
   <li>
-    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/kubernetes" class="nav-link">
+    <a href="../kubernetes/" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
 
   <li>
-    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/vmware-tanzu" class="nav-link">
+    <a href="../vmware-tanzu/" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       VMware Tanzu
     </a>
   </li>
 
 <li>
-    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/openshift" class="nav-link active">
+    <a href="../openshift/" class="nav-link active">
       <i class="fas fa-cubes" aria-hidden="true"></i>OpenShift</a>
   </li>
 
   <li>
-    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises" class="nav-link">
+    <a href="../on-premises/" class="nav-link">
       <i class="fas fa-building"></i>
       On-premises
     </a>
@@ -61,17 +61,15 @@ type: docs
 
 </ul>
 
-This document describes how to configure OpenShift for YugabyteDB universes using Yugabyte Platform. If no cloud providers are configured via the Yugabyte Platform console, the main Dashboard page requests to configure at least one provider, as per the following illustration:
+You can configure OpenShift for YugabyteDB universes using YugabyteDB Anywhere. If no cloud providers are configured via YugabyteDB Anywhere, the main **Dashboard** page requests to configure at least one provider.
 
-![Configure Cloud Provider](/images/ee/configure-cloud-provider.png)
+To create a YugabyteDB universe using the deployed YugabyteDB Anywhere, you start by creating the required role-based access control (RBAC) and adding the provider in the YugabyteDB Anywhere.
 
-To create a YugabyteDB universe using the deployed platform, you start by creating the required Role-based access control (RBAC) and adding the provider in the platform.
+## Create RBAC and kubeconfig
 
-## Creating RBAC and kubeconfig
+kubeconfig is used by YugabyteDB Anywhere to create universes in the OpenShift Container Platform (OCP) cluster.
 
-kubeconfig is used by Yugabyte Platform to create universes in the OCP cluster.
-
-To create a ServiceAccount in the yb-platform project, execute the following command:
+To create a service account in the yb-platform project, execute the following command:
 
 ```shell
 oc apply \
@@ -85,7 +83,9 @@ Expect the following output:
 serviceaccount/yugabyte-platform-universe-management created
 ```
 
-The next step is to grant access to this ServiceAccount using Roles and RoleBindings, thus allowing it to manage the YugabyteDB universe's resources for you. To create the required RBAC objects, execute the following command:
+The next step is to grant access to this service account using Roles and RoleBindings, thus allowing it to manage the YugabyteDB universe's resources for you. If you are creating clusters across multiple namespaces, you need to create Roles and RoleBindings with a cluster-admin role in each namespace where you intend to create and deploy the universe. For more information, see [RBAC resources](https://github.com/yugabyte/charts/tree/master/rbac#c-platform-namespacedyaml).
+
+To create the required RBAC objects, execute the following command:
 
 ```shell
 curl -s https://raw.githubusercontent.com/yugabyte/charts/master/rbac/platform-namespaced.yaml \
@@ -102,7 +102,7 @@ rolebinding.rbac.authorization.k8s.io/yugabyte-helm-operations created
 rolebinding.rbac.authorization.k8s.io/yugabyte-management created
 ```
 
-The next step is to create a kubeconfig for this ServiceAccount. You download a helper script for generating a kubeconfig file by executing the following command:
+The next step is to create a kubeconfig for this service account. You download a helper script for generating a kubeconfig file by executing the following command:
 
 ```shell
 wget https://raw.githubusercontent.com/YugaByte/charts/master/stable/yugabyte/generate_kubeconfig.py
@@ -122,13 +122,13 @@ Expect the following output:
 Generated the kubeconfig file: /tmp/yugabyte-platform-universe-management.conf
 ```
 
-## Creating a Provider in Yugabyte Platform
+## Create a provider in YugabyteDB Anywhere
 
-Since Yugabyte Platform manages YugabyteDB universes, Yugabyte Platform needs details about the cloud providers. In your case, the provider is your own OCP cluster.
+Since YugabyteDB Anywhere manages YugabyteDB universes, YugabyteDB Anywhere needs details about the cloud providers. In your case, the provider is your own OCP cluster.
 
 You can create a provider as follows:
 
-- Open the Yugabyte Platform web UI and click **Configure a Provider** to open the **Cloud Provider Configuration** page shown in the following illustration.
+- Open YugabyteDB Anywhere UI and click **Configure a Provider** to open the **Cloud Provider Configuration** page shown in the following illustration.
 - Select **Red Hat OpenShift** and complete the fields, as follows:
   - In the **Type** filed, select **OpenShift**.
   - In the **Name** field, enter ocp-test.
@@ -149,11 +149,11 @@ You can create a provider as follows:
 
 You should see the newly-added provider under **Red Hat OpenShift configs**.
 
-## Creating a Universe Using the Provider
+## Create a universe using the provider
 
 You can create a universe using the provider as follows:
 
-- Use the Yugabyte Platform web UI to navigate to **Universes** and then click **Create Universe**.
+- Use YugabyteDB Anywhere UI to navigate to **Universes**, and then click **Create Universe**.
 
 - Complete the **Create Universe** page shown in the following illustration by entering the following information:
 
@@ -178,7 +178,7 @@ Upon successful creation of the universe, the **Overview** tab of universe-1 sho
 
 ![Universe 1](/images/ee/openshift-universe1.png)
 
-## Troubleshooting the Universe Creation
+## Troubleshoot the universe creation
 
 If the universe creation remains in Pending state for more than 2-3 minutes, open the OCP web console, navigate to **Workloads > Pods** and check if any of the pods are in pending state, as shown in the following illustration:
 
@@ -190,7 +190,7 @@ Alternatively, you can execute the following command to check status of the pods
 oc get pods -n yb-platform -l chart=yugabyte
 ```
 
-Expect output similar to the following:
+Expect an output similar to the following:
 
 ```output
 # output
@@ -212,7 +212,7 @@ If any of the pods are in pending state, perform the following:
 
 ![Edit Machine Count](/images/ee/openshift-open-macine.png)
 
-Alternatively, you can scale the MachineSets by executing the following command as admin user:
+Alternatively, you can scale the Machine Sets by executing the following command as admin user:
 
 ```shell
 oc scale machineset ocp-dev4-l5ffp-worker-a --replicas=2 -n openshift-machine-api

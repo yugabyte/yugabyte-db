@@ -370,12 +370,44 @@ public class PlacementInfoUtil {
   public static void updateUniverseDefinition(
       UniverseConfigureTaskParams taskParams, Long customerId, UUID placementUuid) {
     updateUniverseDefinition(
+        taskParams, getUniverseForParams(taskParams), customerId, placementUuid);
+  }
+
+  /**
+   * Helper API to set some of the non user supplied information in task params.
+   *
+   * @param taskParams : Universe task params.
+   * @param universe : Universe to config
+   * @param customerId : Current customer's id.
+   * @param placementUuid : UUID of the cluster user is working on.
+   */
+  public static void updateUniverseDefinition(
+      UniverseConfigureTaskParams taskParams,
+      @Nullable Universe universe,
+      Long customerId,
+      UUID placementUuid) {
+    updateUniverseDefinition(
         taskParams,
+        universe,
         customerId,
         placementUuid,
         taskParams.clusterOperation,
         taskParams.allowGeoPartitioning,
         taskParams.regionsChanged);
+  }
+
+  public static Universe getUniverseForParams(UniverseDefinitionTaskParams taskParams) {
+    if (taskParams.universeUUID != null) {
+      return Universe.maybeGet(taskParams.universeUUID)
+          .orElseGet(
+              () -> {
+                LOG.info(
+                    "Universe with UUID {} not found, configuring new universe.",
+                    taskParams.universeUUID);
+                return null;
+              });
+    }
+    return null;
   }
 
   @VisibleForTesting
@@ -384,10 +416,71 @@ public class PlacementInfoUtil {
       Long customerId,
       UUID placementUuid,
       ClusterOperationType clusterOpType) {
-    updateUniverseDefinition(taskParams, customerId, placementUuid, clusterOpType, false, null);
+    updateUniverseDefinition(
+        taskParams,
+        getUniverseForParams(taskParams),
+        customerId,
+        placementUuid,
+        clusterOpType,
+        false,
+        null);
   }
 
   private static void updateUniverseDefinition(
+      UniverseDefinitionTaskParams taskParams,
+      @Nullable Universe universe,
+      Long customerId,
+      UUID placementUuid,
+      ClusterOperationType clusterOpType,
+      boolean allowGeoPartitioning,
+      @Nullable Boolean regionsChanged) {
+
+    // Create node details set if needed.
+    if (taskParams.nodeDetailsSet == null) {
+      taskParams.nodeDetailsSet = new HashSet<>();
+    }
+
+    if (taskParams.universeUUID == null) {
+      taskParams.universeUUID = UUID.randomUUID();
+    }
+    Cluster cluster = taskParams.getClusterByUuid(placementUuid);
+    Cluster oldCluster = universe == null ? null : universe.getCluster(placementUuid);
+    boolean checkResizePossible = false;
+    boolean isSamePlacementInRequest = false;
+
+    if (oldCluster != null) {
+      // Checking resize restrictions (provider, instance, etc).
+      // We should skip volume size check here because this request could happen while disk is
+      // decreased and a later increase will not cause such request.
+      checkResizePossible =
+          ResizeNodeParams.checkResizeIsPossible(
+              oldCluster.userIntent, cluster.userIntent, universe, false);
+      isSamePlacementInRequest =
+          isSamePlacement(oldCluster.placementInfo, cluster.placementInfo)
+              && oldCluster.userIntent.numNodes == cluster.userIntent.numNodes;
+    }
+    updateUniverseDefinition(
+        universe,
+        taskParams,
+        customerId,
+        placementUuid,
+        clusterOpType,
+        allowGeoPartitioning,
+        regionsChanged);
+    if (oldCluster != null) {
+      // Besides restrictions, resize is only available if no nodes are added/removed.
+      // Need to check whether original placement or eventual placement is equal to current.
+      // We check original placement from request because it could be full move
+      // (which still could be resized).
+      taskParams.nodesResizeAvailable =
+          checkResizePossible
+              && (isSamePlacementInRequest
+                  || isSamePlacement(oldCluster.placementInfo, cluster.placementInfo));
+    }
+  }
+
+  private static void updateUniverseDefinition(
+      Universe universe,
       UniverseDefinitionTaskParams taskParams,
       Long customerId,
       UUID placementUuid,
@@ -395,26 +488,14 @@ public class PlacementInfoUtil {
       boolean allowGeoPartitioning,
       @Nullable Boolean regionsChanged) {
     Cluster cluster = taskParams.getClusterByUuid(placementUuid);
-    taskParams.nodesResizeAvailable = false;
 
     // Create node details set if needed.
     if (taskParams.nodeDetailsSet == null) {
       taskParams.nodeDetailsSet = new HashSet<>();
     }
 
-    Universe universe = null;
     if (taskParams.universeUUID == null) {
       taskParams.universeUUID = UUID.randomUUID();
-    } else {
-      universe =
-          Universe.maybeGet(taskParams.universeUUID)
-              .orElseGet(
-                  () -> {
-                    LOG.info(
-                        "Universe with UUID {} not found, configuring new universe.",
-                        taskParams.universeUUID);
-                    return null;
-                  });
     }
 
     String universeName =
@@ -479,10 +560,11 @@ public class PlacementInfoUtil {
     // Verify the provided edit parameters, if in edit universe case, and get the mode.
     // Otherwise it is a primary or readonly cluster creation phase changes.
     LOG.info(
-        "Placement={}, numNodes={}, AZ={}.",
+        "Placement={}, numNodes={}, AZ={} OpType={}.",
         cluster.placementInfo,
         taskParams.nodeDetailsSet.size(),
-        taskParams.userAZSelected);
+        taskParams.userAZSelected,
+        clusterOpType);
 
     // If user AZ Selection is made for Edit get a new configuration from placement info.
     if (taskParams.userAZSelected && universe != null) {
@@ -514,16 +596,6 @@ public class PlacementInfoUtil {
                 + " cluster in universe "
                 + universe.universeUUID);
       }
-      // Checking resize restrictions (provider, instance, volume size, etc).
-      String checkResizePossible =
-          ResizeNodeParams.checkResizeIsPossible(oldCluster.userIntent, cluster.userIntent);
-
-      // Besides restrictions, resize is only available if no nodes are added/removed.
-      taskParams.nodesResizeAvailable =
-          isSamePlacement(oldCluster.placementInfo, cluster.placementInfo)
-              && oldCluster.userIntent.numNodes == cluster.userIntent.numNodes
-              && checkResizePossible == null;
-
       // If only disk size was changed (used by nodes resize) - no need to proceed
       // (otherwise nodes set will be modified).
       if (checkOnlyNodeResize(oldCluster, cluster)) {
@@ -630,7 +702,6 @@ public class PlacementInfoUtil {
 
       if (!changeNodeStates && oldCluster != null && !oldCluster.areTagsSame(cluster)) {
         LOG.info("No node config change needed, only instance tags changed.");
-
         return;
       }
 
@@ -901,7 +972,7 @@ public class PlacementInfoUtil {
 
   // Helper function to check if the old placement and new placement after edit
   // are the same.
-  private static boolean isSamePlacement(
+  public static boolean isSamePlacement(
       PlacementInfo oldPlacementInfo, PlacementInfo newPlacementInfo) {
     Map<UUID, AZInfo> oldAZMap = new HashMap<>();
 

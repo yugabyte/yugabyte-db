@@ -86,7 +86,8 @@ public class TlsToggle extends UpgradeTaskBase {
             createSetFlagInMemoryTasks(nodeList, getSingle(processTypes), true, gflags, false)
                 .setSubTaskGroupType(getTaskSubGroupType());
           },
-          nodes);
+          nodes,
+          DEFAULT_CONTEXT);
     } else {
       if (taskParams().upgradeOption == UpgradeOption.ROLLING_UPGRADE) {
         createRollingUpgradeTaskFlow(
@@ -117,7 +118,8 @@ public class TlsToggle extends UpgradeTaskBase {
             createSetFlagInMemoryTasks(nodeList, processType, true, gflags, false)
                 .setSubTaskGroupType(getTaskSubGroupType());
           },
-          nodes);
+          nodes,
+          DEFAULT_CONTEXT);
     } else if (getNodeToNodeChange() < 0) {
       if (taskParams().upgradeOption == UpgradeOption.ROLLING_UPGRADE) {
         createRollingUpgradeTaskFlow(

@@ -102,6 +102,8 @@ DECLARE_int32(log_max_seconds_to_retain);
 DECLARE_int32(log_min_segments_to_retain);
 DECLARE_bool(check_bootstrap_required);
 DECLARE_bool(enable_load_balancing);
+DECLARE_bool(ysql_enable_packed_row);
+DECLARE_uint64(ysql_packed_row_size_limit);
 
 namespace yb {
 
@@ -529,13 +531,6 @@ class TwoDCYsqlTest : public TwoDCTestBase, public testing::WithParamInterface<T
     }, MonoDelta::FromSeconds(kRpcTimeout), "Verify number of records");
   }
 
-  Status DeleteTable(Cluster* cluster,
-                     TableId* table_id /* = nullptr */) {
-    RETURN_NOT_OK(cluster->client_->DeleteTable(*table_id));
-
-    return Status::OK();
-  }
-
   Status TruncateTable(Cluster* cluster,
                        std::vector<string> table_ids) {
     RETURN_NOT_OK(cluster->client_->TruncateTables(table_ids));
@@ -638,6 +633,8 @@ TEST_P(TwoDCYsqlTest, SetupUniverseReplication) {
 
 TEST_P(TwoDCYsqlTest, SimpleReplication) {
   YB_SKIP_TEST_IN_TSAN();
+  FLAGS_ysql_enable_packed_row = false;
+
   constexpr auto kNumRecords = 1000;
   constexpr int kNTabletsPerTable = 1;
   std::vector<uint32_t> tables_vector = {kNTabletsPerTable, kNTabletsPerTable};
@@ -713,8 +710,40 @@ TEST_P(TwoDCYsqlTest, SimpleReplication) {
   }
 
   // 5. Make sure this data is also replicated now.
-  ASSERT_OK(WaitFor([&]() { return data_replicated_correctly(kNumRecords + 5); },
-                    MonoDelta::FromSeconds(20), "IsDataReplicatedCorrectly"));
+  ASSERT_OK(WaitFor(
+      [&]() { return data_replicated_correctly(kNumRecords + 5); }, MonoDelta::FromSeconds(20),
+      "IsDataReplicatedCorrectly"));
+
+  // Enable packing
+  FLAGS_ysql_enable_packed_row = true;
+  FLAGS_ysql_packed_row_size_limit = 1_KB;
+
+  // Disable the replication and ensure no tablets are being polled
+  ASSERT_OK(ToggleUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId, false));
+  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 0));
+
+  // 6. Write packed data.
+  for (const auto& producer_table : producer_tables) {
+    WriteWorkload(kNumRecords + 5, kNumRecords + 10, &producer_cluster_, producer_table->name());
+  }
+
+  // 7. Disable packing and resume replication
+  FLAGS_ysql_enable_packed_row = false;
+  ASSERT_OK(ToggleUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId, true));
+  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 2));
+  ASSERT_OK(WaitFor(
+      [&]() { return data_replicated_correctly(kNumRecords + 10); }, MonoDelta::FromSeconds(20),
+      "IsDataReplicatedCorrectly"));
+
+  // 8. Write some non-packed data on consumer.
+  for (const auto& consumer_table : consumer_tables) {
+    WriteWorkload(kNumRecords + 10, kNumRecords + 15, &producer_cluster_, consumer_table->name());
+  }
+
+  // 9. Make sure full scan works now.
+  ASSERT_OK(WaitFor(
+      [&]() { return data_replicated_correctly(kNumRecords + 15); }, MonoDelta::FromSeconds(20),
+      "IsDataReplicatedCorrectly"));
 }
 
 TEST_P(TwoDCYsqlTest, SetupUniverseReplicationWithProducerBootstrapId) {
@@ -1515,18 +1544,22 @@ TEST_P(TwoDCYsqlTest, DeleteTableChecks) {
   for (size_t i = 0; i < producer_tables.size(); ++i) {
     string producer_table_id = producer_tables[i]->id();
     string consumer_table_id = consumer_tables[i]->id();
-    ASSERT_NOK(DeleteTable(&producer_cluster_, &producer_table_id));
-    ASSERT_NOK(DeleteTable(&consumer_cluster_, &consumer_table_id));
+    // GH issue #12003, allow deletion of YSQL tables under replication for now.
+    ASSERT_OK(producer_client()->DeleteTable(producer_table_id));
+    ASSERT_OK(consumer_client()->DeleteTable(consumer_table_id));
   }
 
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
 
-  for (size_t i = 0; i < producer_tables.size(); ++i) {
-    string producer_table_id = producer_tables[i]->id();
-    string consumer_table_id = consumer_tables[i]->id();
-    ASSERT_OK(DeleteTable(&producer_cluster_, &producer_table_id));
-    ASSERT_OK(DeleteTable(&consumer_cluster_, &consumer_table_id));
-  }
+  // TODO(jhe) re-enable these checks after we disallow deletion of YSQL xCluster tables, part
+  // of gh issue #753.
+
+  // for (size_t i = 0; i < producer_tables.size(); ++i) {
+  //   string producer_table_id = producer_tables[i]->id();
+  //   string consumer_table_id = consumer_tables[i]->id();
+  //   ASSERT_OK(producer_client()->DeleteTable(producer_table_id));
+  //   ASSERT_OK(consumer_client()->DeleteTable(consumer_table_id));
+  // }
 }
 
 TEST_P(TwoDCYsqlTest, TruncateTableChecks) {
@@ -1889,11 +1922,27 @@ void TwoDCYsqlTest::ValidateRecordsTwoDCWithCDCSDK(bool update_min_cdc_indices_i
 
 TEST_P(TwoDCYsqlTest, TwoDCWithCDCSDKEnabled) {
   YB_SKIP_TEST_IN_TSAN();
+  FLAGS_ysql_enable_packed_row = false;
+  ValidateRecordsTwoDCWithCDCSDK(false, false, false);
+}
+
+TEST_P(TwoDCYsqlTest, TwoDCWithCDCSDKPackedRowsEnabled) {
+  YB_SKIP_TEST_IN_TSAN();
+  FLAGS_ysql_enable_packed_row = true;
+  FLAGS_ysql_packed_row_size_limit = 1_KB;
   ValidateRecordsTwoDCWithCDCSDK(false, false, false);
 }
 
 TEST_P(TwoDCYsqlTest, TwoDCWithCDCSDKExplictTransaction) {
   YB_SKIP_TEST_IN_TSAN();
+  FLAGS_ysql_enable_packed_row = false;
+  ValidateRecordsTwoDCWithCDCSDK(false, true, true);
+}
+
+TEST_P(TwoDCYsqlTest, TwoDCWithCDCSDKExplictTranPackedRows) {
+  YB_SKIP_TEST_IN_TSAN();
+  FLAGS_ysql_enable_packed_row = true;
+  FLAGS_ysql_packed_row_size_limit = 1_KB;
   ValidateRecordsTwoDCWithCDCSDK(false, true, true);
 }
 

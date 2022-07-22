@@ -27,17 +27,14 @@ import play.libs.ws.WSClient;
 @Slf4j
 public class PlatformInstanceClientFactory {
 
+  public static final String YB_HA_WS_KEY = "yb.ha.ws";
   private final CustomWsClientFactory customWsClientFactory;
   private final RuntimeConfigFactory runtimeConfigFactory;
-  private final ApiHelper fallbackApiHelper;
   private WSClient customWsClient = null;
 
   @Inject
   public PlatformInstanceClientFactory(
-      ApiHelper defaultApiHelper,
-      CustomWsClientFactory customWsClientFactory,
-      RuntimeConfigFactory runtimeConfigFactory) {
-    this.fallbackApiHelper = defaultApiHelper;
+      CustomWsClientFactory customWsClientFactory, RuntimeConfigFactory runtimeConfigFactory) {
     this.customWsClientFactory = customWsClientFactory;
     this.runtimeConfigFactory = runtimeConfigFactory;
   }
@@ -70,11 +67,9 @@ public class PlatformInstanceClientFactory {
 
   public PlatformInstanceClient getClient(String clusterKey, String remoteAddress) {
     if (customWsClient == null) {
-      log.info("Using fallbackApiHelper");
-      return new PlatformInstanceClient(fallbackApiHelper, clusterKey, remoteAddress);
-    } else {
-      log.info("Using customApiHelper");
-      return new PlatformInstanceClient(new ApiHelper(customWsClient), clusterKey, remoteAddress);
+      log.info("Creating customWsClient for first time");
+      refreshWsClient(YB_HA_WS_KEY);
     }
+    return new PlatformInstanceClient(new ApiHelper(customWsClient), clusterKey, remoteAddress);
   }
 }

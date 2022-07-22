@@ -209,8 +209,10 @@ $(document).ready(() => {
   yugabyteResizeHeaderMenu();
 
   // For Section nav.
-  $(document).on('click', 'li.submenu.section i', (event) => {
-    $(event.currentTarget).parent('li.submenu.section').toggleClass('open');
+  $(document).on('click', 'li.submenu.section a, li.submenu.section i', (event) => {
+    if (typeof event.target.href === 'undefined' || event.target.href === '') {
+      $(event.currentTarget).parent('li.submenu.section').toggleClass('open');
+    }
   });
 
   $(document).on('click', 'li.submenu:not(.section) i', (event) => {
@@ -220,7 +222,13 @@ $(document).ready(() => {
   // Right sidebar click move content to inpage link.
   $(document).on('click', '.td-toc #TableOfContents a,.td-content h2 a,.td-content h3 a,.td-content h4 a', (event) => {
     const linkHref = $(event.currentTarget).attr('href');
-    $('html, body').scrollTop(($(linkHref).offset().top) - 70);
+    window.location.hash = linkHref;
+
+    if ($(window).width() > 767) {
+      $('html, body').scrollTop(($(linkHref).offset().top) - 70);
+    } else {
+      $('html, body').scrollTop(($(linkHref).offset().top) - 140);
+    }
 
     return false;
   });

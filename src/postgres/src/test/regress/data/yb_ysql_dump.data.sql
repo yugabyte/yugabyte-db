@@ -2,8 +2,8 @@
 -- YSQL database dump
 --
 
--- Dumped from database version 11.2-YB-2.13.0.0-b0
--- Dumped by ysql_dump version 11.2-YB-2.13.0.0-b0
+-- Dumped from database version 11.2-YB-2.15.1.0-b0
+-- Dumped by ysql_dump version 11.2-YB-2.15.1.0-b0
 
 SET yb_binary_restore = true;
 SET statement_timeout = 0;
@@ -756,7 +756,8 @@ CREATE TABLE public.tr1 (
     b text,
     c double precision,
     CONSTRAINT tr1_pkey PRIMARY KEY(a ASC)
-);
+)
+SPLIT AT VALUES ((1), (100));
 
 
 ALTER TABLE public.tr1 OWNER TO yugabyte_test;
@@ -778,7 +779,8 @@ CREATE TABLE public.tr2 (
     b text NOT NULL,
     c double precision NOT NULL,
     CONSTRAINT tr2_pkey PRIMARY KEY(a DESC, b ASC, c DESC)
-);
+)
+SPLIT AT VALUES ((100, 'a', 2.5), (50, 'n', MINVALUE), (1, 'z', -5.12000000000000011));
 
 
 ALTER TABLE public.tr2 OWNER TO yugabyte_test;
@@ -1143,14 +1145,14 @@ CREATE INDEX th3_c_b_idx ON public.th3 USING lsm ((c, b) HASH) SPLIT INTO 3 TABL
 -- Name: tr2_c_b_a_idx; Type: INDEX; Schema: public; Owner: yugabyte_test
 --
 
-CREATE INDEX tr2_c_b_a_idx ON public.tr2 USING lsm (c ASC, b DESC, a ASC);
+CREATE INDEX tr2_c_b_a_idx ON public.tr2 USING lsm (c ASC, b DESC, a ASC) SPLIT AT VALUES ((-5.12000000000000011, 'z', 1), (-0.75, 'l', MINVALUE), (2.5, 'a', 100));
 
 
 --
 -- Name: tr2_c_idx; Type: INDEX; Schema: public; Owner: yugabyte_test
 --
 
-CREATE INDEX tr2_c_idx ON public.tr2 USING lsm (c DESC);
+CREATE INDEX tr2_c_idx ON public.tr2 USING lsm (c DESC) SPLIT AT VALUES ((100.5), (1.5));
 
 
 --

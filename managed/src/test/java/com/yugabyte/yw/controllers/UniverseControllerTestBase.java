@@ -225,6 +225,7 @@ public class UniverseControllerTestBase extends WithApplication {
 
     when(mockAppConfig.getString("yb.storage.path"))
         .thenReturn("/tmp/" + this.getClass().getSimpleName());
+
     when(mockRuntimeConfig.getString("yb.storage.path"))
         .thenReturn("/tmp/" + this.getClass().getSimpleName());
   }

@@ -126,7 +126,8 @@ struct TabletOnDiskSizeInfo {
 // state machine through a consensus algorithm, which makes sure that other
 // peers see the same updates in the same order. In addition to this, this
 // class also splits the work and coordinates multi-threaded execution.
-class TabletPeer : public consensus::ConsensusContext,
+class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
+                   public consensus::ConsensusContext,
                    public TransactionParticipantContext,
                    public TransactionCoordinatorContext,
                    public WriteQueryContext {
@@ -478,6 +479,8 @@ class TabletPeer : public consensus::ConsensusContext,
   std::atomic<rpc::ThreadPool*> service_thread_pool_{nullptr};
   AtomicUniquePtr<rpc::Strand> strand_;
 
+  std::shared_ptr<rpc::PeriodicTimer> wait_queue_heartbeater_;
+
   OperationCounter preparing_operations_counter_;
 
   // Serializes access to set_cdc_min_replicated_index and reset_cdc_min_replicated_index_if_stale
@@ -506,6 +509,8 @@ class TabletPeer : public consensus::ConsensusContext,
   bool IsLeader() override {
     return LeaderTerm() != OpId::kUnknownTerm;
   }
+
+  void PollWaitQueue() const;
 
   TabletSplitter* tablet_splitter_;
 

@@ -1337,6 +1337,10 @@ YBHashSchema PartitionSchema::hash_schema() const {
   return *hash_schema_;
 }
 
+const PartitionSchema::RangeSchema& PartitionSchema::range_schema() const {
+  return range_schema_;
+}
+
 void PartitionSchema::ProcessHashKeyEntry(const LWQLValuePB& value_pb, std::string* out) {
   AppendToKey(value_pb, out);
 }

@@ -32,6 +32,8 @@
 
 #include "yb/rpc/rpc_controller.h"
 
+#include "yb/tserver/tserver_service.proxy.h"
+
 #include "yb/util/cast.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
@@ -87,7 +89,7 @@ DEFINE_bool(detect_duplicates_for_retryable_requests, true,
                 "twice.");
 
 DEFINE_bool(ysql_forward_rpcs_to_local_tserver, false,
-            "When true, forward the PGSQL rpcs to the local tServer.");
+            "DEPRECATED. Feature has been removed");
 
 DEFINE_CAPABILITY(PickReadTimeAtTabletServer, 0x8284d67b);
 
@@ -548,8 +550,8 @@ void WriteRpc::CallRemoteMethod() {
   TRACE_TO(trace, "SendRpcToTserver");
   ADOPT_TRACE(trace.get());
 
-  tablet_invoker_.WriteAsync(req_, &resp_, PrepareController(),
-                             std::bind(&WriteRpc::Finished, this, Status::OK()));
+  tablet_invoker_.proxy()->WriteAsync(
+      req_, &resp_, PrepareController(), std::bind(&WriteRpc::Finished, this, Status::OK()));
   TRACE_TO(trace, "RpcDispatched Asynchronously");
 }
 
@@ -692,8 +694,8 @@ void ReadRpc::CallRemoteMethod() {
   TRACE_TO(trace, "SendRpcToTserver");
   ADOPT_TRACE(trace.get());
 
-  tablet_invoker_.ReadAsync(req_, &resp_, PrepareController(),
-                            std::bind(&ReadRpc::Finished, this, Status::OK()));
+  tablet_invoker_.proxy()->ReadAsync(
+    req_, &resp_, PrepareController(), std::bind(&ReadRpc::Finished, this, Status::OK()));
   TRACE_TO(trace, "RpcDispatched Asynchronously");
 }
 

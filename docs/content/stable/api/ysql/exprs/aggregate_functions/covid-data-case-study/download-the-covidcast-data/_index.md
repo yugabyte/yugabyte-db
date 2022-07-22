@@ -11,7 +11,6 @@ menu:
     weight: 10
 type: indexpage
 ---
-
 Simply follow these step-by-step instructions:
 
 -  Create a directory on the computer where you run `ysqlsh` to hold the files for this case study. Call it, for example, _"covid-data-case-study"_.

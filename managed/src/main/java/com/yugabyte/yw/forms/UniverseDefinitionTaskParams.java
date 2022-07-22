@@ -187,6 +187,23 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     UNEXPOSED
   }
 
+  /**
+   * This are available update options when user clicks "Save" on EditUniverse page. UPDATE and
+   * FULL_MOVE are handled by the same task (EditUniverse), the difference is that for FULL_MOVE ui
+   * acts a little different. SMART_RESIZE_NON_RESTART - we don't need any confirmations for that as
+   * it is non-restart. SMART_RESIZE - upgrade that handled by ResizeNode task GFLAGS_UPGRADE - for
+   * the case of toggling "enable YSQ" and so on.
+   */
+  public enum UpdateOptions {
+    UPDATE,
+    FULL_MOVE,
+    SMART_RESIZE_NON_RESTART,
+    SMART_RESIZE,
+    GFLAGS_UPGRADE
+  }
+
+  @ApiModelProperty public Set<UpdateOptions> updateOptions = new HashSet<>();
+
   /** A wrapper for all the clusters that will make up the universe. */
   @JsonInclude(value = JsonInclude.Include.NON_NULL)
   public static class Cluster {

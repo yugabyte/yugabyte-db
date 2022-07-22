@@ -183,6 +183,24 @@ YB_DEFINE_ENUM(ListTabletsFlags, (JSON)(INCLUDE_FOLLOWERS));
 
 } // namespace
 
+Status ClusterAdminCli::RunCommand(
+    const Command& command, const CLIArguments& command_args, const std::string& program_name) {
+  auto s = command.action_(command_args);
+  if (!s.ok()) {
+    if (s.IsRemoteError() && s.ToString().find("rpc error 2")) {
+      cerr << "The cluster doesn't support " << command.name_ << ": " << s << std::endl;
+    } else {
+      cerr << "Error running " << command.name_ << ": " << s << endl;
+      if (s.IsInvalidArgument()) {
+        cerr << Format("Usage: $0 $1 $2", program_name, command.name_, command.usage_arguments_)
+             << endl;
+      }
+    }
+    return STATUS(RuntimeError, "Error running command");
+  }
+  return Status::OK();
+}
+
 Status ClusterAdminCli::Run(int argc, char** argv) {
   const string prog_name = argv[0];
   FLAGS_logtostderr = true;
@@ -237,14 +255,9 @@ Status ClusterAdminCli::Run(int argc, char** argv) {
     return STATUS(RuntimeError, "Error connecting to cluster");
   }
 
-  // Run found command.
   CLIArguments command_args(args.begin() + 2, args.end());
-  s = commands_[cmd->second].action_(command_args);
-  if (!s.ok()) {
-    cerr << "Error running " << cmd->first << ": " << s << endl;
-    return STATUS(RuntimeError, "Error running command");
-  }
-  return Status::OK();
+  auto& command = commands_[cmd->second];
+  return RunCommand(command, command_args, args[0]);
 }
 
 void ClusterAdminCli::Register(string&& cmd_name, string&& cmd_args, Action&& action) {
@@ -860,9 +873,17 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
-      "is_tablet_splitting_complete", "",
-      [client](const CLIArguments&) -> Status {
-        RETURN_NOT_OK_PREPEND(client->IsTabletSplittingComplete(),
+      "is_tablet_splitting_complete", " [wait_for_parent_deletion] (default false)",
+      [client](const CLIArguments& args) -> Status {
+        bool wait_for_parent_deletion = false;
+        if (args.size() > 0) {
+          if (IsEqCaseInsensitive(args[0], "wait_for_parent_deletion")) {
+            wait_for_parent_deletion = true;
+          } else {
+            return ClusterAdminCli::kInvalidArguments;
+          }
+        }
+        RETURN_NOT_OK_PREPEND(client->IsTabletSplittingComplete(wait_for_parent_deletion),
                               "Unable to check if tablet splitting is complete");
         return Status::OK();
       });

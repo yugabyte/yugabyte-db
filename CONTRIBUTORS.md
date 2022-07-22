@@ -153,3 +153,4 @@ This is a list of people who have contributed code to the [YugabyteDB](https://g
 * [adithya-yb](https://github.com/adithya-yb)
 * [paullee-yb](https://github.com/paullee-yb)
 * [AntonRybochkin](https://github.com/arybochkin)
+* [joe-maley](https://github.com/joe-maley)

@@ -16,7 +16,7 @@ type: docs
 
 To run the docs site locally and edit the docs, you'll need:
 
-* **A text editor**, such as [Visual Studio Code](https://code.visualstudio.com)
+* **A text editor**, such as [Visual Studio Code](https://code.visualstudio.com).
 
 * **Command-line tools for Xcode** on macOS.
 
@@ -24,7 +24,6 @@ To run the docs site locally and edit the docs, you'll need:
     $ xcode-select --install
     ```
 
-    \
     Xcode is many gigabytes. Install the command-line tools unless you actually need the full Xcode.
 
 * [**Homebrew**](https://brew.sh) on macOS or Linux.
@@ -37,9 +36,23 @@ To run the docs site locally and edit the docs, you'll need:
 
 * **Hugo**: `brew install hugo` gets you the latest version.
 
-* **A GitHub account**
+* **Go**: `brew install go` gets you the latest version.
+
+* **A GitHub account**.
 
 * **Git client**: The system Git binary is out of date, but works. If you like, you can use Homebrew to get a newer version (`brew install git`).
+
+## Configure Hugo
+
+By default, Hugo uses the operating system's temporary directory to cache modules, which can cause some problems. You can avoid those problems by telling Hugo to put its cache elsewhere.
+
+Add a line similar to the following to your `.bashrc` or `.zshrc` file:
+
+```sh
+export HUGO_CACHEDIR = ~/.hugo-cache
+```
+
+Create the folder with `mkdir ~/.hugo-cache`, then start a new terminal session.
 
 ## Fork the repository
 
@@ -80,16 +93,13 @@ To get the docs site running in a live-reload server on your local machine, run 
 ```sh
 cd yugabyte-db/docs  # Make sure this is YOUR fork.
 npm ci               # Only necessary the first time you clone the repo.
-npm start            # Builds the docs and launches the live-reload server.
+hugo mod clean       # Only necessary the first time you clone the repo.
+npm start            # Build the docs and launch the live-reload server.
 ```
 
-The live-reload server runs at <http://localhost:1313/> unless port 1313 is already in use. Check the output from the `npm start` command to verify the port in use.
+The live-reload server runs at <http://localhost:1313/> unless port 1313 is already in use. Check the output from the `npm start` command to verify the port.
 
 When you're done, type Ctrl-C stop the server.
-
-{{< note title="Not looking quite right?" >}}
-There's a transient bug in the live-reload build. If your local docs site doesn't look right, type Ctrl-C and re-run the `npm start` command.
-{{< /note >}}
 
 ### Optional: Run a full build {#full-build}
 
@@ -108,7 +118,10 @@ When the build is done, the `yugabyte-db/docs/public` folder contains a full HTM
 
 * If you get an error about missing command-line tools, make sure xcode-select is pointing to the right directory, and that the directory contains a `usr/bin` subdirectory. Run `xcode-select -p` to find the path to the tools. Re-run xcode-select --install.
 
-* If the live-reload site looks odd, stop the server with Ctrl-C and re-run `npm start`.
+* If the live-reload server (`npm start`) is returning a Hugo error &mdash; say, about shortcodes &mdash; re-run `hugo mod clean`, followed by `npm start`. Also, be sure you've followed the instructions on this page to [configure Hugo](#configure-hugo).
+
+<!-- I think Docsy fixed this one! -->
+<!-- * If the live-reload site looks odd, stop the server with Ctrl-C and re-run `npm start`. -->
 
 ## Next steps
 

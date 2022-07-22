@@ -91,6 +91,7 @@ namespace yb {
 class ExternalMiniCluster;
 class HostPort;
 class MonoDelta;
+class MiniCluster;
 class Schema;
 class Status;
 
@@ -440,6 +441,11 @@ Status GetTabletLocations(ExternalMiniCluster* cluster,
 Status GetTableLocations(ExternalMiniCluster* cluster,
                          const client::YBTableName& table_name,
                          const MonoDelta& timeout,
+                         RequireTabletsRunning require_tablets_running,
+                         master::GetTableLocationsResponsePB* table_locations);
+
+Status GetTableLocations(MiniCluster* cluster,
+                         const client::YBTableName& table_name,
                          RequireTabletsRunning require_tablets_running,
                          master::GetTableLocationsResponsePB* table_locations);
 

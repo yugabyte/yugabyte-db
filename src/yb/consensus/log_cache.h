@@ -180,8 +180,6 @@ class LogCache {
   // Start memory tracking of following operations in case they are still present in cache.
   void TrackOperationsMemory(const OpIds& op_ids);
 
-  Status FlushIndex();
-
   Result<OpId> TEST_GetLastOpIdWithType(int64_t max_allowed_index, OperationType op_type);
 
  private:
