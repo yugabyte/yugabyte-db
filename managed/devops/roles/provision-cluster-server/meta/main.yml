@@ -21,7 +21,7 @@ dependencies:
       comment: "{{ user_name }}"
       home_dir: "{{ yb_home_dir }}"
     ssh_config:
-      ssh_type: "{{ ssh_type }}"
+      ssh_type: "{{ ssh_type | default('ssh') }}"
       enabled: "{{ cluster_server_vault|default(False) }}"
       id_rsa: "{{ cluster_server_vault | get_value('id_rsa') }}"
       id_rsa_pub: "{{ cluster_server_vault | get_value('id_rsa_pub') }}"
