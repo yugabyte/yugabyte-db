@@ -68,6 +68,10 @@ Add a line in your PR's description to tag the Netlify bot and tell it where to 
 
 `@netlify /preview/quick-start/`
 
+### Run a link checker
+
+https://linkchecker.github.io/linkchecker/
+
 ### Ask for a review
 
 **Internal contributors**, please tag a member of the docs team for review, along with technical reviewers as required, and let us know about your PR in the #docs channel in Slack.
