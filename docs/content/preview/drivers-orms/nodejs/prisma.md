@@ -108,7 +108,7 @@ npm install -g prisma
 
 If you have a YugabyteDB Managed cluster, modify the `DATABASE_URL` using the following steps:
 
-1. Download your [cluster certificate](/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-add-ip/#download-your-cluster-certificate).
+1. Download your [cluster certificate](../../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication).
 
 1. Install OpenSSL, if not present.
 
@@ -264,5 +264,4 @@ Open [http://localhost:5555](http://localhost:5555) in your browser to see the t
 
 ## Next steps
 
-- Explore [Scaling Node.js Applications](../../../explore/linear-scalability/) with YugabyteDB.
-- Learn how to [develop Node applications with YugabyteDB Managed](../../../yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-node/).
+Explore [Scaling Node.js Applications](../../../explore/linear-scalability/) with YugabyteDB.

@@ -24,12 +24,7 @@ The following tutorial shows a small [C++ application](https://github.com/yugaby
 - [libpq](../../../../reference/drivers/ysql-client-drivers/#libpq). Homebrew users on macOS can install using `brew install libpq`. You can download the PostgreSQL binaries and source from [PostgreSQL Downloads](https://www.postgresql.org/download/).
 - [libpqxx](../../../../reference/drivers/ysql-client-drivers/#libpqxx). Homebrew users on macOS can install using `brew install libpqxx`. To build the driver yourself, refer to [Building libpqxx](https://github.com/jtv/libpqxx#building-libpqxx).
 
-### YugabyteDB Managed
-
-- You have a cluster deployed in YugabyteDB Managed. To get started, use the [Quick start](../../).
-- You downloaded the cluster CA certificate and added your computer to the cluster IP allow list. Refer to [Before you begin](../cloud-add-ip/).
-
-## Clone the application from GitHub
+### Clone the application from GitHub
 
 Clone the sample application to your computer:
 
@@ -49,7 +44,7 @@ The application needs to establish a connection to the YugabyteDB cluster. To do
     - **PORT** - the port number that will be used by the driver (the default YugabyteDB YSQL port is 5433).
     - **DB_NAME** - the name of the database you are connecting to (the default database is named `yugabyte`).
     - **USER** and **PASSWORD** - the username and password for the YugabyteDB database. If you are using the credentials you created when deploying a cluster in YugabyteDB Managed, these can be found in the credentials file you downloaded.
-    - **SSL_MODE** - the SSL mode to use. YugabyteDB Managed [requires SSL connections](../../../cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql); use `verify-full`.
+    - **SSL_MODE** - the SSL mode to use. YugabyteDB Managed [requires SSL connections](../../../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/); use `verify-full`.
     - **SSL_ROOT_CERT** - the full path to the YugabyteDB Managed cluster CA certificate.
 
 3. Save the file.
@@ -185,9 +180,3 @@ try {
 [libpq driver](../../../../reference/drivers/ysql-client-drivers/#libpq)
 
 [libpqxx driver](../../../../reference/drivers/ysql-client-drivers/#libpqxx)
-
-[Explore more applications](../../../cloud-examples/)
-
-[Deploy clusters in YugabyteDB Managed](../../../cloud-basics)
-
-[Connect to applications in YugabyteDB Managed](../../../cloud-connect/connect-applications/)

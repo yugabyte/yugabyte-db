@@ -19,19 +19,10 @@ The following tutorial shows a small [Java application](https://github.com/yugab
 
 ## Prerequisites
 
-This tutorial requires the following.
-
-### YugabyteDB Managed
-
-- You have a cluster deployed in YugabyteDB Managed. To get started, use the [Quick start](../../).
-- You downloaded the cluster CA certificate and added your computer to the cluster IP allow list. Refer to [Before you begin](../cloud-add-ip/).
-
-### Other packages
-
 - Java Development Kit (JDK) 1.8, or later, is installed. JDK installers for Linux and macOS can be downloaded from [Oracle](http://jdk.java.net/), [Adoptium (OpenJDK)](https://adoptium.net/), or [Azul Systems (OpenJDK)](https://www.azul.com/downloads/?package=jdk). Homebrew users on macOS can install using `brew install openjdk`.
 - [Apache Maven](https://maven.apache.org/index.html) 3.3 or later, is installed.
 
-## Clone the application from GitHub
+### Clone the application from GitHub
 
 Clone the sample application to your computer:
 
@@ -50,7 +41,7 @@ The application needs to establish a connection to the YugabyteDB cluster. To do
     - **host** - the host name of your YugabyteDB cluster. To obtain a YugabyteDB Managed cluster host name, sign in to YugabyteDB Managed, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Connection Parameters**.
     - **port** - the port number that will be used by the JDBC driver (the default YugabyteDB YSQL port is 5433).
     - **dbUser** and **dbPassword** - the username and password for the YugabyteDB database. If you are using the credentials you created when deploying a cluster in YugabyteDB Managed, these can be found in the credentials file you downloaded.
-    - **sslMode** - the SSL mode to use. YugabyteDB Managed [requires SSL connections](../../../cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql); use `verify-full`.
+    - **sslMode** - the SSL mode to use. YugabyteDB Managed [requires SSL connections](../../../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/); use `verify-full`.
     - **sslRootCert** - the full path to the YugabyteDB Managed cluster CA certificate.
 
 3. Save the file.
@@ -174,11 +165,3 @@ try {
 ## Learn more
 
 [Yugabyte JDBC driver](../../../../integrations/jdbc-driver/)
-
-[Explore more applications](../../../cloud-examples/)
-
-[Sample Java application demonstrating load balancing](../../../../quick-start/build-apps/java/ysql-yb-jdbc/)
-
-[Deploy clusters in YugabyteDB Managed](../../../cloud-basics)
-
-[Connect to applications in YugabyteDB Managed](../../../cloud-connect/connect-applications/)

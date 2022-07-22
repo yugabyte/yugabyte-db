@@ -18,14 +18,9 @@ The following tutorial shows a small [Node.js application](https://github.com/yu
 
 ## Prerequisites
 
-In addition to the latest version of [Node.js](https://nodejs.org/en/download/), this tutorial requires the following.
+The latest version of [Node.js](https://nodejs.org/en/download/).
 
-### YugabyteDB Managed
-
-- You have a cluster deployed in YugabyteDB Managed. To get started, use the [Quick start](../../).
-- You downloaded the cluster CA certificate and added your computer to the cluster IP allow list. Refer to [Before you begin](../cloud-add-ip/).
-
-## Clone the application from GitHub
+### Clone the application from GitHub
 
 Clone the sample application to your computer:
 
@@ -45,7 +40,7 @@ The application needs to establish a connection to the YugabyteDB cluster. To do
     - **port** - the port number that will be used by the driver (the default YugabyteDB YSQL port is 5433).
     - **database** - the name of the database you are connecting to (the default database is named `yugabyte`).
     - **user** and **password** - the username and password for the YugabyteDB database. If you are using the credentials you created when deploying a cluster in YugabyteDB Managed, these can be found in the credentials file you downloaded.
-    - **ssl** - YugabyteDB Managed [requires SSL connections](../../../cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql). To enable `verify-ca` SSL mode, the `rejectUnauthorized` property is set to `true` to require root certificate chain validation; replace `path_to_your_root_certificate` with the full path to the YugabyteDB Managed cluster CA certificate.
+    - **ssl** - YugabyteDB Managed [requires SSL connections](../../../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/). To enable `verify-ca` SSL mode, the `rejectUnauthorized` property is set to `true` to require root certificate chain validation; replace `path_to_your_root_certificate` with the full path to the YugabyteDB Managed cluster CA certificate.
 
 3. Save the file.
 
@@ -185,9 +180,3 @@ try {
 ## Learn more
 
 [node-postgres module](../../../../reference/drivers/ysql-client-drivers/#node-postgres)
-
-[Explore more applications](../../../cloud-examples/)
-
-[Deploy clusters in YugabyteDB Managed](../../../cloud-basics)
-
-[Connect to applications in YugabyteDB Managed](../../../cloud-connect/connect-applications/)

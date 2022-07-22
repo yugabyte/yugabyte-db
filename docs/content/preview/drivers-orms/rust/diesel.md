@@ -337,5 +337,4 @@ Email: "tstewart@example.com"
 
 ## Next steps
 
-- Explore [Scaling applications](../../../explore/linear-scalability/) with YugabyteDB.
-- Learn how to [develop Rust applications with YugabyteDB Managed](../../../yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-rust/).
+Explore [Scaling applications](../../../explore/linear-scalability/) with YugabyteDB.

@@ -217,5 +217,4 @@ To run the application and insert a new row, execute the following steps.
 
 ## Next steps
 
-- Explore [Scaling Python Applications](../../../explore/linear-scalability/) with YugabyteDB.
-- Learn how to [develop Python applications with YugabyteDB Managed](../../../yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-python/).
+Explore [Scaling Python Applications](../../../explore/linear-scalability/) with YugabyteDB.

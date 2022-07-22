@@ -104,5 +104,5 @@ You now have a fully configured YugabyteDB cluster provisioned in YugabyteDB Man
 - [Assign IP allow lists](../../../cloud-secure-clusters/add-connections/)
 - [Connect to your cluster](../../../cloud-connect/)
 - [Add database users](../../../cloud-secure-clusters/add-users/)
-- [Build an application](../../../cloud-quickstart/cloud-build-apps/)
+- [Build an application](../../../../develop/build-apps/)
 - [Database authorization in YugabyteDB Managed clusters](../../../cloud-secure-clusters/cloud-users/)

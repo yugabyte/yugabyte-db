@@ -24,12 +24,7 @@ The following tutorial shows a small [PHP application](https://github.com/yugaby
   - Ubuntu users can install the driver using the `sudo apt-get install php-pgsql` command.
   - CentOS users can install the driver using the `sudo yum install php-pgsql` command.
 
-### YugabyteDB Managed
-
-- You have a cluster deployed in YugabyteDB Managed. To get started, use the [Quick start](../../).
-- You downloaded the cluster CA certificate and added your computer to the cluster IP allow list. Refer to [Before you begin](../cloud-add-ip/).
-
-## Clone the application from GitHub
+### Clone the application from GitHub
 
 Clone the sample application to your computer:
 
@@ -49,7 +44,7 @@ The application needs to establish a connection to the YugabyteDB cluster. To do
     - **PORT** - the port number for the driver to use; this is already set to the default YugabyteDB YSQL port (5433).
     - **DB_NAME** - the name of the database to connect to (the default database is named `yugabyte`).
     - **USER** and **PASSWORD** - the username and password for the YugabyteDB database. If you are using the credentials you created when deploying a cluster in YugabyteDB Managed, these can be found in the credentials file you downloaded.
-    - **SSL_MODE** - the SSL mode to use. YugabyteDB Managed [requires SSL connections](../../../cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql); use `verify-full`.
+    - **SSL_MODE** - the SSL mode to use. YugabyteDB Managed [requires SSL connections](../../../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/); use `verify-full`.
     - **SSL_ROOT_CERT** - the full path to the YugabyteDB Managed cluster CA certificate.
 
 1. Save the file.
@@ -150,9 +145,3 @@ try {
 ## Learn more
 
 [php-pgsql driver](../../../../reference/drivers/ysql-client-drivers/#php-pgsql)
-
-[Explore more applications](../../../cloud-examples/)
-
-[Deploy clusters in YugabyteDB Managed](../../../cloud-basics)
-
-[Connect to applications in YugabyteDB Managed](../../../cloud-connect/connect-applications/)

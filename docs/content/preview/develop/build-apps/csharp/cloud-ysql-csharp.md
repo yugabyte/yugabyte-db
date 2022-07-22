@@ -18,14 +18,9 @@ The following tutorial shows a small [C# application](https://github.com/yugabyt
 
 ## Prerequisites
 
-- [.NET 6.0 SDK](https://dotnet.microsoft.com/en-us/download) or later.
+[.NET 6.0 SDK](https://dotnet.microsoft.com/en-us/download) or later.
 
-### YugabyteDB Managed
-
-- You have a cluster deployed in YugabyteDB Managed. To get started, use the [Quick start](../../).
-- You downloaded the cluster CA certificate and added your computer to the cluster IP allow list. Refer to [Before you begin](../cloud-add-ip/).
-
-## Clone the application from GitHub
+### Clone the application from GitHub
 
 Clone the sample application to your computer:
 
@@ -51,7 +46,7 @@ The application needs to establish a connection to the YugabyteDB cluster. To do
     - **urlBuilder.Port** - the port number that will be used by the driver (the default YugabyteDB YSQL port is 5433).
     - **urlBuilder.Database** - the name of the database you are connecting to (the default database is named `yugabyte`).
     - **urlBuilder.Username** and **urlBuilder.Password** - the username and password for the YugabyteDB database. If you are using the credentials you created when deploying a cluster in YugabyteDB Managed, these can be found in the credentials file you downloaded.
-    - **urlBuilder.SslMode** - the SSL mode to use. YugabyteDB Managed [requires SSL connections](../../../cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql); use `SslMode.VerifyFull`.
+    - **urlBuilder.SslMode** - the SSL mode to use. YugabyteDB Managed [requires SSL connections](../../../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/); use `SslMode.VerifyFull`.
     - **urlBuilder.RootCertificate** - the full path to the YugabyteDB Managed cluster CA certificate.
 
 3. Save the file.
@@ -179,9 +174,3 @@ try
 ## Learn more
 
 [Npgsql driver](../../../../reference/drivers/ysql-client-drivers/#npgsql)
-
-[Explore more applications](../../../cloud-examples/)
-
-[Deploy clusters in YugabyteDB Managed](../../../cloud-basics)
-
-[Connect to applications in YugabyteDB Managed](../../../cloud-connect/connect-applications/)

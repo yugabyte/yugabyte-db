@@ -148,5 +148,4 @@ Name: Ivy Age: 27 Language: C++
 
 ## Next steps
 
-- Explore [Scaling Python Applications](../../../explore/linear-scalability/) with YugabyteDB.
-- Learn how to [develop Python applications with YugabyteDB Managed](../../../yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-python/).
+Explore [Scaling Python Applications](../../../explore/linear-scalability/) with YugabyteDB.
