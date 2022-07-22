@@ -20,8 +20,11 @@ type: indexpage
 
 Applications connect to and interact with YugabyteDB using API client libraries (also known as client drivers). Because the YugabyteDB YSQL API is PostgreSQL-compatible, and the YCQL API has roots in the Apache Cassandra CQL, YugabyteDB supports many third-party drivers.
 
-The tutorials in this section show how to connect applications to YugabyteDB Managed clusters using available [Drivers and ORMs](../../drivers-orms/).
+The tutorials in this section show how to connect applications to YugabyteDB using available [Drivers and ORMs](../../drivers-orms/).<br><br>
 
+{{< youtube id="uC0sJ_XPhCw" title="Create a sample application for YugabyteDB Managed" >}}
+
+<br>
 <div class="row">
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
