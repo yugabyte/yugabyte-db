@@ -8,21 +8,21 @@ menu:
   stable:
     identifier: java-orm-ebean
     parent: java-drivers
-    weight: 600
+    weight: 500
 type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/preview/drivers-orms/java/ebean/" class="nav-link active">
+    <a href="../ebean/" class="nav-link active">
       <i class="icon-java-bold" aria-hidden="true"></i>
       Ebean ORM
     </a>
   </li>
 
   <li >
-    <a href="/preview/drivers-orms/java/hibernate" class="nav-link">
+    <a href="../hibernate" class="nav-link">
       <i class="icon-java-bold" aria-hidden="true"></i>
       Hibernate ORM
     </a>
@@ -34,13 +34,13 @@ type: docs
 
 YugabyteDB YSQL API has full compatibility with Ebean ORM for data persistence in Java applications. This page provides details for getting started with Ebean ORM for connecting to YugabyteDB.
 
-Ebean ORM can be used with the [YugabyteDB JDBC driver](../yugabyte-jdbc) and the [PostgreSQL JDBC Driver](../postgres-jdbc).
+Ebean ORM can be used with the [YugabyteDB JDBC driver](../yugabyte-jdbc/) and the [PostgreSQL JDBC Driver](../postgres-jdbc/).
 
 ## CRUD operations
 
-Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in the [Build an application](/preview/quick-start/build-apps/java/ysql-ebean/) page under the Quick start section.
+Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in the [Build an application](../../../quick-start/build-apps/java/ysql-ebean/) page under the Quick start section.
 
-The following sections demonstrate how to perform common tasks required for Java-based [Play Framework](https://www.playframework.com/documentation/2.8.x/api/java/index.html) application development using the Ebean ORM.
+The following sections demonstrate how to perform common tasks required for Java-based [Play Framework](https://www.playframework.com/documentation/2.8.x/api/java/index.html/) application development using the Ebean ORM.
 
 ### Create a new Java-based Play Framework project
 
@@ -242,5 +242,4 @@ To run the application and insert a new row, execute the following steps:
 
 ## Next steps
 
-- Explore [scaling Java applications](../../../explore/linear-scalability) with YugabyteDB.
-- Learn how to [develop Java applications with Yugabyte Cloud](../../../yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-yb-jdbc/).
+- Explore [scaling Java applications](../../../explore/linear-scalability/) with YugabyteDB.

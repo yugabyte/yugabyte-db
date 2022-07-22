@@ -16,14 +16,14 @@ For Java applications, the JDBC driver provides database connectivity through th
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/preview/drivers-orms/java/yugabyte-jdbc/" class="nav-link active">
+    <a href="../yugabyte-jdbc/" class="nav-link active">
       <i class="icon-java-bold" aria-hidden="true"></i>
       YugabyteDB JDBC Driver
     </a>
   </li>
 
   <li >
-    <a href="/preview/drivers-orms/java/postgres-jdbc/" class="nav-link">
+    <a href="../postgres-jdbc/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       PostgreSQL JDBC Driver
     </a>
@@ -31,7 +31,7 @@ For Java applications, the JDBC driver provides database connectivity through th
 
 </ul>
 
-[Yugabyte JDBC driver](https://github.com/yugabyte/pgjdbc) is a distributed JDBC driver for [YSQL](/preview/api/ysql/) built on the [PostgreSQL JDBC driver](https://github.com/pgjdbc/pgjdbc). Although the upstream PostgreSQL JDBC driver works with YugabyteDB, the Yugabyte driver enhances YugabyteDB by eliminating the need for external load balancers. This page provides details for getting started with `YugabyteDB JDBC Driver` for connecting to YugabyteDB YSQL API.
+[Yugabyte JDBC driver](https://github.com/yugabyte/pgjdbc) is a distributed JDBC driver for [YSQL](../../../api/ysql/) built on the [PostgreSQL JDBC driver](https://github.com/pgjdbc/pgjdbc). Although the upstream PostgreSQL JDBC driver works with YugabyteDB, the Yugabyte driver enhances YugabyteDB by eliminating the need for external load balancers. This page provides details for getting started with `YugabyteDB JDBC Driver` for connecting to YugabyteDB YSQL API.
 
 ## Step 1: Set up the client dependencies
 
@@ -160,9 +160,9 @@ If you receive no output or an error, check the parameters in the connection str
 
 ## Further reading
 
-To learn more about the driver, refer to the [architecture documentation of Smart Drivers](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/smart-driver.md).
+To learn more about the driver, refer to the [architecture documentation of Smart drivers](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/smart-driver.md).
 
 ## Next steps
 
 - Learn how to build Java applications using [Hibernate ORM](../hibernate/).
-- Learn more about configuring YugabyteDB JDBC Driver load balancing options in [YugabyteDB JDBC reference section](/preview/reference/drivers/java/yugabyte-jdbc-reference/#load-balancing).
+- Learn more about configuring YugabyteDB JDBC Driver load balancing options in [YugabyteDB JDBC reference section](../../../reference/drivers/java/yugabyte-jdbc-reference/#load-balancing).

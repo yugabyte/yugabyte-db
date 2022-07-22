@@ -16,14 +16,14 @@ For Java applications, the JDBC driver provides database connectivity through th
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/preview/drivers-orms/java/yugabyte-jdbc/" class="nav-link">
+    <a href="../yugabyte-jdbc/" class="nav-link">
       <i class="icon-java-bold" aria-hidden="true"></i>
       YugabyteDB JDBC Driver
     </a>
   </li>
 
   <li >
-    <a href="/preview/drivers-orms/java/postgres-jdbc/" class="nav-link active">
+    <a href="../postgres-jdbc/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       PostgreSQL JDBC Driver
     </a>
@@ -39,7 +39,7 @@ PostgreSQL JDBC Drivers are available as a maven dependency, and you can downloa
 
 ### Maven dependency
 
-If you are using [Maven](https://maven.apache.org/guides/development/guide-building-maven.html), add the following to your `pom.xml` of your project.
+If you are using [Maven](https://maven.apache.org/guides/development/guide-building-maven.html/), add the following to your `pom.xml` of your project.
 
 ```xml
 <!-- https://mvnrepository.com/artifact/org.postgresql/postgresql -->
@@ -52,7 +52,7 @@ If you are using [Maven](https://maven.apache.org/guides/development/guide-build
 
 ### Gradle Dependency
 
-If you are using [Gradle](https://docs.gradle.org/current/samples/sample_building_java_applications.html), add the following dependencies to your `build.gradle` file:
+If you are using [Gradle](https://docs.gradle.org/current/samples/sample_building_java_applications.html/), add the following dependencies to your `build.gradle` file:
 
 ```java
 // https://mvnrepository.com/artifact/org.postgresql/postgresql
@@ -100,7 +100,7 @@ Connection conn = DriverManager.getConnection(yburl);
 | sslmode | SSL mode | require |
 | sslrootcert | Path to the root certificate on your computer | ~/.postgresql/ |
 
-If you created a cluster on [YugabyteDB Managed](https://www.yugabyte.com/cloud/), [follow the steps](/preview/yugabyte-cloud/cloud-connect/connect-applications/) to download the database credentials and SSL Root certificate.
+If you created a cluster on [YugabyteDB Managed](https://www.yugabyte.com/cloud/), [follow the steps](../../../yugabyte-cloud/cloud-connect/connect-applications/) to download the database credentials and SSL Root certificate.
 
 ## Step 3 -  Query the YugabyteDB cluster from your application
 
@@ -159,5 +159,5 @@ After completing these steps, you should have a working Java application that us
 
 ## Next Steps
 
-- Learn how to build Java applications using [Hibernate ORM](../hibernate).
-- Learn how to [develop Spring Boot applications using the YugabyteDB JDBC Driver](/preview/integrations/spring-framework/sdyb/).
+- Learn how to build Java applications using [Hibernate ORM](../hibernate/).
+- Learn how to [develop Spring Boot applications using the YugabyteDB JDBC Driver](../../../integrations/spring-framework/sdyb/).
