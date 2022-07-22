@@ -2490,6 +2490,23 @@ public class PlacementInfoUtil {
     return azToDomain;
   }
 
+  // This method decides the value of isMultiAZ based on the value of
+  // azName. In case of single AZ providers, the azName is passed as
+  // null.
+  public static String getHelmReleaseName(
+      String nodePrefix, String azName, boolean isReadOnlyCluster) {
+    boolean isMultiAZ = (azName != null);
+    return getHelmReleaseName(isMultiAZ, nodePrefix, azName, isReadOnlyCluster);
+  }
+
+  // TODO(bhavin192): have the release name sanitization call here,
+  // instead of doing it in KubernetesManager implementations.
+  public static String getHelmReleaseName(
+      boolean isMultiAZ, String nodePrefix, String azName, boolean isReadOnlyCluster) {
+    String helmReleaseName = isReadOnlyCluster ? nodePrefix + "-rr" : nodePrefix;
+    return isMultiAZ ? String.format("%s-%s", helmReleaseName, azName) : helmReleaseName;
+  }
+
   // Returns a string which is exactly the same as yugabyte chart's
   // helper template yugabyte.fullname. This is prefixed to all the
   // resource names when newNamingstyle is being used. We set
@@ -2500,6 +2517,8 @@ public class PlacementInfoUtil {
     if (!newNamingStyle) {
       return "";
     }
+    // TODO(bhavin192): use getHelmReleaseName method above while
+    // making new naming style + read replicas compatible.
     String releaseName = isMultiAZ ? String.format("%s-%s", nodePrefix, azName) : nodePrefix;
     // <release name> | truncate 43
     if (releaseName.length() > 43) {
