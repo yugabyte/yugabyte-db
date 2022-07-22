@@ -22,7 +22,7 @@ Debezium is an open-source distributed platform used to capture the changes in a
 Using Docker, get the connector from Quay:
 
 ```sh
-docker pull quay.io/yugabyte/debezium-connector:1.3.4-BETA
+docker pull quay.io/yugabyte/debezium-connector:1.3.7-BETA
 ```
 
 ### Build the Debezium connector on your own
@@ -96,7 +96,7 @@ docker run -it --rm \
   -e OFFSET_STORAGE_TOPIC=my_connect_offsets \
   -e STATUS_STORAGE_TOPIC=my_connect_statuses \
   --link zookeeper:zookeeper --link kafka:kafka \
-  quay.io/yugabyte/debezium-connector:1.3.4-BETA
+  quay.io/yugabyte/debezium-connector:1.3.7-BETA
 ```
 
 Deploy the configuration for the connector:
