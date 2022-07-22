@@ -13,6 +13,9 @@ menu:
 type: docs
 ---
 
+{{< tip title="Migrate using YugabyteDB Voyager" >}}
+To automate your migration from PostgreSQL to YugabyteDB, use [YugabyteDB Voyager](../../yb-voyager/). To learn more, refer to the [import schema](../../yb-voyager/migrate-steps/#import-schema) and [import data](../../yb-voyager/migrate-steps/#import-data) steps.
+{{< /tip >}}
 
 ## Import data from CSV files
 
@@ -28,9 +31,44 @@ COPY <table_name>
     );
 ```
 
-In the command above, the `ROWS_PER_TRANSACTION` parameter splits the updates into smaller transactions (1000 rows each in this example), instead of running a single transaction spawning across all the data in the file. Additionally, the `DISABLE_FK_CHECK` parameter skips the foreign key checks for the duration of the import process.
+In the command above, the `ROWS_PER_TRANSACTION` parameter splits the load into smaller transactions (1000 rows each in this example), instead of running a single transaction spawning across all the data in the file. Additionally, the `DISABLE_FK_CHECK` parameter skips the foreign key checks for the duration of the import process.
 
-Both `ROWS_PER_TRANSACTION` and `DISABLE_FK_CHECK` parameters are recommended for the initial import of the data, especially for large tables, because they significantly reduce the total time required to import the data. If you imported the data into multiple CSV files, you need to run the command for every file. You can import multiple files in parallel to further speed up the process.
+Both `ROWS_PER_TRANSACTION` and `DISABLE_FK_CHECK` parameters are recommended for the initial import of the data, especially for large tables, because they significantly reduce the total time required to import the data. You can import multiple files in a single COPY command to further speed up the process. Following is a sample example:
+
+```sql
+yugabyte=# \! ls t*.txt
+t1.txt	t2.txt	t3.txt
+
+yugabyte=# \! cat t*.txt
+1,2,3
+4,5,6
+7,8,9
+
+yugabyte=# \d t
+                 Table "public.t"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ c1     | integer |           |          |
+ c2     | integer |           |          |
+ c3     | integer |           |          |
+
+yugabyte=# SELECT * FROM t;
+ c1 | c2 | c3
+----+----+----
+(0 rows)
+
+yugabyte=# COPY t FROM PROGRAM 'cat /home/yugabyte/t*.txt' WITH (FORMAT CSV, DELIMITER ',', ROWS_PER_TRANSACTION 1000, DISABLE_FK_CHECK);
+COPY 3
+
+yugabyte=# SELECT * FROM t;
+ c1 | c2 | c3
+----+----+----
+  7 |  8 |  9
+  4 |  5 |  6
+  1 |  2 |  3
+(3 rows)
+
+```
 
 For detailed information on the COPY FROM command, refer to the [COPY](../../../api/ysql/the-sql-language/statements/cmd_copy/) statement reference.
 

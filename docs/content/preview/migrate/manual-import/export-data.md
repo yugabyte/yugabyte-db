@@ -15,7 +15,11 @@ type: docs
 
 
 The recommended way to export data from PostgreSQL for purposes of importing it to YugabyteDB is via CSV files using the COPY command.
-However, for exporting an entire database that consists of smaller datasets, you use the YugabyteDB [`ysql_dump`](../../../admin/ysql-dump/) utility.
+However, for exporting an entire database that consists of smaller datasets, you can use the YugabyteDB [`ysql_dump`](../../../admin/ysql-dump/) utility.
+
+{{< tip title="Migrate using YugabyteDB Voyager" >}}
+To automate your migration from PostgreSQL to YugabyteDB, use [YugabyteDB Voyager](../../yb-voyager/). To learn more, refer to the [export schema](../../yb-voyager/migrate-steps/#export-and-analyze-schema) and [export data](../../yb-voyager/migrate-steps/#export-data) steps.
+{{< /tip >}}
 
 ## Export data into CSV files using the COPY command
 
@@ -23,7 +27,7 @@ To export the data, connect to the source PostgreSQL database using the psql too
 
 ```sql
 COPY <table_name>
-    TO '<table_name>.csv'
+    TO <table_name>.csv
     WITH (FORMAT CSV DELIMITER ',' HEADER);
 ```
 
@@ -40,7 +44,7 @@ COPY (
     SELECT * FROM <table_name>
     WHERE <condition>
 )
-TO '<table_name>.csv'
+TO <table_name>.csv
 WITH (FORMAT CSV DELIMITER ',' HEADER);
 ```
 
