@@ -319,10 +319,10 @@ class SpecialEnv : public EnvWrapper {
         }
         return base_->Sync();
       }
-      void SetIOPriority(Env::IOPriority pri) override {
+      void SetIOPriority(yb::IOPriority pri) override {
         base_->SetIOPriority(pri);
       }
-      Env::IOPriority GetIOPriority() override {
+      yb::IOPriority GetIOPriority() override {
         return base_->GetIOPriority();
       }
     };
