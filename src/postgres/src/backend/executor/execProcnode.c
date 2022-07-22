@@ -113,6 +113,7 @@
 #include "executor/nodeValuesscan.h"
 #include "executor/nodeWindowAgg.h"
 #include "executor/nodeWorktablescan.h"
+#include "executor/nodeYbSeqscan.h"
 #include "nodes/nodeFuncs.h"
 #include "miscadmin.h"
 
@@ -207,6 +208,11 @@ ExecInitNode(Plan *node, EState *estate, int eflags)
 		case T_SeqScan:
 			result = (PlanState *) ExecInitSeqScan((SeqScan *) node,
 												   estate, eflags);
+			break;
+
+		case T_YbSeqScan:
+			result = (PlanState *) ExecInitYbSeqScan((YbSeqScan *) node,
+													 estate, eflags);
 			break;
 
 		case T_SampleScan:
@@ -599,6 +605,10 @@ ExecEndNode(PlanState *node)
 			 */
 		case T_SeqScanState:
 			ExecEndSeqScan((SeqScanState *) node);
+			break;
+
+		case T_YbSeqScanState:
+			ExecEndYbSeqScan((YbSeqScanState *) node);
 			break;
 
 		case T_SampleScanState:

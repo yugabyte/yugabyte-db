@@ -48,7 +48,7 @@ EXPLAIN (COSTS FALSE) DELETE FROM single_row WHERE k = 1 and v1 = 1;
  Delete on single_row
    ->  Index Scan using single_row_pkey on single_row
          Index Cond: (k = 1)
-         Filter: (v1 = 1)
+         Remote Filter: (v1 = 1)
 (4 rows)
 
 EXPLAIN (COSTS FALSE) DELETE FROM single_row WHERE v1 = 1 and v2 = 1;
@@ -245,7 +245,7 @@ EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = 1 WHERE k = 1 and v2 = 1;
  Update on single_row
    ->  Index Scan using single_row_pkey on single_row
          Index Cond: (k = 1)
-         Filter: (v2 = 1)
+         Remote Filter: (v2 = 1)
 (4 rows)
 
 EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = 1 WHERE k > 1;
@@ -745,7 +745,7 @@ EXPLAIN (COSTS FALSE) DELETE FROM single_row_comp_key WHERE v = 1 and k1 = 1 and
  Delete on single_row_comp_key
    ->  Index Scan using single_row_comp_key_pkey on single_row_comp_key
          Index Cond: ((k1 = 1) AND (k2 = 1))
-         Filter: (v = 1)
+         Remote Filter: (v = 1)
 (4 rows)
 
 EXPLAIN (COSTS FALSE) DELETE FROM single_row_comp_key WHERE k1 = 1 AND k2 < 1;
@@ -762,7 +762,7 @@ EXPLAIN (COSTS FALSE) DELETE FROM single_row_comp_key WHERE k1 = 1 AND k2 != 1;
  Delete on single_row_comp_key
    ->  Index Scan using single_row_comp_key_pkey on single_row_comp_key
          Index Cond: (k1 = 1)
-         Filter: (k2 <> 1)
+         Remote Filter: (k2 <> 1)
 (4 rows)
 
 -- Below statements should all USE single-row.
@@ -850,7 +850,7 @@ EXPLAIN (COSTS FALSE) UPDATE single_row_comp_key SET v = 1 WHERE k1 = 1 and k2 =
  Update on single_row_comp_key
    ->  Index Scan using single_row_comp_key_pkey on single_row_comp_key
          Index Cond: ((k1 = 1) AND (k2 = 1))
-         Filter: (v = 1)
+         Remote Filter: (v = 1)
 (4 rows)
 
 -- Test the impact of functions on single row optimization.
@@ -956,7 +956,7 @@ EXPLAIN (COSTS FALSE) DELETE FROM single_row_complex WHERE k = 1 and v = 1;
  Delete on single_row_complex
    ->  Index Scan using single_row_complex_pkey on single_row_complex
          Index Cond: (k = 1)
-         Filter: (v = '1'::double precision)
+         Remote Filter: (v = '1'::double precision)
 (4 rows)
 
 EXPLAIN (COSTS FALSE) DELETE FROM single_row_complex WHERE v = 1;
@@ -1024,7 +1024,7 @@ EXPLAIN (COSTS FALSE) UPDATE single_row_complex SET v = 1 WHERE k = 1 and v = 1;
  Update on single_row_complex
    ->  Index Scan using single_row_complex_pkey on single_row_complex
          Index Cond: (k = 1)
-         Filter: (v = '1'::double precision)
+         Remote Filter: (v = '1'::double precision)
 (4 rows)
 
 -- Test execution.
