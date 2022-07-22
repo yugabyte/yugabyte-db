@@ -210,6 +210,7 @@ GET     /customers/:cUUID/universes/find                                       c
 # Universe CRUD operations UI_ONLY. See alternate new API below
 POST    /customers/:cUUID/universes                                            com.yugabyte.yw.controllers.UniverseUiOnlyController.create(cUUID: java.util.UUID)
 POST    /customers/:cUUID/universe_configure                                   com.yugabyte.yw.controllers.UniverseUiOnlyController.configure(cUUID: java.util.UUID)
+POST    /customers/:cUUID/universe_update_options                              com.yugabyte.yw.controllers.UniverseUiOnlyController.getUpdateOptions(cUUID: java.util.UUID)
 PUT     /customers/:cUUID/universes/:uniUUID                                   com.yugabyte.yw.controllers.UniverseUiOnlyController.update(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 POST    /customers/:cUUID/universes/:uniUUID/upgrade                           com.yugabyte.yw.controllers.UniverseUiOnlyController.upgrade(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 POST    /customers/:cUUID/universes/:uniUUID/update_tls                        com.yugabyte.yw.controllers.UniverseUiOnlyController.tlsConfigUpdate(cUUID: java.util.UUID, uniUUID: java.util.UUID)

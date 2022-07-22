@@ -37,7 +37,7 @@ To create a VPC network on GCP, you need to complete the following tasks:
 
 | Task | Notes |
 | :--- | :--- |
-| **[Create the VPC](#create-a-vpc)** | Reserves a range of IP addresses for the network.<br>The status of the VPC is _Active_ when done. |
+| **[Create the VPC](#create-a-vpc)** | Reserves a range of private IP addresses for the network.<br>The status of the VPC is _Active_ when done. |
 | **[Deploy a cluster in the VPC](#deploy-a-cluster-in-the-vpc)** | This can be done at any time - you don't need to wait until the VPC is peered. |
 | **[Create a peering connection](#create-a-peering-connection)** | Connects your VPC and the application VPC on the cloud provider network.<br>The status of the peering connection is _Pending_ when done. |
 | **[Complete the peering in GCP](#complete-the-peering-in-gcp)** | Confirms the connection between your VPC and the application VPC.<br>The status of the peering connection is _Active_ when done. |
@@ -141,7 +141,7 @@ When finished, the status of the peering connection in YugabyteDB Managed change
 
 ## Add the application VPC to the cluster IP allow list
 
-To enable the application VPC to connect to the cluster, you need to add the VPC to the cluster IP allow list.
+To enable the peered application VPC to connect to the cluster, you need to add the VPC to the cluster IP allow list.
 
 > **What you need**<br>The CIDR address for the GCP application VPC you are peering with.
 >

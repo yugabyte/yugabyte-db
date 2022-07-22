@@ -75,6 +75,13 @@
 
 #include "yb/tserver/server_main_util.h"
 
+#if defined(YB_PROFGEN) && defined(__clang__)
+extern "C" int __llvm_profile_write_file(void);
+extern "C" void __llvm_profile_set_filename(const char *);
+extern "C" void __llvm_profile_reset_counters();
+#endif
+
+
 using namespace std::placeholders;
 
 using yb::redisserver::RedisServer;
@@ -158,6 +165,18 @@ void SetProxyAddresses() {
   SetProxyAddress(&FLAGS_cql_proxy_bind_address, "YCQL", CQLServer::kDefaultPort);
   SetProxyAddress(&FLAGS_pgsql_proxy_bind_address, "YSQL", PgProcessConf::kDefaultPort);
 }
+
+#if defined(YB_PROFGEN) && defined(__clang__)
+// Force profile dumping
+void PeriodicDumpLLVMProfileFile() {
+  __llvm_profile_set_filename("tserver-%p-%m.profraw");
+  while (true) {
+    __llvm_profile_write_file();
+    __llvm_profile_reset_counters();
+    SleepFor(MonoDelta::FromSeconds(60));
+  }
+}
+#endif
 
 int TabletServerMain(int argc, char** argv) {
 #ifndef NDEBUG
@@ -274,6 +293,13 @@ int TabletServerMain(int argc, char** argv) {
     LOG(INFO) << "Redis server successfully started.";
   }
 
+#if defined(YB_PROFGEN) && defined(__clang__)
+  // TODO After the TODO below is fixed the call of
+  // PeriodicDumpLLVMProfileFile can be moved to the infinite while loop
+  //  at the end of the function.
+  std::thread llvm_profile_dump_thread(PeriodicDumpLLVMProfileFile);
+#endif
+
   // TODO(neil): After CQL server is starting, it blocks this thread from moving on.
   // This should be fixed such that all processes or service by tablet server are treated equally
   // by using different threads for each process.
@@ -309,6 +335,11 @@ int TabletServerMain(int argc, char** argv) {
   while (true) {
     SleepFor(MonoDelta::FromSeconds(60));
   }
+
+#if defined(YB_PROFGEN) && defined(__clang__)
+  // Currently unreachable
+  llvm_profile_dump_thread.join();
+#endif
 
   return 0;
 }

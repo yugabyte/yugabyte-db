@@ -150,6 +150,7 @@ class RWCLock {
 
 #ifndef NDEBUG
   int64_t last_writer_tid_;
+  ThreadIdForStack last_writer_tid_for_stack_;
   int64_t last_writelock_acquire_time_;
   StackTrace last_writer_stacktrace_;
 
