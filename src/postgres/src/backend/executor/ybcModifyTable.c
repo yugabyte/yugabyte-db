@@ -863,7 +863,7 @@ bool YBCExecuteUpdate(Relation rel,
 											colref->typid,
 											colref->collid,
 											&type_attrs);
-		HandleYBStatus(YbPgDmlAppendColumnRef(update_stmt, yb_expr));
+		HandleYBStatus(YbPgDmlAppendColumnRef(update_stmt, yb_expr, true));
 	}
 
 	/* Execute the statement. */

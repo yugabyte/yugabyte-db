@@ -1267,6 +1267,16 @@ typedef struct SeqScanState
 } SeqScanState;
 
 /* ----------------
+ *	 SeqScanState information
+ * ----------------
+ */
+typedef struct YbSeqScanState
+{
+	ScanState	ss;				/* its first field is NodeTag */
+	// TODO handle;				/* size of parallel heap scan descriptor */
+} YbSeqScanState;
+
+/* ----------------
  *	 SampleScanState information
  * ----------------
  */

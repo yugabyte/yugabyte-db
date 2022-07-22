@@ -349,7 +349,7 @@ error hint:
 ------------------------------
  Hash Join
    Hash Cond: (t1.id = t2.id)
-   ->  Seq Scan on t1
+   ->  YB Seq Scan on t1
    ->  Hash
          ->  Seq Scan on t2
 (5 rows)
@@ -367,7 +367,7 @@ error hint:
               QUERY PLAN
 --------------------------------------
  Nested Loop
-   ->  Seq Scan on t1
+   ->  YB Seq Scan on t1
    ->  Index Scan using t2_pkey on t2
          Index Cond: (id = t1.id)
 (4 rows)
@@ -386,7 +386,7 @@ error hint:
               QUERY PLAN
 --------------------------------------
  Nested Loop
-   ->  Seq Scan on t2
+   ->  YB Seq Scan on t2
    ->  Index Scan using t1_pkey on t1
          Index Cond: (id = t2.id)
 (4 rows)
@@ -404,7 +404,7 @@ error hint:
               QUERY PLAN
 --------------------------------------
  Nested Loop
-   ->  Seq Scan on t2
+   ->  YB Seq Scan on t2
    ->  Index Scan using t1_pkey on t1
          Index Cond: (id = t2.id)
 (4 rows)
@@ -422,7 +422,7 @@ error hint:
 ------------------------------
  Hash Join
    Hash Cond: (t1.id = t2.id)
-   ->  Seq Scan on t1
+   ->  YB Seq Scan on t1
    ->  Hash
          ->  Seq Scan on t2
 (5 rows)
@@ -439,7 +439,7 @@ error hint:
          QUERY PLAN
 ----------------------------
  Nested Loop
-   ->  Seq Scan on t1
+   ->  YB Seq Scan on t1
          Filter: (val < 10)
    ->  Materialize
          ->  Seq Scan on t4
@@ -996,13 +996,13 @@ not used hint:
 duplication hint:
 error hint:
 
-            QUERY PLAN
------------------------------------
+             QUERY PLAN
+-------------------------------------
  Index Scan using t1_pkey on t1
    Index Cond: (id = $1)
    InitPlan 1 (returns $0)
      ->  Aggregate
-           ->  Seq Scan on t1 v_1
+           ->  YB Seq Scan on t1 v_1
                  Filter: (id < 10)
    InitPlan 2 (returns $1)
      ->  Aggregate
@@ -1365,7 +1365,7 @@ error hint:
  Nested Loop
    ->  Hash Join
          Hash Cond: ("""t1 )     ".id = "T3".id)
-         ->  Seq Scan on t1 """t1 )      "
+         ->  YB Seq Scan on t1 """t1 )   "
          ->  Hash
                ->  Seq Scan on t3 "T3"
    ->  Index Scan using t2_pkey on t2 "t 2 """
@@ -1417,10 +1417,10 @@ error hint:
    Merge Cond: (t1.id = t2.id)
    ->  Sort
          Sort Key: t1.id
-         ->  Seq Scan on t1
+         ->  YB Seq Scan on t1
    ->  Sort
          Sort Key: t2.id
-         ->  Seq Scan on t2
+         ->  YB Seq Scan on t2
 (8 rows)
 
 -- sub query Leading hint test
@@ -2243,15 +2243,15 @@ duplication hint:
 error hint:
 Set(123456789012345678901234567890123456789012345678901234567890123 1)
 
-                                             QUERY PLAN
-----------------------------------------------------------------------------------------------------
+                                              QUERY PLAN
+-------------------------------------------------------------------------------------------------------
  Merge Join
    Merge Cond: ("123456789012345678901234567890123456789012345678901234567890123".id = t3.id)
    ->  Merge Join
          Merge Cond: ("123456789012345678901234567890123456789012345678901234567890123".id = t2.id)
          ->  Sort
                Sort Key: "123456789012345678901234567890123456789012345678901234567890123".id
-               ->  Seq Scan on t1 "123456789012345678901234567890123456789012345678901234567890123"
+               ->  YB Seq Scan on t1 "123456789012345678901234567890123456789012345678901234567890123"
          ->  Sort
                Sort Key: t2.id
                ->  Seq Scan on t2
@@ -2286,15 +2286,15 @@ duplication hint:
 error hint:
 Set(123456789012345678901234567890123456789012345678901234567890123 1)
 
-                                             QUERY PLAN
-----------------------------------------------------------------------------------------------------
+                                              QUERY PLAN
+-------------------------------------------------------------------------------------------------------
  Merge Join
    Merge Cond: ("123456789012345678901234567890123456789012345678901234567890123".id = t3.id)
    ->  Merge Join
          Merge Cond: ("123456789012345678901234567890123456789012345678901234567890123".id = t2.id)
          ->  Sort
                Sort Key: "123456789012345678901234567890123456789012345678901234567890123".id
-               ->  Seq Scan on t1 "123456789012345678901234567890123456789012345678901234567890123"
+               ->  YB Seq Scan on t1 "123456789012345678901234567890123456789012345678901234567890123"
          ->  Sort
                Sort Key: t2.id
                ->  Seq Scan on t2
@@ -2367,7 +2367,7 @@ error hint:
 
      QUERY PLAN
 --------------------
- Seq Scan on t5
+ YB Seq Scan on t5
    Filter: (id = 1)
 (2 rows)
 
@@ -2415,7 +2415,7 @@ error hint:
 
      QUERY PLAN
 --------------------
- Seq Scan on t5
+ YB Seq Scan on t5
    Filter: (id = 1)
 (2 rows)
 
@@ -3483,7 +3483,7 @@ error hint:
 
      QUERY PLAN
 --------------------
- Seq Scan on t5
+ YB Seq Scan on t5
    Filter: (id = 1)
 (2 rows)
 
@@ -3499,7 +3499,7 @@ error hint:
 
      QUERY PLAN
 --------------------
- Seq Scan on t5
+ YB Seq Scan on t5
    Filter: (id = 1)
 (2 rows)
 
@@ -3515,7 +3515,7 @@ error hint:
 
      QUERY PLAN
 --------------------
- Seq Scan on t5
+ YB Seq Scan on t5
    Filter: (id = 1)
 (2 rows)
 
@@ -3563,7 +3563,7 @@ error hint:
 
      QUERY PLAN
 --------------------
- Seq Scan on t5
+ YB Seq Scan on t5
    Filter: (id = 1)
 (2 rows)
 
@@ -3579,7 +3579,7 @@ error hint:
 
      QUERY PLAN
 --------------------
- Seq Scan on t5
+ YB Seq Scan on t5
    Filter: (id = 1)
 (2 rows)
 
@@ -3595,7 +3595,7 @@ error hint:
 
      QUERY PLAN
 --------------------
- Seq Scan on t5
+ YB Seq Scan on t5
    Filter: (id = 1)
 (2 rows)
 
@@ -3627,7 +3627,7 @@ error hint:
 
      QUERY PLAN
 --------------------
- Seq Scan on t5
+ YB Seq Scan on t5
    Filter: (id = 1)
 (2 rows)
 
@@ -3643,7 +3643,7 @@ error hint:
 
      QUERY PLAN
 --------------------
- Seq Scan on t5
+ YB Seq Scan on t5
    Filter: (id = 1)
 (2 rows)
 
@@ -3659,7 +3659,7 @@ error hint:
 
      QUERY PLAN
 --------------------
- Seq Scan on t5
+ YB Seq Scan on t5
    Filter: (id = 1)
 (2 rows)
 
@@ -3675,7 +3675,7 @@ error hint:
 
      QUERY PLAN
 --------------------
- Seq Scan on t5
+ YB Seq Scan on t5
    Filter: (id = 1)
 (2 rows)
 
@@ -3736,7 +3736,7 @@ error hint:
 
      QUERY PLAN
 --------------------
- Seq Scan on t1
+ YB Seq Scan on t1
    Filter: (id = 1)
 (2 rows)
 
@@ -4232,7 +4232,7 @@ error hint:
          Merge Cond: (t1.id = t2.id)
          ->  Sort
                Sort Key: t1.id
-               ->  Seq Scan on t1
+               ->  YB Seq Scan on t1
          ->  Sort
                Sort Key: t2.id
                ->  Seq Scan on t2

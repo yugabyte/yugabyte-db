@@ -300,7 +300,7 @@ YBCStatus YBCPgDmlAppendTarget(YBCPgStatement handle, YBCPgExpr target);
 // Currently only SELECT statement supports WHERE clause conditions.
 // Only serialized Postgres expressions are allowed.
 // Multiple quals added to the same statement are implicitly AND'ed.
-YBCStatus YbPgDmlAppendQual(YBCPgStatement handle, YBCPgExpr qual);
+YBCStatus YbPgDmlAppendQual(YBCPgStatement handle, YBCPgExpr qual, bool is_primary);
 
 // Add column reference needed to evaluate serialized Postgres expression.
 // PgExpr's other than serialized Postgres expressions are inspected and if they contain any
@@ -311,7 +311,7 @@ YBCStatus YbPgDmlAppendQual(YBCPgStatement handle, YBCPgExpr qual);
 // While optional in regular column refenence expressions, column references needed to evaluate
 // serialized Postgres expression must contain Postgres data type information. DocDB needs to know
 // how to convert values from the DocDB formats to use them to evaluate Postgres expressions.
-YBCStatus YbPgDmlAppendColumnRef(YBCPgStatement handle, YBCPgExpr colref);
+YBCStatus YbPgDmlAppendColumnRef(YBCPgStatement handle, YBCPgExpr colref, bool is_primary);
 
 // Binding Columns: Bind column with a value (expression) in a statement.
 // + This API is used to identify the rows you want to operate on. If binding columns are not

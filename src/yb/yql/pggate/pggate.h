@@ -357,9 +357,9 @@ class PgApiImpl {
   // All DML statements
   Status DmlAppendTarget(PgStatement *handle, PgExpr *expr);
 
-  Status DmlAppendQual(PgStatement *handle, PgExpr *expr);
+  Status DmlAppendQual(PgStatement *handle, PgExpr *expr, bool is_primary);
 
-  Status DmlAppendColumnRef(PgStatement *handle, PgExpr *colref);
+  Status DmlAppendColumnRef(PgStatement *handle, PgExpr *colref, bool is_primary);
 
   // Binding Columns: Bind column with a value (expression) in a statement.
   // + This API is used to identify the rows you want to operate on. If binding columns are not
