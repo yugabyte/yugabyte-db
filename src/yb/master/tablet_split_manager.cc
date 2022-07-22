@@ -665,7 +665,8 @@ bool TabletSplitManager::IsRunning() {
   return is_running_;
 }
 
-bool TabletSplitManager::IsTabletSplittingComplete(const TableInfo& table) {
+bool TabletSplitManager::IsTabletSplittingComplete(
+    const TableInfo& table, bool wait_for_parent_deletion) {
   // It is important to check that is_running_ is false BEFORE checking for outstanding splits.
   // Otherwise, we could have the following order of events:
   // 1. Thread A: Tablet split manager enqueues a split for table T.
@@ -694,7 +695,7 @@ bool TabletSplitManager::IsTabletSplittingComplete(const TableInfo& table) {
     }
   }
 
-  return !table.HasOutstandingSplits();
+  return !table.HasOutstandingSplits(wait_for_parent_deletion);
 }
 
 void TabletSplitManager::DisableSplittingFor(

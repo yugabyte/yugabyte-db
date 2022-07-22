@@ -222,8 +222,8 @@ AlterForeignDataWrapperOwner_internal(Relation rel, HeapTuple tup, Oid newOwnerI
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 				 errmsg("permission denied to change owner of foreign-data wrapper \"%s\"",
 						NameStr(form->fdwname)),
-				 errhint("Must be superuser or yb_fdw role member to change "
-				 		 "owner of a foreign-data wrapper.")));
+				 errhint("Must be superuser or a member of the yb_fdw "
+				 		 "role to change owner of a foreign-data wrapper.")));
 
 	/* New owner must also be a superuser */
 	if (!IsYbFdwUser(newOwnerId) && !superuser_arg(newOwnerId))
@@ -231,8 +231,8 @@ AlterForeignDataWrapperOwner_internal(Relation rel, HeapTuple tup, Oid newOwnerI
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 				 errmsg("permission denied to change owner of foreign-data wrapper \"%s\"",
 						NameStr(form->fdwname)),
-				 errhint("Must be superuser or yb_fdw role member to change "
-				 		 "owner of a foreign-data wrapper.")));
+				 errhint("Must be superuser or a member of the yb_fdw "
+				 		 "role to change owner of a foreign-data wrapper.")));
 
 	if (form->fdwowner != newOwnerId)
 	{
@@ -583,8 +583,8 @@ CreateForeignDataWrapper(CreateFdwStmt *stmt)
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 				 errmsg("permission denied to create foreign-data wrapper \"%s\"",
 						stmt->fdwname),
-				 errhint("Must be superuser or yb_fdw role member to create a "
-				 		 "foreign-data wrapper.")));
+				 errhint("Must be superuser or a member of the yb_fdw "
+				 		 "role to create a foreign-data wrapper.")));
 
 	/* For now the owner cannot be specified on create. Use effective user ID. */
 	ownerId = GetUserId();
@@ -698,8 +698,8 @@ AlterForeignDataWrapper(AlterFdwStmt *stmt)
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 				 errmsg("permission denied to alter foreign-data wrapper \"%s\"",
 						stmt->fdwname),
-				 errhint("Must be superuser or yb_fdw role member to alter a "
-				 		 "foreign-data wrapper.")));
+				 errhint("Must be superuser or a member of the yb_fdw role to "
+				 		 "alter a foreign-data wrapper.")));
 
 	tp = SearchSysCacheCopy1(FOREIGNDATAWRAPPERNAME,
 							 CStringGetDatum(stmt->fdwname));

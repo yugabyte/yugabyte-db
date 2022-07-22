@@ -97,5 +97,5 @@ ALTER EVENT TRIGGER admin_foo RENAME TO admin_foo_new;
 ALTER EVENT TRIGGER admin_foo_new OWNER TO superuser_role;
 ALTER EVENT TRIGGER admin_foo_new OWNER TO non_superuser_role;
 ERROR:  permission denied to change owner of event trigger "admin_foo_new"
-HINT:  The owner of an event trigger must be a superuser or yb_db_admin role member.
+HINT:  The owner of an event trigger must be a superuser or a member of the yb_db_admin role.
 DROP EVENT TRIGGER admin_foo_new;

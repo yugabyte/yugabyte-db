@@ -32,6 +32,8 @@
 namespace yb {
 namespace master {
 
+YB_STRONGLY_TYPED_BOOL(DoTsRestore);
+
 // Utility class to restore sys catalog.
 // Initially we load tables and tablets into it, then match schedule filter.
 class RestoreSysCatalogState {
@@ -101,7 +103,18 @@ class RestoreSysCatalogState {
       std::unordered_map<TabletId, SysTabletsEntryPB>* seq_tablets);
 
   template <class PB>
-  Status AddRestoringEntry(const std::string& id, PB* pb, faststring* buffer);
+  Status AddRestoringEntry(
+      const std::string& id, PB* pb, faststring* buffer, SysRowEntryType type,
+      DoTsRestore send_restore_rpc = DoTsRestore::kTrue);
+
+  template <class PB>
+  Status PatchAndAddRestoringEntry(
+      const std::string& id, PB* pb, faststring* buffer);
+
+  // Adds the tablet to 'non_system_tablets_to_restore' map.
+  void AddTabletToSplitRelationshipsMap(const std::string& id, SysTabletsEntryPB* pb);
+
+  Status PatchColocatedTablet(const std::string& id, SysTabletsEntryPB* pb);
 
   Result<bool> PatchRestoringEntry(const std::string& id, SysNamespaceEntryPB* pb);
   Result<bool> PatchRestoringEntry(const std::string& id, SysTablesEntryPB* pb);
@@ -135,6 +148,10 @@ class RestoreSysCatalogState {
       docdb::DocWriteBatch* write_batch);
 
   Status PatchSequencesDataObjects(Objects* existing_objects, Objects* restoring_objects);
+
+  Status PatchAndAddRestoringTablets();
+
+  void FillHideInformation(TableId table_id, SysTabletsEntryPB* pb, bool set_hide_time = true);
 
   struct Objects {
     std::unordered_map<NamespaceId, SysNamespaceEntryPB> namespaces;

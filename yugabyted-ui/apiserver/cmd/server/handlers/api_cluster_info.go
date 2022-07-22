@@ -37,6 +37,8 @@ const QUERY_FORMAT_NODE string = "select ts, value, details from " +
 const QUERY_FORMAT string = "select ts, value, details from " +
     "%s where metric = '%s' and ts >= %d and ts < %d"
 
+// the count metrics count the total number of accumulated ops, and the sum metric
+// counts the total amount of time spent on ops.
 const READ_COUNT_METRIC = "handler_latency_yb_tserver_TabletServerService_Read_count"
 const WRITE_COUNT_METRIC = "handler_latency_yb_tserver_TabletServerService_Write_count"
 const READ_SUM_METRIC = "handler_latency_yb_tserver_TabletServerService_Read_sum"
@@ -141,9 +143,13 @@ func divideMetricForAllNodes(
         }
         resultMetric[i] = make([][]float64, numIntervals)
         for j := 0; j < numIntervals; j++ {
-            // Note: we are comparing a float to 0 to avoid dividing by 0.
-            // This will only catch the cases where the float value is exactly 0.
-            if nodeValuesDenominator[i][j][1] != 0 {
+            if len(nodeValuesNumerator[i][j]) < 2 || len(nodeValuesDenominator[i][j]) < 2 {
+                // Handle case where data at window is empty
+                resultMetric[i][j] = []float64{nodeValuesNumerator[i][j][0]}
+            } else if nodeValuesDenominator[i][j][1] != 0 {
+                // Handle divide by 0 case
+                // Note: we are comparing a float to 0 to avoid dividing by 0.
+                // This will only catch the cases where the float value is exactly 0.
                 resultMetric[i][j] = []float64{nodeValuesNumerator[i][j][0],
                     nodeValuesNumerator[i][j][1] / nodeValuesDenominator[i][j][1]}
             } else {
@@ -341,6 +347,15 @@ func convertRawMetricsToRates(nodeValues [][][]float64) [][][]float64 {
     return rateMetrics
 }
 
+// Divides every metric value by the provided constant. Modifies metricValues directly.
+func divideMetricByConstant(metricValues [][]float64, constant float64) {
+    for _, metric := range metricValues {
+        if len(metric) >= 2 {
+            metric[1] = metric[1] / constant
+        }
+    }
+}
+
 // GetBulkClusterMetrics - Get bulk cluster metrics
 func (c *Container) GetBulkClusterMetrics(ctx echo.Context) error {
     return ctx.JSON(http.StatusOK, models.HelloWorld{
@@ -528,12 +543,21 @@ func (c *Container) GetClusterMetric(ctx echo.Context) error {
             rateMetricsCount := convertRawMetricsToRates(rawMetricValuesCount)
             rateMetricsSum := convertRawMetricsToRates(rawMetricValuesSum)
 
-            latencyMetric := divideMetricForAllNodes(rateMetricsSum, rateMetricsCount)
+            rateMetricsCountReduced := reduceGranularityForAllNodes(startTime, endTime,
+                rateMetricsCount, GRANULARITY_NUM_INTERVALS, false)
 
-            nodeMetricValues := reduceGranularityForAllNodes(startTime, endTime, latencyMetric,
-                GRANULARITY_NUM_INTERVALS, true)
+            rateMetricsSumReduced := reduceGranularityForAllNodes(startTime, endTime,
+                rateMetricsSum, GRANULARITY_NUM_INTERVALS, false)
 
-            metricValues := calculateCombinedMetric(nodeMetricValues, true)
+            rateMetricsCountCombined := calculateCombinedMetric(rateMetricsCountReduced, false)
+            rateMetricsSumCombined := calculateCombinedMetric(rateMetricsSumReduced, false)
+
+            latencyMetric := divideMetricForAllNodes([][][]float64{rateMetricsSumCombined},
+                [][][]float64{rateMetricsCountCombined})
+
+            metricValues := latencyMetric[0]
+            // Divide everything by 1000 to convert from microseconds to milliseconds
+            divideMetricByConstant(metricValues, 1000)
             metricResponse.Data = append(metricResponse.Data, models.MetricData{
                 Name:   metric,
                 Values: metricValues,
@@ -554,12 +578,21 @@ func (c *Container) GetClusterMetric(ctx echo.Context) error {
             rateMetricsCount := convertRawMetricsToRates(rawMetricValuesCount)
             rateMetricsSum := convertRawMetricsToRates(rawMetricValuesSum)
 
-            latencyMetric := divideMetricForAllNodes(rateMetricsSum, rateMetricsCount)
+            rateMetricsCountReduced := reduceGranularityForAllNodes(startTime, endTime,
+                rateMetricsCount, GRANULARITY_NUM_INTERVALS, false)
 
-            nodeMetricValues := reduceGranularityForAllNodes(startTime, endTime, latencyMetric,
-                GRANULARITY_NUM_INTERVALS, true)
+            rateMetricsSumReduced := reduceGranularityForAllNodes(startTime, endTime,
+                rateMetricsSum, GRANULARITY_NUM_INTERVALS, false)
 
-            metricValues := calculateCombinedMetric(nodeMetricValues, true)
+            rateMetricsCountCombined := calculateCombinedMetric(rateMetricsCountReduced, false)
+            rateMetricsSumCombined := calculateCombinedMetric(rateMetricsSumReduced, false)
+
+            latencyMetric := divideMetricForAllNodes([][][]float64{rateMetricsSumCombined},
+                [][][]float64{rateMetricsCountCombined})
+
+            metricValues := latencyMetric[0]
+            // Divide everything by 1000 to convert from microseconds to milliseconds
+            divideMetricByConstant(metricValues, 1000)
             metricResponse.Data = append(metricResponse.Data, models.MetricData{
                 Name:   metric,
                 Values: metricValues,
@@ -621,9 +654,41 @@ func (c *Container) GetClusterNodes(ctx echo.Context) error {
 
 // GetClusterTables - Get list of DB tables per YB API (YCQL/YSQL)
 func (c *Container) GetClusterTables(ctx echo.Context) error {
-    return ctx.JSON(http.StatusOK, models.HelloWorld{
-        Message: "Hello World",
-    })
+    tableListResponse := models.ClusterTableListResponse{
+        Data: []models.ClusterTable{},
+    }
+    tablesFuture := make(chan helpers.TablesFuture)
+    go helpers.GetTablesFuture(helpers.HOST, tablesFuture)
+    tablesList := <-tablesFuture
+    if tablesList.Error != nil {
+        return ctx.String(http.StatusInternalServerError, tablesList.Error.Error())
+    }
+    api := ctx.QueryParam("api")
+    switch api {
+    case "YSQL":
+        for _, table := range tablesList.Tables {
+            if table.IsYsql {
+                tableListResponse.Data = append(tableListResponse.Data, models.ClusterTable{
+                    Name: table.Name,
+                    Keyspace: table.Keyspace,
+                    Type: models.YBAPIENUM_YSQL,
+                    SizeBytes: table.SizeBytes,
+                })
+            }
+        }
+    case "YCQL":
+        for _, table := range tablesList.Tables {
+            if !table.IsYsql {
+                tableListResponse.Data = append(tableListResponse.Data, models.ClusterTable{
+                    Name: table.Name,
+                    Keyspace: table.Keyspace,
+                    Type: models.YBAPIENUM_YCQL,
+                    SizeBytes: table.SizeBytes,
+                })
+            }
+        }
+    }
+    return ctx.JSON(http.StatusOK, tableListResponse)
 }
 
 // GetClusterTablespaces - Get list of DB tables for YSQL
