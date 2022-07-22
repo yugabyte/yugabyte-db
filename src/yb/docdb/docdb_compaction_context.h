@@ -26,7 +26,6 @@
 #include "yb/common/hybrid_time.h"
 
 #include "yb/docdb/expiration.h"
-#include "yb/docdb/packed_row.h"
 
 #include "yb/gutil/thread_annotations.h"
 
@@ -64,7 +63,7 @@ struct HistoryRetentionDirective {
 struct CompactionSchemaInfo {
   TableType table_type;
   uint32_t schema_version = std::numeric_limits<uint32_t>::max();
-  std::shared_ptr<const docdb::SchemaPacking> schema_packing;
+  std::shared_ptr<const SchemaPacking> schema_packing;
   Uuid cotable_id;
   ColumnIds deleted_cols;
 

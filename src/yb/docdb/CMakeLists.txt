@@ -91,6 +91,7 @@ set(DOCDB_SRCS
         ql_rowwise_iterator_interface.cc
         redis_operation.cc
         rocksdb_writer.cc
+        schema_packing.cc
         shared_lock_manager.cc
         subdocument.cc
         transaction_dump.cc

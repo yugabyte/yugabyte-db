@@ -2764,7 +2764,7 @@ Status VersionSet::Recover(
             &flushed_frontier, edit.flushed_frontier_, UpdateUserValueType::kLargest);
         VLOG(1) << "Updating flushed frontier with that from edit: "
                 << edit.flushed_frontier_->ToString()
-                << ", new flushed froniter: " << flushed_frontier->ToString();
+                << ", new flushed frontier: " << flushed_frontier->ToString();
       } else {
         VLOG(1) << "No flushed frontier found in edit";
       }
