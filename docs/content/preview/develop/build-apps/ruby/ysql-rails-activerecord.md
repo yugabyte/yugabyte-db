@@ -32,12 +32,6 @@ type: docs
   </li>
 </ul>
 
-## Prerequisites
-
-This tutorial assumes that you have:
-
-- installed YugabyteDB and created a universe with YSQL enabled. If not, please follow these steps in the [Quick Start guide](../../../../quick-start/explore/ysql/).
-
 ## Clone the orm-examples repository
 
 ```sh
@@ -48,13 +42,13 @@ $ git clone https://github.com/YugabyteDB-Samples/orm-examples.git
 bundle install
 ```
 
-This repository has a Ruby on Rails example that implements a simple REST API server. The scenario is that of an e-commerce application. Database access in this application is managed through ActiveRecord ORM. It consists of the following.
+This repository has a Ruby on Rails example that implements a basic REST API server. The scenario is that of an e-commerce application. Database access in this application is managed through ActiveRecord ORM. It consists of the following.
 
 - The users of the e-commerce site are stored in the users table.
 - The products table contains a list of products the e-commerce site sells.
 - The orders placed by the users are populated in the orders table. An order can consist of multiple line items, each of these are inserted in the orderline table.
 
-The source for the above application can be found in the [repo](https://github.com/yugabyte/orm-examples/tree/master/ruby/ror). There are a number of options that can be customized in the properties file located at `config/database.yml`.
+The source for the above application can be found in the [repository](https://github.com/yugabyte/orm-examples/tree/master/ruby/ror). There are a number of options that can be customized in the properties file located at `config/database.yml`.
 
 ## Build and run the application
 

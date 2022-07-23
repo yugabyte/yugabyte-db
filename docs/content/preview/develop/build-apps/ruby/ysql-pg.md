@@ -37,23 +37,17 @@ type: docs
   </li>
 </ul>
 
-## Install the pg driver
+## Prerequisites
 
-Install the Ruby PostgreSQL driver (`pg`) using the following command. You can get further details for the driver in the [pg driver documentation](https://deveiate.org/code/pg/).
+Install the Ruby PostgreSQL driver (`pg`) using the following command:
 
 ```sh
 $ gem install pg -- --with-pg-config=<yugabyte-install-dir>/postgres/bin/pg_config
 ```
 
-## Create the sample Ruby application
+For more information on the driver, see the [pg driver documentation](https://deveiate.org/code/pg/).
 
-### Prerequisites
-
-This tutorial assumes that you have:
-
-- installed YugabyteDB and created a universe with YSQL enabled. If not, please follow these steps in the [Quick Start guide](../../../../quick-start/install/macos/).
-
-### Add the sample Ruby application code
+## Create the application
 
 Create a file `yb-sql-helloworld.rb` and add the following content to it.
 
@@ -92,7 +86,7 @@ ensure
 end
 ```
 
-### Run the application
+## Run the application
 
 To use the application, run the following command:
 

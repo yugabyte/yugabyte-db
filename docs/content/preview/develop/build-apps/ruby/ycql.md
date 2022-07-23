@@ -42,14 +42,6 @@ $ gem install yugabyte-ycql-driver
 
 ## Create a sample Ruby application
 
-### Prerequisites
-
-This tutorial assumes that you have:
-
-- installed YugabyteDB, created a universe, and are able to interact with it using the YCQL shell. If not, follow the steps in [Quick start YCQL](../../../explore/ycql/).
-
-### Write the sample Ruby application
-
 Create a file `yb-ycql-helloworld.rb` and copy the following content to it.
 
 ```ruby
@@ -91,7 +83,7 @@ end
 cluster.close()
 ```
 
-### Run the application
+## Run the application
 
 To use the application, run the following command:
 
