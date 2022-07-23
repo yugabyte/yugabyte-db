@@ -17,8 +17,7 @@ This document describes how to use [GORM](https://gorm.io/index.html), an object
 
 Before you can start using GORM, ensure that you have the following available:
 
-- YugabyteDB version 2.6 or later (see [YugabyteDB Quick Start Guide](/preview/quick-start/)).
-- Yugabyte cluster (see [Create a local cluster](/preview/quick-start/create-local-cluster/macos/)).
+- YugabyteDB version 2.6 or later (see [Quick Start](../../quick-start/)).
 - Python version 2.7 or later.
 - Go version 1.8 or later.
 
