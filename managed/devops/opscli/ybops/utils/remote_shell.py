@@ -55,7 +55,7 @@ class RemoteShell(object):
             result.stdout = output
             result.exited = 0
         except Exception as e:
-            result.stderr = e
+            result.stderr = str(e)
             result.exited = 1
 
         return result

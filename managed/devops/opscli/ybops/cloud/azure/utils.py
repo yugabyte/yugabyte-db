@@ -574,7 +574,7 @@ class AzureCloudAdmin():
                             instance_type, ssh_user, nsg, image, vol_type, server_type,
                             region, nic_id, tags, disk_iops, disk_throughput, is_edit=False):
         disk_names = [vm_name + "-Disk-" + str(i) for i in range(1, num_vols + 1)]
-        private_key, _ = validated_key_file(private_key_file)
+        private_key = validated_key_file(private_key_file)
 
         shared_gallery_image_match = GALLERY_IMAGE_ID_REGEX.match(image)
         if shared_gallery_image_match:
