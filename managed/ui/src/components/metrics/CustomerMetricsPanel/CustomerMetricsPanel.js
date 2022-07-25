@@ -20,9 +20,10 @@ const graphPanelTypes = {
       'redis',
       'tserver',
       'master',
+      'master_advanced',
       'lsmdb'
     ],
-    isOpen: [true, true, false, false, false, false, false, false, false]
+    isOpen: [true, true, false, false, false, false, false, false, false, false]
   },
   customer: {
     data: [
@@ -35,9 +36,10 @@ const graphPanelTypes = {
       'redis',
       'tserver',
       'master',
+      'master_advanced',
       'lsmdb'
     ],
-    isOpen: [true, true, false, false, false, false, false, false, false]
+    isOpen: [true, true, false, false, false, false, false, false, false, false]
   },
   table: {
     data: ['lsmdb_table', 'tserver_table'],
