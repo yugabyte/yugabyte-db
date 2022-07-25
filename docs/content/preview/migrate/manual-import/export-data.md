@@ -27,7 +27,7 @@ To export the data, connect to the source PostgreSQL database using the psql too
 
 ```sql
 COPY <table_name>
-    TO <table_name>.csv
+    TO '<table_name>.csv'
     WITH (FORMAT CSV DELIMITER ',' HEADER);
 ```
 
@@ -44,7 +44,7 @@ COPY (
     SELECT * FROM <table_name>
     WHERE <condition>
 )
-TO <table_name>.csv
+TO '<table_name>.csv'
 WITH (FORMAT CSV DELIMITER ',' HEADER);
 ```
 
