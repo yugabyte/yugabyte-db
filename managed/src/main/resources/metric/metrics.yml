@@ -1156,6 +1156,8 @@ tserver_log_latency:
   metric: "log_sync_latency.avg|log_group_commit_latency.avg|log_append_latency.avg"
   function: "rate|avg"
   range : true
+  filters:
+    export_type: "tserver_export"
   panel_group: "Tablet Server"
   layout:
     title: "WAL Latency"
@@ -1169,8 +1171,8 @@ tserver_log_latency:
       ticksuffix: "&nbsp;\u00B5s"
 
 tserver_log_bytes_written:
-  metric: "log_bytes_logged_irate"
-  function: "avg_over_time|avg"
+  metric: "log_bytes_logged"
+  function: "rate|sum by (exported_instance)|avg"
   range : true
   filters:
     export_type: "tserver_export"
@@ -1181,11 +1183,11 @@ tserver_log_bytes_written:
       type: "date"
     yaxis:
       alias:
-        "log_bytes_logged_irate": "WAL Bytes Logged"
+        "log_bytes_logged": "WAL Bytes Logged"
 
 tserver_log_bytes_read:
-  metric: "log_reader_bytes_read_irate"
-  function: "avg_over_time|avg"
+  metric: "log_reader_bytes_read"
+  function: "rate|sum by (exported_instance)|avg"
   range : true
   filters:
     export_type: "tserver_export"
@@ -1196,15 +1198,15 @@ tserver_log_bytes_read:
       type: "date"
     yaxis:
       alias:
-        "log_reader_bytes_read_irate": "WAL Bytes Read"
+        "log_reader_bytes_read": "WAL Bytes Read"
 
 tserver_log_ops_second:
   metric: ""
-  function: "avg_over_time|avg"
+  function: "rate|sum by (exported_instance, saved_name)|avg"
   range : true
   filters:
     export_type: "tserver_export"
-    saved_name: "log_group_commit_irate|log_append_irate|log_sync_irate"
+    saved_name: "log_group_commit_latency_count|log_append_latency_count|log_sync_latency_count"
   group_by: "saved_name"
   panel_group: "Tablet Server"
   layout:
@@ -1213,9 +1215,9 @@ tserver_log_ops_second:
       type: "date"
     yaxis:
       alias:
-        "log_group_commit_irate": "Commit"
-        "log_append_irate": "Append"
-        "log_sync_irate": "Sync"
+        "log_group_commit_latency_count": "Commit"
+        "log_append_latency_count": "Append"
+        "log_sync_latency_count": "Sync"
 
 tserver_tc_malloc_stats:
   metric: ""
@@ -1297,11 +1299,11 @@ node_up:
 
 lsm_rocksdb_num_seek_or_next:
   metric: ""
-  function: "avg_over_time|avg"
+  function: "rate|sum by (exported_instance, saved_name)|avg"
   range : true
   filters:
     export_type: "tserver_export"
-    saved_name: "rocksdb_number_db_seek_irate|rocksdb_number_db_next_irate"
+    saved_name: "rocksdb_number_db_seek|rocksdb_number_db_next"
   group_by: "saved_name"
   panel_group: "RocksDB"
   layout:
@@ -1310,12 +1312,12 @@ lsm_rocksdb_num_seek_or_next:
       type: "date"
     yaxis:
       alias:
-        "rocksdb_number_db_seek_irate": "Seek"
-        "rocksdb_number_db_next_irate": "Next"
+        "rocksdb_number_db_seek": "Seek"
+        "rocksdb_number_db_next": "Next"
 
 lsm_rocksdb_num_seeks_per_node:
-  metric: "rocksdb_number_db_seek_irate"
-  function: "avg_over_time|avg"
+  metric: "rocksdb_number_db_seek"
+  function: "rate|sum by (exported_instance)|avg"
   range : true
   filters:
     export_type: "tserver_export"
@@ -1326,7 +1328,7 @@ lsm_rocksdb_num_seeks_per_node:
       type: "date"
     yaxis:
       alias:
-        "rocksdb_number_db_seek_irate": "Seek"
+        "rocksdb_number_db_seek": "Seek"
 
 lsm_rocksdb_total_sst_per_node:
   metric: "rocksdb_current_version_sst_files_size"
@@ -1361,11 +1363,11 @@ lsm_rocksdb_avg_num_sst_per_node:
 
 lsm_rocksdb_blooms_checked_and_useful:
   metric: ""
-  function: "avg_over_time|avg"
+  function: "rate|sum by (exported_instance, saved_name)|avg"
   range : true
   filters:
     export_type: "tserver_export"
-    saved_name: "rocksdb_bloom_filter_checked_irate|rocksdb_bloom_filter_useful_irate"
+    saved_name: "rocksdb_bloom_filter_checked|rocksdb_bloom_filter_useful"
   group_by: "saved_name"
   panel_group: "RocksDB"
   layout:
@@ -1374,8 +1376,8 @@ lsm_rocksdb_blooms_checked_and_useful:
       type: "date"
     yaxis:
       alias:
-        "rocksdb_bloom_filter_checked_irate": "Blooms checked"
-        "rocksdb_bloom_filter_useful_irate": "Blooms useful"
+        "rocksdb_bloom_filter_checked": "Blooms checked"
+        "rocksdb_bloom_filter_useful": "Blooms useful"
 
 lsm_rocksdb_latencies_get:
   metric: "rocksdb_db_get_micros.avg"
@@ -1441,10 +1443,10 @@ lsm_rocksdb_latencies_mutex:
 
 lsm_rocksdb_block_cache_hit_miss:
   metric: ""
-  function: "avg_over_time|avg"
+  function: "rate|sum by (exported_instance, saved_name)|avg"
   range : true
   filters:
-    saved_name: "rocksdb_block_cache_hit_irate|rocksdb_block_cache_miss_irate"
+    saved_name: "rocksdb_block_cache_hit|rocksdb_block_cache_miss"
     export_type: "tserver_export"
   group_by: "saved_name"
   panel_group: "RocksDB"
@@ -1454,8 +1456,8 @@ lsm_rocksdb_block_cache_hit_miss:
       type: "date"
     yaxis:
       alias:
-        "rocksdb_block_cache_hit_irate": "Hit"
-        "rocksdb_block_cache_miss_irate": "Miss"
+        "rocksdb_block_cache_hit": "Hit"
+        "rocksdb_block_cache_miss": "Miss"
 
 lsm_rocksdb_block_cache_usage:
   metric: ""
@@ -1479,11 +1481,11 @@ lsm_rocksdb_block_cache_usage:
 
 lsm_rocksdb_block_cache_add:
   metric: ""
-  function: "avg_over_time|avg"
+  function: "rate|sum by (exported_instance, saved_name)|avg"
   range : true
   filters:
-    saved_name: "rocksdb_block_cache_add_irate|rocksdb_block_cache_single_touch_add_irate|\
-      rocksdb_block_cache_multi_touch_add_irate"
+    saved_name: "rocksdb_block_cache_add|rocksdb_block_cache_single_touch_add|\
+      rocksdb_block_cache_multi_touch_add"
     export_type: "tserver_export"
   group_by: "saved_name"
   panel_group: "RocksDB"
@@ -1493,13 +1495,13 @@ lsm_rocksdb_block_cache_add:
       type: "date"
     yaxis:
       alias:
-        "rocksdb_block_cache_add_irate": "Add"
-        "rocksdb_block_cache_single_touch_add_irate": "Single Touch Add"
-        "rocksdb_block_cache_multi_touch_add_irate": "Multi Touch Add"
+        "rocksdb_block_cache_add": "Add"
+        "rocksdb_block_cache_single_touch_add": "Single Touch Add"
+        "rocksdb_block_cache_multi_touch_add": "Multi Touch Add"
 
 lsm_rocksdb_stalls:
-  metric: "rocksdb_stall_micros_irate"
-  function: "avg_over_time|avg"
+  metric: "rocksdb_stall_micros"
+  function: "rate|sum by (exported_instance)|avg"
   range : true
   filters:
     export_type: "tserver_export"
@@ -1510,12 +1512,12 @@ lsm_rocksdb_stalls:
       type: "date"
     yaxis:
       alias:
-        "rocksdb_stall_micros_irate": "Stalls"
+        "rocksdb_stall_micros": "Stalls"
       ticksuffix: "&nbsp;\u00B5s"
 
 lsm_rocksdb_write_rejections:
-  metric: "majority_sst_files_rejections_irate"
-  function: "avg_over_time|avg"
+  metric: "majority_sst_files_rejections"
+  function: "rate|sum by (exported_instance)|avg"
   range : true
   filters:
     export_type: "tserver_export"
@@ -1526,13 +1528,15 @@ lsm_rocksdb_write_rejections:
       type: "date"
     yaxis:
       alias:
-        "majority_sst_files_rejections_irate": "Rejections"
+        "majority_sst_files_rejections": "Rejections"
 
 lsm_rocksdb_flush_size:
-  metric: "rocksdb_flush_write_bytes_irate"
-  function: "avg_over_time|avg"
+  metric: "rocksdb_flush_write_bytes"
+  function: "rate|sum by (exported_instance)|avg"
   range : true
   operator: "/ 1048576"
+  filters:
+    export_type: "tserver_export"
   panel_group: "RocksDB"
   layout:
     title: "Flush write"
@@ -1540,17 +1544,17 @@ lsm_rocksdb_flush_size:
       type: "date"
     yaxis:
       alias:
-        "rocksdb_flush_write_bytes_irate": "Flush"
+        "rocksdb_flush_write_bytes": "Flush"
       ticksuffix: "&nbsp;MB"
 
 lsm_rocksdb_compaction:
   metric: ""
-  function: "avg_over_time|avg"
+  function: "rate|sum by (exported_instance, saved_name)|avg"
   range : true
   operator: "/ 1048576"
   filters:
     export_type: "tserver_export"
-    saved_name: "rocksdb_compact_read_bytes_irate|rocksdb_compact_write_bytes_irate"
+    saved_name: "rocksdb_compact_read_bytes|rocksdb_compact_write_bytes"
   group_by: "saved_name"
   panel_group: "RocksDB"
   layout:
@@ -1559,8 +1563,8 @@ lsm_rocksdb_compaction:
       type: "date"
     yaxis:
       alias:
-        "rocksdb_compact_read_bytes_irate": "Bytes Read"
-        "rocksdb_compact_write_bytes_irate": "Bytes Written"
+        "rocksdb_compact_read_bytes": "Bytes Read"
+        "rocksdb_compact_write_bytes": "Bytes Written"
       ticksuffix: "&nbsp;MB"
 
 lsm_rocksdb_compaction_numfiles:
@@ -1613,10 +1617,10 @@ docdb_transaction_pool_cache:
 
 docdb_transaction:
   metric: ""
-  function: "avg_over_time|sum"
+  function: "rate|sum by (exported_instance, saved_name)|avg"
   range : true
   filters:
-    saved_name: "transaction_conflicts_irate|expired_transactions_irate"
+    saved_name: "transaction_conflicts|expired_transactions"
     export_type: "tserver_export"
   group_by: "saved_name"
   panel_group: "Tablet Server"
@@ -1626,8 +1630,8 @@ docdb_transaction:
       type: "date"
     yaxis:
       alias:
-        "transaction_conflicts_irate": "Transaction Conflicts"
-        "expired_transactions_irate": "Expired Transactions"
+        "transaction_conflicts": "Transaction Conflicts"
+        "expired_transactions": "Expired Transactions"
 
 #Ysql Metrics
 ysql_server_rpc_per_second:
@@ -2124,13 +2128,29 @@ master_overall_rpc_rate:
       alias:
         "useInstanceName": "True"
 
+master_latency:
+  metric: "rpc_latency.avg"
+  function: "increase|avg"
+  range : true
+  filters:
+    server_type: "yb_master"
+  panel_group: "Master Advanced"
+  group_by: "exported_instance"
+  layout:
+    title: "Average Latency"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "useInstanceName": "True"
+
 master_get_tablet_location:
   metric: "rpc_irate_rps"
   function: "avg_over_time"
   range: true
   filters:
     export_type: "master_export"
-    service_type: "MasterService"
+    service_type: "MasterService|MasterClient"
     service_method: "GetTabletLocations"
   panel_group: "Master"
   layout:
@@ -2158,6 +2178,24 @@ master_tsservice_reads:
       alias:
         "useInstanceName": "True"
 
+master_tsservice_reads_latency:
+  metric: "rpc_latency.avg"
+  function: "rate|avg"
+  range: true
+  filters:
+    export_type: "master_export"
+    service_type: "TabletServerService"
+    service_method: "Read"
+  group_by: "exported_instance"
+  panel_group: "Master"
+  layout:
+    title: "Master TSService Reads Latency"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "useInstanceName": "True"
+
 master_tsservice_writes:
   metric: "rpc_irate_rps"
   function: "avg_over_time"
@@ -2175,13 +2213,31 @@ master_tsservice_writes:
       alias:
         "useInstanceName": "True"
 
+master_tsservice_writes_latency:
+  metric: "rpc_latency.avg"
+  function: "rate|avg"
+  range: true
+  filters:
+    export_type: "master_export"
+    service_type: "TabletServerService"
+    service_method: "Write"
+  group_by: "exported_instance"
+  panel_group: "Master"
+  layout:
+    title: "Master TSService Writes Latency"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "useInstanceName": "True"
+
 master_ts_heartbeats:
   metric: "rpc_irate_rps"
   function: "avg_over_time"
   range: true
   filters:
     export_type: "master_export"
-    service_type: "MasterService"
+    service_type: "MasterService|MasterHeartbeat"
     service_method: "TSHeartbeat"
   panel_group: "Master"
   layout:
@@ -2209,6 +2265,24 @@ master_consensus_update:
       alias:
         "useInstanceName": "True"
 
+master_consensus_update_latency:
+  metric: "rpc_latency.avg"
+  function: "rate|avg"
+  range : true
+  filters:
+    export_type: "master_export"
+    server_type: "yb_consensus"
+    service_type: "ConsensusService"
+    service_method: "UpdateConsensus"
+  group_by: "exported_instance"
+  panel_group: "Master"
+  layout:
+    title: "UpdateConsensus Latency"
+    xaxis:
+      type: "date"
+    yaxis:
+      ticksuffix: "&nbsp;\u00B5s"
+
 master_multiraft_consensus_update:
   metric: "rpc_latency_count"
   function: "rate"
@@ -2226,14 +2300,32 @@ master_multiraft_consensus_update:
       alias:
         "useInstanceName": "True"
 
+master_multiraft_consensus_update_latency:
+  metric: "rpc_latency.avg"
+  function: "rate|avg"
+  range : true
+  filters:
+    export_type: "master_export"
+    server_type: "yb_consensus"
+    service_type: "ConsensusService"
+    service_method: "MultiRaftUpdateConsensus"
+  group_by: "exported_instance"
+  panel_group: "Master"
+  layout:
+    title: "MultiRaftUpdateConsensus Latency"
+    xaxis:
+      type: "date"
+    yaxis:
+      ticksuffix: "&nbsp;\u00B5s"
+
 master_table_ops:
   metric: "rpc_latency_count"
   function: "sum"
   filters:
     export_type: "master_export"
-    service_type: "MasterService"
-    saved_name: "handler_latency_yb_master_MasterService_DeleteTable_count|handler_latency_yb_master_MasterService_CreateTable_count"
-  group_by: "saved_name"
+    service_type: "MasterService|MasterDdl"
+    service_method: "CreateTable|DeleteTable"
+  group_by: "service_method"
   panel_group: "Master"
   layout:
     title: "Create/Delete Table RPCs"
@@ -2241,12 +2333,12 @@ master_table_ops:
       type: "date"
     yaxis:
       alias:
-        "handler_latency_yb_master_MasterService_DeleteTable_count": "Delete Table"
-        "handler_latency_yb_master_MasterService_CreateTable_count": "Create Table"
+        "DeleteTable": "Delete Table"
+        "CreateTable": "Create Table"
 
 master_cpu_util_secs:
   metric: ""
-  function: "max_over_time"
+  function: "avg_over_time|avg"
   range : true
   operator: "/ 1000"
   filters:
@@ -2318,3 +2410,298 @@ master_yb_rpc_connections:
     yaxis:
       alias:
         "useInstanceName": "True"
+
+master_threads_running:
+  metric: "threads_running"
+  function: "avg_over_time|avg"
+  range: true
+  filters:
+    export_type: "master_export"
+  group_by: "saved_name"
+  panel_group: "Master Advanced"
+  layout:
+    title: "Threads Running"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "threads_running": "Running"
+
+master_log_latency:
+  metric: "log_sync_latency.avg|log_group_commit_latency.avg|log_append_latency.avg"
+  function: "rate|avg"
+  range : true
+  filters:
+    export_type: "master_export"
+  panel_group: "Master Advanced"
+  layout:
+    title: "WAL Latency"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "log_sync_latency.avg": "Sync"
+        "log_group_commit_latency.avg": "Commit"
+        "log_append_latency.avg": "Append"
+      ticksuffix: "&nbsp;\u00B5s"
+
+master_log_bytes_written:
+  metric: "log_bytes_logged"
+  function: "rate|sum by (exported_instance)"
+  range : true
+  filters:
+    export_type: "master_export"
+  panel_group: "Master Advanced"
+  layout:
+    title: "WAL Bytes Written / Sec / Node"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "useInstanceName": "True"
+
+master_log_bytes_read:
+  metric: "log_reader_bytes_read"
+  function: "rate|sum by (exported_instance)"
+  range : true
+  filters:
+    export_type: "master_export"
+  panel_group: "Master Advanced"
+  layout:
+    title: "WAL Bytes Read / Sec / Node"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "useInstanceName": "True"
+
+master_tc_malloc_stats:
+  metric: ""
+  function: "avg_over_time|avg"
+  range: true
+  operator: "/ 1048576"
+  filters:
+    export_type: "master_export"
+    saved_name: "generic_current_allocated_bytes|generic_heap_size"
+  group_by: "saved_name"
+  panel_group: "Master Advanced"
+  layout:
+    title: "TCMalloc Stats"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "generic_current_allocated_bytes": "In Use"
+        "generic_heap_size": "Total"
+      ticksuffix: "&nbsp;MB"
+
+
+master_glog_info_messages:
+  metric: ""
+  function: "avg_over_time|sum"
+  range : true
+  filters:
+    export_type: "master_export"
+    saved_name: "glog_info_messages_irate|glog_warning_messages_irate|glog_error_messages_irate"
+  group_by: "saved_name"
+  panel_group: "Master Advanced"
+  layout:
+    title: "Glog messages"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "glog_info_messages_irate": "Info"
+        "glog_warning_messages_irate": "Warning"
+        "glog_error_messages_irate": "Error"
+
+master_lsm_rocksdb_num_seek_or_next:
+  metric: ""
+  function: "rate|sum by (exported_instance, saved_name)|avg"
+  range: true
+  filters:
+    export_type: "master_export"
+    saved_name: "rocksdb_number_db_seek|rocksdb_number_db_next"
+  group_by: "saved_name"
+  panel_group: "Master Advanced"
+  layout:
+    title: "LSM-DB Seek/Next Num Ops"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rocksdb_number_db_seek": "Seek"
+        "rocksdb_number_db_next": "Next"
+
+master_lsm_rocksdb_num_seeks_per_node:
+  metric: "rocksdb_number_db_seek"
+  function: "rate|sum"
+  range: true
+  filters:
+    export_type: "master_export"
+  group_by: "exported_instance"
+  panel_group: "Master Advanced"
+  layout:
+    title: "LSM-DB Seeks / Sec"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "useInstanceName": "True"
+
+master_lsm_rocksdb_total_sst_per_node:
+  metric: "rocksdb_current_version_sst_files_size"
+  function: "sum"
+  operator: "/ 1073741824"
+  filters:
+    export_type: "master_export"
+  group_by: "exported_instance"
+  panel_group: "Master Advanced"
+  layout:
+    title: "SSTable size"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "useInstanceName": "True"
+      ticksuffix: "&nbsp;GB"
+      tickformat: ".2f"
+
+master_lsm_rocksdb_avg_num_sst_per_node:
+  metric: "rocksdb_current_version_num_sst_files"
+  function: "sum by (exported_instance)"
+  filters:
+    export_type: "master_export"
+  group_by: "exported_instance"
+  panel_group: "Master Advanced"
+  layout:
+    title: "Average SSTables"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "useInstanceName": "True"
+
+master_lsm_rocksdb_block_cache_hit_miss:
+  metric: ""
+  function: "rate|sum by (exported_instance, saved_name)|avg"
+  range : true
+  filters:
+    saved_name: "rocksdb_block_cache_hit|rocksdb_block_cache_miss"
+    export_type: "master_export"
+  group_by: "saved_name"
+  panel_group: "Master Advanced"
+  layout:
+    title: "Cache Hit & Miss"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rocksdb_block_cache_hit": "Hit"
+        "rocksdb_block_cache_miss": "Miss"
+
+master_lsm_rocksdb_block_cache_usage:
+  metric: ""
+  function: "avg_over_time|avg"
+  range: true
+  operator: "/ 1073741824"
+  filters:
+    saved_name: "block_cache_single_touch_usage|block_cache_multi_touch_usage"
+    export_type: "master_export"
+  group_by: "saved_name"
+  panel_group: "Master Advanced"
+  layout:
+    title: "Block cache usage"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "block_cache_single_touch_usage": "Single Touch"
+        "block_cache_multi_touch_usage": "Multi Touch"
+      ticksuffix: "&nbsp;GB"
+
+master_lsm_rocksdb_blooms_checked_and_useful:
+  metric: ""
+  function: "rate|sum by (exported_instance, saved_name)|avg"
+  range : true
+  filters:
+    export_type: "master_export"
+    saved_name: "rocksdb_bloom_filter_checked|rocksdb_bloom_filter_useful"
+  group_by: "saved_name"
+  panel_group: "Master Advanced"
+  layout:
+    title: "LSM-DB Blooms usefulness"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rocksdb_bloom_filter_checked": "Blooms checked"
+        "rocksdb_bloom_filter_useful": "Blooms useful"
+
+master_lsm_rocksdb_flush_size:
+  metric: "rocksdb_flush_write_bytes"
+  function: "rate|sum by (exported_instance)"
+  range : true
+  operator: "/ 1048576"
+  filters:
+    export_type: "master_export"
+  panel_group: "Master Advanced"
+  layout:
+    title: "Flush write"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "useInstanceName": "True"
+      ticksuffix: "&nbsp;MB"
+
+master_lsm_rocksdb_compaction:
+  metric: ""
+  function: "rate|sum by (exported_instance, saved_name)|avg"
+  range : true
+  operator: "/ 1048576"
+  filters:
+    export_type: "master_export"
+    saved_name: "rocksdb_compact_read_bytes|rocksdb_compact_write_bytes"
+  group_by: "saved_name"
+  panel_group: "Master Advanced"
+  layout:
+    title: "Compaction"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rocksdb_compact_read_bytes": "Bytes Read"
+        "rocksdb_compact_write_bytes": "Bytes Written"
+      ticksuffix: "&nbsp;MB"
+
+master_lsm_rocksdb_compaction_numfiles:
+  metric: "rocksdb_nHookInserterumfiles_in_singlecompaction.avg"
+  function: "rate|sum by (exported_instance)"
+  range : true
+  filters:
+    export_type: "master_export"
+  panel_group: "Master Advanced"
+  layout:
+    title: "Compaction num files"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "useInstanceName": "True"
+
+master_lsm_rocksdb_compaction_time:
+  metric: "rocksdb_compaction_times_micros.avg"
+  function: "rate|sum by (exported_instance)"
+  range : true
+  filters:
+    export_type: "master_export"
+  panel_group: "Master Advanced"
+  layout:
+    title: "Compaction time"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "useInstanceName": "True"
+      ticksuffix: "&nbsp;\u00B5s"
