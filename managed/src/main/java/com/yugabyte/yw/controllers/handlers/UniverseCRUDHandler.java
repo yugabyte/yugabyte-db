@@ -294,16 +294,14 @@ public class UniverseCRUDHandler {
             throw new PlatformServiceException(
                 INTERNAL_SERVER_ERROR,
                 String.format(
-                    "Error while dumping certs from Vault for certificate: {}", taskParams.rootCA));
+                    "Error while dumping certs from Vault for certificate: %s", taskParams.rootCA));
           }
         }
       } else {
         // create self-signed rootCA in case it is not provided by the user.
         taskParams.rootCA =
             CertificateHelper.createRootCA(
-                taskParams.nodePrefix,
-                customer.uuid,
-                runtimeConfigFactory.staticApplicationConf().getString("yb.storage.path"));
+                runtimeConfigFactory.staticApplicationConf(), taskParams.nodePrefix, customer.uuid);
       }
       checkValidRootCA(taskParams.rootCA);
     }
@@ -318,9 +316,9 @@ public class UniverseCRUDHandler {
           // and root and clientRoot CA needs to be different
           taskParams.clientRootCA =
               CertificateHelper.createClientRootCA(
+                  runtimeConfigFactory.staticApplicationConf(),
                   taskParams.nodePrefix,
-                  customer.uuid,
-                  runtimeConfigFactory.staticApplicationConf().getString("yb.storage.path"));
+                  customer.uuid);
         }
       }
 
@@ -347,7 +345,7 @@ public class UniverseCRUDHandler {
           throw new PlatformServiceException(
               INTERNAL_SERVER_ERROR,
               String.format(
-                  "Error while dumping certs from Vault for certificate: {}",
+                  "Error while dumping certs from Vault for certificate: %s",
                   taskParams.clientRootCA));
         }
       }
@@ -368,15 +366,7 @@ public class UniverseCRUDHandler {
         if (rootCert.certType == CertConfigType.SelfSigned
             || rootCert.certType == CertConfigType.HashicorpVault) {
           CertificateHelper.createClientCertificate(
-              taskParams.rootCA,
-              String.format(
-                  CertificateHelper.CERT_PATH,
-                  runtimeConfigFactory.staticApplicationConf().getString("yb.storage.path"),
-                  customer.uuid.toString(),
-                  taskParams.rootCA.toString()),
-              CertificateHelper.DEFAULT_CLIENT,
-              null,
-              null);
+              runtimeConfigFactory.staticApplicationConf(), customer.uuid, taskParams.rootCA);
         }
       }
     }
@@ -1412,43 +1402,37 @@ public class UniverseCRUDHandler {
       return upgradeUniverseHandler.toggleTls(tlsToggleParams, customer, universe);
     }
 
-    if (certsRotate) {
-      boolean isRootCA =
-          EncryptionInTransitUtil.isRootCARequired(
-              userIntent.enableNodeToNodeEncrypt,
-              userIntent.enableClientToNodeEncrypt,
-              taskParams.rootAndClientRootCASame);
-      boolean isClientRootCA =
-          EncryptionInTransitUtil.isClientRootCARequired(
-              userIntent.enableNodeToNodeEncrypt,
-              userIntent.enableClientToNodeEncrypt,
-              taskParams.rootAndClientRootCASame);
+    boolean isRootCA =
+        EncryptionInTransitUtil.isRootCARequired(
+            userIntent.enableNodeToNodeEncrypt,
+            userIntent.enableClientToNodeEncrypt,
+            taskParams.rootAndClientRootCASame);
+    boolean isClientRootCA =
+        EncryptionInTransitUtil.isClientRootCARequired(
+            userIntent.enableNodeToNodeEncrypt,
+            userIntent.enableClientToNodeEncrypt,
+            taskParams.rootAndClientRootCASame);
 
-      if (isRootCA && taskParams.createNewRootCA) {
-        taskParams.rootCA =
-            CertificateHelper.createRootCA(
-                universeDetails.nodePrefix,
-                customer.uuid,
-                runtimeConfigFactory.staticApplicationConf().getString("yb.storage.path"));
-      }
-
-      if (isClientRootCA && taskParams.createNewClientRootCA) {
-        taskParams.clientRootCA =
-            CertificateHelper.createClientRootCA(
-                universeDetails.nodePrefix,
-                customer.uuid,
-                runtimeConfigFactory.staticApplicationConf().getString("yb.storage.path"));
-      }
-
-      CertsRotateParams certsRotateParams =
-          CertsRotateParams.mergeUniverseDetails(taskParams, universe.getUniverseDetails());
-
-      LOG.info("CertsRotateParams : {}", Json.toJson(CommonUtils.maskObject(certsRotateParams)));
-
-      return upgradeUniverseHandler.rotateCerts(certsRotateParams, customer, universe);
+    if (isRootCA && taskParams.createNewRootCA) {
+      taskParams.rootCA =
+          CertificateHelper.createRootCA(
+              runtimeConfigFactory.staticApplicationConf(),
+              universeDetails.nodePrefix,
+              customer.uuid);
     }
 
-    return null;
+    if (isClientRootCA && taskParams.createNewClientRootCA) {
+      taskParams.clientRootCA =
+          CertificateHelper.createClientRootCA(
+              runtimeConfigFactory.staticApplicationConf(),
+              universeDetails.nodePrefix,
+              customer.uuid);
+    }
+
+    CertsRotateParams certsRotateParams =
+        CertsRotateParams.mergeUniverseDetails(taskParams, universe.getUniverseDetails());
+    LOG.info("CertsRotateParams : {}", Json.toJson(CommonUtils.maskObject(certsRotateParams)));
+    return upgradeUniverseHandler.rotateCerts(certsRotateParams, customer, universe);
   }
 
   private void checkHelmChartExists(String ybSoftwareVersion) {

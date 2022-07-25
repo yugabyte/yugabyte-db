@@ -16,7 +16,7 @@
 
 #include "yb/common/schema.h"
 
-#include "yb/docdb/packed_row.h"
+#include "yb/docdb/schema_packing.h"
 
 namespace yb {
 namespace docdb {
@@ -43,6 +43,12 @@ struct DocReadContext {
     RETURN_NOT_OK(schema_packing_storage.LoadFromPB(pb.old_schema_packings()));
     schema_packing_storage.AddSchema(pb.schema_version(), schema);
     return Status::OK();
+  }
+
+  template <class PB>
+  Status MergeWithRestored(const PB& pb) {
+    return schema_packing_storage.MergeWithRestored(
+        pb.schema_version(), pb.schema(), pb.old_schema_packings());
   }
 
   template <class PB>

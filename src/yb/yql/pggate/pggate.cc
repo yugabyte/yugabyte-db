@@ -1076,12 +1076,12 @@ Status PgApiImpl::DmlAppendTarget(PgStatement *handle, PgExpr *target) {
   return down_cast<PgDml*>(handle)->AppendTarget(target);
 }
 
-Status PgApiImpl::DmlAppendQual(PgStatement *handle, PgExpr *qual) {
-  return down_cast<PgDml*>(handle)->AppendQual(qual);
+Status PgApiImpl::DmlAppendQual(PgStatement *handle, PgExpr *qual, bool is_primary) {
+  return down_cast<PgDml*>(handle)->AppendQual(qual, is_primary);
 }
 
-Status PgApiImpl::DmlAppendColumnRef(PgStatement *handle, PgExpr *colref) {
-  return down_cast<PgDml*>(handle)->AppendColumnRef(colref);
+Status PgApiImpl::DmlAppendColumnRef(PgStatement *handle, PgExpr *colref, bool is_primary) {
+  return down_cast<PgDml*>(handle)->AppendColumnRef(colref, is_primary);
 }
 
 Status PgApiImpl::DmlBindColumn(PgStatement *handle, int attr_num, PgExpr *attr_value) {

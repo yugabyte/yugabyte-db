@@ -33,31 +33,31 @@ NOTICE:  unique violation 1
 NOTICE:  unique violation 2
 -- Full table scan
 SELECT /*+ SeqScan(t) */ * FROM subtrans_foo t WHERE k > 0 AND v > 0 ORDER BY k;
- k | v  
+ k | v
 ---+----
  1 | 42
 (1 row)
 
 EXPLAIN (COSTS OFF)
 SELECT /*+ SeqScan(t) */ * FROM subtrans_foo t WHERE k > 0 AND v > 0 ORDER BY k;
-              QUERY PLAN               
+              QUERY PLAN
 ---------------------------------------
  Sort
    Sort Key: k
-   ->  Seq Scan on subtrans_foo t
+   ->  YB Seq Scan on subtrans_foo t
          Filter: ((k > 0) AND (v > 0))
 (4 rows)
 
 -- PK index scan
 SELECT /*+ IndexScan(t subtrans_foo_pkey) */ * FROM subtrans_foo t WHERE k > 0 AND v > 0 ORDER BY k;
- k | v  
+ k | v
 ---+----
  1 | 42
 (1 row)
 
 EXPLAIN (COSTS OFF)
 SELECT /*+ IndexScan(t subtrans_foo_pkey) */ * FROM subtrans_foo t WHERE k > 0 AND v > 0 ORDER BY k;
-                         QUERY PLAN                         
+                         QUERY PLAN
 ------------------------------------------------------------
  Sort
    Sort Key: k
@@ -68,14 +68,14 @@ SELECT /*+ IndexScan(t subtrans_foo_pkey) */ * FROM subtrans_foo t WHERE k > 0 A
 
 -- Index scan using the secondary index that triggered the unique violation
 SELECT /*+ IndexScan(t subtrans_foo_v_key) */ * FROM subtrans_foo t WHERE k > 0 AND v > 0 ORDER BY k;
- k | v  
+ k | v
 ---+----
  1 | 42
 (1 row)
 
 EXPLAIN (COSTS OFF)
 SELECT /*+ IndexScan(t subtrans_foo_v_key) */ * FROM subtrans_foo t WHERE k > 0 AND v > 0 ORDER BY k;
-                         QUERY PLAN                          
+                         QUERY PLAN
 -------------------------------------------------------------
  Sort
    Sort Key: k
@@ -100,7 +100,7 @@ END;
 $body$;
 NOTICE:  caught unique violation
 SELECT * FROM subtrans_test ORDER BY 1;
- k |  v  
+ k |  v
 ---+-----
  1 | dog
 (1 row)
@@ -125,7 +125,7 @@ END;
 $body$;
 NOTICE:  caught unique violation
 SELECT * FROM subtrans_test ORDER BY 1;
- k |  v  
+ k |  v
 ---+-----
  1 | dog
 (1 row)
@@ -149,7 +149,7 @@ END;
 $body$;
 NOTICE:  caught unique violation
 SELECT * FROM subtrans_test ORDER BY 1;
- k |  v  
+ k |  v
 ---+-----
  1 | dog
 (1 row)
@@ -173,7 +173,7 @@ END;
 $body$;
 NOTICE:  caught unique violation
 SELECT * FROM subtrans_test ORDER BY 1;
- k |  v   
+ k |  v
 ---+------
  1 | dog
  2 | cat
@@ -199,8 +199,7 @@ END;
 $body$;
 NOTICE:  caught unique violation
 SELECT * FROM subtrans_test ORDER BY 1;
- k |  v  
+ k |  v
 ---+-----
  1 | dog
 (1 row)
-

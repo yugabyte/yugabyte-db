@@ -127,6 +127,9 @@ using AffinitizedZonesSet = std::unordered_set<CloudInfoPB, cloud_hash, cloud_eq
 using BlacklistSet = std::unordered_set<HostPort, HostPortHash>;
 using RetryingTSRpcTaskPtr = std::shared_ptr<RetryingTSRpcTask>;
 
+// Use ordered map to make computing fingerprint of the map easier.
+using DbOidToCatalogVersionMap = std::map<uint32_t, std::pair<uint64_t, uint64_t>>;
+
 namespace enterprise {
 
 class CatalogManager;

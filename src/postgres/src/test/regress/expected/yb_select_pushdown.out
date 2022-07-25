@@ -256,7 +256,7 @@ EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_test WHERE i1 = 1 AND t1 = 'value1'
 ----------------------------------------------------
  Index Scan using pushdown_test_i1 on pushdown_test
    Index Cond: (i1 = 1)
-   Filter: (t1 = 'value1'::text)
+   Remote Filter: (t1 = 'value1'::text)
 (3 rows)
 
 SELECT * FROM pushdown_test WHERE i1 = 1;
@@ -376,6 +376,203 @@ SELECT * FROM pushdown_collation WHERE v = 'foo';
  1 | foo
 (1 row)
 
+CREATE TABLE pushdown_index(k1 int, k2 int, v1 int, v2 int, v3 int, v4 int, v5 text, primary key (k1, k2));
+CREATE INDEX pushdown_index_v1_v2_v3v4_idx ON pushdown_index(v1, v2, (v3 + v4) ASC);
+INSERT INTO pushdown_index VALUES (1, 1, 1, 1, 1, 0, 'row 1');
+INSERT INTO pushdown_index VALUES (1, 2, 3, 4, 5, 6, 'row 2');
+INSERT INTO pushdown_index VALUES (1, 20, 20, 20, 20, 20, 'row 3');
+INSERT INTO pushdown_index VALUES (2, 1, 1, 2, 3, 4, 'row 4');
+INSERT INTO pushdown_index VALUES (2, 2, 1, 3, 2, 1, 'row 5');
+INSERT INTO pushdown_index VALUES (2, 20, 1, 20, 40, 50, 'row 6');
+EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_index WHERE k1 = 1 AND k2 = 2;
+                       QUERY PLAN
+--------------------------------------------------------
+ Index Scan using pushdown_index_pkey on pushdown_index
+   Index Cond: ((k1 = 1) AND (k2 = 2))
+(2 rows)
+
+EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_index WHERE k1 = 1 AND k2/10 = 0;
+                       QUERY PLAN
+--------------------------------------------------------
+ Index Scan using pushdown_index_pkey on pushdown_index
+   Index Cond: (k1 = 1)
+   Remote Filter: ((k2 / 10) = 0)
+(3 rows)
+
+EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_index WHERE k1 = 1 AND k2 = v1;
+                       QUERY PLAN
+--------------------------------------------------------
+ Index Scan using pushdown_index_pkey on pushdown_index
+   Index Cond: (k1 = 1)
+   Remote Filter: (k2 = v1)
+(3 rows)
+
+EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_index WHERE k1 = 1 AND k2 = v1 AND CASE v2 % 2 WHEN 0 THEN v3 < 0 WHEN 1 THEN v3 > 0 END;
+                                        QUERY PLAN
+------------------------------------------------------------------------------------------
+ Index Scan using pushdown_index_pkey on pushdown_index
+   Index Cond: (k1 = 1)
+   Remote Filter: (k2 = v1)
+   Filter: CASE (v2 % 2) WHEN 0 THEN (v3 < 0) WHEN 1 THEN (v3 > 0) ELSE NULL::boolean END
+(4 rows)
+
+EXPLAIN (COSTS FALSE) SELECT v2 FROM pushdown_index WHERE v1 = 1;
+                              QUERY PLAN
+-----------------------------------------------------------------------
+ Index Only Scan using pushdown_index_v1_v2_v3v4_idx on pushdown_index
+   Index Cond: (v1 = 1)
+(2 rows)
+
+EXPLAIN (COSTS FALSE) SELECT v2 FROM pushdown_index WHERE v1 = 1 AND v2 > v1;
+                              QUERY PLAN
+-----------------------------------------------------------------------
+ Index Only Scan using pushdown_index_v1_v2_v3v4_idx on pushdown_index
+   Index Cond: (v1 = 1)
+   Remote Filter: (v2 > v1)
+(3 rows)
+
+EXPLAIN (COSTS FALSE) SELECT v2, v3, v4 FROM pushdown_index WHERE v1 = 1 AND v2 > v1;
+                            QUERY PLAN
+------------------------------------------------------------------
+ Index Scan using pushdown_index_v1_v2_v3v4_idx on pushdown_index
+   Index Cond: (v1 = 1)
+   Remote Index Filter: (v2 > v1)
+(3 rows)
+
+EXPLAIN (COSTS FALSE) SELECT v2 FROM pushdown_index WHERE v1 = 1 AND v2 = v3 + v4;
+                            QUERY PLAN
+------------------------------------------------------------------
+ Index Scan using pushdown_index_v1_v2_v3v4_idx on pushdown_index
+   Index Cond: (v1 = 1)
+   Remote Filter: (v2 = (v3 + v4))
+(3 rows)
+
+EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_index WHERE v1 = 1 AND v2 > v1 AND v3 > v2;
+                            QUERY PLAN
+------------------------------------------------------------------
+ Index Scan using pushdown_index_v1_v2_v3v4_idx on pushdown_index
+   Index Cond: (v1 = 1)
+   Remote Index Filter: (v2 > v1)
+   Remote Filter: (v3 > v2)
+(4 rows)
+
+EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_index WHERE v1 = 1 AND v2 > v1 AND v3 > v2 AND CASE v3 % 2 WHEN 0 THEN v4 < 0 WHEN 1 THEN v4 > 0 END;
+                                        QUERY PLAN
+------------------------------------------------------------------------------------------
+ Index Scan using pushdown_index_v1_v2_v3v4_idx on pushdown_index
+   Index Cond: (v1 = 1)
+   Remote Index Filter: (v2 > v1)
+   Remote Filter: (v3 > v2)
+   Filter: CASE (v3 % 2) WHEN 0 THEN (v4 < 0) WHEN 1 THEN (v4 > 0) ELSE NULL::boolean END
+(5 rows)
+
+SELECT * FROM pushdown_index WHERE k1 = 1 AND k2 = 2;
+ k1 | k2 | v1 | v2 | v3 | v4 |  v5
+----+----+----+----+----+----+-------
+  1 |  2 |  3 |  4 |  5 |  6 | row 2
+(1 row)
+
+SELECT * FROM pushdown_index WHERE k1 = 1 AND k2/10 = 0;
+ k1 | k2 | v1 | v2 | v3 | v4 |  v5
+----+----+----+----+----+----+-------
+  1 |  1 |  1 |  1 |  1 |  0 | row 1
+  1 |  2 |  3 |  4 |  5 |  6 | row 2
+(2 rows)
+
+SELECT * FROM pushdown_index WHERE k1 = 1 AND k2 = v1;
+ k1 | k2 | v1 | v2 | v3 | v4 |  v5
+----+----+----+----+----+----+-------
+  1 |  1 |  1 |  1 |  1 |  0 | row 1
+  1 | 20 | 20 | 20 | 20 | 20 | row 3
+(2 rows)
+
+SELECT * FROM pushdown_index WHERE k1 = 1 AND k2 = v1 AND CASE v2 % 2 WHEN 0 THEN v3 < 0 WHEN 1 THEN v3 > 0 END;
+ k1 | k2 | v1 | v2 | v3 | v4 |  v5
+----+----+----+----+----+----+-------
+  1 |  1 |  1 |  1 |  1 |  0 | row 1
+(1 row)
+
+SELECT v2 FROM pushdown_index WHERE v1 = 1;
+ v2
+----
+  1
+  2
+  3
+ 20
+(4 rows)
+
+SELECT v2 FROM pushdown_index WHERE v1 = 1 AND v2 > v1;
+ v2
+----
+  2
+  3
+ 20
+(3 rows)
+
+SELECT v2, v3, v4 FROM pushdown_index WHERE v1 = 1 AND v2 > v1;
+ v2 | v3 | v4
+----+----+----
+  2 |  3 |  4
+  3 |  2 |  1
+ 20 | 40 | 50
+(3 rows)
+
+SELECT v2 FROM pushdown_index WHERE v1 = 1 AND v2 = v3 + v4;
+ v2
+----
+  1
+  3
+(2 rows)
+
+SELECT * FROM pushdown_index WHERE v1 = 1 AND v2 > v1 AND v3 > v2;
+ k1 | k2 | v1 | v2 | v3 | v4 |  v5
+----+----+----+----+----+----+-------
+  2 |  1 |  1 |  2 |  3 |  4 | row 4
+  2 | 20 |  1 | 20 | 40 | 50 | row 6
+(2 rows)
+
+SELECT * FROM pushdown_index WHERE v1 = 1 AND v2 > v1 AND v3 > v2 AND CASE v3 % 2 WHEN 0 THEN v4 < 0 WHEN 1 THEN v4 > 0 END;
+ k1 | k2 | v1 | v2 | v3 | v4 |  v5
+----+----+----+----+----+----+-------
+  2 |  1 |  1 |  2 |  3 |  4 | row 4
+(1 row)
+
+PREPARE pk_param AS SELECT * FROM pushdown_index WHERE k1 = 1 AND k2 = v1 + $1;
+EXPLAIN (COSTS FALSE) EXECUTE pk_param(0);
+                       QUERY PLAN
+--------------------------------------------------------
+ Index Scan using pushdown_index_pkey on pushdown_index
+   Index Cond: (k1 = 1)
+   Remote Filter: (k2 = (v1 + 0))
+(3 rows)
+
+EXECUTE pk_param(0);
+ k1 | k2 | v1 | v2 | v3 | v4 |  v5
+----+----+----+----+----+----+-------
+  1 |  1 |  1 |  1 |  1 |  0 | row 1
+  1 | 20 | 20 | 20 | 20 | 20 | row 3
+(2 rows)
+
+DEALLOCATE pk_param;
+PREPARE si_param AS SELECT * FROM pushdown_index WHERE v1 = 1 AND v2 > v1 + $1 AND v3 > v2 + $2;
+EXPLAIN (COSTS FALSE) EXECUTE si_param(0, 0);
+                            QUERY PLAN
+------------------------------------------------------------------
+ Index Scan using pushdown_index_v1_v2_v3v4_idx on pushdown_index
+   Index Cond: (v1 = 1)
+   Remote Index Filter: (v2 > (v1 + 0))
+   Remote Filter: (v3 > (v2 + 0))
+(4 rows)
+
+EXECUTE si_param(0, 0);
+ k1 | k2 | v1 | v2 | v3 | v4 |  v5
+----+----+----+----+----+----+-------
+  2 |  1 |  1 |  2 |  3 |  4 | row 4
+  2 | 20 |  1 | 20 | 40 | 50 | row 6
+(2 rows)
+
+DEALLOCATE si_param;
+DROP TABLE pushdown_index;
 DROP TABLE pushdown_test;
 DROP TABLE pushdown_lookup;
 DROP TABLE pushdown_composite;

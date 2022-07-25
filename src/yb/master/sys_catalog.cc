@@ -806,9 +806,25 @@ Status SysCatalogTable::Visit(VisitorBase* visitor) {
 
 // TODO (Sanket): Change this function to use ExtractPgYbCatalogVersionRow.
 Status SysCatalogTable::ReadYsqlCatalogVersion(TableId ysql_catalog_table_id,
-                                               uint64_t *catalog_version,
-                                               uint64_t *last_breaking_version) {
+                                               uint64_t* catalog_version,
+                                               uint64_t* last_breaking_version) {
   TRACE_EVENT0("master", "ReadYsqlCatalogVersion");
+  return ReadYsqlDBCatalogVersionImpl(
+      ysql_catalog_table_id, catalog_version, last_breaking_version, nullptr);
+}
+
+Status SysCatalogTable::ReadYsqlAllDBCatalogVersions(
+    TableId ysql_catalog_table_id,
+    DbOidToCatalogVersionMap* versions) {
+  TRACE_EVENT0("master", "ReadYsqlAllDBCatalogVersions");
+  return ReadYsqlDBCatalogVersionImpl(ysql_catalog_table_id, nullptr, nullptr, versions);
+}
+
+Status SysCatalogTable::ReadYsqlDBCatalogVersionImpl(
+    TableId ysql_catalog_table_id,
+    uint64_t* catalog_version,
+    uint64_t* last_breaking_version,
+    DbOidToCatalogVersionMap* versions) {
   const tablet::TabletPtr tablet = tablet_peer()->shared_tablet();
   const auto* meta = tablet->metadata();
   const std::shared_ptr<tablet::TableInfo> ysql_catalog_table_info =
@@ -818,36 +834,62 @@ Status SysCatalogTable::ReadYsqlCatalogVersion(TableId ysql_catalog_table_id,
                                                    {} /* read_hybrid_time */,
                                                    ysql_catalog_table_id));
   QLTableRow source_row;
+  ColumnId db_oid_id = VERIFY_RESULT(schema.ColumnIdByName(kDbOidColumnName));
   ColumnId version_col_id = VERIFY_RESULT(schema.ColumnIdByName(kCurrentVersionColumnName));
   ColumnId last_breaking_version_col_id =
-      VERIFY_RESULT(schema.ColumnIdByName("last_breaking_version"));
+      VERIFY_RESULT(schema.ColumnIdByName(kLastBreakingVersionColumnName));
 
-  if (VERIFY_RESULT(iter->HasNext())) {
-    RETURN_NOT_OK(iter->NextRow(&source_row));
-    if (catalog_version) {
-      auto version_col_value = source_row.GetValue(version_col_id);
-      if (version_col_value) {
-        *catalog_version = version_col_value->int64_value();
-      } else {
-        return STATUS(Corruption, "Could not read syscatalog version");
-      }
-    }
-    // last_breaking_version is the last version (change) that invalidated ongoing transactions.
-    if (last_breaking_version) {
-      auto last_breaking_version_col_value = source_row.GetValue(last_breaking_version_col_id);
-      if (last_breaking_version_col_value) {
-        *last_breaking_version = last_breaking_version_col_value->int64_value();
-      } else {
-        return STATUS(Corruption, "Could not read syscatalog version");
-      }
-    }
+  // If 'versions' is set we read all rows. If 'catalog_version/last_breaking_version' are set,
+  // we only read the global catalog version.
+  if (versions) {
+    DCHECK(!catalog_version);
+    DCHECK(!last_breaking_version);
+    versions->clear();
   } else {
-    // If no row it means version is 0 (not initialized yet).
+    // If no row is read below then it means version is 0 (not initialized yet).
     if (catalog_version) {
       *catalog_version = 0;
     }
     if (last_breaking_version) {
       *last_breaking_version = 0;
+    }
+  }
+
+  while (VERIFY_RESULT(iter->HasNext())) {
+    RETURN_NOT_OK(iter->NextRow(&source_row));
+    auto db_oid_value = source_row.GetValue(db_oid_id);
+    if (!db_oid_value) {
+      return STATUS(Corruption, "Could not read syscatalog version");
+    }
+    auto version_col_value = source_row.GetValue(version_col_id);
+    if (!version_col_value) {
+      return STATUS(Corruption, "Could not read syscatalog version");
+    }
+    auto last_breaking_version_col_value = source_row.GetValue(last_breaking_version_col_id);
+    if (!last_breaking_version_col_value) {
+      return STATUS(Corruption, "Could not read syscatalog version");
+    }
+    if (versions) {
+      // When 'versions' is set we read all rows.
+      auto insert_result = versions->insert(
+        std::make_pair(db_oid_value->uint32_value(),
+                       std::make_pair(version_col_value->int64_value(),
+                                      last_breaking_version_col_value->int64_value())));
+      // There should not be any duplicate db_oid because it is a primary key.
+      DCHECK(insert_result.second);
+    } else {
+      // Otherwise, we only read the global catalog version.
+      if (catalog_version) {
+        *catalog_version = version_col_value->int64_value();
+      }
+      if (last_breaking_version) {
+        *last_breaking_version = last_breaking_version_col_value->int64_value();
+      }
+      // The table pg_yb_catalog_version has db_oid as primary key in ASC order and we use the
+      // row for template1 to store global catalog version. The db_oid of template1 is 1, which
+      // is the smallest db_oid. Therefore we only need to read the first row to retrieve the
+      // global catalog version.
+      return Status::OK();
     }
   }
 

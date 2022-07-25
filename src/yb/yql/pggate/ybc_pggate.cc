@@ -688,12 +688,12 @@ YBCStatus YBCPgDmlAppendTarget(YBCPgStatement handle, YBCPgExpr target) {
   return ToYBCStatus(pgapi->DmlAppendTarget(handle, target));
 }
 
-YBCStatus YbPgDmlAppendQual(YBCPgStatement handle, YBCPgExpr qual) {
-  return ToYBCStatus(pgapi->DmlAppendQual(handle, qual));
+YBCStatus YbPgDmlAppendQual(YBCPgStatement handle, YBCPgExpr qual, bool is_primary) {
+  return ToYBCStatus(pgapi->DmlAppendQual(handle, qual, is_primary));
 }
 
-YBCStatus YbPgDmlAppendColumnRef(YBCPgStatement handle, YBCPgExpr colref) {
-  return ToYBCStatus(pgapi->DmlAppendColumnRef(handle, colref));
+YBCStatus YbPgDmlAppendColumnRef(YBCPgStatement handle, YBCPgExpr colref, bool is_primary) {
+  return ToYBCStatus(pgapi->DmlAppendColumnRef(handle, colref, is_primary));
 }
 
 YBCStatus YBCPgDmlBindColumn(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value) {
