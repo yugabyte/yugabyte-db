@@ -41,7 +41,6 @@
 #include "yb/util/status_fwd.h"
 
 #include "yb/yql/pggate/pg_client.h"
-#include "yb/yql/pggate/pg_env.h"
 #include "yb/yql/pggate/pg_expr.h"
 #include "yb/yql/pggate/pg_gate_fwd.h"
 #include "yb/yql/pggate/pg_statement.h"
@@ -123,13 +122,9 @@ class PgApiImpl {
   void Interrupt();
   void ResetCatalogReadTime();
 
-  // Initialize ENV within which PGSQL calls will be executed.
-  Status CreateEnv(PgEnv **pg_env);
-  Status DestroyEnv(PgEnv *pg_env);
-
   // Initialize a session to process statements that come from the same client connection.
   // If database_name is empty, a session is created without connecting to any database.
-  Status InitSession(const PgEnv *pg_env, const std::string& database_name);
+  Status InitSession(const std::string& database_name);
 
   PgMemctx *CreateMemctx();
   Status DestroyMemctx(PgMemctx *memctx);
@@ -618,10 +613,6 @@ class PgApiImpl {
 
   // TODO Rename to client_ when YBClient is removed.
   PgClient pg_client_;
-
-  // TODO(neil) Map for environments (we should have just one ENV?). Environments should contain
-  // all the custom flags the PostgreSQL sets. We ignore them all for now.
-  PgEnv::SharedPtr pg_env_;
 
   scoped_refptr<server::HybridClock> clock_;
 

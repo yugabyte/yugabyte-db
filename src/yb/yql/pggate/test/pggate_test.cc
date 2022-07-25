@@ -157,7 +157,7 @@ Status PggateTest::Init(const char *test_name, int num_tablet_servers) {
   YBCInitPgGate(type_table, count, callbacks);
 
   // Setup session.
-  CHECK_YBC_STATUS(YBCPgInitSession(nullptr /* pg_env */, nullptr /* database_name */));
+  CHECK_YBC_STATUS(YBCPgInitSession(nullptr /* database_name */));
 
   // Setup database
   SetupDB();
