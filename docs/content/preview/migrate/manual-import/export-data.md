@@ -44,7 +44,7 @@ COPY (
     SELECT * FROM <table_name>
     WHERE <condition>
 )
-TO <table_name>.csv
+TO '<table_name>.csv'
 WITH (FORMAT CSV DELIMITER ',' HEADER);
 ```
 
