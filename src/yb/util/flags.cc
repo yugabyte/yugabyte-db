@@ -248,6 +248,11 @@ static string DescribeOneFlagInXML(
     const CommandLineFlagInfo& flag, OnlyDisplayDefaultFlagValue only_display_default_values) {
   unordered_set<FlagTag> tags;
   GetFlagTags(flag.name, &tags);
+
+  if (only_display_default_values && tags.contains(FlagTag::kHidden)) {
+    return {};
+  }
+
   vector<string> tags_str;
   std::transform(tags.begin(), tags.end(), std::back_inserter(tags_str), [](const FlagTag tag) {
     // Convert "kEnum_val" to "enum_val"
@@ -273,6 +278,20 @@ static string DescribeOneFlagInXML(
   return r;
 }
 
+namespace {
+struct sort_flags_by_name {
+  inline bool operator()(const CommandLineFlagInfo& flag1, const CommandLineFlagInfo& flag2) {
+    const auto& a = flag1.name;
+    const auto& b = flag2.name;
+    for (size_t i = 0; i < a.size() && i < b.size(); i++) {
+      if (std::tolower(a[i]) != std::tolower(b[i]))
+        return (std::tolower(a[i]) < std::tolower(b[i]));
+    }
+    return a.size() < b.size();
+  }
+};
+}  // namespace
+
 void DumpFlagsXML(OnlyDisplayDefaultFlagValue only_display_default_values) {
   vector<CommandLineFlagInfo> flags;
   GetAllFlags(&flags);
@@ -286,8 +305,13 @@ void DumpFlagsXML(OnlyDisplayDefaultFlagValue only_display_default_values) {
       "<usage>$0</usage>",
       EscapeForHtmlToString(google::ProgramUsage())) << endl;
 
+  std::sort(flags.begin(), flags.end(), sort_flags_by_name());
+
   for (const CommandLineFlagInfo& flag : flags) {
-    cout << DescribeOneFlagInXML(flag, only_display_default_values) << std::endl;
+    const auto flag_info = DescribeOneFlagInXML(flag, only_display_default_values);
+    if (!flag_info.empty()) {
+      cout << flag_info << std::endl;
+    }
   }
 
   cout << "</AllFlags>" << endl;
