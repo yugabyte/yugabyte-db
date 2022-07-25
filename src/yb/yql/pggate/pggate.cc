@@ -442,20 +442,7 @@ const YBCPgTypeEntity *PgApiImpl::FindTypeEntity(int type_oid) {
 
 //--------------------------------------------------------------------------------------------------
 
-Status PgApiImpl::CreateEnv(PgEnv **pg_env) {
-  *pg_env = pg_env_.get();
-  return Status::OK();
-}
-
-Status PgApiImpl::DestroyEnv(PgEnv *pg_env) {
-  pg_env_ = nullptr;
-  return Status::OK();
-}
-
-//--------------------------------------------------------------------------------------------------
-
-Status PgApiImpl::InitSession(const PgEnv *pg_env,
-                              const string& database_name) {
+Status PgApiImpl::InitSession(const string& database_name) {
   CHECK(!pg_session_);
   auto session = make_scoped_refptr<PgSession>(&pg_client_,
                                                database_name,
