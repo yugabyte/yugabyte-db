@@ -2559,8 +2559,10 @@ Result<std::array<PartitionPB, kNumSplitParts>> CreateNewTabletsPartition(
         InvalidArgument,
         "Can't split tablet $0 (partition_key_start: $1 partition_key_end: $2) by partition "
         "boundary (split_key: $3)",
-        tablet_info.tablet_id(), source_partition.partition_key_start(),
-        source_partition.partition_key_end(), split_partition_key);
+        tablet_info.tablet_id(),
+        FormatBytesAsStr(source_partition.partition_key_start()),
+        FormatBytesAsStr(source_partition.partition_key_end()),
+        FormatBytesAsStr(split_partition_key));
   }
 
   std::array<PartitionPB, kNumSplitParts> new_tablets_partition;
