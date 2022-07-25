@@ -29,6 +29,8 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.NodeConfiguration;
+
+import java.util.Set;
 import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
@@ -113,6 +115,7 @@ public class NodeAgentControllerTest extends FakeDBApplication {
     NodeAgent nodeAgent = Json.fromJson(Json.parse(contentAsString(result)), NodeAgent.class);
     assertNotNull(nodeAgent.uuid);
     UUID nodeAgentUuid = nodeAgent.uuid;
+
     // Ping for node state.
     result = pingNodeAgent(nodeAgentUuid);
     assertOk(result);
@@ -145,11 +148,11 @@ public class NodeAgentControllerTest extends FakeDBApplication {
     testNode.nodeConfigurations = Sets.newSet(nodeConfig);
     nodeConfig.setType(NodeConfiguration.Type.NTP_SERVICE_STATUS);
     // Set an unaccepted value.
-    nodeConfig.setValue("stopped");
     result = assertPlatformException(() -> createNode(zone.uuid, testNode, jwt));
+    // Missing preflight checks should return an error
     assertBadRequest(result, "Invalid configurations");
     // Accepted value for NTP_SERVICE_STATUS is "running".
-    nodeConfig.setValue("running");
+    testNode.nodeConfigurations = getTestNodeConfigurationsSet();
     result = createNode(zone.uuid, testNode, jwt);
     assertOk(result);
     result = unregisterNodeAgent(nodeAgentUuid, jwt);
@@ -233,16 +236,24 @@ public class NodeAgentControllerTest extends FakeDBApplication {
     NodeConfiguration nodeConfig = new NodeConfiguration();
     testNode.nodeConfigurations = Sets.newSet(nodeConfig);
     nodeConfig.setType(NodeConfiguration.Type.NTP_SERVICE_STATUS);
-    nodeConfig.setValue("stopped");
+    // Missing preflight checks should return an error
     result = assertPlatformException(() -> createNode(zone.uuid, testNode, updatedJwt));
     assertBadRequest(result, "Invalid configurations");
     // Accepted value for NTP_SERVICE_STATUS is "running".
-    nodeConfig.setValue("running");
+    testNode.nodeConfigurations = getTestNodeConfigurationsSet();
     result = createNode(zone.uuid, testNode, updatedJwt);
     assertOk(result);
     result = unregisterNodeAgent(nodeAgentUuid, updatedJwt);
     assertOk(result);
     result = assertPlatformException(() -> getNodeAgent(nodeAgentUuid, updatedJwt));
     assertUnauthorized(result, "Invalid token");
+  }
+
+  public Set<NodeConfiguration> getTestNodeConfigurationsSet() {
+    Set<NodeConfiguration> nodeConfigurations = Sets.newSet();
+    NodeConfiguration.TypeGroup.ALL
+        .getRequiredConfigTypes()
+        .forEach(t -> nodeConfigurations.add(new NodeConfiguration(t, "")));
+    return nodeConfigurations;
   }
 }

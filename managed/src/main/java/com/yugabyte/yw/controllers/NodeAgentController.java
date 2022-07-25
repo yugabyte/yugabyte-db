@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.controllers;
 
+import com.yugabyte.yw.controllers.handlers.NodeAgentDownloadHandler;
 import com.yugabyte.yw.controllers.handlers.NodeAgentHandler;
 import com.yugabyte.yw.forms.NodeAgentForm;
 import com.yugabyte.yw.forms.PlatformResults;
@@ -18,6 +19,7 @@ import play.mvc.Result;
 public class NodeAgentController extends AuthenticatedController {
 
   @Inject NodeAgentHandler nodeAgentHandler;
+  @Inject NodeAgentDownloadHandler nodeAgentDownloadHandler;
 
   public Result register(UUID customerUuid) {
     Customer.getOrBadRequest(customerUuid);
@@ -70,5 +72,14 @@ public class NodeAgentController extends AuthenticatedController {
             nodeUuid.toString(),
             Audit.ActionType.DeleteNodeAgent);
     return YBPSuccess.empty();
+  }
+
+  public Result download(String downloadType, String os, String arch) {
+    NodeAgentDownloadHandler.NodeAgentDownloadFile fileToDownload =
+        nodeAgentDownloadHandler.validateAndGetDownloadFile(downloadType, os, arch);
+    response()
+        .setHeader(
+            "Content-Disposition", "attachment; filename=" + fileToDownload.getContentType());
+    return ok(fileToDownload.getContent()).as(fileToDownload.getContentType());
   }
 }
