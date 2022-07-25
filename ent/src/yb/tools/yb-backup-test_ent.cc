@@ -34,8 +34,15 @@
 
 #include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_client.pb.h"
+
 #include "yb/rpc/rpc_controller.h"
+
 #include "yb/tools/tools_test_utils.h"
+
+#include "yb/tserver/tserver_admin.proxy.h"
+#include "yb/tserver/tserver_service.pb.h"
+#include "yb/tserver/tserver_service.proxy.h"
+
 #include "yb/util/format.h"
 #include "yb/util/jsonreader.h"
 #include "yb/util/random_util.h"
@@ -102,6 +109,7 @@ Status RedisSet(std::shared_ptr<client::YBSession> session,
   RETURN_NOT_OK(session->TEST_ApplyAndFlush(set_op));
   return Status::OK();
 }
+
 } // namespace helpers
 
 class YBBackupTest : public pgwrapper::PgCommandTestBase {
@@ -2224,6 +2232,80 @@ TEST_F_EX(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYSQLPartitionin
       ASSERT_RESULT(GetTablets("idx2v0", "post-restore")), expected_splits_idx2v0));
 
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+class YBBackupTestOneTablet : public YBBackupTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    YBBackupTest::UpdateMiniClusterOptions(options);
+    options->extra_master_flags.push_back("--enable_automatic_tablet_splitting=false");
+    options->extra_tserver_flags.push_back("--ycql_num_tablets=1");
+    options->extra_tserver_flags.push_back("--ysql_num_tablets=1");
+  }
+};
+
+// Test that backups taken after a tablet has been split but before the child tablets are compacted
+// don't expose the extra data in the child tablets when queried.
+TEST_F_EX(
+    YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestScanSplitTableAfterRestore),
+    YBBackupTestOneTablet) {
+  const string table_name = "mytbl";
+
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_skip_post_split_compaction", "true"));
+
+  // Create table.
+  ASSERT_NO_FATALS(CreateTable(Format("CREATE TABLE $0 (k INT PRIMARY KEY, v INT)", table_name)));
+
+  int row_count = 200;
+  ASSERT_NO_FATALS(InsertRows(
+      Format("INSERT INTO $0 SELECT i, i FROM generate_series(1, $1) AS i", table_name, row_count),
+      row_count));
+  ASSERT_OK(cluster_->WaitForAllIntentsApplied(10s));
+
+  auto tablets = ASSERT_RESULT(GetTablets(table_name, "pre-split"));
+  LogTabletsInfo(tablets);
+  ASSERT_EQ(tablets.size(), 1);
+
+  // Flush table because it is necessary for manual tablet split.
+  auto table_id = ASSERT_RESULT(GetTableId(table_name, "pre-split"));
+  ASSERT_OK(client_->FlushTables({table_id}, false, 30, false));
+
+  ManualSplitTablet(tablets[0].tablet_id(), table_name, 2, false);
+
+  tablets = ASSERT_RESULT(GetTablets(table_name, "post-split"));
+  LogTabletsInfo(tablets);
+  ASSERT_EQ(tablets.size(), 2);
+
+  // Create backup, unset skip flag, and restore to a new db.
+  const string backup_dir = GetTempDir("backup");
+  ASSERT_OK(
+      RunBackupCommand({"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_skip_post_split_compaction", "false"));
+  std::string db_name = "yugabyte_new";
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", Format("ysql.$0", db_name), "restore"}));
+
+  // Sanity check the tablet count.
+  tablets = ASSERT_RESULT(GetTablets(table_name, "post-restore", db_name));
+  LogTabletsInfo(tablets);
+  ASSERT_EQ(tablets.size(), 2);
+  SetDbName(db_name);
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      Format("SELECT count(*) FROM $0", table_name),
+      R"#(
+           count
+          -------
+             200
+          (1 row)
+      )#"));
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      Format("SELECT * FROM $0 WHERE v = 2", table_name),
+      R"#(
+           k | v
+          ---+---
+           2 | 2
+          (1 row)
+      )#"));
 }
 
 }  // namespace tools
