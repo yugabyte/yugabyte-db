@@ -1072,6 +1072,35 @@ Status ExternalMiniCluster::WaitForMastersToCommitUpTo(int64_t target_index) {
   }
 }
 
+Status ExternalMiniCluster::WaitForAllIntentsApplied(const MonoDelta& timeout) {
+  auto deadline = MonoTime::Now() + timeout;
+  for (const auto& ts : tablet_servers_) {
+    RETURN_NOT_OK(WaitForAllIntentsApplied(ts.get(), deadline));
+  }
+  return Status::OK();
+}
+
+Status ExternalMiniCluster::WaitForAllIntentsApplied(
+    ExternalTabletServer* ts, const MonoDelta& timeout) {
+  return WaitForAllIntentsApplied(ts, MonoTime::Now() + timeout);
+}
+
+
+Status ExternalMiniCluster::WaitForAllIntentsApplied(
+    ExternalTabletServer* ts, const MonoTime& deadline) {
+  auto proxy = GetProxy<tserver::TabletServerAdminServiceProxy>(ts);
+  return Wait(
+      [proxy, &deadline]() -> Result<bool> {
+        tserver::CountIntentsRequestPB req;
+        tserver::CountIntentsResponsePB resp;
+        rpc::RpcController rpc;
+        rpc.set_deadline(deadline);
+        RETURN_NOT_OK(proxy.CountIntents(req, &resp, &rpc));
+        return resp.num_intents() == 0;
+      },
+      deadline, Format("Waiting for all intents to be applied at tserver $0", ts->uuid()));
+}
+
 Status ExternalMiniCluster::GetIsMasterLeaderServiceReady(ExternalMaster* master) {
   IsMasterLeaderReadyRequestPB req;
   IsMasterLeaderReadyResponsePB resp;

@@ -299,6 +299,9 @@ Status KvStoreInfo::LoadFromPB(const KvStoreInfoPB& pb,
 }
 
 Status KvStoreInfo::MergeWithRestored(const KvStoreInfoPB& pb) {
+  lower_bound_key = pb.lower_bound_key();
+  upper_bound_key = pb.upper_bound_key();
+  has_been_fully_compacted = pb.has_been_fully_compacted();
   for (const auto& table_pb : pb.tables()) {
     const auto& table_id = table_pb.table_id();
     auto table_it = tables.find(table_id);
