@@ -25,7 +25,7 @@ Using Docker, get the connector from Quay:
 docker pull quay.io/yugabyte/debezium-connector:1.3.7-BETA
 ```
 
-### Build the Debezium connector on your own
+### Build the Debezium connector yourself
 
 If you want to build the connector image yourself, follow the steps listed in the [README for debezium-connector-yugabytedb](https://github.com/yugabyte/debezium/blob/final-connector-ybdb/debezium-connector-yugabytedb2/README.md).
 

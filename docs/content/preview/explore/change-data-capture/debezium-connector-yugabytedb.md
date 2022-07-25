@@ -945,6 +945,7 @@ To avoid this problem when you're using a schema registry, use the `YBExtractNew
 The Debezium YugabyteDB connector has many configuration properties that you can use to achieve the right connector behavior for your application. Many properties have default values.
 
 The following properties are *required* unless a default value is available:
+
 | Property | Default value | Description |
 | :------- | :------------ | :---------- |
 | connector.class | N/A | Specifies the connector to use to connect Debezium to the database. For YugabyteDB, use `io.debezium.connector.yugabytedb.YugabyteDBConnector`. |

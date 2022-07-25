@@ -1,14 +1,13 @@
 ---
-title: CDCSDK Server
-headerTitle: CDCSDK Server
-linkTitle: CDCSDK Server
+title: CDCSDK server
+headerTitle: CDCSDK server
+linkTitle: CDCSDK server
 description: A ready-to-use application for capturing changes in a database.
 beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 aliases:
   - /preview/explore/change-data-capture/cdcsdk-server-ysql
   - /preview/explore/change-data-capture/cdcsdk-server-debezium
   - /preview/explore/change-data-capture/debezium-server-yugabyte
-  - /preview/explore/change-data-capture/cdcsdk-server
 menu:
   preview:
     parent: explore-change-data-capture
@@ -26,7 +25,7 @@ type: docs
   </li>
 </ul>
 
-Yugabyte CDCSDK Server is an open source project that provides a streaming platform for change data capture from YugabyteDB. The server is based on [Debezium](https://github.com/yugabyte/cdcsdk-server/tree/main/cdcsdk-server). CDCSDK Server uses [debezium-yugabytedb-connector](https://github.com/yugabyte/debezium-connector-yugabytedb) to capture change events. It supports a YugabyteDB instance as a source and supports the following sinks:
+Yugabyte CDCSDK server is an open source project that provides a streaming platform for change data capture from YugabyteDB. The server is based on [Debezium](https://github.com/yugabyte/cdcsdk-server/tree/main/cdcsdk-server). CDCSDK server uses [debezium-yugabytedb-connector](https://github.com/yugabyte/debezium-connector-yugabytedb) to capture change events. It supports a YugabyteDB instance as a source and supports the following sinks:
 
 * Kafka
 * HTTP REST Endpoint
@@ -65,9 +64,9 @@ Use [yb-admin](../../../admin/yb-admin/#create-change-data-stream) to create a C
 CDC Stream ID: d540f5e4890c4d3b812933cbfd703ed3
 ```
 
-### Download and run CDCSDK Server
+### Download and run CDCSDK server
 
-Download CDCSDK Server from the GitHub project [Releases](https://github.com/yugabyte/cdcsdk-server/releases) page. Each release includes a tar.gz file named CDCSDK Server.
+Download CDCSDK server from the GitHub project [Releases](https://github.com/yugabyte/cdcsdk-server/releases) page. Each release includes a tar.gz file named CDCSDK server.
 
 The archive has the following layout:
 
@@ -95,9 +94,9 @@ touch conf/application.properties
 ./run.sh
 ```
 
-### Run CDCSDK Server using Docker
+### Run CDCSDK server using Docker
 
-The CDCSDK Server can also be run inside a docker container with the help of all the configuration properties passed to the container in the form of environment variables, check [Configuration](#configure-using-environment-variables) for more information.
+The CDCSDK server can also be run inside a docker container with the help of all the configuration properties passed to the container in the form of environment variables, check [Configuration](#configure-using-environment-variables) for more information.
 
 ```sh
 docker run -it --rm --name cdcsdk-server -p 8080:8080 \
@@ -124,6 +123,7 @@ Using environment variables for configuration can be useful when running in cont
 | `cdcsdk.server.transforms` | | Transformations to apply. | <!-- TODO: add the complete list of transforms available -->
 
 **Additional configuration:**
+
 | Property | Default | Description |
 | :--- | :--- | :--- |
 | `quarkus.http.port` | 8080 | The port on which CDCSDK Server exposes Microprofile Health endpoint and other exposed status information. |
@@ -152,7 +152,7 @@ cdcsdk.source.snapshot.mode=never
 
 ### Apache Kafka
 
-The Kafka sink adapter supports pass-through configuration. This means that all Kafka producer configuration properties are passed to the producer with the prefix removed. The topic is set by CDCSDK Server.
+The Kafka sink adapter supports pass-through configuration. This means that all Kafka producer configuration properties are passed to the producer with the prefix removed. The topic is set by CDCSDK server.
 
 | Property | Default | Description |
 | :--- | :--- | :--- |
@@ -170,7 +170,7 @@ cdcsdk.sink.kafka.producer.value.serializer=org.apache.kafka.common.serializatio
 
 #### Confluent Cloud
 
-Confluent Cloud deployment of Kafka, also requires SSL configuration.
+Confluent Cloud deployment of Kafka also requires SSL configuration.
 
 Example configuration is as follows:
 
@@ -219,7 +219,7 @@ The Amazon S3 Sink streams changes to an AWS S3 bucket. Only **Inserts** are sup
 
 {{< note title="Note" >}}
 
-Amazon S3 Sink supports a single table at a time. Specifically `cdcsdk.source.table.include.list` should contain only one table at a time. If multiple tables need to be exported to Amazon S3, multiple CDCSDK servers that read from the same CDC Stream ID but write to different S3 locations should be setup.
+Amazon S3 Sink supports a single table at a time. Specifically `cdcsdk.source.table.include.list` should contain only one table at a time. If multiple tables need to be exported to Amazon S3, set up multiple CDCSDK servers that read from the same CDC Stream ID but write to different S3 locations.
 
 {{< /note >}}
 
@@ -227,7 +227,7 @@ Amazon S3 Sink supports a single table at a time. Specifically `cdcsdk.source.ta
 
 The Amazon S3 Sink only supports [create events](../debezium-connector-yugabytedb/#create-events) in the CDC Stream. It writes `payload.after` fields to a file in S3.
 
-The filename in S3 is generated as `${cdcsdk.sink.s3.basedir}/${cdcsdk.sink.s3.pattern}`. Pattern can contain placeholders to customize the filenames, as follows:
+The filename in S3 is generated as `${cdcsdk.sink.s3.basedir}/${cdcsdk.sink.s3.pattern}`. The pattern can contain placeholders to customize the filenames, as follows:
 
 * {YEAR}: Year in which the sync was writing the output data in.
 * {MONTH}: Month in which the sync was writing the output data in.
@@ -237,7 +237,7 @@ The filename in S3 is generated as `${cdcsdk.sink.s3.basedir}/${cdcsdk.sink.s3.p
 * {SECOND}: Second in which the sync was writing the output data in.
 * {MILLISECOND}: Millisecond in which the sync was writing the output data in.
 * {EPOCH}: Milliseconds since Epoch in which the sync was writing the output data in.
-* {UUID}: Random uuid string.
+* {UUID}: Random UUID string.
 
 For example, the following pattern can be used to create hourly partitions with multiple files, each of which is no greater than 200MB:
 
@@ -365,17 +365,19 @@ curl http://localhost:8080/q/health/ready
     ]
 }
 ```
+
 ### Metrics
 
-CDCSDK Server exposes metrics through a REST ENDPOINT: `q/metrics`. To view metrics, execute the following:
+CDCSDK server exposes metrics through a REST ENDPOINT, `q/metrics`. To view metrics, execute the following:
 
 ```sh
 curl localhost:8080/q/metrics/
 ```
 
-Refer to [Quarkus-Micrometer docs](https://quarkus.io/guides/micrometer#configuration-reference) for configuration options.
+Refer to the [Quarkus-Micrometer docs](https://quarkus.io/guides/micrometer#configuration-reference) for configuration options.
 
 #### System metrics
+
 There are a number of system metrics to monitor JVM performance such as
 
 * `jvm_gc_*`
@@ -384,7 +386,7 @@ There are a number of system metrics to monitor JVM performance such as
 
 #### Application metrics
 
-Application metrics are the ones having the prefix `cdcsdk_`. The following metrics for the application are available:
+Application metrics have the prefix `cdcsdk_`. The following metrics for the application are available:
 
 | Metric | Description |
 | :--- | :--- |
@@ -396,9 +398,9 @@ Application metrics are the ones having the prefix `cdcsdk_`. The following metr
 
 Prometheus uses a pull model to get metrics from applications, this means that Prometheus will scrape or watch endpoints to pull the metrics from.
 
-The following job configuration will enable prometheus installation to scrape from CDCSDK Server:
+The following job configuration will enable prometheus installation to scrape from CDCSDK server:
 
-```
+```yaml
 - job_name: 'cdcsdk-server-metrics'
    metrics_path: '/q/metrics'
    scrape_interval: 3s
