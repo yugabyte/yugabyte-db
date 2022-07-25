@@ -40,7 +40,6 @@
 #include "yb/docdb/primitive_value.h"
 #include "yb/docdb/value_type.h"
 
-#include "yb/yql/pggate/pg_env.h"
 #include "yb/yql/pggate/pg_expr.h"
 #include "yb/yql/pggate/pg_gate_fwd.h"
 #include "yb/yql/pggate/pg_memctx.h"
@@ -163,18 +162,9 @@ const YBCPgCallbacks *YBCGetPgCallbacks() {
   return pgapi->pg_callbacks();
 }
 
-YBCStatus YBCPgCreateEnv(YBCPgEnv *pg_env) {
-  return ToYBCStatus(pgapi->CreateEnv(pg_env));
-}
-
-YBCStatus YBCPgDestroyEnv(YBCPgEnv pg_env) {
-  return ToYBCStatus(pgapi->DestroyEnv(pg_env));
-}
-
-YBCStatus YBCPgInitSession(const YBCPgEnv pg_env,
-                           const char *database_name) {
+YBCStatus YBCPgInitSession(const char *database_name) {
   const string db_name(database_name ? database_name : "");
-  return ToYBCStatus(pgapi->InitSession(pg_env, db_name));
+  return ToYBCStatus(pgapi->InitSession(db_name));
 }
 
 YBCPgMemctx YBCPgCreateMemctx() {
