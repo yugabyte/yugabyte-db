@@ -102,7 +102,7 @@ gcloud container node-pools create node-pool-8cpu-2ssd \
       --zone=us-west1-b
 ```
 
-```sh
+```output
 Created
 NAME                 MACHINE_TYPE   DISK_SIZE_GB  NODE_VERSION
 node-pool-8cpu-2ssd  n1-standard-8  100           1.8.7-gke.1
@@ -116,7 +116,7 @@ You can list all the node pools by running the following command:
 gcloud container node-pools list --cluster yugabyte --zone=us-west1-b
 ```
 
-```sh
+```output
 NAME                 MACHINE_TYPE   DISK_SIZE_GB  NODE_VERSION
 default-pool         n1-standard-1  100           1.8.7-gke.1
 node-pool-8cpu-2ssd  n1-standard-8  100           1.8.7-gke.1
@@ -128,7 +128,7 @@ You can view details of the node-pool just created by running the following comm
 gcloud container node-pools describe node-pool-8cpu-2ssd --cluster yugabyte --zone=us-west1-b
 ```
 
-```sh
+```output
 config:
   diskSizeGb: 100
   imageType: COS
@@ -157,7 +157,7 @@ You can launch a universe on this node pool to run on local SSDs by running the 
 kubectl apply -f https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/cloud/kubernetes/yugabyte-statefulset-local-ssd-gke.yaml
 ```
 
-```sh
+```output
 service "yb-masters" created
 service "yb-master-ui" created
 statefulset "yb-master" created
@@ -201,7 +201,7 @@ You can verify that the YugabyteDB pods are running by executing following comma
 kubectl get pods
 ```
 
-```sh
+```output
 NAME           READY     STATUS    RESTARTS   AGE
 yb-master-0    1/1       Running   0          49s
 yb-master-1    1/1       Running   0          49s
@@ -217,7 +217,7 @@ You can check all the services that are running by executing the following comma
 kubectl get services
 ```
 
-```sh
+```output
 NAME           TYPE           CLUSTER-IP    EXTERNAL-IP     PORT(S)                               AGE
 kubernetes     ClusterIP      10.7.240.1    <none>          443/TCP                               11m
 yb-master-ui   LoadBalancer   10.7.246.86   XX.XX.XX.XX     7000:30707/TCP                        1m
@@ -241,6 +241,7 @@ You can observe the local disks by running the following command:
 
 ```sh
 [root@yb-tserver-0 yugabyte]# df -kh
+
 Filesystem      Size  Used Avail Use% Mounted on
 ...
 /dev/sdb        369G   70M  350G   1% /mnt/disk0

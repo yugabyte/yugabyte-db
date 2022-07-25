@@ -34,8 +34,9 @@ type: docs
     </a>
   </li>
 </ul>
-
 ## Prerequisites
+
+Before starting deployment, perform the following:
 
 - Download and install the [Google Cloud SDK](https://cloud.google.com/sdk/downloads/).
 

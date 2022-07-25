@@ -40,9 +40,9 @@ This is an alternative to deploying YugabyteDB manually using [Yugabyte Operator
 
 ## Prerequisites
 
-A Kubernetes cluster and `kubectl` are configured to communicate with the cluster.
+A Kubernetes cluster and `kubectl` must be configured to communicate with the cluster.
 
-## Deploy YugabyteDB using Operator Lifecycle Manager
+## Deploy YugabyteDB using OLM
 
 YugabyteDB can be deployed on any Kubernetes cluster using OLM, as follows:
 
@@ -62,7 +62,9 @@ YugabyteDB can be deployed on any Kubernetes cluster using OLM, as follows:
 
    ```sh
    kubectl get csv -n operators
-   
+   ```
+
+   ```output
    NAME                       DISPLAY             VERSION   REPLACES   PHASE
    yugabyte-operator.v0.0.1   Yugabyte Operator   0.0.1                Succeeded
    ```
@@ -77,7 +79,9 @@ YugabyteDB can be deployed on any Kubernetes cluster using OLM, as follows:
 
    ```sh
    kubectl get pods -n yb-operator
-   
+   ```
+
+   ```output
    NAME           READY   STATUS    RESTARTS   AGE
    yb-master-0    1/1     Running   0          3m32s
    yb-master-1    1/1     Running   0          3m32s

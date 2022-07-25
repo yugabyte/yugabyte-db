@@ -39,13 +39,12 @@ type: docs
   </li>
 </ul>
 
-## Introduction
 
 [Helm](https://helm.sh/) is an open source packaging tool that helps install applications and services on Kubernetes. It uses a packaging format called `charts`. A Helm chart is a package containing all resource definitions necessary to create an instance of a Kubernetes application, tool, or service in a Kubernetes cluster.
 
 ## Prerequisites
 
-You must have a Kubernetes cluster that has Helm configured. If you have not installed the Helm client (`helm`), see [Installing Helm](https://helm.sh/docs/intro/install/).
+You must have a Kubernetes cluster that has Helm configured. If you have not installed the Helm client (`helm`), see [Install Helm](https://helm.sh/docs/intro/install/).
 
 The YugabyteDB Helm chart has been tested with the following software versions:
 

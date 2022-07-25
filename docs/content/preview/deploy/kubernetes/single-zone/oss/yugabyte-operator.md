@@ -92,6 +92,8 @@ kubectl exec -it yb-tserver-0 -- ycqlsh yb-tserver-0
 
 ## Configuration flags
 
+There is a number configuration flags involved.
+
 ### Image
 
 Mention YugabyteDB Docker image attributes such as `repository`, `tag` and `pullPolicy` under `image`.

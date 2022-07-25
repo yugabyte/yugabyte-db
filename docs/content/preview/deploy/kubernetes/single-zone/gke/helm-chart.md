@@ -97,6 +97,8 @@ As stated in [Prerequisites](#prerequisites), the default configuration in the Y
 
 ## Create a YugabyteDB cluster
 
+Creating a YugabyteDB cluster involves a number of steps.
+
 ### Add charts repository
 
 To add the YugabyteDB charts repository, run the following command:
