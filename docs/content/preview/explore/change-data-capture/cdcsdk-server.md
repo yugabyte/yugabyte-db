@@ -96,7 +96,7 @@ touch conf/application.properties
 
 ### Run CDCSDK server using Docker
 
-The CDCSDK server can also be run inside a docker container with the help of all the configuration properties passed to the container in the form of environment variables, check [Configuration](#configure-using-environment-variables) for more information.
+The CDCSDK server can also be run inside a docker container with the help of all the configuration properties passed to the container in the form of environment variables. For more information, refer to [Configuration](#configure-using-environment-variables).
 
 ```sh
 docker run -it --rm --name cdcsdk-server -p 8080:8080 \
@@ -210,12 +210,12 @@ The Amazon S3 Sink streams changes to an AWS S3 bucket. Only **Inserts** are sup
 | Property | Default | Description |
 | :--- | :--- | :--- |
 | `cdcsdk.sink.type` | | Must be set to `s3`. |
-| `cdcsdk.sink.s3.bucket.name` | | Name of S3 bucket. |
+| `cdcsdk.sink.s3.bucket.name` | | Name of the S3 bucket. |
 | `cdcsdk.sink.s3.region` | | Name of the region of the S3 bucket. |
 | `cdcsdk.sink.s3.basedir` | | Base directory or path where the data has to be stored. |
 | `cdcsdk.sink.s3.pattern` | | Pattern to generate paths (sub-directory and filename) for data files. |
 | `cdcsdk.sink.s3.flush.sizeMB` | 200 | Trigger Data File Rollover on file size. |
-| `cdcsdk.sink.s3.flush.records` | 10000 | Trigger Data File Rollover on number of records |
+| `cdcsdk.sink.s3.flush.records` | 10000 | Trigger Data File Rollover on number of records. |
 
 {{< note title="Note" >}}
 
@@ -378,7 +378,7 @@ Refer to the [Quarkus-Micrometer docs](https://quarkus.io/guides/micrometer#conf
 
 #### System metrics
 
-There are a number of system metrics to monitor JVM performance such as
+There are a number of system metrics to monitor JVM performance such as the following:
 
 * `jvm_gc_*`
 * `jvm_memory_*`

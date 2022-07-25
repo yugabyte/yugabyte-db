@@ -51,21 +51,17 @@ To use the YugabyteDB Debezium connector, do the following. For complete steps, 
 
 1. Create a DB stream ID.
 
-    \
-    Before you use the YugabyteDB connector to monitor the changes committed on a YugabyteDB server, create a stream ID using the [yb-admin](../../../admin/yb-admin/#change-data-capture-cdc-commands) tool.
+   Before you use the YugabyteDB connector to monitor the changes committed on a YugabyteDB server, create a stream ID using the [yb-admin](../../../admin/yb-admin/#change-data-capture-cdc-commands) tool.
 
 1. Make sure the master ports are open.
 
-    \
-    The YugabyteDB connector connects to the master processes running on the YugabyteDB server. Make sure the ports on which the YugabyteDB server's master processes are running are open. The default port on which the process runs is `7100`.
+   The YugabyteDB connector connects to the master processes running on the YugabyteDB server. Make sure the ports on which the YugabyteDB server's master processes are running are open. The default port on which the process runs is `7100`.
 
 1. Monitor available disk space.
 
-    \
-    The change records for CDC are read from the WAL. CDC module maintains checkpoint internally for each of the DB stream ID and garbage collects the WAL entries if those have been streamed to the CDC clients.
+   The change records for CDC are read from the WAL. CDC module maintains checkpoint internally for each of the DB stream ID and garbage collects the WAL entries if those have been streamed to the CDC clients.
 
-    \
-    In case CDC is lagging or away for some time, the disk usage may grow and may cause YugabyteDB cluster instability. To avoid a scenario like this if a stream is inactive for a configured amount of time we garbage collect the WAL. This is configurable by a [GFlag](../../../reference/configuration/yb-tserver/#change-data-capture-cdc-flags).
+   In case CDC is lagging or away for some time, the disk usage may grow and may cause YugabyteDB cluster instability. To avoid a scenario like this if a stream is inactive for a configured amount of time we garbage collect the WAL. This is configurable by a [GFlag](../../../reference/configuration/yb-tserver/#change-data-capture-cdc-flags).
 
 Read on to learn how the connector works. Or, skip to [how to deploy the connector](#deployment).
 
@@ -75,7 +71,7 @@ To optimally configure and run a Debezium YugabyteDB connector, it is helpful to
 
 ### Security
 
-Currently, any user that has the access to the cluster, the authentication is done via that user. We also support the SSL based verification provided all the required keys and certificates are passed to the connector.
+Currently, for any user that has the access to the cluster, authentication is done via that user. SSL support based verification is provided for all the required keys and certificates are passed to the connector.
 
 {{< note title="Note" >}}
 
