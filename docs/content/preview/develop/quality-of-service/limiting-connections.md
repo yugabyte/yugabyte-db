@@ -93,7 +93,7 @@ The connection limit is stored in the system catalog but connection count tracki
 - You can display the limits as follows:
 
   ```sql
-  select datname, datconnlimit from pg_database where datname =’test_connection’ ;
+  select datname, datconnlimit from pg_database where datname ='test_connection' ;
   ```
 
   ```output
