@@ -36,13 +36,13 @@ Follow the steps in this section to run CDC with Debezium on a local YugabyteDB 
 1. Start Zookeeper.
 
     ```sh
-    docker run -it --rm --name zookeeper -p 2181:2181 -p 2888:2888 -p 3888:3888 debezium/zookeeper:1.6
+    docker run -it --rm --name zookeeper -p 2181:2181 -p 2888:2888 -p 3888:3888 debezium/zookeeper:1.7
     ```
 
 1. Start Kafka.
 
     ```sh
-    docker run -it --rm --name kafka -p 9092:9092 --link zookeeper:zookeeper debezium/kafka:1.6
+    docker run -it --rm --name kafka -p 9092:9092 --link zookeeper:zookeeper debezium/kafka:1.7
     ```
 
 1. Assign your computer's IP address to an environment variable.
@@ -173,6 +173,6 @@ See [limitations](../../../explore/change-data-capture/#limitations) for more de
 ### Start a Kafka Topic console consumer (optional)
 
 ```sh
-docker run -it --rm --name consumer --link zookeeper:zookeeper --link kafka:kafka debezium/kafka:1.6 \
+docker run -it --rm --name consumer --link zookeeper:zookeeper --link kafka:kafka debezium/kafka:1.7 \
 watch-topic -a dbserver1.public.test
 ```
