@@ -1,0 +1,42 @@
+{
+   "name": "hypopg",
+   "abstract": "An extension adding hypothetical indexes in PostgreSQL.",
+   "version": "__VERSION__",
+   "maintainer": "Julien Rouhaud <rjuju123@gmail.com>",
+   "license": "postgresql",
+   "release_status": "stable",
+   "provides": {
+      "hypopg": {
+         "abstract": "An extension adding hypothetical indexes in PostgreSQL.",
+         "file": "hypopg.sql",
+         "docfile": "README.md",
+         "version": "__VERSION__"
+      }
+   },
+   "resources": {
+      "bugtracker": {
+         "web": "http://github.com/hypopg/hypopg/issues/"
+      },
+      "repository": {
+        "url":  "git://github.com/hypopg/hypopg.git",
+        "web":  "http://github.com/hypopg/hypopg/",
+        "type": "git"
+      }
+   },
+   "prereqs": {
+       "runtime": {
+           "requires": {
+               "PostgreSQL": "9.2.0"
+           }
+       }
+   },
+   "generated_by": "Julien Rouhaud",
+   "meta-spec": {
+      "version": "1.0.0",
+      "url": "http://pgxn.org/meta/spec.txt"
+   },
+   "tags": [
+      "index",
+      "hypothetical"
+   ]
+}
