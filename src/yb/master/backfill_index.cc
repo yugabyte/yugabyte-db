@@ -923,10 +923,14 @@ void BackfillTable::Done(const Status& s, const std::unordered_set<TableId>& fai
 
 Status BackfillTable::MarkIndexesAsFailed(
     const std::unordered_set<TableId>& failed_indexes, const string& message) {
+  if (indexes_to_build() == failed_indexes) {
+    backfill_job_->SetState(MonitoredTaskState::kFailed);
+  }
   return MarkIndexesAsDesired(failed_indexes, BackfillJobPB::FAILED, message);
 }
 
 Status BackfillTable::MarkAllIndexesAsFailed() {
+  backfill_job_->SetState(MonitoredTaskState::kFailed);
   RETURN_NOT_OK_PREPEND(MarkIndexesAsDesired(indexes_to_build(), BackfillJobPB::FAILED, "failed"),
                         "Failed to mark backfill as failed.");
   return Status::OK();
