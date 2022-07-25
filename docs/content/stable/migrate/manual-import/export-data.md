@@ -11,57 +11,84 @@ menu:
 type: docs
 ---
 
-The recommended way to export data from PostgreSQL for purposes of importing it to YugabyteDB is using the CSV format.
+The recommended way to export data from PostgreSQL for purposes of importing it to YugabyteDB is via CSV files using the COPY command.
+However, for exporting an entire database that consists of smaller datasets, you can use the YugabyteDB [`ysql_dump`](../../../admin/ysql-dump/) utility.
 
-## Exporting an entire database
+{{< tip title="Migrate using YugabyteDB Voyager" >}}
+To automate your migration from PostgreSQL to YugabyteDB, use [YugabyteDB Voyager](../../yb-voyager/). To learn more, refer to the [export schema](../../yb-voyager/migrate-steps/#export-and-analyze-schema) and [export data](../../yb-voyager/migrate-steps/#export-data) steps.
+{{< /tip >}}
 
-The recommended way to dump an entire database from PostgreSQL is to use the YugabyteDB [`ysql_dump`](../../../admin/ysql-dump/) backup utility, which is in turn derived from PostgreSQL pg_dump.
+## Export data into CSV files using the COPY command
 
-```sh
-$ ysql_dump -d mydatabase > mydatabase-dump.sql
+To export the data, connect to the source PostgreSQL database using the psql tool, and execute the COPY TO command as follows:
+
+```sql
+COPY <table_name>
+    TO '<table_name>.csv'
+    WITH (FORMAT CSV DELIMITER ',' HEADER);
 ```
 
 {{< note title="Note" >}}
-The `ysql_dump` approach has been tested on PostgreSQL v11.2, and may not work on very new versions of PostgreSQL. To export an entire database in these cases, use the pg_dump tool, which is documented in detail in the [PostgreSQL documentation on pg_dump](https://www.postgresql.org/docs/12/app-pgdump.html).
+
+The COPY TO command exports a single table, so you should execute it for every table that you want to export.
+
 {{< /note >}}
 
-## Export using COPY
-
-This is an alternative to using ysql_dump in order to export a single table from the source PostgreSQL database into CSV files. This tool allows extracting a subset of rows and/or columns from a table. This can be achieved by connecting to the source DB using psql and using the `COPY TO` command, as shown below.
-
-```sql
-COPY mytable TO 'export-1.csv' DELIMITER ',' CSV HEADER;
-```
-
-To extract a subset of rows from a table, it is possible to output the result of an SQL command.
+It is also possible to export a subset of rows based on a condition:
 
 ```sql
 COPY (
-  SELECT * FROM mytable
-    WHERE <where condition>
-) TO 'export-1.csv' DELIMITER ',' CSV HEADER;
+    SELECT * FROM <table_name>
+    WHERE <condition>
+)
+TO '<table_name>.csv'
+WITH (FORMAT CSV DELIMITER ',' HEADER);
 ```
 
-The various options here are described in detail in the [PostgreSQL documentation for the COPY command](https://www.postgresql.org/docs/12/sql-copy.html).
+For all available options provided by the COPY TO command, refer to the [PostgreSQL documentation](https://www.postgresql.org/docs/current/sql-copy.html).
 
-## Run large table exports in parallel
+### Parallelize large table export
 
-Exporting large data sets from PostgreSQL can be made efficient by running multiple COPY processes in parallel for a subset of data. This will result in multiple csv files being produced, which can subsequently be imported in parallel.
-
-An example of running multiple exports in parallel is shown below. Remember to use a suitable value for *num_rows_per_export*, for example 1 million rows.
+For large tables, it might be beneficial to parallelize the process by exporting data in chunks as follows:
 
 ```sql
 COPY (
-  SELECT * FROM mytable
-    ORDER BY primary_key_col
+    SELECT * FROM <table_name>
+    ORDER BY <primary_key_col>
     LIMIT num_rows_per_export OFFSET 0
-) TO 'export-1.csv' DELIMITER ',' CSV HEADER;
-
-COPY (
-  SELECT * FROM mytable
-    ORDER BY primary_key_col
-    LIMIT num_rows_per_export OFFSET num_rows_per_export
-) TO 'export-2.csv' WITH CSV;
-
-...
+)
+TO '<table_name>_1.csv'
+WITH (FORMAT CSV DELIMITER ',' HEADER);
 ```
+
+```sql
+COPY (
+    SELECT * FROM <table_name>
+    ORDER BY <primary_key_col>
+    LIMIT num_rows_per_export OFFSET num_rows_per_export
+)
+TO '<table_name>_2.csv'
+WITH (FORMAT CSV DELIMITER ',' HEADER);
+```
+
+```sql
+COPY (
+    SELECT * FROM <table_name>
+    ORDER BY <primary_key_col>
+    LIMIT num_rows_per_export OFFSET num_rows_per_export * 2
+)
+TO '<table_name>_3.csv'
+WITH (FORMAT CSV DELIMITER ',' HEADER);
+```
+
+You can run the above commands in parallel to speed up the process. This approach will also produce multiple CSV files, allowing for parallel import on the YugabyteDB side.
+
+## Export data into SQL script using ysql_dump
+
+An alternative way to export the data is using the YugabyteDB [`ysql_dump`](../../../admin/ysql-dump/) backup utility, which is derived from PostgreSQL pg_dump.
+
+```sh
+$ ysql_dump -d <database_name> > <database_name>.sql
+```
+
+`ysql_dump` is the ideal option for smaller datasets, because it allows you to export a whole database by running a single command. However, the COPY command is recommended for large databases, because it significantly enhances the performance.
