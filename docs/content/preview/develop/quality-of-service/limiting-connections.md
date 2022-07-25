@@ -18,8 +18,11 @@ Each connection to a YugabyteDB cluster uses CPU and memory, so it is important 
 
 You can check the value of `max_connections` with your admin user and `ysqlsh`.
 
-```
+```sql
 SHOW max_connections;
+```
+
+```output
  max_connections
 -----------------
  300
@@ -36,43 +39,54 @@ The connection limit is stored in the System catalog but connection count tracki
 
 ### Setup database and user
 
-First create a database, as shown below.
-```sql
-create database test_connection;
-```
+- First create a database, as follows:
 
-Next, create a user. Make sure the user you create is not a superuser. For superusers, there is no limit on the number of connections.
-```sql
-create role test_user login;
-```
+  ```sql
+  create database test_connection;
+  ```
+
+- Next, create a user. Make sure the user you create is not a superuser. For superusers, there is no limit on the number of connections.
+
+  ```sql
+  create role test_user login;
+  ```
 
 ### Limit connections per DB
-Set connection limit for database as shown below.
-```sql
-alter database test_connection CONNECTION LIMIT 1;
-```
 
-You can display the limits as shown below.
-```sql
-select datname, datconnlimit from pg_database where datname =’test_connection’ ;
-```
-```
-       datname     | datconnlimit
------------------+--------------
- test_connection |            1
-```
+- Set connection limit for database as follows:
+
+  ```sql
+  alter database test_connection CONNECTION LIMIT 1;
+  ```
+
+- You can display the limits as follows:
+
+  ```sql
+  select datname, datconnlimit from pg_database where datname =’test_connection’ ;
+  ```
+
+  ```output
+         datname     | datconnlimit
+  -----------------+--------------
+   test_connection |            1
+  ```
 
 ### Test connection limit
+
 To test, launch two connections to the database.
 
 The first connection should succeed.
-```
+
+```sql
 ./bin/ysqlsh -U test_user test_connection
-This is successful
 ```
 
 The second connection should fail.
-```
+
+```sql
 ./bin/ysqlsh -U test_user test_connection
+```
+
+```output
 ysqlsh: FATAL:  too many connections for database "test_connection"
 ```
