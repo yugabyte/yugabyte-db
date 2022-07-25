@@ -34,7 +34,7 @@ type: docs
 The tutorial assumes that you have:
 
 - installed YugabyteDB, created a universe, and are able to interact with it using the YCQL shell (`ycqlsh`). If
-  not, follow the steps in [Quick Start](../../../explore/ycql/).
+  not, follow the steps in [Quick Start](../../../../quick-start/).
 - have a 32-bit (x86) or 64-bit (x64) architecture machine.
 - have gcc 4.1.2 or later, Clang 3.4 or later installed.
 

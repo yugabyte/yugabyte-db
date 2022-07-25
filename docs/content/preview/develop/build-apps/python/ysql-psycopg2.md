@@ -55,13 +55,13 @@ Are you using YugabyteDB Managed? Install the [prerequisites](#prerequisites), t
 
 {{</ tip >}}
 
-The following tutorial creates a simple Python application that connects to a YugabyteDB cluster using the `psycopg2` database adapter, performs a few basic database operations — creating a table, inserting data, and running a SQL query — and prints the results to the screen.
+The following tutorial creates a basic Python application that connects to a YugabyteDB cluster using the `psycopg2` database adapter, performs a few basic database operations — creating a table, inserting data, and running a SQL query — and prints the results to the screen.
 
 ## Prerequisites
 
 This tutorial assumes that you have satisfied the following prerequisites.
 
-* YugabyteDB is up and running. If you are new to YugabyteDB, you can have YugabyteDB up and running within five minutes by following the steps in [Quick start](../../../../quick-start/).
+* YugabyteDB is up and running. If you are new to YugabyteDB, you can have YugabyteDB up and running in five minutes by following the steps in [Quick start](../../../../quick-start/).
 * Python 3, or later, is installed.
 * [Psycopg 2](http://initd.org/psycopg/), the popular PostgreSQL database adapter for Python, is installed.
 

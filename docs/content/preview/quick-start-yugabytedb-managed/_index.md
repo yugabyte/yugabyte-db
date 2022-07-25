@@ -200,7 +200,7 @@ name = John, age = 28, country = Canada, balance = 9800
 
 You have successfully executed a basic Java application that works with YugabyteDB Managed.
 
-[Explore the application logic](../develop/build-apps/cloud-ysql-yb-jdbc/#explore-the-application-logic)
+[Explore the application logic](../develop/build-apps/java/cloud-ysql-yb-jdbc/#explore-the-application-logic)
 
   {{% /tab %}}
 
@@ -271,7 +271,7 @@ name = John, age = 28, country = Canada, balance = 9800
 
 You have successfully executed a basic Go application that works with YugabyteDB Managed.
 
-[Explore the application logic](../develop/build-apps/cloud-ysql-go/#explore-the-application-logic)
+[Explore the application logic](../develop/build-apps/go/cloud-ysql-go/#explore-the-application-logic)
 
   {{% /tab %}}
 
@@ -336,7 +336,7 @@ name = John, age = 28, country = Canada, balance = 9800
 
 You have successfully executed a basic Python application that works with YugabyteDB Managed.
 
-[Explore the application logic](../develop/build-apps/cloud-ysql-python/#explore-the-application-logic)
+[Explore the application logic](../develop/build-apps/python/cloud-ysql-python/#explore-the-application-logic)
 
   {{% /tab %}}
 
@@ -406,7 +406,7 @@ name = John, age = 28, country = Canada, balance = 9800
 
 You have successfully executed a basic Node.js application that works with YugabyteDB Managed.
 
-[Explore the application logic](../develop/build-apps/cloud-ysql-node/#explore-the-application-logic)
+[Explore the application logic](../develop/build-apps/nodejs/cloud-ysql-node/#explore-the-application-logic)
 
   {{% /tab %}}
 
@@ -476,7 +476,7 @@ name = John, age = 28, country = Canada, balance = 9800
 
 You have successfully executed a basic C application that works with YugabyteDB Managed.
 
-[Explore the application logic](../develop/build-apps/cloud-ysql-c/#explore-the-application-logic)
+[Explore the application logic](../develop/build-apps/c/cloud-ysql-c/#explore-the-application-logic)
 
   {{% /tab %}}
 
@@ -549,7 +549,7 @@ name = John, age = 28, country = Canada, balance = 9800
 
 You have successfully executed a basic C++ application that works with YugabyteDB Managed.
 
-[Explore the application logic](../develop/build-apps/cloud-ysql-cpp/#explore-the-application-logic)
+[Explore the application logic](../develop/build-apps/cpp/cloud-ysql-cpp/#explore-the-application-logic)
 
   {{% /tab %}}
 
@@ -614,7 +614,7 @@ name = John, age = 28, country = Canada, balance = 9800
 
 You have successfully executed a basic C# application that works with YugabyteDB Managed.
 
-[Explore the application logic](../develop/build-apps/cloud-ysql-csharp/#explore-the-application-logic)
+[Explore the application logic](../develop/build-apps/csharp/cloud-ysql-csharp/#explore-the-application-logic)
 
   {{% /tab %}}
 
@@ -688,7 +688,7 @@ name = John, age = 28, country = Canada, balance = 9800
 
 You have successfully executed a basic Ruby application that works with YugabyteDB Managed.
 
-[Explore the application logic](../develop/build-apps/cloud-ysql-ruby/#explore-the-application-logic)
+[Explore the application logic](../develop/build-apps/ruby/cloud-ysql-ruby/#explore-the-application-logic)
 
   {{% /tab %}}
 
@@ -749,7 +749,7 @@ name = John, age = 28, country = Canada, balance = 9800
 
 You have successfully executed a basic Rust application that works with YugabyteDB Managed.
 
-[Explore the application logic](../develop/build-apps/cloud-ysql-rust/#explore-the-application-logic)
+[Explore the application logic](../develop/build-apps/rust/cloud-ysql-rust/#explore-the-application-logic)
 
   {{% /tab %}}
 
@@ -812,7 +812,7 @@ name = John, age = 28, country = Canada, balance = 9800
 
 You have successfully executed a basic PHP application that works with YugabyteDB Managed.
 
-[Explore the application logic](../develop/build-apps/cloud-ysql-php/#explore-the-application-logic)
+[Explore the application logic](../develop/build-apps/php/cloud-ysql-php/#explore-the-application-logic)
 
   {{% /tab %}}
 
