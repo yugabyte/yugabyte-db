@@ -255,6 +255,10 @@ Click **See all nodes** to open the **Tablet Servers** page that lists the YB-TS
 
 ## Build a Java application
 
+The following tutorial shows a small Java application that connects to a YugabyteDB cluster using the topology-aware Yugabyte JDBC driver and performs basic SQL operations.
+
+For examples using other languages, refer to [Build an application](../develop/build-apps/).
+
 ### Prerequisites
 
 Before building a Java application, perform the following:
