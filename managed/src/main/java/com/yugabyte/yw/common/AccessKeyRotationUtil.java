@@ -28,6 +28,8 @@ import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
 
+import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.time.DateUtils;
 
 import io.ebean.annotation.Transactional;
@@ -161,6 +163,12 @@ public class AccessKeyRotationUtil {
     int expirationThresholdDays = config.getInt(SSH_KEY_EXPIRATION_THRESHOLD_DAYS);
 
     List<AccessKey> universeAccessKeys = getUniverseAccessKeys(universe, allAccessKeys);
+    // if universe is of a provider config such as K8s
+    // where accessKeyCode is not set
+    if (CollectionUtils.isEmpty(universeAccessKeys)) {
+      return null;
+    }
+    // if expiration is disabled and no key has an explicitly expiration set
     if (!expirationEnabled
         && universeAccessKeys
             .stream()
@@ -193,8 +201,10 @@ public class AccessKeyRotationUtil {
     clusters.forEach(
         cluster -> {
           String clusterAccessKeyCode = cluster.userIntent.accessKeyCode;
-          AccessKeyId id = AccessKeyId.create(providerUUID, clusterAccessKeyCode);
-          accessKeys.add(allAccessKeys.get(id));
+          if (StringUtils.isNotEmpty(clusterAccessKeyCode)) {
+            AccessKeyId id = AccessKeyId.create(providerUUID, clusterAccessKeyCode);
+            accessKeys.add(allAccessKeys.get(id));
+          }
         });
     return accessKeys;
   }

@@ -18,6 +18,7 @@
 
 #include "yb/docdb/packed_row.h"
 #include "yb/docdb/primitive_value.h"
+#include "yb/docdb/schema_packing.h"
 #include "yb/docdb/value_type.h"
 
 #include "yb/util/fast_varint.h"

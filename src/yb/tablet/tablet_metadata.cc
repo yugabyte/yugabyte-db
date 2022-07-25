@@ -204,6 +204,10 @@ Status TableInfo::LoadFromPB(const TableId& primary_table_id, const TableInfoPB&
   return Status::OK();
 }
 
+Status TableInfo::MergeWithRestored(const TableInfoPB& pb) {
+  return doc_read_context->MergeWithRestored(pb);
+}
+
 void TableInfo::ToPB(TableInfoPB* pb) const {
   pb->set_table_id(table_id);
   pb->set_namespace_name(namespace_name);
@@ -292,6 +296,22 @@ Status KvStoreInfo::LoadFromPB(const KvStoreInfoPB& pb,
   }
 
   return LoadTablesFromPB(pb.tables(), primary_table_id);
+}
+
+Status KvStoreInfo::MergeWithRestored(const KvStoreInfoPB& pb) {
+  for (const auto& table_pb : pb.tables()) {
+    const auto& table_id = table_pb.table_id();
+    auto table_it = tables.find(table_id);
+    if (table_it == tables.end()) {
+      // Skip tables that are not present in the restored state.
+      continue;
+    }
+    auto new_table_info = std::make_shared<TableInfo>(
+        *table_it->second, std::numeric_limits<SchemaVersion>::max());
+    RETURN_NOT_OK(new_table_info->MergeWithRestored(table_pb));
+    table_it->second = new_table_info;
+  }
+  return Status::OK();
 }
 
 void KvStoreInfo::ToPB(const TableId& primary_table_id, KvStoreInfoPB* pb) const {
@@ -677,6 +697,16 @@ Status RaftGroupMetadata::Flush() {
   return Status::OK();
 }
 
+Status RaftGroupMetadata::SaveTo(const std::string& path) {
+  RaftGroupReplicaSuperBlockPB pb;
+  {
+    std::lock_guard<MutexType> lock(data_mutex_);
+    ToSuperBlockUnlocked(&pb);
+  }
+
+  return SaveToDiskUnlocked(pb, path);
+}
+
 Status RaftGroupMetadata::ReplaceSuperBlock(const RaftGroupReplicaSuperBlockPB &pb) {
   {
     MutexLock l(flush_lock_);
@@ -689,10 +719,14 @@ Status RaftGroupMetadata::ReplaceSuperBlock(const RaftGroupReplicaSuperBlockPB &
   return Status::OK();
 }
 
-Status RaftGroupMetadata::SaveToDiskUnlocked(const RaftGroupReplicaSuperBlockPB &pb) {
-  flush_lock_.AssertAcquired();
+Status RaftGroupMetadata::SaveToDiskUnlocked(
+    const RaftGroupReplicaSuperBlockPB &pb, const std::string& path) {
+  if (path.empty()) {
+    flush_lock_.AssertAcquired();
+    return SaveToDiskUnlocked(
+        pb, VERIFY_RESULT(fs_manager_->GetRaftGroupMetadataPath(raft_group_id_)));
+  }
 
-  string path = VERIFY_RESULT(fs_manager_->GetRaftGroupMetadataPath(raft_group_id_));
   RETURN_NOT_OK_PREPEND(pb_util::WritePBContainerToPath(
                             fs_manager_->env(), path, pb,
                             pb_util::OVERWRITE, pb_util::SYNC),
@@ -701,8 +735,20 @@ Status RaftGroupMetadata::SaveToDiskUnlocked(const RaftGroupReplicaSuperBlockPB 
   return Status::OK();
 }
 
-Status RaftGroupMetadata::ReadSuperBlockFromDisk(RaftGroupReplicaSuperBlockPB* superblock) const {
-  string path = VERIFY_RESULT(fs_manager_->GetRaftGroupMetadataPath(raft_group_id_));
+Status RaftGroupMetadata::MergeWithRestored(const std::string& path) {
+  RaftGroupReplicaSuperBlockPB pb;
+  RETURN_NOT_OK(ReadSuperBlockFromDisk(&pb, path));
+  std::lock_guard<MutexType> lock(data_mutex_);
+  return kv_store_.MergeWithRestored(pb.kv_store());
+}
+
+Status RaftGroupMetadata::ReadSuperBlockFromDisk(
+    RaftGroupReplicaSuperBlockPB* superblock, const std::string& path) const {
+  if (path.empty()) {
+    return ReadSuperBlockFromDisk(
+        superblock, VERIFY_RESULT(fs_manager_->GetRaftGroupMetadataPath(raft_group_id_)));
+  }
+
   RETURN_NOT_OK_PREPEND(
       pb_util::ReadPBContainerFromPath(fs_manager_->env(), path, superblock),
       Substitute("Could not load Raft group metadata from $0", path));

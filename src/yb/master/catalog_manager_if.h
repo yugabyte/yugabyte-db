@@ -99,6 +99,8 @@ class CatalogManagerIf {
 
   virtual Status GetYsqlCatalogVersion(
       uint64_t* catalog_version, uint64_t* last_breaking_version) = 0;
+  virtual Status GetYsqlAllDBCatalogVersions(
+      std::map<uint32_t, std::pair<uint64_t, uint64_t>>* versions) = 0;
 
   virtual Status GetClusterConfig(GetMasterClusterConfigResponsePB* resp) = 0;
   virtual Status GetClusterConfig(SysClusterConfigEntryPB* config) = 0;

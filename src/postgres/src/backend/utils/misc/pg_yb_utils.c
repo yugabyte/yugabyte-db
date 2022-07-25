@@ -387,8 +387,11 @@ YBIsDBCatalogVersionMode()
 		cached_value = YBCIsEnvVarTrueWithDefault(
 			"FLAGS_TEST_enable_db_catalog_version_mode", false);
 	}
+	/*
+	 * During initdb (bootstrap mode), CATALOG_VERSION_PROTOBUF_ENTRY is used
+	 * for catalog version type.
+	 */
 	return IsYugaByteEnabled() &&
-		   YBTransactionsEnabled() &&
 		   YbGetCatalogVersionType() == CATALOG_VERSION_CATALOG_TABLE &&
 		   cached_value;
 }

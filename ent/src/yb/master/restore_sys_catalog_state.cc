@@ -27,7 +27,6 @@
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/doc_write_batch.h"
 #include "yb/docdb/docdb.h"
-#include "yb/docdb/packed_row.h"
 #include "yb/docdb/pgsql_operation.h"
 #include "yb/docdb/rocksdb_writer.h"
 
@@ -278,11 +277,12 @@ Status RestoreSysCatalogState::PatchAndAddRestoringTablets() {
     // Some examples:
     //
     // Example#1: Non-colocated split tablet that has finished split completely as of restore time
-    //                                 t1
-    //                               /   \
-    //                              t11   t12       <-- Restoring time
-    //                              / \    /  \
-    //                          t111 t112 t121 t122 <-- Present time
+    /*                                 t1
+                                     /   \
+                                    t11   t12       <-- Restoring time
+                                    / \    /  \
+                                t111 t112 t121 t122 <-- Present time
+    */
     // If we are restoring to a state when t1 was completely split into t11 and t12 then
     // in the restoring state, the split map will contain two entries
     // one each for t11 and t12. Both the entries will only have the parent

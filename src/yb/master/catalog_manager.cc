@@ -8850,6 +8850,15 @@ Status CatalogManager::GetYsqlCatalogVersion(uint64_t* catalog_version,
   return Status::OK();
 }
 
+Status CatalogManager::GetYsqlAllDBCatalogVersions(DbOidToCatalogVersionMap* versions) {
+  auto table_info = GetTableInfo(kPgYbCatalogVersionTableId);
+  if (table_info != nullptr) {
+    RETURN_NOT_OK(sys_catalog_->ReadYsqlAllDBCatalogVersions(kPgYbCatalogVersionTableId,
+                                                             versions));
+  }
+  return Status::OK();
+}
+
 Status CatalogManager::InitializeTransactionTablesConfig(int64_t term) {
   SysTransactionTablesConfigEntryPB transaction_tables_config;
   transaction_tables_config.set_version(0);

@@ -474,8 +474,8 @@ public class NodeManagerTest extends FakeDBApplication {
               TestHelper.TMP_PATH + "/node_manager_test_ca.crt",
               customCertInfo);
     } else {
-      UUID certUUID =
-          CertificateHelper.createRootCA("foobar", t.provider.customerUUID, TestHelper.TMP_PATH);
+      when(mockConfig.getString("yb.storage.path")).thenReturn(TestHelper.TMP_PATH);
+      UUID certUUID = CertificateHelper.createRootCA(mockConfig, "foobar", t.provider.customerUUID);
       cert = CertificateInfo.get(certUUID);
     }
 
@@ -3012,7 +3012,8 @@ public class NodeManagerTest extends FakeDBApplication {
     createTempFile("node_manager_test_ca.crt", "test data");
 
     if (certType == CertConfigType.SelfSigned) {
-      certUUID = CertificateHelper.createRootCA("foobar", customerUUID, TestHelper.TMP_PATH);
+      when(mockConfig.getString("yb.storage.path")).thenReturn(TestHelper.TMP_PATH);
+      certUUID = CertificateHelper.createRootCA(mockConfig, "foobar", customerUUID);
       return CertificateInfo.get(certUUID);
     } else if (certType == CertConfigType.CustomCertHostPath) {
       CertificateParams.CustomCertInfo customCertInfo = new CertificateParams.CustomCertInfo();

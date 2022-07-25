@@ -14,14 +14,14 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/preview/drivers-orms/python/django/" class="nav-link">
+    <a href="../django/" class="nav-link">
       <i class="icon-java-bold" aria-hidden="true"></i>
       Django ORM
     </a>
   </li>
 
   <li >
-    <a href="/preview/drivers-orms/python/sqlalchemy/" class="nav-link active">
+    <a href="../sqlalchemy/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       SQLAlchemy ORM
     </a>
@@ -33,7 +33,7 @@ type: docs
 
 ## CRUD operations
 
-Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in the [Build an application](/preview/quick-start/build-apps/python/ysql-sqlalchemy/) page under the Quick start section.
+Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in the [Build an application](../../../quick-start/build-apps/python/ysql-sqlalchemy/) page under the Quick start section.
 
 The following sections demonstrate how to perform common tasks required for Python application development using the SQLAlchemy ORM.
 
@@ -148,5 +148,4 @@ Name: Ivy Age: 27 Language: C++
 
 ## Next steps
 
-- Explore [Scaling Python Applications](/preview/explore/linear-scalability) with YugabyteDB.
-- Learn how to [develop Python applications with YugabyteDB Managed](/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-python/).
+- Explore [Scaling Python Applications](../../../explore/linear-scalability/) with YugabyteDB.
