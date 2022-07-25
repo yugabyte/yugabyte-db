@@ -305,6 +305,12 @@ class ExternalMiniCluster : public MiniClusterBase {
   // This API waits for the commit indices of all the master peers to reach the target index.
   Status WaitForMastersToCommitUpTo(int64_t target_index);
 
+  Status WaitForAllIntentsApplied(const MonoDelta& timeout);
+
+  Status WaitForAllIntentsApplied(ExternalTabletServer* ts, const MonoDelta& timeout);
+
+  Status WaitForAllIntentsApplied(ExternalTabletServer* ts, const MonoTime& deadline);
+
   // If this cluster is configured for a single non-distributed master, return the single master or
   // NULL if the master is not started. Exits with a CHECK failure if there are multiple masters.
   ExternalMaster* master() const;

@@ -1354,30 +1354,5 @@ Result<OpId> GetLastOpIdForReplica(
   return VERIFY_RESULT(GetLastOpIdForEachReplica(tablet_id, {replica}, opid_type, timeout))[0];
 }
 
-Status WaitForAllIntentsApplied(TServerDetails* ts, const MonoTime& deadline) {
-  return Wait([ts, &deadline]() -> Result<bool> {
-    tserver::CountIntentsRequestPB req;
-    tserver::CountIntentsResponsePB resp;
-    RpcController rpc;
-    rpc.set_deadline(deadline);
-    RETURN_NOT_OK(ts->tserver_admin_proxy->CountIntents(req, &resp, &rpc));
-    return resp.num_intents() == 0;
-  }, deadline, Format("Waiting for all intents to be applied at tserver $0", ts->uuid()));
-}
-
-Status WaitForAllIntentsApplied(TServerDetails* ts, const MonoDelta& timeout) {
-  return WaitForAllIntentsApplied(ts, MonoTime::Now() + timeout);
-}
-
-Status WaitForAllIntentsApplied(
-    const vector<TServerDetails*>& tablet_servers, const MonoDelta& timeout) {
-  const MonoTime deadline = MonoTime::Now() + timeout;
-
-  for (auto* ts : tablet_servers) {
-    RETURN_NOT_OK(WaitForAllIntentsApplied(ts, deadline));
-  }
-  return Status::OK();
-}
-
 } // namespace itest
 } // namespace yb
