@@ -23,6 +23,7 @@
 #include "yb/tserver/tablet_server.h"
 
 #include "yb/util/countdown_latch.h"
+#include "yb/util/unique_lock.h"
 
 using namespace std::chrono_literals;
 
@@ -46,29 +47,44 @@ class MasterTasksTest : public YBMiniClusterTestBase<MiniCluster> {
   }
 };
 
+// Make sure delay before retrying RetryingTSRpcTask is capped by
+// FLAGS_retrying_ts_rpc_max_delay_ms + up to 50ms random jitter.
 TEST_F(MasterTasksTest, RetryingTSRpcTaskMaxDelay) {
   constexpr auto kNumRetries = 10;
+  constexpr auto kMaxJitterMs = 50;
 
   FLAGS_retrying_ts_rpc_max_delay_ms = 100;
 
   auto* ts = cluster_->mini_tablet_server(0);
 
-  CountDownLatch done(1);
-  Status status;
+  struct SharedData {
+    CountDownLatch done = CountDownLatch(1);
+    std::shared_mutex mutex;
+    Status status GUARDED_BY(mutex);
+  };
+
+  auto shared_data = std::make_shared<SharedData>();
 
   ASSERT_OK(cluster_->mini_master()->catalog_manager_impl().TEST_SendTestRetryRequest(
-      ts->server()->permanent_uuid(), kNumRetries, [&](const Status& s) {
+      ts->server()->permanent_uuid(), kNumRetries, [shared_data](const Status& s) {
         LOG(INFO) << "Done: " << s;
-        status = s;
-        done.CountDown();
+        {
+          UniqueLock<std::shared_mutex> lock(shared_data->mutex);
+          shared_data->status = s;
+        }
+        shared_data->done.CountDown();
       }));
 
   LOG(INFO) << "Task scheduled";
 
-  ASSERT_TRUE(done.WaitFor(
-      MonoDelta::FromMilliseconds(FLAGS_retrying_ts_rpc_max_delay_ms * kNumRetries * 1.1)));
+  ASSERT_TRUE(shared_data->done.WaitFor(MonoDelta::FromMilliseconds(
+      (FLAGS_retrying_ts_rpc_max_delay_ms + kMaxJitterMs) * kNumRetries *
+      RegularBuildVsSanitizers(1.1, 1.2))));
 
-  ASSERT_OK(status);
+  {
+    SharedLock<std::shared_mutex> lock(shared_data->mutex);
+    ASSERT_OK(shared_data->status);
+  }
 }
 
 }  // namespace yb

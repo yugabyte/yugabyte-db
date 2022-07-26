@@ -47,6 +47,7 @@ import com.fasterxml.jackson.databind.ObjectReader;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
+import com.google.common.net.HostAndPort;
 import com.google.protobuf.ByteString;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Commissioner;
@@ -81,6 +82,7 @@ import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
 import com.yugabyte.yw.models.helpers.ColumnDetails;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -132,7 +134,6 @@ public class TablesControllerTest extends FakeDBApplication {
 
   @Rule public MockitoRule rule = MockitoJUnit.rule();
 
-  private YBClientService mockService;
   private TablesController tablesController;
   private YBClient mockClient;
   private AuditService auditService;
@@ -159,7 +160,6 @@ public class TablesControllerTest extends FakeDBApplication {
   public void setUp() {
     mockClient = mock(YBClient.class);
     mockConfig = mock(Config.class);
-    mockService = mock(YBClientService.class);
     mockListTablesResponse = mock(ListTablesResponse.class);
     mockSchemaResponse = mock(GetTableSchemaResponse.class);
     mockNodeUniverseManager = mock(NodeUniverseManager.class);
@@ -1055,15 +1055,17 @@ public class TablesControllerTest extends FakeDBApplication {
 
   @Test
   public void testListTableSpaces() throws Exception {
-    Universe u1 = createUniverse(customer.getCustomerId());
-    u1 = Universe.saveDetails(u1.universeUUID, ApiUtils.mockUniverseUpdater());
-    LOG.info("new code");
+    Provider provider = ModelFactory.awsProvider(customer);
+    Universe u1 = createFromConfig(provider, "Existing", "r1-az1-4-1;r1-az2-3-1;r1-az3-4-1");
+
     final String shellResponseString =
         TestUtils.readResource("com/yugabyte/yw/controllers/tablespaces_shell_response.txt");
 
+    when(mockClient.getLeaderMasterHostAndPort())
+        .thenReturn(HostAndPort.fromParts("1.1.1.1", 7000));
     ShellResponse shellResponse1 =
         ShellResponse.create(ShellResponse.ERROR_CODE_SUCCESS, shellResponseString);
-    when(mockNodeUniverseManager.runYsqlCommand(anyObject(), anyObject(), anyString(), anyObject()))
+    when(mockNodeUniverseManager.runYsqlCommand(any(), any(), anyString(), any()))
         .thenReturn(shellResponse1);
 
     Result r = tablesController.listTableSpaces(customer.uuid, u1.universeUUID);

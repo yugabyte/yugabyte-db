@@ -93,7 +93,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       "create_snapshot",
       " <table>"
       " [<table>]..."
-      " [flush_timeout_in_seconds] (default 60, set 0 to skip flushing)",
+      " [<flush_timeout_in_seconds>] (default 60, set 0 to skip flushing)",
       [client](const CLIArguments& args) -> Status {
         int timeout_secs = 60;
         const auto tables = VERIFY_RESULT(ResolveTableNames(
@@ -229,7 +229,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
-      "restore_snapshot", Format(" <snapshot_id> [{<timestamp> | $0 {interval}]", kMinus),
+      "restore_snapshot", Format(" <snapshot_id> [<timestamp> | $0 <interval>]", kMinus),
       [client](const CLIArguments& args) -> Status {
         if (args.size() < 1 || 3 < args.size()) {
           return ClusterAdminCli::kInvalidArguments;
@@ -325,7 +325,8 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
-      "set_preferred_zones", " <cloud.region.zone[:priority]> [<cloud.region.zone>[:priority]]...",
+      "set_preferred_zones",
+      " <cloud.region.zone>[:<priority>] [<cloud.region.zone>[:<priority>]]...",
       [client](const CLIArguments& args) -> Status {
         if (args.size() < 1) {
           return ClusterAdminCli::kInvalidArguments;
@@ -335,7 +336,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
-      "rotate_universe_key", " key_path",
+      "rotate_universe_key", " <key_path>",
       [client](const CLIArguments& args) -> Status {
         if (args.size() < 1) {
           return ClusterAdminCli::kInvalidArguments;
@@ -360,7 +361,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
-      "add_universe_key_to_all_masters", " key_id key_path",
+      "add_universe_key_to_all_masters", " <key_id> <key_path>",
       [client](const CLIArguments& args) -> Status {
         if (args.size() != 2) {
           return ClusterAdminCli::kInvalidArguments;
@@ -376,7 +377,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
-      "all_masters_have_universe_key_in_memory", " key_id",
+      "all_masters_have_universe_key_in_memory", " <key_id>",
       [client](const CLIArguments& args) -> Status {
         if (args.size() != 1) {
           return ClusterAdminCli::kInvalidArguments;
@@ -387,7 +388,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
-      "rotate_universe_key_in_memory", " key_id",
+      "rotate_universe_key_in_memory", " <key_id>",
       [client](const CLIArguments& args) -> Status {
         if (args.size() != 1) {
           return ClusterAdminCli::kInvalidArguments;
@@ -433,7 +434,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
-    "create_change_data_stream", " <namespace> [checkpoint_type]",
+    "create_change_data_stream", " <namespace> [<checkpoint_type>]",
     [client](const CLIArguments& args) -> Status {
       if (args.size() < 1) {
         return ClusterAdminCli::kInvalidArguments;
@@ -496,7 +497,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
     });
 
   Register(
-      "list_cdc_streams", " [table_id]",
+      "list_cdc_streams", " [<table_id>]",
       [client](const CLIArguments& args) -> Status {
         if (args.size() != 0 && args.size() != 1) {
           return ClusterAdminCli::kInvalidArguments;
@@ -508,7 +509,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
-    "list_change_data_streams", " [namespace]",
+    "list_change_data_streams", " [<namespace>]",
     [client](const CLIArguments& args) -> Status {
       if (args.size() != 0 && args.size() != 1) {
         return ClusterAdminCli::kInvalidArguments;
@@ -538,7 +539,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
   Register(
       "setup_universe_replication",
       " <producer_universe_uuid> <producer_master_addresses> <comma_separated_list_of_table_ids>"
-          " [comma_separated_list_of_producer_bootstrap_ids]"  ,
+          " [<comma_separated_list_of_producer_bootstrap_ids>]"  ,
       [client](const CLIArguments& args) -> Status {
         if (args.size() < 3) {
           return ClusterAdminCli::kInvalidArguments;
@@ -585,11 +586,11 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
   Register(
       "alter_universe_replication",
       " <producer_universe_id>"
-      " {set_master_addresses [comma_separated_list_of_producer_master_addresses] |"
-      "  add_table [comma_separated_list_of_table_ids]"
-      "            [comma_separated_list_of_producer_bootstrap_ids] |"
-      "  remove_table [comma_separated_list_of_table_ids] [ignore-errors] |"
-      "  rename_id <new_producer_universe_id>}",
+      " (set_master_addresses [<comma_separated_list_of_producer_master_addresses>] |"
+       " add_table [<comma_separated_list_of_table_ids>]"
+                 " [<comma_separated_list_of_producer_bootstrap_ids>] |"
+       " remove_table [<comma_separated_list_of_table_ids>] [ignore-errors] |"
+       " rename_id <new_producer_universe_id>)",
       [client](const CLIArguments& args) -> Status {
         if (args.size() < 3 || args.size() > 4) {
           return ClusterAdminCli::kInvalidArguments;
@@ -645,7 +646,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
-      "set_universe_replication_enabled", " <producer_universe_uuid> <0|1>",
+      "set_universe_replication_enabled", " <producer_universe_uuid> (0|1)",
       [client](const CLIArguments& args) -> Status {
         if (args.size() < 2) {
           return ClusterAdminCli::kInvalidArguments;

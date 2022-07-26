@@ -396,4 +396,17 @@ public class UtilTest extends FakeDBApplication {
     assertEquals(expectedNamespace, namespace);
     assertThat("Max namespace length", namespace.length(), lessThanOrEqualTo(63));
   }
+
+  @Parameters({
+    "CREATE USER FOO PASSWORD REDACTED; CREATE USER BAR PASSWORD REDACTED;,"
+        + "CREATE USER FOO PASSWORD 'fooBar'; CREATE USER BAR PASSWORD 'fooBar';",
+    "\"ALTER USER \"yugabyte\" WITH PASSWORD REDACTED; "
+        + "SELECT pg_stat_statements_reset();\"',"
+        + "\"ALTER USER \"yugabyte\" WITH PASSWORD '\"'\"'FO@BAR'\"'\"'; "
+        + "SELECT pg_stat_statements_reset();\"'"
+  })
+  @Test
+  public void testYsqlRedaction(String output, String input) {
+    assertEquals(output, Util.redactYsqlQuery(input));
+  }
 }
