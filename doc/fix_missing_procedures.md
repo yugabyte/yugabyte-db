@@ -12,10 +12,10 @@ The best way to fix this and ensure all PROCEDUREs have been installed is to dro
 
 ## Update Steps
 
- 1. Perform a pg_dump of the data from the pg_partman configuration tables. Note that the contents of this dump will only contain the data and not the table definitions. The definitions are part of the CREATE EXTENSION step. This is just doing a plaintext dump to make it easier to review the contents if desired.
-
+ 1. Perform a pg_dump of the data from the pg_partman configuration tables. Note that the contents of this dump will only contain the data and not the table definitions. The definitions are part of the CREATE EXTENSION step. This is just doing a plaintext dump to make it easier to review the contents if desired. Note the following command assumes pg_partman was installed in the `partman` schema.
+```
 pg_dump -d mydbname -Fp -a -f partman_update_procedures.sql -t partman.part_config -t partman.part_config_sub
-
+```
  2. Drop the pg_partman extension. If it was installed in a specific schema make note of this and reinstall it to that same schema
 ```
 \dx pg_partman
