@@ -14,16 +14,16 @@ menu:
 type: docs
 ---
 
-YugabyteDB allows external applications to set the priority of individual transactions. When using optimistic concurrency control, it is possible to ensure that a *higher priority* transaction gets priority over a lower priority transaction. In this scenario, if these transactions conflict, the *lower priority* transaction is aborted. This behavior can be achieved by setting the pair of session variables `yb_transaction_priority_lower_bound` and `yb_transaction_priority_upper_bound`. A random number between the lower and upper bound is computed and assigned as the transaction priority for the transactions in that session. If this transaction conflicts with another, the value of transaction priority is compared with that of the conflicting transaction. The transaction with a higher priority value wins.
+YugabyteDB allows external applications to set the priority of individual transactions. When using optimistic concurrency control, it is possible to ensure that a *higher priority* transaction gets priority over a lower priority transaction. In this scenario, if these transactions conflict, the *lower priority* transaction is aborted. This behavior can be achieved by setting the pair of session variables `yb_transaction_priority_lower_bound`, and `yb_transaction_priority_upper_bound`. A random number between the lower and upper bound is computed and assigned as the transaction priority for the transactions in that session. If this transaction conflicts with another, the value of transaction priority is compared with that of the conflicting transaction. The transaction with a higher priority value wins. To view the transaction priority of the active transaction in current session the session variable `yb_transaction_priority` can be used with the `SHOW` statement.
 
 | Flag | Valid Range | Description |
 | --- | --- | --- |
 | `yb_transaction_priority_lower_bound` | Any value between 0 and 1, lower than the upper bound | Minimum transaction priority for transactions run in this session |
 | `yb_transaction_priority_upper_bound` | Any value between 0 and 1, higher than the lower bound | Maximum transaction priority for transactions run in this session |
 
-
 {{< note title="Note" >}}
 Currently, transaction priorities work in the following scenarios:
+
 * Works with YSQL only, not supported for YCQL
 * Can be used only with optimistic concurrency control, not yet implemented for pessimistic concurrency control
 * Only conflict resolution is prioritized, not resource consumption as a part
@@ -32,7 +32,7 @@ Some of the improvements are planned.
 
 {{< /note >}}
 
-It is possible to set the priority of a transaction using the two session variables `yb_transaction_priority_lower_bound` and `yb_transaction_priority_upper_bound` each of which can be set to a value between 0.0 and 1.0, as shown below. When a transaction is executed, a random priority between the lower and upper bound is assigned to it. This can be used as shown in the example below.
+It is possible to set the priority of a transaction using the two session variables `yb_transaction_priority_lower_bound` and `yb_transaction_priority_upper_bound`, each of which can be set to a value between 0.0 and 1.0, as shown in the following example. When a transaction is executed, a random priority between the lower and upper bound is assigned to it.
 
 Let's create a YugabyteDB cluster, and open two separate `ysqlsh` connections to it.
 
@@ -41,7 +41,8 @@ You can create a cluster in the free tier of YugabyteDB Managed, and open two *c
 
 {{< /tip >}}
 
-Let's create an example scenario of an accounts table, and insert a row into it as shown below.
+Let's create an example scenario of an accounts table, and insert a row into as follows:
+
 ```sql
 create table account
   (
@@ -56,7 +57,6 @@ insert into account values
 ```
 
 Now, we're going to perform a deposit and a withdrawal at the same time. Also, assume we want to give higher priority to deposit transactions (when compared to withdrawals). To simulate this, we're going to perform two operations concurrently - a withdrawal in one session, and a deposit from a separate session. The deposit transaction starts after the withdrawal is initiated, but occurs before the withdrawal is completed from a separate session. This is shown below.
-
 
 <table style="margin:0 5px;">
   <tr>
@@ -85,7 +85,7 @@ set yb_transaction_priority_upper_bound= 0.9;
     <td style="width:50%;">
     Initiate the withdrawal of $100.
     <pre><code style="padding: 0 10px;">
-begin transaction /* lower priority transaction */;
+begin transaction /*lower priority transaction*/;
 update account set balance = balance - 100::money
     where name='kevin' and type='checking';
     </code></pre>
@@ -109,7 +109,7 @@ select * from account;
     <td style="width:50%;">
     Next, initiate the deposit of $200, which should have higher priority.
     <pre><code style="padding: 0 10px;">
-begin transaction /* high priority transaction */;
+begin transaction /*high priority transaction*/;
 update account set balance = balance + 200::money
     where name='kevin' and type='checking';
     </code></pre>
