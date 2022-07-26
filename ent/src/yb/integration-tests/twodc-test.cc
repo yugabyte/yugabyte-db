@@ -95,6 +95,9 @@ DECLARE_int32(transaction_table_num_tablets);
 DECLARE_bool(enable_replicate_transaction_status_table);
 DECLARE_bool(TEST_block_get_changes);
 DECLARE_bool(TEST_hang_wait_replication_drain);
+DECLARE_int32(ns_replication_sync_retry_secs);
+DECLARE_int32(ns_replication_sync_backoff_secs);
+
 namespace yb {
 
 using client::YBClient;
@@ -2623,6 +2626,164 @@ TEST_P(TwoDCTest, DeleteTableChecksCQL) {
     ASSERT_OK(producer_client()->DeleteTable(producer_table_id));
     ASSERT_OK(consumer_client()->DeleteTable(consumer_table_id));
   }
+}
+
+TEST_P(TwoDCTest, SetupNSUniverseReplicationExtraConsumerTables) {
+  // Initial setup: create 2 tables on each side.
+  constexpr int kNTabletsPerTable = 3;
+  std::vector<uint32_t> table_vector = {kNTabletsPerTable, kNTabletsPerTable};
+  auto tables = ASSERT_RESULT(SetUpWithParams(table_vector, table_vector, 1));
+  std::vector<std::shared_ptr<client::YBTable>> producer_tables;
+  std::vector<std::shared_ptr<client::YBTable>> consumer_tables;
+  producer_tables.reserve(4);
+  consumer_tables.reserve(4);
+  for (size_t i = 0; i < tables.size(); i++) {
+    if (i % 2 == 0) {
+      producer_tables.push_back(tables[i]);
+    } else {
+      consumer_tables.push_back(tables[i]);
+    }
+  }
+
+  // Create 2 more consumer tables.
+  for (int i = 2; i < 4; i++) {
+    auto t = ASSERT_RESULT(CreateTable(
+        consumer_client(), kNamespaceName, Format("test_table_$0", i), kNTabletsPerTable));
+    consumer_tables.push_back({});
+    ASSERT_OK(consumer_client()->OpenTable(t, &consumer_tables.back()));
+  }
+
+  // Setup NS universe replication. Only the first 2 consumer tables will be replicated.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ns_replication_sync_retry_secs) = 1;
+  ASSERT_OK(SetupNSUniverseReplication(
+      producer_cluster(), consumer_cluster(), consumer_client(),
+      kUniverseId, kNamespaceName, YQLDatabase::YQL_DATABASE_CQL));
+  ASSERT_OK(VerifyNSUniverseReplication(
+      consumer_cluster(), consumer_client(),
+      kUniverseId, narrow_cast<int>(producer_tables.size())));
+
+  // Create the additional 2 tables on producer. Verify that they are added automatically.
+  for (int i = 2; i < 4; i++) {
+    auto t = ASSERT_RESULT(CreateTable(
+        producer_client(), kNamespaceName, Format("test_table_$0", i), kNTabletsPerTable));
+    producer_tables.push_back({});
+    ASSERT_OK(producer_client()->OpenTable(t, &producer_tables.back()));
+  }
+  ASSERT_OK(VerifyNSUniverseReplication(
+      consumer_cluster(), consumer_client(),
+      kUniverseId, narrow_cast<int>(consumer_tables.size())));
+
+  // Write some data and verify replication.
+  for (size_t i = 0; i < producer_tables.size(); i++) {
+    const auto& producer_table = producer_tables[i];
+    const auto& consumer_table = consumer_tables[i];
+    LOG(INFO) << "Writing records for table " << producer_table->name().ToString();
+    WriteWorkload(0, narrow_cast<int>(10 * (i + 1)), producer_client(), producer_table->name());
+    ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
+  }
+  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
+}
+
+TEST_P(TwoDCTest, SetupNSUniverseReplicationExtraProducerTables) {
+  // Initial setup: create 2 tables on each side.
+  constexpr int kNTabletsPerTable = 3;
+  std::vector<uint32_t> table_vector = {kNTabletsPerTable, kNTabletsPerTable};
+  auto tables = ASSERT_RESULT(SetUpWithParams(table_vector, table_vector, 1));
+  std::vector<std::shared_ptr<client::YBTable>> producer_tables;
+  std::vector<std::shared_ptr<client::YBTable>> consumer_tables;
+  producer_tables.reserve(4);
+  consumer_tables.reserve(4);
+  for (size_t i = 0; i < tables.size(); i++) {
+    if (i % 2 == 0) {
+      producer_tables.push_back(tables[i]);
+    } else {
+      consumer_tables.push_back(tables[i]);
+    }
+  }
+
+  // Create 2 more producer tables.
+  for (int i = 2; i < 4; i++) {
+    auto t = ASSERT_RESULT(CreateTable(
+        producer_client(), kNamespaceName, Format("test_table_$0", i), kNTabletsPerTable));
+    producer_tables.push_back({});
+    ASSERT_OK(producer_client()->OpenTable(t, &producer_tables.back()));
+  }
+
+  // Setup NS universe replication. Only the first 2 producer tables will be replicated.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ns_replication_sync_backoff_secs) = 1;
+  ASSERT_OK(SetupNSUniverseReplication(
+      producer_cluster(), consumer_cluster(), consumer_client(),
+      kUniverseId, kNamespaceName, YQLDatabase::YQL_DATABASE_CQL));
+  ASSERT_OK(VerifyNSUniverseReplication(
+      consumer_cluster(), consumer_client(),
+      kUniverseId, narrow_cast<int>(consumer_tables.size())));
+
+  // Create the additional 2 tables on consumer. Verify that they are added automatically.
+  for (int i = 2; i < 4; i++) {
+    auto t = ASSERT_RESULT(CreateTable(
+        consumer_client(), kNamespaceName, Format("test_table_$0", i), kNTabletsPerTable));
+    consumer_tables.push_back({});
+    ASSERT_OK(consumer_client()->OpenTable(t, &consumer_tables.back()));
+  }
+  ASSERT_OK(VerifyNSUniverseReplication(
+      consumer_cluster(), consumer_client(),
+      kUniverseId, narrow_cast<int>(producer_tables.size())));
+
+  // Write some data and verify replication.
+  for (size_t i = 0; i < producer_tables.size(); i++) {
+    const auto& producer_table = producer_tables[i];
+    const auto& consumer_table = consumer_tables[i];
+    LOG(INFO) << "Writing records for table " << producer_table->name().ToString();
+    WriteWorkload(0, narrow_cast<int>(10 * (i + 1)), producer_client(), producer_table->name());
+    ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
+  }
+  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
+}
+
+TEST_P(TwoDCTest, SetupNSUniverseReplicationTwoNamespace) {
+  // Create 2 tables in one namespace.
+  constexpr int kNTabletsPerTable = 1;
+  std::vector<uint32_t> table_vector = {kNTabletsPerTable, kNTabletsPerTable};
+  auto tables = ASSERT_RESULT(SetUpWithParams(table_vector, table_vector, 1));
+
+  // Create 2 tables in another namespace.
+  string kNamespaceName2 = "test_namespace_2";
+  std::vector<std::shared_ptr<client::YBTable>> producer_tables;
+  std::vector<std::shared_ptr<client::YBTable>> consumer_tables;
+  producer_tables.reserve(2);
+  consumer_tables.reserve(2);
+  for (int i = 0; i < 2; i++) {
+    auto ptable = ASSERT_RESULT(CreateTable(
+        producer_client(), kNamespaceName2, Format("test_table_$0", i), kNTabletsPerTable));
+    producer_tables.push_back({});
+    ASSERT_OK(producer_client()->OpenTable(ptable, &producer_tables.back()));
+
+    auto ctable = ASSERT_RESULT(CreateTable(
+        consumer_client(), kNamespaceName2, Format("test_table_$0", i), kNTabletsPerTable));
+    consumer_tables.push_back({});
+    ASSERT_OK(consumer_client()->OpenTable(ctable, &consumer_tables.back()));
+  }
+
+  // Setup NS universe replication for the second namespace. Verify that the tables under the
+  // first namespace will not be added to the replication.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ns_replication_sync_backoff_secs) = 1;
+  ASSERT_OK(SetupNSUniverseReplication(
+      producer_cluster(), consumer_cluster(), consumer_client(),
+      kUniverseId, kNamespaceName2, YQLDatabase::YQL_DATABASE_CQL));
+  SleepFor(MonoDelta::FromSeconds(5)); // Let the bg thread run a few times.
+  ASSERT_OK(VerifyNSUniverseReplication(
+      consumer_cluster(), consumer_client(),
+      kUniverseId, narrow_cast<int>(producer_tables.size())));
+
+  // Write some data and verify replication.
+  for (size_t i = 0; i < producer_tables.size(); i++) {
+    const auto& producer_table = producer_tables[i];
+    const auto& consumer_table = consumer_tables[i];
+    LOG(INFO) << "Writing records for table " << producer_table->name().ToString();
+    WriteWorkload(0, narrow_cast<int>(10 * (i + 1)), producer_client(), producer_table->name());
+    ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
+  }
+  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
 }
 
 class TwoDCTestWaitForReplicationDrain : public TwoDCTest {

@@ -533,7 +533,7 @@ class YBClient {
   Status UpdateCDCStream(const std::vector<CDCStreamId>& stream_ids,
                          const std::vector<master::SysCDCStreamEntryPB>& new_entries);
 
-  Result<bool> IsBootstrapRequired(const TableId& table_id,
+  Result<bool> IsBootstrapRequired(const std::vector<TableId>& table_ids,
                                    const boost::optional<CDCStreamId>& stream_id = boost::none);
 
   // Update consumer pollers after a producer side tablet split.
@@ -571,7 +571,9 @@ class YBClient {
   // List tables in a namespace.
   //
   // 'tables' is appended to only on success.
-  Result<std::vector<YBTableName>> ListUserTables(const NamespaceId& ns_id = "");
+  Result<std::vector<YBTableName>> ListUserTables(
+      const master::NamespaceIdentifierPB& ns_identifier,
+      bool include_indexes = false);
 
   Result<std::unordered_map<uint32_t, string>> GetPgEnumOidLabelMap(const NamespaceName& ns_name);
 
