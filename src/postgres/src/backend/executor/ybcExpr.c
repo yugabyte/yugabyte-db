@@ -156,6 +156,31 @@ Expr *YbExprInstantiateParams(Expr* expr, ParamListInfo paramLI)
 }
 
 /*
+ * YbInstantiateRemoteParams
+ *	  Replace the Param nodes of the expression trees with Const nodes carrying
+ *	  current parameter values before pushing the expression down to DocDB.
+ */
+PushdownExprs *
+YbInstantiateRemoteParams(PushdownExprs *remote, ParamListInfo paramLI)
+{
+	PushdownExprs *result;
+	if (remote->qual == NIL)
+		return NULL;
+	/* Make new instance for the scan state. */
+	result = (PushdownExprs *) palloc(sizeof(PushdownExprs));
+	/* Store mutated list of expressions. */
+	result->qual = (List *) YbExprInstantiateParams((Expr *) remote->qual,
+													paramLI);
+	/*
+	 * Column references are not modified by the executor, so it is OK to copy
+	 * the reference.
+	 */
+	result->colrefs = remote->colrefs;
+	return result;
+}
+
+
+/*
  * yb_can_pushdown_func
  *
  *	  Determine if the function can be pushed down to DocDB
