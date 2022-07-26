@@ -20,19 +20,22 @@ YugabyteDB allows external applications to set the priority of individual transa
 | --- | --- | --- |
 | `yb_transaction_priority_lower_bound` | Any value between 0 and 1, lower than the upper bound | Minimum transaction priority for transactions run in this session |
 | `yb_transaction_priority_upper_bound` | Any value between 0 and 1, higher than the lower bound | Maximum transaction priority for transactions run in this session |
+| `yb_transaction_priority` (read-only) | Displays one of these priority values : Normal, High, or Highest | The transaction priority of the active transaction in the current session |
 
 {{< note title="Note" >}}
 Currently, transaction priorities work in the following scenarios:
 
-* Works with YSQL only, not supported for YCQL
-* Can be used only with optimistic concurrency control, not yet implemented for pessimistic concurrency control
-* Only conflict resolution is prioritized, not resource consumption as a part
+* Works with YSQL only, not supported for YCQL.
+* Can be used only with optimistic concurrency control, not yet implemented for pessimistic concurrency control.
+* Only conflict resolution is prioritized, not resource consumption as a part.
 
 Some of the improvements are planned.
 
 {{< /note >}}
 
 It is possible to set the priority of a transaction using the two session variables `yb_transaction_priority_lower_bound` and `yb_transaction_priority_upper_bound`, each of which can be set to a value between 0.0 and 1.0, as shown in the following example. When a transaction is executed, a random priority between the lower and upper bound is assigned to it.
+
+## Examples
 
 Let's create a YugabyteDB cluster, and open two separate `ysqlsh` connections to it.
 
@@ -157,3 +160,81 @@ yugabyte=> select * from account;
   </tr>
 
 </table>
+
+The following is another example which describes the usage of `yb_transaction_priority` based on the priority types. A transaction is a high priority one if it includes `SELECT`, `UPDATE` operations and so on.
+
+* From an active [ysqlsh](../../../admin/ysqlsh/#starting-ysqlsh) shell, create a table as follows:
+
+  ```sql
+  CREATE TABLE test_scan (i int, j int);
+  ```
+
+* Set `yb_transaction_priority_lower_bound` and `yb_transaction_priority_upper_bound` to be the same, which forces
+`yb_transaction_priority` to be equal to those two, as its not possible to have a deterministic `yb_transaction_priority`.
+
+  ```sql
+  set yb_transaction_priority_lower_bound = 0.4;
+  set yb_transaction_priority_upper_bound = 0.4;
+  ```
+
+* In a transaction block, perform an insert and view the transaction priority as follows:
+
+  ```sql
+  BEGIN TRANSACTION;
+  INSERT INTO test_scan (i, j) values (1, 1), (2, 2), (3, 3);
+  show yb_transaction_priority;
+  COMMIT;
+  ```
+
+  ```output
+      yb_transaction_priority
+  -------------------------------------------
+   0.400000000 (Normal priority transaction)
+  (1 row)
+  ```
+
+* Setting the yb_transaction_priority variable results in an error, because its a read-only flag. You can verify it as follows:
+
+  ```sql
+  set yb_transaction_priority = 0.3;
+  ```
+
+  ```output
+  ERROR:  parameter "yb_transaction_priority" cannot be changed
+  ```
+
+* In the next transaction block, perform a `SELECT` which results in a high priority transaction.
+
+  ```sql
+  set yb_transaction_priority_lower_bound = 0.4;
+  set yb_transaction_priority_upper_bound = 0.4;
+  BEGIN TRANSACTION;
+  SELECT i, j FROM test_scan WHERE i = 1 FOR UPDATE;
+  show yb_transaction_priority;
+  COMMIT;
+  ```
+
+  ```output
+      yb_transaction_priority
+  -------------------------------------------
+   0.400000000 (High priority transaction)
+  (1 row)
+  ```
+
+* In the final transaction block, set a higher `yb_transaction_priority_upper_bound` and `yb_transaction_priority_lower_bound` value, and perform the same `SELECT` query as the previous one. This transaction type is of the highest priority.
+
+  ```sql
+  set yb_transaction_priority_upper_bound = 1;
+  set yb_transaction_priority_lower_bound = 1;
+  BEGIN TRANSACTION;
+  SELECT i, j FROM test_scan WHERE i = 1 FOR UPDATE;
+  show yb_transaction_priority;
+  COMMIT;
+  ```
+
+  ```output
+      yb_transaction_priority
+  -------------------------------------------
+  Highest priority transaction
+  (1 row)
+  ```
