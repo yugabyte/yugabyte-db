@@ -838,6 +838,11 @@ public class NodeManagerTest extends FakeDBApplication {
           ybcFlags.put("yb_tserver_address", nodeIp);
           ybcFlags.put("log_dir", "/home/yugabyte/controller/logs");
           ybcFlags.put("yb_master_address", nodeIp);
+          String nfsDirs =
+              runtimeConfigFactory
+                  .forUniverse(Universe.getOrBadRequest(configureParams.universeUUID))
+                  .getString(NodeManager.YBC_NFS_DIRS);
+          ybcFlags.put("nfs_dirs", nfsDirs);
         }
 
         // boolean useHostname = !NodeManager.isIpAddress(configureParams.nodeName);
