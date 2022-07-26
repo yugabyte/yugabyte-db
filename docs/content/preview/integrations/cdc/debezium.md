@@ -22,10 +22,10 @@ Debezium is an open-source distributed platform used to capture the changes in a
 Using Docker, get the connector from Quay:
 
 ```sh
-docker pull quay.io/yugabyte/debezium-connector:1.3.4-BETA
+docker pull quay.io/yugabyte/debezium-connector:1.3.7-BETA
 ```
 
-### Build the Debezium connector on your own
+### Build the Debezium connector yourself
 
 If you want to build the connector image yourself, follow the steps listed in the [README for debezium-connector-yugabytedb](https://github.com/yugabyte/debezium/blob/final-connector-ybdb/debezium-connector-yugabytedb2/README.md).
 
@@ -36,13 +36,13 @@ Follow the steps in this section to run CDC with Debezium on a local YugabyteDB 
 1. Start Zookeeper.
 
     ```sh
-    docker run -it --rm --name zookeeper -p 2181:2181 -p 2888:2888 -p 3888:3888 debezium/zookeeper:1.6
+    docker run -it --rm --name zookeeper -p 2181:2181 -p 2888:2888 -p 3888:3888 debezium/zookeeper:1.7
     ```
 
 1. Start Kafka.
 
     ```sh
-    docker run -it --rm --name kafka -p 9092:9092 --link zookeeper:zookeeper debezium/kafka:1.6
+    docker run -it --rm --name kafka -p 9092:9092 --link zookeeper:zookeeper debezium/kafka:1.7
     ```
 
 1. Assign your computer's IP address to an environment variable.
@@ -96,7 +96,7 @@ docker run -it --rm \
   -e OFFSET_STORAGE_TOPIC=my_connect_offsets \
   -e STATUS_STORAGE_TOPIC=my_connect_statuses \
   --link zookeeper:zookeeper --link kafka:kafka \
-  quay.io/yugabyte/debezium-connector:1.3.4-BETA
+  quay.io/yugabyte/debezium-connector:1.3.7-BETA
 ```
 
 Deploy the configuration for the connector:
@@ -173,6 +173,6 @@ See [limitations](../../../explore/change-data-capture/#limitations) for more de
 ### Start a Kafka Topic console consumer (optional)
 
 ```sh
-docker run -it --rm --name consumer --link zookeeper:zookeeper --link kafka:kafka debezium/kafka:1.6 \
+docker run -it --rm --name consumer --link zookeeper:zookeeper --link kafka:kafka debezium/kafka:1.7 \
 watch-topic -a dbserver1.public.test
 ```
