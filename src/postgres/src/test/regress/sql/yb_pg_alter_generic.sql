@@ -387,34 +387,34 @@ DROP OPERATOR FAMILY alt_opf18 USING btree;
 --
 -- Text Search Configuration
 --
--- SET SESSION AUTHORIZATION regress_alter_generic_user1;
--- CREATE TEXT SEARCH CONFIGURATION alt_ts_conf1 (copy=english);
--- CREATE TEXT SEARCH CONFIGURATION alt_ts_conf2 (copy=english);
+SET SESSION AUTHORIZATION regress_alter_generic_user1;
+CREATE TEXT SEARCH CONFIGURATION alt_ts_conf1 (copy=english);
+CREATE TEXT SEARCH CONFIGURATION alt_ts_conf2 (copy=english);
 
--- ALTER TEXT SEARCH CONFIGURATION alt_ts_conf1 RENAME TO alt_ts_conf2;  -- failed (name conflict)
--- ALTER TEXT SEARCH CONFIGURATION alt_ts_conf1 RENAME TO alt_ts_conf3;  -- OK
--- ALTER TEXT SEARCH CONFIGURATION alt_ts_conf2 OWNER TO regress_alter_generic_user2;  -- failed (no role membership)
--- ALTER TEXT SEARCH CONFIGURATION alt_ts_conf2 OWNER TO regress_alter_generic_user3;  -- OK
--- ALTER TEXT SEARCH CONFIGURATION alt_ts_conf2 SET SCHEMA alt_nsp2;  -- OK
+ALTER TEXT SEARCH CONFIGURATION alt_ts_conf1 RENAME TO alt_ts_conf2;  -- failed (name conflict)
+ALTER TEXT SEARCH CONFIGURATION alt_ts_conf1 RENAME TO alt_ts_conf3;  -- OK
+ALTER TEXT SEARCH CONFIGURATION alt_ts_conf2 OWNER TO regress_alter_generic_user2;  -- failed (no role membership)
+ALTER TEXT SEARCH CONFIGURATION alt_ts_conf2 OWNER TO regress_alter_generic_user3;  -- OK
+ALTER TEXT SEARCH CONFIGURATION alt_ts_conf2 SET SCHEMA alt_nsp2;  -- OK
 
--- SET SESSION AUTHORIZATION regress_alter_generic_user2;
--- CREATE TEXT SEARCH CONFIGURATION alt_ts_conf1 (copy=english);
--- CREATE TEXT SEARCH CONFIGURATION alt_ts_conf2 (copy=english);
+SET SESSION AUTHORIZATION regress_alter_generic_user2;
+CREATE TEXT SEARCH CONFIGURATION alt_ts_conf1 (copy=english);
+CREATE TEXT SEARCH CONFIGURATION alt_ts_conf2 (copy=english);
 
--- ALTER TEXT SEARCH CONFIGURATION alt_ts_conf3 RENAME TO alt_ts_conf4;  -- failed (not owner)
--- ALTER TEXT SEARCH CONFIGURATION alt_ts_conf1 RENAME TO alt_ts_conf4;  -- OK
--- ALTER TEXT SEARCH CONFIGURATION alt_ts_conf3 OWNER TO regress_alter_generic_user2;  -- failed (not owner)
--- ALTER TEXT SEARCH CONFIGURATION alt_ts_conf2 OWNER TO regress_alter_generic_user3;  -- failed (no role membership)
--- ALTER TEXT SEARCH CONFIGURATION alt_ts_conf3 SET SCHEMA alt_nsp2;  -- failed (not owner)
--- ALTER TEXT SEARCH CONFIGURATION alt_ts_conf2 SET SCHEMA alt_nsp2;  -- failed (name conflict)
+ALTER TEXT SEARCH CONFIGURATION alt_ts_conf3 RENAME TO alt_ts_conf4;  -- failed (not owner)
+ALTER TEXT SEARCH CONFIGURATION alt_ts_conf1 RENAME TO alt_ts_conf4;  -- OK
+ALTER TEXT SEARCH CONFIGURATION alt_ts_conf3 OWNER TO regress_alter_generic_user2;  -- failed (not owner)
+ALTER TEXT SEARCH CONFIGURATION alt_ts_conf2 OWNER TO regress_alter_generic_user3;  -- failed (no role membership)
+ALTER TEXT SEARCH CONFIGURATION alt_ts_conf3 SET SCHEMA alt_nsp2;  -- failed (not owner)
+ALTER TEXT SEARCH CONFIGURATION alt_ts_conf2 SET SCHEMA alt_nsp2;  -- failed (name conflict)
 
--- RESET SESSION AUTHORIZATION;
+RESET SESSION AUTHORIZATION;
 
--- SELECT nspname, cfgname, rolname
---   FROM pg_ts_config t, pg_namespace n, pg_authid a
---   WHERE t.cfgnamespace = n.oid AND t.cfgowner = a.oid
---     AND n.nspname in ('alt_nsp1', 'alt_nsp2')
---   ORDER BY nspname, cfgname;
+SELECT nspname, cfgname, rolname
+  FROM pg_ts_config t, pg_namespace n, pg_authid a
+  WHERE t.cfgnamespace = n.oid AND t.cfgowner = a.oid
+    AND n.nspname in ('alt_nsp1', 'alt_nsp2')
+  ORDER BY nspname, cfgname;
 
 --
 -- Text Search Template
