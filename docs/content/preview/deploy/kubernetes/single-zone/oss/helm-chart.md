@@ -118,7 +118,7 @@ helm install yb-demo yugabytedb/yugabyte --version {{<yb-version version="previe
 
 #### On Minikube
 
-If you are running in a resource-constrained environment or a local environment, such as Minikube, you have to change the default resource requirements by using the following command:
+If you are running in a resource-constrained environment or a local environment, such as Minikube, you have to change the default resource requirements.
 
 Create a `yb-demo` namespace, as follows:
 

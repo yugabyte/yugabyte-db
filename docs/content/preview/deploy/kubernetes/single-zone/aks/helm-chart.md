@@ -2,7 +2,7 @@
 title: Deploy on Azure Kubernetes Service (AKS) using Helm chart
 headerTitle: Azure Kubernetes Service (AKS)
 linkTitle: Azure Kubernetes Service (AKS)
-description: Use Helm Chart to deploy a single-zone YugabyteDB cluster on Azure Kubernetes Service (AKS).
+description: Use Helm chart to deploy a single-zone YugabyteDB cluster on Azure Kubernetes Service (AKS).
 menu:
   preview:
     parent: deploy-kubernetes-sz
@@ -50,7 +50,7 @@ Before deploying YugabyteDB on AKS, verify that the following components are ins
 
 ## Deploy YugabyteDB on an Azure Kubernetes cluster
 
-The following examples are based on using the macOS.
+The following examples are based on using macOS.
 
 ### Step 1: Install the Azure CLI
 
@@ -143,7 +143,7 @@ Finished service principal creation[###################]  100.0000%
  - Running ..
 ```
 
-yugabytedbAKSCluster should be available in the Azure UI, as per the following illustration:
+`yugabytedbAKSCluster` should be available in the Azure UI, as per the following illustration:
 
 ![yugabytedbRG](/images/deploy/kubernetes/aks/aks-resource-group-cluster.png)
 
@@ -209,88 +209,82 @@ A browser window appears where you can view the Kubernetes dashboard, as per the
 
 ### Step 4: Install YugabyteDB using Helm chart
 
-You need to perform a number of steps to deploy YugabyteDB using the Helm chart:
+You need to perform a number of steps to deploy YugabyteDB using Helm chart:
 
-#### Add the Yugabyte charts repository
+1. Add the YugabyteDB `charts` repository by running the following commands:
 
-Add the YugabyteDB `charts` repository by running the following commands:
+   ```sh
+   helm repo add yugabytedb https://charts.yugabyte.com
+   ```
 
-```sh
-helm repo add yugabytedb https://charts.yugabyte.com
-```
+   Get the latest update from the `charts` repository by running the following `helm` command:
 
-Get the latest update from the `charts` repository by running the following `helm` command:
+   ```sh
+   helm repo update
+   ```
 
-```sh
-helm repo update
-```
+   ```output
+   Hang tight while we grab the latest from your chart repositories...
+   ...Successfully got an update from the "yugabytedb" chart repository
+   ```
 
-```output
-Hang tight while we grab the latest from your chart repositories...
-...Successfully got an update from the "yugabytedb" chart repository
-```
+   ```sh
+   helm search repo yugabytedb/yugabyte --version {{<yb-version version="preview" format="short">}}
+   ```
 
-```sh
-helm search repo yugabytedb/yugabyte --version {{<yb-version version="preview" format="short">}}
-```
+   ```output
+   NAME                 CHART VERSION  APP VERSION   DESCRIPTION
+   yugabytedb/yugabyte  {{<yb-version version="preview" format="short">}}          {{<yb-version version="preview" format="build">}}  YugabyteDB is the high-performance distributed ...
+   ```
 
-```output
-NAME                 CHART VERSION  APP VERSION   DESCRIPTION
-yugabytedb/yugabyte  {{<yb-version version="preview" format="short">}}          {{<yb-version version="preview" format="build">}}  YugabyteDB is the high-performance distributed ...
-```
+1. To create the `yb-demo` namespace, run the following command.
 
-#### Create the namespace
+   ```sh
+   kubectl create namespace yb-demo
+   ```
 
-To create the `yb-demo` namespace, run the following command.
+   The following message should appear:
 
-```sh
-kubectl create namespace yb-demo
-```
+   ```output
+   namespace/yb-demo created
+   ```
 
-The following message should appear:
+1. Install YugabyteDB in the `yb-demo` namespace by running the following commands to specify settings for resource constrained environments:
 
-```output
-namespace/yb-demo created
-```
+   ```sh
+   helm install yb-demo -n yb-demo yugabytedb/yugabyte \
+    --version {{<yb-version version="preview" format="short">}} \
+    --set storage.master.count=1 \
+    --set storage.tserver.count=1 \
+    --set storage.master.storageClass=default \
+    --set storage.tserver.storageClass=default \
+    --set resource.master.requests.cpu=1 \
+    --set resource.master.requests.memory=1Gi \
+    --set resource.tserver.requests.cpu=1 \
+    --set resource.tserver.requests.memory=1Gi \
+    --set resource.master.limits.cpu=1 \
+    --set resource.master.limits.memory=1Gi \
+    --set resource.tserver.limits.cpu=1 \
+    --set resource.tserver.limits.memory=1Gi \
+    --timeout=15m
+   ```
 
-#### Install YugabyteDB
+   Depending on your resources, it may take some time to get everything installed, deployed, and configured.
 
-Install YugabyteDB in the `yb-demo` namespace by running the following commands to specify settings for resource constrained environments:
+   After you see a `success` message, you can verify that the YugabyteDB pods are running by using the following command:
 
-```sh
-helm install yb-demo -n yb-demo yugabytedb/yugabyte \
- --version {{<yb-version version="preview" format="short">}} \
- --set storage.master.count=1 \
- --set storage.tserver.count=1 \
- --set storage.master.storageClass=default \
- --set storage.tserver.storageClass=default \
- --set resource.master.requests.cpu=1 \
- --set resource.master.requests.memory=1Gi \
- --set resource.tserver.requests.cpu=1 \
- --set resource.tserver.requests.memory=1Gi \
- --set resource.master.limits.cpu=1 \
- --set resource.master.limits.memory=1Gi \
- --set resource.tserver.limits.cpu=1 \
- --set resource.tserver.limits.memory=1Gi \
- --timeout=15m
-```
+   ```sh
+   kubectl get pods --namespace yb-demo
+   ```
 
-Depending on your resources, it may take some time to get everything installed, deployed, and configured.
+   ![Verify pods are running](/images/deploy/kubernetes/aks/aks-verify-pods-running.png)
 
-After you see a `success` message, you can verify that the YugabyteDB pods are running by using the following command:
+   To access the YugabyteDB Admin UI, run the following command to locate the **External IP** entry associated with `yb-master-ui` and port `7000`:
 
-```sh
-kubectl get pods --namespace yb-demo
-```
+   ```sh
+   kubectl get services --namespace yb-demo
+   ```
 
-![Verify pods are running](/images/deploy/kubernetes/aks/aks-verify-pods-running.png)
+   Navigate to `http://<EXTERNAL_IP>:7000`, replacing `<EXTERNAL_IP>` with your external IP address. You should see the following:
 
-To access the YugabyteDB Admin UI, run the following command to locate the **External IP** entry associated with `yb-master-ui` and port `7000`:
-
-```sh
-kubectl get services --namespace yb-demo
-```
-
-Navigate to `http://<EXTERNAL_IP>:7000`, replacing `<EXTERNAL_IP>` with your external IP address. You should see the following:
-
-![YugabyteDB Admin UI](/images/deploy/kubernetes/aks/aks-admin-ui.png)
+   ![YugabyteDB Admin UI](/images/deploy/kubernetes/aks/aks-admin-ui.png)

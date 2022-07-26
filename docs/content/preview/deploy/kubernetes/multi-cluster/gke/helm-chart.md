@@ -117,7 +117,7 @@ CURRENT   NAME                                          CLUSTER                 
           gke_yugabyte_us-west1-b_yugabytedb1           gke_yugabyte_us-west1-b_yugabytedb1
 ```
 
-Note that [Global access](https://cloud.google.com/kubernetes-engine/docs/how-to/internal-load-balancing#global_access) on load balancers is currently in beat and is available only on GKE clusters created using the `rapid` release channel.
+Note that [Global access](https://cloud.google.com/kubernetes-engine/docs/how-to/internal-load-balancing#global_access) on load balancers is currently in beta and is available only on GKE clusters created using the `rapid` release channel.
 
 ### Create a storage class per zone
 
@@ -179,13 +179,13 @@ kubectl apply -f gke-us-central1-b.yaml --context gke_yugabyte_us-central1-b_yug
 kubectl apply -f gke-us-east1-b.yaml --context gke_yugabyte_us-east1-b_yugabytedb3
 ```
 
-## Setup global DNS
+## Set up global DNS
 
 Set up a global DNS system across all three GKE clusters so that pods in one cluster can connect to pods in another cluster.
 
 ### Create load balancer configuration for kube-dns
 
-The following YAML file shown adds an internal load balancer (which is not exposed outside its own Google Cloud region) to Kubernetes's built-in `kube-dns` deployment. By default, the `kube-dns` deployment is accessed only by a `ClusterIP` and not a load balancer. You need to allow this load balancer to be [globally accessible](https://cloud.google.com/kubernetes-engine/docs/how-to/internal-load-balancing#global_access) so that each such load balancer is visible to two other load balancers in the other two regions.
+The following YAML file adds an internal load balancer (which is not exposed outside its own Google Cloud region) to Kubernetes built-in `kube-dns` deployment. By default, the `kube-dns` deployment is accessed only by a `ClusterIP` and not a load balancer. You need to allow this load balancer to be [globally accessible](https://cloud.google.com/kubernetes-engine/docs/how-to/internal-load-balancing#global_access) so that each such load balancer is visible to two other load balancers in the other two regions.
 
 Add the following contents to a file named `yb-dns-lb.yaml`:
 
@@ -397,7 +397,7 @@ gflags:
 
 ### Install YugabyteDB
 
-Create the YugabyteDB cluste such that one third of the nodes are hosted in each Kubernetes cluster, as follows:
+Create the YugabyteDB cluster such that one third of the nodes are hosted in each Kubernetes cluster, as follows:
 
 ```sh
 helm install yb-demo-us-west1-b yugabytedb/yugabyte \
@@ -506,7 +506,7 @@ Follow the instructions provided in [Explore YSQL](../../../../../quick-start/ex
 
 ## Connect using external clients
 
-To connect an external program, obtain the load balancer `EXTERNAL-IP` address of one of the `yb-tserver-service` service and connect to the 5433 or 9042 ports for YSQL or YCQL services respectively, as follows:
+To connect an external program, obtain the load balancer `EXTERNAL-IP` address of one of the `yb-tserver-service` services and connect to the 5433 or 9042 port for YSQL or YCQL service respectively, as follows:
 
 ```sh
 kubectl get services -n yb-demo-us-west1-b --context gke_yugabyte_us-west1-b_yugabytedb1

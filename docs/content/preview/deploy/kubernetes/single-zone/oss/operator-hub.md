@@ -69,7 +69,7 @@ YugabyteDB can be deployed on any Kubernetes cluster using OLM, as follows:
    yugabyte-operator.v0.0.1   Yugabyte Operator   0.0.1                Succeeded
    ```
 
-3. Create YugabyteDB Custom Resource to create YugabyteDB cluster using the operator deployed in the previous step, as follow:
+3. Create YugabyteDB Custom Resource using the operator deployed in the previous step:
 
    ```sh
    kubectl create namespace yb-operator && kubectl create -f https://raw.githubusercontent.com/yugabyte/yugabyte-operator/master/deploy/crds/yugabyte.com_v1alpha1_ybcluster_cr.yaml
@@ -97,7 +97,7 @@ For information on configuration flags, see [Configuration flags](../yugabyte-op
 
 ## Use YugabyteDB
 
-When all of the pods in YugabyteDB cluster are running, execute the following command in YSQL shell (`ysqlsh`) to access the YSQL API, which is PostgreSQL-compliant:
+When all of the pods in the YugabyteDB cluster are running, execute the following command in YSQL shell (`ysqlsh`) to access the YSQL API, which is PostgreSQL-compliant:
 
 ```sh
 kubectl exec -it -n yb-operator yb-tserver-0 -- ysqlsh -h yb-tserver-0  --echo-queries

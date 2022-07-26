@@ -36,6 +36,8 @@ type: docs
     </a>
   </li>
 </ul>
+
+
 Create and manage a YugabyteDB cluster with a Kubernetes native custom resource `ybcluster.yugabyte.com`. 
 
 The custom resource definition and other necessary specifications are available in [YugabyteDB operator repository](https://github.com/yugabyte/yugabyte-operator/). In addition, you may consult the full list of [configuration flags](#configuration-flags).
@@ -52,7 +54,7 @@ To create a YugabyteDB cluster, first you need to register the custom resource t
 kubectl create -f deploy/crds/yugabyte.com_ybclusters_crd.yaml
 ```
 
-Setup RBAC for operator and create the operator itself. Run the following command, from root of the repository, to do the same:
+Create and set up role-based access control (RBAC) for the operator by running the following command from root of the repository:
 
 ```sh
 kubectl create -f deploy/operator.yaml
@@ -104,7 +106,7 @@ Specify the required data replication factor. This is a required field.
 
 ### TLS
 
-Optionally, enable TLS encryption for YugabyteDB. It is disabled by default. You can enable the TLS encryption with three flags. If you have set `enabled` to `true`, then you need to generate the root certificate and key. Specify them under `rootCA.cert` and `rootCA.key`. Refer to [TLS encryption](../../../../../secure/tls-encryption/server-certificates/) for more information.
+Optionally, enable TLS encryption for YugabyteDB. It is disabled by default. You can enable the TLS encryption with three flags. If you have set `enabled` to `true`, then you need to generate the root certificate and key. Specify them under `rootCA.cert` and `rootCA.key`. Refer to [Create server certificates](../../../../../secure/tls-encryption/server-certificates/) for more information.
 
 ### YB-Master and YB-TServer
 
@@ -126,7 +128,7 @@ A ClusterIP service is created when the `tserver.tserverUIPort` port is specifie
 
 If `master.enableLoadBalancer` is set to `true`, then master UI service is of type `LoadBalancer`. The YB-TServer UI service is of type `LoadBalancer`, if `tserver.tserverUIPort` is specified and `tserver.enableLoadBalancer` is set to `true`. `tserver.enableLoadBalancer` is ignored if `tserver.tserverUIPort` is not specified.
 
-The following table lists acceptable port names, applicable component (YB-Master or YB-TServer) and port default values:
+The following table lists acceptable port names, applicable component (YB-Master or YB-TServer), and port default values:
 
 | Attribute      | Component | Default Value |
 | -------------- | --------- | ------------- |
@@ -144,7 +146,7 @@ Specify pod management policy for Statefulsets created as part of a YugabyteDB c
 
 #### storage
 
-Specify storage configurations viz. Storage `count`, `size`, and `storageClass` of volumes. Typically, 1 volume per YB-Master instance is sufficient, hence YB-Master has a default storage count of `1`. If the storage class is not specified, it defaults to `standard`. Make sure the Kubernetes admin has defined the`standard` storage class, before leaving this field out.
+Specify storage configurations, namely storage `count`, `size`, and `storageClass` of volumes. Typically, one volume per YB-Master instance is sufficient, hence YB-Master has a default storage count of `1`. If the storage class is not specified, it defaults to `standard`. Make sure the Kubernetes admin has defined the`standard` storage class, before leaving this field out.
 
 #### resources
 
@@ -152,7 +154,7 @@ Specify resource `requests` and `limits` under the `resources` attribute. The re
 
 #### flags
 
-Specify flags for additional control of the YugabyteDB cluster. For for information, see [YB-Master flags](../../../../../reference/configuration/yb-master/#flags) and [YB-TServer flags](../../../../../reference/configuration/yb-tserver/#flags).
+Specify flags for additional control of the YugabyteDB cluster. For more information, see [YB-Master flags](../../../../../reference/configuration/yb-master/#flags) and [YB-TServer flags](../../../../../reference/configuration/yb-tserver/#flags).
 
 If you have enabled TLS encryption, then you can set the following flags:
 

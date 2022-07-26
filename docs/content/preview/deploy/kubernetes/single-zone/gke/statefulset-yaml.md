@@ -34,6 +34,8 @@ type: docs
     </a>
   </li>
 </ul>
+
+
 ## Prerequisites
 
 Before starting deployment, perform the following:
@@ -48,13 +50,13 @@ Before starting deployment, perform the following:
   gcloud components install kubectl
   ```
 
-- Configure defaults for `gcloud` by setting the project ID as `yugabyte`. You can change this as per your need.
+- Configure defaults for `gcloud` by setting the project ID as `yugabyte`. You can change this as needed.
 
   ```sh
   gcloud config set project yugabyte
   ```
 
-- Set the default compute zone as `us-west1-b`. You can change this as per your need.
+- Set the default compute zone as `us-west1-b`. You can change this as needed.
 
   ```sh
   gcloud config set compute/zone us-west1-b
