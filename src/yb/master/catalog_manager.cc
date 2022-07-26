@@ -500,6 +500,10 @@ DEFINE_test_flag(bool, pause_split_child_registration,
                  false, "Pause split after registering one child");
 TAG_FLAG(TEST_pause_split_child_registration, runtime);
 
+DEFINE_test_flag(bool, keep_docdb_table_on_ysql_drop_table, false,
+                 "When enabled does not delete tables from the docdb layer, resulting in YSQL "
+                 "tables only being dropped in the postgres layer.");
+
 namespace yb {
 namespace master {
 
@@ -5241,6 +5245,11 @@ Status CatalogManager::DeleteTable(
             << req->ShortDebugString();
 
   scoped_refptr<TableInfo> table = VERIFY_RESULT(FindTable(req->table()));
+
+  if (PREDICT_FALSE(FLAGS_TEST_keep_docdb_table_on_ysql_drop_table) &&
+      table->GetTableType() == PGSQL_TABLE_TYPE) {
+    return Status::OK();
+  }
 
   // For now, only disable dropping YCQL tables under xCluster replication.
   bool result = table->GetTableType() == YQL_TABLE_TYPE && IsCdcEnabled(*table);
