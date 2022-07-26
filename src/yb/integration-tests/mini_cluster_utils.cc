@@ -68,7 +68,10 @@ void AssertRunningTransactionsCountLessOrEqualTo(MiniCluster* cluster,
       continue;
     }
     for (const auto& peer : tablets) {
-      auto participant = peer->tablet()->transaction_participant();
+      // Keep a ref to guard against Shutdown races.
+      auto tablet = peer->shared_tablet();
+      if (!tablet) continue;
+      auto participant = tablet->transaction_participant();
       if (participant) {
         auto status = Wait([participant, max_remaining_txns_per_tablet] {
               return participant->TEST_GetNumRunningTransactions() <= max_remaining_txns_per_tablet;
