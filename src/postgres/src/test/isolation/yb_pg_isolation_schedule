@@ -32,3 +32,5 @@ test: nowait-2
 test: nowait-3
 test: aborted-keyrevoke
 test: delete-abort-savept-2
+test: ignore-intent-of-rolled-back-savepoint-cross-txn
+test: ensure-lock-only-conflict-always-ignored
