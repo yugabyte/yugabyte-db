@@ -76,7 +76,7 @@
     mode: 0700
     owner: "{{ create_user.name  }}"
     group: "{{ create_user.group  }}"
-  when: ssh_type == "ssh2"
+  when: ssh_config.ssh_type == "ssh2"
 
 - name: Allow AMI building to connect as yugabyte
   copy:
@@ -87,7 +87,7 @@
     mode: 0400
   become: yes
   tags: yb-prebuilt-ami
-  when: ssh_type == "ssh2"
+  when: ssh_config.ssh_type == "ssh2"
 
 - name: Allow AMI building to connect as yugabyte
   copy:
@@ -98,7 +98,7 @@
     mode: 0400
   become: yes
   tags: yb-prebuilt-ami
-  when: ssh_type != "ssh2"
+  when: ssh_config.ssh_type != "ssh2"
 
 - name: "Setup {{ create_user.name }} ssh"
   include: setup-ssh.yml
