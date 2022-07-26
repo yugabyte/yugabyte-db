@@ -291,10 +291,23 @@ Status TabletSplitManager::ValidateSplitCandidateTable(
 
 Status TabletSplitManager::ValidateSplitCandidateTablet(
     const TabletInfo& tablet,
+    const TabletInfoPtr parent,
     const IgnoreTtlValidation ignore_ttl_validation,
     const IgnoreDisabledList ignore_disabled_list) {
   if (PREDICT_FALSE(FLAGS_TEST_validate_all_tablet_candidates)) {
     return Status::OK();
+  }
+
+  // Wait for a tablet's parent to be deleted / hidden before trying to split it. This
+  // simplifies the algorithm required for PITR, and is unlikely to delay scheduling new
+  // splits too much because we wait for post-split compaction to complete anyways (which is
+  // probably much slower than parent deletion).
+  if (parent != nullptr) {
+    auto parent_lock = parent->LockForRead();
+    if (!parent_lock->is_hidden() && !parent_lock->is_deleted()) {
+      return STATUS_FORMAT(IllegalState, "Cannot split tablet whose parent is not yet deleted. "
+          "Child tablet id: $0, parent tablet id: $1.", tablet.tablet_id(), parent->tablet_id());
+    }
   }
 
   Schema schema;
@@ -609,8 +622,9 @@ void TabletSplitManager::DoSplitting(
       }
 
       auto tablet_lock = tablet->LockForRead();
-      if (tablet_lock->pb.has_split_parent_tablet_id()) {
-        const TabletId& parent_id = tablet_lock->pb.split_parent_tablet_id();
+      TabletId parent_id;
+      if (!tablet_lock->pb.split_parent_tablet_id().empty()) {
+        parent_id = tablet_lock->pb.split_parent_tablet_id();
         if (state.HasSplitWithTask(parent_id)) {
           continue;
         }
@@ -634,13 +648,17 @@ void TabletSplitManager::DoSplitting(
         }
       }
 
-      // Check if this tablet is a valid candidate for splitting, and if so, add it to the list of
-      // split candidates.
       auto drive_info_opt = tablet->GetLeaderReplicaDriveInfo();
       if (!drive_info_opt.ok()) {
         continue;
       }
-      if (ValidateSplitCandidateTablet(*tablet).ok() &&
+      scoped_refptr<TabletInfo> parent = nullptr;
+      if (!parent_id.empty()) {
+        parent = FindPtrOrNull(tablet_info_map, parent_id);
+      }
+      // Check if this tablet is a valid candidate for splitting, and if so, add it to the list of
+      // split candidates.
+      if (ValidateSplitCandidateTablet(*tablet, parent).ok() &&
           filter_->ShouldSplitValidCandidate(*tablet, drive_info_opt.get())) {
         const auto replicas = replica_cache.GetOrAdd(*tablet);
         if (AllReplicasHaveFinishedCompaction(*replicas) &&
