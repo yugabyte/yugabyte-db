@@ -543,8 +543,7 @@ TEST_F(SnapshotTest, ImportSnapshotMeta) {
   const SnapshotInfoPB& snapshot = list_resp.snapshots(0);
 
   // Get snapshot items names.
-  const SysSnapshotEntryPB& snapshot_pb = snapshot.entry();
-  const int old_table_num_tablets = snapshot_pb.tablet_snapshots_size();
+  int old_table_num_tablets = 0;
   string old_table_name, old_namespace_name;
 
   for (const BackupRowEntryPB& backup_entry : snapshot.backup_entries()) {
@@ -566,7 +565,8 @@ TEST_F(SnapshotTest, ImportSnapshotMeta) {
         old_table_name = meta.name();
         break;
       }
-      case SysRowEntryType::TABLET: // No need to get tablet info. Ignore.
+      case SysRowEntryType::TABLET:
+        old_table_num_tablets += 1;
         break;
       default:
         ASSERT_OK(STATUS_SUBSTITUTE(
