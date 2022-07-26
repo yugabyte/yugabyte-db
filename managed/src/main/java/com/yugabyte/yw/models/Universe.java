@@ -890,6 +890,15 @@ public class Universe extends Model {
   }
 
   /**
+   * Fine the current master leader node
+   *
+   * @return NodeDetails of the master leader
+   */
+  public NodeDetails getMasterLeaderNode() {
+    return getNodeByPrivateIP(getMasterLeaderHostText());
+  }
+
+  /**
    * Find the current master leader in the universe
    *
    * @return a String of the private_ip of the current master leader in the universe or an empty

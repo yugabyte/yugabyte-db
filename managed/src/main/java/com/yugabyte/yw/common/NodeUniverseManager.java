@@ -1,8 +1,6 @@
 package com.yugabyte.yw.common;
 
-import com.google.inject.Inject;
 import com.google.inject.Singleton;
-import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.concurrent.KeyLock;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -14,13 +12,14 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
-import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections.MapUtils;
 
 @Singleton
-@Slf4j
 public class NodeUniverseManager extends DevopsBase {
   private static final ShellProcessContext DEFAULT_CONTEXT =
       ShellProcessContext.builder().logCmdOutput(true).build();
@@ -105,6 +104,9 @@ public class NodeUniverseManager extends DevopsBase {
   public ShellResponse runCommand(
       NodeDetails node, Universe universe, List<String> command, ShellProcessContext context) {
     List<String> actionArgs = new ArrayList<>();
+    if (MapUtils.isNotEmpty(context.getRedactedVals())) {
+      actionArgs.add("--skip_cmd_logging");
+    }
     actionArgs.add("--command");
     actionArgs.addAll(command);
     return executeNodeAction(UniverseNodeAction.RUN_COMMAND, universe, node, actionArgs, context);
@@ -201,9 +203,18 @@ public class NodeUniverseManager extends DevopsBase {
     // Escaping single quotes after.
     escapedYsqlCommand = escapedYsqlCommand.replace("'", "'\"'\"'");
     bashCommand.add("\"" + escapedYsqlCommand + "\"");
-    command.add(String.join(" ", bashCommand));
+    String bashCommandStr = String.join(" ", bashCommand);
+    command.add(bashCommandStr);
+    Map<String, String> valsToRedact = new HashMap<>();
+    if (bashCommandStr.contains(Util.YSQL_PASSWORD_KEYWORD)) {
+      valsToRedact.put(bashCommandStr, Util.redactYsqlQuery(bashCommandStr));
+    }
     ShellProcessContext context =
-        ShellProcessContext.builder().logCmdOutput(true).timeoutSecs(timeoutSec).build();
+        ShellProcessContext.builder()
+            .logCmdOutput(valsToRedact.isEmpty())
+            .timeoutSecs(timeoutSec)
+            .redactedVals(valsToRedact)
+            .build();
     return runCommand(node, universe, command, context);
   }
 
@@ -285,12 +296,6 @@ public class NodeUniverseManager extends DevopsBase {
     }
     commandArgs.add(nodeAction.name().toLowerCase());
     commandArgs.addAll(actionArgs);
-    String logMsg = "Executing command: " + commandArgs;
-    if (context.isTraceLogging()) {
-      log.trace(logMsg);
-    } else {
-      log.debug(logMsg);
-    }
     return shellProcessHandler.run(commandArgs, context);
   }
 
