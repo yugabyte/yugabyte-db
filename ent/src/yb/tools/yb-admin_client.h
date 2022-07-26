@@ -136,6 +136,10 @@ class ClusterAdminClient : public yb::tools::ClusterAdminClient {
   Status WaitForReplicationDrain(const std::vector<CDCStreamId>& stream_ids,
                                  const string& target_time);
 
+  Status SetupNSUniverseReplication(const std::string& producer_uuid,
+                                    const std::vector<std::string>& producer_addresses,
+                                    const TypedNamespaceName& producer_namespace);
+
  private:
   Result<TxnSnapshotId> SuitableSnapshotId(
       const SnapshotScheduleId& schedule_id, HybridTime restore_at, CoarseTimePoint deadline);

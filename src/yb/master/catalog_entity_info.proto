@@ -526,4 +526,9 @@ message SysUniverseReplicationEntryPB {
 
   // producer table ID -> producer CDC stream map.
   map<string, string> table_streams = 6;
+
+  // Namespace-level replication setup.
+  optional bool is_ns_replication = 7 [default = false];
+  optional NamespaceIdentifierPB producer_namespace = 8;
+  optional NamespaceIdentifierPB consumer_namespace = 9;
 }

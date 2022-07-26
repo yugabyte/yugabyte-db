@@ -158,6 +158,21 @@ Status ComputeTabletMapping(
   return Status::OK();
 }
 
+Status ValidateKeyRanges(const std::map<std::string, KeyRange>& tablet_keys) {
+  SCHECK(!tablet_keys.empty(), NotFound, "No key ranges provided");
+  uint32_t max_key_range = PartitionSchema::GetPartitionRangeSize("", "");
+
+  // Verify that the given key ranges cover the entire key space.
+  uint32_t key_coverage = 0;
+  for (const auto& tablet : tablet_keys) {
+    key_coverage += PartitionSchema::GetPartitionRangeSize(
+        tablet.second.start_key, tablet.second.end_key);
+  }
+  return key_coverage == max_key_range
+      ? Status::OK()
+      : STATUS(InvalidArgument, "Key ranges do not cover the entire key space.");
+}
+
 Status InitCDCStream(
     const std::string& producer_table_id,
     const std::string& consumer_table_id,
@@ -173,6 +188,8 @@ Status InitCDCStream(
   stream_entry->set_producer_table_id(producer_table_id);
 
   auto producer_tablet_keys = GetTabletKeys(producer_table_locations);
+  RETURN_NOT_OK_PREPEND(ValidateKeyRanges(producer_tablet_keys), "Producer key ranges invalid");
+  RETURN_NOT_OK_PREPEND(ValidateKeyRanges(consumer_tablet_keys), "Consumer key ranges invalid");
   RETURN_NOT_OK(ComputeTabletMapping(producer_tablet_keys, consumer_tablet_keys, stream_entry));
 
   LOG(INFO) << Format(

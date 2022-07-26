@@ -724,6 +724,24 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
 
         return client->WaitForReplicationDrain(stream_ids, target_time);
       });
+
+  Register(
+      "setup_namespace_universe_replication",
+      " <producer_universe_uuid> <producer_master_addresses> <namespace>",
+      [client](const CLIArguments& args) -> Status {
+        RETURN_NOT_OK(CheckArgumentsCount(args.size(), 3, 3));
+        const string producer_uuid = args[0];
+        vector<string> producer_addresses;
+        boost::split(producer_addresses, args[1], boost::is_any_of(","));
+        TypedNamespaceName producer_namespace = VERIFY_RESULT(ParseNamespaceName(args[2]));
+
+        RETURN_NOT_OK_PREPEND(client->SetupNSUniverseReplication(producer_uuid,
+                                                                 producer_addresses,
+                                                                 producer_namespace),
+                              Substitute("Unable to setup namespace replication from universe $0",
+                                         producer_uuid));
+        return Status::OK();
+      });
 }  // NOLINT -- a long function but that is OK
 
 }  // namespace enterprise

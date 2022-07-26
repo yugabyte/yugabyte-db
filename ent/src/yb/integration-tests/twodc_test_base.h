@@ -96,9 +96,19 @@ class TwoDCTestBase : public YBTest {
       const std::string& universe_id, const std::vector<std::shared_ptr<client::YBTable>>& tables,
       bool leader_only = true);
 
+  Status SetupNSUniverseReplication(
+      MiniCluster* producer_cluster, MiniCluster* consumer_cluster, YBClient* consumer_client,
+      const std::string& universe_id, const std::string& producer_ns_name,
+      const YQLDatabase& producer_ns_type,
+      bool leader_only = true);
+
   Status VerifyUniverseReplication(
       MiniCluster* consumer_cluster, YBClient* consumer_client,
       const std::string& universe_id, master::GetUniverseReplicationResponsePB* resp);
+
+  Status VerifyNSUniverseReplication(
+      MiniCluster* consumer_cluster, YBClient* consumer_client,
+      const std::string& universe_id, int num_expected_table);
 
   Status ToggleUniverseReplication(
       MiniCluster* consumer_cluster, YBClient* consumer_client,
