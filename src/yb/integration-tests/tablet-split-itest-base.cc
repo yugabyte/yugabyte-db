@@ -515,6 +515,21 @@ Result<TabletId> TabletSplitITest::SplitSingleTablet(docdb::DocKeyHash split_has
   return source_tablet_id;
 }
 
+Result<master::SplitTabletResponsePB> TabletSplitITest::SplitSingleTablet(
+    const TabletId& tablet_id) {
+  auto master_admin_proxy = std::make_unique<master::MasterAdminProxy>(
+      proxy_cache_.get(), client_->GetMasterLeaderAddress());
+  rpc::RpcController controller;
+  controller.set_timeout(kRpcTimeout);
+
+  master::SplitTabletRequestPB req;
+  master::SplitTabletResponsePB resp;
+  req.set_tablet_id(tablet_id);
+
+  RETURN_NOT_OK(master_admin_proxy->SplitTablet(req, &resp, &controller));
+  return resp;
+}
+
 Result<TabletId> TabletSplitITest::SplitTabletAndValidate(
     docdb::DocKeyHash split_hash_code,
     size_t num_rows,

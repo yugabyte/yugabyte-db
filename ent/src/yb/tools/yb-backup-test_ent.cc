@@ -153,6 +153,64 @@ class YBBackupTest : public pgwrapper::PgCommandTestBase {
     return tablets;
   }
 
+  bool CheckPartitions(
+      const google::protobuf::RepeatedPtrField<yb::master::TabletLocationsPB>& tablets,
+      const vector<string>& expected_splits) {
+    if (implicit_cast<size_t>(tablets.size()) != expected_splits.size() + 1) {
+      return false;
+    }
+
+    static const string empty;
+    for (int i = 0; i < tablets.size(); i++) {
+      const string& expected_start = (i == 0 ? empty : expected_splits[i-1]);
+      const string& expected_end = (i == tablets.size() - 1 ? empty : expected_splits[i]);
+
+      if (tablets[i].partition().partition_key_start() != expected_start) {
+        LOG(WARNING) << "actual partition start "
+                     << b2a_hex(tablets[i].partition().partition_key_start())
+                     << " not equal to expected start "
+                     << b2a_hex(expected_start);
+        return false;
+      }
+      if (tablets[i].partition().partition_key_end() != expected_end) {
+        LOG(WARNING) << "actual partition end "
+                     << b2a_hex(tablets[i].partition().partition_key_end())
+                     << " not equal to expected end "
+                     << b2a_hex(expected_end);
+        return false;
+      }
+    }
+    return true;
+  }
+
+  // Waiting for parent deletion is required if we plan to split the children created by this split
+  // in the future.
+  void ManualSplitTablet(
+      const string& tablet_id, const string& table_name, const int expected_num_tablets,
+      bool wait_for_parent_deletion) {
+    master::SplitTabletRequestPB split_req;
+    split_req.set_tablet_id(tablet_id);
+    master::SplitTabletResponsePB split_resp;
+    rpc::RpcController rpc;
+    rpc.set_timeout(30s * kTimeMultiplier);
+    auto master_admin_proxy = cluster_->GetMasterProxy<master::MasterAdminProxy>();
+    ASSERT_OK(master_admin_proxy.SplitTablet(split_req, &split_resp, &rpc));
+    ASSERT_FALSE(split_resp.has_error());
+
+    master::IsTabletSplittingCompleteRequestPB splitting_complete_req;
+    master::IsTabletSplittingCompleteResponsePB splitting_complete_resp;
+    splitting_complete_req.set_wait_for_parent_deletion(wait_for_parent_deletion);
+    ASSERT_OK(WaitFor([&]() -> Result<bool> {
+      rpc.Reset();
+      RETURN_NOT_OK(master_admin_proxy.IsTabletSplittingComplete(
+          splitting_complete_req, &splitting_complete_resp, &rpc));
+      return splitting_complete_resp.is_tablet_splitting_complete();
+    }, 30s, "Wait for ongoing splits to finish."));
+
+    auto tablets = ASSERT_RESULT(GetTablets(table_name, "wait-split"));
+    ASSERT_EQ(tablets.size(), expected_num_tablets);
+  }
+
   void DoTestYEDISBackup(helpers::TableOp tableOp);
   void DoTestYSQLKeyspaceBackup(helpers::TableOp tableOp);
   void DoTestYSQLMultiSchemaKeyspaceBackup(helpers::TableOp tableOp);
@@ -1014,6 +1072,7 @@ class YBBackupTestNumTablets : public YBBackupTest {
     options->extra_tserver_flags.push_back("--db_block_size_bytes=1024");
     options->extra_tserver_flags.push_back("--ycql_num_tablets=3");
     options->extra_tserver_flags.push_back("--ysql_num_tablets=3");
+    options->extra_tserver_flags.push_back("--cleanup_split_tablets_interval_sec=1");
   }
 
  protected:
@@ -1191,11 +1250,7 @@ TEST_F_EX(YBBackupTest,
 
   // Wait for split to complete.
   constexpr int num_tablets = 4;
-  ASSERT_OK(WaitFor(
-      [&]() -> Result<bool> {
-        auto res = VERIFY_RESULT(GetTablets(table_name, "wait-split"));
-        return res.size() == num_tablets;
-      }, 20s * kTimeMultiplier, Format("Waiting for tablet count: $0", num_tablets)));
+  ManualSplitTablet(tablet_id, table_name, num_tablets, /* wait_for_parent_deletion */ false);
 
   // Verify that it has these four tablets:
   // -       -0x5555

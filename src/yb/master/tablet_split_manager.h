@@ -58,6 +58,7 @@ class TabletSplitManager {
   // ineligible by default.
   Status ValidateSplitCandidateTablet(
       const TabletInfo& tablet,
+      const TabletInfoPtr parent,
       IgnoreTtlValidation ignore_ttl_validation = IgnoreTtlValidation::kFalse,
       IgnoreDisabledList ignore_disabled_list = IgnoreDisabledList::kFalse);
 

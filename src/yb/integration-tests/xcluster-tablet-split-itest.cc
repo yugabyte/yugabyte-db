@@ -346,17 +346,26 @@ class XClusterTabletSplitITest : public CdcTabletSplitITest {
     CdcTabletSplitITest::DoBeforeTearDown();
   }
 
+  Status WaitForOngoingSplitsToComplete(bool wait_for_parent_deletion) {
+    auto master_admin_proxy = std::make_unique<master::MasterAdminProxy>(
+        proxy_cache_.get(), client_->GetMasterLeaderAddress());
+    RETURN_NOT_OK(WaitFor(
+        std::bind(&TabletSplitITestBase::IsSplittingComplete, this, master_admin_proxy.get(),
+                  wait_for_parent_deletion),
+        30s, "Wait for ongoing tablet splits to complete."));
+    return Status::OK();
+  }
+
   Status SplitAllTablets(
       int cur_num_tablets, bool parent_tablet_protected_from_deletion = false) {
     // Splits all tablets for cluster_.
     auto* catalog_mgr = VERIFY_RESULT(catalog_manager());
-    auto tablet_peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_->id());
-    EXPECT_EQ(tablet_peers.size(), cur_num_tablets);
-    for (const auto& peer : tablet_peers) {
-      const auto source_tablet_ptr = peer->tablet();
-      EXPECT_NE(source_tablet_ptr, nullptr);
-      const auto& source_tablet = *source_tablet_ptr;
-      RETURN_NOT_OK(SplitTablet(catalog_mgr, source_tablet));
+    // Wait for parents to be hidden before trying to split children.
+    RETURN_NOT_OK(WaitForOngoingSplitsToComplete(/* wait_for_parent_deletion */ true));
+    auto tablet_ids = ListActiveTabletIdsForTable(cluster_.get(), table_->id());
+    EXPECT_EQ(tablet_ids.size(), cur_num_tablets);
+    for (const auto& tablet_id : tablet_ids) {
+      RETURN_NOT_OK(catalog_mgr->SplitTablet(tablet_id, master::ManualSplit::kTrue));
     }
     size_t expected_non_split_tablets = cur_num_tablets * 2;
     size_t expected_split_tablets = parent_tablet_protected_from_deletion
@@ -887,12 +896,7 @@ TEST_F(XClusterAutomaticTabletSplitITest, YB_DISABLE_TEST_IN_TSAN(AutomaticTable
   // Disable splitting before shutting down, to prevent more splits from occurring.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
   // Wait for splitting to complete before validating overlaps.
-  auto master_admin_proxy = std::make_unique<master::MasterAdminProxy>(
-      proxy_cache_.get(), client_->GetMasterLeaderAddress());
-  ASSERT_OK(WaitFor(
-      std::bind(&TabletSplitITestBase::IsSplittingComplete, this, master_admin_proxy.get(),
-                false /* wait_for_parent_deletion */),
-      30s, "Wait for tablet splitting to complete."));
+  ASSERT_OK(WaitForOngoingSplitsToComplete(/* wait_for_parent_deletion */ false));
 }
 
 class XClusterBootstrapTabletSplitITest : public XClusterTabletSplitITest {
