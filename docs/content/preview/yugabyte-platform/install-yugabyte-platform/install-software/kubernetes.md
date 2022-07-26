@@ -166,10 +166,10 @@ You can customize YugabyteDB Anywhere on a Kubernetes cluster in a number of way
 
   For example, for a GKE version earlier than 1.17, you would run a command similar to the following:
   
-```sh
+  ```sh
   helm install yw-test yugabytedb/yugaware -n yb-platform \
-  --version {{<yb-version version="preview" format="short">}} \
-  --set yugaware.service.annotations."cloud\.google\.com\/load-balancer-type"="Internal"
+    --version {{<yb-version version="preview" format="short">}} \
+    --set yugaware.service.annotations."cloud\.google\.com\/load-balancer-type"="Internal"
   ```
 
 ## Delete the Helm Installation of YugabyteDB Anywhere
