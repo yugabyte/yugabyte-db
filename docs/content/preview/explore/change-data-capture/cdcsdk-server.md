@@ -96,7 +96,7 @@ touch conf/application.properties
 
 ### Run CDCSDK server using Docker
 
-The CDCSDK server can also be run inside a docker container with the help of all the configuration properties passed to the container in the form of environment variables. For more information, refer to [Configuration](#configure-using-environment-variables).
+You can run the CDCSDK server inside a Docker container, and pass all the configuration properties to the container in the form of environment variables. For more information, refer to [Configuration](#configure-using-environment-variables).
 
 ```sh
 docker run -it --rm --name cdcsdk-server -p 8080:8080 \
@@ -126,7 +126,7 @@ Using environment variables for configuration can be useful when running in cont
 
 | Property | Default | Description |
 | :--- | :--- | :--- |
-| `quarkus.http.port` | 8080 | The port on which CDCSDK Server exposes Microprofile Health endpoint and other exposed status information. |
+| `quarkus.http.port` | 8080 | The port on which the CDCSDK server exposes Microprofile Health endpoint and other exposed status information. |
 | `quarkus.log.level` | INFO | The default log level for every log category. |
 | `quarkus.log.console.json` | true | Determines whether to enable the JSON console formatting extension, which disables "normal" console formatting. |
 
@@ -200,7 +200,7 @@ The HTTP client streams changes to any HTTP server for additional processing, wi
 | Property | Default | Description |
 | :---- | :---- | :---- |
 | `cdcsdk.sink.type` | | Must be set to `http` |
-| `cdcsdk.sink.http.url` | | The HTTP Server URL to stream events to. This can also be set by defining the K_SINK environment variable, which is used by the Knative source framework. |
+| `cdcsdk.sink.http.url` | | The HTTP server URL to stream events to. This can also be set by defining the K_SINK environment variable, which is used by the Knative source framework. |
 | `cdcsdk.sink.http.timeout.ms` | 60000 | The number of milli-seconds to wait for a response from the server before timing out. |
 
 ### Amazon S3
@@ -324,11 +324,11 @@ With `FLATTEN`, the following simple format is emitted:
 
 ### Networking
 
-A CDCSDK Server requires access to open ports in YugabyteDB. Therefore it has to run in the same VPC (or peered VPC) as the YugabyteDB database. The server also requires access to sinks in the case of Kafka or an HTTP REST Endpoint and the appropriate credentials for writing to AWS S3.
+The CDCSDK server requires access to open ports in YugabyteDB. Therefore it has to run in the same VPC (or peered VPC) as the YugabyteDB database. The server also requires access to sinks in the case of Kafka or an HTTP REST Endpoint and the appropriate credentials for writing to AWS S3.
 
 ### Health checks
 
-CDCSDK Server exposes a simple health check REST API. Currently the health check only ensures that the server is up and running.
+The CDCSDK server exposes a simple health check REST API. Currently the health check only ensures that the server is up and running.
 
 #### Running the health checks
 
