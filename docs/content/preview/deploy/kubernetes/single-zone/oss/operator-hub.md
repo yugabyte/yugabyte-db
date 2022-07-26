@@ -36,83 +36,83 @@ type: docs
   </li>
 </ul>
 
-This is an alternative to deploying YugabyteDB manually using [Yugabyte Operator](../yugabyte-operator/). The Yugabyte operator is available on Red Hat's [OperatorHub.io](https://operatorhub.io/operator/yugabyte-operator) and hence YugabyteDB can be also be deployed using [Operator Lifecycle Manager](https://github.com/operator-framework/operator-lifecycle-manager). As the name suggests, OLM is a tool to help deploy and manage Operators on your cluster.
-
-Read on to find out how you can deploy YugabyteDB with OLM.
+This is an alternative to deploying YugabyteDB manually using [Yugabyte Operator](../yugabyte-operator/). The Yugabyte operator is available on Red Hat's [OperatorHub.io](https://operatorhub.io/operator/yugabyte-operator) and hence YugabyteDB can be also be deployed using [Operator Lifecycle Manager](https://github.com/operator-framework/operator-lifecycle-manager) (OLM). As the name suggests, OLM is a tool to help deploy and manage operators on your cluster.
 
 ## Prerequisites
 
-A Kubernetes cluster and `kubectl` configured to talk to the cluster.
+A Kubernetes cluster and `kubectl` must be configured to communicate with the cluster.
 
-## Deploy YugabyteDB using Operator Lifecycle Manager
+## Deploy YugabyteDB using OLM
 
-YugabyteDB can be deployed on any Kubernetes cluster using OLM in three easy steps.
+YugabyteDB can be deployed on any Kubernetes cluster using OLM, as follows:
 
-1. Deploy Operator Lifecycle Manager, so that it can manage Operator deployments for you.
+1. Deploy OLM to enable it to manage the operator deployments, as follows:
 
-```sh
-$ curl -sL https://github.com/operator-framework/operator-lifecycle-manager/releases/download/0.13.0/install.sh | bash -s 0.13.0
-```
+   ```sh
+   curl -sL https://github.com/operator-framework/operator-lifecycle-manager/releases/download/0.13.0/install.sh | bash -s 0.13.0
+   ```
 
-2. Install YugabyteDB operator
+2. Install YugabyteDB operator, as follows:
 
-```sh
-$ kubectl create -f https://operatorhub.io/install/yugabyte-operator.yaml
-```
+   ```sh
+   kubectl create -f https://operatorhub.io/install/yugabyte-operator.yaml
+   ```
 
-Watch your operator come up until it reaches `Succeeded` phase.
+   The operator should reach the `Succeeded` phase:
 
-```sh
-$ kubectl get csv -n operators
+   ```sh
+   kubectl get csv -n operators
+   ```
 
-NAME                       DISPLAY             VERSION   REPLACES   PHASE
-yugabyte-operator.v0.0.1   Yugabyte Operator   0.0.1                Succeeded
-```
+   ```output
+   NAME                       DISPLAY             VERSION   REPLACES   PHASE
+   yugabyte-operator.v0.0.1   Yugabyte Operator   0.0.1                Succeeded
+   ```
 
-3. Create YugabyteDB Custom Resource to create YugabyteDB cluster using operator deployed above
+3. Create YugabyteDB Custom Resource using the operator deployed in the previous step:
 
-```sh
-$ kubectl create namespace yb-operator && kubectl create -f https://raw.githubusercontent.com/yugabyte/yugabyte-operator/master/deploy/crds/yugabyte.com_v1alpha1_ybcluster_cr.yaml
-```
+   ```sh
+   kubectl create namespace yb-operator && kubectl create -f https://raw.githubusercontent.com/yugabyte/yugabyte-operator/master/deploy/crds/yugabyte.com_v1alpha1_ybcluster_cr.yaml
+   ```
 
-Watch your YugabyteDB cluster pods come up.
+   The YugabyteDB cluster pods should be running:
 
-```sh
-$ kubectl get pods -n yb-operator
+   ```sh
+   kubectl get pods -n yb-operator
+   ```
 
-NAME           READY   STATUS    RESTARTS   AGE
-yb-master-0    1/1     Running   0          3m32s
-yb-master-1    1/1     Running   0          3m32s
-yb-master-2    1/1     Running   0          3m31s
-yb-tserver-0   1/1     Running   0          3m31s
-yb-tserver-1   1/1     Running   0          3m31s
-yb-tserver-2   1/1     Running   0          3m31s
-```
+   ```output
+   NAME           READY   STATUS    RESTARTS   AGE
+   yb-master-0    1/1     Running   0          3m32s
+   yb-master-1    1/1     Running   0          3m32s
+   yb-master-2    1/1     Running   0          3m31s
+   yb-tserver-0   1/1     Running   0          3m31s
+   yb-tserver-1   1/1     Running   0          3m31s
+   yb-tserver-2   1/1     Running   0          3m31s
+   ```
 
 ## Configuration flags
 
-For configuration flags, see [Configuration flags](../yugabyte-operator/#configuration-flags).
+For information on configuration flags, see [Configuration flags](../yugabyte-operator/#configuration-flags).
 
 ## Use YugabyteDB
 
-When all of the pods in YugabyteDB cluster are running, you can use the YSQL shell (`ysqlsh`) to access the YSQL API, which is PostgreSQL-compliant.
+When all of the pods in the YugabyteDB cluster are running, execute the following command in YSQL shell (`ysqlsh`) to access the YSQL API, which is PostgreSQL-compliant:
 
 ```sh
-$ kubectl exec -it -n yb-operator yb-tserver-0 -- ysqlsh -h yb-tserver-0  --echo-queries
+kubectl exec -it -n yb-operator yb-tserver-0 -- ysqlsh -h yb-tserver-0  --echo-queries
 ```
 
-For details on the YSQL API, see:
+For details on the YSQL API, see the following:
 
 - [Explore YSQL](../../../../../quick-start/explore/ysql/)
 - [YSQL Reference](../../../../../api/ysql/)
 
 ## Clean up
 
-To remove the YugabyteDB cluster and operator resources, run the following commands.
+To remove the YugabyteDB cluster and operator resources, including the database itself and all the data, run the following commands:
 
-**NOTE:** This will destroy your database and delete all of its data.
-
-```console
+```sh
 kubectl delete -f https://raw.githubusercontent.com/yugabyte/yugabyte-operator/master/deploy/crds/yugabyte.com_v1alpha1_ybcluster_cr.yaml
 kubectl delete namespace yb-operator
 kubectl delete -f https://operatorhub.io/install/yugabyte-operator.yaml
