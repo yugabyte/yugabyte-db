@@ -854,5 +854,8 @@ T ExternalMiniCluster::GetProxy(ExternalDaemon* daemon) {
 
 Status RestartAllMasters(ExternalMiniCluster* cluster);
 
+Status CompactTablets(ExternalMiniCluster* cluster);
+
 }  // namespace yb
+
 #endif  // YB_INTEGRATION_TESTS_EXTERNAL_MINI_CLUSTER_H_

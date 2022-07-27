@@ -23,7 +23,7 @@
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/kv_debug.h"
-#include "yb/docdb/packed_row.h"
+#include "yb/docdb/schema_packing.h"
 #include "yb/docdb/subdocument.h"
 #include "yb/docdb/value_type.h"
 #include "yb/rocksdb/db.h"

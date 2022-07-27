@@ -49,6 +49,7 @@ class YQLRowwiseIteratorIf;
 class YQLStorageIf;
 
 struct ApplyTransactionState;
+struct ColumnPackingData;
 struct CompactionSchemaPacking;
 struct DocDB;
 struct DocReadContext;

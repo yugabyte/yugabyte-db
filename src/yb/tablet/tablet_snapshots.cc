@@ -49,6 +49,11 @@ namespace tablet {
 namespace {
 
 const std::string kTempSnapshotDirSuffix = ".tmp";
+const std::string kTabletMetadataFile = "tablet.metadata";
+
+std::string TabletMetadataFile(const std::string& dir) {
+  return JoinPathSegments(dir, kTabletMetadataFile);
+}
 
 } // namespace
 
@@ -163,6 +168,10 @@ Status TabletSnapshots::Create(const CreateSnapshotData& data) {
     RETURN_NOT_OK(patcher.SetHybridTimeFilter(snapshot_hybrid_time));
   }
 
+  bool need_flush = data.schedule_id && tablet().metadata()->AddSnapshotSchedule(data.schedule_id);
+
+  RETURN_NOT_OK(tablet().metadata()->SaveTo(TabletMetadataFile(tmp_snapshot_dir)));
+
   RETURN_NOT_OK_PREPEND(
       env->RenameFile(tmp_snapshot_dir, snapshot_dir),
       Format("Cannot rename temp snapshot dir $0 to $1", tmp_snapshot_dir, snapshot_dir));
@@ -170,7 +179,7 @@ Status TabletSnapshots::Create(const CreateSnapshotData& data) {
       env->SyncDir(top_snapshots_dir),
       Format("Cannot sync top snapshots dir $0", top_snapshots_dir));
 
-  if (data.schedule_id && tablet().metadata()->AddSnapshotSchedule(data.schedule_id)) {
+  if (need_flush) {
     RETURN_NOT_OK(tablet().metadata()->Flush());
   }
 
@@ -312,6 +321,10 @@ Status TabletSnapshots::RestoreCheckpoint(
       LOG_WITH_PREFIX(WARNING) << "Copy checkpoint files status: " << s;
       return STATUS(IllegalState, "Unable to copy checkpoint files", s.ToString());
     }
+    auto tablet_metadata_file = TabletMetadataFile(db_dir);
+    if (env().FileExists(tablet_metadata_file)) {
+      RETURN_NOT_OK(env().DeleteFile(tablet_metadata_file));
+    }
   }
 
   {
@@ -326,12 +339,27 @@ Status TabletSnapshots::RestoreCheckpoint(
     }
   }
 
+  bool need_flush = false;
+
   if (restore_metadata.schema) {
     // TODO(pitr) check deleted columns
     tablet().metadata()->SetSchema(
         *restore_metadata.schema, *restore_metadata.index_map, {} /* deleted_columns */,
         restore_metadata.schema_version);
     tablet().metadata()->SetHidden(restore_metadata.hide);
+    need_flush = true;
+  }
+
+  if (!dir.empty()) {
+    auto tablet_metadata_file = TabletMetadataFile(dir);
+    // Old snapshots could lack tablet metadata, so just do nothing in this case.
+    if (env().FileExists(tablet_metadata_file)) {
+      LOG_WITH_PREFIX(INFO) << "Merging metadata with restored: " << tablet_metadata_file;
+      RETURN_NOT_OK(tablet().metadata()->MergeWithRestored(tablet_metadata_file));
+    }
+  }
+
+  if (need_flush) {
     RETURN_NOT_OK(tablet().metadata()->Flush());
     RefreshYBMetaDataCache();
   }
