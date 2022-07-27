@@ -544,6 +544,12 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
                                                const std::unordered_map<TableId, std::string>&
                                                  table_bootstrap_ids);
 
+  // Check if bootstrapping is required for a table.
+  Status IsTableBootstrapRequired(const TableId& table_id,
+                                  const CDCStreamId& stream_id,
+                                  CoarseTimePoint deadline,
+                                  bool* const bootstrap_required);
+
   // Get the set of CDC streams for a given table, or an empty set if this is not a producer.
   std::unordered_set<CDCStreamId> GetCdcStreamsForProducerTable(const TableId& table_id) const;
 

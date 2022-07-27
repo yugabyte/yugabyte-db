@@ -242,10 +242,10 @@ class CDCServiceImpl : public CDCServiceIf {
 
   Result<OpId> TabletLeaderLatestEntryOpId(const TabletId& tablet_id);
 
-  void TabletLeaderIsBootstrapRequired(const IsBootstrapRequiredRequestPB* req,
-                                       IsBootstrapRequiredResponsePB* resp,
-                                       rpc::RpcContext* context,
-                                       const std::shared_ptr<tablet::TabletPeer>& peer);
+  Status TabletLeaderIsBootstrapRequired(const IsBootstrapRequiredRequestPB* req,
+                                         IsBootstrapRequiredResponsePB* resp,
+                                         rpc::RpcContext* context,
+                                         const std::shared_ptr<tablet::TabletPeer>& peer);
 
   Result<client::internal::RemoteTabletPtr> GetRemoteTablet(const TabletId& tablet_id);
   Result<client::internal::RemoteTabletServer *> GetLeaderTServer(const TabletId& tablet_id);
