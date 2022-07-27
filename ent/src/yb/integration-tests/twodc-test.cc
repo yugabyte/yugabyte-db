@@ -864,6 +864,7 @@ TEST_P(TwoDCTest, BootstrapAndSetupLargeTableCount) {
 
   // Create a medium, then large number of tables to test the performance of our CLI commands.
   int amplification[2] = {1, 5};
+  MonoDelta is_bootstrap_required_latency[2];
   MonoDelta bootstrap_latency[2];
   MonoDelta setup_latency[2];
   std::string table_prefix = "stress_table_";
@@ -887,6 +888,35 @@ TEST_P(TwoDCTest, BootstrapAndSetupLargeTableCount) {
       // Add delays to all rpc calls to simulate live environment and ensure the test is IO bound.
       FLAGS_TEST_yb_inbound_big_calls_parse_delay_ms = rpc_delay_ms;
       FLAGS_rpc_throttle_threshold_bytes = 200;
+
+      // Performance test of IsBootstrapRequired.
+      {
+        auto start_time = CoarseMonoClock::Now();
+
+        auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
+            &producer_client()->proxy_cache(),
+            ASSERT_RESULT(producer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
+
+        master::IsBootstrapRequiredRequestPB req;
+        master::IsBootstrapRequiredResponsePB resp;
+        for (const auto& producer_table : producer_tables) {
+          req.add_table_ids(producer_table->id());
+        }
+        rpc::RpcController rpc;
+        rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
+
+        ASSERT_OK(master_proxy->IsBootstrapRequired(req, &resp, &rpc));
+        SCOPED_TRACE(resp.DebugString());
+        ASSERT_FALSE(resp.has_error());
+        ASSERT_EQ(resp.results_size(), producer_tables.size());
+        for (const auto& result : resp.results()) {
+          ASSERT_TRUE(result.has_bootstrap_required() && !result.bootstrap_required());
+        }
+
+        is_bootstrap_required_latency[a] = CoarseMonoClock::Now() - start_time;
+        LOG(INFO) << "IsBootstrapRequired [" << a << "] took: "
+                  << is_bootstrap_required_latency[a].ToSeconds() << "s";
+      }
 
       // Performance test of BootstrapProducer.
       cdc::BootstrapProducerResponsePB boot_resp;
