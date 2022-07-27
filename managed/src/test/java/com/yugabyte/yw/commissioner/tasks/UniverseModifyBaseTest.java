@@ -12,9 +12,12 @@ import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NodeManager;
+import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Hook;
 import com.yugabyte.yw.models.HookScope;
@@ -24,6 +27,8 @@ import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.PlacementInfo;
+
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -37,6 +42,8 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
 
   protected Universe onPremUniverse;
   protected Universe defaultUniverse;
+
+  protected AccessKey defaultAccessKey;
 
   protected Users defaultUser;
 
@@ -54,6 +61,7 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
   public void setUp() {
     super.setUp();
     defaultUser = ModelFactory.testUser(defaultCustomer);
+    defaultAccessKey = createAccessKeyForProvider("default-key", defaultProvider);
     defaultUniverse = createUniverseForProvider("Test Universe", defaultProvider);
     onPremUniverse = createUniverseForProvider("Test onPrem Universe", onPremProvider);
     dummyShellResponse = new ShellResponse();
@@ -111,7 +119,7 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
         new UniverseDefinitionTaskParams.UserIntent();
     userIntent.numNodes = 3;
     userIntent.ybSoftwareVersion = "yb-version";
-    userIntent.accessKeyCode = "demo-access";
+    userIntent.accessKeyCode = "default-key";
     userIntent.replicationFactor = 3;
     userIntent.regionList = ImmutableList.of(region.uuid);
     userIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
@@ -166,5 +174,47 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
     nodeData.instanceType = ApiUtils.UTIL_INST_TYPE;
     NodeInstance node = NodeInstance.create(zone.uuid, nodeData);
     node.save();
+  }
+
+  protected Universe createUniverseForProviderWithReadReplica(
+      String universeName, Provider provider) {
+    Universe universe = createUniverseForProvider(universeName, provider);
+    Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
+    // Adding Read Replica cluster.
+    UniverseDefinitionTaskParams.UserIntent userIntent =
+        new UniverseDefinitionTaskParams.UserIntent();
+    userIntent.numNodes = 3;
+    userIntent.replicationFactor = 3;
+    userIntent.ybSoftwareVersion = "yb-version";
+    userIntent.accessKeyCode = "default-key";
+    userIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
+    userIntent.regionList = new ArrayList<>(primaryCluster.userIntent.regionList);
+    userIntent.enableYSQL = true;
+    Common.CloudType providerType = Common.CloudType.valueOf(provider.code);
+    userIntent.providerType = providerType;
+    userIntent.provider = provider.uuid.toString();
+    userIntent.universeName = universeName;
+
+    Region region = Region.getByProvider(provider.uuid).get(0);
+    PlacementInfo pi = new PlacementInfo();
+    AvailabilityZone az4 = AvailabilityZone.createOrThrow(region, "az-4", "AZ 4", "subnet-1");
+    AvailabilityZone az5 = AvailabilityZone.createOrThrow(region, "az-5", "AZ 5", "subnet-2");
+    AvailabilityZone az6 = AvailabilityZone.createOrThrow(region, "az-6", "AZ 6", "subnet-3");
+    PlacementInfoUtil.addPlacementZone(az4.uuid, pi, 1, 1, false);
+    PlacementInfoUtil.addPlacementZone(az5.uuid, pi, 1, 1, true);
+    PlacementInfoUtil.addPlacementZone(az6.uuid, pi, 1, 1, false);
+
+    universe =
+        Universe.saveDetails(
+            universe.universeUUID, ApiUtils.mockUniverseUpdaterWithReadReplica(userIntent, pi));
+    return universe;
+  }
+
+  protected AccessKey createAccessKeyForProvider(String keyCode, Provider provider) {
+    AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
+    keyInfo.sshUser = "ssh_user";
+    keyInfo.sshPort = 22;
+    AccessKey accessKey = AccessKey.create(provider.uuid, keyCode, keyInfo);
+    return accessKey;
   }
 }

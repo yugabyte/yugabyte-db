@@ -1,5 +1,5 @@
 
-* Run `ycqlsh` to connect to the service.
+Run `ycqlsh` to connect to the service.
 
 You can do this as shown below.
 
@@ -14,7 +14,7 @@ Use HELP for help.
 ycqlsh>
 ```
 
-* Run a YCQL command to verify it is working.
+Run a YCQL command to verify it is working.
 
 ```cql
 ycqlsh> describe keyspaces;

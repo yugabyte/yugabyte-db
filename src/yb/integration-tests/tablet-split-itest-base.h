@@ -163,6 +163,8 @@ class TabletSplitITest : public TabletSplitITestBase<MiniCluster> {
 
   Result<TabletId> SplitSingleTablet(docdb::DocKeyHash split_hash_code);
 
+  Result<master::SplitTabletResponsePB> SplitSingleTablet(const TabletId& tablet_id);
+
   Result<TabletId> SplitTabletAndValidate(
       docdb::DocKeyHash split_hash_code,
       size_t num_rows,

@@ -504,13 +504,6 @@ Status GetLastOpIdForMasterReplica(
     const MonoDelta& timeout,
     OpIdPB* op_id);
 
-Status WaitForAllIntentsApplied(TServerDetails* ts, const  MonoTime& deadline);
-
-Status WaitForAllIntentsApplied(TServerDetails* ts, const MonoDelta& timeout);
-
-Status WaitForAllIntentsApplied(
-    const vector<TServerDetails*>& tablet_servers, const MonoDelta& timeout);
-
 } // namespace itest
 } // namespace yb
 

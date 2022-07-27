@@ -26,7 +26,7 @@ The [PostgreSQL node-postgres driver](https://node-postgres.com/) is the officia
 
 ## Quick start
 
-Learn how to establish a connection to YugabyteDB database and begin CRUD operations using the steps from [Build a Node.js Application](../../../../quick-start/build-apps/nodejs/ysql-pg) in the Quick start section.
+Learn how to establish a connection to YugabyteDB database and begin CRUD operations using the steps from [Build a Node.js Application](../../../../develop/build-apps/nodejs/ysql-pg) in the Quick start section.
 
 ## Install the driver dependency and async utility
 
@@ -52,7 +52,7 @@ Node.js applications can connect to and query the YugabyteDB database using the 
 
 The following table describes the connection parameters required to connect to the YugabyteDB database.
 
-| node-postgres Params | Description | Default |
+| node-postgres Parameters | Description | Default |
 | :---------- | :---------- | :------ |
 | hostname  | hostname of the YugabyteDB instance | localhost
 | port |  Listen port for YSQL | 5433
@@ -136,7 +136,7 @@ client
 
 To build a Node.js application that communicates securely over SSL, get the root certificate (`ca.crt`) of the YugabyteDB Cluster. If certificates are not generated yet, follow the instructions in [Create server certificates](../../../../secure/tls-encryption/server-certificates/).
 
-Because a YugabyteDB Managed cluster is always configured with SSL/TLS, you don't have to generate any certificate but only set the client-side SSL configuration. To fetch your root certificate, refer to [CA certificate](../../../../quick-start/build-apps/go/ysql-pgx/#ca-certificate).
+Because a YugabyteDB Managed cluster is always configured with SSL/TLS, you don't have to generate any certificate but only set the client-side SSL configuration. To fetch your root certificate, refer to [CA certificate](../../../../develop/build-apps/go/ysql-pgx/#ca-certificate).
 
 The node-postgres driver allows you to avoid including the parameters like `sslcert`, `sslkey`, `sslrootcert`, or `sslmode` in the connection string. You can pass the object which includes `connectionString` and `ssl` object which has various fields including the following:
 

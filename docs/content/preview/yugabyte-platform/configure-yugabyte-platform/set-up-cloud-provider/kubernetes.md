@@ -179,7 +179,7 @@ You can create a `kubeconfig` file for the previously created `yugabyte-platform
     python generate_kubeconfig.py -s yugabyte-platform-universe-management -n <namespace>
     ```
 
-    <br>Expect the following output:
+    Expect the following output:
 
     ```output
     Generated the kubeconfig file: /tmp/yugabyte-platform-universe-management.conf
