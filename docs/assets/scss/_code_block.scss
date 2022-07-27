@@ -20,10 +20,20 @@
   }
 
   a > code {
-		color: inherit;
-		font-size: 15.5px;
-		font-family: inherit;
+    color: inherit;
+    font-size: 15.5px;
     margin: 0 0 2px;
+  }
+
+  h1 > a > code,
+  h2 > a > code,
+  h3 > a > code,
+  h4 > a > code,
+  h5 > a > code,
+  h6 > a > code {
+    color: #000041;
+    font-size: 16px;
+    margin: 0 2px;
   }
 
   pre {
