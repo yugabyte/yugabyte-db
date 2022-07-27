@@ -23,6 +23,8 @@ import static org.yb.AssertionWrappers.fail;
 import static org.yb.util.BuildTypeUtil.isASAN;
 import static org.yb.util.BuildTypeUtil.isTSAN;
 
+import java.io.ByteArrayOutputStream;
+import java.io.PrintStream;
 import java.io.File;
 import java.net.InetSocketAddress;
 import java.net.URL;
@@ -2037,6 +2039,26 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       }
       return sb.toString().trim();
     }
+  }
+
+  protected String [] getDocdbRequests(Statement stmt, String query) throws Exception {
+    // Executing query once just in case if master catalog cache is not refreshed
+    stmt.execute(query);
+
+    final ByteArrayOutputStream docDbReq = new ByteArrayOutputStream();
+    final PrintStream origOut = System.out; // saving original print console to restore it
+    origOut.flush();
+    System.setOut(new PrintStream(docDbReq, true/*autoFlush*/));
+    stmt.execute("SET yb_debug_log_docdb_requests = true");
+    stmt.execute(query);
+    stmt.execute("SET yb_debug_log_docdb_requests = false");
+    System.setOut(origOut);
+    String[] docDbReqStrArray = docDbReq.toString().split(System.getProperty("line.separator"));
+    return docDbReqStrArray;
+  }
+
+  protected int getNumDocdbRequests(Statement stmt, String query) throws Exception{
+    return getDocdbRequests(stmt, query).length;
   }
 
   protected int spawnTServerWithFlags(Map<String, String> additionalFlags) throws Exception {
