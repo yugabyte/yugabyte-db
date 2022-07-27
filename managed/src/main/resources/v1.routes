@@ -199,6 +199,7 @@ DELETE  /customers/:cUUID/maintenance_windows/:windowUUID                      c
 # Access Key API
 GET     /customers/:cUUID/providers/:pUUID/access_keys/:keyCode                com.yugabyte.yw.controllers.AccessKeyController.index(cUUID: java.util.UUID, pUUID: java.util.UUID, keyCode: String)
 GET     /customers/:cUUID/providers/:pUUID/access_keys                         com.yugabyte.yw.controllers.AccessKeyController.list(cUUID: java.util.UUID, pUUID: java.util.UUID)
+GET     /customers/:cUUID/access_keys                                          com.yugabyte.yw.controllers.AccessKeyController.listAllForProviders(cUUID: java.util.UUID)
 POST    /customers/:cUUID/providers/:pUUID/access_keys                         com.yugabyte.yw.controllers.AccessKeyController.create(cUUID: java.util.UUID, pUUID: java.util.UUID)
 DELETE  /customers/:cUUID/providers/:pUUID/access_keys/:keyCode                com.yugabyte.yw.controllers.AccessKeyController.delete(cUUID: java.util.UUID, pUUID: java.util.UUID, keyCode: String)
 # ----------------------------- START OLD API -------------------------------------------
