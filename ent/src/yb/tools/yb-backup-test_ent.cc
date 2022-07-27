@@ -203,20 +203,32 @@ class YBBackupTest : public pgwrapper::PgCommandTestBase {
     return true;
   }
 
+  // Waiting for parent deletion is required if we plan to split the children created by this split
+  // in the future.
   void ManualSplitTablet(
-      const string& tablet_id, const string& table_name, const int expected_num_tablets) {
-    master::SplitTabletRequestPB req;
-    req.set_tablet_id(tablet_id);
-    master::SplitTabletResponsePB resp;
+      const string& tablet_id, const string& table_name, const int expected_num_tablets,
+      bool wait_for_parent_deletion) {
+    master::SplitTabletRequestPB split_req;
+    split_req.set_tablet_id(tablet_id);
+    master::SplitTabletResponsePB split_resp;
     rpc::RpcController rpc;
     rpc.set_timeout(30s * kTimeMultiplier);
-    ASSERT_OK(cluster_->GetMasterProxy<master::MasterAdminProxy>().SplitTablet(req, &resp, &rpc));
+    auto master_admin_proxy = cluster_->GetMasterProxy<master::MasterAdminProxy>();
+    ASSERT_OK(master_admin_proxy.SplitTablet(split_req, &split_resp, &rpc));
+    ASSERT_FALSE(split_resp.has_error());
 
-    ASSERT_OK(WaitFor(
-        [&]() -> Result<bool> {
-          auto res = VERIFY_RESULT(GetTablets(table_name, "wait-split"));
-          return res.size() == expected_num_tablets;
-        }, 20s * kTimeMultiplier, Format("Waiting for tablet count: $0", expected_num_tablets)));
+    master::IsTabletSplittingCompleteRequestPB splitting_complete_req;
+    master::IsTabletSplittingCompleteResponsePB splitting_complete_resp;
+    splitting_complete_req.set_wait_for_parent_deletion(wait_for_parent_deletion);
+    ASSERT_OK(WaitFor([&]() -> Result<bool> {
+      rpc.Reset();
+      RETURN_NOT_OK(master_admin_proxy.IsTabletSplittingComplete(
+          splitting_complete_req, &splitting_complete_resp, &rpc));
+      return splitting_complete_resp.is_tablet_splitting_complete();
+    }, 30s, "Wait for ongoing splits to finish."));
+
+    auto tablets = ASSERT_RESULT(GetTablets(table_name, "wait-split"));
+    ASSERT_EQ(tablets.size(), expected_num_tablets);
   }
 
   void LogTabletsInfo(
@@ -1088,6 +1100,7 @@ class YBBackupTestNumTablets : public YBBackupTest {
     options->extra_tserver_flags.push_back("--db_block_size_bytes=1024");
     options->extra_tserver_flags.push_back("--ycql_num_tablets=3");
     options->extra_tserver_flags.push_back("--ysql_num_tablets=3");
+    options->extra_tserver_flags.push_back("--cleanup_split_tablets_interval_sec=1");
   }
 };
 
@@ -1220,7 +1233,7 @@ TEST_F_EX(YBBackupTest,
 
   // Split it && Wait for split to complete.
   constexpr int num_tablets = 4;
-  ManualSplitTablet(tablet_id, table_name, num_tablets);
+  ManualSplitTablet(tablet_id, table_name, num_tablets, /* wait_for_parent_deletion */ false);
 
   // Verify that it has these four tablets:
   // -       -0x5555
@@ -1570,7 +1583,7 @@ TEST_F_EX(YBBackupTest,
 
   // Split it && Wait for split to complete.
   int num_tablets = 3;
-  ManualSplitTablet(tablet_id, table_name, num_tablets);
+  ManualSplitTablet(tablet_id, table_name, num_tablets, /* wait_for_parent_deletion */ true);
 
   // Verify that it has these three tablets:
   tablets = ASSERT_RESULT(GetTablets(table_name, "post-split"));
@@ -1587,7 +1600,7 @@ TEST_F_EX(YBBackupTest,
 
   // Split it && Wait for split to complete.
   num_tablets = 4;
-  ManualSplitTablet(tablet_id, table_name, num_tablets);
+  ManualSplitTablet(tablet_id, table_name, num_tablets, /* wait_for_parent_deletion */ false);
 
   // Verify that it has these four tablets:
   tablets = ASSERT_RESULT(GetTablets(table_name, "post-split"));
@@ -1660,7 +1673,7 @@ TEST_F_EX(YBBackupTest,
 
   // Split it && Wait for split to complete.
   int num_tablets = 2;
-  ManualSplitTablet(tablet_id, index_name, num_tablets);
+  ManualSplitTablet(tablet_id, index_name, num_tablets, /* wait_for_parent_deletion */ true);
 
   // Verify that it has these two tablets:
   tablets = ASSERT_RESULT(GetTablets(index_name, "post-split"));
@@ -1678,7 +1691,7 @@ TEST_F_EX(YBBackupTest,
 
   // Split it && Wait for split to complete.
   num_tablets = 3;
-  ManualSplitTablet(tablet_id, index_name, num_tablets);
+  ManualSplitTablet(tablet_id, index_name, num_tablets, /* wait_for_parent_deletion */ true);
 
   // Verify that it has these three tablets:
   tablets = ASSERT_RESULT(GetTablets(index_name, "post-split"));
@@ -1752,7 +1765,7 @@ TEST_F_EX(YBBackupTest,
 
   // Split it && Wait for split to complete.
   int num_tablets = 2;
-  ManualSplitTablet(tablet_id, index_name, num_tablets);
+  ManualSplitTablet(tablet_id, index_name, num_tablets, /* wait_for_parent_deletion */ true);
 
   // Verify that it has these two tablets:
   tablets = ASSERT_RESULT(GetTablets(index_name, "post-split"));
@@ -1771,7 +1784,7 @@ TEST_F_EX(YBBackupTest,
 
   // Split it && Wait for split to complete.
   num_tablets = 3;
-  ManualSplitTablet(tablet_id, index_name, num_tablets);
+  ManualSplitTablet(tablet_id, index_name, num_tablets, /* wait_for_parent_deletion */ false);
 
   // Verify that it has these three tablets:
   tablets = ASSERT_RESULT(GetTablets(index_name, "post-split"));
@@ -1974,6 +1987,74 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYSQLBackupWithLear
   ));
 
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+
+TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYSQLBackupWithPartialDeletedTables)) {
+  // Test backups on tables that are deleted in the YSQL layer but not in docdb, see gh #13361.
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_keep_docdb_table_on_ysql_drop_table", "true"));
+
+  // Create two tables with data.
+  const string good_table = "mytbl";
+  const string dropped_table = "droppedtbl";
+  for (const auto& tbl : {good_table, dropped_table}) {
+    ASSERT_NO_FATALS(CreateTable(Format("CREATE TABLE $0 (k INT PRIMARY KEY, v INT)", tbl)));
+    ASSERT_NO_FATALS(InsertOneRow(Format("INSERT INTO $0 (k, v) VALUES (100, 200)", tbl)));
+  }
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      "\\d",
+      R"#(
+                   List of relations
+         Schema |    Name    | Type  |  Owner
+        --------+------------+-------+----------
+         public | droppedtbl | table | yugabyte
+         public | mytbl      | table | yugabyte
+        (2 rows)
+      )#"));  // Sorted by table name.
+
+  // Drop one table.
+  ASSERT_NO_FATALS(RunPsqlCommand(Format("DROP TABLE $0", dropped_table), "DROP TABLE"));
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      "\\d",
+      R"#(
+                 List of relations
+         Schema | Name  | Type  |  Owner
+        --------+-------+-------+----------
+         public | mytbl | table | yugabyte
+        (1 row)
+      )#"));
+  // Verify that dropped table is still present in docdb layer.
+  vector<client::YBTableName> listed_tables = ASSERT_RESULT(client_->ListTables(dropped_table));
+  ASSERT_EQ(listed_tables.size(), 1);
+
+  // Take a backup, ensure that this passes despite the state of dropped_table.
+  const string backup_dir = GetTempDir("backup");
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
+
+  // Now try to restore the backup and ensure that only the first table was restored.
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte_new", "restore"}));
+  SetDbName("yugabyte_new"); // Connecting to the second DB.
+
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      Format("SELECT k, v FROM $0 ORDER BY k", good_table),
+      R"#(
+          k  |  v
+        -----+-----
+         100 | 200
+        (1 row)
+      )#"
+  ));
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      "\\d",
+      R"#(
+                 List of relations
+         Schema | Name  | Type  |  Owner
+        --------+-------+-------+----------
+         public | mytbl | table | yugabyte
+        (1 row)
+      )#"));
 }
 
 class YBBackupPartitioningVersionTest : public YBBackupTest {

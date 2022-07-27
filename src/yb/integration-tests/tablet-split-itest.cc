@@ -17,6 +17,7 @@
 
 #include <gtest/gtest.h>
 
+#include "yb/client/snapshot_test_util.h"
 #include "yb/client/table.h"
 #include "yb/client/table_alterer.h"
 
@@ -1852,6 +1853,8 @@ class TabletSplitSingleServerITest : public TabletSplitITest {
     alterer->SetTableProperties(table_properties);
     return alterer->Alter();
   }
+
+  Status TestSplitBeforeParentDeletion(bool hide_only);
 };
 
 // Start tablet split, create Index to start backfill while split operation in progress
@@ -2021,18 +2024,23 @@ TEST_F(TabletSplitSingleServerITest, MaxFileSizeTTLTabletOnlyValidForManualSplit
     }, 10s * kTimeMultiplier, "Wait for TServer to report metrics."));
 
   // Candidate tablet should still be valid since default TTL not enabled.
-  ASSERT_OK(split_manager->ValidateSplitCandidateTablet(*source_tablet_info));
+  ASSERT_OK(split_manager->ValidateSplitCandidateTablet(*source_tablet_info,
+                                                        nullptr /* parent */));
 
   // Alter the table with a table TTL, at which point tablet should no longer be valid
   // for tablet splitting.
   // Amount of time for the TTL is irrelevant, so long as it's larger than 0.
   ASSERT_OK(AlterTableSetDefaultTTL(1));
-  ASSERT_NOK(split_manager->ValidateSplitCandidateTablet(*source_tablet_info));
+  ASSERT_NOK(split_manager->ValidateSplitCandidateTablet(*source_tablet_info,
+                                                        nullptr /* parent */));
 
   // Tablet should still be a valid candidate if ignore_ttl_validation is set to true
   // (e.g. for manual tablet splitting).
-  ASSERT_OK(split_manager->ValidateSplitCandidateTablet(*source_tablet_info,
-      master::IgnoreTtlValidation::kTrue, master::IgnoreDisabledList::kTrue));
+  ASSERT_OK(split_manager->ValidateSplitCandidateTablet(
+      *source_tablet_info,
+      nullptr, /* parent */
+      master::IgnoreTtlValidation::kTrue,
+      master::IgnoreDisabledList::kTrue));
 }
 
 TEST_F(TabletSplitSingleServerITest, AutoSplitNotValidOnceCheckedForTtl) {
@@ -2142,6 +2150,54 @@ TEST_F(TabletSplitSingleServerITest, TabletServerSplitAlreadySplitTablet) {
       StatusFromPB(resp.error().status()).IsNotFound() ||
       resp.error().code() == tserver::TabletServerErrorPB::TABLET_NOT_FOUND)
       << resp.error().DebugString();
+}
+
+Status TabletSplitSingleServerITest::TestSplitBeforeParentDeletion(bool hide_only) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_validate_all_tablet_candidates) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_deleting_split_tablets) = true;
+  const int kNumRows = 1000;
+  CreateSingleTablet();
+  if (hide_only) {
+    auto snapshot_util = std::make_unique<client::SnapshotTestUtil>();
+    snapshot_util->SetProxy(&client_->proxy_cache());
+    snapshot_util->SetCluster(cluster_.get());
+    VERIFY_RESULT(snapshot_util->CreateSchedule(table_));
+  }
+
+  const auto split_hash_code = VERIFY_RESULT(WriteRowsAndGetMiddleHashCode(kNumRows));
+  const TabletId parent_id = VERIFY_RESULT(SplitTabletAndValidate(split_hash_code, kNumRows));
+  auto child_ids = ListActiveTabletIdsForTable(cluster_.get(), table_->id());
+
+  auto resp = VERIFY_RESULT(SplitSingleTablet(*child_ids.begin()));
+  SCHECK(resp.has_error(), RuntimeError,
+         "Splitting should fail while parent tablet is not hidden / deleted.");
+
+  // Allow parent tablet to be deleted, and verify that the child tablet can be split.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_deleting_split_tablets) = false;
+  auto catalog_mgr = VERIFY_RESULT(catalog_manager());
+  RETURN_NOT_OK(WaitFor([&]() -> Result<bool> {
+    auto parent = catalog_mgr->GetTabletInfo(parent_id);
+    if (!parent.ok()) {
+      if (parent.status().IsNotFound()) {
+        return true;
+      }
+      return parent.status();
+    }
+    auto parent_lock = parent.get()->LockForRead();
+    return hide_only ? parent_lock->is_hidden() : parent_lock->is_deleted();
+  }, 10s * kTimeMultiplier, "Wait for parent to be hidden / deleted."));
+  resp = VERIFY_RESULT(SplitSingleTablet(*child_ids.begin()));
+  SCHECK(!resp.has_error(), RuntimeError,
+         "Splitting should succeed once parent tablet is hidden / deleted.");
+  return Status::OK();
+}
+
+TEST_F(TabletSplitSingleServerITest, SplitBeforeParentDeleted) {
+  ASSERT_OK(TestSplitBeforeParentDeletion(false /* hide_only */));
+}
+
+TEST_F(TabletSplitSingleServerITest, SplitBeforeParentHidden) {
+  ASSERT_OK(TestSplitBeforeParentDeletion(true /* hide_only */));
 }
 
 TEST_F(TabletSplitExternalMiniClusterITest, Simple) {
@@ -3139,5 +3195,6 @@ INSTANTIATE_TEST_CASE_P(
     TabletSplitExternalMiniClusterCrashITest,
     ::testing::Values(
         "TEST_crash_before_apply_tablet_split_op",
-        "TEST_crash_before_source_tablet_mark_split_done"));
+        "TEST_crash_before_source_tablet_mark_split_done",
+        "TEST_crash_after_tablet_split_completed"));
 }  // namespace yb

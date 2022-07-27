@@ -24,6 +24,8 @@ import java.util.Set;
 import java.util.UUID;
 import javax.persistence.Column;
 import javax.persistence.Entity;
+import javax.persistence.EnumType;
+import javax.persistence.Enumerated;
 import javax.persistence.Id;
 import lombok.extern.slf4j.Slf4j;
 
@@ -101,6 +103,7 @@ public class NodeAgent extends Model {
   @ApiModelProperty(accessMode = READ_ONLY)
   public String version;
 
+  @Enumerated(EnumType.STRING)
   @ApiModelProperty(accessMode = READ_ONLY)
   public State state;
 
