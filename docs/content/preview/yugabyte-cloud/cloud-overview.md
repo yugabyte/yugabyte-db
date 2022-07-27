@@ -23,7 +23,7 @@ type: homepage
           <span>Create a <strong>Sandbox</strong> cluster</span>
         </div>
         <div class="body-content">The easiest way to get started with YugabyteDB is to sign up for YugabyteDB Managed and create a free Sandbox cluster.</div>
-        <a class="text-link" href="../../quick-start-yugabytedb-managed/" title="Get started">Quick Start</a>
+        <a class="text-link" href="../../quick-start-yugabytedb-managed/" title="Get started">Go to the Quick Start</a>
       </div>
       <div class="image">
         <img class="icon" src="/images/homepage/yugabyte-in-cloud.png" title="Yugabyte cloud" aria-hidden="true">
@@ -38,7 +38,7 @@ type: homepage
           <span>Build <strong>apps</strong></span>
         </div>
         <div class="body-content">Start building applications with your favorite programming language using these examples.</div>
-        <a class="text-link" href="../develop/build-apps/" title="Get started">Build applications</a>
+        <a class="text-link" href="../develop/build-apps/" title="Get started">Go to Build applications</a>
       </div>
       <div class="image">
         <img class="icon" src="/images/homepage/locally-laptop.png" title="Locally Laptop" aria-hidden="true">
@@ -69,7 +69,7 @@ type: homepage
       <div class="box border">
         <div class="other-content">
           <div class="heading"><a href="../cloud-secure-clusters/" title="Secure">Secure</a></div>
-          <div class="detail-copy">Authorize access to your clusters and databases, download your cluster certificate, and audit account activity.</div>
+          <div class="detail-copy">Authorize access to clusters and databases, download cluster certificates, and audit account activity.</div>
 <!--          <ul>
             <li><a class="text-link" href="../cloud-secure-clusters/add-connections/" title="Add trusted IP addresses">Add trusted IP addresses</a></li>
             <li><a class="text-link" href="../cloud-secure-clusters/add-users/" title="Add database users">Add database users</a></li>
