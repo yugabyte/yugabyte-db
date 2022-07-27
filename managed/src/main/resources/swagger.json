@@ -8720,6 +8720,35 @@
         "tags" : [ "Customer management" ]
       }
     },
+    "/api/v1/customers/{cUUID}/access_keys" : {
+      "get" : {
+        "description" : "",
+        "operationId" : "listAllForProviders",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "$ref" : "#/definitions/AccessKey"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "List access keys for all providers of a customer",
+        "tags" : [ "Access Keys" ]
+      }
+    },
     "/api/v1/customers/{cUUID}/alert_channels" : {
       "get" : {
         "description" : "",
