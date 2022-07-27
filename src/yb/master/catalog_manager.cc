@@ -8686,7 +8686,7 @@ Status CatalogManager::IsTabletSplittingComplete(
     }
   }
   for (const auto& table : tables) {
-    if (!tablet_split_manager_.IsTabletSplittingComplete(*table)) {
+    if (!tablet_split_manager_.IsTabletSplittingComplete(*table, req->wait_for_parent_deletion())) {
       resp->set_is_tablet_splitting_complete(false);
       return Status::OK();
     }
