@@ -45,8 +45,8 @@ the PGX APIs. It also supports the standard `database/sql` package.
 
 ## CRUD Operations with PGX driver
 
-Learn how to establish a connection to YugabyteDB database and begin simple CRUD operations using
-the steps in the [Build an application](../../../../quick-start/build-apps/go/ysql-pgx) page under the
+Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using
+the steps in the [Build an application](../../../../develop/build-apps/go/ysql-pgx) page under the
 Quick start section.
 
 The following sections break down the quick start example to demonstrate how to perform common tasks required for Go application development using the PGX driver.

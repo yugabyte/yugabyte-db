@@ -44,8 +44,8 @@ the standard `database/sql` package.
 
 ## Fundamentals of PQ Driver
 
-Learn how to establish a connection to YugabyteDB database and begin simple CRUD operations using
-the steps in the [Build an application](../../../../quick-start/build-apps/go/ysql-pq) page under the
+Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using
+the steps in the [Build an application](../../../../develop/build-apps/go/ysql-pq) page under the
 Quick start section.
 
 Let us break down the quick start example and understand how to perform the common tasks required
@@ -69,7 +69,7 @@ All the functions or structs required for working with YugabyteDB database are p
 Use the `sql.Open()` function for getting connection object for the YugabyteDB database which can be
 used for performing DDLs and DMLs against the database.
 
-The connection details can be specified either as string params or via an url in the format given below:
+The connection details can be specified either as string parameters or via an URL in the format given below:
 
 ```go
 postgresql://username:password@hostname:port/database
