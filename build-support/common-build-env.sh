@@ -498,7 +498,7 @@ set_default_compiler_type() {
       YB_COMPILER_TYPE=clang
     elif [[ $OSTYPE =~ ^linux ]]; then
       detect_architecture
-      if [[ ${build_type} =~ ^(debug|fastdebug|release)$ &&
+      if [[ ${build_type} =~ ^(debug|fastdebug|release|prof_(gen|use))$ &&
             ${YB_TARGET_ARCH} == "x86_64" ]]; then
         YB_COMPILER_TYPE=clang13
       else
