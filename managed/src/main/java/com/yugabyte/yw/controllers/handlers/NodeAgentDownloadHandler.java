@@ -18,6 +18,7 @@ import java.util.Objects;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang3.EnumUtils;
 import play.mvc.Http;
 
@@ -48,30 +49,24 @@ public class NodeAgentDownloadHandler {
   }
 
   private enum OS {
-    // TODO: Add supported OS
-    CENTOS,
-    AMZN,
-    DARWIN;
+    DARWIN,
+    LINUX
   }
 
   private enum Arch {
-    // TODO: Add supported architectures
-    ARM,
+    ARM64,
     AMD64;
   }
 
   @VisibleForTesting
-  void validateDownloadTypeOrThrowError(String type, String os, String arch) {
-    if (!EnumUtils.isValidEnumIgnoreCase(DownloadType.class, type)) {
+  void validateDownloadType(DownloadType downloadType, OS osType, Arch archType) {
+    if (downloadType == null) {
       throw new PlatformServiceException(
           Http.Status.BAD_REQUEST, "Incorrect download step provided");
     }
-    DownloadType downloadType = EnumUtils.getEnumIgnoreCase(DownloadType.class, type);
-    if (downloadType == DownloadType.PACKAGE
-        && (!EnumUtils.isValidEnumIgnoreCase(OS.class, os)
-            || !EnumUtils.isValidEnumIgnoreCase(Arch.class, arch))) {
+    if (downloadType == DownloadType.PACKAGE && (osType == null || archType == null)) {
       throw new PlatformServiceException(
-          Http.Status.BAD_REQUEST, "Incorrect OS or Arch passed for Package download step.");
+          Http.Status.BAD_REQUEST, "Incorrect OS or Arch passed for package download step");
     }
   }
 
@@ -82,36 +77,38 @@ public class NodeAgentDownloadHandler {
    * @return the Node Agent download file (installer or build package).
    */
   public NodeAgentDownloadFile validateAndGetDownloadFile(String type, String os, String arch) {
-    validateDownloadTypeOrThrowError(type, os, arch);
-    final DownloadType downloadType = EnumUtils.getEnumIgnoreCase(DownloadType.class, type);
-
+    DownloadType downloadType =
+        StringUtils.isBlank(type)
+            ? DownloadType.INSTALLER
+            : EnumUtils.getEnumIgnoreCase(DownloadType.class, type);
+    OS osType = EnumUtils.getEnumIgnoreCase(OS.class, os);
+    Arch archType = EnumUtils.getEnumIgnoreCase(Arch.class, arch);
+    validateDownloadType(downloadType, osType, archType);
     Path nodeAgentsBuildPath =
         Paths.get(appConfig.getString("yb.storage.path"), "node-agents", "build");
     InputStream is;
 
-    if (downloadType == DownloadType.INSTALLER) {
-      File installerFile = new File(nodeAgentsBuildPath.toString(), NODE_AGENT_INSTALLER_FILE);
-      is = FileUtils.getInputStreamOrFail(installerFile);
-      return new NodeAgentDownloadFile("application/x-sh", is, NODE_AGENT_INSTALLER_FILE);
+    if (downloadType == DownloadType.PACKAGE) {
+      String softwareVersion =
+          Objects.requireNonNull(
+              (String)
+                  configHelper.getConfig(ConfigHelper.ConfigType.SoftwareVersion).get("version"));
+      String buildPkgFile =
+          new StringBuilder()
+              .append("node-agent-")
+              .append(softwareVersion)
+              .append("-")
+              .append(osType.name().toLowerCase())
+              .append("-")
+              .append(archType.name().toLowerCase())
+              .append(".tgz")
+              .toString();
+      File buildZip = new File(nodeAgentsBuildPath.toString(), buildPkgFile);
+      is = com.yugabyte.yw.common.utils.FileUtils.getInputStreamOrFail(buildZip);
+      return new NodeAgentDownloadFile("application/gzip", is, buildPkgFile);
     }
-    String softwareVersion =
-        Objects.requireNonNull(
-            (String)
-                configHelper.getConfig(ConfigHelper.ConfigType.SoftwareVersion).get("version"));
-    OS osType = EnumUtils.getEnumIgnoreCase(OS.class, os);
-    Arch archType = EnumUtils.getEnumIgnoreCase(Arch.class, arch);
-    String buildPkgFile =
-        new StringBuilder()
-            .append("node-agent-")
-            .append(softwareVersion)
-            .append("-")
-            .append(osType.name().toLowerCase())
-            .append("-")
-            .append(archType.name().toLowerCase())
-            .append(".tgz")
-            .toString();
-    File buildZip = new File(nodeAgentsBuildPath.toString(), buildPkgFile);
-    is = com.yugabyte.yw.common.utils.FileUtils.getInputStreamOrFail(buildZip);
-    return new NodeAgentDownloadFile("application/gzip", is, buildPkgFile);
+    File installerFile = new File(nodeAgentsBuildPath.toString(), NODE_AGENT_INSTALLER_FILE);
+    is = FileUtils.getInputStreamOrFail(installerFile);
+    return new NodeAgentDownloadFile("application/x-sh", is, NODE_AGENT_INSTALLER_FILE);
   }
 }
