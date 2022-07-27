@@ -29,7 +29,7 @@ If you encounter an issue or have an enhancement request, [file a GitHub issue](
 
 For details and documentation, refer to [libpq - C Library](https://www.postgresql.org/docs/11/libpq.html) for PostgreSQL 11 (on which YugabyteDB is based).
 
-For a tutorial on building a sample C application with libpq, refer to [Build a C application](../../../quick-start/build-apps/c/ysql/).
+For a tutorial on building a sample C application with libpq, refer to [Build a C application](../../../develop/build-apps/c/ysql/).
 
 #### Install the libpq client library
 
@@ -49,7 +49,7 @@ The [libpqxx](http://pqxx.org/development/libpqxx/) driver is the official C++ c
 
 For details and documentation, refer to the [libpqxx README](https://github.com/jtv/libpqxx#readme) and [libpqxx documentation](https://libpqxx.readthedocs.io/en/latest/).
 
-For a tutorial on building a sample C++ application with libpqxx, refer to [Build a C++ application](../../../quick-start/build-apps/cpp/ysql/).
+For a tutorial on building a sample C++ application with libpqxx, refer to [Build a C++ application](../../../develop/build-apps/cpp/ysql/).
 
 #### Install the libpqxx driver
 
@@ -82,7 +82,7 @@ $ make install
 
 For details on Npgsql, refer to the [Npgsql documentation](https://www.npgsql.org/doc/).
 
-To follow a tutorial on building a sample C# application with Npgsql, see [Build a C# application](../../../quick-start/build-apps/csharp/ysql/).
+To follow a tutorial on building a sample C# application with Npgsql, see [Build a C# application](../../../develop/build-apps/csharp/ysql/).
 
 #### Install the driver
 
@@ -116,7 +116,7 @@ connStringBuilder.ServerCompatibilityMode = ServerCompatibilityMode.NoTypeLoadin
 
 The [Go PostgreSQL driver package (pq)](https://pkg.go.dev/github.com/lib/pq?tab=doc) is a Go PostgreSQL driver for the `database/sql` package. pq is not based on [libpq](#libpq), but supports the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
 
-For a tutorial on building a sample Go application with pq, see [Build a Go application](../../../quick-start/build-apps/go/ysql-pq/).
+For a tutorial on building a sample Go application with pq, see [Build a Go application](../../../develop/build-apps/go/ysql-pq/).
 
 #### Install the pq driver
 
@@ -136,13 +136,13 @@ The Yugabyte JDBC driver is a distributed JDBC driver for YSQL built on the Post
 
 For information on the Yugabyte JDBC driver and its load balancing features, see [Yugabyte JDBC driver](../../../integrations/jdbc-driver).
 
-For a tutorial on building a sample Java application with the Yugabyte JDBC driver, see [Build a Java application](../../../quick-start/build-apps/java/ysql-yb-jdbc/).
+For a tutorial on building a sample Java application with the Yugabyte JDBC driver, see [Build a Java application](../../../develop/build-apps/java/ysql-yb-jdbc/).
 
 ### PostgreSQL JDBC driver (PgJDBC)
 
 The [PostgreSQL JDBC driver](https://jdbc.postgresql.org/) is the official JDBC driver for PostgreSQL. PgJDBC is not based on [libpq](#libpq), but supports the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
 
-For a tutorial on building a sample Java application with the PostgreSQL JDBC Driver, see [Build a Java application](../../../quick-start/build-apps/java/ysql-jdbc/).
+For a tutorial on building a sample Java application with the PostgreSQL JDBC Driver, see [Build a Java application](../../../develop/build-apps/java/ysql-jdbc/).
 
 #### Install the PostgreSQL JDBC driver
 
@@ -158,7 +158,7 @@ To get the latest versions for projects using [Apache Maven](https://maven.apach
 
 For details on installing and using node-postgres, see the [node-postgres documentation](https://node-postgres.com/).
 
-For a tutorial on building a sample Node.js application with node-postgres, see [Build a Node.js application](../../../quick-start/build-apps/nodejs/ysql-pg/).
+For a tutorial on building a sample Node.js application with node-postgres, see [Build a Node.js application](../../../develop/build-apps/nodejs/ysql-pg/).
 
 #### Install the node-postgres (pg) driver
 
@@ -176,7 +176,7 @@ The [php-pgsql](https://www.php.net/manual/en/book.pgsql.php) driver is a collec
 
 For details on installing and using php-pgsql, see the [php-pgsql documentation](https://www.php.net/manual/en/book.pgsql.php).
 
-For a tutorial on building a sample PHP application with php-pgsql, see [Build a PHP application](../../../quick-start/build-apps/php/ysql/).
+For a tutorial on building a sample PHP application with php-pgsql, see [Build a PHP application](../../../develop/build-apps/php/ysql/).
 
 #### Install the php-pgsql driver
 
@@ -196,7 +196,7 @@ CentOS users can install the driver using the `sudo yum install php-pgsql` comma
 
 For details on using psycopg2, see [Psycopg documentation](https://www.psycopg.org/docs/).
 
-For a tutorial on building a sample Python application that uses psycopg2, see [Build a Python application](../../../quick-start/build-apps/python/ysql-psycopg2).
+For a tutorial on building a sample Python application that uses psycopg2, see [Build a Python application](../../../develop/build-apps/python/ysql-psycopg2).
 
 #### Install the psycopg2 binary
 
@@ -210,7 +210,7 @@ $ pip3 install psycopg2-binary
 
 [aiopg](https://aiopg.readthedocs.io/en/stable/) is a library for accessing a PostgreSQL database using the asyncio (PEP-3156/tulip) framework. It wraps asynchronous features of the [Psycopg](https://www.psycopg.org/) database driver. For details on using aiopg, see [aiopg documentation](https://aiopg.readthedocs.io/en/stable/).
 
-For a tutorial on building a sample Python application that uses aiopg, see [Build a Python application](../../../quick-start/build-apps/python/ysql-aiopg).
+For a tutorial on building a sample Python application that uses aiopg, see [Build a Python application](../../../develop/build-apps/python/ysql-aiopg).
 
 #### Install
 
@@ -226,7 +226,7 @@ pip3 install aiopg
 
 [pg](https://github.com/ged/ruby-pg) is the Ruby interface for PostgreSQL databases. pg is based on [libpq](#libpq) and supports the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
 
-For a tutorial on building a sample Ruby application with pg, see [Build a Ruby application](../../../quick-start/build-apps/ruby/ysql-pg).
+For a tutorial on building a sample Ruby application with pg, see [Build a Ruby application](../../../develop/build-apps/ruby/ysql-pg).
 
 #### Install the pg driver
 
@@ -250,7 +250,7 @@ Replace `<path-to-libpq>` with the path to the libpq installation; for example, 
 
 [Rust-Postgres](https://github.com/sfackler/rust-postgres) is the Rust interface for PostgreSQL databases. Rust-Postgres is not based on libpq, but supports the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
 
-For a tutorial on building a sample Ruby application with Rust-Postgres, see [Build a Rust application](../../../yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-rust).
+For a tutorial on building a sample Ruby application with Rust-Postgres, see [Build a Rust application](../../../develop/build-apps/rust/cloud-ysql-rust/).
 
 #### Install the Rust-Postgres driver
 

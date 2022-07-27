@@ -18,12 +18,12 @@ The following projects are recommended for implementing Node applications using 
 
 | Project | Documentation and Guides | Latest Driver Version | Supported YugabyteDB Version |
 | :------ | :----------------------- | :----------------------- | :--------------------|
-| node-postgres Driver| [Documentation](postgres-node-driver) <br /> [Hello World App](../../quick-start/build-apps/nodejs/ysql-pg/) | [8.7.3](https://www.npmjs.com/package/pg) | 2.6 and above |
+| node-postgres Driver| [Documentation](postgres-node-driver) <br /> [Hello World App](../../develop/build-apps/nodejs/ysql-pg/) | [8.7.3](https://www.npmjs.com/package/pg) | 2.6 and above |
 
 | Project | Documentation and Guides | Example Apps |
 | :------ | :----------------------- | :----------- |
-| Sequelize | [Documentation](sequelize) <br /> [Hello World App](../../quick-start/build-apps/nodejs/ysql-sequelize/) | [Sequelize ORM App](https://github.com/YugabyteDB-Samples/orm-examples/tree/master/node/sequelize) |
-| Prisma | [Documentation](prisma) <br /> [Hello World App](../../quick-start/build-apps/nodejs/ysql-prisma/) <br /> | [Prisma ORM App](https://github.com/yugabyte/orm-examples/tree/master/node/prisma)
+| Sequelize | [Documentation](sequelize) <br /> [Hello World App](../../develop/build-apps/nodejs/ysql-sequelize/) | [Sequelize ORM App](https://github.com/YugabyteDB-Samples/orm-examples/tree/master/node/sequelize) |
+| Prisma | [Documentation](prisma) <br /> [Hello World App](../../develop/build-apps/nodejs/ysql-prisma/) <br /> | [Prisma ORM App](https://github.com/yugabyte/orm-examples/tree/master/node/prisma)
 
 Learn how to establish a connection to a YugabyteDB database and begin basic CRUD operations using the **Hello World** examples.
 
