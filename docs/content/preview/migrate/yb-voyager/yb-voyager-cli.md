@@ -42,7 +42,7 @@ The following command line options specify the migration steps.
 
 ### export schema
 
-[Export the schema](/preview/migrate/yb-voyager/migrate-data/#export-schema) from the source database.
+[Export the schema](../migrate-steps/#export-and-analyze-schema) from the source database.
 
 #### Syntax
 

@@ -26,7 +26,7 @@ YugabyteDB's YSQL API is fully compatible with Diesel ORM for data persistence i
 
 ## CRUD operations
 
-Learn how to establish a connection to a YugabyteDB database and begin basic CRUD operations using the steps on the [Build an application](../../../quick-start/build-apps/rust/ysql-diesel/) page.
+Learn how to establish a connection to a YugabyteDB database and begin basic CRUD operations using the steps on the [Build an application](../../../develop/build-apps/rust/ysql-diesel/) page.
 
 The following sections break down the example to demonstrate how to perform common tasks required for Rust application development using Diesel.
 
@@ -337,5 +337,4 @@ Email: "tstewart@example.com"
 
 ## Next steps
 
-- Explore [Scaling applications](../../../explore/linear-scalability/) with YugabyteDB.
-- Learn how to [develop Rust applications with YugabyteDB Managed](../../../yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-rust/).
+Explore [Scaling applications](../../../explore/linear-scalability/) with YugabyteDB.
