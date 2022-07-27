@@ -28,7 +28,10 @@ public class BundleDetails {
     ConsensusMeta,
 
     @EnumValue("TabletMeta")
-    TabletMeta;
+    TabletMeta,
+
+    @EnumValue("YbcLogs")
+    YbcLogs;
 
     public static boolean isValid(String type) {
       for (ComponentType t : ComponentType.values()) {
