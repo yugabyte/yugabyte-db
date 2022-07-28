@@ -48,7 +48,7 @@ The Sandbox cluster provides a fully functioning single node YugabyteDB cluster 
 
 >**Sandbox cluster**
 >
->YugabyteDB is a distributed database optimized for deployment across a cluster of servers. The Sandbox cluster has a single node and limited resources, suitable for running tutorials, [Yugabyte University](https://university.yugabyte.com), and [building sample applications](../yugabyte-cloud/cloud-quickstart/cloud-build-apps/). See [Differences between Sandbox and Dedicated clusters](../faq/yugabytedb-managed-faq/#what-are-the-differences-between-sandbox-and-dedicated-clusters) for more information.
+>YugabyteDB is a distributed database optimized for deployment across a cluster of servers. The Sandbox cluster has a single node and limited resources, suitable for running tutorials, [Yugabyte University](https://university.yugabyte.com), and [building sample applications](../develop/build-apps/). See [Differences between Sandbox and Dedicated clusters](../faq/yugabytedb-managed-faq/#what-are-the-differences-between-sandbox-and-dedicated-clusters) for more information.
 >
 >To evaluate YugabyteDB Managed for production use or conduct a proof-of-concept (POC), contact [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431) for trial credits.
 
@@ -130,7 +130,7 @@ Before you begin, you need the following:
 - the cluster CA certificate; YugabyteDB Managed uses TLS to secure connections to the database.
 - your computer added to the cluster IP allow list.
 
-Refer to [Before you begin](../yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-add-ip/).
+Refer to [Before you begin](../develop/build-apps/cloud-add-ip/).
 
 ### Choose your language
 
@@ -200,7 +200,7 @@ name = John, age = 28, country = Canada, balance = 9800
 
 You have successfully executed a basic Java application that works with YugabyteDB Managed.
 
-[Explore the application logic](../yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-yb-jdbc/#explore-the-application-logic)
+[Explore the application logic](../develop/build-apps/java/cloud-ysql-yb-jdbc/#explore-the-application-logic)
 
   {{% /tab %}}
 
@@ -271,7 +271,7 @@ name = John, age = 28, country = Canada, balance = 9800
 
 You have successfully executed a basic Go application that works with YugabyteDB Managed.
 
-[Explore the application logic](../yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-go/#explore-the-application-logic)
+[Explore the application logic](../develop/build-apps/go/cloud-ysql-go/#explore-the-application-logic)
 
   {{% /tab %}}
 
@@ -336,7 +336,7 @@ name = John, age = 28, country = Canada, balance = 9800
 
 You have successfully executed a basic Python application that works with YugabyteDB Managed.
 
-[Explore the application logic](../yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-python/#explore-the-application-logic)
+[Explore the application logic](../develop/build-apps/python/cloud-ysql-python/#explore-the-application-logic)
 
   {{% /tab %}}
 
@@ -406,7 +406,7 @@ name = John, age = 28, country = Canada, balance = 9800
 
 You have successfully executed a basic Node.js application that works with YugabyteDB Managed.
 
-[Explore the application logic](../yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-node/#explore-the-application-logic)
+[Explore the application logic](../develop/build-apps/nodejs/cloud-ysql-node/#explore-the-application-logic)
 
   {{% /tab %}}
 
@@ -476,7 +476,7 @@ name = John, age = 28, country = Canada, balance = 9800
 
 You have successfully executed a basic C application that works with YugabyteDB Managed.
 
-[Explore the application logic](../yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-c/#explore-the-application-logic)
+[Explore the application logic](../develop/build-apps/c/cloud-ysql-c/#explore-the-application-logic)
 
   {{% /tab %}}
 
@@ -549,7 +549,7 @@ name = John, age = 28, country = Canada, balance = 9800
 
 You have successfully executed a basic C++ application that works with YugabyteDB Managed.
 
-[Explore the application logic](../yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-cpp/#explore-the-application-logic)
+[Explore the application logic](../develop/build-apps/cpp/cloud-ysql-cpp/#explore-the-application-logic)
 
   {{% /tab %}}
 
@@ -614,7 +614,7 @@ name = John, age = 28, country = Canada, balance = 9800
 
 You have successfully executed a basic C# application that works with YugabyteDB Managed.
 
-[Explore the application logic](../yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-csharp/#explore-the-application-logic)
+[Explore the application logic](../develop/build-apps/csharp/cloud-ysql-csharp/#explore-the-application-logic)
 
   {{% /tab %}}
 
@@ -688,7 +688,7 @@ name = John, age = 28, country = Canada, balance = 9800
 
 You have successfully executed a basic Ruby application that works with YugabyteDB Managed.
 
-[Explore the application logic](../yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-ruby/#explore-the-application-logic)
+[Explore the application logic](../develop/build-apps/ruby/cloud-ysql-ruby/#explore-the-application-logic)
 
   {{% /tab %}}
 
@@ -749,7 +749,7 @@ name = John, age = 28, country = Canada, balance = 9800
 
 You have successfully executed a basic Rust application that works with YugabyteDB Managed.
 
-[Explore the application logic](../yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-rust/#explore-the-application-logic)
+[Explore the application logic](../develop/build-apps/rust/cloud-ysql-rust/#explore-the-application-logic)
 
   {{% /tab %}}
 
@@ -812,7 +812,7 @@ name = John, age = 28, country = Canada, balance = 9800
 
 You have successfully executed a basic PHP application that works with YugabyteDB Managed.
 
-[Explore the application logic](../yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-php/#explore-the-application-logic)
+[Explore the application logic](../develop/build-apps/php/cloud-ysql-php/#explore-the-application-logic)
 
   {{% /tab %}}
 
@@ -820,7 +820,7 @@ You have successfully executed a basic PHP application that works with YugabyteD
 
 ## Learn more
 
-[Explore more applications](../yugabyte-cloud/cloud-quickstart/cloud-build-apps/)
+[Explore more applications](../develop/build-apps/)
 
 [Drivers and ORMS](../drivers-orms/)
 

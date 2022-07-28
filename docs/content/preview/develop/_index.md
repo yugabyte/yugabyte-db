@@ -13,6 +13,19 @@ type: indexpage
     <a class="section-link icon-offset" href="learn/">
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true" />
+        <div class="articles">12 articles</div>
+        <div class="title">Build an application</div>
+      </div>
+      <div class="body">
+        Use your favorite programming language to build applications for YugabyteDB.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="learn/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true" />
         <div class="articles">9 articles</div>
         <div class="title">Learn app development</div>
       </div>

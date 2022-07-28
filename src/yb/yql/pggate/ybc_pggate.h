@@ -33,12 +33,8 @@ void YBCInterruptPgGate();
 //--------------------------------------------------------------------------------------------------
 // Environment and Session.
 
-// Initialize ENV within which PGSQL calls will be executed.
-YBCStatus YBCPgCreateEnv(YBCPgEnv *pg_env);
-YBCStatus YBCPgDestroyEnv(YBCPgEnv pg_env);
-
 // Initialize a session to process statements that come from the same client connection.
-YBCStatus YBCPgInitSession(const YBCPgEnv pg_env, const char *database_name);
+YBCStatus YBCPgInitSession(const char *database_name);
 
 // Initialize YBCPgMemCtx.
 // - Postgres uses memory context to hold all of its allocated space. Once all associated operations
@@ -46,7 +42,7 @@ YBCStatus YBCPgInitSession(const YBCPgEnv pg_env, const char *database_name);
 // - There YugaByte objects are bound to Postgres operations. All of these objects' allocated
 //   memory will be held by YBCPgMemCtx, whose handle belongs to Postgres MemoryContext. Once all
 //   Postgres operations are done, associated YugaByte memory context (YBCPgMemCtx) will be
-//   destroyed toghether with Postgres memory context.
+//   destroyed together with Postgres memory context.
 YBCPgMemctx YBCPgCreateMemctx();
 YBCStatus YBCPgDestroyMemctx(YBCPgMemctx memctx);
 YBCStatus YBCPgResetMemctx(YBCPgMemctx memctx);

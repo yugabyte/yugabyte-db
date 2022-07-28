@@ -414,9 +414,15 @@ class UniverseForm extends Component {
         universeConfigTemplate.data.nodesResizeAvailable) {
       const currentCluster = this.getCurrentCluster();
       const newCluster = this.getNewCluster();
-      return currentCluster && newCluster &&
-        newCluster.userIntent.deviceInfo.volumeSize >
-             currentCluster.userIntent.deviceInfo.volumeSize;
+      if (currentCluster && newCluster) {
+        const oldVolumeSize = currentCluster.userIntent.deviceInfo.volumeSize;
+        const newVolumeSize = newCluster.userIntent.deviceInfo.volumeSize;
+        const instanceChanged = newCluster.userIntent.instanceType !== currentCluster.userIntent
+            .instanceType;
+        return newVolumeSize > oldVolumeSize
+               || (instanceChanged && oldVolumeSize === newVolumeSize);
+      }
+      return false;
     }
     return false;
   }
@@ -748,17 +754,7 @@ class UniverseForm extends Component {
       );
     }
 
-    const selectedProviderUUID = this.props?.formValues?.primary?.provider;
-    const selectedProvider = this.props?.cloud?.providers?.data?.find(
-      (provider) => provider.uuid === selectedProviderUUID
-    );
-
-    if (
-      this.state.currentView === 'Primary' &&
-      type !== 'Edit' &&
-      type !== 'Async' &&
-      (selectedProvider === undefined || selectedProvider?.code !== 'kubernetes')
-    ) {
+    if (this.state.currentView === 'Primary' && type !== 'Edit' && type !== 'Async') {
       asyncReplicaBtn = (
         <YBButton
           btnClass="btn btn-default universe-form-submit-btn"

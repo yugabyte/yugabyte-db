@@ -102,7 +102,6 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     mockSessionStore = mock(PlayCacheSessionStore.class);
     mockAlertConfigurationWriter = mock(AlertConfigurationWriter.class);
     return new GuiceApplicationBuilder()
-        .disable(SwaggerModule.class)
         .disable(GuiceModule.class)
         .configure(testDatabase())
         .overrides(bind(ShellKubernetesManager.class).toInstance(kubernetesManager))
@@ -174,7 +173,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     params.providerUUID = defaultProvider.uuid;
     params.commandType = commandType;
     params.config = config;
-    params.nodePrefix = defaultUniverse.getUniverseDetails().nodePrefix;
+    params.helmReleaseName = defaultUniverse.getUniverseDetails().nodePrefix;
     params.universeUUID = defaultUniverse.universeUUID;
     if (setNamespace) {
       params.namespace = namespace;
@@ -191,7 +190,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     params.ybSoftwareVersion = ybSoftwareVersion;
     params.providerUUID = defaultProvider.uuid;
     params.commandType = commandType;
-    params.nodePrefix = defaultUniverse.getUniverseDetails().nodePrefix;
+    params.helmReleaseName = defaultUniverse.getUniverseDetails().nodePrefix;
     params.universeUUID = defaultUniverse.universeUUID;
     params.config = config;
     params.placementInfo = placementInfo;

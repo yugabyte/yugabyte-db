@@ -96,7 +96,6 @@ public class SessionControllerTest {
     ldapUtil = mock(LdapUtil.class);
     app =
         new GuiceApplicationBuilder()
-            .disable(SwaggerModule.class)
             .disable(GuiceModule.class)
             .configure(testDatabase())
             .configure(ImmutableMap.of("yb.multiTenant", isMultiTenant))

@@ -32,7 +32,7 @@ Psycopg is the most popular PostgreSQL database adapter for the Python programmi
 
 ## Fundamentals
 
-Learn how to establish a connection to YugabyteDB database and begin CRUD operations using the steps in [Build an Application](/preview/quick-start/build-apps/python/ysql-psycopg2) in the Quick start section.
+Learn how to establish a connection to YugabyteDB database and begin CRUD operations using the steps in [Build an Application](/preview/develop/build-apps/python/ysql-psycopg2) in the Quick start section.
 
 Let us break down the quick start example and understand how to perform the common tasks required for Python application development using the PostgreSQL Psycopg driver.
 

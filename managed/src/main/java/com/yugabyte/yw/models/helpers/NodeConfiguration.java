@@ -10,11 +10,16 @@ import java.util.EnumSet;
 import java.util.Set;
 import java.util.function.Predicate;
 import javax.validation.constraints.NotNull;
+
+import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
+import lombok.NoArgsConstructor;
 
 /** Pair of node configuration type and its value. */
 @Data
+@NoArgsConstructor
+@AllArgsConstructor
 @ApiModel(description = "A node configuration.")
 public class NodeConfiguration {
   @NotNull
@@ -39,7 +44,23 @@ public class NodeConfiguration {
   /** Type of the configuration. The predicate can be minimum value comparison like ulimit. */
   public enum Type {
     // TODO add more types.
-    NTP_SERVICE_STATUS(v -> v.equalsIgnoreCase("running"));
+    // NTP_SERVICE_STATUS(v -> v.equalsIgnoreCase("running")),
+    // Add predicates for the preflight checks
+    NTP_SERVICE_STATUS(),
+    PROMETHEUS_SPACE(),
+    MOUNT_POINT(),
+    PORT_AVAILABLE(),
+    YUGABYTE_USER(),
+    YUGABYTE_USER_GROUP(),
+    HOME_DIR_SPACE(),
+    RAM_SIZE(),
+    INTERNET_CONNECTION(),
+    CPU_CORES,
+    PROMETHEUS_NO_NODE_EXPORTER(),
+    TMP_DIR_SPACE(),
+    PAM_LIMITS(),
+    PORTS(),
+    PYTHON_VERSION();
 
     // Predicate to test if a value is acceptable.
     private final Predicate<String> predicate;

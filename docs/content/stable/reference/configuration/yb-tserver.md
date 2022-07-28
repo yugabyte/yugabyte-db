@@ -530,7 +530,7 @@ Default: Uses the YSQL display format.
 
 Specifies the maximum number of concurrent YSQL connections.
 
-Default: `300`
+Default: 300 for superusers. Non-superuser roles see only the connections available for use, while superusers see all connections, including those reserved for superusers.
 
 ##### --ysql_default_transaction_isolation
 

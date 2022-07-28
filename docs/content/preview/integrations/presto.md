@@ -16,7 +16,7 @@ This document describes how to set up Presto to query YugabyteDB's YCQL tables.
 
 ## 1. Start local cluster
 
-Follow [Quick start](../../quick-start/) instructions to run a local YugabyteDB cluster. Test YugabyteDB's Cassandra-compatible API, as [documented](../../quick-start/explore/ycql/) so that you can confirm that you have a Cassandra-compatible service running on `localhost:9042`. Ensure that you have created the keyspace and table, and inserted sample data as described there.
+Follow the [Quick start](../../quick-start/) instructions to run a local YugabyteDB cluster. Test YugabyteDB's Cassandra-compatible API, as [documented](../../quick-start/explore/ycql/) so that you can confirm that you have a Cassandra-compatible service running on `localhost:9042`. Ensure that you have created the keyspace and table, and inserted sample data as described there.
 
 ## 2. Download and configure Presto
 
