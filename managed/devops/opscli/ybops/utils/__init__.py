@@ -38,7 +38,7 @@ YB_FOLDER_PATH = os.path.join(HOME_FOLDER, ".yugabyte")
 
 RELEASE_VERSION_FILENAME = "version.txt"
 RELEASE_VERSION_PATTERN = "\d+.\d+.\d+.\d+"
-RELEASE_REPOS = set(["devops", "yugaware", "yugabyte"])
+RELEASE_REPOS = set(["devops", "yugaware", "yugabyte", "yugabundle_support"])
 
 # Home directory of node instances. Try to read home dir from env, else assume it's /home/yugabyte.
 YB_HOME_DIR = os.environ.get("YB_HOME_DIR") or "/home/yugabyte"
