@@ -43,44 +43,44 @@ The connection limit is stored in the system catalog but connection count tracki
 
 ### Set up database and user
 
-- First create a database, as follows:
+  1. First create a database, as follows:
 
-  ```sql
-  create database test_connection;
-  ```
+     ```sql
+     create database test_connection;
+     ```
 
-- Next, create a user. Make sure the user you create is not a superuser. For superusers, there is no limit on the number of connections.
+  1. Next, create a user. Make sure the user you create is not a superuser. For superusers, there is no limit on the number of connections.
 
-  ```sql
-  create role test_user login;
-  ```
+     ```sql
+     create role test_user login;
+     ```
 
-- Verify that you created a non-superuser using the following command:
+  1. Verify that you created a non-superuser using the following command:
 
-  ```sql
-  SELECT rolname, rolsuper, rolcanlogin FROM pg_roles;
-  ```
+     ```sql
+     SELECT rolname, rolsuper, rolcanlogin FROM pg_roles;
+     ```
 
-  You should see the following output.
+     You should see the following output.
 
-  ```output
-   rolname                   | rolsuper | rolcanlogin
-  ---------------------------+----------+-------------
-   postgres                  | t        | t
-   pg_monitor                | f        | f
-   pg_read_all_settings      | f        | f
-   pg_read_all_stats         | f        | f
-   pg_stat_scan_tables       | f        | f
-   pg_signal_backend         | f        | f
-   pg_read_server_files      | f        | f
-   pg_write_server_files     | f        | f
-   pg_execute_server_program | f        | f
-   yb_extension              | f        | f
-   yb_fdw                    | f        | f
-   yb_db_admin               | f        | f
-   yugabyte                  | t        | t
-   test_user                 | f        | t
-  ```
+     ```output
+      rolname                   | rolsuper | rolcanlogin
+     ---------------------------+----------+-------------
+      postgres                  | t        | t
+      pg_monitor                | f        | f
+      pg_read_all_settings      | f        | f
+      pg_read_all_stats         | f        | f
+      pg_stat_scan_tables       | f        | f
+      pg_signal_backend         | f        | f
+      pg_read_server_files      | f        | f
+      pg_write_server_files     | f        | f
+      pg_execute_server_program | f        | f
+      yb_extension              | f        | f
+      yb_fdw                    | f        | f
+      yb_db_admin               | f        | f
+      yugabyte                  | t        | t
+      test_user                 | f        | t
+     ```
 
 ### Limit connections per DB
 
