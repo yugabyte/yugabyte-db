@@ -24,9 +24,9 @@ yb_hash_code(a1:t1, a2:t2, a3:t3, a4:t4...) → int4 (32 bit integer)
 
 Where `a1, a2, a3...` are expressions of type `t1, t2, t3...`, respectively. `t1, t2, t3...` must be types that are currently allowed in a primary key.
 
-## Function Pushdown
+## Function pushdown
 
-This function can be either evaluated at the YSQL layer after resolving each of its argument expressions, or certain invocations of it may be pushed down to be evaluated at the DocDB layer. When pushdown happens, the restrictions implied by the yb_hash_code conditions are used to ensure we only send requests to the tablets that definitely contain values in the requested ranges, as well as only scan the relevant ranges within each tablet. This section discusses the situations where they are pushed down. `yb_hash_code` invocations are pushed down when the YSQL optimizer determines that the return values of the function will directly match the values of the hash value column in a requested base table or index table. For example, if you create a table and insert 10000 rows as follows
+This function can be either evaluated at the YSQL layer after resolving each of its argument expressions, or certain invocations of it may be pushed down to be evaluated at the DocDB layer. When pushdown happens, the restrictions implied by the yb_hash_code conditions are used to ensure we only send requests to the tablets that definitely contain values in the requested ranges, as well as only scan the relevant ranges in each tablet. This section discusses the situations where they are pushed down. `yb_hash_code` invocations are pushed down when the YSQL optimizer determines that the return values of the function will directly match the values of the hash value column in a requested base table or index table. For example, if you create a table and insert 10000 rows as follows
 
 ```sql
 CREATE TABLE sample_table (x INTEGER, y INTEGER, z INTEGER, PRIMARY KEY((x,y) HASH, z ASC));
@@ -48,11 +48,12 @@ EXPLAIN ANALYZE SELECT * FROM sample_table WHERE yb_hash_code(x,y) <= 128 AND yb
 ```output
                                                             QUERY PLAN
 -----------------------------------------------------------------------------------------------------------------------------------
- Index Scan using sample_table_pkey on sample_table  (cost=0.00..5.88 rows=16 width=12) (actual time=2.867..2.919 rows=18 loops=1)
+ Index Scan using sample_table_pkey on sample_table  (cost=0.00..5.88 rows=16 width=12) (actual time=0.905..0.919 rows=18 loops=1)
    Index Cond: ((yb_hash_code(x, y) <= 128) AND (yb_hash_code(x, y) >= 0))
- Planning Time: 0.052 ms
- Execution Time: 2.953 ms
-(4 rows)
+ Planning Time: 0.110 ms
+ Execution Time: 0.991 ms
+ Peak Memory Usage: 8 kB
+(5 rows)
 ```
 
 Here, you can see that the primary key index was used and no row was rechecked at the YSQL layer.
@@ -71,20 +72,22 @@ You can consider a modified version of the above `SELECT` query as follows:
 SELECT * FROM sample_table WHERE yb_hash_code(x,z) <= 128 AND yb_hash_code(x,z) >= 0;
 ```
 
-Here, the `yb_hash_code` calls are on `x` and `z`. `x` and `z` do not form the full hash key of the base sample_table table but they do form the full hash key of the index table, `sample_idx`. Hence, the optimizer will consider pushing down the calls to the DocDB layer if an index scan using `sample_idx` is chosen. Note that the optimizer may choose not to go with a secondary scan if it deems the requested hash range to be large enough to warrant doing a simple full table scan instead. The `EXPLAIN ANALYZE` result for this could be as follows
+Here, the `yb_hash_code` calls are on `x` and `z`. `x` and `z` do not form the full hash key of the base sample_table table but they do form the full hash key of the index table, `sample_idx`. Hence, the optimizer will consider pushing down the calls to the DocDB layer if an index scan using `sample_idx` is chosen. Note that the optimizer may choose not to go with a secondary scan if it deems the requested hash range to be large enough to warrant doing a full table scan instead. The `EXPLAIN ANALYZE` result for this could be as follows
 
 ```sql
 EXPLAIN ANALYZE SELECT * FROM sample_table WHERE yb_hash_code(x,z) <= 128 AND yb_hash_code(x,z) >= 0;
 ```
 
 ```output
-                                                         QUERY PLAN
-----------------------------------------------------------------------------------------------------------------------------
- Index Scan using sample_idx on sample_table  (cost=0.00..5.96 rows=16 width=12) (actual time=8.923..8.975 rows=18 loops=1)
-   Index Cond: (yb_hash_code(x, z) <= 128)
- Planning Time: 0.066 ms
- Execution Time: 9.033 ms
-(4 rows)
+                                                           QUERY PLAN
+---------------------------------------------------------------------------------------------------------------------------------
+ Seq Scan on sample_table  (cost=10000000000.00..10000000020.00 rows=1000 width=12) (actual time=10.259..63.165 rows=18 loops=1)
+   Filter: ((yb_hash_code(x, z) <= 128) AND (yb_hash_code(x, z) >= 0))
+   Rows Removed by Filter: 9982
+ Planning Time: 5.970 ms
+ Execution Time: 63.574 ms
+ Peak Memory Usage: 2040 kB
+(6 rows)
 ```
 
 Note that you can also use [pg_hint_plan](../../../../explore/query-1-performance/pg-hint-plan/) to manipulate the index that is used.
@@ -133,7 +136,7 @@ EXPLAIN ANALYZE SELECT * FROM sample_table WHERE yb_hash_code(x,z) <= 128 and yb
 
 In this example, only the first clause is pushed down to an index, `sample_idx`. The rest are filters executed at the YSQL level. The optimizer prefers to push down this particular filter because it selects the fewest rows as determined by the low number of hash values it filters for compared to the `yb_hash_code(x,y) >= 5` filter.
 
-## Use Case Examples
+## Use case examples
 
 Here are some expected use case examples of the `yb_hash_code` function in YSQL. We use `sample_table` and `sample_idx` from the previous section for our examples here too:
 
@@ -192,7 +195,7 @@ SELECT COUNT(*) FROM sample_table WHERE yb_hash_code(x,y) >= 4600 and yb_hash_co
 (1 row)
 ```
 
-Since, we use what can be assumed to be a uniformly distributed hash function to partition our rows, we can assume that this is a count of approximately 1/128 of all the rows. Therefore, multiplying this count, 78 by 128 gives us a good estimate of the total number of rows (9984 in this case) in the table without querying and iterating over all tablets.
+Because we use what can be assumed to be a uniformly distributed hash function to partition our rows, we can assume that this is a count of approximately 1/128 of all the rows. Therefore, multiplying this count, 78 by 128 gives us a good estimate of the total number of rows (9984 in this case) in the table without querying and iterating over all tablets.
 
 ### Distributed Parallel Queries
 
@@ -214,8 +217,8 @@ SELECT COUNT(*) FROM sample_table WHERE yb_hash_code(x,y) >= 57344 and yb_hash_c
 
 Summing up all the results of these queries gives us the equivalent of a `COUNT(*)` over all of `sample_table`.
 
-An example of a script that performs the above on a YSQL instance can be found [here](https://github.com/yugabyte/yb-tools/blob/main/ysql_table_row_count.py).
+An example of a script that performs the above on a YSQL instance can be found in the [yb-tools](https://github.com/yugabyte/yb-tools/blob/main/ysql_table_row_count.py) repository.
 
 ## See also
 
-- [`partition_hash`](../../../../api/ycql/expr_fcall/#partition-hash-function)
+- [partition_hash](../../../../api/ycql/expr_fcall/#partition-hash-function)
