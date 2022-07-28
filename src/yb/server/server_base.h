@@ -107,6 +107,7 @@ class RpcServerBase {
   const std::string get_hostname() const;
 
   virtual Status ReloadKeysAndCertificates() { return Status::OK(); }
+  virtual std::string GetCertificateDetails() { return ""; }
 
  protected:
   RpcServerBase(std::string name,

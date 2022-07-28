@@ -611,6 +611,8 @@ void RpcAndWebServerBase::DisplayGeneralInfoIcons(std::stringstream* output) {
   DisplayIconTile(output, "fa-microchip", "Threads", "/threadz");
   // Drives.
   DisplayIconTile(output, "fa-hdd-o", "Drives", "/drives");
+  // TLS.
+  DisplayIconTile(output, "fa-lock", "TLS", "/tls");
 }
 
 Status RpcAndWebServerBase::DisplayRpcIcons(std::stringstream* output) {
@@ -642,6 +644,7 @@ Status RpcAndWebServerBase::Start() {
   AddRpczPathHandlers(messenger_.get(), web_server_.get());
   RegisterMetricsJsonHandler(web_server_.get(), metric_registry_.get());
   RegisterPathUsageHandler(web_server_.get(), fs_manager_.get());
+  RegisterTlsHandler(web_server_.get(), (RpcServerBase*)this);
   TracingPathHandlers::RegisterHandlers(web_server_.get());
   web_server_->RegisterPathHandler("/utilz", "Utilities",
                                    std::bind(&RpcAndWebServerBase::HandleDebugPage, this, _1, _2),
