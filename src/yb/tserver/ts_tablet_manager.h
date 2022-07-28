@@ -573,6 +573,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   std::unique_ptr<ThreadPool> read_pool_;
 
   // Thread pool for manually triggering compactions for tablets created from a split.
+  // This is used by a tablet method to schedule compactions on the child tablets after
+  // a split so each tablet has a reference to this pool.
   std::unique_ptr<ThreadPool> post_split_trigger_compaction_pool_;
 
   // Thread pool for admin triggered compactions for tablets.
