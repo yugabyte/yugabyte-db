@@ -41,6 +41,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellResponse;
@@ -68,12 +69,14 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.FileUtils;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.mockito.Mock;
 import play.libs.Json;
 import play.mvc.Result;
 
 @Slf4j
 @RunWith(JUnitParamsRunner.class)
 public class UniverseInfoControllerTest extends UniverseControllerTestBase {
+  @Mock PlatformExecutorFactory mockPlatformExecutorFactory;
 
   @Test
   public void testGetMasterLeaderWithValidParams() {
@@ -179,29 +182,16 @@ public class UniverseInfoControllerTest extends UniverseControllerTestBase {
     String jsonMsg =
         "{\"ysql\":{\"errorCount\":0,\"queries\":[]},"
             + "\"ycql\":{\"errorCount\":0,\"queries\":[]}}";
-    when(mockQueryHelper.slowQueries(any(), eq("yugabyte"), eq("foo-bar")))
-        .thenReturn(Json.parse(jsonMsg));
-    when(mockQueryHelper.slowQueries(any(), eq("yugabyte"), eq("yugabyte")))
-        .thenThrow(new PlatformServiceException(BAD_REQUEST, "Incorrect Username or Password"));
+    when(mockQueryHelper.slowQueries(any())).thenReturn(Json.parse(jsonMsg));
     Universe u = createUniverse(customer.getCustomerId());
     String url =
         "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/slow_queries";
     Map<String, String> fakeRequestHeaders = new HashMap<>();
     fakeRequestHeaders.put("X-AUTH-TOKEN", authToken);
-    fakeRequestHeaders.put("ysql-username", "yugabyte");
-    fakeRequestHeaders.put("ysql-password", Util.encodeBase64("foo-bar"));
 
     Result result = doRequestWithCustomHeaders("GET", url, fakeRequestHeaders);
     assertOk(result);
     assertEquals(jsonMsg, contentAsString(result));
-
-    fakeRequestHeaders.clear();
-    fakeRequestHeaders.put("X-AUTH-TOKEN", authToken);
-    fakeRequestHeaders.put("ysql-username", "yugabyte");
-    fakeRequestHeaders.put("ysql-password", Util.encodeBase64("yugabyte"));
-
-    result =
-        assertPlatformException(() -> doRequestWithCustomHeaders("GET", url, fakeRequestHeaders));
   }
 
   @Test
@@ -209,7 +199,7 @@ public class UniverseInfoControllerTest extends UniverseControllerTestBase {
     when(mockRuntimeConfig.getString(QueryHelper.QUERY_STATS_SLOW_QUERIES_ORDER_BY_KEY))
         .thenReturn("total_time");
     when(mockRuntimeConfig.getInt(QueryHelper.QUERY_STATS_SLOW_QUERIES_LIMIT_KEY)).thenReturn(200);
-    QueryHelper queryHelper = new QueryHelper(null);
+    QueryHelper queryHelper = new QueryHelper(null, mockPlatformExecutorFactory);
     String actualSql = queryHelper.slowQuerySqlWithLimit(mockRuntimeConfig);
     assertEquals(
         "SELECT a.rolname, t.datname, t.queryid, t.query, t.calls, t.total_time, t.rows,"

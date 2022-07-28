@@ -12,6 +12,7 @@ package com.yugabyte.yw.controllers.handlers;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
+import static play.mvc.Http.Status.SERVICE_UNAVAILABLE;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.net.HostAndPort;
@@ -38,6 +39,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.client.YBClient;
@@ -159,6 +161,11 @@ public class UniverseInfoHandler {
     JsonNode resultNode;
     try {
       resultNode = queryHelper.liveQueries(universe);
+    } catch (RejectedExecutionException e) {
+      log.error(e.getMessage(), e);
+      throw new PlatformServiceException(SERVICE_UNAVAILABLE, e.getMessage());
+    } catch (PlatformServiceException e) {
+      throw e;
     } catch (Exception e) {
       log.error("Error retrieving queries for universe", e);
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
@@ -166,13 +173,18 @@ public class UniverseInfoHandler {
     return resultNode;
   }
 
-  public JsonNode getSlowQueries(Universe universe, String username, String password) {
+  public JsonNode getSlowQueries(Universe universe) {
     JsonNode resultNode;
     try {
-      resultNode = queryHelper.slowQueries(universe, username, password);
+      resultNode = queryHelper.slowQueries(universe);
+    } catch (RejectedExecutionException e) {
+      log.error(e.getMessage(), e);
+      throw new PlatformServiceException(SERVICE_UNAVAILABLE, e.getMessage());
     } catch (IllegalArgumentException e) {
       log.error(e.getMessage(), e);
       throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
+    } catch (PlatformServiceException e) {
+      throw e;
     } catch (Exception e) {
       log.error("Error retrieving queries for universe", e);
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
@@ -183,6 +195,11 @@ public class UniverseInfoHandler {
   public JsonNode resetSlowQueries(Universe universe) {
     try {
       return queryHelper.resetQueries(universe);
+    } catch (RejectedExecutionException e) {
+      log.error(e.getMessage(), e);
+      throw new PlatformServiceException(SERVICE_UNAVAILABLE, e.getMessage());
+    } catch (PlatformServiceException e) {
+      throw e;
     } catch (Exception e) {
       log.error("Error resetting slow queries for universe", e);
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
