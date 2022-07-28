@@ -45,7 +45,7 @@ The following libraries are officially supported by YugabyteDB.
 | [Ebean](java/ebean/) | Full | [CRUD Example](java/ebean/) |
 | [Hibernate](java/hibernate/) | Full | [CRUD Example](java/hibernate/) |
 | [Spring Data YugabyteDB](../integrations/spring-framework/sdyb/) | Full | [CRUD Example](../integrations/spring-framework/sdyb/#examples) |
-| [Spring Data JPA](../integrations/spring-framework/sd-jpa/) | Full | [CRUD Example](../quick-start/build-apps/java/ysql-spring-data/) |
+| [Spring Data JPA](../integrations/spring-framework/sd-jpa/) | Full | [Hello World](../develop/build-apps/java/ysql-spring-data/) |
 <!-- | Micronaut | Beta |  | -->
 <!-- | Quarkus | Beta |  | -->
 <!-- | MyBatis | Full |  | -->
@@ -89,7 +89,7 @@ The following libraries are officially supported by YugabyteDB.
 | :------------------------- | :------------ | :----------- |
 | [Yugabyte Psycopg2](python/yugabyte-psycopg2/) [Recommended] | Full | [CRUD Example](python/yugabyte-psycopg2/) |
 | [PostgreSQL Psycopg2](python/postgres-psycopg2/) | Full | [CRUD Example](python/postgres-psycopg2/) |
-| aiopg | Full | [Quick start](../quick-start/build-apps/python/ysql-aiopg/) |
+| aiopg | Full | [Hello World](../develop/build-apps/python/ysql-aiopg/) |
 | [Django](python/django/) | Full | [CRUD Example](python/django/) |
 | [SQLAlchemy](python/sqlalchemy/) | Full | [CRUD Example](python/sqlalchemy/) |
 

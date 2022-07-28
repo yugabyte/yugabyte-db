@@ -809,45 +809,86 @@ Status CatalogManager::ListSnapshots(const ListSnapshotsRequestPB* req,
       txn_snapshot_id, req->list_deleted_snapshots(), resp));
 
   if (req->prepare_for_backup()) {
-    SharedLock lock(mutex_);
-    TRACE("Acquired catalog manager lock");
+    RETURN_NOT_OK(RepackSnapshotsForBackup(resp));
+  }
 
-    // Repack & extend the backup row entries.
-    for (SnapshotInfoPB& snapshot : *resp->mutable_snapshots()) {
-      snapshot.set_format_version(2);
-      SysSnapshotEntryPB& sys_entry = *snapshot.mutable_entry();
-      snapshot.mutable_backup_entries()->Reserve(sys_entry.entries_size());
+  return Status::OK();
+}
 
-      for (SysRowEntry& entry : *sys_entry.mutable_entries()) {
-        BackupRowEntryPB* const backup_entry = snapshot.add_backup_entries();
-        // Setup BackupRowEntryPB fields.
-        // Set BackupRowEntryPB::pg_schema_name for YSQL table to disambiguate in case tables
-        // in different schema have same name.
-        if (entry.type() == SysRowEntryType::TABLE) {
-          TRACE("Looking up table");
-          scoped_refptr<TableInfo> table_info = FindPtrOrNull(*table_ids_map_, entry.id());
-          if (table_info == nullptr) {
-            return STATUS(
-                InvalidArgument, "Table not found by ID", entry.id(),
-                MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
-          }
+Status CatalogManager::RepackSnapshotsForBackup(ListSnapshotsResponsePB* resp) {
+  SharedLock lock(mutex_);
+  TRACE("Acquired catalog manager lock");
+  const string kNotFoundErrorStr = "Not found or invalid relnamespace oid for table oid ";
 
-          TRACE("Locking table");
-          auto l = table_info->LockForRead();
-          // PG schema name is available for YSQL table only, except for colocation parent tables.
-          if (l->table_type() == PGSQL_TABLE_TYPE && !IsColocationParentTableId(entry.id())) {
-            const string pg_schema_name = VERIFY_RESULT(GetPgSchemaName(table_info));
-            VLOG(1) << "PG Schema: " << pg_schema_name << " for table " << table_info->ToString();
-            backup_entry->set_pg_schema_name(pg_schema_name);
-          }
+  // Repack & extend the backup row entries.
+  for (SnapshotInfoPB& snapshot : *resp->mutable_snapshots()) {
+    snapshot.set_format_version(2);
+    SysSnapshotEntryPB& sys_entry = *snapshot.mutable_entry();
+    snapshot.mutable_backup_entries()->Reserve(sys_entry.entries_size());
+
+    unordered_set<TableId> tables_to_skip;
+    for (SysRowEntry& entry : *sys_entry.mutable_entries()) {
+      BackupRowEntryPB* const backup_entry = snapshot.add_backup_entries();
+
+      // Setup BackupRowEntryPB fields.
+      // Set BackupRowEntryPB::pg_schema_name for YSQL table to disambiguate in case tables
+      // in different schema have same name.
+      if (entry.type() == SysRowEntryType::TABLE) {
+        TRACE("Looking up table");
+        scoped_refptr<TableInfo> table_info = FindPtrOrNull(*table_ids_map_, entry.id());
+        if (table_info == nullptr) {
+          return STATUS(
+              InvalidArgument, "Table not found by ID", entry.id(),
+              MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
         }
 
-        // Init BackupRowEntryPB::entry.
-        backup_entry->mutable_entry()->Swap(&entry);
+        TRACE("Locking table");
+        auto l = table_info->LockForRead();
+        // PG schema name is available for YSQL table only, except for colocation parent tables.
+        if (l->table_type() == PGSQL_TABLE_TYPE && !IsColocationParentTableId(entry.id())) {
+          const auto res = GetPgSchemaName(table_info);
+          if (!res.ok()) {
+            // Check for the scenario where the table is dropped by YSQL but not docdb - this can
+            // happen due to a bug with the async nature of drops in PG with docdb.
+            // If this occurs don't block the entire backup, instead skip this table(see gh #13361).
+            if (res.status().IsNotFound() &&
+                res.status().message().ToBuffer().find(kNotFoundErrorStr) != string::npos) {
+              LOG(WARNING) << "Skipping backup of table " << table_info->id() << " : " << res;
+              snapshot.mutable_backup_entries()->RemoveLast();
+              // Keep track of table so we skip its tablets as well. Note, since tablets always
+              // follow their table in sys_entry, we don't need to check previous tablet entries.
+              tables_to_skip.insert(table_info->id());
+              continue;
+            }
+
+            // Other errors cannot be skipped.
+            return res.status();
+          }
+          const string pg_schema_name = res.get();
+          VLOG(1) << "PG Schema: " << pg_schema_name << " for table " << table_info->ToString();
+          backup_entry->set_pg_schema_name(pg_schema_name);
+        }
+      } else if (!tables_to_skip.empty() && entry.type() == SysRowEntryType::TABLET) {
+        // Note: Ordering here is important, we expect tablet entries only after their table entry.
+        SysTabletsEntryPB meta = VERIFY_RESULT(ParseFromSlice<SysTabletsEntryPB>(entry.data()));
+        if (tables_to_skip.contains(meta.table_id())) {
+          LOG(WARNING) << "Skipping backup of tablet " << entry.id() << " since its table "
+                       << meta.table_id() << " was skipped.";
+          snapshot.mutable_backup_entries()->RemoveLast();
+          continue;
+        }
       }
 
-      sys_entry.clear_entries();
+      // Init BackupRowEntryPB::entry.
+      backup_entry->mutable_entry()->Swap(&entry);
     }
+
+    // Clear out redundant/unused fields for backups (reduces size of SnapshotInfoPB file):
+    // - Can remove the tablet_snapshots as if the main snapshot state is COMPLETE, then all of the
+    //   tablet records are also COMPLETE.
+    // - Can remove entries, since all the valid entries are already in backup_entries.
+    sys_entry.clear_tablet_snapshots();
+    sys_entry.clear_entries();
   }
 
   return Status::OK();

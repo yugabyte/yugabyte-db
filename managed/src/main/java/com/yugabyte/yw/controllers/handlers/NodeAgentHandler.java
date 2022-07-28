@@ -175,7 +175,13 @@ public class NodeAgentHandler {
       X500Name subject = new JcaX509CertificateHolder(caCert).getSubject();
       X509Certificate x509 =
           CertificateHelper.createAndSignCertificate(
-              nodeAgent.ip, subject, keyPair, caCert, caPrivateKey, sans);
+              nodeAgent.ip,
+              subject,
+              keyPair,
+              caCert,
+              caPrivateKey,
+              sans,
+              appConfig.getInt("yb.tlsCertificate.server.maxLifetimeInYears"));
       CertificateHelper.writeCertFileContentToCertPath(x509, serverCertPath);
       CertificateHelper.writeKeyFileContentToKeyPath(keyPair.getPrivate(), serverKeyPath);
       return new ImmutablePair<>(x509, keyPair);

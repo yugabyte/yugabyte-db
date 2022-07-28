@@ -341,6 +341,7 @@ Result<bool> TabletSplitITestBase<MiniClusterType>::IsSplittingComplete(
   controller.set_timeout(kRpcTimeout);
   master::IsTabletSplittingCompleteRequestPB is_tablet_splitting_complete_req;
   master::IsTabletSplittingCompleteResponsePB is_tablet_splitting_complete_resp;
+  is_tablet_splitting_complete_req.set_wait_for_parent_deletion(wait_for_parent_deletion);
 
   RETURN_NOT_OK(master_proxy->IsTabletSplittingComplete(is_tablet_splitting_complete_req,
       &is_tablet_splitting_complete_resp, &controller));
@@ -512,6 +513,21 @@ Result<TabletId> TabletSplitITest::SplitSingleTablet(docdb::DocKeyHash split_has
 
   RETURN_NOT_OK(catalog_mgr->TEST_SplitTablet(source_tablet_info, split_hash_code));
   return source_tablet_id;
+}
+
+Result<master::SplitTabletResponsePB> TabletSplitITest::SplitSingleTablet(
+    const TabletId& tablet_id) {
+  auto master_admin_proxy = std::make_unique<master::MasterAdminProxy>(
+      proxy_cache_.get(), client_->GetMasterLeaderAddress());
+  rpc::RpcController controller;
+  controller.set_timeout(kRpcTimeout);
+
+  master::SplitTabletRequestPB req;
+  master::SplitTabletResponsePB resp;
+  req.set_tablet_id(tablet_id);
+
+  RETURN_NOT_OK(master_admin_proxy->SplitTablet(req, &resp, &controller));
+  return resp;
 }
 
 Result<TabletId> TabletSplitITest::SplitTabletAndValidate(

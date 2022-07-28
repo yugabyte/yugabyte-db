@@ -675,12 +675,10 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
             ? UUID.fromString(taskParams().getReadOnlyClusters().get(0).userIntent.provider)
             : UUID.fromString(primaryCluster.userIntent.provider);
     params.commandType = commandType;
-    params.nodePrefix = taskParams().nodePrefix;
     params.universeUUID = taskParams().universeUUID;
+    params.helmReleaseName =
+        PlacementInfoUtil.getHelmReleaseName(taskParams().nodePrefix, az, isReadOnlyCluster);
 
-    if (az != null) {
-      params.nodePrefix = String.format("%s-%s", params.nodePrefix, az);
-    }
     if (masterAddresses != null) {
       params.masterAddresses = masterAddresses;
     }
@@ -763,12 +761,10 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
             ? UUID.fromString(taskParams().getReadOnlyClusters().get(0).userIntent.provider)
             : UUID.fromString(primaryCluster.userIntent.provider);
     params.commandType = commandType;
-    params.nodePrefix = taskParams().nodePrefix;
     params.universeUUID = taskParams().universeUUID;
+    params.helmReleaseName =
+        PlacementInfoUtil.getHelmReleaseName(taskParams().nodePrefix, az, isReadOnlyCluster);
 
-    if (az != null) {
-      params.nodePrefix = String.format("%s-%s", params.nodePrefix, az);
-    }
     if (masterAddresses != null) {
       params.masterAddresses = masterAddresses;
     }
@@ -821,11 +817,9 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     }
     params.providerUUID = UUID.fromString(primaryCluster.userIntent.provider);
     params.commandType = commandType;
-    params.nodePrefix = taskParams().nodePrefix;
+    params.helmReleaseName =
+        PlacementInfoUtil.getHelmReleaseName(taskParams().nodePrefix, az, isReadOnlyCluster);
 
-    if (az != null) {
-      params.nodePrefix = String.format("%s-%s", params.nodePrefix, az);
-    }
     if (config != null) {
       params.config = config;
       // This assumes that the config is az config.
@@ -863,10 +857,9 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     }
     params.providerUUID = UUID.fromString(primaryCluster.userIntent.provider);
     params.commandType = commandType;
-    params.nodePrefix = taskParams().nodePrefix;
-    if (az != null) {
-      params.nodePrefix = String.format("%s-%s", params.nodePrefix, az);
-    }
+    params.helmReleaseName =
+        PlacementInfoUtil.getHelmReleaseName(taskParams().nodePrefix, az, isReadOnlyCluster);
+
     if (config != null) {
       params.config = config;
       // This assumes that the config is az config.

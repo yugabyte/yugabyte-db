@@ -297,7 +297,7 @@ Result<FileNumbersHolder> FlushJob::WriteLevel0Table(
                      mutable_cf_options_.paranoid_file_checks,
                      cfd_->internal_stats(),
                      db_options_.boundary_extractor.get(),
-                     Env::IO_HIGH,
+                     yb::IOPriority::kHigh,
                      &table_properties_);
       info.table_properties = table_properties_;
       LogFlush(db_options_.info_log);

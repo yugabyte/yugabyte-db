@@ -500,6 +500,10 @@ DEFINE_test_flag(bool, pause_split_child_registration,
                  false, "Pause split after registering one child");
 TAG_FLAG(TEST_pause_split_child_registration, runtime);
 
+DEFINE_test_flag(bool, keep_docdb_table_on_ysql_drop_table, false,
+                 "When enabled does not delete tables from the docdb layer, resulting in YSQL "
+                 "tables only being dropped in the postgres layer.");
+
 namespace yb {
 namespace master {
 
@@ -2856,8 +2860,12 @@ Status CatalogManager::ValidateSplitCandidate(
       *tablet->table(), ignore_disabled_list));
 
   const IgnoreTtlValidation ignore_ttl_validation { is_manual_split.get() };
+
+  const TabletId parent_id = tablet->LockForRead()->pb.split_parent_tablet_id();
+  auto parent_result = GetTabletInfo(parent_id);
+  TabletInfoPtr parent = parent_result.ok() ? parent_result.get() : nullptr;
   return tablet_split_manager_.ValidateSplitCandidateTablet(
-      *tablet, ignore_ttl_validation, ignore_disabled_list);
+      *tablet, parent, ignore_ttl_validation, ignore_disabled_list);
 }
 
 Status CatalogManager::DeleteNotServingTablet(
@@ -5241,6 +5249,11 @@ Status CatalogManager::DeleteTable(
             << req->ShortDebugString();
 
   scoped_refptr<TableInfo> table = VERIFY_RESULT(FindTable(req->table()));
+
+  if (PREDICT_FALSE(FLAGS_TEST_keep_docdb_table_on_ysql_drop_table) &&
+      table->GetTableType() == PGSQL_TABLE_TYPE) {
+    return Status::OK();
+  }
 
   // For now, only disable dropping YCQL tables under xCluster replication.
   bool result = table->GetTableType() == YQL_TABLE_TYPE && IsCdcEnabled(*table);
@@ -8846,6 +8859,15 @@ Status CatalogManager::GetYsqlCatalogVersion(uint64_t* catalog_version,
   }
   if (last_breaking_version) {
     *last_breaking_version = l->pb.ysql_catalog_config().version();
+  }
+  return Status::OK();
+}
+
+Status CatalogManager::GetYsqlAllDBCatalogVersions(DbOidToCatalogVersionMap* versions) {
+  auto table_info = GetTableInfo(kPgYbCatalogVersionTableId);
+  if (table_info != nullptr) {
+    RETURN_NOT_OK(sys_catalog_->ReadYsqlAllDBCatalogVersions(kPgYbCatalogVersionTableId,
+                                                             versions));
   }
   return Status::OK();
 }

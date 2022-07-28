@@ -128,7 +128,7 @@ Create and populate a table, get a timestamp to which you'll restore, and then w
 1. Get a timestamp:
 
     ```sh
-    python -c 'import datetime; print datetime.datetime.now().strftime("%s%f")'
+    python -c 'import datetime; print(datetime.datetime.now().strftime("%s%f"))'
     ```
 
     ```output

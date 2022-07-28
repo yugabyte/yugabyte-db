@@ -223,9 +223,9 @@ public class UniverseActionsHandler {
             requestParams.rootCA != null
                 ? requestParams.rootCA
                 : CertificateHelper.createRootCA(
+                    runtimeConfigFactory.staticApplicationConf(),
                     universeDetails.nodePrefix,
-                    customer.uuid,
-                    runtimeConfigFactory.staticApplicationConf().getString("yb.storage.path"));
+                    customer.uuid);
       }
     }
 
@@ -244,9 +244,9 @@ public class UniverseActionsHandler {
             // and rootCA and clientRootCA needs to be different
             taskParams.clientRootCA =
                 CertificateHelper.createClientRootCA(
+                    runtimeConfigFactory.staticApplicationConf(),
                     universeDetails.nodePrefix,
-                    customer.uuid,
-                    runtimeConfigFactory.staticApplicationConf().getString("yb.storage.path"));
+                    customer.uuid);
           }
         } else {
           // Set the ClientRootCA to the user provided ClientRootCA if it exists
@@ -267,15 +267,7 @@ public class UniverseActionsHandler {
         if (cert.certType == CertConfigType.SelfSigned
             || cert.certType == CertConfigType.HashicorpVault) {
           CertificateHelper.createClientCertificate(
-              taskParams.clientRootCA,
-              String.format(
-                  CertificateHelper.CERT_PATH,
-                  runtimeConfigFactory.staticApplicationConf().getString("yb.storage.path"),
-                  customer.uuid.toString(),
-                  taskParams.clientRootCA.toString()),
-              CertificateHelper.DEFAULT_CLIENT,
-              null,
-              null);
+              runtimeConfigFactory.staticApplicationConf(), customer.uuid, taskParams.clientRootCA);
         }
       }
     }

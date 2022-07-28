@@ -173,7 +173,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
     return publish_service_ptr_.get();
   }
 
-  void SetYSQLCatalogVersion(uint64_t new_version, uint64_t new_breaking_version);
+  void SetYsqlCatalogVersion(uint64_t new_version, uint64_t new_breaking_version);
+  void SetYsqlDBCatalogVersions(const master::DBCatalogVersionDataPB& db_catalog_version_data);
 
   void get_ysql_catalog_version(uint64_t* current_version,
                                 uint64_t* last_breaking_version) const override {
@@ -280,6 +281,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   // Latest known version from the YSQL catalog (as reported by last heartbeat response).
   uint64_t ysql_catalog_version_ = 0;
   uint64_t ysql_last_breaking_catalog_version_ = 0;
+  master::DbOidToCatalogVersionMap ysql_db_catalog_version_map_;
 
   // An instance to tablet server service. This pointer is no longer valid after RpcAndWebServerBase
   // is shut down.

@@ -11,14 +11,14 @@ menu:
 type: docs
 ---
 
-In this tutorial, you are first going to setup [JanusGraph](https://janusgraph.org/) to work with YugabyteDB as the underlying database. Then, using the Gremlin console, you are going to load some data and run some graph commands.
+In this tutorial, you first set up [JanusGraph](https://janusgraph.org/) to work with YugabyteDB as the underlying database. Then, using the Gremlin console, you load some data and run some graph commands.
 
 ## 1. Start local cluster
 
-Start a cluster on your [local computer](../../quick-start/#install-yugabytedb). Check that you are able to connect to YugabyteDB using `ycqlsh` by executing the following:
+Start a cluster on your [local computer](../../quick-start/). Check that you are able to connect to YugabyteDB using `ycqlsh` by executing the following:
 
 ```sh
-$ ycqlsh
+$ bin/ycqlsh
 ```
 
 ```output
@@ -102,7 +102,7 @@ gremlin> GraphOfTheGodsFactory.loadWithoutMixedIndex(graph,true)
 ==>null
 ```
 
-```sql
+```sh
 gremlin> g = graph.traversal()
 ```
 
@@ -146,7 +146,7 @@ gremlin> hercules = g.V(saturn).repeat(__.in('father')).times(2).next()
 ==>v[4120]
 ```
 
-```sql
+```sh
 // Who were the parents of Hercules?
 gremlin> g.V(hercules).out('father', 'mother').values('name')
 ```
@@ -156,7 +156,7 @@ gremlin> g.V(hercules).out('father', 'mother').values('name')
 ==>alcmene
 ```
 
-```sql
+```sh
 // Were the parents of Hercules gods or humans?
 gremlin> g.V(hercules).out('father', 'mother').label()
 ```
@@ -166,7 +166,7 @@ gremlin> g.V(hercules).out('father', 'mother').label()
 ==>human
 ```
 
-```sql
+```sh
 // Who did Hercules battle?
 gremlin> g.V(hercules).out('battled').valueMap()
 ```
@@ -177,7 +177,7 @@ gremlin> g.V(hercules).out('battled').valueMap()
 ==>[name:[cerberus]]
 ```
 
-```sql
+```sh
 // Who did Hercules battle after time 1?
 gremlin> g.V(hercules).outE('battled').has('time', gt(1)).inV().values('name')
 ```
@@ -191,7 +191,7 @@ gremlin> g.V(hercules).outE('battled').has('time', gt(1)).inV().values('name')
 
 - Who are Pluto's cohabitants?
 
-```sql
+```sh
 gremlin> pluto = g.V().has('name', 'pluto').next()
 ```
 
@@ -199,8 +199,8 @@ gremlin> pluto = g.V().has('name', 'pluto').next()
 ==>v[8416]
 ```
 
-```sql
-// who are pluto's cohabitants?
+```sh
+// who lives with Pluto?
 gremlin> g.V(pluto).out('lives').in('lives').values('name')
 ```
 
@@ -209,8 +209,8 @@ gremlin> g.V(pluto).out('lives').in('lives').values('name')
 ==>cerberus
 ```
 
-```sql
-// pluto can't be his own cohabitant
+```sh
+// Pluto cannot live with himself
 gremlin> g.V(pluto).out('lives').in('lives').where(is(neq(pluto))).values('name')
 ```
 
@@ -218,7 +218,7 @@ gremlin> g.V(pluto).out('lives').in('lives').where(is(neq(pluto))).values('name'
 ==>cerberus
 ```
 
-```sql
+```sh
 gremlin> g.V(pluto).as('x').out('lives').in('lives').where(neq('x')).values('name')
 ```
 
@@ -226,10 +226,10 @@ gremlin> g.V(pluto).as('x').out('lives').in('lives').where(neq('x')).values('nam
 ==>cerberus
 ```
 
-- Queries about Pluto’s Brothers.
+- Queries about Pluto's Brothers.
 
-```sql
-// where do pluto's brothers live?
+```sh
+// where do his brothers live?
 gremlin> g.V(pluto).out('brother').out('lives').values('name')
 ```
 
@@ -238,7 +238,7 @@ gremlin> g.V(pluto).out('brother').out('lives').values('name')
 ==>sky
 ```
 
-```sql
+```sh
 // which brother lives in which place?
 gremlin> g.V(pluto).out('brother').as('god').out('lives').as('place').select('god', 'place')
 ```
@@ -248,7 +248,7 @@ gremlin> g.V(pluto).out('brother').as('god').out('lives').as('place').select('go
 ==>[god:v[8240],place:v[4144]]
 ```
 
-```sql
+```sh
 // what is the name of the brother and the name of the place?
 gremlin> g.V(pluto).out('brother').as('god').out('lives').as('place').select('god', 'place').by('name')
 ```
@@ -262,7 +262,7 @@ gremlin> g.V(pluto).out('brother').as('god').out('lives').as('place').select('go
 
 Geo-spatial indexes - events that have happened within 50 kilometers of Athens (latitude:37.97 and long:23.72).
 
-```sql
+```sh
 // Show all events that happened within 50 kilometers of Athens (latitude:37.97 and long:23.72).
 gremlin> g.E().has('place', geoWithin(Geoshape.circle(37.97, 23.72, 50)))
 ```
@@ -272,7 +272,7 @@ gremlin> g.E().has('place', geoWithin(Geoshape.circle(37.97, 23.72, 50)))
 ==>e[3yb-36g-7x1-9io][4120-battled->12336]
 ```
 
-```sql
+```sh
 // For these events that happened within 50 kilometers of Athens, show who battled whom.
 gremlin> g.E().has('place', geoWithin(Geoshape.circle(37.97, 23.72, 50))).as('source').inV().as('god2').select('source').outV().as('god1').select('god1', 'god2').by('name')
 ```

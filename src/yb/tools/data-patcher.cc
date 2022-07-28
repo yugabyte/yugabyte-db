@@ -23,10 +23,10 @@
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/docdb_types.h"
-#include "yb/docdb/packed_row.h"
 #include "yb/docdb/value_type.h"
 #include "yb/docdb/kv_debug.h"
 #include "yb/docdb/docdb-internal.h"
+#include "yb/docdb/schema_packing.h"
 #include "yb/docdb/value.h"
 
 #include "yb/fs/fs_manager.h"

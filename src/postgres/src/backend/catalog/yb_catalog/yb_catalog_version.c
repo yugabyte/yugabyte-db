@@ -151,7 +151,7 @@ YbIncrementMasterDBCatalogVersionTableEntryImpl(
 							  INT8OID,
 							  InvalidOid,
 							  &type_attrs);
-	HandleYBStatus(YbPgDmlAppendColumnRef(update_stmt, yb_expr));
+	HandleYBStatus(YbPgDmlAppendColumnRef(update_stmt, yb_expr, true));
 
 	/* If breaking change set the latest breaking version to the same expression. */
 	if (is_breaking_change)

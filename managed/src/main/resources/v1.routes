@@ -199,6 +199,7 @@ DELETE  /customers/:cUUID/maintenance_windows/:windowUUID                      c
 # Access Key API
 GET     /customers/:cUUID/providers/:pUUID/access_keys/:keyCode                com.yugabyte.yw.controllers.AccessKeyController.index(cUUID: java.util.UUID, pUUID: java.util.UUID, keyCode: String)
 GET     /customers/:cUUID/providers/:pUUID/access_keys                         com.yugabyte.yw.controllers.AccessKeyController.list(cUUID: java.util.UUID, pUUID: java.util.UUID)
+GET     /customers/:cUUID/access_keys                                          com.yugabyte.yw.controllers.AccessKeyController.listAllForProviders(cUUID: java.util.UUID)
 POST    /customers/:cUUID/providers/:pUUID/access_keys                         com.yugabyte.yw.controllers.AccessKeyController.create(cUUID: java.util.UUID, pUUID: java.util.UUID)
 DELETE  /customers/:cUUID/providers/:pUUID/access_keys/:keyCode                com.yugabyte.yw.controllers.AccessKeyController.delete(cUUID: java.util.UUID, pUUID: java.util.UUID, keyCode: String)
 # ----------------------------- START OLD API -------------------------------------------
@@ -448,11 +449,12 @@ DELETE  /customers/:cUUID/hook_scopes/:hsUUID/hooks/:hUUID                     c
 
 # Node Agent API
 POST   /customers/:cUUID/node_agents                                           com.yugabyte.yw.controllers.NodeAgentController.register(cUUID: java.util.UUID)
-GET    /customers/:cUUID/node_agents/:nUUID                                    com.yugabyte.yw.controllers.NodeAgentController.get(cUUID: java.util.UUID, nUUID: java.util.UUID)                  
+GET    /customers/:cUUID/node_agents/:nUUID                                    com.yugabyte.yw.controllers.NodeAgentController.get(cUUID: java.util.UUID, nUUID: java.util.UUID)
 PUT    /customers/:cUUID/node_agents/:nUUID                                    com.yugabyte.yw.controllers.NodeAgentController.update(cUUID: java.util.UUID, nUUID: java.util.UUID)
 PUT    /customers/:cUUID/node_agents/:nUUID/state                              com.yugabyte.yw.controllers.NodeAgentController.updateState(cUUID: java.util.UUID, nUUID: java.util.UUID)
 GET    /customers/:cUUID/node_agents/:nUUID/state                              com.yugabyte.yw.controllers.NodeAgentPingController.getState(cUUID: java.util.UUID, nUUID: java.util.UUID)
 DELETE /customers/:cUUID/node_agents/:nUUID                                    com.yugabyte.yw.controllers.NodeAgentController.unregister(cUUID: java.util.UUID, nUUID: java.util.UUID)
+GET    /node_agents/download                                                   com.yugabyte.yw.controllers.NodeAgentController.download(downloadType: String, os: String ?= "", arch: String ?= "")
 
 # List buckets API
 GET     /customers/:cUUID/cloud/:cloud/buckets                                 com.yugabyte.yw.controllers.CustomerConfigController.listBuckets(cUUID: java.util.UUID, cloud: String)

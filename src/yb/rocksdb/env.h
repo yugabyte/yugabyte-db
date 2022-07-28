@@ -38,9 +38,10 @@
 #include <string>
 #include <vector>
 
-#include "yb/util/status_fwd.h"
 #include "yb/util/file_system.h"
+#include "yb/util/io.h"
 #include "yb/util/slice.h"
+#include "yb/util/status_fwd.h"
 
 #ifdef _WIN32
 // Windows API macro interference
@@ -341,13 +342,6 @@ class Env {
   // Priority for scheduling job in thread pool
   enum Priority { LOW, HIGH, TOTAL };
 
-  // Priority for requesting bytes in rate limiter scheduler
-  enum IOPriority {
-    IO_LOW = 0,
-    IO_HIGH = 1,
-    IO_TOTAL = 2
-  };
-
   // Arrange to run "(*function)(arg)" once in a background thread, in
   // the thread pool specified by pri. By default, jobs go to the 'LOW'
   // priority thread pool.
@@ -465,7 +459,7 @@ class WritableFile : public yb::FileWithUniqueId {
   WritableFile()
     : last_preallocated_block_(0),
       preallocation_block_size_(0),
-      io_priority_(Env::IO_TOTAL) {
+      io_priority_(yb::IOPriority::kTotal) {
   }
   virtual ~WritableFile();
 
@@ -520,11 +514,11 @@ class WritableFile : public yb::FileWithUniqueId {
    * Change the priority in rate limiter if rate limiting is enabled.
    * If rate limiting is not enabled, this call has no effect.
    */
-  virtual void SetIOPriority(Env::IOPriority pri) {
+  virtual void SetIOPriority(yb::IOPriority pri) {
     io_priority_ = pri;
   }
 
-  virtual Env::IOPriority GetIOPriority() { return io_priority_; }
+  virtual yb::IOPriority GetIOPriority() { return io_priority_; }
 
   /*
    * Get the size of valid data in the file.
@@ -594,7 +588,7 @@ class WritableFile : public yb::FileWithUniqueId {
   friend class WritableFileWrapper;
   friend class WritableFileMirror;
 
-  Env::IOPriority io_priority_;
+  yb::IOPriority io_priority_;
 };
 
 // Directory object represents collection of files and implements
@@ -908,10 +902,10 @@ class WritableFileWrapper : public WritableFile {
   Status Sync() override;
   Status Fsync() override;
   bool IsSyncThreadSafe() const override { return target_->IsSyncThreadSafe(); }
-  void SetIOPriority(Env::IOPriority pri) override {
+  void SetIOPriority(yb::IOPriority pri) override {
     target_->SetIOPriority(pri);
   }
-  Env::IOPriority GetIOPriority() override { return target_->GetIOPriority(); }
+  yb::IOPriority GetIOPriority() override { return target_->GetIOPriority(); }
   uint64_t GetFileSize() override { return target_->GetFileSize(); }
   void GetPreallocationStatus(size_t* block_size,
                               size_t* last_allocated_block) override {

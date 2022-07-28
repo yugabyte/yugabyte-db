@@ -87,7 +87,7 @@ Before installing YugabyteDB, ensure that you have the following available:
     brew install wget
     ```
 
-1. Since each tablet maps to its own file, it is easy to create a very large number of files in the current shell by experimenting with several hundred tables and several tablets per table. Execute the following command to ensure that the limit is set to a large number:
+1. Because each tablet maps to its own file, you can create a very large number of files in the current shell by experimenting with several hundred tables and several tablets per table. Execute the following command to ensure that the limit is set to a large number:
 
     ```sh
     launchctl limit
@@ -161,7 +161,6 @@ Before installing YugabyteDB, ensure that you have the following available:
       </plist>
       ```
 
-
     Ensure that the `plist` files are owned by `root:wheel` and have permissions `-rw-r--r--`. To take effect, you need to reboot your computer or run the following commands:
 
       ```sh
@@ -219,7 +218,6 @@ Execute the following command to check the cluster status:
 
 Expect an output similar to the following:
 
-
 ```output
 +--------------------------------------------------------------------------------------------------+
 |                                            yugabyted                                             |
@@ -256,6 +254,10 @@ Click **See all nodes** to open the **Tablet Servers** page that lists the YB-TS
 ![master-home](/images/admin/master-tservers-list-binary-rf1.png)
 
 ## Build a Java application
+
+The following tutorial shows a small Java application that connects to a YugabyteDB cluster using the topology-aware Yugabyte JDBC driver and performs basic SQL operations.
+
+For examples using other languages, refer to [Build an application](../develop/build-apps/).
 
 ### Prerequisites
 
@@ -297,7 +299,7 @@ Perform the following to create a sample Java project:
     </properties>
     ```
 
-1. Add the following dependencies for the driver HikariPool within the `<dependencies>` element in `pom.xml`:
+1. Add the following dependencies for the driver HikariPool in the `<dependencies>` element in `pom.xml`:
 
     ```xml
     <dependency>
