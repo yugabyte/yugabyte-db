@@ -432,6 +432,17 @@ extern bool yb_enable_optimizer_statistics;
  */
 extern bool yb_make_next_ddl_statement_nonbreaking;
 
+/*
+ * Allows capability to disable prefetching in a PLPGSQL FOR loop over a query.
+ * This is introduced for some test(s) with lazy evaluation in READ COMMITTED
+ * isolation that require the read rpcs to be issued over multiple invocations
+ * of the lazily evaluable function. If prefetching is enabled, the first
+ * invocation could possibly issue read rpcs to all tablets until the
+ * specified number of rows is prefetched -- in which case no read rpcs would be
+ * issued in later invocations.
+ */
+extern bool yb_plpgsql_disable_prefetch_in_for_query;
+
 //------------------------------------------------------------------------------
 // GUC variables needed by YB via their YB pointers.
 extern int StatementTimeout;
