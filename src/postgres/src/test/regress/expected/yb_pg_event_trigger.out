@@ -330,7 +330,8 @@ NOTICE:  Event Trigger for drop
 ALTER TABLE evttrig.one ALTER COLUMN col_b DROP DEFAULT;
 NOTICE:  Event Trigger for drop
 ALTER TABLE evttrig.one DROP CONSTRAINT one_pkey;
-ERROR:  dropping a primary key constraint is not yet supported
+NOTICE:  Event Trigger for drop
+NOTICE:  Event Trigger for drop
 DROP INDEX evttrig.one_idx;
 NOTICE:  Event Trigger for drop
 \set VERBOSITY terse
