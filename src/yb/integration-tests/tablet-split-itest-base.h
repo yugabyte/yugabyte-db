@@ -121,7 +121,8 @@ class TabletSplitITestBase : public client::TransactionTestBase<MiniClusterType>
   // Make sure table contains only keys 1...num_keys without gaps.
   void CheckTableKeysInRange(const size_t num_keys);
 
-  Result<bool> IsSplittingComplete(yb::master::MasterAdminProxy* master_proxy);
+  Result<bool> IsSplittingComplete(
+      yb::master::MasterAdminProxy* master_proxy, bool wait_for_parent_deletion);
 
  protected:
   virtual int64_t GetRF() { return 3; }
@@ -161,6 +162,8 @@ class TabletSplitITest : public TabletSplitITestBase<MiniCluster> {
       bool core_dump_on_failure = true);
 
   Result<TabletId> SplitSingleTablet(docdb::DocKeyHash split_hash_code);
+
+  Result<master::SplitTabletResponsePB> SplitSingleTablet(const TabletId& tablet_id);
 
   Result<TabletId> SplitTabletAndValidate(
       docdb::DocKeyHash split_hash_code,

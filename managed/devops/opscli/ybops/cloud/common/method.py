@@ -730,7 +730,10 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
         ansible = self.cloud.setup_ansible(args)
         ansible.run("preprovision.yml", self.extra_vars, host_info)
 
-        if not args.disable_custom_ssh and use_default_port and not args.ssh2_enabled:
+        # Disabling custom_ssh_port for onprem provider when ssh2_enabled, because
+        # we won't be able to know whether the nodes used are having openssh/tectia server.
+        if not args.disable_custom_ssh and use_default_port and \
+                not (args.ssh2_enabled and self.cloud.name == "onprem"):
             ansible.run("use_custom_ssh_port.yml", self.extra_vars, host_info)
 
 
@@ -1233,8 +1236,9 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
                 args.ssh_user_update_packages else self.SSH_USER
             self.cloud.setup_ansible(args).run(
                 "reinstall-package.yml", self.extra_vars, host_info)
-            # Falling back to "yugabyte" user
-            self.extra_vars["ssh_user"] = self.get_ssh_user()
+            # As the Update package run as a seprate subtask returning, need not to
+            # configure the clusters as part of the same
+            return
         ssh_options = {
             # TODO: replace with args.ssh_user when it's setup in the flow
             "ssh_user": self.get_ssh_user(),

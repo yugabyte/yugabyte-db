@@ -35,7 +35,7 @@ type: docs
 
 </ul>
 
-## Install YugabyteDB Anywhere on a Kubernetes Cluster
+## Install YugabyteDB Anywhere on a Kubernetes cluster
 
 You install YugabyteDB Anywhere on a Kubernetes cluster as follows:
 
@@ -51,7 +51,7 @@ You install YugabyteDB Anywhere on a Kubernetes cluster as follows:
     kubectl create -f yugabyte-k8s-secret.yml -n yb-platform
     ```
 
-    <br>Expect the following output notifying you that the secret was created:
+    Expect the following output notifying you that the secret was created:
 
     ```output
     secret/yugabyte-k8s-pull-secret created
@@ -63,19 +63,19 @@ You install YugabyteDB Anywhere on a Kubernetes cluster as follows:
     helm repo add yugabytedb https://charts.yugabyte.com
     ```
 
-    <br>A message similar to the following should appear:
+    A message similar to the following should appear:
 
     ```output
     "yugabytedb" has been added to your repositories
     ```
 
-    <br>To search for the available chart version, run the following command:
+    To search for the available chart version, run the following command:
 
     ```sh
     helm search repo yugabytedb/yugaware --version {{<yb-version version="preview" format="short">}}
     ```
 
-    <br>The latest Helm chart version and application version is displayed via the output similar to the following:
+    The latest Helm chart version and application version is displayed via the output similar to the following:
 
     ```output
     NAME                 CHART VERSION  APP VERSION  DESCRIPTION
@@ -94,13 +94,13 @@ You install YugabyteDB Anywhere on a Kubernetes cluster as follows:
     helm install yw-test yugabytedb/yugaware --version {{<yb-version version="preview" format="short">}} -n yb-platform --wait --set tls.sslProtocols="TLSv1.2"
     ```
 
-    <br>In addition, you may provide a custom TLS certificate in the Helm chart, as follows:
+    In addition, you may provide a custom TLS certificate in the Helm chart, as follows:
 
     ```sh
     helm install yw-test yugabytedb/yugaware --version {{<yb-version version="preview" format="short">}} -n yb-platform --wait --set tls.sslProtocols="TLSv1.2" tls.certificate="LS0tLS1CRUdJTiBDRVJUSUZJQ..." tls.key="LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0t..."
     ```
 
-    <br>where `certificate` and `key` are set to full string values of your custom certificate and its corresponding key.
+    where `certificate` and `key` are set to full string values of your custom certificate and its corresponding key.
 
 1. Use the following command to check the service:
 
@@ -108,7 +108,7 @@ You install YugabyteDB Anywhere on a Kubernetes cluster as follows:
     kubectl get svc -n yb-platform
     ```
 
-    <br>The following output should appear:
+    The following output should appear:
 
     ```output
     NAME                  TYPE           CLUSTER-IP     EXTERNAL-IP    PORT(S)                       AGE
@@ -121,26 +121,26 @@ You install YugabyteDB Anywhere on a Kubernetes cluster as follows:
     kubectl get pods -n yb-platform
     ```
 
-    <br>The following output should appear:
+    The following output should appear:
 
     ```output
     NAME                 READY   STATUS    RESTARTS   AGE
     yw-test-yugaware-0   4/4     Running   0          12s
     ```
 
-    <br>Note that even though the preceding output indicates that the `yw-test-yugaware-0` pod is running, it does not mean that YugabyteDB Anywhere is ready to accept your queries. If you open `localhost:80` and see an error (such as 502), it means that `yugaware` is still being initialized. You can check readiness of `yugaware` by executing the following command:
+    Note that even though the preceding output indicates that the `yw-test-yugaware-0` pod is running, it does not mean that YugabyteDB Anywhere is ready to accept your queries. If you open `localhost:80` and see an error (such as 502), it means that `yugaware` is still being initialized. You can check readiness of `yugaware` by executing the following command:
 
     ```sh
     kubectl logs --follow -n yb-platform yw-test-yugaware-0 yugaware
     ```
 
-    <br>And output similar to the following would confirm that there are no errors and that the server is running:
+    An output similar to the following would confirm that there are no errors and that the server is running:
 
     ```
     [info] AkkaHttpServer.scala:447 [main] Listening for HTTP on /0.0.0.0:9000
     ```
 
-    <br>If YugabyteDB Anywhere fails to start for the first time, verify that your system meets the installation requirements, as per [Prepare the Kubernetes environment](../../prepare-environment/kubernetes/).
+    If YugabyteDB Anywhere fails to start for the first time, verify that your system meets the installation requirements, as per [Prepare the Kubernetes environment](../../prepare-environment/kubernetes/).
 
 ## Customize YugabyteDB Anywhere
 
@@ -164,13 +164,12 @@ You can customize YugabyteDB Anywhere on a Kubernetes cluster in a number of way
   - For Azure, see [AKS](https://docs.microsoft.com/en-us/azure/aks/internal-lb).
   - For AWS, see [EKS](https://docs.aws.amazon.com/eks/latest/userguide/load-balancing.html).
 
-  \
   For example, for a GKE version earlier than 1.17, you would run a command similar to the following:
-
+  
   ```sh
   helm install yw-test yugabytedb/yugaware -n yb-platform \
-  --version {{<yb-version version="preview" format="short">}} \
-  --set yugaware.service.annotations."cloud\.google\.com\/load-balancer-type"="Internal"
+    --version {{<yb-version version="preview" format="short">}} \
+    --set yugaware.service.annotations."cloud\.google\.com\/load-balancer-type"="Internal"
   ```
 
 ## Delete the Helm Installation of YugabyteDB Anywhere

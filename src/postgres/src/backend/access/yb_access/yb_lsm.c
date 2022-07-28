@@ -416,8 +416,10 @@ ybcinrescan(IndexScanDesc scan, ScanKey scankey, int nscankeys,	ScanKey orderbys
 		scan->opaque = NULL;
 	}
 
-	YbScanDesc ybScan = ybcBeginScan(scan->heapRelation, scan->indexRelation, scan->xs_want_itup,
-	                                 nscankeys, scankey, scan->yb_scan_plan);
+	YbScanDesc ybScan = ybcBeginScan(scan->heapRelation, scan->indexRelation,
+									 scan->xs_want_itup, nscankeys, scankey,
+									 scan->yb_scan_plan, scan->yb_rel_pushdown,
+									 scan->yb_idx_pushdown);
 	scan->opaque = ybScan;
 }
 

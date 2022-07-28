@@ -2127,14 +2127,14 @@ Status ClusterAdminClient::DisableTabletSplitting(
 }
 
 Result<master::IsTabletSplittingCompleteResponsePB>
-    ClusterAdminClient::IsTabletSplittingCompleteInternal() {
+    ClusterAdminClient::IsTabletSplittingCompleteInternal(bool wait_for_parent_deletion) {
   master::IsTabletSplittingCompleteRequestPB req;
+  req.set_wait_for_parent_deletion(wait_for_parent_deletion);
   return InvokeRpc(&master::MasterAdminProxy::IsTabletSplittingComplete, *master_admin_proxy_, req);
 }
 
-Status ClusterAdminClient::IsTabletSplittingComplete() {
-  master::IsTabletSplittingCompleteRequestPB req;
-  const auto resp = VERIFY_RESULT(IsTabletSplittingCompleteInternal());
+Status ClusterAdminClient::IsTabletSplittingComplete(bool wait_for_parent_deletion) {
+  const auto resp = VERIFY_RESULT(IsTabletSplittingCompleteInternal(wait_for_parent_deletion));
   std::cout << "Response: " << AsString(resp) << std::endl;
   return Status::OK();
 }

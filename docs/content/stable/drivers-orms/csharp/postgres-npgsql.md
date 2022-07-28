@@ -14,7 +14,7 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/preview/drivers-orms/csharp/postgres-npgsql/" class="nav-link active">
+    <a href="../postgres-npgsql/" class="nav-link active">
       <i class="icon-java-bold" aria-hidden="true"></i>
       PostgreSQL Npgsql Driver
     </a>
@@ -168,5 +168,5 @@ If you receive no output or an error, check the parameters in the connection str
 
 ## Next steps
 
-- Learn how to build C# applications using [EntityFramework ORM](../entityframework).
+- Learn how to build C# applications using [EntityFramework ORM](../entityframework/).
 - Learn more about the [fundamentals](../../../reference/drivers/csharp/postgres-npgsql-reference/) of the Npgsql driver.

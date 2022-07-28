@@ -130,7 +130,6 @@ public class UniverseControllerTestBase extends WithApplication {
     when(mockRuntimeConfig.getBoolean("yb.security.use_oauth")).thenReturn(false);
 
     return new GuiceApplicationBuilder()
-        .disable(SwaggerModule.class)
         .disable(GuiceModule.class)
         .configure(testDatabase())
         .overrides(bind(YBClientService.class).toInstance(mockService))

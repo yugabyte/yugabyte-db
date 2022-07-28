@@ -27,6 +27,8 @@ import com.fasterxml.jackson.databind.ObjectReader;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.encryption.HashBuilder;
+import com.yugabyte.yw.common.encryption.bc.BcOpenBsdHasher;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
@@ -34,7 +36,6 @@ import java.io.IOException;
 import java.util.List;
 import org.junit.Before;
 import org.junit.Test;
-import org.mindrot.jbcrypt.BCrypt;
 import play.libs.Json;
 import play.mvc.Http;
 import play.mvc.Result;
@@ -43,17 +44,16 @@ public class UsersControllerTest extends FakeDBApplication {
   String baseRoute = "/api/customers/%s/users";
 
   private Customer customer1, customer2;
-  private Users user1, user2;
-  private String authToken1, authToken2;
+  private Users user1;
+  private String authToken1;
+  private HashBuilder hashBuilder = new BcOpenBsdHasher();
 
   @Before
   public void setUp() {
     customer1 = ModelFactory.testCustomer("tc1", "Test Customer 1");
     customer2 = ModelFactory.testCustomer("tc2", "Test Customer 2");
     user1 = ModelFactory.testUser(customer1, "tc1@test.com");
-    user2 = ModelFactory.testUser(customer2, "tc2@test.com");
     authToken1 = user1.createAuthToken();
-    authToken2 = user2.createAuthToken();
   }
 
   public List<UserWithFeatures> getListOfUsers(String authToken, Customer customer)
@@ -207,7 +207,7 @@ public class UsersControllerTest extends FakeDBApplication {
                 .bodyJson(params));
     testUser1 = Users.get(testUser1.uuid);
     assertEquals(testUser1.getRole(), Role.Admin);
-    assertTrue(BCrypt.checkpw("new-Password1", testUser1.passwordHash));
+    assertTrue(hashBuilder.isValid("new-Password1", testUser1.passwordHash));
     assertAuditEntry(1, customer1.uuid);
   }
 
@@ -280,7 +280,7 @@ public class UsersControllerTest extends FakeDBApplication {
                 .bodyJson(params));
     testUser1 = Users.get(testUser1.uuid);
     assertEquals(testUser1.getTimezone(), testTimezone2);
-    assertTrue(BCrypt.checkpw("new-Password1!", testUser1.passwordHash));
+    assertTrue(hashBuilder.isValid("new-Password1!", testUser1.passwordHash));
     assertEquals(testUser1.getRole(), Role.ReadOnly);
     assertAuditEntry(1, customer1.uuid);
   }
@@ -335,7 +335,7 @@ public class UsersControllerTest extends FakeDBApplication {
                 .bodyJson(params));
     testUser1 = Users.get(testUser1.uuid);
     assertEquals(testUser1.getTimezone(), "");
-    assertTrue(BCrypt.checkpw("new-Password1!", testUser1.passwordHash));
+    assertTrue(hashBuilder.isValid("new-Password1!", testUser1.passwordHash));
     assertEquals(testUser1.getRole(), Role.ReadOnly);
     assertAuditEntry(1, customer1.uuid);
   }
@@ -394,7 +394,7 @@ public class UsersControllerTest extends FakeDBApplication {
                 .cookie(validCookie)
                 .bodyJson(params));
     testUser1 = Users.get(testUser1.uuid);
-    assertTrue(BCrypt.checkpw("new-Password1!", testUser1.passwordHash));
+    assertTrue(hashBuilder.isValid("new-Password1!", testUser1.passwordHash));
   }
 
   @Test

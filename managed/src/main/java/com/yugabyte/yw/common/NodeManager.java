@@ -467,6 +467,7 @@ public class NodeManager extends DevopsBase {
                         .toAbsolutePath();
               }
               CertificateHelper.createServerCertificate(
+                  config,
                   taskParam.rootCA,
                   tempStorageDirectory.toString(),
                   commonName,
@@ -570,6 +571,7 @@ public class NodeManager extends DevopsBase {
                         .toAbsolutePath();
               }
               CertificateHelper.createServerCertificate(
+                  config,
                   taskParam.clientRootCA,
                   tempStorageDirectory.toString(),
                   commonName,

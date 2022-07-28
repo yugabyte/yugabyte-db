@@ -21,7 +21,7 @@ This document describes the fundamentals of using Spring Data JPA with YugabyteD
 
 ## Quick start
 
-Learn how to establish a connection to YugabyteDB database and begin simple CRUD operations using the steps in [Build an Application](/preview/quick-start/build-apps/java/ysql-spring-data/) in the Quick Start section.
+Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in [Build an Application](../../../develop/build-apps/java/ysql-spring-data/) in the Quick Start section.
 
 ## Project dependencies
 
@@ -29,7 +29,7 @@ Spring Data JPA can be used with both YugabyteDB JDBC driver and the upstream Po
 
 ### Maven dependency
 
-Add the following dependencies for Spring Data JPA with [YugabyteDB JDBC Driver](/preview/drivers-orms/java/yugabyte-jdbc/).
+Add the following dependencies for Spring Data JPA with [YugabyteDB JDBC Driver](../../../drivers-orms/java/yugabyte-jdbc/).
 
 ```xml
 <dependencies>

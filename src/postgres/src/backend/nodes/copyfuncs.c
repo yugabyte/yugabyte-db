@@ -454,6 +454,25 @@ _copySeqScan(const SeqScan *from)
 }
 
 /*
+ * _copyYbSeqScan
+ */
+static YbSeqScan *
+_copyYbSeqScan(const YbSeqScan *from)
+{
+	YbSeqScan    *newnode = makeNode(YbSeqScan);
+
+	/*
+	 * copy node superclass fields
+	 */
+	CopyScanFields((const Scan *) from, (Scan *) newnode);
+
+	COPY_NODE_FIELD(remote.qual);
+	COPY_NODE_FIELD(remote.colrefs);
+
+	return newnode;
+}
+
+/*
  * _copySampleScan
  */
 static SampleScan *
@@ -496,7 +515,12 @@ _copyIndexScan(const IndexScan *from)
 	COPY_NODE_FIELD(indexorderby);
 	COPY_NODE_FIELD(indexorderbyorig);
 	COPY_NODE_FIELD(indexorderbyops);
+	COPY_NODE_FIELD(indextlist);
 	COPY_SCALAR_FIELD(indexorderdir);
+	COPY_NODE_FIELD(index_remote.qual);
+	COPY_NODE_FIELD(index_remote.colrefs);
+	COPY_NODE_FIELD(rel_remote.qual);
+	COPY_NODE_FIELD(rel_remote.colrefs);
 
 	return newnode;
 }
@@ -522,6 +546,8 @@ _copyIndexOnlyScan(const IndexOnlyScan *from)
 	COPY_NODE_FIELD(indexorderby);
 	COPY_NODE_FIELD(indextlist);
 	COPY_SCALAR_FIELD(indexorderdir);
+	COPY_NODE_FIELD(remote.qual);
+	COPY_NODE_FIELD(remote.colrefs);
 
 	return newnode;
 }
@@ -4915,6 +4941,9 @@ copyObjectImpl(const void *from)
 			break;
 		case T_SeqScan:
 			retval = _copySeqScan(from);
+			break;
+		case T_YbSeqScan:
+			retval = _copyYbSeqScan(from);
 			break;
 		case T_SampleScan:
 			retval = _copySampleScan(from);

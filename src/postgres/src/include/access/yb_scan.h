@@ -131,18 +131,24 @@ extern HeapScanDesc ybc_heap_beginscan(Relation relation,
 									   bool temp_snap);
 extern HeapTuple ybc_heap_getnext(HeapScanDesc scanDesc);
 extern void ybc_heap_endscan(HeapScanDesc scanDesc);
+extern HeapScanDesc ybc_remote_beginscan(Relation relation,
+										 Snapshot snapshot,
+										 Scan *pg_scan_plan,
+										 PushdownExprs *remote);
 
 /*
  * The ybc_idx API is used to process the following SELECT.
  *   SELECT data FROM heapRelation WHERE rowid IN
  *     ( SELECT rowid FROM indexRelation WHERE key = given_value )
  */
-YbScanDesc ybcBeginScan(Relation relation,
-                        Relation index,
-                        bool xs_want_itup,
-                        int nkeys,
-                        ScanKey key,
-                        Scan *pg_scan_plan);
+extern YbScanDesc ybcBeginScan(Relation relation,
+							   Relation index,
+							   bool xs_want_itup,
+							   int nkeys,
+							   ScanKey key,
+							   Scan *pg_scan_plan,
+							   PushdownExprs *rel_remote,
+							   PushdownExprs *idx_remote);
 
 HeapTuple ybc_getnext_heaptuple(YbScanDesc ybScan, bool is_forward_scan, bool *recheck);
 IndexTuple ybc_getnext_indextuple(YbScanDesc ybScan, bool is_forward_scan, bool *recheck);
@@ -209,5 +215,7 @@ typedef struct YbSampleData *YbSample;
 YbSample ybBeginSample(Relation rel, int targrows);
 bool ybSampleNextBlock(YbSample ybSample);
 int ybFetchSample(YbSample ybSample, HeapTuple *rows);
+TupleTableSlot *ybFetchNext(YBCPgStatement handle,
+			TupleTableSlot *slot, Oid relid);
 
 #endif							/* YB_SCAN_H */

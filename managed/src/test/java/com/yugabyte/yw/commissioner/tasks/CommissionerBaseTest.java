@@ -170,7 +170,6 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
 
     return configureApplication(
             new GuiceApplicationBuilder()
-                .disable(SwaggerModule.class)
                 .disable(GuiceModule.class)
                 .configure(testDatabase())
                 .overrides(bind(AccessManager.class).toInstance(mockAccessManager))

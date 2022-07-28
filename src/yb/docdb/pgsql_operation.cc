@@ -991,6 +991,14 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const YQLStorageIf& ql_storage,
   YQLRowwiseIteratorIf *iter;
   const Schema* scan_schema;
   DocPgExprExecutor expr_exec(&schema);
+  for (const PgsqlColRefPB& column_ref : request_.col_refs()) {
+    RETURN_NOT_OK(expr_exec.AddColumnRef(column_ref));
+    VLOG(1) << "Added column reference to the executor";
+  }
+  for (const PgsqlExpressionPB& expr : request_.where_clauses()) {
+    RETURN_NOT_OK(expr_exec.AddWhereExpression(expr));
+    VLOG(1) << "Added where expression to the executor";
+  }
 
   if (!request_.col_refs().empty()) {
     RETURN_NOT_OK(CreateProjection(schema, request_.col_refs(), &projection));
@@ -1018,14 +1026,6 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const YQLStorageIf& ql_storage,
   } else {
     iter = table_iter_.get();
     scan_schema = &schema;
-    for (const PgsqlColRefPB& column_ref : request_.col_refs()) {
-      RETURN_NOT_OK(expr_exec.AddColumnRef(column_ref));
-      VLOG(1) << "Added column reference to the executor";
-    }
-    for (const PgsqlExpressionPB& expr : request_.where_clauses()) {
-      RETURN_NOT_OK(expr_exec.AddWhereExpression(expr));
-      VLOG(1) << "Added where expression to the executor";
-    }
   }
 
   VLOG(1) << "Started iterator";
@@ -1109,11 +1109,22 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchYbctid(const YQLStorageIf& ql_sto
                                                       const DocReadContext& doc_read_context,
                                                       faststring *result_buffer,
                                                       HybridTime *restart_read_ht) {
+  const auto& schema = doc_read_context.schema;
   Schema projection;
-  RETURN_NOT_OK(CreateProjection(doc_read_context.schema, request_.column_refs(), &projection));
+  RETURN_NOT_OK(CreateProjection(schema, request_.column_refs(), &projection));
 
   QLTableRow row;
   size_t row_count = 0;
+  DocPgExprExecutor expr_exec(&schema);
+  for (const PgsqlColRefPB& column_ref : request_.col_refs()) {
+    RETURN_NOT_OK(expr_exec.AddColumnRef(column_ref));
+    VLOG(1) << "Added column reference to the executor";
+  }
+  for (const PgsqlExpressionPB& expr : request_.where_clauses()) {
+    RETURN_NOT_OK(expr_exec.AddWhereExpression(expr));
+    VLOG(1) << "Added where expression to the executor";
+  }
+
   for (const PgsqlBatchArgumentPB& batch_argument : request_.batch_arguments()) {
     // Get the row.
     RETURN_NOT_OK(ql_storage.GetIterator(
@@ -1123,11 +1134,14 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchYbctid(const YQLStorageIf& ql_sto
     if (VERIFY_RESULT(table_iter_->HasNext())) {
       row.Clear();
       RETURN_NOT_OK(table_iter_->NextRow(projection, &row));
-
-      // Populate result set.
-      RETURN_NOT_OK(PopulateResultSet(row, result_buffer));
-      response_.add_batch_orders(batch_argument.order());
-      row_count++;
+      bool is_match = true;
+      RETURN_NOT_OK(expr_exec.Exec(row, nullptr, &is_match));
+      if (is_match) {
+        // Populate result set.
+        RETURN_NOT_OK(PopulateResultSet(row, result_buffer));
+        response_.add_batch_orders(batch_argument.order());
+        row_count++;
+      }
     }
   }
 

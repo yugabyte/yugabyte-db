@@ -16,7 +16,6 @@
 #define YB_YQL_PGGATE_PG_TRUNCATE_COLOCATED_H_
 
 #include "yb/yql/pggate/pg_dml_write.h"
-#include "yb/yql/pggate/pg_env.h"
 #include "yb/yql/pggate/pg_session.h"
 #include "yb/yql/pggate/pg_statement.h"
 

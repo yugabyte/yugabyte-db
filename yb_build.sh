@@ -720,6 +720,7 @@ java_only=false
 cmake_only=false
 run_python_tests=false
 cmake_extra_args=""
+pgo_data_path=""
 predefined_build_root=""
 java_test_name=""
 show_report=true
@@ -1041,6 +1042,14 @@ while [[ $# -gt 0 ]]; do
       cmake_extra_args+=$2
       shift
     ;;
+    --pgo-data-path)
+      ensure_option_has_arg "$@"
+      pgo_data_path=$(realpath "$2")
+      shift
+      if [[ ! -f $pgo_data_path ]]; then
+        fatal "Profile data file doesn't exist: $pgo_data_path"
+      fi
+    ;;
     --make-ninja-extra-args)
       ensure_option_has_arg "$@"
       if [[ -n $make_ninja_extra_args ]]; then
@@ -1354,6 +1363,10 @@ if ! "$build_java" && "$resolve_java_dependencies"; then
   fatal "--resolve-java-dependencies is not allowed if not building Java code"
 fi
 
+if [[ $build_type == "prof_use" ]] && [[ $pgo_data_path == "" ]]; then
+  fatal "Please set --pgo-data-path path/to/pgo/data"
+fi
+
 # End of post-processing and validating command-line arguments.
 
 # -------------------------------------------------------------------------------------------------
@@ -1522,6 +1535,10 @@ fi
 
 if "$no_tcmalloc"; then
   cmake_opts+=( -DYB_TCMALLOC_ENABLED=0 )
+fi
+
+if [[ $pgo_data_path != "" ]]; then
+  cmake_opts+=( "-DYB_PGO_DATA_PATH=$pgo_data_path" )
 fi
 
 detect_num_cpus_and_set_make_parallelism

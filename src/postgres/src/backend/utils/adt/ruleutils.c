@@ -4756,6 +4756,8 @@ set_deparse_planstate(deparse_namespace *dpns, PlanState *ps)
 	/* Set up referent for INDEX_VAR Vars, if needed */
 	if (IsA(ps->plan, IndexOnlyScan))
 		dpns->index_tlist = ((IndexOnlyScan *) ps->plan)->indextlist;
+	else if (IsA(ps->plan, IndexScan))
+		dpns->index_tlist = ((IndexScan *) ps->plan)->indextlist;
 	else if (IsA(ps->plan, ForeignScan))
 		dpns->index_tlist = ((ForeignScan *) ps->plan)->fdw_scan_tlist;
 	else if (IsA(ps->plan, CustomScan))

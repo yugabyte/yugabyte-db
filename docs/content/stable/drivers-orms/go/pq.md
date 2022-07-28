@@ -15,20 +15,20 @@ For Go Applications, most drivers provide database connectivity through the stan
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/preview/drivers-orms/go/yb-pgx/" class="nav-link">
+    <a href="../yb-pgx/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YugabyteDB PGX Driver
     </a>
   </li>
   <li >
-    <a href="/preview/drivers-orms/go/pgx/" class="nav-link">
+    <a href="../pgx/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       PGX Driver
     </a>
   </li>
 
   <li >
-    <a href="/preview/drivers-orms/go/pq/" class="nav-link active">
+    <a href="../pq/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       PQ Driver
     </a>
@@ -40,7 +40,7 @@ The [PQ driver](https://github.com/lib/pq/) is a popular driver for PostgreSQL. 
 
 ## CRUD operations with PQ driver
 
-Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in the [Build an application](../../../quick-start/build-apps/go/ysql-pq) page under the Quick start section.
+Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in the [Build an application](../../../quick-start/build-apps/go/ysql-pq/) page under the Quick start section.
 
 The following sections break down the quick start example to demonstrate how to perform common tasks required for Go application development using the PQ driver.
 
@@ -189,5 +189,5 @@ if err != nil {
 
 ## Next steps
 
-- Learn how to build Go applications using [GORM](../gorm).
+- Learn how to build Go applications using [GORM](../gorm/).
 - Learn more about [fundamentals](../../../reference/drivers/go/pq-reference/) of the PQ Driver.

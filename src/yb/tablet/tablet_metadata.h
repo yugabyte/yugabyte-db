@@ -133,6 +133,8 @@ struct TableInfo {
       const TableInfoPtr& self, uint32_t schema_version, HybridTime history_cutoff);
 
   const Schema& schema() const;
+
+  Status MergeWithRestored(const TableInfoPB& pb);
 };
 
 // Describes KV-store. Single KV-store is backed by one or two RocksDB instances, depending on
@@ -148,8 +150,10 @@ struct KvStoreInfo {
         snapshot_schedules(snapshot_schedules_.begin(), snapshot_schedules_.end()) {}
 
   Status LoadFromPB(const KvStoreInfoPB& pb,
-                            const TableId& primary_table_id,
-                            bool local_superblock);
+                    const TableId& primary_table_id,
+                    bool local_superblock);
+
+  Status MergeWithRestored(const KvStoreInfoPB& pb);
 
   Status LoadTablesFromPB(
       const google::protobuf::RepeatedPtrField<TableInfoPB>& pbs, const TableId& primary_table_id);
@@ -379,6 +383,11 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
 
   Status Flush();
 
+  Status SaveTo(const std::string& path);
+
+  // Merge this metadata with restored metadata located at specified path.
+  Status MergeWithRestored(const std::string& path);
+
   // Mark the superblock to be in state 'delete_type', sync it to disk, and
   // then delete all of the rowsets in this tablet.
   // The metadata (superblock) is not deleted. For that, call DeleteSuperBlock().
@@ -413,7 +422,9 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   OpId tombstone_last_logged_opid() const;
 
   // Loads the currently-flushed superblock from disk into the given protobuf.
-  Status ReadSuperBlockFromDisk(RaftGroupReplicaSuperBlockPB* superblock) const;
+  // When path is empty - obtain path from fs manager for this Raft group.
+  Status ReadSuperBlockFromDisk(
+      RaftGroupReplicaSuperBlockPB* superblock, const std::string& path = std::string()) const;
 
   // Sets *superblock to the serialized form of the current metadata.
   void ToSuperBlock(RaftGroupReplicaSuperBlockPB* superblock) const;
@@ -509,7 +520,9 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
 
   // Fully replace superblock.
   // Requires 'flush_lock_'.
-  Status SaveToDiskUnlocked(const RaftGroupReplicaSuperBlockPB &pb);
+  // When path is empty - obtain path from fs manager for this Raft group.
+  Status SaveToDiskUnlocked(
+      const RaftGroupReplicaSuperBlockPB &pb, const std::string& path = std::string());
 
   // Requires 'data_mutex_'.
   void ToSuperBlockUnlocked(RaftGroupReplicaSuperBlockPB* superblock) const REQUIRES(data_mutex_);

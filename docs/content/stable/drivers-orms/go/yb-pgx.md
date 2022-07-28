@@ -15,20 +15,20 @@ For Go applications, most drivers provide database connectivity through the stan
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/preview/drivers-orms/go/yb-pgx/" class="nav-link active">
+    <a href="../yb-pgx/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YugabyteDB PGX Driver
     </a>
   </li>
   <li >
-    <a href="/preview/drivers-orms/go/pgx/" class="nav-link">
+    <a href="../pgx/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       PGX Driver
     </a>
   </li>
 
   <li >
-    <a href="/preview/drivers-orms/go/pq/" class="nav-link">
+    <a href="../pq/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       PQ Driver
     </a>
@@ -40,7 +40,7 @@ The [YugabyteDB PGX driver](https://pkg.go.dev/github.com/yugabyte/pgx) is a Go 
 
 ## CRUD operations
 
-Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in the [Build an application](../../../quick-start/build-apps/go/ysql-yb-pgx) page under the Quick start section.
+Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in the [Build an application](../../../quick-start/build-apps/go/ysql-yb-pgx/) page under the Quick start section.
 
 The following sections break down the quick start example to demonstrate how to perform common tasks required for Go application development using the YugabyteDB PGX driver.
 
@@ -54,7 +54,7 @@ import (
 )
 ```
 
-Optionally, you can choose to import the pgxpool package instead. Refer to [Using pgxpool API](/preview/reference/drivers/go/yb-pgx-reference/#using-pgxpool-api) to learn more.
+Optionally, you can choose to import the pgxpool package instead. Refer to [Using pgxpool API](../../../reference/drivers/go/yb-pgx-reference/#using-pgxpool-api) to learn more.
 
 ### Step 2: Set up the database connection
 
@@ -210,5 +210,5 @@ if err != nil {
 
 ## Next steps
 
-- Learn how to build Go applications using [GORM](../gorm).
+- Learn how to build Go applications using [GORM](../gorm/).
 - Learn more about [fundamentals](../../../reference/drivers/go/yb-pgx-reference/#fundamentals) of the YugabyteDB PGX Driver.

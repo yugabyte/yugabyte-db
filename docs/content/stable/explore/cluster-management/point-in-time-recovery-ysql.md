@@ -3,10 +3,9 @@ title: Point-in-Time Recovery for YSQL
 headerTitle: Point-in-time recovery
 linkTitle: Point-in-time recovery
 description: Restore data from a specific point in time in YugabyteDB for YSQL
-beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   stable:
-    identifier: cluster-management-point-in-time-recovery-ysql
+    identifier: cluster-management-point-in-time-recovery
     parent: explore-cluster-management
     weight: 704
 type: docs
@@ -41,9 +40,9 @@ This document contains examples that are deliberately simplified. In many of the
 
 ## Undo data changes
 
-The process of undoing data changes involves creating and taking a snapshot of a table, and then performing a restore from either an absolute or relative time. 
+The process of undoing data changes involves creating and taking a snapshot of a table, and then performing a restore from either an absolute or relative time.
 
-Before attempting a restore, you need to confirm that there is no restore in progress for the subject keyspace or table; if multiple restore commands are issued, the data might enter an inconsistent state. For details, see [Restore to a point in time](../../../manage/backup-restore/point-in-time-recovery/#restore-to-a-point-in-time).  
+Before attempting a restore, you need to confirm that there is no restore in progress for the subject keyspace or table; if multiple restore commands are issued, the data might enter an inconsistent state. For details, see [Restore to a point in time](../../../manage/backup-restore/point-in-time-recovery/#restore-to-a-point-in-time).
 
 ### Create and snapshot a table
 
@@ -128,7 +127,7 @@ Create and populate a table, look at a timestamp to which you'll restore, and th
 1. From a command prompt, get a timestamp:
 
     ```sh
-    python -c 'import datetime; print datetime.datetime.now().strftime("%s%f")'
+    python -c 'import datetime; print(datetime.datetime.now().strftime("%s%f"))'
     ```
 
     ```output
@@ -272,7 +271,7 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 1. To restore from an absolute time, get a timestamp from the command prompt. You'll create a table, then restore to this time to undo the table creation:
 
     ```sh
-    python -c 'import datetime; print datetime.datetime.now().strftime("%s%f")'
+    python -c 'import datetime; print(datetime.datetime.now().strftime("%s%f"))'
     ```
 
     ```output
@@ -449,7 +448,7 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 1. To restore from an absolute time, get a timestamp from the command prompt. You'll delete the table, then restore to this time to undo the delete:
 
     ```sh
-    python -c 'import datetime; print datetime.datetime.now().strftime("%s%f")'
+    python -c 'import datetime; print(datetime.datetime.now().strftime("%s%f"))'
     ```
 
     ```output
@@ -611,7 +610,7 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 1. To restore from an absolute time, get a timestamp from the command prompt. You'll add a column to the table, then restore to this time in order to undo the column addition:
 
     ```sh
-    python -c 'import datetime; print datetime.datetime.now().strftime("%s%f")'
+    python -c 'import datetime; print(datetime.datetime.now().strftime("%s%f"))'
     ```
 
     ```output
@@ -776,7 +775,7 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 1. To restore from an absolute time, get a timestamp from the command prompt. You'll remove a column from the table, then restore to this time to get the column back:
 
     ```sh
-    python -c 'import datetime; print datetime.datetime.now().strftime("%s%f")'
+    python -c 'import datetime; print(datetime.datetime.now().strftime("%s%f"))'
     ```
 
     ```output
@@ -939,7 +938,7 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 1. To restore from an absolute time, get a timestamp from the command prompt. You'll create an index on the table, then restore to this time to undo the index creation:
 
     ```sh
-    python -c 'import datetime; print datetime.datetime.now().strftime("%s%f")'
+    python -c 'import datetime; print(datetime.datetime.now().strftime("%s%f"))'
     ```
 
     ```output

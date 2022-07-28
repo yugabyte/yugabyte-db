@@ -45,17 +45,17 @@ The Yugabyte Psycopg2 driver has the following load balancing features:
 
 - Uniform load balancing
 
-   In this mode, the driver makes the best effort to uniformly distribute the connections to each YugabyteDB server. For example, if a client application creates 100 connections to a YugabyteDB cluster consisting of 10 servers, then the driver creates 10 connections to each server. If the number of connections are not exactly divisible by the number of servers, then a few may have 1 less or 1 more connection than the others. This is the client view of the load, so the servers may not be well balanced if other client applications are not using the Yugabyte JDBC driver.
+    In this mode, the driver makes the best effort to uniformly distribute the connections to each YugabyteDB server. For example, if a client application creates 100 connections to a YugabyteDB cluster consisting of 10 servers, then the driver creates 10 connections to each server. If the number of connections are not exactly divisible by the number of servers, then a few may have 1 less or 1 more connection than the others. This is the client view of the load, so the servers may not be well balanced if other client applications are not using the Yugabyte JDBC driver.
 
 - Topology-aware load balancing
 
-   Because YugabyteDB clusters can have servers in different regions and availability zones, the YugabyteDB Psycopg2 driver is topology-aware, and can be configured to create connections only on servers that are in specific regions and zones. This is helpful for client applications that need to connect to the geographically nearest regions and availability zone for lower latency; the driver tries to uniformly load only those servers that belong to the specified regions and zone.
+    Because YugabyteDB clusters can have servers in different regions and availability zones, the YugabyteDB JDBC driver is topology-aware. This means it can be configured to create connections only on servers that are in specific regions and zones. This is beneficial for client applications that need to connect to the geographically nearest regions and availability zone for lower latency; the driver tries to uniformly load only those servers that belong to the specified regions and zone.
 
 The Yugabyte Psycopg2 driver can be configured with pooling as well.
 
 ## Quick start
 
-Learn how to establish a connection to YugabyteDB database and begin CRUD operations using the steps in [Build an Application](/preview/quick-start/build-apps/java/ysql-yb-jdbc) in the Quick Start section.
+Learn how to establish a connection to YugabyteDB database and begin CRUD operations using the steps in [Build an Application](/preview/develop/build-apps/java/ysql-yb-jdbc) in the Quick Start section.
 
 ## Download the driver dependency
 
@@ -141,8 +141,8 @@ To use the driver, do the following:
 
 ## Try it out
 
-This tutorial shows how to use the Yugabyte Psycopg2 driver with YugabyteDB. You’ll start by creating a 3 node cluster with a replication factor of 3. This tutorial uses the [yb-ctl](/preview/admin/yb-ctl/#root) utility.
-Next, you’ll use Python shell terminal, to demonstrate the driver's load balancing features by running few python scripts.
+This tutorial shows how to use the Yugabyte Psycopg2 driver with YugabyteDB. It starts by creating a 3 node cluster with a replication factor of 3. This tutorial uses the [yb-ctl](/preview/admin/yb-ctl/#root) utility.
+Next, you use Python shell terminal, to demonstrate the driver's load balancing features by running few python scripts.
 
 {{< note title="Note">}}
 The driver requires YugabyteDB version 2.7.2.0 or higher

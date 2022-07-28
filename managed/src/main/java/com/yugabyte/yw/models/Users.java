@@ -8,6 +8,9 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.encryption.HashBuilder;
+import com.yugabyte.yw.common.encryption.bc.BcOpenBsdHasher;
+
 import io.ebean.DuplicateKeyException;
 import io.ebean.Finder;
 import io.ebean.Model;
@@ -20,16 +23,16 @@ import java.util.Date;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
-import java.util.Random;
-import java.nio.charset.Charset;
 import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.EnumType;
 import javax.persistence.Enumerated;
 import javax.persistence.Id;
+import javax.persistence.Transient;
+
 import lombok.extern.slf4j.Slf4j;
+
 import org.joda.time.DateTime;
-import org.mindrot.jbcrypt.BCrypt;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.validation.Constraints;
@@ -41,7 +44,8 @@ import play.mvc.Http.Status;
 public class Users extends Model {
 
   public static final Logger LOG = LoggerFactory.getLogger(Users.class);
-  // A globally unique UUID for the Users.
+
+  private static final HashBuilder hasher = new BcOpenBsdHasher();
 
   /** These are the available user roles */
   public enum Role {
@@ -81,6 +85,7 @@ public class Users extends Model {
     ldap;
   }
 
+  // A globally unique UUID for the Users.
   @Id
   @Column(nullable = false, unique = true)
   @ApiModelProperty(value = "User UUID", accessMode = READ_ONLY)
@@ -115,7 +120,7 @@ public class Users extends Model {
   public String passwordHash;
 
   public void setPassword(String password) {
-    this.passwordHash = BCrypt.hashpw(password, BCrypt.gensalt());
+    this.passwordHash = Users.hasher.hash(password);
   }
 
   @Column(nullable = false)
@@ -299,7 +304,7 @@ public class Users extends Model {
   public static Users authWithPassword(String email, String password) {
     Users users = Users.find.query().where().eq("email", email).findOne();
 
-    if (users != null && BCrypt.checkpw(password, users.passwordHash)) {
+    if (users != null && Users.hasher.isValid(password, users.passwordHash)) {
       return users;
     } else {
       return null;

@@ -93,7 +93,12 @@ Status PgDml::AppendTargetPB(PgExpr *target) {
   return Status::OK();
 }
 
-Status PgDml::AppendQual(PgExpr *qual) {
+Status PgDml::AppendQual(PgExpr *qual, bool is_primary) {
+  if (!is_primary) {
+    DCHECK(secondary_index_query_) << "The secondary index query is expected";
+    return secondary_index_query_->AppendQual(qual, true);
+  }
+
   // Append to quals_.
   quals_.push_back(qual);
 
@@ -108,7 +113,12 @@ Status PgDml::AppendQual(PgExpr *qual) {
   return qual->PrepareForRead(this, expr_pb);
 }
 
-Status PgDml::AppendColumnRef(PgExpr *colref) {
+Status PgDml::AppendColumnRef(PgExpr *colref, bool is_primary) {
+  if (!is_primary) {
+    DCHECK(secondary_index_query_) << "The secondary index query is expected";
+    return secondary_index_query_->AppendColumnRef(colref, true);
+  }
+
   DCHECK(colref->is_colref()) << "Colref is expected";
   // Postgres attribute number, this is column id to refer the column from Postgres code
   int attr_num = static_cast<PgColumnRef *>(colref)->attr_num();

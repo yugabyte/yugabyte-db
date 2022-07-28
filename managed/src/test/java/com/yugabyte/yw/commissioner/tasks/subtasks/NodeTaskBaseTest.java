@@ -43,7 +43,6 @@ public class NodeTaskBaseTest extends WithApplication {
     mockAlertConfigurationWriter = mock(AlertConfigurationWriter.class);
 
     return new GuiceApplicationBuilder()
-        .disable(SwaggerModule.class)
         .disable(GuiceModule.class)
         .configure(testDatabase())
         .overrides(bind(NodeManager.class).toInstance(mockNodeManager))

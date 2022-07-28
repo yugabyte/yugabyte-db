@@ -15,6 +15,7 @@ import static org.mockito.Mockito.when;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
@@ -41,17 +42,23 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import junitparams.JUnitParamsRunner;
+import junitparams.Parameters;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.Before;
+import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
-import org.mockito.junit.MockitoJUnitRunner;
+import org.mockito.junit.MockitoJUnit;
+import org.mockito.junit.MockitoRule;
 import org.yb.client.ListMastersResponse;
 
-@RunWith(MockitoJUnitRunner.class)
+@RunWith(JUnitParamsRunner.class)
 @Slf4j
 public class ResizeNodeTest extends UpgradeTaskTest {
+
+  @Rule public MockitoRule rule = MockitoJUnit.rule();
 
   private static final String DEFAULT_INSTANCE_TYPE = "c3.medium";
   private static final String NEW_INSTANCE_TYPE = "c4.medium";
@@ -134,6 +141,72 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     PlacementInfoUtil.addPlacementZone(az2.uuid, placementInfo, 1, 1, true);
     PlacementInfoUtil.addPlacementZone(az3.uuid, placementInfo, 1, 2, false);
     return placementInfo;
+  }
+
+  @Parameters({
+    "aws, 0, 10, m3.medium, m3.medium, true",
+    "gcp, 0, 10, m3.medium, m3.medium, true",
+    "aws, 0, 10, m3.medium, c4.medium, true",
+    "aws, 0, -10, m3.medium, m3.medium, false", // decrease volume
+    "aws, 1, 10, m3.medium, m3.medium, false", // change num of volumes
+    "azu, 0, 10, m3.medium, m3.medium, false", // wrong provider
+    "aws, 0, 10, m3.medium, fake_type, false", // unknown instance type
+    "aws, 0, 10, i3.instance, m3.medium, false", // ephemeral instance type
+    "aws, 0, 10, c5d.instance, m3.medium, false", // ephemeral instance type
+    "gcp, 0, 10, scratch, m3.medium, false", // ephemeral instance type
+    "aws, 0, 10, m3.medium, c5d.instance, true" // changing to ephemeral is OK
+  })
+  @Test
+  public void testResizeNodeAvailable(
+      String cloudTypeStr,
+      int numOfVolumesDiff,
+      int volumeSizeDiff,
+      String curInstanceTypeCode,
+      String targetInstanceTypeCode,
+      boolean expected) {
+    Common.CloudType cloudType = Common.CloudType.valueOf(cloudTypeStr);
+    PublicCloudConstants.StorageType storageType =
+        Arrays.stream(PublicCloudConstants.StorageType.values())
+            .filter(type -> type.getCloudType() == cloudType)
+            .filter(
+                type ->
+                    curInstanceTypeCode.equals("scratch")
+                        == (type == PublicCloudConstants.StorageType.Scratch))
+            .findFirst()
+            .get();
+    UniverseDefinitionTaskParams.UserIntent currentIntent =
+        createIntent(cloudType, curInstanceTypeCode, storageType);
+
+    UniverseDefinitionTaskParams.UserIntent targetIntent =
+        createIntent(cloudType, targetInstanceTypeCode, storageType);
+    targetIntent.deviceInfo.volumeSize += volumeSizeDiff;
+    targetIntent.deviceInfo.numVolumes += numOfVolumesDiff;
+
+    createInstanceType(UUID.fromString(currentIntent.provider), targetInstanceTypeCode);
+    assertEquals(
+        expected,
+        ResizeNodeParams.checkResizeIsPossible(
+            currentIntent,
+            targetIntent,
+            defaultUniverse,
+            mockBaseTaskDependencies.getRuntimeConfigFactory(),
+            true));
+  }
+
+  private UniverseDefinitionTaskParams.UserIntent createIntent(
+      Common.CloudType cloudType,
+      String instanceTypeCode,
+      PublicCloudConstants.StorageType storageType) {
+    UniverseDefinitionTaskParams.UserIntent currentIntent =
+        new UniverseDefinitionTaskParams.UserIntent();
+    currentIntent.deviceInfo = new DeviceInfo();
+    currentIntent.deviceInfo.volumeSize = 100;
+    currentIntent.deviceInfo.numVolumes = 1;
+    currentIntent.deviceInfo.storageType = storageType;
+    currentIntent.providerType = cloudType;
+    currentIntent.provider = defaultProvider.uuid.toString();
+    currentIntent.instanceType = instanceTypeCode;
+    return currentIntent;
   }
 
   @Test

@@ -3,6 +3,7 @@
 import React, { Component, Fragment } from 'react';
 import { connect } from 'react-redux';
 import { Row, Col } from 'react-bootstrap';
+import { toast } from 'react-toastify';
 import { YBButton, YBAddRowButton, YBToggle, YBNumericInput } from '../../../common/forms/fields';
 import {
   YBTextInputWithLabel,
@@ -138,13 +139,16 @@ class GCPProviderInitView extends Component {
       reader.onloadend = function () {
         try {
           gcpCreateConfig['config_file_contents'] = JSON.parse(reader.result);
+          return self.props.createGCPProvider(providerName, gcpCreateConfig, perRegionMetadata, ntpConfig);
         } catch (e) {
-          self.setState({ error: 'Invalid GCP config JSON file' });
+          toast.error('Invalid GCP config JSON file');
         }
-        return self.props.createGCPProvider(providerName, gcpCreateConfig, perRegionMetadata, ntpConfig);
+        return null;
       };
     } else {
-      this.setState({ error: 'GCP Config JSON is required' });
+      // TODO: This scenario is not possible as one value in dropdown is selected by default
+      // May we need to remove this
+      toast.error('GCP Config JSON is required');
     }
   };
 

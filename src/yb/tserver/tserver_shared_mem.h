@@ -56,7 +56,7 @@ class TServerSharedData {
     return host_;
   }
 
-  void SetYSQLCatalogVersion(uint64_t version) {
+  void SetYsqlCatalogVersion(uint64_t version) {
     catalog_version_.store(version, std::memory_order_release);
   }
 

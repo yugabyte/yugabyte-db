@@ -15,7 +15,7 @@ Install YugabyteDB on each of the nodes using the steps shown below.
 
 ## Download
 
-Download the YugabyteDB binary package as described in the [Quick Start section](../../../quick-start/install/).
+Download the YugabyteDB binary package as described in the [Quick Start](../../../quick-start/).
 
 Copy the YugabyteDB package into each instance and then run the following commands.
 
