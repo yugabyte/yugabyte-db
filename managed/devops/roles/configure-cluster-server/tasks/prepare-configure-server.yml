@@ -138,11 +138,6 @@
       user: "{{ user_name }}"
       state: absent
 
-  - name: Determine system or user scope
-    stat:
-      path: /etc/systemd/system/yb-zip_purge_yb_logs.service
-    register: systemd_system
-
   - name: Systemd user units
     block:
     # Enable service files
@@ -186,8 +181,7 @@
         scope: user
         enabled: yes
         state: started
-    when: not systemd_system.stat.exists
-
+    when: ansible_os_family != 'RedHat' or ansible_distribution_major_version != '7'
   - name: Systemd system units
     block:
       # Daemon-reload for services
@@ -233,7 +227,7 @@
     - name: Run collect_metrics_wrapper.sh (using timer) for collecting metrics
       shell:
         cmd: "sudo systemctl start yb-collect_metrics.timer"
-    when: systemd_system.stat.exists
+    when: ansible_os_family == 'RedHat' and ansible_distribution_major_version == '7'
 
   tags: systemd_upgrade
   when: systemd_option
