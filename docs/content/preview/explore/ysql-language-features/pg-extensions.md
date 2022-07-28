@@ -422,6 +422,12 @@ yugabyte=# SELECT hll_cardinality(set) FROM helloworld WHERE id = 1;
 
 ### uuid-ossp example
 
+First, install the extension:
+
+```sql
+CREATE EXTENSION uuid-ossp;
+```
+
 Connect using `ysqlsh` and run the following:
 
 ```sql
