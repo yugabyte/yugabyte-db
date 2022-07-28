@@ -70,6 +70,7 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.io.File;
@@ -1271,9 +1272,14 @@ public class NodeManagerTest extends FakeDBApplication {
   }
 
   private void setInstanceTags(NodeTaskParams params) {
-    UserIntent userIntent = new UserIntent();
-    userIntent.instanceTags = ImmutableMap.of("Cust", "Test");
-    params.clusters.add(new Cluster(ClusterType.PRIMARY, userIntent));
+    Map<String, String> instanceTags = ImmutableMap.of("Cust", "Test");
+    if (params instanceof InstanceActions.Params) {
+      ((InstanceActions.Params) params).tags = instanceTags;
+    } else {
+      UserIntent userIntent = new UserIntent();
+      userIntent.instanceTags = instanceTags;
+      params.clusters.add(new Cluster(ClusterType.PRIMARY, userIntent));
+    }
   }
 
   private void runAndTestProvisionWithAccessKeyAndSG(String sgId) {
@@ -2381,14 +2387,18 @@ public class NodeManagerTest extends FakeDBApplication {
       UUID univUUID = createUniverse().universeUUID;
       Universe universe = Universe.saveDetails(univUUID, ApiUtils.mockUniverseUpdater(t.cloudType));
       buildValidParams(t, params, universe);
+      ApiUtils.insertInstanceTags(univUUID);
+      setInstanceTags(params);
       if (Provider.InstanceTagsEnabledProviders.contains(t.cloudType)) {
-        ApiUtils.insertInstanceTags(univUUID);
-        setInstanceTags(params);
+        List<String> expectedCommand = t.baseCommand;
+        expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Tags, params, t));
+        nodeManager.nodeCommand(NodeManager.NodeCommandType.Tags, params);
+        verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
+      } else {
+        assertFails(
+            () -> nodeManager.nodeCommand(NodeManager.NodeCommandType.Tags, params),
+            "Tags are unsupported for " + t.cloudType.name());
       }
-      List<String> expectedCommand = t.baseCommand;
-      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Tags, params, t));
-      nodeManager.nodeCommand(NodeManager.NodeCommandType.Tags, params);
-      verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
     }
   }
 
@@ -2399,15 +2409,19 @@ public class NodeManagerTest extends FakeDBApplication {
       UUID univUUID = createUniverse().universeUUID;
       Universe universe = Universe.saveDetails(univUUID, ApiUtils.mockUniverseUpdater(t.cloudType));
       buildValidParams(t, params, universe);
+      ApiUtils.insertInstanceTags(univUUID);
+      setInstanceTags(params);
+      params.deleteTags = "Remove,Also";
       if (Provider.InstanceTagsEnabledProviders.contains(t.cloudType)) {
-        ApiUtils.insertInstanceTags(univUUID);
-        setInstanceTags(params);
-        params.deleteTags = "Remove,Also";
+        List<String> expectedCommand = t.baseCommand;
+        expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Tags, params, t));
+        nodeManager.nodeCommand(NodeManager.NodeCommandType.Tags, params);
+        verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
+      } else {
+        assertFails(
+            () -> nodeManager.nodeCommand(NodeManager.NodeCommandType.Tags, params),
+            "Tags are unsupported for " + t.cloudType.name());
       }
-      List<String> expectedCommand = t.baseCommand;
-      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Tags, params, t));
-      nodeManager.nodeCommand(NodeManager.NodeCommandType.Tags, params);
-      verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
     }
   }
 
@@ -2425,7 +2439,9 @@ public class NodeManagerTest extends FakeDBApplication {
         assertNotEquals(t.cloudType, Common.CloudType.aws);
       } catch (RuntimeException re) {
         if (t.cloudType == Common.CloudType.aws) {
-          assertThat(re.getMessage(), allOf(notNullValue(), is("Invalid instance tags")));
+          assertThat(
+              re.getMessage(),
+              allOf(notNullValue(), is("Invalid params: no tags to add or remove")));
         }
       }
     }
@@ -3387,5 +3403,14 @@ public class NodeManagerTest extends FakeDBApplication {
       }
     }
     return result;
+  }
+
+  private void assertFails(Runnable r, String expectedError) {
+    try {
+      r.run();
+      fail();
+    } catch (RuntimeException re) {
+      assertThat(re.getMessage(), is(expectedError));
+    }
   }
 }

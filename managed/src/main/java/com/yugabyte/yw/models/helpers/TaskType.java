@@ -294,7 +294,9 @@ public enum TaskType {
 
   ResizeNode("upgrade.ResizeNode"),
 
-  UpdateMountedDisks("subtasks.UpdateMountedDisks");
+  UpdateMountedDisks("subtasks.UpdateMountedDisks"),
+
+  UpdateUniverseTags("subtasks.UpdateUniverseTags");
 
   private String relativeClassPath;
 
