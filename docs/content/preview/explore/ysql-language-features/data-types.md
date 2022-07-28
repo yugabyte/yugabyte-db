@@ -1,7 +1,7 @@
 ---
-title: Data Types
-linkTitle: Data Types
-description: Data Types in YSQL
+title: Data types
+linkTitle: Data types
+description: Data types in YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
   preview:
@@ -23,7 +23,7 @@ The following character types are supported:
 * `char(n)`: fixed-length, blank padded
 * `text`, `varchar`: variable unlimited length
 
-To test YugabyteDB’s support for character types, create a table that has columns with the following types specified:
+To test YugabyteDB support for character types, create a table that has columns with the following types specified:
 
 ```sql
 CREATE TABLE char_types (
@@ -82,7 +82,7 @@ VALUES
   (9223372036854775800, 2147483640, 9.99);
 ```
 
-## `SERIAL` Pseudotype
+## SERIAL Pseudotype
 
 In YugabyteDB, just like in PostgreSQL, a sequence is a special kind of database object that generates a sequence of integers. A sequence is often used as the primary key column in a table.
 
@@ -407,7 +407,7 @@ Expect the following output:
 
 ## Range Types
 
-Range data types represent a range of values of an element type. Range types are usually referred to as the subtype of the range. The subtype needs to follow a strict order because it must be well-defined regardless of the position of element values which can be within, before, or after a value range.
+Range data types represent a range of values of an element type. Range types are usually referred to as the subtype of the range. The subtype needs to follow a strict order because it must be well-defined regardless of the position of element values, which can be within, before, or after a value range.
 
 YSQL supports the following range types:
 
@@ -446,7 +446,7 @@ The following is a syntax of an input for a range value, where *empty* is a repr
 empty
 ```
 
-*lowerbound* could be a string of a valid input for the subtype or empty if there is no lower bound. The same logic is applicable to *upperbound*. You can enclose bound values in double quotes, which is a requirement in cases when the value includes parentheses, brackets, commas, double quotes, backslashes. To define an empty-string value, you use `""` (not providing anything is interpreted as defing  an infinite bound). You may use whitespaces before and after values, but not between the parentheses or brackets, as this is interpreted as part of the lower or upper bound value.
+*lowerbound* could be a string of a valid input for the subtype or empty if there is no lower bound. The same logic is applicable to *upperbound*. You can enclose bound values in double quotes, which is a requirement in cases when the value includes parentheses, brackets, commas, double quotes, or backslashes. To define an empty-string value, you use `""` (not providing anything is interpreted as defining an infinite bound). You may use whitespaces before and after values, but not between the parentheses or brackets, as this is interpreted as part of the lower or upper bound value.
 
 You can create a range type using a constructor function named identically to the range type. The constructor functions typically have two or three arguments, with the former constructing a range in standard form (lower bound inclusive, upper bound exclusive), and the latter constructing a range with bounds specified by the third argument (one of strings "`()`", "`(]`", "`[)`", or "`[]`"). The following example shows the constructor with a lower bound, upper bound, and text argument:
 

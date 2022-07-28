@@ -19,11 +19,11 @@ In YSQL, a function invoked automatically when an event associated with a table 
 
 You create a trigger by defining a function and then attaching this trigger function to a table. You can create a trigger at a row level or a statement level, depending on the number of times the trigger is to be invoked and when. For example, when executing an `UPDATE` statement that affects five rows, the row-level trigger is invoked five times, whereas the statement-level trigger is invoked only once. In addition, you can enable the trigger to be invoked before or after an event: when the trigger is invoked before an event, it may skip the operation for the current row or modify the row itself; if the trigger is invoked after the event, the trigger has access to all the changes.
 
-When YugabyteDB is being used by different applications, triggers allow you to keep the cross-functional behavior within the database that is performed automatically every time the table data is modified. In addition, triggers let you maintain data integrity rules that can only be implemented at the database level.
+When YugabyteDB is being used by different applications, triggers allow you to keep the cross-functional behavior in the database that is performed automatically every time the table data is modified. In addition, triggers let you maintain data integrity rules that can only be implemented at the database level.
 
 When using triggers, it is important to be aware of their existence and understand their logic. Otherwise, it is difficult to predict the timing and effects of data changes.
 
-## Creating Triggers
+## Create triggers
 
 Creating a trigger in YSQL is a two-step process: you start by creating a trigger function via the `CREATE FUNCTION` statement, and then you bind the trigger function to a table using the `CREATE TRIGGER` statement.
 
@@ -121,7 +121,7 @@ WHERE employee_no = 1222;
 
 The following is the output produced by the preceding example:
 
-```
+```output
 employee_no | name                | department
 ------------+---------------------+------------------
 1221        | John Smith          | Marketing
@@ -138,7 +138,7 @@ SELECT * FROM employee_dept_changes;
 
 The following is the output produced by the preceding example:
 
-```
+```output
 employee_no | name            | department   | changed_on
 ------------+-----------------+--------------+----------------------------
 1222        | Bette Davis     | Sales        | 2021-02-11 16:12:09.248823
@@ -146,7 +146,7 @@ employee_no | name            | department   | changed_on
 
 The `employee_dept_changes` table is populated with a row containing the employee whose department has changed, as well as the date and time of the change.
 
-## Deleting Triggers
+## Delete triggers
 
 The `DROP TRIGGER` statement allows you to delete the trigger from a table.
 
@@ -165,7 +165,7 @@ The following example demonstrates how to delete the `dept_changes` trigger used
 DROP TRIGGER dept_changes ON employees;
 ```
 
-## Enabling and Disabling Triggers
+## Enable and Disable triggers
 
 You can disable one or more triggers associated with a table via the `ALTER TABLE DISABLE TRIGGER` statement that has the following syntax:
 
@@ -213,7 +213,7 @@ ALTER TABLE employees
   ENABLE TRIGGER ALL;
 ```
 
-## Using Event Triggers
+## Event triggers
 
 The main difference between regular triggers and event triggers is that the former capture data manipulation events on a single table, whereas the latter can capture data definition events on a database.
 
