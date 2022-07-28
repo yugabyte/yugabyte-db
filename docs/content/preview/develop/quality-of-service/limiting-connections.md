@@ -41,7 +41,7 @@ Sometimes it is important to limit the number of connections per tenant. In orde
 The connection limit is stored in the system catalog but connection count tracking is per node and kept in shared memory. For example, if the connection limit is set to 1, then on 3 node clusters, it is possible to launch 3 connections when there is one connection on each node.
 {{< /note >}}
 
-### Setup database and user
+### Set up database and user
 
 - First create a database, as follows:
 
@@ -84,7 +84,7 @@ The connection limit is stored in the system catalog but connection count tracki
 
 ### Limit connections per DB
 
-- Set connection limit for database as follows:
+- Set the database connection limit:
 
   ```sql
   alter database test_connection CONNECTION LIMIT 1;
