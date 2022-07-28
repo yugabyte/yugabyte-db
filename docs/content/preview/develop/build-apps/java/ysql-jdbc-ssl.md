@@ -3,6 +3,8 @@ title: Build a Java application that uses YSQL over SSL
 headerTitle: Build a Java application
 linkTitle: More examples
 description: Build a sample Java application with the PostgreSQL JDBC Driver and use the YSQL API to connect to and interact with YugabyteDB via SSL/TLS.
+aliases:
+  - /preview/quick-start/build-apps/java/ysql-jdbc-ssl/
 menu:
   preview:
     parent: cloud-java

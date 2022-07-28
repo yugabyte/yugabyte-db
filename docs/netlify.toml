@@ -157,6 +157,10 @@
   from="/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-rust/*"
   to = "/preview/develop/build-apps/rust/cloud-ysql-rust/"
   force = true
+[[redirects]]
+  from="/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-add-ip/"
+  to = "/preview/develop/build-apps/cloud-add-ip/"
+  force = true
 
 # Redirect older versions of specific sections
 

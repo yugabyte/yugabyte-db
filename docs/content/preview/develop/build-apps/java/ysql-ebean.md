@@ -3,6 +3,8 @@ title: Build a Java application that uses Ebean and YSQL
 headerTitle: Build a Java application
 linkTitle: More examples
 description: Build a sample Java application that uses Ebean and YSQL API to connect to and interact with YugabyteDB.
+aliases:
+  - /preview/quick-start/build-apps/java/ysql-ebean/
 menu:
   preview:
     parent: cloud-java

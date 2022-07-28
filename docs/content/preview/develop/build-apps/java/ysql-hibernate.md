@@ -3,6 +3,8 @@ title: Build a Java application that uses YSQL
 headerTitle: Build a Java application
 linkTitle: More examples
 description: Build a sample Java application with Hibernate ORM and use the YSQL API to connect to and interact with YugabyteDB.
+aliases:
+  - /preview/quick-start/build-apps/java/ysql-hibernate/
 menu:
   preview:
     parent: cloud-java
