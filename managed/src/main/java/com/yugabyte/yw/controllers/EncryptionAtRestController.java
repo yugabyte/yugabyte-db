@@ -22,6 +22,7 @@ import com.yugabyte.yw.commissioner.tasks.params.KMSConfigTaskParams;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.kms.services.SmartKeyEARService;
+import com.yugabyte.yw.common.kms.util.AzuEARServiceUtil;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.kms.util.GcpEARServiceUtil;
 import com.yugabyte.yw.common.kms.util.HashicorpEARServiceUtil;
@@ -89,6 +90,8 @@ public class EncryptionAtRestController extends AuthenticatedController {
 
   @Inject GcpEARServiceUtil gcpEARServiceUtil;
 
+  @Inject AzuEARServiceUtil azuEARServiceUtil;
+
   private void checkIfKMSConfigExists(UUID customerUUID, ObjectNode formData) {
     String kmsConfigName = formData.get("name").asText();
     if (KmsConfig.listKMSConfigs(customerUUID)
@@ -147,6 +150,21 @@ public class EncryptionAtRestController extends AuthenticatedController {
                   + gcpEARServiceUtil.getCryptoKeyRN(formData));
         } catch (Exception e) {
           LOG.warn("Could not finish validating GCP provider config form data.");
+          throw new PlatformServiceException(BAD_REQUEST, e.toString());
+        }
+        break;
+      case AZU:
+        try {
+          azuEARServiceUtil.validateKMSProviderConfigFormData(formData);
+          LOG.info(
+              "Finished validating AZU provider config form data for key vault = "
+                  + azuEARServiceUtil.getConfigFieldValue(
+                      formData, AzuEARServiceUtil.AZU_VAULT_URL_FIELDNAME)
+                  + ", key name = "
+                  + azuEARServiceUtil.getConfigFieldValue(
+                      formData, AzuEARServiceUtil.AZU_KEY_NAME_FIELDNAME));
+        } catch (Exception e) {
+          LOG.warn("Could not finish validating AZU provider config form data.");
           throw new PlatformServiceException(BAD_REQUEST, e.toString());
         }
         break;
@@ -291,10 +309,10 @@ public class EncryptionAtRestController extends AuthenticatedController {
     try {
       TaskType taskType = TaskType.CreateKMSConfig;
       ObjectNode formData = (ObjectNode) request().body().asJson();
-      // Validating the KMS Provider config details.
-      validateKMSProviderConfigFormData(formData, keyProvider, customerUUID);
       // checks if a already KMS Config exists with the requested name
       checkIfKMSConfigExists(customerUUID, formData);
+      // Validating the KMS Provider config details.
+      validateKMSProviderConfigFormData(formData, keyProvider, customerUUID);
       KMSConfigTaskParams taskParams = new KMSConfigTaskParams();
       taskParams.kmsProvider = Enum.valueOf(KeyProvider.class, keyProvider);
       taskParams.providerConfig = formData;
