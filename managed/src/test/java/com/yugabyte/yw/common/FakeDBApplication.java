@@ -31,10 +31,14 @@ import org.pac4j.play.CallbackController;
 import org.pac4j.play.store.PlayCacheSessionStore;
 import org.pac4j.play.store.PlaySessionStore;
 import play.Application;
+import play.core.j.JavaRouterAdapter;
 import play.inject.guice.GuiceApplicationBuilder;
 import play.modules.swagger.SwaggerModule;
+import play.modules.swagger.SwaggerPlugin;
+import play.modules.swagger.SwaggerPluginImpl;
 import play.mvc.Http;
 import play.mvc.Result;
+import play.routing.Router;
 
 public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
   public Commissioner mockCommissioner = mock(Commissioner.class);
@@ -85,7 +89,7 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
     GuiceApplicationBuilder guiceApplicationBuilder =
         new GuiceApplicationBuilder().disable(GuiceModule.class);
     if (!isSwaggerEnabled()) {
-      guiceApplicationBuilder = guiceApplicationBuilder.disable(SwaggerModule.class);
+      guiceApplicationBuilder = guiceApplicationBuilder;
     }
     return configureApplication(
             guiceApplicationBuilder
