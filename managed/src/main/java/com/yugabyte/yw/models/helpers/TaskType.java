@@ -320,7 +320,9 @@ public enum TaskType {
 
   ThirdpartySoftwareUpgrade("upgrade.ThirdpartySoftwareUpgrade"),
 
-  MarkUniverseForHealthScriptReUpload("subtasks.MarkUniverseForHealthScriptReUpload");
+  MarkUniverseForHealthScriptReUpload("subtasks.MarkUniverseForHealthScriptReUpload"),
+
+  UpdateUniverseTags("subtasks.UpdateUniverseTags");
 
   private String relativeClassPath;
 
