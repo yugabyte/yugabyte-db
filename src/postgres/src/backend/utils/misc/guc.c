@@ -2114,6 +2114,16 @@ static struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 
+	{
+		{"yb_plpgsql_disable_prefetch_in_for_query", PGC_USERSET, QUERY_TUNING,
+			gettext_noop("Disable prefetching in a PLPGSQL FOR loop over a query."),
+			NULL
+		},
+		&yb_plpgsql_disable_prefetch_in_for_query,
+		false,
+		NULL, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, false, NULL, NULL, NULL
