@@ -78,6 +78,10 @@ def gcp_exception_handler(e):
           (e.status == TOO_MANY_REQUESTS or
            e.status >= 500)):
         logging.warning('Caught transient credential refresh error (%s), retrying', e)
+    elif (isinstance(e, HttpError) and
+          (e.resp.status == TOO_MANY_REQUESTS or
+           e.resp.status >= 500)):
+        logging.warning('Caught transient server error (%s), retrying', e)
     else:
         return False
     return True
