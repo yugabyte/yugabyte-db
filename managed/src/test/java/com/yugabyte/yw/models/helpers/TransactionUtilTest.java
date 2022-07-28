@@ -31,7 +31,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.junit.Test;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
-import play.modules.swagger.SwaggerModule;
 
 @Slf4j
 public class TransactionUtilTest extends PlatformGuiceApplicationBaseTest {

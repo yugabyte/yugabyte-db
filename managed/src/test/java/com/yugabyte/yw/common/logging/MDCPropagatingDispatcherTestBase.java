@@ -18,7 +18,6 @@ import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import kamon.instrumentation.play.GuiceModule;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
-import play.modules.swagger.SwaggerModule;
 import play.test.WithApplication;
 
 public abstract class MDCPropagatingDispatcherTestBase extends WithApplication {
