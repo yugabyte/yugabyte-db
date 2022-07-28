@@ -353,7 +353,9 @@ class UniverseDetail extends Component {
             unmountOnExit={true}
             disabled={isDisabled(currentCustomer.data.features, 'universes.details.tables')}
           >
-            <ListTablesContainer />
+            <ListTablesContainer
+             fetchUniverseTables={this.props.fetchUniverseTables}
+            />
           </Tab.Pane>
         ),
 
