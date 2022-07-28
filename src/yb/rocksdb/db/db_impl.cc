@@ -1894,7 +1894,7 @@ Status DBImpl::WriteLevel0TableForRecovery(int job_id, ColumnFamilyData* cfd,
                        paranoid_file_checks,
                        cfd->internal_stats(),
                        db_options_.boundary_extractor.get(),
-                       Env::IO_HIGH,
+                       yb::IOPriority::kHigh,
                        &info.table_properties);
         LogFlush(db_options_.info_log);
         RLOG(InfoLogLevel::DEBUG_LEVEL, db_options_.info_log,

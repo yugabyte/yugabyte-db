@@ -336,6 +336,8 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
                                 const UDTypeMap& type_map,
                                 const ExternalTableSnapshotDataMap& tables_data);
 
+  Status RepackSnapshotsForBackup(ListSnapshotsResponsePB* resp);
+
   // Helper function for ImportTableEntry.
   Result<bool> CheckTableForImport(
       scoped_refptr<TableInfo> table,

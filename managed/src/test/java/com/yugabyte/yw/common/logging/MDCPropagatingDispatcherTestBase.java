@@ -45,7 +45,6 @@ public abstract class MDCPropagatingDispatcherTestBase extends WithApplication {
                 ConfigValueFactory.fromAnyRef(
                     "com.yugabyte.yw.common.logging.MDCPropagatingDispatcherConfigurator"));
     return new GuiceApplicationBuilder()
-        .disable(SwaggerModule.class)
         .disable(GuiceModule.class)
         .configure(config)
         .overrides(

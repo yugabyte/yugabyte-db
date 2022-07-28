@@ -311,6 +311,7 @@ class GraphPanel extends Component {
       graph: { metrics, prometheusQueryEnabled },
       customer: { currentUser }
     } = this.props;
+    const { nodeName } = this.props.graph.graphFilter;
 
     let panelData = <YBLoading />;
 
@@ -351,6 +352,28 @@ class GraphPanel extends Component {
           : panelTypes[type].title === 'Container';
       if (invalidPanelType) {
         return null;
+      }
+
+      if (selectedUniverse && isKubernetesUniverse(selectedUniverse)) {
+        //Hide master related panels for tserver pods.
+        if (nodeName.match('yb-tserver-') != null) {
+          if (panelTypes[type].title === 'Master Server' || panelTypes[type].title === 'Master Server Advanced'){
+            return null;
+          }
+        }
+        //Hide empty panels for master pods.
+        if (nodeName.match('yb-master-') != null) {
+          const skipList = ['Tablet Server',
+            'YSQL Ops and Latency',
+            'YCQL Ops and Latency',
+            'YEDIS Ops and Latency',
+            'YEDIS Advanced',
+            'YSQL Advanced',
+            'YCQL Advanced']
+          if (skipList.includes(panelTypes[type].title)) {
+            return null;
+          }
+        }
       }
 
       if (isEmptyArray(panelData)) {

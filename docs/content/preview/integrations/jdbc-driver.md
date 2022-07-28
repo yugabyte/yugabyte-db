@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-[Yugabyte JDBC driver](https://github.com/yugabyte/pgjdbc) is a distributed JDBC driver for [YSQL](/preview/api/ysql/) built on the [PostgreSQL JDBC driver](https://github.com/pgjdbc/pgjdbc).
+[Yugabyte JDBC driver](https://github.com/yugabyte/pgjdbc) is a distributed JDBC driver for [YSQL](../../api/ysql/) built on the [PostgreSQL JDBC driver](https://github.com/pgjdbc/pgjdbc).
 Although the upstream PostgreSQL JDBC driver works with YugabyteDB, the Yugabyte driver enhances YugabyteDB by eliminating the need for external load balancers.
 The driver has the following features:
 
@@ -30,15 +30,13 @@ The Yugabyte JDBC driver has the following load balancing features:
 
 - Uniform load balancing
 
-   <br></br>
-   In this mode, the driver makes the best effort to uniformly distribute the connections to each YugabyteDB server. For example, if a client application creates 100 connections to a YugabyteDB cluster consisting of 10 servers, then the driver creates 10 connections to each server. If the number of connections are not exactly divisible by the number of servers, then a few may have 1 less or 1 more connection than the others. This is the client view of the load, so the servers may not be well balanced if other client applications are not using the Yugabyte JDBC driver.
+    In this mode, the driver makes the best effort to uniformly distribute the connections to each YugabyteDB server. For example, if a client application creates 100 connections to a YugabyteDB cluster consisting of 10 servers, then the driver creates 10 connections to each server. If the number of connections are not exactly divisible by the number of servers, then a few may have 1 less or 1 more connection than the others. This is the client view of the load, so the servers may not be well balanced if other client applications are not using the Yugabyte JDBC driver.
 
 - Topology-aware load balancing
 
-   <br></br>
-   Because YugabyteDB clusters can have servers in different regions and availability zones, the YugabyteDB JDBC driver is topology-aware, and can be configured to create connections only on servers that are in specific regions and zones. This is useful for client applications that need to connect to the geographically nearest regions and availability zone for lower latency; the driver tries to uniformly load only those servers that belong to the specified regions and zone.
+    Because YugabyteDB clusters can have servers in different regions and availability zones, the YugabyteDB JDBC driver is topology-aware. This means it can be configured to create connections only on servers that are in specific regions and zones. This is beneficial for client applications that need to connect to the geographically nearest regions and availability zone for lower latency; the driver tries to uniformly load only those servers that belong to the specified regions and zone.
 
-The Yugabyte JDBC driver can be configured with popular pooling solutions such as Hikari and Tomcat. Different pools can be configured with different load balancing policies if required. For example, an application can configure one pool with topology awareness for one region and availability zones, and it can also configure another pool to talk to a completely different region and availability zones.
+The Yugabyte JDBC driver can be configured with popular pooling solutions such as Hikari and Tomcat. Different pools can be configured with different load balancing policies if required. For example, an application can configure one pool with topology awareness for one region and its availability zones, and configure another pool to talk to a completely different region.
 
 ## Getting the driver
 
@@ -172,13 +170,12 @@ To use the driver, do the following:
   HikariDataSource ds = new HikariDataSource(config);
 
   Connection conn = ds.getConnection();
-
   ```
 
 ## Try it out
 
-This tutorial shows how to use the Yugabyte JDBC Driver with YugabyteDB. You’ll start by creating a three-node cluster with a replication factor of 3. This tutorial uses the [yb-ctl](/preview/admin/yb-ctl/#root) utility.
-Next, you’ll use [yb-sample-apps](https://github.com/yugabyte/yb-sample-apps/tree/master) to demonstrate the driver's load balancing features and create a Maven project to learn how to use the driver in an application.
+This tutorial shows how to use the Yugabyte JDBC Driver with YugabyteDB. You start by creating a three-node cluster with a replication factor of 3. This tutorial uses the [yb-ctl](../../admin/yb-ctl/#root) utility.
+Next, you use [yb-sample-apps](https://github.com/yugabyte/yb-sample-apps/tree/master) to demonstrate the driver's load balancing features and create a Maven project to learn how to use the driver in an application.
 
 {{< note title="Note">}}
 The driver requires YugabyteDB version 2.7.2.0 or higher, and Java 8 or above.
@@ -244,7 +241,7 @@ To access sample applications that use the Yugabyte JDBC driver, visit [Yugabyte
 
 To use the samples, complete the following steps:
 
-- Install YugabyteDB by following instructions provided in [Quick Start Guide](/preview/quick-start/install/).
+- Install YugabyteDB by following instructions provided in [Quick Start](../../quick-start/).
 
 - Build the examples by running `mvn package`.
 

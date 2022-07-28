@@ -16,7 +16,7 @@ Applications connect to and interact with YugabyteDB using API client libraries 
 
 YugabyteDB Managed clusters have SSL (encryption in-transit) enabled so make sure your driver details include SSL parameters.
 
-For examples of applications that connect to YugabyteDB Managed using common drivers, refer to [Build an application](../../cloud-quickstart/cloud-build-apps/).
+For examples of applications that connect to YugabyteDB Managed using common drivers, refer to [Build an application](../../../develop/build-apps/).
 
 For examples of connecting applications to YugabyteDB Managed, refer to [Example applications](../../cloud-examples/).
 
@@ -110,4 +110,4 @@ To run the sample application:
 ## Learn more
 
 - [Add database users](../../cloud-secure-clusters/add-users/)
-- [Build an application](../../cloud-quickstart/cloud-build-apps/)
+- [Build an application](../../../develop/build-apps/)

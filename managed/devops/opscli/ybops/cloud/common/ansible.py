@@ -92,7 +92,7 @@ class AnsibleProcess(object):
             playbook_args.update({
                 "ssh_user": ssh_user,
                 "yb_server_ssh_user": ssh_user,
-                "ssh_type": SSH if ssh_key_type == SSH else SSH2
+                "ssh_version": SSH if ssh_key_type == SSH else SSH2
             })
 
         if ssh2_enabled:

@@ -16,7 +16,7 @@ This document shows how to set up Metabase to integrate with YugabyteDB's Postgr
 
 ## 1. Start local cluster
 
-Follow [Quick Start](../../quick-start/) instructions to run a local YugabyteDB cluster. Test YugabyteDB's PostgreSQL-compatible YSQL API as [documented](../../quick-start/test-postgresql/) so that you can confirm that you have a PostgresSQL-compatible service running on `localhost:5433`.
+Follow [Quick Start](../../quick-start/) instructions to run a local YugabyteDB cluster.
 
 ## 2. Load data
 
