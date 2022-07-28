@@ -44,6 +44,8 @@ You can create a cluster in the free tier of YugabyteDB Managed, and open two *c
 
 {{< /tip >}}
 
+### Transaction priority between concurrent operations
+
 Let's create an example scenario of an accounts table, and insert a row into as follows:
 
 ```sql
@@ -161,69 +163,84 @@ yugabyte=> select * from account;
 
 </table>
 
-The following is another example which describes the usage of `yb_transaction_priority` based on the priority types. A transaction is a high priority one if it includes `SELECT`, `UPDATE` operations and so on.
+### Show transaction priority types
 
-* From an active [ysqlsh](../../../admin/ysqlsh/#starting-ysqlsh) shell, create a table as follows:
+The following is another example which demonstrates the usage of `yb_transaction_priority` based on the priority types.
 
-  ```sql
-  CREATE TABLE test_scan (i int, j int);
-  ```
+1. From an active [ysqlsh](../../../admin/ysqlsh/#starting-ysqlsh) shell, create a table as follows:
 
-* Start by setting the lower and upper bound values for your transaction.
+   ```sql
+   CREATE TABLE test_scan (i int, j int);
+   ```
 
-  ```sql
-  set yb_transaction_priority_lower_bound = 0.4;
-  set yb_transaction_priority_upper_bound = 0.6;
-  ```
+1. Start by setting the lower and upper bound values for your transaction.
 
-* In a transaction block, perform an insert and view the transaction priority as follows:
+   ```sql
+   set yb_transaction_priority_lower_bound = 0.4;
+   set yb_transaction_priority_upper_bound = 0.6;
+   ```
 
-  ```sql
-  BEGIN TRANSACTION;
-  INSERT INTO test_scan (i, j) values (1, 1), (2, 2), (3, 3);
-  show yb_transaction_priority;
-  COMMIT;
-  ```
+1. In a transaction block, perform an insert and view the transaction priority as follows:
 
-  ```output
-            yb_transaction_priority
-  -------------------------------------------
-   0.620638447 (Normal priority transaction)
-  (1 row)
-  ```
+   ```sql
+   BEGIN TRANSACTION;
+   INSERT INTO test_scan (i, j) values (1, 1), (2, 2), (3, 3);
+   show yb_transaction_priority;
+   COMMIT;
+   ```
 
-* In the next transaction block, perform a `SELECT` which results in a high priority transaction.
+   ```output
+             yb_transaction_priority
+   -------------------------------------------
+    0.620638447 (Normal priority transaction)
+   (1 row)
+   ```
 
-  ```sql
-  set yb_transaction_priority_lower_bound = 0.4;
-  set yb_transaction_priority_upper_bound = 0.4;
-  BEGIN TRANSACTION;
-  SELECT i, j FROM test_scan WHERE i = 1 FOR UPDATE;
-  show yb_transaction_priority;
-  COMMIT;
-  ```
+1. In the next transaction block, perform a `SELECT` which results in a high priority transaction.
 
-  ```output
-      yb_transaction_priority
-  -------------------------------------------
-   0.400000000 (High priority transaction)
-  (1 row)
-  ```
+   ```sql
+   set yb_transaction_priority_lower_bound = 0.4;
+   set yb_transaction_priority_upper_bound = 0.4;
+   BEGIN TRANSACTION;
+   SELECT i, j FROM test_scan WHERE i = 1 FOR UPDATE;
+   show yb_transaction_priority;
+   COMMIT;
+   ```
 
-* In the final transaction block, set a higher `yb_transaction_priority_upper_bound` and `yb_transaction_priority_lower_bound` value, and perform the same `SELECT` query as the previous one. This transaction type is of the highest priority.
+   ```output
+       yb_transaction_priority
+   -------------------------------------------
+    0.400000000 (High priority transaction)
+   (1 row)
+   ```
 
-  ```sql
-  set yb_transaction_priority_upper_bound = 1;
-  set yb_transaction_priority_lower_bound = 1;
-  BEGIN TRANSACTION;
-  SELECT i, j FROM test_scan WHERE i = 1 FOR UPDATE;
-  show yb_transaction_priority;
-  COMMIT;
-  ```
+1. In the final transaction block, set a higher `yb_transaction_priority_upper_bound` and `yb_transaction_priority_lower_bound` value, and perform the same `SELECT` query as the previous one. This transaction type is of the highest priority.
 
-  ```output
-      yb_transaction_priority
-  -------------------------------------------
-  Highest priority transaction
-  (1 row)
-  ```
+   ```sql
+   set yb_transaction_priority_upper_bound = 1;
+   set yb_transaction_priority_lower_bound = 1;
+   BEGIN TRANSACTION;
+   SELECT i, j FROM test_scan WHERE i = 1 FOR UPDATE;
+   show yb_transaction_priority;
+   COMMIT;
+   ```
+
+   ```output
+       yb_transaction_priority
+   -------------------------------------------
+   Highest priority transaction
+   (1 row)
+   ```
+
+1. View the transaction priority outside a transaction block as follows:
+
+   ```sql
+   show yb_transaction_priority;
+   ```
+
+   ```output
+                yb_transaction_priority
+   -------------------------------------------
+    0.000000000 (Normal priority transaction)
+   (1 row)
+   ```
