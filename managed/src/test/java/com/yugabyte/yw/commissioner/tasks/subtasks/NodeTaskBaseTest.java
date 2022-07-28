@@ -18,7 +18,6 @@ import org.pac4j.play.store.PlayCacheSessionStore;
 import org.pac4j.play.store.PlaySessionStore;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
-import play.modules.swagger.SwaggerModule;
 import play.test.WithApplication;
 
 public class NodeTaskBaseTest extends WithApplication {

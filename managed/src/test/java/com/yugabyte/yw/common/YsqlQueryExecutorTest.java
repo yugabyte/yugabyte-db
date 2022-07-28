@@ -2,13 +2,8 @@ package com.yugabyte.yw.common;
 
 import static com.yugabyte.yw.common.TestHelper.testDatabase;
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertThrows;
-import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyBoolean;
-import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
@@ -29,12 +24,8 @@ import junitparams.Parameters;
 import kamon.instrumentation.play.GuiceModule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.InjectMocks;
-import org.mockito.Spy;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
-import play.libs.Json;
-import play.modules.swagger.SwaggerModule;
 import play.test.WithApplication;
 
 @RunWith(JUnitParamsRunner.class)
@@ -50,7 +41,6 @@ public class YsqlQueryExecutorTest extends WithApplication {
     mockNodeUniverseManager = mock(NodeUniverseManager.class);
     healthChecker = mock(HealthChecker.class);
     return new GuiceApplicationBuilder()
-        .disable(SwaggerModule.class)
         .disable(GuiceModule.class)
         .configure(testDatabase())
         .overrides(bind(NodeUniverseManager.class).toInstance(mockNodeUniverseManager))
