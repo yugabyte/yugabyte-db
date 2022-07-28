@@ -2,7 +2,6 @@ package com.yugabyte.yw.common.swagger;
 
 import com.fasterxml.jackson.annotation.JsonBackReference;
 import com.google.common.collect.ImmutableSet;
-import com.google.inject.Singleton;
 import io.swagger.converter.ModelConverter;
 import io.swagger.converter.ModelConverterContext;
 import io.swagger.converter.ModelConverters;

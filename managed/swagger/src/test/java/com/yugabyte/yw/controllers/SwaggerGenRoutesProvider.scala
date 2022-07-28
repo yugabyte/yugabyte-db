@@ -13,9 +13,8 @@ package com.yugabyte.yw.controllers
 import javax.inject.{Inject, Provider, Singleton}
 import play.api.http.HttpConfiguration
 import play.api.routing.Router.Routes
+import play.api.routing.sird.{GET, _}
 import play.api.routing.{Router, SimpleRouter}
-import play.api.routing.sird.GET
-import play.api.routing.sird._
 
 private class SwaggerGenRouter @Inject() (controller: controllers.ApiHelpController) extends SimpleRouter {
   override def routes: Routes = {
