@@ -14,13 +14,13 @@ menu:
 type: docs
 ---
 
-YugabyteDB allows external applications to set the priority of individual transactions. When using optimistic concurrency control, it is possible to ensure that a *higher priority* transaction gets priority over a lower priority transaction. In this scenario, if these transactions conflict, the *lower priority* transaction is aborted. This behavior can be achieved by setting the pair of session variables `yb_transaction_priority_lower_bound`, and `yb_transaction_priority_upper_bound`. A random number between the lower and upper bound is computed and assigned as the transaction priority for the transactions in that session. If this transaction conflicts with another, the value of transaction priority is compared with that of the conflicting transaction. The transaction with a higher priority value wins. To view the transaction priority of the active transaction in current session the session variable `yb_transaction_priority` can be used with the `SHOW` statement.
+YugabyteDB allows external applications to set the priority of individual transactions. When using optimistic concurrency control, it is possible to ensure that a *higher priority* transaction gets priority over a lower priority transaction. In this scenario, if these transactions conflict, the *lower priority* transaction is aborted. This behavior can be achieved by setting the pair of session variables `yb_transaction_priority_lower_bound`, and `yb_transaction_priority_upper_bound`. A random number between the lower and upper bound is computed and assigned as the transaction priority for the transactions in that session. If this transaction conflicts with another, the value of transaction priority is compared with that of the conflicting transaction. The transaction with a higher priority value wins. To view the transaction priority of the active transaction in current session, run `SHOW yb_transaction_priority` inside the transaction block. If `SHOW yb_transaction_priority` is run outside a transaction block, it will output 0.
 
 | Flag | Valid Range | Description |
 | --- | --- | --- |
 | `yb_transaction_priority_lower_bound` | Any value between 0 and 1, lower than the upper bound | Minimum transaction priority for transactions run in this session |
 | `yb_transaction_priority_upper_bound` | Any value between 0 and 1, higher than the lower bound | Maximum transaction priority for transactions run in this session |
-| `yb_transaction_priority` (read-only) | Displays one of these priority values : Normal, High, or Highest | The transaction priority of the active transaction in the current session |
+| `yb_transaction_priority` (read-only) | Displays the priority type: Normal, High or Highest. For Normal and High priority transaction, a numerical value is also shown for the transaction's priority. |
 
 {{< note title="Note" >}}
 Currently, transaction priorities work in the following scenarios:
@@ -169,12 +169,11 @@ The following is another example which describes the usage of `yb_transaction_pr
   CREATE TABLE test_scan (i int, j int);
   ```
 
-* Set `yb_transaction_priority_lower_bound` and `yb_transaction_priority_upper_bound` to be the same, which forces
-`yb_transaction_priority` to be equal to those two, as its not possible to have a deterministic `yb_transaction_priority`.
+* Start by setting the lower and upper bound values for your transaction.
 
   ```sql
   set yb_transaction_priority_lower_bound = 0.4;
-  set yb_transaction_priority_upper_bound = 0.4;
+  set yb_transaction_priority_upper_bound = 0.6;
   ```
 
 * In a transaction block, perform an insert and view the transaction priority as follows:
@@ -187,20 +186,10 @@ The following is another example which describes the usage of `yb_transaction_pr
   ```
 
   ```output
-      yb_transaction_priority
+            yb_transaction_priority
   -------------------------------------------
-   0.400000000 (Normal priority transaction)
+   0.620638447 (Normal priority transaction)
   (1 row)
-  ```
-
-* Setting the yb_transaction_priority variable results in an error, because its a read-only flag. You can verify it as follows:
-
-  ```sql
-  set yb_transaction_priority = 0.3;
-  ```
-
-  ```output
-  ERROR:  parameter "yb_transaction_priority" cannot be changed
   ```
 
 * In the next transaction block, perform a `SELECT` which results in a high priority transaction.
