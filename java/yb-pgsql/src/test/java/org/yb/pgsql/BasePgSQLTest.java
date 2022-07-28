@@ -1476,6 +1476,12 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return doesQueryPlanContainsSubstring(stmt, query, "Index Only Scan using " + index);
   }
 
+  /** Whether or not this select query uses Seq Scan. */
+  protected boolean isSeqScan(Statement stmt, String query)
+      throws SQLException {
+    return doesQueryPlanContainsSubstring(stmt, query, "Seq Scan on");
+  }
+
   /**
    * Whether or not this select query requires filtering by Postgres (i.e. not all
    * conditions can be pushed down to YugaByte).
