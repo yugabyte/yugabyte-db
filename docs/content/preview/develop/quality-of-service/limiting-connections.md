@@ -84,7 +84,7 @@ The connection limit is stored in the system catalog but connection count tracki
 
 ### Limit connections per DB
 
-- Set connection limit for database as follows:
+- Set the database connection limit:
 
   ```sql
   alter database test_connection CONNECTION LIMIT 1;
