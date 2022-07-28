@@ -163,7 +163,7 @@ kubectl auth can-i \
 {namespaces|poddisruptionbudgets|services|statefulsets|secrets|pods|pvc}
 ```
 
-### `kubeconfig` file
+### kubeconfig file
 
 You can create a `kubeconfig` file for the previously created `yugabyte-platform-universe-management` service account as follows:
 
@@ -202,7 +202,7 @@ Continue configuring your Kubernetes provider as follows:
   - Specify at **provider level** in the provider form. If specified, this configuration file is used for all availability zones in all regions.
   - Specify at **zone level** in the region form. This is required for **multi-az** or **multi-region** deployments.
 - In the **Service Account** field, provide the name of the service account which has necessary access to manage the cluster (see [Create cluster](../../../../deploy/kubernetes/single-zone/oss/helm-chart/#create-cluster)).
-- In the **Image Registry** field, specify from where to pull the YugabyteDB image. Accept the default setting, unless you are hosting the registry.
+- In the **Image Registry** field, specify from where to pull the YugabyteDB image. Accept the default setting, unless you are hosting the registry, in which case refer to steps described in [Pull and push YugabyteDB Docker images to private container registry](../../../install-yugabyte-platform/prerequisites#pull-and-push-yugabytedb-docker-images-to-private-container-registry).
 - Use **Pull Secret File** to upload the pull secret to download the image of the Enterprise YugabyteDB that is in a private repository. Your Yugabyte sales representative should have provided this secret.
 
 ## Configure region and zones
