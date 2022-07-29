@@ -1673,7 +1673,6 @@ export default class ClusterFields extends Component {
         if (
           clusterType === 'primary' ||
           (clusterType === 'async' &&
-            provider.code !== 'kubernetes' &&
             primaryProviderCode !== '' &&
             provider.code === primaryProviderCode)
         ) {

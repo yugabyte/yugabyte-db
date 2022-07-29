@@ -192,8 +192,6 @@ libraryDependencies ++= Seq(
   "com.icegreen" % "greenmail" % "1.6.1" % Test,
   "com.icegreen" % "greenmail-junit4" % "1.6.1" % Test,
   "com.squareup.okhttp3" % "mockwebserver" % "4.9.2" % Test,
-  "io.swagger" %% "swagger-play2" % "1.6.1" % Test,
-  "io.swagger" %% "swagger-scala-module" % "1.0.5" % Test,
 )
 // Clear default resolvers.
 appResolvers := None
@@ -397,12 +395,14 @@ libraryDependencies ++= Seq(
   "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % "2.9.10",
   "org.slf4j" % "slf4j-ext" % "1.7.26",
   "net.minidev" % "json-smart" % "2.4.8",
+  // TODO(Shashank): Remove this in Step 3:
   // Overrides to address vulnerability in swagger-play2
   "com.typesafe.akka" %% "akka-actor" % "2.5.16",
 )
 
 dependencyOverrides += "com.google.protobuf" % "protobuf-java" % "3.19.4"
 dependencyOverrides += "com.google.guava" % "guava" % "23.0"
+// TODO(Shashank): Remove these in Step 3:
 dependencyOverrides += "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.9.10"
 dependencyOverrides += "com.fasterxml.jackson.dataformat" % "jackson-dataformat-cbor" % "2.9.10"
 dependencyOverrides += "com.fasterxml.jackson.datatype" % "jackson-datatype-jsr310" % "2.9.10"
@@ -424,7 +424,7 @@ def partitionTests(tests: Seq[TestDefinition], shardSize: Int) =
     case (tests, index) =>
       val options = ForkOptions().withRunJVMOptions(Vector(
         "-Xmx2g", "-XX:MaxMetaspaceSize=600m", "-XX:MetaspaceSize=200m",
-        "-Dconfig.file=src/main/resources/application.test.conf"
+        "-Dconfig.resource=application.test.conf"
       ))
       Group("testGroup" + index, tests, SubProcess(options))
   } toSeq
@@ -433,7 +433,7 @@ Test / parallelExecution := true
 Test / fork := true
 Test / testGrouping := partitionTests( (Test / definedTests).value, testShardSize.value )
 
-javaOptions in Test += "-Dconfig.file=src/main/resources/application.test.conf"
+javaOptions in Test += "-Dconfig.resource=application.test.conf"
 testOptions += Tests.Argument(TestFrameworks.JUnit, "-v", "-q", "-a")
 
 // Skip packaging javadoc for now
@@ -492,22 +492,42 @@ val swaggerGen: TaskKey[Unit] = taskKey[Unit](
   "generate swagger.json"
 )
 
-// in settings
+lazy val swagger = project
+  .dependsOn(root % "compile->compile;test->test")
+  .settings(
+    Test / fork := true,
+    javaOptions in Test += "-Dconfig.resource=application.test.conf",
+    testOptions += Tests.Argument(TestFrameworks.JUnit, "-v", "-q", "-a"),
+    libraryDependencies ++= Seq(
+      "io.swagger" %% "swagger-play2" % "1.6.1" % Test,
+      "io.swagger" %% "swagger-scala-module" % "1.0.5" % Test,
+    ),
+    dependencyOverrides += "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.9.10",
+    dependencyOverrides += "com.fasterxml.jackson.dataformat" % "jackson-dataformat-cbor" % "2.9.10",
+    dependencyOverrides += "com.fasterxml.jackson.datatype" % "jackson-datatype-jsr310" % "2.9.10",
+    dependencyOverrides += "com.fasterxml.jackson.core" % "jackson-databind" % "2.9.10.8",
+
+    swaggerGen := Def.taskDyn {
+      // Consider generating this only in managedResources
+      val file = (resourceDirectory in Compile in root).value / "swagger.json"
+      Def.sequential(
+        (Test / runMain )
+          .toTask(s" com.yugabyte.yw.controllers.SwaggerGenTest $file"),
+      )
+    }.value
+  )
+
+test in Test := (test in Test).dependsOn(swagger / Test / test).value
+
 swaggerGen := Def.taskDyn {
-  // Consider generating this only in managedResources
-  val file = (resourceDirectory in Compile).value / "swagger.json"
   Def.sequential(
-    (runMain in Test)
-      .toTask(s" com.yugabyte.yw.controllers.SwaggerGenTest $file"),
+    swagger /swaggerGen,
     javagen / openApiGenerate,
     compileJavaGenClient,
     pythongen / openApiGenerate,
     gogen / openApiGenerate
   )
 }.value
-
-// TODO: Should we trigger swagger gen on compile??
-// swaggerGen := swaggerGen.triggeredBy(compile in Compile).value
 
 val grafanaGen: TaskKey[Unit] = taskKey[Unit](
   "generate dashboard.json"

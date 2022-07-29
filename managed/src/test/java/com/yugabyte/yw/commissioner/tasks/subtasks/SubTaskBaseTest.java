@@ -14,7 +14,6 @@ import kamon.instrumentation.play.GuiceModule;
 import org.junit.Before;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
-import play.modules.swagger.SwaggerModule;
 import play.test.WithApplication;
 
 public class SubTaskBaseTest extends WithApplication {

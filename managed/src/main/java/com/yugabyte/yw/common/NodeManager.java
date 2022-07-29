@@ -19,6 +19,7 @@ import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.DetachedNodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.params.INodeTaskParams;
@@ -1208,16 +1209,37 @@ public class NodeManager extends DevopsBase {
       NodeTaskParams nodeTaskParam,
       List<String> commandArgs) {
     if (Provider.InstanceTagsEnabledProviders.contains(userIntent.providerType)) {
-      // Create an ordered shallow copy of the tags.
-      Map<String, String> useTags =
-          MapUtils.isEmpty(userIntent.instanceTags)
-              ? new TreeMap<>()
-              : new TreeMap<>(userIntent.getInstanceTagsForInstanceOps());
-      addAdditionalInstanceTags(universe, nodeTaskParam, useTags);
-      if (!useTags.isEmpty()) {
-        commandArgs.add("--instance_tags");
-        commandArgs.add(Json.stringify(Json.toJson(useTags)));
-      }
+      addInstanceTags(
+          universe, userIntent.instanceTags, userIntent.providerType, nodeTaskParam, commandArgs);
+    }
+  }
+
+  private void addInstanceTags(
+      Universe universe,
+      Map<String, String> instanceTags,
+      Common.CloudType providerType,
+      NodeTaskParams nodeTaskParam,
+      List<String> commandArgs) {
+    // Create an ordered shallow copy of the tags.
+    Map<String, String> useTags = new TreeMap<>(instanceTags);
+    filterInstanceTags(useTags, providerType);
+    addAdditionalInstanceTags(universe, nodeTaskParam, useTags);
+    if (!useTags.isEmpty()) {
+      commandArgs.add("--instance_tags");
+      commandArgs.add(Json.stringify(Json.toJson(useTags)));
+    }
+  }
+
+  /**
+   * Remove tags that are restricted by provider.
+   *
+   * @param instanceTags
+   * @param providerType
+   */
+  private void filterInstanceTags(Map<String, String> instanceTags, Common.CloudType providerType) {
+    if (providerType.equals(Common.CloudType.aws)) {
+      // Do not allow users to overwrite the node name. Only AWS uses tags to set it.
+      instanceTags.remove(UniverseDefinitionTaskBase.NODE_NAME_KEY);
     }
   }
 
@@ -1554,10 +1576,12 @@ public class NodeManager extends DevopsBase {
           }
           InstanceActions.Params taskParam = (InstanceActions.Params) nodeTaskParam;
           if (Provider.InstanceTagsEnabledProviders.contains(userIntent.providerType)) {
-            if (MapUtils.isEmpty(userIntent.instanceTags)) {
-              throw new RuntimeException("Invalid instance tags");
+            Map<String, String> tags =
+                taskParam.tags != null ? taskParam.tags : userIntent.instanceTags;
+            if (MapUtils.isEmpty(tags) && taskParam.deleteTags.isEmpty()) {
+              throw new RuntimeException("Invalid params: no tags to add or remove");
             }
-            addInstanceTags(universe, userIntent, nodeTaskParam, commandArgs);
+            addInstanceTags(universe, tags, userIntent.providerType, nodeTaskParam, commandArgs);
             if (!taskParam.deleteTags.isEmpty()) {
               commandArgs.add("--remove_tags");
               commandArgs.add(taskParam.deleteTags);
@@ -1566,6 +1590,9 @@ public class NodeManager extends DevopsBase {
               commandArgs.addAll(getDeviceArgs(taskParam));
               commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
             }
+          } else {
+            throw new IllegalArgumentException(
+                "Tags are unsupported for " + userIntent.providerType);
           }
           break;
         }

@@ -58,7 +58,6 @@ import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnitRunner;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
-import play.modules.swagger.SwaggerModule;
 
 @RunWith(MockitoJUnitRunner.class)
 public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {

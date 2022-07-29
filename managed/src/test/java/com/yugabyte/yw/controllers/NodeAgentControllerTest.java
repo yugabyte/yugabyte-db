@@ -29,7 +29,6 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.NodeConfiguration;
-
 import java.util.Set;
 import java.util.UUID;
 import org.junit.Before;

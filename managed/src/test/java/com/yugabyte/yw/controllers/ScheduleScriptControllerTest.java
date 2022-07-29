@@ -36,7 +36,6 @@ import org.mockito.junit.MockitoJUnitRunner;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;
-import play.modules.swagger.SwaggerModule;
 import play.mvc.Http;
 import play.mvc.Result;
 

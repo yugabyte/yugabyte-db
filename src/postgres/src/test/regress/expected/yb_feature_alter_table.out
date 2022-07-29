@@ -247,7 +247,7 @@ ERROR:  new row for relation "atacc1" violates check constraint "checkb3"
 DETAIL:  Failing row contains (5, 5, 5).
 alter table atacc1 drop constraint checkb;
 alter table atacc1 drop constraint if exists checkb2;
-NOTICE:  constraint "checkb2" of relation "atacc1" does not exist, skipping
+ERROR:  constraint "checkb2" for table "atacc1" does not exist
 alter table atacc1 drop constraint if exists checkb3;
 delete from atacc1 where b = 5;
 -- test rename
@@ -273,34 +273,26 @@ drop table atacc1;
 -- test dropping primary key constraints
 CREATE TABLE with_simple_pk_i (i int PRIMARY KEY);
 ALTER TABLE with_simple_pk_i DROP CONSTRAINT with_simple_pk_i_pkey;
-ERROR:  dropping a primary key constraint is not yet supported
 INSERT INTO with_simple_pk_i VALUES (1);
 INSERT INTO with_simple_pk_i VALUES (1);
-ERROR:  duplicate key value violates unique constraint "with_simple_pk_i_pkey"
 DROP TABLE with_simple_pk_i;
 --
 CREATE TABLE with_simple_pk_ij (i int, j int, PRIMARY KEY(i, j));
 ALTER TABLE with_simple_pk_ij DROP CONSTRAINT with_simple_pk_ij_pkey;
-ERROR:  dropping a primary key constraint is not yet supported
 INSERT INTO with_simple_pk_ij VALUES (1, 1);
 INSERT INTO with_simple_pk_ij VALUES (1, 1);
-ERROR:  duplicate key value violates unique constraint "with_simple_pk_ij_pkey"
 DROP TABLE with_simple_pk_ij;
 --
 CREATE TABLE with_named_pk_i (i int CONSTRAINT named_pk_i PRIMARY KEY);
 ALTER TABLE with_named_pk_i DROP CONSTRAINT named_pk_i;
-ERROR:  dropping a primary key constraint is not yet supported
 INSERT INTO with_named_pk_i VALUES (1);
 INSERT INTO with_named_pk_i VALUES (1);
-ERROR:  duplicate key value violates unique constraint "named_pk_i"
 DROP TABLE with_named_pk_i;
 --
 CREATE TABLE with_named_pk_ij (i int, j int, CONSTRAINT named_pk_ij PRIMARY KEY (i HASH, j ASC));
 ALTER TABLE with_named_pk_ij DROP CONSTRAINT named_pk_ij;
-ERROR:  dropping a primary key constraint is not yet supported
 INSERT INTO with_named_pk_ij VALUES (1, 1);
 INSERT INTO with_named_pk_ij VALUES (1, 1);
-ERROR:  duplicate key value violates unique constraint "named_pk_ij"
 DROP TABLE with_named_pk_ij;
 --
 -- rename

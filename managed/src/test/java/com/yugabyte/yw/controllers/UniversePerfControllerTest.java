@@ -9,38 +9,6 @@
  */
 package com.yugabyte.yw.controllers;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.yugabyte.yw.common.ApiUtils;
-import com.yugabyte.yw.common.FakeDBApplication;
-import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.common.NodeUniverseManager;
-import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.common.TestUtils;
-import com.yugabyte.yw.common.audit.AuditService;
-import com.yugabyte.yw.controllers.handlers.HashedTimestampColumnFinder;
-import com.yugabyte.yw.controllers.handlers.UniversePerfHandler;
-import com.yugabyte.yw.controllers.handlers.UnusedIndexFinder;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.Universe;
-import junitparams.JUnitParamsRunner;
-import kamon.instrumentation.play.GuiceModule;
-import org.junit.Before;
-import org.junit.Rule;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.mockito.junit.MockitoJUnit;
-import org.mockito.junit.MockitoRule;
-import play.Application;
-import play.inject.guice.GuiceApplicationBuilder;
-import play.libs.Json;
-import play.modules.swagger.SwaggerModule;
-import play.mvc.Result;
-
-import java.time.OffsetDateTime;
-import java.util.ArrayList;
-import java.util.Iterator;
-import java.util.List;
-
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static com.yugabyte.yw.common.TestHelper.testDatabase;
 import static org.junit.Assert.assertEquals;
@@ -54,6 +22,36 @@ import static org.mockito.Mockito.when;
 import static play.inject.Bindings.bind;
 import static play.mvc.Http.Status.OK;
 import static play.test.Helpers.contentAsString;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.NodeUniverseManager;
+import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.TestUtils;
+import com.yugabyte.yw.common.audit.AuditService;
+import com.yugabyte.yw.controllers.handlers.HashedTimestampColumnFinder;
+import com.yugabyte.yw.controllers.handlers.UniversePerfHandler;
+import com.yugabyte.yw.controllers.handlers.UnusedIndexFinder;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Universe;
+import java.time.OffsetDateTime;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
+import junitparams.JUnitParamsRunner;
+import kamon.instrumentation.play.GuiceModule;
+import org.junit.Before;
+import org.junit.Rule;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.mockito.junit.MockitoJUnit;
+import org.mockito.junit.MockitoRule;
+import play.Application;
+import play.inject.guice.GuiceApplicationBuilder;
+import play.libs.Json;
+import play.mvc.Result;
 
 @RunWith(JUnitParamsRunner.class)
 public class UniversePerfControllerTest extends FakeDBApplication {

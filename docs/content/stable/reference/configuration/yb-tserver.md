@@ -25,7 +25,7 @@ yb-tserver [ flags ]
 $ ./bin/yb-tserver \
 --tserver_master_addrs 172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100 \
 --rpc_bind_addresses 172.151.17.130 \
---start_pgsql_proxy \
+--enable_ysql \
 --fs_data_dirs "/home/centos/disk1,/home/centos/disk2" &
 ```
 
@@ -430,11 +430,11 @@ The following flags support the use of the [YSQL API](../../../api/ysql/).
 
 {{< note title="Note" >}}
 
-Ensure that `enable_ysql` in `yb-tserver` configurations match the values in `yb-master` configurations.
+Ensure that `enable_ysql` values in `yb-tserver` configurations match the values in `yb-master` configurations.
 
 {{< /note >}}
 
-Enables the YSQL API. Replaces the deprecated `--start_pgsql_proxy` flag.
+Enables the YSQL API.
 
 Default: `true`
 
@@ -530,7 +530,7 @@ Default: Uses the YSQL display format.
 
 Specifies the maximum number of concurrent YSQL connections.
 
-Default: `300`
+Default: 300 for superusers. Non-superuser roles see only the connections available for use, while superusers see all connections, including those reserved for superusers.
 
 ##### --ysql_default_transaction_isolation
 
