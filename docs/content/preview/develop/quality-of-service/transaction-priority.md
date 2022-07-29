@@ -199,8 +199,8 @@ The following is another example which demonstrates the usage of `yb_transaction
 1. In the next transaction block, perform a `SELECT ... FOR UPDATE`, which results in a high priority transaction.
 
    ```sql
-   set yb_transaction_priority_upper_bound = 0.4;
    set yb_transaction_priority_lower_bound = 0.1;
+   set yb_transaction_priority_lower_bound = 0.4;
    BEGIN TRANSACTION;
    SELECT i, j FROM test_scan WHERE i = 1 FOR UPDATE;
    show yb_transaction_priority;
@@ -210,7 +210,7 @@ The following is another example which demonstrates the usage of `yb_transaction
    ```output
        yb_transaction_priority
    -------------------------------------------
-   0.169562455 (High priority transaction)
+    0.212004009 (High priority transaction)
    (1 row)
    ```
 
