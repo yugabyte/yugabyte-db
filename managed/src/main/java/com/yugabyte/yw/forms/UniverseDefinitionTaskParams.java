@@ -582,29 +582,6 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       return (new HashSet<>(left)).equals(new HashSet<>(right));
     }
 
-    /**
-     * Helper API to send the tags to be used for any instance level operation. The existing map is
-     * cloned and modifications are performed on the clone. Currently it removes just the node name,
-     * which should not be duplicated in ybcloud commands. Used only for AWS now.
-     *
-     * @return A map of tags to use.
-     */
-    @JsonIgnore
-    public Map<String, String> getInstanceTagsForInstanceOps() {
-      Map<String, String> retTags = new HashMap<>();
-      if (!Provider.InstanceTagsEnabledProviders.contains(providerType)) {
-        return retTags;
-      }
-
-      retTags.putAll(instanceTags);
-      if (providerType.equals(Common.CloudType.aws)) {
-        // Do not allow users to overwrite the node name. Only AWS uses tags to set it.
-        retTags.remove(UniverseDefinitionTaskBase.NODE_NAME_KEY);
-      }
-
-      return retTags;
-    }
-
     @JsonIgnore
     public boolean isYSQLAuthEnabled() {
       return tserverGFlags.getOrDefault("ysql_enable_auth", "false").equals("true")

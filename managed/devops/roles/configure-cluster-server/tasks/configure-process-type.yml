@@ -86,11 +86,6 @@
       user: "yugabyte"
       state: absent
 
-  - name: Determine system or user scope
-    stat:
-      path: /etc/systemd/system/yb-{{ yb_process_type }}.service
-    register: systemd_system
-
   - name: User mode systemd
     block:
     - name: Stop existing running {{ yb_process_type }}
@@ -123,7 +118,7 @@
         state: started
         enabled: yes
         scope: user
-    when: not systemd_system.stat.exists
+    when: ansible_os_family != 'RedHat' or ansible_distribution_major_version != '7'
 
   - name: System (RHEL7) systemd units
     block:
@@ -147,7 +142,8 @@
     - name: Start {{ yb_process_type }}
       shell:
         cmd: "sudo systemctl start yb-{{ yb_process_type }}"
-    when: systemd_system.stat.exists
+
+    when: ansible_os_family == 'RedHat' and ansible_distribution_major_version == '7'
 
   tags:
     - override_gflags

@@ -2,7 +2,6 @@ package com.yugabyte.yw.common.swagger;
 
 import com.fasterxml.jackson.annotation.JsonBackReference;
 import com.google.common.collect.ImmutableSet;
-import com.google.inject.Singleton;
 import io.swagger.converter.ModelConverter;
 import io.swagger.converter.ModelConverterContext;
 import io.swagger.converter.ModelConverters;
@@ -15,7 +14,6 @@ import java.util.Iterator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-@Singleton
 public class PlatformModelConverter implements ModelConverter {
 
   static final PlatformModelConverter SINGLETON = new PlatformModelConverter();
@@ -29,7 +27,6 @@ public class PlatformModelConverter implements ModelConverter {
   private static final ImmutableSet<String> SKIPPED_PACKAGES =
       ImmutableSet.of("play.mvc", "io.ebean", "com.fasterxml.jackson.databind");
   public static final Logger LOG = LoggerFactory.getLogger(PlatformModelConverter.class);
-  private static final double maxLevel = 300;
 
   @Override
   public Property resolveProperty(

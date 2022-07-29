@@ -13,10 +13,7 @@
 
 package org.yb.pgsql;
 
-import static org.yb.AssertionWrappers.assertEquals;
-import static org.yb.AssertionWrappers.assertFalse;
-import static org.yb.AssertionWrappers.assertNotEquals;
-import static org.yb.AssertionWrappers.assertTrue;
+import static org.yb.AssertionWrappers.*;
 
 import java.io.File;
 import java.net.URL;
@@ -31,7 +28,6 @@ import java.util.Map;
 import java.util.TreeMap;
 
 import org.apache.commons.lang3.StringUtils;
-import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
@@ -39,8 +35,8 @@ import org.slf4j.LoggerFactory;
 import org.yb.util.YBTestRunnerNonTsanOnly;
 
 @RunWith(value = YBTestRunnerNonTsanOnly.class)
-public class TestPgAlterTableAddPrimaryKey extends BasePgSQLTest {
-  private static final Logger LOG = LoggerFactory.getLogger(TestPgAlterTableAddPrimaryKey.class);
+public class TestPgAlterTableChangePrimaryKey extends BasePgSQLTest {
+  private static final Logger LOG = LoggerFactory.getLogger(TestPgAlterTableChangePrimaryKey.class);
 
   @Override
   protected Map<String, String> getMasterFlags() {
@@ -53,7 +49,12 @@ public class TestPgAlterTableAddPrimaryKey extends BasePgSQLTest {
   public void simplest() throws Exception {
     try (Statement stmt = connection.createStatement()) {
       stmt.executeUpdate("CREATE TABLE nopk (id int)");
-      alterAddPrimaryKey(stmt, "nopk", "ADD PRIMARY KEY (id)", 1, NUM_TABLET_SERVERS);
+
+      alterAddPrimaryKeyId(stmt, "nopk");
+      runInvalidQuery(stmt, "ALTER TABLE nopk ADD PRIMARY KEY (id)",
+          "multiple primary keys for table \"nopk\" are not allowed");
+
+      alterDropPrimaryKey(stmt, "nopk");
     }
   }
 
@@ -61,8 +62,14 @@ public class TestPgAlterTableAddPrimaryKey extends BasePgSQLTest {
   public void withNoForceRowLevelSecurity() throws Exception {
     try (Statement stmt = connection.createStatement()) {
       stmt.executeUpdate("CREATE TABLE nopk (id int)");
-      alterAddPrimaryKey(stmt, "nopk", "NO FORCE ROW LEVEL SECURITY, " +
-                                       "ADD PRIMARY KEY (id)", 1, NUM_TABLET_SERVERS);
+
+      alterChangePrimaryKey(stmt, "nopk",
+          "NO FORCE ROW LEVEL SECURITY, ADD PRIMARY KEY (id)",
+          AlterType.ADD_PK,
+          1 /* expectedNumHashKeyCols */,
+          NUM_TABLET_SERVERS /* expectedNumTablets */);
+
+      alterDropPrimaryKey(stmt, "nopk");
     }
   }
 
@@ -72,8 +79,14 @@ public class TestPgAlterTableAddPrimaryKey extends BasePgSQLTest {
       stmt.executeUpdate("CREATE TABLE public.pgbench_accounts (aid integer NOT NULL," +
           "filler character(84)) WITH (fillfactor='100', user_catalog_table=false)");
 
-      alterAddPrimaryKey(stmt, "pgbench_accounts", "ADD CONSTRAINT pkey PRIMARY KEY (aid)",
-          1, NUM_TABLET_SERVERS);
+      alterChangePrimaryKey(stmt, "pgbench_accounts",
+          "ADD CONSTRAINT pkey PRIMARY KEY (aid)",
+          AlterType.ADD_PK,
+          1 /* expectedNumHashKeyCols */,
+          NUM_TABLET_SERVERS /* expectedNumTablets */);
+
+      alterDropPrimaryKey(stmt, "pgbench_accounts", "pkey",
+          NUM_TABLET_SERVERS  /* expectedNumTablets */);
     }
   }
 
@@ -91,10 +104,17 @@ public class TestPgAlterTableAddPrimaryKey extends BasePgSQLTest {
 
       stmt.executeUpdate("DELETE FROM nopk WHERE v = 2");
 
-      alterAddPrimaryKey(stmt, "nopk", "ADD PRIMARY KEY (id)", 1, NUM_TABLET_SERVERS);
+      alterAddPrimaryKeyId(stmt, "nopk");
 
-      assertRowList(stmt, "SELECT * FROM nopk ORDER BY id", Arrays.asList(
+      assertRowList(stmt, "SELECT * FROM nopk ORDER BY v", Arrays.asList(
           new Row(1, 1)));
+
+      alterDropPrimaryKey(stmt, "nopk");
+
+      stmt.executeUpdate("INSERT INTO nopk VALUES (1, 2)");
+      assertRowList(stmt, "SELECT * FROM nopk ORDER BY v", Arrays.asList(
+          new Row(1, 1),
+          new Row(1, 2)));
     }
   }
 
@@ -121,11 +141,19 @@ public class TestPgAlterTableAddPrimaryKey extends BasePgSQLTest {
       stmt.executeUpdate("INSERT INTO nopk VALUES (1, '{1,2,3}', 'qwe')");
       stmt.executeUpdate("INSERT INTO nopk VALUES (2, '{3,4}',   'zxcv')");
 
-      alterAddPrimaryKey(stmt, "nopk", "ADD PRIMARY KEY (id)", 1, NUM_TABLET_SERVERS);
+      alterAddPrimaryKeyId(stmt, "nopk");
 
       assertRowList(stmt, "SELECT * FROM nopk ORDER BY id", Arrays.asList(
           new Row(1, new Integer[] { 1, 2, 3 }, "qwe"),
           new Row(2, new Integer[] { 3, 4 }, "zxcv")));
+
+      alterDropPrimaryKey(stmt, "nopk");
+
+      stmt.executeUpdate("INSERT INTO nopk VALUES (2, '{5}', 'rty')");
+      assertRowList(stmt, "SELECT * FROM nopk ORDER BY id, v1", Arrays.asList(
+          new Row(1, new Integer[] { 1, 2, 3 }, "qwe"),
+          new Row(2, new Integer[] { 3, 4 }, "zxcv"),
+          new Row(2, new Integer[] { 5 }, "rty")));
     }
   }
 
@@ -163,8 +191,10 @@ public class TestPgAlterTableAddPrimaryKey extends BasePgSQLTest {
       stmt.executeUpdate("INSERT INTO nopk VALUES (1, '111', '1', true)");
       stmt.executeUpdate("INSERT INTO nopk VALUES (2, '222', '2', false)");
 
-      alterAddPrimaryKey(stmt, "nopk", "ADD PRIMARY KEY ((v1, v2) HASH, v3 ASC, v4 DESC)",
-          2, NUM_TABLET_SERVERS);
+      alterAddPrimaryKey(stmt, "nopk",
+          "((v1, v2) HASH, v3 ASC, v4 DESC)",
+          2 /* expectedNumHashKeyCols */,
+          NUM_TABLET_SERVERS /* expectedNumTablets */);
 
       stmt.executeUpdate("INSERT INTO nopk VALUES (2, '222', '3', true)");
 
@@ -175,6 +205,16 @@ public class TestPgAlterTableAddPrimaryKey extends BasePgSQLTest {
           new Row(1, "111", "1", true),
           new Row(2, "222", "2", false),
           new Row(2, "222", "3", true)));
+
+      alterDropPrimaryKey(stmt, "nopk");
+
+      stmt.executeUpdate("INSERT INTO nopk VALUES (2, '222', '2', false)");
+
+      assertRowList(stmt, "SELECT * FROM nopk ORDER BY v1, v2, v3, v4", Arrays.asList(
+          new Row(1, "111", "1", true),
+          new Row(2, "222", "2", false),
+          new Row(2, "222", "2", false),
+          new Row(2, "222", "3", true)));
     }
   }
 
@@ -183,10 +223,22 @@ public class TestPgAlterTableAddPrimaryKey extends BasePgSQLTest {
     try (Statement stmt = connection.createStatement()) {
       stmt.executeUpdate("CREATE TABLE nopk (id int)");
       stmt.executeUpdate("INSERT INTO nopk VALUES (1), (2), (3)");
-      alterAddPrimaryKey(stmt, "nopk", "ADD PRIMARY KEY (id DESC)", 0, 1);
+
+      alterAddPrimaryKey(stmt, "nopk",
+          "(id DESC)",
+          0 /* expectedNumHashKeyCols */,
+          1 /* expectedNumTablets */);
 
       // Order should be descending.
       assertQuery(stmt, "SELECT * FROM nopk",
+          new Row(3),
+          new Row(2),
+          new Row(1));
+
+      alterDropPrimaryKey(stmt, "nopk", "nopk_pkey", 1 /* expectedNumTablets */);
+
+      // Order is no longer stable/predictable, we have to add ORDER BY.
+      assertQuery(stmt, "SELECT * FROM nopk ORDER BY id DESC",
           new Row(3),
           new Row(2),
           new Row(1));
@@ -200,8 +252,10 @@ public class TestPgAlterTableAddPrimaryKey extends BasePgSQLTest {
       stmt.executeUpdate("INSERT INTO nopk VALUES (1, 11, 111)");
       stmt.executeUpdate("INSERT INTO nopk VALUES (2, 22, 222)");
 
-      alterAddPrimaryKey(stmt, "nopk", "ADD PRIMARY KEY (id) INCLUDE (v1, v2)",
-          1, NUM_TABLET_SERVERS);
+      alterAddPrimaryKey(stmt, "nopk",
+          "(id) INCLUDE (v1, v2)",
+          1 /* expectedNumHashKeyCols */,
+          NUM_TABLET_SERVERS /* expectedNumTablets */);
 
       // Scan is supposed to be index-only scan, but it's index scan for us.
       {
@@ -223,6 +277,15 @@ public class TestPgAlterTableAddPrimaryKey extends BasePgSQLTest {
       {
         String includeQuery = "SELECT v1 FROM nopk WHERE id = 3";
         assertTrue(isIndexScan(stmt, includeQuery, "nopk_pkey"));
+        assertQuery(stmt, includeQuery, new Row(11));
+      }
+
+      alterDropPrimaryKey(stmt, "nopk");
+
+      // SELECT is now a Seq Scan.
+      {
+        String includeQuery = "SELECT v1 FROM nopk WHERE id = 3";
+        assertTrue(isSeqScan(stmt, includeQuery));
         assertQuery(stmt, includeQuery, new Row(11));
       }
     }
@@ -253,12 +316,21 @@ public class TestPgAlterTableAddPrimaryKey extends BasePgSQLTest {
       assertRowList(stmt, "SELECT * FROM nopk ORDER BY id", Arrays.asList(
           new Row(1, 1, 10, "r1")));
 
-      alterAddPrimaryKey(stmt, "nopk", "ADD PRIMARY KEY (id)", 1, NUM_TABLET_SERVERS);
+      alterAddPrimaryKeyId(stmt, "nopk");
 
       stmt.executeUpdate("INSERT INTO nopk (stuff) VALUES ('r2')");
       assertRowList(stmt, "SELECT * FROM nopk ORDER BY id", Arrays.asList(
           new Row(1, 1, 10, "r1"),
           new Row(2, 2, 11, "r2")));
+
+      alterDropPrimaryKey(stmt, "nopk");
+
+      stmt.executeUpdate("INSERT INTO nopk (stuff) VALUES ('r3')");
+      assertRowList(stmt, "SELECT * FROM nopk ORDER BY id", Arrays.asList(
+          new Row(1, 1, 10, "r1"),
+          new Row(2, 2, 11, "r2"),
+          new Row(3, 3, 12, "r3")));
+
     }
   }
 
@@ -270,7 +342,7 @@ public class TestPgAlterTableAddPrimaryKey extends BasePgSQLTest {
       stmt.executeUpdate("INSERT INTO nopk VALUES (1, 10)");
       stmt.executeUpdate("INSERT INTO nopk VALUES (2, 20)");
 
-      alterAddPrimaryKey(stmt, "nopk", "ADD PRIMARY KEY (id)", 1, NUM_TABLET_SERVERS);
+      alterAddPrimaryKeyId(stmt, "nopk");
 
       assertRowList(stmt, "SELECT * FROM nopk ORDER BY id", Arrays.asList(
           new Row(1, 10),
@@ -278,36 +350,59 @@ public class TestPgAlterTableAddPrimaryKey extends BasePgSQLTest {
 
       runInvalidQuery(stmt, "ALTER TABLE nopk DROP COLUMN v",
           "cannot drop column from typed table");
+
+      alterDropPrimaryKey(stmt, "nopk");
+
+      stmt.executeUpdate("INSERT INTO nopk VALUES (2, 20)");
+
+      assertRowList(stmt, "SELECT * FROM nopk ORDER BY id", Arrays.asList(
+          new Row(1, 10),
+          new Row(2, 20),
+          new Row(2, 20)));
+
+      runInvalidQuery(stmt, "ALTER TABLE nopk DROP COLUMN v",
+          "cannot drop column from typed table");
     }
   }
 
-  @Ignore // TODO(alex): Enable after INHERITS is supported in #1129
+  @Test
   public void inheritedTable() throws Exception {
     try (Statement stmt = connection.createStatement()) {
       stmt.executeUpdate("CREATE TABLE nopk_parent (id int)");
       stmt.executeUpdate("INSERT INTO nopk_parent VALUES (1)");
       stmt.executeUpdate("INSERT INTO nopk_parent VALUES (2)");
 
-      stmt.executeUpdate("CREATE TABLE nopk_child (v int) INHERITS (nopk_parent);");
-      stmt.executeUpdate("INSERT INTO nopk_child VALUES (3, 30)");
-      stmt.executeUpdate("INSERT INTO nopk_child VALUES (4, 40)");
+      runInvalidQuery(stmt, "CREATE TABLE nopk_child (v int) INHERITS (nopk_parent)",
+          "INHERITS not supported yet");
 
-      alterAddPrimaryKey(stmt, "nopk_parent", "ADD PRIMARY KEY (id)", 1, NUM_TABLET_SERVERS);
-      alterAddPrimaryKey(stmt, "nopk_child", "ADD PRIMARY KEY (id)", 1, NUM_TABLET_SERVERS);
+      // TODO(alex): Enable and improve after INHERITS is supported in #1129
+      if (false) {
+        stmt.executeUpdate("CREATE TABLE nopk_child (v int) INHERITS (nopk_parent)");
+        stmt.executeUpdate("INSERT INTO nopk_child VALUES (3, 30)");
+        stmt.executeUpdate("INSERT INTO nopk_child VALUES (4, 40)");
 
-      assertRowList(stmt, "SELECT * FROM nopk_parent ORDER BY id", Arrays.asList(
-          new Row(1),
-          new Row(2)));
-      assertRowList(stmt, "SELECT * FROM nopk_child ORDER BY id", Arrays.asList(
-          new Row(3, 30),
-          new Row(4, 40)));
+        alterAddPrimaryKeyId(stmt, "nopk_parent");
+        alterAddPrimaryKeyId(stmt, "nopk_child");
+
+        assertRowList(stmt, "SELECT * FROM nopk_parent ORDER BY id", Arrays.asList(
+            new Row(1),
+            new Row(2)));
+        assertRowList(stmt, "SELECT * FROM nopk_child ORDER BY id", Arrays.asList(
+            new Row(3, 30),
+            new Row(4, 40)));
+
+        // TODO(alex): Also test DROP PK.
+      }
     }
   }
 
   /** Adding PK to a partitioned table is not yet implemented. */
   @Test
   public void partitionedTable() throws Exception {
+    String changePkErrMsg = "changing primary key of a partitioned table is not yet implemented";
+
     try (Statement stmt = connection.createStatement()) {
+      // Trying to add PK.
       stmt.executeUpdate("CREATE TABLE nopk_whole (id int) PARTITION BY LIST (id)");
       stmt.executeUpdate("CREATE TABLE nopk_part1 PARTITION OF nopk_whole"
           + " FOR VALUES IN (1, 2, 3)");
@@ -318,16 +413,34 @@ public class TestPgAlterTableAddPrimaryKey extends BasePgSQLTest {
       stmt.executeUpdate("CREATE TABLE nopk_part2_part2 PARTITION OF nopk_part2"
           + " FOR VALUES IN (30, 40)");
 
-      runInvalidQuery(stmt, "ALTER TABLE nopk_whole ADD PRIMARY KEY (id)",
-          "adding primary key to a partitioned table is not yet implemented");
-      runInvalidQuery(stmt, "ALTER TABLE nopk_part1 ADD PRIMARY KEY (id)",
-          "adding primary key to a partitioned table is not yet implemented");
-      runInvalidQuery(stmt, "ALTER TABLE nopk_part2 ADD PRIMARY KEY (id)",
-          "adding primary key to a partitioned table is not yet implemented");
-      runInvalidQuery(stmt, "ALTER TABLE nopk_part2_part1 ADD PRIMARY KEY (id)",
-          "adding primary key to a partitioned table is not yet implemented");
-      runInvalidQuery(stmt, "ALTER TABLE nopk_part2_part2 ADD PRIMARY KEY (id)",
-          "adding primary key to a partitioned table is not yet implemented");
+      runInvalidQuery(stmt, "ALTER TABLE nopk_whole ADD PRIMARY KEY (id)", changePkErrMsg);
+      runInvalidQuery(stmt, "ALTER TABLE nopk_part1 ADD PRIMARY KEY (id)", changePkErrMsg);
+      runInvalidQuery(stmt, "ALTER TABLE nopk_part2 ADD PRIMARY KEY (id)", changePkErrMsg);
+      runInvalidQuery(stmt, "ALTER TABLE nopk_part2_part1 ADD PRIMARY KEY (id)", changePkErrMsg);
+      runInvalidQuery(stmt, "ALTER TABLE nopk_part2_part2 ADD PRIMARY KEY (id)", changePkErrMsg);
+
+      // Trying to drop PK.
+      stmt.executeUpdate("CREATE TABLE pk_whole (id int PRIMARY KEY) PARTITION BY LIST (id)");
+      stmt.executeUpdate("CREATE TABLE pk_part1 PARTITION OF pk_whole"
+          + " FOR VALUES IN (1, 2, 3)");
+      stmt.executeUpdate("CREATE TABLE pk_part2 PARTITION OF pk_whole"
+          + " FOR VALUES IN (10, 20, 30, 40) PARTITION BY LIST (id)");
+      stmt.executeUpdate("CREATE TABLE pk_part2_part1 PARTITION OF pk_part2"
+          + " FOR VALUES IN (10, 20)");
+      stmt.executeUpdate("CREATE TABLE pk_part2_part2 PARTITION OF pk_part2"
+          + " FOR VALUES IN (30, 40)");
+
+      runInvalidQuery(stmt, "ALTER TABLE pk_whole DROP CONSTRAINT pk_whole_pkey", changePkErrMsg);
+
+      String inheritedConstrErrMsg = "cannot drop inherited constraint";
+      runInvalidQuery(stmt, "ALTER TABLE pk_part1 DROP CONSTRAINT pk_part1_pkey",
+          inheritedConstrErrMsg);
+      runInvalidQuery(stmt, "ALTER TABLE pk_part2 DROP CONSTRAINT pk_part2_pkey",
+          inheritedConstrErrMsg);
+      runInvalidQuery(stmt, "ALTER TABLE pk_part2_part1 DROP CONSTRAINT pk_part2_part1_pkey",
+          inheritedConstrErrMsg);
+      runInvalidQuery(stmt, "ALTER TABLE pk_part2_part2 DROP CONSTRAINT pk_part2_part2_pkey",
+          inheritedConstrErrMsg);
     }
   }
 
@@ -364,11 +477,11 @@ public class TestPgAlterTableAddPrimaryKey extends BasePgSQLTest {
       runInvalidQuery(stmt, "ALTER TABLE nopk_c ADD PRIMARY KEY (id HASH)",
           "cannot colocate hash partitioned index");
 
-      // This doesn't really accomplish much though, since colocated property is invisible to SQL
-      // - we can't check whether a re-created table keeps/gains/loses it.
-      // See #6159
-      alterAddPrimaryKey(stmt, "nopk_c", "ADD PRIMARY KEY (id)", 0, 1);
-      alterAddPrimaryKey(stmt, "nopk_nc", "ADD PRIMARY KEY (id)", 1, NUM_TABLET_SERVERS);
+      alterAddPrimaryKey(stmt, "nopk_c",
+          "(id)",
+          0 /* expectedNumHashKeyCols */,
+          1 /* expectedNumTablets */);
+      alterAddPrimaryKeyId(stmt, "nopk_nc");
       assertEquals(1, getNumTablets(stmt, "normal_table"));
 
       // Colocation IDs are not persisted.
@@ -389,6 +502,16 @@ public class TestPgAlterTableAddPrimaryKey extends BasePgSQLTest {
       assertRowList(stmt, "SELECT * FROM nopk_nc ORDER BY id", Arrays.asList(
           new Row(5),
           new Row(6)));
+
+      alterDropPrimaryKey(stmt, "nopk_c", "nopk_c_pkey", 1 /* expectedNumTablets */);
+      alterDropPrimaryKey(stmt, "nopk_nc");
+
+      // Colocation IDs are not persisted.
+      assertRowList(stmt, colocatedPropsSql, Arrays.asList(
+          new Row("normal_table", true, null, 20001),
+          new Row("normal_table_pkey", null, null, null),
+          new Row("nopk_c", true, null, 20003),
+          new Row("nopk_nc", false, null, null)));
     }
   }
 
@@ -423,8 +546,14 @@ public class TestPgAlterTableAddPrimaryKey extends BasePgSQLTest {
           new Row("nopk2", true, "tgroup1", 100500),
           new Row("nopk2_id2_key", true, "tgroup1", 100501)));
 
-      alterAddPrimaryKey(stmt, "nopk", "ADD PRIMARY KEY (id)", 0, 1);
-      alterAddPrimaryKey(stmt, "nopk2", "ADD PRIMARY KEY (id)", 0, 1);
+      alterAddPrimaryKey(stmt, "nopk",
+          "(id)",
+          0 /* expectedNumHashKeyCols */,
+          1 /* expectedNumTablets */);
+      alterAddPrimaryKey(stmt, "nopk2",
+          "(id)",
+          0 /* expectedNumHashKeyCols */,
+          1 /* expectedNumTablets */);
 
       assertRowList(stmt, "SELECT * FROM normal_table ORDER BY id", Arrays.asList(
           new Row(1),
@@ -454,6 +583,32 @@ public class TestPgAlterTableAddPrimaryKey extends BasePgSQLTest {
       assertEquals(1, getNumTablets(stmt, "normal_table"));
       assertEquals(1, getNumTablets(stmt, "nopk"));
       assertEquals(1, getNumTablets(stmt, "nopk2"));
+
+      alterDropPrimaryKey(stmt, "nopk", "nopk_pkey", 1 /* expectedNumTablets */);
+      alterDropPrimaryKey(stmt, "nopk2", "nopk2_pkey", 1 /* expectedNumTablets */);
+
+      assertRowList(stmt, "SELECT * FROM normal_table ORDER BY id", Arrays.asList(
+          new Row(1),
+          new Row(2)));
+      assertRowList(stmt, "SELECT * FROM nopk ORDER BY id", Arrays.asList(
+          new Row(3),
+          new Row(4)));
+      assertRowList(stmt, "SELECT * FROM nopk2 ORDER BY id", Arrays.asList(
+          new Row(5, 5),
+          new Row(6, 6)));
+
+      // Colocation IDs are not persisted.
+      // Colocation ID changes:
+      //   normal_table:  20001 (unchanged)
+      //   nopk:          20003 -> 20005
+      //   nopk2:         20002 -> 20003 (since 20003 was freed)
+      //   nopk2_id2_key: 20004 -> 20006
+      assertRowList(stmt, colocatedPropsSql, Arrays.asList(
+          new Row("normal_table", true, "tgroup1", 20001),
+          new Row("normal_table_pkey", null, null, null),
+          new Row("nopk", true, "tgroup1", 20005),
+          new Row("nopk2", true, "tgroup1", 20003),
+          new Row("nopk2_id2_key", true, "tgroup1", 20006)));
     }
   }
 
@@ -468,7 +623,7 @@ public class TestPgAlterTableAddPrimaryKey extends BasePgSQLTest {
       stmt.executeUpdate("INSERT INTO nopk VALUES (1, 1, 1)");
       stmt.executeUpdate("ALTER TABLE nopk DROP COLUMN drop_me");
 
-      alterAddPrimaryKey(stmt, "nopk", "ADD PRIMARY KEY (id)", 1, NUM_TABLET_SERVERS);
+      alterAddPrimaryKeyId(stmt, "nopk");
 
       assertRowList(stmt, "SELECT * FROM nopk ORDER BY id", Arrays.asList(
           new Row(1, 1)));
@@ -483,6 +638,26 @@ public class TestPgAlterTableAddPrimaryKey extends BasePgSQLTest {
           new Row(1, 1),
           new Row(2, 10),
           new Row(10, 2)));
+
+      alterDropPrimaryKey(stmt, "nopk");
+
+      stmt.executeUpdate("INSERT INTO nopk VALUES (1, 1)");
+      stmt.executeUpdate("INSERT INTO nopk (id) VALUES (3)");
+      assertRowList(stmt, "SELECT * FROM nopk ORDER BY id", Arrays.asList(
+          new Row(1, 1),
+          new Row(1, 1),
+          new Row(2, 10),
+          new Row(3, 10),
+          new Row(10, 2)));
+
+      stmt.executeUpdate("INSERT INTO nopk (v) VALUES (3)");
+      assertRowList(stmt, "SELECT * FROM nopk ORDER BY id, v", Arrays.asList(
+          new Row(1, 1),
+          new Row(1, 1),
+          new Row(2, 10),
+          new Row(3, 10),
+          new Row(10, 2),
+          new Row(10, 3)));
     }
   }
 
@@ -498,7 +673,7 @@ public class TestPgAlterTableAddPrimaryKey extends BasePgSQLTest {
       stmt.executeUpdate("ALTER TABLE nopk DROP COLUMN drop_me");
       stmt.executeUpdate("INSERT INTO nopk VALUES (1, 1, 1)");
 
-      alterAddPrimaryKey(stmt, "nopk", "ADD PRIMARY KEY (id)", 1, NUM_TABLET_SERVERS);
+      alterAddPrimaryKeyId(stmt, "nopk");
 
       assertRowList(stmt, "SELECT * FROM nopk ORDER BY id", Arrays.asList(
           new Row(1, 1, 1)));
@@ -510,7 +685,19 @@ public class TestPgAlterTableAddPrimaryKey extends BasePgSQLTest {
       runInvalidQuery(stmt, "INSERT INTO nopk VALUES (2, 2, NULL)",
           "violates not-null constraint");
 
-      assertRowList(stmt, "SELECT * FROM nopk ORDER BY id", Arrays.asList(
+      assertRowList(stmt, "SELECT * FROM nopk", Arrays.asList(
+          new Row(1, 1, 1)));
+
+      alterDropPrimaryKey(stmt, "nopk");
+
+      runInvalidQuery(stmt, "INSERT INTO nopk VALUES (0, 2, 2)",
+          "violates check constraint \"nopk_id_check\"");
+      runInvalidQuery(stmt, "INSERT INTO nopk VALUES (2, 0, 2)",
+          "violates check constraint \"nopk_v1_check\"");
+      runInvalidQuery(stmt, "INSERT INTO nopk VALUES (2, 2, NULL)",
+          "violates not-null constraint");
+
+      assertRowList(stmt, "SELECT * FROM nopk", Arrays.asList(
           new Row(1, 1, 1)));
     }
   }
@@ -535,7 +722,7 @@ public class TestPgAlterTableAddPrimaryKey extends BasePgSQLTest {
       stmt.executeUpdate("ALTER TABLE nopk DROP COLUMN drop_me");
       stmt.executeUpdate("INSERT INTO nopk VALUES (1, 1, 1, 1)");
 
-      alterAddPrimaryKey(stmt, "nopk", "ADD PRIMARY KEY (id)", 1, NUM_TABLET_SERVERS);
+      alterAddPrimaryKeyId(stmt, "nopk");
 
       assertRowList(stmt, "SELECT * FROM nopk ORDER BY id", Arrays.asList(
           new Row(1, 1, 1, 1)));
@@ -546,14 +733,37 @@ public class TestPgAlterTableAddPrimaryKey extends BasePgSQLTest {
           "violates foreign key constraint \"nopk_fk2_fkey\"");
       runInvalidQuery(stmt, "INSERT INTO nopk VALUES (2, 2, 2, 20)",
           "violates foreign key constraint \"nopk_fk2_fkey1\"");
-      stmt.executeUpdate("INSERT INTO nopk VALUES (2, 2, 2, 2)");
 
+      stmt.executeUpdate("INSERT INTO nopk VALUES (2, 2, 2, 2)");
       assertRowList(stmt, "SELECT * FROM nopk ORDER BY id", Arrays.asList(
           new Row(1, 1, 1, 1),
           new Row(2, 2, 2, 2)));
 
       runInvalidQuery(stmt, "DELETE FROM fk_ref_table WHERE id = 1",
           "violates foreign key constraint \"nopk_fk1_fkey\" on table \"nopk\"");
+
+      alterDropPrimaryKey(stmt, "nopk");
+
+      assertRowList(stmt, "SELECT * FROM nopk ORDER BY id", Arrays.asList(
+          new Row(1, 1, 1, 1),
+          new Row(2, 2, 2, 2)));
+
+      runInvalidQuery(stmt, "INSERT INTO nopk VALUES (2, 20, 2, 2)",
+          "violates foreign key constraint \"nopk_fk1_fkey\"");
+      runInvalidQuery(stmt, "INSERT INTO nopk VALUES (2, 2, 20, 2)",
+          "violates foreign key constraint \"nopk_fk2_fkey\"");
+      runInvalidQuery(stmt, "INSERT INTO nopk VALUES (2, 2, 2, 20)",
+          "violates foreign key constraint \"nopk_fk2_fkey1\"");
+
+      stmt.executeUpdate("INSERT INTO nopk VALUES (2, 2, 2, 2)");
+      assertRowList(stmt, "SELECT * FROM nopk ORDER BY id", Arrays.asList(
+          new Row(1, 1, 1, 1),
+          new Row(2, 2, 2, 2),
+          new Row(2, 2, 2, 2)));
+
+      runInvalidQuery(stmt, "DELETE FROM fk_ref_table WHERE id = 1",
+          "violates foreign key constraint \"nopk_fk1_fkey\" on table \"nopk\"");
+
     }
   }
 
@@ -579,7 +789,7 @@ public class TestPgAlterTableAddPrimaryKey extends BasePgSQLTest {
       stmt.executeUpdate("INSERT INTO referencing_table VALUES (1, 1, 1, 1, 1)");
       stmt.executeUpdate("ALTER TABLE referencing_table DROP COLUMN drop_me");
 
-      alterAddPrimaryKey(stmt, "nopk", "ADD PRIMARY KEY (id)", 1, NUM_TABLET_SERVERS);
+      alterAddPrimaryKeyId(stmt, "nopk");
 
       assertRowList(stmt, "SELECT * FROM nopk ORDER BY id", Arrays.asList(
           new Row(1, 1),
@@ -593,13 +803,33 @@ public class TestPgAlterTableAddPrimaryKey extends BasePgSQLTest {
           "violates foreign key constraint \"referencing_table_fk2_fkey\"");
       runInvalidQuery(stmt, "INSERT INTO referencing_table VALUES (2, 2, 2, 20)",
           "violates foreign key constraint \"referencing_table_fk2_fkey1\"");
-      stmt.executeUpdate("INSERT INTO referencing_table VALUES (2, 2, 2, 2)");
 
+      stmt.executeUpdate("INSERT INTO referencing_table VALUES (2, 2, 2, 2)");
       assertRowList(stmt, "SELECT * FROM referencing_table ORDER BY id", Arrays.asList(
           new Row(1, 1, 1, 1),
           new Row(2, 2, 2, 2)));
 
-      runInvalidQuery(stmt, "DELETE FROM nopk WHERE id = 1",
+      runInvalidQuery(stmt, "DELETE FROM nopk WHERE id = 2",
+          "violates foreign key constraint \"referencing_table_fk1_fkey\""
+              + " on table \"referencing_table\"");
+
+      alterDropPrimaryKey(stmt, "nopk");
+      stmt.executeUpdate("INSERT INTO nopk VALUES (3, 3)");
+
+      runInvalidQuery(stmt, "INSERT INTO referencing_table VALUES (3, 30, 3, 3)",
+          "violates foreign key constraint \"referencing_table_fk1_fkey\"");
+      runInvalidQuery(stmt, "INSERT INTO referencing_table VALUES (3, 3, 30, 3)",
+          "violates foreign key constraint \"referencing_table_fk2_fkey\"");
+      runInvalidQuery(stmt, "INSERT INTO referencing_table VALUES (3, 3, 3, 30)",
+          "violates foreign key constraint \"referencing_table_fk2_fkey1\"");
+
+      stmt.executeUpdate("INSERT INTO referencing_table VALUES (3, 3, 3, 3)");
+      assertRowList(stmt, "SELECT * FROM referencing_table ORDER BY id", Arrays.asList(
+          new Row(1, 1, 1, 1),
+          new Row(2, 2, 2, 2),
+          new Row(3, 3, 3, 3)));
+
+      runInvalidQuery(stmt, "DELETE FROM nopk WHERE id = 3",
           "violates foreign key constraint \"referencing_table_fk1_fkey\""
               + " on table \"referencing_table\"");
     }
@@ -632,7 +862,8 @@ public class TestPgAlterTableAddPrimaryKey extends BasePgSQLTest {
       assertTrue(isIndexOnlyScan(stmt, v3query, "nopk_v3_idx"));
       assertTrue(isIndexScan(stmt, v4query, "nopk_expr_idx"));
 
-      alterAddPrimaryKey(stmt, "nopk", "ADD PRIMARY KEY (id)", 1, NUM_TABLET_SERVERS);
+      // Testing with a PK added.
+      alterAddPrimaryKeyId(stmt, "nopk");
 
       assertRowList(stmt, "SELECT * FROM nopk ORDER BY id", Arrays.asList(
           new Row(1, 1, 1, 1, 1)));
@@ -651,6 +882,32 @@ public class TestPgAlterTableAddPrimaryKey extends BasePgSQLTest {
 
       assertTrue(isIndexOnlyScan(stmt, v3query, "nopk_v3_idx"));
       assertRowList(stmt, v3query, Arrays.asList(
+          new Row(1),
+          new Row(1)));
+
+      assertTrue(isIndexScan(stmt, v4query, "nopk_expr_idx"));
+      assertRowList(stmt, v4query, Arrays.asList(
+          new Row(1)));
+
+      // Testing with a PK removed.
+      alterDropPrimaryKey(stmt, "nopk");
+
+      runInvalidQuery(stmt, "INSERT INTO nopk VALUES (3, 1, 3, 3, 3)",
+          "violates unique constraint \"nopk_v1_key\"");
+
+      runInvalidQuery(stmt, "INSERT INTO nopk VALUES (3, 3, 1, 3, 3)",
+          "violates unique constraint \"nopk_v2_idx\"");
+
+      stmt.executeUpdate("INSERT INTO nopk VALUES (3, 3, 3, 1, 3)");
+
+      assertRowList(stmt, "SELECT * FROM nopk ORDER BY id", Arrays.asList(
+          new Row(1, 1, 1, 1, 1),
+          new Row(2, 2, 2, 1, 2),
+          new Row(3, 3, 3, 1, 3)));
+
+      assertTrue(isIndexOnlyScan(stmt, v3query, "nopk_v3_idx"));
+      assertRowList(stmt, v3query, Arrays.asList(
+          new Row(1),
           new Row(1),
           new Row(1)));
 
@@ -697,7 +954,12 @@ public class TestPgAlterTableAddPrimaryKey extends BasePgSQLTest {
       }
       stmt.executeUpdate("ALTER TABLE nopk DROP COLUMN drop_me");
 
-      alterAddPrimaryKey(stmt, "nopk", "ADD PRIMARY KEY (id)", 1, NUM_TABLET_SERVERS);
+      alterAddPrimaryKeyId(stmt, "nopk");
+
+      assertRowList(stmt, "SELECT * FROM nopk ORDER BY id", Arrays.asList(
+          new Row(1, 1)));
+
+      alterDropPrimaryKey(stmt, "nopk");
 
       assertRowList(stmt, "SELECT * FROM nopk ORDER BY id", Arrays.asList(
           new Row(1, 1)));
@@ -705,21 +967,14 @@ public class TestPgAlterTableAddPrimaryKey extends BasePgSQLTest {
   }
 
   @Test
-  public void secondPk() throws Exception {
-    try (Statement stmt = connection.createStatement()) {
-      stmt.executeUpdate("CREATE TABLE nopk (id int PRIMARY KEY)");
-      runInvalidQuery(stmt, "ALTER TABLE nopk ADD PRIMARY KEY (id)",
-          "multiple primary keys for table \"nopk\" are not allowed");
-    }
-  }
-
-  @Test
   public void splitInto() throws Exception {
     try (Statement stmt = connection.createStatement()) {
       stmt.executeUpdate("CREATE TABLE nopk (id int) SPLIT INTO 2 TABLETS");
-      assertEquals(2, getNumTablets(stmt, "nopk"));
-      alterAddPrimaryKey(stmt, "nopk", "ADD PRIMARY KEY (id)", 1, 2);
-      assertEquals(2, getNumTablets(stmt, "nopk"));
+      alterAddPrimaryKey(stmt, "nopk",
+          "(id)",
+          1 /* expectedNumHashKeyCols */,
+          2 /* expectedNumTablets */);
+      alterDropPrimaryKey(stmt, "nopk", "nopk_pkey", 2 /* expectedNumTablets */);
     }
   }
 
@@ -731,7 +986,10 @@ public class TestPgAlterTableAddPrimaryKey extends BasePgSQLTest {
       stmt.executeUpdate("ALTER TABLE nopk OWNER TO new_user");
       assertQuery(stmt, "SELECT pg_get_userbyid(relowner) FROM pg_class WHERE relname = 'nopk'",
           new Row("new_user"));
-      alterAddPrimaryKey(stmt, "nopk", "ADD PRIMARY KEY (id)", 1, NUM_TABLET_SERVERS);
+      alterAddPrimaryKeyId(stmt, "nopk");
+      assertQuery(stmt, "SELECT pg_get_userbyid(relowner) FROM pg_class WHERE relname = 'nopk'",
+          new Row("new_user"));
+      alterDropPrimaryKey(stmt, "nopk");
       assertQuery(stmt, "SELECT pg_get_userbyid(relowner) FROM pg_class WHERE relname = 'nopk'",
           new Row("new_user"));
     }
@@ -786,76 +1044,77 @@ public class TestPgAlterTableAddPrimaryKey extends BasePgSQLTest {
       + "ORDER BY c.oid";
 
   /**
-   * Execute ALTER TABLE with the given alter spec, ensuring everything was migrated properly.
+   * Execute ALTER TABLE ADD PK, ensuring everything was migrated properly.
    */
   private void alterAddPrimaryKey(
       Statement stmt,
       String tableName,
+      String pkSpec,
+      int expectedNumHashKeyCols,
+      int expectedNumTablets) throws Exception {
+    alterChangePrimaryKey(stmt, tableName, "ADD PRIMARY KEY " + pkSpec, AlterType.ADD_PK,
+        expectedNumHashKeyCols, expectedNumTablets);
+  }
+
+  /**
+   * Execute ALTER TABLE ADD PK (id), ensuring everything was migrated properly.
+   * <p>
+   * This abstracts the most common case for this test suite, with 1 hash key column and one tablet
+   * per tserver.
+   */
+  private void alterAddPrimaryKeyId(
+      Statement stmt,
+      String tableName) throws Exception {
+    alterAddPrimaryKey(stmt, tableName, "(id)", 1, NUM_TABLET_SERVERS);
+  }
+
+  /**
+   * Execute ALTER TABLE DROP CONSTRAINT PK, ensuring everything was migrated properly.
+   */
+  private void alterDropPrimaryKey(
+      Statement stmt,
+      String tableName,
+      String pkName,
+      int expectedNumTablets) throws Exception {
+    // We always know how many hash key columns to expect.
+    boolean isColocated = Boolean.valueOf(
+        getYbTableProperties(stmt, "'" + tableName + "'::regclass").get("is_colocated"));
+    int expectedNumHashKeyCols = isColocated ? 0 : 1;
+
+    alterChangePrimaryKey(stmt, tableName, "DROP CONSTRAINT " + pkName, AlterType.DROP_PK,
+        expectedNumHashKeyCols, expectedNumTablets);
+  }
+
+  /**
+   * Execute ALTER TABLE DROP CONSTRAINT table_pkey, ensuring everything was migrated properly.
+   * <p>
+   * This abstracts the most common case for this test suite, with one tablet per tserver.
+   */
+  private void alterDropPrimaryKey(
+      Statement stmt,
+      String tableName) throws Exception {
+    alterDropPrimaryKey(stmt, tableName, tableName + "_pkey", NUM_TABLET_SERVERS);
+  }
+
+  /**
+   * Execute ALTER TABLE with the given alter spec, ensuring everything was migrated properly.
+   * <p>
+   * Normally you'd want to use one of the helpers above.
+   */
+  private void alterChangePrimaryKey(
+      Statement stmt,
+      String tableName,
       String alterSpec,
+      AlterType alterType,
       int expectedNumHashKeyCols,
       int expectedNumTablets) throws Exception {
     String countPgClass = "SELECT COUNT(*) FROM pg_class";
-    String getTableNames = "SELECT table_name FROM information_schema.tables"
-        + " WHERE table_schema = 'public' ORDER BY table_name";
-    String getOid = "SELECT oid FROM pg_class WHERE relname = '" + tableName + "'";
-    // This query is based on pg_dump.c query, with some columns removed.
-    // We're also selecting owning_tab_name instead of owning_tab OID.
-    String getSequences = "SELECT c.oid, c.relname, "
-        + "     c.relkind, c.relnamespace, "
-        + "     (SELECT rolname FROM pg_catalog.pg_roles WHERE oid = c.relowner) AS rolname, "
-        + "     c.relchecks, c.relhastriggers, "
-        + "     c.relhasindex, c.relhasrules, c.relhasoids, "
-        + "     c.relrowsecurity, c.relforcerowsecurity, "
-        + "     c.relfrozenxid, c.relminmxid, tc.oid AS toid, "
-        + "     tc.relfrozenxid AS tfrozenxid, "
-        + "     tc.relminmxid AS tminmxid, "
-        + "     c.relpersistence, c.relispopulated, "
-        + "     c.relreplident, c.relpages, "
-        + "     CASE WHEN c.reloftype <> 0"
-        + "       THEN c.reloftype::pg_catalog.regtype ELSE NULL END"
-        + "     AS reloftype, "
-        + "     (SELECT c2.relname FROM pg_class c2 WHERE c2.oid = d.refobjid) AS owning_tab_name, "
-        + "     d.refobjsubid AS owning_col, "
-        + "     (SELECT spcname FROM pg_tablespace t WHERE t.oid = c.reltablespace)"
-        + "       AS reltablespace, "
-        + "     array_remove(array_remove(c.reloptions,'check_option=local'),"
-        + "                  'check_option=cascaded')"
-        + "     AS reloptions, "
-        + "     CASE"
-        + "       WHEN 'check_option=local' = ANY (c.reloptions)"
-        + "         THEN 'LOCAL'::text "
-        + "       WHEN 'check_option=cascaded' = ANY (c.reloptions)"
-        + "         THEN 'CASCADED'::text ELSE NULL END"
-        + "     AS checkoption, "
-        + "     tc.reloptions AS toast_reloptions, "
-        + "     c.relkind = 'S' AND EXISTS ("
-        + "       SELECT 1 FROM pg_depend"
-        + "       WHERE classid = 'pg_class'::regclass"
-        + "         AND objid = c.oid"
-        + "         AND objsubid = 0"
-        + "         AND refclassid = 'pg_class'::regclass"
-        + "         AND deptype = 'i'"
-        + "     ) AS is_identity_sequence"
-        + " FROM pg_class c "
-        + " LEFT JOIN pg_depend d"
-        + "   ON (c.relkind = 'S' AND d.classid = c.tableoid AND"
-        + "     d.objid = c.oid AND d.objsubid = 0 AND "
-        + "     d.refclassid = c.tableoid AND d.deptype IN ('a', 'i')) "
-        + " LEFT JOIN pg_class tc ON (c.reltoastrelid = tc.oid) "
-        + " LEFT JOIN pg_init_privs pip"
-        + "   ON (c.oid = pip.objoid AND"
-        + "     pip.classoid = 'pg_class'::regclass AND"
-        + "     pip.objsubid = 0) "
-        + " WHERE c.relkind in ('S') "
-        + " ORDER BY c.oid";
+    String getOid = "SELECT '" + tableName + "'::regclass::oid";
 
     // Saving stuff to verify after rename.
 
     long oldOid = getSingleRow(stmt.executeQuery(getOid)).getLong(0);
     long oldPgClassSize = getSingleRow(stmt.executeQuery(countPgClass)).getLong(0);
-
-    List<Row> oldTableNames = getRowList(stmt.executeQuery(getTableNames));
-    List<Row> oldSequences = getRowList(stmt.executeQuery(getSequences));
 
     PgSystemTableInfo oldState = new PgSystemTableInfo(stmt.getConnection(), oldOid);
 
@@ -867,12 +1126,9 @@ public class TestPgAlterTableAddPrimaryKey extends BasePgSQLTest {
 
     // Stuff targeting old OID should match the stuff targeting the new one.
 
-    // There's one more index in the pool now.
-    assertQuery(stmt, countPgClass, new Row(oldPgClassSize + 1));
-
-    // Everything else should remain as it was.
-    assertRowList(stmt, getTableNames, oldTableNames);
-    assertRowList(stmt, getSequences, oldSequences);
+    // There's one more (or one less, if PK is dropped) index in the pool now.
+    assertQuery(stmt, countPgClass,
+        new Row(alterType == AlterType.ADD_PK ? oldPgClassSize + 1 : oldPgClassSize - 1));
 
     PgSystemTableInfo newState = new PgSystemTableInfo(stmt.getConnection(), newOid);
 
@@ -896,6 +1152,9 @@ public class TestPgAlterTableAddPrimaryKey extends BasePgSQLTest {
     assertRows(oldState.indexes, newState.indexes);
     assertRows(oldState.foreignKeys, newState.foreignKeys);
     assertRows(oldState.triggers, newState.triggers);
+
+    assertRows(oldState.tableNames, newState.tableNames);
+    assertRows(oldState.sequences, newState.sequences);
 
     // Colocation ID does not persist through ALTER ADD PK.
     Map<String, String> expectedReloptions = new TreeMap<>(oldState.reloptions);
@@ -927,7 +1186,13 @@ public class TestPgAlterTableAddPrimaryKey extends BasePgSQLTest {
         getYbTableProperties(stmt, "'" + tableName + "'::regclass").get("num_tablets"));
   }
 
+  private enum AlterType {
+    ADD_PK, DROP_PK
+  }
+
   private class PgSystemTableInfo {
+
+    // Info about the table.
     Row pgClassRow;
     List<Row> attrs;
     List<Row> defaults;
@@ -935,9 +1200,13 @@ public class TestPgAlterTableAddPrimaryKey extends BasePgSQLTest {
     List<Row> indexes;
     List<Row> foreignKeys;
     List<Row> triggers;
-    Map<String, String> reloptions;
 
+    Map<String, String> reloptions;
     Map<String, String> ybProps;
+
+    // Info not tied to a specific table.
+    List<Row> tableNames;
+    List<Row> sequences;
 
     public PgSystemTableInfo(Connection conn, long oid) throws Exception {
       // Columns not selected: reltype, relhasindex, relfilenode, relpartbound,
@@ -1062,6 +1331,63 @@ public class TestPgAlterTableAddPrimaryKey extends BasePgSQLTest {
               + " WHERE tgrelid = ?::pg_catalog.oid "
               + "   AND NOT tgisinternal"
               + " ORDER BY tgfname");
+
+      String getTableNamesSql =
+          "SELECT table_name FROM information_schema.tables"
+              + " WHERE table_schema = 'public' ORDER BY table_name";
+      // This query is based on pg_dump.c query, with some columns removed.
+      // We're also selecting owning_tab_name instead of owning_tab OID.
+      String getSequencesSql =
+          "SELECT c.oid, c.relname, "
+              + "     c.relkind, c.relnamespace, "
+              + "     (SELECT rolname FROM pg_catalog.pg_roles WHERE oid = c.relowner) AS rolname, "
+              + "     c.relchecks, c.relhastriggers, "
+              + "     c.relhasindex, c.relhasrules, c.relhasoids, "
+              + "     c.relrowsecurity, c.relforcerowsecurity, "
+              + "     c.relfrozenxid, c.relminmxid, tc.oid AS toid, "
+              + "     tc.relfrozenxid AS tfrozenxid, "
+              + "     tc.relminmxid AS tminmxid, "
+              + "     c.relpersistence, c.relispopulated, "
+              + "     c.relreplident, c.relpages, "
+              + "     CASE WHEN c.reloftype <> 0"
+              + "       THEN c.reloftype::pg_catalog.regtype ELSE NULL END"
+              + "     AS reloftype, "
+              + "     (SELECT c2.relname FROM pg_class c2 WHERE c2.oid = d.refobjid)"
+              + "       AS owning_tab_name, "
+              + "     d.refobjsubid AS owning_col, "
+              + "     (SELECT spcname FROM pg_tablespace t WHERE t.oid = c.reltablespace)"
+              + "       AS reltablespace, "
+              + "     array_remove(array_remove(c.reloptions,'check_option=local'),"
+              + "                  'check_option=cascaded')"
+              + "     AS reloptions, "
+              + "     CASE"
+              + "       WHEN 'check_option=local' = ANY (c.reloptions)"
+              + "         THEN 'LOCAL'::text "
+              + "       WHEN 'check_option=cascaded' = ANY (c.reloptions)"
+              + "         THEN 'CASCADED'::text ELSE NULL END"
+              + "     AS checkoption, "
+              + "     tc.reloptions AS toast_reloptions, "
+              + "     c.relkind = 'S' AND EXISTS ("
+              + "       SELECT 1 FROM pg_depend"
+              + "       WHERE classid = 'pg_class'::regclass"
+              + "         AND objid = c.oid"
+              + "         AND objsubid = 0"
+              + "         AND refclassid = 'pg_class'::regclass"
+              + "         AND deptype = 'i'"
+              + "     ) AS is_identity_sequence"
+              + " FROM pg_class c "
+              + " LEFT JOIN pg_depend d"
+              + "   ON (c.relkind = 'S' AND d.classid = c.tableoid AND"
+              + "     d.objid = c.oid AND d.objsubid = 0 AND "
+              + "     d.refclassid = c.tableoid AND d.deptype IN ('a', 'i')) "
+              + " LEFT JOIN pg_class tc ON (c.reltoastrelid = tc.oid) "
+              + " LEFT JOIN pg_init_privs pip"
+              + "   ON (c.oid = pip.objoid AND"
+              + "     pip.classoid = 'pg_class'::regclass AND"
+              + "     pip.objsubid = 0) "
+              + " WHERE c.relkind in ('S') "
+              + " ORDER BY c.oid";
+
       List<Row> pgClassRows = execCheckQuery(getPgClassRow, oid);
       assertTrue("Table with OID " + oid + " not found!", pgClassRows.size() > 0);
       this.pgClassRow = pgClassRows.get(0);
@@ -1087,6 +1413,9 @@ public class TestPgAlterTableAddPrimaryKey extends BasePgSQLTest {
       }
 
       try (Statement stmt = conn.createStatement()) {
+        this.tableNames = getRowList(stmt.executeQuery(getTableNamesSql));
+        this.sequences  = getRowList(stmt.executeQuery(getSequencesSql));
+
         this.ybProps = getYbTableProperties(stmt, String.valueOf(oid));
       }
     }

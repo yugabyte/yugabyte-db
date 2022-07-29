@@ -31,7 +31,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.junit.Test;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
-import play.modules.swagger.SwaggerModule;
 
 @Slf4j
 public class TransactionUtilTest extends PlatformGuiceApplicationBaseTest {
@@ -43,10 +42,7 @@ public class TransactionUtilTest extends PlatformGuiceApplicationBaseTest {
     mockConfig = mock(Config.class);
     when(mockConfig.getString(anyString())).thenReturn("");
     return super.configureApplication(
-            new GuiceApplicationBuilder()
-                .disable(SwaggerModule.class)
-                .disable(GuiceModule.class)
-                .configure(testDatabase()))
+            new GuiceApplicationBuilder().disable(GuiceModule.class).configure(testDatabase()))
         .overrides(
             bind(RuntimeConfigFactory.class)
                 .toInstance(new DummyRuntimeConfigFactoryImpl(mockConfig)))
