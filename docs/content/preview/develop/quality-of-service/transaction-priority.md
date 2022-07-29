@@ -192,15 +192,15 @@ The following is another example which demonstrates the usage of `yb_transaction
    ```output
              yb_transaction_priority
    -------------------------------------------
-    0.620638447 (Normal priority transaction)
+     0.537144608 (Normal priority transaction)
    (1 row)
    ```
 
-1. In the next transaction block, perform a `SELECT` which results in a high priority transaction.
+1. In the next transaction block, perform a `SELECT ... FOR UPDATE`, which results in a high priority transaction.
 
    ```sql
-   set yb_transaction_priority_lower_bound = 0.4;
    set yb_transaction_priority_upper_bound = 0.4;
+   set yb_transaction_priority_lower_bound = 0.1;
    BEGIN TRANSACTION;
    SELECT i, j FROM test_scan WHERE i = 1 FOR UPDATE;
    show yb_transaction_priority;
@@ -210,11 +210,13 @@ The following is another example which demonstrates the usage of `yb_transaction
    ```output
        yb_transaction_priority
    -------------------------------------------
-    0.400000000 (High priority transaction)
+   0.169562455 (High priority transaction)
    (1 row)
    ```
 
-1. In the final transaction block, set a higher `yb_transaction_priority_upper_bound` and `yb_transaction_priority_lower_bound` value, and perform the same `SELECT` query as the previous one. This transaction type is of the highest priority.
+   As seen from the resulting _High priority transaction_ value above, it is randomly chosen between the lower and upper bound.
+
+1. In the final transaction block, set `yb_transaction_priority_upper_bound` and `yb_transaction_priority_lower_bound` to be 1, and perform the same `SELECT ... FOR UPDATE` query as the previous one. This transaction type is of the highest priority.
 
    ```sql
    set yb_transaction_priority_upper_bound = 1;
