@@ -24,6 +24,9 @@
 #include "yb/gutil/strings/ascii_ctype.h"
 #include "yb/gutil/strings/escaping.h"
 
+using std::vector;
+using std::string;
+
 // ----------------------------------------------------------------------
 // JoinUsing()
 //    This merges a vector of string components with delim inserted

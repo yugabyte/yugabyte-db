@@ -50,12 +50,9 @@
 #endif
 
 #include <functional>
-using std::binary_function;
-using std::less;
 #include <string>
-using std::string;
+
 #include <vector>
-using std::vector;
 
 #include "yb/gutil/integral_types.h"
 #include "yb/gutil/port.h"
@@ -263,7 +260,7 @@ inline ptrdiff_t strcount(const char* buf, size_t len, char c) {
   return strcount(buf, buf + len, c);
 }
 // Returns the number of times a character occurs in a string for a C++ string:
-inline ptrdiff_t strcount(const string& buf, char c) {
+inline ptrdiff_t strcount(const std::string& buf, char c) {
   return strcount(buf.c_str(), buf.size(), c);
 }
 
@@ -355,11 +352,11 @@ size_t strlcpy(char* dst, const char* src, size_t dst_size);
 // Replaces the first occurrence (if replace_all is false) or all occurrences
 // (if replace_all is true) of oldsub in s with newsub. In the second version,
 // *res must be distinct from all the other arguments.
-string StringReplace(const GStringPiece& s, const GStringPiece& oldsub,
-                     const GStringPiece& newsub, bool replace_all);
+std::string StringReplace(const GStringPiece& s, const GStringPiece& oldsub,
+                          const GStringPiece& newsub, bool replace_all);
 void StringReplace(const GStringPiece& s, const GStringPiece& oldsub,
                    const GStringPiece& newsub, bool replace_all,
-                   string* res);
+                   std::string* res);
 
 // Replaces all occurrences of substring in s with replacement. Returns the
 // number of instances replaced. s must be distinct from the other arguments.
@@ -367,12 +364,12 @@ void StringReplace(const GStringPiece& s, const GStringPiece& oldsub,
 // Less flexible, but faster, than RE::GlobalReplace().
 int GlobalReplaceSubstring(const GStringPiece& substring,
                            const GStringPiece& replacement,
-                           string* s);
+                           std::string* s);
 
 // Removes v[i] for every element i in indices. Does *not* preserve the order of
 // v. indices must be sorted in strict increasing order (no duplicates). Runs in
 // O(indices.size()).
-void RemoveStrings(vector<string>* v, const vector<size_t>& indices);
+void RemoveStrings(std::vector<std::string>* v, const std::vector<size_t>& indices);
 
 // Case-insensitive strstr(); use system strcasestr() instead.
 // WARNING: Removes const-ness of string argument!
@@ -419,7 +416,7 @@ const char* strstr_delimited(const char* haystack,
 char* gstrsep(char** stringp, const char* delim);
 
 // Appends GStringPiece(data, len) to *s.
-void FastStringAppend(string* s, const char* data, size_t len);
+void FastStringAppend(std::string* s, const char* data, size_t len);
 
 // Returns a duplicate of the_string, with memory allocated by new[].
 char* strdup_with_new(const char* the_string);
@@ -473,12 +470,12 @@ bool FindTagValuePair(const char* in_str, char tag_value_separator,
 
 // Inserts separator after every interval characters in *s (but never appends to
 // the end of the original *s).
-void UniformInsertString(string* s, int interval, const char* separator);
+void UniformInsertString(std::string* s, int interval, const char* separator);
 
 // Inserts separator into s at each specified index. indices must be sorted in
 // ascending order.
 void InsertString(
-    string* s, const vector<uint32>& indices, char const* separator);
+    std::string* s, const std::vector<uint32>& indices, char const* separator);
 
 // Finds the nth occurrence of c in n; returns the index in s of that
 // occurrence, or string::npos if fewer than n occurrences.
@@ -504,6 +501,6 @@ int SafeSnprintf(char* str, size_t size, const char* format, ...)
 // Reads a line (terminated by delim) from file into *str. Reads delim from
 // file, but doesn't copy it into *str. Returns true if read a delim-terminated
 // line, or false on end-of-file or error.
-bool GetlineFromStdioFile(FILE* file, string* str, char delim);
+bool GetlineFromStdioFile(FILE* file, std::string* str, char delim);
 
 #endif  // YB_GUTIL_STRINGS_UTIL_H

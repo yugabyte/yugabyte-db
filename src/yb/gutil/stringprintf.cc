@@ -21,6 +21,7 @@
 #include <stdarg.h> // For va_list and related operations
 #include <stdio.h> // MSVC requires this for _vsnprintf
 
+#include <string>
 #include <vector>
 
 #include <glog/logging.h>
@@ -28,6 +29,7 @@
 #include "yb/gutil/macros.h"
 
 using std::vector;
+using std::string;
 
 #ifdef _MSC_VER
 enum { IS__MSC_VER = 1 };

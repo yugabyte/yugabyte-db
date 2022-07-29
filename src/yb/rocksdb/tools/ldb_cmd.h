@@ -50,7 +50,7 @@
 #include "yb/util/string_util.h"
 #include "yb/rocksutil/rocksdb_encrypted_file_factory.h"
 
-using std::string;
+
 using std::map;
 using std::vector;
 using std::ostringstream;

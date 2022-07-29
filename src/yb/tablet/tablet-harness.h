@@ -49,7 +49,7 @@
 #include "yb/util/metrics.h"
 #include "yb/util/status_log.h"
 
-using std::string;
+
 using std::vector;
 
 namespace yb {

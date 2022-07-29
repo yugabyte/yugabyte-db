@@ -68,7 +68,7 @@ using std::binary_function;
 using std::less;
 using std::back_insert_iterator;
 using std::iterator_traits;
-using std::string;
+
 using std::vector;
 
 

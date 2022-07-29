@@ -66,7 +66,7 @@ METRIC_DECLARE_entity(tablet);
 DECLARE_bool(quick_leader_election_on_create);
 
 using std::shared_ptr;
-using std::string;
+
 
 namespace yb {
 namespace tserver {

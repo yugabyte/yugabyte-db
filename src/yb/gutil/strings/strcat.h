@@ -22,7 +22,7 @@
 #define YB_GUTIL_STRINGS_STRCAT_H
 
 #include <string>
-using std::string;
+
 
 #include "yb/gutil/integral_types.h"
 #include "yb/gutil/strings/numbers.h"
