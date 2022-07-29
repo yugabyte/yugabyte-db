@@ -75,6 +75,10 @@ Status ReloadSecureContextKeysAndCertificates(
 
 void ApplySecureContext(const rpc::SecureContext* context, rpc::MessengerBuilder* builder);
 
+bool IsNodeToNodeEncryptionEnabled();
+
+bool IsClientToServerEncryptionEnabled();
+
 } // namespace server
 } // namespace yb
 

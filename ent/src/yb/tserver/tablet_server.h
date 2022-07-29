@@ -52,6 +52,7 @@ class TabletServer : public yb::tserver::TabletServer {
   CDCConsumer* GetCDCConsumer();
 
   Status ReloadKeysAndCertificates() override;
+  std::string GetCertificateDetails() override;
 
   void RegisterCertificateReloader(CertificateReloader reloader) override;
 

@@ -180,6 +180,12 @@ Status TabletServer::ReloadKeysAndCertificates() {
   return Status::OK();
 }
 
+std::string TabletServer::GetCertificateDetails() {
+  if(!secure_context_) return "";
+
+  return secure_context_.get()->GetCertificateDetails();
+}
+
 void TabletServer::RegisterCertificateReloader(CertificateReloader reloader) {
   certificate_reloaders_.push_back(std::move(reloader));
 }

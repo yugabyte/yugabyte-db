@@ -80,6 +80,14 @@ string CertsDir(const std::string& root_dir, SecureContextType type) {
 
 } // namespace
 
+bool IsNodeToNodeEncryptionEnabled() {
+  return FLAGS_use_node_to_node_encryption;
+}
+
+bool IsClientToServerEncryptionEnabled() {
+  return FLAGS_use_client_to_server_encryption;
+}
+
 string DefaultCertsDir(const FsManager& fs_manager) {
   return fs_manager.GetCertsDir(fs_manager.GetDefaultRootDir());
 }
