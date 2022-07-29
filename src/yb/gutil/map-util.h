@@ -736,7 +736,7 @@ void AppendKeysFromMap(const MapContainer& map_container,
 // without the complexity of a SFINAE-based solution.)
 template <class MapContainer, class KeyType>
 void AppendKeysFromMap(const MapContainer& map_container,
-                       vector<KeyType>* key_container) {
+                       std::vector<KeyType>* key_container) {
   CHECK(key_container != NULL);
   // We now have the opportunity to call reserve(). Calling reserve() every
   // time is a bad idea for some use cases: libstdc++'s implementation of
@@ -780,7 +780,7 @@ void AppendValuesFromMap(const MapContainer& map_container,
 // without the complexity of a SFINAE-based solution.)
 template <class MapContainer, class ValueType>
 void AppendValuesFromMap(const MapContainer& map_container,
-                         vector<ValueType>* value_container) {
+                         std::vector<ValueType>* value_container) {
   CHECK(value_container != NULL);
   // See AppendKeysFromMap for why this is done.
   if (value_container->empty()) {

@@ -177,7 +177,7 @@ class BufferAllocator {
   // For unbounded allocators (like raw HeapBufferAllocator) this is the highest
   // size_t value possible.
   // TODO(user): consider making pure virtual.
-  virtual size_t Available() const { return numeric_limits<size_t>::max(); }
+  virtual size_t Available() const { return std::numeric_limits<size_t>::max(); }
 
  protected:
   friend class Buffer;
@@ -250,7 +250,7 @@ class HeapBufferAllocator : public BufferAllocator {
   }
 
   virtual size_t Available() const override {
-    return numeric_limits<size_t>::max();
+    return std::numeric_limits<size_t>::max();
   }
 
  private:
@@ -326,7 +326,7 @@ class Mediator {
   virtual void Free(size_t amount) = 0;
 
   // TODO(user): consider making pure virtual.
-  virtual size_t Available() const { return numeric_limits<size_t>::max(); }
+  virtual size_t Available() const { return std::numeric_limits<size_t>::max(); }
 };
 
 // Optionally thread-safe skeletal implementation of a 'quota' abstraction,
@@ -902,7 +902,7 @@ size_t Quota<thread_safe>::Allocate(const size_t requested,
   size_t allocation;
   if (usage_ > quota || minimal > quota - usage_) {
     // OOQ (Out of quota).
-    if (!enforced() && minimal <= numeric_limits<size_t>::max() - usage_) {
+    if (!enforced() && minimal <= std::numeric_limits<size_t>::max() - usage_) {
       // The quota is unenforced and the value of "minimal" won't cause an
       // overflow. Perform a minimal allocation.
       allocation = minimal;
@@ -930,7 +930,7 @@ void Quota<thread_safe>::Free(size_t amount) {
   usage_ -= amount;
   // threads allocate/free memory concurrently via the same Quota object that is
   // not protected with a mutex (thread_safe == false).
-  if (usage_ > (numeric_limits<size_t>::max() - (1 << 28))) {
+  if (usage_ > (std::numeric_limits<size_t>::max() - (1 << 28))) {
     LOG(ERROR) << "Suspiciously big usage_ value: " << usage_
                << " (could be a result size_t wrapping around below 0, "
                << "for example as a result of race condition).";
