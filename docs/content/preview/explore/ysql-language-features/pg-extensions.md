@@ -29,7 +29,7 @@ For information about using a specific extension in YugabyteDB, follow the Examp
 
 | Extension | Status | Description | Examples |
 | :-------- | :----- | :---------- | :------ |
-| **PostgreSQL modules** |
+| [PostgreSQL modules](https://www.postgresql.org/docs/11/contrib.html) |
 | [fuzzystrmatch](https://www.postgresql.org/docs/11/fuzzystrmatch.html) | Pre-bundled | Provides several functions to determine similarities and distance between strings. | [Example](#fuzzystrmatch-example) |
 | [pgcrypto](https://www.postgresql.org/docs/11/pgcrypto.html)| Pre-bundled | Provides various cryptographic functions. | [Example](#pgcrypto-example) |
 | [pg_stat_statements](https://www.postgresql.org/docs/11/pgstatstatements.html)| Pre-bundled| Provides a means for tracking execution statistics of all SQL statements executed by a server. | [Example](#pg-stat-statements-example) |
@@ -382,6 +382,27 @@ IMPORT FOREIGN SCHEMA foreign_schema_name FROM SERVER my_server INTO local_schem
 
 You can execute SELECT statements on the foreign tables to access the data in the corresponding remote tables.
 
+### uuid-ossp example
+
+First, install the extension:
+
+```sql
+CREATE EXTENSION "uuid-ossp";
+```
+
+Connect using `ysqlsh` and run the following:
+
+```sql
+SELECT uuid_generate_v1(), uuid_generate_v4(), uuid_nil();
+```
+
+```output
+           uuid_generate_v1           |           uuid_generate_v4           |               uuid_nil
+--------------------------------------+--------------------------------------+--------------------------------------
+ 69975ce4-d827-11e9-b860-bf2e5a7e1380 | 088a9b6c-46d8-4276-852b-64908b06a503 | 00000000-0000-0000-0000-000000000000
+(1 row)
+```
+
 ### postgresql-hll example
 
 First, install `postgres-hll` [from source](https://github.com/citusdata/postgresql-hll#from-source) locally in a PostgreSQL instance. Use the same PostgreSQL version as that incorporated into YugabyteDB.
@@ -417,27 +438,6 @@ yugabyte=# SELECT hll_cardinality(set) FROM helloworld WHERE id = 1;
  hll_cardinality
 -----------------
                2
-(1 row)
-```
-
-### uuid-ossp example
-
-First, install the extension:
-
-```sql
-CREATE EXTENSION "uuid-ossp";
-```
-
-Connect using `ysqlsh` and run the following:
-
-```sql
-SELECT uuid_generate_v1(), uuid_generate_v4(), uuid_nil();
-```
-
-```output
-           uuid_generate_v1           |           uuid_generate_v4           |               uuid_nil
---------------------------------------+--------------------------------------+--------------------------------------
- 69975ce4-d827-11e9-b860-bf2e5a7e1380 | 088a9b6c-46d8-4276-852b-64908b06a503 | 00000000-0000-0000-0000-000000000000
 (1 row)
 ```
 
