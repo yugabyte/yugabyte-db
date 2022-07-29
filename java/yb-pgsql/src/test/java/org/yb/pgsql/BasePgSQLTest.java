@@ -1700,6 +1700,33 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     }
   }
 
+  /**
+   * @param statement The statement used to execute the query.
+   * @param query The query string.
+   * @param errorSubstrings An array of (case-insensitive) substrings of the
+   * expected error messages.
+   */
+  protected void runInvalidQuery(Statement statement, String query, String[] errorSubstrings) {
+    try {
+      statement.execute(query);
+      fail(String.format("Statement did not fail: %s", query));
+    } catch (SQLException e) {
+      for (String errorSubstring : errorSubstrings) {
+        if (StringUtils.containsIgnoreCase(e.getMessage(), errorSubstring)) {
+          LOG.info("Expected exception", e);
+          return;
+        }
+      }
+      String faillMessage = "Unexpected Error Message. Got: '" + e.getMessage() +
+          "', Expected to contain one of the error messages: ";
+      for (int i = 0; i < errorSubstrings.length-1; i++) {
+        faillMessage.concat("'").concat(errorSubstrings[i]).concat("', ");
+      }
+      faillMessage.concat("'").concat(errorSubstrings[errorSubstrings.length-1]).concat("'.");
+      fail(faillMessage);
+    }
+  }
+
   protected void runInvalidSystemQuery(Statement stmt, String query, String errorSubstring)
       throws Exception {
     systemTableQueryHelper(stmt, () -> {
