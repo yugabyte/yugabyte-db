@@ -32,6 +32,8 @@
 // Simple protoc plugin which inserts some code at the top of each generated protobuf.
 // Currently, this just adds an include of protobuf-annotations.h, a file which hooks up
 // the protobuf concurrency annotations to our TSAN annotations.
+#include <string>
+
 #include <google/protobuf/compiler/code_generator.h>
 #include <google/protobuf/compiler/plugin.h>
 #include <google/protobuf/descriptor.h>
@@ -40,6 +42,8 @@
 
 #include "yb/gutil/strings/strip.h"
 #include "yb/gutil/strings/substitute.h"
+
+using std::string;
 
 using google::protobuf::io::ZeroCopyOutputStream;
 using google::protobuf::io::Printer;

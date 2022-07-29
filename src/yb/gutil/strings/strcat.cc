@@ -22,8 +22,12 @@
 #include <stdio.h>
 #include <string.h>
 
+#include <string>
+
 #include <glog/logging.h>
 #include "yb/gutil/stl_util.h"
+
+using std::string;
 
 AlphaNum gEmptyAlphaNum("");
 

@@ -34,6 +34,7 @@
 #include "yb/gutil/utf/utf.h"  // for runetochar
 
 using std::numeric_limits;
+using std::string;
 using std::vector;
 
 

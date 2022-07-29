@@ -387,24 +387,24 @@ struct strict_autodigit_greater
 // ----------------------------------------------------------------------
 inline std::string SimpleItoa(int32 i) {
   char buf[16];  // Longest is -2147483648
-  return string(buf, FastInt32ToBufferLeft(i, buf));
+  return std::string(buf, FastInt32ToBufferLeft(i, buf));
 }
 
 // We need this overload because otherwise SimpleItoa(5U) wouldn't compile.
 inline std::string SimpleItoa(uint32 i) {
   char buf[16];  // Longest is 4294967295
-  return string(buf, FastUInt32ToBufferLeft(i, buf));
+  return std::string(buf, FastUInt32ToBufferLeft(i, buf));
 }
 
 inline std::string SimpleItoa(int64 i) {
   char buf[32];  // Longest is -9223372036854775808
-  return string(buf, FastInt64ToBufferLeft(i, buf));
+  return std::string(buf, FastInt64ToBufferLeft(i, buf));
 }
 
 // We need this overload because otherwise SimpleItoa(5ULL) wouldn't compile.
 inline std::string SimpleItoa(uint64 i) {
   char buf[32];  // Longest is 18446744073709551615
-  return string(buf, FastUInt64ToBufferLeft(i, buf));
+  return std::string(buf, FastUInt64ToBufferLeft(i, buf));
 }
 
 // SimpleAtoi converts a string to an integer.

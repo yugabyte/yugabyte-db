@@ -319,7 +319,7 @@ inline bool IsAscii(const GStringPiece& str) {
 //
 // WARNING: Transforms "" -> "\0"; this doesn't account for Bigtable's special
 // treatment of "" as infinity.
-string ImmediateSuccessor(const GStringPiece& s);
+std::string ImmediateSuccessor(const GStringPiece& s);
 
 // Copies at most n-1 bytes from src to dest, and returns dest. If n >=1, null
 // terminates dest; otherwise, returns dest unchanged. Unlike strncpy(), only

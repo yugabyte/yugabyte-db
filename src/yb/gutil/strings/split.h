@@ -36,28 +36,13 @@
 
 #include <stddef.h>
 #include <algorithm>
-using std::copy;
-using std::max;
-using std::min;
-using std::reverse;
-using std::sort;
-using std::swap;
 #include <iterator>
-using std::back_insert_iterator;
-using std::iterator_traits;
 #include <map>
-using std::map;
-using std::multimap;
 #include <set>
-using std::multiset;
-using std::set;
 #include <string>
 
 #include <utility>
-using std::make_pair;
-using std::pair;
 #include <vector>
-using std::vector;
 
 #include <glog/logging.h>
 
@@ -364,7 +349,7 @@ class Literal {
   GStringPiece Find(GStringPiece text) const;
 
  private:
-  const string delimiter_;
+  const std::string delimiter_;
 };
 
 // Represents a delimiter that will match any of the given byte-sized
@@ -391,7 +376,7 @@ class AnyOf {
   GStringPiece Find(GStringPiece text) const;
 
  private:
-  const string delimiters_;
+  const std::string delimiters_;
 };
 
 // Wraps another delimiter and sets a max number of matches for that delimiter.
@@ -435,7 +420,7 @@ inline LimitImpl<Literal> Limit(const char* s, size_t limit) {
   return LimitImpl<Literal>(Literal(s), limit);
 }
 
-inline LimitImpl<Literal> Limit(const string& s, size_t limit) {
+inline LimitImpl<Literal> Limit(const std::string& s, size_t limit) {
   return LimitImpl<Literal>(Literal(s), limit);
 }
 
@@ -508,7 +493,7 @@ inline internal::Splitter<delimiter::Literal> Split(
 }
 
 inline internal::Splitter<delimiter::Literal> Split(
-    GStringPiece text, const string& delimiter) {
+    GStringPiece text, const std::string& delimiter) {
   return internal::Splitter<delimiter::Literal>(
       text, delimiter::Literal(delimiter));
 }
@@ -529,7 +514,7 @@ inline internal::Splitter<delimiter::Literal, Predicate> Split(
 
 template <typename Predicate>
 inline internal::Splitter<delimiter::Literal, Predicate> Split(
-    GStringPiece text, const string& delimiter, Predicate p) {
+    GStringPiece text, const std::string& delimiter, Predicate p) {
   return internal::Splitter<delimiter::Literal, Predicate>(
       text, delimiter::Literal(delimiter), p);
 }
@@ -581,7 +566,7 @@ void ClipString(char* str, size_t max_len);
 //    Version of ClipString() that uses string instead of char*.
 //    NOTE: See comment above.
 // ----------------------------------------------------------------------
-void ClipString(string* full_str, size_t max_len);
+void ClipString(std::string* full_str, size_t max_len);
 
 // ----------------------------------------------------------------------
 // SplitStringToLines() Split a string into lines of maximum length
@@ -595,7 +580,7 @@ void ClipString(string* full_str, size_t max_len);
 void SplitStringToLines(const char* full,
                         size_t max_len,
                         size_t num_lines,
-                        vector<string>* result);
+                        std::vector<std::string>* result);
 
 // ----------------------------------------------------------------------
 // SplitOneStringToken()
@@ -615,7 +600,7 @@ void SplitStringToLines(const char* full,
 //     // r = "abc"
 //     // s points to ";de"
 // ----------------------------------------------------------------------
-string SplitOneStringToken(const char** source, const char* delim);
+std::string SplitOneStringToken(const char** source, const char* delim);
 
 // ----------------------------------------------------------------------
 // SplitUsing()
@@ -626,7 +611,7 @@ string SplitOneStringToken(const char** source, const char* delim);
 //    Use SplitToVector with last argument 'false' if you want the
 //    empty fields.
 //    ----------------------------------------------------------------------
-vector<char*>* SplitUsing(char* full, const char* delimiters);
+std::vector<char*>* SplitUsing(char* full, const char* delimiters);
 
 // ----------------------------------------------------------------------
 // SplitToVector()
@@ -684,17 +669,17 @@ void SplitGStringPieceToVector(const GStringPiece& full,
 // For even better performance, store the result in a vector<GStringPiece>
 // to avoid string copies.
 // ----------------------------------------------------------------------
-void SplitStringUsing(const string& full, const char* delimiters,
-                      vector<string>* result);
-void SplitStringToSetUsing(const string& full, const char* delimiters,
-                           set<string>* result);
+void SplitStringUsing(const std::string& full, const char* delimiters,
+                      std::vector<std::string>* result);
+void SplitStringToSetUsing(const std::string& full, const char* delimiters,
+                           std::set<std::string>* result);
 // The even-positioned (0-based) components become the keys for the
 // odd-positioned components that follow them. When there is an odd
 // number of components, the value for the last key will be unchanged
 // if the key was already present in the hash table, or will be the
 // empty string if the key is a newly inserted key.
-void SplitStringToMapUsing(const string& full, const char* delim,
-                           map<string, string>* result);
+void SplitStringToMapUsing(const std::string& full, const char* delim,
+                           std::map<std::string, std::string>* result);
 
 // ----------------------------------------------------------------------
 // SplitStringAllowEmpty()
@@ -716,8 +701,8 @@ void SplitStringToMapUsing(const string& full, const char* delim,
 // For even better performance, store the result in a vector<GStringPiece> to
 // avoid string copies.
 // ----------------------------------------------------------------------
-void SplitStringAllowEmpty(const string& full, const char* delim,
-                           vector<string>* result);
+void SplitStringAllowEmpty(const std::string& full, const char* delim,
+                           std::vector<std::string>* result);
 
 // ----------------------------------------------------------------------
 // SplitStringWithEscaping()
@@ -737,15 +722,15 @@ void SplitStringAllowEmpty(const string& full, const char* delim,
 //
 //   All versions other than "AllowEmpty" discard any empty substrings.
 // ----------------------------------------------------------------------
-void SplitStringWithEscaping(const string& full,
+void SplitStringWithEscaping(const std::string& full,
                              const strings::CharSet& delimiters,
-                             vector<string>* result);
-void SplitStringWithEscapingAllowEmpty(const string& full,
+                             std::vector<std::string>* result);
+void SplitStringWithEscapingAllowEmpty(const std::string& full,
                                        const strings::CharSet& delimiters,
-                                       vector<string>* result);
-void SplitStringWithEscapingToSet(const string& full,
+                                       std::vector<std::string>* result);
+void SplitStringWithEscapingToSet(const std::string& full,
                                   const strings::CharSet& delimiters,
-                                  set<string>* result);
+                                  std::set<std::string>* result);
 
 // ----------------------------------------------------------------------
 // SplitStringIntoNPiecesAllowEmpty()
@@ -760,10 +745,10 @@ void SplitStringWithEscapingToSet(const string& full,
 //
 //    If "full" is the empty string, yields an empty string as the only value.
 // ----------------------------------------------------------------------
-void SplitStringIntoNPiecesAllowEmpty(const string& full,
+void SplitStringIntoNPiecesAllowEmpty(const std::string& full,
                                       const char* delimiters,
                                       size_t pieces,
-                                      vector<string>* result);
+                                      std::vector<std::string>* result);
 
 // ----------------------------------------------------------------------
 // SplitStringAndParse()
