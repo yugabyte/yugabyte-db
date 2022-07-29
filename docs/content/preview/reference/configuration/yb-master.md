@@ -183,7 +183,7 @@ Default: `""`
 
 {{< note title="Note" >}}
 
-Ensure that `enable_ysql` in `yb-master` configurations match the values in `yb-tserver` configurations.
+Ensure that `enable_ysql` values in `yb-master` configurations match the values in `yb-tserver` configurations.
 
 {{< /note >}}
 
