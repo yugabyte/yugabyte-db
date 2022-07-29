@@ -440,7 +440,7 @@ class MediatingBufferAllocator : public BufferAllocator {
   virtual ~MediatingBufferAllocator() {}
 
   virtual size_t Available() const override {
-    return min(delegate_->Available(), mediator_->Available());
+    return std::min(delegate_->Available(), mediator_->Available());
   }
 
  private:
@@ -531,7 +531,7 @@ class SoftQuotaBypassingBufferAllocator : public BufferAllocator {
     const size_t usage = allocator_.GetUsage();
     size_t available = allocator_.Available();
     if (bypassed_amount_ > usage) {
-      available = max(bypassed_amount_ - usage, available);
+      available = std::max(bypassed_amount_ - usage, available);
     }
     return available;
   }
@@ -543,7 +543,7 @@ class SoftQuotaBypassingBufferAllocator : public BufferAllocator {
   // with increased minimal size is more likely to fail because of exceeding
   // hard quota, so we also fall back to the original minimal size.
   size_t AdjustMinimal(size_t requested, size_t minimal) const {
-    return min(requested, max(minimal, Available()));
+    return std::min(requested, std::max(minimal, Available()));
   }
 
   virtual Buffer AllocateInternal(size_t requested,
@@ -838,7 +838,7 @@ class OwningBufferAllocator : public BufferAllocator {
 
   // Not using PointerVector here because we want to guarantee certain order of
   // deleting elements (starting from the ones added last).
-  vector<OwnedType*> owned_;
+  std::vector<OwnedType*> owned_;
   BufferAllocator* delegate_;
 };
 
