@@ -27,8 +27,5 @@ helm upgrade yw-test yugabytedb/yugaware --version 2.13.0 -n yb-platform --reuse
 
 If you do not wish to port your overrides, do not include `reuse-values`. Instead, you may choose to pass your existing overrides file by adding `--values custom-values.yaml` to your command during the upgrade.
 
-{{< note title="Note" >}}
+If you have upgraded YugabyteDB Anywhere to version 2.12 or later and asynchronous replication for your universe was set up via `yb-admin` instead of the UI, follow the instructions provided in [Synchronize replication after upgrade](../upgrade-yp-xcluster-ybadmin/).
 
-If you set up xCluster replication using yb-admin (instead of via the Platform UI) and upgrade Platform to 2.12+, you need to synchronize xCluster replication by running the [Sync xcluster config](https://api-docs.yugabyte.com/docs/yugabyte-platform/e19b528a55430-sync-xcluster-config) API call after upgrading. Refer to [Synchronize xCluster replication](../upgrade-yp-replicated/#synchronize-xcluster-replication).
-
-{{< /note >}}

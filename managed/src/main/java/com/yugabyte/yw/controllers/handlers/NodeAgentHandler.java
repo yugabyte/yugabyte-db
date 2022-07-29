@@ -58,11 +58,11 @@ public class NodeAgentHandler {
   public static final String NODE_AGENT_USER_ID_CLAIM = "userId";
   public static final String NODE_AGENT_CUSTOMER_ID_CLAIM = "customerId";
   public static final String CLAIM_SESSION_PROPERTY = "jwt-claims";
+  public static final String UPGRADE_CHECK_INTERVAL_PROPERTY =
+      "yb.node_agent.upgrade_check_interval";
+  public static final Duration UPDATER_SERVICE_INITIAL_DELAY = Duration.ofMinutes(1);
 
   public static final int CERT_EXPIRY_YEARS = 5;
-
-  public static final Duration UPDATER_SERVICE_INITIAL_DELAY = Duration.ofMinutes(1);
-  public static final Duration UPDATER_SERVICE_INTERVAL = Duration.ofMinutes(10);
 
   public static final Set<State> UPDATABLE_STATES_BY_NODE_AGENT =
       ImmutableSet.<State>builder().add(State.UPGRADING, State.LIVE).build();
@@ -77,10 +77,20 @@ public class NodeAgentHandler {
     this.appConfig = appConfig;
     this.configHelper = configHelper;
     this.platformScheduler = platformScheduler;
-    this.platformScheduler.schedule(
+  }
+
+  /** Starts background tasks. */
+  public void init() {
+    Duration checkInterval = appConfig.getDuration(UPGRADE_CHECK_INTERVAL_PROPERTY);
+    if (checkInterval.isZero()) {
+      throw new IllegalArgumentException(
+          String.format("%s cannot be 0", UPGRADE_CHECK_INTERVAL_PROPERTY));
+    }
+    log.info("Scheduling updater service");
+    platformScheduler.schedule(
         NodeAgentHandler.class.getSimpleName(),
         UPDATER_SERVICE_INITIAL_DELAY,
-        UPDATER_SERVICE_INTERVAL,
+        checkInterval,
         this::updaterService);
   }
 

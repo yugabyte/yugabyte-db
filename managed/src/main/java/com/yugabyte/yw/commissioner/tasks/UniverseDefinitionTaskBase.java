@@ -6,6 +6,7 @@ import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.HookInserter;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
@@ -18,6 +19,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteClusterFromUniverse;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PrecheckNode;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PreflightNodeCheck;
+import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseTags;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForMasterLeader;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
@@ -645,7 +647,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * @param nodes : a collection of nodes that need to be updated.
    * @param deleteTags : csv version of keys of tags to be deleted, if any.
    */
-  public void createUpdateInstanceTagsTasks(Collection<NodeDetails> nodes, String deleteTags) {
+  public void createUpdateInstanceTagsTasks(
+      Collection<NodeDetails> nodes, Map<String, String> tagsToSet, String deleteTags) {
     SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("InstanceActions", executor);
     for (NodeDetails node : nodes) {
       InstanceActions.Params params = new InstanceActions.Params();
@@ -658,6 +661,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.azUuid = node.azUuid;
       // Add delete tags info.
       params.deleteTags = deleteTags;
+      // Add needed tags.
+      params.tags = tagsToSet;
       // Create and add a task for this node.
       InstanceActions task = createTask(InstanceActions.class);
       task.initialize(params);
@@ -1729,5 +1734,21 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     }
 
     return params;
+  }
+
+  protected TaskExecutor.SubTaskGroup createUpdateUniverseTagsTask(
+      Cluster cluster, Map<String, String> instanceTags) {
+    TaskExecutor.SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup("InstanceActions", executor);
+    UpdateUniverseTags.Params params = new UpdateUniverseTags.Params();
+    params.universeUUID = taskParams().universeUUID;
+    params.clusterUUID = cluster.uuid;
+    params.instanceTags = instanceTags;
+    UpdateUniverseTags task = createTask(UpdateUniverseTags.class);
+    task.initialize(params);
+    task.setUserTaskUUID(userTaskUUID);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
   }
 }

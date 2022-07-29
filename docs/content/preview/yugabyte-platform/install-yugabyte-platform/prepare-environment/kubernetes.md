@@ -63,7 +63,7 @@ The YugabyteDB Anywhere Helm chart has been tested using the following software 
 
 - Kubernetes 1.20 or later.
 - Helm 3.4 or later.
-- Ability to pull YugabyteDB Anywhere Docker image from [quay.io](quay.io) repository.
+- Ability to pull YugabyteDB Anywhere Docker image from [Quay.io](https://quay.io/) repository
 
 
 Before installing the YugabyteDB Admin Console, verify that you have the following:
