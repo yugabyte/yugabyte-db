@@ -33,6 +33,7 @@
 #include "yb/gutil/strings/split.h"
 
 #include "yb/master/master_admin.proxy.h"
+#include "yb/master/master_backup.pb.h"
 #include "yb/master/master_client.pb.h"
 
 #include "yb/rpc/rpc_controller.h"
@@ -43,8 +44,10 @@
 #include "yb/tserver/tserver_service.pb.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
+#include "yb/util/env.h"
 #include "yb/util/format.h"
 #include "yb/util/jsonreader.h"
+#include "yb/util/pb_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/status_format.h"
 #include "yb/util/subprocess.h"
@@ -2306,6 +2309,86 @@ TEST_F_EX(
            2 | 2
           (1 row)
       )#"));
+}
+
+TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestColocationDuplication)) {
+  // Create a colocated database.
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      "CREATE DATABASE demo WITH COLOCATED=TRUE", "CREATE DATABASE"));
+
+  // Set this database for creating tables below.
+  SetDbName("demo");
+
+  // Create 10 tables in a loop and insert data.
+  const string base_table_name = "mytbl";
+  for (int i = 0; i < 10; i++) {
+    ASSERT_NO_FATALS(CreateTable(
+        Format("CREATE TABLE $0_$1 (k INT PRIMARY KEY)", base_table_name, i)));
+    ASSERT_NO_FATALS(InsertRows(
+        Format("INSERT INTO $0_$1 VALUES (generate_series(1, 100))", base_table_name, i), 100));
+  }
+  LOG(INFO) << "All tables created and data inserted successsfully";
+
+  // Create a backup.
+  const string backup_dir = GetTempDir("backup");
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.demo", "create"}));
+  LOG(INFO) << "Backup finished";
+
+  // Read the SnapshotInfoPB from the given path.
+  master::SnapshotInfoPB snapshot_info;
+  ASSERT_OK(pb_util::ReadPBContainerFromPath(
+      Env::Default(), JoinPathSegments(backup_dir, "SnapshotInfoPB"), &snapshot_info));
+  LOG(INFO) << "SnapshotInfoPB: " << snapshot_info.ShortDebugString();
+
+  // SnapshotInfoPB should contain 1 namespace entry, 1 tablet entry and 11 table entries.
+  // 11 table entries comprise of - 10 entries for the tables created and 1 entry for
+  // the parent colocated table.
+  int32_t num_namespaces = 0, num_tables = 0, num_tablets = 0, num_others = 0;
+  for (const auto& entry : snapshot_info.backup_entries()) {
+    if (entry.entry().type() == master::SysRowEntryType::NAMESPACE) {
+      num_namespaces++;
+    } else if (entry.entry().type() == master::SysRowEntryType::TABLE) {
+      num_tables++;
+    } else if (entry.entry().type() == master::SysRowEntryType::TABLET) {
+      num_tablets++;
+    } else {
+      num_others++;
+    }
+  }
+
+  ASSERT_EQ(num_namespaces, 1);
+  ASSERT_EQ(num_tablets, 1);
+  ASSERT_EQ(num_tables, 11);
+  ASSERT_EQ(num_others, 0);
+  // Snapshot should be complete.
+  ASSERT_EQ(snapshot_info.entry().state(),
+            master::SysSnapshotEntryPB::State::SysSnapshotEntryPB_State_COMPLETE);
+  // We clear all tablet snapshot entries for backup.
+  ASSERT_EQ(snapshot_info.entry().tablet_snapshots_size(), 0);
+  // We've migrated this field to backup_entries so they are already accounted above.
+  ASSERT_EQ(snapshot_info.entry().entries_size(), 0);
+
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte_new", "restore"}));
+  LOG(INFO) << "Restored backup to yugabyte_new keyspace successfully";
+
+  SetDbName("yugabyte_new");
+
+  // Post-restore, we should have all the data.
+  for (int i = 0; i < 10; i++) {
+    ASSERT_NO_FATALS(RunPsqlCommand(
+        Format("SELECT COUNT(*) FROM $0_$1", base_table_name, i),
+        R"#(
+           count
+          -------
+             100
+          (1 row)
+        )#"
+    ));
+  }
+
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
 }  // namespace tools
