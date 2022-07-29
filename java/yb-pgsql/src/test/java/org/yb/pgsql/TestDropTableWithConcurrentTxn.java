@@ -33,8 +33,8 @@ public class TestDropTableWithConcurrentTxn extends BasePgSQLTest {
   // When a transaction is performed on a table that is deleted,
   // "need_global_cache_refresh" is set to true and raise
   // transaction conflict error in YBPrepareCacheRefreshIfNeeded().
-  private static final String TRANSACTION_CONFLICT_ERROR =
-      "expired or aborted by a conflict";
+  private static final String[] TRANSACTION_ABORT_ERRORS =
+      { "expired or aborted by a conflict", "Transaction aborted: kAborted" };
   private static final String RESOURCE_NONEXISTING_ERROR =
       "does not exist";
   private static final String SCHEMA_VERSION_MISMATCH_ERROR =
@@ -133,7 +133,7 @@ public class TestDropTableWithConcurrentTxn extends BasePgSQLTest {
                                                   Resource resourceToDrop,
                                                   boolean withCachedMetadata,
                                                   boolean executeDmlBeforeDrop,
-                                                  String expectedErrorMessage)
+                                                  String... expectedErrorMessages)
       throws Exception {
     String tableName = dmlToExecute + "OnCurrentResource" +
         (executeDmlBeforeDrop ? "Before" : "After") + "DropOn" +
@@ -162,19 +162,19 @@ public class TestDropTableWithConcurrentTxn extends BasePgSQLTest {
         // execute DROP in connection 2
         statement2.execute(dropQuery);
         // execute COMMIT in connection 1
-        if (expectedErrorMessage.isEmpty()) {
+        if (expectedErrorMessages.length == 1 && expectedErrorMessages[0].isEmpty()) {
           statement1.execute("COMMIT");
         } else {
-          runInvalidQuery(statement1, "COMMIT", expectedErrorMessage);
+          runInvalidQuery(statement1, "COMMIT", expectedErrorMessages);
         }
       } else {
         // execute DROP in connection 2
         statement2.execute(dropQuery);
         // execute DML in connection 1
-        if (expectedErrorMessage.isEmpty()) {
+        if (expectedErrorMessages.length == 1 && expectedErrorMessages[0].isEmpty()) {
           statement1.execute(dmlQuery);
         } else {
-          runInvalidQuery(statement1, dmlQuery, expectedErrorMessage);
+          runInvalidQuery(statement1, dmlQuery, expectedErrorMessages);
         }
         // execute COMMIT in connection 1
         statement1.execute("COMMIT");
@@ -248,9 +248,9 @@ public class TestDropTableWithConcurrentTxn extends BasePgSQLTest {
 
       statement2.execute("DROP TABLE " + tableName);
 
-      runInvalidQuery(statement1, "COMMIT", TRANSACTION_CONFLICT_ERROR);
-      runInvalidQuery(statement3, "COMMIT", TRANSACTION_CONFLICT_ERROR);
-      runInvalidQuery(statement4, "COMMIT", TRANSACTION_CONFLICT_ERROR);
+      runInvalidQuery(statement1, "COMMIT", TRANSACTION_ABORT_ERRORS);
+      runInvalidQuery(statement3, "COMMIT", TRANSACTION_ABORT_ERRORS);
+      runInvalidQuery(statement4, "COMMIT", TRANSACTION_ABORT_ERRORS);
     }
   }
 
@@ -267,7 +267,7 @@ public class TestDropTableWithConcurrentTxn extends BasePgSQLTest {
 
       statement.execute("DROP TABLE " + tableName);
 
-      runInvalidQuery(statement, "COMMIT", TRANSACTION_CONFLICT_ERROR);
+      runInvalidQuery(statement, "COMMIT", TRANSACTION_ABORT_ERRORS);
     }
   }
 
@@ -293,9 +293,9 @@ public class TestDropTableWithConcurrentTxn extends BasePgSQLTest {
     Resource tableDrop = Resource.TABLE;
     LOG.info("Run INSERT transactions BEFORE drop");
     runDmlTxnWithDropOnCurrentResource(Dml.INSERT, tableDrop, !withCachedMetadata,
-        executeDmlBeforeDrop, TRANSACTION_CONFLICT_ERROR);
+        executeDmlBeforeDrop, TRANSACTION_ABORT_ERRORS);
     runDmlTxnWithDropOnCurrentResource(Dml.INSERT, tableDrop, withCachedMetadata,
-        executeDmlBeforeDrop, TRANSACTION_CONFLICT_ERROR);
+        executeDmlBeforeDrop, TRANSACTION_ABORT_ERRORS);
     LOG.info("Run INSERT transactions AFTER drop");
     runDmlTxnWithDropOnCurrentResource(Dml.INSERT, tableDrop, !withCachedMetadata,
         executeDmlAfterDrop, RESOURCE_NONEXISTING_ERROR);
@@ -330,9 +330,9 @@ public class TestDropTableWithConcurrentTxn extends BasePgSQLTest {
     Resource indexDrop = Resource.INDEX;
     LOG.info("Run INSERT transactions BEFORE drop");
     runDmlTxnWithDropOnCurrentResource(Dml.INSERT, indexDrop, !withCachedMetadata,
-        executeDmlBeforeDrop, TRANSACTION_CONFLICT_ERROR);
+        executeDmlBeforeDrop, TRANSACTION_ABORT_ERRORS);
     runDmlTxnWithDropOnCurrentResource(Dml.INSERT, indexDrop, withCachedMetadata,
-        executeDmlBeforeDrop, TRANSACTION_CONFLICT_ERROR);
+        executeDmlBeforeDrop, TRANSACTION_ABORT_ERRORS);
     LOG.info("Run INSERT transaction AFTER drop");
     runDmlTxnWithDropOnCurrentResource(Dml.INSERT, indexDrop, withCachedMetadata,
         executeDmlAfterDrop, RESOURCE_NONEXISTING_ERROR);
