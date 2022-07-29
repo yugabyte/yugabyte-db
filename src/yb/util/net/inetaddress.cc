@@ -1,3 +1,4 @@
+
 // Copyright (c) YugaByte, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
@@ -20,6 +21,9 @@
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/status.h"
 #include "yb/util/status_fwd.h"
+
+using std::string;
+using std::vector;
 
 using boost::asio::ip::address;
 using boost::asio::ip::address_v4;

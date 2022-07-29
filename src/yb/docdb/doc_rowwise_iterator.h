@@ -128,13 +128,13 @@ class DocRowwiseIterator : public YQLRowwiseIteratorIf {
       const KeyBytes& upper_doc_key);
 
   // Get the non-key column values of a QL row.
-  Status GetValues(const Schema& projection, vector<SubDocument>* values);
+  Status GetValues(const Schema& projection, std::vector<SubDocument>* values);
 
   // Processes a value for a column(subdoc_key) and determines if the value is valid or not based on
   // the hybrid time of subdoc_key. If valid, it is added to the values vector and is_null is set
   // to false. Otherwise, is_null is set to true.
   Status ProcessValues(const Value& value, const SubDocKey& subdoc_key,
-                               vector<PrimitiveValue>* values,
+                               std::vector<PrimitiveValue>* values,
                                bool *is_null) const;
 
   // Figures out whether the current sub_doc_key with the given top_level_value is a valid column

@@ -57,7 +57,7 @@ class Generator {
       oid = entry.generator();
     }
 
-    return binary_id ? string(to_char_ptr(oid.data), sizeof(oid.data))
+    return binary_id ? std::string(to_char_ptr(oid.data), sizeof(oid.data))
                      : b2a_hex(to_char_ptr(oid.data), sizeof(oid.data));
   }
 

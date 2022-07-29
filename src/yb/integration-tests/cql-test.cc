@@ -145,7 +145,7 @@ TEST_F(CqlTest, TestUpdateListIndexAfterOverwrite) {
   cql("CREATE TABLE test(h INT, v LIST<INT>, PRIMARY KEY(h))");
   cql("INSERT INTO test (h, v) VALUES (1, [1, 2, 3])");
 
-  auto select = [&]() -> Result<string> {
+  auto select = [&]() -> Result<std::string> {
     auto result = VERIFY_RESULT(session.ExecuteWithResult("SELECT * FROM test"));
     auto iter = result.CreateIterator();
     DFATAL_OR_RETURN_ERROR_IF(!iter.Next(), STATUS(NotFound, "Did not find result in test table."));
@@ -271,7 +271,7 @@ TEST_F_EX(CqlTest, HostnameResolutionFailureInYqlPartitionsTable, CqlThreeMaster
   ASSERT_OK(CheckNumAddressesInYqlPartitionsTable(&session, 3));
 
   // TEST_RpcAddress is 1-indexed.
-  string hostname =
+  std::string hostname =
       server::TEST_RpcAddress(cluster_->LeaderMasterIdx() + 1, server::Private::kFalse);
 
   // Fail resolution of the old leader master's hostname.

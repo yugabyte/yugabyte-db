@@ -53,8 +53,8 @@ namespace {
 
 // A copy of the same function in pg_libpq-test.cc.  Eventually, issue #6868 should provide a way to
 // do this easily for both this file and that.
-Result<string> GetTableIdByTableName(
-    client::YBClient* client, const string& namespace_name, const string& table_name) {
+Result<std::string> GetTableIdByTableName(
+    client::YBClient* client, const std::string& namespace_name, const std::string& table_name) {
   const auto tables = VERIFY_RESULT(client->ListTables());
   for (const auto& t : tables) {
     if (t.namespace_name() == namespace_name && t.table_name() == table_name) {

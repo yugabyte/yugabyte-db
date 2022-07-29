@@ -351,7 +351,7 @@ PTLiteralString::~PTLiteralString() {
 }
 
 Status PTLiteralString::ToInt64(int64_t *value, bool negate) const {
-  auto temp = negate ? CheckedStoll(string("-") + value_->c_str())
+  auto temp = negate ? CheckedStoll(std::string("-") + value_->c_str())
               : CheckedStoll(*value_);
   RETURN_NOT_OK(temp);
   *value = *temp;
@@ -367,16 +367,16 @@ Status PTLiteralString::ToDouble(long double *value, bool negate) const {
 
 Status PTLiteralString::ToDecimal(util::Decimal *value, bool negate) const {
   if (negate) {
-    return value->FromString(string("-") + value_->c_str());
+    return value->FromString(std::string("-") + value_->c_str());
   } else {
     return value->FromString(value_->c_str());
   }
 }
 
-Status PTLiteralString::ToDecimal(string *value, bool negate) const {
+Status PTLiteralString::ToDecimal(std::string *value, bool negate) const {
   util::Decimal d;
   if (negate) {
-    RETURN_NOT_OK(d.FromString(string("-") + value_->c_str()));
+    RETURN_NOT_OK(d.FromString(std::string("-") + value_->c_str()));
   } else {
     RETURN_NOT_OK(d.FromString(value_->c_str()));
   }
@@ -384,10 +384,10 @@ Status PTLiteralString::ToDecimal(string *value, bool negate) const {
   return Status::OK();
 }
 
-Status PTLiteralString::ToVarInt(string *value, bool negate) const {
+Status PTLiteralString::ToVarInt(std::string *value, bool negate) const {
   util::VarInt v;
   if (negate) {
-    RETURN_NOT_OK(v.FromString(string("-") + value_->c_str()));
+    RETURN_NOT_OK(v.FromString(std::string("-") + value_->c_str()));
   } else {
     RETURN_NOT_OK(v.FromString(value_->c_str()));
   }
@@ -396,10 +396,10 @@ Status PTLiteralString::ToVarInt(string *value, bool negate) const {
 }
 
 std::string PTLiteralString::ToString() const {
-  return string(value_->c_str());
+  return std::string(value_->c_str());
 }
 
-Status PTLiteralString::ToString(string *value) const {
+Status PTLiteralString::ToString(std::string *value) const {
   *value = value_->c_str();
   return Status::OK();
 }
@@ -452,7 +452,7 @@ Status PTCollectionExpr::InitializeUDTValues(const QLType::SharedPtr& expected_t
                                     "Qualified names not allowed for fields of user-defined types",
                                     ErrorCode::INVALID_ARGUMENTS);
     }
-    string field_name(field_ref->name()->last_name().c_str());
+    std::string field_name(field_ref->name()->last_name().c_str());
 
     // All keys must be existing field names from the UDT
     auto field_idx = expected_type->GetUDTypeFieldIdxByName(field_name);
@@ -1064,14 +1064,14 @@ Status PTRelationExpr::AnalyzeOperator(SemContext *sem_context,
   return Status::OK();
 }
 
-string PTRelationExpr::QLName(QLNameOption option) const {
+std::string PTRelationExpr::QLName(QLNameOption option) const {
   switch (ql_op_) {
     case QL_OP_NOOP:
       return "NO OP";
 
     // Logic operators that take one operand.
     case QL_OP_NOT:
-      return string("NOT ") + op1()->QLName(option);
+      return std::string("NOT ") + op1()->QLName(option);
     case QL_OP_IS_TRUE:
       return op1()->QLName(option) + "IS TRUE";
     case QL_OP_IS_FALSE:
@@ -1382,7 +1382,7 @@ Status PTJsonColumnWithOperators::CheckLhsExpr(SemContext *sem_context) {
 }
 
 std::string PTJsonColumnWithOperators::QLName(QLNameOption option) const {
-  string qlname;
+  std::string qlname;
   if (option == QLNameOption::kMetadataName) {
     DCHECK(desc_) << "Metadata is not yet loaded to this node";
     qlname = desc_->MetadataName();

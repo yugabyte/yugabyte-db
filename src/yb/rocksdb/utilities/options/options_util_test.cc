@@ -176,9 +176,9 @@ class DummyTableFactory : public TableFactory {
   const char* Name() const override { return "DummyTableFactory"; }
 
   virtual Status NewTableReader(const TableReaderOptions& table_reader_options,
-                                unique_ptr<RandomAccessFileReader>&& file,
+                                std::unique_ptr<RandomAccessFileReader>&& file,
                                 uint64_t file_size,
-                                unique_ptr<TableReader>* table_reader) const override  {
+                                std::unique_ptr<TableReader>* table_reader) const override  {
     return STATUS(NotSupported, "");
   }
 

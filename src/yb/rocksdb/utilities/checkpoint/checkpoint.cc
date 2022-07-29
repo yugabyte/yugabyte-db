@@ -187,7 +187,7 @@ Status CreateCheckpoint(DB* db, const std::string& checkpoint_dir) {
     s = db->GetCheckpointEnv()->RenameFile(full_private_path, checkpoint_dir);
   }
   if (s.ok()) {
-    unique_ptr<Directory> checkpoint_directory;
+    std::unique_ptr<Directory> checkpoint_directory;
     RETURN_NOT_OK(db->GetCheckpointEnv()->NewDirectory(checkpoint_dir, &checkpoint_directory));
     if (checkpoint_directory != nullptr) {
       s = checkpoint_directory->Fsync();

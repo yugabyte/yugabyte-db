@@ -201,7 +201,7 @@ Result<bool> WhereClauseImpliesPred(const MCList<ColumnOp> &col_ops,
   for (const ColumnOp& col_op : col_ops) {
     int col_id = col_op.desc()->id();
     if (col_id_ops_map.find(col_id) == col_id_ops_map.end())
-      col_id_ops_map[col_id] = vector<const ColumnOp*>();
+      col_id_ops_map[col_id] = std::vector<const ColumnOp*>();
     col_id_ops_map[col_id].push_back(&col_op);
   }
 

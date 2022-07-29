@@ -36,7 +36,7 @@ namespace {
 const auto kDefaultTimeout = 30000ms;
 const auto kServerIndex = 0;
 
-string GetTsCliToolPath() {
+std::string GetTsCliToolPath() {
   static const char* const kTsCliToolName = "yb-ts-cli";
   return GetToolPath(kTsCliToolName);
 }
@@ -62,7 +62,7 @@ class YBTsCliITest : public YBTableTestBase {
     return false;
   }
 
-  void WaitForTablet(const string& tablet_id) {
+  void WaitForTablet(const std::string& tablet_id) {
     ExternalTabletServer* ts = external_mini_cluster()->tablet_server(kServerIndex);
     tserver::TabletServerServiceProxy proxy(&external_mini_cluster()->proxy_cache(),
                                                  ts->bound_rpc_addr());
@@ -88,8 +88,8 @@ class YBTsCliITest : public YBTableTestBase {
 TEST_F(YBTsCliITest, MoveTablet) {
   auto inspect = std::make_unique<itest::ExternalMiniClusterFsInspector>(external_mini_cluster());
 
-  string tablet_id;
-  string root_dir;
+  std::string tablet_id;
+  std::string root_dir;
 
   ExternalTabletServer* ts = external_mini_cluster()->tablet_server(kServerIndex);
 
@@ -100,7 +100,7 @@ TEST_F(YBTsCliITest, MoveTablet) {
   size_t max_count = 0;
   // Look for TS with max number of tablets on one drive and get one tablet to try move it.
   for (const auto& drive_and_tablets : inspect->DrivesOnTS(kServerIndex)) {
-    const vector<string>& tablets = drive_and_tablets.second;
+    const std::vector<std::string>& tablets = drive_and_tablets.second;
     if (tablets.size() > max_count) {
       root_dir = drive_and_tablets.first;
       max_count = tablets.size();
@@ -112,8 +112,8 @@ TEST_F(YBTsCliITest, MoveTablet) {
   ASSERT_FALSE(tablet_id.empty());
   WaitForTablet(tablet_id);
 
-  string exe_path = GetTsCliToolPath();
-  vector<string> argv = {exe_path, "--server_address", AsString(ts->bound_rpc_addr()),
+  std::string exe_path = GetTsCliToolPath();
+  std::vector<std::string> argv = {exe_path, "--server_address", AsString(ts->bound_rpc_addr()),
                          "delete_tablet", "-force", tablet_id, "Deleting for yb-ts-cli-itest"};
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
     Status s = Subprocess::Call(argv);
@@ -128,7 +128,7 @@ TEST_F(YBTsCliITest, MoveTablet) {
 
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
       for (const auto& drive_and_tablets : inspect->DrivesOnTS(kServerIndex)) {
-        const vector<string>& tablets = drive_and_tablets.second;
+        const std::vector<std::string>& tablets = drive_and_tablets.second;
         if (find(tablets.begin(), tablets.end(), tablet_id) != tablets.end()) {
           bool same = drive_and_tablets.first == root_dir;
           if (same) {

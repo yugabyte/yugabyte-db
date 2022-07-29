@@ -13,11 +13,17 @@
 
 #include "yb/common/roles_permissions.h"
 
+#include <string>
+#include <vector>
+
 #include <glog/logging.h>
 
 #include "yb/gutil/strings/substitute.h"
 
 namespace yb {
+
+using std::string;
+using std::vector;
 
 const std::unordered_map<string, vector<PermissionType>> all_permissions_by_resource = {
     {"KEYSPACE", {ALTER_PERMISSION, AUTHORIZE_PERMISSION, CREATE_PERMISSION, DROP_PERMISSION,

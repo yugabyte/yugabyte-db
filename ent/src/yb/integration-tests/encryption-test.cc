@@ -88,7 +88,7 @@ class EncryptionTest : public YBTableTestBase, public testing::WithParamInterfac
   void WriteWorkload(uint32_t start, uint32_t end) {
     auto total_num_keys = end - start;
     for (uint32_t i = start; i < end; i++) {
-      string s(kKeySize, 'a' + (i % 26));
+      std::string s(kKeySize, 'a' + (i % 26));
       PutKeyValue(Format("k_$0", i), s);
       auto num_keys_written = i - start + 1;
       if (num_keys_written % (total_num_keys / kNumFlushes) == 0) {
@@ -106,7 +106,7 @@ class EncryptionTest : public YBTableTestBase, public testing::WithParamInterfac
       auto split = StringSplit(result_kvs[i].first, '_');
       int32_t key = CHECK_RESULT(CheckedStoInt<int32_t>(split.back()));
       ASSERT_EQ(Format("k_$0", key), result_kvs[i].first);
-      ASSERT_TRUE(string(kKeySize, 'a' + (key % 26)) == result_kvs[i].second);
+      ASSERT_TRUE(std::string(kKeySize, 'a' + (key % 26)) == result_kvs[i].second);
     }
   }
 

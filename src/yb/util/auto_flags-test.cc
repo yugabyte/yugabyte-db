@@ -26,9 +26,9 @@ DEFINE_AUTO_string(test_auto_string, kExternal, "false", "true", "Testing!");
 DISABLE_PROMOTE_ALL_AUTO_FLAGS_FOR_TEST;
 
 namespace yb {
-const string kFlagName = "test_auto_flag";
-const string kFlagNameArg = "--test_auto_flag";
-const string kPromoteAllAutoFlagsArg = "--TEST_promote_all_auto_flags";
+const std::string kFlagName = "test_auto_flag";
+const std::string kFlagNameArg = "--test_auto_flag";
+const std::string kPromoteAllAutoFlagsArg = "--TEST_promote_all_auto_flags";
 
 void VerifyFlagDefault(const int expected_val) {
   gflags::CommandLineFlagInfo flags;
@@ -36,7 +36,7 @@ void VerifyFlagDefault(const int expected_val) {
   ASSERT_EQ(flags.default_value, ToString(expected_val));
 }
 
-void ParseCommandLineFlags(vector<string> arguments) {
+void ParseCommandLineFlags(std::vector<std::string> arguments) {
   char arg0[] = "";
   int argc = static_cast<int>(arguments.size()) + 1;
   char* argv[argc];
@@ -99,7 +99,7 @@ TEST(AutoFlagsTest, TestOverride) {
 }
 
 TEST(AutoFlagsTest, TestGetFlagsEligibleForPromotion) {
-  string max_flag_class;
+  std::string max_flag_class;
   AutoFlagsInfoMap available_flags;
   available_flags["p1"].emplace_back("c1", AutoFlagClass::kLocalVolatile, RuntimeAutoFlag::kTrue);
   available_flags["p2"].emplace_back("c2", AutoFlagClass::kLocalPersisted, RuntimeAutoFlag::kTrue);

@@ -46,11 +46,11 @@ TEST_F(RemoteBootstrapRocksDBClientTest, TestDownloadRocksDBFiles) {
   auto tablet_peer_checkpoint_dir =
       tablet_peer_->tablet()->snapshots().TEST_LastRocksDBCheckpointDir();
 
-  vector<std::string> rocksdb_files;
+  std::vector<std::string> rocksdb_files;
   LOG(INFO) << "RocksDB dir: " << meta_->rocksdb_dir();
   ASSERT_OK(fs_manager_->ListDir(meta_->rocksdb_dir(), &rocksdb_files));
 
-  vector<std::string> tablet_peer_checkpoint_files;
+  std::vector<std::string> tablet_peer_checkpoint_files;
   ASSERT_OK(tablet_peer_->tablet_metadata()->fs_manager()->ListDir(tablet_peer_checkpoint_dir,
                                                                    &tablet_peer_checkpoint_files));
 

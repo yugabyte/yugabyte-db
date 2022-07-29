@@ -48,7 +48,7 @@ Status AbstractTablet::HandleQLReadRequest(CoarseTimePoint deadline,
   const auto doc_read_context = GetDocReadContext();
   Schema projection;
   const QLReferencedColumnsPB& column_pbs = ql_read_request.column_refs();
-  vector<ColumnId> column_refs;
+  std::vector<ColumnId> column_refs;
   for (int32_t id : column_pbs.static_ids()) {
     column_refs.emplace_back(id);
   }

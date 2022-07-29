@@ -281,12 +281,12 @@ string SubDocument::ToString() const {
   return ss.str();
 }
 
-ostream& operator <<(ostream& out, const SubDocument& subdoc) {
+std::ostream& operator <<(std::ostream& out, const SubDocument& subdoc) {
   SubDocumentToStreamInternal(out, subdoc, 0);
   return out;
 }
 
-void SubDocumentToStreamInternal(ostream& out,
+void SubDocumentToStreamInternal(std::ostream& out,
                                  const SubDocument& subdoc,
                                  const int indent) {
   if (subdoc.IsPrimitive() ||
@@ -353,7 +353,7 @@ void SubDocumentToStreamInternal(ostream& out,
   }
 }
 
-void SubDocCollectionToStreamInternal(ostream& out,
+void SubDocCollectionToStreamInternal(std::ostream& out,
                                       const SubDocument& subdoc,
                                       const int indent,
                                       const string& begin_delim,

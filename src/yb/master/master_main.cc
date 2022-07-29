@@ -88,7 +88,7 @@ static int MasterMain(int argc, char** argv) {
   // bloom filters properly at all, including if filter key is set correctly during scans.
   FLAGS_use_docdb_aware_bloom_filter = false;
 
-  string host_name;
+  std::string host_name;
   if (GetHostname(&host_name).ok()) {
     FLAGS_metric_node_name = strings::Substitute("$0:$1", host_name, kMasterDefaultWebPort);
   } else {

@@ -63,8 +63,8 @@ std::string SessionLogPrefix(uint64_t id) {
   return Format("S $0: ", id);
 }
 
-string GetStatusStringSet(const client::CollectedErrors& errors) {
-  std::set<string> status_strings;
+std::string GetStatusStringSet(const client::CollectedErrors& errors) {
+  std::set<std::string> status_strings;
   for (const auto& error : errors) {
     status_strings.insert(error->status().ToString());
   }

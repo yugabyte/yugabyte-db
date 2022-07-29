@@ -35,7 +35,7 @@ Status AddDirToSnapshotFiles(
       Env::Default()->GetChildren(dir, ExcludeDots::kTrue),
       Format("Unable to list directory $0", dir));
 
-  for (const string& file : files) {
+  for (const std::string& file : files) {
     LOG(INFO) << "Adding file " << file << " for snapshot " << snapshot_id;
     const auto path = JoinPathSegments(dir, file);
     const auto fname = prefix.empty() ? file : JoinPathSegments(prefix, file);
@@ -78,8 +78,8 @@ Status RemoteBootstrapSnapshotsComponent::CreateDirectories(
 
 Status RemoteBootstrapSnapshotsComponent::Download() {
   const auto& kv_store = new_superblock_.kv_store();
-  const string& rocksdb_dir = kv_store.rocksdb_dir();
-  const string top_snapshots_dir = tablet::TabletSnapshots::SnapshotsDirName(rocksdb_dir);
+  const std::string& rocksdb_dir = kv_store.rocksdb_dir();
+  const std::string top_snapshots_dir = tablet::TabletSnapshots::SnapshotsDirName(rocksdb_dir);
   // Create the snapshots directory first.
   RETURN_NOT_OK_PREPEND(fs_manager().CreateDirIfMissingAndSync(top_snapshots_dir),
                         Format("Failed to create & sync top snapshots directory $0",
@@ -95,7 +95,7 @@ Status RemoteBootstrapSnapshotsComponent::Download() {
                    << " because it is part of failed snapshot " << file_pb.snapshot_id();
       continue;
     }
-    const string snapshot_dir = JoinPathSegments(top_snapshots_dir, file_pb.snapshot_id());
+    const std::string snapshot_dir = JoinPathSegments(top_snapshots_dir, file_pb.snapshot_id());
 
     RETURN_NOT_OK_PREPEND(fs_manager().CreateDirIfMissingAndSync(snapshot_dir),
                           Format("Failed to create & sync snapshot directory $0", snapshot_dir));
@@ -139,7 +139,7 @@ Status RemoteBootstrapSnapshotsSource::Init() {
         Format("Unable to list directory $0", top_snapshots_dir));
   }
 
-  for (const string& dir_name : snapshots) {
+  for (const std::string& dir_name : snapshots) {
     const std::string snapshot_dir = JoinPathSegments(top_snapshots_dir, dir_name);
     if (tablet::TabletSnapshots::IsTempSnapshotDir(snapshot_dir)) {
       continue;
@@ -159,7 +159,7 @@ Status RemoteBootstrapSnapshotsSource::Init() {
 
 Status RemoteBootstrapSnapshotsSource::GetDataPiece(
     const DataIdPB& data_id, GetDataPieceInfo* info) {
-  const string snapshots_dir =
+  const std::string snapshots_dir =
       tablet::TabletSnapshots::SnapshotsDirName(tablet_superblock_.kv_store().rocksdb_dir());
   return RemoteBootstrapSession::GetFilePiece(
       JoinPathSegments(snapshots_dir, data_id.snapshot_id()), data_id.file_name(),

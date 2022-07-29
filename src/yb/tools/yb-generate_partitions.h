@@ -47,7 +47,7 @@ typedef std::map<std::string, master::TabletLocationsPB> TabletMap;
 class YBPartitionGenerator {
  public:
   explicit YBPartitionGenerator(const client::YBTableName& table_name,
-                                const vector<std::string>& master_addresses);
+                                const std::vector<std::string>& master_addresses);
   ~YBPartitionGenerator();
 
   Status Init();

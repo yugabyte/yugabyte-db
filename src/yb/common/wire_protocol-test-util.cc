@@ -19,7 +19,7 @@ namespace yb {
 
 void AddKVToPB(int32_t key_val,
                int32_t int_val,
-               const string& string_val,
+               const std::string& string_val,
                docdb::KeyValueWriteBatchPB* write_batch) {
   const ColumnId int_val_col_id(kFirstColumnId + 1);
   const ColumnId string_val_col_id(kFirstColumnId + 2);

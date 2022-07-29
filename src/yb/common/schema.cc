@@ -34,6 +34,8 @@
 
 #include <algorithm>
 #include <set>
+#include <string>
+#include <vector>
 
 #include "yb/common/common.pb.h"
 #include "yb/common/key_encoder.h"
@@ -58,6 +60,8 @@ namespace yb {
 
 using std::shared_ptr;
 using std::unordered_set;
+using std::string;
+using std::vector;
 
 // ------------------------------------------------------------------------------------------------
 // ColumnSchema

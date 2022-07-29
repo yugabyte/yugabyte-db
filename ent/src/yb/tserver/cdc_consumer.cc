@@ -112,7 +112,7 @@ Result<std::unique_ptr<CDCConsumer>> CDCConsumer::Create(
 
 CDCConsumer::CDCConsumer(std::function<bool(const std::string&)> is_leader_for_tablet,
                          rpc::ProxyCache* proxy_cache,
-                         const string& ts_uuid,
+                         const std::string& ts_uuid,
                          std::unique_ptr<CDCClient> local_client) :
   is_leader_for_tablet_(std::move(is_leader_for_tablet)),
   rpcs_(new rpc::Rpcs),
@@ -177,7 +177,7 @@ void CDCConsumer::RefreshWithNewRegistryFromMaster(const cdc::ConsumerRegistryPB
 std::vector<std::string> CDCConsumer::TEST_producer_tablets_running() {
   SharedLock<rw_spinlock> read_lock(producer_pollers_map_mutex_);
 
-  std::vector<string> tablets;
+  std::vector<std::string> tablets;
   for (const auto& producer : producer_pollers_map_) {
     tablets.push_back(producer.first.tablet_id);
   }

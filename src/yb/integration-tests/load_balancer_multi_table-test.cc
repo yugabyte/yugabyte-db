@@ -121,7 +121,7 @@ class LoadBalancerMultiTableTest : public YBTableTestBase {
     }
   }
 
-  void SetFlagOnAllMasters(const string& flag, const string& value) {
+  void SetFlagOnAllMasters(const std::string& flag, const std::string& value) {
     for (size_t i = 0; i < num_masters(); ++i) {
       ASSERT_OK(external_mini_cluster_->SetFlag(external_mini_cluster_->master(i), flag, value));
     }
@@ -133,12 +133,12 @@ TEST_F(LoadBalancerMultiTableTest, MultipleLeaderTabletMovesPerTable) {
   SetFlagOnAllMasters("enable_load_balancing", "false");
 
   auto ts0 = external_mini_cluster_->tablet_server(0);
-  string ts0_uuid = ts0->instance_id().permanent_uuid();
+  std::string ts0_uuid = ts0->instance_id().permanent_uuid();
   LOG(INFO) << "Shutting down ts-0. UUID: " << ts0_uuid;
   ts0->Shutdown();
 
   // Wait for leaders to be re-elected onto the other tservers.
-  std::unordered_map<string, std::unordered_map<string, int>> initial_leader_counts;
+  std::unordered_map<std::string, std::unordered_map<std::string, int>> initial_leader_counts;
   for (const auto& tn : table_names_) {
     ASSERT_OK(WaitFor([&]() -> Result<bool> {
       initial_leader_counts[tn.table_name()] = VERIFY_RESULT(yb_admin_client_->GetLeaderCounts(tn));
@@ -183,7 +183,7 @@ TEST_F(LoadBalancerMultiTableTest, MultipleLeaderTabletMovesPerTable) {
     const auto new_leader_counts = ASSERT_RESULT(yb_admin_client_->GetLeaderCounts(tn));
     // Only count increases in leaders
     for (const auto& lc : new_leader_counts) {
-      num_leader_moves += max(0, lc.second - initial_leader_counts[tn.table_name()][lc.first]);
+      num_leader_moves += std::max(0, lc.second - initial_leader_counts[tn.table_name()][lc.first]);
     }
   }
 
@@ -540,7 +540,7 @@ TEST_F(LoadBalancerMultiTableTest, GlobalLeaderBalancing) {
   ASSERT_OK(external_mini_cluster()->AddTabletServer());
   ++num_ts;
   ASSERT_OK(external_mini_cluster()->WaitForTabletServerCount(num_ts, kDefaultTimeout));
-  string new_ts = external_mini_cluster()->tablet_server(num_ts - 1)->uuid();
+  std::string new_ts = external_mini_cluster()->tablet_server(num_ts - 1)->uuid();
   ASSERT_FALSE(new_ts.empty());
   WaitForLoadBalanceCompletion();
 

@@ -34,6 +34,8 @@
 
 #include <mutex>
 #include <unordered_set>
+#include <string>
+#include <vector>
 
 #include <glog/logging.h>
 
@@ -55,6 +57,9 @@ using std::ostream;
 using std::shared_ptr;
 using std::string;
 using std::unordered_map;
+using std::string;
+using std::vector;
+
 using strings::Substitute;
 
 DEFINE_int32(checksum_timeout_sec, 120,

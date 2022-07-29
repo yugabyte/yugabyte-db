@@ -32,9 +32,12 @@
 
 #include <limits>
 #include <unordered_set>
+#include <vector>
 
 #include "yb/util/random.h"
 #include "yb/util/test_util.h"
+
+using std::vector;
 
 namespace yb {
 

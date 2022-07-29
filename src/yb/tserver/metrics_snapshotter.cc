@@ -350,7 +350,7 @@ Status MetricsSnapshotter::Thread::DoMetricsSnapshot() {
 
   if (tserver_metrics_whitelist_.find("disk_usage") != tserver_metrics_whitelist_.end()) {
     struct statvfs stat;
-    set<uint64_t> fs_ids;
+    std::set<uint64_t> fs_ids;
     std::vector<std::string> all_data_paths = opts_.fs_opts.data_paths;
     all_data_paths.insert(
       all_data_paths.end(), opts_.fs_opts.wal_paths.begin(), opts_.fs_opts.wal_paths.end());

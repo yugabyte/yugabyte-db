@@ -20,7 +20,6 @@
 #define BASE_INT128_H_
 
 #include <iosfwd>
-using std::ostream;
 #include "yb/gutil/integral_types.h"
 
 struct uint128_pod;

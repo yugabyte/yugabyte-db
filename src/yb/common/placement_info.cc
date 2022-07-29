@@ -25,14 +25,14 @@ namespace yb {
 
 namespace {
 
-bool IsReplicaPlacementOption(const string& option) {
+bool IsReplicaPlacementOption(const std::string& option) {
   return boost::starts_with(option, "replica_placement");
 }
 
 } // namespace
 
 Result<PlacementInfoConverter::Placement> PlacementInfoConverter::FromJson(
-    const string& placement_str, const rapidjson::Document& placement) {
+    const std::string& placement_str, const rapidjson::Document& placement) {
   std::vector<PlacementInfo> placement_infos;
   std::set<int> visited_priorities;
 
@@ -136,7 +136,7 @@ Result<PlacementInfoConverter::Placement> PlacementInfoConverter::FromString(
   }
 
   // First split the string and get only the json value in a string.
-  vector<string> split;
+  std::vector<std::string> split;
   split = strings::Split(placement, "replica_placement=", strings::SkipEmpty());
   if (split.size() != 1) {
     return STATUS_FORMAT(Corruption, "replica_placement option illformed: $0", placement);

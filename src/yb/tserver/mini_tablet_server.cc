@@ -123,7 +123,7 @@ MiniTabletServer::MiniTabletServer(const std::vector<std::string>& wal_paths,
   opts_.rocksdb_env = rocksdb_encrypted_env_.get();
 }
 
-MiniTabletServer::MiniTabletServer(const string& fs_root,
+MiniTabletServer::MiniTabletServer(const std::string& fs_root,
                                    uint16_t rpc_port,
                                    const TabletServerOptions& extra_opts,
                                    int index)
@@ -134,7 +134,7 @@ MiniTabletServer::~MiniTabletServer() {
 }
 
 Result<std::unique_ptr<MiniTabletServer>> MiniTabletServer::CreateMiniTabletServer(
-    const string& fs_root, uint16_t rpc_port, int index) {
+    const std::string& fs_root, uint16_t rpc_port, int index) {
   auto options_result = TabletServerOptions::CreateTabletServerOptions();
   RETURN_NOT_OK(options_result);
   return std::make_unique<MiniTabletServer>(fs_root, rpc_port, *options_result, index);

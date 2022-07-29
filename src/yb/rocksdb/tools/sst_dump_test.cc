@@ -60,24 +60,24 @@ void createSST(const std::string& base_file_name,
   std::shared_ptr<rocksdb::TableFactory> tf;
   tf.reset(new rocksdb::BlockBasedTableFactory(table_options));
 
-  unique_ptr<WritableFile> base_file;
+  std::unique_ptr<WritableFile> base_file;
   Env* env = Env::Default();
   EnvOptions env_options;
   ReadOptions read_options;
   Options opts;
   const ImmutableCFOptions imoptions(opts);
   auto ikc = std::make_shared<rocksdb::InternalKeyComparator>(opts.comparator);
-  unique_ptr<TableBuilder> tb;
+  std::unique_ptr<TableBuilder> tb;
 
   ASSERT_OK(env->NewWritableFile(base_file_name, &base_file, env_options));
   opts.table_factory = tf;
   std::vector<std::unique_ptr<IntTblPropCollectorFactory> >
       int_tbl_prop_collector_factories;
-  unique_ptr<WritableFileWriter> base_file_writer(
+  std::unique_ptr<WritableFileWriter> base_file_writer(
       new WritableFileWriter(std::move(base_file), EnvOptions()));
-  unique_ptr<WritableFileWriter> data_file_writer;
+  std::unique_ptr<WritableFileWriter> data_file_writer;
   if (opts.table_factory->IsSplitSstForWriteSupported()) {
-    unique_ptr<WritableFile> data_file;
+    std::unique_ptr<WritableFile> data_file;
     ASSERT_OK(env->NewWritableFile(
         TableBaseToDataFileName(base_file_name), &data_file, env_options));
     data_file_writer.reset(new WritableFileWriter(std::move(data_file), EnvOptions()));

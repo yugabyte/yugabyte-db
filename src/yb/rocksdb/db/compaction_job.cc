@@ -978,8 +978,8 @@ Status CompactionJob::OpenCompactionOutputFile(
   FileNumber file_number = file_numbers_provider_->NewFileNumber(holder);
 
   // Make the output file
-  unique_ptr<WritableFile> base_writable_file;
-  unique_ptr<WritableFile> data_writable_file;
+  std::unique_ptr<WritableFile> base_writable_file;
+  std::unique_ptr<WritableFile> data_writable_file;
   const std::string base_fname = TableFileName(db_options_.db_paths, file_number,
                                     sub_compact->compaction->output_path_id());
   const std::string data_fname = TableBaseToDataFileName(base_fname);

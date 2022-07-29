@@ -75,7 +75,7 @@ class DocKeyBuilder {
     return Status::OK();
   }
 
-  docdb::DocKey operator()(const vector<docdb::KeyEntryValue>& range_components) const {
+  docdb::DocKey operator()(const std::vector<docdb::KeyEntryValue>& range_components) const {
     if (!hashed_components_) {
       return docdb::DocKey(range_components);
     }
@@ -84,7 +84,7 @@ class DocKeyBuilder {
 
  private:
   uint16_t hash_;
-  const vector<docdb::KeyEntryValue>* hashed_components_ = nullptr;
+  const std::vector<docdb::KeyEntryValue>* hashed_components_ = nullptr;
 };
 
 } // namespace
@@ -629,7 +629,7 @@ Status PgDmlRead::SubstitutePrimaryBindsWithYbctids(const PgExecParameters* exec
 // other key components are set must be checked by caller code.
 Result<std::vector<std::string>> PgDmlRead::BuildYbctidsFromPrimaryBinds() {
   auto hashed_values = arena().AllocateArray<LWQLValuePB*>(bind_->num_hash_key_columns());
-  vector<docdb::KeyEntryValue> hashed_components, range_components;
+  std::vector<docdb::KeyEntryValue> hashed_components, range_components;
   hashed_components.reserve(bind_->num_hash_key_columns());
   range_components.reserve(bind_->num_key_columns() - bind_->num_hash_key_columns());
   for (size_t i = 0; i < bind_->num_hash_key_columns(); ++i) {

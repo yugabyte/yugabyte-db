@@ -931,7 +931,7 @@ class TransactionParticipant::Impl
 
   Status StopActiveTxnsPriorTo(
       HybridTime cutoff, CoarseTimePoint deadline, TransactionId* exclude_txn_id) {
-    vector<TransactionId> ids_to_abort;
+    std::vector<TransactionId> ids_to_abort;
     {
       std::lock_guard<std::mutex> lock(mutex_);
       for (const auto& txn : transactions_.get<StartTimeTag>()) {

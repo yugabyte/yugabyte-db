@@ -767,7 +767,7 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(SerializableReadOnly)) {
   ASSERT_OK(read_conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE, READ ONLY"));
   Result<PGResultPtr> result = read_conn.Fetch("SHOW transaction_isolation");
   ASSERT_TRUE(result.ok()) << result.status();
-  string value = ASSERT_RESULT(GetString(result.get().get(), 0, 0));
+  std::string value = ASSERT_RESULT(GetString(result.get().get(), 0, 0));
   ASSERT_EQ(value, "serializable");
   ASSERT_OK(read_conn.Execute("COMMIT"));
 
@@ -1883,7 +1883,7 @@ class PgMiniRocksDbIteratorLoggingTest : public PgMiniSingleTServerTest {
     // Delete and overwrite every row multiple times.
     for (int overwrite_index = 0; overwrite_index < config.num_overwrites; ++overwrite_index) {
       for (int row_index = 0; row_index < config.num_rows; ++row_index) {
-        string non_pk_values;
+        std::string non_pk_values;
         for (int non_pk_col_index = 0;
              non_pk_col_index < config.num_non_pk_columns;
              ++non_pk_col_index) {

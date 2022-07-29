@@ -92,7 +92,7 @@ namespace {
   Status CreateWritableFileWriter(const std::string& filename, const EnvOptions& env_options,
       const yb::IOPriority io_priority, Env* env,
       std::shared_ptr<WritableFileWriter>* file_writer) {
-    unique_ptr<WritableFile> file;
+    std::unique_ptr<WritableFile> file;
     Status s = NewWritableFile(env, filename, &file, env_options);
     if (!s.ok()) {
       return s;
@@ -135,8 +135,8 @@ Status BuildTable(const std::string& dbname,
                                              meta->fd.GetPathId());
   const std::string data_fname = is_split_sst ? TableBaseToDataFileName(base_fname) : "";
   if (iter->Valid()) {
-    shared_ptr<WritableFileWriter> base_file_writer;
-    shared_ptr<WritableFileWriter> data_file_writer;
+    std::shared_ptr<WritableFileWriter> base_file_writer;
+    std::shared_ptr<WritableFileWriter> data_file_writer;
     s = CreateWritableFileWriter(base_fname, env_options, io_priority, env, &base_file_writer);
     if (s.ok() && is_split_sst) {
       s = CreateWritableFileWriter(data_fname, env_options, io_priority, env, &data_file_writer);

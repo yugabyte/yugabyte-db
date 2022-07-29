@@ -173,7 +173,7 @@ itest::TServerDetails* TabletServerIntegrationTestBase::GetLeaderReplicaOrNull(
 
   // The replica we got from the master (if any) is either dead or not the leader.
   // Find the actual leader.
-  pair<itest::TabletReplicaMap::iterator, itest::TabletReplicaMap::iterator> range =
+  std::pair<itest::TabletReplicaMap::iterator, itest::TabletReplicaMap::iterator> range =
       tablet_replicas_.equal_range(tablet_id);
   std::vector<itest::TServerDetails*> replicas_copy;
   for (; range.first != range.second; ++range.first) {
@@ -232,7 +232,7 @@ Status TabletServerIntegrationTestBase::GetTabletLeaderUUIDFromMaster(const std:
 itest::TServerDetails* TabletServerIntegrationTestBase::GetReplicaWithUuidOrNull(
     const std::string& tablet_id,
     const std::string& uuid) {
-  pair<itest::TabletReplicaMap::iterator, itest::TabletReplicaMap::iterator> range =
+  std::pair<itest::TabletReplicaMap::iterator, itest::TabletReplicaMap::iterator> range =
       tablet_replicas_.equal_range(tablet_id);
   for (; range.first != range.second; ++range.first) {
     if ((*range.first).second->instance_id.permanent_uuid() == uuid) {
@@ -290,7 +290,7 @@ void TabletServerIntegrationTestBase::GetOnlyLiveFollowerReplicas(
   CHECK_OK(GetLeaderReplicaWithRetries(tablet_id, &leader));
 
   std::vector<itest::TServerDetails*> replicas;
-  pair<itest::TabletReplicaMap::iterator, itest::TabletReplicaMap::iterator> range =
+  std::pair<itest::TabletReplicaMap::iterator, itest::TabletReplicaMap::iterator> range =
       tablet_replicas_.equal_range(tablet_id);
   for (; range.first != range.second; ++range.first) {
     replicas.push_back((*range.first).second);

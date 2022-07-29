@@ -273,7 +273,7 @@ CoarseTimePoint RedisInboundCall::GetClientDeadline() const {
 void RedisInboundCall::GetCallDetails(rpc::RpcCallInProgressPB *call_in_progress_pb) const {
     rpc::RedisCallDetailsPB* redis_details = call_in_progress_pb->mutable_redis_details();
     for (const RedisClientCommand& command : client_batch_) {
-        string query;
+        std::string query;
         for (const Slice& arg : command) {
             query += " " + arg.ToDebugString(FLAGS_rpcz_max_redis_query_dump_size);
         }
@@ -298,7 +298,7 @@ void RedisInboundCall::LogTrace() const {
   }
 }
 
-string RedisInboundCall::ToString() const {
+std::string RedisInboundCall::ToString() const {
   return Format("Redis Call from $0", connection()->remote());
 }
 
@@ -324,7 +324,7 @@ Out DoSerializeResponses(const Collection& responses, Out out) {
   // handle arrays, hashes etc. For now, we only support the string response.
 
   for (const auto& redis_response : responses) {
-    string error_message = redis_response.error_message();
+    std::string error_message = redis_response.error_message();
     if (error_message == "") {
       error_message = "Unknown error";
     }

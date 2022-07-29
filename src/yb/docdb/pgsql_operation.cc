@@ -95,7 +95,7 @@ Status CreateProjection(const Schema& schema,
                                 Schema* projection) {
   // Create projection of non-primary key columns. Primary key columns are implicitly read by DocDB.
   // It will also sort the columns before scanning.
-  vector<ColumnId> column_ids;
+  std::vector<ColumnId> column_ids;
   column_ids.reserve(column_refs.ids_size());
   for (int32_t id : column_refs.ids()) {
     const ColumnId column_id(id);
@@ -110,7 +110,7 @@ Status CreateProjection(
     const Schema& schema,
     const google::protobuf::RepeatedPtrField<PgsqlColRefPB> &column_refs,
     Schema* projection) {
-  vector<ColumnId> column_ids;
+  std::vector<ColumnId> column_ids;
   column_ids.reserve(column_refs.size());
   for (const PgsqlColRefPB& column_ref : column_refs) {
     const ColumnId column_id(column_ref.column_id());
@@ -161,8 +161,8 @@ Result<R> FetchDocKeyImpl(const Schema& schema,
   }
 }
 
-Result<string> FetchEncodedDocKey(const Schema& schema, const PgsqlReadRequestPB& request) {
-  return FetchDocKeyImpl<string>(
+Result<std::string> FetchEncodedDocKey(const Schema& schema, const PgsqlReadRequestPB& request) {
+  return FetchDocKeyImpl<std::string>(
       schema, request,
       [](const auto& doc_key) { return doc_key.Encode().ToStringBuffer(); },
       [](const auto& encoded_doc_key) { return encoded_doc_key; });

@@ -3257,7 +3257,7 @@ TEST_F(YbAdminSnapshotScheduleFailoverTests, LeaderFailoverRestoreSnapshot) {
       CallAdmin("create_keyspace_snapshot",
                 Format("ycql.$0", client::kTableName.namespace_name())));
 
-  vector<string> admin_result = strings::Split(out, ": ");
+  std::vector<std::string> admin_result = strings::Split(out, ": ");
   std::string snapshot_id = admin_result[1].substr(0, admin_result[1].size() - 1);
   LOG(INFO) << "Snapshot id " << snapshot_id;
 

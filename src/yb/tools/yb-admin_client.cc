@@ -151,7 +151,7 @@ static constexpr const char* kDBTypePrefixYsql = "ysql";
 static constexpr const char* kDBTypePrefixRedis = "yedis";
 static constexpr const char* kTableIDPrefix = "tableid";
 
-string FormatFirstHostPort(
+std::string FormatFirstHostPort(
     const RepeatedPtrField<HostPortPB>& rpc_addresses) {
   if (rpc_addresses.empty()) {
     return "N/A";
@@ -160,7 +160,7 @@ string FormatFirstHostPort(
   }
 }
 
-string FormatDouble(double d, int precision = 2) {
+std::string FormatDouble(double d, int precision = 2) {
   std::ostringstream op_stream;
   op_stream << std::fixed << std::setprecision(precision);
   op_stream << d;
@@ -214,10 +214,10 @@ Result<TypedNamespaceName> ResolveNamespaceName(
     const YQLDatabase default_if_no_prefix = YQL_DATABASE_CQL) {
   auto db_type = YQL_DATABASE_UNKNOWN;
   if (!prefix.empty()) {
-    static const std::array<pair<const char*, YQLDatabase>, 3> type_prefixes{
-        make_pair(kDBTypePrefixCql, YQL_DATABASE_CQL),
-        make_pair(kDBTypePrefixYsql, YQL_DATABASE_PGSQL),
-        make_pair(kDBTypePrefixRedis, YQL_DATABASE_REDIS)};
+    static const std::array<std::pair<const char*, YQLDatabase>, 3> type_prefixes{
+        std::make_pair(kDBTypePrefixCql, YQL_DATABASE_CQL),
+        std::make_pair(kDBTypePrefixYsql, YQL_DATABASE_PGSQL),
+        std::make_pair(kDBTypePrefixRedis, YQL_DATABASE_REDIS)};
     for (const auto& p : type_prefixes) {
       if (prefix == p.first) {
         db_type = p.second;
@@ -293,7 +293,7 @@ struct DotStringParts {
 DotStringParts SplitByDot(const std::string& str) {
   const size_t dot_pos = str.find('.');
   DotStringParts result{.prefix = Slice(), .value = str};
-  if (dot_pos != string::npos) {
+  if (dot_pos != std::string::npos) {
     result.prefix = Slice(str.data(), dot_pos);
     result.value.remove_prefix(dot_pos + 1);
   }
@@ -308,7 +308,7 @@ class TableNameResolver::Impl {
   struct TableNameTag;
   using Values = std::vector<client::YBTableName>;
 
-  Impl(std::vector<YBTableName> tables, vector<master::NamespaceIdentifierPB> namespaces)
+  Impl(std::vector<YBTableName> tables, std::vector<master::NamespaceIdentifierPB> namespaces)
       : current_namespace_(nullptr) {
     std::move(tables.begin(), tables.end(), std::inserter(tables_, tables_.end()));
     std::move(namespaces.begin(), namespaces.end(), std::inserter(namespaces_, namespaces_.end()));
@@ -457,7 +457,7 @@ master::NamespaceIdentifierPB TableNameResolver::last_namespace() {
   return impl_->last_namespace();
 }
 
-ClusterAdminClient::ClusterAdminClient(string addrs, MonoDelta timeout)
+ClusterAdminClient::ClusterAdminClient(std::string addrs, MonoDelta timeout)
     : master_addr_list_(std::move(addrs)),
       timeout_(timeout),
       initted_(false) {}
@@ -576,8 +576,8 @@ void ClusterAdminClient::ResetMasterProxy(const HostPort& leader_addr) {
 }
 
 Status ClusterAdminClient::MasterLeaderStepDown(
-    const string& leader_uuid,
-    const string& new_leader_uuid) {
+    const std::string& leader_uuid,
+    const std::string& new_leader_uuid) {
   auto master_proxy = std::make_unique<ConsensusServiceProxy>(proxy_cache_.get(), leader_addr_);
 
   return LeaderStepDown(leader_uuid, yb::master::kSysCatalogTabletId,
@@ -617,7 +617,7 @@ Status ClusterAdminClient::LeaderStepDown(
   } else {
     // Look up the location of the tablet leader from the Master.
     HostPort leader_addr;
-    string lookup_leader_uuid;
+    std::string lookup_leader_uuid;
     RETURN_NOT_OK(SetTabletPeerInfo(tablet_id, LEADER, &lookup_leader_uuid, &leader_addr));
     req.set_dest_uuid(lookup_leader_uuid);
     new_proxy = std::make_unique<ConsensusServiceProxy>(proxy_cache_.get(), leader_addr);
@@ -638,7 +638,7 @@ Status ClusterAdminClient::LeaderStepDown(
 // Force start an election on a randomly chosen non-leader peer of this tablet's raft quorum.
 Status ClusterAdminClient::StartElection(const TabletId& tablet_id) {
   HostPort non_leader_addr;
-  string non_leader_uuid;
+  std::string non_leader_uuid;
   RETURN_NOT_OK(SetTabletPeerInfo(tablet_id, FOLLOWER, &non_leader_uuid, &non_leader_addr));
   ConsensusServiceProxy non_leader_proxy(proxy_cache_.get(), non_leader_addr);
   RunLeaderElectionRequestPB req;
@@ -687,11 +687,11 @@ Status ClusterAdminClient::GetWalRetentionSecs(const YBTableName& table_name) {
 }
 
 Status ClusterAdminClient::ParseChangeType(
-    const string& change_type,
+    const std::string& change_type,
     consensus::ChangeConfigType* cc_type) {
   consensus::ChangeConfigType cctype = consensus::UNKNOWN_CHANGE;
   *cc_type = cctype;
-  string uppercase_change_type;
+  std::string uppercase_change_type;
   ToUpperCase(change_type, &uppercase_change_type);
   if (!consensus::ChangeConfigType_Parse(uppercase_change_type, &cctype) ||
     cctype == consensus::UNKNOWN_CHANGE) {
@@ -705,9 +705,9 @@ Status ClusterAdminClient::ParseChangeType(
 
 Status ClusterAdminClient::ChangeConfig(
     const TabletId& tablet_id,
-    const string& change_type,
+    const std::string& change_type,
     const PeerId& peer_uuid,
-    const boost::optional<string>& member_type) {
+    const boost::optional<std::string>& member_type) {
   CHECK(initted_);
 
   consensus::ChangeConfigType cc_type;
@@ -719,7 +719,7 @@ Status ClusterAdminClient::ChangeConfig(
   // Parse the optional fields.
   if (member_type) {
     consensus::PeerMemberType member_type_val;
-    string uppercase_member_type;
+    std::string uppercase_member_type;
     ToUpperCase(*member_type, &uppercase_member_type);
     if (!PeerMemberType_Parse(uppercase_member_type, &member_type_val)) {
       return STATUS(InvalidArgument, "Unrecognized member_type", *member_type);
@@ -744,7 +744,7 @@ Status ClusterAdminClient::ChangeConfig(
 
   // Look up the location of the tablet leader from the Master.
   HostPort leader_addr;
-  string leader_uuid;
+  std::string leader_uuid;
   RETURN_NOT_OK(SetTabletPeerInfo(tablet_id, LEADER, &leader_uuid, &leader_addr));
 
   auto consensus_proxy = std::make_unique<ConsensusServiceProxy>(proxy_cache_.get(), leader_addr);
@@ -752,7 +752,7 @@ Status ClusterAdminClient::ChangeConfig(
   // starts an election and gets a new leader ts.
   if (cc_type == consensus::REMOVE_SERVER &&
       leader_uuid == peer_uuid) {
-    string old_leader_uuid = leader_uuid;
+    std::string old_leader_uuid = leader_uuid;
     RETURN_NOT_OK(LeaderStepDown(
           leader_uuid, tablet_id, /* new_leader_uuid */ std::string(), &consensus_proxy));
     sleep(5);  // TODO - election completion timing is not known accurately
@@ -839,7 +839,7 @@ Status ClusterAdminClient::GetIsLoadBalancerIdle() {
 }
 
 Status ClusterAdminClient::ListLeaderCounts(const YBTableName& table_name) {
-  std::unordered_map<string, int> leader_counts = VERIFY_RESULT(GetLeaderCounts(table_name));
+  std::unordered_map<std::string, int> leader_counts = VERIFY_RESULT(GetLeaderCounts(table_name));
   int total_leader_count = 0;
   for (const auto& lc : leader_counts) { total_leader_count += lc.second; }
 
@@ -852,7 +852,7 @@ Status ClusterAdminClient::ListLeaderCounts(const YBTableName& table_name) {
   //   Worst-case scenario:   12 0 0
   //   Standard deviation:    1.24722
   //   Adjusted deviation %:  10.9717%
-  vector<double> leader_dist, best_case, worst_case;
+  std::vector<double> leader_dist, best_case, worst_case;
   cout << RightPadToUuidWidth("Server UUID") << kColumnSep << "Leader Count" << endl;
   for (const auto& leader_count : leader_counts) {
     cout << leader_count.first << kColumnSep << leader_count.second << endl;
@@ -880,9 +880,9 @@ Status ClusterAdminClient::ListLeaderCounts(const YBTableName& table_name) {
   return Status::OK();
 }
 
-Result<std::unordered_map<string, int>> ClusterAdminClient::GetLeaderCounts(
+Result<std::unordered_map<std::string, int>> ClusterAdminClient::GetLeaderCounts(
     const client::YBTableName& table_name) {
-  vector<string> tablet_ids, ranges;
+  std::vector<std::string> tablet_ids, ranges;
   RETURN_NOT_OK(yb_client_->GetTablets(table_name, 0, &tablet_ids, &ranges));
   master::GetTabletLocationsRequestPB req;
   for (const auto& tablet_id : tablet_ids) {
@@ -891,7 +891,7 @@ Result<std::unordered_map<string, int>> ClusterAdminClient::GetLeaderCounts(
   const auto resp = VERIFY_RESULT(InvokeRpc(
       &master::MasterClientProxy::GetTabletLocations, *master_client_proxy_, req));
 
-  std::unordered_map<string, int> leader_counts;
+  std::unordered_map<std::string, int> leader_counts;
   for (const auto& locs : resp.tablet_locations()) {
     for (const auto& replica : locs.replicas()) {
       const auto uuid = replica.ts_info().permanent_uuid();
@@ -953,16 +953,16 @@ Status ClusterAdminClient::DropRedisTable() {
 }
 
 Status ClusterAdminClient::ChangeMasterConfig(
-    const string& change_type,
-    const string& peer_host,
+    const std::string& change_type,
+    const std::string& peer_host,
     uint16_t peer_port,
-    const string& given_uuid) {
+    const std::string& given_uuid) {
   CHECK(initted_);
 
   consensus::ChangeConfigType cc_type;
   RETURN_NOT_OK(ParseChangeType(change_type, &cc_type));
 
-  string peer_uuid;
+  std::string peer_uuid;
   if (cc_type == consensus::ADD_SERVER) {
     VLOG(1) << "ChangeMasterConfig: attempt to get UUID for changed host: " << peer_host << ":"
             << peer_port;
@@ -986,7 +986,7 @@ Status ClusterAdminClient::ChangeMasterConfig(
   if (cc_type == consensus::REMOVE_SERVER && leader_addr_ == changed_master_addr) {
     VLOG(1) << "ChangeMasterConfig: request leader " << leader_addr_
             << " to step down before removal.";
-    string old_leader_uuid = leader_uuid;
+    std::string old_leader_uuid = leader_uuid;
     RETURN_NOT_OK(MasterLeaderStepDown(leader_uuid));
     sleep(5);  // TODO - wait for exactly the time needed for new leader to get elected.
     // Reget the leader master's socket info to set up the proxy
@@ -1226,7 +1226,7 @@ Status ClusterAdminClient::ListTables(bool include_db_type,
                                       bool include_table_type) {
   const auto tables = VERIFY_RESULT(yb_client_->ListTables());
   const auto& namespace_metadata = VERIFY_RESULT_REF(GetNamespaceMap());
-  vector<string> names;
+  std::vector<std::string> names;
   for (const auto& table : tables) {
     std::stringstream str;
     if (include_db_type) {
@@ -1264,21 +1264,21 @@ Status ClusterAdminClient::ListTables(bool include_db_type,
     names.push_back(str.str());
   }
   sort(names.begin(), names.end());
-  copy(names.begin(), names.end(), std::ostream_iterator<string>(cout, "\n"));
+  copy(names.begin(), names.end(), std::ostream_iterator<std::string>(cout, "\n"));
   return Status::OK();
 }
 
 struct FollowerDetails {
-  string uuid;
-  string host_port;
-  string peer_role;
-  FollowerDetails(const string &u, const string &hp, const string &role) :
+  std::string uuid;
+  std::string host_port;
+  std::string peer_role;
+  FollowerDetails(const std::string &u, const std::string &hp, const std::string &role) :
     uuid(u), host_port(hp), peer_role(role) {}
 };
 
 Status ClusterAdminClient::ListTablets(
     const YBTableName& table_name, int max_tablets, bool json, bool followers) {
-  vector<string> tablet_uuids, ranges;
+  std::vector<std::string> tablet_uuids, ranges;
   std::vector<master::TabletLocationsPB> locations;
   RETURN_NOT_OK(yb_client_->GetTablets(
       table_name, max_tablets, &tablet_uuids, &ranges, &locations));
@@ -1298,12 +1298,12 @@ Status ClusterAdminClient::ListTablets(
   }
 
   for (size_t i = 0; i < tablet_uuids.size(); i++) {
-    const string& tablet_uuid = tablet_uuids[i];
-    string leader_host_port;
-    string leader_uuid;
-    string follower_host_port;
-    vector<FollowerDetails> follower_list;
-    string follower_list_str;
+    const std::string& tablet_uuid = tablet_uuids[i];
+    std::string leader_host_port;
+    std::string leader_uuid;
+    std::string follower_host_port;
+    std::vector<FollowerDetails> follower_list;
+    std::string follower_list_str;
     const auto& locations_of_this_tablet = locations[i];
     for (const auto& replica : locations_of_this_tablet.replicas()) {
       if (replica.role() == PeerRole::LEADER) {
@@ -1316,7 +1316,7 @@ Status ClusterAdminClient::ListTablets(
         }
       } else {
         if (followers) {
-          string follower_host_port =
+          std::string follower_host_port =
             HostPortPBToString(replica.ts_info().private_rpc_addresses(0));
           if (json) {
             follower_list.push_back(
@@ -1543,7 +1543,7 @@ Status ClusterAdminClient::GetLoadBalancerState() {
 
   master::GetLoadBalancerStateRequestPB req;
   master::GetLoadBalancerStateResponsePB resp;
-  string error;
+  std::string error;
   master::MasterClusterProxy* proxy;
   for (const auto& master : list_resp.masters()) {
     error.clear();
@@ -1637,7 +1637,7 @@ Status ClusterAdminClient::WaitUntilMasterLeaderReady() {
 }
 
 Status ClusterAdminClient::AddReadReplicaPlacementInfo(
-    const string& placement_info, int replication_factor, const std::string& optional_uuid) {
+    const std::string& placement_info, int replication_factor, const std::string& optional_uuid) {
   RETURN_NOT_OK_PREPEND(WaitUntilMasterLeaderReady(), "Wait for master leader failed!");
 
   // Get the cluster config from the master leader.
@@ -1650,7 +1650,7 @@ Status ClusterAdminClient::AddReadReplicaPlacementInfo(
   auto* read_replica_config = cluster_config->mutable_replication_info()->add_read_replicas();
 
   // If optional_uuid is set, make that the placement info, otherwise generate a random one.
-  string uuid_str = optional_uuid;
+  std::string uuid_str = optional_uuid;
   if (optional_uuid.empty()) {
     uuid_str = RandomHumanReadableString(16);
   }
@@ -1740,7 +1740,7 @@ Status ClusterAdminClient::DeleteReadReplicaPlacementInfo() {
 }
 
 Status ClusterAdminClient::FillPlacementInfo(
-    master::PlacementInfoPB* placement_info_pb, const string& placement_str) {
+    master::PlacementInfoPB* placement_info_pb, const std::string& placement_str) {
 
   std::vector<std::string> placement_info_split = strings::Split(
       placement_str, ",", strings::SkipEmpty());
@@ -2182,7 +2182,7 @@ Result<TableNameResolver> ClusterAdminClient::BuildTableNameResolver() {
                            VERIFY_RESULT(yb_client_->ListNamespaces()));
 }
 
-string RightPadToUuidWidth(const string &s) {
+std::string RightPadToUuidWidth(const std::string &s) {
   return RightPadToWidth(s, kNumCharactersInUuid);
 }
 
@@ -2199,7 +2199,7 @@ void AddStringField(
   out->AddMember(rapidjson::StringRef(name), json_value, *allocator);
 }
 
-string HybridTimeToString(HybridTime ht) {
+std::string HybridTimeToString(HybridTime ht) {
   return Timestamp(ht.GetPhysicalValueMicros()).ToHumanReadableTime();
 }
 

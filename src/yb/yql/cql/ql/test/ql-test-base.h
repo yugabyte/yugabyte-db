@@ -65,7 +65,7 @@ namespace ql {
   do {                                         \
     Status s = TestParser(stmt);               \
     EXPECT_FALSE(s.ok());                      \
-    EXPECT_FALSE(s.ToString().find(err_msg) == string::npos); \
+    EXPECT_FALSE(s.ToString().find(err_msg) == std::string::npos); \
   } while (false)
 
 #define PROCESSOR_RUN(result, stmt)            \
@@ -78,11 +78,11 @@ namespace ql {
     EXPECT_TRUE(s.ok());                       \
   } while (false)
 
-#define EXEC_INVALID_STMT_WITH_ERROR(stmt, err_msg)           \
-  do {                                                        \
-    PROCESSOR_RUN(s, stmt);                                   \
-    EXPECT_FALSE(s.ok());                                     \
-    EXPECT_FALSE(s.ToString().find(err_msg) == string::npos); \
+#define EXEC_INVALID_STMT_WITH_ERROR(stmt, err_msg)                \
+  do {                                                             \
+    PROCESSOR_RUN(s, stmt);                                        \
+    EXPECT_FALSE(s.ok());                                          \
+    EXPECT_FALSE(s.ToString().find(err_msg) == std::string::npos); \
   } while (false)
 
 #define EXEC_INVALID_STMT(stmt) EXEC_INVALID_STMT_WITH_ERROR(stmt, "")
@@ -126,7 +126,7 @@ class TestQLProcessor : public ClockHolder {
   }
 
   void RunAsync(
-      const string& stmt, const StatementParameters& params, Callback<void(const Status&)> cb);
+      const std::string& stmt, const StatementParameters& params, Callback<void(const Status&)> cb);
 
   // Execute a QL statement.
   Status Run(
@@ -190,7 +190,7 @@ class QLTestBase : public YBTest {
   Status TestParser(const std::string& stmt);
 
   // Tests parser and analyzer
-  Status TestAnalyzer(const string& stmt, ParseTreePtr* parse_tree);
+  Status TestAnalyzer(const std::string& stmt, ParseTreePtr* parse_tree);
 
   //------------------------------------------------------------------------------------------------
   // Create simulated cluster.
@@ -204,9 +204,9 @@ class QLTestBase : public YBTest {
   // Utility functions for QL tests.
 
   void VerifyPaginationSelect(TestQLProcessor* processor,
-                              const string &select_query,
+                              const std::string &select_query,
                               int page_size,
-                              const string expected_rows);
+                              const std::string expected_rows);
 
  protected:
   //------------------------------------------------------------------------------------------------

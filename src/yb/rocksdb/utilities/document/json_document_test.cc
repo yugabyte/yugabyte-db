@@ -266,20 +266,20 @@ TEST_F(JSONDocumentTest, OperatorEqualsTest) {
   ASSERT_TRUE(JSONDocument(static_cast<int64_t>(15)) ==
               JSONDocument(static_cast<int64_t>(15)));
 
-  unique_ptr<JSONDocument> arrayWithInt8Doc(JSONDocument::ParseJSON("[8]"));
+  std::unique_ptr<JSONDocument> arrayWithInt8Doc(JSONDocument::ParseJSON("[8]"));
   ASSERT_TRUE(arrayWithInt8Doc != nullptr);
   ASSERT_TRUE(arrayWithInt8Doc->IsArray());
   ASSERT_TRUE((*arrayWithInt8Doc)[0].IsInt64());
   ASSERT_TRUE((*arrayWithInt8Doc)[0] == JSONDocument(static_cast<int64_t>(8)));
 
-  unique_ptr<JSONDocument> arrayWithInt16Doc(JSONDocument::ParseJSON("[512]"));
+  std::unique_ptr<JSONDocument> arrayWithInt16Doc(JSONDocument::ParseJSON("[512]"));
   ASSERT_TRUE(arrayWithInt16Doc != nullptr);
   ASSERT_TRUE(arrayWithInt16Doc->IsArray());
   ASSERT_TRUE((*arrayWithInt16Doc)[0].IsInt64());
   ASSERT_TRUE((*arrayWithInt16Doc)[0] ==
               JSONDocument(static_cast<int64_t>(512)));
 
-  unique_ptr<JSONDocument> arrayWithInt32Doc(
+  std::unique_ptr<JSONDocument> arrayWithInt32Doc(
     JSONDocument::ParseJSON("[1000000]"));
   ASSERT_TRUE(arrayWithInt32Doc != nullptr);
   ASSERT_TRUE(arrayWithInt32Doc->IsArray());
@@ -294,7 +294,7 @@ TEST_F(JSONDocumentTest, OperatorEqualsTest) {
 }
 
 TEST_F(JSONDocumentTest, JSONDocumentBuilderTest) {
-  unique_ptr<JSONDocument> parsedArray(
+  std::unique_ptr<JSONDocument> parsedArray(
     JSONDocument::ParseJSON("[1, [123, \"a\", \"b\"], {\"b\":\"c\"}]"));
   ASSERT_TRUE(parsedArray != nullptr);
 

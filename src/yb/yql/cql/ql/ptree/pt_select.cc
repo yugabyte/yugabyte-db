@@ -624,9 +624,9 @@ ExplainPlanPB PTSelectStmt::AnalysisResultToPB() {
     key_conditions = "      " + key_conditions;
     filter = "      " + filter;
     select_plan->set_select_type("  ->  " + select_plan->select_type());
-    longest = max(longest, aggr.length());
+    longest = std::max(longest, aggr.length());
   }
-  longest = max(longest, select_plan->select_type().length());
+  longest = std::max(longest, select_plan->select_type().length());
   // If index is being used, change the split of key conditions and filters to that of the index.
   const auto& keys = child_select_ ? child_select_->key_where_ops() : key_where_ops();
   const auto& filters = child_select_ ? child_select_->where_ops() : where_ops();
@@ -640,12 +640,12 @@ ExplainPlanPB PTSelectStmt::AnalysisResultToPB() {
   // to query plan.
   if (!filled_key_conds.empty()) {
     key_conditions += filled_key_conds;
-    longest = max(longest, key_conditions.length());
+    longest = std::max(longest, key_conditions.length());
     select_plan->set_key_conditions(key_conditions);
   }
   if (!filled_filter.empty()) {
     filter += filled_filter;
-    longest = max(longest, filter.length());
+    longest = std::max(longest, filter.length());
     select_plan->set_filter(filter);
   }
 

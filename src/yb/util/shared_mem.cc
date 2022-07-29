@@ -32,6 +32,8 @@
 
 namespace yb {
 
+using std::string;
+
 namespace {
 
 // File name prefix for anonymous shared memory files.

@@ -141,7 +141,7 @@ void RemoteBootstrapSessionTest::SetUpTabletPeer() {
 }
 
 void RemoteBootstrapSessionTest::TabletPeerStateChangedCallback(
-    const string& tablet_id, std::shared_ptr<consensus::StateChangeContext> context) {
+    const std::string& tablet_id, std::shared_ptr<consensus::StateChangeContext> context) {
   LOG(INFO) << "Tablet peer state changed for tablet " << tablet_id
             << ". Reason: " << context->ToString();
 }

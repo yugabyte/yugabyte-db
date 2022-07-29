@@ -119,7 +119,7 @@ class MasterReplicationTest : public YBMiniClusterTestBase<MiniCluster> {
     CHECK_OK(cluster_->WaitForTabletServerCount(kNumTabletServerReplicas));
   }
 
-  void ListMasterServerAddrs(vector<string>* out) {
+  void ListMasterServerAddrs(vector<std::string>* out) {
     for (int i = 0; i < num_masters_; i++) {
       out->push_back(cluster_->mini_master(i)->bound_rpc_addr_str());
     }
@@ -219,7 +219,7 @@ TEST_F(MasterReplicationTest, TestSysTablesReplication) {
 // When all masters are down, test that we can timeout the connection
 // attempts after a specified deadline.
 TEST_F(MasterReplicationTest, TestTimeoutWhenAllMastersAreDown) {
-  vector<string> master_addrs;
+  vector<std::string> master_addrs;
   ListMasterServerAddrs(&master_addrs);
 
   cluster_->Shutdown();
@@ -240,7 +240,7 @@ TEST_F(MasterReplicationTest, TestTimeoutWhenAllMastersAreDown) {
 // timeout can elapse).
 TEST_F(MasterReplicationTest, TestCycleThroughAllMasters) {
   DontVerifyClusterBeforeNextTearDown();
-  vector<string> master_addrs;
+  vector<std::string> master_addrs;
   ListMasterServerAddrs(&master_addrs);
 
   // Shut the cluster down and ...

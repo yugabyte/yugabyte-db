@@ -27,10 +27,16 @@
 #include "yb/util/pb_util.h"
 #include "yb/util/status_format.h"
 
-static const string kEncryptionMagic = "encrypt!";
-
 namespace yb {
 namespace encryption {
+
+namespace {
+
+static const std::string kEncryptionMagic = "encrypt!";
+
+}  // namespace
+
+using std::string;
 
 class HeaderManagerImpl : public HeaderManager {
  public:

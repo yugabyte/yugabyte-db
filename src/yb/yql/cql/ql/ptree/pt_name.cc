@@ -128,7 +128,7 @@ Status PTQualifiedName::AnalyzeName(SemContext *sem_context, const ObjectType ob
       }
 
       if (ptnames_.size() == 1) {
-        string keyspace_name = sem_context->CurrentKeyspace();
+        std::string keyspace_name = sem_context->CurrentKeyspace();
         // For user-defined types we prioritize using the table keyspace if available.
         auto* create_table_stmt = sem_context->current_create_table_stmt();
         if (object_type == ObjectType::TYPE &&

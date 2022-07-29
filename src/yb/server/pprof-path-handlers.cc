@@ -52,6 +52,7 @@
 #include <fstream>
 #include <string>
 #include <vector>
+#include <string>
 
 #include <glog/logging.h>
 #include "yb/gutil/map-util.h"
@@ -245,7 +246,7 @@ static void PprofSymbolHandler(const Webserver::WebRequest& req,
   int invalid_addrs = 0;
 
   // Symbolization request.
-  vector<GStringPiece> pieces = strings::Split(req.post_data, "+");
+  std::vector<GStringPiece> pieces = strings::Split(req.post_data, "+");
   for (GStringPiece p : pieces) {
     string hex_addr;
     if (!TryStripPrefixString(p, "0x", &hex_addr)) {

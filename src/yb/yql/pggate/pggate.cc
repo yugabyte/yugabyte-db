@@ -84,6 +84,10 @@ DECLARE_int32(backfill_index_client_rpc_timeout_ms);
 
 namespace yb {
 namespace pggate {
+
+using std::vector;
+using std::string;
+
 namespace {
 
 struct TableHolder {

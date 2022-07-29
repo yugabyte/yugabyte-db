@@ -35,7 +35,7 @@ struct AutoFlagInfo {
 
 YB_STRONGLY_TYPED_BOOL(PromoteNonRuntimeAutoFlags)
 
-typedef std::map<std::string, vector<AutoFlagInfo>> AutoFlagsInfoMap;
+typedef std::map<std::string, std::vector<AutoFlagInfo>> AutoFlagsInfoMap;
 
 namespace AutoFlagsUtil {
 std::string DumpAutoFlagsToJSON();

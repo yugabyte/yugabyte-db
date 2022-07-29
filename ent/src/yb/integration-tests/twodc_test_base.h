@@ -123,7 +123,7 @@ class TwoDCTestBase : public YBTest {
 
   Status CorrectlyPollingAllTablets(MiniCluster* cluster, uint32_t num_producer_tablets);
 
-  Status WaitForSetupUniverseReplicationCleanUp(string producer_uuid);
+  Status WaitForSetupUniverseReplicationCleanUp(std::string producer_uuid);
 
   YBClient* producer_client() {
     return producer_cluster_.client_.get();

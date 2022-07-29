@@ -52,7 +52,7 @@ using namespace std::placeholders;
 using yb::client::YBTableName;
 
 namespace {
-static bool ValidateRedisPasswordSeparator(const char* flagname, const string& value) {
+static bool ValidateRedisPasswordSeparator(const char* flagname, const std::string& value) {
   if (value.size() != 1) {
     LOG(INFO) << "Expect " << flagname << " to be 1 character long";
     return false;
@@ -180,10 +180,10 @@ BOOST_PP_SEQ_FOR_EACH(DEFINE_HISTOGRAM, ~, REDIS_COMMANDS)
 
 BOOST_PP_SEQ_FOR_EACH(PARSER_FORWARD, ~, REDIS_COMMANDS)
 
-YBTableName RedisServiceData::GetYBTableNameForRedisDatabase(const string& db_name) {
+YBTableName RedisServiceData::GetYBTableNameForRedisDatabase(const std::string& db_name) {
   return YBTableName(YQL_DATABASE_REDIS,
                      common::kRedisKeyspaceName,
-                     db_name == "0" ? string(common::kRedisTableName)
+                     db_name == "0" ? std::string(common::kRedisTableName)
                                     : StrCat(common::kRedisTableName, "_", db_name));
 }
 
@@ -320,8 +320,8 @@ class LocalCommandData {
 };
 
 void GetTabletLocations(LocalCommandData data, RedisArrayPB* array_response) {
-  vector<string> tablets, partitions;
-  vector<master::TabletLocationsPB> locations;
+  std::vector<std::string> tablets, partitions;
+  std::vector<master::TabletLocationsPB> locations;
   const auto table_name = RedisServiceData::GetYBTableNameForRedisDatabase(
       data.call()->connection_context().redis_db_to_use());
   auto s = data.client()->GetTabletsAndUpdateCache(
@@ -330,7 +330,7 @@ void GetTabletLocations(LocalCommandData data, RedisArrayPB* array_response) {
     LOG(ERROR) << "Error getting tablets: " << s.message();
     return;
   }
-  vector<string> response, ts_info;
+  std::vector<std::string> response, ts_info;
   response.reserve(3);
   ts_info.reserve(2);
   for (master::TabletLocationsPB &location : locations) {
@@ -417,7 +417,7 @@ void HandlePubSub(LocalCommandData data) {
     auto all = data.context()->service_data()->GetAllSubscriptions(AsPattern::kFalse);
     std::unordered_set<std::string> matched;
     if (data.arg_size() > 2) {
-      const string& pattern = data.arg(2).ToBuffer();
+      const std::string& pattern = data.arg(2).ToBuffer();
       for (auto& channel : all) {
         if (RedisPatternMatch(pattern, channel, /* ignore case */ false)) {
           matched.insert(channel);
@@ -440,7 +440,7 @@ void HandlePubSub(LocalCommandData data) {
   } else if (boost::iequals(data.arg(1).ToBuffer(), "NUMSUB")) {
     auto array_response = response.mutable_array_response();
     for (size_t idx = 2; idx < data.arg_size(); idx++) {
-      const string& channel = data.arg(idx).ToBuffer();
+      const std::string& channel = data.arg(idx).ToBuffer();
       auto subs = data.context()->service_data()->NumSubscribers(AsPattern::kFalse, channel);
       AddElements(redisserver::EncodeAsBulkString(channel), array_response);
       AddElements(redisserver::EncodeAsInteger(subs), array_response);
@@ -454,8 +454,8 @@ void HandlePubSub(LocalCommandData data) {
 }
 
 void HandlePublish(LocalCommandData data) {
-  const string& channel = data.arg(1).ToBuffer();
-  const string& published_message = data.arg(2).ToBuffer();
+  const std::string& channel = data.arg(1).ToBuffer();
+  const std::string& published_message = data.arg(2).ToBuffer();
 
   data.context()->service_data()->ForwardToInterestedProxies(
       channel, published_message, [data = std::move(data)](int val) {
@@ -471,16 +471,16 @@ void HandleSubscribeLikeCommand(LocalCommandData data, AsPattern as_pattern) {
   response.set_code(RedisResponsePB::OK);
 
   // Add to the appenders after the call has been handled (i.e. reponded with "OK").
-  vector<string> channels;
+  std::vector<std::string> channels;
   for (size_t idx = 1; idx < data.arg_size(); idx++) {
     channels.emplace_back(data.arg(idx).ToBuffer());
   }
   auto conn = data.call()->connection().get();
-  vector<size_t> subs;
+  std::vector<size_t> subs;
   data.context()->service_data()->AppendToSubscribers(as_pattern, channels, conn, &subs);
-  string encoded_response;
+  std::string encoded_response;
   for (size_t idx = 0; idx < channels.size(); idx++) {
-    encoded_response += redisserver::EncodeAsArrayOfEncodedElements(vector<string>{
+    encoded_response += redisserver::EncodeAsArrayOfEncodedElements(std::vector<std::string>{
         redisserver::EncodeAsBulkString(as_pattern ? "psubscribe" : "subscribe").ToBuffer(),
         redisserver::EncodeAsBulkString(channels[idx]).ToBuffer(),
         redisserver::EncodeAsInteger(subs[idx]).ToBuffer()});
@@ -506,7 +506,7 @@ void HandleUnsubscribeLikeCommand(LocalCommandData data, AsPattern as_pattern) {
 
   // Add to the appenders after the call has been handled (i.e. reponded with "OK").
   auto conn = data.call()->connection().get();
-  vector<string> channels;
+  std::vector<std::string> channels;
   if (data.arg_size() > 1) {
     for (size_t idx = 1; idx < data.arg_size(); idx++) {
       channels.push_back(data.arg(idx).ToBuffer());
@@ -517,11 +517,11 @@ void HandleUnsubscribeLikeCommand(LocalCommandData data, AsPattern as_pattern) {
     }
   }
 
-  vector<size_t> subs;
+  std::vector<size_t> subs;
   data.context()->service_data()->RemoveFromSubscribers(as_pattern, channels, conn, &subs);
-  string encoded_response;
+  std::string encoded_response;
   for (size_t idx = 0; idx < channels.size(); idx++) {
-    encoded_response += redisserver::EncodeAsArrayOfEncodedElements(vector<string>{
+    encoded_response += redisserver::EncodeAsArrayOfEncodedElements(std::vector<std::string>{
         redisserver::EncodeAsBulkString(as_pattern ? "punsubscribe" : "unsubscribe").ToBuffer(),
         redisserver::EncodeAsBulkString(channels[idx]).ToBuffer(),
         redisserver::EncodeAsInteger(subs[idx]).ToBuffer()});
@@ -566,7 +566,7 @@ void HandlePing(LocalCommandData data) {
   if (data.call()->connection_context().ClientMode() == RedisClientMode::kSubscribed) {
     const auto& second = (data.arg_size() > 1 ? data.arg(1).ToBuffer() : "");
     response.set_encoded_response(redisserver::EncodeAsArrayOfEncodedElements(
-        vector<string>{redisserver::EncodeAsBulkString("pong").ToBuffer(),
+        std::vector<std::string>{redisserver::EncodeAsBulkString("pong").ToBuffer(),
                        redisserver::EncodeAsBulkString(second).ToBuffer()}));
   } else {
     if (data.arg_size() > 1) {
@@ -687,7 +687,7 @@ class RenameData : public std::enable_shared_from_this<RenameData> {
     return true;
   }
 
-  void RespondWithError(const string& msg) {
+  void RespondWithError(const std::string& msg) {
     RedisResponsePB response;
     response.set_code(RedisResponsePB_RedisStatusCode_SERVER_ERROR);
     response.set_error_message(msg);
@@ -751,8 +751,8 @@ class RenameData : public std::enable_shared_from_this<RenameData> {
         size_t count = readResponse.array_response().elements_size();
         auto** elements = readResponse.mutable_array_response()->mutable_elements()->mutable_data();
         for (size_t i = 0; i < count; i += 2) {
-          const string& first = *elements[i];
-          const string& second = *elements[i + 1];
+          const std::string& first = *elements[i];
+          const std::string& second = *elements[i + 1];
           auto req_kv = write_dest_op_->mutable_request()->mutable_key_value();
           if (type == REDIS_TYPE_SORTEDSET) {
             auto score = CheckedStold(second);
@@ -784,7 +784,7 @@ class RenameData : public std::enable_shared_from_this<RenameData> {
         size_t count = readResponse.array_response().elements_size();
         auto** elements = readResponse.mutable_array_response()->mutable_elements()->mutable_data();
         for (size_t i = 0; i < count;) {
-          const string& subkey = *elements[i++];
+          const std::string& subkey = *elements[i++];
           write_dest_op_->mutable_request()->mutable_key_value()->add_subkey()->set_string_subkey(
               subkey);
         }
@@ -990,7 +990,7 @@ void HandleQuit(LocalCommandData data) {
   data.Respond();
 }
 
-bool AcceptPassword(const vector<string>& allowed, const string& candidate) {
+bool AcceptPassword(const std::vector<std::string>& allowed, const std::string& candidate) {
   for (auto& stored_hash_or_pwd : allowed) {
     if (FLAGS_use_hashed_redis_password
             ? (0 == yb::util::bcrypt_checkpw(candidate.c_str(), stored_hash_or_pwd.c_str()))
@@ -1019,13 +1019,13 @@ void HandleConfig(LocalCommandData data) {
 
   // Handle Config Set Requirepass <passwords>
   DCHECK_EQ(FLAGS_redis_passwords_separator.size(), 1);
-  vector<string> passwords =
+  std::vector<std::string> passwords =
       yb::StringSplit(data.arg(3).ToBuffer(), FLAGS_redis_passwords_separator[0]);
   Status status;
   if (passwords.size() > 2) {
     status = STATUS(InvalidArgument, "Only maximum of 2 passwords are supported");
   } else if (FLAGS_use_hashed_redis_password) {
-    std::vector<string> hashes;
+    std::vector<std::string> hashes;
     for (const auto& pwd : passwords) {
       char hash[yb::util::kBcryptHashSize];
       if (yb::util::bcrypt_hashpw(pwd.c_str(), hash) != 0) {
@@ -1051,7 +1051,7 @@ void HandleConfig(LocalCommandData data) {
 }
 
 void HandleAuth(LocalCommandData data) {
-  vector<string> passwords;
+  std::vector<std::string> passwords;
   auto status = data.context()->service_data()->GetRedisPasswords(&passwords);
   RedisResponsePB resp;
   if (!status.ok() || !AcceptPassword(passwords, data.arg(1).ToBuffer())) {
@@ -1068,7 +1068,7 @@ void HandleAuth(LocalCommandData data) {
   data.Respond(&resp);
 }
 
-void FlushDBs(LocalCommandData data, const vector<string> ids) {
+void FlushDBs(LocalCommandData data, const std::vector<std::string> ids) {
   RedisResponsePB resp;
 
   const Status s = FLAGS_yedis_enable_flush
@@ -1090,7 +1090,7 @@ void HandleFlushDB(LocalCommandData data) {
 }
 
 void HandleFlushAll(LocalCommandData data) {
-  const string prefix = common::kRedisTableName;
+  const std::string prefix = common::kRedisTableName;
   auto result = data.client()->ListTables(prefix);
   if (!result.ok()) {
     RedisResponsePB resp;
@@ -1102,7 +1102,7 @@ void HandleFlushAll(LocalCommandData data) {
   }
   const auto& table_names = *result;
   // Gather table ids.
-  vector<string> table_ids;
+  std::vector<std::string> table_ids;
   for (const auto& name : table_names) {
     std::shared_ptr<client::YBTable> table;
     const auto s = data.client()->OpenTable(name, &table);
@@ -1134,7 +1134,7 @@ void HandleCreateDB(LocalCommandData data) {
   }
 
   // Figure out the redis table name that we should be using.
-  const string db_name = data.arg(1).ToBuffer();
+  const std::string db_name = data.arg(1).ToBuffer();
   const auto table_name = RedisServiceData::GetYBTableNameForRedisDatabase(db_name);
   std::unique_ptr<yb::client::YBTableCreator> table_creator(data.client()->NewTableCreator());
   s = table_creator->table_name(table_name)
@@ -1156,7 +1156,7 @@ void HandleCreateDB(LocalCommandData data) {
 void HandleListDB(LocalCommandData data) {
   RedisResponsePB resp;
   // Figure out the redis table name that we should be using.
-  const string prefix = common::kRedisTableName;
+  const std::string prefix = common::kRedisTableName;
   const size_t prefix_len = strlen(common::kRedisTableName);
   const auto result = data.client()->ListTables(prefix);
   if (!result.ok()) {
@@ -1168,7 +1168,7 @@ void HandleListDB(LocalCommandData data) {
   }
   const auto& table_names = *result;
   auto array_response = resp.mutable_array_response();
-  vector<string> dbs;
+  std::vector<std::string> dbs;
   for (const auto& ybname : table_names) {
     if (!ybname.is_redis_table()) continue;
     const auto& tablename = ybname.table_name();
@@ -1180,7 +1180,7 @@ void HandleListDB(LocalCommandData data) {
     }
   }
   std::sort(dbs.begin(), dbs.end());
-  for (const string& db : dbs) {
+  for (const std::string& db : dbs) {
     AddElements(redisserver::EncodeAsBulkString(db), array_response);
   }
   array_response->set_encoded(true);
@@ -1191,7 +1191,7 @@ void HandleListDB(LocalCommandData data) {
 void HandleDeleteDB(LocalCommandData data) {
   RedisResponsePB resp;
   // Figure out the redis table name that we should be using.
-  const string db_name = data.arg(1).ToBuffer();
+  const std::string db_name = data.arg(1).ToBuffer();
   const auto table_name = RedisServiceData::GetYBTableNameForRedisDatabase(db_name);
 
   Status s = data.client()->DeleteTable(table_name, /* wait */ true);
@@ -1210,7 +1210,7 @@ void HandleDeleteDB(LocalCommandData data) {
 
 void HandleSelect(LocalCommandData data) {
   RedisResponsePB resp;
-  const string db_name = data.arg(1).ToBuffer();
+  const std::string db_name = data.arg(1).ToBuffer();
   RedisServiceData* sd = data.context()->service_data();
   auto s = sd->GetYBTableForDB(db_name);
   if (s.ok()) {

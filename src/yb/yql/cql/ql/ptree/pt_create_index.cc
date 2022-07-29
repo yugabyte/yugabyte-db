@@ -85,18 +85,18 @@ Status PTCreateIndex::Analyze(SemContext *sem_context) {
   RETURN_NOT_OK(PTCreateTable::Analyze(sem_context));
 
   if (!name_) {
-    string auto_name = relation_->last_name().c_str();
+    std::string auto_name = relation_->last_name().c_str();
 
     for (const auto& column : hash_columns_) {
-      auto_name += string("_") + column->yb_name();
+      auto_name += std::string("_") + column->yb_name();
     }
 
     for (const auto& column : primary_columns_) {
-      auto_name += string("_") + column->yb_name();
+      auto_name += std::string("_") + column->yb_name();
     }
 
     auto_name += "_idx";
-    string final_name;
+    std::string final_name;
 
     for (char& c : auto_name) {
       if (ascii_isalnum(c) || c == '_') { // Accepted a-z, A-Z, 0-9, _.

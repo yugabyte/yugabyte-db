@@ -93,7 +93,7 @@ TEST_F(PgLibPqErrTest, YB_DISABLE_TEST_IN_TSAN(InsertWithoutCommit)) {
           auto status = connection.ExecuteFormat("INSERT INTO terr VALUES ($0, $1)",
                                       seed * (k + 1), seed);
           if (!status.ok()) {
-            string serr = status.ToString();
+            std::string serr = status.ToString();
             if (serr.find("aborted") != std::string::npos) {
               // If DocDB aborted the execution, the transaction cannot be continued.
               return;
@@ -174,7 +174,7 @@ TEST_F(PgLibPqErrTest, YB_DISABLE_TEST_IN_TSAN(InsertDuplicateWithoutCommit)) {
           auto status = connection.ExecuteFormat("INSERT INTO terr VALUES ($0, $1)",
                                            seed * (k + 1), seed);
           if (!status.ok()) {
-            string serr = status.ToString();
+            std::string serr = status.ToString();
             if (serr.find("aborted") != std::string::npos) {
               // If DocDB aborted the execution, the transaction cannot be continued.
               return;
@@ -258,7 +258,7 @@ TEST_F(PgLibPqErrTest, YB_DISABLE_TEST_IN_TSAN(UpdateWithoutCommit)) {
         for (int rt = 0; rt < kRetryCount; rt++) {
           auto status = connection.ExecuteFormat("UPDATE terr SET v = $0 WHERE k = $1", seed, k);
           if (!status.ok()) {
-            string serr = status.ToString();
+            std::string serr = status.ToString();
             if (serr.find("aborted") != std::string::npos) {
               // If DocDB aborted the execution, the transaction cannot be continued.
               return;
@@ -350,7 +350,7 @@ TEST_F(PgLibPqErrTest, YB_DISABLE_TEST_IN_TSAN(DeleteWithoutCommit)) {
         for (int rt = 0; rt < kRetryCount; rt++) {
           auto status = connection.ExecuteFormat("DELETE FROM terr WHERE k = $0", k);
           if (!status.ok()) {
-            string serr = status.ToString();
+            std::string serr = status.ToString();
             if (serr.find("aborted") != std::string::npos) {
               // If DocDB aborted the execution, the transaction cannot be continued.
               return;
@@ -434,7 +434,7 @@ TEST_F(PgLibPqErrTest, YB_DISABLE_TEST_IN_TSAN(InsertTransactionAborted)) {
                                          seed * (k + 1), seed);
         CHECK(!status.ok()) << "INSERT is expected to fail";
 
-        string serr = status.ToString();
+        std::string serr = status.ToString();
         CHECK(serr.find("duplicate") != std::string::npos ||
               serr.find("aborted") != std::string::npos)
           << "Expecting duplicate key or transaction aborted";

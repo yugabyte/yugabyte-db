@@ -42,6 +42,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+#include <string>
 
 #include <boost/optional/optional_io.hpp>
 #include <glog/logging.h>
@@ -86,6 +87,7 @@
 
 using std::map;
 using std::shared_ptr;
+using std::string;
 using strings::Substitute;
 using namespace std::literals;
 using namespace std::placeholders;

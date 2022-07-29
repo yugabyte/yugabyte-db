@@ -1445,7 +1445,7 @@ void YBClient::DeleteCDCStream(const CDCStreamId& stream_id, StatusCallback call
 
 Status YBClient::GetCDCDBStreamInfo(
   const std::string &db_stream_id,
-  std::vector<pair<std::string, std::string>>* db_stream_info) {
+  std::vector<std::pair<std::string, std::string>>* db_stream_info) {
   // Setting up request.
   GetCDCDBStreamInfoRequestPB req;
   req.set_db_stream_id(db_stream_id);
@@ -1466,7 +1466,7 @@ Status YBClient::GetCDCDBStreamInfo(
 
 void YBClient::GetCDCDBStreamInfo(
     const std::string& db_stream_id,
-    const std::shared_ptr<std::vector<pair<std::string, std::string>>>& db_stream_info,
+    const std::shared_ptr<std::vector<std::pair<std::string, std::string>>>& db_stream_info,
     const StdStatusCallback& callback) {
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
   data_->GetCDCDBStreamInfo(this, db_stream_id, db_stream_info, deadline, callback);

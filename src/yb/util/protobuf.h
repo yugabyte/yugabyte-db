@@ -18,7 +18,7 @@ namespace yb {
 namespace util {
 
 template<class T>
-google::protobuf::RepeatedPtrField<T> ToRepeatedPtrField(const vector<T> &input) {
+google::protobuf::RepeatedPtrField<T> ToRepeatedPtrField(const std::vector<T> &input) {
   google::protobuf::RepeatedPtrField<T> elements;
   elements.Reserve(input.size());
   for (const auto& elem : input) {

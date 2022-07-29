@@ -193,14 +193,14 @@ TEST_F(TestQLQuery, TestQLDecimalTypeInKey) {
                      "primary key(name, balance))";
   CHECK_VALID_STMT(create_stmt);
 
-  vector<string> names = { "hector", "kannan", "karthik", "neil" };
-  vector<string> balances = {
+  std::vector<string> names = { "hector", "kannan", "karthik", "neil" };
+  std::vector<string> balances = {
       "1.0",
       "100.01",
       "100.02",
       "123456789123456789123456789123456789123456789123456390482039482309482309481.99"
   };
-  vector<double> rates = { .0001, .022, 0001, .0001 };
+  std::vector<double> rates = { .0001, .022, 0001, .0001 };
 
   for (size_t i = 0; i < names.size(); i++) {
     auto insert_stmt = Substitute("INSERT INTO accounts(name, balance, rate) VALUES('$0', $1, $2)",
@@ -243,14 +243,14 @@ TEST_F(TestQLQuery, TestQLVarIntTypeInKey) {
       "primary key(name, balance))";
   CHECK_VALID_STMT(create_stmt);
 
-  vector<string> names = { "hector", "kannan", "karthik", "sagnik" };
-  vector<string> balances = {
+  std::vector<string> names = { "hector", "kannan", "karthik", "sagnik" };
+  std::vector<string> balances = {
       "-6555627",
       "0",
       "234",
       "123456789123456789123456789123456789123456789123456390482039482309482309481"
   };
-  vector<double> rates = { .0001, .022, 0001, .0001 };
+  std::vector<double> rates = { .0001, .022, 0001, .0001 };
 
   for (size_t i = 0; i < names.size(); i++) {
     auto insert_stmt = Substitute("INSERT INTO accounts(name, balance, rate) VALUES('$0', $1, $2)",

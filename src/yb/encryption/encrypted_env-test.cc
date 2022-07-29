@@ -31,6 +31,8 @@
 namespace yb {
 namespace encryption {
 
+using std::string;
+
 constexpr uint32_t kDataSize = 1000;
 
 class TestEncryptedEnv : public YBTest {};

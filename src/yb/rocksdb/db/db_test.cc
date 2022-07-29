@@ -118,7 +118,7 @@ class DBTestWithParam
 };
 
 TEST_F(DBTest, MockEnvTest) {
-  unique_ptr<MockEnv> env{new MockEnv(Env::Default())};
+  std::unique_ptr<MockEnv> env{new MockEnv(Env::Default())};
   Options options;
   options.create_if_missing = true;
   options.env = env.get();
@@ -168,7 +168,7 @@ TEST_F(DBTest, MockEnvTest) {
 // defined.
 #ifndef ROCKSDB_LITE
 TEST_F(DBTest, MemEnvTest) {
-  unique_ptr<Env> env{NewMemEnv(Env::Default())};
+  std::unique_ptr<Env> env{NewMemEnv(Env::Default())};
   Options options;
   options.create_if_missing = true;
   options.env = env.get();
@@ -633,7 +633,7 @@ TEST_F(DBTest, IteratorProperty) {
   ReadOptions ropt;
   ropt.pin_data = false;
   {
-    unique_ptr<Iterator> iter(db_->NewIterator(ropt, handles_[1]));
+    std::unique_ptr<Iterator> iter(db_->NewIterator(ropt, handles_[1]));
     iter->SeekToFirst();
     std::string prop_value;
     ASSERT_NOK(iter->GetProperty("non_existing.value", &prop_value));
@@ -3975,12 +3975,12 @@ class RecoveryTestHelper {
                        size_t* count) {
     *count = 0;
 
-    shared_ptr<Cache> table_cache = NewLRUCache(50000, 16);
+    std::shared_ptr<Cache> table_cache = NewLRUCache(50000, 16);
     EnvOptions env_options;
     WriteBuffer write_buffer(db_options->db_write_buffer_size);
 
-    unique_ptr<VersionSet> versions;
-    unique_ptr<WalManager> wal_manager;
+    std::unique_ptr<VersionSet> versions;
+    std::unique_ptr<WalManager> wal_manager;
     WriteController write_controller;
 
     versions.reset(new VersionSet(test->dbname_, db_options, env_options,
@@ -3994,9 +3994,9 @@ class RecoveryTestHelper {
     for (size_t j = kWALFileOffset; j < wal_count + kWALFileOffset; j++) {
       uint64_t current_log_number = j;
       std::string fname = LogFileName(test->dbname_, current_log_number);
-      unique_ptr<WritableFile> file;
+      std::unique_ptr<WritableFile> file;
       ASSERT_OK(db_options->env->NewWritableFile(fname, &file, env_options));
-      unique_ptr<WritableFileWriter> file_writer(
+      std::unique_ptr<WritableFileWriter> file_writer(
           new WritableFileWriter(std::move(file), env_options));
       current_log_writer.reset(
           new log::Writer(std::move(file_writer), current_log_number,
@@ -4750,7 +4750,7 @@ class ModelDB: public DB {
   Status DeleteFile(std::string name) override { return Status::OK(); }
 
   virtual Status GetUpdatesSince(
-      rocksdb::SequenceNumber, unique_ptr<rocksdb::TransactionLogIterator>*,
+      rocksdb::SequenceNumber, std::unique_ptr<rocksdb::TransactionLogIterator>*,
       const TransactionLogIterator::ReadOptions&
           read_options = TransactionLogIterator::ReadOptions()) override {
     return NotSupported();

@@ -286,7 +286,7 @@ Result<VarInt> VarInt::CreateFromString(const char* input) {
   return result;
 }
 
-std::ostream& operator<<(ostream& os, const VarInt& v) {
+std::ostream& operator<<(std::ostream& os, const VarInt& v) {
   os << v.ToString();
   return os;
 }

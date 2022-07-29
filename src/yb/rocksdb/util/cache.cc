@@ -165,7 +165,7 @@ class HandleTable {
     return *FindPointer(key, hash);
   }
 
-  void SetMetrics(shared_ptr<yb::CacheMetrics> metrics) { metrics_ = metrics; }
+  void SetMetrics(std::shared_ptr<yb::CacheMetrics> metrics) { metrics_ = metrics; }
 
   // Checks if the newly created handle is a candidate to be inserted into the multi touch cache.
   // It checks to see if the same value is in the multi touch cache, or if it is in the single
@@ -215,7 +215,7 @@ class HandleTable {
   uint32_t length_;
   uint32_t elems_;
   LRUHandle** list_;
-  shared_ptr<yb::CacheMetrics> metrics_;
+  std::shared_ptr<yb::CacheMetrics> metrics_;
 
   // Return a pointer to slot that points to a cache entry that
   // matches key/hash.  If there is no such cache entry, return a
@@ -384,7 +384,7 @@ class LRUCache {
   // free the needed space
   void SetCapacity(size_t capacity);
 
-  void SetMetrics(shared_ptr<yb::CacheMetrics> metrics) {
+  void SetMetrics(std::shared_ptr<yb::CacheMetrics> metrics) {
     metrics_ = metrics;
     table_.SetMetrics(metrics);
   }
@@ -470,7 +470,7 @@ class LRUCache {
 
   HandleTable table_;
 
-  shared_ptr<yb::CacheMetrics> metrics_;
+  std::shared_ptr<yb::CacheMetrics> metrics_;
 };
 
 LRUCache::LRUCache() {}
@@ -849,7 +849,7 @@ class ShardedLRUCache : public Cache {
   size_t num_shard_bits_;
   size_t capacity_;
   bool strict_capacity_limit_;
-  shared_ptr<yb::CacheMetrics> metrics_;
+  std::shared_ptr<yb::CacheMetrics> metrics_;
 
   static inline uint32_t HashSlice(const Slice& s) {
     return Hash(s.data(), s.size(), 0);
@@ -1016,15 +1016,15 @@ class ShardedLRUCache : public Cache {
 
 }  // end anonymous namespace
 
-shared_ptr<Cache> NewLRUCache(size_t capacity) {
+std::shared_ptr<Cache> NewLRUCache(size_t capacity) {
   return NewLRUCache(capacity, kNumShardBits, false);
 }
 
-shared_ptr<Cache> NewLRUCache(size_t capacity, int num_shard_bits) {
+std::shared_ptr<Cache> NewLRUCache(size_t capacity, int num_shard_bits) {
   return NewLRUCache(capacity, num_shard_bits, false);
 }
 
-shared_ptr<Cache> NewLRUCache(size_t capacity, int num_shard_bits,
+std::shared_ptr<Cache> NewLRUCache(size_t capacity, int num_shard_bits,
                               bool strict_capacity_limit) {
   if (num_shard_bits >= 20) {
     return nullptr;  // the cache cannot be sharded into too many fine pieces

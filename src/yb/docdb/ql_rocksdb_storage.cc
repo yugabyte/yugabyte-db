@@ -62,7 +62,7 @@ Status QLRocksDBStorage::BuildYQLScanSpec(const QLReadRequestPB& request,
   auto max_hash_code = request.has_max_hash_code() ?
       boost::make_optional<int32_t>(request.max_hash_code()) : boost::none;
 
-  vector<KeyEntryValue> hashed_components;
+  std::vector<KeyEntryValue> hashed_components;
   RETURN_NOT_OK(QLKeyColumnValuesToPrimitiveValues(
       request.hashed_column_values(), schema, 0, schema.num_hash_key_columns(),
       &hashed_components));

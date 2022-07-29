@@ -31,7 +31,6 @@ namespace rocksdb {
 
 struct EnvOptions;
 
-using std::unique_ptr;
 class WritableFile;
 class Table;
 class TableBuilder;
@@ -48,9 +47,9 @@ class AdaptiveTableFactory : public TableFactory {
   const char* Name() const override { return "AdaptiveTableFactory"; }
 
   Status NewTableReader(const TableReaderOptions& table_reader_options,
-                        unique_ptr<RandomAccessFileReader>&& file,
+                        std::unique_ptr<RandomAccessFileReader>&& file,
                         uint64_t file_size,
-                        unique_ptr<TableReader>* table) const override;
+                        std::unique_ptr<TableReader>* table) const override;
 
   std::unique_ptr<TableBuilder> NewTableBuilder(
       const TableBuilderOptions &table_builder_options,

@@ -146,9 +146,9 @@ class PlacementInfoTest : public YBTest {
     auto client = CHECK_RESULT(client_builder.Build());
 
     // Select tserver.
-    vector<internal::RemoteTabletServer *> candidates;
+    std::vector<internal::RemoteTabletServer *> candidates;
     internal::RemoteTabletServer *tserver = client->data_->SelectTServer(
-        remote_tablet, YBClient::ReplicaSelection::CLOSEST_REPLICA, std::set<string>(),
+        remote_tablet, YBClient::ReplicaSelection::CLOSEST_REPLICA, std::set<std::string>(),
         &candidates);
     ASSERT_EQ(expected_ts_index, ts_uuid_to_index_[tserver->permanent_uuid()])
         << "Client UUID: " << client_uuid << ", zone: " << placement_zone

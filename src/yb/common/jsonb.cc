@@ -12,6 +12,8 @@
 //
 #include "yb/common/jsonb.h"
 
+#include <string>
+
 #include <rapidjson/error/en.h>
 
 #include "yb/common/common.pb.h"
@@ -27,6 +29,8 @@
 
 namespace yb {
 namespace common {
+
+using std::string;
 
 bool Jsonb::IsScalar(const JEntry& jentry) {
   uint32_t jentry_type = GetJEType(jentry);

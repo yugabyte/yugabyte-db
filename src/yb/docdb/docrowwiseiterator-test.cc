@@ -99,7 +99,7 @@ Schema DocRowwiseIteratorTest::kProjectionForIteratorTests;
 constexpr int32_t kFixedHashCode = 0;
 
 const KeyBytes GetKeyBytes(
-    string hash_key, string range_key1, string range_key2, string range_key3) {
+    std::string hash_key, std::string range_key1, std::string range_key2, std::string range_key3) {
   return DocKey(
              kFixedHashCode, KeyEntryValues(hash_key),
              KeyEntryValues(range_key1, range_key2, range_key3))

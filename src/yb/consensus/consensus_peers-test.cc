@@ -136,7 +136,7 @@ class ConsensusPeersTest : public YBTest {
   }
 
   DelayablePeerProxy<NoOpTestPeerProxy>* NewRemotePeer(
-      const string& peer_name,
+      const std::string& peer_name,
       std::shared_ptr<Peer>* peer) {
     RaftPeerPB peer_pb;
     peer_pb.set_permanent_uuid(peer_name);

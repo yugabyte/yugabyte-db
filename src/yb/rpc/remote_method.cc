@@ -40,6 +40,8 @@
 namespace yb {
 namespace rpc {
 
+using std::string;
+
 RemoteMethod::RemoteMethod(std::string service_name,
                            std::string method_name)
     : service_name_(std::move(service_name)), method_name_(std::move(method_name)) {

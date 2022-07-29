@@ -572,7 +572,7 @@ Status ReadablePBContainerFile::ReadNextPB(Message* msg) {
   return Status::OK();
 }
 
-Status ReadablePBContainerFile::Dump(ostream* os, bool oneline) {
+Status ReadablePBContainerFile::Dump(std::ostream* os, bool oneline) {
   // Use the embedded protobuf information from the container file to
   // create the appropriate kind of protobuf Message.
   //

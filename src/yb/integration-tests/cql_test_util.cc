@@ -282,11 +282,11 @@ void CheckErrorCode(const CassError& error_code) {
 
 } // namespace
 
-void CassandraStatement::SetKeyspace(const string& keyspace) {
+void CassandraStatement::SetKeyspace(const std::string& keyspace) {
   CheckErrorCode(cass_statement_set_keyspace(cass_statement_.get(), keyspace.c_str()));
 }
 
-void CassandraStatement::Bind(size_t index, const string& v) {
+void CassandraStatement::Bind(size_t index, const std::string& v) {
   CheckErrorCode(cass_statement_bind_string(cass_statement_.get(), index, v.c_str()));
 }
 
@@ -364,17 +364,17 @@ CassandraFuture CassandraSession::ExecuteGetFuture(const CassandraStatement& sta
       cass_session_execute(cass_session_.get(), statement.cass_statement_.get()));
 }
 
-CassandraFuture CassandraSession::ExecuteGetFuture(const string& query) {
+CassandraFuture CassandraSession::ExecuteGetFuture(const std::string& query) {
   LOG(INFO) << "Execute query: " << query;
   return ExecuteGetFuture(CassandraStatement(query));
 }
 
-Status CassandraSession::ExecuteQuery(const string& query) {
+Status CassandraSession::ExecuteQuery(const std::string& query) {
   LOG(INFO) << "Execute query: " << query;
   return Execute(CassandraStatement(query));
 }
 
-Result<CassandraResult> CassandraSession::ExecuteWithResult(const string& query) {
+Result<CassandraResult> CassandraSession::ExecuteWithResult(const std::string& query) {
   LOG(INFO) << "Execute query: " << query;
   return ExecuteWithResult(CassandraStatement(query));
 }
@@ -389,7 +389,7 @@ CassandraFuture CassandraSession::SubmitBatch(const CassandraBatch& batch) {
 }
 
 Result<CassandraPrepared> CassandraSession::Prepare(
-    const string& prepare_query, MonoDelta timeout, const string& local_keyspace) {
+    const std::string& prepare_query, MonoDelta timeout, const std::string& local_keyspace) {
   VLOG(2) << "Execute prepare request: " << prepare_query << ", timeout: " << timeout
           << ", keyspace: " << local_keyspace;
   auto deadline = CoarseMonoClock::now() + timeout;

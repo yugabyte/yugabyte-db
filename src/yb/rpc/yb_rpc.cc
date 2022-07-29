@@ -58,6 +58,8 @@ DECLARE_int64(rpc_throttle_threshold_bytes);
 namespace yb {
 namespace rpc {
 
+using std::string;
+
 constexpr const auto kHeartbeatsPerTimeoutPeriod = 3;
 
 namespace {

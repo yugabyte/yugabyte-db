@@ -156,7 +156,7 @@ Status OperationTracker::Add(OperationDriver* driver) {
     // May be nullptr in unit tests even when operation is not nullptr.
     auto* tablet = operation ? operation->tablet() : nullptr;
 
-    string msg = Substitute(
+    std::string msg = Substitute(
         "Operation failed, tablet $0 operation memory consumption ($1) "
         "has exceeded its limit ($2) or the limit of an ancestral tracker",
         tablet ? tablet->tablet_id() : "(unknown)",

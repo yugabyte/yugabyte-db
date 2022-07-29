@@ -83,7 +83,7 @@ static std::pair<std::string, std::string> GetDirAndName(
 
 // A basic file truncation function suitable for this test.
 Status Truncate(Env* env, const std::string& filename, uint64_t length) {
-  unique_ptr<SequentialFile> orig_file;
+  std::unique_ptr<SequentialFile> orig_file;
   const EnvOptions options;
   Status s = env->NewSequentialFile(filename, &orig_file, options);
   if (!s.ok()) {
@@ -100,7 +100,7 @@ Status Truncate(Env* env, const std::string& filename, uint64_t length) {
 #endif
   if (s.ok()) {
     std::string tmp_name = GetDirName(filename) + "/truncate.tmp";
-    unique_ptr<WritableFile> tmp_file;
+    std::unique_ptr<WritableFile> tmp_file;
     s = env->NewWritableFile(tmp_name, &tmp_file, options);
     if (s.ok()) {
       s = tmp_file->Append(result);
@@ -149,7 +149,7 @@ struct FileState {
 class TestWritableFile : public WritableFile {
  public:
   explicit TestWritableFile(const std::string& fname,
-                            unique_ptr<WritableFile>&& f,
+                            std::unique_ptr<WritableFile>&& f,
                             FaultInjectionTestEnv* env);
   virtual ~TestWritableFile();
   Status Append(const Slice& data) override;
@@ -161,7 +161,7 @@ class TestWritableFile : public WritableFile {
 
  private:
   FileState state_;
-  unique_ptr<WritableFile> target_;
+  std::unique_ptr<WritableFile> target_;
   bool writable_file_opened_;
   FaultInjectionTestEnv* env_;
 };
@@ -178,7 +178,7 @@ class TestDirectory : public Directory {
  private:
   FaultInjectionTestEnv* env_;
   std::string dirname_;
-  unique_ptr<Directory> dir_;
+  std::unique_ptr<Directory> dir_;
 };
 
 class FaultInjectionTestEnv : public EnvWrapper {
@@ -189,8 +189,8 @@ class FaultInjectionTestEnv : public EnvWrapper {
   virtual ~FaultInjectionTestEnv() { }
 
   Status NewDirectory(const std::string& name,
-                      unique_ptr<Directory>* result) override {
-    unique_ptr<Directory> r;
+                      std::unique_ptr<Directory>* result) override {
+    std::unique_ptr<Directory> r;
     Status s = target()->NewDirectory(name, &r);
     EXPECT_OK(s);
     if (!s.ok()) {
@@ -201,7 +201,7 @@ class FaultInjectionTestEnv : public EnvWrapper {
   }
 
   Status NewWritableFile(const std::string& fname,
-                         unique_ptr<WritableFile>* result,
+                         std::unique_ptr<WritableFile>* result,
                          const EnvOptions& soptions) override {
     if (!IsFilesystemActive()) {
       return STATUS(Corruption, "Not Active");
@@ -391,7 +391,7 @@ Status TestDirectory::Fsync() {
 }
 
 TestWritableFile::TestWritableFile(const std::string& fname,
-                                   unique_ptr<WritableFile>&& f,
+                                   std::unique_ptr<WritableFile>&& f,
                                    FaultInjectionTestEnv* env)
       : state_(fname),
         target_(std::move(f)),
@@ -477,7 +477,7 @@ class FaultInjectionTest : public RocksDBTest,
   std::unique_ptr<Env> base_env_;
   FaultInjectionTestEnv* env_;
   std::string dbname_;
-  shared_ptr<Cache> tiny_cache_;
+  std::shared_ptr<Cache> tiny_cache_;
   Options options_;
   DB* db_;
 

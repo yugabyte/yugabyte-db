@@ -209,7 +209,7 @@ void UpdateScanDeltaCompactionTest::InsertBaseData() {
 }
 
 void UpdateScanDeltaCompactionTest::RunThreads() {
-  vector<scoped_refptr<Thread> > threads;
+  std::vector<scoped_refptr<Thread> > threads;
 
   CountDownLatch stop_latch(1);
 
@@ -279,15 +279,15 @@ void UpdateScanDeltaCompactionTest::ScanRows(CountDownLatch* stop_latch) const {
 }
 
 void UpdateScanDeltaCompactionTest::CurlWebPages(CountDownLatch* stop_latch) const {
-  vector<string> urls;
-  string base_url = yb::ToString(cluster_->mini_tablet_server(0)->bound_http_addr());
+  std::vector<std::string> urls;
+  std::string base_url = yb::ToString(cluster_->mini_tablet_server(0)->bound_http_addr());
   urls.push_back(base_url + "/scans");
   urls.push_back(base_url + "/transactions");
 
   EasyCurl curl;
   faststring dst;
   while (stop_latch->count() > 0) {
-    for (const string& url : urls) {
+    for (const std::string& url : urls) {
       VLOG(1) << "Curling URL " << url;
       Status status = curl.FetchURL(url, &dst);
       if (status.ok()) {

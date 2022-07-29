@@ -321,7 +321,7 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
                                  QLResponsePB_QLStatus_Name(ql_batch.status()));
           }
           Schema projection;
-          vector<ColumnId> column_refs;
+          std::vector<ColumnId> column_refs;
           column_refs.emplace_back(table.ColumnId(kValueColumn));
           Schema total_schema = client::internal::GetSchema(table->schema());
           RETURN_NOT_OK(total_schema.CreateProjectionByIdsIgnoreMissing(column_refs, &projection));
@@ -387,7 +387,7 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
         &tserver->server()->proxy_cache(), HostPort::FromBoundEndpoint(endpoint));
 
     CHECK_EQ(tablet_ids.size(), 1);
-    for (const string& tablet_id : tablet_ids) {
+    for (const std::string& tablet_id : tablet_ids) {
       tserver::VerifyTableRowRangeRequestPB req;
       tserver::VerifyTableRowRangeResponsePB resp;
 
@@ -1193,7 +1193,7 @@ TEST_F(QLTabletTest, BlockCacheMemTracking) {
   const auto kSleepTime = NonTsanVsTsan(5s, 1s);
   constexpr size_t kTotalRows = 10000;
   constexpr size_t kBatchSize = 250;
-  const string kBlockTrackerName = "BlockBasedTable";
+  const std::string kBlockTrackerName = "BlockBasedTable";
 
   TableHandle table;
   CreateTable(kTable1Name, &table, 1);

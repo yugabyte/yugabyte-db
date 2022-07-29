@@ -35,7 +35,7 @@ class RemoteBootstrapRocksDBTest : public RemoteBootstrapSessionTest {
 };
 
 TEST_F(RemoteBootstrapRocksDBTest, TestCheckpointDirectory) {
-  string checkpoint_dir;
+  std::string checkpoint_dir;
   {
     auto temp_session = make_scoped_refptr<RemoteBootstrapSession>(
         tablet_peer_, "TestTempSession", "FakeUUID", nullptr /* nsessions */);
@@ -46,7 +46,7 @@ TEST_F(RemoteBootstrapRocksDBTest, TestCheckpointDirectory) {
     bool is_dir = false;
     ASSERT_OK(env_->IsDirectory(checkpoint_dir, &is_dir));
     ASSERT_TRUE(is_dir);
-    vector<string> rocksdb_files;
+    std::vector<std::string> rocksdb_files;
     ASSERT_OK(env_->GetChildren(checkpoint_dir, &rocksdb_files));
     // Ignore "." and ".." entries.
     ASSERT_GT(rocksdb_files.size(), 2);
@@ -64,7 +64,7 @@ TEST_F(RemoteBootstrapRocksDBTest, CheckSuperBlockHasRocksDBFields) {
   ASSERT_TRUE(kv_store.has_rocksdb_dir());
 
   const auto& checkpoint_dir = session_->checkpoint_dir_;
-  vector<string> checkpoint_files;
+  std::vector<std::string> checkpoint_files;
   ASSERT_OK(env_->GetChildren(checkpoint_dir, &checkpoint_files));
 
   // Ignore "." and ".." entries in session_->checkpoint_dir_.

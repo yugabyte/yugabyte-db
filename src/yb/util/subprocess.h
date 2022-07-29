@@ -190,7 +190,7 @@ class Subprocess {
   Status Call(std::string* output, StdFdTypes read_fds = StdFdTypes{StdFdType::kOut});
 
   // Writes pid to cgroup specified by path
-  void AddPIDToCGroup(const string& path, pid_t pid);
+  void AddPIDToCGroup(const std::string& path, pid_t pid);
 
  private:
 

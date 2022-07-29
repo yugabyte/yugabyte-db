@@ -193,7 +193,7 @@ Status MasterChangeConfigTest::WaitForMasterLeaderToBeReady(
       LOG(INFO) << "Got leader ready in iter " << i;
       return Status::OK();
     }
-    SleepFor(MonoDelta::FromMilliseconds(min(i, 10)));
+    SleepFor(MonoDelta::FromMilliseconds(std::min(i, 10)));
     now = MonoTime::Now();
   }
 

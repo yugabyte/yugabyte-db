@@ -106,11 +106,11 @@ const char* DatabaseTypeName(YQLDatabase db) {
   return kDBTypeNameUnknown;
 }
 
-YQLDatabase DatabaseTypeByName(const string& db_type_name) {
-  static const std::array<pair<const char*, YQLDatabase>, 3> db_types{
-      make_pair(kDBTypeNameCql, YQLDatabase::YQL_DATABASE_CQL),
-      make_pair(kDBTypeNamePgsql, YQLDatabase::YQL_DATABASE_PGSQL),
-      make_pair(kDBTypeNameRedis, YQLDatabase::YQL_DATABASE_REDIS)};
+YQLDatabase DatabaseTypeByName(const std::string& db_type_name) {
+  static const std::array<std::pair<const char*, YQLDatabase>, 3> db_types{
+      std::make_pair(kDBTypeNameCql, YQLDatabase::YQL_DATABASE_CQL),
+      std::make_pair(kDBTypeNamePgsql, YQLDatabase::YQL_DATABASE_PGSQL),
+      std::make_pair(kDBTypeNameRedis, YQLDatabase::YQL_DATABASE_REDIS)};
   for (const auto& db : db_types) {
     if (db_type_name == db.first) {
       return db.second;
@@ -867,7 +867,7 @@ void MasterPathHandlers::HandleHealthCheck(
           dead_nodes.push_back(desc);
         } else {
           // 2. Have any of the servers restarted lately?
-          most_recent_uptime = min(most_recent_uptime, desc->uptime_seconds());
+          most_recent_uptime = std::min(most_recent_uptime, desc->uptime_seconds());
         }
       }
     }

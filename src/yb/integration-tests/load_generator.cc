@@ -93,7 +93,7 @@ void ConfigureYBSession(YBSession* session) {
   session->SetTimeout(60s);
 }
 
-string FormatWithSize(const string& s) {
+std::string FormatWithSize(const std::string& s) {
   return strings::Substitute("'$0' ($1 bytes)", s, s.size());
 }
 
@@ -102,7 +102,7 @@ string FormatWithSize(const string& s) {
 namespace yb {
 namespace load_generator {
 
-string FormatHexForLoadTestKey(uint64_t x) {
+std::string FormatHexForLoadTestKey(uint64_t x) {
   char buf[64];
   snprintf(buf, sizeof(buf) - 1, "%016" PRIx64, x);
   return buf;
@@ -125,7 +125,7 @@ bool KeyIndexSet::Contains(int64_t key) const {
 
 bool KeyIndexSet::RemoveIfContains(int64_t key) {
   MutexLock l(mutex_);
-  set<int64>::iterator it = set_.find(key);
+  std::set<int64>::iterator it = set_.find(key);
   if (it == set_.end()) {
     return false;
   } else {
@@ -147,7 +147,7 @@ int64_t KeyIndexSet::GetRandomKey(std::mt19937_64* random_number_generator) cons
   return -1;
 }
 
-ostream& operator <<(ostream& out, const KeyIndexSet &key_index_set) {
+std::ostream& operator <<(std::ostream& out, const KeyIndexSet &key_index_set) {
   MutexLock l(key_index_set.mutex_);
   out << "[";
   bool first = true;
@@ -169,7 +169,7 @@ ostream& operator <<(ostream& out, const KeyIndexSet &key_index_set) {
 YBSessionFactory::YBSessionFactory(client::YBClient* client, client::TableHandle* table)
     : client_(client), table_(table) {}
 
-string YBSessionFactory::ClientId() { return client_->id().ToString(); }
+std::string YBSessionFactory::ClientId() { return client_->id().ToString(); }
 
 SingleThreadedWriter* YBSessionFactory::GetWriter(MultiThreadedWriter* writer, int idx) {
   return new YBSingleThreadedWriter(writer, client_, table_, idx);
@@ -183,10 +183,10 @@ SingleThreadedWriter* NoopSessionFactory::GetWriter(MultiThreadedWriter* writer,
   return new NoopSingleThreadedWriter(writer, client_, table_, idx);
 }
 
-RedisSessionFactory::RedisSessionFactory(const string& redis_server_addresses)
+RedisSessionFactory::RedisSessionFactory(const std::string& redis_server_addresses)
     : redis_server_addresses_(redis_server_addresses) {}
 
-string RedisSessionFactory::ClientId() { return "redis_client"; }
+std::string RedisSessionFactory::ClientId() { return "redis_client"; }
 
 SingleThreadedWriter* RedisSessionFactory::GetWriter(MultiThreadedWriter* writer, int idx) {
   return new RedisSingleThreadedWriter(writer, redis_server_addresses_, idx);
@@ -205,8 +205,8 @@ SingleThreadedWriter* RedisNoopSessionFactory::GetWriter(MultiThreadedWriter* wr
 // ------------------------------------------------------------------------------------------------
 
 MultiThreadedAction::MultiThreadedAction(
-    const string& description, int64_t num_keys, int64_t start_key, int num_action_threads,
-    int num_extra_threads, const string& client_id, atomic<bool>* stop_requested_flag,
+    const std::string& description, int64_t num_keys, int64_t start_key, int num_action_threads,
+    int num_extra_threads, const std::string& client_id, atomic<bool>* stop_requested_flag,
     int value_size)
     : description_(description),
       num_keys_(num_keys),
@@ -224,18 +224,18 @@ MultiThreadedAction::MultiThreadedAction(
 
 MultiThreadedAction::~MultiThreadedAction() {}
 
-string MultiThreadedAction::GetKeyByIndex(int64_t key_index) {
-  string key_index_str(Substitute("key$0", key_index));
+std::string MultiThreadedAction::GetKeyByIndex(int64_t key_index) {
+  std::string key_index_str(Substitute("key$0", key_index));
   return Substitute(
-      "$0_$1_$2", FormatHexForLoadTestKey(std::hash<string>()(key_index_str)), key_index_str,
+      "$0_$1_$2", FormatHexForLoadTestKey(std::hash<std::string>()(key_index_str)), key_index_str,
       client_id_);
 }
 
 // Creates a human-readable string with hex characters to be used as a value in our test. This is
 // deterministic based on key_index.
 DISABLE_UBSAN
-string MultiThreadedAction::GetValueByIndex(int64_t key_index) {
-  string value;
+std::string MultiThreadedAction::GetValueByIndex(int64_t key_index) {
+  std::string value;
   int64_t x = key_index;
   for (int i = 0; i < value_size_; ++i) {
     int val = static_cast<int>(x & 0xf);
@@ -307,8 +307,8 @@ void SingleThreadedWriter::Run() {
       break;
     }
 
-    string key_str(multi_threaded_writer_->GetKeyByIndex(key_index));
-    string value_str(multi_threaded_writer_->GetValueByIndex(key_index));
+    std::string key_str(multi_threaded_writer_->GetKeyByIndex(key_index));
+    std::string value_str(multi_threaded_writer_->GetValueByIndex(key_index));
 
     if (Write(key_index, key_str, value_str)) {
       multi_threaded_writer_->inserted_keys_.Insert(key_index);
@@ -328,8 +328,8 @@ void SingleThreadedWriter::Run() {
 }
 
 void ConfigureRedisSessions(
-    const string& redis_server_addresses, vector<shared_ptr<RedisClient> >* clients) {
-  std::vector<string> addresses;
+    const std::string& redis_server_addresses, std::vector<shared_ptr<RedisClient> >* clients) {
+  std::vector<std::string> addresses;
   SplitStringUsing(redis_server_addresses, ",", &addresses);
   for (auto& addr : addresses) {
     auto remote = CHECK_RESULT(ParseEndpoint(addr, 6379));
@@ -343,7 +343,7 @@ void RedisSingleThreadedWriter::ConfigureSession() {
 }
 
 bool RedisSingleThreadedWriter::Write(
-    int64_t key_index, const string& key_str, const string& value_str) {
+    int64_t key_index, const std::string& key_str, const std::string& value_str) {
   bool success = false;
   auto writer_index = writer_index_;
   int64_t idx = key_index % clients_.size();
@@ -363,7 +363,7 @@ bool RedisSingleThreadedWriter::Write(
   return success;
 }
 
-void RedisSingleThreadedWriter::HandleInsertionFailure(int64_t key_index, const string& key_str) {
+void RedisSingleThreadedWriter::HandleInsertionFailure(int64_t key_index, const std::string& key_str) {
   // Nothing special to do for Redis failures.
 }
 
@@ -374,7 +374,7 @@ void RedisSingleThreadedWriter::CloseSession() {
 }
 
 bool RedisNoopSingleThreadedWriter::Write(
-    int64_t key_index, const string& key_str, const string& value_str) {
+    int64_t key_index, const std::string& key_str, const std::string& value_str) {
   bool success = false;
   auto writer_index = writer_index_;
   int64_t idx = key_index % clients_.size();
@@ -399,7 +399,7 @@ void YBSingleThreadedWriter::ConfigureSession() {
 }
 
 bool YBSingleThreadedWriter::Write(
-    int64_t key_index, const string& key_str, const string& value_str) {
+    int64_t key_index, const std::string& key_str, const std::string& value_str) {
   auto insert = table_->NewInsertOp();
   // Generate a Put for key_str, value_str
   QLAddStringHashValue(insert->mutable_request(), key_str);
@@ -436,7 +436,7 @@ bool YBSingleThreadedWriter::Write(
   return true;
 }
 
-void YBSingleThreadedWriter::HandleInsertionFailure(int64_t key_index, const string& key_str) {
+void YBSingleThreadedWriter::HandleInsertionFailure(int64_t key_index, const std::string& key_str) {
   // Already handled in YBSingleThreadedWriter::Write.
 }
 
@@ -568,7 +568,7 @@ void YBSingleThreadedReader::ConfigureSession() {
 }
 
 bool NoopSingleThreadedWriter::Write(
-    int64_t key_index, const string& key_str, const string& value_str) {
+    int64_t key_index, const std::string& key_str, const std::string& value_str) {
   YBNoOp noop(table_->table());
   std::unique_ptr<YBPartialRow> row(table_->schema().NewRow());
   CHECK_OK(row->SetBinary("k", key_str));
@@ -581,7 +581,7 @@ bool NoopSingleThreadedWriter::Write(
 }
 
 ReadStatus YBSingleThreadedReader::PerformRead(
-    int64_t key_index, const string& key_str, const string& expected_value_str) {
+    int64_t key_index, const std::string& key_str, const std::string& expected_value_str) {
   uint64_t read_ts = client_->GetLatestObservedHybridTime();
 
   for (int i = 1;; ++i) {
@@ -643,8 +643,8 @@ ReadStatus YBSingleThreadedReader::PerformRead(
 void YBSingleThreadedReader::CloseSession() { CHECK_OK(session_->Close()); }
 
 ReadStatus RedisSingleThreadedReader::PerformRead(
-    int64_t key_index, const string& key_str, const string& expected_value_str) {
-  string value_str;
+    int64_t key_index, const std::string& key_str, const std::string& expected_value_str) {
+  std::string value_str;
   int64_t idx = key_index % clients_.size();
   clients_[idx]->Send({"GET", key_str}, [&value_str](const RedisReply& reply) {
     value_str = reply.as_string();
@@ -682,8 +682,8 @@ void SingleThreadedReader::Run() {
     const int64_t key_index = NextKeyIndexToRead(&random_number_generator);
 
     ++multi_threaded_reader_->num_reads_;
-    const string key_str(multi_threaded_reader_->GetKeyByIndex(key_index));
-    const string expected_value_str(multi_threaded_reader_->GetValueByIndex(key_index));
+    const std::string key_str(multi_threaded_reader_->GetKeyByIndex(key_index));
+    const std::string expected_value_str(multi_threaded_reader_->GetValueByIndex(key_index));
     const ReadStatus read_status = PerformRead(key_index, key_str, expected_value_str);
 
     // Read operation returning zero rows is treated as a read error.

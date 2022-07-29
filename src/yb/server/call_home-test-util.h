@@ -31,9 +31,9 @@ namespace yb {
 
 template <class ServerType, class CallHomeType>
 void TestCallHome(
-    const std::string& webserver_dir, const std::set<string>& additional_collections,
+    const std::string& webserver_dir, const std::set<std::string>& additional_collections,
     ServerType* server) {
-  string json;
+  std::string json;
   CountDownLatch latch(1);
   const char* tag_value = "callhome-test";
 
@@ -58,11 +58,11 @@ void TestCallHome(
   FLAGS_callhome_tag = tag_value;
   FLAGS_callhome_url = Format("http://$0/callhome", addr);
 
-  std::set<string> low{"cluster_uuid", "node_uuid", "server_type",
+  std::set<std::string> low{"cluster_uuid", "node_uuid", "server_type",
                        "timestamp",    "tablets",   "gflags"};
   low.insert(additional_collections.begin(), additional_collections.end());
 
-  std::unordered_map<string, std::set<string>> collection_levels;
+  std::unordered_map<std::string, std::set<std::string>> collection_levels;
   collection_levels["low"] = low;
   collection_levels["medium"] = low;
   collection_levels["medium"].insert({"hostname", "current_user"});
@@ -84,18 +84,18 @@ void TestCallHome(
     LOG(INFO) << "Checking json has field: tag";
     ASSERT_TRUE(reader.root()->HasMember("tag"));
 
-    string received_tag;
+    std::string received_tag;
     ASSERT_OK(reader.ExtractString(reader.root(), "tag", &received_tag));
     ASSERT_EQ(received_tag, tag_value);
 
     if (collection_level.second.find("hostname") != collection_level.second.end()) {
-      string received_hostname;
+      std::string received_hostname;
       ASSERT_OK(reader.ExtractString(reader.root(), "hostname", &received_hostname));
       ASSERT_EQ(received_hostname, server->get_hostname());
     }
 
     if (collection_level.second.find("current_user") != collection_level.second.end()) {
-      string received_user;
+      std::string received_user;
       ASSERT_OK(reader.ExtractString(reader.root(), "current_user", &received_user));
       auto expected_user = ASSERT_RESULT(GetLoggedInUser());
       ASSERT_EQ(received_user, expected_user);

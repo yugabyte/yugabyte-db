@@ -472,7 +472,7 @@ TEST_F(ConsensusQueueTest, TestQueueAdvancesCommittedIndex) {
   queue_->raft_pool_observers_token_->Wait();
   ASSERT_EQ(queue_->TEST_GetMajorityReplicatedOpId(), MakeOpIdForIndex(5));
 
-  string up_to_date_peer = queue_->GetUpToDatePeer();
+  std::string up_to_date_peer = queue_->GetUpToDatePeer();
   ASSERT_TRUE((up_to_date_peer == "peer-2") || (up_to_date_peer == "peer-1"));
 
   // Ack all operations for peer-3

@@ -68,7 +68,7 @@ Status PTDmlWriteProperty::Analyze(SemContext *sem_context) {
   return Status::OK();
 }
 
-std::ostream& operator<<(ostream& os, const DmlWritePropertyType& property_type) {
+std::ostream& operator<<(std::ostream& os, const DmlWritePropertyType& property_type) {
   switch(property_type) {
     case DmlWritePropertyType::kDmlWriteProperty:
       os << "kDmlWriteProperty";
@@ -86,9 +86,9 @@ void PTDmlWriteProperty::PrintSemanticAnalysisResult(SemContext *sem_context) {
 
 Status PTDmlWritePropertyListNode::Analyze(SemContext *sem_context) {
   // Set to ensure we don't have duplicate update properties.
-  std::set<string> update_properties;
-  std::unordered_map<string, PTDmlWriteProperty::SharedPtr> order_tnodes;
-  vector<string> order_columns;
+  std::set<std::string> update_properties;
+  std::unordered_map<std::string, PTDmlWriteProperty::SharedPtr> order_tnodes;
+  std::vector<std::string> order_columns;
   for (PTDmlWriteProperty::SharedPtr tnode : node_list()) {
     if (tnode == nullptr) {
       // This shouldn't happen because AppendList ignores null nodes.
@@ -98,7 +98,7 @@ Status PTDmlWritePropertyListNode::Analyze(SemContext *sem_context) {
     switch(tnode->property_type()) {
       case DmlWritePropertyType::kDmlWriteProperty: FALLTHROUGH_INTENDED;
       case DmlWritePropertyType::kDmlWritePropertyMap: {
-        string update_property_name = tnode->lhs()->c_str();
+        std::string update_property_name = tnode->lhs()->c_str();
         if (update_properties.find(update_property_name) != update_properties.end()) {
           return sem_context->Error(this, ErrorCode::DUPLICATE_UPDATE_PROPERTY);
         }
@@ -115,7 +115,7 @@ Status PTDmlWritePropertyListNode::Analyze(SemContext *sem_context) {
 bool PTDmlWritePropertyListNode::ignore_null_jsonb_attributes() {
   for (PTDmlWriteProperty::SharedPtr tnode : node_list()) {
     if (tnode->property_type() == DmlWritePropertyType::kDmlWritePropertyMap) {
-      string update_property_name = tnode->lhs()->c_str();
+      std::string update_property_name = tnode->lhs()->c_str();
       if (update_property_name == "options") {
         return \
           (std::static_pointer_cast<PTDmlWritePropertyMap>(tnode))->ignore_null_jsonb_attributes();
@@ -125,7 +125,7 @@ bool PTDmlWritePropertyListNode::ignore_null_jsonb_attributes() {
   return false; // the default
 }
 
-const std::map<string, PTDmlWritePropertyMap::PropertyMapType> \
+const std::map<std::string, PTDmlWritePropertyMap::PropertyMapType> \
   PTDmlWritePropertyMap::kPropertyDataTypes
     = {
     {"options", PTDmlWritePropertyMap::PropertyMapType::kOptions}
@@ -171,7 +171,7 @@ void PTDmlWritePropertyMap::PrintSemanticAnalysisResult(SemContext *sem_context)
 
 Status PTDmlWritePropertyMap::AnalyzeOptions(SemContext *sem_context) {
   for (const auto& subproperty : map_elements_->node_list()) {
-    string subproperty_name;
+    std::string subproperty_name;
     ToLowerCase(subproperty->lhs()->c_str(), &subproperty_name);
     auto iter = Options::kSubpropertyDataTypes.find(subproperty_name);
     if (iter == Options::kSubpropertyDataTypes.end()) {
@@ -191,7 +191,7 @@ Status PTDmlWritePropertyMap::AnalyzeOptions(SemContext *sem_context) {
 
 bool PTDmlWritePropertyMap::ignore_null_jsonb_attributes() {
   for (const auto& subproperty : map_elements_->node_list()) {
-    string subproperty_name;
+    std::string subproperty_name;
     ToLowerCase(subproperty->lhs()->c_str(), &subproperty_name);
     auto iter = Options::kSubpropertyDataTypes.find(subproperty_name);
     if (iter != Options::kSubpropertyDataTypes.end() &&

@@ -20,10 +20,10 @@ using std::make_shared;
 
 class TestLoadBalancerPreferredLeader : public TestLoadBalancerBase<ClusterLoadBalancerMocked> {
  public:
-  TestLoadBalancerPreferredLeader(ClusterLoadBalancerMocked* cb, const string& table_id)
+  TestLoadBalancerPreferredLeader(ClusterLoadBalancerMocked* cb, const std::string& table_id)
       : TestLoadBalancerBase<ClusterLoadBalancerMocked>(cb, table_id) {}
 
-  static std::shared_ptr<TestLoadBalancerPreferredLeader> CreateInstance(const string& table_id) {
+  static std::shared_ptr<TestLoadBalancerPreferredLeader> CreateInstance(const std::string& table_id) {
     auto options = make_shared<Options>();
     auto cb = make_shared<ClusterLoadBalancerMocked>(options.get());
     auto lb = make_shared<TestLoadBalancerPreferredLeader>(cb.get(), table_id);
@@ -46,10 +46,10 @@ class TestLoadBalancerPreferredLeader : public TestLoadBalancerBase<ClusterLoadB
     return ts_descs;
   }
 
-  void PrepareAffinitizedLeaders(const vector<vector<string>>& zones) {
+  void PrepareAffinitizedLeaders(const std::vector<std::vector<std::string>>& zones) {
     for (const auto& zone_set : zones) {
       AffinitizedZonesSet new_zone;
-      for (const string& zone : zone_set) {
+      for (const std::string& zone : zone_set) {
         CloudInfoPB ci;
         ci.set_placement_cloud(default_cloud);
         ci.set_placement_region(default_region);
@@ -95,7 +95,7 @@ class TestLoadBalancerPreferredLeader : public TestLoadBalancerBase<ClusterLoadB
     LOG(INFO) << "Leader distribution: 4 0 0";
 
     ASSERT_OK(AnalyzeTablets());
-    string placeholder;
+    std::string placeholder;
     // Only the affinitized zone contains tablet leaders, should be no movement.
     ASSERT_FALSE(ASSERT_RESULT(HandleLeaderMoves(&placeholder, &placeholder, &placeholder)));
   }
@@ -114,10 +114,10 @@ class TestLoadBalancerPreferredLeader : public TestLoadBalancerBase<ClusterLoadB
 
     ASSERT_OK(AnalyzeTablets());
 
-    std::map<string, int> from_count;
-    std::unordered_set<string> tablets_moved;
+    std::map<std::string, int> from_count;
+    std::unordered_set<std::string> tablets_moved;
 
-    string placeholder, tablet_id, from_ts, to_ts, ts_0, ts_1, ts_2;
+    std::string placeholder, tablet_id, from_ts, to_ts, ts_0, ts_1, ts_2;
     ts_0 = ts_descs_[0]->permanent_uuid();
     ts_1 = ts_descs_[1]->permanent_uuid();
     ts_2 = ts_descs_[2]->permanent_uuid();
@@ -174,10 +174,10 @@ class TestLoadBalancerPreferredLeader : public TestLoadBalancerBase<ClusterLoadB
 
     ASSERT_OK(AnalyzeTablets());
 
-    std::map<string, int> to_count;
-    std::unordered_set<string> tablets_moved;
+    std::map<std::string, int> to_count;
+    std::unordered_set<std::string> tablets_moved;
 
-    string placeholder, tablet_id, from_ts, to_ts, ts_0, ts_1, ts_2;
+    std::string placeholder, tablet_id, from_ts, to_ts, ts_0, ts_1, ts_2;
     ts_0 = ts_descs_[0]->permanent_uuid();
     ts_1 = ts_descs_[1]->permanent_uuid();
     ts_2 = ts_descs_[2]->permanent_uuid();
@@ -243,7 +243,7 @@ class TestLoadBalancerPreferredLeader : public TestLoadBalancerBase<ClusterLoadB
     LOG(INFO) << "The replica count for each read_only tserver is: ts3: 4, ts4: 0";
     ASSERT_OK(AnalyzeTablets());
 
-    string placeholder;
+    std::string placeholder;
 
     // First we make sure that no load balancing happens during the live iteration.
     ASSERT_FALSE(ASSERT_RESULT(HandleAddReplicas(&placeholder, &placeholder, &placeholder)));
@@ -252,9 +252,9 @@ class TestLoadBalancerPreferredLeader : public TestLoadBalancerBase<ClusterLoadB
     cb_->SetOptions(READ_ONLY, read_only_placement_uuid);
     ASSERT_OK(AnalyzeTablets());
     // Now load balance an read_only replica.
-    string expected_from_ts = ts_descs_[3]->permanent_uuid();
-    string expected_to_ts = ts_descs_[4]->permanent_uuid();
-    string expected_tablet_id = tablets_[0]->tablet_id();
+    std::string expected_from_ts = ts_descs_[3]->permanent_uuid();
+    std::string expected_to_ts = ts_descs_[4]->permanent_uuid();
+    std::string expected_tablet_id = tablets_[0]->tablet_id();
     TestAddLoad(expected_tablet_id, expected_from_ts, expected_to_ts);
     RemoveReplica(tablet_map_[expected_tablet_id].get(), ts_descs_[3]);
     AddFollowerReplica(tablet_map_[expected_tablet_id].get(), ts_descs_[4]);
@@ -290,7 +290,7 @@ class TestLoadBalancerPreferredLeader : public TestLoadBalancerBase<ClusterLoadB
 
     ResetState();
     ASSERT_OK(AnalyzeTablets());
-    string placeholder;
+    std::string placeholder;
     ASSERT_FALSE(ASSERT_RESULT(HandleLeaderMoves(&placeholder, &placeholder, &placeholder)));
 
     ResetState();
@@ -312,7 +312,7 @@ class TestLoadBalancerPreferredLeader : public TestLoadBalancerBase<ClusterLoadB
     LOG(INFO) << "Leader distribution: 4 0 0";
 
     ASSERT_OK(AnalyzeTablets());
-    string placeholder;
+    std::string placeholder;
     // Only the affinitized zone contains tablet leaders, should be no movement.
     ASSERT_FALSE(ASSERT_RESULT(HandleLeaderMoves(&placeholder, &placeholder, &placeholder)));
   }
@@ -332,10 +332,10 @@ class TestLoadBalancerPreferredLeader : public TestLoadBalancerBase<ClusterLoadB
 
     ASSERT_OK(AnalyzeTablets());
 
-    std::map<string, int> from_count;
-    std::unordered_set<string> tablets_moved;
+    std::map<std::string, int> from_count;
+    std::unordered_set<std::string> tablets_moved;
 
-    string placeholder, tablet_id, from_ts, to_ts, ts_0, ts_1, ts_2;
+    std::string placeholder, tablet_id, from_ts, to_ts, ts_0, ts_1, ts_2;
     ts_0 = ts_descs_[0]->permanent_uuid();
     ts_1 = ts_descs_[1]->permanent_uuid();
     ts_2 = ts_descs_[2]->permanent_uuid();
@@ -395,7 +395,7 @@ class TestLoadBalancerPreferredLeader : public TestLoadBalancerBase<ClusterLoadB
 
     ASSERT_OK(AnalyzeTablets());
 
-    string placeholder, tablet_id, from_ts, to_ts, ts_0, ts_1, ts_3;
+    std::string placeholder, tablet_id, from_ts, to_ts, ts_0, ts_1, ts_3;
     ts_0 = ts_descs_[0]->permanent_uuid();
     ts_1 = ts_descs_[1]->permanent_uuid();
     ts_3 = ts_descs_[3]->permanent_uuid();
@@ -434,8 +434,8 @@ class TestLoadBalancerPreferredLeader : public TestLoadBalancerBase<ClusterLoadB
     LOG(INFO) << "Leader distribution: 0 0 0 4";
     ASSERT_OK(AnalyzeTablets());
 
-    std::map<string, int> to_count;
-    string placeholder, tablet_id, from_ts, to_ts, ts_0, ts_1, ts_2, ts_3;
+    std::map<std::string, int> to_count;
+    std::string placeholder, tablet_id, from_ts, to_ts, ts_0, ts_1, ts_2, ts_3;
     ts_0 = ts_descs_[0]->permanent_uuid();
     ts_1 = ts_descs_[1]->permanent_uuid();
     ts_2 = ts_descs_[2]->permanent_uuid();
@@ -503,8 +503,8 @@ class TestLoadBalancerPreferredLeader : public TestLoadBalancerBase<ClusterLoadB
     LOG(INFO) << "Leader distribution: 0 0 0 4";
     ASSERT_OK(AnalyzeTablets());
 
-    std::map<string, int> to_count;
-    string placeholder, tablet_id, from_ts, to_ts, ts_0, ts_1, ts_2, ts_3, ts_4;
+    std::map<std::string, int> to_count;
+    std::string placeholder, tablet_id, from_ts, to_ts, ts_0, ts_1, ts_2, ts_3, ts_4;
     ts_0 = ts_descs_[0]->permanent_uuid();
     ts_1 = ts_descs_[1]->permanent_uuid();
     ts_2 = ts_descs_[2]->permanent_uuid();
@@ -576,7 +576,7 @@ class TestLoadBalancerPreferredLeader : public TestLoadBalancerBase<ClusterLoadB
 
     ASSERT_OK(AnalyzeTablets());
 
-    string placeholder, tablet_id, expected_from_ts, expected_to_ts;
+    std::string placeholder, tablet_id, expected_from_ts, expected_to_ts;
 
     // With ts0 leader blacklisted, the leader on ts2 should be moved to ts1.
     expected_from_ts = ts_descs_[0]->permanent_uuid();

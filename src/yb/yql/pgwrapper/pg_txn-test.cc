@@ -32,7 +32,7 @@ namespace pgwrapper {
 class PgTxnTest : public PgMiniTestBase {
 
  protected:
-  void AssertEffectiveIsolationLevel(PGConn* conn, const string& expected) {
+  void AssertEffectiveIsolationLevel(PGConn* conn, const std::string& expected) {
     auto value = ASSERT_RESULT(
         conn->FetchValue<std::string>("SHOW yb_effective_transaction_isolation_level"));
     ASSERT_EQ(value, expected);

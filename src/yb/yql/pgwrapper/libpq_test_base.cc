@@ -37,12 +37,12 @@ Result<PGConn> LibPqTestBase::Connect(bool simple_query_protocol) {
   return ConnectToDB(std::string() /* db_name */, simple_query_protocol);
 }
 
-Result<PGConn> LibPqTestBase::ConnectToDB(const string& db_name, bool simple_query_protocol) {
+Result<PGConn> LibPqTestBase::ConnectToDB(const std::string& db_name, bool simple_query_protocol) {
   return ConnectToDBAsUser(db_name, PGConnSettings::kDefaultUser, simple_query_protocol);
 }
 
 Result<PGConn> LibPqTestBase::ConnectToDBAsUser(
-    const string& db_name, const string& user, bool simple_query_protocol) {
+    const std::string& db_name, const std::string& user, bool simple_query_protocol) {
   return PGConnBuilder({
     .host = pg_ts->bind_host(),
     .port = pg_ts->pgsql_rpc_port(),
@@ -52,7 +52,7 @@ Result<PGConn> LibPqTestBase::ConnectToDBAsUser(
 }
 
 Result<PGConn> LibPqTestBase::ConnectUsingString(
-    const string& conn_str, CoarseTimePoint deadline, bool simple_query_protocol) {
+    const std::string& conn_str, CoarseTimePoint deadline, bool simple_query_protocol) {
   return PGConn::Connect(
     conn_str, deadline, simple_query_protocol, std::string() /* conn_str_for_log */);
 }

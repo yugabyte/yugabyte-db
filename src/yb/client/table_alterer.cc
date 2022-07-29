@@ -13,6 +13,8 @@
 
 #include "yb/client/table_alterer.h"
 
+#include <string>
+
 #include "yb/client/client-internal.h"
 #include "yb/client/schema-internal.h"
 
@@ -23,6 +25,8 @@
 
 namespace yb {
 namespace client {
+
+using std::string;
 
 struct YBTableAlterer::Step {
   master::AlterTableRequestPB::StepType step_type;

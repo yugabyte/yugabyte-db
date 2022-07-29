@@ -105,7 +105,7 @@ namespace {
 Status NewFileReader(const ImmutableCFOptions& ioptions, const EnvOptions& env_options,
     const std::string& fname, bool sequential_mode, bool record_read_stats,
     HistogramImpl* file_read_hist, std::unique_ptr<RandomAccessFileReader>* file_reader) {
-  unique_ptr<RandomAccessFile> file;
+  std::unique_ptr<RandomAccessFile> file;
 
   Status s = ioptions.env->NewRandomAccessFile(fname, &file, env_options);
   if (!s.ok()) {
@@ -135,12 +135,12 @@ Status TableCache::DoGetTableReader(
     const EnvOptions& env_options,
     const InternalKeyComparatorPtr& internal_comparator, const FileDescriptor& fd,
     bool sequential_mode, bool record_read_stats, HistogramImpl* file_read_hist,
-    unique_ptr<TableReader>* table_reader, bool skip_filters) {
+    std::unique_ptr<TableReader>* table_reader, bool skip_filters) {
   const std::string base_fname = TableFileName(ioptions_.db_paths, fd.GetNumber(), fd.GetPathId());
 
   Status s;
   {
-    unique_ptr<RandomAccessFileReader> base_file_reader;
+    std::unique_ptr<RandomAccessFileReader> base_file_reader;
     s = NewFileReader(ioptions_, env_options, base_fname, sequential_mode, record_read_stats,
         file_read_hist, &base_file_reader);
     if (!s.ok()) {
@@ -185,7 +185,7 @@ Status TableCache::FindTable(const EnvOptions& env_options,
     if (no_io) {  // Don't do IO and return a not-found status
       return STATUS(Incomplete, "Table not found in table_cache, no_io is set");
     }
-    unique_ptr<TableReader> table_reader;
+    std::unique_ptr<TableReader> table_reader;
     s = DoGetTableReader(env_options, internal_comparator, fd,
         false /* sequential mode */, record_read_stats,
         file_read_hist, &table_reader, skip_filters);
@@ -257,7 +257,7 @@ Status TableCache::DoGetTableReaderForIterator(
   const bool create_new_table_reader =
       (for_compaction && ioptions_.new_table_reader_for_compaction_inputs);
   if (create_new_table_reader) {
-    unique_ptr<TableReader> table_reader_unique_ptr;
+    std::unique_ptr<TableReader> table_reader_unique_ptr;
     Status s = DoGetTableReader(
         env_options, icomparator, fd, /* sequential mode */ true,
         /* record stats */ false, nullptr, &table_reader_unique_ptr);

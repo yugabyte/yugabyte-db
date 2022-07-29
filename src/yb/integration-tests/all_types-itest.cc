@@ -193,8 +193,8 @@ struct SliceKeysTestSetup {
     return increment_;
   }
 
-  vector<string> GetKeyColumns() const {
-    vector<string> key_col;
+  vector<std::string> GetKeyColumns() const {
+    vector<std::string> key_col;
     key_col.push_back("key");
     return key_col;
   }
@@ -279,7 +279,7 @@ class AllTypesItest : public YBTest {
   }
 
   Status CreateCluster() {
-    vector<string> ts_flags;
+    vector<std::string> ts_flags;
 
     ExternalMiniClusterOptions opts;
     opts.num_tablet_servers = kNumTabletServers;
@@ -344,7 +344,7 @@ class AllTypesItest : public YBTest {
     return Status::OK();
   }
 
-  void SetupProjection(vector<string>* projection) {
+  void SetupProjection(vector<std::string>* projection) {
     *projection = setup_.GetKeyColumns();
     projection->push_back("int8_val");
     projection->push_back("int16_val");
@@ -365,7 +365,7 @@ class AllTypesItest : public YBTest {
     ASSERT_EQ(static_cast<int16_t>(expected_int_val), row.column(2).int16_value());
     ASSERT_EQ(static_cast<int32_t>(expected_int_val), row.column(3).int32_value());
     ASSERT_EQ(expected_int_val, row.column(4).int64_value());
-    string content = StringPrintf("hello %010" PRIx64, expected_int_val);
+    std::string content = StringPrintf("hello %010" PRIx64, expected_int_val);
     ASSERT_EQ(content, row.column(5).string_value());
     ASSERT_EQ(content, row.column(6).binary_value());
     ASSERT_EQ(expected_int_val % 2, row.column(7).bool_value());

@@ -40,7 +40,7 @@ TEST_F(TestHeaderManagerImpl, FileOps) {
   auto header_manager =
       DefaultHeaderManager(universe_key_manger.get());
   auto params = encryption::EncryptionParams::NewEncryptionParams();
-  string header = ASSERT_RESULT(header_manager->SerializeEncryptionParams(*params.get()));
+  std::string header = ASSERT_RESULT(header_manager->SerializeEncryptionParams(*params.get()));
   auto start_idx = header_manager->GetEncryptionMetadataStartIndex();
   auto status = ASSERT_RESULT(header_manager->GetFileEncryptionStatusFromPrefix(
       Slice(header.c_str(), start_idx)));

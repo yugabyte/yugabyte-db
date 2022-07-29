@@ -144,7 +144,7 @@ YBTableCreator& YBTableCreator::add_hash_partitions(const std::vector<std::strin
                                                         int32_t num_buckets, int32_t seed) {
   PartitionSchemaPB::HashBucketSchemaPB* bucket_schema =
     partition_schema_->add_hash_bucket_schemas();
-  for (const string& col_name : columns) {
+  for (const std::string& col_name : columns) {
     bucket_schema->add_columns()->set_name(col_name);
   }
   bucket_schema->set_num_buckets(num_buckets);
@@ -158,7 +158,7 @@ YBTableCreator& YBTableCreator::set_range_partition_columns(
   PartitionSchemaPB::RangeSchemaPB* range_schema =
     partition_schema_->mutable_range_schema();
   range_schema->Clear();
-  for (const string& col_name : columns) {
+  for (const std::string& col_name : columns) {
     range_schema->add_columns()->set_name(col_name);
   }
 

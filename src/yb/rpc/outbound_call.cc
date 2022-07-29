@@ -90,9 +90,10 @@ DECLARE_bool(rpc_dump_all_traces);
 namespace yb {
 namespace rpc {
 
-using strings::Substitute;
 using google::protobuf::Message;
 using google::protobuf::io::CodedOutputStream;
+using std::string;
+using strings::Substitute;
 
 OutboundCallMetrics::OutboundCallMetrics(const scoped_refptr<MetricEntity>& entity)
     : queue_time(METRIC_handler_latency_outbound_call_queue_time.Instantiate(entity)),

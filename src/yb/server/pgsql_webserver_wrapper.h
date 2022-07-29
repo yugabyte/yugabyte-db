@@ -15,7 +15,6 @@
 
 #ifdef __cplusplus
 #include <atomic>
-using std::atomic_ullong;
 using int64 = int64_t;
 using uint8 = uint8_t;
 using uint64 = uint64_t;
@@ -34,9 +33,15 @@ struct WebserverWrapper;
 
 typedef struct ybpgmEntry {
   char name[100];
+#ifdef __cplusplus
+  std::atomic_ullong calls;
+  std::atomic_ullong total_time;
+  std::atomic_ullong rows;
+#else
   atomic_ullong calls;
   atomic_ullong total_time;
   atomic_ullong rows;
+#endif
 } ybpgmEntry;
 
 typedef struct rpczEntry {

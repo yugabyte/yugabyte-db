@@ -83,23 +83,23 @@ Result<TabletId> PgWrapperTestBase::GetSingleTabletId(const TableName& table_nam
 
 namespace {
 
-string TrimSqlOutput(string output) {
+std::string TrimSqlOutput(std::string output) {
   return TrimStr(TrimTrailingWhitespaceFromEveryLine(LeftShiftTextBlock(output)));
 }
 
-string CertsDir() {
+std::string CertsDir() {
   const auto sub_dir = JoinPathSegments("ent", "test_certs");
   return JoinPathSegments(env_util::GetRootDir(sub_dir), sub_dir);
 }
 
 } // namespace
 
-void PgCommandTestBase::RunPsqlCommand(const string &statement, const string &expected_output) {
-  string tmp_dir;
+void PgCommandTestBase::RunPsqlCommand(const std::string &statement, const std::string &expected_output) {
+  std::string tmp_dir;
   ASSERT_OK(Env::Default()->GetTestDirectory(&tmp_dir));
 
   unique_ptr<WritableFile> tmp_file;
-  string tmp_file_name;
+  std::string tmp_file_name;
   ASSERT_OK(
       Env::Default()->NewTempWritableFile(
           WritableFileOptions(),
@@ -109,7 +109,7 @@ void PgCommandTestBase::RunPsqlCommand(const string &statement, const string &ex
   ASSERT_OK(tmp_file->Append(statement));
   ASSERT_OK(tmp_file->Close());
 
-  vector<string> argv{
+  std::vector<std::string> argv{
       GetPostgresInstallRoot() + "/bin/ysqlsh",
       "-h", pg_ts->bind_host(),
       "-p", std::to_string(pg_ts->pgsql_rpc_port()),
@@ -134,7 +134,7 @@ void PgCommandTestBase::RunPsqlCommand(const string &statement, const string &ex
     proc.SetEnv("PGPASSWORD", "yugabyte");
   }
 
-  string psql_stdout;
+  std::string psql_stdout;
   LOG(INFO) << "Executing statement: " << statement;
   ASSERT_OK(proc.Call(&psql_stdout));
   LOG(INFO) << "Output from statement {{ " << statement << " }}:\n"
@@ -145,7 +145,7 @@ void PgCommandTestBase::RunPsqlCommand(const string &statement, const string &ex
 void PgCommandTestBase::UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) {
   PgWrapperTestBase::UpdateMiniClusterOptions(options);
   if (encrypt_connection_) {
-    const vector<string> common_flags{"--use_node_to_node_encryption=true",
+    const std::vector<std::string> common_flags{"--use_node_to_node_encryption=true",
                                       "--certs_dir=" + CertsDir()};
     for (auto flags : {&options->extra_master_flags, &options->extra_tserver_flags}) {
       flags->insert(flags->begin(), common_flags.begin(), common_flags.end());

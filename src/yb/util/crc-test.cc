@@ -30,6 +30,8 @@
 // under the License.
 //
 
+#include <string>
+
 #include "yb/util/crc.h"
 #include "yb/util/status.h"
 #include "yb/util/stopwatch.h"
@@ -39,6 +41,8 @@ namespace yb {
 namespace crc {
 
 using strings::Substitute;
+
+using std::string;
 
 class CrcTest : public YBTest {
  protected:

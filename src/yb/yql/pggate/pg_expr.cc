@@ -107,7 +107,7 @@ void DecodeCollationEncodedString(const char** text_ptr, int64_t* text_len_ptr) 
 //--------------------------------------------------------------------------------------------------
 // Mapping Postgres operator names to YugaByte opcodes.
 // When constructing expresions, Postgres layer will pass the operator name.
-const std::unordered_map<string, PgExpr::Opcode> kOperatorNames = {
+const std::unordered_map<std::string, PgExpr::Opcode> kOperatorNames = {
   { "!", PgExpr::Opcode::PG_EXPR_NOT },
   { "not", PgExpr::Opcode::PG_EXPR_NOT },
   { "=", PgExpr::Opcode::PG_EXPR_EQ },

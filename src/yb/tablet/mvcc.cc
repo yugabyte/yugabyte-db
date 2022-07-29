@@ -204,7 +204,7 @@ class MvccManager::MvccOpTrace {
     items_.push_back(std::move(v));
   }
 
-  void DumpTrace(ostream* out) const {
+  void DumpTrace(std::ostream* out) const {
     if (items_.empty()) {
       *out << "No MVCC operations" << std::endl;
       return;

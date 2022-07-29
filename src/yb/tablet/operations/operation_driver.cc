@@ -150,13 +150,13 @@ OperationType OperationDriver::operation_type() const {
   return operation_ ? operation_->operation_type() : OperationType::kEmpty;
 }
 
-string OperationDriver::ToString() const {
+std::string OperationDriver::ToString() const {
   std::lock_guard<simple_spinlock> lock(lock_);
   return ToStringUnlocked();
 }
 
-string OperationDriver::ToStringUnlocked() const {
-  string ret = StateString(replication_state_, prepare_state_);
+std::string OperationDriver::ToStringUnlocked() const {
+  std::string ret = StateString(replication_state_, prepare_state_);
   if (operation_ != nullptr) {
     ret += " " + operation_->ToString();
   } else {
@@ -402,7 +402,7 @@ void OperationDriver::ApplyTask(int64_t leader_term, OpIds* applied_op_ids) {
 
 std::string OperationDriver::StateString(ReplicationState repl_state,
                                            PrepareState prep_state) {
-  string state_str;
+  std::string state_str;
   switch (repl_state) {
     case NOT_REPLICATING:
       StrAppend(&state_str, "NR-");  // For Not Replicating
@@ -447,7 +447,7 @@ std::string OperationDriver::LogPrefix() const {
     operation_type = this->operation_type();
   }
 
-  string state_str = StateString(repl_state_copy, prep_state_copy);
+  std::string state_str = StateString(repl_state_copy, prep_state_copy);
   // We use the tablet and the peer (T, P) to identify ts and tablet and the hybrid_time (Ts) to
   // (help) identify the operation. The state string (S) describes the state of the operation.
   return Format("T $0 P $1 S $2 Ts $3 $4 ($5): ",

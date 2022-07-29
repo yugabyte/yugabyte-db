@@ -84,7 +84,7 @@ TEST_F(PggateTestDelete, TestDelete) {
   YBCPgExpr expr_salary;
   CHECK_YBC_STATUS(YBCTestNewConstantFloat4(pg_stmt, seed + 1.0*seed/10.0, false, &expr_salary));
   YBCPgExpr expr_job;
-  string job = strings::Substitute("Job_title_$0", seed);
+  std::string job = strings::Substitute("Job_title_$0", seed);
   CHECK_YBC_STATUS(YBCTestNewConstantText(pg_stmt, job.c_str(), false, &expr_job));
 
   // Set column value to be inserted.
@@ -229,8 +229,8 @@ TEST_F(PggateTestDelete, TestDelete) {
       CHECK_LE(salary, id + 1.0*id/10.0 + 0.01);
       CHECK_GE(salary, id + 1.0*id/10.0 - 0.01);
 
-      string selected_job_name = reinterpret_cast<char*>(values[col_index++]);
-      string expected_job_name = strings::Substitute("Job_title_$0", id);
+      std::string selected_job_name = reinterpret_cast<char*>(values[col_index++]);
+      std::string expected_job_name = strings::Substitute("Job_title_$0", id);
       CHECK_EQ(selected_job_name, expected_job_name);
 
     } else {
@@ -243,8 +243,8 @@ TEST_F(PggateTestDelete, TestDelete) {
       CHECK_LE(salary, 77 + id + 1.0*id/10.0 + 0.01);
       CHECK_GE(salary, 77 + id + 1.0*id/10.0 - 0.01);
 
-      string selected_job_name = reinterpret_cast<char*>(values[col_index++]);
-      string expected_job_name = strings::Substitute("Job_title_$0", 77 + id);
+      std::string selected_job_name = reinterpret_cast<char*>(values[col_index++]);
+      std::string expected_job_name = strings::Substitute("Job_title_$0", 77 + id);
       CHECK_EQ(selected_job_name, expected_job_name);
     }
   }

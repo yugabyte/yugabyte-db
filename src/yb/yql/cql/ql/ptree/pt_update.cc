@@ -271,10 +271,10 @@ ExplainPlanPB PTUpdateStmt::AnalysisResultToPB() {
   UpdatePlanPB *update_plan = explain_plan.mutable_update_plan();
   update_plan->set_update_type("Update on " + table_name().ToString());
   update_plan->set_scan_type("  ->  Primary Key Lookup on " + table_name().ToString());
-  string key_conditions = "        Key Conditions: " +
+  std::string key_conditions = "        Key Conditions: " +
       ConditionsToString<MCVector<ColumnOp>>(key_where_ops());
   update_plan->set_key_conditions(key_conditions);
-  update_plan->set_output_width(narrow_cast<int32_t>(max({
+  update_plan->set_output_width(narrow_cast<int32_t>(std::max({
     update_plan->update_type().length(),
     update_plan->scan_type().length(),
     update_plan->key_conditions().length()

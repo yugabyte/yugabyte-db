@@ -127,7 +127,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
     int32_t value;
   };
 
-  Result<string> GetUniverseId(Cluster* cluster) {
+  Result<std::string> GetUniverseId(Cluster* cluster) {
     yb::master::GetMasterClusterConfigRequestPB req;
     yb::master::GetMasterClusterConfigResponsePB resp;
 
@@ -171,7 +171,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
     auto row_block = ql::RowsResult(op.get()).GetRowBlock();
     ASSERT_EQ(row_block->row_count(), 1);
 
-    string checkpoint = row_block->row(0).column(0).string_value();
+    std::string checkpoint = row_block->row(0).column(0).string_value();
     auto result = OpId::FromString(checkpoint);
     ASSERT_OK(result);
     OpId op_id = *result;
@@ -243,7 +243,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
     return Status::OK();
   }
 
-  Status TruncateTable(Cluster* cluster, const std::vector<string>& table_ids) {
+  Status TruncateTable(Cluster* cluster, const std::vector<std::string>& table_ids) {
     RETURN_NOT_OK(cluster->client_->TruncateTables(table_ids));
     return Status::OK();
   }
@@ -285,9 +285,9 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   }
 
   Status WriteEnumsRows(
-      uint32_t start, uint32_t end, Cluster* cluster, const string& enum_suffix = "",
-      string database_name = kNamespaceName, string table_name = kTableName,
-      string schema_name = "public") {
+      uint32_t start, uint32_t end, Cluster* cluster, const std::string& enum_suffix = "",
+      std::string database_name = kNamespaceName, std::string table_name = kTableName,
+      std::string schema_name = "public") {
     auto conn = VERIFY_RESULT(cluster->ConnectToDB(database_name));
     LOG(INFO) << "Writing " << end - start << " row(s) within transaction";
 
@@ -643,7 +643,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
     ASSERT_OK(WriteRowsHelper(1, 2, &test_cluster_, true));
     // Sleep for 60s for the background thread to update the consumer op_id so that garbage
     // collection can happen.
-    vector<int64> intent_counts(num_tservers, -1);
+    std::vector<int64> intent_counts(num_tservers, -1);
     ASSERT_OK(WaitFor(
         [this, &num_tservers, &set_flag_to_a_smaller_value, &extend_expiration, &intent_counts,
          &stream_id, &tablets]() -> Result<bool> {
@@ -1741,7 +1741,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestMultpleStreamOnSameTablet)) {
 
   TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
 
-  vector<CDCStreamId> stream_id;
+  std::vector<CDCStreamId> stream_id;
   // Create 2 streams
   for (uint32_t idx = 0; idx < 2; idx++) {
     stream_id.push_back(ASSERT_RESULT(CreateDBStream(IMPLICIT)));
@@ -1750,8 +1750,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestMultpleStreamOnSameTablet)) {
   }
 
   // Insert some records in transaction.
-  vector<GetChangesResponsePB> change_resp_01(2);
-  vector<GetChangesResponsePB> change_resp_02(2);
+  std::vector<GetChangesResponsePB> change_resp_01(2);
+  std::vector<GetChangesResponsePB> change_resp_02(2);
   ASSERT_OK(WriteRowsHelper(0 /* start */, 100 /* end */, &test_cluster_, true));
   for (uint32_t stream_idx = 0; stream_idx < 2; stream_idx++) {
     uint32_t record_size = 0;
@@ -1794,15 +1794,15 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestMultpleActiveStreamOnSameTabl
   TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
 
   // Create 2 streams
-  vector<CDCStreamId> stream_id(2);
+  std::vector<CDCStreamId> stream_id(2);
   for (uint32_t idx = 0; idx < 2; idx++) {
     stream_id[idx] = ASSERT_RESULT(CreateDBStream(IMPLICIT));
     auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id[idx], tablets));
     ASSERT_FALSE(resp.has_error());
   }
   // GetChanges for the stream-1 and stream-2
-  vector<GetChangesResponsePB> change_resp_01(2);
-  vector<GetChangesResponsePB> change_resp_02(2);
+  std::vector<GetChangesResponsePB> change_resp_01(2);
+  std::vector<GetChangesResponsePB> change_resp_02(2);
   uint32_t start = 0;
   uint32_t end = 100;
   for (uint32_t insert_idx = 0; insert_idx < 3; insert_idx++) {
@@ -1843,7 +1843,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestMultpleActiveStreamOnSameTabl
     auto result = OpId::FromString(checkpoint);
     ASSERT_OK(result);
     OpId row_checkpoint = *result;
-    min_checkpoint = min(min_checkpoint, row_checkpoint);
+    min_checkpoint = std::min(min_checkpoint, row_checkpoint);
   }
 
   ASSERT_OK(WaitFor(
@@ -1885,7 +1885,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestActiveAndInActiveStreamOnSame
 
   TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
 
-  vector<CDCStreamId> stream_id;
+  std::vector<CDCStreamId> stream_id;
   // Create 2 streams
   for (uint32_t idx = 0; idx < 2; idx++) {
     stream_id.push_back(ASSERT_RESULT(CreateDBStream(IMPLICIT)));
@@ -1898,7 +1898,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestActiveAndInActiveStreamOnSame
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ false));
 
-  vector<GetChangesResponsePB> change_resp(2);
+  std::vector<GetChangesResponsePB> change_resp(2);
   // Call GetChanges for the stream-1 and stream-2
   for (uint32_t idx = 0; idx < 2; idx++) {
     change_resp[idx] = ASSERT_RESULT(GetChangesFromCDC(stream_id[idx], tablets));
@@ -1945,7 +1945,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestActiveAndInActiveStreamOnSame
                 << " stream_id: " << read_stream_id << " checkpoint is: " << read_checkpoint;
       active_stream_checkpoint = *result;
     } else {
-      overall_min_checkpoint = min(overall_min_checkpoint, *result);
+      overall_min_checkpoint = std::min(overall_min_checkpoint, *result);
     }
   }
 
@@ -2722,10 +2722,10 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestEnumWithMultipleTablets)) {
   FLAGS_cdc_state_checkpoint_update_interval_ms = 1;
 
   const uint32_t num_tablets = 3;
-  vector<TabletId> table_id(2);
-  vector<CDCStreamId> stream_id(2);
-  vector<const char*> listTablesName{"test_table_01", "test_table_02"};
-  vector<std::string> tablePrefix{"_01", "_02"};
+  std::vector<TabletId> table_id(2);
+  std::vector<CDCStreamId> stream_id(2);
+  std::vector<const char*> listTablesName{"test_table_01", "test_table_02"};
+  std::vector<std::string> tablePrefix{"_01", "_02"};
   const int total_stream_count = 2;
 
   ASSERT_OK(SetUpWithParams(3, 1, false));

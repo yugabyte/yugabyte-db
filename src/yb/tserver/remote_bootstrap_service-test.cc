@@ -89,8 +89,8 @@ class RemoteBootstrapServiceTest : public RemoteBootstrapTest {
             proxy_cache_.get(), HostPort::FromBoundEndpoint(mini_server_->bound_rpc_addr())));
   }
 
-  Status DoBeginRemoteBootstrapSession(const string& tablet_id,
-                                       const string& requestor_uuid,
+  Status DoBeginRemoteBootstrapSession(const std::string& tablet_id,
+                                       const std::string& requestor_uuid,
                                        BeginRemoteBootstrapSessionResponsePB* resp,
                                        RpcController* controller) {
     controller->set_timeout(MonoDelta::FromSeconds(1.0));
@@ -102,7 +102,7 @@ class RemoteBootstrapServiceTest : public RemoteBootstrapTest {
   }
 
   Status DoBeginValidRemoteBootstrapSession(
-      string* session_id,
+      std::string* session_id,
       tablet::RaftGroupReplicaSuperBlockPB* superblock = nullptr,
       uint64_t* idle_timeout_millis = nullptr,
       uint64_t* first_sequence_number = nullptr) {
@@ -122,7 +122,7 @@ class RemoteBootstrapServiceTest : public RemoteBootstrapTest {
     return Status::OK();
   }
 
-  Status DoCheckSessionActive(const string& session_id,
+  Status DoCheckSessionActive(const std::string& session_id,
                               CheckRemoteBootstrapSessionActiveResponsePB* resp,
                               RpcController* controller) {
     controller->set_timeout(MonoDelta::FromSeconds(1.0));
@@ -132,7 +132,7 @@ class RemoteBootstrapServiceTest : public RemoteBootstrapTest {
         remote_bootstrap_proxy_->CheckSessionActive(req, resp, controller), controller);
   }
 
-  Status DoFetchData(const string& session_id, const DataIdPB& data_id,
+  Status DoFetchData(const std::string& session_id, const DataIdPB& data_id,
                      uint64_t* offset, int64_t* max_length,
                      FetchDataResponsePB* resp,
                      RpcController* controller) {
@@ -150,7 +150,7 @@ class RemoteBootstrapServiceTest : public RemoteBootstrapTest {
         remote_bootstrap_proxy_->FetchData(req, resp, controller), controller);
   }
 
-  Status DoEndRemoteBootstrapSession(const string& session_id, bool is_success,
+  Status DoEndRemoteBootstrapSession(const std::string& session_id, bool is_success,
                                      const Status* error_msg,
                                      EndRemoteBootstrapSessionResponsePB* resp,
                                      RpcController* controller) {
@@ -183,7 +183,7 @@ class RemoteBootstrapServiceTest : public RemoteBootstrapTest {
 
   void AssertRemoteError(Status status, const ErrorStatusPB* remote_error,
                          const RemoteBootstrapErrorPB::Code app_code,
-                         const string& status_code_string) {
+                         const std::string& status_code_string) {
     ASSERT_TRUE(status.IsRemoteError()) << "Unexpected status code: " << status.ToString()
                                         << ", app code: "
                                         << RemoteBootstrapErrorPB::Code_Name(app_code)
@@ -197,7 +197,7 @@ class RemoteBootstrapServiceTest : public RemoteBootstrapTest {
   }
 
   // Wrap given file name in the protobuf format suitable for a FetchData() call.
-  static DataIdPB AsDataTypeId(const string& file_name) {
+  static DataIdPB AsDataTypeId(const std::string& file_name) {
     DataIdPB data_id;
     data_id.set_type(DataIdPB::ROCKSDB_FILE);
     data_id.set_file_name(file_name);
@@ -209,7 +209,7 @@ class RemoteBootstrapServiceTest : public RemoteBootstrapTest {
 
 // Test beginning and ending a remote bootstrap session.
 TEST_F(RemoteBootstrapServiceTest, TestSimpleBeginEndSession) {
-  string session_id;
+  std::string session_id;
   tablet::RaftGroupReplicaSuperBlockPB superblock;
   uint64_t idle_timeout_millis;
   uint64_t first_segment_seqno;
@@ -232,7 +232,7 @@ TEST_F(RemoteBootstrapServiceTest, TestSimpleBeginEndSession) {
 TEST_F(RemoteBootstrapServiceTest, TestBeginTwice) {
   // Second time through should silently succeed.
   for (int i = 0; i < 2; i++) {
-    string session_id;
+    std::string session_id;
     ASSERT_OK(DoBeginValidRemoteBootstrapSession(&session_id));
     ASSERT_FALSE(session_id.empty());
   }
@@ -240,12 +240,12 @@ TEST_F(RemoteBootstrapServiceTest, TestBeginTwice) {
 
 // Test bad session id error condition.
 TEST_F(RemoteBootstrapServiceTest, TestInvalidSessionId) {
-  vector<string> bad_session_ids;
+  std::vector<std::string> bad_session_ids;
   bad_session_ids.push_back("hodor");
   bad_session_ids.push_back(GetLocalUUID());
 
   // Fetch a block for a non-existent session.
-  for (const string& session_id : bad_session_ids) {
+  for (const std::string& session_id : bad_session_ids) {
     FetchDataResponsePB resp;
     RpcController controller;
     DataIdPB data_id;
@@ -257,7 +257,7 @@ TEST_F(RemoteBootstrapServiceTest, TestInvalidSessionId) {
   }
 
   // End a non-existent session.
-  for (const string& session_id : bad_session_ids) {
+  for (const std::string& session_id : bad_session_ids) {
     EndRemoteBootstrapSessionResponsePB resp;
     RpcController controller;
     Status status = DoEndRemoteBootstrapSession(session_id, true, nullptr, &resp, &controller);
@@ -278,7 +278,7 @@ TEST_F(RemoteBootstrapServiceTest, TestInvalidTabletId) {
 
 // Test DataIdPB validation.
 TEST_F(RemoteBootstrapServiceTest, TestInvalidBlockOrOpId) {
-  string session_id;
+  std::string session_id;
   ASSERT_OK(DoBeginValidRemoteBootstrapSession(&session_id));
 
   // Invalid Segment Sequence Number for log fetch.
@@ -336,7 +336,7 @@ TEST_F(RemoteBootstrapServiceTest, TestInvalidBlockOrOpId) {
 
 // Test that we are able to fetch log segments.
 TEST_F(RemoteBootstrapServiceTest, TestFetchLog) {
-  string session_id;
+  std::string session_id;
   tablet::RaftGroupReplicaSuperBlockPB superblock;
   uint64_t idle_timeout_millis;
   uint64_t segment_seqno;
@@ -382,7 +382,7 @@ TEST_F(RemoteBootstrapServiceTest, TestSessionTimeout) {
   FLAGS_remote_bootstrap_idle_timeout_ms = 1; // Expire the session almost immediately.
 
   // Start session.
-  string session_id;
+  std::string session_id;
   ASSERT_OK(DoBeginValidRemoteBootstrapSession(&session_id));
 
   MonoTime start_time = MonoTime::Now();

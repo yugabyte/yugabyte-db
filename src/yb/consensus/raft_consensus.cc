@@ -35,6 +35,7 @@
 #include <algorithm>
 #include <memory>
 #include <mutex>
+#include <string>
 
 #include <boost/optional.hpp>
 #include <gflags/gflags.h>
@@ -243,6 +244,7 @@ using rpc::PeriodicTimer;
 using std::shared_ptr;
 using std::unique_ptr;
 using std::weak_ptr;
+using std::string;
 using strings::Substitute;
 using tserver::TabletServerErrorPB;
 

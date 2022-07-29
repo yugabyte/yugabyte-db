@@ -12,6 +12,8 @@
 
 #include <sstream>
 #include <thread>
+#include <string>
+#include <vector>
 
 #include <boost/algorithm/string.hpp>
 #include <boost/optional.hpp>
@@ -61,6 +63,9 @@ using strings::Substitute;
 using yb::server::RpcAndWebServerBase;
 
 namespace yb {
+
+using std::string;
+using std::vector;
 
 Collector::~Collector() {}
 

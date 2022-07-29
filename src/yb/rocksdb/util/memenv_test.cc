@@ -47,7 +47,7 @@ class MemEnvTest : public RocksDBTest {
 
 TEST_F(MemEnvTest, Basics) {
   uint64_t file_size;
-  unique_ptr<WritableFile> writable_file;
+  std::unique_ptr<WritableFile> writable_file;
   std::vector<std::string> children;
 
   ASSERT_OK(env_->CreateDir("/dir"));
@@ -88,8 +88,8 @@ TEST_F(MemEnvTest, Basics) {
   ASSERT_EQ(3U, file_size);
 
   // Check that opening non-existent file fails.
-  unique_ptr<SequentialFile> seq_file;
-  unique_ptr<RandomAccessFile> rand_file;
+  std::unique_ptr<SequentialFile> seq_file;
+  std::unique_ptr<RandomAccessFile> rand_file;
   ASSERT_TRUE(!env_->NewSequentialFile("/dir/non_existent", &seq_file,
                                        soptions_).ok());
   ASSERT_TRUE(!seq_file);
@@ -107,9 +107,9 @@ TEST_F(MemEnvTest, Basics) {
 }
 
 TEST_F(MemEnvTest, ReadWrite) {
-  unique_ptr<WritableFile> writable_file;
-  unique_ptr<SequentialFile> seq_file;
-  unique_ptr<RandomAccessFile> rand_file;
+  std::unique_ptr<WritableFile> writable_file;
+  std::unique_ptr<SequentialFile> seq_file;
+  std::unique_ptr<RandomAccessFile> rand_file;
   Slice result;
   uint8_t scratch[100];
 
@@ -159,7 +159,7 @@ TEST_F(MemEnvTest, Misc) {
   ASSERT_OK(env_->GetTestDirectory(&test_dir));
   ASSERT_TRUE(!test_dir.empty());
 
-  unique_ptr<WritableFile> writable_file;
+  std::unique_ptr<WritableFile> writable_file;
   ASSERT_OK(env_->NewWritableFile("/a/b", &writable_file, soptions_));
 
   // These are no-ops, but we test they return success.
@@ -178,13 +178,13 @@ TEST_F(MemEnvTest, LargeWrite) {
     write_data.append(1, static_cast<char>(i));
   }
 
-  unique_ptr<WritableFile> writable_file;
+  std::unique_ptr<WritableFile> writable_file;
   ASSERT_OK(env_->NewWritableFile("/dir/f", &writable_file, soptions_));
   ASSERT_OK(writable_file->Append("foo"));
   ASSERT_OK(writable_file->Append(write_data));
   writable_file.reset();
 
-  unique_ptr<SequentialFile> seq_file;
+  std::unique_ptr<SequentialFile> seq_file;
   Slice result;
   ASSERT_OK(env_->NewSequentialFile("/dir/f", &seq_file, soptions_));
   ASSERT_OK(seq_file->Read(3, &result, scratch)); // Read "foo".

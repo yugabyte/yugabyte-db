@@ -44,7 +44,7 @@ using strings::Substitute;
 class TestLoadBalancerCommunity : public TestLoadBalancerBase<ClusterLoadBalancerMocked> {
   typedef TestLoadBalancerBase<ClusterLoadBalancerMocked> super;
  public:
-  TestLoadBalancerCommunity(ClusterLoadBalancerMocked* cb, const string& table_id) :
+  TestLoadBalancerCommunity(ClusterLoadBalancerMocked* cb, const std::string& table_id) :
       super(cb, table_id) {}
 
   void TestAlgorithm() {
@@ -57,12 +57,12 @@ class TestLoadBalancerCommunity : public TestLoadBalancerBase<ClusterLoadBalance
 // side of the split, i.e. it's a closed interval on the start key and an open
 // interval on the end key (non-inclusive).
 TEST(TableInfoTest, TestAssignmentRanges) {
-  const string table_id = CURRENT_TEST_NAME();
+  const std::string table_id = CURRENT_TEST_NAME();
   scoped_refptr<TableInfo> table(new TableInfo(table_id));
-  vector<scoped_refptr<TabletInfo>> tablets;
+  std::vector<scoped_refptr<TabletInfo>> tablets;
 
   // Define & create the splits.
-  vector<string> split_keys = {"a", "b", "c"};  // The keys we split on.
+  std::vector<std::string> split_keys = {"a", "b", "c"};  // The keys we split on.
   const size_t kNumSplits = split_keys.size();
   const int kNumReplicas = 1;
 
@@ -74,16 +74,16 @@ TEST(TableInfoTest, TestAssignmentRanges) {
   // Ensure they give us what we are expecting.
   for (size_t i = 0; i <= kNumSplits; i++) {
     // Calculate the tablet id and start key.
-    const string& start_key = (i == 0) ? "" : split_keys[i - 1];
-    const string& end_key = (i == kNumSplits) ? "" : split_keys[i];
-    string tablet_id = Substitute("tablet-$0-$1", start_key, end_key);
+    const std::string& start_key = (i == 0) ? "" : split_keys[i - 1];
+    const std::string& end_key = (i == kNumSplits) ? "" : split_keys[i];
+    std::string tablet_id = Substitute("tablet-$0-$1", start_key, end_key);
 
     // Query using the start key.
     GetTableLocationsRequestPB req;
     req.set_max_returned_locations(1);
     req.mutable_table()->mutable_table_name()->assign(table_id);
     req.mutable_partition_key_start()->assign(start_key);
-    vector<scoped_refptr<TabletInfo> > tablets_in_range;
+    std::vector<scoped_refptr<TabletInfo> > tablets_in_range;
     table->GetTabletsInRange(&req, &tablets_in_range);
 
     // Only one tablet should own this key.
@@ -358,7 +358,7 @@ void SplitAndDeleteTablets(const TabletInfos& tablets_to_split, TabletInfos* pos
 } // namespace
 
 TEST(TestCatalogManager, CheckIfCanDeleteSingleTablet) {
-  const string table_id = CURRENT_TEST_NAME();
+  const std::string table_id = CURRENT_TEST_NAME();
   scoped_refptr<TableInfo> table(new TableInfo(table_id));
   TabletInfos pre_split_tablets;
 

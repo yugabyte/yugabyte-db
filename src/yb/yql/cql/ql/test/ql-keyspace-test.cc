@@ -27,48 +27,48 @@ class TestQLKeyspace : public QLTestBase {
   }
 
   // CREATE statements.
-  inline const string CreateStmt(string params) {
+  inline const std::string CreateStmt(std::string params) {
     return "CREATE " + params;
   }
 
-  inline const string CreateKeyspaceStmt(string params) {
+  inline const std::string CreateKeyspaceStmt(std::string params) {
     return CreateStmt("KEYSPACE " + params);
   }
 
-  inline const string CreateKeyspaceIfNotExistsStmt(string params) {
+  inline const std::string CreateKeyspaceIfNotExistsStmt(std::string params) {
     return CreateStmt("KEYSPACE IF NOT EXISTS " + params);
   }
 
-  inline const string CreateSchemaStmt(string params) {
+  inline const std::string CreateSchemaStmt(std::string params) {
     return CreateStmt("SCHEMA " + params);
   }
 
-  inline const string CreateSchemaIfNotExistsStmt(string params) {
+  inline const std::string CreateSchemaIfNotExistsStmt(std::string params) {
     return CreateStmt("SCHEMA IF NOT EXISTS " + params);
   }
 
   // DROP statements.
-  inline const string DropKeyspaceStmt(string params) {
+  inline const std::string DropKeyspaceStmt(std::string params) {
     return "DROP KEYSPACE " + params;
   }
 
-  inline const string DropKeyspaceIfExistsStmt(string params) {
+  inline const std::string DropKeyspaceIfExistsStmt(std::string params) {
     return "DROP KEYSPACE IF EXISTS " + params;
   }
 
-  inline const string DropSchemaStmt(string params) {
+  inline const std::string DropSchemaStmt(std::string params) {
     return "DROP SCHEMA " + params;
   }
 
-  inline const string DropSchemaIfExistsStmt(string params) {
+  inline const std::string DropSchemaIfExistsStmt(std::string params) {
     return "DROP SCHEMA IF EXISTS " + params;
   }
 
-  inline const string UseStmt(string params) {
+  inline const std::string UseStmt(std::string params) {
     return "USE " + params;
   }
 
-  inline const string CreateTableStmt(string params) {
+  inline const std::string CreateTableStmt(std::string params) {
     return "CREATE TABLE " + params;
   }
 };
@@ -80,7 +80,7 @@ TEST_F(TestQLKeyspace, TestQLCreateKeyspaceSimple) {
   // Get an available processor.
   TestQLProcessor *processor = GetQLProcessor();
 
-  const string keyspace1 = "test;";
+  const std::string keyspace1 = "test;";
 
   // Try to delete unknown keyspace1.
   LOG(INFO) << "Exec SQL: " << DropKeyspaceStmt(keyspace1);
@@ -136,7 +136,7 @@ TEST_F(TestQLKeyspace, TestQLCreateKeyspaceIfNotExists) {
   // Get an available processor.
   TestQLProcessor *processor = GetQLProcessor();
 
-  const string keyspace1 = "test;";
+  const std::string keyspace1 = "test;";
 
   // Create the keyspace1.
   LOG(INFO) << "Exec SQL: " << CreateKeyspaceIfNotExistsStmt(keyspace1);
@@ -171,7 +171,7 @@ TEST_F(TestQLKeyspace, TestQLCreateSchemaSimple) {
   // Get an available processor.
   TestQLProcessor *processor = GetQLProcessor();
 
-  const string keyspace1 = "test;";
+  const std::string keyspace1 = "test;";
 
   // Try to delete unknown keyspace1.
   LOG(INFO) << "Exec SQL: " << DropSchemaStmt(keyspace1);
@@ -227,7 +227,7 @@ TEST_F(TestQLKeyspace, TestQLCreateSchemaIfNotExists) {
   // Get an available processor.
   TestQLProcessor *processor = GetQLProcessor();
 
-  const string keyspace1 = "test;";
+  const std::string keyspace1 = "test;";
 
   // Create the keyspace1.
   LOG(INFO) << "Exec SQL: " << CreateSchemaIfNotExistsStmt(keyspace1);
@@ -262,7 +262,7 @@ TEST_F(TestQLKeyspace, TestQLUseKeyspaceSimple) {
   // Get an available processor.
   TestQLProcessor *processor = GetQLProcessor();
 
-  const string keyspace1 = "test;";
+  const std::string keyspace1 = "test;";
 
   // Try to use unknown keyspace1.
   LOG(INFO) << "Exec SQL: " << UseStmt(keyspace1);
@@ -294,13 +294,13 @@ TEST_F(TestQLKeyspace, TestQLUseKeyspaceWithTable) {
   // Get an available processor.
   TestQLProcessor *processor = GetQLProcessor();
 
-  const string keyspace1 = "test;";
-  const string keyspace2 = "test2;";
-  const string table1 = "table1(id int, primary key(id));";
-  const string system_table2 = "system.table2(id int, primary key(id));";
-  const string test_table3 = "test.table3(id int, primary key(id));";
-  const string table3 = "table3(id int, primary key(id));";
-  const string test_any_table4 = "test.subname.table4(id int, primary key(id));";
+  const std::string keyspace1 = "test;";
+  const std::string keyspace2 = "test2;";
+  const std::string table1 = "table1(id int, primary key(id));";
+  const std::string system_table2 = "system.table2(id int, primary key(id));";
+  const std::string test_table3 = "test.table3(id int, primary key(id));";
+  const std::string table3 = "table3(id int, primary key(id));";
+  const std::string test_any_table4 = "test.subname.table4(id int, primary key(id));";
 
   // No keyspace - using current keyspace (kDefaultKeyspaceName here).
   LOG(INFO) << "Exec SQL: " << CreateTableStmt(table1);
@@ -388,7 +388,7 @@ TEST_F(TestQLKeyspace, TestQLSelectInvalidTable) {
   // Get an available processor.
   TestQLProcessor *processor = GetQLProcessor();
 
-  const string select_stmt = "SELECT * FROM my_keyspace1.test_table WHERE h1 = 1 AND h2 = 'h1';";
+  const std::string select_stmt = "SELECT * FROM my_keyspace1.test_table WHERE h1 = 1 AND h2 = 'h1';";
 
   LOG(INFO) << "Exec SQL: " << select_stmt;
   EXEC_INVALID_STMT_WITH_ERROR(select_stmt, "Object Not Found");

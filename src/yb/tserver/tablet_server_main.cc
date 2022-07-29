@@ -190,7 +190,7 @@ int TabletServerMain(int argc, char** argv) {
   FLAGS_redis_proxy_webserver_port = RedisServer::kDefaultWebPort;
   FLAGS_cql_proxy_webserver_port = CQLServer::kDefaultWebPort;
 
-  string host_name;
+  std::string host_name;
   if (GetHostname(&host_name).ok()) {
     FLAGS_metric_node_name = strings::Substitute("$0:$1", host_name, TabletServer::kDefaultWebPort);
   } else {

@@ -338,7 +338,7 @@ void DisableCoreDumps();
 // trace). This is based on the --fatal_details_path_prefix flag and the
 // YB_FATAL_DETAILS_PATH_PREFIX environment variable. If neither of those are set, the result is
 // based on the FATAL log path.
-string GetFatalDetailsPathPrefix();
+std::string GetFatalDetailsPathPrefix();
 
 // Implements special handling for LOG(FATAL) and CHECK failures, such as disabling core dumps and
 // printing the failure stack trace into a separate file.

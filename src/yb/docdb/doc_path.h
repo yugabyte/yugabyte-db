@@ -55,7 +55,7 @@ class DocPath {
       : encoded_doc_key_(encoded_doc_key), subkeys_{std::forward<T>(subkeys)...} {
   }
 
-  DocPath(const KeyBytes& encoded_doc_key, const vector<KeyEntryValue>& subkeys)
+  DocPath(const KeyBytes& encoded_doc_key, const std::vector<KeyEntryValue>& subkeys)
       : encoded_doc_key_(encoded_doc_key),
         subkeys_(subkeys) {
   }
@@ -83,7 +83,8 @@ class DocPath {
   // Note: the hash is supposed to be uint16_t, but protobuf only supports uint32.
   // So this function takes in uint32_t.
   // TODO (akashnil): Add uint16 data type in docdb.
-  static DocPath DocPathFromRedisKey(uint16_t hash, const string& key, const string& subkey = "");
+  static DocPath DocPathFromRedisKey(
+      uint16_t hash, const std::string& key, const std::string& subkey = "");
 
   const std::vector<KeyEntryValue>& subkeys() const {
     return subkeys_;

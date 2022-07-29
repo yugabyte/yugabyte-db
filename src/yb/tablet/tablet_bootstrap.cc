@@ -170,14 +170,14 @@ using strings::Substitute;
 using tserver::WriteRequestPB;
 using tserver::TabletSnapshotOpRequestPB;
 
-static string DebugInfo(const string& tablet_id,
+static std::string DebugInfo(const std::string& tablet_id,
                         uint64_t segment_seqno,
                         size_t entry_idx,
-                        const string& segment_path,
+                        const std::string& segment_path,
                         const LogEntryPB* entry) {
   // Truncate the debug string to a reasonable length for logging.  Otherwise, glog will truncate
   // for us and we may miss important information which came after this long string.
-  string debug_str = entry ? entry->ShortDebugString() : "<nullptr>"s;
+  std::string debug_str = entry ? entry->ShortDebugString() : "<nullptr>"s;
   if (debug_str.size() > 500) {
     debug_str.resize(500);
     debug_str.append("...");
@@ -305,7 +305,7 @@ Status ReplayState::CheckSequentialReplicateId(const ReplicateMsg& msg) {
   SCHECK(msg.has_id(), Corruption, "A REPLICATE message must have an id");
   const auto msg_op_id = OpId::FromPB(msg.id());
   if (PREDICT_FALSE(!IsValidSequence(prev_op_id, msg_op_id))) {
-    string op_desc = Format(
+    std::string op_desc = Format(
         "$0 REPLICATE (Type: $1)", msg_op_id, OperationType_Name(msg.op_type()));
     return STATUS_FORMAT(Corruption,
                          "Unexpected op id following op id $0. Operation: $1",
@@ -508,7 +508,7 @@ class TabletBootstrap {
       TabletPtr* rebuilt_tablet,
       scoped_refptr<log::Log>* rebuilt_log,
       consensus::ConsensusBootstrapInfo* consensus_info) {
-    const string tablet_id = meta_->raft_group_id();
+    const std::string tablet_id = meta_->raft_group_id();
 
     // Replay requires a valid Consensus metadata file to exist in order to compare the committed
     // consensus configuration seqno with the log entries and also to persist committed but
@@ -651,12 +651,12 @@ class TabletBootstrap {
   //
   // If no log segments are found, 'needs_recovery' is set to false.
   Result<NeedsRecovery> PrepareToReplay() {
-    const string& log_dir = tablet_->metadata()->wal_dir();
+    const std::string& log_dir = tablet_->metadata()->wal_dir();
 
     // If the recovery directory exists, then we crashed mid-recovery.  Throw away any logs from the
     // previous recovery attempt and restart the log replay process from the beginning using the
     // same recovery dir as last time.
-    const string recovery_path = FsManager::GetTabletWalRecoveryDir(log_dir);
+    const std::string recovery_path = FsManager::GetTabletWalRecoveryDir(log_dir);
     if (GetEnv()->FileExists(recovery_path)) {
       LOG_WITH_PREFIX(INFO) << "Previous recovery directory found at " << recovery_path << ": "
                             << "Replaying log files from this location instead of " << log_dir;
@@ -689,7 +689,7 @@ class TabletBootstrap {
     RETURN_NOT_OK_PREPEND(env_util::CreateDirIfMissing(GetEnv(), log_dir),
                           "Failed to create tablet log directory " + log_dir);
 
-    vector<string> log_dir_children = VERIFY_RESULT_PREPEND(
+    std::vector<std::string> log_dir_children = VERIFY_RESULT_PREPEND(
         GetEnv()->GetChildren(log_dir, ExcludeDots::kTrue), "Couldn't list log segments.");
 
     // To ensure consistent order of log messages. Note: this does not affect the replay order
@@ -697,19 +697,19 @@ class TabletBootstrap {
     sort(log_dir_children.begin(), log_dir_children.end());
 
     bool needs_recovery = false;
-    for (const string& log_dir_child : log_dir_children) {
+    for (const std::string& log_dir_child : log_dir_children) {
       if (!log::IsLogFileName(log_dir_child)) {
         continue;
       }
 
       needs_recovery = true;
-      string source_path = JoinPathSegments(log_dir, log_dir_child);
+      std::string source_path = JoinPathSegments(log_dir, log_dir_child);
       if (skip_wal_rewrite_) {
         LOG_WITH_PREFIX(INFO) << "Will attempt to recover log segment " << source_path;
         continue;
       }
 
-      string dest_path = JoinPathSegments(recovery_path, log_dir_child);
+      std::string dest_path = JoinPathSegments(recovery_path, log_dir_child);
       LOG_WITH_PREFIX(INFO) << "Will attempt to recover log segment " << source_path
                             << " to " << dest_path;
     }
@@ -759,7 +759,7 @@ class TabletBootstrap {
   // Removes the recovery directory and all files contained therein.  Intended to be invoked after
   // log replay successfully completes.
   Status RemoveRecoveryDir() {
-    const string recovery_path = FsManager::GetTabletWalRecoveryDir(tablet_->metadata()->wal_dir());
+    const std::string recovery_path = FsManager::GetTabletWalRecoveryDir(tablet_->metadata()->wal_dir());
     if (!GetEnv()->FileExists(recovery_path)) {
       VLOG(1) << "Tablet WAL recovery dir " << recovery_path << " does not exist.";
       if (!skip_wal_rewrite_) {
@@ -771,7 +771,7 @@ class TabletBootstrap {
     LOG_WITH_PREFIX(INFO) << "Preparing to delete log recovery files and directory "
                           << recovery_path;
 
-    string tmp_path = Substitute("$0-$1", recovery_path, GetCurrentTimeMicros());
+    std::string tmp_path = Substitute("$0-$1", recovery_path, GetCurrentTimeMicros());
     LOG_WITH_PREFIX(INFO) << "Renaming log recovery dir from "  << recovery_path
                           << " to " << tmp_path;
     RETURN_NOT_OK_PREPEND(GetEnv()->RenameFile(recovery_path, tmp_path),
@@ -1066,10 +1066,10 @@ class TabletBootstrap {
   void DumpReplayStateToLog() {
     // Dump the replay state, this will log the pending replicates, which might be useful for
     // debugging.
-    vector<string> state_dump;
+    std::vector<std::string> state_dump;
     constexpr int kMaxLinesToDump = 1000;
     replay_state_->DumpReplayStateToStrings(&state_dump, kMaxLinesToDump / 2);
-    for (const string& line : state_dump) {
+    for (const std::string& line : state_dump) {
       LOG_WITH_PREFIX(INFO) << line;
     }
   }
@@ -1594,10 +1594,10 @@ class TabletBootstrap {
 
   void CleanupSnapshots() {
     // Disk clean-up: deleting temporary/incomplete snapshots.
-    const string top_snapshots_dir = TabletSnapshots::SnapshotsDirName(meta_->rocksdb_dir());
+    const std::string top_snapshots_dir = TabletSnapshots::SnapshotsDirName(meta_->rocksdb_dir());
 
     if (meta_->fs_manager()->env()->FileExists(top_snapshots_dir)) {
-      vector<string> snapshot_dirs;
+      std::vector<std::string> snapshot_dirs;
       Status s = meta_->fs_manager()->env()->GetChildren(
           top_snapshots_dir, ExcludeDots::kTrue, &snapshot_dirs);
 
@@ -1605,8 +1605,8 @@ class TabletBootstrap {
         LOG_WITH_PREFIX(WARNING) << "Cannot get list of snapshot directories in "
                                  << top_snapshots_dir << ": " << s;
       } else {
-        for (const string& dir_name : snapshot_dirs) {
-          const string snapshot_dir = JoinPathSegments(top_snapshots_dir, dir_name);
+        for (const std::string& dir_name : snapshot_dirs) {
+          const std::string snapshot_dir = JoinPathSegments(top_snapshots_dir, dir_name);
 
           if (TabletSnapshots::IsTempSnapshotDir(snapshot_dir)) {
             LOG_WITH_PREFIX(INFO) << "Deleting old temporary snapshot directory " << snapshot_dir;
@@ -1696,7 +1696,7 @@ class TabletBootstrap {
 //  Class TabletBootstrap::Stats.
 // ============================================================================
 
-string TabletBootstrap::Stats::ToString() const {
+std::string TabletBootstrap::Stats::ToString() const {
   return Format("Read operations: $0, overwritten operations: $1",
                 ops_read, ops_overwritten);
 }

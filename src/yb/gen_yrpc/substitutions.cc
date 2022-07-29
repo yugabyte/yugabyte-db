@@ -31,6 +31,8 @@
 namespace yb {
 namespace gen_yrpc {
 
+using std::string;
+
 namespace {
 
 const std::string kWireFormat = "::google::protobuf::internal::WireFormatLite";

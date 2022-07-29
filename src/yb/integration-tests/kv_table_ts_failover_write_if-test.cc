@@ -95,7 +95,7 @@ class KVTableTsFailoverWriteIfTest : public integration_tests::YBTableTestBase {
     auto* const req = insert->mutable_request();
     QLAddInt32HashValue(req, key);
     table_.AddInt32ColumnValue(req, kValueColumnName, value);
-    string op_str = Format("$0: $1", key, value);
+    std::string op_str = Format("$0: $1", key, value);
     LOG(INFO) << "Sending write: " << op_str;
     session->Apply(insert);
     session->FlushAsync([insert, op_str](client::FlushStatus* flush_status) {
@@ -205,7 +205,7 @@ class KVTableTsFailoverWriteIfTest : public integration_tests::YBTableTestBase {
   itest::TabletServerMap ts_map_;
 
   // TServerDetails instances referred by ts_details_ are owned by ts_map_.
-  vector<TServerDetails*> ts_details_;
+  std::vector<TServerDetails*> ts_details_;
 };
 
 // Test for ENG-3471 - shouldn't run write-if when leader hasn't yet committed all pendings ops.
@@ -219,7 +219,7 @@ TEST_F(KVTableTsFailoverWriteIfTest, KillTabletServerDuringReplication) {
   const auto cluster = external_mini_cluster();
   const auto num_ts = cluster->num_tablet_servers();
 
-  vector<string> tablet_ids;
+  std::vector<std::string> tablet_ids;
   do {
     ASSERT_OK(itest::ListRunningTabletIds(
         ts_map_.begin()->second.get(), kTestCommandsTimeOut, &tablet_ids));

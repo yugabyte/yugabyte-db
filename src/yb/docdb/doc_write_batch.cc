@@ -235,11 +235,11 @@ Status DocWriteBatch::SetPrimitiveInternal(
   UpdateMaxValueTtl(control_fields.ttl);
 
   // The write_id is always incremented by one for each new element of the write batch.
-  if (put_batch_.size() > numeric_limits<IntraTxnWriteId>::max()) {
+  if (put_batch_.size() > std::numeric_limits<IntraTxnWriteId>::max()) {
     return STATUS_SUBSTITUTE(
         NotSupported,
         "Trying to add more than $0 key/value pairs in the same single-shard txn.",
-        numeric_limits<IntraTxnWriteId>::max());
+        std::numeric_limits<IntraTxnWriteId>::max());
   }
 
   if (control_fields.has_user_timestamp() && !optional_init_markers()) {
@@ -588,7 +588,7 @@ Status DocWriteBatch::ReplaceRedisInList(
     const rocksdb::QueryId query_id,
     const Direction dir,
     const int64_t start_index,
-    std::vector<string>* results,
+    std::vector<std::string>* results,
     MonoDelta default_ttl,
     MonoDelta write_ttl) {
   SubDocKey sub_doc_key;

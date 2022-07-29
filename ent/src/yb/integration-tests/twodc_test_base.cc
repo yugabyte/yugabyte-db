@@ -76,7 +76,7 @@ Status TwoDCTestBase::SetupUniverseReplication(
   master::SetupUniverseReplicationResponsePB resp;
 
   req.set_producer_id(universe_id);
-  string master_addr = producer_cluster->GetMasterAddresses();
+  std::string master_addr = producer_cluster->GetMasterAddresses();
   if (leader_only) {
     master_addr = VERIFY_RESULT(producer_cluster->GetLeaderMiniMaster())->bound_rpc_addr_str();
   }
@@ -245,7 +245,7 @@ Status TwoDCTestBase::CorrectlyPollingAllTablets(
       cluster, num_producer_tablets, MonoDelta::FromSeconds(kRpcTimeout));
 }
 
-Status TwoDCTestBase::WaitForSetupUniverseReplicationCleanUp(string producer_uuid) {
+Status TwoDCTestBase::WaitForSetupUniverseReplicationCleanUp(std::string producer_uuid) {
   auto proxy = std::make_shared<master::MasterReplicationProxy>(
     &consumer_client()->proxy_cache(),
     VERIFY_RESULT(consumer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());

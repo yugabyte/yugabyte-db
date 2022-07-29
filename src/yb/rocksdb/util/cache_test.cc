@@ -72,8 +72,8 @@ class CacheTest : public RocksDBTest {
 
   std::vector<int> deleted_keys_;
   std::vector<int> deleted_values_;
-  shared_ptr<Cache> cache_;
-  shared_ptr<Cache> cache2_;
+  std::shared_ptr<Cache> cache_;
+  std::shared_ptr<Cache> cache2_;
 
   CacheTest() :
       cache_(NewLRUCache(kCacheSize, kNumShardBits)),
@@ -84,7 +84,7 @@ class CacheTest : public RocksDBTest {
   ~CacheTest() {
   }
 
-  int Lookup(shared_ptr<Cache> cache, int key, QueryId query_id = kTestQueryId) {
+  int Lookup(std::shared_ptr<Cache> cache, int key, QueryId query_id = kTestQueryId) {
     Cache::Handle* handle = cache->Lookup(EncodeKey(key), query_id);
     const int r = (handle == nullptr) ? -1 : DecodeValue(cache->Value(handle));
     if (handle != nullptr) {
@@ -93,7 +93,7 @@ class CacheTest : public RocksDBTest {
     return r;
   }
 
-  bool LookupAndCheckInMultiTouch(shared_ptr<Cache> cache, int key,
+  bool LookupAndCheckInMultiTouch(std::shared_ptr<Cache> cache, int key,
                                   int expected_value,
                                   QueryId query_id = kTestQueryId) {
     Cache::Handle* handle = cache->Lookup(EncodeKey(key), query_id);
@@ -107,13 +107,13 @@ class CacheTest : public RocksDBTest {
     }
   }
 
-  Status Insert(shared_ptr<Cache> cache, int key, int value, int charge = 1,
+  Status Insert(std::shared_ptr<Cache> cache, int key, int value, int charge = 1,
                 QueryId query_id = kTestQueryId) {
     return cache->Insert(EncodeKey(key), query_id, EncodeValue(value), charge,
                          &CacheTest::Deleter);
   }
 
-  void Erase(shared_ptr<Cache> cache, int key) {
+  void Erase(std::shared_ptr<Cache> cache, int key) {
     cache->Erase(EncodeKey(key));
   }
 

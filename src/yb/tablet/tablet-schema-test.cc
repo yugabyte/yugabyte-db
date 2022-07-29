@@ -103,16 +103,16 @@ class TestTabletSchema : public YBTabletTest {
   }
 
   void VerifyTabletRows(const Schema& projection,
-                        const std::vector<std::pair<string, string> >& keys) {
-    typedef std::pair<string, string> StringPair;
+                        const std::vector<std::pair<std::string, std::string> >& keys) {
+    typedef std::pair<std::string, std::string> StringPair;
 
-    vector<string> rows;
+    std::vector<std::string> rows;
     ASSERT_OK(DumpTablet(*tablet(), projection, &rows));
     std::sort(rows.begin(), rows.end());
-    for (const string& row : rows) {
+    for (const std::string& row : rows) {
       bool found = false;
       for (const StringPair& k : keys) {
-        if (row.find(k.first) != string::npos) {
+        if (row.find(k.first) != std::string::npos) {
           ASSERT_STR_CONTAINS(row, k.second);
           found = true;
           break;
@@ -148,7 +148,7 @@ TEST_F(TestTabletSchema, TestRead) {
 
 // Write to the table using a projection schema with a renamed field.
 TEST_F(TestTabletSchema, TestRenameProjection) {
-  std::vector<std::pair<string, string> > keys;
+  std::vector<std::pair<std::string, std::string> > keys;
 
   // Insert with the base schema
   InsertRow(1);
@@ -165,7 +165,7 @@ TEST_F(TestTabletSchema, TestRenameProjection) {
   // Read and verify using the s2 schema
   keys.clear();
   for (int i = 1; i <= 4; ++i) {
-    keys.push_back(std::pair<string, string>(Substitute("{ int32_value: $0", i),
+    keys.push_back(std::pair<std::string, std::string>(Substitute("{ int32_value: $0", i),
                                              Substitute("int32_value: $0 }", i)));
   }
   VerifyTabletRows(s2, keys);
@@ -178,20 +178,20 @@ TEST_F(TestTabletSchema, TestRenameProjection) {
 
   // Read and verify using the s2 schema
   keys.clear();
-  keys.push_back(std::pair<string, string>("{ int32_value: 2", "int32_value: 6 }"));
+  keys.push_back(std::pair<std::string, std::string>("{ int32_value: 2", "int32_value: 6 }"));
   VerifyTabletRows(s2, keys);
 }
 
 // Verify that removing a column and re-adding it will not result in making old data visible
 TEST_F(TestTabletSchema, TestDeleteAndReAddColumn) {
-  std::vector<std::pair<string, string> > keys;
+  std::vector<std::pair<std::string, std::string> > keys;
 
   // Insert and Mutate with the base schema
   InsertRow(1);
   MutateRow(/* key= */ 1, /* col_idx= */ 1, /* new_val= */ 2);
 
   keys.clear();
-  keys.push_back(std::pair<string, string>("{ int32_value: 1", "int32_value: 2 }"));
+  keys.push_back(std::pair<std::string, std::string>("{ int32_value: 1", "int32_value: 2 }"));
   VerifyTabletRows(client_schema_, keys);
 
   // Switch schema to s2
@@ -205,7 +205,7 @@ TEST_F(TestTabletSchema, TestDeleteAndReAddColumn) {
 
   // Verify that the new 'c1' have the default value
   keys.clear();
-  keys.push_back(std::pair<string, string>("{ int32_value: 1", "null }"));
+  keys.push_back(std::pair<std::string, std::string>("{ int32_value: 1", "null }"));
   VerifyTabletRows(s2, keys);
 }
 

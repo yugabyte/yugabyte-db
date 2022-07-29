@@ -133,7 +133,7 @@ Result<bool> PgSamplePicker::ProcessNextBlock() {
   }
 }
 
-Result<bool> PgSamplePicker::FetchYbctidBatch(const vector<Slice> **ybctids) {
+Result<bool> PgSamplePicker::FetchYbctidBatch(const std::vector<Slice> **ybctids) {
   // Check if all ybctids are already returned
   if (!reservoir_ready_) {
     *ybctids = nullptr;

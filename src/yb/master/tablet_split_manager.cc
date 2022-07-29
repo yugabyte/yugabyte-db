@@ -546,7 +546,7 @@ class OutstandingSplitState {
     uint64_t leader_sst_size;
   };
   // New split candidates. The chosen candidates are eventually added to splits_to_schedule.
-  vector<SplitCandidate> new_split_candidates_;
+  std::vector<SplitCandidate> new_split_candidates_;
 
   std::unordered_map<TabletServerId, std::unordered_set<TabletId>> ts_to_ongoing_splits_;
 
@@ -580,7 +580,7 @@ void TabletSplitManager::DoSplitting(
   // splitting. This is most critical for tables that frequently switch between being valid and
   // invalid for splitting (e.g. for tables with frequent PITR schedules).
   // https://github.com/yugabyte/yugabyte-db/issues/11459
-  vector<TableInfoPtr> valid_tables;
+  std::vector<TableInfoPtr> valid_tables;
   for (const auto& table : table_info_map) {
     if (ValidateSplitCandidateTable(*table.second).ok()) {
       valid_tables.push_back(table.second);

@@ -1481,7 +1481,7 @@ class StressTest {
     const Snapshot* snapshot = db_->GetSnapshot();
     ReadOptions readoptionscopy = readoptions;
     readoptionscopy.snapshot = snapshot;
-    unique_ptr<Iterator> iter(db_->NewIterator(readoptionscopy, column_family));
+    std::unique_ptr<Iterator> iter(db_->NewIterator(readoptionscopy, column_family));
 
     iter->Seek(key);
     for (uint64_t i = 0; i < FLAGS_num_iterations && iter->Valid(); i++) {
@@ -1781,7 +1781,7 @@ class StressTest {
       }
       if (!thread->rand.OneIn(2)) {
         // Use iterator to verify this range
-        unique_ptr<Iterator> iter(
+        std::unique_ptr<Iterator> iter(
             db_->NewIterator(options, column_families_[cf]));
         iter->Seek(Key(start));
         for (auto i = start; i < end; i++) {

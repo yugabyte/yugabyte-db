@@ -59,7 +59,7 @@ YBCStatus YBCStatusOK() {
   return YBCStatusOKValue;
 }
 
-YBCStatus YBCStatusNotSupport(const string& feature_name) {
+YBCStatus YBCStatusNotSupport(const std::string& feature_name) {
   if (feature_name.empty()) {
     return ToYBCStatus(STATUS(NotSupported, "Feature is not supported"));
   } else {

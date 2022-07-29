@@ -174,11 +174,11 @@ TEST_F(TsTabletManagerITest, TestReportNewLeaderOnLeaderChange) {
   auto ts_map = ASSERT_RESULT(itest::CreateTabletServerMap(master_proxy, &proxy_cache));
 
   // Collect the tablet peers so we get direct access to consensus.
-  vector<std::shared_ptr<TabletPeer> > tablet_peers;
+  std::vector<std::shared_ptr<TabletPeer> > tablet_peers;
   for (int replica = 0; replica < kNumReplicas; replica++) {
     MiniTabletServer* ts = cluster_->mini_tablet_server(replica);
     ts->FailHeartbeats(); // Stop heartbeating we don't race against the Master.
-    vector<std::shared_ptr<TabletPeer> > cur_ts_tablet_peers;
+    std::vector<std::shared_ptr<TabletPeer> > cur_ts_tablet_peers;
     // The replicas may not have been created yet, so loop until we see them.
     while (true) {
       cur_ts_tablet_peers = ts->server()->tablet_manager()->GetTabletPeers();
@@ -221,7 +221,7 @@ TEST_F(TsTabletManagerITest, TestReportNewLeaderOnLeaderChange) {
       ReportedTabletPB reported_tablet = report.updated_tablets(0);
       ASSERT_TRUE(reported_tablet.has_committed_consensus_state());
 
-      string uuid = tablet_peers[replica]->permanent_uuid();
+      std::string uuid = tablet_peers[replica]->permanent_uuid();
       PeerRole role = GetConsensusRole(uuid, reported_tablet.committed_consensus_state());
       if (replica == new_leader_idx) {
         ASSERT_EQ(PeerRole::LEADER, role)

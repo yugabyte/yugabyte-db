@@ -128,7 +128,7 @@ Status CqlTestBase<MiniCluster>::StartCluster() {
 }
 
 template <>
-Status CqlTestBase<MiniCluster>::RunBackupCommand(const vector<string>& args) {
+Status CqlTestBase<MiniCluster>::RunBackupCommand(const std::vector<std::string>& args) {
   return tools::RunBackupCommand(
       HostPort(), // Not used YSQL host/port.
       cluster_->GetMasterAddresses(), cluster_->GetTserverHTTPAddresses(), *tmp_dir_, args);

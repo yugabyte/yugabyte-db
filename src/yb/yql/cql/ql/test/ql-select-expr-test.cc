@@ -1722,7 +1722,7 @@ TEST_F(QLTestSelectedExpr, ScanRangeTestIncDecAcrossHashCols) {
   CHECK_VALID_STMT("SELECT h, r1, r2, payload FROM test_range WHERE r1 = 5 AND r2 > 4 AND r2 < 7;");
   std::shared_ptr<QLRowBlock> row_block = processor->row_block();
   EXPECT_EQ(row_block->row_count(), 2 * max_h);
-  vector<bool> seen(max_h, false);
+  std::vector<bool> seen(max_h, false);
   for (size_t h = 0; h < row_block->row_count(); h++) {
     const QLRow& row = row_block->row(h);
     LOG(INFO) << "got " << row.ToString();
@@ -1769,7 +1769,7 @@ TEST_F(QLTestSelectedExpr, ScanChoicesTestIncDecAcrossHashCols) {
   CHECK_VALID_STMT("SELECT h, r1, r2, payload FROM test_range WHERE r1 in (5) AND r2 in (5, 6);");
   std::shared_ptr<QLRowBlock> row_block = processor->row_block();
   EXPECT_EQ(row_block->row_count(), 2 * max_h);
-  vector<bool> seen(max_h, false);
+  std::vector<bool> seen(max_h, false);
   for (size_t h = 0; h < row_block->row_count(); h++) {
     const QLRow& row = row_block->row(h);
     LOG(INFO) << "got " << row.ToString();

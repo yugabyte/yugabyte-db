@@ -197,9 +197,9 @@ class QueryPagingState {
   }
 
   // Debug logging.
-  string DebugString() const {
-    return (string("\nQueryPB = {\n") + query_pb_.DebugString() + string ("\n};") +
-            string("\nCounterPB = {\n") + counter_pb_.DebugString() + string("\n};"));
+  std::string DebugString() const {
+    return (std::string("\nQueryPB = {\n") + query_pb_.DebugString() + std::string ("\n};") +
+            std::string("\nCounterPB = {\n") + counter_pb_.DebugString() + std::string("\n};"));
   }
 
   // Access to internal protobuf.

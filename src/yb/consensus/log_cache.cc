@@ -36,6 +36,7 @@
 #include <map>
 #include <mutex>
 #include <vector>
+#include <string>
 
 #include "yb/consensus/consensus_util.h"
 #include "yb/consensus/log.h"
@@ -95,6 +96,9 @@ DECLARE_bool(get_changes_honor_deadline);
 
 namespace yb {
 namespace consensus {
+
+using std::vector;
+using std::string;
 
 namespace {
 

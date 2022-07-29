@@ -217,7 +217,7 @@ Status SetRangePartitionBounds(const Schema& schema,
                                        const std::string& last_partition,
                                        Req* request,
                                        std::string* key_upper_bound) {
-  vector<docdb::KeyEntryValue> range_components, range_components_end;
+  std::vector<docdb::KeyEntryValue> range_components, range_components_end;
   RETURN_NOT_OK(GetRangePartitionBounds(
       schema, *request, &range_components, &range_components_end));
   if (range_components.empty() && range_components_end.empty()) {
@@ -272,7 +272,7 @@ Status InitRangePartitionKey(
 
   } else {
     // Evaluate condition to return partition_key and set the upper bound.
-    string max_key;
+    std::string max_key;
     RETURN_NOT_OK(SetRangePartitionBounds(schema, last_partition, request, &max_key));
     if (!max_key.empty()) {
       SetKey(max_key, request->mutable_upper_bound());
@@ -384,8 +384,8 @@ Status InitWritePartitionKey(
 template <class Req>
 Status DoGetRangePartitionBounds(const Schema& schema,
                                  const Req& request,
-                                 vector<docdb::KeyEntryValue>* lower_bound,
-                                 vector<docdb::KeyEntryValue>* upper_bound) {
+                                 std::vector<docdb::KeyEntryValue>* lower_bound,
+                                 std::vector<docdb::KeyEntryValue>* upper_bound) {
   SCHECK(!schema.num_hash_key_columns(), IllegalState,
          "Cannot set range partition key for hash partitioned table");
   const auto& range_cols = request.range_column_values();
@@ -585,7 +585,7 @@ std::string YBqlWriteOp::ToString() const {
   return "QL_WRITE " + ql_write_request_->ShortDebugString();
 }
 
-Status YBqlWriteOp::GetPartitionKey(string* partition_key) const {
+Status YBqlWriteOp::GetPartitionKey(std::string* partition_key) const {
   return table_->partition_schema().EncodeKey(ql_write_request_->hashed_column_values(),
                                               partition_key);
 }
@@ -634,7 +634,7 @@ size_t YBqlWriteHashKeyComparator::operator()(const YBqlWriteOpPtr& op) const {
   boost::hash_combine(hash, op->table()->id());
 
   // Hash the hash key.
-  string key;
+  std::string key;
   for (const auto& value : op->request().hashed_column_values()) {
     AppendToKey(value.value(), &key);
   }
@@ -668,7 +668,7 @@ size_t YBqlWritePrimaryKeyComparator::operator()(const YBqlWriteOpPtr& op) const
   size_t hash = YBqlWriteHashKeyComparator()(op);
 
   // Hash the range key also.
-  string key;
+  std::string key;
   for (const auto& value : op->request().range_column_values()) {
     AppendToKey(value.value(), &key);
   }
@@ -736,7 +736,7 @@ void YBqlReadOp::SetHashCode(const uint16_t hash_code) {
   ql_read_request_->set_hash_code(hash_code);
 }
 
-Status YBqlReadOp::GetPartitionKey(string* partition_key) const {
+Status YBqlReadOp::GetPartitionKey(std::string* partition_key) const {
   if (!ql_read_request_->hashed_column_values().empty()) {
     // If hashed columns are set, use them to compute the exact key and set the bounds
     RETURN_NOT_OK(table_->partition_schema().EncodeKey(ql_read_request_->hashed_column_values(),
@@ -1012,7 +1012,7 @@ YBNoOp::YBNoOp(const std::shared_ptr<YBTable>& table)
 }
 
 Status YBNoOp::Execute(YBClient* client, const YBPartialRow& key) {
-  string encoded_key;
+  std::string encoded_key;
   RETURN_NOT_OK(table_->partition_schema().EncodeKey(key, &encoded_key));
   CoarseTimePoint deadline = CoarseMonoClock::Now() + 5s;
 
@@ -1026,7 +1026,7 @@ Status YBNoOp::Execute(YBClient* client, const YBPartialRow& key) {
 
     internal::RemoteTabletServer *ts = nullptr;
     std::vector<internal::RemoteTabletServer*> candidates;
-    std::set<string> blacklist;  // TODO: empty set for now.
+    std::set<std::string> blacklist;  // TODO: empty set for now.
     Status lookup_status = client->data_->GetTabletServer(
        client,
        remote_,
@@ -1109,15 +1109,15 @@ Status InitPartitionKey(
 
 Status GetRangePartitionBounds(const Schema& schema,
                                const PgsqlReadRequestPB& request,
-                               vector<docdb::KeyEntryValue>* lower_bound,
-                               vector<docdb::KeyEntryValue>* upper_bound) {
+                               std::vector<docdb::KeyEntryValue>* lower_bound,
+                               std::vector<docdb::KeyEntryValue>* upper_bound) {
   return DoGetRangePartitionBounds(schema, request, lower_bound, upper_bound);
 }
 
 Status GetRangePartitionBounds(const Schema& schema,
                                const LWPgsqlReadRequestPB& request,
-                               vector<docdb::KeyEntryValue>* lower_bound,
-                               vector<docdb::KeyEntryValue>* upper_bound) {
+                               std::vector<docdb::KeyEntryValue>* lower_bound,
+                               std::vector<docdb::KeyEntryValue>* upper_bound) {
   return DoGetRangePartitionBounds(schema, request, lower_bound, upper_bound);
 }
 

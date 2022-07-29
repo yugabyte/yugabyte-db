@@ -42,7 +42,7 @@ void StringKeyTestSetup::FormatKey(char *buf, size_t buf_size, int64_t key_idx) 
   snprintf(buf, buf_size, "hello %" PRId64, key_idx);
 }
 
-string StringKeyTestSetup::FormatDebugRow(int64_t key_idx, int32_t val, bool updated) {
+std::string StringKeyTestSetup::FormatDebugRow(int64_t key_idx, int32_t val, bool updated) {
   char buf[256];
   FormatKey(buf, sizeof(buf), key_idx);
 
@@ -67,7 +67,7 @@ void CompositeKeyTestSetup::FormatKey(char *buf, size_t buf_size, int64_t key_id
   snprintf(buf, buf_size, "hello %" PRId64, key_idx);
 }
 
-string CompositeKeyTestSetup::FormatDebugRow(int64_t key_idx, int32_t val, bool updated) {
+std::string CompositeKeyTestSetup::FormatDebugRow(int64_t key_idx, int32_t val, bool updated) {
   char buf[256];
   FormatKey(buf, sizeof(buf), key_idx);
   return strings::Substitute(
@@ -183,7 +183,7 @@ void TabletTestPreBase::VerifyTestRows(int32_t first_row, int32_t expected_count
   LOG(INFO) << "Successfully verified " << expected_count << "rows";
 }
 
-Status TabletTestPreBase::IterateToStringList(vector<string> *out) {
+Status TabletTestPreBase::IterateToStringList(std::vector<std::string> *out) {
   // TODO(dtxn) pass correct transaction ID if needed
   auto iter = this->tablet()->NewRowIterator(this->client_schema_);
   RETURN_NOT_OK(iter);

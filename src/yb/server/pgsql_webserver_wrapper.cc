@@ -14,6 +14,7 @@
 
 #include <math.h>
 
+#include <string>
 #include <map>
 
 #include "yb/common/ybc-internal.h"
@@ -28,6 +29,8 @@
 #include "yb/util/status_log.h"
 
 namespace yb {
+using std::string;
+
 DECLARE_string(metric_node_name);
 
 static ybpgmEntry *ybpgm_table;

@@ -845,7 +845,7 @@ consensus::OperationType MapOperationTypeToPB(OperationType operation_type) {
 } // namespace
 
 void TabletPeer::GetInFlightOperations(Operation::TraceType trace_type,
-                                       vector<consensus::OperationStatusPB>* out) const {
+                                       std::vector<consensus::OperationStatusPB>* out) const {
   for (const auto& driver : operation_tracker_.GetPendingOperations()) {
     if (driver->operation() == nullptr) {
       continue;

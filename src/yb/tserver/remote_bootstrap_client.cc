@@ -480,7 +480,7 @@ Status RemoteBootstrapClient::VerifyChangeRoleSucceeded(
         return Status::OK();
       } else {
         SleepFor(MonoDelta::FromMilliseconds(backoff_ms));
-        backoff_ms = min(backoff_ms << 1, kMaxBackoffMs);
+        backoff_ms = std::min(backoff_ms << 1, kMaxBackoffMs);
         break;
       }
     }

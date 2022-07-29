@@ -67,12 +67,12 @@ Result<std::shared_ptr<QLRowBlock>> YQLSizeEstimatesVTable::RetrieveData(
       const PartitionPB &partition = tablet_locations_pb.partition();
       uint16_t yb_start_hash = !partition.partition_key_start().empty() ?
           PartitionSchema::DecodeMultiColumnHashValue(partition.partition_key_start()) : 0;
-      string cql_start_hash = std::to_string(YBPartition::YBToCqlHashCode(yb_start_hash));
+      std::string cql_start_hash = std::to_string(YBPartition::YBToCqlHashCode(yb_start_hash));
       RETURN_NOT_OK(SetColumnValue(kRangeStart, cql_start_hash, &row));
 
       uint16_t yb_end_hash = !partition.partition_key_end().empty() ?
           PartitionSchema::DecodeMultiColumnHashValue(partition.partition_key_end()) : 0;
-      string cql_end_hash = std::to_string(YBPartition::YBToCqlHashCode(yb_end_hash));
+      std::string cql_end_hash = std::to_string(YBPartition::YBToCqlHashCode(yb_end_hash));
       RETURN_NOT_OK(SetColumnValue(kRangeEnd, cql_end_hash, &row));
 
       // TODO: These values should eventually be reasonable estimates.

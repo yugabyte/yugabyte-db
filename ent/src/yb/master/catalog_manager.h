@@ -146,11 +146,11 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   // Delete CDC streams for a table.
   Status DeleteCDCStreamsForTable(const TableId& table_id) override;
-  Status DeleteCDCStreamsForTables(const vector<TableId>& table_ids) override;
+  Status DeleteCDCStreamsForTables(const std::vector<TableId>& table_ids) override;
 
   // Clean CDC streams for a table.
   Status DeleteCDCStreamsMetadataForTable(const TableId& table_id) override;
-  Status DeleteCDCStreamsMetadataForTables(const vector<TableId>& table_ids) override;
+  Status DeleteCDCStreamsMetadataForTables(const std::vector<TableId>& table_ids) override;
 
   // Get metadata required to decode UDTs in CDCSDK.
   Status GetUDTypeMetadata(
@@ -568,7 +568,7 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
       google::protobuf::RepeatedPtrField<SysRowEntry>* out,
       google::protobuf::RepeatedPtrField<SysSnapshotEntryPB::TabletSnapshotPB>*
           tablet_snapshot_info = nullptr,
-      vector<scoped_refptr<TabletInfo>>* all_tablets = nullptr);
+      std::vector<scoped_refptr<TabletInfo>>* all_tablets = nullptr);
 
   Result<SysRowEntries> CollectEntriesForSequencesDataTable();
 

@@ -30,6 +30,9 @@
 // under the License.
 //
 
+#include <string>
+#include <vector>
+
 #include <boost/algorithm/string/predicate.hpp>
 
 #include <glog/logging.h>
@@ -37,6 +40,7 @@
 #include <gtest/gtest.h>
 
 #include "yb/fs/fs_manager.h"
+#include "yb/fs/fs.pb.h"
 
 #include "yb/gutil/strings/util.h"
 
@@ -45,13 +49,16 @@
 #include "yb/util/result.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
-#include "yb/fs/fs.pb.h"
 
 DECLARE_string(fs_data_dirs);
 DECLARE_string(fs_wal_dirs);
 DECLARE_bool(TEST_fail_write_pb_container);
 
 namespace yb {
+
+using std::shared_ptr;
+using std::string;
+using std::vector;
 
 namespace {
 

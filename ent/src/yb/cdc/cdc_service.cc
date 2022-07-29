@@ -1064,7 +1064,7 @@ Result<SetCDCCheckpointResponsePB> CDCServiceImpl::SetCDCCheckpoint(
   bool set_latest_entry = req.bootstrap();
 
   if (set_latest_entry) {
-    const string err_message = strings::Substitute(
+    const std::string err_message = strings::Substitute(
         "Unable to get the latest entry op id from "
         "peer $0 and tablet $1 because its log object hasn't been initialized",
         tablet_peer->permanent_uuid(), tablet_peer->tablet_id());
@@ -1123,7 +1123,7 @@ void CDCServiceImpl::DeleteCDCStream(const DeleteCDCStreamRequestPB* req,
       CDCErrorPB::INVALID_REQUEST,
       context);
 
-  vector<CDCStreamId> streams(req->stream_id().begin(), req->stream_id().end());
+  std::vector<CDCStreamId> streams(req->stream_id().begin(), req->stream_id().end());
   Status s = client()->DeleteCDCStream(
         streams,
         (req->has_force_delete() && req->force_delete()),
@@ -1502,7 +1502,7 @@ void CDCServiceImpl::UpdateLagMetrics() {
 
   std::unordered_set<ProducerTabletInfo, ProducerTabletInfo::Hash> tablets_in_cdc_state_table;
   client::TableIteratorOptions options;
-  options.columns = std::vector<string>{
+  options.columns = std::vector<std::string>{
       master::kCdcTabletId, master::kCdcStreamId, master::kCdcLastReplicationTime};
   bool failed = false;
   options.error_handler = [&failed](const Status& status) {
@@ -1656,18 +1656,18 @@ MicrosTime CDCServiceImpl::GetLastReplicatedTime(
 
 void SetMinCDCSDKCheckpoint(const OpId& checkpoint, OpId* cdc_sdk_op_id) {
   if (*cdc_sdk_op_id != OpId::Invalid()) {
-    *cdc_sdk_op_id = min(*cdc_sdk_op_id, checkpoint);
+    *cdc_sdk_op_id = std::min(*cdc_sdk_op_id, checkpoint);
   } else {
     *cdc_sdk_op_id = checkpoint;
   }
 }
 
 void PopulateTabletMinCheckpoint(
-    const string& tablet_id, const OpId& checkpoint, CDCRequestSource cdc_source_type,
+    const std::string& tablet_id, const OpId& checkpoint, CDCRequestSource cdc_source_type,
     const CoarseTimePoint& last_active_time, TabletOpIdMap* tablet_min_checkpoint_index) {
   auto& tablet_info = (*tablet_min_checkpoint_index)[tablet_id];
 
-  tablet_info.cdc_op_id = min(tablet_info.cdc_op_id, checkpoint);
+  tablet_info.cdc_op_id = std::min(tablet_info.cdc_op_id, checkpoint);
   // Case:1  2 different CDCSDK stream(stream-1 and stream-2) on same tablet_id.
   //        for stream-1 there is get changes call and stream-2 there is not get change
   //        call(i.e initial checkpoint is -1.-1).
@@ -1684,7 +1684,7 @@ void PopulateTabletMinCheckpoint(
 }
 
 Status CDCServiceImpl::SetInitialCheckPoint(
-    const OpId& checkpoint, const string& tablet_id,
+    const OpId& checkpoint, const std::string& tablet_id,
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer) {
   VLOG(1) << "Setting the checkpoint is " << checkpoint.ToString()
           << " and the latest entry OpID is " << tablet_peer->log()->GetLatestEntryOpId();
@@ -2226,7 +2226,7 @@ void CDCServiceImpl::UpdateCdcReplicatedIndex(const UpdateCdcReplicatedIndexRequ
 }
 
 Status CDCServiceImpl::UpdateCdcReplicatedIndexEntry(
-    const string& tablet_id, int64 replicated_index, boost::optional<int64> replicated_term,
+    const std::string& tablet_id, int64 replicated_index, boost::optional<int64> replicated_term,
     const OpId& cdc_sdk_replicated_op, const MonoDelta& cdc_sdk_op_id_expiration) {
   std::shared_ptr<tablet::TabletPeer> tablet_peer;
       RETURN_NOT_OK(tablet_manager_->GetTabletPeer(tablet_id, &tablet_peer));
@@ -2286,7 +2286,7 @@ void CDCServiceImpl::GetLatestEntryOpId(const GetLatestEntryOpIdRequestPB* req,
     RPC_STATUS_RETURN_ERROR(s, resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
 
     if (!tablet_peer->log_available()) {
-      const string err_message = strings::Substitute("Unable to get the latest entry op id from "
+      const std::string err_message = strings::Substitute("Unable to get the latest entry op id from "
           "peer $0 and tablet $1 because its log object hasn't been initialized",
           tablet_peer->permanent_uuid(), tablet_peer->tablet_id());
       LOG(WARNING) << err_message;
@@ -2310,7 +2310,7 @@ void CDCServiceImpl::GetLatestEntryOpId(const GetLatestEntryOpIdRequestPB* req,
     RPC_STATUS_RETURN_ERROR(s, resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
 
     if (!tablet_peer->log_available()) {
-      const string err_message = strings::Substitute("Unable to get the latest entry op id from "
+      const std::string err_message = strings::Substitute("Unable to get the latest entry op id from "
           "peer $0 and tablet $1 because its log object hasn't been initialized",
           tablet_peer->permanent_uuid(), tablet_peer->tablet_id());
       LOG(WARNING) << err_message;
@@ -2343,7 +2343,7 @@ void CDCServiceImpl::GetCDCDBStreamInfo(const GetCDCDBStreamInfoRequestPB* req,
     CDCErrorPB::INVALID_REQUEST,
     context);
 
-  std::vector<pair<std::string, std::string>> db_stream_info;
+  std::vector<std::pair<std::string, std::string>> db_stream_info;
   Status s = client()->GetCDCDBStreamInfo(req->db_stream_id(), &db_stream_info);
   RPC_STATUS_RETURN_ERROR(s, resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
 
@@ -2497,7 +2497,7 @@ Status CDCServiceImpl::BootstrapProducerHelperParallelized(
       if (s.ok()) {
         // Retrieve op_id from local cache.
         if (!tablet_peer->log_available()) {
-          const string err_message = strings::Substitute("Unable to get the latest entry op id "
+          const std::string err_message = strings::Substitute("Unable to get the latest entry op id "
               "from peer $0 and tablet $1 because its log object hasn't been initialized",
               tablet_peer->permanent_uuid(), tablet_id);
           LOG(WARNING) << err_message;
@@ -2676,7 +2676,7 @@ Status CDCServiceImpl::BootstrapProducerHelperParallelized(
   // Check all responses for errors.
   for (const auto& update_index_resp : update_index_responses) {
     if (update_index_resp->has_error()) {
-      const string err_message = update_index_resp->error().status().message();;
+      const std::string err_message = update_index_resp->error().status().message();;
       LOG(WARNING) << err_message;
       return STATUS(InternalError, err_message);
     }
@@ -2756,7 +2756,7 @@ Status CDCServiceImpl::BootstrapProducerHelper(
       TabletCDCCheckpointInfo op_id_min;
       if (s.ok()) {
         if (!tablet_peer->log_available()) {
-          const string err_message = strings::Substitute("Unable to get the latest entry op id "
+          const std::string err_message = strings::Substitute("Unable to get the latest entry op id "
               "from peer $0 and tablet $1 because its log object hasn't been initialized",
               tablet_peer->permanent_uuid(), tablet_peer->tablet_id());
           LOG(WARNING) << err_message;
@@ -3179,7 +3179,7 @@ Status CDCServiceImpl::UpdateChildrenTabletsOnSplitOp(
     const client::YBSessionPtr& session) {
   const auto split_req = split_op_msg->split_request();
   const auto parent_tablet = split_req.tablet_id();
-  const vector<string> children_tablets = {split_req.new_tablet1_id(), split_req.new_tablet2_id()};
+  const std::vector<std::string> children_tablets = {split_req.new_tablet1_id(), split_req.new_tablet2_id()};
 
   auto cdc_state_table = VERIFY_RESULT(GetCdcStateTable());
   // First check if the children tablet entries exist yet in cdc_state.
@@ -3265,8 +3265,8 @@ void CDCServiceImpl::CheckReplicationDrain(const CheckReplicationDrainRequestPB*
     // (stream ID, tablet ID) pairs to keep checking in the next iteration.
     std::vector<std::pair<CDCStreamId, TabletId>> unfinished_stream_tablet;
     for (const auto& stream_tablet_id : stream_tablet_to_check) {
-      const string& stream_id = stream_tablet_id.first;
-      const string& tablet_id = stream_tablet_id.second;
+      const std::string& stream_id = stream_tablet_id.first;
+      const std::string& tablet_id = stream_tablet_id.second;
 
       std::shared_ptr<tablet::TabletPeer> tablet_peer;
       auto s = tablet_manager_->GetTabletPeer(tablet_id, &tablet_peer);

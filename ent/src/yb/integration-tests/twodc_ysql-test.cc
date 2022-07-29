@@ -250,7 +250,7 @@ class TwoDCYsqlTest : public TwoDCTestBase, public testing::WithParamInterface<T
     return Status::OK();
   }
 
-  Result<string> GetUniverseId(Cluster* cluster) {
+  Result<std::string> GetUniverseId(Cluster* cluster) {
     master::GetMasterClusterConfigRequestPB req;
     master::GetMasterClusterConfigResponsePB resp;
 
@@ -532,7 +532,7 @@ class TwoDCYsqlTest : public TwoDCTestBase, public testing::WithParamInterface<T
   }
 
   Status TruncateTable(Cluster* cluster,
-                       std::vector<string> table_ids) {
+                       std::vector<std::string> table_ids) {
     RETURN_NOT_OK(cluster->client_->TruncateTables(table_ids));
     return Status::OK();
   }
@@ -553,7 +553,7 @@ INSTANTIATE_TEST_CASE_P(
 TEST_P(TwoDCYsqlTestWithEnableIntentsReplication, GenerateSeries) {
   YB_SKIP_TEST_IN_TSAN();
   auto tables = ASSERT_RESULT(SetUpWithParams({4}, {4}, 3, 1));
-  const string kUniverseId = ASSERT_RESULT(GetUniverseId(&producer_cluster_));
+  const std::string kUniverseId = ASSERT_RESULT(GetUniverseId(&producer_cluster_));
 
   auto producer_table = tables[0];
   auto consumer_table = tables[1];
@@ -576,7 +576,7 @@ TEST_P(TwoDCYsqlTestWithEnableIntentsReplication, GenerateSeriesMultipleTransact
   YB_SKIP_TEST_IN_TSAN();
   // Use a 4 -> 1 mapping to ensure that multiple transactions are processed by the same tablet.
   auto tables = ASSERT_RESULT(SetUpWithParams({1}, {4}, 3, 1));
-  const string kUniverseId = ASSERT_RESULT(GetUniverseId(&producer_cluster_));
+  const std::string kUniverseId = ASSERT_RESULT(GetUniverseId(&producer_cluster_));
 
   auto producer_table = tables[0];
   auto consumer_table = tables[1];
@@ -599,7 +599,7 @@ TEST_P(TwoDCYsqlTestWithEnableIntentsReplication, GenerateSeriesMultipleTransact
 TEST_P(TwoDCYsqlTest, SetupUniverseReplication) {
   YB_SKIP_TEST_IN_TSAN();
   auto tables = ASSERT_RESULT(SetUpWithParams({8, 4}, {6, 6}, 3, 1, false /* colocated */));
-  const string kUniverseId = ASSERT_RESULT(GetUniverseId(&producer_cluster_));
+  const std::string kUniverseId = ASSERT_RESULT(GetUniverseId(&producer_cluster_));
 
   std::vector<std::shared_ptr<client::YBTable>> producer_tables;
   // tables contains both producer and consumer universe tables (alternately).
@@ -639,7 +639,7 @@ TEST_P(TwoDCYsqlTest, SimpleReplication) {
   constexpr int kNTabletsPerTable = 1;
   std::vector<uint32_t> tables_vector = {kNTabletsPerTable, kNTabletsPerTable};
   auto tables = ASSERT_RESULT(SetUpWithParams(tables_vector, tables_vector, 1));
-  const string kUniverseId = ASSERT_RESULT(GetUniverseId(&producer_cluster_));
+  const std::string kUniverseId = ASSERT_RESULT(GetUniverseId(&producer_cluster_));
 
   // tables contains both producer and consumer universe tables (alternately).
   // Pick out just the producer tables from the list.
@@ -751,7 +751,7 @@ TEST_P(TwoDCYsqlTest, SetupUniverseReplicationWithProducerBootstrapId) {
   constexpr int kNTabletsPerTable = 1;
   std::vector<uint32_t> tables_vector = {kNTabletsPerTable, kNTabletsPerTable};
   auto tables = ASSERT_RESULT(SetUpWithParams(tables_vector, tables_vector, 3));
-  const string kUniverseId = ASSERT_RESULT(GetUniverseId(&producer_cluster_));
+  const std::string kUniverseId = ASSERT_RESULT(GetUniverseId(&producer_cluster_));
   auto* producer_leader_mini_master = ASSERT_RESULT(producer_cluster()->GetLeaderMiniMaster());
   auto producer_master_proxy = std::make_shared<master::MasterReplicationProxy>(
       &producer_client()->proxy_cache(),
@@ -818,10 +818,10 @@ TEST_P(TwoDCYsqlTest, SetupUniverseReplicationWithProducerBootstrapId) {
   int nrows = 0;
   for (const auto& row : client::TableRange(table)) {
     nrows++;
-    string stream_id = row.column(0).string_value();
+    std::string stream_id = row.column(0).string_value();
     tablet_bootstraps[stream_id]++;
 
-    string checkpoint = row.column(2).string_value();
+    std::string checkpoint = row.column(2).string_value();
     auto s = OpId::FromString(checkpoint);
     ASSERT_OK(s);
     OpId op_id = *s;
@@ -847,7 +847,7 @@ TEST_P(TwoDCYsqlTest, SetupUniverseReplicationWithProducerBootstrapId) {
   master::SetupUniverseReplicationRequestPB setup_universe_req;
   master::SetupUniverseReplicationResponsePB setup_universe_resp;
   setup_universe_req.set_producer_id(kUniverseId);
-  string master_addr = producer_cluster()->GetMasterAddresses();
+  std::string master_addr = producer_cluster()->GetMasterAddresses();
   auto hp_vec = ASSERT_RESULT(HostPort::ParseStrings(master_addr, 0));
   HostPortsToPBs(hp_vec, setup_universe_req.mutable_producer_master_addresses());
 
@@ -916,7 +916,7 @@ TEST_P(TwoDCYsqlTest, ColocatedDatabaseReplication) {
   // Create two colocated tables on each cluster.
   auto colocated_tables =
       ASSERT_RESULT(SetUpWithParams(tables_vector, tables_vector, 3, 1, true /* colocated */));
-  const string kUniverseId = ASSERT_RESULT(GetUniverseId(&producer_cluster_));
+  const std::string kUniverseId = ASSERT_RESULT(GetUniverseId(&producer_cluster_));
 
   // Also create an additional non-colocated table in each database.
   auto non_colocated_table = ASSERT_RESULT(CreateTable(&producer_cluster_,
@@ -975,7 +975,7 @@ TEST_P(TwoDCYsqlTest, ColocatedDatabaseReplication) {
   master::SetupUniverseReplicationRequestPB setup_universe_req;
   master::SetupUniverseReplicationResponsePB setup_universe_resp;
   setup_universe_req.set_producer_id(kUniverseId);
-  string master_addr = producer_cluster()->GetMasterAddresses();
+  std::string master_addr = producer_cluster()->GetMasterAddresses();
   auto hp_vec = ASSERT_RESULT(HostPort::ParseStrings(master_addr, 0));
   HostPortsToPBs(hp_vec, setup_universe_req.mutable_producer_master_addresses());
   // Only need to add the colocated parent table id.
@@ -1063,7 +1063,7 @@ TEST_P(TwoDCYsqlTest, ColocatedDatabaseReplication) {
 TEST_P(TwoDCYsqlTest, ColocatedDatabaseDifferentColocationIds) {
   YB_SKIP_TEST_IN_TSAN();
   auto colocated_tables = ASSERT_RESULT(SetUpWithParams({}, {}, 3, 1, true /* colocated */));
-  const string kUniverseId = ASSERT_RESULT(GetUniverseId(&producer_cluster_));
+  const std::string kUniverseId = ASSERT_RESULT(GetUniverseId(&producer_cluster_));
 
   // Create two tables with different colocation ids.
   auto conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(kNamespaceName));
@@ -1101,7 +1101,7 @@ TEST_P(TwoDCYsqlTest, TablegroupReplication) {
   boost::optional<std::string> kTablegroupName("mytablegroup");
   auto tables = ASSERT_RESULT(
       SetUpWithParams(tables_vector, tables_vector, 1, 1, false /* colocated */, kTablegroupName));
-  const string kUniverseId = ASSERT_RESULT(GetUniverseId(&producer_cluster_));
+  const std::string kUniverseId = ASSERT_RESULT(GetUniverseId(&producer_cluster_));
 
   // tables contains both producer and consumer universe tables (alternately).
   // Pick out just the producer tables from the list.
@@ -1131,7 +1131,7 @@ TEST_P(TwoDCYsqlTest, TablegroupReplication) {
   master::SetupUniverseReplicationRequestPB setup_universe_req;
   master::SetupUniverseReplicationResponsePB setup_universe_resp;
   setup_universe_req.set_producer_id(kUniverseId);
-  string master_addr = producer_cluster()->GetMasterAddresses();
+  std::string master_addr = producer_cluster()->GetMasterAddresses();
   auto hp_vec = ASSERT_RESULT(HostPort::ParseStrings(master_addr, 0));
   HostPortsToPBs(hp_vec, setup_universe_req.mutable_producer_master_addresses());
   setup_universe_req.mutable_producer_table_ids()->Reserve(1);
@@ -1217,7 +1217,7 @@ TEST_P(TwoDCYsqlTest, TablegroupReplicationMismatch) {
   master::SetupUniverseReplicationRequestPB setup_universe_req;
   master::SetupUniverseReplicationResponsePB setup_universe_resp;
   setup_universe_req.set_producer_id(kUniverseId);
-  string master_addr = producer_cluster()->GetMasterAddresses();
+  std::string master_addr = producer_cluster()->GetMasterAddresses();
   auto hp_vec = ASSERT_RESULT(HostPort::ParseStrings(master_addr, 0));
   HostPortsToPBs(hp_vec, setup_universe_req.mutable_producer_master_addresses());
   setup_universe_req.mutable_producer_table_ids()->Reserve(1);
@@ -1245,7 +1245,7 @@ TEST_P(TwoDCYsqlTest, IsBootstrapRequiredNotFlushed) {
   constexpr int kNTabletsPerTable = 1;
   std::vector<uint32_t> tables_vector = {kNTabletsPerTable, kNTabletsPerTable};
   auto tables = ASSERT_RESULT(SetUpWithParams(tables_vector, tables_vector, 1));
-  const string kUniverseId = ASSERT_RESULT(GetUniverseId(&producer_cluster_));
+  const std::string kUniverseId = ASSERT_RESULT(GetUniverseId(&producer_cluster_));
 
   // tables contains both producer and consumer universe tables (alternately).
   // Pick out just the producer tables from the list.
@@ -1336,7 +1336,7 @@ TEST_P(TwoDCYsqlTest, IsBootstrapRequiredFlushed) {
   constexpr int kNTabletsPerTable = 1;
   std::vector<uint32_t> tables_vector = {kNTabletsPerTable};
   auto tables = ASSERT_RESULT(SetUpWithParams(tables_vector, tables_vector, 1));
-  const string kUniverseId = ASSERT_RESULT(GetUniverseId(&producer_cluster_));
+  const std::string kUniverseId = ASSERT_RESULT(GetUniverseId(&producer_cluster_));
 
   // tables contains both producer and consumer universe tables (alternately).
   // Pick out just the producer tables from the list.
@@ -1438,7 +1438,7 @@ TEST_P(TwoDCYsqlTest, DeleteTableChecks) {
   constexpr int kNT = 1; // Tablets per table.
   std::vector<uint32_t> tables_vector = {kNT, kNT, kNT}; // Each entry is a table. (Currently 3)
   auto tables = ASSERT_RESULT(SetUpWithParams(tables_vector, tables_vector, 1));
-  const string kUniverseId = ASSERT_RESULT(GetUniverseId(&producer_cluster_));
+  const std::string kUniverseId = ASSERT_RESULT(GetUniverseId(&producer_cluster_));
 
   // tables contains both producer and consumer universe tables (alternately).
   // Pick out just the producer tables from the list.
@@ -1542,8 +1542,8 @@ TEST_P(TwoDCYsqlTest, DeleteTableChecks) {
 
   // Attempt to destroy the producer and consumer tables.
   for (size_t i = 0; i < producer_tables.size(); ++i) {
-    string producer_table_id = producer_tables[i]->id();
-    string consumer_table_id = consumer_tables[i]->id();
+    std::string producer_table_id = producer_tables[i]->id();
+    std::string consumer_table_id = consumer_tables[i]->id();
     // GH issue #12003, allow deletion of YSQL tables under replication for now.
     ASSERT_OK(producer_client()->DeleteTable(producer_table_id));
     ASSERT_OK(consumer_client()->DeleteTable(consumer_table_id));
@@ -1567,7 +1567,7 @@ TEST_P(TwoDCYsqlTest, TruncateTableChecks) {
   constexpr int kNTabletsPerTable = 1;
   std::vector<uint32_t> tables_vector = {kNTabletsPerTable, kNTabletsPerTable};
   auto tables = ASSERT_RESULT(SetUpWithParams(tables_vector, tables_vector, 1));
-  const string kUniverseId = ASSERT_RESULT(GetUniverseId(&producer_cluster_));
+  const std::string kUniverseId = ASSERT_RESULT(GetUniverseId(&producer_cluster_));
 
   // tables contains both producer and consumer universe tables (alternately).
   // Pick out just the producer tables from the list.
@@ -1633,8 +1633,8 @@ TEST_P(TwoDCYsqlTest, TruncateTableChecks) {
                     MonoDelta::FromSeconds(20), "IsDataReplicatedCorrectly"));
 
   // Attempt to Truncate the producer and consumer tables.
-  string producer_table_id = producer_tables[0]->id();
-  string consumer_table_id = consumer_tables[0]->id();
+  std::string producer_table_id = producer_tables[0]->id();
+  std::string consumer_table_id = consumer_tables[0]->id();
   ASSERT_NOK(TruncateTable(&producer_cluster_, {producer_table_id}));
   ASSERT_NOK(TruncateTable(&consumer_cluster_, {consumer_table_id}));
 
@@ -1754,7 +1754,7 @@ void TwoDCYsqlTest::ValidateRecordsTwoDCWithCDCSDK(bool update_min_cdc_indices_i
   }
   std::vector<uint32_t> tables_vector = {kNTabletsPerTable, kNTabletsPerTable};
   auto tables = ASSERT_RESULT(SetUpWithParams(tables_vector, tables_vector, 1));
-  const string kUniverseId = ASSERT_RESULT(GetUniverseId(&producer_cluster_));
+  const std::string kUniverseId = ASSERT_RESULT(GetUniverseId(&producer_cluster_));
 
   // Tables contains both producer and consumer universe tables (alternately).
   // Pick out just the producer tables from the list.

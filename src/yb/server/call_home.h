@@ -57,7 +57,7 @@ class CallHome {
  protected:
   template <class ServerType, class CallHomeType>
   friend void TestCallHome(
-      const std::string& webserver_dir, const std::set<string>& additional_collections,
+      const std::string& webserver_dir, const std::set<std::string>& additional_collections,
       ServerType* server);
 
   template <typename T>

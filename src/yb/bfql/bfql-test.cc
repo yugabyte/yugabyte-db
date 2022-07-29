@@ -14,6 +14,7 @@
 
 #include <memory>
 #include <vector>
+#include <string>
 
 #include "yb/bfql/bfql.h"
 
@@ -31,6 +32,8 @@ using std::make_shared;
 using std::to_string;
 using std::vector;
 using std::numeric_limits;
+using std::string;
+
 //--------------------------------------------------------------------------------------------------
 // BFTestValue is a data value to be used with builtin library for both phases - compilation and
 // execution. Note that the plan is to have two different data structures for two different.
@@ -373,8 +376,8 @@ TEST_F(BfqlTest, TestCompatibleSignature) {
   ASSERT_OK(BFExecApiTest::ExecQLOpcode(opcode, converted_params, result));
 
   // Write the result to a string and check the result.
-  string expected_result = string("The value is ") + to_string(100.);
-  string return_result = result->string_value();
+  std::string expected_result = std::string("The value is ") + to_string(100.);
+  std::string return_result = result->string_value();
   ASSERT_EQ(return_result, expected_result);
 
   //------------------------------------------------------------------------------------------------

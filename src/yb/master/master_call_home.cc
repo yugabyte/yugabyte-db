@@ -49,7 +49,7 @@ class BasicCollector : public MasterCollector {
     AppendPairToJson("timestamp", std::to_string(WallTime_Now()), &json_);
   }
 
-  string collector_name() override { return "BasicCollector"; }
+  std::string collector_name() override { return "BasicCollector"; }
 
   virtual CollectionLevel collection_level() override { return CollectionLevel::LOW; }
 };
@@ -75,7 +75,7 @@ class TablesCollector : public MasterCollector {
     }
   }
 
-  string collector_name() override { return "TablesCollector"; }
+  std::string collector_name() override { return "TablesCollector"; }
 
   virtual CollectionLevel collection_level() override { return CollectionLevel::ALL; }
 };
@@ -85,7 +85,7 @@ class MasterInfoCollector : public MasterCollector {
   using MasterCollector::MasterCollector;
 
   void Collect(CollectionLevel collection_level) override {
-    vector<ServerEntryPB> masters;
+    std::vector<ServerEntryPB> masters;
     Status s = master()->ListMasters(&masters);
     if (s.ok()) {
       if (collection_level == CollectionLevel::LOW) {
@@ -97,7 +97,7 @@ class MasterInfoCollector : public MasterCollector {
     }
   }
 
-  string collector_name() override { return "MasterInfoCollector"; }
+  std::string collector_name() override { return "MasterInfoCollector"; }
 
   virtual CollectionLevel collection_level() override { return CollectionLevel::ALL; }
 };
@@ -107,7 +107,7 @@ class TServersInfoCollector : public MasterCollector {
   using MasterCollector::MasterCollector;
 
   void Collect(CollectionLevel collection_level) override {
-    vector<std::shared_ptr<TSDescriptor>> descs;
+    std::vector<std::shared_ptr<TSDescriptor>> descs;
     master()->ts_manager()->GetAllDescriptors(&descs);
     if (collection_level == CollectionLevel::LOW) {
       json_ = Substitute("\"tservers\":$0", descs.size());
@@ -117,7 +117,7 @@ class TServersInfoCollector : public MasterCollector {
     }
   }
 
-  string collector_name() override { return "TServersInfoCollector"; }
+  std::string collector_name() override { return "TServersInfoCollector"; }
 
   virtual CollectionLevel collection_level() override { return CollectionLevel::ALL; }
 };
@@ -131,7 +131,7 @@ class TabletsCollector : public MasterCollector {
     json_ = Substitute("\"tablets\":$0", ntablets);
   }
 
-  string collector_name() override { return "TabletsCollector"; }
+  std::string collector_name() override { return "TabletsCollector"; }
 
   virtual CollectionLevel collection_level() override { return CollectionLevel::ALL; }
 };

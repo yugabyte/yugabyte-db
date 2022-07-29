@@ -60,7 +60,7 @@ const scoped_refptr<MetricEntity>& MasterTabletServer::MetricEnt() const {
   return metric_entity_;
 }
 
-Status MasterTabletServer::GetTabletPeer(const string& tablet_id,
+Status MasterTabletServer::GetTabletPeer(const std::string& tablet_id,
                                          std::shared_ptr<tablet::TabletPeer>* tablet_peer) const {
   if (tablet_id == kSysCatalogTabletId) {
     *tablet_peer = master_->catalog_manager()->tablet_peer();

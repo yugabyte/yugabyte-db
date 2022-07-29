@@ -118,7 +118,7 @@ using tablet::TabletPeer;
 
 static void SetupErrorAndRespond(rpc::RpcContext* context,
                                  RemoteBootstrapErrorPB::Code code,
-                                 const string& message,
+                                 const std::string& message,
                                  const Status& s) {
   LOG(WARNING) << "Error handling RemoteBootstrapService RPC request from "
                << context->requestor_string() << ": "
@@ -150,12 +150,12 @@ void RemoteBootstrapServiceImpl::BeginRemoteBootstrapSession(
         const BeginRemoteBootstrapSessionRequestPB* req,
         BeginRemoteBootstrapSessionResponsePB* resp,
         rpc::RpcContext context) {
-  const string& requestor_uuid = req->requestor_uuid();
-  const string& tablet_id = req->tablet_id();
+  const std::string& requestor_uuid = req->requestor_uuid();
+  const std::string& tablet_id = req->tablet_id();
   // For now, we use the requestor_uuid with the tablet id as the session id,
   // but there is no guarantee this will not change in the future.
   MonoTime now = MonoTime::Now();
-  const string session_id = Substitute("$0-$1-$2", requestor_uuid, tablet_id, now.ToString());
+  const std::string session_id = Substitute("$0-$1-$2", requestor_uuid, tablet_id, now.ToString());
 
   std::shared_ptr<TabletPeer> tablet_peer;
   RPC_RETURN_NOT_OK(tablet_peer_lookup_->GetTabletPeer(tablet_id, &tablet_peer),
@@ -233,7 +233,7 @@ void RemoteBootstrapServiceImpl::CheckSessionActive(
 void RemoteBootstrapServiceImpl::FetchData(const FetchDataRequestPB* req,
                                            FetchDataResponsePB* resp,
                                            rpc::RpcContext context) {
-  const string& session_id = req->session_id();
+  const std::string& session_id = req->session_id();
 
   // Look up and validate remote bootstrap session.
   scoped_refptr<RemoteBootstrapSession> session;
@@ -335,12 +335,12 @@ void RemoteBootstrapServiceImpl::Shutdown() {
 
   std::lock_guard<std::mutex> lock(sessions_mutex_);
   // Destroy all remote bootstrap sessions.
-  std::vector<string> session_ids;
+  std::vector<std::string> session_ids;
   session_ids.reserve(sessions_.size());
   for (const auto& entry : sessions_) {
     session_ids.push_back(entry.first);
   }
-  for (const string& session_id : session_ids) {
+  for (const std::string& session_id : session_ids) {
     LOG(INFO) << "Destroying remote bootstrap session " << session_id << " due to service shutdown";
     RemoteBootstrapErrorPB::Code app_error;
     CHECK_OK(DoEndRemoteBootstrapSession(session_id, false, &app_error));
@@ -424,13 +424,13 @@ void RemoteBootstrapServiceImpl::EndExpiredSessions() {
     std::lock_guard<std::mutex> l(sessions_mutex_);
     auto now = CoarseMonoClock::Now();
 
-    std::vector<string> expired_session_ids;
+    std::vector<std::string> expired_session_ids;
     for (const auto& entry : sessions_) {
       if (entry.second.expiration < now) {
         expired_session_ids.push_back(entry.first);
       }
     }
-    for (const string& session_id : expired_session_ids) {
+    for (const std::string& session_id : expired_session_ids) {
       LOG(INFO) << "Remote bootstrap session " << session_id
                 << " has expired. Terminating session.";
       RemoteBootstrapErrorPB::Code app_error;

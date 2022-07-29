@@ -23,7 +23,7 @@ class TestQLDropStmt : public QLTestBase {
   TestQLDropStmt() : QLTestBase() {
   }
 
-  inline const string CqlError(string last = "") {
+  inline const std::string CqlError(std::string last = "") {
     return "Invalid CQL Statement" + last;
   }
 };
@@ -35,10 +35,10 @@ TEST_F(TestQLDropStmt, TestQLDropTable) {
   // Get an available processor.
   TestQLProcessor *processor = GetQLProcessor();
 
-  const string create_stmt = "CREATE TABLE human_resource1(id int primary key, name varchar);";
-  const string drop_stmt = "DROP TABLE human_resource1";
-  const string drop_cond_stmt = "DROP TABLE IF EXISTS human_resource1";
-  const string not_found_drop_error = "Object Not Found";
+  const std::string create_stmt = "CREATE TABLE human_resource1(id int primary key, name varchar);";
+  const std::string drop_stmt = "DROP TABLE human_resource1";
+  const std::string drop_cond_stmt = "DROP TABLE IF EXISTS human_resource1";
+  const std::string not_found_drop_error = "Object Not Found";
 
   // No tables exist at this point. Verify that this statement fails.
   EXEC_INVALID_STMT_WITH_ERROR(drop_stmt, not_found_drop_error);
@@ -72,16 +72,16 @@ TEST_F(TestQLDropStmt, TestQLDropIndex) {
   // Get an available processor.
   TestQLProcessor *processor = GetQLProcessor();
 
-  const string create_table_stmt = "CREATE TABLE human_resource1"
+  const std::string create_table_stmt = "CREATE TABLE human_resource1"
                                    "(id int primary key, name varchar) "
                                    "with transactions = {'enabled':true};";
-  const string create_index_stmt = "CREATE INDEX i ON human_resource1(name);";
-  const string drop_table_stmt = "DROP TABLE human_resource1";
-  const string drop_table_cond_stmt = "DROP TABLE IF EXISTS human_resource1";
-  const string drop_index_stmt = "DROP INDEX i";
-  const string drop_index_cond_stmt = "DROP INDEX IF EXISTS i";
-  const string not_found_table_drop_error = "Object Not Found";
-  const string not_found_index_drop_error = "Object Not Found";
+  const std::string create_index_stmt = "CREATE INDEX i ON human_resource1(name);";
+  const std::string drop_table_stmt = "DROP TABLE human_resource1";
+  const std::string drop_table_cond_stmt = "DROP TABLE IF EXISTS human_resource1";
+  const std::string drop_index_stmt = "DROP INDEX i";
+  const std::string drop_index_cond_stmt = "DROP INDEX IF EXISTS i";
+  const std::string not_found_table_drop_error = "Object Not Found";
+  const std::string not_found_index_drop_error = "Object Not Found";
 
   // No tables exist at this point. Verify that these statements fail.
   EXEC_INVALID_STMT_WITH_ERROR(drop_table_stmt, not_found_table_drop_error);
@@ -134,18 +134,18 @@ TEST_F(TestQLDropStmt, TestQLDropKeyspace) {
   // Get an available processor.
   TestQLProcessor *processor = GetQLProcessor();
 
-  vector<string> objects = {"KEYSPACE", "SCHEMA"};
+  std::vector<std::string> objects = {"KEYSPACE", "SCHEMA"};
   for (const auto& object : objects) {
-    const string create_keyspace = "CREATE " + object + " test;";
-    const string drop_keyspace = "DROP " + object + " test;";
-    const string drop_keyspace_cond = "DROP " + object + " IF EXISTS test;";
-    const string use_keyspace = "USE test;";
-    const string create_type = "CREATE TYPE employee (first_name text, last_name text, ssn int)";
-    const string create_table = "CREATE TABLE test(id int primary key, v int);";
-    const string drop_type = "DROP TYPE employee";
-    const string drop_table = "DROP TABLE test";
-    const string not_found_drop_error = "Keyspace Not Found";
-    const string non_empty_drop_error = "Server Error";
+    const std::string create_keyspace = "CREATE " + object + " test;";
+    const std::string drop_keyspace = "DROP " + object + " test;";
+    const std::string drop_keyspace_cond = "DROP " + object + " IF EXISTS test;";
+    const std::string use_keyspace = "USE test;";
+    const std::string create_type = "CREATE TYPE employee (first_name text, last_name text, ssn int)";
+    const std::string create_table = "CREATE TABLE test(id int primary key, v int);";
+    const std::string drop_type = "DROP TYPE employee";
+    const std::string drop_table = "DROP TABLE test";
+    const std::string not_found_drop_error = "Keyspace Not Found";
+    const std::string non_empty_drop_error = "Server Error";
 
 
     //----------------------------------------------------------------------------------------------
@@ -226,13 +226,13 @@ TEST_F(TestQLDropStmt, TestQLDropType) {
   // Get an available processor.
   TestQLProcessor *processor = GetQLProcessor();
 
-  const string create_type = "CREATE TYPE employee (first_name text, last_name text, ssn int)";
-  const string create_table = "CREATE TABLE test(id int primary key, emp employee);";
-  const string drop_type = "DROP TYPE employee";
-  const string drop_table = "DROP TABLE test";
-  const string drop_type_cond = "DROP TYPE IF EXISTS employee";
-  const string not_found_drop_error = "Type Not Found";
-  const string type_in_use_error = "Invalid Request";
+  const std::string create_type = "CREATE TYPE employee (first_name text, last_name text, ssn int)";
+  const std::string create_table = "CREATE TABLE test(id int primary key, emp employee);";
+  const std::string drop_type = "DROP TYPE employee";
+  const std::string drop_table = "DROP TABLE test";
+  const std::string drop_type_cond = "DROP TYPE IF EXISTS employee";
+  const std::string not_found_drop_error = "Type Not Found";
+  const std::string type_in_use_error = "Invalid Request";
 
   //------------------------------------------------------------------------------------------------
   // Test basic DROP TYPE.
@@ -284,22 +284,22 @@ TEST_F(TestQLDropStmt, TestQLDropStmtParser) {
   // Get an available processor.
   TestQLProcessor *processor = GetQLProcessor();
 
-  vector<string> objects = {
+  std::vector<std::string> objects = {
       "DOMAIN",
       "INDEX CONCURRENTLY",
   };
   for (const auto& object : objects) {
-    const string expected_drop_error = CqlError(". DROP " + object + " statement not supported");
+    const std::string expected_drop_error = CqlError(". DROP " + object + " statement not supported");
     auto drop_stmt = "DROP " + object + " test";
     EXEC_INVALID_STMT_WITH_ERROR(drop_stmt, expected_drop_error);
 
-    const string expected_drop_if_exists_error =
+    const std::string expected_drop_if_exists_error =
         CqlError(". DROP " + object + " IF EXISTS statement not supported");
     auto drop_if_exists_stmt = "DROP " + object + " IF EXISTS test";
     EXEC_INVALID_STMT_WITH_ERROR(drop_if_exists_stmt, expected_drop_if_exists_error);
   }
 
-  vector<string> drop_types = {
+  std::vector<std::string> drop_types = {
       "SEQUENCE",
       "VIEW",
       "MATERIALIZED VIEW",
@@ -318,7 +318,7 @@ TEST_F(TestQLDropStmt, TestQLDropStmtParser) {
     EXEC_INVALID_STMT_WITH_ERROR(stmt, CqlError());
   }
 
-  vector<string> opt_drop_behaviors = {"CASCADE", "RESTRICT"};
+  std::vector<std::string> opt_drop_behaviors = {"CASCADE", "RESTRICT"};
   for (const auto& opt_drop_behavior : opt_drop_behaviors) {
     auto stmt = "DROP TABLE test ";
     EXEC_INVALID_STMT_WITH_ERROR(stmt + opt_drop_behavior, CqlError());
@@ -332,7 +332,7 @@ TEST_F(TestQLDropStmt, TestQLDropStmtAnalyzer) {
   // Get an available processor.
   TestQLProcessor *processor = GetQLProcessor();
 
-  string expected_drop_error = CqlError(". Only one object name is allowed in a drop statement");
+  std::string expected_drop_error = CqlError(". Only one object name is allowed in a drop statement");
   EXEC_INVALID_STMT_WITH_ERROR("DROP TABLE a, b", expected_drop_error);
   EXEC_INVALID_STMT_WITH_ERROR("DROP TABLE a, b, c", expected_drop_error);
   EXEC_INVALID_STMT_WITH_ERROR("DROP TABLE a, b, c, d", expected_drop_error);

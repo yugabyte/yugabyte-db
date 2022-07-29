@@ -108,7 +108,7 @@ class TsTabletManagerTest : public YBTest {
     : schema_({ ColumnSchema("key", UINT32) }, 1) {
   }
 
-  string GetDrivePath(int index) {
+  std::string GetDrivePath(int index) {
     return JoinPathSegments(test_data_root_, Substitute("drive-$0", index + 1));
   }
 
@@ -218,7 +218,7 @@ class TsTabletManagerTest : public YBTest {
   Schema schema_;
   RaftConfigPB config_;
 
-  string test_data_root_;
+  std::string test_data_root_;
 };
 
 TEST_F(TsTabletManagerTest, TestCreateTablet) {
@@ -388,7 +388,7 @@ static void AssertMonotonicReportSeqno(int32_t* report_seqno,
 }
 
 static void AssertReportHasUpdatedTablet(const TabletReportPB& report,
-                                         const string& tablet_id) {
+                                         const std::string& tablet_id) {
   ASSERT_GE(report.updated_tablets_size(), 0);
   bool found_tablet = false;
   for (ReportedTabletPB reported_tablet : report.updated_tablets()) {

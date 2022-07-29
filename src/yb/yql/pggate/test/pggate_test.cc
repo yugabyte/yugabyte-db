@@ -182,12 +182,12 @@ Status PggateTest::CreateCluster(int num_tablet_servers) {
 
 //--------------------------------------------------------------------------------------------------
 
-void PggateTest::SetupDB(const string& db_name, const YBCPgOid db_oid) {
+void PggateTest::SetupDB(const std::string& db_name, const YBCPgOid db_oid) {
   CreateDB(db_name, db_oid);
   ConnectDB(db_name);
 }
 
-void PggateTest::CreateDB(const string& db_name, const YBCPgOid db_oid) {
+void PggateTest::CreateDB(const std::string& db_name, const YBCPgOid db_oid) {
   YBCPgStatement pg_stmt;
   CHECK_YBC_STATUS(YBCPgNewCreateDatabase(
       db_name.c_str(), db_oid, 0 /* source_database_oid */, 0 /* next_oid */, false /* colocated */,
@@ -195,7 +195,7 @@ void PggateTest::CreateDB(const string& db_name, const YBCPgOid db_oid) {
   CHECK_YBC_STATUS(YBCPgExecCreateDatabase(pg_stmt));
 }
 
-void PggateTest::ConnectDB(const string& db_name) {
+void PggateTest::ConnectDB(const std::string& db_name) {
   CHECK_YBC_STATUS(YBCPgConnectDatabase(db_name.c_str()));
 }
 

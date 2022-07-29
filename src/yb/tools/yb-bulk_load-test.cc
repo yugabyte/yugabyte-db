@@ -143,7 +143,7 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
     ASSERT_OK(client_->OpenTable(*table_name_, &table_));
 
     for (size_t i = 0; i < cluster_->num_masters(); i++) {
-      const string& master_address = cluster_->mini_master(i)->bound_rpc_addr_str();
+      const std::string& master_address = cluster_->mini_master(i)->bound_rpc_addr_str();
       master_addresses_.push_back(master_address);
     }
 
@@ -158,7 +158,7 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
     cluster_->Shutdown();
   }
 
-  Status StartProcessAndGetStreams(string exe_path, vector<string> argv, FILE** out,
+  Status StartProcessAndGetStreams(std::string exe_path, std::vector<std::string> argv, FILE** out,
                                            FILE** in, std::unique_ptr<Subprocess>* process) {
     process->reset(new Subprocess(exe_path, argv));
     (*process)->PipeParentStdout();
@@ -181,10 +181,10 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
     ASSERT_EQ(0, WEXITSTATUS(wait_status));
   }
 
-  Status CreateQLReadRequest(const string& row, QLReadRequestPB* req) {
+  Status CreateQLReadRequest(const std::string& row, QLReadRequestPB* req) {
     req->set_client(YQL_CLIENT_CQL);
-    string tablet_id;
-    string partition_key;
+    std::string tablet_id;
+    std::string partition_key;
     CsvTokenizer tokenizer = Tokenize(row);
     RETURN_NOT_OK(partition_generator_->LookupTabletIdWithTokenizer(
         tokenizer, {}, &tablet_id, &partition_key));
@@ -230,7 +230,7 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
   }
 
 
-  void ValidateRow(const string& row, const QLRow& ql_row) {
+  void ValidateRow(const std::string& row, const QLRow& ql_row) {
     // Get individual columns.
     CsvTokenizer tokenizer = Tokenize(row);
     auto it = tokenizer.begin();
@@ -245,7 +245,7 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
     ASSERT_EQ(std::stoi(*it++), ql_row.column(5).int32_value());
     ASSERT_FLOAT_EQ(std::stof(*it++), ql_row.column(6).float_value());
     ASSERT_DOUBLE_EQ(std::stold(*it++), ql_row.column(7).double_value());
-    string token_str = *it++;
+    std::string token_str = *it++;
     if (IsNull(token_str)) {
       ASSERT_TRUE(ql_row.column(8).IsNull());
     } else {
@@ -259,7 +259,7 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
 
   class LoadGenerator {
    public:
-    LoadGenerator(const string& tablet_id, const client::TableHandle* table,
+    LoadGenerator(const std::string& tablet_id, const client::TableHandle* table,
                   tserver::TabletServerServiceProxy* tserver_proxy)
       : tablet_id_(tablet_id),
         table_(table),
@@ -276,7 +276,7 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
       running_.store(false);
     }
 
-    void WriteRow(const string& tablet_id) {
+    void WriteRow(const std::string& tablet_id) {
       tserver::WriteRequestPB req;
       tserver::WriteResponsePB resp;
       rpc::RpcController controller;
@@ -303,7 +303,7 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
     }
 
    private:
-    string tablet_id_;
+    std::string tablet_id_;
     const client::TableHandle* table_;
     tserver::TabletServerServiceProxy* tserver_proxy_;
 
@@ -311,10 +311,10 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
     Random random_{0};
   };
 
-  string GenerateRow(int index) {
+  std::string GenerateRow(int index) {
     // Build the row and lookup table_id
-    string timestamp_string;
-    string json;
+    std::string timestamp_string;
+    std::string json;
     if (index % 2 == 0) {
       // Use string format.
       int year = 1970 + random_.Next32() % 2000;
@@ -331,14 +331,14 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
       json = "\\\\n"; // represents null value.
     }
 
-    string row = strings::Substitute(
+    std::string row = strings::Substitute(
         "$0,$1,$2,2017-06-17 14:47:00,\"abc,xyz\",$3,3.14,4.1,$4",
         static_cast<int64_t>(random_.Next32()), timestamp_string, random_.Next32(), kV2Value, json);
     VLOG(1) << "Generated row: " << row;
     return row;
   }
 
-  void VerifyTabletId(const string& tablet_id, master::TabletLocationsPB* tablet_location) {
+  void VerifyTabletId(const std::string& tablet_id, master::TabletLocationsPB* tablet_location) {
     // Verify we have the appropriate tablet_id.
     master::GetTabletLocationsRequestPB req;
     req.add_tablet_ids(tablet_id);
@@ -352,7 +352,7 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
     VLOG(1) << "Got tablet info: " << tablet_location->DebugString();
   }
 
-  void VerifyTabletIdPartitionKey(const string& tablet_id, const string& partition_key) {
+  void VerifyTabletIdPartitionKey(const std::string& tablet_id, const std::string& partition_key) {
     master::TabletLocationsPB tablet_location;
     VerifyTabletId(tablet_id, &tablet_location);
     ASSERT_GE(partition_key, tablet_location.partition().partition_key_start());
@@ -408,8 +408,8 @@ class YBBulkLoadTestWithoutRebalancing : public YBBulkLoadTest {
 
 TEST_F(YBBulkLoadTest, VerifyPartitions) {
   for (int i = 0; i < kNumIterations; i++) {
-    string tablet_id;
-    string partition_key;
+    std::string tablet_id;
+    std::string partition_key;
     ASSERT_OK(partition_generator_->LookupTabletId(GenerateRow(i), &tablet_id, &partition_key));
     VLOG(1) << "Got tablet id: " << tablet_id << ", partition key: " << partition_key;
 
@@ -420,17 +420,17 @@ TEST_F(YBBulkLoadTest, VerifyPartitions) {
 TEST_F(YBBulkLoadTest, VerifyPartitionsWithIgnoredColumns) {
   const std::set<int> skipped_cols = tools::SkippedColumns("0,9");
   for (int i = 0; i < kNumIterations; i++) {
-    string tablet_id;
-    string partition_key;
-    string row = GenerateRow(i);
+    std::string tablet_id;
+    std::string partition_key;
+    std::string row = GenerateRow(i);
     ASSERT_OK(partition_generator_->LookupTabletId(row, &tablet_id, &partition_key));
     VLOG(1) << "Got tablet id: " << tablet_id << ", partition key: " << partition_key;
 
     VerifyTabletIdPartitionKey(tablet_id, partition_key);
 
-    string tablet_id2;
-    string partition_key2;
-    string row_with_extras = "foo," + row + ",bar";
+    std::string tablet_id2;
+    std::string partition_key2;
+    std::string row_with_extras = "foo," + row + ",bar";
     ASSERT_OK(partition_generator_->LookupTabletId(
         row_with_extras, skipped_cols, &tablet_id2, &partition_key2));
     ASSERT_EQ(tablet_id, tablet_id2);
@@ -442,7 +442,7 @@ TEST_F(YBBulkLoadTest, TestTokenizer) {
   {
     // JSON needs to be enclosed in quotes, so that the internal commas are not treated as different
     // columns. Need to escape the quotes within to ensure that they are not eaten up.
-    string str ="1,2017-06-17 14:47:00,\"abc,;xyz\","
+    std::string str ="1,2017-06-17 14:47:00,\"abc,;xyz\","
                  "\"{\\\"a\\\":\\\"foo\\\",\\\"b\\\":\\\"bar\\\"}\"";
     CsvTokenizer tokenizer = Tokenize(str);
     auto it = tokenizer.begin();
@@ -456,7 +456,7 @@ TEST_F(YBBulkLoadTest, TestTokenizer) {
   {
     // Separating fields with ';'. No need to enclose JSON in quotes. Internal quotes still need
     // to be escapted to prevent being consumed.
-    string str ="1;2017-06-17 14:47:00;\"abc,;xyz\";"
+    std::string str ="1;2017-06-17 14:47:00;\"abc,;xyz\";"
                 "{\\\"a\\\":\\\"foo\\\",\\\"b\\\":\\\"bar\\\"}";
     CsvTokenizer tokenizer = Tokenize(str, ';', '\"');
     auto it = tokenizer.begin();
@@ -468,7 +468,7 @@ TEST_F(YBBulkLoadTest, TestTokenizer) {
   }
 
   {
-    string str ="1,2017-06-17 14:47:00,'abc,;xyz',"
+    std::string str ="1,2017-06-17 14:47:00,'abc,;xyz',"
                  "'{\"a\":\"foo\",\"b\":\"bar\"}'";
     // No need to escape quotes because the quote character is \'
     CsvTokenizer tokenizer = Tokenize(str, ',', '\'');
@@ -480,7 +480,7 @@ TEST_F(YBBulkLoadTest, TestTokenizer) {
     ASSERT_EQ(it, tokenizer.end());
   }
   {
-    string str ="1,2017-06-17 14:47:00,'abc,;xyz',"
+    std::string str ="1,2017-06-17 14:47:00,'abc,;xyz',"
                 "\\\\n";
     // No need to escape quotes because the quote character is \'
     CsvTokenizer tokenizer = Tokenize(str, ',', '\'');
@@ -494,8 +494,8 @@ TEST_F(YBBulkLoadTest, TestTokenizer) {
 }
 
 TEST_F(YBBulkLoadTest, InvalidLines) {
-  string tablet_id;
-  string partition_key;
+  std::string tablet_id;
+  std::string partition_key;
   // Not enough hash columns.
   ASSERT_NOK(partition_generator_->LookupTabletId("1", &tablet_id, &partition_key));
 
@@ -512,8 +512,8 @@ TEST_F(YBBulkLoadTest, InvalidLines) {
 }
 
 TEST_F_EX(YBBulkLoadTest, TestCLITool, YBBulkLoadTestWithoutRebalancing) {
-  string exe_path = GetToolPath(kPartitionToolName);
-  vector<string> argv = {kPartitionToolName, "-master_addresses", master_addresses_comma_separated_,
+  std::string exe_path = GetToolPath(kPartitionToolName);
+  std::vector<std::string> argv = {kPartitionToolName, "-master_addresses", master_addresses_comma_separated_,
       "-table_name", kTableName, "-namespace_name", kNamespace};
   FILE *out;
   FILE *in;
@@ -521,12 +521,12 @@ TEST_F_EX(YBBulkLoadTest, TestCLITool, YBBulkLoadTestWithoutRebalancing) {
   ASSERT_OK(StartProcessAndGetStreams(exe_path, argv, &out, &in, &partition_process));
 
   // Write multiple lines.
-  vector <string> generated_rows;
-  vector <string> mapper_output;
-  std::map<string, vector<string>> tabletid_to_line;
+  std::vector <std::string> generated_rows;
+  std::vector <std::string> mapper_output;
+  std::map<std::string, std::vector<std::string>> tabletid_to_line;
   for (int i = 0; i < kNumIterations; i++) {
     // Write the input line.
-    string row = GenerateRow(i) + "\n";
+    std::string row = GenerateRow(i) + "\n";
     generated_rows.push_back(row);
     ASSERT_GT(fputs(row.c_str(), out), 0);
     ASSERT_EQ(0, fflush(out));
@@ -534,17 +534,17 @@ TEST_F_EX(YBBulkLoadTest, TestCLITool, YBBulkLoadTestWithoutRebalancing) {
     // Read the output line.
     char buf[1024];
     ASSERT_EQ(buf, fgets(buf, sizeof(buf), in));
-    mapper_output.push_back(string(buf));
+    mapper_output.push_back(std::string(buf));
 
     // Split based on tab.
-    vector<string> tokens;
+    std::vector<std::string> tokens;
     boost::split(tokens, buf, boost::is_any_of("\t"));
     ASSERT_EQ(2, tokens.size());
-    const string& tablet_id = tokens[0];
+    const std::string& tablet_id = tokens[0];
     ASSERT_EQ(generated_rows[i], tokens[1]);
     ASSERT_EQ(tokens[1][tokens[1].length() -1], '\n');
     boost::trim_right(tokens[1]); // remove the trailing '\n'
-    const string& line = tokens[1];
+    const std::string& line = tokens[1];
     auto it = tabletid_to_line.find(tablet_id);
     if (it != tabletid_to_line.end()) {
       (*it).second.push_back(line);
@@ -563,19 +563,19 @@ TEST_F_EX(YBBulkLoadTest, TestCLITool, YBBulkLoadTestWithoutRebalancing) {
   std::sort(mapper_output.begin(), mapper_output.end());
 
   // Start the bulk load tool.
-  string test_dir;
+  std::string test_dir;
   Env* env = Env::Default();
   ASSERT_OK(env->GetTestDirectory(&test_dir));
-  string bulk_load_data = JoinPathSegments(test_dir, "bulk_load_data");
+  std::string bulk_load_data = JoinPathSegments(test_dir, "bulk_load_data");
   if (env->FileExists(bulk_load_data)) {
     ASSERT_OK(env->DeleteRecursively(bulk_load_data));
   }
   ASSERT_OK(env->CreateDir(bulk_load_data));
 
-  string bulk_load_exec = GetToolPath(kBulkLoadToolName);
+  std::string bulk_load_exec = GetToolPath(kBulkLoadToolName);
   // -row_batch_size and -flush_batch_for_tests used to ensure we have multiple flushed files per
   // tablet which ensures we would compact some files.
-  vector<string> bulk_load_argv = {
+  std::vector<std::string> bulk_load_argv = {
       kBulkLoadToolName,
       "-master_addresses", master_addresses_comma_separated_,
       "-table_name", kTableName,
@@ -615,15 +615,15 @@ TEST_F_EX(YBBulkLoadTest, TestCLITool, YBBulkLoadTestWithoutRebalancing) {
   ASSERT_OK(table.Open(*table_name_, client_.get()));
 
   for (const master::TabletLocationsPB& tablet_location : resp.tablet_locations()) {
-    const string& tablet_id = tablet_location.tablet_id();
-    string tablet_path = JoinPathSegments(bulk_load_data, tablet_id);
+    const std::string& tablet_id = tablet_location.tablet_id();
+    std::string tablet_path = JoinPathSegments(bulk_load_data, tablet_id);
     ASSERT_TRUE(env->FileExists(tablet_path));
 
     // Verify atmost 'bulk_load_num_files_per_tablet' files.
-    vector <string> tablet_files;
+    std::vector <std::string> tablet_files;
     ASSERT_OK(env->GetChildren(tablet_path, &tablet_files));
     size_t num_files = 0;
-    for (const string& tablet_file : tablet_files) {
+    for (const std::string& tablet_file : tablet_files) {
       if (boost::algorithm::ends_with(tablet_file, ".sst")) {
         num_files++;
       }
@@ -657,7 +657,7 @@ TEST_F_EX(YBBulkLoadTest, TestCLITool, YBBulkLoadTestWithoutRebalancing) {
     ASSERT_OK(tserver_proxy->ImportData(import_req, &import_resp, &controller));
     ASSERT_FALSE(import_resp.has_error()) << import_resp.DebugString();
 
-    for (const string& row : tabletid_to_line[tablet_id]) {
+    for (const std::string& row : tabletid_to_line[tablet_id]) {
       // Build read request.
       tserver::ReadRequestPB req;
       req.set_tablet_id(tablet_id);

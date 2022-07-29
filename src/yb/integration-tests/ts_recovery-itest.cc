@@ -56,13 +56,13 @@ class TsRecoveryITest : public YBTest {
   }
 
  protected:
-  void StartCluster(const vector<string>& extra_tserver_flags = vector<string>(),
+  void StartCluster(const std::vector<string>& extra_tserver_flags = std::vector<string>(),
                     int num_tablet_servers = 1);
 
   std::unique_ptr<ExternalMiniCluster> cluster_;
 };
 
-void TsRecoveryITest::StartCluster(const vector<string>& extra_tserver_flags,
+void TsRecoveryITest::StartCluster(const std::vector<string>& extra_tserver_flags,
                                    int num_tablet_servers) {
   ExternalMiniClusterOptions opts;
   opts.num_tablet_servers = num_tablet_servers;

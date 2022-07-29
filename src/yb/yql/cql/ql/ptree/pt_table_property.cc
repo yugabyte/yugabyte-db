@@ -102,15 +102,15 @@ PTTableProperty::~PTTableProperty() {
 }
 
 
-Status PTTableProperty::AnalyzeSpeculativeRetry(const string &val) {
-  string generic_error = Substitute("Invalid value $0 for option 'speculative_retry'", val);
+Status PTTableProperty::AnalyzeSpeculativeRetry(const std::string &val) {
+  std::string generic_error = Substitute("Invalid value $0 for option 'speculative_retry'", val);
 
   // Accepted values: ALWAYS, Xpercentile, Nms, NONE.
   if (val == common::kSpeculativeRetryAlways || val == common::kSpeculativeRetryNone) {
     return Status::OK();
   }
 
-  string numeric_val;
+  std::string numeric_val;
   if (StringEndsWith(val, common::kSpeculativeRetryMs, common::kSpeculativeRetryMsLen,
                      &numeric_val)) {
     RETURN_NOT_OK(CheckedStold(numeric_val));
@@ -132,7 +132,7 @@ Status PTTableProperty::AnalyzeSpeculativeRetry(const string &val) {
   return STATUS(InvalidArgument, generic_error);
 }
 
-string PTTableProperty::name() const {
+std::string PTTableProperty::name() const {
   DCHECK_EQ(property_type_, PropertyType::kClusteringOrder);
   return order_expr_->QLName();
 }
@@ -188,7 +188,7 @@ Status PTTableProperty::Analyze(SemContext *sem_context) {
 
   long double double_val;
   int64_t int_val;
-  string str_val;
+  std::string str_val;
 
   switch (iterator->second) {
     case KVProperty::kBloomFilterFpChance:
@@ -290,7 +290,7 @@ Status PTTableProperty::Analyze(SemContext *sem_context) {
   return Status::OK();
 }
 
-std::ostream& operator<<(ostream& os, const PropertyType& property_type) {
+std::ostream& operator<<(std::ostream& os, const PropertyType& property_type) {
   switch(property_type) {
     case PropertyType::kTableProperty:
       os << "kTableProperty";
@@ -314,9 +314,9 @@ void PTTableProperty::PrintSemanticAnalysisResult(SemContext *sem_context) {
 
 Status PTTablePropertyListNode::Analyze(SemContext *sem_context) {
   // Set to ensure we don't have duplicate table properties.
-  std::set<string> table_properties;
-  std::unordered_map<string, PTTableProperty::SharedPtr> order_tnodes;
-  vector<string> order_columns;
+  std::set<std::string> table_properties;
+  std::unordered_map<std::string, PTTableProperty::SharedPtr> order_tnodes;
+  std::vector<std::string> order_columns;
   for (PTTableProperty::SharedPtr tnode : node_list()) {
     if (tnode == nullptr) {
       // This shouldn't happen because AppendList ignores null nodes.
@@ -326,7 +326,7 @@ Status PTTablePropertyListNode::Analyze(SemContext *sem_context) {
     switch(tnode->property_type()) {
       case PropertyType::kTableProperty: FALLTHROUGH_INTENDED;
       case PropertyType::kTablePropertyMap: {
-        string table_property_name = tnode->lhs()->c_str();
+        std::string table_property_name = tnode->lhs()->c_str();
         if (table_properties.find(table_property_name) != table_properties.end()) {
           return sem_context->Error(this, ErrorCode::DUPLICATE_TABLE_PROPERTY);
         }
@@ -363,7 +363,7 @@ Status PTTablePropertyListNode::Analyze(SemContext *sem_context) {
     }
     const auto &tnode = order_tnodes[*order_column_iter];
     if (strcmp(pc->yb_name(), order_column_iter->c_str()) != 0) {
-      string msg;
+      std::string msg;
       // If we can find pc->yb_name() in the order-by list, it means the order of the columns is
       // incorrect.
       if (order_tnodes.find(pc->yb_name()) != order_tnodes.end()) {
@@ -404,7 +404,7 @@ Status PTTableProperty::SetTableProperty(yb::TableProperties *table_property) co
     return Status::OK();
   }
 
-  string table_property_name;
+  std::string table_property_name;
   ToLowerCase(lhs_->c_str(), &table_property_name);
   auto iterator = kPropertyDataTypes.find(table_property_name);
   if (iterator == kPropertyDataTypes.end()) {
@@ -456,7 +456,7 @@ TableId PTTableProperty::copartition_table_id() const {
   return copartition_table_->id();
 }
 
-const std::map<string, PTTablePropertyMap::PropertyMapType> PTTablePropertyMap::kPropertyDataTypes
+const std::map<std::string, PTTablePropertyMap::PropertyMapType> PTTablePropertyMap::kPropertyDataTypes
     = {
     {"caching", PTTablePropertyMap::PropertyMapType::kCaching},
     {"compaction", PTTablePropertyMap::PropertyMapType::kCompaction},
@@ -512,7 +512,7 @@ void PTTablePropertyMap::PrintSemanticAnalysisResult(SemContext *sem_context) {
 }
 
 Status PTTablePropertyMap::SetTableProperty(yb::TableProperties *table_property) const {
-  string table_property_name;
+  std::string table_property_name;
   ToLowerCase(lhs_->c_str(), &table_property_name);
   auto iterator = kPropertyDataTypes.find(table_property_name);
   if (iterator == kPropertyDataTypes.end()) {
@@ -526,12 +526,12 @@ Status PTTablePropertyMap::SetTableProperty(yb::TableProperties *table_property)
       break;
     case PropertyMapType::kTransactions:
       for (const auto& subproperty : map_elements_->node_list()) {
-        string subproperty_name;
+        std::string subproperty_name;
         ToLowerCase(subproperty->lhs()->c_str(), &subproperty_name);
         auto iter = Transactions::kSubpropertyDataTypes.find(subproperty_name);
         DCHECK(iter != Transactions::kSubpropertyDataTypes.end());
         bool bool_val;
-        string str_val;
+        std::string str_val;
         switch(iter->second) {
           case Transactions::Subproperty::kEnabled:
             RETURN_NOT_OK(GetBoolValueFromExpr(subproperty->rhs(), subproperty_name, &bool_val));
@@ -552,12 +552,12 @@ Status PTTablePropertyMap::SetTableProperty(yb::TableProperties *table_property)
 }
 
 Status PTTablePropertyMap::AnalyzeCompaction() {
-  vector<string> invalid_subproperties;
-  vector<PTTableProperty::SharedPtr> subproperties;
+  std::vector<std::string> invalid_subproperties;
+  std::vector<PTTableProperty::SharedPtr> subproperties;
   auto class_subproperties_iter = Compaction::kClassSubproperties.end();
-  string class_name;
+  std::string class_name;
   for (PTTableProperty::SharedPtr tnode : map_elements_->node_list()) {
-    string subproperty_name;
+    std::string subproperty_name;
     ToLowerCase(tnode->lhs()->c_str(), &subproperty_name);
     // 'class' is a special compaction subproperty. It tell us which other subproperties are valid.
     // We intentionally don't check if class_name is non_empty. If several 'class' subproperties
@@ -568,7 +568,7 @@ Status PTTablePropertyMap::AnalyzeCompaction() {
                       "Property value for property 'class' has and invalid data type");
       }
       class_name = std::dynamic_pointer_cast<PTConstText>(tnode->rhs())->Eval()->c_str();
-      if (class_name.find('.') == string::npos) {
+      if (class_name.find('.') == std::string::npos) {
         if (!boost::starts_with(class_name, kCompactionClassPrefix)) {
           LOG(INFO) << "Inserting prefix into class name";
           class_name.insert(0, kCompactionClassPrefix);
@@ -602,7 +602,7 @@ Status PTTablePropertyMap::AnalyzeCompaction() {
   long double bucket_high = 1.5, bucket_low = 0.5;
   int64_t max_threshold = 32, min_threshold = 4;
   for (const auto& subproperty : subproperties) {
-    string subproperty_name;
+    std::string subproperty_name;
     ToLowerCase(subproperty->lhs()->c_str(), &subproperty_name);
     auto subproperty_enum = Compaction::kSubpropertyDataTypes.at(subproperty_name);
     if (valid_subproperties_for_class.find(subproperty_enum) ==
@@ -615,7 +615,7 @@ Status PTTablePropertyMap::AnalyzeCompaction() {
     int64_t int_val;
     long double double_val;
     bool bool_val;
-    string str_val;
+    std::string str_val;
     switch(subproperty_enum) {
       case Compaction::Subproperty::kBaseTimeSeconds: FALLTHROUGH_INTENDED;
       case Compaction::Subproperty::kCompactionWindowSize: FALLTHROUGH_INTENDED;
@@ -716,10 +716,10 @@ Status PTTablePropertyMap::AnalyzeCompaction() {
 }
 
 Status PTTablePropertyMap::AnalyzeCaching() {
-  string str_val;
+  std::string str_val;
   int64_t int_val;
   for (const auto& subproperty : map_elements_->node_list()) {
-    string subproperty_name;
+    std::string subproperty_name;
     ToLowerCase(subproperty->lhs()->c_str(), &subproperty_name);
     if (subproperty_name == common::kCachingKeys) {
       // First try to read the value as a string.
@@ -753,11 +753,11 @@ Status PTTablePropertyMap::AnalyzeCaching() {
 }
 
 Status PTTablePropertyMap::AnalyzeCompression() {
-  string class_name, sstable_compression;
+  std::string class_name, sstable_compression;
   bool has_sstable_compression = false;
   // 'class' and 'sstable_compression' are treated differently.
   for (const auto& subproperty : map_elements_->node_list()) {
-    string subproperty_name;
+    std::string subproperty_name;
     ToLowerCase(subproperty->lhs()->c_str(), &subproperty_name);
     if (subproperty_name == "class") {
       RETURN_NOT_OK(GetStringValueFromExpr(subproperty->rhs(), true, subproperty_name,
@@ -781,7 +781,7 @@ Status PTTablePropertyMap::AnalyzeCompression() {
   }
 
   for (const auto& subproperty : map_elements_->node_list()) {
-    string subproperty_name;
+    std::string subproperty_name;
     ToLowerCase(subproperty->lhs()->c_str(), &subproperty_name);
     auto iter = Compression::kSubpropertyDataTypes.find(subproperty_name);
     if (iter == Compression::kSubpropertyDataTypes.end()) {
@@ -820,7 +820,7 @@ Status PTTablePropertyMap::AnalyzeCompression() {
 
 Status PTTablePropertyMap::AnalyzeTransactions(SemContext *sem_context) {
   for (const auto& subproperty : map_elements_->node_list()) {
-    string subproperty_name;
+    std::string subproperty_name;
     ToLowerCase(subproperty->lhs()->c_str(), &subproperty_name);
     auto iter = Transactions::kSubpropertyDataTypes.find(subproperty_name);
     if (iter == Transactions::kSubpropertyDataTypes.end()) {
@@ -829,7 +829,7 @@ Status PTTablePropertyMap::AnalyzeTransactions(SemContext *sem_context) {
     }
 
     bool bool_val;
-    string str_val;
+    std::string str_val;
     switch(iter->second) {
       case Transactions::Subproperty::kEnabled:
         RETURN_NOT_OK(GetBoolValueFromExpr(subproperty->rhs(), subproperty_name, &bool_val));

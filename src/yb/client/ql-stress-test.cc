@@ -258,7 +258,7 @@ TEST_F(QLStressTest, LargeNumberOfTables) {
 
     int num_rows = num_tablets_per_table * 5;
     for (int key = i; key < i + num_rows; key++) {
-      string value = "value_" + std::to_string(key);
+      std::string value = "value_" + std::to_string(key);
       ASSERT_OK(WriteRow(session, table, key, value));
       auto read_value = ASSERT_RESULT(ReadRow(session, table, key));
       ASSERT_EQ(read_value.string_value(), value) << read_value.ToString();

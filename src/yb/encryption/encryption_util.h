@@ -138,7 +138,7 @@ Status CreateEncryptionInfoForWrite(HeaderManager* header_manager,
                                     std::unique_ptr<BlockAccessCipherStream>* stream,
                                     uint32_t* header_size) {
   auto encryption_params = EncryptionParams::NewEncryptionParams();
-  string header = VERIFY_RESULT(
+  std::string header = VERIFY_RESULT(
       header_manager->SerializeEncryptionParams(*encryption_params.get()));
   RETURN_NOT_OK(underlying_w->Append(header));
   return CompleteCreateEncryptionInfoForWrite(

@@ -41,7 +41,7 @@ class PgSelectIndex : public PgSelect {
   bool UseSecondaryIndex() const override;
 
   // The output parameter "ybctids" are pointer to the data buffer in "ybctid_batch_".
-  virtual Result<bool> FetchYbctidBatch(const vector<Slice> **ybctids);
+  virtual Result<bool> FetchYbctidBatch(const std::vector<Slice> **ybctids);
 
   // Get next batch of ybctids from either PgGate::cache or server.
   Result<bool> GetNextYbctidBatch();

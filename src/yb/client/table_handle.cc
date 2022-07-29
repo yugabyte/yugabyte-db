@@ -13,6 +13,8 @@
 
 #include "yb/client/table_handle.h"
 
+#include <string>
+
 #include "yb/client/client.h"
 #include "yb/client/error.h"
 #include "yb/client/schema.h"
@@ -35,6 +37,8 @@ using namespace std::literals; // NOLINT
 
 namespace yb {
 namespace client {
+
+using std::string;
 
 Status TableHandle::Create(const YBTableName& table_name,
                            int num_tablets,
@@ -131,7 +135,7 @@ std::shared_ptr<YBqlReadOp> TableHandle::NewReadOp() const {
   return op;
 }
 
-QLValuePB* TableHandle::PrepareColumn(QLWriteRequestPB* req, const string& column_name) const {
+QLValuePB* TableHandle::PrepareColumn(QLWriteRequestPB* req, const std::string& column_name) const {
   return QLPrepareColumn(req, ColumnId(column_name));
 }
 

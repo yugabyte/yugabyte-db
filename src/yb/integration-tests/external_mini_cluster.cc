@@ -205,9 +205,9 @@ void AddExtraFlagsFromEnvVar(const char* env_var_name, std::vector<std::string>*
 std::vector<std::string> FsRootDirs(const std::string& data_dir,
                                     uint16_t num_drives) {
   if (num_drives == 1) {
-    return vector<string>{data_dir};
+    return std::vector<string>{data_dir};
   }
-  vector<string> data_dirs;
+  std::vector<string> data_dirs;
   for (int drive =  1; drive <= num_drives; ++drive) {
     data_dirs.push_back(JoinPathSegments(data_dir, Substitute("d-$0", drive)));
   }
@@ -218,9 +218,9 @@ std::vector<std::string> FsDataDirs(const std::string& data_dir,
                                     const std::string& server_type,
                                     uint16_t num_drives) {
   if (num_drives == 1) {
-    return vector<string>{GetServerTypeDataPath(data_dir, server_type)};
+    return std::vector<string>{GetServerTypeDataPath(data_dir, server_type)};
   }
-  vector<string> data_dirs;
+  std::vector<string> data_dirs;
   for (int drive =  1; drive <= num_drives; ++drive) {
     data_dirs.push_back(GetServerTypeDataPath(
                           JoinPathSegments(data_dir, Substitute("d-$0", drive)), server_type));
@@ -470,9 +470,9 @@ string ExternalMiniCluster::GetDataPath(const string& daemon_id) const {
 }
 
 namespace {
-vector<string> SubstituteInFlags(const vector<string>& orig_flags, size_t index) {
+std::vector<string> SubstituteInFlags(const std::vector<string>& orig_flags, size_t index) {
   string str_index = std::to_string(index);
-  vector<string> ret;
+  std::vector<string> ret;
   for (const string& orig : orig_flags) {
     ret.push_back(StringReplace(orig, "${index}", str_index, true));
   }
@@ -1002,7 +1002,7 @@ Status ExternalMiniCluster::WaitForLeaderCommitTermAdvance() {
 
       return Status::OK();
     }
-    SleepFor(MonoDelta::FromMilliseconds(min(i, 10)));
+    SleepFor(MonoDelta::FromMilliseconds(std::min(i, 10)));
     RETURN_NOT_OK(GetLastOpIdForLeader(&opid));
     now = MonoTime::Now();
   }
@@ -1013,7 +1013,7 @@ Status ExternalMiniCluster::WaitForLeaderCommitTermAdvance() {
 Status ExternalMiniCluster::GetLastOpIdForEachMasterPeer(
     const MonoDelta& timeout,
     consensus::OpIdType opid_type,
-    vector<OpIdPB>* op_ids) {
+    std::vector<OpIdPB>* op_ids) {
   GetLastOpIdRequestPB opid_req;
   GetLastOpIdResponsePB opid_resp;
   opid_req.set_tablet_id(yb::master::kSysCatalogTabletId);
@@ -1038,7 +1038,7 @@ Status ExternalMiniCluster::WaitForMastersToCommitUpTo(int64_t target_index) {
   auto deadline = CoarseMonoClock::Now() + opts_.timeout.ToSteadyDuration();
 
   for (int i = 1;; i++) {
-    vector<OpIdPB> ids;
+    std::vector<OpIdPB> ids;
     Status s = GetLastOpIdForEachMasterPeer(opts_.timeout, consensus::COMMITTED_OPID, &ids);
 
     if (s.ok()) {
@@ -1068,7 +1068,7 @@ Status ExternalMiniCluster::WaitForMastersToCommitUpTo(int64_t target_index) {
                            opts_.timeout);
     }
 
-    SleepFor(MonoDelta::FromMilliseconds(min(i * 100, 1000)));
+    SleepFor(MonoDelta::FromMilliseconds(std::min(i * 100, 1000)));
   }
 }
 
@@ -1190,13 +1190,13 @@ Status ExternalMiniCluster::StartMasters() {
     }
   }
 
-  vector<string> peer_addrs;
+  std::vector<string> peer_addrs;
   for (size_t i = 0; i < num_masters; i++) {
     string addr = MasterAddressForPort(opts_.master_rpc_ports[i]);
     peer_addrs.push_back(addr);
   }
   string peer_addrs_str = JoinStrings(peer_addrs, ",");
-  vector<string> flags = opts_.extra_master_flags;
+  std::vector<string> flags = opts_.extra_master_flags;
   // Disable WAL fsync for tests
   flags.push_back("--durable_wal_write=false");
   flags.push_back("--enable_leader_failure_detection=true");
@@ -1370,7 +1370,7 @@ Status ExternalMiniCluster::AddTabletServer(
   size_t idx = tablet_servers_.size();
 
   string exe = GetBinaryPath(kTabletServerBinaryName);
-  vector<HostPort> master_hostports;
+  std::vector<HostPort> master_hostports;
   for (size_t i = 0; i < num_masters(); i++) {
     master_hostports.push_back(DCHECK_NOTNULL(master(i))->bound_rpc_hostport());
   }
@@ -1405,7 +1405,7 @@ Status ExternalMiniCluster::AddTabletServer(
     pgsql_http_port = AllocateFreePort();
   }
 
-  vector<string> flags = opts_.extra_tserver_flags;
+  std::vector<string> flags = opts_.extra_tserver_flags;
   if (opts_.enable_ysql) {
     flags.push_back("--enable_ysql=true");
   } else {
@@ -1490,7 +1490,7 @@ Status ExternalMiniCluster::WaitForTabletServerCount(size_t count, const MonoDel
 }
 
 void ExternalMiniCluster::AssertNoCrashes() {
-  vector<ExternalDaemon*> daemons = this->daemons();
+  std::vector<ExternalDaemon*> daemons = this->daemons();
   for (ExternalDaemon* d : daemons) {
     if (d->IsShutdown()) continue;
     EXPECT_TRUE(d->IsProcessAlive()) << "At least one process crashed. viz: "
@@ -1743,16 +1743,16 @@ int ExternalMiniCluster::tablet_server_index_by_uuid(const std::string& uuid) co
   return -1;
 }
 
-vector<ExternalMaster*> ExternalMiniCluster::master_daemons() const {
-  vector<ExternalMaster*> results;
+std::vector<ExternalMaster*> ExternalMiniCluster::master_daemons() const {
+  std::vector<ExternalMaster*> results;
   for (const scoped_refptr<ExternalMaster>& master : masters_) {
     results.push_back(master.get());
   }
   return results;
 }
 
-vector<ExternalDaemon*> ExternalMiniCluster::daemons() const {
-  vector<ExternalDaemon*> results;
+std::vector<ExternalDaemon*> ExternalMiniCluster::daemons() const {
+  std::vector<ExternalDaemon*> results;
   for (const scoped_refptr<ExternalTabletServer>& ts : tablet_servers_) {
     results.push_back(ts.get());
   }
@@ -1903,7 +1903,7 @@ struct GlobalLogTailerState {
   // We need some references to these heap-allocated atomic booleans so that ASAN would not consider
   // them memory leaks.
   mutex id_to_stopped_flag_mutex;
-  map<int, atomic<bool>*> id_to_stopped_flag;
+  std::map<int, atomic<bool>*> id_to_stopped_flag;
 
   // This is used to limit the total amount of logs produced by external daemons over the lifetime
   // of a test program. Guarded by logging_mutex.
@@ -1916,7 +1916,7 @@ class ExternalDaemon::LogTailerThread {
  public:
   LogTailerThread(const std::string& line_prefix,
                   const int child_fd,
-                  ostream* const out)
+                  std::ostream* const out)
       : id_(global_state()->next_log_tailer_id.fetch_add(1)),
         stopped_(CreateStoppedFlagForId(id_)),
         thread_desc_(Substitute("log tailer thread for prefix $0", line_prefix)),
@@ -2027,7 +2027,7 @@ ExternalDaemon::ExternalDaemon(
     const string& exe,
     const string& root_dir,
     const std::vector<std::string>& data_dirs,
-    const vector<string>& extra_flags)
+    const std::vector<string>& extra_flags)
   : daemon_id_(daemon_id),
     messenger_(messenger),
     proxy_cache_(proxy_cache),
@@ -2063,10 +2063,10 @@ Status ExternalDaemon::DeleteServerInfoPaths() {
   return Env::Default()->DeleteFile(GetServerInfoPath());
 }
 
-Status ExternalDaemon::StartProcess(const vector<string>& user_flags) {
+Status ExternalDaemon::StartProcess(const std::vector<string>& user_flags) {
   CHECK(!process_);
 
-  vector<string> argv;
+  std::vector<string> argv;
   // First the exe for argv[0]
   argv.push_back(BaseName(exe_));
 
@@ -2396,7 +2396,7 @@ Result<int64_t> ExternalDaemon::GetInt64MetricFromHost(const HostPort& hostport,
   // Parse the results, beginning with the top-level entity array.
   JsonReader r(dst.ToString());
   RETURN_NOT_OK(r.Init());
-  vector<const Value*> entities;
+  std::vector<const Value*> entities;
   RETURN_NOT_OK(r.ExtractObjectArray(r.root(), NULL, &entities));
   for (const Value* entity : entities) {
     // Find the desired entity.
@@ -2414,7 +2414,7 @@ Result<int64_t> ExternalDaemon::GetInt64MetricFromHost(const HostPort& hostport,
     }
 
     // Find the desired metric within the entity.
-    vector<const Value*> metrics;
+    std::vector<const Value*> metrics;
     RETURN_NOT_OK(r.ExtractObjectArray(entity, "metrics", &metrics));
     for (const Value* metric : metrics) {
       string name;

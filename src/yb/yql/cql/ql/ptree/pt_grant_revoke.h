@@ -170,14 +170,14 @@ class PTGrantRevokePermission : public TreeNode {
     return permission_;
   }
 
-  const string canonical_resource() const  {
+  const std::string canonical_resource() const  {
     std::string prefix = "";
     std::string suffix = "";
     if (complete_resource_name_ != nullptr) {
       if (resource_type_ == ResourceType::TABLE) {
-        suffix = "/" + string(namespace_name());
+        suffix = "/" + std::string(namespace_name());
       }
-      suffix = suffix + "/" + string(resource_name());
+      suffix = suffix + "/" + std::string(resource_name());
     }
 
     if (resource_type_ == ResourceType::ALL_ROLES || resource_type_ == ResourceType::ROLE) {

@@ -438,7 +438,7 @@ void SetColumnInfo(const ColumnSchemaPB& column, CDCSDKColumnInfoPB* column_info
 }
 
 Status PopulateCDCSDKDDLRecord(
-    const ReplicateMsgPtr& msg, CDCSDKProtoRecordPB* proto_record, const string& table_name,
+    const ReplicateMsgPtr& msg, CDCSDKProtoRecordPB* proto_record, const std::string& table_name,
     const Schema& schema) {
   SCHECK(
       msg->has_change_metadata_request(), InvalidArgument,
@@ -500,7 +500,7 @@ void SetTermIndex(int64_t term, int64_t index, CDCSDKCheckpointPB* checkpoint) {
   checkpoint->set_index(index);
 }
 
-void SetKeyWriteId(string key, int32_t write_id, CDCSDKCheckpointPB* checkpoint) {
+void SetKeyWriteId(std::string key, int32_t write_id, CDCSDKCheckpointPB* checkpoint) {
   checkpoint->set_key(key);
   checkpoint->set_write_id(write_id);
 }
@@ -581,7 +581,7 @@ Status PopulateCDCSDKSnapshotRecord(
     const EnumOidLabelMap& enum_oid_label_map) {
   CDCSDKProtoRecordPB* proto_record = nullptr;
   RowMessage* row_message = nullptr;
-  string table_name = tablet_peer->tablet()->metadata()->table_name();
+  std::string table_name = tablet_peer->tablet()->metadata()->table_name();
 
   proto_record = resp->add_cdc_sdk_proto_records();
   row_message = proto_record->mutable_row_message();
@@ -799,7 +799,7 @@ Status GetChangesForCDCSDK(
 
         if (!schema_streamed && !(**cached_schema).initialized()) {
           current_schema.CopyFrom(*tablet_peer->tablet()->schema().get());
-          string table_name = tablet_peer->tablet()->metadata()->table_name();
+          std::string table_name = tablet_peer->tablet()->metadata()->table_name();
           schema_streamed = true;
 
           proto_record = resp->add_cdc_sdk_proto_records();
@@ -862,7 +862,7 @@ Status GetChangesForCDCSDK(
 
           case consensus::OperationType::CHANGE_METADATA_OP: {
             RETURN_NOT_OK(SchemaFromPB(msg->change_metadata_request().schema(), &current_schema));
-            string table_name = tablet_peer->tablet()->metadata()->table_name();
+            std::string table_name = tablet_peer->tablet()->metadata()->table_name();
             *cached_schema = std::make_shared<Schema>(std::move(current_schema));
             if ((resp->cdc_sdk_proto_records_size() > 0 &&
                  resp->cdc_sdk_proto_records(resp->cdc_sdk_proto_records_size() - 1)

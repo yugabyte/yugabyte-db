@@ -91,7 +91,7 @@ PTIndexColumn::PTIndexColumn(MemoryContext *memctx,
                              const MCSharedPtr<MCString>& name,
                              const PTExpr::SharedPtr& colexpr)
   : PTColumnDefinition(memctx, loc, name, nullptr, nullptr), colexpr_(colexpr) {
-  const string colname = colexpr->MangledName();
+  const std::string colname = colexpr->MangledName();
   coldef_name_ = colname.c_str();
 }
 

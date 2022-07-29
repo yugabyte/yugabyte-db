@@ -53,6 +53,8 @@ extern void SubmitSpinLockProfileData(const void *, int64);
 
 namespace yb {
 
+using std::string;
+
 class SpinLockProfilingTest : public YBTest {};
 
 TEST_F(SpinLockProfilingTest, TestSpinlockProfiling) {

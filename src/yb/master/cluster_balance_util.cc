@@ -232,7 +232,7 @@ Status PerTableLoadState::UpdateTablet(TabletInfo *tablet) {
   } else {
     // If we do have placement information, figure out how the load is distributed based on
     // placement blocks, for this tablet.
-    std::unordered_map<CloudInfoPB, vector<TabletReplica>, cloud_hash, cloud_equal_to>
+    std::unordered_map<CloudInfoPB, std::vector<TabletReplica>, cloud_hash, cloud_equal_to>
                                                                     placement_to_replicas;
     std::unordered_map<CloudInfoPB, int, cloud_hash, cloud_equal_to> placement_to_min_replicas;
     // Preset the min_replicas, so we know if we're missing replicas somewhere as well.
@@ -355,7 +355,7 @@ void PerTableLoadState::UpdateTabletServer(std::shared_ptr<TSDescriptor> ts_desc
         // READ_ONLY cb run with LIVE ts, ignore this ts
         sorted_load_.pop_back();
       } else {
-        string placement_uuid = ts_desc->placement_uuid();
+        std::string placement_uuid = ts_desc->placement_uuid();
         if (placement_uuid == "") {
           LOG(WARNING) << "Read only ts " << ts_desc->permanent_uuid()
                        << " does not have placement uuid";
@@ -730,7 +730,7 @@ std::shared_ptr<const TabletReplicaMap> PerTableLoadState::GetReplicaLocations(
     if (is_replica_live && options_->type == LIVE) {
       replica_locations->emplace(it.first, replica);
     } else if (!is_replica_live && options_->type  == READ_ONLY) {
-      const string& placement_uuid = replica.ts_desc->placement_uuid();
+      const std::string& placement_uuid = replica.ts_desc->placement_uuid();
       if (placement_uuid == options_->placement_uuid) {
         replica_locations->emplace(it.first, replica);
       }

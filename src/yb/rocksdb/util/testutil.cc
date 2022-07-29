@@ -74,17 +74,17 @@ std::string RandomKey(Random* rnd, int len, RandomKeyType type) {
 
 
 WritableFileWriter* GetWritableFileWriter(WritableFile* wf) {
-  unique_ptr<WritableFile> file(wf);
+  std::unique_ptr<WritableFile> file(wf);
   return new WritableFileWriter(std::move(file), EnvOptions());
 }
 
 RandomAccessFileReader* GetRandomAccessFileReader(RandomAccessFile* raf) {
-  unique_ptr<RandomAccessFile> file(raf);
+  std::unique_ptr<RandomAccessFile> file(raf);
   return new RandomAccessFileReader(std::move(file));
 }
 
 SequentialFileReader* GetSequentialFileReader(SequentialFile* se) {
-  unique_ptr<SequentialFile> file(se);
+  std::unique_ptr<SequentialFile> file(se);
   return new SequentialFileReader(std::move(file));
 }
 

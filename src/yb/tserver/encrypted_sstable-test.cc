@@ -74,7 +74,7 @@ void EncryptedSSTableTest::CounterOverflow(
   FLAGS_encryption_counter_max = initial_counter;
   FLAGS_TEST_encryption_use_openssl_compatible_counter_overflow = GetParam();
 
-  string test_dir;
+  std::string test_dir;
   ASSERT_OK(Env::Default()->GetTestDirectory(&test_dir));
 
   rocksdb::Options opts;
@@ -109,7 +109,7 @@ void EncryptedSSTableTest::CounterOverflow(
   rocksdb::WritableFileWriter base_writer(std::move(base_file), rocksdb::EnvOptions(),
       /* suspender */ nullptr);
 
-  string data_file_name = file_name + ".sblock.0";
+  std::string data_file_name = file_name + ".sblock.0";
   std::unique_ptr<rocksdb::WritableFile> data_file;
   ASSERT_OK(env->NewWritableFile(data_file_name, &data_file, rocksdb::EnvOptions()));
   rocksdb::WritableFileWriter data_writer(std::move(data_file), rocksdb::EnvOptions(),
@@ -120,7 +120,7 @@ void EncryptedSSTableTest::CounterOverflow(
       table_builder_options, 0, &base_writer, &data_writer);
 
   for (int i = 0; i < num_keys; ++i) {
-    string key = GetKey(i);
+    std::string key = GetKey(i);
     table_builder->Add(key, GetValue(i));
   }
   ASSERT_OK(table_builder->Finish());

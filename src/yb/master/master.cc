@@ -169,7 +169,7 @@ Master::~Master() {
   Shutdown();
 }
 
-string Master::ToString() const {
+std::string Master::ToString() const {
   if (state_ != kRunning) {
     return "Master (stopped)";
   }
@@ -370,7 +370,7 @@ Status Master::WaitUntilCatalogManagerIsLeaderAndReadyForTests(const MonoDelta& 
 
 void Master::Shutdown() {
   if (state_ == kRunning) {
-    string name = ToString();
+    std::string name = ToString();
     LOG(INFO) << name << " shutting down...";
     maintenance_manager_->Shutdown();
     // We shutdown RpcAndWebServerBase here in order to shutdown messenger and reactor threads

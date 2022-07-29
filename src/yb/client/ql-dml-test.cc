@@ -154,9 +154,9 @@ class QLDmlTest : public QLDmlTestBase<MiniCluster> {
 
   YBqlWriteOpPtr InsertRow(
       const YBSessionPtr& session,
-      const int32 h1, const string& h2,
-      const int32 r1, const string& r2,
-      const int32 c1, const string& c2) {
+      const int32 h1, const std::string& h2,
+      const int32 r1, const std::string& r2,
+      const int32 c1, const std::string& c2) {
     const YBqlWriteOpPtr op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
     auto* const req = op->mutable_request();
     QLAddInt32HashValue(req, h1);
@@ -198,9 +198,9 @@ class QLDmlTest : public QLDmlTestBase<MiniCluster> {
   //   select <columns...> from t where h1 = <h1> and h2 = <h2> and r1 = <r1> and r2 = <r2>;
   YBqlReadOpPtr SelectRow(
       const YBSessionPtr& session,
-      const vector<string>& columns,
-      const int32 h1, const string& h2,
-      const int32 r1, const string& r2) {
+      const std::vector<std::string>& columns,
+      const int32 h1, const std::string& h2,
+      const int32 r1, const std::string& r2) {
     const YBqlReadOpPtr op = table_.NewReadOp();
     auto* const req = op->mutable_request();
     QLAddInt32HashValue(req, h1);
@@ -216,7 +216,7 @@ class QLDmlTest : public QLDmlTestBase<MiniCluster> {
 
   YBqlReadOpPtr SelectRow(
       const YBSessionPtr& session,
-      const vector<string>& columns,
+      const std::vector<std::string>& columns,
       const RowKey& key) {
     return SelectRow(session, columns, key.h1, key.h2, key.r1, key.r2);
   }

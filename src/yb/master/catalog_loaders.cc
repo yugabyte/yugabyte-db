@@ -271,7 +271,7 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
     if (should_delete_tablet) {
       LOG(WARNING)
           << "Deleting tablet " << tablet->id() << " for table " << first_table->ToString();
-      string deletion_msg = "Tablet deleted at " + LocalTimeAsString();
+      std::string deletion_msg = "Tablet deleted at " + LocalTimeAsString();
       l.mutable_data()->set_state(SysTabletsEntryPB::DELETED, deletion_msg);
       RETURN_NOT_OK_PREPEND(catalog_manager_->sys_catalog()->Upsert(term_, tablet),
                             Format("Error deleting tablet $0", tablet->id()));
@@ -533,7 +533,7 @@ Status RoleLoader::Visit(const RoleName& role_name, const SysRoleEntryPB& metada
 // Sys Config Loader
 ////////////////////////////////////////////////////////////
 
-Status SysConfigLoader::Visit(const string& config_type, const SysConfigEntryPB& metadata) {
+Status SysConfigLoader::Visit(const std::string& config_type, const SysConfigEntryPB& metadata) {
   SysConfigInfo* const config = new SysConfigInfo(config_type);
   {
     auto l = config->LockForWrite();

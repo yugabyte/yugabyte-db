@@ -280,7 +280,7 @@ TEST_F(MaintenanceManagerTest, TestLogRetentionPrioritization) {
 // is correct in that it wraps around and doesn't grow.
 TEST_F(MaintenanceManagerTest, TestCompletedOpsHistory) {
   for (int i = 0; i < 5; i++) {
-    string name = Substitute("op$0", i);
+    std::string name = Substitute("op$0", i);
     TestMaintenanceOp op(name, MaintenanceOp::HIGH_IO_USAGE, OP_RUNNABLE, test_tracker_);
     op.set_perf_improvement(1);
     op.set_ram_anchored(100);

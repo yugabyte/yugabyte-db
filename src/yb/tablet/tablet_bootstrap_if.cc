@@ -65,19 +65,19 @@ TabletStatusListener::TabletStatusListener(const RaftGroupMetadataPtr& meta)
     : meta_(meta) {
 }
 
-const string TabletStatusListener::tablet_id() const {
+const std::string TabletStatusListener::tablet_id() const {
   return meta_->raft_group_id();
 }
 
-const string TabletStatusListener::namespace_name() const {
+const std::string TabletStatusListener::namespace_name() const {
   return meta_->namespace_name();
 }
 
-const string TabletStatusListener::table_name() const {
+const std::string TabletStatusListener::table_name() const {
   return meta_->table_name();
 }
 
-const string TabletStatusListener::table_id() const {
+const std::string TabletStatusListener::table_id() const {
   return meta_->table_id();
 }
 
@@ -92,7 +92,7 @@ SchemaPtr TabletStatusListener::schema() const {
 TabletStatusListener::~TabletStatusListener() {
 }
 
-void TabletStatusListener::StatusMessage(const string& status) {
+void TabletStatusListener::StatusMessage(const std::string& status) {
   LOG(INFO) << "T " << tablet_id() << " P " << meta_->fs_manager()->uuid() << ": "
             << status;
   std::lock_guard<std::shared_timed_mutex> l(lock_);
@@ -117,7 +117,7 @@ Status BootstrapTablet(
   return Status::OK();
 }
 
-string DocDbOpIds::ToString() const {
+std::string DocDbOpIds::ToString() const {
   return Format("{ regular: $0 intents: $1 }", regular, intents);
 }
 

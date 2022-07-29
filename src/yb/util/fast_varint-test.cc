@@ -32,6 +32,9 @@ using namespace std::literals;
 using strings::Substitute;
 using yb::FormatBytesAsStr;
 
+using std::string;
+using std::numeric_limits;
+
 namespace yb {
 namespace util {
 
@@ -90,7 +93,7 @@ void CheckEncoding(int64_t v) {
 
   // Also test "descending varint" encoding. This is only makes sense for numbers that can be
   // negated (not the minimum possible 64-bit integer).
-  if (v != std::numeric_limits<int64_t>::min()) {
+  if (v != numeric_limits<int64_t>::min()) {
     // Our "descending varint" encoding is simply the encoding of the negated argument.
     static const string kPrefix = "some_prefix";
     string encoded_dest = kPrefix;

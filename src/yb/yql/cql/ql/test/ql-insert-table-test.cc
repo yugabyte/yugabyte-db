@@ -198,9 +198,9 @@ TEST_F(TestQLInsertTable, TestQLInsertToJson) {
   std::shared_ptr<QLRowBlock> row_block;
   LOG(INFO) << "Test inserting with ToJson() built-in.";
 
-  auto to_json_str = [](const QLValue& value) -> string {
+  auto to_json_str = [](const QLValue& value) -> std::string {
     common::Jsonb jsonb(value.jsonb_value());
-    string str;
+    std::string str;
     CHECK_OK(jsonb.ToJsonString(&str));
     return str;
   };

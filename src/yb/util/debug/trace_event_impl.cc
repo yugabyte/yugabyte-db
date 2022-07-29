@@ -61,6 +61,7 @@ using base::SpinLockHolder;
 
 using strings::SubstituteAndAppend;
 using std::string;
+using std::vector;
 
 // This is used to avoid generating trace events during global initialization. If we allow that to
 // happen, it may lead to segfaults (https://github.com/yugabyte/yugabyte-db/issues/11033).

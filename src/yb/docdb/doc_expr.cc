@@ -437,7 +437,7 @@ void UnpackUDTAndFrozen(const QLType::SharedPtr& type, QLValuePB* value) {
   if (type->IsUserDefined() && value->value_case() == QLValuePB::kMapValue) {
     // Change MAP<field_index:field_value> into MAP<field_name:field_value>
     // in case of UDT.
-    const vector<string> field_names = type->udtype_field_names();
+    const std::vector<std::string> field_names = type->udtype_field_names();
     QLMapValuePB* map = value->mutable_map_value();
     for (int i = 0; i < map->keys_size(); ++i) {
       map->mutable_keys(i)->set_string_value(field_names[i]);
@@ -446,7 +446,7 @@ void UnpackUDTAndFrozen(const QLType::SharedPtr& type, QLValuePB* value) {
     if (type->param_type()->IsUserDefined()) {
       // Change FROZEN[field_value,...] into MAP<field_name:field_value>
       // in case of FROZEN<UDT>.
-      const vector<string> field_names = type->param_type()->udtype_field_names();
+      const std::vector<std::string> field_names = type->param_type()->udtype_field_names();
       QLSeqValuePB seq(value->frozen_value());
       DCHECK_EQ(seq.elems_size(), field_names.size());
       QLMapValuePB* map = value->mutable_map_value();

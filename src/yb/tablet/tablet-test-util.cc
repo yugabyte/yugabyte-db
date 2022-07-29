@@ -51,7 +51,7 @@ void YBTabletTest::SetUp() {
 }
 
 void YBTabletTest::CreateTestTablet(const std::string& root_dir) {
-  string dir = root_dir.empty() ? GetTestPath("fs_root") : root_dir;
+  std::string dir = root_dir.empty() ? GetTestPath("fs_root") : root_dir;
   TabletHarness::Options opts(dir);
   opts.enable_metrics = true;
   opts.table_type = table_type_;
@@ -102,7 +102,7 @@ Status IterateToStringList(
 Status DumpTablet(const Tablet& tablet, const Schema& projection, std::vector<std::string>* out) {
   auto iter = tablet.NewRowIterator(projection);
   RETURN_NOT_OK(iter);
-  std::vector<string> rows;
+  std::vector<std::string> rows;
   RETURN_NOT_OK(IterateToStringList(iter->get(), &rows));
   std::sort(rows.begin(), rows.end());
   out->swap(rows);

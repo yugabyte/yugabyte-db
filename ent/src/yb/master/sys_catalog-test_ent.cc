@@ -41,7 +41,7 @@ class TestCDCStreamLoader : public Visitor<PersistentCDCStreamInfo> {
     return Status::OK();
   }
 
-  vector<CDCStreamInfo*> streams;
+  std::vector<CDCStreamInfo*> streams;
 };
 
 class TestUniverseReplicationLoader : public Visitor<PersistentUniverseReplicationInfo> {
@@ -68,7 +68,7 @@ class TestUniverseReplicationLoader : public Visitor<PersistentUniverseReplicati
     return Status::OK();
   }
 
-  vector<UniverseReplicationInfo*> universes;
+  std::vector<UniverseReplicationInfo*> universes;
 };
 
 // Test the sys-catalog CDC stream basic operations (add, delete, visit).

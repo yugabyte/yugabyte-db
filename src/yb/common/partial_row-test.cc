@@ -172,8 +172,8 @@ TEST_F(PartialRowTest, TestCopy) {
   EXPECT_TRUE(copy.IsNull(2));
 
   // Check a copy with a borrowed value.
-  string borrowed_string = "borrowed-string";
-  string borrowed_binary = "borrowed-binary";
+  std::string borrowed_string = "borrowed-string";
+  std::string borrowed_binary = "borrowed-binary";
   ASSERT_OK(row.SetString(2, borrowed_string));
   ASSERT_OK(row.SetBinary(3, borrowed_binary));
 

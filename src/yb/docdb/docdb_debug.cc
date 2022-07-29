@@ -31,7 +31,7 @@ namespace docdb {
 
 namespace {
 
-void AppendLineToStream(const std::string& s, ostream* out) {
+void AppendLineToStream(const std::string& s, std::ostream* out) {
   *out << s << std::endl;
 }
 
@@ -92,7 +92,7 @@ std::string EntryToString(
 }
 
 void DocDBDebugDump(
-    rocksdb::DB* rocksdb, ostream& out, const SchemaPackingStorage& schema_packing_storage,
+    rocksdb::DB* rocksdb, std::ostream& out, const SchemaPackingStorage& schema_packing_storage,
     StorageDbType db_type, IncludeBinary include_binary) {
   DocDBDebugDump(
       rocksdb, schema_packing_storage, db_type, include_binary,

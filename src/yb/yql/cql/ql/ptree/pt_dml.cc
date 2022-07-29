@@ -122,7 +122,7 @@ size_t PTDmlStmt::num_hash_key_columns() const {
   return table_->schema().num_hash_key_columns();
 }
 
-string PTDmlStmt::hash_key_columns() const {
+std::string PTDmlStmt::hash_key_columns() const {
   std::stringstream s;
   auto &schema = table_->schema();
   for (size_t i = 0; i < schema.num_hash_key_columns(); ++i) {
@@ -180,7 +180,7 @@ void PTDmlStmt::LoadSchema(SemContext *sem_context,
   const client::YBSchema& schema = table->schema();
   for (size_t idx = 0; idx < schema.num_columns(); idx++) {
     const client::YBColumnSchema col = schema.Column(idx);
-    string colname = col.name();
+    std::string colname = col.name();
     if (is_index && !schema.table_properties().use_mangled_column_name()) {
       // This is an OLD INDEX. We need to mangled its column name to work with new implementation.
       colname = YcqlName::MangleColumnName(colname);
@@ -949,7 +949,7 @@ std::string PTDmlStmt::PartitionKeyToString(const MCList<PartitionKeyOp>& conds)
     // Partition_hash is stored as INT32, token is stored as INT64, unless you specify the
     // rhs expression e.g partition_hash(h1, h2) >= 3 in which case it's stored as an VARINT.
     // So setting the default to the yql partition_hash in that case seems reasonable.
-    string label = (col_op->expr()->expected_internal_type() == InternalType::kInt64Value) ?
+    std::string label = (col_op->expr()->expected_internal_type() == InternalType::kInt64Value) ?
         "token" : "partition_hash";
     s << "(" << label << "(" << hash_key_columns() <<  ") " << QLOperatorAsString(col_op->yb_op())
       << " " << col_op->expr()->QLName() << ")";

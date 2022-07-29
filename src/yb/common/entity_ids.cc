@@ -11,6 +11,8 @@
 // under the License.
 //
 
+#include <string>
+
 #include <boost/uuid/nil_generator.hpp>
 
 #include "yb/common/entity_ids.h"
@@ -22,6 +24,8 @@
 using boost::uuids::uuid;
 
 namespace yb {
+
+using std::string;
 
 static constexpr int kUuidVersion = 3; // Repurpose old name-based UUID v3 to embed Postgres oids.
 

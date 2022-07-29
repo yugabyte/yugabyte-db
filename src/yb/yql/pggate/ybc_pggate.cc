@@ -17,6 +17,7 @@
 #include <functional>
 #include <string>
 #include <utility>
+#include <string>
 
 #include "yb/client/tablet_server.h"
 
@@ -71,6 +72,8 @@ DEFINE_bool(ysql_enable_reindex, false,
             "Enable REINDEX INDEX statement.");
 TAG_FLAG(ysql_enable_reindex, advanced);
 TAG_FLAG(ysql_enable_reindex, hidden);
+
+using std::string;
 
 namespace yb {
 namespace pggate {

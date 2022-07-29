@@ -222,7 +222,7 @@ class CDCSDKStreamTest : public CDCSDKTestBase {
   }
 
   void TestDBStreamInfo(
-      const vector<std::string>& table_with_pk, const vector<std::string>& table_without_pk) {
+      const std::vector<std::string>& table_with_pk, const std::vector<std::string>& table_without_pk) {
     std::vector<std::string>::size_type num_of_tables_with_pk = table_with_pk.size();
 
     for (const auto& table_name : table_with_pk) {
@@ -483,10 +483,10 @@ TEST_F(CDCSDKStreamTest, YB_DISABLE_TEST_IN_TSAN(ImplicitCheckPointValidate)) {
     const uint32_t options_sz = list_streams.Get(i).options_size();
     for (uint32_t j = 0; j < options_sz; j++) {
       // Validate the checkpoint type IMPLICIT.
-      string cur_key = list_streams.Get(i).options(j).key();
-      string cur_value = list_streams.Get(i).options(j).value();
-      if (cur_key == string("checkpoint_type")) {
-        ASSERT_EQ(cur_value, string("IMPLICIT"));
+      std::string cur_key = list_streams.Get(i).options(j).key();
+      std::string cur_value = list_streams.Get(i).options(j).value();
+      if (cur_key == std::string("checkpoint_type")) {
+        ASSERT_EQ(cur_value, std::string("IMPLICIT"));
       }
     }
   }
@@ -512,10 +512,10 @@ TEST_F(CDCSDKStreamTest, YB_DISABLE_TEST_IN_TSAN(ExplicitCheckPointValidate)) {
       const uint32_t options_sz = list_streams.Get(i).options_size();
       for (uint32_t j = 0; j < options_sz; j++) {
         // Validate the checkpoint type EXPLICIT.
-        string cur_key = list_streams.Get(i).options(j).key();
-        string cur_value = list_streams.Get(i).options(j).value();
-        if (cur_key == string("checkpoint_type")) {
-          ASSERT_EQ(cur_value, string("EXPLICIT"));
+        std::string cur_key = list_streams.Get(i).options(j).key();
+        std::string cur_value = list_streams.Get(i).options(j).value();
+        if (cur_key == std::string("checkpoint_type")) {
+          ASSERT_EQ(cur_value, std::string("EXPLICIT"));
         }
       }
     }

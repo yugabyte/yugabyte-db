@@ -73,7 +73,7 @@ class CDCServiceTxnTest : public TransactionTestBase<MiniCluster>,
 
 INSTANTIATE_TEST_CASE_P(EnableIntentReplication, CDCServiceTxnTest, ::testing::Bool());
 
-void AssertValue(const google::protobuf::Map<string, QLValuePB>& changes, int32_t expected_value) {
+void AssertValue(const google::protobuf::Map<std::string, QLValuePB>& changes, int32_t expected_value) {
   ASSERT_EQ(changes.size(), 1);
   const auto& value = changes.find("value");
   ASSERT_NE(value, changes.end());

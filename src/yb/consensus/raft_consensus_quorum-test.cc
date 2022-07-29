@@ -121,7 +121,7 @@ class RaftConsensusQuorumTest : public YBTest {
       shared_ptr<MemTracker> parent_mem_tracker =
           MemTracker::CreateTracker(Substitute("peer-$0", i));
       parent_mem_trackers_.push_back(parent_mem_tracker);
-      string test_path = GetTestPath(Substitute("peer-$0-root", i));
+      std::string test_path = GetTestPath(Substitute("peer-$0-root", i));
       FsManagerOpts opts;
       opts.parent_mem_tracker = parent_mem_tracker;
       opts.wal_paths = { test_path };
@@ -151,14 +151,14 @@ class RaftConsensusQuorumTest : public YBTest {
   }
 
   void BuildPeers() {
-    vector<LocalTestPeerProxyFactory*> proxy_factories;
+    std::vector<LocalTestPeerProxyFactory*> proxy_factories;
     for (int i = 0; i < config_.peers_size(); i++) {
       auto proxy_factory = std::make_unique<LocalTestPeerProxyFactory>(peers_.get());
       proxy_factories.push_back(proxy_factory.get());
 
       auto operation_factory = new TestOperationFactory();
 
-      string peer_uuid = Substitute("peer-$0", i);
+      std::string peer_uuid = Substitute("peer-$0", i);
 
       std::unique_ptr<ConsensusMetadata> cmeta;
       fs_managers_[i]->SetTabletPathByDataPath(kTestTablet, fs_managers_[i]->GetDataRootDirs()[0]);
@@ -342,10 +342,10 @@ class RaftConsensusQuorumTest : public YBTest {
     LOG(ERROR) << "Max timeout reached (" << timeout.ToString() << ") while waiting for commit of "
                << "op " << to_wait_for << " on replica. Last committed op on replica: "
                << committed_op_id << ". Dumping state and quitting.";
-    vector<string> lines;
+    std::vector<std::string> lines;
     shared_ptr<RaftConsensus> leader;
     ASSERT_OK(peers_->GetPeerByIdx(leader_idx, &leader));
-    for (const string& line : lines) {
+    for (const std::string& line : lines) {
       LOG(ERROR) << line;
     }
 
@@ -381,7 +381,7 @@ class RaftConsensusQuorumTest : public YBTest {
                                    ReplicateWaitMode wait_mode,
                                    CommitMode commit_mode,
                                    OpIdPB* last_op_id,
-                                   vector<scoped_refptr<ConsensusRound> >* rounds) {
+                                   std::vector<scoped_refptr<ConsensusRound> >* rounds) {
     for (int i = 0; i < seq_size; i++) {
       scoped_refptr<ConsensusRound> round;
       ASSERT_OK(AppendDummyMessage(leader_idx, &round));
@@ -499,8 +499,8 @@ class RaftConsensusQuorumTest : public YBTest {
 
   void VerifyReplica(const log::LogEntries& leader_entries,
                      const log::LogEntries& replica_entries,
-                     const string& leader_name,
-                     const string& replica_name) {
+                     const std::string& leader_name,
+                     const std::string& replica_name) {
     SCOPED_TRACE(PrintOnError(leader_entries, Substitute("Leader: $0", leader_name)));
     SCOPED_TRACE(PrintOnError(replica_entries, Substitute("Replica: $0", replica_name)));
 
@@ -513,9 +513,9 @@ class RaftConsensusQuorumTest : public YBTest {
     VerifyNoCommitsBeforeReplicates(leader_entries);
   }
 
-  string PrintOnError(const log::LogEntries& replica_entries,
-                      const string& replica_id) {
-    string ret = "";
+  std::string PrintOnError(const log::LogEntries& replica_entries,
+                      const std::string& replica_id) {
+    std::string ret = "";
     SubstituteAndAppend(&ret, "$1 log entries for replica $0:\n",
                         replica_id, replica_entries.size());
     for (const auto& replica_entry : replica_entries) {
@@ -526,7 +526,7 @@ class RaftConsensusQuorumTest : public YBTest {
 
   // Read the ConsensusMetadata for the given peer from disk.
   std::unique_ptr<ConsensusMetadata> ReadConsensusMetadataFromDisk(int peer_index) {
-    string peer_uuid = Substitute("peer-$0", peer_index);
+    std::string peer_uuid = Substitute("peer-$0", peer_index);
     std::unique_ptr<ConsensusMetadata> cmeta;
     CHECK_OK(ConsensusMetadata::Load(fs_managers_[peer_index], kTestTablet, peer_uuid, &cmeta));
     return cmeta;
@@ -560,9 +560,9 @@ class RaftConsensusQuorumTest : public YBTest {
   ConsensusOptions options_;
   RaftConfigPB config_;
   OpIdPB initial_id_;
-  vector<shared_ptr<MemTracker> > parent_mem_trackers_;
-  vector<FsManager*> fs_managers_;
-  vector<scoped_refptr<Log> > logs_;
+  std::vector<shared_ptr<MemTracker> > parent_mem_trackers_;
+  std::vector<FsManager*> fs_managers_;
+  std::vector<scoped_refptr<Log> > logs_;
   unique_ptr<ThreadPool> raft_pool_;
   unique_ptr<ThreadPool> log_thread_pool_;
   std::unique_ptr<TestPeerMapManager> peers_;
@@ -585,7 +585,7 @@ TEST_F(RaftConsensusQuorumTest, TestConsensusContinuesIfAMinorityFallsBehind) {
   ASSERT_OK(BuildAndStartConfig(3));
 
   OpIdPB last_replicate;
-  vector<scoped_refptr<ConsensusRound> > rounds;
+  std::vector<scoped_refptr<ConsensusRound> > rounds;
   {
     // lock one of the replicas down by obtaining the state lock
     // and never letting it go.
@@ -696,7 +696,7 @@ TEST_F(RaftConsensusQuorumTest, TestReplicasHandleCommunicationErrors) {
 
   // Append a sequence of messages, and keep injecting errors into the
   // replica proxies.
-  vector<scoped_refptr<ConsensusRound> > rounds;
+  std::vector<scoped_refptr<ConsensusRound> > rounds;
   for (int i = 0; i < 100; i++) {
     scoped_refptr<ConsensusRound> round;
     ASSERT_OK(AppendDummyMessage(kLeaderIdx, &round));
@@ -797,7 +797,7 @@ TEST_F(RaftConsensusQuorumTest, TestLeaderElectionWithQuiescedQuorum) {
   ASSERT_OK(BuildAndStartConfig(kInitialNumPeers));
 
   OpIdPB last_op_id;
-  vector<scoped_refptr<ConsensusRound> > rounds;
+  std::vector<scoped_refptr<ConsensusRound> > rounds;
 
   // Loop twice, successively shutting down the previous leader.
   for (int current_config_size = kInitialNumPeers;
@@ -858,7 +858,7 @@ TEST_F(RaftConsensusQuorumTest, TestReplicasEnforceTheLogMatchingProperty) {
   ASSERT_OK(BuildAndStartConfig(3));
 
   OpIdPB last_op_id;
-  vector<scoped_refptr<ConsensusRound> > rounds;
+  std::vector<scoped_refptr<ConsensusRound> > rounds;
   REPLICATE_SEQUENCE_OF_MESSAGES(10,
                                  2, // The index of the initial leader.
                                  WAIT_FOR_ALL_REPLICAS,
@@ -920,7 +920,7 @@ TEST_F(RaftConsensusQuorumTest, TestRequestVote) {
   ASSERT_OK(BuildAndStartConfig(3));
 
   OpIdPB last_op_id;
-  vector<scoped_refptr<ConsensusRound> > rounds;
+  std::vector<scoped_refptr<ConsensusRound> > rounds;
   REPLICATE_SEQUENCE_OF_MESSAGES(10,
                                  2, // The index of the initial leader.
                                  WAIT_FOR_ALL_REPLICAS,

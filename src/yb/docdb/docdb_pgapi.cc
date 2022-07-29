@@ -201,7 +201,7 @@ Status DocPgEvalExpr(YbgPreparedExpr expr,
 
 Status SetValueFromQLBinary(
     const QLValuePB ql_value, const int pg_data_type,
-    const std::unordered_map<uint32_t, string> &enum_oid_label_map,
+    const std::unordered_map<uint32_t, std::string> &enum_oid_label_map,
     DatumMessagePB *cdc_datum_message) {
   PG_RETURN_NOT_OK(YbgPrepareMemoryContext());
 
@@ -288,7 +288,7 @@ void set_decoded_string_range(
   YBCPgTypeAttrs type_attrs{-1 /* typmod */};
 
   char* decoded_str = nullptr;
-  string range_val = ql_value.binary_value();
+  std::string range_val = ql_value.binary_value();
   uint64_t size = range_val.size();
   char* val = const_cast<char *>(range_val.c_str());
   uint64_t datum = arg_type->yb_to_datum(reinterpret_cast<uint8 *>(val), size, &type_attrs);
@@ -344,7 +344,7 @@ void set_decoded_string_array(const QLValuePB ql_value,
   YBCPgTypeAttrs type_attrs{-1 /* typmod */};
 
   char* decoded_str = nullptr;
-  string vector_val = ql_value.binary_value();
+  std::string vector_val = ql_value.binary_value();
   uint64_t size = vector_val.size();
   char* val = const_cast<char *>(vector_val.c_str());
   uint64_t datum = arg_type->yb_to_datum(reinterpret_cast<uint8 *>(val), size, &type_attrs);
@@ -516,7 +516,7 @@ void set_decoded_string_range_array(
   YBCPgTypeAttrs type_attrs{-1 /* typmod */};
 
   char* decoded_str = nullptr;
-  string arr_val = ql_value.binary_value();
+  std::string arr_val = ql_value.binary_value();
   uint64_t size = arr_val.size();
   char* val = const_cast<char *>(arr_val.c_str());
   uint64_t datum = arg_type->yb_to_datum(reinterpret_cast<uint8 *>(val), size, &type_attrs);
@@ -599,7 +599,7 @@ void set_range_array_string_value(
 // by the caller of this function.
 Status SetValueFromQLBinaryHelper(
     const QLValuePB ql_value, const int pg_data_type,
-    const std::unordered_map<uint32_t, string> &enum_oid_label_map,
+    const std::unordered_map<uint32_t, std::string> &enum_oid_label_map,
     DatumMessagePB *cdc_datum_message) {
   uint64_t size;
   char* val;
@@ -621,7 +621,7 @@ Status SetValueFromQLBinaryHelper(
     }
     case BYTEAOID: {
       func_name = "byteaout";
-      string bytea_val = ql_value.binary_value();
+      std::string bytea_val = ql_value.binary_value();
       size = bytea_val.size();
       val = const_cast<char *>(bytea_val.c_str());
       uint64_t datum = arg_type->yb_to_datum(reinterpret_cast<void *>(val), size, &type_attrs);
@@ -639,7 +639,7 @@ Status SetValueFromQLBinaryHelper(
     }
     case NAMEOID: {
       func_name = "nameout";
-      string name_val = ql_value.string_value();
+      std::string name_val = ql_value.string_value();
       size = name_val.size();
       val = const_cast<char *>(name_val.c_str());
       uint64_t datum = arg_type->yb_to_datum(reinterpret_cast<char *>(val), size, &type_attrs);
@@ -675,7 +675,7 @@ Status SetValueFromQLBinaryHelper(
     }
     case TEXTOID: {
       func_name = "textout";
-      string text_val = ql_value.string_value();
+      std::string text_val = ql_value.string_value();
       size = text_val.size();
       val = const_cast<char *>(text_val.c_str());
       uint64_t datum = arg_type->yb_to_datum(reinterpret_cast<char *>(val), size, &type_attrs);
@@ -690,7 +690,7 @@ Status SetValueFromQLBinaryHelper(
     }
     case TIDOID: {
       func_name = "tidout";
-      string tid_val = ql_value.binary_value();
+      std::string tid_val = ql_value.binary_value();
       size = arg_type->datum_fixed_size;
       val = const_cast<char *>(tid_val.c_str());
       uint64_t datum = arg_type->yb_to_datum(reinterpret_cast<uint8 *>(val), size, &type_attrs);
@@ -717,7 +717,7 @@ Status SetValueFromQLBinaryHelper(
     }
     case JSONOID: {
       func_name = "json_out";
-      string json_val = ql_value.binary_value();
+      std::string json_val = ql_value.binary_value();
       size = json_val.size();
       val = const_cast<char *>(json_val.c_str());
       uint64_t datum = arg_type->yb_to_datum(reinterpret_cast<uint8 *>(val), size, &type_attrs);
@@ -726,7 +726,7 @@ Status SetValueFromQLBinaryHelper(
     }
     case XMLOID: {
       func_name = "xml_out";
-      string xml_val = ql_value.binary_value();
+      std::string xml_val = ql_value.binary_value();
       size = xml_val.size();
       val = const_cast<char *>(xml_val.c_str());
       uint64_t datum = arg_type->yb_to_datum(reinterpret_cast<uint8 *>(val), size, &type_attrs);
@@ -735,7 +735,7 @@ Status SetValueFromQLBinaryHelper(
     }
     case PGNODETREEOID: {
       func_name = "pg_node_tree_out";
-      string pg_node_tree_val = ql_value.binary_value();
+      std::string pg_node_tree_val = ql_value.binary_value();
       size = pg_node_tree_val.size();
       val = const_cast<char *>(pg_node_tree_val.c_str());
       uint64_t datum = arg_type->yb_to_datum(reinterpret_cast<void *>(val), size, &type_attrs);
@@ -744,7 +744,7 @@ Status SetValueFromQLBinaryHelper(
     }
     case PGNDISTINCTOID: {
       func_name = "pg_ndistinct_out";
-      string pg_ndistinct_val = ql_value.binary_value();
+      std::string pg_ndistinct_val = ql_value.binary_value();
       size = pg_ndistinct_val.size();
       val = const_cast<char *>(pg_ndistinct_val.c_str());
       uint64_t datum = arg_type->yb_to_datum(reinterpret_cast<void *>(val), size, &type_attrs);
@@ -753,7 +753,7 @@ Status SetValueFromQLBinaryHelper(
     }
     case PGDEPENDENCIESOID: {
       func_name = "pg_dependencies_out";
-      string pg_dependencies_val = ql_value.binary_value();
+      std::string pg_dependencies_val = ql_value.binary_value();
       size = pg_dependencies_val.size();
       val = const_cast<char *>(pg_dependencies_val.c_str());
       uint64_t datum = arg_type->yb_to_datum(reinterpret_cast<void *>(val), size, &type_attrs);
@@ -780,7 +780,7 @@ Status SetValueFromQLBinaryHelper(
     }
     case POINTOID: {
       func_name = "point_out";
-      string point_val = ql_value.binary_value();
+      std::string point_val = ql_value.binary_value();
       size = arg_type->datum_fixed_size;
       val = const_cast<char *>(point_val.c_str());
       uint64_t datum = arg_type->yb_to_datum(reinterpret_cast<uint8 *>(val), size, &type_attrs);
@@ -789,7 +789,7 @@ Status SetValueFromQLBinaryHelper(
     }
     case LSEGOID: {
       func_name = "lseg_out";
-      string lseg_val = ql_value.binary_value();
+      std::string lseg_val = ql_value.binary_value();
       size = arg_type->datum_fixed_size;
       val = const_cast<char *>(lseg_val.c_str());
       uint64_t datum = arg_type->yb_to_datum(reinterpret_cast<int8 *>(val), size, &type_attrs);
@@ -798,7 +798,7 @@ Status SetValueFromQLBinaryHelper(
     }
     case PATHOID: {
       func_name = "path_out";
-      string path_val = ql_value.binary_value();
+      std::string path_val = ql_value.binary_value();
       size = path_val.size();
       val = const_cast<char *>(path_val.c_str());
       uint64_t datum = arg_type->yb_to_datum(reinterpret_cast<uint8 *>(val), size, &type_attrs);
@@ -807,7 +807,7 @@ Status SetValueFromQLBinaryHelper(
     }
     case BOXOID: {
       func_name = "box_out";
-      string box_val = ql_value.binary_value();
+      std::string box_val = ql_value.binary_value();
       size = arg_type->datum_fixed_size;
       val = const_cast<char *>(box_val.c_str());
       uint64_t datum = arg_type->yb_to_datum(reinterpret_cast<uint8 *>(val), size, &type_attrs);
@@ -816,7 +816,7 @@ Status SetValueFromQLBinaryHelper(
     }
     case LINEOID: {
       func_name = "line_out";
-      string line_val = ql_value.binary_value();
+      std::string line_val = ql_value.binary_value();
       size = arg_type->datum_fixed_size;
       val = const_cast<char *>(line_val.c_str());
       uint64_t datum = arg_type->yb_to_datum(reinterpret_cast<uint8 *>(val), size, &type_attrs);
@@ -837,7 +837,7 @@ Status SetValueFromQLBinaryHelper(
     }
     case CIRCLEOID: {
       func_name = "circle_out";
-      string circle_val = ql_value.binary_value();
+      std::string circle_val = ql_value.binary_value();
       size = arg_type->datum_fixed_size;
       val = const_cast<char *>(circle_val.c_str());
       uint64_t datum = arg_type->yb_to_datum(reinterpret_cast<uint8 *>(val), size, &type_attrs);
@@ -856,7 +856,7 @@ Status SetValueFromQLBinaryHelper(
     }
     case MACADDROID: {
       func_name = "macaddr_out";
-      string macaddr_val = ql_value.binary_value();
+      std::string macaddr_val = ql_value.binary_value();
       size = arg_type->datum_fixed_size;
       val = const_cast<char *>(macaddr_val.c_str());
       uint64_t datum = arg_type->yb_to_datum(reinterpret_cast<uint8 *>(val), size, &type_attrs);
@@ -865,7 +865,7 @@ Status SetValueFromQLBinaryHelper(
     }
     case INETOID: {
       func_name = "inet_out";
-      string inet_val = ql_value.binary_value();
+      std::string inet_val = ql_value.binary_value();
       size = inet_val.size();
       val = const_cast<char *>(inet_val.c_str());
       uint64_t datum = arg_type->yb_to_datum(reinterpret_cast<uint8 *>(val), size, &type_attrs);
@@ -874,7 +874,7 @@ Status SetValueFromQLBinaryHelper(
     }
     case CIDROID: {
       func_name = "cidr_out";
-      string cidr_val = ql_value.binary_value();
+      std::string cidr_val = ql_value.binary_value();
       size = cidr_val.size();
       val = const_cast<char *>(cidr_val.c_str());
       uint64_t datum = arg_type->yb_to_datum(reinterpret_cast<uint8 *>(val), size, &type_attrs);
@@ -883,7 +883,7 @@ Status SetValueFromQLBinaryHelper(
     }
     case MACADDR8OID: {
       func_name = "macaddr8_out";
-      string macaddr8_val = ql_value.binary_value();
+      std::string macaddr8_val = ql_value.binary_value();
       size = arg_type->datum_fixed_size;
       val = const_cast<char *>(macaddr8_val.c_str());
       uint64_t datum = arg_type->yb_to_datum(reinterpret_cast<uint8 *>(val), size, &type_attrs);
@@ -892,7 +892,7 @@ Status SetValueFromQLBinaryHelper(
     }
     case ACLITEMOID: {
       func_name = "aclitemout";
-      string aclitem_val = ql_value.binary_value();
+      std::string aclitem_val = ql_value.binary_value();
       size = arg_type->datum_fixed_size;
       val = const_cast<char *>(aclitem_val.c_str());
       uint64_t datum = arg_type->yb_to_datum(reinterpret_cast<uint8 *>(val), size, &type_attrs);
@@ -901,7 +901,7 @@ Status SetValueFromQLBinaryHelper(
     }
     case BPCHAROID: {
       func_name = "bpcharout";
-      string bpchar_val = ql_value.string_value();
+      std::string bpchar_val = ql_value.string_value();
       size = bpchar_val.size();
       val = const_cast<char *>(bpchar_val.c_str());
       uint64_t datum = arg_type->yb_to_datum(reinterpret_cast<char *>(val), size, &type_attrs);
@@ -910,7 +910,7 @@ Status SetValueFromQLBinaryHelper(
     }
     case VARCHAROID: {
       func_name = "varcharout";
-      string varchar_val = ql_value.string_value();
+      std::string varchar_val = ql_value.string_value();
       size = varchar_val.size();
       val = const_cast<char *>(varchar_val.c_str());
       uint64_t datum = arg_type->yb_to_datum(reinterpret_cast<char *>(val), size, &type_attrs);
@@ -956,7 +956,7 @@ Status SetValueFromQLBinaryHelper(
     }
     case INTERVALOID: {
       func_name = "interval_out";
-      string interval_val = ql_value.binary_value();
+      std::string interval_val = ql_value.binary_value();
       size = arg_type->datum_fixed_size;
       val = const_cast<char *>(interval_val.c_str());
       uint64_t datum = arg_type->yb_to_datum(reinterpret_cast<void *>(val), size, &type_attrs);
@@ -965,7 +965,7 @@ Status SetValueFromQLBinaryHelper(
     }
     case TIMETZOID: {
       func_name = "timetz_out";
-      string timetz_val = ql_value.binary_value();
+      std::string timetz_val = ql_value.binary_value();
       size = arg_type->datum_fixed_size;
       val = const_cast<char *>(timetz_val.c_str());
       uint64_t datum = arg_type->yb_to_datum(reinterpret_cast<uint8 *>(val), size, &type_attrs);
@@ -974,7 +974,7 @@ Status SetValueFromQLBinaryHelper(
     }
     case BITOID: {
       func_name = "bit_out";
-      string bit_val = ql_value.binary_value();
+      std::string bit_val = ql_value.binary_value();
       size = bit_val.size();
       val = const_cast<char *>(bit_val.c_str());
       uint64_t datum = arg_type->yb_to_datum(reinterpret_cast<uint8 *>(val), size, &type_attrs);
@@ -983,7 +983,7 @@ Status SetValueFromQLBinaryHelper(
     }
     case VARBITOID: {
       func_name = "varbit_out";
-      string varbit_val = ql_value.binary_value();
+      std::string varbit_val = ql_value.binary_value();
       size = varbit_val.size();
       val = const_cast<char *>(varbit_val.c_str());
       uint64_t datum = arg_type->yb_to_datum(reinterpret_cast<uint8 *>(val), size, &type_attrs);
@@ -998,7 +998,7 @@ Status SetValueFromQLBinaryHelper(
       if (!s.ok())
         return STATUS_SUBSTITUTE(
             InternalError, "Failed to deserialize DECIMAL from $1", ql_value.decimal_value());
-      string numeric_val = decimal.ToString();
+      std::string numeric_val = decimal.ToString();
       cdc_datum_message->set_datum_double(std::stod(numeric_val));
       break;
     }
@@ -1067,7 +1067,7 @@ Status SetValueFromQLBinaryHelper(
     }
     case UUIDOID: {
       func_name = "uuid_out";
-      string uuid_val = ql_value.binary_value();
+      std::string uuid_val = ql_value.binary_value();
       size = uuid_val.size();
       val = const_cast<char *>(uuid_val.c_str());
       uint64_t datum =
@@ -1086,7 +1086,7 @@ Status SetValueFromQLBinaryHelper(
     }
     case TSQUERYOID: {
       func_name = "tsqueryout";
-      string tsquery_val = ql_value.binary_value();
+      std::string tsquery_val = ql_value.binary_value();
       size = tsquery_val.size();
       val = const_cast<char *>(tsquery_val.c_str());
       uint64_t datum = arg_type->yb_to_datum(reinterpret_cast<uint8 *>(val), size, &type_attrs);
@@ -1113,7 +1113,7 @@ Status SetValueFromQLBinaryHelper(
     }
     case JSONBOID: {
       func_name = "jsonb_out";
-      string jsonb_val = ql_value.binary_value();
+      std::string jsonb_val = ql_value.binary_value();
       size = jsonb_val.size();
       val = const_cast<char *>(jsonb_val.c_str());
       uint64_t datum = arg_type->yb_to_datum(reinterpret_cast<void *>(val), size, &type_attrs);
@@ -1122,7 +1122,7 @@ Status SetValueFromQLBinaryHelper(
     }
     case TXID_SNAPSHOTOID: {
       func_name = "txid_snapshot_out";
-      string txid_val = ql_value.binary_value();
+      std::string txid_val = ql_value.binary_value();
       size = txid_val.size();
       val = const_cast<char *>(txid_val.c_str());
       uint64_t datum = arg_type->yb_to_datum(reinterpret_cast<void *>(val), size, &type_attrs);
@@ -1149,7 +1149,7 @@ Status SetValueFromQLBinaryHelper(
     }
     case CSTRINGOID: {
       func_name = "cstring_out";
-      string cstring_val = ql_value.string_value();
+      std::string cstring_val = ql_value.string_value();
       size = cstring_val.size();
       val = const_cast<char *>(cstring_val.c_str());
       uint64_t datum = arg_type->yb_to_datum(reinterpret_cast<char *>(val), size, &type_attrs);
@@ -1242,7 +1242,7 @@ Status SetValueFromQLBinaryHelper(
       size = arg_type->datum_fixed_size;
       uint64_t enum_oid =
           arg_type->yb_to_datum(reinterpret_cast<int64 *>(&yb_enum_oid), size, &type_attrs);
-      string label = "";
+      std::string label = "";
       if (enum_oid_label_map.find((uint32_t)enum_oid) != enum_oid_label_map.end()) {
         label = enum_oid_label_map.at((uint32_t)enum_oid);
         VLOG(1) << "For enum oid: " << enum_oid << " found label" << label;
@@ -1282,7 +1282,7 @@ Status SetValueFromQLBinaryHelper(
     }
     case ANYRANGEOID: {
       func_name = "anyrange_out";
-      string anyrange_val = ql_value.binary_value();
+      std::string anyrange_val = ql_value.binary_value();
       size = anyrange_val.size();
       val = const_cast<char *>(anyrange_val.c_str());
       uint64_t datum = arg_type->yb_to_datum(reinterpret_cast<uint8 *>(val), size, &type_attrs);
@@ -1292,7 +1292,7 @@ Status SetValueFromQLBinaryHelper(
 
     case INT2VECTOROID: {
       func_name = "int2vectorout";
-      string int2vector_val = ql_value.binary_value();
+      std::string int2vector_val = ql_value.binary_value();
       size = int2vector_val.size();
       val = const_cast<char *>(int2vector_val.c_str());
       uint64_t datum = arg_type->yb_to_datum(reinterpret_cast<uint8 *>(val), size, &type_attrs);
@@ -1302,7 +1302,7 @@ Status SetValueFromQLBinaryHelper(
 
     case OIDVECTOROID: {
       func_name = "oidvectorout";
-      string oidvector_val = ql_value.binary_value();
+      std::string oidvector_val = ql_value.binary_value();
       size = oidvector_val.size();
       val = const_cast<char *>(oidvector_val.c_str());
       uint64_t datum = arg_type->yb_to_datum(reinterpret_cast<uint8 *>(val), size, &type_attrs);
@@ -1312,7 +1312,7 @@ Status SetValueFromQLBinaryHelper(
 
     case TSVECTOROID: {
       func_name = "tsvectorout";
-      string tsvector_val = ql_value.binary_value();
+      std::string tsvector_val = ql_value.binary_value();
       size = tsvector_val.size();
       val = const_cast<char *>(tsvector_val.c_str());
       uint64_t datum = arg_type->yb_to_datum(reinterpret_cast<uint8 *>(val), size, &type_attrs);
@@ -1322,7 +1322,7 @@ Status SetValueFromQLBinaryHelper(
 
     case GTSVECTOROID: {
       func_name = "gtsvectorout";
-      string gtsvector_val = ql_value.binary_value();
+      std::string gtsvector_val = ql_value.binary_value();
       size = gtsvector_val.size();
       val = const_cast<char *>(gtsvector_val.c_str());
       uint64_t datum = arg_type->yb_to_datum(reinterpret_cast<uint8 *>(val), size, &type_attrs);
@@ -1332,7 +1332,7 @@ Status SetValueFromQLBinaryHelper(
 
     case POLYGONOID: {
       func_name = "poly_out";
-      string polygon_val = ql_value.binary_value();
+      std::string polygon_val = ql_value.binary_value();
       size = polygon_val.size();
       val = const_cast<char *>(polygon_val.c_str());
       uint64_t datum = arg_type->yb_to_datum(reinterpret_cast<uint8 *>(val), size, &type_attrs);

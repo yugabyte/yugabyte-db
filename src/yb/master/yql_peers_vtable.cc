@@ -63,7 +63,7 @@ Result<std::shared_ptr<QLRowBlock>> PeersVTable::RetrieveData(
   // are dead. As a result, the master can't distinguish between nodes that are part of the
   // cluster and are dead vs nodes that have been removed from the cluster. Since, we might
   // change the cluster topology often, for now its safe to just have the live nodes here.
-  vector<shared_ptr<TSDescriptor> > descs;
+  std::vector<shared_ptr<TSDescriptor> > descs;
   GetSortedLiveDescriptors(&descs);
 
   auto& resolver = master_->messenger()->resolver();

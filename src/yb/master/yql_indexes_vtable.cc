@@ -35,13 +35,13 @@ YQLIndexesVTable::YQLIndexesVTable(const TableName& table_name,
 
 namespace {
 
-const string& ColumnName(const Schema& schema, const ColumnId id) {
+const std::string& ColumnName(const Schema& schema, const ColumnId id) {
   auto column = schema.column_by_id(id);
   DCHECK(column.ok());
   return column->name();
 }
 
-string QLExpressionPBToPredicateString(const QLExpressionPB& where_expr, const Schema& schema) {
+std::string QLExpressionPBToPredicateString(const QLExpressionPB& where_expr, const Schema& schema) {
   // TODO(Piyush): Move this to some sort of util file and handle more cases if later we support
   // them in partial index predicate.
   switch (where_expr.expr_case()) {
@@ -125,7 +125,7 @@ Result<std::shared_ptr<QLRowBlock>> YQLIndexesVTable::RetrieveData(
     RETURN_NOT_OK(SetColumnValue(kIndexName, table->name(), &row));
     RETURN_NOT_OK(SetColumnValue(kKind, "COMPOSITES", &row));
 
-    string target;
+    std::string target;
     IndexInfo index_info = indexed_table->GetIndexInfo(table->id());
     for (size_t i = 0; i < index_info.hash_column_count(); i++) {
       if (index_info.use_mangled_column_name()) {
@@ -154,7 +154,7 @@ Result<std::shared_ptr<QLRowBlock>> YQLIndexesVTable::RetrieveData(
       }
     }
 
-    string include;
+    std::string include;
     for (size_t i = index_info.hash_column_count() + index_info.range_column_count();
          i < index_info.columns().size(); i++) {
       if (index_info.use_mangled_column_name()) {
@@ -169,7 +169,7 @@ Result<std::shared_ptr<QLRowBlock>> YQLIndexesVTable::RetrieveData(
       }
     }
 
-    string predicate;
+    std::string predicate;
     if (index_info.where_predicate_spec()) {
       predicate = QLExpressionPBToPredicateString(index_info.where_predicate_spec()->where_expr(),
                                                   indexed_schema);

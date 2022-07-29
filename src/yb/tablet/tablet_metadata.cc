@@ -391,10 +391,10 @@ Result<RaftGroupMetadataPtr> RaftGroupMetadata::CreateNew(
     wal_top_dir = wal_root_dirs[0];
   }
 
-  const string table_dir_name = Substitute("table-$0", data.table_info->table_id);
-  const string tablet_dir_name = MakeTabletDirName(data.raft_group_id);
-  const string wal_dir = JoinPathSegments(wal_top_dir, table_dir_name, tablet_dir_name);
-  const string rocksdb_dir = JoinPathSegments(
+  const std::string table_dir_name = Substitute("table-$0", data.table_info->table_id);
+  const std::string tablet_dir_name = MakeTabletDirName(data.raft_group_id);
+  const std::string wal_dir = JoinPathSegments(wal_top_dir, table_dir_name, tablet_dir_name);
+  const std::string rocksdb_dir = JoinPathSegments(
       data_top_dir, FsManager::kRocksDBDirName, table_dir_name, tablet_dir_name);
 
   RaftGroupMetadataPtr ret(new RaftGroupMetadata(data, rocksdb_dir, wal_dir));
@@ -423,7 +423,7 @@ Result<RaftGroupMetadataPtr> RaftGroupMetadata::TEST_LoadOrCreate(
     }
     return metadata.status();
   }
-  string data_root_dir = data.fs_manager->GetDataRootDirs()[0];
+  std::string data_root_dir = data.fs_manager->GetDataRootDirs()[0];
   data.fs_manager->SetTabletPathByDataPath(data.raft_group_id, data_root_dir);
   return CreateNew(data, data_root_dir);
 }
@@ -564,7 +564,7 @@ Status RaftGroupMetadata::DeleteSuperBlock() {
                    tablet_data_state_));
   }
 
-  string path = VERIFY_RESULT(fs_manager_->GetRaftGroupMetadataPath(raft_group_id_));
+  std::string path = VERIFY_RESULT(fs_manager_->GetRaftGroupMetadataPath(raft_group_id_));
   RETURN_NOT_OK_PREPEND(fs_manager_->env()->DeleteFile(path),
                         "Unable to delete superblock for Raft group " + raft_group_id_);
   return Status::OK();
@@ -870,7 +870,7 @@ void RaftGroupMetadata::SetPartitionSchema(const PartitionSchema& partition_sche
 }
 
 void RaftGroupMetadata::SetTableName(
-    const string& namespace_name, const string& table_name, const TableId& table_id) {
+    const std::string& namespace_name, const std::string& table_name, const TableId& table_id) {
   std::lock_guard<MutexType> lock(data_mutex_);
   auto& tables = kv_store_.tables;
   auto& id = table_id.empty() ? primary_table_id_ : table_id;
@@ -962,7 +962,7 @@ void RaftGroupMetadata::RemoveTable(const TableId& table_id) {
   }
 }
 
-string RaftGroupMetadata::data_root_dir() const {
+std::string RaftGroupMetadata::data_root_dir() const {
   const auto& rocksdb_dir = kv_store_.rocksdb_dir;
   if (rocksdb_dir.empty()) {
     return "";
@@ -975,7 +975,7 @@ string RaftGroupMetadata::data_root_dir() const {
   }
 }
 
-string RaftGroupMetadata::wal_root_dir() const {
+std::string RaftGroupMetadata::wal_root_dir() const {
   std::string wal_dir = this->wal_dir();
 
   if (wal_dir.empty()) {
@@ -1075,7 +1075,7 @@ void RaftGroupMetadata::set_tablet_data_state(TabletDataState state) {
   tablet_data_state_ = state;
 }
 
-string RaftGroupMetadata::LogPrefix() const {
+std::string RaftGroupMetadata::LogPrefix() const {
   return consensus::MakeTabletLogPrefix(raft_group_id_, fs_manager_->uuid());
 }
 

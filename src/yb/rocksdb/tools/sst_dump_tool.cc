@@ -98,7 +98,7 @@ Status SstFileReader::GetTableReader(const std::string& file_path) {
   // read table magic number
   Footer footer;
 
-  unique_ptr<RandomAccessFile> file;
+  std::unique_ptr<RandomAccessFile> file;
   uint64_t file_size;
   Status s = options_.env->NewRandomAccessFile(file_path, &file, soptions_);
   if (s.ok()) {
@@ -134,10 +134,10 @@ Status SstFileReader::GetTableReader(const std::string& file_path) {
     s = NewTableReader(ioptions_, soptions_, *internal_comparator_, file_size,
                        &table_reader_);
     if (s.ok() && table_reader_->IsSplitSst()) {
-      unique_ptr<RandomAccessFile> data_file;
+      std::unique_ptr<RandomAccessFile> data_file;
       RETURN_NOT_OK(options_.env->NewRandomAccessFile(
           TableBaseToDataFileName(file_path), &data_file, soptions_));
-      unique_ptr<RandomAccessFileReader> data_file_reader(
+      std::unique_ptr<RandomAccessFileReader> data_file_reader(
           new RandomAccessFileReader(std::move(data_file)));
       table_reader_->SetDataFileReader(std::move(data_file_reader));
     }
@@ -148,10 +148,10 @@ Status SstFileReader::GetTableReader(const std::string& file_path) {
 Status SstFileReader::NewTableReader(
     const ImmutableCFOptions& ioptions, const EnvOptions& soptions,
     const InternalKeyComparator& internal_comparator, uint64_t file_size,
-    unique_ptr<TableReader>* table_reader) {
+    std::unique_ptr<TableReader>* table_reader) {
   // We need to turn off pre-fetching of index and filter nodes for
   // BlockBasedTable
-  shared_ptr<BlockBasedTableFactory> block_table_factory =
+  std::shared_ptr<BlockBasedTableFactory> block_table_factory =
       dynamic_pointer_cast<BlockBasedTableFactory>(options_.table_factory);
 
   if (block_table_factory) {
@@ -171,7 +171,7 @@ Status SstFileReader::NewTableReader(
 }
 
 Status SstFileReader::DumpTable(const std::string& out_filename) {
-  unique_ptr<WritableFile> out_file;
+  std::unique_ptr<WritableFile> out_file;
   Env* env = Env::Default();
   RETURN_NOT_OK(env->NewWritableFile(out_filename, &out_file, soptions_));
   Status s = table_reader_->DumpTable(out_file.get());
@@ -181,20 +181,20 @@ Status SstFileReader::DumpTable(const std::string& out_filename) {
 
 uint64_t SstFileReader::CalculateCompressedTableSize(
     const TableBuilderOptions& tb_options, size_t block_size) {
-  unique_ptr<WritableFile> out_file;
-  unique_ptr<Env> env(NewMemEnv(Env::Default()));
+  std::unique_ptr<WritableFile> out_file;
+  std::unique_ptr<Env> env(NewMemEnv(Env::Default()));
   CHECK_OK(env->NewWritableFile(testFileName, &out_file, soptions_));
-  unique_ptr<WritableFileWriter> dest_writer;
+  std::unique_ptr<WritableFileWriter> dest_writer;
   dest_writer.reset(new WritableFileWriter(std::move(out_file), soptions_));
   BlockBasedTableOptions table_options;
   table_options.block_size = block_size;
   BlockBasedTableFactory block_based_tf(table_options);
-  unique_ptr<TableBuilder> table_builder;
+  std::unique_ptr<TableBuilder> table_builder;
   table_builder = block_based_tf.NewTableBuilder(
       tb_options,
       TablePropertiesCollectorFactory::Context::kUnknownColumnFamily,
       dest_writer.get());
-  unique_ptr<InternalIterator> iter(table_reader_->NewIterator(ReadOptions()));
+  std::unique_ptr<InternalIterator> iter(table_reader_->NewIterator(ReadOptions()));
   for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
     if (!iter->status().ok()) {
       fputs(iter->status().ToString().c_str(), stderr);

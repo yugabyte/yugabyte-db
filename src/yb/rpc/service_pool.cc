@@ -68,7 +68,7 @@
 
 using namespace std::literals;
 using namespace std::placeholders;
-using std::shared_ptr;
+
 using strings::Substitute;
 
 DEFINE_int64(max_time_in_queue_ms, 6000,
@@ -112,6 +112,9 @@ METRIC_DEFINE_counter(server, rpcs_queue_overflow,
 
 namespace yb {
 namespace rpc {
+
+using std::string;
+using std::shared_ptr;
 
 namespace {
 

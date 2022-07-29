@@ -240,8 +240,8 @@ class CqlSecondaryIndexWriter : public load_generator::SingleThreadedWriter {
 
   void ConfigureSession() override;
   void CloseSession() override;
-  bool Write(int64_t key_index, const string& key_str, const string& value_str) override;
-  void HandleInsertionFailure(int64_t key_index, const string& key_str) override;
+  bool Write(int64_t key_index, const std::string& key_str, const std::string& value_str) override;
+  void HandleInsertionFailure(int64_t key_index, const std::string& key_str) override;
 };
 
 void CqlSecondaryIndexWriter::ConfigureSession() {
@@ -255,7 +255,7 @@ void CqlSecondaryIndexWriter::CloseSession() {
 }
 
 bool CqlSecondaryIndexWriter::Write(
-    int64_t key_index, const string& key_str, const string& value_str) {
+    int64_t key_index, const std::string& key_str, const std::string& value_str) {
   auto stmt = prepared_insert_.Bind();
   stmt.Bind(0, key_str);
   stmt.Bind(1, value_str);
@@ -267,7 +267,7 @@ bool CqlSecondaryIndexWriter::Write(
   return true;
 }
 
-void CqlSecondaryIndexWriter::HandleInsertionFailure(int64_t key_index, const string& key_str) {
+void CqlSecondaryIndexWriter::HandleInsertionFailure(int64_t key_index, const std::string& key_str) {
 }
 
 class CqlSecondaryIndexReader : public load_generator::SingleThreadedReader {
@@ -284,7 +284,7 @@ class CqlSecondaryIndexReader : public load_generator::SingleThreadedReader {
   void ConfigureSession() override;
   void CloseSession() override;
   load_generator::ReadStatus PerformRead(
-      int64_t key_index, const string& key_str, const string& expected_value) override;
+      int64_t key_index, const std::string& key_str, const std::string& expected_value) override;
 };
 
 void CqlSecondaryIndexReader::ConfigureSession() {
@@ -298,7 +298,7 @@ void CqlSecondaryIndexReader::CloseSession() {
 }
 
 load_generator::ReadStatus CqlSecondaryIndexReader::PerformRead(
-      int64_t key_index, const string& key_str, const string& expected_value) {
+      int64_t key_index, const std::string& key_str, const std::string& expected_value) {
   auto stmt = prepared_select_.Bind();
   stmt.Bind(0, expected_value);
   auto result = session_.ExecuteWithResult(stmt);

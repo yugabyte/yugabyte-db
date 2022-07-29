@@ -13,6 +13,8 @@
 
 #include "yb/common/doc_hybrid_time.h"
 
+#include <string>
+
 #include "yb/gutil/casts.h"
 
 #include "yb/util/bytes_formatter.h"
@@ -25,6 +27,8 @@
 #include "yb/util/status_format.h"
 #include "yb/util/varint.h"
 
+namespace yb {
+
 using yb::util::VarInt;
 using yb::util::FastEncodeDescendingSignedVarInt;
 using yb::util::FastDecodeDescendingSignedVarIntUnsafe;
@@ -35,7 +39,7 @@ using yb::QuotesType;
 using strings::Substitute;
 using strings::SubstituteAndAppend;
 
-namespace yb {
+using std::string;
 
 // It does not really matter what write id we use here. We determine DocHybridTime validity based
 // on its HybridTime component's validity. However, given that HybridTime::kInvalid is close to the

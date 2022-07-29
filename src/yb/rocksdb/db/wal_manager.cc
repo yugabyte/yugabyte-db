@@ -450,7 +450,7 @@ Status WalManager::ReadFirstLine(const std::string& fname,
 
   std::unique_ptr<SequentialFile> file;
   Status status = env_->NewSequentialFile(fname, &file, env_options_);
-  unique_ptr<SequentialFileReader> file_reader(
+  std::unique_ptr<SequentialFileReader> file_reader(
       new SequentialFileReader(std::move(file)));
 
   if (!status.ok()) {

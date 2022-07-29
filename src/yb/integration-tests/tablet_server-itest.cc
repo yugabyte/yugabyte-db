@@ -45,7 +45,7 @@ TEST_F(TabletServerITest, TestProxyAddrs) {
 }
 
 TEST_F(TabletServerITest, TestProxyAddrsNonDefault) {
-  std::vector<string> ts_flags, master_flags;
+  std::vector<std::string> ts_flags, master_flags;
   ts_flags.push_back("--cql_proxy_bind_address=127.0.0.1${index}");
   std::unique_ptr<FileLock> redis_port_file_lock;
   auto redis_port = GetFreePort(&redis_port_file_lock);

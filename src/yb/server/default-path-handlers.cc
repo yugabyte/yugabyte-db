@@ -167,7 +167,7 @@ static void FlagsHandler(const Webserver::WebRequest& req, Webserver::WebRespons
   if (FLAGS_TEST_mini_cluster_mode) {
     const string* custom_varz_ptr = FindOrNull(req.parsed_args, "TEST_custom_varz");
     if (custom_varz_ptr != nullptr) {
-      map<string, string> varz;
+      std::map<std::string, std::string> varz;
       SplitStringToMapUsing(*custom_varz_ptr, "\n", &varz);
 
       // Replace values for existing flags.
@@ -284,7 +284,7 @@ static MetricLevel MetricLevelFromName(const std::string& level) {
 }
 
 static void ParseRequestOptions(const Webserver::WebRequest& req,
-                                vector<string> *requested_metrics,
+                                std::vector<std::string> *requested_metrics,
                                 MetricPrometheusOptions *promethus_opts,
                                 MetricJsonOptions *json_opts = nullptr,
                                 JsonWriter::Mode *json_mode = nullptr) {
@@ -328,7 +328,7 @@ static void ParseRequestOptions(const Webserver::WebRequest& req,
 
 static void WriteMetricsAsJson(const MetricRegistry* const metrics,
                                const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
-  vector<string> requested_metrics;
+  std::vector<std::string> requested_metrics;
   MetricJsonOptions opts;
   JsonWriter::Mode json_mode;
   ParseRequestOptions(req, &requested_metrics, /* prometheus opts */ nullptr, &opts, &json_mode);
@@ -340,9 +340,11 @@ static void WriteMetricsAsJson(const MetricRegistry* const metrics,
               "Couldn't write JSON metrics over HTTP");
 }
 
-static void WriteMetricsForPrometheus(const MetricRegistry* const metrics,
-                               const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
-  vector<string> requested_metrics;
+static void WriteMetricsForPrometheus(
+    const MetricRegistry* const metrics,
+    const Webserver::WebRequest& req,
+    Webserver::WebResponse* resp) {
+  std::vector<std::string> requested_metrics;
   MetricPrometheusOptions opts;
   ParseRequestOptions(req, &requested_metrics, &opts);
 

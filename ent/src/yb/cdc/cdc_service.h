@@ -89,7 +89,7 @@ struct TabletCDCCheckpointInfo {
 };
 
 using TabletOpIdMap = std::unordered_map<TabletId, TabletCDCCheckpointInfo>;
-using TabletIdStreamIdSet = std::set<pair<TabletId, CDCStreamId>>;
+using TabletIdStreamIdSet = std::set<std::pair<TabletId, CDCStreamId>>;
 
 class CDCServiceImpl : public CDCServiceIf {
  public:
@@ -137,7 +137,7 @@ class CDCServiceImpl : public CDCServiceIf {
                           rpc::RpcContext context) override;
 
   Status UpdateCdcReplicatedIndexEntry(
-      const string& tablet_id, int64 replicated_index, boost::optional<int64> replicated_term,
+      const std::string& tablet_id, int64 replicated_index, boost::optional<int64> replicated_term,
       const OpId& cdc_sdk_replicated_op, const MonoDelta& cdc_sdk_op_id_expiration);
 
   Result<SetCDCCheckpointResponsePB> SetCDCCheckpoint(
@@ -194,7 +194,7 @@ class CDCServiceImpl : public CDCServiceIf {
   Result<OpId> GetLastCheckpoint(const ProducerTabletInfo& producer_tablet,
                                  const client::YBSessionPtr& session);
 
-  Result<std::vector<pair<std::string, std::string>>> GetDBStreamInfo(
+  Result<std::vector<std::pair<std::string, std::string>>> GetDBStreamInfo(
           const std::string& db_stream_id,
           const client::YBSessionPtr& session);
 
@@ -332,7 +332,7 @@ class CDCServiceImpl : public CDCServiceIf {
       TabletIdStreamIdSet* tablet_stream_to_be_deleted = nullptr);
 
   Status SetInitialCheckPoint(
-      const OpId& checkpoint, const string& tablet_id,
+      const OpId& checkpoint, const std::string& tablet_id,
       const std::shared_ptr<tablet::TabletPeer>& tablet_peer);
 
   Status UpdateChildrenTabletsOnSplitOp(

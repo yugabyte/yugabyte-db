@@ -172,8 +172,8 @@ Result<OpId> GetLastOpIdForReplica(
     const MonoDelta& timeout);
 
 // Creates server vector from map.
-vector<TServerDetails*> TServerDetailsVector(const TabletServerMap& tablet_servers);
-vector<TServerDetails*> TServerDetailsVector(const TabletServerMapUnowned& tablet_servers);
+std::vector<TServerDetails*> TServerDetailsVector(const TabletServerMap& tablet_servers);
+std::vector<TServerDetails*> TServerDetailsVector(const TabletServerMapUnowned& tablet_servers);
 
 // Creates copy of tablet server map, which does n  ot own TServerDetails.
 TabletServerMapUnowned CreateTabletServerMapUnowned(const TabletServerMap& tablet_servers,
@@ -214,8 +214,8 @@ Status WaitForServersToAgree(const MonoDelta& timeout,
                              MustBeCommitted must_be_committed = MustBeCommitted::kFalse);
 
 Status WaitForServersToAgree(const MonoDelta& timeout,
-                             const vector<TServerDetails*>& tablet_servers,
-                             const string& tablet_id,
+                             const std::vector<TServerDetails*>& tablet_servers,
+                             const std::string& tablet_id,
                              int64_t minimum_index,
                              int64_t* actual_index = nullptr,
                              MustBeCommitted must_be_committed = MustBeCommitted::kFalse);
@@ -336,20 +336,20 @@ Status FindTabletLeader(const TabletServerMap& tablet_servers,
                         TServerDetails** leader);
 
 Status FindTabletLeader(const TabletServerMapUnowned& tablet_servers,
-                        const string& tablet_id,
+                        const std::string& tablet_id,
                         const MonoDelta& timeout,
                         TServerDetails** leader);
 
-Status FindTabletLeader(const vector<TServerDetails*>& tservers,
-                        const string& tablet_id,
+Status FindTabletLeader(const std::vector<TServerDetails*>& tservers,
+                        const std::string& tablet_id,
                         const MonoDelta& timeout,
                         TServerDetails** leader);
 
 // Grabs list of followers using FindTabletLeader() above.
 Status FindTabletFollowers(const TabletServerMapUnowned& tablet_servers,
-                           const string& tablet_id,
+                           const std::string& tablet_id,
                            const MonoDelta& timeout,
-                           vector<TServerDetails*>* followers);
+                           std::vector<TServerDetails*>* followers);
 
 // Start an election on the specified tserver.
 // 'timeout' only refers to the RPC asking the peer to start an election. The

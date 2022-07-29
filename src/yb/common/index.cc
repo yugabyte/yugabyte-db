@@ -173,7 +173,7 @@ bool IndexInfo::IsColumnCovered(const std::string& column_name) const {
   return false;
 }
 
-int32_t IndexInfo::IsExprCovered(const string& expr_name) const {
+int32_t IndexInfo::IsExprCovered(const std::string& expr_name) const {
   // CHECKING if an expression is covered.
   // - If IndexColumn name is a substring of "expr_name", the given expression is covered. That is,
   //   it can be computed using the value of this column.
@@ -228,7 +228,7 @@ bool IndexInfo::CheckColumnDependency(ColumnId column_id) const {
   return false;
 }
 
-boost::optional<size_t> IndexInfo::FindKeyIndex(const string& key_expr_name) const {
+boost::optional<size_t> IndexInfo::FindKeyIndex(const std::string& key_expr_name) const {
   for (size_t idx = 0; idx < key_column_count(); idx++) {
     const auto& col = columns_[idx];
     if (!col.column_name.empty() && key_expr_name.find(col.column_name) != key_expr_name.npos) {

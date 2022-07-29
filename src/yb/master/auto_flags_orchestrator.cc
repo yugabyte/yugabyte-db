@@ -57,7 +57,7 @@ namespace {
 // Add the flags to the config if it is not already present. Bumps up the config version and returns
 // true if any new flags were added. Config with version 0 is always bumped to 1.
 bool InsertFlagsToConfig(
-    const std::map<std::string, vector<AutoFlagInfo>>& eligible_flags, AutoFlagsConfigPB* config) {
+    const std::map<std::string, std::vector<AutoFlagInfo>>& eligible_flags, AutoFlagsConfigPB* config) {
   bool config_changed = false;
   // Initial config
   if (config->config_version() == 0) {

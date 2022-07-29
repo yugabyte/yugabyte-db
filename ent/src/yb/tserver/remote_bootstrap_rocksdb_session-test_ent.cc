@@ -84,7 +84,7 @@ TEST_F(RemoteBootstrapRocksDBTest, CheckSuperBlockHasSnapshotFields) {
   const string snapshot_dir = JoinPathSegments(top_snapshots_dir, kSnapshotId);
   ASSERT_TRUE(env_->FileExists(snapshot_dir));
 
-  vector<string> snapshot_files;
+  std::vector<string> snapshot_files;
   ASSERT_OK(env_->GetChildren(snapshot_dir, &snapshot_files));
 
   // Ignore "." and ".." entries in snapshot_dir.
