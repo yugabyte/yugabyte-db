@@ -45,37 +45,36 @@ enum class MetricLevel {
   kWarn = 2
 };
 
-struct MetricJsonOptions {
-  MetricJsonOptions() :
-    include_raw_histograms(false),
-    include_schema_info(false),
-    level(MetricLevel::kDebug) {
-  }
+enum class AggregationMetricLevel {
+  kServer,
+  kTable
+};
 
+struct MetricJsonOptions {
   // Include the raw histogram values and counts in the JSON output.
   // This allows consumers to do cross-server aggregation or window
   // data over time.
   // Default: false
-  bool include_raw_histograms;
+  bool include_raw_histograms = false;
 
   // Include the metrics "schema" information (i.e description, label,
   // unit, etc).
   // Default: false
-  bool include_schema_info;
+  bool include_schema_info = false;
 
   // Include the metrics at a level and above.
   // Default: debug
-  MetricLevel level;
+  MetricLevel level = MetricLevel::kDebug;
 };
 
 struct MetricPrometheusOptions {
-  MetricPrometheusOptions() :
-    level(MetricLevel::kDebug) {
-  }
-
   // Include the metrics at a level and above.
   // Default: debug
-  MetricLevel level;
+  MetricLevel level = MetricLevel::kDebug;
+
+  // Aggregation level for table metrics.
+  // Default: table
+  AggregationMetricLevel aggregation_level = AggregationMetricLevel::kTable;
 
   // Number of tables to include metrics for.
   uint32_t max_tables_metrics_breakdowns;
