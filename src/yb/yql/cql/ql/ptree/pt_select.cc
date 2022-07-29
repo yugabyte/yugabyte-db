@@ -298,6 +298,8 @@ class Selectivity {
       }
       const auto iter = id_to_idx.find(col_op.desc()->id());
       if (iter != id_to_idx.end()) {
+        LOG_IF(DFATAL, iter->second >= ops.size())
+            << "Bad op index=" << iter->second << " for vector size=" << ops.size();
         ops[iter->second] = GetOperatorSelectivity(col_op.yb_op());
       } else {
         num_non_key_ops_++;
