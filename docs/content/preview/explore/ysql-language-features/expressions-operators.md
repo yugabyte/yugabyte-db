@@ -114,7 +114,7 @@ The following table lists logical operators that you can use in YSQL.
 | NOT      | Negates the meaning of another operator. For example, `NOT IN`, `NOT BETWEEN`. |
 | OR       | Combines multiple conditions in a `WHERE` clause.            |
 
-The following example uses the sample table from [Comparison Operators](#comparison-operators) and shows a `SELECT` statement that returns employees whose employee numbers are greater than or equal to 1222 and salary is greater than or equal to 70000:
+The following example uses the sample table from [Comparison operators](#comparison-operators) and shows a `SELECT` statement that returns employees whose employee numbers are greater than or equal to 1222 and salary is greater than or equal to 70000:
 
 ```sql
 SELECT * FROM employees WHERE employee_no >= 1222 AND SALARY >= 70000;
@@ -153,7 +153,7 @@ Typical YSQL expressions are similar to formulas. The following types of express
 
 Boolean expressions retrieve data by matching a single value. The expression is included in the `WHERE` clause.
 
-The following example uses the sample table from [Comparison Operators](#comparison-operators) and shows a `SELECT` statement that returns employees whose salary is 60000:
+The following example uses the sample table from [Comparison operators](#comparison-operators) and shows a `SELECT` statement that returns employees whose salary is 60000:
 
 ```sql
 SELECT * FROM employees WHERE salary = 60000;
@@ -187,7 +187,7 @@ addition
 
 You can also use predefined functions such as `avg()`, `sum()`, or `count()` to perform aggregate data calculations on a table or a column.
 
-The following example uses the sample table from [Comparison Operators](#comparison-operators) and shows a `SELECT` statement that returns the number of employee rows:
+The following example uses the sample table from [Comparison operators](#comparison-operators) and shows a `SELECT` statement that returns the number of employee rows:
 
 ```sql
 SELECT count(*) AS "rows" FROM employees;

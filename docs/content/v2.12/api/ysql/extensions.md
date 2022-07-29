@@ -248,7 +248,7 @@ The [`uuid-ossp`](https://www.postgresql.org/docs/current/uuid-ossp.html) extens
 #### uuid-ossp example
 
 ```sql
-CREATE EXTENSION uuid-ossp;
+CREATE EXTENSION "uuid-ossp";
 ```
 
 Connect with `ysqlsh` and run:

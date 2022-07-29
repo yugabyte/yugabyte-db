@@ -82,7 +82,7 @@ To understand which standard SQL features we support, refer to the following tab
 | Partial indexes | ✓ | [Partial indexes documentation](../../indexes-constraints/partial-index-ysql/) |
 | Expression indexes | ✓ | [Expression indexes](../../indexes-constraints/expression-index-ysql/) |
 | Multi-column indexes | ✓  | |
-| Covering indexes | ✓  | |
+| Covering indexes | ✓  | [Covering indexes](../../indexes-constraints/covering-index-ysql/) |
 | Prefix indexes | ✗ | Implement using [Expression indexes](../../indexes-constraints/expression-index-ysql/) |
 | Spatial indexes | ✗  | |
 | Multiple indexes per query | ✗ | |

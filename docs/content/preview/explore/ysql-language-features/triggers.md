@@ -159,7 +159,7 @@ DROP TRIGGER [IF EXISTS] tr_name
 
 *tr_name* represents the trigger to be deleted if it exists. If you try to delete a non-existing trigger without using the `IF EXISTS` statement, the `DROP TRIGGER` statement results in an error, whereas using `IF EXISTS` to delete a non-existing trigger results in a notice. *tbl_name* represents the table associated with the trigger. The `CASCADE` option allows you to automatically delete objects that depend on the trigger and the `RESTRICT` option (default) allows you to refuse to delete the trigger if it has dependent objects.
 
-The following example demonstrates how to delete the `dept_changes` trigger used in the examples from [Creating Triggers](#creating-triggers):
+The following example demonstrates how to delete the `dept_changes` trigger used in the examples from [Create triggers](#create-triggers):
 
 ```sql
 DROP TRIGGER dept_changes ON employees;
@@ -227,7 +227,7 @@ CREATE EVENT TRIGGER tr_name ON event
 
 *tr_name*, which is unique in the database, represents the new trigger. *event* represents the event that triggers a call to the function  *function_name* whose return type is `event_trigger` (optional). You can define more than one trigger for the same event, in which case the triggers fire in alphabetical order based on the name of the trigger. If a `WHEN` condition is included in the `CREATE EVENT TRIGGER` statement, then the trigger is fired for specific commands. *filter_variable* needs to be set to`TAG`, as this is the only supported variable, and *filter_value* represents a list of values for *filter_variable*.
 
-The following example is based on examples from [Creating Triggers](#creating-triggers), except that the `record_dept_changes` function returns an event trigger instead of a regular trigger. The example shows how to create an  `sql_drop` trigger for one of the events currently supported by YSQL:
+The following example is based on examples from [Create triggers](#create-triggers), except that the `record_dept_changes` function returns an event trigger instead of a regular trigger. The example shows how to create an  `sql_drop` trigger for one of the events currently supported by YSQL:
 
 ```sql
 CREATE OR REPLACE FUNCTION record_dept_changes()

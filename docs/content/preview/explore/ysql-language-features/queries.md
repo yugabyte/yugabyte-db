@@ -126,7 +126,7 @@ The following syntax is used for setting an alias for an expression:
 SELECT expression AS alias_name FROM table_name;
 ```
 
-Using the table from [SELECT Examples](#select-examples), the following example demonstrates how to retrieve data that includes the employee name and department:
+Using the table from [SELECT examples](#select-examples), the following example demonstrates how to retrieve data that includes the employee name and department:
 
 ```sql
 SELECT name, department FROM employees;
@@ -173,7 +173,7 @@ SELECT list
 
 The `ORDER BY` clause is evaluated after `FROM` and `SELECT`. This gives you an opportunity to specify a column alias in the `SELECT` statement and use this alias in the `ORDER BY` clause.
 
-Using the table from [SELECT Examples](#select-examples), the following example demonstrates how sort employees based on their name in ascending order:
+Using the table from [SELECT examples](#select-examples), the following example demonstrates how sort employees based on their name in ascending order:
 
 ```sql
 SELECT name, department FROM employees ORDER BY name DESC;
@@ -243,7 +243,7 @@ SELECT DISTINCT ON (column_name_1) column_alias, column_name_2
   ORDER BY column_name_1, column_name_2;
 ```
 
-The following series of examples inserts new rows into the table from [SELECT Examples](#select-examples), then queries the `employees` table using `SELECT` with its `DISTINCT` option enabled, thus removing duplicate values, and then sorts the result set in descending order based on the employee name:
+The following series of examples inserts new rows into the table from [SELECT examples](#select-examples), then queries the `employees` table using `SELECT` with its `DISTINCT` option enabled, thus removing duplicate values, and then sorts the result set in descending order based on the employee name:
 
 ```sql
 INSERT INTO employees (employee_no, name, department)
@@ -296,7 +296,7 @@ SELECT list FROM table_name
 
 *condition* is a boolean expression or a combination of boolean expressions created with `AND` and `OR` logical operators. *condition* evaluates to `TRUE`, `FALSE`, or unknown. The result set only returns rows that cause *condition* to evaluate to `TRUE`.
 
-The following example uses the table from [SELECT Examples](#select-examples) to demonstrate how to use the `AND` operator to combine two Boolean expressions in order to find an employee number of a specific employee working for a specified department:
+The following example uses the table from [SELECT examples](#select-examples) to demonstrate how to use the `AND` operator to combine two Boolean expressions in order to find an employee number of a specific employee working for a specified department:
 
 ```sql
 SELECT employee_no FROM employees
@@ -350,7 +350,7 @@ John Smith      | Sales
 John Zimmerman  | Marketing
 ```
 
-YSQL also allows you to use numeric expressions and dates in the `WHERE` clause, as shown in the following examples that use the table from [SELECT Examples](#select-examples):
+YSQL also allows you to use numeric expressions and dates in the `WHERE` clause, as shown in the following examples that use the table from [SELECT examples](#select-examples):
 
 ```sql
 SELECT name FROM employees WHERE employee_no = 1000 + 222;
@@ -404,7 +404,7 @@ SELECT list FROM table_name
 
 Because rows are often stored in tables in an unspecified order, it is recommended that you include the `ORDER BY` clause in `SELECT` statements that contain the `LIMIT` clause.
 
-Using the table from [SELECT Examples](#select-examples), the following example demonstrates how retrieve the first two employees sorted by their number:
+Using the table from [SELECT examples](#select-examples), the following example demonstrates how retrieve the first two employees sorted by their number:
 
 ```sql
 SELECT employee_no, name FROM employees
@@ -452,7 +452,7 @@ value LIKE pattern
 
 The expression evaluates to `true` if *value* matches *pattern*.
 
-For example, if your goal is to find an employee and their department, yet you only know that the employee name starts with "Luci", you can execute the following query on a table created in [SELECT Examples](#select-examples):
+For example, if your goal is to find an employee and their department, yet you only know that the employee name starts with "Luci", you can execute the following query on a table created in [SELECT examples](#select-examples):
 
 ```sql
 SELECT name, department FROM employees WHERE name LIKE 'Luci%';
@@ -500,7 +500,7 @@ The purpose of the statement clause is to divide the rows by the values of the c
 
 The `GROUP BY` clause is evaluated after the `FROM` and `WHERE` clauses but before the `HAVING`, `SELECT`, `DISTINCT`, `ORDER BY`, and `LIMIT` clauses.
 
-Using the table from [SELECT Examples](#select-examples), the following example demonstrates how retrieve data from a table and group the result by `employee_no`:
+Using the table from [SELECT examples](#select-examples), the following example demonstrates how retrieve data from a table and group the result by `employee_no`:
 
 ```sql
 SELECT employee_no FROM employees GROUP BY employee_no;
@@ -531,7 +531,7 @@ The `GROUP BY` clause returns rows grouped by *column_1*.  The `HAVING` clause s
 
 The `HAVING` clause is evaluated after the `FROM`, `WHERE`, `GROUP BY`, but before the `SELECT`, `DISTINCT`, `ORDER BY`, and `LIMIT` clauses. Because the `HAVING` clause is evaluated before the `SELECT` clause, you cannot use column aliases in the `HAVING` clause.
 
-Using the table from [SELECT Examples](#select-examples), the following example demonstrates how to select the department that has more than one employee:
+Using the table from [SELECT examples](#select-examples), the following example demonstrates how to select the department that has more than one employee:
 
 ```sql
 SELECT department, COUNT (employee_no)
@@ -958,4 +958,4 @@ employee_no | name            | manager_id  | department
 1225        | Walter Marx     | 1222        | Sales
 ```
 
-Another way to execute complex hierarchical queries is to use a `tablefunc` extension. This extension provides several table functions, such as, for example, `normal_rand()` that creates values picked using a pseudorandom generator from an ideal normal distribution. For more information and examples, see [tablefunc](/preview/explore/ysql-language-features/pg-extensions/#tablefunc-example).
+Another way to execute complex hierarchical queries is to use a `tablefunc` extension. This extension provides several table functions, such as, for example, `normal_rand()` that creates values picked using a pseudorandom generator from an ideal normal distribution. For more information and examples, see [tablefunc](../../../explore/ysql-language-features/pg-extensions/#tablefunc-example).
