@@ -17,9 +17,6 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#ifndef YB_UTIL_STRING_UTIL_H
-#define YB_UTIL_STRING_UTIL_H
-
 #pragma once
 
 #include <sstream>
@@ -86,7 +83,7 @@ size_t ItemCount(const T& t, const Args&...args) {
 }
 
 template<class T, class... Args>
-void AppendItem(vector<string>* dest, const T& t, const Args&... args) {
+void AppendItem(std::vector<std::string>* dest, const T& t, const Args&... args) {
   return ToStringVectorHelper<T>::Append(dest, t, args...);
 }
 
@@ -129,12 +126,12 @@ template <class T>
 std::string RightPadToWidth(const T& val, int width) {
   std::stringstream ss;
   ss << val;
-  string ss_str = ss.str();
+  std::string ss_str = ss.str();
   int64_t padding = width - ss_str.size();
   if (padding <= 0) {
     return ss_str;
   }
-  return ss_str + string(padding, ' ');
+  return ss_str + std::string(padding, ' ');
 }
 
 // Returns true if s starts with substring start.
@@ -202,5 +199,3 @@ using yb::ToString;
 using yb::StringSplit;
 using yb::VectorToString;
 }
-
-#endif // YB_UTIL_STRING_UTIL_H
