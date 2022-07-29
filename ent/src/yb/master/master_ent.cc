@@ -77,6 +77,12 @@ Status Master::ReloadKeysAndCertificates() {
         options_.HostsString());
 }
 
+std::string Master::GetCertificateDetails() {
+  if(!secure_context_) return "";
+
+  return secure_context_.get()->GetCertificateDetails();
+}
+
 } // namespace enterprise
 } // namespace master
 } // namespace yb
