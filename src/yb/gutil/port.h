@@ -814,7 +814,6 @@ struct AlignType { typedef char result[Size]; };
 #endif
 
 namespace std {}  // Avoid error if we didn't see std.
-using namespace std; // NOLINT
 
 // VC++ doesn't understand "uint"
 #ifndef HAVE_UINT
