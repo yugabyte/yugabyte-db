@@ -83,13 +83,6 @@
 
 #include <glog/logging.h>
 
-using std::make_pair;
-using std::pair;
-
-using std::vector;
-
-
-
 //
 // Find*()
 //

@@ -57,21 +57,6 @@
 #include "yb/gutil/macros.h"
 #include "yb/gutil/port.h"
 
-using std::copy;
-using std::max;
-using std::min;
-using std::reverse;
-using std::sort;
-using std::swap;
-using std::deque;
-using std::binary_function;
-using std::less;
-using std::back_insert_iterator;
-using std::iterator_traits;
-
-using std::vector;
-
-
 namespace yb {
 
 // Sort and remove duplicates of an STL vector or deque.
@@ -95,8 +80,8 @@ template<class T> void STLClearObject(T* obj) {
 // Specialization for deque. Same as STLClearObject but doesn't call reserve
 // since deque doesn't have reserve.
 template <class T, class A>
-void STLClearObject(deque<T, A>* obj) {
-  deque<T, A> tmp;
+void STLClearObject(std::deque<T, A>* obj) {
+  std::deque<T, A> tmp;
   tmp.swap(*obj);
 }
 
@@ -112,7 +97,7 @@ template <class T> inline void STLClearIfBig(T* obj, size_t limit = 1<<20) {
 
 // Specialization for deque, which doesn't implement capacity().
 template <class T, class A>
-inline void STLClearIfBig(deque<T, A>* obj, size_t limit = 1<<20) {
+inline void STLClearIfBig(std::deque<T, A>* obj, size_t limit = 1<<20) {
   if (obj->size() >= limit) {
     STLClearObject(obj);
   } else {
@@ -232,7 +217,7 @@ void STLDeleteContainerPairSecondPointers(ForwardIterator begin,
 }
 
 template<typename T>
-inline void STLAssignToVector(vector<T>* vec,
+inline void STLAssignToVector(std::vector<T>* vec,
                               const T* ptr,
                               size_t n) {
   vec->resize(n);
@@ -243,7 +228,7 @@ inline void STLAssignToVector(vector<T>* vec,
 // Not faster; but we need the specialization so the function works at all
 // on the vector<bool> specialization.
 template<>
-inline void STLAssignToVector(vector<bool>* vec,
+inline void STLAssignToVector(std::vector<bool>* vec,
                               const bool* ptr,
                               size_t n) {
   vec->clear();
@@ -260,7 +245,7 @@ inline void STLAssignToVector(vector<bool>* vec,
 //      STLAssignToVectorChar(&vec, ptr, size);
 //      STLAssignToString(&str, ptr, size);
 
-inline void STLAssignToVectorChar(vector<char>* vec,
+inline void STLAssignToVectorChar(std::vector<char>* vec,
                                   const char* ptr,
                                   size_t n) {
   STLAssignToVector(vec, ptr, n);
@@ -798,9 +783,9 @@ BinaryOperateOnSecond<Pair, BinaryOp> BinaryOperate2nd(const BinaryOp& f) {
 // F has to be a model of AdaptableBinaryFunction.
 // G1 and G2 have to be models of AdabtableUnaryFunction.
 template<typename F, typename G1, typename G2>
-class BinaryComposeBinary : public binary_function<typename G1::argument_type,
-                                                   typename G2::argument_type,
-                                                   typename F::result_type> {
+class BinaryComposeBinary : public std::binary_function<typename G1::argument_type,
+                                                        typename G2::argument_type,
+                                                        typename F::result_type> {
  public:
   BinaryComposeBinary(F f, G1 g1, G2 g2) : f_(f), g1_(g1), g2_(g2) { }
 

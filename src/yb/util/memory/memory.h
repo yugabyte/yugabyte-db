@@ -65,15 +65,6 @@
 #include "yb/util/boost_mutex_utils.h"
 #include "yb/util/mutex.h"
 
-using std::copy;
-using std::max;
-using std::min;
-using std::numeric_limits;
-using std::reverse;
-using std::sort;
-using std::swap;
-using std::vector;
-
 namespace yb {
 
 class BufferAllocator;

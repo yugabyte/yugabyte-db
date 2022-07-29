@@ -49,9 +49,6 @@
 #include "yb/util/metrics.h"
 #include "yb/util/status_log.h"
 
-
-using std::vector;
-
 namespace yb {
 namespace tablet {
 

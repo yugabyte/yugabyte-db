@@ -21,11 +21,11 @@
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
+
 #include <iterator>
-using std::back_insert_iterator;
-using std::iterator_traits;
 #include <limits>
-using std::numeric_limits;
+#include <set>
+#include <map>
 
 #include "yb/gutil/integral_types.h"
 #include <glog/logging.h>
@@ -35,6 +35,14 @@ using std::numeric_limits;
 #include "yb/gutil/strings/ascii_ctype.h"
 #include "yb/gutil/strings/util.h"
 #include "yb/gutil/hash/hash.h"
+
+using std::vector;
+using std::string;
+using std::set;
+using std::back_insert_iterator;
+using std::iterator_traits;
+using std::numeric_limits;
+using std::map;
 
 // Implementations for some of the Split2 API. Much of the Split2 API is
 // templated so it exists in header files, either strings/split.h or

@@ -60,7 +60,6 @@ class InternalIterator;
 
 using std::unique_ptr;
 using std::unordered_map;
-using std::vector;
 extern const uint32_t kPlainTableVariableLength;
 
 struct PlainTableReaderFileInfo {

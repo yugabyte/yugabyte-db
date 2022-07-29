@@ -330,7 +330,7 @@ class Splitter {
   // use of this intermediate vector "v" can be removed.
   template <typename Container>
   Container ToContainer() {
-    vector<GStringPiece> v;
+    std::vector<GStringPiece> v;
     for (Iterator it = begin(); it != end_; ++it) {
       v.push_back(*it);
     }

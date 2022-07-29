@@ -241,21 +241,21 @@ std::string Utf8SafeCHexEscape(const GStringPiece& src);
 //      BackslashUnescape(BackslashEscape(src, ":\\"), ":\\") == src
 // ----------------------------------------------------------------------
 void BackslashEscape(const GStringPiece& src,
-                     const std::strings::CharSet& to_escape,
+                     const strings::CharSet& to_escape,
                      std::string* dest);
 void BackslashUnescape(const GStringPiece& src,
-                       const std::strings::CharSet& to_unescape,
+                       const strings::CharSet& to_unescape,
                        std::string* dest);
 
 inline std::string BackslashEscape(const GStringPiece& src,
-                                   const std::strings::CharSet& to_escape) {
+                                   const strings::CharSet& to_escape) {
   std::string s;
   BackslashEscape(src, to_escape, &s);
   return s;
 }
 
 inline std::string BackslashUnescape(const GStringPiece& src,
-                                     const std::strings::CharSet& to_unescape) {
+                                     const strings::CharSet& to_unescape) {
   std::string s;
   BackslashUnescape(src, to_unescape, &s);
   return s;

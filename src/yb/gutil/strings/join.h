@@ -238,9 +238,9 @@ inline std::string JoinStringsInArray(std::string const* const* components,
   return result;
 }
 
-inline std::string JoinStringsInArray(string const* components,
-                                 size_t num_components,
-                                 const char* delim) {
+inline std::string JoinStringsInArray(std::string const* components,
+                                      size_t num_components,
+                                      const char* delim) {
   std::string result;
   JoinStringsInArray(components, num_components, delim, &result);
   return result;

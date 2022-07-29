@@ -621,10 +621,10 @@ std::vector<char*>* SplitUsing(char* full, const char* delimiters);
 //    true, empty strings are omitted from the resulting vector.
 // ----------------------------------------------------------------------
 void SplitToVector(char* full, const char* delimiters,
-                   vector<char*>* vec,
+                   std::vector<char*>* vec,
                    bool omit_empty_strings);
 void SplitToVector(char* full, const char* delimiters,
-                   vector<const char*>* vec,
+                   std::vector<const char*>* vec,
                    bool omit_empty_strings);
 
 // ----------------------------------------------------------------------
@@ -638,7 +638,7 @@ void SplitToVector(char* full, const char* delimiters,
 // ----------------------------------------------------------------------
 void SplitGStringPieceToVector(const GStringPiece& full,
                               const char* delim,
-                              vector<GStringPiece>* vec,
+                              std::vector<GStringPiece>* vec,
                               bool omit_empty_strings);
 
 // ----------------------------------------------------------------------
@@ -792,18 +792,18 @@ void SplitStringIntoNPiecesAllowEmpty(const std::string& full,
 // ----------------------------------------------------------------------
 template <class T>
 bool SplitStringAndParse(GStringPiece source, GStringPiece delim,
-                         bool (*parse)(const string& str, T* value),
-                         vector<T>* result);
+                         bool (*parse)(const std::string& str, T* value),
+                         std::vector<T>* result);
 template <class Container>
 bool SplitStringAndParseToContainer(
     GStringPiece source, GStringPiece delim,
-    bool (*parse)(const string& str, typename Container::value_type* value),
+    bool (*parse)(const std::string& str, typename Container::value_type* value),
     Container* result);
 
 template <class List>
 bool SplitStringAndParseToList(
     GStringPiece source, GStringPiece delim,
-    bool (*parse)(const string& str, typename List::value_type* value),
+    bool (*parse)(const std::string& str, typename List::value_type* value),
     List* result);
 // ----------------------------------------------------------------------
 // SplitRange()
@@ -852,12 +852,12 @@ bool SplitRange(const char* rangestr, int* from, int* to);
 // See //util/csv/parser.h for more complete documentation.
 //
 // ----------------------------------------------------------------------
-void SplitCSVLine(char* line, vector<char*>* cols);
+void SplitCSVLine(char* line, std::vector<char*>* cols);
 void SplitCSVLineWithDelimiter(char* line, char delimiter,
-                               vector<char*>* cols);
+                               std::vector<char*>* cols);
 // SplitCSVLine string wrapper that internally makes a copy of string line.
-void SplitCSVLineWithDelimiterForStrings(const string& line, char delimiter,
-                                         vector<string>* cols);
+void SplitCSVLineWithDelimiterForStrings(const std::string& line, char delimiter,
+                                         std::vector<std::string>* cols);
 
 // ----------------------------------------------------------------------
 // SplitStructuredLine()
@@ -884,14 +884,14 @@ void SplitCSVLineWithDelimiterForStrings(const string& line, char delimiter,
 char* SplitStructuredLine(char* line,
                           char delimiter,
                           const char* symbol_pairs,
-                          vector<char*>* cols);
+                          std::vector<char*>* cols);
 
 // Similar to the function with the same name above, but splits a GStringPiece
 // into GStringPiece parts. Returns true if successful.
 bool SplitStructuredLine(GStringPiece line,
                          char delimiter,
                          const char* symbol_pairs,
-                         vector<GStringPiece>* cols);
+                         std::vector<GStringPiece>* cols);
 
 // ----------------------------------------------------------------------
 // SplitStructuredLineWithEscapes()
@@ -915,14 +915,14 @@ bool SplitStructuredLine(GStringPiece line,
 char* SplitStructuredLineWithEscapes(char* line,
                                      char delimiter,
                                      const char* symbol_pairs,
-                                     vector<char*>* cols);
+                                     std::vector<char*>* cols);
 
 // Similar to the function with the same name above, but splits a GStringPiece
 // into GStringPiece parts. Returns true if successful.
 bool SplitStructuredLineWithEscapes(GStringPiece line,
                                     char delimiter,
                                     const char* symbol_pairs,
-                                    vector<GStringPiece>* cols);
+                                    std::vector<GStringPiece>* cols);
 
 // ----------------------------------------------------------------------
 // DEPRECATED(jgm): See the "NEW API" comment about this function below for
@@ -973,10 +973,10 @@ bool SplitStructuredLineWithEscapes(GStringPiece line,
 //   vector<string> values = Split(key_values.second, AnyOf(vv_delim));
 //
 // ----------------------------------------------------------------------
-bool SplitStringIntoKeyValues(const string& line,
-                              const string& key_value_delimiters,
-                              const string& value_value_delimiters,
-                              string* key, vector<string>* values);
+bool SplitStringIntoKeyValues(const std::string& line,
+                              const std::string& key_value_delimiters,
+                              const std::string& value_value_delimiters,
+                              std::string* key, std::vector<std::string>* values);
 
 // ----------------------------------------------------------------------
 // SplitStringIntoKeyValuePairs()
@@ -1019,10 +1019,10 @@ bool SplitStringIntoKeyValues(const string& line,
 //   }
 //
 // ----------------------------------------------------------------------
-bool SplitStringIntoKeyValuePairs(const string& line,
-                                  const string& key_value_delimiters,
-                                  const string& key_value_pair_delimiters,
-                                  vector<pair<string, string> >* kv_pairs);
+bool SplitStringIntoKeyValuePairs(const std::string& line,
+                                  const std::string& key_value_delimiters,
+                                  const std::string& key_value_pair_delimiters,
+                                  std::vector<std::pair<std::string, std::string> >* kv_pairs);
 
 
 // ----------------------------------------------------------------------
@@ -1034,8 +1034,8 @@ bool SplitStringIntoKeyValuePairs(const string& line,
 //    whitespace (does not consume trailing whitespace), and returns
 //    a pointer beyond the last character parsed.
 // --------------------------------------------------------------------
-const char* SplitLeadingDec32Values(const char* next, vector<int32>* result);
-const char* SplitLeadingDec64Values(const char* next, vector<int64>* result);
+const char* SplitLeadingDec32Values(const char* next, std::vector<int32>* result);
+const char* SplitLeadingDec64Values(const char* next, std::vector<int64>* result);
 
 // ----------------------------------------------------------------------
 // SplitOneIntToken()
@@ -1121,8 +1121,8 @@ bool SplitOneHexUint64Token(const char** source, const char* delim,
 // SplitStringAndParse() -- see description above
 template <class T>
 bool SplitStringAndParse(GStringPiece source, GStringPiece delim,
-                         bool (*parse)(const string& str, T* value),
-                         vector<T>* result) {
+                         bool (*parse)(const std::string& str, T* value),
+                         std::vector<T>* result) {
   return SplitStringAndParseToList(source, delim, parse, result);
 }
 
@@ -1132,16 +1132,16 @@ namespace internal {
 template <class Container, class InsertPolicy>
 bool SplitStringAndParseToInserter(
     GStringPiece source, GStringPiece delim,
-    bool (*parse)(const string& str, typename Container::value_type* value),
+    bool (*parse)(const std::string& str, typename Container::value_type* value),
     Container* result, InsertPolicy insert_policy) {
   CHECK(NULL != parse);
   CHECK(NULL != result);
   CHECK(NULL != delim.data());
   CHECK_GT(delim.size(), 0);
   bool retval = true;
-  vector<GStringPiece> pieces = strings::Split(source,
-                                              strings::delimiter::AnyOf(delim),
-                                              strings::SkipEmpty());
+  std::vector<GStringPiece> pieces = strings::Split(source,
+                                                    strings::delimiter::AnyOf(delim),
+                                                    strings::SkipEmpty());
   for (const auto& piece : pieces) {
     typename Container::value_type t;
     if (parse(piece.as_string(), &t)) {
@@ -1173,7 +1173,7 @@ struct BackInsertPolicy {
 template <class Container>
 bool SplitStringAndParseToContainer(
     GStringPiece source, GStringPiece delim,
-    bool (*parse)(const string& str, typename Container::value_type* value),
+    bool (*parse)(const std::string& str, typename Container::value_type* value),
     Container* result) {
   return strings::internal::SplitStringAndParseToInserter(
       source, delim, parse, result, strings::internal::BasicInsertPolicy());
@@ -1183,7 +1183,7 @@ bool SplitStringAndParseToContainer(
 template <class List>
 bool SplitStringAndParseToList(
     GStringPiece source, GStringPiece delim,
-    bool (*parse)(const string& str, typename List::value_type* value),
+    bool (*parse)(const std::string& str, typename List::value_type* value),
     List* result) {
   return strings::internal::SplitStringAndParseToInserter(
       source, delim, parse, result, strings::internal::BackInsertPolicy());
