@@ -137,6 +137,9 @@ public class NodeAgentHandlerTest extends FakeDBApplication {
     nodeAgent = nodeAgentHandler.updateRegistration(customer.uuid, nodeAgentUuid);
     verifyKeys(nodeAgentUuid);
     // Complete upgrading.
+    payload.state = State.UPGRADED;
+    nodeAgentHandler.updateState(customer.uuid, nodeAgentUuid, payload);
+    // Restart the node agent and report live to the server.
     payload.state = State.LIVE;
     nodeAgentHandler.updateState(customer.uuid, nodeAgentUuid, payload);
     verifyKeys(nodeAgentUuid);
