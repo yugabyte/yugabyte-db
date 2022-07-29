@@ -2,6 +2,7 @@
 title: YugabyteDB Quick start
 headerTitle: Quick start
 linkTitle: Quick start
+headcontent: Create a local cluster on a single host.
 description: Get started using YugabyteDB in less than five minutes on Docker.
 aliases:
   - /quick-start/docker/
@@ -22,8 +23,6 @@ type: docs
     </li>
   </ul>
 </div>
-
-Test YugabyteDB's APIs and core features by creating a local cluster on a single host.
 
 The local cluster setup on a single host is intended for development and learning. For production deployment, performance benchmarking, or deploying a true multi-node on multi-host setup, see [Deploy YugabyteDB](../../deploy/).
 
@@ -56,12 +55,11 @@ The local cluster setup on a single host is intended for development and learnin
   </ul>
 </div>
 
-
-Note that the Docker option to run local clusters is recommended only for advanced Docker users. This is due to the fact that running stateful applications such as YugabyteDB in Docker is more complex and error-prone than running stateless applications.
-
 ## Install YugabyteDB
 
 Installing YugabyteDB involves completing [prerequisites](#prerequisites) and them performing the actual [installation](#install).
+
+Note that the Docker option to run local clusters is recommended only for advanced Docker users. This is due to the fact that running stateful applications such as YugabyteDB in Docker is more complex and error-prone than running stateless applications.
 
 ### Prerequisites
 

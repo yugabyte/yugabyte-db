@@ -2,7 +2,8 @@
 title: YugabyteDB Quick start
 headerTitle: Quick start
 linkTitle: Quick start
-description: Get started using YugabyteDB in less than five minutes on Linux.
+headcontent: Test YugabyteDB's APIs and core features by creating a local cluster on a single host.
+headcontent: Create a local cluster on a single host.
 aliases:
   - /quick-start/linux/
 type: docs
@@ -22,8 +23,6 @@ type: docs
     </li>
   </ul>
 </div>
-
-Test YugabyteDB's APIs and core features by creating a local cluster on a single host.
 
 The local cluster setup on a single host is intended for development and learning. For production deployment, performance benchmarking, or deploying a true multi-node on multi-host setup, see [Deploy YugabyteDB](../../deploy/).
 
@@ -55,7 +54,6 @@ The local cluster setup on a single host is intended for development and learnin
     </li>
   </ul>
 </div>
-
 
 ## Install YugabyteDB
 
