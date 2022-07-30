@@ -140,7 +140,7 @@ typedef std::unordered_map<TableId, boost::optional<TablespaceId>> TableToTables
 
 YB_STRONGLY_TYPED_BOOL(HideOnly);
 
-typedef std::unordered_map<TableId, vector<scoped_refptr<TabletInfo>>> TableToTabletInfos;
+typedef std::unordered_map<TableId, std::vector<scoped_refptr<TabletInfo>>> TableToTabletInfos;
 
 // The component of the master which tracks the state and location
 // of tables/tablets in the cluster.
@@ -215,9 +215,9 @@ class CatalogManager :
 
   // Create a transaction status table with the given name.
   Status CreateTransactionStatusTableInternal(rpc::RpcContext* rpc,
-                                                      const string& table_name,
-                                                      const TablespaceId* tablespace_id,
-                                                      const ReplicationInfoPB* replication_info);
+                                              const std::string& table_name,
+                                              const TablespaceId* tablespace_id,
+                                              const ReplicationInfoPB* replication_info);
 
   // Check if there is a transaction table whose tablespace id matches the given tablespace id.
   bool DoesTransactionTableExistForTablespace(
@@ -502,12 +502,12 @@ class CatalogManager :
 
   // Delete CDC streams for a table.
   virtual Status DeleteCDCStreamsForTable(const TableId& table_id) EXCLUDES(mutex_);
-  virtual Status DeleteCDCStreamsForTables(const vector<TableId>& table_ids)
+  virtual Status DeleteCDCStreamsForTables(const std::vector<TableId>& table_ids)
       EXCLUDES(mutex_);
 
   // Delete CDC streams metadata for a table.
   virtual Status DeleteCDCStreamsMetadataForTable(const TableId& table_id) EXCLUDES(mutex_);
-  virtual Status DeleteCDCStreamsMetadataForTables(const vector<TableId>& table_ids)
+  virtual Status DeleteCDCStreamsMetadataForTables(const std::vector<TableId>& table_ids)
       EXCLUDES(mutex_);
 
   virtual Status ChangeEncryptionInfo(const ChangeEncryptionInfoRequestPB* req,

@@ -859,7 +859,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     YBSubTransaction subtransaction_copy_for_dcheck = subtransaction_;
     #endif
 
-    vector<std::future<Status>> heartbeat_futures;
+    std::vector<std::future<Status>> heartbeat_futures;
     {
       SharedLock<std::shared_mutex> lock(mutex_);
       if (!ready_) {

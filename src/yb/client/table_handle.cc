@@ -131,7 +131,7 @@ std::shared_ptr<YBqlReadOp> TableHandle::NewReadOp() const {
   return op;
 }
 
-QLValuePB* TableHandle::PrepareColumn(QLWriteRequestPB* req, const string& column_name) const {
+QLValuePB* TableHandle::PrepareColumn(QLWriteRequestPB* req, const std::string& column_name) const {
   return QLPrepareColumn(req, ColumnId(column_name));
 }
 

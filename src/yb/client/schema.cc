@@ -33,6 +33,8 @@
 #include "yb/client/schema.h"
 
 #include <unordered_map>
+#include <vector>
+#include <string>
 
 #include <glog/logging.h>
 
@@ -52,6 +54,7 @@
 using std::shared_ptr;
 using std::unordered_map;
 using std::vector;
+using std::string;
 using strings::Substitute;
 
 namespace yb {

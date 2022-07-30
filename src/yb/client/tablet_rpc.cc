@@ -140,7 +140,7 @@ void TabletInvoker::SelectTabletServer()  {
   }
   if (!current_ts_) {
     // Try to "guess" the next leader.
-    vector<RemoteTabletServer*> replicas;
+    std::vector<RemoteTabletServer*> replicas;
     tablet_->GetRemoteTabletServers(&replicas);
     for (RemoteTabletServer* ts : replicas) {
       if (!followers_.count(ts)) {

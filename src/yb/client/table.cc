@@ -85,7 +85,7 @@ YBTableType YBTable::table_type() const {
   return info_->table_type;
 }
 
-const string& YBTable::id() const {
+const std::string& YBTable::id() const {
   return info_->table_id;
 }
 
