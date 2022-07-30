@@ -125,5 +125,7 @@ jobs:
           elif [[ $OSTYPE == darwin* ]]; then
             system_profiler SPSoftwareDataType
             sw_vers
+            sudo mkdir -p /opt/yb-build
+            sudo chmod 777 /opt/yb-build
             ./yb_build.sh ${{ matrix.yb_build_args }}
           fi
