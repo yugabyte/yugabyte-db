@@ -880,7 +880,7 @@ plvdate_isleapyear(PG_FUNCTION_ARGS)
 	bool result;
 
 	j2date(day + POSTGRES_EPOCH_JDATE, &y, &m, &d);
-	result = ((( y % 4) == 0) && ((y % 100) != 0)) || ((y / 400) == 0);
+	result = ((( y % 4) == 0) && ((y % 100) != 0)) || ((y % 400) == 0);
 
 	PG_RETURN_BOOL(result);
 }
