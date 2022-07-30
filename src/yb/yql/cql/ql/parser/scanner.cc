@@ -209,7 +209,7 @@ int LexProcessor::LexerInput(char* buf, int max_size) {
 
 //--------------------------------------------------------------------------------------------------
 
-void LexProcessor::CountNewlineInToken(const string& token) {
+void LexProcessor::CountNewlineInToken(const std::string& token) {
   const auto lines =
     count(token.begin(), token.end(), '\n') + count(token.begin(), token.end(), '\r');
   cursor_.lines(narrow_cast<int>(lines));
@@ -525,7 +525,7 @@ static const ScanKeyword& kInvalidKeyword {
 
 #define PG_KEYWORD(a, b, c) \
   {a, {a, GramProcessor::token::TOK_##b, ScanKeyword::KeywordCategory::c}},
-const unordered_map<string, const ScanKeyword> kScanKeywords {
+const unordered_map<std::string, const ScanKeyword> kScanKeywords {
 #include "yb/yql/cql/ql/kwlist.h"
 };
 
@@ -545,7 +545,7 @@ const ScanKeyword& LexProcessor::ScanKeywordLookup(const char *text) {
   }
   word[word_bytes] = '\0';
 
-  unordered_map<string, const ScanKeyword>::const_iterator iter = kScanKeywords.find(word);
+  unordered_map<std::string, const ScanKeyword>::const_iterator iter = kScanKeywords.find(word);
   if (iter != kScanKeywords.end()) {
     return iter->second;
   }

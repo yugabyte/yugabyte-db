@@ -386,7 +386,7 @@ Status Executor::PTExprToPB(const PTConstBinary *const_pt, QLValuePB *const_pb) 
         return STATUS(RuntimeError, "Invalid binary input, expected even number of hex digits");
       }
 
-      string bytes;
+      std::string bytes;
       a2b_hex(value->c_str(), &bytes, input_size / 2);
       const_pb->set_binary_value(bytes);
       break;

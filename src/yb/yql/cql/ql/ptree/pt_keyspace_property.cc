@@ -105,12 +105,12 @@ Status PTKeyspacePropertyMap::Analyze(SemContext *sem_context) {
   const auto property_name = std::string(lhs_->c_str());
   DCHECK_EQ(property_name, "replication");
   // Find 'class' subproperty.
-  std::unique_ptr<string> class_name = nullptr;
+  std::unique_ptr<std::string> class_name = nullptr;
   std::unique_ptr<int64_t> replication_factor = nullptr;
   vector<PTKeyspaceProperty::SharedPtr> other_subproperties;
 
   for (const auto &map_element : map_elements_->node_list()) {
-    string subproperty_name;
+    std::string subproperty_name;
     ToLowerCase(map_element->lhs()->c_str(), &subproperty_name);
 
     if (subproperty_name == "class") {

@@ -75,7 +75,7 @@ void AssertListEq(const std::vector<std::string>& result,
 TEST_F(RedisListsTest, SimpleTest) {
   RedisLists redis(kDefaultDbName, options, true);   // Destructive
 
-  string tempv; // Used below for all Index(), PopRight(), PopLeft()
+  std::string tempv; // Used below for all Index(), PopRight(), PopLeft()
 
   // Simple PushRight (should return the new length each time)
   ASSERT_EQ(redis.PushRight("k1", "v1"), 1);
@@ -104,7 +104,7 @@ TEST_F(RedisListsTest, SimpleTest) {
 TEST_F(RedisListsTest, SimpleTest2) {
   RedisLists redis(kDefaultDbName, options, true);   // Destructive
 
-  string tempv; // Used below for all Index(), PopRight(), PopLeft()
+  std::string tempv; // Used below for all Index(), PopRight(), PopLeft()
 
   // Simple PushRight
   ASSERT_EQ(redis.PushLeft("k1", "v3"), 1);
@@ -133,7 +133,7 @@ TEST_F(RedisListsTest, SimpleTest2) {
 TEST_F(RedisListsTest, IndexTest) {
   RedisLists redis(kDefaultDbName, options, true);   // Destructive
 
-  string tempv; // Used below for all Index(), PopRight(), PopLeft()
+  std::string tempv; // Used below for all Index(), PopRight(), PopLeft()
 
   // Empty Index check (return empty and should not crash or edit tempv)
   tempv = "yo";
@@ -192,7 +192,7 @@ TEST_F(RedisListsTest, IndexTest) {
 TEST_F(RedisListsTest, RangeTest) {
   RedisLists redis(kDefaultDbName, options, true);   // Destructive
 
-  string tempv; // Used below for all Index(), PopRight(), PopLeft()
+  std::string tempv; // Used below for all Index(), PopRight(), PopLeft()
 
   // Simple Pushes (will yield: [v6, v4, v4, v1, v2, v3])
   redis.PushRight("k1", "v1");
@@ -275,7 +275,7 @@ TEST_F(RedisListsTest, RangeTest) {
 TEST_F(RedisListsTest, InsertTest) {
   RedisLists redis(kDefaultDbName, options, true);
 
-  string tempv; // Used below for all Index(), PopRight(), PopLeft()
+  std::string tempv; // Used below for all Index(), PopRight(), PopLeft()
 
   // Insert on empty list (return 0, and do not crash)
   ASSERT_EQ(redis.InsertBefore("k1", "non-exist", "a"), 0);
@@ -359,7 +359,7 @@ TEST_F(RedisListsTest, InsertTest) {
 TEST_F(RedisListsTest, SetTest) {
   RedisLists redis(kDefaultDbName, options, true);
 
-  string tempv; // Used below for all Index(), PopRight(), PopLeft()
+  std::string tempv; // Used below for all Index(), PopRight(), PopLeft()
 
   // Set on empty list (return false, and do not crash)
   ASSERT_EQ(redis.Set("k1", 7, "a"), false);

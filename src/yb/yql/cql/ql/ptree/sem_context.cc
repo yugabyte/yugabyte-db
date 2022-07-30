@@ -208,8 +208,8 @@ shared_ptr<YBTable> SemContext::GetTableDesc(const TableId& table_id) {
   return table;
 }
 
-std::shared_ptr<QLType> SemContext::GetUDType(const string &keyspace_name,
-                                              const string &type_name) {
+std::shared_ptr<QLType> SemContext::GetUDType(const std::string &keyspace_name,
+                                              const std::string &type_name) {
   bool cache_used = false;
   shared_ptr<QLType> type = ql_env_->GetUDType(keyspace_name, type_name, &cache_used);
 

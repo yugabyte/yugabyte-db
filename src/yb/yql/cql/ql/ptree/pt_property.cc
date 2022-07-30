@@ -107,7 +107,7 @@ Status PTProperty::GetBoolValueFromExpr(PTExpr::SharedPtr expr,
     return Status::OK();
   } else if (expr->ql_type_id() == DataType::STRING) {
     auto mcstr = std::dynamic_pointer_cast<PTConstText>(expr)->Eval();
-    string str_val;
+    std::string str_val;
     ToLowerCase(mcstr->c_str(), &str_val);
     if (str_val == "true") {
       *val = true;

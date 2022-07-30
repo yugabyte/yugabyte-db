@@ -109,7 +109,7 @@ size_t PgTableDesc::GetPartitionCount() const {
   return table_partitions_->keys.size();
 }
 
-Result<string> PgTableDesc::DecodeYbctid(const Slice& ybctid) const {
+Result<std::string> PgTableDesc::DecodeYbctid(const Slice& ybctid) const {
   // TODO(neil) If a partition schema can have both hash and range partitioning, this function needs
   // to be updated to return appropriate primary key.
   RSTATUS_DCHECK(!IsHashPartitioned() || !IsRangePartitioned(), InvalidArgument,
@@ -132,7 +132,7 @@ Result<size_t> PgTableDesc::FindPartitionIndex(const Slice& ybctid) const {
   // Find partition index based on ybctid value.
   // - Hash Partition: ybctid -> hashcode -> key -> partition index.
   // - Range Partition: ybctid == key -> partition index.
-  string partition_key = VERIFY_RESULT(DecodeYbctid(ybctid));
+  std::string partition_key = VERIFY_RESULT(DecodeYbctid(ybctid));
   return client::FindPartitionStartIndex(table_partitions_->keys, partition_key);
 }
 

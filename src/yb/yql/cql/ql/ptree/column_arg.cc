@@ -20,7 +20,7 @@ namespace yb {
 namespace ql {
 
 std::string JsonColumnOp::IndexExprToColumnName() const {
-  string index_column_name = desc_->MangledName();
+  std::string index_column_name = desc_->MangledName();
   for (const PTExpr::SharedPtr &arg : args_->node_list()) {
     index_column_name += arg->MangledName();
   }

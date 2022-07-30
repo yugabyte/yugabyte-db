@@ -257,7 +257,7 @@ void CQLInboundCall::GetCallDetails(rpc::RpcCallInProgressPB *call_in_progress_p
   rpc::CQLCallDetailsPB* call_in_progress = call_in_progress_pb->mutable_cql_details();
   rpc::CQLStatementsDetailsPB* details_pb;
   std::shared_ptr<const CQLStatement> statement_ptr;
-  string query_id;
+  std::string query_id;
   int j = 0;
   switch (request->opcode()) {
     case CQLMessage::Opcode::PREPARE:

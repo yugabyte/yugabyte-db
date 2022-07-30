@@ -773,7 +773,7 @@ struct RedisServiceImplData : public RedisServiceData {
   Result<std::vector<HostPortPB>> GetServerAddrsForChannel(const std::string& channel);
   size_t NumSubscriptionsUnlocked(Connection* conn);
 
-  Status GetRedisPasswords(vector<string>* passwords) override;
+  Status GetRedisPasswords(vector<std::string>* passwords) override;
   Status Initialize();
   bool initialized() const { return initialized_.load(std::memory_order_relaxed); }
 
@@ -806,7 +806,7 @@ struct RedisServiceImplData : public RedisServiceData {
 
   std::mutex redis_password_mutex_;
   MonoTime redis_cached_password_validity_expiry_;
-  vector<string> redis_cached_passwords_;
+  vector<std::string> redis_cached_passwords_;
 
   RedisServer* server_ = nullptr;
 };
@@ -1015,7 +1015,7 @@ class RedisServiceImpl::Impl {
 
   bool CheckAuthentication(RedisConnectionContext* conn_context) {
     if (!conn_context->is_authenticated()) {
-      vector<string> passwords;
+      vector<std::string> passwords;
       Status s = data_.GetRedisPasswords(&passwords);
       conn_context->set_authenticated(!FLAGS_enable_redis_auth || (s.ok() && passwords.empty()));
     }
@@ -1118,7 +1118,7 @@ void RedisServiceImplData::RemoveFromSubscribers(
   }
 }
 
-std::unordered_set<string> RedisServiceImplData::GetSubscriptions(
+std::unordered_set<std::string> RedisServiceImplData::GetSubscriptions(
     AsPattern type, Connection* conn) {
   SharedLock<decltype(pubsub_mutex_)> lock(pubsub_mutex_);
   return (
@@ -1127,8 +1127,8 @@ std::unordered_set<string> RedisServiceImplData::GetSubscriptions(
 }
 
 // ENG-4199: Consider getting all the cluster-wide subscriptions?
-std::unordered_set<string> RedisServiceImplData::GetAllSubscriptions(AsPattern type) {
-  std::unordered_set<string> ret;
+std::unordered_set<std::string> RedisServiceImplData::GetAllSubscriptions(AsPattern type) {
+  std::unordered_set<std::string> ret;
   SharedLock<decltype(pubsub_mutex_)> lock(pubsub_mutex_);
   for (const auto& element :
        (type == AsPattern::kTrue ? patterns_to_clients_ : channels_to_clients_)) {
@@ -1219,7 +1219,7 @@ class PublishResponseHandler {
 };
 
 void RedisServiceImplData::ForwardToInterestedProxies(
-    const std::string& channel, const string& message, const IntFunctor& f) {
+    const std::string& channel, const std::string& message, const IntFunctor& f) {
   auto interested_servers = GetServerAddrsForChannel(channel);
   if (!interested_servers.ok()) {
     LOG(ERROR) << "Could not get servers to forward to " << interested_servers.status();
@@ -1254,16 +1254,16 @@ void RedisServiceImplData::ForwardToInterestedProxies(
   }
 }
 
-std::string MessageFor(const string& channel, const string& message) {
-  vector<string> parts;
+std::string MessageFor(const std::string& channel, const std::string& message) {
+  vector<std::string> parts;
   parts.push_back(redisserver::EncodeAsBulkString("message").ToBuffer());
   parts.push_back(redisserver::EncodeAsBulkString(channel).ToBuffer());
   parts.push_back(redisserver::EncodeAsBulkString(message).ToBuffer());
   return redisserver::EncodeAsArrayOfEncodedElements(parts);
 }
 
-string PMessageFor(const string& pattern, const string& channel, const string& message) {
-  vector<string> parts;
+std::string PMessageFor(const std::string& pattern, const std::string& channel, const std::string& message) {
+  vector<std::string> parts;
   parts.push_back(redisserver::EncodeAsBulkString("pmessage").ToBuffer());
   parts.push_back(redisserver::EncodeAsBulkString(pattern).ToBuffer());
   parts.push_back(redisserver::EncodeAsBulkString(channel).ToBuffer());
@@ -1272,7 +1272,7 @@ string PMessageFor(const string& pattern, const string& channel, const string& m
 }
 
 int RedisServiceImplData::PublishToLocalClients(
-    IsMonitorMessage mode, const string& channel, const string& message) {
+    IsMonitorMessage mode, const std::string& channel, const std::string& message) {
   SharedLock<decltype(pubsub_mutex_)> rlock(pubsub_mutex_);
 
   int num_pushed_to = 0;
@@ -1359,11 +1359,11 @@ Status RedisServiceImplData::Initialize() {
   return Status::OK();
 }
 
-void RedisServiceImplData::CleanYBTableFromCacheForDB(const string& db) {
+void RedisServiceImplData::CleanYBTableFromCacheForDB(const std::string& db) {
   tables_cache_->RemoveCachedTable(GetYBTableNameForRedisDatabase(db));
 }
 
-Status RedisServiceImplData::GetRedisPasswords(vector<string>* passwords) {
+Status RedisServiceImplData::GetRedisPasswords(vector<std::string>* passwords) {
   MonoTime now = MonoTime::Now();
 
   std::lock_guard<std::mutex> lock(redis_password_mutex_);
@@ -1421,17 +1421,17 @@ const RedisCommandInfo* RedisServiceImpl::Impl::FetchHandler(const RedisClientCo
   return iter->second.get();
 }
 
-RedisServiceImpl::Impl::Impl(RedisServer* server, string yb_tier_master_addresses)
+RedisServiceImpl::Impl::Impl(RedisServer* server, std::string yb_tier_master_addresses)
     : data_(server, std::move(yb_tier_master_addresses)) {
   PopulateHandlers();
 }
 
 bool AllowedInClientMode(const RedisCommandInfo* info, RedisClientMode mode) {
   if (mode == RedisClientMode::kMonitoring) {
-    static std::unordered_set<string> allowed = {"quit"};
+    static std::unordered_set<std::string> allowed = {"quit"};
     return allowed.find(info->name) != allowed.end();
   } else if (mode == RedisClientMode::kSubscribed) {
-    static std::unordered_set<string> allowed = {"subscribe",    "unsubscribe", "psubscribe",
+    static std::unordered_set<std::string> allowed = {"subscribe",    "unsubscribe", "psubscribe",
                                                  "punsubscribe", "ping",        "quit"};
     return allowed.find(info->name) != allowed.end();
   } else {
@@ -1471,9 +1471,9 @@ void RedisServiceImpl::Impl::Handle(rpc::InboundCallPtr call_ptr) {
   // Sequential write commands use single session and the same batcher.
   const auto& batch = call->client_batch();
   auto conn = call->connection();
-  const string remote = yb::ToString(conn->remote());
+  const std::string remote = yb::ToString(conn->remote());
   RedisConnectionContext* conn_context = &(call->connection_context());
-  string db_name = conn_context->redis_db_to_use();
+  std::string db_name = conn_context->redis_db_to_use();
   auto context = make_scoped_refptr<BatchContextImpl>(db_name, call, &data_);
   for (size_t idx = 0; idx != batch.size(); ++idx) {
     const RedisClientCommand& c = batch[idx];
@@ -1530,7 +1530,7 @@ void RedisServiceImpl::Impl::Handle(rpc::InboundCallPtr call_ptr) {
   context->Commit();
 }
 
-RedisServiceImpl::RedisServiceImpl(RedisServer* server, string yb_tier_master_address)
+RedisServiceImpl::RedisServiceImpl(RedisServer* server, std::string yb_tier_master_address)
     : RedisServerServiceIf(server->metric_entity()),
       impl_(new Impl(server, std::move(yb_tier_master_address))) {}
 

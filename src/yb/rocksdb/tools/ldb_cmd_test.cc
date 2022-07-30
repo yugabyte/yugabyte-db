@@ -69,7 +69,7 @@ INSTANTIATE_TEST_CASE_P(EncryptionEnabled, LdbCmdTest, ::testing::Bool());
 
 TEST_P(LdbCmdTest, HexToString) {
   // map input to expected outputs.
-  map<string, vector<int>> inputMap = {
+  map<std::string, std::vector<int>> inputMap = {
       {"0x7", {7}},         {"0x5050", {80, 80}}, {"0xFF", {-1}},
       {"0x1234", {18, 52}}, {"0xaa", {-86}}, {"0x123", {18, 3}},
   };
@@ -84,7 +84,7 @@ TEST_P(LdbCmdTest, HexToString) {
 }
 
 TEST_P(LdbCmdTest, HexToStringBadInputs) {
-  const vector<string> badInputs = {
+  const vector<std::string> badInputs = {
       "0xZZ", "123", "0xx5", "0x11G", "Ox12", "0xT", "0x1Q1",
   };
   for (const auto& badInput : badInputs) {

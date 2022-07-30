@@ -63,21 +63,21 @@ PTBcall::PTBcall(MemoryContext *memctx,
 PTBcall::~PTBcall() {
 }
 
-void PTBcall::CollectReferencedIndexColnames(MCSet<string> *col_names) const {
+void PTBcall::CollectReferencedIndexColnames(MCSet<std::string> *col_names) const {
   for (auto arg : args_->node_list()) {
     arg->CollectReferencedIndexColnames(col_names);
   }
 }
 
-string PTBcall::QLName(QLNameOption option) const {
-  string arg_names;
-  string keyspace;
+std::string PTBcall::QLName(QLNameOption option) const {
+  std::string arg_names;
+  std::string keyspace;
 
   // cql_cast() is displayed as "cast(<col> as <type>)".
   if (strcmp(name_->c_str(), bfql::kCqlCastFuncName) == 0) {
     CHECK_GE(args_->size(), 2);
-    const string column_name = args_->element(0)->QLName(option);
-    const string type =  QLType::ToCQLString(args_->element(1)->ql_type()->type_info()->type);
+    const std::string column_name = args_->element(0)->QLName(option);
+    const std::string type =  QLType::ToCQLString(args_->element(1)->ql_type()->type_info()->type);
     return strings::Substitute("cast($0 as $1)", column_name, type);
   }
 
@@ -140,7 +140,7 @@ Status PTBcall::Analyze(SemContext *sem_context) {
   PTExpr::SharedPtr pt_result = PTConstArg::MakeShared(sem_context->PTempMem(), loc_, nullptr);
   Status s = BfuncCompile::FindQLOpcode(name_->c_str(), params, &bfopcode, &bfdecl, pt_result);
   if (!s.ok()) {
-    std::string err_msg = string("Failed calling '") + name_->c_str();
+    std::string err_msg = std::string("Failed calling '") + name_->c_str();
     bool got_first_arg = false;
     err_msg += "(";
     for (auto param : params) {
@@ -181,14 +181,14 @@ Status PTBcall::Analyze(SemContext *sem_context) {
     // pointers to check for any special requirement of an entry.
     if (bfql::IsAggregateOpcode(tsop)) {
       if (!sem_context->allowing_aggregate()) {
-        string errmsg =
+        std::string errmsg =
           Substitute("Aggregate function $0() cannot be called in this context", name_->c_str());
         return sem_context->Error(loc(), errmsg.c_str(), ErrorCode::INVALID_ARGUMENTS);
       }
       const PTExpr::SharedPtr& expr = exprs.front();
       if (expr->expr_op() != ExprOperator::kRef &&
           (!expr->IsDummyStar() || tsop != TSOpcode::kCount)) {
-        string errmsg = Substitute("Input argument for $0 must be a column", name_->c_str());
+        std::string errmsg = Substitute("Input argument for $0 must be a column", name_->c_str());
         return sem_context->Error(expr->loc(), errmsg.c_str(), ErrorCode::INVALID_ARGUMENTS);
       }
       if (tsop == TSOpcode::kMin || tsop == TSOpcode::kMax || tsop == TSOpcode::kAvg) {
@@ -199,16 +199,16 @@ Status PTBcall::Analyze(SemContext *sem_context) {
     } else if (tsop == TSOpcode::kTtl || tsop == TSOpcode::kWriteTime) {
       const PTExpr::SharedPtr& expr = exprs.front();
       if (expr->expr_op() != ExprOperator::kRef) {
-        string errmsg = Substitute("Input argument for $0 must be a column", name_->c_str());
+        std::string errmsg = Substitute("Input argument for $0 must be a column", name_->c_str());
         return sem_context->Error(expr->loc(), errmsg.c_str(), ErrorCode::INVALID_ARGUMENTS);
       }
       const PTRef *ref = static_cast<const PTRef *>(expr.get());
       if (ref->desc()->is_primary()) {
-        string errmsg = Substitute("Input argument for $0 cannot be primary key", name_->c_str());
+        std::string errmsg = Substitute("Input argument for $0 cannot be primary key", name_->c_str());
         return sem_context->Error(expr->loc(), errmsg.c_str(), ErrorCode::INVALID_ARGUMENTS);
       }
       if (ref->desc()->ql_type()->IsParametric()) {
-        string errmsg = Substitute("Input argument for $0 is of wrong datatype", name_->c_str());
+        std::string errmsg = Substitute("Input argument for $0 is of wrong datatype", name_->c_str());
         return sem_context->Error(expr->loc(), errmsg.c_str(), ErrorCode::INVALID_ARGUMENTS);
       }
 
@@ -318,7 +318,7 @@ Status PTBcall::Analyze(SemContext *sem_context) {
       if (!s.ok()) {
         LOG(ERROR) << "Arguments to builtin call " << name_->c_str() << "() is compatible with "
                    << "its signature but converting the argument to the desired type failed";
-        string err_msg = (s.ToUserMessage() + "CAST " + expr->ql_type()->ToString() + " AS " +
+        std::string err_msg = (s.ToUserMessage() + "CAST " + expr->ql_type()->ToString() + " AS " +
             QLType::ToCQLString(formal_types[pindex]) + " failed");
         return sem_context->Error(this, err_msg.c_str(), ErrorCode::INVALID_FUNCTION_CALL);
       }
@@ -334,7 +334,7 @@ Status PTBcall::Analyze(SemContext *sem_context) {
                                      sem_context->expr_expected_ql_type()->main(),
                                      &result_cast_op_);
     if (!s.ok()) {
-      string err_msg = Substitute("Cannot cast builtin call return type '$0' to expected type '$1'",
+      std::string err_msg = Substitute("Cannot cast builtin call return type '$0' to expected type '$1'",
                                   pt_result->ql_type()->ToString(),
                                   sem_context->expr_expected_ql_type()->ToString());
       return sem_context->Error(this, err_msg.c_str(), ErrorCode::DATATYPE_MISMATCH);
@@ -365,7 +365,7 @@ Status PTBcall::CheckOperator(SemContext *sem_context) {
   if (sem_context->processing_set_clause() && sem_context->lhs_col() != nullptr) {
     if (sem_context->lhs_col()->ql_type()->IsCollection()) {
       // Only increment ("+") and decrement ("-") operators are allowed for collections.
-      const string type_name = QLType::ToCQLString(sem_context->lhs_col()->ql_type()->main());
+      const std::string type_name = QLType::ToCQLString(sem_context->lhs_col()->ql_type()->main());
       if (*name_ == "+" || *name_ == "-") {
         if (args_->element(0)->opcode() == TreeNodeOpcode::kPTRef) {
           name_->insert(0, type_name.c_str());

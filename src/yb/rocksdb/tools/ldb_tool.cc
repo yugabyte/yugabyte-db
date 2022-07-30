@@ -33,7 +33,7 @@ class LDBCommandRunner {
  public:
 
   static void PrintHelp(const char* exec_name) {
-    string ret;
+    std::string ret;
 
     ret.append("ldb - LevelDB Tool");
     ret.append("\n\n");

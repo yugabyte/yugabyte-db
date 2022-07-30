@@ -574,7 +574,7 @@ void AppendVectorToStringWithBrackets(
 }  // namespace
 
 std::string DocKey::ToString(AutoDecodeKeys auto_decode_keys) const {
-  string result = "DocKey(";
+  std::string result = "DocKey(";
   if (!cotable_id_.IsNil()) {
     result += "CoTableId=";
     result += cotable_id_.ToString();
@@ -640,7 +640,7 @@ int DocKey::CompareTo(const DocKey& other) const {
   return CompareVectors(range_group_, other.range_group_);
 }
 
-DocKey DocKey::FromRedisKey(uint16_t hash, const string &key) {
+DocKey DocKey::FromRedisKey(uint16_t hash, const std::string &key) {
   DocKey new_doc_key;
   new_doc_key.hash_present_ = true;
   new_doc_key.hash_ = hash;
@@ -923,7 +923,7 @@ Result<std::string> SubDocKey::DebugSliceToStringAsResult(Slice slice) {
   return status;
 }
 
-string SubDocKey::ToString(AutoDecodeKeys auto_decode_keys) const {
+std::string SubDocKey::ToString(AutoDecodeKeys auto_decode_keys) const {
   std::string result("SubDocKey(");
   result.append(doc_key_.ToString(auto_decode_keys));
   result.append(", [");
@@ -1020,7 +1020,7 @@ int SubDocKey::CompareToIgnoreHt(const SubDocKey& other) const {
   return result;
 }
 
-string BestEffortDocDBKeyToStr(const KeyBytes &key_bytes) {
+std::string BestEffortDocDBKeyToStr(const KeyBytes &key_bytes) {
   rocksdb::Slice mutable_slice(key_bytes.AsSlice());
   SubDocKey subdoc_key;
   Status decode_status = subdoc_key.DecodeFrom(

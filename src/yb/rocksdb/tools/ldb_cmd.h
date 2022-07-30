@@ -425,7 +425,7 @@ class LDBCommand {
   }
 
   static std::string HelpRangeCmdArgs() {
-    ostringstream str_stream;
+    std::ostringstream str_stream;
     str_stream << " ";
     str_stream << "[--" << ARG_FROM << "] ";
     str_stream << "[--" << ARG_TO << "] ";
@@ -834,7 +834,7 @@ class BatchPutCommand : public LDBCommand {
   /**
    * The key-values to be inserted.
    */
-  vector<std::pair<string, string>> key_values_;
+  vector<std::pair<std::string, std::string>> key_values_;
 };
 
 class ScanCommand : public LDBCommand {
