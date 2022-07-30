@@ -31,7 +31,7 @@ on:
 jobs:
   # This workflow contains a single job called "build"
   build:
-    runs-on: ubuntu-20.04
+    runs-on: ${{ matrix.os }}
     name: ${{ matrix.name }}
 
     # Grab the latest CentOS 7 image from here:
@@ -68,6 +68,14 @@ jobs:
           - name: "GCC 11, release, CentOS 7"
             os: ubuntu-20.04
             yb_build_args: --gcc11 release --no-linuxbrew
+
+          - name: "Clang, debug, macOS Monterey 12"
+            os: macos-12
+            yb_build_args: debug
+
+          - name: "Clang, release, macOS Monterey 12"
+            os: macos-12
+            yb_build_args: release
     if: >
       (github.event_name == 'push' &&
        !contains(github.event.head_commit.message, 'skip ci') &&
