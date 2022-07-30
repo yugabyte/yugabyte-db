@@ -217,7 +217,7 @@ Status SetRangePartitionBounds(const Schema& schema,
                                        const std::string& last_partition,
                                        Req* request,
                                        std::string* key_upper_bound) {
-  vector<docdb::KeyEntryValue> range_components, range_components_end;
+  std::vector<docdb::KeyEntryValue> range_components, range_components_end;
   RETURN_NOT_OK(GetRangePartitionBounds(
       schema, *request, &range_components, &range_components_end));
   if (range_components.empty() && range_components_end.empty()) {
@@ -384,8 +384,8 @@ Status InitWritePartitionKey(
 template <class Req>
 Status DoGetRangePartitionBounds(const Schema& schema,
                                  const Req& request,
-                                 vector<docdb::KeyEntryValue>* lower_bound,
-                                 vector<docdb::KeyEntryValue>* upper_bound) {
+                                 std::vector<docdb::KeyEntryValue>* lower_bound,
+                                 std::vector<docdb::KeyEntryValue>* upper_bound) {
   SCHECK(!schema.num_hash_key_columns(), IllegalState,
          "Cannot set range partition key for hash partitioned table");
   const auto& range_cols = request.range_column_values();
@@ -1109,15 +1109,15 @@ Status InitPartitionKey(
 
 Status GetRangePartitionBounds(const Schema& schema,
                                const PgsqlReadRequestPB& request,
-                               vector<docdb::KeyEntryValue>* lower_bound,
-                               vector<docdb::KeyEntryValue>* upper_bound) {
+                               std::vector<docdb::KeyEntryValue>* lower_bound,
+                               std::vector<docdb::KeyEntryValue>* upper_bound) {
   return DoGetRangePartitionBounds(schema, request, lower_bound, upper_bound);
 }
 
 Status GetRangePartitionBounds(const Schema& schema,
                                const LWPgsqlReadRequestPB& request,
-                               vector<docdb::KeyEntryValue>* lower_bound,
-                               vector<docdb::KeyEntryValue>* upper_bound) {
+                               std::vector<docdb::KeyEntryValue>* lower_bound,
+                               std::vector<docdb::KeyEntryValue>* upper_bound) {
   return DoGetRangePartitionBounds(schema, request, lower_bound, upper_bound);
 }
 

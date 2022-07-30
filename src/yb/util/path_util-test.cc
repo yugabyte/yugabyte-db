@@ -84,7 +84,7 @@ TEST(TestPathUtil, JoinPathSegments) {
 
 #if defined(__linux__)
 TEST(TestPathUtil, TestODirectFileCreationInDir) {
-  string dir = "/var/run";
+  std::string dir = "/var/run";
   Env* env_test = yb::Env::Default();
   ASSERT_NOK(CheckODirectTempFileCreationInDir(env_test, dir));
 }

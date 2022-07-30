@@ -697,7 +697,7 @@ class CatalogManager :
   // must be initialized before calling this method.
   PeerRole Role() const;
 
-  Status PeerStateDump(const vector<consensus::RaftPeerPB>& masters_raft,
+  Status PeerStateDump(const std::vector<consensus::RaftPeerPB>& masters_raft,
                                const DumpMasterStateRequestPB* req,
                                DumpMasterStateResponsePB* resp);
 
@@ -816,7 +816,7 @@ class CatalogManager :
       const TableInfoPtr& table_info) REQUIRES_SHARED(mutex_);
 
   Result<std::unordered_map<uint32_t, PgTypeInfo>> GetPgTypeInfo(
-      const scoped_refptr<NamespaceInfo>& namespace_info, vector<uint32_t>* type_oids)
+      const scoped_refptr<NamespaceInfo>& namespace_info, std::vector<uint32_t>* type_oids)
       REQUIRES_SHARED(mutex_);
 
   void AssertLeaderLockAcquiredForReading() const override {
@@ -926,7 +926,7 @@ class CatalogManager :
   bool ShouldSplitValidCandidate(
       const TabletInfo& tablet_info, const TabletReplicaDriveInfo& drive_info) const override;
 
-  Status GetAllAffinitizedZones(vector<AffinitizedZonesSet>* affinitized_zones) override;
+  Status GetAllAffinitizedZones(std::vector<AffinitizedZonesSet>* affinitized_zones) override;
   Result<std::vector<BlacklistSet>> GetAffinitizedZoneSet();
   Result<BlacklistSet> BlacklistSetFromPB(bool leader_blacklist = false) const override;
 
@@ -1049,13 +1049,13 @@ class CatalogManager :
                                      const PartitionSchema& partition_schema,
                                      const NamespaceId& namespace_id,
                                      const NamespaceName& namespace_name,
-                                     const vector<Partition>& partitions,
+                                     const std::vector<Partition>& partitions,
                                      IndexInfoPB* index_info,
                                      TabletInfos* tablets,
                                      CreateTableResponsePB* resp,
                                      scoped_refptr<TableInfo>* table) REQUIRES(mutex_);
 
-  Result<TabletInfos> CreateTabletsFromTable(const vector<Partition>& partitions,
+  Result<TabletInfos> CreateTabletsFromTable(const std::vector<Partition>& partitions,
                                              const TableInfoPtr& table) REQUIRES(mutex_);
 
   // Helper for creating copartitioned table.

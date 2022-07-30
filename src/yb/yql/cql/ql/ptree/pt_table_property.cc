@@ -316,7 +316,7 @@ Status PTTablePropertyListNode::Analyze(SemContext *sem_context) {
   // Set to ensure we don't have duplicate table properties.
   std::set<std::string> table_properties;
   std::unordered_map<std::string, PTTableProperty::SharedPtr> order_tnodes;
-  vector<std::string> order_columns;
+  std::vector<std::string> order_columns;
   for (PTTableProperty::SharedPtr tnode : node_list()) {
     if (tnode == nullptr) {
       // This shouldn't happen because AppendList ignores null nodes.
@@ -552,8 +552,8 @@ Status PTTablePropertyMap::SetTableProperty(yb::TableProperties *table_property)
 }
 
 Status PTTablePropertyMap::AnalyzeCompaction() {
-  vector<std::string> invalid_subproperties;
-  vector<PTTableProperty::SharedPtr> subproperties;
+  std::vector<std::string> invalid_subproperties;
+  std::vector<PTTableProperty::SharedPtr> subproperties;
   auto class_subproperties_iter = Compaction::kClassSubproperties.end();
   std::string class_name;
   for (PTTableProperty::SharedPtr tnode : map_elements_->node_list()) {
@@ -781,7 +781,7 @@ Status PTTablePropertyMap::AnalyzeCompression() {
   }
 
   for (const auto& subproperty : map_elements_->node_list()) {
-    string subproperty_name;
+    std::string subproperty_name;
     ToLowerCase(subproperty->lhs()->c_str(), &subproperty_name);
     auto iter = Compression::kSubpropertyDataTypes.find(subproperty_name);
     if (iter == Compression::kSubpropertyDataTypes.end()) {
@@ -820,7 +820,7 @@ Status PTTablePropertyMap::AnalyzeCompression() {
 
 Status PTTablePropertyMap::AnalyzeTransactions(SemContext *sem_context) {
   for (const auto& subproperty : map_elements_->node_list()) {
-    string subproperty_name;
+    std::string subproperty_name;
     ToLowerCase(subproperty->lhs()->c_str(), &subproperty_name);
     auto iter = Transactions::kSubpropertyDataTypes.find(subproperty_name);
     if (iter == Transactions::kSubpropertyDataTypes.end()) {
@@ -829,7 +829,7 @@ Status PTTablePropertyMap::AnalyzeTransactions(SemContext *sem_context) {
     }
 
     bool bool_val;
-    string str_val;
+    std::string str_val;
     switch(iter->second) {
       case Transactions::Subproperty::kEnabled:
         RETURN_NOT_OK(GetBoolValueFromExpr(subproperty->rhs(), subproperty_name, &bool_val));

@@ -455,7 +455,7 @@ TEST_F(RedisListsTest, SetTest) {
 TEST_F(RedisListsTest, InsertPushSetTest) {
   RedisLists redis(kDefaultDbName, options, true);   // Destructive
 
-  string tempv; // Used below for all Index(), PopRight(), PopLeft()
+  std::string tempv; // Used below for all Index(), PopRight(), PopLeft()
 
   // A series of pushes and insertions
   // Will result in [newbegin, z, a, aftera, x, newend]
@@ -547,7 +547,7 @@ TEST_F(RedisListsTest, InsertPushSetTest) {
 TEST_F(RedisListsTest, TrimPopTest) {
   RedisLists redis(kDefaultDbName, options, true);   // Destructive
 
-  string tempv; // Used below for all Index(), PopRight(), PopLeft()
+  std::string tempv; // Used below for all Index(), PopRight(), PopLeft()
 
   // A series of pushes and insertions
   // Will result in [newbegin, z, a, aftera, x, newend]
@@ -617,7 +617,7 @@ TEST_F(RedisListsTest, TrimPopTest) {
 TEST_F(RedisListsTest, RemoveTest) {
   RedisLists redis(kDefaultDbName, options, true);   // Destructive
 
-  string tempv; // Used below for all Index(), PopRight(), PopLeft()
+  std::string tempv; // Used below for all Index(), PopRight(), PopLeft()
 
   // A series of pushes and insertions
   // Will result in [newbegin, z, a, aftera, x, newend, a, a]
@@ -706,7 +706,7 @@ TEST_F(RedisListsTest, RemoveTest) {
 
 // Test Multiple keys and Persistence
 TEST_F(RedisListsTest, PersistenceMultiKeyTest) {
-  string tempv; // Used below for all Index(), PopRight(), PopLeft()
+  std::string tempv; // Used below for all Index(), PopRight(), PopLeft()
 
   // Block one: populate a single key in the database
   {
@@ -806,13 +806,13 @@ int manual_redis_test(bool destructive) {
     } else if (command == "LPOP") {
       std::string k;
       std::cin >> k;
-      string res;
+      std::string res;
       redis.PopLeft(k, &res);
       std::cout << res << std::endl;
     } else if (command == "RPOP") {
       std::string k;
       std::cin >> k;
-      string res;
+      std::string res;
       redis.PopRight(k, &res);
       std::cout << res << std::endl;
     } else if (command == "LREM") {
@@ -850,7 +850,7 @@ int manual_redis_test(bool destructive) {
       std::string k;
       int idx;
       std::cin >> k >> idx;
-      string res;
+      std::string res;
       redis.Index(k, idx, &res);
       std::cout << res << std::endl;
     } else if (command == "PRINT") {      // Added by Deon

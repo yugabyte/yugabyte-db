@@ -773,7 +773,7 @@ struct RedisServiceImplData : public RedisServiceData {
   Result<std::vector<HostPortPB>> GetServerAddrsForChannel(const std::string& channel);
   size_t NumSubscriptionsUnlocked(Connection* conn);
 
-  Status GetRedisPasswords(vector<std::string>* passwords) override;
+  Status GetRedisPasswords(std::vector<std::string>* passwords) override;
   Status Initialize();
   bool initialized() const { return initialized_.load(std::memory_order_relaxed); }
 
@@ -806,7 +806,7 @@ struct RedisServiceImplData : public RedisServiceData {
 
   std::mutex redis_password_mutex_;
   MonoTime redis_cached_password_validity_expiry_;
-  vector<std::string> redis_cached_passwords_;
+  std::vector<std::string> redis_cached_passwords_;
 
   RedisServer* server_ = nullptr;
 };
@@ -1015,7 +1015,7 @@ class RedisServiceImpl::Impl {
 
   bool CheckAuthentication(RedisConnectionContext* conn_context) {
     if (!conn_context->is_authenticated()) {
-      vector<std::string> passwords;
+      std::vector<std::string> passwords;
       Status s = data_.GetRedisPasswords(&passwords);
       conn_context->set_authenticated(!FLAGS_enable_redis_auth || (s.ok() && passwords.empty()));
     }
@@ -1255,7 +1255,7 @@ void RedisServiceImplData::ForwardToInterestedProxies(
 }
 
 std::string MessageFor(const std::string& channel, const std::string& message) {
-  vector<std::string> parts;
+  std::vector<std::string> parts;
   parts.push_back(redisserver::EncodeAsBulkString("message").ToBuffer());
   parts.push_back(redisserver::EncodeAsBulkString(channel).ToBuffer());
   parts.push_back(redisserver::EncodeAsBulkString(message).ToBuffer());
@@ -1263,7 +1263,7 @@ std::string MessageFor(const std::string& channel, const std::string& message) {
 }
 
 std::string PMessageFor(const std::string& pattern, const std::string& channel, const std::string& message) {
-  vector<std::string> parts;
+  std::vector<std::string> parts;
   parts.push_back(redisserver::EncodeAsBulkString("pmessage").ToBuffer());
   parts.push_back(redisserver::EncodeAsBulkString(pattern).ToBuffer());
   parts.push_back(redisserver::EncodeAsBulkString(channel).ToBuffer());
@@ -1363,7 +1363,7 @@ void RedisServiceImplData::CleanYBTableFromCacheForDB(const std::string& db) {
   tables_cache_->RemoveCachedTable(GetYBTableNameForRedisDatabase(db));
 }
 
-Status RedisServiceImplData::GetRedisPasswords(vector<std::string>* passwords) {
+Status RedisServiceImplData::GetRedisPasswords(std::vector<std::string>* passwords) {
   MonoTime now = MonoTime::Now();
 
   std::lock_guard<std::mutex> lock(redis_password_mutex_);

@@ -321,7 +321,7 @@ class LocalCommandData {
 
 void GetTabletLocations(LocalCommandData data, RedisArrayPB* array_response) {
   std::vector<std::string> tablets, partitions;
-  vector<master::TabletLocationsPB> locations;
+  std::vector<master::TabletLocationsPB> locations;
   const auto table_name = RedisServiceData::GetYBTableNameForRedisDatabase(
       data.call()->connection_context().redis_db_to_use());
   auto s = data.client()->GetTabletsAndUpdateCache(
@@ -330,7 +330,7 @@ void GetTabletLocations(LocalCommandData data, RedisArrayPB* array_response) {
     LOG(ERROR) << "Error getting tablets: " << s.message();
     return;
   }
-  vector<std::string> response, ts_info;
+  std::vector<std::string> response, ts_info;
   response.reserve(3);
   ts_info.reserve(2);
   for (master::TabletLocationsPB &location : locations) {
@@ -471,12 +471,12 @@ void HandleSubscribeLikeCommand(LocalCommandData data, AsPattern as_pattern) {
   response.set_code(RedisResponsePB::OK);
 
   // Add to the appenders after the call has been handled (i.e. reponded with "OK").
-  vector<std::string> channels;
+  std::vector<std::string> channels;
   for (size_t idx = 1; idx < data.arg_size(); idx++) {
     channels.emplace_back(data.arg(idx).ToBuffer());
   }
   auto conn = data.call()->connection().get();
-  vector<size_t> subs;
+  std::vector<size_t> subs;
   data.context()->service_data()->AppendToSubscribers(as_pattern, channels, conn, &subs);
   std::string encoded_response;
   for (size_t idx = 0; idx < channels.size(); idx++) {
@@ -506,7 +506,7 @@ void HandleUnsubscribeLikeCommand(LocalCommandData data, AsPattern as_pattern) {
 
   // Add to the appenders after the call has been handled (i.e. reponded with "OK").
   auto conn = data.call()->connection().get();
-  vector<std::string> channels;
+  std::vector<std::string> channels;
   if (data.arg_size() > 1) {
     for (size_t idx = 1; idx < data.arg_size(); idx++) {
       channels.push_back(data.arg(idx).ToBuffer());
@@ -517,7 +517,7 @@ void HandleUnsubscribeLikeCommand(LocalCommandData data, AsPattern as_pattern) {
     }
   }
 
-  vector<size_t> subs;
+  std::vector<size_t> subs;
   data.context()->service_data()->RemoveFromSubscribers(as_pattern, channels, conn, &subs);
   std::string encoded_response;
   for (size_t idx = 0; idx < channels.size(); idx++) {
@@ -990,7 +990,7 @@ void HandleQuit(LocalCommandData data) {
   data.Respond();
 }
 
-bool AcceptPassword(const vector<std::string>& allowed, const std::string& candidate) {
+bool AcceptPassword(const std::vector<std::string>& allowed, const std::string& candidate) {
   for (auto& stored_hash_or_pwd : allowed) {
     if (FLAGS_use_hashed_redis_password
             ? (0 == yb::util::bcrypt_checkpw(candidate.c_str(), stored_hash_or_pwd.c_str()))
@@ -1019,7 +1019,7 @@ void HandleConfig(LocalCommandData data) {
 
   // Handle Config Set Requirepass <passwords>
   DCHECK_EQ(FLAGS_redis_passwords_separator.size(), 1);
-  vector<std::string> passwords =
+  std::vector<std::string> passwords =
       yb::StringSplit(data.arg(3).ToBuffer(), FLAGS_redis_passwords_separator[0]);
   Status status;
   if (passwords.size() > 2) {
@@ -1051,7 +1051,7 @@ void HandleConfig(LocalCommandData data) {
 }
 
 void HandleAuth(LocalCommandData data) {
-  vector<std::string> passwords;
+  std::vector<std::string> passwords;
   auto status = data.context()->service_data()->GetRedisPasswords(&passwords);
   RedisResponsePB resp;
   if (!status.ok() || !AcceptPassword(passwords, data.arg(1).ToBuffer())) {
@@ -1068,7 +1068,7 @@ void HandleAuth(LocalCommandData data) {
   data.Respond(&resp);
 }
 
-void FlushDBs(LocalCommandData data, const vector<std::string> ids) {
+void FlushDBs(LocalCommandData data, const std::vector<std::string> ids) {
   RedisResponsePB resp;
 
   const Status s = FLAGS_yedis_enable_flush
@@ -1102,7 +1102,7 @@ void HandleFlushAll(LocalCommandData data) {
   }
   const auto& table_names = *result;
   // Gather table ids.
-  vector<std::string> table_ids;
+  std::vector<std::string> table_ids;
   for (const auto& name : table_names) {
     std::shared_ptr<client::YBTable> table;
     const auto s = data.client()->OpenTable(name, &table);

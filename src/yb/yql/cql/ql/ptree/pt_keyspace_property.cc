@@ -107,7 +107,7 @@ Status PTKeyspacePropertyMap::Analyze(SemContext *sem_context) {
   // Find 'class' subproperty.
   std::unique_ptr<std::string> class_name = nullptr;
   std::unique_ptr<int64_t> replication_factor = nullptr;
-  vector<PTKeyspaceProperty::SharedPtr> other_subproperties;
+  std::vector<PTKeyspaceProperty::SharedPtr> other_subproperties;
 
   for (const auto &map_element : map_elements_->node_list()) {
     std::string subproperty_name;

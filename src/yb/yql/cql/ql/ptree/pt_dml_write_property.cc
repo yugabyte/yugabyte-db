@@ -88,7 +88,7 @@ Status PTDmlWritePropertyListNode::Analyze(SemContext *sem_context) {
   // Set to ensure we don't have duplicate update properties.
   std::set<std::string> update_properties;
   std::unordered_map<std::string, PTDmlWriteProperty::SharedPtr> order_tnodes;
-  vector<std::string> order_columns;
+  std::vector<std::string> order_columns;
   for (PTDmlWriteProperty::SharedPtr tnode : node_list()) {
     if (tnode == nullptr) {
       // This shouldn't happen because AppendList ignores null nodes.

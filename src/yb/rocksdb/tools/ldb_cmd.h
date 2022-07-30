@@ -834,7 +834,7 @@ class BatchPutCommand : public LDBCommand {
   /**
    * The key-values to be inserted.
    */
-  vector<std::pair<std::string, std::string>> key_values_;
+  std::vector<std::pair<std::string, std::string>> key_values_;
 };
 
 class ScanCommand : public LDBCommand {
