@@ -111,7 +111,7 @@ Status PTGrantRevokePermission::Analyze(SemContext* sem_context) {
   // this should be a rare occurence.
   // TODO (Bristy): Should we use a cache for these checks?
 
-  auto iterator = kPermissionMap.find(string(permission_name_->c_str()));
+  auto iterator = kPermissionMap.find(std::string(permission_name_->c_str()));
   if (iterator == kPermissionMap.end()) {
     return sem_context->Error(this, Substitute("Unknown Permission '$0'",
                                                permission_name_->c_str()).c_str(),

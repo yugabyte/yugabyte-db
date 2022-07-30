@@ -88,11 +88,11 @@ Status PTCreateIndex::Analyze(SemContext *sem_context) {
     string auto_name = relation_->last_name().c_str();
 
     for (const auto& column : hash_columns_) {
-      auto_name += string("_") + column->yb_name();
+      auto_name += std::string("_") + column->yb_name();
     }
 
     for (const auto& column : primary_columns_) {
-      auto_name += string("_") + column->yb_name();
+      auto_name += std::string("_") + column->yb_name();
     }
 
     auto_name += "_idx";

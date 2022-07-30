@@ -56,7 +56,7 @@ Status PTKeyspacePropertyListNode::Analyze(SemContext *sem_context) {
   // If the statement has properties, 'replication' property must be present. Check this before
   // checking anything else.
   for (PTKeyspaceProperty::SharedPtr tnode : node_list()) {
-    const auto property_name = string(tnode->lhs()->c_str());
+    const auto property_name = std::string(tnode->lhs()->c_str());
     if (property_name == "replication") {
       has_replication = true;
       break;
@@ -68,7 +68,7 @@ Status PTKeyspacePropertyListNode::Analyze(SemContext *sem_context) {
   }
 
   for (PTKeyspaceProperty::SharedPtr tnode : node_list()) {
-    const auto property_name = string(tnode->lhs()->c_str());
+    const auto property_name = std::string(tnode->lhs()->c_str());
     if (property_name == "durable_writes") {
       bool val = false;
       RETURN_SEM_CONTEXT_ERROR_NOT_OK(PTProperty::GetBoolValueFromExpr(tnode->rhs(),
@@ -102,7 +102,7 @@ PTKeyspacePropertyMap::~PTKeyspacePropertyMap() {
 Status PTKeyspacePropertyMap::Analyze(SemContext *sem_context) {
   DCHECK_ONLY_NOTNULL(lhs_.get());
   // Verify we have a valid property name in the lhs.
-  const auto property_name = string(lhs_->c_str());
+  const auto property_name = std::string(lhs_->c_str());
   DCHECK_EQ(property_name, "replication");
   // Find 'class' subproperty.
   std::unique_ptr<string> class_name = nullptr;

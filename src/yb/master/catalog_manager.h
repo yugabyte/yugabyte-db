@@ -927,7 +927,7 @@ class CatalogManager :
       const TabletInfo& tablet_info, const TabletReplicaDriveInfo& drive_info) const override;
 
   Status GetAllAffinitizedZones(vector<AffinitizedZonesSet>* affinitized_zones) override;
-  Result<vector<BlacklistSet>> GetAffinitizedZoneSet();
+  Result<std::vector<BlacklistSet>> GetAffinitizedZoneSet();
   Result<BlacklistSet> BlacklistSetFromPB(bool leader_blacklist = false) const override;
 
   std::vector<std::string> GetMasterAddresses();
