@@ -100,6 +100,21 @@ Result<std::unique_ptr<rpc::SecureContext>> SetupSecureContext(
   return SetupSecureContext(std::string(), root_dir, name, type, builder);
 }
 
+Result<std::unique_ptr<rpc::SecureContext>> SetupInternalSecureContext(
+    const string& local_hosts, const FsManager& fs_manager,
+    rpc::MessengerBuilder* messenger_builder) {
+  if (!FLAGS_cert_node_filename.empty()) {
+    return VERIFY_RESULT(server::SetupSecureContext(
+        fs_manager.GetDefaultRootDir(),
+        FLAGS_cert_node_filename,
+        server::SecureContextType::kInternal,
+        messenger_builder));
+  }
+
+  return VERIFY_RESULT(server::SetupSecureContext(
+      local_hosts, fs_manager, server::SecureContextType::kInternal, messenger_builder));
+}
+
 void ApplyCompressedStream(
     rpc::MessengerBuilder* builder, const rpc::StreamFactoryPtr lower_layer_factory) {
   if (!FLAGS_enable_stream_compression) {

@@ -108,6 +108,8 @@ class RpcServerBase {
 
   virtual Status ReloadKeysAndCertificates() { return Status::OK(); }
 
+  virtual uint32_t GetAutoFlagConfigVersion() const { return 0; }
+
  protected:
   RpcServerBase(std::string name,
                 const ServerBaseOptions& options,
@@ -116,6 +118,7 @@ class RpcServerBase {
                 const scoped_refptr<Clock>& clock = nullptr);
   virtual ~RpcServerBase();
 
+  virtual Status InitAutoFlags();
   virtual Status Init();
   virtual Status Start();
 

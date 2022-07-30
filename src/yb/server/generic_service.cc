@@ -210,5 +210,13 @@ void GenericServiceImpl::ReloadCertificates(
   rpc.RespondSuccess();
 }
 
+void GenericServiceImpl::GetAutoFlagsConfigVersion(
+    const GetAutoFlagsConfigVersionRequestPB* req, GetAutoFlagsConfigVersionResponsePB* resp,
+    rpc::RpcContext rpc) {
+  resp->set_config_version(server_->GetAutoFlagConfigVersion());
+
+  rpc.RespondSuccess();
+}
+
 } // namespace server
 } // namespace yb

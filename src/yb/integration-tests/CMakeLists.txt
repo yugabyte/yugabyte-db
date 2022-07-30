@@ -107,6 +107,7 @@ set(YB_TEST_LINK_LIBS
 
 ADD_YB_TEST(alter_table-test)
 ADD_YB_TEST(alter_table-randomized-test)
+ADD_YB_TEST(auto_flags-itest)
 ADD_YB_TEST(registration-test)
 ADD_YB_TEST(clock_synchronization-itest)
 ADD_YB_TEST(client_failover-itest)

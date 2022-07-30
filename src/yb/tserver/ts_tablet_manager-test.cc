@@ -79,6 +79,7 @@ DECLARE_bool(TEST_pretend_memory_exceeded_enforce_flush);
 DECLARE_bool(TEST_tserver_disable_heartbeat);
 DECLARE_int64(rocksdb_compact_flush_rate_limit_bytes_per_sec);
 DECLARE_string(rocksdb_compact_flush_rate_limit_sharing_mode);
+DECLARE_bool(disable_auto_flags_management);
 
 namespace yb {
 namespace tserver {
@@ -120,6 +121,11 @@ class TsTabletManagerTest : public YBTest {
       ASSERT_OK(env_->CreateDirs(s));
       paths.push_back(s);
     }
+
+    // Disable AutoFlags management as we dont have a master. AutoFlags will be enabled based on
+    // FLAGS_TEST_promote_all_auto_flags in test_main.cc.
+    FLAGS_disable_auto_flags_management = true;
+
     mini_server_ = std::make_unique<MiniTabletServer>(paths, paths, 0, *options_result, 0);
   }
 

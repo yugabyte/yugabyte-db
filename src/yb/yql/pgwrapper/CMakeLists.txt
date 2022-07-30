@@ -132,7 +132,7 @@ endif()
 
 add_dependencies(
   initial_sys_catalog_snapshot
-  ${CREATE_INITIAL_SYS_CATALOG_SNAPSHOT_TARGET_NAME} yb-master yb-tserver postgres)
+  ${CREATE_INITIAL_SYS_CATALOG_SNAPSHOT_TARGET_NAME} yb-master yb-tserver gen_auto_flags_json postgres)
 
 add_custom_target(
   update_ysql_migrations ALL
