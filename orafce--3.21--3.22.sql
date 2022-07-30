@@ -236,14 +236,3 @@ CREATE OR REPLACE FUNCTION oracle.trunc(value timestamp without time zone)
 RETURNS timestamp without time zone
 AS $$ SELECT oracle.trunc($1, 'DDD'); $$
 LANGUAGE SQL IMMUTABLE STRICT;
-
-DO $$
-BEGIN
-  IF EXISTS(SELECT * FROM pg_settings WHERE name = 'server_version_num' AND setting::int >= 90600) THEN
-    ALTER FUNCTION oracle.mod(SMALLINT, SMALLINT) PARALLEL SAFE;
-    ALTER FUNCTION oracle.mod(INT, INT) PARALLEL SAFE;
-    ALTER FUNCTION oracle.mod(BIGINT, BIGINT) PARALLEL SAFE;
-    ALTER FUNCTION oracle.mod(NUMERIC, NUMERIC) PARALLEL SAFE;
-  END IF;
-END;
-$$;
