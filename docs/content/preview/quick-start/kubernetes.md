@@ -12,7 +12,7 @@ type: docs
 <div class="custom-tabs tabs-style-2">
   <ul class="tabs-name">
     <li>
-      <a href="/preview/quick-start-yugabytedb-managed/" class="nav-link">
+      <a href="../../quick-start-yugabytedb-managed/" class="nav-link">
         Use a cloud cluster
       </a>
     </li>
@@ -160,7 +160,7 @@ resource.tserver.requests.cpu=0.5,resource.tserver.requests.memory=0.5Gi,\
 replicas.master=1,replicas.tserver=1 --namespace yb-demo
 ```
 
-Since load balancers are not available in a Minikube environment, the LoadBalancers for `yb-master-ui` and `yb-tserver-service` remain in pending state. To disable these services, you can pass the `enableLoadBalancer=False` flag, as follows:
+Because load balancers are not available in a Minikube environment, the LoadBalancers for `yb-master-ui` and `yb-tserver-service` remain in pending state. To disable these services, you can pass the `enableLoadBalancer=False` flag, as follows:
 
 ```sh
 helm install yb-demo yugabytedb/yugabyte \
@@ -218,7 +218,7 @@ To access the Admin UI, you first need to set up port forwarding for port 7000, 
 kubectl --namespace yb-demo port-forward svc/yb-master-ui 7000:7000
 ```
 
-Now you can view the [yb-master-0 Admin UI](../../reference/configuration/yb-master/#admin-ui) at http://localhost:7000.
+Now you can view the [yb-master-0 Admin UI](../../reference/configuration/yb-master/#admin-ui) at <http://localhost:7000>.
 
 #### Overview and YB-Master status
 
@@ -234,13 +234,32 @@ Click **See all nodes** to open the **Tablet Servers** page that lists the YB-TS
 
 ![tserver-list](/images/admin/master-tservers-list-kubernetes-rf1.png)
 
+## Connect to the database
+
+Using the YugabyteDB SQL shell, [ysqlsh](../../admin/ysqlsh/), you can connect to your cluster and interact with it using distributed SQL. ysqlsh is installed with YugabyteDB and is located in the bin directory of the YugabyteDB home directory.
+
+To open the YSQL shell (`ysqlsh`), run the following.
+
+```sh
+$ kubectl --namespace yb-demo exec -it yb-tserver-0 -- sh -c "cd /home/yugabyte && ysqlsh -h yb-tserver-0 --echo-queries"
+```
+
+```output
+ysqlsh (11.2-YB-2.1.0.0-b0)
+Type "help" for help.
+
+yugabyte=#
+```
+
+To load sample data and explore an example using ysqlsh, refer to [Retail Analytics](../../sample-data/retail-analytics/).
+
 ## Build a Java application
 
 ### Prerequisites
 
 Before building a Java application, perform the following:
 
-- While YugabyteDB is running, use the [yb-ctl](/preview/admin/yb-ctl/#root) utility to create a universe with a 3-node RF-3 cluster with some fictitious geo-locations assigned, as follows:
+- While YugabyteDB is running, use the [yb-ctl](../../admin/yb-ctl/#root) utility to create a universe with a 3-node RF-3 cluster with some fictitious geo-locations assigned, as follows:
 
   ```sh
   cd <path-to-yugabytedb-installation>
@@ -276,7 +295,7 @@ Perform the following to create a sample Java project:
     </properties>
     ```
 
-1. Add the following dependencies for the driver HikariPool within the `<dependencies>` element in `pom.xml`:
+1. Add the following dependencies for the driver HikariPool in the `<dependencies>` element in `pom.xml`:
 
     ```xml
     <dependency>
