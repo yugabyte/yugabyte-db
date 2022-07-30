@@ -244,7 +244,6 @@ set(UTIL_SRCS
   timestamp.cc
   tostring.cc
   trace.cc
-  trilean.cc
   ulimit.cc
   ulimit_util.cc
   url-coding.cc

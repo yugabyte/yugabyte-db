@@ -22,6 +22,7 @@
 #include <string>
 #include <thread>
 #include <vector>
+#include <string>
 
 #include <gtest/gtest.h>
 
@@ -35,6 +36,8 @@
 #include "yb/util/test_macros.h"
 
 namespace rocksdb {
+
+using std::string;
 
 class AutoRollLoggerTest : public RocksDBTest {
  public:

@@ -252,7 +252,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
     return connected_database_.c_str();
   }
 
-  const string& connected_database() const {
+  const std::string& connected_database() const {
     return connected_database_;
   }
   void set_connected_database(const std::string& database) {
@@ -263,7 +263,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   }
 
   // Generate a new random and unique rowid. It is a v4 UUID.
-  string GenerateNewRowid() {
+  std::string GenerateNewRowid() {
     return GenerateObjectId(true /* binary_id */);
   }
 
@@ -302,7 +302,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   // Sets the specified timeout in the rpc service.
   void SetTimeout(int timeout_ms);
 
-  Status ValidatePlacement(const string& placement_info);
+  Status ValidatePlacement(const std::string& placement_info);
 
   void TrySetCatalogReadPoint(const ReadHybridTime& read_ht);
 

@@ -151,7 +151,7 @@ class LDBCommand {
     exec_state_.Reset();
   }
 
-  static string HexToString(const std::string& str) {
+  static std::string HexToString(const std::string& str) {
     std::string::size_type len = str.length();
     std::string parsed;
     static const char* const hexas = "0123456789ABCDEF";
@@ -188,7 +188,7 @@ class LDBCommand {
     return parsed;
   }
 
-  static string StringToHex(const std::string& str) {
+  static std::string StringToHex(const std::string& str) {
     std::string result = "0x";
     char buf[10];
     for (size_t i = 0; i < str.length(); i++) {
@@ -230,7 +230,7 @@ class LDBCommand {
   /**
    * Map of options passed on the command-line.
    */
-  const map<string, string> option_map_;
+  const std::map<std::string, std::string> option_map_;
 
   /**
    * Flags passed on the command-line.
@@ -246,7 +246,7 @@ class LDBCommand {
   bool ParseKeyValue(const std::string& line, string* key, string* value,
                       bool is_key_hex, bool is_value_hex);
 
-  LDBCommand(const map<string, string>& options, const std::vector<std::string>& flags,
+  LDBCommand(const std::map<std::string, std::string>& options, const std::vector<std::string>& flags,
              bool is_read_only, const std::vector<std::string>& valid_cmd_line_options) :
       db_(nullptr),
       is_read_only_(is_read_only),
@@ -258,7 +258,7 @@ class LDBCommand {
       flags_(flags),
       valid_cmd_line_options_(valid_cmd_line_options) {
 
-    map<string, string>::const_iterator itr = options.find(ARG_DB);
+    std::map<std::string, std::string>::const_iterator itr = options.find(ARG_DB);
     if (itr != options.end()) {
       db_path_ = itr->second;
     }
@@ -403,7 +403,7 @@ class LDBCommand {
     return db_->DefaultColumnFamily();
   }
 
-  static string PrintKeyValue(const std::string& key, const std::string& value,
+  static std::string PrintKeyValue(const std::string& key, const std::string& value,
         bool is_key_hex, bool is_value_hex) {
     std::string result;
     result.append(is_key_hex ? StringToHex(key) : key);
@@ -412,7 +412,7 @@ class LDBCommand {
     return result;
   }
 
-  static string PrintKeyValue(const std::string& key, const std::string& value,
+  static std::string PrintKeyValue(const std::string& key, const std::string& value,
         bool is_hex) {
     return PrintKeyValue(key, value, is_hex, is_hex);
   }
@@ -424,7 +424,7 @@ class LDBCommand {
     return (std::find(flags.begin(), flags.end(), flag) != flags.end());
   }
 
-  static string HelpRangeCmdArgs() {
+  static std::string HelpRangeCmdArgs() {
     ostringstream str_stream;
     str_stream << " ";
     str_stream << "[--" << ARG_FROM << "] ";
@@ -446,10 +446,10 @@ class LDBCommand {
     return ret;
   }
 
-  bool ParseIntOption(const map<string, string>& options, const std::string& option,
+  bool ParseIntOption(const std::map<std::string, std::string>& options, const std::string& option,
                       int& value, LDBCommandExecuteResult& exec_state); // NOLINT
 
-  bool ParseStringOption(const map<string, string>& options,
+  bool ParseStringOption(const std::map<std::string, std::string>& options,
                          const std::string& option, string* value);
 
   Options options_;
@@ -462,7 +462,7 @@ class LDBCommand {
    * Interpret command line options and flags to determine if the key
    * should be input/output in hex.
    */
-  bool IsKeyHex(const map<string, string>& options,
+  bool IsKeyHex(const std::map<std::string, std::string>& options,
       const std::vector<std::string>& flags) {
     return (IsFlagPresent(flags, ARG_HEX) ||
         IsFlagPresent(flags, ARG_KEY_HEX) ||
@@ -474,7 +474,7 @@ class LDBCommand {
    * Interpret command line options and flags to determine if the value
    * should be input/output in hex.
    */
-  bool IsValueHex(const map<string, string>& options,
+  bool IsValueHex(const std::map<std::string, std::string>& options,
       const std::vector<std::string>& flags) {
     return (IsFlagPresent(flags, ARG_HEX) ||
           IsFlagPresent(flags, ARG_VALUE_HEX) ||
@@ -488,10 +488,10 @@ class LDBCommand {
    * Throws an exception if the value of the option is not
    * "true" or "false" (case insensitive).
    */
-  bool ParseBooleanOption(const map<string, string>& options,
+  bool ParseBooleanOption(const std::map<std::string, std::string>& options,
       const std::string& option, bool default_val) {
 
-    map<string, string>::const_iterator itr = options.find(option);
+    std::map<std::string, std::string>::const_iterator itr = options.find(option);
     if (itr != options.end()) {
       std::string option_val = itr->second;
       return StringToBool(itr->second);
@@ -520,7 +520,7 @@ class LDBCommand {
   static LDBCommand* SelectCommand(
     const std::string& cmd,
     const std::vector<std::string>& cmdParams,
-    const map<string, string>& option_map,
+    const std::map<std::string, std::string>& option_map,
     const std::vector<std::string>& flags
   );
 
@@ -528,10 +528,10 @@ class LDBCommand {
 
 class CompactorCommand: public LDBCommand {
  public:
-  static string Name() { return "compact"; }
+  static std::string Name() { return "compact"; }
 
   CompactorCommand(const std::vector<std::string>& params,
-      const map<string, string>& options, const std::vector<std::string>& flags);
+      const std::map<std::string, std::string>& options, const std::vector<std::string>& flags);
 
   static void Help(string& ret); // NOLINT
 
@@ -546,10 +546,10 @@ class CompactorCommand: public LDBCommand {
 
 class DBFileDumperCommand : public LDBCommand {
  public:
-  static string Name() { return "dump_live_files"; }
+  static std::string Name() { return "dump_live_files"; }
 
   DBFileDumperCommand(const std::vector<std::string>& params,
-                      const map<string, string>& options,
+                      const std::map<std::string, std::string>& options,
                       const std::vector<std::string>& flags);
 
   static void Help(string& ret); // NOLINT
@@ -559,10 +559,10 @@ class DBFileDumperCommand : public LDBCommand {
 
 class DBDumperCommand: public LDBCommand {
  public:
-  static string Name() { return "dump"; }
+  static std::string Name() { return "dump"; }
 
   DBDumperCommand(const std::vector<std::string>& params,
-      const map<string, string>& options, const std::vector<std::string>& flags);
+      const std::map<std::string, std::string>& options, const std::vector<std::string>& flags);
 
   static void Help(string& ret); // NOLINT
 
@@ -573,7 +573,7 @@ class DBDumperCommand: public LDBCommand {
    * Extract file name from the full path. We handle both the forward slash (/)
    * and backslash (\) to make sure that different OS-s are supported.
   */
-  static string GetFileNameFromPath(const std::string& s) {
+  static std::string GetFileNameFromPath(const std::string& s) {
     std::size_t n = s.find_last_of("/\\");
 
     if (std::string::npos == n) {
@@ -604,10 +604,10 @@ class DBDumperCommand: public LDBCommand {
 
 class InternalDumpCommand: public LDBCommand {
  public:
-  static string Name() { return "idump"; }
+  static std::string Name() { return "idump"; }
 
   InternalDumpCommand(const std::vector<std::string>& params,
-                      const map<string, string>& options,
+                      const std::map<std::string, std::string>& options,
                       const std::vector<std::string>& flags);
 
   static void Help(string& ret); // NOLINT
@@ -635,12 +635,12 @@ class InternalDumpCommand: public LDBCommand {
 
 class DBLoaderCommand: public LDBCommand {
  public:
-  static string Name() { return "load"; }
+  static std::string Name() { return "load"; }
 
   DBLoaderCommand(string& db_name, vector<string>& args); // NOLINT
 
   DBLoaderCommand(const std::vector<std::string>& params,
-      const map<string, string>& options, const std::vector<std::string>& flags);
+      const std::map<std::string, std::string>& options, const std::vector<std::string>& flags);
 
   static void Help(string& ret); // NOLINT
   virtual void DoCommand() override;
@@ -660,10 +660,10 @@ class DBLoaderCommand: public LDBCommand {
 
 class ManifestDumpCommand: public LDBCommand {
  public:
-  static string Name() { return "manifest_dump"; }
+  static std::string Name() { return "manifest_dump"; }
 
   ManifestDumpCommand(const std::vector<std::string>& params,
-      const map<string, string>& options, const std::vector<std::string>& flags);
+      const std::map<std::string, std::string>& options, const std::vector<std::string>& flags);
 
   static void Help(string& ret); // NOLINT
   virtual void DoCommand() override;
@@ -681,10 +681,10 @@ class ManifestDumpCommand: public LDBCommand {
 
 class ListColumnFamiliesCommand : public LDBCommand {
  public:
-  static string Name() { return "list_column_families"; }
+  static std::string Name() { return "list_column_families"; }
 
   ListColumnFamiliesCommand(const std::vector<std::string>& params,
-                            const map<string, string>& options,
+                            const std::map<std::string, std::string>& options,
                             const std::vector<std::string>& flags);
 
   static void Help(string& ret); // NOLINT
@@ -698,10 +698,10 @@ class ListColumnFamiliesCommand : public LDBCommand {
 
 class CreateColumnFamilyCommand : public LDBCommand {
  public:
-  static string Name() { return "create_column_family"; }
+  static std::string Name() { return "create_column_family"; }
 
   CreateColumnFamilyCommand(const std::vector<std::string>& params,
-                            const map<string, string>& options,
+                            const std::map<std::string, std::string>& options,
                             const std::vector<std::string>& flags);
 
   static void Help(string& ret); // NOLINT
@@ -715,10 +715,10 @@ class CreateColumnFamilyCommand : public LDBCommand {
 
 class ReduceDBLevelsCommand : public LDBCommand {
  public:
-  static string Name() { return "reduce_levels"; }
+  static std::string Name() { return "reduce_levels"; }
 
   ReduceDBLevelsCommand(const std::vector<std::string>& params,
-      const map<string, string>& options, const std::vector<std::string>& flags);
+      const std::map<std::string, std::string>& options, const std::vector<std::string>& flags);
 
   virtual Options PrepareOptionsForOpenDB() override;
 
@@ -744,10 +744,10 @@ class ReduceDBLevelsCommand : public LDBCommand {
 
 class ChangeCompactionStyleCommand : public LDBCommand {
  public:
-  static string Name() { return "change_compaction_style"; }
+  static std::string Name() { return "change_compaction_style"; }
 
   ChangeCompactionStyleCommand(const std::vector<std::string>& params,
-      const map<string, string>& options, const std::vector<std::string>& flags);
+      const std::map<std::string, std::string>& options, const std::vector<std::string>& flags);
 
   virtual Options PrepareOptionsForOpenDB() override;
 
@@ -765,10 +765,10 @@ class ChangeCompactionStyleCommand : public LDBCommand {
 
 class WALDumperCommand : public LDBCommand {
  public:
-  static string Name() { return "dump_wal"; }
+  static std::string Name() { return "dump_wal"; }
 
   WALDumperCommand(const std::vector<std::string>& params,
-      const map<string, string>& options, const std::vector<std::string>& flags);
+      const std::map<std::string, std::string>& options, const std::vector<std::string>& flags);
 
   virtual bool NoDBOpen() override { return true; }
 
@@ -788,9 +788,9 @@ class WALDumperCommand : public LDBCommand {
 
 class GetCommand : public LDBCommand {
  public:
-  static string Name() { return "get"; }
+  static std::string Name() { return "get"; }
 
-  GetCommand(const std::vector<std::string>& params, const map<string, string>& options,
+  GetCommand(const std::vector<std::string>& params, const std::map<std::string, std::string>& options,
       const std::vector<std::string>& flags);
 
   virtual void DoCommand() override;
@@ -803,10 +803,10 @@ class GetCommand : public LDBCommand {
 
 class ApproxSizeCommand : public LDBCommand {
  public:
-  static string Name() { return "approxsize"; }
+  static std::string Name() { return "approxsize"; }
 
   ApproxSizeCommand(const std::vector<std::string>& params,
-      const map<string, string>& options, const std::vector<std::string>& flags);
+      const std::map<std::string, std::string>& options, const std::vector<std::string>& flags);
 
   virtual void DoCommand() override;
 
@@ -819,10 +819,10 @@ class ApproxSizeCommand : public LDBCommand {
 
 class BatchPutCommand : public LDBCommand {
  public:
-  static string Name() { return "batchput"; }
+  static std::string Name() { return "batchput"; }
 
   BatchPutCommand(const std::vector<std::string>& params,
-      const map<string, string>& options, const std::vector<std::string>& flags);
+      const std::map<std::string, std::string>& options, const std::vector<std::string>& flags);
 
   virtual void DoCommand() override;
 
@@ -839,9 +839,9 @@ class BatchPutCommand : public LDBCommand {
 
 class ScanCommand : public LDBCommand {
  public:
-  static string Name() { return "scan"; }
+  static std::string Name() { return "scan"; }
 
-  ScanCommand(const std::vector<std::string>& params, const map<string, string>& options,
+  ScanCommand(const std::vector<std::string>& params, const std::map<std::string, std::string>& options,
       const std::vector<std::string>& flags);
 
   virtual void DoCommand() override;
@@ -860,10 +860,10 @@ class ScanCommand : public LDBCommand {
 
 class DeleteCommand : public LDBCommand {
  public:
-  static string Name() { return "delete"; }
+  static std::string Name() { return "delete"; }
 
   DeleteCommand(const std::vector<std::string>& params,
-      const map<string, string>& options, const std::vector<std::string>& flags);
+      const std::map<std::string, std::string>& options, const std::vector<std::string>& flags);
 
   virtual void DoCommand() override;
 
@@ -875,9 +875,9 @@ class DeleteCommand : public LDBCommand {
 
 class PutCommand : public LDBCommand {
  public:
-  static string Name() { return "put"; }
+  static std::string Name() { return "put"; }
 
-  PutCommand(const std::vector<std::string>& params, const map<string, string>& options,
+  PutCommand(const std::vector<std::string>& params, const std::map<std::string, std::string>& options,
       const std::vector<std::string>& flags);
 
   virtual void DoCommand() override;
@@ -897,10 +897,10 @@ class PutCommand : public LDBCommand {
  */
 class DBQuerierCommand: public LDBCommand {
  public:
-  static string Name() { return "query"; }
+  static std::string Name() { return "query"; }
 
   DBQuerierCommand(const std::vector<std::string>& params,
-      const map<string, string>& options, const std::vector<std::string>& flags);
+      const std::map<std::string, std::string>& options, const std::vector<std::string>& flags);
 
   static void Help(string& ret); // NOLINT
 
@@ -915,10 +915,10 @@ class DBQuerierCommand: public LDBCommand {
 
 class CheckConsistencyCommand : public LDBCommand {
  public:
-  static string Name() { return "checkconsistency"; }
+  static std::string Name() { return "checkconsistency"; }
 
   CheckConsistencyCommand(const std::vector<std::string>& params,
-      const map<string, string>& options, const std::vector<std::string>& flags);
+      const std::map<std::string, std::string>& options, const std::vector<std::string>& flags);
 
   virtual void DoCommand() override;
 
