@@ -491,7 +491,7 @@ TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestPreferredZone)) {
   // Create tablespaces and tables.
   auto conn = ASSERT_RESULT(Connect());
   auto current_version = GetCurrentVersion();
-  string table_name = kTablePrefix;
+  std::string table_name = kTablePrefix;
 
   std::string placement_blocks1;
   for (size_t i = 1; i <= NumRegions(); ++i) {

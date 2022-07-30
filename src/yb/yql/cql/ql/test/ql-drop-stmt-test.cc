@@ -23,7 +23,7 @@ class TestQLDropStmt : public QLTestBase {
   TestQLDropStmt() : QLTestBase() {
   }
 
-  inline const string CqlError(string last = "") {
+  inline const std::string CqlError(std::string last = "") {
     return "Invalid CQL Statement" + last;
   }
 };
@@ -35,10 +35,10 @@ TEST_F(TestQLDropStmt, TestQLDropTable) {
   // Get an available processor.
   TestQLProcessor *processor = GetQLProcessor();
 
-  const string create_stmt = "CREATE TABLE human_resource1(id int primary key, name varchar);";
-  const string drop_stmt = "DROP TABLE human_resource1";
-  const string drop_cond_stmt = "DROP TABLE IF EXISTS human_resource1";
-  const string not_found_drop_error = "Object Not Found";
+  const std::string create_stmt = "CREATE TABLE human_resource1(id int primary key, name varchar);";
+  const std::string drop_stmt = "DROP TABLE human_resource1";
+  const std::string drop_cond_stmt = "DROP TABLE IF EXISTS human_resource1";
+  const std::string not_found_drop_error = "Object Not Found";
 
   // No tables exist at this point. Verify that this statement fails.
   EXEC_INVALID_STMT_WITH_ERROR(drop_stmt, not_found_drop_error);
@@ -72,16 +72,16 @@ TEST_F(TestQLDropStmt, TestQLDropIndex) {
   // Get an available processor.
   TestQLProcessor *processor = GetQLProcessor();
 
-  const string create_table_stmt = "CREATE TABLE human_resource1"
+  const std::string create_table_stmt = "CREATE TABLE human_resource1"
                                    "(id int primary key, name varchar) "
                                    "with transactions = {'enabled':true};";
-  const string create_index_stmt = "CREATE INDEX i ON human_resource1(name);";
-  const string drop_table_stmt = "DROP TABLE human_resource1";
-  const string drop_table_cond_stmt = "DROP TABLE IF EXISTS human_resource1";
-  const string drop_index_stmt = "DROP INDEX i";
-  const string drop_index_cond_stmt = "DROP INDEX IF EXISTS i";
-  const string not_found_table_drop_error = "Object Not Found";
-  const string not_found_index_drop_error = "Object Not Found";
+  const std::string create_index_stmt = "CREATE INDEX i ON human_resource1(name);";
+  const std::string drop_table_stmt = "DROP TABLE human_resource1";
+  const std::string drop_table_cond_stmt = "DROP TABLE IF EXISTS human_resource1";
+  const std::string drop_index_stmt = "DROP INDEX i";
+  const std::string drop_index_cond_stmt = "DROP INDEX IF EXISTS i";
+  const std::string not_found_table_drop_error = "Object Not Found";
+  const std::string not_found_index_drop_error = "Object Not Found";
 
   // No tables exist at this point. Verify that these statements fail.
   EXEC_INVALID_STMT_WITH_ERROR(drop_table_stmt, not_found_table_drop_error);

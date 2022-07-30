@@ -252,14 +252,14 @@ class ExternalMiniCluster : public MiniClusterBase {
   Result<size_t> GetTabletLeaderIndex(const std::string& tablet_id);
 
   // The comma separated string of the master adresses host/ports from current list of masters.
-  string GetMasterAddresses() const;
+  std::string GetMasterAddresses() const;
 
-  string GetTabletServerAddresses() const;
+  std::string GetTabletServerAddresses() const;
 
-  string GetTabletServerHTTPAddresses() const;
+  std::string GetTabletServerHTTPAddresses() const;
 
   // Start a new master with `peer_addrs` as the master_addresses parameter.
-  Result<ExternalMaster *> StartMasterWithPeers(const string& peer_addrs);
+  Result<ExternalMaster *> StartMasterWithPeers(const std::string& peer_addrs);
 
   // Send a ping request to the rpc port of the master. Return OK() only if it is reachable.
   Status PingMaster(const ExternalMaster* master) const;
@@ -270,7 +270,7 @@ class ExternalMiniCluster : public MiniClusterBase {
   // Returns the min_num_replicas corresponding to a PlacementBlockPB.
   Status GetMinReplicaCountForPlacementBlock(
     ExternalMaster* master,
-    const string& cloud, const string& region, const string& zone,
+    const std::string& cloud, const std::string& region, const std::string& zone,
     int* min_num_replicas);
   // Add a Tablet Server to the leader blacklist.
   Status AddTServerToLeaderBlacklist(ExternalMaster* master, ExternalTabletServer* ts);
@@ -458,7 +458,7 @@ class ExternalMiniCluster : public MiniClusterBase {
 
   bool running() const { return running_; }
 
-  string data_root() const { return data_root_; }
+  std::string data_root() const { return data_root_; }
 
   // Return true if the tserver has been marked as DEAD by master leader.
   Result<bool> is_ts_stale(
@@ -510,7 +510,7 @@ class ExternalMiniCluster : public MiniClusterBase {
   // Ensure that the leader server is allowed to process a config change (by having at least one
   // commit in the current term as leader).
   Status WaitForLeaderToAllowChangeConfig(
-      const string& uuid,
+      const std::string& uuid,
       consensus::ConsensusServiceProxy* leader_proxy);
 
   // Return master address for specified port.
@@ -650,9 +650,9 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
   virtual Status BuildServerStateFromInfoPath();
 
   Status BuildServerStateFromInfoPath(
-      const string& info_path, std::unique_ptr<server::ServerStatusPB>* server_status);
+      const std::string& info_path, std::unique_ptr<server::ServerStatusPB>* server_status);
 
-  string GetServerInfoPath();
+  std::string GetServerInfoPath();
 
   // In a code-coverage build, try to flush the coverage data to disk.
   // In a non-coverage build, this does nothing.
@@ -764,12 +764,12 @@ class ExternalTabletServer : public ExternalDaemon {
   Status Start(
       bool start_cql_proxy = ExternalMiniClusterOptions::kDefaultStartCqlProxy,
       bool set_proxy_addrs = true,
-      std::vector<std::pair<string, string>> extra_flags = {});
+      std::vector<std::pair<std::string, std::string>> extra_flags = {});
 
   // Restarts the daemon. Requires that it has previously been shutdown.
   Status Restart(
       bool start_cql_proxy = ExternalMiniClusterOptions::kDefaultStartCqlProxy,
-      std::vector<std::pair<string, string>> flags = {});
+      std::vector<std::pair<std::string, std::string>> flags = {});
 
   Status SetNumDrives(uint16_t num_drives);
 
@@ -820,7 +820,7 @@ class ExternalTabletServer : public ExternalDaemon {
   Status BuildServerStateFromInfoPath() override;
 
  private:
-  string GetCQLServerInfoPath();
+  std::string GetCQLServerInfoPath();
   const std::string master_addrs_;
   const std::string bind_host_;
   const uint16_t rpc_port_;

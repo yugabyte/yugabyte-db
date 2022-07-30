@@ -32,12 +32,12 @@
 namespace yb {
 namespace master {
 
-const string kNamespace = "test";
+const std::string kNamespace = "test";
 
 class FlushManagerTest : public CqlTestBase<MiniCluster> {
  protected:
 
-  Result<OpId> GetOpIdAtLeader(const string& table_id) {
+  Result<OpId> GetOpIdAtLeader(const std::string& table_id) {
     auto all_peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
     for (const auto& peer : all_peers) {
       if (peer->tablet()->metadata()->table_id() == table_id) {
@@ -47,7 +47,7 @@ class FlushManagerTest : public CqlTestBase<MiniCluster> {
     return STATUS(IllegalState, "No leader found for table.");
   }
 
-  Result<OpId> GetMaxOpId(const string& table_id) {
+  Result<OpId> GetMaxOpId(const std::string& table_id) {
     auto all_peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
     OpId max_op_id(0, 0);
     for (const auto& peer : all_peers) {

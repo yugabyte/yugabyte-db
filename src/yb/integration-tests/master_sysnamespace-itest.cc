@@ -93,7 +93,7 @@ class MasterSysNamespaceTest : public YBTest {
     }
   }
 
-  void ValidateColumn(ColumnSchemaPB col_schema, string name, bool is_key, DataType type) {
+  void ValidateColumn(ColumnSchemaPB col_schema, std::string name, bool is_key, DataType type) {
     ASSERT_EQ(name, col_schema.name());
     ASSERT_EQ(is_key, col_schema.is_key());
     ASSERT_EQ(type, col_schema.type().main());

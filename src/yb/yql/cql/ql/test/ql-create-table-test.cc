@@ -49,11 +49,11 @@ class TestQLCreateTable : public QLTestBase {
   TestQLCreateTable() : QLTestBase() {
   }
 
-  inline const string CreateStmt(string params) {
+  inline const std::string CreateStmt(std::string params) {
     return "CREATE TABLE " + params;
   }
 
-  inline const string CreateIfNotExistsStmt(string params) {
+  inline const std::string CreateIfNotExistsStmt(std::string params) {
     return "CREATE TABLE IF NOT EXISTS " + params;
   }
 };
@@ -65,24 +65,24 @@ TEST_F(TestQLCreateTable, TestQLCreateTableSimple) {
   // Get an available processor.
   TestQLProcessor *processor = GetQLProcessor();
 
-  const string table1 = "human_resource1(id int, name varchar, primary key(id));";
-  const string table2 = "human_resource2(id int primary key, name varchar);";
-  const string table3 = "human_resource3(id int, name varchar primary key);";
-  const string table4 = "human_resource4(id int, name varchar, primary key(id, name));";
-  const string table5 = "human_resource5(id int, name varchar, primary key((id), name));";
-  const string table6 =
+  const std::string table1 = "human_resource1(id int, name varchar, primary key(id));";
+  const std::string table2 = "human_resource2(id int primary key, name varchar);";
+  const std::string table3 = "human_resource3(id int, name varchar primary key);";
+  const std::string table4 = "human_resource4(id int, name varchar, primary key(id, name));";
+  const std::string table5 = "human_resource5(id int, name varchar, primary key((id), name));";
+  const std::string table6 =
       "human_resource6(id int, name varchar, salary int, primary key((id, name), salary));";
 
-  const string table7 = "human_resource7(id int, name varchar, primary key(id));";
-  const string table8 = "human_resource8(id int primary key, name varchar);";
-  const string table9 = "human_resource9(id int, name varchar primary key);";
-  const string table10 = "human_resource10(id int, name varchar, primary key(id, name));";
-  const string table11 = "human_resource11(id int, name varchar, primary key((id), name));";
-  const string table12 =
+  const std::string table7 = "human_resource7(id int, name varchar, primary key(id));";
+  const std::string table8 = "human_resource8(id int primary key, name varchar);";
+  const std::string table9 = "human_resource9(id int, name varchar primary key);";
+  const std::string table10 = "human_resource10(id int, name varchar, primary key(id, name));";
+  const std::string table11 = "human_resource11(id int, name varchar, primary key((id), name));";
+  const std::string table12 =
       "human_resource12(id int, name varchar, salary int, primary key((id, name), salary));";
 
   // Define primary key before defining columns.
-  const string table13 =
+  const std::string table13 =
       "human_resource13(id int, primary key((id, name), salary), name varchar, salary int);";
 
   // Create the table 1.

@@ -235,7 +235,7 @@ Result<std::pair<docdb::DocKeyHash, docdb::DocKeyHash>>
     session = this->CreateSession(txn);
   }
 
-  vector<client::YBqlWriteOpPtr> ops;
+  std::vector<client::YBqlWriteOpPtr> ops;
   ops.reserve(num_rows);
   for (int32_t i = start_key, v = start_value;
        i < start_key + static_cast<int32_t>(num_rows);
@@ -840,9 +840,9 @@ Result<std::set<TabletId>> TabletSplitExternalMiniClusterITest::GetTestTableTabl
   return tablet_ids;
 }
 
-Result<vector<tserver::ListTabletsResponsePB_StatusAndSchemaPB>>
+Result<std::vector<tserver::ListTabletsResponsePB_StatusAndSchemaPB>>
     TabletSplitExternalMiniClusterITest::ListTablets(size_t tserver_idx) {
-  vector<tserver::ListTabletsResponsePB_StatusAndSchemaPB> tablets;
+  std::vector<tserver::ListTabletsResponsePB_StatusAndSchemaPB> tablets;
   std::set<TabletId> tablet_ids;
   auto res = VERIFY_RESULT(cluster_->ListTablets(cluster_->tablet_server(tserver_idx)));
   for (const auto& tablet : res.status_and_schema()) {
@@ -856,9 +856,9 @@ Result<vector<tserver::ListTabletsResponsePB_StatusAndSchemaPB>>
   return tablets;
 }
 
-Result<vector<tserver::ListTabletsResponsePB_StatusAndSchemaPB>>
+Result<std::vector<tserver::ListTabletsResponsePB_StatusAndSchemaPB>>
     TabletSplitExternalMiniClusterITest::ListTablets() {
-  vector<tserver::ListTabletsResponsePB_StatusAndSchemaPB> tablets;
+  std::vector<tserver::ListTabletsResponsePB_StatusAndSchemaPB> tablets;
   std::set<TabletId> tablet_ids;
   for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
     auto res = VERIFY_RESULT(ListTablets(i));
@@ -931,7 +931,7 @@ Result<TabletId> TabletSplitExternalMiniClusterITest::GetOnlyTestTabletId() {
 }
 
 Status TabletSplitExternalMiniClusterITest::SplitTabletCrashMaster(
-    bool change_split_boundary, string* split_partition_key) {
+    bool change_split_boundary, std::string* split_partition_key) {
   CreateSingleTablet();
   int key = 1, num_rows = 2000;
   RETURN_NOT_OK(WriteRowsAndFlush(num_rows, key));

@@ -563,7 +563,7 @@ class TestNamespaceLoader : public Visitor<PersistentNamespaceInfo> {
     return Status::OK();
   }
 
-  vector<NamespaceInfo*> namespaces;
+  std::vector<NamespaceInfo*> namespaces;
 };
 
 // Test the sys-catalog namespaces basic operations (add, update, delete, visit)
@@ -668,7 +668,7 @@ class TestUDTypeLoader : public Visitor<PersistentUDTypeInfo> {
     return Status::OK();
   }
 
-  vector<UDTypeInfo*> udtypes;
+  std::vector<UDTypeInfo*> udtypes;
 };
 
 class TestRedisConfigLoader : public Visitor<PersistentRedisConfigInfo> {
@@ -694,7 +694,7 @@ class TestRedisConfigLoader : public Visitor<PersistentRedisConfigInfo> {
     return Status::OK();
   }
 
-  vector<RedisConfigInfo*> config_entries;
+  std::vector<RedisConfigInfo*> config_entries;
 };
 
 // Test the sys-catalog redis config basic operations (add, visit, drop)
@@ -812,7 +812,7 @@ class TestSysConfigLoader : public Visitor<PersistentSysConfigInfo> {
     return Status::OK();
   }
 
-  vector<SysConfigInfo*> sys_configs;
+  std::vector<SysConfigInfo*> sys_configs;
 };
 
 // Test the sys-catalog sys-config basic operations (add, visit, drop).
@@ -906,7 +906,7 @@ class TestRoleLoader : public Visitor<PersistentRoleInfo> {
     return Status::OK();
   }
 
-  vector<RoleInfo*> roles;
+  std::vector<RoleInfo*> roles;
 };
 
 // Test the sys-catalog role/permissions basic operations (add, visit, drop)

@@ -67,12 +67,12 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
   // Allocate constant expressions.
   // TODO(neil) We can also allocate expression with bind.
   YBCPgExpr expr_id;
-  string h_str = strings::Substitute("$0", h);
+  std::string h_str = strings::Substitute("$0", h);
   CHECK_YBC_STATUS(YBCTestNewConstantText(pg_stmt, h_str.c_str(), false, &expr_id));
   YBCPgExpr expr_r1;
   CHECK_YBC_STATUS(YBCTestNewConstantInt8(pg_stmt, r, false, &expr_r1));
   YBCPgExpr expr_val;
-  string val = strings::Substitute("$0-$1", h, r);
+  std::string val = strings::Substitute("$0-$1", h, r);
   CHECK_YBC_STATUS(YBCTestNewConstantText(pg_stmt, val.c_str(), false, &expr_val));
 
   // Set column value to be inserted.
@@ -166,16 +166,16 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
     // Check result.
     int col_index = 0;
 
-    string selected_id = reinterpret_cast<char*>(values[col_index++]);
-    string expected_id = strings::Substitute("$0", h);
+    std::string selected_id = reinterpret_cast<char*>(values[col_index++]);
+    std::string expected_id = strings::Substitute("$0", h);
     CHECK_EQ(selected_id, expected_id);
 
     int64_t r1 = values[col_index++];  // h : int64
     CHECK_LE(A, r1);
     CHECK_GE(B, r1);
 
-    string selected_val = reinterpret_cast<char*>(values[col_index++]);
-    string expected_val = strings::Substitute("$0-$1", h, r1);
+    std::string selected_val = reinterpret_cast<char*>(values[col_index++]);
+    std::string expected_val = strings::Substitute("$0-$1", h, r1);
     CHECK_EQ(selected_val, expected_val);
   }
   CHECK_EQ(select_row_count, B - A + 1) << "Unexpected row count";
@@ -236,16 +236,16 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
     // Check result.
     int col_index = 0;
 
-    string selected_id = reinterpret_cast<char*>(values[col_index++]);
-    string expected_id = strings::Substitute("$0", h);
+    std::string selected_id = reinterpret_cast<char*>(values[col_index++]);
+    std::string expected_id = strings::Substitute("$0", h);
     CHECK_EQ(selected_id, expected_id);
 
     int64_t r1 = values[col_index++];  // h : int64
     CHECK_LE(A, r1);
     CHECK_GE(B, r1);
 
-    string selected_val = reinterpret_cast<char*>(values[col_index++]);
-    string expected_val = strings::Substitute("$0-$1", h, r1);
+    std::string selected_val = reinterpret_cast<char*>(values[col_index++]);
+    std::string expected_val = strings::Substitute("$0-$1", h, r1);
     CHECK_EQ(selected_val, expected_val);
   }
   CHECK_EQ(select_row_count, B - A + 1) << "Unexpected row count";
@@ -306,16 +306,16 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
     // Check result.
     int col_index = 0;
 
-    string selected_id = reinterpret_cast<char*>(values[col_index++]);
-    string expected_id = strings::Substitute("$0", h);
+    std::string selected_id = reinterpret_cast<char*>(values[col_index++]);
+    std::string expected_id = strings::Substitute("$0", h);
     CHECK_EQ(selected_id, expected_id);
 
     int64_t r1 = values[col_index++];  // h : int64
     CHECK_LE(A, r1);
     CHECK_GE(B, r1);
 
-    string selected_val = reinterpret_cast<char*>(values[col_index++]);
-    string expected_val = strings::Substitute("$0-$1", h, r1);
+    std::string selected_val = reinterpret_cast<char*>(values[col_index++]);
+    std::string expected_val = strings::Substitute("$0-$1", h, r1);
     CHECK_EQ(selected_val, expected_val);
   }
   CHECK_EQ(select_row_count, B - A + 1) << "Unexpected row count";
@@ -378,16 +378,16 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
     // Check result.
     int col_index = 0;
 
-    string selected_id = reinterpret_cast<char*>(values[col_index++]);
-    string expected_id = strings::Substitute("$0", h);
+    std::string selected_id = reinterpret_cast<char*>(values[col_index++]);
+    std::string expected_id = strings::Substitute("$0", h);
     CHECK_EQ(selected_id, expected_id);
 
     int64_t r1 = values[col_index++];  // h : int64
     CHECK_LE(A, r1);
     CHECK_GE(B, r1);
 
-    string selected_val = reinterpret_cast<char*>(values[col_index++]);
-    string expected_val = strings::Substitute("$0-$1", h, r1);
+    std::string selected_val = reinterpret_cast<char*>(values[col_index++]);
+    std::string expected_val = strings::Substitute("$0-$1", h, r1);
     CHECK_EQ(selected_val, expected_val);
   }
   CHECK_EQ(select_row_count, B - A + 1) << "Unexpected row count";

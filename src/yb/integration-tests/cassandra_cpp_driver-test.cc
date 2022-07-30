@@ -459,8 +459,8 @@ class Metrics {
   const ExternalMiniCluster& cluster_;
   const bool cql_metrics_;
 
-  map<string, const MetricPrototype*> prototypes_;
-  map<string, int64_t> values_;
+  std::map<string, const MetricPrototype*> prototypes_;
+  std::map<string, int64_t> values_;
 };
 
 std::ostream& operator <<(std::ostream& s, const Metrics& m) {

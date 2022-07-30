@@ -908,8 +908,8 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(InTxnDelete)) {
 
 namespace {
 
-Result<string> GetNamespaceIdByNamespaceName(
-    client::YBClient* client, const string& namespace_name) {
+Result<std::string> GetNamespaceIdByNamespaceName(
+    client::YBClient* client, const std::string& namespace_name) {
   const auto namespaces = VERIFY_RESULT(client->ListNamespaces(YQL_DATABASE_PGSQL));
   for (const auto& ns : namespaces) {
     if (ns.name() == namespace_name) {
@@ -919,8 +919,8 @@ Result<string> GetNamespaceIdByNamespaceName(
   return STATUS(NotFound, "The namespace does not exist");
 }
 
-Result<string> GetTableIdByTableName(
-    client::YBClient* client, const string& namespace_name, const string& table_name) {
+Result<std::string> GetTableIdByTableName(
+    client::YBClient* client, const std::string& namespace_name, const std::string& table_name) {
   const auto tables = VERIFY_RESULT(client->ListTables());
   for (const auto& t : tables) {
     if (t.namespace_name() == namespace_name && t.table_name() == table_name) {
@@ -933,8 +933,8 @@ Result<string> GetTableIdByTableName(
 } // namespace
 
 TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(CompoundKeyColumnOrder)) {
-  const string namespace_name = "yugabyte";
-  const string table_name = "test";
+  const std::string namespace_name = "yugabyte";
+  const std::string table_name = "test";
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.ExecuteFormat(
       "CREATE TABLE $0 (r2 int, r1 int, h int, v2 int, v1 int, primary key (h, r1, r2))",
@@ -951,7 +951,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(CompoundKeyColumnOrder)) {
   }
 
   const auto& columns = table_info->schema.columns();
-  std::array<string, 5> expected_column_names{"h", "r1", "r2", "v2", "v1"};
+  std::array<std::string, 5> expected_column_names{"h", "r1", "r2", "v2", "v1"};
   ASSERT_EQ(expected_column_names.size(), columns.size());
   for (size_t i = 0; i < expected_column_names.size(); ++i) {
     ASSERT_EQ(columns[i].name(), expected_column_names[i]);
@@ -1060,7 +1060,7 @@ Result<master::TabletLocationsPB> GetColocatedTabletLocations(
     client::YBClient* client,
     std::string database_name,
     MonoDelta timeout) {
-  const string ns_id =
+  const std::string ns_id =
       VERIFY_RESULT(GetNamespaceIdByNamespaceName(client, database_name));
 
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
@@ -1123,7 +1123,7 @@ Result<master::TabletLocationsPB> GetTablegroupTabletLocations(
 
 TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TableColocation)) {
   auto client = ASSERT_RESULT(cluster_->CreateClient());
-  const string kDatabaseName = "test_db";
+  const std::string kDatabaseName = "test_db";
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets_bar_index;
 
@@ -1394,9 +1394,9 @@ Result<TableGroupInfo> SelectTablegroup(
 TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ColocatedTablegroups),
           PgLibPqTablegroupTest) {
   auto client = ASSERT_RESULT(cluster_->CreateClient());
-  const string kDatabaseName ="tgroup_test_db";
-  const string kTablegroupName ="test_tgroup";
-  const string kTablegroupAltName ="test_alt_tgroup";
+  const std::string kDatabaseName ="tgroup_test_db";
+  const std::string kTablegroupName ="test_tgroup";
+  const std::string kTablegroupAltName ="test_alt_tgroup";
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets_bar_index;
 
@@ -1653,7 +1653,7 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(NumberOfInitialRpcs), PgLibPqTest
 }
 
 TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(RangePresplit)) {
-  const string kDatabaseName ="yugabyte";
+  const std::string kDatabaseName ="yugabyte";
   auto client = ASSERT_RESULT(cluster_->CreateClient());
 
   auto conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
@@ -2006,7 +2006,7 @@ class PgLibPqTableTimeoutTest : public PgLibPqTest {
 };
 
 TEST_F(PgLibPqTableTimeoutTest, YB_DISABLE_TEST_IN_TSAN(TestTableTimeoutGC)) {
-  const string kDatabaseName ="yugabyte";
+  const std::string kDatabaseName ="yugabyte";
   NamespaceName test_name = "test_pgsql_table";
   auto client = ASSERT_RESULT(cluster_->CreateClient());
 
@@ -2037,7 +2037,7 @@ TEST_F(PgLibPqTableTimeoutTest, YB_DISABLE_TEST_IN_TSAN(TestTableTimeoutGC)) {
 }
 
 TEST_F(PgLibPqTableTimeoutTest, YB_DISABLE_TEST_IN_TSAN(TestTableTimeoutAndRestartGC)) {
-  const string kDatabaseName ="yugabyte";
+  const std::string kDatabaseName ="yugabyte";
   NamespaceName test_name = "test_pgsql_table";
   auto client = ASSERT_RESULT(cluster_->CreateClient());
 
@@ -2085,7 +2085,7 @@ class PgLibPqIndexTableTimeoutTest : public PgLibPqTest {
 };
 
 TEST_F(PgLibPqIndexTableTimeoutTest, YB_DISABLE_TEST_IN_TSAN(TestIndexTableTimeoutGC)) {
-  const string kDatabaseName ="yugabyte";
+  const std::string kDatabaseName ="yugabyte";
   NamespaceName test_name = "test_pgsql_table";
   NamespaceName test_name_idx = test_name + "_idx";
 
@@ -2142,9 +2142,9 @@ class PgLibPqTestEnumType: public PgLibPqTest {
 TEST_F_EX(PgLibPqTest,
           YB_DISABLE_TEST_IN_TSAN(EnumType),
           PgLibPqTestEnumType) {
-  const string kDatabaseName ="yugabyte";
-  const string kTableName ="enum_table";
-  const string kEnumTypeName ="enum_type";
+  const std::string kDatabaseName ="yugabyte";
+  const std::string kTableName ="enum_table";
+  const std::string kEnumTypeName ="enum_type";
   auto conn = std::make_unique<PGConn>(ASSERT_RESULT(ConnectToDB(kDatabaseName)));
   ASSERT_OK(conn->ExecuteFormat(
     "CREATE TYPE $0 as enum('b', 'e', 'f', 'c', 'a', 'd')", kEnumTypeName));
@@ -2164,7 +2164,7 @@ TEST_F_EX(PgLibPqTest,
   PGResultPtr res = ASSERT_RESULT(conn->Fetch(query));
   ASSERT_EQ(PQntuples(res.get()), 3);
   ASSERT_EQ(PQnfields(res.get()), 1);
-  std::vector<string> values = {
+  std::vector<std::string> values = {
     ASSERT_RESULT(GetString(res.get(), 0, 0)),
     ASSERT_RESULT(GetString(res.get(), 1, 0)),
     ASSERT_RESULT(GetString(res.get(), 2, 0)),
@@ -2187,7 +2187,7 @@ TEST_F_EX(PgLibPqTest,
   // server.
   for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
     ExternalTabletServer* ts = cluster_->tablet_server(i);
-    const string pg_pid_file = JoinPathSegments(ts->GetRootDir(), "pg_data",
+    const std::string pg_pid_file = JoinPathSegments(ts->GetRootDir(), "pg_data",
                                                 "postmaster.pid");
 
     LOG(INFO) << "pg_pid_file: " << pg_pid_file;
@@ -2263,7 +2263,7 @@ TEST_F_EX(PgLibPqTest,
   res = ASSERT_RESULT(conn->Fetch(query2));
   ASSERT_EQ(PQntuples(res.get()), 1);
   ASSERT_EQ(PQnfields(res.get()), 1);
-  const string value = ASSERT_RESULT(GetString(res.get(), 0, 0));
+  const std::string value = ASSERT_RESULT(GetString(res.get(), 0, 0));
   ASSERT_EQ(value, "b");
 }
 
@@ -2282,9 +2282,9 @@ TEST_F_EX(PgLibPqTest,
           YB_DISABLE_TEST_IN_TSAN(LargeOid),
           PgLibPqLargeOidTest) {
   // Test large OID with enum type which had Postgres Assert failure.
-  const string kDatabaseName ="yugabyte";
-  const string kTableName ="enum_table";
-  const string kEnumTypeName ="enum_type";
+  const std::string kDatabaseName ="yugabyte";
+  const std::string kTableName ="enum_table";
+  const std::string kEnumTypeName ="enum_type";
   PGConn conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
   ASSERT_OK(conn.ExecuteFormat("CREATE TYPE $0 as enum('a', 'c')", kEnumTypeName));
   // Do ALTER TYPE to ensure we correctly put sort order as the high 32-bit after clearing
@@ -2329,7 +2329,7 @@ TEST_F_EX(PgLibPqTest,
   res = ASSERT_RESULT(conn.Fetch(query));
   ASSERT_EQ(PQntuples(res.get()), 3);
   ASSERT_EQ(PQnfields(res.get()), 1);
-  std::vector<string> enum_values = {
+  std::vector<std::string> enum_values = {
     ASSERT_RESULT(GetString(res.get(), 0, 0)),
     ASSERT_RESULT(GetString(res.get(), 1, 0)),
     ASSERT_RESULT(GetString(res.get(), 2, 0)),
@@ -2425,7 +2425,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(PagingReadRestart)) {
 }
 
 TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(CollationRangePresplit)) {
-  const string kDatabaseName ="yugabyte";
+  const std::string kDatabaseName ="yugabyte";
   auto client = ASSERT_RESULT(cluster_->CreateClient());
 
   auto conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
@@ -2543,7 +2543,7 @@ class PgLibPqCatalogVersionTest : public PgLibPqTest {
     return catalog_version_map;
   }
 
-  uint32 GetDatabaseOid(PGConn* conn, const string& db_name) {
+  uint32 GetDatabaseOid(PGConn* conn, const std::string& db_name) {
     auto res = CHECK_RESULT(conn->FetchFormat(
         "SELECT oid FROM pg_database WHERE datname = '$0'", db_name));
     auto lines = PQntuples(res.get());
@@ -2572,8 +2572,8 @@ class PgLibPqCatalogVersionTest : public PgLibPqTest {
 
 TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersion),
           PgLibPqCatalogVersionTest) {
-  const string kYugabyteDatabase = "yugabyte";
-  const string kTestDatabase = "test_db";
+  const std::string kYugabyteDatabase = "yugabyte";
+  const std::string kTestDatabase = "test_db";
 
   // Prepare the table pg_yb_catalog_version to have one row per database.
   // The pg_yb_catalog_version row for a database is inserted at CREATE DATABATE time
@@ -2732,7 +2732,7 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersion),
 }
 
 TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(NonBreakingDDLMode)) {
-  const string kDatabaseName = "yugabyte";
+  const std::string kDatabaseName = "yugabyte";
 
   auto conn1 = ASSERT_RESULT(ConnectToDB(kDatabaseName));
   auto conn2 = ASSERT_RESULT(ConnectToDB(kDatabaseName));
@@ -2748,7 +2748,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(NonBreakingDDLMode)) {
   auto result = conn1.Fetch("SELECT * FROM t1");
   ASSERT_NOK(result);
   auto status = ResultToStatus(result);
-  const string msg = "catalog snapshot used for this transaction has been invalidated";
+  const std::string msg = "catalog snapshot used for this transaction has been invalidated";
   ASSERT_TRUE(status.ToString().find(msg) != std::string::npos);
   ASSERT_OK(conn1.Execute("ABORT"));
 

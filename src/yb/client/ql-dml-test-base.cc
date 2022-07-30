@@ -270,7 +270,7 @@ void InitIndex(
   index_info->add_indexed_hash_column_ids(schema.ColumnId(0));
 
   auto* column = index_info->add_columns();
-  const string name = schema.Column(indexed_column_index).name();
+  const std::string name = schema.Column(indexed_column_index).name();
   column->set_column_name(use_mangled_names ? YcqlName::MangleColumnName(name) : name);
   column->set_indexed_column_id(schema.ColumnId(indexed_column_index));
 
@@ -283,7 +283,7 @@ void InitIndex(
   size_t num_range_keys = 0;
   for (size_t i = 0; i < schema.num_hash_key_columns(); ++i) {
     if (i != indexed_column_index) {
-      const string name = schema.Column(i).name();
+      const std::string name = schema.Column(i).name();
       builder->AddColumn(use_mangled_names ? YcqlName::MangleColumnName(name) : name)
           ->Type(schema.Column(i).type())
           ->NotNull()

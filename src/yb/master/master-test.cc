@@ -152,7 +152,7 @@ TEST_F(MasterTest, TestRegisterAndHeartbeat) {
     ASSERT_TRUE(resp.needs_full_tablet_report());
   }
 
-  vector<shared_ptr<TSDescriptor> > descs;
+  std::vector<shared_ptr<TSDescriptor> > descs;
   mini_master_->master()->ts_manager()->GetAllDescriptors(&descs);
   ASSERT_EQ(0, descs.size()) << "Should not have registered anything";
 
@@ -305,8 +305,8 @@ TEST_F(MasterTest, TestListTablesWithoutMasterCrash) {
     ASSERT_OK(proxy_ddl_->ListTables(req, &resp, ResetAndGetController()));
     LOG(INFO) << "Finished first ListTables request";
     ASSERT_TRUE(resp.has_error());
-    string msg = resp.error().status().message();
-    ASSERT_TRUE(msg.find("Keyspace identifier not found") != string::npos);
+    std::string msg = resp.error().status().message();
+    ASSERT_TRUE(msg.find("Keyspace identifier not found") != std::string::npos);
 
     // After turning off this flag, ListTables should skip the table with the error.
     FLAGS_TEST_return_error_if_namespace_not_found = false;
@@ -455,8 +455,8 @@ TEST_F(MasterTest, TestCatalogHasBlockCache) {
   ASSERT_OK(mini_master_->master()->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
 
   // Check prometheus metrics via webserver to verify block_cache metrics exist
-  string addr = AsString(mini_master_->bound_http_addr());
-  string url = strings::Substitute("http://$0/prometheus-metrics", AsString(addr));
+  std::string addr = AsString(mini_master_->bound_http_addr());
+  std::string url = strings::Substitute("http://$0/prometheus-metrics", AsString(addr));
   EasyCurl curl;
   faststring buf;
 
@@ -580,7 +580,7 @@ TEST_F(MasterTest, TestTabletsDeletedWhenTableInDeletingState) {
                             1);
 
   ASSERT_OK(CreateTable(kTableName, kTableSchema));
-  vector<TabletId> tablet_ids;
+  std::vector<TabletId> tablet_ids;
   {
     CatalogManager::SharedLock lock(mini_master_->catalog_manager_impl().mutex_);
     for (auto elem : *mini_master_->catalog_manager_impl().tablet_map_) {

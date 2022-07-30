@@ -2182,7 +2182,7 @@ Result<TableNameResolver> ClusterAdminClient::BuildTableNameResolver() {
                            VERIFY_RESULT(yb_client_->ListNamespaces()));
 }
 
-std::string RightPadToUuidWidth(const string &s) {
+std::string RightPadToUuidWidth(const std::string &s) {
   return RightPadToWidth(s, kNumCharactersInUuid);
 }
 

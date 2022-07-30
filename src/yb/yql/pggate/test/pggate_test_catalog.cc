@@ -88,7 +88,7 @@ TEST_F(PggateTestCatalog, TestDml) {
   YBCPgExpr expr_salary;
   CHECK_YBC_STATUS(YBCTestNewConstantFloat4(pg_stmt, seed + 1.0*seed/10.0, false, &expr_salary));
   YBCPgExpr expr_job;
-  string job = strings::Substitute("Job_title_$0", seed);
+  std::string job = strings::Substitute("Job_title_$0", seed);
   CHECK_YBC_STATUS(YBCTestNewConstantText(pg_stmt, job.c_str(), false, &expr_job));
 
   // Set column value to be inserted.
@@ -182,8 +182,8 @@ TEST_F(PggateTestCatalog, TestDml) {
   CHECK_LE(salary, empid + 1.0*empid/10.0 + 0.01);
   CHECK_GE(salary, empid + 1.0*empid/10.0 - 0.01);
 
-  string selected_job_name = reinterpret_cast<char*>(values[col_index++]);
-  string expected_job_name = strings::Substitute("Job_title_$0", empid);
+  std::string selected_job_name = reinterpret_cast<char*>(values[col_index++]);
+  std::string expected_job_name = strings::Substitute("Job_title_$0", empid);
   CHECK_EQ(selected_job_name, expected_job_name);
 
   CHECK_YBC_STATUS(YBCPgDmlFetch(pg_stmt, col_count, values, isnulls, nullptr, &has_data));

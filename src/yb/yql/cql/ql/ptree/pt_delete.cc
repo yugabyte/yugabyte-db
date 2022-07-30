@@ -173,7 +173,7 @@ ExplainPlanPB PTDeleteStmt::AnalysisResultToPB() {
     std::string filter = "        Filter: " + ConditionsToString(where_ops());
     delete_plan->set_filter(filter);
   }
-  delete_plan->set_output_width(narrow_cast<int32_t>(max({
+  delete_plan->set_output_width(narrow_cast<int32_t>(std::max({
     delete_plan->delete_type().length(),
     delete_plan->scan_type().length(),
     delete_plan->key_conditions().length(),

@@ -1656,7 +1656,7 @@ MicrosTime CDCServiceImpl::GetLastReplicatedTime(
 
 void SetMinCDCSDKCheckpoint(const OpId& checkpoint, OpId* cdc_sdk_op_id) {
   if (*cdc_sdk_op_id != OpId::Invalid()) {
-    *cdc_sdk_op_id = min(*cdc_sdk_op_id, checkpoint);
+    *cdc_sdk_op_id = std::min(*cdc_sdk_op_id, checkpoint);
   } else {
     *cdc_sdk_op_id = checkpoint;
   }
@@ -1667,7 +1667,7 @@ void PopulateTabletMinCheckpoint(
     const CoarseTimePoint& last_active_time, TabletOpIdMap* tablet_min_checkpoint_index) {
   auto& tablet_info = (*tablet_min_checkpoint_index)[tablet_id];
 
-  tablet_info.cdc_op_id = min(tablet_info.cdc_op_id, checkpoint);
+  tablet_info.cdc_op_id = std::min(tablet_info.cdc_op_id, checkpoint);
   // Case:1  2 different CDCSDK stream(stream-1 and stream-2) on same tablet_id.
   //        for stream-1 there is get changes call and stream-2 there is not get change
   //        call(i.e initial checkpoint is -1.-1).

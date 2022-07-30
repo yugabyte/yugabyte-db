@@ -867,7 +867,7 @@ void MasterPathHandlers::HandleHealthCheck(
           dead_nodes.push_back(desc);
         } else {
           // 2. Have any of the servers restarted lately?
-          most_recent_uptime = min(most_recent_uptime, desc->uptime_seconds());
+          most_recent_uptime = std::min(most_recent_uptime, desc->uptime_seconds());
         }
       }
     }

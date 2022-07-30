@@ -43,7 +43,7 @@ class RestartTest : public YBTableTestBase {
 
   int num_tablets() override { return 1; }
 
-  void GetTablet(const client::YBTableName& table_name, string* tablet_id) {
+  void GetTablet(const client::YBTableName& table_name, std::string* tablet_id) {
     std::vector<std::string> ranges;
     std::vector<TabletId> tablet_ids;
     ASSERT_OK(client_->GetTablets(table_name, 0 /* max_tablets */, &tablet_ids, &ranges));
@@ -62,7 +62,7 @@ TEST_F(RestartTest, WalFooterProperlyInitialized) {
   ASSERT_OK(tablet_server->Restart());
   FLAGS_TEST_simulate_abrupt_server_restart = false;
 
-  string tablet_id;
+  std::string tablet_id;
   ASSERT_NO_FATALS(GetTablet(table_.name(), &tablet_id));
   std::shared_ptr<tablet::TabletPeer> tablet_peer;
   ASSERT_OK(tablet_server->server()->tablet_manager()->GetTabletPeer(tablet_id, &tablet_peer));

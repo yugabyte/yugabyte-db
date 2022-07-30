@@ -250,7 +250,7 @@ class TwoDCTest : public TwoDCTestBase, public testing::WithParamInterface<TwoDC
     WriteWorkload(start, end, client, table, true /* delete_op */);
   }
 
-  std::vector<string> ScanToStrings(const YBTableName& table_name, YBClient* client) {
+  std::vector<std::string> ScanToStrings(const YBTableName& table_name, YBClient* client) {
     client::TableHandle table;
     EXPECT_OK(table.Open(table_name, client));
     auto result = ScanTableToStrings(table);
@@ -391,7 +391,7 @@ TEST_P(TwoDCTest, SetupUniverseReplicationErrorChecking) {
     rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
     master::SetupUniverseReplicationRequestPB setup_universe_req;
     setup_universe_req.set_producer_id(kUniverseId);
-    string master_addr = producer_cluster()->GetMasterAddresses();
+    std::string master_addr = producer_cluster()->GetMasterAddresses();
     auto hp_vec = ASSERT_RESULT(HostPort::ParseStrings(master_addr, 0));
     HostPortsToPBs(hp_vec, setup_universe_req.mutable_producer_master_addresses());
     setup_universe_req.add_producer_table_ids("a");
@@ -412,7 +412,7 @@ TEST_P(TwoDCTest, SetupUniverseReplicationErrorChecking) {
     master::SetupUniverseReplicationRequestPB setup_universe_req;
     master::SetupUniverseReplicationResponsePB setup_universe_resp;
     setup_universe_req.set_producer_id(kUniverseId);
-    string master_addr = consumer_cluster()->GetMasterAddresses();
+    std::string master_addr = consumer_cluster()->GetMasterAddresses();
     auto hp_vec = ASSERT_RESULT(HostPort::ParseStrings(master_addr, 0));
     HostPortsToPBs(hp_vec, setup_universe_req.mutable_producer_master_addresses());
 
@@ -439,7 +439,7 @@ TEST_P(TwoDCTest, SetupUniverseReplicationErrorChecking) {
     CHECK_OK(cm.GetClusterConfig(&cluster_info));
     setup_universe_req.set_producer_id(cluster_info.cluster_uuid());
 
-    string master_addr = producer_cluster()->GetMasterAddresses();
+    std::string master_addr = producer_cluster()->GetMasterAddresses();
     auto hp_vec = ASSERT_RESULT(HostPort::ParseStrings(master_addr, 0));
     HostPortsToPBs(hp_vec, setup_universe_req.mutable_producer_master_addresses());
 
@@ -522,10 +522,10 @@ TEST_P(TwoDCTest, SetupUniverseReplicationWithProducerBootstrapId) {
   int nrows = 0;
   for (const auto& row : client::TableRange(table)) {
     nrows++;
-    string stream_id = row.column(0).string_value();
+    std::string stream_id = row.column(0).string_value();
     tablet_bootstraps[stream_id]++;
 
-    string checkpoint = row.column(2).string_value();
+    std::string checkpoint = row.column(2).string_value();
     auto s = OpId::FromString(checkpoint);
     ASSERT_OK(s);
     OpId op_id = *s;
@@ -551,7 +551,7 @@ TEST_P(TwoDCTest, SetupUniverseReplicationWithProducerBootstrapId) {
   master::SetupUniverseReplicationRequestPB setup_universe_req;
   master::SetupUniverseReplicationResponsePB setup_universe_resp;
   setup_universe_req.set_producer_id(kUniverseId);
-  string master_addr = producer_cluster()->GetMasterAddresses();
+  std::string master_addr = producer_cluster()->GetMasterAddresses();
   auto hp_vec = ASSERT_RESULT(HostPort::ParseStrings(master_addr, 0));
   HostPortsToPBs(hp_vec, setup_universe_req.mutable_producer_master_addresses());
 
@@ -753,7 +753,7 @@ TEST_P(TwoDCTest, SetupUniverseReplicationBootstrapStateUpdate) {
   }
 
   // Bootstrap producer tables
-  std::unordered_map<TableId, string> table_bootstrap_ids;  // Map table -> bootstrap_id.
+  std::unordered_map<TableId, std::string> table_bootstrap_ids;  // Map table -> bootstrap_id.
   {
     cdc::BootstrapProducerRequestPB bootstrap_req;
     cdc::BootstrapProducerResponsePB bootstrap_resp;
@@ -777,7 +777,7 @@ TEST_P(TwoDCTest, SetupUniverseReplicationBootstrapStateUpdate) {
     master::SetupUniverseReplicationRequestPB setup_universe_req;
     master::SetupUniverseReplicationResponsePB setup_universe_resp;
     setup_universe_req.set_producer_id(kUniverseId);
-    string master_addrs = producer_cluster()->GetMasterAddresses();
+    std::string master_addrs = producer_cluster()->GetMasterAddresses();
     auto hps = ASSERT_RESULT(HostPort::ParseStrings(master_addrs, 0));
     HostPortsToPBs(hps, setup_universe_req.mutable_producer_master_addresses());
     for (size_t i = 0; i < kNumTables; i++) {
@@ -804,7 +804,7 @@ TEST_P(TwoDCTest, SetupUniverseReplicationBootstrapStateUpdate) {
 
   // Verify that all streams are set to ACTIVE state.
   {
-    string state_active = master::SysCDCStreamEntryPB::State_Name(
+    std::string state_active = master::SysCDCStreamEntryPB::State_Name(
         master::SysCDCStreamEntryPB_State::SysCDCStreamEntryPB_State_ACTIVE);
     master::ListCDCStreamsRequestPB list_req;
     master::ListCDCStreamsResponsePB list_resp;
@@ -818,7 +818,7 @@ TEST_P(TwoDCTest, SetupUniverseReplicationBootstrapStateUpdate) {
             list_resp.streams_size() == kNumTables;  // One stream per table.
     }, MonoDelta::FromSeconds(kRpcTimeout), "Verify stream creation"));
 
-    std::vector<string> stream_states;
+    std::vector<std::string> stream_states;
     for (int i = 0; i < list_resp.streams_size(); i++) {
       auto options = list_resp.streams(i).options();
       for (const auto& option : options) {
@@ -830,7 +830,7 @@ TEST_P(TwoDCTest, SetupUniverseReplicationBootstrapStateUpdate) {
 
     ASSERT_TRUE(stream_states.size() == kNumTables && std::all_of(
         stream_states.begin(), stream_states.end(),
-        [&](string state) { return state == state_active; }));
+        [&](std::string state) { return state == state_active; }));
   }
 
   // Verify that replication is working.
@@ -1284,7 +1284,7 @@ TEST_P(TwoDCTestWithEnableIntentsReplication, TransactionStatusTable) {
   std::vector<std::shared_ptr<client::YBTable>> producer_tables_2 = {tables[2]};
   ASSERT_OK(SetupUniverseReplication(
       producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, producer_tables_1));
-  static const string kUniverseId2 = "test_universe_2";
+  static const std::string kUniverseId2 = "test_universe_2";
   ASSERT_OK(SetupUniverseReplication(
       producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId2, producer_tables_2));
 
@@ -1647,7 +1647,7 @@ TEST_P(TwoDCTest, AlterUniverseReplicationMasters) {
     alter_req.set_producer_id(kUniverseId);
 
     // GetMasterAddresses returns 3 masters.
-    string master_addr = producer_cluster()->GetMasterAddresses();
+    std::string master_addr = producer_cluster()->GetMasterAddresses();
     auto hp_vec = ASSERT_RESULT(HostPort::ParseStrings(master_addr, 0));
     HostPortsToPBs(hp_vec, alter_req.mutable_producer_master_addresses());
 
@@ -1821,7 +1821,7 @@ TEST_P(TwoDCTest, AlterUniverseReplicationBootstrapStateUpdate) {
   }
 
   // Bootstrap producer tables.
-  std::unordered_map<TableId, string> table_bootstrap_ids;  // Map table -> bootstrap_id.
+  std::unordered_map<TableId, std::string> table_bootstrap_ids;  // Map table -> bootstrap_id.
   {
     cdc::BootstrapProducerRequestPB bootstrap_req;
     cdc::BootstrapProducerResponsePB bootstrap_resp;
@@ -1845,7 +1845,7 @@ TEST_P(TwoDCTest, AlterUniverseReplicationBootstrapStateUpdate) {
     master::SetupUniverseReplicationRequestPB setup_universe_req;
     master::SetupUniverseReplicationResponsePB setup_universe_resp;
     setup_universe_req.set_producer_id(kUniverseId);
-    string master_addrs = producer_cluster()->GetMasterAddresses();
+    std::string master_addrs = producer_cluster()->GetMasterAddresses();
     auto hps = ASSERT_RESULT(HostPort::ParseStrings(master_addrs, 0));
     HostPortsToPBs(hps, setup_universe_req.mutable_producer_master_addresses());
     setup_universe_req.add_producer_table_ids(producer_tables[0]->id());
@@ -1888,7 +1888,7 @@ TEST_P(TwoDCTest, AlterUniverseReplicationBootstrapStateUpdate) {
 
   // Verify that all streams are set to ACTIVE state.
   {
-    string state_active = master::SysCDCStreamEntryPB::State_Name(
+    std::string state_active = master::SysCDCStreamEntryPB::State_Name(
         master::SysCDCStreamEntryPB_State::SysCDCStreamEntryPB_State_ACTIVE);
     master::ListCDCStreamsRequestPB list_req;
     master::ListCDCStreamsResponsePB list_resp;
@@ -1902,7 +1902,7 @@ TEST_P(TwoDCTest, AlterUniverseReplicationBootstrapStateUpdate) {
             list_resp.streams_size() == kNumTables;  // One stream per table.
     }, MonoDelta::FromSeconds(kRpcTimeout), "Verify stream creation"));
 
-    std::vector<string> stream_states;
+    std::vector<std::string> stream_states;
     for (int i = 0; i < list_resp.streams_size(); i++) {
       auto options = list_resp.streams(i).options();
       for (const auto& option : options) {
@@ -1913,7 +1913,7 @@ TEST_P(TwoDCTest, AlterUniverseReplicationBootstrapStateUpdate) {
     }
     ASSERT_TRUE(stream_states.size() == kNumTables && std::all_of(
         stream_states.begin(), stream_states.end(),
-        [&](string state) { return state == state_active; }));
+        [&](std::string state) { return state == state_active; }));
   }
 
   // Verify that replication is working.
@@ -2191,8 +2191,8 @@ TEST_P(TwoDCTest, TestDeleteCDCStreamWithMissingStreams) {
   std::string prefix = "Could not find the following streams:";
   const auto error_str = delete_universe_resp.error().status().message();
   ASSERT_TRUE(error_str.substr(0, prefix.size()) == prefix);
-  ASSERT_NE(error_str.find(stream_id), string::npos);
-  ASSERT_NE(error_str.find(tables[0]->id()), string::npos);
+  ASSERT_NE(error_str.find(stream_id), std::string::npos);
+  ASSERT_NE(error_str.find(tables[0]->id()), std::string::npos);
 
   // Force the delete.
   rpc.Reset();
@@ -2256,7 +2256,7 @@ TEST_P(TwoDCTest, TestFailedUniverseDeletionOnRestart) {
   // manually call SetupUniverseReplication to ensure it fails
   master::SetupUniverseReplicationRequestPB req;
   master::SetupUniverseReplicationResponsePB resp;
-  string master_addr = producer_cluster()->GetMasterAddresses();
+  std::string master_addr = producer_cluster()->GetMasterAddresses();
   auto hp_vec = ASSERT_RESULT(HostPort::ParseStrings(master_addr, 0));
   HostPortsToPBs(hp_vec, req.mutable_producer_master_addresses());
   req.set_producer_id(kUniverseId);
@@ -2608,8 +2608,8 @@ TEST_P(TwoDCTest, DeleteTableChecksCQL) {
 
   // Attempt to destroy the producer and consumer tables.
   for (size_t i = 0; i < producer_tables.size(); ++i) {
-    string producer_table_id = producer_tables[i]->id();
-    string consumer_table_id = consumer_tables[i]->id();
+    std::string producer_table_id = producer_tables[i]->id();
+    std::string consumer_table_id = consumer_tables[i]->id();
     ASSERT_NOK(producer_client()->DeleteTable(producer_table_id));
     ASSERT_NOK(consumer_client()->DeleteTable(consumer_table_id));
   }
@@ -2618,8 +2618,8 @@ TEST_P(TwoDCTest, DeleteTableChecksCQL) {
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
 
   for (size_t i = 0; i < producer_tables.size(); ++i) {
-    string producer_table_id = producer_tables[i]->id();
-    string consumer_table_id = consumer_tables[i]->id();
+    std::string producer_table_id = producer_tables[i]->id();
+    std::string consumer_table_id = consumer_tables[i]->id();
     ASSERT_OK(producer_client()->DeleteTable(producer_table_id));
     ASSERT_OK(consumer_client()->DeleteTable(consumer_table_id));
   }

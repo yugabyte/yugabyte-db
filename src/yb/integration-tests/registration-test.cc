@@ -110,16 +110,16 @@ class RegistrationTest : public YBMiniClusterTestBase<MiniCluster> {
     ASSERT_OK(c.FetchURL(strings::Substitute("http://$0/tablet-servers", addr), &buf));
 
     // Should include the TS UUID
-    string expected_uuid =
+    std::string expected_uuid =
       cluster_->mini_tablet_server(0)->server()->instance_pb().permanent_uuid();
     ASSERT_STR_CONTAINS(buf.ToString(), expected_uuid);
   }
 
   // For debugging, try running with --test-args --vmodule=sys_catalog_writer=2,tablet=3.
   void CheckTabletReports(bool co_partition = false) {
-    string tablet_id_1;
-    string tablet_id_2;
-    string table_id_1;
+    std::string tablet_id_1;
+    std::string tablet_id_2;
+    std::string table_id_1;
     // Speed up test by having low number of tablets.
     FLAGS_yb_num_shards_per_tserver = 2;
 
@@ -238,7 +238,7 @@ TEST_F(RegistrationTest, TestTSRegisters) {
   master::TSRegistrationPB reg = descs[0]->GetRegistration();
   {
     SCOPED_TRACE(reg.ShortDebugString());
-    ASSERT_EQ(reg.ShortDebugString().find("0.0.0.0"), string::npos)
+    ASSERT_EQ(reg.ShortDebugString().find("0.0.0.0"), std::string::npos)
       << "Should not include wildcards in registration";
   }
 

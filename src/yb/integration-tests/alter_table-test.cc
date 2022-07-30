@@ -217,7 +217,7 @@ class AlterTableTest : public YBMiniClusterTestBase<MiniCluster>,
     int wait_time = 1000;
     for (int i = 0; i < attempts; ++i) {
       bool in_progress;
-      string table_id;
+      std::string table_id;
       RETURN_NOT_OK(client_->IsAlterTableInProgress(table_name, table_id, &in_progress));
       if (!in_progress) {
         return Status::OK();
@@ -231,12 +231,12 @@ class AlterTableTest : public YBMiniClusterTestBase<MiniCluster>,
   }
 
   Status AddNewI32Column(const YBTableName& table_name,
-                         const string& column_name) {
+                         const std::string& column_name) {
     return AddNewI32Column(table_name, column_name, MonoDelta::FromSeconds(60));
   }
 
   Status AddNewI32Column(const YBTableName& table_name,
-                         const string& column_name,
+                         const std::string& column_name,
                          const MonoDelta& timeout) {
     std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(table_name));
     table_alterer->AddColumn(column_name)->Type(INT32)->NotNull();
@@ -253,7 +253,7 @@ class AlterTableTest : public YBMiniClusterTestBase<MiniCluster>,
 
   void InsertRows(int start_row, int num_rows);
 
-  void UpdateRow(int32_t row_key, const map<string, int32_t>& updates);
+  void UpdateRow(int32_t row_key, const map<std::string, int32_t>& updates);
 
   std::vector<std::string> ScanToStrings();
 
@@ -345,7 +345,7 @@ TEST_P(AlterTableTest, TestAddNullableColumnWithoutDefault) {
 
   InsertRows(1, 1);
 
-  vector<string> rows = ScanToStrings();
+  vector<std::string> rows = ScanToStrings();
   EXPECT_EQ(2, rows.size());
   EXPECT_EQ("{ int32:0, int32:0, null }", rows[0]);
   EXPECT_EQ("{ int32:16777216, int32:1, null }", rows[1]);
@@ -368,7 +368,7 @@ TEST_P(AlterTableTest, TestAlterOnTSRestart) {
   YBSchema schema;
   PartitionSchema partition_schema;
   bool alter_in_progress = false;
-  string table_id;
+  std::string table_id;
   ASSERT_OK(client_->GetTableSchema(kTableName, &schema, &partition_schema));
   ASSERT_TRUE(schema_.Equals(schema));
   ASSERT_OK(client_->IsAlterTableInProgress(kTableName, table_id, &alter_in_progress));
@@ -463,7 +463,7 @@ void AlterTableTest::InsertRows(int start_row, int num_rows) {
 }
 
 void AlterTableTest::UpdateRow(int32_t row_key,
-                               const map<string, int32_t>& updates) {
+                               const map<std::string, int32_t>& updates) {
   shared_ptr<YBSession> session = client_->NewSession();
   session->SetTimeout(15s);
 
@@ -480,7 +480,7 @@ void AlterTableTest::UpdateRow(int32_t row_key,
   FlushSessionOrDie(session);
 }
 
-std::vector<string> AlterTableTest::ScanToStrings() {
+std::vector<std::string> AlterTableTest::ScanToStrings() {
   client::TableHandle table;
   EXPECT_OK(table.Open(kTableName, client_.get()));
   auto result = ScanTableToStrings(table);
@@ -676,7 +676,7 @@ TEST_P(AlterTableTest, TestAlterWalRetentionSecs) {
 
   ASSERT_OK(table_alterer->SetWalRetentionSecs(kWalRetentionSecs)->Alter());
 
-  int expected_wal_retention_secs = max(FLAGS_log_min_seconds_to_retain, kWalRetentionSecs);
+  int expected_wal_retention_secs = std::max(FLAGS_log_min_seconds_to_retain, kWalRetentionSecs);
 
   ASSERT_EQ(kWalRetentionSecs, tablet_peer_->tablet()->metadata()->wal_retention_secs());
   ASSERT_EQ(expected_wal_retention_secs, tablet_peer_->log()->wal_retention_secs());
@@ -693,7 +693,7 @@ TEST_P(AlterTableTest, TestCompactAfterUpdatingRemovedColumn) {
   // in this test.
   FLAGS_enable_maintenance_manager = false;
 
-  vector<string> rows;
+  vector<std::string> rows;
 
   ASSERT_OK(AddNewI32Column(kTableName, "c2"));
   InsertRows(0, 1);
@@ -943,7 +943,7 @@ TEST_P(ReplicatedAlterTableTest, TestReplicatedAlter) {
   ASSERT_OK(AddNewI32Column(kTableName, "c1"));
 
   bool alter_in_progress;
-  string table_id;
+  std::string table_id;
   ASSERT_OK(client_->IsAlterTableInProgress(kTableName, table_id, &alter_in_progress));
   ASSERT_FALSE(alter_in_progress);
 
@@ -967,7 +967,7 @@ TEST_P(ReplicatedAlterTableTest, TestAlterOneTSDown) {
   ASSERT_OK(AddNewI32Column(kTableName, "new_col"));
 
   bool alter_in_progress;
-  string table_id;
+  std::string table_id;
   ASSERT_OK(client_->IsAlterTableInProgress(kTableName, table_id, &alter_in_progress));
   ASSERT_FALSE(alter_in_progress);
 

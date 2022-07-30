@@ -75,10 +75,10 @@ static const char* const kTsCliToolName = "yb-ts-cli";
 class YBTsCliTest : public ExternalMiniClusterITestBase {
  protected:
   // Figure out where the admin tool is.
-  string GetTsCliToolPath() const;
+  std::string GetTsCliToolPath() const;
 };
 
-string YBTsCliTest::GetTsCliToolPath() const {
+std::string YBTsCliTest::GetTsCliToolPath() const {
   return GetToolPath(kTsCliToolName);
 }
 
@@ -97,20 +97,20 @@ TEST_F(YBTsCliTest, TestDeleteTablet) {
   TestWorkload workload(cluster_.get());
   workload.Setup(); // Easy way to create a new tablet.
 
-  vector<tserver::ListTabletsResponsePB::StatusAndSchemaPB> tablets;
+  std::vector<tserver::ListTabletsResponsePB::StatusAndSchemaPB> tablets;
   for (const auto& entry : ts_map_) {
     TServerDetails* ts = entry.second.get();
     ASSERT_OK(itest::WaitForNumTabletsOnTS(ts, 1, timeout, &tablets));
   }
-  string tablet_id = tablets[0].tablet_status().tablet_id();
+  std::string tablet_id = tablets[0].tablet_status().tablet_id();
 
   for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
     ASSERT_OK(itest::WaitUntilTabletRunning(ts_map_[cluster_->tablet_server(i)->uuid()].get(),
                                             tablet_id, timeout));
   }
 
-  string exe_path = GetTsCliToolPath();
-  vector<string> argv;
+  std::string exe_path = GetTsCliToolPath();
+  std::vector<std::string> argv;
   argv.push_back(exe_path);
   argv.push_back("--server_address");
   argv.push_back(yb::ToString(cluster_->tablet_server(0)->bound_rpc_addr()));
@@ -132,12 +132,12 @@ TEST_F(YBTsCliTest, TestTabletServerReadiness) {
   TestWorkload workload(cluster_.get());
   workload.Setup(); // Easy way to create a new tablet.
 
-  vector<tserver::ListTabletsResponsePB::StatusAndSchemaPB> tablets;
+  std::vector<tserver::ListTabletsResponsePB::StatusAndSchemaPB> tablets;
   for (const auto& entry : ts_map_) {
     TServerDetails* ts = entry.second.get();
     ASSERT_OK(itest::WaitForNumTabletsOnTS(ts, 1, timeout, &tablets));
   }
-  string tablet_id = tablets[0].tablet_status().tablet_id();
+  std::string tablet_id = tablets[0].tablet_status().tablet_id();
 
   for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
     ASSERT_OK(itest::WaitUntilTabletRunning(ts_map_[cluster_->tablet_server(i)->uuid()].get(),
@@ -147,8 +147,8 @@ TEST_F(YBTsCliTest, TestTabletServerReadiness) {
   ASSERT_NO_FATALS(cluster_->tablet_server(0)->Shutdown());
   ASSERT_OK(cluster_->tablet_server(0)->Restart());
 
-  string exe_path = GetTsCliToolPath();
-  vector<string> argv;
+  std::string exe_path = GetTsCliToolPath();
+  std::vector<std::string> argv;
   argv.push_back(exe_path);
   argv.push_back("--server_address");
   argv.push_back(yb::ToString(cluster_->tablet_server(0)->bound_rpc_addr()));
@@ -173,7 +173,7 @@ TEST_F(YBTsCliTest, TestRefreshFlags) {
   ASSERT_OK(flag_file->Close());
 
   // Start the cluster;
-  vector<string> extra_flags = {"--flagfile=" + flag_filename};
+  std::vector<std::string> extra_flags = {"--flagfile=" + flag_filename};
 
   ASSERT_NO_FATALS(StartCluster(extra_flags, extra_flags));
 
@@ -189,8 +189,8 @@ TEST_F(YBTsCliTest, TestRefreshFlags) {
   ASSERT_OK(flag_file->Close());
 
   // Send RefreshFlags RPC to the Master process
-  string exe_path = GetTsCliToolPath();
-  vector<string> argv;
+  std::string exe_path = GetTsCliToolPath();
+  std::vector<std::string> argv;
   argv.push_back(exe_path);
   argv.push_back("--server_address");
   argv.push_back(yb::ToString(cluster_->master(0)->bound_rpc_addr()));
@@ -223,21 +223,21 @@ TEST_F(YBTsCliTest, TestRefreshFlags) {
 class YBTsCliUnsafeChangeTest : public AdminTestBase {
  public:
   // Figure out where the admin tool is.
-  string GetTsCliToolPath() const;
+  std::string GetTsCliToolPath() const;
 };
 
-string YBTsCliUnsafeChangeTest::GetTsCliToolPath() const {
+std::string YBTsCliUnsafeChangeTest::GetTsCliToolPath() const {
   return GetToolPath(kTsCliToolName);
 }
 
 Status RunUnsafeChangeConfig(
     YBTsCliUnsafeChangeTest* test,
-    const string& tablet_id,
-    const string& dst_host,
-    const vector<string>& peer_uuid_list) {
+    const std::string& tablet_id,
+    const std::string& dst_host,
+    const std::vector<std::string>& peer_uuid_list) {
   LOG(INFO) << " Called RunUnsafeChangeConfig with " << tablet_id << " " << dst_host << " and "
             << yb::ToString(peer_uuid_list);
-  std::vector<string> params;
+  std::vector<std::string> params;
   params.push_back(test->GetTsCliToolPath());
   params.push_back("--server_address");
   params.push_back(dst_host);
@@ -269,7 +269,7 @@ TEST_F(YBTsCliUnsafeChangeTest, TestUnsafeChangeConfigOnSingleFollower) {
   BuildAndStart(ts_flags, master_flags);
 
   LOG(INFO) << "Finding tablet leader and waiting for things to start...";
-  string tablet_id = tablet_replicas_.begin()->first;
+  std::string tablet_id = tablet_replicas_.begin()->first;
 
   // Determine the list of tablet servers currently in the config.
   itest::TabletServerMapUnowned active_tablet_servers;
@@ -291,7 +291,7 @@ TEST_F(YBTsCliUnsafeChangeTest, TestUnsafeChangeConfigOnSingleFollower) {
 
   TServerDetails* leader_ts;
   ASSERT_OK(FindTabletLeader(active_tablet_servers, tablet_id_, kTimeout, &leader_ts));
-  vector<TServerDetails*> followers;
+  std::vector<TServerDetails*> followers;
   ASSERT_OK(FindTabletFollowers(active_tablet_servers, tablet_id_, kTimeout, &followers));
   // Wait for initial NO_OP to be committed by the leader.
   ASSERT_OK(WaitForOpFromCurrentTerm(leader_ts, tablet_id_, OpIdType::COMMITTED_OPID, kTimeout));
@@ -303,7 +303,7 @@ TEST_F(YBTsCliUnsafeChangeTest, TestUnsafeChangeConfigOnSingleFollower) {
   cluster_->tablet_server_by_uuid(followers[1]->uuid())->Shutdown();
 
   LOG(INFO) << "Forcing unsafe config change on remaining follower " << followers[0]->uuid();
-  const string& follower0_addr =
+  const std::string& follower0_addr =
       cluster_->tablet_server_by_uuid(followers[0]->uuid())->bound_rpc_addr().ToString();
   ASSERT_OK(RunUnsafeChangeConfig(this, tablet_id_, follower0_addr, {followers[0]->uuid()}));
   ASSERT_OK(WaitUntilLeader(followers[0], tablet_id_, kTimeout));
@@ -324,9 +324,9 @@ TEST_F(YBTsCliUnsafeChangeTest, TestUnsafeChangeConfigOnSingleFollower) {
       followers[0], tablet_id_, OpIdType::COMMITTED_OPID, kTimeout, &opid));
 
   active_tablet_servers.clear();
-  std::unordered_set<string> replica_uuids;
+  std::unordered_set<std::string> replica_uuids;
   for (const auto& loc : tablet_locations.replicas()) {
-    const string& uuid = loc.ts_info().permanent_uuid();
+    const std::string& uuid = loc.ts_info().permanent_uuid();
     InsertOrDie(&active_tablet_servers, uuid, tablet_servers_[uuid].get());
   }
   ASSERT_OK(WaitForServersToAgree(kTimeout, active_tablet_servers, tablet_id_, opid.index));
@@ -380,7 +380,7 @@ TEST_F(YBTsCliUnsafeChangeTest, TestUnsafeChangeConfigOnSingleLeader) {
 
   TServerDetails* leader_ts;
   ASSERT_OK(FindTabletLeader(active_tablet_servers, tablet_id_, kTimeout, &leader_ts));
-  vector<TServerDetails*> followers;
+  std::vector<TServerDetails*> followers;
   ASSERT_OK(FindTabletFollowers(active_tablet_servers, tablet_id_, kTimeout, &followers));
   // Wait for initial NO_OP to be committed by the leader.
   ASSERT_OK(WaitForOpFromCurrentTerm(leader_ts, tablet_id_, OpIdType::COMMITTED_OPID, kTimeout));
@@ -395,16 +395,16 @@ TEST_F(YBTsCliUnsafeChangeTest, TestUnsafeChangeConfigOnSingleLeader) {
   ASSERT_OK(cluster_->master()->Restart());
 
   LOG(INFO) << "Forcing unsafe config change on tserver " << leader_ts->uuid();
-  const string& leader_addr = Substitute(
+  const std::string& leader_addr = Substitute(
       "$0:$1",
       leader_ts->registration->common().private_rpc_addresses(0).host(),
       leader_ts->registration->common().private_rpc_addresses(0).port());
-  const vector<string> peer_uuid_list = {leader_ts->uuid()};
+  const std::vector<std::string> peer_uuid_list = {leader_ts->uuid()};
   ASSERT_OK(RunUnsafeChangeConfig(this, tablet_id_, leader_addr, peer_uuid_list));
 
   // Check that new config is populated to a new follower.
   TServerDetails* new_follower = nullptr;
-  vector<TServerDetails*> all_tservers = TServerDetailsVector(tablet_servers_);
+  std::vector<TServerDetails*> all_tservers = TServerDetailsVector(tablet_servers_);
   for (const auto& ts : all_tservers) {
     if (!ContainsKey(active_tablet_servers, ts->uuid())) {
       new_follower = ts;
@@ -463,7 +463,7 @@ TEST_F(YBTsCliUnsafeChangeTest, TestUnsafeChangeConfigForConfigWithTwoNodes) {
 
   TServerDetails* leader_ts;
   ASSERT_OK(FindTabletLeader(active_tablet_servers, tablet_id_, kTimeout, &leader_ts));
-  vector<TServerDetails*> followers;
+  std::vector<TServerDetails*> followers;
   ASSERT_OK(FindTabletFollowers(active_tablet_servers, tablet_id_, kTimeout, &followers));
   // Wait for initial NO_OP to be committed by the leader.
   ASSERT_OK(WaitForOpFromCurrentTerm(leader_ts, tablet_id_, OpIdType::COMMITTED_OPID, kTimeout));
@@ -476,18 +476,18 @@ TEST_F(YBTsCliUnsafeChangeTest, TestUnsafeChangeConfigForConfigWithTwoNodes) {
   ASSERT_OK(cluster_->master()->Restart());
 
   LOG(INFO) << "Forcing unsafe config change on tserver " << followers[1]->uuid();
-  const string& follower1_addr = Substitute(
+  const std::string& follower1_addr = Substitute(
       "$0:$1",
       followers[1]->registration->common().private_rpc_addresses(0).host(),
       followers[1]->registration->common().private_rpc_addresses(0).port());
-  const vector<string> peer_uuid_list = {
+  const std::vector<std::string> peer_uuid_list = {
       followers[0]->uuid(),
       followers[1]->uuid(),
   };
   ASSERT_OK(RunUnsafeChangeConfig(this, tablet_id_, follower1_addr, peer_uuid_list));
 
   // Find a remaining node which will be picked for re-replication.
-  vector<TServerDetails*> all_tservers = TServerDetailsVector(tablet_servers_);
+  std::vector<TServerDetails*> all_tservers = TServerDetailsVector(tablet_servers_);
   TServerDetails* new_node = nullptr;
   for (TServerDetails* ts : all_tservers) {
     if (!ContainsKey(active_tablet_servers, ts->uuid())) {
@@ -528,8 +528,8 @@ TEST_F(YBTsCliUnsafeChangeTest, TestUnsafeChangeConfigWithFiveReplicaConfig) {
   master_flags.push_back("--enable_load_balancing=true");
   BuildAndStart(ts_flags, master_flags);
 
-  vector<ExternalTabletServer*> external_tservers;
-  vector<TServerDetails*> tservers = TServerDetailsVector(tablet_servers_);
+  std::vector<ExternalTabletServer*> external_tservers;
+  std::vector<TServerDetails*> tservers = TServerDetailsVector(tablet_servers_);
   for (TServerDetails* ts : tservers) {
     external_tservers.push_back(cluster_->tablet_server_by_uuid(ts->uuid()));
   }
@@ -554,7 +554,7 @@ TEST_F(YBTsCliUnsafeChangeTest, TestUnsafeChangeConfigWithFiveReplicaConfig) {
   TServerDetails* leader_ts;
   ASSERT_OK(FindTabletLeader(active_tablet_servers, tablet_id_, kTimeout, &leader_ts));
   ASSERT_OK(itest::WaitUntilCommittedOpIdIndexIs(1, leader_ts, tablet_id_, kTimeout));
-  vector<TServerDetails*> followers;
+  std::vector<TServerDetails*> followers;
   ASSERT_OK(FindTabletFollowers(active_tablet_servers, tablet_id_, kTimeout, &followers));
   ASSERT_EQ(followers.size(), 4);
   // Wait for initial NO_OP to be committed by the leader.
@@ -569,18 +569,18 @@ TEST_F(YBTsCliUnsafeChangeTest, TestUnsafeChangeConfigWithFiveReplicaConfig) {
   ASSERT_OK(cluster_->master()->Restart());
 
   LOG(INFO) << "Forcing unsafe config change on tserver " << followers[1]->uuid();
-  const string& follower1_addr = Substitute(
+  const std::string& follower1_addr = Substitute(
       "$0:$1",
       followers[1]->registration->common().private_rpc_addresses(0).host(),
       followers[1]->registration->common().private_rpc_addresses(0).port());
-  const vector<string> peer_uuid_list = {
+  const std::vector<std::string> peer_uuid_list = {
       followers[0]->uuid(),
       followers[1]->uuid(),
   };
   ASSERT_OK(RunUnsafeChangeConfig(this, tablet_id_, follower1_addr, peer_uuid_list));
 
   // Find a remaining node which will be picked for re-replication.
-  vector<TServerDetails*> all_tservers = TServerDetailsVector(tablet_servers_);
+  std::vector<TServerDetails*> all_tservers = TServerDetailsVector(tablet_servers_);
   TServerDetails* new_node = nullptr;
   for (TServerDetails* ts : all_tservers) {
     if (!ContainsKey(active_tablet_servers, ts->uuid())) {
@@ -643,7 +643,7 @@ TEST_F(YBTsCliUnsafeChangeTest, TestUnsafeChangeConfigLeaderWithPendingConfig) {
 
   TServerDetails* leader_ts;
   ASSERT_OK(FindTabletLeader(active_tablet_servers, tablet_id_, kTimeout, &leader_ts));
-  vector<TServerDetails*> followers;
+  std::vector<TServerDetails*> followers;
   ASSERT_OK(FindTabletFollowers(active_tablet_servers, tablet_id_, kTimeout, &followers));
   ASSERT_EQ(followers.size(), 2);
   // Wait for initial NO_OP to be committed by the leader.
@@ -662,11 +662,11 @@ TEST_F(YBTsCliUnsafeChangeTest, TestUnsafeChangeConfigLeaderWithPendingConfig) {
 
   LOG(INFO) << "Change Config Op timed out, Sending a Replace config "
             << "command when change config op is pending on the leader.";
-  const string& leader_addr = Substitute(
+  const std::string& leader_addr = Substitute(
       "$0:$1",
       leader_ts->registration->common().private_rpc_addresses(0).host(),
       leader_ts->registration->common().private_rpc_addresses(0).port());
-  const vector<string> peer_uuid_list = {leader_ts->uuid()};
+  const std::vector<std::string> peer_uuid_list = {leader_ts->uuid()};
   ASSERT_OK(RunUnsafeChangeConfig(this, tablet_id_, leader_addr, peer_uuid_list));
 
   // Restart master to cleanup cache of dead servers from its list of candidate
@@ -675,7 +675,7 @@ TEST_F(YBTsCliUnsafeChangeTest, TestUnsafeChangeConfigLeaderWithPendingConfig) {
   ASSERT_OK(cluster_->master()->Restart());
 
   // Find a remaining node which will be picked for re-replication.
-  vector<TServerDetails*> all_tservers = TServerDetailsVector(tablet_servers_);
+  std::vector<TServerDetails*> all_tservers = TServerDetailsVector(tablet_servers_);
   TServerDetails* new_node = nullptr;
   for (TServerDetails* ts : all_tservers) {
     if (!ContainsKey(active_tablet_servers, ts->uuid())) {
@@ -738,7 +738,7 @@ TEST_F(YBTsCliUnsafeChangeTest, TestUnsafeChangeConfigFollowerWithPendingConfig)
 
   TServerDetails* leader_ts;
   ASSERT_OK(FindTabletLeader(active_tablet_servers, tablet_id_, kTimeout, &leader_ts));
-  vector<TServerDetails*> followers;
+  std::vector<TServerDetails*> followers;
   ASSERT_OK(FindTabletFollowers(active_tablet_servers, tablet_id_, kTimeout, &followers));
   // Wait for initial NO_OP to be committed by the leader.
   ASSERT_OK(WaitForOpFromCurrentTerm(leader_ts, tablet_id_, OpIdType::COMMITTED_OPID, kTimeout));
@@ -772,15 +772,15 @@ TEST_F(YBTsCliUnsafeChangeTest, TestUnsafeChangeConfigFollowerWithPendingConfig)
 
   LOG(INFO) << "Change Config Op timed out, Sending a Replace config "
             << "command when change config op is pending on the leader.";
-  const string& leader_addr = Substitute(
+  const std::string& leader_addr = Substitute(
       "$0:$1",
       leader_ts->registration->common().private_rpc_addresses(0).host(),
       leader_ts->registration->common().private_rpc_addresses(0).port());
-  const vector<string> peer_uuid_list = {leader_ts->uuid()};
+  const std::vector<std::string> peer_uuid_list = {leader_ts->uuid()};
   ASSERT_OK(RunUnsafeChangeConfig(this, tablet_id_, leader_addr, peer_uuid_list));
 
   // Find a remaining node which will be picked for re-replication.
-  vector<TServerDetails*> all_tservers = TServerDetailsVector(tablet_servers_);
+  std::vector<TServerDetails*> all_tservers = TServerDetailsVector(tablet_servers_);
   TServerDetails* new_node = nullptr;
   for (TServerDetails* ts : all_tservers) {
     if (!ContainsKey(active_tablet_servers, ts->uuid())) {
@@ -843,7 +843,7 @@ TEST_F(YBTsCliUnsafeChangeTest, TestUnsafeChangeConfigWithPendingConfigsOnWAL) {
 
   TServerDetails* leader_ts;
   ASSERT_OK(FindTabletLeader(active_tablet_servers, tablet_id_, kTimeout, &leader_ts));
-  vector<TServerDetails*> followers;
+  std::vector<TServerDetails*> followers;
   ASSERT_OK(FindTabletFollowers(active_tablet_servers, tablet_id_, kTimeout, &followers));
   // Wait for initial NO_OP to be committed by the leader.
   ASSERT_OK(WaitForOpFromCurrentTerm(leader_ts, tablet_id_, OpIdType::COMMITTED_OPID, kTimeout));
@@ -861,11 +861,11 @@ TEST_F(YBTsCliUnsafeChangeTest, TestUnsafeChangeConfigWithPendingConfigsOnWAL) {
 
   LOG(INFO) << "Change Config Op timed out, Sending a Replace config "
             << "command when change config op is pending on the leader.";
-  const string& leader_addr = Substitute(
+  const std::string& leader_addr = Substitute(
       "$0:$1",
       leader_ts->registration->common().private_rpc_addresses(0).host(),
       leader_ts->registration->common().private_rpc_addresses(0).port());
-  const vector<string> peer_uuid_list = {leader_ts->uuid()};
+  const std::vector<std::string> peer_uuid_list = {leader_ts->uuid()};
   ASSERT_OK(RunUnsafeChangeConfig(this, tablet_id_, leader_addr, peer_uuid_list));
 
   // Inject the crash via TEST_fault_crash_before_cmeta_flush flag.
@@ -876,7 +876,7 @@ TEST_F(YBTsCliUnsafeChangeTest, TestUnsafeChangeConfigWithPendingConfigsOnWAL) {
       "TEST_fault_crash_before_cmeta_flush", "1.0"));
 
   // Find a remaining node which will be picked for re-replication.
-  vector<TServerDetails*> all_tservers = TServerDetailsVector(tablet_servers_);
+  std::vector<TServerDetails*> all_tservers = TServerDetailsVector(tablet_servers_);
   TServerDetails* new_node = nullptr;
   for (TServerDetails* ts : all_tservers) {
     if (!ContainsKey(active_tablet_servers, ts->uuid())) {
@@ -896,7 +896,7 @@ TEST_F(YBTsCliUnsafeChangeTest, TestUnsafeChangeConfigWithPendingConfigsOnWAL) {
 
   cluster_->tablet_server_by_uuid(leader_ts->uuid())->Shutdown();
   ASSERT_OK(cluster_->tablet_server_by_uuid(leader_ts->uuid())->Restart());
-  vector<tserver::ListTabletsResponsePB::StatusAndSchemaPB> tablets_ignored;
+  std::vector<tserver::ListTabletsResponsePB::StatusAndSchemaPB> tablets_ignored;
   ASSERT_OK(WaitForNumTabletsOnTS(leader_ts, 1, kTimeout, &tablets_ignored));
   ASSERT_OK(WaitUntilCommittedConfigNumVotersIs(3, new_node, tablet_id_, kTimeout));
 
@@ -929,8 +929,8 @@ TEST_F(YBTsCliUnsafeChangeTest, TestUnsafeChangeConfigWithMultiplePendingConfigs
   master_flags.push_back("--enable_load_balancing=true");
   BuildAndStart(ts_flags, master_flags);
 
-  vector<TServerDetails*> tservers = TServerDetailsVector(tablet_servers_);
-  vector<ExternalTabletServer*> external_tservers;
+  std::vector<TServerDetails*> tservers = TServerDetailsVector(tablet_servers_);
+  std::vector<ExternalTabletServer*> external_tservers;
   for (TServerDetails* ts : tservers) {
     external_tservers.push_back(cluster_->tablet_server_by_uuid(ts->uuid()));
   }
@@ -954,7 +954,7 @@ TEST_F(YBTsCliUnsafeChangeTest, TestUnsafeChangeConfigWithMultiplePendingConfigs
 
   TServerDetails* leader_ts;
   ASSERT_OK(FindTabletLeader(active_tablet_servers, tablet_id_, kTimeout, &leader_ts));
-  vector<TServerDetails*> followers;
+  std::vector<TServerDetails*> followers;
   for (const auto& elem : active_tablet_servers) {
     if (elem.first == leader_ts->uuid()) {
       continue;
@@ -968,7 +968,7 @@ TEST_F(YBTsCliUnsafeChangeTest, TestUnsafeChangeConfigWithMultiplePendingConfigs
   // servers to trigger placement of new replicas on healthy servers when we restart later.
   cluster_->master()->Shutdown();
 
-  const string& leader_addr = Substitute(
+  const std::string& leader_addr = Substitute(
       "$0:$1",
       leader_ts->registration->common().private_rpc_addresses(0).host(),
       leader_ts->registration->common().private_rpc_addresses(0).port());
@@ -980,7 +980,7 @@ TEST_F(YBTsCliUnsafeChangeTest, TestUnsafeChangeConfigWithMultiplePendingConfigs
   // A being the leader node where config is written and rest of the nodes are
   // dead followers.
   for (int num_replicas = static_cast<int>(followers.size()); num_replicas >= 0; num_replicas--) {
-    vector<string> peer_uuid_list;
+    std::vector<std::string> peer_uuid_list;
     peer_uuid_list.push_back(leader_ts->uuid());
     for (int i = 0; i < num_replicas; i++) {
       peer_uuid_list.push_back(followers[i]->uuid());
@@ -992,7 +992,7 @@ TEST_F(YBTsCliUnsafeChangeTest, TestUnsafeChangeConfigWithMultiplePendingConfigs
   ASSERT_OK(cluster_->master()->Restart());
 
   // Find a remaining node which will be picked for re-replication.
-  vector<TServerDetails*> all_tservers = TServerDetailsVector(tablet_servers_);
+  std::vector<TServerDetails*> all_tservers = TServerDetailsVector(tablet_servers_);
   TServerDetails* new_node = nullptr;
   for (TServerDetails* ts : all_tservers) {
     if (!ContainsKey(active_tablet_servers, ts->uuid())) {

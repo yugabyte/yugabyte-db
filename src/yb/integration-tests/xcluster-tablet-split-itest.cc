@@ -72,7 +72,7 @@ class XClusterTabletSplitITestBase : public TabletSplitBase {
       MiniCluster,
       ExternalMiniCluster>::type;
  protected:
-  Status SetupReplication(const string& bootstrap_id = "") {
+  Status SetupReplication(const std::string& bootstrap_id = "") {
     SwitchToProducer();
     VERIFY_RESULT(tools::RunAdminToolCommand(
         consumer_cluster_->GetMasterAddresses(), "setup_universe_replication", kProducerClusterId,
@@ -81,15 +81,15 @@ class XClusterTabletSplitITestBase : public TabletSplitBase {
     return Status::OK();
   }
 
-  Result<string> BootstrapProducer() {
+  Result<std::string> BootstrapProducer() {
     SwitchToProducer();
     const int kStreamUuidLength = 32;
-    string output = VERIFY_RESULT(tools::RunAdminToolCommand(
+    std::string output = VERIFY_RESULT(tools::RunAdminToolCommand(
         TabletSplitBase::cluster_->GetMasterAddresses(),
         "bootstrap_cdc_producer",
         TabletSplitBase::table_->id()));
     // Get the bootstrap id (output format is "table id: 123, CDC bootstrap id: 123\n").
-    string bootstrap_id = output.substr(output.find_last_of(' ') + 1, kStreamUuidLength);
+    std::string bootstrap_id = output.substr(output.find_last_of(' ') + 1, kStreamUuidLength);
     return bootstrap_id;
   }
 
@@ -118,7 +118,7 @@ class XClusterTabletSplitITestBase : public TabletSplitBase {
     return s;
   }
 
-  Result<std::vector<QLRow>> GetRowsFromCdcStateTable(const string& stream_id = "") {
+  Result<std::vector<QLRow>> GetRowsFromCdcStateTable(const std::string& stream_id = "") {
     client::YBClient* producer_client(
         producer_cluster_ ? producer_client_.get() : TabletSplitBase::client_.get());
     client::TableHandle table;
@@ -174,7 +174,7 @@ class XClusterTabletSplitITestBase : public TabletSplitBase {
   std::unique_ptr<client::YBClient> producer_client_;
   client::TableHandle producer_table_;
 
-  const string kProducerClusterId = "producer";
+  const std::string kProducerClusterId = "producer";
 };
 
 
@@ -211,7 +211,7 @@ class CdcTabletSplitITest : public XClusterTabletSplitITestBase<TabletSplitITest
   }
 
   Result<std::unique_ptr<MiniCluster>> CreateNewUniverseAndTable(
-      const string& cluster_id, client::TableHandle* table) {
+      const std::string& cluster_id, client::TableHandle* table) {
     // First create the new cluster.
     MiniClusterOptions opts;
     opts.num_tablet_servers = 3;
@@ -410,20 +410,20 @@ class XClusterTabletSplitITest : public CdcTabletSplitITest {
     auto tablet_map = GetConsumerMap();
     LOG(INFO) << "Consumer Map: \n";
     for (const auto& elem : tablet_map) {
-      std::vector<string> start_keys, end_keys;
+      std::vector<std::string> start_keys, end_keys;
       std::transform(
           elem.second.start_key().begin(), elem.second.start_key().end(),
           std::back_inserter(start_keys),
-          [](std::string s) -> string { return Slice(s).ToDebugHexString(); });
+          [](std::string s) -> std::string { return Slice(s).ToDebugHexString(); });
       std::transform(
           elem.second.end_key().begin(), elem.second.end_key().end(), std::back_inserter(end_keys),
-          [](std::string s) -> string { return Slice(s).ToDebugHexString(); });
+          [](std::string s) -> std::string { return Slice(s).ToDebugHexString(); });
 
       LOG(INFO) << elem.first << ", [" << boost::algorithm::join(elem.second.tablets(), ",")
                 << "], [" << boost::algorithm::join(start_keys, ",") << "], ["
                 << boost::algorithm::join(end_keys, ",") << "]\n";
     }
-    ASSERT_LE(tablet_map.size(), min(producer_tablet_count, consumer_tablet_count));
+    ASSERT_LE(tablet_map.size(), std::min(producer_tablet_count, consumer_tablet_count));
 
     int producer_tablets = 0;
     for (auto& mapping : tablet_map) {
@@ -941,7 +941,7 @@ TEST_F(XClusterBootstrapTabletSplitITest, YB_DISABLE_TEST(BootstrapWithSplits)) 
   // Start by writing some rows to the producer.
   ASSERT_RESULT(WriteRowsAndFlush(kDefaultNumRows));
 
-  string bootstrap_id = ASSERT_RESULT(BootstrapProducer());
+  std::string bootstrap_id = ASSERT_RESULT(BootstrapProducer());
 
   // Instead of doing a backup, we'll just rewrite the same rows to the consumer.
   SwitchToConsumer();
@@ -1025,7 +1025,7 @@ TEST_F(NotSupportedTabletSplitITest, SplittingWithBootstrappedStream) {
   client::TableHandle consumer_cluster_table;
   consumer_cluster_ = ASSERT_RESULT(CreateNewUniverseAndTable("consumer", &consumer_cluster_table));
 
-  const string bootstrap_id = ASSERT_RESULT(BootstrapProducer());
+  const std::string bootstrap_id = ASSERT_RESULT(BootstrapProducer());
 
   // Try splitting this tablet.
   const auto split_hash_code = ASSERT_RESULT(SplitTabletAndCheckForNotSupported());
@@ -1066,7 +1066,7 @@ TEST_F(NotSupportedTabletSplitITest, SplittingWithXClusterReplicationOnProducer)
 TEST_F(NotSupportedTabletSplitITest, SplittingWithXClusterReplicationOnConsumer) {
   // Default cluster_ will be our consumer.
   // Create a producer universe and table, then setup universe replication.
-  const string kProducerClusterId = "producer";
+  const std::string kProducerClusterId = "producer";
   client::TableHandle producer_cluster_table;
   auto producer_cluster =
       ASSERT_RESULT(CreateNewUniverseAndTable(kProducerClusterId, &producer_cluster_table));

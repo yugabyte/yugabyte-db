@@ -949,7 +949,7 @@ class AutomaticTabletSplitITest : public TabletSplitITest {
   }
 
   Status AutomaticallySplitSingleTablet(
-      const string& tablet_id, int num_rows_per_batch,
+      const std::string& tablet_id, int num_rows_per_batch,
       uint64_t threshold, int* key) {
     uint64_t current_size = 0;
     auto cur_num_tablets = ListActiveTabletIdsForTable(cluster_.get(), table_->id()).size();
@@ -980,7 +980,7 @@ class AutomaticTabletSplitITest : public TabletSplitITest {
     return Status::OK();
   }
 
-  Status CompactTablet(const string& tablet_id) {
+  Status CompactTablet(const std::string& tablet_id) {
     auto peers = ListTabletPeers(cluster_.get(), [&tablet_id](auto peer) {
       return peer->tablet_id() == tablet_id;
     });
@@ -1176,9 +1176,9 @@ TEST_F(AutomaticTabletSplitITest, TabletSplitHasClusterReplicationInfo) {
       std::numeric_limits<int32>::max();
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_nodes_per_cloud) = 1;
 
-  std::vector<string> clouds = {"cloud1_split", "cloud2_split", "cloud3_split", "cloud4_split"};
-  std::vector<string> regions = {"rack1_split", "rack2_split", "rack3_split", "rack4_split"};
-  std::vector<string> zones = {"zone1_split", "zone2_split", "zone3_split", "zone4_split"};
+  std::vector<std::string> clouds = {"cloud1_split", "cloud2_split", "cloud3_split", "cloud4_split"};
+  std::vector<std::string> regions = {"rack1_split", "rack2_split", "rack3_split", "rack4_split"};
+  std::vector<std::string> zones = {"zone1_split", "zone2_split", "zone3_split", "zone4_split"};
 
   // Create 4 tservers with the placement info from above
   for (size_t i = 0; i < clouds.size(); i++) {
@@ -1253,7 +1253,7 @@ TEST_F(AutomaticTabletSplitITest, AutomaticTabletSplittingWaitsForAllPeersCompac
   ASSERT_OK(AutomaticallySplitSingleTablet(peers.at(0)->tablet_id(), kNumRowsPerBatch,
     FLAGS_tablet_split_low_phase_size_threshold_bytes, &key));
 
-  std::unordered_set<string> tablet_ids = ListActiveTabletIdsForTable(cluster_.get(), table_->id());
+  std::unordered_set<std::string> tablet_ids = ListActiveTabletIdsForTable(cluster_.get(), table_->id());
   ASSERT_EQ(tablet_ids.size(), 2);
   auto expected_num_tablets = 2;
 
@@ -2222,7 +2222,7 @@ TEST_F(TabletSplitExternalMiniClusterITest, CrashMasterCheckConsistentPartitionK
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_heartbeat_metrics_interval_ms) =
     FLAGS_heartbeat_interval_ms + 1000;
 
-  string split_partition_key;
+  std::string split_partition_key;
   ASSERT_OK(SplitTabletCrashMaster(true, &split_partition_key));
 
   auto tablets = CHECK_RESULT(ListTablets());
@@ -2384,7 +2384,7 @@ TEST_F(TabletSplitRemoteBootstrapEnabledTest, TestSplitAfterFailedRbsCreatesDire
   const auto kApplyTabletSplitDelay = 15s * kTimeMultiplier;
 
   const auto get_tablet_meta_dirs =
-      [this](ExternalTabletServer* node) -> Result<std::vector<string>> {
+      [this](ExternalTabletServer* node) -> Result<std::vector<std::string>> {
     auto tablet_meta_dirs = VERIFY_RESULT(env_->GetChildren(
         JoinPathSegments(node->GetRootDir(), "yb-data", "tserver", "tablet-meta")));
     std::sort(tablet_meta_dirs.begin(), tablet_meta_dirs.end());

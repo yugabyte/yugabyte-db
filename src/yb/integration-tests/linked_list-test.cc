@@ -250,11 +250,11 @@ class LinkedListTest : public tserver::TabletServerIntegrationTestBase {
   }
 
   void BuildAndStart() {
-    vector<string> common_flags;
+    std::vector<std::string> common_flags;
 
     common_flags.push_back("--skip_remove_old_recovery_dir");
 
-    vector<string> ts_flags(common_flags);
+    std::vector<std::string> ts_flags(common_flags);
     if (FLAGS_stress_wal_gc) {
       // Set the size of the WAL segments low so that some can be GC'd.
       ts_flags.push_back("--log_segment_size_mb=1");
@@ -284,12 +284,12 @@ class LinkedListTest : public tserver::TabletServerIntegrationTestBase {
   }
 
  protected:
-  void AddExtraFlags(const string& flags_str, vector<string>* flags) {
+  void AddExtraFlags(const std::string& flags_str, std::vector<std::string>* flags) {
     if (flags_str.empty()) {
       return;
     }
-    vector<string> split_flags = strings::Split(flags_str, " ");
-    for (const string& flag : split_flags) {
+    std::vector<std::string> split_flags = strings::Split(flags_str, " ");
+    for (const std::string& flag : split_flags) {
       flags->push_back(flag);
     }
   }
@@ -410,7 +410,7 @@ class PeriodicWebUIChecker {
                        const std::string& tablet_id, MonoDelta period)
       : period_(std::move(period)), is_running_(true) {
     // List of master and ts web pages to fetch
-    vector<std::string> master_pages, ts_pages;
+    std::vector<std::string> master_pages, ts_pages;
 
     master_pages.push_back("/metrics");
     master_pages.push_back("/masters");
@@ -481,7 +481,7 @@ class PeriodicWebUIChecker {
   const MonoDelta period_;
   AtomicBool is_running_;
   scoped_refptr<Thread> checker_;
-  vector<std::string> urls_;
+  std::vector<std::string> urls_;
 };
 
 // Helper class to hold results from a linked list scan and perform the
@@ -521,7 +521,7 @@ class LinkedListVerifier {
 /////////////////////////////////////////////////////////////
 
 std::vector<int64_t> LinkedListTester::GenerateSplitInts() {
-  vector<int64_t> ret;
+  std::vector<int64_t> ret;
   ret.reserve(num_tablets_ - 1);
   int64_t increment = kint64max / num_tablets_;
   for (int64_t i = 1; i < num_tablets_; i++) {
@@ -664,7 +664,7 @@ void LinkedListTester::DumpInsertHistogram(bool print_flags) {
 // If it does, *errors will be incremented once per duplicate and the given message
 // will be logged.
 static void VerifyNoDuplicateEntries(const std::vector<int64_t>& ints, int* errors,
-                                     const string& message) {
+                                     const std::string& message) {
   for (size_t i = 1; i < ints.size(); i++) {
     if (ints[i] == ints[i - 1]) {
       LOG(ERROR) << message << ": " << ints[i];
@@ -687,7 +687,7 @@ Status LinkedListTester::VerifyLinkedListRemote(
   client::TableHandle table;
   RETURN_NOT_OK(table.Open(table_name_, client_));
 
-  string snapshot_str;
+  std::string snapshot_str;
   if (is_latest) {
     snapshot_str = "LATEST";
   } else {
@@ -934,7 +934,7 @@ TEST_F(LinkedListTest, TestLoadAndVerify) {
   OverrideFlagForSlowTests("stress_wal_gc", "true");
   ASSERT_NO_FATALS(BuildAndStart());
 
-  string tablet_id = tablet_replicas_.begin()->first;
+  std::string tablet_id = tablet_replicas_.begin()->first;
 
   // In TSAN builds, we hit the web UIs more often, so we have a better chance
   // of seeing a thread error. We don't do this in normal builds since we
@@ -987,7 +987,7 @@ TEST_F(LinkedListTest, TestLoadAndVerify) {
     WaitForTSAndReplicas();
 
     // Check in-memory state with a downed TS. Scans may try other replicas.
-    string tablet = (*tablet_replicas_.begin()).first;
+    std::string tablet = (*tablet_replicas_.begin()).first;
     TServerDetails* leader;
     EXPECT_OK(GetLeaderReplicaWithRetries(tablet, &leader));
     LOG(INFO) << "Killing TS: " << leader->instance_id.permanent_uuid() << ", leader of tablet: "
@@ -1018,7 +1018,7 @@ TEST_F(LinkedListTest, TestLoadAndVerify) {
 
   // Check post-replication state with a downed TS.
   if (can_kill_ts) {
-    string tablet = (*tablet_replicas_.begin()).first;
+    std::string tablet = (*tablet_replicas_.begin()).first;
     TServerDetails* leader;
     EXPECT_OK(GetLeaderReplicaWithRetries(tablet, &leader));
     LOG(INFO) << "Killing TS: " << leader->instance_id.permanent_uuid() << ", leader of tablet: "
@@ -1081,7 +1081,7 @@ TEST_F(LinkedListTest, TestLoadWhileOneServerDownAndVerify) {
             << "in particular.";
   const int kWaitTime = FLAGS_seconds_to_run + kBaseTimeToWaitSecs;
 
-  set<TabletId> converged_tablets;
+  std::set<TabletId> converged_tablets;
   for (const auto& tablet_replica_entry : tablet_replicas_) {
     const TabletId& tablet_id = tablet_replica_entry.first;
     if (converged_tablets.count(tablet_id)) {

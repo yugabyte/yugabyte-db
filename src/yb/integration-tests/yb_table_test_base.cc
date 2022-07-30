@@ -183,8 +183,8 @@ void YBTableTestBase::TearDown() {
   YBTest::TearDown();
 }
 
-vector<uint16_t> YBTableTestBase::master_rpc_ports() {
-  vector<uint16_t> master_rpc_ports;
+std::vector<uint16_t> YBTableTestBase::master_rpc_ports() {
+  std::vector<uint16_t> master_rpc_ports;
   for (size_t i = 0; i < num_masters(); ++i) {
     master_rpc_ports.push_back(0);
   }
@@ -207,7 +207,7 @@ std::unique_ptr<YBClient> YBTableTestBase::CreateYBClient() {
 
 void YBTableTestBase::CreateAdminClient() {
   if (use_yb_admin_client()) {
-    string addrs;
+    std::string addrs;
     if (use_external_mini_cluster()) {
       addrs = external_mini_cluster_->GetMasterAddresses();
     }  else {
@@ -264,14 +264,14 @@ shared_ptr<YBSession> YBTableTestBase::NewSession() {
   return session;
 }
 
-void YBTableTestBase::PutKeyValue(YBSession* session, string key, string value) {
+void YBTableTestBase::PutKeyValue(YBSession* session, std::string key, std::string value) {
   auto insert = table_.NewInsertOp();
   QLAddStringHashValue(insert->mutable_request(), key);
   table_.AddStringColumnValue(insert->mutable_request(), "v", value);
   ASSERT_OK(session->TEST_ApplyAndFlush(insert));
 }
 
-void YBTableTestBase::PutKeyValue(string key, string value) {
+void YBTableTestBase::PutKeyValue(std::string key, std::string value) {
   PutKeyValue(session_.get(), key, value);
 }
 
@@ -294,7 +294,7 @@ Result<std::vector<uint32_t>> YBTableTestBase::GetTserverLoads(const std::vector
 Result<uint32_t> YBTableTestBase::GetLoadOnTserver(ExternalTabletServer* server) {
   auto proxy = GetMasterLeaderProxy<master::MasterClientProxy>();
   uint32_t count = 0;
-  std::vector<string> replicas;
+  std::vector<std::string> replicas;
   // Need to get load from each table.
   for (const auto& table_name : table_names_) {
     master::GetTableLocationsRequestPB req;
@@ -341,7 +341,7 @@ void YBTableTestBase::FetchTSMetricsPage() {
   EasyCurl c;
   faststring buf;
 
-  string addr;
+  std::string addr;
   // TODO: unify external and in-process mini cluster interfaces.
   if (use_external_mini_cluster()) {
     if (external_mini_cluster_->num_tablet_servers() > 0) {

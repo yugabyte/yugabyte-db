@@ -1173,8 +1173,8 @@ Status RedisWriteOperation::ApplyIncr(const DocOperationApplyData& data) {
     old_value = *old;
   }
 
-  if ((incr < 0 && old_value < 0 && incr < numeric_limits<int64_t>::min() - old_value) ||
-      (incr > 0 && old_value > 0 && incr > numeric_limits<int64_t>::max() - old_value)) {
+  if ((incr < 0 && old_value < 0 && incr < std::numeric_limits<int64_t>::min() - old_value) ||
+      (incr > 0 && old_value > 0 && incr > std::numeric_limits<int64_t>::max() - old_value)) {
     response_.set_code(RedisResponsePB::WRONG_TYPE);
     response_.set_error_message("Increment would overflow");
     return Status::OK();

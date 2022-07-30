@@ -90,7 +90,7 @@ TEST_F(EMCTest, TestBasicOperation) {
     const ExternalTabletServer* const ts = CHECK_NOTNULL(cluster.tablet_server(i));
     const HostPort ts_rpc = ts->bound_rpc_hostport();
     const HostPort ts_http = ts->bound_http_hostport();
-    const string expected_prefix = strings::Substitute("$0:", cluster.GetBindIpForTabletServer(i));
+    const std::string expected_prefix = strings::Substitute("$0:", cluster.GetBindIpForTabletServer(i));
 
     // Let TS 0 be on 127.0.0.1 address on MAC.
     if (opts.bind_to_unique_loopback_addresses && i > 0) {

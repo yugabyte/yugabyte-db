@@ -4073,7 +4073,7 @@ Status CatalogManager::CheckValidPlacementInfo(const PlacementInfoPB& placement_
       size_t min_num_replicas = pb.min_num_replicas();
       // For every placement block, we can only satisfy upto the number of
       // tservers present in that particular placement block.
-      total_feasible_replicas += min(allowed_ts_size, min_num_replicas);
+      total_feasible_replicas += std::min(allowed_ts_size, min_num_replicas);
       // Extra tablet servers beyond min_num_replicas will be used to place
       // the extra replicas over and above the minimums.
       if (allowed_ts_size > min_num_replicas) {
@@ -4082,7 +4082,7 @@ Status CatalogManager::CheckValidPlacementInfo(const PlacementInfoPB& placement_
     }
     // The total number of extra replicas that we can put cannot be more than
     // the total tablet servers that are extra.
-    total_feasible_replicas += min(total_extra_replicas, total_extra_servers);
+    total_feasible_replicas += std::min(total_extra_replicas, total_extra_servers);
 
     // If we place the replicas in accordance with above, we should be able to place
     // at least replica_quorum_needed otherwise we fail.
@@ -9996,7 +9996,7 @@ Status CatalogManager::HandlePlacementUsingPlacementInfo(const PlacementInfoPB& 
     // If we don't have placement info, just place the replicas as before, distributed across the
     // whole cluster.
     // We cannot put more than ntservers replicas.
-    nreplicas = min(nreplicas, ntservers);
+    nreplicas = std::min(nreplicas, ntservers);
     SelectReplicas(ts_descs, nreplicas, config, &already_selected_ts, member_type,
                    per_table_state, global_state);
   } else {
@@ -10016,7 +10016,7 @@ Status CatalogManager::HandlePlacementUsingPlacementInfo(const PlacementInfoPB& 
       size_t available_ts_descs_size = available_ts_descs.size();
       size_t min_num_replicas = pb.min_num_replicas();
       // We cannot put more than the available tablet servers in that placement block.
-      size_t num_replicas = min(min_num_replicas, available_ts_descs_size);
+      size_t num_replicas = std::min(min_num_replicas, available_ts_descs_size);
       min_replica_count_sum += min_num_replicas;
       SelectReplicas(available_ts_descs, num_replicas, config, &already_selected_ts, member_type,
                      per_table_state, global_state);
@@ -10025,7 +10025,7 @@ Status CatalogManager::HandlePlacementUsingPlacementInfo(const PlacementInfoPB& 
     size_t replicas_left = nreplicas - min_replica_count_sum;
     size_t max_tservers_left = all_allowed_ts.size() - already_selected_ts.size();
     // Upper bounded by the tservers left.
-    replicas_left = min(replicas_left, max_tservers_left);
+    replicas_left = std::min(replicas_left, max_tservers_left);
     DCHECK_GE(replicas_left, 0);
     if (replicas_left > 0) {
       // No need to do an extra check here, as we checked early if we have enough to cover all

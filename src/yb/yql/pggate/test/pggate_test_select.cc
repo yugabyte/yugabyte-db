@@ -88,7 +88,7 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
   YBCPgExpr expr_salary;
   CHECK_YBC_STATUS(YBCTestNewConstantFloat4(pg_stmt, seed + 1.0*seed/10.0, false, &expr_salary));
   YBCPgExpr expr_job;
-  string job = strings::Substitute("Job_title_$0", seed);
+  std::string job = strings::Substitute("Job_title_$0", seed);
   CHECK_YBC_STATUS(YBCTestNewConstantText(pg_stmt, job.c_str(), false, &expr_job));
   YBCPgExpr expr_oid;
   CHECK_YBC_STATUS(YBCTestNewConstantInt4(pg_stmt, seed, false, &expr_oid));
@@ -196,8 +196,8 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
     CHECK_LE(salary, id + 1.0*id/10.0 + 0.01);
     CHECK_GE(salary, id + 1.0*id/10.0 - 0.01);
 
-    string selected_job_name = reinterpret_cast<char*>(values[col_index++]);
-    string expected_job_name = strings::Substitute("Job_title_$0", id);
+    std::string selected_job_name = reinterpret_cast<char*>(values[col_index++]);
+    std::string expected_job_name = strings::Substitute("Job_title_$0", id);
     CHECK_EQ(selected_job_name, expected_job_name);
 
     int32_t oid = static_cast<int32_t>(syscols.oid);
@@ -266,8 +266,8 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
     CHECK_LE(salary, id + 1.0*id/10.0 + 0.01); // salary : float
     CHECK_GE(salary, id + 1.0*id/10.0 - 0.01);
 
-    string selected_job_name = reinterpret_cast<char*>(values[col_index++]);
-    string expected_job_name = strings::Substitute("Job_title_$0", id);
+    std::string selected_job_name = reinterpret_cast<char*>(values[col_index++]);
+    std::string expected_job_name = strings::Substitute("Job_title_$0", id);
     CHECK_EQ(selected_job_name, expected_job_name);
 
     int32_t oid = static_cast<int32_t>(syscols.oid);

@@ -190,11 +190,11 @@ class SnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
   }
 
   template <typename THandler>
-  Status WaitTillComplete(const string& handler_name, THandler handler) {
+  Status WaitTillComplete(const std::string& handler_name, THandler handler) {
     return LoggedWaitFor(handler, 30s, handler_name, 100ms, 1.5);
   }
 
-  Status WaitForSnapshotOpDone(const string& op_name, const TxnSnapshotId& snapshot_id) {
+  Status WaitForSnapshotOpDone(const std::string& op_name, const TxnSnapshotId& snapshot_id) {
     return WaitTillComplete(
         op_name,
         [this, &snapshot_id]() -> Result<bool> {
@@ -386,8 +386,8 @@ TEST_F(SnapshotTest, CreateSnapshot) {
     // There is only one table here (testtb).
     for (std::shared_ptr<TabletPeer>& tablet_peer : ts_tablet_peers) {
       FsManager* const fs = tablet_peer->tablet_metadata()->fs_manager();
-      const string rocksdb_dir = tablet_peer->tablet_metadata()->rocksdb_dir();
-      const string top_snapshots_dir = tablet_peer->tablet_metadata()->snapshots_dir();
+      const std::string rocksdb_dir = tablet_peer->tablet_metadata()->rocksdb_dir();
+      const std::string top_snapshots_dir = tablet_peer->tablet_metadata()->snapshots_dir();
 
       ASSERT_TRUE(fs->Exists(rocksdb_dir));
       ASSERT_TRUE(fs->Exists(top_snapshots_dir));
@@ -544,14 +544,14 @@ TEST_F(SnapshotTest, ImportSnapshotMeta) {
 
   // Get snapshot items names.
   int old_table_num_tablets = 0;
-  string old_table_name, old_namespace_name;
+  std::string old_table_name, old_namespace_name;
 
   for (const BackupRowEntryPB& backup_entry : snapshot.backup_entries()) {
     const SysRowEntry& entry = backup_entry.entry();
     switch (entry.type()) {
       case SysRowEntryType::NAMESPACE: { // Get NAMESPACE name.
         SysNamespaceEntryPB meta;
-        const string& data = entry.data();
+        const std::string& data = entry.data();
         ASSERT_OK(pb_util::ParseFromArray(&meta, to_uchar_ptr(data.data()), data.size()));
         ASSERT_TRUE(old_namespace_name.empty()); // One namespace allowed.
         old_namespace_name = meta.name();
@@ -559,7 +559,7 @@ TEST_F(SnapshotTest, ImportSnapshotMeta) {
       }
       case SysRowEntryType::TABLE: { // Recreate TABLE.
         SysTablesEntryPB meta;
-        const string& data = entry.data();
+        const std::string& data = entry.data();
         ASSERT_OK(pb_util::ParseFromArray(&meta, to_uchar_ptr(data.data()), data.size()));
         ASSERT_TRUE(old_table_name.empty()); // One table allowed.
         old_table_name = meta.name();
@@ -610,7 +610,7 @@ TEST_F(SnapshotTest, ImportSnapshotMeta) {
       LOG(INFO) << "Keyspace: " << ns_pair.old_id() << " -> " << ns_pair.new_id();
       ASSERT_NE(ns_pair.old_id(), ns_pair.new_id());
 
-      const string new_namespace_name = cluster_->mini_master()->catalog_manager().
+      const std::string new_namespace_name = cluster_->mini_master()->catalog_manager().
           GetNamespaceName(ns_pair.new_id());
       ASSERT_EQ(old_namespace_name, new_namespace_name);
 

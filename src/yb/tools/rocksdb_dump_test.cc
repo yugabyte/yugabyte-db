@@ -117,7 +117,7 @@ class RocksDbDumpTest : public YBMiniClusterTestBase<MiniCluster> {
     return Status::OK();
   }
 
-  Result<string> GetTabletDbPath() {
+  Result<std::string> GetTabletDbPath() {
     for (const auto& peer : cluster_->GetTabletPeers(0)) {
       if (peer->table_type() == TableType::YQL_TABLE_TYPE) {
         return peer->tablet_metadata()->rocksdb_dir();
@@ -133,15 +133,15 @@ class RocksDbDumpTest : public YBMiniClusterTestBase<MiniCluster> {
 
 
 TEST_F(RocksDbDumpTest, VerifySingleKeyIsFound) {
-  string output;
+  std::string output;
   ASSERT_OK(WriteData());
   ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync, tablet::FlushFlags::kAllDbs));
-  string db_path = ASSERT_RESULT(GetTabletDbPath());
+  std::string db_path = ASSERT_RESULT(GetTabletDbPath());
 
-  string output_path = strings::Substitute(
+  std::string output_path = strings::Substitute(
       "$0/$1", ASSERT_RESULT(Env::Default()->GetTestDirectory()), kRandomFileName);
 
-  vector<string> argv = {
+  std::vector<std::string> argv = {
     GetToolPath(kTabletUtilToolName),
     "--db_path",
     db_path,

@@ -1113,7 +1113,7 @@ Status SetValueFromQLBinaryHelper(
     }
     case JSONBOID: {
       func_name = "jsonb_out";
-      string jsonb_val = ql_value.binary_value();
+      std::string jsonb_val = ql_value.binary_value();
       size = jsonb_val.size();
       val = const_cast<char *>(jsonb_val.c_str());
       uint64_t datum = arg_type->yb_to_datum(reinterpret_cast<void *>(val), size, &type_attrs);
@@ -1122,7 +1122,7 @@ Status SetValueFromQLBinaryHelper(
     }
     case TXID_SNAPSHOTOID: {
       func_name = "txid_snapshot_out";
-      string txid_val = ql_value.binary_value();
+      std::string txid_val = ql_value.binary_value();
       size = txid_val.size();
       val = const_cast<char *>(txid_val.c_str());
       uint64_t datum = arg_type->yb_to_datum(reinterpret_cast<void *>(val), size, &type_attrs);
@@ -1149,7 +1149,7 @@ Status SetValueFromQLBinaryHelper(
     }
     case CSTRINGOID: {
       func_name = "cstring_out";
-      string cstring_val = ql_value.string_value();
+      std::string cstring_val = ql_value.string_value();
       size = cstring_val.size();
       val = const_cast<char *>(cstring_val.c_str());
       uint64_t datum = arg_type->yb_to_datum(reinterpret_cast<char *>(val), size, &type_attrs);
@@ -1242,7 +1242,7 @@ Status SetValueFromQLBinaryHelper(
       size = arg_type->datum_fixed_size;
       uint64_t enum_oid =
           arg_type->yb_to_datum(reinterpret_cast<int64 *>(&yb_enum_oid), size, &type_attrs);
-      string label = "";
+      std::string label = "";
       if (enum_oid_label_map.find((uint32_t)enum_oid) != enum_oid_label_map.end()) {
         label = enum_oid_label_map.at((uint32_t)enum_oid);
         VLOG(1) << "For enum oid: " << enum_oid << " found label" << label;
@@ -1282,7 +1282,7 @@ Status SetValueFromQLBinaryHelper(
     }
     case ANYRANGEOID: {
       func_name = "anyrange_out";
-      string anyrange_val = ql_value.binary_value();
+      std::string anyrange_val = ql_value.binary_value();
       size = anyrange_val.size();
       val = const_cast<char *>(anyrange_val.c_str());
       uint64_t datum = arg_type->yb_to_datum(reinterpret_cast<uint8 *>(val), size, &type_attrs);
@@ -1292,7 +1292,7 @@ Status SetValueFromQLBinaryHelper(
 
     case INT2VECTOROID: {
       func_name = "int2vectorout";
-      string int2vector_val = ql_value.binary_value();
+      std::string int2vector_val = ql_value.binary_value();
       size = int2vector_val.size();
       val = const_cast<char *>(int2vector_val.c_str());
       uint64_t datum = arg_type->yb_to_datum(reinterpret_cast<uint8 *>(val), size, &type_attrs);
@@ -1302,7 +1302,7 @@ Status SetValueFromQLBinaryHelper(
 
     case OIDVECTOROID: {
       func_name = "oidvectorout";
-      string oidvector_val = ql_value.binary_value();
+      std::string oidvector_val = ql_value.binary_value();
       size = oidvector_val.size();
       val = const_cast<char *>(oidvector_val.c_str());
       uint64_t datum = arg_type->yb_to_datum(reinterpret_cast<uint8 *>(val), size, &type_attrs);
@@ -1312,7 +1312,7 @@ Status SetValueFromQLBinaryHelper(
 
     case TSVECTOROID: {
       func_name = "tsvectorout";
-      string tsvector_val = ql_value.binary_value();
+      std::string tsvector_val = ql_value.binary_value();
       size = tsvector_val.size();
       val = const_cast<char *>(tsvector_val.c_str());
       uint64_t datum = arg_type->yb_to_datum(reinterpret_cast<uint8 *>(val), size, &type_attrs);
@@ -1322,7 +1322,7 @@ Status SetValueFromQLBinaryHelper(
 
     case GTSVECTOROID: {
       func_name = "gtsvectorout";
-      string gtsvector_val = ql_value.binary_value();
+      std::string gtsvector_val = ql_value.binary_value();
       size = gtsvector_val.size();
       val = const_cast<char *>(gtsvector_val.c_str());
       uint64_t datum = arg_type->yb_to_datum(reinterpret_cast<uint8 *>(val), size, &type_attrs);
@@ -1332,7 +1332,7 @@ Status SetValueFromQLBinaryHelper(
 
     case POLYGONOID: {
       func_name = "poly_out";
-      string polygon_val = ql_value.binary_value();
+      std::string polygon_val = ql_value.binary_value();
       size = polygon_val.size();
       val = const_cast<char *>(polygon_val.c_str());
       uint64_t datum = arg_type->yb_to_datum(reinterpret_cast<uint8 *>(val), size, &type_attrs);

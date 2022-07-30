@@ -31,19 +31,19 @@ class TestQLCreateIndex : public QLTestBase {
   TestQLCreateIndex() : QLTestBase() {
   }
 
-  inline const string CreateTableStmt(string params) {
+  inline const std::string CreateTableStmt(std::string params) {
     return "CREATE TABLE " + params;
   }
 
-  inline const string CreateTableIfNotExistsStmt(string params) {
+  inline const std::string CreateTableIfNotExistsStmt(std::string params) {
     return "CREATE TABLE IF NOT EXISTS " + params;
   }
 
-  inline const string CreateIndexStmt(string params) {
+  inline const std::string CreateIndexStmt(std::string params) {
     return "CREATE INDEX " + params;
   }
 
-  inline const string CreateIndexIfNotExistsStmt(string params) {
+  inline const std::string CreateIndexIfNotExistsStmt(std::string params) {
     return "CREATE INDEX IF NOT EXISTS " + params;
   }
 };
@@ -55,10 +55,10 @@ TEST_F(TestQLCreateIndex, TestQLCreateIndexSimple) {
   // Get an available processor.
   TestQLProcessor *processor = GetQLProcessor();
 
-  const string table1 = "human_resource1(id int primary key, name varchar) "
+  const std::string table1 = "human_resource1(id int primary key, name varchar) "
                         "with transactions = {'enabled':true};";
-  const string index1 = "i ON human_resource1(name);";
-  const string index_no_name = "ON human_resource1(name);";
+  const std::string index1 = "i ON human_resource1(name);";
+  const std::string index_no_name = "ON human_resource1(name);";
 
   // Create the table and index.
   EXEC_VALID_STMT(CreateTableStmt(table1));
@@ -183,7 +183,7 @@ TEST_F(TestQLCreateIndex, TestQLCreateIndexExpr) {
   TestQLProcessor *processor = GetQLProcessor();
 
   // Create the table.
-  const string table = "tabj(\"j->'a'->>'b'\" int, \"j->'a'->>'c'\" int, j jsonb,"
+  const std::string table = "tabj(\"j->'a'->>'b'\" int, \"j->'a'->>'c'\" int, j jsonb,"
                        "     primary key (\"j->'a'->>'b'\"))"
                        "  with transactions = {'enabled':true};";
   EXEC_VALID_STMT(CreateTableStmt(table));

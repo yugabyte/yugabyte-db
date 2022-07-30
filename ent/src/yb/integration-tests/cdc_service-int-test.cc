@@ -165,7 +165,7 @@ class CDCServiceTest : public YBMiniClusterTestBase<MiniCluster>,
   void GetChanges(const TabletId& tablet_id, const CDCStreamId& stream_id,
                   int64_t term, int64_t index,
                   bool* has_error = nullptr, ::yb::cdc::CDCErrorPB_Code* code = nullptr);
-  void WriteTestRow(int32_t key, int32_t int_val, const string& string_val,
+  void WriteTestRow(int32_t key, int32_t int_val, const std::string& string_val,
       const TabletId& tablet_id, const std::shared_ptr<tserver::TabletServerServiceProxy>& proxy);
   Status WriteToProxyWithRetries(
       const std::shared_ptr<tserver::TabletServerServiceProxy>& proxy,
@@ -217,7 +217,7 @@ void VerifyCdcStateNotEmpty(client::YBClient* client) {
   ASSERT_OK(table.Open(cdc_state_table, client));
   ASSERT_EQ(1, boost::size(client::TableRange(table)));
   const auto& row = client::TableRange(table).begin();
-  string checkpoint = row->column(master::kCdcCheckpointIdx).string_value();
+  std::string checkpoint = row->column(master::kCdcCheckpointIdx).string_value();
   auto result = OpId::FromString(checkpoint);
   ASSERT_OK(result);
   OpId op_id = *result;
@@ -252,7 +252,7 @@ void VerifyCdcStateMatches(client::YBClient* client,
   auto row_block = ql::RowsResult(op.get()).GetRowBlock();
   ASSERT_EQ(row_block->row_count(), 1);
 
-  string checkpoint = row_block->row(0).column(0).string_value();
+  std::string checkpoint = row_block->row(0).column(0).string_value();
   auto result = OpId::FromString(checkpoint);
   ASSERT_OK(result);
   OpId op_id = *result;
@@ -343,7 +343,7 @@ void CDCServiceTest::GetChanges(const TabletId& tablet_id, const CDCStreamId& st
 
 void CDCServiceTest::WriteTestRow(int32_t key,
                                   int32_t int_val,
-                                  const string& string_val,
+                                  const std::string& string_val,
                                   const TabletId& tablet_id,
                                   const std::shared_ptr<tserver::TabletServerServiceProxy>& proxy) {
   tserver::WriteRequestPB write_req;
@@ -1649,7 +1649,7 @@ TEST_P(CDCServiceTestDurableMinReplicatedIndex, TestBootstrapProducer) {
 
   ASSERT_EQ(resp.cdc_bootstrap_ids().size(), 1);
 
-  string bootstrap_id = resp.cdc_bootstrap_ids(0);
+  std::string bootstrap_id = resp.cdc_bootstrap_ids(0);
 
   // Verify that for each of the table's tablets, a new row in cdc_state table with the returned
   // id was inserted.
@@ -1664,7 +1664,7 @@ TEST_P(CDCServiceTestDurableMinReplicatedIndex, TestBootstrapProducer) {
     stream_id_ = row.column(master::kCdcStreamIdIdx).string_value();
     ASSERT_EQ(stream_id_, bootstrap_id);
 
-    string checkpoint = row.column(master::kCdcCheckpointIdx).string_value();
+    std::string checkpoint = row.column(master::kCdcCheckpointIdx).string_value();
     auto s = OpId::FromString(checkpoint);
     ASSERT_OK(s);
     OpId op_id = *s;

@@ -128,7 +128,7 @@ typedef std::vector<std::pair<std::string, int32_t>> Row;
 const int32_t kNullValue = 0xdeadbeef;
 
 std::string RowToString(const Row& row) {
-  string ret = "{ ";
+  std::string ret = "{ ";
   bool first = true;
   for (const auto& e : row) {
     if (!first) {
@@ -153,7 +153,7 @@ struct TableState {
   }
 
   void GenRandomRow(int32_t key, int32_t seed,
-                    vector<pair<string, int32_t>>* row) {
+                    vector<pair<std::string, int32_t>>* row) {
     if (seed == kNullValue) {
       seed++;
     }
@@ -177,7 +177,7 @@ struct TableState {
     return rows_.emplace(key, data).second;
   }
 
-  bool Update(const vector<pair<string, int32_t>>& data) {
+  bool Update(const vector<pair<std::string, int32_t>>& data) {
     DCHECK_EQ("key", data[0].first);
     int32_t key = data[0].second;
     auto it = rows_.find(key);
@@ -191,7 +191,7 @@ struct TableState {
     CHECK(rows_.erase(row_key)) << "row key " << row_key << " not found";
   }
 
-  void AddColumnWithDefault(const string& name, int32_t def, bool nullable) {
+  void AddColumnWithDefault(const std::string& name, int32_t def, bool nullable) {
     col_names_.push_back(name);
     col_nullable_.push_back(nullable);
     for (auto& e : rows_) {
@@ -199,7 +199,7 @@ struct TableState {
     }
   }
 
-  void DropColumn(const string& name) {
+  void DropColumn(const std::string& name) {
     auto col_it = std::find(col_names_.begin(), col_names_.end(), name);
     auto index = col_it - col_names_.begin();
     col_names_.erase(col_it);
@@ -216,7 +216,7 @@ struct TableState {
     return it->first;
   }
 
-  void ToStrings(vector<string>* strs) {
+  void ToStrings(vector<std::string>* strs) {
     strs->clear();
     for (const auto& e : rows_) {
       strs->push_back(RowToString(e.second));
@@ -224,7 +224,7 @@ struct TableState {
   }
 
   // The name of each column.
-  vector<string> col_names_;
+  vector<std::string> col_names_;
 
   // For each column, whether it is NULLable.
   // Has the same length as col_names_.
@@ -251,7 +251,7 @@ struct MirrorTable {
   }
 
   bool TryInsert(int32_t row_key, int32_t rand) {
-    vector<pair<string, int32_t>> row;
+    vector<pair<std::string, int32_t>> row;
     ts_.GenRandomRow(row_key, rand, &row);
     return TryInsert(row);
   }
@@ -282,7 +282,7 @@ struct MirrorTable {
     if (ts_.rows_.empty()) return;
     int32_t row_key = ts_.GetRandomRowKey(rand);
 
-    vector<pair<string, int32_t>> update;
+    vector<pair<std::string, int32_t>> update;
     update.push_back(make_pair("key", row_key));
     for (size_t i = 1; i < num_columns(); i++) {
       auto val = static_cast<int32_t>(rand * i);
@@ -308,12 +308,12 @@ struct MirrorTable {
     CHECK(ts_.Update(update));
   }
 
-  void AddAColumn(const string& name) {
+  void AddAColumn(const std::string& name) {
     bool nullable = random() % 2 == 1;
     return AddAColumn(name, nullable);
   }
 
-  void AddAColumn(const string& name, bool nullable) {
+  void AddAColumn(const std::string& name, bool nullable) {
     // Add to the real table.
     std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
 
@@ -324,7 +324,7 @@ struct MirrorTable {
     ts_.AddColumnWithDefault(name, kNullValue, nullable);
   }
 
-  void DropAColumn(const string& name) {
+  void DropAColumn(const std::string& name) {
     std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
     CHECK_OK(table_alterer->DropColumn(name)->Alter());
     ts_.DropColumn(name);
@@ -333,7 +333,7 @@ struct MirrorTable {
   void DropRandomColumn(int seed) {
     if (num_columns() == 1) return;
 
-    string name = ts_.col_names_[1 + (seed % (num_columns() - 1))];
+    std::string name = ts_.col_names_[1 + (seed % (num_columns() - 1))];
     DropAColumn(name);
   }
 
@@ -343,7 +343,7 @@ struct MirrorTable {
 
   void Verify() {
     // First scan the real table
-    vector<string> rows;
+    vector<std::string> rows;
     {
       client::TableHandle table;
       CHECK_OK(table.Open(kTableName, client_));
@@ -352,7 +352,7 @@ struct MirrorTable {
     std::sort(rows.begin(), rows.end());
 
     // Then get our mock table.
-    vector<string> expected;
+    vector<std::string> expected;
     ts_.ToStrings(&expected);
 
     // They should look the same.
@@ -365,7 +365,7 @@ struct MirrorTable {
     INSERT, UPDATE, DELETE
   };
 
-  Status DoRealOp(const vector<pair<string, int32_t>>& data, OpType op_type) {
+  Status DoRealOp(const vector<pair<std::string, int32_t>>& data, OpType op_type) {
     auto deadline = MonoTime::Now() + 15s;
     shared_ptr<YBSession> session = client_->NewSession();
     session->SetTimeout(15s);

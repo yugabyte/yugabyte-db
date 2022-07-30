@@ -62,9 +62,9 @@ class LoadBalancerPlacementPolicyTest : public YBTableTestBase {
     return false;
   }
 
-  void GetLoadOnTservers(const string tablename,
+  void GetLoadOnTservers(const std::string tablename,
                          size_t num_tservers,
-                         vector<int> *const out_load_per_tserver) {
+                         std::vector<int> *const out_load_per_tserver) {
     out_load_per_tserver->clear();
     for (size_t i = 0; i < num_tservers; ++i) {
       const int count = ASSERT_RESULT(GetLoadOnTserver(
@@ -73,7 +73,7 @@ class LoadBalancerPlacementPolicyTest : public YBTableTestBase {
     }
   }
 
-  Result<uint32_t> GetLoadOnTserver(ExternalTabletServer* server, const string tablename) {
+  Result<uint32_t> GetLoadOnTserver(ExternalTabletServer* server, const std::string tablename) {
     auto proxy = GetMasterLeaderProxy<master::MasterClientProxy>();
     master::GetTableLocationsRequestPB req;
     req.mutable_table()->set_table_name(tablename);
@@ -85,7 +85,7 @@ class LoadBalancerPlacementPolicyTest : public YBTableTestBase {
     RETURN_NOT_OK(proxy.GetTableLocations(req, &resp, &rpc));
 
     uint32_t count = 0;
-    std::vector<string> replicas;
+    std::vector<std::string> replicas;
     for (const auto& loc : resp.tablet_locations()) {
       for (const auto& replica : loc.replicas()) {
         if (replica.ts_info().permanent_uuid() == server->instance_id().permanent_uuid()) {
@@ -118,9 +118,9 @@ class LoadBalancerPlacementPolicyTest : public YBTableTestBase {
   }
 
   void AddNewTserverToZone(
-    const string& zone,
+    const std::string& zone,
     const size_t expected_num_tservers,
-    const string& placement_uuid = "") {
+    const std::string& placement_uuid = "") {
 
     std::vector<std::string> extra_opts;
     extra_opts.push_back("--placement_cloud=c");
@@ -136,9 +136,9 @@ class LoadBalancerPlacementPolicyTest : public YBTableTestBase {
         external_mini_cluster()->WaitForTabletServerCount(expected_num_tservers, kDefaultTimeout));
   }
 
-  void AddNewTserverToLocation(const string& cloud, const string& region,
-                              const string& zone, const int expected_num_tservers,
-                              const string& placement_uuid = "") {
+  void AddNewTserverToLocation(const std::string& cloud, const std::string& region,
+                              const std::string& zone, const int expected_num_tservers,
+                              const std::string& placement_uuid = "") {
 
     std::vector<std::string> extra_opts;
     extra_opts.push_back("--placement_cloud=" + cloud);
@@ -161,7 +161,7 @@ TEST_F(LoadBalancerPlacementPolicyTest, CreateTableWithPlacementPolicyTest) {
   // Set cluster placement policy.
   ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("c.r.z0,c.r.z1,c.r.z2", 3, ""));
 
-  const string& create_custom_policy_table = "creation-placement-test";
+  const std::string& create_custom_policy_table = "creation-placement-test";
   const yb::client::YBTableName placement_table(
     YQL_DATABASE_CQL, table_name().namespace_name(), create_custom_policy_table);
 
@@ -190,7 +190,7 @@ TEST_F(LoadBalancerPlacementPolicyTest, CreateTableWithPlacementPolicyTest) {
   ASSERT_OK(NewTableCreator()->table_name(placement_table).schema(&schema).replication_info(
     replication_info).Create());
 
-  vector<int> counts_per_ts;
+  std::vector<int> counts_per_ts;
   int64 num_tservers = num_tablet_servers();
   GetLoadOnTservers(create_custom_policy_table, num_tservers, &counts_per_ts);
   // Verify that the tserver in zone0 does not have any tablets assigned to it.
@@ -224,7 +224,7 @@ TEST_F(LoadBalancerPlacementPolicyTest, PlacementPolicyTest) {
   WaitForLoadBalancer();
 
   // Create another table for which we will set custom placement info.
-  const string& custom_policy_table = "placement-test";
+  const std::string& custom_policy_table = "placement-test";
   const yb::client::YBTableName placement_table(
     YQL_DATABASE_CQL, table_name().namespace_name(), custom_policy_table);
   ASSERT_OK(client_->CreateNamespaceIfNotExists(
@@ -247,7 +247,7 @@ TEST_F(LoadBalancerPlacementPolicyTest, PlacementPolicyTest) {
   WaitForLoadBalancer();
 
   // Test 1: Verify placement of tablets for the table with modified placement info.
-  vector<int> counts_per_ts;
+  std::vector<int> counts_per_ts;
   GetLoadOnTservers(custom_policy_table, num_tservers, &counts_per_ts);
   // ts0 in c.r.z0 should have no tablets in it.
   ASSERT_EQ(counts_per_ts[0], 0);
@@ -312,7 +312,7 @@ TEST_F(LoadBalancerPlacementPolicyTest, AlterPlacementDataConsistencyTest) {
   ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("c.r.z0,c.r.z1", 2, ""));
 
   // Start workload on a table.
-  const string& table = "placement-data-consistency-test";
+  const std::string& table = "placement-data-consistency-test";
   const yb::client::YBTableName placement_table(
     YQL_DATABASE_CQL, table_name().namespace_name(), table);
 
@@ -329,7 +329,7 @@ TEST_F(LoadBalancerPlacementPolicyTest, AlterPlacementDataConsistencyTest) {
   WaitForLoadBalancer();
 
   // Verify that the placement policy is honored.
-  vector<int> counts_per_ts;
+  std::vector<int> counts_per_ts;
   GetLoadOnTservers(table, num_tablet_servers(), &counts_per_ts);
   for (int ii = 0; ii < 3; ++ii) {
     ASSERT_EQ(counts_per_ts[ii], 1);
@@ -365,11 +365,11 @@ TEST_F(LoadBalancerPlacementPolicyTest, ModifyPlacementUUIDTest) {
 
   // Add 2 tservers with custom placement uuid.
   auto num_tservers = num_tablet_servers() + 1;
-  const string& random_placement_uuid = "19dfa091-2b53-434f-b8dc-97280a5f8831";
+  const std::string& random_placement_uuid = "19dfa091-2b53-434f-b8dc-97280a5f8831";
   AddNewTserverToZone("z1", num_tservers, random_placement_uuid);
   AddNewTserverToZone("z2", ++num_tservers, random_placement_uuid);
 
-  vector<int> counts_per_ts;
+  std::vector<int> counts_per_ts;
   GetLoadOnTservers(table_name().table_name(), num_tservers, &counts_per_ts);
 
   // The first 3 tservers should have equal number of tablets allocated to them, but the new
@@ -427,7 +427,7 @@ TEST_F(LoadBalancerPlacementPolicyTest, PrefixPlacementTest) {
 
   // Load should be evenly distributed onto the 3 TS in z0, z1 and z2.
   // With 4 tablets in a table and 3 replica per tablet, each TS should have 4 tablets.
-  vector<int> counts_per_ts;
+  std::vector<int> counts_per_ts;
   GetLoadOnTservers(table_name().table_name(), num_tservers, &counts_per_ts);
 
   for (int ii = 0; ii < 3; ++ii) {
@@ -435,7 +435,7 @@ TEST_F(LoadBalancerPlacementPolicyTest, PrefixPlacementTest) {
   }
 
   // Add 3 tservers in a different region (c.r2.z0, c.r2.z1, c.r2.z2).
-  string cloud = "c", region = "r2", zone = "z0";
+  std::string cloud = "c", region = "r2", zone = "z0";
   AddNewTserverToLocation(cloud, region, zone, ++num_tservers);
 
   zone = "z1";
