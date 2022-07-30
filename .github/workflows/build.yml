@@ -127,5 +127,6 @@ jobs:
             sw_vers
             sudo mkdir -p /opt/yb-build
             sudo chmod 777 /opt/yb-build
+            brew install ninja
             ./yb_build.sh ${{ matrix.yb_build_args }}
           fi
