@@ -8152,7 +8152,7 @@ void CatalogManager::DeleteYsqlDatabaseAsync(scoped_refptr<NamespaceInfo> databa
 // IMPORTANT: If modifying, consider updating DeleteTable(), the singular deletion API.
 Status CatalogManager::DeleteYsqlDBTables(const scoped_refptr<NamespaceInfo>& database) {
   TabletInfoPtr sys_tablet_info;
-  vector<pair<scoped_refptr<TableInfo>, TableInfo::WriteLock>> tables;
+  vector<std::pair<scoped_refptr<TableInfo>, TableInfo::WriteLock>> tables;
   std::unordered_set<TableId> sys_table_ids;
   {
     // Lock the catalog to iterate over table_ids_map_.
@@ -8160,7 +8160,7 @@ Status CatalogManager::DeleteYsqlDBTables(const scoped_refptr<NamespaceInfo>& da
 
     sys_tablet_info = tablet_map_->find(kSysCatalogTabletId)->second;
 
-    vector<pair<scoped_refptr<TableInfo>, TableInfo::WriteLock>> colocation_parents;
+    vector<std::pair<scoped_refptr<TableInfo>, TableInfo::WriteLock>> colocation_parents;
 
     // Populate tables and sys_table_ids.
     for (const TableInfoMap::value_type& entry : *table_ids_map_) {

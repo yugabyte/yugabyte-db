@@ -147,7 +147,7 @@ int64_t KeyIndexSet::GetRandomKey(std::mt19937_64* random_number_generator) cons
   return -1;
 }
 
-ostream& operator <<(ostream& out, const KeyIndexSet &key_index_set) {
+std::ostream& operator <<(std::ostream& out, const KeyIndexSet &key_index_set) {
   MutexLock l(key_index_set.mutex_);
   out << "[";
   bool first = true;

@@ -1002,7 +1002,7 @@ Status ExternalMiniCluster::WaitForLeaderCommitTermAdvance() {
 
       return Status::OK();
     }
-    SleepFor(MonoDelta::FromMilliseconds(min(i, 10)));
+    SleepFor(MonoDelta::FromMilliseconds(std::min(i, 10)));
     RETURN_NOT_OK(GetLastOpIdForLeader(&opid));
     now = MonoTime::Now();
   }
@@ -1068,7 +1068,7 @@ Status ExternalMiniCluster::WaitForMastersToCommitUpTo(int64_t target_index) {
                            opts_.timeout);
     }
 
-    SleepFor(MonoDelta::FromMilliseconds(min(i * 100, 1000)));
+    SleepFor(MonoDelta::FromMilliseconds(std::min(i * 100, 1000)));
   }
 }
 
@@ -1916,7 +1916,7 @@ class ExternalDaemon::LogTailerThread {
  public:
   LogTailerThread(const std::string& line_prefix,
                   const int child_fd,
-                  ostream* const out)
+                  std::ostream* const out)
       : id_(global_state()->next_log_tailer_id.fetch_add(1)),
         stopped_(CreateStoppedFlagForId(id_)),
         thread_desc_(Substitute("log tailer thread for prefix $0", line_prefix)),

@@ -183,7 +183,7 @@ TEST_F(LoadBalancerMultiTableTest, MultipleLeaderTabletMovesPerTable) {
     const auto new_leader_counts = ASSERT_RESULT(yb_admin_client_->GetLeaderCounts(tn));
     // Only count increases in leaders
     for (const auto& lc : new_leader_counts) {
-      num_leader_moves += max(0, lc.second - initial_leader_counts[tn.table_name()][lc.first]);
+      num_leader_moves += std::max(0, lc.second - initial_leader_counts[tn.table_name()][lc.first]);
     }
   }
 

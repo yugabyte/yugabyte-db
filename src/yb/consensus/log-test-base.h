@@ -140,7 +140,7 @@ static Status AppendNoOpToLogSync(const scoped_refptr<Clock>& clock,
 class LogTestBase : public YBTest {
  public:
 
-  typedef pair<int, int> DeltaId;
+  typedef std::pair<int, int> DeltaId;
 
   typedef std::tuple<int, int, std::string> TupleForAppend;
 

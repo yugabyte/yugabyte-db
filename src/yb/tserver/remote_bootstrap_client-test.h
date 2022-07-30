@@ -106,7 +106,7 @@ class RemoteBootstrapClientTest : public RemoteBootstrapTest {
 };
 
 Status RemoteBootstrapClientTest::CompareFileContents(const std::string& path1, const std::string& path2) {
-  shared_ptr<RandomAccessFile> file1, file2;
+  std::shared_ptr<RandomAccessFile> file1, file2;
   RETURN_NOT_OK(env_util::OpenFileForRandom(fs_manager_->env(), path1, &file1));
   RETURN_NOT_OK(env_util::OpenFileForRandom(fs_manager_->env(), path2, &file2));
 

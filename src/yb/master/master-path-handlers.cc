@@ -107,10 +107,10 @@ const char* DatabaseTypeName(YQLDatabase db) {
 }
 
 YQLDatabase DatabaseTypeByName(const std::string& db_type_name) {
-  static const std::array<pair<const char*, YQLDatabase>, 3> db_types{
-      make_pair(kDBTypeNameCql, YQLDatabase::YQL_DATABASE_CQL),
-      make_pair(kDBTypeNamePgsql, YQLDatabase::YQL_DATABASE_PGSQL),
-      make_pair(kDBTypeNameRedis, YQLDatabase::YQL_DATABASE_REDIS)};
+  static const std::array<std::pair<const char*, YQLDatabase>, 3> db_types{
+      std::make_pair(kDBTypeNameCql, YQLDatabase::YQL_DATABASE_CQL),
+      std::make_pair(kDBTypeNamePgsql, YQLDatabase::YQL_DATABASE_PGSQL),
+      std::make_pair(kDBTypeNameRedis, YQLDatabase::YQL_DATABASE_REDIS)};
   for (const auto& db : db_types) {
     if (db_type_name == db.first) {
       return db.second;

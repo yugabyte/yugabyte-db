@@ -107,9 +107,9 @@ class RemoteBootstrapSessionTest : public YBTabletTest {
 
   MetricRegistry metric_registry_;
   scoped_refptr<LogAnchorRegistry> log_anchor_registry_;
-  unique_ptr<ThreadPool> raft_pool_;
-  unique_ptr<ThreadPool> tablet_prepare_pool_;
-  unique_ptr<ThreadPool> log_thread_pool_;
+  std::unique_ptr<ThreadPool> raft_pool_;
+  std::unique_ptr<ThreadPool> tablet_prepare_pool_;
+  std::unique_ptr<ThreadPool> log_thread_pool_;
   std::shared_ptr<TabletPeer> tablet_peer_;
   scoped_refptr<RemoteBootstrapSession> session_;
   std::unique_ptr<rpc::Messenger> messenger_;

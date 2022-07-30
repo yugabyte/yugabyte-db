@@ -214,10 +214,10 @@ Result<TypedNamespaceName> ResolveNamespaceName(
     const YQLDatabase default_if_no_prefix = YQL_DATABASE_CQL) {
   auto db_type = YQL_DATABASE_UNKNOWN;
   if (!prefix.empty()) {
-    static const std::array<pair<const char*, YQLDatabase>, 3> type_prefixes{
-        make_pair(kDBTypePrefixCql, YQL_DATABASE_CQL),
-        make_pair(kDBTypePrefixYsql, YQL_DATABASE_PGSQL),
-        make_pair(kDBTypePrefixRedis, YQL_DATABASE_REDIS)};
+    static const std::array<std::pair<const char*, YQLDatabase>, 3> type_prefixes{
+        std::make_pair(kDBTypePrefixCql, YQL_DATABASE_CQL),
+        std::make_pair(kDBTypePrefixYsql, YQL_DATABASE_PGSQL),
+        std::make_pair(kDBTypePrefixRedis, YQL_DATABASE_REDIS)};
     for (const auto& p : type_prefixes) {
       if (prefix == p.first) {
         db_type = p.second;

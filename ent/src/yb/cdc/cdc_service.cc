@@ -2343,7 +2343,7 @@ void CDCServiceImpl::GetCDCDBStreamInfo(const GetCDCDBStreamInfoRequestPB* req,
     CDCErrorPB::INVALID_REQUEST,
     context);
 
-  std::vector<pair<std::string, std::string>> db_stream_info;
+  std::vector<std::pair<std::string, std::string>> db_stream_info;
   Status s = client()->GetCDCDBStreamInfo(req->db_stream_id(), &db_stream_info);
   RPC_STATUS_RETURN_ERROR(s, resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
 

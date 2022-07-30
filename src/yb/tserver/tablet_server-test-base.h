@@ -70,7 +70,7 @@ class TabletServerServiceProxy;
 
 class TabletServerTestBase : public YBTest {
  public:
-  typedef pair<int32_t, int32_t> KeyValue;
+  typedef std::pair<int32_t, int32_t> KeyValue;
 
   explicit TabletServerTestBase(TableType table_type = YQL_TABLE_TYPE);
   ~TabletServerTestBase();

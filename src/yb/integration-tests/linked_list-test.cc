@@ -734,7 +734,7 @@ Status LinkedListTester::VerifyLinkedListRemote(
 Status LinkedListTester::WaitAndVerify(
     int seconds_to_run, int64_t expected, bool latest_at_leader,
     const std::function<Status(const std::string&)>& cb) {
-  std::list<pair<HybridTime, int64_t> > samples_as_list(sampled_hybrid_times_and_counts_.begin(),
+  std::list<std::pair<HybridTime, int64_t> > samples_as_list(sampled_hybrid_times_and_counts_.begin(),
                                                         sampled_hybrid_times_and_counts_.end());
 
   int64_t seen = 0;

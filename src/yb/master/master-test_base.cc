@@ -71,7 +71,7 @@ void MasterTestBase::SetUp() {
   YBTest::SetUp();
 
   // Set an RPC timeout for the controllers.
-  controller_ = make_shared<RpcController>();
+  controller_ = std::make_shared<RpcController>();
   controller_->set_timeout(MonoDelta::FromSeconds(10));
 
   // In this test, we create tables to test catalog manager behavior,

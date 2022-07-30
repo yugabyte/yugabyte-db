@@ -241,7 +241,7 @@ class MasterTestBase : public YBTest {
   std::unique_ptr<MasterDdlProxy> proxy_ddl_;
   std::unique_ptr<MasterHeartbeatProxy> proxy_heartbeat_;
   std::unique_ptr<MasterReplicationProxy> proxy_replication_;
-  shared_ptr<RpcController> controller_;
+  std::shared_ptr<RpcController> controller_;
 };
 
 } // namespace master

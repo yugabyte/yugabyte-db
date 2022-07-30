@@ -152,11 +152,11 @@ TEST_F(MasterTest, TestRegisterAndHeartbeat) {
     ASSERT_TRUE(resp.needs_full_tablet_report());
   }
 
-  std::vector<shared_ptr<TSDescriptor> > descs;
+  std::vector<std::shared_ptr<TSDescriptor> > descs;
   mini_master_->master()->ts_manager()->GetAllDescriptors(&descs);
   ASSERT_EQ(0, descs.size()) << "Should not have registered anything";
 
-  shared_ptr<TSDescriptor> ts_desc;
+  std::shared_ptr<TSDescriptor> ts_desc;
   ASSERT_FALSE(mini_master_->master()->ts_manager()->LookupTSByUUID(kTsUUID, &ts_desc));
 
   // Register the fake TS, without sending any tablet report.
@@ -264,9 +264,9 @@ TEST_F(MasterTest, TestListTablesWithoutMasterCrash) {
   auto task = [kNamespaceName, this]() {
     const char *kTableName = "testtable";
     const Schema kTableSchema({ ColumnSchema("key", INT32) }, 1);
-    shared_ptr<RpcController> controller;
+    std::shared_ptr<RpcController> controller;
     // Set an RPC timeout for the controllers.
-    controller = make_shared<RpcController>();
+    controller = std::make_shared<RpcController>();
     controller->set_timeout(MonoDelta::FromSeconds(FLAGS_TEST_simulate_slow_table_create_secs * 2));
 
     CreateTableRequestPB req;
