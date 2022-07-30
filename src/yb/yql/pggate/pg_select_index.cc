@@ -68,7 +68,7 @@ Status PgSelectIndex::PrepareSubquery(std::shared_ptr<LWPgsqlReadRequestPB> read
   return Status::OK();
 }
 
-Result<bool> PgSelectIndex::FetchYbctidBatch(const vector<Slice> **ybctids) {
+Result<bool> PgSelectIndex::FetchYbctidBatch(const std::vector<Slice> **ybctids) {
   // Keep reading until we get one batch of ybctids or EOF.
   while (!VERIFY_RESULT(GetNextYbctidBatch())) {
     if (!VERIFY_RESULT(FetchDataFromServer())) {

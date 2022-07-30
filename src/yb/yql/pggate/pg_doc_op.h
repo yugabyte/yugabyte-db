@@ -68,7 +68,7 @@ class PgDocResult {
 
   // Access function to ybctids value in this batch.
   // Sys columns must be processed before this function is called.
-  const vector<Slice>& ybctids() const {
+  const std::vector<Slice>& ybctids() const {
     DCHECK(syscol_processed_) << "System columns are not yet setup";
     return ybctids_;
   }
@@ -95,7 +95,7 @@ class PgDocResult {
   // System columns.
   // - ybctids_ contains pointers to the buffers "data_".
   // - System columns must be processed before these fields have any meaning.
-  vector<Slice> ybctids_;
+  std::vector<Slice> ybctids_;
   bool syscol_processed_ = false;
 };
 
@@ -453,7 +453,7 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   size_t parallelism_level_ = 1;
 
   // Output parameter of the execution.
-  string out_param_backfill_spec_;
+  std::string out_param_backfill_spec_;
 
  private:
   // Result set either from selected or returned targets is cached in a list of strings.

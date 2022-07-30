@@ -174,7 +174,7 @@ static bool HasCompatibleTypeSignature(const std::vector<DataType>& signature,
 //   "compare_signature" is a predicate to compare datatypes of formal and actual parameters.
 //   PTypePtr and RTypePtr can be either a (shared_ptr<MyClass>) or a raw pointer (MyClass*)
 static Status FindMatch(
-    const string& ql_name,
+    const std::string& ql_name,
     function<bool(const std::vector<DataType>&, const std::vector<DataType>&)> compare_signature,
     BFOpcode max_opcode,
     const std::vector<DataType>& actual_types,
@@ -242,7 +242,7 @@ static Status FindMatch(
 // In/Out parameter: return_type
 //   If return_type is given, check if it is compatible with the declaration.
 //   If not, return_type is an output parameter whose value is the return type of the builtin.
-Status FindOpcodeByType(const string& ql_name,
+Status FindOpcodeByType(const std::string& ql_name,
                         const std::vector<DataType>& actual_types,
                         BFOpcode *opcode,
                         const BFDecl **bfdecl,

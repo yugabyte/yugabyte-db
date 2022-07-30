@@ -64,8 +64,8 @@ SpecialEnv::SpecialEnv(Env* base)
   table_write_callback_ = nullptr;
 }
 
-const string DBHolder::kKeyId = "key_id";
-const string DBHolder::kKeyFile = "universe_key_file";
+const std::string DBHolder::kKeyId = "key_id";
+const std::string DBHolder::kKeyFile = "universe_key_file";
 
 DBHolder::DBHolder(const std::string path, bool encryption_enabled)
     : option_config_(kDefault),

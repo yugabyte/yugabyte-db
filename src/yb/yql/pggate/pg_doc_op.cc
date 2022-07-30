@@ -779,7 +779,7 @@ Result<bool> PgDocReadOp::PopulateParallelSelectOps() {
     // server uses this information to operate on correct tablet.
     // - Range partition uses range partition key to identify partition.
     // - Hash partition uses "next_partition_key" and "max_hash_code" to identify partition.
-    string upper_bound;
+    std::string upper_bound;
     if (partition < partition_keys.size() - 1) {
       upper_bound = partition_keys[partition + 1];
     }
@@ -814,7 +814,7 @@ Result<bool> PgDocReadOp::PopulateSamplingOps() {
     // server uses this information to operate on correct tablet.
     // - Range partition uses range partition key to identify partition.
     // - Hash partition uses "next_partition_key" and "max_hash_code" to identify partition.
-    string upper_bound;
+    std::string upper_bound;
     if (partition < partition_keys.size() - 1) {
       upper_bound = partition_keys[partition + 1];
     }
@@ -865,7 +865,7 @@ Status PgDocReadOp::SetScanPartitionBoundary() {
       partition_key != partition_keys.end(), InvalidArgument, "invalid partition key given");
 
   // Seek upper bound (Beginning of next tablet).
-  string upper_bound;
+  std::string upper_bound;
   const auto& next_partition_key = std::next(partition_key, 1);
   if (next_partition_key != partition_keys.end()) {
     upper_bound = *next_partition_key;

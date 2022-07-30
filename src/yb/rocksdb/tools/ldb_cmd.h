@@ -243,7 +243,7 @@ class LDBCommand {
   std::unique_ptr<yb::encryption::UniverseKeyManager> universe_key_manager_;
   std::unique_ptr<rocksdb::Env> env_;
 
-  bool ParseKeyValue(const std::string& line, string* key, string* value,
+  bool ParseKeyValue(const std::string& line, std::string* key, std::string* value,
                       bool is_key_hex, bool is_value_hex);
 
   LDBCommand(const std::map<std::string, std::string>& options, const std::vector<std::string>& flags,
@@ -265,7 +265,7 @@ class LDBCommand {
 
     itr = options.find(ARG_UNIVERSE_KEY_FILE);
     if (itr != options.end()) {
-      vector<string> splits = StringSplit(itr->second, ':');
+      std::vector<std::string> splits = StringSplit(itr->second, ':');
       if (splits.size() != 2) {
         LOG(FATAL) << yb::Format("Could not split $0 by ':' into a key id and key file",
                                  itr->second);
@@ -437,8 +437,8 @@ class LDBCommand {
    * used by this command.  It includes the common options and the ones
    * passed in.
    */
-  static vector<string> BuildCmdLineOptions(vector<string> options) {
-    vector<string> ret = {ARG_DB, ARG_BLOOM_BITS, ARG_BLOCK_SIZE,
+  static std::vector<std::string> BuildCmdLineOptions(std::vector<std::string> options) {
+    std::vector<std::string> ret = {ARG_DB, ARG_BLOOM_BITS, ARG_BLOCK_SIZE,
                           ARG_AUTO_COMPACTION, ARG_COMPRESSION_TYPE,
                           ARG_WRITE_BUFFER_SIZE, ARG_FILE_SIZE,
                           ARG_FIX_PREFIX_LEN, ARG_CF_NAME, ARG_UNIVERSE_KEY_FILE};
@@ -450,7 +450,7 @@ class LDBCommand {
                       int& value, LDBCommandExecuteResult& exec_state); // NOLINT
 
   bool ParseStringOption(const std::map<std::string, std::string>& options,
-                         const std::string& option, string* value);
+                         const std::string& option, std::string* value);
 
   Options options_;
   std::vector<ColumnFamilyDescriptor> column_families_;
@@ -637,7 +637,7 @@ class DBLoaderCommand: public LDBCommand {
  public:
   static std::string Name() { return "load"; }
 
-  DBLoaderCommand(string& db_name, vector<string>& args); // NOLINT
+  DBLoaderCommand(string& db_name, std::vector<std::string>& args); // NOLINT
 
   DBLoaderCommand(const std::vector<std::string>& params,
       const std::map<std::string, std::string>& options, const std::vector<std::string>& flags);
@@ -728,7 +728,7 @@ class ReduceDBLevelsCommand : public LDBCommand {
 
   static void Help(string& msg); // NOLINT
 
-  static vector<string> PrepareArgs(const std::string& db_path, int new_levels,
+  static std::vector<std::string> PrepareArgs(const std::string& db_path, int new_levels,
       bool print_old_level = false);
 
  private:

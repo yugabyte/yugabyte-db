@@ -197,8 +197,8 @@ class SubDocument : public PrimitiveValue {
   friend void SubDocCollectionToStreamInternal(ostream& out,
                                         const SubDocument& subdoc,
                                         const int indent,
-                                        const string& begin,
-                                        const string& end);
+                                        const std::string& begin,
+                                        const std::string& end);
 
   // We use a SubDocument as the top-level map from encoded document keys to documents (also
   // represented as SubDocuments) in InMemDocDbState, and we need access to object_container()

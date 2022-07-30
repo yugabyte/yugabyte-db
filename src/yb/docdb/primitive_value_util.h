@@ -28,7 +28,7 @@ namespace docdb {
 Status QLKeyColumnValuesToPrimitiveValues(
     const google::protobuf::RepeatedPtrField<QLExpressionPB> &column_values,
     const Schema &schema, size_t column_idx, const size_t column_count,
-    vector<KeyEntryValue> *components);
+    std::vector<KeyEntryValue> *components);
 
 Result<vector<KeyEntryValue>> InitKeyColumnPrimitiveValues(
     const google::protobuf::RepeatedPtrField<PgsqlExpressionPB> &column_values,

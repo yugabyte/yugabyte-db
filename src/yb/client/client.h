@@ -399,15 +399,15 @@ class YBClient {
                                        const std::string& role_name);
 
   // List all namespace identifiers.
-  Result<vector<master::NamespaceIdentifierPB>> ListNamespaces();
-  Result<vector<master::NamespaceIdentifierPB>> ListNamespaces(
+  Result<std::vector<master::NamespaceIdentifierPB>> ListNamespaces();
+  Result<std::vector<master::NamespaceIdentifierPB>> ListNamespaces(
       const boost::optional<YQLDatabase>& database_type);
 
   // Get namespace information.
   Status GetNamespaceInfo(const std::string& namespace_id,
-                                  const std::string& namespace_name,
-                                  const boost::optional<YQLDatabase>& database_type,
-                                  master::GetNamespaceInfoResponsePB* ret);
+                          const std::string& namespace_name,
+                          const boost::optional<YQLDatabase>& database_type,
+                          master::GetNamespaceInfoResponsePB* ret);
 
   // Check if the namespace given by 'namespace_name' or 'namespace_id' exists.
   // Result value is set only on success.
@@ -427,7 +427,8 @@ class YBClient {
   // Result value is set only on success.
   Result<bool> TablegroupExists(const std::string& namespace_name,
                                 const std::string& tablegroup_id);
-  Result<vector<master::TablegroupIdentifierPB>> ListTablegroups(const std::string& namespace_name);
+  Result<std::vector<master::TablegroupIdentifierPB>> ListTablegroups(
+      const std::string& namespace_name);
 
   // Authentication and Authorization
   // Create a new role.
@@ -446,18 +447,18 @@ class YBClient {
   // Delete a role.
   Status DeleteRole(const std::string& role_name, const std::string& current_role_name);
 
-  Status SetRedisPasswords(const vector<string>& passwords);
+  Status SetRedisPasswords(const std::vector<std::string>& passwords);
   // Fetches the password from the local cache, or from the master if the local cached value
   // is too old.
-  Status GetRedisPasswords(vector<string>* passwords);
+  Status GetRedisPasswords(std::vector<std::string>* passwords);
 
-  Status SetRedisConfig(const std::string& key, const vector<string>& values);
-  Status GetRedisConfig(const std::string& key, vector<string>* values);
+  Status SetRedisConfig(const std::string& key, const std::vector<std::string>& values);
+  Status GetRedisConfig(const std::string& key, std::vector<std::string>* values);
 
     // Grants a role to another role, or revokes a role from another role.
   Status GrantRevokeRole(GrantRevokeStatementType statement_type,
-                                 const std::string& granted_role_name,
-                                 const std::string& recipient_role_name);
+                         const std::string& granted_role_name,
+                         const std::string& recipient_role_name);
 
   // Get all the roles' permissions from the master only if the master's permissions version is
   // greater than permissions_cache->version().s
@@ -493,7 +494,7 @@ class YBClient {
                        CreateCDCStreamCallback callback);
 
   // Delete multiple CDC streams.
-  Status DeleteCDCStream(const vector<CDCStreamId>& streams,
+  Status DeleteCDCStream(const std::vector<CDCStreamId>& streams,
                                  bool force_delete = false,
                                  bool ignore_errors = false,
                                  master::DeleteCDCStreamResponsePB* resp = nullptr);
@@ -508,11 +509,11 @@ class YBClient {
   // Create a new CDC stream.
   Status GetCDCDBStreamInfo(
       const std::string& db_stream_id,
-      std::vector<pair<std::string, std::string>>* db_stream_info);
+      std::vector<std::pair<std::string, std::string>>* db_stream_info);
 
   void GetCDCDBStreamInfo(
       const std::string& db_stream_id,
-      const std::shared_ptr<std::vector<pair<std::string, std::string>>>& db_stream_info,
+      const std::shared_ptr<std::vector<std::pair<std::string, std::string>>>& db_stream_info,
       const StdStatusCallback& callback);
 
   // Retrieve a CDC stream.
@@ -537,8 +538,8 @@ class YBClient {
 
   // Update consumer pollers after a producer side tablet split.
   Status UpdateConsumerOnProducerSplit(const std::string& producer_id,
-                                               const TableId& table_id,
-                                        const master::ProducerSplitTabletInfoPB& split_info);
+                                       const TableId& table_id,
+                                       const master::ProducerSplitTabletInfoPB& split_info);
 
   void GetTableLocations(
       const TableId& table_id, int32_t max_tablets, RequireTabletsRunning require_tablets_running,
@@ -572,7 +573,8 @@ class YBClient {
   // 'tables' is appended to only on success.
   Result<std::vector<YBTableName>> ListUserTables(const NamespaceId& ns_id = "");
 
-  Result<std::unordered_map<uint32_t, string>> GetPgEnumOidLabelMap(const NamespaceName& ns_name);
+  Result<std::unordered_map<uint32_t, std::string>> GetPgEnumOidLabelMap(
+      const NamespaceName& ns_name);
 
   // List all running tablets' uuids for this table.
   // 'tablets' is appended to only on success.

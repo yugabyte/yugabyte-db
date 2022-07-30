@@ -200,24 +200,24 @@ class YBClient::Data {
 
   // Take one of table id or name.
   Status IsAlterTableInProgress(YBClient* client,
-                                        const YBTableName& table_name,
-                                        string table_id,
-                                        CoarseTimePoint deadline,
-                                        bool *alter_in_progress);
+                                const YBTableName& table_name,
+                                std::string table_id,
+                                CoarseTimePoint deadline,
+                                bool *alter_in_progress);
 
   Status WaitForAlterTableToFinish(YBClient* client,
-                                           const YBTableName& alter_name,
-                                           string table_id,
-                                           CoarseTimePoint deadline);
+                                   const YBTableName& alter_name,
+                                   std::string table_id,
+                                   CoarseTimePoint deadline);
 
   Status FlushTables(YBClient* client,
-                             const vector<YBTableName>& table_names,
+                             const std::vector<YBTableName>& table_names,
                              bool add_indexes,
                              const CoarseTimePoint deadline,
                              const bool is_compaction);
 
   Status FlushTables(YBClient* client,
-                             const vector<TableId>& table_ids,
+                             const std::vector<TableId>& table_ids,
                              bool add_indexes,
                              const CoarseTimePoint deadline,
                              const bool is_compaction);

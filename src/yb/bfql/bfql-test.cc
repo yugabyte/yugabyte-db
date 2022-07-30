@@ -373,8 +373,8 @@ TEST_F(BfqlTest, TestCompatibleSignature) {
   ASSERT_OK(BFExecApiTest::ExecQLOpcode(opcode, converted_params, result));
 
   // Write the result to a string and check the result.
-  string expected_result = string("The value is ") + to_string(100.);
-  string return_result = result->string_value();
+  std::string expected_result = std::string("The value is ") + to_string(100.);
+  std::string return_result = result->string_value();
   ASSERT_EQ(return_result, expected_result);
 
   //------------------------------------------------------------------------------------------------

@@ -146,8 +146,8 @@ void YBMetaDataCache::RemoveCachedTable(const TableId& table_id) {
   }
 }
 
-Status YBMetaDataCache::GetUDType(const string& keyspace_name,
-                                  const string& type_name,
+Status YBMetaDataCache::GetUDType(const std::string& keyspace_name,
+                                  const std::string& type_name,
                                   std::shared_ptr<QLType> *type,
                                   bool *cache_used) {
   auto type_path = std::make_pair(keyspace_name, type_name);
@@ -170,8 +170,8 @@ Status YBMetaDataCache::GetUDType(const string& keyspace_name,
   return Status::OK();
 }
 
-void YBMetaDataCache::RemoveCachedUDType(const string& keyspace_name,
-                                         const string& type_name) {
+void YBMetaDataCache::RemoveCachedUDType(const std::string& keyspace_name,
+                                         const std::string& type_name) {
   std::lock_guard<std::mutex> lock(cached_types_mutex_);
   cached_types_.erase(std::make_pair(keyspace_name, type_name));
 }

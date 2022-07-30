@@ -135,9 +135,9 @@ class TableHandle {
 
   std::vector<std::string> AllColumnNames() const;
 
-  QLValuePB* PrepareColumn(QLWriteRequestPB* req, const string& column_name) const;
+  QLValuePB* PrepareColumn(QLWriteRequestPB* req, const std::string& column_name) const;
   QLValuePB* PrepareCondition(
-      QLConditionPB* const condition, const string& column_name, const QLOperator op) const;
+      QLConditionPB* const condition, const std::string& column_name, const QLOperator op) const;
 
  private:
   typedef std::unordered_map<std::string, yb::ColumnId> ColumnIdsMap;

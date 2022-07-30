@@ -294,7 +294,7 @@ inline std::ostream& operator<<(std::ostream& out, const PrimitiveValue& primiti
 }
 
 inline std::ostream& operator<<(std::ostream& out, const SortOrder sort_order) {
-  string sort_order_name = sort_order == SortOrder::kAscending ? "kAscending" : "kDescending";
+  std::string sort_order_name = sort_order == SortOrder::kAscending ? "kAscending" : "kDescending";
   out << sort_order_name;
   return out;
 }

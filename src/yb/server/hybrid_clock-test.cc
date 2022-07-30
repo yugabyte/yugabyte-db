@@ -156,7 +156,7 @@ TEST_F(HybridClockTest, TestClockDoesntGoBackwardsWithOccasionalUpdates) {
 }
 
 void HybridClockTest::RunMultiThreadedTest(int num_reads_per_update) {
-  vector<scoped_refptr<yb::Thread> > threads;
+  std::vector<scoped_refptr<yb::Thread> > threads;
 
   AtomicBool stop(false);
   for (int i = 0; i < 4; i++) {

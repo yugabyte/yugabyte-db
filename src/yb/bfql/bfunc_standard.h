@@ -87,7 +87,7 @@ Status ServerOperator(PTypePtr arg1, PTypePtr arg2, RTypePtr result) {
 
 template<typename PTypePtr, typename RTypePtr>
 uint16_t YBHash(const std::vector<PTypePtr>& params, RTypePtr result) {
-  string encoded_key = "";
+  std::string encoded_key = "";
   for (const PTypePtr& param : params) {
     AppendToKey(*param, &encoded_key);
   }

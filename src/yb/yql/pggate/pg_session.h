@@ -360,7 +360,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   // Execution status.
   Status status_;
-  string errmsg_;
+  std::string errmsg_;
 
   CoarseTimePoint invalidate_table_cache_time_;
   std::unordered_map<PgObjectId, PgTableDescPtr, PgObjectIdHash> table_cache_;

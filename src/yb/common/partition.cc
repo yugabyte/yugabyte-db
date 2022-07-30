@@ -492,8 +492,8 @@ uint32_t PartitionSchema::GetOverlap(
                                 : PartitionSchema::DecodeMultiColumnHashValue(other_key_end) - 1;
 
   // Use uint32 as max Overlap is uint16_t max + 1
-  uint32_t start_key = max(first_start_val, second_start_val);
-  uint32_t end_key = min(first_end_val, second_end_val);
+  uint32_t start_key = std::max(first_start_val, second_start_val);
+  uint32_t end_key = std::min(first_end_val, second_end_val);
 
   if (end_key >= start_key) {
     return end_key - start_key + 1;

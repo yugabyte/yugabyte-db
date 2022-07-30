@@ -77,7 +77,6 @@ using std::ifstream;
 using std::ostringstream;
 using std::string;
 using std::stringstream;
-using std::string;
 
 // GLog already implements symbolization. Just import their hidden symbol.
 namespace google {
@@ -247,7 +246,7 @@ static void PprofSymbolHandler(const Webserver::WebRequest& req,
   int invalid_addrs = 0;
 
   // Symbolization request.
-  vector<GStringPiece> pieces = strings::Split(req.post_data, "+");
+  std::vector<GStringPiece> pieces = strings::Split(req.post_data, "+");
   for (GStringPiece p : pieces) {
     string hex_addr;
     if (!TryStripPrefixString(p, "0x", &hex_addr)) {

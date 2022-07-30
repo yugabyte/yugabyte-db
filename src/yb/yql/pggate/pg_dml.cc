@@ -338,7 +338,7 @@ Result<bool> PgDml::ProcessSecondaryIndexRequest(const PgExecParameters *exec_pa
 
   // When INDEX has its own doc_op, execute it to fetch next batch of ybctids which is then used
   // to read data from the main table.
-  const vector<Slice> *ybctids;
+  const std::vector<Slice> *ybctids;
   if (!VERIFY_RESULT(secondary_index_query_->FetchYbctidBatch(&ybctids))) {
     // No more rows of ybctids.
     return false;

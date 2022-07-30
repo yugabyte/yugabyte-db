@@ -64,8 +64,8 @@ namespace server {
 
 namespace {
 
-string CertsDir(const std::string& root_dir, SecureContextType type) {
-  string certs_dir;
+std::string CertsDir(const std::string& root_dir, SecureContextType type) {
+  std::string certs_dir;
   if (type == SecureContextType::kExternal) {
     certs_dir = FLAGS_certs_for_client_dir;
   }
@@ -80,7 +80,7 @@ string CertsDir(const std::string& root_dir, SecureContextType type) {
 
 } // namespace
 
-string DefaultCertsDir(const FsManager& fs_manager) {
+std::string DefaultCertsDir(const FsManager& fs_manager) {
   return fs_manager.GetCertsDir(fs_manager.GetDefaultRootDir());
 }
 
