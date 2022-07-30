@@ -37,13 +37,6 @@
       "version": "2.6.18.0",
       "versionShort": "2.6.18",
       "appVersion": "2.6.18.0-b3"
-    },
-    {
-      "series": "v2.4",
-      "display": "v2.4",
-      "version": "2.4.8.0",
-      "versionShort": "2.4.8",
-      "appVersion": "2.4.8.0-b16"
     }
   ]
 }
