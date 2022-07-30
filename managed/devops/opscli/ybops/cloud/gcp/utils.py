@@ -42,7 +42,6 @@ YB_FIREWALL_TARGET_TAGS = "cluster-server"
 
 GCP_SCRATCH = "scratch"
 GCP_PERSISTENT = "persistent"
-GCP_INTERNAL_INSTANCE_PREFIXES = ("N2-")
 
 
 # Code 429 does not have a name in httplib.
