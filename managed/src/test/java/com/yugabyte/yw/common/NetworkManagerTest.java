@@ -11,6 +11,8 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.typesafe.config.Config;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import java.util.Arrays;
@@ -32,6 +34,10 @@ public class NetworkManagerTest extends FakeDBApplication {
 
   @Mock ShellProcessHandler shellProcessHandler;
 
+  @Mock RuntimeConfigFactory runtimeConfigFactory;
+
+  @Mock Config mockConfig;
+
   private Provider defaultProvider;
   private Region defaultRegion;
   ArgumentCaptor<List<String>> command;
@@ -43,6 +49,7 @@ public class NetworkManagerTest extends FakeDBApplication {
     defaultRegion = Region.create(defaultProvider, "us-west-2", "US West 2", "yb-image");
     command = ArgumentCaptor.forClass(List.class);
     cloudCredentials = ArgumentCaptor.forClass(Map.class);
+    when(runtimeConfigFactory.globalRuntimeConf()).thenReturn(mockConfig);
   }
 
   private JsonNode runBootstrap(

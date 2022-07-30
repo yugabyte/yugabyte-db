@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.common;
 
+import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.models.Provider;
 import java.util.ArrayList;
@@ -74,6 +75,10 @@ public class HealthManager extends DevopsBase {
         && !provider.code.equals("onprem")
         && !provider.code.equals("kubernetes")) {
       commandArgs.add("--check_clock");
+    }
+
+    if (runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.security.ssh2_enabled")) {
+      commandArgs.add("--ssh2_enabled");
     }
 
     // Start with a copy of the cloud config env vars.

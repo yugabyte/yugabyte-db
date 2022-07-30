@@ -13,7 +13,8 @@
     "yb-server-provision.yml",
     "send_sudo_pass.yml",
     "remote_role.yml",
-    "sudo_whitelist.txt"
+    "sudo_whitelist.txt",
+    "configure_ssh2.yml"
   ],
   "bin": [
     "bin/cluster_health.py",

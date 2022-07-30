@@ -371,6 +371,9 @@ public class TableManager extends DevopsBase {
     if (backupTableParams.useTablespaces) {
       commandArgs.add("--use_tablespaces");
     }
+    if (runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.security.ssh2_enabled")) {
+      commandArgs.add("--ssh2_enabled");
+    }
   }
 
   @Override
