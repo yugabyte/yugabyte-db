@@ -24,7 +24,7 @@ DEFINE_string(
 DEFINE_string(skipped_cols, "", "Comma separated list of 0-indexed columns to skip");
 
 namespace {
-static bool CSVSeparatorValidator(const char* flagname, const string& value) {
+static bool CSVSeparatorValidator(const char* flagname, const std::string& value) {
   if (value.size() != 1) {
     LOG(INFO) << "Expect " << flagname << " to be 1 character long";
     return false;
@@ -69,7 +69,7 @@ std::set<int> SkippedColumns() {
   return SkippedColumns(FLAGS_skipped_cols);
 }
 
-std::set<int> SkippedColumns(const string& columns_to_skip) {
+std::set<int> SkippedColumns(const std::string& columns_to_skip) {
   std::set<int> skipped_cols;
   CsvTokenizer tokenizer = Tokenize(columns_to_skip, ',');
   for (auto it = tokenizer.begin(); it != tokenizer.end(); it++) {

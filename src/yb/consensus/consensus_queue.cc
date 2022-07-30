@@ -730,7 +730,7 @@ Result<ReadOpsResult> PeerMessageQueue::ReadReplicatedMessagesForCDC(
 
   // If an empty OpID is only sent on the first read request, start at the earliest known entry.
   int64_t after_op_index = last_op_id.empty() ?
-                             max(log_cache_.earliest_op_index(), last_op_id.index) :
+                             std::max(log_cache_.earliest_op_index(), last_op_id.index) :
                              last_op_id.index;
 
   auto result = ReadFromLogCache(
