@@ -87,6 +87,7 @@ struct StreamMetaData;
 namespace master {
 class ReplicationInfoPB;
 class TabletLocationsPB;
+class GetAutoFlagsConfigResponsePB;
 }
 
 namespace tserver {
@@ -735,6 +736,10 @@ class YBClient {
   void LookupAllTablets(const std::shared_ptr<YBTable>& table,
                         CoarseTimePoint deadline,
                         LookupTabletRangeCallback callback);
+
+  // Get the AutoFlagConfig from master. Returns std::nullopt if master is runnning on an older
+  // version that does not support AutoFlags.
+  Result<std::optional<AutoFlagsConfigPB>> GetAutoFlagConfig();
 
   std::future<Result<internal::RemoteTabletPtr>> LookupTabletByKeyFuture(
       const std::shared_ptr<YBTable>& table,

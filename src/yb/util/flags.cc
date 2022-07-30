@@ -30,7 +30,6 @@
 // under the License.
 //
 
-#include "yb/util/flags.h"
 
 #include <string>
 #include <unordered_set>
@@ -43,7 +42,9 @@
 #include <boost/algorithm/string/case_conv.hpp>
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
+#include "yb/util/auto_flags_util.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/metrics.h"
 #include "yb/util/path_util.h"
 #include "yb/util/url-coding.h"
@@ -86,6 +87,13 @@ DEFINE_bool(
     "flag definitions. ");
 TAG_FLAG(dump_flags_xml, stable);
 TAG_FLAG(dump_flags_xml, advanced);
+
+DEFINE_bool(help_auto_flag_json, false,
+    "Dump a JSON document describing all of the AutoFlags available in this binary.");
+TAG_FLAG(help_auto_flag_json, stable);
+TAG_FLAG(help_auto_flag_json, advanced);
+
+DECLARE_bool(TEST_promote_all_auto_flags);
 
 // Tag a bunch of the flags that we inherit from glog/gflags.
 
@@ -261,17 +269,37 @@ static string DescribeOneFlagInXML(
     return name;
   });
 
+  auto auto_flag_desc = GetAutoFlagDescription(flag.name);
+
   string r("<flag>");
   AppendXMLTag("file", flag.filename, &r);
   AppendXMLTag("name", flag.name, &r);
   AppendXMLTag("meaning", flag.description, &r);
-  if (only_display_default_values) {
-    // use the current value as the default
-    AppendXMLTag("default", flag.current_value, &r);
+
+  if (auto_flag_desc) {
+    AppendXMLTag("class", ToString(auto_flag_desc->flag_class), &r);
+    if (!only_display_default_values) {
+      AppendXMLTag(
+          "state", IsFlagPromoted(flag, *auto_flag_desc) ? "promoted" : "not-promoted", &r);
+    }
+    AppendXMLTag("initial", auto_flag_desc->initial_val, &r);
+    AppendXMLTag("target", auto_flag_desc->target_val, &r);
   } else {
-    AppendXMLTag("default", flag.default_value, &r);
+    if (only_display_default_values) {
+      // gFlags have one hard-coded static default value in all programs that include the file
+      // where it was defined. Programs that need custom defaults set the flag at runtime before the
+      // call to ParseCommandLineFlags. So the current value is technically the default value used
+      // by this program.
+      AppendXMLTag("default", flag.current_value, &r);
+    } else {
+      AppendXMLTag("default", flag.default_value, &r);
+    }
+  }
+
+  if (!only_display_default_values) {
     AppendXMLTag("current", flag.current_value, &r);
   }
+
   AppendXMLTag("type", flag.type, &r);
   AppendXMLTag("tags", JoinStrings(tags_str, ","), &r);
   r += "</flag>";
@@ -292,7 +320,7 @@ struct sort_flags_by_name {
 };
 }  // namespace
 
-void DumpFlagsXML(OnlyDisplayDefaultFlagValue only_display_default_values) {
+void DumpFlagsXMLAndExit(OnlyDisplayDefaultFlagValue only_display_default_values) {
   vector<CommandLineFlagInfo> flags;
   GetAllFlags(&flags);
 
@@ -328,10 +356,17 @@ void ShowVersionAndExit() {
 int ParseCommandLineFlags(int* argc, char*** argv, bool remove_flags) {
   int ret = google::ParseCommandLineNonHelpFlags(argc, argv, remove_flags);
 
+  if (FLAGS_TEST_promote_all_auto_flags) {
+    PromoteAllAutoFlags();
+  }
+
   if (FLAGS_helpxml) {
-    DumpFlagsXML(OnlyDisplayDefaultFlagValue::kFalse);
+    DumpFlagsXMLAndExit(OnlyDisplayDefaultFlagValue::kFalse);
   } else if (FLAGS_dump_flags_xml) {
-    DumpFlagsXML(OnlyDisplayDefaultFlagValue::kTrue);
+    DumpFlagsXMLAndExit(OnlyDisplayDefaultFlagValue::kTrue);
+  } else if (FLAGS_help_auto_flag_json) {
+    cout << AutoFlagsUtil::DumpAutoFlagsToJSON();
+    exit(0);
   } else if (FLAGS_dump_metrics_json) {
     std::stringstream s;
     JsonWriter w(&s, JsonWriter::PRETTY);
@@ -363,7 +398,15 @@ bool RefreshFlagsFile(const std::string& filename) {
   // TODO: Find a better way to refresh flags from the file, ReadFromFlagsFile is going to be
   // deprecated.
   const char* prog_name = "yb";
-  return google::ReadFromFlagsFile(filename, prog_name, false);
+  if (!google::ReadFromFlagsFile(filename, prog_name, false /* errors_are_fatal */)) {
+    return false;
+  }
+
+  if (FLAGS_TEST_promote_all_auto_flags) {
+    PromoteAllAutoFlags();
+  }
+
+  return true;
 }
 
 } // namespace yb

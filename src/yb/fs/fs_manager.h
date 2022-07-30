@@ -126,6 +126,9 @@ class FsManager {
   FsManager(Env* env, const FsManagerOpts& opts);
   ~FsManager();
 
+  Status ReadAutoFlagsConfig(google::protobuf::Message* msg) EXCLUDES(auto_flag_mutex_);
+  Status WriteAutoFlagsConfig(const google::protobuf::Message* msg) EXCLUDES(auto_flag_mutex_);
+
   // Initialize and load the basic filesystem metadata.
   // If the file system has not been initialized, returns NotFound.
   // In that case, CreateInitialFileSystemLayout may be used to initialize
@@ -236,6 +239,7 @@ class FsManager {
 
  private:
   FRIEND_TEST(FsManagerTestBase, TestDuplicatePaths);
+  FRIEND_TEST(FsManagerTestBase, AutoFlagsTest);
 
   // Initializes, sanitizes, and canonicalizes the filesystem roots.
   Status Init();
@@ -274,6 +278,8 @@ class FsManager {
                           const std::string& path,
                           const std::vector<std::string>& objects);
 
+  std::string TEST_GetAutoFlagsDataRoot() EXCLUDES(auto_flag_mutex_);
+
   Env *env_;
 
   // If false, operations that mutate on-disk state are prohibited.
@@ -301,6 +307,8 @@ class FsManager {
 
   std::unordered_map<std::string, std::string> tablet_id_to_path_ GUARDED_BY(data_mutex_);
   mutable std::mutex data_mutex_;
+  mutable std::mutex auto_flag_mutex_;
+  std::string auto_flags_data_root_ GUARDED_BY(auto_flag_mutex_);
 
   std::unique_ptr<InstanceMetadataPB> metadata_;
 

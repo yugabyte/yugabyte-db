@@ -980,10 +980,10 @@ while [[ $# -gt 0 ]]; do
       set_cxx_test_name "$1"
     ;;
     master|yb-master)
-      make_targets+=( "yb-master" )
+      make_targets+=( "yb-master" "gen_auto_flags_json" )
     ;;
     tserver|yb-tserver)
-      make_targets+=( "yb-tserver" )
+      make_targets+=( "yb-tserver" "gen_auto_flags_json" )
     ;;
     initdb)
       set_initdb_target
@@ -996,7 +996,7 @@ while [[ $# -gt 0 ]]; do
       make_targets+=( "postgres" )
     ;;
     daemons|yb-daemons)
-      make_targets+=( "yb-master" "yb-tserver" "postgres" "yb-admin" )
+      make_targets+=( "yb-master" "yb-tserver" "gen_auto_flags_json" "postgres" "yb-admin" )
     ;;
     packaged|packaged-targets)
       for packaged_target in $( "$YB_SRC_ROOT"/build-support/list_packaged_targets.py ); do
@@ -1554,9 +1554,8 @@ create_build_descriptor_file
 create_build_root_file
 
 if [[ ${#make_targets[@]} -eq 0 && -n $java_test_name ]]; then
-  # Build only yb-master / yb-tserver / postgres / update_ysql_migrations when we're only trying
-  # to run a Java test.
-  make_targets+=( yb-master yb-tserver postgres update_ysql_migrations )
+  # Build only a subset of targets when we're only trying to run a Java test.
+  make_targets+=( yb-master yb-tserver gen_auto_flags_json postgres update_ysql_migrations )
 fi
 
 if [[ $build_type == "compilecmds" ]]; then

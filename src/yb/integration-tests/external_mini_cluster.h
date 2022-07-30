@@ -470,6 +470,14 @@ class ExternalMiniCluster : public MiniClusterBase {
   Status WaitForMasterToMarkTSDead(
       int ts_idx, MonoDelta deadline = MonoDelta::FromSeconds(120) * kTimeMultiplier);
 
+  // Return a pointer to the flags used for master.  Modifying these flags will only
+  // take effect on new master creation.
+  std::vector<std::string>* mutable_extra_master_flags() { return &opts_.extra_master_flags; }
+
+  // Return a pointer to the flags used for tserver.  Modifying these flags will only
+  // take effect on new tserver creation.
+  std::vector<std::string>* mutable_extra_tserver_flags() { return &opts_.extra_tserver_flags; }
+
  protected:
   FRIEND_TEST(MasterFailoverTest, TestKillAnyMaster);
 
