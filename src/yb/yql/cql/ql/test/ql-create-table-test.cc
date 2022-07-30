@@ -13,6 +13,8 @@
 //
 //--------------------------------------------------------------------------------------------------
 
+#include <string>
+
 #include <boost/algorithm/string.hpp>
 
 #include "yb/common/ql_value.h"
@@ -36,6 +38,9 @@ DECLARE_string(metrics_snapshotter_tserver_metrics_whitelist);
 
 namespace yb {
 namespace master {
+
+using std::string;
+
 class CatalogManager;
 class Master;
 }
@@ -153,7 +158,7 @@ TEST_F(TestQLCreateTable, TestQLCreateTableSimple) {
   EXEC_VALID_STMT(CreateIfNotExistsStmt(table11));
   EXEC_VALID_STMT(CreateIfNotExistsStmt(table12));
 
-  const string drop_stmt = "DROP TABLE human_resource1;";
+  const std::string drop_stmt = "DROP TABLE human_resource1;";
   EXEC_VALID_STMT(drop_stmt);
 }
 
@@ -226,7 +231,7 @@ TEST_F(TestQLCreateTable, TestQLConcurrentCreateTableStmt) {
 
   // Wait until the table is already present in the tables map of the master.
   s = processor2->Run("CREATE TABLE k.t(k int PRIMARY KEY);");
-  EXPECT_FALSE(s.ToString().find("Duplicate Object. Object ") == string::npos);
+  EXPECT_FALSE(s.ToString().find("Duplicate Object. Object ") == std::string::npos);
 
   s = processor2->Run("INSERT INTO k.t(k) VALUES (1)");
   EXPECT_OK(s);
@@ -242,7 +247,7 @@ TEST_F(TestQLCreateTable, TestQLCreateTableWithTTL) {
   TestQLProcessor *processor = GetQLProcessor();
 
   // Create the table 1.
-  const string table1 = "human_resource100(id int, name varchar, PRIMARY KEY(id));";
+  const std::string table1 = "human_resource100(id int, name varchar, PRIMARY KEY(id));";
   EXEC_VALID_STMT(CreateStmt(table1));
 
   EXEC_VALID_STMT("CREATE TABLE table_with_ttl (c1 int, c2 int, c3 int, PRIMARY KEY(c1)) WITH "
@@ -270,40 +275,40 @@ TEST_F(TestQLCreateTable, TestQLCreateTableWithClusteringOrderBy) {
   // Get an available processor.
   TestQLProcessor *processor = GetQLProcessor();
 
-  const string table1 = "human_resource1(id int, first_name varchar, last_name varchar, "
+  const std::string table1 = "human_resource1(id int, first_name varchar, last_name varchar, "
       "primary key(id, first_name, last_name)) WITH CLUSTERING ORDER BY(first_name ASC);";
-  const string table2 = "human_resource2(id int, first_name varchar, last_name varchar, "
+  const std::string table2 = "human_resource2(id int, first_name varchar, last_name varchar, "
       "primary key(id, first_name, last_name)) WITH CLUSTERING ORDER BY(first_name ASC) AND "
       "CLUSTERING ORDER BY (last_name DESC);";
-  const string table3 = "human_resource3(id int, first_name varchar, last_name varchar, "
+  const std::string table3 = "human_resource3(id int, first_name varchar, last_name varchar, "
       "primary key(id, first_name, last_name)) "
       "WITH CLUSTERING ORDER BY(first_name ASC, last_name DESC);";
-  const string table4 = "human_resource4(id int, first_name varchar, last_name varchar, "
+  const std::string table4 = "human_resource4(id int, first_name varchar, last_name varchar, "
       "primary key(id, last_name, first_name)) "
       "WITH CLUSTERING ORDER BY(last_name ASC, last_name DESC);";
-  const string table5 = "human_resource5(id int, first_name varchar, last_name varchar, "
+  const std::string table5 = "human_resource5(id int, first_name varchar, last_name varchar, "
       "primary key(id, last_name, first_name)) "
       "WITH CLUSTERING ORDER BY(last_name ASC, first_name DESC, last_name DESC);";
-  const string table6 = "human_resource6(id int, first_name varchar, last_name varchar, "
+  const std::string table6 = "human_resource6(id int, first_name varchar, last_name varchar, "
       "primary key(id, first_name, last_name)) "
       "WITH CLUSTERING ORDER BY(last_name DESC, first_name DESC);";
-  const string table7 = "human_resource7(id int, first_name varchar, last_name varchar, "
+  const std::string table7 = "human_resource7(id int, first_name varchar, last_name varchar, "
       "primary key(id, first_name, last_name)) "
       "WITH CLUSTERING ORDER BY(last_name DESC) AND "
       "CLUSTERING ORDER BY (first_name DESC);";
-  const string table8 = "human_resource8(id int, first_name varchar, last_name varchar, "
+  const std::string table8 = "human_resource8(id int, first_name varchar, last_name varchar, "
       "primary key(id, first_name, last_name)) "
       "WITH CLUSTERING ORDER BY(last_name DESC, last_name DESC);";
-  const string table9 = "human_resource9(id int, first_name varchar, last_name varchar, "
+  const std::string table9 = "human_resource9(id int, first_name varchar, last_name varchar, "
       "primary key(id, first_name, last_name)) "
       "WITH CLUSTERING ORDER BY(first_name DESC, last_name DESC, something DESC);";
-  const string table10 = "human_resource10(id int, first_name varchar, last_name varchar, "
+  const std::string table10 = "human_resource10(id int, first_name varchar, last_name varchar, "
       "primary key(id, last_name, first_name)) "
       "WITH CLUSTERING ORDER BY(something ASC);";
-  const string table11 = "human_resource10(id int, first_name varchar, last_name varchar, age int, "
+  const std::string table11 = "human_resource10(id int, first_name varchar, last_name varchar, age int, "
       "primary key(id, last_name, first_name)) "
       "WITH CLUSTERING ORDER BY(age ASC);";
-  const string table12 = "human_resource10(id int, first_name varchar, last_name varchar, "
+  const std::string table12 = "human_resource10(id int, first_name varchar, last_name varchar, "
       "primary key(id, last_name, first_name)) "
       "WITH CLUSTERING ORDER BY(id);";
   // Create the table 1.
@@ -338,33 +343,33 @@ TEST_F(TestQLCreateTable, TestQLCreateTableWithPartitionScemeOf) {
   // Get an available processor.
   TestQLProcessor *processor = GetQLProcessor();
 
-  const string table1 = "devices(supplier_id INT, device_id DOUBLE, model_year INT, "
+  const std::string table1 = "devices(supplier_id INT, device_id DOUBLE, model_year INT, "
       "device_name TEXT, PRIMARY KEY((supplier_id, device_id), model_year));";
-  const string table2 = "descriptions1(supplier_id INT, device_id DOUBLE, description TEXT, "
+  const std::string table2 = "descriptions1(supplier_id INT, device_id DOUBLE, description TEXT, "
       "PRIMARY KEY((supplier_id, device_id))) with partition scheme of devices;";
-  const string table3 = "descriptions2(supp_id INT, dev_id DOUBLE, description TEXT, "
+  const std::string table3 = "descriptions2(supp_id INT, dev_id DOUBLE, description TEXT, "
       "image_id INT, PRIMARY KEY((supp_id, dev_id), image_id)) "
       "with partition scheme of devices;";
-  const string table4 = "descriptions3(supplier_id INT, device_id DOUBLE, description TEXT, "
+  const std::string table4 = "descriptions3(supplier_id INT, device_id DOUBLE, description TEXT, "
       "PRIMARY KEY(supplier_id, device_id)) with partition scheme of devices;";
-  const string table5 = "descriptions4(supplier_id INT, device_id DOUBLE, model_year INT, "
+  const std::string table5 = "descriptions4(supplier_id INT, device_id DOUBLE, model_year INT, "
       "description TEXT, PRIMARY KEY((supplier_id, device_id, model_year))) "
       "with partition scheme of devices;";
-  const string table6 = "descriptions5(supplier_id INT, device_id DOUBLE, description TEXT, "
+  const std::string table6 = "descriptions5(supplier_id INT, device_id DOUBLE, description TEXT, "
       "PRIMARY KEY((supplier_id, device_id))) with partition scheme of non_existing_table;";
-  const string table7 = "descriptions6(supp_id INT, dev_id DOUBLE, description TEXT, "
+  const std::string table7 = "descriptions6(supp_id INT, dev_id DOUBLE, description TEXT, "
       "image_id INT, PRIMARY KEY((supp_id, description))) with partition scheme of devices;";
-  const string table8 = "descriptions7(supp_id INT, dev_id DOUBLE, description TEXT, "
+  const std::string table8 = "descriptions7(supp_id INT, dev_id DOUBLE, description TEXT, "
       "image_id INT, PRIMARY KEY((dev_id, supp_id))) with partition scheme of devices;";
-  const string table9 = "descriptions8(supp_id INT, dev_id DOUBLE, description TEXT, "
+  const std::string table9 = "descriptions8(supp_id INT, dev_id DOUBLE, description TEXT, "
       "image_id INT, PRIMARY KEY((supp_id, image_id))) with partition scheme of devices;";
-  const string table10 = "descriptions9(supp_id INT, dev_id DOUBLE, description TEXT, "
+  const std::string table10 = "descriptions9(supp_id INT, dev_id DOUBLE, description TEXT, "
       "image_id INT, PRIMARY KEY((description, image_id))) with partition scheme of devices;";
-  const string table11 = "descriptions10(supp_id INT, dev_id DOUBLE, description TEXT, "
+  const std::string table11 = "descriptions10(supp_id INT, dev_id DOUBLE, description TEXT, "
       "image_id INT, PRIMARY KEY((supp_id, dev_id))) with partition scheme devices;";
-  const string table12 = "descriptions11(supp_id INT, dev_id DOUBLE, description TEXT, "
+  const std::string table12 = "descriptions11(supp_id INT, dev_id DOUBLE, description TEXT, "
       "image_id INT, PRIMARY KEY((supp_id, dev_id))) with partition schema of devices;";
-  const string table13 = "descriptions12(supp_id INT, dev_id DOUBLE, description TEXT, "
+  const std::string table13 = "descriptions12(supp_id INT, dev_id DOUBLE, description TEXT, "
       "image_id INT, PRIMARY KEY((supp_id, dev_id))) with partitioning scheme of devices;";
 
   // Create the devices tables.

@@ -104,13 +104,13 @@ TEST_F(TestMemcmpableVarint, TestCompositeKeys) {
     buf1.clear();
     buf2.clear();
 
-    pair<uint64_t, uint64_t> p1 =
-      make_pair(Rand64WithRandomBitLength(), Rand64WithRandomBitLength());
+    std::pair<uint64_t, uint64_t> p1 =
+      std::make_pair(Rand64WithRandomBitLength(), Rand64WithRandomBitLength());
     PutMemcmpableVarint64(&buf1, p1.first);
     PutMemcmpableVarint64(&buf1, p1.second);
 
-    pair<uint64_t, uint64_t> p2 =
-      make_pair(Rand64WithRandomBitLength(), Rand64WithRandomBitLength());
+    std::pair<uint64_t, uint64_t> p2 =
+      std::make_pair(Rand64WithRandomBitLength(), Rand64WithRandomBitLength());
     PutMemcmpableVarint64(&buf2, p2.first);
     PutMemcmpableVarint64(&buf2, p2.second);
 
@@ -142,14 +142,14 @@ TEST_F(TestMemcmpableVarint, TestInterestingCompositeKeys) {
   for (uint64_t v1 : interesting_values) {
     for (uint64_t v2 : interesting_values) {
       buf1.clear();
-      pair<uint64_t, uint64_t> p1 = make_pair(v1, v2);
+      std::pair<uint64_t, uint64_t> p1 = std::make_pair(v1, v2);
       PutMemcmpableVarint64(&buf1, p1.first);
       PutMemcmpableVarint64(&buf1, p1.second);
 
       for (uint64_t v3 : interesting_values) {
         for (uint64_t v4 : interesting_values) {
           buf2.clear();
-          pair<uint64_t, uint64_t> p2 = make_pair(v3, v4);
+          std::pair<uint64_t, uint64_t> p2 = std::make_pair(v3, v4);
           PutMemcmpableVarint64(&buf2, p2.first);
           PutMemcmpableVarint64(&buf2, p2.second);
 
