@@ -13,6 +13,8 @@
 
 #include <chrono>
 #include <random>
+#include <string>
+#include <vector>
 
 #include "yb/util/net/rate_limiter.h"
 #include "yb/util/random_util.h"
@@ -27,6 +29,9 @@ DECLARE_uint64(rate_limiter_min_rate);
 namespace yb {
 
 using namespace std::chrono_literals;
+
+using std::string;
+using std::vector;
 
 constexpr uint64_t kRate = 1_KB;
 

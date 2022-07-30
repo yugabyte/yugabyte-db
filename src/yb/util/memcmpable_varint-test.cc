@@ -30,6 +30,8 @@
 // under the License.
 //
 
+#include <vector>
+
 #include <glog/logging.h>
 #include <glog/stl_logging.h>
 #include <gtest/gtest.h>
@@ -42,6 +44,8 @@
 #include "yb/util/test_util.h"
 
 namespace yb {
+
+using std::vector;
 
 class TestMemcmpableVarint : public YBTest {
  protected:

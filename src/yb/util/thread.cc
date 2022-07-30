@@ -112,6 +112,7 @@ using std::map;
 using std::shared_ptr;
 using std::stringstream;
 using std::string;
+using std::vector;
 
 using strings::Substitute;
 

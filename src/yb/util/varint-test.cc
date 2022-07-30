@@ -19,6 +19,8 @@
 namespace yb {
 namespace util {
 
+using std::string;
+
 const std::string kTooSmall = "-9223372036854775809";
 const std::string kTooBig = "9223372036854775808";
 

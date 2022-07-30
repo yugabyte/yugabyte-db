@@ -48,6 +48,9 @@
 
 namespace yb {
 
+using std::string;
+using std::vector;
+
 class NetUtilTest : public YBTest {
  protected:
   Status DoParseBindAddresses(const string& input, string* result) {

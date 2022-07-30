@@ -14,6 +14,7 @@
 #include "yb/util/net/inetaddress.h"
 
 #include <string>
+#include <vector>
 
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/net/net_util.h"
@@ -22,6 +23,9 @@
 #include "yb/util/test_util.h"
 
 using namespace std::literals;
+
+using std::string;
+using std::vector;
 
 namespace yb {
 
