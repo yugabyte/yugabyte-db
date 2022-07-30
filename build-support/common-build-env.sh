@@ -1715,7 +1715,6 @@ debugging_remote_compilation() {
 }
 
 cmd_line_to_env_vars_for_remote_cmd() {
-  declare -i i=1
   YB_ENCODED_REMOTE_CMD_LINE=""
   # This must match the separator in remote_cmd.sh.
   declare -r ARG_SEPARATOR=$'=:\t:='
