@@ -660,7 +660,7 @@ class LDAPError {
 * Add a detail error message text to the current error if one can be
 * constructed from the LDAP 'diagnostic message'.
 */
-ostream& operator<<(ostream& str, const LDAPError& error) {
+std::ostream& operator<<(std::ostream& str, const LDAPError& error) {
   str << ldap_err2string(error.code);
   auto ldap = error.GetLDAP();
   if (ldap) {

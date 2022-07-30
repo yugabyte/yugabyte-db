@@ -32,7 +32,7 @@
 namespace rocksdb {
 namespace log {
 
-Writer::Writer(unique_ptr<WritableFileWriter>&& dest,
+Writer::Writer(std::unique_ptr<WritableFileWriter>&& dest,
                uint64_t log_number, bool recycle_log_files)
     : dest_(std::move(dest)),
       block_offset_(0),

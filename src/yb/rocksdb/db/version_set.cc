@@ -2291,7 +2291,7 @@ Status VersionSet::LogAndApply(ColumnFamilyData* column_family_data,
       // Create a new manifest file.
       RLOG(InfoLogLevel::INFO_LEVEL, db_options_->info_log,
           "Creating manifest %" PRIu64 "\n", pending_manifest_file_number_);
-      unique_ptr<WritableFile> descriptor_file;
+      std::unique_ptr<WritableFile> descriptor_file;
       EnvOptions opt_env_opts = env_->OptimizeForManifestWrite(env_options_);
       descriptor_log_file_name_ = DescriptorFileName(dbname_, pending_manifest_file_number_);
       s = NewWritableFile(
@@ -2301,7 +2301,7 @@ Status VersionSet::LogAndApply(ColumnFamilyData* column_family_data,
         descriptor_file->SetPreallocationBlockSize(
             db_options_->manifest_preallocation_size);
 
-        unique_ptr<WritableFileWriter> file_writer(
+        std::unique_ptr<WritableFileWriter> file_writer(
             new WritableFileWriter(std::move(descriptor_file), opt_env_opts));
         descriptor_log_.reset(new log::Writer(
             std::move(file_writer), /* log_number */ 0, /* recycle_log_files */ false));
@@ -2984,9 +2984,9 @@ Status VersionSet::ListColumnFamilies(std::vector<std::string>* column_families,
 
   std::string dscname = dbname + "/" + current;
 
-  unique_ptr<SequentialFileReader> file_reader;
+  std::unique_ptr<SequentialFileReader> file_reader;
   {
-    unique_ptr<SequentialFile> file;
+    std::unique_ptr<SequentialFile> file;
     s = env->NewSequentialFile(dscname, &file, soptions);
     if (!s.ok()) {
       return s;
@@ -3124,10 +3124,10 @@ Status VersionSet::ReduceNumberOfLevels(const std::string& dbname,
 Status VersionSet::DumpManifest(const Options& options, const std::string& dscname,
                                 bool verbose, bool hex) {
   // Open the specified manifest file.
-  unique_ptr<SequentialFileReader> file_reader;
+  std::unique_ptr<SequentialFileReader> file_reader;
   Status s;
   {
-    unique_ptr<SequentialFile> file;
+    std::unique_ptr<SequentialFile> file;
     s = options.env->NewSequentialFile(dscname, &file, env_options_);
     if (!s.ok()) {
       return s;

@@ -38,7 +38,7 @@ Reader::Reporter::~Reporter() {
 }
 
 Reader::Reader(std::shared_ptr<Logger> info_log,
-               unique_ptr<SequentialFileReader>&& _file,
+               std::unique_ptr<SequentialFileReader>&& _file,
                Reporter* reporter, bool checksum, uint64_t initial_offset,
                uint64_t log_num)
     : info_log_(info_log),

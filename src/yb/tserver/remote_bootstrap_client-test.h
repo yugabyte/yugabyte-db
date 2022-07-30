@@ -51,7 +51,6 @@
 #include "yb/util/env_util.h"
 #include "yb/util/net/net_util.h"
 
-using std::shared_ptr;
 
 namespace yb {
 namespace tserver {

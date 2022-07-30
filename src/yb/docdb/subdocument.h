@@ -193,8 +193,8 @@ class SubDocument : public PrimitiveValue {
 
   bool has_valid_array_container() const;
 
-  friend void SubDocumentToStreamInternal(ostream& out, const SubDocument& subdoc, int indent);
-  friend void SubDocCollectionToStreamInternal(ostream& out,
+  friend void SubDocumentToStreamInternal(std::ostream& out, const SubDocument& subdoc, int indent);
+  friend void SubDocCollectionToStreamInternal(std::ostream& out,
                                         const SubDocument& subdoc,
                                         const int indent,
                                         const std::string& begin,
@@ -206,7 +206,7 @@ class SubDocument : public PrimitiveValue {
   friend class InMemDocDbState;
 };
 
-std::ostream& operator <<(ostream& out, const SubDocument& subdoc);
+std::ostream& operator <<(std::ostream& out, const SubDocument& subdoc);
 
 static_assert(sizeof(SubDocument) == sizeof(PrimitiveValue),
               "It is important that we can cast a PrimitiveValue to a SubDocument.");

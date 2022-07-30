@@ -763,7 +763,7 @@ bool FsManager::IsWalSegmentFileName(const std::string& file_name) {
 //  Dump/Debug utils
 // ==========================================================================
 
-void FsManager::DumpFileSystemTree(ostream& out) {
+void FsManager::DumpFileSystemTree(std::ostream& out) {
   DCHECK(initted_);
 
   for (const string& root : canonicalized_all_fs_roots_) {
@@ -780,7 +780,7 @@ void FsManager::DumpFileSystemTree(ostream& out) {
   }
 }
 
-void FsManager::DumpFileSystemTree(ostream& out, const string& prefix,
+void FsManager::DumpFileSystemTree(std::ostream& out, const string& prefix,
                                    const string& path, const vector<string>& objects) {
   for (const string& name : objects) {
     if (name == "." || name == "..") continue;

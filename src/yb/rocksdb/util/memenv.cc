@@ -89,7 +89,7 @@ class InMemoryEnv : public EnvWrapper {
 
   // Partial implementation of the Env interface.
   virtual Status NewSequentialFile(const std::string& fname,
-                                   unique_ptr<SequentialFile>* result,
+                                   std::unique_ptr<SequentialFile>* result,
                                    const EnvOptions& soptions) override {
     std::string nfname = NormalizeFileName(fname);
     MutexLock lock(&mutex_);
@@ -103,7 +103,7 @@ class InMemoryEnv : public EnvWrapper {
   }
 
   virtual Status NewRandomAccessFile(const std::string& fname,
-                                     unique_ptr<RandomAccessFile>* result,
+                                     std::unique_ptr<RandomAccessFile>* result,
                                      const EnvOptions& soptions) override {
     std::string nfname = NormalizeFileName(fname);
     MutexLock lock(&mutex_);
@@ -117,7 +117,7 @@ class InMemoryEnv : public EnvWrapper {
   }
 
   virtual Status NewWritableFile(const std::string& fname,
-                                 unique_ptr<WritableFile>* result,
+                                 std::unique_ptr<WritableFile>* result,
                                  const EnvOptions& soptions) override {
     std::string nfname = NormalizeFileName(fname);
     MutexLock lock(&mutex_);
@@ -133,7 +133,7 @@ class InMemoryEnv : public EnvWrapper {
   }
 
   virtual Status NewDirectory(const std::string& name,
-                              unique_ptr<Directory>* result) override {
+                              std::unique_ptr<Directory>* result) override {
     result->reset(new InMemoryDirectory());
     return Status::OK();
   }

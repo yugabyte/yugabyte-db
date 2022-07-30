@@ -35,7 +35,6 @@
 #include "yb/gutil/strings/strcat.h"    // For backward compatibility.
 #include "yb/gutil/strings/stringpiece.h"
 
-using std::pair;
 
 
 // ----------------------------------------------------------------------

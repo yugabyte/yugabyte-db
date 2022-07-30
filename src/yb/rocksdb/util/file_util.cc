@@ -41,13 +41,13 @@ Status CopyFile(Env* env, const string& source,
                 const string& destination, uint64_t size) {
   const EnvOptions soptions;
   Status s;
-  unique_ptr<SequentialFileReader> src_reader;
-  unique_ptr<WritableFileWriter> dest_writer;
+  std::unique_ptr<SequentialFileReader> src_reader;
+  std::unique_ptr<WritableFileWriter> dest_writer;
 
   {
-    unique_ptr<SequentialFile> srcfile;
+    std::unique_ptr<SequentialFile> srcfile;
     s = env->NewSequentialFile(source, &srcfile, soptions);
-    unique_ptr<WritableFile> destfile;
+    std::unique_ptr<WritableFile> destfile;
     if (s.ok()) {
       s = env->NewWritableFile(destination, &destfile, soptions);
     } else {

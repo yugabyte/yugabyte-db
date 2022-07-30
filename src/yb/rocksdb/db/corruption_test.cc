@@ -55,7 +55,7 @@ class CorruptionTest : public RocksDBTest {
  public:
   test::ErrorEnv env_;
   std::string dbname_;
-  shared_ptr<Cache> tiny_cache_;
+  std::shared_ptr<Cache> tiny_cache_;
   Options options_;
   DB* db_;
 
@@ -516,7 +516,7 @@ TEST_F(CorruptionTest, FileSystemStateCorrupted) {
     db_ = nullptr;
 
     if (iter == 0) {  // corrupt file size
-      unique_ptr<WritableFile> file;
+      std::unique_ptr<WritableFile> file;
       ASSERT_OK(env_.NewWritableFile(filename, &file, EnvOptions()));
       ASSERT_OK(file->Append(Slice("corrupted sst")));
       file.reset();

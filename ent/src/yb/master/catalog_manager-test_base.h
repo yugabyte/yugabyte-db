@@ -20,7 +20,6 @@ namespace yb {
 namespace master {
 namespace enterprise {
 
-using std::shared_ptr;
 
 const std::string read_only_placement_uuid = "read_only";
 

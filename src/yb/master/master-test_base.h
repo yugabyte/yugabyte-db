@@ -70,8 +70,6 @@
 using yb::rpc::Messenger;
 using yb::rpc::MessengerBuilder;
 using yb::rpc::RpcController;
-using std::make_shared;
-using std::shared_ptr;
 
 
 #define NAMESPACE_ENTRY(namespace) \

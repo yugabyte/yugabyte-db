@@ -169,8 +169,8 @@ class LogTest : public RocksDBTest,
   }
 
   Slice reader_contents_;
-  unique_ptr<WritableFileWriter> dest_holder_;
-  unique_ptr<SequentialFileReader> source_holder_;
+  std::unique_ptr<WritableFileWriter> dest_holder_;
+  std::unique_ptr<SequentialFileReader> source_holder_;
   ReportCollector report_;
   Writer writer_;
   Reader reader_;
@@ -290,9 +290,9 @@ class LogTest : public RocksDBTest,
 
   void CheckOffsetPastEndReturnsNoRecords(uint64_t offset_past_end) {
     WriteInitialOffsetLog();
-    unique_ptr<SequentialFileReader> file_reader(
+    std::unique_ptr<SequentialFileReader> file_reader(
         test::GetSequentialFileReader(new StringSource(reader_contents_)));
-    unique_ptr<Reader> offset_reader(
+    std::unique_ptr<Reader> offset_reader(
         new Reader(NULL, std::move(file_reader), &report_,
                    true /*checksum*/, WrittenBytes() + offset_past_end, 123));
     Slice record;
@@ -303,9 +303,9 @@ class LogTest : public RocksDBTest,
   void CheckInitialOffsetRecord(uint64_t initial_offset,
                                 int expected_record_offset) {
     WriteInitialOffsetLog();
-    unique_ptr<SequentialFileReader> file_reader(
+    std::unique_ptr<SequentialFileReader> file_reader(
         test::GetSequentialFileReader(new StringSource(reader_contents_)));
-    unique_ptr<Reader> offset_reader(
+    std::unique_ptr<Reader> offset_reader(
         new Reader(NULL, std::move(file_reader), &report_,
                    true /*checksum*/, initial_offset, 123));
     Slice record;

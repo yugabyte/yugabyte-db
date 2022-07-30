@@ -290,7 +290,7 @@ Status PTTableProperty::Analyze(SemContext *sem_context) {
   return Status::OK();
 }
 
-std::ostream& operator<<(ostream& os, const PropertyType& property_type) {
+std::ostream& operator<<(std::ostream& os, const PropertyType& property_type) {
   switch(property_type) {
     case PropertyType::kTableProperty:
       os << "kTableProperty";

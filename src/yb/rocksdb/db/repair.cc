@@ -250,12 +250,12 @@ class Repairer {
 
     // Open the log file
     std::string logname = LogFileName(dbname_, log);
-    unique_ptr<SequentialFile> lfile;
+    std::unique_ptr<SequentialFile> lfile;
     Status status = env_->NewSequentialFile(logname, &lfile, env_options_);
     if (!status.ok()) {
       return status;
     }
-    unique_ptr<SequentialFileReader> lfile_reader(
+    std::unique_ptr<SequentialFileReader> lfile_reader(
         new SequentialFileReader(std::move(lfile)));
 
     // Create the log reader.
@@ -414,7 +414,7 @@ class Repairer {
 
   Status WriteDescriptor() {
     std::string tmp = TempFileName(dbname_, 1);
-    unique_ptr<WritableFile> file;
+    std::unique_ptr<WritableFile> file;
     EnvOptions env_options = env_->OptimizeForManifestWrite(env_options_);
     Status status = env_->NewWritableFile(tmp, &file, env_options);
     if (!status.ok()) {
@@ -444,7 +444,7 @@ class Repairer {
 
     // fprintf(stderr, "NewDescriptor:\n%s\n", edit_.DebugString().c_str());
     {
-      unique_ptr<WritableFileWriter> file_writer(
+      std::unique_ptr<WritableFileWriter> file_writer(
           new WritableFileWriter(std::move(file), env_options));
       log::Writer log(std::move(file_writer), 0, false);
       std::string record;

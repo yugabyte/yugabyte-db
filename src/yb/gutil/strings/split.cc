@@ -998,7 +998,7 @@ bool SplitStringIntoKeyValues(const string& line,
 bool SplitStringIntoKeyValuePairs(const string& line,
                                   const string& key_value_delimiters,
                                   const string& key_value_pair_delimiters,
-                                  vector<pair<string, string> >* kv_pairs) {
+                                  vector<std::pair<string, string> >* kv_pairs) {
   kv_pairs->clear();
 
   vector<string> pairs;

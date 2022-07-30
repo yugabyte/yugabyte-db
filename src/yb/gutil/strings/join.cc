@@ -152,7 +152,7 @@ void JoinMapKeysAndValues(const map<string, string>& components,
                             result);
 }
 
-void JoinVectorKeysAndValues(const vector< pair<string, string> >& components,
+void JoinVectorKeysAndValues(const vector< std::pair<string, string> >& components,
                              const GStringPiece& intra_delim,
                              const GStringPiece& inter_delim,
                              string* result) {

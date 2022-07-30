@@ -65,13 +65,11 @@ METRIC_DECLARE_entity(tablet);
 
 DECLARE_bool(quick_leader_election_on_create);
 
-using std::shared_ptr;
 
 
 namespace yb {
 namespace tserver {
 
-using std::unique_ptr;
 using consensus::ConsensusMetadata;
 using consensus::RaftConfigPB;
 using consensus::RaftPeerPB;

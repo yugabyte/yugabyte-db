@@ -68,7 +68,7 @@ Status PTDmlWriteProperty::Analyze(SemContext *sem_context) {
   return Status::OK();
 }
 
-std::ostream& operator<<(ostream& os, const DmlWritePropertyType& property_type) {
+std::ostream& operator<<(std::ostream& os, const DmlWritePropertyType& property_type) {
   switch(property_type) {
     case DmlWritePropertyType::kDmlWriteProperty:
       os << "kDmlWriteProperty";

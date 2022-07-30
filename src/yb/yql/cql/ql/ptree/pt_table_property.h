@@ -130,7 +130,7 @@ class PTTableProperty : public PTProperty {
   static const std::map<std::string, PTTableProperty::KVProperty> kPropertyDataTypes;
 };
 
-std::ostream& operator<<(ostream& os, const PropertyType& property_type);
+std::ostream& operator<<(std::ostream& os, const PropertyType& property_type);
 
 class PTTablePropertyListNode : public TreeListNode<PTTableProperty> {
  public:

@@ -52,8 +52,8 @@ extern const uint64_t kLegacyBlockBasedTableMagicNumber;
 
 Status AdaptiveTableFactory::NewTableReader(
     const TableReaderOptions& table_reader_options,
-    unique_ptr<RandomAccessFileReader>&& file, uint64_t file_size,
-    unique_ptr<TableReader>* table) const {
+    std::unique_ptr<RandomAccessFileReader>&& file, uint64_t file_size,
+    std::unique_ptr<TableReader>* table) const {
   Footer footer;
   auto s = ReadFooterFromFile(file.get(), file_size, &footer);
   if (!s.ok()) {

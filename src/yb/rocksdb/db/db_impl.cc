@@ -920,14 +920,14 @@ Status DBImpl::NewDB() {
       db_options_.info_log, "Creating manifest 1 \n");
   const std::string manifest = DescriptorFileName(dbname_, 1);
   {
-    unique_ptr<WritableFile> file;
+    std::unique_ptr<WritableFile> file;
     EnvOptions env_options = env_->OptimizeForManifestWrite(env_options_);
     s = NewWritableFile(env_, manifest, &file, env_options);
     if (!s.ok()) {
       return s;
     }
     file->SetPreallocationBlockSize(db_options_.manifest_preallocation_size);
-    unique_ptr<WritableFileWriter> file_writer(
+    std::unique_ptr<WritableFileWriter> file_writer(
         new WritableFileWriter(std::move(file), env_options));
     log::Writer log(std::move(file_writer), 0, false);
     std::string record;
@@ -1567,9 +1567,9 @@ Status DBImpl::RecoverLogFiles(const std::vector<uint64_t>& log_numbers,
     versions_->MarkFileNumberUsedDuringRecovery(log_number);
     // Open the log file
     std::string fname = LogFileName(db_options_.wal_dir, log_number);
-    unique_ptr<SequentialFileReader> file_reader;
+    std::unique_ptr<SequentialFileReader> file_reader;
     {
-      unique_ptr<SequentialFile> file;
+      std::unique_ptr<SequentialFile> file;
       status = env_->NewSequentialFile(fname, &file, env_options_);
       if (!status.ok()) {
         MaybeIgnoreError(&status);
@@ -2363,7 +2363,7 @@ Status DBImpl::CompactFilesImpl(
   bg_compaction_scheduled_++;
 
   assert(cfd->compaction_picker());
-  unique_ptr<Compaction> c = cfd->compaction_picker()->FormCompaction(
+  std::unique_ptr<Compaction> c = cfd->compaction_picker()->FormCompaction(
       compact_options, input_files, output_level, version->storage_info(),
       *cfd->GetLatestMutableCFOptions(), output_path_id);
   if (!c) {
@@ -3547,7 +3547,7 @@ Result<FileNumbersHolder> DBImpl::BackgroundCompaction(
     manual_compaction->in_progress = true;
   }
 
-  unique_ptr<Compaction> c;
+  std::unique_ptr<Compaction> c;
   // InternalKey manual_end_storage;
   // InternalKey* manual_end = &manual_end_storage;
   if (is_manual) {
@@ -4324,7 +4324,7 @@ Status AddFile(Env* env, const std::string& src_path, const std::string& dst_pat
 
 // Deletes file and logs error message in case of failure. error_format should have format
 // specifications exactly for 2 string arguments: path and status.
-void DeleteFile(Env* env, const std::string& path, const shared_ptr<Logger>& info_log,
+void DeleteFile(Env* env, const std::string& path, const std::shared_ptr<Logger>& info_log,
     const char* error_format) {
   Status s = env->DeleteFile(path);
   if (!s.ok()) {
@@ -5426,7 +5426,7 @@ Status DBImpl::ScheduleFlushes(WriteContext* context) {
 // REQUIRES: this thread is currently at the front of the writer queue
 Status DBImpl::SwitchMemtable(ColumnFamilyData* cfd, WriteContext* context) {
   mutex_.AssertHeld();
-  unique_ptr<WritableFile> lfile;
+  std::unique_ptr<WritableFile> lfile;
   log::Writer* new_log = nullptr;
   MemTable* new_mem = nullptr;
 
@@ -5468,7 +5468,7 @@ Status DBImpl::SwitchMemtable(ColumnFamilyData* cfd, WriteContext* context) {
         lfile->SetPreallocationBlockSize(
             mutable_cf_options.write_buffer_size / 10 +
             mutable_cf_options.write_buffer_size);
-        unique_ptr<WritableFileWriter> file_writer(
+        std::unique_ptr<WritableFileWriter> file_writer(
             new WritableFileWriter(std::move(lfile), opt_env_opt));
         new_log = new log::Writer(std::move(file_writer), new_log_number,
                                   db_options_.recycle_log_file_num > 0);
@@ -5864,7 +5864,7 @@ void DBImpl::GetApproximateSizes(ColumnFamilyHandle* column_family,
 
 #ifndef ROCKSDB_LITE
 Status DBImpl::GetUpdatesSince(
-    SequenceNumber seq, unique_ptr<TransactionLogIterator>* iter,
+    SequenceNumber seq, std::unique_ptr<TransactionLogIterator>* iter,
     const TransactionLogIterator::ReadOptions& read_options) {
 
   RecordTick(stats_.get(), GET_UPDATES_SINCE_CALLS);
@@ -6214,10 +6214,10 @@ Status DBImpl::CheckConsistency() {
 Status DBImpl::GetDbIdentity(std::string* identity) const {
   std::string idfilename = IdentityFileName(dbname_);
   const EnvOptions soptions;
-  unique_ptr<SequentialFileReader> id_file_reader;
+  std::unique_ptr<SequentialFileReader> id_file_reader;
   Status s;
   {
-    unique_ptr<SequentialFile> idfile;
+    std::unique_ptr<SequentialFile> idfile;
     s = env_->NewSequentialFile(idfilename, &idfile, soptions);
     if (!s.ok()) {
       return s;
@@ -6373,7 +6373,7 @@ Status DB::Open(const DBOptions& db_options, const std::string& dbname,
   s = impl->Recover(column_families);
   if (s.ok()) {
     uint64_t new_log_number = impl->versions_->NewFileNumber();
-    unique_ptr<WritableFile> lfile;
+    std::unique_ptr<WritableFile> lfile;
     EnvOptions soptions(db_options);
     EnvOptions opt_env_options =
         impl->db_options_.env->OptimizeForLogWrite(soptions, impl->db_options_);
@@ -6383,7 +6383,7 @@ Status DB::Open(const DBOptions& db_options, const std::string& dbname,
     if (s.ok()) {
       lfile->SetPreallocationBlockSize((max_write_buffer_size / 10) + max_write_buffer_size);
       impl->logfile_number_ = new_log_number;
-      unique_ptr<WritableFileWriter> file_writer(
+      std::unique_ptr<WritableFileWriter> file_writer(
           new WritableFileWriter(std::move(lfile), opt_env_options));
       impl->logs_.emplace_back(
           new_log_number,

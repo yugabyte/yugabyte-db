@@ -300,7 +300,7 @@ class YBClient::Data {
 
   void GetCDCDBStreamInfo(YBClient *client,
     const std::string &db_stream_id,
-    std::shared_ptr<std::vector<pair<std::string, std::string>>> db_stream_info,
+    std::shared_ptr<std::vector<std::pair<std::string, std::string>>> db_stream_info,
     CoarseTimePoint deadline,
     StdStatusCallback callback);
 

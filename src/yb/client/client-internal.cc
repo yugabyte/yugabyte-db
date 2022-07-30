@@ -1618,7 +1618,7 @@ class GetCDCDBStreamInfoRpc : public ClientMasterRpc<GetCDCDBStreamInfoRequestPB
   GetCDCDBStreamInfoRpc(YBClient* client,
                   StdStatusCallback user_cb,
                   const std::string& db_stream_id,
-                  std::vector<pair<std::string, std::string>>* db_stream_info,
+                  std::vector<std::pair<std::string, std::string>>* db_stream_info,
                   CoarseTimePoint deadline);
 
   std::string ToString() const override;
@@ -1631,13 +1631,13 @@ class GetCDCDBStreamInfoRpc : public ClientMasterRpc<GetCDCDBStreamInfoRequestPB
 
   StdStatusCallback user_cb_;
   std::string db_stream_id_;
-  std::vector<pair<std::string, std::string>>* db_stream_info_;
+  std::vector<std::pair<std::string, std::string>>* db_stream_info_;
 };
 
 GetCDCDBStreamInfoRpc::GetCDCDBStreamInfoRpc(YBClient *client,
   StdStatusCallback user_cb,
   const std::string &db_stream_id,
-  std::vector<pair<std::string, std::string>> *db_stream_info,
+  std::vector<std::pair<std::string, std::string>> *db_stream_info,
   CoarseTimePoint deadline)
   : ClientMasterRpc(client, deadline),
     user_cb_(std::move(user_cb)),
@@ -2064,7 +2064,7 @@ void YBClient::Data::DeleteCDCStream(YBClient* client,
 void YBClient::Data::GetCDCDBStreamInfo(
     YBClient* client,
     const std::string& db_stream_id,
-    std::shared_ptr<std::vector<pair<std::string, std::string>>> db_stream_info,
+    std::shared_ptr<std::vector<std::pair<std::string, std::string>>> db_stream_info,
     CoarseTimePoint deadline,
     StdStatusCallback callback) {
   auto rpc = StartRpc<internal::GetCDCDBStreamInfoRpc>(

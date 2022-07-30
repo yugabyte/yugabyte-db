@@ -94,7 +94,7 @@ ManagedIterator::ManagedIterator(DBImpl* db, const ReadOptions& read_options,
     snapshot_created_ = true;
   }
   cfh_.SetCFD(cfd);
-  mutable_iter_ = unique_ptr<Iterator>(db->NewIterator(read_options_, &cfh_));
+  mutable_iter_ = std::unique_ptr<Iterator>(db->NewIterator(read_options_, &cfh_));
   XFUNC_TEST("managed_xftest_dropold", "managed_create", xf_managed_create1,
              xf_manage_create, this);
 }
@@ -215,7 +215,7 @@ Status ManagedIterator::status() const { return status_; }
 
 void ManagedIterator::RebuildIterator() {
   svnum_ = cfd_->GetSuperVersionNumber();
-  mutable_iter_ = unique_ptr<Iterator>(db_->NewIterator(read_options_, &cfh_));
+  mutable_iter_ = std::unique_ptr<Iterator>(db_->NewIterator(read_options_, &cfh_));
 }
 
 void ManagedIterator::UpdateCurrent() {

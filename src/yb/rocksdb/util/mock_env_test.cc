@@ -46,7 +46,7 @@ class MockEnvTest : public RocksDBTest {
 
 TEST_F(MockEnvTest, Basics) {
   uint64_t file_size;
-  unique_ptr<WritableFile> writable_file;
+  std::unique_ptr<WritableFile> writable_file;
   std::vector<std::string> children;
 
   ASSERT_OK(env_->CreateDir("/dir"));
@@ -87,8 +87,8 @@ TEST_F(MockEnvTest, Basics) {
   ASSERT_EQ(3U, file_size);
 
   // Check that opening non-existent file fails.
-  unique_ptr<SequentialFile> seq_file;
-  unique_ptr<RandomAccessFile> rand_file;
+  std::unique_ptr<SequentialFile> seq_file;
+  std::unique_ptr<RandomAccessFile> rand_file;
   ASSERT_TRUE(!env_->NewSequentialFile("/dir/non_existent", &seq_file,
                                        soptions_).ok());
   ASSERT_TRUE(!seq_file);
@@ -106,9 +106,9 @@ TEST_F(MockEnvTest, Basics) {
 }
 
 TEST_F(MockEnvTest, ReadWrite) {
-  unique_ptr<WritableFile> writable_file;
-  unique_ptr<SequentialFile> seq_file;
-  unique_ptr<RandomAccessFile> rand_file;
+  std::unique_ptr<WritableFile> writable_file;
+  std::unique_ptr<SequentialFile> seq_file;
+  std::unique_ptr<RandomAccessFile> rand_file;
   Slice result;
   uint8_t scratch[100];
 
@@ -158,7 +158,7 @@ TEST_F(MockEnvTest, Misc) {
   ASSERT_OK(env_->GetTestDirectory(&test_dir));
   ASSERT_TRUE(!test_dir.empty());
 
-  unique_ptr<WritableFile> writable_file;
+  std::unique_ptr<WritableFile> writable_file;
   ASSERT_OK(env_->NewWritableFile("/a/b", &writable_file, soptions_));
 
   // These are no-ops, but we test they return success.
@@ -177,13 +177,13 @@ TEST_F(MockEnvTest, LargeWrite) {
     write_data.append(1, static_cast<char>(i));
   }
 
-  unique_ptr<WritableFile> writable_file;
+  std::unique_ptr<WritableFile> writable_file;
   ASSERT_OK(env_->NewWritableFile("/dir/f", &writable_file, soptions_));
   ASSERT_OK(writable_file->Append("foo"));
   ASSERT_OK(writable_file->Append(write_data));
   writable_file.reset();
 
-  unique_ptr<SequentialFile> seq_file;
+  std::unique_ptr<SequentialFile> seq_file;
   Slice result;
   ASSERT_OK(env_->NewSequentialFile("/dir/f", &seq_file, soptions_));
   ASSERT_OK(seq_file->Read(3, &result, scratch));  // Read "foo".
@@ -204,7 +204,7 @@ TEST_F(MockEnvTest, Corrupt) {
   const std::string kGood = "this is a good string, synced to disk";
   const std::string kCorrupted = "this part may be corrupted";
   const std::string kFileName = "/dir/f";
-  unique_ptr<WritableFile> writable_file;
+  std::unique_ptr<WritableFile> writable_file;
   ASSERT_OK(env_->NewWritableFile(kFileName, &writable_file, soptions_));
   ASSERT_OK(writable_file->Append(kGood));
   ASSERT_TRUE(writable_file->GetFileSize() == kGood.size());
@@ -213,7 +213,7 @@ TEST_F(MockEnvTest, Corrupt) {
   scratch.resize(kGood.size() + kCorrupted.size() + 16);
   uint8_t* read_buf = reinterpret_cast<uint8_t*>(&(scratch[0]));
   Slice result;
-  unique_ptr<RandomAccessFile> rand_file;
+  std::unique_ptr<RandomAccessFile> rand_file;
   ASSERT_OK(env_->NewRandomAccessFile(kFileName, &rand_file, soptions_));
   ASSERT_OK(rand_file->Read(0, kGood.size(), &result, read_buf));
   ASSERT_EQ(result.compare(kGood), 0);

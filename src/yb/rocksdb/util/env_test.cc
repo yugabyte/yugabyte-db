@@ -575,10 +575,10 @@ TEST_F(EnvPosixTest, RandomAccessUniqueID) {
   const EnvOptions soptions;
   IoctlFriendlyTmpdir ift;
   std::string fname = ift.name() + "/testfile";
-  unique_ptr<WritableFile> wfile;
+  std::unique_ptr<WritableFile> wfile;
   ASSERT_OK(env_->NewWritableFile(fname, &wfile, soptions));
 
-  unique_ptr<RandomAccessFile> file;
+  std::unique_ptr<RandomAccessFile> file;
 
   // Get Unique ID
   ASSERT_OK(env_->NewRandomAccessFile(fname, &file, soptions));
@@ -641,7 +641,7 @@ TEST_F(EnvPosixTest, AllocateTest) {
 
   EnvOptions soptions;
   soptions.use_mmap_writes = false;
-  unique_ptr<WritableFile> wfile;
+  std::unique_ptr<WritableFile> wfile;
   ASSERT_OK(env_->NewWritableFile(fname, &wfile, soptions));
 
   // allocate 100 MB
@@ -704,14 +704,14 @@ TEST_F(EnvPosixTest, RandomAccessUniqueIDConcurrent) {
     fnames.push_back(ift.name() + "/" + "testfile" + ToString(i));
 
     // Create file.
-    unique_ptr<WritableFile> wfile;
+    std::unique_ptr<WritableFile> wfile;
     ASSERT_OK(env_->NewWritableFile(fnames[i], &wfile, soptions));
   }
 
   // Collect and check whether the IDs are unique.
   std::unordered_set<std::string> ids;
   for (const std::string& fname : fnames) {
-    unique_ptr<RandomAccessFile> file;
+    std::unique_ptr<RandomAccessFile> file;
     std::string unique_id;
     ASSERT_OK(env_->NewRandomAccessFile(fname, &file, soptions));
     size_t id_size = file->GetUniqueId(temp_id);
@@ -743,14 +743,14 @@ TEST_F(EnvPosixTest, RandomAccessUniqueIDDeletes) {
   for (int i = 0; i < 1000; ++i) {
     // Create file.
     {
-      unique_ptr<WritableFile> wfile;
+      std::unique_ptr<WritableFile> wfile;
       ASSERT_OK(env_->NewWritableFile(fname, &wfile, soptions));
     }
 
     // Get Unique ID
     std::string unique_id;
     {
-      unique_ptr<RandomAccessFile> file;
+      std::unique_ptr<RandomAccessFile> file;
       ASSERT_OK(env_->NewRandomAccessFile(fname, &file, soptions));
       size_t id_size = file->GetUniqueId(temp_id);
       ASSERT_GT(id_size, 0);
@@ -775,7 +775,7 @@ TEST_F(EnvPosixTest, InvalidateCache) {
 
   // Create file.
   {
-    unique_ptr<WritableFile> wfile;
+    std::unique_ptr<WritableFile> wfile;
     ASSERT_OK(env_->NewWritableFile(fname, &wfile, soptions));
     ASSERT_OK(wfile.get()->Append(Slice("Hello world")));
     ASSERT_OK(wfile.get()->InvalidateCache(0, 0));
@@ -784,7 +784,7 @@ TEST_F(EnvPosixTest, InvalidateCache) {
 
   // Random Read
   {
-    unique_ptr<RandomAccessFile> file;
+    std::unique_ptr<RandomAccessFile> file;
     char scratch[100];
     Slice result;
     ASSERT_OK(env_->NewRandomAccessFile(fname, &file, soptions));
@@ -796,7 +796,7 @@ TEST_F(EnvPosixTest, InvalidateCache) {
 
   // Sequential Read
   {
-    unique_ptr<SequentialFile> file;
+    std::unique_ptr<SequentialFile> file;
     uint8_t scratch[100];
     Slice result;
     ASSERT_OK(env_->NewSequentialFile(fname, &file, soptions));
@@ -935,7 +935,7 @@ TEST_F(EnvPosixTest, LogBufferMaxSizeTest) {
 
 TEST_F(EnvPosixTest, Preallocation) {
   const std::string src = test::TmpDir() + "/" + "testfile";
-  unique_ptr<WritableFile> srcfile;
+  std::unique_ptr<WritableFile> srcfile;
   const EnvOptions soptions;
   ASSERT_OK(env_->NewWritableFile(src, &srcfile, soptions));
   srcfile->SetPreallocationBlockSize(1024 * 1024);
@@ -978,7 +978,7 @@ TEST_F(EnvPosixTest, ConsistentChildrenAttributes) {
     std::ostringstream oss;
     oss << test::TmpDir() << "/testfile_" << i;
     const std::string path = oss.str();
-    unique_ptr<WritableFile> file;
+    std::unique_ptr<WritableFile> file;
     ASSERT_OK(env_->NewWritableFile(path, &file, soptions));
     ASSERT_OK(file->Append(data));
     data.append("test");

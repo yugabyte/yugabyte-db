@@ -34,7 +34,6 @@ DECLARE_bool(load_balancer_ignore_cloud_info_similarity);
 
 namespace yb {
 namespace master {
-using std::shared_ptr;
 
 const std::string default_cloud = "aws";
 const std::string default_region = "us-west-1";

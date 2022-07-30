@@ -26,8 +26,6 @@
 #include "yb/gutil/integral_types.h"
 #include "yb/gutil/macros.h"
 
-using std::binary_function;
-using std::less;
 
 //                                 WARNING
 // HumanReadable{NumBytes, Int} don't give you the standard set of SI prefixes.
@@ -93,7 +91,7 @@ class HumanReadableNumBytes {
 
 // See documentation at HumanReadableNumBytes::LessThan().
 struct humanreadablebytes_less
-    : public binary_function<const std::string&, const std::string&, bool> {
+    : public std::binary_function<const std::string&, const std::string&, bool> {
   bool operator()(const std::string& a, const std::string &b) const {
     return HumanReadableNumBytes::LessThan(a, b);
   }
@@ -101,7 +99,7 @@ struct humanreadablebytes_less
 
 // See documentation at HumanReadableNumBytes::LessThan().
 struct humanreadablebytes_greater
-    : public binary_function<const std::string&, const std::string&, bool> {
+    : public std::binary_function<const std::string&, const std::string&, bool> {
   bool operator()(const std::string& a, const std::string &b) const {
     return HumanReadableNumBytes::LessThan(b, a);
   }

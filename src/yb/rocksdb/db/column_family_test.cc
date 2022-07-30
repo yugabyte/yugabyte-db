@@ -60,7 +60,7 @@ class EnvCounter : public EnvWrapper {
   int GetNumberOfNewWritableFileCalls() {
     return num_new_writable_file_.load();
   }
-  Status NewWritableFile(const std::string& f, unique_ptr<WritableFile>* r,
+  Status NewWritableFile(const std::string& f, std::unique_ptr<WritableFile>* r,
                          const EnvOptions& soptions) override {
     num_new_writable_file_.fetch_add(1);
     return EnvWrapper::NewWritableFile(f, r, soptions);
@@ -391,9 +391,9 @@ class ColumnFamilyTest : public RocksDBTest {
   void CopyFile(const std::string& source, const std::string& destination,
                 uint64_t size = 0) {
     const EnvOptions soptions;
-    unique_ptr<SequentialFile> srcfile;
+    std::unique_ptr<SequentialFile> srcfile;
     ASSERT_OK(env_->NewSequentialFile(source, &srcfile, soptions));
-    unique_ptr<WritableFile> destfile;
+    std::unique_ptr<WritableFile> destfile;
     ASSERT_OK(env_->NewWritableFile(destination, &destfile, soptions));
 
     if (size == 0) {

@@ -277,7 +277,7 @@ void TracingPathHandlers::RegisterHandlers(Webserver* server) {
     { "/tracing/json/end_recording", kEndRecording },
     { "/tracing/json/simple_dump", kSimpleDump } };
 
-  typedef pair<string, Handler> HandlerPair;
+  typedef std::pair<string, Handler> HandlerPair;
   for (const HandlerPair e : handlers) {
     server->RegisterPathHandler(
         e.first, "", std::bind(&HandleRequest, e.second, _1, _2), false /* styled */,

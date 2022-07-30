@@ -41,7 +41,7 @@ uint64_t Env::GetThreadID() const {
 
 Status Env::ReuseWritableFile(const std::string& fname,
                               const std::string& old_fname,
-                              unique_ptr<WritableFile>* result,
+                              std::unique_ptr<WritableFile>* result,
                               const EnvOptions& options) {
   Status s = RenameFile(old_fname, fname);
   if (!s.ok()) {
@@ -234,7 +234,7 @@ void FatalWithContext(const char* file, const int line,
   }
 }
 
-void LogFlush(const shared_ptr<Logger>& info_log) {
+void LogFlush(const std::shared_ptr<Logger>& info_log) {
   if (info_log) {
     info_log->Flush();
   }
@@ -243,7 +243,7 @@ void LogFlush(const shared_ptr<Logger>& info_log) {
 void LogWithContext(const char* file,
                     const int line,
                     const InfoLogLevel log_level,
-                    const shared_ptr<Logger>& info_log,
+                    const std::shared_ptr<Logger>& info_log,
                     const char* format,
                     ...) {
   if (info_log) {
@@ -257,7 +257,7 @@ void LogWithContext(const char* file,
 void HeaderWithContext(
     const char* file,
     const int line,
-    const shared_ptr<Logger> &info_log,
+    const std::shared_ptr<Logger> &info_log,
     const char *format, ...) {
   if (info_log) {
     va_list ap;
@@ -270,7 +270,7 @@ void HeaderWithContext(
 void DebugWithContext(
     const char* file,
     const int line,
-    const shared_ptr<Logger> &info_log,
+    const std::shared_ptr<Logger> &info_log,
     const char *format, ...) {
   if (info_log) {
     va_list ap;
@@ -283,7 +283,7 @@ void DebugWithContext(
 void InfoWithContext(
     const char* file,
     const int line,
-    const shared_ptr<Logger> &info_log,
+    const std::shared_ptr<Logger> &info_log,
     const char *format, ...) {
   if (info_log) {
     va_list ap;
@@ -296,7 +296,7 @@ void InfoWithContext(
 void WarnWithContext(
     const char* file,
     const int line,
-    const shared_ptr<Logger> &info_log,
+    const std::shared_ptr<Logger> &info_log,
     const char *format, ...) {
   if (info_log) {
     va_list ap;
@@ -309,7 +309,7 @@ void WarnWithContext(
 void ErrorWithContext(
     const char* file,
     const int line,
-    const shared_ptr<Logger> &info_log,
+    const std::shared_ptr<Logger> &info_log,
     const char *format, ...) {
   if (info_log) {
     va_list ap;
@@ -322,7 +322,7 @@ void ErrorWithContext(
 void FatalWithContext(
     const char* file,
     const int line,
-    const shared_ptr<Logger> &info_log,
+    const std::shared_ptr<Logger> &info_log,
     const char *format, ...) {
   if (info_log) {
     va_list ap;
@@ -334,7 +334,7 @@ void FatalWithContext(
 
 void LogWithContext(const char* file,
                     const int line,
-                    const shared_ptr<Logger>& info_log,
+                    const std::shared_ptr<Logger>& info_log,
                     const char* format,
                     ...) {
   if (info_log) {
@@ -347,7 +347,7 @@ void LogWithContext(const char* file,
 
 Status WriteStringToFile(Env* env, const Slice& data, const std::string& fname,
                          bool should_sync) {
-  unique_ptr<WritableFile> file;
+  std::unique_ptr<WritableFile> file;
   EnvOptions soptions;
   Status s = env->NewWritableFile(fname, &file, soptions);
   if (!s.ok()) {
@@ -393,25 +393,25 @@ Status EnvWrapper::NewSequentialFile(const std::string& f, std::unique_ptr<Seque
 }
 
 Status EnvWrapper::NewRandomAccessFile(const std::string& f,
-                                       unique_ptr<RandomAccessFile>* r,
+                                       std::unique_ptr<RandomAccessFile>* r,
                                        const EnvOptions& options) {
   return target_->NewRandomAccessFile(f, r, options);
 }
 
-Status EnvWrapper::NewWritableFile(const std::string& f, unique_ptr<WritableFile>* r,
+Status EnvWrapper::NewWritableFile(const std::string& f, std::unique_ptr<WritableFile>* r,
                                    const EnvOptions& options) {
   return target_->NewWritableFile(f, r, options);
 }
 
 Status EnvWrapper::ReuseWritableFile(const std::string& fname,
                                      const std::string& old_fname,
-                                     unique_ptr<WritableFile>* r,
+                                     std::unique_ptr<WritableFile>* r,
                                      const EnvOptions& options) {
   return target_->ReuseWritableFile(fname, old_fname, r, options);
 }
 
 Status EnvWrapper::NewDirectory(const std::string& name,
-                                unique_ptr<Directory>* result) {
+                                std::unique_ptr<Directory>* result) {
   return target_->NewDirectory(name, result);
 }
 
@@ -475,7 +475,7 @@ Status EnvWrapper::GetTestDirectory(std::string* path) {
 }
 
 Status EnvWrapper::NewLogger(const std::string& fname,
-                             shared_ptr<Logger>* result) {
+                             std::shared_ptr<Logger>* result) {
   return target_->NewLogger(fname, result);
 }
 
@@ -587,25 +587,25 @@ Status WritableFile::Allocate(uint64_t offset, uint64_t len) {
 }
 
 Status RocksDBFileFactoryWrapper::NewSequentialFile(
-    const std::string& f, unique_ptr<SequentialFile>* r,
+    const std::string& f, std::unique_ptr<SequentialFile>* r,
     const rocksdb::EnvOptions& options) {
   return target_->NewSequentialFile(f, r, options);
 }
 Status RocksDBFileFactoryWrapper::NewRandomAccessFile(const std::string& f,
-                                                      unique_ptr <rocksdb::RandomAccessFile>* r,
+                                                      std::unique_ptr <rocksdb::RandomAccessFile>* r,
                                                       const EnvOptions& options) {
   return target_->NewRandomAccessFile(f, r, options);
 }
 
 Status RocksDBFileFactoryWrapper::NewWritableFile(
-    const std::string& f, unique_ptr <rocksdb::WritableFile>* r,
+    const std::string& f, std::unique_ptr <rocksdb::WritableFile>* r,
     const EnvOptions& options) {
   return target_->NewWritableFile(f, r, options);
 }
 
 Status RocksDBFileFactoryWrapper::ReuseWritableFile(const std::string& fname,
                                                     const std::string& old_fname,
-                                                    unique_ptr<WritableFile>* result,
+                                                    std::unique_ptr<WritableFile>* result,
                                                     const EnvOptions& options) {
   return target_->ReuseWritableFile(fname, old_fname, result, options);
 }

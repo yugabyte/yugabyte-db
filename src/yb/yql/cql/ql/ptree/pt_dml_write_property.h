@@ -77,7 +77,7 @@ class PTDmlWriteProperty : public PTProperty {
   static const std::map<std::string, PTDmlWriteProperty::KVProperty> kPropertyDataTypes;
 };
 
-std::ostream& operator<<(ostream& os, const DmlWritePropertyType& property_type);
+std::ostream& operator<<(std::ostream& os, const DmlWritePropertyType& property_type);
 
 class PTDmlWritePropertyListNode : public TreeListNode<PTDmlWriteProperty> {
  public:

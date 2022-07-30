@@ -62,7 +62,7 @@ void MakeBuilder(const Options& options, const ImmutableCFOptions& ioptions,
                  const IntTblPropCollectorFactories& int_tbl_prop_collector_factories,
                  std::unique_ptr<WritableFileWriter>* writable,
                  std::unique_ptr<TableBuilder>* builder) {
-  unique_ptr<WritableFile> wf(new test::StringSink);
+  std::unique_ptr<WritableFile> wf(new test::StringSink);
   writable->reset(new WritableFileWriter(std::move(wf), EnvOptions()));
 
   *builder = NewTableBuilder(
@@ -434,7 +434,7 @@ void TestInternalKeyPropertiesCollector(
 
     test::StringSink* fwf =
         static_cast<test::StringSink*>(writable->writable_file());
-    unique_ptr<RandomAccessFileReader> reader(test::GetRandomAccessFileReader(
+    std::unique_ptr<RandomAccessFileReader> reader(test::GetRandomAccessFileReader(
         new test::StringSource(fwf->contents())));
     TableProperties* props;
     Status s =

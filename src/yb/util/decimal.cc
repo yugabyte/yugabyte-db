@@ -553,7 +553,7 @@ Decimal Decimal::operator+(const Decimal& other) const {
   return decimal;
 }
 
-std::ostream& operator<<(ostream& os, const Decimal& d) {
+std::ostream& operator<<(std::ostream& os, const Decimal& d) {
   os << d.ToString();
   return os;
 }

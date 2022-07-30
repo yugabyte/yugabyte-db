@@ -89,7 +89,7 @@ struct TabletCDCCheckpointInfo {
 };
 
 using TabletOpIdMap = std::unordered_map<TabletId, TabletCDCCheckpointInfo>;
-using TabletIdStreamIdSet = std::set<pair<TabletId, CDCStreamId>>;
+using TabletIdStreamIdSet = std::set<std::pair<TabletId, CDCStreamId>>;
 
 class CDCServiceImpl : public CDCServiceIf {
  public:
@@ -194,7 +194,7 @@ class CDCServiceImpl : public CDCServiceIf {
   Result<OpId> GetLastCheckpoint(const ProducerTabletInfo& producer_tablet,
                                  const client::YBSessionPtr& session);
 
-  Result<std::vector<pair<std::string, std::string>>> GetDBStreamInfo(
+  Result<std::vector<std::pair<std::string, std::string>>> GetDBStreamInfo(
           const std::string& db_stream_id,
           const client::YBSessionPtr& session);
 
