@@ -37,6 +37,7 @@
 #include <shared_mutex>
 #include <string>
 #include <utility>
+#include <string>
 
 #include <boost/container/small_vector.hpp>
 #include <glog/logging.h>
@@ -151,6 +152,7 @@ namespace consensus {
 
 using log::Log;
 using std::unique_ptr;
+using std::string;
 using rpc::Messenger;
 using strings::Substitute;
 

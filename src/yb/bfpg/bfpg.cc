@@ -29,6 +29,8 @@ using strings::Substitute;
 namespace yb {
 namespace bfpg {
 
+using std::string;
+
 //--------------------------------------------------------------------------------------------------
 bool IsAggregateOpcode(TSOpcode op) {
   switch (op) {

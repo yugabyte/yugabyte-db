@@ -76,6 +76,7 @@ DEFINE_test_flag(
     "GetEntriesPerIndexChunk() for testing purposes.");
 
 using std::string;
+using std::vector;
 using strings::Substitute;
 
 #define RETRY_ON_EINTR(ret, expr) do { \

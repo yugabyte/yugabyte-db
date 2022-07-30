@@ -34,6 +34,8 @@
 #include <locale>
 #include <string>
 #include <unordered_set>
+#include <string>
+#include <vector>
 
 #include "yb/common/jsonb.h"
 #include "yb/common/ql_protocol.pb.h"
@@ -84,7 +86,7 @@ Status ServerOperator(PTypePtr arg1, PTypePtr arg2, RTypePtr result) {
 //--------------------------------------------------------------------------------------------------
 
 template<typename PTypePtr, typename RTypePtr>
-uint16_t YBHash(const vector<PTypePtr>& params, RTypePtr result) {
+uint16_t YBHash(const std::vector<PTypePtr>& params, RTypePtr result) {
   string encoded_key = "";
   for (const PTypePtr& param : params) {
     AppendToKey(*param, &encoded_key);
@@ -94,7 +96,7 @@ uint16_t YBHash(const vector<PTypePtr>& params, RTypePtr result) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-Status Token(const vector<PTypePtr>& params, RTypePtr result) {
+Status Token(const std::vector<PTypePtr>& params, RTypePtr result) {
   uint16_t hash = YBHash(params, result);
   // Convert to CQL hash since this may be used in expressions above.
   result->set_int64_value(YBPartition::YBToCqlHashCode(hash));
@@ -102,7 +104,7 @@ Status Token(const vector<PTypePtr>& params, RTypePtr result) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-Status PartitionHash(const vector<PTypePtr>& params, RTypePtr result) {
+Status PartitionHash(const std::vector<PTypePtr>& params, RTypePtr result) {
   result->set_int32_value(YBHash(params, result));
   return Status::OK();
 }
@@ -337,7 +339,7 @@ Status GetUuid(RTypePtr result) {
 //--------------------------------------------------------------------------------------------------
 // Map::Map
 template<typename PTypePtr, typename RTypePtr>
-Status MapConstructor(const vector<PTypePtr>& params, RTypePtr result) {
+Status MapConstructor(const std::vector<PTypePtr>& params, RTypePtr result) {
   auto *qlmap = result->mutable_map_value();
   RSTATUS_DCHECK(params.size()%2 == 0, RuntimeError, "Unexpected argument count for map::map");
   for (size_t i = 0; i < params.size(); i++) {
@@ -349,7 +351,7 @@ Status MapConstructor(const vector<PTypePtr>& params, RTypePtr result) {
 
 // Set::Set
 template<typename PTypePtr, typename RTypePtr>
-Status SetConstructor(const vector<PTypePtr>& params, RTypePtr result) {
+Status SetConstructor(const std::vector<PTypePtr>& params, RTypePtr result) {
   auto *qlset = result->mutable_set_value();
   for (const auto& param : params) {
     QLValue::set_value(*param, qlset->add_elems());
@@ -359,7 +361,7 @@ Status SetConstructor(const vector<PTypePtr>& params, RTypePtr result) {
 
 // List::List
 template<typename PTypePtr, typename RTypePtr>
-Status ListConstructor(const vector<PTypePtr>& params, RTypePtr result) {
+Status ListConstructor(const std::vector<PTypePtr>& params, RTypePtr result) {
   auto *qllist = result->mutable_list_value();
   for (const auto& param : params) {
     QLValue::set_value(*param, qllist->add_elems());
@@ -389,7 +391,7 @@ std::map<PType, PType> MapFromVector(const std::vector<std::shared_ptr<PType>>& 
 }
 
 template<typename PTypePtr, typename RTypePtr>
-Status MapFrozen(const vector<PTypePtr>& params, RTypePtr result) {
+Status MapFrozen(const std::vector<PTypePtr>& params, RTypePtr result) {
   auto map_elems = MapFromVector(params);
 
   auto *frozen_value = result->mutable_frozen_value();
@@ -420,7 +422,7 @@ std::set<PType> SetFromVector(const std::vector<std::shared_ptr<PType>>& params)
 }
 
 template<typename PTypePtr, typename RTypePtr>
-Status SetFrozen(const vector<PTypePtr>& params, RTypePtr result) {
+Status SetFrozen(const std::vector<PTypePtr>& params, RTypePtr result) {
   auto set_elems = SetFromVector(params);
 
   auto *frozen_value = result->mutable_frozen_value();
@@ -432,7 +434,7 @@ Status SetFrozen(const vector<PTypePtr>& params, RTypePtr result) {
 
 // List::Frozen.
 template<typename PTypePtr, typename RTypePtr>
-Status ListFrozen(const vector<PTypePtr>& params, RTypePtr result) {
+Status ListFrozen(const std::vector<PTypePtr>& params, RTypePtr result) {
   auto *frozen_value = result->mutable_frozen_value();
   for (const auto& param : params) {
     QLValue::set_value(*param, frozen_value->add_elems());

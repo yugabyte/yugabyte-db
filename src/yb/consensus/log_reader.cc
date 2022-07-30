@@ -106,6 +106,7 @@ struct LogSegmentSeqnoComparator {
 using consensus::ReplicateMsg;
 using env_util::ReadFully;
 using strings::Substitute;
+using std::string;
 
 const int64_t LogReader::kNoSizeLimit = -1;
 

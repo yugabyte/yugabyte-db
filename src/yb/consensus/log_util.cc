@@ -36,6 +36,7 @@
 #include <array>
 #include <limits>
 #include <utility>
+#include <string>
 
 #include <glog/logging.h>
 
@@ -124,6 +125,7 @@ namespace log {
 
 using env_util::ReadFully;
 using std::vector;
+using std::string;
 using std::shared_ptr;
 using strings::Substitute;
 using strings::SubstituteAndAppend;

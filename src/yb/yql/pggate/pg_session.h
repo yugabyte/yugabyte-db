@@ -117,7 +117,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   // Constructors.
   PgSession(PgClient* pg_client,
-            const string& database_name,
+            const std::string& database_name,
             scoped_refptr<PgTxnManager> pg_txn_manager,
             scoped_refptr<server::HybridClock> clock,
             const tserver::TServerSharedObject* tserver_shared_object,

@@ -37,6 +37,7 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <string>
 
 #include <boost/optional.hpp>
 #include <glog/logging.h>
@@ -111,6 +112,7 @@ namespace consensus {
 using log::Log;
 using log::LogEntryBatch;
 using std::shared_ptr;
+using std::string;
 using rpc::Messenger;
 using rpc::PeriodicTimer;
 using rpc::RpcController;

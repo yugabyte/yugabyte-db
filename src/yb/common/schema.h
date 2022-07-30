@@ -1218,7 +1218,7 @@ class SchemaBuilder {
   ColumnId next_id_;
   std::vector<ColumnId> col_ids_;
   std::vector<ColumnSchema> cols_;
-  std::unordered_set<string> col_names_;
+  std::unordered_set<std::string> col_names_;
   size_t num_key_columns_;
   TableProperties table_properties_;
   ColocationId colocation_id_ = kColocationIdNotSet;
