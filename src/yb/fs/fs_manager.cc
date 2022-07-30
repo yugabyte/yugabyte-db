@@ -94,8 +94,13 @@ METRIC_DEFINE_counter(drive, drive_fault,
 
 using google::protobuf::Message;
 using yb::env_util::ScopedFileDeleter;
+
 using std::map;
 using std::unordered_set;
+using std::string;
+using std::vector;
+using std::set;
+
 using strings::Substitute;
 
 namespace yb {

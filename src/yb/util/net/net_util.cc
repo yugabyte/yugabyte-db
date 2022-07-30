@@ -73,6 +73,8 @@
 
 using std::unordered_set;
 using std::vector;
+using std::string;
+
 using strings::Substitute;
 
 DEFINE_string(
@@ -173,7 +175,7 @@ Status HostPort::ParseString(const string &str_in, uint16_t default_port) {
   } else if (pos > 1 && pos + 1 < str.length() &&
              SimpleAtoi(str.substr(pos + 1), &port)) {
 
-    if (port > numeric_limits<uint16_t>::max()) {
+    if (port > std::numeric_limits<uint16_t>::max()) {
       return STATUS(InvalidArgument, "Invalid port", str);
     }
 

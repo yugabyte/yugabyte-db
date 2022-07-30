@@ -918,7 +918,7 @@ size_t Quota<thread_safe>::Allocate(const size_t requested,
                  << ((allocation == 0) ? "Did not allocate any memory."
                  : "Allocated the minimal value requested.");
   } else {
-    allocation = min(requested, quota - usage_);
+    allocation = std::min(requested, quota - usage_);
   }
   usage_ += allocation;
   return allocation;

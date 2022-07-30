@@ -133,6 +133,7 @@ using base::subtle::Atomic64;
 using base::subtle::Barrier_AtomicIncrement;
 using std::vector;
 using strings::Substitute;
+using std::string;
 
 static __thread uint64_t thread_local_id;
 static Atomic64 cur_thread_local_id_;

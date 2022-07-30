@@ -73,6 +73,9 @@ TAG_FLAG(print_nesting_levels, runtime);
 
 namespace yb {
 
+using std::vector;
+using std::string;
+
 using strings::internal::SubstituteArg;
 
 __thread Trace* Trace::threadlocal_trace_;

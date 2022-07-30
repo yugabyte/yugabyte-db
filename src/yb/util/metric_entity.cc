@@ -34,6 +34,9 @@ DEFINE_string(metric_node_name, "DEFAULT_NODE_NAME",
 
 namespace yb {
 
+using std::string;
+using std::vector;
+
 namespace {
 
 const std::regex prometheus_name_regex("[a-zA-Z_:][a-zA-Z0-9_:]*");

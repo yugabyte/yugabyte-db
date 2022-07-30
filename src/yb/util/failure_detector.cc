@@ -32,6 +32,7 @@
 
 #include "yb/util/failure_detector.h"
 
+#include <string>
 #include <mutex>
 #include <unordered_map>
 
@@ -49,6 +50,7 @@ namespace yb {
 
 using std::unordered_map;
 using strings::Substitute;
+using std::string;
 
 const int64_t RandomizedFailureMonitor::kMinWakeUpTimeMillis = 10;
 

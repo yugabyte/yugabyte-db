@@ -41,10 +41,10 @@ template<class T, class... Args>
 size_t ItemCount(const T&, const Args&...);
 
 template<class T, class... Args>
-void AppendItem(vector<string>* dest, const T& t, const Args&... args);
+void AppendItem(std::vector<std::string>* dest, const T& t, const Args&... args);
 
 inline size_t ItemCount() { return 0; }
-inline void AppendItem(vector<string>* dest) {}
+inline void AppendItem(std::vector<std::string>* dest) {}
 
 template<class T>
 struct ToStringVectorHelper {
@@ -54,7 +54,7 @@ struct ToStringVectorHelper {
   }
 
   template<class... Args>
-  static void Append(vector<string>* dest, const T& t, const Args&... args) {
+  static void Append(std::vector<std::string>* dest, const T& t, const Args&... args) {
     dest->push_back(ToString(t));
     AppendItem(dest, args...);
   }
@@ -69,7 +69,8 @@ struct ToStringVectorHelper<Unpacker<T> > {
   }
 
   template<class... Args>
-  static void Append(vector<string>* dest, const Unpacker<T>& unpacker, const Args&... args) {
+  static void Append(
+      std::vector<std::string>* dest, const Unpacker<T>& unpacker, const Args&... args) {
     for(auto&& i : unpacker.container) {
       dest->push_back(ToString(i));
     }
@@ -171,8 +172,8 @@ auto unpack(Container&& container) {
 }
 
 template<class... Args>
-vector<string> ToStringVector(Args&&... args) {
-  vector<string> result;
+std::vector<std::string> ToStringVector(Args&&... args) {
+  std::vector<std::string> result;
   result.reserve(details::ItemCount(args...));
   details::AppendItem(&result, args...);
   return result;
