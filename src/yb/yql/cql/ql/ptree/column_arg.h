@@ -251,7 +251,7 @@ class JsonColumnOp : public JsonColumnArg {
   }
 
   // Name of a Catalog::IndexTable::ExprColumn is created by mangling original name from users.
-  string IndexExprToColumnName() const;
+  std::string IndexExprToColumnName() const;
 
  private:
   yb::QLOperator yb_op_;
@@ -289,7 +289,7 @@ class SubscriptedColumnOp : public SubscriptedColumnArg {
     return yb_op_;
   }
 
-  string IndexExprToColumnName() const {
+  std::string IndexExprToColumnName() const {
     LOG(FATAL) << "Mangling name for subscript operator is not yet supported";
     return "expr";
   }

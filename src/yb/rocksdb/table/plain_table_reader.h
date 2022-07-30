@@ -226,7 +226,7 @@ class PlainTableReader: public TableReader {
                             size_t huge_page_tlb_size,
                             std::vector<uint32_t>* prefix_hashes);
 
-  void FillBloom(vector<uint32_t>* prefix_hashes);
+  void FillBloom(std::vector<uint32_t>* prefix_hashes);
 
   // Read the key and value at `offset` to parameters for keys, the and
   // `seekable`.
