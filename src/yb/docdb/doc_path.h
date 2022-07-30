@@ -55,7 +55,7 @@ class DocPath {
       : encoded_doc_key_(encoded_doc_key), subkeys_{std::forward<T>(subkeys)...} {
   }
 
-  DocPath(const KeyBytes& encoded_doc_key, const vector<KeyEntryValue>& subkeys)
+  DocPath(const KeyBytes& encoded_doc_key, const std::vector<KeyEntryValue>& subkeys)
       : encoded_doc_key_(encoded_doc_key),
         subkeys_(subkeys) {
   }

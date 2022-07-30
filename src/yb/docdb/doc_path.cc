@@ -13,10 +13,14 @@
 
 #include "yb/docdb/doc_path.h"
 
+#include <string>
+
 #include "yb/docdb/doc_key.h"
 
 namespace yb {
 namespace docdb {
+
+using std::string;
 
 std::string DocPath::ToString() const {
   return strings::Substitute("DocPath($0, $1)",

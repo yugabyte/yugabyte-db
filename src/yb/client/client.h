@@ -236,9 +236,9 @@ class YBClient {
   Status WaitForCreateTableToFinish(const YBTableName& table_name,
                                             const CoarseTimePoint& deadline);
 
-  Status WaitForCreateTableToFinish(const string& table_id);
-  Status WaitForCreateTableToFinish(const string& table_id,
-                                            const CoarseTimePoint& deadline);
+  Status WaitForCreateTableToFinish(const std::string& table_id);
+  Status WaitForCreateTableToFinish(const std::string& table_id,
+                                    const CoarseTimePoint& deadline);
 
   // Truncate the specified table.
   // Set 'wait' to true if the call must wait for the table to be fully truncated before returning.
@@ -277,11 +277,11 @@ class YBClient {
                              bool is_compaction);
 
   std::unique_ptr<YBTableAlterer> NewTableAlterer(const YBTableName& table_name);
-  std::unique_ptr<YBTableAlterer> NewTableAlterer(const string id);
+  std::unique_ptr<YBTableAlterer> NewTableAlterer(const std::string id);
 
   // Set 'alter_in_progress' to true if an AlterTable operation is in-progress.
   Status IsAlterTableInProgress(const YBTableName& table_name,
-                                        const string& table_id,
+                                        const std::string& table_id,
                                         bool *alter_in_progress);
 
   Status GetTableSchema(const YBTableName& table_name,
@@ -379,7 +379,7 @@ class YBClient {
                                              const std::string& namespace_id,
                                              bool *delete_in_progress);
 
-  YBNamespaceAlterer* NewNamespaceAlterer(const string& namespace_name,
+  YBNamespaceAlterer* NewNamespaceAlterer(const std::string& namespace_name,
                                           const std::string& namespace_id);
 
   // For Postgres: reserve oids for a Postgres database.
@@ -451,10 +451,10 @@ class YBClient {
   // is too old.
   Status GetRedisPasswords(vector<string>* passwords);
 
-  Status SetRedisConfig(const string& key, const vector<string>& values);
-  Status GetRedisConfig(const string& key, vector<string>* values);
+  Status SetRedisConfig(const std::string& key, const vector<string>& values);
+  Status GetRedisConfig(const std::string& key, vector<string>* values);
 
-  // Grants a role to another role, or revokes a role from another role.
+    // Grants a role to another role, or revokes a role from another role.
   Status GrantRevokeRole(GrantRevokeStatementType statement_type,
                                  const std::string& granted_role_name,
                                  const std::string& recipient_role_name);
@@ -536,9 +536,9 @@ class YBClient {
                                    const boost::optional<CDCStreamId>& stream_id = boost::none);
 
   // Update consumer pollers after a producer side tablet split.
-  Status UpdateConsumerOnProducerSplit(const string& producer_id,
+  Status UpdateConsumerOnProducerSplit(const std::string& producer_id,
                                                const TableId& table_id,
-                                               const master::ProducerSplitTabletInfoPB& split_info);
+                                        const master::ProducerSplitTabletInfoPB& split_info);
 
   void GetTableLocations(
       const TableId& table_id, int32_t max_tablets, RequireTabletsRunning require_tablets_running,

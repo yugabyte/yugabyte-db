@@ -13,6 +13,8 @@
 
 #include "yb/common/json_util.h"
 
+#include <string>
+
 #include <rapidjson/prettywriter.h>
 
 #include "yb/bfql/bfunc_convert.h"
@@ -25,6 +27,8 @@
 
 namespace yb {
 namespace common {
+
+using std::string;
 
 Status ConvertQLValuePBToRapidJson(const QLValuePB& ql_value_pb,
                                    rapidjson::Value* rapidjson_value,

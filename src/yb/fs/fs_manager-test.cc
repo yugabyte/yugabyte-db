@@ -30,6 +30,9 @@
 // under the License.
 //
 
+#include <string>
+#include <vector>
+
 #include <boost/algorithm/string/predicate.hpp>
 
 #include <glog/logging.h>
@@ -46,12 +49,14 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 
-using std::shared_ptr;
-
 DECLARE_string(fs_data_dirs);
 DECLARE_string(fs_wal_dirs);
 
 namespace yb {
+
+using std::shared_ptr;
+using std::string;
+using std::vector;
 
 namespace {
 

@@ -64,6 +64,8 @@ using yb::rpc_test::DisconnectResponsePB;
 using yb::rpc_test_diff_package::ReqDiffPackagePB;
 using yb::rpc_test_diff_package::RespDiffPackagePB;
 
+using std::string;
+
 namespace {
 
 constexpr size_t kQueueLength = 1000;

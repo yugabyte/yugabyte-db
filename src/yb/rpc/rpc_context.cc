@@ -58,6 +58,7 @@ namespace yb {
 namespace rpc {
 
 using std::shared_ptr;
+using std::string;
 
 namespace {
 

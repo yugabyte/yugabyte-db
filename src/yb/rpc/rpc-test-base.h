@@ -179,15 +179,15 @@ class RpcTestBase : public YBTest {
   void TearDown() override;
 
   std::unique_ptr<Messenger> CreateMessenger(
-      const string &name,
+      const std::string &name,
       const MessengerOptions& options = kDefaultClientMessengerOptions);
 
   AutoShutdownMessengerHolder CreateAutoShutdownMessengerHolder(
-      const string &name,
+      const std::string &name,
       const MessengerOptions& options = kDefaultClientMessengerOptions);
 
   MessengerBuilder CreateMessengerBuilder(
-      const string &name,
+      const std::string &name,
       const MessengerOptions& options = kDefaultClientMessengerOptions);
 
   Status DoTestSyncCall(Proxy* proxy, const RemoteMethod *method);

@@ -15,6 +15,9 @@
 
 #include "yb/common/ql_value.h"
 
+#include <string>
+#include <vector>
+
 #include <glog/logging.h>
 
 #include "yb/common/jsonb.h"
@@ -43,6 +46,7 @@ DEFINE_int32(yql_max_value_size, 64_MB,
 namespace yb {
 
 using std::string;
+using std::vector;
 using std::shared_ptr;
 using std::to_string;
 using util::Decimal;

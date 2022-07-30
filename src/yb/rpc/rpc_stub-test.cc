@@ -34,6 +34,7 @@
 #include <functional>
 #include <thread>
 #include <vector>
+#include <string>
 
 #include <gtest/gtest.h>
 
@@ -96,6 +97,7 @@ using yb::rpc_test_diff_package::ReqDiffPackagePB;
 using yb::rpc_test_diff_package::RespDiffPackagePB;
 
 using std::shared_ptr;
+using std::string;
 using std::vector;
 
 using rpc_test::AddRequestPartialPB;
