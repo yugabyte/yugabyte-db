@@ -50,7 +50,13 @@ public class NodeAgent extends Model {
     UPGRADING {
       @Override
       public Set<State> nextStates() {
-        return toSet(UPGRADING, LIVE);
+        return toSet(UPGRADING, UPGRADED);
+      }
+    },
+    UPGRADED {
+      @Override
+      public Set<State> nextStates() {
+        return toSet(LIVE);
       }
     },
     LIVE {

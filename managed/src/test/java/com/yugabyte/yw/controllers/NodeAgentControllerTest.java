@@ -212,7 +212,16 @@ public class NodeAgentControllerTest extends FakeDBApplication {
     // Reach out to the server to refresh certs.
     result = updateNode(nodeAgentUuid, jwt);
     assertOk(result);
-    // Report live to the server.
+    // Complete upgrading.
+    formData.state = State.UPGRADED;
+    result = updateNodeState(nodeAgentUuid, formData, jwt);
+    assertOk(result);
+    // Ping for node state.
+    result = pingNodeAgent(nodeAgentUuid);
+    assertOk(result);
+    state = Json.fromJson(Json.parse(contentAsString(result)), State.class);
+    assertEquals(State.UPGRADED, state);
+    // Restart the node agent and report live to the server.
     formData.state = State.LIVE;
     result = updateNodeState(nodeAgentUuid, formData, jwt);
     assertOk(result);
