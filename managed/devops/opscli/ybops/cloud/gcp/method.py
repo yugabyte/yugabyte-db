@@ -180,8 +180,6 @@ class GcpQueryInstanceTypesMethod(AbstractMethod):
         self.parser.add_argument("--regions", nargs='+')
         self.parser.add_argument("--custom_payload", required=False,
                                  help="JSON payload of per-region data.")
-        self.parser.add_argument("--gcp_internal", action="store_true", default=False,
-                                 help="display internal testing instance types")
 
     def callback(self, args):
         print(json.dumps(self.cloud.get_instance_types(args)))
