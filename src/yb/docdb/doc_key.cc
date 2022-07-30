@@ -573,7 +573,7 @@ void AppendVectorToStringWithBrackets(
 
 }  // namespace
 
-string DocKey::ToString(AutoDecodeKeys auto_decode_keys) const {
+std::string DocKey::ToString(AutoDecodeKeys auto_decode_keys) const {
   string result = "DocKey(";
   if (!cotable_id_.IsNil()) {
     result += "CoTableId=";

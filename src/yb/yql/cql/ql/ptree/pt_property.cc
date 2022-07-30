@@ -45,7 +45,7 @@ PTProperty::~PTProperty() {
 }
 
 Status PTProperty::GetIntValueFromExpr(PTExpr::SharedPtr expr,
-                                       const string& property_name,
+                                       const std::string& property_name,
                                        int64_t *val) {
   DCHECK_ONLY_NOTNULL(val);
 
@@ -70,7 +70,7 @@ Status PTProperty::GetIntValueFromExpr(PTExpr::SharedPtr expr,
 }
 
 Status PTProperty::GetDoubleValueFromExpr(PTExpr::SharedPtr expr,
-                                          const string& property_name,
+                                          const std::string& property_name,
                                           long double *val) {
   DCHECK_ONLY_NOTNULL(val);
 
@@ -94,7 +94,7 @@ Status PTProperty::GetDoubleValueFromExpr(PTExpr::SharedPtr expr,
 }
 
 Status PTProperty::GetBoolValueFromExpr(PTExpr::SharedPtr expr,
-                                        const string& property_name,
+                                        const std::string& property_name,
                                         bool *val) {
   DCHECK_ONLY_NOTNULL(val);
 
@@ -124,8 +124,8 @@ Status PTProperty::GetBoolValueFromExpr(PTExpr::SharedPtr expr,
 
 Status PTProperty::GetStringValueFromExpr(PTExpr::SharedPtr expr,
                                           bool to_lower_case,
-                                          const string& property_name,
-                                          string *val) {
+                                          const std::string& property_name,
+                                          std::string *val) {
   DCHECK_ONLY_NOTNULL(val);
 
   if (expr && expr->ql_type_id() == DataType::STRING) {

@@ -298,7 +298,7 @@ void RedisInboundCall::LogTrace() const {
   }
 }
 
-string RedisInboundCall::ToString() const {
+std::string RedisInboundCall::ToString() const {
   return Format("Redis Call from $0", connection()->remote());
 }
 

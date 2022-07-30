@@ -102,7 +102,7 @@ PTTableProperty::~PTTableProperty() {
 }
 
 
-Status PTTableProperty::AnalyzeSpeculativeRetry(const string &val) {
+Status PTTableProperty::AnalyzeSpeculativeRetry(const std::string &val) {
   string generic_error = Substitute("Invalid value $0 for option 'speculative_retry'", val);
 
   // Accepted values: ALWAYS, Xpercentile, Nms, NONE.
@@ -132,7 +132,7 @@ Status PTTableProperty::AnalyzeSpeculativeRetry(const string &val) {
   return STATUS(InvalidArgument, generic_error);
 }
 
-string PTTableProperty::name() const {
+std::string PTTableProperty::name() const {
   DCHECK_EQ(property_type_, PropertyType::kClusteringOrder);
   return order_expr_->QLName();
 }

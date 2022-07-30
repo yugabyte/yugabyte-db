@@ -878,7 +878,7 @@ static bool UserIn(const std::string& username, const std::string& users_to_skip
 
 } // namespace
 
-unique_ptr<CQLResponse> CQLProcessor::ProcessAuthResult(const string& saved_hash, bool can_login) {
+unique_ptr<CQLResponse> CQLProcessor::ProcessAuthResult(const std::string& saved_hash, bool can_login) {
   const auto& req = down_cast<const AuthResponseRequest&>(*request_);
   const auto& params = req.params();
   unique_ptr<CQLResponse> response = nullptr;
@@ -969,7 +969,7 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessResult(const ExecutedResult::Shared
                 row.column(schema.find_column(kRoleColumnNameCanLogin)).bool_value();
             // Returning empty string is fine since it would error out as expected,
             // if the hash is empty
-            const string saved_hash = salted_hash_value.IsNull() ?
+            const std::string saved_hash = salted_hash_value.IsNull() ?
                 "" : salted_hash_value.string_value();
             response = ProcessAuthResult(saved_hash, can_login);
           }

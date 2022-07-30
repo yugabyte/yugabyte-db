@@ -504,7 +504,7 @@ class LDBCommand {
    * val must be either true or false (case insensitive).
    * Otherwise an exception is thrown.
    */
-  bool StringToBool(string val) {
+  bool StringToBool(std::string val) {
     std::transform(val.begin(), val.end(), val.begin(),
                    [](char ch)->char { return static_cast<char>(::tolower(ch)); });
 
@@ -533,7 +533,7 @@ class CompactorCommand: public LDBCommand {
   CompactorCommand(const std::vector<std::string>& params,
       const std::map<std::string, std::string>& options, const std::vector<std::string>& flags);
 
-  static void Help(string& ret); // NOLINT
+  static void Help(std::string& ret); // NOLINT
 
   virtual void DoCommand() override;
 
@@ -552,7 +552,7 @@ class DBFileDumperCommand : public LDBCommand {
                       const std::map<std::string, std::string>& options,
                       const std::vector<std::string>& flags);
 
-  static void Help(string& ret); // NOLINT
+  static void Help(std::string& ret); // NOLINT
 
   virtual void DoCommand() override;
 };
@@ -564,7 +564,7 @@ class DBDumperCommand: public LDBCommand {
   DBDumperCommand(const std::vector<std::string>& params,
       const std::map<std::string, std::string>& options, const std::vector<std::string>& flags);
 
-  static void Help(string& ret); // NOLINT
+  static void Help(std::string& ret); // NOLINT
 
   virtual void DoCommand() override;
 
@@ -610,7 +610,7 @@ class InternalDumpCommand: public LDBCommand {
                       const std::map<std::string, std::string>& options,
                       const std::vector<std::string>& flags);
 
-  static void Help(string& ret); // NOLINT
+  static void Help(std::string& ret); // NOLINT
 
   virtual void DoCommand() override;
 
@@ -637,12 +637,12 @@ class DBLoaderCommand: public LDBCommand {
  public:
   static std::string Name() { return "load"; }
 
-  DBLoaderCommand(string& db_name, std::vector<std::string>& args); // NOLINT
+  DBLoaderCommand(std::string& db_name, std::vector<std::string>& args); // NOLINT
 
   DBLoaderCommand(const std::vector<std::string>& params,
       const std::map<std::string, std::string>& options, const std::vector<std::string>& flags);
 
-  static void Help(string& ret); // NOLINT
+  static void Help(std::string& ret); // NOLINT
   virtual void DoCommand() override;
 
   virtual Options PrepareOptionsForOpenDB() override;
@@ -665,7 +665,7 @@ class ManifestDumpCommand: public LDBCommand {
   ManifestDumpCommand(const std::vector<std::string>& params,
       const std::map<std::string, std::string>& options, const std::vector<std::string>& flags);
 
-  static void Help(string& ret); // NOLINT
+  static void Help(std::string& ret); // NOLINT
   virtual void DoCommand() override;
 
   virtual bool NoDBOpen() override { return true; }
@@ -687,7 +687,7 @@ class ListColumnFamiliesCommand : public LDBCommand {
                             const std::map<std::string, std::string>& options,
                             const std::vector<std::string>& flags);
 
-  static void Help(string& ret); // NOLINT
+  static void Help(std::string& ret); // NOLINT
   virtual void DoCommand() override;
 
   virtual bool NoDBOpen() override { return true; }
@@ -704,7 +704,7 @@ class CreateColumnFamilyCommand : public LDBCommand {
                             const std::map<std::string, std::string>& options,
                             const std::vector<std::string>& flags);
 
-  static void Help(string& ret); // NOLINT
+  static void Help(std::string& ret); // NOLINT
   virtual void DoCommand() override;
 
   virtual bool NoDBOpen() override { return false; }
@@ -726,7 +726,7 @@ class ReduceDBLevelsCommand : public LDBCommand {
 
   virtual bool NoDBOpen() override { return true; }
 
-  static void Help(string& msg); // NOLINT
+  static void Help(std::string& msg); // NOLINT
 
   static std::vector<std::string> PrepareArgs(const std::string& db_path, int new_levels,
       bool print_old_level = false);
@@ -753,7 +753,7 @@ class ChangeCompactionStyleCommand : public LDBCommand {
 
   virtual void DoCommand() override;
 
-  static void Help(string& msg); // NOLINT
+  static void Help(std::string& msg); // NOLINT
 
  private:
   int old_compaction_style_;
@@ -772,7 +772,7 @@ class WALDumperCommand : public LDBCommand {
 
   virtual bool NoDBOpen() override { return true; }
 
-  static void Help(string& ret); // NOLINT
+  static void Help(std::string& ret); // NOLINT
   virtual void DoCommand() override;
 
  private:
@@ -795,7 +795,7 @@ class GetCommand : public LDBCommand {
 
   virtual void DoCommand() override;
 
-  static void Help(string& ret); // NOLINT
+  static void Help(std::string& ret); // NOLINT
 
  private:
   std::string key_;
@@ -810,7 +810,7 @@ class ApproxSizeCommand : public LDBCommand {
 
   virtual void DoCommand() override;
 
-  static void Help(string& ret); // NOLINT
+  static void Help(std::string& ret); // NOLINT
 
  private:
   std::string start_key_;
@@ -826,7 +826,7 @@ class BatchPutCommand : public LDBCommand {
 
   virtual void DoCommand() override;
 
-  static void Help(string& ret); // NOLINT
+  static void Help(std::string& ret); // NOLINT
 
   virtual Options PrepareOptionsForOpenDB() override;
 
@@ -846,7 +846,7 @@ class ScanCommand : public LDBCommand {
 
   virtual void DoCommand() override;
 
-  static void Help(string& ret); // NOLINT
+  static void Help(std::string& ret); // NOLINT
 
  private:
   std::string start_key_;
@@ -867,7 +867,7 @@ class DeleteCommand : public LDBCommand {
 
   virtual void DoCommand() override;
 
-  static void Help(string& ret); // NOLINT
+  static void Help(std::string& ret); // NOLINT
 
  private:
   std::string key_;
@@ -882,7 +882,7 @@ class PutCommand : public LDBCommand {
 
   virtual void DoCommand() override;
 
-  static void Help(string& ret); // NOLINT
+  static void Help(std::string& ret); // NOLINT
 
   virtual Options PrepareOptionsForOpenDB() override;
 
@@ -902,7 +902,7 @@ class DBQuerierCommand: public LDBCommand {
   DBQuerierCommand(const std::vector<std::string>& params,
       const std::map<std::string, std::string>& options, const std::vector<std::string>& flags);
 
-  static void Help(string& ret); // NOLINT
+  static void Help(std::string& ret); // NOLINT
 
   virtual void DoCommand() override;
 
@@ -924,7 +924,7 @@ class CheckConsistencyCommand : public LDBCommand {
 
   virtual bool NoDBOpen() override { return true; }
 
-  static void Help(string& ret); // NOLINT
+  static void Help(std::string& ret); // NOLINT
 };
 
 } // namespace rocksdb

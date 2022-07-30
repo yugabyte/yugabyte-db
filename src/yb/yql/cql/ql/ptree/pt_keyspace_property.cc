@@ -114,7 +114,7 @@ Status PTKeyspacePropertyMap::Analyze(SemContext *sem_context) {
     ToLowerCase(map_element->lhs()->c_str(), &subproperty_name);
 
     if (subproperty_name == "class") {
-      class_name.reset(new string());
+      class_name.reset(new std::string());
       RETURN_NOT_OK(GetStringValueFromExpr(map_element->rhs(), false, "class", class_name.get()));
     } else if (subproperty_name == "replication_factor") {
       replication_factor.reset(new int64_t);

@@ -28,8 +28,8 @@
 
 DECLARE_bool(TEST_exit_on_finish);
 
-const string kDbName = "/lbd_cmd_test";
-const string kKeyFileOption = "--key_file=" + rocksdb::DBTestBase::kKeyId + ":" +
+const std::string kDbName = "/lbd_cmd_test";
+const std::string kKeyFileOption = "--key_file=" + rocksdb::DBTestBase::kKeyId + ":" +
                               rocksdb::DBTestBase::kKeyFile;
 
 

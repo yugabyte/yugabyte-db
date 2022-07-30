@@ -197,7 +197,7 @@ class QueryPagingState {
   }
 
   // Debug logging.
-  string DebugString() const {
+  std::string DebugString() const {
     return (string("\nQueryPB = {\n") + query_pb_.DebugString() + string ("\n};") +
             string("\nCounterPB = {\n") + counter_pb_.DebugString() + string("\n};"));
   }

@@ -52,7 +52,7 @@ using namespace std::placeholders;
 using yb::client::YBTableName;
 
 namespace {
-static bool ValidateRedisPasswordSeparator(const char* flagname, const string& value) {
+static bool ValidateRedisPasswordSeparator(const char* flagname, const std::string& value) {
   if (value.size() != 1) {
     LOG(INFO) << "Expect " << flagname << " to be 1 character long";
     return false;
@@ -180,7 +180,7 @@ BOOST_PP_SEQ_FOR_EACH(DEFINE_HISTOGRAM, ~, REDIS_COMMANDS)
 
 BOOST_PP_SEQ_FOR_EACH(PARSER_FORWARD, ~, REDIS_COMMANDS)
 
-YBTableName RedisServiceData::GetYBTableNameForRedisDatabase(const string& db_name) {
+YBTableName RedisServiceData::GetYBTableNameForRedisDatabase(const std::string& db_name) {
   return YBTableName(YQL_DATABASE_REDIS,
                      common::kRedisKeyspaceName,
                      db_name == "0" ? string(common::kRedisTableName)
@@ -417,7 +417,7 @@ void HandlePubSub(LocalCommandData data) {
     auto all = data.context()->service_data()->GetAllSubscriptions(AsPattern::kFalse);
     std::unordered_set<std::string> matched;
     if (data.arg_size() > 2) {
-      const string& pattern = data.arg(2).ToBuffer();
+      const std::string& pattern = data.arg(2).ToBuffer();
       for (auto& channel : all) {
         if (RedisPatternMatch(pattern, channel, /* ignore case */ false)) {
           matched.insert(channel);
@@ -440,7 +440,7 @@ void HandlePubSub(LocalCommandData data) {
   } else if (boost::iequals(data.arg(1).ToBuffer(), "NUMSUB")) {
     auto array_response = response.mutable_array_response();
     for (size_t idx = 2; idx < data.arg_size(); idx++) {
-      const string& channel = data.arg(idx).ToBuffer();
+      const std::string& channel = data.arg(idx).ToBuffer();
       auto subs = data.context()->service_data()->NumSubscribers(AsPattern::kFalse, channel);
       AddElements(redisserver::EncodeAsBulkString(channel), array_response);
       AddElements(redisserver::EncodeAsInteger(subs), array_response);
@@ -454,8 +454,8 @@ void HandlePubSub(LocalCommandData data) {
 }
 
 void HandlePublish(LocalCommandData data) {
-  const string& channel = data.arg(1).ToBuffer();
-  const string& published_message = data.arg(2).ToBuffer();
+  const std::string& channel = data.arg(1).ToBuffer();
+  const std::string& published_message = data.arg(2).ToBuffer();
 
   data.context()->service_data()->ForwardToInterestedProxies(
       channel, published_message, [data = std::move(data)](int val) {

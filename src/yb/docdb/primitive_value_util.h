@@ -30,11 +30,11 @@ Status QLKeyColumnValuesToPrimitiveValues(
     const Schema &schema, size_t column_idx, const size_t column_count,
     std::vector<KeyEntryValue> *components);
 
-Result<vector<KeyEntryValue>> InitKeyColumnPrimitiveValues(
+Result<std::vector<KeyEntryValue>> InitKeyColumnPrimitiveValues(
     const google::protobuf::RepeatedPtrField<PgsqlExpressionPB> &column_values,
     const Schema &schema, size_t start_idx);
 
-Result<vector<KeyEntryValue>> InitKeyColumnPrimitiveValues(
+Result<std::vector<KeyEntryValue>> InitKeyColumnPrimitiveValues(
     const ArenaList<LWPgsqlExpressionPB> &column_values, const Schema &schema, size_t start_idx);
 
 }  // namespace docdb

@@ -67,7 +67,7 @@ class PTDmlWriteProperty : public PTProperty {
   }
 
  protected:
-  bool IsValidProperty(const string& property_name) {
+  bool IsValidProperty(const std::string& property_name) {
     return kPropertyDataTypes.find(property_name) != kPropertyDataTypes.end();
   }
 

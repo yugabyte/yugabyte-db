@@ -1308,20 +1308,20 @@ class CatalogManager :
   // following the protocol's default mechanism.
   void SendLeaderStepDownRequest(
       const scoped_refptr<TabletInfo>& tablet, const consensus::ConsensusStatePB& cstate,
-      const string& change_config_ts_uuid, bool should_remove,
-      const string& new_leader_ts_uuid = "");
+      const std::string& change_config_ts_uuid, bool should_remove,
+      const std::string& new_leader_ts_uuid = "");
 
   // Start a task to change the config to remove a certain voter because the specified tablet is
   // over-replicated.
   void SendRemoveServerRequest(
       const scoped_refptr<TabletInfo>& tablet, const consensus::ConsensusStatePB& cstate,
-      const string& change_config_ts_uuid);
+      const std::string& change_config_ts_uuid);
 
   // Start a task to change the config to add an additional voter because the
   // specified tablet is under-replicated.
   void SendAddServerRequest(
       const scoped_refptr<TabletInfo>& tablet, consensus::PeerMemberType member_type,
-      const consensus::ConsensusStatePB& cstate, const string& change_config_ts_uuid);
+      const consensus::ConsensusStatePB& cstate, const std::string& change_config_ts_uuid);
 
   void GetPendingServerTasksUnlocked(const TableId &table_uuid,
                                      TabletToTabletServerMap *add_replica_tasks_map,

@@ -122,7 +122,7 @@ LDBCommand* LDBCommand::InitFromCmdLineArgs(
   map<string, string> option_map;
 
   // Command-line arguments of the form --hex end up in this array as hex
-  vector<string> flags;
+  std::vector<string> flags;
 
   // Everything other than option_map and flags. Represents commands
   // and their parameters.  For eg: put key1 value1 go into this vector.
@@ -151,7 +151,7 @@ LDBCommand* LDBCommand::InitFromCmdLineArgs(
   }
 
   string cmd = cmdTokens[0];
-  vector<string> cmdParams(cmdTokens.begin()+1, cmdTokens.end());
+  std::vector<string> cmdParams(cmdTokens.begin()+1, cmdTokens.end());
   LDBCommand* command = LDBCommand::SelectCommand(
     cmd,
     cmdParams,

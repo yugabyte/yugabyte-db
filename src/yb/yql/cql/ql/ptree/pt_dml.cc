@@ -122,7 +122,7 @@ size_t PTDmlStmt::num_hash_key_columns() const {
   return table_->schema().num_hash_key_columns();
 }
 
-string PTDmlStmt::hash_key_columns() const {
+std::string PTDmlStmt::hash_key_columns() const {
   std::stringstream s;
   auto &schema = table_->schema();
   for (size_t i = 0; i < schema.num_hash_key_columns(); ++i) {

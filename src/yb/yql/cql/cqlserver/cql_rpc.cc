@@ -141,7 +141,7 @@ uint64_t CQLConnectionContext::ExtractCallId(rpc::InboundCall* call) {
 
 void CQLConnectionContext::DumpPB(const rpc::DumpRunningRpcsRequestPB& req,
                                   rpc::RpcConnectionPB* resp) {
-  const string keyspace = ql_session_->current_keyspace();
+  const std::string keyspace = ql_session_->current_keyspace();
   if (!keyspace.empty()) {
     resp->mutable_connection_details()->mutable_cql_connection_details()->set_keyspace(keyspace);
   }

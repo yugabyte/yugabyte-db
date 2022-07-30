@@ -137,9 +137,9 @@ Result<size_t> PgTableDesc::FindPartitionIndex(const Slice& ybctid) const {
 }
 
 Status PgTableDesc::SetScanBoundary(LWPgsqlReadRequestPB *req,
-                                    const string& partition_lower_bound,
+                                    const std::string& partition_lower_bound,
                                     bool lower_bound_is_inclusive,
-                                    const string& partition_upper_bound,
+                                    const std::string& partition_upper_bound,
                                     bool upper_bound_is_inclusive) {
   // Setup lower boundary.
   if (!partition_lower_bound.empty()) {

@@ -747,14 +747,14 @@ class TabletOperations {
 YB_STRONGLY_TYPED_BOOL(IsMonitorMessage);
 
 struct RedisServiceImplData : public RedisServiceData {
-  RedisServiceImplData(RedisServer* server, string&& yb_tier_master_addresses);
+  RedisServiceImplData(RedisServer* server, std::string&& yb_tier_master_addresses);
 
   void AppendToMonitors(Connection* conn) override;
   void RemoveFromMonitors(Connection* conn) override;
-  void LogToMonitors(const string& end, const string& db, const RedisClientCommand& cmd) override;
-  yb::Result<std::shared_ptr<client::YBTable>> GetYBTableForDB(const string& db_name) override;
+  void LogToMonitors(const std::string& end, const std::string& db, const RedisClientCommand& cmd) override;
+  yb::Result<std::shared_ptr<client::YBTable>> GetYBTableForDB(const std::string& db_name) override;
 
-  void CleanYBTableFromCacheForDB(const string& table);
+  void CleanYBTableFromCacheForDB(const std::string& table);
 
   void AppendToSubscribers(
       AsPattern type, const std::vector<std::string>& channels, rpc::Connection* conn,
@@ -766,11 +766,11 @@ struct RedisServiceImplData : public RedisServiceData {
   size_t NumSubscribers(AsPattern type, const std::string& channel) override;
   std::unordered_set<std::string> GetSubscriptions(AsPattern type, rpc::Connection* conn) override;
   std::unordered_set<std::string> GetAllSubscriptions(AsPattern type) override;
-  int Publish(const string& channel, const string& message);
+  int Publish(const std::string& channel, const std::string& message);
   void ForwardToInterestedProxies(
-      const string& channel, const string& message, const IntFunctor& f) override;
-  int PublishToLocalClients(IsMonitorMessage mode, const string& channel, const string& message);
-  Result<vector<HostPortPB>> GetServerAddrsForChannel(const string& channel);
+      const std::string& channel, const std::string& message, const IntFunctor& f) override;
+  int PublishToLocalClients(IsMonitorMessage mode, const std::string& channel, const std::string& message);
+  Result<std::vector<HostPortPB>> GetServerAddrsForChannel(const std::string& channel);
   size_t NumSubscriptionsUnlocked(Connection* conn);
 
   Status GetRedisPasswords(vector<string>* passwords) override;
@@ -814,7 +814,7 @@ struct RedisServiceImplData : public RedisServiceData {
 class BatchContextImpl : public BatchContext {
  public:
   BatchContextImpl(
-      const string& dbname, const std::shared_ptr<RedisInboundCall>& call,
+      const std::string& dbname, const std::shared_ptr<RedisInboundCall>& call,
       RedisServiceImplData* impl_data)
       : impl_data_(impl_data),
         db_name_(dbname),
@@ -967,7 +967,7 @@ class BatchContextImpl : public BatchContext {
 
   RedisServiceImplData* impl_data_ = nullptr;
 
-  const string db_name_;
+  const std::string db_name_;
   std::shared_ptr<RedisInboundCall> call_;
   ScopedTrackedConsumption consumption_;
 
@@ -982,7 +982,7 @@ class BatchContextImpl : public BatchContext {
 
 class RedisServiceImpl::Impl {
  public:
-  Impl(RedisServer* server, string yb_tier_master_address);
+  Impl(RedisServer* server, std::string yb_tier_master_address);
 
   ~Impl() {
     // Wait for DebugSleep to finish.
@@ -1032,13 +1032,13 @@ class RedisServiceImpl::Impl {
   RedisServiceImplData data_;
 };
 
-RedisServiceImplData::RedisServiceImplData(RedisServer* server, string&& yb_tier_master_addresses)
+RedisServiceImplData::RedisServiceImplData(RedisServer* server, std::string&& yb_tier_master_addresses)
     : yb_tier_master_addresses_(std::move(yb_tier_master_addresses)),
       initialized_(false),
       server_(server) {}
 
 yb::Result<std::shared_ptr<client::YBTable>> RedisServiceImplData::GetYBTableForDB(
-    const string& db_name) {
+    const std::string& db_name) {
   std::shared_ptr<client::YBTable> table;
   YBTableName table_name = GetYBTableNameForRedisDatabase(db_name);
   bool was_cached = false;
@@ -1146,7 +1146,7 @@ size_t RedisServiceImplData::NumSubscribers(AsPattern type, const std::string& c
 }
 
 void RedisServiceImplData::LogToMonitors(
-    const string& end, const string& db, const RedisClientCommand& cmd) {
+    const std::string& end, const std::string& db, const RedisClientCommand& cmd) {
   {
     SharedLock<decltype(pubsub_mutex_)> rlock(pubsub_mutex_);
     if (monitoring_clients_.empty()) return;
@@ -1168,13 +1168,13 @@ void RedisServiceImplData::LogToMonitors(
   PublishToLocalClients(IsMonitorMessage::kTrue, "", ss.str());
 }
 
-int RedisServiceImplData::Publish(const string& channel, const string& message) {
+int RedisServiceImplData::Publish(const std::string& channel, const std::string& message) {
   VLOG(3) << "Forwarding to clients on channel " << channel;
   return PublishToLocalClients(IsMonitorMessage::kFalse, channel, message);
 }
 
-Result<vector<HostPortPB>> RedisServiceImplData::GetServerAddrsForChannel(
-    const string& channel_unused) {
+Result<std::vector<HostPortPB>> RedisServiceImplData::GetServerAddrsForChannel(
+    const std::string& channel_unused) {
   // TODO(Amit): Instead of forwarding  blindly to all servers, figure out the
   // ones that have a subscription and send it to them only.
   std::vector<master::TSInformationPB> live_tservers;
@@ -1184,7 +1184,7 @@ Result<vector<HostPortPB>> RedisServiceImplData::GetServerAddrsForChannel(
     return s;
   }
 
-  vector<HostPortPB> servers;
+  std::vector<HostPortPB> servers;
   const auto cloud_info_pb = server_->MakeCloudInfoPB();
   // Queue NEW_NODE event for all the live tservers.
   for (const master::TSInformationPB& ts_info : live_tservers) {

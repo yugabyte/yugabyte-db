@@ -46,7 +46,7 @@ namespace rocksdb {
 
 class RedisListsTest : public RocksDBTest {
  public:
-  static const string kDefaultDbName;
+  static const std::string kDefaultDbName;
   static Options options;
 
   RedisListsTest() {
@@ -54,7 +54,7 @@ class RedisListsTest : public RocksDBTest {
   }
 };
 
-const string RedisListsTest::kDefaultDbName =
+const std::string RedisListsTest::kDefaultDbName =
     test::TmpDir() + "/redis_lists_test";
 Options RedisListsTest::options = Options();
 

@@ -22,14 +22,14 @@ namespace cqlserver {
 
 //------------------------------------------------------------------------------------------------
 CQLStatement::CQLStatement(
-    const string& keyspace, const string& query, const CQLStatementListPos pos)
+    const std::string& keyspace, const std::string& query, const CQLStatementListPos pos)
     : Statement(keyspace, query), pos_(pos) {
 }
 
 CQLStatement::~CQLStatement() {
 }
 
-ql::CQLMessage::QueryId CQLStatement::GetQueryId(const string& keyspace, const string& query) {
+ql::CQLMessage::QueryId CQLStatement::GetQueryId(const std::string& keyspace, const std::string& query) {
   unsigned char md5[MD5_DIGEST_LENGTH];
   MD5_CTX md5ctx;
   MD5_Init(&md5ctx);

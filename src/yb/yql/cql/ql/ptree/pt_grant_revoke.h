@@ -170,7 +170,7 @@ class PTGrantRevokePermission : public TreeNode {
     return permission_;
   }
 
-  const string canonical_resource() const  {
+  const std::string canonical_resource() const  {
     std::string prefix = "";
     std::string suffix = "";
     if (complete_resource_name_ != nullptr) {
