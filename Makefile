@@ -3,7 +3,7 @@ OBJS= regexp.o parse_keyword.o convert.o file.o datefce.o magic.o others.o plvst
 
 EXTENSION = orafce
 
-DATA = orafce--3.23.sql\
+DATA = orafce--3.24.sql\
 		orafce--3.2--3.3.sql\
 		orafce--3.3--3.4.sql\
 		orafce--3.4--3.5.sql\
@@ -25,6 +25,7 @@ DATA = orafce--3.23.sql\
 		orafce--3.20--3.21.sql\
 		orafce--3.21--3.22.sql\
 		orafce--3.22--3.23.sql\
+		orafce--3.23--3.24.sql
 
 DOCS = README.asciidoc COPYRIGHT.orafce INSTALL.orafce
 

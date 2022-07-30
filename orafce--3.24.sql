@@ -2213,7 +2213,8 @@ send = oracle.varchar2send,
 category = 'S',
 typmod_in = oracle.varchar2typmodin,
 typmod_out = oracle.varchar2typmodout,
-collatable = true
+collatable = true,
+storage = extended
 );
 
 CREATE FUNCTION oracle.orafce_concat2(oracle.varchar2, oracle.varchar2)
@@ -2432,7 +2433,8 @@ send = oracle.nvarchar2send,
 category = 'S',
 typmod_in = oracle.nvarchar2typmodin,
 typmod_out = oracle.nvarchar2typmodout,
-collatable = true
+collatable = true,
+storage = extended
 );
 
 CREATE FUNCTION oracle.orafce_concat2(oracle.nvarchar2, oracle.nvarchar2)
