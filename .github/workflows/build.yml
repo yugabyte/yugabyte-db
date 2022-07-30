@@ -125,5 +125,5 @@ jobs:
           elif [[ $OSTYPE == darwin* ]]; then
             system_profiler SPSoftwareDataType
             sw_vers
-            ./yb_build.sh release --shellcheck
+            ./yb_build.sh ${{ matrix.yb_build_args }}
           fi
