@@ -127,8 +127,8 @@ using strings::Substitute;
 class MasterTestBase : public YBTest {
  protected:
 
-  string default_namespace_name = "default_namespace";
-  string default_namespace_id;
+  std::string default_namespace_name = "default_namespace";
+  std::string default_namespace_id;
 
   MasterTestBase();
   ~MasterTestBase();

@@ -242,7 +242,7 @@ Status SysCatalogTable::CreateAndFlushConsensusMeta(
     const RaftConfigPB& config,
     int64_t current_term) {
   std::unique_ptr<ConsensusMetadata> cmeta;
-  string tablet_id = kSysCatalogTabletId;
+  std::string tablet_id = kSysCatalogTabletId;
   RETURN_NOT_OK_PREPEND(ConsensusMetadata::Create(fs_manager,
                                                   tablet_id,
                                                   fs_manager->uuid(),
@@ -285,7 +285,7 @@ Status SysCatalogTable::Load(FsManager* fs_manager) {
   // 1. We always believe the local config options for who is in the consensus configuration.
   // 2. We always want to look up all node's UUIDs on start (via RPC).
   //    - TODO: Cache UUIDs. See KUDU-526.
-  string tablet_id = metadata->raft_group_id();
+  std::string tablet_id = metadata->raft_group_id();
   std::unique_ptr<ConsensusMetadata> cmeta;
   RETURN_NOT_OK_PREPEND(ConsensusMetadata::Load(fs_manager, tablet_id, fs_manager->uuid(), &cmeta),
                         "Unable to load consensus metadata for tablet " + tablet_id);
@@ -325,15 +325,15 @@ Status SysCatalogTable::CreateNew(FsManager *fs_manager) {
   PartitionSchema partition_schema;
   RETURN_NOT_OK(PartitionSchema::FromPB(PartitionSchemaPB(), schema, &partition_schema));
 
-  vector<YBPartialRow> split_rows;
-  vector<Partition> partitions;
+  std::vector<YBPartialRow> split_rows;
+  std::vector<Partition> partitions;
   RETURN_NOT_OK(partition_schema.CreatePartitions(split_rows, schema, &partitions));
   DCHECK_EQ(1, partitions.size());
 
   auto table_info = std::make_shared<tablet::TableInfo>(
       tablet::Primary::kTrue, kSysCatalogTableId, "", table_name(), TableType::YQL_TABLE_TYPE,
       schema, IndexMap(), boost::none /* index_info */, 0 /* schema_version */, partition_schema);
-  string data_root_dir = fs_manager->GetDataRootDirs()[0];
+  std::string data_root_dir = fs_manager->GetDataRootDirs()[0];
   fs_manager->SetTabletPathByDataPath(kSysCatalogTabletId, data_root_dir);
   auto metadata = VERIFY_RESULT(tablet::RaftGroupMetadata::CreateNew(tablet::RaftGroupMetadataData {
     .fs_manager = fs_manager,
@@ -391,7 +391,7 @@ Status SysCatalogTable::SetupConfig(const MasterOptions& options,
 }
 
 void SysCatalogTable::SysCatalogStateChanged(
-    const string& tablet_id,
+    const std::string& tablet_id,
     std::shared_ptr<StateChangeContext> context) {
   CHECK_EQ(tablet_id, tablet_peer()->tablet_id());
   shared_ptr<consensus::Consensus> consensus = tablet_peer()->shared_consensus();
@@ -778,9 +778,9 @@ Status SysCatalogTable::Visit(VisitorBase* visitor) {
   }));
 
   auto duration = CoarseMonoClock::Now() - start;
-  string id = Format("num_entries_with_type_$0_loaded", std::to_string(visitor->entry_type()));
+  std::string id = Format("num_entries_with_type_$0_loaded", std::to_string(visitor->entry_type()));
   if (visitor_duration_metrics_.find(id) == visitor_duration_metrics_.end()) {
-    string description = id + " metric for SysCatalogTable::Visit";
+    std::string description = id + " metric for SysCatalogTable::Visit";
     std::unique_ptr<GaugePrototype<uint64>> counter_gauge =
         std::make_unique<OwningGaugePrototype<uint64>>(
             "server", id, description, yb::MetricUnit::kEntries, description,
@@ -792,7 +792,7 @@ Status SysCatalogTable::Visit(VisitorBase* visitor) {
 
   id = Format("duration_ms_loading_entries_with_type_$0", std::to_string(visitor->entry_type()));
   if (visitor_duration_metrics_.find(id) == visitor_duration_metrics_.end()) {
-    string description = id + " metric for SysCatalogTable::Visit";
+    std::string description = id + " metric for SysCatalogTable::Visit";
     std::unique_ptr<GaugePrototype<uint64>> duration_gauge =
         std::make_unique<OwningGaugePrototype<uint64>>(
             "server", id, description, yb::MetricUnit::kMilliseconds, description,
@@ -1268,7 +1268,7 @@ Result<uint32_t> SysCatalogTable::ReadPgClassRelnamespace(const uint32_t databas
   return oid;
 }
 
-Result<string> SysCatalogTable::ReadPgNamespaceNspname(const uint32_t database_oid,
+Result<std::string> SysCatalogTable::ReadPgNamespaceNspname(const uint32_t database_oid,
                                                        const uint32_t relnamespace_oid) {
   TRACE_EVENT0("master", "ReadPgNamespaceNspname");
 
@@ -1298,7 +1298,7 @@ Result<string> SysCatalogTable::ReadPgNamespaceNspname(const uint32_t database_o
     RETURN_NOT_OK(doc_iter->Init(spec));
   }
 
-  string name;
+  std::string name;
   if (VERIFY_RESULT(iter->HasNext())) {
     QLTableRow row;
     RETURN_NOT_OK(iter->NextRow(&row));
@@ -1321,7 +1321,7 @@ Result<string> SysCatalogTable::ReadPgNamespaceNspname(const uint32_t database_o
   return name;
 }
 
-Result<std::unordered_map<string, uint32_t>> SysCatalogTable::ReadPgAttributeInfo(
+Result<std::unordered_map<std::string, uint32_t>> SysCatalogTable::ReadPgAttributeInfo(
     const uint32_t database_oid, const uint32_t table_oid) {
   TRACE_EVENT0("master", "ReadPgAttributeInfo");
 
@@ -1354,7 +1354,7 @@ Result<std::unordered_map<string, uint32_t>> SysCatalogTable::ReadPgAttributeInf
     RETURN_NOT_OK(doc_iter->Init(spec));
   }
 
-  std::unordered_map<string, uint32_t> type_oid_map;
+  std::unordered_map<std::string, uint32_t> type_oid_map;
   while (VERIFY_RESULT(iter->HasNext())) {
     QLTableRow row;
     RETURN_NOT_OK(iter->NextRow(&row));
@@ -1383,7 +1383,7 @@ Result<std::unordered_map<string, uint32_t>> SysCatalogTable::ReadPgAttributeInf
           "Could not read $0 column from pg_attribute for attrelid: $1 database_oid: $2",
           corrupted_col, table_oid, database_oid);
     }
-    string attname = attname_col->string_value();
+    std::string attname = attname_col->string_value();
     uint32_t atttypid = atttypid_col->uint32_value();
 
     if (atttypid == 0) {
@@ -1399,7 +1399,7 @@ Result<std::unordered_map<string, uint32_t>> SysCatalogTable::ReadPgAttributeInf
   return type_oid_map;
 }
 
-Result<std::unordered_map<uint32_t, string>> SysCatalogTable::ReadPgEnum(
+Result<std::unordered_map<uint32_t, std::string>> SysCatalogTable::ReadPgEnum(
     const uint32_t database_oid) {
   TRACE_EVENT0("master", "ReadPgEnum");
 
@@ -1426,7 +1426,7 @@ Result<std::unordered_map<uint32_t, string>> SysCatalogTable::ReadPgEnum(
     RETURN_NOT_OK(doc_iter->Init(spec));
   }
 
-  std::unordered_map<uint32_t, string> enumlabel_map;
+  std::unordered_map<uint32_t, std::string> enumlabel_map;
   while (VERIFY_RESULT(iter->HasNext())) {
     QLTableRow row;
     RETURN_NOT_OK(iter->NextRow(&row));
@@ -1441,7 +1441,7 @@ Result<std::unordered_map<uint32_t, string>> SysCatalogTable::ReadPgEnum(
           database_oid);
     }
     uint32_t oid = oid_col->uint32_value();
-    string enumlabel = enumlabel_col->string_value();
+    std::string enumlabel = enumlabel_col->string_value();
 
     enumlabel_map[oid] = enumlabel;
     VLOG(1) << "Database oid: " << database_oid << " enum oid: " << oid
@@ -1451,7 +1451,7 @@ Result<std::unordered_map<uint32_t, string>> SysCatalogTable::ReadPgEnum(
 }
 
 Result<std::unordered_map<uint32_t, PgTypeInfo>> SysCatalogTable::ReadPgTypeInfo(
-    const uint32_t database_oid, vector<uint32_t>* type_oids) {
+    const uint32_t database_oid, std::vector<uint32_t>* type_oids) {
   TRACE_EVENT0("master", "ReadPgTypeInfo");
   const tablet::TabletPtr tablet = tablet_peer()->shared_tablet();
 
@@ -1522,7 +1522,7 @@ Result<std::unordered_map<uint32_t, PgTypeInfo>> SysCatalogTable::ReadPgTypeInfo
 }
 
 Status SysCatalogTable::CopyPgsqlTables(
-    const vector<TableId>& source_table_ids, const vector<TableId>& target_table_ids,
+    const std::vector<TableId>& source_table_ids, const std::vector<TableId>& target_table_ids,
     const int64_t leader_term) {
   TRACE_EVENT0("master", "CopyPgsqlTables");
 
@@ -1593,7 +1593,7 @@ Status SysCatalogTable::CopyPgsqlTables(
   return Status::OK();
 }
 
-Status SysCatalogTable::DeleteYsqlSystemTable(const string& table_id) {
+Status SysCatalogTable::DeleteYsqlSystemTable(const std::string& table_id) {
   tablet_peer()->tablet_metadata()->RemoveTable(table_id);
   return Status::OK();
 }

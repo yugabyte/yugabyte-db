@@ -431,9 +431,9 @@ Status MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
   const bool is_backfilling = indexed_table->IsBackfilling();
 
   std::unordered_map<TableId, IndexPermissions> indexes_to_update;
-  vector<IndexInfoPB> indexes_to_backfill;
-  vector<IndexInfoPB> deferred_indexes;
-  vector<IndexInfoPB> indexes_to_delete;
+  std::vector<IndexInfoPB> indexes_to_backfill;
+  std::vector<IndexInfoPB> deferred_indexes;
+  std::vector<IndexInfoPB> indexes_to_delete;
   {
     TRACE("Locking indexed table");
     VLOG(1) << ("Locking indexed table");
@@ -922,7 +922,7 @@ void BackfillTable::Done(const Status& s, const std::unordered_set<TableId>& fai
 }
 
 Status BackfillTable::MarkIndexesAsFailed(
-    const std::unordered_set<TableId>& failed_indexes, const string& message) {
+    const std::unordered_set<TableId>& failed_indexes, const std::string& message) {
   if (indexes_to_build() == failed_indexes) {
     backfill_job_->SetState(MonitoredTaskState::kFailed);
   }
@@ -942,7 +942,7 @@ Status BackfillTable::MarkAllIndexesAsSuccess() {
 
 Status BackfillTable::MarkIndexesAsDesired(
     const std::unordered_set<TableId>& index_ids_set, BackfillJobPB_State state,
-    const string message) {
+    const std::string message) {
   VLOG_WITH_PREFIX(3) << "Marking " << yb::ToString(index_ids_set)
                       << " as " << BackfillJobPB_State_Name(state)
                       << " due to " << message;
@@ -1223,7 +1223,7 @@ void BackfillTablet::LaunchNextChunkOrDone() {
 }
 
 void BackfillTablet::Done(
-    const Status& status, const boost::optional<string>& backfilled_until,
+    const Status& status, const boost::optional<std::string>& backfilled_until,
     const uint64_t number_rows_processed, const std::unordered_set<TableId>& failed_indexes) {
   if (!status.ok()) {
     LOG(INFO) << "Failed to backfill the tablet " << yb::ToString(tablet_) << ": " << status
@@ -1243,7 +1243,7 @@ void BackfillTablet::Done(
 }
 
 Status BackfillTablet::UpdateBackfilledUntil(
-    const string& backfilled_until, const uint64_t number_rows_processed) {
+    const std::string& backfilled_until, const uint64_t number_rows_processed) {
   backfilled_until_ = backfilled_until;
   VLOG_WITH_PREFIX(2) << "Done backfilling the tablet " << yb::ToString(tablet_) << " until "
                       << yb::ToString(backfilled_until_);
@@ -1441,7 +1441,7 @@ bool BackfillChunk::SendRequest(int attempt) {
         *resp_.add_failed_index_ids() = idx;
       }
     }
-    const string error_message("Could not find IndexInfoPB for some indexes");
+    const std::string error_message("Could not find IndexInfoPB for some indexes");
     resp_.mutable_error()->mutable_status()->set_code(AppStatusPB::NOT_FOUND);
     resp_.mutable_error()->mutable_status()->set_message(error_message);
     TransitionToFailedState(MonitoredTaskState::kRunning,

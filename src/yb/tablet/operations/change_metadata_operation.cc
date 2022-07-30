@@ -84,7 +84,7 @@ void ChangeMetadataOperation::SetIndexes(const RepeatedPtrField<IndexInfoPB>& in
   index_map_.FromPB(indexes);
 }
 
-string ChangeMetadataOperation::ToString() const {
+std::string ChangeMetadataOperation::ToString() const {
   return Format("ChangeMetadataOperation { hybrid_time: $0 schema: $1 request: $2 }",
                 hybrid_time_even_if_unset(), schema_, request());
 }

@@ -41,7 +41,7 @@ namespace yb {
 // Test the tablespace info parsing.
 TEST(PlacementInfoTest, TestTablespaceJsonProcessing) {
   // Variables to be used throughout the test.
-  const string& valid_json =
+  const std::string& valid_json =
       "{\"num_replicas\":3,\"placement_blocks\":"
       "[{\"cloud\":\"c1\",\"region\":\"r1\",\"zone\":\"z1\",\"min_num_replicas\":2},"
       "{\"cloud\":\"c2\",\"region\":\"r2\",\"zone\":\"z2\",\"min_num_replicas\":1}]}";
@@ -49,7 +49,7 @@ TEST(PlacementInfoTest, TestTablespaceJsonProcessing) {
   auto option = "replica_placement=" + valid_json;
   auto invalid_option = "read_replica_placement=" + valid_json;
 
-  vector<std::string> options;
+  std::vector<std::string> options;
 
   // Negative tests.
   // 1. Empty input.
@@ -142,17 +142,17 @@ TEST(PlacementInfoTest, TestTablespaceJsonProcessing) {
 // Test the tablespace preferred zone info parsing.
 TEST(PlacementInfoTest, TestPreferredZoneJsonProcessing) {
   // Variables to be used throughout the test.
-  const string& zone1 = R"#("cloud":"c1","region":"r1","zone":"z1","min_num_replicas":1)#";
-  const string& zone2 = R"#("cloud":"c1","region":"r1","zone":"z2","min_num_replicas":1)#";
-  const string& zone3 = R"#("cloud":"c1","region":"r1","zone":"z3","min_num_replicas":1)#";
-  const string format =
+  const std::string& zone1 = R"#("cloud":"c1","region":"r1","zone":"z1","min_num_replicas":1)#";
+  const std::string& zone2 = R"#("cloud":"c1","region":"r1","zone":"z2","min_num_replicas":1)#";
+  const std::string& zone3 = R"#("cloud":"c1","region":"r1","zone":"z3","min_num_replicas":1)#";
+  const std::string format =
       R"#(replica_placement={"num_replicas":3,"placement_blocks": [{$0},{$1},{$2}]})#";
 
   // Valid option with no preferred zones.
   {
     auto no_preferred_zone = strings::Substitute(format, zone1, zone2, zone3);
     PlacementInfoConverter::Placement result =
-        ASSERT_RESULT(PlacementInfoConverter::FromQLValue(vector<std::string>{no_preferred_zone}));
+        ASSERT_RESULT(PlacementInfoConverter::FromQLValue(std::vector<std::string>{no_preferred_zone}));
     for (auto& info : result.placement_infos) {
       ASSERT_EQ(info.leader_preference, 0);
     }
@@ -162,21 +162,21 @@ TEST(PlacementInfoTest, TestPreferredZoneJsonProcessing) {
   {
     auto negative_priority =
         strings::Substitute(format, zone1 + R"#(,"leader_preference":-1)#", zone2, zone3);
-    ASSERT_NOK(PlacementInfoConverter::FromQLValue(vector<std::string>{negative_priority}));
+    ASSERT_NOK(PlacementInfoConverter::FromQLValue(std::vector<std::string>{negative_priority}));
   }
 
   // Zero priority.
   {
     auto zero_priority =
         strings::Substitute(format, zone1 + R"#(,"leader_preference":0)#", zone2, zone3);
-    ASSERT_NOK(PlacementInfoConverter::FromQLValue(vector<std::string>{zero_priority}));
+    ASSERT_NOK(PlacementInfoConverter::FromQLValue(std::vector<std::string>{zero_priority}));
   }
 
   // No priority 1.
   {
     auto no_priority_1 =
         strings::Substitute(format, zone1 + R"#(,"leader_preference":2)#", zone2, zone3);
-    ASSERT_NOK(PlacementInfoConverter::FromQLValue(vector<std::string>{no_priority_1}));
+    ASSERT_NOK(PlacementInfoConverter::FromQLValue(std::vector<std::string>{no_priority_1}));
   }
 
   // Non contiguous priority.
@@ -186,7 +186,7 @@ TEST(PlacementInfoTest, TestPreferredZoneJsonProcessing) {
         zone1 + R"#(,"leader_preference":1)#",
         zone2 + R"#(,"leader_preference":1)#",
         zone3 + R"#(,"leader_preference":3)#");
-    ASSERT_NOK(PlacementInfoConverter::FromQLValue(vector<std::string>{non_cont_priority_1}));
+    ASSERT_NOK(PlacementInfoConverter::FromQLValue(std::vector<std::string>{non_cont_priority_1}));
   }
 
   // Non contiguous priority3.
@@ -197,7 +197,7 @@ TEST(PlacementInfoTest, TestPreferredZoneJsonProcessing) {
         zone2 + R"#(,"leader_preference":3)#",
         zone3 + R"#(,"leader_preference":3)#");
 
-    ASSERT_NOK(PlacementInfoConverter::FromQLValue(vector<std::string>{non_cont_priority_3}));
+    ASSERT_NOK(PlacementInfoConverter::FromQLValue(std::vector<std::string>{non_cont_priority_3}));
   }
 
   // Only 1 zone has priority
@@ -205,7 +205,7 @@ TEST(PlacementInfoTest, TestPreferredZoneJsonProcessing) {
     auto one_zone_priority =
         strings::Substitute(format, zone1 + R"#(,"leader_preference":1)#", zone2, zone3);
     auto result =
-        ASSERT_RESULT(PlacementInfoConverter::FromQLValue(vector<std::string>{one_zone_priority}));
+        ASSERT_RESULT(PlacementInfoConverter::FromQLValue(std::vector<std::string>{one_zone_priority}));
     for (auto& info : result.placement_infos) {
       ASSERT_EQ(info.leader_preference, info.zone == "z1" ? 1 : 0);
     }
@@ -219,7 +219,7 @@ TEST(PlacementInfoTest, TestPreferredZoneJsonProcessing) {
         zone2 + R"#(,"leader_preference":1)#",
         zone3);
     auto result =
-        ASSERT_RESULT(PlacementInfoConverter::FromQLValue(vector<std::string>{two_zone_priority}));
+        ASSERT_RESULT(PlacementInfoConverter::FromQLValue(std::vector<std::string>{two_zone_priority}));
     for (auto& info : result.placement_infos) {
       ASSERT_EQ(info.leader_preference, info.zone == "z3" ? 0 : 1);
     }
@@ -233,7 +233,7 @@ TEST(PlacementInfoTest, TestPreferredZoneJsonProcessing) {
         zone2 + R"#(,"leader_preference":2)#",
         zone3 + R"#(,"leader_preference":3)#");
     auto result =
-        ASSERT_RESULT(PlacementInfoConverter::FromQLValue(vector<std::string>{teo_zone_priority}));
+        ASSERT_RESULT(PlacementInfoConverter::FromQLValue(std::vector<std::string>{teo_zone_priority}));
     for (auto& info : result.placement_infos) {
       ASSERT_EQ(info.leader_preference, info.zone[1] - '0');
     }

@@ -126,7 +126,7 @@ Status TabletServer::SetUniverseKeyRegistry(
 }
 
 Status TabletServer::CreateCDCConsumer() {
-  auto is_leader_clbk = [this](const string& tablet_id){
+  auto is_leader_clbk = [this](const std::string& tablet_id){
     std::shared_ptr<tablet::TabletPeer> tablet_peer;
     if (!tablet_manager_->LookupTablet(tablet_id, &tablet_peer)) {
       return false;

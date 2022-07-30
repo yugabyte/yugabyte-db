@@ -168,7 +168,7 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
       const std::unordered_set<TableId>& indexes, const std::string& message);
   Status MarkIndexesAsDesired(
       const std::unordered_set<TableId>& index_ids, BackfillJobPB_State state,
-      const string message);
+      const std::string message);
 
   Status AlterTableStateToAbort();
   Status AlterTableStateToSuccess();
@@ -263,7 +263,7 @@ class BackfillTablet : public std::enable_shared_from_this<BackfillTablet> {
   void LaunchNextChunkOrDone();
   void Done(
       const Status& status,
-      const boost::optional<string>& backfilled_until,
+      const boost::optional<std::string>& backfilled_until,
       const uint64_t number_rows_processed,
       const std::unordered_set<TableId>& failed_indexes);
 
@@ -297,7 +297,7 @@ class BackfillTablet : public std::enable_shared_from_this<BackfillTablet> {
 
  private:
   Status UpdateBackfilledUntil(
-      const string& backfilled_until, const uint64_t number_rows_processed);
+      const std::string& backfilled_until, const uint64_t number_rows_processed);
 
   std::shared_ptr<BackfillTable> backfill_table_;
   const scoped_refptr<TabletInfo> tablet_;

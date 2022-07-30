@@ -148,7 +148,7 @@ class DocOperationTest : public DocDBTestBase {
     ColumnSchema column1_schema("c1", INT32, false, false);
     ColumnSchema column2_schema("c2", INT32, false, false);
     ColumnSchema column3_schema("c3", INT32, false, false);
-    const vector<ColumnSchema> columns({hash_column_schema, column1_schema, column2_schema,
+    const std::vector<ColumnSchema> columns({hash_column_schema, column1_schema, column2_schema,
                                            column3_schema});
     Schema schema(columns, CreateColumnIds(columns.size()), 1);
     return schema;
@@ -163,7 +163,7 @@ class DocOperationTest : public DocDBTestBase {
   }
 
   void AddColumnValues(const Schema& schema,
-                       const vector<int32_t>& column_values,
+                       const std::vector<int32_t>& column_values,
                        yb::QLWriteRequestPB* ql_writereq_pb) {
     ASSERT_EQ(schema.num_columns() - schema.num_key_columns(), column_values.size());
     for (size_t i = 0; i < column_values.size(); i++) {
@@ -254,7 +254,7 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ <max> w: 2 }]) -> 4
   }
 
   yb::QLWriteRequestPB WriteQLRowReq(QLWriteRequestPB_QLStmtType stmt_type, const Schema& schema,
-                  const vector<int32_t>& column_values, const HybridTime& hybrid_time,
+                  const std::vector<int32_t>& column_values, const HybridTime& hybrid_time,
                   const TransactionOperationContext& txn_op_content =
                       kNonTransactionalOperationContext) {
     yb::QLWriteRequestPB ql_writereq_pb;
@@ -276,7 +276,7 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ <max> w: 2 }]) -> 4
   }
 
   void WriteQLRow(QLWriteRequestPB_QLStmtType stmt_type, const Schema& schema,
-                  const vector<int32_t>& column_values, int64_t ttl, const HybridTime& hybrid_time,
+                  const std::vector<int32_t>& column_values, int64_t ttl, const HybridTime& hybrid_time,
                   const TransactionOperationContext& txn_op_content =
                       kNonTransactionalOperationContext) {
     yb::QLWriteRequestPB ql_writereq_pb = WriteQLRowReq(
@@ -288,7 +288,7 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ <max> w: 2 }]) -> 4
   }
 
   void WriteQLRow(QLWriteRequestPB_QLStmtType stmt_type, const Schema& schema,
-                  const vector<int32_t>& column_values, const HybridTime& hybrid_time,
+                  const std::vector<int32_t>& column_values, const HybridTime& hybrid_time,
                   const TransactionOperationContext& txn_op_content =
                       kNonTransactionalOperationContext) {
     yb::QLWriteRequestPB ql_writereq_pb = WriteQLRowReq(
@@ -304,7 +304,7 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ <max> w: 2 }]) -> 4
     ql_read_req.set_hash_code(kFixedHashCode);
     ql_read_req.set_max_hash_code(kFixedHashCode);
 
-    QLRowBlock row_block(schema, vector<ColumnId> ({ColumnId(0), ColumnId(1), ColumnId(2),
+    QLRowBlock row_block(schema, std::vector<ColumnId> ({ColumnId(0), ColumnId(1), ColumnId(2),
                                                         ColumnId(3)}));
     const Schema& projection = row_block.schema();
     QLRSRowDescPB *rsrow_desc_pb = ql_read_req.mutable_rsrow_desc();
@@ -432,7 +432,7 @@ TEST_F(DocOperationTest, TestQLReadWriteSimple) {
 
   // Define the schema.
   Schema schema = CreateSchema();
-  WriteQLRow(QLWriteRequestPB_QLStmtType_QL_STMT_INSERT, schema, vector<int>({1, 1, 2, 3}),
+  WriteQLRow(QLWriteRequestPB_QLStmtType_QL_STMT_INSERT, schema, std::vector<int>({1, 1, 2, 3}),
            1000, HybridClock::HybridTimeFromMicrosecondsAndLogicalValue(1000, 0));
 
   AssertDocDbDebugDumpStrEq(R"#(
@@ -471,7 +471,7 @@ TEST_F(DocOperationTest, TestQLRangeDeleteWithStaticColumnAvoidsFullPartitionKey
     WriteQLRow(
         QLWriteRequestPB_QLStmtType_QL_STMT_INSERT,
         schema,
-        vector<int>({1, row_num, 0, row_num}),
+        std::vector<int>({1, row_num, 0, row_num}),
         HybridClock::HybridTimeFromMicrosecondsAndLogicalValue(1000, 0));
   }
   auto get_num_rocksdb_iter_moves = [&]() {
@@ -633,7 +633,7 @@ SubDocKey(DocKey(0x0000, [101], []), [ColumnId(2); HT{ physical: 0 logical: 2000
 SubDocKey(DocKey(0x0000, [101], []), [ColumnId(3); HT{ physical: 0 logical: 3000 }]) -> DEL
       )#");
 
-  vector<KeyEntryValue> hashed_components_system({KeyEntryValue::Int32(101)});
+  std::vector<KeyEntryValue> hashed_components_system({KeyEntryValue::Int32(101)});
   DocQLScanSpec ql_scan_spec_system(schema, kFixedHashCode, kFixedHashCode,
       hashed_components_system, /* req */ nullptr,  /* if_req */ nullptr,
       rocksdb::kDefaultQueryId);
@@ -1033,7 +1033,7 @@ TEST_F(DocOperationTest, TestQLCompactions) {
 
   // Define the schema.
   Schema schema = CreateSchema();
-  WriteQLRow(QLWriteRequestPB_QLStmtType_QL_STMT_INSERT, schema, vector<int>({1, 1, 2, 3}),
+  WriteQLRow(QLWriteRequestPB_QLStmtType_QL_STMT_INSERT, schema, std::vector<int>({1, 1, 2, 3}),
       1000, t0);
 
   AssertDocDbDebugDumpStrEq(R"#(
@@ -1050,7 +1050,7 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ physical: 1000 w: 3 }]) -> 
       )#");
 
   // Add a row with a TTL.
-  WriteQLRow(QLWriteRequestPB_QLStmtType_QL_STMT_INSERT, schema, vector<int>({1, 1, 2, 3}),
+  WriteQLRow(QLWriteRequestPB_QLStmtType_QL_STMT_INSERT, schema, std::vector<int>({1, 1, 2, 3}),
       1000, t0);
   AssertDocDbDebugDumpStrEq(R"#(
 SubDocKey(DocKey(0x0000, [1], []), [SystemColumnId(0); HT{ physical: 1000 }]) -> null; ttl: 1.000s

@@ -135,7 +135,7 @@ TEST_F(TestRaftGroupMetadata, TestDeleteTabletDataClearsDisk) {
   ASSERT_OK(writer_->Write(&req));
   ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
 
-  const string snapshotId = "0123456789ABCDEF0123456789ABCDEF";
+  const std::string snapshotId = "0123456789ABCDEF0123456789ABCDEF";
   tserver::TabletSnapshotOpRequestPB request;
   request.set_snapshot_id(snapshotId);
   tablet::SnapshotOperation operation(tablet.get(), &request);

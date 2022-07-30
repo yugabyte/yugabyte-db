@@ -27,7 +27,7 @@ class RemoteBootstrapSnapshotsComponent : public RemoteBootstrapComponent {
   RemoteBootstrapSnapshotsComponent(RemoteBootstrapFileDownloader* downloader,
                                     tablet::RaftGroupReplicaSuperBlockPB* new_superblock);
 
-  Status CreateDirectories(const string& db_dir, FsManager* fs) override;
+  Status CreateDirectories(const std::string& db_dir, FsManager* fs) override;
   Status Download() override;
 
  private:

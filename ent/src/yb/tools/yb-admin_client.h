@@ -67,7 +67,7 @@ class ClusterAdminClient : public yb::tools::ClusterAdminClient {
                                         const std::vector<client::YBTableName>& tables);
   Status ListReplicaTypeCounts(const client::YBTableName& table_name);
 
-  Status SetPreferredZones(const std::vector<string>& preferred_zones);
+  Status SetPreferredZones(const std::vector<std::string>& preferred_zones);
 
   Status RotateUniverseKey(const std::string& key_path);
 
@@ -121,7 +121,7 @@ class ClusterAdminClient : public yb::tools::ClusterAdminClient {
   Status RenameUniverseReplication(const std::string& old_universe_name,
                                            const std::string& new_universe_name);
 
-  Status WaitForSetupUniverseReplicationToFinish(const string& producer_uuid);
+  Status WaitForSetupUniverseReplicationToFinish(const std::string& producer_uuid);
 
   Status SetUniverseReplicationEnabled(const std::string& producer_id,
                                                bool is_enabled);
@@ -129,7 +129,7 @@ class ClusterAdminClient : public yb::tools::ClusterAdminClient {
   Status BootstrapProducer(const std::vector<TableId>& table_id);
 
   Status WaitForReplicationDrain(const std::vector<CDCStreamId>& stream_ids,
-                                 const string& target_time);
+                                 const std::string& target_time);
 
  private:
   Result<TxnSnapshotId> SuitableSnapshotId(

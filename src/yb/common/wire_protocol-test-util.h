@@ -95,7 +95,7 @@ QLWriteRequestPB* AddTestRow(int32_t key,
 template <class Type, class WriteRequestPB>
 void AddTestRow(int32_t key,
                 int32_t int_val,
-                const string& string_val,
+                const std::string& string_val,
                 Type type,
                 WriteRequestPB* req) {
   auto wb = AddTestRow(key, int_val, type, req);
@@ -114,7 +114,7 @@ void AddTestRowInsert(int32_t key,
 template <class WriteRequestPB>
 void AddTestRowInsert(int32_t key,
                       int32_t int_val,
-                      const string& string_val,
+                      const std::string& string_val,
                       WriteRequestPB* req) {
   AddTestRow(key, int_val, string_val, QLWriteRequestPB::QL_STMT_INSERT, req);
 }
@@ -122,14 +122,14 @@ void AddTestRowInsert(int32_t key,
 template <class WriteRequestPB>
 void AddTestRowUpdate(int32_t key,
                       int32_t int_val,
-                      const string& string_val,
+                      const std::string& string_val,
                       WriteRequestPB* req) {
   AddTestRow(key, int_val, string_val, QLWriteRequestPB::QL_STMT_UPDATE, req);
 }
 
 void AddKVToPB(int32_t key_val,
                int32_t int_val,
-               const string& string_val,
+               const std::string& string_val,
                docdb::KeyValueWriteBatchPB* write_batch);
 
 } // namespace yb

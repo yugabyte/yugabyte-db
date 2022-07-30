@@ -303,7 +303,7 @@ Status TabletSnapshots::RestoreCheckpoint(
 
   std::lock_guard<std::mutex> lock(create_checkpoint_lock());
 
-  const string db_dir = regular_db().GetName();
+  const std::string db_dir = regular_db().GetName();
   const std::string intents_db_dir = has_intents_db() ? intents_db().GetName() : std::string();
 
   if (dir.empty()) {
@@ -491,7 +491,7 @@ Status TabletSnapshots::CreateCheckpoint(
   return Status::OK();
 }
 
-Status TabletSnapshots::CreateDirectories(const string& rocksdb_dir, FsManager* fs) {
+Status TabletSnapshots::CreateDirectories(const std::string& rocksdb_dir, FsManager* fs) {
   const auto top_snapshots_dir = SnapshotsDirName(rocksdb_dir);
   RETURN_NOT_OK_PREPEND(fs->CreateDirIfMissingAndSync(top_snapshots_dir),
                         Format("Unable to create snapshots directory $0", top_snapshots_dir));

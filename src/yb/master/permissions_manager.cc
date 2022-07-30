@@ -462,7 +462,7 @@ Status PermissionsManager::DeleteRole(
 
     // Create a new list that contains all the original roles in member_of with the exception of
     // the role we are deleting.
-    vector<string> member_of_new_list;
+    std::vector<std::string> member_of_new_list;
     for (const auto& member_of : metadata->member_of()) {
       if (member_of != req->name()) {
         member_of_new_list.push_back(member_of);
@@ -522,7 +522,7 @@ Status PermissionsManager::DeleteRole(
 
   // Remove all the permissions granted on the deleted role to any role. See DeleteTable() comment
   // for for more details.
-  string canonical_resource = get_canonical_role(req->name());
+  std::string canonical_resource = get_canonical_role(req->name());
   RETURN_NOT_OK(RemoveAllPermissionsForResourceUnlocked(canonical_resource, resp));
 
   LOG(INFO) << "Successfully deleted role " << role->ToString()
@@ -588,7 +588,7 @@ Status PermissionsManager::GrantRevokeRole(
       // directly or through inheritance, we will return an error.
       if (req->revoke()) {
         bool direct_member = false;
-        vector<string> member_of_new_list;
+        std::vector<std::string> member_of_new_list;
         for (const auto& member_of : metadata->member_of()) {
           if (member_of == req->granted_role()) {
             direct_member = true;
@@ -937,8 +937,8 @@ void PermissionsManager::GetAllRoles(std::vector<scoped_refptr<RoleInfo>>* roles
   }
 }
 
-vector<string> PermissionsManager::DirectMemberOf(const RoleName& role) {
-  vector<string> roles;
+std::vector<std::string> PermissionsManager::DirectMemberOf(const RoleName& role) {
+  std::vector<std::string> roles;
   for (const auto& e : roles_map_) {
     auto l = e.second->LockForRead();
     const auto& pb = l->pb;
@@ -960,7 +960,7 @@ void PermissionsManager::BuildRecursiveRoles() {
 }
 
 void PermissionsManager::TraverseRole(
-    const string& role_name, std::unordered_set<RoleName>* granted_roles) {
+    const std::string& role_name, std::unordered_set<RoleName>* granted_roles) {
   auto iter = recursive_granted_roles_.find(role_name);
   // This node has already been visited. So just add all the granted (directly or through
   // inheritance) roles to granted_roles.

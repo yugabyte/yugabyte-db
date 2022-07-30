@@ -28,7 +28,7 @@ namespace master {
 namespace enterprise {
 
 Result<std::string> DecryptUniverseKeyRegistry(const Slice& s, const Slice& universe_key) {
-  string output;
+  std::string output;
   output.resize(s.size());
   auto encryption_params = VERIFY_RESULT(encryption::EncryptionParams::FromSlice(universe_key));
   auto stream = VERIFY_RESULT(
@@ -56,7 +56,7 @@ Status RotateUniverseKey(const Slice& old_universe_key,
   }
 
   Slice registry_decrypted(encryption_info->universe_key_registry_encoded());
-  string decrypted_registry;
+  std::string decrypted_registry;
   if (prev_enabled) {
     // The registry is encrypted, decrypt it and set registry_encoded_decrypted to the newly
     // decrypted registry.
@@ -72,7 +72,7 @@ Status RotateUniverseKey(const Slice& old_universe_key,
   universe_key_registry.set_encryption_enabled(enable);
   faststring encoded;
   Slice registry_for_flush;
-  string encrypted;
+  std::string encrypted;
   if (!enable) {
     RETURN_NOT_OK(pb_util::SerializeToString(universe_key_registry, &encoded));
     registry_for_flush = Slice(encoded);

@@ -101,7 +101,7 @@ Status InitialSysCatalogSnapshotWriter::WriteSnapshot(
         initdb_metadata_changes_[i]);
   }
 
-  const string metadata_changes_file = JoinPathSegments(
+  const std::string metadata_changes_file = JoinPathSegments(
       dest_path,
       kSysCatalogSnapshotTabletMetadataChangesFile);
   RETURN_NOT_OK(WritePBContainerToPath(
@@ -179,7 +179,7 @@ void SetDefaultInitialSysCatalogSnapshotFlags() {
         kStaticDataParentDir, kDefaultInitialSysCatalogSnapshotDir,
         kSysCatalogSnapshotRocksDbSubDir);
     VLOG(1) << "Searching for directory containing subdirectory " << search_for_dir;
-    const string candidate_dir =
+    const std::string candidate_dir =
         JoinPathSegments(
             env_util::GetRootDir(search_for_dir),
             kStaticDataParentDir,
@@ -188,7 +188,7 @@ void SetDefaultInitialSysCatalogSnapshotFlags() {
 
     // The metadata changes file is written last, so its presence indicates that the snapshot
     // was successful.
-    const string candidate_metadata_changes_path =
+    const std::string candidate_metadata_changes_path =
         JoinPathSegments(candidate_dir, kSysCatalogSnapshotTabletMetadataChangesFile);
     VLOG(1) << "candidate_metadata_changes_path=" << candidate_metadata_changes_path;
 

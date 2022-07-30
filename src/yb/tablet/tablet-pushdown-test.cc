@@ -113,7 +113,7 @@ class TabletPushdownTest : public YBTabletTest {
       results.push_back(row.ToString());
     }
     std::sort(results.begin(), results.end());
-    for (const string &str : results) {
+    for (const std::string &str : results) {
       LOG(INFO) << str;
     }
     ASSERT_EQ(11, results.size());

@@ -633,7 +633,7 @@ class MasterSnapshotCoordinator::Impl {
   }
 
   void SendPendingRestoreRpcs(
-      const vector<RestorationData>& postponed_restores, int64_t term) {
+      const std::vector<RestorationData>& postponed_restores, int64_t term) {
     for (const auto& restoration : postponed_restores) {
       LOG(INFO) << "PITR: Issuing pending tserver RPCs for restoration "
                 << restoration.restoration_id;
@@ -683,7 +683,7 @@ class MasterSnapshotCoordinator::Impl {
     }
 
     // Issue pending restoration rpcs.
-    vector<RestorationData> postponed_restores;
+    std::vector<RestorationData> postponed_restores;
     {
       std::lock_guard<decltype(mutex_)> lock(mutex_);
       // TODO(pitr) cancel restorations.

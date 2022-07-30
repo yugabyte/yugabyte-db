@@ -34,8 +34,8 @@ std::pair<PartitionSchema, Partition> CreateDefaultPartition(const Schema& schem
   CHECK_OK(PartitionSchema::FromPB(PartitionSchemaPB(), schema, &partition_schema));
 
   // Create the tablet partitions.
-  vector<Partition> partitions;
-  CHECK_OK(partition_schema.CreatePartitions(vector<YBPartialRow>(), schema, &partitions));
+  std::vector<Partition> partitions;
+  CHECK_OK(partition_schema.CreatePartitions(std::vector<YBPartialRow>(), schema, &partitions));
   CHECK_EQ(1, partitions.size());
   return std::make_pair(partition_schema, partitions[0]);
 }

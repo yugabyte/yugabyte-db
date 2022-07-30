@@ -96,7 +96,7 @@ ScopedLeaderSharedLock::ScopedLeaderSharedLock(
     catalog_loaded = catalog_->is_catalog_loaded_;
   }
 
-  string uuid = catalog_->master_->fs_manager()->uuid();
+  std::string uuid = catalog_->master_->fs_manager()->uuid();
   if (PREDICT_FALSE(catalog_->master_->IsShellMode())) {
     // Consensus and other internal fields should not be checked when in shell mode as they may be
     // in transition.

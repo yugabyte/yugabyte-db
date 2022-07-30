@@ -79,7 +79,7 @@ struct StringKeyTestSetup {
 
   static void FormatKey(char *buf, size_t buf_size, int64_t key_idx);
 
-  string FormatDebugRow(int64_t key_idx, int32_t val, bool updated);
+  std::string FormatDebugRow(int64_t key_idx, int32_t val, bool updated);
 
   // Slices can be arbitrarily large
   // but in practice tests won't overflow a uint64_t
@@ -92,7 +92,7 @@ struct CompositeKeyTestSetup {
 
   static void FormatKey(char *buf, size_t buf_size, int64_t key_idx);
 
-  string FormatDebugRow(int64_t key_idx, int32_t val, bool updated);
+  std::string FormatDebugRow(int64_t key_idx, int32_t val, bool updated);
 
   // Slices can be arbitrarily large
   // but in practice tests won't overflow a uint64_t
@@ -124,7 +124,7 @@ struct IntKeyTestSetup {
     QLAddInt32ColumnValue(req, kFirstColumnId + 2, val);
   }
 
-  string FormatDebugRow(int64_t key_idx, int32_t val, bool updated) {
+  std::string FormatDebugRow(int64_t key_idx, int32_t val, bool updated) {
     CHECK(false) << "Unsupported type";
     return "";
   }
@@ -183,28 +183,28 @@ void IntKeyTestSetup<INT64>::BuildRowKeyFromExistingRow(YBPartialRow *row,
 }
 
 template<>
-string IntKeyTestSetup<INT8>::FormatDebugRow(int64_t key_idx, int32_t val, bool updated) {
+std::string IntKeyTestSetup<INT8>::FormatDebugRow(int64_t key_idx, int32_t val, bool updated) {
   return strings::Substitute(
     "{ int8_value: $0 int32_value: $1 int32_value: $2 }",
     (key_idx % 2 == 0) ? -key_idx : key_idx, key_idx, val);
 }
 
 template<>
-string IntKeyTestSetup<INT16>::FormatDebugRow(int64_t key_idx, int32_t val, bool updated) {
+std::string IntKeyTestSetup<INT16>::FormatDebugRow(int64_t key_idx, int32_t val, bool updated) {
   return strings::Substitute(
     "{ int16_value: $0 int32_value: $1 int32_value: $2 }",
     (key_idx % 2 == 0) ? -key_idx : key_idx, key_idx, val);
 }
 
 template<>
-string IntKeyTestSetup<INT32>::FormatDebugRow(int64_t key_idx, int32_t val, bool updated) {
+std::string IntKeyTestSetup<INT32>::FormatDebugRow(int64_t key_idx, int32_t val, bool updated) {
   return strings::Substitute(
     "{ int32_value: $0 int32_value: $1 int32_value: $2 }",
     (key_idx % 2 == 0) ? -key_idx : key_idx, key_idx, val);
 }
 
 template<>
-string IntKeyTestSetup<INT64>::FormatDebugRow(int64_t key_idx, int32_t val, bool updated) {
+std::string IntKeyTestSetup<INT64>::FormatDebugRow(int64_t key_idx, int32_t val, bool updated) {
   return strings::Substitute(
     "{ int64_value: $0 int32_value: $1 int32_value: $2 }",
     (key_idx % 2 == 0) ? -key_idx : key_idx, key_idx, val);
@@ -237,7 +237,7 @@ struct NullableValueTestSetup {
     }
   }
 
-  string FormatDebugRow(int64_t key_idx, int64_t val, bool updated) {
+  std::string FormatDebugRow(int64_t key_idx, int64_t val, bool updated) {
     if (!updated && ShouldInsertAsNull(key_idx)) {
       return strings::Substitute(
       "(int32 key=$0, int32 key_idx=$1, int32 val=NULL)",
@@ -294,7 +294,7 @@ class TabletTestPreBase : public YBTabletTest {
   // Iterate through the full table, stringifying the resulting rows
   // into the given vector. This is only useful in tests which insert
   // a very small number of rows.
-  Status IterateToStringList(vector<string> *out);
+  Status IterateToStringList(std::vector<std::string> *out);
 
   // Because some types are small we need to
   // make sure that we don't overflow the type on inserts

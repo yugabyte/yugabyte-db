@@ -57,7 +57,7 @@ DECLARE_bool(durable_wal_write);
 namespace yb {
 namespace master {
 
-MiniMaster::MiniMaster(Env* env, string fs_root, uint16_t rpc_port, uint16_t web_port, int index)
+MiniMaster::MiniMaster(Env* env, std::string fs_root, uint16_t rpc_port, uint16_t web_port, int index)
     : running_(false),
       env_(env),
       fs_root_(std::move(fs_root)),
@@ -83,7 +83,7 @@ Status MiniMaster::Start(bool TEST_simulate_fs_create_failure) {
 }
 
 
-Status MiniMaster::StartDistributedMaster(const vector<uint16_t>& peer_ports) {
+Status MiniMaster::StartDistributedMaster(const std::vector<uint16_t>& peer_ports) {
   CHECK(!running_);
   return StartDistributedMasterOnPorts(rpc_port_, web_port_, peer_ports);
 }
@@ -182,7 +182,7 @@ Status MiniMaster::StartOnPorts(uint16_t rpc_port, uint16_t web_port,
 }
 
 Status MiniMaster::StartDistributedMasterOnPorts(uint16_t rpc_port, uint16_t web_port,
-                                                 const vector<uint16_t>& peer_ports) {
+                                                 const std::vector<uint16_t>& peer_ports) {
   CHECK(!running_);
   CHECK(!master_);
 

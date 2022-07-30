@@ -75,8 +75,8 @@ Status WaitForRunningTabletCount(MiniMaster* mini_master,
 void CreateTabletForTesting(MiniMaster* mini_master,
                             const client::YBTableName& table_name,
                             const Schema& schema,
-                            string* tablet_id,
-                            string* table_id) {
+                            std::string* tablet_id,
+                            std::string* table_id) {
   {
     CreateNamespaceRequestPB req;
     CreateNamespaceResponsePB resp;

@@ -106,7 +106,7 @@ const char* DatabaseTypeName(YQLDatabase db) {
   return kDBTypeNameUnknown;
 }
 
-YQLDatabase DatabaseTypeByName(const string& db_type_name) {
+YQLDatabase DatabaseTypeByName(const std::string& db_type_name) {
   static const std::array<pair<const char*, YQLDatabase>, 3> db_types{
       make_pair(kDBTypeNameCql, YQLDatabase::YQL_DATABASE_CQL),
       make_pair(kDBTypeNamePgsql, YQLDatabase::YQL_DATABASE_PGSQL),

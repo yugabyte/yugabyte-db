@@ -73,7 +73,7 @@ Status SnapshotOperation::DoCheckOperationRequirements() {
     return Status::OK();
   }
 
-  const string snapshot_dir = VERIFY_RESULT(GetSnapshotDir());
+  const std::string snapshot_dir = VERIFY_RESULT(GetSnapshotDir());
   if (snapshot_dir.empty()) {
     return Status::OK();
   }

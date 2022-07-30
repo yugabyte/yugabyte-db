@@ -46,7 +46,7 @@ class LogAnchorRegistryTest : public YBTest {
 };
 
 TEST_F(LogAnchorRegistryTest, TestUpdateRegistration) {
-  const string test_name = CURRENT_TEST_NAME();
+  const std::string test_name = CURRENT_TEST_NAME();
   scoped_refptr<LogAnchorRegistry> reg(new LogAnchorRegistry());
 
   LogAnchor anchor;
@@ -62,7 +62,7 @@ TEST_F(LogAnchorRegistryTest, TestUpdateRegistration) {
 }
 
 TEST_F(LogAnchorRegistryTest, TestDuplicateInserts) {
-  const string test_name = CURRENT_TEST_NAME();
+  const std::string test_name = CURRENT_TEST_NAME();
   scoped_refptr<LogAnchorRegistry> reg(new LogAnchorRegistry());
 
   // Register a bunch of anchors at log index 1.
@@ -96,7 +96,7 @@ TEST_F(LogAnchorRegistryTest, TestDuplicateInserts) {
 TEST_F(LogAnchorRegistryTest, TestOrderedEarliestOpId) {
   scoped_refptr<LogAnchorRegistry> reg(new LogAnchorRegistry());
   const int kNumAnchors = 4;
-  const string test_name = CURRENT_TEST_NAME();
+  const std::string test_name = CURRENT_TEST_NAME();
 
   LogAnchor anchors[kNumAnchors];
 

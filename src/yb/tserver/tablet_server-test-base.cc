@@ -157,7 +157,7 @@ void TabletServerTestBase::UpdateTestRowRemote(int tid,
   WriteResponsePB resp;
   rpc::RpcController controller;
   controller.set_timeout(MonoDelta::FromSeconds(FLAGS_rpc_timeout));
-  string new_string_val(strings::Substitute("mutated$0", row_idx));
+  std::string new_string_val(strings::Substitute("mutated$0", row_idx));
 
   AddTestRowUpdate(row_idx, new_val, new_string_val, &req);
   ASSERT_OK(proxy_->Write(req, &resp, &controller));
@@ -194,8 +194,8 @@ void TabletServerTestBase::InsertTestRowsRemote(int tid,
                                                 int32_t count,
                                                 int32_t num_batches,
                                                 TabletServerServiceProxy* proxy,
-                                                string tablet_id,
-                                                vector<uint64_t>* write_hybrid_times_collector,
+                                                std::string tablet_id,
+                                                std::vector<uint64_t>* write_hybrid_times_collector,
                                                 TimeSeries *ts,
                                                 bool string_field_defined) {
   const int kNumRetries = 10;
@@ -266,7 +266,7 @@ void TabletServerTestBase::InsertTestRowsRemote(int tid,
 void TabletServerTestBase::DeleteTestRowsRemote(int32_t first_row,
                                                 int32_t count,
                                                 TabletServerServiceProxy* proxy,
-                                                string tablet_id) {
+                                                std::string tablet_id) {
   if (!proxy) {
     proxy = proxy_.get();
   }
@@ -335,7 +335,7 @@ Status TabletServerTestBase::ShutdownAndRebuildTablet() {
 }
 
 // Verifies that a set of expected rows (key, value) is present in the tablet.
-void TabletServerTestBase::VerifyRows(const Schema& schema, const vector<KeyValue>& expected) {
+void TabletServerTestBase::VerifyRows(const Schema& schema, const std::vector<KeyValue>& expected) {
   auto iter = tablet_peer_->tablet()->NewRowIterator(schema);
   ASSERT_OK(iter);
 

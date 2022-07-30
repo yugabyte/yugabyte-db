@@ -85,7 +85,7 @@ class LogTest : public LogTestBase {
  public:
   static constexpr TableType kTableType = TableType::YQL_TABLE_TYPE;
 
-  void CreateAndRegisterNewAnchor(int64_t log_index, vector<LogAnchor*>* anchors) {
+  void CreateAndRegisterNewAnchor(int64_t log_index, std::vector<LogAnchor*>* anchors) {
     anchors->push_back(new LogAnchor());
     log_anchor_registry_->Register(log_index, CURRENT_TEST_NAME(), anchors->back());
   }
@@ -94,7 +94,7 @@ class LogTest : public LogTestBase {
   // Anchor each segment on the first OpId of each log segment,
   // and update op_id to point to the next valid OpId.
   Status AppendMultiSegmentSequence(
-      int num_total_segments, int num_ops_per_segment, OpIdPB* op_id, vector<LogAnchor*>* anchors) {
+      int num_total_segments, int num_ops_per_segment, OpIdPB* op_id, std::vector<LogAnchor*>* anchors) {
     CHECK(op_id->IsInitialized());
     for (int i = 0; i < num_total_segments - 1; i++) {
       if (anchors) {
@@ -114,7 +114,7 @@ class LogTest : public LogTestBase {
   Status AppendNewEmptySegmentToReader(int sequence_number,
                                        int first_repl_index,
                                        LogReader* reader) {
-    string fqp = GetTestPath(strings::Substitute("wal-00000000$0", sequence_number));
+    std::string fqp = GetTestPath(strings::Substitute("wal-00000000$0", sequence_number));
     std::unique_ptr<WritableFile> w_log_seg;
     RETURN_NOT_OK(fs_manager_->env()->NewWritableFile(fqp, &w_log_seg));
     std::unique_ptr<RandomAccessFile> r_log_seg;
@@ -141,9 +141,9 @@ class LogTest : public LogTestBase {
   }
 
   void GenerateTestSequence(size_t seq_len,
-                            vector<TestLogSequenceElem>* ops,
-                            vector<int64_t>* terms_by_index);
-  void AppendTestSequence(const vector<TestLogSequenceElem>& seq);
+                            std::vector<TestLogSequenceElem>* ops,
+                            std::vector<int64_t>* terms_by_index);
+  void AppendTestSequence(const std::vector<TestLogSequenceElem>& seq);
 
   // Where to corrupt the log entry.
   enum CorruptionPosition {
@@ -309,7 +309,7 @@ TEST_F(LogTest, TestFsyncIntervalPhysical) {
   ASSERT_EQ(segments.size(), 1);
   const ReadableLogSegmentPtr& first_segment = ASSERT_RESULT(segments.front());
   int64_t orig_size = first_segment->file_size();
-  string fileName = first_segment->readable_file()->filename();
+  std::string fileName = first_segment->readable_file()->filename();
 
   ASSERT_OK(AppendNoOp(&opid));
   SleepFor(MonoDelta::FromMilliseconds(interval + 1));
@@ -653,7 +653,7 @@ TEST_F(LogTest, TestWriteAndReadToAndFromInProgressSegment) {
 TEST_F(LogTest, TestGCWithLogRunning) {
   BuildLog();
 
-  vector<LogAnchor*> anchors;
+  std::vector<LogAnchor*> anchors;
   ElementDeleter deleter(&anchors);
 
   SegmentSequence segments;
@@ -800,7 +800,7 @@ TEST_F(LogTest, TestLogReopenAndGC) {
 
   SegmentSequence segments;
 
-  vector<LogAnchor*> anchors;
+  std::vector<LogAnchor*> anchors;
   ElementDeleter deleter(&anchors);
 
   const int kNumTotalSegments = 3;
@@ -1017,8 +1017,8 @@ std::ostream& operator<<(std::ostream& os, const TestLogSequenceElem& elem) {
 // to the Log implementation that prevent such aberrations, in which case we'd need to
 // modify this.
 void LogTest::GenerateTestSequence(size_t seq_len,
-                                   vector<TestLogSequenceElem>* ops,
-                                   vector<int64_t>* terms_by_index) {
+                                   std::vector<TestLogSequenceElem>* ops,
+                                   std::vector<int64_t>* terms_by_index) {
   auto rng = &ThreadLocalRandom();
   terms_by_index->assign(seq_len + 1, -1);
   int64_t committed_index = 0;
@@ -1056,7 +1056,7 @@ void LogTest::GenerateTestSequence(size_t seq_len,
   terms_by_index->resize(max_repl_index + 1);
 }
 
-void LogTest::AppendTestSequence(const vector<TestLogSequenceElem>& seq) {
+void LogTest::AppendTestSequence(const std::vector<TestLogSequenceElem>& seq) {
   for (const TestLogSequenceElem& e : seq) {
     VLOG(1) << "Appending: " << e;
     switch (e.type) {
@@ -1084,8 +1084,8 @@ void LogTest::AppendTestSequence(const vector<TestLogSequenceElem>& seq) {
 TEST_F(LogTest, TestReadLogWithReplacedReplicates) {
   const int kSequenceLength = AllowSlowTests() ? 1000 : 50;
 
-  vector<int64_t> terms_by_index;
-  vector<TestLogSequenceElem> seq;
+  std::vector<int64_t> terms_by_index;
+  std::vector<TestLogSequenceElem> seq;
   GenerateTestSequence(kSequenceLength, &seq, &terms_by_index);
   LOG(INFO) << "test sequence: " << seq;
   const int64_t max_repl_index = terms_by_index.size() - 1;

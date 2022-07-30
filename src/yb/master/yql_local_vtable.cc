@@ -61,7 +61,7 @@ LocalVTable::LocalVTable(const TableName& table_name,
 
 Result<std::shared_ptr<QLRowBlock>> LocalVTable::RetrieveData(
     const QLReadRequestPB& request) const {
-  vector<std::shared_ptr<TSDescriptor> > descs;
+  std::vector<std::shared_ptr<TSDescriptor> > descs;
   GetSortedLiveDescriptors(&descs);
   auto vtable = std::make_shared<QLRowBlock>(schema());
 

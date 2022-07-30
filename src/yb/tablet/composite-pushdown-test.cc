@@ -114,14 +114,14 @@ class CompositePushdownTest : public YBTabletTest {
   // the comparison was on the whole string vs the last portion of the
   // string ("2001/02/01" vs. "2001/12/01")
   struct SuffixComparator {
-    bool operator()(const string &a, const string &b) {
-      string s_a = a.substr(a.find("\", string:"));
-      string s_b = b.substr(b.find("\", string:"));
+    bool operator()(const std::string &a, const std::string &b) {
+      std::string s_a = a.substr(a.find("\", string:"));
+      std::string s_b = b.substr(b.find("\", string:"));
       return s_a < s_b;
     }
   };
 
-  void ScanTablet(QLReadRequestPB* req, vector<string> *results) {
+  void ScanTablet(QLReadRequestPB* req, std::vector<std::string> *results) {
     ReadHybridTime read_time = ReadHybridTime::SingleTime(ASSERT_RESULT(tablet()->SafeTime()));
     QLReadRequestResult result;
     TransactionMetadataPB transaction;
@@ -137,7 +137,7 @@ class CompositePushdownTest : public YBTabletTest {
       results->push_back(row.ToString());
     }
     std::sort(results->begin(), results->end(), SuffixComparator());
-    for (const string &str : *results) {
+    for (const std::string &str : *results) {
       VLOG(1) << str;
     }
   }
@@ -160,7 +160,7 @@ TEST_F(CompositePushdownTest, TestPushDownExactEquality) {
   QLAddInt8Condition(cond, kFirstColumnId + 2, QL_OP_EQUAL, day);
   QLAddStringCondition(cond, kFirstColumnId + 3, QL_OP_EQUAL, kTestHostnames[0]);
 
-  vector<string> results;
+  std::vector<std::string> results;
   ASSERT_NO_FATALS(ScanTablet(&req, &results));
   ASSERT_EQ(1, results.size());
   EXPECT_EQ("{ int16:2001, int8:9, int8:7, string:\"foo\", string:\"2001/09/07-foo\" }",
@@ -187,7 +187,7 @@ TEST_F(CompositePushdownTest, TestPushDownStringInequality) {
   QLAddInt8Condition(cond, kFirstColumnId + 2, QL_OP_EQUAL, day);
   QLAddStringCondition(cond, kFirstColumnId + 3, QL_OP_LESS_THAN_EQUAL, kTestHostnames[0]);
 
-  vector<string> results;
+  std::vector<std::string> results;
   ASSERT_NO_FATALS(ScanTablet(&req, &results));
   ASSERT_EQ(2, results.size());
   EXPECT_EQ("{ int16:2001, int8:9, int8:7, string:\"baz\", string:\"2001/09/07-baz\" }",
@@ -210,7 +210,7 @@ TEST_F(CompositePushdownTest, TestPushDownDateEquality) {
   QLAddInt8Condition(cond, kFirstColumnId + 1, QL_OP_EQUAL, month);
   QLAddInt8Condition(cond, kFirstColumnId + 2, QL_OP_EQUAL, day);
 
-  vector<string> results;
+  std::vector<std::string> results;
   ASSERT_NO_FATALS(ScanTablet(&req, &results));
   ASSERT_EQ(3, results.size());
   EXPECT_EQ("{ int16:2001, int8:9, int8:7, string:\"baz\", string:\"2001/09/07-baz\" }",
@@ -232,7 +232,7 @@ TEST_F(CompositePushdownTest, TestPushDownPrefixEquality) {
     QLAddInt16Condition(cond, kFirstColumnId, QL_OP_EQUAL, year);
     QLAddInt8Condition(cond, kFirstColumnId + 1, QL_OP_EQUAL, month);
 
-    vector<string> results;
+    std::vector<std::string> results;
     ASSERT_NO_FATALS(ScanTablet(&req, &results));
     ASSERT_EQ(28 * 3, results.size());
     EXPECT_EQ("{ int16:2001, int8:9, int8:1, string:\"baz\", string:\"2001/09/01-baz\" }",
@@ -246,7 +246,7 @@ TEST_F(CompositePushdownTest, TestPushDownPrefixEquality) {
     auto cond = req.mutable_where_expr()->mutable_condition();
     QLSetInt16Condition(cond, kFirstColumnId, QL_OP_EQUAL, year);
 
-    vector<string> results;
+    std::vector<std::string> results;
     ASSERT_NO_FATALS(ScanTablet(&req, &results));
     ASSERT_EQ(28 * 12 * 3, results.size());
     EXPECT_EQ("{ int16:2001, int8:1, int8:1, string:\"baz\", string:\"2001/01/01-baz\" }",
@@ -279,7 +279,7 @@ TEST_F(CompositePushdownTest, TestPushDownPrefixEqualitySuffixInequality) {
     QLAddInt8Condition(cond, kFirstColumnId + 2, QL_OP_GREATER_THAN_EQUAL, day_l);
     QLAddInt8Condition(cond, kFirstColumnId + 2, QL_OP_LESS_THAN_EQUAL, day_u);
 
-    vector<string> results;
+    std::vector<std::string> results;
     ASSERT_NO_FATALS(ScanTablet(&req, &results));
     ASSERT_EQ(15 * 3, results.size());
     EXPECT_EQ("{ int16:2001, int8:9, int8:1, string:\"baz\", string:\"2001/09/01-baz\" }",
@@ -299,7 +299,7 @@ TEST_F(CompositePushdownTest, TestPushDownPrefixEqualitySuffixInequality) {
     QLAddInt8Condition(cond, kFirstColumnId + 1, QL_OP_EQUAL, month_l);
     QLAddInt8Condition(cond, kFirstColumnId + 2, QL_OP_GREATER_THAN_EQUAL, day_l);
 
-    vector<string> results;
+    std::vector<std::string> results;
     ASSERT_NO_FATALS(ScanTablet(&req, &results));
     ASSERT_EQ(28 * 3, results.size());
     EXPECT_EQ("{ int16:2001, int8:9, int8:1, string:\"baz\", string:\"2001/09/01-baz\" }",
@@ -319,7 +319,7 @@ TEST_F(CompositePushdownTest, TestPushDownPrefixEqualitySuffixInequality) {
     QLAddInt8Condition(cond, kFirstColumnId + 1, QL_OP_EQUAL, month_l);
     QLAddInt8Condition(cond, kFirstColumnId + 2, QL_OP_LESS_THAN_EQUAL, day_u);
 
-    vector<string> results;
+    std::vector<std::string> results;
     ASSERT_NO_FATALS(ScanTablet(&req, &results));
     ASSERT_EQ(15 * 3, results.size());
     EXPECT_EQ("{ int16:2001, int8:9, int8:1, string:\"baz\", string:\"2001/09/01-baz\" }",
@@ -339,7 +339,7 @@ TEST_F(CompositePushdownTest, TestPushDownPrefixEqualitySuffixInequality) {
     QLAddInt8Condition(cond, kFirstColumnId + 1, QL_OP_GREATER_THAN_EQUAL, month_l);
     QLAddInt8Condition(cond, kFirstColumnId + 1, QL_OP_LESS_THAN_EQUAL, month_u);
 
-    vector<string> results;
+    std::vector<std::string> results;
     ASSERT_NO_FATALS(ScanTablet(&req, &results));
     ASSERT_EQ(3 * 28 * 3, results.size());
     EXPECT_EQ("{ int16:2001, int8:9, int8:1, string:\"baz\", string:\"2001/09/01-baz\" }",
@@ -356,7 +356,7 @@ TEST_F(CompositePushdownTest, TestPushDownPrefixEqualitySuffixInequality) {
     QLAddInt16Condition(cond, kFirstColumnId, QL_OP_EQUAL, year);
     QLAddInt8Condition(cond, kFirstColumnId + 1, QL_OP_LESS_THAN_EQUAL, month_l);
 
-    vector<string> results;
+    std::vector<std::string> results;
     ASSERT_NO_FATALS(ScanTablet(&req, &results));
     ASSERT_EQ(9 * 28 * 3, results.size());
     EXPECT_EQ("{ int16:2001, int8:1, int8:1, string:\"baz\", string:\"2001/01/01-baz\" }",
@@ -377,7 +377,7 @@ TEST_F(CompositePushdownTest, TestPushdownPrefixInequality) {
     QLAddInt16Condition(cond, kFirstColumnId, QL_OP_GREATER_THAN_EQUAL, year_2001);
     QLAddInt16Condition(cond, kFirstColumnId, QL_OP_LESS_THAN_EQUAL, year_2003);
 
-    vector<string> results;
+    std::vector<std::string> results;
     ASSERT_NO_FATALS(ScanTablet(&req, &results));
     ASSERT_EQ(3 * 12 * 28 * 3, results.size());
     EXPECT_EQ("{ int16:2001, int8:1, int8:1, string:\"baz\", string:\"2001/01/01-baz\" }",
@@ -392,7 +392,7 @@ TEST_F(CompositePushdownTest, TestPushdownPrefixInequality) {
     auto cond = req.mutable_where_expr()->mutable_condition();
     QLSetInt16Condition(cond, kFirstColumnId, QL_OP_GREATER_THAN_EQUAL, year_2001);
 
-    vector<string> results;
+    std::vector<std::string> results;
     ASSERT_NO_FATALS(ScanTablet(&req, &results));
     ASSERT_EQ(10 * 12 * 28 * 3, results.size());
     EXPECT_EQ("{ int16:2001, int8:1, int8:1, string:\"baz\", string:\"2001/01/01-baz\" }",
@@ -407,7 +407,7 @@ TEST_F(CompositePushdownTest, TestPushdownPrefixInequality) {
     auto cond = req.mutable_where_expr()->mutable_condition();
     QLSetInt16Condition(cond, kFirstColumnId, QL_OP_LESS_THAN_EQUAL, year_2003);
 
-    vector<string> results;
+    std::vector<std::string> results;
     ASSERT_NO_FATALS(ScanTablet(&req, &results));
     ASSERT_EQ(4 * 12 * 28 * 3, results.size());
     EXPECT_EQ("{ int16:2000, int8:1, int8:1, string:\"baz\", string:\"2000/01/01-baz\" }",

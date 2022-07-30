@@ -44,7 +44,7 @@ Status CatalogManagerUtil::IsLoadBalanced(const master::TSDescriptorVector& ts_d
     }
 
     // Map from placement uuid to tserver load vector.
-    std::map<string, vector<double>> load;
+    std::map<std::string, std::vector<double>> load;
     for (const auto &ts_desc : zone.second) {
       (load[ts_desc->placement_uuid()]).push_back(ts_desc->num_live_replicas());
     }
@@ -68,7 +68,7 @@ Status CatalogManagerUtil::IsLoadBalanced(const master::TSDescriptorVector& ts_d
 Status CatalogManagerUtil::AreLeadersOnPreferredOnly(
     const TSDescriptorVector& ts_descs,
     const ReplicationInfoPB& replication_info,
-    const vector<scoped_refptr<TableInfo>>& tables) {
+    const std::vector<scoped_refptr<TableInfo>>& tables) {
   if (PREDICT_FALSE(ts_descs.empty())) {
     return Status::OK();
   }
@@ -136,7 +136,7 @@ Status CatalogManagerUtil::AreLeadersOnPreferredOnly(
 
 void CatalogManagerUtil::CalculateTxnLeaderMap(std::map<std::string, int>* txn_map,
                                                int* num_txn_tablets,
-                                               vector<scoped_refptr<TableInfo>> tables) {
+                                               std::vector<scoped_refptr<TableInfo>> tables) {
   for (const auto& table : tables) {
     bool is_txn_table = table->GetTableType() == TRANSACTION_STATUS_TABLE_TYPE;
     if (!is_txn_table) {
@@ -162,7 +162,7 @@ Status CatalogManagerUtil::GetPerZoneTSDesc(const TSDescriptorVector& ts_descs,
   }
   zone_to_ts->clear();
   for (const auto& ts_desc : ts_descs) {
-    string placement_id = ts_desc->placement_id();
+    std::string placement_id = ts_desc->placement_id();
     auto iter = zone_to_ts->find(placement_id);
     if (iter == zone_to_ts->end()) {
       (*zone_to_ts)[placement_id] = {ts_desc};
@@ -332,7 +332,7 @@ bool CatalogManagerUtil::IsCloudInfoPrefix(const CloudInfoPB& ci1, const CloudIn
 
 Status CatalogManagerUtil::IsPlacementInfoValid(const PlacementInfoPB& placement_info) {
   // Check for duplicates.
-  std::unordered_set<string> cloud_info_string;
+  std::unordered_set<std::string> cloud_info_string;
 
   for (int i = 0; i < placement_info.placement_blocks_size(); i++) {
     if (!placement_info.placement_blocks(i).has_cloud_info()) {
@@ -340,7 +340,7 @@ Status CatalogManagerUtil::IsPlacementInfoValid(const PlacementInfoPB& placement
     }
 
     const CloudInfoPB& ci = placement_info.placement_blocks(i).cloud_info();
-    string ci_string = TSDescriptor::generate_placement_id(ci);
+    std::string ci_string = TSDescriptor::generate_placement_id(ci);
 
     if (!cloud_info_string.count(ci_string)) {
       cloud_info_string.insert(ci_string);
@@ -408,7 +408,7 @@ Status CatalogManagerUtil::IsPlacementInfoValid(const PlacementInfoPB& placement
 
 Status ValidateAndAddPreferredZone(
     const PlacementInfoPB& placement_info, const CloudInfoPB& cloud_info,
-    std::set<string>* visited_zones, CloudInfoListPB* zone_set) {
+    std::set<std::string>* visited_zones, CloudInfoListPB* zone_set) {
   auto cloud_info_str = TSDescriptor::generate_placement_id(cloud_info);
 
   if (visited_zones->find(cloud_info_str) != visited_zones->end()) {
@@ -438,7 +438,7 @@ Status CatalogManagerUtil::SetPreferredZones(
   replication_info->clear_multi_affinitized_leaders();
   const auto& placement_info = replication_info->live_replicas();
 
-  std::set<string> visited_zones;
+  std::set<std::string> visited_zones;
   if (req->multi_preferred_zones_size()) {
     for (const auto& alternate_zones : req->multi_preferred_zones()) {
       if (!alternate_zones.zones_size()) {
@@ -464,7 +464,7 @@ Status CatalogManagerUtil::SetPreferredZones(
 }
 
 void CatalogManagerUtil::GetAllAffinitizedZones(
-    const ReplicationInfoPB& replication_info, vector<AffinitizedZonesSet>* affinitized_zones) {
+    const ReplicationInfoPB& replication_info, std::vector<AffinitizedZonesSet>* affinitized_zones) {
   if (replication_info.multi_affinitized_leaders_size()) {
     // New persisted version
     for (auto& zone_set : replication_info.multi_affinitized_leaders()) {
@@ -491,10 +491,10 @@ void CatalogManagerUtil::GetAllAffinitizedZones(
 Status CatalogManagerUtil::CheckValidLeaderAffinity(const ReplicationInfoPB& replication_info) {
   auto& placement_info = replication_info.live_replicas();
   if (!placement_info.placement_blocks().empty()) {
-    vector<AffinitizedZonesSet> affinitized_zones;
+    std::vector<AffinitizedZonesSet> affinitized_zones;
     GetAllAffinitizedZones(replication_info, &affinitized_zones);
 
-    std::set<string> visited_zones;
+    std::set<std::string> visited_zones;
     for (const auto& zone_set : affinitized_zones) {
       for (const auto& cloud_info : zone_set) {
         RETURN_NOT_OK(

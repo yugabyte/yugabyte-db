@@ -60,7 +60,7 @@ Result<std::shared_ptr<QLRowBlock>> QLTypesVTable::RetrieveData(
     list_value = field_types.mutable_list_value();
     for (int i = 0; i < type->field_types_size(); i++) {
       QLValuePB field_type;
-      const string& field_type_name = QLType::FromQLTypePB(type->field_types(i))->ToString();
+      const std::string& field_type_name = QLType::FromQLTypePB(type->field_types(i))->ToString();
       field_type.set_string_value(field_type_name);
       *list_value->add_elems() = field_type;
     }

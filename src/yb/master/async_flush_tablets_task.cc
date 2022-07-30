@@ -33,7 +33,7 @@ AsyncFlushTablets::AsyncFlushTablets(Master *master,
                                      ThreadPool* callback_pool,
                                      const TabletServerId& ts_uuid,
                                      const scoped_refptr<TableInfo>& table,
-                                     const vector<TabletId>& tablet_ids,
+                                     const std::vector<TabletId>& tablet_ids,
                                      const FlushRequestId& flush_id,
                                      bool is_compaction)
     : RetrySpecificTSRpcTask(master, callback_pool, ts_uuid, table),

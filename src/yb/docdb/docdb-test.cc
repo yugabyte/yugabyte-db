@@ -396,7 +396,7 @@ SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b", "subkey_d"; HT{ physica
 
   void InitializeCollection(const std::string& key_string,
                             std::string* val_string,
-                            vector<HybridTime>::iterator* time_iter,
+                            std::vector<HybridTime>::iterator* time_iter,
                             std::set<std::pair<string, string>>* docdb_dump) {
     DocKey collection_key(KeyEntryValues(key_string));
 
@@ -428,7 +428,7 @@ SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b", "subkey_d"; HT{ physica
 void GetSubDocQl(
       const DocDB& doc_db, const KeyBytes& subdoc_key, SubDocument* result, bool* found_result,
       const TransactionOperationContext& txn_op_context, const ReadHybridTime& read_time,
-      const vector<KeyEntryValue>* projection = nullptr) {
+      const std::vector<KeyEntryValue>* projection = nullptr) {
   auto doc_from_rocksdb_opt = ASSERT_RESULT(TEST_GetSubDocument(
     subdoc_key, doc_db, rocksdb::kDefaultQueryId, txn_op_context,
     CoarseTimePoint::max() /* deadline */, read_time, projection));
@@ -659,7 +659,7 @@ TEST_F(DocDBTestQl, LastProjectionIsNull) {
   auto encoded_subdoc_key = subdoc_key.EncodeWithoutHt();
   SubDocument doc_from_rocksdb;
   bool subdoc_found_in_rocksdb = false;
-  const vector<KeyEntryValue> projection = {
+  const std::vector<KeyEntryValue> projection = {
     KeyEntryValue("p1"),
     KeyEntryValue("p2")
   };
@@ -1230,7 +1230,7 @@ TEST_P(DocDBTestWrapper, RedisCollectionTTLCompactionTest) {
   string key_string = "k0";
   string val_string = "v0";
   int n_times = 35;
-  vector<HybridTime> t(n_times);
+  std::vector<HybridTime> t(n_times);
   t[0] = 1000_usec_ht;
   for (int i = 1; i < n_times; ++i) {
     t[i] = server::HybridClock::AddPhysicalTimeToHybridTime(t[i-1], one_ms);
@@ -1832,7 +1832,7 @@ TEST_P(DocDBTestWrapper, RedisTTLCompactionTest) {
   string key_string = "k0";
   string val_string = "v0";
   int n_times = 20;
-  vector<HybridTime> t(n_times);
+  std::vector<HybridTime> t(n_times);
   t[0] = 1000_usec_ht;
   for (int i = 1; i < n_times; ++i) {
     t[i] = server::HybridClock::AddPhysicalTimeToHybridTime(t[i-1], one_ms);

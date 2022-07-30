@@ -81,9 +81,9 @@ class MasterClusterServiceImpl : public MasterServiceBase, public MasterClusterI
     if (!placement_uuid_result.ok()) {
       return;
     }
-    string placement_uuid = *placement_uuid_result;
+    std::string placement_uuid = *placement_uuid_result;
 
-    vector<std::shared_ptr<TSDescriptor> > descs;
+    std::vector<std::shared_ptr<TSDescriptor> > descs;
     auto blacklist_result = server_->catalog_manager()->BlacklistSetFromPB();
     BlacklistSet blacklist = blacklist_result.ok() ? *blacklist_result : BlacklistSet();
 
@@ -184,8 +184,8 @@ class MasterClusterServiceImpl : public MasterServiceBase, public MasterClusterI
       return;
     }
 
-    const string role = (req->has_peers_also() && req->peers_also() ? "Leader" : "Follower");
-    const string title = role + " Master " + server_->instance_pb().permanent_uuid();
+    const std::string role = (req->has_peers_also() && req->peers_also() ? "Leader" : "Follower");
+    const std::string title = role + " Master " + server_->instance_pb().permanent_uuid();
 
     if (req->return_dump_as_string()) {
       std::ostringstream ss;

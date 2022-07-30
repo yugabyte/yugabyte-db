@@ -62,7 +62,7 @@ Status UpdateTabletMappingOnConsumerSplit(
 Status UpdateTabletMappingOnProducerSplit(
     const std::map<std::string, KeyRange>& consumer_tablet_keys,
     const SplitTabletIds& split_tablet_ids,
-    const string& split_key,
+    const std::string& split_key,
     bool* found_source,
     bool* found_all_split_childs,
     cdc::StreamEntryPB* stream_entry);

@@ -2156,7 +2156,7 @@ Result<shared_ptr<TableToTablespaceIdMap>> CatalogManager::GetYsqlTableToTablesp
   // namespace. To build in-memory state for all tables, process pg_class table for each
   // namespace.
   vector<NamespaceId> namespace_id_vec;
-  set<NamespaceId> colocated_namespaces;
+  std::set<NamespaceId> colocated_namespaces;
   {
     SharedLock lock(mutex_);
     for (const auto& ns : namespace_ids_map_) {
@@ -6954,7 +6954,7 @@ Status CatalogManager::ProcessTabletReportBatch(
     }
   }
 
-  map<TabletId, TabletInfo::WriteLock> tablet_write_locks; // used for unlock.
+  std::map<TabletId, TabletInfo::WriteLock> tablet_write_locks; // used for unlock.
   // 2. Second Pass.  Process each tablet. This may not be in the order that the tablets
   // appear in 'full_report', but that has no bearing on correctness.
   vector<TabletInfo*> mutated_tablets; // refcount protected by 'tablet_infos'
@@ -7160,7 +7160,7 @@ Status CatalogManager::ProcessTabletReport(TSDescriptor* ts_desc,
   ReportedTablets reported_tablets;
 
   // Tablet Deletes to process after the catalog lock below.
-  set<TabletId> orphaned_tablets;
+  std::set<TabletId> orphaned_tablets;
 
   {
     // Lock the catalog to iterate over tablet_ids_map_ & table_ids_map_.
@@ -9991,7 +9991,7 @@ Status CatalogManager::HandlePlacementUsingPlacementInfo(const PlacementInfoPB& 
   size_t ntservers = ts_descs.size();
   // Keep track of servers we've already selected, so that we don't attempt to
   // put two replicas on the same host.
-  set<TabletServerId> already_selected_ts;
+  std::set<TabletServerId> already_selected_ts;
   if (placement_info.placement_blocks().empty()) {
     // If we don't have placement info, just place the replicas as before, distributed across the
     // whole cluster.
@@ -10182,7 +10182,7 @@ void CatalogManager::StartElectionIfReady(
 
 shared_ptr<TSDescriptor> CatalogManager::SelectReplica(
     const TSDescriptorVector& ts_descs,
-    set<TabletServerId>* excluded,
+    std::set<TabletServerId>* excluded,
     CMPerTableLoadState* per_table_state, CMGlobalLoadState* global_state) {
   shared_ptr<TSDescriptor> found_ts;
   for (const auto& sorted_load : per_table_state->sorted_load_) {
@@ -10206,7 +10206,7 @@ shared_ptr<TSDescriptor> CatalogManager::SelectReplica(
 
 void CatalogManager::SelectReplicas(
     const TSDescriptorVector& ts_descs, size_t nreplicas, consensus::RaftConfigPB* config,
-    set<TabletServerId>* already_selected_ts, PeerMemberType member_type,
+    std::set<TabletServerId>* already_selected_ts, PeerMemberType member_type,
     CMPerTableLoadState* per_table_state, CMGlobalLoadState* global_state) {
   DCHECK_LE(nreplicas, ts_descs.size());
 

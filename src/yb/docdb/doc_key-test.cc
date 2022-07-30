@@ -54,11 +54,11 @@ const DocKeyHash kAsciiFriendlyHash = 0x4868;
 
 class DocKeyTest : public YBTest {
  protected:
-  vector<SubDocKey> GetVariedSubDocKeys() {
+  std::vector<SubDocKey> GetVariedSubDocKeys() {
     const int kMaxNumHashKeys = 3;
     const int kMaxNumRangeKeys = 3;
     const int kMaxNumSubKeys = 3;
-    vector<SubDocKey> sub_doc_keys;
+    std::vector<SubDocKey> sub_doc_keys;
     auto cotable_id = CHECK_RESULT(Uuid::FromHexString("0123456789abcdef0123456789abcdef"));
 
     std::vector<std::pair<Uuid, ColocationId>> id_pairs;
@@ -115,7 +115,7 @@ class DocKeyTest : public YBTest {
     return sub_doc_keys;
   }
 
-  string GetTestDescriptionForSubDocKey(const SubDocKey& sub_doc_key) {
+  std::string GetTestDescriptionForSubDocKey(const SubDocKey& sub_doc_key) {
     auto encoded_key = sub_doc_key.Encode();
     const char* kFormatStr =
         "Encoded SubDocKey: $0\n"
@@ -480,7 +480,7 @@ TEST_F(DocKeyTest, TestDecodePrefixLengths) {
     const DocKey& doc_key = sub_doc_key.doc_key();
     const Slice subdockey_slice = encoded_input.AsSlice();
 
-    const string test_description = GetTestDescriptionForSubDocKey(sub_doc_key);
+    const std::string test_description = GetTestDescriptionForSubDocKey(sub_doc_key);
     SCOPED_TRACE(test_description);
 
     SubDocKey cur_key;
@@ -538,7 +538,7 @@ TEST_F(DocKeyTest, TestDecodePrefixLengths) {
 TEST_F(DocKeyTest, DecodeDocKeyAndSubKeyEnds) {
   for (const SubDocKey& sub_doc_key : GetVariedSubDocKeys()) {
     const DocKey& doc_key = sub_doc_key.doc_key();
-    const string test_description = GetTestDescriptionForSubDocKey(sub_doc_key);
+    const std::string test_description = GetTestDescriptionForSubDocKey(sub_doc_key);
     boost::container::small_vector<size_t, 8> actual_ends;
     boost::container::small_vector<size_t, 8> input_ends;
     std::vector<size_t> expected_ends;
@@ -602,15 +602,15 @@ TEST_F(DocKeyTest, TestEnumerateIntents) {
   for (const auto& sub_doc_key : GetVariedSubDocKeys()) {
     for (auto partial_range_key_intents : PartialRangeKeyIntents::kValues) {
       const auto encoded_input = sub_doc_key.Encode();
-      const string test_description = Format(
+      const std::string test_description = Format(
           "$0. Partial range key intents: $1",
           GetTestDescriptionForSubDocKey(sub_doc_key),
           partial_range_key_intents ? "yes" : "no");
       SCOPED_TRACE(test_description);
       const Slice subdockey_slice = encoded_input.AsSlice();
 
-      vector<CollectedIntent> collected_intents;
-      vector<CollectedIntent> collected_intents_old;
+      std::vector<CollectedIntent> collected_intents;
+      std::vector<CollectedIntent> collected_intents_old;
       KeyBytes encoded_key_buffer;
 
       VLOG(1) << "EnumerateIntents for: " << test_description;

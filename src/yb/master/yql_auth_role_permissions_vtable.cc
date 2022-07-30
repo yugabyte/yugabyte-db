@@ -53,7 +53,7 @@ Result<std::shared_ptr<QLRowBlock>> YQLAuthRolePermissionsVTable::RetrieveData(
 
       for (int j = 0; j < resource.permissions_size(); j++) {
         const auto& permission = resource.permissions(j);
-        string permission_name  = PermissionName(permission);
+        std::string permission_name  = PermissionName(permission);
         if (permission_name.empty()) {
           return STATUS(InvalidArgument,
                         strings::Substitute("Unknown Permission $0",

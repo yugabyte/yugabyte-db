@@ -39,7 +39,7 @@ class BasicCollector : public TserverCollector {
     AppendPairToJson("timestamp", std::to_string(WallTime_Now()), &json_);
   }
 
-  string collector_name() override { return "BasicCollector"; }
+  std::string collector_name() override { return "BasicCollector"; }
 
   virtual CollectionLevel collection_level() override { return CollectionLevel::LOW; }
 };
@@ -53,7 +53,7 @@ class TabletsCollector : public TserverCollector {
     json_ = Substitute("\"tablets\":$0", ntablets);
   }
 
-  string collector_name() override { return "TabletsCollector"; }
+  std::string collector_name() override { return "TabletsCollector"; }
 
   virtual CollectionLevel collection_level() override { return CollectionLevel::ALL; }
 };

@@ -228,7 +228,7 @@ Status UpdateTabletMappingOnConsumerSplit(
 Status UpdateTabletMappingOnProducerSplit(
     const std::map<std::string, KeyRange>& consumer_tablet_keys,
     const SplitTabletIds& split_tablet_ids,
-    const string& split_key,
+    const std::string& split_key,
     bool* found_source,
     bool* found_all_split_childs,
     cdc::StreamEntryPB* stream_entry) {
@@ -237,7 +237,7 @@ Status UpdateTabletMappingOnProducerSplit(
   *found_all_split_childs = false;
   auto mutable_map = stream_entry->mutable_consumer_producer_tablet_map();
   // Also keep track if we see the split children tablets.
-  vector<string> split_child_tablet_ids{
+  std::vector<std::string> split_child_tablet_ids{
       split_tablet_ids.children.first, split_tablet_ids.children.second};
   for (auto& consumer_tablet_to_producer_tablets : *mutable_map) {
     auto& producer_tablet_infos = consumer_tablet_to_producer_tablets.second;

@@ -588,7 +588,7 @@ Status DocWriteBatch::ReplaceRedisInList(
     const rocksdb::QueryId query_id,
     const Direction dir,
     const int64_t start_index,
-    std::vector<string>* results,
+    std::vector<std::string>* results,
     MonoDelta default_ttl,
     MonoDelta write_ttl) {
   SubDocKey sub_doc_key;

@@ -382,7 +382,7 @@ class RaftConsensusTest : public YBTest {
   const Schema schema_;
   shared_ptr<RaftConsensusSpy> consensus_;
 
-  vector<scoped_refptr<ConsensusRound> > rounds_;
+  std::vector<scoped_refptr<ConsensusRound> > rounds_;
 
   // Mocks.
   // NOTE: both 'queue_' and 'peer_manager_' belong to 'consensus_' and may be deleted before

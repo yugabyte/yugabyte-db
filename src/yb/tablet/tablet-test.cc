@@ -141,7 +141,7 @@ TYPED_TEST(TestTablet, TestRowIteratorComplex) {
   }
 
   // Collect the expected rows.
-  vector<string> rows;
+  std::vector<std::string> rows;
   ASSERT_OK(yb::tablet::DumpTablet(*this->tablet(), this->client_schema_, &rows));
   ASSERT_EQ(max_rows, rows.size());
 }
@@ -157,7 +157,7 @@ TYPED_TEST(TestTablet, TestMultipleUpdates) {
   ASSERT_OK(this->UpdateTestRow(&writer, 0, 3));
 
   // Should see most recent value.
-  vector<string> out_rows;
+  std::vector<std::string> out_rows;
   ASSERT_OK(this->IterateToStringList(&out_rows));
   ASSERT_EQ(1, out_rows.size());
 

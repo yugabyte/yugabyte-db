@@ -85,12 +85,12 @@ class LogicalRocksDBDebugSnapshot {
   void RestoreTo(rocksdb::DB *rocksdb) const;
  private:
   std::vector<std::pair<std::string, std::string>> kvs;
-  string docdb_debug_dump_str;
+  std::string docdb_debug_dump_str;
 };
 
 class DocDBRocksDBFixture : public DocDBRocksDBUtil {
  public:
-  void AssertDocDbDebugDumpStrEq(const string &expected);
+  void AssertDocDbDebugDumpStrEq(const std::string &expected);
   void FullyCompactHistoryBefore(HybridTime history_cutoff);
 
   // num_files_to_compact - number of files that should participate in the minor compaction
@@ -235,7 +235,7 @@ class DocDBLoadGenerator {
 
 // Used for pre-processing multi-line DocDB debug dump strings in tests.  Removes common indentation
 // and C++-style comments and applies backslash line continuation.
-string TrimDocDbDebugDumpStr(const string& debug_dump);
+std::string TrimDocDbDebugDumpStr(const std::string& debug_dump);
 
 #define ASSERT_DOCDB_DEBUG_DUMP_STR_EQ(expected) \
   do { \

@@ -366,7 +366,7 @@ Status CheckWriteThrottling(double score, tablet::TabletPeer* tablet_peer) {
   auto soft_limit_exceeded_result = tablet->mem_tracker()->AnySoftLimitExceeded(score);
   if (soft_limit_exceeded_result.exceeded) {
     tablet->metrics()->leader_memory_pressure_rejections->Increment();
-    string msg = StringPrintf(
+    std::string msg = StringPrintf(
         "Soft memory limit exceeded (at %.2f%% of capacity), score: %.2f",
         soft_limit_exceeded_result.current_capacity_pct, score);
     if (soft_limit_exceeded_result.current_capacity_pct >=

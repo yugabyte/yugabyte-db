@@ -40,8 +40,8 @@ YQLColumnsVTable::YQLColumnsVTable(const TableName& table_name,
 }
 
 Status YQLColumnsVTable::PopulateColumnInformation(const Schema& schema,
-                                                   const string& keyspace_name,
-                                                   const string& table_name,
+                                                   const std::string& keyspace_name,
+                                                   const std::string& table_name,
                                                    const size_t col_idx,
                                                    QLRow* const row) const {
   RETURN_NOT_OK(SetColumnValue(kKeyspaceName, keyspace_name, row));
@@ -79,8 +79,8 @@ Result<std::shared_ptr<QLRowBlock>> YQLColumnsVTable::RetrieveData(
     auto ns_info = VERIFY_RESULT(master_->catalog_manager()->FindNamespaceById(
         table->namespace_id()));
 
-    const string& keyspace_name = ns_info->name();
-    const string& table_name = table->name();
+    const std::string& keyspace_name = ns_info->name();
+    const std::string& table_name = table->name();
 
     // Fill in the hash keys first.
     auto num_hash_columns = narrow_cast<int32_t>(schema.num_hash_key_columns());
@@ -109,7 +109,7 @@ Result<std::shared_ptr<QLRowBlock>> YQLColumnsVTable::RetrieveData(
       RETURN_NOT_OK(PopulateColumnInformation(schema, keyspace_name, table_name, i, &row));
       // kind (always regular for regular columns)
       const ColumnSchema& column = schema.column(i);
-      string kind = column.is_static() ? "static" : "regular";
+      std::string kind = column.is_static() ? "static" : "regular";
       RETURN_NOT_OK(SetColumnValue(kKind, kind, &row));
       RETURN_NOT_OK(SetColumnValue(kPosition, -1, &row));
     }

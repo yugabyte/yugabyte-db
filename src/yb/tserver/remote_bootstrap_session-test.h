@@ -100,7 +100,7 @@ class RemoteBootstrapSessionTest : public YBTabletTest {
  protected:
   void SetUpTabletPeer();
 
-  void TabletPeerStateChangedCallback(const string& tablet_id,
+  void TabletPeerStateChangedCallback(const std::string& tablet_id,
                                       std::shared_ptr<consensus::StateChangeContext> context);
 
   void PopulateTablet();

@@ -133,7 +133,7 @@ void CatalogManagerBgTasks::Run() {
                    << l.catalog_status().ToString();
     } else if (l.leader_status().ok()) {
       // Clear metrics for dead tservers.
-      vector<shared_ptr<TSDescriptor>> descs;
+      std::vector<shared_ptr<TSDescriptor>> descs;
       const auto& ts_manager = catalog_manager_->master_->ts_manager();
       ts_manager->GetAllDescriptors(&descs);
       for (auto& ts_desc : descs) {

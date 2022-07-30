@@ -78,7 +78,7 @@ bool EmulateRedisResponse(const RedisDataType& data_type) {
   return FLAGS_emulate_redis_responses && data_type != REDIS_TYPE_TIMESERIES;
 }
 
-static const string wrong_type_message =
+static const std::string wrong_type_message =
     "WRONGTYPE Operation against a key holding the wrong kind of value";
 
 Status QLValueFromSubKey(const RedisKeyValueSubKeyPB &subkey_pb, QLValuePB *out) {
@@ -1907,7 +1907,7 @@ Status RedisReadOperation::ExecuteGet(const RedisGetRequestPB& get_request) {
       response_.set_allocated_array_response(new RedisArrayPB());
       const auto& req_kv = request_.key_value();
       auto num_subkeys = req_kv.subkey_size();
-      vector<int> indices(num_subkeys);
+      std::vector<int> indices(num_subkeys);
       for (int i = 0; i < num_subkeys; ++i) {
         indices[i] = i;
       }
@@ -1915,7 +1915,7 @@ Status RedisReadOperation::ExecuteGet(const RedisGetRequestPB& get_request) {
             return req_kv.subkey(i).string_subkey() < req_kv.subkey(j).string_subkey();
           });
 
-      string current_value = "";
+      std::string current_value = "";
       response_.mutable_array_response()->mutable_elements()->Reserve(num_subkeys);
       for (int i = 0; i < num_subkeys; ++i) {
         response_.mutable_array_response()->add_elements();

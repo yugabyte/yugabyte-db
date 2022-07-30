@@ -101,7 +101,7 @@ class TabletServerTestBase : public YBTest {
                             int32_t count,
                             int32_t num_batches = -1,
                             TabletServerServiceProxy* proxy = nullptr,
-                            string tablet_id = kTabletId,
+                            std::string tablet_id = kTabletId,
                             std::vector<uint64_t>* write_hybrid_times_collector = nullptr,
                             TimeSeries *ts = nullptr,
                             bool string_field_defined = true);
@@ -110,7 +110,7 @@ class TabletServerTestBase : public YBTest {
   void DeleteTestRowsRemote(int32_t first_row,
                             int32_t count,
                             TabletServerServiceProxy* proxy = nullptr,
-                            string tablet_id = kTabletId);
+                            std::string tablet_id = kTabletId);
 
   void BuildTestRow(int index, QLWriteRequestPB* req);
 

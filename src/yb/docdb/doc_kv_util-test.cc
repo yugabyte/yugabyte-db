@@ -189,8 +189,8 @@ TEST(DocKVUtilTest, MaxExpirationFromValueAndTableTTL) {
 }
 
 TEST(DocKVUtilTest, FloatEncoding) {
-  vector<float> numbers = {-123.45f, -0.00123f, -0.0f, 0.0f, 0.00123f, 123.45f};
-  vector<string> strings;
+  std::vector<float> numbers = {-123.45f, -0.00123f, -0.0f, 0.0f, 0.00123f, 123.45f};
+  std::vector<string> strings;
   for (size_t i = 0; i < numbers.size(); i++) {
     string s;
     util::AppendFloatToKey(numbers[i], &s);
@@ -203,8 +203,8 @@ TEST(DocKVUtilTest, FloatEncoding) {
 }
 
 TEST(DocKVUtilTest, DoubleEncoding) {
-  vector<double> numbers = {-123.45f, -0.00123f, -0.0f, 0.0f, 0.00123f, 123.45f};
-  vector<string> strings;
+  std::vector<double> numbers = {-123.45f, -0.00123f, -0.0f, 0.0f, 0.00123f, 123.45f};
+  std::vector<string> strings;
   for (size_t i = 0; i < numbers.size(); i++) {
     string s;
     util::AppendDoubleToKey(numbers[i], &s);
@@ -217,8 +217,8 @@ TEST(DocKVUtilTest, DoubleEncoding) {
 }
 
 TEST(DocKVUtilTest, UInt64Encoding) {
-  vector<uint64_t> numbers = {0, 1, 100, 9223372036854775807ULL, 18446744073709551615ULL};
-  vector<string> strings;
+  std::vector<uint64_t> numbers = {0, 1, 100, 9223372036854775807ULL, 18446744073709551615ULL};
+  std::vector<string> strings;
   for (size_t i = 0; i < numbers.size(); i++) {
     string s;
     AppendUInt64ToKey(numbers[i], &s);
