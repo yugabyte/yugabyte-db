@@ -1219,7 +1219,7 @@ class PublishResponseHandler {
 };
 
 void RedisServiceImplData::ForwardToInterestedProxies(
-    const string& channel, const string& message, const IntFunctor& f) {
+    const std::string& channel, const string& message, const IntFunctor& f) {
   auto interested_servers = GetServerAddrsForChannel(channel);
   if (!interested_servers.ok()) {
     LOG(ERROR) << "Could not get servers to forward to " << interested_servers.status();
@@ -1254,7 +1254,7 @@ void RedisServiceImplData::ForwardToInterestedProxies(
   }
 }
 
-string MessageFor(const string& channel, const string& message) {
+std::string MessageFor(const string& channel, const string& message) {
   vector<string> parts;
   parts.push_back(redisserver::EncodeAsBulkString("message").ToBuffer());
   parts.push_back(redisserver::EncodeAsBulkString(channel).ToBuffer());
