@@ -1,6 +1,9 @@
 Orafce News - History of user-visible changes
 Copyright (C) 2008-2022  Orafce Global Development Group
 
+Version 3.24.0 - 31 Jul 2022
+* fixed badly used plain TOAST strategy of types varchar2 and nvarchar2
+
 Version 3.22.0 - 22 Jun 2022
 * deuglification - move all objects from public and pg_catalog to oracle schema
 
