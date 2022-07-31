@@ -34,11 +34,11 @@ type: homepage
     <div class="border two-side">
       <div class="body">
         <div class="box-top">
-          <a class="nav-link orange-btn" href="../develop/build-apps/" role="button"><span>Develop</span></a>
-          <span>Build <strong>apps</strong></span>
+          <a class="nav-link orange-btn" href="../cloud-basics/" role="button"><span>Deploy</span></a>
+          <span><strong>Dedicated</strong> clusters</span>
         </div>
-        <div class="body-content">Start building applications with your favorite programming language using these examples.</div>
-        <a class="text-link" href="../develop/build-apps/" title="Get started">Go to Build applications</a>
+        <div class="body-content">Deploy single- and multi-region production clusters across multiple availability zones and regions.</div>
+        <a class="text-link" href="../cloud-basics/" title="Get started">Deploy clusters</a>
       </div>
       <div class="image">
         <img class="icon" src="/images/homepage/locally-laptop.png" title="Locally Laptop" aria-hidden="true">
@@ -140,6 +140,18 @@ type: homepage
     <div class="col-12 col-md-6 col-lg-4">
       <div class="box border">
         <div class="other-content">
+          <div class="heading">Build Applications</div>
+          <div class="tag-line">FROM EXAMPLES</div>
+          <ul>
+          <div class="detail-copy">Start coding in your favorite programming language using these examples.</div>
+          <a class="text-link" target="_blank" href="../develop/build-apps/" title="Get Started">Get Started</a>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="col-12 col-md-6 col-lg-4">
+      <div class="box border">
+        <div class="other-content">
           <div class="heading">Yugabyte University</div>
           <div class="tag-line">FREE COURSES AND WORKSHOPS</div>
           <ul>
@@ -156,7 +168,7 @@ type: homepage
           <div class="heading">Yugabyte Channel</div>
           <div class="tag-line">GETTING STARTED SERIES</div>
           <div class="detail-copy">Learn how to create a cluster, use distributed SQL, build a sample application, and scale clusters.</div>
-          <a class="text-link" target="_blank" href="https://www.youtube.com/playlist?list=PL8Z3vt4qJTkJqisBVRDi6GAy8rhVo1xjc" title="Get started">Watch</a>
+          <a class="text-link" target="_blank" href="https://www.youtube.com/playlist?list=PL8Z3vt4qJTkJqisBVRDi6GAy8rhVo1xjc" title="Watch">Watch</a>
         </div>
       </div>
     </div>
