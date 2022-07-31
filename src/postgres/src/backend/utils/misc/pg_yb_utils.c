@@ -1374,7 +1374,12 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 
 		case T_AlterTableStmt:
 		{
-			*is_breaking_catalog_change = false;
+			AlterTableStmt *stmt = castNode(AlterTableStmt, parsetree);
+			ListCell *lcmd = stmt->cmds->head;
+			AlterTableCmd *cmd = (AlterTableCmd *) lfirst(lcmd);
+			if (cmd->subtype == AT_AddColumn || cmd->subtype == AT_DropColumn) {
+				*is_breaking_catalog_change = false;
+			}
 			break;
 		}
 
