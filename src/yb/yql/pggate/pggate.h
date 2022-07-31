@@ -290,8 +290,6 @@ class PgApiImpl {
   Status AlterTableRenameTable(PgStatement *handle, const char *db_name,
                                        const char *newname);
 
-  Status AlterTableIncrementSchemaVersion(PgStatement *handle);
-
   Status ExecAlterTable(PgStatement *handle);
 
   Status NewDropTable(const PgObjectId& table_id,
