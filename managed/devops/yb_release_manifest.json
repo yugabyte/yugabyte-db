@@ -13,7 +13,8 @@
     "yb-server-provision.yml",
     "send_sudo_pass.yml",
     "yb_custom_ami_builder.yml",
-    "remote_role.yml"
+    "remote_role.yml",
+    "configure_ssh2.yml"
   ],
   "bin": [
     "bin/common.sh",

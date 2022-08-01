@@ -3,6 +3,7 @@ package com.yugabyte.yw.common;
 import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME;
 
 import com.google.inject.Singleton;
+import com.google.inject.Inject;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.forms.RestoreBackupParams;
 import com.yugabyte.yw.forms.RestoreBackupParams.ActionType;
@@ -106,6 +107,10 @@ public class RestoreManagerYb extends DevopsBase {
     if (!secondaryToPrimaryIP.isEmpty()) {
       commandArgs.add("--ts_secondary_ip_map");
       commandArgs.add(Json.stringify(Json.toJson(secondaryToPrimaryIP)));
+    }
+
+    if (runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.security.ssh2_enabled")) {
+      commandArgs.add("--ssh2_enabled");
     }
 
     commandArgs.add("--parallelism");

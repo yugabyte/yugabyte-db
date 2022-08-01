@@ -35,7 +35,7 @@ class NodeConnectModal extends Component {
   };
 
   render() {
-    const { currentRow, label, accessKeys, providerUUID } = this.props;
+    const { currentRow, label, accessKeys, providerUUID, runtimeConfigs } = this.props;
     const nodeIPs = { privateIP: currentRow.privateIP, publicIP: currentRow.publicIP };
     let accessCommand = null;
     let accessTitle = null;
@@ -52,6 +52,15 @@ class NodeConnectModal extends Component {
       return <span />;
     }
 
+    const tectiaSSH = runtimeConfigs.data.configEntries.find(
+      (c) => c.key === 'yb.security.ssh2_enabled'
+    );
+    let isTectiaSSHEnabled = false;
+
+    if (tectiaSSH?.value === "true") {
+      isTectiaSSHEnabled = true;
+    }
+
     if (currentRow.cloudInfo.cloud === 'kubernetes') {
       accessTitle = 'Access your pod';
       const podNamespace = currentRow.privateIP.split(".")[2];
@@ -61,7 +70,11 @@ class NodeConnectModal extends Component {
       const accessKey = accessKeys.data.filter((key) => key.idKey.providerUUID === providerUUID)[0];
       const accessKeyInfo = accessKey.keyInfo;
       const sshPort = accessKeyInfo.sshPort || 54422;
-      accessCommand = `sudo ssh -i ${accessKeyInfo.privateKey} -ostricthostkeychecking=no -p ${sshPort} yugabyte@${nodeIPs.privateIP}`;
+      if (!isTectiaSSHEnabled) {
+        accessCommand = `sudo ssh -i ${accessKeyInfo.privateKey} -ostricthostkeychecking=no -p ${sshPort} yugabyte@${nodeIPs.privateIP}`;
+      } else {
+        accessCommand = `sshg3 -K ${accessKeyInfo.privateKey} -ostricthostkeychecking=no -p ${sshPort} yugabyte@${nodeIPs.privateIP}`;
+      }
     }
 
     const btnId = _.uniqueId('node_action_btn_');
@@ -89,8 +102,9 @@ class NodeConnectModal extends Component {
 
 function mapStateToProps(state, ownProps) {
   return {
-    accessKeys: state.cloud.accessKeys
-  };
+    accessKeys: state.cloud.accessKeys,
+    runtimeConfigs: state.customer.runtimeConfigs
+  }
 }
 
 export default connect(mapStateToProps)(NodeConnectModal);

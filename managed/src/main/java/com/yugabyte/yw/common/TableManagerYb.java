@@ -310,6 +310,10 @@ public class TableManagerYb extends DevopsBase {
     if (backupTableParams.disableChecksum) {
       commandArgs.add("--disable_checksums");
     }
+
+    if (runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.security.ssh2_enabled")) {
+      commandArgs.add("--ssh2_enabled");
+    }
   }
 
   private void addAdditionalCommands(

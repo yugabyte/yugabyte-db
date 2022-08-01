@@ -1168,6 +1168,7 @@ class YBBackup:
             help="Repeatable directory/bucket for a region. For 'create' mode it should be "
                  "related to a '--region'. For 'restore' it's not used.")
 
+        parser.add_argument('--ssh2_enabled', action='store_true', default=False)
         parser.add_argument(
             '--no_auto_name',
             action='store_true',
@@ -1586,7 +1587,7 @@ class YBBackup:
                                  ['--master_addresses', master_addresses],
                                  cmd_line_args, run_ip=run_ip)
         except Exception as ex:
-            if "Invalid operation" in str(ex.output.decode('utf-8')):
+            if re.search("Invalid operation", str(ex.output.decode('utf-8'))):
                 raise YbAdminOpNotSupportedException("yb-admin does not support command "
                                                      "{}".format(cmd_line_args))
             raise ex
@@ -1896,6 +1897,9 @@ class YBBackup:
 
     def upload_file_from_local(self, dest_ip, src, dest):
         output = ''
+        ssh_key_flag = '-i'
+        if self.args.ssh2_enabled:
+            ssh_key_flag = '-K'
         if self.is_k8s():
             k8s_details = KubernetesDetails(dest_ip, self.k8s_namespace_to_cfg)
             output += self.run_program([
@@ -1921,7 +1925,7 @@ class YBBackup:
                         '-S', ssh_wrapper_path,
                         '-o', 'StrictHostKeyChecking=no',
                         '-o', 'UserKnownHostsFile=/dev/null',
-                        '-i', ssh_key_path,
+                        ssh_key_flag, ssh_key_path,
                         '-P', self.args.ssh_port,
                         '-q',
                         src,
@@ -1932,7 +1936,7 @@ class YBBackup:
                     ['scp',
                         '-o', 'StrictHostKeyChecking=no',
                         '-o', 'UserKnownHostsFile=/dev/null',
-                        '-i', ssh_key_path,
+                        ssh_key_flag, ssh_key_path,
                         '-P', self.args.ssh_port,
                         '-q',
                         src,
@@ -1943,6 +1947,9 @@ class YBBackup:
 
     def download_file_to_local(self, src_ip, src, dest):
         output = ''
+        ssh_key_flag = '-i'
+        if self.args.ssh2_enabled:
+            ssh_key_flag = '-K'
         if self.is_k8s():
             k8s_details = KubernetesDetails(src_ip, self.k8s_namespace_to_cfg)
             output += self.run_program([
@@ -1968,7 +1975,7 @@ class YBBackup:
                         '-S', ssh_wrapper_path,
                         '-o', 'StrictHostKeyChecking=no',
                         '-o', 'UserKnownHostsFile=/dev/null',
-                        '-i', ssh_key_path,
+                        ssh_key_flag, ssh_key_path,
                         '-P', self.args.ssh_port,
                         '-q',
                         '%s@%s:%s' % (self.args.ssh_user, src_ip, src),
@@ -1978,7 +1985,7 @@ class YBBackup:
                     ['scp',
                         '-o', 'StrictHostKeyChecking=no',
                         '-o', 'UserKnownHostsFile=/dev/null',
-                        '-i', ssh_key_path,
+                        ssh_key_flag, ssh_key_path,
                         '-P', self.args.ssh_port,
                         '-q',
                         '%s@%s:%s' % (self.args.ssh_user, src_ip, src),
@@ -2037,20 +2044,27 @@ class YBBackup:
                 ssh_key_path = self.ip_to_ssh_key_map.get(server_ip, ssh_key_path)
             change_user_cmd = 'sudo -u %s' % (self.args.remote_user) \
                 if self.needs_change_user() else ''
-            return self.run_program([
-                'ssh',
-                '-o', 'StrictHostKeyChecking=no',
+            ssh_key_flag = '-K' if self.args.ssh2_enabled else '-i'
+            ssh_only_args = [
                 '-o', 'UserKnownHostsFile=/dev/null',
                 # Control flags here are for ssh multiplexing (reuse the same ssh connections).
                 '-o', 'ControlMaster=auto',
                 '-o', 'ControlPath=~/.ssh/ssh-%r@%h:%p',
                 '-o', 'ControlPersist=1m',
-                '-i', ssh_key_path,
+            ] if not self.args.ssh2_enabled else []
+            ssh_command = [
+                'ssh',
+                '-o', 'StrictHostKeyChecking=no'
+            ]
+            ssh_command.extend(ssh_only_args)
+            ssh_command.extend([
+                ssh_key_flag, ssh_key_path,
                 '-p', self.args.ssh_port,
                 '-q',
                 '%s@%s' % (self.args.ssh_user, server_ip),
-                'cd / && %s bash -c ' % (change_user_cmd) + pipes.quote(cmd)],
-                num_retry=num_retries)
+                'cd / && %s bash -c ' % (change_user_cmd) + pipes.quote(cmd)
+            ])
+            return self.run_program(ssh_command, num_retry=num_retries)
         else:
             return self.run_program(['bash', '-c', cmd])
 
@@ -2929,7 +2943,11 @@ class YBBackup:
                     compare_checksums_cmd(checksum_downloaded, checksum_path(target_path)),
                     server_ip).strip()
 
-        if (not self.args.disable_checksums) and check_checksum_res != 'correct':
+        # Todo: Fix the condition. Will be fixed, as part of migration of common
+        # ssh_librabry(yugabyte-db/managed/devops/opscli/ybops/utils/ssh.py).
+        if (not self.args.disable_checksums) and \
+            (check_checksum_res != 'correct' and
+             (self.args.ssh2_enabled and 'correct' not in check_checksum_res)):
             raise BackupException('Check-sum for {} is {}'.format(
                 target_path, check_checksum_res))
 
@@ -3031,6 +3049,11 @@ class YBBackup:
                 old_db_name = self.run_program(cmd).strip()
             else:
                 old_db_name = self.run_ssh_cmd(cmd, self.get_main_host_ip()).strip()
+
+            if self.args.ssh2_enabled:
+                # Todo: Fix the condition. Will be fixed, as part of migration of common
+                # ssh_librabry(yugabyte-db/managed/devops/opscli/ybops/utils/ssh.py).
+                old_db_name = old_db_name.splitlines()[-1]
 
             if old_db_name:
                 new_db_name = keyspace_name(self.args.keyspace[0])
