@@ -498,7 +498,7 @@ class TabletBootstrap {
         listener_(data.listener),
         append_pool_(data.append_pool),
         allocation_pool_(data.allocation_pool),
-      skip_wal_rewrite_(FLAGS_skip_wal_rewrite) ,
+        skip_wal_rewrite_(GetAtomicFlag(&FLAGS_skip_wal_rewrite)),
         test_hooks_(data.test_hooks) {
   }
 
@@ -549,7 +549,7 @@ class TabletBootstrap {
     // This is a new tablet, nothing left to do.
     if (!has_blocks && !needs_recovery) {
       LOG_WITH_PREFIX(INFO) << "No blocks or log segments found. Creating new log.";
-      RETURN_NOT_OK_PREPEND(OpenNewLog(CreateNewSegment::kTrue), "Failed to open new log");
+      RETURN_NOT_OK_PREPEND(OpenLog(CreateNewSegment::kTrue), "Failed to open new log");
       RETURN_NOT_OK(FinishBootstrap("No bootstrap required, opened a new log",
                                     rebuilt_log,
                                     rebuilt_tablet));
@@ -790,8 +790,9 @@ class TabletBootstrap {
     return Status::OK();
   }
 
-  // Opens a new log in the tablet's log directory.  The directory is expected to be clean.
-  Status OpenNewLog(log::CreateNewSegment create_new_segment) {
+  // Opens log in the tablet's log directory, create_new_segment flag is used to decide
+  // whether to create new log or open existing.
+  Status OpenLog(log::CreateNewSegment create_new_segment) {
     auto log_options = LogOptions();
     const auto& metadata = *tablet_->metadata();
     log_options.retention_secs = metadata.wal_retention_secs();
@@ -1272,7 +1273,8 @@ class TabletBootstrap {
     // If skip_wal_rewrite is false, create a new segment and append each replayed entry to this
     // new log.
     RETURN_NOT_OK_PREPEND(
-        OpenNewLog(log::CreateNewSegment(!FLAGS_skip_wal_rewrite)), "Failed to open new log");
+        OpenLog(log::CreateNewSegment(!GetAtomicFlag(&FLAGS_skip_wal_rewrite))),
+          "Failed to open new log");
 
     log::SegmentSequence segments;
     RETURN_NOT_OK(log_->GetSegmentsSnapshot(&segments));
