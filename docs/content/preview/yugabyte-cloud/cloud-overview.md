@@ -19,11 +19,11 @@ type: homepage
     <div class="border two-side">
       <div class="body">
         <div class="box-top">
-          <a class="nav-link purple-btn" href="../../quick-start-yugabytedb-managed/" role="button"><span>Quick Start</span></a>
+          <a class="nav-link purple-btn" target="_blank" href="https://cloud.yugabyte.com/signup" role="button"><span>Sign Up</span></a>
           <span>Create a <strong>Sandbox</strong> cluster</span>
         </div>
-        <div class="body-content">The easiest way to get started with YugabyteDB is to sign up for YugabyteDB Managed and create a free Sandbox cluster.</div>
-        <a class="text-link" href="../../quick-start-yugabytedb-managed/" title="Get started">Go to the Quick Start</a>
+        <div class="body-content">Sign up and follow the built-in tutorial to create your first cluster and build a sample application. No credit card required.</div>
+        <a class="text-link" target="_blank" href="https://cloud.yugabyte.com/signup" title="Sign Up">Sign Up</a>
       </div>
       <div class="image">
         <img class="icon" src="/images/homepage/yugabyte-in-cloud.png" title="Yugabyte cloud" aria-hidden="true">
@@ -38,7 +38,7 @@ type: homepage
           <span><strong>Dedicated</strong> clusters</span>
         </div>
         <div class="body-content">Deploy single- and multi-region production clusters across multiple availability zones and regions.</div>
-        <a class="text-link" href="../cloud-basics/" title="Get started">Deploy clusters</a>
+        <a class="text-link" href="../cloud-basics/" title="Learn more">Learn more</a>
       </div>
       <div class="image">
         <img class="icon" src="/images/homepage/locally-laptop.png" title="Locally Laptop" aria-hidden="true">
