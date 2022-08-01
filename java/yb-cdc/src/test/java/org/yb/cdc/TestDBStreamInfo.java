@@ -49,5 +49,6 @@ public class TestDBStreamInfo extends CDCBaseClass {
     GetDBStreamInfoResponse resp = testSubscriber.getDBStreamInfo();
 
     assertNotEquals(0, resp.getTableInfoList().size());
+    assertNotEquals(0, resp.getNamespaceId().length());
   }
 }
