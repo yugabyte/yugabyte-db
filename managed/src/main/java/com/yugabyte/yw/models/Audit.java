@@ -86,6 +86,15 @@ public class Audit extends Model {
     this.save();
   }
 
+  @ApiModelProperty(value = "Additional Details", accessMode = READ_ONLY, dataType = "Object")
+  @Column(columnDefinition = "TEXT")
+  @DbJson
+  private JsonNode additionalDetails;
+
+  public JsonNode getAdditionalDetails() {
+    return this.additionalDetails;
+  }
+
   @ApiModelProperty(
       value = "API call",
       example = "/api/v1/customers/<496fdea8-df25-11eb-ba80-0242ac130004>/providers",
@@ -132,7 +141,12 @@ public class Audit extends Model {
    * @return Newly Created Audit table entry.
    */
   public static Audit create(
-      Users user, String apiCall, String apiMethod, JsonNode body, UUID taskUUID) {
+      Users user,
+      String apiCall,
+      String apiMethod,
+      JsonNode body,
+      UUID taskUUID,
+      JsonNode details) {
     Audit entry = new Audit();
     entry.customerUUID = user.customerUUID;
     entry.userUUID = user.uuid;
@@ -140,6 +154,7 @@ public class Audit extends Model {
     entry.apiMethod = apiMethod;
     entry.taskUUID = taskUUID;
     entry.payload = body;
+    entry.additionalDetails = details;
     entry.save();
     return entry;
   }
