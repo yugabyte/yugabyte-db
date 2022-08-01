@@ -705,7 +705,12 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
         self.extra_vars.update({"configure_ybc": args.configure_ybc})
         self.extra_vars["device_names"] = self.cloud.get_device_names(args)
 
-        self.cloud.setup_ansible(args).run("yb-server-provision.yml", self.extra_vars, host_info)
+        if wait_for_ssh(self.extra_vars["ssh_host"],
+                        self.extra_vars["ssh_port"],
+                        self.extra_vars["ssh_user"],
+                        args.private_key_file, ssh2_enabled=args.ssh2_enabled):
+            self.cloud.setup_ansible(args).run("yb-server-provision.yml",
+                                               self.extra_vars, host_info)
 
     def update_ansible_vars(self, args):
         for arg_name in ["cloud_subnet",
