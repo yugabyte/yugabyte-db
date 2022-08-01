@@ -81,6 +81,7 @@ add_dependencies(integration-tests
   yb-tserver
   yb-master
   yb-admin
+  gen_auto_flags_json
   yb-ts-cli)
 
 ADD_YB_TEST_LIBRARY(
