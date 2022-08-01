@@ -55,3 +55,7 @@ dkms.conf
 
 ## DS_Store
 *.DS_Store
+
+## .vscode
+.vscode/
+.vscode/*

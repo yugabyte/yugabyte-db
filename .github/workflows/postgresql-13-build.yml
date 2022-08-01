@@ -4,7 +4,7 @@ on: [push]
 jobs:
   build:
     name: pg-13-build-test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - name: Clone postgres repository
         uses: actions/checkout@v2
@@ -15,17 +15,17 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt purge postgresql-client-common postgresql-common postgresql postgresql*
-          sudo apt-get install libreadline6-dev systemtap-sdt-dev zlib1g-dev libssl-dev libpam0g-dev python-dev bison flex libipc-run-perl -y docbook-xsl docbook-xsl
-          sudo apt-get install -y libxml2 libxml2-utils libxml2-dev libxslt-dev xsltproc libkrb5-dev libldap2-dev libsystemd-dev gettext tcl-dev libperl-dev
-          sudo apt-get install -y pkg-config clang-9 llvm-9 llvm-9-dev libselinux1-dev python-dev python3-dev uuid-dev liblz4-dev
-          sudo rm -rf /var/lib/postgresql/
-          sudo rm -rf /var/log/postgresql/
-          sudo rm -rf /etc/postgresql/
-          sudo rm -rf /usr/lib/postgresql
-          sudo rm -rf /usr/include/postgresql
-          sudo rm -rf /usr/share/postgresql
-          sudo rm -rf /etc/postgresql
+          sudo apt purge postgresql-client-common postgresql-common \
+            postgresql postgresql*
+          sudo apt-get install -y libreadline6-dev systemtap-sdt-dev \
+            zlib1g-dev libssl-dev libpam0g-dev bison flex \
+            libipc-run-perl -y docbook-xsl docbook-xsl libxml2 libxml2-utils \
+            libxml2-dev libxslt-dev xsltproc libkrb5-dev libldap2-dev \
+            libsystemd-dev gettext tcl-dev libperl-dev pkg-config clang-11 \
+            llvm-11 llvm-11-dev libselinux1-dev python3-dev uuid-dev liblz4-dev
+          sudo rm -rf /var/lib/postgresql /var/log/postgresql /etc/postgresql \
+           /usr/lib/postgresql /usr/include/postgresql /usr/share/postgresql \
+           /etc/postgresql
           sudo rm -f /usr/bin/pg_config
           sudo /usr/bin/perl -MCPAN -e 'install IPC::RUN'
           sudo /usr/bin/perl -MCPAN -e 'install String::Util'
@@ -37,35 +37,41 @@ jobs:
       - name: Build postgres
         run: |
           export PATH="/opt/pgsql/bin:$PATH"
-          ./configure '--build=x86_64-linux-gnu' '--prefix=/usr' '--includedir=${prefix}/include' \
+          ./configure '--build=x86_64-linux-gnu' '--prefix=/usr' \
+            '--includedir=${prefix}/include' \
             '--mandir=${prefix}/share/man' '--infodir=${prefix}/share/info' \
-            '--sysconfdir=/etc' '--localstatedir=/var' '--disable-silent-rules' \
-            '--libdir=${prefix}/lib/x86_64-linux-gnu' \
-            '--libexecdir=${prefix}/lib/x86_64-linux-gnu' '--disable-maintainer-mode' \
-            '--disable-dependency-tracking' '--with-icu' '--with-tcl' '--with-perl' \
-            '--with-python' '--with-pam' '--with-openssl' '--with-libxml' '--with-libxslt' \
+            '--sysconfdir=/etc' '--localstatedir=/var' '--with-icu' \
+            '--libdir=${prefix}/lib/x86_64-linux-gnu' '--with-perl' \
+            '--libexecdir=${prefix}/lib/x86_64-linux-gnu' '--enable-debug' \
+            '--with-tcl' '--with-pam' '--with-python' '--with-openssl' \
+            '--with-libxml' '--with-libxslt' '--enable-tap-tests' \
             'PYTHON=/usr/bin/python3' '--mandir=/usr/share/postgresql/13/man' \
             '--docdir=/usr/share/doc/postgresql-doc-13' 'AWK=mawk' \
-            '--sysconfdir=/etc/postgresql-common' '--datarootdir=/usr/share/' \
-            '--datadir=/usr/share/postgresql/13' '--bindir=/usr/lib/postgresql/13/bin' \
-            '--libdir=/usr/lib/x86_64-linux-gnu/' '--libexecdir=/usr/lib/postgresql/' \
-            '--includedir=/usr/include/postgresql/' '--with-extra-version= (Ubuntu 2:13-x.focal)' \
-            '--enable-nls' '--enable-thread-safety' '--enable-tap-tests' '--enable-debug' \
-            '--enable-dtrace' '--disable-rpath' '--with-uuid=e2fs' '--with-gnu-ld' \
-            '--with-pgport=5432' '--with-system-tzdata=/usr/share/zoneinfo' '--with-llvm' \
-            'LLVM_CONFIG=/usr/bin/llvm-config-9' 'CLANG=/usr/bin/clang-9' \
-            '--with-systemd' '--with-selinux' 'MKDIR_P=/bin/mkdir -p' 'PROVE=/usr/bin/prove' \
-            'TAR=/bin/tar' 'XSLTPROC=xsltproc --nonet' 'CFLAGS=-g -O2 -fstack-protector-strong -Wformat -Werror=format-security -fno-omit-frame-pointer' \
-            'LDFLAGS=-Wl,-Bsymbolic-functions -Wl,-z,relro -Wl,-z,now' '--with-gssapi' '--with-ldap' \
-            'build_alias=x86_64-linux-gnu' 'CPPFLAGS=-Wdate-time -D_FORTIFY_SOURCE=2' \
+            '--sysconfdir=/etc/postgresql-common' '--datarootdir=/usr/share' \
+            '--datadir=/usr/share/postgresql/13' '--enable-nls' \
+            '--bindir=/usr/lib/postgresql/13/bin' '--enable-dtrace' \
+            '--libdir=/usr/lib/x86_64-linux-gnu' '--disable-rpath' \
+            '--libexecdir=/usr/lib/postgresql' '--enable-thread-safety' \
+            '--includedir=/usr/include/postgresql' 'TAR=/bin/tar' \
+            '--with-uuid=e2fs' '--with-gnu-ld' 'XSLTPROC=xsltproc --nonet' \
+            '--with-pgport=5432' '--with-system-tzdata=/usr/share/zoneinfo' \
+            '--with-llvm' 'LLVM_CONFIG=/usr/bin/llvm-config-11' \
+            'CLANG=/usr/bin/clang-11' '--with-systemd' '--with-selinux' \
+            'MKDIR_P=/bin/mkdir -p' 'PROVE=/usr/bin/prove' \
+            'LDFLAGS=-Wl,-Bsymbolic-functions -Wl,-z,relro -Wl,-z,now' \
+            '--with-gssapi' '--with-ldap' 'build_alias=x86_64-linux-gnu' \
+            'CPPFLAGS=-Wdate-time -D_FORTIFY_SOURCE=2' \
+            'CFLAGS=-g -O2 -fstack-protector-strong -Wformat -Werror=format-security -fno-omit-frame-pointer' \
             'CXXFLAGS=-g -O2 -fstack-protector-strong -Wformat -Werror=format-security'
            make world
            sudo make install-world
 
       - name: Start postgresql cluster
         run: |
-           /usr/lib/postgresql/13/bin/initdb -D /opt/pgsql/data
-           /usr/lib/postgresql/13/bin/pg_ctl -D /opt/pgsql/data -l logfile start
+          export PATH="/usr/lib/postgresql/13/bin:$PATH"
+          sudo cp /usr/lib/postgresql/13/bin/pg_config /usr/bin
+          initdb -D /opt/pgsql/data
+          pg_ctl -D /opt/pgsql/data -l logfile start
 
       - name: Clone pg_stat_monitor repository
         uses: actions/checkout@v2
@@ -74,24 +80,23 @@ jobs:
 
       - name: Build pg_stat_monitor
         run: |
-          export PATH="/usr/lib/postgresql/13/bin:$PATH"
-          sudo cp /usr/lib/postgresql/13/bin/pg_config /usr/bin
-          pg_config
           make USE_PGXS=1
           sudo make USE_PGXS=1 install
-        working-directory: src/pg_stat_monitor/
+        working-directory: src/pg_stat_monitor
 
       - name: Load pg_stat_monitor library and Restart Server
         run: |
-          /usr/lib/postgresql/13/bin/pg_ctl -D /opt/pgsql/data -l logfile stop
-          echo "shared_preload_libraries = 'pg_stat_monitor'" >> /opt/pgsql/data/postgresql.conf
-          /usr/lib/postgresql/13/bin/pg_ctl -D /opt/pgsql/data -l logfile start
-        working-directory: src/pg_stat_monitor/
+          export PATH="/usr/lib/postgresql/13/bin:$PATH"
+          pg_ctl -D /opt/pgsql/data -l logfile stop
+          echo "shared_preload_libraries = 'pg_stat_monitor'" >> \
+            /opt/pgsql/data/postgresql.conf
+          pg_ctl -D /opt/pgsql/data -l logfile start
+        working-directory: src/pg_stat_monitor
 
       - name: Start pg_stat_monitor_tests
         run: |
           make installcheck
-        working-directory: src/pg_stat_monitor/
+        working-directory: src/pg_stat_monitor
 
       - name: Change dir permissions on fail
         if: ${{ failure() }}
@@ -99,7 +104,7 @@ jobs:
           sudo chmod -R ugo+rwx t
           sudo chmod -R ugo+rwx tmp_check
           exit 2 # regenerate error so that we can upload files in next step
-        working-directory: src/pg_stat_monitor/
+        working-directory: src/pg_stat_monitor
 
       - name: Upload logs on fail
         if: ${{ failure() }}
@@ -129,7 +134,7 @@ jobs:
         uses: actions/upload-artifact@v2
         if: ${{ failure() }}
         with:
-          name: Regressions output files of failed testsuite, and postgresql log
+          name: Regressions output files of failed testsuite, and pg log
           path: |
             **/regression.diffs
             **/regression.out
