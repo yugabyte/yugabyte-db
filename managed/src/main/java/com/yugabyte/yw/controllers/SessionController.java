@@ -336,6 +336,7 @@ public class SessionController extends AbstractPlatformController {
         user.uuid.toString(),
         Audit.ActionType.Login,
         null,
+        null,
         null);
     return withData(sessionInfo);
   }
@@ -391,6 +392,7 @@ public class SessionController extends AbstractPlatformController {
           user.uuid.toString(),
           Audit.ActionType.Login,
           null,
+          null,
           null);
     }
     if (environment.isDev()) {
@@ -437,6 +439,7 @@ public class SessionController extends AbstractPlatformController {
           Audit.TargetType.User,
           user.uuid.toString(),
           Audit.ActionType.Login,
+          null,
           null,
           null);
       return withData(sessionInfo);
