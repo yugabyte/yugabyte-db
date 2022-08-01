@@ -380,9 +380,8 @@ public class NodeAgentHandler {
     if (!UPDATABLE_STATES_BY_NODE_AGENT.contains(payload.state)) {
       throw new PlatformServiceException(Status.BAD_REQUEST, "Invalid state " + payload.state);
     }
-    State currentState = nodeAgent.state;
     nodeAgent.state = payload.state;
-    if (currentState == State.UPGRADED) {
+    if (nodeAgent.state == State.UPGRADED) {
       if (StringUtils.isBlank(payload.version)) {
         throw new PlatformServiceException(Status.BAD_REQUEST, "Version must be specified");
       }
