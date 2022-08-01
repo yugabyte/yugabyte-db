@@ -15,8 +15,7 @@ import time
 from ybops.cloud.common.cloud import AbstractCloud
 from ybops.cloud.gcp.command import (GcpAccessCommand, GcpInstanceCommand, GcpNetworkCommand,
                                      GcpQueryCommand)
-from ybops.cloud.gcp.utils import (GCP_SCRATCH, GcpMetadata, GoogleCloudAdmin,
-                                   GCP_INTERNAL_INSTANCE_PREFIXES)
+from ybops.cloud.gcp.utils import (GCP_SCRATCH, GcpMetadata, GoogleCloudAdmin)
 from ybops.common.exceptions import YBOpsRuntimeError, get_exception_message
 
 
@@ -215,6 +214,9 @@ class GcpCloud(AbstractCloud):
                 price_per_hour = pricing_map[name_key][region]
             else:
                 price_per_hour = pricing_map[name_key][region[:-1]]
+        # Do not enforce pricing requirement PLAT-4790.
+        except KeyError as k:
+            price_per_hour = 0.0
         except Exception as e:
             raise YBOpsRuntimeError(e)
         return price_per_hour
@@ -241,35 +243,15 @@ class GcpCloud(AbstractCloud):
                 for instance in instances:
                     name = instance["name"]
                     if name not in result:
-                        compute_image_name = self.get_compute_image(name)
-                        if (args.gcp_internal):
-                            # For internal instances (n2) we don't consider the pricing map
-                            if name.upper().startswith(GCP_INTERNAL_INSTANCE_PREFIXES):
-                                result[name] = {
-                                    "prices": {},
-                                    "numCores": instance["guestCpus"],
-                                    "isShared": instance["isSharedCpu"],
-                                    "description": instance["description"],
-                                    "memSizeGb": float(instance["memoryMb"]/1000.0)
-                                }
-                        if compute_image_name not in pricing_map:
-                            continue
-                        if "memory" not in pricing_map[compute_image_name]:
-                            continue
                         result[name] = {
                             "prices": {},
                             "numCores": instance["guestCpus"],
                             "isShared": instance["isSharedCpu"],
                             "description": instance["description"],
-                            "memSizeGb": float(pricing_map[compute_image_name]["memory"])
+                            "memSizeGb": float(instance["memoryMb"]/1024.0)
                         }
                     if region in result[name]["prices"]:
                         continue
-                    if (args.gcp_internal):
-                        # Set internal testing instances to be free so Platform handles it
-                        if (name.upper().startswith(GCP_INTERNAL_INSTANCE_PREFIXES)):
-                            result[name]['prices'][region] = [{'os': 'Linux', 'price': 0.00}]
-                            continue
                     result[name]["prices"][region] = self.get_os_price_map(pricing_map,
                                                                            name,
                                                                            region,
@@ -289,7 +271,6 @@ class GcpCloud(AbstractCloud):
                 to_delete_instance_types.append(name)
         for name in to_delete_instance_types:
             result.pop(name, None)
-
         return result
 
     def network_bootstrap(self, args):
