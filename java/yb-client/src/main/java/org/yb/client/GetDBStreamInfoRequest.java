@@ -55,7 +55,7 @@ public class GetDBStreamInfoRequest extends YRpc<GetDBStreamInfoResponse>{
 
     GetDBStreamInfoResponse response =
       new GetDBStreamInfoResponse(deadlineTracker.getElapsedMillis(), tsUUID,
-        respBuilder.getTableInfoList());
+        respBuilder.getTableInfoList(), respBuilder.getNamespaceId().toStringUtf8());
     return new Pair<GetDBStreamInfoResponse, Object>(
       response, respBuilder.hasError() ? respBuilder.getError() : null);
   }
