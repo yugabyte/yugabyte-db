@@ -1780,7 +1780,7 @@ public class AsyncYBClient implements AutoCloseable {
     }
     // TODO backoffs? Sleep in increments of 500 ms, plus some random time up to 50
     long sleepTime = (attemptCount * SLEEP_TIME) + sleepRandomizer.nextInt(50);
-    LOG.info("Going to sleep for " + sleepTime + " at retry " + rpc.attempt);
+
     if (LOG.isDebugEnabled()) {
       LOG.debug("Going to sleep for " + sleepTime + " at retry " + rpc.attempt);
     }
