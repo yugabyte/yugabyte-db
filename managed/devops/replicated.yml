@@ -380,6 +380,7 @@ components:
               play.http.forwarded.trustedProxies = ["172.17.0.1"]
               play.i18n.langs = [ "en" ]
               pidfile.path = "/dev/null"
+              log.override.path = "/opt/yugabyte/yugaware/data/logs"
 
               db {
                 default.host="{{repl HostPrivateIpAddress "db" "postgres" }}"

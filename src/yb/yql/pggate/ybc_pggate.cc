@@ -40,7 +40,6 @@
 #include "yb/docdb/primitive_value.h"
 #include "yb/docdb/value_type.h"
 
-#include "yb/yql/pggate/pg_env.h"
 #include "yb/yql/pggate/pg_expr.h"
 #include "yb/yql/pggate/pg_gate_fwd.h"
 #include "yb/yql/pggate/pg_memctx.h"
@@ -163,18 +162,9 @@ const YBCPgCallbacks *YBCGetPgCallbacks() {
   return pgapi->pg_callbacks();
 }
 
-YBCStatus YBCPgCreateEnv(YBCPgEnv *pg_env) {
-  return ToYBCStatus(pgapi->CreateEnv(pg_env));
-}
-
-YBCStatus YBCPgDestroyEnv(YBCPgEnv pg_env) {
-  return ToYBCStatus(pgapi->DestroyEnv(pg_env));
-}
-
-YBCStatus YBCPgInitSession(const YBCPgEnv pg_env,
-                           const char *database_name) {
+YBCStatus YBCPgInitSession(const char *database_name) {
   const string db_name(database_name ? database_name : "");
-  return ToYBCStatus(pgapi->InitSession(pg_env, db_name));
+  return ToYBCStatus(pgapi->InitSession(db_name));
 }
 
 YBCPgMemctx YBCPgCreateMemctx() {
@@ -688,12 +678,12 @@ YBCStatus YBCPgDmlAppendTarget(YBCPgStatement handle, YBCPgExpr target) {
   return ToYBCStatus(pgapi->DmlAppendTarget(handle, target));
 }
 
-YBCStatus YbPgDmlAppendQual(YBCPgStatement handle, YBCPgExpr qual) {
-  return ToYBCStatus(pgapi->DmlAppendQual(handle, qual));
+YBCStatus YbPgDmlAppendQual(YBCPgStatement handle, YBCPgExpr qual, bool is_primary) {
+  return ToYBCStatus(pgapi->DmlAppendQual(handle, qual, is_primary));
 }
 
-YBCStatus YbPgDmlAppendColumnRef(YBCPgStatement handle, YBCPgExpr colref) {
-  return ToYBCStatus(pgapi->DmlAppendColumnRef(handle, colref));
+YBCStatus YbPgDmlAppendColumnRef(YBCPgStatement handle, YBCPgExpr colref, bool is_primary) {
+  return ToYBCStatus(pgapi->DmlAppendColumnRef(handle, colref, is_primary));
 }
 
 YBCStatus YBCPgDmlBindColumn(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value) {

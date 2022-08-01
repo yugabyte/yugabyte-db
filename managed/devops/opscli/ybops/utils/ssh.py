@@ -98,7 +98,7 @@ def run_command(args, num_retry=1, timeout=1, **kwargs):
 
         except YBOpsRuntimeError as e:
             logging.error("Failed to run command [[ {} ]]: code={} output={}".format(
-                    cmd_as_str, process.returncode, err))
+                cmd_as_str, process.returncode, err))
             raise e
 
         except Exception as ex:
@@ -334,6 +334,7 @@ class SSHClient(object):
         the OpenSSH keys are used for initialization,
         invokes native ssh command otherwise.
     '''
+
     def __init__(self, ssh2_enabled=False):
         self.hostname = ''
         self.username = ''
@@ -384,14 +385,16 @@ class SSHClient(object):
             is returned to the client. Else we return stdin, stdout, stderr.
         '''
         output_only = kwargs.get('output_only', False)
+        skip_cmd_logging = kwargs.get('skip_cmd_logging', False)
+        if isinstance(cmd, str):
+            command = cmd
+        else:
+            # Need to join with spaces, but surround arguments with spaces using "'" character
+            command = ' '.join(
+                list(map(lambda part: part if ' ' not in part else "'" + part + "'", cmd)))
         if self.ssh_type == SSH:
-            if isinstance(cmd, str):
-                command = cmd
-            else:
-                # Need to join with spaces, but surround arguments with spaces using "'" character
-                command = ' '.join(
-                    list(map(lambda part: part if ' ' not in part else "'" + part + "'", cmd)))
-            logging.info("Executing command {}".format(command))
+            if not skip_cmd_logging:
+                logging.info("Executing command {}".format(command))
             _, stdout, stderr = self.client.exec_command(command)
             if not output_only:
                 return stdout.channel.recv_exit_status(), stdout.readlines(), stderr.readlines()
@@ -399,15 +402,15 @@ class SSHClient(object):
                 return_code = stdout.channel.recv_exit_status()
                 if return_code != 0:
                     error = self.read_output(stderr)
-                    raise YBOpsRuntimeError('Command \'{}\' returned error code {}: {}'
-                                            .format(command, return_code, error))
+                    raise YBOpsRuntimeError('Command \'{}\' returned error code {}: {}'.format(
+                        "" if skip_cmd_logging else command, return_code, error))
                 output = self.read_output(stdout)
                 return output
         else:
             cmd = self.__generate_shell_command(
                 self.hostname,
                 self.port, self.username,
-                self.key, command=cmd)
+                self.key, command=command)
             output = run_command(cmd)
             if not output_only:
                 return 0, output, None

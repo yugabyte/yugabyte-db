@@ -55,6 +55,8 @@ public class AuditService {
           "$..['config.config_file_contents.private_key']",
           "$..config.private_key_id",
           "$..config.private_key",
+          "$..GCP_CONFIG.private_key_id",
+          "$..GCP_CONFIG.private_key",
           // Azure client secret
           "$..['config.AZURE_CLIENT_SECRET']",
           // Kubernetes secrets
@@ -62,6 +64,7 @@ public class AuditService {
           "$..KUBECONFIG_CONTENT",
           // onprem and certificate private keys
           "$..keyContent",
+          "$..['customServerCertData.serverKeyContent']",
           // S3 storage credentials
           "$..AWS_ACCESS_KEY_ID",
           "$..AWS_SECRET_ACCESS_KEY",

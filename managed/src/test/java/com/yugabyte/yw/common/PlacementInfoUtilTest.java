@@ -1671,6 +1671,24 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
   }
 
   @Test
+  @Parameters({
+    "demo, false, demo, null, false",
+    "demo-az-1, true, demo, az-1, false",
+    "demo-rr, false, demo, az-1, true",
+    "demo-rr-az-1, true, demo, az-1, true"
+  })
+  public void testGetHelmReleaseName(
+      String releaseName,
+      boolean isMultiAZ,
+      String nodePrefix,
+      String azName,
+      boolean isReadOnlyCluster) {
+    assertEquals(
+        releaseName,
+        PlacementInfoUtil.getHelmReleaseName(isMultiAZ, nodePrefix, azName, isReadOnlyCluster));
+  }
+
+  @Test
   public void testK8sComputeMasterAddressesMultiAZ() {
     String customerCode = String.valueOf(customerIdx.nextInt(99999));
     Customer k8sCustomer =

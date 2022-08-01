@@ -187,6 +187,23 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     UNEXPOSED
   }
 
+  /**
+   * This are available update options when user clicks "Save" on EditUniverse page. UPDATE and
+   * FULL_MOVE are handled by the same task (EditUniverse), the difference is that for FULL_MOVE ui
+   * acts a little different. SMART_RESIZE_NON_RESTART - we don't need any confirmations for that as
+   * it is non-restart. SMART_RESIZE - upgrade that handled by ResizeNode task GFLAGS_UPGRADE - for
+   * the case of toggling "enable YSQ" and so on.
+   */
+  public enum UpdateOptions {
+    UPDATE,
+    FULL_MOVE,
+    SMART_RESIZE_NON_RESTART,
+    SMART_RESIZE,
+    GFLAGS_UPGRADE
+  }
+
+  @ApiModelProperty public Set<UpdateOptions> updateOptions = new HashSet<>();
+
   /** A wrapper for all the clusters that will make up the universe. */
   @JsonInclude(value = JsonInclude.Include.NON_NULL)
   public static class Cluster {
@@ -563,29 +580,6 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
      */
     private static boolean compareRegionLists(List<UUID> left, List<UUID> right) {
       return (new HashSet<>(left)).equals(new HashSet<>(right));
-    }
-
-    /**
-     * Helper API to send the tags to be used for any instance level operation. The existing map is
-     * cloned and modifications are performed on the clone. Currently it removes just the node name,
-     * which should not be duplicated in ybcloud commands. Used only for AWS now.
-     *
-     * @return A map of tags to use.
-     */
-    @JsonIgnore
-    public Map<String, String> getInstanceTagsForInstanceOps() {
-      Map<String, String> retTags = new HashMap<>();
-      if (!Provider.InstanceTagsEnabledProviders.contains(providerType)) {
-        return retTags;
-      }
-
-      retTags.putAll(instanceTags);
-      if (providerType.equals(Common.CloudType.aws)) {
-        // Do not allow users to overwrite the node name. Only AWS uses tags to set it.
-        retTags.remove(UniverseDefinitionTaskBase.NODE_NAME_KEY);
-      }
-
-      return retTags;
     }
 
     @JsonIgnore

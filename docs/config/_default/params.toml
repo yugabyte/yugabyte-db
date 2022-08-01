@@ -63,9 +63,6 @@ version_menu = "Releases"
   url = "/v2.6/"
   version = "v2.6"
 [[versions]]
-  url = "/v2.4/"
-  version = "v2.4"
-[[versions]]
   url = "https://docs-archive.yugabyte.com"
   version = "Unsupported versions"
 

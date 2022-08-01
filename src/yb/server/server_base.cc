@@ -265,6 +265,8 @@ Status RpcServerBase::SetupMessengerBuilder(rpc::MessengerBuilder* builder) {
   return Status::OK();
 }
 
+Status RpcServerBase::InitAutoFlags() { return Status::OK(); }
+
 Status RpcServerBase::Init() {
   CHECK(!initialized_);
 
@@ -495,6 +497,8 @@ Status RpcAndWebServerBase::Init() {
   if (PREDICT_FALSE(FLAGS_TEST_simulate_port_conflict_error)) {
     return STATUS(NetworkError, "Simulated port conflict error");
   }
+
+  RETURN_NOT_OK(InitAutoFlags());
 
   RETURN_NOT_OK(RpcServerBase::Init());
 

@@ -40,7 +40,7 @@ The [PQ driver](https://github.com/lib/pq/) is a popular driver for PostgreSQL. 
 
 ## CRUD operations
 
-Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in the [Build an application](../../../quick-start/build-apps/go/ysql-pq) page.
+Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in the [Build an application](../../../develop/build-apps/go/ysql-pq) page.
 
 The following sections break down the example to demonstrate how to perform common tasks required for Go application development using the PQ driver.
 
@@ -90,7 +90,7 @@ if err != nil {
 
 #### Use SSL
 
-For a YugabyteDB Managed cluster, or a YugabyteDB cluster with SSL/TLS enabled, set the SSL-related environment variables as below at the client side. SSL/TLS is enabled by default for client-side authentication. Refer to [OpenSSL](../../../quick-start/build-apps/go/ysql-pq/#openssl) for the default and supported modes.
+For a YugabyteDB Managed cluster, or a YugabyteDB cluster with SSL/TLS enabled, set the SSL-related environment variables as below at the client side. SSL/TLS is enabled by default for client-side authentication. Refer to [OpenSSL](../../../develop/build-apps/go/ysql-pq/#openssl) for the default and supported modes.
 
 ```sh
 $ export PGSSLMODE=verify-ca

@@ -42,7 +42,6 @@ YB_FIREWALL_TARGET_TAGS = "cluster-server"
 
 GCP_SCRATCH = "scratch"
 GCP_PERSISTENT = "persistent"
-GCP_INTERNAL_INSTANCE_PREFIXES = ("N2-")
 
 
 # Code 429 does not have a name in httplib.
@@ -78,6 +77,10 @@ def gcp_exception_handler(e):
           (e.status == TOO_MANY_REQUESTS or
            e.status >= 500)):
         logging.warning('Caught transient credential refresh error (%s), retrying', e)
+    elif (isinstance(e, HttpError) and
+          (e.resp.status == TOO_MANY_REQUESTS or
+           e.resp.status >= 500)):
+        logging.warning('Caught transient server error (%s), retrying', e)
     else:
         return False
     return True

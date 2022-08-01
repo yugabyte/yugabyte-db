@@ -442,20 +442,7 @@ const YBCPgTypeEntity *PgApiImpl::FindTypeEntity(int type_oid) {
 
 //--------------------------------------------------------------------------------------------------
 
-Status PgApiImpl::CreateEnv(PgEnv **pg_env) {
-  *pg_env = pg_env_.get();
-  return Status::OK();
-}
-
-Status PgApiImpl::DestroyEnv(PgEnv *pg_env) {
-  pg_env_ = nullptr;
-  return Status::OK();
-}
-
-//--------------------------------------------------------------------------------------------------
-
-Status PgApiImpl::InitSession(const PgEnv *pg_env,
-                              const string& database_name) {
+Status PgApiImpl::InitSession(const string& database_name) {
   CHECK(!pg_session_);
   auto session = make_scoped_refptr<PgSession>(&pg_client_,
                                                database_name,
@@ -1076,12 +1063,12 @@ Status PgApiImpl::DmlAppendTarget(PgStatement *handle, PgExpr *target) {
   return down_cast<PgDml*>(handle)->AppendTarget(target);
 }
 
-Status PgApiImpl::DmlAppendQual(PgStatement *handle, PgExpr *qual) {
-  return down_cast<PgDml*>(handle)->AppendQual(qual);
+Status PgApiImpl::DmlAppendQual(PgStatement *handle, PgExpr *qual, bool is_primary) {
+  return down_cast<PgDml*>(handle)->AppendQual(qual, is_primary);
 }
 
-Status PgApiImpl::DmlAppendColumnRef(PgStatement *handle, PgExpr *colref) {
-  return down_cast<PgDml*>(handle)->AppendColumnRef(colref);
+Status PgApiImpl::DmlAppendColumnRef(PgStatement *handle, PgExpr *colref, bool is_primary) {
+  return down_cast<PgDml*>(handle)->AppendColumnRef(colref, is_primary);
 }
 
 Status PgApiImpl::DmlBindColumn(PgStatement *handle, int attr_num, PgExpr *attr_value) {

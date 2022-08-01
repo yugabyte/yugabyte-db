@@ -9,7 +9,7 @@ import {
 } from '@material-ui/core';
 
 import { OverviewTab } from '@app/features/clusters/details/overview/OverviewTab';
-// import { TablesTab } from '@app/features/clusters/details/tables/TablesTab';
+import { TablesTab } from '@app/features/clusters/details/tables/TablesTab';
 import { NodesTab } from '@app/features/clusters/details/nodes/NodesTab';
 
 // import { PerformanceTab } from '@app/features/clusters/details/performance/PerformanceTab';
@@ -100,11 +100,11 @@ const tabList: ITabListItem[] = [
     component: OverviewTab,
     testId: 'ClusterTabList-Overview'
   },
-  // {
-  //   name: 'tabTables',
-  //   component: null,
-  //   testId: 'ClusterTabList-Tables'
-  // },
+  {
+    name: 'tabTables',
+    component: TablesTab,
+    testId: 'ClusterTabList-Tables'
+  },
   {
     name: 'tabNodes',
     component: NodesTab,

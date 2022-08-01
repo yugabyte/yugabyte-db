@@ -860,9 +860,9 @@ public class TablesController extends AuthenticatedController {
     }
 
     LOG.info("Fetching table spaces...");
-    NodeDetails randomTServer = null;
+    NodeDetails nodeToUse = null;
     try {
-      randomTServer = CommonUtils.getARandomLiveTServer(universe);
+      nodeToUse = CommonUtils.getServerToRunYsqlQuery(universe);
     } catch (IllegalStateException ise) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Cluster may not have been initialized yet. Please try later");
@@ -870,12 +870,11 @@ public class TablesController extends AuthenticatedController {
     final String fetchTablespaceQuery =
         "select jsonb_agg(t) from (select spcname, spcoptions from pg_catalog.pg_tablespace) as t";
     ShellResponse shellResponse =
-        nodeUniverseManager.runYsqlCommand(
-            randomTServer, universe, "postgres", fetchTablespaceQuery);
+        nodeUniverseManager.runYsqlCommand(nodeToUse, universe, "postgres", fetchTablespaceQuery);
     if (!shellResponse.isSuccess()) {
       LOG.warn(
           "Attempt to fetch tablespace info via node {} failed, response {}:{}",
-          randomTServer.nodeName,
+          nodeToUse.nodeName,
           shellResponse.code,
           shellResponse.message);
       throw new PlatformServiceException(

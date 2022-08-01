@@ -808,15 +808,15 @@ execute_extension_script(Oid extensionOid, ExtensionControlFile *control,
 					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 					 errmsg("permission denied to create extension \"%s\"",
 							control->name),
-					 errhint("Must be superuser or yb_extension role member "
-					 		 "to create this extension.")));
+					 errhint("Must be superuser or a member of the "
+					 		 "yb_extension role to create this extension.")));
 		else
 			ereport(ERROR,
 					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 					 errmsg("permission denied to update extension \"%s\"",
 							control->name),
-					 errhint("Must be superuser or yb_extension role member "
-					 		 "to create this extension.")));
+					 errhint("Must be superuser or a member of the "
+					 		 "yb_extension role to create this extension.")));
 	}
 
 	filename = get_extension_script_filename(control, from_version, version);

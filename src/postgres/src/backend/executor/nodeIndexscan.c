@@ -110,6 +110,8 @@ IndexNext(IndexScanState *node)
 
 	if (scandesc == NULL)
 	{
+		IndexScan *plan = castNode(IndexScan, node->ss.ps.plan);
+
 		/*
 		 * We reach here if the index scan is not parallel, or if we're
 		 * serially executing an index scan that was planned to be parallel.
@@ -121,7 +123,11 @@ IndexNext(IndexScanState *node)
 								   node->iss_NumOrderByKeys);
 
 		node->iss_ScanDesc = scandesc;
-		scandesc->yb_scan_plan = (Scan *)node->ss.ps.plan;
+		scandesc->yb_scan_plan = (Scan *) plan;
+		scandesc->yb_rel_pushdown = YbInstantiateRemoteParams(
+			&plan->rel_remote, estate->es_param_list_info);
+		scandesc->yb_idx_pushdown = YbInstantiateRemoteParams(
+			&plan->index_remote, estate->es_param_list_info);
 
 		/*
 		 * If no run-time keys to calculate or they are ready, go ahead and
@@ -261,6 +267,8 @@ IndexNextWithReorder(IndexScanState *node)
 
 	if (scandesc == NULL)
 	{
+		IndexScan *plan = castNode(IndexScan, node->ss.ps.plan);
+
 		/*
 		 * We reach here if the index scan is not parallel, or if we're
 		 * serially executing an index scan that was planned to be parallel.
@@ -272,7 +280,11 @@ IndexNextWithReorder(IndexScanState *node)
 								   node->iss_NumOrderByKeys);
 
 		node->iss_ScanDesc = scandesc;
-		scandesc->yb_scan_plan = (Scan *)node->ss.ps.plan;
+		scandesc->yb_scan_plan = (Scan *) plan;
+		scandesc->yb_rel_pushdown = YbInstantiateRemoteParams(
+			&plan->rel_remote, estate->es_param_list_info);
+		scandesc->yb_idx_pushdown = YbInstantiateRemoteParams(
+			&plan->index_remote, estate->es_param_list_info);
 
 		/*
 		 * If no run-time keys to calculate or they are ready, go ahead and

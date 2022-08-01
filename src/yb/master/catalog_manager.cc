@@ -170,7 +170,7 @@
 #include "yb/util/countdown_latch.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/trace_event.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/hash_util.h"
 #include "yb/util/locks.h"
@@ -495,6 +495,14 @@ DEFINE_bool(batch_ysql_system_tables_metadata, false,
             "Whether change metadata operation for ysql system tables during "
             "a create database is performed one by one or batched together");
 TAG_FLAG(batch_ysql_system_tables_metadata, runtime);
+
+DEFINE_test_flag(bool, pause_split_child_registration,
+                 false, "Pause split after registering one child");
+TAG_FLAG(TEST_pause_split_child_registration, runtime);
+
+DEFINE_test_flag(bool, keep_docdb_table_on_ysql_drop_table, false,
+                 "When enabled does not delete tables from the docdb layer, resulting in YSQL "
+                 "tables only being dropped in the postgres layer.");
 
 namespace yb {
 namespace master {
@@ -2037,11 +2045,12 @@ Result<shared_ptr<TablespaceIdToReplicationInfoMap>> CatalogManager::GetYsqlTabl
   // each tablespace.
   string placement_uuid;
   {
-    auto l = ClusterConfig()->LockForRead();
+    auto cluster_config = ClusterConfig()->LockForRead();
     // TODO(deepthi.srinivasan): Read-replica placements are not supported as
     // of now.
-    placement_uuid = l->pb.replication_info().live_replicas().placement_uuid();
+    placement_uuid = cluster_config->pb.replication_info().live_replicas().placement_uuid();
   }
+
   if (!placement_uuid.empty()) {
     for (auto& iter : *tablespace_map) {
       if (iter.second) {
@@ -2304,10 +2313,13 @@ void CatalogManager::RefreshTablespaceInfoPeriodically() {
     return;
   }
 
-  if (!CheckIsLeaderAndReady().IsOk()) {
-    LOG(INFO) << "No longer the leader, so cancelling tablespace info task";
-    tablespace_bg_task_running_ = false;
-    return;
+  {
+    SCOPED_LEADER_SHARED_LOCK(l, this);
+    if (!l.IsInitializedAndIsLeader()) {
+      LOG(INFO) << "No longer the leader, so cancelling tablespace info task";
+      tablespace_bg_task_running_ = false;
+      return;
+    }
   }
 
   // Refresh the tablespace info in memory.
@@ -2323,8 +2335,13 @@ void CatalogManager::RefreshTablespaceInfoPeriodically() {
 Status CatalogManager::DoRefreshTablespaceInfo() {
   VLOG(2) << "Running RefreshTablespaceInfoPeriodically task";
 
-  // First refresh the tablespace info in memory.
-  auto tablespace_info = VERIFY_RESULT(GetYsqlTablespaceInfo());
+  shared_ptr<TablespaceIdToReplicationInfoMap> tablespace_info;
+  {
+    SCOPED_LEADER_SHARED_LOCK(l, this);
+    RETURN_NOT_OK(l.first_failed_status());
+    // First refresh the tablespace info in memory.
+    tablespace_info = VERIFY_RESULT(GetYsqlTablespaceInfo());
+  }
 
   // Clear tablespace ids for transaction tables mapped to missing tablespaces.
   RETURN_NOT_OK(UpdateTransactionStatusTableTablespaces(*tablespace_info));
@@ -2843,8 +2860,12 @@ Status CatalogManager::ValidateSplitCandidate(
       *tablet->table(), ignore_disabled_list));
 
   const IgnoreTtlValidation ignore_ttl_validation { is_manual_split.get() };
+
+  const TabletId parent_id = tablet->LockForRead()->pb.split_parent_tablet_id();
+  auto parent_result = GetTabletInfo(parent_id);
+  TabletInfoPtr parent = parent_result.ok() ? parent_result.get() : nullptr;
   return tablet_split_manager_.ValidateSplitCandidateTablet(
-      *tablet, ignore_ttl_validation, ignore_disabled_list);
+      *tablet, parent, ignore_ttl_validation, ignore_disabled_list);
 }
 
 Status CatalogManager::DeleteNotServingTablet(
@@ -5229,6 +5250,11 @@ Status CatalogManager::DeleteTable(
 
   scoped_refptr<TableInfo> table = VERIFY_RESULT(FindTable(req->table()));
 
+  if (PREDICT_FALSE(FLAGS_TEST_keep_docdb_table_on_ysql_drop_table) &&
+      table->GetTableType() == PGSQL_TABLE_TYPE) {
+    return Status::OK();
+  }
+
   // For now, only disable dropping YCQL tables under xCluster replication.
   bool result = table->GetTableType() == YQL_TABLE_TYPE && IsCdcEnabled(*table);
   if (!FLAGS_enable_delete_truncate_xcluster_replicated_table && result) {
@@ -6095,6 +6121,7 @@ Result<TabletInfoPtr> CatalogManager::RegisterNewTabletForSplit(
     RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), table, new_tablet, source_tablet_info));
 
     MAYBE_FAULT(FLAGS_TEST_crash_after_creating_single_split_tablet);
+    TEST_PAUSE_IF_FLAG(TEST_pause_split_child_registration);
 
     table->AddTablet(new_tablet);
     // TODO: We use this pattern in other places, but what if concurrent thread accesses not yet
@@ -7611,13 +7638,8 @@ void CatalogManager::ProcessPendingNamespace(
   // Ensure that we are currently the Leader before handling DDL operations.
   {
     SCOPED_LEADER_SHARED_LOCK(l, this);
-    if (!l.catalog_status().ok()) {
-      LOG(WARNING) << "Catalog status failure: " << l.catalog_status().ToString();
-      // Don't try again, we have to reset in-memory state after losing leader election.
-      return;
-    }
-    if (!l.leader_status().ok()) {
-      LOG(WARNING) << "Leader status failure: " << l.leader_status().ToString();
+    if (!l.IsInitializedAndIsLeader()) {
+      LOG(WARNING) << l.failed_status_string();
       // Don't try again, we have to reset in-memory state after losing leader election.
       return;
     }
@@ -8729,7 +8751,7 @@ Status CatalogManager::IsTabletSplittingComplete(
     }
   }
   for (const auto& table : tables) {
-    if (!tablet_split_manager_.IsTabletSplittingComplete(*table)) {
+    if (!tablet_split_manager_.IsTabletSplittingComplete(*table, req->wait_for_parent_deletion())) {
       resp->set_is_tablet_splitting_complete(false);
       return Status::OK();
     }
@@ -8837,6 +8859,15 @@ Status CatalogManager::GetYsqlCatalogVersion(uint64_t* catalog_version,
   }
   if (last_breaking_version) {
     *last_breaking_version = l->pb.ysql_catalog_config().version();
+  }
+  return Status::OK();
+}
+
+Status CatalogManager::GetYsqlAllDBCatalogVersions(DbOidToCatalogVersionMap* versions) {
+  auto table_info = GetTableInfo(kPgYbCatalogVersionTableId);
+  if (table_info != nullptr) {
+    RETURN_NOT_OK(sys_catalog_->ReadYsqlAllDBCatalogVersions(kPgYbCatalogVersionTableId,
+                                                             versions));
   }
   return Status::OK();
 }
@@ -9114,6 +9145,8 @@ Status CatalogManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB&
   HostPort bootstrap_peer_addr = HostPortFromPB(DesiredHostPort(
       req.source_broadcast_addr(), req.source_private_addr(), req.source_cloud_info(),
       master_->MakeCloudInfoPB()));
+
+  RETURN_NOT_OK(master_->InitAutoFlagsFromMasterLeader(bootstrap_peer_addr));
 
   const string& bootstrap_peer_uuid = req.bootstrap_peer_uuid();
   int64_t leader_term = req.caller_term();
@@ -11176,7 +11209,7 @@ void CatalogManager::RebuildYQLSystemPartitions() {
   if (YQLPartitionsVTable::GeneratePartitionsVTableWithBgTask() ||
       YQLPartitionsVTable::GeneratePartitionsVTableOnChanges()) {
     SCOPED_LEADER_SHARED_LOCK(l, this);
-    if (l.catalog_status().ok() && l.leader_status().ok()) {
+    if (l.IsInitializedAndIsLeader()) {
       if (system_partitions_tablet_ != nullptr) {
         Status s;
         if (YQLPartitionsVTable::GeneratePartitionsVTableWithBgTask()) {

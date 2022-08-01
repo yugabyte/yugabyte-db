@@ -15,14 +15,14 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/preview/drivers-orms/go/gorm/" class="nav-link">
+    <a href="../gorm/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       GORM ORM
     </a>
   </li>
 
   <li >
-    <a href="/preview/drivers-orms/go/pg/" class="nav-link active">
+    <a href="../pg/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       PG ORM
     </a>
@@ -34,7 +34,7 @@ type: docs
 
 ## CRUD operations with PG ORM
 
-Learn how to establish a connection to a YugabyteDB database and begin basic CRUD operations using the steps in the [Build an application](../../../quick-start/build-apps/go/ysql-pg) page under the Quick start section.
+Learn how to establish a connection to a YugabyteDB database and begin basic CRUD operations using the steps in the [Build an application](../../../quick-start/build-apps/go/ysql-pg/) page under the Quick start section.
 
 The following sections break down the quick start example to demonstrate how to perform common tasks required for Go application development using go-pg.
 
@@ -130,5 +130,4 @@ fmt.Println(emp)
 
 ## Next steps
 
-- Explore [Scaling Go Applications](../../../explore/linear-scalability) with YugabyteDB.
-- Learn how to [develop Go applications with YugabyteDB Managed](../../../yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-go/).
+- Explore [Scaling Go Applications](../../../explore/linear-scalability/) with YugabyteDB.

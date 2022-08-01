@@ -4,6 +4,7 @@
       "bin/ysqlsh": "../postgres/bin/ysqlsh"
     },
     ".": [
+      "$BUILD_ROOT/auto_flags.json",
       "$BUILD_ROOT/master_flags.xml",
       "$BUILD_ROOT/tserver_flags.xml",
       "$BUILD_ROOT/version_metadata.json"

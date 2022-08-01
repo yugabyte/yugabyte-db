@@ -73,7 +73,7 @@ services:
       - yb-tserver-data-1:/mnt/tserver
       command: [ "/home/yugabyte/bin/yb-tserver",
                 "--fs_data_dirs=/mnt/tserver",
-                "--start_pgsql_proxy",
+                "--enable_ysql",
                 "--rpc_bind_addresses=yb-tserver-n1:9100",
                 "--tserver_master_addrs=yb-master-n1:7100"]
       ports:
@@ -180,7 +180,7 @@ services:
       - yb-tserver-data-1:/mnt/tserver
       command: [ "/home/yugabyte/bin/yb-tserver",
                 "--fs_data_dirs=/mnt/tserver",
-                "--start_pgsql_proxy",
+                "--enable_ysql",
                 "--rpc_bind_addresses=yb-tserver-n1:9100",
                 "--tserver_master_addrs=yb-master-n1:7100"
                 ]

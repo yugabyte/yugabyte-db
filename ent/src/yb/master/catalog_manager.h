@@ -336,6 +336,8 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
                                 const UDTypeMap& type_map,
                                 const ExternalTableSnapshotDataMap& tables_data);
 
+  Status RepackSnapshotsForBackup(ListSnapshotsResponsePB* resp);
+
   // Helper function for ImportTableEntry.
   Result<bool> CheckTableForImport(
       scoped_refptr<TableInfo> table,
@@ -565,7 +567,8 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
       const std::vector<TableDescription>& tables,
       google::protobuf::RepeatedPtrField<SysRowEntry>* out,
       google::protobuf::RepeatedPtrField<SysSnapshotEntryPB::TabletSnapshotPB>*
-          tablet_infos = nullptr);
+          tablet_snapshot_info = nullptr,
+      vector<scoped_refptr<TabletInfo>>* all_tablets = nullptr);
 
   Result<SysRowEntries> CollectEntriesForSequencesDataTable();
 

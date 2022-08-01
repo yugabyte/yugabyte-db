@@ -13,7 +13,6 @@ import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
@@ -61,7 +60,6 @@ import javax.annotation.Nullable;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import play.api.Play;
 
 public class PlacementInfoUtil {
   public static final Logger LOG = LoggerFactory.getLogger(PlacementInfoUtil.class);
@@ -372,12 +370,44 @@ public class PlacementInfoUtil {
   public static void updateUniverseDefinition(
       UniverseConfigureTaskParams taskParams, Long customerId, UUID placementUuid) {
     updateUniverseDefinition(
+        taskParams, getUniverseForParams(taskParams), customerId, placementUuid);
+  }
+
+  /**
+   * Helper API to set some of the non user supplied information in task params.
+   *
+   * @param taskParams : Universe task params.
+   * @param universe : Universe to config
+   * @param customerId : Current customer's id.
+   * @param placementUuid : UUID of the cluster user is working on.
+   */
+  public static void updateUniverseDefinition(
+      UniverseConfigureTaskParams taskParams,
+      @Nullable Universe universe,
+      Long customerId,
+      UUID placementUuid) {
+    updateUniverseDefinition(
         taskParams,
+        universe,
         customerId,
         placementUuid,
         taskParams.clusterOperation,
         taskParams.allowGeoPartitioning,
         taskParams.regionsChanged);
+  }
+
+  public static Universe getUniverseForParams(UniverseDefinitionTaskParams taskParams) {
+    if (taskParams.universeUUID != null) {
+      return Universe.maybeGet(taskParams.universeUUID)
+          .orElseGet(
+              () -> {
+                LOG.info(
+                    "Universe with UUID {} not found, configuring new universe.",
+                    taskParams.universeUUID);
+                return null;
+              });
+    }
+    return null;
   }
 
   @VisibleForTesting
@@ -386,43 +416,37 @@ public class PlacementInfoUtil {
       Long customerId,
       UUID placementUuid,
       ClusterOperationType clusterOpType) {
-    updateUniverseDefinition(taskParams, customerId, placementUuid, clusterOpType, false, null);
+    updateUniverseDefinition(
+        taskParams,
+        getUniverseForParams(taskParams),
+        customerId,
+        placementUuid,
+        clusterOpType,
+        false,
+        null);
   }
 
   private static void updateUniverseDefinition(
       UniverseDefinitionTaskParams taskParams,
+      @Nullable Universe universe,
       Long customerId,
       UUID placementUuid,
       ClusterOperationType clusterOpType,
       boolean allowGeoPartitioning,
       @Nullable Boolean regionsChanged) {
-    Universe universe = null;
-    if (taskParams.universeUUID != null) {
-      universe =
-          Universe.maybeGet(taskParams.universeUUID)
-              .orElseGet(
-                  () -> {
-                    LOG.info(
-                        "Universe with UUID {} not found, configuring new universe.",
-                        taskParams.universeUUID);
-                    return null;
-                  });
+
+    // Create node details set if needed.
+    if (taskParams.nodeDetailsSet == null) {
+      taskParams.nodeDetailsSet = new HashSet<>();
+    }
+
+    if (taskParams.universeUUID == null) {
+      taskParams.universeUUID = UUID.randomUUID();
     }
     Cluster cluster = taskParams.getClusterByUuid(placementUuid);
     Cluster oldCluster = universe == null ? null : universe.getCluster(placementUuid);
     boolean checkResizePossible = false;
     boolean isSamePlacementInRequest = false;
-    boolean allowUnsupportedInstances = false;
-
-    if (universe != null) {
-      RuntimeConfigFactory runtimeConfigFactory =
-          Play.current().injector().instanceOf(RuntimeConfigFactory.class);
-
-      allowUnsupportedInstances =
-          runtimeConfigFactory
-              .forUniverse(universe)
-              .getBoolean("yb.internal.allow_unsupported_instances");
-    }
 
     if (oldCluster != null) {
       // Checking resize restrictions (provider, instance, etc).
@@ -430,8 +454,7 @@ public class PlacementInfoUtil {
       // decreased and a later increase will not cause such request.
       checkResizePossible =
           ResizeNodeParams.checkResizeIsPossible(
-                  oldCluster.userIntent, cluster.userIntent, allowUnsupportedInstances, false)
-              == null;
+              oldCluster.userIntent, cluster.userIntent, universe, false);
       isSamePlacementInRequest =
           isSamePlacement(oldCluster.placementInfo, cluster.placementInfo)
               && oldCluster.userIntent.numNodes == cluster.userIntent.numNodes;
@@ -949,7 +972,7 @@ public class PlacementInfoUtil {
 
   // Helper function to check if the old placement and new placement after edit
   // are the same.
-  private static boolean isSamePlacement(
+  public static boolean isSamePlacement(
       PlacementInfo oldPlacementInfo, PlacementInfo newPlacementInfo) {
     Map<UUID, AZInfo> oldAZMap = new HashMap<>();
 
@@ -2467,6 +2490,23 @@ public class PlacementInfoUtil {
     return azToDomain;
   }
 
+  // This method decides the value of isMultiAZ based on the value of
+  // azName. In case of single AZ providers, the azName is passed as
+  // null.
+  public static String getHelmReleaseName(
+      String nodePrefix, String azName, boolean isReadOnlyCluster) {
+    boolean isMultiAZ = (azName != null);
+    return getHelmReleaseName(isMultiAZ, nodePrefix, azName, isReadOnlyCluster);
+  }
+
+  // TODO(bhavin192): have the release name sanitization call here,
+  // instead of doing it in KubernetesManager implementations.
+  public static String getHelmReleaseName(
+      boolean isMultiAZ, String nodePrefix, String azName, boolean isReadOnlyCluster) {
+    String helmReleaseName = isReadOnlyCluster ? nodePrefix + "-rr" : nodePrefix;
+    return isMultiAZ ? String.format("%s-%s", helmReleaseName, azName) : helmReleaseName;
+  }
+
   // Returns a string which is exactly the same as yugabyte chart's
   // helper template yugabyte.fullname. This is prefixed to all the
   // resource names when newNamingstyle is being used. We set
@@ -2477,6 +2517,8 @@ public class PlacementInfoUtil {
     if (!newNamingStyle) {
       return "";
     }
+    // TODO(bhavin192): use getHelmReleaseName method above while
+    // making new naming style + read replicas compatible.
     String releaseName = isMultiAZ ? String.format("%s-%s", nodePrefix, azName) : nodePrefix;
     // <release name> | truncate 43
     if (releaseName.length() > 43) {

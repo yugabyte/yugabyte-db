@@ -46,6 +46,10 @@
 #include "yb/yql/cql/ql/ptree/yb_location.h"
 #include "yb/yql/cql/ql/ptree/ycql_predtest.h"
 
+DEFINE_bool(ycql_allow_in_op_with_order_by, false,
+            "Allow IN to be used with ORDER BY clause");
+TAG_FLAG(ycql_allow_in_op_with_order_by, advanced);
+
 DEFINE_bool(enable_uncovered_index_select, true,
             "Enable executing select statements using uncovered index");
 TAG_FLAG(enable_uncovered_index_select, advanced);
@@ -93,10 +97,14 @@ OpSelectivity GetOperatorSelectivity(const QLOperator op) {
 class Selectivity {
  public:
   // Selectivity of the PRIMARY index.
-  Selectivity(MemoryContext *memctx, const PTSelectStmt& stmt, bool is_forward_scan)
+  Selectivity(MemoryContext *memctx,
+              const PTSelectStmt& stmt,
+              bool is_forward_scan,
+              bool has_order_by)
       : is_local_(true),
         covers_fully_(true),
-        is_forward_scan_(is_forward_scan) {
+        is_forward_scan_(is_forward_scan),
+        has_order_by_(has_order_by) {
     const client::YBSchema& schema = stmt.table()->schema();
     MCIdToIndexMap id_to_idx(memctx);
     for (size_t i = 0; i < schema.num_key_columns(); i++) {
@@ -111,13 +119,15 @@ class Selectivity {
               const IndexInfo& index_info,
               bool is_forward_scan,
               int predicate_len,
-              const MCUnorderedMap<int32, uint16> &column_ref_cnts)
+              const MCUnorderedMap<int32, uint16> &column_ref_cnts,
+              bool has_order_by)
       : index_id_(index_info.table_id()),
         is_local_(index_info.is_local()),
         covers_fully_(stmt.CoversFully(index_info, column_ref_cnts)),
         index_info_(&index_info),
         is_forward_scan_(is_forward_scan),
-        predicate_len_(predicate_len) {
+        predicate_len_(predicate_len),
+        has_order_by_(has_order_by) {
 
     MCIdToIndexMap id_to_idx(memctx);
     for (size_t i = 0; i < index_info.key_column_count(); i++) {
@@ -138,7 +148,9 @@ class Selectivity {
 
   bool is_forward_scan() const { return is_forward_scan_; }
 
-  bool supporting_orderby() const { return !full_table_scan_; }
+  bool supporting_orderby() const { return !full_table_scan_ && !has_in_on_hash_column_; }
+
+  const Status& status() const { return stat_; }
 
   size_t prefix_length() const { return prefix_length_; }
 
@@ -275,11 +287,31 @@ class Selectivity {
     // The operator on each column, in the order of the columns in the table or index we analyze.
     MCVector<OpSelectivity> ops(id_to_idx.size(), OpSelectivity::kNone, memctx);
     for (const ColumnOp& col_op : scan_info->col_ops()) {
+      if (!FLAGS_ycql_allow_in_op_with_order_by &&
+          is_primary_index() &&
+          has_order_by_ &&
+          col_op.yb_op() == QL_OP_IN &&
+          col_op.desc()->is_hash()) {
+        has_in_on_hash_column_ = true;
+        stat_ = STATUS(InvalidArgument,
+                  "IN clause on hash column cannot be used if order by clause is present");
+      }
       const auto iter = id_to_idx.find(col_op.desc()->id());
       if (iter != id_to_idx.end()) {
         ops[iter->second] = GetOperatorSelectivity(col_op.yb_op());
       } else {
         num_non_key_ops_++;
+      }
+      if (index_info_ && !FLAGS_ycql_allow_in_op_with_order_by && has_order_by_) {
+        for (size_t i = 0; i < index_info_->hash_column_count(); i++) {
+          if (col_op.yb_op() == QL_OP_IN &&
+              index_info_->column(i).column_name == col_op.desc()->MangledName()) {
+            has_in_on_hash_column_ = true;
+            stat_ = STATUS(InvalidArgument,
+                    "IN clause on hash column cannot be used if order by clause is used");
+            break;
+          }
+        }
       }
     }
 
@@ -316,6 +348,10 @@ class Selectivity {
     single_key_read_ = prefix_length_ >= num_key_columns;
     full_table_scan_ = prefix_length_ < num_hash_key_columns;
     ends_with_range_ = prefix_length_ < ops.size() && ops[prefix_length_] == OpSelectivity::kRange;
+    if (full_table_scan_ && has_order_by_) {
+      stat_ = STATUS(InvalidArgument,
+                              "All hash columns must be set if order by clause is present");
+    }
   }
 
   TableId index_id_;      // Index table id (null for indexed table).
@@ -329,6 +365,9 @@ class Selectivity {
   const IndexInfo* index_info_ = nullptr;
   bool is_forward_scan_ = true;
   int predicate_len_ = 0; // Length of index predicate. 0 if not a partial index.
+  bool has_in_on_hash_column_ = false;
+  bool has_order_by_ = false;
+  Status stat_ = Status::OK();
 };
 
 } // namespace
@@ -698,12 +737,11 @@ Status PTSelectStmt::AnalyzeIndexes(SemContext *sem_context, SelectScanSpec *sca
   // Add entry for the PRIMARY scan.
   Status orderby_status = AnalyzeOrderByClause(sem_context, "", &is_forward_scan);
   if (orderby_status.ok()) {
-    Selectivity sel(sem_context->PTempMem(), *this, is_forward_scan);
+    Selectivity sel(sem_context->PTempMem(), *this, is_forward_scan, !!order_by_clause_);
     if (!order_by_clause_ || sel.supporting_orderby()) {
       selectivities.push_back(std::move(sel));
     } else {
-      orderby_status = STATUS(InvalidArgument,
-                              "All hash columns must be set if order by clause is present");
+        orderby_status = sel.status();
     }
   }
 
@@ -732,9 +770,11 @@ Status PTSelectStmt::AnalyzeIndexes(SemContext *sem_context, SelectScanSpec *sca
 
       if (AnalyzeOrderByClause(sem_context, index.second.table_id(), &is_forward_scan).ok()) {
         Selectivity sel(sem_context->PTempMem(), *this, index.second,
-          is_forward_scan, predicate_len, column_ref_cnts);
+          is_forward_scan, predicate_len, column_ref_cnts, !!order_by_clause_);
         if (!order_by_clause_ || sel.supporting_orderby()) {
           selectivities.push_back(std::move(sel));
+        } else if (selectivities.empty() && !sel.status().ok()) {
+          orderby_status = sel.status();
         }
       }
     }

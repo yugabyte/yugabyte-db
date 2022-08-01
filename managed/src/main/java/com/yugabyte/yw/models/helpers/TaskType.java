@@ -364,7 +364,9 @@ public enum TaskType {
 
   RebootServer("subtasks.RebootServer"),
 
-  RunHooks("subtasks.RunHooks");
+  RunHooks("subtasks.RunHooks"),
+
+  UpdateUniverseTags("subtasks.UpdateUniverseTags");
 
   private String relativeClassPath;
 

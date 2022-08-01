@@ -216,6 +216,9 @@ public class Audit extends Model {
     @EnumValue("Configure")
     Configure,
 
+    @EnumValue("Update Options")
+    UpdateOptions,
+
     @EnumValue("Refresh Pricing")
     RefreshPricing,
 
@@ -437,6 +440,9 @@ public class Audit extends Model {
 
     @EnumValue("Add Node Agent")
     AddNodeAgent,
+
+    @EnumValue("Update Node Agent")
+    UpdateNodeAgent,
 
     @EnumValue("Delete Node Agent")
     DeleteNodeAgent

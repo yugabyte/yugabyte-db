@@ -216,7 +216,7 @@ message PgsqlWriteRequestPB {
 
   //------------------------------------------------------------------------------------------------
   // Column New Values.
-  // - Columns to be overwritten (UPDATE SET clause). This field can contain primary-key columns.
+  // - Columns to be overwritten (UPDATE SET clause). It shouldn't contain primary-key columns.
   repeated PgsqlColumnValuePB column_new_values = 11;
 
   //------------------------------------------------------------------------------------------------

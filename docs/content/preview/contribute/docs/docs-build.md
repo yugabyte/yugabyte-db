@@ -42,6 +42,18 @@ To run the docs site locally and edit the docs, you'll need:
 
 * **Git client**: The system Git binary is out of date, but works. If you like, you can use Homebrew to get a newer version (`brew install git`).
 
+## Configure Hugo
+
+By default, Hugo uses the operating system's temporary directory to cache modules, which can cause some problems. You can avoid those problems by telling Hugo to put its cache elsewhere.
+
+Add a line similar to the following to your `.bashrc` or `.zshrc` file:
+
+```sh
+export HUGO_CACHEDIR = ~/.hugo-cache
+```
+
+Create the folder with `mkdir ~/.hugo-cache`, then start a new terminal session.
+
 ## Fork the repository
 
 1. To make the commands in this section work correctly when you paste them, set an environment variable to store your GitHub username.
@@ -89,10 +101,6 @@ The live-reload server runs at <http://localhost:1313/> unless port 1313 is alre
 
 When you're done, type Ctrl-C stop the server.
 
-{{< note title="Not looking quite right?" >}}
-There's a transient bug in the live-reload build. If your local docs site doesn't look right, type Ctrl-C and re-run the `npm start` command.
-{{< /note >}}
-
 ### Optional: Run a full build {#full-build}
 
 The live-reload server is the quickest way to get the docs running locally. If you want to run the build exactly the same way the CI pipeline does for a deployment, do the following:
@@ -110,7 +118,10 @@ When the build is done, the `yugabyte-db/docs/public` folder contains a full HTM
 
 * If you get an error about missing command-line tools, make sure xcode-select is pointing to the right directory, and that the directory contains a `usr/bin` subdirectory. Run `xcode-select -p` to find the path to the tools. Re-run xcode-select --install.
 
-* If the live-reload site looks odd, stop the server with Ctrl-C and re-run `npm start`.
+* If the live-reload server (`npm start`) is returning a Hugo error &mdash; say, about shortcodes &mdash; re-run `hugo mod clean`, followed by `npm start`. Also, be sure you've followed the instructions on this page to [configure Hugo](#configure-hugo).
+
+<!-- I think Docsy fixed this one! -->
+<!-- * If the live-reload site looks odd, stop the server with Ctrl-C and re-run `npm start`. -->
 
 ## Next steps
 

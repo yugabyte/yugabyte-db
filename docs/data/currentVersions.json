@@ -4,9 +4,9 @@
     {
       "series": "v2.15",
       "display": "v2.15 (Preview)",
-      "version": "2.15.0.1",
-      "versionShort": "2.15.0",
-      "appVersion": "2.15.0.1-b4",
+      "version": "2.15.1.0",
+      "versionShort": "2.15.1",
+      "appVersion": "2.15.1.0-b175",
       "alias": "preview"
     },
     {
@@ -37,13 +37,6 @@
       "version": "2.6.18.0",
       "versionShort": "2.6.18",
       "appVersion": "2.6.18.0-b3"
-    },
-    {
-      "series": "v2.4",
-      "display": "v2.4",
-      "version": "2.4.8.0",
-      "versionShort": "2.4.8",
-      "appVersion": "2.4.8.0-b16"
     }
   ]
 }
