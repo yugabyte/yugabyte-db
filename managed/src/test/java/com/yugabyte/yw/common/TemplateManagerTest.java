@@ -13,8 +13,6 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.typesafe.config.Config;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
@@ -49,10 +47,6 @@ public class TemplateManagerTest extends FakeDBApplication {
   @Mock ShellProcessHandler shellProcessHandler;
 
   @Mock play.Configuration mockAppConfig;
-
-  @Mock RuntimeConfigFactory runtimeConfigFactory;
-
-  @Mock Config mockConfig;
 
   @InjectMocks TemplateManager templateManager;
 
@@ -100,7 +94,6 @@ public class TemplateManagerTest extends FakeDBApplication {
     testProvider = ModelFactory.onpremProvider(testCustomer);
     when(mockAppConfig.getString(YB_STORAGE_PATH_KEY)).thenReturn(YB_STORAGE_PATH_VALUE);
     when(mockAppConfig.getString(YB_THIRDPARTY_KEY)).thenReturn(YB_THIRDPARTY_VALUE);
-    when(runtimeConfigFactory.globalRuntimeConf()).thenReturn(mockConfig);
   }
 
   @After

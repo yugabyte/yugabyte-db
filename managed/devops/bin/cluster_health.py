@@ -65,9 +65,6 @@ SSL_PROTOCOL_TO_SSL_VERSION = {
     "tls11": "TLSv1_1",
     "tls12": "TLSv1_2"
 }
-SSH2_AUTH_KEYWORDS = ['ssh', 'Tectia', 'Authentication',
-                      'evaluation', 'scp', 'sshg3',
-                      'scpg3', 'expire']
 
 ###################################################################################################
 # Reporting
@@ -187,24 +184,11 @@ class Report:
 ###################################################################################################
 # Checking
 ###################################################################################################
-def check_output(cmd, env, ssh2_enabled=False):
+def check_output(cmd, env):
     try:
         output = subprocess.check_output(
             cmd, stderr=subprocess.STDOUT, env=env, timeout=CMD_TIMEOUT_SEC)
-        output = str(output.decode('utf-8').encode("ascii", "ignore").decode("ascii"))
-        if ssh2_enabled:
-            output = output.split('\n')
-            f_output = ""
-            # Since we test on ssh-tectia trial version, removing trial version
-            # warning from ssh o/p
-            for out in output:
-                if not any(ssh_reserved.lower() in out.lower()
-                           for ssh_reserved in SSH2_AUTH_KEYWORDS):
-                    f_output += out
-                    f_output += "\n"
-            return f_output
-        else:
-            return output
+        return str(output.decode('utf-8').encode("ascii", "ignore").decode("ascii"))
     except subprocess.CalledProcessError as ex:
         return 'Error executing command {}: {}'.format(
             cmd, ex.output.decode("utf-8").encode("ascii", "ignore"))
@@ -243,7 +227,7 @@ class NodeChecker():
                  start_time_ms, namespace_to_config, ysql_port, ycql_port, redis_port,
                  enable_tls_client, root_and_client_root_ca_same, ssl_protocol, enable_ysql,
                  enable_ysql_auth, master_http_port, tserver_http_port, ysql_server_http_port,
-                 collect_metrics_script, test_read_write, universe_version, ssh2_enabled):
+                 collect_metrics_script, test_read_write, universe_version):
         self.node = node
         self.node_name = node_name
         self.master_index = master_index
@@ -275,7 +259,6 @@ class NodeChecker():
         self.test_read_write = test_read_write
         self.universe_version = universe_version
         self.additional_info = {}
-        self.ssh2_enabled = ssh2_enabled
 
     def _new_entry(self, message, process=None):
         return Entry(message, self.node, process, self.node_name)
@@ -300,21 +283,16 @@ class NodeChecker():
                 command
             ])
         else:
-            ssh_key_flag = '-K' if self.ssh2_enabled else '-i'
-            ssh_only_args = [
-                '-o', 'StrictHostKeyChecking no',
-                '-o', 'ConnectTimeout={}'.format(SSH_TIMEOUT_SEC),
-                '-o', 'UserKnownHostsFile /dev/null',
-                '-o', 'LogLevel ERROR',
-            ] if not self.ssh2_enabled else []
-            cmd_to_run = ['ssh'] if not self.ssh2_enabled else ['sshg3']
             cmd_to_run.extend(
-                ['yugabyte@{}'.format(self.node), '-p', str(self.ssh_port),
-                 ssh_key_flag, self.identity_file])
-            cmd_to_run.extend(ssh_only_args)
+                ['ssh', 'yugabyte@{}'.format(self.node), '-p', str(self.ssh_port),
+                 '-o', 'StrictHostKeyChecking no',
+                 '-o', 'ConnectTimeout={}'.format(SSH_TIMEOUT_SEC),
+                 '-o', 'UserKnownHostsFile /dev/null',
+                 '-o', 'LogLevel ERROR',
+                 '-i', self.identity_file])
             cmd_to_run.append(command)
 
-        output = check_output(cmd_to_run, env_conf, self.ssh2_enabled).strip()
+        output = check_output(cmd_to_run, env_conf).strip()
 
         return self.convert_output(output)
 
@@ -331,21 +309,16 @@ class NodeChecker():
                     self.k8s_details.namespace, self.k8s_details.pod_name, remote_file),
                 '-c', self.k8s_details.container])
         else:
-            scp_key_flag = '-K' if self.ssh2_enabled else '-i'
-            scp_only_args = [
-                '-o', 'StrictHostKeyChecking no',
-                '-o', 'ConnectTimeout={}'.format(SSH_TIMEOUT_SEC),
-                '-o', 'UserKnownHostsFile /dev/null',
-                '-o', 'LogLevel ERROR',
-            ] if not self.ssh2_enabled else []
-            cmd_to_run = ['scp'] if not self.ssh2_enabled else ['scpg3']
             cmd_to_run.extend(
-                ['-P', str(self.ssh_port),
-                 scp_key_flag, self.identity_file,
+                ['scp', '-P', str(self.ssh_port),
+                 '-o', 'StrictHostKeyChecking no',
+                 '-o', 'ConnectTimeout={}'.format(SSH_TIMEOUT_SEC),
+                 '-o', 'UserKnownHostsFile /dev/null',
+                 '-o', 'LogLevel ERROR',
+                 '-i', self.identity_file,
                  local_file, 'yugabyte@{}:{}'.format(self.node, remote_file)])
-            cmd_to_run.extend(scp_only_args)
 
-        output = check_output(cmd_to_run, env_conf, self.ssh2_enabled).strip()
+        output = check_output(cmd_to_run, env_conf).strip()
 
         return self.convert_output(output)
 
@@ -1074,7 +1047,6 @@ def main():
                         help='Time to wait between retries of failed checks.')
     parser.add_argument('--check_clock', action="store_true",
                         help='Include NTP synchronization check into actions.')
-    parser.add_argument('--ssh2_enabled', action='store_true', default=False)
     args = parser.parse_args()
     if args.cluster_payload is not None:
         universe = UniverseDefinition(args.cluster_payload)
@@ -1114,7 +1086,7 @@ def main():
                         c.root_and_client_root_ca_same, c.ssl_protocol, c.enable_ysql,
                         c.enable_ysql_auth, c.master_http_port, c.tserver_http_port,
                         c.ysql_server_http_port, c.collect_metrics_script, c.test_read_write,
-                        universe_version, args.ssh2_enabled)
+                        universe_version)
 
                 coordinator.add_precheck(checker, "check_openssl_availability")
                 coordinator.add_precheck(checker, "upload_collect_metrics_script")

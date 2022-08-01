@@ -9,14 +9,11 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.google.common.collect.ImmutableList;
-import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.models.Provider;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
-import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
@@ -32,16 +29,7 @@ public class HealthManagerTest extends FakeDBApplication {
 
   @Mock private play.Configuration appConfig;
 
-  @Mock RuntimeConfigFactory runtimeConfigFactory;
-
-  @Mock Config mockConfig;
-
   private static final String[] providers = {"aws", "gcp", "onprem", "kubernetes"};
-
-  @Before
-  public void setUp() {
-    when(runtimeConfigFactory.globalRuntimeConf()).thenReturn(mockConfig);
-  }
 
   private List<String> healthCheckCommand(
       Provider provider,

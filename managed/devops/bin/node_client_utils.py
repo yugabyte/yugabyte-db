@@ -1,5 +1,7 @@
 import os
+import paramiko
 import subprocess
+import time
 
 YB_USERNAME = 'yugabyte'
 # Let's set some timeout to our commands.
@@ -32,26 +34,58 @@ class KubernetesClient:
         cmd = self.wrap_command(cmd)
         return subprocess.check_output(cmd, env=self.env_config).decode()
 
-    def exec_script(self, local_script_name, params):
-        '''
-        Function to execute a local bash script on the k8s cluster.
-        Parameters:
-        local_script_name : Path to the shell script on local machine
-        params: List of arguments to be provided to the shell script
-        '''
-        if not isinstance(params, str):
-            params = ' '.join(params)
 
-        with open(local_script_name, "r") as f:
-            local_script = f.read()
+class SshParamikoClient:
+    def __init__(self, args):
+        self.key_filename = args.key
+        self.ip = args.ip
+        self.port = args.port
+        self.client = None
 
-        # Heredoc syntax for input redirection from a local shell script
-        command = f"/bin/bash -s {params} <<'EOF'\n{local_script}\nEOF"
+    def connect(self):
+        self.client = paramiko.SSHClient()
+        self.client.set_missing_host_key_policy(paramiko.MissingHostKeyPolicy())
+        self.client.connect(self.ip, self.port, username=YB_USERNAME,
+                            key_filename=self.key_filename, timeout=10,
+                            banner_timeout=20, auth_timeout=20)
 
-        # Cannot use self.exec_command() because it needs '/bin/bash' and '-c' before the command
-        wrapped_command = ['kubectl', 'exec', '-n', self.namespace, '-c',
-                           'yb-master' if self.is_master else 'yb-tserver', self.pod_name, '--',
-                           '/bin/bash', '-c', command]
+    def close_connection(self):
+        self.client.close()
 
-        output = subprocess.check_output(wrapped_command, env=self.env_config).decode()
+    def get_remote_env_var(self, env):
+        _, stdout, _ = self.client.exec_command('echo ${}'.format(env))
+        try:
+            var = stdout.read()[:-1].decode()  # decode bytes to string
+        except Exception:
+            raise RuntimeError("Env var {} does not exist".format(env))
+        return var
+
+    def get_sftp_client(self):
+        return self.client.open_sftp()
+
+    def exec_command(self, cmd):
+        if isinstance(cmd, str):
+            command = cmd
+        else:
+            command = ' '.join(cmd)
+        stdin, stdout, stderr = self.client.exec_command(command, timeout=COMMAND_TIMEOUT_SEC)
+        return_code = stdout.channel.recv_exit_status()
+        if return_code != 0:
+            error = self.read_output(stderr)
+            raise RuntimeError('Command \'{}\' returned error code {}: {}'
+                               .format(command, return_code, error))
+        output = self.read_output(stdout)
         return output
+
+    # We saw this script hang. The only place which can hang in theory is ssh command execution
+    # and reading it's results.
+    # Applied one of described workaround from this issue:
+    # https://github.com/paramiko/paramiko/issues/109
+    def read_output(self, stream):
+        end_time = time.time() + COMMAND_TIMEOUT_SEC
+        while not stream.channel.eof_received:
+            time.sleep(1)
+            if time.time() > end_time:
+                stream.channel.close()
+            break
+        return stream.read().decode()

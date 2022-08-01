@@ -2,10 +2,7 @@
 
 import argparse
 from collections import namedtuple
-from node_client_utils import KubernetesClient, YB_USERNAME
-import sys
-from ybops.utils.ssh import SSHClient
-
+from node_client_utils import SshParamikoClient, KubernetesClient
 
 NodeTypeParser = namedtuple('NodeTypeParser', ['parser'])
 ActionHandler = namedtuple('ActionHandler', ['handler', 'parser'])
@@ -26,7 +23,6 @@ def add_ssh_subparser(subparsers, command, parent):
     ssh_parser.add_argument('--ip', type=str, help='IP address for ssh',
                             required=True)
     ssh_parser.add_argument('--port', type=int, help='Port number for ssh', default=22)
-    ssh_parser.add_argument('--ssh2_enabled', action='store_true', default=False)
     return ssh_parser
 
 
@@ -38,10 +34,7 @@ def add_run_command_subparser(subparsers, command, parent):
 
 
 def handle_run_command(args, client):
-    kwargs = {}
-    if args.node_type == 'ssh':
-        kwargs['output_only'] = True
-    output = client.exec_command(args.command, **kwargs)
+    output = client.exec_command(args.command)
     print('Command output:')
     print(output)
 
@@ -66,10 +59,12 @@ def download_logs_ssh(args, client):
     if args.is_master:
         cmd += ['-h', '-C', args.yb_home_dir, 'master/logs/yb-master.INFO']
 
-    rm_cmd = ['rm', tar_file_name]
     client.exec_command(cmd)
-    client.download_file_from_remote_server(tar_file_name, args.target_local_file)
-    client.exec_command(rm_cmd)
+    sftp_client = client.get_sftp_client()
+    sftp_client.get(tar_file_name, args.target_local_file)
+    sftp_client.close()
+
+    client.exec_command(['rm', tar_file_name])
 
 
 def download_logs_k8s(args, client):
@@ -126,13 +121,9 @@ def parse_args():
 def main():
     args = parse_args()
     if args.node_type == 'ssh':
-        client = SSHClient(ssh2_enabled=args.ssh2_enabled)
-        try:
-            client.connect(args.ip, YB_USERNAME, args.key, args.port)
-        except Exception as e:
-            sys.exit("Failed to establish SSH connection to {}:{} - {}"
-                     .format(args.ip, args.port, str(e)))
-    elif args.node_type != 'ssh':
+        client = SshParamikoClient(args)
+        client.connect()
+    else:
         client = KubernetesClient(args)
 
     actions[args.action].handler(args, client)

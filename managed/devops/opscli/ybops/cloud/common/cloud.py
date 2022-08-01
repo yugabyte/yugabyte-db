@@ -20,9 +20,9 @@ import yaml
 from ybops.cloud.common.ansible import AnsibleProcess
 from ybops.cloud.common.base import AbstractCommandParser
 from ybops.utils import (YB_HOME_DIR, YBOpsRuntimeError, get_datafile_path,
-                         get_internal_datafile_path, remote_exec_command)
+                         get_internal_datafile_path, get_ssh_host_port, remote_exec_command,
+                         scp_to_tmp)
 from ybops.utils.remote_shell import RemoteShell
-from ybops.utils.ssh import wait_for_ssh, scp_to_tmp, get_ssh_host_port
 
 
 class AbstractCloud(AbstractCommandParser):
@@ -159,8 +159,7 @@ class AbstractCloud(AbstractCommandParser):
     def run_control_script(self, process, command, args, extra_vars, host_info):
         updated_vars = {
             "process": process,
-            "command": command,
-            "ssh2_enabled": args.ssh2_enabled
+            "command": command
         }
         updated_vars.update(extra_vars)
         updated_vars.update(get_ssh_host_port(host_info, args.custom_ssh_port))
@@ -209,15 +208,13 @@ class AbstractCloud(AbstractCommandParser):
         # Copy and run script to configure routes
         scp_to_tmp(
             get_datafile_path('configure_nic.sh'), extra_vars["ssh_host"],
-            extra_vars["ssh_user"], extra_vars["ssh_port"], args.private_key_file,
-            ssh2_enabled=args.ssh2_enabled)
+            extra_vars["ssh_user"], extra_vars["ssh_port"], args.private_key_file)
         cmd = ("sudo /tmp/configure_nic.sh "
                "--subnet_network {} --subnet_netmask {} --cloud {}").format(
             subnet_network, subnet_netmask, self.name)
         rc, stdout, stderr = remote_exec_command(
             extra_vars["ssh_host"], extra_vars["ssh_port"],
-            extra_vars["ssh_user"], args.private_key_file, cmd,
-            ssh2_enabled=args.ssh2_enabled)
+            extra_vars["ssh_user"], args.private_key_file, cmd)
         if rc:
             raise YBOpsRuntimeError(
                 "Could not configure second nic {} {}".format(stdout, stderr))
@@ -231,8 +228,7 @@ class AbstractCloud(AbstractCommandParser):
         # Verify that the command ran successfully:
         rc, stdout, stderr = remote_exec_command(extra_vars["ssh_host"], extra_vars["ssh_port"],
                                                  extra_vars["ssh_user"], args.private_key_file,
-                                                 'ls /tmp/dhclient-script-*',
-                                                 ssh2_enabled=args.ssh2_enabled)
+                                                 'ls /tmp/dhclient-script-*')
         if rc:
             raise YBOpsRuntimeError(
                 "Second nic not configured at start up")
@@ -634,7 +630,7 @@ class AbstractCloud(AbstractCommandParser):
             rc, stdout, stderr = remote_exec_command(
                 host_info['ssh_host'], host_info['ssh_port'],
                 host_info['ssh_user'], args.private_key_file,
-                self._wait_for_startup_script_command, ssh2_enabled=args.ssh2_enabled)
+                self._wait_for_startup_script_command)
             if rc != 0:
                 logging.error(
                     'Failed to wait for startup script completion on {}:'.format(
