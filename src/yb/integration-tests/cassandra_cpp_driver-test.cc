@@ -438,7 +438,7 @@ class Metrics {
     const HostPort host_port = cql_metric ?
         HostPort(ts.bind_host(), ts.cql_http_port()) : ts.bound_http_hostport();
     const char* entity_id = cql_metric ? "yb.cqlserver" : "yb.tabletserver";
-    const auto result = ts.GetInt64MetricFromHost(
+    const auto result = ts.GetMetricFromHost<int64>(
         host_port, &METRIC_ENTITY_server, entity_id, CHECK_NOTNULL(metric_proto), "total_count");
 
     if (!result.ok()) {
