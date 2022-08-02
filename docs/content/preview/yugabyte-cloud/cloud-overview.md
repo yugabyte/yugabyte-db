@@ -2,7 +2,7 @@
 title: YugabyteDB Managed
 headerTitle: YugabyteDB Managed
 linkTitle: YugabyteDB Managed
-description: Fully managed YugabyteDB-as-a-Service that allows you to run YugabyteDB clusters on Google Cloud Platform and Amazon Web Services (AWS).
+description: Fully managed YugabyteDB-as-a-Service that allows you to run YugabyteDB clusters on Google Cloud Platform (GCP) and Amazon Web Services (AWS).
 aliases:
   - /preview/yugabyte-cloud/
   - /preview/deploy/yugabyte-cloud/
