@@ -45,11 +45,11 @@
 #include "yb/util/result.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
-
-using std::shared_ptr;
+#include "yb/fs/fs.pb.h"
 
 DECLARE_string(fs_data_dirs);
 DECLARE_string(fs_wal_dirs);
+DECLARE_bool(TEST_fail_write_pb_container);
 
 namespace yb {
 
@@ -307,6 +307,47 @@ TEST_F(FsManagerTestBase, MultiDriveWithoutMeta) {
   // Deleted tablet-meta should be created
   ASSERT_OK(fs_manager()->CheckAndOpenFileSystemRoots());
   ASSERT_OK(fs_manager()->ListTabletIds());
+}
+
+TEST_F(FsManagerTestBase, AutoFlagsTest) {
+  auto path1 = GetTestPath("ad1");
+  auto path2 = GetTestPath("ad2");
+  const auto paths = {path1, path2};
+  ReinitFsManager(paths, paths);
+  BlockIdPB msg;
+  msg.set_id(123);
+
+  ASSERT_TRUE(fs_manager()->TEST_GetAutoFlagsDataRoot().empty());
+
+  // Verify read required before write
+  ASSERT_NOK(fs_manager()->WriteAutoFlagsConfig(&msg));
+  ASSERT_TRUE(fs_manager()->ReadAutoFlagsConfig(&msg).IsNotFound());
+  ASSERT_TRUE(fs_manager()->ReadAutoFlagsConfig(&msg).IsNotFound());
+
+  string auto_flags_path = fs_manager()->TEST_GetAutoFlagsDataRoot();
+  ASSERT_FALSE(auto_flags_path.empty());
+
+  // Read should still fail with same error
+  ASSERT_TRUE(fs_manager()->ReadAutoFlagsConfig(&msg).IsNotFound());
+
+  // Verify clean write
+  ASSERT_OK(fs_manager()->WriteAutoFlagsConfig(&msg));
+  ASSERT_EQ(fs_manager()->TEST_GetAutoFlagsDataRoot(), auto_flags_path);
+
+  // Verify failure mid write
+  msg.set_id(456);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_write_pb_container) = true;
+  ASSERT_NOK(fs_manager()->WriteAutoFlagsConfig(&msg));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_write_pb_container) = false;
+  ASSERT_OK(fs_manager()->ReadAutoFlagsConfig(&msg));
+  ASSERT_EQ(msg.id(), 123);
+
+  // Swap paths and validate
+  const auto paths2 = {path2, path1};
+  ReinitFsManager(paths2, paths2);
+  ASSERT_OK(fs_manager()->ReadAutoFlagsConfig(&msg));
+  ASSERT_EQ(msg.id(), 123);
+  ASSERT_EQ(fs_manager()->TEST_GetAutoFlagsDataRoot(), auto_flags_path);
 }
 
 class FsManagerTestDriveFault : public YBTest {

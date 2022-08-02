@@ -264,7 +264,7 @@ public class NodeDetails {
   @Override
   public String toString() {
     StringBuilder sb = new StringBuilder();
-    sb.append("name: ")
+    sb.append("{name: ")
         .append(nodeName)
         .append(", ")
         .append(cloudInfo.toString())
@@ -277,7 +277,8 @@ public class NodeDetails {
         .append(", azUuid: ")
         .append(azUuid)
         .append(", placementUuid: ")
-        .append(placementUuid);
+        .append(placementUuid)
+        .append("}");
     return sb.toString();
   }
 

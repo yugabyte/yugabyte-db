@@ -68,6 +68,7 @@ ADD_YB_LIBRARY(yb_common_base
 set(COMMON_SRCS
   clock.cc
   common_flags.cc
+  common_types_util.cc
   column_id.cc
   consistent_read_point.cc
   entity_ids.cc
