@@ -41,6 +41,7 @@
 
 #include <glog/logging.h>
 
+#include "yb/client/auto_flags_manager.h"
 #include "yb/client/client.h"
 #include "yb/client/transaction_manager.h"
 #include "yb/client/universe_key_client.h"
@@ -161,10 +162,10 @@ namespace yb {
 namespace tserver {
 
 TabletServer::TabletServer(const TabletServerOptions& opts)
-    : DbServerBase(
-          "TabletServer", opts, "yb.tabletserver", server::CreateMemTrackerForServer()),
+    : DbServerBase("TabletServer", opts, "yb.tabletserver", server::CreateMemTrackerForServer()),
       fail_heartbeats_for_tests_(false),
       opts_(opts),
+      auto_flags_manager_(new AutoFlagsManager("yb-tserver", fs_manager_.get())),
       tablet_manager_(new TSTabletManager(fs_manager_.get(), this, metric_registry())),
       path_handlers_(new TabletServerPathHandlers(this)),
       maintenance_manager_(new MaintenanceManager(MaintenanceManager::DEFAULT_OPTIONS)),
@@ -327,6 +328,23 @@ Status TabletServer::Init() {
   shared_object().SetPostgresAuthKey(RandomUniformInt<uint64_t>());
 
   return Status::OK();
+}
+
+Status TabletServer::InitAutoFlags() {
+  if (!VERIFY_RESULT(auto_flags_manager_->LoadFromFile())) {
+    RETURN_NOT_OK(auto_flags_manager_->LoadFromMaster(
+        options_.HostsString(), *opts_.GetMasterAddresses(), ApplyNonRuntimeAutoFlags::kTrue));
+  }
+
+  return Status::OK();
+}
+
+uint32_t TabletServer::GetAutoFlagConfigVersion() const {
+  return auto_flags_manager_->GetConfigVersion();
+}
+
+AutoFlagsConfigPB TabletServer::TEST_GetAutoFlagConfig() const {
+  return auto_flags_manager_->GetConfig();
 }
 
 Status TabletServer::GetRegistration(ServerRegistrationPB* reg, server::RpcOnly rpc_only) const {

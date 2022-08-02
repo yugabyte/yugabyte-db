@@ -70,6 +70,7 @@ include_directories(${YB_BUILD_ROOT}/postgres/include/server)
 set(MASTER_SRCS
   async_flush_tablets_task.cc
   async_rpc_tasks.cc
+  auto_flags_orchestrator.cc
   master_call_home.cc
   backfill_index.cc
   catalog_manager.cc
@@ -224,3 +225,14 @@ add_custom_command(TARGET yb-master POST_BUILD
     "--program_name" "yb-master"
     "--output_file_path" "${MASTER_FLAGS_METADATA_FILE}"
   BYPRODUCTS "${MASTER_FLAGS_METADATA_FILE}")
+
+# Generate auto_flags.json
+set(AUTO_FLAGS_FILE ${YB_BUILD_ROOT}/auto_flags.json)
+list(APPEND GEN_AUTO_FLAGS_COMMAND "${BUILD_SUPPORT_DIR}/gen_auto_flags"
+  "--program_list" "yb-master,yb-tserver"
+  "--output_file_path" "${AUTO_FLAGS_FILE}")
+add_custom_target(
+  gen_auto_flags_json ALL
+  COMMAND ${GEN_AUTO_FLAGS_COMMAND}
+  BYPRODUCTS "${AUTO_FLAGS_FILE}"
+  DEPENDS yb-master yb-tserver)

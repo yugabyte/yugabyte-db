@@ -40,6 +40,7 @@
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
+#include "yb/util/auto_flags.h"
 #include "yb/util/metrics.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_graph.h"
@@ -52,6 +53,7 @@ DECLARE_bool(durable_wal_write);
 DECLARE_bool(enable_maintenance_manager);
 DECLARE_bool(enable_data_block_fsync);
 DECLARE_int32(heartbeat_rpc_timeout_ms);
+DECLARE_bool(disable_auto_flags_management);
 
 METRIC_DEFINE_entity(test);
 
@@ -107,6 +109,11 @@ void TabletServerTestBase::TearDown() {
 void TabletServerTestBase::StartTabletServer() {
   // Start server with an invalid master address, so it never successfully
   // heartbeats, even if there happens to be a master running on this machine.
+
+  // Disable AutoFlags management as we dont have a master. AutoFlags will be enabled based on
+  // FLAGS_TEST_promote_all_auto_flags in test_main.cc.
+  FLAGS_disable_auto_flags_management = true;
+
   auto mini_ts =
       MiniTabletServer::CreateMiniTabletServer(GetTestPath("TabletServerTest-fsroot"), 0);
   CHECK_OK(mini_ts);

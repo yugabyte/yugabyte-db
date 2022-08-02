@@ -39,6 +39,7 @@
 #include <sstream>
 #include <unordered_set>
 
+#include "yb/common/common_types_util.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/partition.h"
 #include "yb/common/schema.h"
@@ -88,36 +89,8 @@ DECLARE_int32(ysql_tablespace_info_refresh_secs);
 namespace yb {
 
 namespace {
-static constexpr const char* kDBTypeNameUnknown = "unknown";
-static constexpr const char* kDBTypeNameCql = "ycql";
-static constexpr const char* kDBTypeNamePgsql = "ysql";
-static constexpr const char* kDBTypeNameRedis = "yedis";
 
 const int64_t kCurlTimeoutSec = 180;
-
-const char* DatabaseTypeName(YQLDatabase db) {
-  switch (db) {
-    case YQL_DATABASE_UNKNOWN: break;
-    case YQL_DATABASE_CQL: return kDBTypeNameCql;
-    case YQL_DATABASE_PGSQL: return kDBTypeNamePgsql;
-    case YQL_DATABASE_REDIS: return kDBTypeNameRedis;
-  }
-  CHECK(false) << "Unexpected db type " << db;
-  return kDBTypeNameUnknown;
-}
-
-YQLDatabase DatabaseTypeByName(const string& db_type_name) {
-  static const std::array<pair<const char*, YQLDatabase>, 3> db_types{
-      make_pair(kDBTypeNameCql, YQLDatabase::YQL_DATABASE_CQL),
-      make_pair(kDBTypeNamePgsql, YQLDatabase::YQL_DATABASE_PGSQL),
-      make_pair(kDBTypeNameRedis, YQLDatabase::YQL_DATABASE_REDIS)};
-  for (const auto& db : db_types) {
-    if (db_type_name == db.first) {
-      return db.second;
-    }
-  }
-  return YQLDatabase::YQL_DATABASE_UNKNOWN;
-}
 
 std::optional<HostPortPB> GetPublicHttpHostPort(const ServerRegistrationPB& registration) {
   if (registration.http_addresses().empty()) {

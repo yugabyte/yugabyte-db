@@ -3,6 +3,7 @@
 package com.yugabyte.yw.controllers.handlers;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
@@ -107,6 +108,7 @@ public class NodeAgentHandlerTest extends FakeDBApplication {
     payload.name = "node1";
     payload.ip = "10.20.30.40";
     NodeAgent nodeAgent = nodeAgentHandler.register(customer.uuid, payload);
+    String certPath = nodeAgent.config.get(NodeAgent.CERT_DIR_PATH_PROPERTY);
     assertNotNull(nodeAgent.uuid);
     UUID nodeAgentUuid = nodeAgent.uuid;
     verify(mockAppConfig, times(1)).getString(eq("yb.storage.path"));
@@ -135,10 +137,17 @@ public class NodeAgentHandlerTest extends FakeDBApplication {
     payload.state = State.UPGRADING;
     nodeAgentHandler.updateState(customer.uuid, nodeAgentUuid, payload);
     nodeAgent = nodeAgentHandler.updateRegistration(customer.uuid, nodeAgentUuid);
+    assertEquals(certPath, nodeAgent.config.get(NodeAgent.CERT_DIR_PATH_PROPERTY));
     verifyKeys(nodeAgentUuid);
     // Complete upgrading.
+    payload.state = State.UPGRADED;
+    nodeAgent = nodeAgentHandler.updateState(customer.uuid, nodeAgentUuid, payload);
+    assertNotEquals(certPath, nodeAgent.config.get(NodeAgent.CERT_DIR_PATH_PROPERTY));
+    certPath = nodeAgent.config.get(NodeAgent.CERT_DIR_PATH_PROPERTY);
+    // Restart the node agent and report live to the server.
     payload.state = State.LIVE;
-    nodeAgentHandler.updateState(customer.uuid, nodeAgentUuid, payload);
+    nodeAgent = nodeAgentHandler.updateState(customer.uuid, nodeAgentUuid, payload);
+    assertEquals(certPath, nodeAgent.config.get(NodeAgent.CERT_DIR_PATH_PROPERTY));
     verifyKeys(nodeAgentUuid);
   }
 

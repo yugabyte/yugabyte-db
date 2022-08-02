@@ -65,7 +65,7 @@ public class NodeAgentHandler {
   public static final int CERT_EXPIRY_YEARS = 5;
 
   public static final Set<State> UPDATABLE_STATES_BY_NODE_AGENT =
-      ImmutableSet.<State>builder().add(State.UPGRADING, State.LIVE).build();
+      ImmutableSet.<State>builder().add(State.UPGRADING, State.UPGRADED, State.LIVE).build();
 
   private final Config appConfig;
   private final PlatformScheduler platformScheduler;
@@ -330,6 +330,9 @@ public class NodeAgentHandler {
     if (nodeAgentOp.isPresent()) {
       throw new PlatformServiceException(Status.BAD_REQUEST, "Node agent is already registered");
     }
+    if (StringUtils.isBlank(payload.version)) {
+      throw new PlatformServiceException(Status.BAD_REQUEST, "Version must be specified");
+    }
     NodeAgent nodeAgent = payload.toNodeAgent(customerUuid);
     // Save within the transaction to get DB generated column values.
     nodeAgent.saveState(State.REGISTERING);
@@ -377,9 +380,11 @@ public class NodeAgentHandler {
     if (!UPDATABLE_STATES_BY_NODE_AGENT.contains(payload.state)) {
       throw new PlatformServiceException(Status.BAD_REQUEST, "Invalid state " + payload.state);
     }
-    State currentState = nodeAgent.state;
     nodeAgent.state = payload.state;
-    if (currentState == State.UPGRADING && payload.state == State.LIVE) {
+    if (nodeAgent.state == State.UPGRADED) {
+      if (StringUtils.isBlank(payload.version)) {
+        throw new PlatformServiceException(Status.BAD_REQUEST, "Version must be specified");
+      }
       // Node agent is ready after an upgrade.
       nodeAgent.version = payload.version;
       updateNodeAgentCerts(nodeAgent);

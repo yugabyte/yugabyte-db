@@ -146,6 +146,13 @@ message ReloadCertificatesRequestPB {
 message ReloadCertificatesResponsePB {
 }
 
+message GetAutoFlagsConfigVersionRequestPB {
+}
+
+message GetAutoFlagsConfigVersionResponsePB {
+  required uint32 config_version = 1;
+}
+
 service GenericService {
   rpc SetFlag(SetFlagRequestPB)
     returns (SetFlagResponsePB);
@@ -155,6 +162,9 @@ service GenericService {
 
   rpc RefreshFlags(RefreshFlagsRequestPB)
     returns (RefreshFlagsResponsePB);
+
+  rpc GetAutoFlagsConfigVersion(GetAutoFlagsConfigVersionRequestPB)
+    returns (GetAutoFlagsConfigVersionResponsePB);
 
   rpc FlushCoverage(FlushCoverageRequestPB)
     returns (FlushCoverageResponsePB);

@@ -55,6 +55,15 @@
       mode: 0700
       owner: "{{ create_user.name  }}"
       group: "{{ create_user.group  }}"
+
+  - name: Install authorized keys
+    copy:
+      content: "{{ ssh_config.id_rsa_pub }}"
+      dest: "{{ create_user.home_dir }}/.ssh2/authorized_keys/id_rsa_2048_a.pub"
+      mode: 0600
+      owner: "{{ create_user.name  }}"
+      group: "{{ create_user.group  }}"
+    when: not stat_result.stat.exists
   when: ssh_config.ssh_type == "ssh2"
 
 - block:
@@ -81,23 +90,6 @@
       group: "{{ create_user.group  }}"
     when: not stat_result.stat.exists
   when: ssh_config.ssh_type != "ssh2"
-
-- block:
-  - name: Setup SSH | Check if private key file exists
-    stat:
-      path: "{{ create_user.home_dir }}/.ssh2/id_rsa_2048_a"
-    register: stat_result
-
-  - name: Setup SSH | Install authorized keys
-    copy:
-      content: "{{ ssh_config.id_rsa_pub }}"
-      dest: "{{ create_user.home_dir }}/.ssh2/authorized_keys/id_rsa_2048_a.pub"
-      mode: 0600
-      owner: "{{ create_user.name  }}"
-      group: "{{ create_user.group  }}"
-    when: not stat_result.stat.exists
-  when: ssh_config.ssh_type == "ssh2"
-
 
 - name: Setup SSH | Install authorized keys
   authorized_key:

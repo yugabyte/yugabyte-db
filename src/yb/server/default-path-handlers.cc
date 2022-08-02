@@ -65,7 +65,10 @@
 #include "yb/gutil/strings/human_readable.h"
 #include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/substitute.h"
+#include "yb/rpc/secure_stream.h"
 #include "yb/server/pprof-path-handlers.h"
+#include "yb/server/server_base.h"
+#include "yb/server/secure.h"
 #include "yb/server/webserver.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/format.h"
@@ -443,6 +446,49 @@ static void PathUsageHandler(FsManager* fsmanager,
 void RegisterPathUsageHandler(Webserver* webserver, FsManager* fsmanager) {
   Webserver::PathHandlerCallback callback = std::bind(PathUsageHandler, fsmanager, _1, _2);
   webserver->RegisterPathHandler("/drives", "Drives", callback, true, false);
+}
+
+// Registered to handle "/tls", and prints out certificate details
+static void CertificateHandler(server::RpcServerBase* server,
+                             const Webserver::WebRequest& req,
+                             Webserver::WebResponse* resp) {
+  std::stringstream *output = &resp->output;
+  bool as_text = (req.parsed_args.find("raw") != req.parsed_args.end());
+  Tags tags(as_text);
+  (*output) << tags.header << "TLS Settings" << tags.end_header << endl;
+
+  (*output) << tags.pre_tag;
+
+  (*output) << "Node to node encryption enabled: "
+      << (yb::server::IsNodeToNodeEncryptionEnabled() ? "true" : "false");
+
+  (*output) << tags.line_break << "Client to server encryption enabled: "
+      << (yb::server::IsClientToServerEncryptionEnabled() ? "true" : "false");
+
+  (*output) << tags.line_break << "Allow insecure connections: "
+      << (yb::rpc::AllowInsecureConnections() ? "on" : "off");
+
+  (*output) << tags.line_break << "SSL Protocols: " << yb::rpc::GetSSLProtocols();
+
+  (*output) << tags.line_break << "Cipher list: " << yb::rpc::GetCipherList();
+
+  (*output) << tags.line_break << "Ciphersuites: " << yb::rpc::GetCipherSuites();
+
+  (*output) << tags.end_pre_tag;
+
+  auto details = server->GetCertificateDetails();
+
+  if(!details.empty()) {
+    (*output) << tags.header << "Certificate details" << tags.end_header << endl;
+
+    (*output) << tags.pre_tag << details << tags.end_pre_tag << endl;
+  }
+}
+
+void RegisterTlsHandler(Webserver* webserver, server::RpcServerBase* server) {
+  Webserver::PathHandlerCallback callback = std::bind(CertificateHandler, server, _1, _2);
+  webserver->RegisterPathHandler("/tls", "TLS", callback,
+    true /*is_styled*/, false /*is_on_nav_bar*/);
 }
 
 } // namespace yb
