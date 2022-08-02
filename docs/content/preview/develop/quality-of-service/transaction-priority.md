@@ -37,10 +37,10 @@ It is possible to set the priority of a transaction using the two session variab
 
 ## Examples
 
-Let's create a YugabyteDB cluster, and open two separate `ysqlsh` connections to it.
+Let's create a [YugabyteDB cluster](../../../quick-start/), and open two separate [ysqlsh](../../../admin/ysqlsh/#starting-ysqlsh) connections to it.
 
-{{< tip title="Tip - use YugabyteDB Managed" >}}
-You can create a cluster in the free tier of YugabyteDB Managed, and open two *cloud shell* connections to it. These cloud shell connections open up in two different browser tabs, which can be used to do the steps below.
+{{< tip title="Tip - Use YugabyteDB Managed" >}}
+You can create a cluster in the free tier of [YugabyteDB Managed](../../../quick-start-yugabytedb-managed/), and open two *cloud shell* connections to it. These cloud shell connections open up in two different browser tabs, which can be used to do the steps below.
 
 {{< /tip >}}
 
@@ -165,7 +165,7 @@ yugabyte=> select * from account;
 
 ### Show transaction priority types
 
-The following is another example which demonstrates the usage of `yb_transaction_priority` based on the priority types.
+The following example demonstrates the usage of `yb_transaction_priority` based on the priority types.
 
 1. From an active [ysqlsh](../../../admin/ysqlsh/#starting-ysqlsh) shell, create a table as follows:
 
