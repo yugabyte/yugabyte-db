@@ -334,3 +334,16 @@ class GcpUpdateMountedDisksMethod(UpdateMountedDisksMethod):
         super(GcpUpdateMountedDisksMethod, self).add_extra_args()
         self.parser.add_argument("--volume_type", choices=[GCP_SCRATCH, GCP_PERSISTENT],
                                  default="scratch", help="Storage type for GCP instances.")
+
+
+class GcpTagsMethod(AbstractInstancesMethod):
+    def __init__(self, base_command):
+        super(GcpTagsMethod, self).__init__(base_command, "tags")
+
+    def add_extra_args(self):
+        super(GcpTagsMethod, self).add_extra_args()
+        self.parser.add_argument("--remove_tags", required=False,
+                                 help="Tag keys to remove.")
+
+    def callback(self, args):
+        self.cloud.modify_tags(args)

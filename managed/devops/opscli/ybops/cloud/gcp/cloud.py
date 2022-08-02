@@ -330,3 +330,7 @@ class GcpCloud(AbstractCloud):
     def delete_volumes(self, args):
         tags = json.loads(args.instance_tags) if args.instance_tags is not None else {}
         return self.get_admin().delete_disks(args.zone, tags)
+
+    def modify_tags(self, args):
+        instance = self.get_host_info(args)
+        self.get_admin().modify_tags(args, instance['id'], args.instance_tags, args.remove_tags)
