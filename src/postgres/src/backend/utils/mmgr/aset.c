@@ -619,12 +619,12 @@ AllocSetReset(MemoryContext context)
 		else
 		{
 			/* Normal case, release the block */
-			YbPgMemSubConsumption(ASET_BLOCK_TOTAL_SIZE(block));
-
+			size_t freed_sz = ASET_BLOCK_TOTAL_SIZE(block);
 #ifdef CLOBBER_FREED_MEMORY
 			wipe_mem(block, block->freeptr - ((char *) block));
 #endif
 			free(block);
+			YbPgMemSubConsumption(freed_sz);
 		}
 		block = next;
 	}
@@ -681,10 +681,11 @@ AllocSetDelete(MemoryContext context)
 				freelist->first_free = (AllocSetContext *) oldset->header.nextchild;
 				freelist->num_free--;
 
-				YbPgMemSubConsumption(ASET_INITIAL_TOTAL_SIZE(oldset));
+				size_t freed_sz = ASET_INITIAL_TOTAL_SIZE(oldset);
 
 				/* All that remains is to free the header/initial block */
 				free(oldset);
+				YbPgMemSubConsumption(freed_sz);
 			}
 			Assert(freelist->num_free == 0);
 		}
@@ -708,16 +709,18 @@ AllocSetDelete(MemoryContext context)
 
 		if (block != set->keeper)
 		{
-			YbPgMemSubConsumption(ASET_BLOCK_TOTAL_SIZE(block));
+			size_t freed_sz = ASET_BLOCK_TOTAL_SIZE(block);
 			free(block);
+			YbPgMemSubConsumption(freed_sz);
 		}
 
 		block = next;
 	}
 
-	YbPgMemSubConsumption(ASET_INITIAL_TOTAL_SIZE(set));
+	size_t freed_sz = ASET_INITIAL_TOTAL_SIZE(set);
 	/* Finally, free the context header, including the keeper block */
 	free(set);
+	YbPgMemSubConsumption(freed_sz);
 }
 
 /*
@@ -1058,12 +1061,12 @@ AllocSetFree(MemoryContext context, void *pointer)
 			block->next->prev = block->prev;
 
 		/* Must be place before the wipe_mem wipes the content */
-		YbPgMemSubConsumption(ASET_BLOCK_TOTAL_SIZE(block));
-
+		size_t freed_sz = ASET_BLOCK_TOTAL_SIZE(block);
 #ifdef CLOBBER_FREED_MEMORY
 		wipe_mem(block, block->freeptr - ((char *) block));
 #endif
 		free(block);
+		YbPgMemSubConsumption(freed_sz);
 	}
 	else
 	{
