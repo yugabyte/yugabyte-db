@@ -2,10 +2,10 @@
 
 use strict;
 use warnings;
-use String::Util qw(trim);
 use File::Basename;
 use File::Compare;
 use PostgresNode;
+use String::Util qw(trim);
 use Test::More;
 
 # Expected folder where expected output will be present
@@ -29,6 +29,22 @@ unless (-d $expected_folder)
 # Get filename of the this perl file
 my $perlfilename = basename($0);
 
+# Create new PostgreSQL node and do initdb
+my $node = PostgresNode->get_new_node('test');
+my $pgdata = $node->data_dir;
+$node->dump_info;
+$node->init;
+
+# PG's major server version
+open my $FH_PG_VERSION, '<', "${pgdata}/PG_VERSION";
+my $major_version = trim(<$FH_PG_VERSION>);
+close $FH_PG_VERSION;
+
+if ($major_version <= 12)
+{                                                                               
+    plan skip_all => "pg_stat_statements test cases for versions 12 and below.";
+}                                                                               
+
 #Remove .pl from filename and store in a variable
 $perlfilename =~ s/\.[^.]+$//;
 my $filename_without_extension = $perlfilename;
@@ -47,12 +63,6 @@ if ( -f $out_filename_with_path)
 {
    unlink($out_filename_with_path) or die "Can't delete already existing $out_filename_with_path: $!\n";
 }
-
-# Create new PostgreSQL node and do initdb
-my $node = PostgresNode->get_new_node('test');
-my $pgdata = $node->data_dir;
-$node->dump_info;
-$node->init;
 
 # Update postgresql.conf to include/load pg_stat_monitor library   
 $node->append_conf('postgresql.conf', "shared_preload_libraries = 'pg_stat_statements,pg_stat_monitor'");

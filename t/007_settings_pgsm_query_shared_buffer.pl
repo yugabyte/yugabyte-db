@@ -51,7 +51,7 @@ my $node = PostgresNode->get_new_node('test');
 my $pgdata = $node->data_dir;
 $node->dump_info;
 $node->init;
-
+                                                                                
 # Update postgresql.conf to include/load pg_stat_monitor library
 open my $conf, '>>', "$pgdata/postgresql.conf";
 print $conf "shared_preload_libraries = 'pg_stat_monitor'\n";

@@ -4,7 +4,9 @@ use strict;
 use warnings;
 use File::Basename;
 use File::Compare;
+use File::Copy;
 use PostgresNode;
+use String::Util qw(trim);
 use Test::More;
 
 # Expected folder where expected output will be present
@@ -25,6 +27,17 @@ unless (-d $expected_folder)
    BAIL_OUT "Expected files folder $expected_folder doesn't exist: \n";;
 }
 
+# Create new PostgreSQL node and do initdb
+my $node = PostgresNode->get_new_node('test');
+my $pgdata = $node->data_dir;
+$node->dump_info;
+$node->init;
+
+# PG's major server version
+open my $FH_PG_VERSION, '<', "${pgdata}/PG_VERSION";
+my $major_version = trim(<$FH_PG_VERSION>);
+close $FH_PG_VERSION;
+
 # Get filename of the this perl file
 my $perlfilename = basename($0);
 
@@ -38,6 +51,12 @@ my $filename_without_extension = $perlfilename;
 
 # Create expected filename with path
 my $expected_filename = "${filename_without_extension}.out";
+
+if ($major_version <= 12)
+{
+   $expected_filename = "${expected_filename}.${major_version}";
+}
+
 my $expected_filename_with_path = "${expected_folder}/${expected_filename}" ;
 
 # Create results filename with path
@@ -49,12 +68,6 @@ if ( -f $out_filename_with_path)
 {
    unlink($out_filename_with_path) or die "Can't delete already existing $out_filename_with_path: $!\n";
 }
-
-# Create new PostgreSQL node and do initdb
-my $node = PostgresNode->get_new_node('test');
-my $pgdata = $node->data_dir;
-$node->dump_info;
-$node->init;
 
 # Update postgresql.conf to include/load pg_stat_monitor library
 open my $conf, '>>', "$pgdata/postgresql.conf";

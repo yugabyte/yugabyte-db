@@ -3,10 +3,16 @@
 use String::Util qw(trim);
 use File::Basename;
 use File::Compare;
+use String::Util qw(trim);
 use Test::More;
 
 use lib 't';
 use pgsm;
+
+# PG's major server version
+open my $FH_PG_VERSION, '<', "${pgdata}/PG_VERSION";
+my $major_version = trim(<$FH_PG_VERSION>);
+close $FH_PG_VERSION;
 
 sub check_value
 {
@@ -58,8 +64,15 @@ sub do_regression
 }
 
 ($cmdret, $stdout, $stderr) = pgsm_init_pg;
-do_regression(1, 0, "pg_stat_monitor.pgsm_track_planning = 'no'");
-do_regression(0, 0, "pg_stat_monitor.pgsm_track_planning = 'yes'");
+
+SKIP:
+    {
+        skip "Server version is 12 or less", 1
+            if ($major_version <= 12);
+
+        do_regression(1, 0, "pg_stat_monitor.pgsm_track_planning = 'no'");
+        do_regression(0, 0, "pg_stat_monitor.pgsm_track_planning = 'yes'");
+    }
 
 ($cmdret, $stdout, $stderr) = done_testing();
 

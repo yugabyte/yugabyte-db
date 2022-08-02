@@ -5,6 +5,7 @@ use warnings;
 use File::Basename;
 use File::Compare;
 use PostgresNode;
+use String::Util qw(trim);
 use Test::More;
 
 # Expected folder where expected output will be present
@@ -51,6 +52,11 @@ my $node = PostgresNode->get_new_node('test');
 my $pgdata = $node->data_dir;
 $node->dump_info;
 $node->init;
+
+# PG's major server version
+open my $FH_PG_VERSION, '<', "${pgdata}/PG_VERSION";
+my $major_version = trim(<$FH_PG_VERSION>);
+close $FH_PG_VERSION;
 
 # Update postgresql.conf to include/load pg_stat_monitor library
 open my $conf, '>>', "$pgdata/postgresql.conf";
