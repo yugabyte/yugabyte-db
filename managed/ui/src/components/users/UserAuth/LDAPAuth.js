@@ -23,6 +23,11 @@ const VALIDATION_SCHEMA = Yup.object().shape({
     is: (username) => username && username.length > 0,
     then: Yup.string().required('Password is Required'),
     otherwise: Yup.string()
+  }),
+  ldap_search_attribute: Yup.string().when('use_search_and_bind', {
+    is: (use_search_and_bind) => use_search_and_bind === 'true',
+    then: Yup.string().required('Search Attribute is Required'),
+    otherwise: Yup.string()
   })
 });
 
@@ -45,6 +50,17 @@ const SECURITY_OPTIONS = [
   }
 ];
 
+const AUTH_MODES = [
+  {
+    label: 'Simple Bind',
+    value: false
+  },
+  {
+    label: 'Search and Bind',
+    value: true
+  }
+];
+
 export const LDAPAuth = (props) => {
   const {
     fetchRunTimeConfigs,
@@ -64,6 +80,7 @@ export const LDAPAuth = (props) => {
     const ldap_port = splittedURL[splittedURL.length - 1];
     const ldap_url = values.ldap_url.replace(`:${ldap_port}`, '');
     const security = values.ldap_security;
+    const use_search_and_bind = values.use_search_and_bind;
 
     const transformedData = {
       ...values,
@@ -72,6 +89,10 @@ export const LDAPAuth = (props) => {
       enable_ldaps: `${security === 'enable_ldaps'}`,
       enable_ldap_start_tls: `${security === 'enable_ldap_start_tls'}`
     };
+
+    if (use_search_and_bind === 'false') {
+      transformedData.ldap_search_attribute = '';
+    }
 
     delete transformedData.ldap_security;
 
@@ -94,6 +115,7 @@ export const LDAPAuth = (props) => {
 
     let finalFormData = {
       ...formData,
+      use_search_and_bind: formData.use_search_and_bind ?? false,
       ldap_url: formData.ldap_url ? [formData.ldap_url, formData.ldap_port].join(':') : ''
     };
 
@@ -429,6 +451,70 @@ export const LDAPAuth = (props) => {
                   </Col>
                 </Row>
 
+                <Row key="auth_mode">
+                  <Col xs={12} sm={11} md={10} lg={6} className="ua-field-row-c">
+                    <Row className="ua-field-row">
+                      <Col className="ua-label-c">
+                        <div>
+                          Binding Mechanism &nbsp;
+                          <YBInfoTip
+                            customClass="ldap-info-popover"
+                            title="Binding Mechanism"
+                            content="Mechanism used to bind to the LDAP server"
+                          >
+                            <i className="fa fa-info-circle" />
+                          </YBInfoTip>
+                        </div>
+                      </Col>
+                      <Col lg={12} className="ua-field ua-radio-c">
+                        <Row className="ua-radio-field-c">
+                          {AUTH_MODES.map(({ label, value }) => (
+                            <Col key={`auth-mode-${value}`} className="ua-auth-radio-field">
+                              <Field
+                                name={'use_search_and_bind'}
+                                type="radio"
+                                component="input"
+                                value={value}
+                                checked={`${value}` === `${values['use_search_and_bind']}`}
+                                disabled={isDisabled}
+                              />
+                              &nbsp;&nbsp;{label}
+                            </Col>
+                          ))}
+                        </Row>
+                      </Col>
+                    </Row>
+                  </Col>
+                </Row>
+
+                {values?.use_search_and_bind === 'true' && (
+                  <Row key="ldap_search_attribute">
+                    <Col xs={12} sm={11} md={10} lg={6} className="ua-field-row-c">
+                      <Row className="ua-field-row">
+                        <Col className="ua-label-c">
+                          <div>
+                            Search Attribute &nbsp;
+                            <YBInfoTip
+                              title="Search Attribute"
+                              content="Attribute that will be used to search for the user in the LDAP server"
+                            >
+                              <i className="fa fa-info-circle" />
+                            </YBInfoTip>
+                          </div>
+                        </Col>
+                        <Col lg={12} className="ua-field">
+                          <Field
+                            name="ldap_search_attribute"
+                            component={YBFormInput}
+                            disabled={isDisabled}
+                            className="ua-form-field"
+                          />
+                        </Col>
+                      </Row>
+                    </Col>
+                  </Row>
+                )}
+
                 <br />
                 <br />
                 <Row className="ua-field-row">
@@ -443,11 +529,11 @@ export const LDAPAuth = (props) => {
                     <Row className="ua-field-row">
                       <Col className="ua-label-c">
                         <div>
-                          Username (Optional) &nbsp;
+                          Bind DN (Optional) &nbsp;
                           <YBInfoTip
                             customClass="ldap-info-popover"
-                            title="Username"
-                            content="If the service account is not configured and if a user does not have permission to query the LDAP server, then the user's role is set to ReadOnly"
+                            title="Bind DN"
+                            content="Bind DN will be combined with Base DN and DN Prefix to login to the service account"
                           >
                             <i className="fa fa-info-circle" />
                           </YBInfoTip>
