@@ -2,8 +2,8 @@
 title: YugabyteDB Quick start
 headerTitle: Quick start
 linkTitle: Quick start
-headcontent: Test YugabyteDB's APIs and core features by creating a local cluster on a single host.
-headcontent: Create a local cluster on a single host.
+description: Test YugabyteDB's APIs and core features by creating a local cluster on a single host.
+headcontent: Create a local cluster on a single host
 aliases:
   - /quick-start/linux/
 type: docs
