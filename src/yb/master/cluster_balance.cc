@@ -135,6 +135,12 @@ DEFINE_bool(load_balancer_ignore_cloud_info_similarity, false,
             "If true, ignore the similarity between cloud infos when deciding which tablet "
             "to move.");
 
+METRIC_DEFINE_gauge_bool(cluster,
+                         is_load_balancing_enabled,
+                         "Is Load Balancing Enabled",
+                         yb::MetricUnit::kUnits,
+                         "Is load balancing enabled in the cluster.");
+
 namespace yb {
 namespace master {
 
@@ -324,6 +330,11 @@ void set_remaining(T pending_tasks, T* remaining_tasks) {
 
 // Needed as we have a unique_ptr to the forward declared PerTableLoadState class.
 ClusterLoadBalancer::~ClusterLoadBalancer() = default;
+
+void ClusterLoadBalancer::InitMetrics() {
+  is_load_balancing_enabled_metric_ = METRIC_is_load_balancing_enabled.Instantiate(
+      catalog_manager_->master_->metric_entity_cluster(), 0);
+}
 
 void ClusterLoadBalancer::RunLoadBalancerWithOptions(Options* options) {
   ResetGlobalState();
@@ -671,6 +682,10 @@ Status ClusterLoadBalancer::IsIdle() const {
 
 bool ClusterLoadBalancer::CanBalanceGlobalLoad() const {
   return FLAGS_enable_global_load_balancing && can_perform_global_operations_;
+}
+
+void ClusterLoadBalancer::ReportMetrics() {
+  is_load_balancing_enabled_metric_->set_value(IsLoadBalancerEnabled());
 }
 
 void ClusterLoadBalancer::ReportUnusualLoadBalancerState() const {

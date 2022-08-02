@@ -44,7 +44,6 @@
 
 #include <glog/logging.h>
 #include <gtest/gtest.h>
-#include <rapidjson/document.h>
 
 #include "yb/client/client.h"
 
@@ -60,7 +59,6 @@
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/singleton.h"
 #include "yb/gutil/strings/join.h"
-#include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/strings/util.h"
 
 #include "yb/integration-tests/cluster_itest_util.h"
@@ -81,13 +79,10 @@
 #include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/async_util.h"
-#include "yb/util/curl_util.h"
 #include "yb/util/env.h"
 #include "yb/util/faststring.h"
 #include "yb/util/format.h"
-#include "yb/util/jsonreader.h"
 #include "yb/util/logging.h"
-#include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/net/sockaddr.h"
@@ -112,9 +107,6 @@ using std::shared_ptr;
 using std::string;
 using std::thread;
 using std::unique_ptr;
-
-using rapidjson::Value;
-using strings::Substitute;
 
 using yb::master::GetLeaderMasterRpc;
 using yb::master::IsInitDbDoneRequestPB;
@@ -2370,73 +2362,22 @@ const string& ExternalDaemon::uuid() const {
   return status_->node_instance().permanent_uuid();
 }
 
-Result<int64_t> ExternalDaemon::GetInt64MetricFromHost(const HostPort& hostport,
-                                                       const MetricEntityPrototype* entity_proto,
-                                                       const char* entity_id,
-                                                       const MetricPrototype* metric_proto,
-                                                       const char* value_field) {
-  return GetInt64MetricFromHost(hostport, entity_proto->name(), entity_id, metric_proto->name(),
-                                value_field);
+template<>
+Result<int64_t> ExternalDaemon::ExtractMetricValue<int64_t>(const JsonReader& r,
+                                                            const Value* metric,
+                                                            const char* value_field) {
+  int64_t value;
+  RETURN_NOT_OK(r.ExtractInt64(metric, value_field, &value));
+  return value;
 }
 
-Result<int64_t> ExternalDaemon::GetInt64MetricFromHost(const HostPort& hostport,
-                                                       const char* entity_proto_name,
-                                                       const char* entity_id,
-                                                       const char* metric_proto_name,
-                                                       const char* value_field) {
-  // Fetch metrics whose name matches the given prototype.
-  string url = Substitute(
-      "http://$0/jsonmetricz?metrics=$1",
-      hostport.ToString(),
-      metric_proto_name);
-  EasyCurl curl;
-  faststring dst;
-  RETURN_NOT_OK(curl.FetchURL(url, &dst));
-
-  // Parse the results, beginning with the top-level entity array.
-  JsonReader r(dst.ToString());
-  RETURN_NOT_OK(r.Init());
-  vector<const Value*> entities;
-  RETURN_NOT_OK(r.ExtractObjectArray(r.root(), NULL, &entities));
-  for (const Value* entity : entities) {
-    // Find the desired entity.
-    string type;
-    RETURN_NOT_OK(r.ExtractString(entity, "type", &type));
-    if (type != entity_proto_name) {
-      continue;
-    }
-    if (entity_id) {
-      string id;
-      RETURN_NOT_OK(r.ExtractString(entity, "id", &id));
-      if (id != entity_id) {
-        continue;
-      }
-    }
-
-    // Find the desired metric within the entity.
-    vector<const Value*> metrics;
-    RETURN_NOT_OK(r.ExtractObjectArray(entity, "metrics", &metrics));
-    for (const Value* metric : metrics) {
-      string name;
-      RETURN_NOT_OK(r.ExtractString(metric, "name", &name));
-      if (name != metric_proto_name) {
-        continue;
-      }
-      int64_t value;
-      RETURN_NOT_OK(r.ExtractInt64(metric, value_field, &value));
-      return value;
-    }
-  }
-  string msg;
-  if (entity_id) {
-    msg = Substitute("Could not find metric $0.$1 for entity $2",
-                     entity_proto_name, metric_proto_name,
-                     entity_id);
-  } else {
-    msg = Substitute("Could not find metric $0.$1",
-                     entity_proto_name, metric_proto_name);
-  }
-  return STATUS(NotFound, msg);
+template<>
+Result<bool> ExternalDaemon::ExtractMetricValue<bool>(const JsonReader& r,
+                                                      const Value* metric,
+                                                      const char* value_field) {
+  bool value;
+  RETURN_NOT_OK(r.ExtractBool(metric, value_field, &value));
+  return value;
 }
 
 string ExternalDaemon::LogPrefix() {
@@ -2466,22 +2407,6 @@ Result<string> ExternalDaemon::GetFlag(const std::string& flag) {
     return STATUS_FORMAT(RemoteError, "Failed to get gflag $0 value.", flag);
   }
   return resp.value();
-}
-
-Result<int64_t> ExternalDaemon::GetInt64Metric(const MetricEntityPrototype* entity_proto,
-                                               const char* entity_id,
-                                               const MetricPrototype* metric_proto,
-                                               const char* value_field) const {
-  return GetInt64MetricFromHost(
-      bound_http_hostport(), entity_proto, entity_id, metric_proto, value_field);
-}
-
-Result<int64_t> ExternalDaemon::GetInt64Metric(const char* entity_proto_name,
-                                               const char* entity_id,
-                                               const char* metric_proto_name,
-                                               const char* value_field) const {
-  return GetInt64MetricFromHost(
-      bound_http_hostport(), entity_proto_name, entity_id, metric_proto_name, value_field);
 }
 
 LogWaiter::LogWaiter(ExternalDaemon* daemon, const std::string& string_to_wait) :
@@ -2714,7 +2639,7 @@ Result<int64_t> ExternalTabletServer::GetInt64CQLMetric(const MetricEntityProtot
                                                         const char* entity_id,
                                                         const MetricPrototype* metric_proto,
                                                         const char* value_field) const {
-  return GetInt64MetricFromHost(
+  return GetMetricFromHost<int64>(
       HostPort(bind_host(), cql_http_port()),
       entity_proto, entity_id, metric_proto, value_field);
 }

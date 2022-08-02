@@ -1077,7 +1077,7 @@ void RemoteBootstrapITest::DeleteLeaderDuringRemoteBootstrapStressTest(YBTableTy
 
 namespace {
 int64_t CountUpdateConsensusCalls(ExternalTabletServer* ets, const string& tablet_id) {
-  return CHECK_RESULT(ets->GetInt64Metric(
+  return CHECK_RESULT(ets->GetMetric<int64>(
       &METRIC_ENTITY_server,
       "yb.tabletserver",
       &METRIC_handler_latency_yb_consensus_ConsensusService_UpdateConsensus,
@@ -1086,19 +1086,19 @@ int64_t CountUpdateConsensusCalls(ExternalTabletServer* ets, const string& table
 int64_t CountLogMessages(ExternalTabletServer* ets) {
   int64_t total = 0;
 
-  total += CHECK_RESULT(ets->GetInt64Metric(
+  total += CHECK_RESULT(ets->GetMetric<int64>(
       &METRIC_ENTITY_server,
       "yb.tabletserver",
       &METRIC_glog_info_messages,
       "value"));
 
-  total += CHECK_RESULT(ets->GetInt64Metric(
+  total += CHECK_RESULT(ets->GetMetric<int64>(
       &METRIC_ENTITY_server,
       "yb.tabletserver",
       &METRIC_glog_warning_messages,
       "value"));
 
-  total += CHECK_RESULT(ets->GetInt64Metric(
+  total += CHECK_RESULT(ets->GetMetric<int64>(
       &METRIC_ENTITY_server,
       "yb.tabletserver",
       &METRIC_glog_error_messages,
