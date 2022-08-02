@@ -306,8 +306,9 @@ SlabReset(MemoryContext context)
 			wipe_mem(block, slab->blockSize);
 #endif
 
-			YbPgMemSubConsumption(slab->blockSize);
+			size_t freed_sz = slab->blockSize;
 			free(block);
+			YbPgMemSubConsumption(freed_sz);
 			slab->nblocks--;
 		}
 	}
@@ -327,10 +328,10 @@ SlabDelete(MemoryContext context)
 	/* Reset to release all the SlabBlocks */
 	SlabReset(context);
 
-	YbPgMemSubConsumption(((SlabContext *) context)->headerSize);
-
+	size_t freed_sz = ((SlabContext *) context)->headerSize;
 	/* And free the context header */
 	free(context);
+	YbPgMemSubConsumption(freed_sz);
 }
 
 /*
@@ -562,9 +563,9 @@ SlabFree(MemoryContext context, void *pointer)
 	/* If the block is now completely empty, free it. */
 	if (block->nfree == slab->chunksPerBlock)
 	{
-		YbPgMemSubConsumption(slab->blockSize);
-
+		size_t freed_sz = slab->blockSize;
 		free(block);
+		YbPgMemSubConsumption(freed_sz);
 		slab->nblocks--;
 	}
 	else
