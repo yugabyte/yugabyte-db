@@ -79,7 +79,7 @@ public class Provider extends Model {
   public static final Set<Common.CloudType> InstanceTagsEnabledProviders =
       ImmutableSet.of(Common.CloudType.aws, Common.CloudType.azu, Common.CloudType.gcp);
   public static final Set<Common.CloudType> InstanceTagsModificationEnabledProviders =
-      ImmutableSet.of(Common.CloudType.aws);
+      ImmutableSet.of(Common.CloudType.aws, Common.CloudType.gcp);
 
   @JsonIgnore
   public void setCustomerUuid(UUID id) {
