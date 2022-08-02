@@ -64,6 +64,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.client.ChangeMasterClusterConfigResponse;
 import org.yb.client.ListMastersResponse;
+import org.yb.client.ListTabletServersResponse;
 import play.libs.Json;
 
 @RunWith(JUnitParamsRunner.class)
@@ -85,10 +86,15 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
     setDefaultNodeState(defaultUniverse, NodeState.Removed, DEFAULT_NODE_NAME);
     setDefaultNodeState(onPremUniverse, NodeState.Removed, DEFAULT_NODE_NAME);
 
+    // WaitForTServerHeartBeats mock.
+    ListTabletServersResponse mockResponse = mock(ListTabletServersResponse.class);
+    when(mockResponse.getTabletServersCount()).thenReturn(7);
+
     try {
       when(mockClient.waitForMaster(any(), anyLong())).thenReturn(true);
       when(mockClient.changeMasterClusterConfig(any())).thenReturn(ccr);
       when(mockClient.setFlag(any(), anyString(), anyString(), anyBoolean())).thenReturn(true);
+      when(mockClient.listTabletServers()).thenReturn(mockResponse);
       ListMastersResponse listMastersResponse = mock(ListMastersResponse.class);
       when(listMastersResponse.getMasters()).thenReturn(Collections.emptyList());
       when(mockClient.listMasters()).thenReturn(listMastersResponse);
@@ -178,6 +184,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           TaskType.WaitForServer,
           TaskType.SwamperTargetsFileUpdate,
           TaskType.ModifyBlackList,
+          TaskType.WaitForTServerHeartBeats,
           TaskType.WaitForLoadBalance,
           TaskType.SetNodeState,
           TaskType.UniverseUpdateSucceeded);
@@ -190,6 +197,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("process", "tserver", "command", "start")),
           Json.toJson(ImmutableMap.of("processType", "TSERVER", "isAdd", true)),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -210,6 +218,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           TaskType.UpdateNodeProcess,
           TaskType.WaitForServer,
           TaskType.SwamperTargetsFileUpdate,
+          TaskType.WaitForTServerHeartBeats,
           TaskType.WaitForLoadBalance,
           TaskType.SetNodeState,
           TaskType.UniverseUpdateSucceeded);
@@ -225,6 +234,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("process", "tserver", "command", "start")),
           Json.toJson(ImmutableMap.of("processType", "TSERVER", "isAdd", true)),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -247,6 +257,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           TaskType.WaitForServer,
           TaskType.SwamperTargetsFileUpdate,
           TaskType.ModifyBlackList,
+          TaskType.WaitForTServerHeartBeats,
           TaskType.WaitForLoadBalance,
           TaskType.AnsibleConfigureServers,
           TaskType.SetFlagInMemory,
@@ -268,6 +279,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("process", "tserver", "command", "start")),
           Json.toJson(ImmutableMap.of("processType", "TSERVER", "isAdd", true)),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
