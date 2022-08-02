@@ -22,8 +22,9 @@ type: homepage
           <a class="nav-link purple-btn" target="_blank" href="https://cloud.yugabyte.com/signup" role="button"><span>Sign Up</span></a>
           <span>Create a <strong>Sandbox</strong> cluster</span>
         </div>
-        <div class="body-content">Sign up and follow the built-in tutorial to create your first cluster and build a sample application. No credit card required.</div>
+        <div class="body-content">Sign up, log in, and follow the built-in tutorial to create your first cluster and build a sample application. No credit card required.</div>
         <a class="text-link" target="_blank" href="https://cloud.yugabyte.com/signup" title="Sign Up">Sign Up</a>
+        <a class="text-link" href="../../quick-start-yugabytedb-managed/" title="Learn more">Learn more</a>
       </div>
       <div class="image">
         <img class="icon" src="/images/homepage/yugabyte-in-cloud.png" title="Yugabyte cloud" aria-hidden="true">
