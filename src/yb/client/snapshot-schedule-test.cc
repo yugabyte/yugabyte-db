@@ -57,7 +57,8 @@ class SnapshotScheduleTest : public TransactionTestBase<MiniCluster> {
 TEST_F(SnapshotScheduleTest, Create) {
   std::vector<SnapshotScheduleId> ids;
   for (int i = 0; i != 3; ++i) {
-    auto id = ASSERT_RESULT(snapshot_util_->CreateSchedule(table_));
+    auto id = ASSERT_RESULT(snapshot_util_->CreateSchedule(
+      table_, YQLDatabase::YQL_DATABASE_PGSQL, Format("yugabyte.$0", i)));
     LOG(INFO) << "Schedule " << i << " id: " << id;
     ids.push_back(id);
 
@@ -85,7 +86,8 @@ TEST_F(SnapshotScheduleTest, Snapshot) {
   FLAGS_timestamp_history_retention_interval_sec = kTimeMultiplier;
 
   ASSERT_NO_FATALS(WriteData());
-  auto schedule_id = ASSERT_RESULT(snapshot_util_->CreateSchedule(table_));
+  auto schedule_id = ASSERT_RESULT(
+    snapshot_util_->CreateSchedule(table_, YQLDatabase::YQL_DATABASE_PGSQL, "yugabyte"));
   ASSERT_OK(snapshot_util_->WaitScheduleSnapshot(schedule_id));
 
   // Write data to update history retention.
@@ -134,7 +136,8 @@ TEST_F(SnapshotScheduleTest, Snapshot) {
 TEST_F(SnapshotScheduleTest, GC) {
   FLAGS_snapshot_coordinator_cleanup_delay_ms = 100;
   // When retention matches snapshot interval we expect at most 2 snapshots for schedule.
-  ASSERT_RESULT(snapshot_util_->CreateSchedule(table_, kSnapshotInterval, kSnapshotInterval));
+  ASSERT_RESULT(snapshot_util_->CreateSchedule(
+    table_, YQLDatabase::YQL_DATABASE_PGSQL, "yugabyte", kSnapshotInterval, kSnapshotInterval));
 
   std::unordered_set<SnapshotScheduleId, SnapshotScheduleIdHash> all_snapshot_ids;
   while (all_snapshot_ids.size() < 4) {
@@ -168,7 +171,8 @@ TEST_F(SnapshotScheduleTest, GC) {
 TEST_F(SnapshotScheduleTest, Index) {
   FLAGS_timestamp_history_retention_interval_sec = kTimeMultiplier;
 
-  auto schedule_id = ASSERT_RESULT(snapshot_util_->CreateSchedule(table_));
+  auto schedule_id = ASSERT_RESULT(snapshot_util_->CreateSchedule(
+    table_, YQLDatabase::YQL_DATABASE_PGSQL, "yugabyte"));
   ASSERT_OK(snapshot_util_->WaitScheduleSnapshot(schedule_id));
 
   CreateIndex(Transactional::kTrue, 1, false);
@@ -216,7 +220,8 @@ TEST_F(SnapshotScheduleTest, Index) {
 
 TEST_F(SnapshotScheduleTest, Restart) {
   ASSERT_NO_FATALS(WriteData());
-  auto schedule_id = ASSERT_RESULT(snapshot_util_->CreateSchedule(table_));
+  auto schedule_id = ASSERT_RESULT(
+    snapshot_util_->CreateSchedule(table_, YQLDatabase::YQL_DATABASE_PGSQL, "yugabyte"));
   ASSERT_OK(snapshot_util_->WaitScheduleSnapshot(schedule_id));
   ASSERT_OK(cluster_->RestartSync());
 
@@ -228,7 +233,8 @@ TEST_F(SnapshotScheduleTest, Restart) {
 
 TEST_F(SnapshotScheduleTest, RestoreSchema) {
   ASSERT_NO_FATALS(WriteData());
-  auto schedule_id = ASSERT_RESULT(snapshot_util_->CreateSchedule(table_));
+  auto schedule_id = ASSERT_RESULT(
+    snapshot_util_->CreateSchedule(table_, YQLDatabase::YQL_DATABASE_PGSQL, "yugabyte"));
   auto hybrid_time = cluster_->mini_master(0)->master()->clock()->Now();
   auto old_schema = table_.schema();
   auto alterer = client_->NewTableAlterer(table_.name());
@@ -262,7 +268,8 @@ TEST_F(SnapshotScheduleTest, RemoveNewTablets) {
   const auto kInterval = 5s * kTimeMultiplier;
   const auto kRetention = kInterval * 2;
   auto schedule_id = ASSERT_RESULT(snapshot_util_->CreateSchedule(
-      table_, WaitSnapshot::kTrue, kInterval, kRetention));
+      table_, YQLDatabase::YQL_DATABASE_PGSQL, "yugabyte", WaitSnapshot::kTrue, kInterval,
+      kRetention));
   auto before_index_ht = cluster_->mini_master(0)->master()->clock()->Now();
   CreateIndex(Transactional::kTrue, 1, false);
   auto after_time_ht = cluster_->mini_master(0)->master()->clock()->Now();

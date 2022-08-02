@@ -258,13 +258,14 @@ Result<ImportedSnapshotData> SnapshotTestUtil::StartImportSnapshot(
 }
 
 Result<SnapshotScheduleId> SnapshotTestUtil::CreateSchedule(
-    const TableHandle& table, MonoDelta interval, MonoDelta retention) {
-  return CreateSchedule(table, WaitSnapshot::kFalse, interval, retention);
+    const TableHandle& table, const YQLDatabase db_type, const std::string& db_name,
+    const MonoDelta interval, const MonoDelta retention) {
+  return CreateSchedule(table, db_type, db_name, WaitSnapshot::kFalse, interval, retention);
 }
 
 Result<SnapshotScheduleId> SnapshotTestUtil::CreateSchedule(
-    const TableHandle& table, WaitSnapshot wait_snapshot,
-    MonoDelta interval, MonoDelta retention) {
+    const TableHandle& table, const YQLDatabase db_type, const std::string& db_name,
+    const WaitSnapshot wait_snapshot, const MonoDelta interval, const MonoDelta retention) {
   rpc::RpcController controller;
   controller.set_timeout(60s);
   master::CreateSnapshotScheduleRequestPB req;
@@ -272,7 +273,11 @@ Result<SnapshotScheduleId> SnapshotTestUtil::CreateSchedule(
   options.set_interval_sec(interval.ToSeconds());
   options.set_retention_duration_sec(retention.ToSeconds());
   auto& tables = *options.mutable_filter()->mutable_tables()->mutable_tables();
-  tables.Add()->set_table_id(table.table()->id());
+  master::TableIdentifierPB* table_identifier = tables.Add();
+  table_identifier->set_table_id(table.table()->id());
+  master::NamespaceIdentifierPB* namespace_identifier = table_identifier->mutable_namespace_();
+  namespace_identifier->set_database_type(db_type);
+  namespace_identifier->set_name(db_name);
   master::CreateSnapshotScheduleResponsePB resp;
   RETURN_NOT_OK(
       VERIFY_RESULT(MakeBackupServiceProxy()).CreateSnapshotSchedule(req, &resp, &controller));
