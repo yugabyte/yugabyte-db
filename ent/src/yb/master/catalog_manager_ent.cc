@@ -553,11 +553,7 @@ Status CatalogManager::CreateNonTransactionAwareSnapshot(
   // Note: SysSnapshotEntryPB includes PBs for stored (1) namespaces (2) tables (3) tablets.
   RETURN_NOT_OK(AddNamespaceEntriesToPB(tables, pb.mutable_entries(), &added_namespaces));
   RETURN_NOT_OK(AddTableAndTabletEntriesToPB(
-      tables, pb.mutable_entries(), pb.mutable_tablet_snapshots()));
-
-  for (const TableDescription& table : tables) {
-    all_tablets.insert(all_tablets.end(), table.tablet_infos.begin(), table.tablet_infos.end());
-  }
+      tables, pb.mutable_entries(), pb.mutable_tablet_snapshots(), &all_tablets));
 
   VLOG(1) << "Snapshot " << snapshot->ToString()
           << ": PB=" << snapshot->mutable_metadata()->mutable_dirty()->pb.DebugString();
@@ -669,7 +665,9 @@ Status CatalogManager::AddUDTypeEntriesToPB(
 Status CatalogManager::AddTableAndTabletEntriesToPB(
     const vector<TableDescription>& tables,
     google::protobuf::RepeatedPtrField<SysRowEntry>* out,
-    google::protobuf::RepeatedPtrField<SysSnapshotEntryPB::TabletSnapshotPB>* tablet_infos) {
+    google::protobuf::RepeatedPtrField<SysSnapshotEntryPB::TabletSnapshotPB>* tablet_snapshot_info,
+    vector<scoped_refptr<TabletInfo>>* all_tablets) {
+  unordered_set<TabletId> added_tablets;
   for (const TableDescription& table : tables) {
     // Add table entry.
     TRACE("Locking table");
@@ -677,13 +675,20 @@ Status CatalogManager::AddTableAndTabletEntriesToPB(
 
     // Add tablet entries.
     for (const scoped_refptr<TabletInfo>& tablet : table.tablet_infos) {
-      TRACE("Locking tablet");
-      auto l = AddInfoEntryToPB(tablet.get(), out);
+      // For colocated tables there could be duplicate tablets, so insert them only once.
+      if (added_tablets.insert(tablet->id()).second) {
+        TRACE("Locking tablet");
+        auto l = AddInfoEntryToPB(tablet.get(), out);
 
-      if (tablet_infos) {
-        SysSnapshotEntryPB::TabletSnapshotPB* const tablet_info = tablet_infos->Add();
-        tablet_info->set_id(tablet->id());
-        tablet_info->set_state(SysSnapshotEntryPB::CREATING);
+        if (tablet_snapshot_info) {
+          SysSnapshotEntryPB::TabletSnapshotPB* const tablet_info = tablet_snapshot_info->Add();
+          tablet_info->set_id(tablet->id());
+          tablet_info->set_state(SysSnapshotEntryPB::CREATING);
+        }
+
+        if (all_tablets) {
+          all_tablets->push_back(tablet);
+        }
       }
     }
   }

@@ -511,26 +511,26 @@ public class UniverseTest extends FakeDBApplication {
     assertFalse(cluster.areTagsSame(newCluster));
   }
 
-  // Tags do not apply to non-AWS provider. This checks that tags check are always
+  // Tags do not apply to non-AWS and GCP provider. This checks that tags check are always
   // considered 'same' for those providers.
   @Test
-  public void testAreTagsSameOnGCP() {
+  public void testAreTagsSameOnAzu() {
     Universe u = createUniverse(defaultCustomer.getCustomerId());
     Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater());
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     UserIntent userIntent = getBaseIntent();
-    userIntent.providerType = CloudType.gcp;
+    userIntent.providerType = CloudType.azu;
     userIntent.instanceTags = ImmutableMap.of("Cust", "Test", "Dept", "Misc");
     Cluster cluster = taskParams.upsertPrimaryCluster(userIntent, null);
 
     UserIntent newUserIntent = getBaseIntent();
-    newUserIntent.providerType = CloudType.gcp;
+    newUserIntent.providerType = CloudType.azu;
     newUserIntent.instanceTags = ImmutableMap.of("Cust", "Test");
     Cluster newCluster = new Cluster(ClusterType.PRIMARY, newUserIntent);
     assertTrue(cluster.areTagsSame(newCluster));
 
     newUserIntent = getBaseIntent();
-    newUserIntent.providerType = CloudType.gcp;
+    newUserIntent.providerType = CloudType.azu;
     newCluster = new Cluster(ClusterType.PRIMARY, newUserIntent);
     assertTrue(cluster.areTagsSame(newCluster));
   }

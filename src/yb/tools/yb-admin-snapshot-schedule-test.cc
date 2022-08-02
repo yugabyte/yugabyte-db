@@ -3604,5 +3604,23 @@ TEST_F_EX(
   ASSERT_EQ(res, "after");
 }
 
+TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(CreateDuplicateSchedules),
+          YbAdminSnapshotScheduleTestWithYsql) {
+  ASSERT_OK(PrepareCommon());
+
+  auto conn = ASSERT_RESULT(PgConnect());
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", client::kTableName.namespace_name()));
+
+  ASSERT_OK(CreateSnapshotScheduleAndWaitSnapshot(
+      "ysql." + client::kTableName.namespace_name(), kInterval, kRetention));
+
+  // Try and fail to create a snapshot in the same keyspace.
+  auto res = CreateSnapshotSchedule(kInterval, kRetention, "ysql." + kTableName.namespace_name());
+  ASSERT_FALSE(res.ok());
+  ASSERT_STR_CONTAINS(res.ToString(),
+    "Snapshot schedule already exists for the given keyspace: "
+    "ysql." + kTableName.namespace_name());
+}
+
 }  // namespace tools
 }  // namespace yb

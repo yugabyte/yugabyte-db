@@ -238,6 +238,14 @@ message AreLeadersOnPreferredOnlyResponsePB {
   optional MasterErrorPB error = 1;
 }
 
+message GetAutoFlagsConfigRequestPB {
+}
+
+message GetAutoFlagsConfigResponsePB {
+  required AutoFlagsConfigPB config = 1;
+  optional MasterErrorPB error = 3;
+}
+
 service MasterCluster {
   option (yb.rpc.custom_service_name) = "yb.master.MasterService";
 
@@ -249,6 +257,7 @@ service MasterCluster {
   rpc ListMasterRaftPeers(ListMasterRaftPeersRequestPB) returns (ListMasterRaftPeersResponsePB);
   rpc GetMasterRegistration(GetMasterRegistrationRequestPB) returns
     (GetMasterRegistrationResponsePB);
+  rpc GetAutoFlagsConfig(GetAutoFlagsConfigRequestPB) returns (GetAutoFlagsConfigResponsePB);
 
   // Get the ready status from the catalog manager for this master.
   // NOTE: Should be used only for unit testing purposes.

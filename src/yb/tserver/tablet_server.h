@@ -65,6 +65,7 @@ namespace yb {
 
 class Env;
 class MaintenanceManager;
+class AutoFlagsManager;
 
 namespace tserver {
 
@@ -88,6 +89,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   // complete by calling WaitInited().
   Status Init() override;
 
+  virtual Status InitAutoFlags() override;
+
   Status GetRegistration(ServerRegistrationPB* reg,
     server::RpcOnly rpc_only = server::RpcOnly::kFalse) const override;
 
@@ -98,6 +101,9 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   void Shutdown() override;
 
   std::string ToString() const override;
+
+  uint32_t GetAutoFlagConfigVersion() const override;
+  AutoFlagsConfigPB TEST_GetAutoFlagConfig() const;
 
   TSTabletManager* tablet_manager() override { return tablet_manager_.get(); }
   TabletPeerLookupIf* tablet_peer_lookup() override;
@@ -240,6 +246,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   // The options passed at construction time, and will be updated if master config changes.
   TabletServerOptions opts_;
+
+  std::unique_ptr<AutoFlagsManager> auto_flags_manager_;
 
   // Manager for tablets which are available on this server.
   std::unique_ptr<TSTabletManager> tablet_manager_;

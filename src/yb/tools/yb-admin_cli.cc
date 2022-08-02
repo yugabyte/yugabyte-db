@@ -251,7 +251,8 @@ Status ClusterAdminCli::Run(int argc, char** argv) {
 
   if (PREDICT_FALSE(!s.ok())) {
     cerr << s.CloneAndPrepend("Unable to establish connection to leader master at [" + addrs + "]."
-                              " Please verify the addresses.\n\n").ToString() << endl;
+                              " Please verify the addresses and check if server is up, or if you're"
+                              " missing --certs_dir_name.\n\n").ToString() << endl;
     return STATUS(RuntimeError, "Error connecting to cluster");
   }
 

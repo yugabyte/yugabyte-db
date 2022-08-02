@@ -170,7 +170,7 @@
 #include "yb/util/countdown_latch.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/trace_event.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/hash_util.h"
 #include "yb/util/locks.h"
@@ -9145,6 +9145,8 @@ Status CatalogManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB&
   HostPort bootstrap_peer_addr = HostPortFromPB(DesiredHostPort(
       req.source_broadcast_addr(), req.source_private_addr(), req.source_cloud_info(),
       master_->MakeCloudInfoPB()));
+
+  RETURN_NOT_OK(master_->InitAutoFlagsFromMasterLeader(bootstrap_peer_addr));
 
   const string& bootstrap_peer_uuid = req.bootstrap_peer_uuid();
   int64_t leader_term = req.caller_term();

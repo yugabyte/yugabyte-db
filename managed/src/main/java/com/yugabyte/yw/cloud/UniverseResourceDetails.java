@@ -50,6 +50,7 @@ public class UniverseResourceDetails {
   public static final String GP3_FREE_PIOPS_PARAM = "yb.aws.storage.gp3_free_piops";
   public static final String GP3_FREE_THROUGHPUT_PARAM = "yb.aws.storage.gp3_free_throughput";
   public static final Logger LOG = LoggerFactory.getLogger(UniverseResourceDetails.class);
+  private static final double EPSILON = 1E-6;
 
   @ApiModelProperty(value = "Price per hour")
   public double pricePerHour = 0;
@@ -80,6 +81,9 @@ public class UniverseResourceDetails {
 
   @ApiModelProperty(value = "Azs")
   public HashSet<String> azList = new HashSet<>();
+
+  @ApiModelProperty(value = "Known pricing info")
+  public boolean pricingKnown = true;
 
   public void addCostPerHour(double price) {
     pricePerHour += price;
@@ -113,6 +117,10 @@ public class UniverseResourceDetails {
     this.numNodes += numNodes;
   }
 
+  public void setPricingKnown(boolean val) {
+    pricingKnown = val;
+  }
+
   public void addPrice(UniverseDefinitionTaskParams params, Context context) {
 
     // Calculate price
@@ -124,9 +132,6 @@ public class UniverseResourceDetails {
         userIntent = params.getClusterByUuid(nodeDetails.placementUuid).userIntent;
       }
       Provider provider = context.getProvider(UUID.fromString(userIntent.provider));
-      if (!nodeDetails.isActive()) {
-        continue;
-      }
       Region region = context.getRegion(provider.uuid, nodeDetails.cloudInfo.region);
 
       if (region == null) {
@@ -137,6 +142,13 @@ public class UniverseResourceDetails {
       if (instancePrice == null) {
         continue;
       }
+      if (Math.abs(instancePrice.priceDetails.pricePerHour - 0) < EPSILON) {
+        setPricingKnown(false);
+      }
+      if (!nodeDetails.isActive()) {
+        continue;
+      }
+
       hourlyPrice += instancePrice.priceDetails.pricePerHour;
 
       // Add price of volumes if necessary
@@ -208,6 +220,9 @@ public class UniverseResourceDetails {
   public static UniverseResourceDetails create(
       Collection<NodeDetails> nodes, UniverseDefinitionTaskParams params, Context context) {
     UniverseResourceDetails details = new UniverseResourceDetails();
+    details.gp3FreePiops = context.getConfig().getInt(GP3_FREE_PIOPS_PARAM);
+    details.gp3FreeThroughput = context.getConfig().getInt(GP3_FREE_THROUGHPUT_PARAM);
+
     for (Cluster cluster : params.clusters) {
       details.addNumNodes(cluster.userIntent.numNodes);
     }
@@ -223,6 +238,13 @@ public class UniverseResourceDetails {
           details.addVolumeCount(userIntent.deviceInfo.numVolumes);
           details.addVolumeSizeGB(
               userIntent.deviceInfo.volumeSize * userIntent.deviceInfo.numVolumes);
+
+          if (userIntent.deviceInfo.diskIops != null) {
+            details.gp3FreePiops = userIntent.deviceInfo.diskIops;
+          }
+          if (userIntent.deviceInfo.throughput != null) {
+            details.gp3FreeThroughput = userIntent.deviceInfo.throughput;
+          }
         }
         if (node.cloudInfo != null
             && node.cloudInfo.az != null
@@ -245,8 +267,6 @@ public class UniverseResourceDetails {
       }
     }
 
-    details.gp3FreePiops = context.getConfig().getInt(GP3_FREE_PIOPS_PARAM);
-    details.gp3FreeThroughput = context.getConfig().getInt(GP3_FREE_THROUGHPUT_PARAM);
     details.addPrice(params, context);
     return details;
   }

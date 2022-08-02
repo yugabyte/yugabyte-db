@@ -162,6 +162,11 @@
     flex: 1;
   }
 
+  .ua-auth-radio-field {
+    flex-shrink: 1;
+    margin-right: 16px;
+  }
+
   .ua-field {
     padding-right: 0px;
     display: flex;
