@@ -32,6 +32,7 @@ import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.metrics.MetricService;
+import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.AlertingData;
 import com.yugabyte.yw.forms.AlertingFormData;
 import com.yugabyte.yw.forms.CustomerDetailsData;
@@ -67,6 +68,7 @@ import io.swagger.annotations.ApiResponses;
 import io.swagger.annotations.Authorization;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -126,7 +128,21 @@ public class CustomerController extends AuthenticatedController {
       responseContainer = "List",
       nickname = "ListOfCustomers")
   public Result list() {
-    return PlatformResults.withData(Customer.getAll());
+    // There is no way to hide the query param from swagger if it is passed
+    // as a parameter to the method. So, it is manually retrieved.
+    boolean includeUniverseUuids =
+        Boolean.parseBoolean(request().getQueryString("includeUniverseUuids"));
+    List<Customer> customers = Customer.getAll();
+    if (includeUniverseUuids) {
+      Map<Long, Set<UUID>> allUniverseUuids = Universe.getAllCustomerUniverseUUIDs();
+      customers
+          .stream()
+          .forEach(
+              c ->
+                  c.setTransientUniverseUUIDs(
+                      allUniverseUuids.getOrDefault(c.getCustomerId(), Collections.emptySet())));
+    }
+    return PlatformResults.withData(customers);
   }
 
   @ApiOperation(
