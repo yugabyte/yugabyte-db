@@ -265,6 +265,22 @@ public class Universe extends Model {
     return ImmutableSet.copyOf(find.query().where().findIds());
   }
 
+  /**
+   * Fetches the universe UUIDs associated with customer IDs.
+   *
+   * @return map of customer ID to a set of its universe UUIDs.
+   */
+  public static Map<Long, Set<UUID>> getAllCustomerUniverseUUIDs() {
+    return find.query()
+        .select("customerId, universeUUID")
+        .findList()
+        .stream()
+        .collect(
+            Collectors.groupingBy(
+                u -> u.customerId,
+                Collectors.mapping(Universe::getUniverseUUID, Collectors.toSet())));
+  }
+
   public static Set<Universe> getAllWithoutResources(Customer customer) {
     List<Universe> rawList =
         find.query().where().eq("customer_id", customer.getCustomerId()).findList();
