@@ -272,8 +272,9 @@ void MetricsSnapshotter::Thread::LogSessionErrors(const client::FlushStatus& flu
   }
 }
 
-void MetricsSnapshotter::Thread::FlushSession(const std::shared_ptr<YBSession>& session,
-                       const std::vector<std::shared_ptr<YBqlOp>>& ops) {
+void MetricsSnapshotter::Thread::FlushSession(
+    const std::shared_ptr<YBSession>& session,
+    const std::vector<std::shared_ptr<YBqlOp>>& ops) {
   auto flush_status = session->FlushAndGetOpsErrors();
   if (PREDICT_FALSE(!flush_status.status.ok())) {
     LogSessionErrors(flush_status);

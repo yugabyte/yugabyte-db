@@ -267,8 +267,8 @@ Status MetricEntity::WriteAsJson(JsonWriter* writer,
 }
 
 CHECKED_STATUS MetricEntity::WriteForPrometheus(PrometheusWriter* writer,
-                                                const vector<string>& requested_metrics,
-                                                const MetricPrometheusOptions& opts) const {
+                                        const vector<string>& requested_metrics,
+                                        const MetricPrometheusOptions& opts) const {
   bool select_all = MatchMetricInList(id(), requested_metrics);
 
   // We want the keys to be in alphabetical order when printing, so we use an ordered map here.
@@ -282,12 +282,9 @@ CHECKED_STATUS MetricEntity::WriteForPrometheus(PrometheusWriter* writer,
     std::lock_guard<simple_spinlock> l(lock_);
     attrs = attributes_;
     external_metrics_cbs = external_prometheus_metrics_cbs_;
-    for (const MetricMap::value_type& val : metric_map_) {
-      const MetricPrototype* prototype = val.first;
-      const scoped_refptr<Metric>& metric = val.second;
-
-      if (select_all || MatchMetricInList(prototype->name(), requested_metrics)) {
-        InsertOrDie(&metrics, prototype->name(), metric);
+    for (const auto& prototype_and_metric : metric_map_) {
+      if (select_all || MatchMetricInList(prototype_and_metric.first->name(), requested_metrics)) {
+        InsertOrDie(&metrics, prototype_and_metric.first->name(), prototype_and_metric.second);
       }
     }
   }
@@ -327,7 +324,6 @@ CHECKED_STATUS MetricEntity::WriteForPrometheus(PrometheusWriter* writer,
   for (OrderedMetricMap::value_type& val : metrics) {
     WARN_NOT_OK(val.second->WriteForPrometheus(writer, prometheus_attr, opts),
                 Format("Failed to write $0 as Prometheus", val.first));
-
   }
   // Run the external metrics collection callback if there is one set.
   for (const ExternalPrometheusMetricsCb& cb : external_metrics_cbs) {

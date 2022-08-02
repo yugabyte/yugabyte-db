@@ -28,25 +28,27 @@ PrometheusWriter::PrometheusWriter(std::stringstream* output)
 
 PrometheusWriter::~PrometheusWriter() {}
 
-Status PrometheusWriter::FlushAggregatedValues(const uint32_t& max_tables_metrics_breakdowns,
-                                               std::string priority_regex) {
+Status PrometheusWriter::FlushAggregatedValues(
+    uint32_t max_tables_metrics_breakdowns, const std::string& priority_regex) {
   uint32_t counter = 0;
-  const auto& p_regex = std::regex(priority_regex);
-  for (const auto& entry : per_table_values_) {
-    const auto& attrs = per_table_attributes_[entry.first];
-    for (const auto& metric_entry : entry.second) {
-      if (counter < max_tables_metrics_breakdowns ||
-          std::regex_match(metric_entry.first, p_regex)) {
+  std::regex p_regex(priority_regex);
+  for (const auto& id_and_data : tables_) {
+    const auto& attrs = id_and_data.second.attributes;
+    for (const auto& metric_entry : id_and_data.second.values) {
+      if (priority_regex.empty() || std::regex_match(metric_entry.first, p_regex)) {
         RETURN_NOT_OK(FlushSingleEntry(attrs, metric_entry.first, metric_entry.second));
       }
     }
-    counter += 1;
+    if (++counter >= max_tables_metrics_breakdowns) {
+      break;
+    }
   }
   return Status::OK();
 }
 
-Status PrometheusWriter::FlushSingleEntry(const MetricEntity::AttributeMap& attr,
-    const std::string& name, const int64_t& value) {
+Status PrometheusWriter::FlushSingleEntry(
+    const MetricEntity::AttributeMap& attr,
+    const std::string& name, const int64_t value) {
   *output_ << name;
   size_t total_elements = attr.size();
   if (total_elements > 0) {
@@ -69,26 +71,57 @@ void PrometheusWriter::InvalidAggregationFunction(AggregationFunction aggregatio
   FATAL_INVALID_ENUM_VALUE(AggregationFunction, aggregation_function);
 }
 
-NMSWriter::NMSWriter(EntityMetricsMap* table_metrics, MetricsMap* server_metrics)
-    : PrometheusWriter(nullptr), table_metrics_(table_metrics),
-      server_metrics_(server_metrics) {}
-
-Status NMSWriter::FlushSingleEntry(
-    const MetricEntity::AttributeMap& attr, const std::string& name,
-    const int64_t& value) {
-  auto it = attr.find("metric_type");
+Status PrometheusWriter::WriteSingleEntry(
+    const MetricEntity::AttributeMap& attr, const std::string& name, int64_t value,
+    AggregationFunction aggregation_function) {
+  auto it = attr.find("table_id");
   if (it == attr.end()) {
-    // ignore.
-  } else if (it->second == "server") {
-    (*server_metrics_)[name] = (int64_t)value;
-  } else if (it->second == "tablet") {
-    auto it2 = attr.find("table_id");
-    if (it2 == attr.end()) {
-      // ignore.
-    } else {
-      (*table_metrics_)[it2->second][name] = (int64_t)value;
+    return FlushSingleEntry(attr, name, value);
+  }
+
+  // For tablet level metrics, we roll up on the table level.
+  auto table_it = tables_.find(it->second);
+  if (table_it == tables_.end()) {
+    // If it's the first time we see this table, create the aggregate structures.
+    table_it = tables_.emplace(it->second, TableData { .attributes = attr }).first;
+    table_it->second.values.emplace(name, value);
+  } else {
+    auto& stored_value = table_it->second.values[name];
+    switch (aggregation_function) {
+      case kSum:
+        stored_value += value;
+        break;
+      case kMax:
+        // If we have a new max, also update the metadata so that it matches correctly.
+        if (value > stored_value) {
+          table_it->second.attributes = attr;
+          stored_value = value;
+        }
+        break;
+      default:
+        InvalidAggregationFunction(aggregation_function);
+        break;
     }
   }
+  return Status::OK();
+}
+
+NMSWriter::NMSWriter(EntityMetricsMap* table_metrics, MetricsMap* server_metrics)
+    : PrometheusWriter(nullptr), table_metrics_(*table_metrics),
+      server_metrics_(*server_metrics) {}
+
+Status NMSWriter::FlushSingleEntry(
+    const MetricEntity::AttributeMap& attr, const std::string& name, const int64_t value) {
+  auto it = attr.find("table_id");
+  if (it != attr.end()) {
+    table_metrics_[it->second][name] = value;
+    return Status::OK();
+  }
+  it = attr.find("metric_type");
+  if (it == attr.end() || it->second != "server") {
+    return Status::OK();
+  }
+  server_metrics_[name] = value;
   return Status::OK();
 }
 
