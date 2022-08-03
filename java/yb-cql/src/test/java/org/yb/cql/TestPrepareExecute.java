@@ -12,30 +12,37 @@
 //
 package org.yb.cql;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Vector;
 import java.lang.reflect.Field;
 
+import com.datastax.driver.core.BoundStatement;
 import com.datastax.driver.core.ColumnDefinitions;
 import com.datastax.driver.core.DataType;
 import com.datastax.driver.core.PreparedId;
+import com.datastax.driver.core.PreparedStatement;
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
-import com.datastax.driver.core.PreparedStatement;
+import com.datastax.driver.core.Session;
 import com.datastax.driver.core.exceptions.NoHostAvailableException;
 import com.datastax.driver.core.exceptions.QueryValidationException;
 
-import org.junit.BeforeClass;
 import org.junit.Test;
 import static org.yb.AssertionWrappers.assertEquals;
+import static org.yb.AssertionWrappers.assertGreaterThan;
 import static org.yb.AssertionWrappers.assertNotNull;
 import static org.yb.AssertionWrappers.assertNull;
 import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.fail;
 
+import org.yb.util.BuildTypeUtil;
 import org.yb.YBTestRunner;
-import org.yb.minicluster.BaseMiniClusterTest;
+
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -43,6 +50,11 @@ import org.slf4j.LoggerFactory;
 @RunWith(value=YBTestRunner.class)
 public class TestPrepareExecute extends BaseCQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPrepareExecute.class);
+
+  @Override
+  public int getTestMethodTimeoutSec() {
+    return 600; // Usual time for a multi-threaded test ~40 seconds.
+  }             // But it can be much more on Jenkins.
 
   @Override
   protected Map<String, String> getTServerFlags() {
@@ -54,6 +66,7 @@ public class TestPrepareExecute extends BaseCQLTest {
     flagMap.put("cql_service_max_prepared_statement_size_bytes", "65536");
     return flagMap;
   }
+
   @Test
   public void testBasicPrepareExecute() throws Exception {
     LOG.info("Begin test");
@@ -82,6 +95,590 @@ public class TestPrepareExecute extends BaseCQLTest {
     assertEquals("c", row.getString("v2"));
 
     LOG.info("End test");
+  }
+
+  protected enum MetadataInExecResp { ON, OFF; }
+
+  protected void doTestAlterAdd(MetadataInExecResp flag) throws Exception {
+    // Setup table.
+    setupTable("test_prepare", 0 /* num_rows */);
+    session.execute(
+        "INSERT INTO test_prepare (h1, h2, r1, r2, v1, v2) VALUES (1, 'a', 2, 'b', 3, 'c');");
+
+    // Prepare and execute statement.
+    String selectStmt =
+        "SELECT * FROM test_prepare WHERE h1 = 1 AND h2 = 'a' AND r1 = 2 AND r2 = 'b';";
+    PreparedStatement prepared = session.prepare(selectStmt);
+
+    Row row = session.execute(prepared.bind()).one();
+    assertEquals(6, row.getColumnDefinitions().size());
+    assertEquals("Row[1, a, 2, b, 3, c]", row.toString());
+
+    // Second connection.
+    try (Session s2 = connectWithTestDefaults().getSession()) {
+      s2.execute("USE " + DEFAULT_TEST_KEYSPACE);
+      s2.execute("ALTER TABLE test_prepare ADD v3 int");
+      s2.execute("INSERT INTO test_prepare (h1, h2, r1, r2, v3) VALUES (1, 'a', 2, 'b', 9);");
+    }
+    Thread.sleep(3000);
+
+    // The driver uses the incoming schema info from the CQL response with the new column.
+    row = session.execute(prepared.bind()).one();
+    if (flag == MetadataInExecResp.ON) {
+      assertEquals(7, row.getColumnDefinitions().size());
+      assertEquals("Row[1, a, 2, b, 3, c, 9]", row.toString());
+    } else {
+      assertEquals(6, row.getColumnDefinitions().size());
+      assertEquals("Row[1, a, 2, b, 3, c]", row.toString());
+    }
+
+    // Run a new "application" = new driver instance = new cluster object & connection.
+    try (Session s3 = connectWithTestDefaults().getSession()) {
+      s3.execute("USE " + DEFAULT_TEST_KEYSPACE);
+      prepared = s3.prepare(selectStmt);
+      row = s3.execute(prepared.bind()).one();
+      // Ensure the new driver instance knows the new column.
+      assertEquals(7, row.getColumnDefinitions().size());
+      assertEquals("Row[1, a, 2, b, 3, c, 9]", row.toString());
+    }
+  }
+
+  @Test
+  public void testAlterAdd() throws Exception {
+    // By default: cql_always_return_metadata_in_execute_response=false.
+    doTestAlterAdd(MetadataInExecResp.OFF);
+  }
+
+  @Test
+  public void testAlterAdd_MetadataInExecResp() throws Exception {
+    try {
+      restartClusterWithFlag("cql_always_return_metadata_in_execute_response", "true");
+      doTestAlterAdd(MetadataInExecResp.ON);
+    } finally {
+      destroyMiniCluster(); // Destroy the recreated cluster when done.
+    }
+  }
+
+  protected abstract class TestThreadBody implements Runnable {
+    protected final String statement;
+    public final int threadIndex;
+
+    protected Session session = null;
+    protected PreparedStatement prepared = null;
+    protected Thread thread = null;
+    // Thread results:
+    public volatile int errors = 0;
+    public volatile int internalErrors = 0;
+    public volatile int numOldReq = 0; // Number of successfully executed OLD requests.
+    public volatile int numNewReq = 0; // Number of successfully executed NEW requests.
+
+    protected TestThreadBody(String stmt, int index) {
+      this.statement = stmt;
+      this.threadIndex = index;
+      this.thread = new Thread(this, "TestAppThread-" + index);
+
+      thread.start();
+      LOG.info("Started thread: " + thread.getName());
+    }
+
+    protected void connectAndPrepare() {
+      try {
+        if (session != null) {
+          session.close();
+        }
+
+        session = connectWithTestDefaults().getSession();
+        session.execute("USE " + DEFAULT_TEST_KEYSPACE);
+      } catch (Exception e) {
+        LOG.error("CONNECT: Exception caught:", e);
+        ++internalErrors;
+        throw e;
+      }
+
+      try {
+        prepared = session.prepare(statement);
+      } catch (com.datastax.driver.core.exceptions.InvalidQueryException e) {
+        // Undefined Column
+        LOG.warn("PREPARE: Ignoring expected exception:", e);
+        prepared = null;
+      } catch (Exception e) {
+        LOG.error("PREPARE: Exception caught:", e);
+        ++internalErrors;
+        throw e;
+      }
+    }
+
+    protected abstract void runRound();
+
+    @Override
+    public void run() {
+      try {
+        while (!Thread.interrupted()) {
+          if (prepared == null) {
+            connectAndPrepare();
+          }
+
+          if (prepared != null) {
+            runRound();
+          }
+
+          try {
+            Thread.sleep(100);
+          } catch (InterruptedException iex) {
+            LOG.warn("Ignoring caught InterruptedException:", iex);
+            Thread.currentThread().interrupt();
+            break;
+          }
+        }
+
+        LOG.info("Completed thread: " + Thread.currentThread().getName());
+      } catch (Exception e) {
+        LOG.error("Internal exception caught:", e);
+        ++internalErrors;
+        throw e;
+      }
+    }
+  }
+
+  protected class AlterAddThreadBody extends TestThreadBody {
+    public AlterAddThreadBody(String stmt, int index) {
+      super(stmt, index);
+    }
+
+    @Override
+    public void runRound() {
+      try {
+        String rowStr = session.execute(prepared.bind()).one().toString();
+        if (rowStr.equals("Row[1, a, 2, b, 3, c]")) {
+          ++numOldReq;
+        } else if (rowStr.equals("Row[1, a, 2, b, 3, c, NULL]")) {
+          ++numNewReq;
+        } else {
+          ++errors;
+        }
+      } catch (Exception e) {
+        LOG.error("Exception caught:", e);
+        ++internalErrors;
+        throw e;
+      }
+    }
+  }
+
+  @Test
+  public void testMultiThreadedAlterAdd() throws Exception {
+    // Setup table.
+    setupTable("test_prepare", 0 /* num_rows */);
+    session.execute(
+        "INSERT INTO test_prepare (h1, h2, r1, r2, v1, v2) VALUES (1, 'a', 2, 'b', 3, 'c');");
+
+    // Prepare and execute statement.
+    String selectStmt =
+        "SELECT * FROM test_prepare WHERE h1 = 1 AND h2 = 'a' AND r1 = 2 AND r2 = 'b';";
+    PreparedStatement prepared = session.prepare(selectStmt);
+
+    Row row = session.execute(prepared.bind()).one();
+    assertEquals(6, row.getColumnDefinitions().size());
+    assertEquals("Row[1, a, 2, b, 3, c]", row.toString());
+
+    int numThreads = BuildTypeUtil.nonTsanVsTsan(10, 4);
+    List<AlterAddThreadBody> threads = new ArrayList<AlterAddThreadBody>();
+    // Start half of threads before the ALTER TABLE.
+    while (threads.size() != numThreads/2) {
+      threads.add(new AlterAddThreadBody(selectStmt, threads.size()));
+    }
+
+    Thread.sleep(4000);
+    LOG.info("Call: ALTER TABLE");
+    session.execute("ALTER TABLE test_prepare ADD v3 int");
+    LOG.info("Done: ALTER TABLE");
+    Thread.sleep(3000);
+
+    // Start second half of threads after the ALTER TABLE.
+    while (threads.size() != numThreads) {
+      threads.add(new AlterAddThreadBody(selectStmt, threads.size()));
+    }
+    // Wait for first successful new INSERT.
+    Thread.sleep(4000);
+    AlterAddThreadBody lastBody = threads.get(threads.size() - 1);
+    final long startTimeMs = System.currentTimeMillis();
+    while (lastBody.numNewReq == 0 && (System.currentTimeMillis() - startTimeMs) < 60000) {
+      Thread.sleep(1000);
+    }
+
+    assertGreaterThan(lastBody.numNewReq, 0);
+    // Finish all threads.
+    for (AlterAddThreadBody body : threads) {
+      body.thread.interrupt();
+    }
+    for (AlterAddThreadBody body : threads) {
+      body.thread.join();
+      LOG.info("Finished thread " + body.thread.getName() +
+          ": internal-errors=" + body.internalErrors + " errors=" + body.errors +
+          " 6-col-results=" + body.numOldReq +
+          " 7-col-results=" + body.numNewReq);
+    }
+    // Check results.
+    for (AlterAddThreadBody body : threads) {
+      assertEquals(0, body.internalErrors);
+      assertEquals(0, body.errors);
+
+      if (body.threadIndex < numThreads/2) {
+        // First set of threads should have old results.
+        assertGreaterThan(body.numOldReq, 0);
+        assertEquals(0, body.numNewReq);
+      } else {
+        // Second set of threads should have new results because it's started after ALTER TABLE.
+        assertEquals(0, body.numOldReq);
+        assertGreaterThan(body.numNewReq, 0);
+      }
+    }
+  }
+
+  @Test
+  public void testAlterDropAdd() throws Exception {
+    // Setup table.
+    session.execute("CREATE TABLE test_prepare (h TEXT, r INT, v SET<INT>, PRIMARY KEY(h, r))");
+
+    // Prepare and execute statement.
+    String insertStmt = "INSERT INTO test_prepare (h, r, v) VALUES (?, ?, ?)";
+    PreparedStatement prepared = session.prepare(insertStmt);
+    assertEquals(3, prepared.getVariables().size());
+    assertEquals("set<int>", prepared.getVariables().getType(2).toString());
+
+    session.execute(prepared.bind(
+        new String("a"), new Integer(1), new HashSet<Integer>(Arrays.asList(1))));
+    Row row = session.execute("SELECT * FROM test_prepare").one();
+    assertEquals(3, row.getColumnDefinitions().size());
+    assertEquals("Row[a, 1, [1]]", row.toString());
+
+    // Second connection.
+    try (Session s2 = connectWithTestDefaults().getSession()) {
+      s2.execute("USE " + DEFAULT_TEST_KEYSPACE);
+      // Replace SET type by MAP type.
+      s2.execute("ALTER TABLE test_prepare DROP v");
+      s2.execute("ALTER TABLE test_prepare ADD v MAP<INT, INT>");
+    }
+
+    // Try to re-prepare, but it does not update the cached statement.
+    prepared = session.prepare(insertStmt);
+    assertEquals(3, prepared.getVariables().size());
+    assertEquals("set<int>", prepared.getVariables().getType(2).toString());
+
+    BoundStatement bound = prepared.bind(
+        new String("a"), new Integer(1), new HashSet<Integer>(Arrays.asList(2)));
+    try {
+      session.execute(bound);
+      fail("Execution did not fail as expected");
+    } catch (com.datastax.driver.core.exceptions.InvalidQueryException ex) {
+      LOG.info("Ignoring expected InvalidQueryException:", ex);
+      assertTrue(ex.getMessage().contains("Invalid Arguments"));
+    }
+
+    Thread.sleep(3000);
+    row = session.execute("SELECT * FROM test_prepare WHERE h='a' AND r=1").one();
+    assertEquals(3, row.getColumnDefinitions().size());
+    assertEquals("Row[a, 1, NULL]", row.toString());
+
+    // Run a new "application" = new driver instance = new cluster object & connection.
+    try (Session s3 = connectWithTestDefaults().getSession()) {
+      s3.execute("USE " + DEFAULT_TEST_KEYSPACE);
+      prepared = s3.prepare(insertStmt);
+      assertEquals(3, prepared.getVariables().size());
+      assertEquals("map<int, int>", prepared.getVariables().getType(2).toString());
+
+      // Ensure the new driver instance knows the new column.
+      s3.execute(prepared.bind(new String("a"), new Integer(1),
+          new HashMap<Integer, Integer>() {{ put(9, 9); }}));
+      row = session.execute("SELECT * FROM test_prepare WHERE h='a' AND r=1").one();
+      assertEquals(3, row.getColumnDefinitions().size());
+      assertEquals("Row[a, 1, {9=9}]", row.toString());
+    }
+  }
+
+  @Test
+  public void testAlterDropAddSameSizeType() throws Exception {
+    // Setup table.
+    session.execute("CREATE TABLE test_prepare (h TEXT, r INT, v BIGINT, PRIMARY KEY(h, r))");
+
+    // Prepare and execute statement.
+    String insertStmt = "INSERT INTO test_prepare (h, r, v) VALUES (?, ?, ?)";
+    PreparedStatement prepared = session.prepare(insertStmt);
+    assertEquals(3, prepared.getVariables().size());
+    assertEquals("bigint", prepared.getVariables().getType(2).toString());
+
+    session.execute(prepared.bind(new String("a"), new Integer(1), new Long(100)));
+    Row row = session.execute("SELECT * FROM test_prepare").one();
+    assertEquals(3, row.getColumnDefinitions().size());
+    assertEquals("Row[a, 1, 100]", row.toString());
+
+    // Second connection.
+    try (Session s2 = connectWithTestDefaults().getSession()) {
+      s2.execute("USE " + DEFAULT_TEST_KEYSPACE);
+      // Replace the Integer 8-byte type by the Floating point 8-byte type.
+      s2.execute("ALTER TABLE test_prepare DROP v");
+      s2.execute("ALTER TABLE test_prepare ADD v DOUBLE PRECISION");
+    }
+
+    row = session.execute("SELECT * FROM test_prepare").one();
+    assertEquals(3, row.getColumnDefinitions().size());
+    assertEquals("Row[a, 1, NULL]", row.toString());
+
+    // Saving BIGINT value 888 into DOUBLE column.
+    session.execute(prepared.bind(new String("a"), new Integer(1), new Long(888)));
+
+    row = session.execute("SELECT * FROM test_prepare WHERE h='a' AND r=1").one();
+    assertEquals(3, row.getColumnDefinitions().size());
+    assertEquals("Row[a, 1, 4.387E-321]", row.toString());
+
+    // Try to re-prepare, but it does not update the cached statement.
+    prepared = session.prepare(insertStmt);
+    assertEquals(3, prepared.getVariables().size());
+    assertEquals("bigint", prepared.getVariables().getType(2).toString());
+
+    // Saving BIGINT value 999 into DOUBLE column.
+    session.execute(prepared.bind(new String("a"), new Integer(1), new Long(999)));
+
+    row = session.execute("SELECT * FROM test_prepare WHERE h='a' AND r=1").one();
+    assertEquals(3, row.getColumnDefinitions().size());
+    assertEquals("Row[a, 1, 4.936E-321]", row.toString());
+
+    // Run a new "application" = new driver instance = new cluster object & connection.
+    try (Session s3 = connectWithTestDefaults().getSession()) {
+      s3.execute("USE " + DEFAULT_TEST_KEYSPACE);
+      prepared = s3.prepare(insertStmt);
+      assertEquals(3, prepared.getVariables().size());
+      assertEquals("double", prepared.getVariables().getType(2).toString());
+
+      // Ensure the new driver instance knows the new column.
+      s3.execute(prepared.bind(new String("a"), new Integer(1), new Double(3.14)));
+      row = session.execute("SELECT * FROM test_prepare WHERE h='a' AND r=1").one();
+      assertEquals(3, row.getColumnDefinitions().size());
+      assertEquals("Row[a, 1, 3.14]", row.toString());
+    }
+  }
+
+  protected class AlterDropAddThreadBody extends TestThreadBody {
+    public AlterDropAddThreadBody(String stmt, int index) {
+      super(stmt, index);
+    }
+
+    @Override
+    public void runRound() {
+      boolean insertSetFailed = false, insertMapFailed = false;
+      // Try to INSERT set<int>.
+      try {
+        session.execute(prepared.bind(
+            new String("a"), new Integer(1), new HashSet<Integer>(Arrays.asList(1))));
+        Row row = session.execute("SELECT * FROM test_prepare WHERE h='a' AND r=1").one();
+        if (3 == row.getColumnDefinitions().size() && row.toString().equals("Row[a, 1, [1]]")) {
+          ++numOldReq;
+        } else {
+          insertSetFailed = true;
+        }
+      } catch (com.datastax.driver.core.exceptions.CodecNotFoundException e) {
+        // Codec not found for requested operation: [map<int, int> <-> java.util.HashSet]
+        LOG.warn("INSERT set: Ignoring expected CodecNotFoundException:", e);
+        insertSetFailed = true;
+      } catch (com.datastax.driver.core.exceptions.InvalidQueryException e) {
+        // Execution Error. Column id 12 not found
+        LOG.warn("INSERT set: Ignoring expected InvalidQueryException:", e);
+        insertSetFailed = true;
+      } catch (com.datastax.driver.core.exceptions.NoHostAvailableException e) {
+        // Error preparing query, got ERROR INVALID: Undefined Column
+        LOG.warn("INSERT set: Ignoring expected NoHostAvailableException:", e);
+        insertSetFailed = true;
+      } catch (Exception e) {
+        LOG.error("INSERT set: Exception caught:", e);
+        throw e;
+      }
+
+      // Try to INSERT map<int, int>.
+      try {
+        session.execute(prepared.bind(new String("a"), new Integer(1),
+            new HashMap<Integer, Integer>() {{ put(9, 9); }}));
+        Row row = session.execute("SELECT * FROM test_prepare WHERE h='a' AND r=1").one();
+        if (3 == row.getColumnDefinitions().size() && row.toString().equals("Row[a, 1, {9=9}]")) {
+          ++numNewReq;
+        } else {
+          insertMapFailed = true;
+        }
+      } catch (com.datastax.driver.core.exceptions.CodecNotFoundException e) {
+        // Codec not found for requested operation: [set<int> <-> java.util.HashMap]
+        LOG.warn("INSERT map: Ignoring expected CodecNotFoundException:", e);
+        insertMapFailed = true;
+      } catch (Exception e) {
+        LOG.error("INSERT map: Exception caught:", e);
+        throw e;
+      }
+
+      // If both INSERT operations failed.
+      if (insertSetFailed && insertMapFailed) {
+        ++errors;
+        prepared = null; // Restart the connection and rerun PREPARE.
+      }
+    }
+  }
+
+  @Test
+  public void testMultiThreadedAlterDropAdd() throws Exception {
+    // Setup table.
+    session.execute("CREATE TABLE test_prepare (h TEXT, r INT, v SET<INT>, PRIMARY KEY(h, r))");
+
+    // Prepare and execute statement.
+    String insertStmt = "INSERT INTO test_prepare (h, r, v) VALUES (?, ?, ?)";
+    PreparedStatement prepared = session.prepare(insertStmt);
+    assertEquals(3, prepared.getVariables().size());
+    assertEquals("set<int>", prepared.getVariables().getType(2).toString());
+
+    session.execute(prepared.bind(
+        new String("a"), new Integer(1), new HashSet<Integer>(Arrays.asList(1))));
+    Row row = session.execute("SELECT * FROM test_prepare").one();
+    assertEquals(3, row.getColumnDefinitions().size());
+    assertEquals("Row[a, 1, [1]]", row.toString());
+
+    int numThreads = BuildTypeUtil.nonTsanVsTsan(10, 4);
+    List<AlterDropAddThreadBody> threads = new ArrayList<AlterDropAddThreadBody>();
+    // Start half of threads before the ALTER TABLE.
+    while (threads.size() != numThreads/2) {
+      threads.add(new AlterDropAddThreadBody(insertStmt, threads.size()));
+    }
+
+    Thread.sleep(3000);
+    for (AlterDropAddThreadBody body : threads) {
+      // Check results.
+      LOG.info("Thread " + body.thread.getName() +
+          ": internal-errors=" + body.internalErrors + " errors=" + body.errors +
+          " set-insert-results=" + body.numOldReq +
+          " map-insert-results=" + body.numNewReq);
+
+      if (body.threadIndex < numThreads/2) {
+        // First set of threads should have old results.
+        assertEquals(0, body.internalErrors);
+        assertEquals(0, body.errors);
+        assertGreaterThan(body.numOldReq, 0);
+        assertEquals(0, body.numNewReq);
+      }
+    }
+
+    Thread.sleep(1000);
+    LOG.info("Call: ALTER TABLE");
+    session.execute("ALTER TABLE test_prepare DROP v");
+    session.execute("ALTER TABLE test_prepare ADD v MAP<INT, INT>");
+    LOG.info("Done: ALTER TABLE");
+    Thread.sleep(3000);
+
+    // Start second half of threads after the ALTER TABLE.
+    while (threads.size() != numThreads) {
+      threads.add(new AlterDropAddThreadBody(insertStmt, threads.size()));
+    }
+    // Wait for first successful new INSERT.
+    Thread.sleep(4000);
+    AlterDropAddThreadBody lastBody = threads.get(threads.size() - 1);
+    final long startTimeMs = System.currentTimeMillis();
+    while (lastBody.numNewReq == 0 && (System.currentTimeMillis() - startTimeMs) < 60000) {
+      Thread.sleep(1000);
+    }
+
+    assertGreaterThan(lastBody.numNewReq, 0);
+    // Finish all threads.
+    for (AlterDropAddThreadBody body : threads) {
+      body.thread.interrupt();
+    }
+    for (AlterDropAddThreadBody body : threads) {
+      body.thread.join();
+      LOG.info("Finished thread " + body.thread.getName() +
+          ": internal-errors=" + body.internalErrors + " errors=" + body.errors +
+          " set-insert-results=" + body.numOldReq +
+          " map-insert-results=" + body.numNewReq);
+    }
+    // Check results.
+    for (AlterDropAddThreadBody body : threads) {
+      assertEquals(0, body.internalErrors);
+
+      if (body.threadIndex < numThreads/2) {
+        // After ALTER - 'INSERT set' cannot work because the table was changed,
+        // but 'INSERT map' cannot work too because PREPARE was not called again.
+        assertGreaterThan(body.errors, 0);
+        // First set of threads should have old results.
+        assertGreaterThan(body.numOldReq, 0);
+      } else {
+        // Second set of threads should not have old results.
+        assertEquals(0, body.errors);
+        assertEquals(0, body.numOldReq);
+        assertGreaterThan(body.numNewReq, 0);
+      }
+    }
+  }
+
+  @Test
+  public void testRecreateTable() throws Exception {
+    // Setup table.
+    session.execute("USE " + DEFAULT_TEST_KEYSPACE);
+    session.execute("CREATE TABLE test_prepare (h TEXT, r INT, v SET<INT>, PRIMARY KEY(h, r))");
+
+    // Prepare and execute statement.
+    String insertStmt = "INSERT INTO test_prepare (h, r, v) VALUES (?, ?, ?)";
+    PreparedStatement prepared = session.prepare(insertStmt);
+    assertEquals(3, prepared.getVariables().size());
+    assertEquals("set<int>", prepared.getVariables().getType(2).toString());
+
+    session.execute(prepared.bind(
+        new String("a"), new Integer(1), new HashSet<Integer>(Arrays.asList(1))));
+    Row row = session.execute("SELECT * FROM test_prepare").one();
+    assertEquals(3, row.getColumnDefinitions().size());
+    assertEquals("Row[a, 1, [1]]", row.toString());
+
+    // Second connection.
+    try (Session s2 = connectWithTestDefaults().getSession()) {
+      s2.execute("USE " + DEFAULT_TEST_KEYSPACE);
+      s2.execute("DROP TABLE test_prepare");
+      s2.execute("CREATE TABLE test_prepare (h TEXT, r INT, v MAP<INT, INT>, PRIMARY KEY(h, r))");
+      s2.execute("INSERT INTO test_prepare (h, r, v) VALUES ('a', 1, {4:5})");
+    }
+
+    // Try to insert into the deleted table.
+    BoundStatement bound = prepared.bind(
+        new String("a"), new Integer(1), new HashSet<Integer>(Arrays.asList(2)));
+    try {
+      session.execute(bound);
+      fail("Execution did not fail as expected");
+    } catch (com.datastax.driver.core.exceptions.InvalidQueryException ex) {
+      LOG.info("Expected exception", ex);
+      assertTrue(ex.getMessage().contains("Invalid Arguments"));
+    }
+
+    // Try to re-prepare, but it does not update the cached statement.
+    prepared = session.prepare(insertStmt);
+    assertEquals(3, prepared.getVariables().size());
+    assertEquals("set<int>", prepared.getVariables().getType(2).toString());
+
+    bound = prepared.bind(new String("a"), new Integer(1), new HashSet<Integer>(Arrays.asList(2)));
+    try {
+      session.execute(bound);
+      fail("Execution did not fail as expected");
+    } catch (com.datastax.driver.core.exceptions.InvalidQueryException ex) {
+      LOG.info("Expected exception", ex);
+      assertTrue(ex.getMessage().contains("Invalid Arguments"));
+    }
+
+    row = session.execute("SELECT * FROM test_prepare WHERE h='a' and r=1").one();
+    assertEquals(3, row.getColumnDefinitions().size());
+    assertEquals("Row[a, 1, {4=5}]", row.toString());
+
+    // Run a new "application" = new driver instance = new cluster object & connection.
+    try (Session s3 = connectWithTestDefaults().getSession()) {
+      s3.execute("USE " + DEFAULT_TEST_KEYSPACE);
+      prepared = s3.prepare(insertStmt);
+      assertEquals(3, prepared.getVariables().size());
+      assertEquals("map<int, int>", prepared.getVariables().getType(2).toString());
+
+      // Ensure the new driver instance knows the new column.
+      s3.execute(prepared.bind(new String("a"), new Integer(1),
+          new HashMap<Integer, Integer>() {{ put(9, 9); }}));
+      row = session.execute("SELECT * FROM test_prepare WHERE h='a' and r=1").one();
+      assertEquals(3, row.getColumnDefinitions().size());
+      assertEquals("Row[a, 1, {9=9}]", row.toString());
+    }
   }
 
   @Test

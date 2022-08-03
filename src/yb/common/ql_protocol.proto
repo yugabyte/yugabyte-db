@@ -103,6 +103,22 @@ message QLPagingStatePB {
   //   - The <row_counter> is used for query "SELECT <data>".
   //   - The rest of the counters are for nested query "SELECT <keys>".
   optional QLSelectRowCounterPB row_counter = 9;
+
+  // Schema version:
+  // - A query is prepared for a specific schema version.
+  // - A paging state of a query execution is for a specific schema version.
+  // - When schema version changes, we can either continue or raise error for the execution.
+  //   This is controlled by the g-flag 'cql_check_table_schema_in_paging_state'. The flag is
+  //   'true' by default. It means: raise error in the case to prevent data reinterpretation
+  //   on the driver side.
+  //
+  // Example:
+  // - Prepare queryX = "SELECT a, b FROM t"
+  // - Execute queryX - get page1.
+  // - Alter t column c; -> This alter shouldn't affect the query on columns a & b.
+  // - Execute queryX (continue) -> Should this be an error? Yes, raise error if
+  //                                '--cql_check_table_schema_in_paging_state=true'.
+  optional uint32 schema_version = 10 [default = 0];
 }
 
 //-------------------------------------- Column request --------------------------------------
