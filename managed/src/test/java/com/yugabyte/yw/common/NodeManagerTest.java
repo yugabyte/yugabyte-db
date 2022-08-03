@@ -716,6 +716,16 @@ public class NodeManagerTest extends FakeDBApplication {
       TestData testData,
       UserIntent userIntent,
       String nodeIp) {
+    return nodeCommand(type, params, testData, userIntent, nodeIp, false);
+  }
+
+  private List<String> nodeCommand(
+      NodeManager.NodeCommandType type,
+      NodeTaskParams params,
+      TestData testData,
+      UserIntent userIntent,
+      String nodeIp,
+      boolean canConfigureYbc) {
     Common.CloudType cloud = testData.cloudType;
     List<String> expectedCommand = new ArrayList<>();
     expectedCommand.add("instance");
@@ -821,10 +831,7 @@ public class NodeManagerTest extends FakeDBApplication {
         String ybcPackage = null;
         Map<String, String> ybcFlags = new HashMap<>();
 
-        boolean canConfigureYbc =
-            CommonUtils.canConfigureYbc(Universe.getOrBadRequest(params.universeUUID));
         if (canConfigureYbc) {
-          ybcPackage = userIntent.ybcPackagePath;
           ybcFlags.put("v", "1");
           ybcFlags.put("server_address", nodeIp);
           ybcFlags.put("server_port", "18018");

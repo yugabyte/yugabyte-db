@@ -21,10 +21,12 @@
 
 namespace yb {
 
-PrometheusWriter::PrometheusWriter(std::stringstream* output)
+PrometheusWriter::PrometheusWriter(std::stringstream* output,
+                                   AggregationMetricLevel aggregation_Level)
     : output_(output),
       timestamp_(std::chrono::duration_cast<std::chrono::milliseconds>(
-          std::chrono::system_clock::now().time_since_epoch()).count()) {}
+          std::chrono::system_clock::now().time_since_epoch()).count()),
+      aggregation_level_(aggregation_Level) {}
 
 PrometheusWriter::~PrometheusWriter() {}
 
@@ -32,7 +34,7 @@ Status PrometheusWriter::FlushAggregatedValues(
     uint32_t max_tables_metrics_breakdowns, const std::string& priority_regex) {
   uint32_t counter = 0;
   std::regex p_regex(priority_regex);
-  for (const auto& [_, data] : tables_) {
+  for (const auto& [_, data] : aggregated_data_) {
     const auto& attrs = data.attributes;
     for (const auto& metric_entry : data.values) {
       if (priority_regex.empty() || std::regex_match(metric_entry.first, p_regex)) {
@@ -71,22 +73,17 @@ void PrometheusWriter::InvalidAggregationFunction(AggregationFunction aggregatio
   FATAL_INVALID_ENUM_VALUE(AggregationFunction, aggregation_function);
 }
 
-Status PrometheusWriter::WriteSingleEntry(
-    const MetricEntity::AttributeMap& attr, const std::string& name, int64_t value,
-    AggregationFunction aggregation_function) {
-  auto it = attr.find("table_id");
-  if (it == attr.end()) {
-    return FlushSingleEntry(attr, name, value);
-  }
-
+void PrometheusWriter::AddAggregatedEntry(
+    const std::string& key, const MetricEntity::AttributeMap& attr, const std::string& name,
+    int64_t value, AggregationFunction aggregation_function) {
   // For tablet level metrics, we roll up on the table level.
-  auto table_it = tables_.find(it->second);
-  if (table_it == tables_.end()) {
+  auto it = aggregated_data_.find(key);
+  if (it == aggregated_data_.end()) {
     // If it's the first time we see this table, create the aggregate structures.
-    table_it = tables_.emplace(it->second, TableData { .attributes = attr, .values = {} }).first;
-    table_it->second.values.emplace(name, value);
+    it = aggregated_data_.emplace(key, AggregatedData { .attributes = attr, .values = {} }).first;
+    it->second.values.emplace(name, value);
   } else {
-    auto& stored_value = table_it->second.values[name];
+  auto& stored_value = it->second.values[name];
     switch (aggregation_function) {
       case kSum:
         stored_value += value;
@@ -94,7 +91,7 @@ Status PrometheusWriter::WriteSingleEntry(
       case kMax:
         // If we have a new max, also update the metadata so that it matches correctly.
         if (value > stored_value) {
-          table_it->second.attributes = attr;
+          it->second.attributes = attr;
           stored_value = value;
         }
         break;
@@ -102,6 +99,29 @@ Status PrometheusWriter::WriteSingleEntry(
         InvalidAggregationFunction(aggregation_function);
         break;
     }
+  }
+}
+
+Status PrometheusWriter::WriteSingleEntry(
+    const MetricEntity::AttributeMap& attr, const std::string& name, int64_t value,
+    AggregationFunction aggregation_function) {
+  auto it = attr.find("table_id");
+  if (it == attr.end()) {
+    return FlushSingleEntry(attr, name, value);
+  }
+  switch (aggregation_level_) {
+  case AggregationMetricLevel::kServer:
+  {
+    MetricEntity::AttributeMap new_attr = attr;
+    new_attr.erase("table_id");
+    new_attr.erase("table_name");
+    new_attr.erase("namespace_name");
+    AddAggregatedEntry("", new_attr, name, value, aggregation_function);
+    break;
+  }
+  case AggregationMetricLevel::kTable:
+    AddAggregatedEntry(it->second, attr, name, value, aggregation_function);
+    break;
   }
   return Status::OK();
 }

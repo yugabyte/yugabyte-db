@@ -200,8 +200,10 @@ public class NodeUniverseManager extends DevopsBase {
     bashCommand.add("-c");
     // Escaping double quotes at first.
     String escapedYsqlCommand = ysqlCommand.replace("\"", "\\\"");
-    // Escaping single quotes after.
-    escapedYsqlCommand = escapedYsqlCommand.replace("'", "'\"'\"'");
+    // Escaping single quotes after for non k8s deployments.
+    if (!universe.getNodeDeploymentMode(node).equals(Common.CloudType.kubernetes)) {
+      escapedYsqlCommand = escapedYsqlCommand.replace("'", "'\"'\"'");
+    }
     bashCommand.add("\"" + escapedYsqlCommand + "\"");
     String bashCommandStr = String.join(" ", bashCommand);
     command.add(bashCommandStr);

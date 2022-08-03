@@ -345,6 +345,10 @@ aside.td-sidebar {
         border-bottom: 1px solid rgba(209, 214, 223, 0.3);
       }
 
+      >li.unlink-list:not(:last-child) {
+        border-bottom: 0 !important;
+      }
+
       > li:nth-last-child(2) {
         border-bottom: 1px solid rgba(209, 214, 223, 1);
       }
@@ -487,10 +491,8 @@ aside.td-sidebar {
 
         ul {
           padding-left: 17px;
-          padding-bottom: 7px;
 
           > li {
-            padding: 4px 0;
             display: flex;
             align-items: center;
             flex-wrap: wrap;
@@ -592,7 +594,6 @@ aside.td-sidebar {
               > a {
                 max-width: calc(100% - 20px);
                 padding-left: 0;
-                line-height: normal;
               }
 
               &:not(.open) > ul {
@@ -692,7 +693,6 @@ aside.td-sidebar {
 
 aside.td-sidebar nav > ul > li.unlink-list > ul > li {
   border-bottom: 1px solid rgba(209, 214, 223, 0.3);
-  padding: 0;
 }
 
 aside.td-sidebar nav > ul > li.unlink-list > ul > li.submenu {
@@ -702,7 +702,6 @@ aside.td-sidebar nav > ul > li.unlink-list > ul > li.submenu {
 
 aside.td-sidebar nav > ul > li.unlink-list > ul > li.submenu > a {
   padding: 8px 0 8px 0;
-  line-height: 23.3px;
   max-width: calc(100% - 23px);
 }
 
@@ -743,7 +742,6 @@ aside.td-sidebar nav > ul > li.unlink-list > ul > li > {
   a.current + i {
     top: 15px;
     width: 16px;
-    right: 5px;
     left: inherit;
     border: 2px solid #666;
     border-left: 0;
@@ -786,8 +784,7 @@ aside.td-sidebar nav > ul > li.unlink-list > ul > li > ul {
 aside.td-sidebar nav > ul > li.unlink-list > ul > li > ul > li > a,
 aside.td-sidebar nav > ul > li.submenu.unlink-list > ul > li > ul > li > a {
   font-size: 15.5px;
-  padding-top: 0;
-  padding-bottom: 0;
+  padding: 4px 0;
   padding-left: 5px;
 }
 
@@ -812,10 +809,6 @@ aside.td-sidebar nav > ul > li.submenu.unlink-list > ul > li > ul > li > ul > li
   padding: 4px 0 4px 5px;
 }
 
-aside.td-sidebar nav > ul > li.unlink-list > ul > li:last-child {
-  border-bottom: 0;
-}
-
 aside.td-sidebar nav > ul > li.unlink-list > ul > li.open > i::before,
 aside.td-sidebar nav > ul > li.unlink-list > li.open > a.current + i::before,
 aside.td-sidebar nav > ul > li.unlink-list > ul > li.open > a.current + i::before {
@@ -825,7 +818,6 @@ aside.td-sidebar nav > ul > li.unlink-list > ul > li.open > a.current + i::befor
 aside.td-sidebar nav > ul > li.unlink-list > ul > li > a,
 aside.td-sidebar nav > ul li.submenu.unlink-list > ul > li > a {
   padding: 8px 0 8px 5px;
-  line-height: 23.3px;
   max-width: calc(100% - 18px);
 }
 
@@ -855,7 +847,7 @@ li.section.back-arrow {
 }
 
 li.section.other-links {
-  padding: 4px 0;
+  padding-bottom: 1px;
 
   a {
     padding-left: 20px !important;

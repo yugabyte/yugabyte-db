@@ -2,6 +2,7 @@
 @import "./_left_nav.scss";
 @import "./_right_nav.scss";
 @import "./_version_dropdown.scss";
+@import "./_contribute_list.scss";
 @import "./_admonition.scss";
 @import "./_code_block.scss";
 @import "./_release_notes.scss";
@@ -99,6 +100,11 @@ h4,
 @media (min-width: 768px) {
   .td-main main {
     padding-top: 9.5rem;
+  }
+
+  .pl-md-5,
+  .px-md-5 {
+    padding-left: 1.5rem !important;
   }
 }
 
@@ -424,7 +430,6 @@ body:not(.td-home) .td-main main {
     color: #3176d9;
 
     i {
-      color: var(--theme-color);
       margin-left: 5px;
       font-size: 12px;
     }

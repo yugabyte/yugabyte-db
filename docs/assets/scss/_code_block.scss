@@ -4,12 +4,13 @@
     vertical-align: middle;
     margin: 0 2px;
     padding: 0 3px;
-    font-size: 16px;
+    font-size: inherit !important;
+    font-family: inherit !important;
     border-radius: 4px;
-    background: #e6efff;
+    background: #e6efff !important;
     border: 1px solid #dee0ea;
     line-height: normal;
-    color: #000041;
+    color: #000041 !important;
     max-width: 100%;
     overflow: auto;
   }
@@ -19,7 +20,14 @@
     padding: 2px 4px;
   }
 
+  h1 > code,
+  h2 > code,
+  h3 > code,
+  h4 > code,
+  h5 > code,
+  h6 > code,
   a > code {
+    color: inherit !important;
     margin: 0 0 2px;
   }
 

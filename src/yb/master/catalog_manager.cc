@@ -170,7 +170,7 @@
 #include "yb/util/countdown_latch.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/trace_event.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/hash_util.h"
 #include "yb/util/locks.h"
@@ -853,6 +853,8 @@ Status CatalogManager::Init() {
   }
 
   // Initialize the metrics emitted by the catalog manager.
+  load_balance_policy_->InitMetrics();
+
   metric_num_tablet_servers_live_ =
     METRIC_num_tablet_servers_live.Instantiate(master_->metric_entity_cluster(), 0);
 
@@ -5972,10 +5974,6 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
     has_changes = true;
   }
 
-  if (req->increment_schema_version()) {
-    has_changes = true;
-  }
-
   // TODO(hector): Simplify the AlterSchema workflow to avoid doing the same checks on every layer
   // this request goes through: https://github.com/YugaByte/yugabyte-db/issues/1882.
   if (req->has_wal_retention_secs()) {
@@ -9150,6 +9148,8 @@ Status CatalogManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB&
       req.source_broadcast_addr(), req.source_private_addr(), req.source_cloud_info(),
       master_->MakeCloudInfoPB()));
 
+  RETURN_NOT_OK(master_->InitAutoFlagsFromMasterLeader(bootstrap_peer_addr));
+
   const string& bootstrap_peer_uuid = req.bootstrap_peer_uuid();
   int64_t leader_term = req.caller_term();
 
@@ -9265,8 +9265,19 @@ Status CatalogManager::SendAlterTableRequest(const scoped_refptr<TableInfo>& tab
       req->has_transaction() &&
       req->transaction().has_transaction_id();
 
+  bool alter_table_has_add_or_drop_column_step = false;
+  if (req && (req->alter_schema_steps_size() || req->has_alter_properties())) {
+    for (const AlterTableRequestPB::Step& step : req->alter_schema_steps()) {
+      if (step.type() == AlterTableRequestPB::ADD_COLUMN ||
+          step.type() == AlterTableRequestPB::DROP_COLUMN) {
+        alter_table_has_add_or_drop_column_step = true;
+        break;
+      }
+    }
+  }
+
   TransactionId txn_id = TransactionId::Nil();
-  if (is_ysql_table_with_transaction_metadata) {
+  if (is_ysql_table_with_transaction_metadata && alter_table_has_add_or_drop_column_step) {
     {
       LOG(INFO) << "Persist transaction metadata into SysTableEntryPB for table ID " << table->id();
       TRACE("Locking table");
@@ -10598,6 +10609,9 @@ Status CatalogManager::PeerStateDump(const vector<RaftPeerPB>& peers,
 }
 
 void CatalogManager::ReportMetrics() {
+  // Report metrics on load balancer state.
+  load_balance_policy_->ReportMetrics();
+
   // Report metrics on how many tservers are alive.
   TSDescriptorVector ts_descs;
   master_->ts_manager()->GetAllLiveDescriptors(&ts_descs);

@@ -4,13 +4,28 @@
       - systemd_option is defined
 
 - block:
-  - name: Setup | Create yb-controller logs directory
+  - set_fact:
+      _mount_logs_dir: "{{ _mount_points[0] }}/ybc-data/controller/logs"
+    tags: always
+
+  - name: Setup | Create controller logs directory
     file:
-      path: "{{ ybc_logs_dir }}"
+      path: "{{ _mount_logs_dir }}"
       state: directory
       mode: 0755
       owner: "{{ user_name }}"
       group: "{{ user_name }}"
+
+  - name: Setup | Symlink {{ yb_process_type }} logs directory
+    file:
+      src: "{{ _mount_logs_dir }}"
+      dest: "{{ ybc_logs_dir }}"
+      mode: 0755
+      owner: "{{ user_name }}"
+      group: "{{ user_name }}"
+      state: link
+      force: yes
+    tags: yb-prebuilt-ami
 
   - name: Remove existing ybc conf file
     file:

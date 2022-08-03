@@ -28,10 +28,20 @@ export default class UniverseResources extends Component {
     let universeNodes = <span />;
     let renderCosts = false;
     if (isNonEmptyObject(resources)) {
+      const isPricingKnown = resources.pricingKnown;
+      const pricePerHour = resources.pricePerHour;
       empty = false;
-      renderCosts = Number(resources.pricePerHour) > 0;
-      costPerDay = <YBCost value={resources.pricePerHour} multiplier={'day'} />;
-      costPerMonth = <YBCost value={resources.pricePerHour} multiplier={'month'} />;
+      renderCosts = Number(pricePerHour) > 0;
+      costPerDay = <YBCost
+        value={pricePerHour}
+        multiplier={'day'}
+        isPricingKnown={isPricingKnown}
+      />;
+      costPerMonth = <YBCost
+        value={pricePerHour}
+        multiplier={'month'}
+        isPricingKnown={isPricingKnown}
+      />;
       numCores = resources.numCores;
       memSizeGB = resources.memSizeGB ? resources.memSizeGB : 0;
       volumeSizeGB = resources.volumeSizeGB ? resources.volumeSizeGB : 0;

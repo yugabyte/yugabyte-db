@@ -2021,7 +2021,7 @@
       "properties" : {
         "components" : {
           "items" : {
-            "enum" : [ "UniverseLogs", "ApplicationLogs", "OutputFiles", "ErrorFiles", "GFlags", "Instance", "ConsensusMeta", "TabletMeta" ],
+            "enum" : [ "UniverseLogs", "ApplicationLogs", "OutputFiles", "ErrorFiles", "GFlags", "Instance", "ConsensusMeta", "TabletMeta", "YbcLogs" ],
             "type" : "string"
           },
           "type" : "array"
@@ -2194,6 +2194,9 @@
           "$ref" : "#/definitions/DeviceInfo",
           "description" : "Device information"
         },
+        "enableYbc" : {
+          "type" : "boolean"
+        },
         "encryptionAtRestConfig" : {
           "$ref" : "#/definitions/EncryptionAtRestConfig",
           "description" : "Encryption at rest configation"
@@ -2337,14 +2340,14 @@
         "useNewHelmNamingStyle" : {
           "type" : "boolean"
         },
-        "useYbcForBackups" : {
-          "type" : "boolean"
-        },
         "userAZSelected" : {
           "type" : "boolean"
         },
         "ybPrevSoftwareVersion" : {
           "description" : "Previous software version",
+          "type" : "string"
+        },
+        "ybcSoftwareVersion" : {
           "type" : "string"
         }
       },
@@ -3194,6 +3197,9 @@
           "$ref" : "#/definitions/DeviceInfo",
           "description" : "Device information"
         },
+        "enableYbc" : {
+          "type" : "boolean"
+        },
         "encryptionAtRestConfig" : {
           "$ref" : "#/definitions/EncryptionAtRestConfig",
           "description" : "Encryption at rest configation"
@@ -3343,14 +3349,14 @@
         "useNewHelmNamingStyle" : {
           "type" : "boolean"
         },
-        "useYbcForBackups" : {
-          "type" : "boolean"
-        },
         "userAZSelected" : {
           "type" : "boolean"
         },
         "ybPrevSoftwareVersion" : {
           "description" : "Previous software version",
+          "type" : "string"
+        },
+        "ybcSoftwareVersion" : {
           "type" : "string"
         }
       },
@@ -4637,6 +4643,35 @@
       },
       "type" : "object"
     },
+    "PackagesRequestParams" : {
+      "description" : "Packages request parameters",
+      "properties" : {
+        "architectureType" : {
+          "description" : "Architecture Type",
+          "enum" : [ "AARCH64", "X86_64" ],
+          "type" : "string"
+        },
+        "archiveType" : {
+          "description" : "Archive Type",
+          "type" : "string"
+        },
+        "buildNumber" : {
+          "description" : "Build number",
+          "type" : "string"
+        },
+        "osType" : {
+          "description" : "OS Type",
+          "enum" : [ "CENTOS", "ALMALINUX", "DARWIN", "LINUX", "EL8" ],
+          "type" : "string"
+        },
+        "packageName" : {
+          "description" : "Package name",
+          "type" : "string"
+        }
+      },
+      "required" : [ "buildNumber" ],
+      "type" : "object"
+    },
     "PlacementAZ" : {
       "properties" : {
         "isAffinitized" : {
@@ -5136,6 +5171,9 @@
           "$ref" : "#/definitions/DeviceInfo",
           "description" : "Device information"
         },
+        "enableYbc" : {
+          "type" : "boolean"
+        },
         "encryptionAtRestConfig" : {
           "$ref" : "#/definitions/EncryptionAtRestConfig",
           "description" : "Encryption at rest configation"
@@ -5276,14 +5314,14 @@
         "useNewHelmNamingStyle" : {
           "type" : "boolean"
         },
-        "useYbcForBackups" : {
-          "type" : "boolean"
-        },
         "userAZSelected" : {
           "type" : "boolean"
         },
         "ybPrevSoftwareVersion" : {
           "description" : "Previous software version",
+          "type" : "string"
+        },
+        "ybcSoftwareVersion" : {
           "type" : "string"
         }
       },
@@ -5768,6 +5806,9 @@
           "$ref" : "#/definitions/DeviceInfo",
           "description" : "Device information"
         },
+        "enableYbc" : {
+          "type" : "boolean"
+        },
         "encryptionAtRestConfig" : {
           "$ref" : "#/definitions/EncryptionAtRestConfig",
           "description" : "Encryption at rest configation"
@@ -5908,9 +5949,6 @@
         "useNewHelmNamingStyle" : {
           "type" : "boolean"
         },
-        "useYbcForBackups" : {
-          "type" : "boolean"
-        },
         "userAZSelected" : {
           "type" : "boolean"
         },
@@ -5919,6 +5957,9 @@
           "type" : "string"
         },
         "ybSoftwareVersion" : {
+          "type" : "string"
+        },
+        "ybcSoftwareVersion" : {
           "type" : "string"
         }
       },
@@ -5971,7 +6012,7 @@
         "components" : {
           "description" : "List of components to be included in the support bundle",
           "items" : {
-            "enum" : [ "UniverseLogs", "ApplicationLogs", "OutputFiles", "ErrorFiles", "GFlags", "Instance", "ConsensusMeta", "TabletMeta" ],
+            "enum" : [ "UniverseLogs", "ApplicationLogs", "OutputFiles", "ErrorFiles", "GFlags", "Instance", "ConsensusMeta", "TabletMeta", "YbcLogs" ],
             "type" : "string"
           },
           "type" : "array"
@@ -6032,6 +6073,9 @@
         "deviceInfo" : {
           "$ref" : "#/definitions/DeviceInfo",
           "description" : "Device information"
+        },
+        "enableYbc" : {
+          "type" : "boolean"
         },
         "encryptionAtRestConfig" : {
           "$ref" : "#/definitions/EncryptionAtRestConfig",
@@ -6170,14 +6214,14 @@
         "useNewHelmNamingStyle" : {
           "type" : "boolean"
         },
-        "useYbcForBackups" : {
-          "type" : "boolean"
-        },
         "userAZSelected" : {
           "type" : "boolean"
         },
         "ybPrevSoftwareVersion" : {
           "description" : "Previous software version",
+          "type" : "string"
+        },
+        "ybcSoftwareVersion" : {
           "type" : "string"
         }
       },
@@ -6437,6 +6481,9 @@
           "$ref" : "#/definitions/DeviceInfo",
           "description" : "Device information"
         },
+        "enableYbc" : {
+          "type" : "boolean"
+        },
         "encryptionAtRestConfig" : {
           "$ref" : "#/definitions/EncryptionAtRestConfig",
           "description" : "Encryption at rest configation"
@@ -6577,14 +6624,14 @@
         "useNewHelmNamingStyle" : {
           "type" : "boolean"
         },
-        "useYbcForBackups" : {
-          "type" : "boolean"
-        },
         "userAZSelected" : {
           "type" : "boolean"
         },
         "ybPrevSoftwareVersion" : {
           "description" : "Previous software version",
+          "type" : "string"
+        },
+        "ybcSoftwareVersion" : {
           "type" : "string"
         }
       },
@@ -6636,6 +6683,9 @@
           "type" : "boolean"
         },
         "enableNodeToNodeEncrypt" : {
+          "type" : "boolean"
+        },
+        "enableYbc" : {
           "type" : "boolean"
         },
         "encryptionAtRestConfig" : {
@@ -6775,14 +6825,14 @@
         "useNewHelmNamingStyle" : {
           "type" : "boolean"
         },
-        "useYbcForBackups" : {
-          "type" : "boolean"
-        },
         "userAZSelected" : {
           "type" : "boolean"
         },
         "ybPrevSoftwareVersion" : {
           "description" : "Previous software version",
+          "type" : "string"
+        },
+        "ybcSoftwareVersion" : {
           "type" : "string"
         }
       },
@@ -6847,6 +6897,9 @@
         "deviceInfo" : {
           "$ref" : "#/definitions/DeviceInfo",
           "description" : "Device information"
+        },
+        "enableYbc" : {
+          "type" : "boolean"
         },
         "encryptionAtRestConfig" : {
           "$ref" : "#/definitions/EncryptionAtRestConfig",
@@ -6973,14 +7026,14 @@
         "useNewHelmNamingStyle" : {
           "type" : "boolean"
         },
-        "useYbcForBackups" : {
-          "type" : "boolean"
-        },
         "userAZSelected" : {
           "type" : "boolean"
         },
         "ybPrevSoftwareVersion" : {
           "description" : "Previous software version",
+          "type" : "string"
+        },
+        "ybcSoftwareVersion" : {
           "type" : "string"
         }
       },
@@ -7027,6 +7080,9 @@
         "deviceInfo" : {
           "$ref" : "#/definitions/DeviceInfo",
           "description" : "Device information"
+        },
+        "enableYbc" : {
+          "type" : "boolean"
         },
         "encryptionAtRestConfig" : {
           "$ref" : "#/definitions/EncryptionAtRestConfig",
@@ -7150,14 +7206,14 @@
         "useNewHelmNamingStyle" : {
           "type" : "boolean"
         },
-        "useYbcForBackups" : {
-          "type" : "boolean"
-        },
         "userAZSelected" : {
           "type" : "boolean"
         },
         "ybPrevSoftwareVersion" : {
           "description" : "Previous software version",
+          "type" : "string"
+        },
+        "ybcSoftwareVersion" : {
           "type" : "string"
         }
       },
@@ -7204,6 +7260,9 @@
         "deviceInfo" : {
           "$ref" : "#/definitions/DeviceInfo",
           "description" : "Device information"
+        },
+        "enableYbc" : {
+          "type" : "boolean"
         },
         "encryptionAtRestConfig" : {
           "$ref" : "#/definitions/EncryptionAtRestConfig",
@@ -7327,14 +7386,14 @@
         "useNewHelmNamingStyle" : {
           "type" : "boolean"
         },
-        "useYbcForBackups" : {
-          "type" : "boolean"
-        },
         "userAZSelected" : {
           "type" : "boolean"
         },
         "ybPrevSoftwareVersion" : {
           "description" : "Previous software version",
+          "type" : "string"
+        },
+        "ybcSoftwareVersion" : {
           "type" : "string"
         }
       },
@@ -7412,6 +7471,10 @@
           "description" : "Price per hour",
           "format" : "double",
           "type" : "number"
+        },
+        "pricingKnown" : {
+          "description" : "Known pricing info",
+          "type" : "boolean"
         },
         "volumeCount" : {
           "description" : "Volume count",
@@ -7544,6 +7607,9 @@
           "$ref" : "#/definitions/DeviceInfo",
           "description" : "Device information"
         },
+        "enableYbc" : {
+          "type" : "boolean"
+        },
         "encryptionAtRestConfig" : {
           "$ref" : "#/definitions/EncryptionAtRestConfig",
           "description" : "Encryption at rest configation"
@@ -7681,14 +7747,14 @@
         "useNewHelmNamingStyle" : {
           "type" : "boolean"
         },
-        "useYbcForBackups" : {
-          "type" : "boolean"
-        },
         "userAZSelected" : {
           "type" : "boolean"
         },
         "ybPrevSoftwareVersion" : {
           "description" : "Previous software version",
+          "type" : "string"
+        },
+        "ybcSoftwareVersion" : {
           "type" : "string"
         }
       },
@@ -7804,9 +7870,6 @@
           "type" : "boolean"
         },
         "ybSoftwareVersion" : {
-          "type" : "string"
-        },
-        "ybcPackagePath" : {
           "type" : "string"
         },
         "ycqlPassword" : {
@@ -8047,6 +8110,9 @@
           "$ref" : "#/definitions/DeviceInfo",
           "description" : "Device information"
         },
+        "enableYbc" : {
+          "type" : "boolean"
+        },
         "encryptionAtRestConfig" : {
           "$ref" : "#/definitions/EncryptionAtRestConfig",
           "description" : "Encryption at rest configation"
@@ -8193,9 +8259,6 @@
         "useNewHelmNamingStyle" : {
           "type" : "boolean"
         },
-        "useYbcForBackups" : {
-          "type" : "boolean"
-        },
         "userAZSelected" : {
           "type" : "boolean"
         },
@@ -8204,6 +8267,9 @@
           "type" : "string"
         },
         "ybSoftwareVersion" : {
+          "type" : "string"
+        },
+        "ybcSoftwareVersion" : {
           "type" : "string"
         }
       },
@@ -12502,7 +12568,7 @@
             "description" : "successful operation",
             "schema" : {
               "items" : {
-                "enum" : [ "UniverseLogs", "ApplicationLogs", "OutputFiles", "ErrorFiles", "GFlags", "Instance", "ConsensusMeta", "TabletMeta" ],
+                "enum" : [ "UniverseLogs", "ApplicationLogs", "OutputFiles", "ErrorFiles", "GFlags", "Instance", "ConsensusMeta", "TabletMeta", "YbcLogs" ],
                 "type" : "string"
               },
               "type" : "array"
@@ -15923,6 +15989,35 @@
         "tags" : [ "Node instances" ]
       }
     },
+    "/api/v1/fetch_package" : {
+      "post" : {
+        "description" : "",
+        "operationId" : "fetchPackage",
+        "parameters" : [ {
+          "description" : "Package to be imported",
+          "in" : "body",
+          "name" : "Package",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/PackagesRequestParams"
+          }
+        } ],
+        "produces" : [ "application/gzip" ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "type" : "string"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Fetch a package",
+        "tags" : [ "PackagesController" ]
+      }
+    },
     "/api/v1/grafana_dashboard" : {
       "get" : {
         "description" : "",
@@ -16306,6 +16401,8 @@
     "name" : "Metrics"
   }, {
     "name" : "Node instances"
+  }, {
+    "name" : "PackagesController"
   }, {
     "name" : "Region management"
   }, {

@@ -1,7 +1,7 @@
 ---
-title: Stored Procedures
-linkTitle: Stored Procedures
-description: Stored Procedures in YSQL
+title: Stored procedures
+linkTitle: Stored procedures
+description: Stored procedures in YSQL
 image: /images/section_icons/index/explore.png
 menu:
   preview:
@@ -15,9 +15,9 @@ This section describes how to use stored procedures to perform transactions.
 
 ## Overview
 
-Stored procedures, in large part, are simply functions that support transactions. PostgreSQL 11 introduced stored procedures, and Yugabyte supports them as well.
+Stored procedures, in large part, are just functions that support transactions. PostgreSQL 11 introduced stored procedures, and Yugabyte supports them as well.
 
-## Creating a Stored Procedure
+## Create a stored procedure
 
 To create a stored procedure in YSQL, use the [`CREATE PROCEDURE`](../../../api/ysql/the-sql-language/statements/ddl_create_procedure/) statement, which has the following syntax:
 
@@ -41,7 +41,7 @@ To return a value from a stored procedure, use an [`INOUT`](../../../api/ysql/ke
 
 {{< /note >}}
 
-## Invoking a Stored Procedure
+## Invoke a stored procedure
 
 To invoke a stored procedure, use the [`CALL`](../../../api/ysql/the-sql-language/statements/cmd_call/) statement, which has the following syntax:
 
@@ -55,7 +55,7 @@ For example, drawing from the [Example workflow](#example-workflow) on this page
 yugabyte=# call move_money(1,2,1000);
 ```
 
-## Deleting a Stored Procedure
+## Delete a stored procedure
 
 To remove a stored procedure, use the [`DROP PROCEDURE`](../../../api/ysql/the-sql-language/statements/ddl_drop_procedure/) statement, which has the following syntax:
 
@@ -72,9 +72,9 @@ yugabyte=# drop procedure move_money(integer, integer, decimal);
 
 If the name of the stored procedure is not unique (for example, if you had two `insert_data()` procedures, one of which accepted two integers and another which accepted an integer and a varchar), you must specify the data types in the `DROP PROCEDURE` statement. Otherwise, you can omit the data types.
 
-## Example Workflow
+## Example workflow
 
-In the following example, you'll create a new table and a stored procedure to perform operations on that table. Finally, you'll clean up by removing the procedure and the table.
+In the following example, you create a new table and a stored procedure to perform operations on that table. Finally, you clean up by removing the procedure and the table.
 
 1. Create an `accounts` table with two users, and set the balance of both accounts to $10,000:
 
@@ -101,7 +101,7 @@ In the following example, you'll create a new table and a stored procedure to pe
     select * from accounts;
     ```
 
-    ```
+    ```output
     id | name  | balance
     ----+-------+----------
       1 | User1 | 20000.00
@@ -144,7 +144,7 @@ In the following example, you'll create a new table and a stored procedure to pe
     select * from accounts;
     ```
 
-    ```
+    ```output
     id | name  | balance
     ----+-------+----------
       1 | User1 | 19000.00

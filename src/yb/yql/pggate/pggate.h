@@ -290,8 +290,6 @@ class PgApiImpl {
   Status AlterTableRenameTable(PgStatement *handle, const char *db_name,
                                        const char *newname);
 
-  Status AlterTableIncrementSchemaVersion(PgStatement *handle);
-
   Status ExecAlterTable(PgStatement *handle);
 
   Status NewDropTable(const PgObjectId& table_id,
@@ -596,7 +594,7 @@ class PgApiImpl {
 
   Result<bool> CheckIfPitrActive();
 
-  const MemTracker &GetMemTracker() { return *mem_tracker_; }
+  MemTracker &GetMemTracker() { return *mem_tracker_; }
 
  private:
   class Interrupter;

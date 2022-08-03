@@ -384,7 +384,7 @@ runPlatform := {
 }
 
 libraryDependencies += "org.yb" % "yb-client" % "0.8.21-SNAPSHOT"
-libraryDependencies += "org.yb" % "ybc-client" % "0.0.4"
+libraryDependencies += "org.yb" % "ybc-client" % "0.0.4" exclude("org.slf4j", "slf4j-simple")
 
 libraryDependencies ++= Seq(
   // Overrides mainly to address transitive deps in cassandra-driver-core and pac4j-oidc/oauth

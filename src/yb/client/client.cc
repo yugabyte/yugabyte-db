@@ -88,6 +88,7 @@
 #include "yb/master/master_util.h"
 
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/outbound_call.h"
 #include "yb/rpc/proxy.h"
 #include "yb/rpc/rpc.h"
 
@@ -2212,6 +2213,28 @@ Result<TableId> GetTableId(YBClient* client, const YBTableName& table_name) {
 
 const std::string& YBClient::LogPrefix() const {
   return data_->log_prefix_;
+}
+
+Result<std::optional<AutoFlagsConfigPB>> YBClient::GetAutoFlagConfig() {
+  master::GetAutoFlagsConfigRequestPB req;
+  master::GetAutoFlagsConfigResponsePB resp;
+
+  // CALL_SYNC_LEADER_MASTER_RPC_EX will return on failure. Capture the Status so that we can handle
+  // the case when master is running on an older version that does not support this RPC.
+  Status status = [&]() -> Status {
+    CALL_SYNC_LEADER_MASTER_RPC_EX(Cluster, req, resp, GetAutoFlagsConfig);
+    return Status::OK();
+  }();
+
+  if (status.ok()) {
+    return std::move(resp.config());
+  }
+
+  if (rpc::RpcError(status) == rpc::ErrorStatusPB::ERROR_NO_SUCH_METHOD) {
+    return std::nullopt;
+  }
+
+  return status;
 }
 
 }  // namespace client

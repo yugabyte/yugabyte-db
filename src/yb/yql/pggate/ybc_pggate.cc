@@ -220,6 +220,22 @@ YBCStatus YBCGetPgggateCurrentAllocatedBytes(int64_t *consumption) {
   return YBCStatusOK();
 }
 
+bool YBCTryMemConsume(int64_t bytes) {
+  if (pgapi) {
+    pgapi->GetMemTracker().Consume(bytes);
+    return true;
+  }
+  return false;
+}
+
+bool YBCTryMemRelease(int64_t bytes) {
+  if (pgapi) {
+    pgapi->GetMemTracker().Release(bytes);
+    return true;
+  }
+  return false;
+}
+
 //--------------------------------------------------------------------------------------------------
 // DDL Statements.
 //--------------------------------------------------------------------------------------------------
@@ -442,10 +458,6 @@ YBCStatus YBCPgAlterTableDropColumn(YBCPgStatement handle, const char *name) {
 YBCStatus YBCPgAlterTableRenameTable(YBCPgStatement handle, const char *db_name,
                                      const char *newname) {
   return ToYBCStatus(pgapi->AlterTableRenameTable(handle, db_name, newname));
-}
-
-YBCStatus YBCPgAlterTableIncrementSchemaVersion(YBCPgStatement handle) {
-  return ToYBCStatus(pgapi->AlterTableIncrementSchemaVersion(handle));
 }
 
 YBCStatus YBCPgExecAlterTable(YBCPgStatement handle) {
