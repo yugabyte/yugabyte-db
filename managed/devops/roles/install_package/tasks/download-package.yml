@@ -22,6 +22,7 @@
   set_fact:
     tmp_ybc_package_location: "{{ yb_software_dir }}/TEMP_YBC"
     remote_ybc_tmp_package: "/tmp/{{ ybc_dir }}.tar.gz"
+  when: configure_ybc
 
 - name: Download package | Download "{{ package_name }}" from AWS S3
   block:
