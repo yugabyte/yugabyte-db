@@ -37,7 +37,7 @@
 
 **NOTE**: The latest stable releases can be found underneath [Releases](https://github.com/percona/pg_stat_monitor/releases). 
 
-The `pg_stat_monitor` is a **_Query Performance Monitoring_** tool for PostgreSQL. It attempts to provide a more holistic picture by providing much-needed query performance insights in a [single view](https://github.com/percona/pg_stat_monitor/blob/master/docs/REFERENCE.md).
+The `pg_stat_monitor` is a **_Query Performance Monitoring_** tool for PostgreSQL. It attempts to provide a more holistic picture by providing much-needed query performance insights in a [single view](https://docs.percona.com/pg-stat-monitor/reference.html).
 
 `pg_stat_monitor` provides improved insights that allow database users to understand query origins, execution, planning statistics and details, query information, and metadata. This significantly improves observability, enabling users to debug and tune query performance. `pg_stat_monitor` is developed on the basis of `pg_stat_statements` as its more advanced replacement.
 
@@ -45,7 +45,7 @@ While `pg_stat_statements` provides ever-increasing metrics, `pg_stat_monitor` a
 
 >**NOTE**: Because of these differences in data processing, memory blocks and WAL (Write Ahead Logs) related statistics data are displayed inconsistently when both `pg_stat_monitor` and `pg_stat_statements` are used together. 
 
-To learn about other features, available in `pg_stat_monitor`, see the [Features](#pg_stat_monitor-features) section and the [User Guide](https://github.com/percona/pg_stat_monitor/blob/master/docs/USER_GUIDE.md).
+To learn about other features, available in `pg_stat_monitor`, see the [Features](#pg_stat_monitor-features) section and the [User Guide](https://docs.percona.com/pg-stat-monitor/user_guide.html).
 
 `pg_stat_monitor` supports PostgreSQL versions 11 and above. It is compatible with both PostgreSQL provided by PostgreSQL Global Development Group (PGDG) and [Percona Distribution for PostgreSQL](https://www.percona.com/software/postgresql-distribution).
 
@@ -78,9 +78,11 @@ The `pg_stat_monitor` should work on the latest version of both [Percona Distrib
 
 ### Documentation
 
-1. [User guide](https://github.com/percona/pg_stat_monitor/blob/master/docs/USER_GUIDE.md)
-2. [Comparing `pg_stat_monitor` and `pg_stat_statements`](https://github.com/percona/pg_stat_monitor/blob/master/docs/COMPARISON.md)
-3. [pg_stat_monitor view reference](https://github.com/percona/pg_stat_monitor/blob/master/docs/REFERENCE.md)
+The following are useful links in [`pg_stat_monitor` documentation](https://docs.percona.com/pg-stat-monitor/index.html):
+
+1. [User guide](https://docs.percona.com/pg-stat-monitor/user_guide.html)
+2. [Comparing `pg_stat_monitor` and `pg_stat_statements`](https://docs.percona.com/pg-stat-monitor/comparison.html)
+3. [pg_stat_monitor view reference](https://docs.percona.com/pg-stat-monitor/reference.html)
 4. [Release notes](https://github.com/percona/pg_stat_monitor/blob/master/docs/RELEASE_NOTES.md)
 5. [Contributing guide](https://github.com/percona/pg_stat_monitor/blob/master/CONTRIBUTING.md)
 
@@ -153,7 +155,7 @@ pgxn install pg_stat_monitor
 
 ### Configuration
 
-You can find the configuration parameters of the `pg_stat_monitor` extension in the `pg_stat_monitor_settings` view. To change the default configuration, specify new values for the desired parameters using the GUC (Grant Unified Configuration) system. To learn more, refer to the [Configuration](https://github.com/percona/pg_stat_monitor/blob/master/docs/USER_GUIDE.md#configuration) section of the user guide.
+You can find the configuration parameters of the `pg_stat_monitor` extension in the `pg_stat_monitor_settings` view. To change the default configuration, specify new values for the desired parameters using the GUC (Grant Unified Configuration) system. To learn more, refer to the [Configuration parameters](https://docs.percona.com/pg-stat-monitor/configuration.html) section of the documentation.
 
 
 ### Setup
@@ -219,7 +221,7 @@ postgres=# SELECT application_name, userid AS user_name, datname AS database_nam
 (5 rows)
 ```
 
-To learn more about `pg_stat_monitor` features and usage, see [User Guide](https://github.com/percona/pg_stat_monitor/blob/master/docs/USER_GUIDE.md). To view all other data elements provided by `pg_stat_monitor`, please see the reference.
+To learn more about `pg_stat_monitor` features and usage, see the [User Guide](https://docs.percona.com/pg-stat-monitor/user_guide.html). To view all other data elements provided by `pg_stat_monitor`, please see the [reference](https://docs.percona.com/pg-stat-monitor/reference.html).
 
 
 ### Building from source
