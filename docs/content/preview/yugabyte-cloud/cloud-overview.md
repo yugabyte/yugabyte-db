@@ -104,7 +104,7 @@ type: homepage
           <ul>
             <li><a class="text-link" href="../cloud-admin/manage-access/" title="Add Users">Add Users to your account</a></li>
             <li><a class="text-link" href="../cloud-admin/cloud-billing-profile/" title="Manage Billing">Manage billing</a></li>
-            <li><a class="text-link" target="_blank" href="https://yugabyte.stoplight.io/docs/managed-apis" title="Manage Billing">YugabyteDB Managed REST API</a></li>
+            <li><a class="text-link" href="../cloud-admin/cloud-admin-apikeys/" title="Manage API keys">Manage API keys</a></li>
           </ul>
         </div>
       </div>
