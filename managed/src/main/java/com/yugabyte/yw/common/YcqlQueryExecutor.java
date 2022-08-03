@@ -170,8 +170,14 @@ public class YcqlQueryExecutor {
       String username,
       String password) {
     ObjectNode response = newObject();
-    CassandraConnection cc =
-        createCassandraConnection(universe.universeUUID, authEnabled, username, password);
+    CassandraConnection cc = null;
+    try {
+      cc = createCassandraConnection(universe.universeUUID, authEnabled, username, password);
+    } catch (AuthenticationException e) {
+      response.put("error", "Provided username and/or password are incorrect");
+      return response;
+    }
+
     try {
       ResultSet rs = cc.session.execute(queryParams.query);
       if (rs.iterator().hasNext()) {
