@@ -384,9 +384,6 @@ MemTracker::MemTracker(int64_t byte_limit, const string& id,
 
 MemTracker::~MemTracker() {
   VLOG(1) << "Destroying tracker " << ToString();
-  if (!consumption_functor_) {
-    DCHECK_EQ(consumption(), 0) << "Memory tracker " << ToString();
-  }
   if (parent_) {
     if (add_to_parent_) {
       parent_->Release(consumption());
@@ -490,11 +487,6 @@ std::vector<MemTrackerPtr> MemTracker::ListTrackers() {
 bool MemTracker::UpdateConsumption(bool force) {
   if (poll_children_consumption_functors_) {
     poll_children_consumption_functors_();
-  }
-
-  // Always update the PG total memory because this is cheap.
-  if (update_max_mem_functor_) {
-    update_max_mem_functor_();
   }
 
   if (consumption_functor_) {
@@ -786,9 +778,6 @@ void MemTracker::GcTcmalloc() {
       extra -= 1024 * 1024;
     }
   }
-
-#else
-  // Nothing to do if not using tcmalloc.
 #endif
 }
 
