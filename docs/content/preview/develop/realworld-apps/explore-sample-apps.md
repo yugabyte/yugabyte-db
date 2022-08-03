@@ -312,6 +312,6 @@ After [creating a local cluster](../../../quick-start/), follow the instructions
      (0 rows)
     ```
 
-## Run the IoT Fleet Management app
+## Next steps
 
 After running Yugastore, try the [IoT Fleet Management](../iot-spark-kafka-ksql/) application. IoT Fleet Management is built on top of YugabyteDB as the database (using the YCQL API), Confluent Kafka as the message broker, KSQL or Apache Spark Streaming for real-time analytics, and Spring Boot as the application framework.
