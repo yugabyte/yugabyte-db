@@ -3,6 +3,7 @@ title: VPCs
 headerTitle:
 linkTitle: VPCs
 description: Manage your cloud VPCs.
+headcontent: Manage your YugabyteDB Managed VPCs
 menu:
   preview_yugabyte-cloud:
     identifier: cloud-add-vpc
