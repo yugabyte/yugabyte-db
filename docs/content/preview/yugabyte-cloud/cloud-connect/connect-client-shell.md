@@ -2,7 +2,7 @@
 title: Connect via client shells
 linkTitle: Client shell
 description: Connect to YugabyteDB Managed clusters from your desktop using a client shell
-headcontent:
+headcontent: Connect to YugabyteDB Managed databases from your desktop
 image: /images/section_icons/deploy/enterprise.png
 menu:
   preview_yugabyte-cloud:
@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-Connect to your YugabyteDB cluster from your desktop using the YugabyteDB [ysqlsh](../../../admin/ysqlsh/) and [ycqlsh](../../../admin/ycqlsh) client shells installed on your computer. Because YugabyteDB is compatible with PostgreSQL and Cassandra, you can also use [psql](https://www.postgresql.org/docs/current/app-psql.html) and third-party tools to connect.
+Connect to your YugabyteDB cluster database from your desktop using the YugabyteDB [ysqlsh](../../../admin/ysqlsh/) and [ycqlsh](../../../admin/ycqlsh) client shells installed on your computer. Because YugabyteDB is compatible with PostgreSQL and Cassandra, you can also use [psql](https://www.postgresql.org/docs/current/app-psql.html) and third-party tools to connect.
 
 {{< warning title="IP allow list" >}}
 

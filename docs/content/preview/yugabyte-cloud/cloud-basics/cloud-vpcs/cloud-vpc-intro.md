@@ -3,6 +3,7 @@ title: VPC network overview
 headerTitle:
 linkTitle: Overview
 description: Requirements and considerations for setting up a VPC network.
+headcontent: What you need to know before setting up a VPC network
 menu:
   preview_yugabyte-cloud:
     identifier: cloud-vpc-intro
