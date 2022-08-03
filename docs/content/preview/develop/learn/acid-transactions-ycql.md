@@ -131,7 +131,7 @@ Usage:
       [ --num_threads_write 2 ]
 ```
 
-Browse the [Java source code for the batch application](https://github.com/yugabyte/yb-sample-apps/blob/master/src/main/java/com/yugabyte/sample/apps/CassandraTransactionalKeyValue.java) to see how everything fits together.
+Browse the [Java source code for the transaction application](https://github.com/yugabyte/yb-sample-apps/blob/master/src/main/java/com/yugabyte/sample/apps/CassandraTransactionalKeyValue.java) to see how everything fits together.
 
 ## Example with ycqlsh
 
