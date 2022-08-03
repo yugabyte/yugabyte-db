@@ -1,23 +1,24 @@
 ---
-title: Explore YugabyteDB sample applications
-headerTitle: Explore sample applications
-linkTitle: Explore sample apps
-description: Explore sample applications running on YugabyteDB.
-image: /images/section_icons/index/develop.png
+title: Install Yugastore
+headerTitle: Install Yugastore
+linkTitle: Install Yugastore
+description: Install the Yugastore sample application.
+headcontent: Install the Yugastore sample application
 aliases:
   - /preview/quick-start/run-sample-apps/
   - /quick-start/run-sample-apps/
+  - /develop/explore-sample-apps/
 menu:
   preview:
     identifier: explore-sample-apps
-    parent: develop
-    weight: 581
+    parent: ecommerce-app
+    weight: 125
 type: docs
 ---
 
-After [creating a local cluster](../../quick-start/), follow the instructions on this page to run the Yugastore application.
+After [creating a local cluster](../../../quick-start/), follow the instructions on this page to run the Yugastore application.
 
-[Yugastore-java](https://github.com/yugabyte/yugastore-java) app is an end-to-end ecommerce application built using a microservices design pattern. React UI, Spring Boot app framework and YugabyteDB (both YSQL and YCQL) are used as the underlying technology stack.
+[Yugastore-java](https://github.com/yugabyte/yugastore-java) is an end-to-end ecommerce application built using a microservices design pattern. React UI, Spring Boot app framework, and YugabyteDB (both YSQL and YCQL) are used as the underlying technology stack.
 
 ## Install Yugastore
 
@@ -313,4 +314,4 @@ After [creating a local cluster](../../quick-start/), follow the instructions on
 
 ## Run the IoT Fleet Management app
 
-After running Yugastore, you should run the [IoT Fleet Management](../realworld-apps/iot-spark-kafka-ksql/) app. This app is built on top of YugabyteDB as the database (using the YCQL API), Confluent Kafka as the message broker, KSQL or Apache Spark Streaming for real-time analytics, and Spring Boot as the application framework.
+After running Yugastore, try the [IoT Fleet Management](../iot-spark-kafka-ksql/) application. IoT Fleet Management is built on top of YugabyteDB as the database (using the YCQL API), Confluent Kafka as the message broker, KSQL or Apache Spark Streaming for real-time analytics, and Spring Boot as the application framework.

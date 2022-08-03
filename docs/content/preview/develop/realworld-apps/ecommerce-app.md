@@ -1,21 +1,22 @@
 ---
-title: E-commerce sample application
-headerTitle: E-Commerce app
-linkTitle: E-Commerce app
-description: Run an e-commerce sample application built on YugabyteDB.
+title: Yugastore e-commerce sample application
+headerTitle: Yugastore e-commerce application
+linkTitle: Yugastore
+description: Run a distributed e-commerce sample application built on YugabyteDB.
+headcontent: A distributed e-commerce sample application built on YugabyteDB
 aliases:
   - /develop/realworld-apps/ecommerce-app/
 menu:
   preview:
     identifier: ecommerce-app
     parent: realworld-apps
-    weight: 582
+    weight: 100
 type: docs
 ---
 
 ## Overview
 
-Yugastore is a sample, full-stack online bookstore, or more generally, an e-commerce app built on top of YugabyteDB. It is a cloud native, distributed app built on a microservices architecture. YugabyteDB simplifies the development of such apps by providing a SQL-like API (based on Cassandra Query Language) and a Redis-API on top of a common database. The app can be deployed and run on VMs or using StatefulSets in Kubernetes.
+Yugastore is a sample, full-stack online bookstore, or more generally, an e-commerce application built on top of YugabyteDB. It is a cloud native, distributed application built on a microservices architecture. YugabyteDB simplifies the development of such apps by providing a SQL-like API (based on Cassandra Query Language) and a Redis-API on top of a common database. The application can be deployed and run on VMs or using StatefulSets in Kubernetes.
 
 You can browse the [Yugastore source-code on GitHub](https://github.com/yugabyte/yugastore). It is fully open-source.
 
@@ -31,7 +32,7 @@ Each product could have a lot of associated attributes, such as title, pricing, 
 
 ### Product catalog display
 
-The product catalog display is the “web” layer which displays different views of the product catalog to end users.
+The product catalog display is the web layer, which displays different views of the product catalog to end users.
 
 ### Other features coming soon
 
@@ -44,7 +45,7 @@ The following features will be added as the app evolves over time:
 
 ## Architecture
 
-This app is built using the following stack:
+Yugastore is built using the following stack:
 
 - Frontend: [React](https://reactjs.org/)
 - Backend: [Express](https://expressjs.com/) and [NodeJS](https://nodejs.org/en/)
@@ -130,7 +131,7 @@ insert_batch.push({
 
 The dynamic attributes are loaded using the Redis-compatible YEDIS API into YugabyteDB.
 
-```
+```yedis
 ybRedisClient.zadd("allproducts:num_reviews", e.num_reviews, e.id);
 ybRedisClient.zadd("allproducts:num_stars", e.num_stars, e.id);
 ybRedisClient.zadd("allproducts:num_buys", numBuys, e.id);
@@ -151,7 +152,7 @@ The homepage is rendered by the `App` react component. The React route is the fo
 
 It uses the following REST API to query Express/NodeJS for all the products:
 
-```
+```sh
 /products
 ```
 
@@ -182,7 +183,7 @@ This is rendered by the `Products` react component. Here is the react route:
 
 The component internally uses the following REST API:
 
-```
+```sh
 /products/catgory/business
 ```
 
@@ -213,7 +214,7 @@ These product lists are also rendered by the `Products` React component.
 
 The component internally uses the following REST API:
 
-```
+```sh
 /products/sort/num_stars
 ```
 
@@ -243,7 +244,7 @@ The React route for this view is `ShowProduct`:
 
 The component internally uses the following REST API:
 
-```
+```sh
 /products/details/5
 ```
 
@@ -255,10 +256,10 @@ SELECT * FROM yugastore.products WHERE id=5;
 
 If you had another table with extended product information, you could fetch data from that table as well and add it into the result. Finally, each time this page is hit, increment a counter in order to track how many times the current product was viewed.
 
-```
+```redis
 ybRedis.incrby("pageviews:product:5:count", 1);
 ```
 
 ## Summary
 
-This application is a blueprint for building eCommerce and other similar web applications. The instructions to build and run the application, as well as the source code, can be found in the [Yugastore GitHub repository](https://github.com/yugabyte/yugastore).
+Yugastore is a blueprint for building e-commerce and other similar web applications. The instructions to build and run the application, as well as the source code, can be found in the [Yugastore GitHub repository](https://github.com/yugabyte/yugastore).
