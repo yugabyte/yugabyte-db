@@ -3,6 +3,7 @@ title: Create a VPC Network
 headerTitle:
 linkTitle: Create a VPC Network
 description: Create and manage your cloud VPCs.
+headcontent: Peer your cluster VPC with a VPC in GCP
 menu:
   preview_yugabyte-cloud:
     identifier: cloud-add-vpc-1-gcp
