@@ -662,16 +662,25 @@ public class ReleaseManager {
     if (ybcReleasesPath != null && !ybcReleasesPath.isEmpty()) {
       Map<String, Object> currentYbcReleases =
           getReleaseMetadata(ConfigHelper.ConfigType.YbcSoftwareReleases);
-      copyFiles(ybcReleasePath, ybcReleasesPath, ybcPackagePattern, currentYbcReleases.keySet());
-      Map<String, ReleaseMetadata> localYbcReleases = getLocalYbcReleases(ybcReleasesPath);
-      localYbcReleases.keySet().removeAll(currentYbcReleases.keySet());
-      LOG.info("Current ybc releases: [ {} ]", currentYbcReleases.keySet().toString());
-      LOG.info("Local ybc releases: [ {} ]", localYbcReleases.keySet().toString());
-      if (!localYbcReleases.isEmpty()) {
-        LOG.info("Importing local releases: [ {} ]", Json.toJson(localYbcReleases));
-        currentYbcReleases.putAll(localYbcReleases);
-        configHelper.loadConfigToDB(
-            ConfigHelper.ConfigType.YbcSoftwareReleases, currentYbcReleases);
+      File ybcReleasePathFile = new File(ybcReleasePath);
+      File ybcReleasesPathFile = new File(ybcReleasesPath);
+      if (ybcReleasePathFile.exists() && ybcReleasesPathFile.exists()) {
+        copyFiles(ybcReleasePath, ybcReleasesPath, ybcPackagePattern, currentYbcReleases.keySet());
+        Map<String, ReleaseMetadata> localYbcReleases = getLocalYbcReleases(ybcReleasesPath);
+        localYbcReleases.keySet().removeAll(currentYbcReleases.keySet());
+        LOG.info("Current ybc releases: [ {} ]", currentYbcReleases.keySet().toString());
+        LOG.info("Local ybc releases: [ {} ]", localYbcReleases.keySet().toString());
+        if (!localYbcReleases.isEmpty()) {
+          LOG.info("Importing local releases: [ {} ]", Json.toJson(localYbcReleases));
+          currentYbcReleases.putAll(localYbcReleases);
+          configHelper.loadConfigToDB(
+              ConfigHelper.ConfigType.YbcSoftwareReleases, currentYbcReleases);
+        }
+      } else {
+        LOG.warn(
+            "ybc release dir: {} and/or ybc releases dir: {} not present",
+            ybcReleasePath,
+            ybcReleasesPath);
       }
     }
   }
