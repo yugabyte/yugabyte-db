@@ -50,14 +50,6 @@ public class TestTransaction extends BaseCQLTest {
     return flagMap;
   }
 
-  protected void restartClusterWithFlag(String flag, String value) throws Exception {
-    destroyMiniCluster();
-    createMiniCluster(
-        Collections.emptyMap(),
-        Collections.singletonMap(flag, value));
-    setUpCqlClient();
-  }
-
   private void createTable(String name, String columns, boolean transactional) {
     session.execute(String.format("create table %s (%s) with transactions = { 'enabled' : %b };",
                                   name, columns, transactional));

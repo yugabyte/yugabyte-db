@@ -390,7 +390,7 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const PrepareRequest& req) 
   // the actual prepare while the rest wait. As the rest do the prepare afterwards, the statement
   // is already prepared so it will be an no-op (see Statement::Prepare).
   shared_ptr<CQLStatement> stmt = service_impl_->AllocatePreparedStatement(
-      query_id, ql_env_.CurrentKeyspace(), req.query());
+      query_id, req.query(), &ql_env_);
   PreparedResult::UniPtr result;
   Status s = stmt->Prepare(this, service_impl_->prepared_stmts_mem_tracker(),
                            false /* internal */, &result);
@@ -420,12 +420,14 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const PrepareRequest& req) 
 
 unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const ExecuteRequest& req) {
   VLOG(1) << "EXECUTE " << b2a_hex(req.query_id());
-  const shared_ptr<const CQLStatement> stmt = GetPreparedStatement(req.query_id());
-  if (stmt == nullptr) {
-    return ProcessError(ErrorStatus(ErrorCode::UNPREPARED_STATEMENT), req.query_id());
+  auto stmt_res = GetPreparedStatement(req.query_id(), req.params().schema_version());
+  if (!stmt_res.ok()) {
+    return ProcessError(stmt_res.status(), req.query_id());
   }
-  const Status s = stmt->ExecuteAsync(this, req.params(), statement_executed_cb_);
-  return s.ok() ? nullptr : ProcessError(s, stmt->query_id());
+
+  LOG_IF(DFATAL, *stmt_res == nullptr) << "Null statement";
+  const Status s = (*stmt_res)->ExecuteAsync(this, req.params(), statement_executed_cb_);
+  return s.ok() ? nullptr : ProcessError(s, (*stmt_res)->query_id());
 }
 
 unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const QueryRequest& req) {
@@ -463,12 +465,14 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const BatchRequest& req) {
   for (const BatchRequest::Query& query : req.queries()) {
     if (query.is_prepared) {
       VLOG(1) << "BATCH EXECUTE " << b2a_hex(query.query_id);
-      const shared_ptr<const CQLStatement> stmt = GetPreparedStatement(query.query_id);
-      if (stmt == nullptr) {
-        result = ProcessError(ErrorStatus(ErrorCode::UNPREPARED_STATEMENT), query.query_id);
+      auto stmt_res = GetPreparedStatement(query.query_id, query.params.schema_version());
+      if (!stmt_res.ok()) {
+        result = ProcessError(stmt_res.status(), query.query_id);
         break;
       }
-      const Result<const ParseTree&> parse_tree = stmt->GetParseTree();
+
+      LOG_IF(DFATAL, *stmt_res == nullptr) << "Null statement";
+      const Result<const ParseTree&> parse_tree = (*stmt_res)->GetParseTree();
       if (!parse_tree) {
         result = ProcessError(parse_tree.status(), query.query_id);
         break;
@@ -544,12 +548,13 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const RegisterRequest& req)
   return make_unique<ReadyResponse>(req);
 }
 
-shared_ptr<const CQLStatement> CQLProcessor::GetPreparedStatement(const CQLMessage::QueryId& id) {
-  shared_ptr<const CQLStatement> stmt = service_impl_->GetPreparedStatement(id);
-  if (stmt != nullptr) {
-    stmt->clear_reparsed();
-    stmts_.insert(stmt);
-  }
+Result<shared_ptr<const CQLStatement>> CQLProcessor::GetPreparedStatement(
+    const CQLMessage::QueryId& id, SchemaVersion version) {
+  const shared_ptr<const CQLStatement> stmt =
+      VERIFY_RESULT(service_impl_->GetPreparedStatement(id, version));
+  LOG_IF(DFATAL, stmt == nullptr) << "Null statement";
+  stmt->clear_reparsed();
+  stmts_.insert(stmt);
   return stmt;
 }
 

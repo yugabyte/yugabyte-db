@@ -29,6 +29,7 @@
 #include "yb/server/hybrid_clock.h"
 
 #include "yb/util/enums.h"
+#include "yb/util/result.h"
 
 #include "yb/yql/cql/ql/ptree/pt_option.h"
 #include "yb/yql/cql/ql/ql_session.h"
@@ -67,8 +68,8 @@ class QLEnv {
   virtual CHECKED_STATUS DeleteIndexTable(const client::YBTableName& name,
                                           client::YBTableName* indexed_table_name);
 
-  virtual CHECKED_STATUS GetUpToDateTableSchemaVersion(const client::YBTableName& table_name,
-                                                       uint32_t* ver);
+  virtual Result<SchemaVersion> GetUpToDateTableSchemaVersion(
+      const client::YBTableName& table_name);
 
   virtual std::shared_ptr<client::YBTable> GetTableDesc(const client::YBTableName& table_name,
                                                         bool* cache_used);
