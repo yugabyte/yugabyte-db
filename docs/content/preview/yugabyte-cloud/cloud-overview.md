@@ -145,7 +145,7 @@ type: homepage
           <div class="tag-line">FROM EXAMPLES</div>
           <ul>
           <div class="detail-copy">Start coding in your favorite programming language using these examples.</div>
-          <a class="text-link" target="_blank" href="../develop/build-apps/" title="Get Started">Get Started</a>
+          <a class="text-link" href="../../develop/build-apps/" title="Get Started">Get Started</a>
           </ul>
         </div>
       </div>
