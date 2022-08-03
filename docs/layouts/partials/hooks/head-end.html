@@ -1,3 +1,7 @@
+{{ with .Params.block_indexing }}
+  <meta name="robots" content="noindex, nofollow">
+{{ end }}
+
 {{ with .Site.GoogleAnalytics }}
   <script async src="https://www.googletagmanager.com/gtag/js?id={{ . }}"></script>
   <script>
