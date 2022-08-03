@@ -1214,7 +1214,9 @@ Result<uint32_t> SysCatalogTable::ReadPgClassRelnamespace(const uint32_t databas
   }
 
   if (oid == kInvalidOid) {
-    return STATUS(Corruption, "Not found or invalid relnamespace oid for table oid " +
+    // This error is thrown in the case that the table is deleted in YSQL but not docdb.
+    // Currently, this is checked for in the backup flow, see gh #13361.
+    return STATUS(NotFound, "Not found or invalid relnamespace oid for table oid " +
         std::to_string(table_oid));
   }
 

@@ -1506,6 +1506,73 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYSQLBackupWithLear
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
+TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYSQLBackupWithPartialDeletedTables)) {
+  // Test backups on tables that are deleted in the YSQL layer but not in docdb, see gh #13361.
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_keep_docdb_table_on_ysql_drop_table", "true"));
+
+  // Create two tables with data.
+  const string good_table = "mytbl";
+  const string dropped_table = "droppedtbl";
+  for (const auto& tbl : {good_table, dropped_table}) {
+    ASSERT_NO_FATALS(CreateTable(Format("CREATE TABLE $0 (k INT PRIMARY KEY, v INT)", tbl)));
+    ASSERT_NO_FATALS(InsertOneRow(Format("INSERT INTO $0 (k, v) VALUES (100, 200)", tbl)));
+  }
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      "\\d",
+      R"#(
+                   List of relations
+         Schema |    Name    | Type  |  Owner
+        --------+------------+-------+----------
+         public | droppedtbl | table | yugabyte
+         public | mytbl      | table | yugabyte
+        (2 rows)
+      )#"));  // Sorted by table name.
+
+  // Drop one table.
+  ASSERT_NO_FATALS(RunPsqlCommand(Format("DROP TABLE $0", dropped_table), "DROP TABLE"));
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      "\\d",
+      R"#(
+                 List of relations
+         Schema | Name  | Type  |  Owner
+        --------+-------+-------+----------
+         public | mytbl | table | yugabyte
+        (1 row)
+      )#"));
+  // Verify that dropped table is still present in docdb layer.
+  vector<client::YBTableName> listed_tables = ASSERT_RESULT(client_->ListTables(dropped_table));
+  ASSERT_EQ(listed_tables.size(), 1);
+
+  // Take a backup, ensure that this passes despite the state of dropped_table.
+  const string backup_dir = GetTempDir("backup");
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
+
+  // Now try to restore the backup and ensure that only the first table was restored.
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte_new", "restore"}));
+  SetDbName("yugabyte_new"); // Connecting to the second DB.
+
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      Format("SELECT k, v FROM $0 ORDER BY k", good_table),
+      R"#(
+          k  |  v
+        -----+-----
+         100 | 200
+        (1 row)
+      )#"
+  ));
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      "\\d",
+      R"#(
+                 List of relations
+         Schema | Name  | Type  |  Owner
+        --------+-------+-------+----------
+         public | mytbl | table | yugabyte
+        (1 row)
+      )#"));
+}
+
 class YBBackupTestOneTablet : public YBBackupTest {
  public:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
