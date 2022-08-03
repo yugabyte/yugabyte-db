@@ -70,7 +70,7 @@ class KubernetesClient:
 
         # Cannot use self.exec_command() because it needs '/bin/bash' and '-c' before the command
         wrapped_command = ['kubectl', 'exec', '-n', self.namespace, '-c',
-                           'yb-master' if self.is_master else 'yb-tserver', self.pod_name, '--',
+                           'yb-master' if self.is_master else 'yb-tserver', self.node_name, '--',
                            '/bin/bash', '-c', command]
 
         output = subprocess.check_output(wrapped_command, env=self.env_config).decode()
