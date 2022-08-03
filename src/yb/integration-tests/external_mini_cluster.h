@@ -718,16 +718,6 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
                                               const Value* object,
                                               const char* field);
 
-  template<>
-  Result<int64_t> ExtractMetricValue<int64_t>(const JsonReader& r,
-                                              const Value* object,
-                                              const char* field);
-
-  template<>
-  Result<bool> ExtractMetricValue<bool>(const JsonReader& r,
-                                        const Value* object,
-                                        const char* field);
-
   // Get the current value of the flag for the given daemon.
   Result<std::string> GetFlag(const std::string& flag);
 
