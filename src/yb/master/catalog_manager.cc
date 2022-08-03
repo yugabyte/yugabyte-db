@@ -170,7 +170,7 @@
 #include "yb/util/countdown_latch.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/trace_event.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/hash_util.h"
 #include "yb/util/locks.h"
@@ -853,6 +853,8 @@ Status CatalogManager::Init() {
   }
 
   // Initialize the metrics emitted by the catalog manager.
+  load_balance_policy_->InitMetrics();
+
   metric_num_tablet_servers_live_ =
     METRIC_num_tablet_servers_live.Instantiate(master_->metric_entity_cluster(), 0);
 
@@ -9146,6 +9148,8 @@ Status CatalogManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB&
       req.source_broadcast_addr(), req.source_private_addr(), req.source_cloud_info(),
       master_->MakeCloudInfoPB()));
 
+  RETURN_NOT_OK(master_->InitAutoFlagsFromMasterLeader(bootstrap_peer_addr));
+
   const string& bootstrap_peer_uuid = req.bootstrap_peer_uuid();
   int64_t leader_term = req.caller_term();
 
@@ -10605,6 +10609,9 @@ Status CatalogManager::PeerStateDump(const vector<RaftPeerPB>& peers,
 }
 
 void CatalogManager::ReportMetrics() {
+  // Report metrics on load balancer state.
+  load_balance_policy_->ReportMetrics();
+
   // Report metrics on how many tservers are alive.
   TSDescriptorVector ts_descs;
   master_->ts_manager()->GetAllLiveDescriptors(&ts_descs);

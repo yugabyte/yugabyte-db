@@ -3,6 +3,7 @@ package com.yugabyte.yw.common;
 
 import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 
+import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.common.utils.FileUtils;
@@ -237,6 +238,12 @@ public class ReleaseManager {
   }
 
   public static final Logger LOG = LoggerFactory.getLogger(ReleaseManager.class);
+  public static final Map<Architecture, String> ybcArchMap =
+      ImmutableMap.of(
+          Architecture.x86_64,
+          "glob:**ybc*{centos,alma,linux,el}*x86_64.tar.gz",
+          Architecture.arm64,
+          "glob:**ybc*{centos,alma,linux,el}*aarch64.tar.gz");
 
   private Predicate<Path> getPackageFilter(String pathMatchGlob) {
     return p -> Files.isRegularFile(p) && getPathMatcher(pathMatchGlob).matches(p);
@@ -258,6 +265,9 @@ public class ReleaseManager {
 
   static final Pattern ybVersionPattern =
       Pattern.compile("(.*)(\\d+.\\d+.\\d+(.\\d+)?)(-(b(\\d+)|(\\w+)))?(.*)");
+
+  private static final Pattern ybcPackagePattern =
+      Pattern.compile("[^.]+ybc-(?:ee-)?(.*)-(linux|centos)(.*).tar.gz");
 
   public Map<String, String> getReleaseFiles(String releasesPath, Predicate<Path> fileFilter) {
     Map<String, String> fileMap = new HashMap<>();
@@ -315,8 +325,22 @@ public class ReleaseManager {
     return localReleases;
   }
 
+  public Map<String, ReleaseMetadata> getLocalYbcReleases(String releasesPath) {
+    Map<String, String> releaseFiles;
+    Map<String, ReleaseMetadata> localReleases = new HashMap<>();
+    for (Architecture arch : Architecture.values()) {
+      releaseFiles = getReleaseFiles(releasesPath, getPackageFilter(ybcArchMap.get(arch)));
+      updateLocalReleases(localReleases, releaseFiles, new HashMap<>(), arch);
+    }
+    return localReleases;
+  }
+
   public Map<String, Object> getReleaseMetadata() {
-    Map<String, Object> releases = configHelper.getConfig(CONFIG_TYPE);
+    return getReleaseMetadata(CONFIG_TYPE);
+  }
+
+  public Map<String, Object> getReleaseMetadata(ConfigHelper.ConfigType configType) {
+    Map<String, Object> releases = configHelper.getConfig(configType);
     if (releases == null || releases.isEmpty()) {
       LOG.debug("getReleaseMetadata: No releases found");
       return new HashMap<>();
@@ -629,6 +653,36 @@ public class ReleaseManager {
         configHelper.loadConfigToDB(ConfigHelper.ConfigType.SoftwareReleases, currentReleases);
       }
     }
+
+    LOG.info("Starting ybc local releases");
+    String ybcReleasesPath = appConfig.getString("ybc.releases.path");
+    String ybcReleasePath = appConfig.getString("ybc.docker.release");
+    LOG.info("ybcReleasesPath: " + ybcReleasesPath);
+    LOG.info("ybcReleasePath: " + ybcReleasePath);
+    if (ybcReleasesPath != null && !ybcReleasesPath.isEmpty()) {
+      Map<String, Object> currentYbcReleases =
+          getReleaseMetadata(ConfigHelper.ConfigType.YbcSoftwareReleases);
+      File ybcReleasePathFile = new File(ybcReleasePath);
+      File ybcReleasesPathFile = new File(ybcReleasesPath);
+      if (ybcReleasePathFile.exists() && ybcReleasesPathFile.exists()) {
+        copyFiles(ybcReleasePath, ybcReleasesPath, ybcPackagePattern, currentYbcReleases.keySet());
+        Map<String, ReleaseMetadata> localYbcReleases = getLocalYbcReleases(ybcReleasesPath);
+        localYbcReleases.keySet().removeAll(currentYbcReleases.keySet());
+        LOG.info("Current ybc releases: [ {} ]", currentYbcReleases.keySet().toString());
+        LOG.info("Local ybc releases: [ {} ]", localYbcReleases.keySet().toString());
+        if (!localYbcReleases.isEmpty()) {
+          LOG.info("Importing local releases: [ {} ]", Json.toJson(localYbcReleases));
+          currentYbcReleases.putAll(localYbcReleases);
+          configHelper.loadConfigToDB(
+              ConfigHelper.ConfigType.YbcSoftwareReleases, currentYbcReleases);
+        }
+      } else {
+        LOG.warn(
+            "ybc release dir: {} and/or ybc releases dir: {} not present",
+            ybcReleasePath,
+            ybcReleasesPath);
+      }
+    }
   }
 
   /** Idempotent method to update all releases with packages if possible. */
@@ -724,6 +778,14 @@ public class ReleaseManager {
 
   public ReleaseMetadata getReleaseByVersion(String version) {
     Object metadata = getReleaseMetadata().get(version);
+    if (metadata == null) {
+      return null;
+    }
+    return metadataFromObject(metadata);
+  }
+
+  public ReleaseMetadata getYbcReleaseByVersion(String version) {
+    Object metadata = getReleaseMetadata(ConfigHelper.ConfigType.YbcSoftwareReleases).get(version);
     if (metadata == null) {
       return null;
     }

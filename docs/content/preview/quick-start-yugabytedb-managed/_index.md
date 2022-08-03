@@ -2,6 +2,7 @@
 title: YugabyteDB Managed quick start
 headerTitle: Quick start
 linkTitle: Quick start
+headcontent: Sign up for YugabyteDB Managed and create a free Sandbox cluster
 description: Get started using YugabyteDB Managed in less than five minutes.
 layout: single
 type: docs
@@ -30,19 +31,27 @@ menu:
   </ul>
 </div>
 
-The quickest way to get started with YugabyteDB is to [sign up for YugabyteDB Managed](http://cloud.yugabyte.com) and create a free Sandbox cluster.
+The quickest way to get started with YugabyteDB is to create a free Sandbox cluster in YugabyteDB Managed:
 
-After setting up your YugabyteDB Managed account, [log in](https://cloud.yugabyte.com/login) to access YugabyteDB Managed.
+1. [Sign up](http://cloud.yugabyte.com).
+1. [Log in](https://cloud.yugabyte.com/login).
+1. Click **Create a Free cluster**.
 
-The first time you sign in, YugabyteDB Managed provides a welcome experience with a 15 minute **Get Started** tutorial. Follow the steps to learn how to do the following:
+The first time you log in, YugabyteDB Managed provides a welcome experience with a 15 minute guided tutorial. Complete the steps in the **Get Started** tutorial to do the following:
 
-- Create your Sandbox cluster
-- Use YugabyteDB to create a database, load sample data, and run queries
-- Explore a sample application that matches your use case
+- Connect to the database, load sample data, and run queries
+- Explore a sample application
 
-If you aren't using the **Get Started** tutorial, use the following instructions to create your first cluster and connect to your database.
+To learn more about YugabyteDB Managed, see the following resources:
 
-## Create your Sandbox cluster
+- [YugabyteDB Managed Documentation](../yugabyte-cloud/)
+- [YugabyteDB Managed FAQ](../faq/yugabytedb-managed-faq/)
+
+## Quick start
+
+If you aren't using the **Get Started** tutorial, use the following instructions to create a cluster, connect to your database, explore distributed SQL, and build an application.
+
+### Create your Sandbox cluster
 
 The Sandbox cluster provides a fully functioning single node YugabyteDB cluster deployed to the region of your choice. The cluster is free forever and includes enough resources to explore the core features available for developing applications with YugabyteDB. No credit card information is required.
 
@@ -74,7 +83,7 @@ YugabyteDB Managed bootstraps and provisions the cluster, and configures Yugabyt
 
 When the cluster is ready, the cluster [Overview](../yugabyte-cloud/cloud-monitor/overview/) is displayed. You now have a fully configured YugabyteDB cluster provisioned in YugabyteDB Managed.
 
-## Connect to the cluster
+### Connect to the cluster
 
 Use Cloud Shell to connect to your YugabyteDB Managed cluster from your browser, and interact with it using distributed SQL.
 
@@ -114,13 +123,13 @@ To connect to your cluster, do the following:
 >
 > For information on other ways to connect to your cluster, refer to [Connect to clusters](../yugabyte-cloud/cloud-connect).
 
-## Explore distributed SQL
+### Explore distributed SQL
 
 When you connect to your cluster using Cloud Shell with the [YSQL API](../api/ysql/) (the default), the shell window incorporates a **Quick Start Guide**, with a series of pre-built queries for you to run. Follow the prompts to explore YugabyteDB in 5 minutes.
 
 ![Run the quick start tutorial](/images/yb-cloud/cloud-shell-tutorial.gif)
 
-## Build an application
+### Build an application
 
 Applications connect to and interact with YugabyteDB using API client libraries (also known as client drivers). The tutorials in this section show how to connect applications to YugabyteDB Managed clusters using your favorite programming language.
 
@@ -132,7 +141,7 @@ Before you begin, you need the following:
 
 Refer to [Before you begin](../develop/build-apps/cloud-add-ip/).
 
-### Choose your language
+#### Choose your language
 
 {{< tabpane code=false >}}
 
@@ -820,10 +829,12 @@ You have successfully executed a basic PHP application that works with YugabyteD
 
 ## Learn more
 
-[Explore more applications](../develop/build-apps/)
-
-[Drivers and ORMS](../drivers-orms/)
+[YugabyteDB Managed Documentation](../yugabyte-cloud/)
 
 [Deploy clusters in YugabyteDB Managed](../yugabyte-cloud/cloud-basics/)
 
 [Connect to applications in YugabyteDB Managed](../yugabyte-cloud/cloud-connect/connect-applications/)
+
+[Explore more applications](../develop/build-apps/)
+
+[Drivers and ORMS](../drivers-orms/)

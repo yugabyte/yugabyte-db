@@ -594,7 +594,7 @@ class PgApiImpl {
 
   Result<bool> CheckIfPitrActive();
 
-  const MemTracker &GetMemTracker() { return *mem_tracker_; }
+  MemTracker &GetMemTracker() { return *mem_tracker_; }
 
  private:
   class Interrupter;

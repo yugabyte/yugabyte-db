@@ -115,6 +115,11 @@
   to = "https://docs-archive.yugabyte.com/v2.2/"
   force = true
 
+[[redirects]]
+  from = "/v2.4/*"
+  to = "https://docs-archive.yugabyte.com/v2.4/"
+  force = true
+
 # Build an app was in quick-start, now in develop
 
 [[redirects]]

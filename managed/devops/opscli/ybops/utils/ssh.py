@@ -367,7 +367,7 @@ class SSHClient(object):
                     return
                 except socket.error as ex:
                     logging.info("[app] Failed to establish SSH connection to {}:{} - {}"
-                                 .format(self.ip, self.port, str(ex)))
+                                 .format(hostname, port, str(ex)))
                     attempt += 1
                     if attempt >= retry:
                         raise YBOpsRuntimeError(ex)

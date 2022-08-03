@@ -1268,7 +1268,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return rows;
   }
 
-  protected Row getSingleRow(ResultSet rs) throws SQLException {
+  protected static Row getSingleRow(ResultSet rs) throws SQLException {
     assertTrue("Result set has no rows", rs.next());
     Row row = Row.fromResultSet(rs);
     assertFalse("Result set has more than one row", rs.next());
@@ -1306,7 +1306,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     }
   }
 
-  protected Row getSingleRow(Statement stmt, String query) throws SQLException {
+  protected static Row getSingleRow(Statement stmt, String query) throws SQLException {
     try (ResultSet rs = stmt.executeQuery(query)) {
       return getSingleRow(rs);
     }
@@ -1474,6 +1474,12 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   protected boolean isIndexOnlyScan(Statement stmt, String query, String index)
       throws SQLException {
     return doesQueryPlanContainsSubstring(stmt, query, "Index Only Scan using " + index);
+  }
+
+  /** Whether or not this select query uses Seq Scan. */
+  protected boolean isSeqScan(Statement stmt, String query)
+      throws SQLException {
+    return doesQueryPlanContainsSubstring(stmt, query, "Seq Scan on");
   }
 
   /**

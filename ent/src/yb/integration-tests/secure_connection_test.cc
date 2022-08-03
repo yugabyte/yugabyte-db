@@ -131,6 +131,19 @@ TEST_F(SecureConnectionTest, Simple) {
   TestSimpleOps();
 }
 
+TEST_F(SecureConnectionTest, CertificateDetails) {
+  TestSimpleOps();
+
+  auto certDetails = secure_context_->GetCertificateDetails();
+  ASSERT_STR_CONTAINS(certDetails, "Node certificate details");
+  ASSERT_STR_CONTAINS(certDetails, "Issuer");
+  ASSERT_STR_CONTAINS(certDetails, "Serial Number");
+  ASSERT_STR_CONTAINS(certDetails, "Validity");
+  ASSERT_STR_CONTAINS(certDetails, "Not Before");
+  ASSERT_STR_CONTAINS(certDetails, "Not After");
+  ASSERT_STR_CONTAINS(certDetails, "Subject");
+}
+
 class SecureConnectionTLS12Test : public SecureConnectionTest {
   void SetUp() override {
     FLAGS_ssl_protocols = "tls12";

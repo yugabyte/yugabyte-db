@@ -40,7 +40,7 @@ version_menu = "Releases"
   icon = "fab fa-youtube"
 
 [ui]
-  sidebar_cache_limit = 15000
+  sidebar_cache_limit = 25000
   navbar_logo = true
   sidebar_menu_compact = true
   sidebar_menu_foldable = true
@@ -63,9 +63,6 @@ version_menu = "Releases"
   url = "/v2.6/"
   version = "v2.6"
 [[versions]]
-  url = "/v2.4/"
-  version = "v2.4"
-[[versions]]
   url = "https://docs-archive.yugabyte.com"
   version = "Unsupported versions"
 
@@ -73,6 +70,7 @@ version_menu = "Releases"
 [yb]
   terms_of_service = "https://www.yugabyte.com/terms-of-service/"
   preview_version = "v2.15"
+  preview_version_slug = "preview"
 
 # Header logo link
 [yb.navbar_logo]

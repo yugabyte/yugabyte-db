@@ -69,6 +69,14 @@ const YBCPgCallbacks* YBCGetPgCallbacks();
 
 YBCStatus YBCGetPgggateCurrentAllocatedBytes(int64_t *consumption);
 
+// Call root MemTacker to consume the consumption bytes.
+// Return true if MemTracker exists (inited by pggate); otherwise false.
+bool YBCTryMemConsume(int64_t bytes);
+
+// Call root MemTacker to release the release bytes.
+// Return true if MemTracker exists (inited by pggate); otherwise false.
+bool YBCTryMemRelease(int64_t bytes);
+
 //--------------------------------------------------------------------------------------------------
 // DDL Statements
 //--------------------------------------------------------------------------------------------------

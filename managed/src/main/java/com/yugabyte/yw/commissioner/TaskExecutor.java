@@ -879,7 +879,7 @@ public class TaskExecutor {
       checkArgument(
           TaskInfo.ERROR_STATES.contains(state),
           "Task state must be one of " + TaskInfo.ERROR_STATES);
-      JsonNode taskDetails = taskInfo.getTaskDetails();
+      ObjectNode taskDetails = CommonUtils.maskConfig(taskInfo.getTaskDetails().deepCopy());
       Throwable cause = t;
       // If an exception is eaten up by just wrapping the cause as RuntimeException(e),
       // this can find the actual cause.
