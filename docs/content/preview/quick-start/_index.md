@@ -2,6 +2,7 @@
 title: YugabyteDB Quick Start
 headerTitle: Quick start
 linkTitle: Quick start
+headcontent: Create a local cluster on a single host
 description: Get started using YugabyteDB in less than five minutes on macOS.
 aliases:
   - /quick-start/
@@ -12,7 +13,7 @@ type: docs
 <div class="custom-tabs tabs-style-2">
   <ul class="tabs-name">
     <li>
-      <a href="/preview/quick-start-yugabytedb-managed/" class="nav-link">
+      <a href="../quick-start-yugabytedb-managed/" class="nav-link">
         Use a cloud cluster
       </a>
     </li>
@@ -23,8 +24,6 @@ type: docs
     </li>
   </ul>
 </div>
-
-Test YugabyteDB's APIs and core features by creating a local cluster on a single host.
 
 The local cluster setup on a single host is intended for development and learning. For production deployment, performance benchmarking, or deploying a true multi-node on multi-host setup, see [Deploy YugabyteDB](../deploy/).
 
@@ -65,9 +64,9 @@ Installing YugabyteDB involves completing [prerequisites](#prerequisites) and [d
 
 Before installing YugabyteDB, ensure that you have the following available:
 
-1. <i class="fab fa-apple" aria-hidden="true"></i> macOS 10.12 or later.
+- <i class="fab fa-apple" aria-hidden="true"></i> macOS 10.12 or later.
 
-1. Python 3. To check the version, execute the following command:
+- Python 3. To check the version, execute the following command:
 
     ```sh
     python --version
@@ -77,7 +76,7 @@ Before installing YugabyteDB, ensure that you have the following available:
     Python 3.7.3
     ```
 
-1. `wget` or `curl`.
+- `wget` or `curl`.
 
     Note that the following instructions use the `wget` command to download files. If you prefer to use `curl` (included in macOS), you can replace `wget` with `curl -O`.
 
@@ -87,88 +86,90 @@ Before installing YugabyteDB, ensure that you have the following available:
     brew install wget
     ```
 
-1. Because each tablet maps to its own file, you can create a very large number of files in the current shell by experimenting with several hundred tables and several tablets per table. Execute the following command to ensure that the limit is set to a large number:
+#### Set file limits
 
-    ```sh
-    launchctl limit
-    ```
+Because each tablet maps to its own file, you can create a very large number of files in the current shell by experimenting with several hundred tables and several tablets per table. Execute the following command to ensure that the limit is set to a large number:
 
-    It is recommended to have at least the following soft and hard limits:
+```sh
+launchctl limit
+```
 
-    ```output
-    maxproc     2500        2500
-    maxfiles    1048576     1048576
-    ```
+It is recommended to have at least the following soft and hard limits:
 
-    Edit `/etc/sysctl.conf`, if it exists, to include the following:
+```output
+maxproc     2500        2500
+maxfiles    1048576     1048576
+```
 
-    ```sh
-    kern.maxfiles=1048576
-    kern.maxproc=2500
-    kern.maxprocperuid=2500
-    kern.maxfilesperproc=1048576
-    ```
+Edit `/etc/sysctl.conf`, if it exists, to include the following:
 
-    If this file does not exist, create the following two files:
+```sh
+kern.maxfiles=1048576
+kern.maxproc=2500
+kern.maxprocperuid=2500
+kern.maxfilesperproc=1048576
+```
 
-    - `/Library/LaunchDaemons/limit.maxfiles.plist` and insert the following:
+If this file does not exist, create the following two files:
 
-      ```xml
-      <?xml version="1.0" encoding="UTF-8"?>
-      <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-      <plist version="1.0">
-        <dict>
-          <key>Label</key>
-            <string>limit.maxfiles</string>
-          <key>ProgramArguments</key>
-            <array>
-              <string>launchctl</string>
-              <string>limit</string>
-              <string>maxfiles</string>
-              <string>1048576</string>
-              <string>1048576</string>
-            </array>
-          <key>RunAtLoad</key>
-            <true/>
-          <key>ServiceIPC</key>
-            <false/>
-        </dict>
-      </plist>
-      ```
+- `/Library/LaunchDaemons/limit.maxfiles.plist` and insert the following:
 
-    - `/Library/LaunchDaemons/limit.maxproc.plist` and insert the following:
+  ```xml
+  <?xml version="1.0" encoding="UTF-8"?>
+  <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+  <plist version="1.0">
+    <dict>
+      <key>Label</key>
+        <string>limit.maxfiles</string>
+      <key>ProgramArguments</key>
+        <array>
+          <string>launchctl</string>
+          <string>limit</string>
+          <string>maxfiles</string>
+          <string>1048576</string>
+          <string>1048576</string>
+        </array>
+      <key>RunAtLoad</key>
+        <true/>
+      <key>ServiceIPC</key>
+        <false/>
+    </dict>
+  </plist>
+  ```
 
-      ```xml
-      <?xml version="1.0" encoding="UTF-8"?>
-      <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-      <plist version="1.0">
-        <dict>
-          <key>Label</key>
-            <string>limit.maxproc</string>
-          <key>ProgramArguments</key>
-            <array>
-              <string>launchctl</string>
-              <string>limit</string>
-              <string>maxproc</string>
-              <string>2500</string>
-              <string>2500</string>
-            </array>
-          <key>RunAtLoad</key>
-            <true/>
-          <key>ServiceIPC</key>
-            <false/>
-        </dict>
-      </plist>
-      ```
+- `/Library/LaunchDaemons/limit.maxproc.plist` and insert the following:
 
-    Ensure that the `plist` files are owned by `root:wheel` and have permissions `-rw-r--r--`. To take effect, you need to reboot your computer or run the following commands:
+  ```xml
+  <?xml version="1.0" encoding="UTF-8"?>
+  <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+  <plist version="1.0">
+    <dict>
+      <key>Label</key>
+        <string>limit.maxproc</string>
+      <key>ProgramArguments</key>
+        <array>
+          <string>launchctl</string>
+          <string>limit</string>
+          <string>maxproc</string>
+          <string>2500</string>
+          <string>2500</string>
+        </array>
+      <key>RunAtLoad</key>
+        <true/>
+      <key>ServiceIPC</key>
+        <false/>
+    </dict>
+  </plist>
+  ```
 
-      ```sh
-    sudo launchctl load -w /Library/LaunchDaemons/limit.maxfiles.plist
-    sudo launchctl load -w /Library/LaunchDaemons/limit.maxproc.plist
-      ```
+Ensure that the `plist` files are owned by `root:wheel` and have permissions `-rw-r--r--`. To take effect, you need to reboot your computer or run the following commands:
 
-    You might need to `unload` the service before loading it.
+  ```sh
+sudo launchctl load -w /Library/LaunchDaemons/limit.maxfiles.plist
+sudo launchctl load -w /Library/LaunchDaemons/limit.maxproc.plist
+  ```
+
+You might need to `unload` the service before loading it.
 
 ### Download YugabyteDB
 
@@ -204,7 +205,7 @@ macOS Monterey enables AirPlay receiving by default, which listens on port 7000.
 
 {{< /note >}}
 
-After the cluster has been created, clients can connect to the YSQL and YCQL APIs at http://localhost:5433 and http://localhost:9042 respectively. You can also check `~/var/data` to see the data directory and `~/var/logs` to see the logs directory.
+After the cluster has been created, clients can connect to the YSQL and YCQL APIs at `http://localhost:5433` and `http://localhost:9042` respectively. You can also check `~/var/data` to see the data directory and `~/var/logs` to see the logs directory.
 
 If you have previously installed YugabyteDB version 2.8 or later and created a cluster on the same computer, you may need to [upgrade the YSQL system catalog](../manage/upgrade-deployment/#upgrade-the-ysql-system-catalog) to run the latest features.
 
@@ -222,7 +223,8 @@ Expect an output similar to the following:
 +--------------------------------------------------------------------------------------------------+
 |                                            yugabyted                                             |
 +--------------------------------------------------------------------------------------------------+
-| Status              : Running. Leader Master is present                                          |
+| Status              : Running.                                                                   |
+| Replication Factor  : 1                                                                          |
 | Web console         : http://127.0.0.1:7000                                                      |
 | JDBC                : jdbc:postgresql://127.0.0.1:5433/yugabyte?user=yugabyte&password=yugabyte  |
 | YSQL                : bin/ysqlsh   -U yugabyte -d yugabyte                                       |
@@ -253,6 +255,25 @@ Click **See all nodes** to open the **Tablet Servers** page that lists the YB-TS
 
 ![master-home](/images/admin/master-tservers-list-binary-rf1.png)
 
+## Connect to the database
+
+Using the YugabyteDB SQL shell, [ysqlsh](../admin/ysqlsh/), you can connect to your cluster and interact with it using distributed SQL. ysqlsh is installed with YugabyteDB and is located in the bin directory of the YugabyteDB home directory.
+
+To open the YSQL shell, run `ysqlsh`.
+
+```sh
+$ ./bin/ysqlsh
+```
+
+```output
+ysqlsh (11.2-YB-2.1.0.0-b0)
+Type "help" for help.
+
+yugabyte=#
+```
+
+To load sample data and explore an example using ysqlsh, refer to [Retail Analytics](../sample-data/retail-analytics/).
+
 ## Build a Java application
 
 The following tutorial shows a small Java application that connects to a YugabyteDB cluster using the topology-aware Yugabyte JDBC driver and performs basic SQL operations.
@@ -263,7 +284,7 @@ For examples using other languages, refer to [Build an application](../develop/b
 
 Before building a Java application, perform the following:
 
-- While YugabyteDB is running, use the [yb-ctl](/preview/admin/yb-ctl/#root) utility to create a universe with a 3-node RF-3 cluster with some fictitious geo-locations assigned, as follows:
+- While YugabyteDB is running, use the [yb-ctl](../admin/yb-ctl/#root) utility to create a universe with a 3-node RF-3 cluster with some fictitious geo-locations assigned, as follows:
 
   ```sh
   cd <path-to-yugabytedb-installation>

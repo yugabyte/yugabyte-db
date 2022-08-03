@@ -2,7 +2,8 @@
 title: YugabyteDB Quick start
 headerTitle: Quick start
 linkTitle: Quick start
-description: Get started using YugabyteDB in less than five minutes on Linux.
+description: Test YugabyteDB's APIs and core features by creating a local cluster on a single host.
+headcontent: Create a local cluster on a single host
 aliases:
   - /quick-start/linux/
 type: docs
@@ -11,7 +12,7 @@ type: docs
 <div class="custom-tabs tabs-style-2">
   <ul class="tabs-name">
     <li>
-      <a href="/preview/quick-start-yugabytedb-managed/" class="nav-link">
+      <a href="../../quick-start-yugabytedb-managed/" class="nav-link">
         Use a cloud cluster
       </a>
     </li>
@@ -22,8 +23,6 @@ type: docs
     </li>
   </ul>
 </div>
-
-Test YugabyteDB's APIs and core features by creating a local cluster on a single host.
 
 The local cluster setup on a single host is intended for development and learning. For production deployment, performance benchmarking, or deploying a true multi-node on multi-host setup, see [Deploy YugabyteDB](../../deploy/).
 
@@ -56,7 +55,6 @@ The local cluster setup on a single host is intended for development and learnin
   </ul>
 </div>
 
-
 ## Install YugabyteDB
 
 Installing YugabyteDB involves completing [prerequisites](#prerequisites) and [downloading the YugabyteDB package](#download-yugabytedb).
@@ -67,9 +65,9 @@ Before installing YugabyteDB, ensure that you have the following available:
 
 1. One of the following operating systems:
 
-    * <i class="icon-centos"></i> CentOS 7 or later
+    - <i class="icon-centos"></i> CentOS 7 or later
 
-    * <i class="icon-ubuntu"></i> Ubuntu 16.04 or later
+    - <i class="icon-ubuntu"></i> Ubuntu 16.04 or later
 
 1. Python 3. To check the version, execute the following command:
 
@@ -90,15 +88,15 @@ Before installing YugabyteDB, ensure that you have the following available:
 
     To install `wget`:
 
-    * On CentOS, run `yum install wget`
-    * On Ubuntu, run `apt install wget`
+    - On CentOS, run `yum install wget`
+    - On Ubuntu, run `apt install wget`
 
     To install `curl`:
 
-    * On CentOS, run `yum install curl`
-    * On Ubuntu, run `apt install curl`
+    - On CentOS, run `yum install curl`
+    - On Ubuntu, run `apt install curl`
 
-1. Since each tablet maps to its own file, it is easy to create a very large number of files in the current shell by experimenting with several hundred tables and several tablets per table. You need to [configure ulimit values](../../deploy/manual-deployment/system-config/#ulimits).
+1. Because each tablet maps to its own file, you can create a very large number of files in the current shell by experimenting with several hundred tables and several tablets per table. You need to [configure ulimit values](../../deploy/manual-deployment/system-config/#ulimits).
 
 ### Download YugabyteDB
 
@@ -144,7 +142,7 @@ To create a single-node local cluster with a replication factor (RF) of 1, run t
 ./bin/yugabyted start
 ```
 
-After the cluster has been created, clients can connect to the YSQL and YCQL APIs at http://localhost:5433 and http://localhost:9042 respectively. You can also check `~/var/data` to see the data directory and `~/var/logs` to see the logs directory.
+After the cluster has been created, clients can connect to the YSQL and YCQL APIs at `http://localhost:5433` and `http://localhost:9042` respectively. You can also check `~/var/data` to see the data directory and `~/var/logs` to see the logs directory.
 
 If you have previously installed YugabyteDB 2.8 or later and created a cluster on the same computer, you may need to [upgrade the YSQL system catalog](../../manage/upgrade-deployment/#upgrade-the-ysql-system-catalog) to run the latest features.
 
@@ -157,7 +155,6 @@ Execute the following command to check the cluster status:
 ```
 
 Expect an output similar to the following:
-
 
 ```output
 +--------------------------------------------------------------------------------------------------+
@@ -194,13 +191,32 @@ Click **See all nodes** to open the **Tablet Servers** page that lists the YB-TS
 
 ![master-home](/images/admin/master-tservers-list-binary-rf1.png)
 
+## Connect to the database
+
+Using the YugabyteDB SQL shell, [ysqlsh](../../admin/ysqlsh/), you can connect to your cluster and interact with it using distributed SQL. ysqlsh is installed with YugabyteDB and is located in the bin directory of the YugabyteDB home directory.
+
+To open the YSQL shell, run `ysqlsh`.
+
+```sh
+$ ./bin/ysqlsh
+```
+
+```output
+ysqlsh (11.2-YB-2.1.0.0-b0)
+Type "help" for help.
+
+yugabyte=#
+```
+
+To load sample data and explore an example using ysqlsh, refer to [Retail Analytics](../../sample-data/retail-analytics/).
+
 ## Build a Java application
 
 ### Prerequisites
 
 Before building a Java application, perform the following:
 
-- While YugabyteDB is running, use the [yb-ctl](/preview/admin/yb-ctl/#root) utility to create a universe with a 3-node RF-3 cluster with some fictitious geo-locations assigned, as follows:
+- While YugabyteDB is running, use the [yb-ctl](../../admin/yb-ctl/#root) utility to create a universe with a 3-node RF-3 cluster with some fictitious geo-locations assigned, as follows:
 
   ```sh
   cd <path-to-yugabytedb-installation>
@@ -237,7 +253,7 @@ Perform the following to create a sample Java project:
     </properties>
     ```
 
-1. Add the following dependencies for the driver HikariPool within the `<dependencies>` element in `pom.xml`:
+1. Add the following dependencies for the driver HikariPool in the `<dependencies>` element in `pom.xml`:
 
     ```xml
     <dependency>
