@@ -148,10 +148,10 @@ StatisticsMetricImpl::StatisticsMetricImpl(
     histograms_.push_back(prototypes.hist_prototypes()[i]->Instantiate(hist_entity));
   }
 
+  auto& ticker_prototypes = for_intents ? prototypes.intents_ticker_prototypes()
+                                        : prototypes.regular_ticker_prototypes();
   for (size_t i = 0; tick_entity && i < kNumTickers; i++) {
-    tickers_.push_back(
-        for_intents ? prototypes.intents_ticker_prototypes()[i]->Instantiate(tick_entity, 0)
-                    : prototypes.regular_ticker_prototypes()[i]->Instantiate(tick_entity, 0));
+    tickers_.push_back(ticker_prototypes[i]->Instantiate(tick_entity, 0));
   }
 }
 

@@ -687,87 +687,30 @@ class PrometheusWriter {
 
   virtual ~PrometheusWriter() {}
 
-  template<typename T>
   CHECKED_STATUS WriteSingleEntry(
-      const MetricEntity::AttributeMap& attr, const std::string& name, const T& value,
-      AggregationFunction aggregation_function) {
-    auto it = attr.find("table_id");
-    if (it != attr.end()) {
-      // For tablet level metrics, we roll up on the table level.
-      if (per_table_attributes_.find(it->second) == per_table_attributes_.end()) {
-        // If it's the first time we see this table, create the aggregate structures.
-        per_table_attributes_[it->second] = attr;
-        per_table_values_[it->second][name] = value;
-      } else {
-        switch (aggregation_function) {
-          case kSum:
-            per_table_values_[it->second][name] += value;
-            break;
-          case kMax:
-            // If we have a new max, also update the metadata so that it matches correctly.
-            if (static_cast<double>(value) > per_table_values_[it->second][name]) {
-              per_table_attributes_[it->second] = attr;
-              per_table_values_[it->second][name] = value;
-            }
-            break;
-          default:
-            FATAL_INVALID_ENUM_VALUE(AggregationFunction, aggregation_function);
-            break;
-        }
-      }
-    } else {
-      // For non-tablet level metrics, export them directly.
-      RETURN_NOT_OK(FlushSingleEntry(attr, name, value));
-    }
-    return Status::OK();
-  }
+      const MetricEntity::AttributeMap& attr, const std::string& name, int64_t value,
+      AggregationFunction aggregation_function);
 
-  CHECKED_STATUS FlushAggregatedValues(const uint32_t& max_tables_metrics_breakdowns,
-                                       string priority_regex) {
-    uint32_t counter = 0;
-    const auto& p_regex = std::regex(priority_regex);
-    for (const auto& entry : per_table_values_) {
-      const auto& attrs = per_table_attributes_[entry.first];
-      for (const auto& metric_entry : entry.second) {
-        if (counter < max_tables_metrics_breakdowns ||
-            std::regex_match(metric_entry.first, p_regex)) {
-          RETURN_NOT_OK(FlushSingleEntry(attrs, metric_entry.first, metric_entry.second));
-        }
-      }
-      counter += 1;
-    }
-    return Status::OK();
-  }
+  CHECKED_STATUS FlushAggregatedValues(
+      uint32_t max_tables_metrics_breakdowns, const std::string& priority_regex);
 
  private:
   friend class MetricsTest;
   // FlushSingleEntry() was a function template with type of "value" as template
   // var T. To allow NMSWriter to override FlushSingleEntry(), the type of "value"
   // has been instantiated to int64_t.
-  virtual CHECKED_STATUS FlushSingleEntry(const MetricEntity::AttributeMap& attr,
-      const std::string& name, const int64_t& value) {
-    *output_ << name;
-    size_t total_elements = attr.size();
-    if (total_elements > 0) {
-      *output_ << "{";
-      for (const auto& entry : attr) {
-        *output_ << entry.first << "=\"" << entry.second << "\"";
-        if (--total_elements > 0) {
-          *output_ << ",";
-        }
-      }
-      *output_ << "}";
-    }
-    *output_ << " " << value;
-    *output_ << " " << timestamp_;
-    *output_ << std::endl;
-    return Status::OK();
-  }
+  virtual CHECKED_STATUS FlushSingleEntry(
+      const MetricEntity::AttributeMap& attr, const std::string& name, int64_t value);
 
-  // Map from table_id to attributes
-  std::map<std::string, MetricEntity::AttributeMap> per_table_attributes_;
-  // Map from table_id to map of metric_name to value
-  std::map<std::string, std::map<std::string, double>> per_table_values_;
+  void InvalidAggregationFunction(AggregationFunction aggregation_function);
+
+  struct TableData {
+    MetricEntity::AttributeMap attributes;
+    std::map<std::string, int64_t> values;
+  };
+
+  // Map from table_id to table data.
+  std::map<std::string, TableData> tables_;
   // Output stream
   std::stringstream* output_;
   // Timestamp for all metrics belonging to this writer instance.
@@ -780,36 +723,17 @@ class NMSWriter : public PrometheusWriter {
   typedef std::unordered_map<std::string, int64_t> MetricsMap;
   typedef std::unordered_map<std::string, MetricsMap> EntityMetricsMap;
 
-  explicit NMSWriter(EntityMetricsMap* table_metrics, MetricsMap* server_metrics)
-    : PrometheusWriter(nullptr), table_metrics_(table_metrics),
-    server_metrics_(server_metrics) {}
+  explicit NMSWriter(EntityMetricsMap* table_metrics, MetricsMap* server_metrics);
 
  private:
   CHECKED_STATUS FlushSingleEntry(
-      const MetricEntity::AttributeMap& attr, const std::string& name,
-      const int64_t& value) override {
-
-    auto it = attr.find("metric_type");
-    if (it == attr.end()) {
-      // ignore.
-    } else if (it->second == "server") {
-      (*server_metrics_)[name] = (int64_t)value;
-    } else if (it->second == "tablet") {
-      auto it2 = attr.find("table_id");
-      if (it2 == attr.end()) {
-        // ignore.
-      } else {
-        (*table_metrics_)[it2->second][name] = (int64_t)value;
-      }
-    }
-    return Status::OK();
-  }
+      const MetricEntity::AttributeMap& attr, const std::string& name, int64_t value) override;
 
   // Output
   // Map from table_id to map of metric_name to value
-  EntityMetricsMap* table_metrics_;
+  EntityMetricsMap& table_metrics_;
   // Map from metric_name to value
-  MetricsMap* server_metrics_;
+  MetricsMap& server_metrics_;
 };
 
 

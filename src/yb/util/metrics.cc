@@ -174,6 +174,103 @@ const std::regex prometheus_name_regex("[a-zA-Z_:][a-zA-Z0-9_:]*");
 
 } // anonymous namespace
 
+Status PrometheusWriter::FlushAggregatedValues(
+    uint32_t max_tables_metrics_breakdowns, const std::string& priority_regex) {
+  uint32_t counter = 0;
+  std::regex p_regex(priority_regex);
+  for (const auto& id_and_data : tables_) {
+    const auto& attrs = id_and_data.second.attributes;
+    for (const auto& metric_entry : id_and_data.second.values) {
+      if (priority_regex.empty() || std::regex_match(metric_entry.first, p_regex)) {
+        RETURN_NOT_OK(FlushSingleEntry(attrs, metric_entry.first, metric_entry.second));
+      }
+    }
+    if (++counter >= max_tables_metrics_breakdowns) {
+      break;
+    }
+  }
+  return Status::OK();
+}
+
+Status PrometheusWriter::FlushSingleEntry(
+    const MetricEntity::AttributeMap& attr,
+    const std::string& name, const int64_t value) {
+  *output_ << name;
+  size_t total_elements = attr.size();
+  if (total_elements > 0) {
+    *output_ << "{";
+    for (const auto& entry : attr) {
+      *output_ << entry.first << "=\"" << entry.second << "\"";
+      if (--total_elements > 0) {
+        *output_ << ",";
+      }
+    }
+    *output_ << "}";
+  }
+  *output_ << " " << value;
+  *output_ << " " << timestamp_;
+  *output_ << std::endl;
+  return Status::OK();
+}
+
+void PrometheusWriter::InvalidAggregationFunction(AggregationFunction aggregation_function) {
+  FATAL_INVALID_ENUM_VALUE(AggregationFunction, aggregation_function);
+}
+
+Status PrometheusWriter::WriteSingleEntry(
+    const MetricEntity::AttributeMap& attr, const std::string& name, int64_t value,
+    AggregationFunction aggregation_function) {
+  auto it = attr.find("table_id");
+  if (it == attr.end()) {
+    return FlushSingleEntry(attr, name, value);
+  }
+
+  // For tablet level metrics, we roll up on the table level.
+  auto table_it = tables_.find(it->second);
+  if (table_it == tables_.end()) {
+    // If it's the first time we see this table, create the aggregate structures.
+    table_it = tables_.emplace(it->second, TableData { .attributes = attr }).first;
+    table_it->second.values.emplace(name, value);
+  } else {
+    auto& stored_value = table_it->second.values[name];
+    switch (aggregation_function) {
+      case kSum:
+        stored_value += value;
+        break;
+      case kMax:
+        // If we have a new max, also update the metadata so that it matches correctly.
+        if (value > stored_value) {
+          table_it->second.attributes = attr;
+          stored_value = value;
+        }
+        break;
+      default:
+        InvalidAggregationFunction(aggregation_function);
+        break;
+    }
+  }
+  return Status::OK();
+}
+
+NMSWriter::NMSWriter(EntityMetricsMap* table_metrics, MetricsMap* server_metrics)
+    : PrometheusWriter(nullptr), table_metrics_(*table_metrics),
+      server_metrics_(*server_metrics) {}
+
+Status NMSWriter::FlushSingleEntry(
+    const MetricEntity::AttributeMap& attr, const std::string& name, const int64_t value) {
+  auto it = attr.find("table_id");
+  if (it != attr.end()) {
+    table_metrics_[it->second][name] = value;
+    return Status::OK();
+  }
+  it = attr.find("metric_type");
+  if (it == attr.end() || it->second != "server") {
+    return Status::OK();
+  }
+  server_metrics_[name] = value;
+  return Status::OK();
+}
+
 //
 // MetricEntityPrototype
 //
@@ -327,12 +424,9 @@ CHECKED_STATUS MetricEntity::WriteForPrometheus(PrometheusWriter* writer,
     std::lock_guard<simple_spinlock> l(lock_);
     attrs = attributes_;
     external_metrics_cbs = external_prometheus_metrics_cbs_;
-    for (const MetricMap::value_type& val : metric_map_) {
-      const MetricPrototype* prototype = val.first;
-      const scoped_refptr<Metric>& metric = val.second;
-
-      if (select_all || MatchMetricInList(prototype->name(), requested_metrics)) {
-        InsertOrDie(&metrics, prototype->name(), metric);
+    for (const auto& prototype_and_metric : metric_map_) {
+      if (select_all || MatchMetricInList(prototype_and_metric.first->name(), requested_metrics)) {
+        InsertOrDie(&metrics, prototype_and_metric.first->name(), prototype_and_metric.second);
       }
     }
   }
