@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-This page documents how to install and use PostgreSQL extensions that are tested to work with YSQL. Note that since YugabyteDB’s storage architecture is not the same as that of native PostgreSQL, PostgreSQL extensions, especially those that interact with the storage layer, are not expected to work as-is on YugabyteDB. We intend to incrementally develop support for as many extensions as possible.
+This page documents how to install and use PostgreSQL extensions that are tested to work with YSQL. Note that since YugabyteDB's storage architecture is not the same as that of native PostgreSQL, PostgreSQL extensions, especially those that interact with the storage layer, are not expected to work as-is on YugabyteDB. We intend to incrementally develop support for as many extensions as possible.
 
 ## Pre-bundled extensions
 
@@ -231,7 +231,7 @@ You'll see results similar to the following:
 (10 rows)
 ```
 
-Every time you repeat the test, you'll see different generated values for `v`. The section [Analyzing a normal distribution with percent_rank(), cume_dist() and ntile()](../exprs/window_functions/analyzing-a-normal-distribution/), within the major documentation section [Window functions](../exprs/window_functions/), uses `normal_rand()`. It populates a table with a large number, say 100,000, rows and displays the outcome as a histogram that clearly shows the familiar bell-curve shape.
+Every time you repeat the test, you'll see different generated values for `v`. The section [Analyzing a normal distribution with percent_rank(), cume_dist() and ntile()](../exprs/window_functions/analyzing-a-normal-distribution/), in the major documentation section [Window functions](../exprs/window_functions/), uses `normal_rand()`. It populates a table with a large number, say 100,000 rows, and displays the outcome as a histogram that clearly shows the familiar bell-curve shape.
 
 These other functions are brought by `tablefunc`: `connectby()`; and `crosstab()` and `crosstabN()`.
 
@@ -240,6 +240,27 @@ The `connectby()` function displays a hierarchy of the kind that you see in an _
 The `crosstab()`and  `crosstabN()` functions produce “pivot” displays. The _"N"_ in crosstabN() indicates the fact that a few, `crosstab1()`, `crosstab2()`, `crosstab3()`, are provided natively by the extension and that you can follow documented steps to create more.
 
 For more information, refer to [`tablefunc`](https://www.postgresql.org/docs/11/tablefunc.html) in the PostgreSQL docs.
+
+### uuid-ossp
+
+The [`uuid-ossp`](https://www.postgresql.org/docs/current/uuid-ossp.html) extension provides functions to generate universally unique identifiers (UUIDs), and functions to produce certain special UUID constants.
+
+#### uuid-ossp example
+
+```sql
+CREATE EXTENSION "uuid-ossp";
+```
+
+Connect with `ysqlsh` and run:
+
+```sql
+SELECT uuid_generate_v1(), uuid_generate_v4(), uuid_nil();
+
+           uuid_generate_v1           |           uuid_generate_v4           |               uuid_nil
+--------------------------------------+--------------------------------------+--------------------------------------
+ 69975ce4-d827-11e9-b860-bf2e5a7e1380 | 088a9b6c-46d8-4276-852b-64908b06a503 | 00000000-0000-0000-0000-000000000000
+(1 row)
+```
 
 ## Extensions requiring installation
 
@@ -507,31 +528,5 @@ yugabyte=# SELECT hll_cardinality(set) FROM helloworld WHERE id = 1;
  hll_cardinality
 -----------------
                2
-(1 row)
-```
-
-### uuid-ossp
-
-The [`uuid-ossp`](https://www.postgresql.org/docs/current/uuid-ossp.html) extension provides functions to generate universally unique identifiers (UUIDs), and functions to produce certain special UUID constants.
-
-The easiest way to install the extension is to copy the files from an existing PostgreSQL installation into Yugabyte, and then create the extension.
-
-```sh
-$ cp -v "$(pg_config --pkglibdir)"/*uuid-ossp*.so "$(yb_pg_config --pkglibdir)" &&
-  cp -v "$(pg_config --sharedir)"/extension/*uuid-ossp*.sql "$(yb_pg_config --sharedir)"/extension &&
-  cp -v "$(pg_config --sharedir)"/extension/*uuid-ossp*.control "$(yb_pg_config --sharedir)"/extension &&
-  ./bin/ysqlsh -c "CREATE EXTENSION \"uuid-ossp\";"
-```
-
-#### uuid-ossp example
-
-Connect with `ysqlsh` and run:
-
-```sql
-SELECT uuid_generate_v1(), uuid_generate_v4(), uuid_nil();
-
-           uuid_generate_v1           |           uuid_generate_v4           |               uuid_nil
---------------------------------------+--------------------------------------+--------------------------------------
- 69975ce4-d827-11e9-b860-bf2e5a7e1380 | 088a9b6c-46d8-4276-852b-64908b06a503 | 00000000-0000-0000-0000-000000000000
 (1 row)
 ```
