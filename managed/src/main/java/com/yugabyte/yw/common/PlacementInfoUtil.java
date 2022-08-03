@@ -1570,12 +1570,15 @@ public class PlacementInfoUtil {
 
       if (index.action == Action.ADD) {
         boolean added = false;
-        // We can have some nodes in ToBeRemoved state, in such case we can simply
-        // revert their state back to the state from the stored universe.
+        // We can have some nodes in ToBeRemoved state, in such case, if it has the same instance
+        // type, we can simply revert their state back to the state from the stored universe.
         if (universe != null) {
           NodeDetails nodeDetails =
               findNodeInAz(
-                  node -> node.state == NodeState.ToBeRemoved,
+                  node ->
+                      node.state == NodeState.ToBeRemoved
+                          && Objects.equals(
+                              node.cloudInfo.instance_type, cluster.userIntent.instanceType),
                   nodesInCluster,
                   placementAZ.uuid,
                   true);
