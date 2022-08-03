@@ -31,18 +31,6 @@ The following examples illustrate how you can build real-world, end-to-end appli
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="explore-sample-apps/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/develop/apps/e-commerce.png" aria-hidden="true" />
-        <div class="title">Install Yugastore</div>
-      </div>
-      <div class="body">
-          Run the Yugastore application.
-      </div>
-    </a>
-  </div>
-
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="iot-spark-kafka-ksql/">
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/apps/iot.png" aria-hidden="true" />

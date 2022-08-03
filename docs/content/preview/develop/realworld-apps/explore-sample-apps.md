@@ -3,7 +3,7 @@ title: Install Yugastore
 headerTitle: Install Yugastore
 linkTitle: Install Yugastore
 description: Install the Yugastore sample application.
-headcontent: Install the Yugastore sample application
+headcontent: Run the Yugastore sample application
 aliases:
   - /preview/quick-start/run-sample-apps/
   - /quick-start/run-sample-apps/
@@ -28,7 +28,7 @@ After [creating a local cluster](../../../quick-start/), follow the instructions
 
   {{% tab header="macOS" lang="macos" %}}
 
-  1. Clone the repo.
+  1. Clone the repository.
 
       ```sh
       $ git clone https://github.com/YugabyteDB-Samples/yugastore-java.git
@@ -68,7 +68,7 @@ After [creating a local cluster](../../../quick-start/), follow the instructions
 
   {{% tab header="Linux" lang="linux" %}}
 
-  1. Clone the repo.
+  1. Clone the repository.
 
       ```sh
       $ git clone https://github.com/YugabyteDB-Samples/yugastore-java.git

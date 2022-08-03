@@ -3,7 +3,7 @@ title: Yugastore e-commerce sample application
 headerTitle: Yugastore e-commerce application
 linkTitle: Yugastore
 description: Run a distributed e-commerce sample application built on YugabyteDB.
-headcontent: A distributed e-commerce sample application built on YugabyteDB
+headcontent: Distributed full-stack e-commerce application built on YugabyteDB
 aliases:
   - /develop/realworld-apps/ecommerce-app/
 menu:
@@ -16,9 +16,11 @@ type: docs
 
 ## Overview
 
-Yugastore is a sample, full-stack online bookstore, or more generally, an e-commerce application built on top of YugabyteDB. It is a cloud native, distributed application built on a microservices architecture. YugabyteDB simplifies the development of such apps by providing a SQL-like API (based on Cassandra Query Language) and a Redis-API on top of a common database. The application can be deployed and run on VMs or using StatefulSets in Kubernetes.
+Yugastore is a sample, full-stack online bookstore, or more generally, an e-commerce application built on top of YugabyteDB. It is a cloud native, distributed application built on a microservices architecture.
 
-You can browse the [Yugastore source-code on GitHub](https://github.com/yugabyte/yugastore). It is fully open-source.
+YugabyteDB simplifies development of such apps by providing a SQL-like API (based on Cassandra Query Language) and a Redis-API on top of a common database. The application can be deployed and run on VMs or using StatefulSets in Kubernetes. You can use Yugastore as a blueprint for building e-commerce and other similar web applications.
+
+The instructions to build and run the application, as well as the source code, can be found in the [Yugastore GitHub repository](https://github.com/yugabyte/yugastore). It is fully open-source.
 
 ![Yugastore app screenshot](/images/develop/realworld-apps/ecommerce-app/yugastore-app-screenshots.png)
 
@@ -254,12 +256,12 @@ The following query is executed against the database to fetch all the product de
 SELECT * FROM yugastore.products WHERE id=5;
 ```
 
-If you had another table with extended product information, you could fetch data from that table as well and add it into the result. Finally, each time this page is hit, increment a counter in order to track how many times the current product was viewed.
+If you had another table with extended product information, you could fetch data from that table as well and add it into the result. Finally, each time this page is hit, increment a counter to track how many times the current product was viewed.
 
 ```redis
 ybRedis.incrby("pageviews:product:5:count", 1);
 ```
 
-## Summary
+## Next step
 
-Yugastore is a blueprint for building e-commerce and other similar web applications. The instructions to build and run the application, as well as the source code, can be found in the [Yugastore GitHub repository](https://github.com/yugabyte/yugastore).
+[Install and run Yugastore](../explore-sample-apps/)
