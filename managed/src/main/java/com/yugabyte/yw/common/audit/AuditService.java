@@ -101,11 +101,21 @@ public class AuditService {
 
   public void createAuditEntry(
       Http.Context ctx, Http.Request request, JsonNode params, UUID taskUUID) {
+    createAuditEntry(ctx, request, params, taskUUID, null);
+  }
+
+  public void createAuditEntry(
+      Http.Context ctx,
+      Http.Request request,
+      JsonNode params,
+      UUID taskUUID,
+      JsonNode additionalDetails) {
     Users user = (Users) ctx.args.get("user");
     String method = request.method();
     String path = request.path();
     JsonNode redactedParams = filterSecretFields(params);
-    Audit.create(user.uuid, user.customerUUID, path, method, redactedParams, taskUUID);
+    Audit.create(
+        user.uuid, user.customerUUID, path, method, redactedParams, taskUUID, additionalDetails);
   }
 
   public List<Audit> getAll(UUID customerUUID) {

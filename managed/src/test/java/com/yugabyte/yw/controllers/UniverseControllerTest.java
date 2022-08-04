@@ -51,6 +51,7 @@ import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ConfigHelper;
@@ -60,6 +61,7 @@ import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.common.YcqlQueryExecutor;
 import com.yugabyte.yw.common.YsqlQueryExecutor;
+import com.yugabyte.yw.common.gflags.GFlagDiffEntry;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.EncryptionAtRestKeyParams;
@@ -2724,5 +2726,53 @@ public class UniverseControllerTest extends WithApplication {
             .getResult();
     assertBadRequest(result, "Cannot find universe " + randomUUID);
     assertAuditEntry(0, customer.uuid);
+  }
+
+  @Test
+  public void testGenerateGFlagEntries() {
+    Map<String, String> oldGFlags = new HashMap<>();
+    Map<String, String> newGFlags = new HashMap<>();
+    String serverType = ServerType.TSERVER.toString();
+    String softwareVersion = "2.6";
+    UniverseController universeController = new UniverseController(mockService);
+
+    // removed gflag
+    oldGFlags.put("stderrthreshold", "1");
+    List<GFlagDiffEntry> gFlagDiffEntries =
+        universeController.generateGFlagEntries(oldGFlags, newGFlags, serverType, softwareVersion);
+    assertEquals(1, gFlagDiffEntries.size());
+    assertEquals("stderrthreshold", gFlagDiffEntries.get(0).name);
+    assertEquals("1", gFlagDiffEntries.get(0).oldValue);
+    assertEquals(null, gFlagDiffEntries.get(0).newValue);
+
+    // added gflag
+    oldGFlags.clear();
+    newGFlags.clear();
+    newGFlags.put("minloglevel", "2");
+    gFlagDiffEntries =
+        universeController.generateGFlagEntries(oldGFlags, newGFlags, serverType, softwareVersion);
+    assertEquals("minloglevel", gFlagDiffEntries.get(0).name);
+    assertEquals(null, gFlagDiffEntries.get(0).oldValue);
+    assertEquals("2", gFlagDiffEntries.get(0).newValue);
+
+    // updated gflag
+    oldGFlags.clear();
+    newGFlags.clear();
+    oldGFlags.put("max_log_size", "0");
+    newGFlags.put("max_log_size", "1000");
+    gFlagDiffEntries =
+        universeController.generateGFlagEntries(oldGFlags, newGFlags, serverType, softwareVersion);
+    assertEquals("max_log_size", gFlagDiffEntries.get(0).name);
+    assertEquals("0", gFlagDiffEntries.get(0).oldValue);
+    assertEquals("1000", gFlagDiffEntries.get(0).newValue);
+
+    // unchanged gflag
+    oldGFlags.clear();
+    newGFlags.clear();
+    oldGFlags.put("max_log_size", "2000");
+    newGFlags.put("max_log_size", "2000");
+    gFlagDiffEntries =
+        universeController.generateGFlagEntries(oldGFlags, newGFlags, serverType, softwareVersion);
+    assertEquals(0, gFlagDiffEntries.size());
   }
 }

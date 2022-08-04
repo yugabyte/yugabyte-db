@@ -18,6 +18,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.Sets;
 import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.cloud.UniverseResourceDetails;
@@ -27,6 +28,8 @@ import com.yugabyte.yw.commissioner.tasks.DestroyUniverse;
 import com.yugabyte.yw.commissioner.tasks.PauseUniverse;
 import com.yugabyte.yw.commissioner.tasks.ReadOnlyClusterDelete;
 import com.yugabyte.yw.commissioner.tasks.ResumeUniverse;
+import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
+import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskType;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.CertificateHelper;
 import com.yugabyte.yw.common.ConfigHelper;
@@ -37,6 +40,8 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.YcqlQueryExecutor;
 import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.gflags.GFlagDiffEntry;
+import com.yugabyte.yw.common.gflags.GFlagsAuditPayload;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil.KeyType;
 import com.yugabyte.yw.common.services.YBClientService;
@@ -71,6 +76,7 @@ import java.io.InputStream;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -1596,12 +1602,23 @@ public class UniverseController extends AuthenticatedController {
         return ApiResponse.error(BAD_REQUEST, errMsg);
       }
 
+      // prevent race condition in the case userIntent updates before we createAuditEntry
+      UserIntent oldUserIntent =
+          Json.fromJson(
+              Json.toJson(universe.getUniverseDetails().getPrimaryCluster().userIntent),
+              UserIntent.class);
+
       UUID taskUUID = commissioner.submit(taskType, taskParams);
       LOG.info(
           "Submitted upgrade universe for {} : {}, task uuid = {}.",
           universe.universeUUID,
           universe.name,
           taskUUID);
+
+      JsonNode additionalDetails = null;
+      if (taskParams.taskType.equals(UpgradeTaskType.GFlags)) {
+        additionalDetails = constructGFlagAuditPayload(taskParams, oldUserIntent);
+      }
 
       // Add this task uuid to the user universe.
       CustomerTask.create(
@@ -1618,12 +1635,60 @@ public class UniverseController extends AuthenticatedController {
           universe.name);
       ObjectNode resultNode = Json.newObject();
       resultNode.put("taskUUID", taskUUID.toString());
-      auditService().createAuditEntry(ctx(), request(), formData, taskUUID);
+      auditService().createAuditEntry(ctx(), request(), formData, taskUUID, additionalDetails);
       return Results.status(OK, resultNode);
     } catch (Throwable t) {
       LOG.error("Error updating universe", t);
       return ApiResponse.error(INTERNAL_SERVER_ERROR, t.getMessage());
     }
+  }
+
+  public JsonNode constructGFlagAuditPayload(
+      UpgradeParams requestParams, UserIntent oldUserIntent) {
+    if (requestParams.getPrimaryCluster() == null) {
+      return null;
+    }
+    UserIntent newUserIntent = requestParams.getPrimaryCluster().userIntent;
+    Map<String, String> newMasterGFlags = newUserIntent.masterGFlags;
+    Map<String, String> newTserverGFlags = newUserIntent.tserverGFlags;
+    Map<String, String> oldMasterGFlags = oldUserIntent.masterGFlags;
+    Map<String, String> oldTserverGFlags = oldUserIntent.tserverGFlags;
+    GFlagsAuditPayload payload = new GFlagsAuditPayload();
+    String softwareVersion = newUserIntent.ybSoftwareVersion;
+    payload.master =
+        generateGFlagEntries(
+            oldMasterGFlags, newMasterGFlags, ServerType.MASTER.toString(), softwareVersion);
+    payload.tserver =
+        generateGFlagEntries(
+            oldTserverGFlags, newTserverGFlags, ServerType.TSERVER.toString(), softwareVersion);
+
+    ObjectMapper mapper = new ObjectMapper();
+    Map<String, GFlagsAuditPayload> auditPayload = new HashMap<>();
+    auditPayload.put("gflags", payload);
+
+    return mapper.valueToTree(auditPayload);
+  }
+
+  public List<GFlagDiffEntry> generateGFlagEntries(
+      Map<String, String> oldGFlags,
+      Map<String, String> newGFlags,
+      String serverType,
+      String softwareVersion) {
+    List<GFlagDiffEntry> gFlagChanges = new ArrayList<GFlagDiffEntry>();
+
+    GFlagDiffEntry tEntry;
+    Collection<String> modifiedGFlags = Sets.union(oldGFlags.keySet(), newGFlags.keySet());
+
+    for (String gFlagName : modifiedGFlags) {
+      String oldGFlagValue = oldGFlags.getOrDefault(gFlagName, null);
+      String newGFlagValue = newGFlags.getOrDefault(gFlagName, null);
+      if (oldGFlagValue == null || !oldGFlagValue.equals(newGFlagValue)) {
+        tEntry = new GFlagDiffEntry(gFlagName, oldGFlagValue, newGFlagValue, null);
+        gFlagChanges.add(tEntry);
+      }
+    }
+
+    return gFlagChanges;
   }
 
   /**

@@ -69,6 +69,14 @@ public class Audit extends Model {
     this.save();
   }
 
+  @Column(columnDefinition = "TEXT")
+  @DbJson
+  private JsonNode additionalDetails;
+
+  public JsonNode getAdditionalDetails() {
+    return this.additionalDetails;
+  }
+
   @Constraints.Required
   @Column(columnDefinition = "TEXT", nullable = false)
   private String apiCall;
@@ -114,7 +122,8 @@ public class Audit extends Model {
       String apiCall,
       String apiMethod,
       JsonNode body,
-      UUID taskUUID) {
+      UUID taskUUID,
+      JsonNode details) {
     Audit entry = new Audit();
     entry.customerUUID = customerUUID;
     entry.userUUID = userUUID;
@@ -122,6 +131,7 @@ public class Audit extends Model {
     entry.apiMethod = apiMethod;
     entry.taskUUID = taskUUID;
     entry.payload = body;
+    entry.additionalDetails = details;
     entry.save();
     return entry;
   }
