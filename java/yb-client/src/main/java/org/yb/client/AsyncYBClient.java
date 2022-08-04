@@ -1127,18 +1127,16 @@ public class AsyncYBClient implements AutoCloseable {
    * data changes for the next operation from WALs is possible or not. If streamId is not null, it
    * checks if the existing stream has fallen far behind that needs a bootstrap flow.
    *
-   * @param tabletIds List of tablet IDs to check if the log for the next operation is available
-   * @param streamId  The optional stream id refers to an existing stream containing the passed
-   *                  tablet ids
-   *
+   * @param tableIdsStreamIdMap A map of table ids to their corresponding stream id if any
    * @return A deferred object that yields a {@link IsBootstrapRequiredResponse} which contains
-   * a boolean showing whether bootstrap is required
+   *         a map of each table id to a boolean showing whether bootstrap is required for that
+   *         table
    */
   public Deferred<IsBootstrapRequiredResponse> isBootstrapRequired(
-      List<String> tabletIds, String streamId) {
+        Map<String, String> tableIdsStreamIdMap) {
     checkIsClosed();
     IsBootstrapRequiredRequest request =
-        new IsBootstrapRequiredRequest(this.masterTable, tabletIds, streamId);
+        new IsBootstrapRequiredRequest(this.masterTable, tableIdsStreamIdMap);
     request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(request);
   }
@@ -1782,7 +1780,7 @@ public class AsyncYBClient implements AutoCloseable {
     }
     // TODO backoffs? Sleep in increments of 500 ms, plus some random time up to 50
     long sleepTime = (attemptCount * SLEEP_TIME) + sleepRandomizer.nextInt(50);
-    LOG.info("Going to sleep for " + sleepTime + " at retry " + rpc.attempt);
+
     if (LOG.isDebugEnabled()) {
       LOG.debug("Going to sleep for " + sleepTime + " at retry " + rpc.attempt);
     }

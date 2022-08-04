@@ -246,7 +246,9 @@ public enum TaskType {
 
   DeleteReplication("subtasks.xcluster.DeleteReplication"),
 
-  DeleteXClusterConfigFromDb("subtasks.xcluster.DeleteXClusterConfigFromDb"),
+  DeleteXClusterConfigEntry("subtasks.xcluster.DeleteXClusterConfigEntry"),
+
+  SetReplicationPaused("subtasks.xcluster.SetReplicationPaused"),
 
   SetRestoreTime("subtasks.xcluster.SetRestoreTime"),
 
@@ -292,6 +294,8 @@ public enum TaskType {
   RestoreUniverseKeys("subtasks.RestoreUniverseKeys"),
 
   RestoreUniverseKeysYb("subtasks.RestoreUniverseKeysYb"),
+
+  RestoreUniverseKeysYbc("subtasks.RestoreUniverseKeysYbc"),
 
   WaitForLeadersOnPreferredOnly("subtasks.WaitForLeadersOnPreferredOnly"),
 
@@ -362,7 +366,9 @@ public enum TaskType {
 
   RebootServer("subtasks.RebootServer"),
 
-  RunHooks("subtasks.RunHooks");
+  RunHooks("subtasks.RunHooks"),
+
+  UpdateUniverseTags("subtasks.UpdateUniverseTags");
 
   private String relativeClassPath;
 

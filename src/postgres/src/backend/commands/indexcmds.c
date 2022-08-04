@@ -1672,6 +1672,15 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 							ereport(ERROR,
 									(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
 									errmsg("hash column not allowed after an ASC/DESC column")));
+						else if (tablegroupId != InvalidOid)
+							ereport(ERROR,
+									(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+									 errmsg("cannot create a hash partitioned"
+									 		" index in a TABLEGROUP")));
+						else if (is_colocated)
+							ereport(ERROR,
+									(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+									 errmsg("cannot colocate hash partitioned index")));
 						break;
 					default:
 						ereport(ERROR,

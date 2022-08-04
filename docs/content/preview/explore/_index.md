@@ -2,6 +2,7 @@
 title: Explore YugabyteDB
 headerTitle: Explore YugabyteDB
 linkTitle: Explore
+headcontent: Learn about YugabyteDB features, with examples
 description: Explore the features of YugabyteDB on macOS, Linux, Docker, and Kubernetes.
 image: /images/section_icons/index/explore.png
 aliases:
@@ -12,11 +13,6 @@ aliases:
   - /preview/explore/cloud-native/orchestration-readiness/
 type: indexpage
 ---
-{{< tip title="Tip" >}}
-
-Use [yb-ctl](../admin/yb-ctl/) local cluster management utility to explore the core features of YugabyteDB.
-
-{{< /tip >}}
 
 <div class="row">
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">

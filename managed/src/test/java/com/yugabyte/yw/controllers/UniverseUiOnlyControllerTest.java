@@ -8,10 +8,12 @@ import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthToken;
 import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthTokenAndBody;
+import static com.yugabyte.yw.common.ModelFactory.awsProvider;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static com.yugabyte.yw.common.PlacementInfoUtil.getAzUuidToNumNodes;
 import static com.yugabyte.yw.common.PlacementInfoUtil.updateUniverseDefinition;
 import static com.yugabyte.yw.forms.UniverseConfigureTaskParams.ClusterOperationType.CREATE;
+import static com.yugabyte.yw.forms.UniverseConfigureTaskParams.ClusterOperationType.EDIT;
 import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.notNullValue;
@@ -28,8 +30,11 @@ import static org.mockito.Mockito.when;
 import static play.test.Helpers.contentAsString;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.databind.type.TypeFactory;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Common;
@@ -57,10 +62,15 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.Consumer;
+import java.util.stream.Collectors;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import org.junit.Test;
@@ -339,6 +349,10 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
     assertEquals(nodeDetailJson.size(), totalNumNodesAfterExpand);
     assertTrue(areConfigObjectsEqual(nodeDetailJson, azUuidToNumNodes));
     assertAuditEntry(1, customer.uuid);
+    assertTrue(json.get("updateOptions").isArray());
+    ArrayNode updateOptionsJson = (ArrayNode) json.get("updateOptions");
+    assertEquals(1, updateOptionsJson.size());
+    assertEquals("FULL_MOVE", updateOptionsJson.get(0).asText());
   }
 
   @Test
@@ -1675,6 +1689,164 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
         ArgumentCaptor.forClass(UniverseTaskParams.class);
     verify(mockCommissioner).submit(eq(TaskType.UpdateDiskSize), argCaptor.capture());
     assertAuditEntry(1, customer.uuid);
+  }
+
+  @Test
+  public void testGetUpdateOptionsCreate() throws IOException {
+    testGetAvailableOptions(x -> {}, CREATE, UniverseDefinitionTaskParams.UpdateOptions.UPDATE);
+  }
+
+  @Test
+  public void testGetUpdateOptionsEditEmpty() throws IOException {
+    testGetAvailableOptions(x -> {}, EDIT);
+  }
+
+  @Test
+  public void testGetUpdateOptionsEditModifyTags() throws IOException {
+    testGetAvailableOptions(
+        u -> u.getPrimaryCluster().userIntent.instanceTags.put("aa", "bb"),
+        EDIT,
+        UniverseDefinitionTaskParams.UpdateOptions.UPDATE);
+  }
+
+  @Test
+  public void testGetUpdateOptionsEditAddNode() throws IOException {
+    testGetAvailableOptions(
+        x -> {
+          NodeDetails node = new NodeDetails();
+          node.state = NodeState.ToBeAdded;
+          node.placementUuid = x.nodeDetailsSet.iterator().next().placementUuid;
+          x.nodeDetailsSet.add(node);
+        },
+        EDIT,
+        UniverseDefinitionTaskParams.UpdateOptions.UPDATE);
+  }
+
+  @Test
+  public void testGetUpdateOptionsEditSmartResizeNonRestart() throws IOException {
+    testGetAvailableOptions(
+        x -> x.getPrimaryCluster().userIntent.deviceInfo.volumeSize += 50,
+        EDIT,
+        UniverseDefinitionTaskParams.UpdateOptions.SMART_RESIZE_NON_RESTART);
+  }
+
+  @Test
+  public void testGetUpdateOptionsEditSmartResizeAndFullMove() throws IOException {
+    testGetAvailableOptions(
+        u -> {
+          List<NodeDetails> nodesToAdd = new ArrayList<>();
+          u.nodeDetailsSet.forEach(
+              node -> {
+                node.state = NodeState.ToBeRemoved;
+                NodeDetails newNode = new NodeDetails();
+                newNode.state = NodeState.ToBeAdded;
+                newNode.placementUuid = node.placementUuid;
+                nodesToAdd.add(newNode);
+              });
+          u.nodeDetailsSet.addAll(nodesToAdd);
+          u.getPrimaryCluster().userIntent.deviceInfo.volumeSize += 50;
+          u.getPrimaryCluster().userIntent.instanceType = "c3.large";
+        },
+        EDIT,
+        UniverseDefinitionTaskParams.UpdateOptions.SMART_RESIZE,
+        UniverseDefinitionTaskParams.UpdateOptions.FULL_MOVE);
+  }
+
+  @Test
+  public void testGetUpdateOptionsEditFullMove() throws IOException {
+    testGetAvailableOptions(
+        u -> {
+          List<NodeDetails> nodesToAdd = new ArrayList<>();
+          u.nodeDetailsSet.forEach(
+              node -> {
+                node.state = NodeState.ToBeRemoved;
+                NodeDetails newNode = new NodeDetails();
+                newNode.state = NodeState.ToBeAdded;
+                newNode.placementUuid = node.placementUuid;
+                nodesToAdd.add(newNode);
+              });
+          u.nodeDetailsSet.addAll(nodesToAdd);
+          u.getPrimaryCluster().userIntent.deviceInfo.volumeSize += 50;
+          // change placement => SR is not available.
+          PlacementInfo.PlacementAZ az =
+              u.getPrimaryCluster().placementInfo.azStream().findFirst().get();
+          az.isAffinitized = !az.isAffinitized;
+        },
+        EDIT,
+        UniverseDefinitionTaskParams.UpdateOptions.FULL_MOVE);
+  }
+
+  private void testGetAvailableOptions(
+      Consumer<UniverseDefinitionTaskParams> mutator,
+      UniverseConfigureTaskParams.ClusterOperationType operationType,
+      UniverseDefinitionTaskParams.UpdateOptions... expectedOptions)
+      throws IOException {
+    Universe u = createUniverse(customer.getCustomerId());
+    Provider provider = awsProvider(customer);
+    Region region = Region.create(provider, "test-region", "Region 1", "yb-image-1");
+    AvailabilityZone.createOrThrow(region, "az-1", "az-1", "subnet-1");
+    // create default universe
+    UserIntent userIntent = new UserIntent();
+    userIntent.numNodes = 3;
+    userIntent.provider = provider.uuid.toString();
+    userIntent.providerType = Common.CloudType.valueOf(provider.code);
+    userIntent.ybSoftwareVersion = "yb-version";
+    userIntent.accessKeyCode = "demo-access";
+    userIntent.instanceType = "c5.large";
+    userIntent.replicationFactor = 3;
+    userIntent.regionList = ImmutableList.of(region.uuid);
+    userIntent.deviceInfo = new DeviceInfo();
+    userIntent.deviceInfo.volumeSize = 100;
+    Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater(userIntent, true));
+    u = Universe.getOrBadRequest(u.universeUUID);
+    UniverseDefinitionTaskParams udtp = u.getUniverseDetails();
+    mutator.accept(udtp);
+    udtp.universeUUID = u.universeUUID;
+
+    ObjectNode bodyJson = (ObjectNode) Json.toJson(udtp);
+    if (udtp.getPrimaryCluster().userIntent.instanceTags.size() > 0) {
+      ArrayNode clusters = (ArrayNode) bodyJson.get("clusters");
+      ObjectNode cluster = (ObjectNode) clusters.get(0);
+      ArrayNode instanceTags = Json.newArray();
+      udtp.getPrimaryCluster()
+          .userIntent
+          .instanceTags
+          .entrySet()
+          .forEach(
+              entry -> {
+                instanceTags.add(
+                    Json.newObject().put("name", entry.getKey()).put("value", entry.getValue()));
+              });
+      ObjectNode userIntentNode = (ObjectNode) cluster.get("userIntent");
+      userIntentNode.replace("instanceTags", instanceTags);
+    }
+    InstanceType.upsert(
+        provider.uuid,
+        udtp.getPrimaryCluster().userIntent.instanceType,
+        10,
+        5.5,
+        new InstanceType.InstanceTypeDetails());
+    bodyJson.put("currentClusterType", "PRIMARY");
+    bodyJson.put("clusterOperation", operationType.name());
+
+    Result result =
+        doRequestWithAuthTokenAndBody(
+            "POST",
+            "/api/customers/" + customer.uuid + "/universe_update_options",
+            authToken,
+            bodyJson);
+    assertEquals(
+        Arrays.asList(expectedOptions).stream().map(o -> o.name()).collect(Collectors.toSet()),
+        new HashSet<>(parseArrayOfStrings(result)));
+  }
+
+  private List<String> parseArrayOfStrings(Result result) throws IOException {
+    ObjectMapper mapper = new ObjectMapper();
+    String[] strings =
+        mapper.readValue(
+            contentAsString(result),
+            TypeFactory.defaultInstance().constructArrayType(String.class));
+    return Arrays.asList(strings);
   }
 
   private void setupDiskUpdateTest(

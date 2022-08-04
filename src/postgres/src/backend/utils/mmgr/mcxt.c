@@ -28,19 +28,28 @@
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "pg_yb_utils.h"
 
-YbPgMemTracker PgMemTracker = PG_MEM_TRACKER_INIT;
+YbPgMemTracker PgMemTracker = {0};
 
 /*
  * A helper function to take snapshot of current memory usage.
  * It includes current PG memory usage plus current Tcmalloc usage by
  * pggate.
+ * Extracting PgGate memory consumption is platform dependent.
+ * Only using PG's memory context's consumption and skip collecting pggate's
+ * memory consumption when TCmalloc is not enabled. This will miss PgGate's
+ * memory consumption but it still shows a major portion of memory consumption
+ * during an execution.
  */
 static Size
 SnapshotMemory()
 {
+#ifdef TCMALLOC_ENABLED
 	int64_t cur_tc_actual_sz = 0;
-	YBCGetPgggateHeapConsumption(&cur_tc_actual_sz);
-	return PgMemTracker.pg_cur_mem_bytes + cur_tc_actual_sz;
+	YBCGetPgggateCurrentAllocatedBytes(&cur_tc_actual_sz);
+	return cur_tc_actual_sz;
+#else
+	return PgMemTracker.pg_cur_mem_bytes;
+#endif
 }
 
 void
@@ -55,17 +64,31 @@ YbPgMemUpdateMax()
 }
 
 void
-YbPgMemAddConsumption(const Size sz)
+YbPgMemAddConsumption(Size sz)
 {
 	PgMemTracker.pg_cur_mem_bytes += sz;
+	/*
+	 * Try to track PG's memory consumption by the root MemTracker.
+	 * Consume the current PG's memory consumption instead the sz bytes since
+	 * the root MemTracker is initiated, to compensate the missed memory
+	 * consumption since the process starts.
+	 */
+	PgMemTracker.pggate_alive = YBCTryMemConsume(
+		PgMemTracker.pggate_alive ? sz : PgMemTracker.pg_cur_mem_bytes);
+
 	/* Only update max memory when memory is increasing */
 	YbPgMemUpdateMax();
 }
 
 void
-YbPgMemSubConsumption(const Size sz)
+YbPgMemSubConsumption(Size sz)
 {
-	PgMemTracker.pg_cur_mem_bytes -= sz;
+	// Avoid overflow when subtracting sz.
+	PgMemTracker.pg_cur_mem_bytes = Max(PgMemTracker.pg_cur_mem_bytes - sz, 0);
+	// Only call release if pggate is alive, and update its liveness from the
+	// return value.
+	if (PgMemTracker.pggate_alive)
+		PgMemTracker.pggate_alive = YBCTryMemRelease(sz);
 }
 
 void

@@ -77,7 +77,7 @@ DROP FOREIGN DATA WRAPPER foo;
 SET ROLE regress_test_role;
 CREATE FOREIGN DATA WRAPPER foo; -- ERROR
 ERROR:  permission denied to create foreign-data wrapper "foo"
-HINT:  Must be superuser or yb_fdw role member to create a foreign-data wrapper.
+HINT:  Must be superuser or a member of the yb_fdw role to create a foreign-data wrapper.
 RESET ROLE;
 CREATE FOREIGN DATA WRAPPER foo VALIDATOR postgresql_fdw_validator;
 \dew+
@@ -154,7 +154,7 @@ ERROR:  option "b" provided more than once
 SET ROLE regress_test_role;
 ALTER FOREIGN DATA WRAPPER foo OPTIONS (ADD d '5');         -- ERROR
 ERROR:  permission denied to alter foreign-data wrapper "foo"
-HINT:  Must be superuser or yb_fdw role member to alter a foreign-data wrapper.
+HINT:  Must be superuser or a member of the yb_fdw role to alter a foreign-data wrapper.
 SET ROLE regress_test_role_super;
 ALTER FOREIGN DATA WRAPPER foo OPTIONS (ADD d '5');
 \dew+
@@ -168,13 +168,13 @@ ALTER FOREIGN DATA WRAPPER foo OPTIONS (ADD d '5');
 
 ALTER FOREIGN DATA WRAPPER foo OWNER TO regress_test_role;  -- ERROR
 ERROR:  permission denied to change owner of foreign-data wrapper "foo"
-HINT:  Must be superuser or yb_fdw role member to change owner of a foreign-data wrapper.
+HINT:  Must be superuser or a member of the yb_fdw role to change owner of a foreign-data wrapper.
 ALTER FOREIGN DATA WRAPPER foo OWNER TO regress_test_role_super;
 ALTER ROLE regress_test_role_super NOSUPERUSER;
 SET ROLE regress_test_role_super;
 ALTER FOREIGN DATA WRAPPER foo OPTIONS (ADD e '6');         -- ERROR
 ERROR:  permission denied to alter foreign-data wrapper "foo"
-HINT:  Must be superuser or yb_fdw role member to alter a foreign-data wrapper.
+HINT:  Must be superuser or a member of the yb_fdw role to alter a foreign-data wrapper.
 RESET ROLE;
 \dew+
                                                         List of foreign-data wrappers
@@ -1168,13 +1168,13 @@ WARNING:  changing the foreign-data wrapper validator can cause the options for 
 SET ROLE regress_unprivileged_role;
 CREATE FOREIGN DATA WRAPPER foobar;                             -- ERROR
 ERROR:  permission denied to create foreign-data wrapper "foobar"
-HINT:  Must be superuser or yb_fdw role member to create a foreign-data wrapper.
+HINT:  Must be superuser or a member of the yb_fdw role to create a foreign-data wrapper.
 ALTER FOREIGN DATA WRAPPER foo OPTIONS (gotcha 'true');         -- ERROR
 ERROR:  permission denied to alter foreign-data wrapper "foo"
-HINT:  Must be superuser or yb_fdw role member to alter a foreign-data wrapper.
+HINT:  Must be superuser or a member of the yb_fdw role to alter a foreign-data wrapper.
 ALTER FOREIGN DATA WRAPPER foo OWNER TO regress_unprivileged_role; -- ERROR
 ERROR:  permission denied to change owner of foreign-data wrapper "foo"
-HINT:  Must be superuser or yb_fdw role member to change owner of a foreign-data wrapper.
+HINT:  Must be superuser or a member of the yb_fdw role to change owner of a foreign-data wrapper.
 DROP FOREIGN DATA WRAPPER foo;                                  -- ERROR
 ERROR:  must be owner of foreign-data wrapper foo
 GRANT USAGE ON FOREIGN DATA WRAPPER foo TO regress_test_role;   -- ERROR
@@ -1201,10 +1201,10 @@ GRANT USAGE ON FOREIGN DATA WRAPPER foo TO regress_unprivileged_role WITH GRANT 
 SET ROLE regress_unprivileged_role;
 CREATE FOREIGN DATA WRAPPER foobar;                             -- ERROR
 ERROR:  permission denied to create foreign-data wrapper "foobar"
-HINT:  Must be superuser or yb_fdw role member to create a foreign-data wrapper.
+HINT:  Must be superuser or a member of the yb_fdw role to create a foreign-data wrapper.
 ALTER FOREIGN DATA WRAPPER foo OPTIONS (gotcha 'true');         -- ERROR
 ERROR:  permission denied to alter foreign-data wrapper "foo"
-HINT:  Must be superuser or yb_fdw role member to alter a foreign-data wrapper.
+HINT:  Must be superuser or a member of the yb_fdw role to alter a foreign-data wrapper.
 DROP FOREIGN DATA WRAPPER foo;                                  -- ERROR
 ERROR:  must be owner of foreign-data wrapper foo
 GRANT USAGE ON FOREIGN DATA WRAPPER postgresql TO regress_test_role; -- WARNING

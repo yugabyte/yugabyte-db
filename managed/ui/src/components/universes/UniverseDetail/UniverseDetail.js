@@ -27,8 +27,7 @@ import { QueriesViewer } from '../../queries';
 import { isEmptyObject, isNonEmptyObject } from '../../../utils/ObjectUtils';
 import {
   isKubernetesUniverse,
-  isPausableUniverse,
-  isUniverseType
+  isPausableUniverse
 } from '../../../utils/UniverseUtils';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { getPrimaryCluster } from '../../../utils/UniverseUtils';
@@ -248,10 +247,6 @@ class UniverseDetail extends Component {
       getPromiseState(currentUniverse).isSuccess() &&
       currentUniverse.data.universeDetails.capability === 'READ_ONLY';
 
-    const isProviderK8S =
-      getPromiseState(currentUniverse).isSuccess() &&
-      isUniverseType(currentUniverse.data, 'kubernetes');
-
     const providerUUID = primaryCluster?.userIntent?.provider;
     const provider = providers.data.find((provider) => provider.uuid === providerUUID);
 
@@ -358,7 +353,9 @@ class UniverseDetail extends Component {
             unmountOnExit={true}
             disabled={isDisabled(currentCustomer.data.features, 'universes.details.tables')}
           >
-            <ListTablesContainer />
+            <ListTablesContainer
+             fetchUniverseTables={this.props.fetchUniverseTables}
+            />
           </Tab.Pane>
         ),
 
@@ -692,7 +689,7 @@ class UniverseDetail extends Component {
                         </YBMenuItem>
                       )}
 
-                      {!isReadOnlyUniverse && !universePaused && !isProviderK8S && (
+                      {!isReadOnlyUniverse && !universePaused && (
                         <YBMenuItem
                           disabled={updateInProgress}
                           to={`/universes/${uuid}/edit/async`}

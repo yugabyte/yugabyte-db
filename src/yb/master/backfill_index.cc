@@ -863,7 +863,8 @@ Status BackfillTable::WaitForTabletSplitting() {
   tablet_split_manager->DisableSplittingForBackfillingTable(indexed_table_->id());
   CoarseTimePoint deadline = CoarseMonoClock::Now() +
                              FLAGS_index_backfill_tablet_split_completion_timeout_sec * 1s;
-  while (!tablet_split_manager->IsTabletSplittingComplete(*indexed_table_)) {
+  while (!tablet_split_manager->IsTabletSplittingComplete(*indexed_table_,
+                                                          false /* wait_for_parent_deletion */)) {
     if (CoarseMonoClock::Now() > deadline) {
       return STATUS(TimedOut, "Tablet splitting did not complete after being disabled; cannot "
                               "safely backfill the index.");
@@ -922,10 +923,14 @@ void BackfillTable::Done(const Status& s, const std::unordered_set<TableId>& fai
 
 Status BackfillTable::MarkIndexesAsFailed(
     const std::unordered_set<TableId>& failed_indexes, const string& message) {
+  if (indexes_to_build() == failed_indexes) {
+    backfill_job_->SetState(MonitoredTaskState::kFailed);
+  }
   return MarkIndexesAsDesired(failed_indexes, BackfillJobPB::FAILED, message);
 }
 
 Status BackfillTable::MarkAllIndexesAsFailed() {
+  backfill_job_->SetState(MonitoredTaskState::kFailed);
   RETURN_NOT_OK_PREPEND(MarkIndexesAsDesired(indexes_to_build(), BackfillJobPB::FAILED, "failed"),
                         "Failed to mark backfill as failed.");
   return Status::OK();

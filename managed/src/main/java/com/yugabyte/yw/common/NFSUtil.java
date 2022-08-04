@@ -9,6 +9,7 @@ import com.yugabyte.yw.models.configs.data.CustomerConfigStorageNFSData;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.StringJoiner;
+import org.apache.commons.collections.CollectionUtils;
 import org.yb.ybc.CloudStoreSpec;
 
 @Singleton
@@ -27,15 +28,6 @@ public class NFSUtil implements StorageUtil {
     return YbcBackupUtil.buildCloudStoreSpec(bucket, cloudDir, credsMap, Util.NFS);
   }
 
-  @Override
-  public CloudStoreSpec createCloudStoreSpec(
-      CustomerConfigData configData, String commonDir, String backupLocation) {
-    String cloudDir = commonDir + "/";
-    String bucket = DEFAULT_YUGABYTE_NFS_BUCKET;
-    Map<String, String> credsMap = createCredsMapYbc(configData);
-    return YbcBackupUtil.buildCloudStoreSpec(bucket, cloudDir, credsMap, Util.NFS);
-  }
-
   private Map<String, String> createCredsMapYbc(CustomerConfigData configData) {
     CustomerConfigStorageNFSData nfsData = (CustomerConfigStorageNFSData) configData;
     Map<String, String> nfsMap = new HashMap<>();
@@ -43,10 +35,15 @@ public class NFSUtil implements StorageUtil {
     return nfsMap;
   }
 
-  @Override
-  public String createDirPath(String bucket, String dir) {
-    StringJoiner joiner = new StringJoiner("/");
-    joiner.add(bucket).add(dir);
-    return joiner.toString();
+  public Map<String, String> getRegionLocationsMap(CustomerConfigData configData) {
+    Map<String, String> regionLocationsMap = new HashMap<>();
+    CustomerConfigStorageNFSData nfsData = (CustomerConfigStorageNFSData) configData;
+    if (CollectionUtils.isNotEmpty(nfsData.regionLocations)) {
+      nfsData
+          .regionLocations
+          .stream()
+          .forEach(rL -> regionLocationsMap.put(rL.region, rL.location));
+    }
+    return regionLocationsMap;
   }
 }

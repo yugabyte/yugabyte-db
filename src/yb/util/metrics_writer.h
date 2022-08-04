@@ -24,7 +24,9 @@ namespace yb {
 
 class PrometheusWriter {
  public:
-  explicit PrometheusWriter(std::stringstream* output);
+  explicit PrometheusWriter(
+      std::stringstream* output,
+      AggregationMetricLevel aggregation_Level = AggregationMetricLevel::kTable);
 
   virtual ~PrometheusWriter();
 
@@ -59,17 +61,24 @@ class PrometheusWriter {
 
   void InvalidAggregationFunction(AggregationFunction aggregation_function);
 
-  struct TableData {
+  void AddAggregatedEntry(const std::string& key,
+                          const MetricEntity::AttributeMap& attr,
+                          const std::string& name, int64_t value,
+                          AggregationFunction aggregation_function);
+
+  struct AggregatedData {
     MetricEntity::AttributeMap attributes;
     std::map<std::string, int64_t> values;
   };
 
-  // Map from table_id to table data.
-  std::map<std::string, TableData> tables_;
+  // Map from table_id to aggregated data.
+  std::map<std::string, AggregatedData> aggregated_data_;
   // Output stream
   std::stringstream* output_;
   // Timestamp for all metrics belonging to this writer instance.
   int64_t timestamp_;
+
+  AggregationMetricLevel aggregation_level_;
 };
 
 // Native Metrics Storage Writer - writes prometheus metrics into system table.

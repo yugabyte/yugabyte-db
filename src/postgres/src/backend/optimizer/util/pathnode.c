@@ -17,6 +17,7 @@
 #include <math.h>
 
 #include "miscadmin.h"
+#include "access/yb_scan.h"
 #include "foreign/fdwapi.h"
 #include "nodes/extensible.h"
 #include "nodes/nodeFuncs.h"
@@ -967,7 +968,23 @@ create_seqscan_path(PlannerInfo *root, RelOptInfo *rel,
 	pathnode->parallel_workers = parallel_workers;
 	pathnode->pathkeys = NIL;	/* seqscan has unordered result */
 
-	cost_seqscan(pathnode, root, rel, pathnode->param_info);
+	/*
+	 * The ybcCostEstimate is used to cost a ForeignScan node on YB table,
+	 * so use it here too, to get consistent results.
+	 */
+	if (rel->is_yb_relation)
+	{
+		ybcCostEstimate(rel, YBC_FULL_SCAN_SELECTIVITY,
+						false, /* is_backward_scan */
+						true, /* is_seq_scan */
+						false, /* is_uncovered_idx_scan */
+						&pathnode->startup_cost,
+						&pathnode->total_cost,
+						rel->reltablespace);
+		pathnode->rows = rel->rows;
+	}
+	else
+		cost_seqscan(pathnode, root, rel, pathnode->param_info);
 
 	return pathnode;
 }

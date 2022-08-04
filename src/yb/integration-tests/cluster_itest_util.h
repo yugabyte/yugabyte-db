@@ -91,6 +91,7 @@ namespace yb {
 class ExternalMiniCluster;
 class HostPort;
 class MonoDelta;
+class MiniCluster;
 class Schema;
 class Status;
 
@@ -443,6 +444,11 @@ Status GetTableLocations(ExternalMiniCluster* cluster,
                          RequireTabletsRunning require_tablets_running,
                          master::GetTableLocationsResponsePB* table_locations);
 
+Status GetTableLocations(MiniCluster* cluster,
+                         const client::YBTableName& table_name,
+                         RequireTabletsRunning require_tablets_running,
+                         master::GetTableLocationsResponsePB* table_locations);
+
 // Wait for the specified number of voters to be reported to the config on the
 // master for the specified tablet.
 Status WaitForNumVotersInConfigOnMaster(
@@ -497,13 +503,6 @@ Status GetLastOpIdForMasterReplica(
     const consensus::OpIdType opid_type,
     const MonoDelta& timeout,
     OpIdPB* op_id);
-
-Status WaitForAllIntentsApplied(TServerDetails* ts, const  MonoTime& deadline);
-
-Status WaitForAllIntentsApplied(TServerDetails* ts, const MonoDelta& timeout);
-
-Status WaitForAllIntentsApplied(
-    const vector<TServerDetails*>& tablet_servers, const MonoDelta& timeout);
 
 } // namespace itest
 } // namespace yb

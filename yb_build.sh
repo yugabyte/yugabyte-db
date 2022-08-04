@@ -720,6 +720,7 @@ java_only=false
 cmake_only=false
 run_python_tests=false
 cmake_extra_args=""
+pgo_data_path=""
 predefined_build_root=""
 java_test_name=""
 show_report=true
@@ -979,10 +980,10 @@ while [[ $# -gt 0 ]]; do
       set_cxx_test_name "$1"
     ;;
     master|yb-master)
-      make_targets+=( "yb-master" )
+      make_targets+=( "yb-master" "gen_auto_flags_json" )
     ;;
     tserver|yb-tserver)
-      make_targets+=( "yb-tserver" )
+      make_targets+=( "yb-tserver" "gen_auto_flags_json" )
     ;;
     initdb)
       set_initdb_target
@@ -995,7 +996,7 @@ while [[ $# -gt 0 ]]; do
       make_targets+=( "postgres" )
     ;;
     daemons|yb-daemons)
-      make_targets+=( "yb-master" "yb-tserver" "postgres" "yb-admin" )
+      make_targets+=( "yb-master" "yb-tserver" "gen_auto_flags_json" "postgres" "yb-admin" )
     ;;
     packaged|packaged-targets)
       for packaged_target in $( "$YB_SRC_ROOT"/build-support/list_packaged_targets.py ); do
@@ -1040,6 +1041,14 @@ while [[ $# -gt 0 ]]; do
       fi
       cmake_extra_args+=$2
       shift
+    ;;
+    --pgo-data-path)
+      ensure_option_has_arg "$@"
+      pgo_data_path=$(realpath "$2")
+      shift
+      if [[ ! -f $pgo_data_path ]]; then
+        fatal "Profile data file doesn't exist: $pgo_data_path"
+      fi
     ;;
     --make-ninja-extra-args)
       ensure_option_has_arg "$@"
@@ -1354,6 +1363,10 @@ if ! "$build_java" && "$resolve_java_dependencies"; then
   fatal "--resolve-java-dependencies is not allowed if not building Java code"
 fi
 
+if [[ $build_type == "prof_use" ]] && [[ $pgo_data_path == "" ]]; then
+  fatal "Please set --pgo-data-path path/to/pgo/data"
+fi
+
 # End of post-processing and validating command-line arguments.
 
 # -------------------------------------------------------------------------------------------------
@@ -1524,6 +1537,10 @@ if "$no_tcmalloc"; then
   cmake_opts+=( -DYB_TCMALLOC_ENABLED=0 )
 fi
 
+if [[ $pgo_data_path != "" ]]; then
+  cmake_opts+=( "-DYB_PGO_DATA_PATH=$pgo_data_path" )
+fi
+
 detect_num_cpus_and_set_make_parallelism
 if "$build_cxx"; then
   log "Using make parallelism of $YB_MAKE_PARALLELISM" \
@@ -1537,9 +1554,8 @@ create_build_descriptor_file
 create_build_root_file
 
 if [[ ${#make_targets[@]} -eq 0 && -n $java_test_name ]]; then
-  # Build only yb-master / yb-tserver / postgres / update_ysql_migrations when we're only trying
-  # to run a Java test.
-  make_targets+=( yb-master yb-tserver postgres update_ysql_migrations )
+  # Build only a subset of targets when we're only trying to run a Java test.
+  make_targets+=( yb-master yb-tserver gen_auto_flags_json postgres update_ysql_migrations )
 fi
 
 if [[ $build_type == "compilecmds" ]]; then

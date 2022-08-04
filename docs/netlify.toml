@@ -115,6 +115,54 @@
   to = "https://docs-archive.yugabyte.com/v2.2/"
   force = true
 
+[[redirects]]
+  from = "/v2.4/*"
+  to = "https://docs-archive.yugabyte.com/v2.4/"
+  force = true
+
+# Build an app was in quick-start, now in develop
+
+[[redirects]]
+  from="/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-c/*"
+  to = "/preview/develop/build-apps/c/cloud-ysql-c/"
+  force = true
+[[redirects]]
+  from="/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-csharp/*"
+  to = "/preview/develop/build-apps/csharp/cloud-ysql-csharp/"
+  force = true
+[[redirects]]
+  from="/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-cpp/*"
+  to = "/preview/develop/build-apps/cpp/cloud-ysql-cpp/"
+  force = true
+[[redirects]]
+  from="/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-go/*"
+  to = "/preview/develop/build-apps/go/cloud-ysql-go/"
+  force = true
+[[redirects]]
+  from="/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-yb-jdbc/*"
+  to = "/preview/develop/build-apps/java/cloud-ysql-jdbc/"
+  force = true
+[[redirects]]
+  from="/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-node/*"
+  to = "/preview/develop/build-apps/nodejs/cloud-ysql-node/"
+  force = true
+[[redirects]]
+  from="/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-php/*"
+  to = "/preview/develop/build-apps/php/cloud-ysql-php/"
+  force = true
+[[redirects]]
+  from="/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-python/*"
+  to = "/preview/develop/build-apps/python/cloud-ysql-python/"
+  force = true
+[[redirects]]
+  from="/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-ruby/*"
+  to = "/preview/develop/build-apps/ruby/cloud-ysql-ruby/"
+  force = true
+[[redirects]]
+  from="/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-rust/*"
+  to = "/preview/develop/build-apps/rust/cloud-ysql-rust/"
+  force = true
+
 # Redirect older versions of specific sections
 
 [[redirects]]
@@ -139,7 +187,7 @@
 
 [[redirects]]
   from = "/:version/integrations/*"
-  to = "/preview/integrations/"
+  to = "/preview/integrations/:splat"
   force = true
 
 # (this is the old version of integrations)
@@ -168,22 +216,40 @@
   to = "/preview/yedis/"
   force = true
 
+# Make sure stable and preview quick-starts don't get redirected.
+# (All other versions get redirected to preview.)
+
+[[redirects]]
+  from = "/stable/quick-start/*"
+  to = "/stable/quick-start/:splat"
+  status = 200
+
+[[redirects]]
+  from = "/preview/quick-start/*"
+  to = "/preview/quick-start/:splat"
+  status = 200
+
 # Stable quick-starts need defaults,
 # since archiving from /preview removes aliases
 
 [[redirects]]
   from = "/stable/quick-start/install/"
-  to = "/preview/quick-start/#install-yugabytedb"
+  to = "/stable/quick-start/#install-yugabytedb"
   force = true
 
 [[redirects]]
   from = "/stable/quick-start/create-local-cluster/"
-  to = "/preview/quick-start/#create-a-local-cluster"
+  to = "/stable/quick-start/#create-a-local-cluster"
   force = true
 
 [[redirects]]
   from = "/stable/quick-start/explore/"
   to = "/stable/quick-start/explore/ysql/"
+  force = true
+
+[[redirects]]
+  from = ":version/quick-start/*"
+  to = "/preview/quick-start-yugabytedb-managed/"
   force = true
 
 # Yugabyte Extensions top hit

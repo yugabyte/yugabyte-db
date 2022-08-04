@@ -11,11 +11,11 @@ menu:
 type: docs
 ---
 
-In this tutorial, you are first going to setup [JanusGraph](https://janusgraph.org/) to work with YugabyteDB as the underlying database. Then, using the Gremlin console, you are going to load some data and run some graph commands.
+In this tutorial, you first set up [JanusGraph](https://janusgraph.org/) to work with YugabyteDB as the underlying database. Then, using the Gremlin console, you load some data and run some graph commands.
 
 ## 1. Start local cluster
 
-Start a cluster on your [local computer](../../quick-start/install/). Check that you are able to connect to YugabyteDB using `ycqlsh` by executing the following:
+Start a cluster on your [local computer](../../quick-start/). Check that you are able to connect to YugabyteDB using `ycqlsh` by executing the following:
 
 ```sh
 $ ycqlsh

@@ -42,6 +42,7 @@
 #include <vector>
 
 #include <gtest/gtest_prod.h>
+#include <rapidjson/document.h>
 
 #include "yb/common/entity_ids_types.h"
 
@@ -52,6 +53,7 @@
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/stringprintf.h"
+#include "yb/gutil/strings/substitute.h"
 
 #include "yb/integration-tests/mini_cluster_base.h"
 
@@ -60,6 +62,9 @@
 #include "yb/tserver/tserver_fwd.h"
 #include "yb/tserver/tserver_types.pb.h"
 
+#include "yb/util/curl_util.h"
+#include "yb/util/jsonreader.h"
+#include "yb/util/metrics.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
@@ -68,12 +73,13 @@
 
 namespace yb {
 
+using rapidjson::Value;
+using strings::Substitute;
+
 class ExternalDaemon;
 class ExternalMaster;
 class ExternalTabletServer;
 class HostPort;
-class MetricPrototype;
-class MetricEntityPrototype;
 class OpIdPB;
 class NodeInstancePB;
 class Subprocess;
@@ -305,6 +311,12 @@ class ExternalMiniCluster : public MiniClusterBase {
   // This API waits for the commit indices of all the master peers to reach the target index.
   Status WaitForMastersToCommitUpTo(int64_t target_index);
 
+  Status WaitForAllIntentsApplied(const MonoDelta& timeout);
+
+  Status WaitForAllIntentsApplied(ExternalTabletServer* ts, const MonoDelta& timeout);
+
+  Status WaitForAllIntentsApplied(ExternalTabletServer* ts, const MonoTime& deadline);
+
   // If this cluster is configured for a single non-distributed master, return the single master or
   // NULL if the master is not started. Exits with a CHECK failure if there are multiple masters.
   ExternalMaster* master() const;
@@ -464,6 +476,14 @@ class ExternalMiniCluster : public MiniClusterBase {
   Status WaitForMasterToMarkTSDead(
       int ts_idx, MonoDelta deadline = MonoDelta::FromSeconds(120) * kTimeMultiplier);
 
+  // Return a pointer to the flags used for master.  Modifying these flags will only
+  // take effect on new master creation.
+  std::vector<std::string>* mutable_extra_master_flags() { return &opts_.extra_master_flags; }
+
+  // Return a pointer to the flags used for tserver.  Modifying these flags will only
+  // take effect on new tserver creation.
+  std::vector<std::string>* mutable_extra_tserver_flags() { return &opts_.extra_tserver_flags; }
+
  protected:
   FRIEND_TEST(MasterFailoverTest, TestKillAnyMaster);
 
@@ -592,22 +612,31 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
   // take effect on the next restart.
   std::vector<std::string>* mutable_flags() { return &extra_flags_; }
 
-  // Retrieve the value of a given metric from this server. The metric must be of int64_t type.
+  // Retrieve the value of a given type metric from this server.
   //
   // 'value_field' represents the particular field of the metric to be read.  For example, for a
   // counter or gauge, this should be 'value'. For a histogram, it might be 'total_count' or 'mean'.
   //
   // 'entity_id' may be NULL, in which case the first entity of the same type as 'entity_proto' will
   // be matched.
-  Result<int64_t> GetInt64Metric(const MetricEntityPrototype* entity_proto,
-                                 const char* entity_id,
-                                 const MetricPrototype* metric_proto,
-                                 const char* value_field) const;
 
-  Result<int64_t> GetInt64Metric(const char* entity_proto_name,
-                                 const char* entity_id,
-                                 const char* metric_proto_name,
-                                 const char* value_field) const;
+  template <class ValueType>
+  Result<ValueType> GetMetric(const MetricEntityPrototype* entity_proto,
+                              const char* entity_id,
+                              const MetricPrototype* metric_proto,
+                              const char* value_field) const {
+    return GetMetricFromHost<ValueType>(
+        bound_http_hostport(), entity_proto, entity_id, metric_proto, value_field);
+  }
+
+  template <class ValueType>
+  Result<ValueType> GetMetric(const char* entity_proto_name,
+                              const char* entity_id,
+                              const char* metric_proto_name,
+                              const char* value_field) const {
+    return GetMetricFromHost<ValueType>(
+        bound_http_hostport(), entity_proto_name, entity_id, metric_proto_name, value_field);
+  }
 
   std::string LogPrefix();
 
@@ -615,17 +644,79 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
 
   void RemoveLogListener(StringListener* listener);
 
-  static Result<int64_t> GetInt64MetricFromHost(const HostPort& hostport,
-                                                const MetricEntityPrototype* entity_proto,
-                                                const char* entity_id,
-                                                const MetricPrototype* metric_proto,
-                                                const char* value_field);
+  template <class ValueType>
+  static Result<ValueType> GetMetricFromHost(const HostPort& hostport,
+                                             const MetricEntityPrototype* entity_proto,
+                                             const char* entity_id,
+                                             const MetricPrototype* metric_proto,
+                                             const char* value_field) {
+    return GetMetricFromHost<ValueType>(hostport, entity_proto->name(), entity_id,
+                                        metric_proto->name(), value_field);
+  }
 
-  static Result<int64_t> GetInt64MetricFromHost(const HostPort& hostport,
-                                                const char* entity_proto_name,
-                                                const char* entity_id,
-                                                const char* metric_proto_name,
-                                                const char* value_field);
+  template <class ValueType>
+  static Result<ValueType> GetMetricFromHost(const HostPort& hostport,
+                                             const char* entity_proto_name,
+                                             const char* entity_id,
+                                             const char* metric_proto_name,
+                                             const char* value_field) {
+    // Fetch metrics whose name matches the given prototype.
+    string url = Substitute(
+        "http://$0/jsonmetricz?metrics=$1",
+        hostport.ToString(),
+        metric_proto_name);
+    EasyCurl curl;
+    faststring dst;
+    RETURN_NOT_OK(curl.FetchURL(url, &dst));
+
+    // Parse the results, beginning with the top-level entity array.
+    JsonReader r(dst.ToString());
+    RETURN_NOT_OK(r.Init());
+    vector<const Value*> entities;
+    RETURN_NOT_OK(r.ExtractObjectArray(r.root(), NULL, &entities));
+    for (const Value* entity : entities) {
+      // Find the desired entity.
+      string type;
+      RETURN_NOT_OK(r.ExtractString(entity, "type", &type));
+      if (type != entity_proto_name) {
+        continue;
+      }
+      if (entity_id) {
+        string id;
+        RETURN_NOT_OK(r.ExtractString(entity, "id", &id));
+        if (id != entity_id) {
+          continue;
+        }
+      }
+
+      // Find the desired metric within the entity.
+      vector<const Value*> metrics;
+      RETURN_NOT_OK(r.ExtractObjectArray(entity, "metrics", &metrics));
+      for (const Value* metric : metrics) {
+        string name;
+        RETURN_NOT_OK(r.ExtractString(metric, "name", &name));
+        if (name != metric_proto_name) {
+          continue;
+        }
+        return ExtractMetricValue<ValueType>(r, metric, value_field);
+      }
+    }
+    string msg;
+    if (entity_id) {
+      msg = Substitute("Could not find metric $0.$1 for entity $2",
+                       entity_proto_name, metric_proto_name,
+                       entity_id);
+    } else {
+      msg = Substitute("Could not find metric $0.$1",
+                       entity_proto_name, metric_proto_name);
+    }
+    return STATUS(NotFound, msg);
+  }
+
+  template <class ValueType>
+  static Result<ValueType> ExtractMetricValue(const JsonReader& r,
+                                              const Value* object,
+                                              const char* field);
 
   // Get the current value of the flag for the given daemon.
   Result<std::string> GetFlag(const std::string& flag);

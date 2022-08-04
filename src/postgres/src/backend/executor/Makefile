@@ -29,6 +29,6 @@ OBJS = execAmi.o execCurrent.o execExpr.o execExprInterp.o \
        nodeCtescan.o nodeNamedtuplestorescan.o nodeWorktablescan.o \
        nodeGroup.o nodeSubplan.o nodeSubqueryscan.o nodeTidscan.o \
        nodeForeignscan.o nodeWindowAgg.o tstoreReceiver.o tqueue.o spi.o \
-       nodeTableFuncscan.o ybc_fdw.o ybcModifyTable.o ybcExpr.o
+       nodeTableFuncscan.o ybc_fdw.o ybcModifyTable.o ybcExpr.o nodeYbSeqscan.o
 
 include $(top_srcdir)/src/backend/common.mk

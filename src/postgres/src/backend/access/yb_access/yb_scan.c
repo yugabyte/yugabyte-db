@@ -21,6 +21,7 @@
  *--------------------------------------------------------------------------------------------------
  */
 
+#include <limits.h>
 #include <string.h>
 #include "postgres.h"
 
@@ -522,6 +523,10 @@ ybcSetupScanPlan(bool xs_want_itup, YbScanDesc ybScan, YbScanPlan scan_plan)
 		}
 		else if (ybScan->key[i].sk_flags & SK_IS_HASHED)
 		{
+			/*
+			 * No corresponding user table column to be assigned to the
+			 * yb_hash_code search key slot.
+			 */
 			ybScan->target_key_attnums[i] = InvalidAttrNumber;
 			scan_plan->bind_key_attnums[i] = InvalidAttrNumber;
 		}
@@ -608,6 +613,62 @@ static bool IsSearchNull(int sk_flags) {
  */
 static bool IsSearchArray(int sk_flags) {
 	return sk_flags == SK_SEARCHARRAY;
+}
+
+/*
+ * Is the condition never TRUE because of c {=|<|<=|>=|>} NULL, etc.?
+ */
+static bool IsNeverTrueNullCond(int sk_flags) {
+	return (sk_flags & SK_ISNULL) != 0
+		&& (sk_flags & (SK_SEARCHNULL | SK_SEARCHNOTNULL)) == 0;
+}
+
+/*
+ * Check whether the conditions lead to empty result regardless of the values
+ * in the index because of always FALSE or UNKNOWN conditions.
+ * Return true if the combined key conditions are unsatisfiable.
+ */
+static bool
+checkEmptyResultCondition(int nkeys, ScanKey key) {
+	for (int i = 0; i < nkeys; i++)
+	{
+		ScanKey skey = &key[i];
+		if (IsNeverTrueNullCond(skey->sk_flags))
+		{
+			return true;
+		}
+		if (skey->sk_flags & SK_ROW_HEADER)
+		{
+			ScanKey subkey = (ScanKey) DatumGetPointer(skey->sk_argument);
+
+			/*
+			 * ROW value comparison: ROW(x, y, z) {<|<=|>|>=} ROW(a, b, c)
+			 * is equivalent to:
+			 *   (x {<|>} a) OR (x = a AND y {<|>} b)
+			 *     OR (x = a AND y = b AND z {<|<=|>|>=} c)
+			 * when a is NULL then each OR'ed term is either UNKNOWN or FALSE,
+			 * hence the entire comparison results in UNKNOWN if the first item
+			 * in the ROW value is NULL.
+			 */
+			if (skey->sk_strategy != BTEqualStrategyNumber
+				&& IsNeverTrueNullCond(subkey->sk_flags))
+				return true;
+
+			/*
+			 * In case of equality, ROW(x, y, z, ...) = ROW(a, b, c, ...)
+			 * is equivalent to:
+			 *   (x = a) AND (y = b) AND (z = c) ...
+			 * NULL at any position makes the entire comparision either UNKNOWN
+			 * or FALSE.
+			 */
+			for (; !(subkey->sk_flags & SK_ROW_END); subkey++)
+			{
+				if (IsNeverTrueNullCond(subkey->sk_flags))
+					return true;
+			}
+		}
+	}
+	return false;
 }
 
 static bool
@@ -741,29 +802,61 @@ static bool YbIsOidType(Oid typid) {
 	}
 }
 
+static bool YbIsIntegerInRange(Datum value, Oid value_typid, int min, int max) {
+	int64 val;
+	switch (value_typid)
+	{
+		case INT2OID:
+			val = (int64) DatumGetInt16(value);
+			break;
+		case INT4OID:
+			val = (int64) DatumGetInt32(value);
+			break;
+		case INT8OID:
+			val = DatumGetInt64(value);
+			break;
+		default:
+			ereport(ERROR,
+					(errcode(ERRCODE_DATATYPE_MISMATCH),
+					 errmsg("not an integer type")));
+	}
+	return val >= min && val <= max;
+}
+
 /*
  * Return true if a scan key column type is compatible with value type. 'equal_strategy' is true
  * for BTEqualStrategyNumber.
  */
-static bool YbIsScanCompatible(Oid column_typid, Oid value_typid, bool equal_strategy) {
+static bool YbIsScanCompatible(Oid column_typid,
+							   Oid value_typid,
+							   bool equal_strategy,
+							   Datum value) {
 	if (column_typid == value_typid)
 		return true;
 
 	switch (column_typid)
 	{
 		case INT2OID:
+
 			/*
 			 * If column c0 has INT2OID type and value type is INT4OID, the value may overflow
 			 * INT2OID. For example, where clause condition "c0 = 65539" would become "c0 = 3"
 			 * and will unnecessarily fetch a row with key of 3. This will not affect correctness
-			 * because at upper Postgres layer "c0 = 65539" will be applied again to filter out
+			 * because at upper Postgres layer filtering will be subsequently applied for equality/
+			 * inequality conditions. For example, "c0 = 65539" will be applied again to filter out
 			 * this row. We prefer to bind scan key c0 to account for the common case where INT4OID
 			 * value does not overflow INT2OID, which happens in some system relation scan queries.
+			 *
+			 * For this purpose, specifically for inequalities, we return true when we are sure that
+			 * there isn't a data overflow. For instance, if column c0 has INT2OID and value type is
+			 * INT4OID, and its an inequality strategy, we check if the actual value is within the
+			 * bounds of INT2OID. If yes, then we return true, otherwise false.
 			 */
-			return equal_strategy ? (value_typid == INT4OID || value_typid == INT8OID) : false;
+			return equal_strategy ? (value_typid == INT4OID || value_typid == INT8OID) :
+				   YbIsIntegerInRange(value, value_typid, SHRT_MIN, SHRT_MAX);
 		case INT4OID:
 			return equal_strategy ? (value_typid == INT2OID || value_typid == INT8OID) :
-									value_typid == INT2OID;
+				   YbIsIntegerInRange(value, value_typid, INT_MIN, INT_MAX);
 		case INT8OID:
 			return value_typid == INT2OID || value_typid == INT4OID;
 
@@ -807,7 +900,7 @@ static bool YbCheckScanTypes(YbScanDesc ybScan, YbScanPlan scan_plan, int i, boo
 	return !OidIsValid(valtypid) ||
 			ybScan->key[i].sk_strategy == InvalidStrategy ||
 			YbIsScanCompatible(atttypid, valtypid,
-				ybScan->key[i].sk_strategy == BTEqualStrategyNumber) ||
+				ybScan->key[i].sk_strategy == BTEqualStrategyNumber, ybScan->key[i].sk_argument) ||
 			IsPolymorphicType(valtypid);
 }
 
@@ -1345,11 +1438,20 @@ ybcInitColumnFilter(YbColumnFilter *filter, YbScanDesc ybScan, Scan *pg_scan_pla
 	if (!pg_scan_plan)
 		return;
 
-	Bitmapset *items = NULL;
-	/* Collect bound key attributes */
+	/*
+	 * Start with an empty bms to represent "no column" instead of NULL, which
+	 * would indicate "all the columns".
+	 */
+	Bitmapset *items = bms_del_member(bms_make_singleton(0), 0);
+
+	/*
+	 * Collect bound key attributes. Skip InvalidAttrNumber in the yb_hash_code
+	 * search key slot so that it is not treated as "a whole row var".
+	 */
 	AttrNumber *sk_attno = ybScan->target_key_attnums;
-	for (AttrNumber *sk_attno_end = sk_attno + ybScan->nkeys; sk_attno != sk_attno_end; ++sk_attno)
-		items = bms_add_member(items, *sk_attno - min_attr + 1);
+	for (int i = 0; i < ybScan->nkeys; i++)
+		if (!IsHashCodeSearch(ybScan->key[i].sk_flags))
+			items = bms_add_member(items, sk_attno[i] - min_attr + 1);
 
 	ListCell *lc;
 	Index target_relid =
@@ -1439,6 +1541,63 @@ ybcSetupTargets(YbScanDesc ybScan, YbScanPlan scan_plan, Scan *pg_scan_plan) {
 }
 
 /*
+ * ybSetupScanQual
+ *
+ * Add remote filter expressions to the YbScanDesc.
+ * The expression are pushed down to DocDB and used to filter rows early to
+ * avoid sending them across network.
+ * Set is_primary to false if the filter expression is to apply to secondary
+ * index. In this case Var nodes must be properly adjusted to refer the index
+ * columns rather than main relation columns.
+ * For primary key scan or sequential scan is_primary should be true.
+ */
+static void
+ybSetupScanQual(YbScanDesc ybScan, List *qual, bool is_primary)
+{
+	ListCell   *lc;
+	foreach(lc, qual)
+	{
+		Expr *expr = (Expr *) lfirst(lc);
+		/* Create new PgExpr wrapper for the expression */
+		YBCPgExpr yb_expr = YBCNewEvalExprCall(ybScan->handle, expr);
+		/* Add the PgExpr to the statement */
+		HandleYBStatus(YbPgDmlAppendQual(ybScan->handle, yb_expr, is_primary));
+	}
+}
+
+/*
+ * ybSetupScanColumnRefs
+ *
+ * Add the list of column references used by pushed down expressions to the
+ * YbScanDesc.
+ * The colref list is expected to be the list of YbExprParamDesc nodes.
+ * Set is_primary to false if the filter expression is to apply to secondary
+ * index. In this case attno field values must be properly adjusted to refer
+ * the index columns rather than main relation columns.
+ * For primary key scan or sequential scan is_primary should be true.
+ */
+static void
+ybSetupScanColumnRefs(YbScanDesc ybScan, List *colrefs, bool is_primary)
+{
+	ListCell   *lc;
+	foreach(lc, colrefs)
+	{
+		YbExprParamDesc *param = lfirst_node(YbExprParamDesc, lc);
+		YBCPgTypeAttrs type_attrs = { param->typmod };
+		/* Create new PgExpr wrapper for the column reference */
+		YBCPgExpr yb_expr = YBCNewColumnRef(ybScan->handle,
+											param->attno,
+											param->typid,
+											param->collid,
+											&type_attrs);
+		/* Add the PgExpr to the statement */
+		HandleYBStatus(YbPgDmlAppendColumnRef(ybScan->handle,
+											  yb_expr,
+											  is_primary));
+	}
+}
+
+/*
  * Begin a scan for
  *   SELECT <Targets> FROM <Relation relation> USING <Relation index>
  * NOTES:
@@ -1451,11 +1610,18 @@ ybcSetupTargets(YbScanDesc ybScan, YbScanPlan scan_plan, Scan *pg_scan_plan) {
  *
  * - If "xs_want_itup" is true, Postgres layer is expecting an IndexTuple that has ybctid to
  *   identify the desired row.
+ * - "rel_remote" defines expressions to pushdown to remote relation scan
+ * - "idx_remote" defines expressions to pushdown to remote secondary index
+ *   scan. If the scan is not over a secondary index.
  */
 YbScanDesc
-ybcBeginScan(
-	Relation relation, Relation index, bool xs_want_itup, int nkeys, ScanKey key,
-	Scan *pg_scan_plan)
+ybcBeginScan(Relation relation,
+			 Relation index,
+			 bool xs_want_itup,
+			 int nkeys, ScanKey key,
+			 Scan *pg_scan_plan,
+			 PushdownExprs *rel_remote,
+			 PushdownExprs *idx_remote)
 {
 	if (nkeys > YB_MAX_SCAN_KEYS)
 		ereport(ERROR,
@@ -1468,30 +1634,62 @@ ybcBeginScan(
 	ybScan->key   = key;
 	ybScan->nkeys = nkeys;
 	ybScan->exec_params = NULL;
-	ybScan->quit_scan = false;
 	ybScan->relation = relation;
 	ybScan->index = index;
 
 	/* Setup the scan plan */
 	YbScanPlanData	scan_plan;
 	ybcSetupScanPlan(xs_want_itup, ybScan, &scan_plan);
-
-	/* Setup binds for the scan-key */
 	ybcSetupScanKeys(ybScan, &scan_plan);
-	ybcBindScanKeys(ybScan, &scan_plan);
 
-	/* Setup the scan targets with respect to postgres scan plan (i.e. set only required targets) */
-	ybcSetupTargets(ybScan, &scan_plan, pg_scan_plan);
+	/* Indicate bail out if there's an unsatisfiable condition  */
+	ybScan->quit_scan = checkEmptyResultCondition(nkeys, key);
 
-	/*
-	 * Set the current syscatalog version (will check that we are up to date).
-	 * Avoid it for syscatalog tables so that we can still use this for
-	 * refreshing the caches when we are behind.
-	 * Note: This works because we do not allow modifying schemas (alter/drop)
-	 * for system catalog tables.
-	 */
-	if (!IsSystemRelation(relation))
-		HandleYBStatus(YBCPgSetCatalogCacheVersion(ybScan->handle, yb_catalog_cache_version));
+	if (!ybScan->quit_scan) {
+		/* Setup binds for the scan-key */
+		ybcBindScanKeys(ybScan, &scan_plan);
+
+		/*
+		 * Setup the scan targets with respect to postgres scan plan
+		 * (i.e. set only required targets)
+		 */
+		ybcSetupTargets(ybScan, &scan_plan, pg_scan_plan);
+
+		/*
+		* Set up pushdown expressions.
+		* Sequential, IndexOnly and primary key scans are refer only one
+		* relation, and all expression they push down are in the rel_remote.
+		* Secondary index scan may have pushable expressions that refer columns
+		* not included in the index, those go to the rel_remote as well.
+		* Secondary index scan's expressions that refer only columns available
+		* from the index are go to the idx_remote and pushed down when the index
+		* is scanned.
+		*/
+		if (rel_remote != NULL)
+		{
+			ybSetupScanQual(ybScan, rel_remote->qual, true /* is_primary */);
+			ybSetupScanColumnRefs(ybScan, rel_remote->colrefs,
+								  true /* is_primary */);
+		}
+
+		if (idx_remote != NULL)
+		{
+			ybSetupScanQual(ybScan, idx_remote->qual, false /* is_primary */);
+			ybSetupScanColumnRefs(ybScan, idx_remote->colrefs,
+								  false /* is_primary */);
+		}
+
+		/*
+		* Set the current syscatalog version (will check that we are up to date).
+		* Avoid it for syscatalog tables so that we can still use this for
+		* refreshing the caches when we are behind.
+		* Note: This works because we do not allow modifying schemas (alter/drop)
+		* for system catalog tables.
+		*/
+		if (!IsSystemRelation(relation))
+			HandleYBStatus(YBCPgSetCatalogCacheVersion(ybScan->handle, yb_catalog_cache_version));
+	}
+
 
 	bms_free(scan_plan.hash_key);
 	bms_free(scan_plan.primary_key);
@@ -1725,8 +1923,14 @@ SysScanDesc ybc_systable_beginscan(Relation relation,
 	}
 
 	Scan *pg_scan_plan = NULL; /* In current context scan plan is not available */
-	YbScanDesc ybScan = ybcBeginScan(
-		relation, index, false /* xs_want_itup */, nkeys, key, pg_scan_plan);
+	YbScanDesc ybScan = ybcBeginScan(relation,
+									 index,
+									 false /* xs_want_itup */,
+									 nkeys,
+									 key,
+									 pg_scan_plan,
+									 NULL /* rel_remote */,
+									 NULL /* idx_remote */);
 
 	/* Set up Postgres sys table scan description */
 	SysScanDesc scan_desc = (SysScanDesc) palloc0(sizeof(SysScanDescData));
@@ -1771,8 +1975,14 @@ HeapScanDesc ybc_heap_beginscan(Relation relation,
 {
 	/* Restart should not be prevented if operation caused by system read of system table. */
 	Scan *pg_scan_plan = NULL; /* In current context scan plan is not available */
-	YbScanDesc ybScan = ybcBeginScan(
-		relation, NULL /* index */, false /* xs_want_itup */, nkeys, key, pg_scan_plan);
+	YbScanDesc ybScan = ybcBeginScan(relation,
+									 NULL /* index */,
+									 false /* xs_want_itup */,
+									 nkeys,
+									 key,
+									 pg_scan_plan,
+									 NULL /* rel_remote */,
+									 NULL /* idx_remote */);
 
 	/* Set up Postgres sys table scan description */
 	HeapScanDesc scan_desc = (HeapScanDesc) palloc0(sizeof(HeapScanDescData));
@@ -1806,6 +2016,43 @@ void ybc_heap_endscan(HeapScanDesc scan_desc)
 	if (scan_desc->rs_temp_snap)
 		UnregisterSnapshot(scan_desc->rs_snapshot);
 	pfree(scan_desc);
+}
+
+/*
+ * ybc_remote_beginscan
+ *   Begin sequential scan of a YB relation.
+ * The YbSeqScan uses it directly, not via heap scan interception, so it has
+ * more controls on what is passed over to the ybcBeginScan.
+ * The HeapScanDesc structure is still being used, in future we may increase
+ * the level of integration.
+ * The structure is compatible with one the ybc_heap_beginscan returns, so
+ * ybc_heap_getnext and ybc_heap_endscan are respectively used to fetch tuples
+ * and finish the scan.
+ */
+HeapScanDesc
+ybc_remote_beginscan(Relation relation,
+					 Snapshot snapshot,
+					 Scan *pg_scan_plan,
+					 PushdownExprs *remote)
+{
+	YbScanDesc ybScan = ybcBeginScan(relation,
+									 NULL /* index */,
+									 false /* xs_want_itup */,
+									 0 /* nkeys */,
+									 NULL/* key */,
+									 pg_scan_plan,
+									 remote,
+									 NULL /* idx_remote */);
+
+	/* Set up Postgres sys table scan description */
+	HeapScanDesc scan_desc = (HeapScanDesc) palloc0(sizeof(HeapScanDescData));
+	scan_desc->rs_rd        = relation;
+	scan_desc->rs_snapshot  = snapshot;
+	scan_desc->rs_temp_snap = false;
+	scan_desc->rs_cblock    = InvalidBlockNumber;
+	scan_desc->ybscan       = ybScan;
+
+	return scan_desc;
 }
 
 /* --------------------------------------------------------------------------------------------- */
@@ -2453,4 +2700,59 @@ ybFetchSample(YbSample ybSample, HeapTuple *rows)
 	/* Close the DocDB statement */
 	YBCPgDeleteStatement(ybSample->handle);
 	return numrows;
+}
+
+/*
+ * ybFetchNext
+ *
+ *  Fetch next row from the provided YBCPgStatement and load it into the slot.
+ *
+ * The statement must be ready to be fetched from, in other words it should be
+ * executed, that means request is sent to the DocDB.
+ *
+ * Fetched values are copied from the DocDB response and memory for by-reference
+ * data types is allocated from the current memory context, so be sure that
+ * lifetime of that context is appropriate.
+ *
+ * By default the slot holds a virtual tuple, a heap tuple is only formed if
+ * the DocDB returns oid. If heap tuple is formed, its t_tableOid field is
+ * updated with provided relid and t_ybctid field is set to returned ybctid
+ * value. The heap tuple is allocated in the slot's memory context.
+ */
+TupleTableSlot *
+ybFetchNext(YBCPgStatement handle,
+			TupleTableSlot *slot, Oid relid)
+{
+	TupleDesc	tupdesc = slot->tts_tupleDescriptor;
+	Datum	   *values = slot->tts_values;
+	bool	   *nulls = slot->tts_isnull;
+	YBCPgSysColumns syscols;
+	bool		has_data;
+
+	ExecClearTuple(slot);
+	/* Fetch one row. */
+	HandleYBStatus(YBCPgDmlFetch(handle,
+								 tupdesc->natts,
+								 (uint64_t *) values,
+								 nulls,
+								 &syscols,
+								 &has_data));
+	if (has_data)
+	{
+		slot->tts_nvalid = tupdesc->natts;
+		slot->tts_isempty = false;
+		slot->tts_ybctid = PointerGetDatum(syscols.ybctid);
+		if (syscols.oid != InvalidOid)
+		{
+			MemoryContext oldcontext = MemoryContextSwitchTo(slot->tts_mcxt);
+			HeapTuple tuple = heap_form_tuple(tupdesc, values, nulls);
+			HeapTupleSetOid(tuple, syscols.oid);
+			tuple->t_tableOid = relid;
+			tuple->t_ybctid = slot->tts_ybctid;
+			slot = ExecStoreHeapTuple(tuple, slot, true);
+			MemoryContextSwitchTo(oldcontext);
+		}
+	}
+
+	return slot;
 }

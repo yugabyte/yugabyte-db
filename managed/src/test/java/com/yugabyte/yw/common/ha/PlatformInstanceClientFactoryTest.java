@@ -88,7 +88,10 @@ public class PlatformInstanceClientFactoryTest extends FakeDBApplication {
   public void getDefaultClient() {
     final PlatformInstanceClient platformInstanceClient =
         platformInstanceClientFactory.getClient("clusterK$Y", REMOTE_ACME_ORG);
-    assertEquals("Expect default wsClient", mockApiHelper, platformInstanceClient.getApiHelper());
+    assertNotEquals(
+        "Expect custom wsClient differnt from default",
+        app.injector().instanceOf(WSClient.class),
+        platformInstanceClient.getApiHelper().getWsClient());
   }
 
   @Test
@@ -131,7 +134,7 @@ public class PlatformInstanceClientFactoryTest extends FakeDBApplication {
         String.format(
             "    {\n"
                 + "      ssl {\n"
-                + "        acceptAnyCert = false\n"
+                + "        loose.acceptAnyCert = false\n"
                 + "        trustManager {\n"
                 + "          stores += {\n"
                 + "            type = PEM\n"

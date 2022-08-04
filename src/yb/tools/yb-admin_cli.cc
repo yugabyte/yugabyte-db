@@ -183,6 +183,24 @@ YB_DEFINE_ENUM(ListTabletsFlags, (JSON)(INCLUDE_FOLLOWERS));
 
 } // namespace
 
+Status ClusterAdminCli::RunCommand(
+    const Command& command, const CLIArguments& command_args, const std::string& program_name) {
+  auto s = command.action_(command_args);
+  if (!s.ok()) {
+    if (s.IsRemoteError() && s.ToString().find("rpc error 2")) {
+      cerr << "The cluster doesn't support " << command.name_ << ": " << s << std::endl;
+    } else {
+      cerr << "Error running " << command.name_ << ": " << s << endl;
+      if (s.IsInvalidArgument()) {
+        cerr << Format("Usage: $0 $1 $2", program_name, command.name_, command.usage_arguments_)
+             << endl;
+      }
+    }
+    return STATUS(RuntimeError, "Error running command");
+  }
+  return Status::OK();
+}
+
 Status ClusterAdminCli::Run(int argc, char** argv) {
   const string prog_name = argv[0];
   FLAGS_logtostderr = true;
@@ -233,23 +251,14 @@ Status ClusterAdminCli::Run(int argc, char** argv) {
 
   if (PREDICT_FALSE(!s.ok())) {
     cerr << s.CloneAndPrepend("Unable to establish connection to leader master at [" + addrs + "]."
-                              " Please verify the addresses.\n\n").ToString() << endl;
+                              " Please verify the addresses and check if server is up, or if you're"
+                              " missing --certs_dir_name.\n\n").ToString() << endl;
     return STATUS(RuntimeError, "Error connecting to cluster");
   }
 
-  // Run found command.
   CLIArguments command_args(args.begin() + 2, args.end());
-  s = commands_[cmd->second].action_(command_args);
-  if (!s.ok()) {
-    cerr << "Error running " << cmd->first << ": " << s << endl;
-    if (s.IsInvalidArgument()) {
-      cerr << Format(
-                  "Usage: $0 $1 $2", args[0], cmd->first, commands_[cmd->second].usage_arguments_)
-           << endl;
-    }
-    return STATUS(RuntimeError, "Error running command");
-  }
-  return Status::OK();
+  auto& command = commands_[cmd->second];
+  return RunCommand(command, command_args, args[0]);
 }
 
 void ClusterAdminCli::Register(string&& cmd_name, string&& cmd_args, Action&& action) {
@@ -278,7 +287,7 @@ void ClusterAdminCli::SetUsage(const string& prog_name) {
 
   str << endl;
   str << "<namespace>:" << endl;
-  str << "  [(ycql|ysql).]<namespace_name>" << endl;
+  str << "  [(ycql|ysql).]<namespace_name> (default ycql.)" << endl;
   str << "<table>:" << endl;
   str << "  <namespace> <table_name> | tableid.<table_id>" << endl;
   str << "<index>:" << endl;
@@ -381,7 +390,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
 
   Register(
       "list_tablets",
-      " <table> [max_tablets] (default 10, set 0 for max) [JSON] [include_followers]",
+      " <table> [<max_tablets>] (default 10, set 0 for max) [JSON] [include_followers]",
       [client](const CLIArguments& args) -> Status {
         std::pair<int, EnumBitSet<ListTabletsFlags>> arguments;
         const auto table_name  = VERIFY_RESULT(ResolveSingleTableName(
@@ -398,15 +407,9 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
         return Status::OK();
       });
 
-  static const auto kTableName = "<(<keyspace> <table_name>)|tableid.<table_id>>";
-  static const auto kPlacementInfo = "placement_info";
-  static const auto kReplicationFactor = "replication_factor";
-  static const auto kPlacementUuid = "placement_uuid";
-
   Register(
       "modify_table_placement_info",
-        Format(" [$0] [$1] [$2] [$3]", kTableName, kPlacementInfo, kReplicationFactor,
-          kPlacementUuid),
+      " <table> <placement_info> <replication_factor> [<placement_uuid>]",
       [client](const CLIArguments& args) -> Status {
         if (args.size() < 3 || args.size() > 5) {
           return ClusterAdminCli::kInvalidArguments;
@@ -416,21 +419,19 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
         std::string placement_uuid;
         const auto table_name  = VERIFY_RESULT(ResolveSingleTableName(
             client, args.begin(), args.end(),
-            [&placement_info, &rf, &placement_uuid](
-        auto i, const auto& end) -> Status {
-          // Get placement info.
-          placement_info = *i;
-          i = std::next(i);
-          // Get replication factor.
-          rf = VERIFY_RESULT(CheckedStoi(*i));
-          i = std::next(i);
-          // Get optional placement uuid.
-          if (i != end) {
-            placement_uuid = *i;
-          }
-          return Status::OK();
-        }
-        ));
+            [&placement_info, &rf, &placement_uuid](auto i, const auto& end) -> Status {
+              // Get placement info.
+              placement_info = *i;
+              i = std::next(i);
+              // Get replication factor.
+              rf = VERIFY_RESULT(CheckedStoi(*i));
+              i = std::next(i);
+              // Get optional placement uuid.
+              if (i != end) {
+                placement_uuid = *i;
+              }
+              return Status::OK();
+            }));
         RETURN_NOT_OK_PREPEND(
             client->ModifyTablePlacementInfo(table_name, placement_info, rf, placement_uuid),
             Substitute("Unable to modify placement info for table $0", table_name.ToString()));
@@ -438,7 +439,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
-      "modify_placement_info", " <placement_info> <replication_factor> [placement_uuid]",
+      "modify_placement_info", " <placement_info> <replication_factor> [<placement_uuid>]",
       [client](const CLIArguments& args) -> Status {
         if (args.size() != 2 && args.size() != 3) {
           return ClusterAdminCli::kInvalidArguments;
@@ -462,7 +463,8 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
-      "add_read_replica_placement_info", " <placement_info> <replication_factor> [placement_uuid]",
+      "add_read_replica_placement_info",
+      " <placement_info> <replication_factor> [<placement_uuid>]",
       [client](const CLIArguments& args) -> Status {
         if (args.size() != 2 && args.size() != 3) {
           return ClusterAdminCli::kInvalidArguments;
@@ -476,7 +478,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
 
   Register(
       "modify_read_replica_placement_info",
-      " <placement_info> <replication_factor> [placement_uuid]",
+      " <placement_info> <replication_factor> [<placement_uuid>]",
       [client](const CLIArguments& args) -> Status {
         if (args.size() != 2 && args.size() != 3) {
           return ClusterAdminCli::kInvalidArguments;
@@ -566,7 +568,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
 
   Register(
       "flush_table",
-      " <table> [timeout_in_seconds] (default 20)"
+      " <table> [<timeout_in_seconds>] (default 20)"
       " [ADD_INDEXES] (default false)",
       [client](const CLIArguments& args) -> Status {
         bool add_indexes = false;
@@ -587,7 +589,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
-      "flush_table_by_id", " <table_id> [timeout_in_seconds] (default 20)"
+      "flush_table_by_id", " <table_id> [<timeout_in_seconds>] (default 20)"
       " [ADD_INDEXES] (default false)",
       [client](const CLIArguments& args) -> Status {
         bool add_indexes = false;
@@ -621,7 +623,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
 
   Register(
       "compact_table",
-      " <table> [timeout_in_seconds] (default 20)"
+      " <table> [<timeout_in_seconds>] (default 20)"
       " [ADD_INDEXES] (default false)",
       [client](const CLIArguments& args) -> Status {
         bool add_indexes = false;
@@ -643,7 +645,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
-      "compact_table_by_id", " <table_id> [timeout_in_seconds] (default 20)"
+      "compact_table_by_id", " <table_id> [<timeout_in_seconds>] (default 20)"
       " [ADD_INDEXES] (default false)",
       [client](const CLIArguments& args) -> Status {
         bool add_indexes = false;
@@ -743,7 +745,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
-      "set_load_balancer_enabled", " <0|1>",
+      "set_load_balancer_enabled", " (0|1)",
       [client](const CLIArguments& args) -> Status {
         if (args.size() != 1) {
           return ClusterAdminCli::kInvalidArguments;
@@ -832,11 +834,11 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       std::bind(&ChangeBlacklist, client, _1, true, "Unable to change leader blacklist"));
 
   Register(
-      "master_leader_stepdown", " [dest_uuid]",
+      "master_leader_stepdown", " [<dest_uuid>]",
       std::bind(&MasterLeaderStepDown, client, _1));
 
   Register(
-      "leader_stepdown", " <tablet_id> [dest_ts_uuid]",
+      "leader_stepdown", " <tablet_id> [<dest_ts_uuid>]",
       std::bind(&LeaderStepDown, client, _1));
 
   Register(
@@ -865,9 +867,17 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
-      "is_tablet_splitting_complete", "",
-      [client](const CLIArguments&) -> Status {
-        RETURN_NOT_OK_PREPEND(client->IsTabletSplittingComplete(),
+      "is_tablet_splitting_complete", " [wait_for_parent_deletion] (default false)",
+      [client](const CLIArguments& args) -> Status {
+        bool wait_for_parent_deletion = false;
+        if (args.size() > 0) {
+          if (IsEqCaseInsensitive(args[0], "wait_for_parent_deletion")) {
+            wait_for_parent_deletion = true;
+          } else {
+            return ClusterAdminCli::kInvalidArguments;
+          }
+        }
+        RETURN_NOT_OK_PREPEND(client->IsTabletSplittingComplete(wait_for_parent_deletion),
                               "Unable to check if tablet splitting is complete");
         return Status::OK();
       });

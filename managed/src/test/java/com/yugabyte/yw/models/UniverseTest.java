@@ -15,6 +15,7 @@ import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
@@ -24,6 +25,7 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Sets;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.cloud.UniverseResourceDetails;
 import com.yugabyte.yw.cloud.UniverseResourceDetails.Context;
@@ -509,26 +511,26 @@ public class UniverseTest extends FakeDBApplication {
     assertFalse(cluster.areTagsSame(newCluster));
   }
 
-  // Tags do not apply to non-AWS provider. This checks that tags check are always
+  // Tags do not apply to non-AWS and GCP provider. This checks that tags check are always
   // considered 'same' for those providers.
   @Test
-  public void testAreTagsSameOnGCP() {
+  public void testAreTagsSameOnAzu() {
     Universe u = createUniverse(defaultCustomer.getCustomerId());
     Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater());
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     UserIntent userIntent = getBaseIntent();
-    userIntent.providerType = CloudType.gcp;
+    userIntent.providerType = CloudType.azu;
     userIntent.instanceTags = ImmutableMap.of("Cust", "Test", "Dept", "Misc");
     Cluster cluster = taskParams.upsertPrimaryCluster(userIntent, null);
 
     UserIntent newUserIntent = getBaseIntent();
-    newUserIntent.providerType = CloudType.gcp;
+    newUserIntent.providerType = CloudType.azu;
     newUserIntent.instanceTags = ImmutableMap.of("Cust", "Test");
     Cluster newCluster = new Cluster(ClusterType.PRIMARY, newUserIntent);
     assertTrue(cluster.areTagsSame(newCluster));
 
     newUserIntent = getBaseIntent();
-    newUserIntent.providerType = CloudType.gcp;
+    newUserIntent.providerType = CloudType.azu;
     newCluster = new Cluster(ClusterType.PRIMARY, newUserIntent);
     assertTrue(cluster.areTagsSame(newCluster));
   }
@@ -558,7 +560,9 @@ public class UniverseTest extends FakeDBApplication {
 
   @Test
   public void testGetUniverses() {
-    UUID certUUID = CertificateHelper.createRootCA("test", defaultCustomer.uuid, "/tmp/certs");
+    Config spyConf = spy(app.config());
+    doReturn("/tmp/certs").when(spyConf).getString("yb.storage.path");
+    UUID certUUID = CertificateHelper.createRootCA(spyConf, "test", defaultCustomer.uuid);
     ModelFactory.createUniverse(defaultCustomer.getCustomerId(), certUUID);
     Set<Universe> universes = Universe.universeDetailsIfCertsExists(certUUID, defaultCustomer.uuid);
     assertEquals(universes.size(), 1);

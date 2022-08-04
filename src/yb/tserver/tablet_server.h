@@ -65,6 +65,7 @@ namespace yb {
 
 class Env;
 class MaintenanceManager;
+class AutoFlagsManager;
 
 namespace tserver {
 
@@ -88,6 +89,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   // complete by calling WaitInited().
   Status Init() override;
 
+  virtual Status InitAutoFlags() override;
+
   Status GetRegistration(ServerRegistrationPB* reg,
     server::RpcOnly rpc_only = server::RpcOnly::kFalse) const override;
 
@@ -98,6 +101,9 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   void Shutdown() override;
 
   std::string ToString() const override;
+
+  uint32_t GetAutoFlagConfigVersion() const override;
+  AutoFlagsConfigPB TEST_GetAutoFlagConfig() const;
 
   TSTabletManager* tablet_manager() override { return tablet_manager_.get(); }
   TabletPeerLookupIf* tablet_peer_lookup() override;
@@ -173,7 +179,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
     return publish_service_ptr_.get();
   }
 
-  void SetYSQLCatalogVersion(uint64_t new_version, uint64_t new_breaking_version);
+  void SetYsqlCatalogVersion(uint64_t new_version, uint64_t new_breaking_version);
+  void SetYsqlDBCatalogVersions(const master::DBCatalogVersionDataPB& db_catalog_version_data);
 
   void get_ysql_catalog_version(uint64_t* current_version,
                                 uint64_t* last_breaking_version) const override {
@@ -240,6 +247,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   // The options passed at construction time, and will be updated if master config changes.
   TabletServerOptions opts_;
 
+  std::unique_ptr<AutoFlagsManager> auto_flags_manager_;
+
   // Manager for tablets which are available on this server.
   std::unique_ptr<TSTabletManager> tablet_manager_;
 
@@ -280,6 +289,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   // Latest known version from the YSQL catalog (as reported by last heartbeat response).
   uint64_t ysql_catalog_version_ = 0;
   uint64_t ysql_last_breaking_catalog_version_ = 0;
+  master::DbOidToCatalogVersionMap ysql_db_catalog_version_map_;
 
   // An instance to tablet server service. This pointer is no longer valid after RpcAndWebServerBase
   // is shut down.

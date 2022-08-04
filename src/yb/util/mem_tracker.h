@@ -362,6 +362,9 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
   std::string LogUsage(
       const std::string& prefix = "", int64_t usage_threshold = 0, int indent = 0) const;
 
+  // Logs the hard and soft memory limits. Does not include children.
+  void LogMemoryLimits() const;
+
   void EnableLogging(bool enable, bool log_stack) {
     enable_logging_ = enable;
     log_stack_ = log_stack;
@@ -382,11 +385,6 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
   void SetPollChildrenConsumptionFunctors(
       PollChildrenConsumptionFunctors poll_children_consumption_functors) {
     poll_children_consumption_functors_ = std::move(poll_children_consumption_functors);
-  }
-
-  // Assign the functor to update PG's global memory consumption.
-  void AssignUpdateMaxMemFunctor(void (*func)()) {
-      update_max_mem_functor_ = func;
   }
 
  private:
@@ -431,7 +429,6 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
   const int64_t soft_limit_;
   const std::string id_;
   const ConsumptionFunctor consumption_functor_;
-  UpdateMaxMemoryFunctor update_max_mem_functor_;
 
   PollChildrenConsumptionFunctors poll_children_consumption_functors_;
   const std::string descr_;

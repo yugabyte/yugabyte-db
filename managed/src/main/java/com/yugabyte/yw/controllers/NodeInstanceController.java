@@ -22,6 +22,8 @@ import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.NodeAgent;
+import com.yugabyte.yw.models.NodeAgent.State;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
@@ -147,6 +149,8 @@ public class NodeInstanceController extends AuthenticatedController {
     for (NodeInstanceData nodeData : nodeDataList) {
       if (!NodeInstance.checkIpInUse(nodeData.ip)) {
         if (clientTypeOp.isPresent() && clientTypeOp.get() == ClientType.NODE_AGENT) {
+          NodeAgent nodeAgent = NodeAgent.getOrBadRequest(customerUuid, getJWTClientUuid());
+          nodeAgent.ensureState(State.LIVE);
           Set<NodeConfiguration.Type> failedTypes =
               nodeData.getFailedNodeConfigurationTypes(TypeGroup.ALL);
           if (CollectionUtils.isNotEmpty(failedTypes)) {

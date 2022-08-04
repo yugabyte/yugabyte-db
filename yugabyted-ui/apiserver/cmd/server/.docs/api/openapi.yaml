@@ -3523,38 +3523,11 @@ paths:
       summary: Get a metric for a cluster
       tags:
       - cluster-info
-  /public/accounts/{accountId}/projects/{projectId}/clusters/{clusterId}/tables:
+  /tables:
     get:
       description: Get list of tables per YB API (YCQL/YSQL)
       operationId: getClusterTables
       parameters:
-      - description: ID of the associated account
-        explode: false
-        in: path
-        name: accountId
-        required: true
-        schema:
-          format: uuid
-          type: string
-        style: simple
-      - description: ID of the associated project
-        explode: false
-        in: path
-        name: projectId
-        required: true
-        schema:
-          format: uuid
-          type: string
-        style: simple
-      - description: ID of the cluster
-        explode: false
-        in: path
-        name: clusterId
-        required: true
-        schema:
-          format: uuid
-          type: string
-        style: simple
       - description: Which DB API to get tables for (YCQL/YSQL)
         explode: false
         in: query

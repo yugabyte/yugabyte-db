@@ -67,9 +67,9 @@ The table describes what the expected behavior is when a read happens from a fol
 
 ### Read from follower conditions
 
-- If the follower’s safe-time is at least `<current_time> - <staleness>`, then the follower may serve the read without any delay.
+- If the follower's safe-time is at least `<current_time> - <staleness>`, the follower may serve the read without any delay.
 
-- If the follower is not yet caught up to `<current_time> - <staleness>`, then the read will be redirected to a different replica transparently from the end-user. The end user may see a slight increase in latency depending on the location of the replica which satisfies the read.
+- If the follower is not yet caught up to `<current_time> - <staleness>`, the read will be redirected to a different replica transparently from the end-user. The end user may see a slight increase in latency depending on the location of the replica which satisfies the read.
 
 ### Read-only transaction conditions
 
@@ -82,7 +82,7 @@ To mark a transaction as read only, a user can do one of the following:
 
 ## Examples
 
-This example uses follower reads since the **transaction** is marked read-only.
+This example uses follower reads because the **transaction** is marked read-only.
 
 ```sql
 set yb_read_from_followers = true;
@@ -97,7 +97,7 @@ commit;
  k1 | v1
 ```
 
-This example uses follower reads since the **session** is marked read only.
+This example uses follower reads because the **session** is marked read only.
 
 ```sql
 set session characteristics as transaction read only;
@@ -112,7 +112,7 @@ SELECT * from t WHERE k='k1';
 (1 row)
 ```
 
-The following examples use follower reads since the **pg_hint_plan** mechanism is used during SELECT, PREPARE, and CREATE FUNCTION to perform follower reads.
+The following examples use follower reads because the **pg_hint_plan** mechanism is used during SELECT, PREPARE, and CREATE FUNCTION to perform follower reads.
 
 {{< note title="Note" >}}
 The pg_hint_plan hint needs to be applied at the prepare/function-definition stage and not at the `execute` stage.

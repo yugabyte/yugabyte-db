@@ -87,7 +87,7 @@ export const NTPConfig: FC<NTPConfigProps> = ({
   disabled = false
 }) => {
   const access_keys = useSelector((state: any) => state.cloud.accessKeys);
-
+  const isAllReqCompleted = useSelector((state: any) => state.cloud.allAccessKeysReqCompleted);
   const configured_ntp_servers = uniq(
     flatten(
       access_keys?.data
@@ -144,8 +144,9 @@ export const NTPConfig: FC<NTPConfigProps> = ({
               return (
                 <>
                   <YBMultiEntryInput
-                    isDisabled={disabled}
-                    placeholder="Add NTP Servers"
+                    isDisabled={disabled || !isAllReqCompleted}
+                    isLoading={!isAllReqCompleted}
+                    placeholder={isAllReqCompleted ? "Add NTP Servers" : "Loading NTP servers list..."}
                     defaultOptions={configured_ntp_servers.map((t: any) => {
                       return { value: t, label: t };
                     })}

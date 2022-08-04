@@ -32,7 +32,6 @@ import org.pac4j.play.store.PlayCacheSessionStore;
 import org.pac4j.play.store.PlaySessionStore;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
-import play.modules.swagger.SwaggerModule;
 import play.mvc.Http;
 import play.mvc.Result;
 
@@ -81,12 +80,8 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
   }
 
   public Application provideApplication(Map<String, Object> additionalConfiguration) {
-
     GuiceApplicationBuilder guiceApplicationBuilder =
         new GuiceApplicationBuilder().disable(GuiceModule.class);
-    if (!isSwaggerEnabled()) {
-      guiceApplicationBuilder = guiceApplicationBuilder.disable(SwaggerModule.class);
-    }
     return configureApplication(
             guiceApplicationBuilder
                 .configure(additionalConfiguration)

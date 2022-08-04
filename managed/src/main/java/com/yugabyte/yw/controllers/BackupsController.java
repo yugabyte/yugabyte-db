@@ -28,6 +28,7 @@ import com.yugabyte.yw.forms.filters.BackupApiFilter;
 import com.yugabyte.yw.forms.paging.BackupPagedApiQuery;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Backup;
+import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.Backup.StorageConfigType;
 import com.yugabyte.yw.models.configs.CustomerConfig;
@@ -368,6 +369,9 @@ public class BackupsController extends AuthenticatedController {
       storageLocations.add(storageInfo.storageLocation);
     }
     backupUtil.validateStorageConfigOnLocations(customerConfig, storageLocations);
+    if (backupUtil.isYbcBackup(taskParams.backupStorageInfoList.get(0).storageLocation)) {
+      taskParams.category = BackupCategory.YB_CONTROLLER;
+    }
     UUID taskUUID = commissioner.submit(TaskType.RestoreBackup, taskParams);
     CustomerTask.create(
         customer,

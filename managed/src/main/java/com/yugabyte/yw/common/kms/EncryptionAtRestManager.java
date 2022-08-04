@@ -267,10 +267,24 @@ public class EncryptionAtRestManager {
       JsonNode backup = mapper.readTree(backupContents);
       JsonNode universeKeys = backup.get("universe_keys");
       if (universeKeys != null && universeKeys.isArray()) {
-        universeKeys.forEach(restorer);
 
         // Cleanup encrypted key metadata file since it is no longer needed
         backupKeysFile.delete();
+        result = restoreUniverseKeyHistory(universeKeys, restorer);
+      }
+    } catch (Exception e) {
+      LOG.error("Error occurred restoring universe key history", e);
+    }
+
+    return result;
+  }
+
+  public RestoreKeyResult restoreUniverseKeyHistory(
+      JsonNode universeKeys, Consumer<JsonNode> restorer) {
+    RestoreKeyResult result = RestoreKeyResult.RESTORE_FAILED;
+    try {
+      if (universeKeys != null && universeKeys.isArray()) {
+        universeKeys.forEach(restorer);
 
         LOG.info("Restore universe keys succeeded!");
         result = RestoreKeyResult.RESTORE_SUCCEEDED;
@@ -278,7 +292,6 @@ public class EncryptionAtRestManager {
     } catch (Exception e) {
       LOG.error("Error occurred restoring universe key history", e);
     }
-
     return result;
   }
 }

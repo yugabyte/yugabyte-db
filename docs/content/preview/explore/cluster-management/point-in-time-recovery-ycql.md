@@ -32,7 +32,7 @@ type: docs
 
 Point-in-time recovery (PITR) allows you to restore the state of your cluster's data and some types of metadata from a specific point in time. This can be relative, such as "three hours ago", or an absolute timestamp. For more information, see [Point-in-time recovery](../../../manage/backup-restore/point-in-time-recovery/#features). For details on the `yb-admin` commands, refer to the [Backup and snapshot commands](../../../admin/yb-admin/#backup-and-snapshot-commands) section of the yb-admin documentation.
 
-You can try out PITR by creating a namespace and populating it, creating a snapshot schedule, and restoring from that schedule. 
+You can try out PITR by creating a namespace and populating it, creating a snapshot schedule, and restoring from that schedule.
 
 {{< note title="Note" >}}
 
@@ -132,7 +132,7 @@ Create and populate a table, get a timestamp to which you'll restore, and then w
 1. Get a timestamp:
 
     ```sh
-    python -c 'import datetime; print datetime.datetime.now().strftime("%s%f")'
+    python -c 'import datetime; print(datetime.datetime.now().strftime("%s%f"))'
     ```
 
     ```output

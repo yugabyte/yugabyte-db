@@ -29,14 +29,14 @@ fix_ifcfg() {
         if [ -f "${if_config_file}" ]; then
             DEFROUTE=""
             source ${if_config_file}
-            log "Current value of DEFROUTE for $ifname : ${DEFROUTE}"
+            echo "Current value of DEFROUTE for $ifname : ${DEFROUTE}"
             if [ "${DEFROUTE}" != "no" ]; then
                 # It can be either yes or does not exisit, so we need to check
                 if [ "${DEFROUTE}" = "yes" ]; then
-                    log "Replacing DEFROUTE for Interface:$ifname"
+                    echo "Replacing DEFROUTE for Interface:$ifname"
                     sed -i -e 's/DEFROUTE=.*/DEFROUTE=no/g' "${if_config_file}"
                 else
-                    log "No entry exists for Interface:$ifname, creating"
+                    echo "No entry exists for Interface:$ifname, creating"
                     echo -e "DEFROUTE=no" >> "${if_config_file}"
                 fi
             fi
@@ -49,7 +49,7 @@ fix_ifcfg() {
 
 configure_nics() {
     #disable Network Manager for any interface
-    systemctl disable NetworkManager >> /dev/null 2>&1
+    systemctl disable NetworkManager &> /dev/null
     # Create Table for customer side
     echo "Create route table ${rtb_id}"
     egrep "^${rtb_id}" /etc/iproute2/rt_tables && {
@@ -65,6 +65,9 @@ configure_nics() {
         exit 1
     }
     echo -e "${mgmt_rtb_id}\t$mgmt_rtb_name" >>/etc/iproute2/rt_tables
+
+  # Allow DHCP up hook to access firewalld: https://yugabyte.atlassian.net/browse/CLOUDGA-6494
+  semanage permissive -a dhcpc_t
 
   cat - >/etc/dhcp/dhclient-up-hooks <<EOF
 #!/usr/bin/env bash
@@ -87,6 +90,8 @@ fi
 log "ENV: new_network_number=\${route_targets[1]}"
 log "ENV: new_routers=\${route_targets[0]}"
 log "ENV: new_subnet_mask=\$prefix"
+log "ENV: interface=\$interface"
+log "ENV: new_ip_address=\$new_ip_address"
 log "Configure for \$new_network_number"
 
 if [ "\$new_network_number" == "\${secondary_network}" ]; then
@@ -116,6 +121,24 @@ else
  } || {
    ip route add default table $mgmt_rtb_name via \$new_routers dev \$interface
  }
+ log "Configure DNAT to allow GCP LB to send resps"
+ if [ '${cloud}' == 'gcp' ]; then
+    if [ "\$(systemctl is-enabled firewalld 2>/dev/null)" == 'enabled' ]; then
+      log "DNAT for firewalld"
+      echo >/etc/firewalld/direct.xml \\
+        "<?xml version=\"1.0\" encoding=\"utf-8\"?><direct>" \\
+        "<rule priority=\"0\" table=\"nat\" ipv=\"ipv4\" chain=\"PREROUTING\">" \\
+        "-p tcp -i "\${interface}" -j DNAT --to-destination "\${new_ip_address}"" \\
+        "</rule></direct>"
+      [ \$(systemctl is-active firewalld) == 'active' ] && systemctl reload firewalld
+    else
+      log "DNAT for iptables"
+      iptables -t nat -A PREROUTING \\
+        -p tcp -i "\${interface}" -j DNAT --to-destination "\${new_ip_address}"
+    fi
+ else
+  log "DNAT is not required for non-GCP"
+ fi
 fi
 log Done
 EOF

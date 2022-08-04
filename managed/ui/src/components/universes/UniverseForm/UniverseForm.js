@@ -184,7 +184,6 @@ class UniverseForm extends Component {
         regionList: formValues[clusterType].regionList.map((a) => a.value),
         instanceType: formValues[clusterType].instanceType,
         ybSoftwareVersion: formValues[clusterType].ybSoftwareVersion,
-        ybcPackagePath: formValues[clusterType].ybcPackagePath,
         replicationFactor: formValues[clusterType].replicationFactor,
         useSystemd: formValues[clusterType].useSystemd,
         deviceInfo: {
@@ -246,6 +245,8 @@ class UniverseForm extends Component {
       });
     }
     universeTaskParams.clusterOperation = isEdit ? 'EDIT' : 'CREATE';
+    universeTaskParams.enableYbc = this.props.featureFlags.test['enableYbc'] || this.props.featureFlags.released['enableYbc']
+    universeTaskParams.ybcSoftwareVersion = ""
   };
 
   createUniverse = () => {
@@ -414,9 +415,15 @@ class UniverseForm extends Component {
         universeConfigTemplate.data.nodesResizeAvailable) {
       const currentCluster = this.getCurrentCluster();
       const newCluster = this.getNewCluster();
-      return currentCluster && newCluster &&
-        newCluster.userIntent.deviceInfo.volumeSize >
-             currentCluster.userIntent.deviceInfo.volumeSize;
+      if (currentCluster && newCluster) {
+        const oldVolumeSize = currentCluster.userIntent.deviceInfo.volumeSize;
+        const newVolumeSize = newCluster.userIntent.deviceInfo.volumeSize;
+        const instanceChanged = newCluster.userIntent.instanceType !== currentCluster.userIntent
+            .instanceType;
+        return newVolumeSize > oldVolumeSize
+               || (instanceChanged && oldVolumeSize === newVolumeSize);
+      }
+      return false;
     }
     return false;
   }
@@ -486,7 +493,6 @@ class UniverseForm extends Component {
         accessKeyCode: formValues[clusterType].accessKeyCode,
         replicationFactor: formValues[clusterType].replicationFactor,
         ybSoftwareVersion: formValues[clusterType].ybSoftwareVersion,
-        ybcPackagePath: formValues[clusterType].ybcPackagePath,
         useSystemd: formValues[clusterType].useSystemd,
         deviceInfo: {
           volumeSize: formValues[clusterType].volumeSize,
@@ -748,17 +754,7 @@ class UniverseForm extends Component {
       );
     }
 
-    const selectedProviderUUID = this.props?.formValues?.primary?.provider;
-    const selectedProvider = this.props?.cloud?.providers?.data?.find(
-      (provider) => provider.uuid === selectedProviderUUID
-    );
-
-    if (
-      this.state.currentView === 'Primary' &&
-      type !== 'Edit' &&
-      type !== 'Async' &&
-      (selectedProvider === undefined || selectedProvider?.code !== 'kubernetes')
-    ) {
+    if (this.state.currentView === 'Primary' && type !== 'Edit' && type !== 'Async') {
       asyncReplicaBtn = (
         <YBButton
           btnClass="btn btn-default universe-form-submit-btn"
