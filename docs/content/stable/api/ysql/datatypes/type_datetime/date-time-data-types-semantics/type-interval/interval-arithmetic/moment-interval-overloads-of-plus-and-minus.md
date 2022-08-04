@@ -12,7 +12,7 @@ type: docs
 ---
 
 {{< tip title="Download and install the date-time utilities code." >}}
-The code on this page depends on the code presented in the section [User-defined _interval_ utility functions](../../interval-utilities/). This is included in the larger [code kit](../../../../download-date-time-utilities/) that includes all of the reusable code that the overall _[date-time](../../../../../type_datetime)_ section describes and uses.
+The code on this page depends on the code presented in the section [User-defined _interval_ utility functions](../../interval-utilities/). This is included in the larger [code kit](../../../../download-date-time-utilities/) that includes all of the reusable code that the overall _[date-time](../../../../../type_datetime/)_ section describes and uses.
 {{< /tip >}}
 
 This section presents PL/pgSQL implementations that model the semantics of the _interval_-moment-overload of the `+` operator for three distinct kinds of _interval_ value: _pure seconds_, _pure days_, and _pure months_. The semantics of the _interval_-moment-overloads of the `-` operator is implied by the semantics of the overload of the `+` operator.

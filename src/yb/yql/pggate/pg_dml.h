@@ -39,13 +39,13 @@ class PgDml : public PgStatement {
 
   // Append a filter condition.
   // Supported expression kind is serialized Postgres expression
-  Status AppendQual(PgExpr *qual);
+  Status AppendQual(PgExpr *qual, bool is_primary);
 
   // Append a column reference.
   // If any serialized Postgres expressions appended to other lists require explicit addition
   // of their column references. Those column references should have Postgres type information.
   // Other PgExpr kinds are automatically scanned and their column references are appended.
-  Status AppendColumnRef(PgExpr *colref);
+  Status AppendColumnRef(PgExpr *colref, bool is_primary);
 
   // Prepare column for both ends.
   // - Prepare protobuf to communicate with DocDB.

@@ -1,0 +1,22 @@
+.td-content {
+  table {
+    @extend .table-striped;
+    @extend .table-responsive;
+    @extend .table;
+
+    padding: 2.5em 0;
+
+    tbody,
+    thead {
+      border-bottom: 1px solid rgba(158, 159, 165, 0.5);
+      border-right: 1px solid rgba(158, 159, 165, 0.5);
+      border-left: 1px solid rgba(158, 159, 165, 0.5);
+    }
+  }
+
+  > table tbody tr:nth-of-type(odd),
+  .table-striped tbody tr:nth-of-type(odd),
+  .td-box .row.section > table tbody tr:nth-of-type(odd) {
+    background: rgb(248, 248, 249);
+  }
+}

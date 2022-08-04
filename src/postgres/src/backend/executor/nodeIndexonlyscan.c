@@ -83,6 +83,8 @@ IndexOnlyNext(IndexOnlyScanState *node)
 
 	if (scandesc == NULL)
 	{
+		IndexOnlyScan *plan = castNode(IndexOnlyScan, node->ss.ps.plan);
+
 		/*
 		 * We reach here if the index only scan is not parallel, or if we're
 		 * serially executing an index only scan that was planned to be
@@ -95,7 +97,9 @@ IndexOnlyNext(IndexOnlyScanState *node)
 								   node->ioss_NumOrderByKeys);
 
 		node->ioss_ScanDesc = scandesc;
-		scandesc->yb_scan_plan = (Scan *)node->ss.ps.plan;
+		scandesc->yb_scan_plan = (Scan *) plan;
+		scandesc->yb_rel_pushdown = YbInstantiateRemoteParams(
+			&plan->remote, estate->es_param_list_info);
 
 		/* Set it up for index-only scan */
 		node->ioss_ScanDesc->xs_want_itup = true;

@@ -709,7 +709,7 @@ void PgLibPqTest::TestMultiBankAccount(IsolationLevel isolation) {
   for (auto* tserver : cluster_->tserver_daemons()) {
     auto tablets = ASSERT_RESULT(cluster_->GetTabletIds(tserver));
     for (const auto& tablet : tablets) {
-      auto result = tserver->GetInt64Metric(
+      auto result = tserver->GetMetric<int64>(
           &METRIC_ENTITY_tablet, tablet.c_str(), &METRIC_transaction_not_found, "value");
       if (result.ok()) {
         total_not_found += *result;
@@ -1634,7 +1634,7 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(NumberOfInitialRpcs), PgLibPqTest
   auto get_master_inbound_rpcs_created = [this]() -> Result<int64_t> {
     int64_t m_in_created = 0;
     for (const auto* master : this->cluster_->master_daemons()) {
-      m_in_created += VERIFY_RESULT(master->GetInt64Metric(
+      m_in_created += VERIFY_RESULT(master->GetMetric<int64>(
           &METRIC_ENTITY_server, "yb.master", &METRIC_rpc_inbound_calls_created, "value"));
     }
     return m_in_created;
@@ -2559,6 +2559,15 @@ class PgLibPqCatalogVersionTest : public PgLibPqTest {
     ASSERT_EQ(v1.current_version, v2.current_version);
     ASSERT_EQ(v1.last_breaking_version, v2.last_breaking_version);
   }
+
+  void WaitForCatalogVersionToPropagate() {
+    // This is an estimate that should exceed the tserver to master hearbeat interval.
+    // However because it is an estimate, this function may return before the catalog version is
+    // actually propagated.
+    constexpr int kSleepSeconds = 2;
+    LOG(INFO) << "Wait " << kSleepSeconds << " seconds for heartbeat to propagate catalog versions";
+    std::this_thread::sleep_for(kSleepSeconds * 1s);
+  }
 };
 
 TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersion),
@@ -2608,6 +2617,13 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersion),
   LOG(INFO) << "Create a new database";
   ASSERT_OK(conn_yugabyte.ExecuteFormat("CREATE DATABASE $0", kTestDatabase));
 
+  // Wait for heartbeat to happen so that we can see from the test logs that the catalog version
+  // change caused by the last DDL is passed from master to tserver via heartbeat. Without the
+  // wait, if the next DDL is executed before the next heartbeat then last DDL's catalog version
+  // change will be overwritten and we will not see the effect of the last DDL from test logs.
+  // So the purpose of this wait is not for correctness but for us to see the catalog version
+  // propagation from the test logs. Same is true for all the following calls to do this wait.
+  WaitForCatalogVersionToPropagate();
   LOG(INFO) << "Refresh the catalog version map";
   map = GetCatalogVersionMap(&conn_yugabyte);
   ASSERT_EQ(map.size(), initial_row_count + 1);
@@ -2630,6 +2646,7 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersion),
   LOG(INFO) << "Create a table";
   ASSERT_OK(conn_test.ExecuteFormat("CREATE TABLE t(id int)"));
 
+  WaitForCatalogVersionToPropagate();
   LOG(INFO) << "Refresh the catalog version map";
   // Should still have the same number of rows in pg_yb_catalog_version.
   map = GetCatalogVersionMap(&conn_yugabyte);
@@ -2647,6 +2664,7 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersion),
   LOG(INFO) << "Drop the table from 'conn_test'";
   ASSERT_OK(conn_test.ExecuteFormat("DROP TABLE t"));
 
+  WaitForCatalogVersionToPropagate();
   LOG(INFO) << "Refresh the catalog version map";
   map = GetCatalogVersionMap(&conn_yugabyte);
   ASSERT_EQ(map.size(), initial_row_count + 1);
@@ -2665,6 +2683,7 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersion),
   LOG(INFO) << "Execute a DDL statement that causes a breaking catalog change";
   ASSERT_OK(conn_test.Execute("REVOKE ALL ON SCHEMA public FROM public"));
 
+  WaitForCatalogVersionToPropagate();
   LOG(INFO) << "Refresh the catalog version map";
   map = GetCatalogVersionMap(&conn_yugabyte);
   ASSERT_EQ(map.size(), initial_row_count + 1);
@@ -2687,6 +2706,7 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersion),
   LOG(INFO) << "Drop the new database from 'conn_yugabyte'";
   ASSERT_OK(conn_yugabyte.ExecuteFormat("DROP DATABASE $0", kTestDatabase));
 
+  WaitForCatalogVersionToPropagate();
   LOG(INFO) << "Refresh the catalog version map";
   // The row for 'new_db_oid' should be deleted.
   map = GetCatalogVersionMap(&conn_yugabyte);
@@ -2700,7 +2720,7 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersion),
     if (current_db_oid == yugabyte_db_oid) {
       AssertSameCatalogVersion(it.second, {current_db_oid, 2, 1});
     } else if (current_db_oid == new_db_oid) {
-      ASSERT_TRUE(false) << "Failed to delete the row for " << new_db_oid;
+      FAIL() << "Failed to delete the row for " << new_db_oid;
     } else {
       AssertSameCatalogVersion(it.second, {current_db_oid, 1, 1});
     }
@@ -2709,6 +2729,51 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersion),
   // After the test database is dropped, 'conn_test' should no longer succeed.
   LOG(INFO) << "Read the table from 'conn_test'";
   ASSERT_NOK(conn_test.Fetch("SELECT * FROM t"));
+}
+
+TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(NonBreakingDDLMode)) {
+  const string kDatabaseName = "yugabyte";
+
+  auto conn1 = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+  auto conn2 = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+  ASSERT_OK(conn1.Execute("CREATE TABLE t1(a int)"));
+  ASSERT_OK(conn1.Execute("CREATE TABLE t2(a int)"));
+  ASSERT_OK(conn1.Execute("BEGIN"));
+  auto res = ASSERT_RESULT(conn1.Fetch("SELECT * FROM t1"));
+  ASSERT_EQ(0, PQntuples(res.get()));
+  ASSERT_OK(conn2.Execute("REVOKE ALL ON t2 FROM public"));
+  // Wait for the new catalog version to propagate to TServers.
+  std::this_thread::sleep_for(2s);
+  // REVOKE is a breaking catalog change, the running transaction on conn1 is aborted.
+  auto result = conn1.Fetch("SELECT * FROM t1");
+  ASSERT_NOK(result);
+  auto status = ResultToStatus(result);
+  const string msg = "catalog snapshot used for this transaction has been invalidated";
+  ASSERT_TRUE(status.ToString().find(msg) != std::string::npos);
+  ASSERT_OK(conn1.Execute("ABORT"));
+
+  // Let's start over, but this time use yb_make_next_ddl_statement_nonbreaking to suppress the
+  // breaking catalog change and the SELECT command on conn1 runs successfully.
+  ASSERT_OK(conn1.Execute("BEGIN"));
+  res = ASSERT_RESULT(conn1.Fetch("SELECT * FROM t1"));
+  ASSERT_EQ(0, PQntuples(res.get()));
+  ASSERT_OK(conn2.Execute("SET yb_make_next_ddl_statement_nonbreaking TO TRUE"));
+  ASSERT_OK(conn2.Execute("REVOKE ALL ON t2 FROM public"));
+  // Wait for the new catalog version to propagate to TServers.
+  std::this_thread::sleep_for(2s);
+  res = ASSERT_RESULT(conn1.Fetch("SELECT * FROM t1"));
+  ASSERT_EQ(0, PQntuples(res.get()));
+
+  // Verify that the session variable yb_make_next_ddl_statement_nonbreaking auto-resets to false.
+  // As a result, the running transaction on conn1 is aborted.
+  ASSERT_OK(conn2.Execute("REVOKE ALL ON t2 FROM public"));
+  // Wait for the new catalog version to propagate to TServers.
+  std::this_thread::sleep_for(2s);
+  result = conn1.Fetch("SELECT * FROM t1");
+  ASSERT_NOK(result);
+  status = ResultToStatus(result);
+  ASSERT_TRUE(status.ToString().find(msg) != std::string::npos);
+  ASSERT_OK(conn1.Execute("ABORT"));
 }
 
 } // namespace pgwrapper

@@ -87,12 +87,12 @@ struct StreamMetaData;
 namespace master {
 class ReplicationInfoPB;
 class TabletLocationsPB;
+class GetAutoFlagsConfigResponsePB;
 }
 
 namespace tserver {
 class LocalTabletServer;
 class TabletServerServiceProxy;
-class TabletServerForwardServiceProxy;
 }
 
 namespace client {
@@ -561,22 +561,6 @@ class YBClient {
                             const std::shared_ptr<tserver::TabletServerServiceProxy>& proxy,
                             const tserver::LocalTabletServer* local_tserver);
 
-  internal::RemoteTabletServer* GetLocalTabletServer();
-
-  // Sets the node local forward service proxy. This proxy is used to forward the rpcs to the
-  // appropriate tablet server.
-  void SetNodeLocalForwardProxy(
-      const std::shared_ptr<tserver::TabletServerForwardServiceProxy>& proxy);
-
-  // Returns the node local forward service proxy.
-  std::shared_ptr<tserver::TabletServerForwardServiceProxy>& GetNodeLocalForwardProxy();
-
-  // Sets the host port of the node local tserver.
-  void SetNodeLocalTServerHostPort(const ::yb::HostPort& hostport);
-
-  // Returns the host port of the node local tserver.
-  const ::yb::HostPort& GetNodeLocalTServerHostPort();
-
   // List only those tables whose names pass a substring match on 'filter'.
   //
   // 'tables' is appended to only on success.
@@ -752,6 +736,10 @@ class YBClient {
   void LookupAllTablets(const std::shared_ptr<YBTable>& table,
                         CoarseTimePoint deadline,
                         LookupTabletRangeCallback callback);
+
+  // Get the AutoFlagConfig from master. Returns std::nullopt if master is runnning on an older
+  // version that does not support AutoFlags.
+  Result<std::optional<AutoFlagsConfigPB>> GetAutoFlagConfig();
 
   std::future<Result<internal::RemoteTabletPtr>> LookupTabletByKeyFuture(
       const std::shared_ptr<YBTable>& table,

@@ -129,10 +129,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
   public static class Params extends UniverseTaskParams {
     public UUID providerUUID;
     public CommandType commandType;
-    // We use the nodePrefix as Helm Chart's release name,
-    // so we would need that for any sort helm operations.
-    // TODO(bhavin192): rename this to helmReleaseName for clarity.
-    public String nodePrefix;
+    public String helmReleaseName;
     public String namespace;
     public boolean isReadOnlyCluster;
     public String ybSoftwareVersion = null;
@@ -195,7 +192,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
                 taskParams().ybSoftwareVersion,
                 config,
                 taskParams().providerUUID,
-                taskParams().nodePrefix,
+                taskParams().helmReleaseName,
                 taskParams().namespace,
                 overridesFile);
         break;
@@ -206,7 +203,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
             .helmUpgrade(
                 taskParams().ybSoftwareVersion,
                 config,
-                taskParams().nodePrefix,
+                taskParams().helmReleaseName,
                 taskParams().namespace,
                 overridesFile);
         break;
@@ -221,7 +218,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
               .getManager()
               .updateNumNodes(
                   config,
-                  taskParams().nodePrefix,
+                  taskParams().helmReleaseName,
                   taskParams().namespace,
                   numNodes,
                   newNamingStyle);
@@ -230,12 +227,12 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       case HELM_DELETE:
         kubernetesManagerFactory
             .getManager()
-            .helmDelete(config, taskParams().nodePrefix, taskParams().namespace);
+            .helmDelete(config, taskParams().helmReleaseName, taskParams().namespace);
         break;
       case VOLUME_DELETE:
         kubernetesManagerFactory
             .getManager()
-            .deleteStorage(config, taskParams().nodePrefix, taskParams().namespace);
+            .deleteStorage(config, taskParams().helmReleaseName, taskParams().namespace);
         break;
       case NAMESPACE_DELETE:
         kubernetesManagerFactory.getManager().deleteNamespace(config, taskParams().namespace);
@@ -269,7 +266,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       List<Service> services =
           kubernetesManagerFactory
               .getManager()
-              .getServices(config, taskParams().nodePrefix, taskParams().namespace);
+              .getServices(config, taskParams().helmReleaseName, taskParams().namespace);
 
       services.forEach(
           service -> {
@@ -292,6 +289,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     Map<UUID, Map<String, String>> azToConfig = PlacementInfoUtil.getConfigPerAZ(pi);
     Map<UUID, String> azToDomain = PlacementInfoUtil.getDomainPerAZ(pi);
     boolean isMultiAz = PlacementInfoUtil.isMultiAZ(Provider.get(taskParams().providerUUID));
+    String nodePrefix = u.getUniverseDetails().nodePrefix;
 
     for (Entry<UUID, Map<String, String>> entry : azToConfig.entrySet()) {
       UUID azUUID = entry.getKey();
@@ -299,21 +297,20 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       String regionName = AvailabilityZone.get(azUUID).region.code;
       Map<String, String> config = entry.getValue();
 
-      String nodePrefix =
-          isMultiAz
-              ? String.format("%s-%s", taskParams().nodePrefix, azName)
-              : taskParams().nodePrefix;
+      String helmReleaseName =
+          PlacementInfoUtil.getHelmReleaseName(
+              isMultiAz, nodePrefix, azName, taskParams().isReadOnlyCluster);
       String namespace =
           PlacementInfoUtil.getKubernetesNamespace(
               isMultiAz,
-              taskParams().nodePrefix,
+              nodePrefix,
               azName,
               config,
               u.getUniverseDetails().useNewHelmNamingStyle,
               taskParams().isReadOnlyCluster);
 
       List<Pod> podInfos =
-          kubernetesManagerFactory.getManager().getPodInfos(config, nodePrefix, namespace);
+          kubernetesManagerFactory.getManager().getPodInfos(config, helmReleaseName, namespace);
       for (Pod podInfo : podInfos) {
         ObjectNode pod = Json.newObject();
         pod.put("startTime", podInfo.getStatus().getStartTime());
@@ -666,11 +663,15 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     }
     overrides.put("Image", imageInfo);
 
+    // Use primary cluster intent to read gflags, tls settings.
+    UniverseDefinitionTaskParams.UserIntent primaryClusterIntent =
+        u.getUniverseDetails().getPrimaryCluster().userIntent;
+
     if (u.getUniverseDetails().rootCA != null) {
       Map<String, Object> tlsInfo = new HashMap<>();
       tlsInfo.put("enabled", true);
-      tlsInfo.put("nodeToNode", userIntent.enableNodeToNodeEncrypt);
-      tlsInfo.put("clientToServer", userIntent.enableClientToNodeEncrypt);
+      tlsInfo.put("nodeToNode", primaryClusterIntent.enableNodeToNodeEncrypt);
+      tlsInfo.put("clientToServer", primaryClusterIntent.enableClientToNodeEncrypt);
       tlsInfo.put("insecure", u.getUniverseDetails().allowInsecure);
 
       String rootCert = CertificateHelper.getCertPEM(u.getUniverseDetails().rootCA);
@@ -685,7 +686,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         // Generate wildcard node cert and client cert and set them in override file
         CertificateInfo certInfo = CertificateInfo.get(u.getUniverseDetails().rootCA);
         CertificateProviderInterface certProvider =
-            EncryptionInTransitUtil.getCertificateProviderInstance(certInfo);
+            EncryptionInTransitUtil.getCertificateProviderInstance(
+                certInfo, runtimeConfigFactory.staticApplicationConf());
 
         Map<String, Object> rootCA = new HashMap<>();
         rootCA.put("cert", rootCert);
@@ -722,7 +724,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
 
       overrides.put("tls", tlsInfo);
     }
-    if (userIntent.enableIPV6) {
+    if (primaryClusterIntent.enableIPV6) {
       overrides.put("ip_version_support", "v6_only");
     }
 
@@ -753,19 +755,22 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     if (!masterOverrides.isEmpty()) {
       gflagOverrides.put("master", masterOverrides);
     }
+
     // Go over tserver flags.
-    Map<String, Object> tserverOverrides = new HashMap<String, Object>(userIntent.tserverGFlags);
-    if (!userIntent.enableYSQL) {
+    Map<String, Object> tserverOverrides =
+        new HashMap<String, Object>(primaryClusterIntent.tserverGFlags);
+    if (!primaryClusterIntent
+        .enableYSQL) { // In the UI, we can choose not to show these entries for read replica.
       tserverOverrides.put("enable_ysql", "false");
     }
-    if (!userIntent.enableYCQL) {
+    if (!primaryClusterIntent.enableYCQL) {
       tserverOverrides.put("start_cql_proxy", "false");
     }
-    if (userIntent.enableYSQL && userIntent.enableYSQLAuth) {
+    if (primaryClusterIntent.enableYSQL && primaryClusterIntent.enableYSQLAuth) {
       tserverOverrides.put("ysql_enable_auth", "true");
       tserverOverrides.put("ysql_hba_conf_csv", "local all yugabyte trust");
     }
-    if (userIntent.enableYCQL && userIntent.enableYCQLAuth) {
+    if (primaryClusterIntent.enableYCQL && primaryClusterIntent.enableYCQLAuth) {
       tserverOverrides.put("use_cassandra_authentication", "true");
     }
     if (placementCloud != null && tserverOverrides.get("placement_cloud") == null) {
@@ -792,12 +797,12 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       overrides.put("domainName", azConfig.get("KUBE_DOMAIN"));
     }
 
-    overrides.put("disableYsql", !userIntent.enableYSQL);
+    overrides.put("disableYsql", !primaryClusterIntent.enableYSQL);
 
     // If the value is anything else, that means the loadbalancer service by
     // default needed to be exposed.
     // NOTE: Will still be overriden from the provider level overrides.
-    if (userIntent.enableExposingService == ExposingServiceState.UNEXPOSED) {
+    if (primaryClusterIntent.enableExposingService == ExposingServiceState.UNEXPOSED) {
       overrides.put("enableLoadBalancer", false);
     } else {
       // Even though the helm chart default is true, doing this from platform
@@ -858,7 +863,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     // this call a couple of times throughout this method.
     if (u.getUniverseDetails().useNewHelmNamingStyle) {
       overrides.put("oldNamingStyle", false);
-      overrides.put("fullnameOverride", taskParams().nodePrefix);
+      overrides.put("fullnameOverride", taskParams().helmReleaseName);
     }
 
     try {

@@ -22,7 +22,7 @@ Camunda supports PostgreSQL as a datasource. Because YugabyteDB is wire compatib
 
 This tutorial assumes that:
 
-- YugabyteDB is up and running. If you're new to YugabyteDB, you can download, install, and have YugabyteDB up and running in minutes by following the steps in [Quick start](/preview/quick-start/). Alternatively, you can use [YugabyteDB Managed](http://cloud.yugabyte.com/) to get a fully managed database-as-a-service (DBaaS) for YugabyteDB.
+- YugabyteDB is up and running. Download and install YugabyteDB by following the steps in [Quick start](../../quick-start/). Alternatively, you can use [YugabyteDB Managed](http://cloud.yugabyte.com/) to get a fully managed database-as-a-service (DBaaS) for YugabyteDB.
 - Java JDK 1.8 or later is installed.
 - NodeJS v10 or later is installed.
 - Camunda Platform 7 and Modeler are installed following the instructions on Camunda's [quick-start page](https://docs.camunda.org/get-started/quick-start/install/).
@@ -62,7 +62,7 @@ This tutorial assumes that:
     Then, download the YugabyteDB JDBC driver [JAR file](https://repo1.maven.org/maven2/com/yugabyte/jdbc-yugabytedb/42.3.5-yb-1/jdbc-yugabytedb-42.3.5-yb-1.jar) and place it in the `camunda-bpm-run-7.17.0/configuration/userlib` directory.
 
     \
-    (Read more about the YugabyteDB JDBC driver on its [documentation page](https://docs.yugabyte.com/preview/integrations/jdbc-driver/).)
+    (Read more about the YugabyteDB JDBC driver on its [documentation page](/preview/integrations/jdbc-driver/).)
 
 1. Start the Camunda Platform server using `./start.sh` on Linux or macOS, or `./start.bat` on Windows.
 

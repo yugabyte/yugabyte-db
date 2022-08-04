@@ -33,6 +33,7 @@ import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.password.PasswordPolicyService;
 import com.yugabyte.yw.common.user.UserService;
 import com.yugabyte.yw.controllers.handlers.SessionHandler;
+import com.yugabyte.yw.controllers.TokenAuthenticator;
 import com.yugabyte.yw.forms.CustomerLoginFormData;
 import com.yugabyte.yw.forms.CustomerRegisterFormData;
 import com.yugabyte.yw.forms.PlatformResults;
@@ -130,6 +131,8 @@ public class SessionController extends AbstractPlatformController {
   @Inject private UserService userService;
 
   @Inject private LdapUtil ldapUtil;
+
+  @Inject private TokenAuthenticator tokenAuthenticator;
 
   public static final String AUTH_TOKEN = "authToken";
   public static final String API_TOKEN = "apiToken";
@@ -363,6 +366,7 @@ public class SessionController extends AbstractPlatformController {
         user.uuid.toString(),
         Audit.ActionType.Login,
         null,
+        null,
         null);
     return withData(sessionInfo);
   }
@@ -418,6 +422,7 @@ public class SessionController extends AbstractPlatformController {
           user.uuid.toString(),
           Audit.ActionType.Login,
           null,
+          null,
           null);
     }
     if (environment.isDev()) {
@@ -464,6 +469,7 @@ public class SessionController extends AbstractPlatformController {
           Audit.TargetType.User,
           user.uuid.toString(),
           Audit.ActionType.Login,
+          null,
           null,
           null);
       return withData(sessionInfo);
@@ -567,7 +573,7 @@ public class SessionController extends AbstractPlatformController {
     if (customerCount == 0) {
       return withData(registerCustomer(data, true, generateApiToken));
     } else {
-      if (TokenAuthenticator.superAdminAuthentication(ctx())) {
+      if (tokenAuthenticator.superAdminAuthentication(ctx())) {
         return withData(registerCustomer(data, false, generateApiToken));
       } else {
         throw new PlatformServiceException(BAD_REQUEST, "Only Super Admins can register tenant.");

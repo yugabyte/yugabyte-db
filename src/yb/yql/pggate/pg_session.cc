@@ -321,6 +321,8 @@ Status PgSession::DropDatabase(const std::string& database_name, PgOid database_
   return Status::OK();
 }
 
+// This function is only used to get the protobuf-based catalog version, not using
+// the pg_yb_catalog_version table.
 Status PgSession::GetCatalogMasterVersion(uint64_t *version) {
   *version = VERIFY_RESULT(pg_client_.GetCatalogMasterVersion());
   return Status::OK();

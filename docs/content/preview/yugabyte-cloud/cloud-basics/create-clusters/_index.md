@@ -2,7 +2,7 @@
 title: Create your cluster
 linkTitle: Create your cluster
 description: Deploy clusters in YugabyteDB Managed.
-headcontent: Create a cluster in YugabyteDB Managed.
+headcontent: Create a cluster in YugabyteDB Managed
 image: /images/section_icons/index/quick_start.png
 menu:
   preview_yugabyte-cloud:

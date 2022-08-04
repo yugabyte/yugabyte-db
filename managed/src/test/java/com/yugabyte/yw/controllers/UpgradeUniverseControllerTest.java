@@ -787,8 +787,9 @@ public class UpgradeUniverseControllerTest extends WithApplication {
   public void testTlsToggleWithRootCaUpdate() {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
-    UUID certUUID1 = CertificateHelper.createRootCA("test cert 1", customer.uuid, TMP_CERTS_PATH);
-    UUID certUUID2 = CertificateHelper.createRootCA("test cert 2", customer.uuid, TMP_CERTS_PATH);
+    when(mockConfig.getString("yb.storage.path")).thenReturn(TMP_CERTS_PATH);
+    UUID certUUID1 = CertificateHelper.createRootCA(mockConfig, "test cert 1", customer.uuid);
+    UUID certUUID2 = CertificateHelper.createRootCA(mockConfig, "test cert 2", customer.uuid);
     UUID universeUUID = prepareUniverseForTlsToggle(true, true, certUUID1);
 
     String url = "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/upgrade/tls";

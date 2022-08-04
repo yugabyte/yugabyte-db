@@ -26,11 +26,11 @@ Note that transaction isolation level support differs between the YSQL and YCQL 
 - [YSQL](../../../api/ysql/) supports Serializable, Snapshot, and Read Committed<sup>$</sup> isolation levels (the PostgreSQL isolation level syntax of Serializable, Repeatable Read, and Read Committed map to these three, respectively).
 - [YCQL](../../../api/ycql//dml_transaction/) supports only Snapshot isolation using the `BEGIN TRANSACTION` syntax.
 
-<sup>$</sup> Read Committed Isolation is supported only if the tserver gflag `yb_enable_read_committed_isolation` is set to true. By default this gflag is false and in this case the Read Committed isolation level of Yugabyte's transactional layer falls back to the stricter Snapshot isolation (in which case YSQL's Read Committed and Read Uncommitted also in turn use Snapshot isolation). Read Committed support is currently in [Beta](/preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag).
+<sup>$</sup> Read Committed Isolation is supported only if the gflag `yb_enable_read_committed_isolation` is set to true. By default this gflag is false and in this case the Read Committed isolation level of Yugabyte's transactional layer falls back to the stricter Snapshot isolation (in which case YSQL's Read Committed and Read Uncommitted also in turn use Snapshot isolation). Read Committed support is currently in [Beta](/preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag).
 
 {{< note title="Note" >}}
 
-The default isolation level for the YSQL API is essentially Snapshot (the same as PostgreSQL's Repeatable Read) because Read Committed, which is the YSQL API's (and PostgreSQL's) syntactic default, maps to Snapshot isolation (unless the tserver gflag `yb_enable_read_committed_isolation` is set to true). We believe this is a good default for a distributed SQL database.
+The default isolation level for the YSQL API is essentially Snapshot (the same as PostgreSQL's Repeatable Read) because Read Committed, which is the YSQL API's (and PostgreSQL's) syntactic default, maps to Snapshot isolation (unless `yb_enable_read_committed_isolation` is set to true). We believe this is a good default for a distributed SQL database.
 
 {{</note >}}
 

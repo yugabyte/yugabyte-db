@@ -139,7 +139,8 @@ class CDCSDKTestBase : public YBTest {
       bool colocated = false,
       const int table_oid = 0,
       bool enum_value = false,
-      const std::string& enum_suffix = "");
+      const std::string& enum_suffix = "",
+      const std::string& schema_name = "public");
 
   Result<std::string> GetNamespaceId(const std::string& namespace_name);
 

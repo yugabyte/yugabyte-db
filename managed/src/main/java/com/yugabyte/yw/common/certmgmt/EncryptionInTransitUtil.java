@@ -14,6 +14,7 @@ package com.yugabyte.yw.common.certmgmt;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.google.api.client.util.Strings;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseSetTlsParams;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -39,7 +40,8 @@ import org.springframework.security.crypto.encrypt.TextEncryptor;
 public class EncryptionInTransitUtil {
   public static final String SALT_STR = "hashicorpcert";
 
-  public static CertificateProviderBase getCertificateProviderInstance(CertificateInfo info) {
+  public static CertificateProviderBase getCertificateProviderInstance(
+      CertificateInfo info, Config config) {
     CertificateProviderBase certProvider;
     try {
       switch (info.certType) {
@@ -47,7 +49,7 @@ public class EncryptionInTransitUtil {
           certProvider = VaultPKI.getVaultPKIInstance(info);
           break;
         case SelfSigned:
-          certProvider = new CertificateSelfSigned(info);
+          certProvider = new CertificateSelfSigned(info, config);
           break;
         default:
           throw new PlatformServiceException(
@@ -62,10 +64,11 @@ public class EncryptionInTransitUtil {
     return certProvider;
   }
 
-  public static void fetchLatestCAForHashicorpPKI(CertificateInfo info, String storagePath)
+  public static void fetchLatestCAForHashicorpPKI(CertificateInfo info, Config config)
       throws Exception {
     UUID custUUID = info.customerUUID;
-    CertificateProviderBase provider = getCertificateProviderInstance(info);
+    String storagePath = config.getString("yb.storage.path");
+    CertificateProviderBase provider = getCertificateProviderInstance(info, config);
     provider.dumpCACertBundle(storagePath, custUUID);
   }
 

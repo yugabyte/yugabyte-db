@@ -32,7 +32,10 @@ react/.idea/
 npm-debug.log
 react/npm-debug.log
 
+# TODO: Investigate why following file gets generated even when evolutions is disabled
 conf/*
+/swagger/conf/*
+
 src/main/public/*
 src/main/resources/version_metadata.json
 *.pyc

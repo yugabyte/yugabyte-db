@@ -21,6 +21,8 @@
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_ttl_util.h"
 #include "yb/docdb/key_bounds.h"
+#include "yb/docdb/packed_row.h"
+#include "yb/docdb/schema_packing.h"
 #include "yb/docdb/value.h"
 #include "yb/docdb/value_type.h"
 
@@ -164,7 +166,7 @@ class PackedRowData {
         sizeof(last_internal_component_));
   }
 
-  // Returns true if column was processed.
+  // Returns true if column was processed. Otherwise caller should handle this column.
   Result<bool> ProcessColumn(
       ColumnId column_id, const Slice& value, const DocHybridTime& column_doc_ht) {
     if (!packing_started_) {
@@ -195,6 +197,13 @@ class PackedRowData {
       }
     }
 
+    if (!value.empty() && value[0] == ValueEntryTypeAsChar::kTombstone &&
+        new_packing_.table_type == TableType::PGSQL_TABLE_TYPE) {
+      // In a YSQL table, a tombstone for a specific column could be added only during PITR,
+      // and we should just ignore all column updates for it.
+      // Do not forget that we see only most recent entry to specified key.
+      return true;
+    }
     // TODO(packed_row) update control fields
     VLOG(4) << "Update value: " << column_id << ", " << value.ToDebugHexString() << ", tail size: "
             << tail_size;

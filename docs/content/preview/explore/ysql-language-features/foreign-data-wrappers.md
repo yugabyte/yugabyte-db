@@ -1,13 +1,13 @@
 ---
-title: Foreign Data Wrappers
-linkTitle: Foreign Data Wrappers
-description: Foreign Data Wrappers in YSQL
+title: Foreign data wrappers
+linkTitle: Foreign data wrappers
+description: Foreign data wrappers in YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
   preview:
     identifier: explore-ysql-language-features-foreign-data-wrappers
     parent: explore-ysql-language-features
-    weight: 100
+    weight: 250
 type: docs
 ---
 
@@ -58,5 +58,6 @@ yugabyte=# CREATE FOREIGN TABLE mytable (col1 int, col2 int)
 ```
 
 The following foreign data wrappers are bundled with YugabyteDB:
+
 - [postgres_fdw](../pg-extensions/#postgres-fdw-example)
 - [file_fdw](../pg-extensions/#file-fdw-example)

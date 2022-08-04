@@ -55,7 +55,7 @@ public class ReadOnlyKubernetesClusterCreate extends KubernetesTaskBase {
       Provider provider =
           Provider.getOrBadRequest(UUID.fromString(readOnlyCluster.userIntent.provider));
 
-      KubernetesPlacement placement = new KubernetesPlacement(pi);
+      KubernetesPlacement placement = new KubernetesPlacement(pi, /*isReadOnlyCluster*/ true);
 
       CloudType primaryCloudType = primaryCluster.userIntent.providerType;
       if (primaryCloudType != CloudType.kubernetes) {
@@ -67,7 +67,8 @@ public class ReadOnlyKubernetesClusterCreate extends KubernetesTaskBase {
       }
 
       PlacementInfo primaryPI = primaryCluster.placementInfo;
-      KubernetesPlacement primaryPlacement = new KubernetesPlacement(primaryPI);
+      KubernetesPlacement primaryPlacement =
+          new KubernetesPlacement(primaryPI, /*isReadOnlyCluster */ false);
 
       boolean newNamingStyle = taskParams().useNewHelmNamingStyle;
 

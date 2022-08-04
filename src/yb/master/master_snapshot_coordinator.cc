@@ -19,6 +19,7 @@
 #include <boost/multi_index/mem_fun.hpp>
 #include <boost/asio/io_context.hpp>
 
+#include "yb/common/common_types_util.h"
 #include "yb/common/snapshot.h"
 
 #include "yb/docdb/consensus_frontier.h"
@@ -463,6 +464,7 @@ class MasterSnapshotCoordinator::Impl {
       .non_system_objects_to_restore = {},
       .existing_system_tables = {},
       .restoring_system_tables = {},
+      .non_system_tablets_to_restore = {},
     });
     {
       std::lock_guard<std::mutex> lock(mutex_);
@@ -529,6 +531,24 @@ class MasterSnapshotCoordinator::Impl {
 
   Result<SnapshotScheduleId> CreateSchedule(
       const CreateSnapshotScheduleRequestPB& req, int64_t leader_term, CoarseTimePoint deadline) {
+    // Get the validated table from the request.
+    const auto& table = VERIFY_RESULT(ParseCreateSnapshotScheduleRequest(req));
+
+    // Fail the request if at least one keyspace in the requested snapshot schedules already exists.
+    const std::string& namespace_name = table.get().namespace_().name();
+    const YQLDatabase namespace_type = table.get().namespace_().database_type();
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      const auto& existing_schedule = FindSnapshotSchedule(namespace_name, namespace_type);
+      if (existing_schedule.ok()) {
+        return STATUS(AlreadyPresent,
+                      Format("Snapshot schedule $0 already exists for the given keyspace $1.$2",
+                             existing_schedule->id(), DatabaseTypeName(namespace_type),
+                             namespace_name),
+                      MasterError(MasterErrorPB::OBJECT_ALREADY_PRESENT));
+      }
+    }
+
     SnapshotScheduleState schedule(&context_, req);
 
     docdb::KeyValueWriteBatchPB write_batch;
@@ -537,6 +557,39 @@ class MasterSnapshotCoordinator::Impl {
     RETURN_NOT_OK(SynchronizedWrite(std::move(write_batch), leader_term, deadline, &context_));
 
     return schedule.id();
+  }
+
+  Result<const TableIdentifierPB&> ParseCreateSnapshotScheduleRequest(
+      const CreateSnapshotScheduleRequestPB& req) {
+    if (req.options().filter().tables().tables_size() == 0) {
+      return STATUS(InvalidArgument, "Request must contain a keyspace",
+                    MasterError(MasterErrorPB::INVALID_REQUEST));
+    }
+
+    if (req.options().filter().tables().tables_size() > 1) {
+      return STATUS(InvalidArgument, "Request cannot contain more than one keyspace",
+                    MasterError(MasterErrorPB::INVALID_REQUEST));
+    }
+
+    const auto& table = req.options().filter().tables().tables()[0];
+
+    if (!table.has_namespace_()) {
+      return STATUS(InvalidArgument, "Request does not contain a keyspace. Snapshot schedules must "
+                    "be created at the db level", MasterError(MasterErrorPB::INVALID_REQUEST));
+    }
+
+    if (table.namespace_().database_type() != YQLDatabase::YQL_DATABASE_CQL &&
+        table.namespace_().database_type() != YQLDatabase::YQL_DATABASE_PGSQL) {
+      return STATUS(InvalidArgument, "The keyspace must be of type YSQL or YCQL",
+                    MasterError(MasterErrorPB::INVALID_REQUEST));
+    }
+
+    if (table.namespace_().name().empty()) {
+      return STATUS(InvalidArgument, "The keyspace name must be non-empty",
+                    MasterError(MasterErrorPB::INVALID_REQUEST));
+    }
+
+    return table;
   }
 
   Status ListSnapshotSchedules(
@@ -602,16 +655,12 @@ class MasterSnapshotCoordinator::Impl {
     return Status::OK();
   }
 
-  void VerifyRestoration(RestorationState* restoration) REQUIRES(mutex_) {
+  Status VerifyRestoration(RestorationState* restoration) REQUIRES(mutex_) {
     auto schedule_result = FindSnapshotSchedule(restoration->schedule_id());
-    LOG_IF(DFATAL, !schedule_result.ok())
-        << "Snapshot schedule not found for pending restore with id "
-        << restoration->restoration_id() << ", status: " << schedule_result.status();
-    auto status = context_.VerifyRestoredObjects(
-        restoration->MasterMetadata(), (*schedule_result).options().filter().tables().tables());
-    LOG_IF(DFATAL, !status.ok()) << "Verify restoration failed: " << status;
-    LOG(INFO) << "PITR: Master metadata verified successsfully for restoration "
-              << restoration->restoration_id();
+    RETURN_NOT_OK_PREPEND(schedule_result, "Snapshot schedule not found.");
+
+    return context_.VerifyRestoredObjects(
+        restoration->MasterMetadata(), schedule_result->options().filter().tables().tables());
   }
 
   boost::optional<yb::master::SnapshotState&> ValidateRestoreAndGetSnapshot(
@@ -684,6 +733,7 @@ class MasterSnapshotCoordinator::Impl {
       // Do nothing on follower.
       return;
     }
+
     // Issue pending restoration rpcs.
     vector<RestorationData> postponed_restores;
     {
@@ -696,7 +746,20 @@ class MasterSnapshotCoordinator::Impl {
         }
         // If it is PITR restore, then verify restoration and add to the queue for rpcs.
         if (!restoration->schedule_id().IsNil()) {
-          VerifyRestoration(restoration.get());
+          auto status = VerifyRestoration(restoration.get());
+          if (status.ok()) {
+            LOG(INFO) << "PITR: Master metadata verified successfully for restoration "
+                      << restoration->restoration_id();
+          } else {
+            // We've had some instances in the past when verification failed but there was no issue
+            // with restore. Especially with tablet splitting. In Retail mode just log an error and
+            // proceed.
+            auto error_msg = Format(
+                "PITR: Master metadata verified failed for restoration $0, status: $1",
+                restoration->restoration_id(), status);
+            LOG(DFATAL) << error_msg;
+          }
+
           auto db_oid = ComputeDbOid(restoration.get());
           postponed_restores.push_back(RestorationData {
             .snapshot_id = restoration->snapshot_id(),
@@ -896,6 +959,33 @@ class MasterSnapshotCoordinator::Impl {
     return **it;
   }
 
+  Result<SnapshotScheduleState&> FindSnapshotSchedule(
+      const std::string& namespace_name,
+      const YQLDatabase namespace_type,
+      const bool ignore_deleted = true) REQUIRES(mutex_) {
+    for (const auto& schedule : schedules_) {
+      if (ignore_deleted && schedule->deleted()) {
+        continue;
+      }
+
+      DCHECK_EQ(schedule->options().filter().tables().tables_size(), 1);
+      if (schedule->options().filter().tables().tables_size() != 1) {
+        LOG(WARNING) << Format("Detected a schedule with an unexpected number of identifiers: $1",
+                               schedule->options().filter().tables().tables_size());
+      }
+
+      for (const auto& table : schedule->options().filter().tables().tables()) {
+        if (table.namespace_().name() == namespace_name &&
+            table.namespace_().database_type() == namespace_type) {
+          return *schedule;
+        }
+      }
+    }
+
+    return STATUS(NotFound, "Could not find snapshot schedule", namespace_name,
+                    MasterError(MasterErrorPB::SNAPSHOT_NOT_FOUND));
+  }
+
   void ExecuteOperations(const TabletSnapshotOperations& operations, int64_t leader_term) {
     if (operations.empty()) {
       return;
@@ -1001,7 +1091,7 @@ class MasterSnapshotCoordinator::Impl {
       return;
     }
     SCOPED_LEADER_SHARED_LOCK(l, cm_);
-    if (!l.catalog_status().ok() || !l.leader_status().ok()) {
+    if (!l.IsInitializedAndIsLeader()) {
       return;
     }
     VLOG(4) << __func__ << "()";

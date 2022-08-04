@@ -1,4 +1,4 @@
-```ebnf
+```output.ebnf
 alter_table ::= ALTER TABLE table_expr alter_table_action [ , ... ]
 
 alter_table_action ::= ADD [ COLUMN ] column_name data_type 

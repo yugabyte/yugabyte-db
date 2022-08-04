@@ -5,7 +5,6 @@
 import React, { Component } from 'react';
 import { YBModal, YBTextInput } from '../../common/forms/fields';
 import { getPromiseState } from '../../../utils/PromiseUtils';
-import { browserHistory } from 'react-router';
 
 import './ToggleUniverseState.scss';
 
@@ -50,7 +49,7 @@ class ToggleUniverseState extends Component {
     ) {
       this.props.fetchUniverseMetadata();
       if (this.props.location.pathname !== '/universes') {
-        browserHistory.push('/universes');
+        window.location.reload();
       }
     }
   }

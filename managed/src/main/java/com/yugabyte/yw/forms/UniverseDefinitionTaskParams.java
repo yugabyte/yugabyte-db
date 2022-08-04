@@ -70,6 +70,10 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   // This is set during configure to figure out which cluster type is intended to be modified.
   @ApiModelProperty public ClusterType currentClusterType;
 
+  @ApiModelProperty public boolean enableYbc = false;
+
+  @ApiModelProperty public String ybcSoftwareVersion = null;
+
   public ClusterType getCurrentClusterType() {
     return currentClusterType == null ? ClusterType.PRIMARY : currentClusterType;
   }
@@ -151,8 +155,6 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   // backward compatability.
   @ApiModelProperty public boolean useNewHelmNamingStyle = false;
 
-  @ApiModelProperty public boolean useYbcForBackups = false;
-
   /** Allowed states for an imported universe. */
   public enum ImportedState {
     NONE, // Default, and for non-imported universes.
@@ -186,6 +188,23 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     EXPOSED,
     UNEXPOSED
   }
+
+  /**
+   * This are available update options when user clicks "Save" on EditUniverse page. UPDATE and
+   * FULL_MOVE are handled by the same task (EditUniverse), the difference is that for FULL_MOVE ui
+   * acts a little different. SMART_RESIZE_NON_RESTART - we don't need any confirmations for that as
+   * it is non-restart. SMART_RESIZE - upgrade that handled by ResizeNode task GFLAGS_UPGRADE - for
+   * the case of toggling "enable YSQ" and so on.
+   */
+  public enum UpdateOptions {
+    UPDATE,
+    FULL_MOVE,
+    SMART_RESIZE_NON_RESTART,
+    SMART_RESIZE,
+    GFLAGS_UPGRADE
+  }
+
+  @ApiModelProperty public Set<UpdateOptions> updateOptions = new HashSet<>();
 
   /** A wrapper for all the clusters that will make up the universe. */
   @JsonInclude(value = JsonInclude.Include.NON_NULL)
@@ -375,8 +394,6 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     // The software version of YB to install.
     @Constraints.Required() @ApiModelProperty public String ybSoftwareVersion;
 
-    @ApiModelProperty public String ybcPackagePath = null;
-
     @Constraints.Required() @ApiModelProperty public String accessKeyCode;
 
     @ApiModelProperty public DeviceInfo deviceInfo;
@@ -486,7 +503,6 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       newUserIntent.instanceType = instanceType;
       newUserIntent.numNodes = numNodes;
       newUserIntent.ybSoftwareVersion = ybSoftwareVersion;
-      newUserIntent.ybcPackagePath = ybcPackagePath;
       newUserIntent.useSystemd = useSystemd;
       newUserIntent.accessKeyCode = accessKeyCode;
       newUserIntent.assignPublicIP = assignPublicIP;
@@ -518,7 +534,6 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
           && instanceType.equals(other.instanceType)
           && numNodes == other.numNodes
           && ybSoftwareVersion.equals(other.ybSoftwareVersion)
-          && (ybcPackagePath == null || ybcPackagePath.equals(other.ybcPackagePath))
           && (accessKeyCode == null || accessKeyCode.equals(other.accessKeyCode))
           && assignPublicIP == other.assignPublicIP
           && assignStaticPublicIP == other.assignStaticPublicIP
@@ -539,7 +554,6 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
           && instanceType.equals(other.instanceType)
           && numNodes == other.numNodes
           && ybSoftwareVersion.equals(other.ybSoftwareVersion)
-          && (ybcPackagePath == null || ybcPackagePath.equals(other.ybcPackagePath))
           && (accessKeyCode == null || accessKeyCode.equals(other.accessKeyCode))
           && assignPublicIP == other.assignPublicIP
           && assignStaticPublicIP == other.assignStaticPublicIP
@@ -563,29 +577,6 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
      */
     private static boolean compareRegionLists(List<UUID> left, List<UUID> right) {
       return (new HashSet<>(left)).equals(new HashSet<>(right));
-    }
-
-    /**
-     * Helper API to send the tags to be used for any instance level operation. The existing map is
-     * cloned and modifications are performed on the clone. Currently it removes just the node name,
-     * which should not be duplicated in ybcloud commands. Used only for AWS now.
-     *
-     * @return A map of tags to use.
-     */
-    @JsonIgnore
-    public Map<String, String> getInstanceTagsForInstanceOps() {
-      Map<String, String> retTags = new HashMap<>();
-      if (!Provider.InstanceTagsEnabledProviders.contains(providerType)) {
-        return retTags;
-      }
-
-      retTags.putAll(instanceTags);
-      if (providerType.equals(Common.CloudType.aws)) {
-        // Do not allow users to overwrite the node name. Only AWS uses tags to set it.
-        retTags.remove(UniverseDefinitionTaskBase.NODE_NAME_KEY);
-      }
-
-      return retTags;
     }
 
     @JsonIgnore

@@ -185,12 +185,10 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
       boolean isReadOnlyCluster) {
     KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
     params.commandType = commandType;
-    params.nodePrefix = nodePrefix;
     params.providerUUID = providerUUID;
     params.isReadOnlyCluster = isReadOnlyCluster;
-    if (az != null) {
-      params.nodePrefix = String.format("%s-%s", nodePrefix, az);
-    }
+    params.helmReleaseName =
+        PlacementInfoUtil.getHelmReleaseName(nodePrefix, az, isReadOnlyCluster);
     if (config != null) {
       params.config = config;
       // This assumes that the config is az config. It is true in this

@@ -10,12 +10,14 @@ menu:
 type: docs
 ---
 
+There are some system statistics that might help with troublshooting.
+
 ## Host resource usage
 
-To check the CPU, memory, and disk usage on a Linux machine, you can run the following command.
+To check the CPU, memory, and disk usage on a Linux machine, you can run the following command:
 
 ```sh
-$ sudo echo -n "CPUs: ";cat /proc/cpuinfo | grep processor | wc -l; echo -n "Mem: ";free -h | grep Mem | tr -s " " | cut -d" " -f 2; echo -n "Disk: "; df -h / | grep -v Filesystem;
+sudo echo -n "CPUs: ";cat /proc/cpuinfo | grep processor | wc -l; echo -n "Mem: ";free -h | grep Mem | tr -s " " | cut -d" " -f 2; echo -n "Disk: "; df -h / | grep -v Filesystem;
 ```
 
 ```output
@@ -32,27 +34,27 @@ Mem: 251G
 Disk: /dev/sda2       208G  5.1G  203G   3% /
 ```
 
-Generally, common tools like `top` or `iostat` may be useful.
+Generally, common tools such as `top` or `iostat` may be useful.
 
 ### Auditd
 
-If `top` reports high CPU usage for the `auditd` process, it may have some rules auditing some system calls frequently used YugabyteDB which can significantly affect performance. You can try temporarily disabling `audit` by running (on each YugabyteDB node).
+If `top` reports high CPU usage for the `auditd` process, it may have rules auditing some system calls frequently used by YugabyteDB which can significantly affect performance. You can try temporarily disabling `audit` by running the following command on each YugabyteDB node:
 
 ```sh
-$ auditctl -e 0
+auditctl -e 0
 ```
 
-and check if this improves performance.
+Then you would check if this improves performance.
 
-To re-enable it afterwards, run:
+To re-enable `audit` afterwards, run the following command:
 
 ```sh
-$ auditctl -e 1
+auditctl -e 1
 ```
 
 ## YugabyteDB processes state
 
-YugabyteDB provides web endpoints where the current state of each process is aggregated. This includes logs, flags as well as memory, disk, and network usage metrics. Additionally, it provides dedicated metrics endpoints for YCQL and, respectively, Redis requests.
+YugabyteDB provides the following web endpoints where the current state of each process is aggregated. This includes logs, flags, as well as memory, disk, and network usage metrics. Additionally, it provides dedicated metrics endpoints for YCQL and, respectively, Redis requests:
 
 | Description | URL |
 |-------------|-----|
@@ -61,8 +63,4 @@ YugabyteDB provides web endpoints where the current state of each process is agg
 | Redis Metrics | `<node-ip>:11000/metrics` |
 | YCQL Metrics | `<node-ip>:12000/metrics` |
 
-{{< note title="Note" >}}
-
-When running `yb-ctl` locally with default values, three local IP addresses will be created: `127.0.0.1`, `127.0.0.2`, and `127.0.0.3`, one for each YugabyteDB node.
-
-{{< /note >}}
+When running `yb-ctl` locally with default values, three local IP addresses are created: `127.0.0.1`, `127.0.0.2`, and `127.0.0.3`, one for each YugabyteDB node.

@@ -36,6 +36,7 @@ set(YB_PCH_DEP_LIBS opid_proto)
 set(CLIENT_SRCS
   async_initializer.cc
   async_rpc.cc
+  auto_flags_manager.cc
   batcher.cc
   client.cc
   client_builder-internal.cc
@@ -45,7 +46,6 @@ set(CLIENT_SRCS
   client_utils.cc
   error.cc
   error_collector.cc
-  forward_rpc.cc
   in_flight_op.cc
   meta_cache.cc
   meta_data_cache.cc
@@ -78,7 +78,6 @@ set(CLIENT_LIBS
   server_process
   tserver_proto
   tserver_service_proto
-  tserver_forward_service_proto
   tserver_util
   yb_util
   gutil

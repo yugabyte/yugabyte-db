@@ -75,7 +75,7 @@ TEST_F(EMCTest, TestBasicOperation) {
     EXPECT_TRUE(HasPrefixString(master_http.ToString(), "127.0.0.1:")) << master_http.ToString();
 
     // Retrieve a thread metric, which should always be present on any master.
-    int64_t value = ASSERT_RESULT(master->GetInt64Metric(
+    int64_t value = ASSERT_RESULT(master->GetMetric<int64>(
         &METRIC_ENTITY_server,
         "yb.master",
         &METRIC_threads_running,
@@ -101,7 +101,7 @@ TEST_F(EMCTest, TestBasicOperation) {
     EXPECT_TRUE(HasPrefixString(ts_http.ToString(), expected_prefix)) << ts_http.ToString();
 
     // Retrieve a thread metric, which should always be present on any TS.
-    int64_t value = ASSERT_RESULT(ts->GetInt64Metric(
+    int64_t value = ASSERT_RESULT(ts->GetMetric<int64>(
         &METRIC_ENTITY_server, "yb.tabletserver", &METRIC_threads_running, "value"));
     LOG(INFO) << "TServer " << i << ": " << METRIC_threads_running.name() << '=' << value;
     EXPECT_GT(value, 0);

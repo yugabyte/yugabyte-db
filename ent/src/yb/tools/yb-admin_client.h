@@ -128,6 +128,9 @@ class ClusterAdminClient : public yb::tools::ClusterAdminClient {
 
   Status BootstrapProducer(const std::vector<TableId>& table_id);
 
+  Status WaitForReplicationDrain(const std::vector<CDCStreamId>& stream_ids,
+                                 const string& target_time);
+
  private:
   Result<TxnSnapshotId> SuitableSnapshotId(
       const SnapshotScheduleId& schedule_id, HybridTime restore_at, CoarseTimePoint deadline);
@@ -140,6 +143,12 @@ class ClusterAdminClient : public yb::tools::ClusterAdminClient {
     const std::string& producer_uuid, const Status& failure_status);
 
   Status DisableTabletSplitsDuringRestore(CoarseTimePoint deadline);
+
+  std::string GetDBTypeName(const master::SysNamespaceEntryPB& pb);
+  // Map: Old name -> New name.
+  typedef std::unordered_map<NamespaceName, NamespaceName> NSNameToNameMap;
+  Status UpdateUDTypes(
+      QLTypePB* pb_type, bool* update_meta, const NSNameToNameMap& ns_name_to_name);
 
   DISALLOW_COPY_AND_ASSIGN(ClusterAdminClient);
 };

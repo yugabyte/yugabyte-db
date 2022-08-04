@@ -325,7 +325,7 @@ class PostgresBuilder(YbBuildToolBase):
                 '-Wno-error=unused-function'
             ]
 
-            if self.build_type == 'release':
+            if self.build_type in ['release', 'prof_gen', 'prof_use']:
                 if self.is_clang():
                     additional_c_cxx_flags += [
                         '-Wno-error=array-bounds',
@@ -479,7 +479,7 @@ class PostgresBuilder(YbBuildToolBase):
             # TODO: do we still need this limitation?
             configure_cmd_line += ['--without-readline']
 
-        if self.build_type != 'release':
+        if self.build_type not in ['release', 'prof_gen', 'prof_use']:
             configure_cmd_line += ['--enable-cassert']
         # Unset YB_SHOW_COMPILER_COMMAND_LINE when configuring postgres to avoid unintended side
         # effects from additional compiler output.
@@ -567,6 +567,8 @@ class PostgresBuilder(YbBuildToolBase):
                     ':(glob,exclude)src/postgres/**/specs/*.spec',
                     ':(glob,exclude)src/postgres/**/sql/*.sql',
                     ':(glob,exclude)src/postgres/.clang-format',
+                    ':(glob,exclude)src/postgres/src/test/regress/README',
+                    ':(glob,exclude)src/postgres/src/test/regress/yb_lint_regress_schedule.sh',
                 ])
             # Get the most recent commit that touched postgres files.
             git_hash = subprocess.check_output(

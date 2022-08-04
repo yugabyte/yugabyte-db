@@ -563,7 +563,7 @@ ybSetupScanQual(ForeignScanState *node)
 		/* Create new PgExpr wrapper for the expression */
 		YBCPgExpr yb_expr = YBCNewEvalExprCall(yb_state->handle, expr);
 		/* Add the PgExpr to the statement */
-		HandleYBStatus(YbPgDmlAppendQual(yb_state->handle, yb_expr));
+		HandleYBStatus(YbPgDmlAppendQual(yb_state->handle, yb_expr, true));
 	}
 
 	MemoryContextSwitchTo(oldcontext);
@@ -595,7 +595,7 @@ ybSetupScanColumnRefs(ForeignScanState *node)
 											param->collid,
 											&type_attrs);
 		/* Add the PgExpr to the statement */
-		HandleYBStatus(YbPgDmlAppendColumnRef(yb_state->handle, yb_expr));
+		HandleYBStatus(YbPgDmlAppendColumnRef(yb_state->handle, yb_expr, true));
 	}
 
 	MemoryContextSwitchTo(oldcontext);
@@ -609,9 +609,7 @@ ybSetupScanColumnRefs(ForeignScanState *node)
 static TupleTableSlot *
 ybcIterateForeignScan(ForeignScanState *node)
 {
-	TupleTableSlot *slot;
 	YbFdwExecState *ybc_state = (YbFdwExecState *) node->fdw_state;
-	bool           has_data   = false;
 
 	/* Execute the select statement one time.
 	 * TODO(neil) Check whether YugaByte PgGate should combine Exec() and Fetch() into one function.
@@ -627,51 +625,13 @@ ybcIterateForeignScan(ForeignScanState *node)
 		ybc_state->is_exec_done = true;
 	}
 
-	/* Clear tuple slot before starting */
-	slot = node->ss.ss_ScanTupleSlot;
-	ExecClearTuple(slot);
-
-	TupleDesc       tupdesc = slot->tts_tupleDescriptor;
-	Datum           *values = slot->tts_values;
-	bool            *isnull = slot->tts_isnull;
-	YBCPgSysColumns syscols;
-
-	/* Fetch one row. */
-	HandleYBStatus(YBCPgDmlFetch(ybc_state->handle,
-	                             tupdesc->natts,
-	                             (uint64_t *) values,
-	                             isnull,
-	                             &syscols,
-	                             &has_data));
-
-	/* If we have result(s) update the tuple slot. */
-	if (has_data)
-	{
-		if (node->yb_fdw_aggs == NIL)
-		{
-			HeapTuple tuple = heap_form_tuple(tupdesc, values, isnull);
-			if (syscols.oid != InvalidOid)
-			{
-				HeapTupleSetOid(tuple, syscols.oid);
-			}
-
-			slot = ExecStoreHeapTuple(tuple, slot, false);
-
-			/* Setup special columns in the slot */
-			slot->tts_ybctid = PointerGetDatum(syscols.ybctid);
-		}
-		else
-		{
-			/*
-			 * Aggregate results stored in virtual slot (no tuple). Set the
-			 * number of valid values and mark as non-empty.
-			 */
-			slot->tts_nvalid = tupdesc->natts;
-			slot->tts_isempty = false;
-		}
-	}
-
-	return slot;
+	/*
+	 * If function forms a heap tuple, the ForeignNext function will set proper
+	 * t_tableOid value there, so do not bother passing valid relid now.
+	 */
+	return ybFetchNext(ybc_state->handle,
+					   node->ss.ss_ScanTupleSlot,
+					   InvalidOid);
 }
 
 static void

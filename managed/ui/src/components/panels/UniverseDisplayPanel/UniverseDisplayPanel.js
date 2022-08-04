@@ -56,10 +56,16 @@ class UniverseDisplayItem extends Component {
     const universeProviderText = universeProviders.join(', ');
 
     const nodeCount = getUniverseNodeCount(universe.universeDetails.nodeDetailsSet);
+    const isPricingKnown = universe.resources?.pricingKnown;
+    const pricePerHour = universe.pricePerHour;
     const numNodes = <span>{nodeCount}</span>;
     let costPerMonth = <span>n/a</span>;
-    if (isFinite(universe.pricePerHour)) {
-      costPerMonth = <YBCost value={universe.pricePerHour} multiplier={'month'} />;
+    if (isFinite(pricePerHour)) {
+      costPerMonth = <YBCost
+        value={pricePerHour}
+        multiplier={'month'}
+        isPricingKnown={isPricingKnown}
+      />;
     }
     const universeCreationDate = universe.creationDate ? (
       <TimestampWithTimezone timeFormat="MM/DD/YYYY" timestamp={universe.creationDate} />

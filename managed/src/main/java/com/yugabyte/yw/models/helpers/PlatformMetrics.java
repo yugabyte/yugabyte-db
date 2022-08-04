@@ -27,6 +27,7 @@ public enum PlatformMetrics {
   HEALTH_CHECK_NODES_WITH_ERRORS("Nodes with at least 1 error count", Unit.COUNT),
   HEALTH_CHECK_NODE_METRICS_STATUS("Health check node metrics status for universe", Unit.STATUS),
   HEALTH_CHECK_NOTIFICATION_STATUS("Health check notification status for universe", Unit.STATUS),
+  YB_UNIV_HEALTH_STATUS("Particular node check status", Unit.STATUS, true, "yb_univ_health_status"),
 
   // Health check error nodes count
   HEALTH_CHECK_MASTER_DOWN("Master process down nodes count", Unit.COUNT),
@@ -91,11 +92,13 @@ public enum PlatformMetrics {
       "Remaining Encryption-at-Rest config validity in days", Unit.DAY, false),
   UNIVERSE_REPLICATION_FACTOR("Universe replication factor", Unit.COUNT, true),
   UNIVERSE_SSH_KEY_EXPIRY_DAY(
-      "Remaining days to expiry for SSH key of the universe", Unit.DAY, false);
+      "Remaining days to expiry for SSH key of the universe", Unit.DAY, false),
+  UNIVERSE_METRIC_COLLECTION_STATUS("Metric Collection status for the universe", Unit.STATUS);
 
   private final String help;
   private final Unit unit;
   private final Set<MetricSourceState> validForSourceStates;
+  private final String metricName;
 
   // By default metrics are valid only for active source
   PlatformMetrics(String help, Unit unit) {
@@ -103,6 +106,10 @@ public enum PlatformMetrics {
   }
 
   PlatformMetrics(String help, Unit unit, boolean onlyActive) {
+    this(help, unit, onlyActive, null);
+  }
+
+  PlatformMetrics(String help, Unit unit, boolean onlyActive, String metricName) {
     Set<MetricSourceState> validForSourceStates =
         onlyActive
             ? ImmutableSet.of(MetricSourceState.ACTIVE)
@@ -110,6 +117,7 @@ public enum PlatformMetrics {
     this.help = help;
     this.unit = unit;
     this.validForSourceStates = validForSourceStates;
+    this.metricName = metricName;
   }
 
   public String getUnitName() {
@@ -117,6 +125,9 @@ public enum PlatformMetrics {
   }
 
   public String getMetricName() {
+    if (metricName != null) {
+      return metricName;
+    }
     // ybp is required to list all platform alerts in Prometheus UI by prefix
     return "ybp_" + name().toLowerCase();
   }

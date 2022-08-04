@@ -103,7 +103,7 @@ Result<int> TotalBackfillRpcMetric(ExternalMiniCluster* cluster, const char* typ
   int total_rpc_calls = 0;
   constexpr auto metric_name = "handler_latency_yb_tserver_TabletServerAdminService_BackfillIndex";
   for (auto ts : cluster->tserver_daemons()) {
-    auto val = VERIFY_RESULT(ts->GetInt64Metric("server", "yb.tabletserver", metric_name, type));
+    auto val = VERIFY_RESULT(ts->GetMetric<int64>("server", "yb.tabletserver", metric_name, type));
     total_rpc_calls += val;
     VLOG(1) << ts->bind_host() << " for " << type << " returned " << val;
   }

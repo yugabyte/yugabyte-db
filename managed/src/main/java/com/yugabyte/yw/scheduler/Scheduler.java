@@ -370,17 +370,6 @@ public class Scheduler {
       return;
     }
 
-    // filter out paused universes
-    universeUUIDs = accessKeyRotationUtil.removePausedUniverses(universeUUIDs);
-    if (universeUUIDs.size() == 0) {
-      log.info(
-          "Scheduled access key rotation is skipped for schedule {} "
-              + "as all universes are paused.",
-          schedule.getScheduleUUID());
-      schedule.updateBacklogStatus(true);
-      return;
-    }
-
     if (alreadyRunning) {
       log.warn(
           "Did not run scheduled access key rotation for schedule {} "

@@ -65,6 +65,64 @@ TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(Simple)) {
   ASSERT_EQ(value, "four, five");
 }
 
+TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(Update)) {
+  // Test update with and without packed row enabled.
+
+  auto conn = ASSERT_RESULT(Connect());
+
+  // Insert one row, row will be packed.
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE t (key INT PRIMARY KEY, v1 TEXT, v2 TEXT) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.Execute("INSERT INTO t (key, v1, v2) VALUES (1, 'one', 'two')"));
+  auto value = ASSERT_RESULT(conn.FetchRowAsString("SELECT v1, v2 FROM t WHERE key = 1"));
+  ASSERT_EQ(value, "one, two");
+  CheckNumRecords(cluster_.get(), /* expected_num_records = */ 1);
+
+  // Update the row with column size exceeds limit size for paced row,
+  // will insert two new entries to docdb.
+  constexpr size_t kValueLimit = 512;
+  const std::string kBigValue(kValueLimit, 'B');
+  ASSERT_OK(conn.ExecuteFormat(
+      "UPDATE t SET v1 = '$0', v2 = '$1' where key = 1", kBigValue, kBigValue));
+  value = ASSERT_RESULT(conn.FetchRowAsString("SELECT v1, v2 FROM t WHERE key = 1"));
+  ASSERT_EQ(value, Format("$0, $1", kBigValue, kBigValue));
+  CheckNumRecords(cluster_.get(), /* expected_num_records = */ 3);
+
+  // Update the row with two small strings, updated row will be packed.
+  ASSERT_OK(conn.Execute("UPDATE t SET v1 = 'four', v2 = 'three' where key = 1"));
+  value = ASSERT_RESULT(conn.FetchRowAsString("SELECT v1, v2 FROM t WHERE key = 1"));
+  ASSERT_EQ(value, "four, three");
+  CheckNumRecords(cluster_.get(), /* expected_num_records = */ 4);
+
+  // Disable packed row, and after update, should have two entries inserted to docdb.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = false;
+
+  ASSERT_OK(conn.Execute("UPDATE t SET v1 = 'six', v2 = 'five' where key = 1"));
+  value = ASSERT_RESULT(conn.FetchRowAsString("SELECT v1, v2 FROM t WHERE key = 1"));
+  ASSERT_EQ(value, "six, five");
+  CheckNumRecords(cluster_.get(), /* expected_num_records = */ 6);
+}
+
+TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(UpdateReturning)) {
+  // Test UPDATE...RETURNING with packed row enabled.
+
+  auto conn = ASSERT_RESULT(Connect());
+
+  // Insert one row, row will be packed.
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE t (key INT PRIMARY KEY, v1 TEXT, v2 TEXT) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.Execute("INSERT INTO t (key, v1, v2) VALUES (1, 'one', 'two')"));
+  auto value = ASSERT_RESULT(conn.FetchRowAsString("SELECT v1, v2 FROM t WHERE key = 1"));
+  ASSERT_EQ(value, "one, two");
+  CheckNumRecords(cluster_.get(), /* expected_num_records = */ 1);
+
+  // Update the row and return it.
+  value = ASSERT_RESULT(conn.FetchRowAsString(
+      "UPDATE t SET v1 = 'three', v2 = 'four' where key = 1 RETURNING v1, v2"));
+  ASSERT_EQ(value, "three, four");
+  CheckNumRecords(cluster_.get(), /* expected_num_records = */ 2);
+}
+
 TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(Random)) {
   constexpr int kModifications = 4000;
   constexpr int kKeys = 50;

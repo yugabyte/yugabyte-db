@@ -306,9 +306,8 @@ size_t WritableFileWriter::RequestToken(size_t bytes, bool align) {
   if (suspender_ && FLAGS_allow_preempting_compactions) {
     suspender_->PauseIfNecessary();
   }
-  Env::IOPriority io_priority;
-  if (rate_limiter_ && (io_priority = writable_file_->GetIOPriority()) <
-      Env::IO_TOTAL) {
+  yb::IOPriority io_priority;
+  if (rate_limiter_ && (io_priority = writable_file_->GetIOPriority()) < yb::IOPriority::kTotal) {
     bytes = std::min(
       bytes, static_cast<size_t>(rate_limiter_->GetSingleBurstBytes()));
 

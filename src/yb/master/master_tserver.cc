@@ -119,13 +119,8 @@ void MasterTabletServer::get_ysql_catalog_version(uint64_t* current_version,
   // Ensure that we are currently the Leader before handling catalog version.
   {
     SCOPED_LEADER_SHARED_LOCK(l, master_->catalog_manager_impl());
-    if (!l.catalog_status().ok()) {
-      LOG(WARNING) << "Catalog status failure: " << l.catalog_status().ToString();
-      fill_vers();
-      return;
-    }
-    if (!l.leader_status().ok()) {
-      LOG(WARNING) << "Leader status failure: " << l.leader_status().ToString();
+    if (!l.IsInitializedAndIsLeader()) {
+      LOG(WARNING) << l.failed_status_string();
       fill_vers();
       return;
     }

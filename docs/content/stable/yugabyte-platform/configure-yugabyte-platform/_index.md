@@ -1,10 +1,10 @@
 ---
-title: Configure Yugabyte Platform
-headerTitle: Configure Yugabyte Platform
-linkTitle: Configure Yugabyte Platform
-description: Configure Yugabyte Platform.
+title: Configure YugabyteDB Anywhere
+headerTitle: Configure YugabyteDB Anywhere
+linkTitle: Configure
+description: Configure YugabyteDB Anywhere.
 image: /images/section_icons/deploy/manual-deployment.png
-headcontent: Configure Yugabyte Platform.
+headcontent: Configure YugabyteDB Anywhere.
 menu:
   stable_yugabyte-platform:
     parent: yugabytedb-anywhere
@@ -31,7 +31,7 @@ type: indexpage
     <a class="section-link icon-offset" href="set-up-cloud-provider/aws/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/enterprise/edit_flags.png" aria-hidden="true" />
-        <div class="title">Configure the cloud provider</div>
+        <div class="title">Configure cloud providers</div>
       </div>
       <div class="body">
         Set up providers for on-premises, AWS, GCP, Azure, Kubernetes, OpenShift, Tanzu.
@@ -43,7 +43,7 @@ type: indexpage
     <a class="section-link icon-offset" href="backup-target/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
-        <div class="title">Configure backup target</div>
+        <div class="title">Configure the backup target</div>
       </div>
       <div class="body">
         Configure the backup target for scheduled backups.

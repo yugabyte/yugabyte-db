@@ -46,6 +46,10 @@ export function isEmptyString(str) {
   return _.isString(str) && str.trim().length === 0;
 }
 
+export function makeFirstLetterUpperCase(str) {
+  return _.isString(str) && _.upperFirst(str);
+}
+
 export function removeNullProperties(obj) {
   for (const propName in obj) {
     if (obj[propName] === null || obj[propName] === undefined) {

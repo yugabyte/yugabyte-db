@@ -1,13 +1,13 @@
 ---
 title: Date-time types ToC [YSQL]
 headerTitle: Table of contents for the date-time data types section
-linkTitle: ToC
-description: date-time types ToC.
+linkTitle: Section contents
+description: Overview and content map of the date-time types section.
 menu:
   stable:
     identifier: toc
     parent: api-ysql-datatypes-datetime
-    weight: 150
+    weight: 31
 type: docs
 ---
 

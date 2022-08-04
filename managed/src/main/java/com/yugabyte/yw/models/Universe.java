@@ -29,6 +29,8 @@ import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.SqlQuery;
 import io.ebean.annotation.DbJson;
+import io.ebean.annotation.Transactional;
+import io.ebean.annotation.TxIsolation;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
@@ -50,6 +52,7 @@ import javax.persistence.Transient;
 import javax.persistence.UniqueConstraint;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 import org.yb.client.YBClient;
 import play.api.Play;
 import play.data.validation.Constraints;
@@ -80,6 +83,8 @@ public class Universe extends Model {
 
   public static Universe getValidUniverseOrBadRequest(UUID universeUUID, Customer customer) {
     Universe universe = getOrBadRequest(universeUUID);
+    MDC.put("universe-id", universeUUID.toString());
+    MDC.put("cluster-id", universeUUID.toString());
     checkUniverseInCustomer(universeUUID, customer);
     return universe;
   }
@@ -170,6 +175,27 @@ public class Universe extends Model {
         .collect(Collectors.toList());
   }
 
+  @Transactional(isolation = TxIsolation.REPEATABLE_READ)
+  @Override
+  public boolean delete() {
+    // Delete xCluster configs without universes.
+    XClusterConfig.getByUniverseUuid(universeUUID)
+        .stream()
+        .filter(
+            xClusterConfig -> {
+              if (xClusterConfig.sourceUniverseUUID == null) {
+                return true;
+              } else {
+                if (universeUUID.equals(xClusterConfig.sourceUniverseUUID)) {
+                  return xClusterConfig.targetUniverseUUID == null;
+                }
+                return false;
+              }
+            })
+        .forEach(Model::delete);
+    return super.delete();
+  }
+
   public static final Finder<UUID, Universe> find = new Finder<UUID, Universe>(Universe.class) {};
 
   // Prefix added to read only node.
@@ -237,6 +263,22 @@ public class Universe extends Model {
 
   public static Set<UUID> getAllUUIDs() {
     return ImmutableSet.copyOf(find.query().where().findIds());
+  }
+
+  /**
+   * Fetches the universe UUIDs associated with customer IDs.
+   *
+   * @return map of customer ID to a set of its universe UUIDs.
+   */
+  public static Map<Long, Set<UUID>> getAllCustomerUniverseUUIDs() {
+    return find.query()
+        .select("customerId, universeUUID")
+        .findList()
+        .stream()
+        .collect(
+            Collectors.groupingBy(
+                u -> u.customerId,
+                Collectors.mapping(Universe::getUniverseUUID, Collectors.toSet())));
   }
 
   public static Set<Universe> getAllWithoutResources(Customer customer) {
@@ -864,6 +906,15 @@ public class Universe extends Model {
   }
 
   /**
+   * Fine the current master leader node
+   *
+   * @return NodeDetails of the master leader
+   */
+  public NodeDetails getMasterLeaderNode() {
+    return getNodeByPrivateIP(getMasterLeaderHostText());
+  }
+
+  /**
    * Find the current master leader in the universe
    *
    * @return a String of the private_ip of the current master leader in the universe or an empty
@@ -877,6 +928,10 @@ public class Universe extends Model {
 
   public boolean universeIsLocked() {
     return getUniverseDetails().updateInProgress;
+  }
+
+  public boolean isYbcEnabled() {
+    return getUniverseDetails().enableYbc;
   }
 
   public boolean nodeExists(String host, int port) {

@@ -66,7 +66,7 @@ K8S_CLIENT_CERT_FILE_PATH = os.path.join(K8S_CLIENT_CERTS_PATH, "yugabytedb.crt"
 RECENT_FAILURE_THRESHOLD_SEC = 8 * 60
 FATAL_TIME_THRESHOLD_MINUTES = 12
 DISK_UTILIZATION_THRESHOLD_PCT = 80
-FD_THRESHOLD_PCT = 50
+FD_THRESHOLD_PCT = 70
 SSH_TIMEOUT_SEC = 10
 CMD_TIMEOUT_SEC = 20
 MAX_THREADS = 10
@@ -170,6 +170,12 @@ YB_NODE_YSQL_CONNECTIONS_COUNT = MetricDefinition(
 YB_NODE_YSQL_CONNECT = MetricDefinition(
     "yb_node_ysql_connect",
     "Status of test ysql connection")
+YB_NODE_YCQL_CONNECT = MetricDefinition(
+    "yb_node_ycql_connect",
+    "Status of test ycql connection")
+YB_NODE_REDIS_CONNECT = MetricDefinition(
+    "yb_node_redis_connect",
+    "Status of test redis connection")
 YB_NODE_YSQL_WRITE_READ = MetricDefinition(
     "yb_node_ysql_write_read",
     "Status of test ysql write and read operation")
@@ -179,6 +185,15 @@ YB_NODE_LEADERLESS_TABLET_COUNT = MetricDefinition(
 YB_NODE_UNDERREPLICATED_TABLET_COUNT = MetricDefinition(
     "yb_node_underreplicated_tablet_count",
     "Underreplicated tablets count")
+YB_NODE_VERSION_CHECK = MetricDefinition(
+    "yb_node_version_check",
+    "Status of master/tserver version check")
+YB_NODE_CORE_FILES_CHECK = MetricDefinition(
+    "yb_node_core_files_check",
+    "Status of core files check")
+YB_NODE_CLOCK_SKEW_CHECK = MetricDefinition(
+    "yb_node_clock_skew_check",
+    "Status of clock skew check")
 
 ###################################################################################################
 # Reporting
@@ -671,7 +686,11 @@ class NodeChecker():
         else:
             cmd = 'curl -s {}'.format(endpoint)
 
-        return self._check_output(cmd).strip()
+        output = self._check_output(cmd).strip()
+        if has_errors(output):
+            logging.info("HTTP request to {} returned error: {}".format(endpoint, output))
+            return None
+        return output
 
     def check_yb_version(self, ip_address, process, port, expected):
         logging.info("Checking YB Version on node {} process {}".format(self.node, process))
@@ -688,19 +707,27 @@ class NodeChecker():
             message = str(ex)
             return e.fill_and_return_entry([message], has_error=True)
 
+        process_name = get_process_name(process)
+        metric = Metric.from_definition(YB_NODE_VERSION_CHECK)
         try:
             matched = is_equal_release_build(release_build, expected)
         except RuntimeError as re:
+            metric.add_value(0, [Label("process", process_name)])
             return e.fill_and_return_entry(
                 ['Failed to parse node ({}) or expected ({}) build number: {}'.
                  format(expected, release_build, str(re))],
-                has_error=True)
+                has_error=True,
+                metrics=[metric])
         if not matched:
+            metric.add_value(0, [Label("process", process_name)])
             return e.fill_and_return_entry(
                 ['Version from platform metadata {}, version reported by instance process {}'.
                  format(expected, release_build)],
-                has_error=True)
-        return e.fill_and_return_entry([release_build])
+                has_error=True,
+                metrics=[metric])
+
+        metric.add_value(1, [Label("process", process_name)])
+        return e.fill_and_return_entry([release_build], metrics=[metric])
 
     def check_master_yb_version(self, process):
         return self.check_yb_version(
@@ -785,7 +812,11 @@ class NodeChecker():
         files = []
         if output.strip():
             files = output.strip().split('\n')
-        return e.fill_and_return_entry(files, has_error=len(files) > 0)
+
+        has_core_files = len(files) > 0
+        metric = Metric.from_definition(YB_NODE_CORE_FILES_CHECK) \
+                       .add_value(0 if has_core_files else 1)
+        return e.fill_and_return_entry(files, has_error=has_core_files, metrics=[metric])
 
     def get_process_pid_by_parent_pid_and_name(self, process_name, parent_pid):
         cmd = "ps --no-headers --ppid {} -o pid= -o comm= ".format(parent_pid)
@@ -907,8 +938,9 @@ class NodeChecker():
             metric = Metric.from_definition(YB_NODE_OOM_KILLS_10MIN).add_value(oom_kills)
             return e.fill_and_return_entry([oom_kills], has_error=False, metrics=[metric])
 
+        # Typically happens when we have no sudo permissions for this - which is possible
         return e.fill_and_return_entry(['Wrong OOM kills count {}'.format(oom_kills)],
-                                       has_error=True)
+                                       has_error=False)
 
     def check_postmaster_rss(self):
         logging.info("Checking postmaster RSS on node {}".format(self.node))
@@ -947,7 +979,8 @@ class NodeChecker():
         ysql_http_endpoint = 'http://{}:{}/rpcz'.format(self.node, self.ysql_server_http_port)
         response = self.http_request(ysql_http_endpoint)
         if not response:
-            return e.fill_and_return_entry(['TServer HTTP endpoint is not running'], has_error=True)
+            return e.fill_and_return_entry(['TServer HTTP endpoint is not running'],
+                                           has_error=False)
         client_backends = 0
         try:
             response_json = json.loads(response)
@@ -966,11 +999,17 @@ class NodeChecker():
         return e.fill_and_return_entry([int(client_backends)], has_error=False, metrics=[metric])
 
     def check_tablets(self, entry, endpoint, tablets_field, count_metric):
+        # Only run this check on master leader
+        is_leader = self.get_is_master_leader()
+        if not is_leader:
+            return entry.ignore_check()
+
         master_endpoint = 'http://{}:{}/api/v1/{}' \
             .format(self.node, self.master_http_port, endpoint)
         response = self.http_request(master_endpoint)
         if not response:
-            return e.fill_and_return_entry(['Master HTTP endpoint is not running'], has_error=True)
+            return entry.fill_and_return_entry(['Master HTTP endpoint is not running'],
+                                               has_error=False)
 
         metric = Metric.from_definition(count_metric)
         total_tablets = 0
@@ -1019,17 +1058,19 @@ class NodeChecker():
                                        has_error=False,
                                        metrics=[metric])
 
+    def get_is_master_leader(self):
+        master_endpoint = 'http://{}:{}/api/v1/is-leader'.format(self.node, self.master_http_port)
+        status_code = self.http_request(master_endpoint, True)
+
+        return True if status_code == '200' else False
+
     def check_is_master_leader(self):
         logging.info("Checking master leader on node {}".format(self.node))
         e = self._new_metric_entry("Master Leader")
-        master_endpoint = 'http://{}:{}/api/v1/is-leader'.format(self.node, self.master_http_port)
-        status_code = self.http_request(master_endpoint, True)
-        if status_code == '000':
-            return e.fill_and_return_entry(['Master HTTP endpoint is not running'], has_error=True)
 
-        is_leader = 1 if status_code == '200' else 0
-        metric = Metric.from_definition(YB_NODE_IS_MASTER_LEADER).add_value(is_leader)
-        return e.fill_and_return_entry(["False" if is_leader == 0 else "True"],
+        is_leader = self.get_is_master_leader()
+        metric = Metric.from_definition(YB_NODE_IS_MASTER_LEADER).add_value(1 if is_leader else 0)
+        return e.fill_and_return_entry([str(is_leader)],
                                        has_error=False,
                                        metrics=[metric])
 
@@ -1097,7 +1138,10 @@ class NodeChecker():
                 .format(self.node, self.ycql_port) in output or
                 "AuthenticationFailed('Remote end requires authentication.'" in output):
             errors = [output]
-        return e.fill_and_return_entry(errors, has_error=len(errors) > 0)
+
+        has_errors = len(errors) > 0
+        metric = Metric.from_definition(YB_NODE_YCQL_CONNECT).add_value(0 if has_errors else 1)
+        return e.fill_and_return_entry(errors, has_error=has_errors, metrics=[metric])
 
     def check_redis_cli(self):
         logging.info("Checking redis cli works for node {}".format(self.node))
@@ -1111,7 +1155,9 @@ class NodeChecker():
         if output not in ("PONG", "NOAUTH ping: Authentication required."):
             errors = [output]
 
-        return e.fill_and_return_entry(errors, has_error=len(errors) > 0)
+        has_errors = len(errors) > 0
+        metric = Metric.from_definition(YB_NODE_REDIS_CONNECT).add_value(0 if has_errors else 1)
+        return e.fill_and_return_entry(errors, has_error=has_errors, metrics=[metric])
 
     def create_ysqlsh_command(self):
         ysqlsh = '{}/bin/ysqlsh'.format(self.yb_tserver_dir())
@@ -1251,7 +1297,9 @@ class NodeChecker():
         if "Active: active (running)" not in output:
             errors.append("NTP service not running")
 
-        return e.fill_and_return_entry(errors, has_error=len(errors) > 0)
+        has_errors = len(errors) > 0
+        metric = Metric.from_definition(YB_NODE_CLOCK_SKEW_CHECK).add_value(0 if has_errors else 1)
+        return e.fill_and_return_entry(errors, has_error=has_errors, metrics=[metric])
 
     def check_openssl_availability(self):
         cmd = "which openssl &>/dev/null; echo $?"

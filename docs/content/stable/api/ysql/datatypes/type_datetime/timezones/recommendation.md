@@ -29,7 +29,7 @@ Following these recommendations protects you from the many opportunities to go w
 {{< tip title="Download and install the date-time utilities code." >}}
 The code on this page depends on the [_extended_timezone_names_ view](../extended-timezone-names/). It also depends on the [custom _interval_ domains](../../date-time-data-types-semantics/type-interval/custom-interval-domains/) code. And this, in turn, depends on the [user-defined _interval_ utilities](../../date-time-data-types-semantics/type-interval/interval-utilities/).
 
-These components are all included in the larger [code kit](../../download-date-time-utilities/) that includes all of the reusable code that the overall _[date-time](../../../type_datetime)_ section describes and uses.
+These components are all included in the larger [code kit](../../download-date-time-utilities/) that includes all of the reusable code that the overall _[date-time](../../../type_datetime/)_ section describes and uses.
 
 The code on that this page defines is intended for reuse. It, too, is therefore included in the _date-time utilities_ downloadable code kit.
 {{< /tip >}}

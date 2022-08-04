@@ -137,7 +137,6 @@ using rpc::Rpc;
 using tablet::RaftGroupStatePB;
 using tserver::LocalTabletServer;
 using tserver::TabletServerServiceProxy;
-using tserver::TabletServerForwardServiceProxy;
 
 namespace client {
 

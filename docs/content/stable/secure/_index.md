@@ -7,7 +7,6 @@ headcontent: Secure your deployment of YugabyteDB.
 image: /images/section_icons/index/secure.png
 type: indexpage
 ---
-
 <div class="row">
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
@@ -27,7 +26,7 @@ type: indexpage
     <a class="section-link icon-offset" href="enable-authentication/">
       <div class="head">
         <img class="icon" src="/images/section_icons/secure/authentication.png" aria-hidden="true" />
-        <div class="title">Enable Authentication</div>
+        <div class="title">Enable authentication</div>
       </div>
       <div class="body">
           Enable authentication for all clients connecting to YugabyteDB.
@@ -39,7 +38,7 @@ type: indexpage
     <a class="section-link icon-offset" href="authentication/">
       <div class="head">
         <img class="icon" src="/images/section_icons/secure/authentication.png" aria-hidden="true" />
-        <div class="title">Authentication Methods</div>
+        <div class="title">Authentication methods</div>
       </div>
       <div class="body">
           Choose the appropriate authentication mechanism.
@@ -51,7 +50,7 @@ type: indexpage
     <a class="section-link icon-offset" href="authorization/">
       <div class="head">
         <img class="icon" src="/images/section_icons/secure/authorization.png" aria-hidden="true" />
-        <div class="title">Role-Based Access Control</div>
+        <div class="title">Role-based access control</div>
       </div>
       <div class="body">
           Manage users and roles, grant privileges, implement row-level security (RLS), and column-level security.
@@ -89,7 +88,7 @@ type: indexpage
       <div class="head">
         <img class="icon" src="/images/section_icons/secure/tls-encryption.png"
         aria-hidden="true" />
-        <div class="title">Audit Logging</div>
+        <div class="title">Audit logging</div>
       </div>
       <div class="body">
           Configure YugabyteDB's session-level and object-level audit logging for security and compliance.
@@ -102,7 +101,7 @@ type: indexpage
       <div class="head">
         <img class="icon" src="/images/section_icons/secure/tls-encryption.png"
         aria-hidden="true" />
-        <div class="title">Column-Level Encryption</div>
+        <div class="title">Column-level encryption</div>
       </div>
       <div class="body">
           Encrypt data present in columns containing sensitive data using per-column encryption at the application layer in YugabyteDB (using symmetric and asymmetric encryption).

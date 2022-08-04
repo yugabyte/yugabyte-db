@@ -120,6 +120,24 @@ class ScopedLeaderSharedLock {
     return leader_status_;
   }
 
+  // Is the catalog manager initialized and is it the leader of its Raft configuration.
+  bool IsInitializedAndIsLeader() const { return first_failed_status().ok(); }
+
+  // String representation of first non-OK status. Should only be called when first_failed_status()
+  // is not ok.
+  std::string failed_status_string() const {
+    if (!catalog_status_.ok()) {
+      return "Catalog status failure: " + catalog_status_.ToString();
+    }
+
+    DCHECK(!leader_status_.ok());
+    if (!leader_status_.ok()) {
+      return "Leader status failure: " + leader_status_.ToString();
+    }
+
+    return "Status success.";
+  }
+
   // Check that the catalog manager is initialized. It may or may not be the
   // leader of its Raft configuration.
   //

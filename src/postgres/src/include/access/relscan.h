@@ -170,6 +170,8 @@ typedef struct IndexScanDescData
 	 *       have plan information in scan state structures.
 	 */
 	Scan *yb_scan_plan;
+	PushdownExprs *yb_rel_pushdown;
+	PushdownExprs *yb_idx_pushdown;
 }			IndexScanDescData;
 
 /* Generic structure for parallel scans */

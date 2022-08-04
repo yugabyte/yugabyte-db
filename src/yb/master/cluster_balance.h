@@ -80,6 +80,8 @@ class ClusterLoadBalancer {
   explicit ClusterLoadBalancer(CatalogManager* cm);
   virtual ~ClusterLoadBalancer();
 
+  void InitMetrics();
+
   // Executes one run of the load balancing algorithm. This currently does not persist any state,
   // so it needs to scan the in-memory tablet and TS data in the CatalogManager on every run and
   // create a new PerTableLoadState object.
@@ -95,6 +97,8 @@ class ClusterLoadBalancer {
   bool IsLoadBalancerEnabled() const;
 
   bool CanBalanceGlobalLoad() const;
+
+  void ReportMetrics();
 
   Status IsIdle() const;
 
@@ -361,6 +365,9 @@ class ClusterLoadBalancer {
   // The catalog manager of the Master that actually has the Tablet and TS state. The object is not
   // managed by this class, but by the Master's unique_ptr.
   CatalogManager* catalog_manager_;
+
+  // Info about if load balancing is enabled in the cluster.
+  scoped_refptr<AtomicGauge<bool>> is_load_balancing_enabled_metric_;
 
   std::shared_ptr<YsqlTablespaceManager> tablespace_manager_;
 

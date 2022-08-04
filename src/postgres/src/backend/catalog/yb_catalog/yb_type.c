@@ -380,11 +380,11 @@ Datum YbCStrToDatum(const char *data, int64 bytes, const YBCPgTypeAttrs *type_at
 						errmsg("Invalid data size")));
 	}
 
-	/* Convert YugaByte cstring to Postgres internal representation */
-	FunctionCallInfoData fargs;
-	FunctionCallInfo fcinfo = &fargs;
-	PG_GETARG_DATUM(0) = CStringGetDatum(data);
-	return cstring_in(fcinfo);
+	/*
+	 * data may or may not contain tailing \0.
+	 * The result will be null-terminated string in both cases.
+	 */
+	return CStringGetDatum(pnstrdup(data, bytes));
 }
 
 /*

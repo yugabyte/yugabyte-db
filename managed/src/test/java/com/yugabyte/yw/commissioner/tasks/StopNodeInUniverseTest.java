@@ -19,16 +19,20 @@ import static org.mockito.Mockito.when;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.List;
 import java.util.Map;
@@ -308,16 +312,33 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
   public void testStopMasterNodeWithYbc() {
     NodeTaskParams taskParams = new NodeTaskParams();
     Customer customer = ModelFactory.testCustomer("tc3", "Test Customer 3");
-    Universe universe = createUniverse(customer.getCustomerId());
+    Universe universe =
+        createUniverse(
+            "Test Universe 2",
+            UUID.randomUUID(),
+            customer.getCustomerId(),
+            CloudType.aws,
+            null,
+            null,
+            true);
     UniverseDefinitionTaskParams.UserIntent userIntent =
         new UniverseDefinitionTaskParams.UserIntent();
     userIntent.numNodes = 3;
     userIntent.provider = defaultProvider.uuid.toString();
     userIntent.replicationFactor = 3;
-    userIntent.ybcPackagePath = "temp_ybc_package_path";
+    PlacementInfo placementInfo =
+        PlacementInfoUtil.getPlacementInfo(
+            ClusterType.PRIMARY, userIntent, userIntent.replicationFactor, null);
     universe =
         Universe.saveDetails(
-            universe.universeUUID, ApiUtils.mockUniverseUpdater(userIntent, true /* setMasters */));
+            universe.universeUUID,
+            ApiUtils.mockUniverseUpdater(
+                userIntent,
+                "host",
+                true /* setMasters */,
+                false /* updateInProgress */,
+                placementInfo,
+                true /* enableYbc */));
     taskParams.universeUUID = universe.universeUUID;
 
     TaskInfo taskInfo = submitTask(taskParams, "host-n1");
@@ -361,16 +382,33 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
   public void testStopNonMasterNodeWithYBC() {
     NodeTaskParams taskParams = new NodeTaskParams();
     Customer customer = ModelFactory.testCustomer("tc2", "Test Customer 2");
-    Universe universe = createUniverse(customer.getCustomerId());
+    Universe universe =
+        createUniverse(
+            "Test Universe",
+            UUID.randomUUID(),
+            customer.getCustomerId(),
+            CloudType.aws,
+            null,
+            null,
+            true);
     UniverseDefinitionTaskParams.UserIntent userIntent =
         new UniverseDefinitionTaskParams.UserIntent();
     userIntent.numNodes = 5;
     userIntent.provider = defaultProvider.uuid.toString();
     userIntent.replicationFactor = 3;
-    userIntent.ybcPackagePath = "temp_ybc_package_path";
+    PlacementInfo placementInfo =
+        PlacementInfoUtil.getPlacementInfo(
+            ClusterType.PRIMARY, userIntent, userIntent.replicationFactor, null);
     universe =
         Universe.saveDetails(
-            universe.universeUUID, ApiUtils.mockUniverseUpdater(userIntent, true /* setMasters */));
+            universe.universeUUID,
+            ApiUtils.mockUniverseUpdater(
+                userIntent,
+                "host",
+                true /* setMasters */,
+                false /* updateInProgress */,
+                placementInfo,
+                true /* enableYbc */));
     taskParams.universeUUID = universe.universeUUID;
 
     TaskInfo taskInfo = submitTask(taskParams, "host-n4");

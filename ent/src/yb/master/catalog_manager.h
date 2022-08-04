@@ -198,6 +198,13 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
                                                UpdateConsumerOnProducerSplitResponsePB* resp,
                                                rpc::RpcContext* rpc);
 
+  // Wait for replication to drain on CDC streams.
+  typedef std::pair<CDCStreamId, TabletId> StreamTabletIdPair;
+  typedef boost::hash<StreamTabletIdPair> StreamTabletIdHash;
+  Status WaitForReplicationDrain(const WaitForReplicationDrainRequestPB* req,
+                                         WaitForReplicationDrainResponsePB* resp,
+                                         rpc::RpcContext* rpc);
+
   // Find all the CDC streams that have been marked as DELETED.
   Status FindCDCStreamsMarkedAsDeleting(std::vector<scoped_refptr<CDCStreamInfo>>* streams);
 
@@ -257,7 +264,7 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
       REQUIRES(mutex_);
 
   // Per table structure for external cluster snapshot importing to this cluster.
-  // Old IDs mean IDs on external cluster, new IDs - IDs on this cluster.
+  // Old IDs mean IDs on external/source cluster, new IDs - IDs on this cluster.
   struct ExternalTableSnapshotData {
     bool is_index() const {
       return !table_entry_pb.indexed_table_id().empty();
@@ -279,21 +286,43 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
     ImportSnapshotMetaResponsePB_TableMetaPB* table_meta = nullptr;
   };
-
-  // Map: old_namespace_id (key) -> new_namespace_id (value) + db_type.
-  typedef std::pair<NamespaceId, YQLDatabase> NamespaceData;
-  typedef std::map<NamespaceId, NamespaceData> NamespaceMap;
   typedef std::map<TableId, ExternalTableSnapshotData> ExternalTableSnapshotDataMap;
 
+  struct ExternalNamespaceSnapshotData {
+    ExternalNamespaceSnapshotData() : db_type(YQL_DATABASE_UNKNOWN), just_created(false) {}
+
+    NamespaceId new_namespace_id;
+    YQLDatabase db_type;
+    bool just_created;
+  };
+  // Map: old_namespace_id (key) -> new_namespace_id + db_type + created-flag.
+  typedef std::map<NamespaceId, ExternalNamespaceSnapshotData> NamespaceMap;
+
+  struct ExternalUDTypeSnapshotData {
+    ExternalUDTypeSnapshotData() : just_created(false) {}
+
+    UDTypeId new_type_id;
+    SysUDTypeEntryPB type_entry_pb;
+    bool just_created;
+  };
+  // Map: old_type_id (key) -> new_type_id + type_entry_pb + created-flag.
+  typedef std::map<UDTypeId, ExternalUDTypeSnapshotData> UDTypeMap;
+
   Status ImportSnapshotPreprocess(const SnapshotInfoPB& snapshot_pb,
-                                          ImportSnapshotMetaResponsePB* resp,
-                                          NamespaceMap* namespace_map,
-                                          ExternalTableSnapshotDataMap* tables_data);
+                                  ImportSnapshotMetaResponsePB* resp,
+                                  NamespaceMap* namespace_map,
+                                  UDTypeMap* type_map,
+                                  ExternalTableSnapshotDataMap* tables_data);
+  Status ImportSnapshotProcessUDTypes(const SnapshotInfoPB& snapshot_pb,
+                                      ImportSnapshotMetaResponsePB* resp,
+                                      UDTypeMap* type_map,
+                                      const NamespaceMap& namespace_map);
   Status ImportSnapshotCreateObject(const SnapshotInfoPB& snapshot_pb,
-                                            ImportSnapshotMetaResponsePB* resp,
-                                            NamespaceMap* namespace_map,
-                                            ExternalTableSnapshotDataMap* tables_data,
-                                            CreateObjects create_objects);
+                                    ImportSnapshotMetaResponsePB* resp,
+                                    const NamespaceMap& namespace_map,
+                                    const UDTypeMap& type_map,
+                                    ExternalTableSnapshotDataMap* tables_data,
+                                    CreateObjects create_objects);
   Status ImportSnapshotWaitForTables(const SnapshotInfoPB& snapshot_pb,
                                              ImportSnapshotMetaResponsePB* resp,
                                              ExternalTableSnapshotDataMap* tables_data,
@@ -301,8 +330,13 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   Status ImportSnapshotProcessTablets(const SnapshotInfoPB& snapshot_pb,
                                               ImportSnapshotMetaResponsePB* resp,
                                               ExternalTableSnapshotDataMap* tables_data);
+  void DeleteNewUDtype(const UDTypeId& udt_id,
+                       const std::unordered_set<UDTypeId>& type_ids_to_delete);
   void DeleteNewSnapshotObjects(const NamespaceMap& namespace_map,
+                                const UDTypeMap& type_map,
                                 const ExternalTableSnapshotDataMap& tables_data);
+
+  Status RepackSnapshotsForBackup(ListSnapshotsResponsePB* resp);
 
   // Helper function for ImportTableEntry.
   Result<bool> CheckTableForImport(
@@ -311,14 +345,20 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   Status ImportNamespaceEntry(const SysRowEntry& entry,
                                       NamespaceMap* namespace_map);
+  Status UpdateUDTypes(QLTypePB* pb_type, const UDTypeMap& type_map);
+  Status ImportUDTypeEntry(const UDTypeId& udt_id,
+                           UDTypeMap* type_map,
+                           const NamespaceMap& namespace_map);
   Status RecreateTable(const NamespaceId& new_namespace_id,
-                               const ExternalTableSnapshotDataMap& table_map,
-                               ExternalTableSnapshotData* table_data);
+                       const UDTypeMap& type_map,
+                       const ExternalTableSnapshotDataMap& table_map,
+                       ExternalTableSnapshotData* table_data);
   Status RepartitionTable(scoped_refptr<TableInfo> table,
                                   const ExternalTableSnapshotData* table_data);
   Status ImportTableEntry(const NamespaceMap& namespace_map,
-                                  const ExternalTableSnapshotDataMap& table_map,
-                                  ExternalTableSnapshotData* s_data);
+                          const UDTypeMap& type_map,
+                          const ExternalTableSnapshotDataMap& table_map,
+                          ExternalTableSnapshotData* s_data);
   Status PreprocessTabletEntry(const SysRowEntry& entry,
                                        ExternalTableSnapshotDataMap* table_map);
   Status ImportTabletEntry(const SysRowEntry& entry,
@@ -512,6 +552,23 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   void Started() override;
 
   void SysCatalogLoaded(int64_t term) override;
+
+  Status AddNamespaceEntriesToPB(
+      const std::vector<TableDescription>& tables,
+      google::protobuf::RepeatedPtrField<SysRowEntry>* out,
+      std::unordered_set<NamespaceId>* namespaces);
+
+  Status AddUDTypeEntriesToPB(
+      const std::vector<TableDescription>& tables,
+      google::protobuf::RepeatedPtrField<SysRowEntry>* out,
+      const std::unordered_set<NamespaceId>& namespaces);
+
+  static Status AddTableAndTabletEntriesToPB(
+      const std::vector<TableDescription>& tables,
+      google::protobuf::RepeatedPtrField<SysRowEntry>* out,
+      google::protobuf::RepeatedPtrField<SysSnapshotEntryPB::TabletSnapshotPB>*
+          tablet_snapshot_info = nullptr,
+      vector<scoped_refptr<TabletInfo>>* all_tablets = nullptr);
 
   Result<SysRowEntries> CollectEntriesForSequencesDataTable();
 

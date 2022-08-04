@@ -20,6 +20,7 @@
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/rocksdb/cache.h"
 
+#include "yb/common/common_types.pb.h"
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/transaction.h"
@@ -76,6 +77,7 @@ class DocDBTableReader {
   DocDBTableReader(
       IntentAwareIterator* iter, CoarseTimePoint deadline,
       const std::vector<KeyEntryValue>* projection,
+      TableType table_type,
       std::reference_wrapper<const SchemaPackingStorage> schema_packing_storage);
 
   // Updates expiration/overwrite data based on table tombstone time. If the table is not a
@@ -102,6 +104,7 @@ class DocDBTableReader {
   IntentAwareIterator* iter_;
   DeadlineInfo deadline_info_;
   const std::vector<KeyEntryValue>* projection_;
+  const TableType table_type_;
   const SchemaPackingStorage& schema_packing_storage_;
 
   std::vector<KeyBytes> encoded_projection_;

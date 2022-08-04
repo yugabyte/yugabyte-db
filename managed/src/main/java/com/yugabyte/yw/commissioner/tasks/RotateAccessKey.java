@@ -58,7 +58,6 @@ public class RotateAccessKey extends UniverseTaskBase {
     checkPausedOrNonLiveNodes(universe, newAccessKey);
     try {
       lockUniverse(-1);
-      // create check connection with current keys and create add key task
       UserTaskDetails.SubTaskGroupType subtaskGroupType =
           UserTaskDetails.SubTaskGroupType.RotateAccessKey;
       for (Cluster cluster : universe.getUniverseDetails().clusters) {

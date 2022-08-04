@@ -46,6 +46,7 @@
 #include "yb/common/entity_ids.h"
 #include "yb/common/ql_name.h"
 #include "yb/common/ql_type.h"
+#include "yb/common/ql_type_util.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/consensus/consensus.h"
@@ -84,6 +85,7 @@
 
 #include "yb/util/cast.h"
 #include "yb/util/date_time.h"
+#include "yb/util/debug-util.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
@@ -104,8 +106,10 @@
 using namespace std::literals;
 using namespace std::placeholders;
 
+using std::shared_ptr;
 using std::string;
 using std::unique_ptr;
+using std::unordered_set;
 using std::vector;
 
 using strings::Substitute;
@@ -154,6 +158,14 @@ DEFINE_bool(enable_replicate_transaction_status_table, false,
 DEFINE_int32(xcluster_parent_tablet_deletion_task_retry_secs, 30,
              "Frequency at which the bg task will verify parent tablets retained for xCluster "
              "replication and determine if they can be cleaned up.");
+
+DEFINE_int32(wait_replication_drain_retry_timeout_ms, 2000,
+             "Timeout in milliseconds in between CheckReplicationDrain calls to tservers "
+             "in case of retries.");
+DEFINE_test_flag(bool, hang_wait_replication_drain, false,
+                 "Used in tests to temporarily block WaitForReplicationDrain.");
+DEFINE_test_flag(bool, import_snapshot_failed, false,
+                 "Return a error from ImportSnapshotMeta RPC for testing the RPC failure.");
 
 namespace yb {
 
@@ -536,11 +548,12 @@ Status CatalogManager::CreateNonTransactionAwareSnapshot(
   auto tables = VERIFY_RESULT(CollectTables(req->tables(),
                                             req->add_indexes(),
                                             true /* include_parent_colocated_table */));
-  std::unordered_set<NamespaceId> added_namespaces;
-  for (const auto& table : tables) {
-    snapshot->AddEntries(table, &added_namespaces);
-    all_tablets.insert(all_tablets.end(), table.tablet_infos.begin(), table.tablet_infos.end());
-  }
+  unordered_set<NamespaceId> added_namespaces;
+  SysSnapshotEntryPB& pb = snapshot->mutable_metadata()->mutable_dirty()->pb;
+  // Note: SysSnapshotEntryPB includes PBs for stored (1) namespaces (2) tables (3) tablets.
+  RETURN_NOT_OK(AddNamespaceEntriesToPB(tables, pb.mutable_entries(), &added_namespaces));
+  RETURN_NOT_OK(AddTableAndTabletEntriesToPB(
+      tables, pb.mutable_entries(), pb.mutable_tablet_snapshots(), &all_tablets));
 
   VLOG(1) << "Snapshot " << snapshot->ToString()
           << ": PB=" << snapshot->mutable_metadata()->mutable_dirty()->pb.DebugString();
@@ -589,26 +602,115 @@ void CatalogManager::Submit(std::unique_ptr<tablet::Operation> operation, int64_
   tablet_peer()->Submit(std::move(operation), leader_term);
 }
 
+Status CatalogManager::AddNamespaceEntriesToPB(
+    const vector<TableDescription>& tables,
+    google::protobuf::RepeatedPtrField<SysRowEntry>* out,
+    unordered_set<NamespaceId>* namespaces) {
+  // Add provided namespaces.
+  if (!DCHECK_NOTNULL(namespaces)->empty()) {
+    SharedLock lock(mutex_);
+    for (const NamespaceId& ns_id : *namespaces) {
+      auto ns_info = VERIFY_RESULT(FindNamespaceByIdUnlocked(ns_id));
+      TRACE("Locking namespace");
+      AddInfoEntryToPB(ns_info.get(), out);
+    }
+  }
+
+  for (const TableDescription& table : tables) {
+    // Add namespace entry.
+    if (namespaces->emplace(table.namespace_info->id()).second) {
+      TRACE("Locking namespace");
+      AddInfoEntryToPB(table.namespace_info.get(), out);
+    }
+  }
+
+  return Status::OK();
+}
+
+Status CatalogManager::AddUDTypeEntriesToPB(
+    const vector<TableDescription>& tables,
+    google::protobuf::RepeatedPtrField<SysRowEntry>* out,
+    const unordered_set<NamespaceId>& namespaces) {
+  // Collect all UDType entries.
+  unordered_set<UDTypeId> type_ids;
+  Schema schema;
+  for (const TableDescription& table : tables) {
+    RETURN_NOT_OK(table.table_info->GetSchema(&schema));
+    for (size_t i = 0; i < schema.num_columns(); ++i) {
+      for (const auto &udt_id : schema.column(i).type()->GetUserDefinedTypeIds()) {
+        type_ids.insert(udt_id);
+      }
+    }
+  }
+
+  if (!type_ids.empty()) {
+    // Add UDType entries.
+    SharedLock lock(mutex_);
+    for (const UDTypeId& udt_id : type_ids) {
+      auto udt_info = VERIFY_RESULT(FindUDTypeByIdUnlocked(udt_id));
+      TRACE("Locking user defined type");
+      auto l = AddInfoEntryToPB(udt_info.get(), out);
+
+      if (namespaces.find(udt_info->namespace_id()) == namespaces.end()) {
+        return STATUS(
+            NotSupported, "UDType from another keyspace is not supported",
+            udt_info->namespace_id(), MasterError(MasterErrorPB::SNAPSHOT_FAILED));
+      }
+    }
+  }
+
+  return Status::OK();
+}
+
+Status CatalogManager::AddTableAndTabletEntriesToPB(
+    const vector<TableDescription>& tables,
+    google::protobuf::RepeatedPtrField<SysRowEntry>* out,
+    google::protobuf::RepeatedPtrField<SysSnapshotEntryPB::TabletSnapshotPB>* tablet_snapshot_info,
+    vector<scoped_refptr<TabletInfo>>* all_tablets) {
+  unordered_set<TabletId> added_tablets;
+  for (const TableDescription& table : tables) {
+    // Add table entry.
+    TRACE("Locking table");
+    AddInfoEntryToPB(table.table_info.get(), out);
+
+    // Add tablet entries.
+    for (const scoped_refptr<TabletInfo>& tablet : table.tablet_infos) {
+      // For colocated tables there could be duplicate tablets, so insert them only once.
+      if (added_tablets.insert(tablet->id()).second) {
+        TRACE("Locking tablet");
+        auto l = AddInfoEntryToPB(tablet.get(), out);
+
+        if (tablet_snapshot_info) {
+          SysSnapshotEntryPB::TabletSnapshotPB* const tablet_info = tablet_snapshot_info->Add();
+          tablet_info->set_id(tablet->id());
+          tablet_info->set_state(SysSnapshotEntryPB::CREATING);
+        }
+
+        if (all_tablets) {
+          all_tablets->push_back(tablet);
+        }
+      }
+    }
+  }
+
+  return Status::OK();
+}
+
 Result<SysRowEntries> CatalogManager::CollectEntries(
     const google::protobuf::RepeatedPtrField<TableIdentifierPB>& table_identifiers,
     CollectFlags flags) {
   RETURN_NOT_OK(CheckIsLeaderAndReady());
   SysRowEntries entries;
-  std::unordered_set<NamespaceId> namespaces;
+  unordered_set<NamespaceId> namespaces;
   auto tables = VERIFY_RESULT(CollectTables(table_identifiers, flags, &namespaces));
-  if (!namespaces.empty()) {
-    SharedLock lock(mutex_);
-    for (const auto& ns_id : namespaces) {
-      auto ns_info = VERIFY_RESULT(FindNamespaceByIdUnlocked(ns_id));
-      AddInfoEntry(ns_info.get(), entries.mutable_entries());
-    }
-  }
-  for (const auto& table : tables) {
-    // TODO(txn_snapshot) use single lock to resolve all tables to tablets
-    SnapshotInfo::AddEntries(table, entries.mutable_entries(), /* tablet_infos= */ nullptr,
-                             &namespaces);
-  }
 
+  // Note: the list of entries includes: (1) namespaces (2) UD types (3) tables (4) tablets.
+  RETURN_NOT_OK(AddNamespaceEntriesToPB(tables, entries.mutable_entries(), &namespaces));
+  if (flags.Test(CollectFlag::kAddUDTypes)) {
+    RETURN_NOT_OK(AddUDTypeEntriesToPB(tables, entries.mutable_entries(), namespaces));
+  }
+  // TODO(txn_snapshot) use single lock to resolve all tables to tablets
+  RETURN_NOT_OK(AddTableAndTabletEntriesToPB(tables, entries.mutable_entries()));
   return entries;
 }
 
@@ -654,7 +756,8 @@ server::Clock* CatalogManager::Clock() {
 Status CatalogManager::CreateTransactionAwareSnapshot(
     const CreateSnapshotRequestPB& req, CreateSnapshotResponsePB* resp, rpc::RpcContext* rpc) {
   CollectFlags flags{CollectFlag::kIncludeParentColocatedTable};
-  flags.SetIf(CollectFlag::kAddIndexes, req.add_indexes());
+  flags.SetIf(CollectFlag::kAddIndexes, req.add_indexes())
+       .SetIf(CollectFlag::kAddUDTypes, req.add_ud_types());
   SysRowEntries entries = VERIFY_RESULT(CollectEntries(req.tables(), flags));
 
   auto snapshot_id = VERIFY_RESULT(snapshot_coordinator_.Create(
@@ -711,45 +814,86 @@ Status CatalogManager::ListSnapshots(const ListSnapshotsRequestPB* req,
       txn_snapshot_id, req->list_deleted_snapshots(), resp));
 
   if (req->prepare_for_backup()) {
-    SharedLock lock(mutex_);
-    TRACE("Acquired catalog manager lock");
+    RETURN_NOT_OK(RepackSnapshotsForBackup(resp));
+  }
 
-    // Repack & extend the backup row entries.
-    for (SnapshotInfoPB& snapshot : *resp->mutable_snapshots()) {
-      snapshot.set_format_version(2);
-      SysSnapshotEntryPB& sys_entry = *snapshot.mutable_entry();
-      snapshot.mutable_backup_entries()->Reserve(sys_entry.entries_size());
+  return Status::OK();
+}
 
-      for (SysRowEntry& entry : *sys_entry.mutable_entries()) {
-        BackupRowEntryPB* const backup_entry = snapshot.add_backup_entries();
-        // Setup BackupRowEntryPB fields.
-        // Set BackupRowEntryPB::pg_schema_name for YSQL table to disambiguate in case tables
-        // in different schema have same name.
-        if (entry.type() == SysRowEntryType::TABLE) {
-          TRACE("Looking up table");
-          scoped_refptr<TableInfo> table_info = FindPtrOrNull(*table_ids_map_, entry.id());
-          if (table_info == nullptr) {
-            return STATUS(
-                InvalidArgument, "Table not found by ID", entry.id(),
-                MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
-          }
+Status CatalogManager::RepackSnapshotsForBackup(ListSnapshotsResponsePB* resp) {
+  SharedLock lock(mutex_);
+  TRACE("Acquired catalog manager lock");
+  const string kNotFoundErrorStr = "Not found or invalid relnamespace oid for table oid ";
 
-          TRACE("Locking table");
-          auto l = table_info->LockForRead();
-          // PG schema name is available for YSQL table only, except for colocation parent tables.
-          if (l->table_type() == PGSQL_TABLE_TYPE && !IsColocationParentTableId(entry.id())) {
-            const string pg_schema_name = VERIFY_RESULT(GetPgSchemaName(table_info));
-            VLOG(1) << "PG Schema: " << pg_schema_name << " for table " << table_info->ToString();
-            backup_entry->set_pg_schema_name(pg_schema_name);
-          }
+  // Repack & extend the backup row entries.
+  for (SnapshotInfoPB& snapshot : *resp->mutable_snapshots()) {
+    snapshot.set_format_version(2);
+    SysSnapshotEntryPB& sys_entry = *snapshot.mutable_entry();
+    snapshot.mutable_backup_entries()->Reserve(sys_entry.entries_size());
+
+    unordered_set<TableId> tables_to_skip;
+    for (SysRowEntry& entry : *sys_entry.mutable_entries()) {
+      BackupRowEntryPB* const backup_entry = snapshot.add_backup_entries();
+
+      // Setup BackupRowEntryPB fields.
+      // Set BackupRowEntryPB::pg_schema_name for YSQL table to disambiguate in case tables
+      // in different schema have same name.
+      if (entry.type() == SysRowEntryType::TABLE) {
+        TRACE("Looking up table");
+        scoped_refptr<TableInfo> table_info = FindPtrOrNull(*table_ids_map_, entry.id());
+        if (table_info == nullptr) {
+          return STATUS(
+              InvalidArgument, "Table not found by ID", entry.id(),
+              MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
         }
 
-        // Init BackupRowEntryPB::entry.
-        backup_entry->mutable_entry()->Swap(&entry);
+        TRACE("Locking table");
+        auto l = table_info->LockForRead();
+        // PG schema name is available for YSQL table only, except for colocation parent tables.
+        if (l->table_type() == PGSQL_TABLE_TYPE && !IsColocationParentTableId(entry.id())) {
+          const auto res = GetPgSchemaName(table_info);
+          if (!res.ok()) {
+            // Check for the scenario where the table is dropped by YSQL but not docdb - this can
+            // happen due to a bug with the async nature of drops in PG with docdb.
+            // If this occurs don't block the entire backup, instead skip this table(see gh #13361).
+            if (res.status().IsNotFound() &&
+                res.status().message().ToBuffer().find(kNotFoundErrorStr) != string::npos) {
+              LOG(WARNING) << "Skipping backup of table " << table_info->id() << " : " << res;
+              snapshot.mutable_backup_entries()->RemoveLast();
+              // Keep track of table so we skip its tablets as well. Note, since tablets always
+              // follow their table in sys_entry, we don't need to check previous tablet entries.
+              tables_to_skip.insert(table_info->id());
+              continue;
+            }
+
+            // Other errors cannot be skipped.
+            return res.status();
+          }
+          const string pg_schema_name = res.get();
+          VLOG(1) << "PG Schema: " << pg_schema_name << " for table " << table_info->ToString();
+          backup_entry->set_pg_schema_name(pg_schema_name);
+        }
+      } else if (!tables_to_skip.empty() && entry.type() == SysRowEntryType::TABLET) {
+        // Note: Ordering here is important, we expect tablet entries only after their table entry.
+        SysTabletsEntryPB meta = VERIFY_RESULT(ParseFromSlice<SysTabletsEntryPB>(entry.data()));
+        if (tables_to_skip.contains(meta.table_id())) {
+          LOG(WARNING) << "Skipping backup of tablet " << entry.id() << " since its table "
+                       << meta.table_id() << " was skipped.";
+          snapshot.mutable_backup_entries()->RemoveLast();
+          continue;
+        }
       }
 
-      sys_entry.clear_entries();
+      // Init BackupRowEntryPB::entry.
+      backup_entry->mutable_entry()->Swap(&entry);
     }
+
+    // Clear out redundant/unused fields for backups (reduces size of SnapshotInfoPB file):
+    // - Can remove the tablet_snapshots as if the main snapshot state is COMPLETE, then all of the
+    //   tablet records are also COMPLETE.
+    // - Can remove entries, since all the valid entries are already in backup_entries.
+    sys_entry.clear_tablet_snapshots();
+    sys_entry.clear_entries();
   }
 
   return Status::OK();
@@ -991,12 +1135,25 @@ Status CatalogManager::DeleteNonTransactionAwareSnapshot(const SnapshotId& snaps
 Status CatalogManager::ImportSnapshotPreprocess(const SnapshotInfoPB& snapshot_pb,
                                                 ImportSnapshotMetaResponsePB* resp,
                                                 NamespaceMap* namespace_map,
+                                                UDTypeMap* type_map,
                                                 ExternalTableSnapshotDataMap* tables_data) {
   for (const BackupRowEntryPB& backup_entry : snapshot_pb.backup_entries()) {
     const SysRowEntry& entry = backup_entry.entry();
     switch (entry.type()) {
       case SysRowEntryType::NAMESPACE: // Recreate NAMESPACE.
         RETURN_NOT_OK(ImportNamespaceEntry(entry, namespace_map));
+        break;
+      case SysRowEntryType::UDTYPE: // Create TYPE metadata.
+        LOG_IF(DFATAL, entry.id().empty()) << "Empty entry id";
+
+        if (type_map->find(entry.id()) != type_map->end()) {
+          LOG_WITH_FUNC(WARNING) << "Ignoring duplicate type with id " << entry.id();
+        } else {
+          ExternalUDTypeSnapshotData& data = (*type_map)[entry.id()];
+          data.type_entry_pb = VERIFY_RESULT(ParseFromSlice<SysUDTypeEntryPB>(entry.data()));
+          // The value 'new_type_id' will be filled in ImportUDTypeEntry()
+          // when the UDT will be found or recreated. Now it's empty value.
+        }
         break;
       case SysRowEntryType::TABLE: { // Create TABLE metadata.
           LOG_IF(DFATAL, entry.id().empty()) << "Empty entry id";
@@ -1023,7 +1180,6 @@ Status CatalogManager::ImportSnapshotPreprocess(const SnapshotInfoPB& snapshot_p
         break;
       case SysRowEntryType::CLUSTER_CONFIG: FALLTHROUGH_INTENDED;
       case SysRowEntryType::REDIS_CONFIG: FALLTHROUGH_INTENDED;
-      case SysRowEntryType::UDTYPE: FALLTHROUGH_INTENDED;
       case SysRowEntryType::ROLE: FALLTHROUGH_INTENDED;
       case SysRowEntryType::SYS_CONFIG: FALLTHROUGH_INTENDED;
       case SysRowEntryType::CDC_STREAM: FALLTHROUGH_INTENDED;
@@ -1040,9 +1196,25 @@ Status CatalogManager::ImportSnapshotPreprocess(const SnapshotInfoPB& snapshot_p
   return Status::OK();
 }
 
+Status CatalogManager::ImportSnapshotProcessUDTypes(const SnapshotInfoPB& snapshot_pb,
+                                                    ImportSnapshotMetaResponsePB* resp,
+                                                    UDTypeMap* type_map,
+                                                    const NamespaceMap& namespace_map) {
+  for (const BackupRowEntryPB& backup_entry : snapshot_pb.backup_entries()) {
+    const SysRowEntry& entry = backup_entry.entry();
+    if (entry.type() == SysRowEntryType::UDTYPE) {
+      // Create UD type.
+      RETURN_NOT_OK(ImportUDTypeEntry(entry.id(), type_map, namespace_map));
+    }
+  }
+
+  return Status::OK();
+}
+
 Status CatalogManager::ImportSnapshotCreateObject(const SnapshotInfoPB& snapshot_pb,
                                                   ImportSnapshotMetaResponsePB* resp,
-                                                  NamespaceMap* namespace_map,
+                                                  const NamespaceMap& namespace_map,
+                                                  const UDTypeMap& type_map,
                                                   ExternalTableSnapshotDataMap* tables_data,
                                                   CreateObjects create_objects) {
   // Create ONLY TABLES or ONLY INDEXES in accordance to the argument.
@@ -1051,7 +1223,7 @@ Status CatalogManager::ImportSnapshotCreateObject(const SnapshotInfoPB& snapshot
     if (entry.type() == SysRowEntryType::TABLE) {
       ExternalTableSnapshotData& data = (*tables_data)[entry.id()];
       if ((create_objects == CreateObjects::kOnlyIndexes) == data.is_index()) {
-        RETURN_NOT_OK(ImportTableEntry(*namespace_map, *tables_data, &data));
+        RETURN_NOT_OK(ImportTableEntry(namespace_map, type_map, *tables_data, &data));
       }
     }
   }
@@ -1107,7 +1279,47 @@ void ProcessDeleteObjectStatus(const string& obj_name,
   }
 }
 
+void CatalogManager::DeleteNewUDtype(const UDTypeId& udt_id,
+                                     const unordered_set<UDTypeId>& type_ids_to_delete) {
+  auto res_udt = FindUDTypeById(udt_id);
+  if (!res_udt.ok()) {
+    return; // Already deleted.
+  }
+
+  auto type_info = *res_udt;
+  LOG_WITH_FUNC(INFO) << "Deleting new UD type '" << type_info->name() << "' with id=" << udt_id;
+
+  // Try to delete sub-types.
+  unordered_set<UDTypeId> sub_type_ids;
+  for (int i = 0; i < type_info->field_types_size(); ++i) {
+    const Status s = IterateAndDoForUDT(
+        type_info->field_types(i),
+        [&sub_type_ids](const QLTypePB::UDTypeInfo& udtype_info) -> Status {
+          sub_type_ids.insert(udtype_info.id());
+          return Status::OK();
+        });
+
+    if (!s.ok()) {
+      LOG_WITH_FUNC(WARNING) << "Failed IterateAndDoForUDT for type " << udt_id << ": " << s;
+    }
+  }
+
+  DeleteUDTypeRequestPB req;
+  DeleteUDTypeResponsePB resp;
+  req.mutable_type()->mutable_namespace_()->set_id(type_info->namespace_id());
+  req.mutable_type()->set_type_id(udt_id);
+  ProcessDeleteObjectStatus("ud-type", udt_id, resp, DeleteUDType(&req, &resp, nullptr));
+
+  for (const UDTypeId& sub_udt_id : sub_type_ids) {
+    // Delete only NEW re-created types. Keep old ones.
+    if (type_ids_to_delete.find(sub_udt_id) != type_ids_to_delete.end()) {
+      DeleteNewUDtype(sub_udt_id, type_ids_to_delete);
+    }
+  }
+}
+
 void CatalogManager::DeleteNewSnapshotObjects(const NamespaceMap& namespace_map,
+                                              const UDTypeMap& type_map,
                                               const ExternalTableSnapshotDataMap& tables_data) {
   for (const ExternalTableSnapshotDataMap::value_type& entry : tables_data) {
     const TableId& old_id = entry.first;
@@ -1127,13 +1339,38 @@ void CatalogManager::DeleteNewSnapshotObjects(const NamespaceMap& namespace_map,
     ProcessDeleteObjectStatus("table", new_id, resp, DeleteTable(&req, &resp, nullptr));
   }
 
+  unordered_set<UDTypeId> type_ids_to_delete;
+  for (const UDTypeMap::value_type& entry : type_map) {
+    const UDTypeId& old_id = entry.first;
+    const UDTypeId& new_id = entry.second.new_type_id;
+    const bool existing = !entry.second.just_created;
+
+    if (existing || new_id.empty() || new_id == old_id) {
+      continue;
+    }
+
+    type_ids_to_delete.insert(new_id);
+  }
+
+  for (auto type_id : type_ids_to_delete) {
+    // The UD types are creating a tree. Order in the set collection of ids is random.
+    // Recursively delete sub-types together with this type to simplify the code.
+    //
+    // Example: udt2 --uses--> udt1
+    //     DROP udt1 - failed (referenced by udt2)
+    //     DROP udt2 - success - drop subtypes:
+    //         DROP udt1 - success
+    DeleteNewUDtype(type_id, type_ids_to_delete);
+  }
+
   for (const NamespaceMap::value_type& entry : namespace_map) {
     const NamespaceId& old_id = entry.first;
-    const NamespaceId& new_id = entry.second.first;
-    const YQLDatabase& db_type = entry.second.second;
+    const NamespaceId& new_id = entry.second.new_namespace_id;
+    const YQLDatabase& db_type = entry.second.db_type;
+    const bool existing = !entry.second.just_created;
 
     // Do not delete YSQL objects - it must be deleted via PG API.
-    if (new_id.empty() || new_id == old_id || db_type == YQL_DATABASE_PGSQL) {
+    if (existing || new_id.empty() || new_id == old_id || db_type == YQL_DATABASE_PGSQL) {
       continue;
     }
 
@@ -1141,8 +1378,7 @@ void CatalogManager::DeleteNewSnapshotObjects(const NamespaceMap& namespace_map,
     DeleteNamespaceRequestPB req;
     DeleteNamespaceResponsePB resp;
     req.mutable_namespace_()->set_id(new_id);
-    ProcessDeleteObjectStatus(
-        "namespace", new_id, resp, DeleteNamespace(&req, &resp, nullptr));
+    ProcessDeleteObjectStatus("namespace", new_id, resp, DeleteNamespace(&req, &resp, nullptr));
   }
 }
 
@@ -1152,12 +1388,13 @@ Status CatalogManager::ImportSnapshotMeta(const ImportSnapshotMetaRequestPB* req
   LOG(INFO) << "Servicing ImportSnapshotMeta request: " << req->ShortDebugString();
 
   NamespaceMap namespace_map;
+  UDTypeMap type_map;
   ExternalTableSnapshotDataMap tables_data;
   bool successful_exit = false;
 
-  auto se = ScopeExit([this, &namespace_map, &tables_data, &successful_exit] {
+  auto se = ScopeExit([this, &namespace_map, &type_map, &tables_data, &successful_exit] {
     if (!successful_exit) {
-      DeleteNewSnapshotObjects(namespace_map, tables_data);
+      DeleteNewSnapshotObjects(namespace_map, type_map, tables_data);
     }
   });
 
@@ -1173,23 +1410,33 @@ Status CatalogManager::ImportSnapshotMeta(const ImportSnapshotMetaRequestPB* req
         snapshot_pb.ShortDebugString(), MasterError(MasterErrorPB::SNAPSHOT_FAILED));
   }
 
-  // PHASE 1: Recreate namespaces, create table's meta data.
-  RETURN_NOT_OK(ImportSnapshotPreprocess(snapshot_pb, resp, &namespace_map, &tables_data));
+  // PHASE 1: Recreate namespaces, create type's & table's meta data.
+  RETURN_NOT_OK(ImportSnapshotPreprocess(
+      snapshot_pb, resp, &namespace_map, &type_map, &tables_data));
 
-  // PHASE 2: Recreate ONLY tables.
+  // PHASE 2: Recreate UD types.
+  RETURN_NOT_OK(ImportSnapshotProcessUDTypes(snapshot_pb, resp, &type_map, namespace_map));
+
+  // PHASE 3: Recreate ONLY tables.
   RETURN_NOT_OK(ImportSnapshotCreateObject(
-      snapshot_pb, resp, &namespace_map, &tables_data, CreateObjects::kOnlyTables));
+      snapshot_pb, resp, namespace_map, type_map, &tables_data, CreateObjects::kOnlyTables));
 
-  // PHASE 3: Wait for all tables creation complete.
+  // PHASE 4: Wait for all tables creation complete.
   RETURN_NOT_OK(ImportSnapshotWaitForTables(
       snapshot_pb, resp, &tables_data, rpc->GetClientDeadline()));
 
-  // PHASE 4: Recreate ONLY indexes.
+  // PHASE 5: Recreate ONLY indexes.
   RETURN_NOT_OK(ImportSnapshotCreateObject(
-      snapshot_pb, resp, &namespace_map, &tables_data, CreateObjects::kOnlyIndexes));
+      snapshot_pb, resp, namespace_map, type_map, &tables_data, CreateObjects::kOnlyIndexes));
 
-  // PHASE 5: Restore tablets.
+  // PHASE 6: Restore tablets.
   RETURN_NOT_OK(ImportSnapshotProcessTablets(snapshot_pb, resp, &tables_data));
+
+  if (PREDICT_FALSE(FLAGS_TEST_import_snapshot_failed)) {
+     const string msg = "ImportSnapshotMeta interrupted due to test flag";
+     LOG_WITH_FUNC(WARNING) << msg;
+     return STATUS(InternalError, msg, MasterError(MasterErrorPB::SNAPSHOT_FAILED));
+  }
 
   successful_exit = true;
   return Status::OK();
@@ -1229,9 +1476,8 @@ Status CatalogManager::ImportNamespaceEntry(const SysRowEntry& entry,
       << "Unexpected entry type: " << entry.type();
 
   SysNamespaceEntryPB meta = VERIFY_RESULT(ParseFromSlice<SysNamespaceEntryPB>(entry.data()));
-  const YQLDatabase db_type = GetDatabaseType(meta);
-  NamespaceData& ns_data = (*namespace_map)[entry.id()];
-  ns_data.second = db_type;
+  ExternalNamespaceSnapshotData& ns_data = (*namespace_map)[entry.id()];
+  ns_data.db_type = GetDatabaseType(meta);
 
   TRACE("Looking up namespace");
   // First of all try to find the namespace by ID. It will work if we are restoring the backup
@@ -1243,17 +1489,17 @@ Status CatalogManager::ImportNamespaceEntry(const SysRowEntry& entry,
   }
 
   if (ns != nullptr && ns->name() == meta.name() && ns->state() == SysNamespaceEntryPB::RUNNING) {
-    ns_data.first = entry.id();
+    ns_data.new_namespace_id = entry.id();
     return Status::OK();
   }
 
   // If the namespace was not found by ID, it's ok on a new cluster OR if the namespace was
   // deleted and created again. In both cases the namespace can be found by NAME.
-  if (db_type == YQL_DATABASE_PGSQL) {
+  if (ns_data.db_type == YQL_DATABASE_PGSQL) {
     // YSQL database must be created via external call. Find it by name.
     {
       SharedLock lock(mutex_);
-      ns = FindPtrOrNull(namespace_names_mapper_[db_type], meta.name());
+      ns = FindPtrOrNull(namespace_names_mapper_[ns_data.db_type], meta.name());
     }
 
     if (ns == nullptr) {
@@ -1268,27 +1514,199 @@ Status CatalogManager::ImportNamespaceEntry(const SysRowEntry& entry,
     }
 
     auto ns_lock = ns->LockForRead();
-    ns_data.first = ns->id();
+    ns_data.new_namespace_id = ns->id();
   } else {
     CreateNamespaceRequestPB req;
     CreateNamespaceResponsePB resp;
     req.set_name(meta.name());
     const Status s = CreateNamespace(&req, &resp, nullptr);
 
-    if (!s.ok() && !s.IsAlreadyPresent()) {
+    if (s.ok()) {
+      // The namespace was successfully re-created.
+      ns_data.just_created = true;
+    } else if (s.IsAlreadyPresent()) {
+      LOG_WITH_FUNC(INFO) << "Using existing namespace '" << meta.name() << "': " << resp.id();
+    } else {
       return s.CloneAndAppend("Failed to create namespace");
     }
 
-    if (s.IsAlreadyPresent()) {
-      LOG_WITH_FUNC(INFO) << "Using existing namespace '" << meta.name() << "': " << resp.id();
-    }
-
-    ns_data.first = resp.id();
+    ns_data.new_namespace_id = resp.id();
   }
   return Status::OK();
 }
 
+Status CatalogManager::UpdateUDTypes(QLTypePB* pb_type, const UDTypeMap& type_map) {
+  return IterateAndDoForUDT(
+      pb_type,
+      [&type_map](QLTypePB::UDTypeInfo* udtype_info) -> Status {
+        const UDTypeId& old_udt_id = udtype_info->id();
+        auto udt_it = type_map.find(old_udt_id);
+        if (udt_it == type_map.end()) {
+          const string msg = Format("Not found referenced type id $0", old_udt_id);
+          LOG_WITH_FUNC(WARNING) << msg;
+          return STATUS(InvalidArgument, msg, MasterError(MasterErrorPB::SNAPSHOT_FAILED));
+        }
+
+        const UDTypeId& new_udt_id = udt_it->second.new_type_id;
+        if (new_udt_id.empty()) {
+          const string msg = Format("Unknown new id for UD type $0 old id $1",
+              udtype_info->name(), old_udt_id);
+          LOG_WITH_FUNC(WARNING) << msg;
+          return STATUS(InternalError, msg, MasterError(MasterErrorPB::SNAPSHOT_FAILED));
+        }
+
+        if (old_udt_id != new_udt_id) {
+          LOG(INFO) << "Replacing UD type '" << udtype_info->name()
+                    << "' id from " << old_udt_id << " to " << new_udt_id;
+          udtype_info->set_id(new_udt_id);
+        }
+        return Status::OK();
+      });
+}
+
+Status CatalogManager::ImportUDTypeEntry(const UDTypeId& udt_id,
+                                         UDTypeMap* type_map,
+                                         const NamespaceMap& namespace_map) {
+  auto udt_it = DCHECK_NOTNULL(type_map)->find(udt_id);
+  if (udt_it == type_map->end()) {
+    const string msg = Format("Not found metadata for referenced type id $0", udt_id);
+    LOG_WITH_FUNC(WARNING) << msg;
+    return STATUS(InvalidArgument, msg, MasterError(MasterErrorPB::SNAPSHOT_FAILED));
+  }
+
+  ExternalUDTypeSnapshotData& udt_data = udt_it->second;
+
+  // If the type has been already processed: found or re-created.
+  if (!udt_data.new_type_id.empty()) {
+    return Status::OK();
+  }
+
+  SysUDTypeEntryPB& meta = udt_data.type_entry_pb;
+
+  // First of all find and check referenced namespace.
+  auto ns_it = namespace_map.find(meta.namespace_id());
+  if (ns_it == namespace_map.end()) {
+    const string msg = Format("Unknown keyspace $0 referenced in UD type $1 id $2",
+        meta.namespace_id(), meta.name(), udt_id);
+    LOG_WITH_FUNC(WARNING) << msg;
+    return STATUS(InvalidArgument, msg, MasterError(MasterErrorPB::NAMESPACE_NOT_FOUND));
+  }
+
+  const ExternalNamespaceSnapshotData& ns_data = ns_it->second;
+  if (ns_data.db_type != YQL_DATABASE_CQL) {
+    const string msg = Format(
+        "UD type $0 id $1 references non CQL namespace: $2 type $3 (old id $4)",
+        meta.name(), udt_id, ns_data.new_namespace_id, ns_data.db_type, meta.namespace_id());
+    LOG_WITH_FUNC(WARNING) << msg;
+    return STATUS(InvalidArgument, msg, MasterError(MasterErrorPB::SNAPSHOT_FAILED));
+  }
+
+  if (meta.field_names_size() != meta.field_types_size()) {
+    const string msg = Format(
+        "UD type $0 id $1 has $2 names and $3 types",
+        meta.name(), udt_id, meta.field_names_size(), meta.field_types_size());
+    LOG_WITH_FUNC(WARNING) << msg;
+    return STATUS(InvalidArgument, msg, MasterError(MasterErrorPB::SNAPSHOT_FAILED));
+  }
+
+  // There are 3 cases:
+  // Case 1: Find UDT by ID.
+  //         Restoring the backup on the original cluster where the backup was created.
+  // Case 2: Find UDT by name in the needed keyspace.
+  //         Restoring the backup on the new cluster, but UDT was already created
+  //         by the user or in the previous backup restoration.
+  // Case 3: Re-create the UDT.
+  //         Restoring the backup on the new empty cluster.
+
+  // Case 1: try to find the type by ID.
+  scoped_refptr<UDTypeInfo> udt;
+  Result<scoped_refptr<UDTypeInfo>> res_udt = FindUDTypeById(udt_id);
+  if (res_udt.ok() && (*res_udt)->name() == meta.name() &&
+      (*res_udt)->namespace_id() == ns_data.new_namespace_id) {
+    // Use found by ID UD type.
+    udt_data.new_type_id = udt_id;
+    LOG_WITH_FUNC(INFO) << "Using found by id UD type '" << meta.name() << "' in namespace "
+                        << ns_data.new_namespace_id << ": " << udt_data.new_type_id;
+    udt = *res_udt;
+  } else {
+    // Case 2 & 3: Try to create the new UD type.
+
+    // Recursively create all referenced sub-types.
+    unordered_set<UDTypeId> sub_type_ids;
+    for (int i = 0; i < meta.field_types_size(); ++i) {
+      RETURN_NOT_OK(
+        IterateAndDoForUDT(
+          meta.field_types(i),
+          [&sub_type_ids](const QLTypePB::UDTypeInfo& udtype_info) -> Status {
+            sub_type_ids.insert(udtype_info.id());
+            return Status::OK();
+          }));
+    }
+
+    for (const UDTypeId& sub_udt_id : sub_type_ids) {
+      RETURN_NOT_OK(ImportUDTypeEntry(sub_udt_id, type_map, namespace_map));
+    }
+
+    // If the type was not found by ID, it's ok on a new cluster OR if the type was
+    // deleted and created again. In both cases the type can be found by NAME.
+    // By the moment all referenced sub-types must be available (already existing or re-created).
+    CreateUDTypeRequestPB req;
+    CreateUDTypeResponsePB resp;
+    req.mutable_namespace_()->set_id(ns_data.new_namespace_id);
+    req.mutable_namespace_()->set_database_type(ns_data.db_type);
+    req.set_name(meta.name());
+    for (int i = 0; i < meta.field_names_size(); ++i) {
+      req.add_field_names(meta.field_names(i));
+
+      QLTypePB* const param = meta.mutable_field_types(i);
+      RETURN_NOT_OK(UpdateUDTypes(param, *type_map));
+      req.add_field_types()->CopyFrom(*param);
+    }
+
+    const Status s = CreateUDType(&req, &resp, nullptr);
+
+    if (s.ok()) {
+      // Case 3: UDT was successfully re-created.
+      udt_data.just_created = true;
+    } else if (s.IsAlreadyPresent()) {
+      // Case 2: UDT is found by name.
+      LOG_WITH_FUNC(INFO) << "Using existing UD type '" << meta.name() << "': " << resp.id();
+    } else {
+      return s.CloneAndAppend("Failed to create UD type");
+    }
+
+    udt_data.new_type_id = resp.id();
+    udt = VERIFY_RESULT(FindUDTypeById(udt_data.new_type_id));
+  }
+
+  // Check UDT field names & types.
+  // Checking for all cases: found by ID, found by name (AlreadyPresent), re-created.
+  bool correct = udt->field_names_size() == meta.field_names_size() &&
+                 udt->field_types_size() == meta.field_types_size();
+  if (correct) {
+    for (int i = 0; i < udt->field_names_size(); ++i) {
+      shared_ptr<QLType> found_type = QLType::FromQLTypePB(udt->field_types(i));
+      shared_ptr<QLType> src_type = QLType::FromQLTypePB(meta.field_types(i));
+      if (udt->field_names(i) != meta.field_names(i) || *found_type != *src_type) {
+        correct = false;
+        break;
+      }
+    }
+  }
+
+  if (!correct) {
+    const string msg = Format(
+        "UD type $0 id $1 was changed: {$2} expected {$3}",
+        meta.name(), udt_data.new_type_id, udt->ToString(), meta.ShortDebugString());
+    LOG_WITH_FUNC(WARNING) << msg;
+    return STATUS(InvalidArgument, msg, MasterError(MasterErrorPB::SNAPSHOT_FAILED));
+  }
+
+  return Status::OK();
+}
+
 Status CatalogManager::RecreateTable(const NamespaceId& new_namespace_id,
+                                     const UDTypeMap& type_map,
                                      const ExternalTableSnapshotDataMap& table_map,
                                      ExternalTableSnapshotData* table_data) {
   const SysTablesEntryPB& meta = DCHECK_NOTNULL(table_data)->table_entry_pb;
@@ -1307,6 +1725,11 @@ Status CatalogManager::RecreateTable(const NamespaceId& new_namespace_id,
 
   SchemaPB* const schema = req.mutable_schema();
   *schema = meta.schema();
+  // Recursively update ids in used user-defined types.
+  for (int i = 0; i < schema->columns_size(); ++i) {
+    QLTypePB* const pb_type = schema->mutable_columns(i)->mutable_type();
+    RETURN_NOT_OK(UpdateUDTypes(pb_type, type_map));
+  }
 
   // Setup Index info.
   if (table_data->is_index()) {
@@ -1584,6 +2007,7 @@ Result<bool> CatalogManager::CheckTableForImport(scoped_refptr<TableInfo> table,
 }
 
 Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
+                                        const UDTypeMap& type_map,
                                         const ExternalTableSnapshotDataMap& table_map,
                                         ExternalTableSnapshotData* table_data) {
   const SysTablesEntryPB& meta = DCHECK_NOTNULL(table_data)->table_entry_pb;
@@ -1592,10 +2016,10 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
   table_data->old_namespace_id = meta.namespace_id();
   LOG_IF(DFATAL, table_data->old_namespace_id.empty()) << "No namespace id";
 
-  LOG_IF(DFATAL, namespace_map.find(table_data->old_namespace_id) == namespace_map.end())
+  auto ns_it = namespace_map.find(table_data->old_namespace_id);
+  LOG_IF(DFATAL, ns_it == namespace_map.end())
       << "Namespace not found: " << table_data->old_namespace_id;
-  const NamespaceId new_namespace_id =
-      namespace_map.find(table_data->old_namespace_id)->second.first;
+  const NamespaceId new_namespace_id = ns_it->second.new_namespace_id;
   LOG_IF(DFATAL, new_namespace_id.empty()) << "No namespace id";
 
   Schema schema;
@@ -1641,7 +2065,7 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
       case TableType::YQL_TABLE_TYPE: FALLTHROUGH_INTENDED;
       case TableType::REDIS_TABLE_TYPE: {
         // For YCQL and YEDIS, simply create the missing table.
-        RETURN_NOT_OK(RecreateTable(new_namespace_id, table_map, table_data));
+        RETURN_NOT_OK(RecreateTable(new_namespace_id, type_map, table_map, table_data));
         break;
       }
       case TableType::PGSQL_TABLE_TYPE: {
@@ -1893,6 +2317,26 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
   IdPairPB* const table_ids = table_data->table_meta->mutable_table_ids();
   table_ids->set_new_id(table_data->new_table_id);
   table_ids->set_old_id(table_data->old_table_id);
+
+  // Recursively collect ids for used user-defined types.
+  unordered_set<UDTypeId> type_ids;
+  for (size_t i = 0; i < schema.num_columns(); ++i) {
+    for (const auto &udt_id : schema.column(i).type()->GetUserDefinedTypeIds()) {
+      type_ids.insert(udt_id);
+    }
+  }
+
+  for (const UDTypeId& udt_id : type_ids) {
+    auto type_it = type_map.find(udt_id);
+    if (type_it == type_map.end()) {
+        return STATUS(InternalError, "UDType was not imported",
+            udt_id, MasterError(MasterErrorPB::SNAPSHOT_FAILED));
+    }
+
+    IdPairPB* const udt_ids = table_data->table_meta->add_ud_types_ids();
+    udt_ids->set_new_id(type_it->second.new_type_id);
+    udt_ids->set_old_id(udt_id);
+  }
 
   return Status::OK();
 }
@@ -5670,6 +6114,155 @@ Status CatalogManager::UpdateConsumerOnProducerSplit(
                             "Updating cluster config in sys-catalog"));
   l.Commit();
 
+  return Status::OK();
+}
+
+Status CatalogManager::WaitForReplicationDrain(const WaitForReplicationDrainRequestPB *req,
+                                               WaitForReplicationDrainResponsePB *resp,
+                                               rpc::RpcContext *rpc) {
+  LOG(INFO) << "WaitForReplicationDrain from " << RequestorString(rpc)
+            << ": " << req->DebugString();
+  if (req->stream_ids_size() == 0) {
+    return STATUS(InvalidArgument, "No stream ID provided",
+                  req->ShortDebugString(), MasterError(MasterErrorPB::INVALID_REQUEST));
+  }
+  MicrosecondsInt64 target_time = req->has_target_time()
+      ? req->target_time()
+      : GetCurrentTimeMicros();
+  if (!req->target_time()) {
+    LOG(INFO) << "WaitForReplicationDrain: target_time unspecified. Default to " << target_time;
+  }
+
+  // Find all streams to check for replication drain.
+  std::unordered_set<CDCStreamId> filter_stream_ids(req->stream_ids().begin(),
+                                                    req->stream_ids().end());
+  std::unordered_set<CDCStreamId> found_stream_ids;
+  std::vector<scoped_refptr<CDCStreamInfo>> streams;
+  {
+    std::vector<scoped_refptr<CDCStreamInfo>> all_streams;
+    GetAllCDCStreams(&all_streams);
+    for (const auto& stream : all_streams) {
+      if (filter_stream_ids.find(stream->id()) == filter_stream_ids.end()) {
+        continue;
+      }
+      streams.push_back(stream);
+      found_stream_ids.insert(stream->id());
+    }
+  }
+
+  // Verify that all specified stream_ids are found.
+  std::ostringstream not_found_streams;
+  for (const auto& stream_id : filter_stream_ids) {
+    if (found_stream_ids.find(stream_id) == found_stream_ids.end()) {
+      not_found_streams << stream_id << ",";
+    }
+  }
+  if (!not_found_streams.str().empty()) {
+    string stream_ids = not_found_streams.str();
+    stream_ids.pop_back();  // Remove the last comma.
+    return STATUS(InvalidArgument, Format("Streams not found: $0", stream_ids),
+                  req->ShortDebugString(), MasterError(MasterErrorPB::INVALID_REQUEST));
+  }
+
+  // Keep track of the drained (stream_id, tablet_id) tuples.
+  std::unordered_set<StreamTabletIdPair, StreamTabletIdHash> drained_stream_tablet_ids;
+
+  // Calculate deadline and interval for each CallReplicationDrain call to tservers.
+  CoarseTimePoint deadline = rpc->GetClientDeadline();
+  if (deadline == CoarseTimePoint::max()) {
+    deadline = CoarseMonoClock::now() + MonoDelta::FromMilliseconds(FLAGS_master_rpc_timeout_ms);
+  }
+  auto timeout = MonoDelta::FromMilliseconds(
+      GetAtomicFlag(&FLAGS_wait_replication_drain_retry_timeout_ms));
+
+  while (true) {
+    // 1. Construct the request to be sent to each tserver. Meanwhile, collect all tuples that
+    //    are not marked as drained in previous iterations.
+    std::unordered_set<StreamTabletIdPair, StreamTabletIdHash> undrained_stream_tablet_ids;
+    std::unordered_map<std::shared_ptr<cdc::CDCServiceProxy>,
+                       cdc::CheckReplicationDrainRequestPB> proxy_to_request;
+    for (const auto& stream : streams) {
+      for (const auto& table_id : stream->table_id()) {
+        auto table_info = VERIFY_RESULT(FindTableById(table_id));
+        RSTATUS_DCHECK(table_info != nullptr, NotFound, "Table ID not found: " + table_id);
+
+        for (const auto& tablet : table_info->GetTablets()) {
+          // (1) If tuple is marked as drained in a previous iteration, skip it.
+          // (2) Otherwise, check if it is drained in the current iteration.
+          if (drained_stream_tablet_ids.find({stream->id(), tablet->id()}) !=
+              drained_stream_tablet_ids.end()) {
+            continue;
+          }
+          undrained_stream_tablet_ids.insert({stream->id(), tablet->id()});
+
+          // Update the relevant request. Skip if relevant tserver/proxy is not ready yet.
+          auto ts_result = tablet->GetLeader();
+          if (ts_result.ok()) {
+            std::shared_ptr<cdc::CDCServiceProxy> proxy;
+            auto s = (*ts_result)->GetProxy(&proxy);
+            if (s.ok()) {
+              auto& tablet_req = proxy_to_request[proxy];
+              auto stream_info = tablet_req.add_stream_info();
+              stream_info->set_stream_id(stream->id());
+              stream_info->set_tablet_id(tablet->id());
+            }
+          }
+        }
+      }
+    }
+
+    // For testing tserver leadership changes.
+    TEST_PAUSE_IF_FLAG(TEST_hang_wait_replication_drain);
+
+    // 2. Call CheckReplicationDrain on each tserver.
+    for (auto& proxy_request : proxy_to_request) {
+      if (deadline - CoarseMonoClock::Now() <= timeout) {
+        break;  // Too close to deadline.
+      }
+      auto& cdc_service = proxy_request.first;
+      auto& tablet_req = proxy_request.second;
+      tablet_req.set_target_time(target_time);
+      cdc::CheckReplicationDrainResponsePB tablet_resp;
+      rpc::RpcController tablet_rpc;
+      tablet_rpc.set_timeout(timeout);
+
+      Status s = cdc_service->CheckReplicationDrain(tablet_req, &tablet_resp, &tablet_rpc);
+      if (!s.ok()) {
+        LOG(WARNING) << "CheckReplicationDrain responded with non-ok status: " << s;
+      } else if (tablet_resp.has_error()) {
+        LOG(WARNING) << "CheckReplicationDrain responded with error: "
+                     << tablet_resp.error().DebugString();
+      } else {
+        // Update the two lists of (stream ID, tablet ID) pairs.
+        for (const auto& stream_info : tablet_resp.drained_stream_info()) {
+          undrained_stream_tablet_ids.erase({stream_info.stream_id(), stream_info.tablet_id()});
+          drained_stream_tablet_ids.insert({stream_info.stream_id(), stream_info.tablet_id()});
+        }
+      }
+    }
+
+    // 3. Check if all current undrained tuples are marked as drained, or it is too close
+    //    to deadline. If so, prepare the response and terminate the loop.
+    if (undrained_stream_tablet_ids.empty() ||
+        deadline - CoarseMonoClock::Now() <= timeout * 2) {
+      std::ostringstream output_stream;
+      output_stream << "WaitForReplicationDrain from " << RequestorString(rpc) << " finished.";
+      if (!undrained_stream_tablet_ids.empty()) {
+        output_stream << " Found undrained streams:";
+      }
+
+      for (const auto& stream_tablet_id : undrained_stream_tablet_ids) {
+        output_stream << "\n\tStream: " << stream_tablet_id.first
+                      << ", Tablet: " << stream_tablet_id.second;
+        auto undrained_stream_info = resp->add_undrained_stream_info();
+        undrained_stream_info->set_stream_id(stream_tablet_id.first);
+        undrained_stream_info->set_tablet_id(stream_tablet_id.second);
+      }
+      LOG(INFO) << output_stream.str();
+      break;
+    }
+    SleepFor(timeout);
+  }
   return Status::OK();
 }
 

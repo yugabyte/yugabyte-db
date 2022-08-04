@@ -1,7 +1,7 @@
 ---
 title: Representing a graph in a SQL database
 headerTitle: Representing different kinds of graph in a SQL database
-linkTitle: graph representation
+linkTitle: Graph representation
 description: This section shows how to represent different kinds of graph in a SQL database,
 menu:
   stable:

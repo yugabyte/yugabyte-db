@@ -387,8 +387,11 @@ YBIsDBCatalogVersionMode()
 		cached_value = YBCIsEnvVarTrueWithDefault(
 			"FLAGS_TEST_enable_db_catalog_version_mode", false);
 	}
+	/*
+	 * During initdb (bootstrap mode), CATALOG_VERSION_PROTOBUF_ENTRY is used
+	 * for catalog version type.
+	 */
 	return IsYugaByteEnabled() &&
-		   YBTransactionsEnabled() &&
 		   YbGetCatalogVersionType() == CATALOG_VERSION_CATALOG_TABLE &&
 		   cached_value;
 }
@@ -531,7 +534,6 @@ YBInitPostgresBackend(
 		callbacks.GetCurrentYbMemctx = &GetCurrentYbMemctx;
 		callbacks.GetDebugQueryString = &GetDebugQueryString;
 		callbacks.WriteExecOutParam = &YbWriteExecOutParam;
-		callbacks.YbPgMemUpdateMax = &YbPgMemUpdateMax;
 		YBCInitPgGate(type_table, count, callbacks);
 		YBCInstallTxnDdlHook();
 
@@ -541,7 +543,7 @@ YBInitPostgresBackend(
 		 *
 		 * TODO: do we really need to DB name / username here?
 		 */
-		HandleYBStatus(YBCPgInitSession(/* pg_env */ NULL, db_name ? db_name : user_name));
+		HandleYBStatus(YBCPgInitSession(db_name ? db_name : user_name));
 	}
 }
 
@@ -951,6 +953,7 @@ bool yb_enable_create_with_table_oid = false;
 int yb_index_state_flags_update_delay = 1000;
 bool yb_enable_expression_pushdown = false;
 bool yb_enable_optimizer_statistics = false;
+bool yb_make_next_ddl_statement_nonbreaking = false;
 
 //------------------------------------------------------------------------------
 // YB Debug utils.
@@ -1020,9 +1023,20 @@ static ProcessUtility_hook_type prev_ProcessUtility = NULL;
 static int ddl_nesting_level = 0;
 
 static void
+YBResetEnableNonBreakingDDLMode()
+{
+	/*
+	 * Reset yb_make_next_ddl_statement_nonbreaking to avoid its further side
+	 * effect that may not be intended.
+	 */
+	yb_make_next_ddl_statement_nonbreaking = false;
+}
+
+static void
 YBResetDdlState()
 {
 	ddl_nesting_level = 0;
+	YBResetEnableNonBreakingDDLMode();
 	YBCPgClearSeparateDdlTxnMode();
 }
 
@@ -1049,6 +1063,7 @@ YBDecrementDdlNestingLevel(bool is_catalog_version_increment,
 	ddl_nesting_level--;
 	if (ddl_nesting_level == 0)
 	{
+		YBResetEnableNonBreakingDDLMode();
 		const bool increment_done =
 			is_catalog_version_increment &&
 			YBCPgHasWriteOperationsInDdlTxnMode() &&
@@ -1425,6 +1440,13 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 			is_ddl = false;
 			break;
 	}
+
+	/*
+	 * If yb_make_next_ddl_statement_nonbreaking is true, then no DDL statement
+	 * will cause a breaking catalog change.
+	 */
+	if (yb_make_next_ddl_statement_nonbreaking)
+		*is_breaking_catalog_change = false;
 
 	/*
 	 * For DDL, it does not make sense to get breaking catalog change without

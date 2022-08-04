@@ -3,6 +3,7 @@
 import React, { Component, Fragment } from 'react';
 import { Link } from 'react-router';
 import { Image, ProgressBar, ButtonGroup, DropdownButton } from 'react-bootstrap';
+import { toast } from 'react-toastify';
 import tableIcon from '../images/table.png';
 import './ListTables.scss';
 import { isNonEmptyArray } from '../../../utils/ObjectUtils';
@@ -15,10 +16,30 @@ import { getPromiseState } from '../../../utils/PromiseUtils';
 import { YBResourceCount } from '../../common/descriptors';
 import { isDisabled, isNotHidden } from '../../../utils/LayoutUtils';
 import { formatSchemaName } from '../../../utils/Formatters';
+import { YBButtonLink } from '../../common/forms/fields';
 
 class TableTitle extends Component {
   render() {
-    const { numCassandraTables, numRedisTables, numPostgresTables } = this.props;
+    const {
+      numCassandraTables,
+      numRedisTables,
+      numPostgresTables,
+      universe,
+      tables,
+      fetchUniverseTables
+    } = this.props;
+    const currentUniverseUUID = universe?.currentUniverse?.data?.universeUUID;
+    const fetchCurrentUniverseTables = (currentUniverseUUID) => {
+      fetchUniverseTables(currentUniverseUUID);
+      if (tables?.error?.message) {
+        toast.error('Refresh failed, try again', {
+          // Adding toastId helps prevent multiple duplicate toasts that appears
+          // on screen when user presses refresh button multiple times
+          toastId: 'table-fetch-failure',
+        });
+      }
+    };
+
     return (
       <div className="table-container-title clearfix">
         <div className="pull-left">
@@ -35,6 +56,13 @@ class TableTitle extends Component {
             <Image src={tableIcon} className="table-type-logo" />
             <YBResourceCount kind="YEDIS" size={numRedisTables} />
           </div>
+        </div>
+        <div className="pull-right">
+          <YBButtonLink
+            btnIcon="fa fa-refresh"
+            btnClass="btn btn-default refresh-btn"
+            onClick={() => fetchCurrentUniverseTables(currentUniverseUUID)}
+          />
         </div>
       </div>
     );

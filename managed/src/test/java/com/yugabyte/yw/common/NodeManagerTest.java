@@ -69,12 +69,12 @@ import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.io.File;
@@ -474,8 +474,8 @@ public class NodeManagerTest extends FakeDBApplication {
               TestHelper.TMP_PATH + "/node_manager_test_ca.crt",
               customCertInfo);
     } else {
-      UUID certUUID =
-          CertificateHelper.createRootCA("foobar", t.provider.customerUUID, TestHelper.TMP_PATH);
+      when(mockConfig.getString("yb.storage.path")).thenReturn(TestHelper.TMP_PATH);
+      UUID certUUID = CertificateHelper.createRootCA(mockConfig, "foobar", t.provider.customerUUID);
       cert = CertificateInfo.get(certUUID);
     }
 
@@ -502,6 +502,7 @@ public class NodeManagerTest extends FakeDBApplication {
         .thenReturn(ApiUtils.DEFAULT_ACCESS_KEY_CODE);
     when(runtimeConfigFactory.forProvider(any())).thenReturn(mockConfig);
     when(runtimeConfigFactory.forUniverse(any())).thenReturn(app.config());
+    when(runtimeConfigFactory.globalRuntimeConf()).thenReturn(mockConfig);
     createTempFile("node_manager_test_ca.crt", "test-cert");
   }
 
@@ -715,6 +716,16 @@ public class NodeManagerTest extends FakeDBApplication {
       TestData testData,
       UserIntent userIntent,
       String nodeIp) {
+    return nodeCommand(type, params, testData, userIntent, nodeIp, false);
+  }
+
+  private List<String> nodeCommand(
+      NodeManager.NodeCommandType type,
+      NodeTaskParams params,
+      TestData testData,
+      UserIntent userIntent,
+      String nodeIp,
+      boolean canConfigureYbc) {
     Common.CloudType cloud = testData.cloudType;
     List<String> expectedCommand = new ArrayList<>();
     expectedCommand.add("instance");
@@ -820,10 +831,7 @@ public class NodeManagerTest extends FakeDBApplication {
         String ybcPackage = null;
         Map<String, String> ybcFlags = new HashMap<>();
 
-        boolean canConfigureYbc =
-            CommonUtils.canConfigureYbc(Universe.getOrBadRequest(params.universeUUID));
         if (canConfigureYbc) {
-          ybcPackage = userIntent.ybcPackagePath;
           ybcFlags.put("v", "1");
           ybcFlags.put("server_address", nodeIp);
           ybcFlags.put("server_port", "18018");
@@ -1148,6 +1156,9 @@ public class NodeManagerTest extends FakeDBApplication {
         }
       }
     }
+    if (type == NodeManager.NodeCommandType.Create) {
+      expectedCommand.add("--as_json");
+    }
     expectedCommand.add(params.nodeName);
     return expectedCommand;
   }
@@ -1390,9 +1401,14 @@ public class NodeManagerTest extends FakeDBApplication {
   }
 
   private void setInstanceTags(NodeTaskParams params) {
-    UserIntent userIntent = new UserIntent();
-    userIntent.instanceTags = ImmutableMap.of("Cust", "Test");
-    params.clusters.add(new Cluster(ClusterType.PRIMARY, userIntent));
+    Map<String, String> instanceTags = ImmutableMap.of("Cust", "Test");
+    if (params instanceof InstanceActions.Params) {
+      ((InstanceActions.Params) params).tags = instanceTags;
+    } else {
+      UserIntent userIntent = new UserIntent();
+      userIntent.instanceTags = instanceTags;
+      params.clusters.add(new Cluster(ClusterType.PRIMARY, userIntent));
+    }
   }
 
   private void runAndTestProvisionWithAccessKeyAndSG(String sgId) {
@@ -1639,7 +1655,7 @@ public class NodeManagerTest extends FakeDBApplication {
       addValidDeviceInfo(t, params);
 
       // Set up expected command
-      int accessKeyIndexOffset = 5;
+      int accessKeyIndexOffset = 6;
       if (t.cloudType.equals(Common.CloudType.aws)) {
         accessKeyIndexOffset += 2;
         if (params.deviceInfo.storageType.equals(PublicCloudConstants.StorageType.IO1)) {
@@ -2579,15 +2595,20 @@ public class NodeManagerTest extends FakeDBApplication {
       UUID univUUID = createUniverse().universeUUID;
       Universe universe = Universe.saveDetails(univUUID, ApiUtils.mockUniverseUpdater(t.cloudType));
       buildValidParams(t, params, universe);
+      ApiUtils.insertInstanceTags(univUUID);
+      setInstanceTags(params);
       if (Provider.InstanceTagsEnabledProviders.contains(t.cloudType)) {
-        ApiUtils.insertInstanceTags(univUUID);
-        setInstanceTags(params);
+        List<String> expectedCommand = t.baseCommand;
+        expectedCommand.addAll(
+            nodeCommand(NodeManager.NodeCommandType.Tags, params, t, NODE_IPS[idx]));
+        nodeManager.nodeCommand(NodeManager.NodeCommandType.Tags, params);
+        verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
+      } else {
+        assertFails(
+            () -> nodeManager.nodeCommand(NodeManager.NodeCommandType.Tags, params),
+            "Tags are unsupported for " + t.cloudType.name());
       }
-      List<String> expectedCommand = t.baseCommand;
-      expectedCommand.addAll(
-          nodeCommand(NodeManager.NodeCommandType.Tags, params, t, NODE_IPS[idx]));
-      nodeManager.nodeCommand(NodeManager.NodeCommandType.Tags, params);
-      verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
+
       idx++;
     }
   }
@@ -2600,16 +2621,20 @@ public class NodeManagerTest extends FakeDBApplication {
       UUID univUUID = createUniverse().universeUUID;
       Universe universe = Universe.saveDetails(univUUID, ApiUtils.mockUniverseUpdater(t.cloudType));
       buildValidParams(t, params, universe);
+      ApiUtils.insertInstanceTags(univUUID);
+      setInstanceTags(params);
+      params.deleteTags = "Remove,Also";
       if (Provider.InstanceTagsEnabledProviders.contains(t.cloudType)) {
-        ApiUtils.insertInstanceTags(univUUID);
-        setInstanceTags(params);
-        params.deleteTags = "Remove,Also";
+        List<String> expectedCommand = t.baseCommand;
+        expectedCommand.addAll(
+            nodeCommand(NodeManager.NodeCommandType.Tags, params, t, NODE_IPS[idx]));
+        nodeManager.nodeCommand(NodeManager.NodeCommandType.Tags, params);
+        verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
+      } else {
+        assertFails(
+            () -> nodeManager.nodeCommand(NodeManager.NodeCommandType.Tags, params),
+            "Tags are unsupported for " + t.cloudType.name());
       }
-      List<String> expectedCommand = t.baseCommand;
-      expectedCommand.addAll(
-          nodeCommand(NodeManager.NodeCommandType.Tags, params, t, NODE_IPS[idx]));
-      nodeManager.nodeCommand(NodeManager.NodeCommandType.Tags, params);
-      verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
       idx++;
     }
   }
@@ -2630,7 +2655,9 @@ public class NodeManagerTest extends FakeDBApplication {
         assertNotEquals(t.cloudType, Common.CloudType.aws);
       } catch (RuntimeException re) {
         if (t.cloudType == Common.CloudType.aws) {
-          assertThat(re.getMessage(), allOf(notNullValue(), is("Invalid instance tags")));
+          assertThat(
+              re.getMessage(),
+              allOf(notNullValue(), is("Invalid params: no tags to add or remove")));
         }
       }
       idx++;
@@ -3011,7 +3038,8 @@ public class NodeManagerTest extends FakeDBApplication {
     createTempFile("node_manager_test_ca.crt", "test data");
 
     if (certType == CertConfigType.SelfSigned) {
-      certUUID = CertificateHelper.createRootCA("foobar", customerUUID, TestHelper.TMP_PATH);
+      when(mockConfig.getString("yb.storage.path")).thenReturn(TestHelper.TMP_PATH);
+      certUUID = CertificateHelper.createRootCA(mockConfig, "foobar", customerUUID);
       return CertificateInfo.get(certUUID);
     } else if (certType == CertConfigType.CustomCertHostPath) {
       CertificateParams.CustomCertInfo customCertInfo = new CertificateParams.CustomCertInfo();
@@ -3646,5 +3674,14 @@ public class NodeManagerTest extends FakeDBApplication {
       }
     }
     return result;
+  }
+
+  private void assertFails(Runnable r, String expectedError) {
+    try {
+      r.run();
+      fail();
+    } catch (RuntimeException re) {
+      assertThat(re.getMessage(), is(expectedError));
+    }
   }
 }

@@ -8,7 +8,7 @@ menu:
   preview:
     identifier: java-orm-ebean
     parent: java-drivers
-    weight: 600
+    weight: 500
 type: docs
 ---
 
@@ -38,7 +38,7 @@ Ebean ORM can be used with the [YugabyteDB JDBC driver](../yugabyte-jdbc) and th
 
 ## CRUD operations
 
-Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in the [Build an application](/preview/quick-start/build-apps/java/ysql-ebean/) page under the Quick start section.
+Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in the [Build an application](/preview/develop/build-apps/java/ysql-ebean/) page.
 
 The following sections demonstrate how to perform common tasks required for Java-based [Play Framework](https://www.playframework.com/documentation/2.8.x/api/java/index.html) application development using the Ebean ORM.
 
@@ -93,7 +93,7 @@ To begin using Ebean in the application, do the following:
 
     ```conf
     db.default.driver=com.yugabyte.Driver
-    db.default.url="jdbc:yugabytedb://127.0.0.1:5433/ysql_ebeans?load-balance=true"
+    db.default.url="jdbc:yugabytedb://127.0.0.1:5433/ysql_ebean?load-balance=true"
     db.default.username=yugabyte
     db.default.password=""
     play.evolutions {
@@ -242,5 +242,4 @@ To run the application and insert a new row, execute the following steps:
 
 ## Next steps
 
-- Explore [scaling Java applications](../../../explore/linear-scalability) with YugabyteDB.
-- Learn how to [develop Java applications with Yugabyte Cloud](../../../yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-yb-jdbc/).
+Explore [scaling Java applications](../../../explore/linear-scalability) with YugabyteDB.

@@ -278,7 +278,7 @@ class ClusterAdminClient {
 
   Status DisableTabletSplitting(int64_t disable_duration_ms, const std::string& feature_name);
 
-  Status IsTabletSplittingComplete();
+  Status IsTabletSplittingComplete(bool wait_for_parent_deletion);
 
   Status CreateTransactionsStatusTable(const std::string& table_name);
 
@@ -375,7 +375,8 @@ class ClusterAdminClient {
   Result<master::DisableTabletSplittingResponsePB> DisableTabletSplitsInternal(
       int64_t disable_duration_ms, const std::string& feature_name);
 
-  Result<master::IsTabletSplittingCompleteResponsePB> IsTabletSplittingCompleteInternal();
+  Result<master::IsTabletSplittingCompleteResponsePB> IsTabletSplittingCompleteInternal(
+      bool wait_for_parent_deletion);
 
   std::string master_addr_list_;
   HostPort init_master_addr_;

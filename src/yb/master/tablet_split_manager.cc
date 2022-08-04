@@ -291,10 +291,23 @@ Status TabletSplitManager::ValidateSplitCandidateTable(
 
 Status TabletSplitManager::ValidateSplitCandidateTablet(
     const TabletInfo& tablet,
+    const TabletInfoPtr parent,
     const IgnoreTtlValidation ignore_ttl_validation,
     const IgnoreDisabledList ignore_disabled_list) {
   if (PREDICT_FALSE(FLAGS_TEST_validate_all_tablet_candidates)) {
     return Status::OK();
+  }
+
+  // Wait for a tablet's parent to be deleted / hidden before trying to split it. This
+  // simplifies the algorithm required for PITR, and is unlikely to delay scheduling new
+  // splits too much because we wait for post-split compaction to complete anyways (which is
+  // probably much slower than parent deletion).
+  if (parent != nullptr) {
+    auto parent_lock = parent->LockForRead();
+    if (!parent_lock->is_hidden() && !parent_lock->is_deleted()) {
+      return STATUS_FORMAT(IllegalState, "Cannot split tablet whose parent is not yet deleted. "
+          "Child tablet id: $0, parent tablet id: $1.", tablet.tablet_id(), parent->tablet_id());
+    }
   }
 
   Schema schema;
@@ -420,6 +433,9 @@ class OutstandingSplitState {
   }
 
   bool CanSplitMoreOnReplicas(const TabletReplicaMap& replicas) const {
+    if (FLAGS_outstanding_tablet_split_limit_per_tserver == 0) {
+      return true;
+    }
     for (const auto& location : replicas) {
       auto it = ts_to_ongoing_splits_.find(location.first);
       if (it != ts_to_ongoing_splits_.end() &&
@@ -606,8 +622,9 @@ void TabletSplitManager::DoSplitting(
       }
 
       auto tablet_lock = tablet->LockForRead();
-      if (tablet_lock->pb.has_split_parent_tablet_id()) {
-        const TabletId& parent_id = tablet_lock->pb.split_parent_tablet_id();
+      TabletId parent_id;
+      if (!tablet_lock->pb.split_parent_tablet_id().empty()) {
+        parent_id = tablet_lock->pb.split_parent_tablet_id();
         if (state.HasSplitWithTask(parent_id)) {
           continue;
         }
@@ -631,13 +648,17 @@ void TabletSplitManager::DoSplitting(
         }
       }
 
-      // Check if this tablet is a valid candidate for splitting, and if so, add it to the list of
-      // split candidates.
       auto drive_info_opt = tablet->GetLeaderReplicaDriveInfo();
       if (!drive_info_opt.ok()) {
         continue;
       }
-      if (ValidateSplitCandidateTablet(*tablet).ok() &&
+      scoped_refptr<TabletInfo> parent = nullptr;
+      if (!parent_id.empty()) {
+        parent = FindPtrOrNull(tablet_info_map, parent_id);
+      }
+      // Check if this tablet is a valid candidate for splitting, and if so, add it to the list of
+      // split candidates.
+      if (ValidateSplitCandidateTablet(*tablet, parent).ok() &&
           filter_->ShouldSplitValidCandidate(*tablet, drive_info_opt.get())) {
         const auto replicas = replica_cache.GetOrAdd(*tablet);
         if (AllReplicasHaveFinishedCompaction(*replicas) &&
@@ -662,7 +683,8 @@ bool TabletSplitManager::IsRunning() {
   return is_running_;
 }
 
-bool TabletSplitManager::IsTabletSplittingComplete(const TableInfo& table) {
+bool TabletSplitManager::IsTabletSplittingComplete(
+    const TableInfo& table, bool wait_for_parent_deletion) {
   // It is important to check that is_running_ is false BEFORE checking for outstanding splits.
   // Otherwise, we could have the following order of events:
   // 1. Thread A: Tablet split manager enqueues a split for table T.
@@ -691,7 +713,7 @@ bool TabletSplitManager::IsTabletSplittingComplete(const TableInfo& table) {
     }
   }
 
-  return !table.HasOutstandingSplits();
+  return !table.HasOutstandingSplits(wait_for_parent_deletion);
 }
 
 void TabletSplitManager::DisableSplittingFor(

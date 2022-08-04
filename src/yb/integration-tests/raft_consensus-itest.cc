@@ -778,7 +778,7 @@ TEST_F(RaftConsensusITest, TestCatchupAfterOpsEvicted) {
 Result<int64_t> RaftConsensusITest::GetNumLogCacheOpsReadFromDisk() {
   TServerDetails* leader = nullptr;
   RETURN_NOT_OK(GetLeaderReplicaWithRetries(tablet_id_, &leader));
-  return cluster_->tablet_server_by_uuid(leader->uuid())->GetInt64Metric(
+  return cluster_->tablet_server_by_uuid(leader->uuid())->GetMetric<int64>(
       &METRIC_ENTITY_tablet,
       nullptr,
       &METRIC_log_cache_disk_reads,
@@ -957,7 +957,7 @@ TEST_F(RaftConsensusITest, TestLaggingFollowerLogCacheEviction) {
     }
 
     log_cache_num_ops += ASSERT_RESULT(
-        cluster_->tablet_server_by_uuid(tablet_replica.second->uuid())->GetInt64Metric(
+        cluster_->tablet_server_by_uuid(tablet_replica.second->uuid())->GetMetric<int64>(
             &METRIC_ENTITY_tablet,
             nullptr,
             &METRIC_log_cache_num_ops,
@@ -1854,7 +1854,7 @@ TEST_F(RaftConsensusITest, TestReplicaBehaviorViaRPC) {
   // Check that the 'term' metric is correctly exposed.
   {
     int64_t term_from_metric = ASSERT_RESULT(
-        cluster_->tablet_server_by_uuid(replica_ts->uuid())->GetInt64Metric(
+        cluster_->tablet_server_by_uuid(replica_ts->uuid())->GetMetric<int64>(
             &METRIC_ENTITY_tablet,
             nullptr,
             &METRIC_raft_term,
@@ -2851,7 +2851,7 @@ TEST_F(RaftConsensusITest, TestMemoryRemainsConstantDespiteTwoDeadFollowers) {
   MonoTime deadline = MonoTime::Now();
   deadline.AddDelta(kMaxWaitTime);
   while (true) {
-    int64_t num_rejections = ASSERT_RESULT(cluster_->tablet_server(leader_ts_idx)->GetInt64Metric(
+    int64_t num_rejections = ASSERT_RESULT(cluster_->tablet_server(leader_ts_idx)->GetMetric<int64>(
         &METRIC_ENTITY_tablet,
         nullptr,
         &METRIC_not_leader_rejections,

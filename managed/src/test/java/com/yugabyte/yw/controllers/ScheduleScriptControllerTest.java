@@ -36,7 +36,6 @@ import org.mockito.junit.MockitoJUnitRunner;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;
-import play.modules.swagger.SwaggerModule;
 import play.mvc.Http;
 import play.mvc.Result;
 
@@ -57,10 +56,7 @@ public class ScheduleScriptControllerTest extends FakeDBApplication {
     mockConfig = mock(Config.class);
     // when(mockConfig.getString(anyString())).thenReturn("");
     return super.configureApplication(
-            new GuiceApplicationBuilder()
-                .disable(SwaggerModule.class)
-                .disable(GuiceModule.class)
-                .configure(testDatabase()))
+            new GuiceApplicationBuilder().disable(GuiceModule.class).configure(testDatabase()))
         .overrides(
             bind(RuntimeConfigFactory.class)
                 .toInstance(new DummyRuntimeConfigFactoryImpl(mockConfig)))

@@ -20,7 +20,6 @@ import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageNFSData;
-import com.yugabyte.yw.models.configs.data.CustomerConfigStorageWithRegionsData;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.helpers.CustomerConfigConsts;
@@ -72,6 +71,7 @@ public class BackupUtil {
   public static final long MIN_SCHEDULE_DURATION_IN_SECS = 3600L;
   public static final long MIN_SCHEDULE_DURATION_IN_MILLIS = MIN_SCHEDULE_DURATION_IN_SECS * 1000L;
   public static final String BACKUP_SIZE_FIELD = "backup_size_in_bytes";
+  public static final String YBC_BACKUP_IDENTIFIER = "ybc";
 
   public static final String YB_CLOUD_COMMAND_TYPE = "table";
   public static final String K8S_CERT_PATH = "/opt/certs/yugabyte/";
@@ -164,6 +164,7 @@ public class BackupUtil {
             .scheduleUUID(backup.getScheduleUUID())
             .customerUUID(backup.customerUUID)
             .universeUUID(backup.universeUUID)
+            .category(backup.category)
             .kmsConfigUUID(backup.getBackupInfo().kmsConfigUUID)
             .storageConfigUUID(backup.storageConfigUUID)
             .isStorageConfigPresent(isStorageConfigPresent)
@@ -283,6 +284,10 @@ public class BackupUtil {
       }
       if (StringUtils.isNotBlank(backupLocation)) {
         params.storageLocation = String.format("%s/%s", backupLocation, params.storageLocation);
+        if (category.equals(BackupCategory.YB_CONTROLLER)) {
+          params.storageLocation =
+              String.format("%s_%s", params.storageLocation, YBC_BACKUP_IDENTIFIER);
+        }
       }
     }
   }
@@ -316,20 +321,17 @@ public class BackupUtil {
     if (config.name.equals(Util.NFS)) {
       return;
     }
-    CustomerConfigStorageWithRegionsData configWithRegions =
-        (CustomerConfigStorageWithRegionsData) config.getDataObject();
-    if (StringUtils.isBlank(configWithRegions.backupLocation)) {
+    CustomerConfigStorageData configData = (CustomerConfigStorageData) config.getDataObject();
+    if (StringUtils.isBlank(configData.backupLocation)) {
       throw new PlatformServiceException(BAD_REQUEST, "Default backup location cannot be empty");
     }
-    locations.add(configWithRegions.backupLocation);
-    if (CollectionUtils.isNotEmpty(configWithRegions.regionLocations)) {
-      configWithRegions.regionLocations.forEach(
-          rL -> {
-            if (StringUtils.isNotBlank(rL.region) && StringUtils.isNotBlank(rL.location)) {
-              locations.add(rL.location);
-            }
-          });
-    }
+    locations.add(configData.backupLocation);
+    Map<String, String> regionLocationsMap =
+        StorageUtil.getStorageUtil(config.name).getRegionLocationsMap(configData);
+    regionLocationsMap.forEach(
+        (r, bL) -> {
+          locations.add(bL);
+        });
     validateStorageConfigOnLocations(config, locations);
   }
 
@@ -339,6 +341,10 @@ public class BackupUtil {
         getBackupIdentifier(backupTableParams.universeUUID, backupTableParams.storageLocation);
     String location = String.format("%s/%s", regionLocation, backupIdentifier);
     return location;
+  }
+
+  public boolean isYbcBackup(String storageLocation) {
+    return storageLocation.endsWith(YBC_BACKUP_IDENTIFIER);
   }
 
   // returns the /univ-<>/backup-<>-<>/some_identifier extracted from the default backup location.

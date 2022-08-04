@@ -20,7 +20,7 @@ type: docs
   </li>
 </ul>
 
-Depending on the data volume imported, various bulk import tools can be used to load data into YugabyteDB. This page documents bulk import for YugabyteDB’s [Cassandra-compatible YCQL API](../../../../api/ycql).
+Depending on the data volume imported, various bulk import tools can be used to load data into YugabyteDB. This page documents bulk import for YugabyteDB’s [Cassandra-compatible YCQL API](../../../../api/ycql/).
 
 We will first export data from existing Apache Cassandra and MySQL tables. Thereafter, we will import the data using the various bulk load options supported by YugabyteDB. We will use a generic IoT time series data use case as a running example to illustrate the import process.
 

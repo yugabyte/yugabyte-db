@@ -15,7 +15,7 @@ type: docs
 
 ## Overview
 
-A YugabyteDB cluster consists of two distributed services - the [YB-TServer](../../architecture/concepts/yb-tserver/) service and the [YB-Master](../../architecture/concepts/yb-master/) service. Since the YB-Master service serves the role of the cluster metadata manager, it should be brought up first followed by the YB-TServer service. In order to bring up these distributed services, the respective servers (YB-Master or YB-TServer) need to be started across different nodes. Below are some considerations and recommendations on starting these services. The *deployment configurations* section below has detailed steps on how to setup YugabyteDB clusters.
+A YugabyteDB cluster consists of two distributed services - the [YB-TServer](../../architecture/concepts/yb-tserver/) service and the [YB-Master](../../architecture/concepts/yb-master/) service. Because the YB-Master service serves the role of the cluster metadata manager, it should be brought up first followed by the YB-TServer service. To bring up these distributed services, the respective servers (YB-Master or YB-TServer) need to be started across different nodes. Below are some considerations and recommendations on starting these services. The *deployment configurations* section below has detailed steps on how to setup YugabyteDB clusters.
 
 ## Basics
 
@@ -25,17 +25,16 @@ A YugabyteDB cluster consists of two distributed services - the [YB-TServer](../
 
 ## Replication
 
-YugabyteDB internally replicates data in a strongly consistent manner using Raft consensus protocol in order to survive node failure without compromising data correctness. The number of copies of the data represents the replication factor. Note that this distributed consensus replication is applied at a per-shard (aka tablet) level similar to Google Spanner.
+YugabyteDB internally replicates data in a strongly consistent manner using the Raft consensus protocol to survive node failure without compromising data correctness. This distributed consensus replication is applied at a per-shard (aka tablet) level similar to Google Spanner.
 
-You would first need to choose a Replication Factor (RF). You would need at least as many machines as the RF, which means 1 machine for RF1, 3 machines for RF3 and so on. Below are some recommendations relating to the RF.
+The replication factor (RF) corresponds to the number of copies of the data. You need at least as many nodes as the RF, which means 1 node for RF1, 3 nodes for RF3, and so on. With a RF of 3, your cluster can tolerate one node failure. With a RF of 5, it can tolerate two node failures. More generally, if RF is `n`, YugabyteDB can survive `(n - 1) / 2` failures without compromising correctness or availability of data.
+
+When deploying a cluster, keep in mind the following:
 
 - The RF should be an odd number to ensure majority consensus can be established during failures.
-- The default replication factor is `3`.
-  - RF of `3` allows tolerating `1` machine failure.
-  - RF of `5` allows tolerating `2` machine failures.
-  - More generally, if RF is `n`, YugabyteDB can survive `(n - 1) / 2` failures without compromising correctness or availability of data.
-- Number of YB-Master servers running in a cluster should match RF. Run each server on a separate machine to prevent losing availability on failures. You have to also specify the RF using the `--replication_factor` when bringing up the YB-Master servers.
-- Number of YB-TServer servers running in the cluster should not be less than the replication factor. Run each server on a separate machine to prevent losing availability on failures.
+- The default replication factor is 3.
+- The number of YB-Master servers running in a cluster should match RF. Run each server on a separate machine to prevent losing availability on failures. You need to specify the RF using the `--replication_factor` flag when bringing up the YB-Master servers.
+- The number of YB-TServer servers running in the cluster should not be less than the RF. Run each server on a separate machine to prevent losing availability on failures.
 
 Note that YugabyteDB works with both hostnames or IP addresses. IP addresses are preferred at this point as they are more extensively tested.
 
@@ -81,15 +80,18 @@ $ cat /proc/cpuinfo | grep sse2
 ### Disks
 
 - SSDs (solid state disks) are required.
-- Both local or remote attached storage work with YugabyteDB. Since YugabyteDB internally replicates data for fault tolerance, remote attached storage which does its own additional replication is not a requirement. Local disks often offer better performance at a lower cost.
+- Both local or remote attached storage work with YugabyteDB. Because YugabyteDB internally replicates data for fault tolerance, remote attached storage which does its own additional replication is not a requirement. Local disks often offer better performance at a lower cost.
 - Multi-disk nodes
-      - Do not use RAID across multiple disks. YugabyteDB can natively handle multi-disk nodes (JBOD).
-      - Create a data directory on each of the data disks and specify a comma separated list of those directories to the yb-master and yb-tserver servers via the `--fs_data_dirs` flag.
+
+  - Do not use RAID across multiple disks. YugabyteDB can natively handle multi-disk nodes (JBOD).
+  - Create a data directory on each of the data disks and specify a comma separated list of those directories to the yb-master and yb-tserver servers via the `--fs_data_dirs` flag.
+
 - Mount settings
-      - XFS is the recommended filesystem.
-      - Use the `noatime` setting when mounting the data drives.
-      - ZFS isn't currently supported and [is in the roadmap](https://github.com/yugabyte/yugabyte-db/issues/4157).
-      - NFS isn't currently supported and [is in the roadmap](https://github.com/yugabyte/yugabyte-db/issues/4388).
+
+  - XFS is the recommended filesystem.
+  - Use the `noatime` setting when mounting the data drives.
+  - ZFS isn't currently supported and [is in the roadmap](https://github.com/yugabyte/yugabyte-db/issues/4157).
+  - NFS isn't currently supported and [is in the roadmap](https://github.com/yugabyte/yugabyte-db/issues/4388).
 
 YugabyteDB does not require any form of RAID, but runs optimally on a JBOD (just a bunch of disks) setup.
 It can also leverage multiple disks per node and has been tested beyond 10 TB of storage per node.
@@ -108,23 +110,20 @@ Below is a minimal list of default ports (along with the network access required
 
 - Each of the nodes in the YugabyteDB cluster must be able to communicate with each other using TCP/IP on the following ports.
 
-      7100 for YB-Master RPC communication
+  - 7100 for YB-Master RPC communication
+  - 9100 for YB-TServer RPC communication
 
-      9100 for YB-TServer RPC communication
+- To view the cluster dashboard, you need to be able to navigate to the following ports on the nodes.
 
-- In order to view the cluster dashboard, you need to be able to navigate to the following ports on the nodes.
-
-      7000 for viewing the YB-Master Admin UI
+  - 7000 for viewing the YB-Master Admin UI
 
 - To use the database from the app, the following ports need to be accessible from the app (or CLIs).
 
-      5433 for YSQL
-      9042 for YCQL
-      6379 for YEDIS
+  - 5433 for YSQL
+  - 9042 for YCQL
+  - 6379 for YEDIS
 
-### Default ports reference
-
-The above deployment uses the various default ports listed [here](../../reference/configuration/default-ports/).
+This deployment uses YugabyteDB [default ports](../../reference/configuration/default-ports/).
 
 {{< note title="Note" >}}
 
@@ -160,19 +159,27 @@ For a list of best practices, see [security checklist](../../secure/security-che
 
 ### Amazon Web Services (AWS)
 
-- Use the `c5` or `i3` instance families.
-- Recommended types are `i3.2xlarge`, `i3.4xlarge`, `c5.2xlarge`, `c5.4xlarge`
-- For the `c5` instance family, use `gp2` EBS (SSD) disks that are **at least 250GB** in size, larger if more IOPS are needed.
-      - The number of IOPS are proportional to the size of the disk.
-      - In our testing, `gp2` EBS SSDs provide the best performance for a given cost among the various EBS disk options.
-- Avoid running on [`t2` instance types](https://aws.amazon.com/ec2/instance-types/t2/). The `t2` instance types are burstable instance types. Their baseline performance and ability to burst are governed by CPU Credits, and makes it hard to get steady performance.
+- Use the C5 or I3 instance families.
+- Recommended types are i3.4xlarge, i3.8xlarge, c5.4xlarge, and c5.8xlarge. Use the higher CPU instance types especially for large YSQL workloads.
+- For the C5 instance family, use gp3 EBS (SSD) disks that are **at least 250GB** in size, larger if more IOPS are needed.
+  - The number of IOPS are proportional to the size of the disk.
+  - In our testing, gp3 EBS SSDs provide the best performance for a given cost among the various EBS disk options.
+- Avoid running on [T2 instance types](https://aws.amazon.com/ec2/instance-types/t2/). The T2 instance types are burstable instance types. Their baseline performance and ability to burst are governed by CPU credits, which makes it hard to get steady performance.
+- Use VPC peering for multi-region deployments and connectivity to S3 object stores.
 
 ### Google Cloud
 
-- Use the `n1-highcpu` instance family. As a second choice, `n1-standard` instance family works too.
-- Recommended instance types are `n1-highcpu-8` and `n1-highcpu-16`.
-- [Local SSDs](https://cloud.google.com/compute/docs/disks/#localssds) are the preferred storage option.
-      - Each local SSD is 375 GB in size, but you can attach up to eight local SSD devices for 3 TB of total local SSD storage space per instance.
+- Use the N2 high-CPU instance family. As a second choice, the N2 standard instance family works too.
+- Recommended instance types are `n2-highcpu-16` and `n2-highcpu-32`.
+- [Local SSDs](https://cloud.google.com/compute/docs/disks/#localssds) are the preferred storage option. Local SSDs provide improved performance over attached disks, but the data is not replicated, and can be lost if the node fails. This option is ideal for databases (like YugabyteDB) that manage their own replication and can guarantee high availability (HA). For more details on these tradeoffs, refer to [Local vs remote SSDs](../../deploy/kubernetes/best-practices/#local-vs-remote-ssds).
+  - Each local SSD is 375 GB in size, but you can attach up to eight local SSD devices for 3 TB of total local SSD storage space per instance.
 - As a second choice, [remote persistent SSDs](https://cloud.google.com/compute/docs/disks/#pdspecs) work well. Make sure the size of these SSDs are **at least 250GB** in size, larger if more IOPS are needed.
-      - The number of IOPS are proportional to the size of the disk.
-- Avoid running on `f1` or `g1` machine families. These are [burstable, shared core machines](https://cloud.google.com/compute/docs/machine-types#sharedcore) that may not deliver steady performance.
+  - The number of IOPS are proportional to the size of the disk.
+- Avoid running on f1 or g1 machine families. These are [burstable, shared core machines](https://cloud.google.com/compute/docs/machine-types#sharedcore) that may not deliver steady performance.
+
+### Azure
+
+- Use v5 options with 16 vCPU in the Storage Optimized (preferred) or General Purpose VM types. For a busy YSQL instance, use 32 vCPU.
+- For an application that cannot tolerate P99 spikes, local SSDs (Storage Optimized instances) are the preferred option. For more details on the tradeoffs, refer to [Local vs remote SSDs](../../deploy/kubernetes/best-practices/#local-vs-remote-ssds).
+- If local SSDs are not available, use ultra disks to eliminate expected latency on Azure premium disks. Refer to the Azure [disk recommendations](https://azure.microsoft.com/en-us/blog/azure-ultra-disk-storage-microsoft-s-service-for-your-most-i-o-demanding-workloads/) and Azure documentation on [disk types](https://docs.microsoft.com/en-us/azure/virtual-machines/disks-types) for databases.
+- Turn on Accelerated Networking, and use VNet peering for multiple VPCs and connectivity to object stores.

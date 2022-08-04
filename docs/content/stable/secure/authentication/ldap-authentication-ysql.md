@@ -1,7 +1,7 @@
 ---
-title: LDAP Authentication in YSQL
-headerTitle: LDAP Authentication in YSQL
-linkTitle: LDAP Authentication
+title: LDAP authentication in YSQL
+headerTitle: LDAP authentication in YSQL
+linkTitle: LDAP authentication
 description: Configuring YugabyteDB to use an external LDAP authentication service.
 menu:
   stable:
@@ -37,7 +37,7 @@ These are described below.
 
 ## Simple Bind Mode
 
-In **simple-bind** mode, YB-TServer will bind to the Distinguished Name (“DN”) constructed with “prefix username suffix” format. Here is an example for Simple bind mode:
+In **simple-bind** mode, YB-TServer will bind to the Distinguished Name ("DN") constructed with "prefix username suffix" format. Here is an example for Simple bind mode:
 
 ```sh
 --ysql_hba_conf_csv='host all yugabyte 127.0.0.1/0 password,"host all all 0.0.0.0/0 ldap ldapserver=ldap.yugabyte.com ldapprefix=""uid="" ldapsuffix="", ou=DBAs, dc=example, dc=com"" ldapport=389"'
@@ -60,7 +60,7 @@ The configurations supported for simple bind mode.
 
 In `Search + Bind` mode, YB-Tserver will bind to the LDAP directory with a fixed username and password, specified with `ldapbinddn` and `ldapbindpasswd`, and performs a search for the user trying to log into the database. This mode is commonly used by LDAP authentication schemes in other software.
 
-For Searching the LDAP directory if no fixed username and password is configured at YB-TServer, an anonymous bind will be attempted to the directory. The search will be performed over the subtree at `ldapbasedn`, and will try to do an exact match of the attribute specified in `ldapsearchattribute`. Once the user has been found in this search, the server disconnects and re-binds to the directory as this user, using the password specified by the client, to verify that the login is correct.
+For Searching the LDAP directory if no fixed username and password is configured at YB-TServer, an anonymous bind will be attempted to the directory. The search will be performed over the subtree at `ldapbasedn`, and will try to do an exact match of the attribute specified in `ldapsearchattribute`. After the user has been found in this search, the server disconnects and re-binds to the directory as this user, using the password specified by the client, to verify that the login is correct.
 
 Here is an example for search + bind mode:
 
@@ -89,7 +89,7 @@ The configurations supported for search + bind mode.
 
 To use LDAP password authentication on a new YugabyteDB cluster, follow these steps:
 
-1. Use  `--ysql_hba_conf_csv` config flag to enable LDAP authentication on YB-TServer. Use the below configuration to start a YugabyteDB cluster.
+1. Use  `--ysql_hba_conf_csv` configuration flag to enable LDAP authentication on YB-TServer. Use the below configuration to start a YugabyteDB cluster.
 
     ```sh
     --ysql_hba_conf_csv='host all yugabyte 127.0.0.1/0 password,"host all all 0.0.0.0/0 ldap ldapserver=ldap.forumsys.com ldapprefix=""uid="" ldapsuffix="", dc=example, dc=com"" ldapport=389"'
@@ -144,7 +144,7 @@ In the above sample configuration, we are using an [online LDAP test server](htt
 
 1. Configure database role(s) for the LDAP user(s).
 
-    We are creating a `ROLE` for username riemann supported by the test LDAP server.
+    We are creating a `ROLE` for username `riemann` supported by the test LDAP server.
 
     ```sql
     yugabyte=# CREATE ROLE riemann WITH LOGIN;

@@ -2,7 +2,6 @@
 
 package com.yugabyte.yw.forms;
 
-import com.cronutils.utils.VisibleForTesting;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.typesafe.config.Config;
@@ -17,8 +16,6 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
-import java.util.stream.Collectors;
-
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.extern.slf4j.Slf4j;
@@ -47,10 +44,6 @@ public class ResizeNodeParams extends UpgradeTaskParams {
 
     RuntimeConfigFactory runtimeConfigFactory =
         Play.current().injector().instanceOf(RuntimeConfigFactory.class);
-    boolean allowUnsupportedInstances =
-        runtimeConfigFactory
-            .forUniverse(universe)
-            .getBoolean("yb.internal.allow_unsupported_instances");
 
     for (Cluster cluster : clusters) {
       UserIntent newUserIntent = cluster.userIntent;
@@ -58,7 +51,8 @@ public class ResizeNodeParams extends UpgradeTaskParams {
           universe.getUniverseDetails().getClusterByUuid(cluster.uuid).userIntent;
 
       String errorStr =
-          checkResizeIsPossible(currentUserIntent, newUserIntent, allowUnsupportedInstances);
+          getResizeIsPossibleError(
+              currentUserIntent, newUserIntent, universe, runtimeConfigFactory, true);
       if (errorStr != null) {
         throw new IllegalArgumentException(errorStr);
       }
@@ -70,11 +64,68 @@ public class ResizeNodeParams extends UpgradeTaskParams {
    *
    * @param currentUserIntent current user intent
    * @param newUserIntent desired user intent
-   * @param allowUnsupportedInstances boolean to skip instance type checking
+   * @param universe current universe
+   * @param verifyVolumeSize whether to check volume size
+   * @return
+   */
+  public static boolean checkResizeIsPossible(
+      UserIntent currentUserIntent,
+      UserIntent newUserIntent,
+      Universe universe,
+      boolean verifyVolumeSize) {
+
+    RuntimeConfigFactory runtimeConfigFactory =
+        Play.current().injector().instanceOf(RuntimeConfigFactory.class);
+
+    return checkResizeIsPossible(
+        currentUserIntent, newUserIntent, universe, runtimeConfigFactory, verifyVolumeSize);
+  }
+
+  /**
+   * Checks if smart resize is available
+   *
+   * @param currentUserIntent current user intent
+   * @param newUserIntent desired user intent
+   * @param universe current universe
+   * @param runtimeConfigFactory config factory
+   * @param verifyVolumeSize whether to check volume size
+   * @return
+   */
+  public static boolean checkResizeIsPossible(
+      UserIntent currentUserIntent,
+      UserIntent newUserIntent,
+      Universe universe,
+      RuntimeConfigFactory runtimeConfigFactory,
+      boolean verifyVolumeSize) {
+    String res =
+        getResizeIsPossibleError(
+            currentUserIntent, newUserIntent, universe, runtimeConfigFactory, verifyVolumeSize);
+    if (res != null) {
+      log.debug("resize is forbidden: " + res);
+    }
+    return res == null;
+  }
+
+  /**
+   * Checks if smart resize is available and returns error message
+   *
+   * @param currentUserIntent current user intent
+   * @param newUserIntent desired user intent
+   * @param universe current universe
+   * @param verifyVolumeSize whether to check volume size
    * @return null if available, otherwise returns error message
    */
-  public static String checkResizeIsPossible(
-      UserIntent currentUserIntent, UserIntent newUserIntent, boolean allowUnsupportedInstances) {
+  private static String getResizeIsPossibleError(
+      UserIntent currentUserIntent,
+      UserIntent newUserIntent,
+      Universe universe,
+      RuntimeConfigFactory runtimeConfigFactory,
+      boolean verifyVolumeSize) {
+
+    boolean allowUnsupportedInstances =
+        runtimeConfigFactory
+            .forUniverse(universe)
+            .getBoolean("yb.internal.allow_unsupported_instances");
     if (currentUserIntent == null || newUserIntent == null) {
       return "Should have both intents, but got: " + currentUserIntent + ", " + newUserIntent;
     }
@@ -87,7 +138,7 @@ public class ResizeNodeParams extends UpgradeTaskParams {
     boolean diskChanged = false;
     if (newUserIntent.deviceInfo != null && newUserIntent.deviceInfo.volumeSize != null) {
       Integer currDiskSize = currentUserIntent.deviceInfo.volumeSize;
-      if (currDiskSize > newUserIntent.deviceInfo.volumeSize) {
+      if (verifyVolumeSize && currDiskSize > newUserIntent.deviceInfo.volumeSize) {
         return "Disk size cannot be decreased. It was "
             + currDiskSize
             + " got "
@@ -106,7 +157,9 @@ public class ResizeNodeParams extends UpgradeTaskParams {
     }
 
     String newInstanceTypeCode = newUserIntent.instanceType;
-    if (!diskChanged && currentUserIntent.instanceType.equals(newInstanceTypeCode)) {
+    if (verifyVolumeSize
+        && !diskChanged
+        && currentUserIntent.instanceType.equals(newInstanceTypeCode)) {
       return "Nothing changed!";
     }
     if (hasEphemeralStorage(currentUserIntent)) {

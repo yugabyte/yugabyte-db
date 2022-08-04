@@ -25,4 +25,6 @@ public class ShellProcessContext {
   Map<String, String> sensitiveData;
   // Abort the command forcibly if it takes longer than this
   long timeoutSecs;
+  // Args that are in the cmd, but need to be redacted
+  Map<String, String> redactedVals;
 }

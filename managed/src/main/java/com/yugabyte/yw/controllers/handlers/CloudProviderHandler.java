@@ -89,6 +89,7 @@ public class CloudProviderHandler {
               + "{\"instanceTypeCode\": \"xsmall\", \"numCores\": 2, \"memSizeGB\": 4},"
               + "{\"instanceTypeCode\": \"small\", \"numCores\": 4, \"memSizeGB\": 7.5},"
               + "{\"instanceTypeCode\": \"medium\", \"numCores\": 8, \"memSizeGB\": 15},"
+              + "{\"instanceTypeCode\": \"xmedium\", \"numCores\": 12, \"memSizeGB\": 15},"
               + "{\"instanceTypeCode\": \"large\", \"numCores\": 16, \"memSizeGB\": 15},"
               + "{\"instanceTypeCode\": \"xlarge\", \"numCores\": 32, \"memSizeGB\": 30}]");
 
@@ -662,23 +663,34 @@ public class CloudProviderHandler {
     return regionsToAdd;
   }
 
-  @Transactional
   public UUID editProvider(
       Customer customer, Provider provider, Provider editProviderReq, String anyProviderRegion) {
     // Check if region edit mode.
     Set<Region> regionsToAdd = checkIfRegionsToAdd(editProviderReq, provider);
+    boolean providerDataUpdated =
+        updateProviderData(customer, provider, editProviderReq, anyProviderRegion, regionsToAdd);
+    UUID taskUUID = maybeAddRegions(customer, editProviderReq, provider, regionsToAdd);
+    if (!providerDataUpdated && taskUUID == null) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "No changes to be made for provider type: " + provider.code);
+    }
+    return taskUUID;
+  }
+
+  @Transactional
+  public boolean updateProviderData(
+      Customer customer,
+      Provider provider,
+      Provider editProviderReq,
+      String anyProviderRegion,
+      Set<Region> regionsToAdd) {
     Map<String, String> unmaskedConfig = editProviderReq.getUnmaskedConfig();
     boolean updatedHostedZone =
         maybeUpdateHostedZone(provider, editProviderReq.hostedZoneId, regionsToAdd);
     boolean updatedProviderConfig =
         maybeUpdateProviderConfig(provider, unmaskedConfig, anyProviderRegion);
     boolean updatedKubeConfig = maybeUpdateKubeConfig(provider, unmaskedConfig);
-    UUID taskUUID = maybeAddRegions(customer, editProviderReq, provider, regionsToAdd);
-    if (!updatedHostedZone && !updatedProviderConfig && !updatedKubeConfig && taskUUID == null) {
-      throw new PlatformServiceException(
-          BAD_REQUEST, "No changes to be made for provider type: " + provider.code);
-    }
-    return taskUUID;
+    return updatedHostedZone || updatedProviderConfig || updatedKubeConfig;
   }
 
   private UUID maybeAddRegions(

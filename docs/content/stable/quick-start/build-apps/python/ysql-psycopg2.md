@@ -45,9 +45,9 @@ type: docs
   </li>
 </ul>
 
-{{< tip title="Yugabyte Cloud requires SSL" >}}
+{{< tip title="YugabyteDB Managed requires SSL" >}}
 
-Are you using Yugabyte Cloud? Install the [prerequisites](#prerequisites), then go to the [Use Python with SSL](#use-python-with-ssl) section.
+Are you using YugabyteDB Managed? Install the [prerequisites](#prerequisites), then go to the [Use Python with SSL](#use-python-with-ssl) section.
 
 {{</ tip >}}
 
@@ -80,7 +80,9 @@ import psycopg2
 
 # Create the database connection.
 
-conn = psycopg2.connect("host=127.0.0.1 port=5433 dbname=yugabyte user=yugabyte password=yugabyte")
+connString = "host=127.0.0.1 port=5433 dbname=yugabyte user=yugabyte password=yugabyte"
+
+conn = psycopg2.connect(connString)
 
 # Open a cursor to perform database operations.
 # The default mode for psycopg2 is "autocommit=false".

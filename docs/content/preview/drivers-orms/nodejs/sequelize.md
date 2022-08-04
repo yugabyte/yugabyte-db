@@ -8,7 +8,7 @@ menu:
   preview:
     identifier: sequelize-1
     parent: nodejs-drivers
-    weight: 600
+    weight: 500
 type: docs
 ---
 
@@ -212,5 +212,4 @@ This configuration can be used while connecting to a YugabyteDB Managed cluster 
 
 ## Next steps
 
-- Explore [Scaling Node Applications](../../../../explore/linear-scalability) with YugabyteDB.
-- Learn how to [develop Node applications with YugabyteDB Managed](../../../yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-node/).
+Explore [Scaling Node Applications](../../../explore/linear-scalability/) with YugabyteDB.

@@ -104,9 +104,9 @@ The ordering of the glossary terms is insignificant. There's a fair amount of te
 
 Every [_syntax rule_](#syntax-rule) is defined textually in the single [_diagram definition file_](#diagram-definition-file). The set of all these rules is intended to define the entirety of the YSQL grammar—but nothing beyond this. Presently, the definitions of some [_syntax rules_](#syntax-rule) (while these are implemented in the YSQL subsystem of YugabyteDB) remain to be written down.
 
-Sometimes, the grammar of an entire SQL statement can be comfortably described by a single, self-contained [_syntax rule_](#syntax-rule). The [Syntax section](https://docs.yugabyte.com/preview/api/ysql/the-sql-language/statements/txn_commit/#syntax) of the account of the `COMMIT` statement provides an example. More commonly, the grammar of a SQL statement includes references (by name) to the definition(s) of one or more other rule(s). And often such referenced [_syntax rules_](#syntax-rule) are the targets of references from many other [_syntax rules_](#syntax-rule). The complete account of a very flexible SQL statement can end up as a very large closure of multiply referenced rules. [`SELECT`](https://docs.yugabyte.com/preview/api/ysql/the-sql-language/statements/dml_select/#syntax) is the canonical example of complexity. For example, a terminal like [`integer`](https://docs.yugabyte.com/preview/api/ysql/syntax_resources/grammar_diagrams/#integer) can end up as the reference target in very many distinct syntax spots within the total definition of the `SELECT` statement, and of other statements.
+Sometimes, the grammar of an entire SQL statement can be comfortably described by a single, self-contained [_syntax rule_](#syntax-rule). The [Syntax section](/preview/api/ysql/the-sql-language/statements/txn_commit/#syntax) of the account of the `COMMIT` statement provides an example. More commonly, the grammar of a SQL statement includes references (by name) to the definition(s) of one or more other rule(s). And often such referenced [_syntax rules_](#syntax-rule) are the targets of references from many other [_syntax rules_](#syntax-rule). The complete account of a very flexible SQL statement can end up as a very large closure of multiply referenced rules. [`SELECT`](/preview/api/ysql/the-sql-language/statements/dml_select/#syntax) is the canonical example of complexity. For example, a terminal like [`integer`](/preview/api/ysql/syntax_resources/grammar_diagrams/#integer) can end up as the reference target in very many distinct syntax spots within the total definition of the `SELECT` statement, and of other statements.
 
-A [_syntax rule_](#syntax-rule) is specified using EBNF notation. EBNF stands for "extended Backus–Naur form". See this [Wikipedia article](https://en.wikipedia.org/wiki/Extended_Backus–Naur_form). Here is an example for the [`PREPARE`](https://docs.yugabyte.com/preview/api/ysql/the-sql-language/statements/perf_prepare/#syntax) statement:
+A [_syntax rule_](#syntax-rule) is specified using EBNF notation. EBNF stands for "extended Backus–Naur form". See this [Wikipedia article](https://en.wikipedia.org/wiki/Extended_Backus–Naur_form). Here is an example for the [`PREPARE`](/preview/api/ysql/the-sql-language/statements/perf_prepare/#syntax) statement:
 
 ```ebnf
 prepare_statement ::= 'PREPARE' name [ '(' data_type { ',' data_type } ')' ] 'AS' statement ;
@@ -146,7 +146,7 @@ The [_diagram generator_](#diagram-generator) doesn't care about the order of th
 
 The [_syntax diagram_](#syntax-diagram) and the [_syntax rule_](#syntax-rule) bear a one-to-one mutual relationship.
 
-The [Syntax section](https://docs.yugabyte.com/preview/api/ysql/the-sql-language/statements/perf_prepare/#syntax) of the account of the [`PREPARE`](https://docs.yugabyte.com/preview/api/ysql/the-sql-language/statements/perf_prepare/) statement provides a short, but sufficient, example. The [_syntax diagram_](#syntax-diagram) appears as a (member of a) tabbed pair which gives the reader the choice to see a [_syntax rule_](#syntax-rule) as either the "Grammar" form (in the syntax used in the PostgreSQL documentation and the documentation for several other databases) or the "Diagram" form (a so-called "railroad diagram" that again is used commonly in the documentation for several other databases).
+The [Syntax section](/preview/api/ysql/the-sql-language/statements/perf_prepare/#syntax) of the account of the [`PREPARE`](/preview/api/ysql/the-sql-language/statements/perf_prepare/) statement provides a short, but sufficient, example. The [_syntax diagram_](#syntax-diagram) appears as a (member of a) tabbed pair which gives the reader the choice to see a [_syntax rule_](#syntax-rule) as either the "Grammar" form (in the syntax used in the PostgreSQL documentation and the documentation for several other databases) or the "Diagram" form (a so-called "railroad diagram" that again is used commonly in the documentation for several other databases).
 
 ### Docs directory
 
@@ -226,7 +226,7 @@ Notice that there is no garbage collection scheme for unreferenced [_generated d
 <your path>/yugabyte-db/docs/content/preview/api/ysql/syntax_resources/grammar_diagrams.md
 ```
 
-The grammar [diagrams file](https://docs.yugabyte.com/preview/api/ysql/syntax_resources/grammar_diagrams/#abort) contains every [_syntax diagram_](#syntax-diagram) that is generated from all of the [_syntax rules_](#syntax-rule) that are found in the [_diagram definition file_](#diagram-definition-file).
+The grammar [diagrams file](/preview/api/ysql/syntax_resources/grammar_diagrams/#abort) contains every [_syntax diagram_](#syntax-diagram) that is generated from all of the [_syntax rules_](#syntax-rule) that are found in the [_diagram definition file_](#diagram-definition-file).
 
 ### Generated grammar-diagram pair
 

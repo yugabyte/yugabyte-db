@@ -37,6 +37,8 @@
 #include <string>
 #include <vector>
 
+#include "yb/common/wire_protocol.pb.h"
+
 #include "yb/consensus/consensus.fwd.h"
 #include "yb/consensus/metadata.fwd.h"
 
@@ -57,6 +59,8 @@ class MaintenanceManager;
 class RpcServer;
 class ServerEntryPB;
 class ThreadPool;
+class AutoFlagsManager;
+class AutoFlagsConfigPB;
 
 namespace server {
 
@@ -71,6 +75,8 @@ class Master : public tserver::DbServerBase {
   explicit Master(const MasterOptions& opts);
   virtual ~Master();
 
+  virtual Status InitAutoFlags() override;
+  Status InitAutoFlagsFromMasterLeader(const HostPort& leader_address);
   Status Init() override;
   Status Start() override;
 
@@ -148,6 +154,9 @@ class Master : public tserver::DbServerBase {
 
   SysCatalogTable& sys_catalog() const;
 
+  uint32_t GetAutoFlagConfigVersion() const override;
+  AutoFlagsConfigPB GetAutoFlagConfig() const;
+
   yb::client::AsyncClientInitialiser& async_client_initializer() {
     return *async_client_init_;
   }
@@ -203,6 +212,7 @@ class Master : public tserver::DbServerBase {
 
   MasterState state_;
 
+  std::unique_ptr<AutoFlagsManager> auto_flags_manager_;
   std::unique_ptr<TSManager> ts_manager_;
   std::unique_ptr<enterprise::CatalogManager> catalog_manager_;
   std::unique_ptr<MasterPathHandlers> path_handlers_;

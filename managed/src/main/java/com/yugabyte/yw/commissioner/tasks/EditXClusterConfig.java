@@ -37,7 +37,6 @@ public class EditXClusterConfig extends XClusterConfigTaskBase {
       // Lock the target universe.
       lockUniverseForUpdate(targetUniverse.universeUUID, targetUniverse.version);
       try {
-        XClusterConfigStatusType initialStatus = xClusterConfig.status;
         createXClusterConfigSetStatusTask(XClusterConfigStatusType.Updating)
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
 
@@ -60,7 +59,7 @@ public class EditXClusterConfig extends XClusterConfigTaskBase {
           // Delete the old directory if it created a new one.
           sourceCertificate.ifPresent(cert -> createTransferXClusterCertsRemoveTasks());
         } else if (editFormData.status != null) {
-          createXClusterConfigSetStatusTask(initialStatus, editFormData.status)
+          createSetReplicationPausedTask(editFormData.status)
               .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
         } else if (editFormData.tables != null) {
           Set<String> currentTableIds = xClusterConfig.getTables();
@@ -84,11 +83,8 @@ public class EditXClusterConfig extends XClusterConfigTaskBase {
           throw new RuntimeException("No edit operation was specified in editFormData");
         }
 
-        // If the edit operation is not change status, set it to the initial status.
-        if (editFormData.status == null) {
-          createXClusterConfigSetStatusTask(initialStatus)
-              .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
-        }
+        createXClusterConfigSetStatusTask(XClusterConfigStatusType.Running)
+            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
 
         createMarkUniverseUpdateSuccessTasks(targetUniverse.universeUUID)
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);

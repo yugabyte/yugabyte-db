@@ -14,7 +14,7 @@ type: docs
  <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/preview/explore/observability/grafana-dashboard/macos/" class="nav-link active">
+    <a href="../macos/" class="nav-link active">
       <i class="fab fa-apple" aria-hidden="true"></i>
       macOS
     </a>
@@ -24,14 +24,14 @@ type: docs
 You can create dashboards for your local YugabyteDB clusters using [Grafana](https://grafana.com/grafana/), an open source platform to perform visualization and analytics which lets you add queries and explore metrics to customize your graphs.
 To create dashboards, you need to add Prometheus metrics as a data source in Grafana. The visualization it provides gives a better understanding of the health and performance of your YugabyteDB clusters.
 
-This tutorial uses the [yugabyted](../../../../reference/configuration/yugabyted) local cluster management utility.
-In this tutorial, you'll use Grafana to populate dashboards with the metrics you collect with the [Prometheus Integration](../../../../explore/observability/prometheus-integration/macos/)
+This tutorial uses the [yugabyted](../../../../reference/configuration/yugabyted/) local cluster management utility.
+In this tutorial, you'll use Grafana to populate dashboards with the metrics you collect with the [Prometheus Integration](../../prometheus-integration/macos/)
 
 ## Prerequisite
 
 A local instance of Prometheus displaying the metrics of your YugabyteDB cluster is required. To do this,
 
-- Create a local instance of Prometheus and perform the Steps 1-4 listed under [Prometheus Integration](../../../../explore/observability/prometheus-integration/macos/). (Step 5 is optional)
+- Create a local instance of Prometheus and perform the Steps 1-4 listed under [Prometheus Integration](../../prometheus-integration/macos/). (Step 5 is optional)
 
 ## Set up Grafana and add Prometheus as a data source
 
@@ -42,7 +42,7 @@ A local instance of Prometheus displaying the metrics of your YugabyteDB cluster
 
 ## Create a dashboard
 
-There are different ways to create a dashboard in Grafana. For this tutorial, you'll use the import option and pick the Yugabytedb community dashboard present under the list of Grafana [Dashboards](https://grafana.com/grafana/dashboards/12620).
+There are different ways to create a dashboard in Grafana. For this tutorial, you'll use the import option and pick the YugabyteDB community dashboard present under the list of Grafana [Dashboards](https://grafana.com/grafana/dashboards/12620).
 
 - On the Grafana UI, click the `+` button and choose Import.
 
@@ -60,7 +60,7 @@ There are different ways to create a dashboard in Grafana. For this tutorial, yo
 
   ![Grafana dashboard](/images/ce/graf-server-status.png)
 
-- Since this example uses the `CassandraKeyValue` workload generator from the [Prometheus Integration](../../../../observability/prometheus-integration/macos/) page, you can see different YCQL related metrics in addition to the master and t-server statuses. The [source code](https://github.com/yugabyte/yugabyte-db/blob/master/java/yb-loadtester/src/main/java/com/yugabyte/sample/apps/CassandraSparkKeyValueCopy.java) of the application uses only SELECT statements for reads and INSERT statements for writes (aside from the initial CREATE TABLE). This means that throughput and latency can be measured using the metrics corresponding to the SELECT and INSERT statements.
+- Because this example uses the `CassandraKeyValue` workload generator from the [Prometheus Integration](../../prometheus-integration/macos/) page, you can see different YCQL related metrics in addition to the master and t-server statuses. The [source code](https://github.com/yugabyte/yugabyte-db/blob/master/java/yb-loadtester/src/main/java/com/yugabyte/sample/apps/CassandraSparkKeyValueCopy.java) of the application uses only SELECT statements for reads and INSERT statements for writes (aside from the initial CREATE TABLE). This means that throughput and latency can be measured using the metrics corresponding to the SELECT and INSERT statements.
 The following is a YCQL OPS and latency metrics :
 
   ![Grafana YCQL-OPS](/images/ce/graf-ycql-ops.png "YCQL-OPS")

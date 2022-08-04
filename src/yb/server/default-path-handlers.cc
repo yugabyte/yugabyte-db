@@ -65,7 +65,10 @@
 #include "yb/gutil/strings/human_readable.h"
 #include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/substitute.h"
+#include "yb/rpc/secure_stream.h"
 #include "yb/server/pprof-path-handlers.h"
+#include "yb/server/server_base.h"
+#include "yb/server/secure.h"
 #include "yb/server/webserver.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/format.h"
@@ -271,15 +274,32 @@ static void MemTrackersHandler(const Webserver::WebRequest& req, Webserver::WebR
   *output << "</table>\n";
 }
 
-static MetricLevel MetricLevelFromName(const std::string& level) {
+static Result<MetricLevel> MetricLevelFromName(const std::string& level) {
   if (level == "debug") {
     return MetricLevel::kDebug;
   } else if (level == "info") {
     return MetricLevel::kInfo;
   } else if (level == "warn") {
     return MetricLevel::kWarn;
+  }
+  return STATUS(NotSupported, Substitute("Unknown Metric Level $0", level));
+}
+
+static Result<AggregationMetricLevel> AggregationMetricLevelFromName(const std::string& str) {
+  if (str == "server") {
+    return AggregationMetricLevel::kServer;
+  } else if (str == "table") {
+    return AggregationMetricLevel::kTable;
+  }
+  return STATUS(NotSupported, Substitute("Unknown Aggregation Metric Level $0", str));
+}
+
+template<class Value>
+void SetParsedValue(Value* v, const Result<Value>& result) {
+  if (result.ok()) {
+    *v = *result;
   } else {
-    return MetricLevel::kDebug;
+    LOG(WARNING) << "Can't parse option: " << result.status();
   }
 }
 
@@ -308,15 +328,17 @@ static void ParseRequestOptions(const Webserver::WebRequest& req,
     json_opts->include_schema_info = ParseLeadingBoolValue(arg.c_str(), false);
 
     arg = FindWithDefault(req.parsed_args, "level", "debug");
-    json_opts->level = MetricLevelFromName(arg);
+    SetParsedValue(&json_opts->level, MetricLevelFromName(arg));
   }
 
   if (promethus_opts) {
-    arg = FindWithDefault(req.parsed_args, "level", "debug");
-    promethus_opts->level = MetricLevelFromName(arg);
+    SetParsedValue(&promethus_opts->level,
+                   MetricLevelFromName(FindWithDefault(req.parsed_args, "level", "debug")));
     promethus_opts->max_tables_metrics_breakdowns = std::stoi(FindWithDefault(req.parsed_args,
       "max_tables_metrics_breakdowns", std::to_string(FLAGS_max_tables_metrics_breakdowns)));
     promethus_opts->priority_regex = FindWithDefault(req.parsed_args, "priority_regex", "");
+    SetParsedValue(&promethus_opts->aggregation_level, AggregationMetricLevelFromName(
+      FindWithDefault(req.parsed_args, "aggregation_level", "table")));
   }
 
   if (json_mode) {
@@ -347,7 +369,7 @@ static void WriteMetricsForPrometheus(const MetricRegistry* const metrics,
   ParseRequestOptions(req, &requested_metrics, &opts);
 
   std::stringstream *output = &resp->output;
-  PrometheusWriter writer(output);
+  PrometheusWriter writer(output, opts.aggregation_level);
   WARN_NOT_OK(metrics->WriteForPrometheus(&writer, requested_metrics, opts),
               "Couldn't write text metrics for Prometheus");
 }
@@ -443,6 +465,49 @@ static void PathUsageHandler(FsManager* fsmanager,
 void RegisterPathUsageHandler(Webserver* webserver, FsManager* fsmanager) {
   Webserver::PathHandlerCallback callback = std::bind(PathUsageHandler, fsmanager, _1, _2);
   webserver->RegisterPathHandler("/drives", "Drives", callback, true, false);
+}
+
+// Registered to handle "/tls", and prints out certificate details
+static void CertificateHandler(server::RpcServerBase* server,
+                             const Webserver::WebRequest& req,
+                             Webserver::WebResponse* resp) {
+  std::stringstream *output = &resp->output;
+  bool as_text = (req.parsed_args.find("raw") != req.parsed_args.end());
+  Tags tags(as_text);
+  (*output) << tags.header << "TLS Settings" << tags.end_header << endl;
+
+  (*output) << tags.pre_tag;
+
+  (*output) << "Node to node encryption enabled: "
+      << (yb::server::IsNodeToNodeEncryptionEnabled() ? "true" : "false");
+
+  (*output) << tags.line_break << "Client to server encryption enabled: "
+      << (yb::server::IsClientToServerEncryptionEnabled() ? "true" : "false");
+
+  (*output) << tags.line_break << "Allow insecure connections: "
+      << (yb::rpc::AllowInsecureConnections() ? "on" : "off");
+
+  (*output) << tags.line_break << "SSL Protocols: " << yb::rpc::GetSSLProtocols();
+
+  (*output) << tags.line_break << "Cipher list: " << yb::rpc::GetCipherList();
+
+  (*output) << tags.line_break << "Ciphersuites: " << yb::rpc::GetCipherSuites();
+
+  (*output) << tags.end_pre_tag;
+
+  auto details = server->GetCertificateDetails();
+
+  if(!details.empty()) {
+    (*output) << tags.header << "Certificate details" << tags.end_header << endl;
+
+    (*output) << tags.pre_tag << details << tags.end_pre_tag << endl;
+  }
+}
+
+void RegisterTlsHandler(Webserver* webserver, server::RpcServerBase* server) {
+  Webserver::PathHandlerCallback callback = std::bind(CertificateHandler, server, _1, _2);
+  webserver->RegisterPathHandler("/tls", "TLS", callback,
+    true /*is_styled*/, false /*is_on_nav_bar*/);
 }
 
 } // namespace yb

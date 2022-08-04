@@ -3,10 +3,12 @@
 package com.yugabyte.yw.common;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.api.gax.paging.Page;
 import com.google.auth.Credentials;
 import com.google.auth.oauth2.GoogleCredentials;
 import com.google.cloud.storage.Blob;
+import com.google.cloud.storage.BlobId;
 import com.google.cloud.storage.Bucket;
 import com.google.cloud.storage.Storage;
 import com.google.cloud.storage.StorageBatch;
@@ -28,6 +30,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Iterator;
 import java.util.Spliterator;
+import java.util.StringJoiner;
 import java.util.stream.StreamSupport;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
@@ -198,5 +201,17 @@ public class GCPUtil implements CloudUtil {
       log.error("Error creating GCS client");
     }
     return bucketList;
+  }
+
+  public Map<String, String> getRegionLocationsMap(CustomerConfigData configData) {
+    Map<String, String> regionLocationsMap = new HashMap<>();
+    CustomerConfigStorageGCSData gcsData = (CustomerConfigStorageGCSData) configData;
+    if (CollectionUtils.isNotEmpty(gcsData.regionLocations)) {
+      gcsData
+          .regionLocations
+          .stream()
+          .forEach(rL -> regionLocationsMap.put(rL.region, rL.location));
+    }
+    return regionLocationsMap;
   }
 }

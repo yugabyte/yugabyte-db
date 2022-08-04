@@ -18,12 +18,14 @@ import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
+import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData;
 import com.yugabyte.yw.forms.XClusterConfigEditFormData;
 import com.yugabyte.yw.forms.XClusterConfigGetResp;
+import com.yugabyte.yw.forms.XClusterConfigNeedBootstrapFormData;
 import com.yugabyte.yw.forms.XClusterConfigTaskParams;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.Audit;
@@ -43,10 +45,12 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
 import play.mvc.Http;
@@ -62,17 +66,20 @@ public class XClusterConfigController extends AuthenticatedController {
   private final MetricQueryHelper metricQueryHelper;
   private final BackupUtil backupUtil;
   private final CustomerConfigService customerConfigService;
+  private final YBClientService ybService;
 
   @Inject
   public XClusterConfigController(
       Commissioner commissioner,
       MetricQueryHelper metricQueryHelper,
       BackupUtil backupUtil,
-      CustomerConfigService customerConfigService) {
+      CustomerConfigService customerConfigService,
+      YBClientService ybService) {
     this.commissioner = commissioner;
     this.metricQueryHelper = metricQueryHelper;
     this.backupUtil = backupUtil;
     this.customerConfigService = customerConfigService;
+    this.ybService = ybService;
   }
 
   /**
@@ -102,6 +109,24 @@ public class XClusterConfigController extends AuthenticatedController {
         Universe.getValidUniverseOrBadRequest(createFormData.targetUniverseUUID, customer);
     checkConfigDoesNotAlreadyExist(
         createFormData.name, createFormData.sourceUniverseUUID, createFormData.targetUniverseUUID);
+    // Ensure a table is not in replication between two universes in more than one xCluster
+    // config.
+    List<XClusterConfig> xClusterConfigs =
+        XClusterConfig.getBetweenUniverses(
+            createFormData.sourceUniverseUUID, createFormData.targetUniverseUUID);
+    xClusterConfigs.forEach(
+        config -> {
+          Set<String> tablesInReplication = config.getTables();
+          tablesInReplication.retainAll(createFormData.tables);
+          if (!tablesInReplication.isEmpty()) {
+            throw new PlatformServiceException(
+                BAD_REQUEST,
+                String.format(
+                    "Table(s) with ID %s are already in replication between these universes in "
+                        + "the same direction",
+                    tablesInReplication));
+          }
+        });
     validateBootstrapParams(createFormData, customerUUID);
 
     // Create xCluster config object.
@@ -213,20 +238,32 @@ public class XClusterConfigController extends AuthenticatedController {
     XClusterConfigEditFormData editFormData = parseEditFormData();
     XClusterConfig xClusterConfig =
         XClusterConfig.getValidConfigOrBadRequest(customer, xclusterConfigUUID);
+    // If changing table set, ensure a table is not in replication between two universes in more
+    // than one xCluster config.
+    if (editFormData.tables != null) {
+      List<XClusterConfig> xClusterConfigs =
+          XClusterConfig.getBetweenUniverses(
+                  xClusterConfig.sourceUniverseUUID, xClusterConfig.targetUniverseUUID)
+              .stream()
+              .filter(xClusterConfig1 -> !xClusterConfig1.uuid.equals(xClusterConfig.uuid))
+              .collect(Collectors.toList());
+      xClusterConfigs.forEach(
+          config -> {
+            Set<String> tablesInReplication = config.getTables();
+            tablesInReplication.retainAll(editFormData.tables);
+            if (!tablesInReplication.isEmpty()) {
+              throw new PlatformServiceException(
+                  BAD_REQUEST,
+                  String.format(
+                      "Table(s) with ID %s are already in replication between these universes in "
+                          + "the same direction",
+                      tablesInReplication));
+            }
+          });
+    }
     verifyTaskAllowed(xClusterConfig, TaskType.EditXClusterConfig);
 
-    // Only one type of edit is allowed in one call.
-    int editName = editFormData.name == null ? 0 : 1;
-    int editStatus = editFormData.status == null ? 0 : 1;
-    int editTables = editFormData.tables == null ? 0 : 1;
-    if (editName + editStatus + editTables != 1) {
-      throw new PlatformServiceException(
-          BAD_REQUEST,
-          "Exactly one edit request (either editName, editStatus, editTables) is "
-              + "allowed in one call.");
-    }
-
-    // If renaming, verify xcluster replication with same name (between same source/target)
+    // If renaming, verify xCluster replication with same name (between same source/target)
     // does not already exist.
     if (editFormData.name != null) {
       if (XClusterConfig.getByNameSourceTarget(
@@ -274,13 +311,13 @@ public class XClusterConfigController extends AuthenticatedController {
       nickname = "deleteXClusterConfig",
       value = "Delete xcluster config",
       response = YBPTask.class)
-  public Result delete(UUID customerUUID, UUID xclusterConfigUUID) {
-    log.info("Received delete XClusterConfig({}) request", xclusterConfigUUID);
+  public Result delete(UUID customerUUID, UUID xClusterConfigUuid) {
+    log.info("Received delete XClusterConfig({}) request", xClusterConfigUuid);
 
     // Parse and validate request
     Customer customer = Customer.getOrBadRequest(customerUUID);
     XClusterConfig xClusterConfig =
-        XClusterConfig.getValidConfigOrBadRequest(customer, xclusterConfigUUID);
+        XClusterConfig.getValidConfigOrBadRequest(customer, xClusterConfigUuid);
     verifyTaskAllowed(xClusterConfig, TaskType.DeleteXClusterConfig);
 
     Universe sourceUniverse = null;
@@ -320,10 +357,10 @@ public class XClusterConfigController extends AuthenticatedController {
         .createAuditEntryWithReqBody(
             ctx(),
             Audit.TargetType.XClusterConfig,
-            xclusterConfigUUID.toString(),
+            xClusterConfigUuid.toString(),
             Audit.ActionType.Delete,
             taskUUID);
-    return new YBPTask(taskUUID).asResult();
+    return new YBPTask(taskUUID, xClusterConfigUuid).asResult();
   }
 
   /**
@@ -366,13 +403,109 @@ public class XClusterConfigController extends AuthenticatedController {
     return new YBPTask(taskUUID).asResult();
   }
 
+  /**
+   * It checks whether a table requires bootstrap before setting up xCluster replication. Currently,
+   * only one table can be checked at each call.
+   *
+   * @return An object of Result containing a map of tableId to a boolean showing whether it needs
+   *     bootstrapping
+   */
+  @ApiOperation(
+      nickname = "needBootstrapTable",
+      value = "Whether tables need bootstrap before setting up cross cluster replication",
+      response = Map.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "xcluster_need_bootstrap_form_data",
+          value = "XCluster Need Bootstrap Form Data",
+          dataType = "com.yugabyte.yw.forms.XClusterConfigNeedBootstrapFormData",
+          paramType = "body",
+          required = true))
+  public Result needBootstrapTable(UUID customerUuid, UUID sourceUniverseUuid) {
+    log.info("Received needBootstrapTable request for sourceUniverseUuid={}", sourceUniverseUuid);
+
+    // Parse and validate request.
+    Customer customer = Customer.getOrBadRequest(customerUuid);
+    XClusterConfigNeedBootstrapFormData needBootstrapFormData =
+        formFactory.getFormDataOrBadRequest(
+            request().body().asJson(), XClusterConfigNeedBootstrapFormData.class);
+    Universe.getValidUniverseOrBadRequest(sourceUniverseUuid, customer);
+    // Currently, only one table can be checked at a time.
+    if (needBootstrapFormData.tables.size() > 1) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Currently, only one table can be checked at one call to this API");
+    }
+
+    try {
+      Map<String, Boolean> isBootstrapRequiredMap =
+          XClusterConfigTaskBase.isBootstrapRequired(
+              ybService, needBootstrapFormData.tables, sourceUniverseUuid);
+      return PlatformResults.withData(isBootstrapRequiredMap);
+    } catch (Exception e) {
+      log.error("XClusterConfigTaskBase.isBootstrapRequired hit error : {}", e.getMessage());
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR,
+          String.format(
+              "Exception happened while running IsBootstrapRequired API: %s", e.getMessage()));
+    }
+  }
+
+  /**
+   * It checks whether a table within a replication has fallen far behind and need bootstrap to
+   * continue replication.
+   *
+   * @return An object of Result containing a map of tableId to a boolean showing whether it needs
+   *     bootstrapping
+   */
+  @ApiOperation(
+      nickname = "NeedBootstrapXClusterConfig",
+      value =
+          "Whether tables in an xCluster replication config have fallen far behind and need "
+              + "bootstrap",
+      response = Map.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "xcluster_need_bootstrap_form_data",
+          value = "XCluster Need Bootstrap Form Data",
+          dataType = "com.yugabyte.yw.forms.XClusterConfigNeedBootstrapFormData",
+          paramType = "body",
+          required = true))
+  public Result needBootstrap(UUID customerUuid, UUID xClusterConfigUuid) {
+    log.info("Received needBootstrap request for xClusterConfigUuid={}", xClusterConfigUuid);
+
+    // Parse and validate request.
+    Customer customer = Customer.getOrBadRequest(customerUuid);
+    XClusterConfigNeedBootstrapFormData needBootstrapFormData =
+        formFactory.getFormDataOrBadRequest(
+            request().body().asJson(), XClusterConfigNeedBootstrapFormData.class);
+    XClusterConfig xClusterConfig =
+        XClusterConfig.getValidConfigOrBadRequest(customer, xClusterConfigUuid);
+    // Currently, only one table can be checked at a time.
+    if (needBootstrapFormData.tables.size() > 1) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Currently, only one table can be checked at one call to this API");
+    }
+
+    try {
+      Map<String, Boolean> isBootstrapRequiredMap =
+          XClusterConfigTaskBase.isBootstrapRequired(
+              ybService, needBootstrapFormData.tables, xClusterConfig);
+      return PlatformResults.withData(isBootstrapRequiredMap);
+    } catch (Exception e) {
+      log.error("XClusterConfigTaskBase.isBootstrapRequired hit error : {}", e.getMessage());
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR,
+          String.format(
+              "Exception happened while running IsBootstrapRequired API: %s", e.getMessage()));
+    }
+  }
+
   private XClusterConfigCreateFormData parseCreateFormData() {
     log.debug("Request body to create an xCluster config is {}", request().body().asJson());
     XClusterConfigCreateFormData formData =
         formFactory.getFormDataOrBadRequest(
             request().body().asJson(), XClusterConfigCreateFormData.class);
 
-    validateTables(formData.tables);
     if (Objects.equals(formData.sourceUniverseUUID, formData.targetUniverseUUID)) {
       throw new IllegalArgumentException(
           String.format(
@@ -391,14 +524,15 @@ public class XClusterConfigController extends AuthenticatedController {
     int numEditOps = 0;
     numEditOps += (formData.name != null) ? 1 : 0;
     numEditOps += (formData.status != null) ? 1 : 0;
-    numEditOps += (formData.tables != null) ? 1 : 0;
+    numEditOps += (formData.tables != null && !formData.tables.isEmpty()) ? 1 : 0;
     if (numEditOps == 0) {
       throw new PlatformServiceException(BAD_REQUEST, "Must specify an edit operation");
     } else if (numEditOps > 1) {
-      throw new PlatformServiceException(BAD_REQUEST, "Must perform one edit operation at a time");
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Exactly one edit request (either editName, editStatus, editTables) is allowed in "
+              + "one call.");
     }
-
-    validateTables(formData.tables);
 
     return formData;
   }
@@ -418,15 +552,6 @@ public class XClusterConfigController extends AuthenticatedController {
               + " with name '"
               + name
               + "' already exists.");
-    }
-  }
-
-  private void validateTables(Set<String> tables) {
-    // TODO: Make custom validation constraints for this.
-    if (tables != null) {
-      if (tables.size() == 0) {
-        throw new PlatformServiceException(BAD_REQUEST, "Table set must be non-empty");
-      }
     }
   }
 
@@ -450,12 +575,11 @@ public class XClusterConfigController extends AuthenticatedController {
       BackupRequestParams backupRequestParams = bootstrapParams.backupRequestParams;
       // Ensure tables in BootstrapParams is a subset of tables in the main body.
       if (!createFormData.tables.containsAll(bootstrapParams.tables)) {
-        String errMsg =
+        throw new IllegalArgumentException(
             String.format(
-                "The set of tables in bootstrapParams (%s) is not a subset of tables in the main "
-                    + "body (%s)",
-                bootstrapParams.tables, createFormData.tables);
-        throw new IllegalArgumentException(errMsg);
+                "The set of tables in bootstrapParams (%s) is not a subset of tables in the "
+                    + "main body (%s)",
+                bootstrapParams.tables, createFormData.tables));
       }
 
       // Fail early if parameters are invalid for bootstrapping. Support only keyspace.
@@ -482,12 +606,12 @@ public class XClusterConfigController extends AuthenticatedController {
         }
         if (backupRequestParams.customerUUID != null
             && !backupRequestParams.customerUUID.equals(customerUUID)) {
-          String errMsg =
+          throw new PlatformServiceException(
+              Http.Status.BAD_REQUEST,
               String.format(
-                  "backupRequestParams.customerUUID is set to a wrong customer UUID (%s). Please "
-                      + "either set it to null, or use the right customer uuid (%s)",
-                  backupRequestParams.customerUUID, customerUUID);
-          throw new PlatformServiceException(Http.Status.BAD_REQUEST, errMsg);
+                  "backupRequestParams.customerUUID is set to a wrong customer UUID (%s). "
+                      + "Please either set it to null, or use the right customer uuid (%s)",
+                  backupRequestParams.customerUUID, customerUUID));
         }
         if (backupRequestParams.customerUUID == null) {
           backupRequestParams.customerUUID = customerUUID;
@@ -500,8 +624,8 @@ public class XClusterConfigController extends AuthenticatedController {
             || backupRequestParams.expiryTimeUnit != null) {
           throw new PlatformServiceException(
               Http.Status.BAD_REQUEST,
-              "backupRequestParams.timeBeforeDelete and "
-                  + "backupRequestParams.expiryTimeUnit must be null");
+              "backupRequestParams.timeBeforeDelete and backupRequestParams.expiryTimeUnit must"
+                  + " be null");
         }
         // The following parameters are used for scheduled backups and should not be set for this
         // task.
