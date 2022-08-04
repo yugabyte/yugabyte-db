@@ -211,17 +211,35 @@ For details on the architecture design, see [Automatic re-sharding of data with 
 
 To enable automatic tablet splitting, use the `yb-master` [`--enable_automatic_tablet_splitting`](../../../reference/configuration/yb-master/#enable-automatic-tablet-splitting) flag and specify the associated flags to configure when tablets should split.
 
-Tablet splitting happens in three phases, determined by the shard count per node. As the shard count increases, the threshold size for splitting a tablet also increases, as follows:
-
-* In the low phase, each node has fewer than [`tablet_split_low_phase_shard_count_per_node`](../../../reference/configuration/yb-master/#tablet-split-low-phase-shard-count-per-node) shards. In this phase, YugabyteDB splits tablets larger than [`tablet_split_low_phase_size_threshold_bytes`](../../../reference/configuration/yb-master/#tablet-split-low-phase-size-threshold-bytes).
-
-* In the high phase, each node has fewer than [`tablet_split_high_phase_shard_count_per_node`](../../../reference/configuration/yb-master/#tablet-split-high-phase-shard-count-per-node) shards. In this phase, YugabyteDB splits tablets larger than [`tablet_split_high_phase_size_threshold_bytes`](../../../reference/configuration/yb-master/#tablet-split-high-phase-size-threshold-bytes).
-
-* Once the shard count exceeds the high phase count, YugabyteDB splits tablets larger than [`tablet_force_split_threshold_bytes`](../../../reference/configuration/yb-master/#tablet-force-split-threshold-bytes).
-
 When automatic tablet splitting is enabled, newly-created tables have one shard per T-Server by default.
 
-### YCSB workload with automatic tablet splitting example
+Automatic tablet splitting happens in three phases, determined by the shard count per node. As the shard count increases, the threshold size for splitting a tablet also increases, as follows:
+
+#### Low Phase
+
+In the low phase, each node has fewer than [`tablet_split_low_phase_shard_count_per_node`](../../../reference/configuration/yb-master/#tablet-split-low-phase-shard-count-per-node) shards (8 by default). In this phase, YugabyteDB splits tablets larger than [`tablet_split_low_phase_size_threshold_bytes`](../../../reference/configuration/yb-master/#tablet-split-low-phase-size-threshold-bytes) (512 MB by default).
+
+#### High Phase
+
+In the high phase, each node has fewer than [`tablet_split_high_phase_shard_count_per_node`](../../../reference/configuration/yb-master/#tablet-split-high-phase-shard-count-per-node) shards (24 by default). In this phase, YugabyteDB splits tablets larger than [`tablet_split_high_phase_size_threshold_bytes`](../../../reference/configuration/yb-master/#tablet-split-high-phase-size-threshold-bytes) (10 GB by default).
+
+#### Final Phase
+
+Once the shard count exceeds the high phase count (determined by `tablet_split_high_phase_shard_count_per_node`, 24 by default), YugabyteDB splits tablets larger than [`tablet_force_split_threshold_bytes`](../../../reference/configuration/yb-master/#tablet-force-split-threshold-bytes) (100 GB by default). This will continue until we reach the [`tablet_split_limit_per_table`](../../../reference/configuration/yb-master/#tablet-split-limit-per-table) tablets per table limit (256 tablets by default; if set to 0, there will be no limit).
+
+### Post-split compactions
+
+Once a split has been executed on a tablet, the two resulting tablets will require a full compaction in order to remove unnecessary data from each. These post-split compactions can significantly increase CPU and disk usage and thus impact performance. To limit this impact, the number of simultaneous tablet splits allowed is conservative by default.
+
+In the event that performance suffers due to automatic tablet splitting, the following flags can be used for tuning:
+
+[Master flags](../../../reference/configuration/yb-master/#tablet-splitting-flags)
+
+* `outstanding_tablet_split_limit` limits the total number of outstanding tablet splits to 1 by defualt. Tablets that are performing post-split compactions count against this limit.
+* `outstanding_tablet_split_limit_per_tserver` limits the total number of outstanding tablet splits per node to 1 by default. Tablets that are performing post-split compactions count against this limit.
+
+[TServer flags](../../../reference/configuration/yb-tserver/#sharding-flags)
+### Example: YCSB workload with automatic tablet splitting
 
 In the following example, a three-node cluster is created and uses a YCSB workload to demonstrate the use of automatic tablet splitting in a YSQL database:
 
@@ -281,9 +299,12 @@ In the following example, a three-node cluster is created and uses a YCSB worklo
 
 The following known limitations are planned to be resolved in upcoming releases:
 
-* Colocated tables cannot be split. For details, see [#4463](https://github.com/yugabyte/yugabyte-db/issues/4463)
-* Tablet splitting should be disabled during an index backfill. For details, see [#6704](https://github.com/yugabyte/yugabyte-db/issues/6704)
-* Cross cluster replication currently does not work with tablet splitting. For details, see [#5373](https://github.com/yugabyte/yugabyte-db/issues/5373)
+* Colocated tables cannot be split. For details, see [#4463](https://github.com/yugabyte/yugabyte-db/issues/4463).
+* In v2.14.0, tablet splitting should be disabled during an index backfill. This is expected to be fixed in 2.14.1. For details, see [#13127](https://github.com/yugabyte/yugabyte-db/issues/13127).
+* When tablet splitting is used with Point In Time Recovery (PITR), restoring to arbitrary times in the past when a tablet is in the process of splitting is not supported. For details, see [#13022](https://github.com/yugabyte/yugabyte-db/issues/13022).
+* Tablet splitting is currently disabled by default for tables with cross cluster replication. It can be enabled using the [`enable_tablet_split_of_xcluster_replicated_tables`](../../../reference/configuration/yb-master/#enable-tablet-split-of-xcluster-replicated-tables) flag on master on both the producer and consumer clusters (as they will perform splits independently of one another). If using this feature after upgrade, the producer and consumer clusters should both be upgraded to 2.14.0+ before enabling the feature.
+* Tablet splitting is currently disabled during bootstrap for tables with cross cluster replication. For details, see [#13170](https://github.com/yugabyte/yugabyte-db/issues/13170).
+* Tablet splitting is currently disabled for tables that are using the [TTL file expiration](../../develop/learn/ttl-data-expiration-ycql/#efficient-data-expiration-for-ttl) feature.
 
 To follow the tablet splitting work-in-progress, see [#1004](https://github.com/yugabyte/yugabyte-db/issues/1004).
 
