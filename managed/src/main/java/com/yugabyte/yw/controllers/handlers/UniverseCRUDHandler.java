@@ -99,6 +99,8 @@ public class UniverseCRUDHandler {
 
   @Inject UpgradeUniverseHandler upgradeUniverseHandler;
 
+  public static final String YBC_DEFAULT_VERSION = "ybc.releases.stable_version";
+
   private enum OpType {
     CONFIGURE,
     CREATE,
@@ -484,6 +486,13 @@ public class UniverseCRUDHandler {
 
     // Create a new universe. This makes sure that a universe of this name does not already exist
     // for this customer id.
+    if (taskParams.enableYbc) {
+      taskParams.ybcSoftwareVersion =
+          StringUtils.isNotBlank(taskParams.ybcSoftwareVersion)
+              ? taskParams.ybcSoftwareVersion
+              : runtimeConfigFactory.globalRuntimeConf().getString(YBC_DEFAULT_VERSION);
+    }
+
     Universe universe = Universe.create(taskParams, customer.getCustomerId());
     LOG.info("Created universe {} : {}.", universe.universeUUID, universe.name);
 
