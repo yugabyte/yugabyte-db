@@ -639,7 +639,6 @@ redis_ops_latency_all:
     xaxis:
       type: "date"
     yaxis:
-      #ticksuffix: "&nbsp;ms"
       ticksuffix: "&nbsp;\u00B5s"
       alias:
         "get": "Get"
@@ -703,7 +702,6 @@ redis_ops_latency_hash:
     xaxis:
       type: "date"
     yaxis:
-      #ticksuffix: "&nbsp;ms"
       ticksuffix: "&nbsp;\u00B5s"
       alias:
         "hget": "HGet"
@@ -736,7 +734,6 @@ redis_ops_latency_ts:
     xaxis:
       type: "date"
     yaxis:
-      #ticksuffix: "&nbsp;ms"
       ticksuffix: "&nbsp;\u00B5s"
       alias:
         "tsget": "TsGet"
@@ -761,7 +758,6 @@ redis_ops_latency_set:
     xaxis:
       type: "date"
     yaxis:
-      #ticksuffix: "&nbsp;ms"
       ticksuffix: "&nbsp;\u00B5s"
       alias:
         "smembers": "SMembers"
@@ -788,7 +784,6 @@ redis_ops_latency_sorted_set:
     xaxis:
       type: "date"
     yaxis:
-      #ticksuffix: "&nbsp;ms"
       ticksuffix: "&nbsp;\u00B5s"
       alias:
         "zcard": "ZCard"
@@ -814,7 +809,6 @@ redis_ops_latency_str:
     xaxis:
       type: "date"
     yaxis:
-      #ticksuffix: "&nbsp;ms"
       ticksuffix: "&nbsp;\u00B5s"
       alias:
         "get": "Get"
@@ -847,7 +841,6 @@ redis_ops_latency_local:
     xaxis:
       type: "date"
     yaxis:
-      #ticksuffix: "&nbsp;ms"
       ticksuffix: "&nbsp;\u00B5s"
       alias:
         "echo": "Echo"
@@ -960,7 +953,6 @@ tserver_handler_latency:
         "rpc_incoming_queue_time.avg": "Incoming queue time"
         "handler_latency_outbound_call_queue_time.avg": "Outbound queue time"
         "handler_latency_outbound_transfer.avg": "Outbound transfer time"
-      #ticksuffix: "&nbsp;ms"
       ticksuffix: "&nbsp;\u00B5s"
 
 total_rpcs_per_sec:
@@ -1839,7 +1831,6 @@ cql_sql_latency:
         "DeleteStmt": "Delete"
         "OtherStmts": "Others"
         "Transaction": "Transactions"
-      #ticksuffix: "&nbsp;ms"
       ticksuffix: "&nbsp;\u00B5s"
 
 cql_server_rpc_p95:
@@ -2003,7 +1994,6 @@ cql_reactor_latency:
         "rpc_incoming_queue_time.avg": "Incoming queue time"
         "handler_latency_outbound_call_queue_time.avg": "Outbound queue time"
         "handler_latency_outbound_transfer.avg": "Outbound transfer time"
-      #ticksuffix: "&nbsp;ms"
       ticksuffix: "&nbsp;\u00B5s"
 
 response_sizes:
@@ -2023,6 +2013,7 @@ response_sizes:
     yaxis:
       alias:
         "ResponseSize": "Response Size"
+      ticksuffix: "&nbsp;\u00B5s"
 
 tserver_rpc_queue_size_master:
   metric: "rpcs_in_queue_yb_master_MasterService"
@@ -2143,6 +2134,7 @@ master_latency:
     yaxis:
       alias:
         "useInstanceName": "True"
+      ticksuffix: "&nbsp;\u00B5s"
 
 master_get_tablet_location:
   metric: "rpc_irate_rps"
@@ -2195,6 +2187,7 @@ master_tsservice_reads_latency:
     yaxis:
       alias:
         "useInstanceName": "True"
+      ticksuffix: "&nbsp;\u00B5s"
 
 master_tsservice_writes:
   metric: "rpc_irate_rps"
@@ -2230,6 +2223,7 @@ master_tsservice_writes_latency:
     yaxis:
       alias:
         "useInstanceName": "True"
+      ticksuffix: "&nbsp;\u00B5s"
 
 master_ts_heartbeats:
   metric: "rpc_irate_rps"
@@ -2676,7 +2670,7 @@ master_lsm_rocksdb_compaction:
       ticksuffix: "&nbsp;MB"
 
 master_lsm_rocksdb_compaction_numfiles:
-  metric: "rocksdb_nHookInserterumfiles_in_singlecompaction.avg"
+  metric: "rocksdb_numfiles_in_singlecompaction.avg"
   function: "rate|sum by (exported_instance)"
   range : true
   filters:
