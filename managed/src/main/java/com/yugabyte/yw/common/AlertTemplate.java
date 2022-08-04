@@ -122,6 +122,19 @@ public enum AlertTemplate {
       TargetType.UNIVERSE,
       ThresholdSettings.builder().statusThreshold(SEVERE).build()),
 
+  UNIVERSE_METRIC_COLLECTION_FAILURE(
+      "Metric Collection Failure",
+      "Metric Collection failed for universe",
+      "last_over_time(ybp_universe_metric_collection_status"
+          + "{universe_uuid = \"__universeUuid__\"}[1d])"
+          + " {{ query_condition }} 1",
+      "Failed to collect metric for universe '{{ $labels.source_name }}'"
+          + " - check YB Platform logs for details or contact YB support team",
+      0,
+      EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
+      TargetType.UNIVERSE,
+      ThresholdSettings.builder().statusThreshold(SEVERE).build()),
+
   BACKUP_FAILURE(
       "Backup Failure",
       "Last universe backup creation task failed",
