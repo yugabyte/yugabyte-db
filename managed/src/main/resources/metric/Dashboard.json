@@ -1690,7 +1690,7 @@
       "max" : null,
       "min" : null,
       "show" : true,
-      "format" : ""
+      "format" : "us"
     }, {
       "format" : "short",
       "label" : null,
@@ -1869,7 +1869,7 @@
       "max" : null,
       "min" : null,
       "show" : true,
-      "format" : ""
+      "format" : "us"
     }, {
       "format" : "short",
       "label" : null,
@@ -2255,7 +2255,7 @@
       "max" : null,
       "min" : null,
       "show" : true,
-      "format" : ""
+      "format" : "us"
     }, {
       "format" : "short",
       "label" : null,
@@ -3121,7 +3121,7 @@
     "targets" : [ {
       "hide" : false,
       "legendFormat" : null,
-      "expr" : "(sum by (exported_instance)(rate(rocksdb_nHookInserterumfiles_in_singlecompaction_sum{export_type=\"master_export\", node_prefix=~\"$dbcluster\"}[300s]))) / (sum by (exported_instance)(rate(rocksdb_nHookInserterumfiles_in_singlecompaction_count{export_type=\"master_export\", node_prefix=~\"$dbcluster\"}[300s])))",
+      "expr" : "(sum by (exported_instance)(rate(rocksdb_numfiles_in_singlecompaction_sum{export_type=\"master_export\", node_prefix=~\"$dbcluster\"}[300s]))) / (sum by (exported_instance)(rate(rocksdb_numfiles_in_singlecompaction_count{export_type=\"master_export\", node_prefix=~\"$dbcluster\"}[300s])))",
       "refId" : "A"
     } ],
     "gridPos" : {
@@ -10656,7 +10656,7 @@
       "max" : null,
       "min" : null,
       "show" : true,
-      "format" : ""
+      "format" : "us"
     }, {
       "format" : "short",
       "label" : null,
