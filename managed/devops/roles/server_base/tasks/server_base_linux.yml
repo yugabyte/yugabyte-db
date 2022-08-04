@@ -92,6 +92,13 @@
     become: yes
     when: ansible_os_family == "RedHat" and update_yum_cache
 
+  - name: Update package cache on apt platforms
+    become: yes
+    become_method: sudo
+    apt:
+      update_cache: yes
+    when: ansible_pkg_mgr == "apt"
+
   - name: Set Azure packages to Install
     set_fact:
       linux_packages: "{{ linux_packages + azure_packages }}"
