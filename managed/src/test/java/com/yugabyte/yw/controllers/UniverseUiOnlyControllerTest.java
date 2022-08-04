@@ -38,6 +38,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
@@ -465,6 +466,86 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
     ArrayNode clustersJsonArray = Json.newArray().add(clusterJson);
     bodyJson.set("clusters", clustersJsonArray);
     bodyJson.set("nodeDetailsSet", Json.newArray());
+
+    String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID;
+    Result result = doRequestWithAuthTokenAndBody("PUT", url, authToken, bodyJson);
+
+    assertOk(result);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertValue(json, "universeUUID", u.universeUUID.toString());
+    JsonNode universeDetails = json.get("universeDetails");
+    assertNotNull(universeDetails);
+    JsonNode clustersJson = universeDetails.get("clusters");
+    assertNotNull(clustersJson);
+    JsonNode primaryClusterJson = clustersJson.get(0);
+    assertNotNull(primaryClusterJson);
+    assertNotNull(primaryClusterJson.get("userIntent"));
+    assertAuditEntry(1, customer.uuid);
+
+    fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+    // Try universe expand only, and re-check.
+    userIntentJson.put("numNodes", 9);
+    result = doRequestWithAuthTokenAndBody("PUT", url, authToken, bodyJson);
+    assertOk(result);
+    json = Json.parse(contentAsString(result));
+    assertValue(json, "universeUUID", u.universeUUID.toString());
+    universeDetails = json.get("universeDetails");
+    assertNotNull(universeDetails);
+    clustersJson = universeDetails.get("clusters");
+    assertNotNull(clustersJson);
+    primaryClusterJson = clustersJson.get(0);
+    assertNotNull(primaryClusterJson);
+    assertNotNull(primaryClusterJson.get("userIntent"));
+    assertAuditEntry(2, customer.uuid);
+  }
+
+  @Test
+  public void testUniverseExpandWithYbc() {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+
+    Provider p = ModelFactory.awsProvider(customer);
+    String accessKeyCode = "someKeyCode";
+    AccessKey.create(p.uuid, accessKeyCode, new AccessKey.KeyInfo());
+    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
+    AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ 1", "subnet-1");
+    AvailabilityZone.createOrThrow(r, "az-2", "PlacementAZ 2", "subnet-2");
+    AvailabilityZone.createOrThrow(r, "az-3", "PlacementAZ 3", "subnet-3");
+    Universe u =
+        createUniverse(
+            "Test Universe",
+            UUID.randomUUID(),
+            customer.getCustomerId(),
+            CloudType.aws,
+            null,
+            null,
+            true);
+    InstanceType i =
+        InstanceType.upsert(p.uuid, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+
+    ObjectNode bodyJson = Json.newObject();
+    ObjectNode userIntentJson =
+        Json.newObject()
+            .put("universeName", u.name)
+            .put("numNodes", 5)
+            .put("instanceType", i.getInstanceTypeCode())
+            .put("replicationFactor", 3)
+            .put("provider", p.uuid.toString())
+            .put("accessKeyCode", accessKeyCode);
+    ArrayNode regionList = Json.newArray().add(r.uuid.toString());
+    userIntentJson.set("regionList", regionList);
+    Cluster cluster = u.getUniverseDetails().clusters.get(0);
+    ObjectNode clusterJson = Json.newObject();
+    clusterJson.set("userIntent", userIntentJson);
+    clusterJson.set("uuid", Json.toJson(cluster.uuid));
+    ArrayNode clustersJsonArray = Json.newArray().add(clusterJson);
+    bodyJson.set("clusters", clustersJsonArray);
+    bodyJson.set("nodeDetailsSet", Json.newArray());
+    bodyJson.put("enableYbc", true);
+    bodyJson.put("ybcSoftwareVersion", "");
 
     String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID;
     Result result = doRequestWithAuthTokenAndBody("PUT", url, authToken, bodyJson);
