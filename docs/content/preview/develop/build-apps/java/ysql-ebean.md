@@ -151,11 +151,11 @@ $ sbt compile
 
 {{< note title="Note" >}}
 
-- Some subversions of JDK 1.8 require the `nashorn` package. If you get a compile error due to a missing `jdk.nashorn` package, add the dependency to the `build.sbt` file.
+- Some sub-versions of JDK 1.8 require the `nashorn` package. If you get a compile error due to a missing `jdk.nashorn` package, add the dependency to the `build.sbt` file.
 
-```sh
-libraryDependencies += "com.xenoamess" % "nashorn" % "jdk8u265-b01-x3"
-```
+  ```sh
+  libraryDependencies += "com.xenoamess" % "nashorn" % "jdk8u265-b01-x3"
+  ```
 
 - To change the default port (8080) for the REST API Server, set the `PlayKeys.playDefaultPort` value in the `build.sbt` file.
 {{< /note >}}
