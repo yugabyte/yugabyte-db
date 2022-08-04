@@ -29,7 +29,6 @@ import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageNFSData;
-import com.yugabyte.yw.models.configs.data.CustomerConfigStorageWithRegionsData;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import java.io.File;
@@ -42,6 +41,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang.StringUtils;
 import org.yb.CommonTypes.TableType;
 import play.libs.Json;
@@ -166,21 +166,17 @@ public class TableManagerYb extends DevopsBase {
         customer = Customer.find.query().where().idEq(universe.customerId).findOne();
         customerConfig = CustomerConfig.get(customer.uuid, backupTableParams.storageConfigUUID);
 
-        if (!customerConfig.name.toLowerCase().equals("nfs")) {
-          CustomerConfigStorageWithRegionsData regionsData =
-              (CustomerConfigStorageWithRegionsData) customerConfig.getDataObject();
-          if (CollectionUtils.isNotEmpty(regionsData.regionLocations))
-            for (CustomerConfigStorageWithRegionsData.RegionLocation regionLocation :
-                regionsData.regionLocations) {
-              if (StringUtils.isNotBlank(regionLocation.region)
-                  && StringUtils.isNotBlank(regionLocation.location)) {
+        Map<String, String> regionLocationMap =
+            StorageUtil.getStorageUtil(customerConfig.name)
+                .getRegionLocationsMap(customerConfig.getDataObject());
+        if (MapUtils.isNotEmpty(regionLocationMap)) {
+          regionLocationMap.forEach(
+              (r, bL) -> {
                 commandArgs.add("--region");
-                commandArgs.add(regionLocation.region);
+                commandArgs.add(r);
                 commandArgs.add("--region_location");
-                commandArgs.add(
-                    BackupUtil.getExactRegionLocation(backupTableParams, regionLocation.location));
-              }
-            }
+                commandArgs.add(BackupUtil.getExactRegionLocation(backupTableParams, bL));
+              });
         }
 
         backupKeysFile =

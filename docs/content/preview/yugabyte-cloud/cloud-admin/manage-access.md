@@ -2,7 +2,7 @@
 title: Manage account access
 linkTitle: Manage account access
 description: Manage access to your YugabyteDB Managed account and your clusters.
-headcontent:
+headcontent: Invite team members to your YugabyteDB Managed account
 image: /images/section_icons/secure/create-roles.png
 menu:
   preview_yugabyte-cloud:

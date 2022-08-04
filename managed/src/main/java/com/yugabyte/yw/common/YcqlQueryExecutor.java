@@ -34,6 +34,7 @@ public class YcqlQueryExecutor {
   private static final Logger LOG = LoggerFactory.getLogger(YcqlQueryExecutor.class);
   private static final String DEFAULT_DB_USER = Util.DEFAULT_YCQL_USERNAME;
   private static final String DEFAULT_DB_PASSWORD = Util.DEFAULT_YCQL_PASSWORD;
+  private static final String AUTH_ERR_MSG = "Provided username and/or password are incorrect";
 
   public void createUser(Universe universe, DatabaseUserFormData data) {
     // Create user for customer CQL.
@@ -56,17 +57,15 @@ public class YcqlQueryExecutor {
   }
 
   public void validateAdminPassword(Universe universe, DatabaseSecurityFormData data) {
-    RunQueryFormData ycqlQuery = new RunQueryFormData();
-    ycqlQuery.query = "SELECT now() FROM system.local";
+    CassandraConnection cc = null;
     try {
-      JsonNode ycqlResponse =
-          executeQuery(universe, ycqlQuery, true, data.ycqlAdminUsername, data.ycqlAdminPassword);
-      if (ycqlResponse.has("error")) {
-        throw new PlatformServiceException(
-            Http.Status.BAD_REQUEST, ycqlResponse.get("error").asText());
-      }
+      cc =
+          createCassandraConnection(
+              universe.universeUUID, true, data.ycqlAdminUsername, data.ycqlAdminPassword);
     } catch (AuthenticationException e) {
       throw new PlatformServiceException(Http.Status.UNAUTHORIZED, e.getMessage());
+    } finally {
+      cc.close();
     }
   }
 
@@ -174,7 +173,7 @@ public class YcqlQueryExecutor {
     try {
       cc = createCassandraConnection(universe.universeUUID, authEnabled, username, password);
     } catch (AuthenticationException e) {
-      response.put("error", "Provided username and/or password are incorrect");
+      response.put("error", AUTH_ERR_MSG);
       return response;
     }
 

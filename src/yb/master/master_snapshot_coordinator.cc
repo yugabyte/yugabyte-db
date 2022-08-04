@@ -532,17 +532,19 @@ class MasterSnapshotCoordinator::Impl {
   Result<SnapshotScheduleId> CreateSchedule(
       const CreateSnapshotScheduleRequestPB& req, int64_t leader_term, CoarseTimePoint deadline) {
     // Get the validated table from the request.
-    const TableIdentifierPB& table = VERIFY_RESULT(ParseCreateSnapshotScheduleRequest(req));
+    const auto& table = VERIFY_RESULT(ParseCreateSnapshotScheduleRequest(req));
 
     // Fail the request if at least one keyspace in the requested snapshot schedules already exists.
-    const std::string namespace_name = table.namespace_().name();
-    const YQLDatabase namespace_type = table.namespace_().database_type();
+    const std::string& namespace_name = table.get().namespace_().name();
+    const YQLDatabase namespace_type = table.get().namespace_().database_type();
     {
       std::lock_guard<std::mutex> lock(mutex_);
       const auto& existing_schedule = FindSnapshotSchedule(namespace_name, namespace_type);
       if (existing_schedule.ok()) {
-        return STATUS(AlreadyPresent, "Snapshot schedule already exists for the given keyspace",
-                      Format("$0.$1", DatabaseTypeName(namespace_type), namespace_name),
+        return STATUS(AlreadyPresent,
+                      Format("Snapshot schedule $0 already exists for the given keyspace $1.$2",
+                             existing_schedule->id(), DatabaseTypeName(namespace_type),
+                             namespace_name),
                       MasterError(MasterErrorPB::OBJECT_ALREADY_PRESENT));
       }
     }

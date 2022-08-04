@@ -2,7 +2,8 @@
 title: Create a VPC Network
 headerTitle:
 linkTitle: Create a VPC Network
-description: Create and manage your cloud VPCs.
+description: Peer a VPC in AWS.
+headcontent: Peer your cluster VPC with a VPC in AWS
 aliases:
   - /preview/yugabyte-cloud/cloud-basics/cloud-vpcs/cloud-configure-provider/
 menu:
