@@ -24,4 +24,16 @@
   .active-scroll {
     color: $primary !important;
   }
+
+  &.hide-h3 {
+    nav > ul > li > ul > li {
+      display: none;
+    }
+  }
+
+  &.hide-h4 {
+    nav > ul > li > ul > li > ul {
+      display: none;
+    }
+  }
 }
