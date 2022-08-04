@@ -11,12 +11,12 @@
   {{ if eq ($.Scratch.Get "docVersion") "stable" }}
   <div class="admonition warning">
     <p class="admonition-title">Attention</p>
-    This page documents the stable (production) version. For testing and development with the latest features, use <a href="{{ $previewUrl }}">the preview {{ $previewVersion }} version.</a>
+    <p>This page documents the stable (production) version. For testing and development with the latest features, use <a href="{{ $previewUrl }}">the preview {{ $previewVersion }} version.</a></p>
   </div>
   {{ else }}
   <div class="admonition warning">
     <p class="admonition-title">Attention</p>
-    This page documents an earlier version. <a href="{{ $previewUrl }}">Go to the preview {{ $previewVersion }} version.</a>
+    <p>This page documents an earlier version. <a href="{{ $previewUrl }}">Go to the preview {{ $previewVersion }} version.</a></p>
   </div>
   {{ end }}
 {{ end }}

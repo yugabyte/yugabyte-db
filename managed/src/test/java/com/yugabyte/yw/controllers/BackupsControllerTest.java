@@ -47,7 +47,9 @@ import com.yugabyte.yw.common.audit.AuditService;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupTableParams;
+import com.yugabyte.yw.forms.RestoreBackupParams;
 import com.yugabyte.yw.models.Backup;
+import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
@@ -359,6 +361,16 @@ public class BackupsControllerTest extends FakeDBApplication {
     return FakeApiHelper.doRequestWithAuthTokenAndBody(method, url, authToken, bodyJson);
   }
 
+  private Result restoreBackupYb(JsonNode bodyJson, Users user) {
+    String authToken = defaultUser.createAuthToken();
+    if (user != null) {
+      authToken = user.createAuthToken();
+    }
+    String method = "POST";
+    String url = "/api/customers/" + defaultCustomer.uuid + "/restore";
+    return FakeApiHelper.doRequestWithAuthTokenAndBody(method, url, authToken, bodyJson);
+  }
+
   private Result deleteBackup(ObjectNode bodyJson, Users user) {
     String authToken = user == null ? defaultUser.createAuthToken() : user.createAuthToken();
     String method = "DELETE";
@@ -520,6 +532,47 @@ public class BackupsControllerTest extends FakeDBApplication {
     Result result = restoreBackup(defaultUniverse.universeUUID, bodyJson, null);
     verify(mockCommissioner, times(1)).submit(taskType.capture(), taskParams.capture());
     assertEquals(TaskType.BackupUniverse, taskType.getValue());
+    assertOk(result);
+    JsonNode resultJson = Json.parse(contentAsString(result));
+    assertValue(resultJson, "taskUUID", fakeTaskUUID.toString());
+    CustomerTask ct = CustomerTask.findByTaskUUID(fakeTaskUUID);
+    assertNotNull(ct);
+    assertEquals(Restore, ct.getType());
+    assertAuditEntry(1, defaultCustomer.uuid);
+  }
+
+  @Test
+  public void testYbcRestoreCategory() {
+    CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST12");
+    BackupTableParams bp = new BackupTableParams();
+    bp.storageConfigUUID = customerConfig.configUUID;
+    bp.universeUUID = defaultUniverse.universeUUID;
+    Backup b = Backup.create(defaultCustomer.uuid, bp);
+    ObjectNode bodyJson = Json.newObject();
+    JsonNode storageInfoParam =
+        Json.parse(
+            "{\"backupType\": \"PGSQL_TABLE_TYPE\","
+                + "\"keyspace\": \"bar\","
+                + "\"storageLocation\": \"s3://foo/bar_ybc\"}");
+    ArrayNode storageArrayNode = Json.newArray();
+    storageArrayNode.add(storageInfoParam);
+    bodyJson.put("backupStorageInfoList", storageArrayNode);
+    bodyJson.put("storageConfigUUID", bp.storageConfigUUID.toString());
+    bodyJson.put("universeUUID", bp.universeUUID.toString());
+    bodyJson.put("customerUUID", defaultCustomer.uuid.toString());
+
+    ArgumentCaptor<TaskType> taskType = ArgumentCaptor.forClass(TaskType.class);
+    ArgumentCaptor<RestoreBackupParams> taskParams =
+        ArgumentCaptor.forClass(RestoreBackupParams.class);
+
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockBackupUtil.isYbcBackup(any())).thenCallRealMethod();
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    Result result = restoreBackupYb(bodyJson, null);
+    verify(mockCommissioner, times(1)).submit(taskType.capture(), taskParams.capture());
+    assertEquals(TaskType.RestoreBackup, taskType.getValue());
+    // Assert category is set to YB_CONTROLLER for YB-Controller backups.
+    assertEquals(BackupCategory.YB_CONTROLLER, taskParams.getValue().category);
     assertOk(result);
     JsonNode resultJson = Json.parse(contentAsString(result));
     assertValue(resultJson, "taskUUID", fakeTaskUUID.toString());

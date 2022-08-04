@@ -108,7 +108,7 @@ public class StopNodeInUniverse extends UniverseTaskBase {
         }
 
         // Stop Yb-controller on this node.
-        if (CommonUtils.canConfigureYbc(universe)) {
+        if (universe.isYbcEnabled()) {
           createStopYbControllerTasks(Arrays.asList(currentNode))
               .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
         }

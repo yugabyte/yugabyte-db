@@ -131,6 +131,17 @@ public class ApiUtils {
       final boolean setMasters,
       final boolean updateInProgress,
       final PlacementInfo placementInfo) {
+    return mockUniverseUpdater(
+        userIntent, nodePrefix, setMasters, updateInProgress, placementInfo, false);
+  }
+
+  public static Universe.UniverseUpdater mockUniverseUpdater(
+      final UserIntent userIntent,
+      final String nodePrefix,
+      final boolean setMasters,
+      final boolean updateInProgress,
+      final PlacementInfo placementInfo,
+      final boolean enableYbc) {
     return new Universe.UniverseUpdater() {
       @Override
       public void run(Universe universe) {
@@ -138,6 +149,7 @@ public class ApiUtils {
         universeDetails.upsertPrimaryCluster(userIntent, placementInfo);
         universeDetails.nodeDetailsSet = new HashSet<>();
         universeDetails.updateInProgress = updateInProgress;
+        universeDetails.enableYbc = enableYbc;
         List<UUID> azUUIDList = null;
         if (placementInfo != null) {
           PlacementCloud placementCloud = placementInfo.cloudList.get(0);

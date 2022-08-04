@@ -317,11 +317,11 @@ class ReadableLogSegment : public RefCountedThreadSafe<ReadableLogSegment> {
   Status ParseFooterMagicAndFooterLength(const Slice &data, uint32_t *parsed_len);
 
   // Starting at 'offset', read the rest of the log file, looking for any
-  // valid log entry headers. If any are found, sets *has_valid_entries to true.
+  // valid log entry headers.
   //
-  // Returns a bad Status only in the case that some IO error occurred reading the
-  // file.
-  Status ScanForValidEntryHeaders(int64_t offset, bool* has_valid_entries);
+  // Returns true/false based on the valid entries found. In case of any IO error,
+  // a bad Status code is returned.
+  Result<bool> ScanForValidEntryHeaders(int64_t offset);
 
   // Format a nice error message to report on a corruption in a log file.
   Status MakeCorruptionStatus(

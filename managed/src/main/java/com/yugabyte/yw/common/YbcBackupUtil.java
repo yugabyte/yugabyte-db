@@ -2,8 +2,12 @@
 
 package com.yugabyte.yw.common;
 
-import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
+import play.libs.Json;
+
 import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.PRECONDITION_FAILED;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
+import static java.util.stream.Collectors.joining;
 
 import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
@@ -13,8 +17,6 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.net.HostAndPort;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
-import com.yugabyte.yw.common.CloudUtil;
-import com.yugabyte.yw.common.YbcBackupUtil.YbcBackupResponse.ResponseCloudStoreSpec;
 import com.yugabyte.yw.common.YbcBackupUtil.YbcBackupResponse.ResponseCloudStoreSpec.BucketLocation;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
@@ -26,46 +28,41 @@ import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageData;
-import com.yugabyte.yw.models.configs.data.CustomerConfigStorageNFSData;
-import com.yugabyte.yw.models.configs.data.CustomerConfigStorageWithRegionsData;
-import com.yugabyte.yw.models.configs.data.CustomerConfigStorageWithRegionsData.RegionLocation;
 import com.yugabyte.yw.models.Universe;
 import java.io.IOException;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
+import javax.validation.ConstraintViolation;
+import javax.validation.Valid;
+import javax.validation.Validation;
+import javax.validation.Validator;
+import javax.validation.constraints.NotNull;
+import javax.validation.constraints.Size;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.collections.MapUtils;
+import org.apache.commons.lang.StringUtils;
 import org.yb.CommonTypes.TableType;
 import org.yb.client.YbcClient;
 import org.yb.ybc.BackupServiceTaskCreateRequest;
-import org.yb.ybc.BackupServiceTaskProgressResponse;
 import org.yb.ybc.BackupServiceTaskProgressRequest;
 import org.yb.ybc.BackupServiceTaskResultRequest;
 import org.yb.ybc.CloudStoreConfig;
 import org.yb.ybc.CloudStoreSpec;
 import org.yb.ybc.TableBackup;
 import org.yb.ybc.TableBackupSpec;
+
 import org.yb.ybc.BackupServiceTaskExtendedArgs;
 import org.yb.ybc.NamespaceType;
 import org.yb.ybc.CloudType;
-import org.yb.ybc.ControllerStatus;
 
 @Singleton
 @Slf4j
 public class YbcBackupUtil {
-
-  private static final String CLOUD_STORE_SPEC = "cloud_store_spec";
-  private static final String DEFAULT_BACKUP_LOCATION = "default_backup_location";
-  private static final String BUCKET = "bucket";
-  private static final String CLOUD_DIR = "cloud_dir";
-  private static final String PREV_CLOUD_DIR = "prev_cloud_dir";
-  private static final String REGION_LOCATION_MAP = "region_location_map";
 
   // Time to wait (in millisec) between each poll to ybc.
   public static final int WAIT_EACH_ATTEMPT_MS = 15000;
@@ -80,26 +77,42 @@ public class YbcBackupUtil {
   @JsonIgnoreProperties(ignoreUnknown = true)
   public static class YbcBackupResponse {
     @JsonAlias("backup_size")
+    @NotNull
     public String backupSize;
 
+    @JsonAlias("backup_config_data")
+    public String extendedArgsString;
+
     @JsonAlias("cloud_store_spec")
+    @NotNull
+    @Valid
     public ResponseCloudStoreSpec responseCloudStoreSpec;
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class ResponseCloudStoreSpec {
       @JsonAlias("default_backup_location")
+      @NotNull
+      @Valid
       public BucketLocation defaultLocation;
 
       @JsonAlias("region_location_map")
+      @Valid
       public Map<String, BucketLocation> regionLocations;
 
       @JsonIgnoreProperties(ignoreUnknown = true)
       public static class BucketLocation {
         @JsonAlias("bucket")
+        @Size(min = 1)
+        @NotNull
         public String bucket;
 
         @JsonAlias("cloud_dir")
+        @Size(min = 1)
+        @NotNull
         public String cloudDir;
+
+        @JsonAlias("prev_cloud_dir")
+        public String prevCloudDir;
       }
     }
   }
@@ -112,10 +125,41 @@ public class YbcBackupUtil {
    */
   public YbcBackupResponse parseYbcBackupResponse(String metadata) {
     ObjectMapper mapper = new ObjectMapper();
+    YbcBackupResponse successMarker = null;
     try {
-      return mapper.readValue(metadata, YbcBackupResponse.class);
+      successMarker = mapper.readValue(metadata, YbcBackupResponse.class);
+      Validator validator = Validation.buildDefaultValidatorFactory().getValidator();
+      Map<String, String> validationResponse =
+          validator
+              .validate(successMarker)
+              .stream()
+              .collect(
+                  Collectors.groupingBy(
+                      e -> e.getPropertyPath().toString(),
+                      Collectors.mapping(ConstraintViolation::getMessage, joining())));
+      if (MapUtils.isEmpty(validationResponse)) {
+        return successMarker;
+      } else {
+        JsonNode errJson = Json.toJson(validationResponse);
+        throw new PlatformServiceException(PRECONDITION_FAILED, errJson);
+      }
     } catch (IOException e) {
-      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "Error parsing backup response");
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR, "Error parsing success marker string.");
+    } catch (Exception e) {
+      throw new PlatformServiceException(PRECONDITION_FAILED, e.getMessage());
+    }
+  }
+
+  public JsonNode getUniverseKeysJsonFromSuccessMarker(String extendedArgs) {
+    ObjectMapper mapper = new ObjectMapper();
+    JsonNode args = null;
+    try {
+      args = mapper.readTree(extendedArgs);
+      return args.get("universe_keys");
+    } catch (Exception e) {
+      log.error("Could not fetch universe keys from success marker");
+      return null;
     }
   }
 
@@ -126,17 +170,12 @@ public class YbcBackupUtil {
    * @param tableParams
    * @return List of region-locations for multi-region backups.
    */
-  public List<BackupUtil.RegionLocations> extractRegionLocationfromMetadata(
+  public List<BackupUtil.RegionLocations> extractRegionLocationFromMetadata(
       Map<String, BucketLocation> regionMap, BackupTableParams tableParams) {
     CustomerConfig config =
         configService.getOrBadRequest(tableParams.customerUuid, tableParams.storageConfigUUID);
-    CustomerConfigStorageWithRegionsData configWithRegionsData =
-        (CustomerConfigStorageWithRegionsData) config.getDataObject();
-    Map<String, String> regionLocationMap = new HashMap<>();
-    configWithRegionsData
-        .regionLocations
-        .stream()
-        .forEach(rL -> regionLocationMap.put(rL.region, rL.location));
+    Map<String, String> regionLocationMap =
+        StorageUtil.getStorageUtil(config.name).getRegionLocationsMap(config.getDataObject());
     List<BackupUtil.RegionLocations> regionLocations = new ArrayList<>();
     regionMap.forEach(
         (r, bL) -> {
@@ -160,8 +199,8 @@ public class YbcBackupUtil {
     return backupResultRequest;
   }
 
-  public String getYbcTaskID(UUID backupUUID, String keyspace) {
-    return String.format("%s_%s", backupUUID.toString(), keyspace);
+  public String getYbcTaskID(UUID uuid, String backupType, String keyspace) {
+    return String.format("%s_%s_%s", uuid.toString(), backupType, keyspace);
   }
 
   /**
@@ -175,7 +214,11 @@ public class YbcBackupUtil {
     CustomerConfig config =
         configService.getOrBadRequest(
             backupTableParams.customerUuid, backupTableParams.storageConfigUUID);
-    String taskID = getYbcTaskID(backupTableParams.backupUuid, backupTableParams.getKeyspace());
+    String taskID =
+        getYbcTaskID(
+            backupTableParams.backupUuid,
+            backupTableParams.backupType.name(),
+            backupTableParams.getKeyspace());
 
     // Redundant for now.
     boolean setCompression = false;
@@ -185,7 +228,7 @@ public class YbcBackupUtil {
     String specificCloudDir =
         BackupUtil.getBackupIdentifier(
             backupTableParams.universeUUID, backupTableParams.storageLocation);
-    CloudStoreConfig cloudStoreConfig = createCloudStoreConfig(config, specificCloudDir);
+    CloudStoreConfig cloudStoreConfig = createCloudStoreConfig(config, specificCloudDir, false);
     BackupServiceTaskExtendedArgs extendedArgs = getExtendedArgsForBackup(backupTableParams);
 
     BackupServiceTaskCreateRequest.Builder backupServiceTaskCreateRequestBuilder =
@@ -208,10 +251,17 @@ public class YbcBackupUtil {
   }
 
   public BackupServiceTaskCreateRequest createYbcRestoreRequest(
-      RestoreBackupParams restoreBackupParams, BackupStorageInfo backupStorageInfo, String taskId) {
+      RestoreBackupParams restoreBackupParams,
+      BackupStorageInfo backupStorageInfo,
+      String taskId,
+      boolean isSuccessFileOnly) {
     CustomerConfig config =
         configService.getOrBadRequest(
             restoreBackupParams.customerUUID, restoreBackupParams.storageConfigUUID);
+
+    String specificCloudDir =
+        BackupUtil.getBackupIdentifier(
+            restoreBackupParams.universeUUID, backupStorageInfo.storageLocation);
 
     // Redundant for now.
     boolean setCompression = false;
@@ -219,18 +269,24 @@ public class YbcBackupUtil {
 
     NamespaceType namespaceType = getNamespaceType(backupStorageInfo.backupType);
     String keyspace = backupStorageInfo.keyspace;
-    CloudStoreConfig cloudStoreConfig = createCloudStoreConfig(config, backupStorageInfo);
     BackupServiceTaskExtendedArgs extendedArgs = BackupServiceTaskExtendedArgs.newBuilder().build();
 
     BackupServiceTaskCreateRequest.Builder backupServiceTaskCreateRequestBuilder =
         BackupServiceTaskCreateRequest.newBuilder()
             .setTaskId(taskId)
             .setCompression(setCompression)
-            .setCsConfig(cloudStoreConfig)
             .setEncryptionPassphrase(encryptionPassphrase)
             .setNsType(namespaceType)
-            .setNs(keyspace)
             .setExtendedArgs(extendedArgs);
+
+    CloudStoreConfig cloudStoreConfig = null;
+    if (isSuccessFileOnly) {
+      cloudStoreConfig = createCloudStoreConfig(config, specificCloudDir, true);
+      backupServiceTaskCreateRequestBuilder.setDsm(true).setCsConfig(cloudStoreConfig);
+    } else {
+      cloudStoreConfig = createCloudStoreConfig(config, specificCloudDir, false);
+      backupServiceTaskCreateRequestBuilder.setNs(keyspace).setCsConfig(cloudStoreConfig);
+    }
 
     return backupServiceTaskCreateRequestBuilder.build();
   }
@@ -288,170 +344,65 @@ public class YbcBackupUtil {
    * @param commonSuffix
    * @return CloudStoreConfig object for YB-Controller task.
    */
-  public CloudStoreConfig createCloudStoreConfig(CustomerConfig config, String commonSuffix) {
+  public CloudStoreConfig createCloudStoreConfig(
+      CustomerConfig config, String commonSuffix, boolean isSuccessFileOnly) {
     String configType = config.name;
     CustomerConfigData configData = config.getDataObject();
     CloudStoreSpec defaultSpec = null;
-    Map<String, CloudStoreSpec> regionSpecMap = null;
     CloudStoreConfig.Builder cloudStoreConfigBuilder = CloudStoreConfig.newBuilder();
     StorageUtil storageUtil = StorageUtil.getStorageUtil(configType);
-    if (configData instanceof CustomerConfigStorageNFSData) {
-      defaultSpec =
-          storageUtil.createCloudStoreSpec(
-              ((CustomerConfigStorageNFSData) configData).backupLocation, commonSuffix, configData);
-    } else {
-      defaultSpec =
-          storageUtil.createCloudStoreSpec(
-              ((CustomerConfigStorageData) configData).backupLocation, commonSuffix, configData);
-      CustomerConfigStorageWithRegionsData configDataWithRegions =
-          (CustomerConfigStorageWithRegionsData) configData;
-      if (CollectionUtils.isNotEmpty(configDataWithRegions.regionLocations)) {
-        regionSpecMap = new HashMap<>();
-        for (CustomerConfigStorageWithRegionsData.RegionLocation regionLocation :
-            configDataWithRegions.regionLocations) {
-          regionSpecMap.put(
-              regionLocation.region,
-              storageUtil.createCloudStoreSpec(regionLocation.location, commonSuffix, configData));
-        }
-      }
-    }
-
-    cloudStoreConfigBuilder.setDefaultSpec(defaultSpec);
-    if (MapUtils.isNotEmpty(regionSpecMap)) {
-      cloudStoreConfigBuilder.putAllRegionSpecMap(regionSpecMap);
-    }
-    CloudStoreConfig cloudStoreConfig = cloudStoreConfigBuilder.build();
-    return cloudStoreConfig;
-  }
-
-  public CloudStoreConfig createCloudStoreConfig(
-      CustomerConfig config, BackupStorageInfo backupStorageInfo) {
-
-    JsonNode successJson = readSuccessFile(config, backupStorageInfo.storageLocation);
-    if (!validateSuccessJson(config, successJson)) {
-      throw new RuntimeException("");
-    }
-    log.info(successJson.toString());
-
-    CustomerConfigData configData = config.getDataObject();
-    Map<String, CloudStoreSpec> regionSpecMap = null;
-    CloudStoreConfig.Builder cloudStoreConfigBuilder = CloudStoreConfig.newBuilder();
-    JsonNode cloudStoreSpecJson = successJson.get(CLOUD_STORE_SPEC);
-    ResponseCloudStoreSpec cloudStoreSpec = null;
-    try {
-      ObjectMapper mapper = new ObjectMapper();
-      cloudStoreSpec = mapper.treeToValue(cloudStoreSpecJson, ResponseCloudStoreSpec.class);
-    } catch (Exception ex) {
-      throw new RuntimeException("", ex);
-    }
-    StorageUtil storageUtil = StorageUtil.getStorageUtil(config.name);
-    CloudStoreSpec defaultSpec =
+    defaultSpec =
         storageUtil.createCloudStoreSpec(
-            configData,
-            cloudStoreSpec.defaultLocation.bucket,
-            cloudStoreSpec.defaultLocation.cloudDir);
-    if (!(configData instanceof CustomerConfigStorageNFSData)) {
-
-      if (cloudStoreSpecJson.has(REGION_LOCATION_MAP)) {
-        JsonNode regionLocationMapJson = cloudStoreSpecJson.get(REGION_LOCATION_MAP);
-        Iterator<Map.Entry<String, JsonNode>> it = regionLocationMapJson.fields();
-        regionSpecMap = new HashMap<>();
-        while (it.hasNext()) {
-          Map.Entry<String, JsonNode> entry = it.next();
-          String region = entry.getKey();
-          JsonNode regionLocationJsonNode = entry.getValue();
-          String backupRegionLocation =
-              storageUtil.createDirPath(
-                  regionLocationJsonNode.get(BUCKET).asText(),
-                  regionLocationJsonNode.get(CLOUD_DIR).asText());
-          regionSpecMap.put(
-              region,
-              storageUtil.createCloudStoreSpec(
-                  configData,
-                  regionLocationJsonNode.get(BUCKET).asText(),
-                  regionLocationJsonNode.get(CLOUD_DIR).asText()));
-        }
-      }
-    }
-
+            ((CustomerConfigStorageData) configData).backupLocation, commonSuffix, configData);
     cloudStoreConfigBuilder.setDefaultSpec(defaultSpec);
+    if (isSuccessFileOnly) {
+      return cloudStoreConfigBuilder.build();
+    }
+    Map<String, String> regionLocationMap =
+        StorageUtil.getStorageUtil(config.name).getRegionLocationsMap(configData);
+    Map<String, CloudStoreSpec> regionSpecMap = new HashMap<>();
+    if (MapUtils.isNotEmpty(regionLocationMap)) {
+      regionLocationMap.forEach(
+          (r, bL) -> {
+            regionSpecMap.put(r, storageUtil.createCloudStoreSpec(bL, commonSuffix, configData));
+          });
+    }
     if (MapUtils.isNotEmpty(regionSpecMap)) {
       cloudStoreConfigBuilder.putAllRegionSpecMap(regionSpecMap);
     }
-
     return cloudStoreConfigBuilder.build();
   }
 
-  private JsonNode readSuccessFile(CustomerConfig config, String backupLocation) {
-    String successFileLocation = backupLocation + "/" + CloudUtil.SUCCESS;
-    StorageUtil storageUtil = StorageUtil.getStorageUtil(config.name);
-    CustomerConfigData configData = config.getDataObject();
-    JsonNode jsonNode = null;
-    if (!config.name.equals(Util.NFS)) {
+  public void validateConfigWithSuccessMarker(
+      YbcBackupResponse successMarker, CloudStoreConfig config) throws PlatformServiceException {
+    CloudStoreSpec defaultSpec = config.getDefaultSpec();
+    if (!(StringUtils.equals(
+            successMarker.responseCloudStoreSpec.defaultLocation.bucket, defaultSpec.getBucket())
+        && StringUtils.equals(
+            successMarker.responseCloudStoreSpec.defaultLocation.cloudDir,
+            defaultSpec.getCloudDir()))) {
+      throw new PlatformServiceException(
+          PRECONDITION_FAILED, "Default location validation failed.");
+    }
+    if (MapUtils.isNotEmpty(successMarker.responseCloudStoreSpec.regionLocations)) {
+      // config.getRegionSpecMapOrThrow throws exception for key not found.
       try {
-        jsonNode = ((CloudUtil) storageUtil).readFileFromCloud(successFileLocation, configData);
-      } catch (Exception ex) {
-        return jsonNode;
+        successMarker.responseCloudStoreSpec.regionLocations.forEach(
+            (r, rS) -> {
+              if (!(config.containsRegionSpecMap(r)
+                  && StringUtils.equals(
+                      rS.cloudDir, config.getRegionSpecMapOrThrow(r).getCloudDir())
+                  && StringUtils.equals(
+                      rS.bucket, config.getRegionSpecMapOrThrow(r).getBucket()))) {
+                throw new PlatformServiceException(
+                    PRECONDITION_FAILED, "Region mapping validation failed.");
+              }
+            });
+      } catch (Exception e) {
+        throw new PlatformServiceException(
+            PRECONDITION_FAILED, "Region mapping validation failed.");
       }
     }
-    return jsonNode;
-  }
-
-  private boolean validateSuccessJson(CustomerConfig config, JsonNode successJson) {
-    if (successJson == null) {
-      return false;
-    }
-
-    if (!successJson.has(CLOUD_STORE_SPEC)) {
-      return false;
-    }
-
-    JsonNode cloudStoreSpecJson = successJson.get(CLOUD_STORE_SPEC);
-    if (!cloudStoreSpecJson.has(DEFAULT_BACKUP_LOCATION)) {
-      return false;
-    }
-
-    JsonNode defaultBackupJson = cloudStoreSpecJson.get(DEFAULT_BACKUP_LOCATION);
-    if (!defaultBackupJson.has(BUCKET) || !defaultBackupJson.has(CLOUD_DIR)) {
-      return false;
-    }
-
-    if (!config.name.equals(Util.NFS)) {
-      if (cloudStoreSpecJson.has(REGION_LOCATION_MAP)) {
-        StorageUtil storageUtil = StorageUtil.getStorageUtil(config.name);
-        CustomerConfigStorageWithRegionsData customerConfig =
-            (CustomerConfigStorageWithRegionsData) config.getDataObject();
-        Map<String, String> regionLocationMap = new HashMap<>();
-        if (customerConfig.regionLocations != null) {
-          List<RegionLocation> regionLocations = customerConfig.regionLocations;
-          for (RegionLocation regionLocation : regionLocations) {
-            regionLocationMap.put(regionLocation.region, regionLocation.location);
-          }
-        }
-
-        JsonNode regionLocationMapJson = cloudStoreSpecJson.get(REGION_LOCATION_MAP);
-        Iterator<Map.Entry<String, JsonNode>> it = regionLocationMapJson.fields();
-        while (it.hasNext()) {
-          Map.Entry<String, JsonNode> entry = it.next();
-          String region = entry.getKey();
-          JsonNode regionLocationJsonNode = entry.getValue();
-
-          if (!regionLocationJsonNode.has(BUCKET) || !regionLocationJsonNode.has(CLOUD_DIR)) {
-            return false;
-          }
-
-          String bucket = regionLocationJsonNode.get(BUCKET).asText();
-          String cloudDir = regionLocationJsonNode.get(CLOUD_DIR).asText();
-          if (!regionLocationMap.containsKey(region)) {
-            return false;
-          }
-          if (!regionLocationMap.get(region).contains(bucket)) {
-            return false;
-          }
-        }
-      }
-    }
-    return true;
   }
 
   /**

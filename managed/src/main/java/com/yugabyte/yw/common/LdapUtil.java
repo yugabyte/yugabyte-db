@@ -224,7 +224,10 @@ public class LdapUtil {
                   + " to use search and bind.");
         }
         Pair<String, String> dnAndRole = searchAndBind(email, ldapConfiguration, connection);
-        distinguishedName = dnAndRole.getKey();
+        String fetchedDistinguishedName = dnAndRole.getKey();
+        if (!fetchedDistinguishedName.isEmpty()) {
+          distinguishedName = fetchedDistinguishedName;
+        }
         role = dnAndRole.getValue();
       }
 

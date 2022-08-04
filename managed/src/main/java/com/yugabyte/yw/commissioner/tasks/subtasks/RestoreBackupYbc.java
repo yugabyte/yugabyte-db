@@ -1,40 +1,41 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
+
 import com.google.api.client.util.Throwables;
 import com.yugabyte.yw.commissioner.YbcTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.YbcBackupUtil;
+import com.yugabyte.yw.common.YbcManager;
+import com.yugabyte.yw.common.YbcBackupUtil.YbcBackupResponse;
 import com.yugabyte.yw.common.services.YbcClientService;
 import com.yugabyte.yw.forms.RestoreBackupParams;
-import com.yugabyte.yw.forms.RestoreBackupParams.ActionType;
 import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
-import com.yugabyte.yw.models.configs.CustomerConfig;
-import java.util.UUID;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.client.YbcClient;
-import org.yb.CommonTypes.TableType;
+import org.apache.commons.lang.StringUtils;
 import org.yb.ybc.BackupServiceTaskCreateRequest;
 import org.yb.ybc.BackupServiceTaskCreateResponse;
-import org.yb.ybc.BackupServiceTaskProgressRequest;
-import org.yb.ybc.BackupServiceTaskProgressResponse;
 import org.yb.ybc.BackupServiceTaskResultRequest;
 import org.yb.ybc.BackupServiceTaskResultResponse;
-import org.yb.ybc.BackupServiceTaskStage;
 import org.yb.ybc.ControllerStatus;
 
 @Slf4j
 public class RestoreBackupYbc extends YbcTaskBase {
 
   private YbcClient ybcClient;
+  private YbcManager ybcManager;
 
   @Inject
   public RestoreBackupYbc(
       BaseTaskDependencies baseTaskDependencies,
       YbcClientService ybcService,
-      YbcBackupUtil ybcBackupUtil) {
+      YbcBackupUtil ybcBackupUtil,
+      YbcManager ybcManager) {
     super(baseTaskDependencies, ybcService, ybcBackupUtil);
+    this.ybcManager = ybcManager;
   }
 
   @Override
@@ -55,13 +56,22 @@ public class RestoreBackupYbc extends YbcTaskBase {
 
       BackupStorageInfo backupStorageInfo = taskParams().backupStorageInfoList.get(0);
       taskId =
-          userTaskUUID.toString()
-              + "_"
-              + backupStorageInfo.backupType.toString()
-              + "_"
-              + backupStorageInfo.keyspace;
+          ybcBackupUtil.getYbcTaskID(
+              userTaskUUID, backupStorageInfo.backupType.toString(), backupStorageInfo.keyspace);
+      BackupServiceTaskCreateRequest downloadSuccessMarkerRequest =
+          ybcBackupUtil.createYbcRestoreRequest(taskParams(), backupStorageInfo, taskId, true);
+      String successMarkerString =
+          ybcManager.downloadSuccessMarker(
+              downloadSuccessMarkerRequest, taskParams().universeUUID, taskId);
+      if (StringUtils.isEmpty(successMarkerString)) {
+        throw new PlatformServiceException(
+            INTERNAL_SERVER_ERROR, "Got empty success marker response, exiting.");
+      }
+      YbcBackupResponse successMarker = ybcBackupUtil.parseYbcBackupResponse(successMarkerString);
       BackupServiceTaskCreateRequest restoreTaskCreateRequest =
-          ybcBackupUtil.createYbcRestoreRequest(taskParams(), backupStorageInfo, taskId);
+          ybcBackupUtil.createYbcRestoreRequest(taskParams(), backupStorageInfo, taskId, false);
+      ybcBackupUtil.validateConfigWithSuccessMarker(
+          successMarker, restoreTaskCreateRequest.getCsConfig());
       BackupServiceTaskCreateResponse response =
           ybcClient.restoreNamespace(restoreTaskCreateRequest);
       if (response.getStatus().getCode().equals(ControllerStatus.OK)) {

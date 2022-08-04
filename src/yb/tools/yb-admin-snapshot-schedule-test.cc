@@ -3618,8 +3618,7 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(CreateDuplicateSc
   auto res = CreateSnapshotSchedule(kInterval, kRetention, "ysql." + kTableName.namespace_name());
   ASSERT_FALSE(res.ok());
   ASSERT_STR_CONTAINS(res.ToString(),
-    "Snapshot schedule already exists for the given keyspace: "
-    "ysql." + kTableName.namespace_name());
+    "already exists for the given keyspace ysql." + kTableName.namespace_name());
 }
 
 }  // namespace tools
