@@ -1,10 +1,40 @@
 #!/usr/bin/env python
 
+from __future__ import print_function
 import argparse
 import signal
 import socket
 import sys
 import time
+import resource
+
+# Skipping following resources to verify because
+# python resource module does not have related attriutes.
+# Some of them are available in Python v3 but not all.
+# pipe size, threshold - 8
+# virtual memory, threshold - unlimited (RLIMIT_VMEM)
+# file locks, threshold - unlimited
+# scheduling priority, threshold - 0 (RLIMIT_NICE)
+# pending signals, threshold - 119934, (RLIMIT_SIGPENDING)
+# POSIX message queues, threshold - 819200 (RLIMIT_MSGQUEUE)
+# real-time priority, threshold - 0 (RLIMIT_RTPRIO)
+# As of now, necessary ulimit resources for YB are in verification RLIMIT_NOFILE and RLIMIT_NPROC
+# Ref - https://docs.yugabyte.com/preview/deploy/manual-deployment/system-config/#ulimits
+
+REQUIRED_RESOURCES = {
+    "RLIMIT_NOFILE": (1048576, "open files"),
+    "RLIMIT_NPROC": (12000, "max user processes"),
+}
+
+OPTIONAL_RESOURCES = {
+    "RLIMIT_DATA": (-1, "data seg size"),
+    "RLIMIT_MEMLOCK": (65536, "max locked memory"),  # 64 kbytes, 65536 bytes
+    "RLIMIT_AS": (-1, "max memory size"),
+    "RLIMIT_STACK": (8388608, "stack size"),  # 8192 kbytes, 8388608 bytes
+    "RLIMIT_CORE": (-1, "core file size"),
+    "RLIMIT_FSIZE": (-1, "file size"),
+    "RLIMIT_CPU": (-1, "cpu time"),
+}
 
 
 def wait_for_dns_resolve(addr):
@@ -62,7 +92,7 @@ def wait_for_bind(addr, port):
 
 
 def parse_addr(addr):
-    num_colons = addr.count(':')
+    num_colons = addr.count(":")
     if num_colons == 0:
         # If no colons exist, return address.
         # Examples:
@@ -74,11 +104,11 @@ def parse_addr(addr):
         # Examples:
         #   1.2.3.4:567 -> 1.2.3.4
         #   foo.com:123 -> foo.com
-        return addr.split(':')[0]
+        return addr.split(":")[0]
     else:
         # If >1 colon exists, parse ipv6 address.
-        left_pos = addr.find('[')
-        right_pos = addr.find(']')
+        left_pos = addr.find("[")
+        right_pos = addr.find("]")
         if left_pos != -1 and right_pos != -1:
             # If left and right brackets exist, return inner portion.
             # Examples:
@@ -93,25 +123,94 @@ def parse_addr(addr):
             return addr
 
 
+def verify_ulimit(ulimit, alert_msgs):
+    alert_template = "{} | Expected Value : {} | Current Value : {}"
+
+    for ulimit_resource, (threshold, resource_name) in ulimit.items():
+        soft_limit, _ = resource.getrlimit(getattr(resource, ulimit_resource))
+
+        # Cover all the cases where threshold equals to -1 and
+        # soft limit set to some value. -1 means unlimited.
+        if threshold == -1:
+            if soft_limit != threshold:
+                alert_msgs.append(
+                    alert_template.format(
+                        resource_name, str(threshold), str(soft_limit)
+                    )
+                )
+        # Cover all the cases where threshold set to some value and
+        # soft limit set to some other lower value and soft limit
+        # should be some arbitrary value not -1.
+        # Ex- max user processes - threshold 12000 and few cloud
+        # provider set it to -1.
+        elif soft_limit < threshold and soft_limit != -1:
+            alert_msgs.append(
+                alert_template.format(resource_name, str(threshold), str(soft_limit))
+            )
+
+
 if __name__ == "__main__":
     # Parse CLI args.
     parser = argparse.ArgumentParser()
-    parser.add_argument("--addr", action="append", required=True)
+    subparser = parser.add_subparsers(dest="preflight_check")
+
     parser.add_argument("--timeout", type=int, default=300)  # 300 seconds = 5 minutes
-    group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument("--port", type=int, action="append")
-    group.add_argument("--skip_bind", action="store_const", const=True)
+
+    # Common Subparser
+    # 1. Ulimit preflight
+    subparser_common = subparser.add_parser(
+        "all", help="All preflight checks except dnscheck"
+    )
+    subparser_common.add_argument(
+        "--skip_ulimit", action="store_const", const=True, help="Skip Ulimit"
+    )
+
+    # DNS Preflight
+    subparser_dnscheck = subparser.add_parser("dnscheck", help="DNS Preflight")
+    subparser_dnscheck.add_argument(
+        "--addr", action="append", required=True, help="Address to check"
+    )
+    group = subparser_dnscheck.add_mutually_exclusive_group(required=True)
+    group.add_argument(
+        "--port", type=int, action="append", help="Port used to check bind"
+    )
+    group.add_argument(
+        "--skip_bind", action="store_const", const=True, help="Skip port binding"
+    )
+
     args = parser.parse_args()
 
     # Setup script timeout.
     signal.signal(signal.SIGALRM, lambda *_: sys.exit("Error: Timeout"))
     signal.alarm(args.timeout)
 
-    # Perform preflight checks.
-    for addr in args.addr:
-        addr = parse_addr(addr)
-        wait_for_dns_resolve(addr)
-        if args.skip_bind:
-            continue
-        for port in args.port:
-            wait_for_bind(addr, port)
+    if args.preflight_check == "dnscheck":
+        # Perform dns preflight checks.
+        for addr in args.addr:
+            addr = parse_addr(addr)
+            wait_for_dns_resolve(addr)
+            if args.skip_bind:
+                continue
+            for port in args.port:
+                wait_for_bind(addr, port)
+    elif args.preflight_check == "all":
+        # Perform ulimit verification
+        if not args.skip_ulimit:
+            ALERT_MESSAGE = str("{} ulimit values too low, see below. In kubernetes"
+                                + "set the helm override 'preflight.skipUlimit: false'"
+                                + "to override this check")
+            mandatory_missed_ulimits = [ALERT_MESSAGE.format("Required")]
+            optional_missed_ulimits = [ALERT_MESSAGE.format("Optional")]
+
+            for ulimit_list, alert_messages, exit_action in (
+                OPTIONAL_RESOURCES,
+                optional_missed_ulimits,
+                False,
+            ), (REQUIRED_RESOURCES, mandatory_missed_ulimits, True):
+                verify_ulimit(ulimit_list, alert_messages)
+
+                if len(alert_messages) > 1:
+                    print(str("\n".join(alert_messages)), file=sys.stderr)
+
+                    if exit_action:
+                        sys.exit(1)
