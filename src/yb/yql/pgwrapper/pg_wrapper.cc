@@ -24,6 +24,7 @@
 #include <boost/algorithm/string.hpp>
 
 #include "yb/tserver/tablet_server_interface.h"
+#include "yb/util/auto_flags.h"
 #include "yb/util/env_util.h"
 #include "yb/util/errno.h"
 #include "yb/util/flag_tags.h"
@@ -35,6 +36,7 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
+#include "yb/util/string_util.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/thread.h"
 
@@ -65,22 +67,6 @@ TAG_FLAG(pg_stat_statements_enabled, hidden);
 // Top-level postgres configuration flags.
 DEFINE_bool(ysql_enable_auth, false,
               "True to enforce password authentication for all connections");
-DEFINE_string(ysql_timezone, "",
-              "Overrides the default ysql timezone for displaying and interpreting timestamps");
-DEFINE_string(ysql_datestyle, "",
-              "Overrides the default ysql display format for date and time values");
-DEFINE_int32(ysql_max_connections, 0,
-              "Overrides the maximum number of concurrent ysql connections");
-DEFINE_string(ysql_default_transaction_isolation, "",
-              "Overrides the default ysql transaction isolation level");
-DEFINE_string(ysql_log_statement, "",
-              "Sets which types of ysql statements should be logged");
-DEFINE_string(ysql_log_min_messages, "",
-              "Sets the lowest ysql message level to log");
-DEFINE_string(ysql_log_min_duration_statement, "",
-              "Sets the duration of each completed ysql statement to be logged if the statement" \
-              " ran for at least the specified number of milliseconds.");
-
 
 // Catch-all postgres configuration flags.
 DEFINE_string(ysql_pg_conf_csv, "",
@@ -97,8 +83,47 @@ DEFINE_string(ysql_hba_conf, "",
               "Comma separated list of postgres hba rules (in order)");
 TAG_FLAG(ysql_hba_conf, sensitive_info);
 
-using std::vector;
+// gFlag wrappers over Postgres GUC parameter.
+// The value type should match the GUC parameter, or it should be a string, in which case Postgres
+// will convert it to the correct type.
+// The default values of gFlag are visible to customers via flags metadata xml, documentation, and
+// platform UI. So, it's important to keep these values as accurate as possible. The default_value
+// or target_value (for AutoFlags) should match the default specified in guc.c.
+// Use an empty string or 0 for parameters like timezone and max_connections whose default is
+// computed at runtime so that they show up as an undefined value instead of an incorrect value. If
+// 0 is a valid value for the parameter, then use an empty string. These are enforced by the
+// PgWrapperFlagsTest.VerifyGFlagDefaults test.
+#define DEFINE_pg_flag(type, name, default_value, description) \
+  BOOST_PP_CAT(DEFINE_, type)(ysql_##name, default_value, description); \
+  TAG_FLAG(ysql_##name, pg)
+
+DEFINE_pg_flag(string, timezone, "",
+               "Overrides the default ysql timezone for displaying and interpreting timestamps. If "
+               "no value is provided, Postgres will determine one based on the environment");
+DEFINE_pg_flag(string, datestyle, "ISO, MDY",
+               "The ysql display format for date and time values");
+DEFINE_pg_flag(int32, max_connections, 0,
+               "Overrides the maximum number of concurrent ysql connections. If set to 0, "
+               "Postgres will dynamically determine a platform-specific value");
+DEFINE_pg_flag(string, default_transaction_isolation, "read committed",
+               "The ysql transaction isolation level");
+DEFINE_pg_flag(string, log_statement, "none",
+               "Sets which types of ysql statements should be logged");
+DEFINE_pg_flag(string, log_min_messages, "warning",
+               "Sets the lowest ysql message level to log");
+DEFINE_pg_flag(int32, log_min_duration_statement, -1,
+               "Sets the duration of each completed ysql statement to be logged if the statement"
+               " ran for at least the specified number of milliseconds. Zero prints all queries. "
+               "-1 turns this feature off.");
+DEFINE_pg_flag(bool, yb_enable_expression_pushdown, false,
+               "Push supported expressions from ysql down to DocDB for evaluation.");
+DEFINE_pg_flag(int32, yb_index_state_flags_update_delay, 1000,
+               "Delay in milliseconds between stages of online index build. "
+               "Set high to give online transactions more time to complete.");
+
+using gflags::CommandLineFlagInfo;
 using std::string;
+using std::vector;
 
 using namespace std::literals;  // NOLINT
 
@@ -196,6 +221,47 @@ Status ReadCSVValues(const string& csv, vector<string>* lines) {
   return Status::OK();
 }
 
+namespace {
+// Append any Pg gFlag with non default value, or non-promoted AutoFlag
+void AppendPgGFlags(vector<string>* lines) {
+  vector<CommandLineFlagInfo> flags;
+  GetAllFlags(&flags);
+
+  for (const CommandLineFlagInfo& flag : flags) {
+    std::unordered_set<FlagTag> tags;
+    GetFlagTags(flag.name, &tags);
+    if (!tags.contains(FlagTag::kPg)) {
+      continue;
+    }
+
+    // Skip flags that do not have a custom override
+    if (flag.is_default) {
+      if (!tags.contains(FlagTag::kAutomatic)) {
+        continue;
+      }
+
+      // AutoFlags in not-promoted state will be set to their initial value.
+      // In the promoted state they will be set to their target value. (guc default)
+      // We only need to override when AutoFlags is non-promoted.
+      auto* desc = GetAutoFlagDescription(flag.name);
+      CHECK_NOTNULL(desc);
+      if (IsFlagPromoted(flag, *desc)) {
+        continue;
+      }
+    }
+
+    const string pg_flag_prefix = "ysql_";
+    if (!flag.name.starts_with(pg_flag_prefix)) {
+      LOG(DFATAL) << "Flags with Pg Flag tag should have 'ysql_' prefix. Flag_name: " << flag.name;
+      continue;
+    }
+
+    string pg_variable_name = flag.name.substr(pg_flag_prefix.length());
+    lines->push_back(Format("$0=$1", pg_variable_name, flag.current_value));
+  }
+}
+}  // namespace
+
 Result<string> WritePostgresConfig(const PgProcessConf& conf) {
   // First add default configuration created by local initdb.
   string default_conf_path = JoinPathSegments(conf.data_dir, "postgresql.conf");
@@ -256,33 +322,11 @@ Result<string> WritePostgresConfig(const PgProcessConf& conf) {
     lines.push_back(Format("ssl_ca_file='$0/ca.crt'", conf.certs_for_client_dir));
   }
 
-  if (!FLAGS_ysql_timezone.empty()) {
-    lines.push_back("timezone=" + FLAGS_ysql_timezone);
-  }
-
-  if (!FLAGS_ysql_datestyle.empty()) {
-    lines.push_back("datestyle=" + FLAGS_ysql_datestyle);
-  }
-
-  if (FLAGS_ysql_max_connections > 0) {
-    lines.push_back("max_connections=" + std::to_string(FLAGS_ysql_max_connections));
-  }
-
-  if (!FLAGS_ysql_default_transaction_isolation.empty()) {
-    lines.push_back("default_transaction_isolation=" + FLAGS_ysql_default_transaction_isolation);
-  }
-
-  if (!FLAGS_ysql_log_statement.empty()) {
-    lines.push_back("log_statement=" + FLAGS_ysql_log_statement);
-  }
-
-  if (!FLAGS_ysql_log_min_messages.empty()) {
-    lines.push_back("log_min_messages=" + FLAGS_ysql_log_min_messages);
-  }
-
-  if (!FLAGS_ysql_log_min_duration_statement.empty()) {
-    lines.push_back("log_min_duration_statement=" + FLAGS_ysql_log_min_duration_statement);
-  }
+  // Finally add gFlags.
+  // If the file contains multiple entries for the same parameter, all but the last one are
+  // ignored. If there are duplicates in FLAGS_ysql_pg_conf_csv then we want the values specified
+  // via the gFlag to take precedence.
+  AppendPgGFlags(&lines);
 
   string conf_path = JoinPathSegments(conf.data_dir, "ysql_pg.conf");
   RETURN_NOT_OK(WriteConfigFile(conf_path, lines));
