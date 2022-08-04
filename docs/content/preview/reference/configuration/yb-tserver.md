@@ -369,6 +369,30 @@ On a per-table basis, the [`CREATE TABLE ...SPLIT INTO`](../../../api/ysql/the-s
 
 {{< /note >}}
 
+##### --cleanup_split_tablets_interval_sec
+
+Interval at which the tablet manager tries to cleanup split tablets that are no longer needed. Setting this to 0 disables cleanup of split tablets.
+
+Default: `60`
+
+##### --post_split_trigger_compaction_pool_max_threads
+
+The maximum number of threads allowed for post-split compactions (i.e. compactions that remove irrelevant data from new tablets after splits).
+
+Default: `1`
+
+##### --post_split_trigger_compaction_pool_max_queue_size
+
+The maximum number of post-split compaction tasks that can be queued simultaneously (i.e. compactions that remove irrelevant data from new tablets after splits).
+
+Default: `16`
+
+##### --automatic_compaction_extra_priority
+
+Assigns an extra priority to automatic (i.e. minor) compactions when automatic tablet splitting is enabled. This deprioritizes post-split compactions and ensures that smaller compactions are not starved. Suggested values are between 0 and 50.
+
+Default: `50`
+
 ---
 
 ### Geo-distribution flags
