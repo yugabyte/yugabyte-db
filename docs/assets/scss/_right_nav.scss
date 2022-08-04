@@ -27,25 +27,13 @@
 
   &.hide-h3 {
     nav > ul > li > ul > li {
-      // margin-left: 0;
-
-      > a {
-        display: none;
-      }
-
-      /*
-      > ul {
-        padding-left: 0;
-      }
-      */
+      display: none;
     }
   }
 
   &.hide-h4 {
-    nav > ul > li > ul > li {
-      > ul {
-        display: none;
-      }
+    nav > ul > li > ul > li > ul {
+      display: none;
     }
   }
 }
