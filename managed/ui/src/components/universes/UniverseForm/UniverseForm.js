@@ -449,7 +449,7 @@ class UniverseForm extends Component {
   };
 
   getFormPayload = () => {
-    const { formValues, universe, type } = this.props;
+    const { formValues, universe, type, featureFlags } = this.props;
     const {
       universeConfigTemplate,
       currentUniverse: {
@@ -640,6 +640,14 @@ class UniverseForm extends Component {
       }
     }
 
+    if (formValues['primary'] && formValues['primary'].ybcSoftwareVersion)
+      submitPayload.ybcSoftwareVersion = formValues['primary'].ybcSoftwareVersion;
+    else if (universeDetails && isDefinedNotNull(universeDetails.ybcSoftwareVersion))
+      submitPayload.ybcSoftwareVersion = universeDetails.ybcSoftwareVersion;
+
+    if (!isDefinedNotNull(submitPayload.enableYbc))
+      submitPayload.enableYbc = featureFlags.released.enableYbc;
+    
     return submitPayload;
   };
 
