@@ -46,8 +46,8 @@ def handle_run_command(args, client):
     kwargs = {}
     if args.node_type == 'ssh':
         kwargs['output_only'] = True
-    if args.skip_cmd_logging:
-        kwargs['skip_cmd_logging'] = True
+        if args.skip_cmd_logging:
+            kwargs['skip_cmd_logging'] = True
     output = client.exec_command(args.command, **kwargs)
     print('Command output:')
     print(output)
@@ -244,7 +244,7 @@ def parse_args():
 
     for node_type in node_types:
         node_type_subparser = node_types[node_type]\
-          .parser(node_type_subparsers, node_type, parent_parser)
+            .parser(node_type_subparsers, node_type, parent_parser)
         action_subparser = node_type_subparser.add_subparsers(title="action",
                                                               dest="action")
         action_subparser.required = True

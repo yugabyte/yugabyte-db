@@ -709,7 +709,7 @@ void PgLibPqTest::TestMultiBankAccount(IsolationLevel isolation) {
   for (auto* tserver : cluster_->tserver_daemons()) {
     auto tablets = ASSERT_RESULT(cluster_->GetTabletIds(tserver));
     for (const auto& tablet : tablets) {
-      auto result = tserver->GetInt64Metric(
+      auto result = tserver->GetMetric<int64>(
           &METRIC_ENTITY_tablet, tablet.c_str(), &METRIC_transaction_not_found, "value");
       if (result.ok()) {
         total_not_found += *result;
@@ -1634,7 +1634,7 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(NumberOfInitialRpcs), PgLibPqTest
   auto get_master_inbound_rpcs_created = [this]() -> Result<int64_t> {
     int64_t m_in_created = 0;
     for (const auto* master : this->cluster_->master_daemons()) {
-      m_in_created += VERIFY_RESULT(master->GetInt64Metric(
+      m_in_created += VERIFY_RESULT(master->GetMetric<int64>(
           &METRIC_ENTITY_server, "yb.master", &METRIC_rpc_inbound_calls_created, "value"));
     }
     return m_in_created;

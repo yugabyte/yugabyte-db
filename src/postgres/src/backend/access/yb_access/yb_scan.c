@@ -21,6 +21,7 @@
  *--------------------------------------------------------------------------------------------------
  */
 
+#include <limits.h>
 #include <string.h>
 #include "postgres.h"
 
@@ -801,29 +802,61 @@ static bool YbIsOidType(Oid typid) {
 	}
 }
 
+static bool YbIsIntegerInRange(Datum value, Oid value_typid, int min, int max) {
+	int64 val;
+	switch (value_typid)
+	{
+		case INT2OID:
+			val = (int64) DatumGetInt16(value);
+			break;
+		case INT4OID:
+			val = (int64) DatumGetInt32(value);
+			break;
+		case INT8OID:
+			val = DatumGetInt64(value);
+			break;
+		default:
+			ereport(ERROR,
+					(errcode(ERRCODE_DATATYPE_MISMATCH),
+					 errmsg("not an integer type")));
+	}
+	return val >= min && val <= max;
+}
+
 /*
  * Return true if a scan key column type is compatible with value type. 'equal_strategy' is true
  * for BTEqualStrategyNumber.
  */
-static bool YbIsScanCompatible(Oid column_typid, Oid value_typid, bool equal_strategy) {
+static bool YbIsScanCompatible(Oid column_typid,
+							   Oid value_typid,
+							   bool equal_strategy,
+							   Datum value) {
 	if (column_typid == value_typid)
 		return true;
 
 	switch (column_typid)
 	{
 		case INT2OID:
+
 			/*
 			 * If column c0 has INT2OID type and value type is INT4OID, the value may overflow
 			 * INT2OID. For example, where clause condition "c0 = 65539" would become "c0 = 3"
 			 * and will unnecessarily fetch a row with key of 3. This will not affect correctness
-			 * because at upper Postgres layer "c0 = 65539" will be applied again to filter out
+			 * because at upper Postgres layer filtering will be subsequently applied for equality/
+			 * inequality conditions. For example, "c0 = 65539" will be applied again to filter out
 			 * this row. We prefer to bind scan key c0 to account for the common case where INT4OID
 			 * value does not overflow INT2OID, which happens in some system relation scan queries.
+			 *
+			 * For this purpose, specifically for inequalities, we return true when we are sure that
+			 * there isn't a data overflow. For instance, if column c0 has INT2OID and value type is
+			 * INT4OID, and its an inequality strategy, we check if the actual value is within the
+			 * bounds of INT2OID. If yes, then we return true, otherwise false.
 			 */
-			return equal_strategy ? (value_typid == INT4OID || value_typid == INT8OID) : false;
+			return equal_strategy ? (value_typid == INT4OID || value_typid == INT8OID) :
+				   YbIsIntegerInRange(value, value_typid, SHRT_MIN, SHRT_MAX);
 		case INT4OID:
 			return equal_strategy ? (value_typid == INT2OID || value_typid == INT8OID) :
-									value_typid == INT2OID;
+				   YbIsIntegerInRange(value, value_typid, INT_MIN, INT_MAX);
 		case INT8OID:
 			return value_typid == INT2OID || value_typid == INT4OID;
 
@@ -867,7 +900,7 @@ static bool YbCheckScanTypes(YbScanDesc ybScan, YbScanPlan scan_plan, int i, boo
 	return !OidIsValid(valtypid) ||
 			ybScan->key[i].sk_strategy == InvalidStrategy ||
 			YbIsScanCompatible(atttypid, valtypid,
-				ybScan->key[i].sk_strategy == BTEqualStrategyNumber) ||
+				ybScan->key[i].sk_strategy == BTEqualStrategyNumber, ybScan->key[i].sk_argument) ||
 			IsPolymorphicType(valtypid);
 }
 

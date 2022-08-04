@@ -229,7 +229,7 @@ const detailsFormatter = (cell, row) => {
     case 1:
       return <pre>{row.details}</pre>;
     default:
-      return <pre style={{ whiteSpace: 'pre' }}>{row.details.join('\n')}</pre>;
+      return <pre style={{ whiteSpace: 'pre', overflowY: 'auto' }}>{row.details.join('\n')}</pre>;
   }
 };
 

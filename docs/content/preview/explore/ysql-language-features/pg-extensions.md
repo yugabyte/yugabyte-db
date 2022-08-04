@@ -29,18 +29,18 @@ For information about using a specific extension in YugabyteDB, follow the Examp
 
 | Extension | Status | Description | Examples |
 | :-------- | :----- | :---------- | :------ |
-| **PostgreSQL modules** |
+| [PostgreSQL modules](https://www.postgresql.org/docs/11/contrib.html) |
 | [fuzzystrmatch](https://www.postgresql.org/docs/11/fuzzystrmatch.html) | Pre-bundled | Provides several functions to determine similarities and distance between strings. | [Example](#fuzzystrmatch-example) |
 | [pgcrypto](https://www.postgresql.org/docs/11/pgcrypto.html)| Pre-bundled | Provides various cryptographic functions. | [Example](#pgcrypto-example) |
 | [pg_stat_statements](https://www.postgresql.org/docs/11/pgstatstatements.html)| Pre-bundled| Provides a means for tracking execution statistics of all SQL statements executed by a server. | [Example](#pg-stat-statements-example) |
 | [spi](https://www.postgresql.org/docs/11/contrib-spi.html)|Pre-bundled | Lets you use the Server Programming Interface (SPI) to create user-defined functions and stored procedures in C, and to run YSQL queries directly against YugabyteDB. | [Example](#spi-example) |
 | [hstore](https://www.postgresql.org/docs/11/hstore.html) | Pre-bundled | Implements the hstore data type for storing sets of key/value pairs in a single PostgreSQL value. | |
 | [pg_trgm](https://www.postgresql.org/docs/11/pgtrgm.html) | Pre-bundled | Provides functions and operators for determining the similarity of alphanumeric text based on trigram matching, as well as index operator classes that support fast searching for similar strings. | |
-| [postgres_fdw](https://www.postgresql.org/docs/11/postgres-fdw.html) | Pre-bundled | Provides the foreign-data wrapper postgres_fdw, which can be used to access data stored in external PostgreSQL servers. | |
-| [file_fdw](https://www.postgresql.org/docs/11/file-fdw.html) | Pre-bundled | Provides the foreign-data wrapper file_fdw, which can be used to access data files in the server's file system. | |
+| [postgres_fdw](https://www.postgresql.org/docs/11/postgres-fdw.html) | Pre-bundled | Provides the foreign-data wrapper postgres_fdw, which can be used to access data stored in external PostgreSQL servers. | [Example](#postgres-fdw-example) |
+| [file_fdw](https://www.postgresql.org/docs/11/file-fdw.html) | Pre-bundled | Provides the foreign-data wrapper file_fdw, which can be used to access data files in the server's file system. | [Example](#file-fdw-example) |
 | [sslinfo](https://www.postgresql.org/docs/11/sslinfo.html) | Pre-bundled | Provides information about the SSL certificate that the current client provided when connecting to PostgreSQL. | |
 | [tablefunc](https://www.postgresql.org/docs/11/tablefunc.html) | Pre-bundled | Provides several table functions. For example, `normal_rand()` creates values, picked using a pseudorandom generator, from an ideal normal distribution. You specify how many values you want, and the mean and standard deviation of the ideal distribution. You use it in the same way that you use `generate_series()` | [Example](#tablefunc-example) |
-| [uuid-ossp](https://www.postgresql.org/docs/11/uuid-ossp.html) | Requires installation | Provides functions to generate universally unique identifiers (UUIDs), and functions to produce certain special UUID constants. | [Install and example](#uuid-ossp-example) |
+| [uuid-ossp](https://www.postgresql.org/docs/11/uuid-ossp.html) | Pre-bundled | Provides functions to generate universally unique identifiers (UUIDs), and functions to produce certain special UUID constants. | [Example](#uuid-ossp-example) |
 | **Other** ||||
 | [pg_hint_plan](https://pghintplan.osdn.jp/pg_hint_plan.html) | Pre-bundled | Tweak execution plans using "hints", which are descriptions in the form of SQL comments. | [Example](../../query-1-performance/pg-hint-plan/#root) |
 | [PGAudit](https://www.pgaudit.org/) | Pre-bundled | The PostgreSQL Audit Extension (pgAudit) provides detailed session and/or object audit logging via the standard PostgreSQL logging facility. | |
@@ -382,6 +382,27 @@ IMPORT FOREIGN SCHEMA foreign_schema_name FROM SERVER my_server INTO local_schem
 
 You can execute SELECT statements on the foreign tables to access the data in the corresponding remote tables.
 
+### uuid-ossp example
+
+First, install the extension:
+
+```sql
+CREATE EXTENSION "uuid-ossp";
+```
+
+Connect using `ysqlsh` and run the following:
+
+```sql
+SELECT uuid_generate_v1(), uuid_generate_v4(), uuid_nil();
+```
+
+```output
+           uuid_generate_v1           |           uuid_generate_v4           |               uuid_nil
+--------------------------------------+--------------------------------------+--------------------------------------
+ 69975ce4-d827-11e9-b860-bf2e5a7e1380 | 088a9b6c-46d8-4276-852b-64908b06a503 | 00000000-0000-0000-0000-000000000000
+(1 row)
+```
+
 ### postgresql-hll example
 
 First, install `postgres-hll` [from source](https://github.com/citusdata/postgresql-hll#from-source) locally in a PostgreSQL instance. Use the same PostgreSQL version as that incorporated into YugabyteDB.
@@ -417,30 +438,6 @@ yugabyte=# SELECT hll_cardinality(set) FROM helloworld WHERE id = 1;
  hll_cardinality
 -----------------
                2
-(1 row)
-```
-
-### uuid-ossp example
-
-The easiest way to install the extension is to copy the files from an existing PostgreSQL installation into Yugabyte, and then create the extension.
-
-```sh
-$ cp -v "$(pg_config --pkglibdir)"/*uuid-ossp*.so "$(yb_pg_config --pkglibdir)" &&
-  cp -v "$(pg_config --sharedir)"/extension/*uuid-ossp*.sql "$(yb_pg_config --sharedir)"/extension &&
-  cp -v "$(pg_config --sharedir)"/extension/*uuid-ossp*.control "$(yb_pg_config --sharedir)"/extension &&
-  ./bin/ysqlsh -c "CREATE EXTENSION \"uuid-ossp\";"
-```
-
-Connect using `ysqlsh` and run the following:
-
-```sql
-SELECT uuid_generate_v1(), uuid_generate_v4(), uuid_nil();
-```
-
-```output
-           uuid_generate_v1           |           uuid_generate_v4           |               uuid_nil
---------------------------------------+--------------------------------------+--------------------------------------
- 69975ce4-d827-11e9-b860-bf2e5a7e1380 | 088a9b6c-46d8-4276-852b-64908b06a503 | 00000000-0000-0000-0000-000000000000
 (1 row)
 ```
 

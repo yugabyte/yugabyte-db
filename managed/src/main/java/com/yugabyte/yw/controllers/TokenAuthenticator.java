@@ -21,6 +21,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.time.Duration;
 import org.pac4j.core.profile.CommonProfile;
 import org.pac4j.core.profile.ProfileManager;
 import org.pac4j.play.PlayWebContext;
@@ -41,7 +42,8 @@ public class TokenAuthenticator extends Action.Simple {
           "/maintenance_windows/page",
           "/maintenance_windows/list",
           "/backups/page",
-          "/schedules/page");
+          "/schedules/page",
+          "/fetch_package");
   public static final String COOKIE_AUTH_TOKEN = "authToken";
   public static final String AUTH_TOKEN_HEADER = "X-AUTH-TOKEN";
   public static final String COOKIE_API_TOKEN = "apiToken";
@@ -95,14 +97,14 @@ public class TokenAuthenticator extends Action.Simple {
       if (user == null) {
         // Defaulting to regular flow to support dual login.
         token = fetchToken(ctx, false /* isApiToken */);
-        user = Users.authWithToken(token);
+        user = Users.authWithToken(token, getAuthTokenExpiry());
         if (user != null && !user.getRole().equals(Role.SuperAdmin)) {
           user = null; // We want to only allow SuperAdmins access.
         }
       }
     } else {
       token = fetchToken(ctx, false /* isApiToken */);
-      user = Users.authWithToken(token);
+      user = Users.authWithToken(token, getAuthTokenExpiry());
     }
     if (user == null && cookieValue == null) {
       token = fetchToken(ctx, true /* isApiToken */);
@@ -171,14 +173,14 @@ public class TokenAuthenticator extends Action.Simple {
     return delegate.call(ctx);
   }
 
-  public static boolean superAdminAuthentication(Http.Context ctx) {
+  public boolean superAdminAuthentication(Http.Context ctx) {
     String token = fetchToken(ctx, true);
     Users user;
     if (token != null) {
       user = Users.authWithApiToken(token);
     } else {
       token = fetchToken(ctx, false);
-      user = Users.authWithToken(token);
+      user = Users.authWithToken(token, getAuthTokenExpiry());
     }
     if (user != null) {
       boolean isSuperAdmin = user.getRole() == Role.SuperAdmin;
@@ -194,7 +196,7 @@ public class TokenAuthenticator extends Action.Simple {
   }
 
   // TODO: Consider changing to a method annotation
-  public static void superAdminOrThrow(Http.Context ctx) {
+  public void superAdminOrThrow(Http.Context ctx) {
     if (!superAdminAuthentication(ctx)) {
       throw new PlatformServiceException(
           UNAUTHORIZED, "Only Super Admins can perform this operation.");
@@ -261,5 +263,9 @@ public class TokenAuthenticator extends Action.Simple {
     // If the user is backupAdmin, they don't get further access.
     return user.getRole() != Role.BackupAdmin;
     // If the user has reached here, they have complete access.
+  }
+
+  private Duration getAuthTokenExpiry() {
+    return config.getDuration("yb.authtoken.token_expiry");
   }
 }

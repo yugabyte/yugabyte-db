@@ -19,6 +19,8 @@ import java.util.Comparator;
 import java.util.Date;
 import java.util.List;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.io.FileUtils;
@@ -149,5 +151,60 @@ public class SupportBundleUtil {
     } else {
       log.info("Failed to delete file with path: " + filePath.toString());
     }
+  }
+
+  // Filters a list of log file paths with a regex pattern and between given start and end dates
+  public List<String> filterFilePathsBetweenDates(
+      List<String> logFilePaths,
+      String ybcLogsRegexPattern,
+      Date startDate,
+      Date endDate,
+      boolean isYbc)
+      throws ParseException {
+    // Filtering the file names based on regex
+    logFilePaths = filterList(logFilePaths, ybcLogsRegexPattern);
+
+    // Sort the files in descending order of date (done implicitly as date format is yyyyMMdd)
+    Collections.sort(logFilePaths, Collections.reverseOrder());
+
+    // Core logic for a loose bound filtering based on dates (little bit tricky):
+    // Gets all the files which have logs for requested time period,
+    // even when partial log statements present in the file.
+    // ----------------------------------------
+    // Ex: Assume log files are as follows (d1 = day 1, d2 = day 2, ... in sorted order)
+    // => d1.gz, d2.gz, d5.gz
+    // => And user requested {startDate = d3, endDate = d6}
+    // ----------------------------------------
+    // => Output files will be: {d2.gz, d5.gz}
+    // Due to d2.gz having all the logs from d2-d4, therefore overlapping with given startDate
+    Date minDate = null;
+    List<String> filteredLogFilePaths = new ArrayList<>();
+    for (String filePath : logFilePaths) {
+      String fileName =
+          filePath.substring(filePath.lastIndexOf('/') + 1, filePath.lastIndexOf('-'));
+      String trimmedFilePath = null;
+      if (isYbc) {
+        // Need trimmed file path starting from {./controller} for above function
+        trimmedFilePath = filePath.split("ybc-data/")[1];
+      } else {
+        // Need trimmed file path starting from {./master, ./tserver} for above function
+        trimmedFilePath = filePath.split("yb-data/")[1];
+      }
+      Matcher fileNameMatcher = Pattern.compile(ybcLogsRegexPattern).matcher(filePath);
+      if (fileNameMatcher.matches()) {
+        String fileNameSdfPattern = "yyyyMMdd";
+        // Uses capturing and non capturing groups in regex pattern for easier retrieval of
+        // neccessary info. Group 2 = the "yyyyMMdd" format in the file name.
+        Date fileDate = new SimpleDateFormat(fileNameSdfPattern).parse(fileNameMatcher.group(2));
+        if (checkDateBetweenDates(fileDate, startDate, endDate)) {
+          filteredLogFilePaths.add(trimmedFilePath);
+        } else if ((minDate == null && fileDate.before(startDate))
+            || (minDate != null && fileDate.equals(minDate))) {
+          filteredLogFilePaths.add(trimmedFilePath);
+          minDate = fileDate;
+        }
+      }
+    }
+    return filteredLogFilePaths;
   }
 }

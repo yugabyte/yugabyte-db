@@ -83,6 +83,8 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang.StringUtils;
@@ -107,6 +109,9 @@ public class NodeManager extends DevopsBase {
   static final String VERIFY_SERVER_ENDPOINT_GFLAG = "verify_server_endpoint";
   static final String SKIP_CERT_VALIDATION = "yb.tls.skip_cert_validation";
   public static final String POSTGRES_MAX_MEM_MB = "yb.dbmem.postgres.max_mem_mb";
+  public static final String YBC_DEFAULT_VERSION = "ybc.releases.stable_version";
+  private static final String YBC_PACKAGE_REGEX = ".+ybc(.*).tar.gz";
+  private static final Pattern YBC_PACKAGE_PATTERN = Pattern.compile(YBC_PACKAGE_REGEX);
 
   @Inject ReleaseManager releaseManager;
 
@@ -656,7 +661,7 @@ public class NodeManager extends DevopsBase {
     }
 
     NodeDetails node = universe.getNode(taskParam.nodeName);
-    String ybServerPackage = null, ybcPackage = null;
+    String ybServerPackage = null, ybcPackage = null, ybcDir = null;
     Map<String, String> ybcFlags = new HashMap<>();
     if (taskParam.ybSoftwareVersion != null) {
       ReleaseManager.ReleaseMetadata releaseMetadata =
@@ -679,9 +684,28 @@ public class NodeManager extends DevopsBase {
       }
     }
 
-    boolean canConfigureYbc = CommonUtils.canConfigureYbc(universe);
-    if (canConfigureYbc) {
-      ybcPackage = userIntent.ybcPackagePath;
+    if (universe.isYbcEnabled()) {
+      ReleaseManager.ReleaseMetadata releaseMetadata;
+      if (StringUtils.isEmpty(taskParam.ybcSoftwareVersion)) {
+        releaseMetadata =
+            releaseManager.getYbcReleaseByVersion(
+                runtimeConfigFactory.globalRuntimeConf().getString(YBC_DEFAULT_VERSION));
+      } else {
+        releaseMetadata = releaseManager.getYbcReleaseByVersion(taskParam.ybcSoftwareVersion);
+      }
+      ybcPackage = releaseMetadata.getFilePath(taskParam.getRegion());
+      if (StringUtils.isBlank(ybcPackage)) {
+        throw new RuntimeException("Ybc package cannot be empty with ybc enabled");
+      }
+      Matcher matcher = YBC_PACKAGE_PATTERN.matcher(ybcPackage);
+      boolean matches = matcher.matches();
+      if (!matches) {
+        throw new RuntimeException(
+            String.format(
+                "Ybc package: %s does not follow the format required: %s",
+                ybcPackage, YBC_PACKAGE_REGEX));
+      }
+      ybcDir = "ybc" + matcher.group(1);
       ybcFlags = GFlagsUtil.getYbcFlags(taskParam);
     }
 
@@ -749,9 +773,11 @@ public class NodeManager extends DevopsBase {
                   .forUniverse(universe)
                   .getString("yb.releases.num_releases_to_keep_default"));
         }
-        if (canConfigureYbc) {
+        if (universe.isYbcEnabled()) {
           subcommand.add("--ybc_package");
           subcommand.add(ybcPackage);
+          subcommand.add("--ybc_dir");
+          subcommand.add(ybcDir);
         }
         if ((taskParam.enableNodeToNodeEncrypt || taskParam.enableClientToNodeEncrypt)) {
           subcommand.addAll(
@@ -772,10 +798,6 @@ public class NodeManager extends DevopsBase {
           }
           subcommand.add("--package");
           subcommand.add(ybServerPackage);
-          if (canConfigureYbc) {
-            subcommand.add("--ybc_package");
-            subcommand.add(ybcPackage);
-          }
           String processType = taskParam.getProperty("processType");
           if (processType == null || !VALID_CONFIGURE_PROCESS_TYPES.contains(processType)) {
             throw new RuntimeException("Invalid processType: " + processType);
@@ -1032,7 +1054,7 @@ public class NodeManager extends DevopsBase {
         break;
     }
 
-    if (canConfigureYbc) {
+    if (universe.isYbcEnabled()) {
       subcommand.add("--ybc_flags");
       subcommand.add(Json.stringify(Json.toJson(ybcFlags)));
       subcommand.add("--configure_ybc");

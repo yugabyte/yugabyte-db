@@ -3,6 +3,7 @@ title: Peering connections
 headerTitle:
 linkTitle: Peering connections
 description: Manage peering connections to your cloud VPCs.
+headcontent: Manage peering connections to your VPCs
 menu:
   preview_yugabyte-cloud:
     identifier: cloud-add-peering

@@ -307,7 +307,7 @@ TEST_F(ClientStressTest_LowMemory, TestMemoryThrottling) {
     for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
       for (const auto* metric : { &METRIC_leader_memory_pressure_rejections,
                                   &METRIC_follower_memory_pressure_rejections }) {
-        auto result = cluster_->tablet_server(i)->GetInt64Metric(
+        auto result = cluster_->tablet_server(i)->GetMetric<int64>(
             &METRIC_ENTITY_tablet, nullptr, metric, "value");
         if (result.ok()) {
           total_num_rejections += *result;

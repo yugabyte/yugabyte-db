@@ -225,11 +225,6 @@ extern MemoryContext GenerationContextCreate(MemoryContext parent,
 #define SLAB_DEFAULT_BLOCK_SIZE		(8 * 1024)
 #define SLAB_LARGE_BLOCK_SIZE		(8 * 1024 * 1024)
 
-#define PG_MEM_TRACKER_INIT \
-	{ \
-		0, 0, 0, 0 \
-	}
-
 /*
  * Tracking memory consumption for both PG backend and pggate tcmalloc acutal
  * heap consumption.
@@ -257,6 +252,15 @@ typedef struct YbPgMemTracker
 	 * beginning of current statement
 	 */
 	Size stmt_max_mem_base_bytes;
+
+	/*
+	 * A flag to tell if pggate is inititated. This is used to track the memory
+	 * used by PG before pggate is started.
+	 * Note: the design here is that this flag is a "link" to MemTracker in the
+	 * pggate. It pushes down fundamental memory work to it, while this layer
+	 * stays as light as possible in PG.
+	 */
+	bool pggate_alive;
 } YbPgMemTracker;
 
 extern YbPgMemTracker PgMemTracker;

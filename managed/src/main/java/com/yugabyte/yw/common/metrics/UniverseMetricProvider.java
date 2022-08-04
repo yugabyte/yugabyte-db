@@ -21,6 +21,7 @@ import com.yugabyte.yw.common.AccessKeyRotationUtil;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.HashicorpVaultConfigParams;
+import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AccessKeyId;
 import com.yugabyte.yw.models.Customer;
@@ -49,6 +50,8 @@ public class UniverseMetricProvider implements MetricsProvider {
 
   @Inject AccessKeyRotationUtil accessKeyRotationUtil;
 
+  @Inject MetricService metricService;
+
   private static final List<PlatformMetrics> UNIVERSE_METRICS =
       ImmutableList.of(
           PlatformMetrics.UNIVERSE_EXISTS,
@@ -73,130 +76,141 @@ public class UniverseMetricProvider implements MetricsProvider {
     Map<AccessKeyId, AccessKey> allAccessKeys = accessKeyRotationUtil.createAllAccessKeysMap();
     for (Customer customer : Customer.getAll()) {
       for (Universe universe : Universe.getAllWithoutResources(customer)) {
-        MetricSaveGroup.MetricSaveGroupBuilder universeGroup = MetricSaveGroup.builder();
-        universeGroup.metric(
-            createUniverseMetric(customer, universe, PlatformMetrics.UNIVERSE_EXISTS, STATUS_OK));
-        universeGroup.metric(
-            createUniverseMetric(
-                customer,
-                universe,
-                PlatformMetrics.UNIVERSE_PAUSED,
-                statusValue(universe.getUniverseDetails().universePaused)));
-        universeGroup.metric(
-            createUniverseMetric(
-                customer,
-                universe,
-                PlatformMetrics.UNIVERSE_UPDATE_IN_PROGRESS,
-                statusValue(universe.getUniverseDetails().updateInProgress)));
-        universeGroup.metric(
-            createUniverseMetric(
-                customer,
-                universe,
-                PlatformMetrics.UNIVERSE_BACKUP_IN_PROGRESS,
-                statusValue(universe.getUniverseDetails().backupInProgress)));
-        Double encryptionKeyExpiryDays =
-            getEncryptionKeyExpiryDays(
-                activeEncryptionKeys.get(universe.getUniverseUUID()), kmsConfigMap);
-        if (encryptionKeyExpiryDays != null) {
+        try {
+          MetricSaveGroup.MetricSaveGroupBuilder universeGroup = MetricSaveGroup.builder();
+          universeGroup.metric(
+              createUniverseMetric(customer, universe, PlatformMetrics.UNIVERSE_EXISTS, STATUS_OK));
           universeGroup.metric(
               createUniverseMetric(
                   customer,
                   universe,
-                  PlatformMetrics.UNIVERSE_ENCRYPTION_KEY_EXPIRY_DAY,
-                  encryptionKeyExpiryDays));
-        }
-        Double sshKeyExpiryDays =
-            accessKeyRotationUtil.getSSHKeyExpiryDays(universe, allAccessKeys);
-        if (sshKeyExpiryDays != null) {
+                  PlatformMetrics.UNIVERSE_PAUSED,
+                  statusValue(universe.getUniverseDetails().universePaused)));
           universeGroup.metric(
               createUniverseMetric(
                   customer,
                   universe,
-                  PlatformMetrics.UNIVERSE_SSH_KEY_EXPIRY_DAY,
-                  sshKeyExpiryDays));
-        }
-        universeGroup.metric(
-            createUniverseMetric(
-                customer,
-                universe,
-                PlatformMetrics.UNIVERSE_REPLICATION_FACTOR,
-                universe.getUniverseDetails().getPrimaryCluster().userIntent.replicationFactor));
-
-        if (universe.getUniverseDetails().nodeDetailsSet != null) {
-          for (NodeDetails nodeDetails : universe.getUniverseDetails().nodeDetailsSet) {
-            if (nodeDetails.cloudInfo == null || nodeDetails.cloudInfo.private_ip == null) {
-              log.warn(
-                  "Universe {} does not seem to be created correctly"
-                      + " - skipping per-node metrics",
-                  universe.getUniverseUUID());
-              break;
-            }
-
-            String ipAddress = nodeDetails.cloudInfo.private_ip;
+                  PlatformMetrics.UNIVERSE_UPDATE_IN_PROGRESS,
+                  statusValue(universe.getUniverseDetails().updateInProgress)));
+          universeGroup.metric(
+              createUniverseMetric(
+                  customer,
+                  universe,
+                  PlatformMetrics.UNIVERSE_BACKUP_IN_PROGRESS,
+                  statusValue(universe.getUniverseDetails().backupInProgress)));
+          Double encryptionKeyExpiryDays =
+              getEncryptionKeyExpiryDays(
+                  activeEncryptionKeys.get(universe.getUniverseUUID()), kmsConfigMap);
+          if (encryptionKeyExpiryDays != null) {
             universeGroup.metric(
-                createNodeMetric(
+                createUniverseMetric(
                     customer,
                     universe,
-                    PlatformMetrics.UNIVERSE_NODE_FUNCTION,
-                    ipAddress,
-                    nodeDetails.masterHttpPort,
-                    "master_export",
-                    statusValue(nodeDetails.isMaster)));
-            universeGroup.metric(
-                createNodeMetric(
-                    customer,
-                    universe,
-                    PlatformMetrics.UNIVERSE_NODE_FUNCTION,
-                    ipAddress,
-                    nodeDetails.tserverHttpPort,
-                    "tserver_export",
-                    statusValue(nodeDetails.isTserver)));
-            universeGroup.metric(
-                createNodeMetric(
-                    customer,
-                    universe,
-                    PlatformMetrics.UNIVERSE_NODE_FUNCTION,
-                    ipAddress,
-                    nodeDetails.ysqlServerHttpPort,
-                    "ysql_export",
-                    statusValue(nodeDetails.isYsqlServer)));
-            universeGroup.metric(
-                createNodeMetric(
-                    customer,
-                    universe,
-                    PlatformMetrics.UNIVERSE_NODE_FUNCTION,
-                    ipAddress,
-                    nodeDetails.yqlServerHttpPort,
-                    "cql_export",
-                    statusValue(nodeDetails.isYqlServer)));
-            universeGroup.metric(
-                createNodeMetric(
-                    customer,
-                    universe,
-                    PlatformMetrics.UNIVERSE_NODE_FUNCTION,
-                    ipAddress,
-                    nodeDetails.redisServerHttpPort,
-                    "redis_export",
-                    statusValue(nodeDetails.isRedisServer)));
-            boolean hasNodeExporter =
-                !CloudType.kubernetes.equals(universe.getNodeDeploymentMode(nodeDetails));
-            universeGroup.metric(
-                createNodeMetric(
-                    customer,
-                    universe,
-                    PlatformMetrics.UNIVERSE_NODE_FUNCTION,
-                    ipAddress,
-                    nodeDetails.nodeExporterPort,
-                    "node_export",
-                    statusValue(hasNodeExporter)));
+                    PlatformMetrics.UNIVERSE_ENCRYPTION_KEY_EXPIRY_DAY,
+                    encryptionKeyExpiryDays));
           }
+          Double sshKeyExpiryDays =
+              accessKeyRotationUtil.getSSHKeyExpiryDays(universe, allAccessKeys);
+          if (sshKeyExpiryDays != null) {
+            universeGroup.metric(
+                createUniverseMetric(
+                    customer,
+                    universe,
+                    PlatformMetrics.UNIVERSE_SSH_KEY_EXPIRY_DAY,
+                    sshKeyExpiryDays));
+          }
+          universeGroup.metric(
+              createUniverseMetric(
+                  customer,
+                  universe,
+                  PlatformMetrics.UNIVERSE_REPLICATION_FACTOR,
+                  universe.getUniverseDetails().getPrimaryCluster().userIntent.replicationFactor));
+
+          if (universe.getUniverseDetails().nodeDetailsSet != null) {
+            for (NodeDetails nodeDetails : universe.getUniverseDetails().nodeDetailsSet) {
+              if (nodeDetails.cloudInfo == null || nodeDetails.cloudInfo.private_ip == null) {
+                log.warn(
+                    "Universe {} does not seem to be created correctly"
+                        + " - skipping per-node metrics",
+                    universe.getUniverseUUID());
+                break;
+              }
+
+              String ipAddress = nodeDetails.cloudInfo.private_ip;
+              universeGroup.metric(
+                  createNodeMetric(
+                      customer,
+                      universe,
+                      PlatformMetrics.UNIVERSE_NODE_FUNCTION,
+                      ipAddress,
+                      nodeDetails.masterHttpPort,
+                      "master_export",
+                      statusValue(nodeDetails.isMaster)));
+              universeGroup.metric(
+                  createNodeMetric(
+                      customer,
+                      universe,
+                      PlatformMetrics.UNIVERSE_NODE_FUNCTION,
+                      ipAddress,
+                      nodeDetails.tserverHttpPort,
+                      "tserver_export",
+                      statusValue(nodeDetails.isTserver)));
+              universeGroup.metric(
+                  createNodeMetric(
+                      customer,
+                      universe,
+                      PlatformMetrics.UNIVERSE_NODE_FUNCTION,
+                      ipAddress,
+                      nodeDetails.ysqlServerHttpPort,
+                      "ysql_export",
+                      statusValue(nodeDetails.isYsqlServer)));
+              universeGroup.metric(
+                  createNodeMetric(
+                      customer,
+                      universe,
+                      PlatformMetrics.UNIVERSE_NODE_FUNCTION,
+                      ipAddress,
+                      nodeDetails.yqlServerHttpPort,
+                      "cql_export",
+                      statusValue(nodeDetails.isYqlServer)));
+              universeGroup.metric(
+                  createNodeMetric(
+                      customer,
+                      universe,
+                      PlatformMetrics.UNIVERSE_NODE_FUNCTION,
+                      ipAddress,
+                      nodeDetails.redisServerHttpPort,
+                      "redis_export",
+                      statusValue(nodeDetails.isRedisServer)));
+              boolean hasNodeExporter =
+                  !CloudType.kubernetes.equals(universe.getNodeDeploymentMode(nodeDetails));
+              universeGroup.metric(
+                  createNodeMetric(
+                      customer,
+                      universe,
+                      PlatformMetrics.UNIVERSE_NODE_FUNCTION,
+                      ipAddress,
+                      nodeDetails.nodeExporterPort,
+                      "node_export",
+                      statusValue(hasNodeExporter)));
+            }
+          }
+          universeGroup.cleanMetricFilter(
+              MetricFilter.builder()
+                  .metricNames(UNIVERSE_METRICS)
+                  .sourceUuid(universe.getUniverseUUID())
+                  .build());
+          metricSaveGroups.add(universeGroup.build());
+          metricService.setOkStatusMetric(
+              buildMetricTemplate(PlatformMetrics.UNIVERSE_METRIC_COLLECTION_STATUS, universe));
+        } catch (Exception e) {
+          log.warn(
+              "Metric collection failed for universe {} with ",
+              universe.getUniverseUUID().toString(),
+              e);
+          metricService.setFailureStatusMetric(
+              buildMetricTemplate(PlatformMetrics.UNIVERSE_METRIC_COLLECTION_STATUS, universe));
         }
-        universeGroup.cleanMetricFilter(
-            MetricFilter.builder()
-                .metricNames(UNIVERSE_METRICS)
-                .sourceUuid(universe.getUniverseUUID())
-                .build());
-        metricSaveGroups.add(universeGroup.build());
       }
     }
     return metricSaveGroups;

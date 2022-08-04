@@ -7,6 +7,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.anyBoolean;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -93,6 +94,9 @@ public class UniverseLogsComponentTest extends FakeDBApplication {
         .thenReturn(testRegexPattern);
     when(mockSupportBundleUtil.getDataDirPath(any(), any(), any(), any()))
         .thenReturn(fakeSupportBundleBasePath);
+    when(mockSupportBundleUtil.filterFilePathsBetweenDates(
+            any(), any(), any(), any(), anyBoolean()))
+        .thenCallRealMethod();
     lenient().when(mockSupportBundleUtil.getTodaysDate()).thenCallRealMethod();
     when(mockSupportBundleUtil.filterList(any(), any())).thenCallRealMethod();
     when(mockSupportBundleUtil.checkDateBetweenDates(any(), any(), any())).thenCallRealMethod();

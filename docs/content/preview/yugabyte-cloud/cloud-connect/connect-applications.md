@@ -2,7 +2,7 @@
 title: Connect applications
 linkTitle: Connect applications
 description: Connect applications to YugabyteDB Managed clusters
-headcontent:
+headcontent: Get the database connection parameters for your application
 image: /images/section_icons/deploy/enterprise.png
 menu:
   preview_yugabyte-cloud:
@@ -17,8 +17,6 @@ Applications connect to and interact with YugabyteDB using API client libraries 
 YugabyteDB Managed clusters have SSL (encryption in-transit) enabled so make sure your driver details include SSL parameters.
 
 For examples of applications that connect to YugabyteDB Managed using common drivers, refer to [Build an application](../../../develop/build-apps/).
-
-For examples of connecting applications to YugabyteDB Managed, refer to [Example applications](../../cloud-examples/).
 
 {{< warning title="IP allow list" >}}
 
@@ -35,16 +33,21 @@ To connect a cluster to an application:
 1. On the **Clusters** tab, select the cluster.
 1. Click **Connect**.
 1. Click **Connect to your Application**.
-1. Click **Download CA Cert** and install the certificate on the computer running the application.
+1. Click **Download CA Cert** and install the cluster certificate on the computer running the application.
 1. Choose the API used by your application - YSQL or YCQL.
 
     - Choosing YSQL displays a connection string you can add to your application.
-
     - Choosing YCQL displays connection parameters that you will use to connect your application.
 
-### YSQL
+### Connection parameters
 
-YSQL applications can use the connection string to connect. Here's an example of a generated `ysqlsh` string:
+{{< tabpane code=false >}}
+
+  {{% tab header="YSQL" lang="YSQL" %}}
+
+Select **Connection String** to display the string YSQL applications can use to connect. Select **Parameters** to display the individual parameters.
+
+Here's an example of a generated `ysqlsh` string:
 
 ```sh
 postgresql://<DB USER>:<DB PASSWORD>@4242424.aws.ybdb.io:5433/yugabyte? \
@@ -73,13 +76,15 @@ If you're connecting to a Hasura Cloud project, which doesn't use the CA certifi
 
 For information on using other SSL modes, refer to [SSL modes in YSQL](../../cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql).
 
-### YCQL
+  {{% /tab %}}
+
+  {{% tab header="YCQL" lang="YCQL" %}}
 
 To connect a YCQL application, use the connection parameters in your application to connect to your cluster. The parameters are:
 
-- LocalDatacenter - The name of the local datacenter for the cluster.
-- Host - The cluster host name.
-- Port - The port number of the YCQL client API on the YugabyteDB database (9042).
+- **LocalDatacenter** - The name of the local data center for the cluster.
+- **Host** - The cluster host name.
+- **Port** - The port number of the YCQL client API on the YugabyteDB database (9042).
 
 To connect your application, do the following:
 
@@ -88,6 +93,10 @@ To connect your application, do the following:
 - Initialize SSLContext using the downloaded root certificate.
 
 For an example of building a Java application connected to YugabyteDB Managed using the Yugabyte Java Driver for YCQL v4.6, refer to [Connect a YCQL Java application](../../cloud-examples/connect-ycql-application/).
+
+  {{% /tab %}}
+
+{{< /tabpane >}}
 
 <!--
 ## Run the sample application

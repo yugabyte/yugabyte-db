@@ -65,6 +65,7 @@ public class ConfigHelper {
     DockerRegionMetadata("Docker Region Metadata", "configs/docker-region-metadata.yml"),
     DockerInstanceTypeMetadata(null, "configs/docker-instance-type-metadata.yml"),
     SoftwareReleases("Software Releases"),
+    YbcSoftwareReleases("Ybc Software Releases"),
     SoftwareVersion("Software Version"),
     YugawareMetadata("Yugaware Metadata"),
     Security("Security Level");
