@@ -1932,6 +1932,9 @@ class ControlScript(object):
                     self.configs.saved_data["cloud_region"] = cloud_location[1]
                     self.configs.saved_data["cloud_zone"] = cloud_location[2]
                 else:
+                    Output.print_out(Output.make_red("ERROR") +
+                        ": Incorrect format used for flag --cloud_location. " +
+                        "Please use cloud.region.zone format.")
                     has_errors = True
 
             if args.fault_tolerance is not None:
