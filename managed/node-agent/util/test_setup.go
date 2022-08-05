@@ -7,12 +7,13 @@ package util
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/gorilla/mux"
 	"net/http"
 	"net/http/httptest"
 	"node-agent/model"
 	"os"
 	"strings"
+
+	"github.com/gorilla/mux"
 )
 
 const (
