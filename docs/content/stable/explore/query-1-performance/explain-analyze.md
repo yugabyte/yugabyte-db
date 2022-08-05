@@ -29,15 +29,15 @@ EXPLAIN [ ( option [, ...] ) ] sql_statement;
 
 The *option* and its values are described in the following table. The most important option is `ANALYZE`.
 
-| Option  | Value                           | Description                                                  |
-| :------ | :------------------------------ | :----------------------------------------------------------- |
-| ANALYZE | boolean                         | Returns additional run-time statistics, such as time spent in each plan node, number of processed rows, the peak memory usage during a query execution, and so on, by executing *sql_statement* (as opposed to just creating the plan, as EXPLAIN without ANALYZE does).</br> The output of *sql_statement* is discarded.</br> The output includes the peak memory usage during the course of execution of the query. </br> To perform analysis of any data-modifying statement (such as INSERT, UPDATE, and DELETE) without affecting the data, you must wrap EXPLAIN ANALYZE in a transaction using the following syntax:<br/>BEGIN;<br/>EXPLAIN ANALYZE *sql_statement*;<br/>ROLLBACK; |
-| VERBOSE | boolean                         | Displays detailed information about the query plan. <br/>The default value is FALSE. |
-| COSTS   | boolean                         | Provides the estimated initial and total costs of each plan node. In addition, estimates the number of rows and the width of each row in the query plan.<br/>The default value is TRUE. |
-| BUFFERS | boolean                         | Provides information about the most input-output intensive parts of the query. <br/>The default value is FALSE. <br/>You can only use this option when ANALYZE is set to TRUE. |
-| TIMING  | boolean                         | Provides information about the actual startup time and the time spent in each node of the output. <br/>The default value is TRUE. <br/>You can only use this option when ANALYZE is set to TRUE. |
-| SUMMARY | boolean                         | Provides additional information, such as the total time after the query plan. The value of this option is TRUE when ANALYZE is set to TRUE. |
-| FORMAT  | { TEXT \| XML \| JSON \| YAML } | Allows you to define the query plan output format. <br/>The default value is TEXT. |
+| Option  | Value | Description |
+| :----- | :---- | :---------- |
+| ANALYZE | boolean | Returns additional run-time statistics, such as time spent in each plan node, number of processed rows, the peak memory usage during a query execution, and so on, by executing *sql_statement* (as opposed to just creating the plan, as EXPLAIN without ANALYZE does).</br> The output of *sql_statement* is discarded.</br> The output includes the peak memory usage during the course of execution of the query. </br> To perform analysis of any data-modifying statement (such as INSERT, UPDATE, and DELETE) without affecting the data, you must wrap EXPLAIN ANALYZE in a transaction using the following syntax:<br/>BEGIN;<br/>EXPLAIN ANALYZE *sql_statement*;<br/>ROLLBACK; |
+| VERBOSE | boolean | Displays detailed information about the query plan. <br/>The default value is FALSE. |
+| COSTS | boolean | Provides the estimated initial and total costs of each plan node. In addition, estimates the number of rows and the width of each row in the query plan.<br/>The default value is TRUE. |
+| BUFFERS | boolean | Provides information about the most input-output intensive parts of the query. <br/>The default value is FALSE. <br/>You can only use this option when ANALYZE is set to TRUE. |
+| TIMING | boolean | Provides information about the actual startup time and the time spent in each node of the output. <br/>The default value is TRUE. <br/>You can only use this option when ANALYZE is set to TRUE. |
+| SUMMARY | boolean | Provides additional information, such as the total time after the query plan. The value of this option is TRUE when ANALYZE is set to TRUE. |
+| FORMAT | { TEXT \| XML \| JSON \| YAML } | Allows you to define the query plan output format. <br/>The default value is TEXT. |
 
 ### Examples
 
@@ -56,7 +56,7 @@ yugabyte=# INSERT INTO employees (k1, k2, v1, v2)
 VALUES (1, 2.0, 3, 'a'), (2, 3.0, 4, 'b'), (3, 4.0, 5, 'c');
 ```
 
-To check the query plan for simple select, execute the following:
+To check the query plan for a basic select query, execute the following:
 
 ```sql
 yugabyte=# EXPLAIN SELECT * FROM employees WHERE k1 = 1;
@@ -137,9 +137,9 @@ yugabyte=# EXPLAIN ANALYZE SELECT * FROM employees a LEFT JOIN LATERAL
 (13 rows)
 ```
 
-The server output from the preceding example includes the number of rescans (loops) each node performed, the number of milliseconds passed before the first row was returned, total time before the last tuple was returned by each execution node, and the number of tuples returned by each execution node.
+The server output from the preceding example includes the number of re-scans (loops) each node performed, the number of milliseconds passed before the first row was returned, total time before the last tuple was returned by each execution node, and the number of tuples returned by each execution node.
 
-`EXPLAIN`, on the other hand,  does not provide this additional information, as shown in the following examples:
+`EXPLAIN`, on the other hand, does not provide this additional information, as shown in the following examples:
 
 ```sql
 yugabyte=# EXPLAIN SELECT * FROM employees a LEFT JOIN LATERAL

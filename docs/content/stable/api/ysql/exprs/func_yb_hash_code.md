@@ -50,8 +50,8 @@ EXPLAIN ANALYZE SELECT * FROM sample_table WHERE yb_hash_code(x,y) <= 128 AND yb
 -----------------------------------------------------------------------------------------------------------------------------------
  Index Scan using sample_table_pkey on sample_table  (cost=0.00..5.88 rows=16 width=12) (actual time=0.905..0.919 rows=18 loops=1)
    Index Cond: ((yb_hash_code(x, y) <= 128) AND (yb_hash_code(x, y) >= 0))
- Planning Time: 0.110 ms
- Execution Time: 0.991 ms
+ Planning Time: 0.071 ms
+ Execution Time: 0.600 ms
  Peak Memory Usage: 8 kB
 (5 rows)
 ```
@@ -79,15 +79,14 @@ EXPLAIN ANALYZE SELECT * FROM sample_table WHERE yb_hash_code(x,z) <= 128 AND yb
 ```
 
 ```output
-                                                           QUERY PLAN
----------------------------------------------------------------------------------------------------------------------------------
- Seq Scan on sample_table  (cost=10000000000.00..10000000020.00 rows=1000 width=12) (actual time=10.259..63.165 rows=18 loops=1)
-   Filter: ((yb_hash_code(x, z) <= 128) AND (yb_hash_code(x, z) >= 0))
-   Rows Removed by Filter: 9982
- Planning Time: 5.970 ms
- Execution Time: 63.574 ms
- Peak Memory Usage: 2040 kB
-(6 rows)
+                                                         QUERY PLAN
+----------------------------------------------------------------------------------------------------------------------------
+ Index Scan using sample_idx on sample_table  (cost=0.00..6.04 rows=16 width=12) (actual time=3.596..3.622 rows=18 loops=1)
+   Index Cond: ((yb_hash_code(x, z) <= 128) AND (yb_hash_code(x, z) >= 0))
+ Planning Time: 0.222 ms
+ Execution Time: 3.739 ms
+ Peak Memory Usage: 8 kB
+(5 rows)
 ```
 
 Note that you can also use [pg_hint_plan](../../../../explore/query-1-performance/pg-hint-plan/) to manipulate the index that is used.
@@ -107,11 +106,12 @@ EXPLAIN ANALYZE SELECT * FROM sample_table WHERE yb_hash_code(x,z) <= 128 AND yb
 
 ```output
                                                           QUERY PLAN
-------------------------------------------------------------------------------------------------------------------------------
- Index Scan using sample_idx_dup on sample_table  (cost=0.00..6.04 rows=16 width=12) (actual time=15.551..15.608 rows=18 loops=1)
+--------------------------------------------------------------------------------------------------------------------------------
+ Index Scan using sample_idx_dup on sample_table  (cost=0.00..6.04 rows=16 width=12) (actual time=3.224..3.249 rows=18 loops=1)
    Index Cond: ((yb_hash_code(x, z) <= 128) AND (yb_hash_code(x, z) >= 0))
- Planning Time: 14.775 ms
- Execution Time: 15.709 ms
+ Planning Time: 6.038 ms
+ Execution Time: 3.351 ms
+ Peak Memory Usage: 8 kB
 (4 rows)
 ```
 
@@ -123,15 +123,16 @@ EXPLAIN ANALYZE SELECT * FROM sample_table WHERE yb_hash_code(x,z) <= 128 and yb
 
 ```output
 
-                                                        QUERY PLAN
----------------------------------------------------------------------------------------------------------------------------
- Index Scan using sample_idx on sample_table  (cost=0.00..6.27 rows=16 width=12) (actual time=9.518..9.531 rows=1 loops=1)
+                                                          QUERY PLAN
+-------------------------------------------------------------------------------------------------------------------------------
+ Index Scan using sample_idx_dup on sample_table  (cost=0.00..6.27 rows=16 width=12) (actual time=5.600..5.616 rows=1 loops=1)
    Index Cond: (yb_hash_code(x, z) <= 128)
    Filter: ((yb_hash_code(x, y) >= 5) AND (yb_hash_code(x, y, z) <= 256))
    Rows Removed by Filter: 17
- Planning Time: 0.092 ms
- Execution Time: 9.587 ms
-(6 rows)
+ Planning Time: 0.337 ms
+ Execution Time: 5.735 ms
+ Peak Memory Usage: 8 kB
+(7 rows)
 ```
 
 In this example, only the first clause is pushed down to an index, `sample_idx`. The rest are filters executed at the YSQL level. The optimizer prefers to push down this particular filter because it selects the fewest rows as determined by the low number of hash values it filters for compared to the `yb_hash_code(x,y) >= 5` filter.
@@ -197,7 +198,7 @@ SELECT COUNT(*) FROM sample_table WHERE yb_hash_code(x,y) >= 4600 and yb_hash_co
 
 Because we use what can be assumed to be a uniformly distributed hash function to partition our rows, we can assume that this is a count of approximately 1/128 of all the rows. Therefore, multiplying this count, 78 by 128 gives us a good estimate of the total number of rows (9984 in this case) in the table without querying and iterating over all tablets.
 
-### Distributed Parallel Queries
+### Distributed parallel queries
 
 Seeing how you can constrain our queries to any physically collocated group of rows now you can also shard individual aggregate queries across multiple partition groups. These sharded queries can execute in parallel. For example, you can execute a batch of `COUNT(*)` queries as follows on separate threads:
 
