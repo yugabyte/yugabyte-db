@@ -52,59 +52,64 @@ Execute the statement and show actual run times and other statistics.
 
 Create a sample table.
 
-```plpgsql
+```sql
 yugabyte=# CREATE TABLE sample(k1 int, k2 int, v1 int, v2 text, PRIMARY KEY (k1, k2));
 ```
 
 Insert some rows.
 
-```plpgsql
+```sql
 yugabyte=# INSERT INTO sample(k1, k2, v1, v2) VALUES (1, 2.0, 3, 'a'), (2, 3.0, 4, 'b'), (3, 4.0, 5, 'c');
 ```
 
 Check the execution plan for simple select (condition will get pushed down).
 
-```plpgsql
+```sql
 yugabyte=# EXPLAIN SELECT * FROM sample WHERE k1 = 1;
 ```
 
-```
-                           QUERY PLAN
-----------------------------------------------------------------
- Foreign Scan on sample  (cost=0.00..112.50 rows=1000 width=44)
-(1 row)
+```output
+                                  QUERY PLAN
+------------------------------------------------------------------------------
+ Index Scan using sample_pkey on sample  (cost=0.00..15.25 rows=100 width=44)
+   Index Cond: (k1 = 1)
+(2 rows)
 ```
 
 - Check the execution plan for select with complex condition (second condition requires filtering).
 
-```plpgsql
+```sql
 yugabyte=# EXPLAIN SELECT * FROM sample WHERE k1 = 2 and floor(k2 + 1.5) = v1;
 ```
 
-```
-                           QUERY PLAN
-----------------------------------------------------------------
- Foreign Scan on sample  (cost=0.00..125.00 rows=1000 width=44)
+```output
+                                  QUERY PLAN
+------------------------------------------------------------------------------
+ Index Scan using sample_pkey on sample  (cost=0.00..17.75 rows=100 width=44)
+   Index Cond: (k1 = 2)
    Filter: (floor(((k2)::numeric + 1.5)) = (v1)::numeric)
-(2 rows)
+(3 rows)
 ```
 
 Check execution with `ANALYZE` option.
 
-```plpgsql
+```sql
 yugabyte=# EXPLAIN ANALYZE SELECT * FROM sample WHERE k1 = 2 and floor(k2 + 1.5) = v1;
 ```
 
-```
-----------------------------------------------------------------------------------------------------------
- Foreign Scan on sample  (cost=0.00..125.00 rows=1000 width=44) (actual time=6.483..6.487 rows=1 loops=1)
+```output
+                                                       QUERY PLAN
+------------------------------------------------------------------------------------------------------------------------
+ Index Scan using sample_pkey on sample  (cost=0.00..17.75 rows=100 width=44) (actual time=3.123..3.126 rows=1 loops=1)
+   Index Cond: (k1 = 2)
    Filter: (floor(((k2)::numeric + 1.5)) = (v1)::numeric)
- Planning time: 2.390 ms
- Execution time: 5.146 ms
-(4 rows)
+ Planning Time: 0.149 ms
+ Execution Time: 3.198 ms
+ Peak Memory Usage: 8 kB
+(6 rows)
 ```
 
 ## See also
 
-- [`INSERT`](../dml_insert)
-- [`SELECT`](../dml_select/)
+- [INSERT](../dml_insert/)
+- [SELECT](../dml_select/)
