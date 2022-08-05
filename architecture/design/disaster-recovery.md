@@ -82,3 +82,10 @@ Invoked on the **target** cluster.
 Gets the latest consistent time for the target cluster.
 
 Invoked on the **target** cluster.
+
+# Github issues
+
+The work is tracked here: https://github.com/yugabyte/yugabyte-db/issues/13532
+
+# Open questions
+
