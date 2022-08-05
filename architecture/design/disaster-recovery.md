@@ -83,9 +83,10 @@ Gets the latest consistent time for the target cluster.
 
 Invoked on the **target** cluster.
 
-# Github issues
+## Github issues
 
-The work is tracked here: https://github.com/yugabyte/yugabyte-db/issues/13532
+The work is tracked here: [#13532](https://github.com/yugabyte/yugabyte-db/issues/13532)
 
-# Open questions
+## Open questions
 
+- Current design relies on the user to make sure that applications issue updates only to one cluster at a time, which is error-prone. Accidentally issuing updates to both clusters concurrently can lead to data conflicts and inconsistent state. Can this be fixed by introducing a concept of a read-only cluster that rejects any updates? One of the challenges with this is that we can't easily switch the source cluster into read-only mode during unplanned failover, due to this cluster being unavailable.
