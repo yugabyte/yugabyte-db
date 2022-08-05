@@ -11,42 +11,46 @@ menu:
     identifier: cloud-overview
     parent: yugabytedb-managed
     weight: 1
-type: homepage
+type: indexpage
+layout: single
+body_class: yb-page-style
 ---
 
 <div class="row cloud-laptop">
   <div class="col-12 col-md-12 col-lg-6">
-    <div class="border two-side">
-      <div class="body">
-        <div class="box-top">
-          <a class="nav-link purple-btn" target="_blank" href="https://cloud.yugabyte.com/signup" role="button"><span>Sign Up</span></a>
-          <span>Create a <strong>Sandbox</strong> cluster</span>
+    <a href="https://cloud.yugabyte.com/signup" target="_blank" rel="noopener">
+      <div class="border two-side">
+        <div class="body">
+          <div class="box-top">
+            <div class="nav-link button-style purple"><span>Sign Up</span></div>
+            <span>Create a <strong>Sandbox</strong> cluster</span>
+          </div>
+          <div class="body-content">Sign up, log in, and follow the built-in tutorial to create your first cluster and build a sample application. No credit card required.</div>
+          <span class="text-link">Learn more</span>
         </div>
-        <div class="body-content">Sign up, log in, and follow the built-in tutorial to create your first cluster and build a sample application. No credit card required.</div>
-        <a class="text-link" target="_blank" href="https://cloud.yugabyte.com/signup" title="Sign Up">Sign up</a>
-        <a class="text-link" href="../../quick-start-yugabytedb-managed/" title="Learn more">Learn more</a>
+        <div class="image">
+          <img class="icon" src="/images/homepage/yugabyte-in-cloud.png" title="Yugabyte cloud" aria-hidden="true">
+        </div>
       </div>
-      <div class="image">
-        <img class="icon" src="/images/homepage/yugabyte-in-cloud.png" title="Yugabyte cloud" aria-hidden="true">
-      </div>
-    </div>
+    </a>
   </div>
   <div class="col-12 col-md-12 col-lg-6">
-    <div class="border two-side">
-      <div class="body">
-        <div class="box-top">
-          <a class="nav-link orange-btn" href="../cloud-basics/" role="button"><span>Deploy</span></a>
-          <span><strong>Dedicated</strong> clusters</span>
+    <a href="../cloud-basics/">
+      <div class="border two-side">
+        <div class="body">
+          <div class="box-top">
+            <div class="nav-link button-style orange"><span>Deploy</span></div>
+            <span><strong>Dedicated</strong> clusters</span>
+          </div>
+          <div class="body-content">Deploy single- and multi-region production clusters across multiple availability zones and regions.</div>
+          <span class="text-link">Learn more</span>
         </div>
-        <div class="body-content">Deploy single- and multi-region production clusters across multiple availability zones and regions.</div>
-        <a class="text-link" href="../cloud-basics/" title="Learn more">Learn more</a>
+        <div class="image">
+          <img class="icon" src="/images/homepage/locally-laptop.png" title="Locally Laptop" aria-hidden="true">
+        </div>
       </div>
-      <div class="image">
-        <img class="icon" src="/images/homepage/locally-laptop.png" title="Locally Laptop" aria-hidden="true">
-      </div>
-    </div>
+    </a>
   </div>
-
 </div>
 
 <div class="three-box-row">
