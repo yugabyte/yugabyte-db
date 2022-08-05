@@ -37,6 +37,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -53,6 +54,7 @@ import org.yb.client.IsBootstrapRequiredResponse;
 import org.yb.client.IsSetupUniverseReplicationDoneResponse;
 import org.yb.client.YBClient;
 import org.yb.master.CatalogEntityInfo;
+import org.yb.master.MasterDdlOuterClass;
 import play.api.Play;
 
 @Slf4j
@@ -654,34 +656,80 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
    * It returns a set of tables that xCluster replication cannot be setup for them and need
    * bootstrap.
    *
-   * <p>Note: You must run {@link #createCheckBootstrapRequiredTask} method before running this
-   * method to have the most updated values.
+   * <p>Note: You must run {@link #checkBootstrapRequired} method before running this method to have
+   * the most updated values.
    *
+   * @param tableIds A set of tables to check whether they need bootstrapping
    * @return A set of tables that need to be bootstrapped
-   * @see #createCheckBootstrapRequiredTask(Set)
+   * @see #checkBootstrapRequired(Set)
    */
-  protected Set<XClusterTableConfig> getTablesNeedBootstrap() {
-    return taskParams()
-        .xClusterConfig
-        .tables
+  protected Set<XClusterTableConfig> getTablesNeedBootstrap(Set<String> tableIds) {
+    return getXClusterConfigFromTaskParams()
+        .getTablesById(tableIds)
         .stream()
         .filter(tableConfig -> tableConfig.needBootstrap)
+        .collect(Collectors.toSet());
+  }
+
+  /** @see #getTablesNeedBootstrap(Set) */
+  protected Set<XClusterTableConfig> getTablesNeedBootstrap() {
+    return getTablesNeedBootstrap(getXClusterConfigFromTaskParams().getTables());
+  }
+
+  protected Set<String> getTableIdsNeedBootstrap(Set<String> tableIds) {
+    return getTablesNeedBootstrap(tableIds)
+        .stream()
+        .map(tableConfig -> tableConfig.tableId)
+        .collect(Collectors.toSet());
+  }
+
+  protected Set<String> getTableIdsNeedBootstrap() {
+    return getTableIdsNeedBootstrap(getXClusterConfigFromTaskParams().getTables());
+  }
+
+  public static Set<String> getTableIds(
+      Collection<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tablesInfoList) {
+    if (tablesInfoList == null) {
+      return Collections.emptySet();
+    }
+    return tablesInfoList
+        .stream()
+        .map(tableInfo -> tableInfo.getId().toStringUtf8())
         .collect(Collectors.toSet());
   }
 
   /**
    * It returns a set of tables that xCluster replication can be set up without bootstrapping.
    *
-   * @return A set of tables that need to be bootstrapped
-   * @see #getTablesNeedBootstrap()
+   * <p>Note: You must run {@link #checkBootstrapRequired} method before running this method to have
+   * the most updated values.
+   *
+   * @param tableIds A set of tables to check whether they need bootstrapping
+   * @return A set of tables that do not need to be bootstrapped
+   * @see #checkBootstrapRequired(Set)
    */
-  protected Set<XClusterTableConfig> getTablesNotNeedBootstrap() {
-    return taskParams()
-        .xClusterConfig
-        .tables
+  protected Set<XClusterTableConfig> getTablesNotNeedBootstrap(Set<String> tableIds) {
+    return getXClusterConfigFromTaskParams()
+        .getTablesById(tableIds)
         .stream()
         .filter(tableConfig -> !tableConfig.needBootstrap)
         .collect(Collectors.toSet());
+  }
+
+  /** @see #getTablesNotNeedBootstrap(Set) */
+  protected Set<XClusterTableConfig> getTablesNotNeedBootstrap() {
+    return getTablesNotNeedBootstrap(getXClusterConfigFromTaskParams().getTables());
+  }
+
+  protected Set<String> getTableIdsNotNeedBootstrap(Set<String> tableIds) {
+    return getTablesNotNeedBootstrap(tableIds)
+        .stream()
+        .map(tableConfig -> tableConfig.tableId)
+        .collect(Collectors.toSet());
+  }
+
+  protected Set<String> getTableIdsNotNeedBootstrap() {
+    return getTableIdsNotNeedBootstrap(getXClusterConfigFromTaskParams().getTables());
   }
 
   /**
