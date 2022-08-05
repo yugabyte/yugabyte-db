@@ -30,6 +30,11 @@
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 
+#include "yb/tserver/mini_tablet_server.h"
+#include "yb/tserver/tablet_server.h"
+#include "yb/tserver/tablet_service.h"
+#include "yb/tserver/tserver_error.h"
+
 #include "yb/util/monotime.h"
 #include "yb/util/string_case.h"
 #include "yb/util/test_macros.h"
@@ -146,6 +151,51 @@ TEST_F(PgTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(SplitDuringLongRunningTransact
   }
 
   ASSERT_OK(conn.CommitTransaction());
+}
+
+TEST_F(PgTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(SplitKeyMatchesPartitionBound)) {
+  // The intent of the test is to check that splitting is not happening when middle split key
+  // matches one of the bounds (it actually can match only lower bound). Placed the test at this
+  // file as it's hard to create a table of such structure with the functionality inside
+  // tablet-split-itest.cc.
+  auto conn = ASSERT_RESULT(Connect());
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+
+  // Create a table with combined key; this allows to have a unique DocKey with the same HASH.
+  // Setting table's partitioning explicitly to have one of bounds be specified for each tablet.
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE t(k1 INT, k2 INT, v TEXT, PRIMARY KEY (k1 HASH, k2 ASC))"
+      "  SPLIT INTO 2 TABLETS;"));
+
+  // Make a special structure of records: it has the same HASH but different DocKey, thus from
+  // tablet splitting perspective it should give middle split key that matches the partition bound.
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO t SELECT 13402, i, i::text FROM generate_series(1, 200) as i;"));
+
+  ASSERT_OK(cluster_->FlushTablets());
+
+  auto table_id = ASSERT_RESULT(GetTableIDFromTableName("t"));
+  auto peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id);
+  ASSERT_EQ(2, peers.size());
+
+  // Select a peer whose lower bound is specified.
+  auto peer_it = std::find_if(peers.begin(), peers.end(),
+      [](const tablet::TabletPeerPtr& peer){
+    return !(peer->tablet_metadata()->partition()->partition_key_start().empty());
+  });
+  ASSERT_FALSE((peer_it == peers.end()));
+  auto peer = *peer_it;
+
+  // Make sure SST files appear to be able to split.
+  ASSERT_OK(WaitForAnySstFiles(peer.get()));
+
+  // Have to make a low-level direct call of split middle key to verify an error.
+  auto result = peer->tablet()->GetEncodedMiddleSplitKey();
+  ASSERT_NOK(result);
+  ASSERT_EQ(
+      tserver::TabletServerError(result.status()),
+      tserver::TabletServerErrorPB::TABLET_SPLIT_KEY_RANGE_TOO_SMALL);
+  ASSERT_NE(result.status().ToString().find("with partition bounds"), std::string::npos);
 }
 
 class PgPartitioningVersionTest :

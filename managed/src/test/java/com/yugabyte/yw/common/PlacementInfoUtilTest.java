@@ -76,6 +76,7 @@ import org.apache.commons.lang.StringUtils;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import play.libs.Json;
 
 @RunWith(JUnitParamsRunner.class)
 public class PlacementInfoUtilTest extends FakeDBApplication {
@@ -2333,6 +2334,72 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
               + "' - unable to remove all nodes.");
     }
     return universe;
+  }
+
+  // Test scenario is:
+  //
+  //  1. We have a universe with 1 node. Instance type = A.
+  //  2. Changing instance type to B if "changeInstanceType == true".
+  //  3. Increasing number of nodes to 2.
+  //
+  // Expected result:
+  //  If changeInstanceType == true:
+  //    One node of type A is in state ToBeRemoved;
+  //    Two nodes of type B are in state ToBeAdded.   [Full Move]
+  //
+  //  If changeInstanceType == false:
+  //    One node of type A is in state Live;
+  //    One node of type A is in state ToBeAdded.     [Simple universe expansion]
+  @Parameters({"false, 0, 1", "true, 1, 2"})
+  @Test
+  public void testConfigureNodeEditUsingPlacementInfo_ChangeInstanceType_Then_AddNode(
+      boolean changeInstanceType, int toBeRemoved, int toBeAdded) {
+    Customer customer = ModelFactory.testCustomer("Test Customer");
+    Provider provider = ModelFactory.newProvider(customer, CloudType.onprem);
+
+    // Creating the universe...
+    Universe universe = createFromConfig(provider, "Existing", "r1-r1/az1-1-1");
+
+    // Emulating the `change InstanceType` operation if needed...
+    if (changeInstanceType) {
+      universe.getUniverseDetails().getPrimaryCluster().userIntent.instanceType = "m2.medium";
+      NodeDetails node = universe.getNodeOrBadRequest("host-n0");
+
+      // Copying node.
+      NodeDetails node2 = Json.fromJson(Json.toJson(node), NodeDetails.class);
+      node2.nodeIdx++;
+      node2.nodeName = "host-n1";
+      node2.state = NodeState.ToBeAdded;
+      node2.nodeUuid = UUID.randomUUID();
+      node2.cloudInfo.instance_type = "m2.medium";
+      universe.getUniverseDetails().nodeDetailsSet.add(node2);
+
+      // Updating state of the source node.
+      node.state = NodeState.ToBeRemoved;
+    }
+
+    // Requesting one more node to be configured.
+    Cluster primary = universe.getUniverseDetails().getPrimaryCluster();
+    primary.userIntent.numNodes++;
+    primary.placementInfo.cloudList.get(0).regionList.get(0).azList.get(0).numNodesInAZ++;
+
+    // We don't save all the previously made changes into DB - because
+    // `PlacementInfoUtil.configureNodeEditUsingPlacementInfo` compares existing in
+    // DB universe data with the new one.
+    UniverseDefinitionTaskParams params = new UniverseDefinitionTaskParams();
+    params.universeUUID = universe.getUniverseUUID();
+    params.currentClusterType = ClusterType.PRIMARY;
+    params.clusters = universe.getUniverseDetails().clusters;
+    params.nodeDetailsSet = new HashSet<>(universe.getUniverseDetails().nodeDetailsSet);
+
+    PlacementInfoUtil.configureNodeEditUsingPlacementInfo(params, false);
+
+    assertEquals(
+        toBeRemoved,
+        params.nodeDetailsSet.stream().filter(n -> n.state == NodeState.ToBeRemoved).count());
+    assertEquals(
+        toBeAdded,
+        params.nodeDetailsSet.stream().filter(n -> n.state == NodeState.ToBeAdded).count());
   }
 
   @Test
