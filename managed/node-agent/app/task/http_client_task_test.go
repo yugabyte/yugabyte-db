@@ -1,6 +1,5 @@
-/*
- * Copyright (c) YugaByte, Inc.
- */
+// Copyright (c) YugaByte, Inc.
+
 package task
 
 import (
