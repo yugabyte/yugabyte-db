@@ -188,6 +188,22 @@ body.yb-page-style {
     }
   }
 
+  a {
+    .heading {
+      color: #2b59c3;
+    }
+
+    > .box.border {
+      &:hover {
+        background-color: var(--theme-color);
+
+        * {
+          color: #fff !important;
+        }
+      }
+    }
+  }
+
   main.col-md-9 {
     .box.border {
       .image {

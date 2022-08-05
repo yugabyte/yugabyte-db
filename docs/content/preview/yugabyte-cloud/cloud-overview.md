@@ -58,7 +58,7 @@ body_class: yb-page-style
       <a href="../cloud-basics/" title="Deploy">
         <div class="box border">
           <div class="other-content">
-            <div class="heading" style="color:#2b59c3">Deploy</div>
+            <div class="heading">Deploy</div>
             <div class="detail-copy">Create single- and multi-region clusters in a variety of topologies.</div>
           </div>
         </div>
@@ -68,7 +68,7 @@ body_class: yb-page-style
       <a href="../cloud-secure-clusters/" title="Secure">
         <div class="box border">
           <div class="other-content">
-            <div class="heading" style="color:#2b59c3">Secure</div>
+            <div class="heading">Secure</div>
             <div class="detail-copy">Authorize access to clusters and databases, download cluster certificates, and audit account activity.</div>
           </div>
         </div>
@@ -78,7 +78,7 @@ body_class: yb-page-style
       <a href="../cloud-connect/" title="Connect">
         <div class="box border">
           <div class="other-content">
-            <div class="heading" style="color:#2b59c3">Connect</div>
+            <div class="heading">Connect</div>
             <div class="detail-copy">Connect to your cluster using Cloud Shell, a client shell, and from applications.</div>
           </div>
         </div>
@@ -88,7 +88,7 @@ body_class: yb-page-style
       <a href="../cloud-monitor/" title="Monitor">
         <div class="box border">
           <div class="other-content">
-            <div class="heading" style="color:#2b59c3">Monitor</div>
+            <div class="heading">Monitor</div>
             <div class="detail-copy">Monitor cluster performance and get notified of potential problems.</div>
           </div>
         </div>
@@ -98,7 +98,7 @@ body_class: yb-page-style
       <a href="../cloud-clusters/" title="Manage">
         <div class="box border">
           <div class="other-content">
-            <div class="heading" style="color:#2b59c3">Manage</div>
+            <div class="heading">Manage</div>
             <div class="detail-copy">Scale clusters, configure backups, set maintenance windows, and pause or delete clusters.</div>
           </div>
         </div>
