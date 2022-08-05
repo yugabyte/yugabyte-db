@@ -838,6 +838,11 @@ public class NodeManagerTest extends FakeDBApplication {
           ybcFlags.put("yb_tserver_address", nodeIp);
           ybcFlags.put("log_dir", "/home/yugabyte/controller/logs");
           ybcFlags.put("yb_master_address", nodeIp);
+          String nfsDirs =
+              runtimeConfigFactory
+                  .forUniverse(Universe.getOrBadRequest(configureParams.universeUUID))
+                  .getString(NodeManager.YBC_NFS_DIRS);
+          ybcFlags.put("nfs_dirs", nfsDirs);
         }
 
         // boolean useHostname = !NodeManager.isIpAddress(configureParams.nodeName);
@@ -1155,6 +1160,9 @@ public class NodeManagerTest extends FakeDBApplication {
                       .getInt(NodeManager.POSTGRES_MAX_MEM_MB)));
         }
       }
+    }
+    if (type == NodeManager.NodeCommandType.Create) {
+      expectedCommand.add("--as_json");
     }
     expectedCommand.add(params.nodeName);
     return expectedCommand;
@@ -1652,7 +1660,7 @@ public class NodeManagerTest extends FakeDBApplication {
       addValidDeviceInfo(t, params);
 
       // Set up expected command
-      int accessKeyIndexOffset = 5;
+      int accessKeyIndexOffset = 6;
       if (t.cloudType.equals(Common.CloudType.aws)) {
         accessKeyIndexOffset += 2;
         if (params.deviceInfo.storageType.equals(PublicCloudConstants.StorageType.IO1)) {

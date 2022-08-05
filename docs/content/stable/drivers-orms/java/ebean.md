@@ -93,7 +93,7 @@ To begin using Ebean in the application, do the following:
 
     ```conf
     db.default.driver=com.yugabyte.Driver
-    db.default.url="jdbc:yugabytedb://127.0.0.1:5433/ysql_ebeans?load-balance=true"
+    db.default.url="jdbc:yugabytedb://127.0.0.1:5433/ysql_ebean?load-balance=true"
     db.default.username=yugabyte
     db.default.password=""
     play.evolutions {

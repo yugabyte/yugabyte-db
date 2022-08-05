@@ -947,6 +947,11 @@
           "readOnly" : true,
           "type" : "string"
         },
+        "additionalDetails" : {
+          "description" : "Additional Details",
+          "readOnly" : true,
+          "type" : "object"
+        },
         "apiCall" : {
           "description" : "API call",
           "example" : "/api/v1/customers/<496fdea8-df25-11eb-ba80-0242ac130004>/providers",
@@ -2393,6 +2398,14 @@
         "instance_type" : {
           "description" : "The node's instance type",
           "type" : "string"
+        },
+        "lun_indexes" : {
+          "description" : "Mounted disks LUN indexes",
+          "items" : {
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "type" : "array"
         },
         "mount_roots" : {
           "description" : "Mount roots",

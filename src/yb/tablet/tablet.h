@@ -571,7 +571,10 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // Returns approximate middle key for tablet split:
   // - for hash-based partitions: encoded hash code in order to split by hash code.
   // - for range-based partitions: encoded doc key in order to split by row.
-  Result<std::string> GetEncodedMiddleSplitKey() const;
+  // If `partition_split_key` is specified it will be updated with partition middle key for
+  // hash-based partitions only (to prevent additional memory copying), as partition middle key for
+  // range-based partitions always matches the returned middle key.
+  Result<std::string> GetEncodedMiddleSplitKey(std::string *partition_split_key = nullptr) const;
 
   std::string TEST_DocDBDumpStr(IncludeIntents include_intents = IncludeIntents::kFalse);
 

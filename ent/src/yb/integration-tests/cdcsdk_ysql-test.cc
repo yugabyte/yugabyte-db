@@ -803,6 +803,18 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       MonoDelta::FromSeconds(120),
       "Getting Number of intents"));
   }
+
+  Result<GetCDCDBStreamInfoResponsePB> GetDBStreamInfo(const CDCStreamId db_stream_id) {
+    GetCDCDBStreamInfoRequestPB get_req;
+    GetCDCDBStreamInfoResponsePB get_resp;
+    get_req.set_db_stream_id(db_stream_id);
+
+    RpcController get_rpc;
+    get_rpc.set_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_write_rpc_timeout_ms));
+    RETURN_NOT_OK(cdc_proxy_->GetCDCDBStreamInfo(get_req, &get_resp, &get_rpc));
+    return get_resp;
+  }
+
 };
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestBaseFunctions)) {
@@ -1437,8 +1449,22 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestDropTableBeforeCDCStreamDelet
   CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream());
   DropTable(&test_cluster_, kTableName);
 
+  // Drop table will trigger the background thread to start the stream metadata cleanup, here
+  // test case wait for the metadata cleanup to finish by the background thread.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        while (true) {
+          auto resp = GetDBStreamInfo(stream_id);
+          if (resp.ok() && resp->has_error()) {
+            return true;
+          }
+          continue;
+        }
+        return false;
+      },
+      MonoDelta::FromSeconds(60), "Waiting for stream metadata cleanup."));
   // Deleting the created DB Stream ID.
-  ASSERT_EQ(DeleteCDCStream(stream_id), true);
+  ASSERT_EQ(DeleteCDCStream(stream_id), false);
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestDropTableBeforeXClusterStreamDelete)) {
@@ -2796,6 +2822,248 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSetCDCCheckpointWithHigherTse
     auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets, OpId::Min(), true, idx));
     ASSERT_FALSE(resp.has_error());
   }
+}
+
+// Here creating a single table inside a namespace and a CDC stream on top of the namespace.
+// Deleting the table should clean every thing from master cache as well as the system
+// catalog.
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestStreamMetaDataCleanupAndDropTable)) {
+  // Setup cluster.
+  ASSERT_OK(SetUpWithParams(3, 1, false));
+
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version = */ nullptr));
+
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream());
+  ASSERT_OK(WriteRows(0 /* start */, 100 /* end */, &test_cluster_));
+
+  DropTable(&test_cluster_, kTableName);
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        while (true) {
+          auto get_resp = GetDBStreamInfo(stream_id);
+          // Wait until the background thread cleanup up the stream-id.
+          if (get_resp.ok() && get_resp->has_error() && get_resp->table_info_size() == 0) {
+            return true;
+          }
+        }
+      },
+      MonoDelta::FromSeconds(60), "Waiting for stream metadata cleanup."));
+}
+
+// Here we are creating multiple tables and a CDC stream on the same namespace.
+// Deleting multiple tables from the namespace should only clean metadata related to
+// deleted tables from master cache as well as system catalog.
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestStreamMetaDataCleanupMultiTableDrop)) {
+  // Setup cluster.
+  ASSERT_OK(SetUpWithParams(3, 1, false));
+  const vector<string> table_list_suffix = {"_1", "_2", "_3"};
+  const int kNumTables = 3;
+  vector<YBTableName> table(kNumTables);
+  CDCStreamId stream_id;
+  int idx = 0;
+  vector<google::protobuf::RepeatedPtrField<master::TabletLocationsPB>> tablets(kNumTables);
+
+  for (auto table_suffix : table_list_suffix) {
+    table[idx] = ASSERT_RESULT(CreateTable(
+        &test_cluster_, kNamespaceName, kTableName, 1, true, false, 0, true, table_suffix));
+    ASSERT_OK(test_client()->GetTablets(
+        table[idx], 0, &tablets[idx], /* partition_list_version = */ nullptr));
+    TableId table_id =
+        ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName + table_suffix));
+
+    ASSERT_OK(WriteEnumsRows(
+        0 /* start */, 100 /* end */, &test_cluster_, table_suffix, kNamespaceName, kTableName));
+    idx += 1;
+  }
+  stream_id = ASSERT_RESULT(CreateDBStream());
+
+  // Drop one of the table from the namespace, check stream associated with namespace should not
+  // be deleted, but metadata related to the droppped table should be cleaned up from the master.
+  for (int idx = 1; idx < kNumTables; idx++) {
+    char drop_table[64] = {0};
+    (void)snprintf(drop_table, sizeof(drop_table), "%s_%d", kTableName, idx);
+    DropTable(&test_cluster_, drop_table);
+  }
+
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        while (true) {
+          auto get_resp = GetDBStreamInfo(stream_id);
+          // Wait until the background thread cleanup up the drop table metadata.
+          if (get_resp.ok() && !get_resp->has_error() && get_resp->table_info_size() == 1) {
+            return true;
+          }
+        }
+      },
+      MonoDelta::FromSeconds(60), "Waiting for stream metadata cleanup."));
+
+  for (int idx = 0; idx < 2; idx++) {
+    auto change_resp = GetChangesFromCDC(stream_id, tablets[idx], nullptr);
+    // test_table_1 and test_table_2 GetChanges should retrun error where as test_table_3 should
+    // succeed.
+    if (idx == 0 || idx == 1) {
+      ASSERT_FALSE(change_resp.ok());
+
+    } else {
+      uint32_t record_size = (*change_resp).cdc_sdk_proto_records_size();
+      ASSERT_GT(record_size, 100);
+    }
+  }
+
+  // Deleting the created stream.
+  ASSERT_TRUE(DeleteCDCStream(stream_id));
+
+  // GetChanges should retrun error, for all tables.
+  for (int idx = 0; idx < 2; idx++) {
+    auto change_resp = GetChangesFromCDC(stream_id, tablets[idx], nullptr);
+    ASSERT_FALSE(change_resp.ok());
+  }
+}
+
+// After delete stream, metadata related to stream should be deleted from the master cache as well
+// as system catalog.
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestStreamMetaCleanUpAndDeleteStream)) {
+  // Setup cluster.
+  ASSERT_OK(SetUpWithParams(3, 1, false));
+
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version = */ nullptr));
+
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream());
+  ASSERT_OK(WriteRows(0 /* start */, 100 /* end */, &test_cluster_));
+
+  // Deleting the created DB Stream ID.
+  ASSERT_TRUE(DeleteCDCStream(stream_id));
+
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        while (true) {
+          auto get_resp = GetDBStreamInfo(stream_id);
+          // Wait until the background thread cleanup up the stream-id.
+          if (get_resp.ok() && get_resp->has_error() && get_resp->table_info_size() == 0) {
+            return true;
+          }
+        }
+      },
+      MonoDelta::FromSeconds(60), "Waiting for stream metadata cleanup."));
+}
+
+// Here we are creating a table test_table_1 and a CDC stream ex:- stream-id-1.
+// Now create another table test_table_2 and create another stream ex:- stream-id-2 on the same
+// namespace. stream-id-1 and stream-id-2 are now associated with test_table_1. drop test_table_1,
+// call GetDBStreamInfo on both stream-id, we should not get any information related to drop table.
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestMultiStreamOnSameTableAndDropTable)) {
+  // Setup cluster.
+  ASSERT_OK(SetUpWithParams(3, 1, false));
+  const vector<string> table_list_suffix = {"_1", "_2"};
+  vector<YBTableName> table(2);
+  vector<CDCStreamId> stream_id(2);
+  vector<google::protobuf::RepeatedPtrField<master::TabletLocationsPB>> tablets(2);
+
+  for (int idx = 0; idx < 2; idx++) {
+    table[idx] = ASSERT_RESULT(CreateTable(
+        &test_cluster_, kNamespaceName, kTableName, 1, true, false, 0, true,
+        table_list_suffix[idx]));
+    ASSERT_OK(test_client()->GetTablets(
+        table[idx], 0, &tablets[idx], /* partition_list_version = */ nullptr));
+    TableId table_id = ASSERT_RESULT(
+        GetTableId(&test_cluster_, kNamespaceName, kTableName + table_list_suffix[idx]));
+
+    stream_id[idx] = ASSERT_RESULT(CreateDBStream());
+    ASSERT_OK(WriteEnumsRows(
+        0 /* start */, 100 /* end */, &test_cluster_, table_list_suffix[idx], kNamespaceName,
+        kTableName));
+  }
+
+  // Drop table test_table_1 which is associated with both streams.
+  for (int idx = 1; idx < 2; idx++) {
+    char drop_table[64] = {0};
+    (void)snprintf(drop_table, sizeof(drop_table), "%s_%d", kTableName, idx);
+    DropTable(&test_cluster_, drop_table);
+  }
+
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        int idx = 1;
+        while (idx <= 2) {
+          auto get_resp = GetDBStreamInfo(stream_id[idx -1]);
+          if (!get_resp.ok()) {
+            return false;
+          }
+          // stream-1 is associated with a single table, so as part of table drop, stream-1 should
+          // be cleaned and wait until the background thread is done with cleanup.
+          if (idx == 1 && false == get_resp->has_error() && get_resp->table_info_size() > 0) {
+            continue;
+          }
+          // stream-2 is associated with both tables, so dropping one table, should not clean the
+          // stream from cache as well as from system catalog, except the dropped table metadata.
+          if (idx > 1 && get_resp->table_info_size() > 1) {
+            continue;
+          }
+          idx += 1;
+        }
+        return true;
+      },
+      MonoDelta::FromSeconds(60), "Waiting for stream metadata cleanup."));
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestMultiStreamOnSameTableAndDeleteStream)) {
+  // Setup cluster.
+  ASSERT_OK(SetUpWithParams(3, 1, false));
+  const vector<string> table_list_suffix = {"_1", "_2"};
+  vector<YBTableName> table(2);
+  vector<CDCStreamId> stream_id(2);
+  vector<google::protobuf::RepeatedPtrField<master::TabletLocationsPB>> tablets(2);
+
+  for (int idx = 0; idx < 2; idx++) {
+    table[idx] = ASSERT_RESULT(CreateTable(
+        &test_cluster_, kNamespaceName, kTableName, 1, true, false, 0, true,
+        table_list_suffix[idx]));
+    ASSERT_OK(test_client()->GetTablets(
+        table[idx], 0, &tablets[idx], /* partition_list_version = */ nullptr));
+    TableId table_id = ASSERT_RESULT(
+        GetTableId(&test_cluster_, kNamespaceName, kTableName + table_list_suffix[idx]));
+
+    stream_id[idx] = ASSERT_RESULT(CreateDBStream());
+    ASSERT_OK(WriteEnumsRows(
+        0 /* start */, 100 /* end */, &test_cluster_, table_list_suffix[idx], kNamespaceName,
+        kTableName));
+  }
+
+  // Deleting the stream-2 associated with both tables
+  ASSERT_TRUE(DeleteCDCStream(stream_id[1]));
+
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        int idx = 1;
+        while (idx <= 2) {
+          auto get_resp = GetDBStreamInfo(stream_id[idx - 1]);
+          if (!get_resp.ok()) {
+            return false;
+          }
+          // stream-1 which is not deleted, so there should not be any cleanup
+          // for it.
+          if (idx == 1 && get_resp->table_info_size() != 1) {
+            continue;
+          }
+          // stream-2 is deleted, so its metadata from the master cache as well as from the system
+          // catalog should be cleaned and wait until the background thread is done with the
+          // cleanup.
+          if (idx > 1 && (false == get_resp->has_error() || get_resp->table_info_size() != 0)) {
+            continue;
+          }
+          idx += 1;
+        }
+        return true;
+      },
+      MonoDelta::FromSeconds(60), "Waiting for stream metadata cleanup."));
 }
 
 }  // namespace enterprise

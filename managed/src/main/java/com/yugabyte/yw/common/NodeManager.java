@@ -109,6 +109,7 @@ public class NodeManager extends DevopsBase {
   static final String VERIFY_SERVER_ENDPOINT_GFLAG = "verify_server_endpoint";
   static final String SKIP_CERT_VALIDATION = "yb.tls.skip_cert_validation";
   public static final String POSTGRES_MAX_MEM_MB = "yb.dbmem.postgres.max_mem_mb";
+  public static final String YBC_NFS_DIRS = "yb.ybc_flags.nfs_dirs";
   public static final String YBC_DEFAULT_VERSION = "ybc.releases.stable_version";
   private static final String YBC_PACKAGE_REGEX = ".+ybc(.*).tar.gz";
   private static final Pattern YBC_PACKAGE_PATTERN = Pattern.compile(YBC_PACKAGE_REGEX);
@@ -707,6 +708,8 @@ public class NodeManager extends DevopsBase {
       }
       ybcDir = "ybc" + matcher.group(1);
       ybcFlags = GFlagsUtil.getYbcFlags(taskParam);
+      String nfsDirs = runtimeConfigFactory.forUniverse(universe).getString(YBC_NFS_DIRS);
+      ybcFlags.put("nfs_dirs", nfsDirs);
     }
 
     if (!taskParam.itestS3PackagePath.isEmpty()
@@ -1395,6 +1398,9 @@ public class NodeManager extends DevopsBase {
               }
             }
           }
+          if (type == NodeCommandType.Create) {
+            commandArgs.add("--as_json");
+          }
           break;
         }
       case Provision:
@@ -1479,6 +1485,14 @@ public class NodeManager extends DevopsBase {
           commandArgs.add(
               Integer.toString(
                   runtimeConfigFactory.forUniverse(universe).getInt(POSTGRES_MAX_MEM_MB)));
+
+          if (cloudType.equals(Common.CloudType.azu)) {
+            NodeDetails node = universe.getNode(taskParam.nodeName);
+            if (node != null && node.cloudInfo.lun_indexes.length > 0) {
+              commandArgs.add("--lun_indexes");
+              commandArgs.add(StringUtils.join(node.cloudInfo.lun_indexes, ","));
+            }
+          }
           break;
         }
       case Configure:
