@@ -18,83 +18,91 @@ body_class: yb-page-style
 
 <div class="row cloud-laptop">
   <div class="col-12 col-md-12 col-lg-6">
-    <a href="https://cloud.yugabyte.com/signup" target="_blank" rel="noopener">
-      <div class="border two-side">
-        <div class="body">
-          <div class="box-top">
-            <div class="nav-link button-style purple"><span>Sign Up</span></div>
-            <span>Create a <strong>Sandbox</strong> cluster</span>
-          </div>
-          <div class="body-content">Sign up, log in, and follow the built-in tutorial to create your first cluster and build a sample application. No credit card required.</div>
-          <span class="text-link">Learn more</span>
+    <div class="border two-side">
+      <div class="body">
+        <div class="box-top">
+          <a class="button-style purple" target="_blank" href="https://cloud.yugabyte.com/signup"><span>Sign Up</span></a>
+          <span>Create a <strong>Sandbox</strong> cluster</span>
         </div>
-        <div class="image">
-          <img class="icon" src="/images/homepage/yugabyte-in-cloud.png" title="Yugabyte cloud" aria-hidden="true">
-        </div>
+        <div class="body-content">Sign up, log in, and follow the built-in tutorial to create your first cluster and build a sample application. No credit card required.</div>
+        <a class="text-link" target="_blank" href="https://cloud.yugabyte.com/signup" title="Sign Up">Sign up</a>
+        <a class="text-link" href="../../quick-start-yugabytedb-managed/" title="Learn more">Learn more</a>
       </div>
-    </a>
+      <div class="image">
+        <img class="icon" src="/images/homepage/yugabyte-in-cloud.png" title="Yugabyte cloud" aria-hidden="true">
+      </div>
+    </div>
   </div>
   <div class="col-12 col-md-12 col-lg-6">
-    <a href="../cloud-basics/">
-      <div class="border two-side">
-        <div class="body">
-          <div class="box-top">
-            <div class="nav-link button-style orange"><span>Deploy</span></div>
-            <span><strong>Dedicated</strong> clusters</span>
-          </div>
-          <div class="body-content">Deploy single- and multi-region production clusters across multiple availability zones and regions.</div>
-          <span class="text-link">Learn more</span>
+    <div class="border two-side">
+      <div class="body">
+        <div class="box-top">
+          <a class="button-style orange" href="../cloud-basics/"><span>Deploy</span></a>
+          <span><strong>Dedicated</strong> clusters</span>
         </div>
-        <div class="image">
-          <img class="icon" src="/images/homepage/locally-laptop.png" title="Locally Laptop" aria-hidden="true">
-        </div>
+        <div class="body-content">Deploy single- and multi-region production clusters across multiple availability zones and regions.</div>
+        <a class="text-link" href="../cloud-basics/" title="Learn more">Learn more</a>
       </div>
-    </a>
+      <div class="image">
+        <img class="icon" src="/images/homepage/locally-laptop.png" title="Locally Laptop" aria-hidden="true">
+      </div>
+    </div>
   </div>
+
 </div>
 
 <div class="three-box-row">
   <div class="row">
     <h2 class="col-12">Cluster basics</h2>
     <div class="col-12 col-md-6 col-lg-4">
-      <div class="box border">
-        <div class="other-content">
-          <div class="heading"><a href="../cloud-basics/" title="Deploy">Deploy</a></div>
-          <div class="detail-copy">Create single- and multi-region clusters in a variety of topologies.</div>
+      <a href="../cloud-basics/" title="Deploy">
+        <div class="box border">
+          <div class="other-content">
+            <div class="heading" style="color:#2b59c3">Deploy</div>
+            <div class="detail-copy">Create single- and multi-region clusters in a variety of topologies.</div>
+          </div>
         </div>
-      </div>
+      </a>
     </div>
     <div class="col-12 col-md-6 col-lg-4">
-      <div class="box border">
-        <div class="other-content">
-          <div class="heading"><a href="../cloud-secure-clusters/" title="Secure">Secure</a></div>
-          <div class="detail-copy">Authorize access to clusters and databases, download cluster certificates, and audit account activity.</div>
+      <a href="../cloud-secure-clusters/" title="Secure">
+        <div class="box border">
+          <div class="other-content">
+            <div class="heading" style="color:#2b59c3">Secure</div>
+            <div class="detail-copy">Authorize access to clusters and databases, download cluster certificates, and audit account activity.</div>
+          </div>
         </div>
-      </div>
+      </a>
     </div>
     <div class="col-12 col-md-6 col-lg-4">
-      <div class="box border">
-        <div class="other-content">
-          <div class="heading"><a href="../cloud-connect/" title="Connect">Connect</div>
-          <div class="detail-copy">Connect to your cluster using Cloud Shell, a client shell, and from applications.</div>
+      <a href="../cloud-connect/" title="Connect">
+        <div class="box border">
+          <div class="other-content">
+            <div class="heading" style="color:#2b59c3">Connect</div>
+            <div class="detail-copy">Connect to your cluster using Cloud Shell, a client shell, and from applications.</div>
+          </div>
         </div>
-      </div>
+      </a>
     </div>
     <div class="col-12 col-md-6 col-lg-4">
-      <div class="box border">
-        <div class="other-content">
-          <div class="heading"><a href="../cloud-monitor/" title="Monitor">Monitor</a></div>
-          <div class="detail-copy">Monitor cluster performance and get notified of potential problems.</div>
+      <a href="../cloud-monitor/" title="Monitor">
+        <div class="box border">
+          <div class="other-content">
+            <div class="heading" style="color:#2b59c3">Monitor</div>
+            <div class="detail-copy">Monitor cluster performance and get notified of potential problems.</div>
+          </div>
         </div>
-      </div>
+      </a>
     </div>
     <div class="col-12 col-md-6 col-lg-4">
-      <div class="box border">
-        <div class="other-content">
-          <div class="heading"><a href="../cloud-clusters/" title="Manage">Manage</a></div>
-          <div class="detail-copy">Scale clusters, configure backups, set maintenance windows, and pause or delete clusters.</div>
+      <a href="../cloud-clusters/" title="Manage">
+        <div class="box border">
+          <div class="other-content">
+            <div class="heading" style="color:#2b59c3">Manage</div>
+            <div class="detail-copy">Scale clusters, configure backups, set maintenance windows, and pause or delete clusters.</div>
+          </div>
         </div>
-      </div>
+      </a>
     </div>
   </div>
 </div>
