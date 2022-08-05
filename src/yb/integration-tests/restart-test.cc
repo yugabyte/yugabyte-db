@@ -31,6 +31,8 @@
 
 DECLARE_bool(TEST_simulate_abrupt_server_restart);
 
+DECLARE_bool(log_enable_background_sync);
+
 namespace yb {
 namespace integration_tests {
 
@@ -49,6 +51,30 @@ class RestartTest : public YBTableTestBase {
     ASSERT_OK(client_->GetTablets(table_name, 0 /* max_tablets */, &tablet_ids, &ranges));
     ASSERT_EQ(tablet_ids.size(), 1);
     *tablet_id = tablet_ids[0];
+  }
+
+  void ShutdownTabletPeer(const std::shared_ptr<tablet::TabletPeer> &tablet_peer) {
+    ASSERT_OK(tablet_peer->Shutdown(tablet::ShouldAbortActiveTransactions::kTrue,
+                                    tablet::DisableFlushOnShutdown::kFalse));
+  }
+
+  void CheckSampleKeysValues(int start, int end) {
+    auto result_kvs = GetScanResults(client::TableRange(table_));
+    ASSERT_EQ(end - start + 1, result_kvs.size());
+
+    for(int i = start ; i <= end ; i++) {
+      std::string num_str = std::to_string(i);
+      ASSERT_EQ("key_" + num_str, result_kvs[i - start].first);
+      ASSERT_EQ("value_" + num_str, result_kvs[i - start].second);
+    }
+  }
+};
+
+class LogSyncTest : public RestartTest {
+ protected:
+  void BeforeStartCluster() override {
+    // setting the flag immaterial of the default value
+    FLAGS_log_enable_background_sync = true;
   }
 };
 
@@ -77,6 +103,28 @@ TEST_F(RestartTest, WalFooterProperlyInitialized) {
   ASSERT_TRUE(segment->footer().close_timestamp_micros() > timestamp_before_write &&
               segment->footer().close_timestamp_micros() < timestamp_after_write);
 
+}
+
+TEST_F(LogSyncTest, BackgroundSync) {
+
+  // triggers log background sync threadpool
+  PutKeyValue("key_0", "value_0");
+  auto* tablet_server = mini_cluster()->mini_tablet_server(0);
+  string tablet_id;
+  ASSERT_NO_FATALS(GetTablet(table_.name(), &tablet_id));
+  std::shared_ptr<tablet::TabletPeer> tablet_peer;
+  ASSERT_OK(tablet_server->server()->tablet_manager()->GetTabletPeer(tablet_id, &tablet_peer));
+  CheckSampleKeysValues(0, 0);
+
+  ASSERT_OK(tablet_server->Restart());
+  ASSERT_NO_FATALS(GetTablet(table_.name(), &tablet_id));
+  ASSERT_OK(tablet_server->server()->tablet_manager()->GetTabletPeer(tablet_id, &tablet_peer));
+  ASSERT_OK(tablet_server->WaitStarted());
+
+  // shutting down tablet_peer resets the BG sync threapool token maintained in the Log.
+  PutKeyValue("key_1", "value_1");
+  CheckSampleKeysValues(0, 1);
+  ShutdownTabletPeer(tablet_peer);
 }
 
 } // namespace integration_tests

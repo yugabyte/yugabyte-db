@@ -231,6 +231,7 @@ class BootstrapTest : public LogTestBase {
       .listener = listener.get(),
       .append_pool = log_thread_pool_.get(),
       .allocation_pool = log_thread_pool_.get(),
+      .log_sync_pool = log_thread_pool_.get(),
       .retryable_requests = nullptr,
       .test_hooks = test_hooks_
     };
