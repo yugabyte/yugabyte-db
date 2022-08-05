@@ -188,6 +188,7 @@ class LogTestBase : public YBTest {
                        tablet_metric_entity_.get(),
                        log_thread_pool_.get(),
                        log_thread_pool_.get(),
+                       log_thread_pool_.get(),
                        std::numeric_limits<int64_t>::max(), // cdc_min_replicated_index
                        &log_));
     LOG(INFO) << "Sucessfully opened the log at " << tablet_wal_path_;

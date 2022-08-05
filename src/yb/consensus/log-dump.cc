@@ -325,6 +325,7 @@ Status FilterLogSegment(const string& segment_path) {
       /* tablet_metric_entity */ nullptr,
       log_thread_pool.get(),
       log_thread_pool.get(),
+      log_thread_pool.get(),
       /* cdc_min_replicated_index */ 0,
       &log));
 

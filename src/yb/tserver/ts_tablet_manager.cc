@@ -372,6 +372,10 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
                .set_min_threads(1)
                .unlimited_threads()
                .Build(&raft_pool_));
+  CHECK_OK(ThreadPoolBuilder("log-sync")
+               .set_min_threads(1)
+               .unlimited_threads()
+               .Build(&log_sync_pool_));
   CHECK_OK(ThreadPoolBuilder("prepare")
                .set_min_threads(1)
                .unlimited_threads()
@@ -1441,6 +1445,7 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
       .listener = tablet_peer->status_listener(),
       .append_pool = append_pool(),
       .allocation_pool = allocation_pool_.get(),
+      .log_sync_pool = log_sync_pool(),
       .retryable_requests = &retryable_requests,
     };
     s = BootstrapTablet(data, &tablet, &log, &bootstrap_info);
@@ -1621,6 +1626,9 @@ void TSTabletManager::CompleteShutdown() {
 
   if (raft_pool_) {
     raft_pool_->Shutdown();
+  }
+  if (log_sync_pool_) {
+    log_sync_pool_->Shutdown();
   }
   if (tablet_prepare_pool_) {
     tablet_prepare_pool_->Shutdown();

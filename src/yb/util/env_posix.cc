@@ -445,7 +445,7 @@ class PosixWritableFile : public WritableFile {
     bool sync_on_close_;
     uint64_t filesize_;
     uint64_t pre_allocated_size_;
-    bool pending_sync_;
+    std::atomic<bool> pending_sync_;
 
  private:
   Status DoWritev(const Slice* slices, size_t n) {
