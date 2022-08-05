@@ -35,7 +35,7 @@ A transaction is a sequence of operations performed as a single logical unit of 
 
 - **Consistency** A completed transaction leaves the database in a consistent internal state. This can either be all the operations in the transactions succeeding or none of them succeeding.
 
-- **Isolation** This property determines how/when changes made by one transaction become visible to the other. For example, a *serializable* isolation level guarantees that two concurrent transactions appear as if one executed after the other (i.e. as if they occur in a completely isolated fashion). YugabyteDB supports *Snapshot*, *Serializable* and *Read Committed* isolation levels. Read more about the different [levels of isolation](../../../architecture/transactions/isolation-levels/).
+- **Isolation** This property determines how/when changes made by one transaction become visible to the other. For example, a *serializable* isolation level guarantees that two concurrent transactions appear as if one executed after the other (that is, as if they occur in a completely isolated fashion). YugabyteDB supports *Snapshot*, *Serializable* and *Read Committed* isolation levels. Read more about the different [levels of isolation](../../../architecture/transactions/isolation-levels/).
 
 - **Durability** The results of the transaction are permanently stored in the system. The modifications must persist even in the instance of power loss or system failures.
 
@@ -110,9 +110,9 @@ BoundStatement txn1 = pstmt.bind().setString("k1", key1)
 ResultSet resultSet = client.execute(txn1);
 ```
 
-## Sample Java Application
+## Sample Java application
 
-You can find a working example of using transactions with YugabyteDB in our [sample applications](../../../develop/explore-sample-apps/). This application writes out string keys in pairs, with each pair of keys having the same value written as a transaction. There are multiple readers and writers that update and read these pair of keys. The number of reads and writes to perform can be specified as a parameter.
+You can find a working example of using transactions with YugabyteDB in the [yb-sample-apps](https://github.com/yugabyte/yb-sample-apps) repository. This application writes out string keys in pairs, with each pair of keys having the same value written as a transaction. There are multiple readers and writers that update and read these pair of keys. The number of reads and writes to perform can be specified as a parameter.
 
 Here is how you can try out this sample application.
 
@@ -131,7 +131,7 @@ Usage:
       [ --num_threads_write 2 ]
 ```
 
-Browse the [Java source code for the batch application](https://github.com/yugabyte/yugabyte-db/blob/master/java/yb-loadtester/src/main/java/com/yugabyte/sample/apps/CassandraTransactionalKeyValue.java) to see how everything fits together.
+Browse the [Java source code for the transaction application](https://github.com/yugabyte/yb-sample-apps/blob/master/src/main/java/com/yugabyte/sample/apps/CassandraTransactionalKeyValue.java) to see how everything fits together.
 
 ## Example with ycqlsh
 
@@ -161,7 +161,7 @@ ycqlsh> select keyspace_name, table_name, transactions from system_schema.tables
 where keyspace_name='banking' AND table_name = 'accounts';
 ```
 
-```
+```output
  keyspace_name | table_name | transactions
 ---------------+------------+---------------------
        banking |   accounts | {'enabled': 'true'}
@@ -186,7 +186,7 @@ Here are the balances for John and Smith.
 ycqlsh> select * from banking.accounts;
 ```
 
-```
+```output
  account_name | account_type | balance
 --------------+--------------+---------
          John |     checking |     100
@@ -201,7 +201,7 @@ Check John's balance.
 ycqlsh> SELECT SUM(balance) as Johns_balance FROM banking.accounts WHERE account_name='John';
 ```
 
-```
+```output
  johns_balance
 ---------------
           1100
@@ -213,7 +213,7 @@ Check Smith's balance.
 ycqlsh> SELECT SUM(balance) as smiths_balance FROM banking.accounts WHERE account_name='Smith';
 ```
 
-```
+```output
  smiths_balance
 ----------------
            2050
@@ -239,7 +239,7 @@ If you now selected the value of John's account, you should see the amounts refl
 ycqlsh> select * from banking.accounts where account_name='John';
 ```
 
-```
+```output
  account_name | account_type | balance
 --------------+--------------+---------
          John |     checking |     300
@@ -252,7 +252,7 @@ Check John's balance.
 ycqlsh> SELECT SUM(balance) as Johns_balance FROM banking.accounts WHERE account_name='John';
 ```
 
-```
+```output
  johns_balance
 ---------------
           1100
@@ -265,7 +265,7 @@ ycqlsh> select account_name, account_type, balance, writetime(balance)
 from banking.accounts where account_name='John';
 ```
 
-```
+```output
  account_name | account_type | balance | writetime(balance)
 --------------+--------------+---------+--------------------
          John |     checking |     300 |   1517898028890171
@@ -287,7 +287,7 @@ We can verify the transfer was made as we intended, and also verify that the tim
 ycqlsh> select account_name, account_type, balance, writetime(balance) from banking.accounts;
 ```
 
-```
+```output
  account_name | account_type | balance | writetime(balance)
 --------------+--------------+---------+--------------------
          John |     checking |     100 |   1517898167629366
@@ -302,7 +302,7 @@ The net balance for John should have decreased by $200 which that of Smith shoul
 ycqlsh> SELECT SUM(balance) as Johns_balance FROM banking.accounts WHERE account_name='John';
 ```
 
-```
+```output
  johns_balance
 ---------------
            900
@@ -314,7 +314,7 @@ Check Smith's balance.
 ycqlsh> SELECT SUM(balance) as smiths_balance FROM banking.accounts WHERE account_name='Smith';
 ```
 
-```
+```output
  smiths_balance
 ----------------
            2250
