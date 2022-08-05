@@ -107,7 +107,7 @@ In the preceding `docker run` command, the data stored in YugabyteDB does not pe
   docker run -d --name yugabyte \
            -p7000:7000 -p9000:9000 -p5433:5433 -p9042:9042 \
            -v ~/yb_data:/home/yugabyte/yb_data \
-           yugabytedb/yugabyte:latest bin/yugabyted start \
+           yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} bin/yugabyted start \
            --base_dir=/home/yugabyte/yb_data --daemon=false
   ```
 
