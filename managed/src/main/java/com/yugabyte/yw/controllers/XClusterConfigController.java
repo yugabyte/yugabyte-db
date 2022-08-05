@@ -209,7 +209,7 @@ public class XClusterConfigController extends AuthenticatedController {
 
     // Wrap XClusterConfig with lag metric data and return
     XClusterConfigGetResp resp = new XClusterConfigGetResp();
-    resp.xclusterConfig = xClusterConfig;
+    resp.xClusterConfig = xClusterConfig;
     resp.lag = lagMetricData;
     return PlatformResults.withData(resp);
   }
