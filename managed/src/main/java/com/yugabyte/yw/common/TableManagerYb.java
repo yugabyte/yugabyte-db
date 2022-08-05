@@ -10,11 +10,9 @@ import static com.yugabyte.yw.common.BackupUtil.YB_CLOUD_COMMAND_TYPE;
 import static com.yugabyte.yw.common.TableManagerYb.CommandSubType.BACKUP;
 import static com.yugabyte.yw.common.TableManagerYb.CommandSubType.BULK_IMPORT;
 import static com.yugabyte.yw.common.TableManagerYb.CommandSubType.DELETE;
-import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME;
 
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
-import com.yugabyte.yw.common.BackupUtil.RegionLocations;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.BulkImportParams;
@@ -40,9 +38,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.collections.MapUtils;
-import org.apache.commons.lang.StringUtils;
 import org.yb.CommonTypes.TableType;
 import play.libs.Json;
 
@@ -103,8 +99,11 @@ public class TableManagerYb extends DevopsBase {
             AccessKey.getOrBadRequest(clusterProvider.uuid, clusterUserIntent.accessKeyCode);
         Collection<NodeDetails> nodesInCluster = universe.getNodesInCluster(cluster.uuid);
         for (NodeDetails nodeInCluster : nodesInCluster) {
-          ipToSshKeyPath.put(
-              nodeInCluster.cloudInfo.private_ip, accessKeyForCluster.getKeyInfo().privateKey);
+          if (nodeInCluster.cloudInfo.private_ip != null
+              && !nodeInCluster.cloudInfo.private_ip.equals("null")) {
+            ipToSshKeyPath.put(
+                nodeInCluster.cloudInfo.private_ip, accessKeyForCluster.getKeyInfo().privateKey);
+          }
         }
       }
     }
