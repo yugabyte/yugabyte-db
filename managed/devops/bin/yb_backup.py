@@ -3166,7 +3166,7 @@ class YBBackup:
             if self.args.ssh2_enabled:
                 # Todo: Fix the condition. Will be fixed, as part of migration of common
                 # ssh_librabry(yugabyte-db/managed/devops/opscli/ybops/utils/ssh.py).
-                old_db_name = old_db_name.splitlines()[-1]
+                old_db_name = old_db_name.splitlines()[-1].strip()
 
             if old_db_name:
                 new_db_name = keyspace_name(self.args.keyspace[0])
