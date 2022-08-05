@@ -8,6 +8,8 @@ aliases:
   - /quick-start/
 layout: single
 type: docs
+rightNav:
+  hideH4: true
 ---
 
 <div class="custom-tabs tabs-style-2">
@@ -296,7 +298,7 @@ First, stop the currently running single-node cluster:
 Create the first node as follows:
 
 ```sh
-./bin/yugabyted start --advertise_address=127.0.0.1 --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node1 --cloud_location=aws:us-east:us-east-1a
+./bin/yugabyted start --advertise_address=127.0.0.1 --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node1 --cloud_location=aws.us-east.us-east-1a
 ```
 
 Start the second and the third nodes on two separate VMs:
