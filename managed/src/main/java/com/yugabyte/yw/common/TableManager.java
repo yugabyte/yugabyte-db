@@ -106,8 +106,11 @@ public class TableManager extends DevopsBase {
             AccessKey.getOrBadRequest(clusterProvider.uuid, clusterUserIntent.accessKeyCode);
         Collection<NodeDetails> nodesInCluster = universe.getNodesInCluster(cluster.uuid);
         for (NodeDetails nodeInCluster : nodesInCluster) {
-          ipToSshKeyPath.put(
-              nodeInCluster.cloudInfo.private_ip, accessKeyForCluster.getKeyInfo().privateKey);
+          if (nodeInCluster.cloudInfo.private_ip != null
+              && !nodeInCluster.cloudInfo.private_ip.equals("null")) {
+            ipToSshKeyPath.put(
+                nodeInCluster.cloudInfo.private_ip, accessKeyForCluster.getKeyInfo().privateKey);
+          }
         }
       }
     }

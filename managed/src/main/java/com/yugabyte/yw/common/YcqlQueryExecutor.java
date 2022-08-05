@@ -63,9 +63,12 @@ public class YcqlQueryExecutor {
           createCassandraConnection(
               universe.universeUUID, true, data.ycqlAdminUsername, data.ycqlAdminPassword);
     } catch (AuthenticationException e) {
+      LOG.warn(e.getMessage());
       throw new PlatformServiceException(Http.Status.UNAUTHORIZED, e.getMessage());
     } finally {
-      cc.close();
+      if (cc != null) {
+        cc.close();
+      }
     }
   }
 
@@ -191,7 +194,9 @@ public class YcqlQueryExecutor {
     } catch (Exception e) {
       response.put("error", removeQueryFromErrorMessage(e.getMessage(), queryParams.query));
     } finally {
-      cc.close();
+      if (cc != null) {
+        cc.close();
+      }
     }
     return response;
   }
