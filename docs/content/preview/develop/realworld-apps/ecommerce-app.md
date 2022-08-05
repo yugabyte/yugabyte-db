@@ -133,7 +133,7 @@ insert_batch.push({
 
 The dynamic attributes are loaded using the Redis-compatible YEDIS API into YugabyteDB.
 
-```yedis
+```js
 ybRedisClient.zadd("allproducts:num_reviews", e.num_reviews, e.id);
 ybRedisClient.zadd("allproducts:num_stars", e.num_stars, e.id);
 ybRedisClient.zadd("allproducts:num_buys", numBuys, e.id);
@@ -154,7 +154,7 @@ The homepage is rendered by the `App` react component. The React route is the fo
 
 It uses the following REST API to query Express/NodeJS for all the products:
 
-```sh
+```text
 /products
 ```
 
@@ -185,8 +185,8 @@ This is rendered by the `Products` react component. Here is the react route:
 
 The component internally uses the following REST API:
 
-```sh
-/products/catgory/business
+```text
+/products/category/business
 ```
 
 The following query is executed against the database:
@@ -216,7 +216,7 @@ These product lists are also rendered by the `Products` React component.
 
 The component internally uses the following REST API:
 
-```sh
+```text
 /products/sort/num_stars
 ```
 
@@ -246,7 +246,7 @@ The React route for this view is `ShowProduct`:
 
 The component internally uses the following REST API:
 
-```sh
+```text
 /products/details/5
 ```
 
@@ -258,7 +258,7 @@ SELECT * FROM yugastore.products WHERE id=5;
 
 If you had another table with extended product information, you could fetch data from that table as well and add it into the result. Finally, each time this page is hit, increment a counter to track how many times the current product was viewed.
 
-```redis
+```js
 ybRedis.incrby("pageviews:product:5:count", 1);
 ```
 

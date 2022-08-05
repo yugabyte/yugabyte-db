@@ -20,12 +20,12 @@ Quality of service (QoS) is used to ensure that your critical services (or SQL s
 
 These are discussed below in detail.
 
-## Admission Control
+## Admission control
 
 YugabyteDB implements **admission control** to ensure that a heavily loaded cluster is able to stay up and running. Admission control kicks in after a connection is authenticated and authorized, and works at various stages of query processing / execution. The following controls are available to ensure quality of service.
 
 | Type | Scope | Description |
-| --- | --- | --- |
+| :--- | :--- | :--- |
 | [Write-heavy workloads](write-heavy-workloads) | `CLUSTER WIDE` | In scenarios where the write throughput can be very high, ensure that the cluster does not get overloaded, resulting in an outage. |
 | [Transaction priorities](transaction-priority) | `CLUSTER WIDE` | Enables fine-grained control over which transactions should be given higher priority. |
 | [Connection management](limiting-connections) | `CLUSTER WIDE`<br/>`PER USER`<br/>`PER DATABASE` | Limit the number of connections that can be established in a cluster. |

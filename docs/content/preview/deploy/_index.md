@@ -7,7 +7,6 @@ headcontent: Deploy to the public cloud or private data center of your choice
 image: /images/section_icons/index/deploy.png
 aliases:
   - /deploy/
-  - /preview/deploy/
 menu:
   preview:
     identifier: deploy
