@@ -64,8 +64,12 @@ public class SetUniverseKey {
 
     YBClient client = null;
 
-    if (u.getUniverseDetails().universePaused) {
-      log.info("Skipping setting universe keys as {} is paused", u.universeUUID.toString());
+    // If the resume task is in progress the universe keys must be set for encryption to work.
+    // Today on a paused universe, the only task which can run is Resume.
+    if (u.getUniverseDetails().universePaused && !(u.getUniverseDetails().updateInProgress)) {
+      log.info(
+          "Skipping setting universe keys as {} is paused and no task is running",
+          u.universeUUID.toString());
       return;
     }
 
