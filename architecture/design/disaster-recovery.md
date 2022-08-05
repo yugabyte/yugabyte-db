@@ -14,8 +14,7 @@ The initial configuration required for the solution is the following:
 * xCluster is configured bi-directionally.
 * Cluster A is the source and accepts updates from applications.
 * Cluster B is the target and do not accept updates (read-only).
-* A->B replication is active.
-* B->A replication is paused.
+* Both A->B and B->A replication is active.
 * PITR is enabled for both A and B (used for unplanned failover - see below).
 
 With such configuration, cluster B is on stand-by, so applications can switch to it at any time with minimal RTO. Async nature of replication guarantees that update latencies are not affected by the presence of the stand-by cluster.
@@ -33,8 +32,6 @@ Assuming cluster A is the source and cluster B is the target, the following step
 
 1. Stop applications.
 1. Wait for pending updates to propagate to B.
-1. Pause A->B replication.
-1. Resume B->A replication.
 1. Switch application connections to B.
 1. Resume applications.
 
@@ -45,7 +42,7 @@ As a result, cluster B becomes the source that replicates updates to cluster A. 
 Assuming cluster A is the source, cluster B is the target, and cluster A becomes unavailable, the following steps are required to perform failover process:
 
 1. Stop applications.
-1. Pause A->B replication.
+1. Pause both A->B and B->A replication.
 1. Get the latest consistent time on B.
 1. Restore B to the latest consistent time using PITR.
 1. Switch application connections to B.
@@ -54,7 +51,7 @@ Assuming cluster A is the source, cluster B is the target, and cluster A becomes
 When cluster A comes back up, the following steps are required:
 
 1. Restore A to the latest consistent time using PITR.
-1. Resume B->A replication.
+1. Resume both A->B and B->A replication.
 
 At this point, B is the source cluster and A is the target cluster. To switch back to the initial configuration, the planned failover flow can be used.
 
@@ -66,13 +63,13 @@ The following APIs are required to support user flows described above.
 
 Pauses replication by preventing the target cluster from pulling data from the source cluster.
 
-Invoked on the **target** cluster.
+Invoked on either **source** or **target** cluster.
 
 ### Resume replication
 
 Resumes replication by allowing the target cluster to pull data from the source cluster.
 
-Invoked on the **target** cluster.
+Invoked on either **source** or **target** cluster.
 
 ### Wait for drain
 
