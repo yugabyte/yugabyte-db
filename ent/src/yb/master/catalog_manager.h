@@ -215,18 +215,23 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   // Delete specified CDC streams.
   Status CleanUpDeletedCDCStreams(const std::vector<scoped_refptr<CDCStreamInfo>>& streams);
 
-  void GetTabletsWithStreams(
-      const scoped_refptr<CDCStreamInfo> stream, std::set<TabletId>* tablets_with_streams);
+  void GetValidTabletsAndDroppedTablesForStream(
+      const scoped_refptr<CDCStreamInfo> stream, std::set<TabletId>* tablets_with_streams,
+      std::set<TableId>* dropped_tables);
 
   Result<std::shared_ptr<client::TableHandle>> GetCDCStateTable();
 
-  void DeleteFromCDCStateTable(
+  Status DeleteFromCDCStateTable(
       std::shared_ptr<yb::client::TableHandle> cdc_state_table_result,
       std::shared_ptr<client::YBSession> session, const TabletId& tablet_id,
       const CDCStreamId& stream_id);
 
   // Delete specified CDC streams metadata.
   Status CleanUpCDCStreamsMetadata(const std::vector<scoped_refptr<CDCStreamInfo>>& streams);
+
+  using StreamTablesMap = std::unordered_map<CDCStreamId, set<TableId>>;
+
+  Status CleanUpCDCMetadataFromSystemCatalog(const StreamTablesMap& drop_stream_tablelist);
 
   Status UpdateCDCStreams(
       const std::vector<CDCStreamId>& stream_ids,
