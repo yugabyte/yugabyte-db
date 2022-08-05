@@ -193,6 +193,8 @@ void CatalogManagerBgTasks::Run() {
         s = catalog_manager_->CleanUpDeletedCDCStreams(streams);
       }
 
+      // DELETING_METADATA special state is used by CDC, to do CDC streams metadata cleanup from
+      // cache as well as from the system catalog for the drop table scenario.
       std::vector<scoped_refptr<CDCStreamInfo>> cdcsdk_streams;
       auto status_delete_metadata = catalog_manager_->FindCDCStreamsMarkedForMetadataDeletion(
           &cdcsdk_streams, SysCDCStreamEntryPB::DELETING_METADATA);
