@@ -117,13 +117,13 @@
   name = "YugabyteDB Anywhere"
   weight = 1
   parent = "view-all-products"
-  url = "/yugabyte-platform/overview/"
+  url = "/yugabyte-platform/"
 
 [[main]]
   name = "YugabyteDB Managed"
   weight = 2
   parent = "view-all-products"
-  url = "/yugabyte-cloud/cloud-overview/"
+  url = "/yugabyte-cloud/"
 
 [[main]]
   name = "FAQ"
@@ -310,7 +310,7 @@
   name = "YugabyteDB Anywhere"
   weight = 1
   parent = "view-all-products"
-  url = "/preview/yugabyte-platform/overview/"
+  url = "/preview/yugabyte-platform/"
   [preview.params]
     showSection = true
 
@@ -318,7 +318,7 @@
   name = "YugabyteDB Managed"
   weight = 2
   parent = "view-all-products"
-  url = "/preview/yugabyte-cloud/cloud-overview/"
+  url = "/preview/yugabyte-cloud/"
   [preview.params]
     showSection = true
 
