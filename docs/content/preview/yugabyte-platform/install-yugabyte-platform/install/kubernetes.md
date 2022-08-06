@@ -1,14 +1,14 @@
 ---
-title: Install YugabyteDB Anywhere
-headerTitle: Select installation type
-linkTitle: Install
+title: Install YugabyteDB Anywhere Overview
+headerTitle: Overview
+linkTitle: Overview
 description: Installing YugabyteDB Anywhere on Kubernetes
 image: /images/section_icons/deploy/enterprise.png
 headcontent: Installing YugabyteDB Anywhere on Kubernetes
 menu:
   preview_yugabyte-platform:
     identifier: install-2-k8s
-    parent: overview-yp
+    parent: install-yugabyte-platform
     weight: 20
 type: docs
 ---
@@ -37,8 +37,6 @@ For installation overview, select one of the following installation types:
     </a>
   </li>
 </ul>
-
-<br>
 
 Click elements of the following chart to access detailed steps:
 

@@ -1,15 +1,15 @@
 ---
-title: Configure Kubernetes
-headerTitle: Configure Kubernetes
-linkTitle: Configure
+title: Configure YugabyteDB Overview
+headerTitle: Overview
+linkTitle: Overview
 description: Configuring YugabyteDB Anywhere on Kubernetes
 image: /images/section_icons/deploy/enterprise.png
 headcontent: Configuring YugabyteDB Anywhere on Kubernetes
 menu:
   preview_yugabyte-platform:
     identifier: configure-4-k8s
-    parent: overview-yp
-    weight: 40
+    parent: configure-yugabyte-platform
+    weight: 5
 type: docs
 ---
 
@@ -53,7 +53,7 @@ For overview of how to configure database nodes, select one of the following clo
 
 </ul>
 
-<br>Click elements of the following chart to access detailed steps:
+Click elements of the following chart to access detailed steps:
 
 <img src="/images/ee/flowchart/yb-configure-k8s.png" usemap="#image-map">
 

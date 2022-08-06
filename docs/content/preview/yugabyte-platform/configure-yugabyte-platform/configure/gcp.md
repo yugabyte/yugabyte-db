@@ -1,14 +1,15 @@
 ---
-title: Configure GCP
-headerTitle: Configure GCP
-linkTitle: Configure
+title: Configure YugabyteDB Overview
+headerTitle: Overview
+linkTitle: Overview
 description: Configuring YugabyteDB Anywhere on Google Cloud Platform
 image: /images/section_icons/deploy/enterprise.png
+headcontent: Configuring YugabyteDB Anywhere on GCP
 menu:
   preview_yugabyte-platform:
     identifier: configure-2-gcp
-    parent: overview-yp
-    weight: 40
+    parent: configure-yugabyte-platform
+    weight: 5
 type: docs
 ---
 
@@ -52,8 +53,6 @@ For overview of how to configure database nodes, select one of the following clo
   </li>
 
 </ul>
-
-<br>
 
 Click elements of the following chart to access detailed steps:
 

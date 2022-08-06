@@ -1,18 +1,21 @@
 ---
-title: Configure YugabyteDB Anywhere
-headerTitle: Select cloud provider
-linkTitle: Configure
+title: Configure YugabyteDB Overview
+headerTitle: Overview
+linkTitle: Overview
 description: Configuring YugabyteDB Anywhere on-premises
 image: /images/section_icons/deploy/enterprise.png
+headcontent: Configuring YugabyteDB Anywhere on AWS
+aliases:
+  - /preview/yugabyte-platform/overview/configure/
 menu:
   preview_yugabyte-platform:
     identifier: configure-1-aws
-    parent: overview-yp
-    weight: 40
+    parent: configure-yugabyte-platform
+    weight: 5
 type: docs
 ---
 
-For overview of how to configure database nodes, select one of the following cloud providers:
+For an overview of how to configure database nodes, select one of the following cloud providers:
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
@@ -53,7 +56,7 @@ For overview of how to configure database nodes, select one of the following clo
 
 </ul>
 
-<br>Click elements of the following chart to access detailed steps:
+Click elements of the following chart to access detailed steps:
 
 <img src="/images/ee/flowchart/yb-configure-aws.png" usemap="#image-map">
 

@@ -1,16 +1,16 @@
 ---
-title: Install YugabyteDB Anywhere
-headerTitle: Select installation type
-linkTitle: Install
-description: Installing YugabyteDB Anywhere on public cloud
+title: Install YugabyteDB Anywhere Overview
+headerTitle: Overview
+linkTitle: Overview
+description: Installing YugabyteDB Anywhere on public clouds
 image: /images/section_icons/deploy/enterprise.png
-headcontent: Installing YugabyteDB Anywhere on public cloud
+headcontent: Installing YugabyteDB Anywhere on public clouds
 aliases:
   - /preview/yugabyte-platform/overview/install/
 menu:
   preview_yugabyte-platform:
     identifier: install-1-public-cloud
-    parent: overview-yp
+    parent: install-yugabyte-platform
     weight: 20
 type: docs
 ---
@@ -39,8 +39,6 @@ For installation overview, select one of the following installation types:
     </a>
   </li>
 </ul>
-
-<br>
 
 Click elements of the following chart to access detailed steps:
 

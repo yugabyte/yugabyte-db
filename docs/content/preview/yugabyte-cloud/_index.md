@@ -4,15 +4,14 @@ headerTitle: YugabyteDB Managed
 linkTitle: YugabyteDB Managed
 description: Fully managed YugabyteDB-as-a-Service that allows you to run YugabyteDB clusters on Google Cloud Platform (GCP) and Amazon Web Services (AWS).
 aliases:
-  - /preview/yugabyte-cloud/
+  - /preview/yugabyte-cloud/cloud-overview
   - /preview/deploy/yugabyte-cloud/
 menu:
   preview_yugabyte-cloud:
-    identifier: cloud-overview
+    identifier: yugabyte-cloud
     parent: yugabytedb-managed
     weight: 1
-type: indexpage
-layout: single
+type: homepage
 body_class: yb-page-style
 ---
 
@@ -26,7 +25,7 @@ body_class: yb-page-style
         </div>
         <div class="body-content">Sign up, log in, and follow the built-in tutorial to create your first cluster and build a sample application. No credit card required.</div>
         <a class="text-link" target="_blank" href="https://cloud.yugabyte.com/signup" title="Sign Up">Sign up</a>
-        <a class="text-link" href="../../quick-start-yugabytedb-managed/" title="Learn more">Learn more</a>
+        <a class="text-link" href="../quick-start-yugabytedb-managed/" title="Learn more">Learn more</a>
       </div>
       <div class="image">
         <img class="icon" src="/images/homepage/yugabyte-in-cloud.png" title="Yugabyte cloud" aria-hidden="true">
@@ -37,11 +36,11 @@ body_class: yb-page-style
     <div class="border two-side">
       <div class="body">
         <div class="box-top">
-          <a class="button-style orange" href="../cloud-basics/"><span>Deploy</span></a>
+          <a class="button-style orange" href="cloud-basics/"><span>Deploy</span></a>
           <span><strong>Dedicated</strong> clusters</span>
         </div>
         <div class="body-content">Deploy single- and multi-region production clusters across multiple availability zones and regions.</div>
-        <a class="text-link" href="../cloud-basics/" title="Learn more">Learn more</a>
+        <a class="text-link" href="cloud-basics/" title="Learn more">Learn more</a>
       </div>
       <div class="image">
         <img class="icon" src="/images/homepage/locally-laptop.png" title="Locally Laptop" aria-hidden="true">
@@ -55,7 +54,7 @@ body_class: yb-page-style
   <div class="row">
     <h2 class="col-12">Cluster basics</h2>
     <div class="col-12 col-md-6 col-lg-4">
-      <a href="../cloud-basics/" title="Deploy">
+      <a href="cloud-basics/" title="Deploy">
         <div class="box border">
           <div class="other-content">
             <div class="heading">Deploy</div>
@@ -65,7 +64,7 @@ body_class: yb-page-style
       </a>
     </div>
     <div class="col-12 col-md-6 col-lg-4">
-      <a href="../cloud-secure-clusters/" title="Secure">
+      <a href="cloud-secure-clusters/" title="Secure">
         <div class="box border">
           <div class="other-content">
             <div class="heading">Secure</div>
@@ -75,7 +74,7 @@ body_class: yb-page-style
       </a>
     </div>
     <div class="col-12 col-md-6 col-lg-4">
-      <a href="../cloud-connect/" title="Connect">
+      <a href="cloud-connect/" title="Connect">
         <div class="box border">
           <div class="other-content">
             <div class="heading">Connect</div>
@@ -85,7 +84,7 @@ body_class: yb-page-style
       </a>
     </div>
     <div class="col-12 col-md-6 col-lg-4">
-      <a href="../cloud-monitor/" title="Monitor">
+      <a href="cloud-monitor/" title="Monitor">
         <div class="box border">
           <div class="other-content">
             <div class="heading">Monitor</div>
@@ -95,7 +94,7 @@ body_class: yb-page-style
       </a>
     </div>
     <div class="col-12 col-md-6 col-lg-4">
-      <a href="../cloud-clusters/" title="Manage">
+      <a href="cloud-clusters/" title="Manage">
         <div class="box border">
           <div class="other-content">
             <div class="heading">Manage</div>
@@ -114,9 +113,9 @@ body_class: yb-page-style
         <div class="other-content">
           <div class="heading">Manage your account</div>
           <ul>
-            <li><a class="text-link" href="../cloud-admin/manage-access/" title="Add Users">Add Users to your account</a></li>
-            <li><a class="text-link" href="../cloud-admin/cloud-billing-profile/" title="Manage Billing">Manage billing</a></li>
-            <li><a class="text-link" href="../cloud-admin/cloud-admin-apikeys/" title="Manage API keys">Manage API keys</a></li>
+            <li><a class="text-link" href="cloud-admin/manage-access/" title="Add Users">Add Users to your account</a></li>
+            <li><a class="text-link" href="cloud-admin/cloud-billing-profile/" title="Manage Billing">Manage billing</a></li>
+            <li><a class="text-link" href="cloud-admin/cloud-admin-apikeys/" title="Manage API keys">Manage API keys</a></li>
           </ul>
         </div>
       </div>
@@ -126,9 +125,9 @@ body_class: yb-page-style
         <div class="other-content">
           <div class="heading">More Information</div>
           <ul>
-            <li><a class="text-link" href="../release-notes/" title="Whats new">What's new</a></li>
-            <li><a class="text-link" href="../cloud-troubleshoot/" title="Troubleshoot">Troubleshoot</a></li>
-            <li><a class="text-link" href="../../faq/yugabytedb-managed-faq/" title="FAQ">FAQ</a></li>
+            <li><a class="text-link" href="release-notes/" title="Whats new">What's new</a></li>
+            <li><a class="text-link" href="cloud-troubleshoot/" title="Troubleshoot">Troubleshoot</a></li>
+            <li><a class="text-link" href="../faq/yugabytedb-managed-faq/" title="FAQ">FAQ</a></li>
           </ul>
         </div>
       </div>
@@ -157,7 +156,7 @@ body_class: yb-page-style
           <div class="tag-line">FROM EXAMPLES</div>
           <ul>
           <div class="detail-copy">Start coding in your favorite programming language using these examples.</div>
-          <a class="text-link" href="../../develop/build-apps/" title="Get Started">Get Started</a>
+          <a class="text-link" href="../develop/build-apps/" title="Get Started">Get Started</a>
           </ul>
         </div>
       </div>
