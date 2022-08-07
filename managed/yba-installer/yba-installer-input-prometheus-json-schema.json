@@ -1,0 +1,75 @@
+{
+    "$schema": "https://json-schema.org/draft/2022-08/schema",
+    "$id": "yba-installer-input-prometheus-json-schema.json",
+    "title": "Configuration Validation",
+    "description": "Validation of Prometheus user Configuration parameters in YAML",
+    "type": "object",
+    "properties": {
+        "prometheusOldConfig": {
+            "description": "Prometheus Old Config Parameters",
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "fileName": {
+                "type": "string",
+                "pattern": "^(/[^/]+)+$"
+              }
+            },
+            "required": [ "name", "fileName"]
+        },
+        "prometheusNewConfig": {
+            "description": "Prometheus New Config Parameters",
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "fileName": {
+                "type": "string",
+                "pattern": "^(/[^/]+)+$"
+              }
+            },
+            "required": [ "name", "fileName"]
+        },
+        "prometheusOldService": {
+            "description": "Prometheus Old Service Parameters",
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "fileName": {
+                "type": "string",
+                "pattern": "^(/[^/]+)+$"
+              },
+              "storagePath": {
+                "type": "string",
+                "pattern": "^(/[^/]+)+(/)*$"
+              }
+            },
+            "required": [ "name", "fileName", "storagePath"]
+        },
+        "prometheusNewService": {
+            "description": "Prometheus New Service Parameters",
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "fileName": {
+                "type": "string",
+                "pattern": "^(/[^/]+)+$"
+              },
+              "storagePath": {
+                "type": "string",
+                "pattern": "^(/[^/]+)+(/)*$"
+              }
+            },
+            "required": [ "name", "fileName", "storagePath"]
+        }
+    },
+    "required": [ "prometheusOldConfig", "prometheusNewConfig",
+    "prometheusOldService", "prometheusNewService"]
+  }

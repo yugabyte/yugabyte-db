@@ -1,0 +1,44 @@
+{
+    "$schema": "https://json-schema.org/draft/2022-08/schema",
+    "$id": "yba-installer-input-nginx-json-schema.json",
+    "title": "Configuration Validation",
+    "description": "Validation of Nginx user Configuration parameters in YAML",
+    "type": "object",
+    "properties": {
+        "nginxHttp": {
+            "description": "Nginx HTTP Config parameters",
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "fileName": {
+                "type": "string",
+                "pattern": "^(/[^/]+)+$"
+              },
+              "serverName": {
+                "type": "string"
+              }
+            },
+            "required": [ "name", "fileName", "serverName"]
+        },
+        "nginxHttps": {
+            "description": "Nginx HTTPS Config parameters",
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "fileName": {
+                "type": "string",
+                "pattern": "^(/[^/]+)+$"
+              },
+              "serverName": {
+                "type": "string"
+              }
+            },
+            "required": [ "name", "fileName", "serverName"]
+        }
+    },
+    "required": ["nginxHttp", "nginxHttps"]
+  }
