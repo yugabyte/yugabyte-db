@@ -51,7 +51,8 @@ public class EditXClusterConfig extends XClusterConfigTaskBase {
                       targetUniverse.getNodes(),
                       XClusterConfig.getReplicationGroupName(
                           xClusterConfig.sourceUniverseUUID, editFormData.name),
-                      cert));
+                      cert,
+                      targetUniverse.getUniverseDetails().getSourceRootCertDirPath()));
 
           createXClusterConfigRenameTask(editFormData.name)
               .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);

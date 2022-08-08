@@ -116,21 +116,32 @@ public class UniverseTaskParams extends AbstractTaskParams {
     public boolean installNodeExporter = true;
   }
 
-  @JsonProperty(value = "targetXClusterConfigs", access = JsonProperty.Access.READ_ONLY)
+  /**
+   * @deprecated Replaced by {@link
+   *     UniverseDefinitionTaskParams.XClusterInfo#getTargetXClusterConfigs()}, so all the xCluster
+   *     related info are in the same JSON object
+   */
+  @Deprecated
   @ApiModelProperty(value = "The target universe's xcluster replication relationships")
+  @JsonProperty(value = "targetXClusterConfigs", access = JsonProperty.Access.READ_ONLY)
   public List<UUID> getTargetXClusterConfigs() {
     if (universeUUID == null) {
       return new ArrayList<>();
     }
-    return new ArrayList<>(
-        XClusterConfig.getByTargetUniverseUUID(universeUUID)
-            .stream()
-            .map(xClusterConfig -> xClusterConfig.uuid)
-            .collect(Collectors.toList()));
+    return XClusterConfig.getByTargetUniverseUUID(universeUUID)
+        .stream()
+        .map(xClusterConfig -> xClusterConfig.uuid)
+        .collect(Collectors.toList());
   }
 
-  @JsonProperty(value = "sourceXClusterConfigs", access = JsonProperty.Access.READ_ONLY)
+  /**
+   * @deprecated Replaced by {@link
+   *     UniverseDefinitionTaskParams.XClusterInfo#getSourceXClusterConfigs()}, so all the xCluster
+   *     related info are in the same JSON object
+   */
+  @Deprecated
   @ApiModelProperty(value = "The source universe's xcluster replication relationships")
+  @JsonProperty(value = "sourceXClusterConfigs", access = JsonProperty.Access.READ_ONLY)
   public List<UUID> getSourceXClusterConfigs() {
     if (universeUUID == null) {
       return Collections.emptyList();
