@@ -55,7 +55,7 @@ In a single-region multi-zone cluster, the nodes of the YugabyteDB cluster are p
 
 To deploy a multi-zone cluster, create a single-region cluster with Availability Zone Level fault tolerance. Refer to [Create a single-region cluster](../create-clusters/create-single-region/).
 
-If you deploy your cluster in a VPC, you can [geo-partition](#partition-by-region) the cluster after it is created.
+<!--If you deploy your cluster in a VPC, you can [geo-partition](#partition-by-region) the cluster after it is created.-->
 
 ## Replicate across regions
 
@@ -81,9 +81,13 @@ Write latencies in this deployment mode can be high. This is because the tablet 
 - Write latency can be high (depends on the distance//network packet transfer times
 - Follower reads trade off consistency for latency
 
+**Deployment**
+
 To deploy a multi-region replicated cluster, refer to [Replicate across regions](../create-clusters/create-clusters-multisync/).
 
-Learn more: [Replication](../../../architecture/docdb-replication/replication/)
+**Learn more**
+
+[Replication](../../../architecture/docdb-replication/replication/)
 
 ## Partition by region
 
@@ -118,9 +122,13 @@ With this deployment mode, the cluster automatically keeps specific rows and all
 - Row-level geo-partitioning is helpful for specific use cases where the dataset and access to the data is logically partitioned. Examples include users in different countries accessing their accounts, and localized products (or product inventory) in a product catalog.
 - When users travel, access to their data will incur cross-region latency because their data is pinned to a different region.
 
+**Deployment**
+
 To deploy a partition-by-region cluster, refer to [Partition by region](../create-clusters/create-clusters-geopartition/).
 
-Learn more: [Row-Level Geo-Partitioning](../../../explore/multi-region-deployments/row-level-geo-partitioning/)
+**Learn more**
+
+[Row-Level Geo-Partitioning](../../../explore/multi-region-deployments/row-level-geo-partitioning/)
 
 ## Cross-cluster
 
@@ -132,9 +140,13 @@ Here's how it works:
 
 2. You then set up cross cluster asynchronous replication from one cluster to another. This can be either bi-directional in active-active configurations, or uni-directional in active-passive configurations.
 
-To deploy a cross-cluster replication cluster, contact {{% support-cloud %}}.
+**Deployment**
 
-Learn more: [xCluster replication](../../../architecture/docdb-replication/async-replication/)
+To deploy a cross-cluster replication cluster, first [deploy your primary cluster](#single-region-multi-zone-cluster), then contact {{% support-cloud %}} to add the replica.
+
+**Learn more**
+
+[xCluster replication](../../../architecture/docdb-replication/async-replication/)
 
 ### Active-passive
 
@@ -210,9 +222,13 @@ For applications that have writes happening from a single zone or region but wan
 - The primary cluster and the read replicas are correlated clusters, not two independent clusters. In other words, adding read replicas doesn't improve resilience.
 - Read replicas can't take writes, so write latency from remote regions can be high even if there is a read replica near the client.
 
-To deploy a read replica cluster, contact {{% support-cloud %}}.
+**Deployment**
 
-Learn more: [Read replicas](../../../architecture/docdb-replication/read-replicas/)
+You can add replicas to an existing primary cluster as needed. Contact {{% support-cloud %}} to add replicas.
+
+**Learn more**
+
+[Read replicas](../../../architecture/docdb-replication/read-replicas/)
 
 ## Learn more
 
