@@ -384,31 +384,30 @@ public class TestYbBackup extends BasePgSQLTest {
     }
   }
 
-  @Ignore // TODO(alex): Enable after #11632 is fixed.
-  public void testTablegroups() throws Exception {
-    // TODO: Add constraint with a different tablegroup once #11600 is done.
+  // TODO: Enable this test once issue #14873 is fixed.
+  @Ignore
+  public void testTablegroup() throws Exception {
     String ybTablePropsSql = "SELECT c.relname, tg.grpname, props.colocation_id"
         + " FROM pg_class c, yb_table_properties(c.oid) props"
         + " LEFT JOIN pg_yb_tablegroup tg ON tg.oid = props.tablegroup_oid"
         + " WHERE c.oid >= " + FIRST_NORMAL_OID
         + " ORDER BY c.relname";
     String uniqueIndexOnlySql = "SELECT b FROM test_tbl WHERE b = 3.14";
+    String backupDir = null;
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("CREATE DATABASE yb1");
     }
     try (Connection connection2 = getConnectionBuilder().withDatabase("yb1").connect();
          Statement stmt = connection2.createStatement()) {
       stmt.execute("CREATE TABLEGROUP tg1");
-      stmt.execute("CREATE TABLEGROUP tg2");
       stmt.execute("CREATE TABLE test_tbl ("
           + "  h INT PRIMARY KEY,"
           + "  a INT,"
           + "  b FLOAT CONSTRAINT test_tbl_uniq UNIQUE WITH (colocation_id=654321)"
           + ") WITH (colocation_id=123456)"
           + " TABLEGROUP tg1");
-      stmt.execute("CREATE INDEX test_tbl_tg2_idx ON test_tbl (a ASC)"
-          + " WITH (colocation_id=11223344) TABLEGROUP tg2");
-      stmt.execute("CREATE INDEX test_tbl_notg_idx ON test_tbl (a ASC) NO TABLEGROUP");
+      stmt.execute("CREATE INDEX test_tbl_idx ON test_tbl (a ASC)"
+          + " WITH (colocation_id=11223344)");
       stmt.execute("INSERT INTO test_tbl (h, a, b) VALUES (1, 101, 3.14)");
 
       runInvalidQuery(stmt, "INSERT INTO test_tbl (h, a, b) VALUES (2, 202, 3.14)",
@@ -416,16 +415,18 @@ public class TestYbBackup extends BasePgSQLTest {
 
       assertQuery(stmt, ybTablePropsSql,
           new Row("test_tbl", "tg1", 123456),
-          new Row("test_tbl_notg_idx", null, null),
+          new Row("test_tbl_idx", "tg1", 11223344),
           new Row("test_tbl_pkey", null, null),
-          new Row("test_tbl_tg2_idx", "tg2", 11223344),
           new Row("test_tbl_uniq", "tg1", 654321));
 
       assertTrue(isIndexOnlyScan(stmt, uniqueIndexOnlySql, "test_tbl_uniq"));
 
       // Check that backup and restore works fine.
-      YBBackupUtil.runYbBackupCreate("--keyspace", "ysql.yb1");
-      YBBackupUtil.runYbBackupRestore("--keyspace", "ysql.yb2");
+      backupDir = YBBackupUtil.getTempBackupDir();
+      String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
+          "--keyspace", "ysql.yb1");
+      backupDir = new JSONObject(output).getString("snapshot_url");
+      YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", "ysql.yb2");
     }
     // Verify data is correct.
     try (Connection connection2 = getConnectionBuilder().withDatabase("yb2").connect();
@@ -435,9 +436,8 @@ public class TestYbBackup extends BasePgSQLTest {
 
       assertQuery(stmt, ybTablePropsSql,
           new Row("test_tbl", "tg1", 123456),
-          new Row("test_tbl_notg_idx", null, null),
+          new Row("test_tbl_idx", "tg1", 11223344),
           new Row("test_tbl_pkey", null, null),
-          new Row("test_tbl_tg2_idx", "tg2", 11223344),
           new Row("test_tbl_uniq", "tg1", 654321));
 
       runInvalidQuery(stmt, "INSERT INTO test_tbl (h, a, b) VALUES (2, 202, 3.14)",
@@ -447,8 +447,11 @@ public class TestYbBackup extends BasePgSQLTest {
       assertQuery(stmt, uniqueIndexOnlySql, new Row(3.14));
 
       // Now try to do a backup/restore of the restored db.
-      YBBackupUtil.runYbBackupCreate("--keyspace", "ysql.yb2");
-      YBBackupUtil.runYbBackupRestore("--keyspace", "ysql.yb3");
+      backupDir = YBBackupUtil.getTempBackupDir();
+      String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
+          "--keyspace", "ysql.yb2");
+      backupDir = new JSONObject(output).getString("snapshot_url");
+      YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", "ysql.yb3");
     }
     // Verify data is correct.
     try (Connection connection2 = getConnectionBuilder().withDatabase("yb3").connect();
@@ -458,9 +461,8 @@ public class TestYbBackup extends BasePgSQLTest {
 
       assertQuery(stmt, ybTablePropsSql,
           new Row("test_tbl", "tg1", 123456),
-          new Row("test_tbl_notg_idx", null, null),
+          new Row("test_tbl_idx", "tg1", 11223344),
           new Row("test_tbl_pkey", null, null),
-          new Row("test_tbl_tg2_idx", "tg2", 11223344),
           new Row("test_tbl_uniq", "tg1", 654321));
 
       runInvalidQuery(stmt, "INSERT INTO test_tbl (h, a, b) VALUES (2, 202, 3.14)",
@@ -474,6 +476,54 @@ public class TestYbBackup extends BasePgSQLTest {
       stmt.execute("DROP DATABASE yb1");
       stmt.execute("DROP DATABASE yb2");
       stmt.execute("DROP DATABASE yb3");
+    }
+  }
+
+  @Test
+  public void testMultipleTablegroups() throws Exception {
+    String backupDir = null;
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE dummy (k INT PRIMARY KEY, v INT)");
+      stmt.execute("CREATE TABLEGROUP tg1");
+      stmt.execute("CREATE TABLEGROUP tg2");
+      stmt.execute("CREATE TABLE tbl1_in_tg1 (k INT PRIMARY KEY, v INT) TABLEGROUP tg1");
+      stmt.execute("INSERT INTO tbl1_in_tg1 VALUES (1, 1), (2, 2)");
+      stmt.execute("CREATE TABLE tbl2_in_tg1 (k TEXT PRIMARY KEY, v TEXT) TABLEGROUP tg1");
+      stmt.execute("INSERT INTO tbl2_in_tg1 VALUES ('a', 'b'), ('c', 'd')");
+      stmt.execute("CREATE TABLE tbl3_in_tg2 (k INT PRIMARY KEY, v TEXT) TABLEGROUP tg2");
+      stmt.execute("INSERT INTO tbl3_in_tg2 VALUES (1, 'a'), (2, 'b')");
+      stmt.execute("CREATE TABLE tbl4_in_tg2 (k TEXT PRIMARY KEY, v INT) TABLEGROUP tg2");
+      stmt.execute("INSERT INTO tbl4_in_tg2 VALUES ('x', 100), ('y', 200)");
+
+      backupDir = YBBackupUtil.getTempBackupDir();
+      String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
+          "--keyspace", "ysql.yugabyte");
+      backupDir = new JSONObject(output).getString("snapshot_url");
+    }
+
+    YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", "ysql.yb2");
+
+    try (Connection connection2 = getConnectionBuilder().withDatabase("yb2").connect();
+         Statement stmt = connection2.createStatement()) {
+      assertQuery(stmt, "SELECT * FROM tbl1_in_tg1 ORDER BY k",
+                  new Row(1, 1), new Row(2, 2));
+      assertQuery(stmt, "SELECT * FROM tbl2_in_tg1 ORDER BY k",
+                  new Row("a", "b"), new Row("c", "d"));
+      assertQuery(stmt, "SELECT * FROM tbl3_in_tg2 ORDER BY k",
+                  new Row(1, "a"), new Row(2, "b"));
+      assertQuery(stmt, "SELECT * FROM tbl4_in_tg2 ORDER BY k",
+                  new Row("x", 100), new Row("y", 200));
+
+      String ybTablePropsSql = "SELECT c.relname, tg.grpname"
+          + " FROM pg_class c, yb_table_properties(c.oid) props"
+          + " JOIN pg_yb_tablegroup tg ON tg.oid = props.tablegroup_oid"
+          + " WHERE c.oid >= " + FIRST_NORMAL_OID
+          + " ORDER BY c.relname";
+      assertQuery(stmt, ybTablePropsSql,
+                  new Row("tbl1_in_tg1", "tg1"),
+                  new Row("tbl2_in_tg1", "tg1"),
+                  new Row("tbl3_in_tg2", "tg2"),
+                  new Row("tbl4_in_tg2", "tg2"));
     }
   }
 
