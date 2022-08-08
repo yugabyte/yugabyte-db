@@ -1,8 +1,8 @@
 ---
-title: Overview
-headerTitle: Overview
-linkTitle: Overview
-description: Overview of YugabyteDB Anywhere and its architecture.
+title: YugabyteDB Anywhere
+headerTitle: YugabyteDB Anywhere
+linkTitle: YugabyteDB Anywhere
+description: YugabyteDB delivered as a private database-as-a-service for enterprises.
 image: /images/section_icons/deploy/enterprise.png
 headcontent: Overview of YugabyteDB Anywhere and architecture.
 menu:
@@ -11,8 +11,9 @@ menu:
     identifier: overview-yp
     weight: 10
 type: indexpage
-showRightNav: true
 ---
+
+### Overview
 
 YugabyteDB Anywhere is best fit for mission-critical deployments, such as production or pre-production testing. The YugabyteDB Anywhere UI is used in a highly-available mode, allowing you to create and manage YugabyteDB universes, or clusters, on one or more regions across public cloud and private on-premises data centers.
 
@@ -29,7 +30,7 @@ YugabyteDB Anywhere offers three levels of user accounts: Super Admin, Admin, an
 <div class="row">
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="install/public-cloud/">
+    <a class="section-link icon-offset" href="install-yugabyte-platform/install/public-cloud/">
       <div class="head">
         <img class="icon" src="/images/section_icons/quick_start/install.png" aria-hidden="true" />
         <div class="title">Install</div>
@@ -41,7 +42,7 @@ YugabyteDB Anywhere offers three levels of user accounts: Super Admin, Admin, an
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="configure/aws/">
+    <a class="section-link icon-offset" href="configure-yugabyte-platform/configure/aws/">
       <div class="head">
         <img class="icon" src="/images/section_icons/quick_start/create_cluster.png" aria-hidden="true" />
         <div class="title">Configure</div>

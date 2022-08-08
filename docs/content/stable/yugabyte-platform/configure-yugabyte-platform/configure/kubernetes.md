@@ -1,15 +1,15 @@
 ---
 title: Configure Kubernetes
-headerTitle: Configure Kubernetes
-linkTitle: Configure
+headerTitle: Overview
+linkTitle: Overview
 description: Configuring YugabyteDB Anywhere on Kubernetes
 image: /images/section_icons/deploy/enterprise.png
 headcontent: Configuring YugabyteDB Anywhere on Kubernetes
 menu:
   stable_yugabyte-platform:
     identifier: configure-4-k8s
-    parent: overview-yp
-    weight: 40
+    parent: configure-yugabyte-platform
+    weight: 5
 type: docs
 ---
 

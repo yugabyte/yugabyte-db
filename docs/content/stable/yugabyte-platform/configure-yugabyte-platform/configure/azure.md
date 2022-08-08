@@ -1,14 +1,15 @@
 ---
 title: Configure Azure
-headerTitle: Configure Azure
-linkTitle: Configure
+headerTitle: Overview
+linkTitle: Overview
 description: Configuring YugabyteDB Anywhere on Azure
 image: /images/section_icons/deploy/enterprise.png
+headcontent: Configuring YugabyteDB Anywhere on Azure
 menu:
   stable_yugabyte-platform:
     identifier: configure-3-azure
-    parent: overview-yp
-    weight: 40
+    parent: configure-yugabyte-platform
+    weight: 5
 type: docs
 ---
 

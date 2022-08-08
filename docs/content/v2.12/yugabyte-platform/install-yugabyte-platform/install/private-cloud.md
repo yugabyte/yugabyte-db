@@ -1,14 +1,14 @@
 ---
 title: Install Yugabyte Platform
-headerTitle: Select Installation Type
-linkTitle: Install
+headerTitle: Overview
+linkTitle: Overview
 description: Installing Yugabyte Platform on Private Cloud
 image: /images/section_icons/deploy/enterprise.png
 headcontent: Installing Yugabyte Platform on Private Cloud
 menu:
   v2.12_yugabyte-platform:
     identifier: install-3-private-cloud
-    parent: overview-yp
+    parent: install-yugabyte-platform
     weight: 20
 type: docs
 ---
@@ -17,21 +17,21 @@ Select your installation type to see the installation flow. Click on the element
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/preview/yugabyte-platform/overview/install/public-cloud" class="nav-link">
+    <a href="../public-cloud" class="nav-link">
       <i class="fas fa-cloud"></i>
       Public Cloud
     </a>
   </li>
 
   <li>
-    <a href="/preview/yugabyte-platform/overview/install/kubernetes" class="nav-link">
+    <a href="../kubernetes" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
 
   <li >
-    <a href="/preview/yugabyte-platform/overview/install/private-cloud" class="nav-link active">
+    <a href="../private-cloud" class="nav-link active">
       <i class="fas fa-unlink"></i>
       Private Cloud
     </a>

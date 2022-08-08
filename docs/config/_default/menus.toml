@@ -117,7 +117,7 @@
   name = "YugabyteDB Anywhere"
   weight = 1
   parent = "view-all-products"
-  url = "/yugabyte-platform/overview/"
+  url = "/yugabyte-platform/"
 
 [[main]]
   name = "YugabyteDB Managed"
@@ -551,7 +551,7 @@
   name = "YugabyteDB Anywhere"
   weight = 1
   parent = "view-all-products"
-  url = "/stable/yugabyte-platform/overview/"
+  url = "/stable/yugabyte-platform/"
   [stable.params]
     showSection = true
 
@@ -715,7 +715,7 @@
   name = "YugabyteDB Anywhere"
   weight = 1
   parent = "view-all-products"
-  url = "/v2.12/yugabyte-platform/overview/"
+  url = "/v2.12/yugabyte-platform/"
   ["v2.12".params]
     showSection = true
 

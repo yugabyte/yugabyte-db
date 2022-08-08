@@ -2,7 +2,7 @@
 title: Configure YugabyteDB Overview
 headerTitle: Overview
 linkTitle: Overview
-description: Configuring YugabyteDB Anywhere on-premises
+description: Configuring YugabyteDB Anywhere on AWS
 image: /images/section_icons/deploy/enterprise.png
 headcontent: Configuring YugabyteDB Anywhere on AWS
 aliases:

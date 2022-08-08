@@ -1,10 +1,10 @@
 ---
-title: Overview
-headerTitle: Overview
-linkTitle: Overview
-description: Overview of the Yugabyte Platform and its architecture.
+title: YugabyteDB Platform
+headerTitle: YugabyteDB Platform
+linkTitle: YugabyteDB Platform
+description: YugabyteDB delivered as a private database-as-a-service for enterprises.
 image: /images/section_icons/deploy/enterprise.png
-headcontent: Overview of the Yugabyte Platform and architecture.
+headcontent: YugabyteDB delivered as a private database-as-a-service for enterprises.
 menu:
   v2.12_yugabyte-platform:
     parent: yugabytedb-anywhere
@@ -12,6 +12,8 @@ menu:
     weight: 10
 type: indexpage
 ---
+
+### Overview
 
 Yugabyte Platform is best fit for mission-critical deployments, such as production or pre-production testing. The Yugabyte Platform console is used in a highly-available mode and orchestrates and manages YugabyteDB universes, or clusters, on one or more regions (across public cloud and private on-premises data centers).
 
@@ -26,7 +28,7 @@ Yugabyte Platform offers three levels of user accounts: Super Admin, Admin, and 
 <div class="row">
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="install/public-cloud/">
+    <a class="section-link icon-offset" href="install-yugabyte-platform/install/public-cloud/">
       <div class="head">
         <img class="icon" src="/images/section_icons/quick_start/install.png" aria-hidden="true" />
         <div class="title">Install</div>
@@ -38,7 +40,7 @@ Yugabyte Platform offers three levels of user accounts: Super Admin, Admin, and 
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="configure/aws/">
+    <a class="section-link icon-offset" href="configure-yugabyte-platform/configure/aws/">
       <div class="head">
         <img class="icon" src="/images/section_icons/quick_start/create_cluster.png" aria-hidden="true" />
         <div class="title">Configure</div>

@@ -1,14 +1,15 @@
 ---
 title: Configure on-premises
-headerTitle: Configure on-premises
-linkTitle: Configure
+headerTitle: Overview
+linkTitle: Overview
 description: Configuring YugabyteDB Anywhere on-premises
 image: /images/section_icons/deploy/enterprise.png
+headcontent: Configuring YugabyteDB Anywhere on-premises
 menu:
   stable_yugabyte-platform:
     identifier: configure-5-onprem
-    parent: overview-yp
-    weight: 40
+    parent: configure-yugabyte-platform
+    weight: 5
 type: docs
 ---
 

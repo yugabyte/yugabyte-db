@@ -8,7 +8,7 @@ headcontent: Installing YugabyteDB Anywhere on private cloud
 menu:
   stable_yugabyte-platform:
     identifier: install-3-private-cloud
-    parent: overview-yp
+    parent: install-yugabyte-platform
     weight: 20
 type: docs
 ---

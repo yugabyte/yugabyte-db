@@ -1,46 +1,42 @@
 ---
-title: Install YugabyteDB Anywhere
-headerTitle: Select installation type
-linkTitle: Install
-description: Installing YugabyteDB Anywhere on Kubernetes
+title: Install Yugabyte Platform
+headerTitle: Overview
+linkTitle: Overview
+description: Installing Yugabyte Platform on Kubernetes
 image: /images/section_icons/deploy/enterprise.png
-headcontent: Installing YugabyteDB Anywhere on Kubernetes
+headcontent: Installing Yugabyte Platform on Kubernetes
 menu:
-  stable_yugabyte-platform:
+  v2.12_yugabyte-platform:
     identifier: install-2-k8s
-    parent: overview-yp
+    parent: install-yugabyte-platform
     weight: 20
 type: docs
 ---
 
-For installation overview, select one of the following installation types:
+Select your installation type to see the installation flow. Click on the elements to see detailed steps.
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="../public-cloud/" class="nav-link">
+    <a href="../public-cloud" class="nav-link">
       <i class="fas fa-cloud"></i>
       Public Cloud
     </a>
   </li>
 
   <li>
-    <a href="../kubernetes/" class="nav-link active">
+    <a href="../kubernetes" class="nav-link active">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
 
   <li >
-    <a href="../private-cloud/" class="nav-link">
+    <a href="../private-cloud" class="nav-link">
       <i class="fas fa-unlink"></i>
       Private Cloud
     </a>
   </li>
 </ul>
-
-<br>
-
-Click elements of the following chart to access detailed steps:
 
 <img src="/images/ee/flowchart/yb-install-k8s.png" usemap="#image-map">
 
