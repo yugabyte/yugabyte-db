@@ -4,6 +4,7 @@ package com.yugabyte.yw.forms;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
 
+import com.fasterxml.jackson.annotation.JsonGetter;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
@@ -17,16 +18,20 @@ import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
+import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.swagger.annotations.ApiModelProperty;
+import java.io.File;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
@@ -36,6 +41,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import lombok.ToString;
 import org.apache.commons.lang3.StringUtils;
 import play.data.validation.Constraints;
 
@@ -778,4 +784,88 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       return taskParams;
     }
   }
+
+  // XCluster: All the xCluster related code resides in this section.
+  // --------------------------------------------------------------------------------
+  @ApiModelProperty("XCluster related states in this universe")
+  @JsonProperty("xclusterInfo")
+  public XClusterInfo xClusterInfo = new XClusterInfo();
+
+  @JsonGetter("xclusterInfo")
+  XClusterInfo getXClusterInfo() {
+    this.xClusterInfo.universeUuid = this.universeUUID;
+    return this.xClusterInfo;
+  }
+
+  @JsonIgnoreProperties(
+      value = {"sourceXClusterConfigs", "targetXClusterConfigs"},
+      allowGetters = true)
+  @ToString
+  public static class XClusterInfo {
+    @ApiModelProperty("The value of certs_for_cdc_dir gflag")
+    public String sourceRootCertDirPath;
+
+    @JsonIgnore private UUID universeUuid;
+
+    @JsonIgnore
+    public boolean isSourceRootCertDirPathGflagConfigured() {
+      return StringUtils.isNotBlank(sourceRootCertDirPath);
+    }
+
+    @ApiModelProperty(value = "The target universe's xcluster replication relationships")
+    @JsonProperty(value = "targetXClusterConfigs", access = JsonProperty.Access.READ_ONLY)
+    public List<UUID> getTargetXClusterConfigs() {
+      if (universeUuid == null) {
+        return new ArrayList<>();
+      }
+      return XClusterConfig.getByTargetUniverseUUID(universeUuid)
+          .stream()
+          .map(xClusterConfig -> xClusterConfig.uuid)
+          .collect(Collectors.toList());
+    }
+
+    @ApiModelProperty(value = "The source universe's xcluster replication relationships")
+    @JsonProperty(value = "sourceXClusterConfigs", access = JsonProperty.Access.READ_ONLY)
+    public List<UUID> getSourceXClusterConfigs() {
+      if (universeUuid == null) {
+        return Collections.emptyList();
+      }
+      return XClusterConfig.getBySourceUniverseUUID(universeUuid)
+          .stream()
+          .map(xClusterConfig -> xClusterConfig.uuid)
+          .collect(Collectors.toList());
+    }
+  }
+
+  /**
+   * It returns the path to the directory containing the source universe root certificates on the
+   * target universe. It must be called with target universe as context.
+   *
+   * @return The path to the directory containing the source universe root certificates
+   */
+  @JsonIgnore
+  public File getSourceRootCertDirPath() {
+    UniverseDefinitionTaskParams.UserIntent userIntent = getPrimaryCluster().userIntent;
+    String gflagValueOnMasters =
+        userIntent.masterGFlags.get(XClusterConfigTaskBase.SOURCE_ROOT_CERTS_DIR_GFLAG);
+    String gflagValueOnTServers =
+        userIntent.tserverGFlags.get(XClusterConfigTaskBase.SOURCE_ROOT_CERTS_DIR_GFLAG);
+    if (gflagValueOnMasters != null || gflagValueOnTServers != null) {
+      if (!Objects.equals(gflagValueOnMasters, gflagValueOnTServers)) {
+        throw new IllegalStateException(
+            String.format(
+                "%s gflag is different on masters (%s) and tservers (%s)",
+                XClusterConfigTaskBase.SOURCE_ROOT_CERTS_DIR_GFLAG,
+                gflagValueOnMasters,
+                gflagValueOnTServers));
+      }
+      return new File(gflagValueOnMasters);
+    }
+    if (xClusterInfo.isSourceRootCertDirPathGflagConfigured()) {
+      return new File(xClusterInfo.sourceRootCertDirPath);
+    }
+    return null;
+  }
+  // --------------------------------------------------------------------------------
+  // End of XCluster.
 }

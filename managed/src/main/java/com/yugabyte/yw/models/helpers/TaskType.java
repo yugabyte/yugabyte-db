@@ -264,6 +264,8 @@ public enum TaskType {
 
   XClusterConfigUpdateMasterAddresses("subtasks.xcluster.XClusterConfigUpdateMasterAddresses"),
 
+  XClusterInfoPersist("subtasks.xcluster.XClusterInfoPersist"),
+
   // Tasks belonging to subtasks.cloud classpath
   CloudAccessKeyCleanup("subtasks.cloud.CloudAccessKeyCleanup"),
 

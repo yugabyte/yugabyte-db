@@ -21,6 +21,7 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
+import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.certmgmt.CertificateDetails;
@@ -752,6 +753,11 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     if (placementUuid != null && masterOverrides.get("placement_uuid") == null) {
       masterOverrides.put("placement_uuid", placementUuid.toString());
     }
+    if (u.getUniverseDetails().xClusterInfo.isSourceRootCertDirPathGflagConfigured()) {
+      masterOverrides.put(
+          XClusterConfigTaskBase.SOURCE_ROOT_CERTS_DIR_GFLAG,
+          u.getUniverseDetails().xClusterInfo.sourceRootCertDirPath);
+    }
     if (!masterOverrides.isEmpty()) {
       gflagOverrides.put("master", masterOverrides);
     }
@@ -784,6 +790,11 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     }
     if (placementUuid != null && tserverOverrides.get("placement_uuid") == null) {
       tserverOverrides.put("placement_uuid", placementUuid.toString());
+    }
+    if (u.getUniverseDetails().xClusterInfo.isSourceRootCertDirPathGflagConfigured()) {
+      tserverOverrides.put(
+          XClusterConfigTaskBase.SOURCE_ROOT_CERTS_DIR_GFLAG,
+          u.getUniverseDetails().xClusterInfo.sourceRootCertDirPath);
     }
     if (!tserverOverrides.isEmpty()) {
       gflagOverrides.put("tserver", tserverOverrides);

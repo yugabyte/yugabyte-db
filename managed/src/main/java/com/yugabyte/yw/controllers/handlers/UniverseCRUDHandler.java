@@ -21,6 +21,7 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.DestroyUniverse;
 import com.yugabyte.yw.commissioner.tasks.ReadOnlyClusterDelete;
 import com.yugabyte.yw.commissioner.tasks.ReadOnlyKubernetesClusterDelete;
+import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -372,6 +373,12 @@ public class UniverseCRUDHandler {
     }
   }
 
+  public void setUpXClusterSettings(UniverseDefinitionTaskParams taskParams) {
+    taskParams.xClusterInfo.sourceRootCertDirPath =
+        XClusterConfigTaskBase.getProducerCertsDir(
+            taskParams.getPrimaryCluster().userIntent.provider);
+  }
+
   public UniverseResp createUniverse(Customer customer, UniverseDefinitionTaskParams taskParams) {
     LOG.info("Create for {}.", customer.uuid);
 
@@ -518,6 +525,8 @@ public class UniverseCRUDHandler {
               BAD_REQUEST, "IPV6 not supported for platform deployed VMs.");
         }
       }
+
+      setUpXClusterSettings(taskParams);
 
       checkForCertificates(customer, taskParams);
 

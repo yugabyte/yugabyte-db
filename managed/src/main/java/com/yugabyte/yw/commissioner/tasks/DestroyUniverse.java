@@ -17,7 +17,6 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteCertificate;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RemoveUniverseEntry;
 import com.yugabyte.yw.common.DnsManager;
-import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseTaskParams;
@@ -25,21 +24,18 @@ import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import io.ebean.Model;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public class DestroyUniverse extends UniverseTaskBase {
 
-  private Set<UUID> lockedXClusterUniversesUuidList = null;
+  private Set<UUID> lockedXClusterUniversesUuidSet = null;
 
   @Inject
   public DestroyUniverse(BaseTaskDependencies baseTaskDependencies) {
@@ -136,7 +132,7 @@ public class DestroyUniverse extends UniverseTaskBase {
       log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
       throw t;
     } finally {
-      unlockXClusterUniverses();
+      unlockXClusterUniverses(lockedXClusterUniversesUuidSet, params().isForceDelete);
     }
     log.info("Finished {} task.", getName());
   }
@@ -242,7 +238,7 @@ public class DestroyUniverse extends UniverseTaskBase {
 
     // Put all the universes in the locked list. The unlock operation is a no-op if the universe
     // does not get locked by this task.
-    lockedXClusterUniversesUuidList = otherUniverseUuidToXClusterConfigsMap.keySet();
+    lockedXClusterUniversesUuidSet = otherUniverseUuidToXClusterConfigsMap.keySet();
 
     // Create the subtasks to delete the xCluster configs.
     otherUniverseUuidToXClusterConfigsMap.forEach(
@@ -278,38 +274,6 @@ public class DestroyUniverse extends UniverseTaskBase {
       // If this task is force delete, ignore errors.
       if (!params().isForceDelete) {
         throw new RuntimeException(e);
-      } else {
-        log.debug("Error ignored because isForceDelete is true");
-      }
-    }
-  }
-
-  private void unlockXClusterUniverses() {
-    if (lockedXClusterUniversesUuidList == null) {
-      return;
-    }
-    Exception firstException = null;
-    for (UUID universeUuid : lockedXClusterUniversesUuidList) {
-      try {
-        // Unlock the universe.
-        unlockUniverseForUpdate(universeUuid);
-      } catch (Exception e) {
-        // Log the error message, and continue to unlock as many universes as possible.
-        log.error(
-            "{} hit error : could not unlock universe {} that was locked because of "
-                + "participating in an XCluster config: {}",
-            getName(),
-            universeUuid,
-            e.getMessage());
-        if (firstException == null) {
-          firstException = e;
-        }
-      }
-    }
-    if (firstException != null) {
-      // If this task is force delete, ignore errors.
-      if (!params().isForceDelete) {
-        throw new RuntimeException(firstException);
       } else {
         log.debug("Error ignored because isForceDelete is true");
       }

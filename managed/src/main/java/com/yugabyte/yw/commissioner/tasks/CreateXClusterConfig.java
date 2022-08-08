@@ -88,8 +88,11 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
             getSourceCertificateIfNecessary(sourceUniverse, targetUniverse);
         sourceCertificate.ifPresent(
             cert ->
-                createSetupSourceCertificateTask(
-                    targetUniverse, xClusterConfig.getReplicationGroupName(), cert));
+                createTransferXClusterCertsCopyTasks(
+                    targetUniverse.getNodes(),
+                    xClusterConfig.getReplicationGroupName(),
+                    cert,
+                    targetUniverse.getUniverseDetails().getSourceRootCertDirPath()));
 
         checkBootstrapRequired(getTableIdsNeedBootstrap());
 
