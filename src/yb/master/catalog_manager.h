@@ -914,6 +914,11 @@ class CatalogManager :
       const ReplicationInfoPB& table_replication_info,
       const TablespaceId& tablespace_id) override;
 
+  Result<ReplicationInfoPB> GetTableReplicationInfo(
+      const scoped_refptr<const TableInfo>& table) const;
+
+  Result<size_t> GetTableReplicationFactor(const TableInfoPtr& table) const override;
+
   Result<boost::optional<TablespaceId>> GetTablespaceForTable(
       const scoped_refptr<TableInfo>& table) override;
 
@@ -1078,8 +1083,6 @@ class CatalogManager :
   //
   // This method is thread-safe.
   Status InitSysCatalogAsync();
-
-  Result<ReplicationInfoPB> GetTableReplicationInfo(const TabletInfo& tablet_info) const;
 
   // Helper for creating the initial TableInfo state
   // Leaves the table "write locked" with the new info in the
