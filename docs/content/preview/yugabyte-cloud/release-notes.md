@@ -209,8 +209,10 @@ The following **AWS regions** are available:
 - Sao Paulo (sa-east-1)
 - N. Virginia (us-east-1)
 - Ohio (us-east-2)
-- N. California (us-west-1)
+- N. California (us-west-1)*
 - Oregon (us-west-2)
+
+\* Region has 2 availability zones only
 
 ## Known issues
 

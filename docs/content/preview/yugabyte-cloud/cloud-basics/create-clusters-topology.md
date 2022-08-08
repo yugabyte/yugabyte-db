@@ -83,6 +83,8 @@ Write latencies in this deployment mode can be high. This is because the tablet 
 
 To deploy a multi-region replicated cluster, refer to [Replicate across regions](../create-clusters/create-clusters-multisync/).
 
+Learn more: [Replication](../../../architecture/docdb-replication/replication/)
+
 ## Partition by region
 
 Applications that need to keep user data in a particular geographic region to comply with data sovereignty regulations can use row-level geo-partitioning in YugabyteDB. This feature allows fine-grained control over pinning rows in a user table to specific geographic locations.
@@ -116,7 +118,9 @@ With this deployment mode, the cluster automatically keeps specific rows and all
 - Row-level geo-partitioning is helpful for specific use cases where the dataset and access to the data is logically partitioned. Examples include users in different countries accessing their accounts, and localized products (or product inventory) in a product catalog.
 - When users travel, access to their data will incur cross-region latency because their data is pinned to a different region.
 
-To deploy a geo-partioned cluster, contact {{% support-cloud %}}.
+To deploy a partition-by-region cluster, refer to [Partition by region](../create-clusters/create-clusters-geopartition/).
+
+Learn more: [Row-Level Geo-Partitioning](../../../explore/multi-region-deployments/row-level-geo-partitioning/)
 
 ## Cross-cluster
 
@@ -129,6 +133,8 @@ Here's how it works:
 2. You then set up cross cluster asynchronous replication from one cluster to another. This can be either bi-directional in active-active configurations, or uni-directional in active-passive configurations.
 
 To deploy a cross-cluster replication cluster, contact {{% support-cloud %}}.
+
+Learn more: [xCluster replication](../../../architecture/docdb-replication/async-replication/)
 
 ### Active-passive
 
@@ -206,9 +212,11 @@ For applications that have writes happening from a single zone or region but wan
 
 To deploy a read replica cluster, contact {{% support-cloud %}}.
 
+Learn more: [Read replicas](../../../architecture/docdb-replication/read-replicas/)
+
 ## Learn more
 
-- [Multi-DC deployments](../../../deploy/multi-dc/)
+- [DocDB replication layer](../../../architecture/docdb-replication/)
 - Webinar: [Engineering Around the Physics of Latency](https://vimeo.com/548171949)
 - Blog: [9 Techniques to Build Cloud-Native, Geo-Distributed SQL Apps with Low Latency](https://blog.yugabyte.com/9-techniques-to-build-cloud-native-geo-distributed-sql-apps-with-low-latency/)
 - Blog: [Geo-partitioning of Data in YugabyteDB](https://blog.yugabyte.com/geo-partitioning-of-data-in-yugabytedb/)
