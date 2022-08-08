@@ -48,12 +48,6 @@ DEFINE_bool(enable_ysql, true,
 DEFINE_bool(create_initial_sys_catalog_snapshot, false,
     "Run initdb and create an initial sys catalog data snapshot");
 
-DEFINE_bool(
-    // TODO: switch the default to true after updating all external callers (yb-ctl, YugaWare)
-    // and unit tests.
-    master_auto_run_initdb, false,
-    "Automatically run initdb on master leader initialization");
-
 TAG_FLAG(create_initial_sys_catalog_snapshot, advanced);
 TAG_FLAG(create_initial_sys_catalog_snapshot, hidden);
 
@@ -211,29 +205,6 @@ void SetDefaultInitialSysCatalogSnapshotFlags() {
         << "FLAGS_enable_ysql="
         << FLAGS_enable_ysql;
   }
-}
-
-bool ShouldAutoRunInitDb(SysConfigInfo* ysql_catalog_config, bool pg_proc_exists) {
-  if (pg_proc_exists) {
-    LOG(INFO) << "Table pg_proc exists, assuming initdb has already been run";
-    return false;
-  }
-
-  if (!FLAGS_master_auto_run_initdb) {
-    LOG(INFO) << "--master_auto_run_initdb is set to false, not running initdb";
-    return false;
-  }
-
-  {
-    auto l = ysql_catalog_config->LockForRead();
-    if (l->pb.ysql_catalog_config().initdb_done()) {
-      LOG(INFO) << "Cluster configuration indicates that initdb has already completed";
-      return false;
-    }
-  }
-
-  LOG(INFO) << "initdb has never been run on this cluster, running it";
-  return true;
 }
 
 Status MakeYsqlSysCatalogTablesTransactional(
