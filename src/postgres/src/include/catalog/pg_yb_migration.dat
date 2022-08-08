@@ -12,7 +12,7 @@
 [
 
 # For better version control conflict detection, list latest migration filename
-# here: V24__13609__yb_geo_distribution_helper_functions.sql
-{ major => '24', minor => '0', name => '<baseline>', time_applied => '_null_' }
+# here: V25__11632__binary_upgrade_set_next_tablegroup_oid.sql
+{ major => '25', minor => '0', name => '<baseline>', time_applied => '_null_' }
 
 ]
