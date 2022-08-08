@@ -1011,7 +1011,7 @@ class CatalogManager :
 
   // Starts an asynchronous run of initdb. Errors are handled in the callback. Returns true
   // if started running initdb, false if decided that it is not needed.
-  bool StartRunningInitDbIfNeeded(int64_t term) REQUIRES_SHARED(mutex_);
+  Result<bool> StartRunningInitDbIfNeeded(int64_t term) REQUIRES_SHARED(mutex_);
 
   Status PrepareDefaultNamespaces(int64_t term) REQUIRES(mutex_);
 
