@@ -98,16 +98,19 @@ class MetricsTest : public YBTest {
                          const string& name,
                          int expected_aggregation,
                          const MetricEntity::AttributeMap& expected_attrs) {
-    auto data_it = writer.aggregated_data_.find(table);
-    ASSERT_NE(data_it, writer.aggregated_data_.end());
-    auto value_it = data_it->second.values.find(name);
-    ASSERT_NE(value_it, data_it->second.values.end());
-    ASSERT_EQ(value_it->second, expected_aggregation);
+    auto attrs_it = writer.aggregated_attributes_.find(table);
+    ASSERT_NE(attrs_it, writer.aggregated_attributes_.end());
     for (const auto& attr : expected_attrs) {
-      auto attr_it = data_it->second.attributes.find(attr.first);
-      ASSERT_NE(attr_it, data_it->second.attributes.end());
+      auto attr_it = attrs_it->second.find(attr.first);
+      ASSERT_NE(attr_it, attrs_it->second.end());
       ASSERT_EQ(attr_it->second, attr.second);
     }
+    auto metric_it = writer.aggregated_values_.find(name);
+    ASSERT_NE(metric_it, writer.aggregated_values_.end());
+    auto value_it = metric_it->second.find(table);
+    ASSERT_NE(value_it, metric_it->second.end());
+    ASSERT_EQ(value_it->second, expected_aggregation);
+
   }
 
   std::string dumpPrometheusWriterOutput(const PrometheusWriter& w) { return w.output_->str(); }
