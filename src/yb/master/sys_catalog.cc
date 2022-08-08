@@ -107,19 +107,14 @@ using std::shared_ptr;
 using std::unique_ptr;
 
 using yb::consensus::CONSENSUS_CONFIG_ACTIVE;
-using yb::consensus::CONSENSUS_CONFIG_COMMITTED;
 using yb::consensus::ConsensusMetadata;
 using yb::consensus::RaftConfigPB;
 using yb::consensus::RaftPeerPB;
 using yb::log::Log;
-using yb::log::LogAnchorRegistry;
-using yb::tserver::WriteRequestPB;
 using yb::tserver::WriteResponsePB;
 using strings::Substitute;
 using yb::consensus::StateChangeContext;
 using yb::consensus::StateChangeReason;
-using yb::consensus::ChangeConfigRequestPB;
-using yb::consensus::ChangeConfigRecordPB;
 
 DEFINE_bool(notify_peer_of_removal_from_cluster, true,
             "Notify a peer after it has been removed from the cluster.");

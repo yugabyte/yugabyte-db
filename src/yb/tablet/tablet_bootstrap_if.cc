@@ -57,8 +57,6 @@
 namespace yb {
 namespace tablet {
 
-using std::shared_ptr;
-
 using consensus::ConsensusBootstrapInfo;
 
 TabletStatusListener::TabletStatusListener(const RaftGroupMetadataPtr& meta)

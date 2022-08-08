@@ -281,37 +281,19 @@ using namespace std::literals;  // NOLINT
 
 using rocksdb::WriteBatch;
 using rocksdb::SequenceNumber;
-using yb::tserver::WriteRequestPB;
-using yb::tserver::WriteResponsePB;
 using yb::docdb::KeyValueWriteBatchPB;
-using yb::tserver::ReadRequestPB;
-using yb::docdb::DocOperation;
-using yb::docdb::RedisWriteOperation;
-using yb::docdb::QLWriteOperation;
-using yb::docdb::PgsqlWriteOperation;
-using yb::docdb::DocDBCompactionFilterFactory;
-using yb::docdb::InitMarkerBehavior;
 
 namespace yb {
 namespace tablet {
 
-using consensus::MaximumOpId;
-using log::LogAnchorRegistry;
 using strings::Substitute;
-using base::subtle::Barrier_AtomicIncrement;
 
-using client::ChildTransactionData;
-using client::TransactionManager;
 using client::YBSession;
-using client::YBTransaction;
 using client::YBTablePtr;
 
 using docdb::DocKey;
-using docdb::DocPath;
 using docdb::DocRowwiseIterator;
-using docdb::DocWriteBatch;
 using docdb::SubDocKey;
-using docdb::PrimitiveValue;
 using docdb::StorageDbType;
 
 const std::hash<std::string> hash_for_data_root_dir;
