@@ -39,6 +39,7 @@
 #include "yb/docdb/primitive_value_util.h"
 #include "yb/docdb/ql_storage_interface.h"
 
+#include "yb/util/algorithm_util.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/result.h"
 #include "yb/util/scope_exit.h"
@@ -257,16 +258,74 @@ class DocKeyColumnPathBuilder {
   KeyBytes buffer_;
 };
 
-class RowPackContext {
+struct RowPackerData {
+  SchemaVersion schema_version;
+  const SchemaPacking& packing;
+
+  static Result<RowPackerData> Create(
+      const PgsqlWriteRequestPB& request, const DocReadContext& read_context) {
+    auto schema_version = request.schema_version();
+    return RowPackerData {
+      .schema_version = schema_version,
+      .packing = VERIFY_RESULT(read_context.schema_packing_storage.GetPacking(schema_version)),
+    };
+  }
+};
+
+bool IsExpression(const PgsqlColumnValuePB& column_value) {
+  return GetTSWriteInstruction(column_value.expr()) == bfpg::TSOpcode::kPgEvalExprCall;
+}
+
+class ExpressionHelper {
+ public:
+  Status Init(
+      const Schema& schema, const PgsqlWriteRequestPB& request, const QLTableRow& table_row) {
+    DocPgExprExecutor expr_exec(&schema);
+    size_t num_exprs = 0;
+    for (const auto& column_value : request.column_new_values()) {
+      if (IsExpression(column_value)) {
+        RETURN_NOT_OK(expr_exec.AddTargetExpression(column_value.expr()));
+        VLOG(1) << "Added target expression to the executor";
+        num_exprs++;
+      }
+    }
+    if (num_exprs == 0) {
+      return Status::OK();
+    }
+
+    bool match;
+    for (const PgsqlColRefPB& column_ref : request.col_refs()) {
+      RETURN_NOT_OK(expr_exec.AddColumnRef(column_ref));
+      VLOG(1) << "Added column reference to the executor";
+    }
+    results_.resize(num_exprs);
+    return expr_exec.Exec(table_row, &results_, &match);
+  }
+
+  QLExprResult* NextResult(const PgsqlColumnValuePB& column_value) {
+    if (!IsExpression(column_value)) {
+      return nullptr;
+    }
+
+    return &results_[next_result_idx_++];
+  }
+
+ private:
+  std::vector<QLExprResult> results_;
+  size_t next_result_idx_ = 0;
+};
+
+} // namespace
+
+class PgsqlWriteOperation::RowPackContext {
  public:
   RowPackContext(const PgsqlWriteRequestPB& request,
                  const DocOperationApplyData& data,
-                 SchemaVersion version,
-                 std::reference_wrapper<const SchemaPacking> packing)
-      : request_(request),
+                 const RowPackerData& packer_data)
+      : query_id_(request.stmt_id()),
         data_(data),
         write_id_(data.doc_write_batch->ReserveWriteId()),
-        packer_(version, packing, FLAGS_ysql_packed_row_size_limit) {
+        packer_(packer_data.schema_version, packer_data.packing, FLAGS_ysql_packed_row_size_limit) {
   }
 
   Result<bool> Add(ColumnId column_id, const QLValuePB& value) {
@@ -278,32 +337,16 @@ class RowPackContext {
     return data_.doc_write_batch->SetPrimitive(
         DocPath(encoded_doc_key.as_slice()),
         ValueControlFields(), ValueRef(encoded_value),
-        data_.read_time, data_.deadline, request_.stmt_id(),
+        data_.read_time, data_.deadline, query_id_,
         write_id_);
   }
 
  private:
-  const PgsqlWriteRequestPB& request_;
+  rocksdb::QueryId query_id_;
   const DocOperationApplyData& data_;
   const IntraTxnWriteId write_id_;
   RowPacker packer_;
 };
-
-Status InitPackContext(std::optional<RowPackContext>* pack_context,
-                       const PgsqlWriteRequestPB& request,
-                       const DocReadContext& read_context,
-                       const DocOperationApplyData& data) {
-  auto schema_version = request.schema_version();
-  const auto& schema_packing = VERIFY_RESULT(
-      read_context.schema_packing_storage.GetPacking(schema_version));
-  pack_context->emplace(request,
-                        data,
-                        schema_version,
-                        schema_packing);
-  return Status::OK();
-}
-
-} // namespace
 
 //--------------------------------------------------------------------------------------------------
 
@@ -471,6 +514,34 @@ Status PgsqlWriteOperation::Apply(const DocOperationApplyData& data) {
   return Status::OK();
 }
 
+Status PgsqlWriteOperation::InsertColumn(
+    const DocOperationApplyData& data, const QLTableRow& table_row,
+    const PgsqlColumnValuePB& column_value, RowPackContext* pack_context) {
+  // Get the column.
+  SCHECK(column_value.has_column_id(), InternalError, "Column id missing: $0", column_value);
+  // Check column-write operator.
+  auto write_instruction = GetTSWriteInstruction(column_value.expr());
+  SCHECK_EQ(write_instruction, bfpg::TSOpcode::kScalarInsert, InternalError,
+            "Illegal write instruction");
+
+  const ColumnId column_id(column_value.column_id());
+  const ColumnSchema& column = VERIFY_RESULT(doc_read_context_->schema.column_by_id(column_id));
+
+  // Evaluate column value.
+  QLExprResult expr_result;
+  RETURN_NOT_OK(EvalExpr(column_value.expr(), table_row, expr_result.Writer()));
+
+  if (!pack_context || !VERIFY_RESULT(pack_context->Add(column_id, expr_result.Value()))) {
+    // Inserting into specified column.
+    DocPath sub_path(encoded_doc_key_.as_slice(), KeyEntryValue::MakeColumnId(column_id));
+    RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
+        sub_path, ValueRef(expr_result.Value(), column.sorting_type()),
+        data.read_time, data.deadline, request_.stmt_id()));
+  }
+
+  return Status::OK();
+}
+
 Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data, IsUpsert is_upsert) {
   QLTableRow table_row;
   if (!is_upsert) {
@@ -496,47 +567,85 @@ Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data, IsUps
     }
   }
 
-  std::optional<RowPackContext> pack_context;
   if (FLAGS_ysql_enable_packed_row) {
-    RETURN_NOT_OK(InitPackContext(&pack_context, request_, *doc_read_context_, data));
+    RowPackContext pack_context(
+        request_, data, VERIFY_RESULT(RowPackerData::Create(request_, *doc_read_context_)));
+
+    auto column_id_extractor = [](const PgsqlColumnValuePB& column_value) {
+      return column_value.column_id();
+    };
+
+    if (IsMonotonic(request_.column_values(), column_id_extractor)) {
+      for (const auto& column_value : request_.column_values()) {
+        RETURN_NOT_OK(InsertColumn(data, table_row, column_value, &pack_context));
+      }
+    } else {
+      auto column_order = StableSorted(request_.column_values(), column_id_extractor);
+
+      for (const auto& key_and_index : column_order) {
+        RETURN_NOT_OK(InsertColumn(
+            data, table_row, request_.column_values()[key_and_index.original_index],
+            &pack_context));
+      }
+    }
+
+    RETURN_NOT_OK(pack_context.Complete(encoded_doc_key_));
   } else {
     RETURN_NOT_OK(data.doc_write_batch->SetPrimitive(
         DocPath(encoded_doc_key_.as_slice(), KeyEntryValue::kLivenessColumn),
         ValueControlFields(), ValueRef(ValueEntryType::kNullLow), data.read_time, data.deadline,
         request_.stmt_id()));
-  }
 
-  for (const auto& column_value : request_.column_values()) {
-    // Get the column.
-    SCHECK(column_value.has_column_id(), InternalError, "Column id missing: $0", column_value);
-    // Check column-write operator.
-    auto write_instruction = GetTSWriteInstruction(column_value.expr());
-    SCHECK_EQ(write_instruction, bfpg::TSOpcode::kScalarInsert, InternalError,
-              "Illegal write instruction");
-
-    const ColumnId column_id(column_value.column_id());
-    const ColumnSchema& column = VERIFY_RESULT(doc_read_context_->schema.column_by_id(column_id));
-
-    // Evaluate column value.
-    QLExprResult expr_result;
-    RETURN_NOT_OK(EvalExpr(column_value.expr(), table_row, expr_result.Writer()));
-
-    if (!pack_context || !VERIFY_RESULT(pack_context->Add(column_id, expr_result.Value()))) {
-      // Inserting into specified column.
-      DocPath sub_path(encoded_doc_key_.as_slice(), KeyEntryValue::MakeColumnId(column_id));
-      RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
-          sub_path, ValueRef(expr_result.Value(), column.sorting_type()),
-          data.read_time, data.deadline, request_.stmt_id()));
+    for (const auto& column_value : request_.column_values()) {
+      RETURN_NOT_OK(InsertColumn(data, table_row, column_value, /* pack_context=*/ nullptr));
     }
-  }
-
-  if (pack_context) {
-    RETURN_NOT_OK(pack_context->Complete(encoded_doc_key_));
   }
 
   RETURN_NOT_OK(PopulateResultSet(table_row));
 
   response_->set_status(PgsqlResponsePB::PGSQL_STATUS_OK);
+  return Status::OK();
+}
+
+Status PgsqlWriteOperation::UpdateColumn(
+    const DocOperationApplyData& data, const QLTableRow& table_row,
+    const PgsqlColumnValuePB& column_value, QLTableRow* returning_table_row,
+    QLExprResult* result, RowPackContext* pack_context) {
+  // Get the column.
+  if (!column_value.has_column_id()) {
+    return STATUS(InternalError, "column id missing", column_value.DebugString());
+  }
+  const ColumnId column_id(column_value.column_id());
+  const ColumnSchema& column = VERIFY_RESULT(doc_read_context_->schema.column_by_id(column_id));
+
+  DCHECK(!doc_read_context_->schema.is_key_column(column_id));
+
+  // Evaluate column value.
+  QLExprResult result_holder;
+  if (!result) {
+    // Check column-write operator.
+    SCHECK(GetTSWriteInstruction(column_value.expr()) == bfpg::TSOpcode::kScalarInsert,
+           InternalError,
+           "Unsupported DocDB Expression");
+
+    RETURN_NOT_OK(EvalExpr(
+        column_value.expr(), table_row, result_holder.Writer(), &doc_read_context_->schema));
+    result = &result_holder;
+  }
+
+  // Update RETURNING values
+  if (request_.targets_size()) {
+    returning_table_row->AllocColumn(column_id, result->Value());
+  }
+
+  if (!pack_context || !VERIFY_RESULT(pack_context->Add(column_id, result->Value()))) {
+    // Inserting into specified column.
+    DocPath sub_path(encoded_doc_key_.as_slice(), KeyEntryValue::MakeColumnId(column_id));
+    RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
+        sub_path, ValueRef(result->Value(), column.sorting_type()), data.read_time,
+        data.deadline, request_.stmt_id()));
+  }
+
   return Status::OK();
 }
 
@@ -558,76 +667,48 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
 
   if (request_.has_ybctid_column_value()) {
     const auto& schema = doc_read_context_->schema;
-    DocPgExprExecutor expr_exec(&schema);
-    std::vector<QLExprResult> results;
-    int num_exprs = 0;
-    int cur_expr = 0;
-    for (const auto& column_value : request_.column_new_values()) {
-      if (GetTSWriteInstruction(column_value.expr()) == bfpg::TSOpcode::kPgEvalExprCall) {
-        RETURN_NOT_OK(expr_exec.AddTargetExpression(column_value.expr()));
-        VLOG(1) << "Added target expression to the executor";
-        num_exprs++;
-      }
-    }
-    if (num_exprs > 0) {
-      bool match;
-      for (const PgsqlColRefPB& column_ref : request_.col_refs()) {
-        RETURN_NOT_OK(expr_exec.AddColumnRef(column_ref));
-        VLOG(1) << "Added column reference to the executor";
-      }
-      results.resize(num_exprs);
-      RETURN_NOT_OK(expr_exec.Exec(table_row, &results, &match));
-    }
+    ExpressionHelper expression_helper;
+    RETURN_NOT_OK(expression_helper.Init(schema, request_, table_row));
 
-    std::optional<RowPackContext> pack_context;
+    skipped = request_.column_new_values().empty();
     const size_t num_non_key_columns = schema.num_columns() - schema.num_key_columns();
     if (FLAGS_ysql_enable_packed_row &&
         make_unsigned(request_.column_new_values().size()) == num_non_key_columns) {
-      RETURN_NOT_OK(InitPackContext(&pack_context, request_, *doc_read_context_, data));
-    }
+      RowPackContext pack_context(
+          request_, data, VERIFY_RESULT(RowPackerData::Create(request_, *doc_read_context_)));
 
-    for (const auto& column_value : request_.column_new_values()) {
-      // Get the column.
-      if (!column_value.has_column_id()) {
-        return STATUS(InternalError, "column id missing", column_value.DebugString());
-      }
-      const ColumnId column_id(column_value.column_id());
-      const ColumnSchema& column = VERIFY_RESULT(schema.column_by_id(column_id));
-      // Evaluate column value.
-      QLExprResult expr_result;
+      auto column_id_extractor = [](const PgsqlColumnValuePB& column_value) {
+        return column_value.column_id();
+      };
 
-      DCHECK(!schema.is_key_column(column_id));
-
-      if (GetTSWriteInstruction(column_value.expr()) == bfpg::TSOpcode::kPgEvalExprCall) {
-        expr_result = std::move(results[cur_expr++]);
+      if (IsMonotonic(request_.column_new_values(), column_id_extractor)) {
+        for (const auto& column_value : request_.column_new_values()) {
+          RETURN_NOT_OK(UpdateColumn(
+              data, table_row, column_value, &returning_table_row,
+              expression_helper.NextResult(column_value), &pack_context));
+        }
       } else {
-        // Check column-write operator.
-        SCHECK(GetTSWriteInstruction(column_value.expr()) == bfpg::TSOpcode::kScalarInsert,
-               InternalError,
-               "Unsupported DocDB Expression");
+        auto column_id_and_result_extractor =
+            [&expression_helper](const PgsqlColumnValuePB& column_value) {
+          return std::pair(column_value.column_id(), expression_helper.NextResult(column_value));
+        };
+        auto column_order = StableSorted(
+            request_.column_new_values(), column_id_and_result_extractor);
 
-        RETURN_NOT_OK(EvalExpr(
-            column_value.expr(), table_row, expr_result.Writer(), &schema));
+        for (const auto& entry : column_order) {
+          RETURN_NOT_OK(UpdateColumn(
+              data, table_row, request_.column_values()[entry.original_index], &returning_table_row,
+              entry.key.second, &pack_context));
+        }
       }
 
-      // Update RETURNING values
-      if (request_.targets_size()) {
-        returning_table_row.AllocColumn(column_id, expr_result.Value());
+      RETURN_NOT_OK(pack_context.Complete(encoded_doc_key_));
+    } else {
+      for (const auto& column_value : request_.column_new_values()) {
+        RETURN_NOT_OK(UpdateColumn(
+            data, table_row, column_value, &returning_table_row,
+            expression_helper.NextResult(column_value), /* pack_context=*/ nullptr));
       }
-
-      if (!pack_context || !VERIFY_RESULT(pack_context->Add(column_id, expr_result.Value()))) {
-        // Inserting into specified column.
-        DocPath sub_path(encoded_doc_key_.as_slice(), KeyEntryValue::MakeColumnId(column_id));
-        RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
-            sub_path, ValueRef(expr_result.Value(), column.sorting_type()), data.read_time,
-            data.deadline, request_.stmt_id()));
-      }
-
-      skipped = false;
-    }
-
-    if (pack_context) {
-      RETURN_NOT_OK(pack_context->Complete(encoded_doc_key_));
     }
   } else {
     // This UPDATE is calling PGGATE directly without going thru PostgreSQL layer.
