@@ -35,7 +35,7 @@ public class TransferXClusterCerts extends NodeTaskBase {
     // The replication group name used in the coreDB. It must have
     // <srcUniverseUuid>_<configName> format.
     public String replicationGroupName;
-    // The target universe will look into this directory for mismatched certificates.
+    // The target universe will look into this directory for source root certificates.
     public File producerCertsDirOnTarget;
     // Whether ignore errors while doing transfer cert operation.
     public boolean ignoreErrors;
@@ -63,33 +63,39 @@ public class TransferXClusterCerts extends NodeTaskBase {
   @Override
   public String getName() {
     return String.format(
-        "%s %s(action=%s, replicationGroupName=%s, rootCertPath=%s, ignoreErrors=%b)",
+        "%s(action=%s,replicationGroupName=%s,rootCertPath=%s,producerCertsDirOnTarget=%s,"
+            + "ignoreErrors=%b)",
         super.getName(),
-        this.getClass().getSimpleName(),
         taskParams().action,
         taskParams().replicationGroupName,
         taskParams().rootCertPath,
+        taskParams().producerCertsDirOnTarget,
         taskParams().ignoreErrors);
   }
 
   @Override
   public void run() {
-    log.info(
-        "Running Transfer XCluster Certs {} against node {}", getName(), taskParams().nodeName);
-
-    // Check that task parameters are valid.
-    if (taskParams().action == Params.Action.COPY && taskParams().rootCertPath == null) {
-      throw new IllegalArgumentException("taskParams().rootCertPath must not be null");
-    }
-    if (taskParams().action == Params.Action.COPY && !taskParams().rootCertPath.exists()) {
-      throw new IllegalArgumentException(
-          String.format("file \"%s\" does not exist", taskParams().rootCertPath));
-    }
-    if (StringUtils.isBlank(taskParams().replicationGroupName)) {
-      throw new IllegalArgumentException("taskParams().replicationConfigName must have a value");
-    }
+    log.info("Running {} against node {}", getName(), taskParams().nodeName);
 
     try {
+      // Check that task parameters are valid.
+      if (taskParams().action == Params.Action.COPY && taskParams().rootCertPath == null) {
+        throw new IllegalArgumentException("taskParams().rootCertPath must not be null");
+      }
+      if (taskParams().action == Params.Action.COPY && !taskParams().rootCertPath.exists()) {
+        throw new IllegalArgumentException(
+            String.format("file \"%s\" does not exist", taskParams().rootCertPath));
+      }
+
+      if (taskParams().producerCertsDirOnTarget == null) {
+        throw new IllegalArgumentException(
+            "taskParams().producerCertsDirOnTarget must not be null");
+      }
+
+      if (StringUtils.isBlank(taskParams().replicationGroupName)) {
+        throw new IllegalArgumentException("taskParams().replicationConfigName must have a value");
+      }
+
       getNodeManager()
           .nodeCommand(NodeCommandType.Transfer_XCluster_Certs, taskParams())
           .processErrors();
@@ -101,5 +107,7 @@ public class TransferXClusterCerts extends NodeTaskBase {
         log.debug("Error ignored because `ignoreErrors` is true");
       }
     }
+
+    log.info("Completed {} against node {}", getName(), taskParams().nodeName);
   }
 }

@@ -86,6 +86,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.DeleteBootstrapIds;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.DeleteReplication;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.DeleteXClusterConfigEntry;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigUpdateMasterAddresses;
+import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterInfoPersist;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.ShellResponse;
@@ -2756,7 +2757,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   protected SubTaskGroup createTransferXClusterCertsRemoveTasks(
-      XClusterConfig xClusterConfig, File producerCertsDir, boolean ignoreErrors) {
+      XClusterConfig xClusterConfig, File sourceRootCertDirPath, boolean ignoreErrors) {
     SubTaskGroup subTaskGroup =
         getTaskExecutor().createSubTaskGroup("TransferXClusterCerts", executor);
     Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.targetUniverseUUID);
@@ -2768,9 +2769,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       transferParams.azUuid = node.azUuid;
       transferParams.action = TransferXClusterCerts.Params.Action.REMOVE;
       transferParams.replicationGroupName = xClusterConfig.getReplicationGroupName();
-      if (producerCertsDir != null) {
-        transferParams.producerCertsDirOnTarget = producerCertsDir;
-      }
+      transferParams.producerCertsDirOnTarget = sourceRootCertDirPath;
       transferParams.ignoreErrors = ignoreErrors;
 
       TransferXClusterCerts transferXClusterCertsTask = createTask(TransferXClusterCerts.class);
@@ -2782,9 +2781,17 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   protected SubTaskGroup createTransferXClusterCertsRemoveTasks(
-      XClusterConfig xClusterConfig, File producerCertsDir) {
+      XClusterConfig xClusterConfig, File sourceRootCertDirPath) {
     return createTransferXClusterCertsRemoveTasks(
-        xClusterConfig, producerCertsDir, false /* ignoreErrors */);
+        xClusterConfig, sourceRootCertDirPath, false /* ignoreErrors */);
+  }
+
+  protected SubTaskGroup createTransferXClusterCertsRemoveTasks(XClusterConfig xClusterConfig) {
+    return createTransferXClusterCertsRemoveTasks(
+        xClusterConfig,
+        Universe.getOrBadRequest(xClusterConfig.targetUniverseUUID)
+            .getUniverseDetails()
+            .getSourceRootCertDirPath());
   }
 
   protected void createDeleteXClusterConfigSubtasks(XClusterConfig xClusterConfig) {
@@ -2799,12 +2806,18 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
     // If target universe is destroyed, ignore creating this subtask.
     if (xClusterConfig.targetUniverseUUID != null) {
-      // Delete the source universe root cert from the target universe.
-      createTransferXClusterCertsRemoveTasks(
-              xClusterConfig,
-              null /* producerCertsDir */,
-              xClusterConfig.status == XClusterConfig.XClusterConfigStatusType.DeletedUniverse)
-          .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.DeleteXClusterReplication);
+      File sourceRootCertDirPath =
+          Universe.getOrBadRequest(xClusterConfig.targetUniverseUUID)
+              .getUniverseDetails()
+              .getSourceRootCertDirPath();
+      // Delete the source universe root cert from the target universe if it is transferred.
+      if (sourceRootCertDirPath != null) {
+        createTransferXClusterCertsRemoveTasks(
+                xClusterConfig,
+                sourceRootCertDirPath,
+                xClusterConfig.status == XClusterConfig.XClusterConfigStatusType.DeletedUniverse)
+            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.DeleteXClusterReplication);
+      }
     }
 
     // Delete the xCluster config from DB.
@@ -2850,6 +2863,82 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     }
     if (subTaskGroup.getSubTaskCount() > 0) {
       getRunnableTask().addSubTaskGroup(subTaskGroup);
+    }
+  }
+
+  protected SubTaskGroup createTransferXClusterCertsCopyTasks(
+      Collection<NodeDetails> nodes,
+      String replicationGroupName,
+      File certificate,
+      File sourceRootCertDirPath) {
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup("TransferXClusterCerts", executor);
+    for (NodeDetails node : nodes) {
+      TransferXClusterCerts.Params transferParams = new TransferXClusterCerts.Params();
+      transferParams.universeUUID = taskParams().universeUUID;
+      transferParams.nodeName = node.nodeName;
+      transferParams.azUuid = node.azUuid;
+      transferParams.rootCertPath = certificate;
+      transferParams.action = TransferXClusterCerts.Params.Action.COPY;
+      transferParams.replicationGroupName = replicationGroupName;
+      transferParams.producerCertsDirOnTarget = sourceRootCertDirPath;
+
+      TransferXClusterCerts transferXClusterCertsTask = createTask(TransferXClusterCerts.class);
+      transferXClusterCertsTask.initialize(transferParams);
+      subTaskGroup.addSubTask(transferXClusterCertsTask);
+    }
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  protected SubTaskGroup createXClusterInfoPersistTask(
+      UniverseDefinitionTaskParams.XClusterInfo xClusterInfo) {
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup("XClusterInfoPersist", executor);
+    XClusterInfoPersist.Params xClusterInfoPersistParams = new XClusterInfoPersist.Params();
+    xClusterInfoPersistParams.universeUUID = taskParams().universeUUID;
+    xClusterInfoPersistParams.xClusterInfo = xClusterInfo;
+
+    XClusterInfoPersist task = createTask(XClusterInfoPersist.class);
+    task.initialize(xClusterInfoPersistParams);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  protected SubTaskGroup createXClusterInfoPersistTask() {
+    return createXClusterInfoPersistTask(getUniverse().getUniverseDetails().xClusterInfo);
+  }
+
+  protected void unlockXClusterUniverses(
+      Set<UUID> lockedXClusterUniversesUuidSet, boolean ignoreErrors) {
+    if (lockedXClusterUniversesUuidSet == null) {
+      return;
+    }
+    Exception firstException = null;
+    for (UUID universeUuid : lockedXClusterUniversesUuidSet) {
+      try {
+        // Unlock the universe.
+        unlockUniverseForUpdate(universeUuid);
+      } catch (Exception e) {
+        // Log the error message, and continue to unlock as many universes as possible.
+        log.error(
+            "{} hit error : could not unlock universe {} that was locked because of "
+                + "participating in an XCluster config: {}",
+            getName(),
+            universeUuid,
+            e.getMessage());
+        if (firstException == null) {
+          firstException = e;
+        }
+      }
+    }
+    if (firstException != null) {
+      if (!ignoreErrors) {
+        throw new RuntimeException(firstException);
+      } else {
+        log.debug("Error ignored");
+      }
     }
   }
   // --------------------------------------------------------------------------------

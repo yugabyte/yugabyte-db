@@ -8,6 +8,7 @@ import com.google.common.collect.ImmutableMap;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
+import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.common.CallHomeManager;
 import com.yugabyte.yw.common.NodeManager;
@@ -147,6 +148,13 @@ public class GFlagsUtil {
     extra_gflags.putAll(getYSQLGFlags(taskParam, universe, useHostname, useSecondaryIp));
     extra_gflags.putAll(getYCQLGFlags(taskParam, universe, useHostname, useSecondaryIp));
     extra_gflags.putAll(getCertsAndTlsGFlags(taskParam, universe));
+
+    if (universe.getUniverseDetails().xClusterInfo.isSourceRootCertDirPathGflagConfigured()) {
+      extra_gflags.put(
+          XClusterConfigTaskBase.SOURCE_ROOT_CERTS_DIR_GFLAG,
+          universe.getUniverseDetails().xClusterInfo.sourceRootCertDirPath);
+    }
+
     return extra_gflags;
   }
 
