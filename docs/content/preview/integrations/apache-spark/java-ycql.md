@@ -1,33 +1,35 @@
 ---
 title: Build a Java application using Apache Spark and YugabyteDB
-headerTitle: Apache Spark
-linkTitle: Apache Spark
+linkTitle: YCQL
 description: Build a Java-based application using Apache Spark and YugabyteDB.
+aliases:
+  - /preview/integrations/apache-spark/java/
 menu:
   preview:
-    identifier: apache-spark-2-java
-    parent: integrations
-    weight: 571
+    identifier: apache-spark-2-java-ycql
+    parent: apache-spark
+    weight: 580
 type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li >
-    <a href="{{< relref "./scala.md" >}}" class="nav-link">
-      <i class="icon-scala" aria-hidden="true"></i>
-      Scala
-    </a>
-  </li>
 
   <li >
-    <a href="{{< relref "./java.md" >}}" class="nav-link active">
+    <a href="../java-ycql/" class="nav-link active">
       <i class="icon-java-bold" aria-hidden="true"></i>
       Java
     </a>
   </li>
 
   <li >
-    <a href="{{< relref "./python.md" >}}" class="nav-link">
+    <a href="../scala-ycql/" class="nav-link">
+      <i class="icon-scala" aria-hidden="true"></i>
+      Scala
+    </a>
+  </li>
+
+  <li >
+    <a href="../python-ycql/" class="nav-link">
       <i class="icon-python" aria-hidden="true"></i>
       Python
     </a>
@@ -253,4 +255,4 @@ updatedRows.write().format("org.apache.spark.sql.cassandra").option("keyspace", 
 
 Set to true to cause all null values to be left as unset rather than bound.
 
-For example, for `{"dl": null, "ul":"foo"}`, if `spark.cassandra.output.ignoreNulls` is specified, only the `ul` field gets written (merged) into the corresponding JSONB column, and the `dl` field is ignored.
+For example, for `{"dl": null, "ul":"foo"}`, if `spark.cassandra.output.ignoreNulls` is specified, only the `ul` field gets written (merged) into the corresponding JSONB column, and the `dl` field is ignored. -->
