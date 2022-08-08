@@ -80,14 +80,11 @@ using consensus::kMinimumTerm;
 using consensus::MakeOpId;
 using consensus::ReplicateMsg;
 using consensus::ReplicateMsgPtr;
-using log::Log;
 using log::LogAnchorRegistry;
 using log::LogTestBase;
-using log::ReadableLogSegment;
 using log::AppendSync;
 using server::Clock;
 using server::LogicalClock;
-using tserver::WriteRequestPB;
 
 struct BootstrapReport {
   // OpIds replayed using Play... functions.

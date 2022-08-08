@@ -84,10 +84,7 @@ TAG_FLAG(enable_tablet_orphaned_block_deletion, runtime);
 
 using std::shared_ptr;
 
-using base::subtle::Barrier_AtomicIncrement;
 using strings::Substitute;
-
-using yb::consensus::MinimumOpId;
 
 namespace yb {
 namespace tablet {
