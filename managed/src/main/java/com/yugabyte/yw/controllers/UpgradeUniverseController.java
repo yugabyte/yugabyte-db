@@ -2,12 +2,16 @@
 
 package com.yugabyte.yw.controllers;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.controllers.handlers.UpgradeUniverseHandler;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
+import com.yugabyte.yw.forms.PlatformResults.YBPTask;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.SystemdUpgradeParams;
 import com.yugabyte.yw.forms.TlsToggleParams;
@@ -23,6 +27,7 @@ import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
+import play.libs.Json;
 import play.mvc.Result;
 
 @Slf4j
@@ -247,8 +252,20 @@ public class UpgradeUniverseController extends AuthenticatedController {
         universe.universeUUID,
         customer.uuid);
 
+    // prevent race condition in the case userIntent updates before we createAuditEntry
+    UserIntent userIntent =
+        Json.fromJson(
+            Json.toJson(universe.getUniverseDetails().getPrimaryCluster().userIntent),
+            UserIntent.class);
     UUID taskUuid = serviceMethod.upgrade(requestParams, customer, universe);
-    auditService().createAuditEntryWithReqBody(ctx(), taskUuid);
+    JsonNode additionalDetails = null;
+    if (type.equals(GFlagsUpgradeParams.class)) {
+      additionalDetails =
+          upgradeUniverseHandler.constructGFlagAuditPayload(
+              (GFlagsUpgradeParams) requestParams, userIntent);
+    }
+    auditService()
+        .createAuditEntryWithReqBody(ctx(), request().body().asJson(), taskUuid, additionalDetails);
     return new YBPTask(taskUuid, universe.universeUUID).asResult();
   }
 }

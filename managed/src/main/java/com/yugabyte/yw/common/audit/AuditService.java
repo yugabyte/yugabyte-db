@@ -103,15 +103,29 @@ public class AuditService {
     createAuditEntry(ctx, ctx.request(), ctx.request().body().asJson(), taskUUID);
   }
 
+  public void createAuditEntryWithReqBody(
+      Http.Context ctx, JsonNode params, UUID taskUUID, JsonNode additionalDetails) {
+    createAuditEntry(ctx, ctx.request(), params, taskUUID, additionalDetails);
+  }
+
+  public void createAuditEntry(
+      Http.Context ctx, Http.Request request, JsonNode params, UUID taskUUID) {
+    createAuditEntry(ctx, request, params, taskUUID, null);
+  }
+
   // TODO make this internal method and use createAuditEntryWithReqBody
   @Deprecated
   public void createAuditEntry(
-      Http.Context ctx, Http.Request request, JsonNode params, UUID taskUUID) {
+      Http.Context ctx,
+      Http.Request request,
+      JsonNode params,
+      UUID taskUUID,
+      JsonNode additionalDetails) {
     UserWithFeatures user = (UserWithFeatures) ctx.args.get("user");
     String method = request.method();
     String path = request.path();
     JsonNode redactedParams = filterSecretFields(params);
-    Audit.create(user.getUser(), path, method, redactedParams, taskUUID);
+    Audit.create(user.getUser(), path, method, redactedParams, taskUUID, additionalDetails);
   }
 
   public List<Audit> getAll(UUID customerUUID) {

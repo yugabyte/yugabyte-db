@@ -3,12 +3,19 @@
 package com.yugabyte.yw.controllers.handlers;
 
 import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.common.KubernetesManager;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.gflags.GFlagDiffEntry;
 import com.yugabyte.yw.forms.TlsToggleParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
+
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
@@ -66,5 +73,52 @@ public class UpgradeUniverseHandlerTest {
 
     String result = UpgradeUniverseHandler.generateTypeName(userIntent, requestParams);
     Assert.assertEquals(expected, result);
+  }
+
+  @Test
+  public void testGenerateGFlagEntries() {
+    Map<String, String> oldGFlags = new HashMap<>();
+    Map<String, String> newGFlags = new HashMap<>();
+    String serverType = ServerType.TSERVER.toString();
+    String softwareVersion = "2.6";
+
+    // removed gflag
+    oldGFlags.put("stderrthreshold", "1");
+    List<GFlagDiffEntry> gFlagDiffEntries =
+        handler.generateGFlagEntries(oldGFlags, newGFlags, serverType, softwareVersion);
+    Assert.assertEquals(1, gFlagDiffEntries.size());
+    Assert.assertEquals("stderrthreshold", gFlagDiffEntries.get(0).name);
+    Assert.assertEquals("1", gFlagDiffEntries.get(0).oldValue);
+    Assert.assertEquals(null, gFlagDiffEntries.get(0).newValue);
+
+    // added gflag
+    oldGFlags.clear();
+    newGFlags.clear();
+    newGFlags.put("minloglevel", "2");
+    gFlagDiffEntries =
+        handler.generateGFlagEntries(oldGFlags, newGFlags, serverType, softwareVersion);
+    Assert.assertEquals("minloglevel", gFlagDiffEntries.get(0).name);
+    Assert.assertEquals(null, gFlagDiffEntries.get(0).oldValue);
+    Assert.assertEquals("2", gFlagDiffEntries.get(0).newValue);
+
+    // updated gflag
+    oldGFlags.clear();
+    newGFlags.clear();
+    oldGFlags.put("max_log_size", "0");
+    newGFlags.put("max_log_size", "1000");
+    gFlagDiffEntries =
+        handler.generateGFlagEntries(oldGFlags, newGFlags, serverType, softwareVersion);
+    Assert.assertEquals("max_log_size", gFlagDiffEntries.get(0).name);
+    Assert.assertEquals("0", gFlagDiffEntries.get(0).oldValue);
+    Assert.assertEquals("1000", gFlagDiffEntries.get(0).newValue);
+
+    // unchanged gflag
+    oldGFlags.clear();
+    newGFlags.clear();
+    oldGFlags.put("max_log_size", "2000");
+    newGFlags.put("max_log_size", "2000");
+    gFlagDiffEntries =
+        handler.generateGFlagEntries(oldGFlags, newGFlags, serverType, softwareVersion);
+    Assert.assertEquals(0, gFlagDiffEntries.size());
   }
 }

@@ -59,7 +59,7 @@ public class AuditTest extends FakeDBApplication {
   }
 
   public Audit createEntry(UUID taskUUID, Users user) {
-    return Audit.create(user, "/test/api/call", "PUT", null, taskUUID);
+    return Audit.create(user, "/test/api/call", "PUT", null, taskUUID, null);
   }
 
   @Test

@@ -2,14 +2,20 @@
 
 package com.yugabyte.yw.controllers.handlers;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.collect.Sets;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.CertificateHelper;
 import com.yugabyte.yw.common.KubernetesManager;
+import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.gflags.GFlagsAuditPayload;
+import com.yugabyte.yw.common.gflags.GFlagDiffEntry;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
@@ -25,9 +31,17 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import lombok.extern.slf4j.Slf4j;
 import play.mvc.Http.Status;
 
@@ -126,6 +140,54 @@ public class UpgradeUniverseHandler {
         requestParams,
         customer,
         universe);
+  }
+
+  public JsonNode constructGFlagAuditPayload(
+      GFlagsUpgradeParams requestParams, UserIntent oldUserIntent) {
+    if (requestParams.getPrimaryCluster() == null) {
+      return null;
+    }
+    UserIntent newUserIntent = requestParams.getPrimaryCluster().userIntent;
+    Map<String, String> newMasterGFlags = newUserIntent.masterGFlags;
+    Map<String, String> newTserverGFlags = newUserIntent.tserverGFlags;
+    Map<String, String> oldMasterGFlags = oldUserIntent.masterGFlags;
+    Map<String, String> oldTserverGFlags = oldUserIntent.tserverGFlags;
+    GFlagsAuditPayload payload = new GFlagsAuditPayload();
+    String softwareVersion = newUserIntent.ybSoftwareVersion;
+    payload.master =
+        generateGFlagEntries(
+            oldMasterGFlags, newMasterGFlags, ServerType.MASTER.toString(), softwareVersion);
+    payload.tserver =
+        generateGFlagEntries(
+            oldTserverGFlags, newTserverGFlags, ServerType.TSERVER.toString(), softwareVersion);
+
+    ObjectMapper mapper = new ObjectMapper();
+    Map<String, GFlagsAuditPayload> auditPayload = new HashMap<>();
+    auditPayload.put("gflags", payload);
+
+    return mapper.valueToTree(auditPayload);
+  }
+
+  public List<GFlagDiffEntry> generateGFlagEntries(
+      Map<String, String> oldGFlags,
+      Map<String, String> newGFlags,
+      String serverType,
+      String softwareVersion) {
+    List<GFlagDiffEntry> gFlagChanges = new ArrayList<GFlagDiffEntry>();
+
+    GFlagDiffEntry tEntry;
+    Collection<String> modifiedGFlags = Sets.union(oldGFlags.keySet(), newGFlags.keySet());
+
+    for (String gFlagName : modifiedGFlags) {
+      String oldGFlagValue = oldGFlags.getOrDefault(gFlagName, null);
+      String newGFlagValue = newGFlags.getOrDefault(gFlagName, null);
+      if (oldGFlagValue == null || !oldGFlagValue.equals(newGFlagValue)) {
+        tEntry = new GFlagDiffEntry(gFlagName, oldGFlagValue, newGFlagValue, null);
+        gFlagChanges.add(tEntry);
+      }
+    }
+
+    return gFlagChanges;
   }
 
   public UUID rotateCerts(CertsRotateParams requestParams, Customer customer, Universe universe) {

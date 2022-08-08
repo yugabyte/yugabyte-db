@@ -842,6 +842,11 @@
     "Audit" : {
       "description" : "Audit logging for requests and responses",
       "properties" : {
+        "additionalDetails" : {
+          "description" : "Additional Details",
+          "readOnly" : true,
+          "type" : "object"
+        },
         "apiCall" : {
           "description" : "API call",
           "example" : "/api/v1/customers/<496fdea8-df25-11eb-ba80-0242ac130004>/providers",
