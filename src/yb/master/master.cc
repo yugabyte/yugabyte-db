@@ -93,7 +93,6 @@ METRIC_DEFINE_entity(cluster);
 
 using namespace std::literals;
 using std::min;
-using std::shared_ptr;
 using std::vector;
 
 using yb::consensus::RaftPeerPB;
