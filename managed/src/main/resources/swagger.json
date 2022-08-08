@@ -2278,6 +2278,9 @@
         "kubernetesUpgradeSupported" : {
           "type" : "boolean"
         },
+        "mastersInDefaultRegion" : {
+          "type" : "boolean"
+        },
         "nextClusterIndex" : {
           "format" : "int32",
           "type" : "integer"
@@ -3306,6 +3309,9 @@
             "type" : "string"
           },
           "type" : "object"
+        },
+        "mastersInDefaultRegion" : {
+          "type" : "boolean"
         },
         "nextClusterIndex" : {
           "format" : "int32",
@@ -5302,6 +5308,9 @@
         "kubernetesUpgradeSupported" : {
           "type" : "boolean"
         },
+        "mastersInDefaultRegion" : {
+          "type" : "boolean"
+        },
         "nextClusterIndex" : {
           "format" : "int32",
           "type" : "integer"
@@ -5958,6 +5967,9 @@
         "kubernetesUpgradeSupported" : {
           "type" : "boolean"
         },
+        "mastersInDefaultRegion" : {
+          "type" : "boolean"
+        },
         "nextClusterIndex" : {
           "format" : "int32",
           "type" : "integer"
@@ -6236,6 +6248,9 @@
           "type" : "string"
         },
         "kubernetesUpgradeSupported" : {
+          "type" : "boolean"
+        },
+        "mastersInDefaultRegion" : {
           "type" : "boolean"
         },
         "nextClusterIndex" : {
@@ -6672,6 +6687,9 @@
         "kubernetesUpgradeSupported" : {
           "type" : "boolean"
         },
+        "mastersInDefaultRegion" : {
+          "type" : "boolean"
+        },
         "nextClusterIndex" : {
           "format" : "int32",
           "type" : "integer"
@@ -6883,6 +6901,9 @@
           "type" : "string"
         },
         "kubernetesUpgradeSupported" : {
+          "type" : "boolean"
+        },
+        "mastersInDefaultRegion" : {
           "type" : "boolean"
         },
         "nextClusterIndex" : {
@@ -7107,6 +7128,9 @@
         "itestS3PackagePath" : {
           "type" : "string"
         },
+        "mastersInDefaultRegion" : {
+          "type" : "boolean"
+        },
         "nextClusterIndex" : {
           "format" : "int32",
           "type" : "integer"
@@ -7302,6 +7326,9 @@
         "itestS3PackagePath" : {
           "type" : "string"
         },
+        "mastersInDefaultRegion" : {
+          "type" : "boolean"
+        },
         "nextClusterIndex" : {
           "format" : "int32",
           "type" : "integer"
@@ -7493,6 +7520,9 @@
         },
         "itestS3PackagePath" : {
           "type" : "string"
+        },
+        "mastersInDefaultRegion" : {
+          "type" : "boolean"
         },
         "nextClusterIndex" : {
           "format" : "int32",
@@ -7853,6 +7883,9 @@
           "type" : "string"
         },
         "kubernetesUpgradeSupported" : {
+          "type" : "boolean"
+        },
+        "mastersInDefaultRegion" : {
           "type" : "boolean"
         },
         "nextClusterIndex" : {
@@ -8378,6 +8411,9 @@
             "type" : "string"
           },
           "type" : "object"
+        },
+        "mastersInDefaultRegion" : {
+          "type" : "boolean"
         },
         "nextClusterIndex" : {
           "format" : "int32",
