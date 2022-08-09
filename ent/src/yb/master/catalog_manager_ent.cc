@@ -11,6 +11,7 @@
 // under the License.
 
 #include <memory>
+#include <queue>
 #include <regex>
 #include <set>
 #include <unordered_set>
@@ -166,6 +167,11 @@ DEFINE_test_flag(bool, hang_wait_replication_drain, false,
                  "Used in tests to temporarily block WaitForReplicationDrain.");
 DEFINE_test_flag(bool, import_snapshot_failed, false,
                  "Return a error from ImportSnapshotMeta RPC for testing the RPC failure.");
+
+DEFINE_uint64(import_snapshot_max_concurrent_create_table_requests, 20,
+             "Maximum number of create table requests to the master that can be outstanding "
+             "during the import snapshot metadata phase of restore.");
+TAG_FLAG(import_snapshot_max_concurrent_create_table_requests, runtime);
 
 namespace yb {
 
@@ -1211,18 +1217,17 @@ Status CatalogManager::ImportSnapshotProcessUDTypes(const SnapshotInfoPB& snapsh
   return Status::OK();
 }
 
-Status CatalogManager::ImportSnapshotCreateObject(const SnapshotInfoPB& snapshot_pb,
-                                                  ImportSnapshotMetaResponsePB* resp,
-                                                  const NamespaceMap& namespace_map,
-                                                  const UDTypeMap& type_map,
-                                                  ExternalTableSnapshotDataMap* tables_data,
-                                                  CreateObjects create_objects) {
-  // Create ONLY TABLES or ONLY INDEXES in accordance to the argument.
+Status CatalogManager::ImportSnapshotCreateIndexes(const SnapshotInfoPB& snapshot_pb,
+                                                   ImportSnapshotMetaResponsePB* resp,
+                                                   const NamespaceMap& namespace_map,
+                                                   const UDTypeMap& type_map,
+                                                   ExternalTableSnapshotDataMap* tables_data) {
+  // Create ONLY INDEXES.
   for (const BackupRowEntryPB& backup_entry : snapshot_pb.backup_entries()) {
     const SysRowEntry& entry = backup_entry.entry();
     if (entry.type() == SysRowEntryType::TABLE) {
       ExternalTableSnapshotData& data = (*tables_data)[entry.id()];
-      if ((create_objects == CreateObjects::kOnlyIndexes) == data.is_index()) {
+      if (data.is_index()) {
         RETURN_NOT_OK(ImportTableEntry(namespace_map, type_map, *tables_data, &data));
       }
     }
@@ -1231,18 +1236,43 @@ Status CatalogManager::ImportSnapshotCreateObject(const SnapshotInfoPB& snapshot
   return Status::OK();
 }
 
-Status CatalogManager::ImportSnapshotWaitForTables(const SnapshotInfoPB& snapshot_pb,
-                                                   ImportSnapshotMetaResponsePB* resp,
-                                                   ExternalTableSnapshotDataMap* tables_data,
-                                                   CoarseTimePoint deadline) {
-  for (const BackupRowEntryPB& backup_entry : snapshot_pb.backup_entries()) {
+Status CatalogManager::ImportSnapshotCreateAndWaitForTables(
+    const SnapshotInfoPB& snapshot_pb, const NamespaceMap& namespace_map,
+    const UDTypeMap& type_map, ExternalTableSnapshotDataMap* tables_data,
+    CoarseTimePoint deadline) {
+  std::queue<TableId> pending_creates;
+  for (const auto& backup_entry : snapshot_pb.backup_entries()) {
     const SysRowEntry& entry = backup_entry.entry();
-    if (entry.type() == SysRowEntryType::TABLE) {
-      ExternalTableSnapshotData& data = (*tables_data)[entry.id()];
-      if (!data.is_index()) {
-        RETURN_NOT_OK(WaitForCreateTableToFinish(data.new_table_id, deadline));
-      }
+    // Only for tables that are not indexes.
+    if (entry.type() != SysRowEntryType::TABLE) {
+      continue;
     }
+    // ExternalTableSnapshotData only contains entries for tables, so
+    // we access it after the entry type check above.
+    ExternalTableSnapshotData& data = (*tables_data)[entry.id()];
+    if (data.is_index()) {
+      continue;
+    }
+    // If we are at the limit, wait for the oldest table to be created
+    // so that we can send create request for the current table.
+    DCHECK_LE(pending_creates.size(), FLAGS_import_snapshot_max_concurrent_create_table_requests);
+    while (pending_creates.size() >= FLAGS_import_snapshot_max_concurrent_create_table_requests) {
+      RETURN_NOT_OK(WaitForCreateTableToFinish(pending_creates.front(), deadline));
+      LOG(INFO) << "ImportSnapshot: Create table finished for " << pending_creates.front()
+                << ", time remaining " << ToSeconds(deadline - CoarseMonoClock::Now()) << " secs";
+      pending_creates.pop();
+    }
+    // Ready to send request for this table now.
+    RETURN_NOT_OK(ImportTableEntry(namespace_map, type_map, *tables_data, &data));
+    pending_creates.push(data.new_table_id);
+  }
+
+  // Pop from queue and wait for those tables to be created.
+  while (!pending_creates.empty()) {
+    RETURN_NOT_OK(WaitForCreateTableToFinish(pending_creates.front(), deadline));
+    LOG(INFO) << "ImportSnapshot: Create table finished for " << pending_creates.front()
+              << ", time remaining " << ToSeconds(deadline - CoarseMonoClock::Now()) << " secs";
+    pending_creates.pop();
   }
 
   return Status::OK();
@@ -1418,18 +1448,14 @@ Status CatalogManager::ImportSnapshotMeta(const ImportSnapshotMetaRequestPB* req
   RETURN_NOT_OK(ImportSnapshotProcessUDTypes(snapshot_pb, resp, &type_map, namespace_map));
 
   // PHASE 3: Recreate ONLY tables.
-  RETURN_NOT_OK(ImportSnapshotCreateObject(
-      snapshot_pb, resp, namespace_map, type_map, &tables_data, CreateObjects::kOnlyTables));
+  RETURN_NOT_OK(ImportSnapshotCreateAndWaitForTables(
+      snapshot_pb, namespace_map, type_map, &tables_data, rpc->GetClientDeadline()));
 
-  // PHASE 4: Wait for all tables creation complete.
-  RETURN_NOT_OK(ImportSnapshotWaitForTables(
-      snapshot_pb, resp, &tables_data, rpc->GetClientDeadline()));
+  // PHASE 4: Recreate ONLY indexes.
+  RETURN_NOT_OK(ImportSnapshotCreateIndexes(
+      snapshot_pb, resp, namespace_map, type_map, &tables_data));
 
-  // PHASE 5: Recreate ONLY indexes.
-  RETURN_NOT_OK(ImportSnapshotCreateObject(
-      snapshot_pb, resp, namespace_map, type_map, &tables_data, CreateObjects::kOnlyIndexes));
-
-  // PHASE 6: Restore tablets.
+  // PHASE 5: Restore tablets.
   RETURN_NOT_OK(ImportSnapshotProcessTablets(snapshot_pb, resp, &tables_data));
 
   if (PREDICT_FALSE(FLAGS_TEST_import_snapshot_failed)) {
