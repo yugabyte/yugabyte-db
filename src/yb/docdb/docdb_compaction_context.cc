@@ -121,10 +121,12 @@ class PackedRowData {
 
   Status ProcessPackedRow(
       const Slice& internal_key, size_t doc_key_size,
-      const ValueControlFields& row_control_fields, const Slice& value,
+      const Slice& full_value, size_t control_fields_size,
       const DocHybridTime& row_doc_ht, size_t new_doc_key_serial) {
-    VLOG_WITH_FUNC(4) << "Key: " << internal_key.ToDebugHexString() << ", value: "
-                      << value.ToDebugHexString() << ", row_doc_ht: " << row_doc_ht;
+    VLOG_WITH_FUNC(4)
+        << "Key: " << internal_key.ToDebugHexString() << ", full_value: "
+        << full_value.ToDebugHexString() << ", control_fields_size: " << control_fields_size
+        << ", row_doc_ht: " << row_doc_ht;
     RSTATUS_DCHECK(!active(), Corruption, Format(
         "Double packed rows: $0, $1", key_.AsSlice().ToDebugHexString(),
         internal_key.ToDebugHexString()));
@@ -132,11 +134,11 @@ class PackedRowData {
     UsedSchemaVersion(new_packing_.schema_version);
 
     InitKey(internal_key, doc_key_size, new_doc_key_serial);
-    control_fields_ = row_control_fields;
+    control_fields_size_ = control_fields_size;
     doc_ht_ = row_doc_ht;
 
-    old_value_.Assign(value);
-    old_value_slice_ = old_value_.AsSlice();
+    old_value_.Assign(full_value);
+    old_value_slice_ = old_value_.AsSlice().WithoutPrefix(control_fields_size);
     old_schema_version_ = VERIFY_RESULT(ParseValueHeader(&old_value_slice_));
     if (old_schema_version_ != new_packing_.schema_version) {
       return StartRepacking();
@@ -151,7 +153,7 @@ class PackedRowData {
     UsedSchemaVersion(new_packing_.schema_version);
 
     InitKey(internal_key, doc_key_size, new_doc_key_serial);
-    control_fields_ = ValueControlFields();
+    control_fields_size_ = 0;
     doc_ht_ = doc_ht;
     old_value_slice_ = Slice();
     InitPacker();
@@ -223,7 +225,8 @@ class PackedRowData {
     packing_started_ = true;
     if (!packer_) {
       packer_.emplace(
-          new_packing_.schema_version, *new_packing_.schema_packing, new_packing_.pack_limit());
+          new_packing_.schema_version, *new_packing_.schema_packing, new_packing_.pack_limit(),
+          old_value_.AsSlice().Prefix(control_fields_size_));
     } else {
       packer_->Restart();
     }
@@ -343,7 +346,7 @@ class PackedRowData {
   PackedRowFeed& feed_;
   SchemaPackingProvider* schema_packing_provider_; // Owned externally.
 
-  ValueControlFields control_fields_;
+  size_t control_fields_size_ = 0;
   size_t doc_key_serial_ = std::numeric_limits<size_t>::max();
   KeyBuffer key_;
   DocHybridTime doc_ht_;
@@ -773,7 +776,7 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
           return Status::OK();
         }
         // Return if column was processed by packed row.
-        if (VERIFY_RESULT(packed_row_.ProcessColumn(column_id, value_slice, ht))) {
+        if (VERIFY_RESULT(packed_row_.ProcessColumn(column_id, value, ht))) {
           return Status::OK();
         }
       }
@@ -830,7 +833,8 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
   // TODO(packed_row) combine non packed columns into packed row
   if (value_type == ValueEntryType::kPackedRow) {
     return packed_row_.ProcessPackedRow(
-        internal_key, sub_key_ends_.back(), control_fields, value_slice, ht, doc_key_serial_);
+        internal_key, sub_key_ends_.back(), value, value_slice.data() - value.data(), ht,
+        doc_key_serial_);
   }
 
   // If the entry has the TTL flag, delete the entry.
