@@ -23,6 +23,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.net.InetSocketAddress;
+import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 
@@ -39,6 +40,7 @@ import com.datastax.oss.driver.api.core.cql.Row;
 
 import com.datastax.oss.driver.api.core.type.DataTypes;
 import com.datastax.oss.driver.api.core.type.TupleType;
+import com.datastax.oss.driver.api.core.data.TupleValue;
 
 @RunWith(value = YBTestRunnerNonTsanOnly.class)
 public class TestTupleOperators extends BaseMiniClusterTest {
@@ -104,54 +106,112 @@ public class TestTupleOperators extends BaseMiniClusterTest {
         }
         assertEquals(select_row_count, 1);
 
-        // Unsupported bind format test #1
+        // Bind by name - one variable per tuple
         selectStmt = String.format("SELECT * FROM %s WHERE (r1, r2) IN (:tup1, :tup2);", tbl);
-        PreparedStatement preparedSelect;
+        PreparedStatement preparedSelect = session.prepare(selectStmt);
+        TupleType tupleType = DataTypes.tupleOf(DataTypes.INT, DataTypes.TEXT);
+        BoundStatement boundStmt = preparedSelect.boundStatementBuilder()
+                .setTupleValue("tup1", tupleType.newValue(101, "r101"))
+                .setTupleValue("tup2", tupleType.newValue(102, "r102"))
+                .build();
+        rs = session.execute(boundStmt);
+
+        select_row_count = 0;
+        iter = rs.iterator();
+        int counter = 1;
+        while (iter.hasNext()) {
+            Row row = iter.next();
+            assertEquals(row.getInt(0), counter); /* h1 */
+            assertEquals(row.getInt(2), counter + 100); /* r1 */
+            assertEquals(row.getInt(4), counter + 1000); /* v1 */
+            select_row_count++;
+            counter++;
+        }
+        assertEquals(select_row_count, 2);
+
+        // Basic bind - one variable per tuple
+        selectStmt = String.format("SELECT * FROM %s WHERE (r1, r2) IN (?, ?);", tbl);
+        preparedSelect = session.prepare(selectStmt);
+        List<TupleValue> choices = new ArrayList<>();
+        choices.add(tupleType.newValue(101, "r101"));
+        choices.add(tupleType.newValue(102, "r102"));
+        rs = session.execute(preparedSelect.bind(choices.toArray()));
+        select_row_count = 0;
+        iter = rs.iterator();
+        counter = 1;
+        while (iter.hasNext()) {
+            Row row = iter.next();
+            assertEquals(row.getInt(0), counter); /* h1 */
+            assertEquals(row.getInt(2), counter + 100); /* r1 */
+            assertEquals(row.getInt(4), counter + 1000); /* v1 */
+            select_row_count++;
+            counter++;
+        }
+        assertEquals(select_row_count, 2);
+
+        // Invalid number of variables - one variable per tuple
+        List<TupleValue> invalid_choices = new ArrayList<>();
+        invalid_choices.add(tupleType.newValue(101, "r101"));
+        invalid_choices.add(tupleType.newValue(102, "r102"));
+        invalid_choices.add(tupleType.newValue(103, "r103"));
         try {
-            preparedSelect = session.prepare(selectStmt);
-        } catch (com.datastax.oss.driver.api.core.servererrors.SyntaxError e) {
-            assertTrue(e.getMessage().contains("Feature Not Supported. Bind format not supported"));
+            rs = session.execute(preparedSelect.bind(invalid_choices.toArray()));
+        } catch (java.lang.IllegalArgumentException e) {
+            assertTrue(e.getMessage().contains("Too many variables (expected 2, got 3)"));
             logger.info("Expected exception", e);
         }
 
-        // Use the below tests once the format is supported.
-        // TupleType tupleType = DataTypes.tupleOf(DataTypes.INT, DataTypes.TEXT);
-        // BoundStatement boundStmt = preparedSelect.boundStatementBuilder()
-        // .setTupleValue("tup1", tupleType.newValue(101, "r101"))
-        // .setTupleValue("tup2", tupleType.newValue(102, "r102"))
-        // .build();
-        // rs = session.execute(boundStmt);
+        // Invalid tuple type - one variable per tuple
+        invalid_choices = new ArrayList<>();
+        TupleType invalidTupleType = DataTypes.tupleOf(DataTypes.INT, DataTypes.INT);
+        invalid_choices.add(invalidTupleType.newValue(101, 101));
+        invalid_choices.add(invalidTupleType.newValue(102, 102));
+        try {
+            rs = session.execute(preparedSelect.bind(invalid_choices.toArray()));
+        } catch (java.lang.IllegalArgumentException e) {
+            assertTrue(e.getMessage()
+                    .contains("Invalid tuple type, expected Tuple(INT, TEXT) but got " +
+                            "Tuple(INT, INT)"));
+            logger.info("Expected exception", e);
+        }
 
-        // select_row_count = 0;
-        // iter = rs.iterator();
-        // int counter = 1;
-        // while (iter.hasNext()) {
-        // Row row = iter.next();
-        // String result = String.format("Result = %d, %s, %d, %s, %d, %s",
-        // row.getInt(0),
-        // row.getString(1),
-        // row.getInt(2),
-        // row.getString(3),
-        // row.getInt(4),
-        // row.getString(5));
-        // logger.info(result);
+        // Bind by name - one variable for entire list
+        selectStmt = String.format("SELECT * FROM %s WHERE (r1, r2) IN :choices;", tbl);
+        preparedSelect = session.prepare(selectStmt);
+        boundStmt = preparedSelect.boundStatementBuilder()
+                .setList("choices", choices, TupleValue.class).build();
+        rs = session.execute(boundStmt);
 
-        // assertEquals(row.getInt(0), counter); /* h1 */
-        // assertEquals(row.getInt(2), counter + 100); /* r1 */
-        // assertEquals(row.getInt(4), counter + 1000); /* v1 */
+        select_row_count = 0;
+        iter = rs.iterator();
+        counter = 1;
+        while (iter.hasNext()) {
+            Row row = iter.next();
+            assertEquals(row.getInt(0), counter); /* h1 */
+            assertEquals(row.getInt(2), counter + 100); /* r1 */
+            assertEquals(row.getInt(4), counter + 1000); /* v1 */
+            select_row_count++;
+            counter++;
+        }
+        assertEquals(select_row_count, 2);
 
-        // select_row_count++;
-        // counter++;
-        // }
-        // assertEquals(select_row_count, 2);
 
-        // Unsupported bind format test #2
+        // Basic bind - one variable for entire list
         selectStmt = String.format("SELECT * FROM %s WHERE (r1, r2) IN ?;", tbl);
-        try {
-            preparedSelect = session.prepare(selectStmt);
-        } catch (com.datastax.oss.driver.api.core.servererrors.SyntaxError e) {
-            assertTrue(e.getMessage().contains("Feature Not Supported. Bind format not supported"));
-            logger.info("Expected exception", e);
+        preparedSelect = session.prepare(selectStmt);
+        rs = session.execute(preparedSelect.bind(choices));
+
+        select_row_count = 0;
+        iter = rs.iterator();
+        counter = 1;
+        while (iter.hasNext()) {
+            Row row = iter.next();
+            assertEquals(row.getInt(0), counter); /* h1 */
+            assertEquals(row.getInt(2), counter + 100); /* r1 */
+            assertEquals(row.getInt(4), counter + 1000); /* v1 */
+            select_row_count++;
+            counter++;
         }
+        assertEquals(select_row_count, 2);
     }
 }

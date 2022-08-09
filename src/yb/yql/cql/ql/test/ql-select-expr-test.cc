@@ -3,7 +3,9 @@
 //--------------------------------------------------------------------------------------------------
 
 #include <cmath>
+#include <chrono>
 #include <limits>
+#include <thread>
 
 #include "yb/common/jsonb.h"
 #include "yb/common/ql_serialization.h"
@@ -31,6 +33,7 @@ using strings::Substitute;
 using yb::util::Decimal;
 using yb::util::DecimalFromComparable;
 using yb::util::VarInt;
+using namespace std::chrono_literals;
 
 namespace yb {
 namespace ql {
@@ -2327,5 +2330,152 @@ TEST_F(QLTestSelectedExpr, OrderMultiColumnInTest) {
   }
 }
 
+TEST_F(QLTestSelectedExpr, RandomizedMultiColumnInTest) {
+  // Init the simulated cluster.
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
+
+  // Get a processor.
+  TestQLProcessor* processor = GetQLProcessor();
+  LOG(INFO) << "Running simple query test.";
+  // Create the table 1.
+  const char* create_stmt =
+      "CREATE TABLE test_range(h int, r1 int, r2 text, r3 int, PRIMARY KEY ((h), r1, r2, r3)) "
+      "WITH CLUSTERING ORDER BY (r1 DESC, r2 ASC, r3 DESC);";
+  CHECK_VALID_STMT(create_stmt);
+
+  int num_rows = 5000;
+  int limit = 10;
+  for (int i = 0; i < num_rows; i++) {
+    unsigned int seed = SeedRandom();
+    int h = rand_r(&seed) % limit;
+    int r1 = rand_r(&seed) % limit;
+    int r2 = rand_r(&seed) % limit;
+    int r3 = rand_r(&seed) % limit;
+    CHECK_VALID_STMT(strings::Substitute(
+        "INSERT INTO test_range (h, r1, r2, r3) VALUES($0, $1, '$2', $3);", h, r1, r2, r3));
+  }
+
+  // Checking Row
+  int queries = 1000;
+  for (int i = 0; i < queries; i++) {
+    unsigned int seed = SeedRandom();
+    std::this_thread::sleep_for(10ms);
+    int h = rand_r(&seed) % limit;
+    std::unordered_set<int> params;
+    int r1_1 = 0;
+    int r2_1 = 0;
+    int r3_1 = 0;
+    int r1_2 = 0;
+    int r2_2 = 0;
+    int r3_2 = 0;
+    int r1_3 = 0;
+    int r2_3 = 0;
+    int r3_3 = 0;
+    while (params.size() != 3) {
+      params.erase(r1_1 * 100 + r2_1 * 10 + r3_1);
+      params.erase(r1_2 * 100 + r2_2 * 10 + r3_2);
+      params.erase(r1_3 * 100 + r2_3 * 10 + r3_3);
+      r1_1 = rand_r(&seed) % limit;
+      r2_1 = rand_r(&seed) % limit;
+      r3_1 = rand_r(&seed) % limit;
+      r1_2 = rand_r(&seed) % limit;
+      r2_2 = rand_r(&seed) % limit;
+      r3_2 = rand_r(&seed) % limit;
+      r1_3 = rand_r(&seed) % limit;
+      r2_3 = rand_r(&seed) % limit;
+      r3_3 = rand_r(&seed) % limit;
+      params.insert(r1_1 * 100 + r2_1 * 10 + r3_1);
+      params.insert(r1_2 * 100 + r2_2 * 10 + r3_2);
+      params.insert(r1_3 * 100 + r2_3 * 10 + r3_3);
+    }
+
+    CHECK_VALID_STMT(strings::Substitute(
+        "SELECT * FROM test_range WHERE h = $0 AND (r1, r2, r3) IN (($1, '$2', $3), ($4, '$5', "
+        "$6), ($7, '$8', $9));",
+        h, r1_1, r2_1, r3_1, r1_2, r2_2, r3_2, r1_3, r2_3, r3_3));
+    QLRowBlock in_rows = *processor->row_block();
+    size_t in_rows_count = in_rows.row_count();
+    std::unordered_set<int> ins;
+    for (auto const& row : in_rows.rows()) {
+      int h = row.column(0).int32_value();
+      int r1 = row.column(1).int32_value();
+      string r2 = row.column(2).string_value();
+      int r3 = row.column(3).int32_value();
+      int value = h * 1000 + r1 * 100 + stoi(r2) * 10 + r3;
+      ins.insert(value);
+    }
+
+    CHECK_VALID_STMT(strings::Substitute(
+        "SELECT * FROM test_range WHERE h = $0 AND r1 = $1 AND r2 = '$2' AND r3 = $3;", h, r1_1,
+        r2_1, r3_1));
+
+    QLRowBlock alt_rows = *processor->row_block();
+    size_t alt_rows_count = alt_rows.row_count();
+    for (auto const& row : alt_rows.rows()) {
+      int h = row.column(0).int32_value();
+      int r1 = row.column(1).int32_value();
+      string r2 = row.column(2).string_value();
+      int r3 = row.column(3).int32_value();
+      int value = h * 1000 + r1 * 100 + stoi(r2) * 10 + r3;
+      ins.erase(value);
+    }
+
+    CHECK_VALID_STMT(strings::Substitute(
+        "SELECT * FROM test_range WHERE h = $0 AND r1 = $1 AND r2 = '$2' AND r3 = $3;", h, r1_2,
+        r2_2, r3_2));
+
+    alt_rows = *processor->row_block();
+    alt_rows_count += alt_rows.row_count();
+    for (auto const& row : alt_rows.rows()) {
+      int h = row.column(0).int32_value();
+      int r1 = row.column(1).int32_value();
+      string r2 = row.column(2).string_value();
+      int r3 = row.column(3).int32_value();
+      int value = h * 1000 + r1 * 100 + stoi(r2) * 10 + r3;
+      ins.erase(value);
+    }
+
+    CHECK_VALID_STMT(strings::Substitute(
+        "SELECT * FROM test_range WHERE h = $0 AND r1 = $1 AND r2 = '$2' AND r3 = $3;", h, r1_3,
+        r2_3, r3_3));
+
+    alt_rows = *processor->row_block();
+    alt_rows_count += alt_rows.row_count();
+    for (auto const& row : alt_rows.rows()) {
+      int h = row.column(0).int32_value();
+      int r1 = row.column(1).int32_value();
+      string r2 = row.column(2).string_value();
+      int r3 = row.column(3).int32_value();
+      int value = h * 1000 + r1 * 100 + stoi(r2) * 10 + r3;
+      ins.erase(value);
+    }
+    CHECK_EQ(in_rows_count, alt_rows_count);
+    CHECK_EQ(ins.size(), 0);
+  }
+}
+
+TEST_F(QLTestSelectedExpr, BindVarsMultiColumnInTest) {
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
+
+  // Get a processor.
+  TestQLProcessor* processor = GetQLProcessor();
+  PreparedResult::UniPtr result;
+  LOG(INFO) << "Prepare insert into LIST statement.";
+  const char* create_stmt =
+      "CREATE TABLE test_range(h int, r1 int, r2 text, r3 int, PRIMARY KEY ((h), r1, r2, r3)) "
+      "WITH CLUSTERING ORDER BY (r1 DESC, r2 ASC, r3 DESC);";
+  CHECK_VALID_STMT(create_stmt);
+
+  Statement select_statement(
+      processor->CurrentKeyspace(),
+      "SELECT * FROM test_range WHERE h = 5 AND (r1, r2) IN (:tup1, :tup2);");
+  EXPECT_OK(select_statement.Prepare(
+      &processor->ql_processor(), nullptr /* mem_tracker */, false /* internal */, &result));
+  auto vl_binds = result->bind_variable_schemas();
+  EXPECT_EQ(vl_binds.size(), 2);
+  EXPECT_EQ(vl_binds[0].ToString(), "tup1[tuple NOT NULL NOT A PARTITION KEY]");
+  EXPECT_EQ(vl_binds[1].ToString(), "tup2[tuple NOT NULL NOT A PARTITION KEY]");
+  EXPECT_EQ(vl_binds[1].type()->ToString(), "tuple<int, text>");
+}
 } // namespace ql
 } // namespace yb
