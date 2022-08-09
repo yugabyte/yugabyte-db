@@ -38,7 +38,8 @@ YB_FOLDER_PATH = os.path.join(HOME_FOLDER, ".yugabyte")
 
 RELEASE_VERSION_FILENAME = "version.txt"
 RELEASE_VERSION_PATTERN = "\d+.\d+.\d+.\d+"
-RELEASE_REPOS = set(["devops", "yugaware", "yugabyte", "yugabundle_support", "yba_installer"])
+RELEASE_REPOS = set(["devops", "yugaware", "yugabyte", "yugabundle_support",
+                    "yba_installer", "node_agent"])
 
 # Home directory of node instances. Try to read home dir from env, else assume it's /home/yugabyte.
 YB_HOME_DIR = os.environ.get("YB_HOME_DIR") or "/home/yugabyte"
@@ -77,30 +78,35 @@ class ReleasePackage(object):
         self.compiler = None
 
     @classmethod
-    def from_pieces(cls, repo, version, commit, build_type=None):
+    def from_pieces(cls, repo, version, commit, build_type=None, os_type=None, arch_type=None):
         obj = cls()
         obj.repo = repo
         obj.version = version
         obj.commit = commit
         obj.build_type = build_type
-        obj.system = platform.system().lower()
-        if obj.system == "linux":
-            # We recently moved from centos7 to almalinux8 as the build host for our universal
-            # x86_64 linux build.  This changes the name of the release tarball we create.
-            # Unfortunately, we have a lot of hard coded references to the centos package names
-            # in our downsstream release code.  So here we munge the name to 'centos' to keep things
-            # working while we fix downstream code.
-            # TODO(jharveymsith): Remove the almalinux to centos mapping once downstream is fixed.
-            if distro.id() == "centos" and distro.major_version() == "7" \
-                    or distro.id() == "almalinux" and platform.machine().lower() == "x86_64":
-                obj.system = "centos"
-            elif distro.id == "ubuntu":
-                obj.system = distro.id() + distro.version()
-            else:
-                obj.system = distro.id() + distro.major_version()
+        obj.system = os_type
+        obj.machine = arch_type
+        if obj.system is None:
+            obj.system = platform.system().lower()
+            if obj.system == "linux":
+                # We recently moved from centos7 to almalinux8 as the build host for our universal
+                # x86_64 linux build. This changes the name of the release tarball we create.
+                # Unfortunately, we have a lot of hard coded references to the centos package
+                # names in our downsstream release code. So here we munge the name to 'centos' to
+                # keep things working while we fix downstream code.
+                # TODO(jharveymsith): Remove the almalinux to centos mapping once downstream is
+                # fixed.
+                if distro.id() == "centos" and distro.major_version() == "7" \
+                        or distro.id() == "almalinux" and platform.machine().lower() == "x86_64":
+                    obj.system = "centos"
+                elif distro.id == "ubuntu":
+                    obj.system = distro.id() + distro.version()
+                else:
+                    obj.system = distro.id() + distro.major_version()
         if len(obj.system) == 0:
             raise YBOpsRuntimeError("Cannot release on this system type: " + platform.system())
-        obj.machine = platform.machine().lower()
+        if obj.machine is None:
+            obj.machine = platform.machine().lower()
 
         obj.validate()
         return obj
@@ -341,13 +347,15 @@ def get_default_release_version(repo_path=None):
     return match.group(1)
 
 
-def get_release_file(repository, release_name, build_type=None):
+def get_release_file(repository, release_name, build_type=None, os_type=None, arch_type=None):
     """This method checks the git commit sha and constructs
        the filename based on that and returns it.
     Args:
         repository (str): repository folder path where the release file exists
         release_file (str): release file name
         build_type (str): build type release/debug
+        os_type (str): Type of os for cross-compilers like go
+        arch_type (str): Type of arch for cross-compilers like go
     Returns:
         (str): Tar Filename
     """
@@ -360,7 +368,8 @@ def get_release_file(repository, release_name, build_type=None):
         os.makedirs(build_dir)
 
     cur_commit = str(subprocess.check_output(["git", "rev-parse", "HEAD"]).strip().decode('utf-8'))
-    release = ReleasePackage.from_pieces(release_name, base_version, cur_commit, build_type)
+    release = ReleasePackage.from_pieces(release_name, base_version, cur_commit, build_type,
+                                         os_type, arch_type)
     file_name = release.get_release_package_name()
     return os.path.join(build_dir, file_name)
 
