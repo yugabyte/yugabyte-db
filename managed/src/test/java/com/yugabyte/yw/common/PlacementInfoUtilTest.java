@@ -1594,81 +1594,67 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
         PlacementInfoUtil.getConfigPerNamespace(pi, nodePrefix, k8sProvider, false));
   }
 
-  // TODO: use parameters here?
   @Test
-  public void testGetKubernetesNamespace() {
+  @Parameters({
+    "demo-u1-az-1, true, demo-u1, false, false",
+    "demo-u1, false, demo-u1, false, false",
+    "demo-u1, true, demo-u1, true, false",
+    "demo-u1, false, demo-u1, true, false",
+    "demo-u1-rr, false, demo-u1, false, true",
+    "demo-u1-rr-az-1, true, demo-u1, false, true",
+    "demo-u1, true, demo-u1, true, true",
+    "demo-u1-bfb45e86, true, Demo-U1, true, false",
+    "demo-u1-bfb45e86-az-1, true, Demo-U1, false, false",
+    "demo-1234567890-123456789-the-quick-fox-jumps-ove-eec26df6-az-1, "
+        + "true, demo-1234567890-123456789-the-quick-fox-jumps-over-the-lazy-dog, false, false",
+    "demo-1234567890-123456789-the-quick-fox-jumps-over-the-lazy-dog, "
+        + "true, demo-1234567890-123456789-the-quick-fox-jumps-over-the-lazy-dog, true, false"
+  })
+  public void testGetKubernetesNamespace(
+      String namespace,
+      boolean isMultiAZ,
+      String nodePrefix,
+      boolean newNamingStyle,
+      boolean isReadCluster) {
     Map<String, String> config = new HashMap<>();
     String az = "az-1";
     String ns = "ns-1";
-    String nodePrefix = "demo-universe";
-    String nodePrefixAz = String.format("%s-%s", nodePrefix, az);
-    boolean isReadCluster = false;
 
     assertEquals(
-        nodePrefixAz,
-        PlacementInfoUtil.getKubernetesNamespace(nodePrefix, az, config, false, isReadCluster));
-    assertEquals(
-        nodePrefix,
-        PlacementInfoUtil.getKubernetesNamespace(nodePrefix, null, config, false, isReadCluster));
-    assertEquals(
-        nodePrefix,
-        PlacementInfoUtil.getKubernetesNamespace(nodePrefix, az, config, true, isReadCluster));
-    assertEquals(
-        nodePrefix,
-        PlacementInfoUtil.getKubernetesNamespace(nodePrefix, null, config, true, isReadCluster));
-
-    assertEquals(
-        nodePrefixAz,
+        namespace,
         PlacementInfoUtil.getKubernetesNamespace(
-            true, nodePrefix, az, config, false, isReadCluster));
-    assertEquals(
-        nodePrefix,
-        PlacementInfoUtil.getKubernetesNamespace(
-            false, nodePrefix, az, config, false, isReadCluster));
-    assertEquals(
-        nodePrefix,
-        PlacementInfoUtil.getKubernetesNamespace(
-            true, nodePrefix, az, config, true, isReadCluster));
-    assertEquals(
-        nodePrefix,
-        PlacementInfoUtil.getKubernetesNamespace(
-            false, nodePrefix, az, config, true, isReadCluster));
+            isMultiAZ, nodePrefix, az, config, newNamingStyle, isReadCluster));
 
     config.put("KUBENAMESPACE", ns);
     assertEquals(
         ns,
         PlacementInfoUtil.getKubernetesNamespace(
-            true, nodePrefix, az, config, false, isReadCluster));
-    assertEquals(
-        ns,
-        PlacementInfoUtil.getKubernetesNamespace(
-            false, nodePrefix, az, config, false, isReadCluster));
-    assertEquals(
-        ns,
-        PlacementInfoUtil.getKubernetesNamespace(
-            true, nodePrefix, az, config, true, isReadCluster));
-    assertEquals(
-        ns,
-        PlacementInfoUtil.getKubernetesNamespace(
-            false, nodePrefix, az, config, true, isReadCluster));
+            isMultiAZ, nodePrefix, az, config, newNamingStyle, isReadCluster));
   }
 
   @Test
   @Parameters({
-    ", false, demo, az-1, false",
-    "demo-, false, demo, az-1, true",
-    "demo-az-1-, true, demo, az-1, true",
-    "demo-node-prefix-which-is-longer-1234567-az-, true, demo-node-prefix-which-is-longer-1234567, az-1, true"
+    ", false, demo, az-1, false, false",
+    ", false, demo, az-1, false, true",
+    "demo-, false, demo, az-1, true, false",
+    "demo-rr-, false, demo, az-1, true, true",
+    "demo-az-1-, true, demo, az-1, true, false",
+    "demo-node-prefix-which-is-longer-1234567-az-, "
+        + "true, demo-node-prefix-which-is-longer-1234567, az-1, true, false",
+    "demo-node-prefix-which-is-longer-1234567-rr-, "
+        + "true, demo-node-prefix-which-is-longer-1234567, az-1, true, true"
   })
   public void testGetHelmFullNameWithSuffix(
       String helmName,
       boolean isMultiAZ,
       String nodePrefix,
       String azName,
-      boolean newNamingStyle) {
+      boolean newNamingStyle,
+      boolean isReadOnlyCluster) {
     assertEquals(
         helmName,
-        PlacementInfoUtil.getHelmFullNameWithSuffix(isMultiAZ, nodePrefix, azName, newNamingStyle));
+        PlacementInfoUtil.getHelmFullNameWithSuffix(
+            isMultiAZ, nodePrefix, azName, newNamingStyle, isReadOnlyCluster));
   }
 
   @Test
