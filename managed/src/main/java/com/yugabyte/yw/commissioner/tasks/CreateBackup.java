@@ -85,7 +85,7 @@ public class CreateBackup extends UniverseTaskBase {
     MetricLabelsBuilder metricLabelsBuilder = MetricLabelsBuilder.create().appendSource(universe);
     BACKUP_ATTEMPT_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
     boolean isUniverseLocked = false;
-    boolean ybcBackup = universe.getUniverseDetails().enableYbc;
+    boolean ybcBackup = universe.isYbcEnabled();
     try {
       checkUniverseVersion();
 

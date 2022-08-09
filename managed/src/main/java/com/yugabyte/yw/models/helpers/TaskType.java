@@ -264,6 +264,8 @@ public enum TaskType {
 
   XClusterConfigUpdateMasterAddresses("subtasks.xcluster.XClusterConfigUpdateMasterAddresses"),
 
+  XClusterInfoPersist("subtasks.xcluster.XClusterInfoPersist"),
+
   // Tasks belonging to subtasks.cloud classpath
   CloudAccessKeyCleanup("subtasks.cloud.CloudAccessKeyCleanup"),
 
@@ -294,6 +296,8 @@ public enum TaskType {
   RestoreUniverseKeys("subtasks.RestoreUniverseKeys"),
 
   RestoreUniverseKeysYb("subtasks.RestoreUniverseKeysYb"),
+
+  RestoreUniverseKeysYbc("subtasks.RestoreUniverseKeysYbc"),
 
   WaitForLeadersOnPreferredOnly("subtasks.WaitForLeadersOnPreferredOnly"),
 

@@ -2,6 +2,7 @@
 title: YugabyteDB Quick start
 headerTitle: Quick start
 linkTitle: Quick start
+headcontent: Create a local cluster on a single host
 description: Get started using YugabyteDB in less than five minutes on Docker.
 aliases:
   - /quick-start/docker/
@@ -11,7 +12,7 @@ type: docs
 <div class="custom-tabs tabs-style-2">
   <ul class="tabs-name">
     <li>
-      <a href="/preview/quick-start-yugabytedb-managed/" class="nav-link">
+      <a href="../../quick-start-yugabytedb-managed/" class="nav-link">
         Use a cloud cluster
       </a>
     </li>
@@ -22,8 +23,6 @@ type: docs
     </li>
   </ul>
 </div>
-
-Test YugabyteDB's APIs and core features by creating a local cluster on a single host.
 
 The local cluster setup on a single host is intended for development and learning. For production deployment, performance benchmarking, or deploying a true multi-node on multi-host setup, see [Deploy YugabyteDB](../../deploy/).
 
@@ -56,12 +55,11 @@ The local cluster setup on a single host is intended for development and learnin
   </ul>
 </div>
 
-
-Note that the Docker option to run local clusters is recommended only for advanced Docker users. This is due to the fact that running stateful applications such as YugabyteDB in Docker is more complex and error-prone than running stateless applications.
-
 ## Install YugabyteDB
 
 Installing YugabyteDB involves completing [prerequisites](#prerequisites) and them performing the actual [installation](#install).
+
+Note that the Docker option to run local clusters is recommended only for advanced Docker users. This is due to the fact that running stateful applications such as YugabyteDB in Docker is more complex and error-prone than running stateless applications.
 
 ### Prerequisites
 
@@ -113,7 +111,7 @@ In the preceding `docker run` command, the data stored in YugabyteDB does not pe
            --base_dir=/home/yugabyte/yb_data --daemon=false
   ```
 
-Clients can now connect to the YSQL and YCQL APIs at http://localhost:5433 and http://localhost:9042 respectively.
+Clients can now connect to the YSQL and YCQL APIs at `http://localhost:5433` and `http://localhost:9042` respectively.
 
 ### Check cluster status
 
@@ -132,7 +130,7 @@ CONTAINER ID        IMAGE                 COMMAND                  CREATED      
 
 The cluster you have created consists of two processes: [YB-Master](../../architecture/concepts/yb-master/) which keeps track of various metadata (list of tables, users, roles, permissions, and so on) and [YB-TServer](../../architecture/concepts/yb-tserver/) which is responsible for the actual end user requests for data updates and queries.
 
-Each of the processes exposes its own Admin UI that can be used to check the status of the corresponding process, as well as perform certain administrative operations. The [yb-master Admin UI](../../reference/configuration/yb-master/#admin-ui) is available at http://localhost:7000 and the [yb-tserver Admin UI](../../reference/configuration/yb-tserver/#admin-ui) is available at http://localhost:9000. To avoid port conflicts, you should make sure other processes on your machine do not have these ports mapped to `localhost`.
+Each of the processes exposes its own Admin UI that can be used to check the status of the corresponding process, as well as perform certain administrative operations. The [yb-master Admin UI](../../reference/configuration/yb-master/#admin-ui) is available at <http://localhost:7000> and the [yb-tserver Admin UI](../../reference/configuration/yb-tserver/#admin-ui) is available at <http://localhost:9000>. To avoid port conflicts, you should make sure other processes on your machine do not have these ports mapped to `localhost`.
 
 #### Overview and YB-Master status
 
@@ -148,13 +146,32 @@ Click **See all nodes** to open the **Tablet Servers** page that lists the YB-TS
 
 ![master-home](/images/admin/master-tservers-list-docker-rf1.png)
 
+## Connect to the database
+
+Using the YugabyteDB SQL shell, [ysqlsh](../../admin/ysqlsh/), you can connect to your cluster and interact with it using distributed SQL. ysqlsh is installed with YugabyteDB and is located in the bin directory of the YugabyteDB home directory.
+
+To open the YSQL shell, run `ysqlsh`.
+
+```sh
+$ docker exec -it yugabyte /home/yugabyte/bin/ysqlsh --echo-queries
+```
+
+```output
+ysqlsh (11.2-YB-2.1.0.0-b0)
+Type "help" for help.
+
+yugabyte=#
+```
+
+To load sample data and explore an example using ysqlsh, refer to [Retail Analytics](../../sample-data/retail-analytics/).
+
 ## Build a Java application
 
 ### Prerequisites
 
 Before building a Java application, perform the following:
 
-- While YugabyteDB is running, use the [yb-ctl](/preview/admin/yb-ctl/#root) utility to create a universe with a 3-node RF-3 cluster with some fictitious geo-locations assigned, as follows:
+- While YugabyteDB is running, use the [yb-ctl](../../admin/yb-ctl/#root) utility to create a universe with a 3-node RF-3 cluster with some fictitious geo-locations assigned, as follows:
 
   ```sh
   cd <path-to-yugabytedb-installation>
@@ -162,7 +179,7 @@ Before building a Java application, perform the following:
   ./bin/yb-ctl create --rf 3 --placement_info "aws.us-west.us-west-2a,aws.us-west.us-west-2a,aws.us-west.us-west-2b"
   ```
 
-- Ensure that Java Development Kit (JDK) 1.8 or later is installed.  JDK installers can be downloaded from [OpenJDK](http://jdk.java.net/).
+- Ensure that Java Development Kit (JDK) 1.8 or later is installed. JDK installers can be downloaded from [OpenJDK](http://jdk.java.net/).
 - Ensure that [Apache Maven](https://maven.apache.org/index.html) 3.3 or later is installed.
 
 ### Create and configure the Java project
@@ -190,7 +207,7 @@ Perform the following to create a sample Java project:
     </properties>
     ```
 
-1. Add the following dependencies for the driver HikariPool within the `<dependencies>` element in `pom.xml`:
+1. Add the following dependencies for the driver HikariPool in the `<dependencies>` element in `pom.xml`:
 
     ```xml
     <dependency>

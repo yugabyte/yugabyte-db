@@ -381,15 +381,16 @@ Use [indexes](../../../explore/indexes-constraints/secondary-indexes/) to query 
     ```
 
     ```output
-                                                            QUERY PLAN
-    ---------------------------------------------------------------------------------------------------------------------------
-    Limit  (cost=0.00..3.19 rows=3 width=12) (actual time=0.712..0.715 rows=2 loops=1)
-      ->  Index Only Scan using demo_val on demo  (cost=0.00..4.47 rows=4 width=12) (actual time=0.710..0.713 rows=2 loops=1)
-            Index Cond: (val = '5'::double precision)
-            Heap Fetches: 0
-    Planning Time: 0.086 ms
-    Execution Time: 0.750 ms
-    (6 rows)
+                                                              QUERY PLAN
+    -------------------------------------------------------------------------------------------------------------------------    --
+     Limit  (cost=0.00..3.19 rows=3 width=12) (actual time=1.757..1.765 rows=3 loops=1)
+       ->  Index Only Scan using demo_val on demo  (cost=0.00..4.47 rows=4 width=12) (actual time=1.754..1.758 rows=3     loops=1)
+             Index Cond: (val = '5'::double precision)
+             Heap Fetches: 0
+     Planning Time: 0.214 ms
+     Execution Time: 1.860 ms
+     Peak Memory Usage: 8 kB
+    (7 rows)
     ```
 
 1. Clean up the table for this exercise:
@@ -855,5 +856,6 @@ To get fast on-demand reports, create a [materialized view](../../../explore/ysq
     Index Cond: (sal_per_dept <= 10000)
     Planning Time: 0.143 ms
     Execution Time: 1.917 ms
+    Peak Memory Usage: 8 kB
     (4 rows)
     ```

@@ -19,6 +19,7 @@
 #include "yb/docdb/docdb.pb.h"
 #include "yb/docdb/primitive_value.h"
 #include "yb/docdb/schema_packing.h"
+#include "yb/docdb/value.h"
 #include "yb/docdb/value_type.h"
 
 #include "yb/gutil/casts.h"
@@ -55,15 +56,33 @@ size_t PackedValueSize(const Slice& value) {
   return value.size();
 }
 
+size_t PackedSizeLimit(size_t value) {
+  return value ? value : make_unsigned(FLAGS_db_block_size_bytes);
+}
+
 } // namespace
 
 RowPacker::RowPacker(
     SchemaVersion version, std::reference_wrapper<const SchemaPacking> packing,
-    size_t packed_size_limit)
+    size_t packed_size_limit, const ValueControlFields& control_fields)
     : packing_(packing),
-      packed_size_limit_(packed_size_limit ? packed_size_limit : FLAGS_db_block_size_bytes) {
+      packed_size_limit_(PackedSizeLimit(packed_size_limit)) {
+  control_fields.AppendEncoded(&result_);
+  Init(version);
+}
+
+RowPacker::RowPacker(
+    SchemaVersion version, std::reference_wrapper<const SchemaPacking> packing,
+    size_t packed_size_limit, const Slice& control_fields)
+    : packing_(packing),
+      packed_size_limit_(PackedSizeLimit(packed_size_limit)) {
+  result_.Append(control_fields);
+  Init(version);
+}
+
+void RowPacker::Init(SchemaVersion version) {
   size_t prefix_len = packing_.prefix_len();
-  result_.Reserve(1 + kMaxVarint32Length + prefix_len);
+  result_.Reserve(result_.size() + 1 + kMaxVarint32Length + prefix_len);
   result_.PushBack(ValueEntryTypeAsChar::kPackedRow);
   result_.Truncate(
       result_.size() +

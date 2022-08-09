@@ -6,12 +6,15 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.models.helpers.TimeUnit;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import lombok.NoArgsConstructor;
 import org.yb.CommonTypes.TableType;
 import play.data.validation.Constraints;
 
 @ApiModel(description = "Backup table parameters")
+@NoArgsConstructor
 public class BackupRequestParams extends UniverseTaskParams {
 
   @Constraints.Required
@@ -90,6 +93,52 @@ public class BackupRequestParams extends UniverseTaskParams {
 
   @ApiModelProperty(value = "Time unit for backup expiry time")
   public TimeUnit expiryTimeUnit;
+
+  public BackupRequestParams(BackupRequestParams backupRequestParams) {
+    this.storageConfigUUID = backupRequestParams.storageConfigUUID;
+    this.kmsConfigUUID = backupRequestParams.kmsConfigUUID;
+    this.universeUUID = backupRequestParams.universeUUID;
+    this.backupType = backupRequestParams.backupType;
+    this.timeBeforeDelete = backupRequestParams.timeBeforeDelete;
+    this.frequencyTimeUnit = backupRequestParams.frequencyTimeUnit;
+    this.enableVerboseLogs = backupRequestParams.enableVerboseLogs;
+    this.sse = backupRequestParams.sse;
+    this.disableChecksum = backupRequestParams.disableChecksum;
+    this.parallelism = backupRequestParams.parallelism;
+    this.disableParallelism = backupRequestParams.disableParallelism;
+    this.customerUUID = backupRequestParams.customerUUID;
+    this.ignoreErrors = backupRequestParams.ignoreErrors;
+    this.alterLoadBalancer = backupRequestParams.alterLoadBalancer;
+    this.schedulingFrequency = backupRequestParams.schedulingFrequency;
+    this.cronExpression = backupRequestParams.cronExpression;
+    this.useTablespaces = backupRequestParams.useTablespaces;
+    this.scheduleUUID = backupRequestParams.scheduleUUID;
+    this.scheduleName = backupRequestParams.scheduleName;
+    this.minNumBackupsToRetain = backupRequestParams.minNumBackupsToRetain;
+    this.expiryTimeUnit = backupRequestParams.expiryTimeUnit;
+
+    // Deep copy.
+    if (backupRequestParams.keyspaceTableList == null) {
+      this.keyspaceTableList = null;
+    } else {
+      this.keyspaceTableList = new ArrayList<>();
+      for (KeyspaceTable keyspaceTable : backupRequestParams.keyspaceTableList) {
+        KeyspaceTable copyKeyspaceTable = new KeyspaceTable();
+        copyKeyspaceTable.keyspace = keyspaceTable.keyspace;
+        if (keyspaceTable.tableNameList == null) {
+          copyKeyspaceTable.tableNameList = null;
+        } else {
+          copyKeyspaceTable.tableNameList = new ArrayList<>(keyspaceTable.tableNameList);
+        }
+        if (keyspaceTable.tableUUIDList == null) {
+          copyKeyspaceTable.tableUUIDList = null;
+        } else {
+          copyKeyspaceTable.tableUUIDList = new ArrayList<>(keyspaceTable.tableUUIDList);
+        }
+        this.keyspaceTableList.add(copyKeyspaceTable);
+      }
+    }
+  }
 
   @ApiModel(description = "Keyspace and table info for backup")
   public static class KeyspaceTable {

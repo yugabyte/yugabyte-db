@@ -180,7 +180,7 @@ public class TestPgYbHashCodeScanProjection extends BasePgSQLTest {
     final String query = String.format(
         "/*+ Set(enable_seqscan off) */SELECT %s FROM %s WHERE k < %d",
         selectList, kTableName, (kTableRows + 1));
-    assertTrue(isIndexScan(stmt, query, kTableName + "_pkey"));
+    assertFalse(isIndexScan(stmt, query, kTableName + "_pkey"));
     return executeQueryAndCollectScanInfo(stmt, query);
   }
 

@@ -23,6 +23,7 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.impl.RuntimeConfig;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.common.ha.PlatformInstanceClientFactory;
+import com.yugabyte.yw.controllers.TokenAuthenticator;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.RuntimeConfigFormData;
@@ -65,6 +66,8 @@ public class RuntimeConfController extends AuthenticatedController {
   private static final Set<String> sensitiveKeys =
       ImmutableSet.of("yb.security.ldap.ldap_service_account_password", "yb.security.secret");
 
+  @Inject private TokenAuthenticator tokenAuthenticator;
+
   @Inject
   public RuntimeConfController(
       SettableRuntimeConfigFactory settableRuntimeConfigFactory,
@@ -80,8 +83,8 @@ public class RuntimeConfController extends AuthenticatedController {
     this.mutableKeysResult = buildCachedResult();
   }
 
-  private static RuntimeConfigFormData listScopesInternal(Customer customer) {
-    boolean isSuperAdmin = TokenAuthenticator.superAdminAuthentication(ctx());
+  private RuntimeConfigFormData listScopesInternal(Customer customer) {
+    boolean isSuperAdmin = tokenAuthenticator.superAdminAuthentication(ctx());
     RuntimeConfigFormData formData = new RuntimeConfigFormData();
     formData.addGlobalScope(isSuperAdmin);
     formData.addMutableScope(ScopeType.CUSTOMER, customer.uuid);
@@ -92,7 +95,7 @@ public class RuntimeConfController extends AuthenticatedController {
     return formData;
   }
 
-  private static Optional<ScopedConfig> getScopedConfigInternal(UUID customerUUID, UUID scopeUUID) {
+  private Optional<ScopedConfig> getScopedConfigInternal(UUID customerUUID, UUID scopeUUID) {
     RuntimeConfigFormData runtimeConfigFormData =
         listScopesInternal(Customer.getOrBadRequest(customerUUID));
     return runtimeConfigFormData

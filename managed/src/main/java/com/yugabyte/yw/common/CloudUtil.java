@@ -27,8 +27,8 @@ public interface CloudUtil extends StorageUtil {
 
   public <T> T listBuckets(CustomerConfigData configData);
 
-  public JsonNode readFileFromCloud(String location, CustomerConfigData configData)
-      throws Exception;
+  // public JsonNode readFileFromCloud(String location, CustomerConfigData configData)
+  //     throws Exception;
 
   public static <T extends CloudUtil> T getCloudUtil(String configType) {
     switch (configType) {

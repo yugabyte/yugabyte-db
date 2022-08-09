@@ -142,6 +142,7 @@ class RaftConsensusQuorumTest : public YBTest {
                               nullptr, // tablet_metric_entity
                               log_thread_pool_.get(),
                               log_thread_pool_.get(),
+                              log_thread_pool_.get(),
                               std::numeric_limits<int64_t>::max(), // cdc_min_replicated_index
                               &log));
       logs_.push_back(log.get());

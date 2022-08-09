@@ -461,4 +461,4 @@ DELETE /customers/:cUUID/node_agents/:nUUID                                    c
 GET    /node_agents/download                                                   com.yugabyte.yw.controllers.NodeAgentController.download(downloadType: String ?= "INSTALLER", os: String ?= "", arch: String ?= "")
 
 # List buckets API
-GET     /customers/:cUUID/cloud/:cloud/buckets                                 com.yugabyte.yw.controllers.CustomerConfigController.listBuckets(cUUID: java.util.UUID, cloud: String)
+POST     /customers/:cUUID/cloud/:cloud/buckets                                 com.yugabyte.yw.controllers.CustomerConfigController.listBuckets(cUUID: java.util.UUID, cloud: String)

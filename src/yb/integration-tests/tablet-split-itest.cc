@@ -2161,7 +2161,8 @@ Status TabletSplitSingleServerITest::TestSplitBeforeParentDeletion(bool hide_onl
     auto snapshot_util = std::make_unique<client::SnapshotTestUtil>();
     snapshot_util->SetProxy(&client_->proxy_cache());
     snapshot_util->SetCluster(cluster_.get());
-    VERIFY_RESULT(snapshot_util->CreateSchedule(table_));
+    VERIFY_RESULT(
+      snapshot_util->CreateSchedule(table_, YQLDatabase::YQL_DATABASE_PGSQL, "yugabyte"));
   }
 
   const auto split_hash_code = VERIFY_RESULT(WriteRowsAndGetMiddleHashCode(kNumRows));

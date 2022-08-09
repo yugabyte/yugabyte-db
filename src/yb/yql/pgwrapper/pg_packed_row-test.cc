@@ -562,5 +562,14 @@ TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(AddDropColumn)) {
   thread_holder.Stop();
 }
 
+TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(CoveringIndex)) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY, v1 TEXT, v2 TEXT)"));
+  ASSERT_OK(conn.Execute("CREATE UNIQUE INDEX t_idx ON t(v2) INCLUDE (v1)"));
+
+  ASSERT_OK(conn.Execute("INSERT INTO t (key, v1, v2) VALUES (1, 'one', 'odin')"));
+}
+
 } // namespace pgwrapper
 } // namespace yb

@@ -2368,6 +2368,19 @@ match_clause_to_indexcol(IndexOptInfo *index,
 						&& is_opclause(clause);
 		}
 
+		/*
+		 * If the column in the filter clause is part of the hash key for this 
+		 * index and the clause uses an inequality operator, then index scan
+		 * cannot be used. This is because a hash index is sorted by the hash
+		 * value and not by the value of the column. #13241
+		 */
+		if (indexcol < index->nhashcolumns)
+		{
+			int op_strategy = get_op_opfamily_strategy(((OpExpr *) clause)->opno, opfamily);
+			if (op_strategy != BTEqualStrategyNumber)
+				return false;
+		}
+
 		if (IndexCollMatchesExprColl(idxcollation, expr_coll)
 			&& is_indexable_operator(expr_op, opfamily, true))
 			return true;
@@ -2392,6 +2405,19 @@ match_clause_to_indexcol(IndexOptInfo *index,
 				return is_indexable_operator(expr_op,
 							INTEGER_LSM_FAM_OID, true)
 						&& is_opclause(clause);
+		}
+
+		/*
+		 * If the column in the filter clause is part of the hash key for this 
+		 * index and the clause uses an inequality operator, then index scan
+		 * cannot be used. This is because a hash index is sorted by the hash
+		 * value and not by the value of the column. #13241
+		 */
+		if (indexcol < index->nhashcolumns)
+		{
+			int op_strategy = get_op_opfamily_strategy(((OpExpr *) clause)->opno, opfamily);
+			if (op_strategy != BTEqualStrategyNumber)
+				return false;
 		}
 
 		if (IndexCollMatchesExprColl(idxcollation, expr_coll) &&

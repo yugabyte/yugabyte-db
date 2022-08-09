@@ -94,7 +94,8 @@ string CertsDir() {
 
 } // namespace
 
-void PgCommandTestBase::RunPsqlCommand(const string &statement, const string &expected_output) {
+void PgCommandTestBase::RunPsqlCommand(
+    const string& statement, const string& expected_output, bool tuples_only) {
   string tmp_dir;
   ASSERT_OK(Env::Default()->GetTestDirectory(&tmp_dir));
 
@@ -126,6 +127,10 @@ void PgCommandTestBase::RunPsqlCommand(const string &statement, const string &ex
     argv.push_back(Format(
         "sslmode=require sslcert=$0/ysql.crt sslrootcert=$0/ca.crt sslkey=$0/ysql.key",
         CertsDir()));
+  }
+
+  if (tuples_only) {
+    argv.push_back("-t");
   }
 
   LOG(INFO) << "Run tool: " << yb::ToString(argv);

@@ -14,6 +14,8 @@
 #include "yb/integration-tests/cql_test_base.h"
 #include "yb/integration-tests/packed_row_test_base.h"
 
+using namespace std::literals;
+
 namespace yb {
 
 class CqlPackedRowTest : public PackedRowTestBase<CqlTestBase<MiniCluster>> {
@@ -82,6 +84,55 @@ TEST_F(CqlPackedRowTest, Collections) {
   ASSERT_EQ(value, "nine,[seven, eight],six");
 
   ASSERT_NO_FATALS(CheckNumRecords(cluster_.get(), 4));
+}
+
+TEST_F(CqlPackedRowTest, TTL) {
+  constexpr auto kSmallTtl = 1 * kTimeMultiplier;
+  constexpr auto kBigTtl = kSmallTtl * 2;
+  constexpr auto kTimeout = 1s * kSmallTtl + 50ms * kTimeMultiplier;
+
+  auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+
+  ASSERT_OK(session.ExecuteQuery(
+      "CREATE TABLE t (key INT PRIMARY KEY, value TEXT) WITH tablets = 1"));
+  ASSERT_OK(session.ExecuteQueryFormat(
+      "INSERT INTO t (key, value) VALUES (1, 'one') USING TTL $0", kSmallTtl));
+
+  std::this_thread::sleep_for(kTimeout);
+
+  auto value = ASSERT_RESULT(session.ExecuteAndRenderToString("SELECT * FROM t"));
+  ASSERT_EQ(value, "");
+
+  ASSERT_OK(session.ExecuteQueryFormat(
+      "INSERT INTO t (key, value) VALUES (2, 'two') USING TTL $0", kBigTtl));
+
+  ASSERT_OK(session.ExecuteQueryFormat(
+      "UPDATE t USING TTL $0 SET value = 'dva' WHERE key = 2", kSmallTtl));
+
+  auto deadline = std::chrono::steady_clock::now() + kTimeout;
+
+  ASSERT_OK(cluster_->CompactTablets());
+
+  std::this_thread::sleep_until(deadline);
+
+  value = ASSERT_RESULT(session.ExecuteAndRenderToString("SELECT * FROM t"));
+  ASSERT_EQ(value, "2,NULL");
+
+  std::this_thread::sleep_for(kTimeout);
+
+  value = ASSERT_RESULT(session.ExecuteAndRenderToString("SELECT * FROM t"));
+  ASSERT_EQ(value, "");
+
+  ASSERT_OK(session.ExecuteQueryFormat(
+      "INSERT INTO t (key, value) VALUES (3, 'three') USING TTL $0", kSmallTtl));
+
+  ASSERT_OK(session.ExecuteQueryFormat(
+      "UPDATE t USING TTL $0 SET value = 'tri' WHERE key = 3", kBigTtl));
+
+  std::this_thread::sleep_for(kTimeout);
+
+  value = ASSERT_RESULT(session.ExecuteAndRenderToString("SELECT * FROM t"));
+  ASSERT_EQ(value, "3,tri");
 }
 
 } // namespace yb

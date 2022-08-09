@@ -572,7 +572,8 @@ class AzureCloudAdmin():
 
     def create_or_update_vm(self, vm_name, zone, num_vols, private_key_file, volume_size,
                             instance_type, ssh_user, nsg, image, vol_type, server_type,
-                            region, nic_id, tags, disk_iops, disk_throughput, is_edit=False):
+                            region, nic_id, tags, disk_iops, disk_throughput, is_edit=False,
+                            json_output=True):
         disk_names = [vm_name + "-Disk-" + str(i) for i in range(1, num_vols + 1)]
         private_key = validated_key_file(private_key_file)
 
@@ -649,6 +650,7 @@ class AzureCloudAdmin():
             self.tag_disks(vm, vm_parameters["tags"])
         else:
             num_disks_attached = len(vm.storage_profile.data_disks)
+            lun_indexes = []
             for idx, disk_name in enumerate(disk_names):
                 # "Logical Unit Number" - where the data disk will be inserted. Add our disks
                 # after any existing ones.
@@ -656,6 +658,10 @@ class AzureCloudAdmin():
                 self.append_disk(
                     vm, vm_name, disk_name, volume_size, lun, zone, vol_type, region, tags,
                     disk_iops, disk_throughput)
+                lun_indexes.append(lun)
+
+            if json_output:
+                print(json.dumps({"lun_indexes": lun_indexes}))
         return
 
     def query_vpc(self):

@@ -1121,4 +1121,75 @@ public class TestPgSelect extends BasePgSQLTest {
     }
   }
 
+  @Test
+  public void testInequalitiesRangePartitioned() throws Exception {
+      String query = "CREATE TABLE sample (key int, val int, primary key(key asc) ) " +
+                     "SPLIT AT VALUES ((65535), (2000000000), (2100000000) )";
+      try (Statement statement = connection.createStatement()) {
+        statement.execute(query);
+
+        // Insert stuff into the table
+        statement.execute("INSERT INTO sample VALUES(1,1)");
+        statement.execute("INSERT INTO sample VALUES(60000,60000)");
+        statement.execute("INSERT INTO sample VALUES(120000,120000)");
+        statement.execute("INSERT INTO sample VALUES(150000,150000)");
+        statement.execute("INSERT INTO sample VALUES(2000000001,2000000001)");
+        statement.execute("INSERT INTO sample VALUES(2000000005,2000000005)");
+
+
+        //     key     |    val
+        // ------------+------------        ________
+        //           1 |          1         |Tablet|
+        //       60000 |      60000         |___1__|
+        // ___________________________
+        //                                  ________
+        //      120000 |     120000         |Tablet|
+        //      150000 |     150000         |___2__|
+        // ____________________________
+        //                                  ________
+        //  2000000001 | 2000000001         |Tablet|
+        //  2000000005 | 2000000005         |___3__|
+        // ____________________________
+        //                                  ________
+        //             |                    |Tablet|
+        //             |                    |___4__|
+
+        // Test 1
+        // When the same qualifying conditions that fits within 4 byte integers are passed as int
+        // and bigint, both ends up being pushed in to docDB since they are both lesser than 4 byte
+        // integer values.
+        query = "SELECT * FROM sample WHERE key < ";
+
+        String[] docdbRequests = getDocdbRequests(statement, query + "65534");
+        // Num requests are 1 as it just searches tablet 1.
+        assertEquals(docdbRequests.length, 1);
+        // If the inequality is pushed down to docDB, then the docDB request protobuf string will
+        // contain the inequality as a part of the condition_expr. Specifically, in this case,
+        // it will contain the lesser than operator QL_OP_LESS_THAN
+        assertTrue(String.join(",", docdbRequests).contains("QL_OP_LESS_THAN"));
+
+        // Test 2
+        docdbRequests = getDocdbRequests(statement, query + "65534::bigint");
+        assertEquals(docdbRequests.length, 1);
+        assertTrue(String.join(",", docdbRequests).contains("QL_OP_LESS_THAN"));
+
+        // Test 3
+        // 2147483648 is an actual bigint value. Hence, we end up perfroming a scan on all the
+        // tablets as we cannot push an actual bigint value to an integer column. Though the number
+        // of rows returned are equal when the qualifying condition is 2147483648 as compared to
+        // 20999999999, the former condition ends up scanning all the 4 tablets while the later
+        // condition scans just 3 tablets.
+        docdbRequests = getDocdbRequests(statement, query + "2147483648");
+        assertEquals(docdbRequests.length, 4);
+        // 2147483648 is a big int value. Hence it will not be pushed down, and hence wont show up
+        // in the docDB request protobuf string.
+        assertFalse(String.join(",", docdbRequests).contains("QL_OP_LESS_THAN"));
+
+        // Test 4
+        docdbRequests = getDocdbRequests(statement, query + "2099999999");
+        assertEquals(docdbRequests.length, 3);
+        assertTrue(String.join(",", docdbRequests).contains("QL_OP_LESS_THAN"));
+    }
+  }
+
 }
