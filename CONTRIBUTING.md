@@ -118,19 +118,7 @@ The tests are run automatically with GitHub actions once you commit and push you
 
 ## Contributing to documentation
 
-`pg_stat_monitor` documentation is written in Markdown language, so you can 
-[edit it online via GitHub](#edit-documentation-online-vi-github). Alternatively, you can include doc changes in your patch. The doc files are in the `docs` directory.
-
-### Edit documentation online via GitHub
-
-1. Click the **Edit this page** link on the sidebar. The source `.md` file of the page opens in GitHub editor in your browser. If you haven’t worked with the repository before, GitHub creates a [fork](https://docs.github.com/en/github/getting-started-with-github/fork-a-repo) of it for you.
-2. Edit the page. You can check your changes on the **Preview** tab. 
-3. Commit your changes.
-    * In the _Commit changes_ section, describe your changes.
-    * Select the **Create a new branch for this commit** and start a pull request option
-    * Click **Propose changes**.
-4. GitHub creates a branch and a commit for your changes. It loads a new page on which you can open a pull request to Percona. The page shows the base branch - the one you offer your changes for, your commit message and a diff - a visual representation of your changes against the original page. This allows you to make a last-minute review. When you are ready, click the Create pull request button.
-5. Someone from our team reviews the pull request and if everything is correct, merges it into the documentation. Then it gets published on the site.
+`pg_stat_monitor` documentation is maintained in the [documentation repository](https://github.com/percona/pgsm-docs). Please read the [Contributing guide](https://github.com/percona/pgsm-docs/blob/main/CONTRIBUTING.md) for guidelines how you can contribute to the docs.
 
 ## After your pull request is merged
 
