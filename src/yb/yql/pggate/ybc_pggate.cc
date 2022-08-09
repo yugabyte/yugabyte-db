@@ -460,6 +460,10 @@ YBCStatus YBCPgAlterTableRenameTable(YBCPgStatement handle, const char *db_name,
   return ToYBCStatus(pgapi->AlterTableRenameTable(handle, db_name, newname));
 }
 
+YBCStatus YBCPgAlterTableIncrementSchemaVersion(YBCPgStatement handle) {
+  return ToYBCStatus(pgapi->AlterTableIncrementSchemaVersion(handle));
+}
+
 YBCStatus YBCPgExecAlterTable(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->ExecAlterTable(handle));
 }

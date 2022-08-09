@@ -120,6 +120,7 @@ message PgAlterTableRequestPB {
   repeated PgRenameColumnPB rename_columns = 5;
   repeated string drop_columns = 6;
   PgRenameTablePB rename_table = 7;
+  bool increment_schema_version = 8;
 }
 
 message PgAlterTableResponsePB {
