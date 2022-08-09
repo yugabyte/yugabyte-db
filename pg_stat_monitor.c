@@ -22,6 +22,7 @@
 #ifdef BENCHMARK
 #include <time.h>				/* clock() */
 #endif
+#include "pgstat.h"
 #include "commands/explain.h"
 #include "pg_stat_monitor.h"
 
@@ -29,7 +30,7 @@ PG_MODULE_MAGIC;
 
 #define BUILD_VERSION                   "1.1.0-dev"
 #define PG_STAT_STATEMENTS_COLS         53	/* maximum of above */
-#define PGSM_TEXT_FILE                  "/tmp/pg_stat_monitor_query"
+#define PGSM_TEXT_FILE PGSTAT_STAT_PERMANENT_DIRECTORY "pg_stat_monitor_query"
 
 #define roundf(x,d) ((floor(((x)*pow(10,d))+.5))/pow(10,d))
 
