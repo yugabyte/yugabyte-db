@@ -189,46 +189,6 @@ You download YugabyteDB as follows:
     tar xvfz yugabyte-{{< yb-version version="preview" format="build">}}-darwin-x86_64.tar.gz && cd yugabyte-{{< yb-version version="preview">}}/
     ```
 
-### Configure loopback addresses
-
-Some of the examples in this Quick start and in [Explore](../../explore/) require extra loopback addresses that allow you to simulate the use of multiple hosts or nodes.
-
-To add six loopback addresses, run the following commands, which require `sudo` access.
-
-```sh
-sudo ifconfig lo0 alias 127.0.0.2
-sudo ifconfig lo0 alias 127.0.0.3
-sudo ifconfig lo0 alias 127.0.0.4
-sudo ifconfig lo0 alias 127.0.0.5
-sudo ifconfig lo0 alias 127.0.0.6
-sudo ifconfig lo0 alias 127.0.0.7
-```
-
-**Note**: The loopback addresses do not persist upon rebooting of your Mac.
-
-To verify that the extra loopback addresses exist, run the following command:
-
-```sh
-$ ifconfig lo0
-```
-
-You should see some output like the following:
-
-```output
-lo0: flags=8049<UP,LOOPBACK,RUNNING,MULTICAST> mtu 16384
-  options=1203<RXCSUM,TXCSUM,TXSTATUS,SW_TIMESTAMP>
-  inet 127.0.0.1 netmask 0xff000000
-  inet6 ::1 prefixlen 128
-  inet6 fe80::1%lo0 prefixlen 64 scopeid 0x1
-  inet 127.0.0.2 netmask 0xff000000
-  inet 127.0.0.3 netmask 0xff000000
-  inet 127.0.0.4 netmask 0xff000000
-  inet 127.0.0.5 netmask 0xff000000
-  inet 127.0.0.6 netmask 0xff000000
-  inet 127.0.0.7 netmask 0xff000000
-  nd6 options=201<PERFORMNUD,DAD>
-```
-
 ## Create a local cluster
 
 To create a single-node local cluster with a replication factor (RF) of 1, run the following command:
@@ -327,7 +287,7 @@ For examples using other languages, refer to [Build an application](../develop/b
 - Java Development Kit (JDK) 1.8 or later. JDK installers can be downloaded from [OpenJDK](http://jdk.java.net/).
 - [Apache Maven](https://maven.apache.org/index.html) 3.3 or later.
 
-### Start a multi-node cluster
+### Start a local multi-node cluster
 
 First, stop the currently running single-node cluster:
 
@@ -340,6 +300,15 @@ Create the first node as follows:
 ```sh
 ./bin/yugabyted start --advertise_address=127.0.0.1 --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node1 --cloud_location=aws.us-east.us-east-1a
 ```
+
+The additional nodes need loopback addresses configured that allow you to simulate the use of multiple hosts or nodes:
+
+```sh
+sudo ifconfig lo0 alias 127.0.0.2
+sudo ifconfig lo0 alias 127.0.0.3
+```
+
+The loopback addresses do not persist upon rebooting your computer.
 
 Start the second and the third nodes on two separate VMs:
 
@@ -497,7 +466,6 @@ The following steps demonstrate how to create two Java applications, `UniformLoa
 
         System.out.println("Closing the Hikari Connection Pool!!");
         hikariDataSource.close();
-
       }
 
     }
@@ -605,7 +573,6 @@ The following steps demonstrate how to create two Java applications, `UniformLoa
 
         System.out.println("Closing the Hikari Connection Pool!!");
         hikariDataSource.close();
-
       }
 
     }
