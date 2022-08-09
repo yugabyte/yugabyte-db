@@ -449,6 +449,9 @@ Status PgClientSession::AlterTable(
   if (txn) {
     alterer->part_of_transaction(txn);
   }
+  if (req.increment_schema_version()) {
+    alterer->set_increment_schema_version();
+  }
   for (const auto& add_column : req.add_columns()) {
     const auto yb_type = QLType::Create(static_cast<DataType>(add_column.attr_ybtype()));
     alterer->AddColumn(add_column.attr_name())

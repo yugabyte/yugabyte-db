@@ -6006,6 +6006,10 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
     has_changes = true;
   }
 
+  if (req->increment_schema_version()) {
+    has_changes = true;
+  }
+
   // TODO(hector): Simplify the AlterSchema workflow to avoid doing the same checks on every layer
   // this request goes through: https://github.com/YugaByte/yugabyte-db/issues/1882.
   if (req->has_wal_retention_secs()) {
@@ -9321,19 +9325,8 @@ Status CatalogManager::SendAlterTableRequest(const scoped_refptr<TableInfo>& tab
       req->has_transaction() &&
       req->transaction().has_transaction_id();
 
-  bool alter_table_has_add_or_drop_column_step = false;
-  if (req && (req->alter_schema_steps_size() || req->has_alter_properties())) {
-    for (const AlterTableRequestPB::Step& step : req->alter_schema_steps()) {
-      if (step.type() == AlterTableRequestPB::ADD_COLUMN ||
-          step.type() == AlterTableRequestPB::DROP_COLUMN) {
-        alter_table_has_add_or_drop_column_step = true;
-        break;
-      }
-    }
-  }
-
   TransactionId txn_id = TransactionId::Nil();
-  if (is_ysql_table_with_transaction_metadata && alter_table_has_add_or_drop_column_step) {
+  if (is_ysql_table_with_transaction_metadata) {
     {
       LOG(INFO) << "Persist transaction metadata into SysTableEntryPB for table ID " << table->id();
       TRACE("Locking table");

@@ -3928,6 +3928,17 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 	tab = ATGetQueueEntry(wqueue, rel);
 
 	/*
+	 * Setting the flag for ADD PRIMARY KEY use case
+	 * at the index adding phase prior to copying the command.
+	 */
+	if (cmd->subtype == AT_AddIndex && IsA(cmd->def, IndexStmt))
+	{
+		IndexStmt *index = (IndexStmt *) cmd->def;
+		if (index->primary)
+			cmd->yb_is_add_primary_key = true;
+	}
+
+	/*
 	 * Copy the original subcommand for each table.  This avoids conflicts
 	 * when different child tables need to make different parse
 	 * transformations (for example, the same column may have different column
@@ -4241,13 +4252,11 @@ ATRewriteCatalogs(List **wqueue,
 	AlteredTableInfo* info       = (AlteredTableInfo *) linitial(*wqueue);
 	Oid               main_relid = info->relid;
 	YBCPgStatement rollbackHandle = NULL;
-	List *handles = NIL;
-	YBCPgStatement handle = YBCPrepareAlterTable(info->subcmds,
-												AT_NUM_PASSES,
-												main_relid,
-												&rollbackHandle,
-												false /* isPartitionOfAlteredTable */);
-	handles = lappend(handles, handle);
+	List *handles = YBCPrepareAlterTable(info->subcmds,
+										 AT_NUM_PASSES,
+										 main_relid,
+										 &rollbackHandle,
+										 false /* isPartitionOfAlteredTable */);
 	if (rollbackHandle)
 		*rollbackHandles = lappend(*rollbackHandles, rollbackHandle);
 
@@ -4267,12 +4276,17 @@ ATRewriteCatalogs(List **wqueue,
 		if (childrelid == main_relid)
 			continue;
 		YBCPgStatement childRollbackHandle = NULL;
-		YBCPgStatement child_handle = YBCPrepareAlterTable(info->subcmds,
-														   AT_NUM_PASSES,
-														   childrelid,
-														   &childRollbackHandle,
-														   true /*isPartitionOfAlteredTable */);
-		handles = lappend(handles, child_handle);
+		List *child_handles = YBCPrepareAlterTable(info->subcmds,
+												   AT_NUM_PASSES,
+												   childrelid,
+												   &childRollbackHandle,
+												   true /*isPartitionOfAlteredTable */);
+		ListCell *listcell = NULL;
+		foreach(listcell, child_handles)
+		{
+			YBCPgStatement child = (YBCPgStatement) lfirst(listcell);
+			handles = lappend(handles, child);
+		}
 		if (childRollbackHandle)
 			*rollbackHandles = lappend(*rollbackHandles, childRollbackHandle);
 	}
