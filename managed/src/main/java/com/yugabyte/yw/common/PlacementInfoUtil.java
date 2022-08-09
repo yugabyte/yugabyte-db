@@ -2360,16 +2360,22 @@ public class PlacementInfoUtil {
     String namespace = azConfig.get("KUBENAMESPACE");
     if (StringUtils.isBlank(namespace)) {
       int suffixLen = isMultiAZ ? azName.length() + 1 : 0;
-      String readClusterSuffix =
-          "-rr"; // Avoid using "-readcluster" so user has more room for specifying the name.
+      // Avoid using "-readcluster" so user has more room for
+      // specifying the name.
+      String readClusterSuffix = "-rr";
       if (isReadOnlyCluster) {
         suffixLen += readClusterSuffix.length();
       }
+      // We don't have any suffix in case of new naming.
+      suffixLen = newNamingStyle ? 0 : suffixLen;
       namespace = Util.sanitizeKubernetesNamespace(nodePrefix, suffixLen);
+      if (newNamingStyle) {
+        return namespace;
+      }
       if (isReadOnlyCluster) {
         namespace = String.format("%s%s", namespace, readClusterSuffix);
       }
-      if (isMultiAZ && !newNamingStyle) {
+      if (isMultiAZ) {
         namespace = String.format("%s-%s", namespace, azName);
       }
     }
@@ -2458,11 +2464,11 @@ public class PlacementInfoUtil {
               nodePrefix,
               az.code,
               az.getUnmaskedConfig(),
-              newNamingStyle, /*isReadOnlyCluster*/
-              false);
+              newNamingStyle,
+              false /*isReadOnlyCluster*/);
       String domain = azToDomain.get(entry.getKey());
       String helmFullName =
-          getHelmFullNameWithSuffix(isMultiAZ, nodePrefix, az.code, newNamingStyle);
+          getHelmFullNameWithSuffix(isMultiAZ, nodePrefix, az.code, newNamingStyle, false);
       for (int idx = 0; idx < entry.getValue(); idx++) {
         String master =
             String.format(
@@ -2516,13 +2522,17 @@ public class PlacementInfoUtil {
   // fullnameOverride in the Helm overrides.
   // https://git.io/yugabyte.fullname
   public static String getHelmFullNameWithSuffix(
-      boolean isMultiAZ, String nodePrefix, String azName, boolean newNamingStyle) {
+      boolean isMultiAZ,
+      String nodePrefix,
+      String azName,
+      boolean newNamingStyle,
+      boolean isReadOnlyCluster) {
     if (!newNamingStyle) {
       return "";
     }
-    // TODO(bhavin192): use getHelmReleaseName method above while
-    // making new naming style + read replicas compatible.
-    String releaseName = isMultiAZ ? String.format("%s-%s", nodePrefix, azName) : nodePrefix;
+    String releaseName = getHelmReleaseName(isMultiAZ, nodePrefix, azName, isReadOnlyCluster);
+    // TODO(bhavin192): remove this once we make the sanitization to
+    // be 43 characters long.
     // <release name> | truncate 43
     if (releaseName.length() > 43) {
       releaseName = releaseName.substring(0, 43);

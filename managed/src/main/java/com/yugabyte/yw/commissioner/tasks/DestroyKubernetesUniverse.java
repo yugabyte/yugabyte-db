@@ -51,6 +51,8 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
       preTaskActions();
 
       Map<String, String> universeConfig = universe.getConfig();
+      // True for all the new and v2 to v3 migrated universes
+      // i.e. everything which is using 2.1.8+.
       boolean runHelmDelete = universeConfig.containsKey(Universe.HELM2_LEGACY);
 
       // Cleanup the kms_history table
