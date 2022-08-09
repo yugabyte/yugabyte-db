@@ -1,28 +1,22 @@
 #!/usr/bin/env bash
+# Copyright (c) YugaByte, Inc.
 
 set -e
 
 export GO111MODULE=on
 
-readonly go_version=1.18.2
-readonly protoc_version=21.4
-
 readonly package_name='node-agent'
-readonly platforms=("darwin/amd64" "linux/amd64" "linux/arm64")
+readonly default_platforms=("darwin/amd64" "linux/amd64" "linux/arm64")
 readonly skip_dirs=("third-party" "proto" "generated" "build")
-readonly go_dir="$go_version"
-readonly protoc_dir="protoc-$protoc_version"
 
 readonly base_dir=$(dirname "$0")
 pushd "$base_dir"
 readonly project_dir=$(pwd)
 popd
 
-readonly GOPATH=$project_dir/third-party
-readonly GOBIN=$GOPATH/$go_dir/go/bin
-readonly PROTOCBIN=$GOPATH/$protoc_dir/bin
-PATH=$GOBIN:$PROTOCBIN:$PATH
-export PATH
+export GOPATH=$project_dir/third-party
+export GOBIN=$GOPATH/bin
+export PATH=$GOBIN:$PATH
 
 readonly build_output_dir="${project_dir}/build"
 if [[ ! -d $build_output_dir ]]; then
@@ -72,7 +66,7 @@ build_for_platform() {
 }
 
 build_for_platforms() {
-    for platform in "${platforms[@]}"
+    for platform in "$@"
     do
         platform_split=(${platform//\// })
         local os=${platform_split[0]}
@@ -149,7 +143,8 @@ package_for_platform() {
 
 package_for_platforms() {
   local version=$1
-  for platform in "${platforms[@]}"
+  shift
+  for platform in "$@"
   do
       platform_split=(${platform//\// })
       os=${platform_split[0]}
@@ -175,7 +170,6 @@ Usage:
 EOT
 }
 
-build_args=( "$@" )
 while [[ $# -gt 0 ]]; do
   case $1 in
     help)
@@ -215,6 +209,15 @@ while [[ $# -gt 0 ]]; do
   fi
 done
 
+# Release build passes the platforms in the environment.
+if [ -z "${NODE_AGENT_PLATFORMS}" ]; then
+    PLATFORMS=("${default_platforms[@]}")
+    echo "Using default platforms $PLATFORMS"
+else
+    PLATFORMS=($echo ${NODE_AGENT_PLATFORMS})
+    echo "Using environment platforms ${PLATFORMS[@]}"
+fi
+
 help_needed=true
 if [ "$clean" == "true" ]; then
    help_needed=false
@@ -239,7 +242,7 @@ if [ "$build" == "true" ]; then
     echo "Building..."
     format
     # generate_grpc_files
-    build_for_platforms
+    build_for_platforms "${PLATFORMS[@]}"
 fi
 
 if [ "$test" == "true" ]; then
@@ -254,7 +257,7 @@ if [ "$package" == "true" ]; then
     else
         help_needed=false
         echo "Packaging..."
-        package_for_platforms $version
+        package_for_platforms $version "${PLATFORMS[@]}"
     fi
 fi
 
