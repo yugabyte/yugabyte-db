@@ -13,7 +13,7 @@ Suppressions used:
 
 import sys
 import os
-
+import re
 
 SANITIZER_SEPARATOR_LINE = '-' * 53
 
@@ -33,9 +33,29 @@ def main():
     with open(file_path) as input_file:
         lines = input_file.readlines()
 
-    # Remove trailing whitespace. We will also do that to expected output files so that diff does
-    # not find any differences in the normal case.
+    # 1) Remove trailing whitespace. We will also do that to expected output files so that diff does
+    #    not find any differences in the normal case.
+    # 2) Also mask any uuids since they are randomly generated and will vary across runs.
     lines = [line.rstrip() for line in lines]
+
+    def mask_uuid4s(unmasked_line):
+        uuid_start_indices = []
+        line_copy_with_uuid4s_masked = ""
+        for m in re.finditer(
+          r"[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-4[0-9A-Fa-f]{3}-[89ABab][0-9A-Fa-f]{3}-[0-9A-Fa-f]{12}",
+          unmasked_line):
+            uuid_start_indices.append(m.start())
+
+        prev_index = 0
+        for i in uuid_start_indices:
+            line_copy_with_uuid4s_masked += \
+                unmasked_line[prev_index:i] + "********-****-4***-****-************"
+            prev_index = i + len("********-****-4***-****-************")
+
+        line_copy_with_uuid4s_masked += unmasked_line[prev_index:]
+        return line_copy_with_uuid4s_masked
+
+    lines = [mask_uuid4s(line) for line in lines]
 
     result_lines = []
     i = 0
