@@ -27,8 +27,6 @@ namespace enterprise {
 
 struct KeyRange;
 
-YB_DEFINE_ENUM(CreateObjects, (kOnlyTables)(kOnlyIndexes));
-
 class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorContext {
   typedef yb::master::CatalogManager super;
  public:
@@ -322,16 +320,16 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
                                       ImportSnapshotMetaResponsePB* resp,
                                       UDTypeMap* type_map,
                                       const NamespaceMap& namespace_map);
-  Status ImportSnapshotCreateObject(const SnapshotInfoPB& snapshot_pb,
-                                    ImportSnapshotMetaResponsePB* resp,
-                                    const NamespaceMap& namespace_map,
-                                    const UDTypeMap& type_map,
-                                    ExternalTableSnapshotDataMap* tables_data,
-                                    CreateObjects create_objects);
-  Status ImportSnapshotWaitForTables(const SnapshotInfoPB& snapshot_pb,
-                                             ImportSnapshotMetaResponsePB* resp,
-                                             ExternalTableSnapshotDataMap* tables_data,
-                                             CoarseTimePoint deadline);
+  Status ImportSnapshotCreateIndexes(const SnapshotInfoPB& snapshot_pb,
+                                     ImportSnapshotMetaResponsePB* resp,
+                                     const NamespaceMap& namespace_map,
+                                     const UDTypeMap& type_map,
+                                     ExternalTableSnapshotDataMap* tables_data);
+  Status ImportSnapshotCreateAndWaitForTables(const SnapshotInfoPB& snapshot_pb,
+                                              const NamespaceMap& namespace_map,
+                                              const UDTypeMap& type_map,
+                                              ExternalTableSnapshotDataMap* tables_data,
+                                              CoarseTimePoint deadline);
   Status ImportSnapshotProcessTablets(const SnapshotInfoPB& snapshot_pb,
                                               ImportSnapshotMetaResponsePB* resp,
                                               ExternalTableSnapshotDataMap* tables_data);
