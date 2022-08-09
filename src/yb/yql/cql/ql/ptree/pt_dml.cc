@@ -551,20 +551,32 @@ Status WhereExprState::AnalyzeMultiColumnOp(
         ErrorCode::CQL_STATEMENT_INVALID);
   }
 
-  if (value->expr_op() != ExprOperator::kCollection && value->expr_op() != ExprOperator::kBindVar) {
+  if (value->expr_op() != ExprOperator::kCollection) {
+    if (value->expr_op() == ExprOperator::kBindVar) {
+      return sem_context->Error(
+          value, "Bind format not supported", ErrorCode::FEATURE_NOT_SUPPORTED);
+    }
     return sem_context->Error(
         value, "Invalid operand for IN clause", ErrorCode::CQL_STATEMENT_INVALID);
   }
 
-  if (value->expr_op() == ExprOperator::kCollection) {
-    const auto options = static_cast<const PTCollectionExpr*>(value.get());
+  const auto options = static_cast<const PTCollectionExpr*>(value.get());
 
-    for (const auto& option : options->values()) {
-      if (option->expr_op() != ExprOperator::kCollection &&
-          option->expr_op() != ExprOperator::kBindVar) {
+  for (const auto& option : options->values()) {
+    if (option->expr_op() != ExprOperator::kCollection) {
+      if (option->expr_op() == ExprOperator::kBindVar) {
         return sem_context->Error(
-            option, "Invalid operand for IN clause", ErrorCode::CQL_STATEMENT_INVALID);
+            option, "Bind format not supported", ErrorCode::FEATURE_NOT_SUPPORTED);
       }
+      return sem_context->Error(
+          option, "Invalid operand for IN clause", ErrorCode::CQL_STATEMENT_INVALID);
+    }
+
+    const auto option_as_collection = static_cast<const PTCollectionExpr*>(option.get());
+    if (option_as_collection->values().size() != col_descs.size()) {
+      return sem_context->Error(
+          option, "Columns and value size mismatch for IN clause",
+          ErrorCode::CQL_STATEMENT_INVALID);
     }
   }
 

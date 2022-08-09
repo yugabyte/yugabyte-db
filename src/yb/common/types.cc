@@ -84,7 +84,6 @@ class TypeInfoResolver {
     AddMapping<TIMEUUID>();
     AddMapping<USER_DEFINED_TYPE>();
     AddMapping<FROZEN>();
-    AddMapping<TUPLE>();
   }
 
   template<DataType type> void AddMapping() {

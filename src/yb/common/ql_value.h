@@ -33,6 +33,7 @@
 // The list of unsupported datatypes to use in switch statements
 #define QL_UNSUPPORTED_TYPES_IN_SWITCH \
   case NULL_VALUE_TYPE: FALLTHROUGH_INTENDED; \
+  case TUPLE: FALLTHROUGH_INTENDED;     \
   case TYPEARGS: FALLTHROUGH_INTENDED;  \
   case UNKNOWN_DATA
 
@@ -427,9 +428,6 @@ class QLValue {
   QLValuePB* add_frozen_elem() {
     return pb_.mutable_frozen_value()->add_elems();
   }
-  QLValuePB* add_tuple_elem() {
-    return pb_.mutable_tuple_value()->add_elems();
-  }
 
   // For collections, the call to `mutable_foo` takes care of setting the correct type to `foo`
   // internally and allocating the message if needed
@@ -446,7 +444,6 @@ class QLValue {
   void set_frozen_value() {
     pb_.mutable_frozen_value();
   }
-  void set_tuple_value() { pb_.mutable_tuple_value(); }
 
   //----------------------------------- assignment methods ----------------------------------
   QLValue& operator=(const QLValuePB& other) {
