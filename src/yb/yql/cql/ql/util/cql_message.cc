@@ -1394,6 +1394,17 @@ ResultResponse::RowsMetadata::Type::Type(const shared_ptr<QLType>& ql_type) {
           UDTType{type->udtype_keyspace_name(), type->udtype_name(), fields}));
       return;
     }
+    case DataType::TUPLE: {
+      id = Id::TUPLE;
+      std::vector<std::shared_ptr<const Type>> elem_types;
+      for (size_t i = 0; i < type->params().size(); i++) {
+        auto elem_type = std::make_shared<const Type>(Type(type->param_type(i)));
+        elem_types.emplace_back(std::move(elem_type));
+      }
+      new (&tuple_component_types)
+          shared_ptr<const TupleComponentTypes>(std::make_shared<TupleComponentTypes>(elem_types));
+      return;
+    }
     case DataType::FROZEN: FALLTHROUGH_INTENDED;
     QL_UNSUPPORTED_TYPES_IN_SWITCH: FALLTHROUGH_INTENDED;
     QL_INVALID_TYPES_IN_SWITCH:
