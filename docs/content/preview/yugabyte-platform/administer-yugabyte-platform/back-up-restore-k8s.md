@@ -37,7 +37,7 @@ You cannot back up and restore Prometheus metrics data.
 
 {{< /note >}}
 
-The YugabyteDB Anywhere UI is used for creating and managing YugabyteDB universes, or clusters, on one or more regions (across public cloud and private on-premises data centers). For details, see [YugabyteDB Anywhere overview](/preview/yugabyte-platform/overview/).
+The YugabyteDB Anywhere UI is used for creating and managing YugabyteDB universes, or clusters, on one or more regions (across public cloud and private on-premises data centers). For details, see [YugabyteDB Anywhere overview](../../../yugabyte-platform/).
 
 ## Back up a YugabyteDB Anywhere server
 
