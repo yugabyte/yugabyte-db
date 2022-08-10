@@ -181,6 +181,8 @@ make_restrictinfo_internal(Expr *clause,
 	 */
 	restrictinfo->parent_ec = NULL;
 
+	restrictinfo->yb_batched_rinfo = NULL;
+
 	restrictinfo->eval_cost.startup = -1;
 	restrictinfo->norm_selec = -1;
 	restrictinfo->outer_selec = -1;
@@ -203,6 +205,55 @@ make_restrictinfo_internal(Expr *clause,
 	restrictinfo->right_mcvfreq = -1;
 
 	return restrictinfo;
+}
+
+/*
+ *	Returns whether the given rinfo has a batched representation with
+ *	an inner variable from inner_relids and its outer batched variables from
+ *	outer_batched_relids.
+ */
+bool can_batch_rinfo(RestrictInfo *rinfo,
+					 Relids outer_batched_relids,
+					 Relids inner_relids)
+{
+	RestrictInfo *batched_rinfo = get_batched_restrictinfo(rinfo,
+														   outer_batched_relids,
+														   inner_relids);
+	return batched_rinfo != NULL;
+}
+
+/*
+ * Get a batched version of the given restrictinfo if any. The left/inner side
+ * of the returned restrictinfo will have relids within inner_relids and
+ * similarly for the right/outer side and outer_batched_relids.
+ */
+RestrictInfo *
+get_batched_restrictinfo(RestrictInfo *rinfo,
+						 Relids outer_batched_relids,
+						 Relids inner_relids)
+{
+	if (list_length(rinfo->yb_batched_rinfo) == 0)
+		return NULL;
+
+	RestrictInfo *ret = linitial(rinfo->yb_batched_rinfo);
+	if (!bms_is_subset(ret->left_relids, inner_relids))
+	{
+		/* Try the other batched rinfo if it exists. */
+		if (list_length(rinfo->yb_batched_rinfo) > 1)
+		{
+			ret = lsecond(rinfo->yb_batched_rinfo);
+		}
+		else
+		{
+			return NULL;
+		}
+	}
+
+	/* Make sure this satisfies the outer_batched_relids constraint. */
+	if (!bms_overlap(ret->clause_relids, outer_batched_relids))
+		return NULL;
+
+	return ret;
 }
 
 /*
@@ -319,6 +370,34 @@ restriction_is_securely_promotable(RestrictInfo *restrictinfo,
 		return true;
 	else
 		return false;
+}
+
+List *
+get_actual_batched_clauses(Relids batchedrelids,
+						   List *restrictinfo_list,
+						   IndexPath *inner_index)
+{
+	List	   *result = NIL;
+	ListCell   *l;
+
+	foreach(l, restrictinfo_list)
+	{
+		RestrictInfo *rinfo = lfirst_node(RestrictInfo, l);
+		RestrictInfo *tmp_batched =
+			get_batched_restrictinfo(rinfo,
+									 batchedrelids,
+									 inner_index->indexinfo->rel->relids);
+
+		if (tmp_batched)
+		{
+			rinfo = tmp_batched;
+		}
+
+		Assert(!rinfo->pseudoconstant);
+
+		result = lappend(result, rinfo->clause);
+	}
+	return result;
 }
 
 /*

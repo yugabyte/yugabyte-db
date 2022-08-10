@@ -1246,6 +1246,8 @@ get_baserel_parampathinfo(PlannerInfo *root, RelOptInfo *baserel,
 	List	   *pclauses;
 	double		rows;
 	ListCell   *lc;
+	Relids		batchedrelids = NULL;
+	Relids		unbatchedrelids = NULL;
 
 	/* If rel has LATERAL refs, every path for it should account for them */
 	Assert(bms_is_subset(baserel->lateral_relids, required_outer));
@@ -1273,7 +1275,32 @@ get_baserel_parampathinfo(PlannerInfo *root, RelOptInfo *baserel,
 		if (join_clause_is_movable_into(rinfo,
 										baserel->relids,
 										joinrelids))
-			pclauses = lappend(pclauses, rinfo);
+		{
+			RestrictInfo *tmp_batched =
+				get_batched_restrictinfo(rinfo,
+										batchedrelids,
+										baserel->relids);
+
+			if (tmp_batched)
+			{
+				pclauses =
+					list_append_unique_ptr(pclauses,
+										   tmp_batched);
+				batchedrelids =
+					bms_union(batchedrelids,
+							  bms_intersect(tmp_batched->clause_relids,
+											root->yb_curbatchedrelids));
+			}
+			else
+			{
+				unbatchedrelids = bms_union(unbatchedrelids,
+											rinfo->clause_relids);
+				unbatchedrelids = bms_del_member(unbatchedrelids,
+												 baserel->relid);
+				pclauses = lappend(pclauses, rinfo);
+			}
+		}
+		
 	}
 
 	/*
@@ -1294,6 +1321,8 @@ get_baserel_parampathinfo(PlannerInfo *root, RelOptInfo *baserel,
 	ppi->ppi_req_outer = required_outer;
 	ppi->ppi_rows = rows;
 	ppi->ppi_clauses = pclauses;
+	ppi->yb_ppi_req_outer_batched = batchedrelids;
+	ppi->yb_ppi_req_outer_unbatched = unbatchedrelids;
 	baserel->ppilist = lappend(baserel->ppilist, ppi);
 
 	return ppi;
@@ -1353,6 +1382,35 @@ get_joinrel_parampathinfo(PlannerInfo *root, RelOptInfo *joinrel,
 		return NULL;
 
 	Assert(!bms_overlap(joinrel->relids, required_outer));
+
+	/* Compute batched and unbatched relids. */
+	Relids outer_batchedrelids = outer_path->param_info
+		? outer_path->param_info->yb_ppi_req_outer_batched
+		: NULL;
+	Relids inner_batchedrelids = inner_path->param_info
+		? inner_path->param_info->yb_ppi_req_outer_batched
+		: NULL;
+	Relids outer_unbatchedrelids = outer_path->param_info
+		? outer_path->param_info->yb_ppi_req_outer_unbatched
+		: NULL;
+	Relids inner_unbatchedrelids = inner_path->param_info
+		? inner_path->param_info->yb_ppi_req_outer_unbatched
+		: NULL;
+	Assert(bms_is_subset(outer_batchedrelids, required_outer));
+
+	Relids req_batchedids = bms_union(outer_batchedrelids,
+									  inner_batchedrelids);
+	req_batchedids = bms_difference(req_batchedids,
+									outer_path->parent->relids);
+
+	Relids req_unbatchedids = bms_union(outer_unbatchedrelids,
+										inner_unbatchedrelids);
+	
+	req_unbatchedids = bms_difference(req_unbatchedids,
+									  outer_path->parent->relids);
+
+	req_batchedids = bms_difference(req_batchedids,
+									req_unbatchedids);
 
 	/*
 	 * Identify all joinclauses that are movable to this join rel given this
@@ -1498,7 +1556,10 @@ get_joinrel_parampathinfo(PlannerInfo *root, RelOptInfo *joinrel,
 	*restrict_clauses = list_concat(pclauses, *restrict_clauses);
 
 	/* If we already have a PPI for this parameterization, just return it */
-	if ((ppi = find_param_path_info(joinrel, required_outer)))
+	if ((ppi = yb_find_batched_param_path_info(joinrel,
+											   required_outer,
+											   req_batchedids,
+											   req_unbatchedids)))
 		return ppi;
 
 	/* Estimate the number of rows returned by the parameterized join */
@@ -1519,6 +1580,10 @@ get_joinrel_parampathinfo(PlannerInfo *root, RelOptInfo *joinrel,
 	ppi->ppi_req_outer = required_outer;
 	ppi->ppi_rows = rows;
 	ppi->ppi_clauses = NIL;
+
+	ppi->yb_ppi_req_outer_batched = req_batchedids;
+	ppi->yb_ppi_req_outer_unbatched = req_unbatchedids;
+
 	joinrel->ppilist = lappend(joinrel->ppilist, ppi);
 
 	return ppi;
@@ -1560,6 +1625,28 @@ get_appendrel_parampathinfo(RelOptInfo *appendrel, Relids required_outer)
 	appendrel->ppilist = lappend(appendrel->ppilist, ppi);
 
 	return ppi;
+}
+
+ParamPathInfo *
+yb_find_batched_param_path_info(RelOptInfo *rel, Relids required_outer,
+					 			Relids yb_required_batched_outer,
+					 			Relids yb_required_unbatched_outer)
+{
+	ListCell   *lc;
+
+	foreach(lc, rel->ppilist)
+	{
+		ParamPathInfo *ppi = (ParamPathInfo *) lfirst(lc);
+
+		if (bms_equal(ppi->ppi_req_outer, required_outer) &&
+			bms_equal(ppi->yb_ppi_req_outer_batched,
+					  yb_required_batched_outer) &&
+			bms_equal(ppi->yb_ppi_req_outer_unbatched,
+					  yb_required_unbatched_outer))
+			return ppi;
+	}
+
+	return NULL;
 }
 
 /*

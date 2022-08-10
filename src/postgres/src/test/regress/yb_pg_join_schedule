@@ -20,3 +20,5 @@ test: yb_pg_create_table
 test: yb_pg_copy
 
 test: yb_pg_join
+
+test: yb_join_batching

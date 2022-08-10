@@ -40,6 +40,7 @@
 #include "executor/nodeMergejoin.h"
 #include "executor/nodeModifyTable.h"
 #include "executor/nodeNamedtuplestorescan.h"
+#include "executor/nodeYbBatchedNestloop.h"
 #include "executor/nodeNestloop.h"
 #include "executor/nodeProjectSet.h"
 #include "executor/nodeRecursiveunion.h"
@@ -240,6 +241,10 @@ ExecReScan(PlanState *node)
 
 		case T_NestLoopState:
 			ExecReScanNestLoop((NestLoopState *) node);
+			break;
+
+		case T_YbBatchedNestLoopState:
+			ExecReScanYbBatchedNestLoop((YbBatchedNestLoopState *) node);
 			break;
 
 		case T_MergeJoinState:

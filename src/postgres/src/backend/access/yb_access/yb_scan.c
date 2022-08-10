@@ -665,15 +665,6 @@ static bool
 YbShouldPushdownScanPrimaryKey(Relation relation, YbScanPlan scan_plan,
                                AttrNumber attnum, ScanKey key)
 {
-	if (IsSystemRelation(relation))
-	{
-		/*
-		 * Only support eq operators for system tables.
-		 * TODO: we can probably allow ineq conditions for system tables now.
-		 */
-		return YbIsBasicOpSearch(key) && key->sk_strategy == BTEqualStrategyNumber;
-	}
-
 	if (YbIsBasicOpSearch(key))
 	{
 		/* Eq strategy for hash key, eq + ineq for range key. */
@@ -894,28 +885,6 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan)
 								  &ybScan->prepare_params,
 								  YBCIsRegionLocal(relation),
 								  &ybScan->handle));
-
-	if (IsSystemRelation(relation))
-	{
-		/* Bind the scan keys */
-		for (int i = 0; i < ybScan->nkeys; i++)
-		{
-			int bind_key_attnum = scan_plan->bind_key_attnums[i];
-			int idx = YBAttnumToBmsIndex(relation, bind_key_attnum);
-			if (bms_is_member(idx, scan_plan->sk_cols))
-			{
-				ScanKey key = ybScan->keys[i];
-				bool is_null = (key->sk_flags & SK_ISNULL) == SK_ISNULL;
-
-				Assert(YbCheckScanTypes(ybScan, scan_plan, i));
-
-				YbBindColumn(ybScan, scan_plan->bind_desc,
-				             scan_plan->bind_key_attnums[i],
-				             key->sk_argument, is_null);
-			}
-		}
-		return true;
-	}
 
 	/*
 	 * Set up the arrays to store the search intervals for each PG/YSQL
