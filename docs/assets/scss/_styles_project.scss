@@ -11,6 +11,7 @@
 @import "./_tables.scss";
 @import "./_search.scss";
 @import "./_footer.scss";
+@import "./_yb_page_style.scss";
 
 * body {
   font-size: 15.5px;
@@ -89,6 +90,43 @@ h1 {
       opacity: 0.8;
       border: none;
     }
+  }
+}
+
+body.td-homepage {
+  .resources {
+    ul {
+      display: flex;
+      flex-wrap: wrap;
+      padding: 0;
+      list-style: none;
+      gap: 15px;
+      font-size: 14px;
+    }
+
+    a {
+      border-radius: 5px;
+      padding: 4px 5px;
+      color: #4e5f6d !important;
+
+      &.grey-bg {
+        background: #f0f4f7;
+      }
+
+      &.purple-bg {
+        background: #ededfd;
+      }
+    }
+  }
+
+  h1 {
+    margin-top: 40px;
+  }
+
+  p {
+    color: #4e5f6d;
+    font-size: 18px;
+    line-height: normal;
   }
 }
 
