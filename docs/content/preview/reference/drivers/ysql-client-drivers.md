@@ -152,17 +152,17 @@ To get the latest versions for projects using [Apache Maven](https://maven.apach
 
 ### Vert.x Reactive PostgreSQL Client
 
-The [Reactive PostgreSQL Client](https://vertx.io/docs/vertx-pg-client/java/) is a client that allows an application based on Vert.x framework to connect to a PostgresSQL compatible database.
+[Vert.x Reactive PostgreSQL Client](https://vertx.io/docs/vertx-pg-client/java/) is a client that allows Vert.x-based applications to work with a PostgresSQL compatible database.
 
 The client is reactive and non blocking, allowing to handle many database connections with a single thread.
 
 #### Connect Vert.x application to YugabyteDB
 
-To connect a Vert.x application to YugabyteDB, follow the following steps:
+To connect a Vert.x application to YugabyteDB, follow the steps below.
 
 1. Add the client to the list of your project dependencies.
 
-    Maven:
+    **Maven**
 
     ```xml
     <dependency>
@@ -172,7 +172,7 @@ To connect a Vert.x application to YugabyteDB, follow the following steps:
     </dependency>
     ```
 
-    Gradle:
+    **Gradle**
 
     ```groovy
     dependencies {
