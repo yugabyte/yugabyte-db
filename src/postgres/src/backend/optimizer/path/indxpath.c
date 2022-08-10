@@ -581,6 +581,189 @@ consider_index_join_outer_rels(PlannerInfo *root, RelOptInfo *rel,
 	}
 }
 
+static void
+yb_get_batched_index_paths(PlannerInfo *root, RelOptInfo *rel,
+						   IndexOptInfo *index, IndexClauseSet *clauses,
+						   List **bitindexpaths)
+{
+	List	   *indexpaths;
+	bool		skip_nonnative_saop = false;
+	bool		skip_lower_saop = false;
+	ListCell   *lc;
+
+	Relids batchedrelids = NULL;
+	Relids unbatchablerelids = NULL;
+
+	Relids batched_inner_attnos = NULL;
+
+	List *batched_rinfos = NIL;
+
+
+	for (size_t i = 0; i < INDEX_MAX_KEYS && clauses->nonempty; i++)
+	{
+		List *colclauses = clauses->indexclauses[i];
+		foreach (lc, colclauses)
+		{
+			RestrictInfo *rinfo = (RestrictInfo *) lfirst(lc);
+
+			/*
+			 * If we can batch up outer vars in rinfo then do so.
+			 * We are prohibiting batching outer rels that have already
+			 * been batched in the interest of simplicity for now.
+			 */
+			Relids inner_relids = bms_make_singleton(index->rel->relid);
+			Relids outer_relids =
+				bms_difference(rinfo->required_relids, inner_relids);
+			RestrictInfo *tmp_batched = get_batched_restrictinfo(rinfo, outer_relids, inner_relids);
+
+			/* Disabling batching the same rel twice for now. */
+			if (tmp_batched &&
+				bms_overlap(tmp_batched->right_relids, batchedrelids))
+				tmp_batched = NULL;
+			
+			/* Disabling batching the same inner attno twice for now. */
+			if (tmp_batched)
+			{
+				Bitmapset *attnos = NULL;
+				Node *innervar = get_leftop(tmp_batched->clause);
+				pull_varattnos(innervar,
+							   index->rel->relid,
+							   &attnos);
+				if (bms_overlap(batched_inner_attnos, attnos))
+					tmp_batched = NULL;
+				bms_free(attnos);
+			}
+
+			if (tmp_batched != NULL)
+			{
+				batchedrelids =
+					bms_union(batchedrelids,
+							  tmp_batched->right_relids);
+				batched_rinfos = lappend(batched_rinfos, rinfo);
+
+				Node *innervar = get_leftop(tmp_batched->clause);
+				pull_varattnos(innervar,
+							   index->rel->relid,
+							   &batched_inner_attnos);
+			}
+			else
+			{
+				/* 
+				 * Couldn't batch this clause so its outer rels are not
+				 * batchable.
+				 */
+				unbatchablerelids = bms_union(unbatchablerelids,
+											  rinfo->clause_relids);
+			}
+		}
+	}
+
+	batchedrelids = bms_del_member(batchedrelids,
+								   index->rel->relid);
+	unbatchablerelids = bms_del_member(unbatchablerelids,
+									   index->rel->relid);
+
+	/*
+	 * Build simple index paths using the clauses.  Allow ScalarArrayOpExpr
+	 * clauses only if the index AM supports them natively, and skip any such
+	 * clauses for index columns after the first (so that we produce ordered
+	 * paths if possible).
+	 */
+	indexpaths = build_index_paths(root, rel,
+								   index, clauses,
+								   index->predOK,
+								   ST_ANYSCAN,
+								   &skip_nonnative_saop,
+								   &skip_lower_saop);
+
+	/*
+	 * If we skipped any lower-order ScalarArrayOpExprs on an index with an AM
+	 * that supports them, then try again including those clauses. This will
+	 * produce paths with more selectivity but no ordering.
+	 */
+	if (skip_lower_saop)
+	{
+		indexpaths = list_concat(indexpaths,
+								 build_index_paths(root, rel,
+												   index, clauses,
+												   index->predOK,
+												   ST_ANYSCAN,
+												   &skip_nonnative_saop,
+												   NULL));
+	}
+
+	/*
+	 * Submit all the ones that can form plain IndexScan plans to add_path. (A
+	 * plain IndexPath can represent either a plain IndexScan or an
+	 * IndexOnlyScan, but for our purposes here that distinction does not
+	 * matter.  However, some of the indexes might support only bitmap scans,
+	 * and those we mustn't submit to add_path here.)
+	 *
+	 * Also, pick out the ones that are usable as bitmap scans.  For that, we
+	 * must discard indexes that don't support bitmap scans, and we also are
+	 * only interested in paths that have some selectivity; we should discard
+	 * anything that was generated solely for ordering purposes.
+	 */
+	foreach(lc, indexpaths)
+	{
+		IndexPath  *ipath = (IndexPath *) lfirst(lc);
+		ParamPathInfo *param_info = ipath->path.param_info;
+
+		if (param_info)
+		{
+			ListCell *lc2;
+			/* See if we have any unbatchable filters. */
+			foreach(lc2, param_info->ppi_clauses)
+			{
+				RestrictInfo *rinfo = lfirst(lc2);
+				RestrictInfo *batched =
+					get_batched_restrictinfo(rinfo,
+											 rinfo->required_relids,  index->rel->relids);
+				
+				/* See if we have already batched this filter. */
+				Relids left_var_attnos = NULL;
+				if (!batched ||
+					!bms_equal(batched->left_relids, index->rel->relids) ||
+					!bms_is_subset(batched->right_relids, batchedrelids))
+				{
+					unbatchablerelids = bms_union(unbatchablerelids,
+												  rinfo->clause_relids);
+				}
+
+				if (batched &&
+					bms_equal(batched->left_relids, index->rel->relids) &&
+					bms_is_subset(batched->right_relids, batchedrelids))
+				{
+					pull_varattnos(get_leftop(batched->clause),
+								   index->rel->relid,
+								   &left_var_attnos);
+					if (!bms_is_subset(left_var_attnos, batched_inner_attnos))
+						unbatchablerelids = bms_union(unbatchablerelids,
+												  	  rinfo->clause_relids);
+				}
+				bms_free(left_var_attnos);
+			}
+
+			unbatchablerelids = bms_del_member(unbatchablerelids,
+											   index->rel->relid);
+
+			batchedrelids = bms_difference(batchedrelids, unbatchablerelids);
+			/* Add batching info. */
+			param_info->yb_ppi_req_outer_batched = batchedrelids;
+			param_info->yb_ppi_req_outer_unbatched = unbatchablerelids;
+
+		}
+
+		if (index->amhasgettuple)
+			add_path(rel, (Path *) ipath);
+
+		if (index->amhasgetbitmap &&
+			(ipath->path.pathkeys == NIL ||
+			 ipath->indexselectivity < 1.0))
+			*bitindexpaths = lappend(*bitindexpaths, ipath);
+	}
+}
+
 /*
  * get_join_index_paths
  *	  Generate index paths using clauses from the specified outer relations.
@@ -657,6 +840,12 @@ get_join_index_paths(PlannerInfo *root, RelOptInfo *rel,
 
 	/* We should have found something, else caller passed silly relids */
 	Assert(clauseset.nonempty);
+
+
+	if (yb_bnl_batch_size > 1)
+	{
+		yb_get_batched_index_paths(root, rel, index, &clauseset, bitindexpaths);
+	}
 
 	/* Build index path(s) using the collected set of clauses */
 	get_index_paths(root, rel, index, &clauseset, bitindexpaths);
@@ -3305,11 +3494,16 @@ match_index_to_operand(Node *operand,
 			}
 		}
 		/*
-		 * Simple index column; operand must be a matching Var.
+		 * Simple index column; operand must be a matching Var
 		 */
-		if (operand && IsA(operand, Var) &&
-			index->rel->relid == ((Var *) operand)->varno &&
-			indkey == ((Var *) operand)->varattno)
+		
+		Var *operand_var = NULL;
+		if (operand && IsA(operand, Var))
+			operand_var = (Var *) operand;
+
+		if (operand_var &&
+			index->rel->relid == operand_var->varno &&
+			indkey == operand_var->varattno)
 			return true;
 	}
 	else

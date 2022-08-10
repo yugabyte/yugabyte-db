@@ -2058,16 +2058,44 @@ _readJoin(void)
 }
 
 /*
+ * ReadCommonNestLoop
+ */
+static void
+ReadCommonNestLoop(NestLoop *local_node)
+{
+	READ_TEMP_LOCALS();
+
+	ReadCommonJoin(&local_node->join);
+
+	READ_NODE_FIELD(nestParams);
+}
+
+/*
  * _readNestLoop
  */
 static NestLoop *
 _readNestLoop(void)
 {
-	READ_LOCALS(NestLoop);
+	READ_LOCALS_NO_FIELDS(NestLoop);
 
-	ReadCommonJoin(&local_node->join);
+	ReadCommonNestLoop(local_node);
 
-	READ_NODE_FIELD(nestParams);
+	READ_DONE();
+}
+
+/*
+ * _readYbBatchedNestLoop
+ */
+static YbBatchedNestLoop *
+_readYbBatchedNestLoop(void)
+{
+	READ_LOCALS(YbBatchedNestLoop);
+
+	ReadCommonNestLoop(&local_node->nl);
+
+	READ_NODE_FIELD(hashOps);
+	READ_NODE_FIELD(innerHashAttNos);
+	READ_NODE_FIELD(outerParamNos);
 
 	READ_DONE();
 }
@@ -2774,6 +2802,8 @@ parseNodeString(void)
 		return_value = _readJoin();
 	else if (MATCH("NESTLOOP", 8))
 		return_value = _readNestLoop();
+	else if (MATCH("YbBatchedNestLoop", 15))
+		return_value = _readYbBatchedNestLoop();
 	else if (MATCH("MERGEJOIN", 9))
 		return_value = _readMergeJoin();
 	else if (MATCH("HASHJOIN", 8))
