@@ -533,7 +533,10 @@ Status SecureContext::Impl::AddCertificateAuthorityFileUnlocked(const std::strin
   auto bytes = pointer_cast<const char*>(file.c_str());
   auto res = X509_STORE_load_locations(store, bytes, nullptr);
   if (res != 1) {
-    return SSL_STATUS(InvalidArgument, "Failed to add certificate file: $0");
+    return STATUS_FORMAT(InvalidArgument,
+                        "Failed to add certificate file: $0, filename: $1",
+                        SSLErrorMessage(ERR_get_error()),
+                        file.c_str());
   }
 
   return Status::OK();
