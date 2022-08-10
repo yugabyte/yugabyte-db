@@ -18,7 +18,7 @@ SET enable_seqscan = off;
 SET enable_material = off;
 SET yb_bnl_batch_size = 3;
 EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 JOIN p2 t2 ON t1.a = t2.a WHERE t1.a <= 100 AND t2.a <= 100;
-                     QUERY PLAN                      
+                     QUERY PLAN
 -----------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.a = t2.a)
@@ -30,7 +30,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 JOIN p2 t2 ON t1.a = t2.a WHERE t1.a <= 
 (7 rows)
 
 SELECT * FROM p1 t1 JOIN p2 t2 ON t1.a = t2.a WHERE t1.a <= 100 AND t2.a <= 100;
- a  | b  |  c   | a  | b  |  c   
+ a  | b  |  c   | a  | b  |  c
 ----+----+------+----+----+------
  78 |  3 | 0078 | 78 |  3 | 0078
  12 | 12 | 0012 | 12 | 12 | 0012
@@ -53,7 +53,7 @@ SELECT * FROM p1 t1 JOIN p2 t2 ON t1.a = t2.a WHERE t1.a <= 100 AND t2.a <= 100;
 
 -- Disabling batching for compound clauses
 /*+ Leading((p2 p1)) */ EXPLAIN (COSTS OFF) SELECT * FROM p1 JOIN p2 ON p1.a = p2.b AND p2.a = p1.b;
-                   QUERY PLAN                    
+                   QUERY PLAN
 -------------------------------------------------
  Nested Loop
    ->  Seq Scan on p2
@@ -62,17 +62,16 @@ SELECT * FROM p1 t1 JOIN p2 t2 ON t1.a = t2.a WHERE t1.a <= 100 AND t2.a <= 100;
 (4 rows)
 
 /*+ Leading((p2 p1)) IndexScan(p1 p1_b_idx) */ EXPLAIN (COSTS OFF) SELECT * FROM p1 JOIN p2 ON p1.a = p2.b AND p2.a = p1.b;
-              QUERY PLAN               
----------------------------------------
+                   QUERY PLAN
+-------------------------------------------------
  Nested Loop
-   ->  Seq Scan on p2
    ->  Index Scan using p1_b_idx on p1
-         Index Cond: (b = p2.a)
-         Filter: (p2.b = a)
-(5 rows)
+   ->  Index Scan using p2_pkey on p2
+         Index Cond: ((a = p1.b) AND (b = p1.a))
+(4 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM p3 t3 LEFT OUTER JOIN (SELECT t1.a as a FROM p1 t1 JOIN p2 t2 ON t1.a = t2.b WHERE t1.a <= 100 AND t2.a <= 100) s ON t3.a = s.a WHERE t3.a <= 30;
-                        QUERY PLAN                         
+                        QUERY PLAN
 -----------------------------------------------------------
  YB Batched Nested Loop Left Join
    Join Filter: (t3.a = t1.a)
@@ -89,20 +88,20 @@ EXPLAIN (COSTS OFF) SELECT * FROM p3 t3 LEFT OUTER JOIN (SELECT t1.a as a FROM p
 (12 rows)
 
 SELECT * FROM p3 t3 LEFT OUTER JOIN (SELECT t1.a as a FROM p1 t1 JOIN p2 t2 ON t1.a = t2.b WHERE t1.a <= 100 AND t2.a <= 100) s ON t3.a = s.a WHERE t3.a <= 30;
- a  | b  |  c   | a  
+ a  | b  |  c   | a
 ----+----+------+----
  10 | 10 | 0010 | 10
- 15 | 15 | 0015 |   
-  5 |  5 | 0005 |   
+ 15 | 15 | 0015 |
+  5 |  5 | 0005 |
   0 |  0 | 0000 |  0
   0 |  0 | 0000 |  0
- 25 |  0 | 0025 |   
- 30 |  5 | 0030 |   
+ 25 |  0 | 0025 |
+ 30 |  5 | 0030 |
  20 | 20 | 0020 | 20
 (8 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM p3 t3 RIGHT OUTER JOIN (SELECT t1.a as a FROM p1 t1 JOIN p2 t2 ON t1.a = t2.b WHERE t1.b <= 10 AND t2.b <= 15) s ON t3.a = s.a;
-                                QUERY PLAN                                 
+                                QUERY PLAN
 ---------------------------------------------------------------------------
  YB Batched Nested Loop Left Join
    Join Filter: (t3.a = t1.a)
@@ -117,7 +116,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM p3 t3 RIGHT OUTER JOIN (SELECT t1.a as a FROM 
 (10 rows)
 
 SELECT * FROM p3 t3 RIGHT OUTER JOIN (SELECT t1.a as a FROM p1 t1 JOIN p2 t2 ON t1.a = t2.b WHERE t1.b <= 10 AND t2.b <= 15) s ON t3.a = s.a;
- a  | b  |  c   | a  
+ a  | b  |  c   | a
 ----+----+------+----
  10 | 10 | 0010 | 10
     |    |      |  6
@@ -171,7 +170,7 @@ SELECT * FROM p3 t3 RIGHT OUTER JOIN (SELECT t1.a as a FROM p1 t1 JOIN p2 t2 ON 
 
 -- anti join--
 EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 WHERE NOT EXISTS (SELECT 1 FROM p2 t2 WHERE t1.a = t2.a) AND t1.a <= 40;
-                     QUERY PLAN                      
+                     QUERY PLAN
 -----------------------------------------------------
  YB Batched Nested Loop Anti Join
    Join Filter: (t1.a = t2.a)
@@ -182,7 +181,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 WHERE NOT EXISTS (SELECT 1 FROM p2 t2 WH
 (6 rows)
 
 SELECT * FROM p1 t1 WHERE NOT EXISTS (SELECT 1 FROM p2 t2 WHERE t1.a = t2.a) AND t1.a <= 40;
- a  | b  |  c   
+ a  | b  |  c
 ----+----+------
  38 | 13 | 0038
  16 | 16 | 0016
@@ -201,7 +200,7 @@ SELECT * FROM p1 t1 WHERE NOT EXISTS (SELECT 1 FROM p2 t2 WHERE t1.a = t2.a) AND
 (14 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 WHERE NOT EXISTS (SELECT 1 FROM p2 t2 WHERE t1.a = t2.b) AND t1.a <= 40;
-                     QUERY PLAN                      
+                     QUERY PLAN
 -----------------------------------------------------
  YB Batched Nested Loop Anti Join
    Join Filter: (t1.a = t2.b)
@@ -212,7 +211,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 WHERE NOT EXISTS (SELECT 1 FROM p2 t2 WH
 (6 rows)
 
 SELECT * FROM p1 t1 WHERE NOT EXISTS (SELECT 1 FROM p2 t2 WHERE t1.a = t2.b) AND t1.a <= 40;
- a  | b  |  c   
+ a  | b  |  c
 ----+----+------
  38 | 13 | 0038
  40 | 15 | 0040
@@ -226,7 +225,7 @@ SELECT * FROM p1 t1 WHERE NOT EXISTS (SELECT 1 FROM p2 t2 WHERE t1.a = t2.b) AND
 
 -- semi join--
 EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 WHERE EXISTS (SELECT 1 FROM p2 t2 WHERE t1.a = t2.a) AND t1.a <= 40;
-                     QUERY PLAN                      
+                     QUERY PLAN
 -----------------------------------------------------
  YB Batched Nested Loop Semi Join
    Join Filter: (t1.a = t2.a)
@@ -237,7 +236,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 WHERE EXISTS (SELECT 1 FROM p2 t2 WHERE 
 (6 rows)
 
 SELECT * FROM p1 t1 WHERE EXISTS (SELECT 1 FROM p2 t2 WHERE t1.a = t2.a) AND t1.a <= 40;
- a  | b  |  c   
+ a  | b  |  c
 ----+----+------
  12 | 12 | 0012
   6 |  6 | 0006
@@ -249,7 +248,7 @@ SELECT * FROM p1 t1 WHERE EXISTS (SELECT 1 FROM p2 t2 WHERE t1.a = t2.a) AND t1.
 (7 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 WHERE EXISTS (SELECT 1 FROM p2 t2 WHERE t1.a = t2.b) AND t1.a <= 40;
-                     QUERY PLAN                      
+                     QUERY PLAN
 -----------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.a = t2.b)
@@ -262,7 +261,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 WHERE EXISTS (SELECT 1 FROM p2 t2 WHERE 
 (8 rows)
 
 SELECT * FROM p1 t1 WHERE EXISTS (SELECT 1 FROM p2 t2 WHERE t1.a = t2.b) AND t1.a <= 40;
- a  | b  |  c   
+ a  | b  |  c
 ----+----+------
   8 |  8 | 0008
   4 |  4 | 0004
@@ -284,7 +283,7 @@ INSERT INTO int2type VALUES (1), (4), (555), (-33), (6923);
 -- testing batching on join conditions across different types (int2, int4)
 -- We shouldn't cause any casting on inner expressions.
 /*+Leading((i2 p))*/ EXPLAIN (COSTS OFF) SELECT * FROM int2type i2 JOIN p1 p ON i2.a = p.a;
-                                      QUERY PLAN                                      
+                                      QUERY PLAN
 --------------------------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (i2.a = p.a)
@@ -294,7 +293,7 @@ INSERT INTO int2type VALUES (1), (4), (555), (-33), (6923);
 (5 rows)
 
 /*+Leading((i2 p))*/ SELECT * FROM int2type i2 JOIN p1 p ON i2.a = p.a;
- a | a | b |  c   
+ a | a | b |  c
 ---+---+---+------
  4 | 4 | 4 | 0004
 (1 row)
@@ -302,7 +301,7 @@ INSERT INTO int2type VALUES (1), (4), (555), (-33), (6923);
 -- This shouldn't be batched as the LHS of the batched IN expression would
 -- have a cast.
 /*+Leading((p i2))*/ EXPLAIN (COSTS OFF) SELECT * FROM int2type i2 JOIN p1 p ON i2.a = p.a;
-                     QUERY PLAN                      
+                     QUERY PLAN
 -----------------------------------------------------
  Nested Loop
    ->  Seq Scan on p1 p
@@ -311,7 +310,7 @@ INSERT INTO int2type VALUES (1), (4), (555), (-33), (6923);
 (4 rows)
 
 /*+Leading((p i2))*/ SELECT * FROM int2type i2 JOIN p1 p ON i2.a = p.a;
- a | a | b |  c   
+ a | a | b |  c
 ---+---+---+------
  4 | 4 | 4 | 0004
 (1 row)
@@ -319,7 +318,7 @@ INSERT INTO int2type VALUES (1), (4), (555), (-33), (6923);
 DROP TABLE int2type;
 set yb_bnl_batch_size to 10;
 explain (costs off) select * from p1 a join p2 b on a.a = b.a join p3 c on b.a = c.a join p4 d on a.b = d.b where a.b = 10 ORDER BY a.a, b.a, c.a, d.a;
-                                             QUERY PLAN                                              
+                                             QUERY PLAN
 -----------------------------------------------------------------------------------------------------
  Sort
    Sort Key: a.a, d.a
@@ -339,7 +338,7 @@ explain (costs off) select * from p1 a join p2 b on a.a = b.a join p3 c on b.a =
 (15 rows)
 
 select * from p1 a join p2 b on a.a = b.a join p3 c on b.a = c.a join p4 d on a.b = d.b where a.b = 10 ORDER BY a.a, b.a, c.a, d.a;
-  a  | b  |  c   |  a  | b  |  c   |  a  | b  |  c   |  a  | b  |  c   
+  a  | b  |  c   |  a  | b  |  c   |  a  | b  |  c   |  a  | b  |  c
 -----+----+------+-----+----+------+-----+----+------+-----+----+------
   60 | 10 | 0060 |  60 | 10 | 0060 |  60 | 10 | 0060 |  35 | 10 | 0035
   60 | 10 | 0060 |  60 | 10 | 0060 |  60 | 10 | 0060 | 210 | 10 | 0210
@@ -371,7 +370,7 @@ INSERT INTO m1 SELECT i*2 FROM generate_series(1, 2000) i;
 CREATE TABLE m2 (a money, primary key(a asc));
 INSERT INTO m2 SELECT i*5 FROM generate_series(1, 2000) i;
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM m1 t1 JOIN m2 t2 ON t1.a = t2.a WHERE t1.a <= 50::money;
-                            QUERY PLAN                            
+                            QUERY PLAN
 ------------------------------------------------------------------
  YB Batched Nested Loop Join (actual rows=5 loops=1)
    Join Filter: (t1.a = t2.a)
@@ -383,7 +382,7 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM m1 t1 JOIN m
 (7 rows)
 
 SELECT * FROM m1 t1 JOIN m2 t2 ON t1.a = t2.a WHERE t1.a <= 50::money;
-   a    |   a    
+   a    |   a
 --------+--------
  $10.00 | $10.00
  $20.00 | $20.00
@@ -393,7 +392,7 @@ SELECT * FROM m1 t1 JOIN m2 t2 ON t1.a = t2.a WHERE t1.a <= 50::money;
 (5 rows)
 
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM m2 t1 LEFT JOIN m1 t2 ON t1.a = t2.a WHERE t1.a <= 50::money;
-                            QUERY PLAN                            
+                            QUERY PLAN
 ------------------------------------------------------------------
  YB Batched Nested Loop Left Join (actual rows=10 loops=1)
    Join Filter: (t1.a = t2.a)
@@ -405,22 +404,22 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM m2 t1 LEFT J
 (7 rows)
 
 SELECT * FROM m2 t1 LEFT JOIN m1 t2 ON t1.a = t2.a WHERE t1.a <= 50::money;
-   a    |   a    
+   a    |   a
 --------+--------
  $10.00 | $10.00
-  $5.00 |       
- $15.00 |       
+  $5.00 |
+ $15.00 |
  $20.00 | $20.00
  $30.00 | $30.00
- $25.00 |       
+ $25.00 |
  $40.00 | $40.00
- $35.00 |       
- $45.00 |       
+ $35.00 |
+ $45.00 |
  $50.00 | $50.00
 (10 rows)
 
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM m2 t1 WHERE NOT EXISTS (SELECT 1 FROM m1 t2 WHERE t1.a = t2.a) AND t1.a <= 50::money;
-                            QUERY PLAN                            
+                            QUERY PLAN
 ------------------------------------------------------------------
  YB Batched Nested Loop Anti Join (actual rows=5 loops=1)
    Join Filter: (t1.a = t2.a)
@@ -432,7 +431,7 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM m2 t1 WHERE 
 (7 rows)
 
 SELECT * FROM m2 t1 WHERE NOT EXISTS (SELECT 1 FROM m1 t2 WHERE t1.a = t2.a) AND t1.a <= 50::money;
-   a    
+   a
 --------
   $5.00
  $15.00
@@ -452,7 +451,7 @@ analyze q2;
 SET yb_bnl_batch_size = 3;
 -- Make sure a sort node is inserted above a batched NL join when appropriate
 explain (costs off) select q1.c1 from q1 join q2 on q1.c2 = q2.c2 order by q1.c1 limit 10;
-                            QUERY PLAN                             
+                            QUERY PLAN
 -------------------------------------------------------------------
  Limit
    ->  Sort
@@ -465,7 +464,7 @@ explain (costs off) select q1.c1 from q1 join q2 on q1.c2 = q2.c2 order by q1.c1
 (8 rows)
 
 select q1.c1 from q1 join q2 on q1.c2 = q2.c2 order by q1.c1 limit 10;
- c1 
+ c1
 ----
   0
   0
@@ -482,7 +481,7 @@ select q1.c1 from q1 join q2 on q1.c2 = q2.c2 order by q1.c1 limit 10;
 create table q3(a int, b int, c name, primary key(a,b));
 create index q3_range on q3(a asc);
 /*+Set(enable_hashjoin off) Set(enable_mergejoin off) Set(yb_bnl_batch_size 3) Set(enable_seqscan off) Set(enable_material off)*/ explain (costs off) select * from q1 p1 left join (SELECT p2.c1 as a1, p3.a as a2 from q2 p2 join q3 p3 on true) j1 on j1.a1 = p1.c1;
-                         QUERY PLAN                          
+                         QUERY PLAN
 -------------------------------------------------------------
  YB Batched Nested Loop Left Join
    Join Filter: (p2.c1 = p1.c1)
@@ -497,7 +496,7 @@ create index q3_range on q3(a asc);
 -- (j1.a2 <= p1.c1) even though the batchable clause (j1.a1 = p1.c1) is also
 -- present
 /*+Set(enable_hashjoin off) Set(enable_mergejoin off) Set(yb_bnl_batch_size 3) Set(enable_seqscan off) Set(enable_material off)*/ explain (costs off) select * from q1 p1 left join (SELECT p2.c1 as a1, p3.a as a2 from q2 p2 join q3 p3 on true) j1 on j1.a1 = p1.c1 and j1.a2 <= p1.c1;
-                     QUERY PLAN                      
+                     QUERY PLAN
 -----------------------------------------------------
  Nested Loop Left Join
    ->  Index Scan using q1_pkey on q1 p1
@@ -513,7 +512,7 @@ DROP TABLE q2;
 DROP TABLE q3;
 SELECT '' AS "xxx", *
   FROM J1_TBL AS tx order by 1, 2, 3, 4;
- xxx | i | j |   t   
+ xxx | i | j |   t
 -----+---+---+-------
      | 0 |   | zero
      | 1 | 4 | one
@@ -530,7 +529,7 @@ SELECT '' AS "xxx", *
 
 SELECT '' AS "xxx", *
   FROM J1_TBL tx  order by 1, 2, 3, 4;
- xxx | i | j |   t   
+ xxx | i | j |   t
 -----+---+---+-------
      | 0 |   | zero
      | 1 | 4 | one
@@ -547,7 +546,7 @@ SELECT '' AS "xxx", *
 
 SELECT '' AS "xxx", *
   FROM J1_TBL AS t1 (a, b, c)  order by 1, 2, 3, 4;
- xxx | a | b |   c   
+ xxx | a | b |   c
 -----+---+---+-------
      | 0 |   | zero
      | 1 | 4 | one
@@ -564,7 +563,7 @@ SELECT '' AS "xxx", *
 
 SELECT '' AS "xxx", *
   FROM J1_TBL t1 (a, b, c)  order by 1, 2, 3, 4;
- xxx | a | b |   c   
+ xxx | a | b |   c
 -----+---+---+-------
      | 0 |   | zero
      | 1 | 4 | one
