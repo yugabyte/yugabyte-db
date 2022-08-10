@@ -370,6 +370,7 @@ typedef struct PgServerDescriptor {
   const char *public_ip;
   bool is_primary;
   uint16_t pg_port;
+  const char *uuid;
 } YBCServerDescriptor;
 
 typedef struct PgColumnInfo {
