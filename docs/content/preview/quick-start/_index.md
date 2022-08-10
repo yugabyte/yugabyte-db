@@ -289,10 +289,10 @@ For examples using other languages, refer to [Build an application](../develop/b
 
 ### Start a local multi-node cluster
 
-First, stop the currently running single-node cluster:
+First, destroy the currently running single-node cluster:
 
 ```sh
-./bin/yugabyted stop
+./bin/yugabyted destroy
 ```
 
 Create the first node as follows:

@@ -72,20 +72,27 @@ The following commands are available:
 
 ### start
 
-Use the `yugabyted start` command to start a one-node YugabyteDB cluster in your local environment. This allows developers to quickly get started with a YugabyteDB cluster for running [YSQL](../../../architecture/layered-architecture/#yugabyte-sql-ysql) and [YCQL](../../../architecture/layered-architecture/#yugabyte-cloud-ql-ycql) workloads.
+Use the `yugabyted start` command to start a one-node YugabyteDB cluster in your local environment. This allows you to quickly get started with a YugabyteDB cluster for running [YSQL](../../../architecture/layered-architecture/#yugabyte-sql-ysql) and [YCQL](../../../architecture/layered-architecture/#yugabyte-cloud-ql-ycql) workloads.
 
 #### Syntax
 
-```sh
+```text
 Usage: yugabyted start [flags]
+```
 
 Examples:
-# Create a single-node local cluster:
-yugabyted start
 
-# Create a single-node locally and join other nodes that are part of the same cluster:
-yugabyted start --join=host:port,[host:port]
-```
+- Create a local single-node cluster:
+
+  ```sh
+  yugabyted start
+  ```
+
+- Create a single-node locally and join other nodes that are part of the same cluster:
+
+  ```sh
+  yugabyted start --join=host:port,[host:port]
+  ```
 
 #### Flags
 
@@ -96,7 +103,7 @@ yugabyted start --join=host:port,[host:port]
 : IP address or local hostname on which yugabyted will listen.
 
 --join *master-ip*
-: The IP address of the existing `yugabyted` server to which the new `yugabyted` server will join.
+: The IP address of the existing yugabyted server to which the new yugabyted server will join.
 
 --config *config-file*
 : Yugabyted configuration file path.
@@ -105,29 +112,26 @@ yugabyted start --join=host:port,[host:port]
 : The directory where yugabyted stores data, configurations, and logs. Must be an absolute path.
 
 --data_dir *data-directory*
-: The directory where yugabyted stores data. Must be an absolute path. Can be
-configured to a directory different from the one where configurations and logs are stored.
+: The directory where yugabyted stores data. Must be an absolute path. Can be configured to a directory different from the one where configurations and logs are stored.
 
 --log_dir *log-directory*
 : The directory to store yugabyted logs. Must be an absolute path. This flag controls where the logs of the YugabyteDB nodes are stored.
 
 --background *bool*
-: Enable or disable running `yugabyted` in the background as a daemon. Does not persist on restart.
-Default: `true`
+: Enable or disable running yugabyted in the background as a daemon. Does not persist on restart. Default: `true`
 
 --cloud_location *cloud-location*
-: Cloud location of the Yugabyted node in the format `cloudprovider.region.zone`. This information is used for multi-zone, multi-region and multi-cloud deployments of YugabyteDB clusters.
+: Cloud location of the Yugabyted node in the format `cloudprovider.region.zone`. This information is used for multi-zone, multi-region, and multi-cloud deployments of YugabyteDB clusters.
 
 --fault_tolerance *fault_tolerance*
 : Determines the fault tolerance constraint to be applied on the data placement policy of the YugabyteDB cluster. This flag can accept the following values - none, zone, region, and cloud.
 
 --ui *bool*
-: Enable or disable the webserver UI.
-Default: `false`
+: Enable or disable the webserver UI. Default: `false`
 
 #### Advanced Flags
 
-Advanced flags can be set by using the configuration file in the `--config` flag. The advance flags support for the `start` command is as follows:
+Advanced flags can be set by using the configuration file in the `--config` flag. The advanced flags support for the `start` command is as follows:
 
 --ycql_port *ycql-port*
 : The port on which YCQL will run.
@@ -151,8 +155,7 @@ Advanced flags can be set by using the configuration file in the `--config` flag
 : The port on which main webserver will run.
 
 --callhome *bool*
-: Enable or disable the *call home* feature that sends analytics data to Yugabyte.
-Default: `true`.
+: Enable or disable the *call home* feature that sends analytics data to Yugabyte. Default: `true`.
 
 --master_flags *master_flags*
 : Specify extra [master flags](../../../reference/configuration/yb-master#configuration-flags) as a set of key value pairs. Format (key=value,key=value).
@@ -162,11 +165,11 @@ Default: `true`.
 
 --ysql_enable_auth *bool*
 : Enable or disable YSQL Authentication. Default is `false`.
-: If the `YSQL_PASSWORD` environment variable exists, then authentication mode is automatically changed to enforced.
+: If the `YSQL_PASSWORD` [environment variable](#environment-variables) exists, then authentication mode is automatically set to true.
 
 --use_cassandra_authentication *bool*
 : Enable or disable YCQL Authentication. Default is `false`.
-: If the `YCQL_USER` or `YCQL_PASSWORD` environment variables exist, then authentication mode is automatically changed to enforced.
+: If the `YCQL_USER` or `YCQL_PASSWORD` [environment variables](#environment-variables) exist, then authentication mode is automatically set to true.
 : **Note**: The corresponding environment variables have higher priority than the command-line flags.
 
 --initial_scripts_dir *initial-scripts-dir*
@@ -177,25 +180,26 @@ Default: `true`.
 #### Deprecated Flags
 
 --daemon *bool*
-: Enable or disable running `yugabyted` in the background as a daemon. Does not persist on restart.
-Default: `true`.
+: Enable or disable running yugabyted in the background as a daemon. Does not persist on restart. Default: `true`.
 
 --listen *bind-ip*
-: The IP address or localhost name to which `yugabyted` will listen.
+: The IP address or localhost name to which yugabyted will listen.
 
 -----
 
 ### configure
 
-Use the `yugabyted configure` command to configure the data placement constraints on the YugabyteDB cluster.
+Use the `yugabyted configure` command to configure the data placement constraints for the YugabyteDB cluster.
 
 #### Syntax
 
-```sh
+```text
 Usage: yugabyted configure [flags]
+```
 
-Examples:
-# create a multi zone YugabyteDB cluster
+For example, to create a multi zone YugabyteDB cluster:
+
+```sh
 yugabyted configure --fault_tolerance=zone
 ```
 
@@ -205,22 +209,22 @@ yugabyted configure --fault_tolerance=zone
 : Print the command line help and exit.
 
 --fault_tolerance *fault_tolerance*
-: Specify the fault tolerance associated with cluster. This flag can accept one of these values - zone, region, or cloud. `For example`: When the flag is configured with `zone`, `--fault_tolerance=zone`, Yugabyted will apply the `zone` data placement constraint on the YugabyteDB cluster to place the data in 3 different zones, if available.
+: Specify the fault tolerance for the cluster. This flag can accept one of these values - zone, region, or cloud. For example, when the flag is set to zone (`--fault_tolerance=zone`), Yugabyted applies zone fault tolerance to the cluster, placing the nodes in 3 different zones, if available.
 
 --data_placement_constraint *data-placement-constraint*
-: Specify the data placement constraint to be applied on the YugabyteDB cluster. This is an optional flag. This flag takes the comma-seperated values in the format `cloud.region.zone`.
+: Specify the data placement for the YugabyteDB cluster. This is an optional flag. The flag takes comma-seperated values in the format `cloud.region.zone`.
 
 --rf *replication-factor*
-: Specify the replication factor of the cluster. This is an optional flag which takes a value of `3` or `5`.
+: Specify the replication factor for the cluster. This is an optional flag which takes a value of `3` or `5`.
 
 --config *config-file*
-: The path to the configuration file of the yugabyted server that needs to be stopped.
+: The path to the configuration file of the yugabyted server.
 
 --data_dir *data-directory*
-: The data directory for the yugabyted server that needs to be stopped.
+: The data directory for the yugabyted server.
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server that needs to be stopped.
+: The base directory for the yugabyted server.
 
 -----
 
