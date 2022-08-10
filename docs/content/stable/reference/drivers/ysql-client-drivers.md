@@ -150,6 +150,58 @@ To download binary JAR files, go to [PostgreSQL JDBC driver – Downloads](https
 
 To get the latest versions for projects using [Apache Maven](https://maven.apache.org), see [Maven Central Repository Search](https://search.maven.org/artifact/org.postgresql/postgresql/42.2.14.jre7/jar).
 
+### Vert.x Reactive PostgreSQL Client
+
+[Vert.x Reactive PostgreSQL Client](https://vertx.io/docs/vertx-pg-client/java/) is a client that allows Vert.x-based applications to work with a PostgresSQL compatible database.
+
+The client is reactive and non blocking, allowing to handle many database connections with a single thread.
+
+#### Connect Vert.x application to YugabyteDB
+
+To connect a Vert.x application to YugabyteDB, follow the steps below.
+
+1. Add the client to the list of your project dependencies.
+
+    **Maven**
+
+    ```xml
+    <dependency>
+      <groupId>io.vertx</groupId>
+      <artifactId>vertx-pg-client</artifactId>
+      <version>RELEASE</version>
+    </dependency>
+    ```
+
+    **Gradle**
+
+    ```groovy
+    dependencies {
+      compile 'io.vertx:vertx-pg-client:RELEASE'
+    }
+    ```
+
+1. Create a SQL client for your YugabyteDB instance:
+
+    ```java
+    PgConnectOptions connectOptions = new PgConnectOptions()
+      .setPort(5433)
+      .setHost("the-host")
+      .setDatabase("the-db")
+      .setUser("user")
+      .setPassword("secret");
+
+    // Pool options
+    PoolOptions poolOptions = new PoolOptions()
+      .setMaxSize(5);
+
+    // Create the client pool
+    SqlClient client = PgPool.client(connectOptions, poolOptions);
+    ```
+
+#### Limitations
+
+[Pub/sub](https://vertx.io/docs/vertx-pg-client/java/#_pubsub) channels are currently not supported. This limitation will be lifted when `LISTEN`/`NOTIFY` support is added to YugabyteDB. Tracking issue: [#1872](https://github.com/yugabyte/yugabyte-db/issues/1872).
+
 ## Node.JS
 
 ### node-postgres
