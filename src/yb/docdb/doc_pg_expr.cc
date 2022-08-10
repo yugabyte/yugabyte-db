@@ -204,7 +204,7 @@ class DocPgExprExecutor::Private {
     YbgSetCurrentMemoryContext(row_ctx_, &old);
     for (const DocPgEvalExprData& target : targets_) {
       // Container for the DocDB result
-      QLExprResult &result = results->at(i++);
+      QLExprResult &result = (*results)[i++];
       // Containers for Postgres result
       uint64_t datum;
       bool is_null;

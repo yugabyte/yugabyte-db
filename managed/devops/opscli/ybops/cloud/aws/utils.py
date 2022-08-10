@@ -419,6 +419,20 @@ def get_zones(region, dest_vpc_id=None):
     return zone_mapping
 
 
+def same_networks(net1, net2):
+    """Method to check if two networks are the same.
+    """
+    try:
+        # Always false if one is v4 and the other is v6.
+        if net1._version != net2._version:
+            return False
+        return (net1.network_address == net2.network_address and
+                net1.broadcast_address == net2.broadcast_address)
+    except AttributeError:
+        raise YBOpsRuntimeError("Failed to check equality of networks {} and {}"
+                                .format(net1, net2))
+
+
 def get_vpc(client, tag_name, **kwargs):
     """Method to fetch vpc based on the tag_name and cidr optionally if present.
     Args:
@@ -433,7 +447,7 @@ def get_vpc(client, tag_name, **kwargs):
         net1 = ip_network(kwargs.get('cidr'))
         for vpc in vpcs:
             net2 = ip_network(vpc.cidr_block)
-            if net1.subnet_of(net2) and net2.subnet_of(net1):
+            if same_networks(net1, net2):
                 return vpc
             raise YBOpsRuntimeError("VPC {} with tag {} already exists with different CIDR {}"
                                     .format(vpc.id, tag_name, vpc.cidr_block))

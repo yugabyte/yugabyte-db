@@ -17,6 +17,22 @@
      "(^python/yb/test_data/.*[.](log|out)$)"
   ],
   "linters": {
+    "go-files": {
+        "type": "golint",
+        "include": "(^managed/.*\\.go$)",
+        "exclude": [
+            "(^managed/.*/third-party$)",
+            "(^managed/.*/generated$)"
+        ]
+    },
+    "go-files-length": {
+        "type": "text",
+        "text.max-line-length": 100,
+        "include": "(^managed/.*\\.go$)",
+        "severity": {
+            "2": "disabled"
+        }
+    },
     "script-and-regex.script": {
       "type": "script-and-regex",
       "include": "(^managed/.*\\.java$)",
@@ -29,6 +45,9 @@
       "type": "text",
       "text.max-line-length": 100,
       "exclude": [
+        "(^managed/.*\\.go$)",
+        "(^managed/.*/go.mod)",
+        "(^managed/.*/go.sum)",
         "(^managed/ui/)",
         "(^thirdparty/thirdparty_src_checksums[.]txt$)",
         "(^java/yb-client/src/test/java/org/yb/client/TestYBClient[.]java$)",

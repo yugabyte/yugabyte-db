@@ -100,17 +100,9 @@ func (handler *stateHandlerTask) handleUpgradingState(ctx context.Context, confi
 	util.FileLogger.Info("Starting the node agent Upgrading process")
 	result, err := HandlePutAgent()(ctx)
 	if err != nil {
-		errStr := "Error while posting upgrading state to the platform -"
-		if data, ok := result.(*model.ResponseError); ok {
-			util.CliLogger.Errorf("%s %s", errStr, data.Error)
-			util.FileLogger.Errorf("%s %s", errStr, data.Error)
-		} else if data, ok := result.(*string); ok {
-			util.CliLogger.Errorf("%s %s", errStr, *data)
-			util.FileLogger.Errorf("%s %s", errStr, *data)
-		} else {
-			util.CliLogger.Errorf("%s %s", errStr, err.Error())
-			util.FileLogger.Errorf("%s %s", errStr, err.Error())
-		}
+		errStr := "Error while posting upgrading state to the platform"
+		util.CliLogger.Errorf("%s %s", errStr, err)
+		util.FileLogger.Errorf("%s %s", errStr, err)
 		return
 	}
 	// Get the latest version certs

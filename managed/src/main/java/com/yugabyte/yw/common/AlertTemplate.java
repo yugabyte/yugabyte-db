@@ -289,9 +289,11 @@ public enum AlertTemplate {
       "DB node disk usage",
       "Node Disk usage percentage is above threshold",
       "count by (node_prefix) (100 - (sum without (saved_name) "
-          + "(node_filesystem_free_bytes{mountpoint=~\"/mnt/.*\", node_prefix=\"__nodePrefix__\"}) "
+          + "(node_filesystem_free_bytes{mountpoint=~\"/mnt/d[0-9]+\","
+          + " node_prefix=\"__nodePrefix__\"}) "
           + "/ sum without (saved_name) "
-          + "(node_filesystem_size_bytes{mountpoint=~\"/mnt/.*\", node_prefix=\"__nodePrefix__\"}) "
+          + "(node_filesystem_size_bytes{mountpoint=~\"/mnt/d[0-9]+\","
+          + " node_prefix=\"__nodePrefix__\"}) "
           + "* 100) {{ query_condition }} {{ query_threshold }})",
       "Node disk usage for universe '{{ $labels.source_name }}'"
           + " is above {{ $labels.threshold }}% on {{ $value | printf \\\"%.0f\\\" }} node(s).",

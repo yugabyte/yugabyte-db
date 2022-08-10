@@ -261,9 +261,6 @@ class QLExprExecutor {
   //------------------------------------------------------------------------------------------------
   // CQL Support.
 
-  // Get TServer opcode.
-  yb::bfql::TSOpcode GetTSWriteInstruction(const QLExpressionPB& ql_expr) const;
-
   // Evaluate the given QLExpressionPB.
   Status EvalExpr(const QLExpressionPB& ql_expr,
                           const QLTableRow& table_row,
@@ -309,9 +306,6 @@ class QLExprExecutor {
 
   //------------------------------------------------------------------------------------------------
   // PGSQL Support.
-
-  // Get TServer opcode.
-  bfpg::TSOpcode GetTSWriteInstruction(const PgsqlExpressionPB& ql_expr) const;
 
   // Evaluate the given QLExpressionPB.
   Status EvalExpr(const PgsqlExpressionPB& ql_expr,
@@ -406,6 +400,10 @@ Status EvalOperands(
 
   return EvalOperandsHelper(executor, operands.begin(), table_row, std::forward<Args>(args)...);
 }
+
+// Get TServer opcode.
+yb::bfql::TSOpcode GetTSWriteInstruction(const QLExpressionPB& ql_expr);
+bfpg::TSOpcode GetTSWriteInstruction(const PgsqlExpressionPB& ql_expr);
 
 } // namespace yb
 

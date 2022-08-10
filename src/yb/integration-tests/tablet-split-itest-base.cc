@@ -914,6 +914,30 @@ Status TabletSplitExternalMiniClusterITest::WaitForTablets(size_t num_tablets) {
   return status;
 }
 
+Status TabletSplitExternalMiniClusterITest::WaitTServerToBeQuietOnTablet(
+    itest::TServerDetails* const ts_desc, const TabletId& tablet_id) {
+  OpId leader_last_op_id;
+
+  RETURN_NOT_OK(WaitFor(
+    [&tablet_id, &leader_last_op_id, ts_desc]() -> Result<bool> {
+      for (auto op_id_type : {consensus::RECEIVED_OPID, consensus::COMMITTED_OPID}) {
+        const auto op_id = VERIFY_RESULT(
+            GetLastOpIdForReplica(tablet_id, ts_desc, op_id_type, kRpcTimeout));
+        if (op_id > leader_last_op_id) {
+          leader_last_op_id = op_id;
+          return false;
+        }
+      }
+      return true;
+    },
+    10s * kTimeMultiplier,
+    strings::Substitute("Wait for the tablet $0 to be quiet on tablet uuid $1",
+                                    tablet_id, ts_desc->uuid()),
+    MonoDelta::FromMilliseconds(test_util::kDefaultInitialWaitMs * 2000)));
+
+  return Status::OK();
+}
+
 Result<TabletId> TabletSplitExternalMiniClusterITest::GetOnlyTestTabletId(size_t tserver_idx) {
   auto tablet_ids = VERIFY_RESULT(GetTestTableTabletIds(tserver_idx));
   if (tablet_ids.size() != 1) {

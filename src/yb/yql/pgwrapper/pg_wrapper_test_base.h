@@ -48,7 +48,8 @@ class PgCommandTestBase : public PgWrapperTestBase {
     db_name_ = db_name;
   }
 
-  void RunPsqlCommand(const std::string &statement, const std::string &expected_output);
+  void RunPsqlCommand(
+      const std::string &statement, const std::string &expected_output, bool tuples_only = false);
 
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override;
 

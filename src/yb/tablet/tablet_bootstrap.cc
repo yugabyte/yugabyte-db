@@ -498,6 +498,7 @@ class TabletBootstrap {
         listener_(data.listener),
         append_pool_(data.append_pool),
         allocation_pool_(data.allocation_pool),
+        log_sync_pool_(data.log_sync_pool),
         skip_wal_rewrite_(GetAtomicFlag(&FLAGS_skip_wal_rewrite)),
         test_hooks_(data.test_hooks) {
   }
@@ -814,6 +815,7 @@ class TabletBootstrap {
         tablet_->GetTabletMetricsEntity(),
         append_pool_,
         allocation_pool_,
+        log_sync_pool_,
         metadata.cdc_min_replicated_index(),
         &log_,
         create_new_segment));
@@ -1665,6 +1667,9 @@ class TabletBootstrap {
   ThreadPool* append_pool_;
 
   ThreadPool* allocation_pool_;
+
+  // Thread pool for executing log fsync tasks.
+  ThreadPool* log_sync_pool_;
 
   // Statistics on the replay of entries in the log.
   struct Stats {

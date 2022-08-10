@@ -9,7 +9,6 @@ menu:
   stable:
     identifier: manage
     parent: launch-and-manage
-    weight: 900
 type: indexpage
 ---
 <div class="row">

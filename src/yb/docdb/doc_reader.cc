@@ -104,14 +104,6 @@ int64_t GetTtlRemainingSeconds(
   return remaining_us / MonoTime::kMicrosecondsPerSecond;
 }
 
-bool IsObsolete(const Expiration& expiration, const HybridTime& read_time) {
-  if (expiration.ttl == ValueControlFields::kMaxTtl) {
-    return false;
-  }
-
-  return HasExpiredTTL(expiration.write_ht, expiration.ttl, read_time);
-}
-
 Slice NullSlice() {
   static char null_column_type = ValueEntryTypeAsChar::kNullLow;
   return Slice(&null_column_type, sizeof(null_column_type));
@@ -220,23 +212,6 @@ struct StateEntry {
     return YB_STRUCT_TO_STRING(write_time, expiration, key_value);
   }
 };
-
-Result<bool> TryDecodeValue(
-    HybridTime read_time, const ValueControlFields& control_fields, HybridTime write_time,
-    const Expiration& expiration, const Slice& value_slice, SubDocument* out) {
-  if (!out) {
-    return DecodeValueEntryType(value_slice) != ValueEntryType::kTombstone;
-  }
-  RETURN_NOT_OK(out->DecodeFromValue(value_slice));
-  if (control_fields.has_user_timestamp()) {
-    out->SetWriteTime(control_fields.user_timestamp);
-  } else {
-    out->SetWriteTime(write_time.GetPhysicalValueMicros());
-  }
-  out->SetTtl(GetTtlRemainingSeconds(read_time, write_time, expiration));
-
-  return !out->IsTombstone();
-}
 
 // Implements main logic in the reader.
 // Used keep scan state and avoid passing it between methods.
@@ -437,10 +412,10 @@ class DocDBTableReader::GetHelper {
     VLOG_WITH_PREFIX_AND_FUNC(4)
         << "State: " << AsString(state_) << ", value: " << value_slice.ToDebugHexString();
     auto& current = state_.back();
-    if (!IsObsolete(current.expiration, reader_.iter_->read_time().read)) {
+    if (!IsObsolete(current.expiration)) {
       if (VERIFY_RESULT(TryDecodeValue(
-              reader_.iter_->read_time().read, control_fields, current.write_time.hybrid_time(),
-              current.expiration, value_slice, current.out))) {
+              control_fields, current.write_time.hybrid_time(), current.expiration, value_slice,
+              current.out))) {
         last_found_ = column_index_;
         return true;
       }
@@ -474,15 +449,25 @@ class DocDBTableReader::GetHelper {
   }
 
   Result<bool> DecodePackedColumn() {
+    VLOG_WITH_PREFIX_AND_FUNC(4)
+        << "Packed data " << (packed_column_data_ ? "present" : "missing") << ", expiration: "
+        << state_.back().expiration.ToString();
     if (!packed_column_data_) {
       return false;
     }
+    Slice value = packed_column_data_.encoded_value;
+    auto control_fields = VERIFY_RESULT(ValueControlFields::Decode(&value));
+    const auto& write_time = packed_column_data_.row->doc_ht;
+    auto expiration = GetNewExpiration(
+        state_.back().expiration, control_fields.ttl, write_time);
+    if (IsObsolete(expiration)) {
+      return false;
+    }
     return TryDecodeValue(
-        reader_.iter_->read_time().read,
         packed_column_data_.row->control_fields,
-        packed_column_data_.row->doc_ht.hybrid_time(),
-        state_.back().expiration,
-        packed_column_data_.encoded_value,
+        write_time.hybrid_time(),
+        expiration,
+        value,
         &result_.AllocateChild((*reader_.projection_)[column_index_]));
   }
 
@@ -507,8 +492,9 @@ class DocDBTableReader::GetHelper {
     DocHybridTime doc_ht = reader_.table_tombstone_time_;
     RETURN_NOT_OK(reader_.iter_->FindLatestRecord(root_doc_key_, &doc_ht, &value));
 
+    auto& root = state_.front();
     if (!reader_.iter_->valid()) {
-      state_.front().write_time = reader_.table_tombstone_time_;
+      root.write_time = reader_.table_tombstone_time_;
       return Status::OK();
     }
     auto control_fields = VERIFY_RESULT(ValueControlFields::Decode(&value));
@@ -520,6 +506,8 @@ class DocDBTableReader::GetHelper {
       packed_row_.Assign(value);
       packed_row_data_.doc_ht = doc_ht;
       packed_row_data_.control_fields = control_fields;
+      auto& expiration = root.expiration;
+      expiration = GetNewExpiration(expiration, control_fields.ttl, doc_ht);
     } else if (value_type != ValueEntryType::kTombstone && value_type != ValueEntryType::kInvalid) {
       // Used in tests only
       has_root_value_ = true;
@@ -530,8 +518,9 @@ class DocDBTableReader::GetHelper {
       }
     }
 
-    VLOG_WITH_PREFIX_AND_FUNC(4) << "Write time: " << doc_ht;
-    state_.front().write_time = doc_ht;
+    VLOG_WITH_PREFIX_AND_FUNC(4)
+        << "Write time: " << doc_ht << ", control fields: " << control_fields.ToString();
+    root.write_time = doc_ht;
     return Status::OK();
   }
 
@@ -542,6 +531,7 @@ class DocDBTableReader::GetHelper {
     }
 
     if (column_id == KeyEntryValue::kLivenessColumn.GetColumnId()) {
+      VLOG_WITH_PREFIX_AND_FUNC(4) << "Packed row for liveness column";
       return PackedColumnData {
         .row = &packed_row_data_,
         .encoded_value = NullSlice(),
@@ -550,7 +540,7 @@ class DocDBTableReader::GetHelper {
 
     auto slice = schema_packing_->GetValue(column_id, packed_row_.AsSlice());
     if (!slice) {
-      VLOG_WITH_PREFIX_AND_FUNC(4) << "No packed row data";
+      VLOG_WITH_PREFIX_AND_FUNC(4) << "No packed row data for " << column_id;
       return PackedColumnData();
     }
 
@@ -559,6 +549,31 @@ class DocDBTableReader::GetHelper {
       .row = &packed_row_data_,
       .encoded_value = slice->empty() ? NullSlice() : *slice,
     };
+  }
+
+  Result<bool> TryDecodeValue(
+      const ValueControlFields& control_fields, HybridTime write_time,
+      const Expiration& expiration, const Slice& value_slice, SubDocument* out) {
+    if (!out) {
+      return DecodeValueEntryType(value_slice) != ValueEntryType::kTombstone;
+    }
+    RETURN_NOT_OK(out->DecodeFromValue(value_slice));
+    if (control_fields.has_user_timestamp()) {
+      out->SetWriteTime(control_fields.user_timestamp);
+    } else {
+      out->SetWriteTime(write_time.GetPhysicalValueMicros());
+    }
+    out->SetTtl(GetTtlRemainingSeconds(reader_.iter_->read_time().read, write_time, expiration));
+
+    return !out->IsTombstone();
+  }
+
+  bool IsObsolete(const Expiration& expiration) {
+    if (expiration.ttl == ValueControlFields::kMaxTtl) {
+      return false;
+    }
+
+    return HasExpiredTTL(expiration.write_ht, expiration.ttl, reader_.iter_->read_time().read);
   }
 
   std::string LogPrefix() const {

@@ -121,6 +121,7 @@ DECLARE_int32(rocksdb_base_background_compactions);
 DECLARE_int32(rocksdb_max_background_compactions);
 DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
 DECLARE_bool(enable_automatic_tablet_splitting);
+DECLARE_bool(TEST_pause_rbs_before_download_wal);
 DECLARE_int64(tablet_split_low_phase_shard_count_per_node);
 DECLARE_int64(tablet_split_high_phase_shard_count_per_node);
 DECLARE_int64(tablet_split_low_phase_size_threshold_bytes);
@@ -1834,6 +1835,182 @@ TEST_F(AutomaticTabletSplitExternalMiniClusterITest, CrashedSplitIsRestarted) {
   }, split_completion_timeout_sec_, "Waiting for split children to be running."));
 }
 
+class  AutomaticTabletSplitAddServerITest: public AutomaticTabletSplitITest {
+ public:
+  void SetUp() override {
+    AutomaticTabletSplitITest::SetUp();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_shard_count_per_node) = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_size_threshold_bytes) = 0;
+    // Skip post split compaction to protect child tablets from being split.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_post_split_compaction) = true;
+  }
+
+  void BuildTServerMap() {
+    master::MasterClusterProxy master_proxy(
+        proxy_cache_.get(), cluster_->mini_master()->bound_rpc_addr());
+    ts_map_ = ASSERT_RESULT(itest::CreateTabletServerMap(master_proxy, proxy_cache_.get()));
+  }
+
+  void AddTabletToNewTServer(const TabletId& tablet_id,
+                         const std::string& leader_id,
+                         consensus::PeerMemberType peer_type) {
+    const auto new_ts = cluster_->num_tablet_servers();
+    ASSERT_OK(cluster_->AddTabletServer());
+    ASSERT_OK(cluster_->WaitForTabletServerCount(new_ts + 1));
+    const auto new_tserver = cluster_->mini_tablet_server(new_ts)->server();
+    const auto new_ts_id = new_tserver->permanent_uuid();
+    LOG(INFO) << "Added new tserver: " << new_ts_id;
+
+    auto* const catalog_mgr = ASSERT_RESULT(catalog_manager());
+    const auto tablet = ASSERT_RESULT(GetSingleTestTabletInfo(catalog_mgr));
+    BuildTServerMap();
+    const auto leader = ts_map_[leader_id].get();
+
+    // Replicate to the new tserver.
+    ASSERT_OK(itest::AddServer(
+        leader, tablet_id, ts_map_[new_ts_id].get(), peer_type, boost::none, kRpcTimeout));
+
+    // Wait for config change reported to master.
+    ASSERT_OK(itest::WaitForTabletConfigChange(tablet, new_ts_id, consensus::ADD_SERVER));
+
+    // Wait until replicated to new tserver.
+    ASSERT_OK(WaitFor([&]() -> Result<bool> {
+      return itest::GetNumTabletsOfTableOnTS(new_tserver, table_->id()) == 1;
+    }, 20s * kTimeMultiplier, "Waiting for new tserver having one tablet."));
+  }
+
+  Result<size_t> GetLeaderIdx(const master::TabletInfoPtr tablet) {
+    const auto leader_ts_desc = CHECK_RESULT(tablet->GetLeader());
+    for (size_t idx = 0; idx < cluster_->num_tablet_servers(); ++idx) {
+      const auto tserver = cluster_->mini_tablet_server(idx)->server();
+      if (tserver->permanent_uuid() == leader_ts_desc->permanent_uuid()) {
+        return idx;
+      }
+    }
+    return STATUS(NotFound, Format("No tserver hosts leader of tablet $0", tablet->id()));
+  }
+
+  itest::TabletServerMap ts_map_;
+};
+
+TEST_F(AutomaticTabletSplitAddServerITest, DoNotSplitTabletDoingRBS) {
+  // Test should not schedule automatic tablet split on tablet in progress of remote bootstrap.
+
+  CreateSingleTablet();
+  ASSERT_OK(WriteRows());
+
+  BuildTServerMap();
+
+  const auto catalog_mgr = ASSERT_RESULT(catalog_manager());
+  const auto tablet = ASSERT_RESULT(GetSingleTestTabletInfo(catalog_mgr));
+  const auto tablet_id = tablet->id();
+  const auto leader_idx = ASSERT_RESULT(GetLeaderIdx(tablet));
+  const auto leader_ts = cluster_->mini_tablet_server(leader_idx)->server();
+  const auto leader_id = leader_ts->permanent_uuid();
+  const auto follower_idx = (leader_idx + 1) % 3;
+  const auto follower_id = cluster_->mini_tablet_server(follower_idx)->server()->permanent_uuid();
+  LOG(INFO) << "Source tablet id " << tablet_id;
+
+  // Remove tablet from follower to let tablet live replicas == table replication factor
+  // after adding a new tserver.
+  ASSERT_OK(itest::RemoveServer(
+      ts_map_[leader_id].get(), tablet_id, ts_map_[follower_id].get(),
+      boost::none, kRpcTimeout));
+  ASSERT_OK(itest::WaitForTabletConfigChange(tablet, follower_id, consensus::REMOVE_SERVER));
+
+  // Start rbs on it but pause before downloading wal.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_rbs_before_download_wal) = true;
+
+  // Create a new tserver and add tablet to it. By adding it as PRE_VOTER, it will be promoted
+  // to be VOTER and will participate in raft consensus.
+  AddTabletToNewTServer(tablet_id, leader_id, consensus::PeerMemberType::PRE_VOTER);
+
+  const auto new_ts_idx = cluster_->num_tablet_servers() - 1;
+  const auto new_tserver = cluster_->mini_tablet_server(new_ts_idx);
+  const auto new_ts_id = new_tserver->server()->permanent_uuid();
+
+  // Wait for the first heartbeat from new tserver to update the replica state to NOT_STARTED.
+  ASSERT_OK(itest::WaitUntilTabletInState(tablet, new_ts_id, tablet::NOT_STARTED));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = true;
+
+  // Fail to split because tablet is doing RBS and under replication.
+  ASSERT_FALSE(master::CheckLiveReplicasForSplit(
+      tablet_id, *tablet->GetReplicaLocations(), FLAGS_replication_factor));
+  ASSERT_EQ(itest::GetNumTabletsOfTableOnTS(leader_ts, table_->id()), 1);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_rbs_before_download_wal) = false;
+
+  // Should succeed to split since RBS is done.
+  ASSERT_OK(WaitForTabletSplitCompletion(2));
+}
+
+TEST_F(AutomaticTabletSplitAddServerITest, DoNotSplitOverReplicatedTablet) {
+  // Test should not schedule automatic tablet split on over-replicated tablet.
+
+  CreateSingleTablet();
+  ASSERT_OK(WriteRows());
+
+  auto* const catalog_mgr = ASSERT_RESULT(catalog_manager());
+  const auto tablet = ASSERT_RESULT(GetSingleTestTabletInfo(catalog_mgr));
+  const auto tablet_id = tablet->id();
+  const auto leader_idx = ASSERT_RESULT(GetLeaderIdx(tablet));
+  const auto leader_ts = cluster_->mini_tablet_server(leader_idx)->server();
+  const auto leader_id = leader_ts->permanent_uuid();
+  const auto follower_idx = (leader_idx + 1) % 3;
+  const auto follower_id = cluster_->mini_tablet_server(follower_idx)->server()->permanent_uuid();
+  LOG(INFO) << "Source tablet id " << tablet_id;
+
+  // Create a new tserver and add tablet to it. By adding it as PRE_VOTER, it will be promoted
+  // to be VOTER and will participate in raft consensus.
+  AddTabletToNewTServer(tablet_id, leader_id, consensus::PeerMemberType::PRE_VOTER);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = true;
+
+  // Should fail to split because of over replication.
+  ASSERT_FALSE(master::CheckLiveReplicasForSplit(
+      tablet_id, *tablet->GetReplicaLocations(), FLAGS_replication_factor));
+  ASSERT_EQ(itest::GetNumTabletsOfTableOnTS(leader_ts, table_->id()), 1);
+
+  // Remove tablet from follower to let tablet live replicas == table replication factor.
+  ASSERT_OK(itest::RemoveServer(
+      ts_map_[leader_id].get(), tablet_id,
+      ts_map_[follower_id].get(), boost::none, kRpcTimeout));
+  ASSERT_OK(itest::WaitForTabletConfigChange(tablet, follower_id, consensus::REMOVE_SERVER));
+
+  // Should succeed to split since live replicas = 3 after RemoveServer.
+  ASSERT_OK(WaitForTabletSplitCompletion(2));
+}
+
+TEST_F(AutomaticTabletSplitAddServerITest, SplitTabletWithReadReplica) {
+  // Test split on tablet with 3 live replicas and one read replica,
+  // it should not be treated as over-replicated and succeed.
+
+  CreateSingleTablet();
+  ASSERT_OK(WriteRows());
+
+  const auto catalog_mgr = ASSERT_RESULT(catalog_manager());
+  const auto tablet = ASSERT_RESULT(GetSingleTestTabletInfo(catalog_mgr));
+  const auto tablet_id = tablet->id();
+  const auto leader_idx = ASSERT_RESULT(GetLeaderIdx(tablet));
+  const auto leader_ts = cluster_->mini_tablet_server(leader_idx)->server();
+  const auto leader_id = leader_ts->permanent_uuid();
+  LOG(INFO) << "Source tablet id " << tablet_id;
+
+  // Create a new tserver and add tablet to it By adding it as PRE_OBSERVER,
+  // it will be promoted to be OBSERVER after RBS is done and will be a read replica.
+  AddTabletToNewTServer(tablet_id, leader_id, consensus::PeerMemberType::PRE_OBSERVER);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = true;
+
+  // Should succeed to split because read replica should not cause over replication.
+  ASSERT_OK(WaitForTabletSplitCompletion(/* expected_non_split_tablets = */ 2,
+                                         /* expected_split_tablets = */ 0,
+                                         /* num_replicas_online = */ 4));
+}
+
 class TabletSplitSingleServerITest : public TabletSplitITest {
  protected:
   int64_t GetRF() override { return 1; }
@@ -2535,21 +2712,7 @@ TEST_F_EX(
 
   // We need to pause leader on UpdateMajorityReplicated for SPLIT_OP, not for previous OPs, so
   // wait for tablet to be quiet.
-  OpId leader_last_op_id;
-  auto* const leader_ts_details = ts_map[leader->uuid()].get();
-  ASSERT_OK(WaitFor(
-      [&source_tablet_id, &leader_last_op_id, leader_ts_details]() -> Result<bool> {
-        for (auto op_id_type : {consensus::RECEIVED_OPID, consensus::COMMITTED_OPID}) {
-          const auto op_id = VERIFY_RESULT(
-              GetLastOpIdForReplica(source_tablet_id, leader_ts_details, op_id_type, kRpcTimeout));
-          if (op_id > leader_last_op_id) {
-            leader_last_op_id = op_id;
-            return false;
-          }
-        }
-        return true;
-      },
-      10s * kTimeMultiplier, "Wait for the parent tablet to be quiet"));
+  ASSERT_OK(WaitTServerToBeQuietOnTablet(ts_map[leader->uuid()].get(), source_tablet_id));
 
   // We want the leader to not apply the split operation for now, but commit it, so RBSed node
   // replays it.

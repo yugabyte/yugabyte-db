@@ -281,37 +281,19 @@ using namespace std::literals;  // NOLINT
 
 using rocksdb::WriteBatch;
 using rocksdb::SequenceNumber;
-using yb::tserver::WriteRequestPB;
-using yb::tserver::WriteResponsePB;
 using yb::docdb::KeyValueWriteBatchPB;
-using yb::tserver::ReadRequestPB;
-using yb::docdb::DocOperation;
-using yb::docdb::RedisWriteOperation;
-using yb::docdb::QLWriteOperation;
-using yb::docdb::PgsqlWriteOperation;
-using yb::docdb::DocDBCompactionFilterFactory;
-using yb::docdb::InitMarkerBehavior;
 
 namespace yb {
 namespace tablet {
 
-using consensus::MaximumOpId;
-using log::LogAnchorRegistry;
 using strings::Substitute;
-using base::subtle::Barrier_AtomicIncrement;
 
-using client::ChildTransactionData;
-using client::TransactionManager;
 using client::YBSession;
-using client::YBTransaction;
 using client::YBTablePtr;
 
 using docdb::DocKey;
-using docdb::DocPath;
 using docdb::DocRowwiseIterator;
-using docdb::DocWriteBatch;
 using docdb::SubDocKey;
-using docdb::PrimitiveValue;
 using docdb::StorageDbType;
 
 const std::hash<std::string> hash_for_data_root_dir;
@@ -3544,10 +3526,10 @@ const std::string& Tablet::tablet_id() const {
   return metadata_->raft_group_id();
 }
 
-Result<std::string> Tablet::GetEncodedMiddleSplitKey() const {
+Result<std::string> Tablet::GetEncodedMiddleSplitKey(std::string *partition_split_key) const {
   auto error_prefix = [this]() {
     return Format(
-        "Failed to detect middle key for tablet $0 (key_bounds: $1 - $2)",
+        "Failed to detect middle key for tablet $0 (key_bounds: \"$1\" - \"$2\")",
         tablet_id(),
         Slice(key_bounds_.lower).ToDebugHexString(),
         Slice(key_bounds_.upper).ToDebugHexString());
@@ -3598,6 +3580,31 @@ Result<std::string> Tablet::GetEncodedMiddleSplitKey() const {
         tserver::TabletServerError(tserver::TabletServerErrorPB::TABLET_SPLIT_KEY_RANGE_TOO_SMALL),
         "$0: got \"$1\".", error_prefix(), middle_key_slice.ToDebugHexString());
   }
+
+  // Check middle_key fits tablet's partition bounds
+  const Slice partition_start(metadata()->partition()->partition_key_start());
+  const Slice partition_end(metadata()->partition()->partition_key_end());
+  std::string middle_hash_key;
+  if (metadata()->partition_schema()->IsHashPartitioning()) {
+    const auto doc_key_hash = VERIFY_RESULT(docdb::DecodeDocKeyHash(middle_key));
+    if (doc_key_hash.has_value()) {
+      middle_hash_key = PartitionSchema::EncodeMultiColumnHashValue(doc_key_hash.value());
+      if (partition_split_key) {
+        *partition_split_key = middle_hash_key;
+      }
+    }
+  }
+  const Slice partition_middle_key(middle_hash_key.size() ? middle_hash_key : middle_key);
+  if (partition_middle_key.compare(partition_start) <= 0 ||
+      (!partition_end.empty() && partition_middle_key.compare(partition_end) >= 0)) {
+    // This error occurs when middle key is not strictly between partition bounds.
+    return STATUS_EC_FORMAT(IllegalState,
+        tserver::TabletServerError(tserver::TabletServerErrorPB::TABLET_SPLIT_KEY_RANGE_TOO_SMALL),
+        "$0 with partition bounds (\"$1\" - \"$2\"): got \"$3\".",
+        error_prefix(), partition_start.ToDebugHexString(), partition_end.ToDebugHexString(),
+        middle_key_slice.ToDebugHexString());
+  }
+
   return middle_key;
 }
 
