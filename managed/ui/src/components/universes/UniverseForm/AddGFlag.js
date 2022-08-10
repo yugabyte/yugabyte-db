@@ -31,11 +31,12 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
 
   const handleFlagSelect = (flag) => {
     let flagvalue = null;
+    const defaultKey = flag?.hasOwnProperty('current') ? 'current' : 'default'; // Guard condition to handle inconstintency in gflag metadata
     if (flag?.type === 'bool')
-      if (['false', false].includes(flag?.default)) flagvalue = false;
+      if (['false', false].includes(flag[defaultKey])) flagvalue = false;
       else flagvalue = true;
-    else if (!['bool', 'string'].includes(flag?.type)) flagvalue = Number(flag?.default);
-    else flagvalue = flag?.default;
+    else if (!['bool', 'string'].includes(flag?.type)) flagvalue = Number(flag[defaultKey]);
+    else flagvalue = flag[defaultKey];
     setSelectedFlag(flag);
     formProps.setValues({
       ...gFlagProps,
@@ -70,12 +71,13 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
       setMostUsedFlags([flag?.data]);
       setFilteredArr([flag?.data]);
       setSelectedFlag(flag?.data);
-      if (flagvalue === undefined)
+      if (flagvalue === undefined) {
+        const defaultKey = flag?.data?.hasOwnProperty('current') ? 'current' : 'default';
         formProps.setValues({
           ...gFlagProps,
-          flagvalue: flag?.data?.default
+          flagvalue: flag?.data[defaultKey]
         });
-      else formProps.setValues(gFlagProps);
+      } else formProps.setValues(gFlagProps);
       setLoader(false);
     } catch (e) {
       setAPIError(e?.error);
@@ -136,6 +138,7 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
 
   //renderers
   const renderFormComponent = (flag) => {
+    const defaultKey = selectedFlag?.hasOwnProperty('current') ? 'current' : 'default';
     switch (flag?.type) {
       case 'bool':
         return (
@@ -154,7 +157,7 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
                     />{' '}
                     {`${target}`}{' '}
                     <span className="default-text">
-                      {[target, `${target}`].includes(selectedFlag?.default) ? '(Default)' : ''}
+                      {[target, `${target}`].includes(selectedFlag[defaultKey]) ? '(Default)' : ''}
                     </span>
                   </span>
                 ))}
@@ -244,7 +247,8 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
 
   const renderFlagDetails = () => {
     const showDocLink = mode !== EDIT && (toggleMostUsed || isMostUsed(selectedFlag?.name));
-    if (selectedFlag)
+    if (selectedFlag) {
+      const defaultKey = selectedFlag?.hasOwnProperty('current') ? 'current' : 'default';
       return (
         <>
           <div className="gflag-detail-container">
@@ -253,10 +257,10 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
             {renderFieldInfo('Description', selectedFlag?.meaning)}
             <div className="gflag-detail-value">
               <FlexContainer direction="column">
-                {selectedFlag?.default && (
+                {selectedFlag[defaultKey] && (
                   <>
                     <span className="gflag-description-title">Default Value</span>
-                    <Badge className="gflag-badge">{selectedFlag?.default}</Badge>
+                    <Badge className="gflag-badge">{selectedFlag[defaultKey]}</Badge>
                   </>
                 )}
                 {showDocLink && documentationLink}
@@ -267,7 +271,7 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
           <div className="gflag-form">{renderFormComponent(selectedFlag)}</div>
         </>
       );
-    else return infoText;
+    } else return infoText;
   };
 
   return (

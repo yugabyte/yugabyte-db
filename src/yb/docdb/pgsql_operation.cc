@@ -325,7 +325,8 @@ class PgsqlWriteOperation::RowPackContext {
       : query_id_(request.stmt_id()),
         data_(data),
         write_id_(data.doc_write_batch->ReserveWriteId()),
-        packer_(packer_data.schema_version, packer_data.packing, FLAGS_ysql_packed_row_size_limit) {
+        packer_(packer_data.schema_version, packer_data.packing, FLAGS_ysql_packed_row_size_limit,
+                ValueControlFields()) {
   }
 
   Result<bool> Add(ColumnId column_id, const QLValuePB& value) {

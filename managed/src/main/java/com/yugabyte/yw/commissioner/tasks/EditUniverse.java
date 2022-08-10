@@ -161,6 +161,9 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       }
 
       // Wait for the master leader to hear from all tservers.
+      // NOTE: Universe expansion will fail in the master leader failover scenario - if a node
+      // is down externally for >15 minutes and the master leader then marks the node down for
+      // real. Then that down TServer will timeout this task and universe expansion will fail.
       createWaitForTServerHeartBeatsTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Update the DNS entry for this universe, based in primary provider info.
