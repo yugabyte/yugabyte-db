@@ -15,22 +15,28 @@
 # specific language governing permissions and limitations
 # under the License.
 
-Release Notes for Apache AGE release v1.0.0
+Release Notes for Apache AGE release v1.1.0
 
-Apache AGE 1.0.0 - Release Notes 
+Apache AGE 1.1.0 - Release Notes 
 
-    Add an upgrading SQL script file from 0.5.0 to 0.6.0 
-    Add upgrading file age--0.6.0--0.7.0.sql
-    Refactor function get_agtype_value_object_value
-    Age load issue (#188)
-    Refactor agtype_access_operator
-    Bugfix - Remove INLINE from function declaration
-    Rebase VLE code
-    Implement Merge Clause
-    Bugfix: chained union logic
-    Allow a path of one vertex
-    Created functions for load graph from CSV files 
-    Add UNION into EXPLAIN grammar rule
-    Implement `UNWIND` clause(#173)
-    Bugfix:(nodejs) Corrects parsing for independence value(#177)
-    Feat: Implement `OPTIONAL MATCH` (#175)
+    Support for Agtype containment ops and GIN Indices.
+    Add CALL [YIELD] grammar rules for the implementation of CALL procedures.
+    VLE path variable integration performance patch.
+    Improve WHERE clause performance and support index scans.
+    Allow global graph contexts to see currentCommandIds.
+    Cache Agtype and GRAPHID OIDs.
+    Allow lists and maps to be used in the SET clause.
+    Fix bug in aggregate function collect().
+    Fix Bug in WHERE clause and property constraints.
+    Fix VLE local cache bug (crash).
+    Fix bug where integers were not being serialized correctly when stored in GIN indices.
+    Fix the VLE peek_stack_head routine to return a NULL if the stack is NULL.
+    Fix MERGE visibility in chained commands, SET specifically.
+    Fix github issue #212 - Add access operator (`->`, `->>`) to Agtype.
+    Fix github issue #220 - fix local cached contexts for static procedures.
+    Fix github issue #224 - fix regression tests to fix issues on mac with trigonometric functions.
+    Fix github issue #235 - when MERGE and SET were used together.
+    Fix github issue #240 - negative array bounds.
+    Fix github issue #240 - negative array bounds - addendum.
+    Updated README.
+
