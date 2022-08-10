@@ -35,6 +35,9 @@ import org.apache.commons.lang3.tuple.Pair;
 
 @Slf4j
 public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
+
+  protected Set<UUID> lockedXClusterUniversesUuidSet = null;
+
   protected static final UpgradeContext DEFAULT_CONTEXT =
       UpgradeContext.builder()
           .reconfigureMaster(false)
@@ -125,7 +128,11 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
           getRunnableTask().runSubTasks();
         }
       } finally {
-        unlockUniverseForUpdate();
+        try {
+          unlockXClusterUniverses(lockedXClusterUniversesUuidSet, false /* ignoreErrors */);
+        } finally {
+          unlockUniverseForUpdate();
+        }
       }
     }
     log.info("Finished {} task.", getName());

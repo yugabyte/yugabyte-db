@@ -1560,6 +1560,7 @@ class TransferXClusterCerts(AbstractInstancesMethod):
                                  help="The format of this name must be "
                                       "[Source universe UUID]_[Config name]")
         self.parser.add_argument("--producer_certs_dir",
+                                 required=True,
                                  help="The directory containing the certs on the target universe")
         self.parser.add_argument("--action",
                                  default="copy",

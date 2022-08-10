@@ -21,6 +21,7 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.DestroyUniverse;
 import com.yugabyte.yw.commissioner.tasks.ReadOnlyClusterDelete;
 import com.yugabyte.yw.commissioner.tasks.ReadOnlyKubernetesClusterDelete;
+import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -97,6 +98,8 @@ public class UniverseCRUDHandler {
   @Inject PasswordPolicyService passwordPolicyService;
 
   @Inject UpgradeUniverseHandler upgradeUniverseHandler;
+
+  public static final String YBC_DEFAULT_VERSION = "ybc.releases.stable_version";
 
   private enum OpType {
     CONFIGURE,
@@ -372,6 +375,12 @@ public class UniverseCRUDHandler {
     }
   }
 
+  public void setUpXClusterSettings(UniverseDefinitionTaskParams taskParams) {
+    taskParams.xClusterInfo.sourceRootCertDirPath =
+        XClusterConfigTaskBase.getProducerCertsDir(
+            taskParams.getPrimaryCluster().userIntent.provider);
+  }
+
   public UniverseResp createUniverse(Customer customer, UniverseDefinitionTaskParams taskParams) {
     LOG.info("Create for {}.", customer.uuid);
 
@@ -477,6 +486,13 @@ public class UniverseCRUDHandler {
 
     // Create a new universe. This makes sure that a universe of this name does not already exist
     // for this customer id.
+    if (taskParams.enableYbc) {
+      taskParams.ybcSoftwareVersion =
+          StringUtils.isNotBlank(taskParams.ybcSoftwareVersion)
+              ? taskParams.ybcSoftwareVersion
+              : runtimeConfigFactory.globalRuntimeConf().getString(YBC_DEFAULT_VERSION);
+    }
+
     Universe universe = Universe.create(taskParams, customer.getCustomerId());
     LOG.info("Created universe {} : {}.", universe.universeUUID, universe.name);
 
@@ -518,6 +534,8 @@ public class UniverseCRUDHandler {
               BAD_REQUEST, "IPV6 not supported for platform deployed VMs.");
         }
       }
+
+      setUpXClusterSettings(taskParams);
 
       checkForCertificates(customer, taskParams);
 

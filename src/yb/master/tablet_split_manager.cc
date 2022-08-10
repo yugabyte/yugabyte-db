@@ -384,6 +384,49 @@ bool AllReplicasHaveFinishedCompaction(const TabletReplicaMap& replicas) {
   return true;
 }
 
+// Check if all live replicas are in RaftGroupStatePB::RUNNING state
+// (read replicas are ignored) and tablet is not under/over replicated.
+// Tablet is over-replicated if number of live replicas > rf,
+// otherwise, if live replicas < rf, tablet is under replicated.
+// where rf is the replication factor of a table, can get it from
+// CatalogManager::GetTableReplicationFactor.
+bool CheckLiveReplicasForSplit(
+    const TabletId& tablet_id, const TabletReplicaMap& replicas, size_t rf) {
+  size_t live_replicas = 0;
+  for (const auto& pair : replicas) {
+    const auto& replica = pair.second;
+    if (replica.member_type == consensus::PRE_VOTER) {
+      VLOG(2) << Substitute("One tablet peer is doing RBS as PRE_VOTER, "
+                            "tablet_id: $1 peer_uuid: $2 current RAFT state: $3",
+                            tablet_id,
+                            pair.second.ts_desc->permanent_uuid(),
+                            RaftGroupStatePB_Name(pair.second.state));
+      return false;
+    }
+    if (replica.member_type == consensus::VOTER) {
+      live_replicas++;
+      if (replica.state != tablet::RaftGroupStatePB::RUNNING) {
+        VLOG(2) << Substitute("At least one tablet peer not running, "
+                              "tablet_id: $0 peer_uuid: $1 current RAFT state: $2",
+                              tablet_id,
+                              pair.second.ts_desc->permanent_uuid(),
+                              RaftGroupStatePB_Name(pair.second.state));
+        return false;
+      }
+    }
+  }
+  if (live_replicas != rf) {
+    VLOG(2) << Substitute("Tablet $0 is $1 replicated, "
+                          "has $2 live replicas, expected replication factor is $3",
+                          tablet_id,
+                          live_replicas < rf ? "under" : "over",
+                          live_replicas,
+                          rf);
+    return false;
+  }
+  return true;
+}
+
 void TabletSplitManager::ScheduleSplits(const std::unordered_set<TabletId>& splits_to_schedule) {
   for (const auto& tablet_id : splits_to_schedule) {
     auto s = driver_->SplitTablet(tablet_id, ManualSplit::kFalse);
@@ -613,6 +656,14 @@ void TabletSplitManager::DoSplitting(
   }
 
   for (const auto& table : valid_tables) {
+    auto replication_factor = driver_->GetTableReplicationFactor(table);
+    if (!replication_factor.ok()) {
+      YB_LOG_EVERY_N_SECS(WARNING, 30) << "Skipping tablet splitting for table "
+                                       << table->id() << ": "
+                                       << "as fetching replication factor failed with error "
+                                       << StatusToString(replication_factor.status());
+      continue;
+    }
     for (const auto& tablet : table->GetTablets()) {
       if (!state.CanSplitMoreGlobal()) {
         break;
@@ -658,13 +709,13 @@ void TabletSplitManager::DoSplitting(
       }
       // Check if this tablet is a valid candidate for splitting, and if so, add it to the list of
       // split candidates.
+      const auto replicas = replica_cache.GetOrAdd(*tablet);
       if (ValidateSplitCandidateTablet(*tablet, parent).ok() &&
-          filter_->ShouldSplitValidCandidate(*tablet, drive_info_opt.get())) {
-        const auto replicas = replica_cache.GetOrAdd(*tablet);
-        if (AllReplicasHaveFinishedCompaction(*replicas) &&
-            state.CanSplitMoreOnReplicas(*replicas)) {
-          state.AddCandidate(tablet, drive_info_opt.get().sst_files_size);
-        }
+          CheckLiveReplicasForSplit(tablet->tablet_id(), *replicas, replication_factor.get()) &&
+          filter_->ShouldSplitValidCandidate(*tablet, drive_info_opt.get()) &&
+          AllReplicasHaveFinishedCompaction(*replicas) &&
+          state.CanSplitMoreOnReplicas(*replicas)) {
+        state.AddCandidate(tablet, drive_info_opt.get().sst_files_size);
       }
     }
     if (!state.CanSplitMoreGlobal()) {

@@ -403,6 +403,11 @@ DEFINE_int32(txn_table_wait_min_ts_count, 1,
              " is smaller than that");
 TAG_FLAG(txn_table_wait_min_ts_count, advanced);
 
+// TODO (mbautin, 2019-12): switch the default to true after updating all external callers
+// (yb-ctl, YugaWare) and unit tests.
+DEFINE_bool(master_auto_run_initdb, false,
+            "Automatically run initdb on master leader initialization");
+
 DEFINE_bool(enable_ysql_tablespaces_for_placement, true,
             "If set, tablespaces will be used for placement of YSQL tables.");
 TAG_FLAG(enable_ysql_tablespaces_for_placement, runtime);
@@ -1154,7 +1159,7 @@ Status CatalogManager::VisitSysCatalog(int64_t term) {
     });
   }
 
-  if (!StartRunningInitDbIfNeeded(term)) {
+  if (!VERIFY_RESULT(StartRunningInitDbIfNeeded(term))) {
     // If we are not running initdb, this is an existing cluster, and we need to check whether we
     // need to do a one-time migration to make YSQL system catalog tables transactional.
     RETURN_NOT_OK(MakeYsqlSysCatalogTablesTransactional(
@@ -1372,10 +1377,31 @@ Status CatalogManager::PrepareDefaultSysConfig(int64_t term) {
   return Status::OK();
 }
 
-bool CatalogManager::StartRunningInitDbIfNeeded(int64_t term) {
-  if (!ShouldAutoRunInitDb(ysql_catalog_config_.get(), pg_proc_exists_)) {
+Result<bool> CatalogManager::StartRunningInitDbIfNeeded(int64_t term) {
+  {
+    auto l = ysql_catalog_config_->LockForRead();
+    if (l->pb.ysql_catalog_config().initdb_done()) {
+      LOG(INFO) << "Cluster configuration indicates that initdb has already completed";
+      return false;
+    }
+  }
+
+  if (pg_proc_exists_.load(std::memory_order_acquire)) {
+    LOG(INFO) << "Table pg_proc exists, assuming initdb has already been run";
+    // Mark initdb as done, in case it was done externally.
+    // We assume pg_proc table means initdb is done.
+    // We do NOT handle the case when initdb was terminated mid-run (neither here nor in
+    // MakeYsqlSysCatalogTablesTransactional).
+    RETURN_NOT_OK(InitDbFinished(Status::OK(), term));
     return false;
   }
+
+  if (!FLAGS_master_auto_run_initdb) {
+    LOG(INFO) << "--master_auto_run_initdb is set to false, not running initdb";
+    return false;
+  }
+
+  LOG(INFO) << "initdb has never been run on this cluster, running it";
 
   string master_addresses_str = MasterAddressesToString(
       *master_->opts().GetMasterAddresses());
@@ -1955,6 +1981,24 @@ Result<ReplicationInfoPB> CatalogManager::GetTableReplicationInfo(
   // Neither table nor tablespace info set. Return cluster level replication info.
   auto l = ClusterConfig()->LockForRead();
   return l->pb.replication_info();
+}
+
+Result<ReplicationInfoPB> CatalogManager::GetTableReplicationInfo(
+    const scoped_refptr<const TableInfo>& table) const {
+  {
+    auto table_lock = table->LockForRead();
+    if (table_lock->pb.has_replication_info()) {
+      return table_lock->pb.replication_info();
+    }
+  }
+
+  auto replication_info_opt = VERIFY_RESULT(
+      GetTablespaceManager()->GetTableReplicationInfo(table));
+  if (replication_info_opt) {
+    return replication_info_opt.value();
+  }
+
+  return ClusterConfig()->LockForRead()->pb.replication_info();
 }
 
 std::shared_ptr<YsqlTablespaceManager> CatalogManager::GetTablespaceManager() const {
@@ -2611,25 +2655,6 @@ Status CatalogManager::TEST_SendTestRetryRequest(
   return ScheduleTask(task);
 }
 
-Result<ReplicationInfoPB> CatalogManager::GetTableReplicationInfo(
-    const TabletInfo& tablet_info) const {
-  auto table = tablet_info.table();
-  {
-    auto table_lock = table->LockForRead();
-    if (table_lock->pb.has_replication_info()) {
-      return table_lock->pb.replication_info();
-    }
-  }
-
-  auto replication_info_opt = VERIFY_RESULT(
-      GetTablespaceManager()->GetTableReplicationInfo(table));
-  if (replication_info_opt) {
-    return replication_info_opt.value();
-  }
-
-  return ClusterConfig()->LockForRead()->pb.replication_info();
-}
-
 bool CatalogManager::ShouldSplitValidCandidate(
     const TabletInfo& tablet_info, const TabletReplicaDriveInfo& drive_info) const {
   if (drive_info.may_have_orphaned_post_split_data) {
@@ -2643,7 +2668,7 @@ bool CatalogManager::ShouldSplitValidCandidate(
   TSDescriptorVector ts_descs = GetAllLiveNotBlacklistedTServers();
 
   size_t num_servers = 0;
-  auto table_replication_info_or_status = GetTableReplicationInfo(tablet_info);
+  auto table_replication_info_or_status = GetTableReplicationInfo(tablet_info.table());
 
   // If there is custom placement information present then
   // only count the tservers which the table has access to
@@ -10810,6 +10835,15 @@ Result<size_t> CatalogManager::GetReplicationFactor() {
   auto l = cluster_config->LockForRead();
   const ReplicationInfoPB& replication_info = l->pb.replication_info();
   return GetNumReplicasFromPlacementInfo(replication_info.live_replicas());
+}
+
+
+Result<size_t> CatalogManager::GetTableReplicationFactor(const TableInfoPtr& table) const {
+  auto replication_info = VERIFY_RESULT(GetTableReplicationInfo(table));
+  if (replication_info.has_live_replicas()) {
+    return GetNumReplicasFromPlacementInfo(replication_info.live_replicas());
+  }
+  return FLAGS_replication_factor;
 }
 
 Result<size_t> CatalogManager::GetReplicationFactorForTablet(

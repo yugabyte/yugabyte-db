@@ -289,9 +289,7 @@ THREAD_POOL_METRICS_DEFINE(
     server, admin_triggered_compaction_pool, "Thread pool for tablet compaction jobs.");
 
 using consensus::ConsensusMetadata;
-using consensus::ConsensusStatePB;
 using consensus::RaftConfigPB;
-using consensus::RaftPeerPB;
 using consensus::StartRemoteBootstrapRequestPB;
 using log::Log;
 using master::ReportedTabletPB;
@@ -317,8 +315,6 @@ using tablet::TABLET_DATA_TOMBSTONED;
 using tablet::TabletDataState;
 using tablet::TabletPeer;
 using tablet::TabletPeerPtr;
-using tablet::TabletStatusListener;
-using tablet::TabletStatusPB;
 
 constexpr int32_t kDefaultTserverBlockCacheSizePercentage = 50;
 

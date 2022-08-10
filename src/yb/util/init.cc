@@ -117,6 +117,10 @@ Status SetupLogDir(const std::string& server_type) {
   return Status::OK();
 }
 
+void SetGLogHeader(const std::string& server_info) {
+  google::SetApplicationFingerprint(VersionInfo::GetShortVersionString() + server_info);
+}
+
 Status InitYB(const std::string &server_type, const char* argv0) {
 #if defined(__linux__)
   if (FLAGS_stop_on_parent_termination) {
@@ -126,7 +130,7 @@ Status InitYB(const std::string &server_type, const char* argv0) {
   RETURN_NOT_OK(CheckCPUFlags());
   RETURN_NOT_OK(SetupLogDir(server_type));
   RETURN_NOT_OK(VersionInfo::Init());
-  google::SetApplicationFingerprint(VersionInfo::GetShortVersionString());
+  SetGLogHeader();
   InitGoogleLoggingSafe(argv0);
   return Status::OK();
 }
