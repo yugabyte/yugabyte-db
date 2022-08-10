@@ -22,6 +22,7 @@
 #include "yb/tserver/tserver_util_fwd.h"
 #include "yb/tserver/tserver_shared_mem.h"
 
+#include "yb/util/init.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/shared_mem.h"
@@ -56,6 +57,18 @@ Status DbServerBase::Init() {
 Status DbServerBase::Start() {
   RETURN_NOT_OK(RpcAndWebServerBase::Start());
   async_client_init_->Start();
+
+  std::string host_name;
+  RETURN_NOT_OK(GetHostname(&host_name));
+
+  std::string node_info = Format(
+      "Node information: { hostname: '$0', rpc_ip: '$1', webserver_ip: '$2', uuid: '$3' }",
+      host_name, yb::ToString(first_rpc_address().address()),
+      yb::ToString(VERIFY_RESULT(first_http_address()).address()), fs_manager_->uuid());
+  LOG(INFO) << node_info;
+
+  SetGLogHeader("\n" + node_info);
+
   return Status::OK();
 }
 
