@@ -1266,7 +1266,8 @@ YBCStatus YBCGetTabletServerHosts(YBCServerDescriptor **servers, size_t *count) 
         .zone = YBCPAllocStdString(info.zone),
         .public_ip = YBCPAllocStdString(info.public_ip),
         .is_primary = info.is_primary,
-        .pg_port = info.pg_port
+        .pg_port = info.pg_port,
+        .uuid = YBCPAllocStdString(info.server.uuid),
       };
       ++dest;
     }
