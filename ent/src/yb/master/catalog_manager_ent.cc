@@ -11,6 +11,7 @@
 // under the License.
 
 #include <memory>
+#include <queue>
 #include <regex>
 #include <set>
 #include <unordered_set>
@@ -166,6 +167,11 @@ DEFINE_test_flag(bool, hang_wait_replication_drain, false,
                  "Used in tests to temporarily block WaitForReplicationDrain.");
 DEFINE_test_flag(bool, import_snapshot_failed, false,
                  "Return a error from ImportSnapshotMeta RPC for testing the RPC failure.");
+
+DEFINE_uint64(import_snapshot_max_concurrent_create_table_requests, 20,
+             "Maximum number of create table requests to the master that can be outstanding "
+             "during the import snapshot metadata phase of restore.");
+TAG_FLAG(import_snapshot_max_concurrent_create_table_requests, runtime);
 
 namespace yb {
 
@@ -1211,18 +1217,17 @@ Status CatalogManager::ImportSnapshotProcessUDTypes(const SnapshotInfoPB& snapsh
   return Status::OK();
 }
 
-Status CatalogManager::ImportSnapshotCreateObject(const SnapshotInfoPB& snapshot_pb,
-                                                  ImportSnapshotMetaResponsePB* resp,
-                                                  const NamespaceMap& namespace_map,
-                                                  const UDTypeMap& type_map,
-                                                  ExternalTableSnapshotDataMap* tables_data,
-                                                  CreateObjects create_objects) {
-  // Create ONLY TABLES or ONLY INDEXES in accordance to the argument.
+Status CatalogManager::ImportSnapshotCreateIndexes(const SnapshotInfoPB& snapshot_pb,
+                                                   ImportSnapshotMetaResponsePB* resp,
+                                                   const NamespaceMap& namespace_map,
+                                                   const UDTypeMap& type_map,
+                                                   ExternalTableSnapshotDataMap* tables_data) {
+  // Create ONLY INDEXES.
   for (const BackupRowEntryPB& backup_entry : snapshot_pb.backup_entries()) {
     const SysRowEntry& entry = backup_entry.entry();
     if (entry.type() == SysRowEntryType::TABLE) {
       ExternalTableSnapshotData& data = (*tables_data)[entry.id()];
-      if ((create_objects == CreateObjects::kOnlyIndexes) == data.is_index()) {
+      if (data.is_index()) {
         RETURN_NOT_OK(ImportTableEntry(namespace_map, type_map, *tables_data, &data));
       }
     }
@@ -1231,18 +1236,43 @@ Status CatalogManager::ImportSnapshotCreateObject(const SnapshotInfoPB& snapshot
   return Status::OK();
 }
 
-Status CatalogManager::ImportSnapshotWaitForTables(const SnapshotInfoPB& snapshot_pb,
-                                                   ImportSnapshotMetaResponsePB* resp,
-                                                   ExternalTableSnapshotDataMap* tables_data,
-                                                   CoarseTimePoint deadline) {
-  for (const BackupRowEntryPB& backup_entry : snapshot_pb.backup_entries()) {
+Status CatalogManager::ImportSnapshotCreateAndWaitForTables(
+    const SnapshotInfoPB& snapshot_pb, const NamespaceMap& namespace_map,
+    const UDTypeMap& type_map, ExternalTableSnapshotDataMap* tables_data,
+    CoarseTimePoint deadline) {
+  std::queue<TableId> pending_creates;
+  for (const auto& backup_entry : snapshot_pb.backup_entries()) {
     const SysRowEntry& entry = backup_entry.entry();
-    if (entry.type() == SysRowEntryType::TABLE) {
-      ExternalTableSnapshotData& data = (*tables_data)[entry.id()];
-      if (!data.is_index()) {
-        RETURN_NOT_OK(WaitForCreateTableToFinish(data.new_table_id, deadline));
-      }
+    // Only for tables that are not indexes.
+    if (entry.type() != SysRowEntryType::TABLE) {
+      continue;
     }
+    // ExternalTableSnapshotData only contains entries for tables, so
+    // we access it after the entry type check above.
+    ExternalTableSnapshotData& data = (*tables_data)[entry.id()];
+    if (data.is_index()) {
+      continue;
+    }
+    // If we are at the limit, wait for the oldest table to be created
+    // so that we can send create request for the current table.
+    DCHECK_LE(pending_creates.size(), FLAGS_import_snapshot_max_concurrent_create_table_requests);
+    while (pending_creates.size() >= FLAGS_import_snapshot_max_concurrent_create_table_requests) {
+      RETURN_NOT_OK(WaitForCreateTableToFinish(pending_creates.front(), deadline));
+      LOG(INFO) << "ImportSnapshot: Create table finished for " << pending_creates.front()
+                << ", time remaining " << ToSeconds(deadline - CoarseMonoClock::Now()) << " secs";
+      pending_creates.pop();
+    }
+    // Ready to send request for this table now.
+    RETURN_NOT_OK(ImportTableEntry(namespace_map, type_map, *tables_data, &data));
+    pending_creates.push(data.new_table_id);
+  }
+
+  // Pop from queue and wait for those tables to be created.
+  while (!pending_creates.empty()) {
+    RETURN_NOT_OK(WaitForCreateTableToFinish(pending_creates.front(), deadline));
+    LOG(INFO) << "ImportSnapshot: Create table finished for " << pending_creates.front()
+              << ", time remaining " << ToSeconds(deadline - CoarseMonoClock::Now()) << " secs";
+    pending_creates.pop();
   }
 
   return Status::OK();
@@ -1418,18 +1448,14 @@ Status CatalogManager::ImportSnapshotMeta(const ImportSnapshotMetaRequestPB* req
   RETURN_NOT_OK(ImportSnapshotProcessUDTypes(snapshot_pb, resp, &type_map, namespace_map));
 
   // PHASE 3: Recreate ONLY tables.
-  RETURN_NOT_OK(ImportSnapshotCreateObject(
-      snapshot_pb, resp, namespace_map, type_map, &tables_data, CreateObjects::kOnlyTables));
+  RETURN_NOT_OK(ImportSnapshotCreateAndWaitForTables(
+      snapshot_pb, namespace_map, type_map, &tables_data, rpc->GetClientDeadline()));
 
-  // PHASE 4: Wait for all tables creation complete.
-  RETURN_NOT_OK(ImportSnapshotWaitForTables(
-      snapshot_pb, resp, &tables_data, rpc->GetClientDeadline()));
+  // PHASE 4: Recreate ONLY indexes.
+  RETURN_NOT_OK(ImportSnapshotCreateIndexes(
+      snapshot_pb, resp, namespace_map, type_map, &tables_data));
 
-  // PHASE 5: Recreate ONLY indexes.
-  RETURN_NOT_OK(ImportSnapshotCreateObject(
-      snapshot_pb, resp, namespace_map, type_map, &tables_data, CreateObjects::kOnlyIndexes));
-
-  // PHASE 6: Restore tablets.
+  // PHASE 5: Restore tablets.
   RETURN_NOT_OK(ImportSnapshotProcessTablets(snapshot_pb, resp, &tables_data));
 
   if (PREDICT_FALSE(FLAGS_TEST_import_snapshot_failed)) {
@@ -3611,8 +3637,9 @@ Status CatalogManager::FindCDCStreamsMarkedForMetadataDeletion(
   return Status::OK();
 }
 
-void CatalogManager::GetTabletsWithStreams(
-    const scoped_refptr<CDCStreamInfo> stream, std::set<TabletId>* tablets_with_streams) {
+void CatalogManager::GetValidTabletsAndDroppedTablesForStream(
+    const scoped_refptr<CDCStreamInfo> stream, set<TabletId>* tablets_with_streams,
+    set<TableId>* dropped_tables) {
   for (const auto& table_id : stream->table_id()) {
     TabletInfos tablets;
     scoped_refptr<TableInfo> table;
@@ -3625,10 +3652,15 @@ void CatalogManager::GetTabletsWithStreams(
     if (table) {
       tablets = table->GetTablets();
     }
+
     // For the table dropped, GetTablets() will be empty.
     // For all other tables, GetTablets() will be non-empty.
     for (const auto& tablet : tablets) {
       tablets_with_streams->insert(tablet->tablet_id());
+    }
+
+    if (tablets.size() == 0) {
+      dropped_tables->insert(table_id);
     }
   }
 }
@@ -3647,7 +3679,7 @@ Result<std::shared_ptr<client::TableHandle>> CatalogManager::GetCDCStateTable() 
   return cdc_state_table;
 }
 
-void CatalogManager::DeleteFromCDCStateTable(
+Status CatalogManager::DeleteFromCDCStateTable(
     std::shared_ptr<yb::client::TableHandle> cdc_state_table_result,
     std::shared_ptr<client::YBSession> session, const TabletId& tablet_id,
     const CDCStreamId& stream_id) {
@@ -3656,8 +3688,64 @@ void CatalogManager::DeleteFromCDCStateTable(
   QLAddStringHashValue(delete_req, tablet_id);
   QLAddStringRangeValue(delete_req, stream_id);
   session->Apply(delete_op);
-  LOG(INFO) << "Deleted cdc_state table entry for stream " << stream_id << " for tablet "
-            << tablet_id;
+  // Don't remove the stream from the system catalog as well as master cdc_stream_map_
+  // cache, if there is an error during a row delete for the corresponding stream-id,
+  // tablet-id combination from cdc_state table.
+  if (!delete_op->succeeded()) {
+    return STATUS_FORMAT(QLError, "$0", delete_op->response().status());
+  }
+  return Status::OK();
+}
+
+Status CatalogManager::CleanUpCDCMetadataFromSystemCatalog(
+    const StreamTablesMap& drop_stream_tablelist) {
+  std::vector<scoped_refptr<CDCStreamInfo>> streams_to_delete;
+  std::vector<scoped_refptr<CDCStreamInfo>> streams_to_update;
+  std::vector<CDCStreamInfo::WriteLock> locks;
+
+  TRACE("Cleaning CDC streams from map and system catalog.");
+  {
+    LockGuard lock(mutex_);
+    for (auto& [delete_stream_id, drop_table_list] : drop_stream_tablelist) {
+      if (cdc_stream_map_.find(delete_stream_id) != cdc_stream_map_.end()) {
+        scoped_refptr<CDCStreamInfo> cdc_stream_info = cdc_stream_map_[delete_stream_id];
+        auto ltm = cdc_stream_info->LockForWrite();
+        // Delete the stream from cdc_stream_map_ if all tables associated with stream are dropped.
+        if (ltm->table_id().size() == static_cast<int>(drop_table_list.size())) {
+          if (!cdc_stream_map_.erase(cdc_stream_info->id())) {
+            return STATUS(
+                IllegalState, "Could not remove CDC stream from map", cdc_stream_info->id());
+          }
+          streams_to_delete.push_back(cdc_stream_info);
+        } else {
+          // Remove those tables info, that are dropped from the cdc_stream_map_ and update the
+          // system catalog.
+          for (auto table_id : drop_table_list) {
+            auto table_id_iter = find(ltm->table_id().begin(), ltm->table_id().end(), table_id);
+            if (table_id_iter != ltm->table_id().end()) {
+              ltm.mutable_data()->pb.mutable_table_id()->erase(table_id_iter);
+            }
+          }
+          streams_to_update.push_back(cdc_stream_info);
+        }
+        locks.push_back(std::move(ltm));
+      }
+    }
+  }
+
+  // Do system catalog UPDATE and DELETE based on the streams_to_update and streams_to_delete.
+  auto writer = sys_catalog_->NewWriter(leader_ready_term());
+  RETURN_NOT_OK(writer->Mutate(QLWriteRequestPB::QL_STMT_DELETE, streams_to_delete));
+  RETURN_NOT_OK(writer->Mutate(QLWriteRequestPB::QL_STMT_UPDATE, streams_to_update));
+  RETURN_NOT_OK(CheckStatus(
+      sys_catalog_->SyncWrite(writer.get()), "Cleaning CDC streams from system catalog"));
+  LOG(INFO) << "Successfully cleaned up the streams " << JoinStreamsCSVLine(streams_to_delete)
+            << " from system catalog";
+
+  for (auto& lock : locks) {
+    lock.Commit();
+  }
+  return Status::OK();
 }
 
 Status CatalogManager::CleanUpCDCStreamsMetadata(
@@ -3677,11 +3765,18 @@ Status CatalogManager::CleanUpCDCStreamsMetadata(
       master::kCdcTabletId, master::kCdcStreamId, master::kCdcCheckpoint,
       master::kCdcLastReplicationTime};
   std::shared_ptr<client::YBSession> session = ybclient->NewSession();
+  // Map to identify the list of drop tables for the stream.
+  StreamTablesMap drop_stream_tablelist;
   for (const auto& stream : streams) {
     // The set "tablets_with_streams" consists of all tablets not associated with the table
     // dropped. Tablets belonging to this set will not be deleted from cdc_state.
+    // The set "drop_table_list" consists of all the tables those were associated with the stream,
+    // but dropped.
     std::set<TabletId> tablets_with_streams;
-    GetTabletsWithStreams(stream, &tablets_with_streams);
+    std::set<TableId> drop_table_list;
+    bool should_delete_from_map = true;
+    GetValidTabletsAndDroppedTablesForStream(stream, &tablets_with_streams, &drop_table_list);
+
     for (const auto& row : client::TableRange(*cdc_state_table, options)) {
       auto tablet_id = row.column(master::kCdcTabletIdIdx).string_value();
       auto stream_id = row.column(master::kCdcStreamIdIdx).string_value();
@@ -3689,16 +3784,32 @@ Status CatalogManager::CleanUpCDCStreamsMetadata(
       // 2. And tablet id is not contained in the set "tablets_with_streams".
       if ((stream_id == stream->id()) &&
           (tablets_with_streams.find(tablet_id) == tablets_with_streams.end())) {
-        DeleteFromCDCStateTable(cdc_state_table, session, tablet_id, stream_id);
+        auto result = DeleteFromCDCStateTable(cdc_state_table, session, tablet_id, stream_id);
+        if (!result.ok()) {
+          LOG(WARNING) << "Error deleting cdc_state row with tablet id " << tablet_id
+                       << " and stream id " << stream_id << " : " << result.message().cdata();
+          should_delete_from_map = false;
+          break;
+        }
+        LOG(INFO) << "Deleted cdc_state table entry for stream " << stream_id << " for tablet "
+                  << tablet_id;
       }
     }
+
+    if (should_delete_from_map) {
+      // Track those succeed delete stream in the map.
+      drop_stream_tablelist[stream->id()] = drop_table_list;
+    }
   }
+
   Status s = session->TEST_Flush();
   if (!s.ok()) {
     LOG(ERROR) << "Unable to flush operations to delete cdc streams: " << s;
     return s.CloneAndPrepend("Error deleting cdc stream rows from cdc_state table");
   }
-  return Status::OK();
+
+  // Cleanup the streams from system catalog and from internal maps.
+  return CleanUpCDCMetadataFromSystemCatalog(drop_stream_tablelist);
 }
 
 Status CatalogManager::CleanUpDeletedCDCStreams(

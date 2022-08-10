@@ -41,7 +41,6 @@ class AbstractCloud(AbstractCommandParser):
     YSQLSH_CERT_DIR = os.path.join(YB_HOME_DIR, ".yugabytedb")
     ROOT_CERT_NAME = "ca.crt"
     ROOT_CERT_NEW_NAME = "ca_new.crt"
-    PRODUCER_CERTS_DIR_NAME = "yugabyte-tls-producer"
     CLIENT_ROOT_NAME = "root.crt"
     CLIENT_CERT_NAME = "yugabytedb.crt"
     CLIENT_KEY_NAME = "yugabytedb.key"
@@ -501,8 +500,6 @@ class AbstractCloud(AbstractCommandParser):
             root_cert_path,
             replication_config_name,
             producer_certs_dir):
-        if producer_certs_dir is None:
-            producer_certs_dir = self.PRODUCER_CERTS_DIR_NAME
         remote_shell = RemoteShell(ssh_options)
         node_ip = ssh_options["ssh_host"]
         src_root_cert_dir_path = os.path.join(producer_certs_dir, replication_config_name)
@@ -530,8 +527,6 @@ class AbstractCloud(AbstractCommandParser):
                     "return code '{}' and error '{}'".format(rm_result.stderr.encode('utf-8'),
                                                              rm_result.exited))
 
-        if producer_certs_dir is None:
-            producer_certs_dir = self.PRODUCER_CERTS_DIR_NAME
         remote_shell = RemoteShell(ssh_options)
         node_ip = ssh_options["ssh_host"]
         src_root_cert_dir_path = os.path.join(producer_certs_dir, replication_config_name)

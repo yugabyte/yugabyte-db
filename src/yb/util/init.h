@@ -47,6 +47,8 @@ Status CheckCPUFlags();
 // Returns an IllegalState Status if we cannot create the dir structure for logging.
 Status SetupLogDir(const std::string& server_type);
 
+void SetGLogHeader(const std::string& server_info = "");
+
 // Initialize YB, checking that the platform we are running on is supported, etc.
 // Issues a FATAL log message if we fail to init.
 // argv0 is passed to InitGoogleLoggingSafe.

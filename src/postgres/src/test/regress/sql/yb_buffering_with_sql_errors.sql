@@ -107,7 +107,6 @@ select z from f('elephant');
 -- 1(b) PL/pgsql: another example from Bryn in Github issue #12184. This one has
 --      a for loop within the exception block.
 
-select rpad(version(), 30);
 drop table if exists t cascade;
 create table t(k serial primary key, v varchar(3) not null unique);
 

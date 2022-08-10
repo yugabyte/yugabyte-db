@@ -74,6 +74,8 @@ using namespace std::chrono_literals;
 namespace yb {
 namespace rpc {
 
+using base::subtle::NoBarrier_Load;
+
 using yb::rpc_test::AddRequestPB;
 using yb::rpc_test::AddResponsePB;
 using yb::rpc_test::EchoRequestPB;
@@ -82,20 +84,13 @@ using yb::rpc_test::ForwardRequestPB;
 using yb::rpc_test::ForwardResponsePB;
 using yb::rpc_test::PanicRequestPB;
 using yb::rpc_test::PanicResponsePB;
-using yb::rpc_test::SendStringsRequestPB;
-using yb::rpc_test::SendStringsResponsePB;
 using yb::rpc_test::SleepRequestPB;
 using yb::rpc_test::SleepResponsePB;
 using yb::rpc_test::WhoAmIRequestPB;
 using yb::rpc_test::WhoAmIResponsePB;
 using yb::rpc_test::PingRequestPB;
 using yb::rpc_test::PingResponsePB;
-using yb::rpc_test::DisconnectRequestPB;
-using yb::rpc_test::DisconnectResponsePB;
-using yb::rpc_test_diff_package::ReqDiffPackagePB;
-using yb::rpc_test_diff_package::RespDiffPackagePB;
 
-using std::shared_ptr;
 using std::vector;
 
 using rpc_test::AddRequestPartialPB;

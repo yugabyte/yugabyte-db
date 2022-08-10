@@ -4340,12 +4340,12 @@
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "free",
-      "expr" : "sum({saved_name=\"node_filesystem_free_bytes\", mountpoint=~\"/mnt/.*\", node_prefix=~\"$dbcluster\"}) by (saved_name) / 1073741824",
+      "expr" : "sum({saved_name=\"node_filesystem_free_bytes\", mountpoint=~\"/mnt/d[0-9]+\", node_prefix=~\"$dbcluster\"}) by (saved_name) / 1073741824",
       "refId" : "A"
     }, {
       "hide" : false,
       "legendFormat" : "size",
-      "expr" : "sum({saved_name=\"node_filesystem_size_bytes\", mountpoint=~\"/mnt/.*\", node_prefix=~\"$dbcluster\"}) by (saved_name) / 1073741824",
+      "expr" : "sum({saved_name=\"node_filesystem_size_bytes\", mountpoint=~\"/mnt/d[0-9]+\", node_prefix=~\"$dbcluster\"}) by (saved_name) / 1073741824",
       "refId" : "B"
     } ],
     "gridPos" : {

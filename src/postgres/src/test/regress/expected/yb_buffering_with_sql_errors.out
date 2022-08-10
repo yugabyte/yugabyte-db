@@ -127,12 +127,6 @@ select z from f('elephant');
 
 -- 1(b) PL/pgsql: another example from Bryn in Github issue #12184. This one has
 --      a for loop within the exception block.
-select rpad(version(), 30);
-              rpad              
---------------------------------
- PostgreSQL 11.2-YB-2.15.2.0-b0
-(1 row)
-
 drop table if exists t cascade;
 create table t(k serial primary key, v varchar(3) not null unique);
 drop function if exists f(boolean);

@@ -1163,11 +1163,17 @@ fmgr_sql(PG_FUNCTION_ARGS)
 			 * effects. And an exception that occurs later due to previously buffered
 			 * operations (i.e., from previous statements) will lead to reverting
 			 * of the transactional effects of the new statement too.
-			*/
-			if (es->stmt->commandType != CMD_UPDATE &&
-					es->stmt->commandType != CMD_INSERT &&
-					es->stmt->commandType != CMD_DELETE)
-				YBFlushBufferedOperations();
+			 */
+			switch (es->stmt->commandType)
+			{
+				case CMD_UPDATE:
+				case CMD_INSERT:
+				case CMD_DELETE:
+					break;
+				default:
+					YBFlushBufferedOperations();
+					break;
+			}
 
 			postquel_start(es, fcache);
 		}

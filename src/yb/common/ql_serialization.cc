@@ -221,6 +221,17 @@ void SerializeValue(
       }
       break;
     }
+    case TUPLE: {
+      const QLSeqValuePB& tuple = pb.tuple_value();
+      size_t num_elems = tuple.elems_size();
+      DCHECK_EQ(num_elems, ql_type->params().size());
+      int32_t start_pos = CQLStartCollection(buffer);
+      for (size_t i = 0; i < num_elems; i++) {
+        SerializeValue(ql_type->param_type(i), client, tuple.elems(static_cast<int>(i)), buffer);
+      }
+      CQLFinishCollection(start_pos, buffer);
+      return;
+    }
 
     QL_UNSUPPORTED_TYPES_IN_SWITCH:
       break;

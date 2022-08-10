@@ -2,29 +2,46 @@
 
 set -e
 
-GO111MODULE=on
+export GO111MODULE=on
 
-package_name='node-agent'
-platforms=("darwin/amd64" "linux/amd64" "linux/arm64")
+readonly go_version=1.18.2
+readonly protoc_version=21.4
 
-base_dir=$(dirname "$0")
+readonly package_name='node-agent'
+readonly platforms=("darwin/amd64" "linux/amd64" "linux/arm64")
+readonly skip_dirs=("third-party" "proto" "generated" "build")
+readonly go_dir="$go_version"
+readonly protoc_dir="protoc-$protoc_version"
+
+readonly base_dir=$(dirname "$0")
 pushd "$base_dir"
-project_dir=$(pwd)
+readonly project_dir=$(pwd)
 popd
 
-GOPATH=$project_dir/third-party
+readonly GOPATH=$project_dir/third-party
+readonly GOBIN=$GOPATH/$go_dir/go/bin
+readonly PROTOCBIN=$GOPATH/$protoc_dir/bin
+PATH=$GOBIN:$PROTOCBIN:$PATH
+export PATH
 
-build_output_dir="${project_dir}/build"
+readonly build_output_dir="${project_dir}/build"
 if [[ ! -d $build_output_dir ]]; then
     mkdir $build_output_dir
 fi
-grpc_output_dir="${project_dir}/generated"
+readonly grpc_output_dir="${project_dir}/generated"
 if [[ ! -d $grpc_output_dir ]]; then
     mkdir $grpc_output_dir
 fi
-grpc_proto_dir=${project_dir}/proto
-grpc_proto_files="${grpc_proto_dir}/*.proto"
+readonly grpc_proto_dir=${project_dir}/proto
+readonly grpc_proto_files="${grpc_proto_dir}/*.proto"
 
+to_lower() {
+  out=`awk '{print tolower($0)}' <<< "$1"`
+  echo $out
+}
+
+readonly build_os=$(to_lower "$(uname -s)")
+readonly uild_arch=$(to_lower "$(uname -m)")
 
 generate_grpc_files() {
     protoc -I$grpc_proto_dir --go_out=$grpc_output_dir --go-grpc_out=$grpc_output_dir  \
@@ -32,8 +49,8 @@ generate_grpc_files() {
 }
 
 get_executable_name() {
-    os=$1
-    arch=$2
+    local os=$1
+    local arch=$2
     executable=${package_name}-${os}-${arch}
     if [ $os == "windows" ]; then
         executable+='.exe'
@@ -42,8 +59,8 @@ get_executable_name() {
 }
 
 build_for_platform() {
-    os=$1
-    arch=$2
+    local os=$1
+    local arch=$2
     exec_name=$(get_executable_name $os $arch)
     echo "Building ${exec_name}"
     executable="$build_output_dir/$exec_name"
@@ -55,12 +72,11 @@ build_for_platform() {
 }
 
 build_for_platforms() {
-    build_output_dir=$1
     for platform in "${platforms[@]}"
     do
         platform_split=(${platform//\// })
-        os=${platform_split[0]}
-        arch=${platform_split[1]}
+        local os=${platform_split[0]}
+        local arch=${platform_split[1]}
         build_for_platform $os $arch
     done
 }
@@ -70,25 +86,40 @@ clean_build() {
     rm -rf $grpc_output_dir
 }
 
+
+
 format() {
     go install github.com/segmentio/golines@latest
-    golines -m 100 -t 4 -w $project_dir/adapters/.
-    golines -m 100 -t 4 -w $project_dir/app/.
-    golines -m 100 -t 4 -w $project_dir/model/.
-    golines -m 100 -t 4 -w $project_dir/util/.
+    go install golang.org/x/tools/cmd/goimports@latest
+    pushd $project_dir
+    for dir in */ ; do
+        # Remove trailing slash.
+        dir=$(echo ${dir} | sed 's/\/$//')
+        if [[ "${skip_dirs[@]}" =~ "${dir}" ]]; then
+            continue
+        fi
+        golines -m 100 -t 4 -w ./$dir/.
+    done
+    popd
 }
 
 run_tests() {
-    go  test --tags testonly -v $project_dir/adapters/...
-    go  test --tags testonly -v $project_dir/app/...
-    go  test --tags testonly -v $project_dir/model/...
-    go  test --tags testonly -v $project_dir/util/...
+    pushd $project_dir
+    for dir in */ ; do
+        # Remove trailing slash.
+        dir=$(echo ${dir} | sed 's/\/$//')
+        if [[ "${skip_dirs[@]}" =~ "${dir}" ]]; then
+            continue
+        fi
+        go test --tags testonly -v ./$dir/...
+    done
+    popd
 }
 
 package_for_platform() {
-    os=$1
-    arch=$2
-    version=$3
+    local os=$1
+    local arch=$2
+    local version=$3
     staging_dir_name="node-agent-${version}-${os}-${arch}"
     script_dir="${build_output_dir}/${staging_dir_name}/${version}/scripts"
     bin_dir="${build_output_dir}/${staging_dir_name}/${version}/bin"
@@ -117,7 +148,7 @@ package_for_platform() {
 }
 
 package_for_platforms() {
-  version=$1
+  local version=$1
   for platform in "${platforms[@]}"
   do
       platform_split=(${platform//\// })
@@ -208,7 +239,7 @@ if [ "$build" == "true" ]; then
     echo "Building..."
     format
     # generate_grpc_files
-    build_for_platforms $build_output_dir
+    build_for_platforms
 fi
 
 if [ "$test" == "true" ]; then

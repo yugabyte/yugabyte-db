@@ -975,7 +975,8 @@ Status QLWriteOperation::ApplyUpsert(
       const SchemaPacking& schema_packing = VERIFY_RESULT(
           doc_read_context_->schema_packing_storage.GetPacking(request_.schema_version()));
       row_packer.emplace(
-          request_.schema_version(), schema_packing, FLAGS_ycql_packed_row_size_limit);
+          request_.schema_version(), schema_packing, FLAGS_ycql_packed_row_size_limit,
+          control_fields);
       packed_row_write_id = data.doc_write_batch->ReserveWriteId();
     } else {
       const DocPath sub_path(encoded_pk_doc_key_.as_slice(), KeyEntryValue::kLivenessColumn);

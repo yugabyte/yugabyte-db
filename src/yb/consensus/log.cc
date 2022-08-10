@@ -117,6 +117,30 @@ DEFINE_int32(log_min_seconds_to_retain, 900,
 TAG_FLAG(log_min_seconds_to_retain, runtime);
 TAG_FLAG(log_min_seconds_to_retain, advanced);
 
+// Flag to enable background log sync. When enabled, we DON'T wait for performing fsync until
+// either
+// 1. unsynced data reaches bytes_durable_wal_write_mb_ threshold OR
+// 2. time since the oldest unsynced log entry has exceeded interval_durable_wal_write_ms
+// Instead, fsync tasks are pushed to the log-sync queue using background_sync_threadpool_token_
+// on either
+// 1. reaching an unsynced data threshold of
+//    (bytes_durable_wal_write_mb_ * FLAGS_log_background_sync_data_fraction) mb OR
+// 2. when time passed since the oldest unsynced log entry has exceeded
+//    (interval_durable_wal_write_ms * FLAGS_log_background_sync_interval_fraction) ms.
+// This is only true when durable_wal_write_ is false. If true, fsync in performed in-line on
+// every call to Log::Sync()
+DEFINE_bool(log_enable_background_sync, true,
+            "If true, log fsync operations in the aggresively performed in the background.");
+DEFINE_double(log_background_sync_data_fraction, 0.5,
+             "When log_enable_background_sync is enabled and periodic_sync_unsynced_bytes_ "
+             "reaches bytes_durable_wal_write_mb_*log_background_sync_data_fraction, the fsync "
+             "task is pushed to the log-sync queue.");
+DEFINE_double(log_background_sync_interval_fraction, 0.6,
+             "When log_enable_background_sync is enabled and time passed since insertion of log "
+             "entry exceeds interval_durable_wal_write_ms*log_background_sync_interval_fraction "
+             "the fsync task is pushed to the log-sync queue.");
+
+
 // Flags for controlling kernel watchdog limits.
 DEFINE_int32(consensus_log_scoped_watch_delay_callback_threshold_ms, 1000,
              "If calling consensus log callback(s) take longer than this, the kernel watchdog "
@@ -405,6 +429,13 @@ Status Log::Appender::Init() {
   return Status::OK();
 }
 
+// Note on the order of operations here.
+// periodic_sync_needed_ and  periodic_sync_unsynced_bytes_ need to be set ONLY AFTER call to
+// log_->DoAppend(), which in turn calls active_segment_->WriteEntryBatch(). Since DoSync fn
+// operates on these variables in parallel (when FLAGS_log_enable_background_sync is set), it
+// is necessary for us to set these counters after call to DoAppend(). That way, we ensure that
+// fsync will eventually be called. [if there is a background thread executing DoSync in parallel,
+// it might OR might not flush the new dirty data in the current iteration due to race condition]
 void Log::Appender::ProcessBatch(LogEntryBatch* entry_batch) {
   // A callback function to TaskStream is expected to process the accumulated batch of entries.
   if (entry_batch == nullptr) {
@@ -523,6 +554,7 @@ Status Log::Open(const LogOptions &options,
                  const scoped_refptr<MetricEntity>& tablet_metric_entity,
                  ThreadPool* append_thread_pool,
                  ThreadPool* allocation_thread_pool,
+                 ThreadPool* background_sync_threadpool,
                  int64_t cdc_min_replicated_index,
                  scoped_refptr<Log>* log,
                  CreateNewSegment create_new_segment) {
@@ -543,6 +575,7 @@ Status Log::Open(const LogOptions &options,
                                      tablet_metric_entity,
                                      append_thread_pool,
                                      allocation_thread_pool,
+                                     background_sync_threadpool,
                                      create_new_segment));
   RETURN_NOT_OK(new_log->Init());
   log->swap(new_log);
@@ -560,6 +593,7 @@ Log::Log(
     const scoped_refptr<MetricEntity>& tablet_metric_entity,
     ThreadPool* append_thread_pool,
     ThreadPool* allocation_thread_pool,
+    ThreadPool* background_sync_threadpool,
     CreateNewSegment create_new_segment)
     : options_(std::move(options)),
       wal_dir_(std::move(wal_dir)),
@@ -575,6 +609,8 @@ Log::Log(
       cur_max_segment_size_((options.initial_segment_size_bytes + 1) / 2),
       appender_(new Appender(this, append_thread_pool)),
       allocation_token_(allocation_thread_pool->NewToken(ThreadPool::ExecutionMode::SERIAL)),
+      background_sync_threadpool_token_(
+          background_sync_threadpool->NewToken(ThreadPool::ExecutionMode::SERIAL)),
       durable_wal_write_(options_.durable_wal_write),
       interval_durable_wal_write_(options_.interval_durable_wal_write),
       bytes_durable_wal_write_mb_(options_.bytes_durable_wal_write_mb),
@@ -676,8 +712,12 @@ Status Log::CloseCurrentSegment() {
   }
 
   footer_builder_.set_close_timestamp_micros(close_timestamp_micros);
-
-  auto status = active_segment_->WriteIndexWithFooterAndClose(log_index_.get(), &footer_builder_);
+  Status status;
+  {
+    std::lock_guard<std::mutex> lock(active_segment_mutex_);
+    status = active_segment_->WriteIndexWithFooterAndClose(log_index_.get(),
+                                                           &footer_builder_);
+  }
 
   if (status.ok() && metrics_) {
       metrics_->wal_size->IncrementBy(active_segment_->Size());
@@ -699,7 +739,7 @@ Status Log::RollOver() {
         "Last appended OpId in segment $0: $1", active_segment_->path(),
         last_appended_entry_op_id_.ToString());
 
-    RETURN_NOT_OK(Sync());
+    RETURN_NOT_OK(DoSync());
     RETURN_NOT_OK(CloseCurrentSegment());
 
     RETURN_NOT_OK(SwitchToAllocatedSegment());
@@ -930,54 +970,192 @@ Status Log::EnsureInitialNewSegmentAllocated() {
   return Status::OK();
 }
 
-Status Log::Sync() {
-  TRACE_EVENT0("log", "Sync");
+// DoSync is called either called from the from the background log-sync threadpool maintained at
+// tserver [from ::DoSyncAndResetTaskInQueue] or in-line with the critical path from ::Sync().
+// Refer the fn definition in the header file for details on when the function could be called.
+// It operates on the following variables that are also operated on in the critical write path.
+// 1. periodic_sync_unsynced_bytes_
+// 2. periodic_sync_needed_
+// 3. active_segment_
+//
+// The active_segment_mutex_ ensures that there is at most one fsync execution at a given time.
+// If we don't do this, the later fsync could return immediately while the first fsync could still
+// be synchronizing data to disk. active_segment_mutex_ also prevents the segment from being
+// rolloved over to the next one during fsync execution.
+//
+// Note on the order of operations here.
+// There is NO mutual exclusion to prevent append operations occuring concurrently. The sequence
+// of operations always ensures that periodic_sync_needed_/periodic_sync_unsynced_bytes_ take the
+// upper bound, and ensure that we don't end up skipping fsync op when it could have been actually
+// required due to the time/data thresholds.
+// Hence the order of operations in this function should always be as follows
+// - reset periodic_sync_needed_ followed by periodic_sync_unsynced_bytes_
+// - call active_segment_->Sync()
+// - set periodic_sync_needed_ followed by periodic_sync_unsynced_bytes_ if sync fails
+//
+// ::DoSync should not be called directly, instead we should call ::Sync and that might execute
+// this function in-line or as a task in the background or could just return because an fsync
+// might not be necessary. We only call ::DoSync directly before we call ::CloseCurrentSegment
+Status Log::DoSync() {
+  // Acquire the lock over active_segment_ to prevent segment rollover in the interim.
+  std::lock_guard<std::mutex> lock(active_segment_mutex_);
+  if (active_segment_->IsClosed()) {
+    return Status::OK();
+  }
 
-  if (!sync_disabled_) {
-    if (PREDICT_FALSE(GetAtomicFlag(&FLAGS_log_inject_latency))) {
-      Random r(static_cast<uint32_t>(GetCurrentTimeMicros()));
-      int sleep_ms = r.Normal(GetAtomicFlag(&FLAGS_log_inject_latency_ms_mean),
-                              GetAtomicFlag(&FLAGS_log_inject_latency_ms_stddev));
-      if (sleep_ms > 0) {
-        LOG_WITH_PREFIX(INFO) << "Injecting " << sleep_ms << "ms of latency in Log::Sync()";
-        SleepFor(MonoDelta::FromMilliseconds(sleep_ms));
-      }
-    }
+  Status status;
+  periodic_sync_needed_.store(0, std::memory_order_release);
+  periodic_sync_unsynced_bytes_.store(0, std::memory_order_release);
+  LOG_SLOW_EXECUTION(WARNING, 50, "Fsync log took a long time") {
+    SCOPED_LATENCY_METRIC(metrics_, sync_latency);
+    status = active_segment_->Sync();
+  }
 
-    bool timed_or_data_limit_sync = false;
-    if (!durable_wal_write_ && periodic_sync_needed_.load()) {
-      if (interval_durable_wal_write_) {
-        if (MonoTime::Now() > periodic_sync_earliest_unsync_entry_time_
-            + interval_durable_wal_write_) {
-          timed_or_data_limit_sync = true;
-        }
-      }
-      if (bytes_durable_wal_write_mb_ > 0) {
-        if (periodic_sync_unsynced_bytes_ >= bytes_durable_wal_write_mb_ * 1_MB) {
-          timed_or_data_limit_sync = true;
-        }
-      }
-    }
+  return status;
+}
 
-    if (durable_wal_write_ || timed_or_data_limit_sync) {
-      periodic_sync_needed_.store(false);
-      periodic_sync_unsynced_bytes_ = 0;
-      LOG_SLOW_EXECUTION(WARNING, 50, "Fsync log took a long time") {
-        SCOPED_LATENCY_METRIC(metrics_, sync_latency);
-        RETURN_NOT_OK(active_segment_->Sync());
-      }
+// Important to note that there is at most one task queued/running ::DoSyncAndResetTaskInQueue
+// at any given time.
+//
+// TODO: DoSyncAndResetTaskInQueue could perform one additional/unnecessary fsync operation when
+// segment rollover happens before the background task calls ::DoSync. In that case, the call to
+// ::DoSync operates on the new segment. We could use active_segment_sequence_number_ to determine
+// if we are operating on current/new segment and skip calling fsync whenever unnecessary. We will
+// have to use active_segment_sequence_number_ instead of fsync_task_in_queue_, in ::Sync(), to
+// determine if there is a pending fsync task corresponding to the current active segment.
+void Log::DoSyncAndResetTaskInQueue() {
+  auto status = DoSync();
+  if (!status.ok()) {
+    // ensure that fsync gets called on the subsequent call to Log::Sync() function
+    periodic_sync_needed_.store(true);
+    periodic_sync_unsynced_bytes_.store(bytes_durable_wal_write_mb_ * 1_MB,
+                                        std::memory_order_release);
+    LOG_WITH_PREFIX(WARNING) << "Log fsync failed with status " << status;
+  }
+  fsync_task_in_queue_.store(false, std::memory_order_release);
+}
+
+// retuns
+// - kForceFsync when
+//   1. periodic_sync_needed_ is false, i.e no new appends happened since the last fsync.
+// - kAsyncFsync when
+//   1. time interval/unsynced data exceeds lower limits and FLAGS_log_enable_background_sync is set
+//      time lower limit: (interval_durable_wal_write_ * FLAGS_log_background_sync_interval_fraction
+//      data lower limit: bytes_durable_wal_write_mb_ * FLAGS_log_background_sync_data_fraction (MB)
+// - kForceFsync when
+//   1. durable_wal_write_ is set to true
+//   2. time interval/unsynced data exceeds upper limits
+//      time upper limit: interval_durable_wal_write_
+//      data upper limit: bytes_durable_wal_write_mb_ (MB)
+SyncType Log::FindSyncType() {
+  if (durable_wal_write_) {
+    return SyncType::kForceFsync;
+  }
+
+  if (!periodic_sync_needed_.load()) {
+    return SyncType::kNoSync;
+  }
+
+  SyncType sync_type = SyncType::kNoSync;
+  if (interval_durable_wal_write_) {
+    MonoDelta interval_async_wal_write_ =
+        MonoDelta::FromMilliseconds(interval_durable_wal_write_.ToMilliseconds() *
+                                    FLAGS_log_background_sync_interval_fraction);
+    auto time_now = MonoTime::Now();
+    auto time_async_threshold =
+        periodic_sync_earliest_unsync_entry_time_ + interval_async_wal_write_;
+    if (time_now > time_async_threshold) {
+      auto time_immediate_threshold =
+          periodic_sync_earliest_unsync_entry_time_ + interval_durable_wal_write_;
+      sync_type = time_now > time_immediate_threshold ? SyncType::kForceFsync :
+                                                        SyncType::kAsyncFsync;
     }
   }
 
+  if (sync_type != SyncType::kForceFsync && bytes_durable_wal_write_mb_ > 0) {
+    auto data_async_threshold =
+        bytes_durable_wal_write_mb_ * 1_MB * FLAGS_log_background_sync_data_fraction;
+    auto unsynced_bytes = periodic_sync_unsynced_bytes_.load(std::memory_order_acquire);
+    if (unsynced_bytes >= data_async_threshold) {
+      auto data_immediate_threshold = bytes_durable_wal_write_mb_ * 1_MB;
+      sync_type = unsynced_bytes >= data_immediate_threshold ? SyncType::kForceFsync :
+                                                                SyncType::kAsyncFsync;
+    }
+  }
+
+  if (sync_type == SyncType::kAsyncFsync && !FLAGS_log_enable_background_sync) {
+    sync_type = SyncType::kNoSync;
+  }
+
+  return sync_type;
+}
+
+// Finds type of sync that needs to be done and either spawns a task to execute
+// ::DoSyncAndResetTaskInQueue() or calls ::DoSync() in-line depending on the below conditions.
+// Also ensures that there is at most one queued/running ::DoSyncAndResetTaskInQueue task submitted
+// using background_sync_threadpool_token_ at any given time.
+//
+// if sync_type == kAsyncFsync:
+//    returns if there is an existing task queued/running ::DoSyncAndResetTaskInQueue
+//    else pushes a task onto the queue and returns. if it is not able to submit the task,
+//    will fall back to kForceFsync mode.
+// if sync_type == kForceFsync:
+//    calls ::DoSync in-line and returns the status.
+//
+Status Log::Sync() {
+  TRACE_EVENT0("log", "Sync");
+
+  if (sync_disabled_) {
+    return UpdateSegmentReadableOffset();
+  }
+
+  if (PREDICT_FALSE(GetAtomicFlag(&FLAGS_log_inject_latency))) {
+    Random r(static_cast<uint32_t>(GetCurrentTimeMicros()));
+    int sleep_ms = r.Normal(GetAtomicFlag(&FLAGS_log_inject_latency_ms_mean),
+                            GetAtomicFlag(&FLAGS_log_inject_latency_ms_stddev));
+    if (sleep_ms > 0) {
+      LOG_WITH_PREFIX(INFO) << "Injecting " << sleep_ms << "ms of latency in Log::Sync()";
+      SleepFor(MonoDelta::FromMilliseconds(sleep_ms));
+    }
+  }
+
+  SyncType sync_type = FindSyncType();
+  switch (sync_type) {
+    case SyncType::kNoSync: {
+      break;
+    }
+    case SyncType::kAsyncFsync: {
+      // return if a sync task already exists in the queue.
+      if (fsync_task_in_queue_.load(std::memory_order_acquire)) {
+        break;
+      }
+      fsync_task_in_queue_.store(true, std::memory_order_release);
+      auto status = background_sync_threadpool_token_->SubmitFunc(
+          std::bind(&Log::DoSyncAndResetTaskInQueue, this));
+      if (!status.ok()) {
+        LOG_WITH_PREFIX(WARNING) << "Pushing sync operation to log-sync queue failed with "
+                                 << "status " << status;
+        fsync_task_in_queue_.store(false, std::memory_order_release);
+      }
+      break;
+    }
+    case SyncType::kForceFsync: {
+      RETURN_NOT_OK(DoSync());
+      break;
+    }
+  }
+
+  return UpdateSegmentReadableOffset();
+}
+
+Status Log::UpdateSegmentReadableOffset() {
   // Update the reader on how far it can read the active segment.
   RETURN_NOT_OK(reader_->UpdateLastSegmentOffset(active_segment_->written_offset()));
-
   {
     std::lock_guard<std::mutex> write_lock(last_synced_entry_op_id_mutex_);
     last_synced_entry_op_id_.store(last_appended_entry_op_id_, boost::memory_order_release);
     last_synced_entry_op_id_cond_.notify_all();
   }
-
   return Status::OK();
 }
 
@@ -1263,7 +1441,12 @@ Status Log::Close() {
   std::lock_guard<percpu_rwlock> l(state_lock_);
   switch (log_state_) {
     case kLogWriting:
-      RETURN_NOT_OK(Sync());
+      // Appender uses background_sync_threadpool_token_, so we should reset it
+      // post shutting down appender_.
+      background_sync_threadpool_token_.reset();
+      // Now that we have shut background_sync_threadpool_token_, don't call ::Sync.
+      // call ::DoSync instead.
+      RETURN_NOT_OK(DoSync());
       RETURN_NOT_OK(CloseCurrentSegment());
       RETURN_NOT_OK(ReplaceSegmentInReaderUnlocked());
       log_state_ = kLogClosed;
@@ -1518,7 +1701,6 @@ Status Log::PreAllocateNewSegment() {
 
 Status Log::SwitchToAllocatedSegment() {
   CHECK_EQ(allocation_state(), SegmentAllocationState::kAllocationFinished);
-
   // Increment "next" log segment seqno.
   active_segment_sequence_number_++;
   const string new_segment_path =
@@ -1576,9 +1758,12 @@ Status Log::SwitchToAllocatedSegment() {
                            shared_ptr<RandomAccessFile>(readable_file.release())));
   RETURN_NOT_OK(readable_segment->Init(header, new_segment->first_entry_offset()));
   RETURN_NOT_OK(reader_->AppendEmptySegment(readable_segment));
-
   // Now set 'active_segment_' to the new segment.
-  active_segment_ = std::move(new_segment);
+  {
+    std::lock_guard<std::mutex> lock(active_segment_mutex_);
+    active_segment_ = std::move(new_segment);
+  }
+
   cur_max_segment_size_ = NextSegmentDesiredSize();
 
   allocation_state_.store(
@@ -1596,7 +1781,7 @@ Status Log::ReplaceSegmentInReaderUnlocked() {
 
   scoped_refptr<ReadableLogSegment> readable_segment(
       new ReadableLogSegment(active_segment_->path(), readable_file));
-  // Note: active_segment_->header() will only contain an initialized PB if we wrote the header out.
+  // Note: active_segment->header() will only contain an initialized PB if we wrote the header out.
   RETURN_NOT_OK(readable_segment->Init(active_segment_->header(),
                                        active_segment_->footer(),
                                        active_segment_->first_entry_offset()));

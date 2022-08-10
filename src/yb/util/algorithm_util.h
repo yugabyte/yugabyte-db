@@ -18,6 +18,8 @@
 #include <bitset>
 #include <type_traits>
 
+#include <boost/container/small_vector.hpp>
+
 namespace yb {
 
 enum class SortOrder : uint8_t {
@@ -52,6 +54,47 @@ typename Map::const_iterator GetLastLessOrEqual(const Map& map, const Key& k) {
     iter--;
     return iter;
   }
+}
+
+template <class Col, class Extractor>
+bool IsMonotonic(const Col& collection, const Extractor& extractor) {
+  auto it = collection.begin();
+  auto end = collection.end();
+  if (it == end) {
+    return true;
+  }
+  auto prev = extractor(*it);
+  while (++it != end) {
+    auto next = extractor(*it);
+    if (next < prev) {
+      return false;
+    }
+    prev = next;
+  }
+  return true;
+}
+
+// Returns small vector of key and index pairs, sorted by extracted key.
+template <class Col, class Extractor>
+auto StableSorted(const Col& collection, const Extractor& extractor) {
+  struct KeyAndIndex {
+    decltype(extractor(*collection.begin())) key;
+    decltype(collection.size()) original_index;
+  };
+
+  boost::container::small_vector<KeyAndIndex, 0x10> order;
+  order.reserve(collection.size());
+  decltype(collection.size()) index = 0;
+  for (const auto& value : collection) {
+    order.push_back(KeyAndIndex {
+      .key = extractor(value),
+      .original_index = index++,
+    });
+  }
+  std::sort(order.begin(), order.end(), [](const KeyAndIndex& lhs, const KeyAndIndex& rhs) {
+    return lhs.key < rhs.key || (lhs.key == rhs.key && lhs.original_index < rhs.original_index);
+  });
+  return order;
 }
 
 };  // namespace yb

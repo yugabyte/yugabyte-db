@@ -41,6 +41,7 @@ import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
+import java.io.File;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Collections;
@@ -48,6 +49,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -104,7 +106,8 @@ public class XClusterConfigController extends AuthenticatedController {
     // Parse and validate request.
     Customer customer = Customer.getOrBadRequest(customerUUID);
     XClusterConfigCreateFormData createFormData = parseCreateFormData();
-    Universe.getValidUniverseOrBadRequest(createFormData.sourceUniverseUUID, customer);
+    Universe sourceUniverse =
+        Universe.getValidUniverseOrBadRequest(createFormData.sourceUniverseUUID, customer);
     Universe targetUniverse =
         Universe.getValidUniverseOrBadRequest(createFormData.targetUniverseUUID, customer);
     checkConfigDoesNotAlreadyExist(
@@ -128,6 +131,26 @@ public class XClusterConfigController extends AuthenticatedController {
           }
         });
     validateBootstrapParams(createFormData, customerUUID);
+
+    // If the certs_for_cdc_dir gflag is not set, and it is required, tell the user to set it
+    // before running this task.
+    try {
+      if (XClusterConfigTaskBase.getSourceCertificateIfNecessary(sourceUniverse, targetUniverse)
+              .isPresent()
+          && targetUniverse.getUniverseDetails().getSourceRootCertDirPath() == null) {
+        throw new PlatformServiceException(
+            METHOD_NOT_ALLOWED,
+            String.format(
+                "The %s gflag is required, but it is not set. Please use `Edit Flags` "
+                    + "feature to set %s gflag to %s on the target universe",
+                XClusterConfigTaskBase.SOURCE_ROOT_CERTS_DIR_GFLAG,
+                XClusterConfigTaskBase.SOURCE_ROOT_CERTS_DIR_GFLAG,
+                XClusterConfigTaskBase.getProducerCertsDir(
+                    targetUniverse.getUniverseDetails().getPrimaryCluster().userIntent.provider)));
+      }
+    } catch (IllegalArgumentException e) {
+      throw new PlatformServiceException(METHOD_NOT_ALLOWED, e.getMessage());
+    }
 
     // Create xCluster config object.
     XClusterConfig xClusterConfig = XClusterConfig.create(createFormData);
@@ -209,7 +232,7 @@ public class XClusterConfigController extends AuthenticatedController {
 
     // Wrap XClusterConfig with lag metric data and return
     XClusterConfigGetResp resp = new XClusterConfigGetResp();
-    resp.xclusterConfig = xClusterConfig;
+    resp.xClusterConfig = xClusterConfig;
     resp.lag = lagMetricData;
     return PlatformResults.withData(resp);
   }

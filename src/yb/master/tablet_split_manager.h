@@ -24,6 +24,9 @@ namespace master {
 YB_STRONGLY_TYPED_BOOL(IgnoreTtlValidation);
 YB_STRONGLY_TYPED_BOOL(IgnoreDisabledList);
 
+bool CheckLiveReplicasForSplit(
+    const TabletId& tablet_id, const TabletReplicaMap& replicas, size_t rf);
+
 class TabletSplitManager {
  public:
   TabletSplitManager(TabletSplitCandidateFilterIf* filter,

@@ -66,14 +66,15 @@ Create a cluster [locally](../../../quick-start/) or in [YugabyteDB Managed](../
     ```
 
     ```output
-                                                    QUERY PLAN
+                                                      QUERY PLAN
     ------------------------------------------------------------------------------------------------------
-     Seq Scan on demo  (cost=0.00..105.00 rows=1000 width=40) (actual time=15.694..16.086 rows=1 loops=1)
-      Filter: (upper(username) = 'NUMBER42'::text)
-      Rows Removed by Filter: 999
-     Planning Time: 0.238 ms
-     Execution Time: 16.255 ms
-    (5 rows)
+     Seq Scan on demo  (cost=0.00..105.00 rows=1000 width=40) (actual time=15.279..15.880 rows=1 loops=1)
+       Filter: (upper(username) = 'NUMBER42'::text)
+       Rows Removed by Filter: 999
+     Planning Time: 0.075 ms
+     Execution Time: 15.968 ms
+     Peak Memory Usage: 0 kB
+    (6 rows)
     ```
 
 1. Optimize the SELECT query by creating an expression index as follows:
@@ -87,13 +88,14 @@ Create a cluster [locally](../../../quick-start/) or in [YugabyteDB Managed](../
     ```
 
     ```output
-                                                        QUERY PLAN
+                                                           QUERY PLAN
     -------------------------------------------------------------------------------------------------------------------
-     Index Scan using demo_upper on demo  (cost=0.00..5.28 rows=10 width=32) (actual time=2.899..2.903 rows=1 loops=1)
-      Index Cond: (upper(username) = 'NUMBER42'::text)
-     Planning Time: 13.392 ms
-     Execution Time: 3.429 ms
-    (4 rows)
+     Index Scan using demo_upper on demo  (cost=0.00..5.28 rows=10 width=32) (actual time=1.939..1.942 rows=1 loops=1)
+       Index Cond: (upper(username) = 'NUMBER42'::text)
+     Planning Time: 7.289 ms
+     Execution Time: 2.052 ms
+     Peak Memory Usage: 8 kB
+    (5 rows)
     ```
 
     Using an expression index enables faster access to the rows requested in the query. The problem is that the query planner just takes the expression, sees that there's an index on it, and knows that you'll select the `username` column and apply a function to it. It then thinks it needs the `username` column without realizing it already has the value with the function applied. In this case, an index-only scan covering the column to the index can optimize the query performance.
@@ -113,14 +115,15 @@ Create a cluster [locally](../../../quick-start/) or in [YugabyteDB Managed](../
     ```
 
     ```output
-                                                              QUERY PLAN
-    ---------------------------------------------------------------------------------------------------------------------------------
-     Index Only Scan using demo_upper_covering on demo  (cost=0.00..5.18 rows=10 width=32) (actual time=1.265..1.267 rows=1 loops=1)
-      Index Cond: ((upper(username)) = 'NUMBER42'::text)
-      Heap Fetches: 0
-     Planning Time: 6.574 ms
-     Execution Time: 1.342 ms
-    (5 rows)
+                                                                   QUERY PLAN
+    ---------------------------------------------------------------------------------------------------------------------
+     Index Only Scan using demo_upper_covering on demo  (cost=0.00..5.18 rows=10 width=32) (actual time=1.650..1.653 rows=1     loops=1)
+       Index Cond: ((upper(username)) = 'NUMBER42'::text)
+       Heap Fetches: 0
+     Planning Time: 5.258 ms
+     Execution Time: 1.736 ms
+     Peak Memory Usage: 8 kB
+    (6 rows)
     ```
 
 ## Learn more

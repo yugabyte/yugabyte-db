@@ -58,6 +58,24 @@ EXPLAIN SELECT * FROM t1 WHERE v1 = 1 AND v3 > 2;
 EXPLAIN SELECT * FROM t1 WHERE v1 = 1 AND v3 > 3;
 
 --------------------------------------
+-- Multiple hash columns.
+
+CREATE TABLE t4(h1 int, h2 int, v1 int, primary key((h1, h2) hash));
+INSERT INTO t4 (SELECT s, s, s FROM generate_series(1,1000) s);
+
+-- Should use index scan when equality conditions use all hash columns 
+EXPLAIN SELECT * from t4 where h1 = 1 and h2 = 2;
+EXPLAIN SELECT * from t4 where h1 = yb_hash_code(1) and h2 = 2;
+EXPLAIN SELECT * from t4 where h1 = yb_hash_code(1) and h2 = yb_hash_code(2);
+
+-- Should not use index scan when the filter does not have equality on all hash columns
+EXPLAIN SELECT * from t4 where h1 = 1;
+EXPLAIN SELECT * from t4 where h1 = 1 and h2 > 10;
+EXPLAIN SELECT * from t4 where h1 > 1 and h2 > 10;
+EXPLAIN SELECT * from t4 where h1 > 1 and h2 = 10;
+EXPLAIN SELECT * from t4 where h1 = 1 or h2 = 2;
+
+--------------------------------------
 -- Range-partitioned tables/indexes.
 --------------------------------------
 
@@ -121,3 +139,4 @@ EXPLAIN SELECT * FROM t3 WHERE v1 = 1 AND v2 <= 3 ORDER BY v2 DESC;
 DROP TABLE t1;
 DROP TABLE t2;
 DROP TABLE t3;
+DROP TABLE t4;

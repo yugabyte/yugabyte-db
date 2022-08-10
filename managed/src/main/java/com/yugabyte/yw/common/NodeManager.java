@@ -686,14 +686,8 @@ public class NodeManager extends DevopsBase {
     }
 
     if (universe.isYbcEnabled()) {
-      ReleaseManager.ReleaseMetadata releaseMetadata;
-      if (StringUtils.isEmpty(taskParam.ybcSoftwareVersion)) {
-        releaseMetadata =
-            releaseManager.getYbcReleaseByVersion(
-                runtimeConfigFactory.globalRuntimeConf().getString(YBC_DEFAULT_VERSION));
-      } else {
-        releaseMetadata = releaseManager.getYbcReleaseByVersion(taskParam.ybcSoftwareVersion);
-      }
+      ReleaseManager.ReleaseMetadata releaseMetadata =
+          releaseManager.getYbcReleaseByVersion(taskParam.ybcSoftwareVersion);
       ybcPackage = releaseMetadata.getFilePath(taskParam.getRegion());
       if (StringUtils.isBlank(ybcPackage)) {
         throw new RuntimeException("Ybc package cannot be empty with ybc enabled");
