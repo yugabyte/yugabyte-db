@@ -7,6 +7,8 @@ headcontent: Create a local cluster on a single host
 aliases:
   - /quick-start/linux/
 type: docs
+rightNav:
+  hideH4: true
 ---
 
 <div class="custom-tabs tabs-style-2">
@@ -212,21 +214,51 @@ To load sample data and explore an example using ysqlsh, refer to [Retail Analyt
 
 ## Build a Java application
 
+The following tutorial shows a small Java application that connects to a YugabyteDB cluster using the topology-aware Yugabyte JDBC driver and performs basic SQL operations.
+
+For examples using other languages, refer to [Build an application](../../develop/build-apps/).
+
 ### Prerequisites
 
-Before building a Java application, perform the following:
+- Java Development Kit (JDK) 1.8 or later. JDK installers can be downloaded from [OpenJDK](http://jdk.java.net/).
+- [Apache Maven](https://maven.apache.org/index.html) 3.3 or later.
 
-- While YugabyteDB is running, use the [yb-ctl](../../admin/yb-ctl/#root) utility to create a universe with a 3-node RF-3 cluster with some fictitious geo-locations assigned, as follows:
+### Start a local multi-node cluster
 
-  ```sh
-  cd <path-to-yugabytedb-installation>
+First, destroy the currently running single-node cluster:
 
-  ./bin/yb-ctl create --rf 3 --placement_info "aws.us-west.us-west-2a,aws.us-west.us-west-2a,aws.us-west.us-west-2b"
-  ```
+```sh
+./bin/yugabyted destroy
+```
 
-- Ensure that Java Development Kit (JDK) 1.8 or later is installed. JDK installers can be downloaded from [OpenJDK](http://jdk.java.net/).
+Create the first node as follows:
 
-- Ensure that [Apache Maven](https://maven.apache.org/index.html) 3.3 or later is installed.
+```sh
+./bin/yugabyted start --advertise_address=127.0.0.1 --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node1 --cloud_location=aws.us-east.us-east-1a
+```
+
+The additional nodes need loopback addresses configured that allow you to simulate the use of multiple hosts or nodes:
+
+```sh
+sudo ifconfig lo0 alias 127.0.0.2
+sudo ifconfig lo0 alias 127.0.0.3
+```
+
+The loopback addresses do not persist upon rebooting your computer.
+
+Add two more nodes to the cluster using the join option:
+
+```sh
+./bin/yugabyted start --advertise_address=127.0.0.2 --join=127.0.0.1 --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node2 --cloud_location=aws.us-east.us-east-2a
+
+./bin/yugabyted start --advertise_address=127.0.0.3 --join=127.0.0.1 --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node3 --cloud_location=aws.us-east.us-east-3a
+```
+
+After starting the yugabyted processes on all the nodes, configure the data placement constraint of the YugabyteDB cluster:
+
+```sh
+./bin/yugabyted configure --fault_tolerance=zone
+```
 
 ### Create and configure the Java project
 
