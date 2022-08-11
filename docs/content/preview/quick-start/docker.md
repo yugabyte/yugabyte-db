@@ -165,7 +165,7 @@ yugabyte=#
 
 To load sample data and explore an example using ysqlsh, refer to [Retail Analytics](../../sample-data/retail-analytics/).
 
-## Build a Java application
+<!--## Build a Java application
 
 ### Prerequisites
 
@@ -217,7 +217,7 @@ Perform the following to create a sample Java project:
     </dependency>
 
     <!-- https://mvnrepository.com/artifact/com.zaxxer/HikariCP -->
-    <dependency>
+<!--    <dependency>
       <groupId>com.zaxxer</groupId>
       <artifactId>HikariCP</artifactId>
       <version>5.0.0</version>
@@ -444,4 +444,4 @@ The following steps demonstrate how to create two Java applications, `UniformLoa
 
     ```sh
      mvn -q package exec:java -DskipTests -Dexec.mainClass=com.yugabyte.TopologyAwareLoadBalanceApp
-    ```
+    ```-->
