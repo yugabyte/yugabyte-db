@@ -53,11 +53,14 @@ using SnapshotScheduleOperations = std::vector<SnapshotScheduleOperation>;
 class SnapshotScheduleState {
  public:
   SnapshotScheduleState(
-      SnapshotCoordinatorContext* context, const CreateSnapshotScheduleRequestPB& req);
+      SnapshotCoordinatorContext* context, const SnapshotScheduleOptionsPB& req);
 
   SnapshotScheduleState(
       SnapshotCoordinatorContext* context, const SnapshotScheduleId& id,
       const SnapshotScheduleOptionsPB& options);
+
+  static Result<SnapshotScheduleState> Create(
+      SnapshotCoordinatorContext* context, const SnapshotScheduleOptionsPB& options);
 
   const SnapshotScheduleId& id() const {
     return id_;
@@ -91,12 +94,18 @@ class SnapshotScheduleState {
       const SnapshotScheduleId& schedule_id, SnapshotCoordinatorContext* context);
 
   Status StoreToWriteBatch(docdb::KeyValueWriteBatchPB* write_batch) const;
+  Status StoreToWriteBatch(
+      const SnapshotScheduleOptionsPB& options, docdb::KeyValueWriteBatchPB* out) const;
   Status ToPB(SnapshotScheduleInfoPB* pb) const;
   std::string ToString() const;
 
   const CreatingSnapshotData& creating_snapshot_data() const {
     return creating_snapshot_data_;
   }
+
+  Result<SnapshotScheduleOptionsPB> GetUpdatedOptions(
+      const EditSnapshotScheduleRequestPB& edit_request) const;
+  static Status ValidateOptions(const SnapshotScheduleOptionsPB& new_options);
 
  private:
   std::string LogPrefix() const;

@@ -229,6 +229,17 @@ message DeleteSnapshotScheduleResponsePB {
   optional MasterErrorPB error = 1;
 }
 
+message EditSnapshotScheduleRequestPB {
+  optional bytes snapshot_schedule_id = 1;
+  optional uint64 interval_sec = 2;
+  optional uint64 retention_duration_sec = 3;
+}
+
+message EditSnapshotScheduleResponsePB {
+  optional MasterErrorPB error = 1;
+  optional SnapshotScheduleInfoPB schedule = 2;
+}
+
 service MasterBackup {
   // Client->Master RPCs
   rpc CreateSnapshot(CreateSnapshotRequestPB) returns (CreateSnapshotResponsePB);
@@ -244,4 +255,5 @@ service MasterBackup {
       returns (ListSnapshotSchedulesResponsePB);
   rpc DeleteSnapshotSchedule(DeleteSnapshotScheduleRequestPB)
       returns (DeleteSnapshotScheduleResponsePB);
+  rpc EditSnapshotSchedule(EditSnapshotScheduleRequestPB) returns (EditSnapshotScheduleResponsePB);
 }
