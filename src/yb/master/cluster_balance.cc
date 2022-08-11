@@ -135,11 +135,12 @@ DEFINE_bool(load_balancer_ignore_cloud_info_similarity, false,
             "If true, ignore the similarity between cloud infos when deciding which tablet "
             "to move.");
 
-METRIC_DEFINE_gauge_bool(cluster,
-                         is_load_balancing_enabled,
-                         "Is Load Balancing Enabled",
-                         yb::MetricUnit::kUnits,
-                         "Is load balancing enabled in the cluster.");
+METRIC_DEFINE_gauge_int64(cluster,
+                          is_load_balancing_enabled,
+                          "Is Load Balancing Enabled",
+                          yb::MetricUnit::kUnits,
+                          "Is load balancing enabled in the cluster where "
+                          "1 indicates it is enabled.");
 
 namespace yb {
 namespace master {
