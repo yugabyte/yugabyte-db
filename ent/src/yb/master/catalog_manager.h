@@ -75,8 +75,13 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
                                         DeleteSnapshotScheduleResponsePB* resp,
                                         rpc::RpcContext* rpc);
 
+  Status EditSnapshotSchedule(
+      const EditSnapshotScheduleRequestPB* req,
+      EditSnapshotScheduleResponsePB* resp,
+      rpc::RpcContext* rpc);
+
   Status ChangeEncryptionInfo(const ChangeEncryptionInfoRequestPB* req,
-                                      ChangeEncryptionInfoResponsePB* resp) override;
+                              ChangeEncryptionInfoResponsePB* resp) override;
 
   Status UpdateXClusterConsumerOnTabletSplit(
       const TableId& consumer_table_id, const SplitTabletIds& split_tablet_ids) override;
