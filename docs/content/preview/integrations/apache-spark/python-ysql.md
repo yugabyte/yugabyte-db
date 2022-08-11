@@ -33,22 +33,35 @@ type: docs
     </a>
   </li>
 
+  <li >
+    <a href="../spark-sql/" class="nav-link">
+      Spark SQL
+    </a>
+  </li>
+
 </ul>
+
+The following tutorial describes how to use Python's Spark API `pyspark` with YugabyteDB, and perform YSQL queries.
 
 ## Prerequisites
 
-- Download [Apache Spark 3.3.0](https://spark.apache.org/downloads.html) .
-- Install and run a [YugabyteDB cluster](/preview/quick-start/).
+This tutorial assumes that you have:
 
-There are various spark apis of different languages such as  Scala `spark-shell`, Python `pyspark`, and `spark-sql` APIs, out of those this tutorial will explain how to use Scala `spark-shell` API with YugabyteDB.
+- YugabyteDB running. If you are new to YugabyteDB, follow the steps in [Quick start](../../../../quick-start/).
+- Java Development Kit (JDK) 1.8. JDK installers for Linux and macOS can be downloaded from [OpenJDK](http://jdk.java.net/), [AdoptOpenJDK](https://adoptopenjdk.net/), or [Azul Systems](https://www.azul.com/downloads/zulu-community/). Homebrew users on macOS can install using `brew install AdoptOpenJDK/openjdk/adoptopenjdk8`.
+- [Apache Spark 3.3.0](https://spark.apache.org/downloads.html).
 
-## Start Python Spark shell with YugabyteDB Driver
+## Start Python Spark shell with YugabyteDB driver
 
-Go to the spark installation directory and use the following command to start the pyspark shell and pass the package of YugabyteDB driver with the param --packages. It will fetch the YugabyteDB Driver from local cache if present otherwise it will install the driver from online.
+From your spark installation directory, use the following command to start `pyspark` shell, and pass the YugabyteDB driver package with the `--packages` parameter. The command fetches the YugabyteDB driver from local cache (if present), or installs the driver from [maven central](https://search.maven.org/).
 
+```sh
 ./bin/pyspark --packages com.yugabyte:jdbc-yugabytedb:42.3.0
+```
 
-This prompt will come up:
+The Spark session should be available as follows:
+
+```output
 Welcome to
       ____              __
      / __/__  ___ _____/ /__
@@ -61,147 +74,219 @@ Spark context Web UI available at http://192.168.0.141:4040
 Spark context available as 'sc' (master = local[*], app id = local-1658425088632).
 SparkSession available as 'spark'.
 >>>
+```
 
-## Set up the Database
+## Set up the database
 
-Go to the YugabyteDB installation and open ysqlsh shell for reading and writing directly into the database using $./bin/ysqlsh
-This prompt will come up -
+1. From your YugabyteDB installation directory, use ysqlsh shell to read and write directly to the database as follows:
 
-ysqlsh (11.2-YB-2.13.1.0-b0)
-Type "help" for help.
+    ```sh
+    ./bin/ysqlsh
+    ```
 
-yugabyte=#
+1. Create a database for `pyspark` as `ysql_pyspark` and connect to it using the following:
 
-Create a separate database for pyspark as ysql_pyspark and connect to it:
+    ```sql
+    yugabyte=# CREATE DATABASE ysql_pyspark;
+    yugabyte=# \c ysql_pyspark;
+    ```
 
-yugabyte=# CREATE DATABASE ysql_pyspark;
-yugabyte=# \c ysql_pyspark;
-You are now connected to database "ysql_pyspark" as user "yugabyte".
-ysql_pyspark=#
+    ```output
+    You are now connected to database "ysql_pyspark" as user "yugabyte".
+    ysql_pyspark=#
+    ```
 
-Create a table in the ysql_pyspark database to use it for reading and writing data through jdbc connector from pyspark -
-ysql_pyspark=# create table test as select generate_series(1,100000) AS id, random(), ceil(random() * 20);
+1. Create a table in the `ysql_pyspark` database to read and write data through the JDBC connector from `pyspark` as follows:
 
-## Set up the connectivity with YugabyteDB
+    ```sql
+    ysql_pyspark=# create table test as select generate_series(1,100000) AS id, random(), ceil(random() * 20);
+    ```
 
-Following statements will set up the connection url and properties to be used to read from and write data through the jdbc connector into YugabyteDB.
+## Set up connectivity with YugabyteDB
 
+From your Spark prompt, set up the connection URL and properties to read and write data through the JDBC connector to YugabyteDB.
+
+```spark
 >>> jdbcUrl = "jdbc:yugabytedb://localhost:5433/ysql_pyspark"
 >>> connectionProperties = {
   "user" : "yugabyte",
   "password" :  "yugabyte",
   "driver" :  "com.yugabyte.Driver"
 }
+```
 
-## Store and Retrieve Data
+## Store and retrieve Data
 
-Create the dataframe for the test table for reading data from the table in the database through jdbc connector using the following code :
->>> test_Df = spark.read.jdbc(url=jdbcUrl, table="test",properties= connectionProperties)
+You can choose one of the following ways to read data.
 
-Alternatively, you can also use SQL queries to create a dataframe which pushes down the queries to YugabyteDB  through the  jdbc connector to fetch the rows and create a dataframe on that result.
->>> test_Df = spark.read.jdbc(url=jdbcUrl, table="(select * from test) test_alias", properties=connectionProperties)
+### Using DataFrame API
 
-Print the schema of the dataframe created above:
->>> test_Df.printSchema()
+Create a [DataFrame](https://spark.apache.org/docs/1.5.1/api/java/org/apache/spark/sql/DataFrame.html) for the `test` table to read data via the JDBC connector using the following:
 
-This will be shown as output-
-root
- |-- id: integer (nullable = true)
- |-- random: double (nullable = true)
- |-- ceil: double (nullable = true)
+```spark
+>>> test_Df = spark.read.jdbc(url=jdbcUrl, table="test", properties= connectionProperties)
+```
 
-Now, read some data from the table using the Dataframe APIs -
->>> test_Df.select("id","ceil").groupBy("ceil").sum("id").limit(10).show()
+### Using SQL queries
 
-This will be shown as output-
-+--------+---------+
-|ceil    |  sum(id)|
-+--------+---------+
-|     8.0|248688663|
-|     7.0|254438906|
-|    18.0|253717793|
-|     1.0|253651826|
-|     4.0|251144069|
-|    11.0|252091080|
-|    14.0|244487874|
-|    19.0|256220339|
-|     3.0|247630466|
-|     2.0|249126085|
-+--------+---------+
+1. You can use SQL queries to create a DataFrame which pushes down the queries to YugabyteDB through the JDBC connector to fetch the rows, and create a DataFrame for that result.
 
-Alternatively, one can use the spark.sql() API to directly execute the SQL queries from pyspark shell using the following code:
+    ```spark
+    >>> test_Df = spark.read.jdbc(url=jdbcUrl, table="(select * from test) test_alias", properties=connectionProperties)
+    ```
 
->>> test_Df.createOrReplaceTempView("test")
->>> res_df = spark.sql("select ceil, sum(id) from test group by ceil limit 10")
->>> res_df.show()
+1. Output the schema of the DataFrame created as follows:
 
-The output will be similar as above.
+    ```spark
+    >>> test_Df.printSchema()
+    ```
 
-The following code will first rename the column of the table test from ceil to round_off in the dataframe and create a new table with the schema of the dataframe and insert the data and name it as test_copy though the jdbc connector.
+    ```output
+      root
+    |-- id: integer (nullable = true)
+    |-- random: double (nullable = true)
+    |-- ceil: double (nullable = true)
 
->>> spark.table("test").withColumnRenamed("ceil", "round_off").write.jdbc(url=jdbcUrl, table="test_copy", properties=connectionProperties)
+    ```
 
-Verify it in the database -
-ysql_pyspark=# \dt
-           List of relations
- Schema |   Name    | Type  |  Owner
---------+-----------+-------+----------
- public | test_copy | table | yugabyte
- public | test      | table | yugabyte
-(2 rows)
+1. Read some data from the table using the DataFrame APIs:
 
-ysql_pyspark=# \d test_copy
-                   Table "public.test_copy"
-  Column   |       Type       | Collation | Nullable | Default
------------+------------------+-----------+----------+---------
- id        | integer          |           |          |
- random    | double precision |           |          |
- round_off | double precision |           |          |
+    ```scala
+    >>> test_Df.select("id","ceil").groupBy("ceil").sum("id").limit(10).show()
+    ```
 
+    ```output
+    +--------+---------+
+    |ceil    |  sum(id)|
+    +--------+---------+
+    |     8.0|248688663|
+    |     7.0|254438906|
+    |    18.0|253717793|
+    |     1.0|253651826|
+    |     4.0|251144069|
+    |    11.0|252091080|
+    |    14.0|244487874|
+    |    19.0|256220339|
+    |     3.0|247630466|
+    |     2.0|249126085|
+    +--------+---------+
+    ```
 
-ysql_pyspark=# select count(*) from test_copy;
- count
---------
- 100000
-(1 row)
+### Using spark.sql() API
 
-There are different modes for writing in the database through the jdbc connector such as append, overwrite, errorifexists and ignore. The below code uses the append where it appends the data from test_copy table into the table test.
+1. You can use the `spark.sql()` API to directly execute SQL queries from pyspark shell using the following code:
 
->>> spark.table("test_copy").write.mode("append").jdbc(url=jdbcUrl, table="test", properties=connectionProperties)
+    ```spark
+    >>> test_Df.createOrReplaceTempView("test")
+    >>> res_df = spark.sql("select ceil, sum(id) from test group by ceil limit 10")
+    >>> res_df.show()
+    ```
 
-Verify it in the database:
+    The output will be similar to [SQL queries](#using-sql-queries).
 
-ysql_pyspark=# select count(*) from test;
- count
---------
- 200000
-(1 row)
+1. The following spark query renames the column of the table `test` from `ceil` to `round_off` in the DataFrame, then creates a new table with the schema of the changed DataFrame, inserts all its data in the new table, and names it as `test_copy` using the JDBC connector.
 
+    ```spark
+    >>> spark.table("test").withColumnRenamed("ceil", "round_off").write.jdbc(url=jdbcUrl, table="test_copy", properties=connectionProperties)
+    ```
+
+1. Verify that the new table `test_copy` is created with the changed schema, and all the data from `test` is copied to it using the following commands from your ysqlsh terminal:
+
+    ```sql
+    ysql_pyspark=# \dt
+    ```
+
+    ```output
+               List of relations
+     Schema |   Name    | Type  |  Owner
+    --------+-----------+-------+----------
+     public | test_copy | table | yugabyte
+     public | test      | table | yugabyte
+    (2 rows)
+    ```
+
+    ```sql
+    ysql_pyspark=# \d test_copy
+    ```
+
+    ```output
+                       Table "public.test_copy"
+      Column   |       Type       | Collation | Nullable | Default
+    -----------+------------------+-----------+----------+---------
+     id        | integer          |           |          |
+     random    | double precision |           |          |
+     round_off | double precision |           |          |
+    ```
+
+    ```sql
+    ysql_pyspark=# select count(*) from test_copy;
+    ```
+
+    ```output
+     count
+    --------
+     100000
+    (1 row)
+    ```
+
+1. Use the `append` [SaveMode](https://spark.apache.org/docs/latest/sql-data-sources-load-save-functions.html#save-modes), to append data from `test_copy` to the `test` table as follows:
+
+    ```spark
+    >>> test_copy_Df = spark.read.jdbc(url=jdbcUrl, table="(select * from test_copy) test_copy_alias", properties=connectionProperties)
+    >>> test_copy_Df.createOrReplaceTempView("test_copy")
+    >>> spark.table("test_copy").write.mode("append").jdbc(url=jdbcUrl, table="test",     properties=connectionProperties)
+    ```
+
+1. Verify the changes using ysqlsh:
+
+    ```sql
+    ysql_pyspark=# select count(*) from test;
+    ```
+
+    ```output
+     count
+    --------
+     200000
+    (1 row)
+    ```
 
 ## Parallelism
 
-The following code will create the dataframe for the table test with some specific options for maintaining the parallelism while fetching the table content,
-numPartitions - divides the whole task into numPartitions parallel tasks.
-lowerBound - min value of the partitionColumn in table
-upperBound - max value of the partitionColumn in table
-partitionColumn - the column on the basis of which partition happen
+To maintain parallelism while fetching the table content, create a DataFrame for the table `test` with some specific options as follows:
 
-These options help in breaking down the whole task into numPartitions parallel tasks on the basis of the partitionColumn with the help of min and max value of the column.
+- `numPartitions` - divides the whole task to `numPartitions` parallel tasks.
+- `lowerBound` - minimum value of the `partitionColumn` in a table.
+- `upperBound` - maximum value of the `partitionColumn` in a table.
+- `partitionColumn` - the column on the basis of which a partition occurs.
 
+These options help in breaking down the whole task into `numPartitions` parallel tasks on the basis of the `partitionColumn`, with the help of minimum and maximum value of the column.
+
+Additionally, the following two options help in optimizing the SQL queries executing on this dataframe if those SQL queries consist of some filters or aggregate functions by pushing down those filters and aggregates to the YugabyteDB through the JDBC connector.
+
+- `pushDownPredicate` - optimizes the query by pushing down the filters to YugabyteDB through the JDBC connector.
+- `pushDownAggregate` - optimizes the query by pushing down the aggregated to YugabyteDB through the JDBC connector.
+
+```spark
 >>> new_test_df = spark.read.jdbc(url=jdbcUrl, table="test", properties=connectionProperties,numPartitions=5, column="ceil", lowerBound=0, upperBound=20)
 
 >>> new_test_df.createOrReplaceTempView("test")
 >>> spark.sql("select sum(ceil) from test where id > 50000").show
+```
 
-This will be shown as output:
+```output
 +---------+
 |sum(ceil)|
 +---------+
 |1049414.0|
 +---------+
+```
 
-Verify that the spark job is created with parallelism -
+### Verify parallelism
 
-Go to the Spark UI using  https://localhost:4040 . if your port 4040 is occupied, then change the port accordingly with the port on which spark-sql’s UI is started which can be seen in the output when spark-sql shell is started.
-Now go to the SQL tab in the UI and click on the last executed SQL statements and see if numPartitions is 5 as shown below:
+To verify that the Spark job is created,
 
+1. Navigate to the Spark UI using <https://localhost:4040>. If your port 4040 is in use, then change the port to the one mentioned in the output of your [`pyspark`](#start-python-spark-shell-with-yugabytedb-driver) shell.
+
+1. From the **SQL/DataFrame** tab, click the last executed SQL statement to see if `numPartitions=5` is displayed as shown in the following image:
+
+   ![Parallelism](/images/develop/ecosystem-integrations/parallelism.png)

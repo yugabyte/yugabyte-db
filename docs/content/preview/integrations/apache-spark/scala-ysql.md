@@ -34,6 +34,12 @@ type: docs
     </a>
   </li>
 
+   <li >
+    <a href="../spark-sql/" class="nav-link">
+      Spark SQL
+    </a>
+  </li>
+
 </ul>
 
 The following tutorial describes how to use Scala's Spark API `spark-shell` with YugabyteDB, and perform YSQL queries.
@@ -42,13 +48,13 @@ The following tutorial describes how to use Scala's Spark API `spark-shell` with
 
 This tutorial assumes that you have:
 
-- YugabyteDB up and running. If you are new to YugabyteDB, follow the steps in [Quick start](../../../../quick-start/) to have YugabyteDB up and running in minutes.
-- Java Development Kit (JDK) 1.8 is installed. JDK installers for Linux and macOS can be downloaded from [OpenJDK](http://jdk.java.net/), [AdoptOpenJDK](https://adoptopenjdk.net/), or [Azul Systems](https://www.azul.com/downloads/zulu-community/). Homebrew users on macOS can install using `brew install AdoptOpenJDK/openjdk/adoptopenjdk8`.
-- downloaded [Apache Spark 3.3.0](https://spark.apache.org/downloads.html).
+- YugabyteDB running. If you are new to YugabyteDB, follow the steps in [Quick start](../../../../quick-start/).
+- Java Development Kit (JDK) 1.8. JDK installers for Linux and macOS can be downloaded from [OpenJDK](http://jdk.java.net/), [AdoptOpenJDK](https://adoptopenjdk.net/), or [Azul Systems](https://www.azul.com/downloads/zulu-community/). Homebrew users on macOS can install using `brew install AdoptOpenJDK/openjdk/adoptopenjdk8`.
+- [Apache Spark 3.3.0](https://spark.apache.org/downloads.html).
 
 ## Start Scala Spark shell with YugabyteDB driver
 
-From your spark installation directory, use the following command to start `spark-shell`, and pass the package of YugabyteDB driver with the `--packages` parameter. It fetches the YugabyteDB driver from local cache (if present), or installs the driver from [maven central](https://search.maven.org/).
+From your Spark installation directory, use the following command to start `spark-shell`, and pass the YugabyteDB driver package with the `--packages` parameter. The command fetches the YugabyteDB driver from local cache (if present), or installs the driver from [maven central](https://search.maven.org/).
 
 ```sh
 ./bin/spark-shell --packages com.yugabyte:jdbc-yugabytedb:42.3.0
@@ -74,31 +80,31 @@ scala>
 
 1. From your YugabyteDB installation directory, use ysqlsh shell to read and write directly to the database as follows:
 
-   ```sh
-   ./bin/ysqlsh
-   ```
+    ```sh
+    ./bin/ysqlsh
+    ```
 
 1. Create a database for `spark-shell` as `ysql_spark_shell` and connect to it using the following:
 
-   ```sql
-   yugabyte=# CREATE DATABASE ysql_spark_shell;
-   yugabyte=# \c ysql_spark_shell;
-   ```
+    ```sql
+    yugabyte=# CREATE DATABASE ysql_spark_shell;
+    yugabyte=# \c ysql_spark_shell;
+    ```
 
-   ```output
-   You are now connected to database "ysql_spark_shell" as user "yugabyte".
-   ysql_spark_shell=#
-   ```
+    ```output
+    You are now connected to database "ysql_spark_shell" as user "yugabyte".
+    ysql_spark_shell=#
+    ```
 
 1. Create a table in the `ysql_spark_shell` database to read and write data through the JDBC connector from `spark-shell` as follows:
 
-   ```sql
-   ysql_spark_shell=# create table test as select generate_series(1,100000) AS id, random(), ceil(random() * 20);
-   ```
+    ```sql
+    ysql_spark_shell=# create table test as select generate_series(1,100000) AS id, random(), ceil(random() * 20);
+    ```
 
 ## Set up connectivity with YugabyteDB
 
-From your Scala prompt, set up the connection URL and properties to read and write data through the jdbc connector to YugabyteDB.
+From your Scala prompt, set up the connection URL and properties to read and write data through the JDBC connector to YugabyteDB.
 
 ```scala
 scala> val jdbcUrl = s"jdbc:yugabytedb://localhost:5433/ysql_spark_shell"
@@ -130,123 +136,126 @@ scala> val test_Df = spark.read.jdbc(jdbcUrl, "test", connectionProperties)
 
 ### Using SQL queries
 
-1. You can use SQL queries to create a DataFrame which pushes down the queries to YugabyteDB through the  JDBC connector to fetch the rows, and create a DataFrame for that result.
+1. You can use SQL queries to create a DataFrame which pushes down the queries to YugabyteDB through the JDBC connector to fetch the rows, and create a DataFrame for that result.
 
-   ```scala
-   scala> val test_Df = spark.read.jdbc(jdbcUrl, table="(select * from test) test_alias", connectionProperties)
-   ```
+    ```scala
+    scala> val test_Df = spark.read.jdbc(jdbcUrl, table="(select * from test) test_alias", connectionProperties)
+    ```
 
 1. Output the schema of the DataFrame created as follows:
 
-   ```scala
-   scala> test_Df.printSchema
-   ```
+    ```scala
+    scala> test_Df.printSchema
+    ```
 
-   ```output
-     root
-   |-- id: integer (nullable = true)
-   |-- random: double (nullable = true)
-   |-- ceil: double (nullable = true)
+    ```output
+      root
+    |-- id: integer (nullable = true)
+    |-- random: double (nullable = true)
+    |-- ceil: double (nullable = true)
 
-   ```
+    ```
 
 1. Read some data from the table using the DataFrame APIs:
 
-   ```scala
-   scala>test_Df.select("id","ceil").groupBy("ceil").sum("id").limit(10).show
-   ```
+    ```scala
+    scala>test_Df.select("id","ceil").groupBy("ceil").sum("id").limit(10).show
+    ```
 
-   ```output
-   +--------+---------+
-   |ceil    |  sum(id)|
-   +--------+---------+
-   |     8.0|248688663|
-   |     7.0|254438906|
-   |    18.0|253717793|
-   |     1.0|253651826|
-   |     4.0|251144069|
-   |    11.0|252091080|
-   |    14.0|244487874|
-   |    19.0|256220339|
-   |     3.0|247630466|
-   |     2.0|249126085|
-   +--------+---------+
-   ```
+    ```output
+    +--------+---------+
+    |ceil    |  sum(id)|
+    +--------+---------+
+    |     8.0|248688663|
+    |     7.0|254438906|
+    |    18.0|253717793|
+    |     1.0|253651826|
+    |     4.0|251144069|
+    |    11.0|252091080|
+    |    14.0|244487874|
+    |    19.0|256220339|
+    |     3.0|247630466|
+    |     2.0|249126085|
+    +--------+---------+
+    ```
 
 ### Using spark.sql() API
 
 1. You can use the `spark.sql()` API to directly execute SQL queries from spark shell using the following code:
 
-   ```scala
-   scala>test_Df.createOrReplaceTempView("test")
-   scala>spark.sql("select ceil, sum(id) from test group by ceil limit 10").show
-   ```
+    ```scala
+    scala>test_Df.createOrReplaceTempView("test")
+    scala>spark.sql("select ceil, sum(id) from test group by ceil limit 10").show
+    ```
 
-   The output will be similar to [SQL queries](#using-sql-queries).
+    The output will be similar to [SQL queries](#using-sql-queries).
 
 1. The following spark query renames the column of the table `test` from `ceil` to `round_off` in the DataFrame, then creates a new table with the schema of the changed DataFrame, inserts all its data in the new table, and names it as `test_copy` using the JDBC connector.
 
-   ```scala
-   scala> spark.table("test").withColumnRenamed("ceil", "round_off").write.jdbc(jdbcUrl, "test_copy", connectionProperties)
-   ```
+    ```scala
+    scala> spark.table("test").withColumnRenamed("ceil", "round_off").write.jdbc(jdbcUrl, "test_copy", connectionProperties)
+    ```
 
 1. Verify that the new table `test_copy` is created with the changed schema, and all the data from `test` is copied to it using the following commands from your ysqlsh terminal:
 
-   ```sql
-   ysql_spark_shell=# \dt
-   ```
+    ```sql
+    ysql_spark_shell=# \dt
+    ```
 
-   ```output
-              List of relations
-    Schema |   Name    | Type  |  Owner
-   --------+-----------+-------+----------
-    public | test_copy | table | yugabyte
-    public | test      | table | yugabyte
-   (2 rows)
-   ```
+    ```output
+               List of relations
+     Schema |   Name    | Type  |  Owner
+    --------+-----------+-------+----------
+     public | test_copy | table | yugabyte
+     public | test      | table | yugabyte
+    (2 rows)
+    ```
 
-   ```sql
-   ysql_spark_shell=# \d test_copy
-   ```
+    ```sql
+    ysql_spark_shell=# \d test_copy
+    ```
 
-   ```output
-                      Table "public.test_copy"
-     Column   |       Type       | Collation | Nullable | Default
-   -----------+------------------+-----------+----------+---------
-    id        | integer          |           |          |
-    random    | double precision |           |          |
-    round_off | double precision |           |          |
-   ```
+    ```output
+                       Table "public.test_copy"
+      Column   |       Type       | Collation | Nullable | Default
+    -----------+------------------+-----------+----------+---------
+     id        | integer          |           |          |
+     random    | double precision |           |          |
+     round_off | double precision |           |          |
+    ```
 
-   ```sql
-   ysql_spark_shell=# select count(*) from test_copy;
-   ```
+    ```sql
+    ysql_spark_shell=# select count(*) from test_copy;
+    ```
 
-   ```output
-    count
-   --------
-    100000
-   (1 row)
-   ```
+    ```output
+     count
+    --------
+     100000
+    (1 row)
+    ```
 
 1. Use the `append` [SaveMode](https://spark.apache.org/docs/latest/sql-data-sources-load-save-functions.html#save-modes), to append data from `test_copy` to the `test` table as follows:
 
-   ```scala
-   scala> spark.table("test_copy").write.mode(SaveMode.Append).jdbc(jdbcUrl, "test", connectionProperties)
-   ```
+    ```scala
+    scala> import org.apache.spark.sql.SaveMode
+    scala> val test_copy_Df = spark.read.jdbc(jdbcUrl, table="(select * from test_copy) test_copy_alias", connectionProperties)
+    scala>test_copy_Df.createOrReplaceTempView("test_copy")
+    scala> spark.table("test_copy").write.mode(SaveMode.Append).jdbc(jdbcUrl, "test", connectionProperties)
+    ```
 
 1. Verify the changes using ysqlsh:
 
-   ```sql
-   ysql_spark_shell=# select count(*) from test;
-   ```
+    ```sql
+    ysql_spark_shell=# select count(*) from test;
+    ```
 
-   ```output
-    count
-   --------
-    200000
-   (1 row)
-   ```
+    ```output
+     count
+    --------
+     200000
+    (1 row)
+    ```
 
 ## Parallelism
 
@@ -259,10 +268,10 @@ To maintain parallelism while fetching the table content, create a DataFrame for
 
 These options help in breaking down the whole task into `numPartitions` parallel tasks on the basis of the `partitionColumn`, with the help of minimum and maximum value of the column.
 
-Additionally, the following two options help in optimizing the SQL queries executing on this dataframe if those SQL queries consist of some filters or aggregate functions by pushing down those filters and aggregates to the YugabyteDB through the JDBC connector.
+Additionally, the following two options help in optimizing the SQL queries executing on this DataFrame if those SQL queries consist of some filters or aggregate functions by pushing down those _filters_ or _aggregates_ to YugabyteDB using the JDBC connector.
 
-- `pushDownPredicate` - optimizes the query by pushing down the filters to YugabyteDB through the JDBC connector.
-- `pushDownAggregate` - optimizes the query by pushing down the aggregated to YugabyteDB through the JDBC connector.
+- `pushDownPredicate` - optimizes the query by pushing down the filters to YugabyteDB using the JDBC connector.
+- `pushDownAggregate` - optimizes the query by pushing down the aggregates to YugabyteDB using the JDBC connector.
 
 ```scala
 scala> val new_test_df = spark.read.format("jdbc")
@@ -295,10 +304,10 @@ scala> spark.sql("select sum(ceil) from test where id > 50000").show
 
 ### Verify parallelism
 
-To verify that the spark job is created with parallelism,
+To verify that the spark job is created,
 
 1. Navigate to the Spark UI using <https://localhost:4040>. If your port 4040 is in use, then change the port to the one mentioned in the output of your [`spark-sql`](#start-scala-spark-shell-with-yugabytedb-driver) shell.
 
-1. From the **SQL/DataFrame** tab, click the last executed SQL statement to see if `numPartitions=5` is displayed in the following image:
+1. From the **SQL/DataFrame** tab, click the last executed SQL statement to see if `numPartitions=5` is displayed as shown in the following image:
 
    ![Parallelism](/images/develop/ecosystem-integrations/parallelism.png)
