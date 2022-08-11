@@ -94,6 +94,7 @@ import org.yb.master.CatalogEntityInfo.SysClusterConfigEntryPB;
 import play.libs.Json;
 
 @RunWith(JUnitParamsRunner.class)
+@Deprecated
 public class UpgradeUniverseTest extends CommissionerBaseTest {
   @Rule public MockitoRule rule = MockitoJUnit.rule();
 

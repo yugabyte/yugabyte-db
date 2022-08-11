@@ -86,6 +86,7 @@ public class DeleteNodeFromUniverse extends UniverseTaskBase {
         // because there is no change in the node state that can make this task move to one of
         // the disallowed actions.
         createDestroyServerTasks(
+                universe,
                 currentNodeDetails,
                 true /* isForceDelete */,
                 false /* deleteNode */,

@@ -369,6 +369,14 @@ public class UpgradeUniverseHandler {
       if (requestIntent.deviceInfo != null && requestIntent.deviceInfo.volumeSize != null) {
         requestCluster.userIntent.deviceInfo.volumeSize = requestIntent.deviceInfo.volumeSize;
       }
+      if (requestIntent.masterInstanceType != null) {
+        requestCluster.userIntent.masterInstanceType = requestIntent.masterInstanceType;
+      }
+      if (requestIntent.masterDeviceInfo != null
+          && requestIntent.masterDeviceInfo.volumeSize != null) {
+        requestCluster.userIntent.masterDeviceInfo.volumeSize =
+            requestIntent.masterDeviceInfo.volumeSize;
+      }
     }
   }
 

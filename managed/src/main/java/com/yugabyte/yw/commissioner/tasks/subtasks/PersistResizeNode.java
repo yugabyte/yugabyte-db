@@ -30,6 +30,8 @@ public class PersistResizeNode extends UniverseTaskBase {
     public String instanceType;
     public Integer volumeSize;
     public List<UUID> clusters;
+    public String masterInstanceType;
+    public Integer masterVolumeSize;
   }
 
   protected Params taskParams() {
@@ -65,8 +67,14 @@ public class PersistResizeNode extends UniverseTaskBase {
               for (Cluster cluster : getClustersToUpdate(universeDetails)) {
                 UserIntent userIntent = cluster.userIntent;
                 userIntent.instanceType = taskParams().instanceType;
+                if (taskParams().masterInstanceType != null) {
+                  userIntent.masterInstanceType = taskParams().masterInstanceType;
+                }
                 if (taskParams().volumeSize != null) {
                   userIntent.deviceInfo.volumeSize = taskParams().volumeSize;
+                }
+                if (taskParams().masterVolumeSize != null) {
+                  userIntent.masterDeviceInfo.volumeSize = taskParams().masterVolumeSize;
                 }
                 for (NodeDetails nodeDetails :
                     universe.getUniverseDetails().getNodesInCluster(cluster.uuid)) {

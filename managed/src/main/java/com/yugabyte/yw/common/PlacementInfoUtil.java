@@ -1339,6 +1339,21 @@ public class PlacementInfoUtil {
     return getAzUuidToNumNodes(nodeDetailsSet, false /* onlyActive */);
   }
 
+  public static void dedicateNodes(Collection<NodeDetails> nodes) {
+    nodes.forEach(
+        node -> {
+          if (node.isTserver) {
+            node.dedicatedTo = ServerType.TSERVER;
+            if (node.isMaster) {
+              node.isMaster = false;
+            }
+          }
+          if (node.isMaster) {
+            node.dedicatedTo = ServerType.MASTER;
+          }
+        });
+  }
+
   private static Map<UUID, Integer> getAzUuidToNumNodes(
       Collection<NodeDetails> nodeDetailsSet, boolean onlyActive) {
     // Get node count per azUuid in the current universe.
@@ -1942,11 +1957,17 @@ public class PlacementInfoUtil {
     nodeDetailsSet.addAll(deltaNodesSet);
   }
 
-  public static NodeDetails createDedicatedMasterNode(NodeDetails exampleNode) {
+  public static NodeDetails createDedicatedMasterNode(
+      NodeDetails exampleNode, UserIntent userIntent) {
+    String instanceType =
+        userIntent.masterInstanceType == null
+            ? userIntent.instanceType
+            : userIntent.masterInstanceType;
     NodeDetails result = exampleNode.clone();
     result.cloudInfo.private_ip = null;
     result.cloudInfo.secondary_private_ip = null;
     result.cloudInfo.public_ip = null;
+    result.cloudInfo.instance_type = instanceType;
     result.dedicatedTo = ServerType.MASTER;
     result.isTserver = false;
     result.isMaster = true;
@@ -1965,12 +1986,6 @@ public class PlacementInfoUtil {
     }
   }
 
-  @VisibleForTesting
-  static SelectMastersResult selectMasters(
-      String masterLeader, Collection<NodeDetails> nodes, int replicationFactor) {
-    return selectMasters(masterLeader, nodes, replicationFactor, null, true, false);
-  }
-
   /**
    * Select masters according to given replication factor, regions and zones.<br>
    * Step 1. Each region should have at least one master (replicationFactor >= number of regions).
@@ -1981,10 +1996,9 @@ public class PlacementInfoUtil {
    *
    * @param masterLeader IP-address of the master-leader.
    * @param nodes List of nodes of a universe.
-   * @param replicationFactor Number of masters to place.
    * @param defaultRegionCode Code of default region (for Geo-partitioned case).
    * @param applySelection If we need to apply the changes to the masters flags immediately.
-   * @param dedicatedNodes If each process has it's own dedicated node.
+   * @param userIntent User intent for current cluster.
    * @return Instance of type SelectMastersResult with two lists of nodes - where we need to start
    *     and where we need to stop Masters. List of masters to be stopped doesn't include nodes
    *     which are going to be removed completely.
@@ -1992,10 +2006,11 @@ public class PlacementInfoUtil {
   public static SelectMastersResult selectMasters(
       String masterLeader,
       Collection<NodeDetails> nodes,
-      int replicationFactor,
       String defaultRegionCode,
       boolean applySelection,
-      boolean dedicatedNodes) {
+      UserIntent userIntent) {
+    final int replicationFactor = userIntent.replicationFactor;
+    final boolean dedicatedNodes = userIntent.dedicatedNodes;
     LOG.info(
         "selectMasters for nodes {}, rf={}, drc={}", nodes, replicationFactor, defaultRegionCode);
 
@@ -2074,7 +2089,7 @@ public class PlacementInfoUtil {
           node -> {
             NodeDetails nodeToAdd = node;
             if (dedicatedNodes) {
-              nodeToAdd = createDedicatedMasterNode(node);
+              nodeToAdd = createDedicatedMasterNode(node, userIntent);
             } else if (applySelection) {
               nodeToAdd.isMaster = true;
             }
