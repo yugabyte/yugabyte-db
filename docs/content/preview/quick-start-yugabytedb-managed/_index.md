@@ -44,6 +44,15 @@ The first time you log in, YugabyteDB Managed provides a welcome experience with
 - Load sample data and run queries
 - Explore a sample application
 
+**Next steps**
+
+After you complete the tutorial, check out YugabyteDB Managed documentation to learn about how to do the following and more:
+
+- Deploy clusters
+- Connect to clusters
+- Manage and scale clusters
+- Manage your account
+
 <div class="row cloud-laptop">
   <div class="col-12 col-md-12 col-lg-6">
     <div class="border two-side">
