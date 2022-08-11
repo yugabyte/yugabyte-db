@@ -41,7 +41,7 @@ type: docs
 
 </ul>
 
-The following tutorial describes how to use Apache Spark in a Java application with YugabyteDB.
+The following tutorial describes how to use [Apache Spark](https://spark.apache.org/) in a Java application with YugabyteDB.
 
 ## Prerequisites
 
@@ -75,7 +75,7 @@ This tutorial assumes that you have:
 1. Create a table in the `ysql_spark` database to read and write data through the JDBC connector as follows:
 
     ```sql
-    ysql_spark=# create table test as select generate_series(1,100000) AS id, random(), ceil(random() * 20);
+    ysql_spark=# CREATE TABLE test AS SELECT generate_series(1,100000) AS id, random(), ceil(random() * 20);
     ```
 
 ## Create and configure the Java project

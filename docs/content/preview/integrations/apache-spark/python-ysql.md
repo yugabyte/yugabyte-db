@@ -84,7 +84,7 @@ SparkSession available as 'spark'.
     ./bin/ysqlsh
     ```
 
-1. Create a database for `pyspark` as `ysql_pyspark` and connect to it using the following:
+1. Create a database `ysql_pyspark` and connect to it using the following:
 
     ```sql
     yugabyte=# CREATE DATABASE ysql_pyspark;
@@ -96,7 +96,7 @@ SparkSession available as 'spark'.
     ysql_pyspark=#
     ```
 
-1. Create a table in the `ysql_pyspark` database to read and write data through the JDBC connector from `pyspark` as follows:
+1. Create a table in the `ysql_pyspark` database to read and write data through the JDBC connector as follows:
 
     ```sql
     ysql_pyspark=# create table test as select generate_series(1,100000) AS id, random(), ceil(random() * 20);
@@ -174,7 +174,7 @@ Create a [DataFrame](https://spark.apache.org/docs/1.5.1/api/java/org/apache/spa
 
 ### Using spark.sql() API
 
-1. You can use the `spark.sql()` API to directly execute SQL queries from pyspark shell using the following code:
+1. You can use the `spark.sql()` API to directly execute SQL queries using the following code:
 
     ```spark
     >>> test_Df.createOrReplaceTempView("test")
@@ -184,7 +184,7 @@ Create a [DataFrame](https://spark.apache.org/docs/1.5.1/api/java/org/apache/spa
 
     The output will be similar to [SQL queries](#using-sql-queries).
 
-1. The following spark query renames the column of the table `test` from `ceil` to `round_off` in the DataFrame, then creates a new table with the schema of the changed DataFrame, inserts all its data in the new table, and names it as `test_copy` using the JDBC connector.
+1. The following Spark query renames the column of the table `test` from `ceil` to `round_off` in the DataFrame, then creates a new table with the schema of the changed DataFrame, inserts all its data in the new table, and names it as `test_copy` using the JDBC connector.
 
     ```spark
     >>> spark.table("test").withColumnRenamed("ceil", "round_off").write.jdbc(url=jdbcUrl, table="test_copy", properties=connectionProperties)
@@ -219,7 +219,7 @@ Create a [DataFrame](https://spark.apache.org/docs/1.5.1/api/java/org/apache/spa
     ```
 
     ```sql
-    ysql_pyspark=# select count(*) from test_copy;
+    ysql_pyspark=# SELECT COUNT(*) FROM test_copy;
     ```
 
     ```output
@@ -240,7 +240,7 @@ Create a [DataFrame](https://spark.apache.org/docs/1.5.1/api/java/org/apache/spa
 1. Verify the changes using ysqlsh:
 
     ```sql
-    ysql_pyspark=# select count(*) from test;
+    ysql_pyspark=# SELECT COUNT(*) FROM test;
     ```
 
     ```output

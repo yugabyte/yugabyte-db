@@ -42,7 +42,7 @@ type: docs
 
 </ul>
 
-The following tutorial describes how to use Spark SQL with YugabyteDB, and perform YSQL queries.
+The following tutorial describes how to use [Spark SQL](https://spark.apache.org/sql/) with YugabyteDB, and perform YSQL queries.
 
 ## Prerequisites
 
@@ -70,7 +70,7 @@ The Spark prompt should be available as `spark-sql>`.
      ./bin/ysqlsh
      ```
 
-1. Create a database for `spark-sql` as `ysql_spark_sql` and connect to it using the following:
+1. Create a database for `spark-sql` and connect to it using the following:
 
      ```sql
      yugabyte=# CREATE DATABASE ysql_spark_sql;
@@ -85,12 +85,12 @@ The Spark prompt should be available as `spark-sql>`.
 1. Create a table in the `ysql_spark_sql` database to read and write data through the JDBC connector from `spark-sql` as follows:
 
      ```sql
-     ysql_spark_sql=# create table test as select generate_series(1,100000) AS id, random(), ceil(random() * 20);
+     ysql_spark_sql=# CREATE TABLE test AS SELECT generate_series(1,100000) AS id, random(), ceil(random() * 20);
      ```
 
 ## Store and retrieve data
 
-1. Create a table `test_ref` in the `spark-sql` shell referencing the table `test` in the database through the configuration properties using the JDBC connector:
+1. Create a table `test_ref` in the `spark-sql` shell, referencing the table `test` through the configuration properties using the JDBC connector:
 
      ```spark
      spark-sql> CREATE TABLE test_ref USING org.apache.spark.sql.jdbc OPTIONS (
@@ -106,7 +106,7 @@ You can now read and write data through the table `test_ref`.
 1. Run the following commands to fetch some data:
 
      ```spark
-     spark-sql> select ceil, sum(id) from test_ref group by ceil limit 10;
+     spark-sql> SELECT ceil, sum(id) FROM test_ref GROUP BY ceil LIMIT 10;
      ```
 
      ```output
@@ -123,29 +123,29 @@ You can now read and write data through the table `test_ref`.
      ```
 
      ```spark
-     spark-sql> select count(*) from test_ref;
+     spark-sql> SELECT COUNT(*) FROM test_ref;
      ```
 
      ```output
      100000
      ```
 
-1. Insert data with the `INSERT` command via the `spark-sql` shell as follows:
+1. Insert data with the `INSERT` command as follows:
 
      ```spark
-     spark-sql> insert into test_ref values(1234543,0.951123432168208551,22.0);
+     spark-sql> INSERT INTO test_ref VALUES(1234543,0.951123432168208551,22.0);
      ```
 
-1. Append all the data in `test_ref` table from the same table as follows:
+1. Append all the data to `test_ref` table from the same table as follows:
 
      ```spark
-     spark-sql> insert into test_ref select * from test_ref;
+     spark-sql> INSERT INTO test_ref SELECT * FROM test_ref;
      ```
 
 1. Verify that the data is inserted as follows:
 
      ```spark
-     spark-sql> select count(*) from test_ref;
+     spark-sql> SELECT COUNT(*) from test_ref;
      ```
 
      ```output
@@ -177,7 +177,7 @@ spark-sql> CREATE TABLE test_partitions USING org.apache.spark.sql.jdbc OPTIONS 
 ```
 
 ```spark
-spark-sql> select sum(ceil) from test_partitions where id > 50000;
+spark-sql> SELECT SUM(ceil) FROM test_partitions WHERE id > 50000;
 ```
 
 ```output

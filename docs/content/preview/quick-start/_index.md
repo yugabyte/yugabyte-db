@@ -320,7 +320,6 @@ Add two more nodes to the cluster using the join option:
 
 After starting the yugabyted processes on all the nodes, configure the data placement constraint of the YugabyteDB cluster:
 
-
 ```sh
 ./bin/yugabyted configure --fault_tolerance=zone
 ```

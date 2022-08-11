@@ -42,7 +42,7 @@ type: docs
 
 </ul>
 
-The following tutorial describes how to use Scala's Spark API `spark-shell` with YugabyteDB, and perform YSQL queries.
+The following tutorial describes how to use Scala's Spark API [`spark-shell`](https://spark.apache.org/docs/latest/quick-start.html) with YugabyteDB, and perform YSQL queries.
 
 ## Prerequisites
 
@@ -84,7 +84,7 @@ scala>
     ./bin/ysqlsh
     ```
 
-1. Create a database for `spark-shell` as `ysql_spark_shell` and connect to it using the following:
+1. Create a database `ysql_spark_shell` and connect to it using the following:
 
     ```sql
     yugabyte=# CREATE DATABASE ysql_spark_shell;
@@ -96,10 +96,10 @@ scala>
     ysql_spark_shell=#
     ```
 
-1. Create a table in the `ysql_spark_shell` database to read and write data through the JDBC connector from `spark-shell` as follows:
+1. Create a table in the `ysql_spark_shell` database to read and write data through the JDBC connector as follows:
 
     ```sql
-    ysql_spark_shell=# create table test as select generate_series(1,100000) AS id, random(), ceil(random() * 20);
+    ysql_spark_shell=# CREATE TABLE test AS SELECT generate_series(1,100000) AS id, random(), ceil(random() * 20);
     ```
 
 ## Set up connectivity with YugabyteDB
@@ -225,7 +225,7 @@ scala> val test_Df = spark.read.jdbc(jdbcUrl, "test", connectionProperties)
     ```
 
     ```sql
-    ysql_spark_shell=# select count(*) from test_copy;
+    ysql_spark_shell=# SELECT COUNT(*) FROM test_copy;
     ```
 
     ```output
@@ -247,7 +247,7 @@ scala> val test_Df = spark.read.jdbc(jdbcUrl, "test", connectionProperties)
 1. Verify the changes using ysqlsh:
 
     ```sql
-    ysql_spark_shell=# select count(*) from test;
+    ysql_spark_shell=# SELECT COUNT(*) FROM test;
     ```
 
     ```output

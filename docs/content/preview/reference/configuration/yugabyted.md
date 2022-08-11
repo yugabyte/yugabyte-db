@@ -164,7 +164,6 @@ Advanced flags can be set by using the configuration file in the `--config` flag
 : Specify extra [tserver flags](../../../reference/configuration/yb-tserver#configuration-flags) as a set of key value pairs. Format (key=value,key=value).
 
 --ysql_enable_auth *bool*
-
 : Enable or disable YSQL Authentication. Default: `false`.
 : If the `YSQL_PASSWORD` [environment variable](#environment-variables) exists, then authentication mode is automatically set to true.
 
