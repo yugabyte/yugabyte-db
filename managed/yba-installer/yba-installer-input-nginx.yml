@@ -1,0 +1,23 @@
+# Configurable parameter: serverName
+
+# serverName: The name of the Nginx server name
+# that is used by customers if they want to add
+# a proxy in front of the platform service. Set
+# this field if you want to customize the
+# server name.
+nginxHttp:
+   name: "nginxHttp"
+   fileName: "/etc/nginx/nginx.conf"
+   serverName: "_"
+
+# Configurable parameter: serverName
+
+# serverName: The name of the Nginx server name
+# that is used by customers if they want to add
+# a proxy in front of the platform service. Set
+# this field if you want to customize the
+# server name.
+nginxHttps:
+   name: "nginxHttps"
+   fileName: "/etc/nginx/nginx.conf"
+   serverName: "_"
