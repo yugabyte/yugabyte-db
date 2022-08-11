@@ -141,7 +141,7 @@ This tutorial assumes that:
             PgConnectOptions options = new PgConnectOptions()
                 .setPort(5433)
                 .setHost("127.0.0.1")
-                .setDatabase("vertx_pg_test")
+                .setDatabase("yugabyte")
                 .setUser("yugabyte")
                 .setPassword("yugabyte");
 
