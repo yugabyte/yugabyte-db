@@ -51,7 +51,7 @@ public class ResumeUniverse extends UniverseDefinitionTaskBase {
 
       if (!universe.getUniverseDetails().isImportedUniverse()) {
         // Create tasks to resume the existing nodes.
-        createResumeServerTasks(nodes).setSubTaskGroupType(SubTaskGroupType.ResumeUniverse);
+        createResumeServerTasks(universe).setSubTaskGroupType(SubTaskGroupType.ResumeUniverse);
       }
 
       Set<NodeDetails> tserverNodes = new HashSet<>(universe.getTServers());

@@ -92,20 +92,7 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
                   boolean dedicatedNodes =
                       taskParams().getPrimaryCluster().userIntent.dedicatedNodes;
                   if (dedicatedNodes) {
-                    taskParams()
-                        .nodeDetailsSet
-                        .forEach(
-                            node -> {
-                              if (node.isTserver) {
-                                node.dedicatedTo = ServerType.TSERVER;
-                                if (node.isMaster) {
-                                  node.isMaster = false;
-                                }
-                              }
-                              if (node.isMaster) {
-                                node.dedicatedTo = ServerType.MASTER;
-                              }
-                            });
+                    PlacementInfoUtil.dedicateNodes(taskParams().nodeDetailsSet);
                   }
                   // Select master nodes and apply isMaster flags immediately.
                   selectAndApplyMasters();
