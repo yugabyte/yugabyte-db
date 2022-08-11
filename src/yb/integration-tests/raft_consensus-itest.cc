@@ -475,7 +475,7 @@ class RaftConsensusITest : public TabletServerIntegrationTestBase {
                                       string* fell_behind_uuid);
 
   void TestAddRemoveServer(PeerMemberType member_type);
-  void TestRemoveTserverFailsWhenServerInTransition(PeerMemberType member_type);
+  void TestRemoveTserverSucceedsWhenServerInTransition(PeerMemberType member_type);
   void TestRemoveTserverInTransitionSucceeds(PeerMemberType member_type);
 
   std::vector<scoped_refptr<yb::Thread> > threads_;
@@ -1267,7 +1267,8 @@ void RaftConsensusITest::TestAddRemoveServer(PeerMemberType member_type) {
   }
 }
 
-void RaftConsensusITest::TestRemoveTserverFailsWhenServerInTransition(PeerMemberType member_type) {
+void RaftConsensusITest::TestRemoveTserverSucceedsWhenServerInTransition(
+    PeerMemberType member_type) {
   ASSERT_TRUE(member_type == PeerMemberType::PRE_VOTER ||
               member_type == PeerMemberType::PRE_OBSERVER);
 
@@ -1322,17 +1323,14 @@ void RaftConsensusITest::TestRemoveTserverFailsWhenServerInTransition(PeerMember
   ASSERT_OK(WaitForServersToAgree(MonoDelta::FromSeconds(60),
                                   active_tablet_servers, tablet_id_, ++cur_log_index));
 
-  // Now try to remove server 1 from the configuration. This should fail.
+  // Now try to remove server 1 from the configuration. This should pass.
   LOG(INFO) << "Removing tserver with uuid " << tservers[1]->uuid();
   auto status = RemoveServer(initial_leader, tablet_id_, tservers[1], boost::none,
                              MonoDelta::FromSeconds(10), NULL, false /* retry */);
-  ASSERT_TRUE(status.IsIllegalState());
-  ASSERT_STR_CONTAINS(status.ToString(), "Leader is not ready for Config Change");
+  ASSERT_OK(status);
 }
 
-// In TestRemoveTserverFailsWhenServerInTransition we are testing that a REMOVE_SERVER request
-// operation fails whenever the committed config contains a server in PRE_VOTER or PRE_OBSERVER
-// mode. In this test we are testing that a REMOVE_SERVER operation succeeds whenever the committed
+// In this test we are testing that a REMOVE_SERVER operation succeeds whenever the committed
 // config contains a PRE_VOTER or PRE_OBSERVER mode and it's the same server we are trying to
 // remove.
 void RaftConsensusITest::TestRemoveTserverInTransitionSucceeds(PeerMemberType member_type) {
@@ -3210,12 +3208,12 @@ TEST_F(RaftConsensusITest, TestUpdateConsensusErrorNonePrepared) {
   ASSERT_STR_CONTAINS(resp.ShortDebugString(), "Could not prepare a single operation");
 }
 
-TEST_F(RaftConsensusITest, TestRemoveTserverFailsWhenVoterInTransition) {
-  TestRemoveTserverFailsWhenServerInTransition(PeerMemberType::PRE_VOTER);
+TEST_F(RaftConsensusITest, TestRemoveTserverSucceedsWhenVoterInTransition) {
+  TestRemoveTserverSucceedsWhenServerInTransition(PeerMemberType::PRE_VOTER);
 }
 
-TEST_F(RaftConsensusITest, TestRemoveTserverFailsWhenObserverInTransition) {
-  TestRemoveTserverFailsWhenServerInTransition(PeerMemberType::PRE_OBSERVER);
+TEST_F(RaftConsensusITest, TestRemoveTserverSucceedsWhenObserverInTransition) {
+  TestRemoveTserverSucceedsWhenServerInTransition(PeerMemberType::PRE_OBSERVER);
 }
 
 TEST_F(RaftConsensusITest, TestRemovePreObserverServerSucceeds) {
