@@ -105,7 +105,13 @@ Status MiniMaster::StartOnPorts(uint16_t rpc_port, uint16_t web_port) {
   CHECK(!master_);
 
   auto master_addresses = std::make_shared<server::MasterAddresses>();
-  if (pass_master_addresses_) {
+  if (use_custom_addresses_) {
+    HostPort local_host_port;
+    for (const auto & master_addr : custom_master_addresses_) {
+      RETURN_NOT_OK(local_host_port.ParseString(master_addr, rpc_port));
+      master_addresses->push_back({local_host_port});
+    }
+  } else if (pass_master_addresses_) {
     HostPort local_host_port;
     RETURN_NOT_OK(local_host_port.ParseString(
         server::TEST_RpcBindEndpoint(index_, rpc_port), rpc_port));
@@ -124,13 +130,30 @@ Status MiniMaster::StartOnPorts(uint16_t rpc_port, uint16_t web_port) {
 
 Status MiniMaster::StartOnPorts(uint16_t rpc_port, uint16_t web_port,
                                 MasterOptions* opts) {
-  opts->rpc_opts.rpc_bind_addresses = server::TEST_RpcBindEndpoint(index_, rpc_port);
+  if (use_custom_addresses_) {
+    opts->rpc_opts.rpc_bind_addresses = Format(
+        "$0:$1", custom_rpc_addresses_[0], rpc_port);
+    for (size_t i = 1; i < custom_rpc_addresses_.size(); i++) {
+      opts->rpc_opts.rpc_bind_addresses += Format(
+          ",$0:$1", custom_rpc_addresses_[i], rpc_port);
+    }
+
+    opts->broadcast_addresses = {};
+    HostPort host_port;
+    for (const auto & broadcast_addr : custom_broadcast_addresses_) {
+      RETURN_NOT_OK(host_port.ParseString(broadcast_addr, rpc_port));
+      opts->broadcast_addresses.push_back(host_port);
+    }
+  } else {
+    opts->rpc_opts.rpc_bind_addresses = server::TEST_RpcBindEndpoint(index_, rpc_port);
+    opts->broadcast_addresses = {
+        HostPort(server::TEST_RpcAddress(index_, server::Private::kFalse), rpc_port) };
+  }
+
   opts->webserver_opts.port = web_port;
   opts->fs_opts.wal_paths = { fs_root_ };
   opts->fs_opts.data_paths = { fs_root_ };
   // A.B.C.D.xip.io resolves to A.B.C.D so it is very useful for testing.
-  opts->broadcast_addresses = {
-      HostPort(server::TEST_RpcAddress(index_, server::Private::kFalse), rpc_port) };
 
   if (!opts->has_placement_cloud()) {
     opts->SetPlacement(
@@ -203,6 +226,19 @@ Status MiniMaster::WaitForCatalogManagerInit() {
 
 Status MiniMaster::WaitUntilCatalogManagerIsLeaderAndReadyForTests() {
   return master_->WaitUntilCatalogManagerIsLeaderAndReadyForTests();
+}
+
+void MiniMaster::SetCustomAddresses(const std::vector<std::string> &master_addresses,
+                                    const std::vector<std::string> &rpc_bind_addresses,
+                                    const std::vector<std::string> &broadcast_addresses) {
+  CHECK_GT(master_addresses.size(),  0);
+  CHECK_GT(rpc_bind_addresses.size(), 0);
+  CHECK_GT(broadcast_addresses.size(), 0);
+
+  custom_master_addresses_ = master_addresses;
+  custom_rpc_addresses_ = rpc_bind_addresses;
+  custom_broadcast_addresses_ = broadcast_addresses;
+  use_custom_addresses_ = true;
 }
 
 HostPort MiniMaster::bound_rpc_addr() const {

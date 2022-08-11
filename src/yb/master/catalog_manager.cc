@@ -1736,6 +1736,15 @@ Status CatalogManager::CheckLocalHostInMasterAddresses() {
     }
   }
 
+  auto broadcast_addresses = master_->opts().broadcast_addresses;
+  if (!broadcast_addresses.empty()) {
+    auto resolved_broadcast_addresses = VERIFY_RESULT(server::ResolveMasterAddresses(
+        {broadcast_addresses}));
+    for (auto const &addr : resolved_broadcast_addresses) {
+      local_addrs.push_back(addr.address());
+    }
+  }
+
   auto resolved_addresses = VERIFY_RESULT(server::ResolveMasterAddresses(
       *master_->opts().GetMasterAddresses()));
 
