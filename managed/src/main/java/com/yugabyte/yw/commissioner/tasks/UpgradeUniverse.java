@@ -65,6 +65,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import play.api.Play;
 
+/** @deprecated Use separate tasks based on UpgradeTaskBase */
+@Deprecated
 @Slf4j
 public class UpgradeUniverse extends UniverseDefinitionTaskBase {
   // Variable to mark if the loadbalancer state was changed.
@@ -1180,7 +1182,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
     UserIntent userIntent =
         universe.getUniverseDetails().getClusterByUuid(node.placementUuid).userIntent;
     // Set the device information (numVolumes, volumeSize, etc.)
-    params.deviceInfo = userIntent.deviceInfo;
+    params.deviceInfo = userIntent.getDeviceInfoForNode(node);
     // Add the node name.
     params.nodeName = node.nodeName;
     // Add the universe uuid.

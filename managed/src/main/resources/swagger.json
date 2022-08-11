@@ -8654,11 +8654,17 @@
         "instanceType" : {
           "type" : "string"
         },
+        "masterDeviceInfo" : {
+          "$ref" : "#/definitions/DeviceInfo"
+        },
         "masterGFlags" : {
           "additionalProperties" : {
             "type" : "string"
           },
           "type" : "object"
+        },
+        "masterInstanceType" : {
+          "type" : "string"
         },
         "numNodes" : {
           "format" : "int32",

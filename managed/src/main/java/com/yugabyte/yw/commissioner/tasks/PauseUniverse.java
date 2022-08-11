@@ -82,7 +82,9 @@ public class PauseUniverse extends UniverseTaskBase {
         if (!node.disksAreMountedByUUID) {
           UniverseDefinitionTaskParams.Cluster cluster = clusterMap.get(node.placementUuid);
           createUpdateMountedDisksTask(
-              node, cluster.userIntent.instanceType, cluster.userIntent.deviceInfo);
+              node,
+              cluster.userIntent.getInstanceTypeForNode(node),
+              cluster.userIntent.getDeviceInfoForNode(node));
         }
       }
 
@@ -97,7 +99,7 @@ public class PauseUniverse extends UniverseTaskBase {
       if (!universe.getUniverseDetails().isImportedUniverse()) {
         // Create tasks to pause the existing nodes.
         Collection<NodeDetails> activeUniverseNodes = getActiveUniverseNodes(universe.getNodes());
-        createPauseServerTasks(activeUniverseNodes) // Pass in filtered nodes
+        createPauseServerTasks(universe, activeUniverseNodes) // Pass in filtered nodes
             .setSubTaskGroupType(SubTaskGroupType.PauseUniverse);
       }
       createSwamperTargetUpdateTask(false);

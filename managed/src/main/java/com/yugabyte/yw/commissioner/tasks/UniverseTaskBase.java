@@ -790,17 +790,23 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   /** Create a task to persist changes by ResizeNode task */
   public SubTaskGroup createPersistResizeNodeTask(String instanceType, Integer volumeSize) {
-    return createPersistResizeNodeTask(instanceType, volumeSize, null);
+    return createPersistResizeNodeTask(instanceType, volumeSize, null, null, null);
   }
 
   /** Create a task to persist changes by ResizeNode task for specific clusters */
   public SubTaskGroup createPersistResizeNodeTask(
-      String instanceType, Integer volumeSize, List<UUID> clusterIds) {
+      String instanceType,
+      Integer volumeSize,
+      String masterInstanceType,
+      Integer masterVolumeSize,
+      List<UUID> clusterIds) {
     SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("PersistResizeNode", executor);
     PersistResizeNode.Params params = new PersistResizeNode.Params();
     params.universeUUID = taskParams().universeUUID;
     params.instanceType = instanceType;
     params.volumeSize = volumeSize;
+    params.masterInstanceType = masterInstanceType;
+    params.masterVolumeSize = masterVolumeSize;
     params.clusters = clusterIds;
     PersistResizeNode task = createTask(PersistResizeNode.class);
     task.initialize(params);
@@ -886,6 +892,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @param deleteRootVolumes if true, the volumes are deleted.
    */
   public SubTaskGroup createDestroyServerTasks(
+      Universe universe,
       Collection<NodeDetails> nodes,
       boolean isForceDelete,
       boolean deleteNode,
@@ -915,9 +922,10 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           continue;
         }
       }
+      Cluster cluster = universe.getCluster(node.placementUuid);
       AnsibleDestroyServer.Params params = new AnsibleDestroyServer.Params();
       // Set the device information (numVolumes, volumeSize, etc.)
-      params.deviceInfo = taskParams().deviceInfo;
+      params.deviceInfo = cluster.userIntent.getDeviceInfoForNode(node);
       // Set the region name to the proper provider code so we can use it in the cloud API calls.
       params.azUuid = node.azUuid;
       // Add the node name.
@@ -952,7 +960,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    *
    * @param nodes : a collection of nodes that need to be paused.
    */
-  public SubTaskGroup createPauseServerTasks(Collection<NodeDetails> nodes) {
+  public SubTaskGroup createPauseServerTasks(Universe universe, Collection<NodeDetails> nodes) {
     SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("PauseServer", executor);
     for (NodeDetails node : nodes) {
       // Check if the private ip for the node is set. If not, that means we don't have
@@ -963,8 +971,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         continue;
       }
       PauseServer.Params params = new PauseServer.Params();
+      Cluster cluster = universe.getCluster(node.placementUuid);
       // Set the device information (numVolumes, volumeSize, etc.)
-      params.deviceInfo = taskParams().deviceInfo;
+      params.deviceInfo = cluster.userIntent.getDeviceInfoForNode(node);
       // Set the region name to the proper provider code so we can use it in the cloud API calls.
       params.azUuid = node.azUuid;
       // Add the node name.
@@ -991,7 +1000,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    *
    * @param nodes : a collection of nodes that need to be resumed.
    */
-  public SubTaskGroup createResumeServerTasks(Collection<NodeDetails> nodes) {
+  public SubTaskGroup createResumeServerTasks(Universe universe) {
+    Collection<NodeDetails> nodes = universe.getNodes();
     SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("ResumeServer", executor);
     for (NodeDetails node : nodes) {
       // Check if the private ip for the node is set. If not, that means we don't have
@@ -1002,9 +1012,10 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
                 "Node %s doesn't have a private IP. Skipping node resume.", node.nodeName));
         continue;
       }
+      Cluster cluster = universe.getCluster(node.placementUuid);
       ResumeServer.Params params = new ResumeServer.Params();
       // Set the device information (numVolumes, volumeSize, etc.)
-      params.deviceInfo = taskParams().deviceInfo;
+      params.deviceInfo = cluster.userIntent.getDeviceInfoForNode(node);
       // Set the region name to the proper provider code so we can use it in the cloud API calls.
       params.azUuid = node.azUuid;
       // Add the node name.
@@ -2456,7 +2467,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     UserIntent userIntent = cluster.userIntent;
     preflightTaskParams.nodeName = currentNode.nodeName;
     preflightTaskParams.nodeUuid = currentNode.nodeUuid;
-    preflightTaskParams.deviceInfo = userIntent.deviceInfo;
+    preflightTaskParams.deviceInfo = userIntent.getDeviceInfoForNode(currentNode);
     preflightTaskParams.azUuid = currentNode.azUuid;
     preflightTaskParams.universeUUID = taskParams().universeUUID;
     preflightTaskParams.rootCA = rootCA;
