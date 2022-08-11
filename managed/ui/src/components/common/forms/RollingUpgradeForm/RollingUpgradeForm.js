@@ -254,7 +254,7 @@ export default class RollingUpgradeForm extends Component {
                   }}
                 />
               ) : (
-                <span>Latest software is installed</span>
+                <span>Selected software version already installed</span>
               )
             }
             asyncValidating={!this.state.formConfirmed}
