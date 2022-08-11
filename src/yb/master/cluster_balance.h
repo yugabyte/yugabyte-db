@@ -368,7 +368,7 @@ class ClusterLoadBalancer {
   CatalogManager* catalog_manager_;
 
   // Info about if load balancing is enabled in the cluster.
-  scoped_refptr<AtomicGauge<bool>> is_load_balancing_enabled_metric_;
+  scoped_refptr<AtomicGauge<int64_t>> is_load_balancing_enabled_metric_;
 
   std::shared_ptr<YsqlTablespaceManager> tablespace_manager_;
 
