@@ -272,41 +272,4 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
     backup.refresh();
     assertEquals(BackupState.FailedToDelete, backup.state);
   }
-
-  @Test
-  public void testDeleteIAMS3BackupSuccess() {
-    CustomerConfig customerConfig =
-        ModelFactory.createS3StorageConfigWithIAM(defaultCustomer, "TEST12");
-    BackupTableParams bp = new BackupTableParams();
-    bp.storageConfigUUID = customerConfig.configUUID;
-    bp.universeUUID = defaultUniverse.universeUUID;
-    Backup backup = Backup.create(defaultCustomer.uuid, bp);
-    backup.transitionState(BackupState.QueuedForDeletion);
-    ShellResponse shellResponse = new ShellResponse();
-    shellResponse.message = "{\"success\": true}";
-    shellResponse.code = 0;
-    when(mockTableManagerYb.deleteBackup(any())).thenReturn(shellResponse);
-    backupGC.scheduleRunner();
-    assertThrows(
-        PlatformServiceException.class,
-        () -> Backup.getOrBadRequest(defaultCustomer.uuid, backup.backupUUID));
-  }
-
-  @Test
-  public void testDeleteIAMS3BackupFailure() {
-    CustomerConfig customerConfig =
-        ModelFactory.createS3StorageConfigWithIAM(defaultCustomer, "TEST13");
-    BackupTableParams bp = new BackupTableParams();
-    bp.storageConfigUUID = customerConfig.configUUID;
-    bp.universeUUID = defaultUniverse.universeUUID;
-    Backup backup = Backup.create(defaultCustomer.uuid, bp);
-    backup.transitionState(BackupState.QueuedForDeletion);
-    ShellResponse shellResponse = new ShellResponse();
-    shellResponse.message = "{\"error\": true}";
-    shellResponse.code = 2;
-    when(mockTableManagerYb.deleteBackup(any())).thenReturn(shellResponse);
-    backupGC.scheduleRunner();
-    backup = Backup.getOrBadRequest(defaultCustomer.uuid, backup.backupUUID);
-    assertEquals(BackupState.FailedToDelete, backup.state);
-  }
 }
