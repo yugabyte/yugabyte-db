@@ -49,6 +49,7 @@
 #include "yb/tserver/remote_bootstrap.proxy.h"
 
 #include "yb/util/status_fwd.h"
+#include "yb/util/stopwatch.h"
 #include "yb/util/locks.h"
 #include "yb/util/net/rate_limiter.h"
 
@@ -140,6 +141,9 @@ class RemoteBootstrapSession : public RefCountedThreadSafe<RemoteBootstrapSessio
 
   RateLimiter& rate_limiter() { return rate_limiter_; }
 
+  Stopwatch& crc_compute_timer() { return crc_compute_timer_; }
+  Stopwatch& data_read_timer() { return data_read_timer_; }
+
   static const std::string kCheckpointsDir;
 
   // Get a piece of a RocksDB file.
@@ -225,6 +229,10 @@ class RemoteBootstrapSession : public RefCountedThreadSafe<RemoteBootstrapSessio
 
   // Time when this session was initialized.
   MonoTime start_time_;
+
+  // Stopwatch to capture the latency of different operations
+  Stopwatch crc_compute_timer_;
+  Stopwatch data_read_timer_;
 
   // Used to limit the transmission rate.
   RateLimiter rate_limiter_;
