@@ -33,6 +33,7 @@
 #include "yb/tserver/remote_bootstrap_service.h"
 
 #include <algorithm>
+#include <iomanip>
 #include <string>
 #include <vector>
 
@@ -302,11 +303,15 @@ void RemoteBootstrapServiceImpl::FetchData(const FetchDataRequestPB* req,
   RPC_RETURN_NOT_OK(ValidateFetchRequestDataId(data_id, &info.error_code, session),
                     info.error_code, "Invalid DataId");
 
+  session->data_read_timer().resume();
   RPC_RETURN_NOT_OK(session->GetDataPiece(data_id, &info),
                     info.error_code, "Unable to get piece of data file");
+  session->data_read_timer().stop();
 
   session->rate_limiter().UpdateDataSizeAndMaybeSleep(info.data.size());
+  session->crc_compute_timer().resume();
   uint32_t crc32 = Crc32c(info.data.data(), info.data.length());
+  session->crc_compute_timer().stop();
 
   DataChunkPB* data_chunk = resp->mutable_chunk();
   *data_chunk->mutable_data() = std::move(info.data);
@@ -439,7 +444,21 @@ Status RemoteBootstrapServiceImpl::DoEndRemoteBootstrapSession(
   auto session = it->second.session;
 
   if (session_succeeded || session->Succeeded()) {
-    session->SetSuccess();
+    if(!session->Succeeded()) {
+      session->SetSuccess();
+
+      const auto total_bytes = session->rate_limiter().total_bytes();
+      LOG(INFO) << std::fixed << std::setprecision(3) << "Remote bootstrap session with id "
+        << session_id << " completed. Stats: Transmission rate: "
+        << session->rate_limiter().GetRate() << ", RateLimiter total time slept: "
+        << session->rate_limiter().total_time_slept() << ", Total bytes: "
+        << total_bytes << ", Read rate "
+        << (total_bytes / session->data_read_timer().elapsed().wall_millis())
+        << " bytes/msec (Total ms: " << session->data_read_timer().elapsed().wall_millis()
+        << "), CRC computation rate: "
+        << (total_bytes / session->crc_compute_timer().elapsed().wall_millis()) << " bytes/msec"
+        << "(Total ms: " << session->crc_compute_timer().elapsed().wall_millis() << ")";
+    }
 
     if (PREDICT_FALSE(FLAGS_TEST_inject_latency_before_change_role_secs)) {
       LOG(INFO) << "Injecting latency for test";
