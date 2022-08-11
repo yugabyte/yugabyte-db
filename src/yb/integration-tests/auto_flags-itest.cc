@@ -11,7 +11,7 @@
 // under the License.
 //
 
-#include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/integration-tests/external_mini_cluster-itest-base.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/ts_itest-base.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
@@ -107,16 +107,18 @@ TEST(AutoFlagsDisabledMiniClusterTest, DisableAutoFlagManagement) {
   cluster.ValidateConfig();
 }
 
-class AutoFlagsExternalMiniClusterTest : public tserver::TabletServerIntegrationTestBase {
+class AutoFlagsExternalMiniClusterTest : public ExternalMiniClusterITestBase {
  public:
-  AutoFlagsExternalMiniClusterTest() {
-    FLAGS_num_tablet_servers = kNumTServers;
-    FLAGS_num_replicas = kNumTServers;
+  void BuildAndStart(
+      const std::vector<string>& extra_ts_flags = std::vector<string>(),
+      const std::vector<string>& extra_master_flags = std::vector<string>()) {
+    ASSERT_NO_FATALS(
+        StartCluster(extra_ts_flags, extra_master_flags, kNumTServers, kNumMasterServers));
   }
 
-  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    opts_.num_masters = kNumMasterServers;
-    opts_ = *options;
+  void SetUpCluster(ExternalMiniClusterOptions* opts) override {
+    ASSERT_NO_FATALS(ExternalMiniClusterITestBase::SetUpCluster(opts));
+    opts_ = *opts;
   }
 
   void CheckFlagOnNode(
@@ -149,7 +151,7 @@ class AutoFlagsExternalMiniClusterTest : public tserver::TabletServerIntegration
 // Validate AutoFlags in new cluster and make sure it handles process restarts, and addition of
 // new nodes.
 TEST_F(AutoFlagsExternalMiniClusterTest, NewCluster) {
-  BuildAndStart({} /* ts_flags */, {} /* master_flags */);
+  BuildAndStart();
 
   CheckFlagOnAllNodes(kTESTAutoFlagsInitializedFlagName, kTrue);
 
@@ -183,6 +185,16 @@ TEST_F(AutoFlagsExternalMiniClusterTest, NewCluster) {
   }
 }
 
+namespace {
+template <typename T>
+void RemoveFromVector(vector<T>* collection, const T& val) {
+  auto it = std::find(collection->begin(), collection->end(), val);
+  if (it != collection->end()) {
+    collection->erase(it);
+  }
+}
+}  // namespace
+
 // Create a Cluster with AutoFlags management turned off to simulate a cluster running old code.
 // Restart the cluster with AutoFlags management enabled to simulate an upgrade. Make sure nodes
 // added to this cluster works as expected.
@@ -196,15 +208,8 @@ TEST_F(AutoFlagsExternalMiniClusterTest, UpgradeCluster) {
   CheckFlagOnAllNodes(kTESTAutoFlagsInitializedFlagName, kFalse);
 
   // Remove the disable_auto_flag_management flag from cluster config
-  auto it_master = std::find(
-      cluster_->mutable_extra_master_flags()->begin(),
-      cluster_->mutable_extra_master_flags()->end(), disable_auto_flag_management);
-  cluster_->mutable_extra_master_flags()->erase(it_master);
-
-  auto it_tserver = std::find(
-      cluster_->mutable_extra_tserver_flags()->begin(),
-      cluster_->mutable_extra_tserver_flags()->end(), disable_auto_flag_management);
-  cluster_->mutable_extra_tserver_flags()->erase(it_tserver);
+  RemoveFromVector(cluster_->mutable_extra_master_flags(), disable_auto_flag_management);
+  RemoveFromVector(cluster_->mutable_extra_tserver_flags(), disable_auto_flag_management);
 
   ASSERT_OK(cluster_->AddTabletServer());
   ASSERT_OK(cluster_->WaitForTabletServerCount(opts_.num_tablet_servers + 1, kTimeout));
@@ -245,7 +250,8 @@ TEST_F(AutoFlagsExternalMiniClusterTest, UpgradeCluster) {
 
   // Remove disable_auto_flag_management from each process config and restart
   for (auto* master : cluster_->master_daemons()) {
-    master->mutable_flags()->clear();
+    RemoveFromVector(master->mutable_flags(), disable_auto_flag_management);
+
     master->Shutdown();
     CHECK_OK(master->Restart());
     CheckFlagOnNode(kDisableAutoFlagsManagementFlagName, kFalse, master);
@@ -258,7 +264,8 @@ TEST_F(AutoFlagsExternalMiniClusterTest, UpgradeCluster) {
   }
 
   for (auto* tserver : cluster_->tserver_daemons()) {
-    tserver->mutable_flags()->clear();
+    RemoveFromVector(tserver->mutable_flags(), disable_auto_flag_management);
+
     tserver->Shutdown();
     CHECK_OK(tserver->Restart());
     CheckFlagOnNode(kDisableAutoFlagsManagementFlagName, kFalse, tserver);
