@@ -3057,6 +3057,16 @@ Status CatalogManager::DeleteSnapshotSchedule(const DeleteSnapshotScheduleReques
       snapshot_schedule_id, leader_ready_term(), rpc->GetClientDeadline());
 }
 
+Status CatalogManager::EditSnapshotSchedule(
+    const EditSnapshotScheduleRequestPB* req,
+    EditSnapshotScheduleResponsePB* resp,
+    rpc::RpcContext* rpc) {
+  auto id = TryFullyDecodeSnapshotScheduleId(req->snapshot_schedule_id());
+  *resp->mutable_schedule() = VERIFY_RESULT(snapshot_coordinator_.EditSnapshotSchedule(
+      id, *req, leader_ready_term(), rpc->GetClientDeadline()));
+  return Status::OK();
+}
+
 void CatalogManager::DumpState(std::ostream* out, bool on_disk_dump) const {
   super::DumpState(out, on_disk_dump);
 
