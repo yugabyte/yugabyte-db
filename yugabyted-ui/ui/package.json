@@ -1,7 +1,7 @@
 {
   "scripts": {
     "start": "snowpack dev",
-    "build": "rm -rf build && snowpack build",
+    "build": "snowpack build",
     "test": "echo \"This template does not include a test runner by default.\" && exit 1",
     "generate-api-client": "openapi-generator generate -i $([ -f ./openapi.yml ] && echo './openapi.yml' || echo '../apiserver/conf/openapi.yml') -g typescript-react-query -o ./src/api"
   },
