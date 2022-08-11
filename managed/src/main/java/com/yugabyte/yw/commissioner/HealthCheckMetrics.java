@@ -43,8 +43,8 @@ public class HealthCheckMetrics {
   private static final String REDIS_CONNECTIVITY_CHECK = "Connectivity with redis-cli";
   private static final String DISK_UTILIZATION_CHECK = "Disk utilization";
   private static final String CORE_FILES_CHECK = "Core files";
-  public static final String OPENED_FILE_DESCRIPTORS_CHECK = "Opened file descriptors";
-  private static final String CLOCK_SYNC_CHECK = "Clock synchronization";
+  static final String OPENED_FILE_DESCRIPTORS_CHECK = "Opened file descriptors";
+  static final String CLOCK_SYNC_CHECK = "Clock synchronization";
   private static final String NODE_TO_NODE_CA_CERT_CHECK = "Node To Node CA Cert Expiry Days";
   private static final String NODE_TO_NODE_CERT_CHECK = "Node To Node Cert Expiry Days";
   private static final String CLIENT_TO_NODE_CA_CERT_CHECK = "Client To Node CA Cert Expiry Days";
