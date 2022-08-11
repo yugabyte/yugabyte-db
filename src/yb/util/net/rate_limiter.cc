@@ -81,9 +81,7 @@ void RateLimiter::UpdateTimeSlotSizeAndMaybeSleep(uint64_t data_size, MonoDelta 
             << " received size=" << data_size
             << " and sleeping for=" << sleep_time;
     SleepFor(MonoDelta::FromMilliseconds(sleep_time));
-#if defined(OS_MACOSX)
     total_time_slept_ += MonoDelta::FromMilliseconds(sleep_time);
-#endif
     end_time_ = MonoTime::Now();
     // If we slept for more than 80% of time_slot_ms_, reduce the size of this time slot.
     if (sleep_time > time_slot_ms_ * 80 / 100) {
