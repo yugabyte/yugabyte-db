@@ -429,6 +429,11 @@ capture_sec_timestamp() {
   eval "${1}_time_sec=$current_timestamp"
 }
 
+run_yugabyted-ui_build() {
+  # This is a standalone build script.  It honors BUILD_ROOT from the env
+  "${YB_SRC_ROOT}/yugabyted-ui/build.sh"
+}
+
 run_cxx_build() {
   expect_vars_to_be_set make_file
 
@@ -1581,6 +1586,10 @@ if [[ ${build_cxx} == "true" ||
       ( "${YB_EXPORT_COMPILE_COMMANDS:-}" == "1" &&
         ! -f "${BUILD_ROOT}/compile_commands.json" ) ]]; then
   run_cxx_build
+fi
+
+if [[ ${cmake_only} != "true" ]]; then
+  run_yugabyted-ui_build
 fi
 
 export YB_JAVA_TEST_OFFLINE_MODE=0
