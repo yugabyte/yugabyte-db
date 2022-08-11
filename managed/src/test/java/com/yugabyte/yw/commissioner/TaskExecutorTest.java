@@ -23,6 +23,7 @@ import static play.inject.Bindings.bind;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.common.collect.ImmutableSet;
 import com.google.common.util.concurrent.MoreExecutors;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
@@ -39,6 +40,7 @@ import com.yugabyte.yw.models.helpers.TaskType;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
@@ -67,6 +69,15 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
   private TaskExecutor taskExecutor;
 
   private Config mockConfig;
+
+  private Set<TaskType> RETRYABLE_TASKS =
+      ImmutableSet.of(
+          TaskType.CreateUniverse,
+          TaskType.EditUniverse,
+          TaskType.ReadOnlyClusterCreate,
+          TaskType.RemoveNodeFromUniverse,
+          TaskType.DeleteNodeFromUniverse,
+          TaskType.ReleaseInstanceFromUniverse);
 
   @Override
   protected Application provideApplication() {
@@ -521,5 +532,16 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
     assertEquals(TaskInfo.State.Aborted, taskInfo.getTaskState());
     JsonNode errNode = taskInfo.getSubTasks().get(0).getTaskDetails().get("errorString");
     assertThat(errNode.toString(), containsString("is aborted while waiting"));
+  }
+
+  @Test
+  public void testRetryableAnnotation() {
+    // Iterate through allowed Task Types by Commissioner only
+    Set<TaskType> retryableTaskTypes =
+        TaskType.filteredValues()
+            .stream()
+            .filter(t -> Commissioner.isTaskRetryable(t))
+            .collect(Collectors.toSet());
+    assertEquals(RETRYABLE_TASKS, retryableTaskTypes);
   }
 }

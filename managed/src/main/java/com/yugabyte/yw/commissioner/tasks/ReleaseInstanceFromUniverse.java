@@ -12,6 +12,7 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.DnsManager;
@@ -28,6 +29,7 @@ import lombok.extern.slf4j.Slf4j;
 
 // Allows the removal of the instance from a universe. That node is already not part of the
 // universe and is in Removed state.
+@Retryable
 @Slf4j
 public class ReleaseInstanceFromUniverse extends UniverseTaskBase {
 
@@ -75,6 +77,7 @@ public class ReleaseInstanceFromUniverse extends UniverseTaskBase {
       taskParams().placementUuid = currentNode.placementUuid;
       taskParams().nodeUuid = currentNode.nodeUuid;
       Collection<NodeDetails> currentNodeDetails = Collections.singleton(currentNode);
+
       // Wait for Master Leader before doing Master operations, like blacklisting.
       createWaitForMasterLeaderTask().setSubTaskGroupType(SubTaskGroupType.ReleasingInstance);
       // If the node fails in Adding state during ADD action, IP may not be available.
@@ -109,16 +112,16 @@ public class ReleaseInstanceFromUniverse extends UniverseTaskBase {
             .setSubTaskGroupType(SubTaskGroupType.ReleasingInstance);
       }
 
-      // Update Node State to Decommissioned.
-      createSetNodeStateTask(currentNode, NodeState.Decommissioned)
-          .setSubTaskGroupType(SubTaskGroupType.ReleasingInstance);
-
       // Update the DNS entry for this universe.
       createDnsManipulationTask(DnsManager.DnsCommandType.Edit, false, userIntent)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Update the swamper target file.
       createSwamperTargetUpdateTask(false /* removeFile */);
+
+      // Update Node State to Decommissioned.
+      createSetNodeStateTask(currentNode, NodeState.Decommissioned)
+          .setSubTaskGroupType(SubTaskGroupType.ReleasingInstance);
 
       // Mark universe task state to success
       createMarkUniverseUpdateSuccessTasks()
@@ -131,16 +134,9 @@ public class ReleaseInstanceFromUniverse extends UniverseTaskBase {
       hitException = true;
       throw t;
     } finally {
-      try {
-        // Reset the state, on any failure, so that the actions can be retried.
-        if (currentNode != null && hitException) {
-          setNodeState(taskParams().nodeName, currentNode.state);
-        }
-      } finally {
-        // Mark the update of the universe as done. This will allow future edits/updates to the
-        // universe to happen.
-        unlockUniverseForUpdate();
-      }
+      // Mark the update of the universe as done. This will allow future edits/updates to the
+      // universe to happen.
+      unlockUniverseForUpdate();
     }
     log.info("Finished {} task.", getName());
   }

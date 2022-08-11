@@ -11,6 +11,7 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
@@ -32,6 +33,7 @@ import lombok.extern.slf4j.Slf4j;
 // Allows the removal of a node from a universe. Ensures the task waits for the right set of
 // server data move primitives. And stops using the underlying instance, though YW still owns it.
 @Slf4j
+@Retryable
 public class RemoveNodeFromUniverse extends UniverseTaskBase {
 
   @Inject
@@ -173,12 +175,12 @@ public class RemoveNodeFromUniverse extends UniverseTaskBase {
       createUpdateNodeProcessTask(taskParams().nodeName, ServerType.TSERVER, false)
           .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
 
-      // Update Node State to Removed
-      createSetNodeStateTask(currentNode, NodeState.Removed)
-          .setSubTaskGroupType(SubTaskGroupType.RemovingNode);
-
       // Update the DNS entry for this universe.
       createDnsManipulationTask(DnsManager.DnsCommandType.Edit, false, userIntent)
+          .setSubTaskGroupType(SubTaskGroupType.RemovingNode);
+
+      // Update Node State to Removed
+      createSetNodeStateTask(currentNode, NodeState.Removed)
           .setSubTaskGroupType(SubTaskGroupType.RemovingNode);
 
       // Mark universe task state to success
@@ -191,16 +193,9 @@ public class RemoveNodeFromUniverse extends UniverseTaskBase {
       hitException = true;
       throw t;
     } finally {
-      try {
-        // Reset the state, on any failure, so that the actions can be retried.
-        if (currentNode != null && hitException) {
-          setNodeState(taskParams().nodeName, currentNode.state);
-        }
-      } finally {
-        // Mark the update of the universe as done. This will allow future edits/updates to the
-        // universe to happen.
-        unlockUniverseForUpdate();
-      }
+      // Mark the update of the universe as done. This will allow future edits/updates to the
+      // universe to happen.
+      unlockUniverseForUpdate();
     }
     log.info("Finished {} task.", getName());
   }
