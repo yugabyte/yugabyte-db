@@ -310,7 +310,7 @@ sudo ifconfig lo0 alias 127.0.0.3
 
 The loopback addresses do not persist upon rebooting your computer.
 
-Start the second and the third nodes on two separate VMs:
+Add two more nodes to the cluster using the join option:
 
 ```sh
 ./bin/yugabyted start --advertise_address=127.0.0.2 --join=127.0.0.1 --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node2 --cloud_location=aws.us-east.us-east-2a
@@ -318,7 +318,8 @@ Start the second and the third nodes on two separate VMs:
 ./bin/yugabyted start --advertise_address=127.0.0.3 --join=127.0.0.1 --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node3 --cloud_location=aws.us-east.us-east-3a
 ```
 
-After starting the Yugabyted processes on all the nodes, configure the data placement constraint of the YugabyteDB cluster:
+After starting the yugabyted processes on all the nodes, configure the data placement constraint of the YugabyteDB cluster:
+
 
 ```sh
 ./bin/yugabyted configure --fault_tolerance=zone

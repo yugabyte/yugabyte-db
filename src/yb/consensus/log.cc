@@ -1006,7 +1006,8 @@ Status Log::DoSync() {
   Status status;
   periodic_sync_needed_.store(0, std::memory_order_release);
   periodic_sync_unsynced_bytes_.store(0, std::memory_order_release);
-  LOG_SLOW_EXECUTION(WARNING, 50, "Fsync log took a long time") {
+  LOG_SLOW_EXECUTION_EVERY_N_SECS(INFO, /* log at most one slow execution every 1 sec */ 1,
+                                  50, "Fsync log took a long time") {
     SCOPED_LATENCY_METRIC(metrics_, sync_latency);
     status = active_segment_->Sync();
   }

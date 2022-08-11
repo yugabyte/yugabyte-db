@@ -1,0 +1,251 @@
+{
+    "$schema": "https://json-schema.org/draft/2022-08/schema",
+    "$id": "yba-installer-input-platform-json-schema.json",
+    "title": "Configuration Validation",
+    "description": "Validation of Platform user Configuration parameters in YAML",
+    "type": "object",
+    "properties": {
+        "platformOldConfig": {
+            "description": "Platform Old Config Parameters",
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "fileName": {
+                "type": "string",
+                "pattern": "^(/[^/]+)+$"
+              },
+              "platformDbUser": {
+                "type": "string"
+              },
+              "platformDbPassword": {
+                "type": "string"
+              },
+              "devopsHome": {
+                "type": "string",
+                "pattern": "^(/[^/]+)+(/)*$"
+              },
+              "swamperTargetPath": {
+                "type": "string",
+                "pattern": "^(/[^/]+)+(/)*$"
+              },
+              "metricsUrl": {
+                "type": "string",
+                "format": "uri"
+              },
+              "useOauth": {
+                "type": "boolean"
+              },
+              "ybSecurityType": {
+                "type": "string"
+              },
+              "ybOidcClientId": {
+                "type": "string"
+              },
+              "ybOidcSecret": {
+                "type": "string"
+              },
+              "ybOidcDiscoveryUri": {
+                "anyOf": [
+                    {
+                        "type": "string",
+                        "format": "uri"
+                    },
+                    {
+                        "type": "string",
+                        "maxLength": 0
+                    }
+                ]
+              },
+              "ywUrl": {
+                "anyOf": [
+                    {
+                        "type": "string",
+                        "format": "uri"
+                    },
+                    {
+                        "type": "string",
+                        "maxLength": 0
+                    }
+                ]
+              },
+              "ybOidcScope": {
+                "type": "string"
+              },
+              "ybOidcEmailAttr": {
+                "anyOf": [
+                    {
+                        "type": "string",
+                        "pattern":
+                        "^[a-z0-9][-a-z0-9._]+@([-a-z0-9]+.)+[a-z]{2,5}$"
+                    },
+                    {
+                        "type": "string",
+                        "maxLength": 0
+                    }
+                ]
+               }
+            },
+            "required": [ "name", "fileName", "platformDbUser",
+            "platformDbPassword", "devopsHome", "swamperTargetPath",
+            "metricsUrl", "useOauth","ybSecurityType", "ybOidcClientId",
+            "ybOidcSecret", "ybOidcDiscoveryUri", "ywUrl",
+            "ybOidcScope", "ybOidcEmailAttr"]
+        },
+        "platformNewConfig": {
+            "description": "Platform New Config Parameters",
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "fileName": {
+                "type": "string",
+                "pattern": "^(/[^/]+)+$"
+              }
+            },
+            "required": [ "name", "fileName"]
+        },
+        "platformOldService": {
+            "description": "Platform Old Service Parameters",
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "fileName": {
+                "type": "string",
+                "pattern": "^(/[^/]+)+$"
+              },
+              "useOauth": {
+                "type": "boolean"
+              },
+              "ybSecurityType": {
+                "type": "string"
+              },
+              "ybOidcClientId": {
+                "type": "string"
+              },
+              "ybOidcSecret": {
+                "type": "string"
+              },
+              "ybOidcDiscoveryUri": {
+                "anyOf": [
+                    {
+                        "type": "string",
+                        "format": "uri"
+                    },
+                    {
+                        "type": "string",
+                        "maxLength": 0
+                    }
+                ]
+              },
+              "ywUrl": {
+                "anyOf": [
+                    {
+                        "type": "string",
+                        "format": "uri"
+                    },
+                    {
+                        "type": "string",
+                        "maxLength": 0
+                    }
+                ]
+              },
+              "ybOidcScope": {
+                "type": "string"
+              },
+              "ybOidcEmailAttr": {
+                "anyOf": [
+                    {
+                        "type": "string",
+                        "pattern":
+                        "^[a-z0-9][-a-z0-9._]+@([-a-z0-9]+.)+[a-z]{2,5}$"
+                    },
+                    {
+                        "type": "string",
+                        "maxLength": 0
+                    }
+                ]
+               }
+            },
+            "required": [ "name", "fileName", "useOauth",
+            "ybSecurityType", "ybOidcClientId", "ybOidcSecret",
+            "ybOidcDiscoveryUri", "ywUrl", "ybOidcScope",
+            "ybOidcEmailAttr"]
+        },
+        "platformNewService": {
+            "description": "Platform New Service Parameters",
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "fileName": {
+                "type": "string",
+                "pattern": "^(/[^/]+)+$"
+              },
+              "useOauth": {
+                "type": "boolean"
+              },
+              "ybSecurityType": {
+                "type": "string"
+              },
+              "ybOidcClientId": {
+                "type": "string"
+              },
+              "ybOidcSecret": {
+                "type": "string"
+              },
+              "ybOidcDiscoveryUri": {
+                "anyOf": [
+                    {
+                        "type": "string",
+                        "format": "uri"
+                    },
+                    {
+                        "type": "string",
+                        "maxLength": 0
+                    }
+                ]
+              },
+              "ywUrl": {
+                "anyOf": [
+                    {
+                        "type": "string",
+                        "format": "uri"
+                    },
+                    {
+                        "type": "string",
+                        "maxLength": 0
+                    }
+                ]
+              },
+              "ybOidcScope": {
+                "type": "string"
+              },
+              "ybOidcEmailAttr": {
+                "anyOf": [
+                    {
+                        "type": "string",
+                        "pattern":
+                        "^[a-z0-9][-a-z0-9._]+@([-a-z0-9]+.)+[a-z]{2,5}$"
+                    },
+                    {
+                        "type": "string",
+                        "maxLength": 0
+                    }
+                ]
+               }
+            },
+            "required": [ "name", "fileName", "useOauth",
+            "ybSecurityType", "ybOidcClientId", "ybOidcSecret",
+            "ybOidcDiscoveryUri", "ywUrl", "ybOidcScope",
+            "ybOidcEmailAttr"]
+        }
+    },
+    "required": [ "platformOldConfig",
+    "platformNewConfig", "platformOldService", "platformNewService"]
+  }
