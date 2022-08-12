@@ -2776,5 +2776,57 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(NonBreakingDDLMode)) {
   ASSERT_OK(conn1.Execute("ABORT"));
 }
 
+TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(AggrSystemColumn)) {
+  const string kDatabaseName = "yugabyte";
+  auto conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+
+  // Count oid column which is a system column.
+  auto res = ASSERT_RESULT(conn.Fetch("SELECT COUNT(oid) FROM pg_type"));
+  auto lines = PQntuples(res.get());
+  ASSERT_EQ(lines, 1);
+  auto columns = PQnfields(res.get());
+  ASSERT_EQ(columns, 1);
+  int64 count_oid = static_cast<uint32>(CHECK_RESULT(GetInt64(res.get(), 0, 0)));
+  // Should get a positive count.
+  ASSERT_GT(count_oid, 0);
+
+  // Count oid column which is a system column, but cast oid to int.
+  res = ASSERT_RESULT(conn.Fetch("SELECT COUNT(oid::int) FROM pg_type"));
+  lines = PQntuples(res.get());
+  ASSERT_EQ(lines, 1);
+  columns = PQnfields(res.get());
+  ASSERT_EQ(columns, 1);
+  int64 count_oid_int = static_cast<uint32>(CHECK_RESULT(GetInt64(res.get(), 0, 0)));
+  // Should get the same count.
+  ASSERT_EQ(count_oid_int, count_oid);
+
+  // Count typname column which is a regular column.
+  res = ASSERT_RESULT(conn.Fetch("SELECT COUNT(typname) FROM pg_type"));
+  lines = PQntuples(res.get());
+  ASSERT_EQ(lines, 1);
+  columns = PQnfields(res.get());
+  ASSERT_EQ(columns, 1);
+  int64 count_typname = static_cast<uint32>(CHECK_RESULT(GetInt64(res.get(), 0, 0)));
+  // Should get the same count.
+  ASSERT_EQ(count_oid, count_typname);
+
+  // Test unsupported system columns which would otherwise get the same count as shown
+  // in vanilla Postgres.
+  auto result = conn.Fetch("SELECT COUNT(ctid) FROM pg_type");
+  ASSERT_NOK(result);
+  result = conn.Fetch("SELECT COUNT(cmin) FROM pg_type");
+  ASSERT_NOK(result);
+  result = conn.Fetch("SELECT COUNT(cmax) FROM pg_type");
+  ASSERT_NOK(result);
+  result = conn.Fetch("SELECT COUNT(xmin) FROM pg_type");
+  ASSERT_NOK(result);
+  result = conn.Fetch("SELECT COUNT(xmax) FROM pg_type");
+  ASSERT_NOK(result);
+
+  // Test SUM(oid) results in error.
+  result = conn.Fetch("SELECT SUM(oid) FROM pg_type");
+  ASSERT_NOK(result);
+}
+
 } // namespace pgwrapper
 } // namespace yb
