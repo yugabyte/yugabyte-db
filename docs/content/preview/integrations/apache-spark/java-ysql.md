@@ -108,7 +108,7 @@ This tutorial assumes that you have:
     $ mvn install
     ```
 
-1. Create a java file `sparkSQLJavaExample.java` under `src/main/java` directory of your `sparkSample` project and add the following code to the file:
+1. Create the file `sparkSQLJavaExample.java` under the `src/main/java` directory of your `sparkSample` project and add the following code to the file:
 
     ```java
     import org.apache.spark.sql.SparkSession;
