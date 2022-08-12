@@ -43,6 +43,7 @@ The **Create Cluster** wizard has the following pages:
 
 1. [General Settings](#general-settings)
 1. [Cluster Setup](#cluster-setup)
+1. [Network Access](#network-access)
 1. [DB Credentials](#database-credentials)
 
 ### General Settings
