@@ -128,7 +128,8 @@ To deploy a partition-by-region cluster, refer to [Partition by region](../creat
 
 **Learn more**
 
-[Row-Level Geo-Partitioning](../../../explore/multi-region-deployments/row-level-geo-partitioning/)
+- [Row-Level Geo-Partitioning](../../../explore/multi-region-deployments/row-level-geo-partitioning/)
+- [Tablespaces](../../../explore/ysql-language-features/going-beyond-sql/tablespaces/)
 
 ## Cross-cluster
 

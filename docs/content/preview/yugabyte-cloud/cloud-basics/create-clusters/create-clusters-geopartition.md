@@ -12,11 +12,11 @@ menu:
 type: docs
 ---
 
-Use [partition by region](../../create-clusters-topology/#partition-by-region) clusters to geo-locate data in specific regions.
+Use [partition-by-region](../../create-clusters-topology/#partition-by-region) clusters to geo-locate data in specific regions.
 
 Clusters consist of a primary region and any number of additional secondary regions, where the partitioned, region-specific data resides. You can add or remove regions as required. When first deploying, you can deploy a single cluster in the primary region.
 
-Tables that don't belong to any tablespace are stored in the primary region.
+You place data in regions of the cluster using tablespaces. Tables that don't belong to any tablespace are stored in the primary region. For more information on specifying data placement for tables and indexes, refer to [Tablespaces](../../../../explore/ysql-language-features/going-beyond-sql/tablespaces/).
 
 ## Features
 
