@@ -54,7 +54,7 @@ This tutorial assumes that you have:
 
 ## Set up the database
 
-1. From your YugabyteDB installation directory, use ysqlsh shell to read and write directly to the database as follows:
+1. From your YugabyteDB installation directory, connect to the database using ysqlsh as follows:
 
     ```sh
     ./bin/ysqlsh
