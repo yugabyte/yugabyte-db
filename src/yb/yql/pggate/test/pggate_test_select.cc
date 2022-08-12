@@ -67,7 +67,7 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
   CHECK_YBC_STATUS(YBCTestCreateTableAddColumn(pg_stmt, "oid", -2,
                                                DataType::INT32, false, false));
   ++col_count;
-  CHECK_YBC_STATUS(YBCPgExecCreateTable(pg_stmt));
+  ExecCreateTableTransaction(pg_stmt);
 
   pg_stmt = nullptr;
 
