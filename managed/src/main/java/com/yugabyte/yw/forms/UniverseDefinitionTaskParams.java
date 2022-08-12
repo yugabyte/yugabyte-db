@@ -75,10 +75,6 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   // This is set during configure to figure out which cluster type is intended to be modified.
   @ApiModelProperty public ClusterType currentClusterType;
 
-  @ApiModelProperty public boolean enableYbc = false;
-
-  @ApiModelProperty public String ybcSoftwareVersion = null;
-
   public ClusterType getCurrentClusterType() {
     return currentClusterType == null ? ClusterType.PRIMARY : currentClusterType;
   }

@@ -141,6 +141,7 @@ function mapStateToProps(state, ownProps) {
     modal: state.modal,
     universe: state.universe,
     softwareVersions: state.customer.softwareVersions,
+    featureFlags: state.featureFlags,
     initialValues,
     certificates,
     formValues,

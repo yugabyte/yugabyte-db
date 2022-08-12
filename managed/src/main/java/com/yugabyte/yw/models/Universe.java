@@ -931,7 +931,7 @@ public class Universe extends Model {
   }
 
   public boolean isYbcEnabled() {
-    return getUniverseDetails().enableYbc;
+    return getUniverseDetails().ybcInstalled;
   }
 
   public boolean nodeExists(String host, int port) {

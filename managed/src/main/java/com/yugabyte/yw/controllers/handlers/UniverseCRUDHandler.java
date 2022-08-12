@@ -99,8 +99,6 @@ public class UniverseCRUDHandler {
 
   @Inject UpgradeUniverseHandler upgradeUniverseHandler;
 
-  public static final String YBC_DEFAULT_VERSION = "ybc.releases.stable_version";
-
   private enum OpType {
     CONFIGURE,
     CREATE,
@@ -490,7 +488,7 @@ public class UniverseCRUDHandler {
       taskParams.ybcSoftwareVersion =
           StringUtils.isNotBlank(taskParams.ybcSoftwareVersion)
               ? taskParams.ybcSoftwareVersion
-              : runtimeConfigFactory.globalRuntimeConf().getString(YBC_DEFAULT_VERSION);
+              : runtimeConfigFactory.staticApplicationConf().getString(Util.YBC_DEFAULT_VERSION);
     }
 
     Universe universe = Universe.create(taskParams, customer.getCustomerId());

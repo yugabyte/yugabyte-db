@@ -91,7 +91,8 @@ public class ResizeNode extends UpgradeTaskBase {
                                       UserTaskDetails.SubTaskGroupType.ChangeInstanceType);
                             }
                           })
-                      .build());
+                      .build(),
+                  taskParams().ybcInstalled);
             } else {
               // Only disk resizing, could be done without restarts.
               createNonRestartUpgradeTaskFlow(

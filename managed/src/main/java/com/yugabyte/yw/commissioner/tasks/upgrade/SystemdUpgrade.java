@@ -49,7 +49,8 @@ public class SystemdUpgrade extends UpgradeTaskBase {
           createRollingUpgradeTaskFlow(
               (nodes1, processTypes) -> createSystemdUpgradeTasks(nodes1, getSingle(processTypes)),
               nodes,
-              DEFAULT_CONTEXT);
+              DEFAULT_CONTEXT,
+              getUniverse().isYbcEnabled());
 
           // Persist useSystemd changes
           createPersistSystemdUpgradeTask(true).setSubTaskGroupType(getTaskSubGroupType());
@@ -74,6 +75,9 @@ public class SystemdUpgrade extends UpgradeTaskBase {
     taskParams().rootAndClientRootCASame = universeDetails.rootAndClientRootCASame;
     taskParams().allowInsecure = universeDetails.allowInsecure;
     taskParams().setTxnTableWaitCountFlag = universeDetails.setTxnTableWaitCountFlag;
+    taskParams().ybcSoftwareVersion = universeDetails.ybcSoftwareVersion;
+    taskParams().ybcInstalled = universeDetails.ybcInstalled;
+    taskParams().enableYbc = universeDetails.ybcInstalled;
 
     // Conditional Configuring
     createConfigureServerTasks(nodes, params -> params.isSystemdUpgrade = true)

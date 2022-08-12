@@ -82,6 +82,10 @@ public class Util {
 
   public static final double EPSILON = 0.000001d;
 
+  public static final String YBC_COMPATIBLE_DB_VERSION = "2.14.0.0-b1";
+
+  public static final String YBC_DEFAULT_VERSION = "ybc.releases.stable_version";
+
   /**
    * Returns a list of Inet address objects in the proxy tier. This is needed by Cassandra clients.
    */
