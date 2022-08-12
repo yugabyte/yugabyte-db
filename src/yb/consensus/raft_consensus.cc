@@ -2374,29 +2374,19 @@ Status RaftConsensus::RequestVote(const VoteRequestPB* request, VoteResponsePB* 
 Status RaftConsensus::IsLeaderReadyForChangeConfigUnlocked(ChangeConfigType type,
                                                            const string& server_uuid) {
   const RaftConfigPB& active_config = state_->GetActiveConfigUnlocked();
-  size_t servers_in_transition = 0;
-  if (type == ADD_SERVER) {
-    servers_in_transition = CountServersInTransition(active_config);
-  } else if (type == REMOVE_SERVER) {
-    // If we are trying to remove the server in transition, then servers_in_transition shouldn't
-    // count it so we can proceed with the operation.
-    servers_in_transition = CountServersInTransition(active_config, server_uuid);
-  }
 
   // Check that all the following requirements are met:
   // 1. We are required by Raft to reject config change operations until we have
   //    committed at least one operation in our current term as leader.
   //    See https://groups.google.com/forum/#!topic/raft-dev/t4xj6dJTP6E
   // 2. Ensure there is no other pending change config.
-  // 3. There are no peers that are in the process of becoming VOTERs or OBSERVERs.
   if (!state_->AreCommittedAndCurrentTermsSameUnlocked() ||
-      state_->IsConfigChangePendingUnlocked() ||
-      servers_in_transition != 0) {
+      state_->IsConfigChangePendingUnlocked()) {
     return STATUS_FORMAT(IllegalState,
                          "Leader is not ready for Config Change, can try again. "
-                         "Num peers in transit: $0. Type: $1. Has opid: $2. Committed config: $3. "
-                         "Pending config: $4. Current term: $5. Committed op id: $6.",
-                         servers_in_transition, ChangeConfigType_Name(type),
+                         "Type: $0. Has opid: $1. Committed config: $2. "
+                         "Pending config: $3. Current term: $4. Committed op id: $5.",
+                         ChangeConfigType_Name(type),
                          active_config.has_opid_index(),
                          state_->GetCommittedConfigUnlocked().ShortDebugString(),
                          state_->IsConfigChangePendingUnlocked() ?
