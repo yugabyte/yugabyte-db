@@ -41,7 +41,9 @@ public class UpgradeTaskParams extends UniverseDefinitionTaskParams {
     CopyCerts,
     Round1GFlagsUpdate,
     Round2GFlagsUpdate,
-    PackageReInstall
+    PackageReInstall,
+    YbcInstall,
+    YbcGflagsUpdate
   }
 
   public enum UpgradeOption {

@@ -231,6 +231,7 @@ public class ModelFactory {
     params.nodePrefix = universeName;
     params.rootCA = rootCA;
     params.enableYbc = enableYbc;
+    params.ybcInstalled = enableYbc;
     params.upsertPrimaryCluster(userIntent, pi);
     return Universe.create(params, customerId);
   }

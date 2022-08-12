@@ -646,7 +646,7 @@ class UniverseForm extends Component {
       submitPayload.ybcSoftwareVersion = universeDetails.ybcSoftwareVersion;
 
     if (!isDefinedNotNull(submitPayload.enableYbc))
-      submitPayload.enableYbc = featureFlags.released.enableYbc;
+      submitPayload.enableYbc = featureFlags.released.enableYbc || featureFlags.test.enableYbc;
     
     return submitPayload;
   };

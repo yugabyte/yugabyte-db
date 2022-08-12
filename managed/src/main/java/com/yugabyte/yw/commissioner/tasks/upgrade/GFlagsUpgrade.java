@@ -92,7 +92,8 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
                 createServerConfFileUpdateTasks(userIntent, nodes, processTypes),
             masterNodes,
             tServerNodes,
-            RUN_BEFORE_STOPPING);
+            RUN_BEFORE_STOPPING,
+            taskParams().ybcInstalled);
         break;
       case NON_ROLLING_UPGRADE:
         createNonRollingUpgradeTaskFlow(
@@ -100,7 +101,8 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
                 createServerConfFileUpdateTasks(userIntent, nodes, processTypes),
             masterNodes,
             tServerNodes,
-            RUN_BEFORE_STOPPING);
+            RUN_BEFORE_STOPPING,
+            taskParams().ybcInstalled);
         break;
       case NON_RESTART_UPGRADE:
         createNonRestartUpgradeTaskFlow(
@@ -119,7 +121,8 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
             },
             masterNodes,
             tServerNodes,
-            DEFAULT_CONTEXT);
+            DEFAULT_CONTEXT,
+            taskParams().ybcInstalled);
         break;
     }
   }
