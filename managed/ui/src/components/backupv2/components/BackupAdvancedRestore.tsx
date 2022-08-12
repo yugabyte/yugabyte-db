@@ -10,7 +10,7 @@
 // Advanced restore - used to restore backup from another platform
 
 import { Field } from 'formik';
-import { find, groupBy } from 'lodash';
+import { find, groupBy, omit } from 'lodash';
 import React, { FC, useMemo, useState } from 'react';
 import { Col, Row } from 'react-bootstrap';
 import { useMutation, useQuery } from 'react-query';
@@ -37,6 +37,8 @@ import { fetchTablesInUniverse } from '../../../actions/xClusterReplication';
 import { YBLoading } from '../../common/indicators';
 import clsx from 'clsx';
 
+import { isDefinedNotNull } from '../../../utils/ObjectUtils';
+import { isYbcEnabledUniverse } from '../../../utils/UniverseUtils';
 import './BackupAdvancedRestore.scss';
 
 const TEXT_RESTORE = 'Restore';
@@ -99,9 +101,23 @@ export const BackupAdvancedRestore: FC<RestoreModalProps> = ({
     }
   );
 
+  const universeDetails = useSelector(
+    (state: any) => state.universe?.currentUniverse?.data?.universeDetails
+  );
+
+  let isYbcEnabledinCurrentUniverse = false;
+
+  if (isDefinedNotNull(currentUniverseUUID)) {
+    isYbcEnabledinCurrentUniverse = isYbcEnabledUniverse(universeDetails);
+  }
+
   const restore = useMutation(
-    ({ backup_details, values }: { backup_details: IBackup; values: Record<string, any> }) =>
-      restoreEntireBackup(backup_details, values),
+    ({ backup_details, values }: { backup_details: IBackup; values: Record<string, any> }) => {
+      if (isYbcEnabledinCurrentUniverse) {
+        values = omit(values, 'parallelThreads');
+      }
+      return restoreEntireBackup(backup_details, values);
+    },
     {
       onSuccess: (resp) => {
         setCurrentStep(0);
@@ -122,10 +138,6 @@ export const BackupAdvancedRestore: FC<RestoreModalProps> = ({
         toast.error(resp.response.data.error);
       }
     }
-  );
-
-  const universeDetails = useSelector(
-    (state: any) => state.universe?.currentUniverse?.data?.universeDetails
   );
 
   const primaryCluster = find(universeDetails?.clusters, { clusterType: 'PRIMARY' });
@@ -256,7 +268,8 @@ export const BackupAdvancedRestore: FC<RestoreModalProps> = ({
               storageConfigs: groupedStorageConfigs,
               tablesInUniverse: tablesInUniverse?.data,
               kmsConfigList,
-              setOverrideSubmitLabel
+              setOverrideSubmitLabel,
+              isYbcEnabledinCurrentUniverse
             })}
           </>
         )
@@ -273,7 +286,8 @@ function RestoreForm({
   setOverrideSubmitLabel,
   setSubmitting,
   errors,
-  kmsConfigList
+  kmsConfigList,
+  isYbcEnabledinCurrentUniverse
 }: {
   setFieldValue: Function;
   values: Record<string, any>;
@@ -289,6 +303,7 @@ function RestoreForm({
       value: Partial<IStorageConfig>;
     };
   };
+  isYbcEnabledinCurrentUniverse: boolean;
 }) {
   return (
     <div className="advanced-restore-form">
@@ -426,21 +441,23 @@ function RestoreForm({
           </Col>
         </Row>
       </div>
-      <Row>
-        <Col lg={3} className="no-padding">
-          <Field
-            name="parallelThreads"
-            component={YBControlledNumericInputWithLabel}
-            label="Parallel threads (Optional)"
-            onInputChanged={(val: string) => setFieldValue('parallelThreads', parseInt(val))}
-            val={values['parallelThreads']}
-            minVal={1}
-          />
-          {errors['parallelThreads'] && (
-            <span className="err-msg">{errors['parallelThreads']}</span>
-          )}
-        </Col>
-      </Row>
+      {!isYbcEnabledinCurrentUniverse && (
+        <Row>
+          <Col lg={3} className="no-padding">
+            <Field
+              name="parallelThreads"
+              component={YBControlledNumericInputWithLabel}
+              label="Parallel threads (Optional)"
+              onInputChanged={(val: string) => setFieldValue('parallelThreads', parseInt(val))}
+              val={values['parallelThreads']}
+              minVal={1}
+            />
+            {errors['parallelThreads'] && (
+              <span className="err-msg">{errors['parallelThreads']}</span>
+            )}
+          </Col>
+        </Row>
+      )}
     </div>
   );
 }
