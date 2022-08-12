@@ -40,7 +40,7 @@
 
     } else if commandLineArgs[0] == "version" {
 
-        Version()
+        Version("version_metadata.json")
 
     } else if commandLineArgs[0] == "params" {
 
