@@ -1905,7 +1905,7 @@ TEST_F(AutomaticTabletSplitAddServerITest, DoNotSplitTabletDoingRBS) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = true;
 
   // Fail to split because tablet is doing RBS and under replication.
-  ASSERT_FALSE(master::CheckLiveReplicasForSplit(
+  ASSERT_NOK(master::CheckLiveReplicasForSplit(
       tablet_id, *tablet->GetReplicaLocations(), FLAGS_replication_factor));
   ASSERT_EQ(itest::GetNumTabletsOfTableOnTS(leader_ts, table_->id()), 1);
 
@@ -1938,7 +1938,7 @@ TEST_F(AutomaticTabletSplitAddServerITest, DoNotSplitOverReplicatedTablet) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = true;
 
   // Should fail to split because of over replication.
-  ASSERT_FALSE(master::CheckLiveReplicasForSplit(
+  ASSERT_NOK(master::CheckLiveReplicasForSplit(
       tablet_id, *tablet->GetReplicaLocations(), FLAGS_replication_factor));
   ASSERT_EQ(itest::GetNumTabletsOfTableOnTS(leader_ts, table_->id()), 1);
 
