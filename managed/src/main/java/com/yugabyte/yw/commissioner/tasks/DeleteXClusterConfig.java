@@ -26,15 +26,15 @@ public class DeleteXClusterConfig extends XClusterConfigTaskBase {
       lockUniverseForUpdate(getUniverse().version);
 
       XClusterConfig xClusterConfig = getXClusterConfig();
-      if (xClusterConfig.status == XClusterConfigStatusType.Init) {
-        throw new RuntimeException(
-            String.format("Cannot delete XClusterConfig(%s) in `Init` state", xClusterConfig.uuid));
+      if (xClusterConfig == null) {
+        throw new RuntimeException("xClusterConfig in task params cannot be null");
       }
 
-      Optional<Universe> targetUniverse = Universe.maybeGet(xClusterConfig.targetUniverseUUID);
-
-      createXClusterConfigDeleteTask()
+      // Delete the replication CDC streams on the target universe.
+      createXClusterConfigDeleteTask(true /* ignoreErrors */)
           .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+
+      Optional<Universe> targetUniverse = Universe.maybeGet(xClusterConfig.targetUniverseUUID);
       targetUniverse.ifPresent(
           universe ->
               createTransferXClusterCertsRemoveTasks(

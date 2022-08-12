@@ -1012,19 +1012,21 @@ public class AsyncYBClient implements AutoCloseable {
   }
 
   /**
-   * Delete existing xCluster replications from a source universe to our target universe
+   * It deletes an existing xCluster replication.
    *
-   * Prerequisites: AsyncYBClient must be created with target universe as the context.
+   * <p>Prerequisites: AsyncYBClient must be created with target universe as the context.</p>
+   *
+   * <p>Note: if errors are ignored, warnings are available in warnings list of the response.</p>
    *
    * @param replicationGroupName The source universe's UUID
-   *
-   * @return a deferred object that yields a delete xCluster replication response.
+   * @param ignoreErrors Whether the errors should be ignored
+   * @return A deferred object that yields a delete xCluster replication response
    * */
   public Deferred<DeleteUniverseReplicationResponse> deleteUniverseReplication(
-    String replicationGroupName) {
+    String replicationGroupName, boolean ignoreErrors) {
     checkIsClosed();
     DeleteUniverseReplicationRequest request =
-      new DeleteUniverseReplicationRequest(this.masterTable, replicationGroupName);
+      new DeleteUniverseReplicationRequest(this.masterTable, replicationGroupName, ignoreErrors);
     request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(request);
   }

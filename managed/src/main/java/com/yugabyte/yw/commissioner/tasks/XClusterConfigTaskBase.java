@@ -134,11 +134,15 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     return subTaskGroup;
   }
 
-  protected SubTaskGroup createXClusterConfigDeleteTask() {
+  protected SubTaskGroup createXClusterConfigDeleteTask(boolean ignoreErrors) {
     SubTaskGroup subTaskGroup =
         getTaskExecutor().createSubTaskGroup("XClusterConfigDelete", executor);
+    XClusterConfigDelete.Params xClusterConfigDeleteParams = new XClusterConfigDelete.Params();
+    xClusterConfigDeleteParams.universeUUID = taskParams().xClusterConfig.targetUniverseUUID;
+    xClusterConfigDeleteParams.xClusterConfig = taskParams().xClusterConfig;
+    xClusterConfigDeleteParams.ignoreErrors = ignoreErrors;
     XClusterConfigDelete task = createTask(XClusterConfigDelete.class);
-    task.initialize(taskParams());
+    task.initialize(xClusterConfigDeleteParams);
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;

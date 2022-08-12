@@ -65,9 +65,9 @@ export function ReplicationDetails({ params }: Props) {
     (replication: IReplication) => {
       return changeXClusterStatus(
         replication,
-        replication.status === IReplicationStatus.PAUSED
-          ? IReplicationStatus.RUNNING
-          : IReplicationStatus.PAUSED
+        replication.status === IReplicationStatus.RUNNING
+          ? IReplicationStatus.PAUSED
+          : IReplicationStatus.RUNNING
       );
     },
     {
@@ -133,7 +133,6 @@ export function ReplicationDetails({ params }: Props) {
                   } Replication`}
                   btnClass={'btn btn-orange replication-status-button'}
                   disabled={
-                    replication.status === IReplicationStatus.FAILED ||
                     replication.status === IReplicationStatus.INIT
                   }
                   onClick={() => {

@@ -28,10 +28,11 @@ public class EditXClusterConfig extends XClusterConfigTaskBase {
 
       XClusterConfig xClusterConfig = getXClusterConfig();
       if (xClusterConfig.status != XClusterConfigStatusType.Running
-          && xClusterConfig.status != XClusterConfigStatusType.Paused) {
+          && xClusterConfig.status != XClusterConfigStatusType.Paused
+          && xClusterConfig.status != XClusterConfigStatusType.Failed) {
         throw new RuntimeException(
             String.format(
-                "XClusterConfig(%s) must be in `Running` or `Paused` state to edit",
+                "XClusterConfig(%s) must be in `Running` or `Paused` or `Failed` state to edit",
                 xClusterConfig.uuid));
       }
 

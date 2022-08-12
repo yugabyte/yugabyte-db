@@ -1571,9 +1571,9 @@ public class YBClient implements AutoCloseable {
   }
 
   public DeleteUniverseReplicationResponse deleteUniverseReplication(
-    String replicationGroupName) throws Exception {
+      String replicationGroupName, boolean ignoreErrors) throws Exception {
     Deferred<DeleteUniverseReplicationResponse> d =
-      asyncClient.deleteUniverseReplication(replicationGroupName);
+        asyncClient.deleteUniverseReplication(replicationGroupName, ignoreErrors);
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
