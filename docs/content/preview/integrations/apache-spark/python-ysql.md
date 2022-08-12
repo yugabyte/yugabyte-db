@@ -283,7 +283,7 @@ Additionally, the following two options help in optimizing the SQL queries execu
 
 ### Verify parallelism
 
-To verify that the Spark job is created,
+To verify that the Spark job is created, do the following:
 
 1. Navigate to the Spark UI using <https://localhost:4040>. If your port 4040 is in use, then change the port to the one mentioned in the output of your [`pyspark`](#start-python-spark-shell-with-yugabytedb-driver) shell.
 
