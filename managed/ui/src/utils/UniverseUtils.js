@@ -142,6 +142,10 @@ export function isKubernetesUniverse(currentUniverse) {
   );
 }
 
+export const isYbcEnabledUniverse = (universeDetails) => {
+  return universeDetails.enableYbc;
+}
+
 /**
  * Returns an array of unique regions in the universe
  */

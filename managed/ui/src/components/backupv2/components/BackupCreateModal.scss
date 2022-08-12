@@ -40,6 +40,7 @@
   .form-item-label {
     font-weight: 400 !important;
     display: flex;
+
     input {
       margin-right: 10px;
     }
@@ -70,8 +71,29 @@
     margin-left: 6px;
     margin-bottom: 6px;
   }
+
   .storage-cfg-name {
     margin-right: 5px;
+  }
+
+  .storage-cfg-select-label {
+    font-style: normal;
+    font-weight: 400;
+    font-size: 13px;
+    line-height: 16px;
+    color: #151730;
+  }
+
+  .storage-cfg-select-meta {
+    font-weight: 400;
+    font-size: 11.5px;
+    line-height: 14px;
+    margin-top: 4px;
+    margin-bottom: 6px;
+    color: #67666c;
+    > span {
+      margin-right: 10px;
+    }
   }
 }
 

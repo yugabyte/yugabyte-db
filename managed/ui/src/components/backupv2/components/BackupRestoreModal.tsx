@@ -41,10 +41,12 @@ import { toast } from 'react-toastify';
 import { components } from 'react-select';
 import { Badge_Types, StatusBadge } from '../../common/badge/StatusBadge';
 import { YBSearchInput } from '../../common/forms/fields/YBSearchInput';
-import { find, isFunction } from 'lodash';
+import { find, isFunction, omit } from 'lodash';
 import { BACKUP_API_TYPES } from '../common/IBackup';
 import { TableType } from '../../../redesign/helpers/dtos';
 import clsx from 'clsx';
+import { isYbcEnabledUniverse } from '../../../utils/UniverseUtils';
+import { isDefinedNotNull } from '../../../utils/ObjectUtils';
 import './BackupRestoreModal.scss';
 
 interface RestoreModalProps {
@@ -77,6 +79,11 @@ const STEPS = [
   }
 ];
 
+const isYBCEnabledInUniverse = (universeList: IUniverse[], currentUniverseUUID: string) => {
+  const universe = find(universeList, { universeUUID: currentUniverseUUID });
+  return isYbcEnabledUniverse(universe?.universeDetails);
+};
+
 export const BackupRestoreModal: FC<RestoreModalProps> = ({ backup_details, onHide, visible }) => {
   const [currentStep, setCurrentStep] = useState(0);
   const [isFetchingTables, setIsFetchingTables] = useState(false);
@@ -97,8 +104,12 @@ export const BackupRestoreModal: FC<RestoreModalProps> = ({ backup_details, onHi
     : [];
 
   const restore = useMutation(
-    ({ backup_details, values }: { backup_details: IBackup; values: Record<string, any> }) =>
-      restoreEntireBackup(backup_details, values),
+    ({ backup_details, values }: { backup_details: IBackup; values: Record<string, any> }) => {
+      if (isYBCEnabledInUniverse(universeList!, values['targetUniverseUUID'].value)) {
+        values = omit(values, 'parallelThreads');
+      }
+      return restoreEntireBackup(backup_details, values);
+    },
     {
       onSuccess: (resp) => {
         setCurrentStep(0);
@@ -335,6 +346,15 @@ function RestoreChooseUniverseForm({
     );
   }
 
+  let isYbcEnabledinCurrentUniverse = false;
+
+  if (isDefinedNotNull(values['targetUniverseUUID']?.value)) {
+    isYbcEnabledinCurrentUniverse = isYBCEnabledInUniverse(
+      universeList,
+      values['targetUniverseUUID']?.value
+    );
+  }
+
   return (
     <div className="restore-choose-universe">
       <Row className="backup-info">
@@ -460,21 +480,23 @@ function RestoreChooseUniverseForm({
           </Col>
         </Row>
       )}
-      <Row>
-        <Col lg={8} className="no-padding">
-          <Field
-            name="parallelThreads"
-            component={YBControlledNumericInputWithLabel}
-            label="Parallel threads (Optional)"
-            onInputChanged={(val: string) => setFieldValue('parallelThreads', parseInt(val))}
-            val={values['parallelThreads']}
-            minVal={1}
-          />
-          {errors['parallelThreads'] && (
-            <span className="err-msg">{errors['parallelThreads']}</span>
-          )}
-        </Col>
-      </Row>
+      {!isYbcEnabledinCurrentUniverse && (
+        <Row>
+          <Col lg={8} className="no-padding">
+            <Field
+              name="parallelThreads"
+              component={YBControlledNumericInputWithLabel}
+              label="Parallel threads (Optional)"
+              onInputChanged={(val: string) => setFieldValue('parallelThreads', parseInt(val))}
+              val={values['parallelThreads']}
+              minVal={1}
+            />
+            {errors['parallelThreads'] && (
+              <span className="err-msg">{errors['parallelThreads']}</span>
+            )}
+          </Col>
+        </Row>
+      )}
     </div>
   );
 }
