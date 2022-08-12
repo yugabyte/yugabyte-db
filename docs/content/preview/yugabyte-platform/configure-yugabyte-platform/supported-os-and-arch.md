@@ -25,7 +25,7 @@ YugabyteDB Anywhere supports deploying YugabyteDB on the following operating sys
 * Ubuntu 18
 * Ubuntu 20
 
-### Python 3
+### Requirements for all OSes
 
 Python 3 is required. If you're using YugabyteDB Anywhere to provision nodes in public clouds, be sure the custom AMI you plan to use has Python 3 installed.
 
