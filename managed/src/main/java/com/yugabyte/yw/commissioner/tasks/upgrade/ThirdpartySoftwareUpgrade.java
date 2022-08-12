@@ -64,7 +64,8 @@ public class ThirdpartySoftwareUpgrade extends UpgradeTaskBase {
                 }
               },
               nodesToUpdate,
-              DEFAULT_CONTEXT);
+              DEFAULT_CONTEXT,
+              taskParams().ybcInstalled);
         });
   }
 }

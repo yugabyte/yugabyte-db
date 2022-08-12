@@ -134,6 +134,21 @@ public class UpgradeUniverseHandler {
       checkHelmChartExists(requestParams.ybSoftwareVersion);
     }
 
+    if (Util.compareYbVersions(
+                requestParams.ybSoftwareVersion, Util.YBC_COMPATIBLE_DB_VERSION, true)
+            > 0
+        && !universe.isYbcEnabled()
+        && requestParams.enableYbc) {
+      requestParams.ybcSoftwareVersion =
+          runtimeConfigFactory.staticApplicationConf().getString(Util.YBC_DEFAULT_VERSION);
+      requestParams.installYbc = true;
+    } else {
+      requestParams.ybcSoftwareVersion = universe.getUniverseDetails().ybcSoftwareVersion;
+      requestParams.installYbc = false;
+      requestParams.enableYbc = false;
+    }
+    requestParams.ybcInstalled = universe.isYbcEnabled();
+
     return submitUpgradeTask(
         userIntent.providerType.equals(CloudType.kubernetes)
             ? TaskType.SoftwareKubernetesUpgrade
@@ -254,6 +269,13 @@ public class UpgradeUniverseHandler {
     // Update request params with additional metadata for upgrade task
     requestParams.universeUUID = universe.universeUUID;
     requestParams.expectedUniverseVersion = universe.version;
+    if (universe.isYbcEnabled()) {
+      requestParams.installYbc = true;
+      requestParams.enableYbc = true;
+      requestParams.ybcSoftwareVersion = universe.getUniverseDetails().ybcSoftwareVersion;
+      requestParams.ybcInstalled = true;
+    }
+
     UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
     // Generate client certs if rootAndClientRootCASame is true and rootCA is self-signed.
     // This is there only for legacy support, no need if rootCA and clientRootCA are different.
@@ -339,6 +361,12 @@ public class UpgradeUniverseHandler {
     // Update request params with additional metadata for upgrade task
     requestParams.universeUUID = universe.universeUUID;
     requestParams.expectedUniverseVersion = universe.version;
+    if (universe.isYbcEnabled()) {
+      requestParams.installYbc = true;
+      requestParams.enableYbc = true;
+      requestParams.ybcSoftwareVersion = universe.getUniverseDetails().ybcSoftwareVersion;
+      requestParams.ybcInstalled = true;
+    }
     if (requestParams.rootAndClientRootCASame == null) {
       requestParams.rootAndClientRootCASame = universeDetails.rootAndClientRootCASame;
     }

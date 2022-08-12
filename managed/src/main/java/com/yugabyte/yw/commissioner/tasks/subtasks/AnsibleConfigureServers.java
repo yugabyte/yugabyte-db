@@ -49,6 +49,8 @@ public class AnsibleConfigureServers extends NodeTaskBase {
   public static class Params extends NodeTaskParams {
     public UpgradeTaskType type = UpgradeTaskParams.UpgradeTaskType.Everything;
     public String ybSoftwareVersion = null;
+
+    public boolean enableybc;
     public String ybcSoftwareVersion = null;
 
     // Optional params.

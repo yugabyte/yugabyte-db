@@ -64,7 +64,8 @@ export default class RollingUpgradeForm extends Component {
         }
       },
       overrideIntentParams,
-      resetLocation
+      resetLocation,
+      featureFlags
     } = this.props;
 
     const payload = {};
@@ -166,6 +167,8 @@ export default class RollingUpgradeForm extends Component {
       }
     }
 
+    if(!isDefinedNotNull(primaryCluster.enableYbc))
+      payload.enableYbc = featureFlags.released.enableYbc || featureFlags.test.enableYbc;
     this.props.submitRollingUpgradeForm(payload, universeUUID).then((response) => {
       if (response.payload.status === 200) {
         this.props.fetchCurrentUniverse(universeUUID);

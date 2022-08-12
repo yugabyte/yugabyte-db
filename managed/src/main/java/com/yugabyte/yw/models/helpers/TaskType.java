@@ -207,6 +207,8 @@ public enum TaskType {
 
   UpdateSoftwareVersion("subtasks.UpdateSoftwareVersion"),
 
+  UpdateYbcSoftwareVersion("subtasks.UpdateYbcSoftwareVersion"),
+
   VerifyNodeSSHAccess("subtasks.VerifyNodeSSHAccess"),
 
   WaitForDataMove("subtasks.WaitForDataMove"),

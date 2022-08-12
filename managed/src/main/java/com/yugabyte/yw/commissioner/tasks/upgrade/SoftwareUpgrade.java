@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
@@ -88,7 +89,15 @@ public class SoftwareUpgrade extends UpgradeTaskBase {
                   createSoftwareInstallTasks(
                       nodes1, getSingle(processTypes), newVersion, getTaskSubGroupType()),
               nodes,
-              SOFTWARE_UPGRADE_CONTEXT);
+              SOFTWARE_UPGRADE_CONTEXT,
+              false);
+
+          if (taskParams().installYbc) {
+            createYbcSoftwareInstallTasks(nodes.getRight(), newVersion, getTaskSubGroupType());
+            createUpdateYbcTask(taskParams().ybcSoftwareVersion)
+                .setSubTaskGroupType(getTaskSubGroupType());
+          }
+
           if (taskParams().upgradeSystemCatalog) {
             // Run YSQL upgrade on the universe.
             createRunYsqlUpgradeTask(newVersion).setSubTaskGroupType(getTaskSubGroupType());
