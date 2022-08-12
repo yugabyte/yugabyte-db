@@ -920,6 +920,7 @@ stmt :
 			| CreatePolicyStmt
 			| CreateRoleStmt
 			| CreateSchemaStmt
+			| CreateStatsStmt
 			| CreateTableSpaceStmt
 			| CreateTrigStmt
 			| CreateUserStmt
@@ -1005,7 +1006,6 @@ stmt :
 			| CreateConversionStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreatePublicationStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateSubscriptionStmt { parser_ybc_not_support(@1, "This statement"); }
-			| CreateStatsStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateTransformStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DropAssertStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DropSubscriptionStmt { parser_ybc_not_support(@1, "This statement"); }
@@ -2213,7 +2213,6 @@ alter_table_cmd:
 			/* ALTER TABLE <name> ALTER [COLUMN] <colname> SET STATISTICS <SignedIconst> */
 			| ALTER opt_column ColId SET STATISTICS SignedIconst
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER TABLE ALTER column", 1124);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_SetStatistics;
 					n->name = $3;
@@ -4386,7 +4385,6 @@ CreateStatsStmt:
 			CREATE STATISTICS any_name
 			opt_name_list ON expr_list FROM from_list
 				{
-					parser_ybc_not_support(@1, "CREATE STATISTICS");
 					CreateStatsStmt *n = makeNode(CreateStatsStmt);
 					n->defnames = $3;
 					n->stat_types = $4;
@@ -4399,7 +4397,6 @@ CreateStatsStmt:
 			| CREATE STATISTICS IF_P NOT EXISTS any_name
 			opt_name_list ON expr_list FROM from_list
 				{
-					parser_ybc_not_support(@1, "CREATE STATISTICS");
 					CreateStatsStmt *n = makeNode(CreateStatsStmt);
 					n->defnames = $6;
 					n->stat_types = $7;
@@ -6830,7 +6827,7 @@ drop_type_any_name:
 					$$ = OBJECT_COLLATION;
 				}
 			| CONVERSION_P { parser_ybc_not_support(@1, "DROP CONVERSION"); $$ = OBJECT_CONVERSION; }
-			| STATISTICS { parser_ybc_not_support(@1, "DROP STATISTICS"); $$ = OBJECT_STATISTIC_EXT; }
+			| STATISTICS { $$ = OBJECT_STATISTIC_EXT; }
 			| TEXT_P SEARCH PARSER
 				{
 					$$ = OBJECT_TSPARSER;

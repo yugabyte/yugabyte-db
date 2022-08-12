@@ -1101,6 +1101,7 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, YBCPgStatement handle,
 		case AT_DropIdentity:
 		case AT_EnableRowSecurity:
 		case AT_DisableRowSecurity:
+		case AT_SetStatistics:
 		case AT_ForceRowSecurity:
 		case AT_NoForceRowSecurity:
 		case AT_AttachPartition:
