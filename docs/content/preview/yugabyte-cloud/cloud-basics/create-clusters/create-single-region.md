@@ -2,7 +2,7 @@
 title: Create a single-region cluster
 linkTitle: Single region
 description: Deploy dedicated single-region clusters in YugabyteDB Managed.
-headcontent:
+headcontent: Deploy availability zone- and node-level fault tolerant clusters
 aliases:
   - /preview/deploy/yugabyte-cloud/create-clusters/
   - /preview/yugabyte-cloud/create-clusters/
@@ -90,6 +90,8 @@ Fault tolerance determines how resilient the cluster is to node and cloud zone f
 Monthly total costs for the cluster are estimated automatically. **+ Usage** refers to any potential overages from exceeding the free allowances for disk storage, backup storage, and data transfer. For information on how clusters are costed, refer to [Cluster costs](../../../cloud-admin/cloud-billing-costs/).
 
 Dedicated clusters support both horizontal and vertical scaling; you can change the cluster configuration after the cluster is created using the **Edit Configuration** settings. Refer to [Configure clusters](../../../cloud-clusters/configure-clusters#infrastructure).
+
+{{% includeMarkdown "network-access.md" %}}
 
 ### Database Credentials
 

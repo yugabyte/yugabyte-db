@@ -2,7 +2,7 @@
 title: Partition by region
 linkTitle: Partition by region
 description: Deploy multi-region synchronous clusters in YugabyteDB Managed.
-headcontent:
+headcontent: Use geo-partitioning to pin data to regions
 beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   preview_yugabyte-cloud:
@@ -85,6 +85,8 @@ Monthly total costs for the cluster are estimated automatically. **+ Usage** ref
 
 Partiton-by-region clusters support both horizontal and vertical scaling; you can add regions and change the cluster configuration after the cluster is created using the **Edit Configuration** settings. Refer to [Configure clusters](../../../cloud-clusters/configure-clusters#infrastructure).
 
+{{% includeMarkdown "network-access.md" %}}
+
 ### Database Credentials
 
 The database admin credentials are required to connect to the YugabyteDB database that is installed on the cluster.
@@ -113,7 +115,6 @@ You now have a fully configured YugabyteDB cluster provisioned in YugabyteDB Man
 
 ## Next steps
 
-- [Assign IP allow lists](../../../cloud-secure-clusters/add-connections/)
 - [Connect to your cluster](../../../cloud-connect/)
 - [Add database users](../../../cloud-secure-clusters/add-users/)
 - [Build an application](../../../../develop/build-apps/)
