@@ -34,6 +34,7 @@
 #include "yb/tserver/tserver_util_fwd.h"
 #include "yb/tserver/pg_client.fwd.h"
 
+#include "yb/util/enums.h"
 #include "yb/util/monotime.h"
 
 #include "yb/yql/pggate/pg_gate_fwd.h"
@@ -41,7 +42,15 @@
 namespace yb {
 namespace pggate {
 
-YB_STRONGLY_TYPED_BOOL(DdlMode);
+YB_DEFINE_ENUM(
+  DdlType,
+  // Not a DDL operation.
+  ((NonDdl, 0))
+  // DDL operation that does not modify the DocDB schema protobufs.
+  ((DdlWithoutDocdbSchemaChanges, 1))
+  // DDL operation that modifies the DocDB schema protobufs.
+  ((DdlWithDocdbSchemaChanges, 2))
+);
 
 #define YB_PG_CLIENT_SIMPLE_METHODS \
     (AlterDatabase)(AlterTable)(CreateDatabase)(CreateTable)(CreateTablegroup) \
@@ -74,7 +83,7 @@ class PgClient {
   Result<PgTableDescPtr> OpenTable(
       const PgObjectId& table_id, bool reopen, CoarseTimePoint invalidate_cache_time);
 
-  Status FinishTransaction(Commit commit, DdlMode ddl_mode);
+  Status FinishTransaction(Commit commit, DdlType ddl_type);
 
   Result<master::GetNamespaceInfoResponsePB> GetDatabaseInfo(PgOid oid);
 
