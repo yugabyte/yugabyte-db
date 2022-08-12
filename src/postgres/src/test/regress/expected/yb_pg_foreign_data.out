@@ -782,20 +782,12 @@ ALTER FOREIGN TABLE ft1 ALTER COLUMN c7 OPTIONS (ADD p1 'v1', ADD p2 'v2'),
                         ALTER COLUMN c8 OPTIONS (ADD p1 'v1', ADD p2 'v2');
 ALTER FOREIGN TABLE ft1 ALTER COLUMN c8 OPTIONS (SET p2 'V2', DROP p1);
 ALTER FOREIGN TABLE ft1 ALTER COLUMN c1 SET STATISTICS 10000;
-ERROR:  ALTER TABLE ALTER column not supported yet
-LINE 1: ALTER FOREIGN TABLE ft1 ALTER COLUMN c1 SET STATISTICS 10000...
-                                ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
 ALTER FOREIGN TABLE ft1 ALTER COLUMN c1 SET (n_distinct = 100);
 ERROR:  ALTER TABLE ALTER column not supported yet
 LINE 1: ALTER FOREIGN TABLE ft1 ALTER COLUMN c1 SET (n_distinct = 10...
                                 ^
 HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
 ALTER FOREIGN TABLE ft1 ALTER COLUMN c8 SET STATISTICS -1;
-ERROR:  ALTER TABLE ALTER column not supported yet
-LINE 1: ALTER FOREIGN TABLE ft1 ALTER COLUMN c8 SET STATISTICS -1;
-                                ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
 ALTER FOREIGN TABLE ft1 ALTER COLUMN c8 SET STORAGE PLAIN;
 ERROR:  ALTER TABLE ALTER column not supported yet
 LINE 1: ALTER FOREIGN TABLE ft1 ALTER COLUMN c8 SET STORAGE PLAIN;
@@ -805,7 +797,7 @@ HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the
                                                  Foreign table "public.ft1"
  Column |  Type   | Collation | Nullable | Default |          FDW options           | Storage  | Stats target | Description
 --------+---------+-----------+----------+---------+--------------------------------+----------+--------------+-------------
- c1     | integer |           | not null |         | ("param 1" 'val1')             | plain    |              |
+ c1     | integer |           | not null |         | ("param 1" 'val1')             | plain    | 10000        |
  c2     | text    |           |          |         | (param2 'val2', param3 'val3') | extended |              |
  c3     | date    |           |          |         |                                | plain    |              |
  c4     | integer |           |          | 0       |                                | plain    |              |
@@ -1597,20 +1589,12 @@ ERROR:  This ALTER TABLE command is not yet supported.
 ALTER TABLE fd_pt1 ALTER COLUMN c8 SET DATA TYPE text;
 ERROR:  This ALTER TABLE command is not yet supported.
 ALTER TABLE fd_pt1 ALTER COLUMN c1 SET STATISTICS 10000;
-ERROR:  ALTER TABLE ALTER column not supported yet
-LINE 1: ALTER TABLE fd_pt1 ALTER COLUMN c1 SET STATISTICS 10000;
-                           ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
 ALTER TABLE fd_pt1 ALTER COLUMN c1 SET (n_distinct = 100);
 ERROR:  ALTER TABLE ALTER column not supported yet
 LINE 1: ALTER TABLE fd_pt1 ALTER COLUMN c1 SET (n_distinct = 100);
                            ^
 HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
 ALTER TABLE fd_pt1 ALTER COLUMN c8 SET STATISTICS -1;
-ERROR:  ALTER TABLE ALTER column not supported yet
-LINE 1: ALTER TABLE fd_pt1 ALTER COLUMN c8 SET STATISTICS -1;
-                           ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
 ALTER TABLE fd_pt1 ALTER COLUMN c8 SET STORAGE EXTERNAL;
 ERROR:  ALTER TABLE ALTER column not supported yet
 LINE 1: ALTER TABLE fd_pt1 ALTER COLUMN c8 SET STORAGE EXTERNAL;
@@ -1620,7 +1604,7 @@ HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the
                                    Table "public.fd_pt1"
  Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description
 --------+---------+-----------+----------+---------+----------+--------------+-------------
- c1     | integer |           | not null |         | plain    |              |
+ c1     | integer |           | not null |         | plain    | 10000        |
  c2     | text    |           |          |         | extended |              |
  c3     | date    |           |          |         | plain    |              |
  c4     | integer |           |          | 0       | plain    |              |
@@ -1663,7 +1647,7 @@ ALTER TABLE fd_pt1 DROP COLUMN c8;
                                    Table "public.fd_pt1"
  Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description
 --------+---------+-----------+----------+---------+----------+--------------+-------------
- c1     | integer |           | not null |         | plain    |              |
+ c1     | integer |           | not null |         | plain    | 10000        |
  c2     | text    |           |          |         | extended |              |
  c3     | date    |           |          |         | plain    |              |
 
@@ -1704,7 +1688,7 @@ SELECT relname, conname, contype, conislocal, coninhcount, connoinherit
                                    Table "public.fd_pt1"
  Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description
 --------+---------+-----------+----------+---------+----------+--------------+-------------
- c1     | integer |           | not null |         | plain    |              |
+ c1     | integer |           | not null |         | plain    | 10000        |
  c2     | text    |           |          |         | extended |              |
  c3     | date    |           |          |         | plain    |              |
 Check constraints:
@@ -1763,7 +1747,7 @@ HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the
                                    Table "public.fd_pt1"
  Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description
 --------+---------+-----------+----------+---------+----------+--------------+-------------
- c1     | integer |           | not null |         | plain    |              |
+ c1     | integer |           | not null |         | plain    | 10000        |
  c2     | text    |           |          |         | extended |              |
  c3     | date    |           |          |         | plain    |              |
 Check constraints:
@@ -1798,7 +1782,7 @@ ALTER TABLE fd_pt1 ADD CONSTRAINT fd_pt1chk3 CHECK (c2 <> '') NOT VALID;
                                    Table "public.fd_pt1"
  Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description
 --------+---------+-----------+----------+---------+----------+--------------+-------------
- c1     | integer |           | not null |         | plain    |              |
+ c1     | integer |           | not null |         | plain    | 10000        |
  c2     | text    |           |          |         | extended |              |
  c3     | date    |           |          |         | plain    |              |
 Check constraints:
@@ -1834,7 +1818,7 @@ HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the
                                    Table "public.fd_pt1"
  Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description
 --------+---------+-----------+----------+---------+----------+--------------+-------------
- c1     | integer |           | not null |         | plain    |              |
+ c1     | integer |           | not null |         | plain    | 10000        |
  c2     | text    |           |          |         | extended |              |
  c3     | date    |           |          |         | plain    |              |
 Check constraints:
@@ -1870,7 +1854,7 @@ HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the
                                    Table "public.fd_pt1"
  Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description
 --------+---------+-----------+----------+---------+----------+--------------+-------------
- c1     | integer |           | not null |         | plain    |              |
+ c1     | integer |           | not null |         | plain    | 10000        |
  c2     | text    |           |          |         | extended |              |
  c3     | date    |           |          |         | plain    |              |
 Check constraints:
@@ -1905,7 +1889,7 @@ ALTER TABLE fd_pt1 SET WITHOUT OIDS;
                                    Table "public.fd_pt1"
  Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description
 --------+---------+-----------+----------+---------+----------+--------------+-------------
- c1     | integer |           | not null |         | plain    |              |
+ c1     | integer |           | not null |         | plain    | 10000        |
  c2     | text    |           |          |         | extended |              |
  c3     | date    |           |          |         | plain    |              |
 Check constraints:
@@ -1945,7 +1929,7 @@ HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
                                    Table "public.fd_pt1"
  Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description
 --------+---------+-----------+----------+---------+----------+--------------+-------------
- f1     | integer |           | not null |         | plain    |              |
+ f1     | integer |           | not null |         | plain    | 10000        |
  f2     | text    |           |          |         | extended |              |
  f3     | date    |           |          |         | plain    |              |
 Check constraints:
