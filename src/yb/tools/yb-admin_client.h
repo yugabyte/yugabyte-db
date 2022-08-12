@@ -331,10 +331,13 @@ class ClusterAdminClient {
   CHECKED_STATUS WaitUntilMasterLeaderReady();
 
   template <class Resp, class F>
-  CHECKED_STATUS RequestMasterLeader(Resp* resp, const F& f) {
-    auto deadline = CoarseMonoClock::now() + timeout_;
+  CHECKED_STATUS RequestMasterLeader(Resp* resp, const F& f,
+                                     const MonoDelta& timeout = MonoDelta::kZero) {
+    const MonoDelta local_timeout = (timeout == MonoDelta::kZero ? timeout_ : timeout);
+
+    auto deadline = CoarseMonoClock::now() + local_timeout;
     rpc::RpcController rpc;
-    rpc.set_timeout(timeout_);
+    rpc.set_timeout(local_timeout);
     for (;;) {
       resp->Clear();
       RETURN_NOT_OK(f(&rpc));
@@ -391,7 +394,6 @@ class ClusterAdminClient {
 
   Result<int> GetReadReplicaConfigFromPlacementUuid(
       master::ReplicationInfoPB* replication_info, const std::string& placement_uuid);
-
 
   Result<master::GetMasterClusterConfigResponsePB> GetMasterClusterConfig();
 

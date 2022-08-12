@@ -24,8 +24,6 @@ class UniverseKeyRegistryPB;
 namespace master {
 namespace enterprise {
 
-YB_DEFINE_ENUM(CreateObjects, (kOnlyTables)(kOnlyIndexes));
-
 class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorContext {
   typedef yb::master::CatalogManager super;
  public:
@@ -59,7 +57,8 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
                                 rpc::RpcContext* rpc);
 
   CHECKED_STATUS ImportSnapshotMeta(const ImportSnapshotMetaRequestPB* req,
-                                    ImportSnapshotMetaResponsePB* resp);
+                                    ImportSnapshotMetaResponsePB* resp,
+                                    rpc::RpcContext* rpc);
 
   CHECKED_STATUS CreateSnapshotSchedule(const CreateSnapshotScheduleRequestPB* req,
                                         CreateSnapshotScheduleResponsePB* resp,
@@ -285,15 +284,16 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
                                               ImportSnapshotMetaResponsePB* resp,
                                               UDTypeMap* type_map,
                                               const NamespaceMap& namespace_map);
-  CHECKED_STATUS ImportSnapshotCreateObject(const SnapshotInfoPB& snapshot_pb,
-                                            ImportSnapshotMetaResponsePB* resp,
-                                            const NamespaceMap& namespace_map,
-                                            const UDTypeMap& type_map,
-                                            ExternalTableSnapshotDataMap* tables_data,
-                                            CreateObjects create_objects);
-  CHECKED_STATUS ImportSnapshotWaitForTables(const SnapshotInfoPB& snapshot_pb,
+  CHECKED_STATUS ImportSnapshotCreateIndexes(const SnapshotInfoPB& snapshot_pb,
                                              ImportSnapshotMetaResponsePB* resp,
+                                             const NamespaceMap& namespace_map,
+                                             const UDTypeMap& type_map,
                                              ExternalTableSnapshotDataMap* tables_data);
+  CHECKED_STATUS ImportSnapshotCreateAndWaitForTables(const SnapshotInfoPB& snapshot_pb,
+                                                      const NamespaceMap& namespace_map,
+                                                      const UDTypeMap& type_map,
+                                                      ExternalTableSnapshotDataMap* tables_data,
+                                                      CoarseTimePoint deadline);
   CHECKED_STATUS ImportSnapshotProcessTablets(const SnapshotInfoPB& snapshot_pb,
                                               ImportSnapshotMetaResponsePB* resp,
                                               ExternalTableSnapshotDataMap* tables_data);

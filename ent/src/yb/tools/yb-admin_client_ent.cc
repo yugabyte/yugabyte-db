@@ -876,10 +876,11 @@ Status ClusterAdminClient::ImportSnapshotMetaFile(const string& file_name,
     }
   }
 
+  // RPC timeout is a function of the number of tables that needs to be imported.
   ImportSnapshotMetaResponsePB resp;
   RETURN_NOT_OK(RequestMasterLeader(&resp, [&](RpcController* rpc) {
     return master_backup_proxy_->ImportSnapshotMeta(req, &resp, rpc);
-  }));
+  }, timeout_ * std::max(1, table_index)));
 
   const int kObjectColumnWidth = 16;
   const auto pad_object_type = [](const string& s) {

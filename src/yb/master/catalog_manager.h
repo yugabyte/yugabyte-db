@@ -251,7 +251,8 @@ class CatalogManager :
                                          CoarseTimePoint deadline,
                                          bool* create_in_progress);
 
-  CHECKED_STATUS WaitForCreateTableToFinish(const TableId& table_id);
+  CHECKED_STATUS WaitForCreateTableToFinish(
+      const TableId& table_id, CoarseTimePoint deadline = CoarseTimePoint());
 
   // Check if the transaction status table creation is done.
   //

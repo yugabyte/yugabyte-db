@@ -4198,13 +4198,18 @@ Status CatalogManager::IsCreateTableInProgress(const TableId& table_id,
   return Status::OK();
 }
 
-Status CatalogManager::WaitForCreateTableToFinish(const TableId& table_id) {
+Status CatalogManager::WaitForCreateTableToFinish(
+    const TableId& table_id, CoarseTimePoint deadline) {
   MonoDelta default_admin_operation_timeout(
       MonoDelta::FromSeconds(FLAGS_yb_client_admin_operation_timeout_sec));
-  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout;
+  auto local_deadline = CoarseMonoClock::Now() + default_admin_operation_timeout;
 
+  if (deadline != CoarseTimePoint()) {
+    local_deadline = deadline;
+  }
   return client::RetryFunc(
-      deadline, "Waiting on Create Table to be completed", "Timed out waiting for Table Creation",
+      local_deadline, "Waiting on Create Table to be completed",
+      "Timed out waiting for Table Creation",
       std::bind(&CatalogManager::IsCreateTableInProgress, this, table_id, _1, _2));
 }
 
