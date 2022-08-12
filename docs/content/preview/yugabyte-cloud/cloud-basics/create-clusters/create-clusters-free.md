@@ -103,7 +103,6 @@ YugabyteDB is a distributed database optimized for deployment across multiple no
 
 ## Next steps
 
-- [Assign IP allow lists](../../../cloud-secure-clusters/add-connections/)
 - [Connect to your cluster](../../../cloud-connect/)
 - [Add database users](../../../cloud-secure-clusters/add-users/)
 - [Build an application](../../../../develop/build-apps/)
