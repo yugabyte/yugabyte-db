@@ -484,7 +484,7 @@ To enforce the minimum TLS version of 1.2, you need to specify all available sub
 ssl_protocols = tls12,tls13
 ```
 
-In addition, since the `ssl_protocols` setting does not propagate to PostgreSQL, it is recommended that you specify the minimum TLS version ( `ssl_min_protocol_version` ) for PostgreSQL by setting the following T-Server gflag:
+In addition, as the `ssl_protocols` setting does not propagate to PostgreSQL, it is recommended that you specify the minimum TLS version ( `ssl_min_protocol_version` ) for PostgreSQL by setting the following T-Server gflag:
 
 ```shell
 --ysql_pg_conf_csv="ssl_min_protocol_version=TLSv1.2"
