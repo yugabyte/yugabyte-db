@@ -196,6 +196,29 @@
       margin-left: 0 !important;
     }
   }
+
+  .form-sub-field {
+    padding-left: 120px;
+    padding-bottom: 10px;
+  }
+
+  .volume-info-c .form-item-label {
+    min-width: 170px !important;
+    font-weight: 500;
+  }
+
+  .volume-info,
+  .volume-info .form-group,
+  .volume-info .yb-field-group {
+    display: flex;
+    align-items: center;
+    width: 100%;
+  }
+
+  .volume-type-row {
+    display: flex;
+    align-items: center;
+  }
 }
 
 .az-table-container {
@@ -816,4 +839,8 @@
     color: $YB_DARKER_GRAY;
     margin-top: 56px;
   }
+}
+
+.noPaddingLeft {
+  padding-left: 0;
 }
