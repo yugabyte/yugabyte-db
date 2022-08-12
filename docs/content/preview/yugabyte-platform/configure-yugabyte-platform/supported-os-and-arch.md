@@ -29,11 +29,12 @@ YugabyteDB Anywhere supports deploying YugabyteDB on the following operating sys
 
 Python 3 is required. If you're using YugabyteDB Anywhere to provision nodes in public clouds, be sure the custom AMI you plan to use has Python 3 installed.
 
-### Oracle Linux notes
+Either `gtar` or `gunzip` must be present on the host AMI.
 
-Oracle Linux 8 assumes that either `gtar` or `gunzip` is present on the host AMI, and uses the `firewall-cmd` client to set default target ACCEPT.
+### Oracle Linux and AlmaLinux notes
 
-YugabyteDB Anywhere support for Oracle Linux 8 has the following limitations:
+YugabyteDB Anywhere support for Oracle Linux 8 and AlmaLinux OS 8 has the following limitations:
 
-* Only the Red Hat Linux-compatible kernel is supported, to allow port changing. The Unbreakable Enterprise Kernel (UEK) isn't supported.
-* Systemd services aren't supported.
+* Oracle Linux 8 uses the `firewall-cmd` client to set default target ACCEPT.
+* On Oracle Linux 8, only the Red Hat Linux-compatible kernel is supported, to allow port changing. The Unbreakable Enterprise Kernel (UEK) isn't supported.
+* Systemd services are only supported in YugabyteDB Anywhere 2.15.1 and above.
