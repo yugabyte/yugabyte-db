@@ -828,7 +828,7 @@ void CatalogManager::NamespaceNameMapper::clear() {
 }
 
 CatalogManager::CatalogManager(Master* master)
-    : master_(master),
+    : master_(DCHECK_NOTNULL(master)),
       tablet_exists_(false),
       state_(kConstructed),
       leader_ready_term_(-1),
@@ -842,7 +842,7 @@ CatalogManager::CatalogManager(Master* master)
       xcluster_safe_time_service_(std::make_unique<XClusterSafeTimeService>(master, this)),
       tablespace_manager_(std::make_shared<YsqlTablespaceManager>(nullptr, nullptr)),
       tablespace_bg_task_running_(false),
-      tablet_split_manager_(this, this, this) {
+      tablet_split_manager_(this, this, this, master_->metric_entity()) {
   InitMasterFlags();
   CHECK_OK(ThreadPoolBuilder("leader-initialization")
            .set_max_threads(1)
@@ -850,11 +850,9 @@ CatalogManager::CatalogManager(Master* master)
   CHECK_OK(ThreadPoolBuilder("CatalogManagerBGTasks").Build(&background_tasks_thread_pool_));
   CHECK_OK(ThreadPoolBuilder("async-tasks").Build(&async_task_pool_));
 
-  if (master_) {
-    sys_catalog_.reset(new SysCatalogTable(
-        master_, master_->metric_registry(),
-        Bind(&CatalogManager::ElectedAsLeaderCb, Unretained(this))));
-  }
+  sys_catalog_.reset(new SysCatalogTable(
+      master_, master_->metric_registry(),
+      Bind(&CatalogManager::ElectedAsLeaderCb, Unretained(this))));
 }
 
 CatalogManager::~CatalogManager() {
@@ -870,11 +868,9 @@ Status CatalogManager::Init() {
     state_ = kStarting;
   }
 
-  if (master_) {
-    ysql_transaction_ = std::make_unique<YsqlTransactionDdl>(
-        sys_catalog_.get(), master_->async_client_initializer().get_client_future(),
-        background_tasks_thread_pool_.get());
-  }
+  ysql_transaction_ = std::make_unique<YsqlTransactionDdl>(
+      sys_catalog_.get(), master_->async_client_initializer().get_client_future(),
+      background_tasks_thread_pool_.get());
 
   // Initialize the metrics emitted by the catalog manager.
   load_balance_policy_->InitMetrics();
@@ -2712,21 +2708,17 @@ Status CatalogManager::TEST_SendTestRetryRequest(
   return ScheduleTask(task);
 }
 
-bool CatalogManager::ShouldSplitValidCandidate(
+Status CatalogManager::ShouldSplitValidCandidate(
     const TabletInfo& tablet_info, const TabletReplicaDriveInfo& drive_info) const {
   if (drive_info.may_have_orphaned_post_split_data) {
-    VLOG_WITH_PREFIX(4) << Format(
-        "Tablet $0 may have orphaned post split data, should_split: 0", tablet_info.tablet_id());
-    return false;
+    return STATUS_FORMAT(IllegalState, "Tablet $0 may have uncompacted post-split data.",
+        tablet_info.id());
   }
   ssize_t size = drive_info.sst_files_size;
   DCHECK(size >= 0) << "Detected overflow in casting sst_files_size to signed int.";
   if (size < FLAGS_tablet_split_low_phase_size_threshold_bytes) {
-    VLOG_WITH_PREFIX(4) << Format(
-        "Tablet $0 size ($1) is less than "
-        "tablet_split_low_phase_size_threshold_bytes ($2), should_split: 0",
-        tablet_info.tablet_id(), size, FLAGS_tablet_split_low_phase_size_threshold_bytes);
-    return false;
+    return STATUS_FORMAT(IllegalState, "Tablet $0 SST size ($0) < low phase size threshold ($1).",
+        tablet_info.id(), size, FLAGS_tablet_split_low_phase_size_threshold_bytes);
   }
   TSDescriptorVector ts_descs = GetAllLiveNotBlacklistedTServers();
 
@@ -2751,41 +2743,43 @@ bool CatalogManager::ShouldSplitValidCandidate(
   }
 
   if (num_servers == 0) {
-    LOG(WARNING) << Format("No live, non-blacklisted tservers for tablet $0. Cannot calculate "
-                           "average number of tablets per tserver.", tablet_info.id());
-    return false;
+    return STATUS_FORMAT(IllegalState,
+                         "No live, non-blacklisted tservers for tablet $0. "
+                         "Cannot calculate average number of tablets per tserver.",
+                         tablet_info.id());
   }
   int64 num_tablets_per_server = tablet_info.table()->NumPartitions() / num_servers;
 
   if (num_tablets_per_server < FLAGS_tablet_split_low_phase_shard_count_per_node) {
-    const auto should_split = size > FLAGS_tablet_split_low_phase_size_threshold_bytes;
-    VLOG_WITH_PREFIX(4) << Format(
-        "Table $0 num_tablets_per_server ($1) is less than "
-        "tablet_split_low_phase_shard_count_per_node "
-        "($2). Tablet $3 size: $4, tablet_split_low_phase_size_threshold_bytes: $5, "
-        "should_split: $6",
-        tablet_info.table()->id(), num_tablets_per_server,
-        FLAGS_tablet_split_low_phase_shard_count_per_node, tablet_info.tablet_id(), size,
-        FLAGS_tablet_split_low_phase_size_threshold_bytes, AsString(should_split));
-    return should_split;
+    if (size <= FLAGS_tablet_split_low_phase_size_threshold_bytes) {
+      return STATUS_FORMAT(IllegalState,
+          "Table $0 num_tablets_per_server ($1) is less than "
+          "tablet_split_low_phase_shard_count_per_node "
+          "($2). Tablet $3 size ($4) <= tablet_split_low_phase_size_threshold_bytes ($5).",
+          tablet_info.table()->id(), num_tablets_per_server,
+          FLAGS_tablet_split_low_phase_shard_count_per_node, tablet_info.tablet_id(), size,
+          FLAGS_tablet_split_low_phase_size_threshold_bytes);
+    }
+    return Status::OK();
   }
   if (num_tablets_per_server < FLAGS_tablet_split_high_phase_shard_count_per_node) {
-    const auto should_split = size > FLAGS_tablet_split_high_phase_size_threshold_bytes;
-    VLOG_WITH_PREFIX(4) << Format(
-        "Table $0 num_tablets_per_server ($1) is less than "
-        "tablet_split_high_phase_shard_count_per_node "
-        "($2). Tablet $3 size: $4, tablet_split_high_phase_size_threshold_bytes: $5, "
-        "should_split: $6",
-        tablet_info.table()->id(), num_tablets_per_server,
-        FLAGS_tablet_split_high_phase_shard_count_per_node, tablet_info.tablet_id(), size,
-        FLAGS_tablet_split_high_phase_size_threshold_bytes, should_split);
-    return should_split;
+    if (size <= FLAGS_tablet_split_high_phase_size_threshold_bytes) {
+      return STATUS_FORMAT(IllegalState,
+          "Table $0 num_tablets_per_server ($1) is less than "
+          "tablet_split_high_phase_shard_count_per_node "
+          "($2). Tablet $3 size ($4) <= tablet_split_high_phase_size_threshold_bytes ($5).",
+          tablet_info.table()->id(), num_tablets_per_server,
+          FLAGS_tablet_split_high_phase_shard_count_per_node, tablet_info.tablet_id(), size,
+          FLAGS_tablet_split_high_phase_size_threshold_bytes);
+    }
+    return Status::OK();
   }
-  auto should_split = size > FLAGS_tablet_force_split_threshold_bytes;
-  VLOG_WITH_PREFIX(4) << Format(
-      "Tablet $0 size: $1, tablet_force_split_threshold_bytes: $2, should_split: $3",
-      tablet_info.tablet_id(), size, FLAGS_tablet_force_split_threshold_bytes, should_split);
-  return should_split;
+  if (size <= FLAGS_tablet_force_split_threshold_bytes) {
+    return STATUS_FORMAT(IllegalState,
+        "Tablet $0 size ($1) <= tablet_force_split_threshold_bytes ($2)",
+        tablet_info.tablet_id(), size, FLAGS_tablet_force_split_threshold_bytes);
+  }
+  return Status::OK();
 }
 
 Status CatalogManager::DoSplitTablet(
@@ -2803,24 +2797,27 @@ Status CatalogManager::DoSplitTablet(
   // (i.e. ignore the disabled tablets list and ignore TTL validation).
   auto s = ValidateSplitCandidate(source_tablet_info, is_manual_split);
   if (!s.ok()) {
-    VLOG_WITH_FUNC(4) << Format(
-        "ValidateSplitCandidate for tablet $0 returned: $1. should_split: 0",
+    VLOG_WITH_FUNC(2) << Format(
+        "ValidateSplitCandidate for tablet $0 returned: $1.",
         source_tablet_info->tablet_id(), s);
     return s;
   }
 
   auto drive_info = VERIFY_RESULT(source_tablet_info->GetLeaderReplicaDriveInfo());
-  if (!is_manual_split &&
-      !ShouldSplitValidCandidate(*source_tablet_info, drive_info)) {
+  if (!is_manual_split) {
     // It is possible that we queued up a split candidate in TabletSplitManager which was, at the
     // time, a valid split candidate, but by the time the candidate was actually processed here, the
     // cluster may have changed, putting us in a new split threshold phase, and it may no longer be
     // a valid candidate. This is not an unexpected error, but we should bail out of splitting this
     // tablet regardless.
-    return STATUS_FORMAT(
-        InvalidArgument,
-        "Tablet split candidate $0 is no longer a valid split candidate.",
-        source_tablet_info->tablet_id());
+    Status status = ShouldSplitValidCandidate(*source_tablet_info, drive_info);
+    if (!status.ok()) {
+      return STATUS_FORMAT(
+          InvalidArgument,
+          "Tablet split candidate $0 is no longer a valid split candidate: $1",
+          source_tablet_info->tablet_id(),
+          status);
+    }
   }
 
   // Check if at least one child tablet already registered
