@@ -44,14 +44,7 @@ The first time you log in, YugabyteDB Managed provides a welcome experience with
 - Load sample data and run queries
 - Explore a sample application
 
-**Next steps**
-
-After you complete the tutorial, check out YugabyteDB Managed documentation to learn about how to do the following and more:
-
-- Deploy clusters
-- Connect to clusters
-- Manage and scale clusters
-- Manage your account
+After you complete the tutorial, learn more about managing clusters and your account features using the YugabyteDB Managed documentation.
 
 <div class="row cloud-laptop">
   <div class="col-12 col-md-12 col-lg-6">
@@ -61,7 +54,7 @@ After you complete the tutorial, check out YugabyteDB Managed documentation to l
           <a class="button-style purple" target="_blank" href="../yugabyte-cloud/"><span>Docs</span></a>
         </div>
         <div class="body-content">Learn how to deploy and manage clusters in YugabyteDB Managed.</div>
-        <a class="text-link" href="../yugabyte-cloud/" title="Learn more">Go to the documentation</a>
+        <a class="text-link" href="../yugabyte-cloud/" title="Learn more">YugabyteDB Managed documentation</a>
       </div>
     </div>
   </div>
@@ -72,41 +65,11 @@ After you complete the tutorial, check out YugabyteDB Managed documentation to l
           <a class="button-style orange" target="_blank" href="../faq/yugabytedb-managed-faq/"><span>FAQ</span></a>
         </div>
         <div class="body-content">Get answers to questions about YugabyteDB Managed.</div>
-        <a class="text-link" href="../yugabyte-cloud/" title="Learn more">Go to the FAQ</a>
+        <a class="text-link" href="../yugabyte-cloud/" title="Learn more">YugabyteDB Managed FAQ</a>
       </div>
     </div>
   </div>
 </div>
-
-<div class="three-box-row">
-  <div class="row">
-    <div class="col-12 col-md-6 col-lg-4">
-      <a href="cloud-basics/" title="Deploy">
-        <div class="box border">
-          <div class="other-content">
-            <div class="heading">Documentation</div>
-            <div class="detail-copy">Learn how to deploy and manage clusters in YugabyteDB Managed.</div>
-          </div>
-        </div>
-      </a>
-    </div>
-    <div class="col-12 col-md-6 col-lg-4">
-      <a href="cloud-secure-clusters/" title="Secure">
-        <div class="box border">
-          <div class="other-content">
-            <div class="heading">FAQ</div>
-            <div class="detail-copy">Get answers to questions about YugabyteDB Managed.</div>
-          </div>
-        </div>
-      </a>
-    </div>
-  </div>
-</div>
-
-To learn more about YugabyteDB Managed, see the following resources:
-
-- [YugabyteDB Managed Documentation](../yugabyte-cloud/)
-- [YugabyteDB Managed FAQ](../faq/yugabytedb-managed-faq/)
 
 ## Quick start
 
