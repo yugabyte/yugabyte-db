@@ -36,7 +36,6 @@
 
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/partition.h"
-#include "yb/common/transaction.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/master/master_client.pb.h"
@@ -970,6 +969,11 @@ const std::string& PersistentTableInfo::indexed_table_id() const {
              : pb.has_indexed_table_id() ? pb.indexed_table_id() : kEmptyString;
 }
 
+Result<bool> PersistentTableInfo::is_being_modified_by_ddl_transaction(
+  const TransactionId& txn) const {
+  return has_ysql_ddl_txn_verifier_state() &&
+    txn == VERIFY_RESULT(FullyDecodeTransactionId(pb_transaction_id()));
+}
 
 // ================================================================================================
 // DeletedTableInfo

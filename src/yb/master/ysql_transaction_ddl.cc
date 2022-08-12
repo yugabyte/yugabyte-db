@@ -43,6 +43,27 @@ using std::vector;
 
 namespace yb {
 namespace master {
+namespace {
+
+bool IsTableModifiedByTransaction(TableInfo* table,
+                                  const TransactionMetadata& transaction) {
+  auto l = table->LockForRead();
+  const auto& txn = transaction.transaction_id;
+  auto result = l->is_being_modified_by_ddl_transaction(txn);
+  if (!result.ok()) {
+    LOG(ERROR) << "Failed to parse transaction for table " << table->id()
+                << " skipping transaction verification";
+    return false;
+  }
+  if (!result.get()) {
+    LOG(INFO) << "Verification of DDL transaction " << txn << " already completed for table "
+              << table->id();
+    return false;
+  }
+  return true;
+}
+
+} // namespace
 
 YsqlTransactionDdl::~YsqlTransactionDdl() {
   // Shutdown any outstanding RPCs.
@@ -124,6 +145,13 @@ void YsqlTransactionDdl::VerifyTransaction(
 
   SleepFor(MonoDelta::FromMilliseconds(FLAGS_ysql_transaction_bg_task_wait_ms));
 
+  if (has_ysql_ddl_txn_state && !IsTableModifiedByTransaction(table.get(), transaction_metadata)) {
+    // The table no longer has any ddl transaction verification state pertaining to
+    // 'transaction_metadata'. It was parallelly completed in some other thread, so there is
+    // nothing to do.
+    return;
+  }
+
   YB_LOG_EVERY_N_SECS(INFO, 1) << "Verifying Transaction " << transaction_metadata;
 
   tserver::GetTransactionStatusRequestPB req;
@@ -164,10 +192,11 @@ void YsqlTransactionDdl::TransactionReceived(
     bool has_ysql_ddl_txn_state,
     std::function<Status(bool)> complete_callback,
     Status txn_status, const tserver::GetTransactionStatusResponsePB& resp) {
-  if (has_ysql_ddl_txn_state) {
-    // This was invoked for a table for which YSQL DDL rollback is enabled. Verify that it
-    // contains ysql_ddl_txn_state even now.
-    DCHECK(table->LockForRead()->has_ysql_ddl_txn_verifier_state());
+  if (has_ysql_ddl_txn_state && !IsTableModifiedByTransaction(table.get(), transaction)) {
+    // The table no longer has any ddl transaction verification state pertaining to
+    // 'transaction_metadata'. It was parallelly completed in some other thread, so there is
+    // nothing to do.
+    return;
   }
 
   if (!txn_status.ok()) {

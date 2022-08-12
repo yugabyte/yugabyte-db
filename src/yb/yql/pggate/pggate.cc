@@ -799,6 +799,7 @@ Status PgApiImpl::ExecCreateTable(PgStatement *handle) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
+  pg_session_->SetDdlHasSyscatalogChanges();
   return down_cast<PgCreateTable*>(handle)->Exec();
 }
 
@@ -870,6 +871,7 @@ Status PgApiImpl::ExecAlterTable(PgStatement *handle) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
+  pg_session_->SetDdlHasSyscatalogChanges();
   PgAlterTable *pg_stmt = down_cast<PgAlterTable*>(handle);
   return pg_stmt->Exec();
 }
@@ -1068,7 +1070,7 @@ Status PgApiImpl::ExecDropTable(PgStatement *handle) {
   if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_DROP_TABLE)) {
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
-
+  pg_session_->SetDdlHasSyscatalogChanges();
   return down_cast<PgDropTable*>(handle)->Exec();
 }
 
