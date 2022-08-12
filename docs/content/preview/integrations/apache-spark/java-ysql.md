@@ -243,7 +243,7 @@ This tutorial assumes that you have:
     $ mvn compile
     ```
 
-1. Run the application using the following command and verify your output as mentioned in the comments of the `sparkSQLJavaExample` file:
+1. Run the application using the following command and verify the output as described in the comments of the `sparkSQLJavaExample` file:
 
     ```sh
     $  mvn exec:java -Dexec.mainClass="sparkSQLJavaExample"
