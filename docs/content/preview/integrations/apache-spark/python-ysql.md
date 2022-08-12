@@ -96,7 +96,7 @@ SparkSession available as 'spark'.
     ysql_pyspark=#
     ```
 
-1. Create a table in the `ysql_pyspark` database to read and write data through the JDBC connector as follows:
+1. Create a table in the `ysql_pyspark` database to read and write data through the JDBC connector, and populate it with data as follows:
 
     ```sql
     ysql_pyspark=# create table test as select generate_series(1,100000) AS id, random(), ceil(random() * 20);
