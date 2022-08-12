@@ -6,10 +6,24 @@
 
  import (
     "fmt"
+    "github.com/spf13/viper"
  )
 
- func Version() {
+ func Version(versionMetadataFileName string) {
 
-    fmt.Println("You are on version 1 of Ybanystaller!")
+    viper.SetConfigName(versionMetadataFileName)
+    viper.SetConfigType("json")
+    viper.AddConfigPath(".")
+    err := viper.ReadInConfig()
+    if err != nil {
+        panic(err)
+    }
+
+    versionNumber := fmt.Sprint(viper.Get("version_number"))
+    buildNumber := fmt.Sprint(viper.Get("build_number"))
+
+    version := versionNumber + "-" + buildNumber
+
+    fmt.Println("You are on version " + version + " of yba-installer!")
 
  }
