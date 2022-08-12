@@ -22,7 +22,7 @@ type Common struct {
 // SetUpPrereqs performs the setup operations common to
 // all services.
 func (com Common) SetUpPrereqs() {
-   Version()
+   Version("version_metadata.json")
    License()
    Preflight("yba-installer-input.yml")
 }
