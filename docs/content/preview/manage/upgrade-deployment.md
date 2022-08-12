@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-The basic flow is to upgrade each YB-Master and YB-TServer one at a time, verifying after each step from the yb-master Admin UI that the cluster is healthy and the upgraded process is back online.
+The basic flow is to upgrade each YB-Master and YB-TServer one at a time, verifying after each step from the YB-Master Admin UI that the cluster is healthy and the upgraded process is back online.
 
 If you plan to script this in a loop, then a pause of about 60 seconds is recommended before moving from one process or node to another.
 
@@ -40,43 +40,47 @@ If you are using PostgreSQL extensions, make sure to install the extensions in t
 
 ## Upgrade YB-Masters
 
-- Stop the older version of the yb-master process.
+Use the following procedure to upgrade a YB-Master:
 
-```sh
-pkill yb-master
-```
+1. Stop the older version of the yb-master process.
 
-- Verify that you're on the directory of the new version.
+    ```sh
+    pkill yb-master
+    ```
 
-```sh
-cd /home/yugabyte/softwareyb-$VER/
-```
+1. Verify that you're on the directory of the new version.
 
-- Start the newer version of the yb-master process.
+    ```sh
+    cd /home/yugabyte/softwareyb-$VER/
+    ```
 
-- Verify in `http://<any-yb-master>:7000/` that all masters are alive.
+1. Start the newer version of the yb-master process.
 
-- Pause ~60 seconds before upgrading the next yb-master.
+1. Verify in `http://<any-yb-master>:7000/` that all masters are alive.
+
+1. Pause ~60 seconds before upgrading the next YB-Master.
 
 ## Upgrade YB-TServers
 
-- Stop the older version of the yb-tserver process.
+Use the following procedure to upgrade a YB-TServer:
 
-```sh
-pkill yb-tserver
-```
+1. Stop the older version of the yb-tserver process.
 
-- Verify that you're on the directory of the new version.
+    ```sh
+    pkill yb-tserver
+    ```
 
-```sh
-cd /home/yugabyte/softwareyb-$VER/
-```
+1. Verify that you're on the directory of the new version.
 
-- Start the newer version of the yb-tserver process.
+    ```sh
+    cd /home/yugabyte/softwareyb-$VER/
+    ```
 
-- Verify in `http://<any-yb-master>:7000/tablet-servers` to see if the new YB-TServer is alive and heart beating.
+1. Start the newer version of the yb-tserver process.
 
-- Pause ~60 seconds before upgrading the next yb-tserver.
+1. Verify in `http://<any-yb-master>:7000/tablet-servers` to see if the new YB-TServer is alive and heart beating.
+
+1. Pause ~60 seconds before upgrading the next YB-TServer.
 
 ## Upgrade the YSQL system catalog
 

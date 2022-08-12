@@ -24,7 +24,7 @@ You access your YugabyteDB Managed clusters via [YSQL](../../api/ysql/) and [YCQ
 
 See also [YugabyteDB Managed](https://www.yugabyte.com/cloud/) at yugabyte.com.
 
-YugabyteDB Managed runs on top of [YugabyteDB Anywhere](../../yugabyte-platform/overview/).
+YugabyteDB Managed runs on top of [YugabyteDB Anywhere](../../yugabyte-platform/).
 
 ### How is YugabyteDB Managed priced?
 

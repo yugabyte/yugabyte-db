@@ -24,6 +24,7 @@
 #include "yb/integration-tests/load_balancer_test_util.h"
 
 #include "yb/master/master_ddl.proxy.h"
+#include "yb/master/master_backup.proxy.h"
 
 #include "yb/rpc/rpc_controller.h"
 
@@ -37,7 +38,9 @@
 #include "yb/util/random_util.h"
 #include "yb/util/range.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/split.h"
 #include "yb/util/status_format.h"
+#include "yb/util/stol_utils.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/tsan_util.h"
 
@@ -61,6 +64,12 @@ constexpr auto kHistoryRetentionIntervalSec = 5;
 constexpr auto kCleanupSplitTabletsInterval = 1s;
 const std::string old_sys_catalog_snapshot_path = "/opt/yb-build/ysql-sys-catalog-snapshots/";
 const std::string old_sys_catalog_snapshot_name = "initial_sys_catalog_snapshot_2.0.9.0";
+
+Result<double> MinuteStringToSeconds(const std::string& min_str) {
+      std::vector<Slice> args;
+      RETURN_NOT_OK(yb::util::SplitArgs(min_str, &args));
+      return MonoDelta::FromMinutes(VERIFY_RESULT(CheckedStold(args[0]))).ToSeconds();
+}
 
 } // namespace
 
@@ -283,6 +292,16 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
         "ysql." + client::kTableName.namespace_name(), interval, retention);
   }
 
+  Result<std::string> CreateYsqlSnapshotSchedule(
+      const std::string& table_name, MonoDelta interval, MonoDelta retention) {
+    return CreateSnapshotSchedule(interval, retention, "ysql." + table_name);
+  }
+
+  Result<std::string> CreateYcqlSnapshotSchedule(
+      const std::string& table_name, MonoDelta interval, MonoDelta retention) {
+    return CreateSnapshotSchedule(interval, retention, "ycql." + table_name);
+  }
+
   Result<pgwrapper::PGConn> PgConnect(const std::string& db_name = std::string()) {
     auto* ts = cluster_->tablet_server(
         RandomUniformInt<size_t>(0, cluster_->num_tablet_servers() - 1));
@@ -322,6 +341,62 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
     SCHECK_EQ(VERIFY_RESULT(Get(out, "schedule_id")).get().GetString(), schedule_id, IllegalState,
               "Deleted wrong schedule");
     return Status::OK();
+  }
+
+  Result<master::SnapshotScheduleOptionsPB> EditSnapshotSchedule(
+      const std::string& schedule_id, std::optional<MonoDelta> interval,
+      std::optional<MonoDelta> retention) {
+    Result<rapidjson::Document> result = STATUS(InvalidArgument, "");
+    if (interval && !retention) {
+      result =
+          CallJsonAdmin("edit_snapshot_schedule", schedule_id, "interval", interval->ToMinutes());
+    } else if (!interval && retention) {
+      result =
+          CallJsonAdmin("edit_snapshot_schedule", schedule_id, "retention", retention->ToMinutes());
+    } else if (interval && retention) {
+      result = CallJsonAdmin(
+          "edit_snapshot_schedule", schedule_id, "interval", interval->ToMinutes(), "retention",
+          retention->ToMinutes());
+    } else {
+      return STATUS(InvalidArgument, "At least one of interval or retention must be set");
+    }
+    RETURN_NOT_OK(result);
+    master::SnapshotScheduleOptionsPB options;
+    const rapidjson::Value& schedule = VERIFY_RESULT(Get(*result, "schedule"));
+    const rapidjson::Value& json_options = VERIFY_RESULT(Get(schedule, "options"));
+    const rapidjson::Value& json_interval = VERIFY_RESULT(Get(json_options, "interval"));
+    options.set_interval_sec(VERIFY_RESULT(MinuteStringToSeconds(json_interval.GetString())));
+    const rapidjson::Value& json_retention = VERIFY_RESULT(Get(json_options, "retention"));
+    options.set_retention_duration_sec(
+        VERIFY_RESULT(MinuteStringToSeconds(json_retention.GetString())));
+    return options;
+  }
+
+  Status WaitForSnapshotsInScheduleCount(
+      const std::string& schedule_id, MonoDelta wait_time, uint32_t lower, uint32_t upper,
+      const std::string& description) {
+    return WaitFor(
+        [this, &schedule_id, lower, upper]() -> Result<bool> {
+          auto schedule = VERIFY_RESULT(GetSnapshotSchedule(schedule_id));
+          const rapidjson::Value& snapshots = VERIFY_RESULT(Get(schedule, "snapshots"));
+          snapshots.IsArray();
+          return lower <= snapshots.GetArray().Size() && snapshots.GetArray().Size() <= upper;
+        },
+        wait_time * kTimeMultiplier, description);
+  }
+
+  // Note: Only populates interval and retention_duration.
+  Result<master::SnapshotScheduleOptionsPB> GetSnapshotScheduleOptions(
+      const std::string& schedule_id) {
+    auto schedule = VERIFY_RESULT(GetSnapshotSchedule(schedule_id));
+    const rapidjson::Value& json_options = VERIFY_RESULT(Get(schedule, "options"));
+
+    master::SnapshotScheduleOptionsPB options;
+    const rapidjson::Value& interval = VERIFY_RESULT(Get(json_options, "interval"));
+    options.set_interval_sec(VERIFY_RESULT(MinuteStringToSeconds(interval.GetString())));
+    const rapidjson::Value& retention = VERIFY_RESULT(Get(json_options, "retention"));
+    options.set_retention_duration_sec(VERIFY_RESULT(MinuteStringToSeconds(retention.GetString())));
+    return options;
   }
 
   Status WaitTabletsCleaned(CoarseTimePoint deadline) {
@@ -520,7 +595,7 @@ TEST_F(YbAdminSnapshotScheduleTest, TestTruncateDisallowedWithPitr) {
 }
 
 TEST_F(YbAdminSnapshotScheduleTest, Delete) {
-  auto schedule_id = ASSERT_RESULT(PrepareQl(kRetention, kRetention));
+  auto schedule_id = ASSERT_RESULT(PrepareQl(kRetention, kRetention + 1s));
 
   auto session = client_->NewSession();
   LOG(INFO) << "Create table";
@@ -603,6 +678,133 @@ TEST_F(YbAdminSnapshotScheduleTest, Delete) {
   }, 1s * kHistoryRetentionIntervalSec * kTimeMultiplier, "Compact SST files"));
 }
 
+// Modifies the interval of a snapshot schedule and uses the number of snapshots in the schedule as
+// proxy to verify the update was successfully applied.
+TEST_F(YbAdminSnapshotScheduleTest, EditInterval) {
+  auto schedule_id = ASSERT_RESULT(PrepareQl(10s, 60s));
+  // For a schedule with interval 10s and retention 60s, we expect 6 snapshots to be live
+  // in the schedule in the steady state.
+  ASSERT_OK(WaitForSnapshotsInScheduleCount(
+      schedule_id, 5min, 5, 7, "Waiting for initial steady state snapshots"));
+  LOG(INFO) << "Edit snapshot schedule.";
+  // We don't check the return value because values are rounded down to nearest minute.
+  ASSERT_RESULT(EditSnapshotSchedule(schedule_id, 20s, {}));
+  // For a schedule with interval 20s and retention 60s, we expect 3 snapshots to be live in the
+  // schedule in the steady state.
+  ASSERT_OK(WaitForSnapshotsInScheduleCount(
+      schedule_id, 5min, 2, 4, "Waiting for edited steady state snapshots"));
+}
+
+// Modifies the retention of a snapshot schedule and uses the number of snapshots in the schedule as
+// a proxy to verify the update was successfully applied.
+TEST_F(YbAdminSnapshotScheduleTest, EditRetention) {
+  auto schedule_id = ASSERT_RESULT(PrepareQl(10s, 60s));
+  // For a schedule with interval 10s and retention 60s, we expect 6 snapshots to be live
+  // in the schedule in the steady state.
+  ASSERT_OK(WaitForSnapshotsInScheduleCount(
+      schedule_id, 5min, 5, 7, "Waiting for initial steady state snapshots"));
+  LOG(INFO) << "Edit snapshot schedule.";
+  // We don't check the return value because values are rounded down to nearest minute.
+  ASSERT_RESULT(EditSnapshotSchedule(schedule_id, {}, 30s));
+  // For a schedule with interval 10s and retention 30s, we expect 3 snapshots to be live in the
+  // schedule in the steady state.
+  ASSERT_OK(WaitForSnapshotsInScheduleCount(
+      schedule_id, 5min, 2, 4, "Waiting for edited steady state snapshots"));
+}
+
+// Modifies the interval and retention of a snapshot schedule and uses the number of snapshots in
+// the schedule as a proxy to verify the update was successfully applied.
+TEST_F(YbAdminSnapshotScheduleTest, EditIntervalAndRetention) {
+  auto schedule_id = ASSERT_RESULT(PrepareQl(10s, 60s));
+  // For a schedule with interval 10s and retention 90s, we expect 6 snapshots to be live
+  // in the schedule in the steady state.
+  ASSERT_OK(WaitForSnapshotsInScheduleCount(
+      schedule_id, 5min, 5, 7, "Waiting for initial steady state snapshots"));
+  LOG(INFO) << "Edit snapshot schedule.";
+  // We don't check the return value because values are rounded down to nearest minute.
+  ASSERT_RESULT(EditSnapshotSchedule(schedule_id, 15s, 30s));
+  // For a schedule with interval 15s and retention 30s, we expect 2 snapshots to be live in the
+  // schedule in the steady state.
+  ASSERT_OK(WaitForSnapshotsInScheduleCount(
+      schedule_id, 5min, 1, 3, "Waiting for edited steady state snapshots"));
+}
+
+TEST_F(YbAdminSnapshotScheduleTest, EditSnapshotScheduleCheckOptions) {
+  auto schedule_id = ASSERT_RESULT(PrepareQl(1min, 10min));
+  LOG(INFO) << "Edit snapshot schedule.";
+  auto edit_options = ASSERT_RESULT(EditSnapshotSchedule(schedule_id, 2min, 8min));
+  ASSERT_EQ(edit_options.interval_sec(), 60 * 2);
+  ASSERT_EQ(edit_options.retention_duration_sec(), 60 * 8);
+  LOG(INFO) << "Sanity check returned value against list_snapshot_schedule.";
+  auto list_options = ASSERT_RESULT(GetSnapshotScheduleOptions(schedule_id));
+  ASSERT_EQ(list_options.interval_sec(), 60 * 2);
+  ASSERT_EQ(list_options.retention_duration_sec(), 60 * 8);
+}
+
+TEST_F(YbAdminSnapshotScheduleTest, EditIntervalZero) {
+  auto schedule_id = ASSERT_RESULT(PrepareQl(1min, 10min));
+  auto result = EditSnapshotSchedule(schedule_id, 0min, {});
+  ASSERT_NOK(result);
+  ASSERT_STR_CONTAINS(result.status().ToString(), "Zero interval");
+}
+
+TEST_F(YbAdminSnapshotScheduleTest, EditRetentionZero) {
+  auto schedule_id = ASSERT_RESULT(PrepareQl(1min, 10min));
+  auto result = EditSnapshotSchedule(schedule_id, {}, 0min);
+  ASSERT_NOK(result);
+  ASSERT_STR_CONTAINS(result.status().ToString(), "Zero retention");
+}
+
+TEST_F(YbAdminSnapshotScheduleTest, EditRepeatedInterval) {
+  auto schedule_id = ASSERT_RESULT(PrepareQl(1min, 10min));
+  auto result =
+      CallJsonAdmin("edit_snapshot_schedule", schedule_id, "interval", "1", "interval", "2");
+  ASSERT_NOK(result);
+  ASSERT_STR_CONTAINS(result.status().ToString(), "Repeated interval");
+}
+
+TEST_F(YbAdminSnapshotScheduleTest, EditRepeatedRetention) {
+  auto schedule_id = ASSERT_RESULT(PrepareQl(1min, 10min));
+  auto result =
+      CallJsonAdmin("edit_snapshot_schedule", schedule_id, "retention", "1", "retention", "2");
+  ASSERT_NOK(result);
+  ASSERT_STR_CONTAINS(result.status().ToString(), "Repeated retention");
+}
+
+TEST_F(YbAdminSnapshotScheduleTest, EditIntervalLargerThanRetention) {
+  auto schedule_id = ASSERT_RESULT(PrepareQl(2min, 5min));
+  auto result = EditSnapshotSchedule(schedule_id, {}, 1min);
+  ASSERT_NOK(result);
+  ASSERT_STR_CONTAINS(result.status().ToString(), "Interval must be strictly less than retention");
+}
+
+TEST_F(YbAdminSnapshotScheduleTest, CreateIntervalZero) {
+  ASSERT_OK(PrepareCommon());
+  ASSERT_OK(client_->CreateNamespaceIfNotExists(
+      client::kTableName.namespace_name(), client::kTableName.namespace_type()));
+  auto result = CreateYcqlSnapshotSchedule(client::kTableName.namespace_name(), 0min, kRetention);
+  ASSERT_NOK(result);
+  ASSERT_STR_CONTAINS(result.status().ToString(), "Zero interval");
+}
+
+TEST_F(YbAdminSnapshotScheduleTest, CreateRetentionZero) {
+  ASSERT_OK(PrepareCommon());
+  ASSERT_OK(client_->CreateNamespaceIfNotExists(
+      client::kTableName.namespace_name(), client::kTableName.namespace_type()));
+  auto result = CreateYcqlSnapshotSchedule(client::kTableName.namespace_name(), kInterval, 0min);
+  ASSERT_NOK(result);
+  ASSERT_STR_CONTAINS(result.status().ToString(), "Zero retention");
+}
+
+TEST_F(YbAdminSnapshotScheduleTest, CreateIntervalLargerThanRetention) {
+  ASSERT_OK(PrepareCommon());
+  ASSERT_OK(client_->CreateNamespaceIfNotExists(
+      client::kTableName.namespace_name(), client::kTableName.namespace_type()));
+  auto result = CreateYcqlSnapshotSchedule(client::kTableName.namespace_name(), 2min, 1min);
+  ASSERT_NOK(result);
+  ASSERT_STR_CONTAINS(result.status().ToString(), "Interval must be strictly less than retention");
+}
+
 void YbAdminSnapshotScheduleTest::TestUndeleteTable(bool restart_masters) {
   auto schedule_id = ASSERT_RESULT(PrepareQl());
 
@@ -662,7 +864,7 @@ TEST_F(YbAdminSnapshotScheduleTest, UndeleteTableWithRestart) {
 }
 
 TEST_F(YbAdminSnapshotScheduleTest, CleanupDeletedTablets) {
-  auto schedule_id = ASSERT_RESULT(PrepareQl(kInterval, kInterval));
+  auto schedule_id = ASSERT_RESULT(PrepareQl(kInterval, kInterval + 1s));
 
   auto session = client_->NewSession();
   LOG(INFO) << "Create table";
@@ -1799,25 +2001,26 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlDisableSched
   ASSERT_OK(conn.Execute("CREATE TABLEGROUP tg1"));
 
   // Try creating a snapshot schedule, it should fail.
-  auto res = CreateSnapshotScheduleAndWaitSnapshot(
-      "ysql." + client::kTableName.namespace_name(), kInterval, kRetention);
+  auto res = CreateYsqlSnapshotSchedule(client::kTableName.namespace_name(), kInterval, kRetention);
   ASSERT_FALSE(res.ok());
   ASSERT_STR_CONTAINS(
-      res.ToString(), "Not allowed to create snapshot schedule "
-                      "when one or more tablegroups exist");
+      res.ToString(),
+      "Not allowed to create snapshot schedule "
+      "when one or more tablegroups exist");
 
   // Try creating snapshot schedule on another database, it should fail too.
-  res = CreateSnapshotScheduleAndWaitSnapshot("ysql.yugabyte", kInterval, kRetention);
+  res = CreateYsqlSnapshotSchedule("yugabyte", kInterval, kRetention);
   ASSERT_FALSE(res.ok());
   ASSERT_STR_CONTAINS(
-      res.ToString(), "Not allowed to create snapshot schedule "
-                      "when one or more tablegroups exist");
+      res.ToString(),
+      "Not allowed to create snapshot schedule "
+      "when one or more tablegroups exist");
 
   // Drop this tablegroup.
   ASSERT_OK(conn.Execute("DROP TABLEGROUP tg1"));
 
   // Now we should be able to create a snapshot schedule.
-  auto schedule_id = ASSERT_RESULT(CreateSnapshotScheduleAndWaitSnapshot(
+  ASSERT_RESULT(CreateSnapshotScheduleAndWaitSnapshot(
       "ysql." + client::kTableName.namespace_name(), kInterval, kRetention));
 }
 
@@ -2383,7 +2586,7 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, ConsistentRestoreFailover,
 }
 
 TEST_F(YbAdminSnapshotScheduleTest, DropKeyspaceAndSchedule) {
-  auto schedule_id = ASSERT_RESULT(PrepareCql(kInterval, kInterval));
+  auto schedule_id = ASSERT_RESULT(PrepareCql(kInterval, kInterval + 1s));
   auto conn = ASSERT_RESULT(CqlConnect(client::kTableName.namespace_name()));
   ASSERT_OK(conn.ExecuteQuery(
       "CREATE TABLE test_table (key INT PRIMARY KEY, value TEXT) "

@@ -33,7 +33,7 @@
 using namespace std::literals;
 
 METRIC_DECLARE_entity(cluster);
-METRIC_DECLARE_gauge_bool(is_load_balancing_enabled);
+METRIC_DECLARE_gauge_int64(is_load_balancing_enabled);
 
 namespace yb {
 namespace integration_tests {
@@ -78,14 +78,14 @@ TEST_F(LoadBalancerTest, IsLoadBalancerEnabled) {
 
   ASSERT_OK(yb_admin_client_->SetLoadBalancerEnabled(true));
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
-    return VERIFY_RESULT(leader->GetMetric<bool>(
-        &METRIC_ENTITY_cluster, nullptr, &METRIC_is_load_balancing_enabled, "value")) == true;
+    return VERIFY_RESULT(leader->GetMetric<int64>(
+        &METRIC_ENTITY_cluster, nullptr, &METRIC_is_load_balancing_enabled, "value")) == 1;
   }, kDefaultTimeout, "LoadBalancingEnabled"));
 
   ASSERT_OK(yb_admin_client_->SetLoadBalancerEnabled(false));
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
-    return VERIFY_RESULT(leader->GetMetric<bool>(
-        &METRIC_ENTITY_cluster, nullptr, &METRIC_is_load_balancing_enabled, "value")) == false;
+    return VERIFY_RESULT(leader->GetMetric<int64>(
+        &METRIC_ENTITY_cluster, nullptr, &METRIC_is_load_balancing_enabled, "value")) == 0;
   }, kDefaultTimeout, "LoadBalancingDisabled"));
 }
 

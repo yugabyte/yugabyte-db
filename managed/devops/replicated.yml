@@ -190,14 +190,16 @@ components:
                 - job_name: 'prometheus'
                   scrape_timeout:  {{repl ConfigOption "prometheus_scrape_timeout"}}
                   static_configs:
-                      - targets: ['{{repl HostPrivateIpAddress "prometheus" "prom/prometheus" }}:{{repl ConfigOption "prometheus_external_port"}}']
+                      - targets: [
+                        '{{repl HostPrivateIpAddress "prometheus" "prom/prometheus" }}:{{repl ConfigOption "prometheus_external_port"}}'
+                      ]
 
                 - job_name: 'platform'
                   scrape_timeout:  {{repl ConfigOption "prometheus_scrape_timeout"}}
                   metrics_path: "/api/v1/prometheus_metrics"
                   static_configs:
                     - targets: [
-                      '{{repl HostPrivateIpAddress "prometheus" "prom/prometheus" }}:{{repl ConfigOption "app_external_port"}}'
+                      '{{repl HostPrivateIpAddress "app" "yugabyte/yugaware" }}:{{repl ConfigOption "app_external_port"}}'
                     ]
 
                 - job_name: "node"
@@ -303,7 +305,8 @@ components:
                       |log_(sync_latency_[^_]+|group_commit_latency_[^_]+\
                       |append_latency_[^_]+|bytes_logged|reader_bytes_read\
                       |append_latency_count|sync_latency_count|cache_size|cache_num_ops)\
-                      |glog_[^_]+_messages|follower_lag_ms|[^_]+_memory_pressure_rejections"
+                      |glog_[^_]+_messages|follower_lag_ms|[^_]+_memory_pressure_rejections\
+                      |is_raft_leader"
                   file_sd_configs:
                     - files:
                       - '/opt/yugabyte/prometheus/targets/yugabyte.*.json'

@@ -1573,69 +1573,118 @@ void YBTestFailDdlIfRequested() {
 	elog(ERROR, "DDL failed as requested");
 }
 
+static int YbGetNumberOfFunctionOutputColumns(Oid func_oid)
+{
+	int ncols = 0; /* Equals to the number of OUT arguments. */
+
+	HeapTuple proctup = SearchSysCache1(PROCOID, ObjectIdGetDatum(func_oid));
+	if (!HeapTupleIsValid(proctup))
+		elog(ERROR, "cache lookup failed for function %u", func_oid);
+
+	bool is_null = false;
+	Datum proargmodes = SysCacheGetAttr(PROCOID, proctup,
+										Anum_pg_proc_proargmodes,
+										&is_null);
+	Assert(!is_null);
+	ArrayType* proargmodes_arr = DatumGetArrayTypeP(proargmodes);
+
+	ncols = 0;
+	for (int i = 0; i < ARR_DIMS(proargmodes_arr)[0]; ++i)
+		if (ARR_DATA_PTR(proargmodes_arr)[i] == PROARGMODE_OUT)
+			++ncols;
+
+	ReleaseSysCache(proctup);
+
+	return ncols;
+}
+
+/*
+ * For backward compatibility, this function dynamically adapts to the number
+ * of output columns defined in pg_proc.
+ */
 Datum
 yb_servers(PG_FUNCTION_ARGS)
 {
-  FuncCallContext *funcctx;
-  if (SRF_IS_FIRSTCALL())
-  {
-    MemoryContext oldcontext;
-    TupleDesc tupdesc;
+	FuncCallContext *funcctx;
 
-    funcctx = SRF_FIRSTCALL_INIT();
-    oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
+	int expected_ncols = 9;
 
-    tupdesc = CreateTemplateTupleDesc(8, false);
-    TupleDescInitEntry(tupdesc, (AttrNumber) 1,
-                       "host", TEXTOID, -1, 0);
-    TupleDescInitEntry(tupdesc, (AttrNumber) 2,
-                       "port", INT8OID, -1, 0);
-    TupleDescInitEntry(tupdesc, (AttrNumber) 3,
-                       "num_connections", INT8OID, -1, 0);
-    TupleDescInitEntry(tupdesc, (AttrNumber) 4,
-                       "node_type", TEXTOID, -1, 0);
-    TupleDescInitEntry(tupdesc, (AttrNumber) 5,
-                       "cloud", TEXTOID, -1, 0);
-    TupleDescInitEntry(tupdesc, (AttrNumber) 6,
-                       "region", TEXTOID, -1, 0);
-    TupleDescInitEntry(tupdesc, (AttrNumber) 7,
-                       "zone", TEXTOID, -1, 0);
-    TupleDescInitEntry(tupdesc, (AttrNumber) 8,
-                       "public_ip", TEXTOID, -1, 0);
-    funcctx->tuple_desc = BlessTupleDesc(tupdesc);
+	static int ncols = 0;
 
-    YBCServerDescriptor *servers = NULL;
-    size_t numservers = 0;
-    HandleYBStatus(YBCGetTabletServerHosts(&servers, &numservers));
-    funcctx->max_calls = numservers;
-    funcctx->user_fctx = servers;
-    MemoryContextSwitchTo(oldcontext);
-  }
-  funcctx = SRF_PERCALL_SETUP();
-  if (funcctx->call_cntr < funcctx->max_calls)
-  {
-    Datum		values[8];
-    bool		nulls[8];
-    HeapTuple	tuple;
-    int cntr = funcctx->call_cntr;
-    YBCServerDescriptor *server = (YBCServerDescriptor *)funcctx->user_fctx + cntr;
-    bool is_primary = server->is_primary;
-    const char *node_type = is_primary ? "primary" : "read_replica";
-    // TODO: Remove hard coding of port and num_connections
-    values[0] = CStringGetTextDatum(server->host);
-    values[1] = Int64GetDatum(server->pg_port);
-    values[2] = Int64GetDatum(0);
-    values[3] = CStringGetTextDatum(node_type);
-    values[4] = CStringGetTextDatum(server->cloud);
-    values[5] = CStringGetTextDatum(server->region);
-    values[6] = CStringGetTextDatum(server->zone);
-    values[7] = CStringGetTextDatum(server->public_ip);
-    memset(nulls, 0, sizeof(nulls));
-    tuple = heap_form_tuple(funcctx->tuple_desc, values, nulls);
-    SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tuple));
-  }
-  else
-    SRF_RETURN_DONE(funcctx);
+	if (ncols < expected_ncols)
+		ncols = YbGetNumberOfFunctionOutputColumns(8019 /* yb_servers function
+												   oid hardcoded in pg_proc.dat */);
+
+	if (SRF_IS_FIRSTCALL())
+	{
+		MemoryContext oldcontext;
+		TupleDesc tupdesc;
+
+		funcctx = SRF_FIRSTCALL_INIT();
+		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
+		tupdesc = CreateTemplateTupleDesc(ncols, false);
+
+		TupleDescInitEntry(tupdesc, (AttrNumber) 1,
+						   "host", TEXTOID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 2,
+						   "port", INT8OID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 3,
+						   "num_connections", INT8OID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 4,
+						   "node_type", TEXTOID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 5,
+						   "cloud", TEXTOID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 6,
+						   "region", TEXTOID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 7,
+						   "zone", TEXTOID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 8,
+						   "public_ip", TEXTOID, -1, 0);
+		if (ncols >= expected_ncols)
+		{
+			TupleDescInitEntry(tupdesc, (AttrNumber) 9,
+							   "uuid", TEXTOID, -1, 0);
+		}
+		funcctx->tuple_desc = BlessTupleDesc(tupdesc);
+
+		YBCServerDescriptor *servers = NULL;
+		size_t numservers = 0;
+		HandleYBStatus(YBCGetTabletServerHosts(&servers, &numservers));
+		funcctx->max_calls = numservers;
+		funcctx->user_fctx = servers;
+		MemoryContextSwitchTo(oldcontext);
+	}
+	funcctx = SRF_PERCALL_SETUP();
+	if (funcctx->call_cntr < funcctx->max_calls)
+	{
+		Datum		values[ncols];
+		bool		nulls[ncols];
+		HeapTuple	tuple;
+
+		int cntr = funcctx->call_cntr;
+		YBCServerDescriptor *server = (YBCServerDescriptor *)funcctx->user_fctx + cntr;
+		bool is_primary = server->is_primary;
+		const char *node_type = is_primary ? "primary" : "read_replica";
+
+		// TODO: Remove hard coding of port and num_connections
+		values[0] = CStringGetTextDatum(server->host);
+		values[1] = Int64GetDatum(server->pg_port);
+		values[2] = Int64GetDatum(0);
+		values[3] = CStringGetTextDatum(node_type);
+		values[4] = CStringGetTextDatum(server->cloud);
+		values[5] = CStringGetTextDatum(server->region);
+		values[6] = CStringGetTextDatum(server->zone);
+		values[7] = CStringGetTextDatum(server->public_ip);
+		if (ncols >= expected_ncols)
+		{
+			values[8] = CStringGetTextDatum(server->uuid);
+		}
+		memset(nulls, 0, sizeof(nulls));
+		tuple = heap_form_tuple(funcctx->tuple_desc, values, nulls);
+		SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tuple));
+	}
+	else
+		SRF_RETURN_DONE(funcctx);
 }
 
 bool YBIsSupportedLibcLocale(const char *localebuf) {
@@ -1771,30 +1820,13 @@ yb_table_properties(PG_FUNCTION_ARGS)
 	Oid			relid = PG_GETARG_OID(0);
 	TupleDesc	tupdesc;
 
-	static int ncols = 0; /* Equals to the number of OUT arguments. */
+	int expected_ncols = 5;
 
-	if (ncols < 5) {
-		/* yb_table_properties function oid hardcoded in pg_proc.dat */
-		Oid funcid = 8033;
+	static int ncols = 0;
 
-		HeapTuple proctup = SearchSysCache1(PROCOID, ObjectIdGetDatum(funcid));
-		if (!HeapTupleIsValid(proctup))
-			elog(ERROR, "cache lookup failed for function %u", funcid);
-
-		bool is_null = false;
-		Datum proargmodes = SysCacheGetAttr(PROCOID, proctup,
-											Anum_pg_proc_proargmodes,
-											&is_null);
-		Assert(!is_null);
-		ArrayType* proargmodes_arr = DatumGetArrayTypeP(proargmodes);
-
-		ncols = 0;
-		for (int i = 0; i < ARR_DIMS(proargmodes_arr)[0]; ++i)
-			if (ARR_DATA_PTR(proargmodes_arr)[i] == PROARGMODE_OUT)
-				++ncols;
-
-		ReleaseSysCache(proctup);
-	}
+	if (ncols < expected_ncols)
+		ncols = YbGetNumberOfFunctionOutputColumns(8033 /* yb_table_properties function
+												   oid hardcoded in pg_proc.dat */);
 
 	Datum		values[ncols];
 	bool		nulls[ncols];
@@ -1810,7 +1842,7 @@ yb_table_properties(PG_FUNCTION_ARGS)
 					   "num_hash_key_columns", INT8OID, -1, 0);
 	TupleDescInitEntry(tupdesc, (AttrNumber) 3,
 					   "is_colocated", BOOLOID, -1, 0);
-	if (ncols >= 5)
+	if (ncols >= expected_ncols)
 	{
 		TupleDescInitEntry(tupdesc, (AttrNumber) 4,
 						   "tablegroup_oid", OIDOID, -1, 0);
@@ -1824,7 +1856,7 @@ yb_table_properties(PG_FUNCTION_ARGS)
 		values[0] = Int64GetDatum(yb_props->num_tablets);
 		values[1] = Int64GetDatum(yb_props->num_hash_key_columns);
 		values[2] = BoolGetDatum(yb_props->is_colocated);
-		if (ncols >= 5)
+		if (ncols >= expected_ncols)
 		{
 			values[3] =
 				OidIsValid(yb_props->tablegroup_oid)
@@ -1837,7 +1869,7 @@ yb_table_properties(PG_FUNCTION_ARGS)
 		}
 
 		memset(nulls, 0, sizeof(nulls));
-		if (ncols >= 5)
+		if (ncols >= expected_ncols)
 		{
 			nulls[3] = !OidIsValid(yb_props->tablegroup_oid);
 			nulls[4] = !OidIsValid(yb_props->colocation_id);

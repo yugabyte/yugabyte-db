@@ -93,6 +93,7 @@ export interface IStorageConfig {
   name: string;
   data: {
     BACKUP_LOCATION: string;
+    REGION_LOCATIONS: any [];
   };
   state: 'ACTIVE' | 'INACTIVE';
   inUse: boolean;

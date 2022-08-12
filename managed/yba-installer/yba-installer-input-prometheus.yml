@@ -1,0 +1,47 @@
+# Configurable parameter: fileName
+
+# fileName: the location of the Prometheus
+# Config File that is being created by this template.
+# We recommend keeping this file in the same folder
+# path where you have other config files pertaining to
+# the Yugabyte platform (must be an absolute file path).
+prometheusOldConfig:
+   name: "prometheusOldConfig"
+   fileName: "/etc/prometheus/prometheus.yml"
+
+# Configurable parameter: fileName
+
+# fileName: the location of the Prometheus
+# Config File that is being created by this template.
+# We recommend keeping this file in the same folder
+# path where you have other config files pertaining to
+# the Yugabyte platform (must be an absolute file path).
+prometheusNewConfig:
+   name: "prometheusNewConfig"
+   fileName: "/etc/prometheus/prometheus.yml"
+
+# Configurable parameter: storagePath
+
+# storagePath: If you want to keep your prometheus data
+# in a NAS location or mount path with a lot of storage,
+# change this parameter in the service file to dictate
+# which location you want to use. Keep in mind that
+# Prometheus data grows quickly as you have more
+# universes (must be an absolute directory path).
+prometheusOldService:
+   name: "prometheusOldService"
+   fileName: "/etc/systemd/system/prometheus.service"
+   storagePath: "/var/lib/prometheus/"
+
+# Configurable parameter: storagePath
+
+# storagePath: If you want to keep your prometheus data
+# in a NAS location or mount path with a lot of storage,
+# change this parameter in the service file to dictate
+# which location you want to use. Keep in mind that
+# Prometheus data grows quickly as you have more
+# universes (must be an absolute directory path).
+prometheusNewService:
+   name: "prometheusNewService"
+   fileName: "/etc/systemd/system/prometheus.service"
+   storagePath: "/var/lib/prometheus/"
