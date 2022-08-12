@@ -48,7 +48,7 @@ The following tutorial describes how to use Scala's Spark API [`spark-shell`](ht
 
 This tutorial assumes that you have:
 
-- YugabyteDB running. If you are new to YugabyteDB, follow the steps in [Quick start](../../../../quick-start/).
+- YugabyteDB running. If you are new to YugabyteDB, follow the steps in [Quick start](../../../quick-start/).
 - Java Development Kit (JDK) 1.8. JDK installers for Linux and macOS can be downloaded from [OpenJDK](http://jdk.java.net/), [AdoptOpenJDK](https://adoptopenjdk.net/), or [Azul Systems](https://www.azul.com/downloads/zulu-community/). Homebrew users on macOS can install using `brew install AdoptOpenJDK/openjdk/adoptopenjdk8`.
 - [Apache Spark 3.3.0](https://spark.apache.org/downloads.html).
 
@@ -78,7 +78,7 @@ scala>
 
 ## Set up the database
 
-1. From your YugabyteDB installation directory, use ysqlsh shell to read and write directly to the database as follows:
+1. From your YugabyteDB installation directory, use [ysqlsh](../../../admin/ysqlsh/) shell to read and write directly to the database as follows:
 
     ```sh
     ./bin/ysqlsh
@@ -126,7 +126,7 @@ res60: Object = null
 
 You can choose one of the following ways to read data.
 
-### Using DataFrame API
+### Use DataFrame API
 
 Create a [DataFrame](https://spark.apache.org/docs/1.5.1/api/java/org/apache/spark/sql/DataFrame.html) for the `test` table to read data via the JDBC connector using the following:
 
@@ -134,7 +134,7 @@ Create a [DataFrame](https://spark.apache.org/docs/1.5.1/api/java/org/apache/spa
 scala> val test_Df = spark.read.jdbc(jdbcUrl, "test", connectionProperties)
 ```
 
-### Using SQL queries
+### Use SQL queries
 
 1. You can use SQL queries to create a DataFrame which pushes down the queries to YugabyteDB through the JDBC connector to fetch the rows, and create a DataFrame for that result.
 
@@ -179,9 +179,9 @@ scala> val test_Df = spark.read.jdbc(jdbcUrl, "test", connectionProperties)
     +--------+---------+
     ```
 
-### Using spark.sql() API
+### Use spark.sql() API
 
-1. You can use the `spark.sql()` API to directly execute SQL queries from spark shell using the following code:
+- You can use the `spark.sql()` API to directly execute SQL queries from Scala shell using the following code:
 
     ```scala
     scala>test_Df.createOrReplaceTempView("test")
@@ -190,13 +190,13 @@ scala> val test_Df = spark.read.jdbc(jdbcUrl, "test", connectionProperties)
 
     The output will be similar to [SQL queries](#using-sql-queries).
 
-1. The following spark query renames the column of the table `test` from `ceil` to `round_off` in the DataFrame, then creates a new table with the schema of the changed DataFrame, inserts all its data in the new table, and names it as `test_copy` using the JDBC connector.
+- The following spark query renames the column of the table `test` from `ceil` to `round_off` in the DataFrame, then creates a new table with the schema of the changed DataFrame, inserts all its data in the new table, and names it as `test_copy` using the JDBC connector.
 
     ```scala
     scala> spark.table("test").withColumnRenamed("ceil", "round_off").write.jdbc(jdbcUrl, "test_copy", connectionProperties)
     ```
 
-1. Verify that the new table `test_copy` is created with the changed schema, and all the data from `test` is copied to it using the following commands from your ysqlsh terminal:
+- Verify that the new table `test_copy` is created with the changed schema, and all the data from `test` is copied to it using the following commands from your ysqlsh terminal:
 
     ```sql
     ysql_spark_shell=# \dt
@@ -235,7 +235,7 @@ scala> val test_Df = spark.read.jdbc(jdbcUrl, "test", connectionProperties)
     (1 row)
     ```
 
-1. Use the `append` [SaveMode](https://spark.apache.org/docs/latest/sql-data-sources-load-save-functions.html#save-modes), to append data from `test_copy` to the `test` table as follows:
+- Use the `append` [SaveMode](https://spark.apache.org/docs/latest/sql-data-sources-load-save-functions.html#save-modes) to append data from `test_copy` to the `test` table as follows:
 
     ```scala
     scala> import org.apache.spark.sql.SaveMode
@@ -244,7 +244,7 @@ scala> val test_Df = spark.read.jdbc(jdbcUrl, "test", connectionProperties)
     scala> spark.table("test_copy").write.mode(SaveMode.Append).jdbc(jdbcUrl, "test", connectionProperties)
     ```
 
-1. Verify the changes using ysqlsh:
+- Verify the changes using ysqlsh:
 
     ```sql
     ysql_spark_shell=# SELECT COUNT(*) FROM test;
@@ -260,18 +260,6 @@ scala> val test_Df = spark.read.jdbc(jdbcUrl, "test", connectionProperties)
 ## Parallelism
 
 To maintain parallelism while fetching the table content, create a DataFrame for the table `test` with some specific options as follows:
-
-- `numPartitions` - divides the whole task to `numPartitions` parallel tasks.
-- `lowerBound` - minimum value of the `partitionColumn` in a table.
-- `upperBound` - maximum value of the `partitionColumn` in a table.
-- `partitionColumn` - the column on the basis of which a partition occurs.
-
-These options help in breaking down the whole task into `numPartitions` parallel tasks on the basis of the `partitionColumn`, with the help of minimum and maximum value of the column.
-
-Additionally, the following two options help in optimizing the SQL queries executing on this DataFrame if those SQL queries consist of some filters or aggregate functions by pushing down those _filters_ or _aggregates_ to YugabyteDB using the JDBC connector.
-
-- `pushDownPredicate` - optimizes the query by pushing down the filters to YugabyteDB using the JDBC connector.
-- `pushDownAggregate` - optimizes the query by pushing down the aggregates to YugabyteDB using the JDBC connector.
 
 ```scala
 scala> val new_test_df = spark.read.format("jdbc")
@@ -302,11 +290,23 @@ scala> spark.sql("select sum(ceil) from test where id > 50000").show
 +---------+
 ```
 
+The options help in breaking down the whole task into `numPartitions` parallel tasks on the basis of the `partitionColumn`, with the help of minimum and maximum value of the column; where,
+
+- `numPartitions` - divides the whole task to `numPartitions` parallel tasks.
+- `lowerBound` - minimum value of the `partitionColumn` in a table.
+- `upperBound` - maximum value of the `partitionColumn` in a table.
+- `partitionColumn` - the column on the basis of which a partition occurs.
+
+Additionally, the following two options help in optimizing the SQL queries executing on this DataFrame if those SQL queries consist of some filters or aggregate functions by pushing down those _filters_ or _aggregates_ to YugabyteDB using the JDBC connector.
+
+- `pushDownPredicate` - optimizes the query by pushing down the filters to YugabyteDB using the JDBC connector.
+- `pushDownAggregate` - optimizes the query by pushing down the aggregates to YugabyteDB using the JDBC connector.
+
 ### Verify parallelism
 
 To verify that the spark job is created,
 
-1. Navigate to the Spark UI using <https://localhost:4040>. If your port 4040 is in use, then change the port to the one mentioned in the output of your [`spark-sql`](#start-scala-spark-shell-with-yugabytedb-driver) shell.
+1. Navigate to the Spark UI using <https://localhost:4040>. If your port 4040 is in use, then change the port to the one mentioned when you started the [`spark-sql`](#start-scala-spark-shell-with-yugabytedb-driver) shell.
 
 1. From the **SQL/DataFrame** tab, click the last executed SQL statement to see if `numPartitions=5` is displayed as shown in the following image:
 

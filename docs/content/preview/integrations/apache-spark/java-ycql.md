@@ -212,7 +212,7 @@ Here is sample content of the dataset:
 
 ##### spark.cassandra.json.quoteValueString
 
-Specifies whether the JSONB field values should be quoted as string. Defaults to false (since this is not space efficient).
+Specifies whether the JSONB field values should be quoted as string. Defaults to false (because this is not space efficient).
 
 The option allows you to preserve floating point precision for JSONB fields. For un-quoted non-numeric values, double quotes are added. Otherwise the values would be rejected by YCQL.
 
@@ -255,4 +255,4 @@ updatedRows.write().format("org.apache.spark.sql.cassandra").option("keyspace", 
 
 Set to true to cause all null values to be left as unset rather than bound.
 
-For example, for `{"dl": null, "ul":"foo"}`, if `spark.cassandra.output.ignoreNulls` is specified, only the `ul` field gets written (merged) into the corresponding JSONB column, and the `dl` field is ignored. -->
+For example, for `{"dl": null, "ul":"foo"}`, if `spark.cassandra.output.ignoreNulls` is specified, only the `ul` field gets written (merged) into the corresponding JSONB column, and the `dl` field is ignored.

@@ -48,7 +48,7 @@ The following tutorial describes how to use [Spark SQL](https://spark.apache.org
 
 This tutorial assumes that you have:
 
-- YugabyteDB running. If you are new to YugabyteDB, follow the steps in [Quick start](../../../../quick-start/).
+- YugabyteDB running. If you are new to YugabyteDB, follow the steps in [Quick start](../../../quick-start/).
 - Java Development Kit (JDK) 1.8. JDK installers for Linux and macOS can be downloaded from [OpenJDK](http://jdk.java.net/), [AdoptOpenJDK](https://adoptopenjdk.net/), or [Azul Systems](https://www.azul.com/downloads/zulu-community/). Homebrew users on macOS can install using `brew install AdoptOpenJDK/openjdk/adoptopenjdk8`.
 - [Apache Spark 3.3.0](https://spark.apache.org/downloads.html).
 
@@ -64,7 +64,9 @@ The Spark prompt should be available as `spark-sql>`.
 
 ## Set up the database
 
-1. From your YugabyteDB installation directory, use ysqlsh shell to read and write directly to the database as follows:
+Create the database and table you will read and write to as follows:
+
+1. From your YugabyteDB installation directory, use [ysqlsh](../../../admin/ysqlsh/) shell to read and write directly to the database as follows:
 
      ```sh
      ./bin/ysqlsh
@@ -92,20 +94,21 @@ The Spark prompt should be available as `spark-sql>`.
 
 1. Create a table `test_ref` in the `spark-sql` shell, referencing the table `test` through the configuration properties using the JDBC connector:
 
-     ```spark
+     ```sql
      spark-sql> CREATE TABLE test_ref USING org.apache.spark.sql.jdbc OPTIONS (
                          url "jdbc:yugabytedb://localhost:5433/ysql_spark_sql",
                          dbtable "test",
                          user "yugabyte",
                          password "yugabyte",
-                         driver "com.yugabyte.Driver" );
+                         driver "com.yugabyte.Driver"
+                         );
      ```
 
 You can now read and write data through the table `test_ref`.
 
 1. Run the following commands to fetch some data:
 
-     ```spark
+     ```sql
      spark-sql> SELECT ceil, sum(id) FROM test_ref GROUP BY ceil LIMIT 10;
      ```
 
@@ -122,7 +125,7 @@ You can now read and write data through the table `test_ref`.
      2.0	505807396
      ```
 
-     ```spark
+     ```sql
      spark-sql> SELECT COUNT(*) FROM test_ref;
      ```
 
@@ -132,19 +135,19 @@ You can now read and write data through the table `test_ref`.
 
 1. Insert data with the `INSERT` command as follows:
 
-     ```spark
+     ```sql
      spark-sql> INSERT INTO test_ref VALUES(1234543,0.951123432168208551,22.0);
      ```
 
 1. Append all the data to `test_ref` table from the same table as follows:
 
-     ```spark
+     ```sql
      spark-sql> INSERT INTO test_ref SELECT * FROM test_ref;
      ```
 
 1. Verify that the data is inserted as follows:
 
-     ```spark
+     ```sql
      spark-sql> SELECT COUNT(*) from test_ref;
      ```
 
@@ -156,14 +159,7 @@ You can now read and write data through the table `test_ref`.
 
 To maintain parallelism while fetching the table content, create a DataFrame for the table `test` with some specific options as follows:
 
-- `numPartitions` - divides the whole task to `numPartitions` parallel tasks.
-- `lowerBound` - minimum value of the `partitionColumn` in a table.
-- `upperBound` - maximum value of the `partitionColumn` in a table.
-- `partitionColumn` - the column on the basis of which a partition occurs.
-
-These options help in breaking down the whole task into `numPartitions` parallel tasks on the basis of the `partitionColumn`, with the help of minimum and maximum value of the column.
-
-```spark
+```sql
 spark-sql> CREATE TABLE test_partitions USING org.apache.spark.sql.jdbc OPTIONS (
                     url "jdbc:yugabytedb://localhost:5433/ysql_spark_sql",
                     dbtable "test",
@@ -176,7 +172,7 @@ spark-sql> CREATE TABLE test_partitions USING org.apache.spark.sql.jdbc OPTIONS 
                     upperBound 20) ;
 ```
 
-```spark
+```sql
 spark-sql> SELECT SUM(ceil) FROM test_partitions WHERE id > 50000;
 ```
 
@@ -188,11 +184,18 @@ spark-sql> SELECT SUM(ceil) FROM test_partitions WHERE id > 50000;
 +---------+
 ```
 
+The options used in the example help in breaking down the whole task into `numPartitions` parallel tasks on the basis of the `partitionColumn`, with the help of minimum and maximum value of the column; where,
+
+- `numPartitions` - divides the whole task to `numPartitions` parallel tasks.
+- `lowerBound` - minimum value of the `partitionColumn` in a table.
+- `upperBound` - maximum value of the `partitionColumn` in a table.
+- `partitionColumn` - the column on the basis of which a partition occurs.
+
 ### Verify parallelism
 
 To verify that the Spark job is created,
 
-1. Navigate to the Spark UI using <https://localhost:4040>. If your port 4040 is in use, then change the port to the one mentioned in the output of your [`spark-sql`](#start-python-spark-shell-with-yugabytedb-driver) shell.
+1. Navigate to the Spark UI using <https://localhost:4040>. If your port 4040 is in use, then change the port to the one mentioned when you started the [`spark-sql`](#start-python-spark-shell-with-yugabytedb-driver) shell.
 
 1. From the **SQL/DataFrame** tab, click the last executed SQL statement to see if `numPartitions=5` is displayed as shown in the following image:
 

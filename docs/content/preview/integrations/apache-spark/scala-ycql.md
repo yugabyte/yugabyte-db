@@ -57,9 +57,9 @@ This tutorial assumes that you have:
 
 - installed the [`sbt-assembly`](https://github.com/sbt/sbt-assembly) plugin in your sbt project, as follows:
 
-```scala
-addSbtPlugin("com.eed3si9n" % "sbt-assembly" % "0.14.10")
-```
+    ```scala
+    addSbtPlugin("com.eed3si9n" % "sbt-assembly" % "0.14.10")
+    ```
 
 ### Create the sbt build file
 

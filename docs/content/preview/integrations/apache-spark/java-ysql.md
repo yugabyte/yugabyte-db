@@ -47,14 +47,16 @@ The following tutorial describes how to use [Apache Spark](https://spark.apache.
 
 This tutorial assumes that you have:
 
-- YugabyteDB running. If you are new to YugabyteDB, follow the steps in [Quick start](../../../../quick-start/).
+- YugabyteDB running. If you are new to YugabyteDB, follow the steps in [Quick start](../../../quick-start/).
 - Java Development Kit (JDK) 1.8. JDK installers for Linux and macOS can be downloaded from [OpenJDK](http://jdk.java.net/), [AdoptOpenJDK](https://adoptopenjdk.net/), or [Azul Systems](https://www.azul.com/downloads/zulu-community/). Homebrew users on macOS can install using `brew install AdoptOpenJDK/openjdk/adoptopenjdk8`.
 - [Apache Spark 3.3.0](https://spark.apache.org/downloads.html).
 - [Apache Maven 3.3](https://maven.apache.org/index.html) or later.
 
 ## Set up the database
 
-1. From your YugabyteDB installation directory, connect to the database using ysqlsh as follows:
+Create the database and table you will read and write to as follows:
+
+1. From your YugabyteDB installation directory, use [ysqlsh](../../../admin/ysqlsh/) shell to read and write directly to the database as follows:
 
     ```sh
     ./bin/ysqlsh
@@ -87,7 +89,7 @@ This tutorial assumes that you have:
     $ cd sparkSample
     ```
 
-1. Open the `pom.xml` file in a text editor and add the following dependencies for apache spark and YugabyteDB JDBC driver.
+1. Open the `pom.xml` file in a text editor and add the following dependencies for Apache Spark and the YugabyteDB JDBC driver.
 
     ```xml
     <dependency>
@@ -108,7 +110,7 @@ This tutorial assumes that you have:
     $ mvn install
     ```
 
-1. Create the file `sparkSQLJavaExample.java` under the `src/main/java` directory of your `sparkSample` project and add the following code to the file:
+1. Create a java file `sparkSQLJavaExample.java` under `src/main/java` directory of your `sparkSample` project and add the following code to the file:
 
     ```java
     import org.apache.spark.sql.SparkSession;
@@ -119,24 +121,24 @@ This tutorial assumes that you have:
     public class sparkSQLJavaExample {
 
        public static void main(String[] args) {
-           //Creating the spark session to work with spark
+           //Create the spark session to work with spark
            SparkSession spark = SparkSession
                    .builder()
                    .appName("Java Spark SQL basic example")
                    .config("spark.master", "local")
                    .getOrCreate();
 
-           //connection URL
+           //Connection URL
            String jdbcUrl = "jdbc:yugabytedb://localhost:5433/ysql_spark";
            Properties connectionProperties = new Properties();
            connectionProperties.put("user", "yugabyte");
            connectionProperties.put("password", "yugabyte");
 
-           //Creating the dataframe for reading the data from the database table test
+           //Create the DataFrame to read the data from the database table test
            Dataset<Row> df_test = spark.read()
                    .jdbc(jdbcUrl, "public.test", connectionProperties);
 
-           //Printing the schema of the dataframe
+           //Print the schema of the DataFrame
            df_test.printSchema();
 
            /*
@@ -147,7 +149,7 @@ This tutorial assumes that you have:
             |-- ceil: double (nullable = true)
             */
 
-           //Reading some data through the dataframe APIs
+           //Read some data through the DataFrame APIs
            df_test.select("id","ceil").groupBy("ceil").sum("id").limit(5).show();
 
            /*
@@ -171,11 +173,11 @@ This tutorial assumes that you have:
                    .withColumnRenamed("ceil", "round_off")
                    .write()
                    .jdbc(jdbcUrl, "test_copy", connectionProperties);
-           //Creating the dataframe for the reading data from the database table test_copy
+           //Create the DataFrame to read data from the database table test_copy
            Dataset<Row> df_test_copy = spark.read()
                    .jdbc(jdbcUrl, "public.test_copy", connectionProperties);
 
-           //Printing the schema of the dataframe
+           //Print the schema of the DataFrame
            df_test_copy.printSchema();
 
            /*
@@ -243,7 +245,7 @@ This tutorial assumes that you have:
     $ mvn compile
     ```
 
-1. Run the application using the following command and verify the output as described in the comments of the `sparkSQLJavaExample` file:
+1. Run the application using the following command and verify your output as mentioned in the comments of the `sparkSQLJavaExample` file:
 
     ```sh
     $  mvn exec:java -Dexec.mainClass="sparkSQLJavaExample"
