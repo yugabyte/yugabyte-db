@@ -970,20 +970,20 @@ stmt :
 			/* TODO(#10263): Fix individual beta flag feature bools */
 			| AlterExtensionContentsStmt { parser_ybc_beta_feature(@1, "extension", true); }
 			| AlterExtensionStmt { parser_ybc_beta_feature(@1, "extension", true); }
-			| AlterFdwStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", true); }
-			| AlterForeignServerStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", true); }
-			| AlterForeignTableStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", true); }
+			| AlterFdwStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", false); }
+			| AlterForeignServerStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", false); }
+			| AlterForeignTableStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", false); }
 			| AlterTSConfigurationStmt { parser_ybc_beta_feature(@1, "alter text search configuration", false); }
-			| AlterUserMappingStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", true); }
+			| AlterUserMappingStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", false); }
 			| AnalyzeStmt { parser_ybc_beta_feature(@1, "analyze", false); }
 			| CheckPointStmt { parser_ybc_beta_feature(@1, "checkpoint", false); }
-			| CreateFdwStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", true); }
-			| CreateForeignServerStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", true); }
-			| CreateForeignTableStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", true); }
+			| CreateFdwStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", false); }
+			| CreateForeignServerStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", false); }
+			| CreateForeignTableStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", false); }
 			| CreateTableGroupStmt { parser_ybc_beta_feature(@1, "tablegroup", true); }
-			| CreateUserMappingStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", true); }
-			| DropUserMappingStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", true); }
-			| ImportForeignSchemaStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", true); }
+			| CreateUserMappingStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", false); }
+			| DropUserMappingStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", false); }
+			| ImportForeignSchemaStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", false); }
 			| VacuumStmt { parser_ybc_beta_feature(@1, "vacuum", false); }
 
 			/* Not supported in template0/template1 statements */

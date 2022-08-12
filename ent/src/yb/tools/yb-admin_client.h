@@ -56,8 +56,13 @@ class ClusterAdminClient : public yb::tools::ClusterAdminClient {
   Result<rapidjson::Document> DeleteSnapshotSchedule(const SnapshotScheduleId& schedule_id);
   Result<rapidjson::Document> RestoreSnapshotSchedule(
       const SnapshotScheduleId& schedule_id, HybridTime restore_at);
-  Status RestoreSnapshot(const std::string& snapshot_id,
-                                 HybridTime timestamp);
+  Status RestoreSnapshot(const std::string& snapshot_id, HybridTime timestamp);
+
+  Result<rapidjson::Document> EditSnapshotSchedule(
+      const SnapshotScheduleId& schedule_id,
+      std::optional<MonoDelta> new_interval,
+      std::optional<MonoDelta> new_retention);
+
   Status DeleteSnapshot(const std::string& snapshot_id);
 
   Status CreateSnapshotMetaFile(const std::string& snapshot_id,

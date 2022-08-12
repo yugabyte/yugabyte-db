@@ -110,6 +110,10 @@ class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
       const SnapshotScheduleId& snapshot_schedule_id, int64_t leader_term,
       CoarseTimePoint deadline);
 
+  Result<SnapshotScheduleInfoPB> EditSnapshotSchedule(
+      const SnapshotScheduleId& id, const EditSnapshotScheduleRequestPB& req, int64_t leader_term,
+      CoarseTimePoint deadline);
+
   // Load snapshots data from system catalog.
   Status Load(tablet::Tablet* tablet) override;
 

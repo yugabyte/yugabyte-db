@@ -10,6 +10,7 @@
 
 package com.yugabyte.yw.commissioner;
 
+import static com.yugabyte.yw.commissioner.HealthCheckMetrics.CLOCK_SYNC_CHECK;
 import static com.yugabyte.yw.commissioner.HealthCheckMetrics.CUSTOM_NODE_METRICS_COLLECTION_METRIC;
 import static com.yugabyte.yw.commissioner.HealthCheckMetrics.HEALTH_CHECK_METRICS;
 import static com.yugabyte.yw.commissioner.HealthCheckMetrics.HEALTH_CHECK_METRICS_WITHOUT_STATUS;
@@ -301,7 +302,9 @@ public class HealthChecker {
           int toAppend = checkResult ? 1 : 0;
           platformMetrics.compute(countMetric, (k, v) -> v != null ? v + toAppend : toAppend);
         }
-        if (shouldCollectNodeMetrics || checkName.equals(OPENED_FILE_DESCRIPTORS_CHECK)) {
+        if (shouldCollectNodeMetrics
+            || checkName.equals(OPENED_FILE_DESCRIPTORS_CHECK)
+            || checkName.equals(CLOCK_SYNC_CHECK)) {
           // Used FD count metric is always collected through health check as it's not
           // calculated properly from inside the collect_metrics service - it gets service limit
           // instead of user limit for file descriptors

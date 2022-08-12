@@ -12,6 +12,7 @@ import { find, isFunction } from 'lodash';
 
 import CreatableSelect from 'react-select/creatable';
 import { Props, SelectComponentsConfig, Styles } from 'react-select';
+import { YBLabel } from '../../descriptors';
 
 interface Option {
   readonly label: string;
@@ -109,3 +110,14 @@ export const YBMultiEntryInput: FC<YBMultiEntryInputProps> = ({
     />
   );
 };
+
+export const YBLabelledMultiEntryInput : FC<YBMultiEntryInputProps & {label:string}> = ({label, ...rest}) => {
+  return (
+    <YBLabel
+    label={label}
+   
+  >
+    <YBMultiEntryInput styles={{ menu: provided => ({ ...provided, zIndex: 2 }) }} {...rest}/>
+    </YBLabel>
+  )
+}

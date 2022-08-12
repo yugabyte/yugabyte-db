@@ -7,7 +7,8 @@ const mapStateToProps = (state) => {
   return {
     customer: state.customer,
     universe: state.universe,
-    cloud: state.cloud
+    cloud: state.cloud,
+    featureFlags: state.featureFlags
   };
 };
 
