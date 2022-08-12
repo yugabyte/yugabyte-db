@@ -300,13 +300,13 @@ const ScheduledBackupCard: FC<ScheduledBackupCardProps> = ({
             <Col lg={3}>
               <div className="info-title">DATABASE NAME</div>
               <div className="info-val">
-                {wrapTableName(schedule.backupInfo?.keyspaceList.map((k) => k.keyspace))}
+                {wrapTableName(schedule.backupInfo?.keyspaceList?.map((k) => k.keyspace))}
               </div>
             </Col>
             <Col lg={3}>
               <div className="info-title">TABLES</div>
               <div className="info-val">
-                {wrapTableName(schedule.backupInfo?.keyspaceList[0]?.tablesList)}
+                {wrapTableName(schedule.backupInfo?.keyspaceList?.[0]?.tablesList)}
               </div>
             </Col>
           </Row>
