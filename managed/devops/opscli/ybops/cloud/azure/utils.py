@@ -65,7 +65,13 @@ class GetPriceWorker(Thread):
     def run(self):
         url = VM_PRICING_URL_FORMAT.format(self.region)
         while url:
-            price_info = requests.get(url).json()
+            try:
+                price_info = requests.get(url).json()
+            except Exception as e:
+                logging.error("Error getting price information for region {}: {}"
+                              .format(self.region, str(e)))
+                break
+
             for info in price_info.get('Items'):
                 # Azure API doesn't support regex as of 3/08/2021, so manually parse out Windows.
                 # Some VMs also show $0.0 as the price for some reason, so ignore those as well.
@@ -719,11 +725,21 @@ class AzureCloudAdmin():
         for worker in workers:
             worker.join()
             price_info = worker.vm_name_to_price_dict
-            common_vms = set(price_info.keys()) & set(all_vms.keys())
-            for vm_name in common_vms:
+            # Adding missed items.
+            missed_price = set(all_vms.keys()) - set(price_info.keys())
+            for vm_name in missed_price:
+                price_info[vm_name] = {
+                    "unit": "Hours",
+                    "pricePerUnit": 0.0,
+                    "pricePerHour": 0.0,
+                    "pricePerDay": 0.0,
+                    "pricePerMonth": 0.0,
+                    "currency": "USD",
+                    "effectiveDate": "2000-01-01T00:00:00.0000"
+                }
+
+            for vm_name in all_vms:
                 all_vms[vm_name]['prices'][worker.region] = price_info[vm_name]
-            # Only return VMs that are present in all regions
-            all_vms = {k: all_vms[k] for k in common_vms}
 
         execution_time = datetime.datetime.now() - operation_start
         logging.info("Finished price retrieving process [ %s ms ]",
