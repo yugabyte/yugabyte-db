@@ -889,8 +889,10 @@ Status CDCServiceImpl::CreateCDCStreamForNamespace(
   CDCStreamId db_stream_id = VERIFY_RESULT_OR_SET_CODE(
       client()->CreateCDCStream(ns_id, options), CDCError(CDCErrorPB::INTERNAL_ERROR));
 
+  master::NamespaceIdentifierPB ns_identifier;
+  ns_identifier.set_id(ns_id);
   auto table_list = VERIFY_RESULT_OR_SET_CODE(
-      client()->ListUserTables(ns_id), CDCError(CDCErrorPB::INTERNAL_ERROR));
+      client()->ListUserTables(ns_identifier), CDCError(CDCErrorPB::INTERNAL_ERROR));
 
   options.erase(kIdType);
 

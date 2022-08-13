@@ -1,43 +1,41 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -ue -o pipefail
 
-readonly APISERVERDIR=apiserver/cmd/server
-readonly UIDIR=ui
-readonly BUILDDIR=bin
+readonly BASEDIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+(
+cd "${BASEDIR}"
+readonly APISERVERDIR=${BASEDIR}/apiserver/cmd/server
+readonly UIDIR=${BASEDIR}/ui
+readonly OUTDIR="${BUILD_ROOT:-/tmp/yugabyted-ui}/gobin"
+readonly OUTFILE="${OUTDIR}/yugabyted-ui"
+mkdir -p "${OUTDIR}"
 
 if ! command -v npm -version &> /dev/null
 then
-    echo "npm could not be found"
-    exit
+  echo "npm could not be found"
+  exit
 fi
 
 if ! command -v go version &> /dev/null
 then
-    echo "go lang could not be found"
-    exit
+  echo "go lang could not be found"
+  exit
 fi
 
-rm -rf bin
-
+(
 cd $UIDIR
 npm ci
 npm run build
-tar cfz build.tgz build/*
-cd ..
+tar cz ui | tar -C "${APISERVERDIR}" -xz
+)
 
-mv $UIDIR/build.tgz $APISERVERDIR
 cd $APISERVERDIR
-mkdir -p ui
-tar -xf build.tgz -C ui --strip-components 1
-rm -rf build.tgz build
-go build -o yugabyted-ui
-cd ../../..
+go build -o "${OUTFILE}"
 
-mkdir -p $BUILDDIR
-mv $APISERVERDIR/yugabyted-ui $BUILDDIR/
-
-if [ -f "$BUILDDIR/yugabyted-ui" ]
+if [[ -f "${OUTFILE}" ]]
 then
-    echo "Yugabyted UI Binary generated successfully in the bin/ directory."
+  echo "Yugabyted UI Binary generated successfully at ${OUTFILE}"
 else
-    echo "Build Failed."
+  echo "Build Failed."
 fi
+)

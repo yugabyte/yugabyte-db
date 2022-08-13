@@ -1317,7 +1317,7 @@ TEST_P(TwoDCYsqlTest, IsBootstrapRequiredNotFlushed) {
   ASSERT_FALSE(resp.bootstrap_required());
 
   auto should_bootstrap = ASSERT_RESULT(producer_cluster_.client_->IsBootstrapRequired(
-                                          producer_tables[0]->id(), stream_id));
+                                          {producer_tables[0]->id()}, stream_id));
   ASSERT_FALSE(should_bootstrap);
 
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
@@ -1417,7 +1417,7 @@ TEST_P(TwoDCYsqlTest, IsBootstrapRequiredFlushed) {
   ASSERT_TRUE(resp.bootstrap_required());
 
   // The high level API should also fail.
-  auto should_bootstrap = ASSERT_RESULT(producer_client()->IsBootstrapRequired(table->id()));
+  auto should_bootstrap = ASSERT_RESULT(producer_client()->IsBootstrapRequired({table->id()}));
   ASSERT_TRUE(should_bootstrap);
 
   // Setup replication should fail if this check is enabled.

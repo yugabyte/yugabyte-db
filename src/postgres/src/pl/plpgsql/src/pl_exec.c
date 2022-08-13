@@ -51,6 +51,8 @@
 
 #include "plpgsql.h"
 
+#include "pg_yb_utils.h"
+
 
 typedef struct
 {
@@ -2816,7 +2818,9 @@ exec_stmt_fors(PLpgSQL_execstate *estate, PLpgSQL_stmt_fors *stmt)
 	/*
 	 * Execute the loop
 	 */
-	rc = exec_for_query(estate, (PLpgSQL_stmt_forq *) stmt, portal, true);
+	rc = exec_for_query(
+			estate, (PLpgSQL_stmt_forq *) stmt, portal,
+			!yb_plpgsql_disable_prefetch_in_for_query);
 
 	/*
 	 * Close the implicit cursor
