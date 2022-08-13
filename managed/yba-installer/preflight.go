@@ -12,7 +12,7 @@
     "fmt"
  )
 
- // Level: Critical
+ // Level: Warning
  func checkMinimumVirtualCPUs(min int) {
 
     command := "bash"
@@ -28,7 +28,7 @@
     }
  }
 
- // Level: Critical
+ // Level: Warning
  func checkMinimumMemoryLimit(min float64) {
 
     command := "grep"
@@ -72,8 +72,7 @@
  func Preflight(filename string) {
 
     // Critical level checks are performed in all executions of Preflight().
-    checkMinimumVirtualCPUs(4)
-    checkMinimumMemoryLimit(15)
+    // (None currently).
 
     viper.SetConfigName(filename)
     viper.SetConfigType("yml")
@@ -96,6 +95,8 @@
 
     if err != nil || ! overrideWarning {
 
+        checkMinimumVirtualCPUs(4)
+        checkMinimumMemoryLimit(15)
         checkMinmumAvailableSSDStorage(50)
 
     }
