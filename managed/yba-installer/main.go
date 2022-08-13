@@ -32,7 +32,7 @@
 
     } else if commandLineArgs[0] == "preflight" {
 
-        Preflight("yba-installer-input-preflight.yml")
+        Preflight("yba-installer-input.yml")
 
     } else if commandLineArgs[0] == "license" {
 
