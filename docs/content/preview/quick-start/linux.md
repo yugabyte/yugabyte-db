@@ -82,7 +82,8 @@ Before installing YugabyteDB, ensure that you have the following available:
     ```
 
     By default, CentOS 8 does not have an unversioned system-wide `python` command. To fix this, set `python3` as the alternative for `python` by running `sudo alternatives --set python /usr/bin/python3`.
-    Starting from Ubuntu 20.04, `python` is not available anymore. Install `sudo apt install python-is-python3`.
+
+    Starting from Ubuntu 20.04, `python` is no longer available. To fix this, run `sudo apt install python-is-python3`.
 
 1. `wget` or `curl`.
 
@@ -102,9 +103,11 @@ Before installing YugabyteDB, ensure that you have the following available:
 
 ### Download YugabyteDB
 
-You download YugabyteDB as follows:
+YugabyteDB supports both x86 and ARM (aarch64) CPU architectures. Download packages ending in `x86_64.tar.gz` to run on x86, and packages ending in `aarch64.tar.gz` to run on ARM.
 
-1. Download the YugabyteDB package using the following `wget` command:
+Download YugabyteDB as follows:
+
+1. Download the YugabyteDB package using one of the following `wget` commands:
 
     ```sh
     wget https://downloads.yugabyte.com/releases/{{< yb-version version="preview">}}/yugabyte-{{< yb-version version="preview" format="build">}}-linux-x86_64.tar.gz
