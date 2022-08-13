@@ -24,7 +24,7 @@ type Common struct {
 func (com Common) SetUpPrereqs() {
    Version()
    License()
-   Preflight("yba-installer-input-preflight.yml")
+   Preflight("yba-installer-input.yml")
 }
 
 // Install performs the installation procedures common to
