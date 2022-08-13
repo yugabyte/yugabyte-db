@@ -17,6 +17,8 @@
     ConfFileLocation    string
     Version             string
     IsUpgrade           bool
+    PlatformVersion     string
+    Mode                string
  }
 
  // Method of the Component
@@ -40,6 +42,8 @@
     arg1 := []string{"daemon-reload"}
     ExecuteBashCommand(command1, arg1)
 
+    GenerateTemplatedConfiguration(prom.Version, prom.Mode)
+
     command2 := "systemctl"
     arg2 := []string{"start", "prometheus"}
     ExecuteBashCommand(command2, arg2)
@@ -50,12 +54,18 @@
  }
 
  func (prom Prometheus) Stop() {
+
+    GenerateTemplatedConfiguration(prom.Version, prom.Mode)
+
     command1 := "systemctl"
     arg1 := []string{"stop", "prometheus"}
     ExecuteBashCommand(command1, arg1)
  }
 
  func (prom Prometheus) Restart() {
+
+    GenerateTemplatedConfiguration(prom.Version, prom.Mode)
+
     command1 := "systemctl"
     arg1 := []string{"restart", "prometheus"}
     ExecuteBashCommand(command1, arg1)
