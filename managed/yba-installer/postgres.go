@@ -18,6 +18,8 @@
     SystemdFileLocation string
     ConfFileLocation    []string
     Version             string
+    PlatformVersion     string
+    Mode                string
  }
 
  // Method of the Component
@@ -42,6 +44,8 @@
     arg1 := []string{"enable", "postgresql-11.service"}
     ExecuteBashCommand(command1, arg1)
 
+    GenerateTemplatedConfiguration(pg.Version, pg.Mode)
+
     command2 := "systemctl"
     arg2 := []string{"restart", "postgresql-11.service"}
     ExecuteBashCommand(command2, arg2)
@@ -52,12 +56,18 @@
  }
 
  func (pg Postgres) Stop() {
+
+    GenerateTemplatedConfiguration(pg.Version, pg.Mode)
+
     command1 := "systemctl"
     arg1 := []string{"stop", "postgresql-11.service"}
     ExecuteBashCommand(command1, arg1)
  }
 
  func (pg Postgres) Restart() {
+
+    GenerateTemplatedConfiguration(pg.Version, pg.Mode)
+
     command1 := "systemctl"
     arg1 := []string{"restart", "postgresql-11.service"}
     ExecuteBashCommand(command1, arg1)

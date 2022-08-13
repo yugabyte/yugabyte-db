@@ -463,3 +463,8 @@ nginxHttps:
 # critical and warning checks are performed in the normal case)
 preflight:
    overrideWarning: true
+
+# For random entries that might be pulled in to platform.conf
+# (No JSON schema validation needed here as the format is not
+# fixed).
+random:

@@ -18,6 +18,7 @@ type Platform struct {
    Version             string
    CorsOrigin          string
    UseOIDCSso          bool
+   Mode                string
 }
 
 // Method of the Component
@@ -48,6 +49,8 @@ func (plat Platform) Start() {
  arg1 := []string{"daemon-reload"}
  ExecuteBashCommand(command1, arg1)
 
+ GenerateTemplatedConfiguration(plat.Version, plat.Mode)
+
  command2 := "systemctl"
  arg2 := []string{"start", "yb-platform.service"}
  ExecuteBashCommand(command2, arg2)
@@ -61,9 +64,15 @@ func (plat Platform) Stop() {
    command1 := "systemctl"
    arg1 := []string{"stop", "yb-platform.service"}
    ExecuteBashCommand(command1, arg1)
+
+   GenerateTemplatedConfiguration(plat.Version, plat.Mode)
+
 }
 
 func (plat Platform) Restart() {
+
+   GenerateTemplatedConfiguration(plat.Version, plat.Mode)
+
    command1 := "systemctl"
    arg1 := []string{"restart", "yb-platform.service"}
    ExecuteBashCommand(command1, arg1)
