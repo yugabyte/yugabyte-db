@@ -87,7 +87,10 @@ func TestSudoPermission() {
     if i == 0 {
         fmt.Println("Awesome! You are now running this program with root permissions!")
     } else {
-        log.Fatal("This program must be run as root! (sudo). Please try again with sudo.")
+        fmt.Println("You are not running this program with root permissions. " +
+        "Executing Preflight root checks...")
+        PreflightRoot()
+        //log.Fatal("This program must be run as root! (sudo). Please try again with sudo.")
     }
 }
 
@@ -204,11 +207,10 @@ func GenerateRandomBytes(n int) ([]byte, error) {
     return b, nil
 }
 
-//GenerateRandomStringURLSafe is used to generate the PlatformAppSecret.
-func GenerateRandomStringURLSafe(n int) (string) {
+func GenerateRandomStringURLSafe(n int) (string, error) {
 
-    b, _ := GenerateRandomBytes(n)
-    return base64.URLEncoding.EncodeToString(b)
+    b, err := GenerateRandomBytes(n)
+    return base64.URLEncoding.EncodeToString(b), err
 }
 
 func ReplaceTextGolang(fileName string, textToReplace string, textToReplaceWith string) {
@@ -273,7 +275,7 @@ func GenerateCORSOrigin() string {
     args0 := []string{"-c", "ip route get 1.2.3.4 | awk '{print $7}'"}
     CORSOriginIP, _ := ExecuteBashCommand(command0, args0)
     CORSOrigin := "https://" + strings.TrimSuffix(CORSOriginIP, "\n") + ""
-    return strings.TrimSuffix(strings.ReplaceAll(CORSOrigin, " ", ""), "\n")
+    return CORSOrigin
 }
 
 func WriteToWhitelist(command string, args []string) {
