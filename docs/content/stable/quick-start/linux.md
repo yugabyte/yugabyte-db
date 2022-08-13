@@ -54,7 +54,6 @@ The local cluster setup on a single host is intended for development and learnin
   </ul>
 </div>
 
-
 ## Install YugabyteDB
 
 Installing YugabyteDB involves completing [prerequisites](#prerequisites) and [downloading the YugabyteDB package](#download-yugabytedb).
@@ -80,7 +79,8 @@ Before installing YugabyteDB, ensure that you have the following available:
     ```
 
     By default, CentOS 8 does not have an unversioned system-wide `python` command. To fix this, set `python3` as the alternative for `python` by running `sudo alternatives --set python /usr/bin/python3`.
-    Starting from Ubuntu 20.04, `python` is not available anymore. Install `sudo apt install python-is-python3`.
+
+    Starting from Ubuntu 20.04, `python` is no longer available. To fix this, run `sudo apt install python-is-python3`.
 
 1. `wget` or `curl`.
 
@@ -100,9 +100,11 @@ Before installing YugabyteDB, ensure that you have the following available:
 
 ### Download YugabyteDB
 
-You download YugabyteDB as follows:
+YugabyteDB supports both x86 and ARM (aarch64) CPU architectures. Download packages ending in `x86_64.tar.gz` to run on x86, and packages ending in `aarch64.tar.gz` to run on ARM.
 
-1. Download the YugabyteDB package using the following `wget` command:
+Download YugabyteDB as follows:
+
+1. Download the YugabyteDB package using one of the following `wget` commands:
 
     ```sh
     wget https://downloads.yugabyte.com/releases/{{< yb-version version="stable">}}/yugabyte-{{< yb-version version="stable" format="build">}}-linux-x86_64.tar.gz
@@ -142,7 +144,7 @@ To create a single-node local cluster with a replication factor (RF) of 1, run t
 ./bin/yugabyted start
 ```
 
-After the cluster has been created, clients can connect to the YSQL and YCQL APIs at http://localhost:5433 and http://localhost:9042 respectively. You can also check `~/var/data` to see the data directory and `~/var/logs` to see the logs directory.
+After the cluster has been created, clients can connect to the YSQL and YCQL APIs at <http://localhost:5433> and <http://localhost:9042> respectively. You can also check `~/var/data` to see the data directory and `~/var/logs` to see the logs directory.
 
 If you have previously installed YugabyteDB 2.8 or later and created a cluster on the same computer, you may need to [upgrade the YSQL system catalog](../../manage/upgrade-deployment/#upgrade-the-ysql-system-catalog) to run the latest features.
 
@@ -155,7 +157,6 @@ Execute the following command to check the cluster status:
 ```
 
 Expect an output similar to the following:
-
 
 ```output
 +--------------------------------------------------------------------------------------------------+
@@ -198,7 +199,7 @@ Click **See all nodes** to open the **Tablet Servers** page that lists the YB-TS
 
 Before building a Java application, perform the following:
 
-- While YugabyteDB is running, use the [yb-ctl](/preview/admin/yb-ctl/#root) utility to create a universe with a 3-node RF-3 cluster with some fictitious geo-locations assigned, as follows:
+* While YugabyteDB is running, use the [yb-ctl](/preview/admin/yb-ctl/#root) utility to create a universe with a 3-node RF-3 cluster with some fictitious geo-locations assigned, as follows:
 
   ```sh
   cd <path-to-yugabytedb-installation>
@@ -206,9 +207,9 @@ Before building a Java application, perform the following:
   ./bin/yb-ctl create --rf 3 --placement_info "aws.us-west.us-west-2a,aws.us-west.us-west-2a,aws.us-west.us-west-2b"
   ```
 
-- Ensure that Java Development Kit (JDK) 1.8 or later is installed. JDK installers can be downloaded from [OpenJDK](http://jdk.java.net/).
+* Ensure that Java Development Kit (JDK) 1.8 or later is installed. JDK installers can be downloaded from [OpenJDK](http://jdk.java.net/).
 
-- Ensure that [Apache Maven](https://maven.apache.org/index.html) 3.3 or later is installed.
+* Ensure that [Apache Maven](https://maven.apache.org/index.html) 3.3 or later is installed.
 
 ### Create and configure the Java project
 
