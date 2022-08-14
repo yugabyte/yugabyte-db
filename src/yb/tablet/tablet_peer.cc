@@ -143,13 +143,14 @@ using consensus::ConsensusBootstrapInfo;
 using consensus::ConsensusMetadata;
 using consensus::ConsensusOptions;
 using consensus::ConsensusRound;
+using consensus::OpIdType;
+using consensus::PeerMemberType;
+using consensus::RaftConfigPB;
+using consensus::RaftConsensus;
+using consensus::RaftPeerPB;
+using consensus::ReplicateMsg;
 using consensus::StateChangeContext;
 using consensus::StateChangeReason;
-using consensus::RaftConfigPB;
-using consensus::RaftPeerPB;
-using consensus::RaftConsensus;
-using consensus::ReplicateMsg;
-using consensus::OpIdType;
 using log::Log;
 using log::LogAnchorRegistry;
 using rpc::Messenger;
@@ -1400,6 +1401,74 @@ bool TabletPeer::CanBeDeleted() {
 
 rpc::Scheduler& TabletPeer::scheduler() const {
   return messenger_->scheduler();
+}
+
+// Called from within RemoteBootstrapSession and RemoteBootstrapAnchorService.
+Status TabletPeer::ChangeRole(const std::string& requestor_uuid) {
+  shared_ptr<consensus::Consensus> consensus = shared_consensus();
+
+  // This check fixes an issue with test TestDeleteTabletDuringRemoteBootstrap in which a tablet is
+  // tombstoned while the bootstrap is happening. This causes the peer's consensus object to be
+  // null.
+  if (!consensus) {
+    RaftGroupStatePB tablet_state = state();
+    return STATUS(
+        IllegalState,
+        Substitute(
+            "Unable to change role for server $0 in config for tablet $1. Consensus is not "
+            "available. "
+            "Tablet state: $2 ($3)",
+            requestor_uuid, tablet_id(), RaftGroupStatePB_Name(tablet_state), tablet_state));
+  }
+
+  // If peer being bootstrapped is already a VOTER, don't send the ChangeConfig request. This could
+  // happen when a tserver that is already a VOTER in the configuration tombstones its tablet, and
+  // the leader starts bootstrapping it.
+  const consensus::RaftConfigPB config = RaftConfig();
+  for (const RaftPeerPB& peer_pb : config.peers()) {
+    if (peer_pb.permanent_uuid() != requestor_uuid) {
+      continue;
+    }
+
+    switch(peer_pb.member_type()) {
+      case PeerMemberType::OBSERVER: FALLTHROUGH_INTENDED;
+      case PeerMemberType::VOTER:
+        LOG(ERROR) << "Peer " << peer_pb.permanent_uuid() << " is a "
+                   << PeerMemberType_Name(peer_pb.member_type())
+                   << " Not changing its role after remote bootstrap";
+
+        // Even though this is an error, we return Status::OK() so the remote server doesn't
+        // tombstone its tablet.
+        return Status::OK();
+
+      case PeerMemberType::PRE_OBSERVER: FALLTHROUGH_INTENDED;
+      case PeerMemberType::PRE_VOTER: {
+        consensus::ChangeConfigRequestPB req;
+        consensus::ChangeConfigResponsePB resp;
+
+        req.set_tablet_id(tablet_id());
+        req.set_type(consensus::CHANGE_ROLE);
+        RaftPeerPB* peer = req.mutable_server();
+        peer->set_permanent_uuid(requestor_uuid);
+
+        boost::optional<TabletServerErrorPB::Code> error_code;
+
+        // If another ChangeConfig is being processed, our request will be rejected.
+        return consensus->ChangeConfig(req, &DoNothingStatusCB, &error_code);
+      }
+      case PeerMemberType::UNKNOWN_MEMBER_TYPE:
+        return STATUS(
+            IllegalState,
+            Substitute(
+                "Unable to change role for peer $0 in config for "
+                "tablet $1. Peer has an invalid member type $2",
+                peer_pb.permanent_uuid(), tablet_id(), PeerMemberType_Name(peer_pb.member_type())));
+    }
+    LOG(FATAL) << "Unexpected peer member type " << PeerMemberType_Name(peer_pb.member_type());
+  }
+  return STATUS(
+      IllegalState,
+      Substitute("Unable to find peer $0 in config for tablet $1", requestor_uuid, tablet_id()));
 }
 
 void TabletPeer::PollWaitQueue() const {
