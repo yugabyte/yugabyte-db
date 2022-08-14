@@ -462,9 +462,34 @@ nginxHttps:
 # Yba-installer installation (defaults to false, so both
 # critical and warning checks are performed in the normal case)
 preflight:
-   overrideWarning: true
+   overrideWarning: false
 
 # For random entries that might be pulled in to platform.conf
 # (No JSON schema validation needed here as the format is not
 # fixed).
 random:
+
+# Edit this file if you are bringing in your
+# own version of Python to the Yugabyte
+# Platform Installation. Make sure you specify
+# all the required fields correctly, and specify
+# bringOwn = true (default false).
+postgres:
+   bringOwn: false
+   dataPath: "/var/lib/pgsql/11/data/"
+   postmasterPath: "/usr/pgsql-11/bin/postmaster"
+   version: "11"
+   port: "5432"
+   pgHbaConf: "/var/lib/pgsql/11/data/pg_hba.conf"
+   postgresConf: "/var/lib/pgsql/11/data/postgresql.conf"
+   systemdLocation : "/usr/lib/systemd/system/postgresql-11.service"
+
+# Edit this file if you are bringing in your
+# own version of Python to the Yugabyte
+# Platform Installation. Make sure you specify
+# all the required fields correctly, and specify
+# bringOwn = true (default false).
+python:
+   bringOwn: false
+   path: "/usr/bin/python3"
+   version: 3.6

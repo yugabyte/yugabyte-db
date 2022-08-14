@@ -65,25 +65,7 @@
          "configurable!")
     }
 
-    fileName := ""
-
-    if strings.Contains(service, "preflight") {
-
-        fileName = "yba-installer-input-preflight.yml"
-
-    } else if strings.Contains(service, "prometheus") {
-
-        fileName = "yba-installer-input-prometheus.yml"
-
-    } else if strings.Contains(service, "platform") {
-
-        fileName = "yba-installer-input-platform.yml"
-
-    } else if strings.Contains(service, "nginx") {
-
-        fileName = "yba-installer-input-nginx.yml"
-
-    }
+    fileName := "yba-installer-input.yml"
 
     data, _ := ioutil.ReadFile(fileName)
     var inputYml map[string]interface{}

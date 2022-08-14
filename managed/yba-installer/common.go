@@ -10,6 +10,8 @@ import (
    "github.com/hashicorp/go-version"
    "os"
    "strings"
+   "strconv"
+   "log"
 )
 
 // Common (general setup operations)
@@ -67,9 +69,19 @@ func (com Common) Upgrade() {
 }
 
 func installPrerequisites() {
-   YumInstall([]string{"python3"})
+   var bringOwnPython, errPython = strconv.ParseBool(getYamlPathData(".python.bringOwn"))
+
+   if errPython != nil {
+       log.Fatal("Please set python.BringOwn to either true or false!")
+   }
+
+   if !bringOwnPython {
+      YumInstall([]string{"python3"})
+   }
    YumInstall([]string{"--enablerepo=extras", "epel-release"})
-   YumInstall([]string{"python3-pip"})
+   if !bringOwnPython {
+      YumInstall([]string{"python3-pip"})
+   }
    YumInstall([]string{"java-1.8.0-openjdk", "java-1.8.0-openjdk-devel"})
    FirewallCmdEnable([]string{"--add-port=22/tcp"})
    FirewallCmdEnable([]string{"--add-port=80/tcp"})

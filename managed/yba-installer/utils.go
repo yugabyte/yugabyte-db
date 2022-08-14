@@ -207,10 +207,10 @@ func GenerateRandomBytes(n int) ([]byte, error) {
     return b, nil
 }
 
-func GenerateRandomStringURLSafe(n int) (string, error) {
+func GenerateRandomStringURLSafe(n int) (string) {
 
-    b, err := GenerateRandomBytes(n)
-    return base64.URLEncoding.EncodeToString(b), err
+    b, _ := GenerateRandomBytes(n)
+    return base64.URLEncoding.EncodeToString(b)
 }
 
 func ReplaceTextGolang(fileName string, textToReplace string, textToReplaceWith string) {
@@ -273,9 +273,11 @@ func GenerateCORSOrigin() string {
 
     command0 := "bash"
     args0 := []string{"-c", "ip route get 1.2.3.4 | awk '{print $7}'"}
-    CORSOriginIP, _ := ExecuteBashCommand(command0, args0)
-    CORSOrigin := "https://" + strings.TrimSuffix(CORSOriginIP, "\n") + ""
-    return CORSOrigin
+    cmd := exec.Command(command0, args0...)
+    cmd.Stderr = os.Stderr
+    CORSOriginIP, _ := cmd.Output()
+    CORSOrigin := "https://" + strings.TrimSuffix(string(CORSOriginIP), "\n") + ""
+    return strings.TrimSuffix(strings.ReplaceAll(CORSOrigin, " ", ""), "\n")
 }
 
 func WriteToWhitelist(command string, args []string) {
