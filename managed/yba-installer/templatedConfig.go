@@ -105,7 +105,7 @@ func getYamlPathData(text string) (string) {
         err = path.Read(bytes.NewReader(inputYml), &val)
         if strings.Contains(pathString, "platformDbPassword") && val == "" {
         return randomDbPassword
-    }
+       }
     return val
     }
 }
