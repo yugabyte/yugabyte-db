@@ -17,7 +17,6 @@ type Nginx struct {
     ServerName         string
     ServerKeyLocation  string
     ServerCertLocation string
-    PlatformVersion    string
 }
 
 // SetUpPrereqs performs the setup operations specific
@@ -45,8 +44,6 @@ func (ngi Nginx) Start() {
     arg1 := []string{"daemon-reload"}
     ExecuteBashCommand(command1, arg1)
 
-    GenerateTemplatedConfiguration(ngi.PlatformVersion, ngi.Mode)
-
     command2 := "systemctl"
     arg2 := []string{"start", "nginx"}
     ExecuteBashCommand(command2, arg2)
@@ -59,8 +56,6 @@ func (ngi Nginx) Start() {
 // Stop performs the stop operations specific to Nginx.
 func (ngi Nginx) Stop() {
 
-    GenerateTemplatedConfiguration(ngi.PlatformVersion, ngi.Mode)
-
     command1 := "systemctl"
     arg1 := []string{"stop", "nginx"}
     ExecuteBashCommand(command1, arg1)
@@ -68,8 +63,6 @@ func (ngi Nginx) Stop() {
 
 // Restart performs the restart operations specific to Nginx.
 func (ngi Nginx) Restart() {
-
-    GenerateTemplatedConfiguration(ngi.PlatformVersion, ngi.Mode)
 
     command1 := "systemctl"
     arg1 := []string{"restart", "nginx"}
