@@ -129,7 +129,8 @@ class RemoteBootstrapServiceTest : public RemoteBootstrapTest {
     CheckRemoteBootstrapSessionActiveRequestPB req;
     req.set_session_id(session_id);
     return UnwindRemoteError(
-        remote_bootstrap_proxy_->CheckSessionActive(req, resp, controller), controller);
+        remote_bootstrap_proxy_->CheckRemoteBootstrapSessionActive(req, resp, controller),
+        controller);
   }
 
   Status DoFetchData(const string& session_id, const DataIdPB& data_id,

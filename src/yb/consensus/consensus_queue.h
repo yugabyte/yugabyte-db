@@ -43,7 +43,9 @@
 
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/hybrid_time.h"
+#include "yb/common/placement_info.h"
 
+#include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/log_cache.h"
 #include "yb/consensus/opid_util.h"
@@ -110,10 +112,24 @@ struct FollowerWatermark {
 class PeerMessageQueue {
  public:
   struct TrackedPeer {
-    explicit TrackedPeer(std::string uuid)
-        : uuid(std::move(uuid)),
+    explicit TrackedPeer(const std::string& uuid)
+        : uuid(uuid),
           last_known_committed_idx(OpId::Min().index),
           last_successful_communication_time(MonoTime::Now()) {}
+
+    explicit TrackedPeer(const RaftPeerPB& raft_peer_pb)
+        : uuid(raft_peer_pb.permanent_uuid()),
+          last_known_committed_idx(OpId::Min().index),
+          last_successful_communication_time(MonoTime::Now()) {
+      cloud_info = raft_peer_pb.cloud_info();
+      last_known_private_addr = std::vector<HostPortPB>(
+          raft_peer_pb.last_known_private_addr().begin(),
+          raft_peer_pb.last_known_private_addr().end());
+
+      last_known_broadcast_addr = std::vector<HostPortPB>(
+          raft_peer_pb.last_known_broadcast_addr().begin(),
+          raft_peer_pb.last_known_broadcast_addr().end());
+    }
 
     // Check that the terms seen from a given peer only increase monotonically.
     void CheckMonotonicTerms(int64_t term) {
@@ -173,10 +189,20 @@ class PeerMessageQueue {
     // Whether the follower was detected to need remote bootstrap.
     bool needs_remote_bootstrap = false;
 
+    // #Attempts of bootstrapping from closest non-leader peer.
+    // We revert to bootstrapping from leader post 5 failed attempts.
+    uint64_t bootstrap_attempts_from_non_leader = 0;
+
     // Member type of this peer in the config.
     PeerMemberType member_type = PeerMemberType::UNKNOWN_MEMBER_TYPE;
 
     uint64_t num_sst_files = 0;
+
+    std::optional<CloudInfoPB> cloud_info;
+
+    std::vector<HostPortPB> last_known_private_addr;
+
+    std::vector<HostPortPB> last_known_broadcast_addr;
 
    private:
     // The last term we saw from a given peer.
@@ -221,6 +247,8 @@ class PeerMessageQueue {
 
   // Makes the queue track this peer.
   virtual void TrackPeer(const std::string& peer_uuid);
+
+  virtual void TrackPeer(const RaftPeerPB& raft_peer_pb);
 
   // Makes the queue untrack this peer.
   virtual void UntrackPeer(const std::string& peer_uuid);
@@ -278,6 +306,11 @@ class PeerMessageQueue {
   Status GetRemoteBootstrapRequestForPeer(
       const std::string& uuid,
       StartRemoteBootstrapRequestPB* req);
+
+  // Scans the peers_map_ and returns a pointer to the closest peer for the passed remote peer.
+  // Reutrns NULL if all tracked peers in the peers_map_ don't have CloudInfoPB specified.
+  const TrackedPeer* FindClosestPeerForBootstrap(const TrackedPeer* remote_tracked_peer)
+      REQUIRES(queue_lock_);
 
   // Update the last successful communication timestamp for the given peer to the current time. This
   // should be called when a non-network related error is received from the peer, indicating that it
@@ -482,7 +515,13 @@ class PeerMessageQueue {
   // is empty.
   const OpIdPB& GetLastOp() const;
 
+  // Does the setup work required after adding a new tracked peer.
+  TrackedPeer* SetupNewTrackedPeerUnlocked(
+      std::unique_ptr<PeerMessageQueue::TrackedPeer> tracked_peer);
+
   TrackedPeer* TrackPeerUnlocked(const std::string& uuid);
+
+  TrackedPeer* TrackPeerUnlocked(const RaftPeerPB& raft_peer_pb);
 
   // Checks that if the queue is in LEADER mode then all registered peers are in the active config.
   // Crashes with a FATAL log message if this invariant does not hold. If the queue is in NON_LEADER
