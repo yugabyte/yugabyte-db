@@ -76,7 +76,11 @@ Select a fault tolerance for the regions. Fault tolerance determines how resilie
 
 ![Add Cluster Wizard - Primary region and size](/images/yb-cloud/cloud-addcluster-partition.png)
 
-**Regions** - For each region, choose the [region](../../../release-notes#cloud-provider-regions) where the nodes will be located, and the VPC in which to deploy the nodes. Choose the number of nodes to deploy in the regions; each region has the same number of nodes. Only VPCs using the selected cloud provider are listed. The VPCs must be created before deploying the cluster. Refer to [VPC networking](../../cloud-vpcs/).
+**Regions** - For each region, choose the following:
+
+- the [region](../../../release-notes#cloud-provider-regions) where the nodes will be located.
+- the VPC in which to deploy the nodes. Only VPCs using the selected cloud provider and available in the selected region are listed. For multi-region GCP clusters, the same VPC is used for all regions. VPCs must be created before deploying the cluster. Refer to [VPC networking](../../cloud-vpcs/).
+- the number of nodes to deploy in the regions; each region has the same number of nodes.
 
 To add additional regions to the cluster, click **Add Region**.
 

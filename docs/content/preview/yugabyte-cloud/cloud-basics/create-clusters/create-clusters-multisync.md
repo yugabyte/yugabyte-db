@@ -66,7 +66,11 @@ Set **Data distribution** to **Replicate across regions**.
 
 ![Add Cluster Wizard - Multi-region and size](/images/yb-cloud/cloud-addcluster-multisync.png)
 
-**Regions** - For each of the 3 regions, choose the [region](../../../release-notes#cloud-provider-regions) where the nodes will be located, and the VPC in which to deploy the nodes. Choose the number of nodes to deploy in the regions; each region has the same number of nodes. Only VPCs using the selected cloud provider are listed. The VPCs must be created before deploying the cluster. Refer to [VPC networking](../../cloud-vpcs/).
+**Regions** - For each region, choose the following:
+
+- the [region](../../../release-notes#cloud-provider-regions) where the nodes will be located.
+- the VPC in which to deploy the nodes. Only VPCs using the selected cloud provider and available in the selected region are listed. For multi-region GCP clusters, the same VPC is used for all regions. VPCs must be created before deploying the cluster. Refer to [VPC networking](../../cloud-vpcs/).
+- the number of nodes to deploy in the regions; each region has the same number of nodes.
 
 **Node size** - enter the number of virtual CPUs per node and the disk size per node (in GB).
 

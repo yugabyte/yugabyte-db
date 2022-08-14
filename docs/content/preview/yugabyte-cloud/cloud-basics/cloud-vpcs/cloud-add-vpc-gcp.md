@@ -87,7 +87,7 @@ To deploy a cluster in a VPC:
 1. Choose **Dedicated**.
 1. Enter a name for the cluster, choose **GCP**, and click **Next**.
 1. For a **Single-Region Deployment**, choose the region where the VPC is deployed, and under **Configure VPC**, choose **Deploy this cluster in a dedicated VPC**, and select your VPC.<br><br>
-For a **Multi-Region Deployment**, specify a VPC for each region.
+For a **Multi-Region Deployment**, select a region where the cluster is to be deployed, then select the VPC. The same VPC is used for all regions.
 
 For more information on creating clusters, refer to [Create a cluster](../../create-clusters/).
 

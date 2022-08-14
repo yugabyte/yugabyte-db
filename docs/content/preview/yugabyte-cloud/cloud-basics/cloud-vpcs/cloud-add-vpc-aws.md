@@ -54,7 +54,7 @@ For information on VPC network peering in AWS, refer to [VPC Peering](https://do
 
 To avoid cross-region data transfer costs, deploy your VPC in the same region as the application VPC you are peering with.
 
-If you intend to deploy a multi-region cluster, you need to create a VPC for each region.
+If you intend to deploy a multi-region cluster, you need to create a separate VPC for each region.
 
 > **What you need**<br>The CIDR range for the application VPC with which you want to peer, as _the addresses can't overlap_.
 >
@@ -67,7 +67,7 @@ To create a VPC, do the following:
 1. Enter a name for the VPC.
 1. Choose the provider (AWS).
 1. Select the region. Typically, the same region that hosts the VPC with which you want to peer.
-1. [Specify the CIDR address](../cloud-vpc-intro/#set-the-cidr-and-size-your-vpc). Ensure the address _does not overlap_ with that of the application VPC.
+1. [Specify the CIDR address](../cloud-vpc-intro/#set-the-cidr-and-size-your-vpc). Ensure the address _does not overlap_ with that of the application VPC. The address should also not overlap with the VPCs that will be used in the other regions of a multi-region cluster.
 1. Click **Save**.
 
 YugabyteDB Managed adds the VPC to the VPCs list with a status of _Creating_. If successful, after a minute or two, the status will change to _Active_.
@@ -84,7 +84,7 @@ To deploy a cluster in a VPC:
 1. Choose **Dedicated**.
 1. Enter a name for the cluster, choose **AWS**, and click **Next**.
 1. For a **Single-Region Deployment**, choose the region where the VPC is deployed, and under **Configure VPC**, choose **Deploy this cluster in a dedicated VPC**, and select your VPC.<br><br>
-For a **Multi-Region Deployment**, specify a VPC for each region.
+For a **Multi-Region Deployment**, select each region and its corresponding VPC.
 
 For more information on creating clusters, refer to [Create a cluster](../../create-clusters/).
 
