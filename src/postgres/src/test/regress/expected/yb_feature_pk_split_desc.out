@@ -170,12 +170,12 @@ SELECT COUNT(*) FROM feature_pk_split_desc;
 (1 row)
 
 EXPLAIN SELECT MAX(col_integer) FROM feature_pk_split_desc;
-                                                        QUERY PLAN
----------------------------------------------------------------------------------------------------------------------------
- Result  (cost=0.11..0.12 rows=1 width=4)
+                                                       QUERY PLAN
+-------------------------------------------------------------------------------------------------------------------------
+ Result  (cost=0.15..0.16 rows=1 width=4)
    InitPlan 1 (returns $0)
-     ->  Limit  (cost=0.00..0.11 rows=1 width=4)
-           ->  Index Scan using feature_pk_split_desc_pkey on feature_pk_split_desc  (cost=0.00..114.00 rows=1000 width=4)
+     ->  Limit  (cost=0.00..0.15 rows=1 width=4)
+           ->  Index Scan using feature_pk_split_desc_pkey on feature_pk_split_desc  (cost=0.00..15.00 rows=100 width=4)
                  Index Cond: (col_integer IS NOT NULL)
 (5 rows)
 
