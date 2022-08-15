@@ -34,7 +34,7 @@
     runInitDB()
     pg.Start()
     createYugawareDatabase()
-    editPgHbaConfFile(pg.ConfFileLocation[0])
+    pg.editPgHbaConfFile(pg.ConfFileLocation[0])
  }
 
  func (pg Postgres) Start() {
@@ -140,34 +140,25 @@
 
  }
 
- func editPgHbaConfFile(pgHbaConfLocation string) {
+ func (pg Postgres) editPgHbaConfFile(pgHbaConfLocation string) {
 
-    splitPgHbaConf := strings.Split(pgHbaConfLocation, "/")
-    lengthSplitPgHbaConf := len(splitPgHbaConf)
-    joinedHbaConf := strings.Join(splitPgHbaConf[0:lengthSplitPgHbaConf-1], "/")
-    directory_hba_conf := strings.ReplaceAll(joinedHbaConf, " ", "") + "/"
-    joinedHbaConfFile := strings.Join(splitPgHbaConf[lengthSplitPgHbaConf-1:], "/")
-    file_hba_conf := strings.TrimSuffix(strings.ReplaceAll(joinedHbaConfFile, " ", ""), "\n")
-
-    os.Chdir(directory_hba_conf)
-
-    input1, err1 := ioutil.ReadFile(file_hba_conf)
+    input1, err1 := ioutil.ReadFile(pgHbaConfLocation)
     if err1 != nil {
         fmt.Println(err1)
     }
 
     output1 := bytes.Replace(input1, []byte("peer"), []byte("trust"), -1)
-    if err1 = ioutil.WriteFile(file_hba_conf, output1, 0666); err1 != nil {
+    if err1 = ioutil.WriteFile(pgHbaConfLocation, output1, 0666); err1 != nil {
         fmt.Println(err1)
     }
 
-    input2, err2 := ioutil.ReadFile(file_hba_conf)
+    input2, err2 := ioutil.ReadFile(pgHbaConfLocation)
     if err2 != nil {
         fmt.Println(err2)
     }
 
     output2 := bytes.Replace(input2, []byte("ident"), []byte("trust"), -1)
-    if err2 = ioutil.WriteFile(file_hba_conf, output2, 0666); err2 != nil {
+    if err2 = ioutil.WriteFile(pgHbaConfLocation, output2, 0666); err2 != nil {
         fmt.Println(err2)
     }
  }

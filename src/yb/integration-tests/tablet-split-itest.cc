@@ -2444,7 +2444,7 @@ TEST_F(TabletSplitExternalMiniClusterITest, FaultedSplitNodeRejectsRemoteBootstr
   req.set_dest_uuid(faulted_follower->uuid());
   // We put some bogus values for these next two required fields.
   req.set_tablet_id("::std::string &&value");
-  req.set_bootstrap_peer_uuid("abcdefg");
+  req.set_bootstrap_source_peer_uuid("abcdefg");
   consensus::StartRemoteBootstrapResponsePB resp;
   rpc::RpcController rpc;
   rpc.set_timeout(kRpcTimeout);

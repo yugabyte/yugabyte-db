@@ -212,6 +212,8 @@ class FsManager {
   // Return the path where ConsensusMetadataPB is stored.
   Result<std::string> GetConsensusMetadataPath(const std::string& tablet_id) const;
 
+  std::string GetAutoFlagsConfigPath() const EXCLUDES(auto_flag_mutex_);
+
   Env *env() { return env_; }
 
   bool read_only() const {
@@ -278,8 +280,6 @@ class FsManager {
                           const std::string& path,
                           const std::vector<std::string>& objects);
 
-  std::string TEST_GetAutoFlagsDataRoot() EXCLUDES(auto_flag_mutex_);
-
   Env *env_;
 
   // If false, operations that mutate on-disk state are prohibited.
@@ -308,7 +308,7 @@ class FsManager {
   std::unordered_map<std::string, std::string> tablet_id_to_path_ GUARDED_BY(data_mutex_);
   mutable std::mutex data_mutex_;
   mutable std::mutex auto_flag_mutex_;
-  std::string auto_flags_data_root_ GUARDED_BY(auto_flag_mutex_);
+  std::string auto_flags_config_path_ GUARDED_BY(auto_flag_mutex_);
 
   std::unique_ptr<InstanceMetadataPB> metadata_;
 

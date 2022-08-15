@@ -68,6 +68,18 @@ class PgCatalogPerfTest : public PgMiniTestBase {
     return STATUS(RuntimeError, "Unreachable statement");
   }
 
+  using AfterCacheRefreshFunctor = std::function<Status(PGConn*)>;
+  Result<uint64_t> RPCCountAfterCacheRefresh(const AfterCacheRefreshFunctor& functor) {
+    auto conn = VERIFY_RESULT(Connect());
+    RETURN_NOT_OK(conn.Execute("CREATE TABLE cache_refresh_trigger (k INT)"));
+    // Force version increment. Next new connection will do cache refresh on start.
+    RETURN_NOT_OK(conn.Execute("ALTER TABLE cache_refresh_trigger ADD COLUMN v INT"));
+    auto aux_conn = VERIFY_RESULT(Connect());
+    return read_rpc_watcher_->Delta([&functor, &aux_conn] {
+      return functor(&aux_conn);
+    });
+  }
+
   std::unique_ptr<HistogramMetricWatcher> read_rpc_watcher_;
 };
 
@@ -109,6 +121,29 @@ TEST_F(PgCatalogPerfTest, YB_DISABLE_TEST_IN_TSAN(CacheRefreshRPCCountWithPartit
   }
   const auto cache_refresh_rpc_count = ASSERT_RESULT(CacheRefreshRPCCount());
   ASSERT_EQ(cache_refresh_rpc_count, 7);
+}
+
+// Test checks number of RPC to a master caused by the first INSERT stmt into a table with primary
+// key after cache refresh.
+TEST_F(PgCatalogPerfTest, YB_DISABLE_TEST_IN_TSAN(AfterCacheRefreshRPCCountOnInsert)) {
+  auto aux_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(aux_conn.Execute("CREATE TABLE t (k INT PRIMARY KEY)"));
+  auto master_rpc_count_for_insert = ASSERT_RESULT(RPCCountAfterCacheRefresh([](PGConn* conn) {
+    return conn->Execute("INSERT INTO t VALUES(0)");
+  }));
+  ASSERT_EQ(master_rpc_count_for_insert, 1);
+}
+
+// Test checks number of RPC to a master caused by the first SELECT stmt from a table with primary
+// key after cache refresh.
+TEST_F(PgCatalogPerfTest, YB_DISABLE_TEST_IN_TSAN(AfterCacheRefreshRPCCountOnSelect)) {
+  auto aux_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(aux_conn.Execute("CREATE TABLE t (k INT PRIMARY KEY)"));
+  auto master_rpc_count_for_select = ASSERT_RESULT(RPCCountAfterCacheRefresh([](PGConn* conn) {
+    VERIFY_RESULT(conn->Fetch("SELECT * FROM t"));
+    return static_cast<Status>(Status::OK());
+  }));
+  ASSERT_EQ(master_rpc_count_for_select, 3);
 }
 
 } // namespace pgwrapper

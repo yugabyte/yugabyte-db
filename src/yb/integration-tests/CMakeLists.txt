@@ -43,6 +43,7 @@ YB_INCLUDE_EXTENSIONS()
 set(INTEGRATION_TESTS_SRCS
   cluster_itest_util.cc
   cluster_verifier.cc
+  create-table-itest-base.cc
   external_mini_cluster.cc
   external_mini_cluster_fs_inspector.cc
   load_balancer_test_util.cc

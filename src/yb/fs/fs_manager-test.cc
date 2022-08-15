@@ -317,14 +317,14 @@ TEST_F(FsManagerTestBase, AutoFlagsTest) {
   BlockIdPB msg;
   msg.set_id(123);
 
-  ASSERT_TRUE(fs_manager()->TEST_GetAutoFlagsDataRoot().empty());
+  ASSERT_TRUE(fs_manager()->GetAutoFlagsConfigPath().empty());
 
   // Verify read required before write
   ASSERT_NOK(fs_manager()->WriteAutoFlagsConfig(&msg));
   ASSERT_TRUE(fs_manager()->ReadAutoFlagsConfig(&msg).IsNotFound());
   ASSERT_TRUE(fs_manager()->ReadAutoFlagsConfig(&msg).IsNotFound());
 
-  string auto_flags_path = fs_manager()->TEST_GetAutoFlagsDataRoot();
+  string auto_flags_path = fs_manager()->GetAutoFlagsConfigPath();
   ASSERT_FALSE(auto_flags_path.empty());
 
   // Read should still fail with same error
@@ -332,7 +332,7 @@ TEST_F(FsManagerTestBase, AutoFlagsTest) {
 
   // Verify clean write
   ASSERT_OK(fs_manager()->WriteAutoFlagsConfig(&msg));
-  ASSERT_EQ(fs_manager()->TEST_GetAutoFlagsDataRoot(), auto_flags_path);
+  ASSERT_EQ(fs_manager()->GetAutoFlagsConfigPath(), auto_flags_path);
 
   // Verify failure mid write
   msg.set_id(456);
@@ -347,7 +347,11 @@ TEST_F(FsManagerTestBase, AutoFlagsTest) {
   ReinitFsManager(paths2, paths2);
   ASSERT_OK(fs_manager()->ReadAutoFlagsConfig(&msg));
   ASSERT_EQ(msg.id(), 123);
-  ASSERT_EQ(fs_manager()->TEST_GetAutoFlagsDataRoot(), auto_flags_path);
+  ASSERT_EQ(fs_manager()->GetAutoFlagsConfigPath(), auto_flags_path);
+
+  // Delete of file system should delete the config file
+  ASSERT_OK(fs_manager()->DeleteFileSystemLayout(ShouldDeleteLogs::kFalse));
+  ASSERT_FALSE(env_->FileExists(auto_flags_path));
 }
 
 class FsManagerTestDriveFault : public YBTest {

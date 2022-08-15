@@ -55,6 +55,7 @@
 
 #include "yb/common/index.h"
 #include "yb/common/redis_constants_common.h"
+#include "yb/common/placement_info.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
 
@@ -371,7 +372,7 @@ RemoteTabletServer* YBClient::Data::SelectTServer(RemoteTablet* rt,
         }
       } else if (selection == CLOSEST_REPLICA) {
         // Choose the closest replica.
-        internal::LocalityLevel best_locality_level = internal::LocalityLevel::kNone;
+        LocalityLevel best_locality_level = LocalityLevel::kNone;
         for (RemoteTabletServer* rts : filtered) {
           if (IsTabletServerLocal(*rts)) {
             ret = rts;

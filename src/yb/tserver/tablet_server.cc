@@ -407,7 +407,8 @@ Status TabletServer::RegisterServices() {
 
   std::unique_ptr<ServiceIf> remote_bootstrap_service =
       std::make_unique<RemoteBootstrapServiceImpl>(
-          fs_manager_.get(), tablet_manager_.get(), metric_entity());
+          fs_manager_.get(), tablet_manager_.get(), metric_entity(), this->MakeCloudInfoPB(),
+          &this->proxy_cache());
   LOG(INFO) << "yb::tserver::RemoteBootstrapServiceImpl created at " <<
     remote_bootstrap_service.get();
   RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_ts_remote_bootstrap_svc_queue_length,

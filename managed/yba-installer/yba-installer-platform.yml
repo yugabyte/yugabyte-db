@@ -5,15 +5,15 @@ services:
     contents: |
       include classpath("application.common.conf")
 
-      play.crypto.secret={{ .PlatformOldConfAppSecret }}
+      play.crypto.secret="{{ yamlPath ".platformOldConfig.appSecret" }}"
 
       play.i18n.langs = [ "en" ]
       pidfile.path = "/dev/null"
       db {
         default.url="jdbc:postgresql://127.0.0.1:5432/yugaware"
         default.driver=org.postgresql.Driver
-        default.username={{ .PlatformOldConfDbUser }}
-        default.password={{ .PlatformOldConfDbPassword }}
+        default.username="{{ yamlPath ".platformOldConfig.platformDbUser" }}"
+        default.password="{{ yamlPath ".platformOldConfig.platformDbPassword" }}"
         default.logStatements=true
         default.migration.initOnMigrate=true
         default.migration.auto=true
@@ -26,9 +26,9 @@ services:
       play.modules.enabled += "org.flywaydb.play.PlayModule"
 
       yb {
-        devops.home = {{ .PlatformOldConfDevopsHome }}
-        swamper.targetPath = {{ .PlatformOldConfSwamperTargetPath }}
-        metrics.url = {{ .PlatformOldConfMetricsUrl }}
+        devops.home = "{{ yamlPath ".platformOldConfig.devopsHome" }}"
+        swamper.targetPath = "{{ yamlPath ".platformOldConfig.swamperTargetPath" }}"
+        metrics.url = "{{ yamlPath ".platformOldConfig.metricsUrl" }}"
         storage.path = /opt/yugabyte/data
         seedData = false
         multiTenant = false
@@ -41,25 +41,25 @@ services:
         health.status_interval_ms = 43200000
         # If SSO needs to be enabled on the platform.
         security.use_oauth = false
-        security.use_oauth = {{ .PlatformOldConfUseOauth }}
+        security.use_oauth = "{{ yamlPath ".platformOldConfig.useOauth" }}"
         security.type = ""
         # Override in case SECURITY_TYPE is set.
-        security.type = {{ .PlatformOldConfYbSecurityType }}
+        security.type = "{{ yamlPath ".platformOldConfig.ybSecurityType" }}"
         security.clientID = ""
-        security.clientID = {{ .PlatformOldConfYbOidcClientId }}
+        security.clientID = "{{ yamlPath ".platformOldConfig.ybOidcClientId" }}"
         security.secret = ""
-        security.secret = {{ .PlatformOldConfYbOidcSecret }}
+        security.secret = "{{ yamlPath ".platformOldConfig.ybOidcSecret" }}"
         security.discoveryURI = ""
-        security.discoveryURI = {{ .PlatformOldConfYbOidcDiscoveryUri }}
+        security.discoveryURI = "{{ yamlPath ".platformOldConfig.ybOidcDiscoveryUri" }}"
         security.oidcScope = ""
-        security.oidcScope = {{ .PlatformOldConfYbOidcScope }}
+        security.oidcScope = "{{ yamlPath ".platformOldConfig.ybOidcScope" }}"
         security.oidcEmailAttribute = ""
-        security.oidcEmailAttribute = {{ .PlatformOldConfYbOidcEmailAttr }}
+        security.oidcEmailAttribute = "{{ yamlPath ".platformOldConfig.ybOidcEmailAttr" }}"
         taskGC.gc_check_interval = 1 day
         taskGC.task_retention_duration = 30 days
         # The IP of the platform.
         url = ""
-        url = {{ .PlatformOldConfYwUrl }}
+        url = "{{ yamlPath ".platformOldConfig.ywUrl" }}"
       }
 
       play.filters {
@@ -82,7 +82,7 @@ services:
         }
         cors {
           pathPrefixes = ["/"]
-          allowedOrigins =  [{{ .PlatformOldConfCorsOrigin }}]
+          allowedOrigins =  ["{{ yamlPath ".platformOldConfig.corsOrigin" }}"]
           supportsCredentials=true
           allowedHttpMethods = ["GET", "POST", "PUT", "OPTIONS", "DELETE"]
           allowedHttpHeaders = [
@@ -99,7 +99,98 @@ services:
   - name: platformNewConfig
     fileName: /opt/yugabyte/platform.conf
     contents: |
-      include classpath("application.yugabundle.conf")
+      include classpath("application.common.conf")
+
+      play.crypto.secret="{{ yamlPath ".platformNewConfig.appSecret" }}"
+      play.http.errorHandler = "com.yugabyte.yw.common.YWErrorHandler"
+
+      play.i18n.langs = [ "en" ]
+      pidfile.path = "/dev/null"
+      db {
+        default.url="jdbc:postgresql://127.0.0.1:5432/yugaware"
+        default.driver=org.postgresql.Driver
+        default.username="{{ yamlPath ".platformNewConfig.platformDbUser" }}"
+        default.password="{{ yamlPath ".platformNewConfig.platformDbPassword" }}"
+        default.logStatements=true
+        default.migration.initOnMigrate=true
+        default.migration.auto=true
+      }
+      ebean {
+        default = ["com.yugabyte.yw.models.*"]
+      }
+
+      yb {
+        devops.home = "{{ yamlPath ".platformNewConfig.devopsHome" }}"
+        swamper.targetPath = "{{ yamlPath ".platformNewConfig.swamperTargetPath" }}"
+        swamper.rulesPath = "{{ yamlPath ".platformNewConfig.swamperRulesPath" }}"
+        metrics.url = "{{ yamlPath ".platformNewConfig.metricsUrl" }}"
+        metrics.management.url = "{{ yamlPath ".platformNewConfig.metricsManagementUrl" }}"
+        storage.path = /opt/yugabyte/data
+        seedData = false
+        multiTenant = false
+        releases.path = "/opt/yugabyte/releases"
+        thirdparty.packagePath = /opt/yugabyte/third-party
+
+        # Interval at which to check the status of every universe. Default: 5 minutes.
+        health.check_interval_ms = 300000
+        # Interval at which to send a status report email. Default: 12 hours.
+        health.status_interval_ms = 43200000
+        # If SSO needs to be enabled on the platform.
+        security.use_oauth = false
+        security.use_oauth = "{{ yamlPath ".platformNewConfig.useOauth" }}"
+        security.type = ""
+        # Override in case SECURITY_TYPE is set.
+        security.type = "{{ yamlPath ".platformNewConfig.ybSecurityType" }}"
+        security.clientID = ""
+        security.clientID = "{{ yamlPath ".platformNewConfig.ybOidcClientId" }}"
+        security.secret = ""
+        security.secret = "{{ yamlPath ".platformNewConfig.ybOidcSecret" }}"
+        security.discoveryURI = ""
+        security.discoveryURI = "{{ yamlPath ".platformNewConfig.ybOidcDiscoveryUri" }}"
+        security.oidcScope = ""
+        security.oidcScope = "{{ yamlPath ".platformNewConfig.ybOidcScope" }}"
+        security.oidcEmailAttribute = ""
+        security.oidcEmailAttribute = "{{ yamlPath ".platformNewConfig.ybOidcEmailAttr" }}"
+        taskGC.gc_check_interval = 1 day
+        taskGC.task_retention_duration = 30 days
+        # The IP of the platform.
+        url = ""
+        url = "{{ yamlPath ".platformNewConfig.ywUrl" }}"
+      }
+
+      play.filters {
+        # CSRF config
+        csrf {
+          cookie {
+            # If non null, the CSRF token will be placed in a cookie with this name
+            name = "csrfCookie"
+            # Whether the cookie should be set to secure
+            secure = false
+            # Whether the cookie should have the HTTP only flag set
+            httpOnly = false
+          }
+          # Whether to bypass CSRF check if CORS check is satisfied
+          bypassCorsTrustedOrigins = false
+          header {
+            # The name of the header to accept CSRF tokens from.
+            name = "Csrf-Token"
+          }
+        }
+        cors {
+          pathPrefixes = ["/"]
+          allowedOrigins =  ["{{ yamlPath ".platformNewConfig.corsOrigin" }}"]
+          supportsCredentials=true
+          allowedHttpMethods = ["GET", "POST", "PUT", "OPTIONS", "DELETE"]
+          allowedHttpHeaders = [
+            "Accept",
+            "Origin",
+            "Content-Type",
+            "X-Auth-Token",
+            "X-AUTH-YW-API-TOKEN",
+            ${play.filters.csrf.header.name}
+          ]
+        }
+      }
 
   - name: platformOldService
     fileName: /etc/systemd/system/yb-platform.service
@@ -114,21 +205,21 @@ services:
       Group=yugabyte
       Type=simple
 
-      Environment="PLATFORM_APP_SECRET={{ .PlatformOldServiceAppSecret }}"
-      Environment="CORS_ORIGIN={{ .PlatformOldServiceCorsOrigin }}"
+      Environment="PLATFORM_APP_SECRET={{ yamlPath ".platformOldService.appSecret" }}"
+      Environment="CORS_ORIGIN={{ yamlPath ".platformOldService.corsOrigin" }}"
       Environment="DEVOPS_HOME=/opt/yugabyte/devops"
       Environment="METRICS_URL=http://127.0.0.1:9090/api/v1"
       Environment="SWAMPER_TARGET_PATH=/opt/yugabyte/swamper_targets"
-      Environment="PLATFORM_DB_USER=postgres"
-      Environment="PLATFORM_DB_PASSWORD="
-      Environment="USE_OAUTH={{ .PlatformOldServiceUseOauth }}"
-      Environment="YB_SECURITY_TYPE={{ .PlatformOldServiceYbSecurityType }}"
-      Environment="YB_OIDC_CLIENT_ID={{ .PlatformOldServiceYbOidcClientId }}"
-      Environment="YB_OIDC_SECRET={{ .PlatformOldServiceYbOidcSecret }}"
-      Environment="YB_OIDC_DISCOVERY_URI={{ .PlatformOldServiceYbOidcDiscoveryUri }}"
-      Environment="YW_URL={{ .PlatformOldServiceYwUrl }}"
-      Environment="YB_OIDC_SCOPE={{ .PlatformOldServiceYbOidcScope }}"
-      Environment="YB_OIDC_EMAIL_ATTR={{ .PlatformOldServiceYbOidcEmailAttr }}"
+      Environment="PLATFORM_DB_USER={{ yamlPath ".platformOldService.platformDbUser" }}"
+      Environment="PLATFORM_DB_PASSWORD={{ yamlPath ".platformOldService.platformDbPassword" }}"
+      Environment="USE_OAUTH={{ yamlPath ".platformOldService.useOauth" }}"
+      Environment="YB_SECURITY_TYPE={{ yamlPath ".platformOldService.ybSecurityType" }}"
+      Environment="YB_OIDC_CLIENT_ID={{ yamlPath ".platformOldService.ybOidcClientId" }}"
+      Environment="YB_OIDC_SECRET={{ yamlPath ".platformOldService.ybOidcSecret" }}"
+      Environment="YB_OIDC_DISCOVERY_URI={{ yamlPath ".platformOldService.ybOidcDiscoveryUri" }}"
+      Environment="YW_URL={{ yamlPath ".platformOldService.ywUrl" }}"
+      Environment="YB_OIDC_SCOPE={{ yamlPath ".platformOldService.ybOidcScope" }}"
+      Environment="YB_OIDC_EMAIL_ATTR={{ yamlPath ".platformOldService.ybOidcEmailAttr" }}"
 
       ExecStart=/opt/yugabyte/yugaware/bin/yugaware -Dconfig.file=/opt/yugabyte/platform.conf
 
@@ -148,23 +239,23 @@ services:
       Group=yugabyte
       Type=simple
 
-      Environment="PLATFORM_APP_SECRET={{ .PlatformNewServiceAppSecret }}"
-      Environment="CORS_ORIGIN={{ .PlatformNewServiceCorsOrigin }}"
+      Environment="PLATFORM_APP_SECRET={{ yamlPath ".platformNewService.appSecret" }}"
+      Environment="CORS_ORIGIN={{ yamlPath ".platformNewService.corsOrigin" }}"
       Environment="DEVOPS_HOME=/opt/yugabyte/devops"
       Environment="METRICS_URL=http://127.0.0.1:9090/api/v1"
       Environment="METRICS_MANAGEMENT_URL=http://127.0.0.1:9090/-"
       Environment="SWAMPER_TARGET_PATH=/opt/yugabyte/swamper_targets"
       Environment="SWAMPER_RULES_PATH=/opt/yugabyte/swamper_rules"
-      Environment="PLATFORM_DB_USER=postgres"
-      Environment="PLATFORM_DB_PASSWORD="
-      Environment="USE_OAUTH={{ .PlatformNewServiceUseOauth }}"
-      Environment="YB_SECURITY_TYPE={{ .PlatformNewServiceYbSecurityType }}"
-      Environment="YB_OIDC_CLIENT_ID={{ .PlatformNewServiceYbOidcClientId }}"
-      Environment="YB_OIDC_SECRET={{ .PlatformNewServiceYbOidcSecret }}"
-      Environment="YB_OIDC_DISCOVERY_URI={{ .PlatformNewServiceYbOidcDiscoveryUri }}"
-      Environment="YW_URL={{ .PlatformNewServiceYwUrl }}"
-      Environment="YB_OIDC_SCOPE={{ .PlatformNewServiceYbOidcScope }}"
-      Environment="YB_OIDC_EMAIL_ATTR={{ .PlatformNewServiceYbOidcEmailAttr }}"
+      Environment="PLATFORM_DB_USER={{ yamlPath ".platformNewService.platformDbUser" }}"
+      Environment="PLATFORM_DB_PASSWORD={{ yamlPath ".platformNewService.platformDbPassword" }}"
+      Environment="USE_OAUTH={{ yamlPath ".platformNewService.useOauth" }}"
+      Environment="YB_SECURITY_TYPE={{ yamlPath ".platformNewService.ybSecurityType" }}"
+      Environment="YB_OIDC_CLIENT_ID={{ yamlPath ".platformNewService.ybOidcClientId" }}"
+      Environment="YB_OIDC_SECRET={{ yamlPath ".platformNewService.ybOidcSecret" }}"
+      Environment="YB_OIDC_DISCOVERY_URI={{ yamlPath ".platformNewService.ybOidcDiscoveryUri" }}"
+      Environment="YW_URL={{ yamlPath ".platformNewService.ywUrl" }}"
+      Environment="YB_OIDC_SCOPE={{ yamlPath ".platformNewService.ybOidcScope" }}"
+      Environment="YB_OIDC_EMAIL_ATTR={{ yamlPath ".platformNewService.ybOidcEmailAttr" }}"
 
       ExecStart=/opt/yugabyte/yugaware/bin/yugaware -Dconfig.file=/opt/yugabyte/platform.conf
 
