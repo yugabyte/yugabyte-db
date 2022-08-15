@@ -37,9 +37,20 @@ type: docs
 
 </ul>
 
+The following tutorial describes how to build a Java application using the YugabyteDB Spark Connector for YCQL, and perform YCQL queries.
+
+## Prerequisites
+
+This tutorial assumes that you have:
+
+- YugabyteDB running. If you are new to YugabyteDB, follow the steps in [Quick start](../../../quick-start/).
+- Java Development Kit (JDK) 1.8. JDK installers for Linux and macOS can be downloaded from [OpenJDK](http://jdk.java.net/), [AdoptOpenJDK](https://adoptopenjdk.net/), or [Azul Systems](https://www.azul.com/downloads/zulu-community/). Homebrew users on macOS can install using `brew install AdoptOpenJDK/openjdk/adoptopenjdk8`.
+- [Apache Spark 3.3.0](https://spark.apache.org/downloads.html).
+- [Apache Maven 3.3](https://maven.apache.org/index.html) or later.
+
 ## Setting Up a Project with Maven
 
-To build a Java application using the YugabyteDB Spark Connector for YCQL, add the following to your `pom.xml` file for Scala 2.12:
+Add the following to your `pom.xml` file for Scala 2.12:
 
 ```xml
 <dependency>

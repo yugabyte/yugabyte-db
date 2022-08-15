@@ -41,7 +41,7 @@ type: docs
 
 </ul>
 
-The following tutorial describes how to use [Apache Spark](https://spark.apache.org/) in a Java application with YugabyteDB.
+The following tutorial describes how to use [Apache Spark](https://spark.apache.org/) in a Java program with YugabyteDB to read and write data using the YugabyteDB JDBC driver.
 
 ## Prerequisites
 
@@ -166,8 +166,12 @@ Create the database and table you will read and write to as follows:
             */
 
            /*
-           Renaming the column of the table "test", from "ceil" to "round_off" in the dataframe and create a new table with the schema of the changed dataframe and insert all its data in the new table, name it as test_copy though the jdbc connector.
+           Renaming the column of the table "test", from "ceil" to "round_off"
+           in the dataframe and create a new table with the schema of the
+           changed dataframe and insert all its data in the new table, name
+           it as test_copy though the jdbc connector.
            */
+
            df_test.createOrReplaceTempView("test");
            spark.table("test")
                    .withColumnRenamed("ceil", "round_off")
@@ -189,21 +193,26 @@ Create the database and table you will read and write to as follows:
            */
 
            /*
-           The following code will create the DataFrame for the table "test" with some specific options for
-           maintaining the parallelism while fetching the table content,
+           The following code will create the DataFrame for the table "test" with some
+           specific options for maintaining the parallelism while fetching the table content,
 
            1. numPartitions - divides the whole task into numPartitions parallel tasks.
            2. lowerBound - min value of the partitionColumn in table
            3. upperBound - max value of the partitionColumn in table
            4. partitionColumn - the column on the basis of which partition happen
 
-           These options help in breaking down the whole task into `numPartitions` parallel tasks on the basis of the `partitionColumn`, with the help of minimum and maximum value of the column.
+           These options help in breaking down the whole task into `numPartitions` parallel
+           tasks on the basis of the `partitionColumn`, with the help of minimum and maximum
+           value of the column.
 
-           5. pushDownPredicate - optimizes the query by pushing down the filters to YugabyteDB using the JDBC connector.
-           6. pushDownAggregate - optimizes the query by pushing down the aggregated to YugabyteDB using the JDBC connector.
+           5. pushDownPredicate - optimizes the query by pushing down the filters to
+           YugabyteDB using the JDBC connector.
+           6. pushDownAggregate - optimizes the query by pushing down the aggregated
+           to YugabyteDB using the JDBC connector.
 
-           These two options help in optimizing the SQL queries executing on this DataFrame if those SQL queries
-           consist of some filters or aggregate functions by pushing down those filters and aggregates to the   YugabyteDB using the JDBC connector.
+           These two options help in optimizing the SQL queries executing on this DataFrame
+           if those SQL queries consist of some filters or aggregate functions by pushing
+           down those filters and aggregates to the YugabyteDB using the JDBC connector.
             */
            Dataset<Row> new_df_test = spark.read()
                    .format("jdbc")

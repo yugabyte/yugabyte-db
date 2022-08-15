@@ -37,29 +37,29 @@ type: docs
 
 </ul>
 
-## Before you begin
+The following tutorial describes how to build a Scala application using the YugabyteDB Spark Connector for YCQL.
 
-### sbt
 
-To build your Scala application using the YugabyteDB Spark Connector for YCQL, add the following sbt dependency to your application:
-
-```scala
-libraryDependencies += "com.yugabyte.spark" %% "spark-cassandra-connector" % "2.4-yb-3"
-```
-
-## Build a sample application
+## Prerequisites
 
 This tutorial assumes that you have:
 
-- installed YugabyteDB, created a universe, and are able to interact with it using the YCQL shell (`ycqlsh`). If not, please follow instructions in the [Quick start guide](../../../quick-start/explore/ycql/).
-
-- installed Scala version 2.12 or later and sbt 1.3.8 or later.
-
+- YugabyteDB running. If you are new to YugabyteDB, follow the steps in [Quick start](../../../quick-start/).
+- Scala version 2.12 or later.
+- sbt 1.3.8 or later.
 - installed the [`sbt-assembly`](https://github.com/sbt/sbt-assembly) plugin in your sbt project, as follows:
 
     ```scala
     addSbtPlugin("com.eed3si9n" % "sbt-assembly" % "0.14.10")
     ```
+
+### sbt
+
+Add the following sbt dependency to your application:
+
+```scala
+libraryDependencies += "com.yugabyte.spark" %% "spark-cassandra-connector" % "2.4-yb-3"
+```
 
 ### Create the sbt build file
 

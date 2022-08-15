@@ -119,11 +119,11 @@ From your Spark prompt, set up the connection URL and properties to read and wri
 
 ## Store and retrieve data
 
-You can choose one of the following ways to read data.
+To read and write data using the JDBC connector, create a [DataFrame](https://spark.apache.org/docs/1.5.1/api/java/org/apache/spark/sql/DataFrame.html) in one of the following ways:
 
-### Use DataFrame API
+### Use DataFrame APIs
 
-Create a [DataFrame](https://spark.apache.org/docs/1.5.1/api/java/org/apache/spark/sql/DataFrame.html) for the `test` table to read data via the JDBC connector using the following:
+Create a DataFrame for the `test` table to read data via the JDBC connector using the following:
 
 ```spark
 >>> test_Df = spark.read.jdbc(url=jdbcUrl, table="test", properties=connectionProperties)
@@ -131,126 +131,126 @@ Create a [DataFrame](https://spark.apache.org/docs/1.5.1/api/java/org/apache/spa
 
 ### Use SQL queries
 
-1. You can use SQL queries to create a DataFrame which pushes down the queries to YugabyteDB through the JDBC connector to fetch the rows, and create a DataFrame for that result.
+Alternatively, you can use SQL queries to create a DataFrame which pushes down the queries to YugabyteDB through the JDBC connector to fetch the rows, and create a DataFrame for that result.
 
-    ```spark
-    >>> test_Df = spark.read.jdbc(url=jdbcUrl, table="(select * from test) test_alias", properties=connectionProperties)
-    ```
+```spark
+>>> test_Df = spark.read.jdbc(url=jdbcUrl, table="(select * from test) test_alias",properties=connectionProperties)
+```
 
-1. Output the schema of the DataFrame created as follows:
+Output the schema of the DataFrame created as follows:
 
-    ```spark
-    >>> test_Df.printSchema()
-    ```
+```spark
+>>> test_Df.printSchema()
+```
 
-    ```output
-      root
-    |-- id: integer (nullable = true)
-    |-- random: double (nullable = true)
-    |-- ceil: double (nullable = true)
+```output
+  root
+|-- id: integer (nullable = true)
+|-- random: double (nullable = true)
+|-- ceil: double (nullable = true)
 
-    ```
+```
 
-1. Read some data from the table using the DataFrame APIs:
+Read some data from the table using the DataFrame APIs:
 
-    ```scala
-    >>> test_Df.select("id","ceil").groupBy("ceil").sum("id").limit(10).show()
-    ```
+```scala
+>>> test_Df.select("id","ceil").groupBy("ceil").sum("id").limit(10).show()
+```
 
-    ```output
-    +--------+---------+
-    |ceil    |  sum(id)|
-    +--------+---------+
-    |     8.0|248688663|
-    |     7.0|254438906|
-    |    18.0|253717793|
-    |     1.0|253651826|
-    |     4.0|251144069|
-    |    11.0|252091080|
-    |    14.0|244487874|
-    |    19.0|256220339|
-    |     3.0|247630466|
-    |     2.0|249126085|
-    +--------+---------+
-    ```
+```output
++--------+---------+
+|ceil    |  sum(id)|
++--------+---------+
+|     8.0|248688663|
+|     7.0|254438906|
+|    18.0|253717793|
+|     1.0|253651826|
+|     4.0|251144069|
+|    11.0|252091080|
+|    14.0|244487874|
+|    19.0|256220339|
+|     3.0|247630466|
+|     2.0|249126085|
++--------+---------+
+```
 
-### Use spark.sql() API
+### Use `spark.sql()` API
 
-- You can use the `spark.sql()` API to directly execute SQL queries using the following code:
+Another alternative is to use the `spark.sql()` API to directly execute SQL queries using the following code:
 
-    ```spark
-    >>> test_Df.createOrReplaceTempView("test")
-    >>> res_df = spark.sql("select ceil, sum(id) from test group by ceil limit 10")
-    >>> res_df.show()
-    ```
+```spark
+>>> test_Df.createOrReplaceTempView("test")
+>>> res_df = spark.sql("select ceil, sum(id) from test group by ceil limit 10")
+>>> res_df.show()
+```
 
-    The output will be similar to [SQL queries](#using-sql-queries).
+The output will be similar to [SQL queries](#using-sql-queries).
 
-- The following Spark query renames the column of the table `test` from `ceil` to `round_off` in the DataFrame, then creates a new table with the schema of the changed DataFrame, inserts all its data in the new table, and names it as `test_copy` using the JDBC connector.
+The following Spark query renames the column of the table `test` from `ceil` to `round_off` in the DataFrame, then creates a new table with the schema of the changed DataFrame, inserts all its data in the new table, and names it as `test_copy` using the JDBC connector.
 
-    ```spark
-    >>> spark.table("test").withColumnRenamed("ceil", "round_off").write.jdbc(url=jdbcUrl, table="test_copy", properties=connectionProperties)
-    ```
+```spark
+>>> spark.table("test").withColumnRenamed("ceil", "round_off").write.jdbc(url=jdbcUrl, table="test_copy", poperties=connectionProperties)
+```
 
-- Verify that the new table `test_copy` is created with the changed schema, and all the data from `test` is copied to it using the following commands from your ysqlsh terminal:
+Verify that the new table `test_copy` is created with the changed schema, and all the data from `test` is copied to it using the following commands from your ysqlsh terminal:
 
-    ```sql
-    ysql_pyspark=# \dt
-    ```
+```sql
+ysql_pyspark=# \dt
+```
 
-    ```output
-               List of relations
-     Schema |   Name    | Type  |  Owner
-    --------+-----------+-------+----------
-     public | test_copy | table | yugabyte
-     public | test      | table | yugabyte
-    (2 rows)
-    ```
+```output
+           List of relations
+ Schema |   Name    | Type  |  Owner
+--------+-----------+-------+----------
+ public | test_copy | table | yugabyte
+ public | test      | table | yugabyte
+(2 rows)
+```
 
-    ```sql
-    ysql_pyspark=# \d test_copy
-    ```
+```sql
+ysql_pyspark=# \d test_copy
+```
 
-    ```output
-                       Table "public.test_copy"
-      Column   |       Type       | Collation | Nullable | Default
-    -----------+------------------+-----------+----------+---------
-     id        | integer          |           |          |
-     random    | double precision |           |          |
-     round_off | double precision |           |          |
-    ```
+```output
+                   Table "public.test_copy"
+  Column   |       Type       | Collation | Nullable | Default
+-----------+------------------+-----------+----------+---------
+ id        | integer          |           |          |
+ random    | double precision |           |          |
+ round_off | double precision |           |          |
+```
 
-    ```sql
-    ysql_pyspark=# SELECT COUNT(*) FROM test_copy;
-    ```
+```sql
+ysql_pyspark=# SELECT COUNT(*) FROM test_copy;
+```
 
-    ```output
-     count
-    --------
-     100000
-    (1 row)
-    ```
+```output
+ count
+--------
+ 100000
+(1 row)
+```
 
-- Use the `append` [SaveMode](https://spark.apache.org/docs/latest/sql-data-sources-load-save-functions.html#save-modes), to append data from `test_copy` to the `test` table as follows:
+Use the `append` [SaveMode](https://spark.apache.org/docs/latest/sql-data-sources-load-save-functions.html#save-modes), to append data from `test_copy` to the `test` table as follows:
 
-    ```spark
-    >>> test_copy_Df = spark.read.jdbc(url=jdbcUrl, table="(select * from test_copy) test_copy_alias", properties=connectionProperties)
-    >>> test_copy_Df.createOrReplaceTempView("test_copy")
-    >>> spark.table("test_copy").write.mode("append").jdbc(url=jdbcUrl, table="test",     properties=connectionProperties)
-    ```
+```spark
+>>> test_copy_Df = spark.read.jdbc(url=jdbcUrl, table="(select * from test_copy) test_copy_alias"properties=connectionProperties)
+>>> test_copy_Df.createOrReplaceTempView("test_copy")
+>>> spark.table("test_copy").write.mode("append").jdbc(url=jdbcUrl, table="test",   properties=connectionProperties)
+```
 
-- Verify the changes using ysqlsh:
+Verify the changes using ysqlsh:
 
-    ```sql
-    ysql_pyspark=# SELECT COUNT(*) FROM test;
-    ```
+```sql
+ysql_pyspark=# SELECT COUNT(*) FROM test;
+```
 
-    ```output
-     count
-    --------
-     200000
-    (1 row)
-    ```
+```output
+ count
+--------
+ 200000
+(1 row)
+```
 
 ## Parallelism
 
