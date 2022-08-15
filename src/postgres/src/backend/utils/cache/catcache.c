@@ -1666,6 +1666,46 @@ SearchCatCacheInternal(CatCache *cache,
 }
 
 /*
+* Function returns true in some special cases where we allow negative caches:
+* 1. pg_cast (CASTSOURCETARGET) to avoid master lookups during parsing.
+*    TODO: reconsider this now that we support CREATE CAST.
+* 2. pg_statistic (STATRELATTINH) and pg_statistic_ext
+*    (STATEXTNAMENSP and STATEXTOID) since we do not support
+*    statistics in DocDB/YSQL yet.
+* 3. pg_class (RELNAMENSP), pg_type (TYPENAMENSP)
+*    but only for system tables since users cannot create system tables in YSQL.
+*    This is violated in YSQL upgrade, but doing so will force cache refresh.
+* 4. Caches within temporary namespaces as data in this namespaces can be
+*    changed by current session only.
+* 5. pg_attribute as `ALTER TABLE` is used to add new columns and it increments
+*    catalog version.
+* 6. pg_type (TYPEOID and TYPENAMENSP) to avoid redundant master lookups while
+*    parsing functions that are checked to be possible type coercions.
+* 7. pg_namespace (NAMESPACEOID and NAMESPACENAME) to avoid lookups while
+*    recomputeNamespacePath. The CREATE SCHEMA stmt increments catalog version.
+*/
+static bool
+YbAllowNegativeCacheEntries(int cache_id, Oid namespace_id)
+{
+	switch(cache_id)
+	{
+		case CASTSOURCETARGET: switch_fallthrough();
+		case STATRELATTINH: switch_fallthrough();
+		case STATEXTNAMENSP: switch_fallthrough();
+		case STATEXTOID: switch_fallthrough();
+		case ATTNUM: switch_fallthrough();
+		case TYPEOID: switch_fallthrough();
+		case TYPENAMENSP: switch_fallthrough();
+		case NAMESPACEOID: switch_fallthrough();
+		case NAMESPACENAME:
+			return true;
+		case RELNAMENSP:
+			return namespace_id == PG_CATALOG_NAMESPACE && !YBIsPreparingTemplates();
+	}
+	return isTempOrTempToastNamespace(namespace_id);
+}
+
+/*
  * Search the actual catalogs, rather than the cache.
  *
  * This is kept separate from SearchCatCacheInternal() to keep the fast-path
@@ -1806,43 +1846,11 @@ SearchCatCacheMiss(CatCache *cache,
 		 * was added by (running a command on) another node.
 		 * We also don't support tuple update as of 14/12/2018.
 		 */
-		if (IsYugaByteEnabled())
+		if (IsYugaByteEnabled() &&
+		    !YbAllowNegativeCacheEntries(cache->id,
+		                                 DatumGetObjectId(cur_skey[1].sk_argument)))
 		{
-			/*
-			 * Special cases where we allow negative caches:
-			 * 1. pg_cast (CASTSOURCETARGET) to avoid master lookups during
-			 *    parsing.
-			 *    TODO: reconsider this now that we support CREATE CAST.
-			 * 2. pg_statistic (STATRELATTINH) and pg_statistic_ext
-			 *    (STATEXTNAMENSP and STATEXTOID) since we do not support
-			 *    statistics in DocDB/YSQL yet.
-			 * 3. pg_class (RELNAMENSP), pg_type (TYPENAMENSP)
-			 *    but only for system tables since users cannot create system tables in YSQL.
-			 *    This is violated in YSQL upgrade, but doing so will force cache refresh.
-			 * 4. Caches within temporary namespaces as data in this namespaces can be changed by
-			 *    current session only
-			 * 5. pg_attribute as `ALTER TABLE` is used to add new columns and it increments
-			 *    catalog version
-			 * 6. pg_type (TYPEOID and TYPENAMENSP) to avoid redundant
-			 *    master lookups while parsing functions that are checked to be
-			 *    possible type coercions
-			 */
-			Oid namespace_id = DatumGetObjectId(cur_skey[1].sk_argument);
-			bool allow_negative_entries = cache->id == CASTSOURCETARGET ||
-			                              cache->id == STATRELATTINH ||
-			                              cache->id == STATEXTNAMENSP ||
-			                              cache->id == STATEXTOID ||
-			                              cache->id == ATTNUM ||
-			                              cache->id == TYPEOID ||
-			                              cache->id == TYPENAMENSP ||
-			                              ((cache->id == RELNAMENSP) &&
-			                               namespace_id == PG_CATALOG_NAMESPACE &&
-			                               !YBIsPreparingTemplates()) ||
-			                              isTempOrTempToastNamespace(namespace_id);
-			if (!allow_negative_entries)
-			{
-				return NULL;
-			}
+			return NULL;
 		}
 
 		ct = CatalogCacheCreateEntry(cache, NULL, arguments,
