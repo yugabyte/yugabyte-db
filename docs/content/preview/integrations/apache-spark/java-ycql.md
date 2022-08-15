@@ -1,33 +1,35 @@
 ---
 title: Build a Java application using Apache Spark and YugabyteDB
-headerTitle: Apache Spark
-linkTitle: Apache Spark
+linkTitle: YCQL
 description: Build a Java-based application using Apache Spark and YugabyteDB.
+aliases:
+  - /preview/integrations/apache-spark/java/
 menu:
   preview:
-    identifier: apache-spark-2-java
-    parent: integrations
-    weight: 571
+    identifier: apache-spark-2-java-ycql
+    parent: apache-spark
+    weight: 580
 type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li >
-    <a href="{{< relref "./scala.md" >}}" class="nav-link">
-      <i class="icon-scala" aria-hidden="true"></i>
-      Scala
-    </a>
-  </li>
 
   <li >
-    <a href="{{< relref "./java.md" >}}" class="nav-link active">
+    <a href="../java-ycql/" class="nav-link active">
       <i class="icon-java-bold" aria-hidden="true"></i>
       Java
     </a>
   </li>
 
   <li >
-    <a href="{{< relref "./python.md" >}}" class="nav-link">
+    <a href="../scala-ycql/" class="nav-link">
+      <i class="icon-scala" aria-hidden="true"></i>
+      Scala
+    </a>
+  </li>
+
+  <li >
+    <a href="../python-ycql/" class="nav-link">
       <i class="icon-python" aria-hidden="true"></i>
       Python
     </a>
@@ -35,9 +37,20 @@ type: docs
 
 </ul>
 
+The following tutorial describes how to build a Java application using the YugabyteDB Spark Connector for YCQL, and perform YCQL queries.
+
+## Prerequisites
+
+This tutorial assumes that you have:
+
+- YugabyteDB running. If you are new to YugabyteDB, follow the steps in [Quick start](../../../quick-start/).
+- Java Development Kit (JDK) 1.8. JDK installers for Linux and macOS can be downloaded from [OpenJDK](http://jdk.java.net/), [AdoptOpenJDK](https://adoptopenjdk.net/), or [Azul Systems](https://www.azul.com/downloads/zulu-community/). Homebrew users on macOS can install using `brew install AdoptOpenJDK/openjdk/adoptopenjdk8`.
+- [Apache Spark 3.3.0](https://spark.apache.org/downloads.html).
+- [Apache Maven 3.3](https://maven.apache.org/index.html) or later.
+
 ## Setting Up a Project with Maven
 
-To build a Java application using the YugabyteDB Spark Connector for YCQL, add the following to your `pom.xml` file for Scala 2.12:
+Add the following to your `pom.xml` file for Scala 2.12:
 
 ```xml
 <dependency>
@@ -210,7 +223,7 @@ Here is sample content of the dataset:
 
 ##### spark.cassandra.json.quoteValueString
 
-Specifies whether the JSONB field values should be quoted as string. Defaults to false (since this is not space efficient).
+Specifies whether the JSONB field values should be quoted as string. Defaults to false (because this is not space efficient).
 
 The option allows you to preserve floating point precision for JSONB fields. For un-quoted non-numeric values, double quotes are added. Otherwise the values would be rejected by YCQL.
 
