@@ -2182,6 +2182,8 @@
           "items" : {
             "$ref" : "#/definitions/Cluster"
           },
+          "maxItems" : 2147483647,
+          "minItems" : 1,
           "type" : "array"
         },
         "cmkArn" : {
@@ -3197,6 +3199,8 @@
           "items" : {
             "$ref" : "#/definitions/Cluster"
           },
+          "maxItems" : 2147483647,
+          "minItems" : 1,
           "type" : "array"
         },
         "cmkArn" : {
@@ -5175,6 +5179,8 @@
           "items" : {
             "$ref" : "#/definitions/Cluster"
           },
+          "maxItems" : 2147483647,
+          "minItems" : 1,
           "type" : "array"
         },
         "cmkArn" : {
@@ -5814,6 +5820,8 @@
           "items" : {
             "$ref" : "#/definitions/Cluster"
           },
+          "maxItems" : 2147483647,
+          "minItems" : 1,
           "type" : "array"
         },
         "cmkArn" : {
@@ -6086,6 +6094,8 @@
           "items" : {
             "$ref" : "#/definitions/Cluster"
           },
+          "maxItems" : 2147483647,
+          "minItems" : 1,
           "type" : "array"
         },
         "cmkArn" : {
@@ -6497,6 +6507,8 @@
           "items" : {
             "$ref" : "#/definitions/Cluster"
           },
+          "maxItems" : 2147483647,
+          "minItems" : 1,
           "type" : "array"
         },
         "cmkArn" : {
@@ -6699,6 +6711,8 @@
           "items" : {
             "$ref" : "#/definitions/Cluster"
           },
+          "maxItems" : 2147483647,
+          "minItems" : 1,
           "type" : "array"
         },
         "cmkArn" : {
@@ -6922,6 +6936,8 @@
           "items" : {
             "$ref" : "#/definitions/Cluster"
           },
+          "maxItems" : 2147483647,
+          "minItems" : 1,
           "type" : "array"
         },
         "cmkArn" : {
@@ -7109,6 +7125,8 @@
           "items" : {
             "$ref" : "#/definitions/Cluster"
           },
+          "maxItems" : 2147483647,
+          "minItems" : 1,
           "type" : "array"
         },
         "cmkArn" : {
@@ -7293,6 +7311,8 @@
           "items" : {
             "$ref" : "#/definitions/Cluster"
           },
+          "maxItems" : 2147483647,
+          "minItems" : 1,
           "type" : "array"
         },
         "cmkArn" : {
@@ -7643,6 +7663,8 @@
           "items" : {
             "$ref" : "#/definitions/Cluster"
           },
+          "maxItems" : 2147483647,
+          "minItems" : 1,
           "type" : "array"
         },
         "cmkArn" : {
@@ -8150,6 +8172,8 @@
           "items" : {
             "$ref" : "#/definitions/Cluster"
           },
+          "maxItems" : 2147483647,
+          "minItems" : 1,
           "type" : "array"
         },
         "cmkArn" : {
