@@ -1,7 +1,7 @@
   services:
 
       - name: prometheusOldConfig
-        fileName: {{ .PrometheusOldConfFileName }}
+        fileName: {{ yamlPath ".prometheusOldConfig.fileName" }}
         contents: |
         # Copyright (c) YugaByte, Inc.
 
@@ -66,7 +66,7 @@
             replacement: "$1"
 
       - name: prometheusNewConfig
-        fileName: {{ .PrometheusNewConfFileName }}
+        fileName: {{ yamlPath ".prometheusNewConfig.fileName" }}
         contents: |
           # Copyright (c) YugaByte, Inc.
 
@@ -242,8 +242,8 @@
          Group=prometheus
          Type=simple
          ExecStart=/usr/local/bin/prometheus \
-         --config.file {{ .PrometheusOldConfFileName }} \
-         --storage.tsdb.path {{ .PrometheusOldStoragePath }} \
+         --config.file {{ yamlPath ".prometheusOldConfig.fileName" }} \
+         --storage.tsdb.path {{ yamlPath ".prometheusOldService.storagePath" }} \
          --web.console.templates=/etc/prometheus/consoles \
          --web.console.libraries=/etc/prometheus/console_libraries \
          --web.enable-admin-api
@@ -264,8 +264,8 @@
           Group=prometheus
           Type=simple
           ExecStart=/usr/local/bin/prometheus \
-          --config.file {{ .PrometheusNewConfFileName }} \
-          --storage.tsdb.path {{ .PrometheusNewStoragePath }} \
+          --config.file {{ yamlPath ".prometheusNewConfig.fileName" }} \
+          --storage.tsdb.path {{ yamlPath ".prometheusNewService.storagePath" }} \
           --web.console.templates=/etc/prometheus/consoles \
           --web.console.libraries=/etc/prometheus/console_libraries \
           --web.enable-admin-api \

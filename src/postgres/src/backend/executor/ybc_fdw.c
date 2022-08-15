@@ -525,12 +525,19 @@ ybcSetupScanTargets(ForeignScanState *node)
 
 		/*
 		 * Setup the scan slot based on new tuple descriptor for the given targets. This is a dummy
-		 * tupledesc that only includes the number of attributes. Switch to per-query memory from
-		 * per-tuple memory so the slot persists across iterations.
+		 * tupledesc that only includes the number of attributes.
 		 */
 		TupleDesc target_tupdesc = CreateTemplateTupleDesc(list_length(node->yb_fdw_aggs),
 														   false /* hasoid */);
 		ExecInitScanTupleSlot(estate, &node->ss, target_tupdesc);
+
+		/*
+		 * Consider the example "SELECT COUNT(oid) FROM pg_type", Postgres would have to do a
+		 * sequential scan to fetch the system column oid. Here YSQL does pushdown so what's
+		 * fetched from a tablet is the result of count(oid), which is not even a column, let
+		 * alone a system column. Clear fsSystemCol because no system column is needed.
+		 */
+		foreignScan->fsSystemCol = false;
 	}
 	MemoryContextSwitchTo(oldcontext);
 }

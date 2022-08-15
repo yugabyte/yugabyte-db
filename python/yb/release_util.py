@@ -94,7 +94,9 @@ class ReleaseUtil(object):
         return self.release_manifest
 
     def get_seed_executable_patterns(self) -> List[str]:
-        return cast(List[str], self.release_manifest['bin'])
+        return cast(
+            List[str],
+            [x for x in self.release_manifest['bin'] if not x.find("gobin") != -1])
 
     def expand_value(self, old_value: str) -> str:
         """

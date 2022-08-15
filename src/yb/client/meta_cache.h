@@ -47,6 +47,7 @@
 #include "yb/client/client_fwd.h"
 
 #include "yb/common/partition.h"
+#include "yb/common/placement_info.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/consensus/metadata.pb.h"
 
@@ -90,8 +91,6 @@ namespace internal {
 class LookupRpc;
 class LookupByKeyRpc;
 class LookupByIdRpc;
-
-YB_DEFINE_ENUM(LocalityLevel, (kNone)(kRegion)(kZone));
 
 // The information cached about a given tablet server in the cluster.
 //

@@ -89,7 +89,7 @@ In order to deploy YugabyteDB nodes in your AWS account, YugabyteDB Anywhere req
 In order to be able to provision Amazon Elastic Compute Cloud (EC2) instances with YugabyteDB, YugabyteDB Anywhere requires SSH access. The following are two ways to provide SSH access:
 
 - Enable YugabyteDB Anywhere to create and manage [Key Pairs](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-key-pairs.html). In this mode, YugabyteDB Anywhere creates SSH Key Pairs across all the regions you choose to set up and stores the relevant private key part of these locally in order to SSH into future EC2 instances.
-- Use your own existing Key Pairs. To do this, provide the name of the Key Pair, as well as the private key content and the corresponding SSH user. Currently, this information must be the same across all the regions you choose to provision.
+- Use your own existing Key Pairs. To do this, provide the name of the Key Pair, as well as the private key content and the corresponding SSH user. This information must be the same across all the regions you provision.
 
 If you use YugabyteDB Anywhere to manage SSH Key Pairs for you and you deploy multiple YugabyteDB Anywhere instances across your environment, then the AWS provider name should be unique for each instance of YugabyteDB Anywhere integrating with a given AWS account.
 
@@ -118,18 +118,21 @@ For deployment, YugabyteDB Anywhere aims to provide you with easy access to the 
 
 ### YugabyteDB Anywhere-managed configuration
 
-If you choose to use YugabyteDB Anywhere to configure, own, and manage a full cross-region deployment of Virtual Private Cloud (VPC), YugabyteDB Anywhere will generate a YugabyteDB-specific VPC in each selected region, then interconnect them, as well as the VPC in which YugabyteDB Anywhere was deployed, using [VPC peering](https://docs.aws.amazon.com/vpc/latest/userguide/vpc-peering.html). This mode also sets up all other relevant subcomponents in all regions, such as Subnets, Security Groups, and Routing Table entries.
+If you use YugabyteDB Anywhere to configure, own, and manage a full cross-region deployment of Virtual Private Cloud (VPC), YugabyteDB Anywhere generates a YugabyteDB-specific VPC in each selected region, then interconnects them, as well as the VPC in which YugabyteDB Anywhere is deployed, using [VPC peering](https://docs.aws.amazon.com/vpc/latest/userguide/vpc-peering.html). This mode also sets up all other relevant sub-components in all regions, such as subnets, security groups, and routing table entries.
 
 You have an option to provide the following:
 
-- A custom classless inter-domain routing (CIDR) block for each regional VPC. If not provided, YugabyteDB Anywhere will choose defaults, aiming to not overlap across regions.
+- A custom CIDR block for each regional VPC. If not provided, YugabyteDB Anywhere chooses defaults, aiming to not overlap across regions.
 
-- A custom Amazon Machine Image (AMI) ID to use in each region. For a non-exhaustive list of options, see Ubuntu 18 and Oracle Linux 8 support. If you do not provide any values, a recent x86 CentOS image is used. For additional information, see [CentOS on AWS](https://wiki.centos.org/Cloud/AWS) and [Ubuntu 18 and Oracle Linux 8 support](#ubuntu-18-and-oracle-linux-8-support).<br>
+- A custom Amazon Machine Image (AMI) ID to use in each region.
 
-  <br>
+  YugabyteDB Anywhere supports both x86 and ARM (aarch64) CPU architectures. See [Supported operating systems and architectures](../supported-os-and-arch/) for a complete list of supported operating systems. If you plan to deploy YugabyteDB on AWS Graviton-based EC2 instances, use a custom AMI certified for 64-bit ARM (arm64) architecture.
 
-  ![New Region Modal](/images/ee/aws-setup/aws_new_region.png)<br><br><br>
-To use automatic provisioning to bring up a universe on [AWS Graviton](https://aws.amazon.com/ec2/graviton/), you need to pass in the Arch AMI ID of AlmaLinux or Ubuntu. Note that this requires a YugabyteDB release for Linux ARM, which is available through one of the release pages (for example, the [current preview release](/preview/releases/release-notes/preview-release/)) by clicking **Downloads > Linux ARM**. YugabyteDB Anywhere enables you to import releases via an S3 or HTTP, as described in [Upgrade the YugabyteDB software](../../../manage-deployments/upgrade-software/).
+  If you don't provide an AMI ID, a recent x86 CentOS image is used. For additional information, see [CentOS on AWS](https://wiki.centos.org/Cloud/AWS).
+
+![New Region Modal](/images/ee/aws-setup/aws_new_region.png)
+
+To use automatic provisioning to bring up a universe on [AWS Graviton](https://aws.amazon.com/ec2/graviton/), you need to pass in the Arch AMI ID of AlmaLinux or Ubuntu. Note that this requires a YugabyteDB release for Linux ARM, which is available through one of the release pages (for example, the [current preview release](/preview/releases/release-notes/preview-release/)). YugabyteDB Anywhere enables you to import releases via S3 or HTTP, as described in [Upgrade the YugabyteDB software](../../../manage-deployments/upgrade-software/).
 
 ### Self-managed configuration
 
@@ -142,7 +145,7 @@ You can use your own custom VPCs. This allows you the highest level of customiza
 
 ![Custom Region Modal](/images/ee/aws-setup/aws_custom_region.png)
 
-If you choose to provide your own VPC information, you will be responsible for having preconfigured networking connectivity. For single-region deployments, this might simply be a matter of region or VPC local Security Groups. Across regions, however, the setup can get quite complex. It is recommended that you use the [VPC peering](https://docs.aws.amazon.com/vpc/latest/peering/working-with-vpc-peering.html) feature of [Amazon Virtual Private Cloud (Amazon VPC)](https://docs.aws.amazon.com/vpc/latest/userguide/what-is-amazon-vpc.html) to set up private IP connectivity between nodes located across regions, as follows:
+If you choose to provide your own VPC information, you will be responsible for having preconfigured networking connectivity. For single-region deployments, this might just be a matter of region or VPC local Security Groups. Across regions, however, the setup can get quite complex. It is recommended that you use the [VPC peering](https://docs.aws.amazon.com/vpc/latest/peering/working-with-vpc-peering.html) feature of [Amazon Virtual Private Cloud (Amazon VPC)](https://docs.aws.amazon.com/vpc/latest/userguide/what-is-amazon-vpc.html) to set up private IP connectivity between nodes located across regions, as follows:
 
 - VPC peering connections must be established in an N x N matrix, such that every VPC in every region you configure must be peered to every other VPC in every other region.
 - Routing table entries in every regional VPC should route traffic to every other VPC CIDR block across the PeeringConnection to that respective VPC. This must match the Subnets that you provided during the configuration step.
@@ -154,15 +157,6 @@ If you choose to provide your own VPC information, you will be responsible for h
 
 If you create more than one AWS cloud provider with different CIDR block prefixes, your attempt to create a new VPC as part of your [VPC setup](#vpc-setup) will result in a silent failure.
 
-### Ubuntu 18 and Oracle Linux 8 support
-
-In addition to CentOS, YugabyteDB Anywhere allows you to bring up universes on the following host nodes:
-
-- Ubuntu 18.04, which requires Python 2 or later installed on the host, as well as the provider created with a custom AMI and custom SSH user.
-- Oracle Linux 8, which requires the provider created with a custom AMI and custom SSH user, assumes that gtar or gunzip is present on the host AMI, and uses the firewall-cmd client to set default target `ACCEPT`. YugabyteDB Anywhere support for Oracle Linux 8 has the following limitations:
-  - Only Red Hat Linux-compatible kernel is supported to allow port changing. There is no support for Unbreakable Enterprise Kernel (UEK).
-  - Systemd services are not supported.
-
 ## Marketplace acceptance
 
 If you did not provide your own custom AMI IDs, before you can proceed to creating a universe, verify that you can actually spin up EC2 instances with the default AMIs in YugabyteDB Anywhere.
@@ -173,7 +167,7 @@ If you are not already subscribed and have not accepted the **Terms and Conditio
 
 ![Marketplace accept](/images/ee/aws-setup/marketplace-accept.png)
 
-If that is the case, click **Accept Terms** and wait for the page to switch to a successful state. Once the operation completes, or if you previously subscribed and accepted the terms, you should see the following:
+If that is the case, click **Accept Terms** and wait for the page to switch to a successful state. After the operation completes, or if you previously subscribed and accepted the terms, you should see the following:
 
 ![Marketplace success](/images/ee/aws-setup/marketplace-success.png)
 

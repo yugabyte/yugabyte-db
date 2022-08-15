@@ -5,21 +5,71 @@
  package main
 
  import (
-     "github.com/hashicorp/go-version"
      "fmt"
      "strconv"
      "os"
+     "log"
  )
 
  func main() {
 
     commandLineArgs := os.Args[1:]
 
+    TestSudoPermission()
+
     type functionPointer func()
     steps := make(map[string][]functionPointer)
     var order []string
 
-    TestSudoPermission()
+    var versionToInstall = "2.8.1.0-b37"
+
+    var versionToUpgrade = "2.15.0.1-b4"
+
+    var corsOrigin = GenerateCORSOrigin()
+
+    // Default http, but now configurable.
+    var httpMode = "http"
+
+    var bringOwnPostgres, errPostgres = strconv.ParseBool(getYamlPathData(".postgres.bringOwn"))
+
+    if errPostgres != nil {
+        log.Fatal("Please set postgres.BringOwn to either true or false!")
+    }
+
+    var bringOwnPython, errPython = strconv.ParseBool(getYamlPathData(".python.bringOwn"))
+
+    if errPython != nil {
+        log.Fatal("Please set python.BringOwn to either true or false!")
+    }
+
+    var postgres = Postgres{"postgres",
+    "/usr/lib/systemd/system/postgresql-11.service",
+    []string{"/var/lib/pgsql/11/data/pg_hba.conf",
+    "/var/lib/pgsql/11/data/postgresql.conf"},
+    "11"}
+
+    var prometheus = Prometheus{"prometheus",
+            "/etc/systemd/system/prometheus.service",
+            "/etc/prometheus/prometheus.yml",
+            "2.27.1", false}
+
+    var nginx = Nginx{"nginx",
+                    "/etc/nginx/nginx.conf",
+                    httpMode, "_", "", ""}
+
+    var platformInstall = Platform{"platform",
+                "/etc/systemd/system/yb-platform.service",
+                "/opt/yugabyte/platform.conf",
+                versionToInstall, corsOrigin, false}
+
+    var platformUpgrade = Platform{"platform",
+        "/etc/systemd/system/yb-platform.service",
+        "/opt/yugabyte/platform.conf",
+        versionToUpgrade, corsOrigin, false}
+
+    var commonInstall = Common{"common", versionToInstall, httpMode}
+
+    var commonUpgrade = Common{"common", versionToUpgrade, httpMode}
 
     if commandLineArgs[0] == "clean" {
 
@@ -32,7 +82,7 @@
 
     } else if commandLineArgs[0] == "preflight" {
 
-        Preflight("yba-installer-input-preflight.yml")
+        Preflight("yba-installer-input.yml")
 
     } else if commandLineArgs[0] == "license" {
 
@@ -40,7 +90,7 @@
 
     } else if commandLineArgs[0] == "version" {
 
-        Version()
+        Version("version_metadata.json")
 
     } else if commandLineArgs[0] == "params" {
 
@@ -48,6 +98,8 @@
         value := commandLineArgs[2]
 
         Params(key, value)
+
+        GenerateTemplatedConfiguration(versionToInstall, httpMode)
 
     } else if commandLineArgs[0] == "createBackup" {
 
@@ -111,97 +163,98 @@
 
     } else if commandLineArgs[0] == "install" {
 
-        versionToInstall := commandLineArgs[1]
-        corsOrigin := commandLineArgs[2]
-        httpMode := commandLineArgs[3]
+        if bringOwnPostgres {
 
-        common := Common{"common", versionToInstall, httpMode}
+            postgresParams, valid := ValidateUserPostgres("yba-installer-input.yml")
 
-        steps[common.Name] = []functionPointer{common.SetUpPrereqs,
-            common.Uninstall, common.Install}
+            if valid {
+                postgres = Postgres{"postgres",
+                postgresParams["systemdLocation"],
+                []string{postgresParams["pgHbaConf"],
+                    postgresParams["postgresConf"]},
+                    postgresParams["version"]}
+            } else {
 
-        var prometheus Prometheus
-        v1, _ := version.NewVersion(versionToInstall)
-        v2, _ := version.NewVersion("2.8.0.0")
+                log.Fatalf("User Postgres not correctly configured! " +
+                        "Check settings.")
+            }
 
-        if v1.LessThan(v2) {
-          prometheus = Prometheus{"prometheus",
-          "/etc/systemd/system/prometheus.service",
-          "/etc/prometheus/prometheus.yml",
-          "2.2.1", false}
-        } else {
-          prometheus = Prometheus{"prometheus",
-          "/etc/systemd/system/prometheus.service",
-          "/etc/prometheus/prometheus.yml",
-          "2.27.1", false}
         }
+
+        if bringOwnPython {
+
+            if ! ValidateUserPython("yba-installer-input.yml") {
+
+                log.Fatalf("User Python not correctly configured! " +
+                "Check settings.")
+            }
+
+        }
+
+        steps[commonInstall.Name] = []functionPointer{commonInstall.SetUpPrereqs,
+            commonInstall.Uninstall, commonInstall.Install}
 
         steps[prometheus.Name] = []functionPointer{prometheus.SetUpPrereqs,
             prometheus.Install, prometheus.Start}
 
-        postgres := Postgres{"postgres",
-        "/usr/lib/systemd/system/postgresql-11.service",
-        []string{"/var/lib/pgsql/11/data/pg_hba.conf",
-        "/var/lib/pgsql/11/data/postgresql.conf"},
-        "11"}
+        if ! bringOwnPostgres {
 
-        steps[postgres.Name] = []functionPointer{postgres.SetUpPrereqs,
-            postgres.Install, postgres.Restart}
+            steps[postgres.Name] = []functionPointer{postgres.SetUpPrereqs,
+                postgres.Install, postgres.Restart}
 
-        platform := Platform{"platform",
-            "/etc/systemd/system/yb-platform.service",
-            "/opt/yugabyte/platform.conf",
-            versionToInstall, corsOrigin, false}
+        }
 
-        steps[platform.Name] = []functionPointer{platform.Install, platform.Start}
-
-        nginx := Nginx{"nginx",
-            "/etc/nginx/nginx.conf",
-            httpMode, "_", "", ""}
+        steps[platformInstall.Name] = []functionPointer{platformInstall.Install,
+            platformInstall.Start}
 
         steps[nginx.Name] = []functionPointer{nginx.SetUpPrereqs,
             nginx.Install, nginx.Start}
 
-        order = []string{common.Name, prometheus.Name, postgres.Name, platform.Name,
-        nginx.Name}
+        if ! bringOwnPostgres {
+
+            order = []string{commonInstall.Name, prometheus.Name,
+                postgres.Name, platformInstall.Name, nginx.Name}
+        }  else {
+
+            order = []string{commonInstall.Name, prometheus.Name,
+                platformInstall.Name, nginx.Name}
+
+            }
 
     } else if commandLineArgs[0] == "upgrade" {
 
-        versionToUpgrade := commandLineArgs[1]
-        corsOrigin := commandLineArgs[2]
-        httpMode := commandLineArgs[3]
-
-        common := Common{"common", versionToUpgrade, httpMode}
-
-        steps[common.Name] = []functionPointer{common.SetUpPrereqs, common.Upgrade}
-
-        prometheus := Prometheus{"prometheus",
-        "/etc/systemd/system/prometheus.service",
-        "/etc/prometheus/prometheus.yml",
-        "2.27.1", false}
+        steps[commonUpgrade.Name] = []functionPointer{commonUpgrade.SetUpPrereqs,
+            commonUpgrade.Upgrade}
 
         steps[prometheus.Name] = []functionPointer{
             prometheus.Install, prometheus.Start}
 
-        platform := Platform{"platform",
-            "/etc/systemd/system/yb-platform.service",
-            "/opt/yugabyte/platform.conf",
-            versionToUpgrade, corsOrigin, false}
-
-        steps[platform.Name] = []functionPointer{
-            platform.Stop, platform.Install, platform.Start}
-
-        nginx := Nginx{"nginx",
-            "/etc/nginx/nginx.conf",
-            httpMode, "_", "", ""}
+        steps[platformUpgrade.Name] = []functionPointer{
+         platformUpgrade.Stop, platformUpgrade.Install, platformUpgrade.Start}
 
         steps[nginx.Name] = []functionPointer{nginx.SetUpPrereqs,
             nginx.Install, nginx.Start}
 
-        order = []string{common.Name, prometheus.Name, platform.Name,
+        order = []string{commonUpgrade.Name, prometheus.Name, platformUpgrade.Name,
                 nginx.Name}
 
-        }
+        } else if commandLineArgs[0] == "configure" {
+
+            GenerateTemplatedConfiguration(versionToInstall, httpMode)
+
+            steps[postgres.Name] = []functionPointer{postgres.Stop, postgres.Start}
+
+            steps[prometheus.Name] = []functionPointer{prometheus.Stop, prometheus.Start}
+
+            steps[platformInstall.Name] = []functionPointer{platformInstall.Stop,
+                platformInstall.Start}
+
+            steps[nginx.Name] = []functionPointer{nginx.Stop, nginx.Start}
+
+            order = []string{postgres.Name, prometheus.Name, platformInstall.Name,
+              nginx.Name}
+
+            }
 
     for index := range order {
         service := order[index]
