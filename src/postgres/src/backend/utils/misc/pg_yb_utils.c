@@ -2682,6 +2682,9 @@ void YbRegisterSysTableForPrefetching(int sys_table_id) {
 		case ConstraintRelationId:                        // pg_constraint
 			sys_table_index_id = ConstraintRelidTypidNameIndexId;
 			break;
+		case IndexRelationId:                             // pg_index
+			sys_table_index_id = IndexIndrelidIndexId;
+			break;
 		case InheritsRelationId:                          // pg_inherits
 			sys_table_index_id = InheritsParentIndexId;
 			break;
@@ -2708,15 +2711,14 @@ void YbRegisterSysTableForPrefetching(int sys_table_id) {
 			break;
 
 		case CastRelationId:        switch_fallthrough(); // pg_cast
-		case IndexRelationId:       switch_fallthrough(); // pg_index
 		case PartitionedRelationId: switch_fallthrough(); // pg_partitioned_table
 		case ProcedureRelationId:   break;                // pg_proc
 
 		default:
 		{
 			ereport(FATAL,
-                    (errcode(ERRCODE_INTERNAL_ERROR),
-                    errmsg("Sys table '%d' are not yet inteded for preloading", sys_table_id)));
+			        (errcode(ERRCODE_INTERNAL_ERROR),
+			         errmsg("Sys table '%d' is not yet inteded for preloading", sys_table_id)));
 
 		}
 	}
