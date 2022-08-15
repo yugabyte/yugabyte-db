@@ -1700,6 +1700,31 @@ YBUpdateRelationsPartitioning(bool sys_relations_update_required)
 	heap_close(pg_partitioned_table_desc, AccessShareLock);
 }
 
+static void
+YBUpdateRelationsIndicies(bool sys_relations_update_required)
+{
+	HASH_SEQ_STATUS status;
+	hash_seq_init(&status, RelationIdCache);
+
+	for (RelIdCacheEnt *idhentry;
+	     (idhentry = (RelIdCacheEnt *) hash_seq_search(&status)) != NULL;)
+	{
+		Relation relation = idhentry->reldesc;
+		if (sys_relations_update_required || !IsSystemRelation(relation))
+		{
+			/*
+			 * The result of the RelationGetIndexList function is not interesting.
+			 * The goal of calling this function is to cache index list in the
+			 * 'relation->rd_indexlist' field for future use.
+			 * It is cheap to get the index list now as all required data is already
+			 * preloaded (i.e. no read RPC will be sent to a master).
+			 */
+			List *indexlist = RelationGetIndexList(relation);
+			list_free(indexlist);
+		}
+	}
+}
+
 static bool
 YBIsDBConnectionValid()
 {
@@ -1810,6 +1835,7 @@ YBPreloadRelCache()
 		YBPreloadCatalogCache(PROCOID, PROCNAMEARGSNSP); // pg_proc
 		YBPreloadCatalogCache(INHERITSRELID, -1);        // pg_inherits
 	}
+	YBUpdateRelationsIndicies(relations_result.sys_relations_update_required);
 }
 
 /*
