@@ -336,6 +336,10 @@ public class TestDropTableWithConcurrentTxn extends BasePgSQLTest {
     LOG.info("Run INSERT transaction AFTER drop");
     runDmlTxnWithDropOnCurrentResource(Dml.INSERT, indexDrop, withCachedMetadata,
         executeDmlAfterDrop, RESOURCE_NONEXISTING_ERROR);
+    // Postgres load relation's index info on cache refresh, as a result even without explicit index
+    // usage the error will be the same as with index usage.
+    runDmlTxnWithDropOnCurrentResource(Dml.INSERT, indexDrop, !withCachedMetadata,
+        executeDmlAfterDrop, RESOURCE_NONEXISTING_ERROR);
     LOG.info("Run SELECT transaction AFTER drop");
     runDmlTxnWithDropOnCurrentResource(Dml.SELECT, indexDrop, withCachedMetadata,
         executeDmlAfterDrop, SCHEMA_VERSION_MISMATCH_ERROR);
@@ -347,12 +351,6 @@ public class TestDropTableWithConcurrentTxn extends BasePgSQLTest {
         executeDmlBeforeDrop, NO_ERROR);
     runDmlTxnWithDropOnCurrentResource(Dml.SELECT, indexDrop, withCachedMetadata,
         executeDmlBeforeDrop, NO_ERROR);
-    // For any DML before DDL on non-cached table transaction should not
-    // conflict because DML operation is performed after index is dropped
-    // and the index relation is not cached prior to being dropped.
-    LOG.info("Run INSERT transaction AFTER drop");
-    runDmlTxnWithDropOnCurrentResource(Dml.INSERT, indexDrop, !withCachedMetadata,
-        executeDmlAfterDrop, NO_ERROR);
     LOG.info("Run SELECT transaction AFTER drop");
     runDmlTxnWithDropOnCurrentResource(Dml.SELECT, indexDrop, !withCachedMetadata,
         executeDmlAfterDrop, NO_ERROR);
