@@ -131,7 +131,7 @@ TEST_F(PgCatalogPerfTest, YB_DISABLE_TEST_IN_TSAN(AfterCacheRefreshRPCCountOnIns
   auto master_rpc_count_for_insert = ASSERT_RESULT(RPCCountAfterCacheRefresh([](PGConn* conn) {
     return conn->Execute("INSERT INTO t VALUES(0)");
   }));
-  ASSERT_EQ(master_rpc_count_for_insert, 3);
+  ASSERT_EQ(master_rpc_count_for_insert, 1);
 }
 
 // Test checks number of RPC to a master caused by the first SELECT stmt from a table with primary
@@ -143,7 +143,7 @@ TEST_F(PgCatalogPerfTest, YB_DISABLE_TEST_IN_TSAN(AfterCacheRefreshRPCCountOnSel
     VERIFY_RESULT(conn->Fetch("SELECT * FROM t"));
     return static_cast<Status>(Status::OK());
   }));
-  ASSERT_EQ(master_rpc_count_for_select, 5);
+  ASSERT_EQ(master_rpc_count_for_select, 3);
 }
 
 } // namespace pgwrapper
