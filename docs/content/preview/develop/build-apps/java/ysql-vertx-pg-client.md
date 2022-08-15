@@ -103,7 +103,7 @@ This tutorial assumes that:
     $ cd vertx-pg-example
     ```
 
-1. Add the following dependency for the vertx pg client within the `<dependencies>` element in the `pom.xml` file.
+1. Add the following dependency for the Vertx PG Client within the `<dependencies>` element in the `pom.xml` file.
 
     ```xml
     <dependency>
