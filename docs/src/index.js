@@ -316,7 +316,14 @@ $(document).ready(() => {
 $(window).scroll(() => {
   // Right sidebar inpage link active on scroll.
   if ($('.td-toc #TableOfContents').length > 0) {
-    $('.td-content > h2,.td-content > h3,.td-content > h4').each((index, element) => {
+    let rightMenuSelector = '.td-content > h2,.td-content > h3,.td-content > h4';
+    if ($('.td-toc').hasClass('hide-h3')) {
+      rightMenuSelector = '.td-content > h2';
+    } else if ($('.td-toc').hasClass('hide-h4')) {
+      rightMenuSelector = '.td-content > h2,.td-content > h3';
+    }
+
+    $(rightMenuSelector).each((index, element) => {
       const offsetTop = $(element).offset().top;
       const scrollTop = $(window).scrollTop();
       const headingId = $(element).attr('id');
