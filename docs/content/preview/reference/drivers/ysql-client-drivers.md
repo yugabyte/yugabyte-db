@@ -152,7 +152,7 @@ To get the latest versions for projects using [Apache Maven](https://maven.apach
 
 ### Vertx PG Client 
 
-[Vertx PG client](https://vertx.io/docs/vertx-pg-client/java/) is the client for PostgreSQL with the simple APIs for communicating with the Database. It is reactive and non-blocking client for handling the database connections with single threaded API.
+[Vertx PG Client](https://vertx.io/docs/vertx-pg-client/java/) is the client for PostgreSQL with simple APIs to communicate with the database. It is a reactive and non-blocking client for handling the database connections with a single threaded API.
 
 For a tutorial on building a sample Java application with the Vertx PG Client, see [Build a Java application](../../../develop/build-apps/java/ysql-vertx-pg-client/).
 
