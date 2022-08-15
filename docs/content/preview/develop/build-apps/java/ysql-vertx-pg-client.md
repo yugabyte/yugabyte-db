@@ -121,7 +121,7 @@ This tutorial assumes that:
 
 ## Create the sample Java application
 
-1. Copy the following Java code to a new file named `src/main/java/com/yugabyte/vertxPgExample.java`:
+1. Copy the following Java code to a new file `src/main/java/com/yugabyte/vertxPgExample.java`:
 
     ```java
     package com.yugabyte;
