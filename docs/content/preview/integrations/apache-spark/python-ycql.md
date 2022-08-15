@@ -1,33 +1,35 @@
 ---
 title: Build a Python application using Apache Spark and YugabyteDB
-headerTitle: Apache Spark
-linkTitle: Apache Spark
+linkTitle: YCQL
 description: Build a Python application using Apache Spark and YugabyteDB
+aliases:
+  - /preview/integrations/apache-spark/python/
 menu:
   preview:
-    identifier: apache-spark-3-python
+    identifier: apache-spark-3-python-ycql
     parent: integrations
     weight: 572
 type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li >
-    <a href="{{< relref "./scala.md" >}}" class="nav-link">
-      <i class="icon-scala" aria-hidden="true"></i>
-      Scala
-    </a>
-  </li>
 
   <li >
-    <a href="{{< relref "./java.md" >}}" class="nav-link">
+    <a href="../java-ycql/" class="nav-link">
       <i class="icon-java-bold" aria-hidden="true"></i>
       Java
     </a>
   </li>
 
   <li >
-    <a href="{{< relref "./python.md" >}}" class="nav-link active">
+    <a href="../scala-ycql/" class="nav-link">
+      <i class="icon-scala" aria-hidden="true"></i>
+      Scala
+    </a>
+  </li>
+
+  <li >
+    <a href="../python-ycql/" class="nav-link active">
       <i class="icon-python" aria-hidden="true"></i>
       Python
     </a>
