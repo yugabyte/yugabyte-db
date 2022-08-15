@@ -190,7 +190,7 @@ static List *network_prefix_quals(Node *leftop, Oid expr_op, Oid opfamily,
 					 Datum rightop);
 static Datum string_to_datum(const char *str, Oid datatype);
 static Const *string_to_const(const char *str, Oid datatype);
-
+static bool is_hash_column_in_lsm_index(const IndexOptInfo* index, int columnIndex);
 
 /*
  * create_index_paths()
@@ -2347,8 +2347,14 @@ match_clause_to_indexcol(IndexOptInfo *index,
 		NullTest   *nt = (NullTest *) clause;
 
 		if (!nt->argisrow &&
-			match_index_to_operand((Node *) nt->arg, indexcol, index))
-			return true;
+			match_index_to_operand((Node *) nt->arg, indexcol, index)) {
+				/* Cannot push down IS NOT NULL on hash columns in LSM Index */
+				if (IsYBRelationById(index->indexoid) && 
+				    nt->nulltesttype == IS_NOT_NULL && 
+					is_hash_column_in_lsm_index(index, indexcol))
+					return false;
+				return true;
+			}
 		return false;
 	}
 	else
@@ -2374,7 +2380,7 @@ match_clause_to_indexcol(IndexOptInfo *index,
 		 * cannot be used. This is because a hash index is sorted by the hash
 		 * value and not by the value of the column. #13241
 		 */
-		if (indexcol < index->nhashcolumns)
+		if (is_hash_column_in_lsm_index(index, indexcol))
 		{
 			int op_strategy = get_op_opfamily_strategy(((OpExpr *) clause)->opno, opfamily);
 			if (op_strategy != BTEqualStrategyNumber)
@@ -2413,7 +2419,7 @@ match_clause_to_indexcol(IndexOptInfo *index,
 		 * cannot be used. This is because a hash index is sorted by the hash
 		 * value and not by the value of the column. #13241
 		 */
-		if (indexcol < index->nhashcolumns)
+		if (is_hash_column_in_lsm_index(index, indexcol))
 		{
 			int op_strategy = get_op_opfamily_strategy(((OpExpr *) clause)->opno, opfamily);
 			if (op_strategy != BTEqualStrategyNumber)
@@ -2480,6 +2486,9 @@ match_rowcompare_to_indexcol(IndexOptInfo *index,
 
 	/* Forget it if we're not dealing with a btree or lsm index */
 	if (index->relam != BTREE_AM_OID && index->relam != LSM_AM_OID)
+		return false;
+
+	if (is_hash_column_in_lsm_index(index, indexcol))
 		return false;
 
 	/*
@@ -4415,4 +4424,10 @@ string_to_const(const char *str, Oid datatype)
 
 	return makeConst(datatype, -1, collation, constlen,
 					 conval, false, false);
+}
+
+static bool 
+is_hash_column_in_lsm_index(const IndexOptInfo* index, int columnIndex) 
+{
+	return (index->relam == LSM_AM_OID && columnIndex < index->nhashcolumns);
 }

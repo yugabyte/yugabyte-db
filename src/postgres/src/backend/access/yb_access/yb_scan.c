@@ -2242,14 +2242,14 @@ void ybcIndexCostEstimate(struct PlannerInfo *root, IndexPath *path,
 	bool		isprimary = index->rd_index->indisprimary;
 	Relation	relation = isprimary ? RelationIdGetRelation(index->rd_index->indrelid) : NULL;
 	RelOptInfo *baserel = path->path.parent;
-	List	   *qinfos;
+	List	   *qinfos = NIL;
 	ListCell   *lc;
 	bool        is_backwards_scan = path->indexscandir == BackwardScanDirection;
 	bool        is_unique = index->rd_index->indisunique;
 	bool        is_partial_idx = path->indexinfo->indpred != NIL && path->indexinfo->predOK;
 	Bitmapset  *const_quals = NULL;
 	List	   *hashed_qinfos = NIL;
-	List	   *clauses = NULL;
+	List	   *clauses = NIL;
 	double 		baserel_rows_estimate;
 
 	/* Primary-index scans are always covered in Yugabyte (internally) */
@@ -2272,40 +2272,22 @@ void ybcIndexCostEstimate(struct PlannerInfo *root, IndexPath *path,
 		AttrNumber	 attnum = isprimary ? index->rd_index->indkey.values[qinfo->indexcol]
 										: (qinfo->indexcol + 1);
 		Expr	   *clause = rinfo->clause;
-		Oid			clause_op;
-		int			op_strategy;
 		int			bms_idx = YBAttnumToBmsIndex(scan_plan.target_relation, attnum);
 
 		if (IsA(clause, NullTest))
 		{
-			NullTest *nt = (NullTest *) clause;
-			/* We only support IS NULL (i.e. not IS NOT NULL). */
-			if (nt->nulltesttype == IS_NULL)
-			{
-				const_quals = bms_add_member(const_quals, bms_idx);
-				ybcAddAttributeColumn(&scan_plan, attnum);
-			}
+			const_quals = bms_add_member(const_quals, bms_idx);
+			ybcAddAttributeColumn(&scan_plan, attnum);
 		}
 		else
 		{
-			clause_op = qinfo->clause_op;
+			Oid	clause_op = qinfo->clause_op;
 
 			if (OidIsValid(clause_op))
 			{
-				Oid opfamily = path->indexinfo->opfamily[qinfo->indexcol];
-				if (qinfo->is_hashed)
-				{
-					opfamily = INTEGER_LSM_FAM_OID;
-				}
-				op_strategy = get_op_opfamily_strategy(clause_op, opfamily);
-				Assert(op_strategy != 0);  /* not a member of opfamily?? */
-
-				if (ybc_should_pushdown_op(&scan_plan, attnum, op_strategy))
-				{
-					ybcAddAttributeColumn(&scan_plan, attnum);
-					if (qinfo->other_operand && IsA(qinfo->other_operand, Const))
-						const_quals = bms_add_member(const_quals, bms_idx);
-				}
+				ybcAddAttributeColumn(&scan_plan, attnum);
+				if (qinfo->other_operand && IsA(qinfo->other_operand, Const))
+					const_quals = bms_add_member(const_quals, bms_idx);
 			}
 		}
 
