@@ -85,7 +85,7 @@ As this client is for PostgreSQL and YugabyteDB is wire compatible with PostgreS
 
 This tutorial assumes that:
 
-- YugabyteDB is up and running. If you are new to YugabyteDB, you can download, install, and have YugabyteDB up and running within five minutes by following the steps in [Quick start](../../../../quick-start/).
+- YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](../../../../quick-start/).
 - Java Development Kit (JDK) 1.8, or later, is installed. 
 - [Apache Maven](https://maven.apache.org/index.html) 3.3 or later, is installed.
 
