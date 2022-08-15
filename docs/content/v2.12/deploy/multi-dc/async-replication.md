@@ -36,7 +36,7 @@ After you created the required tables, you can set up asynchronous replication a
     - To find a table ID, execute the following command as an admin user:
 
       ```shell
-      yb-admin list_tables include_table_id
+      yb-admin -master_addresses=<master addresses> list_tables include_table_id
       ```
 
 - Run the following `yb-admin` [`setup_universe_replication`](../../../admin/yb-admin/#setup-universe-replication) command from the YugabyteDB home directory in the source universe:
