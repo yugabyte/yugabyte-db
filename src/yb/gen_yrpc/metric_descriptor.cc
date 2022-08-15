@@ -79,9 +79,15 @@ void GenerateHandlerAssignment(
       "    std::move(call), [this](const $request$* req, $response$* resp, "
           "::yb::rpc::RpcContext rpc_context) {\n");
   if (IsTrivialMethod(method)) {
+    ScopedIndent callback_indent(printer);
     printer(
-        "  auto result = $rpc_name$(*req, rpc_context.GetClientDeadline());\n"
-        "  rpc_context.RespondTrivial(&result, resp);\n"
+        "auto result = $rpc_name$(*req, rpc_context.GetClientDeadline());\n"
+        "if (result.ok()) {\n"
+        "  resp->Swap(result.get_ptr());\n"
+        "} else {\n"
+        "  SetupError(::yb::rpc::ResponseError(resp), result.status());\n"
+        "}\n"
+        "rpc_context.RespondSuccess();\n"
     );
   } else {
     printer("  $rpc_name$(req, resp, std::move(rpc_context));\n");

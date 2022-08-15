@@ -56,10 +56,7 @@ extern const TransactionOperationContext kNonTransactionalOperationContext;
 
 // Generate a random primitive value.
 PrimitiveValue GenRandomPrimitiveValue(RandomNumberGenerator* rng);
-
-// Generate a random sequence of primitive values.
-std::vector<PrimitiveValue> GenRandomPrimitiveValues(RandomNumberGenerator* rng,
-                                                     int max_num = kMaxNumRandomDocKeyParts);
+ValueRef GenRandomPrimitiveValue(RandomNumberGenerator* rng, QLValuePB* holder);
 
 // Generate a "minimal" DocKey.
 DocKey CreateMinimalDocKey(RandomNumberGenerator* rng, UseHash use_hash);
@@ -105,14 +102,14 @@ class DocDBRocksDBFixture : public DocDBRocksDBUtil {
   size_t NumSSTableFiles();
   StringVector SSTableFileNames();
 
-  CHECKED_STATUS InitRocksDBDir() override;
-  CHECKED_STATUS InitRocksDBOptions() override;
+  Status InitRocksDBDir() override;
+  Status InitRocksDBOptions() override;
   TabletId tablet_id() override;
-  CHECKED_STATUS FormatDocWriteBatch(const DocWriteBatch& dwb, std::string* dwb_str);
+  Status FormatDocWriteBatch(const DocWriteBatch& dwb, std::string* dwb_str);
 };
 
 // Perform a major compaction on the given database.
-CHECKED_STATUS FullyCompactDB(rocksdb::DB* rocksdb);
+Status FullyCompactDB(rocksdb::DB* rocksdb);
 
 class DocDBLoadGenerator {
  public:
@@ -197,7 +194,7 @@ class DocDBLoadGenerator {
   // intents.
   const ResolveIntentsDuringRead resolve_intents_;
 
-  std::vector<PrimitiveValue> possible_subkeys_;
+  std::vector<KeyEntryValue> possible_subkeys_;
   int iteration_;
   InMemDocDbState in_mem_docdb_;
 

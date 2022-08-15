@@ -76,6 +76,7 @@ set(YRPC_SRCS
     inbound_call.cc
     io_thread_pool.cc
     messenger.cc
+    network_error.cc
     outbound_call.cc
     local_call.cc
     rpc_call.cc
@@ -105,7 +106,6 @@ set(YRPC_SRCS
     ${RPC_SRCS_EXTENSIONS})
 
 set(YRPC_LIBS
-  encryption
   gutil
   libev
   lz4

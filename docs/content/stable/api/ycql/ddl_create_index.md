@@ -8,8 +8,7 @@ menu:
   stable:
     parent: api-cassandra
     weight: 1225
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis
@@ -56,7 +55,7 @@ Use the `CREATE INDEX` statement to create a new index on a table. It defines th
 
 ```ebnf
 create_index ::= CREATE INDEX [ IF NOT EXISTS ] index_name
-                     ON table_name ( partition_key_columns [ clustering_key_columns ] )  
+                     ON table_name ( partition_key_columns [ clustering_key_columns ] )
                      [ clustering_key_column_ordering ] [ covering_columns ] [ 'WHERE' index_predicate ]
 
 partition_key_columns ::= index_column | ( index_column [ , ... ] )
@@ -103,6 +102,8 @@ When an index is created on an existing table, YugabyteDB will automatically bac
 ### INCLUDED COLUMNS
 
 - Included columns are optional table columns whose values are copied into the index in addition to storing them in the table. When additional columns are included in the index, they can be used to respond to queries directly from the index without querying the table.
+
+- The following can't be added to an index's included columns: static columns of a table, expressions, and table columns with the following types: frozen, map, set, list, tuple, jsonb, and user defined.
 
 ### UNIQUE INDEX
 

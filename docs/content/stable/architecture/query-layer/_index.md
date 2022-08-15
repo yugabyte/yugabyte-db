@@ -4,14 +4,14 @@ headerTitle: Query layer
 linkTitle: Query layer
 description: Learn how YugabyteDB's extensible query layer implements YSQL and YCQL.
 image: /images/section_icons/index/api.png
-headcontent: 
+headcontent:
 menu:
   stable:
     identifier: architecture-query-layer
     parent: architecture
     weight: 1110
+type: indexpage
 ---
-
 {{< note title="Note" >}}
 
 YugabyteDB has an extensible query layer. It currently implements the following APIs:

@@ -50,14 +50,14 @@ class DocPgExprExecutor {
   // stored in a data structure allowing to quickly locate the value in the row, convert it from
   // DocDB data format to Postgres and then locate it by attribute number when evaluating
   // expressions.
-  CHECKED_STATUS AddColumnRef(const PgsqlColRefPB& column_ref);
+  Status AddColumnRef(const PgsqlColRefPB& column_ref);
 
   // Add a where clause expression to the executor.
   // Expression is deserialized and stored in the list of where clause expressions.
   // Where clause expression must return boolean value. Where clause expressions are implicitly
   // AND'ed. If any is evaluated to false, no further evaluation happens and row is considered
   // filtered out. Empty where clause means no rows filtered out.
-  CHECKED_STATUS AddWhereExpression(const PgsqlExpressionPB& ql_expr);
+  Status AddWhereExpression(const PgsqlExpressionPB& ql_expr);
 
   // Add a target expression to the executor.
   // Expression is deserialized and stored in the list of the target expressions. Function prepares
@@ -65,7 +65,7 @@ class DocPgExprExecutor {
   // Each expression produces single value to be returned to client (like in SELECT), stored to
   // DocDB table (like in UPDATE), or both (like in UPDATE with RETURNING clause). Target
   // expressions are evaluated unless where clause was evaluated to false.
-  CHECKED_STATUS AddTargetExpression(const PgsqlExpressionPB& ql_expr);
+  Status AddTargetExpression(const PgsqlExpressionPB& ql_expr);
 
   // Evaluate the expression in the context of single row.
   // The results vector is expected to have at least as many entries as the number of target
@@ -82,7 +82,7 @@ class DocPgExprExecutor {
   // converted to DocDB values and written into the next element of the results vector. This is a
   // caller's responsibility to track target expressions added to the executor, provide sufficiently
   // long results vector and match the results.
-  CHECKED_STATUS Exec(const QLTableRow& table_row,
+  Status Exec(const QLTableRow& table_row,
                       std::vector<QLExprResult>* results,
                       bool* match);
 

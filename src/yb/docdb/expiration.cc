@@ -23,8 +23,9 @@ namespace docdb {
 Result<MonoDelta> Expiration::ComputeRelativeTtl(const HybridTime& input_time) {
   if (input_time < write_ht)
     return STATUS(Corruption, "Read time earlier than record write time.");
-  if (ttl == Value::kMaxTtl || ttl.IsNegative())
+  if (ttl == ValueControlFields::kMaxTtl || ttl.IsNegative()) {
     return ttl;
+  }
   MonoDelta elapsed_time = MonoDelta::FromNanoseconds(
       server::HybridClock::GetPhysicalValueNanos(input_time) -
       server::HybridClock::GetPhysicalValueNanos(write_ht));

@@ -13,9 +13,9 @@ from azure.mgmt.compute import ComputeManagementClient
 from azure.mgmt.compute.models import DiskCreateOption
 from azure.mgmt.privatedns import PrivateDnsManagementClient
 from msrestazure.azure_exceptions import CloudError
-from ybops.utils import validated_key_file, format_rsa_key, DNS_RECORD_SET_TTL, MIN_MEM_SIZE_GB, \
+from ybops.utils import DNS_RECORD_SET_TTL, MIN_MEM_SIZE_GB, \
     MIN_NUM_CORES
-from ybops.common.exceptions import YBOpsRuntimeError
+from ybops.utils.ssh import format_rsa_key, validated_key_file
 from threading import Thread
 
 import logging
@@ -32,10 +32,11 @@ RESOURCE_GROUP = os.environ.get("AZURE_RG")
 NETWORK_PROVIDER_BASE_PATH = "/subscriptions/{}/resourceGroups/{}/providers/Microsoft.Network"
 SUBNET_ID_FORMAT_STRING = NETWORK_PROVIDER_BASE_PATH + "/virtualNetworks/{}/subnets/{}"
 NSG_ID_FORMAT_STRING = NETWORK_PROVIDER_BASE_PATH + "/networkSecurityGroups/{}"
+ULTRASSD_LRS = "ultrassd_lrs"
 VNET_ID_FORMAT_STRING = NETWORK_PROVIDER_BASE_PATH + "/virtualNetworks/{}"
 AZURE_SKU_FORMAT = {"premium_lrs": "Premium_LRS",
                     "standardssd_lrs": "StandardSSD_LRS",
-                    "ultrassd_lrs": "UltraSSD_LRS"}
+                    ULTRASSD_LRS: "UltraSSD_LRS"}
 YUGABYTE_VNET_PREFIX = "yugabyte-vnet-{}"
 YUGABYTE_SUBNET_PREFIX = "yugabyte-subnet-{}"
 YUGABYTE_SG_PREFIX = "yugabyte-sg-{}"
@@ -315,12 +316,14 @@ class AzureCloudAdmin():
         self.credentials = get_credentials()
         self.compute_client = ComputeManagementClient(self.credentials, SUBSCRIPTION_ID)
         self.network_client = NetworkManagementClient(self.credentials, SUBSCRIPTION_ID)
+
         self.dns_client = None
 
     def network(self, per_region_meta={}):
         return AzureBootstrapClient(per_region_meta, self.network_client, self.metadata)
 
-    def appendDisk(self, vm, vm_name, disk_name, size, lun, zone, vol_type, region, tags):
+    def append_disk(self, vm, vm_name, disk_name, size, lun, zone, vol_type, region, tags,
+                    disk_iops, disk_throughput):
         disk_params = {
             "location": region,
             "disk_size_gb": size,
@@ -335,6 +338,12 @@ class AzureCloudAdmin():
             disk_params["zones"] = [zone]
         if tags:
             disk_params["tags"] = tags
+
+        if vol_type == ULTRASSD_LRS:
+            if disk_iops is not None:
+                disk_params['disk_iops_read_write'] = disk_iops
+            if disk_throughput is not None:
+                disk_params['disk_mbps_read_write'] = disk_throughput
 
         data_disk = self.compute_client.disks.create_or_update(
             RESOURCE_GROUP,
@@ -563,7 +572,8 @@ class AzureCloudAdmin():
 
     def create_or_update_vm(self, vm_name, zone, num_vols, private_key_file, volume_size,
                             instance_type, ssh_user, nsg, image, vol_type, server_type,
-                            region, nic_id, tags, is_edit=False):
+                            region, nic_id, tags, disk_iops, disk_throughput, is_edit=False,
+                            json_output=True):
         disk_names = [vm_name + "-Disk-" + str(i) for i in range(1, num_vols + 1)]
         private_key = validated_key_file(private_key_file)
 
@@ -618,7 +628,7 @@ class AzureCloudAdmin():
         if zone is not None:
             vm_parameters["zones"] = [zone]
 
-        if (vol_type == "ultrassd_lrs"):
+        if vol_type == ULTRASSD_LRS:
             vm_parameters["additionalCapabilities"] = {"ultraSSDEnabled": True}
 
         # Tag VM as cluster-server for ansible configure-{} script
@@ -640,12 +650,18 @@ class AzureCloudAdmin():
             self.tag_disks(vm, vm_parameters["tags"])
         else:
             num_disks_attached = len(vm.storage_profile.data_disks)
+            lun_indexes = []
             for idx, disk_name in enumerate(disk_names):
                 # "Logical Unit Number" - where the data disk will be inserted. Add our disks
                 # after any existing ones.
                 lun = num_disks_attached + idx
-                self.appendDisk(
-                    vm, vm_name, disk_name, volume_size, lun, zone, vol_type, region, tags)
+                self.append_disk(
+                    vm, vm_name, disk_name, volume_size, lun, zone, vol_type, region, tags,
+                    disk_iops, disk_throughput)
+                lun_indexes.append(lun)
+
+            if json_output:
+                print(json.dumps({"lun_indexes": lun_indexes}))
         return
 
     def query_vpc(self):
@@ -856,3 +872,22 @@ class AzureCloudAdmin():
         if it's not given in Resource ID format.
         """
         return self._get_dns_zone_info_long(dns_zone_id)[:2]
+
+    def get_vm_status(self, vm_name):
+        return (
+            self.compute_client.virtual_machines.get(RESOURCE_GROUP,
+                                                     vm_name,
+                                                     expand='instanceView')
+            .instance_view.statuses[1].display_status
+        )
+
+    def deallocate_instance(self, vm_name):
+        async_vm_deallocate = self.compute_client.virtual_machines.deallocate(RESOURCE_GROUP,
+                                                                              vm_name)
+        async_vm_deallocate.wait()
+        return async_vm_deallocate.result()
+
+    def start_instance(self, vm_name):
+        async_vm_start = self.compute_client.virtual_machines.start(RESOURCE_GROUP, vm_name)
+        async_vm_start.wait()
+        return async_vm_start.result()

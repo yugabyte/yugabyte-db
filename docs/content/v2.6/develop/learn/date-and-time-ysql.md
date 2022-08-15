@@ -9,22 +9,20 @@ menu:
     name: 7. Date and time
     identifier: date-and-time-1-ysql
     weight: 569
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/develop/learn/date-and-time-ysql" class="nav-link active">
+    <a href="/preview/develop/learn/date-and-time-ysql" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
 
   <li >
-    <a href="/latest/develop/learn/date-and-time-ycql" class="nav-link">
+    <a href="/preview/develop/learn/date-and-time-ycql" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
@@ -36,7 +34,7 @@ showAsideToc: true
 
 YugabyteDB has extensive date and time capability that may be daunting for the new user. Once understood, the rich functionality will allow you to perform very sophisticated calculations and granular time capture.
 
-For date and time data types, see [Data types](/latest/api/ysql/datatypes/).
+For date and time data types, see [Data types](/preview/api/ysql/datatypes/).
 
 ## Special values
 

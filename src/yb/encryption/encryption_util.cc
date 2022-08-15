@@ -173,29 +173,6 @@ Result<uint32_t> GetHeaderSize(SequentialFile* file, HeaderManager* header_manag
   return status.is_encrypted ? (status.header_size + metadata_start) : 0;
 }
 
-class OpenSSLInitializer {
- public:
-  OpenSSLInitializer() {
-    SSL_library_init();
-    SSL_load_error_strings();
-    OpenSSL_add_all_algorithms();
-    OpenSSL_add_all_ciphers();
-  }
-
-  ~OpenSSLInitializer() {
-    ERR_free_strings();
-    EVP_cleanup();
-    CRYPTO_cleanup_all_ex_data();
-    ERR_remove_thread_state(nullptr);
-    SSL_COMP_free_compression_methods();
-  }
-};
-
-OpenSSLInitializer& InitOpenSSL() {
-  static OpenSSLInitializer initializer;
-  return initializer;
-}
-
 Status CompleteCreateEncryptionInfoForWrite(const std::string& header,
                                             std::unique_ptr<EncryptionParams> encryption_params,
                                             std::unique_ptr<BlockAccessCipherStream>* stream,

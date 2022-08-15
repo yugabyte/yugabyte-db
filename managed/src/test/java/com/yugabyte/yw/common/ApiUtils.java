@@ -20,7 +20,11 @@ import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementAZ;
+import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementCloud;
+import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementRegion;
 import com.yugabyte.yw.models.helpers.TableDetails;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -29,7 +33,6 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Consumer;
-import java.util.stream.Collectors;
 import org.yb.ColumnSchema.SortOrder;
 
 public class ApiUtils {
@@ -118,7 +121,7 @@ public class ApiUtils {
       final boolean updateInProgress) {
     PlacementInfo placementInfo =
         PlacementInfoUtil.getPlacementInfo(
-            ClusterType.PRIMARY, userIntent, userIntent.replicationFactor, false, null);
+            ClusterType.PRIMARY, userIntent, userIntent.replicationFactor, null);
     return mockUniverseUpdater(userIntent, nodePrefix, setMasters, updateInProgress, placementInfo);
   }
 
@@ -128,6 +131,17 @@ public class ApiUtils {
       final boolean setMasters,
       final boolean updateInProgress,
       final PlacementInfo placementInfo) {
+    return mockUniverseUpdater(
+        userIntent, nodePrefix, setMasters, updateInProgress, placementInfo, false);
+  }
+
+  public static Universe.UniverseUpdater mockUniverseUpdater(
+      final UserIntent userIntent,
+      final String nodePrefix,
+      final boolean setMasters,
+      final boolean updateInProgress,
+      final PlacementInfo placementInfo,
+      final boolean enableYbc) {
     return new Universe.UniverseUpdater() {
       @Override
       public void run(Universe universe) {
@@ -135,18 +149,16 @@ public class ApiUtils {
         universeDetails.upsertPrimaryCluster(userIntent, placementInfo);
         universeDetails.nodeDetailsSet = new HashSet<>();
         universeDetails.updateInProgress = updateInProgress;
+        universeDetails.enableYbc = enableYbc;
         List<UUID> azUUIDList = null;
         if (placementInfo != null) {
-          azUUIDList =
-              placementInfo
-                  .cloudList
-                  .get(0)
-                  .regionList
-                  .get(0)
-                  .azList
-                  .stream()
-                  .flatMap(p -> Collections.nCopies(p.numNodesInAZ, p.uuid).stream())
-                  .collect(Collectors.toList());
+          PlacementCloud placementCloud = placementInfo.cloudList.get(0);
+          azUUIDList = new ArrayList<>();
+          for (PlacementRegion rp : placementCloud.regionList) {
+            for (PlacementAZ az : rp.azList) {
+              azUUIDList.addAll(Collections.nCopies(az.numNodesInAZ, az.uuid));
+            }
+          }
         }
         for (int idx = 1; idx <= userIntent.numNodes; idx++) {
           // TODO: This state needs to be ToBeAdded as Create(k8s)Univ runtime sets it to Live
@@ -167,6 +179,22 @@ public class ApiUtils {
         universeDetails.rootCA = universe.getUniverseDetails().rootCA;
         universe.setUniverseDetails(universeDetails);
       }
+    };
+  }
+
+  public static Universe.UniverseUpdater mockUniverseUpdater(boolean updateInProgress) {
+    return universe -> {
+      UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+      universeDetails.updateInProgress = updateInProgress;
+      universe.setUniverseDetails(universeDetails);
+    };
+  }
+
+  public static Universe.UniverseUpdater mockUniverseUpdater(final UUID rootCA) {
+    return universe -> {
+      UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+      universeDetails.rootCA = rootCA;
+      universe.setUniverseDetails(universeDetails);
     };
   }
 
@@ -277,7 +305,7 @@ public class ApiUtils {
     };
   }
 
-  public static Universe.UniverseUpdater mockUniverseUpdaterWithActiveYSQLNode() {
+  public static Universe.UniverseUpdater mockUniverseUpdaterWithActiveYSQLNode(UUID azUUID) {
     return new Universe.UniverseUpdater() {
       @Override
       public void run(Universe universe) {
@@ -287,8 +315,10 @@ public class ApiUtils {
         userIntent.enableYSQL = true;
         userIntent.numNodes = 1;
         universeDetails.nodeDetailsSet = new HashSet<>();
-        universeDetails.nodeDetailsSet.add(
-            getDummyNodeDetailsWithPlacement(universeDetails.getPrimaryCluster().uuid));
+        NodeDetails node =
+            getDummyNodeDetailsWithPlacement(universeDetails.getPrimaryCluster().uuid);
+        node.azUuid = azUUID;
+        universeDetails.nodeDetailsSet.add(node);
         universeDetails.upsertPrimaryCluster(userIntent, pi);
         universe.setUniverseDetails(universeDetails);
       }
@@ -384,6 +414,18 @@ public class ApiUtils {
     };
   }
 
+  public static Universe.UniverseUpdater mockUniverseUpdaterWithHelmNamingStyle(
+      boolean newNamingStyle) {
+    return new Universe.UniverseUpdater() {
+      @Override
+      public void run(Universe universe) {
+        UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+        details.useNewHelmNamingStyle = newNamingStyle;
+        universe.setUniverseDetails(details);
+      }
+    };
+  }
+
   public static UserIntent getDefaultUserIntent(Customer customer) {
     Provider p = ModelFactory.awsProvider(customer);
     return getDefaultUserIntent(p);
@@ -467,6 +509,10 @@ public class ApiUtils {
     return nodeDetailsSet;
   }
 
+  public static NodeDetails getDummyNodeDetails(int idx) {
+    return getDummyNodeDetails(idx, NodeState.Live);
+  }
+
   public static NodeDetails getDummyNodeDetails(int idx, NodeDetails.NodeState state) {
     return getDummyNodeDetails(idx, state, false /* isMaster */, false);
   }
@@ -523,6 +569,7 @@ public class ApiUtils {
     }
     node.nodeIdx = idx;
     node.isYsqlServer = isYSQL;
+    node.disksAreMountedByUUID = true;
     return node;
   }
 

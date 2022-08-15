@@ -268,6 +268,7 @@ void CQLProcessor::PrepareAndSendResponse(const unique_ptr<CQLResponse>& respons
     const CQLConnectionContext& context =
         static_cast<const CQLConnectionContext&>(call_->connection()->context());
     response->set_registered_events(context.registered_events());
+    response->set_rpc_queue_position(call_->GetRpcQueuePosition());
     SendResponse(*response);
   }
 }
@@ -888,7 +889,7 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessAuthResult(const string& saved_hash
     if (!ldap_auth_result.ok()) {
       return make_unique<ErrorResponse>(
           *request_, ErrorResponse::Code::SERVER_ERROR,
-          "Failed to authenticate using LDAP: " + yb::ToString(ldap_auth_result));
+          "Failed to authenticate using LDAP: " + ldap_auth_result.status().ToString());
     } else if (!*ldap_auth_result) {
       response = make_unique<ErrorResponse>(
           *request_, ErrorResponse::Code::BAD_CREDENTIALS,

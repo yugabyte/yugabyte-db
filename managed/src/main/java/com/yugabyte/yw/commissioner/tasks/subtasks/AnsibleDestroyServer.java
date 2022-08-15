@@ -14,7 +14,6 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeManager;
-import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.NodeInstance;
@@ -38,6 +37,8 @@ public class AnsibleDestroyServer extends NodeTaskBase {
     public boolean isForceDelete;
     // Flag to track if node info should be deleted from universe db.
     public boolean deleteNode = true;
+    // Flag to delete root volumes which are not auto-deleted on instance termination.
+    public boolean deleteRootVolumes = false;
     // IP of node to be deleted.
     public String nodeIP = null;
   }
@@ -71,15 +72,17 @@ public class AnsibleDestroyServer extends NodeTaskBase {
   public void run() {
     // Execute the ansible command.
     try {
-      ShellResponse response =
-          getNodeManager().nodeCommand(NodeManager.NodeCommandType.Destroy, taskParams());
-      processShellResponse(response);
+      getNodeManager()
+          .nodeCommand(NodeManager.NodeCommandType.Destroy, taskParams())
+          .processErrors();
     } catch (Exception e) {
       if (!taskParams().isForceDelete) {
         throw e;
       } else {
         log.debug(
-            "Ignoring error deleting {} due to isForceDelete being set.", taskParams().nodeName, e);
+            "Ignoring error deleting instance {} due to isForceDelete being set.",
+            taskParams().nodeName,
+            e);
       }
     }
 
@@ -88,6 +91,25 @@ public class AnsibleDestroyServer extends NodeTaskBase {
         u.getUniverseDetails()
             .getClusterByUuid(u.getNode(taskParams().nodeName).placementUuid)
             .userIntent;
+
+    if (taskParams().deleteRootVolumes
+        && !userIntent.providerType.equals(Common.CloudType.onprem)) {
+      try {
+        getNodeManager()
+            .nodeCommand(NodeManager.NodeCommandType.Delete_Root_Volumes, taskParams())
+            .processErrors();
+      } catch (Exception e) {
+        if (!taskParams().isForceDelete) {
+          throw e;
+        } else {
+          log.debug(
+              "Ignoring error deleting volumes for {} due to isForceDelete being set.",
+              taskParams().nodeName,
+              e);
+        }
+      }
+    }
+
     NodeDetails univNodeDetails = u.getNode(taskParams().nodeName);
 
     if (userIntent.providerType.equals(Common.CloudType.onprem)
@@ -107,7 +129,7 @@ public class AnsibleDestroyServer extends NodeTaskBase {
     if (taskParams().deleteNode) {
       // Update the node state to removed. Even though we remove the node below, this will
       // help tracking state for any nodes stuck in limbo.
-      setNodeState(NodeDetails.NodeState.Removed);
+      setNodeState(NodeDetails.NodeState.Terminated);
 
       removeNodeFromUniverse(taskParams().nodeName);
     }

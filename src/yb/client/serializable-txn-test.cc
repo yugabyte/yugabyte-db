@@ -106,7 +106,7 @@ TEST_F(SerializableTxnTest, ReadWriteConflict) {
     auto read_txn = CreateTransaction();
     auto read_session = CreateSession(read_txn);
     auto read = ReadRow(read_session, i);
-    ASSERT_OK(read_session->Flush());
+    ASSERT_OK(read_session->TEST_Flush());
 
     auto write_txn = CreateTransaction();
     auto write_session = CreateSession(write_txn);
@@ -161,7 +161,7 @@ void SerializableTxnTest::TestIncrement(int key, bool transactional) {
     Entry entry;
     entry.txn = transactional ? CreateTransaction() : nullptr;
     entry.session = CreateSession(entry.txn, clock_);
-    entry.session->SetReadPoint(Restart::kFalse);
+    entry.session->RestartNonTxnReadPoint(Restart::kFalse);
     entries.push_back(entry);
   }
 
@@ -197,7 +197,7 @@ void SerializableTxnTest::TestIncrement(int key, bool transactional) {
               if (transactional) {
                 entry.txn = ASSERT_RESULT(entry.txn->CreateRestartedTransaction());
               } else {
-                entry.session->SetReadPoint(Restart::kTrue);
+                entry.session->RestartNonTxnReadPoint(Restart::kTrue);
               }
               entry.op = nullptr;
             } else {
@@ -297,7 +297,7 @@ void SerializableTxnTest::TestColoring() {
             Flush::kFalse)));
       }
 
-      ASSERT_OK(session->Flush());
+      ASSERT_OK(session->TEST_Flush());
 
       for (const auto& op : ops) {
         ASSERT_OK(CheckOp(op.get()));
@@ -336,7 +336,7 @@ void SerializableTxnTest::TestColoring() {
             break;
           }
 
-          auto flush_status = session->Flush();
+          auto flush_status = session->TEST_Flush();
           if (!flush_status.ok()) {
             ASSERT_TRUE(flush_status.IsTryAgain()) << flush_status;
             break;
@@ -367,7 +367,7 @@ void SerializableTxnTest::TestColoring() {
       continue;
     }
 
-    session->SetReadPoint(Restart::kFalse);
+    session->RestartNonTxnReadPoint(Restart::kFalse);
     auto values = ASSERT_RESULT(SelectAllRows(session));
     ASSERT_EQ(values.size(), kKeys);
     LOG(INFO) << "Values: " << yb::ToString(values);

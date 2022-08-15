@@ -29,6 +29,8 @@
 #include "yb/rocksdb/db/db_test_util.h"
 #include "yb/rocksdb/port/stack_trace.h"
 
+#include "yb/util/random_util.h"
+
 namespace rocksdb {
 class DBTestDynamicLevel : public DBTestBase {
  public:
@@ -63,7 +65,7 @@ TEST_F(DBTestDynamicLevel, DynamicLevelMaxBytesBase) {
       keys[i] = i;
     }
     if (ordered_insert == 0) {
-      std::random_shuffle(std::begin(keys), std::end(keys));
+      std::shuffle(std::begin(keys), std::end(keys), yb::ThreadLocalRandom());
     }
     for (int max_background_compactions = 1; max_background_compactions < 4;
          max_background_compactions += 2) {

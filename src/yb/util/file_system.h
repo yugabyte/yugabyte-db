@@ -55,7 +55,7 @@ class SequentialFile {
   // If an error was encountered, returns a non-OK status.
   //
   // REQUIRES: External synchronization
-  virtual CHECKED_STATUS Read(size_t n, Slice* result, uint8_t* scratch) = 0;
+  virtual Status Read(size_t n, Slice* result, uint8_t* scratch) = 0;
 
   // Skip "n" bytes from the file. This is guaranteed to be no
   // slower that reading the same data, but may be faster.
@@ -64,12 +64,12 @@ class SequentialFile {
   // file, and Skip will return OK.
   //
   // REQUIRES: External synchronization
-  virtual CHECKED_STATUS Skip(uint64_t n) = 0;
+  virtual Status Skip(uint64_t n) = 0;
 
   // Remove any kind of caching of data from the offset to offset+length
   // of this file. If the length is 0, then it refers to the end of file.
   // If the system is not caching the file contents, then this is a noop.
-  virtual CHECKED_STATUS InvalidateCache(size_t offset, size_t length);
+  virtual Status InvalidateCache(size_t offset, size_t length);
 
   // Returns the filename provided when the SequentialFile was constructed.
   virtual const std::string& filename() const = 0;
@@ -100,7 +100,7 @@ class FileWithUniqueId {
 // validation happens on the critical read of read requests.
 class ReadValidator {
  public:
-  virtual CHECKED_STATUS Validate(const Slice& s) const = 0;
+  virtual Status Validate(const Slice& s) const = 0;
   virtual ~ReadValidator() = default;
 };
 
@@ -119,14 +119,14 @@ class RandomAccessFile : public FileWithUniqueId {
   // status.
   //
   // Safe for concurrent use by multiple threads.
-  virtual CHECKED_STATUS Read(uint64_t offset, size_t n, Slice* result,
+  virtual Status Read(uint64_t offset, size_t n, Slice* result,
                               uint8_t *scratch) const = 0;
 
   // Similar to Read, but uses the given callback to validate the result.
-  virtual CHECKED_STATUS ReadAndValidate(
+  virtual Status ReadAndValidate(
       uint64_t offset, size_t n, Slice* result, char* scratch, const ReadValidator& validator);
 
-  CHECKED_STATUS Read(uint64_t offset, size_t n, Slice* result, char* scratch);
+  Status Read(uint64_t offset, size_t n, Slice* result, char* scratch);
 
   // Returns the size of the file
   virtual Result<uint64_t> Size() const = 0;
@@ -169,7 +169,7 @@ class RandomAccessFile : public FileWithUniqueId {
   // Remove any kind of caching of data from the offset to offset+length
   // of this file. If the length is 0, then it refers to the end of file.
   // If the system is not caching the file contents, then this is a noop.
-  virtual CHECKED_STATUS InvalidateCache(size_t offset, size_t length);
+  virtual Status InvalidateCache(size_t offset, size_t length);
 };
 
 class SequentialFileWrapper : public SequentialFile {
@@ -195,7 +195,7 @@ class RandomAccessFileWrapper : public RandomAccessFile {
   // Return the target to which this RandomAccessFile forwards all calls.
   RandomAccessFile* target() const { return target_.get(); }
 
-  CHECKED_STATUS Read(uint64_t offset, size_t n, Slice* result, uint8_t* scratch) const override;
+  Status Read(uint64_t offset, size_t n, Slice* result, uint8_t* scratch) const override;
 
   Result<uint64_t> Size() const override;
 

@@ -26,7 +26,7 @@ namespace docdb {
 
 bool HasExpiredTTL(const HybridTime& key_hybrid_time, const MonoDelta &ttl,
                    const HybridTime& read_hybrid_time) {
-  if (ttl.Equals(Value::kMaxTtl) || ttl.Equals(Value::kResetTtl)) {
+  if (ttl.Equals(ValueControlFields::kMaxTtl) || ttl.Equals(ValueControlFields::kResetTtl)) {
     return false;
   }
   return server::HybridClock::CompareHybridClocksToDelta(
@@ -42,10 +42,11 @@ bool HasExpiredTTL(const HybridTime& expiration_time, const HybridTime& read_hyb
 
 const MonoDelta TableTTL(const Schema& schema) {
   // In this context, a ttl of kMaxTtl indicates that the table has no default TTL.
-  MonoDelta ttl = Value::kMaxTtl;
+  MonoDelta ttl = ValueControlFields::kMaxTtl;
   if (schema.table_properties().HasDefaultTimeToLive()) {
     uint64_t default_ttl = schema.table_properties().DefaultTimeToLive();
-    return default_ttl == kResetTTL ? Value::kMaxTtl : MonoDelta::FromMilliseconds(default_ttl);
+    return default_ttl == kResetTTL
+        ? ValueControlFields::kMaxTtl : MonoDelta::FromMilliseconds(default_ttl);
   }
   return ttl;
 }
@@ -56,8 +57,8 @@ const MonoDelta ComputeTTL(const MonoDelta& value_ttl, const MonoDelta& default_
   // If not kMaxTtl, then there is a value-level TTL that we should use instead.
   // A value of kResetTTL (i.e. 0) indicates the value should not expire, in which
   // case kMaxTtl (now representing no expiration) is returned.
-  if (!value_ttl.Equals(Value::kMaxTtl)) {
-    ttl = value_ttl.ToMilliseconds() == kResetTTL ? Value::kMaxTtl : value_ttl;
+  if (!value_ttl.Equals(ValueControlFields::kMaxTtl)) {
+    ttl = value_ttl.ToMilliseconds() == kResetTTL ? ValueControlFields::kMaxTtl : value_ttl;
   } else {
     ttl = default_ttl;
   }
@@ -70,9 +71,9 @@ const MonoDelta ComputeTTL(const MonoDelta& value_ttl, const Schema& schema) {
 
 const HybridTime FileExpirationFromValueTTL(
     const HybridTime& key_hybrid_time, const MonoDelta& value_ttl) {
-  if (value_ttl.Equals(Value::kMaxTtl)) {
+  if (value_ttl.Equals(ValueControlFields::kMaxTtl)) {
     return kUseDefaultTTL;
-  } else if (value_ttl.Equals(Value::kResetTtl)) {
+  } else if (value_ttl.Equals(ValueControlFields::kResetTtl)) {
     return kNoExpiration;
   }
   auto exp_time = server::HybridClock::AddPhysicalTimeToHybridTime(key_hybrid_time, value_ttl);
@@ -93,7 +94,7 @@ const HybridTime MaxExpirationFromValueAndTableTTL(const HybridTime& key_hybrid_
   }
   // If the table TTL indicates no expiration, then defer to the value expiration.
   // If the value expiration also indicates to use the table TTL, don't expire the file.
-  if (table_ttl.Equals(Value::kMaxTtl)) {
+  if (table_ttl.Equals(ValueControlFields::kMaxTtl)) {
     return value_expiry == kUseDefaultTTL ? kNoExpiration : value_expiry;
   }
 

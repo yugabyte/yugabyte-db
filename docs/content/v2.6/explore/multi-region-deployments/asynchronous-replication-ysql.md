@@ -9,21 +9,20 @@ menu:
     identifier: explore-multi-region-deployments-async-replication-1-ysql
     parent: explore-multi-region-deployments
     weight: 720
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/explore/multi-region-deployments/asynchronous-replication-ysql/" class="nav-link active">
+    <a href="/preview/explore/multi-region-deployments/asynchronous-replication-ysql/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
 
   <li >
-    <a href="/latest/explore/multi-region-deployments/asynchronous-replication-ycql/" class="nav-link">
+    <a href="/preview/explore/multi-region-deployments/asynchronous-replication-ycql/" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
@@ -53,7 +52,7 @@ This will start up a one-node local cluster using the IP address of `127.0.0.1` 
 
 ```output
 Starting yugabyted...
-✅ System checks           
+✅ System checks
 
 +--------------------------------------------------------------------------------------------------+
 |                                            yugabyted                                             |
@@ -84,7 +83,7 @@ This will start up a one-node cluster using IP address of `127.0.0.2` and create
 
 ```output
 Starting yugabyted...
-✅ System checks           
+✅ System checks
 
 +--------------------------------------------------------------------------------------------------+
 |                                            yugabyted                                             |

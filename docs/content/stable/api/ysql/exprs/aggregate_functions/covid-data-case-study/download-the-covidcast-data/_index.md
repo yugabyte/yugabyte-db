@@ -9,10 +9,8 @@ menu:
     identifier: download-the-covidcast-data
     parent: covid-data-case-study
     weight: 10
-isTocNested: true
-showAsideToc: true
+type: indexpage
 ---
-
 Simply follow these step-by-step instructions:
 
 -  Create a directory on the computer where you run `ysqlsh` to hold the files for this case study. Call it, for example, _"covid-data-case-study"_.
@@ -40,5 +38,5 @@ Simply follow these step-by-step instructions:
    ```
 
    The naming convention is obvious. The names will reflect your choice of date range.
-   
+
 - Create a directory called _"csv-files_" on your  _"covid-data-case-study"_ directory and move the `.csv` files to this from your _"downloads"_ directory. Because you will not edit these files, you might like to make them all read-only to be sure that you don't make any accidental changes when you use a text editor or a spreadsheet app to inspect them.

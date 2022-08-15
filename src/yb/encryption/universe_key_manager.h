@@ -14,6 +14,7 @@
 #ifndef YB_ENCRYPTION_UNIVERSE_KEY_MANAGER_H
 #define YB_ENCRYPTION_UNIVERSE_KEY_MANAGER_H
 
+#include <condition_variable>
 #include <shared_mutex>
 
 #include "yb/encryption/encryption.pb.h"

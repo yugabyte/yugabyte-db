@@ -12,28 +12,24 @@ package com.yugabyte.yw.common.password;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.forms.PasswordPolicyFormData;
-import com.yugabyte.yw.models.CustomerConfig;
-
-import org.apache.commons.lang3.ArrayUtils;
-import org.apache.commons.lang3.StringUtils;
-import play.data.validation.ValidationError;
-import play.libs.Json;
-
-import javax.inject.Inject;
-import javax.inject.Singleton;
-
+import com.yugabyte.yw.models.configs.CustomerConfig;
+import com.yugabyte.yw.models.configs.data.CustomerConfigPasswordPolicyData;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.stream.Collectors;
-
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.core.JsonProcessingException;
+import javax.inject.Inject;
+import javax.inject.Singleton;
+import org.apache.commons.lang3.ArrayUtils;
+import org.apache.commons.lang3.StringUtils;
+import play.data.validation.ValidationError;
+import play.libs.Json;
 
 @Singleton
 public class PasswordPolicyService {
@@ -54,25 +50,29 @@ public class PasswordPolicyService {
     this.config = config;
     validators.add(
         new PasswordComplexityValidator(
-            PasswordPolicyFormData::getMinLength, c -> true, "characters"));
+            CustomerConfigPasswordPolicyData::getMinLength, c -> true, "characters"));
     validators.add(
         new PasswordComplexityValidator(
-            PasswordPolicyFormData::getMinUppercase, Character::isUpperCase, "upper case letters"));
+            CustomerConfigPasswordPolicyData::getMinUppercase,
+            Character::isUpperCase,
+            "upper case letters"));
     validators.add(
         new PasswordComplexityValidator(
-            PasswordPolicyFormData::getMinLowercase, Character::isLowerCase, "lower case letters"));
+            CustomerConfigPasswordPolicyData::getMinLowercase,
+            Character::isLowerCase,
+            "lower case letters"));
     validators.add(
         new PasswordComplexityValidator(
-            PasswordPolicyFormData::getMinDigits, Character::isDigit, "digits"));
+            CustomerConfigPasswordPolicyData::getMinDigits, Character::isDigit, "digits"));
     validators.add(
         new PasswordComplexityValidator(
-            PasswordPolicyFormData::getMinSpecialCharacters,
+            CustomerConfigPasswordPolicyData::getMinSpecialCharacters,
             c -> ArrayUtils.contains(SPECIAL_CHARACTERS, c),
             "special characters"));
   }
 
   public void checkPasswordPolicy(UUID customerUUID, String password) {
-    PasswordPolicyFormData effectivePolicy = getCustomerPolicy(customerUUID);
+    CustomerConfigPasswordPolicyData effectivePolicy = getCustomerPolicy(customerUUID);
 
     if (StringUtils.isEmpty(password)) {
       throw new PlatformServiceException(BAD_REQUEST, "Password shouldn't be empty.");
@@ -98,14 +98,14 @@ public class PasswordPolicyService {
   }
 
   // Method to return the password policy
-  public PasswordPolicyFormData getPasswordPolicyData(UUID customerUUID) {
-    PasswordPolicyFormData effectivePolicy = getCustomerPolicy(customerUUID);
-    PasswordPolicyFormData policyData;
+  public CustomerConfigPasswordPolicyData getPasswordPolicyData(UUID customerUUID) {
+    CustomerConfigPasswordPolicyData effectivePolicy = getCustomerPolicy(customerUUID);
+    CustomerConfigPasswordPolicyData policyData;
     JsonNode effectivePolicyJson = Json.toJson(effectivePolicy);
     ObjectMapper mapper = new ObjectMapper();
 
     try {
-      policyData = mapper.treeToValue(effectivePolicyJson, PasswordPolicyFormData.class);
+      policyData = mapper.treeToValue(effectivePolicyJson, CustomerConfigPasswordPolicyData.class);
     } catch (JsonProcessingException e) {
       throw new RuntimeException("Can not pretty print a Json object.");
     }
@@ -113,15 +113,17 @@ public class PasswordPolicyService {
     return policyData;
   }
 
-  public PasswordPolicyFormData getCustomerPolicy(UUID customerUUID) {
-    PasswordPolicyFormData configuredPolicy =
-        PasswordPolicyFormData.fromCustomerConfig(
-            CustomerConfig.getPasswordPolicyConfig(customerUUID));
+  public CustomerConfigPasswordPolicyData getCustomerPolicy(UUID customerUUID) {
+    CustomerConfig customerConfig = CustomerConfig.getPasswordPolicyConfig(customerUUID);
+    CustomerConfigPasswordPolicyData configuredPolicy =
+        customerConfig != null
+            ? (CustomerConfigPasswordPolicyData) customerConfig.getDataObject()
+            : null;
 
-    PasswordPolicyFormData effectivePolicy;
+    CustomerConfigPasswordPolicyData effectivePolicy;
 
     if (configuredPolicy == null) {
-      effectivePolicy = new PasswordPolicyFormData();
+      effectivePolicy = new CustomerConfigPasswordPolicyData();
       effectivePolicy.setMinLength(config.getInt(DEFAULT_MIN_LENGTH_PARAM));
       effectivePolicy.setMinUppercase(config.getInt(DEFAULT_MIN_UPPERCASE_PARAM));
       effectivePolicy.setMinLowercase(config.getInt(DEFAULT_MIN_LOWERCASE_PARAM));

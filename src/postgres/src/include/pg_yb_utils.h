@@ -31,6 +31,7 @@
 #include "access/reloptions.h"
 #include "catalog/pg_database.h"
 #include "common/pg_yb_common.h"
+#include "nodes/parsenodes.h"
 #include "nodes/plannodes.h"
 #include "utils/relcache.h"
 #include "utils/resowner.h"
@@ -142,6 +143,11 @@ extern bool IsYBRelation(Relation relation);
 extern bool IsYBBackedRelation(Relation relation);
 
 /*
+ * Returns whether a relation is TEMP table
+ */
+extern bool YbIsTempRelation(Relation relation);
+
+/*
  * Returns whether a relation's attribute is a real column in the backing
  * YugaByte table. (It implies we can both read from and write to it).
  */
@@ -176,8 +182,7 @@ extern Bitmapset *YBGetTablePrimaryKeyBms(Relation rel);
  */
 extern Bitmapset *YBGetTableFullPrimaryKeyBms(Relation rel);
 
-extern bool YBIsDatabaseColocated(Oid dbId);
-extern bool YBIsTableColocated(Oid dbId, Oid relationId);
+extern bool YbIsDatabaseColocated(Oid dbid);
 
 /*
  * Check if a relation has row triggers that may reference the old row.
@@ -207,6 +212,11 @@ extern bool IsYBReadCommitted();
  * Whether to allow users to use SAVEPOINT commands at the query layer.
  */
 extern bool YBSavepointsEnabled();
+
+/*
+ * Whether the per database catalog version mode is enabled.
+ */
+extern bool YBIsDBCatalogVersionMode();
 
 /*
  * Given a status returned by YB C++ code, reports that status as a PG/YSQL
@@ -273,7 +283,7 @@ extern void YBCAbortTransaction();
 
 extern void YBCSetActiveSubTransaction(SubTransactionId id);
 
-extern void YBCRollbackSubTransaction(SubTransactionId id);
+extern void YBCRollbackToSubTransaction(SubTransactionId id);
 
 /*
  * Return true if we want to allow PostgreSQL's own locking. This is needed
@@ -407,6 +417,32 @@ extern int yb_index_state_flags_update_delay;
  */
 extern bool yb_enable_expression_pushdown;
 
+/*
+ * YSQL guc variable that is used to enable the use of Postgres's selectivity
+ * functions and YSQL table statistics.
+ * e.g. 'SET yb_enable_optimizer_statistics = true'
+ * See also the corresponding entries in guc.c.
+ */
+extern bool yb_enable_optimizer_statistics;
+
+/*
+ * Enables nonbreaking DDL mode in which a DDL statement is not considered as
+ * a "breaking catalog change" and therefore will not cause running transactions
+ * to abort.
+ */
+extern bool yb_make_next_ddl_statement_nonbreaking;
+
+/*
+ * Allows capability to disable prefetching in a PLPGSQL FOR loop over a query.
+ * This is introduced for some test(s) with lazy evaluation in READ COMMITTED
+ * isolation that require the read rpcs to be issued over multiple invocations
+ * of the lazily evaluable function. If prefetching is enabled, the first
+ * invocation could possibly issue read rpcs to all tablets until the
+ * specified number of rows is prefetched -- in which case no read rpcs would be
+ * issued in later invocations.
+ */
+extern bool yb_plpgsql_disable_prefetch_in_for_query;
+
 //------------------------------------------------------------------------------
 // GUC variables needed by YB via their YB pointers.
 extern int StatementTimeout;
@@ -489,6 +525,26 @@ YBCPgYBTupleIdDescriptor* YBCCreateYBTupleIdDescriptor(Oid db_oid, Oid table_oid
 void YBCFillUniqueIndexNullAttribute(YBCPgYBTupleIdDescriptor* descr);
 
 /*
+ * Lazily loads yb_table_properties field in Relation.
+ *
+ * YbGetTableProperties expects the table to be present in the DocDB, while
+ * YbTryGetTableProperties queries the DocDB first and returns NULL if not found.
+ *
+ * Both calls returns the same yb_table_properties field from Relation
+ * for convenience (can be NULL for the second call).
+ *
+ * Note that these calls will rarely send out RPC because of
+ * Relation/TableDesc cache.
+ *
+ * TODO(alex):
+ *    An optimization we could use is to amend RelationBuildDesc or
+ *    ScanPgRelation to do a custom RPC fetching YB properties as well.
+ *    However, TableDesc cache makes this low-priority.
+ */
+YbTableProperties YbGetTableProperties(Relation rel);
+YbTableProperties YbTryGetTableProperties(Relation rel);
+
+/*
  * Check whether the given libc locale is supported in YugaByte mode.
  */
 bool YBIsSupportedLibcLocale(const char *localebuf);
@@ -549,8 +605,8 @@ extern const uint32 yb_funcs_safe_for_pushdown[];
  */
 extern const int yb_funcs_safe_for_pushdown_count;
 
-/** 
- * Use the YB_PG_PDEATHSIG environment variable to set the signal to be sent to 
+/**
+ * Use the YB_PG_PDEATHSIG environment variable to set the signal to be sent to
  * the current process in case the parent process dies. This is Linux-specific
  * and can only be done from the child process (the postmaster process). The
  * parent process here is yb-master or yb-tserver.
@@ -563,5 +619,41 @@ void YBSetParentDeathSignal();
  * filenode has been set to relation B's OID.
  */
 Oid YbGetStorageRelid(Relation relation);
+
+/*
+ * Check whether the user ID is of a user who has the yb_db_admin role.
+ */
+bool IsYbDbAdminUser(Oid member);
+
+/*
+ * Check whether the user ID is of a user who has the yb_db_admin role
+ * (excluding superusers).
+ */
+bool IsYbDbAdminUserNosuper(Oid member);
+
+/*
+ * Check unsupported system columns and report error.
+ */
+void YbCheckUnsupportedSystemColumns(Var *var, const char *colname, RangeTblEntry *rte);
+
+/*
+ * Register system table for prefetching.
+ */
+void YbRegisterSysTableForPrefetching(int sys_table_id);
+
+/*
+ * Returns true if the relation is a non-system relation in the same region.
+ */
+bool YBCIsRegionLocal(Relation rel);
+
+/*
+ * Return NULL for all non-range-partitioned tables.
+ * Return an empty string for one-tablet range-partitioned tables.
+ * Return SPLIT AT VALUES clause string (i.e. SPLIT AT VALUES(...))
+ * for all range-partitioned tables with more than one tablet.
+ * Return an empty string when duplicate split points exist
+ * after tablet splitting.
+ */
+extern Datum yb_get_range_split_clause(PG_FUNCTION_ARGS);
 
 #endif /* PG_YB_UTILS_H */

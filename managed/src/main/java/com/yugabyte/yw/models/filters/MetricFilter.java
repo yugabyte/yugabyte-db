@@ -155,7 +155,12 @@ public class MetricFilter {
       return false;
     }
     if (expired != null) {
-      return metric.getExpireTime().before(new Date()) == expired;
+      if (expired && metric.getExpireTime().after(new Date())) {
+        return false;
+      }
+      if (!expired && metric.getExpireTime().before(new Date())) {
+        return false;
+      }
     }
     return !metric.isDeleted();
   }

@@ -82,7 +82,7 @@ public class AlertChannelPagerDutyTest extends FakeDBApplication {
     assertThat(payloadJson.get("group").asText(), equalTo("UNIVERSE"));
     assertThat(
         payloadJson.get("class").asText(),
-        equalTo("Yugabyte Platform Alert - <[test@customer.com][tc]>"));
+        equalTo("YugabyteDB Anywhere Alert - <[test@customer.com][tc]>"));
   }
 
   @Test

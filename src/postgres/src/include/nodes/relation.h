@@ -343,6 +343,12 @@ typedef struct PlannerInfo
 
 	/* Does this query modify any partition key columns? */
 	bool		partColsUpdated;
+
+	/*
+	 * Number of relations that are still referenced by the plan after
+	 * constraint exclusion and partition pruning.
+	 */
+	int     yb_num_referenced_relations;
 } PlannerInfo;
 
 
@@ -704,6 +710,9 @@ typedef struct RelOptInfo
 	List	  **partexprs;		/* Non-nullable partition key expressions. */
 	List	  **nullable_partexprs; /* Nullable partition key expressions. */
 	List	   *partitioned_child_rels; /* List of RT indexes. */
+
+	/* used for YB relations */
+	bool		is_yb_relation;	/* Is a YbRelation */
 } RelOptInfo;
 
 /*
@@ -1898,6 +1907,8 @@ typedef struct RestrictInfo
 	bool		pseudoconstant; /* see comment above */
 
 	bool		leakproof;		/* true if known to contain no leaked Vars */
+
+	bool		yb_pushable;	/* true if can be pushed down to DocDB */
 
 	Index		security_level; /* see comment above */
 

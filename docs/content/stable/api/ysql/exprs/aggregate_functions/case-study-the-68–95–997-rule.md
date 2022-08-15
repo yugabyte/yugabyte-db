@@ -1,24 +1,26 @@
 ---
-title: case study—using aggregate functions to demonstrate the "68–95–99.7" rule
-linkTitle: case study—percentile_cont() and the "68–95–99.7" rule
-headerTitle: Case study—using aggregate functions to demonstrate the "68–95–99.7" rule
-description: Case study to show the use of percentile_cont() to illustrate the well-known "68–95–99.7" rule about a normal distribution. 
+title: >
+  Case study: using aggregate functions to demonstrate the "68–95–99.7" rule
+linkTitle: >
+  Case study: percentile_cont() and the "68–95–99.7" rule
+headerTitle: >
+  Case study: using aggregate functions to demonstrate the "68–95–99.7" rule
+description: Case study to show the use of percentile_cont() to illustrate the well-known "68–95–99.7" rule about a normal distribution.
 menu:
   stable:
     identifier: case-study-the-68–95–997-rule
     parent: aggregate-functions
     weight: 100
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
-This case study shows the use of aggregate functions to demonstrate the so-called "68–95–99.7 rule"—described in [this Wikipedia article](https://en.wikipedia.org/wiki/68–95–99.7_rule). This case-study  focuses on just one part of the rule:
+This case study shows the use of aggregate functions to demonstrate the so-called "68–95–99.7 rule"—described in [this Wikipedia article](https://en.wikipedia.org/wiki/68–95–99.7_rule). This case-study focuses on just one part of the rule:
 
 - 68.27% of the values in a normal distribution lie within one standard deviation each side of the mean.
 
 ## Populate the test table
 
-The demonstration uses the function `normal_rand()`, brought by the [tablefunc](../../../extensions/#tablefunc) extension, to populate the test table:
+The demonstration uses the function `normal_rand()`, brought by the [tablefunc](../../../../../explore/ysql-language-features/pg-extensions/#tablefunc-example) extension, to populate the test table:
 
 ```plpgsql
 drop table if exists t cascade;
@@ -35,6 +37,7 @@ begin
 end;
 $body$;
 ```
+
 If you choose a value of one million for _"no_of_rows"_, then the two different estimates for the one sigma boundaries reliably produce results that typically differ from each other by less than about 0.1%. If you choose fewer rows, then the variability, and the typical results difference, will be bigger.
 
 Because the demonstration (for convenience) uses a table with a single `double precision` column, _"v"_,  this must be the primary key. It's just possible that `normal_rand()` will create some duplicate values. However, this is so very rare that it was never seen while the script was repeated, many times, during the development of this code example. If `insert into t(v)` does fail because of this, just repeat the script by hand.
@@ -45,7 +48,7 @@ The table function _"the_6827_rule()"_, below, uses the following approach:
 
 - _Firstly_, it determines the one sigma boundaries ordinarily by using the [`avg()`](../function-syntax-semantics/avg-count-max-min-sum/#avg) and [`stddev_pop()`](../function-syntax-semantics/variance-stddev/#stddev-pop) aggregate functions.
 
-- _Secondly_, it determines these boundaries by invoking the [`percentile_cont()`](../function-syntax-semantics/mode-percentile-disc-percentile-cont/#percentile-disc-percentile-cont) aggregate function with putative [`percent_rank()`](../../window_functions/function-syntax-semantics/percent-rank-cume-dist-ntile/#percent-rank) input values corresponding, respectively, to the fraction of the table's values that lie below _"mean - one standard deviation"_ and below _"mean + one standard deviation"_. 
+- _Secondly_, it determines these boundaries by invoking the [`percentile_cont()`](../function-syntax-semantics/mode-percentile-disc-percentile-cont/#percentile-disc-percentile-cont) aggregate function with putative [`percent_rank()`](../../window_functions/function-syntax-semantics/percent-rank-cume-dist-ntile/#percent-rank) input values corresponding, respectively, to the fraction of the table's values that lie below _"mean - one standard deviation"_ and below _"mean + one standard deviation"_.
 
 ```plpgsql
 drop function if exists the_6827_rule() cascade;
@@ -143,13 +146,11 @@ select t from the_6827_rule();
 \t off
 ```
 
-
-
 ## Typical result
 
 Here is a typical result (for one million rows):
 
-```
+```output
                 from avg() and stddev_pop()  from percentile_cont()     ratio
                 ---------------------------  ----------------------  --------
  mean - sigma:                    -50.00899               -49.99646    0.025%

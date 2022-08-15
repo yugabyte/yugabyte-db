@@ -26,8 +26,11 @@ namespace pggate {
 
 class PgInsert : public PgDmlWrite {
  public:
-  PgInsert(PgSession::ScopedRefPtr pg_session, const PgObjectId& table_id, bool is_single_row_txn)
-      : PgDmlWrite(std::move(pg_session), table_id, is_single_row_txn) {}
+  PgInsert(PgSession::ScopedRefPtr pg_session,
+           const PgObjectId& table_id,
+           bool is_single_row_txn,
+           bool is_region_local)
+      : PgDmlWrite(std::move(pg_session), table_id, is_single_row_txn, is_region_local) {}
 
   StmtOp stmt_op() const override { return StmtOp::STMT_INSERT; }
 
@@ -40,8 +43,8 @@ class PgInsert : public PgDmlWrite {
   }
 
  private:
-  std::unique_ptr<client::YBPgsqlWriteOp> AllocWriteOperation() const override {
-    return target_->NewPgsqlInsert();
+  PgsqlWriteRequestPB::PgsqlStmtType stmt_type() const override {
+    return PgsqlWriteRequestPB::PGSQL_INSERT;
   }
 };
 

@@ -19,10 +19,9 @@
 
 #include "yb/docdb/doc_expr.h"
 #include "yb/docdb/doc_key.h"
+#include "yb/docdb/doc_ql_filefilter.h"
 #include "yb/docdb/doc_scanspec_util.h"
 #include "yb/docdb/value_type.h"
-
-#include "yb/rocksdb/db/compaction.h"
 
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
@@ -51,7 +50,7 @@ DocQLScanSpec::DocQLScanSpec(
     const Schema& schema,
     const boost::optional<int32_t> hash_code,
     const boost::optional<int32_t> max_hash_code,
-    std::reference_wrapper<const std::vector<PrimitiveValue>> hashed_components,
+    std::reference_wrapper<const std::vector<KeyEntryValue>> hashed_components,
     const QLConditionPB* condition,
     const QLConditionPB* if_condition,
     const rocksdb::QueryId query_id,
@@ -74,27 +73,40 @@ DocQLScanSpec::DocQLScanSpec(
         range_bounds_indexes_ = range_bounds_->GetColIds();
     }
 
+    // If the hash key is fixed and we have range columns with IN condition, try to construct the
+    // exact list of range options to scan for.
+    if (!hashed_components_->empty() && schema_.num_range_key_columns() > 0 && range_bounds_ &&
+        range_bounds_->has_in_range_options()) {
+      DCHECK(condition);
+      range_options_ = std::make_shared<std::vector<OptionList>>(schema_.num_range_key_columns());
+      range_options_num_cols_ = std::vector<size_t>(schema_.num_range_key_columns(), 0);
+      InitRangeOptions(*condition);
 
-  // If the hash key is fixed and we have range columns with IN condition, try to construct the
-  // exact list of range options to scan for.
-  if (!hashed_components_->empty() && schema_.num_range_key_columns() > 0 &&
-      range_bounds_ && range_bounds_->has_in_range_options()) {
-    DCHECK(condition);
-    range_options_ =
-        std::make_shared<std::vector<std::vector<PrimitiveValue>>>(schema_.num_range_key_columns());
-    InitRangeOptions(*condition);
-
-    if (FLAGS_disable_hybrid_scan) {
+      if (FLAGS_disable_hybrid_scan) {
         // Range options are only valid if all range columns
         // are set (i.e. have one or more options).
         for (size_t i = 0; i < schema_.num_range_key_columns(); i++) {
-            if ((*range_options_)[i].empty()) {
-                range_options_ = nullptr;
-                break;
-            }
+          if ((*range_options_)[i].empty()) {
+            range_options_ = nullptr;
+            break;
+          }
+          i = i + range_options_num_cols_[i] - 1;
         }
+      }
     }
+}
+
+bool AreColumnsContinous(const std::vector<int>& col_idxs) {
+  std::vector<int> copy = col_idxs;
+  std::sort(copy.begin(), copy.end());
+  int prev_idx = -1;
+  for (auto const idx : copy) {
+    if (prev_idx != -1 && idx != prev_idx + 1) {
+      return false;
+    }
+    prev_idx = idx;
   }
+  return true;
 }
 
 void DocQLScanSpec::InitRangeOptions(const QLConditionPB& condition) {
@@ -111,43 +123,118 @@ void DocQLScanSpec::InitRangeOptions(const QLConditionPB& condition) {
     case QLOperator::QL_OP_IN: {
       DCHECK_EQ(condition.operands_size(), 2);
       // Skip any condition where LHS is not a column (e.g. subscript columns: 'map[k] = v')
-      if (condition.operands(0).expr_case() != QLExpressionPB::kColumnId) {
+      const auto& lhs = condition.operands(0);
+      const auto& rhs = condition.operands(1);
+      if (lhs.expr_case() != QLExpressionPB::kColumnId &&
+          lhs.expr_case() != QLExpressionPB::kTuple) {
         return;
       }
 
       // Skip any RHS expressions that are not evaluated yet.
-      if (condition.operands(1).expr_case() != QLExpressionPB::kValue) {
+      if (rhs.expr_case() != QLExpressionPB::kValue) {
         return;
       }
 
-      ColumnId col_id = ColumnId(condition.operands(0).column_id());
-      int col_idx = schema_.find_column_by_id(col_id);
+      if (lhs.has_column_id()) {
+        ColumnId col_id = ColumnId(lhs.column_id());
+        int col_idx = schema_.find_column_by_id(col_id);
 
-      // Skip any non-range columns.
-      if (!schema_.is_range_column(col_idx)) {
-        return;
-      }
+        // Skip any non-range columns.
+        if (!schema_.is_range_column(col_idx)) {
+          return;
+        }
 
-      SortingType sortingType = schema_.column(col_idx).sorting_type();
-      range_options_indexes_.emplace_back(condition.operands(0).column_id());
+        range_options_num_cols_[col_idx - num_hash_cols] = 1;
+        SortingType sorting_type = schema_.column(col_idx).sorting_type();
+        // TODO: confusing - name says indexes but stores ids
+        range_options_indexes_.emplace_back(col_id);
 
-      if (condition.op() == QL_OP_EQUAL) {
-        auto pv = PrimitiveValue::FromQLValuePB(condition.operands(1).value(), sortingType);
-        (*range_options_)[col_idx - num_hash_cols].push_back(std::move(pv));
-      } else { // QL_OP_IN
-        DCHECK_EQ(condition.op(), QL_OP_IN);
-        DCHECK(condition.operands(1).value().has_list_value());
-        const auto &options = condition.operands(1).value().list_value();
-        int opt_size = options.elems_size();
-        (*range_options_)[col_idx - num_hash_cols].reserve(opt_size);
+        if (condition.op() == QL_OP_EQUAL) {
+          auto pv = KeyEntryValue::FromQLValuePBForKey(rhs.value(), sorting_type);
+          (*range_options_)[col_idx - num_hash_cols].push_back({pv});
+        } else {  // QL_OP_IN
+          DCHECK_EQ(condition.op(), QL_OP_IN);
+          DCHECK(rhs.value().has_list_value());
+          const auto& options = rhs.value().list_value();
+          int opt_size = options.elems_size();
+          (*range_options_)[col_idx - num_hash_cols].reserve(opt_size);
 
-        // IN arguments should have been de-duplicated and ordered ascendingly by the executor.
-        bool is_reverse_order = is_forward_scan_ ^ (sortingType == SortingType::kAscending);
-        for (int i = 0; i < opt_size; i++) {
-          int elem_idx = is_reverse_order ? opt_size - i - 1 : i;
-          const auto &elem = options.elems(elem_idx);
-          auto pv = PrimitiveValue::FromQLValuePB(elem, sortingType);
-          (*range_options_)[col_idx - num_hash_cols].push_back(std::move(pv));
+          // IN arguments should have been de-duplicated and ordered ascendingly by the executor.
+          bool is_reverse_order = is_forward_scan_ ^ (sorting_type == SortingType::kAscending);
+          for (int i = 0; i < opt_size; i++) {
+            int elem_idx = is_reverse_order ? opt_size - i - 1 : i;
+            const auto& elem = options.elems(elem_idx);
+            auto pv = KeyEntryValue::FromQLValuePBForKey(elem, sorting_type);
+            (*range_options_)[col_idx - num_hash_cols].push_back({pv});
+          }
+        }
+      } else if (lhs.has_tuple()) {
+        std::vector<ColumnId> col_ids;
+        std::vector<int> col_idxs;
+        size_t num_cols = lhs.tuple().elems_size();
+        DCHECK_GT(num_cols, 0);
+
+        for (const auto& elem : lhs.tuple().elems()) {
+          DCHECK(elem.has_column_id());
+          ColumnId col_id = ColumnId(elem.column_id());
+          int col_idx = schema_.find_column_by_id(col_id);
+          DCHECK(schema_.is_range_column(col_idx));
+          col_ids.push_back(col_id);
+          col_idxs.push_back(col_idx);
+        }
+
+        DCHECK(AreColumnsContinous(col_idxs));
+
+        for (size_t i = 0; i < num_cols; i++) {
+          range_options_indexes_.emplace_back(col_ids[i]);
+          range_options_num_cols_[col_idxs[i] - num_hash_cols] = num_cols;
+        }
+
+        auto start_idx = *std::min_element(col_idxs.begin(), col_idxs.end());
+
+        if (condition.op() == QL_OP_EQUAL) {
+          DCHECK(rhs.value().has_list_value());
+          const auto& value = rhs.value().list_value();
+          DCHECK_EQ(num_cols, value.elems_size());
+          Option option(num_cols);
+          for (size_t i = 0; i < num_cols; i++) {
+            SortingType sorting_type = schema_.column(col_idxs[i]).sorting_type();
+            auto pv =
+                KeyEntryValue::FromQLValuePBForKey(value.elems(static_cast<int>(i)), sorting_type);
+            option.push_back(pv);
+          }
+          (*range_options_)[start_idx - num_hash_cols].push_back(std::move(option));
+        } else if (condition.op() == QL_OP_IN) {
+          DCHECK(rhs.value().has_list_value());
+          const auto& options = rhs.value().list_value();
+          int num_options = options.elems_size();
+          // IN arguments should have been de-duplicated and ordered ascendingly by the
+          // executor.
+
+          std::vector<bool> reverse;
+          for (size_t i = 0; i < num_cols; i++) {
+            SortingType sorting_type = schema_.column(col_idxs[i]).sorting_type();
+            bool is_reverse_order = is_forward_scan_ ^ (sorting_type == SortingType::kAscending);
+            reverse.push_back(is_reverse_order);
+          }
+
+          vector<QLValuePB> sorted_options = SortTuplesbyOrdering(options, reverse);
+
+          for (int i = 0; i < num_options; i++) {
+            const auto& elem = sorted_options[i];
+            DCHECK(elem.has_tuple_value());
+            const auto& value = elem.tuple_value();
+            DCHECK_EQ(num_cols, value.elems_size());
+
+            Option option;
+            for (size_t j = 0; j < num_cols; j++) {
+              SortingType sorting_type = schema_.column(col_idxs[j]).sorting_type();
+              auto pv = KeyEntryValue::FromQLValuePBForKey(
+                  value.elems(static_cast<int>(j)), sorting_type);
+              option.push_back(pv);
+            }
+            (*range_options_)[start_idx - num_hash_cols].push_back(std::move(option));
+          }
         }
       }
 
@@ -168,11 +255,11 @@ KeyBytes DocQLScanSpec::bound_key(const bool lower_bound) const {
   if (hashed_components_->empty()) {
     // use lower bound hash code if set in request (for scans using token)
     if (lower_bound && hash_code_) {
-      encoder.HashAndRange(*hash_code_, {PrimitiveValue(ValueType::kLowest)}, {});
+      encoder.HashAndRange(*hash_code_, {KeyEntryValue(KeyEntryType::kLowest)}, {});
     }
     // use upper bound hash code if set in request (for scans using token)
     if (!lower_bound && max_hash_code_) {
-      encoder.HashAndRange(*max_hash_code_, {PrimitiveValue(ValueType::kHighest)}, {});
+      encoder.HashAndRange(*max_hash_code_, {KeyEntryValue(KeyEntryType::kHighest)}, {});
     }
     return result;
   }
@@ -186,12 +273,17 @@ KeyBytes DocQLScanSpec::bound_key(const bool lower_bound) const {
   return result;
 }
 
-std::vector<PrimitiveValue> DocQLScanSpec::range_components(const bool lower_bound) const {
-  return GetRangeKeyScanSpec(
-      schema_, nullptr /* prefixed_range_components */,
-      range_bounds_.get(), lower_bound, include_static_columns_);
+std::vector<KeyEntryValue> DocQLScanSpec::range_components(const bool lower_bound,
+                                                           std::vector<bool> *inclusivities,
+                                                           bool use_strictness) const {
+  return GetRangeKeyScanSpec(schema_,
+                             nullptr /* prefixed_range_components */,
+                             range_bounds_.get(),
+                             inclusivities,
+                             lower_bound,
+                             include_static_columns_,
+                             use_strictness);
 }
-
 namespace {
 
 template <class Predicate>
@@ -222,7 +314,7 @@ Result<KeyBytes> DocQLScanSpec::Bound(const bool lower_bound) const {
     KeyBytes result = doc_key_;
     // We add +inf as an extra component to make sure this is greater than all keys in range.
     // For lower bound, this is true already, because dockey + suffix is > dockey
-    result.AppendValueTypeBeforeGroupEnd(ValueType::kHighest);
+    result.AppendKeyEntryTypeBeforeGroupEnd(KeyEntryType::kHighest);
     return std::move(result);
   }
 
@@ -272,71 +364,25 @@ Result<KeyBytes> DocQLScanSpec::Bound(const bool lower_bound) const {
   // the target start_doc_key itself (dockey + suffix < dockey + kHighest).
   // For lower bound, this is true already, because dockey + suffix is > dockey.
   KeyBytes result = start_doc_key_;
-  result.AppendValueTypeBeforeGroupEnd(ValueType::kHighest);
+  result.AppendKeyEntryTypeBeforeGroupEnd(KeyEntryType::kHighest);
   return result;
 }
-
-rocksdb::UserBoundaryTag TagForRangeComponent(size_t index);
-
-namespace {
-
-std::vector<KeyBytes> EncodePrimitiveValues(const std::vector<PrimitiveValue>& source,
-    size_t min_size) {
-  size_t size = source.size();
-  std::vector<KeyBytes> result(std::max(min_size, size));
-  for (size_t i = 0; i != size; ++i) {
-    if (source[i].value_type() != ValueType::kTombstone) {
-      source[i].AppendToKey(&result[i]);
-    }
-  }
-  return result;
-}
-
-Slice ValueOrEmpty(const Slice* slice) { return slice ? *slice : Slice(); }
-
-// Checks that lhs >= rhs, empty values means positive and negative infinity appropriately.
-bool GreaterOrEquals(const Slice& lhs, const Slice& rhs) {
-  if (lhs.empty() || rhs.empty()) {
-    return true;
-  }
-  return lhs.compare(rhs) >= 0;
-}
-
-class RangeBasedFileFilter : public rocksdb::ReadFileFilter {
- public:
-  RangeBasedFileFilter(const std::vector<PrimitiveValue>& lower_bounds,
-      const std::vector<PrimitiveValue>& upper_bounds)
-      : lower_bounds_(EncodePrimitiveValues(lower_bounds, upper_bounds.size())),
-      upper_bounds_(EncodePrimitiveValues(upper_bounds, lower_bounds.size())) {
-  }
-
-  bool Filter(const rocksdb::FdWithBoundaries& file) const override {
-    for (size_t i = 0; i != lower_bounds_.size(); ++i) {
-      auto lower_bound = lower_bounds_[i].AsSlice();
-      auto upper_bound = upper_bounds_[i].AsSlice();
-      rocksdb::UserBoundaryTag tag = TagForRangeComponent(i);
-      auto smallest = ValueOrEmpty(file.smallest.user_value_with_tag(tag));
-      auto largest = ValueOrEmpty(file.largest.user_value_with_tag(tag));
-      if (!GreaterOrEquals(upper_bound, smallest) || !GreaterOrEquals(largest, lower_bound)) {
-        return false;
-      }
-    }
-    return true;
-  }
- private:
-  std::vector<KeyBytes> lower_bounds_;
-  std::vector<KeyBytes> upper_bounds_;
-};
-
-} // namespace
 
 std::shared_ptr<rocksdb::ReadFileFilter> DocQLScanSpec::CreateFileFilter() const {
-  auto lower_bound = range_components(true);
-  auto upper_bound = range_components(false);
+  std::vector<bool> lower_bound_incl;
+  auto lower_bound = range_components(true, &lower_bound_incl, false);
+  CHECK_EQ(lower_bound.size(), lower_bound_incl.size());
+
+  std::vector<bool> upper_bound_incl;
+  auto upper_bound = range_components(false, &upper_bound_incl, false);
+  CHECK_EQ(upper_bound.size(), upper_bound_incl.size());
   if (lower_bound.empty() && upper_bound.empty()) {
     return std::shared_ptr<rocksdb::ReadFileFilter>();
   } else {
-    return std::make_shared<RangeBasedFileFilter>(std::move(lower_bound), std::move(upper_bound));
+    return std::make_shared<QLRangeBasedFileFilter>(std::move(lower_bound),
+                                                    std::move(lower_bound_incl),
+                                                    std::move(upper_bound),
+                                                    std::move(upper_bound_incl));
   }
 }
 

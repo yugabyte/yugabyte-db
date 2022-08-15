@@ -45,6 +45,11 @@ message CreateSnapshotRequestPB {
   optional bool imported = 4;
 
   optional bytes schedule_id = 5; // Create snapshot to this schedule. Other fields are ignored.
+
+  // Automatically add used User Defined Types into the snapshot.
+  // This is for YCQL only. For YSQL it's no-op currently because
+  // YSQL does not use SysUDTypeEntryPB records in the SysCatalog.
+  optional bool add_ud_types = 6 [default = false];
 }
 
 message CreateSnapshotResponsePB {
@@ -70,14 +75,23 @@ message TabletRestorationPB {
   optional SysSnapshotEntryPB.State state = 2;
 }
 
+message MasterRestorationMetadataPB {
+  optional bytes id = 1;
+  optional SysRowEntryType type = 2;
+}
+
 message SysRestorationEntryPB {
   optional SysSnapshotEntryPB.State state = 1 [ default = UNKNOWN ];
   repeated TabletRestorationPB tablet_restorations = 2;
   optional bytes snapshot_id = 8;
-
+  optional bytes schedule_id = 4;
+  optional bool is_sys_catalog_restored = 5;
+  optional fixed64 restore_at_ht = 6;
+  optional int64 version = 7;
   // Time when restoration finished. Computed on master after received response from the last
   // tablet.
   optional fixed64 complete_time_ht = 3;
+  repeated MasterRestorationMetadataPB master_metadata = 9;
 }
 
 message RestorationInfoPB {
@@ -156,6 +170,7 @@ message ImportSnapshotMetaResponsePB {
     optional IdPairPB table_ids = 2;
     repeated IdPairPB tablets_ids = 3;
     optional TableType table_type = 4 [ default = TABLE ];
+    repeated IdPairPB ud_types_ids = 5;
   }
 
   repeated TableMetaPB tables_meta = 3;
@@ -214,6 +229,17 @@ message DeleteSnapshotScheduleResponsePB {
   optional MasterErrorPB error = 1;
 }
 
+message EditSnapshotScheduleRequestPB {
+  optional bytes snapshot_schedule_id = 1;
+  optional uint64 interval_sec = 2;
+  optional uint64 retention_duration_sec = 3;
+}
+
+message EditSnapshotScheduleResponsePB {
+  optional MasterErrorPB error = 1;
+  optional SnapshotScheduleInfoPB schedule = 2;
+}
+
 service MasterBackup {
   // Client->Master RPCs
   rpc CreateSnapshot(CreateSnapshotRequestPB) returns (CreateSnapshotResponsePB);
@@ -229,4 +255,5 @@ service MasterBackup {
       returns (ListSnapshotSchedulesResponsePB);
   rpc DeleteSnapshotSchedule(DeleteSnapshotScheduleRequestPB)
       returns (DeleteSnapshotScheduleResponsePB);
+  rpc EditSnapshotSchedule(EditSnapshotScheduleRequestPB) returns (EditSnapshotScheduleResponsePB);
 }

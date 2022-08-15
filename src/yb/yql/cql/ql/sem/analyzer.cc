@@ -34,7 +34,7 @@ Analyzer::~Analyzer() {
 
 //--------------------------------------------------------------------------------------------------
 
-CHECKED_STATUS Analyzer::Analyze(ParseTreePtr parse_tree) {
+Status Analyzer::Analyze(ParseTreePtr parse_tree) {
   ParseTree *ptree = parse_tree.get();
   DCHECK(ptree != nullptr) << "Parse tree is null";
   sem_context_ = std::make_unique<SemContext>(std::move(parse_tree), ql_env_);

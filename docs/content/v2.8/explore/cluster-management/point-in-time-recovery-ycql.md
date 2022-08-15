@@ -8,19 +8,18 @@ menu:
     identifier: cluster-management-point-in-time-recovery-ycql
     parent: explore-cluster-management
     weight: 704
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/explore/cluster-management/point-in-time-recovery-ysql" class="nav-link">
+    <a href="/preview/explore/cluster-management/point-in-time-recovery-ysql" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
   <li >
-    <a href="/latest/explore/cluster-management/point-in-time-recovery-ycql" class="nav-link active">
+    <a href="/preview/explore/cluster-management/point-in-time-recovery-ycql" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
@@ -127,7 +126,7 @@ Create and populate a table, get a timestamp to which you'll restore, and then w
 1. Get a timestamp.
 
     ```sh
-    $ python -c 'import datetime; print datetime.datetime.now().strftime("%s%f")'
+    $ python -c 'import datetime; print(datetime.datetime.now().strftime("%s%f"))'
     ```
 
     ```output
@@ -220,8 +219,6 @@ Relative times can be in any of the following formats (again, note that you can 
 * Abbreviated PostgreSQL: `3 d 4 hrs 5 mins 6 secs`
 * Traditional PostgreSQL: `3 days 4 hours 5 minutes 6 seconds`
 * SQL standard: `D H:M:S`
-
-**Careful!** If you specify a time prior to when you created the table, the restore will leave the table intact, but empty.
 
 Refer to the yb-admin [_restore-snapshot-schedule_ command](../../../admin/yb-admin/#restore-snapshot-schedule) for more details.
 

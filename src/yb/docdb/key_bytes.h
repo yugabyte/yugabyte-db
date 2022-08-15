@@ -18,13 +18,13 @@
 
 #include "yb/common/common_fwd.h"
 
+#include "yb/docdb/docdb_fwd.h"
+
 #include "yb/util/kv_util.h"
 #include "yb/util/slice.h"
 
 namespace yb {
 namespace docdb {
-
-enum class ValueType;
 
 // Represents part (usually a prefix) of a RocksDB key. Has convenience methods for composing keys
 // used in our DocDB layer -> RocksDB mapping.
@@ -85,9 +85,9 @@ class KeyBytes {
     data_.append(data);
   }
 
-  void AppendValueType(ValueType value_type);
+  void AppendKeyEntryType(KeyEntryType key_entry_type);
 
-  void AppendValueTypeBeforeGroupEnd(ValueType value_type);
+  void AppendKeyEntryTypeBeforeGroupEnd(KeyEntryType key_entry_type);
 
   void AppendString(const std::string& raw_string);
 
@@ -206,7 +206,7 @@ class KeyBytes {
 
   void AppendGroupEnd();
 
-  void RemoveValueTypeSuffix(ValueType value_type);
+  void RemoveKeyEntryTypeSuffix(KeyEntryType key_entry_type);
 
   size_t size() const { return data_.size(); }
 

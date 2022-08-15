@@ -44,7 +44,9 @@
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 
+#include "yb/tserver/remote_bootstrap_anchor_client.h"
 #include "yb/tserver/remote_bootstrap.pb.h"
+#include "yb/tserver/remote_bootstrap.proxy.h"
 
 #include "yb/util/status_fwd.h"
 #include "yb/util/locks.h"
@@ -81,9 +83,9 @@ struct GetDataPieceInfo {
 
 class RemoteBootstrapSource {
  public:
-  virtual CHECKED_STATUS Init() = 0;
-  virtual CHECKED_STATUS ValidateDataId(const DataIdPB& data_id) = 0;
-  virtual CHECKED_STATUS GetDataPiece(const DataIdPB& data_id, GetDataPieceInfo* info) = 0;
+  virtual Status Init() = 0;
+  virtual Status ValidateDataId(const DataIdPB& data_id) = 0;
+  virtual Status GetDataPiece(const DataIdPB& data_id, GetDataPieceInfo* info) = 0;
 
   virtual ~RemoteBootstrapSource() = default;
 };
@@ -96,11 +98,13 @@ class RemoteBootstrapSession : public RefCountedThreadSafe<RemoteBootstrapSessio
  public:
   RemoteBootstrapSession(const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
                          std::string session_id, std::string requestor_uuid,
-                         const std::atomic<int>* nsessions);
+                         const std::atomic<int>* nsessions,
+                         const scoped_refptr<RemoteBootstrapAnchorClient>&
+                            rbs_anchor_client = nullptr);
 
   // Initialize the session, including anchoring files (TODO) and fetching the
   // tablet superblock and list of WAL segments.
-  CHECKED_STATUS Init();
+  Status Init();
 
   // Return ID of tablet corresponding to this session.
   const std::string& tablet_id() const;
@@ -108,9 +112,9 @@ class RemoteBootstrapSession : public RefCountedThreadSafe<RemoteBootstrapSessio
   // Return UUID of the requestor that initiated this session.
   const std::string& requestor_uuid() const;
 
-  CHECKED_STATUS GetDataPiece(const DataIdPB& data_id, GetDataPieceInfo* info);
+  Status GetDataPiece(const DataIdPB& data_id, GetDataPieceInfo* info);
 
-  CHECKED_STATUS ValidateDataId(const DataIdPB& data_id);
+  Status ValidateDataId(const DataIdPB& data_id);
 
   MonoTime start_time() { return start_time_; }
 
@@ -128,7 +132,7 @@ class RemoteBootstrapSession : public RefCountedThreadSafe<RemoteBootstrapSessio
   bool Succeeded();
 
   // Change the peer's role to VOTER.
-  CHECKED_STATUS ChangeRole();
+  Status ChangeRole();
 
   void InitRateLimiter();
 
@@ -141,8 +145,12 @@ class RemoteBootstrapSession : public RefCountedThreadSafe<RemoteBootstrapSessio
   // Get a piece of a RocksDB file.
   // The behavior and params are very similar to GetLogSegmentPiece(), but this one
   // is only for sending rocksdb files.
-  static CHECKED_STATUS GetFilePiece(
+  static Status GetFilePiece(
       const std::string& path, const std::string& file_name, Env* env, GetDataPieceInfo* info);
+
+  // Refresh the Log Anchor Session with the leader when rbs_anchor_client != nullptr and
+  // rbs_anchor_session_created_ is set.
+  Status RefreshRemoteLogAnchorSessionAsync();
 
  private:
   friend class RefCountedThreadSafe<RemoteBootstrapSession>;
@@ -160,14 +168,14 @@ class RemoteBootstrapSession : public RefCountedThreadSafe<RemoteBootstrapSessio
   }
 
   // Snapshot the log segment's length and put it into segment map.
-  CHECKED_STATUS OpenLogSegment(uint64_t segment_seqno, RemoteBootstrapErrorPB::Code* error_code)
+  Status OpenLogSegment(uint64_t segment_seqno, RemoteBootstrapErrorPB::Code* error_code)
       REQUIRES(mutex_);
 
   // Unregister log anchor, if it's registered.
-  CHECKED_STATUS UnregisterAnchorIfNeededUnlocked();
+  Status UnregisterAnchorIfNeededUnlocked();
 
   // Helper API to set initial_committed_cstate_.
-  CHECKED_STATUS SetInitialCommittedState();
+  Status SetInitialCommittedState();
 
   // Get a piece of a log segment.
   // If maxlen is 0, we use a system-selected length for the data piece.
@@ -177,10 +185,10 @@ class RemoteBootstrapSession : public RefCountedThreadSafe<RemoteBootstrapSessio
   // On error, Status is set to a non-OK value and error_code is filled in.
   //
   // This method is thread-safe.
-  CHECKED_STATUS GetLogSegmentPiece(uint64_t segment_seqno, GetDataPieceInfo* info);
+  Status GetLogSegmentPiece(uint64_t segment_seqno, GetDataPieceInfo* info);
 
   // Get a piece of a RocksDB checkpoint file.
-  CHECKED_STATUS GetRocksDBFilePiece(const std::string& file_name, GetDataPieceInfo* info);
+  Status GetRocksDBFilePiece(const std::string& file_name, GetDataPieceInfo* info);
 
   Env* env() const;
 
@@ -226,6 +234,11 @@ class RemoteBootstrapSession : public RefCountedThreadSafe<RemoteBootstrapSessio
   const std::atomic<int>* nsessions_;
 
   std::array<std::unique_ptr<RemoteBootstrapSource>, DataIdPB::IdType_ARRAYSIZE> sources_;
+
+  scoped_refptr<RemoteBootstrapAnchorClient> rbs_anchor_client_;
+
+  // Boolean that determines if we need to call KeepLogAnchorAlive on rbs_anchor_client_.
+  bool rbs_anchor_session_created_ = false;
 
   DISALLOW_COPY_AND_ASSIGN(RemoteBootstrapSession);
 };

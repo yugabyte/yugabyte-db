@@ -2,15 +2,24 @@
 
 @import '../../../_style/colors.scss';
 
-#universe-tab-panel {
+#replication-tab-panel {
   .replication-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
+    padding-left: 25px;
+  }
+
+  .header {
+    margin-bottom: 0 !important;
+  }
+
+  body {
+    margin: 0 !important;
   }
 
   .replication-content {
-    > .replication-content-stats {
+    >.replication-content-stats {
       display: flex;
       margin-left: 7.5px;
     }
@@ -32,7 +41,10 @@
 
     .graph-container {
       width: fit-content;
-      margin-top: 35px;
+      margin-top: 25px;
+      &.old-view{
+        margin-top: 0 !important;
+      }
     }
 
     .info {
@@ -45,7 +57,7 @@
       width: 300px;
       margin: 10px 0 20px 7.5px;
 
-      > div {
+      >div {
         display: inline-block;
 
         h4 {
@@ -60,7 +72,7 @@
       border: 1px solid #c0dfc6;
       background: #f3f9f4;
 
-      > .icon {
+      >.icon {
         color: $YB_SUCCESS_COLOR;
         margin-right: 10px;
         display: inline-block;
@@ -73,9 +85,24 @@
       margin: 30px;
     }
 
-    .metrics-panel > .plot-container {
+    .metrics-panel>.plot-container {
       padding: 30px;
       background: #fff;
+    }
+
+    .time-range-option {
+      display: flex;
+      justify-content: flex-end;
+      padding-right: 5px;
+      &.old-view{
+        justify-content: flex-start !important;
+        margin-top: 15px;
+        margin-left: 8px;
+      }
+    }
+
+    .graph-filter-dropdown {
+      margin-right: -15px;
     }
   }
 }

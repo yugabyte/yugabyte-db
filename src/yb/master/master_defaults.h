@@ -75,10 +75,6 @@ static const char* const kDefaultSchemaVersion = "00000000-0000-0000-0000-000000
 static const char* const kSecurityConfigType = "security-configuration";
 static const char* const kYsqlCatalogConfigType = "ysql-catalog-configuration";
 static const char* const kTransactionTablesConfigType = "transaction-tables-configuration";
-static const char* const kColocatedParentTableIdSuffix = ".colocated.parent.uuid";
-static const char* const kColocatedParentTableNameSuffix = ".colocated.parent.tablename";
-static const char* const kTablegroupParentTableIdSuffix = ".tablegroup.parent.uuid";
-static const char* const kTablegroupParentTableNameSuffix = ".tablegroup.parent.tablename";
 static const int32_t kDelayAfterFailoverSecs = 120;
 
 // Needs to be updated each time we add a new system namespace.

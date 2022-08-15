@@ -114,6 +114,7 @@ Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
     const OperationKind operation_kind,
     const RowMarkType row_mark_type,
     bool transactional_table,
+    bool write_transaction_metadata,
     CoarseTimePoint deadline,
     PartialRangeKeyIntents partial_range_key_intents,
     SharedLockManager *lock_manager);
@@ -124,7 +125,7 @@ Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
 // Input: doc_write_ops, read snapshot hybrid_time if requested in PrepareDocWriteOperation().
 // Context: rocksdb
 // Outputs: keys_locked, write_batch
-CHECKED_STATUS AssembleDocWriteBatch(
+Status AssembleDocWriteBatch(
     const std::vector<std::unique_ptr<DocOperation>>& doc_write_ops,
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
@@ -146,15 +147,23 @@ struct ExternalTxnApplyStateData {
 
 using ExternalTxnApplyState = std::map<TransactionId, ExternalTxnApplyStateData>;
 
+class ExternalTxnIntentsState {
+ public:
+  IntraTxnWriteId GetWriteIdAndIncrement(const TransactionId& txn_id);
+  void EraseEntry(const TransactionId& txn_id);
+ private:
+  std::mutex mutex_;
+  std::unordered_map<TransactionId, IntraTxnWriteId, TransactionIdHash> map_;
+};
 // Adds external pair to write batch.
 // Returns true if add was skipped because pair is a regular (non external) record.
 bool AddExternalPairToWriteBatch(
     const KeyValuePairPB& kv_pair,
     HybridTime hybrid_time,
-    int write_id,
     ExternalTxnApplyState* apply_external_transactions,
     rocksdb::WriteBatch* regular_write_batch,
-    rocksdb::WriteBatch* intents_write_batch);
+    rocksdb::WriteBatch* intents_write_batch,
+    ExternalTxnIntentsState* external_txn_intents_state);
 
 // Prepares external part of non transaction write batch.
 // Batch could contain intents for external transactions, in this case those intents
@@ -166,7 +175,8 @@ bool PrepareExternalWriteBatch(
     HybridTime hybrid_time,
     rocksdb::DB* intents_db,
     rocksdb::WriteBatch* regular_write_batch,
-    rocksdb::WriteBatch* intents_write_batch);
+    rocksdb::WriteBatch* intents_write_batch,
+    ExternalTxnIntentsState* external_txn_intents_state);
 
 YB_STRONGLY_TYPED_BOOL(LastKey);
 
@@ -193,14 +203,55 @@ YB_STRONGLY_TYPED_BOOL(FullDocKey);
 typedef boost::function<
     Status(IntentStrength, FullDocKey, Slice, KeyBytes*, LastKey)> EnumerateIntentsCallback;
 
-CHECKED_STATUS EnumerateIntents(
+Status EnumerateIntents(
     const google::protobuf::RepeatedPtrField<yb::docdb::KeyValuePairPB>& kv_pairs,
     const EnumerateIntentsCallback& functor, PartialRangeKeyIntents partial_range_key_intents);
 
-CHECKED_STATUS EnumerateIntents(
+Status EnumerateIntents(
     Slice key, const Slice& intent_value, const EnumerateIntentsCallback& functor,
     KeyBytes* encoded_key_buffer, PartialRangeKeyIntents partial_range_key_intents,
     LastKey last_key = LastKey::kFalse);
+
+// replicated_batches_state format does not matter at this point, because it is just
+// appended to appropriate value.
+void PrepareTransactionWriteBatch(
+    const docdb::KeyValueWriteBatchPB& put_batch,
+    HybridTime hybrid_time,
+    rocksdb::WriteBatch* rocksdb_write_batch,
+    const TransactionId& transaction_id,
+    IsolationLevel isolation_level,
+    PartialRangeKeyIntents partial_range_key_intents,
+    const Slice& replicated_batches_state,
+    IntraTxnWriteId* write_id);
+
+
+struct IntentKeyValueForCDC {
+  Slice key;
+  Slice value;
+  std::string key_buf, value_buf;
+  std::string reverse_index_key;
+  IntraTxnWriteId write_id = 0;
+
+  std::string ToString() const;
+
+  template <class PB>
+  void ToPB(PB* pb) const {
+    pb->set_key(key);
+    pb->set_value(value);
+    pb->set_reverse_index_key(reverse_index_key);
+    pb->set_write_id(write_id);
+  }
+
+  template <class PB>
+  static IntentKeyValueForCDC FromPB(const PB& pb) {
+    return IntentKeyValueForCDC {
+        .key = pb.key(),
+        .value = pb.value(),
+        .reverse_index_key = pb.reverse_index_key(),
+        .write_id = pb.write_id(),
+    };
+  }
+};
 
 // See ApplyTransactionStatePB for details.
 struct ApplyTransactionState {
@@ -230,6 +281,13 @@ struct ApplyTransactionState {
     };
   }
 };
+
+Result<ApplyTransactionState> GetIntentsBatch(
+    const TransactionId& transaction_id,
+    const KeyBounds* key_bounds,
+    const ApplyTransactionState* stream_state,
+    rocksdb::DB* intents_db,
+    std::vector<IntentKeyValueForCDC>* keyValueIntents);
 
 void AppendTransactionKeyPrefix(const TransactionId& transaction_id, docdb::KeyBytes* out);
 

@@ -64,11 +64,11 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
   private static final int PG_OUTPUT_BUFFER_SIZE_BYTES = 1024;
 
   /**
-   * Size of long strings to provoke read restart errors. This should be significantly larger than
-   * {@link #PG_OUTPUT_BUFFER_SIZE_BYTES} to force buffer flushes - thus preventing YSQL from doing
-   * a transparent restart.
+   * Size of long strings to provoke read restart errors. This should be comparable to
+   * {@link #PG_OUTPUT_BUFFER_SIZE_BYTES} so as to force buffer flushes - thus preventing YSQL from
+   * doing a transparent restart.
    */
-  private static final int LONG_STRING_LENGTH = PG_OUTPUT_BUFFER_SIZE_BYTES * 100;
+  private static final int LONG_STRING_LENGTH = PG_OUTPUT_BUFFER_SIZE_BYTES;
 
   /** Maximum value to insert in a table column {@code i} (minimum is 0) */
   private static final int MAX_INT_TO_INSERT = 5;
@@ -823,7 +823,7 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
         ConnectionBuilder cb,
         String valueToInsert,
         boolean expectRestartErrors) {
-      super(cb, valueToInsert, 500 /* numInserts */);
+      super(cb, valueToInsert, 250 /* numInserts */);
       this.expectRestartErrors = expectRestartErrors;
     }
 
@@ -913,7 +913,11 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
             " selectsWithSnapshotIsolation=" + selectsWithSnapshotIsolation +
             " selectsWithSerializable=" + selectsWithSerializable);
 
-        assertTrue(expectRestartErrors || selectsRestartRequired == 0);
+        assertTrue(
+          "expectRestartErrors=" + expectRestartErrors +
+            ", selectsRestartRequired=" + selectsRestartRequired,
+          (expectRestartErrors && selectsRestartRequired > 0) ||
+          (!expectRestartErrors && selectsRestartRequired == 0));
         assertTrue(expectRestartErrors || selectsWithConflictError == 0);
 
         if (onlyEmptyResults) {
@@ -1122,7 +1126,7 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
         ConnectionBuilder cb, Future<?> execution, String secondSavepointOpString) {
       return () -> {
         int selectsAttempted = 0;
-        int selectsPostSecondSavepointOpRestartRequired = 0;
+        int selectsRestartRequired = 0;
         int selectsSucceeded = 0;
         try (Connection selectTxnConn = cb.withIsolationLevel(
               IsolationLevel.REPEATABLE_READ).connect();
@@ -1130,20 +1134,13 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
           selectTxnConn.setAutoCommit(false);
           for (/* No setup */; !execution.isDone(); ++selectsAttempted) {
             if (Thread.interrupted()) return; // Skips all post-loop checks
-            int numCompletedOps = 0;
             try {
               stmt.execute("SAVEPOINT a");
-              List<Row> rows1 = getRowList(stmt.executeQuery("SELECT * from test_rr LIMIT 1"));
-              ++numCompletedOps;
-              if (Thread.interrupted()) return; // Skips all post-loop checks
-
-              stmt.execute(secondSavepointOpString);
-              List<Row> rows2 = getRowList(stmt.executeQuery("SELECT * from test_rr LIMIT 1"));
-              ++numCompletedOps;
-              if (Thread.interrupted()) return; // Skips all post-loop checks
-
+              if (!secondSavepointOpString.isEmpty()) {
+                stmt.execute(secondSavepointOpString);
+              }
+              stmt.executeQuery("SELECT count(*) from test_rr");
               selectTxnConn.commit();
-              assertEquals("Two SELECT done within same transaction mismatch", rows1, rows2);
               ++selectsSucceeded;
             } catch (Exception ex) {
               try {
@@ -1152,9 +1149,7 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
                 fail("Rollback failed: " + ex1.getMessage());
               }
               if (isRestartReadError(ex)) {
-                if (numCompletedOps == 1) {
-                  ++selectsPostSecondSavepointOpRestartRequired;
-                }
+                ++selectsRestartRequired;
               }
               if (!isTxnError(ex)) {
                 throw ex;
@@ -1164,21 +1159,23 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
         } catch (Exception ex) {
           fail("SELECT in savepoint thread failed: " + ex.getMessage());
         }
-        LOG.info(
-            "SELECT in savepoint thread with second savepoint op \"" + secondSavepointOpString
-            + "\": " + selectsSucceeded + " of " + selectsAttempted + " succeeded");
+        LOG.info(String.format(
+            "SELECT in savepoint thread with second savepoint op: \"%s\": selectsSucceeded=%d" +
+            " selectsAttempted=%d selectsRestartRequired=%d", secondSavepointOpString,
+            selectsSucceeded, selectsAttempted, selectsRestartRequired));
         assertTrue(
             "No SELECTs after second savepoint statement: " + secondSavepointOpString
                 + " resulted in 'restart read required' on second operation"
                 + " - but we expected them to!"
                 + " " + selectsAttempted + " attempted, " + selectsSucceeded + " succeeded",
-                selectsPostSecondSavepointOpRestartRequired > 0);
+                selectsRestartRequired > 0);
       };
     }
 
     @Override
     public List<Runnable> getRunnableThreads(ConnectionBuilder cb, Future<?> execution) {
       List<Runnable> runnables = new ArrayList<>();
+      runnables.add(getRunnableThread(cb, execution, ""));
       runnables.add(getRunnableThread(cb, execution, "SAVEPOINT b"));
       runnables.add(getRunnableThread(cb, execution, "ROLLBACK TO a"));
       runnables.add(getRunnableThread(cb, execution, "RELEASE a"));

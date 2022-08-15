@@ -1,3 +1,4 @@
+blank_issues_enabled: false
 contact_links:
   - name: Cloud
     about: Create a Cloud issue.

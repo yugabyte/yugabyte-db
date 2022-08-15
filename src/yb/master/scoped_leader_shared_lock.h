@@ -33,6 +33,7 @@
 #define YB_MASTER_SCOPED_LEADER_SHARED_LOCK_H
 
 #include <chrono>
+#include <shared_mutex>
 #include <string>
 #include <unordered_map>
 
@@ -44,7 +45,6 @@
 
 #include "yb/util/status_fwd.h"
 #include "yb/util/rw_mutex.h"
-#include "yb/util/shared_lock.h"
 
 namespace yb {
 namespace master {
@@ -120,6 +120,24 @@ class ScopedLeaderSharedLock {
     return leader_status_;
   }
 
+  // Is the catalog manager initialized and is it the leader of its Raft configuration.
+  bool IsInitializedAndIsLeader() const { return first_failed_status().ok(); }
+
+  // String representation of first non-OK status. Should only be called when first_failed_status()
+  // is not ok.
+  std::string failed_status_string() const {
+    if (!catalog_status_.ok()) {
+      return "Catalog status failure: " + catalog_status_.ToString();
+    }
+
+    DCHECK(!leader_status_.ok());
+    if (!leader_status_.ok()) {
+      return "Leader status failure: " + leader_status_.ToString();
+    }
+
+    return "Status success.";
+  }
+
   // Check that the catalog manager is initialized. It may or may not be the
   // leader of its Raft configuration.
   //
@@ -155,7 +173,7 @@ class ScopedLeaderSharedLock {
                                            bool set_error = true);
 
   CatalogManager* catalog_;
-  shared_lock<RWMutex> leader_shared_lock_;
+  std::shared_lock<RWMutex> leader_shared_lock_;
   Status catalog_status_;
   Status leader_status_;
   std::chrono::steady_clock::time_point start_;

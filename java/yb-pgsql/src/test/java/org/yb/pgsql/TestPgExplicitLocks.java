@@ -13,6 +13,7 @@
 
 package org.yb.pgsql;
 
+import org.apache.commons.lang3.StringUtils;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
@@ -23,6 +24,7 @@ import org.yb.util.YBTestRunnerNonTsanOnly;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.Map;
 
 import com.yugabyte.util.PSQLException;
 import static org.yb.AssertionWrappers.*;
@@ -30,6 +32,13 @@ import static org.yb.AssertionWrappers.*;
 @RunWith(value=YBTestRunnerNonTsanOnly.class)
 public class TestPgExplicitLocks extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgSelect.class);
+
+  @Override
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flagMap = super.getTServerFlags();
+    flagMap.put("yb_enable_read_committed_isolation", "true");
+    return flagMap;
+  }
 
   @Test
   public void testExplicitLocks() throws Exception {
@@ -373,5 +382,91 @@ public class TestPgExplicitLocks extends BasePgSQLTest {
   @Test
   public void testLocksSnapshotIsolation() throws Exception {
     testLocksIsolationLevel(IsolationLevel.REPEATABLE_READ);
+  }
+
+  @Test
+  public void testNoWait() throws Exception {
+    ConnectionBuilder builder = getConnectionBuilder();
+    try (Connection conn1 = builder.connect();
+         Connection conn2 = builder.connect();
+         Statement stmt1 = conn1.createStatement();
+         Statement stmt2 = conn2.createStatement();
+         Connection extraConn = builder.connect();
+         Statement extraStmt = extraConn.createStatement()) {
+      extraStmt.execute("CREATE TABLE test (k INT PRIMARY KEY, v INT)");
+      extraStmt.execute("INSERT INTO test VALUES (1, 1)");
+
+      // The below SELECT is done so that catalog reads are done before the NOWAIT statement. This
+      // helps us accurately measure the number of read rpcs performed during the NOWAIT query for a
+      // later assertion.
+      //
+      // The sleep is added to ensure that the cache refresh is complete before we measure
+      // the number of read rpcs.
+      stmt2.execute("SELECT * FROM test");
+      Thread.sleep(2000);
+
+      // Case 1: for REPEATABLE READ (not fully supported yet as explained below).
+
+      // This test uses 2 txns which can be assigned random priorities. Txn1 does just a SELECT FOR
+      // UPDATE. Txn2 later does the same but with the NOWAIT clause. There are 2 possible outcomes
+      // based on whether txn2 is assigned higher or lower priority than txn1:
+      //   1. Txn2 has higher priority: txn1 is aborted.
+      //   2. Txn2 has lower priority: txn2 is aborted.
+      //
+      // TODO(Piyush): The semantics of NOWAIT require that txn2 is aborted always. The statement in
+      // with NOWAIT should not kill other txns. So, the semantics of case 1 above need to be fixed.
+      //
+      // Since only case (2) works as of now, we need to ensure that txn2 has lower priority.
+      stmt1.execute("SET yb_transaction_priority_lower_bound = 0.5");
+      stmt2.execute("SET yb_transaction_priority_upper_bound = 0.4");
+
+      stmt1.execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ");
+      stmt2.execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ");
+      stmt1.execute("SELECT * FROM test WHERE k=1 FOR UPDATE");
+
+      Long read_count_before = getTServerMetric(
+        "handler_latency_yb_tserver_TabletServerService_Read").count;
+      LOG.info("read_count_before=" + read_count_before);
+      try {
+        stmt2.execute("SELECT * FROM test WHERE k=1 FOR UPDATE NOWAIT");
+        assertTrue("Should not reach here since the statement is supposed to fail", false);
+      } catch (SQLException e) {
+        // If txn2 had a lower priority than txn1, instead of attempting retries for
+        // ysql_max_write_restart_attempts, it would fail immediately due to the NOWAIT clause
+        // with the appropriate message.
+        assertTrue(StringUtils.containsIgnoreCase(e.getMessage(),
+          "ERROR: could not obtain lock on row in relation \"test\""));
+
+        // Assert that we failed immediately without retrying at all. This is done by ensuring that
+        // we make only 2 read rpc call to tservers - one for reading the tuple and one for locking
+        // the row.
+        Long read_count_after = getTServerMetric(
+          "handler_latency_yb_tserver_TabletServerService_Read").count;
+        LOG.info("read_count_after=" + read_count_after);
+        assertTrue((read_count_after - read_count_before) == 2);
+        stmt1.execute("COMMIT");
+        stmt2.execute("ROLLBACK");
+      }
+
+      // Case 2: for READ COMMITTED isolation.
+      // All txns use the same priority in this isolation level.
+      stmt1.execute("BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED");
+      stmt2.execute("BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED");
+      stmt1.execute("SELECT * FROM test WHERE k=1 FOR UPDATE");
+
+      read_count_before = getTServerMetric(
+        "handler_latency_yb_tserver_TabletServerService_Read").count;
+      LOG.info("read_count_before=" + read_count_before);
+      runInvalidQuery(stmt2, "SELECT * FROM test WHERE k=1 FOR UPDATE NOWAIT",
+        "ERROR: could not obtain lock on row in relation \"test\"");
+
+      // Assert that we failed immediately without retrying at all.
+      Long read_count_after = getTServerMetric(
+          "handler_latency_yb_tserver_TabletServerService_Read").count;
+        LOG.info("read_count_after=" + read_count_after);
+      assertTrue((read_count_after - read_count_before) == 2);
+      stmt1.execute("COMMIT");
+      stmt2.execute("ROLLBACK");
+    }
   }
 }

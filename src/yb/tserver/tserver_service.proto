@@ -71,6 +71,9 @@ service TabletServerService {
   rpc GetTransactionStatusAtParticipant(GetTransactionStatusAtParticipantRequestPB)
       returns (GetTransactionStatusAtParticipantResponsePB);
   rpc AbortTransaction(AbortTransactionRequestPB) returns (AbortTransactionResponsePB);
+  // Change the status tablet id used for a transaction.
+  rpc UpdateTransactionStatusLocation(UpdateTransactionStatusLocationRequestPB)
+      returns (UpdateTransactionStatusLocationResponsePB);
   rpc Truncate(TruncateRequestPB) returns (TruncateResponsePB);
   rpc GetTabletStatus(GetTabletStatusRequestPB) returns (GetTabletStatusResponsePB);
   rpc GetMasterAddresses(GetMasterAddressesRequestPB) returns (GetMasterAddressesResponsePB);
@@ -217,6 +220,20 @@ message AbortTransactionResponsePB {
   optional fixed64 coordinator_safe_time = 5;
 }
 
+message UpdateTransactionStatusLocationRequestPB {
+  optional bytes tablet_id = 1;
+  optional bytes transaction_id = 2;
+  optional fixed64 propagated_hybrid_time = 3;
+
+  // ID of new status tablet that the transaction will be using.
+  optional bytes new_status_tablet_id = 4;
+}
+
+message UpdateTransactionStatusLocationResponsePB {
+  // Error message, if any.
+  optional TabletServerErrorPB error = 1;
+}
+
 message TakeTransactionRequestPB {
   optional bool is_global = 1;
 }
@@ -228,6 +245,7 @@ message TakeTransactionResponsePB {
 message GetSplitKeyRequestPB {
   required bytes tablet_id = 1;
   optional fixed64 propagated_hybrid_time = 2;
+  optional bool is_manual_split = 3;
 }
 
 message GetSplitKeyResponsePB {

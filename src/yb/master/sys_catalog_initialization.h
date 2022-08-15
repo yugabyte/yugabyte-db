@@ -46,7 +46,7 @@ class InitialSysCatalogSnapshotWriter {
   // when creating a new cluster (to avoid running initdb).
   void AddMetadataChange(tablet::ChangeMetadataRequestPB metadata_change);
 
-  CHECKED_STATUS WriteSnapshot(
+  Status WriteSnapshot(
       tablet::Tablet* sys_catalog_tablet,
       const std::string& dest_path);
 
@@ -54,7 +54,7 @@ class InitialSysCatalogSnapshotWriter {
   std::vector<tablet::ChangeMetadataRequestPB> initdb_metadata_changes_;
 };
 
-CHECKED_STATUS RestoreInitialSysCatalogSnapshot(
+Status RestoreInitialSysCatalogSnapshot(
     const std::string& initial_snapshot_path,
     tablet::TabletPeer* sys_catalog_tablet_peer,
     int64_t term);
@@ -63,14 +63,11 @@ void SetDefaultInitialSysCatalogSnapshotFlags();
 
 // A one-time migration procedure for existing clusters to set is_ysql_catalog_table and
 // is_transactional flags to true on YSQL system catalog tables.
-CHECKED_STATUS MakeYsqlSysCatalogTablesTransactional(
+Status MakeYsqlSysCatalogTablesTransactional(
     TableInfoMap* table_ids_map,
     SysCatalogTable* sys_catalog,
     SysConfigInfo* ysql_catalog_config,
     int64_t term);
-
-// Master's logic to decide whether to auto-run initdb on leader initialization.
-bool ShouldAutoRunInitDb(SysConfigInfo* ysql_catalog_config, bool pg_proc_exists);
 
 }  // namespace master
 }  // namespace yb

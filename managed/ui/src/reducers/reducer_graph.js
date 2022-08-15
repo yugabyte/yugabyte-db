@@ -17,7 +17,7 @@ const INITIAL_STATE = {
   loading: false,
   error: null,
   universeMetricList: [],
-  prometheusQueryEnabled: false,
+  prometheusQueryEnabled: true,
 };
 
 export default function (state = INITIAL_STATE, action) {

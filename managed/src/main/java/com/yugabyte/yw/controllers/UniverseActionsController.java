@@ -14,6 +14,7 @@ import static com.yugabyte.yw.forms.PlatformResults.YBPSuccess.empty;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.controllers.handlers.UniverseActionsHandler;
@@ -24,11 +25,15 @@ import com.yugabyte.yw.forms.UniverseResp;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
+
+import java.util.List;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
@@ -51,7 +56,13 @@ public class UniverseActionsController extends AuthenticatedController {
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
     universeActionsHandler.configureAlerts(
         universe, formFactory.getFormDataOrBadRequest(AlertConfigFormData.class));
-    // TODO Audit ??
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.Universe,
+            universeUUID.toString(),
+            Audit.ActionType.ConfigUniverseAlert,
+            request().body().asJson());
     return empty();
   }
 
@@ -59,9 +70,31 @@ public class UniverseActionsController extends AuthenticatedController {
   public Result pause(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    // Check if the universe is of type kubernetes, if yes throw an exception
+    Cluster cluster = universe.getUniverseDetails().getPrimaryCluster();
+    List<Cluster> readOnlyClusters = universe.getUniverseDetails().getReadOnlyClusters();
+    CloudType cloudType = cluster.userIntent.providerType;
+    Boolean isKubernetesCluster = (cloudType == CloudType.kubernetes);
+    for (Cluster readCluster : readOnlyClusters) {
+      cloudType = readCluster.userIntent.providerType;
+      isKubernetesCluster = isKubernetesCluster || cloudType == CloudType.kubernetes;
+    }
+
+    if (isKubernetesCluster) {
+      String msg =
+          String.format("Pause task is not supported for Kubernetes universe - %s", universe.name);
+      log.error(msg);
+      throw new IllegalArgumentException(msg);
+    }
 
     UUID taskUUID = universeActionsHandler.pause(customer, universe);
-    auditService().createAuditEntry(ctx(), request(), taskUUID);
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.Universe,
+            universeUUID.toString(),
+            Audit.ActionType.Pause,
+            taskUUID);
     return new YBPTask(taskUUID, universe.universeUUID).asResult();
   }
 
@@ -75,7 +108,13 @@ public class UniverseActionsController extends AuthenticatedController {
 
     UUID taskUUID = universeActionsHandler.resume(customer, universe);
 
-    auditService().createAuditEntry(ctx(), request(), taskUUID);
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.Universe,
+            universeUUID.toString(),
+            Audit.ActionType.Resume,
+            taskUUID);
     return new YBPTask(taskUUID, universe.universeUUID).asResult();
   }
 
@@ -95,7 +134,13 @@ public class UniverseActionsController extends AuthenticatedController {
 
     UUID taskUUID = universeActionsHandler.setUniverseKey(customer, universe, taskParams);
 
-    auditService().createAuditEntryWithReqBody(ctx(), taskUUID);
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.Universe,
+            universeUUID.toString(),
+            Audit.ActionType.SetUniverseKey,
+            taskUUID);
     UniverseResp resp =
         UniverseResp.create(universe, taskUUID, runtimeConfigFactory.globalRuntimeConf());
     return PlatformResults.withData(resp);
@@ -115,7 +160,14 @@ public class UniverseActionsController extends AuthenticatedController {
     ObjectNode formData = (ObjectNode) request().body().asJson();
     ToggleTlsParams requestParams = ToggleTlsParams.bindFromFormData(formData);
     UUID taskUUID = universeActionsHandler.toggleTls(customer, universe, requestParams);
-    auditService().createAuditEntry(ctx(), request(), Json.toJson(formData), taskUUID);
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.Universe,
+            universeUuid.toString(),
+            Audit.ActionType.ToggleTls,
+            Json.toJson(formData),
+            taskUUID);
     return PlatformResults.withData(
         UniverseResp.create(universe, taskUUID, runtimeConfigFactory.globalRuntimeConf()));
   }
@@ -135,7 +187,12 @@ public class UniverseActionsController extends AuthenticatedController {
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
 
     universeActionsHandler.setBackupFlag(universe, markActive);
-    auditService().createAuditEntry(ctx(), request());
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.Universe,
+            universeUUID.toString(),
+            Audit.ActionType.SetBackupFlag);
     return empty();
   }
 
@@ -152,7 +209,12 @@ public class UniverseActionsController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
     universeActionsHandler.setHelm3Compatible(universe);
-    auditService().createAuditEntry(ctx(), request());
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.Universe,
+            universeUUID.toString(),
+            Audit.ActionType.SetHelm3Compatible);
     return empty();
   }
 
@@ -169,7 +231,12 @@ public class UniverseActionsController extends AuthenticatedController {
   public Result resetVersion(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
-
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.Universe,
+            universeUUID.toString(),
+            Audit.ActionType.ResetUniverseVersion);
     universe.resetVersion();
     return empty();
   }

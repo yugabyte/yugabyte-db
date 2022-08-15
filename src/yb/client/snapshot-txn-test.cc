@@ -62,6 +62,7 @@
 using namespace std::literals;
 
 DECLARE_bool(TEST_disallow_lmp_failures);
+DECLARE_bool(enable_multi_raft_heartbeat_batcher);
 DECLARE_bool(fail_on_out_of_range_clock_skew);
 DECLARE_bool(ycql_consistent_transactional_paging);
 DECLARE_int32(TEST_inject_load_transaction_delay_ms);
@@ -122,7 +123,7 @@ void SnapshotTxnTest::TestBankAccountsThread(
       if (key2 >= key1) {
         ++key2;
       }
-      txn = ASSERT_RESULT(pool->TakeAndInit(GetIsolationLevel()));
+      txn = ASSERT_RESULT(pool->TakeAndInit(GetIsolationLevel(), TransactionRpcDeadline()));
     }
     session->SetTransaction(txn);
     int transfer = RandomUniformInt(1, 250);
@@ -142,7 +143,7 @@ void SnapshotTxnTest::TestBankAccountsThread(
       if (!result.ok()) {
         if (txn->IsRestartRequired()) {
           ASSERT_TRUE(result.status().IsQLError()) << result;
-          auto txn_result = pool->TakeRestarted(txn);
+          auto txn_result = pool->TakeRestarted(txn, TransactionRpcDeadline());
           if (!txn_result.ok()) {
             ASSERT_TRUE(txn_result.status().IsIllegalState()) << txn_result.status();
             txn = nullptr;
@@ -257,7 +258,7 @@ void SnapshotTxnTest::TestBankAccounts(
   const int kInitialAmount = 10000;
 
   {
-    auto txn = ASSERT_RESULT(pool.TakeAndInit(GetIsolationLevel()));
+    auto txn = ASSERT_RESULT(pool.TakeAndInit(GetIsolationLevel(), TransactionRpcDeadline()));
     LOG(INFO) << "Initial write transaction: " << txn->id();
     auto init_session = CreateSession(txn);
     for (int i = 1; i <= kAccounts; ++i) {
@@ -322,14 +323,14 @@ void SnapshotTxnTest::TestBankAccounts(
   while (CoarseMonoClock::now() < end_time &&
          !threads.stop_flag().load(std::memory_order_acquire)) {
     if (!txn) {
-      txn = ASSERT_RESULT(pool.TakeAndInit(GetIsolationLevel()));
+      txn = ASSERT_RESULT(pool.TakeAndInit(GetIsolationLevel(), TransactionRpcDeadline()));
     }
     auto txn_id = txn->id();
     session->SetTransaction(txn);
     auto rows = SelectAllRows(session);
     if (!rows.ok()) {
       if (txn->IsRestartRequired()) {
-        auto txn_result = pool.TakeRestarted(txn);
+        auto txn_result = pool.TakeRestarted(txn, TransactionRpcDeadline());
         if (!txn_result.ok()) {
           ASSERT_TRUE(txn_result.status().IsIllegalState()) << txn_result.status();
           txn = nullptr;
@@ -357,6 +358,7 @@ void SnapshotTxnTest::TestBankAccounts(
 
 TEST_F(SnapshotTxnTest, BankAccounts) {
   FLAGS_TEST_disallow_lmp_failures = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_multi_raft_heartbeat_batcher) = false;
   TestBankAccounts({}, 30s, RegularBuildVsSanitizers(10, 1) /* minimal_updates_per_second */);
 }
 
@@ -393,6 +395,7 @@ TEST_F(SnapshotTxnTest, BankAccountsDelayCreate) {
 
 TEST_F(SnapshotTxnTest, BankAccountsDelayAddLeaderPending) {
   FLAGS_TEST_disallow_lmp_failures = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_multi_raft_heartbeat_batcher) = false;
   FLAGS_TEST_inject_mvcc_delay_add_leader_pending_ms = 20;
   TestBankAccounts({}, 30s, RegularBuildVsSanitizers(5, 1) /* minimal_updates_per_second */);
 }
@@ -487,7 +490,7 @@ Result<PagingReadCounts> SingleTabletSnapshotTxnTest::TestPaging() {
           total_values += written_value[j];
         }
         bool failed = false;
-        session->SetReadPoint(client::Restart::kFalse);
+        session->RestartNonTxnReadPoint(client::Restart::kFalse);
         session->SetForceConsistentRead(ForceConsistentRead::kFalse);
 
         for (;;) {
@@ -506,7 +509,7 @@ Result<PagingReadCounts> SingleTabletSnapshotTxnTest::TestPaging() {
             session->SetForceConsistentRead(ForceConsistentRead::kTrue);
             *req->mutable_paging_state() = std::move(paging_state);
           }
-          auto flush_status = session->ApplyAndFlush(op);
+          auto flush_status = session->TEST_ApplyAndFlush(op);
 
           if (!flush_status.ok() || !op->succeeded()) {
             if (flush_status.IsTimedOut()) {
@@ -630,11 +633,11 @@ TEST_F(SnapshotTxnTest, HotRow) {
   auto session = CreateSession();
   MonoTime start = MonoTime::Now();
   for (int i = 1; i <= kIterations; ++i) {
-    auto txn = ASSERT_RESULT(pool.TakeAndInit(GetIsolationLevel()));
+    auto txn = ASSERT_RESULT(pool.TakeAndInit(GetIsolationLevel(), TransactionRpcDeadline()));
     session->SetTransaction(txn);
 
     ASSERT_OK(kv_table_test::Increment(&table_, session, kKey));
-    ASSERT_OK(session->Flush());
+    ASSERT_OK(session->TEST_Flush());
     ASSERT_OK(txn->CommitFuture().get());
     if (i % kBlockSize == 0) {
       auto now = MonoTime::Now();
@@ -727,7 +730,7 @@ void SnapshotTxnTest::TestMultiWriteWithRestart() {
       auto session = CreateSession();
       while (!stop.load(std::memory_order_acquire)) {
         int k = key.fetch_add(1, std::memory_order_acq_rel);
-        auto txn = ASSERT_RESULT(pool.TakeAndInit(GetIsolationLevel()));
+        auto txn = ASSERT_RESULT(pool.TakeAndInit(GetIsolationLevel(), TransactionRpcDeadline()));
         session->SetTransaction(txn);
         bool good = true;
         for (int j = 1; j <= kNumWritesPerKey; ++j) {
@@ -774,7 +777,7 @@ void SnapshotTxnTest::TestMultiWriteWithRestart() {
       YBqlReadOpPtr op;
       for (;;) {
         op = ReadRow(session, key->value);
-        auto flush_result = session->Flush();
+        auto flush_result = session->TEST_Flush();
         if (flush_result.ok()) {
           if (op->succeeded()) {
             break;
@@ -936,7 +939,7 @@ TEST_F_EX(SnapshotTxnTest, ResolveIntents, SingleTabletSnapshotTxnTest) {
   auto session = CreateSession();
   auto prev_ht = clock_->Now();
   for (int i = 0; i != 4; ++i) {
-    auto txn = ASSERT_RESULT(pool.TakeAndInit(isolation_level_));
+    auto txn = ASSERT_RESULT(pool.TakeAndInit(isolation_level_, TransactionRpcDeadline()));
     session->SetTransaction(txn);
     ASSERT_OK(WriteRow(session, i, -i));
     ASSERT_OK(txn->CommitFuture().get());

@@ -561,3 +561,34 @@ select count(*) from pg_class where relname = 'temp_view';
 select pg_sleep(5);
 select count(*) from pg_class where relname = 'temp_tab';
 select count(*) from pg_class where relname = 'temp_view';
+
+-- Test EXPLAIN ANALYZE + CREATE TABLE AS. Use EXECUTE to hide the output since it won't be stable.
+DO $$
+BEGIN
+  EXECUTE 'EXPLAIN ANALYZE CREATE TABLE tbl_as_1 AS SELECT 1';
+END$$;
+
+SELECT * FROM tbl_as_1;
+
+-- Test EXPLAIN ANALYZE on a table containing secondary index with a wide column.
+-- Use EXECUTE to hide the output since it won't be stable.
+CREATE TABLE wide_table (id INT, data TEXT);
+CREATE INDEX wide_table_idx ON wide_table(id, data);
+INSERT INTO wide_table (id, data) VALUES (10, REPEAT('1234567890', 1000000));
+DO $$
+BEGIN
+	EXECUTE 'EXPLAIN ANALYZE SELECT data FROM wide_table WHERE id = 10';
+END$$;
+
+DROP TABLE wide_table;
+
+-- Apply the same check for varchar column
+CREATE TABLE wide_table (id INT, data VARCHAR);
+CREATE INDEX wide_table_idx ON wide_table(id, data);
+INSERT INTO wide_table (id, data) VALUES (10, REPEAT('1234567890', 1000000));
+DO $$
+BEGIN
+	EXECUTE 'EXPLAIN ANALYZE SELECT data FROM wide_table WHERE id = 10';
+END$$;
+
+DROP TABLE wide_table;

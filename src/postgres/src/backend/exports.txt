@@ -11,6 +11,7 @@ YbgDeleteMemoryContext
 
 # Types API
 YbgGetTypeTable
+YbgGetPrimitiveTypeOid
 
 # Expression Evaluation API
 YbgExprContextCreate
@@ -28,3 +29,9 @@ YbgSamplerCreate
 YbgSamplerGetState
 YbgSamplerRandomFract
 YbgReservoirGetNextS
+
+DecodeDatum
+DecodeTZDatum
+DecodeArrayDatum
+DecodeRangeDatum
+DecodeRangeArrayDatum

@@ -89,6 +89,9 @@ TIME_SEC_TO_START_RUNNING_TEST = 5 * 60
 DEFAULT_MAX_NUM_TEST_FAILURES_MACOS_DEBUG = 150
 DEFAULT_MAX_NUM_TEST_FAILURES = 100
 
+# Default for test artifact size limit, in bytes
+MAX_ARTIFACT_SIZE_BYTES = 100*1024*1024  # 10 MB
+
 
 def wait_for_path_to_exist(target_path: str) -> None:
     if os.path.exists(target_path):
@@ -171,12 +174,6 @@ ONE_SHOT_TESTS = set([
 
 HASH_COMMENT_RE = re.compile('#.*$')
 
-# Number of failures of any particular task before giving up on the job. The total number of
-# failures spread across different tasks will not cause the job to fail; a particular task has to
-# fail this number of attempts. Should be greater than or equal to 1. Number of allowed retries =
-# this value - 1.
-SPARK_TASK_MAX_FAILURES = 100
-
 # Global variables. Some of these are used on the remote worker side.
 verbose = False
 g_spark_master_url_override = None
@@ -239,7 +236,6 @@ def init_spark_context(details: List[str] = []) -> None:
     global_conf = yb_dist_tests.get_global_conf()
     build_type = global_conf.build_type
     from pyspark import SparkContext  # type: ignore
-    SparkContext.setSystemProperty('spark.task.maxFailures', str(SPARK_TASK_MAX_FAILURES))
 
     spark_master_url = g_spark_master_url_override
     if spark_master_url is None:
@@ -683,10 +679,22 @@ def copy_to_host(artifact_paths: List[str], build_host: str) -> None:
     else:
         ssh_mode = True if os.getenv('YB_SPARK_COPY_MODE') == 'SSH' else False
         num_artifacts_copied = 0
+        artifact_size_limit = int(os.getenv('YB_SPARK_MAX_ARTIFACT_SIZE_BYTES',
+                                            MAX_ARTIFACT_SIZE_BYTES))
+
         for artifact_path in artifact_paths:
             if not os.path.exists(artifact_path):
                 logging.warning("Build artifact file does not exist: '%s'", artifact_path)
                 continue
+
+            artifact_size = os.path.getsize(artifact_path)
+            if artifact_size > artifact_size_limit:
+                logging.warning(
+                    "Build artifact file {} of size {} bytes exceeds max limit of {} bytes".format(
+                        artifact_path, os.path.getsize(artifact_path), artifact_size_limit)
+                )
+                continue
+
             if ssh_mode:
                 dest_dir = os.path.dirname(artifact_path)
                 logging.info(f"Copying {artifact_path} to {build_host}:{dest_dir}")

@@ -25,7 +25,6 @@ namespace yb {
 
 static constexpr int kUuidVersion = 3; // Repurpose old name-based UUID v3 to embed Postgres oids.
 
-const uint32_t kTemplate1Oid = 1;  // Hardcoded for template1. (in initdb.c)
 const uint32_t kPgProcTableOid = 1255;  // Hardcoded for pg_proc. (in pg_proc.h)
 
 // This should match the value for pg_yb_catalog_version hardcoded in pg_yb_catalog_version.h.
@@ -40,6 +39,8 @@ const TableId kPgYbCatalogVersionTableId =
     GetPgsqlTableId(kTemplate1Oid, kPgYbCatalogVersionTableOid);
 const TableId kPgTablespaceTableId =
     GetPgsqlTableId(kTemplate1Oid, kPgTablespaceTableOid);
+const TableId kPgSequencesDataTableId =
+    GetPgsqlTableId(kPgSequencesDataDatabaseOid, kPgSequencesDataTableOid);
 const string kPgSequencesDataNamespaceId =
   GetPgsqlNamespaceId(kPgSequencesDataDatabaseOid);
 
@@ -131,7 +132,7 @@ bool IsPgsqlId(const string& id) {
 }
 
 Result<uint32_t> GetPgsqlOid(const std::string& str, size_t offset, const char* name) {
-  DCHECK(IsPgsqlId(str));
+  SCHECK(IsPgsqlId(str), InvalidArgument, Format("Not a YSQL ID string: $0", str));
   try {
     size_t pos = 0;
     const uint32_t oid = static_cast<uint32_t>(

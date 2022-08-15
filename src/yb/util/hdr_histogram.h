@@ -284,7 +284,7 @@ class AbstractHistogramIterator {
   virtual bool HasNext() const;
 
   // Returns the next element in the iteration.
-  CHECKED_STATUS Next(HistogramIterationValue* value);
+  Status Next(HistogramIterationValue* value);
 
   virtual double PercentileIteratedTo() const;
   virtual double PercentileIteratedFrom() const;

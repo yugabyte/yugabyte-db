@@ -1,16 +1,14 @@
 ---
-title: Other Constraints
-linkTitle: Other Constraints
-description: Other Constraints in YSQL
+title: Other constraints
+linkTitle: Other constraints
+description: Other constraints in YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
   stable:
     identifier: other-constraints
     parent: explore-indexes-constraints
     weight: 270
-isTocNested: true
-showAsideToc: true
-
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -24,7 +22,7 @@ showAsideToc: true
 
 ## CHECK Constraint
 
-The YSQL `CHECK` constraints allow you to constrain values in columns based on a boolean expression. The values are evaluated with regards to meeting a specific requirement before these values are inserted or updated; if they fail the check, YSQL rejects the changes and displays a constraint violation error.
+The YSQL `CHECK` constraint allows you to constrain values in columns based on a boolean expression. The values are evaluated with regards to meeting a specific requirement before these values are inserted or updated; if they fail the check, YSQL rejects the changes and displays a constraint violation error.
 
 In most cases, you add the `CHECK` constraint when you create a table, as demonstrated by the following example:
 
@@ -45,7 +43,7 @@ INSERT INTO employees (employee_no, name, department, birth, salary)
   VALUES (2001, 'Hugh Grant', 'Sales', '1963-05-05', 0);
 ```
 
-The following output shows that the execution of the `INSERT` statement failed because of the `CHECK` constraint on the `salary` column which only accepts values greater than 10:
+The following output shows that the execution of the `INSERT` statement failed because of the `CHECK` constraint on the `salary` column, which only accepts values greater than 10:
 
 ```output
 ERROR: new row for relation "employees" violates check constraint "employees_salary_check"
@@ -76,9 +74,9 @@ For additional examples, see:
 
 ## UNIQUE Constraint
 
-The `UNIQUE` constraint allows you to ensure that values stored in columns are unique across rows in a table. During inserting new rows or updating existing ones, the `UNIQUE` constraint checks if the value is already in the table, in which case the change is rejected and an error is displayed.
+The `UNIQUE` constraint allows you to ensure that values stored in columns are unique across rows in a table. When inserting new rows or updating existing ones, the `UNIQUE` constraint checks if the value is already in the table, in which case the change is rejected and an error is displayed.
 
-When you add a `UNIQUE` constraint to one or more columns, YSQL automatically creates a [unique index](../indexes-1#using-a-unique-index) on these columns.
+When you add a `UNIQUE` constraint to one or more columns, YSQL automatically creates a [unique index](../unique-index-ysql) on these columns.
 
 The following example creates a table with a `UNIQUE` constraint for the `phone` column:
 

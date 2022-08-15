@@ -2179,7 +2179,6 @@ TEST_F(DBTest, FailMoreDbPaths) {
 
 void CheckColumnFamilyMeta(const ColumnFamilyMetaData& cf_meta) {
   uint64_t cf_size = 0;
-  uint64_t cf_csize = 0;
   size_t file_count = 0;
   for (auto level_meta : cf_meta.levels) {
     uint64_t level_size = 0;
@@ -2190,7 +2189,6 @@ void CheckColumnFamilyMeta(const ColumnFamilyMetaData& cf_meta) {
     }
     ASSERT_EQ(level_meta.size, level_size);
     cf_size += level_size;
-    cf_csize += level_csize;
   }
   ASSERT_EQ(cf_meta.file_count, file_count);
   ASSERT_EQ(cf_meta.size, cf_size);
@@ -2461,7 +2459,7 @@ TEST_F(DBTest, ApproximateSizesMemTable) {
     keys[i * 3 + 1] = i * 5 + 1;
     keys[i * 3 + 2] = i * 5 + 2;
   }
-  std::random_shuffle(std::begin(keys), std::end(keys));
+  std::shuffle(std::begin(keys), std::end(keys), yb::ThreadLocalRandom());
 
   for (int i = 0; i < N * 3; i++) {
     ASSERT_OK(Put(Key(keys[i] + 1000), RandomString(&rnd, 1024)));
@@ -4782,7 +4780,7 @@ class ModelDB: public DB {
   }
 
  private:
-  CHECKED_STATUS NotSupported() const {
+  Status NotSupported() const {
     return STATUS(NotSupported, "Not supported in Model DB");
   }
 
@@ -5178,7 +5176,7 @@ class DBWriter : public DBHolder {
       return bytes_count_ / (stop_time_ - start_time_).ToSeconds();
     }
 
-    CHECKED_STATUS Verify() const {
+    Status Verify() const {
       SCHECK_GT(bytes_count_, 0, IllegalState, "Bytes count must be greater than zero");
       SCHECK_LT(start_time_, stop_time_, IllegalState, "Start time must be less than stop time");
       return Status::OK();
@@ -5198,7 +5196,7 @@ class DBWriter : public DBHolder {
     write_options_.IncreaseParallelism(4);
   }
 
-  CHECKED_STATUS InitRate(boost::optional<double> rate_bytes_per_sec = boost::none) {
+  Status InitRate(boost::optional<double> rate_bytes_per_sec = boost::none) {
     if (rate_bytes_per_sec) {
       write_reference_rate_bytes_per_sec_ = *rate_bytes_per_sec;
       SCHECK_GT(write_reference_rate_bytes_per_sec_, 0.0,
@@ -5210,7 +5208,7 @@ class DBWriter : public DBHolder {
     return Status::OK();
   }
 
-  CHECKED_STATUS ExecWrite() {
+  Status ExecWrite() {
     env_->bytes_written_ = 0;
     DestroyAndReopen(write_options_);
     WriteOptions wo;
@@ -5230,7 +5228,7 @@ class DBWriter : public DBHolder {
     return write_stat_.Verify();
   }
 
-  CHECKED_STATUS ExecWriteWithNewRateLimiter(double rate_bytes_per_sec) {
+  Status ExecWriteWithNewRateLimiter(double rate_bytes_per_sec) {
     write_options_.rate_limiter.reset(
       NewGenericRateLimiter(static_cast<int64_t>(rate_bytes_per_sec)));
     RETURN_NOT_OK(ExecWrite());
@@ -5239,7 +5237,7 @@ class DBWriter : public DBHolder {
     return Status::OK();
   }
 
-  CHECKED_STATUS MeasureWrite(double rate_ratio, double max_rate_ratio) {
+  Status MeasureWrite(double rate_ratio, double max_rate_ratio) {
     SCHECK_GT(rate_ratio, 0.0, IllegalState, "Rate ratio must be greater than zero");
     SCHECK_LE(rate_ratio, max_rate_ratio,
               IllegalState, "Max rate ratio must be greater than rate ratio");
@@ -5247,7 +5245,7 @@ class DBWriter : public DBHolder {
     return CheckRatio(write_stat_, max_rate_ratio);
   }
 
-  CHECKED_STATUS CheckRatio(const WriteStat& period, double expected_ratio) const {
+  Status CheckRatio(const WriteStat& period, double expected_ratio) const {
     SCHECK_GT(write_reference_rate_bytes_per_sec_, 0.0,
               IllegalState, "Reference rate must be greater than zero");
     auto ratio = VERIFY_RESULT(period.GetRate()) / write_reference_rate_bytes_per_sec_;
@@ -5772,7 +5770,7 @@ TEST_F(DBTest, DynamicLevelCompressionPerLevel) {
   for (int i = 0; i < kNKeys; i++) {
     keys[i] = i;
   }
-  std::random_shuffle(std::begin(keys), std::end(keys));
+  std::shuffle(std::begin(keys), std::end(keys), yb::ThreadLocalRandom());
 
   Random rnd(301);
   Options options;
@@ -5830,8 +5828,8 @@ TEST_F(DBTest, DynamicLevelCompressionPerLevel) {
   ColumnFamilyMetaData cf_meta;
   db_->GetColumnFamilyMetaData(&cf_meta);
   for (auto file : cf_meta.levels[4].files) {
-    listener->SetExpectedFileName(dbname_ + file.name);
-    ASSERT_OK(dbfull()->DeleteFile(file.name));
+    listener->SetExpectedFileName(dbname_ + file.Name());
+    ASSERT_OK(dbfull()->DeleteFile(file.Name()));
   }
   listener->VerifyMatchedCount(cf_meta.levels[4].files.size());
 
@@ -5853,7 +5851,7 @@ TEST_F(DBTest, DynamicLevelCompressionPerLevel2) {
   for (int i = 0; i < kNKeys; i++) {
     keys[i] = i;
   }
-  std::random_shuffle(std::begin(keys), std::end(keys));
+  std::shuffle(std::begin(keys), std::end(keys), yb::ThreadLocalRandom());
 
   Random rnd(301);
   Options options;

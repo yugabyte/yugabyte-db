@@ -152,12 +152,26 @@ public class MetaMasterController extends Controller {
 
         String namespace =
             PlacementInfoUtil.getKubernetesNamespace(
-                isMultiAz, universeDetails.nodePrefix, azName, config);
+                isMultiAz,
+                universeDetails.nodePrefix,
+                azName,
+                config,
+                universeDetails.useNewHelmNamingStyle,
+                false);
+
+        String helmReleaseName =
+            PlacementInfoUtil.getHelmReleaseName(
+                isMultiAz, universeDetails.nodePrefix, azName, false);
 
         String ip =
             kubernetesManagerFactory
                 .getManager()
-                .getPreferredServiceIP(config, namespace, type == ServerType.MASTER);
+                .getPreferredServiceIP(
+                    config,
+                    helmReleaseName,
+                    namespace,
+                    type == ServerType.MASTER,
+                    universeDetails.useNewHelmNamingStyle);
         if (ip == null) {
           return null;
         }

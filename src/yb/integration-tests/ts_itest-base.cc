@@ -31,6 +31,7 @@
 #include "yb/server/server_base.proxy.h"
 
 #include "yb/util/opid.h"
+#include "yb/util/random_util.h"
 #include "yb/util/status_log.h"
 
 DEFINE_string(ts_flags, "", "Flags to pass through to tablet servers");
@@ -179,7 +180,7 @@ itest::TServerDetails* TabletServerIntegrationTestBase::GetLeaderReplicaOrNull(
     replicas_copy.push_back((*range.first).second);
   }
 
-  std::random_shuffle(replicas_copy.begin(), replicas_copy.end());
+  std::shuffle(replicas_copy.begin(), replicas_copy.end(), ThreadLocalRandom());
   for (itest::TServerDetails* replica : replicas_copy) {
     if (GetReplicaStatusAndCheckIfLeader(replica, tablet_id,
                                          MonoDelta::FromMilliseconds(100)).ok()) {

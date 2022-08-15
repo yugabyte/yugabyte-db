@@ -74,10 +74,30 @@ METRIC_DEFINE_gauge_int64(cdc, async_replication_committed_lag_micros,
                           yb::MetricUnit::kMicroseconds,
                           "Lag between last record applied on consumer and producer.",
                           {0, yb::AggregationFunction::kMax} /* optional_args */);
+METRIC_DEFINE_gauge_bool(cdc,
+                         is_bootstrap_required,
+                         "Is Bootstrap Required",
+                         yb::MetricUnit::kUnits,
+                         "Is bootstrap required for the replication universe.");
+METRIC_DEFINE_gauge_uint64(cdc, last_getchanges_time, "CDC Last GetChanges Physical Time",
+                           yb::MetricUnit::kMicroseconds,
+                           "Physical time of the last GetChanges request received from the "
+                           "consumer.",
+                           {0, yb::AggregationFunction::kMax} /* optional_args */);
+METRIC_DEFINE_gauge_int64(cdc, time_since_last_getchanges, "CDC Physical Time Last GetChanges",
+                          yb::MetricUnit::kMicroseconds,
+                          "Physical time ellapsed since the last GetChanges request received from "
+                          "the consumer.",
+                          {0, yb::AggregationFunction::kMax} /* optional_args */);
+METRIC_DEFINE_gauge_uint64(cdc, last_caughtup_physicaltime, "CDC Last Caught-up Physical Time.",
+                           yb::MetricUnit::kMicroseconds,
+                           "Physical Time till which consumer has caught-up with producer.");
 
 // CDC Server Metrics
 METRIC_DEFINE_counter(server, cdc_rpc_proxy_count, "CDC Rpc Proxy Count", yb::MetricUnit::kRequests,
   "Number of CDC GetChanges requests that required proxy forwarding");
+
+
 
 namespace yb {
 namespace cdc {
@@ -96,6 +116,10 @@ CDCTabletMetrics::CDCTabletMetrics(const scoped_refptr<MetricEntity>& entity)
       GINIT(last_readable_opid_index),
       GINIT(async_replication_sent_lag_micros),
       GINIT(async_replication_committed_lag_micros),
+      GINIT(is_bootstrap_required),
+      GINIT(last_getchanges_time),
+      GINIT(time_since_last_getchanges),
+      GINIT(last_caughtup_physicaltime),
       entity_(entity) {}
 
 CDCServerMetrics::CDCServerMetrics(const scoped_refptr<MetricEntity>& entity)

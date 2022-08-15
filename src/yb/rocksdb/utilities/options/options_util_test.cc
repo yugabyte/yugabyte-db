@@ -30,6 +30,7 @@
 
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/table.h"
+#include "yb/rocksdb/table/table_builder.h"
 #include "yb/rocksdb/utilities/options_util.h"
 #include "yb/rocksdb/util/options_parser.h"
 #include "yb/rocksdb/util/random.h"
@@ -183,7 +184,7 @@ class DummyTableFactory : public TableFactory {
 
   bool IsSplitSstForWriteSupported() const override { return false; }
 
-  virtual TableBuilder* NewTableBuilder(
+  std::unique_ptr<TableBuilder> NewTableBuilder(
       const TableBuilderOptions& table_builder_options, uint32_t column_family_id,
       WritableFileWriter* metadata_file, WritableFileWriter* data_file = nullptr) const override {
     return nullptr;

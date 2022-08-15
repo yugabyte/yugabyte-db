@@ -33,6 +33,7 @@
 #define YB_UTIL_FLAGS_H
 
 #include <gflags/gflags.h>
+#include "yb/util/auto_flags.h"
 
 namespace yb {
 
@@ -43,8 +44,8 @@ namespace yb {
 // of the first non-flag argument.
 //
 // This is a wrapper around google::ParseCommandLineFlags, but integrates
-// with YB flag tags. For example, --helpxml will include the list of
-// tags for each flag. This should be be used instead of
+// with YB flag tags and AutoFlags. For example, --helpxml will include the list of
+// tags for each flag and AutoFlag info. This should be be used instead of
 // google::ParseCommandLineFlags in any user-facing binary.
 //
 // See gflags.h for more information.

@@ -37,6 +37,7 @@
 #include "yb/util/condition_variable.h"
 #include "yb/util/monotime.h"
 #include "yb/util/mutex.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 
@@ -96,7 +97,7 @@ class CountDownLatch {
 };
 
 // Utility class which calls latch->CountDown() in its destructor.
-class CountDownOnScopeExit {
+class NODISCARD_CLASS CountDownOnScopeExit {
  public:
   explicit CountDownOnScopeExit(CountDownLatch *latch) : latch_(latch) {}
   ~CountDownOnScopeExit() {

@@ -1,19 +1,8 @@
+// Copyright (c) YugaByte, Inc.
+
 package com.yugabyte.yw.common;
 
-import java.io.File;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-
-import javax.annotation.Nullable;
-import javax.inject.Inject;
-
 import com.google.common.collect.ImmutableList;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import io.fabric8.kubernetes.api.model.LoadBalancerIngress;
 import io.fabric8.kubernetes.api.model.Node;
 import io.fabric8.kubernetes.api.model.Pod;
@@ -21,6 +10,14 @@ import io.fabric8.kubernetes.api.model.PodCondition;
 import io.fabric8.kubernetes.api.model.PodStatus;
 import io.fabric8.kubernetes.api.model.Secret;
 import io.fabric8.kubernetes.api.model.Service;
+import java.io.File;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import javax.annotation.Nullable;
+import javax.inject.Inject;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public abstract class KubernetesManager {
 
@@ -47,12 +44,13 @@ public abstract class KubernetesManager {
       String overridesFile) {
 
     String helmPackagePath = this.getHelmPackagePath(ybSoftwareVersion);
+    String helmReleaseName = Util.sanitizeHelmReleaseName(universePrefix);
 
     List<String> commandList =
         ImmutableList.of(
             "helm",
             "install",
-            universePrefix,
+            helmReleaseName,
             helmPackagePath,
             "--namespace",
             namespace,
@@ -74,12 +72,13 @@ public abstract class KubernetesManager {
       String overridesFile) {
 
     String helmPackagePath = this.getHelmPackagePath(ybSoftwareVersion);
+    String helmReleaseName = Util.sanitizeHelmReleaseName(universePrefix);
 
     List<String> commandList =
         ImmutableList.of(
             "helm",
             "upgrade",
-            universePrefix,
+            helmReleaseName,
             helmPackagePath,
             "-f",
             overridesFile,
@@ -94,7 +93,8 @@ public abstract class KubernetesManager {
   }
 
   public void helmDelete(Map<String, String> config, String universePrefix, String namespace) {
-    List<String> commandList = ImmutableList.of("helm", "delete", universePrefix, "-n", namespace);
+    String helmReleaseName = Util.sanitizeHelmReleaseName(universePrefix);
+    List<String> commandList = ImmutableList.of("helm", "delete", helmReleaseName, "-n", namespace);
     execCommand(config, commandList);
   }
 
@@ -211,14 +211,23 @@ public abstract class KubernetesManager {
 
   /** @return the first that exists of loadBalancer.hostname, loadBalancer.ip, clusterIp */
   public abstract String getPreferredServiceIP(
-      Map<String, String> config, String namespace, boolean isMaster);
+      Map<String, String> config,
+      String universePrefix,
+      String namespace,
+      boolean isMaster,
+      boolean newNamingStyle);
 
   public abstract List<Node> getNodeInfos(Map<String, String> config);
 
   public abstract Secret getSecret(
       Map<String, String> config, String secretName, @Nullable String namespace);
 
-  public abstract void updateNumNodes(Map<String, String> config, String namespace, int numNodes);
+  public abstract void updateNumNodes(
+      Map<String, String> config,
+      String universePrefix,
+      String namespace,
+      int numNodes,
+      boolean newNamingStyle);
 
   public abstract void deleteStorage(
       Map<String, String> config, String universePrefix, String namespace);

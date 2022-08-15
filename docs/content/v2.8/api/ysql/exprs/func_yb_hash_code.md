@@ -7,8 +7,7 @@ menu:
   v2.8:
     identifier: api-ysql-exprs-yb_hash_code
     parent: api-ysql-exprs
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis
@@ -154,7 +153,7 @@ SELECT yb_hash_code(1::int, 2::int, 'sample string'::text);
 
 ### Querying rows from a specific tablet
 
-You can request a batch of rows from a tablet of our choice without unnecessarily touching other tablets.
+You can request a batch of rows from a tablet of your choice without unnecessarily touching other tablets.
 
 ```sql
 SELECT * FROM sample_table WHERE yb_hash_code(x,y) >= 0 and yb_hash_code(x,y) <= 128;

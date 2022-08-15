@@ -3,18 +3,12 @@ title: Explore YugabyteDB
 headerTitle: Explore YugabyteDB
 linkTitle: Explore
 description: Explore the features of YugabyteDB on macOS, Linux, Docker, and Kubernetes.
-headcontent:
 image: /images/section_icons/index/explore.png
-section: YUGABYTEDB CORE
-menu:
-  stable:
-    identifier: explore
-    weight: 540
+type: indexpage
 ---
-
 {{< tip title="Tip" >}}
 
-Use [yb-ctl](../admin/yb-ctl) local cluster management utility to explore the core features of YugabyteDB.
+Use [yb-ctl](../admin/yb-ctl/) local cluster management utility to explore the core features of YugabyteDB.
 
 {{< /tip >}}
 
@@ -32,7 +26,7 @@ Use [yb-ctl](../admin/yb-ctl) local cluster management utility to explore the co
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="fault-tolerance/macos">
+    <a class="section-link icon-offset" href="fault-tolerance/macos/">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/fault_tolerance.png" aria-hidden="true" />
         <div class="title">Fault tolerance</div>
@@ -115,19 +109,17 @@ Use [yb-ctl](../admin/yb-ctl) local cluster management utility to explore the co
     </a>
   </div>
 
-<!--
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="colocated-tables/macos/">
+    <a class="section-link icon-offset" href="change-data-capture/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/explore/linear_scalability.png" aria-hidden="true" />
-        <div class="title">Colocated tables</div>
+        <img class="icon" src="/images/section_icons/explore/monitoring.png" aria-hidden="true" />
+        <div class="title">Change data capture</div>
       </div>
       <div class="body">
-        Model large number of relations and databases with fault tolerance.
+        Stream database changes to external processes, applications, or other databases.
       </div>
     </a>
   </div>
--->
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="security/security/">
@@ -145,7 +137,7 @@ Use [yb-ctl](../admin/yb-ctl) local cluster management utility to explore the co
     <a class="section-link icon-offset" href="observability/">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/monitoring.png" aria-hidden="true" />
-        <div class="title">Observabililty</div>
+        <div class="title">Observability</div>
       </div>
       <div class="body">
         Observe metrics at every layer of the database using Prometheus.

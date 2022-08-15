@@ -51,24 +51,26 @@ class WritableFileWriter;
 class InternalStats;
 class InternalIterator;
 
-TableBuilder* NewTableBuilder(const ImmutableCFOptions& options,
-                              const InternalKeyComparatorPtr& internal_comparator,
-                              const IntTblPropCollectorFactories& int_tbl_prop_collector_factories,
-                              uint32_t column_family_id,
-                              WritableFileWriter* file,
-                              const CompressionType compression_type,
-                              const CompressionOptions& compression_opts,
-                              const bool skip_filters = false);
+std::unique_ptr<TableBuilder> NewTableBuilder(
+    const ImmutableCFOptions& options,
+    const InternalKeyComparatorPtr& internal_comparator,
+    const IntTblPropCollectorFactories& int_tbl_prop_collector_factories,
+    uint32_t column_family_id,
+    WritableFileWriter* file,
+    const CompressionType compression_type,
+    const CompressionOptions& compression_opts,
+    const bool skip_filters = false);
 
-TableBuilder* NewTableBuilder(const ImmutableCFOptions& options,
-                              const InternalKeyComparatorPtr& internal_comparator,
-                              const IntTblPropCollectorFactories& int_tbl_prop_collector_factories,
-                              uint32_t column_family_id,
-                              WritableFileWriter* metadata_file,
-                              WritableFileWriter* data_file,
-                              const CompressionType compression_type,
-                              const CompressionOptions& compression_opts,
-                              const bool skip_filters = false);
+std::unique_ptr<TableBuilder> NewTableBuilder(
+    const ImmutableCFOptions& options,
+    const InternalKeyComparatorPtr& internal_comparator,
+    const IntTblPropCollectorFactories& int_tbl_prop_collector_factories,
+    uint32_t column_family_id,
+    WritableFileWriter* metadata_file,
+    WritableFileWriter* data_file,
+    const CompressionType compression_type,
+    const CompressionOptions& compression_opts,
+    const bool skip_filters = false);
 
 // Build a Table file from the contents of *iter.  The generated file
 // will be named according to number specified in meta. On success, the rest of
@@ -93,7 +95,7 @@ extern Status BuildTable(
     bool paranoid_file_checks,
     InternalStats* internal_stats,
     BoundaryValuesExtractor* boundary_values_extractor,
-    const Env::IOPriority io_priority = Env::IO_HIGH,
+    const yb::IOPriority io_priority = yb::IOPriority::kHigh,
     TableProperties* table_properties = nullptr);
 
 }  // namespace rocksdb

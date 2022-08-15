@@ -8,12 +8,11 @@ menu:
     identifier: table-t3
     parent: data-sets
     weight: 40
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 {{< note title=" " >}}
-Make sure that you read the section [The data sets used by the code examples](../../data-sets/) before running the script to create table _"t3"_. In particular, it's essential that you have installed the [pgcrypto](../../../../../extensions/#pgcrypto) extension.
+Make sure that you read the section [The data sets used by the code examples](../../data-sets/) before running the script to create table _"t3"_. In particular, it's essential that you have installed the [pgcrypto](../../../../../../../explore/ysql-language-features/pg-extensions/#pgcrypto-example) extension.
 {{< /note >}}
 
 The rows in table  _"t3"_ are inserted in random order. It has twenty-five rows of the Monday through Friday prices of a stock. This supports demonstrations of the [`lag()` and `lead()`](../../lag-lead/) window functions. It is also used in the section [Informal overview of function invocation using the OVER clause](../../../functionality-overview/).
@@ -91,7 +90,7 @@ order by day;
 ```
 This is the result of the second `SELECT`. To make them easier to read, a blank line has been manually inserted here between the rows for each successive week.
 ```
-       Day       | price  
+       Day       | price
 -----------------+--------
  Mon 15-Sep-2008 | $19.01
  Tue 16-Sep-2008 | $18.96

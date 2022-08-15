@@ -236,7 +236,34 @@ public class BaseYBClientTest extends BaseMiniClusterTest {
     }
 
     HostAndPort leaderHostPort = HostAndPort.fromParts(leader.getRpcHost(), leader.getRpcPort());
+    LOG.info("The previous host port is " + leaderHostPort);
     miniCluster.killTabletServerOnHostPort(leaderHostPort);
+  }
+
+  protected static void killAllTabletLeader(YBTable table) throws Exception {
+    List<LocatedTablet> tablets = table.getTabletsLocations(DEFAULT_SLEEP);
+    for (LocatedTablet tablet : tablets) {
+      LocatedTablet.Replica leader = null;
+      DeadlineTracker deadlineTracker = new DeadlineTracker();
+      deadlineTracker.setDeadline(DEFAULT_SLEEP);
+      while (leader == null) {
+        if (deadlineTracker.timedOut()) {
+          fail("Timed out while trying to find a leader for this table: " + table.getName());
+        }
+
+        if (tablet.getReplicas().size() == 1) {
+          fail("Table " + table.getName() + " only has 1 tablet, please enable replication");
+        }
+        leader = tablet.getLeaderReplica();
+        if (leader == null) {
+          LOG.info("Sleeping while waiting for a tablet LEADER to arise, currently slept " +
+            deadlineTracker.getElapsedMillis() + "ms");
+          Thread.sleep(50);
+        }
+      }
+      HostAndPort leaderHostPort = HostAndPort.fromParts(leader.getRpcHost(), leader.getRpcPort());
+      miniCluster.killTabletServerOnHostPort(leaderHostPort);
+    }
   }
 
   /**

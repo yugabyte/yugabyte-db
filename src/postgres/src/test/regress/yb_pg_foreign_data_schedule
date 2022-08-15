@@ -8,4 +8,3 @@
 test: yb_pg_create_function_1
 
 test: yb_pg_foreign_data
-test: yb_postgres_fdw

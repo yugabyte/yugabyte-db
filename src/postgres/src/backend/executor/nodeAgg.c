@@ -1556,7 +1556,7 @@ yb_agg_pushdown_supported(AggState *aggstate)
 	scan_state = castNode(ForeignScanState, outerPlanState(aggstate));
 
 	/* Foreign relation we are scanning is a YB table. */
-	if (!IsYBRelationById(scan_state->ss.ss_currentRelation->rd_id))
+	if (!IsYBRelation(scan_state->ss.ss_currentRelation))
 		return;
 
 	/* No WHERE quals. */
@@ -1747,8 +1747,6 @@ ExecAgg(PlanState *pstate)
 		if (IsYugaByteEnabled())
 		{
 			pstate->state->yb_exec_params.limit_use_default = true;
-			if (node->yb_pushdown_supported)
-				yb_agg_pushdown(node);
 		}
 
 		/* Dispatch based on strategy */
@@ -3173,6 +3171,12 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 
 		phase->evaltrans = ExecBuildAggTrans(aggstate, phase, dosort, dohash);
 
+	}
+
+	if (IsYugaByteEnabled())
+	{
+		if (aggstate->yb_pushdown_supported)
+			yb_agg_pushdown(aggstate);
 	}
 
 	return aggstate;

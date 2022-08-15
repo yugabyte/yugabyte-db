@@ -8,8 +8,7 @@ menu:
     identifier: text-typecasting-and-literals
     parent: array-literals
     weight: 5
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 This section establishes some basic notions that have a much broader scope of applicability than just arrays. But, because using array literals rests on these notions, they are summarized here.
@@ -180,11 +179,11 @@ select true as "bare true", true::text as "true::text";
 ```
 This is the result:
 ```
- bare true | true::text 
+ bare true | true::text
 -----------+------------
  t         | true
 ```
-For all but `boolean` values, the string of characters that `ysqlsh` uses to display any value is the `::text` typecast of that value. (After all, the only feasible means of display is strings of characters.) But uniquely for the two `boolean` values denoted by the keywords `TRUE` and `FALSE` it uses the single characters `t` and `f` rather than their `::text` typecasts—unless you explicitly write the typecast. 
+For all but `boolean` values, the string of characters that `ysqlsh` uses to display any value is the `::text` typecast of that value. (After all, the only feasible means of display is strings of characters.) But uniquely for the two `boolean` values denoted by the keywords `TRUE` and `FALSE` it uses the single characters `t` and `f` rather than their `::text` typecasts—unless you explicitly write the typecast.
 
 This behavior is inherited from `psql`.
 
@@ -202,7 +201,7 @@ select
 ```
 It shows the result:
 ```
-     n     | t1  |       t2        | int array 
+     n     | t1  |       t2        | int array
 -----------+-----+-----------------+-----------
  42.932771 | cat | dog's breakfast | {1,2,3}}
 ```

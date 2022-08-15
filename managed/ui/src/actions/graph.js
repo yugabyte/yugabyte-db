@@ -69,3 +69,8 @@ export function togglePrometheusQuery() {
     type: TOGGLE_PROMETHEUS_QUERY
   };
 }
+
+export function getGrafanaJson() {
+  return axios
+    .get(`${ROOT_URL}/grafana_dashboard`);
+}

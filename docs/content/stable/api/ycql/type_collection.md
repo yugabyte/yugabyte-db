@@ -7,8 +7,7 @@ menu:
   stable:
     parent: api-cassandra
     weight: 1390
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis
@@ -41,7 +40,7 @@ set_literal ::= '{' [ expression ...] '}'
 
 ```
 
-Where 
+Where
 
 - Columns of type `LIST`, `MAP`, or `SET` cannot be part of the `PRIMARY KEY`.
 - `type` must be a [non-parametric data type](../#data-types) or a [frozen](../type_frozen) data type.
@@ -60,7 +59,7 @@ Where
 
 {{< note title="Note" >}}
 Collections are designed for storing small sets of values that are not expected to grow to arbitrary size (such as phone numbers or addresses for a user rather than posts or messages).
-While collections of larger sizes are allowed, they may have a significant impact on performance for queries involving them. 
+While collections of larger sizes are allowed, they may have a significant impact on performance for queries involving them.
 In particular, some list operations (insert at an index and remove elements) require a read-before-write.
 {{< /note >}}
 
@@ -71,7 +70,7 @@ In particular, some list operations (insert at an index and remove elements) req
 - Collection types are used like simple types (except they are not allowed in primary key).
 
 ```sql
-ycqlsh:example> CREATE TABLE users(username TEXT PRIMARY KEY, 
+ycqlsh:example> CREATE TABLE users(username TEXT PRIMARY KEY,
                                   emails SET<TEXT>,
                                   phones MAP<TEXT,TEXT>,
                                   top_cities LIST<TEXT>);
@@ -82,10 +81,10 @@ ycqlsh:example> CREATE TABLE users(username TEXT PRIMARY KEY,
 - Collection values are inserted by setting all their elements at once.
 
 ```sql
-ycqlsh:example> INSERT INTO users(username, emails, phones, top_cities) 
-               VALUES ('foo', 
-                       {'c@example.com', 'a@example.com'}, 
-                       {'home' : '999-9999', 'mobile' : '000-0000'}, 
+ycqlsh:example> INSERT INTO users(username, emails, phones, top_cities)
+               VALUES ('foo',
+                       {'c@example.com', 'a@example.com'},
+                       {'home' : '999-9999', 'mobile' : '000-0000'},
                        ['New York', 'Paris']);
 ```
 
@@ -177,7 +176,7 @@ ycqlsh:example> SELECT * FROM users;
       foo | {'c@example.com', 'foo@example.com'} | {'mobile': '000-0000', 'office': '333-3333'} | ['New York', 'Paris']
 ```
 
-- List elements can be either prepended or appended. 
+- List elements can be either prepended or appended.
 
 ```sql
 ycqlsh:example> UPDATE users SET top_cities = top_cities + ['Delhi'] WHERE username = 'foo';

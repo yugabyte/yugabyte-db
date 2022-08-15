@@ -17,6 +17,7 @@
 #include "yb/common/common_fwd.h"
 #include "yb/common/column_id.h"
 #include "yb/common/ql_value.h"
+#include "yb/common/value.messages.h"
 
 #include "yb/gutil/casts.h"
 
@@ -48,43 +49,78 @@ struct QLTableColumn {
   std::string ToString() const;
 };
 
-class QLExprResultWriter;
+template <class Val>
+class ExprResultWriter;
 
-class QLExprResult {
+template <class Val>
+class ExprResult;
+
+template <>
+class ExprResult<QLValuePB> {
  public:
-  const QLValuePB& Value() const;
+  ExprResult() = default;
+  explicit ExprResult(QLValuePB* template_value) {}
+  explicit ExprResult(ExprResult<QLValuePB>* template_result) {}
 
-  void MoveToJsonb(common::Jsonb* out);
+  const QLValuePB& Value();
+
 
   void MoveTo(QLValuePB* out);
 
-  QLValue& ForceNewValue();
+  QLValuePB& ForceNewValue();
 
-  QLExprResultWriter Writer();
-
-  bool IsNull() const;
+  ExprResultWriter<QLValuePB> Writer();
 
  private:
-  friend class QLExprResultWriter;
+  friend class ExprResultWriter<QLValuePB>;
 
-  QLValue value_;
+  QLValuePB value_;
   const QLValuePB* existing_value_ = nullptr;
 };
 
-class QLExprResultWriter {
+template <>
+class ExprResult<LWQLValuePB> {
  public:
-  explicit QLExprResultWriter(QLExprResult* result) : result_(result) {
-    result_->existing_value_ = nullptr;
-  }
+  explicit ExprResult(Arena* arena) : arena_(arena) {}
+  explicit ExprResult(LWQLValuePB* template_value) : arena_(&template_value->arena()) {}
+  explicit ExprResult(ExprResult<LWQLValuePB>* template_result)
+      : arena_(template_result->arena_) {}
+
+  const LWQLValuePB& Value();
+
+  void MoveTo(LWQLValuePB* out);
+
+  LWQLValuePB& ForceNewValue();
+
+  ExprResultWriter<LWQLValuePB> Writer();
+
+ private:
+  friend class ExprResultWriter<LWQLValuePB>;
+
+  Arena* arena_;
+  LWQLValuePB* value_ = nullptr;
+};
+
+template <class Val>
+class ExprResultWriter {
+ public:
+  explicit ExprResultWriter(ExprResult<Val>* result);
 
   void SetNull();
 
-  void SetExisting(const QLValuePB* existing_value);
+  void SetExisting(const Val* existing_value);
 
-  QLValue& NewValue();
+  Val& NewValue();
+
  private:
-  QLExprResult* result_;
+  ExprResult<Val>* result_;
 };
+
+using QLExprResult = ExprResult<QLValuePB>;
+using LWExprResult = ExprResult<LWQLValuePB>;
+
+using QLExprResultWriter = ExprResultWriter<QLValuePB>;
+using LWExprResultWriter = ExprResultWriter<LWQLValuePB>;
 
 class QLTableRow {
  public:
@@ -134,14 +170,14 @@ class QLTableRow {
   }
 
   // Get a column TTL.
-  CHECKED_STATUS GetTTL(ColumnIdRep col_id, int64_t *ttl_seconds) const;
+  Status GetTTL(ColumnIdRep col_id, int64_t *ttl_seconds) const;
 
   // Get a column WriteTime.
-  CHECKED_STATUS GetWriteTime(ColumnIdRep col_id, int64_t *write_time) const;
+  Status GetWriteTime(ColumnIdRep col_id, int64_t *write_time) const;
 
   // Copy the column value of the given ID to output parameter "column".
-  CHECKED_STATUS GetValue(ColumnIdRep col_id, QLValue *column) const;
-  CHECKED_STATUS GetValue(const ColumnId& col, QLValue *column) const;
+  Status GetValue(ColumnIdRep col_id, QLValue *column) const;
+  Status GetValue(const ColumnId& col, QLValue *column) const;
   boost::optional<const QLValuePB&> GetValue(ColumnIdRep col_id) const;
   boost::optional<const QLValuePB&> GetValue(const ColumnId& col) const {
     return GetValue(col.rep());
@@ -158,9 +194,10 @@ class QLTableRow {
   }
 
   // Get the column value in PB format.
-  CHECKED_STATUS ReadColumn(ColumnIdRep col_id, QLExprResultWriter result_writer) const;
+  Status ReadColumn(ColumnIdRep col_id, QLExprResultWriter result_writer) const;
+  Status ReadColumn(ColumnIdRep col_id, LWExprResultWriter result_writer) const;
   const QLValuePB* GetColumn(ColumnIdRep col_id) const;
-  CHECKED_STATUS ReadSubscriptedColumn(const QLSubscriptedColPB& subcol,
+  Status ReadSubscriptedColumn(const QLSubscriptedColPB& subcol,
                                        const QLValuePB& index,
                                        QLExprResultWriter result_writer) const;
 
@@ -182,6 +219,9 @@ class QLTableRow {
   Result<const QLTableColumn&> Column(ColumnIdRep col_id) const;
   // Appends new entry to values_ and assigned_ fields.
   QLTableColumn& AppendColumn();
+
+  template <class Writer>
+  Status DoReadColumn(ColumnIdRep col_id, Writer result_writer) const;
 
   // Map from column id to index in values_ and assigned_ vectors.
   // For columns from [kFirstColumnId; kFirstColumnId + kPreallocatedSize) we don't use
@@ -221,120 +261,136 @@ class QLExprExecutor {
   //------------------------------------------------------------------------------------------------
   // CQL Support.
 
-  // Get TServer opcode.
-  yb::bfql::TSOpcode GetTSWriteInstruction(const QLExpressionPB& ql_expr) const;
-
   // Evaluate the given QLExpressionPB.
-  CHECKED_STATUS EvalExpr(const QLExpressionPB& ql_expr,
+  Status EvalExpr(const QLExpressionPB& ql_expr,
                           const QLTableRow& table_row,
                           QLExprResultWriter result_writer,
                           const Schema *schema = nullptr);
 
   // Evaluate the given QLExpressionPB (if needed) and replace its content with the result.
-  CHECKED_STATUS EvalExpr(QLExpressionPB* ql_expr,
+  Status EvalExpr(QLExpressionPB* ql_expr,
                           const QLTableRow& table_row,
                           const Schema *schema = nullptr);
 
   // Read evaluated value from an expression. This is only useful for aggregate function.
-  CHECKED_STATUS ReadExprValue(const QLExpressionPB& ql_expr,
+  Status ReadExprValue(const QLExpressionPB& ql_expr,
                                const QLTableRow& table_row,
                                QLExprResultWriter result_writer);
 
   // Evaluate column reference.
-  virtual CHECKED_STATUS EvalColumnRef(ColumnIdRep col_id,
+  virtual Status EvalColumnRef(ColumnIdRep col_id,
                                        const QLTableRow* table_row,
                                        QLExprResultWriter result_writer);
 
-  // Evaluate call to regular builtin operator.
-  virtual CHECKED_STATUS EvalBFCall(const QLBCallPB& ql_expr,
-                                    const QLTableRow& table_row,
-                                    QLValue *result);
+  virtual Status EvalColumnRef(ColumnIdRep col_id,
+                                       const QLTableRow* table_row,
+                                       LWExprResultWriter result_writer);
 
   // Evaluate call to tablet-server builtin operator.
-  virtual CHECKED_STATUS EvalTSCall(const QLBCallPB& ql_expr,
+  virtual Status EvalTSCall(const QLBCallPB& ql_expr,
                                     const QLTableRow& table_row,
-                                    QLValue *result,
+                                    QLValuePB *result,
                                     const Schema *schema = nullptr);
 
-  virtual CHECKED_STATUS ReadTSCallValue(const QLBCallPB& ql_expr,
+  virtual Status ReadTSCallValue(const QLBCallPB& ql_expr,
                                          const QLTableRow& table_row,
                                          QLExprResultWriter result_writer);
 
   // Evaluate a boolean condition for the given row.
-  virtual CHECKED_STATUS EvalCondition(const QLConditionPB& condition,
-                                       const QLTableRow& table_row,
-                                       bool* result);
-  virtual CHECKED_STATUS EvalCondition(const QLConditionPB& condition,
-                                       const QLTableRow& table_row,
-                                       QLValue *result);
+  Status EvalCondition(const QLConditionPB& condition,
+                               const QLTableRow& table_row,
+                               bool* result);
+  Status EvalCondition(const QLConditionPB& condition,
+                               const QLTableRow& table_row,
+                               QLValuePB *result);
 
   //------------------------------------------------------------------------------------------------
   // PGSQL Support.
 
-  // Get TServer opcode.
-  yb::bfpg::TSOpcode GetTSWriteInstruction(const PgsqlExpressionPB& ql_expr) const;
-
   // Evaluate the given QLExpressionPB.
-  CHECKED_STATUS EvalExpr(const PgsqlExpressionPB& ql_expr,
+  Status EvalExpr(const PgsqlExpressionPB& ql_expr,
                           const QLTableRow* table_row,
                           QLExprResultWriter result_writer,
                           const Schema *schema = nullptr);
 
-  CHECKED_STATUS EvalExpr(const PgsqlExpressionPB& ql_expr,
+  Status EvalExpr(const PgsqlExpressionPB& ql_expr,
                           const QLTableRow& table_row,
                           QLExprResultWriter result_writer,
-                          const Schema *schema = nullptr);
+                          const Schema *schema = nullptr) {
+    return EvalExpr(ql_expr, &table_row, result_writer, schema);
+  }
 
-  CHECKED_STATUS EvalExpr(const PgsqlExpressionPB& ql_expr,
+  Status EvalExpr(const LWPgsqlExpressionPB& ql_expr,
+                          const QLTableRow* table_row,
+                          LWExprResultWriter result_writer,
+                          const Schema* schema = nullptr);
+
+  Status EvalExpr(const LWPgsqlExpressionPB& ql_expr,
                           const QLTableRow& table_row,
-                          QLValuePB* result,
-                          const Schema *schema = nullptr);
+                          LWExprResultWriter result_writer) {
+    return EvalExpr(ql_expr, &table_row, result_writer);
+  }
 
   // Read evaluated value from an expression. This is only useful for aggregate function.
-  CHECKED_STATUS ReadExprValue(const PgsqlExpressionPB& ql_expr,
+  Status ReadExprValue(const PgsqlExpressionPB& ql_expr,
                                const QLTableRow& table_row,
                                QLExprResultWriter result_writer);
 
-  // Evaluate call to regular builtin operator.
-  virtual CHECKED_STATUS EvalBFCall(const PgsqlBCallPB& ql_expr,
-                                    const QLTableRow& table_row,
-                                    QLValue *result);
-
   // Evaluate call to tablet-server builtin operator.
-  virtual CHECKED_STATUS EvalTSCall(const PgsqlBCallPB& ql_expr,
+  virtual Status EvalTSCall(const PgsqlBCallPB& ql_expr,
                                     const QLTableRow& table_row,
-                                    QLValue *result,
+                                    QLValuePB *result,
                                     const Schema *schema = nullptr);
 
-  virtual CHECKED_STATUS ReadTSCallValue(const PgsqlBCallPB& ql_expr,
+  virtual Status EvalTSCall(const LWPgsqlBCallPB& ql_expr,
+                                    const QLTableRow& table_row,
+                                    LWQLValuePB *result,
+                                    const Schema *schema = nullptr);
+
+  virtual Status ReadTSCallValue(const PgsqlBCallPB& ql_expr,
                                          const QLTableRow& table_row,
                                          QLExprResultWriter result_writer);
 
   // Evaluate a boolean condition for the given row.
-  virtual CHECKED_STATUS EvalCondition(const PgsqlConditionPB& condition,
-                                       const QLTableRow& table_row,
-                                       bool* result);
-  virtual CHECKED_STATUS EvalCondition(const PgsqlConditionPB& condition,
-                                       const QLTableRow& table_row,
-                                       QLValue *result);
+  Status EvalCondition(const PgsqlConditionPB& condition,
+                               const QLTableRow& table_row,
+                               bool* result);
+
+  template <class PB, class Value>
+  Status EvalCondition(
+      const PB& condition, const QLTableRow& table_row, Value* result);
+
+ private:
+  template <class Writer>
+  Status DoEvalColumnRef(
+      ColumnIdRep col_id, const QLTableRow* table_row, Writer result_writer);
+
+  template <class PB, class Writer>
+  Status DoEvalExpr(
+      const PB& ql_expr, const QLTableRow* table_row, Writer result_writer, const Schema* schema);
+
+  // Evaluate call to regular builtin operator.
+  template <class OpCode, class Expr, class Value>
+  Status EvalBFCall(
+      const Expr& ql_expr, const QLTableRow& table_row, Value* result);
 };
 
-template <class Operands>
-CHECKED_STATUS EvalOperandsHelper(
-    QLExprExecutor* executor, const Operands& operands, const QLTableRow& table_row, int index) {
+template <class It>
+Status EvalOperandsHelper(
+    QLExprExecutor* executor, It it, const QLTableRow& table_row) {
   return Status::OK();
 }
 
-template <class Operands, class... Args>
-CHECKED_STATUS EvalOperandsHelper(
-    QLExprExecutor* executor, const Operands& operands, const QLTableRow& table_row, int index,
-    QLExprResultWriter arg0, Args&&... args) {
-  RETURN_NOT_OK(executor->EvalExpr(operands[index], table_row, arg0));
-  return EvalOperandsHelper(executor, operands, table_row, index + 1, std::forward<Args>(args)...);
+template <class It, class Writer, class... Args>
+Status EvalOperandsHelper(
+    QLExprExecutor* executor, It it, const QLTableRow& table_row,
+    Writer writer, Args&&... args) {
+  RETURN_NOT_OK(executor->EvalExpr(*it, table_row, writer));
+  return EvalOperandsHelper(executor, ++it, table_row, std::forward<Args>(args)...);
 }
 
 template <class Operands, class... Args>
-CHECKED_STATUS EvalOperands(
+Status EvalOperands(
     QLExprExecutor* executor, const Operands& operands, const QLTableRow& table_row,
     Args&&... args) {
   if (operands.size() != sizeof...(Args)) {
@@ -342,8 +398,12 @@ CHECKED_STATUS EvalOperands(
                          sizeof...(Args), operands.size());
   }
 
-  return EvalOperandsHelper(executor, operands, table_row, 0, std::forward<Args>(args)...);
+  return EvalOperandsHelper(executor, operands.begin(), table_row, std::forward<Args>(args)...);
 }
+
+// Get TServer opcode.
+yb::bfql::TSOpcode GetTSWriteInstruction(const QLExpressionPB& ql_expr);
+bfpg::TSOpcode GetTSWriteInstruction(const PgsqlExpressionPB& ql_expr);
 
 } // namespace yb
 

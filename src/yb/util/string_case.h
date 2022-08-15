@@ -45,8 +45,7 @@ namespace yb {
 //
 // This function cannot operate in-place -- i.e. 'camel_case' must not
 // point to 'snake_case'.
-void SnakeToCamelCase(const std::string &snake_case,
-                      std::string *camel_case);
+std::string SnakeToCamelCase(const std::string &snake_case);
 
 // Convert the given ALL_CAPS string to camel case.
 // Also treats '-' in a string like a '_'
@@ -65,15 +64,30 @@ std::string AllCapsToCamelCase(const std::string &all_caps);
 void ToLowerCase(const std::string &string,
                  std::string *out);
 
+// Lower-case all of the characters in the given string.
+inline std::string ToLowerCase(const std::string &string) {
+  std::string out;
+  ToLowerCase(string, &out);
+  return out;
+}
+
 // Upper-case all of the characters in the given string.
 // 'string' and 'out' may refer to the same string to replace in-place.
 void ToUpperCase(const std::string &string,
                  std::string *out);
 
+// Upper-case all of the characters in the given string.
+inline std::string ToUpperCase(const std::string &string) {
+  std::string out;
+  ToUpperCase(string, &out);
+  return out;
+}
+
 // Capitalizes a string containing a word in place.
 // For example:
 // - 'hiBerNATe' -> 'Hibernate'
 void Capitalize(std::string *word);
+std::string Capitalize(const std::string& word);
 
 // Check if the given string has one or more characters in upper-case.
 bool ContainsUpperCase(const std::string& str);

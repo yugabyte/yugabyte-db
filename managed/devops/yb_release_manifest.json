@@ -12,10 +12,14 @@
     "yb-server-ctl.yml",
     "yb-server-provision.yml",
     "send_sudo_pass.yml",
-    "yb_custom_ami_builder.yml"
+    "yb_custom_ami_builder.yml",
+    "remote_role.yml",
+    "setup-cgroup.yml",
+    "edit_authorized_keys.yml",
+    "reinstall-package.yml",
+    "configure_ssh2.yml"
   ],
   "bin": [
-    "bin/cluster_health.py",
     "bin/common.sh",
     "bin/install_ansible_requirements.sh",
     "bin/install_python_requirements.sh",
@@ -31,7 +35,8 @@
     "bin/yb_platform_backup.sh",
     "bin/ybcloud.sh",
     "bin/edit_universe_details.py",
-    "bin/filtered_logs.sh"
+    "bin/filtered_logs.sh",
+    "bin/node_utils.sh"
   ],
   "filter_plugins": [
     "filter_plugins/*"

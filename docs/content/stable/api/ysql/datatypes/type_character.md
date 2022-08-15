@@ -7,8 +7,7 @@ menu:
   stable:
     identifier: api-ysql-datatypes-character
     parent: api-ysql-datatypes
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis
@@ -27,7 +26,7 @@ Data type | Description |
 
 ## Description
 
-```
+```ebnf
 text_literal ::= "'" [ '' | letter ...] "'"
 ```
 

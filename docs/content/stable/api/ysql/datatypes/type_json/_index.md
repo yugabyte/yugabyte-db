@@ -9,8 +9,8 @@ menu:
   stable:
     identifier: api-ysql-datatypes-json
     parent: api-ysql-datatypes
-isTocNested: true
-showAsideToc: true
+type: indexpage
+showRightNav: true
 ---
 
 ## Synopsis
@@ -23,7 +23,7 @@ JSON was invented as a data interchange format, initially to allow an arbitrary 
 
 ## Description
 
-```
+```ebnf
 type_specification ::= { json | jsonb }
 ```
 

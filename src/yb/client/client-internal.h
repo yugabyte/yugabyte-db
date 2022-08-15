@@ -80,64 +80,64 @@ class YBClient::Data {
   // The 'candidates' return parameter indicates tservers that are live and meet the selection
   // criteria, but are possibly filtered by the blacklist. This is useful for implementing
   // retry logic.
-  CHECKED_STATUS GetTabletServer(YBClient* client,
+  Status GetTabletServer(YBClient* client,
                                  const scoped_refptr<internal::RemoteTablet>& rt,
                                  ReplicaSelection selection,
                                  const std::set<std::string>& blacklist,
                                  std::vector<internal::RemoteTabletServer*>* candidates,
                                  internal::RemoteTabletServer** ts);
 
-  CHECKED_STATUS AlterNamespace(YBClient* client,
+  Status AlterNamespace(YBClient* client,
                                 const master::AlterNamespaceRequestPB& req,
                                 CoarseTimePoint deadline);
 
-  CHECKED_STATUS IsCreateNamespaceInProgress(YBClient* client,
+  Status IsCreateNamespaceInProgress(YBClient* client,
                                 const std::string& namespace_name,
                                 const boost::optional<YQLDatabase>& database_type,
                                 const std::string& namespace_id,
                                 CoarseTimePoint deadline,
                                 bool *create_in_progress);
 
-  CHECKED_STATUS WaitForCreateNamespaceToFinish(YBClient* client,
+  Status WaitForCreateNamespaceToFinish(YBClient* client,
                                 const std::string& namespace_name,
                                 const boost::optional<YQLDatabase>& database_type,
                                 const std::string& namespace_id,
                                 CoarseTimePoint deadline);
 
-  CHECKED_STATUS IsDeleteNamespaceInProgress(YBClient* client,
+  Status IsDeleteNamespaceInProgress(YBClient* client,
                                              const std::string& namespace_name,
                                              const boost::optional<YQLDatabase>& database_type,
                                              const std::string& namespace_id,
                                              CoarseTimePoint deadline,
                                              bool *delete_in_progress);
 
-  CHECKED_STATUS WaitForDeleteNamespaceToFinish(YBClient* client,
+  Status WaitForDeleteNamespaceToFinish(YBClient* client,
                                                 const std::string& namespace_name,
                                                 const boost::optional<YQLDatabase>& database_type,
                                                 const std::string& namespace_id,
                                                 CoarseTimePoint deadline);
 
-  CHECKED_STATUS CreateTable(YBClient* client,
+  Status CreateTable(YBClient* client,
                              const master::CreateTableRequestPB& req,
                              const YBSchema& schema,
                              CoarseTimePoint deadline,
                              std::string* table_id);
 
   // Take one of table id or name.
-  CHECKED_STATUS IsCreateTableInProgress(YBClient* client,
+  Status IsCreateTableInProgress(YBClient* client,
                                          const YBTableName& table_name,
                                          const std::string& table_id,
                                          CoarseTimePoint deadline,
                                          bool *create_in_progress);
 
   // Take one of table id or name.
-  CHECKED_STATUS WaitForCreateTableToFinish(YBClient* client,
+  Status WaitForCreateTableToFinish(YBClient* client,
                                             const YBTableName& table_name,
                                             const std::string& table_id,
                                             CoarseTimePoint deadline);
 
   // Take one of table id or name.
-  CHECKED_STATUS DeleteTable(YBClient* client,
+  Status DeleteTable(YBClient* client,
                              const YBTableName& table_name,
                              const std::string& table_id,
                              bool is_index_table,
@@ -145,100 +145,122 @@ class YBClient::Data {
                              YBTableName* indexed_table_name,
                              bool wait = true);
 
-  CHECKED_STATUS IsDeleteTableInProgress(YBClient* client,
+  Status IsDeleteTableInProgress(YBClient* client,
                                          const std::string& table_id,
                                          CoarseTimePoint deadline,
                                          bool *delete_in_progress);
 
-  CHECKED_STATUS WaitForDeleteTableToFinish(YBClient* client,
+  Status WaitForDeleteTableToFinish(YBClient* client,
                                             const std::string& table_id,
                                             CoarseTimePoint deadline);
 
-  CHECKED_STATUS TruncateTables(YBClient* client,
+  Status TruncateTables(YBClient* client,
                                 const std::vector<std::string>& table_ids,
                                 CoarseTimePoint deadline,
                                 bool wait = true);
 
-  CHECKED_STATUS IsTruncateTableInProgress(YBClient* client,
+  Status IsTruncateTableInProgress(YBClient* client,
                                            const std::string& table_id,
                                            CoarseTimePoint deadline,
                                            bool *truncate_in_progress);
 
-  CHECKED_STATUS WaitForTruncateTableToFinish(YBClient* client,
+  Status WaitForTruncateTableToFinish(YBClient* client,
                                               const std::string& table_id,
                                               CoarseTimePoint deadline);
 
-  CHECKED_STATUS BackfillIndex(YBClient* client,
+  Status CreateTablegroup(YBClient* client,
+                                  CoarseTimePoint deadline,
+                                  const std::string& namespace_name,
+                                  const std::string& namespace_id,
+                                  const std::string& tablegroup_id,
+                                  const std::string& tablespace_id);
+
+  Status DeleteTablegroup(YBClient* client,
+                                  CoarseTimePoint deadline,
+                                  const std::string& tablegroup_id);
+
+  Status BackfillIndex(YBClient* client,
                                const YBTableName& table_name,
                                const TableId& table_id,
                                CoarseTimePoint deadline,
                                bool wait = true);
-  CHECKED_STATUS IsBackfillIndexInProgress(YBClient* client,
+  Status IsBackfillIndexInProgress(YBClient* client,
                                            const TableId& table_id,
                                            const TableId& index_id,
                                            CoarseTimePoint deadline,
                                            bool* backfill_in_progress);
-  CHECKED_STATUS WaitForBackfillIndexToFinish(YBClient* client,
+  Status WaitForBackfillIndexToFinish(YBClient* client,
                                               const TableId& table_id,
                                               const TableId& index_id,
                                               CoarseTimePoint deadline);
 
-  CHECKED_STATUS AlterTable(YBClient* client,
+  Status AlterTable(YBClient* client,
                             const master::AlterTableRequestPB& req,
                             CoarseTimePoint deadline);
 
   // Take one of table id or name.
-  CHECKED_STATUS IsAlterTableInProgress(YBClient* client,
+  Status IsAlterTableInProgress(YBClient* client,
                                         const YBTableName& table_name,
                                         string table_id,
                                         CoarseTimePoint deadline,
                                         bool *alter_in_progress);
 
-  CHECKED_STATUS WaitForAlterTableToFinish(YBClient* client,
+  Status WaitForAlterTableToFinish(YBClient* client,
                                            const YBTableName& alter_name,
                                            string table_id,
                                            CoarseTimePoint deadline);
 
-  CHECKED_STATUS FlushTables(YBClient* client,
+  Status FlushTables(YBClient* client,
                              const vector<YBTableName>& table_names,
                              bool add_indexes,
                              const CoarseTimePoint deadline,
                              const bool is_compaction);
 
-  CHECKED_STATUS FlushTables(YBClient* client,
+  Status FlushTables(YBClient* client,
                              const vector<TableId>& table_ids,
                              bool add_indexes,
                              const CoarseTimePoint deadline,
                              const bool is_compaction);
 
-  CHECKED_STATUS IsFlushTableInProgress(YBClient* client,
+  Status IsFlushTableInProgress(YBClient* client,
                                         const FlushRequestId& flush_id,
                                         const CoarseTimePoint deadline,
                                         bool *flush_in_progress);
 
-  CHECKED_STATUS WaitForFlushTableToFinish(YBClient* client,
+  Status WaitForFlushTableToFinish(YBClient* client,
                                            const FlushRequestId& flush_id,
                                            const CoarseTimePoint deadline);
 
-  CHECKED_STATUS GetTableSchema(YBClient* client,
+  Status GetTableSchema(YBClient* client,
                                 const YBTableName& table_name,
                                 CoarseTimePoint deadline,
                                 YBTableInfo* info);
-  CHECKED_STATUS GetTableSchema(YBClient* client,
+  Status GetTableSchema(YBClient* client,
                                 const TableId& table_id,
                                 CoarseTimePoint deadline,
                                 YBTableInfo* info,
                                 master::GetTableSchemaResponsePB* resp = nullptr);
-  CHECKED_STATUS GetTableSchemaById(YBClient* client,
-                                    const TableId& table_id,
-                                    CoarseTimePoint deadline,
-                                    std::shared_ptr<YBTableInfo> info,
-                                    StatusCallback callback);
-  CHECKED_STATUS GetColocatedTabletSchemaById(YBClient* client,
-                                              const TableId& parent_colocated_table_id,
-                                              CoarseTimePoint deadline,
-                                              std::shared_ptr<std::vector<YBTableInfo>> info,
-                                              StatusCallback callback);
+  Status GetTableSchema(YBClient* client,
+                        const YBTableName& table_name,
+                        CoarseTimePoint deadline,
+                        std::shared_ptr<YBTableInfo> info,
+                        StatusCallback callback);
+  Status GetTableSchemaById(YBClient* client,
+                            const TableId& table_id,
+                            CoarseTimePoint deadline,
+                            std::shared_ptr<YBTableInfo> info,
+                            StatusCallback callback);
+  Status GetTablegroupSchemaById(YBClient* client,
+                                         const TablegroupId& tablegroup_id,
+                                         CoarseTimePoint deadline,
+                                         std::shared_ptr<std::vector<YBTableInfo>> info,
+                                         StatusCallback callback);
+  Status GetColocatedTabletSchemaByParentTableId(
+      YBClient* client,
+      const TableId& parent_colocated_table_id,
+      CoarseTimePoint deadline,
+      std::shared_ptr<std::vector<YBTableInfo>> info,
+      StatusCallback callback);
 
   Result<IndexPermissions> GetIndexPermissions(
       YBClient* client,
@@ -298,10 +320,6 @@ class YBClient::Data {
       RequireTabletsRunning require_tablets_running, CoarseTimePoint deadline,
       GetTableLocationsCallback callback);
 
-  CHECKED_STATUS InitLocalHostNames();
-
-  bool IsLocalHostPort(const HostPort& hp) const;
-
   bool IsTabletServerLocal(const internal::RemoteTabletServer& rts) const;
 
   // Returns a non-failed replica of the specified tablet based on the provided selection criteria
@@ -346,7 +364,7 @@ class YBClient::Data {
   //
   // TODO (KUDU-492): Get rid of this method and re-factor the client
   // to lazily initialize 'master_proxy_'.
-  CHECKED_STATUS SetMasterServerProxy(CoarseTimePoint deadline,
+  Status SetMasterServerProxy(CoarseTimePoint deadline,
                                       bool skip_resolution = false,
                                       bool wait_for_leader_election = true);
 
@@ -364,23 +382,25 @@ class YBClient::Data {
   void UpdateLatestObservedHybridTime(uint64_t hybrid_time);
 
   // API's to add/remove/set the master address list in the client
-  CHECKED_STATUS SetMasterAddresses(const std::string& addresses);
-  CHECKED_STATUS RemoveMasterAddress(const HostPort& addr);
-  CHECKED_STATUS AddMasterAddress(const HostPort& addr);
+  Status SetMasterAddresses(const std::string& addresses);
+  Status RemoveMasterAddress(const HostPort& addr);
+  Status AddMasterAddress(const HostPort& addr);
   // This method reads the master address from the remote endpoint or a file depending on which is
   // specified, and re-initializes the 'master_server_addrs_' variable.
-  CHECKED_STATUS ReinitializeMasterAddresses();
+  Status ReinitializeMasterAddresses();
 
   // Set replication info for the cluster data. Last argument defaults to nullptr to auto-wrap in a
   // retry. It is otherwise used in a RetryFunc to indicate if to keep retrying or not, if we get a
   // version mismatch on setting the config.
-  CHECKED_STATUS SetReplicationInfo(
+  Status SetReplicationInfo(
       YBClient* client, const master::ReplicationInfoPB& replication_info, CoarseTimePoint deadline,
       bool* retry = nullptr);
 
   // Validate replication info as satisfiable for the cluster data.
-  CHECKED_STATUS ValidateReplicationInfo(
+  Status ValidateReplicationInfo(
         const master::ReplicationInfoPB& replication_info, CoarseTimePoint deadline);
+
+  Result<bool> CheckIfPitrActive(CoarseTimePoint deadline);
 
   template <class ProxyClass, class ReqClass, class RespClass>
   using SyncLeaderMasterFunc = void (ProxyClass::*)(
@@ -402,7 +422,7 @@ class YBClient::Data {
   // retried forever. If 'deadline' expires, 'func_name' is included in
   // the resulting Status.
   template <class ProxyClass, class ReqClass, class RespClass>
-  CHECKED_STATUS SyncLeaderMasterRpc(
+  Status SyncLeaderMasterRpc(
       CoarseTimePoint deadline, const ReqClass& req, RespClass* resp, const char* func_name,
       const SyncLeaderMasterFunc<ProxyClass, ReqClass, RespClass>& func, int* attempts = nullptr);
 
@@ -424,10 +444,6 @@ class YBClient::Data {
   std::unique_ptr<rpc::ProxyCache> proxy_cache_;
   scoped_refptr<internal::MetaCache> meta_cache_;
   scoped_refptr<MetricEntity> metric_entity_;
-
-  // Set of hostnames and IPs on the local host.
-  // This is initialized at client startup.
-  std::unordered_set<std::string> local_host_names_;
 
   // Flag name to fetch master addresses from flagfile.
   std::string master_address_flag_name_;
@@ -494,6 +510,7 @@ class YBClient::Data {
   std::unique_ptr<ThreadPool> threadpool_;
 
   const ClientId id_;
+  const std::string log_prefix_;
 
   // Used to track requests that were sent to a particular tablet, so it could track different
   // RPCs related to the same write operation and reject duplicates.
@@ -507,14 +524,8 @@ class YBClient::Data {
 
   std::array<std::atomic<int>, 2> tserver_count_cached_;
 
-  // The proxy for the node local tablet server.
-  std::shared_ptr<tserver::TabletServerForwardServiceProxy> node_local_forward_proxy_;
-
-  // The host port of the node local tserver.
-  HostPort node_local_tserver_host_port_;
-
  private:
-  CHECKED_STATUS FlushTablesHelper(YBClient* client,
+  Status FlushTablesHelper(YBClient* client,
                                    const CoarseTimePoint deadline,
                                    const master::FlushTablesRequestPB& req);
 
@@ -522,7 +533,7 @@ class YBClient::Data {
 };
 
 // Retry helper, takes a function like:
-//     CHECKED_STATUS funcName(const MonoTime& deadline, bool *retry, ...)
+//     Status funcName(const MonoTime& deadline, bool *retry, ...)
 // The function should set the retry flag (default true) if the function should
 // be retried again. On retry == false the return status of the function will be
 // returned to the caller, otherwise a Status::Timeout() will be returned.
@@ -533,10 +544,6 @@ Status RetryFunc(
     const std::string& timeout_msg,
     const std::function<Status(CoarseTimePoint, bool*)>& func,
     const CoarseDuration max_wait = std::chrono::seconds(2));
-
-// TODO(PgClient) Remove after removing YBTable from postgres.
-CHECKED_STATUS CreateTableInfoFromTableSchemaResp(
-    const master::GetTableSchemaResponsePB& resp, YBTableInfo* info);
 
 } // namespace client
 } // namespace yb

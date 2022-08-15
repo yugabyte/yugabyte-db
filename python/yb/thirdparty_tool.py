@@ -24,10 +24,12 @@ import os
 import logging
 import argparse
 import ruamel.yaml
+import time
+import json
 
 from autorepr import autorepr  # type: ignore
 
-from github import Github
+from github import Github, GithubException
 from github.GitRelease import GitRelease
 
 from typing import DefaultDict, Dict, List, Any, Optional, Pattern, Tuple
@@ -50,8 +52,6 @@ from collections import defaultdict
 
 from yb.os_versions import adjust_os_type, is_compatible_os
 
-from yb.llvm_urls import get_llvm_url
-
 
 ruamel_yaml_object = ruamel.yaml.YAML()
 
@@ -65,6 +65,11 @@ DOWNLOAD_URL_PREFIX = 'https://github.com/yugabyte/yugabyte-db-thirdparty/releas
 
 ARCH_REGEX_STR = '|'.join(['x86_64', 'aarch64', 'arm64'])
 
+# These were incorrectly used without the "clang" prefix to indicate various versions of Clang.
+NUMBER_ONLY_VERSIONS_OF_CLANG = [str(i) for i in [12, 13, 14]]
+
+SKIPPED_TAGS = ['v20220615172857-62ed7bc00f-macos-arm64']
+
 
 def get_arch_regex(index: int) -> str:
     """
@@ -74,7 +79,12 @@ def get_arch_regex(index: int) -> str:
     return r'(?:-(?P<architecture%d>%s))?' % (index, ARCH_REGEX_STR)
 
 
-TAG_RE = re.compile(''.join([
+COMPILER_TYPE_RE_STR = (r'(?:-(?P<compiler_type>(?:((?:gcc|clang|devtoolset-?)[a-z0-9.]+)|%s)))?' %
+                        '|'.join(NUMBER_ONLY_VERSIONS_OF_CLANG))
+
+ALLOWED_LTO_TYPES = ['thin', 'full']
+
+TAG_RE_STR = ''.join([
     r'^v(?:(?P<branch_name>[0-9.]+)-)?',
     r'(?P<timestamp>[0-9]+)-',
     r'(?P<sha_prefix>[0-9a-f]+)',
@@ -83,10 +93,14 @@ TAG_RE = re.compile(''.join([
     get_arch_regex(2),
     r'(?:-(?P<is_linuxbrew1>linuxbrew))?',
     # "devtoolset" really means just "gcc" here. We should replace it with "gcc" in release names.
-    r'(?:-(?P<compiler_type>(?:gcc|clang|devtoolset-?)[a-z0-9.]+))?',
+    # Also, "12", "13" and "14" were incorectly used instead of "clang13" in some release archive
+    # names.
+    COMPILER_TYPE_RE_STR,
     r'(?:-(?P<is_linuxbrew2>linuxbrew))?',
+    r'(?:-(?:(?P<lto_type>%s)-lto))?' % '|'.join(ALLOWED_LTO_TYPES),
     r'$',
-]))
+])
+TAG_RE = re.compile(TAG_RE_STR)
 
 # We will store the SHA1 to be used for the local third-party checkout under this key.
 SHA_FOR_LOCAL_CHECKOUT_KEY = 'sha_for_local_checkout'
@@ -94,9 +108,17 @@ SHA_FOR_LOCAL_CHECKOUT_KEY = 'sha_for_local_checkout'
 # Skip these problematic tags.
 BROKEN_TAGS = set(['v20210907234210-47a70bc7dc-centos7-x86_64-linuxbrew-gcc5'])
 
+SHA_HASH = re.compile(r'^[0-9a-f]{40}$')
+
 
 def get_archive_name_from_tag(tag: str) -> str:
     return f'yugabyte-db-thirdparty-{tag}.tar.gz'
+
+
+def none_to_empty_string(x: Optional[Any]) -> Any:
+    if x is None:
+        return ''
+    return x
 
 
 class ThirdPartyReleaseBase:
@@ -104,7 +126,9 @@ class ThirdPartyReleaseBase:
     # timestamp, so by repeating a build on the same commit in yugabyte-db-thirdparty, we could get
     # multiple releases that have the same OS/architecture/compiler type/SHA but different tags.
     # Therefore we distinguish between "key with tag" and "key with no tag"
-    KEY_FIELDS_NO_TAG = ['os_type', 'architecture', 'compiler_type', 'is_linuxbrew', 'sha']
+    KEY_FIELDS_NO_TAG = [
+        'os_type', 'architecture', 'compiler_type', 'is_linuxbrew', 'sha', 'lto_type'
+    ]
     KEY_FIELDS_WITH_TAG = KEY_FIELDS_NO_TAG + ['tag']
 
     os_type: str
@@ -113,16 +137,24 @@ class ThirdPartyReleaseBase:
     is_linuxbrew: bool
     sha: str
     tag: str
+    lto_type: Optional[str]
 
     __str__ = __repr__ = autorepr(KEY_FIELDS_WITH_TAG)
 
     def as_dict(self) -> Dict[str, str]:
-        return {k: getattr(self, k) for k in self.KEY_FIELDS_WITH_TAG}
+        return {
+            k: getattr(self, k) for k in self.KEY_FIELDS_WITH_TAG
+        }
 
     def get_sort_key(self, include_tag: bool = True) -> Tuple[str, ...]:
         return tuple(
-            getattr(self, k) for k in
+            none_to_empty_string(getattr(self, k)) for k in
             (self.KEY_FIELDS_WITH_TAG if include_tag else self.KEY_FIELDS_NO_TAG))
+
+
+class SkipThirdPartyReleaseException(Exception):
+    def __init__(self, msg: str) -> None:
+        super().__init__(msg)
 
 
 class GitHubThirdPartyRelease(ThirdPartyReleaseBase):
@@ -132,22 +164,25 @@ class GitHubThirdPartyRelease(ThirdPartyReleaseBase):
     url: str
     branch_name: Optional[str]
 
-    def __init__(self, github_release: GitRelease) -> None:
+    def __init__(self, github_release: GitRelease, target_commitish: Optional[str] = None) -> None:
         self.github_release = github_release
-        self.sha = self.github_release.target_commitish
+        self.sha = target_commitish or self.github_release.target_commitish
 
         tag = self.github_release.tag_name
         tag_match = TAG_RE.match(tag)
         if not tag_match:
-            raise ValueError(f"Could not parse tag: {tag}, does not match regex: {TAG_RE}")
+            logging.info(f"Full regular expression for release tags: {TAG_RE_STR}")
+            raise ValueError(f"Could not parse tag: {tag}, does not match regex: {TAG_RE_STR}")
 
         group_dict = tag_match.groupdict()
 
         sha_prefix = tag_match.group('sha_prefix')
         if not self.sha.startswith(sha_prefix):
-            raise ValueError(
-                f"SHA prefix {sha_prefix} extracted from tag {tag} is not a prefix of the "
-                f"SHA corresponding to the release/tag: {self.sha}.")
+            msg = (f"SHA prefix {sha_prefix} extracted from tag {tag} is not a prefix of the "
+                   f"SHA corresponding to the release/tag: {self.sha}.")
+            if tag in SKIPPED_TAGS:
+                raise SkipThirdPartyReleaseException(msg)
+            raise ValueError(msg)
 
         self.timestamp = group_dict['timestamp']
         self.os_type = adjust_os_type(group_dict['os'])
@@ -165,6 +200,9 @@ class GitHubThirdPartyRelease(ThirdPartyReleaseBase):
             compiler_type = 'clang'
         if compiler_type is None and self.is_linuxbrew:
             compiler_type = 'gcc'
+        if compiler_type in NUMBER_ONLY_VERSIONS_OF_CLANG:
+            assert isinstance(compiler_type, str)
+            compiler_type == 'clang' + compiler_type
 
         if compiler_type is None:
             raise ValueError(
@@ -177,6 +215,8 @@ class GitHubThirdPartyRelease(ThirdPartyReleaseBase):
         if branch_name is not None:
             branch_name = branch_name.rstrip('-')
         self.branch_name = branch_name
+
+        self.lto_type = group_dict.get('lto_type')
 
     def validate_url(self) -> bool:
         asset_urls = [asset.browser_download_url for asset in self.github_release.get_assets()]
@@ -225,6 +265,9 @@ class MetadataItem(ThirdPartyReleaseBase):
 
     def __init__(self, json_data: Dict[str, Any]) -> None:
         for field_name in GitHubThirdPartyRelease.KEY_FIELDS_WITH_TAG:
+            if field_name not in json_data:
+                raise ValueError("Key '%s' not found in JSON payload: %s",
+                                 field_name, json.dumps(json_data))
             setattr(self, field_name, json_data[field_name])
 
     def url(self) -> str:
@@ -256,6 +299,13 @@ class ReleaseGroup:
         return min(self.creation_timestamps)
 
 
+def validate_git_commit(commit: str) -> str:
+    commit = commit.strip().lower()
+    if not re.match(r'^[0-9a-f]{40}$', commit):
+        raise ValueError(f"Invalid Git commit SHA1: {commit}")
+    return commit
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -280,11 +330,6 @@ def parse_args() -> argparse.Namespace:
         help='Determine the third-party archive download URL for the combination of criteria, '
              'including the compiler type, and write it to the file specified by this argument.')
     parser.add_argument(
-        '--save-llvm-url-to-file',
-        help='Determine the LLVM toolchain archive download URL and write it to the file '
-             'specified by this argument. Similar to --save-download-url-to-file but also '
-             'takes the OS into account.')
-    parser.add_argument(
         '--compiler-type',
         help='Compiler type, to help us decide which third-party archive to choose. '
              'The default value is determined by the YB_COMPILER_TYPE environment variable.',
@@ -308,6 +353,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         '--tag-filter-regex',
         help='Only look at tags satisfying this regular expression.')
+    parser.add_argument(
+        '--lto',
+        choices=ALLOWED_LTO_TYPES,
+        help='Specify link-time optimization type.')
+    parser.add_argument(
+        '--also-use-commit',
+        nargs='+',
+        type=validate_git_commit,
+        help='One or more Git commits in the yugabyte-db-thirdparty repository that we should '
+             'find releases for, in addition to the most recent commit in that repository that is '
+             'associated with any of the releases. For use with --update.')
 
     if len(sys.argv) == 1:
         parser.print_help(sys.stderr)
@@ -341,16 +397,19 @@ def get_github_token(token_file_path: Optional[str]) -> Optional[str]:
 class MetadataUpdater:
     github_token_file_path: str
     tag_filter_pattern: Optional[Pattern]
+    also_use_commits: List[str]
 
     def __init__(
             self,
             github_token_file_path: str,
-            tag_filter_regex_str: Optional[str]) -> None:
+            tag_filter_regex_str: Optional[str],
+            also_use_commits: List[str]) -> None:
         self.github_token_file_path = github_token_file_path
         if tag_filter_regex_str:
             self.tag_filter_pattern = re.compile(tag_filter_regex_str)
         else:
             self.tag_filter_pattern = None
+        self.also_use_commits = also_use_commits
 
     def update_archive_metadata_file(self) -> None:
         yb_version = read_file(os.path.join(YB_SRC_ROOT, 'version.txt')).strip()
@@ -366,9 +425,26 @@ class MetadataUpdater:
         num_skipped_wrong_branch = 0
         num_releases_found = 0
 
-        for release in repo.get_releases():
+        releases = []
+        get_releases_start_time_sec = time.time()
+        try:
+            for release in repo.get_releases():
+                releases.append(release)
+        except GithubException as exc:
+            if 'Only the first 1000 results are available.' in str(exc):
+                logging.info("Ignoring exception: %s", exc)
+            else:
+                raise exc
+        logging.info("Time spent to iterate all releases: %.1f sec",
+                     time.time() - get_releases_start_time_sec)
+
+        for release in releases:
             sha: str = release.target_commitish
             assert(isinstance(sha, str))
+
+            if SHA_HASH.match(sha) is None:
+                sha = repo.get_commit(sha).sha
+
             tag_name = release.tag_name
             if len(tag_name.split('-')) <= 2:
                 logging.debug(f"Skipping release tag: {tag_name} (old format, too few components)")
@@ -378,7 +454,12 @@ class MetadataUpdater:
                 logging.info(f'Skipping tag {tag_name}, does not match the filter')
                 continue
 
-            yb_dep_release = GitHubThirdPartyRelease(release)
+            try:
+                yb_dep_release = GitHubThirdPartyRelease(release, target_commitish=sha)
+            except SkipThirdPartyReleaseException as ex:
+                logging.warning("Skipping release: %s", ex)
+                continue
+
             if not yb_dep_release.is_consistent_with_yb_version(yb_version):
                 logging.debug(
                     f"Skipping release tag: {tag_name} (does not match version {yb_version}")
@@ -389,7 +470,7 @@ class MetadataUpdater:
                 releases_by_commit[sha] = ReleaseGroup(sha)
 
             num_releases_found += 1
-            logging.info(f"Found release: {yb_dep_release}")
+            logging.debug(f"Found release: {yb_dep_release}")
             releases_by_commit[sha].add_release(yb_dep_release)
 
         if num_skipped_old_tag_format > 0:
@@ -398,6 +479,7 @@ class MetadataUpdater:
             logging.info(f"Skipped {num_skipped_wrong_branch} releases due to branch mismatch")
         logging.info(
             f"Found {num_releases_found} releases for {len(releases_by_commit)} different commits")
+
         latest_group_by_max = max(
             releases_by_commit.values(), key=ReleaseGroup.get_max_creation_timestamp)
         latest_group_by_min = max(
@@ -407,19 +489,35 @@ class MetadataUpdater:
                 "Overlapping releases for different commits. No good way to identify latest "
                 "release: e.g. {latest_group_by_max.sha} and {latest_group_by_min.sha}.")
 
-        latest_group = latest_group_by_max
+        latest_group: ReleaseGroup = latest_group_by_max
 
-        sha = latest_group.sha
+        latest_release_sha = latest_group.sha
         logging.info(
-            f"Latest released yugabyte-db-thirdparty commit: f{sha}. "
+            f"Latest released yugabyte-db-thirdparty commit: {latest_release_sha}. "
             f"Released at: {latest_group.get_max_creation_timestamp()}.")
 
+        groups_to_use: List[ReleaseGroup] = [latest_group]
+
+        if self.also_use_commits:
+            for extra_commit in self.also_use_commits:
+                logging.info(f"Additional manually specified commit to use: {extra_commit}")
+                if extra_commit == latest_release_sha:
+                    logging.info(
+                        f"(already matches the latest commit {latest_release_sha}, skipping.)")
+                    continue
+                if extra_commit not in releases_by_commit:
+                    raise ValueError(
+                        f"No releases found for user-specified commit {extra_commit}. "
+                        "Please check if there is an error.")
+                groups_to_use.append(releases_by_commit[extra_commit])
+
         new_metadata: Dict[str, Any] = {
-            SHA_FOR_LOCAL_CHECKOUT_KEY: sha,
+            SHA_FOR_LOCAL_CHECKOUT_KEY: latest_release_sha,
             'archives': []
         }
-        releases_for_one_commit = [
-            rel for rel in latest_group.releases
+        releases_to_use: List[GitHubThirdPartyRelease] = [
+            rel for release_group in groups_to_use
+            for rel in release_group.releases
             if rel.tag not in BROKEN_TAGS
         ]
 
@@ -428,7 +526,7 @@ class MetadataUpdater:
 
         num_valid_releases = 0
         num_invalid_releases = 0
-        for yb_thirdparty_release in releases_for_one_commit:
+        for yb_thirdparty_release in releases_to_use:
             if yb_thirdparty_release.validate_url():
                 num_valid_releases += 1
                 releases_by_key_without_tag[
@@ -439,7 +537,7 @@ class MetadataUpdater:
         logging.info(
             f"Valid releases found: {num_valid_releases}, invalid releases: {num_invalid_releases}")
 
-        filtered_releases_for_one_commit = []
+        filtered_releases_to_use = []
         for key_without_tag, releases_for_key in releases_by_key_without_tag.items():
             if len(releases_for_key) > 1:
                 picked_release = max(releases_for_key, key=lambda r: r.tag)
@@ -450,18 +548,18 @@ class MetadataUpdater:
                         picked_release,
                         key_without_tag,
                         '\n  '.join([str(r) for r in releases_for_key])))
-                filtered_releases_for_one_commit.append(picked_release)
+                filtered_releases_to_use.append(picked_release)
             else:
-                filtered_releases_for_one_commit.append(releases_for_key[0])
+                filtered_releases_to_use.append(releases_for_key[0])
 
-        filtered_releases_for_one_commit.sort(key=GitHubThirdPartyRelease.get_sort_key)
+        filtered_releases_to_use.sort(key=GitHubThirdPartyRelease.get_sort_key)
 
-        for yb_thirdparty_release in filtered_releases_for_one_commit:
+        for yb_thirdparty_release in filtered_releases_to_use:
             new_metadata['archives'].append(yb_thirdparty_release.as_dict())
 
         write_yaml_file(new_metadata, archive_metadata_path)
         logging.info(
-            f"Wrote information for {len(filtered_releases_for_one_commit)} pre-built "
+            f"Wrote information for {len(filtered_releases_to_use)} pre-built "
             f"yugabyte-db-thirdparty archives to {archive_metadata_path}.")
 
 
@@ -506,21 +604,49 @@ def get_compilers(
     return compilers
 
 
+def matches_maybe_empty(a: Optional[str], b: Optional[str]) -> bool:
+    return (a or '') == (b or '')
+
+
+def compiler_type_matches(a: str, b: str) -> bool:
+    '''
+    >>> compiler_type_matches('clang10', 'clang10')
+    True
+    >>> compiler_type_matches('clang14', 'gcc11')
+    False
+    >>> compiler_type_matches('12', 'clang12')
+    True
+    >>> compiler_type_matches('clang12', '12')
+    True
+    >>> compiler_type_matches('clang12', '14')
+    False
+    '''
+    if a == b:
+        return True
+    if a > b:
+        return compiler_type_matches(b, a)
+    return a in NUMBER_ONLY_VERSIONS_OF_CLANG and b == 'clang' + a
+
+
 def get_third_party_release(
         available_archives: List[MetadataItem],
         compiler_type: str,
         os_type: Optional[str],
         architecture: Optional[str],
-        is_linuxbrew: Optional[bool]) -> MetadataItem:
+        is_linuxbrew: Optional[bool],
+        lto: Optional[str]) -> MetadataItem:
     if not os_type:
         os_type = local_sys_conf().short_os_name_and_version()
     if not architecture:
         architecture = local_sys_conf().architecture
 
-    candidates: List[Any] = []
-    candidates = [
+    needed_compiler_type = compiler_type
+
+    candidates: List[Any] = [
         archive for archive in available_archives
-        if archive.compiler_type == compiler_type and archive.architecture == architecture
+        if compiler_type_matches(archive.compiler_type, needed_compiler_type) and
+        archive.architecture == architecture and
+        matches_maybe_empty(archive.lto_type, lto)
     ]
 
     if is_linuxbrew is not None:
@@ -538,20 +664,11 @@ def get_third_party_release(
         return candidates[0]
 
     if not candidates:
-        if compiler_type == 'gcc':
-            if os_type == 'ubuntu18.04':
-                logging.info(
-                    "Assuming that the compiler type of 'gcc' means 'gcc7' on Ubuntu 18.04.")
-                return get_third_party_release(
-                    available_archives, 'gcc7', os_type, architecture, is_linuxbrew)
-
+        if compiler_type == 'gcc' and os_type == 'ubuntu18.04':
             logging.info(
-                "Assuming that the compiler type of 'gcc' means 'gcc5' with Linuxbrew."
-                "This will not be needed when we phase out our use of GCC 5.")
-            if is_linuxbrew is None:
-                is_linuxbrew = True
+                "Assuming that the compiler type of 'gcc' means 'gcc7' on Ubuntu 18.04.")
             return get_third_party_release(
-                available_archives, 'gcc5', os_type, architecture, is_linuxbrew)
+                available_archives, 'gcc7', os_type, architecture, is_linuxbrew, lto=None)
 
     if candidates:
         i = 1
@@ -575,7 +692,8 @@ def main() -> None:
     if args.update:
         updater = MetadataUpdater(
             github_token_file_path=args.github_token_file,
-            tag_filter_regex_str=args.tag_filter_regex)
+            tag_filter_regex_str=args.tag_filter_regex,
+            also_use_commits=args.also_use_commit)
         updater.update_archive_metadata_file()
         return
 
@@ -587,7 +705,7 @@ def main() -> None:
 
     metadata_items = [
         MetadataItem(item_json_data)
-        for item_json_data in metadata['archives'] + manual_metadata['archives']
+        for item_json_data in metadata['archives'] + (manual_metadata['archives'] or [])
     ]
 
     if args.list_compilers:
@@ -599,7 +717,7 @@ def main() -> None:
             print(compiler)
         return
 
-    if args.save_thirdparty_url_to_file or args.save_llvm_url_to_file:
+    if args.save_thirdparty_url_to_file:
         if not args.compiler_type:
             raise ValueError("Compiler type not specified")
         thirdparty_release: Optional[MetadataItem] = get_third_party_release(
@@ -607,7 +725,8 @@ def main() -> None:
             compiler_type=args.compiler_type,
             os_type=args.os_type,
             architecture=args.architecture,
-            is_linuxbrew=args.is_linuxbrew)
+            is_linuxbrew=args.is_linuxbrew,
+            lto=args.lto)
         if thirdparty_release is None:
             raise RuntimeError("Could not determine third-party archive download URL")
         thirdparty_url = thirdparty_release.url()
@@ -615,19 +734,6 @@ def main() -> None:
         if args.save_thirdparty_url_to_file:
             make_parent_dir(args.save_thirdparty_url_to_file)
             write_file(thirdparty_url, args.save_thirdparty_url_to_file)
-        if (args.save_llvm_url_to_file and
-                thirdparty_release.compiler_type.startswith('clang') and
-                thirdparty_release.is_linuxbrew):
-            llvm_url = get_llvm_url(thirdparty_release.compiler_type)
-            if llvm_url is not None:
-                logging.info(f"Download URL for the LLVM toolchain: {llvm_url}")
-                make_parent_dir(args.save_llvm_url_to_file)
-                write_file(llvm_url, args.save_llvm_url_to_file)
-            else:
-                logging.info("Could not determine LLVM URL for compiler type %s" %
-                             thirdparty_release.compiler_type)
-        else:
-            logging.info("Not a Linuxbrew URL, not saving LLVM URL to file")
 
 
 if __name__ == '__main__':

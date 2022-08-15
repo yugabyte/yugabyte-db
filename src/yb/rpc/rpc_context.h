@@ -201,6 +201,9 @@ class RpcContext {
   // Return the trace buffer for this call.
   Trace* trace();
 
+  // Ensure that this call has a trace associated with it.
+  void EnsureTraceCreated();
+
   // Send a response to the call. The service may call this method
   // before or after returning from the original handler method,
   // and it may call this method from a different thread.
@@ -304,17 +307,6 @@ class RpcContext {
   RpcCallParams& params() {
     return *params_;
   }
-
-  template <class Response>
-  void RespondTrivial(Result<Response>* result, Response* response) {
-    if (result->ok()) {
-      response->Swap(result->get_ptr());
-    } else {
-      SetupError(ResponseError(response), result->status());
-    }
-    RespondSuccess();
-  }
-
 
   // Panic the server. This logs a fatal error with the given message, and
   // also includes the current RPC request, requestor, trace information, etc,

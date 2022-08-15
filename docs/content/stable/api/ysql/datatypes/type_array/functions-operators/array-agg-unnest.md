@@ -7,8 +7,7 @@ menu:
   stable:
     identifier: array-agg-unnest
     parent: array-functions-operators
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 For one-dimensional arrays, but _only for these_ (see [Multidimensional `array_agg()` and `unnest()`](./#multidimensional-array-agg-and-unnest-first-overloads)), these two functions have mutually complementary effects in the following sense. After this sequence (the notation is informal):

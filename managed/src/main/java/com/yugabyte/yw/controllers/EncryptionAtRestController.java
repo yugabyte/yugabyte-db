@@ -12,6 +12,7 @@ package com.yugabyte.yw.controllers;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.cloud.kms.v1.KeyManagementServiceClient;
 import com.google.common.collect.ImmutableSet;
 import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.CloudAPI;
@@ -22,11 +23,13 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.kms.services.SmartKeyEARService;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
+import com.yugabyte.yw.common.kms.util.GcpEARServiceUtil;
 import com.yugabyte.yw.common.kms.util.HashicorpEARServiceUtil;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
+import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.KmsConfig;
@@ -48,6 +51,8 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
@@ -81,6 +86,8 @@ public class EncryptionAtRestController extends AuthenticatedController {
 
   @Inject CloudAPI.Factory cloudAPIFactory;
 
+  @Inject GcpEARServiceUtil gcpEARServiceUtil;
+
   private void checkIfKMSConfigExists(UUID customerUUID, ObjectNode formData) {
     String kmsConfigName = formData.get("name").asText();
     if (KmsConfig.listKMSConfigs(customerUUID)
@@ -93,46 +100,58 @@ public class EncryptionAtRestController extends AuthenticatedController {
 
   private void validateKMSProviderConfigFormData(
       ObjectNode formData, String keyProvider, UUID customerUUID) {
-    if (keyProvider.toUpperCase().equals(KeyProvider.AWS.toString())
-        && (formData.get(AWS_ACCESS_KEY_ID_FIELDNAME) != null
-            || formData.get(AWS_SECRET_ACCESS_KEY_FIELDNAME) != null)) {
-      CloudAPI cloudAPI = cloudAPIFactory.get(KeyProvider.AWS.toString().toLowerCase());
-      Map<String, String> config = new HashMap<>();
-      config.put(
-          AWS_ACCESS_KEY_ID_FIELDNAME, formData.get(AWS_ACCESS_KEY_ID_FIELDNAME).textValue());
-      config.put(
-          AWS_SECRET_ACCESS_KEY_FIELDNAME,
-          formData.get(AWS_SECRET_ACCESS_KEY_FIELDNAME).textValue());
-      if (cloudAPI != null
-          && !cloudAPI.isValidCreds(config, formData.get(AWS_REGION_FIELDNAME).textValue())) {
-        throw new PlatformServiceException(BAD_REQUEST, "Invalid AWS Credentials.");
-      }
-    } else if (keyProvider.toUpperCase().equals(KeyProvider.SMARTKEY.toString())) {
-      if (formData.get(SMARTKEY_BASE_URL_FIELDNAME) == null
-          || !EncryptionAtRestController.API_URL.contains(
-              formData.get(SMARTKEY_BASE_URL_FIELDNAME).textValue())) {
-        throw new PlatformServiceException(BAD_REQUEST, "Invalid API URL.");
-      }
-      if (formData.get(SMARTKEY_API_KEY_FIELDNAME) != null) {
-        try {
-          Function<ObjectNode, String> token =
-              new SmartKeyEARService()::retrieveSessionAuthorization;
-          token.apply(formData);
-        } catch (Exception e) {
-          throw new PlatformServiceException(BAD_REQUEST, "Invalid API Key.");
+    switch (KeyProvider.valueOf(keyProvider.toUpperCase())) {
+      case AWS:
+        CloudAPI cloudAPI = cloudAPIFactory.get(KeyProvider.AWS.toString().toLowerCase());
+        if (cloudAPI == null) {
+          throw new PlatformServiceException(
+              SERVICE_UNAVAILABLE, "Cloud not create CloudAPI to validate the credentials");
         }
-      }
-    } else if (keyProvider.toUpperCase().equals(KeyProvider.HASHICORP.toString())) {
-
-      if (formData.get(HC_ADDR_FNAME) == null || formData.get(HC_TOKEN_FNAME) == null) {
-        throw new PlatformServiceException(BAD_REQUEST, "Invalid VAULT URL OR TOKEN");
-      }
-      try {
-        if (HashicorpEARServiceUtil.getVaultSecretEngine(formData) == null)
-          throw new PlatformServiceException(BAD_REQUEST, "Invalid Vault parameters");
-      } catch (Exception e) {
-        throw new PlatformServiceException(BAD_REQUEST, e.toString());
-      }
+        if (!cloudAPI.isValidCredsKms(formData, customerUUID)) {
+          throw new PlatformServiceException(BAD_REQUEST, "Invalid AWS Credentials.");
+        }
+        break;
+      case SMARTKEY:
+        if (formData.get(SMARTKEY_BASE_URL_FIELDNAME) == null
+            || !EncryptionAtRestController.API_URL.contains(
+                formData.get(SMARTKEY_BASE_URL_FIELDNAME).textValue())) {
+          throw new PlatformServiceException(BAD_REQUEST, "Invalid API URL.");
+        }
+        if (formData.get(SMARTKEY_API_KEY_FIELDNAME) != null) {
+          try {
+            Function<ObjectNode, String> token =
+                new SmartKeyEARService()::retrieveSessionAuthorization;
+            token.apply(formData);
+          } catch (Exception e) {
+            throw new PlatformServiceException(BAD_REQUEST, "Invalid API Key.");
+          }
+        }
+        break;
+      case HASHICORP:
+        if (formData.get(HC_ADDR_FNAME) == null || formData.get(HC_TOKEN_FNAME) == null) {
+          throw new PlatformServiceException(BAD_REQUEST, "Invalid VAULT URL OR TOKEN");
+        }
+        try {
+          if (HashicorpEARServiceUtil.getVaultSecretEngine(formData) == null)
+            throw new PlatformServiceException(BAD_REQUEST, "Invalid Vault parameters");
+        } catch (Exception e) {
+          throw new PlatformServiceException(BAD_REQUEST, e.toString());
+        }
+        break;
+      case GCP:
+        try {
+          gcpEARServiceUtil.validateKMSProviderConfigFormData(formData);
+          LOG.info(
+              "Finished validating GCP provider config form data for cryptokey = "
+                  + gcpEARServiceUtil.getCryptoKeyRN(formData));
+        } catch (Exception e) {
+          LOG.warn("Could not finish validating GCP provider config form data.");
+          throw new PlatformServiceException(BAD_REQUEST, e.toString());
+        }
+        break;
+      default:
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Unrecognized key provider: " + keyProvider);
     }
   }
 
@@ -238,7 +257,9 @@ public class EncryptionAtRestController extends AuthenticatedController {
       LOG.info(
           "Saved task uuid " + taskUUID + " in customer tasks table for customer: " + customerUUID);
 
-      auditService().createAuditEntry(ctx(), request(), formData);
+      auditService()
+          .createAuditEntryWithReqBody(
+              ctx(), Audit.TargetType.KMSConfig, null, Audit.ActionType.Create, formData, taskUUID);
       return new YBPTask(taskUUID).asResult();
     } catch (Exception e) {
       throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
@@ -297,7 +318,14 @@ public class EncryptionAtRestController extends AuthenticatedController {
           taskParams.getName());
       LOG.info(
           "Saved task uuid " + taskUUID + " in customer tasks table for customer: " + customerUUID);
-      auditService().createAuditEntry(ctx(), request(), formData);
+      auditService()
+          .createAuditEntryWithReqBody(
+              ctx(),
+              Audit.TargetType.KMSConfig,
+              configUUID.toString(),
+              Audit.ActionType.Edit,
+              formData,
+              taskUUID);
       return new YBPTask(taskUUID).asResult();
     } catch (Exception e) {
       throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
@@ -387,7 +415,13 @@ public class EncryptionAtRestController extends AuthenticatedController {
           taskParams.getName());
       LOG.info(
           "Saved task uuid " + taskUUID + " in customer tasks table for customer: " + customerUUID);
-      auditService().createAuditEntry(ctx(), request());
+      auditService()
+          .createAuditEntryWithReqBody(
+              ctx(),
+              Audit.TargetType.KMSConfig,
+              configUUID.toString(),
+              Audit.ActionType.Delete,
+              taskUUID);
       return new YBPTask(taskUUID).asResult();
     } catch (Exception e) {
       throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
@@ -411,7 +445,13 @@ public class EncryptionAtRestController extends AuthenticatedController {
         Json.newObject()
             .put("reference", keyRef)
             .put("value", Base64.getEncoder().encodeToString(recoveredKey));
-    auditService().createAuditEntry(ctx(), request(), formData);
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.Universe,
+            universeUUID.toString(),
+            Audit.ActionType.RetrieveKmsKey,
+            formData);
     return PlatformResults.withRawData(result);
   }
 
@@ -454,7 +494,12 @@ public class EncryptionAtRestController extends AuthenticatedController {
             "Removing key ref for customer %s with universe %s",
             customerUUID.toString(), universeUUID.toString()));
     keyManager.cleanupEncryptionAtRest(customerUUID, universeUUID);
-    auditService().createAuditEntry(ctx(), request());
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.Universe,
+            universeUUID.toString(),
+            Audit.ActionType.RemoveKmsKeyReferenceHistory);
     return YBPSuccess.withMessage("Key ref was successfully removed");
   }
 

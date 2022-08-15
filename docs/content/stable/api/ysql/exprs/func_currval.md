@@ -7,8 +7,7 @@ menu:
   stable:
     identifier: api-ysql-exprs-currval
     parent: api-ysql-exprs
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis
@@ -83,3 +82,4 @@ ERROR:  currval of sequence "s2" is not yet defined in this session
 - [`DROP SEQUENCE`](../../the-sql-language/statements/ddl_drop_sequence/)
 - [`lastval()`](../func_lastval)
 - [`nextval()`](../func_nextval)
+- [`setval()`](../func_setval)

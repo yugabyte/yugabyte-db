@@ -18,20 +18,15 @@ import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import kamon.instrumentation.play.GuiceModule;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
-import play.modules.swagger.SwaggerModule;
 import play.test.WithApplication;
 
 public abstract class MDCPropagatingDispatcherTestBase extends WithApplication {
-  private final boolean isCloud;
+
   private Config mockConfig;
   private HealthChecker mockHealthChecker;
   private QueryAlerts mockQueryAlerts;
   private AlertsGarbageCollector mockAlertsGarbageCollector;
   private AlertConfigurationWriter mockAlertConfigurationWriter;
-
-  protected MDCPropagatingDispatcherTestBase(boolean isCloud) {
-    this.isCloud = isCloud;
-  }
 
   @Override
   protected Application provideApplication() {
@@ -44,13 +39,11 @@ public abstract class MDCPropagatingDispatcherTestBase extends WithApplication {
 
     Config config =
         ConfigFactory.parseMap(testDatabase())
-            .withValue("yb.cloud.enabled", ConfigValueFactory.fromAnyRef(isCloud))
             .withValue(
                 "akka.actor.default-dispatcher.type",
                 ConfigValueFactory.fromAnyRef(
                     "com.yugabyte.yw.common.logging.MDCPropagatingDispatcherConfigurator"));
     return new GuiceApplicationBuilder()
-        .disable(SwaggerModule.class)
         .disable(GuiceModule.class)
         .configure(config)
         .overrides(

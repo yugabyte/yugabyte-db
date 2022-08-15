@@ -58,6 +58,7 @@
 #include "yb/tserver/remote_bootstrap_snapshots.h"
 #include "yb/tserver/ts_tablet_manager.h"
 
+#include "yb/util/debug-util.h"
 #include "yb/util/env.h"
 #include "yb/util/env_util.h"
 #include "yb/util/fault_injection.h"
@@ -105,6 +106,7 @@ DEFINE_test_flag(int32, simulate_long_remote_bootstrap_sec, 0,
                  "follower_unavailable_considered_failed_sec seconds.");
 
 DEFINE_test_flag(bool, download_partial_wal_segments, false, "");
+DEFINE_test_flag(bool, pause_rbs_before_download_wal, false, "Pause RBS before downloading WAL.");
 
 DECLARE_int32(bytes_remote_bootstrap_durable_write_mb);
 
@@ -195,6 +197,7 @@ Status RemoteBootstrapClient::SetTabletToReplace(const RaftGroupMetadataPtr& met
 Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
                                     rpc::ProxyCache* proxy_cache,
                                     const HostPort& bootstrap_peer_addr,
+                                    const ServerRegistrationPB& tablet_leader_conn_info,
                                     RaftGroupMetadataPtr* meta,
                                     TSTabletManager* ts_manager) {
   CHECK(!started_);
@@ -209,6 +212,11 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
   BeginRemoteBootstrapSessionRequestPB req;
   req.set_requestor_uuid(permanent_uuid());
   req.set_tablet_id(tablet_id_);
+  // if tablet_leader_conn_info is populated, then propagate it through
+  // the BeginRemoteBootstrapSessionRequestPB req.
+  if (tablet_leader_conn_info.has_cloud_info()) {
+    *req.mutable_tablet_leader_conn_info() = tablet_leader_conn_info;
+  }
 
   rpc::RpcController controller;
   controller.set_timeout(MonoDelta::FromMilliseconds(
@@ -339,17 +347,22 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
                                               &wal_root_dir);
     }
     auto table_info = std::make_shared<tablet::TableInfo>(
-        table_id, table.namespace_name(), table.table_name(), table.table_type(), schema,
-        IndexMap(table.indexes()),
+        tablet::Primary::kTrue, table_id, table.namespace_name(), table.table_name(),
+        table.table_type(), schema, IndexMap(table.indexes()),
         table.has_index_info() ? boost::optional<IndexInfo>(table.index_info()) : boost::none,
         table.schema_version(), partition_schema);
-    auto create_result = RaftGroupMetadata::CreateNew(tablet::RaftGroupMetadataData {
-        .fs_manager = &fs_manager(),
-        .table_info = table_info,
-        .raft_group_id = tablet_id_,
-        .partition = partition,
-        .tablet_data_state = tablet::TABLET_DATA_COPYING,
-        .colocated = colocated }, data_root_dir, wal_root_dir);
+    fs_manager().SetTabletPathByDataPath(tablet_id_, data_root_dir);
+    auto create_result = RaftGroupMetadata::CreateNew(
+        tablet::RaftGroupMetadataData {
+            .fs_manager = &fs_manager(),
+            .table_info = table_info,
+            .raft_group_id = tablet_id_,
+            .partition = partition,
+            .tablet_data_state = tablet::TABLET_DATA_COPYING,
+            .colocated = colocated,
+            .snapshot_schedules = {},
+        },
+        data_root_dir, wal_root_dir);
     if (ts_manager != nullptr && !create_result.ok()) {
       ts_manager->UnregisterDataWalDir(table_id, tablet_id_, data_root_dir, wal_root_dir);
     }
@@ -398,6 +411,8 @@ Status RemoteBootstrapClient::FetchAll(TabletStatusListener* status_listener) {
   new_superblock_.mutable_kv_store()->set_rocksdb_dir(meta_->rocksdb_dir());
 
   RETURN_NOT_OK(DownloadRocksDBFiles());
+  TEST_PAUSE_IF_FLAG_WITH_PREFIX(
+      TEST_pause_rbs_before_download_wal, LogPrefix() + tablet_id_ + ": ");
   RETURN_NOT_OK(DownloadWALs());
   for (const auto& component : components_) {
     RETURN_NOT_OK(component->Download());
@@ -429,7 +444,7 @@ Status RemoteBootstrapClient::Finish() {
   RETURN_NOT_OK(meta_->ReplaceSuperBlock(new_superblock_));
 
   if (FLAGS_remote_bootstrap_save_downloaded_metadata) {
-    string meta_path = fs_manager().GetRaftGroupMetadataPath(tablet_id_);
+    string meta_path = VERIFY_RESULT(fs_manager().GetRaftGroupMetadataPath(tablet_id_));
     string meta_copy_path = Substitute("$0.copy.$1.tmp", meta_path, start_time_micros_);
     RETURN_NOT_OK_PREPEND(CopyFile(Env::Default(), meta_path, meta_copy_path,
                                    WritableFileOptions()),
@@ -533,12 +548,12 @@ Status RemoteBootstrapClient::Remove() {
   rpc::RpcController controller;
   controller.set_timeout(MonoDelta::FromSeconds(FLAGS_remote_bootstrap_end_session_timeout_sec));
 
-  RemoveSessionRequestPB req;
+  RemoveRemoteBootstrapSessionRequestPB req;
   req.set_session_id(session_id());
-  RemoveSessionResponsePB resp;
+  RemoveRemoteBootstrapSessionResponsePB resp;
 
   LOG_WITH_PREFIX(INFO) << "Removing remote bootstrap session " << session_id();
-  const auto status = proxy_->RemoveSession(req, &resp, &controller);
+  const auto status = proxy_->RemoveRemoteBootstrapSession(req, &resp, &controller);
   if (status.ok()) {
     LOG_WITH_PREFIX(INFO) << "Remote bootstrap session " << session_id() << " removed successfully";
     return Status::OK();
@@ -727,7 +742,7 @@ Status RemoteBootstrapClient::WriteConsensusMetadata() {
   RETURN_NOT_OK(cmeta_->Flush());
 
   if (FLAGS_remote_bootstrap_save_downloaded_metadata) {
-    string cmeta_path = fs_manager().GetConsensusMetadataPath(tablet_id_);
+    string cmeta_path = VERIFY_RESULT(fs_manager().GetConsensusMetadataPath(tablet_id_));
     string cmeta_copy_path = Substitute("$0.copy.$1.tmp", cmeta_path, start_time_micros_);
     RETURN_NOT_OK_PREPEND(CopyFile(Env::Default(), cmeta_path, cmeta_copy_path,
                                    WritableFileOptions()),

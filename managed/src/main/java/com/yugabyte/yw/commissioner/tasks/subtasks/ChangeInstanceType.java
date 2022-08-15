@@ -41,9 +41,8 @@ public class ChangeInstanceType extends NodeTaskBase {
             .instance_type,
         taskParams().instanceType);
 
-    ShellResponse response =
-        getNodeManager()
-            .nodeCommand(NodeManager.NodeCommandType.Change_Instance_Type, taskParams());
-    processShellResponse(response);
+    getNodeManager()
+        .nodeCommand(NodeManager.NodeCommandType.Change_Instance_Type, taskParams())
+        .processErrors();
   }
 }

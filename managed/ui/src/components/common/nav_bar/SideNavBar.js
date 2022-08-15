@@ -55,7 +55,6 @@ export default class SideNavBar extends Component {
     ) {
       return null;
     }
-
     return (
       <div className="side-nav-container">
         <div className="left_col">
@@ -96,6 +95,12 @@ export default class SideNavBar extends Component {
                       text="Alerts"
                       display={getFeatureState(currentCustomer.data.features, 'menu.alerts')}
                     />
+                    <NavLink
+                      to="/backups"
+                      icon="fa fa-upload"
+                      text="Backups"
+                      display={this.props.enableBackupv2}
+                      />
                     <NavLink
                       to="/config"
                       icon="fa fa-cloud-upload"

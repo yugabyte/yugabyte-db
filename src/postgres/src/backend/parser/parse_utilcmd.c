@@ -216,6 +216,16 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 	 */
 	if (stmt->if_not_exists && OidIsValid(existing_relid))
 	{
+		/*
+		 * If we are in an extension script, insist that the pre-existing
+		 * object be a member of the extension, to avoid security risks.
+		 */
+		ObjectAddress address;
+
+		ObjectAddressSet(address, RelationRelationId, existing_relid);
+		checkMembershipInCurrentExtension(&address);
+
+		/* OK to skip */
 		ereport(NOTICE,
 				(errcode(ERRCODE_DUPLICATE_TABLE),
 				 errmsg("relation \"%s\" already exists, skipping",
@@ -387,8 +397,6 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 							errmsg("users cannot create system catalog tables")));
 		}
-		else if (strcmp(def->defname, "tablegroup") == 0)
-			(void) strtol(defGetString(def), NULL, 10);
 		else if (strcmp(def->defname, "colocated") == 0)
 			(void) defGetBoolean(def);
 		else if (strcmp(def->defname, "table_oid") == 0)
@@ -423,6 +431,13 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 								"(exactly as defined in the relevant BKI header file!)",
 								max_system_relid)));
 			}
+		}
+		else if (strcmp(def->defname, "colocation_id") == 0)
+		{
+			/*
+			 * Acknowledge we recognize the reloption.
+			 * reloptions parsing will do the bounds check for us.
+			 */
 		}
 		else if (strcmp(def->defname, "row_type_oid") == 0)
 		{
@@ -1577,7 +1592,7 @@ generateClonedIndexStmt(RangeVar *heapRel, Oid heapRelid, Relation source_idx,
 	index->unique = idxrec->indisunique;
 	index->primary = idxrec->indisprimary;
 	index->transformed = true;	/* don't need transformIndexStmt */
-	index->concurrent = false;
+	index->concurrent = YB_CONCURRENCY_DISABLED;
 	index->if_not_exists = false;
 
 	/*
@@ -2844,21 +2859,7 @@ transformIndexStmt(Oid relid, IndexStmt *stmt, const char *queryString)
 	foreach(cell, stmt->options)
 	{
 		DefElem *def = (DefElem*) lfirst(cell);
-		if (strcmp(def->defname, "tablegroup") == 0)
-		{
-			/*
-			 * We must ensure that no tablegroup option was supplied in the
-			 * WITH clause.
-			 * Tablegroups cannot be supplied directly for indexes. We check
-			 * here instead of ybccmds as we supply the reloption for the
-			 * tablegroup of the indexed table in DefineIndex(.)
-			 * if one exists.
-			 */
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("cannot supply tablegroup through WITH clause")));
-		}
-		else if (strcmp(def->defname, "table_oid") == 0)
+		if (strcmp(def->defname, "table_oid") == 0)
 		{
 			if (!(yb_enable_create_with_table_oid || IsYsqlUpgrade))
 			{

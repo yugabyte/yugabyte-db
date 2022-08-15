@@ -34,6 +34,8 @@ class MemTracker;
 
 namespace tserver {
 
+using CertificateReloader = std::function<Status(void)>;
+
 class TabletServerIf : public LocalTabletServer {
  public:
   virtual ~TabletServerIf() {}
@@ -49,18 +51,20 @@ class TabletServerIf : public LocalTabletServer {
 
   virtual const scoped_refptr<MetricEntity>& MetricEnt() const = 0;
 
-  virtual client::TransactionPool* TransactionPool() = 0;
+  virtual client::TransactionPool& TransactionPool() = 0;
 
   virtual const std::shared_future<client::YBClient*>& client_future() const = 0;
 
   virtual tserver::TServerSharedData& SharedObject() = 0;
 
-  virtual CHECKED_STATUS GetLiveTServers(
+  virtual Status GetLiveTServers(
       std::vector<master::TSInformationPB> *live_tservers) const = 0;
 
   virtual const std::shared_ptr<MemTracker>& mem_tracker() const = 0;
 
   virtual void SetPublisher(rpc::Publisher service) = 0;
+
+  virtual void RegisterCertificateReloader(CertificateReloader reloader) = 0;
 
   client::YBClient* client() const {
     return client_future().get();

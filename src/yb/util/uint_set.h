@@ -40,7 +40,7 @@ class UnsignedIntSet {
 
   // Set the indexes of this set in [lo, hi] to "on". It is perfectly valid to call SetRange with
   // lo = hi.
-  CHECKED_STATUS SetRange(T lo, T hi) {
+  Status SetRange(T lo, T hi) {
     SCHECK_LE(lo, hi, InvalidArgument, Format("Called SetRange with lo ($0) > hi ($1).", lo, hi));
     interval_set_ += ElementRange::closed(lo, hi);
     return Status::OK();
@@ -97,6 +97,10 @@ class UnsignedIntSet {
       parts.push_back(Format("[$0, $1]", elem.lower(), elem.upper()));
     }
     return JoinStrings(parts, ", ");
+  }
+
+  bool operator==(const UnsignedIntSet<T>& other) const {
+    return interval_set_ == other.interval_set_;
   }
 
  private:

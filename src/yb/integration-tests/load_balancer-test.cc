@@ -32,6 +32,9 @@
 
 using namespace std::literals;
 
+METRIC_DECLARE_entity(cluster);
+METRIC_DECLARE_gauge_int64(is_load_balancing_enabled);
+
 namespace yb {
 namespace integration_tests {
 
@@ -69,6 +72,22 @@ class LoadBalancerTest : public YBTableTestBase {
   }
 
 };
+
+TEST_F(LoadBalancerTest, IsLoadBalancerEnabled) {
+  ExternalMaster* leader = external_mini_cluster()->GetLeaderMaster();
+
+  ASSERT_OK(yb_admin_client_->SetLoadBalancerEnabled(true));
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    return VERIFY_RESULT(leader->GetMetric<int64>(
+        &METRIC_ENTITY_cluster, nullptr, &METRIC_is_load_balancing_enabled, "value")) == 1;
+  }, kDefaultTimeout, "LoadBalancingEnabled"));
+
+  ASSERT_OK(yb_admin_client_->SetLoadBalancerEnabled(false));
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    return VERIFY_RESULT(leader->GetMetric<int64>(
+        &METRIC_ENTITY_cluster, nullptr, &METRIC_is_load_balancing_enabled, "value")) == 0;
+  }, kDefaultTimeout, "LoadBalancingDisabled"));
+}
 
 TEST_F(LoadBalancerTest, PreferredZoneAddNode) {
   ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("c.r.z0,c.r.z1,c.r.z2", 3, ""));

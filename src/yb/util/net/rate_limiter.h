@@ -43,7 +43,7 @@ class RateLimiter {
   // This function will be in charge of sending/receiving the data by calling send_rcv_func. This
   // function might sleep before returning to keep the transmission rate as close as possible to the
   // desired target.
-  CHECKED_STATUS SendOrReceiveData(std::function<Status()> send_rcv_func,
+  Status SendOrReceiveData(std::function<Status()> send_rcv_func,
                                    std::function<uint64_t()> reply_size_func);
 
   // Calculates the size for the next transmission so that the transmission rate remains as close
@@ -119,7 +119,7 @@ class RateLimiter {
   uint64_t min_time_slot_ = 10;
 
   // The maximum size that we will ever use for time_slot_ms_.
-  uint64_t max_time_slot_ = 100;
+  uint64_t max_time_slot_ = 500;
 
   // Maximum transmission rate in bytes/sec. Set by calling target_rate_updater_().
   uint64_t target_rate_ = 0;

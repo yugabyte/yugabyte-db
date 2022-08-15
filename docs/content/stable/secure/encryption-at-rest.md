@@ -10,8 +10,7 @@ menu:
     identifier: encryption-at-rest
     parent: secure
     weight: 735
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 This page describes how to enable and disable encryption at rest in a YugabyteDB cluster with a user-generated key.
@@ -20,38 +19,38 @@ This page describes how to enable and disable encryption at rest in a YugabyteDB
 
 ### Step 1. Create encryption key
 
-First, you will generate the universe key data. This data can have length 32, 40, or 48. Larger keys are slightly more secure with slightly worse performance. Run the following on your local filesystem.
+First, you will generate the universe key data. This data can have length 32, 40, or 48. Larger keys are more secure with slightly worse performance. Run the following on your local filesystem.
 
 ```sh
-$ openssl rand -out universe_key [ 32 | 40 | 48 ]
+$ openssl rand -out /path/to/universe_key [ 32 | 40 | 48 ]
 
 ```
 
 ### Step 2. Copy key to master nodes
 
-In this example, assume a 3 node RF=3 cluster with addresses ip1, ip2, ip3.
-Copy the universe key onto each master filesystem, in the same location on every node.
+In this example, assume a 3 node RF=3 cluster with `MASTER_ADDRESSES=ip1:7100,ip2:7100,ip3:7100`. Choose any string <key_id> for this key and use yb-admin to copy the key to each of the masters.
 
 ```sh
-$ for ip in ip1 ip2 ip3
-  do
-    scp -i <ssh_key> universe_key ip:/mnt/d0/yb-data/master
-  done
+$ yb-admin -master_addresses $MASTER_ADDRESSES add_universe_keys_to_all_masters \
+           <key_id> /path/to/universe_key
 ```
 
 {{< note title="Note" >}}
-
-The key can live in any subdirectory of the master directory, as long as it lives in the same place on each node. In addition, the data directory may vary depending on how the cluster is created.
-
+This operation doesn't actually perform the key rotation, but rather seeds each master's in-memory state. The key only lives in-memory, and the plaintext key will never be persisted to disk.
 {{< /note >}}
 
 ### Step 3. Enable cluster-wide encryption
 
-Use yb-admin to tell the cluster about the new universe key.
+Before rotating the key, make sure the masters know about <key_id>.
 
 ```sh
-$ yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 rotate_universe_key
-/mnt/d0/yb-data/master/universe_key
+yb-admin -master_addresses $MASTER_ADDRESSES all_masters_have_universe_key_in_memory <key_id>
+```
+
+If this fails, re-run step 2. Once this succeeds, tell the cluster to start using new universe key.
+
+```sh
+$ yb-admin -master_addresses $MASTER_ADDRESSES rotate_universe_key_in_memory <key_id>
 ```
 
 {{< note title="Note" >}}
@@ -63,10 +62,10 @@ Because data is encrypted in the background as part of flushes to disk and compa
 To check the encryption status of the cluster, run the following yb-admin command.
 
 ```sh
-$ yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 is_encryption_enabled
+$ yb-admin -master_addresses $MASTER_ADDRESSES is_encryption_enabled
 ```
 
-```
+```output
 Encryption status: ENABLED with key id <key_id>
 ```
 
@@ -74,47 +73,50 @@ Encryption status: ENABLED with key id <key_id>
 
 ### Step 1. Creating a new key
 
-First you create the key to be rotated.
+First, create the key to be rotated.
 
 ```sh
-$ openssl rand -out universe_key_2 [ 32 | 40 | 48 ]
-
+$ openssl rand -out /path/to/universe_key_2 [ 32 | 40 | 48 ]
 ```
 
 {{< note title="Note" >}}
-The new key name must be distinct from the previous key name.
+Make sure to use a different key path to avoid overwriting the previous key file.
 {{< /note >}}
 
 ### Step 2. Copy new key to master nodes
 
-As with enabling, copy the universe key onto each master filesystem,
-in the same location on every node.
+As with enabling, tell the master nodes about the new key.
 
 ```sh
-$ for ip in ip1 ip2 ip3
-  do
-    scp -i <ssh_key> universe_key ip:/mnt/d0/yb-data/master/
-  done
+$ yb-admin -master_addresses $MASTER_ADDRESSES add_universe_keys_to_all_masters
+<key_id_2> /path/to/universe_key_2
 ```
+
+{{< note title="Note" >}}
+Make sure the <key_id> is different from any previous keys.
+{{< /note >}}
 
 ### Step 3. Rotate key
 
-Use yb-admin to tell the cluster about the new universe key.
+Do the same validation as enabling that the masters know about the key and then perform the rotation.
 
 ```sh
-$ yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 rotate_universe_key
-/mnt/d0/yb-data/master/universe_key_2
+$ yb-admin -master_addresses $MASTER_ADDRESSES rotate_universe_key_in_memory <key_id_2>
 ```
+
+{{< note title="Note" >}}
+Since this key will only be used for new data and will only eventually encrypt older data through compactions, it is best to ensure old keys remain secure.
+{{< /note >}}
 
 ### Step 4. Verify new key
 
 Check that the new key is encrypting the cluster.
 
 ```sh
-$ yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 is_encryption_enabled
+$ yb-admin -master_addresses $MASTER_ADDRESSES is_encryption_enabled
 ```
 
-```
+```output
 Encryption status: ENABLED with key id <key_id_2>
 ```
 
@@ -127,7 +129,7 @@ Encryption status: ENABLED with key id <key_id_2>
 Use yb-admin to disable encryption.
 
 ```sh
-$ yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 disable_encryption
+$ yb-admin -master_addresses $MASTER_ADDRESSES disable_encryption
 ```
 
 ### Step 2. Verify encryption disabled
@@ -135,9 +137,9 @@ $ yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 disable_encryption
 Check that encryption is disabled.
 
 ```sh
-$ yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 is_encryption_enabled
+$ yb-admin -master_addresses $MASTER_ADDRESSES is_encryption_enabled
 ```
 
-```
+```output
 Encryption status: DISABLED
 ```

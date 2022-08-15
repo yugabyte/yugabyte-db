@@ -8,8 +8,7 @@ menu:
     identifier: explore-ysql-language-features-triggers
     parent: explore-ysql-language-features
     weight: 310
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 This document describes how to use triggers when performing data manipulation and definition.
@@ -248,4 +247,3 @@ LANGUAGE 'plpgsql';
 CREATE EVENT TRIGGER dept_changes ON sql_drop
   EXECUTE PROCEDURE record_dept_changes();
 ```
-

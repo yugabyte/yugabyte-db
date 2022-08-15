@@ -34,7 +34,6 @@ class EncryptionParamsPB;
 class RandomAccessFile;
 class HeaderManager;
 class BlockAccessCipherStream;
-class OpenSSLInitializer;
 
 // Struct generated for encryption status of existing files.
 struct FileEncryptionStatus {
@@ -68,7 +67,7 @@ struct EncryptionParams {
 
   static std::unique_ptr<EncryptionParams> NewEncryptionParams();
 
-  static CHECKED_STATUS IsValidKeySize(size_t size);
+  static Status IsValidKeySize(size_t size);
 
   bool Equals(const EncryptionParams& other);
 };
@@ -128,7 +127,7 @@ Result<bool> GetEncryptionInfoFromFile(HeaderManager* header_manager,
   return true;
 }
 
-CHECKED_STATUS CompleteCreateEncryptionInfoForWrite(
+Status CompleteCreateEncryptionInfoForWrite(
     const std::string& header, std::unique_ptr<EncryptionParams> encryption_params,
     std::unique_ptr<BlockAccessCipherStream>* stream, uint32_t* header_size);
 
@@ -185,8 +184,6 @@ Status CreateWritableFile(WritablePtr* result,
 }
 
 Result<uint32_t> GetHeaderSize(SequentialFile* file, HeaderManager* header_manager);
-
-OpenSSLInitializer& InitOpenSSL();
 
 } // namespace encryption
 } // namespace yb

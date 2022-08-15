@@ -55,6 +55,7 @@ message ReplicationInfoPB {
   optional PlacementInfoPB live_replicas = 1;
   repeated PlacementInfoPB read_replicas = 2;
   repeated CloudInfoPB affinitized_leaders = 3;
+  repeated CloudInfoListPB multi_affinitized_leaders = 4;
 }
 
 message BackfillJobPB {
@@ -151,7 +152,12 @@ message SysTablesEntryPB {
 
   optional uint32 wal_retention_secs = 24;
 
-  optional bool colocated = 25 [ default = false ]; // Is this a colocated table?
+  // True if the table is colocated (including tablegroups, excluding YSQL system tables).
+  optional bool colocated = 25 [ default = false ];
+
+  // For materialized views:
+  optional bytes matview_pg_table_id = 36; // The PG OID of a materialized view
+  optional bool is_matview = 37 [ default = false ]; // True if the table is a materialized view.
 
   optional uint32 fully_applied_schema_version = 23;
   repeated IndexInfoPB fully_applied_indexes = 26;
@@ -177,6 +183,8 @@ message SysTablesEntryPB {
   // Tablespace ID for use with transaction tables only. Normal YSQL tables do not set this field,
   // and tablespace information for such tables are instead fetched by scanning the pg catalog.
   optional bytes transaction_table_tablespace_id = 34;
+  // Time when the table was hidden.
+  optional fixed64 hide_hybrid_time = 35;
 }
 
 // The on-disk entry in the sys.catalog table ("metadata" column) for
@@ -432,6 +440,8 @@ message SysCDCStreamEntryPB {
     DELETING = 1;
     // Currently DELETED is not being used because we delete streams entries from sys catalog.
     DELETED = 2;
+    // Used to handle the stream metadata cleanup as part of drop table.
+    DELETING_METADATA = 4;
   }
   repeated string table_id = 1;
   repeated CDCStreamOptionsPB options = 2;
@@ -499,6 +509,8 @@ message SysUniverseReplicationEntryPB {
     // been deleted but there is still some uncleaned up state - for example, there may be left over
     // CDC streams.
     DELETED_ERROR = 5;
+    // Unfinished Delete
+    DELETING = 7;
   }
 
   optional string producer_id = 1;
@@ -514,4 +526,9 @@ message SysUniverseReplicationEntryPB {
 
   // producer table ID -> producer CDC stream map.
   map<string, string> table_streams = 6;
+
+  // Namespace-level replication setup.
+  optional bool is_ns_replication = 7 [default = false];
+  optional NamespaceIdentifierPB producer_namespace = 8;
+  optional NamespaceIdentifierPB consumer_namespace = 9;
 }

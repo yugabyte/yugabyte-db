@@ -21,6 +21,7 @@ import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.filters.MaintenanceWindowApiFilter;
 import com.yugabyte.yw.forms.paging.MaintenanceWindowPagedApiQuery;
+import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.MaintenanceWindow;
 import com.yugabyte.yw.models.filters.MaintenanceWindowFilter;
@@ -32,6 +33,7 @@ import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 import play.mvc.Result;
 
@@ -113,7 +115,13 @@ public class MaintenanceController extends AuthenticatedController {
 
     window = maintenanceService.save(window);
 
-    auditService().createAuditEntry(ctx(), request());
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.MaintenanceWindow,
+            Objects.toString(window.getUuid(), null),
+            Audit.ActionType.Create,
+            request().body().asJson());
     return PlatformResults.withData(window);
   }
 
@@ -141,7 +149,13 @@ public class MaintenanceController extends AuthenticatedController {
 
     window = maintenanceService.save(window);
 
-    auditService().createAuditEntry(ctx(), request());
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.MaintenanceWindow,
+            windowUUID.toString(),
+            Audit.ActionType.Update,
+            request().body().asJson());
     return PlatformResults.withData(window);
   }
 
@@ -153,7 +167,12 @@ public class MaintenanceController extends AuthenticatedController {
 
     maintenanceService.delete(windowUUID);
 
-    auditService().createAuditEntry(ctx(), request());
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.MaintenanceWindow,
+            windowUUID.toString(),
+            Audit.ActionType.Delete);
     return YBPSuccess.empty();
   }
 }

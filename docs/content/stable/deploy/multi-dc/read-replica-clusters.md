@@ -8,22 +8,14 @@ menu:
     parent: multi-dc
     identifier: read-replica-clusters
     weight: 634
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 In a YugabyteDB deployment, replication of data between nodes of your primary cluster runs synchronously and guarantees strong consistency. Optionally, you can create a read replica cluster that asynchronously replicates data from the primary cluster and guarantees timeline consistency (with bounded staleness). A synchronously replicated primary cluster can accept writes to the system. Using a read replica cluster allows applications to serve low latency reads in remote regions.
 
 In a read replica cluster, read replicas are _observer nodes_ that do not participate in writes, but get a timeline-consistent copy of the data through asynchronous replication from the primary cluster.
 
-This document describes how to deploy a read replica cluster using YugabyteDB. For information on deploying read replica clusters using Yugabyte Platform, see [Read replicas](../../../yugabyte-platform/create-deployments/read-replicas/).
-
-{{< note title="Note" >}}
-
-YSQL read replica support is currently in Beta.
-
-{{< /note >}}
+This document describes how to deploy a read replica cluster using YugabyteDB. For information on deploying read replica clusters using YugabyteDB Anywhere, see [Read replicas](../../../yugabyte-platform/create-deployments/read-replicas/).
 
 ## Deploy a read replica cluster
 

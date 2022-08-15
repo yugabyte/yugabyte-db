@@ -56,6 +56,7 @@
 #include "executor/nodeValuesscan.h"
 #include "executor/nodeWindowAgg.h"
 #include "executor/nodeWorktablescan.h"
+#include "executor/nodeYbSeqscan.h"
 #include "nodes/nodeFuncs.h"
 #include "nodes/relation.h"
 #include "utils/rel.h"
@@ -163,6 +164,10 @@ ExecReScan(PlanState *node)
 
 		case T_SeqScanState:
 			ExecReScanSeqScan((SeqScanState *) node);
+			break;
+
+		case T_YbSeqScanState:
+			ExecReScanYbSeqScan((YbSeqScanState *) node);
 			break;
 
 		case T_SampleScanState:
@@ -525,6 +530,9 @@ ExecSupportsBackwardScan(Plan *node)
 				if (flags & CUSTOMPATH_SUPPORT_BACKWARD_SCAN)
 					return true;
 			}
+			return false;
+
+		case T_YbSeqScan:
 			return false;
 
 		case T_SeqScan:

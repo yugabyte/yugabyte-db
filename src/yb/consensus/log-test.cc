@@ -128,7 +128,7 @@ class LogTest : public LogTestBase {
     header.set_major_version(0);
     header.set_minor_version(0);
     header.set_unused_tablet_id(kTestTablet);
-    SchemaToPB(GetSimpleTestSchema(), header.mutable_unused_schema());
+    SchemaToPB(GetSimpleTestSchema(), header.mutable_schema());
 
     LogSegmentFooterPB footer;
     footer.set_num_entries(10);
@@ -162,8 +162,48 @@ class LogTest : public LogTestBase {
     return Format("$0.copy-$1", tablet_wal_path_, copy_idx);
   }
 
-  Result<SegmentSequence> GetSegmentsFromLogCopyAndCheckLastOpIndex(
-      size_t copy_idx, int64_t last_op_min_idx);
+  Result<std::unique_ptr<LogReader>> GetLogCopyReader(const size_t copy_idx) {
+    const auto log_copy_dir = GetLogCopyPath(copy_idx);
+    std::unique_ptr<LogReader> copied_log_reader;
+    auto log_index = VERIFY_RESULT(LogIndex::NewLogIndex(log_copy_dir));
+    RETURN_NOT_OK(LogReader::Open(
+        fs_manager_->env(), log_index, "Log reader: ",
+        log_copy_dir, /* table_metric_entity = */ nullptr,
+        /* tablet_metric_entity = */ nullptr, &copied_log_reader));
+
+    return copied_log_reader;
+  }
+
+  Result<SegmentSequence> GetSegmentsAndCheckMaxOpIndex(
+      LogReader* log_reader, const int64_t copy_up_to_idx) {
+    SegmentSequence segments;
+    RETURN_NOT_OK(log_reader->GetSegmentsSnapshot(&segments));
+
+    const ReadableLogSegmentPtr& last_segment = VERIFY_RESULT(segments.back());
+    SCHECK_GE(
+        last_segment->footer().max_replicate_index(), copy_up_to_idx, InternalError,
+        "Max replicated operation index should be >= index of the operation to copy up to passed to"
+        " Log::CopyTo. It could be larger in case of overwriting not committed operations, for "
+        "example: 3.30, 3.31, 3.32, 4.30.");
+
+    return segments;
+  }
+
+  Result<SegmentSequence> GetSegmentsFromLogCopyAndCheckMaxOpIndex(
+      const size_t copy_idx, const int64_t copy_up_to_idx) {
+    auto log_copy_reader = VERIFY_RESULT(GetLogCopyReader(copy_idx));
+    return GetSegmentsAndCheckMaxOpIndex(log_copy_reader.get(), copy_up_to_idx);
+  }
+
+  struct Op {
+    OpId id;
+    bool committed;
+  };
+
+  Result<std::vector<Op>> GenerateOpsAndAppendToLog(
+      const int num_segments, const int num_batches_per_segment, const int num_entries_per_batch,
+      const double commit_probability, const int num_approx_term_changes,
+      const int num_approx_term_changes_with_index_rollback);
 };
 
 // If we write more than one entry in a batch, we should be able to
@@ -183,7 +223,8 @@ TEST_F(LogTest, TestMultipleEntriesInABatch) {
   SegmentSequence segments;
   ASSERT_OK(log_->GetLogReader()->GetSegmentsSnapshot(&segments));
 
-  auto read_entries = segments[0]->ReadEntries();
+  const ReadableLogSegmentPtr& first_segment = ASSERT_RESULT(segments.front());
+  auto read_entries = first_segment->ReadEntries();
   ASSERT_OK(read_entries.status);
 
   ASSERT_EQ(2, read_entries.entries.size());
@@ -266,8 +307,9 @@ TEST_F(LogTest, TestFsyncIntervalPhysical) {
   SegmentSequence segments;
   ASSERT_OK(log_->GetLogReader()->GetSegmentsSnapshot(&segments));
   ASSERT_EQ(segments.size(), 1);
-  int64_t orig_size = segments[0]->file_size();
-  string fileName = segments.back()->readable_file()->filename();
+  const ReadableLogSegmentPtr& first_segment = ASSERT_RESULT(segments.front());
+  int64_t orig_size = first_segment->file_size();
+  string fileName = first_segment->readable_file()->filename();
 
   ASSERT_OK(AppendNoOp(&opid));
   SleepFor(MonoDelta::FromMilliseconds(interval + 1));
@@ -275,7 +317,8 @@ TEST_F(LogTest, TestFsyncIntervalPhysical) {
 
   ASSERT_OK(log_->GetLogReader()->GetSegmentsSnapshot(&segments));
   ASSERT_EQ(segments.size(), 1);
-  int64_t new_size = segments[0]->file_size();
+  const ReadableLogSegmentPtr& segment = ASSERT_RESULT(segments.front());
+  int64_t new_size = segment->file_size();
   ASSERT_GT(new_size, orig_size);
 
 #if defined(__linux__)
@@ -324,13 +367,15 @@ TEST_F(LogTest, TestSizeIsMaintained) {
 
   SegmentSequence segments;
   ASSERT_OK(log_->GetLogReader()->GetSegmentsSnapshot(&segments));
-  int64_t orig_size = segments[0]->file_size();
+  ReadableLogSegmentPtr first_segment = ASSERT_RESULT(segments.front());
+  int64_t orig_size = first_segment->file_size();
   ASSERT_GT(orig_size, 0);
 
   ASSERT_OK(AppendNoOp(&opid));
 
   ASSERT_OK(log_->GetLogReader()->GetSegmentsSnapshot(&segments));
-  int64_t new_size = segments[0]->file_size();
+  first_segment = ASSERT_RESULT(segments.front());
+  int64_t new_size = first_segment->file_size();
   ASSERT_GT(new_size, orig_size);
 
   ASSERT_OK(log_->Close());
@@ -351,7 +396,8 @@ TEST_F(LogTest, TestLogNotTrimmed) {
   SegmentSequence segments;
   ASSERT_OK(log_->GetLogReader()->GetSegmentsSnapshot(&segments));
 
-  ASSERT_OK(segments[0]->ReadEntries().status);
+  const ReadableLogSegmentPtr& first_segment = ASSERT_RESULT(segments.front());
+  ASSERT_OK(first_segment->ReadEntries().status);
   // Close after testing to ensure correct shutdown
   // TODO : put this in TearDown() with a test on log state?
   ASSERT_OK(log_->Close());
@@ -371,7 +417,8 @@ TEST_F(LogTest, TestBlankLogFile) {
   SegmentSequence segments;
   ASSERT_OK(log_->GetLogReader()->GetSegmentsSnapshot(&segments));
 
-  auto read_entries = segments[0]->ReadEntries();
+  const ReadableLogSegmentPtr& first_segment = ASSERT_RESULT(segments.front());
+  auto read_entries = first_segment->ReadEntries();
   ASSERT_OK(read_entries.status);
 
   // ...It's just that it's empty.
@@ -401,19 +448,21 @@ void LogTest::DoCorruptionTest(CorruptionType type, CorruptionPosition place,
       offset = entry.offset_in_segment + kEntryHeaderSize + 1;
       break;
   }
-  ASSERT_OK(CorruptLogFile(env_.get(), log_->ActiveSegmentForTests()->path(), type, offset));
+  ASSERT_OK(CorruptLogFile(env_.get(), log_->TEST_ActiveSegment()->path(), type, offset));
 
   // Open a new reader -- we don't reuse the existing LogReader from log_
   // because it has a cached header.
   std::unique_ptr<LogReader> reader;
-  ASSERT_OK(LogReader::Open(fs_manager_->env(),
-                            make_scoped_refptr(new LogIndex(log_->wal_dir_)), "Log reader: ",
-                            tablet_wal_path_, nullptr, nullptr, &reader));
+  auto log_index = ASSERT_RESULT(LogIndex::NewLogIndex(log_->wal_dir_));
+  ASSERT_OK(LogReader::Open(
+      fs_manager_->env(), log_index, "Log reader: ", tablet_wal_path_,
+      /* table_metric_entity = */ nullptr, /* tablet_metric_entity = */ nullptr, &reader));
   ASSERT_EQ(1, reader->num_segments());
 
   SegmentSequence segments;
   ASSERT_OK(reader->GetSegmentsSnapshot(&segments));
-  auto read_entries = segments[0]->ReadEntries();
+  const ReadableLogSegmentPtr& first_segment = ASSERT_RESULT(segments.front());
+  auto read_entries = first_segment->ReadEntries();
   ASSERT_EQ(read_entries.status.CodeAsString(), expected_status.CodeAsString())
       << "Got unexpected status: " << read_entries.status;
 
@@ -494,7 +543,8 @@ TEST_F(LogTest, TestSegmentRollover) {
     ASSERT_OK(log_->GetLogReader()->GetSegmentsSnapshot(&segments));
   }
 
-  ASSERT_FALSE(segments.back()->HasFooter());
+  ReadableLogSegmentPtr last_segment = ASSERT_RESULT(segments.back());
+  ASSERT_FALSE(last_segment->HasFooter());
   ASSERT_OK(log_->Close());
 
   std::unique_ptr<LogReader> reader;
@@ -502,7 +552,8 @@ TEST_F(LogTest, TestSegmentRollover) {
       fs_manager_->env(), nullptr, "Log reader: ", tablet_wal_path_, nullptr, nullptr, &reader));
   ASSERT_OK(reader->GetSegmentsSnapshot(&segments));
 
-  ASSERT_TRUE(segments.back()->HasFooter());
+  last_segment = ASSERT_RESULT(segments.back());
+  ASSERT_TRUE(last_segment->HasFooter());
 
   size_t total_read = 0;
   for (const scoped_refptr<ReadableLogSegment>& entry : segments) {
@@ -525,9 +576,9 @@ TEST_F(LogTest, TestWriteAndReadToAndFromInProgressSegment) {
   SegmentSequence segments;
   ASSERT_OK(log_->GetLogReader()->GetSegmentsSnapshot(&segments));
   ASSERT_EQ(segments.size(), 1);
-  scoped_refptr<ReadableLogSegment> readable_segment = segments[0];
+  scoped_refptr<ReadableLogSegment> readable_segment = ASSERT_RESULT(segments.front());
 
-  auto header_size = log_->active_segment_->written_offset();
+  auto header_size = log_->TEST_ActiveSegment()->written_offset();
   ASSERT_GT(header_size, 0);
   readable_segment->UpdateReadableToOffset(header_size);
 
@@ -554,7 +605,7 @@ TEST_F(LogTest, TestWriteAndReadToAndFromInProgressSegment) {
 
   ssize_t written_entries_size = header_size;
   ASSERT_OK(AppendNoOps(&op_id, kNumEntries, &written_entries_size));
-  ASSERT_EQ(written_entries_size, log_->active_segment_->written_offset());
+  ASSERT_EQ(written_entries_size, log_->TEST_ActiveSegment()->written_offset());
   ASSERT_EQ(single_entry_size * kNumEntries, written_entries_size - header_size);
 
   // Updating the readable segment with the offset of the first entry should
@@ -576,18 +627,18 @@ TEST_F(LogTest, TestWriteAndReadToAndFromInProgressSegment) {
   // Offset should get updated for an additional entry.
   ASSERT_EQ(single_entry_size * (kNumEntries + 1) + header_size,
             written_entries_size);
-  ASSERT_EQ(written_entries_size, log_->active_segment_->written_offset());
+  ASSERT_EQ(written_entries_size, log_->TEST_ActiveSegment()->written_offset());
 
   // When we roll it should go back to the header size.
   ASSERT_OK(log_->AllocateSegmentAndRollOver());
-  ASSERT_EQ(header_size, log_->active_segment_->written_offset());
+  ASSERT_EQ(header_size, log_->TEST_ActiveSegment()->written_offset());
   written_entries_size = header_size;
 
   // Now that we closed the original segment. If we get a segment from the reader
   // again, we should get one with a footer and we should be able to read all entries.
   ASSERT_OK(log_->GetLogReader()->GetSegmentsSnapshot(&segments));
   ASSERT_EQ(segments.size(), 2);
-  readable_segment = segments[0];
+  readable_segment = ASSERT_RESULT(segments.front());
   read_entries = readable_segment->ReadEntries();
   ASSERT_OK(read_entries.status);
   ASSERT_EQ(read_entries.entries.size(), 5);
@@ -595,7 +646,7 @@ TEST_F(LogTest, TestWriteAndReadToAndFromInProgressSegment) {
   // Offset should get updated for an additional entry, again.
   ASSERT_OK(AppendNoOp(&op_id, &written_entries_size));
   ASSERT_EQ(single_entry_size  + header_size, written_entries_size);
-  ASSERT_EQ(written_entries_size, log_->active_segment_->written_offset());
+  ASSERT_EQ(written_entries_size, log_->TEST_ActiveSegment()->written_offset());
 }
 
 // Tests that segments can be GC'd while the log is running.
@@ -661,8 +712,12 @@ TEST_F(LogTest, TestGCWithLogRunning) {
   // Check that we get a NotFound if we try to read before the GCed point.
   {
     ReplicateMsgs repls;
+    int64_t starting_op_segment_seq_num;
+    yb::SchemaPB schema;
+    uint32_t schema_version;
     Status s = log_->GetLogReader()->ReadReplicatesInRange(
-      1, 2, LogReader::kNoSizeLimit, &repls);
+      1, 2, LogReader::kNoSizeLimit, &repls, &starting_op_segment_seq_num,
+        &schema, &schema_version);
     ASSERT_TRUE(s.IsNotFound()) << s.ToString();
   }
 
@@ -682,41 +737,38 @@ TEST_F(LogTest, TestGCOfIndexChunks) {
   FLAGS_log_min_segments_to_retain = 4;
   BuildLog();
 
+  const auto entries_per_chunk = TEST_GetEntriesPerIndexChunk();
   // Append some segments which cross from one index chunk into another.
-  // 999990-999994        \___ the first index
-  // 999995-999999        /    chunk points to these
-  // 1000000-100004       \_
-  // 1000005-100009        _|- the second index chunk points to these
-  // 1000010-<still open> /
+  // entries_per_chunk-10 ... entries_per_chunk-6        \___ the first index
+  // entries_per_chunk-5  ... entries_per_chunk-1        /    chunk points to these
+  // entries_per_chunk    ... entries_per_chunk+4       \_
+  // entries_per_chunk+5  ... entries_per_chunk+9        _|- the second index chunk points to these
+  // entries_per_chunk+10 ... <still open>              /
   const int kNumTotalSegments = 5;
   const int kNumOpsPerSegment = 5;
-  OpIdPB op_id = MakeOpId(1, 999990);
+  OpIdPB op_id = MakeOpId(1, entries_per_chunk - 10);
   ASSERT_OK(AppendMultiSegmentSequence(kNumTotalSegments, kNumOpsPerSegment,
-                                              &op_id, nullptr));
+                                              &op_id, /* anchors = */ nullptr));
 
   // Run a GC on an op in the second index chunk. We should remove only the
   // earliest segment, because we are set to retain 4.
   int num_gced_segments = 0;
-  ASSERT_OK(log_->GC(1000006, &num_gced_segments));
+  ASSERT_OK(log_->GC(entries_per_chunk + 6, &num_gced_segments));
   ASSERT_EQ(1, num_gced_segments);
 
   // And we should still be able to read ops in the retained segment, even though
   // the GC index was higher.
-  auto loaded_op = ASSERT_RESULT(log_->GetLogReader()->LookupOpId(999995));
-  ASSERT_EQ(yb::OpId(1, 999995), loaded_op);
+  auto loaded_op = ASSERT_RESULT(log_->GetLogReader()->LookupOpId(entries_per_chunk - 5));
+  ASSERT_EQ(yb::OpId(1, entries_per_chunk - 5), loaded_op);
 
   // If we drop the retention count down to 1, we can now GC, and the log index
   // chunk should also be GCed.
   FLAGS_log_min_segments_to_retain = 1;
-  ASSERT_OK(log_->GC(1000003, &num_gced_segments));
+  ASSERT_OK(log_->GC(entries_per_chunk + 3, &num_gced_segments));
   ASSERT_EQ(1, num_gced_segments);
 
-  auto result = log_->GetLogReader()->LookupOpId(999995);
-// This test relies on kEntriesPerIndexChunk being 1000000, and that's no longer
-// the case after D1719 (2fe27d886390038bc734ea28638a1b1435e7d0d4) on Mac.
-#if !defined(__APPLE__)
-  ASSERT_TRUE(!result.ok() && result.status().IsNotFound()) << "unexpected status: " << result;
-#endif
+  auto result = log_->GetLogReader()->LookupOpId(entries_per_chunk - 5);
+  ASSERT_TRUE(!result.ok() && result.status().IsNotFound()) << "unexpected result: " << result;
 }
 
 // Tests that we can append FLUSH_MARKER messages to the log queue to make sure
@@ -730,10 +782,11 @@ TEST_F(LogTest, TestWaitUntilAllFlushed) {
   ASSERT_OK(log_->WaitUntilAllFlushed());
 
   // Make sure we only get 4 entries back and that no FLUSH_MARKER commit is found.
-  vector<scoped_refptr<ReadableLogSegment> > segments;
+  SegmentSequence segments;
   ASSERT_OK(log_->GetLogReader()->GetSegmentsSnapshot(&segments));
 
-  auto read_entries = segments[0]->ReadEntries();
+  const ReadableLogSegmentPtr& first_segment = ASSERT_RESULT(segments.front());
+  auto read_entries = first_segment->ReadEntries();
   ASSERT_OK(read_entries.status);
   ASSERT_EQ(read_entries.entries.size(), 2);
   for (size_t i = 0; i < read_entries.entries.size(); i++) {
@@ -836,7 +889,7 @@ TEST_F(LogTest, TestWriteManyBatches) {
         fs_manager_->env(), /* index= */ nullptr, "Log reader: ", tablet_wal_path_,
         /* table_metric_entity= */ nullptr, /* tablet_metric_entity= */ nullptr, &reader));
 
-    std::vector<scoped_refptr<ReadableLogSegment> > segments;
+    SegmentSequence segments;
     ASSERT_OK(reader->GetSegmentsSnapshot(&segments));
 
     for (const scoped_refptr<ReadableLogSegment>& entry : segments) {
@@ -885,31 +938,33 @@ TEST_F(LogTest, TestLogReader) {
   // the first segment, since 20 is the first operation in segment 3.
   ASSERT_OK(reader.GetSegmentPrefixNotIncluding(20, &segments));
   ASSERT_EQ(segments.size(), 1);
-  ASSERT_EQ(segments[0]->header().sequence_number(), 2);
+  const ReadableLogSegmentPtr& first_segment = ASSERT_RESULT(segments.front());
+  ASSERT_EQ(first_segment->header().sequence_number(), 2);
 
   // Asking for 30 should include the first two.
   ASSERT_OK(reader.GetSegmentPrefixNotIncluding(30, &segments));
   ASSERT_EQ(segments.size(), 2);
-  ASSERT_EQ(segments[0]->header().sequence_number(), 2);
-  ASSERT_EQ(segments[1]->header().sequence_number(), 3);
+  ASSERT_EQ((*segments.begin())->header().sequence_number(), 2);
+  ASSERT_EQ((*(segments.begin() + 1))->header().sequence_number(), 3);
 
   // Asking for anything higher should return all segments.
   ASSERT_OK(reader.GetSegmentPrefixNotIncluding(1000, &segments));
   ASSERT_EQ(segments.size(), 3);
-  ASSERT_EQ(segments[0]->header().sequence_number(), 2);
-  ASSERT_EQ(segments[1]->header().sequence_number(), 3);
+  ASSERT_EQ((*segments.begin())->header().sequence_number(), 2);
+  ASSERT_EQ((*(segments.begin() + 1))->header().sequence_number(), 3);
+  ASSERT_EQ((*(segments.begin() + 2))->header().sequence_number(), 4);
 
   // Queries for specific segment sequence numbers.
-  scoped_refptr<ReadableLogSegment> segment = reader.GetSegmentBySequenceNumber(2);
+  ReadableLogSegmentPtr segment = ASSERT_RESULT(reader.GetSegmentBySequenceNumber(2));
   ASSERT_EQ(2, segment->header().sequence_number());
-  segment = reader.GetSegmentBySequenceNumber(3);
+  segment = ASSERT_RESULT(reader.GetSegmentBySequenceNumber(3));
   ASSERT_EQ(3, segment->header().sequence_number());
 
-  segment = reader.GetSegmentBySequenceNumber(4);
+  segment = ASSERT_RESULT(reader.GetSegmentBySequenceNumber(4));
   ASSERT_EQ(4, segment->header().sequence_number());
 
-  segment = reader.GetSegmentBySequenceNumber(5);
-  ASSERT_TRUE(segment.get() == nullptr);
+  auto result = reader.GetSegmentBySequenceNumber(5);
+  ASSERT_TRUE(!result.ok() && result.status().IsNotFound());
 }
 
 // Test that, even if the LogReader's index is empty because no segments
@@ -929,7 +984,8 @@ TEST_F(LogTest, TestLogReaderReturnsLatestSegmentIfIndexEmpty) {
   ASSERT_OK(log_->GetLogReader()->GetSegmentsSnapshot(&segments));
   ASSERT_EQ(segments.size(), 1);
 
-  auto read_entries = segments[0]->ReadEntries();
+  const ReadableLogSegmentPtr& first_segment = ASSERT_RESULT(segments.front());
+  auto read_entries = first_segment->ReadEntries();
   ASSERT_OK(read_entries.status);
   ASSERT_EQ(1, read_entries.entries.size());
 }
@@ -1054,11 +1110,16 @@ TEST_F(LogTest, TestReadLogWithReplacedReplicates) {
     for (int random_read = 0; random_read < kNumRandomReads; random_read++) {
       auto start_index = RandomUniformInt<int64_t>(gc_index, max_repl_index - 1);
       auto end_index = RandomUniformInt<int64_t>(start_index, max_repl_index);
+      int64_t starting_op_segment_seq_num;
+      yb::SchemaPB schema;
+      uint32_t schema_version;
       {
         SCOPED_TRACE(Substitute("Reading $0-$1", start_index, end_index));
         consensus::ReplicateMsgs repls;
-        ASSERT_OK(reader->ReadReplicatesInRange(
-                    start_index, end_index, LogReader::kNoSizeLimit, &repls));
+        ASSERT_OK(reader->ReadReplicatesInRange(start_index, end_index,
+                                                LogReader::kNoSizeLimit, &repls,
+                                                &starting_op_segment_seq_num,
+                                                &schema, &schema_version));
         ASSERT_EQ(end_index - start_index + 1, repls.size());
         auto expected_index = start_index;
         for (const auto& repl : repls) {
@@ -1081,7 +1142,9 @@ TEST_F(LogTest, TestReadLogWithReplacedReplicates) {
         SCOPED_TRACE(Substitute("Reading $0-$1 with size limit $2",
                                 start_index, end_index, size_limit));
         ReplicateMsgs repls;
-        ASSERT_OK(reader->ReadReplicatesInRange(start_index, end_index, size_limit, &repls));
+        ASSERT_OK(reader->ReadReplicatesInRange(start_index, end_index, size_limit, &repls,
+                                                &starting_op_segment_seq_num,
+                                                &schema, &schema_version));
         ASSERT_LE(repls.size(), end_index - start_index + 1);
         int total_size = 0;
         auto expected_index = start_index;
@@ -1123,8 +1186,13 @@ TEST_F(LogTest, TestReadReplicatesHighIndex) {
 
   auto* reader = log_->GetLogReader();
   ReplicateMsgs repls;
+  int64_t starting_op_segment_seq_num;
+  yb::SchemaPB schema;
+  uint32_t schema_version;
   ASSERT_OK(reader->ReadReplicatesInRange(first_log_index, first_log_index + kSequenceLength - 1,
-                                          LogReader::kNoSizeLimit, &repls));
+                                          LogReader::kNoSizeLimit, &repls,
+                                          &starting_op_segment_seq_num,
+                                          &schema, &schema_version));
   ASSERT_EQ(kSequenceLength, repls.size());
 }
 
@@ -1171,36 +1239,70 @@ TEST_F(LogTest, ConcurrentAllocateSegmentAndRollOver) {
 }
 
 Result<std::vector<OpId>> LogTest::AppendAndCopy(size_t num_batches, size_t num_entries_per_batch) {
-  std::vector<OpId> last_op_id_before_copy;
-  last_op_id_before_copy.reserve(num_batches);
+  std::vector<OpId> copied_up_to_op_id;
+  copied_up_to_op_id.reserve(num_batches);
   for (size_t i = 0; i < num_batches; ++i) {
     AppendReplicateBatchToLog(
         num_entries_per_batch, i % 2 == 0 ? AppendSync::kFalse : AppendSync::kTrue);
-    last_op_id_before_copy.push_back(log_->GetLatestEntryOpId());
+    copied_up_to_op_id.push_back(log_->GetLatestEntryOpId());
     RETURN_NOT_OK(log_->CopyTo(GetLogCopyPath(i)));
   }
-  return last_op_id_before_copy;
+  return copied_up_to_op_id;
 }
 
-Result<SegmentSequence> LogTest::GetSegmentsFromLogCopyAndCheckLastOpIndex(
-    const size_t copy_idx, const int64_t last_op_min_idx) {
-  const auto log_copy_dir = GetLogCopyPath(copy_idx);
-  std::unique_ptr<LogReader> copied_log_reader;
-  RETURN_NOT_OK(LogReader::Open(
-      fs_manager_->env(), make_scoped_refptr<LogIndex>(log_copy_dir), "Log reader: ",
-      log_copy_dir, /* table_metric_entity = */ nullptr,
-      /* tablet_metric_entity = */ nullptr, &copied_log_reader));
+namespace {
 
-  SegmentSequence copied_segments;
-  RETURN_NOT_OK(copied_log_reader->GetSegmentsSnapshot(&copied_segments));
-
-  SCHECK_GE(
-      copied_segments.back()->footer().max_replicate_index(), last_op_min_idx, InternalError,
-      "Last copied operation index should be >= index of last log operation added before calling "
-      "Log::CopyTo.");
-
-  return copied_segments;
+Status CheckEntryEq(const LogEntries& lhs, const LogEntries& rhs, const size_t entry_idx) {
+  SCHECK_EQ(
+      lhs[entry_idx]->DebugString(), rhs[entry_idx]->DebugString(), InternalError,
+      Format("entries[$0]", entry_idx));
+  return Status::OK();
 }
+
+Status CheckReadEntriesResultEq(
+    const ReadEntriesResult& lhs, const ReadEntriesResult& rhs) {
+  SCHECK_EQ(lhs.committed_op_id, rhs.committed_op_id, InternalError, "committed_op_id");
+  SCHECK_EQ(lhs.end_offset, rhs.end_offset, InternalError, "end_offset");
+  SCHECK_EQ(lhs.entry_metadata, rhs.entry_metadata, InternalError, "entry_metadata");
+  SCHECK_EQ(lhs.entries.size(), rhs.entries.size(), InternalError, "entries.size()");
+  for (size_t entry_idx = 0; entry_idx < lhs.entries.size(); ++entry_idx) {
+    RETURN_NOT_OK(CheckEntryEq(lhs.entries, rhs.entries, entry_idx));
+  }
+  return Status::OK();
+}
+
+// Checks that lhs is a prefix of rhs.
+Status CheckReadEntriesResultIsCorrectPrefixOf(
+    const ReadEntriesResult& lhs, const ReadEntriesResult& rhs) {
+  SCHECK_LE(
+      lhs.committed_op_id, rhs.committed_op_id, InternalError,
+      "committed_op_id");
+  if (!lhs.entries.empty()) {
+    SCHECK_LE(
+        lhs.committed_op_id, OpId::FromPB(lhs.entries.back()->replicate().id()), InternalError,
+        "committed_op_id should be <= last op id");
+  }
+
+  const auto num_lhs_entries = lhs.entries.size();
+
+  SCHECK_LE(num_lhs_entries, rhs.entries.size(), InternalError, "entries.size()");
+  SCHECK_EQ(
+      lhs.entry_metadata.size(), num_lhs_entries, InternalError,
+      "entry_metadata.size()");
+  for (size_t entry_idx = 0; entry_idx < num_lhs_entries; ++entry_idx) {
+    SCHECK_EQ(
+        lhs.entry_metadata[entry_idx].entry_time, rhs.entry_metadata[entry_idx].entry_time,
+        InternalError, Format("entry_metadata[$0].entry_time", entry_idx));
+    SCHECK_EQ(
+        lhs.entry_metadata[entry_idx].active_segment_sequence_number,
+        rhs.entry_metadata[entry_idx].active_segment_sequence_number, InternalError,
+        Format("entry_metadata[$0].active_segment_sequence_number", entry_idx));
+    RETURN_NOT_OK(CheckEntryEq(lhs.entries, rhs.entries, entry_idx));
+  }
+  return Status::OK();
+}
+
+} // namespace
 
 // Verifies CopyTo works in parallel with rollovers triggered by concurrent
 // log entries writes.
@@ -1213,35 +1315,29 @@ TEST_F(LogTest, CopyTo) {
 
   BuildLog();
 
-  auto last_op_id_before_copy = ASSERT_RESULT(AppendAndCopy(kNumBatches, kNumEntriesPerBatch));
+  auto copied_up_to_op_id = ASSERT_RESULT(AppendAndCopy(kNumBatches, kNumEntriesPerBatch));
 
   SegmentSequence segments;
   ASSERT_OK(log_->GetSegmentsSnapshot(&segments));
 
   for (auto i = 0; i < kNumBatches; ++i) {
     auto copied_segments = ASSERT_RESULT(
-        GetSegmentsFromLogCopyAndCheckLastOpIndex(i, last_op_id_before_copy[i].index));
+        GetSegmentsFromLogCopyAndCheckMaxOpIndex(i, copied_up_to_op_id[i].index));
     ASSERT_LE(copied_segments.size(), segments.size());
 
     // Copied log segments should match log segments of the original log.
-    for (size_t seg_idx = 0; seg_idx < copied_segments.size(); ++seg_idx) {
-      auto& segment = segments[seg_idx];
-      auto& segment_copy = copied_segments[seg_idx];
+    for (auto segment_it = segments.begin(), segment_copy_it = copied_segments.begin();
+         segment_it != segments.end() && segment_copy_it != copied_segments.end();
+         ++segment_it, ++segment_copy_it) {
+      auto& segment = *segment_it;
+      auto& segment_copy = *segment_copy_it;
 
       auto entries_result = segment->ReadEntries();
       ASSERT_OK(entries_result.status);
       auto entries_copy_result = segment_copy->ReadEntries();
       ASSERT_OK(entries_copy_result.status);
 
-      ASSERT_EQ(entries_copy_result.committed_op_id, entries_result.committed_op_id);
-      ASSERT_EQ(entries_copy_result.end_offset, entries_result.end_offset);
-      ASSERT_EQ(entries_copy_result.entry_metadata, entries_result.entry_metadata);
-      ASSERT_EQ(entries_copy_result.entries.size(), entries_result.entries.size());
-      for (size_t entry_idx = 0; entry_idx < entries_copy_result.entries.size(); ++entry_idx) {
-        ASSERT_EQ(
-            entries_copy_result.entries[entry_idx]->DebugString(),
-            entries_result.entries[entry_idx]->DebugString());
-      }
+      ASSERT_OK(CheckReadEntriesResultEq(entries_copy_result, entries_result));
     }
   }
 
@@ -1269,19 +1365,18 @@ TEST_F(LogTest, CopyToWithConcurrentGc) {
     }
   });
 
-  auto last_op_id_before_copy_result = AppendAndCopy(kNumBatches, kNumEntriesPerBatch);
+  auto copied_up_to_op_id_result = AppendAndCopy(kNumBatches, kNumEntriesPerBatch);
   stop_gc = true;
   gc_thread.join();
-  auto last_op_id_before_copy = ASSERT_RESULT(std::move(last_op_id_before_copy_result));
+  auto copied_up_to_op_id = ASSERT_RESULT(std::move(copied_up_to_op_id_result));
 
   for (auto i = 0; i < kNumBatches; ++i) {
     auto copied_segments = ASSERT_RESULT(
-        GetSegmentsFromLogCopyAndCheckLastOpIndex(i, last_op_id_before_copy[i].index));
+        GetSegmentsFromLogCopyAndCheckMaxOpIndex(i, copied_up_to_op_id[i].index));
 
     // Make sure copied log contains a sequence of entries without gaps in index.
     int64_t last_index = -1;
-    for (size_t seg_idx = 0; seg_idx < copied_segments.size(); ++seg_idx) {
-      auto& segment_copy = copied_segments[seg_idx];
+    for (const auto& segment_copy : copied_segments) {
       auto entries_copy_result = segment_copy->ReadEntries();
       ASSERT_OK(entries_copy_result.status);
 
@@ -1293,6 +1388,215 @@ TEST_F(LogTest, CopyToWithConcurrentGc) {
         last_index = index;
       }
     }
+  }
+
+  ASSERT_OK(log_->Close());
+}
+
+Result<std::vector<LogTest::Op>> LogTest::GenerateOpsAndAppendToLog(
+    const int num_segments, const int num_batches_per_segment, const int num_entries_per_batch,
+    const double commit_probability, const int num_approx_term_changes,
+    const int num_approx_term_changes_with_index_rollback) {
+  const auto num_entries = num_segments * num_batches_per_segment * num_entries_per_batch;
+
+  std::vector<Op> ops;
+  auto current_op_id = OpId(1, 1);
+  OpId last_committed_op_id;
+  for (auto seg_idx = 0; seg_idx < num_segments; ++seg_idx) {
+    for (auto batch_idx = 0; batch_idx < num_batches_per_segment; ++batch_idx) {
+      ReplicateMsgs replicates;
+      for (int i = 0; i < num_entries_per_batch; i++) {
+        replicates.emplace_back(std::make_shared<ReplicateMsg>());
+        auto& replicate = replicates.back();
+        current_op_id.ToPB(replicate->mutable_id());
+        replicate->set_op_type(NO_OP);
+        replicate->set_hybrid_time(clock_->Now().ToUint64());
+        ops.push_back({current_op_id, false});
+
+        if (RandomActWithProbability(commit_probability)) {
+          last_committed_op_id = current_op_id;
+          // Commit not yet committed ops from this term.
+          for (auto op = ops.end() - 1;
+               op >= ops.begin() && op->id.term == current_op_id.term && !op->committed;
+               op--) {
+            op->committed = true;
+          }
+        }
+        if (RandomActWithProbability(1.0 * num_approx_term_changes / num_entries)) {
+          ++current_op_id.term;
+          if (RandomActWithProbability(
+                  1.0 * num_approx_term_changes_with_index_rollback / num_approx_term_changes)) {
+            // Do not overwrite committed ops.
+            current_op_id.index = std::max<int64_t>(
+                std::max<int64_t>(
+                    current_op_id.index - RandomUniformInt<int64_t>(1, 10),
+                    last_committed_op_id.index),
+                1);
+          }
+        }
+        ++current_op_id.index;
+      }
+      Synchronizer s;
+      RETURN_NOT_OK(log_->AsyncAppendReplicates(
+          replicates, last_committed_op_id, restart_safe_coarse_mono_clock_.Now(),
+          s.AsStatusCallback()));
+      RETURN_NOT_OK(s.Wait());
+    }
+    RETURN_NOT_OK(log_->AllocateSegmentAndRollOver());
+  }
+  return ops;
+}
+
+namespace {
+
+Status CheckLogIndex(
+    LogReader* log_reader,
+    const std::map<int64_t, std::pair<OpId, LogEntryMetadata>>& op_id_with_entry_meta_by_idx,
+    const int64_t last_op_index) {
+  if (op_id_with_entry_meta_by_idx.empty()) {
+    // Nothing to verify.
+    return Status::OK();
+  }
+  const auto min_op_idx = op_id_with_entry_meta_by_idx.begin()->first;
+  const auto max_op_idx = op_id_with_entry_meta_by_idx.rbegin()->first;
+  VLOG(1) << "op_id_with_min_index: " << op_id_with_entry_meta_by_idx.begin()->second.first
+          << " op_id_with_max_index: " << op_id_with_entry_meta_by_idx.rbegin()->second.first
+          << " entries: " << op_id_with_entry_meta_by_idx.size();
+
+  // We iterate in reverse order on purpose in order to verify log index lazy loading logic (see
+  // LogReader::GetIndexEntry).
+  for (auto iter = op_id_with_entry_meta_by_idx.rbegin();
+       iter != op_id_with_entry_meta_by_idx.rend(); ++iter) {
+    const auto& op_id_with_entry_meta = *iter;
+    const auto& op_id = op_id_with_entry_meta.second.first;
+    const auto& entry_meta = op_id_with_entry_meta.second.second;
+    VLOG(1) << "op_id_with_entry_meta: " << AsString(op_id_with_entry_meta);
+    SCHECK_EQ(op_id_with_entry_meta.first, op_id.index, InternalError, "op index mismatch");
+    const auto index_entry = log_reader->TEST_GetIndexEntry(op_id.index);
+    if (!index_entry.ok()) {
+      if (index_entry.status().IsNotFound() && op_id.index > last_op_index) {
+        // This is OK to get NotFound for operation index that could be overwritten.
+        continue;
+      }
+      return index_entry.status();
+    }
+    SCHECK_EQ(
+        index_entry->op_id.index, op_id.index, InternalError, Format("index of op_id: $0", op_id));
+    SCHECK_GE(
+        index_entry->op_id.term, op_id.term, InternalError, Format("term of op_id: $0", op_id));
+    // Operation could be rewritten in higher term, then we don't expect offset and segment
+    // number to match, it will be checked once we get to ops with the same index from that
+    // higher term.
+    if (index_entry->op_id.term == op_id.term) {
+      SCHECK_EQ(
+          index_entry->segment_sequence_number, entry_meta.active_segment_sequence_number,
+          InternalError, Format("segment_sequence_number for op_id: $0", op_id));
+      SCHECK_EQ(
+          index_entry->offset_in_segment, entry_meta.offset, InternalError,
+          Format("offset_in_segment for op_id: $0", op_id));
+    }
+  }
+  SCHECK_GT(min_op_idx, 0, InternalError, "min_op_idx");
+  SCHECK_GT(max_op_idx, 0, InternalError, "max_op_idx");
+
+  if (min_op_idx > 1) {
+    // GetEntry is not supported for zero index, so only check for min_op_idx > 1.
+    const auto result = log_reader->TEST_GetIndexEntry(min_op_idx - 1);
+    SCHECK_FORMAT(
+        !result.ok() && result.status().IsNotFound(), InternalError,
+        "Expected NotFound error for getting op by index before the minimal one, but got: $0, "
+        "min_op_idx: $1",
+        result, min_op_idx);
+  }
+  return Status::OK();
+}
+
+} // namespace
+
+TEST_F(LogTest, CopyUpTo) {
+  constexpr auto kNumSegments = 5;
+  constexpr auto kNumBatchesPerSegment = 5;
+  constexpr auto kNumEntriesPerBatch = 5;
+  constexpr auto kNumApproxTermChanges = 10;
+  constexpr auto kNumApproxTermChangesWithIndexRollback = 3;
+  constexpr auto kCommitProbability = 0.1;
+
+  // We will rollover segments manually.
+  options_.segment_size_bytes = std::numeric_limits<size_t>::max();
+
+  BuildLog();
+
+  auto ops = ASSERT_RESULT(GenerateOpsAndAppendToLog(
+      kNumSegments, kNumBatchesPerSegment, kNumEntriesPerBatch, kCommitProbability,
+      kNumApproxTermChanges, kNumApproxTermChangesWithIndexRollback));
+
+  SegmentSequence segments;
+  ASSERT_OK(log_->GetSegmentsSnapshot(&segments));
+
+  constexpr auto kLogCopyIdx = 0;
+  const auto log_copy_path = GetLogCopyPath(kLogCopyIdx);
+  for (size_t copy_num_ops = 1; copy_num_ops <= ops.size(); ++copy_num_ops) {
+    const auto& max_included_op = ops[copy_num_ops - 1];
+    const auto& max_included_op_id = max_included_op.id;
+    ASSERT_OK(options_.env->DeleteRecursively(log_copy_path));
+    VLOG(1) << "max_included_op_id: " << AsString(max_included_op_id);
+    ASSERT_OK(log_->CopyTo(log_copy_path, max_included_op_id));
+
+    auto log_copy_reader = ASSERT_RESULT(GetLogCopyReader(kLogCopyIdx));
+    auto copied_segments = ASSERT_RESULT(
+        GetSegmentsAndCheckMaxOpIndex(log_copy_reader.get(), max_included_op_id.index));
+
+    // Copied log segments (except might be the last one that could be truncated) should match log
+    // segments of the original log.
+    size_t num_ops_copied = 0;
+    std::map<int64_t, std::pair<OpId, LogEntryMetadata>> op_id_with_entry_meta_by_idx;
+
+    for (auto segment_it = segments.begin(), segment_copy_it = copied_segments.begin();
+         segment_it != segments.end() && segment_copy_it != copied_segments.end();
+         ++segment_it, ++segment_copy_it) {
+      auto& segment = *segment_it;
+      auto& segment_copy = *segment_copy_it;
+
+      auto entries_result = segment->ReadEntries();
+      ASSERT_OK(entries_result.status);
+      if (!entries_result.entries.empty()) {
+        ASSERT_LE(
+            entries_result.committed_op_id,
+            OpId::FromPB(entries_result.entries.back()->replicate().id()));
+      }
+
+      auto entries_copy_result = segment_copy->ReadEntries();
+      ASSERT_OK(entries_copy_result.status);
+      const auto num_copied_segment_entries = entries_copy_result.entries.size();
+
+      if ((segment_copy_it + 1) == copied_segments.end() && copy_num_ops != ops.size()) {
+        // Segment is the last segment and truncated.
+        ASSERT_OK(CheckReadEntriesResultIsCorrectPrefixOf(entries_copy_result, entries_result));
+      } else {
+        ASSERT_OK(CheckReadEntriesResultEq(entries_copy_result, entries_result));
+      }
+
+      for (size_t entry_idx = 0; entry_idx < num_copied_segment_entries; ++entry_idx) {
+        const auto& copied_entry = entries_copy_result.entries[entry_idx];
+        if (copied_entry->has_replicate()) {
+          const auto& op_id = OpId::FromPB(copied_entry->replicate().id());
+          op_id_with_entry_meta_by_idx[op_id.index] =
+              std::make_pair(op_id, entries_copy_result.entry_metadata[entry_idx]);
+        }
+      }
+      num_ops_copied += num_copied_segment_entries;
+    }
+
+    if (num_ops_copied > copy_num_ops) {
+      LOG(INFO) << "max_included_op_id: " << AsString(max_included_op_id) << ", copied ops tail:";
+      for (auto i = copy_num_ops - 1; i < num_ops_copied; ++i) {
+        LOG(INFO) << i << ": " << ops[i].id;
+      }
+    }
+    ASSERT_EQ(num_ops_copied, copy_num_ops);
+
+    ASSERT_OK(CheckLogIndex(
+        log_copy_reader.get(), op_id_with_entry_meta_by_idx, max_included_op_id.index));
   }
 
   ASSERT_OK(log_->Close());

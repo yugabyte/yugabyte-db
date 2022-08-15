@@ -45,7 +45,7 @@ describe('Mutliple Backup config', () => {
     const actionBtn = screen.getByRole('button', { name: 'Actions' });
     fireEvent.click(actionBtn);
 
-    expect(screen.getAllByRole('menuitem')).toHaveLength(3);
+    expect(screen.getAllByRole('menuitem')).toHaveLength(4);
 
     expect(screen.getAllByText(/Edit Configuration/, {
       selector: 'a'

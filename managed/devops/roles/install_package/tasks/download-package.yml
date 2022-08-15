@@ -18,14 +18,26 @@
     remote_tmp_package: "/tmp/{{ package_name }}"
   tags: always
 
+- name: Download ybc package | Set temporary package path
+  set_fact:
+    tmp_ybc_package_location: "{{ yb_software_dir }}/TEMP_YBC"
+    remote_ybc_tmp_package: "/tmp/{{ ybc_dir }}.tar.gz"
+  when: configure_ybc
+
 - name: Download package | Download "{{ package_name }}" from AWS S3
-  command:
-    argv:
-    - s3cmd
-    - get
-    - "{{ s3_package_path }}"
-    - "{{ remote_tmp_package }}"
-    creates: "{{ remote_tmp_package }}"
+  block:
+    - name: Download package | Download "{{ package_name }}" from AWS S3
+      command:
+        argv:
+        - s3cmd
+        - get
+        - "{{ s3_package_path }}"
+        - "{{ remote_tmp_package }}"
+        creates: "{{ remote_tmp_package }}"
+      register: s3cmd_result
+      retries: "{{ num_retries }}"
+      delay: "{{ retry_delay }}"
+      until: s3cmd_result is succeeded
   environment:
     AWS_ACCESS_KEY_ID: "{{ aws_access_key | default(lookup('env', 'AWS_ACCESS_KEY_ID')) }}"
     AWS_SECRET_ACCESS_KEY: "{{ aws_secret_key | default(lookup('env', 'AWS_SECRET_ACCESS_KEY')) }}"
@@ -45,7 +57,7 @@
         owner: "{{ user_name }}"
         group: "{{ user_name }}"
         mode: 0600
-    - name: Download package | Download "{{ package_name }} from GCS
+    - name: Download package | Download "{{ package_name }}" from GCS
       command:
         argv:
           - "gsutil"
@@ -55,6 +67,10 @@
           - "{{ gcs_package_path }}"
           - "{{ remote_tmp_package }}"
         creates: "{{ remote_tmp_package }}"
+      register: gsutil_result
+      retries: "{{ num_retries }}"
+      delay: "{{ retry_delay }}"
+      until: gsutil_result is succeeded
   always:
     - name: Download package | Cleanup GCS credentials file
       when: gcs_credentials_json_file is defined and gcs_credentials_json_file.path != ""
@@ -64,10 +80,16 @@
   when: gcs_package_path is defined
 
 - name: Download package | Download "{{ package_name }}" from a HTTP(S) link
-  get_url:
-    url: "{{ http_package_path }}"
-    dest: "{{ remote_tmp_package }}"
-    checksum: "{{ http_package_checksum | default('') }}"
+  block:
+    - name:
+      get_url:
+        url: "{{ http_package_path }}"
+        dest: "{{ remote_tmp_package }}"
+        checksum: "{{ http_package_checksum | default('') }}"
+      register: get_url_result
+      retries: "{{ num_retries }}"
+      delay: "{{ retry_delay }}"
+      until: get_url_result is succeeded
   when: http_package_path is defined
 
 - name: Download package | Create release binary directory
@@ -79,12 +101,17 @@
     group: "{{ user_name }}"
   tags: yb-prebuilt-ami
 
-
 - name: Download package | Move package "{{ remote_tmp_package }}" to "{{ tmp_package_location }}"
   copy:
     src: "{{ remote_tmp_package }}"
     dest: "{{ tmp_package_location }}"
     remote_src: True
+  tags: yb-prebuilt-ami
+
+- name: Download package | Clean up temporary remote downloads
+  file:
+    path: "{{ remote_tmp_package }}"
+    state: absent
   tags: yb-prebuilt-ami
 
 - name: Download package | Unpack package "{{ tmp_package_location }}"
@@ -104,9 +131,64 @@
   tags: yb-prebuilt-ami
 
 - name: Download package | Move unpacked dir to "{{ release_folder }}"
-  command: mv "{{ yb_software_dir }}/{{ package_folder_or_tmp }}/yugabyte-{{ release_version }}" "{{ package_dest }}"
+  command: >
+    mv
+    "{{ yb_software_dir }}/{{ package_folder_or_tmp }}/yugabyte-{{ release_version }}"
+    "{{ package_dest }}"
   when: is_yugabyte_package
   tags: yb-prebuilt-ami
+
+- name: Download ybc package | Create temporary release ybc directory
+  file:
+    path: "{{ tmp_ybc_package_location }}"
+    state: directory
+    mode: 0755
+    owner: "{{ user_name }}"
+    group: "{{ user_name }}"
+  tags: yb-prebuilt-ami
+  when: configure_ybc
+
+- name: Download ybc package | Move unpacked tarball to "{{ tmp_ybc_package_location }}"
+  copy:
+    src: "{{ remote_ybc_tmp_package }}"
+    dest: "{{ tmp_ybc_package_location }}/{{ ybc_dir }}.tar.gz"
+    remote_src: True
+  tags: yb-prebuilt-ami
+  when: configure_ybc
+
+- name: Download ybc package | Create release ybc directory
+  file:
+    path: "{{ software_ybc_package_folder }}"
+    state: directory
+    mode: 0755
+    owner: "{{ user_name }}"
+    group: "{{ user_name }}"
+  tags: yb-prebuilt-ami
+  when: configure_ybc
+
+- name: Download ybc package | Clean up temporary ybc remote downloads
+  file:
+    path: "{{ remote_ybc_tmp_package }}"
+    state: absent
+  tags: yb-prebuilt-ami
+  when: configure_ybc
+
+- name: Download ybc package | Unpack package "{{ tmp_ybc_package_location }}"
+  unarchive:
+    src: "{{ tmp_ybc_package_location }}/{{ ybc_dir }}.tar.gz"
+    dest: "{{ yb_software_dir }}"
+    remote_src: yes
+    owner: "{{ user_name }}"
+    group: "{{ user_name }}"
+  tags: yb-prebuilt-ami
+  when: configure_ybc
+
+- name: Download ybc package | Remove "{{ tmp_ybc_package_location }}"
+  file:
+    path: "{{ tmp_ybc_package_location }}"
+    state: absent
+  tags: yb-prebuilt-ami
+  when: configure_ybc
 
 - name: Download package | Clean the releases directory
   file:

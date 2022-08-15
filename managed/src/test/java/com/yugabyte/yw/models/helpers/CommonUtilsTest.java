@@ -10,6 +10,8 @@ import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.notNullValue;
 import static org.hamcrest.Matchers.nullValue;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -18,10 +20,15 @@ import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.common.EmailFixtures;
 import com.yugabyte.yw.common.alerts.AlertChannelEmailParams;
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
-import java.util.Optional;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import play.libs.Json;
@@ -130,16 +137,43 @@ public class CommonUtilsTest {
   }
 
   @Test
+  public void testEncryptDecryptConfig() {
+    UUID uuid = UUID.randomUUID();
+    Map<String, String> config = new HashMap<>();
+    config.put("key1", "value1");
+    config.put("key2", "value2");
+    Map<String, String> encryptedConfig = CommonUtils.encryptProviderConfig(config, uuid, "aws");
+    assertTrue(encryptedConfig.containsKey("encrypted"));
+    Map<String, String> decryptedConfig =
+        CommonUtils.decryptProviderConfig(encryptedConfig, uuid, "aws");
+    assertEquals(config, decryptedConfig);
+  }
+
+  @Test
   @Parameters({
     "1.2.3.4sdfdsf, 1.2.3.4wqerq, true",
     "1.2.3.3sdfdsf, 1.2.3.4wqerq, true",
     "1.2.3.5sdfdsf, 1.2.3.4wqerq, false",
     "1.2.2.6sdfdsf, 1.2.3.4wqerq, true",
     "1.2.4.1sdfdsf, 1.2.3.4wqerq, false",
+    "1.2.4.1sdfdsf, asdfdsaf, true",
   })
   public void testReleaseEqualOrAfter(
       String thresholdRelease, String actualRelease, boolean result) {
     assertThat(CommonUtils.isReleaseEqualOrAfter(thresholdRelease, actualRelease), equalTo(result));
+  }
+
+  @Test
+  @Parameters({
+    "1.2.3.4sdfdsf, 1.2.3.4wqerq, false",
+    "1.2.3.3sdfdsf, 1.2.3.4wqerq, false",
+    "1.2.3.5sdfdsf, 1.2.3.4wqerq, true",
+    "1.2.2.6sdfdsf, 1.2.3.4wqerq, false",
+    "1.2.4.1sdfdsf, 1.2.3.4wqerq, true",
+    "1.2.4.1sdfdsf, asdfdsaf, false",
+  })
+  public void testReleaseBefore(String thresholdRelease, String actualRelease, boolean result) {
+    assertThat(CommonUtils.isReleaseBefore(thresholdRelease, actualRelease), equalTo(result));
   }
 
   @Abortable
@@ -170,5 +204,20 @@ public class CommonUtilsTest {
     op2 = CommonUtils.isAnnotatedWith(SubClass3.class, Retryable.class);
     assertEquals(true, op2.isPresent());
     assertEquals(false, op2.get().enabled());
+  }
+
+  @Test
+  public void testIsEqualIgnoringOrder() {
+    assertTrue(
+        CommonUtils.isEqualIgnoringOrder(
+            Arrays.asList("a", "b", "c"), Arrays.asList("a", "b", "c")));
+    assertTrue(
+        CommonUtils.isEqualIgnoringOrder(
+            Arrays.asList("a", "b", "c"), Arrays.asList("c", "a", "b")));
+    assertTrue(CommonUtils.isEqualIgnoringOrder(Arrays.asList(), Arrays.asList()));
+    assertTrue(CommonUtils.<List<?>>isEqualIgnoringOrder(null, null));
+    assertFalse(
+        CommonUtils.isEqualIgnoringOrder(Arrays.asList("a", "b", "c"), Arrays.asList("a", "b")));
+    assertFalse(CommonUtils.isEqualIgnoringOrder(Arrays.asList("a", "b", "c"), null));
   }
 }

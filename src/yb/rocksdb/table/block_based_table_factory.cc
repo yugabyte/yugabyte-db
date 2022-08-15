@@ -36,6 +36,8 @@
 #include "yb/rocksdb/table/block_based_table_reader.h"
 #include "yb/rocksdb/table/format.h"
 
+#include "yb/util/logging.h"
+
 namespace rocksdb {
 
 BlockBasedTableFactory::BlockBasedTableFactory(
@@ -82,14 +84,14 @@ Status BlockBasedTableFactory::NewTableReader(
       table_reader_options.skip_filters);
 }
 
-TableBuilder* BlockBasedTableFactory::NewTableBuilder(
+std::unique_ptr<TableBuilder> BlockBasedTableFactory::NewTableBuilder(
     const TableBuilderOptions& table_builder_options, uint32_t column_family_id,
     WritableFileWriter* base_file, WritableFileWriter* data_file) const {
   // base_file should be not nullptr, data_file should either point to different file writer
   // or be nullptr in order to produce single SST file containing both data and metadata.
-  assert(base_file);
-  assert(base_file != data_file);
-  auto table_builder = new BlockBasedTableBuilder(
+  DCHECK_ONLY_NOTNULL(base_file);
+  DCHECK_NE(base_file, data_file);
+  return std::make_unique<BlockBasedTableBuilder>(
       table_builder_options.ioptions, table_options_,
       table_builder_options.internal_comparator,
       *table_builder_options.int_tbl_prop_collector_factories,
@@ -99,8 +101,6 @@ TableBuilder* BlockBasedTableFactory::NewTableBuilder(
       table_builder_options.compression_type,
       table_builder_options.compression_opts,
       table_builder_options.skip_filters);
-
-  return table_builder;
 }
 
 Status BlockBasedTableFactory::SanitizeOptions(

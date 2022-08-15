@@ -29,6 +29,6 @@ public class BulkImport extends AbstractTaskBase {
   @Override
   public void run() {
     // Execute the ansible command and log its result.
-    processShellResponse(tableManager.bulkImport(taskParams()));
+    tableManager.bulkImport(taskParams()).processErrors();
   }
 }

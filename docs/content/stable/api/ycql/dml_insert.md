@@ -7,8 +7,7 @@ menu:
   stable:
     parent: api-cassandra
     weight: 1300
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis
@@ -40,10 +39,10 @@ ttl_or_timestamp_expression = 'TTL' ttl_expression | 'TIMESTAMP' timestamp_expre
 ### Grammar
 
 ```
-insert ::= INSERT INTO table_name ( column_name [ , ... ] ) VALUES ( 
-           expression [ , ... ] )  
-           [ IF { [ NOT ] EXISTS | if_expression } ] 
-           [ USING using_expression ] 
+insert ::= INSERT INTO table_name ( column_name [ , ... ] ) VALUES (
+           expression [ , ... ] )
+           [ IF { [ NOT ] EXISTS | if_expression } ]
+           [ USING using_expression ]
            [ RETURNS STATUS AS ROW ]
 ```
 
@@ -56,7 +55,7 @@ Where
 
 ## Semantics
 
-- An error is raised if the specified `table_name` does not exist. 
+- An error is raised if the specified `table_name` does not exist.
 - The columns list must include all primary key columns.
 - The `USING TIMESTAMP` clause indicates you would like to perform the INSERT as if it was done at the
   timestamp provided by the user. The timestamp is the number of microseconds since epoch.
@@ -65,7 +64,7 @@ Where
 - **NOTE**: You should either use the `USING TIMESTAMP` clause in all of your statements or none of
   them. Using a mix of statements where some have `USING TIMESTAMP` and others do not will lead to
   very confusing results.
-- Inserting rows with TTL is not supported on tables with [transactions enabled](./../ddl_create_table#table-properties-1). 
+- Inserting rows with TTL is not supported on tables with [transactions enabled](./../ddl_create_table#table-properties-1).
 
 ### `VALUES` clause
 
@@ -268,7 +267,7 @@ See examples in [batch docs](../batch#row-status).
 ## See also
 
 - [`CREATE TABLE`](../ddl_create_table)
-- [`DELETE`](../dml_delete)
-- [`SELECT`](../dml_select)
-- [`UPDATE`](../dml_update)
+- [`DELETE`](../dml_delete/)
+- [`SELECT`](../dml_select/)
+- [`UPDATE`](../dml_update/)
 - [`Expression`](..#expressions)

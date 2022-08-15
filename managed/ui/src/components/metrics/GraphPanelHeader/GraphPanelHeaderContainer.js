@@ -6,7 +6,8 @@ import { GraphPanelHeader } from '../../metrics';
 import {
   changeGraphQueryPeriod,
   resetGraphQueryPeriod,
-  togglePrometheusQuery
+  togglePrometheusQuery,
+  getGrafanaJson
 } from '../../../actions/graph';
 import { fetchUniverseList, fetchUniverseListResponse } from '../../../actions/universe';
 import {closeDialog, openDialog} from "../../../actions/modal";
@@ -27,6 +28,7 @@ const mapDispatchToProps = (dispatch) => {
     togglePrometheusQuery: () => {
       dispatch(togglePrometheusQuery());
     },
+    getGrafanaJson: getGrafanaJson,
     showModal: (modalName) => {
       dispatch(openDialog(modalName));
     },
@@ -47,7 +49,8 @@ function mapStateToProps(state, ownProps) {
     prometheusQueryEnabled: state.graph.prometheusQueryEnabled,
     customer: state.customer,
     visibleModal: state.modal.visibleModal,
-    enableNodeComparisonModal: test.enableNodeComparisonModal || released.enableNodeComparisonModal
+    enableNodeComparisonModal: test.enableNodeComparisonModal || released.enableNodeComparisonModal,
+    enableTopNodes: test.topNodeMetrics || released.topNodeMetrics
   };
 }
 

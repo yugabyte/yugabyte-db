@@ -14,6 +14,8 @@
 #include <atomic>
 #include <thread>
 
+#include <boost/preprocessor/seq/for_each.hpp>
+
 #include <gtest/gtest.h>
 
 #include "yb/client/yb_table_name.h"
@@ -27,6 +29,7 @@
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/mini_master.h"
+#include "yb/master/sys_catalog.h"
 #include "yb/master/sys_catalog_constants.h"
 
 #include "yb/rocksdb/db.h"
@@ -40,6 +43,7 @@
 #include "yb/tools/tools_test_utils.h"
 
 #include "yb/util/atomic.h"
+#include "yb/util/enums.h"
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_log.h"
@@ -53,34 +57,36 @@
 
 using namespace std::literals;
 
-DECLARE_bool(flush_rocksdb_on_shutdown);
 DECLARE_bool(TEST_force_master_leader_resolution);
 DECLARE_bool(TEST_timeout_non_leader_master_rpcs);
+DECLARE_bool(enable_automatic_tablet_splitting);
+DECLARE_bool(flush_rocksdb_on_shutdown);
+DECLARE_bool(rocksdb_use_logging_iterator);
+
 DECLARE_double(TEST_respond_write_failed_probability);
 DECLARE_double(TEST_transaction_ignore_applying_probability);
+
+DECLARE_int32(TEST_txn_participant_inject_latency_on_apply_update_txn_ms);
+DECLARE_int32(heartbeat_interval_ms);
 DECLARE_int32(history_cutoff_propagation_interval_ms);
 DECLARE_int32(timestamp_history_retention_interval_sec);
-DECLARE_int32(txn_max_apply_batch_records);
-DECLARE_int64(apply_intents_task_injected_delay_ms);
-DECLARE_uint64(max_clock_skew_usec);
-DECLARE_int64(db_write_buffer_size);
-DECLARE_bool(rocksdb_use_logging_iterator);
-DECLARE_bool(enable_automatic_tablet_splitting);
-DECLARE_int32(yb_num_shards_per_tserver);
-DECLARE_int64(tablet_split_low_phase_size_threshold_bytes);
-DECLARE_int64(tablet_split_high_phase_size_threshold_bytes);
-DECLARE_int64(tablet_split_low_phase_shard_count_per_node);
-DECLARE_int64(tablet_split_high_phase_shard_count_per_node);
-
-DECLARE_int32(heartbeat_interval_ms);
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
-DECLARE_int32(TEST_txn_participant_inject_latency_on_apply_update_txn_ms);
+DECLARE_int32(txn_max_apply_batch_records);
+DECLARE_int32(yb_num_shards_per_tserver);
 
+DECLARE_int64(TEST_inject_random_delay_on_txn_status_response_ms);
+DECLARE_int64(apply_intents_task_injected_delay_ms);
 DECLARE_int64(db_block_size_bytes);
 DECLARE_int64(db_filter_block_size_bytes);
 DECLARE_int64(db_index_block_size_bytes);
+DECLARE_int64(db_write_buffer_size);
 DECLARE_int64(tablet_force_split_threshold_bytes);
-DECLARE_int64(TEST_inject_random_delay_on_txn_status_response_ms);
+DECLARE_int64(tablet_split_high_phase_shard_count_per_node);
+DECLARE_int64(tablet_split_high_phase_size_threshold_bytes);
+DECLARE_int64(tablet_split_low_phase_shard_count_per_node);
+DECLARE_int64(tablet_split_low_phase_size_threshold_bytes);
+
+DECLARE_uint64(max_clock_skew_usec);
 
 namespace yb {
 namespace pgwrapper {
@@ -89,11 +95,11 @@ namespace {
 template<IsolationLevel level>
 class TxnHelper {
  public:
-  static CHECKED_STATUS StartTxn(PGConn* connection) {
+  static Status StartTxn(PGConn* connection) {
     return connection->StartTransaction(level);
   }
 
-  static CHECKED_STATUS ExecuteInTxn(PGConn* connection, const std::string& query) {
+  static Status ExecuteInTxn(PGConn* connection, const std::string& query) {
     const auto guard = CreateTxnGuard(connection);
     return connection->Execute(query);
   }
@@ -131,6 +137,18 @@ std::string RowMarkTypeToPgsqlString(const RowMarkType row_mark_type) {
   }
 }
 
+YB_DEFINE_ENUM(TestStatement, (kInsert)(kDelete));
+
+Result<int64_t> GetCatalogVersion(PGConn* conn) {
+  return conn->FetchValue<int64_t>("SELECT current_version FROM pg_yb_catalog_version");
+}
+
+Result<bool> IsCatalogVersionChangedDuringDdl(PGConn* conn, const std::string& ddl_query) {
+  const auto initial_version = VERIFY_RESULT(GetCatalogVersion(conn));
+  RETURN_NOT_OK(conn->Execute(ddl_query));
+  return initial_version != VERIFY_RESULT(GetCatalogVersion(conn));
+}
+
 } // namespace
 
 class PgMiniTest : public PgMiniTestBase {
@@ -142,15 +160,11 @@ class PgMiniTest : public PgMiniTestBase {
   // read restarts to be observed because they should be transparently handled on the postgres side.
   void TestReadRestart(bool deferrable = true);
 
-  // Run interleaved INSERT, SELECT with specified isolation level and row mark.  Possible isolation
-  // levels are SNAPSHOT_ISOLATION and SERIALIZABLE_ISOLATION.  Possible row marks are
-  // ROW_MARK_KEYSHARE, ROW_MARK_SHARE, ROW_MARK_NOKEYEXCLUSIVE, and ROW_MARK_EXCLUSIVE.
-  void TestInsertSelectRowLock(IsolationLevel isolation, RowMarkType row_mark);
-
-  // Run interleaved DELETE, SELECT with specified isolation level and row mark.  Possible isolation
-  // levels are SNAPSHOT_ISOLATION and SERIALIZABLE_ISOLATION.  Possible row marks are
-  // ROW_MARK_KEYSHARE, ROW_MARK_SHARE, ROW_MARK_NOKEYEXCLUSIVE, and ROW_MARK_EXCLUSIVE.
-  void TestDeleteSelectRowLock(IsolationLevel isolation, RowMarkType row_mark);
+  // Run interleaved INSERT/DELETE, SELECT with specified isolation level and row mark.
+  // Possible isolation levels are SNAPSHOT_ISOLATION and SERIALIZABLE_ISOLATION.
+  // Possible row marks are ROW_MARK_KEYSHARE, ROW_MARK_SHARE, ROW_MARK_NOKEYEXCLUSIVE, and
+  // ROW_MARK_EXCLUSIVE.
+  void TestSelectRowLock(IsolationLevel isolation, RowMarkType row_mark, TestStatement statement);
 
   void TestForeignKey(IsolationLevel isolation);
 
@@ -159,8 +173,6 @@ class PgMiniTest : public PgMiniTestBase {
   void CreateTableAndInitialize(std::string table_name, int num_tablets);
 
   void DestroyTable(std::string table_name);
-
-  void GetTableIDFromTableName(const std::string table_name, std::string* table_id);
 
   void StartReadWriteThreads(std::string table_name, TestThreadHolder *thread_holder);
 
@@ -584,7 +596,8 @@ TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(ReadRestartSnapshot),
   TestReadRestart(false /* deferrable */);
 }
 
-void PgMiniTest::TestInsertSelectRowLock(IsolationLevel isolation, RowMarkType row_mark) {
+void PgMiniTest::TestSelectRowLock(
+    IsolationLevel isolation, RowMarkType row_mark, TestStatement statement) {
   const std::string isolation_str = (
       isolation == IsolationLevel::SNAPSHOT_ISOLATION ? "REPEATABLE READ" : "SERIALIZABLE");
   const std::string row_mark_str = RowMarkTypeToPgsqlString(row_mark);
@@ -603,48 +616,20 @@ void PgMiniTest::TestInsertSelectRowLock(IsolationLevel isolation, RowMarkType r
   }
 
   ASSERT_OK(read_conn.ExecuteFormat("BEGIN TRANSACTION ISOLATION LEVEL $0", isolation_str));
-  ASSERT_OK(read_conn.Fetch("SELECT '(setting read point)'"));
+  ASSERT_OK(read_conn.FetchFormat("SELECT * FROM t WHERE i = $0", -1));
+
   // Sleep to ensure that read done in txn doesn't face kReadRestart after INSERT (a sleep will
   // ensure sufficient gap between write time and read point - more than clock skew).
   std::this_thread::sleep_for(kSleepTime);
-  ASSERT_OK(write_conn.ExecuteFormat("INSERT INTO t (i, j) VALUES ($0, $0)", kKeys));
-  auto result = read_conn.FetchFormat("SELECT * FROM t FOR $0", row_mark_str);
-  ASSERT_OK(result);
-  if (isolation == IsolationLevel::SNAPSHOT_ISOLATION) {
-    ASSERT_EQ(PQntuples(result.get().get()), kKeys);
+
+  if (statement == TestStatement::kInsert) {
+    ASSERT_OK(write_conn.ExecuteFormat("INSERT INTO t (i, j) VALUES ($0, $0)", kKeys));
   } else {
-    // NOTE: vanilla PostgreSQL expects kKeys rows, but kKeys + 1 rows are expected for Yugabyte.
-    ASSERT_EQ(PQntuples(result.get().get()), kKeys + 1);
+    ASSERT_OK(write_conn.ExecuteFormat(
+        "DELETE FROM t WHERE i = $0", RandomUniformInt(0, kKeys - 1)));
   }
-  ASSERT_OK(read_conn.Execute("COMMIT"));
-}
-
-void PgMiniTest::TestDeleteSelectRowLock(IsolationLevel isolation, RowMarkType row_mark) {
-  const std::string isolation_str = (
-      isolation == IsolationLevel::SNAPSHOT_ISOLATION ? "REPEATABLE READ" : "SERIALIZABLE");
-  const std::string row_mark_str = RowMarkTypeToPgsqlString(row_mark);
-  constexpr auto kSleepTime = 1s;
-  constexpr int kKeys = 3;
-  PGConn read_conn = ASSERT_RESULT(Connect());
-  PGConn misc_conn = ASSERT_RESULT(Connect());
-  PGConn write_conn = ASSERT_RESULT(Connect());
-
-  // Set up table
-  ASSERT_OK(misc_conn.Execute("CREATE TABLE t (i INT PRIMARY KEY, j INT)"));
-  // TODO: remove this when issue #2857 is fixed.
-  std::this_thread::sleep_for(kSleepTime);
-  for (int i = 0; i < kKeys; ++i) {
-    ASSERT_OK(misc_conn.ExecuteFormat("INSERT INTO t (i, j) VALUES ($0, $0)", i));
-  }
-
-  ASSERT_OK(read_conn.ExecuteFormat("BEGIN TRANSACTION ISOLATION LEVEL $0", isolation_str));
-  ASSERT_OK(read_conn.Fetch("SELECT '(setting read point)'"));
-  // Sleep to ensure that read done in txn doesn't face kReadRestart after DELETE (a sleep will
-  // ensure sufficient gap between write time and read point - more than clock skew).
-  std::this_thread::sleep_for(kSleepTime);
-  ASSERT_OK(write_conn.ExecuteFormat("DELETE FROM t WHERE i = $0", RandomUniformInt(0, kKeys - 1)));
   auto result = read_conn.FetchFormat("SELECT * FROM t FOR $0", row_mark_str);
-  if (isolation == IsolationLevel::SNAPSHOT_ISOLATION) {
+  if (isolation == IsolationLevel::SNAPSHOT_ISOLATION && statement == TestStatement::kDelete) {
     ASSERT_NOK(result);
     ASSERT_TRUE(result.status().IsNetworkError()) << result.status();
     ASSERT_EQ(PgsqlError(result.status()), YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE)
@@ -654,78 +639,103 @@ void PgMiniTest::TestDeleteSelectRowLock(IsolationLevel isolation, RowMarkType r
     ASSERT_OK(read_conn.Execute("ABORT"));
   } else {
     ASSERT_OK(result);
-    // NOTE: vanilla PostgreSQL expects kKeys rows, but kKeys - 1 rows are expected for Yugabyte.
-    ASSERT_EQ(PQntuples(result.get().get()), kKeys - 1);
+    // NOTE: vanilla PostgreSQL expects kKeys rows, but kKeys +/- 1 rows are expected for Yugabyte.
+    auto expected_keys = kKeys;
+    if (isolation != IsolationLevel::SNAPSHOT_ISOLATION) {
+      expected_keys += statement == TestStatement::kInsert ? 1 : -1;
+    }
+    ASSERT_EQ(PQntuples(result.get().get()), expected_keys);
     ASSERT_OK(read_conn.Execute("COMMIT"));
   }
+  ASSERT_OK(read_conn.Execute("COMMIT"));
 }
 
 TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(SnapshotInsertForUpdate)) {
-  TestInsertSelectRowLock(IsolationLevel::SNAPSHOT_ISOLATION, RowMarkType::ROW_MARK_EXCLUSIVE);
+  TestSelectRowLock(
+      IsolationLevel::SNAPSHOT_ISOLATION, RowMarkType::ROW_MARK_EXCLUSIVE, TestStatement::kInsert);
 }
 
 TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(SerializableInsertForUpdate)) {
-  TestInsertSelectRowLock(IsolationLevel::SERIALIZABLE_ISOLATION, RowMarkType::ROW_MARK_EXCLUSIVE);
+  TestSelectRowLock(
+      IsolationLevel::SERIALIZABLE_ISOLATION, RowMarkType::ROW_MARK_EXCLUSIVE,
+      TestStatement::kInsert);
 }
 
 TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(SnapshotInsertForNoKeyUpdate)) {
-  TestInsertSelectRowLock(IsolationLevel::SNAPSHOT_ISOLATION,
-                          RowMarkType::ROW_MARK_NOKEYEXCLUSIVE);
+  TestSelectRowLock(
+      IsolationLevel::SNAPSHOT_ISOLATION, RowMarkType::ROW_MARK_NOKEYEXCLUSIVE,
+      TestStatement::kInsert);
 }
 
 TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(SerializableInsertForNoKeyUpdate)) {
-  TestInsertSelectRowLock(IsolationLevel::SERIALIZABLE_ISOLATION,
-                          RowMarkType::ROW_MARK_NOKEYEXCLUSIVE);
+  TestSelectRowLock(
+      IsolationLevel::SERIALIZABLE_ISOLATION, RowMarkType::ROW_MARK_NOKEYEXCLUSIVE,
+      TestStatement::kInsert);
 }
 
 TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(SnapshotInsertForShare)) {
-  TestInsertSelectRowLock(IsolationLevel::SNAPSHOT_ISOLATION, RowMarkType::ROW_MARK_SHARE);
+  TestSelectRowLock(
+      IsolationLevel::SNAPSHOT_ISOLATION, RowMarkType::ROW_MARK_SHARE, TestStatement::kInsert);
 }
 
 TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(SerializableInsertForShare)) {
-  TestInsertSelectRowLock(IsolationLevel::SERIALIZABLE_ISOLATION, RowMarkType::ROW_MARK_SHARE);
+  TestSelectRowLock(
+      IsolationLevel::SERIALIZABLE_ISOLATION, RowMarkType::ROW_MARK_SHARE, TestStatement::kInsert);
 }
 
 TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(SnapshotInsertForKeyShare)) {
-  TestInsertSelectRowLock(IsolationLevel::SNAPSHOT_ISOLATION, RowMarkType::ROW_MARK_KEYSHARE);
+  TestSelectRowLock(
+      IsolationLevel::SNAPSHOT_ISOLATION, RowMarkType::ROW_MARK_KEYSHARE, TestStatement::kInsert);
 }
 
 TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(SerializableInsertForKeyShare)) {
-  TestInsertSelectRowLock(IsolationLevel::SERIALIZABLE_ISOLATION, RowMarkType::ROW_MARK_KEYSHARE);
+  TestSelectRowLock(
+      IsolationLevel::SERIALIZABLE_ISOLATION, RowMarkType::ROW_MARK_KEYSHARE,
+      TestStatement::kInsert);
 }
 
 TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(SnapshotDeleteForUpdate)) {
-  TestDeleteSelectRowLock(IsolationLevel::SNAPSHOT_ISOLATION, RowMarkType::ROW_MARK_EXCLUSIVE);
+  TestSelectRowLock(
+      IsolationLevel::SNAPSHOT_ISOLATION, RowMarkType::ROW_MARK_EXCLUSIVE, TestStatement::kDelete);
 }
 
 TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(SerializableDeleteForUpdate)) {
-  TestDeleteSelectRowLock(IsolationLevel::SERIALIZABLE_ISOLATION, RowMarkType::ROW_MARK_EXCLUSIVE);
+  TestSelectRowLock(
+      IsolationLevel::SERIALIZABLE_ISOLATION, RowMarkType::ROW_MARK_EXCLUSIVE,
+      TestStatement::kDelete);
 }
 
 TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(SnapshotDeleteForNoKeyUpdate)) {
-  TestDeleteSelectRowLock(IsolationLevel::SNAPSHOT_ISOLATION,
-                          RowMarkType::ROW_MARK_NOKEYEXCLUSIVE);
+  TestSelectRowLock(
+      IsolationLevel::SNAPSHOT_ISOLATION, RowMarkType::ROW_MARK_NOKEYEXCLUSIVE,
+      TestStatement::kDelete);
 }
 
 TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(SerializableDeleteForNoKeyUpdate)) {
-  TestDeleteSelectRowLock(IsolationLevel::SERIALIZABLE_ISOLATION,
-                          RowMarkType::ROW_MARK_NOKEYEXCLUSIVE);
+  TestSelectRowLock(
+      IsolationLevel::SERIALIZABLE_ISOLATION, RowMarkType::ROW_MARK_NOKEYEXCLUSIVE,
+      TestStatement::kDelete);
 }
 
 TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(SnapshotDeleteForShare)) {
-  TestDeleteSelectRowLock(IsolationLevel::SNAPSHOT_ISOLATION, RowMarkType::ROW_MARK_SHARE);
+  TestSelectRowLock(
+      IsolationLevel::SNAPSHOT_ISOLATION, RowMarkType::ROW_MARK_SHARE, TestStatement::kDelete);
 }
 
 TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(SerializableDeleteForShare)) {
-  TestDeleteSelectRowLock(IsolationLevel::SERIALIZABLE_ISOLATION, RowMarkType::ROW_MARK_SHARE);
+  TestSelectRowLock(
+      IsolationLevel::SERIALIZABLE_ISOLATION, RowMarkType::ROW_MARK_SHARE, TestStatement::kDelete);
 }
 
 TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(SnapshotDeleteForKeyShare)) {
-  TestDeleteSelectRowLock(IsolationLevel::SNAPSHOT_ISOLATION, RowMarkType::ROW_MARK_KEYSHARE);
+  TestSelectRowLock(
+      IsolationLevel::SNAPSHOT_ISOLATION, RowMarkType::ROW_MARK_KEYSHARE, TestStatement::kDelete);
 }
 
 TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(SerializableDeleteForKeyShare)) {
-  TestDeleteSelectRowLock(IsolationLevel::SERIALIZABLE_ISOLATION, RowMarkType::ROW_MARK_KEYSHARE);
+  TestSelectRowLock(
+      IsolationLevel::SERIALIZABLE_ISOLATION, RowMarkType::ROW_MARK_KEYSHARE,
+      TestStatement::kDelete);
 }
 
 TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(SerializableReadOnly)) {
@@ -875,7 +885,7 @@ TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(BulkCopyWithRestart), PgMiniSmallW
   ASSERT_EQ(key.load(std::memory_order_relaxed), kTotalBatches * kBatchSize);
 
   LOG(INFO) << "Restarting cluster";
-  ASSERT_OK(cluster_->RestartSync());
+  ASSERT_OK(RestartCluster());
 
   ASSERT_OK(WaitFor([this, &conn, &key, &kTableName] {
     auto intents_count = CountIntents(cluster_.get());
@@ -1175,8 +1185,7 @@ class PgMiniTestTxnHelper : public PgMiniTestNoTxnRetry {
   }
 
   void TestInOperatorLock() {
-    auto conn = ASSERT_RESULT(Connect());
-    ASSERT_OK(conn.Execute("SET yb_transaction_priority_lower_bound = 0.9"));
+    auto conn = ASSERT_RESULT(SetHighPriTxn(Connect()));
     ASSERT_OK(conn.Execute(
         "CREATE TABLE t (h INT, r1 INT, r2 INT, PRIMARY KEY(h, r1 ASC, r2 ASC))"));
     ASSERT_OK(conn.Execute(
@@ -1185,12 +1194,11 @@ class PgMiniTestTxnHelper : public PgMiniTestNoTxnRetry {
     auto res = ASSERT_RESULT(conn.Fetch(
         "SELECT * FROM t WHERE h = 1 AND r1 IN (11, 12) AND r2 = 1 FOR KEY SHARE"));
 
-    auto extra_conn = ASSERT_RESULT(Connect());
-    ASSERT_OK(extra_conn.Execute("SET yb_transaction_priority_upper_bound = 0.1"));
-    ASSERT_OK(extra_conn.Execute("BEGIN"));
+    auto extra_conn = ASSERT_RESULT(SetLowPriTxn(Connect()));
+    ASSERT_OK(StartTxn(&extra_conn));
     ASSERT_NOK(extra_conn.Execute("DELETE FROM t WHERE h = 1 AND r1 = 11 AND r2 = 1"));
     ASSERT_OK(extra_conn.Execute("ROLLBACK"));
-    ASSERT_OK(extra_conn.Execute("BEGIN"));
+    ASSERT_OK(StartTxn(&extra_conn));
     ASSERT_OK(extra_conn.Execute("DELETE FROM t WHERE h = 1 AND r1 = 13 AND r2 = 1"));
     ASSERT_OK(extra_conn.Execute("COMMIT"));
 
@@ -1200,19 +1208,36 @@ class PgMiniTestTxnHelper : public PgMiniTestNoTxnRetry {
     res = ASSERT_RESULT(conn.Fetch(
         "SELECT * FROM t WHERE h IN (1, 2) AND r1 = 11 FOR KEY SHARE"));
 
-    ASSERT_OK(extra_conn.Execute("BEGIN"));
+    ASSERT_OK(StartTxn(&extra_conn));
     ASSERT_NOK(extra_conn.Execute("DELETE FROM t WHERE h = 1 AND r1 = 11 AND r2 = 1"));
     ASSERT_OK(extra_conn.Execute("ROLLBACK"));
-    ASSERT_OK(extra_conn.Execute("BEGIN"));
+    ASSERT_OK(StartTxn(&extra_conn));
     ASSERT_NOK(extra_conn.Execute("DELETE FROM t WHERE h = 2 AND r1 = 11 AND r2 = 2"));
     ASSERT_OK(extra_conn.Execute("ROLLBACK"));
-    ASSERT_OK(extra_conn.Execute("BEGIN"));
+    ASSERT_OK(StartTxn(&extra_conn));
     ASSERT_OK(extra_conn.Execute("DELETE FROM t WHERE h = 2 AND r1 = 12 AND r2 = 2"));
     ASSERT_OK(extra_conn.Execute("COMMIT"));
 
     ASSERT_OK(conn.Execute("COMMIT;"));
     const auto count = ASSERT_RESULT(conn.template FetchValue<int64_t>("SELECT COUNT(*) FROM t"));
     ASSERT_EQ(4, count);
+  }
+
+  // Check that 2 rows with same PK can't be inserted from different txns.
+  void TestDuplicateInsert() {
+    DuplicateInsertImpl(IndexRequirement::NO, true /* low_pri_txn_insert_same_key */);
+  }
+
+  // Check that 2 rows with identical unique index can't be inserted from different txns.
+  void TestDuplicateUniqueIndexInsert() {
+    DuplicateInsertImpl(IndexRequirement::UNIQUE, false /* low_pri_txn_insert_same_key */);
+  }
+
+  // Check that 2 rows with identical non-unique index can be inserted from different txns.
+  void TestDuplicateNonUniqueIndexInsert() {
+    DuplicateInsertImpl(IndexRequirement::NON_UNIQUE,
+    false /* low_pri_txn_insert_same_key */,
+    true /* low_pri_txn_succeed */);
   }
 
   static Result<PGConn> SetHighPriTxn(Result<PGConn> connection) {
@@ -1230,16 +1255,49 @@ class PgMiniTestTxnHelper : public PgMiniTestNoTxnRetry {
     return connection;
   }
 
-  static CHECKED_STATUS StartTxn(PGConn* connection) {
+  static Status StartTxn(PGConn* connection) {
     return TxnHelper<level>::StartTxn(connection);
   }
 
-  static CHECKED_STATUS ExecuteInTxn(PGConn* connection, const std::string& query) {
+  static Status ExecuteInTxn(PGConn* connection, const std::string& query) {
     return TxnHelper<level>::ExecuteInTxn(connection, query);
   }
 
   static Result<PGResultPtr> FetchInTxn(PGConn* connection, const std::string& query) {
     return TxnHelper<level>::FetchInTxn(connection, query);
+  }
+
+ private:
+  enum class IndexRequirement {
+    NO,
+    UNIQUE,
+    NON_UNIQUE
+  };
+
+  void DuplicateInsertImpl(
+    IndexRequirement index, bool low_pri_txn_insert_same_key, bool low_pri_txn_succeed = false) {
+    auto conn = ASSERT_RESULT(SetHighPriTxn(Connect()));
+    ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v INT)"));
+    if (index != IndexRequirement::NO) {
+      ASSERT_OK(conn.Execute(Format("CREATE $0 INDEX ON t(v)",
+                                    index == IndexRequirement::UNIQUE ? "UNIQUE" : "")));
+    }
+    ASSERT_OK(StartTxn(&conn));
+    auto extra_conn = ASSERT_RESULT(SetLowPriTxn(Connect()));
+    ASSERT_OK(StartTxn(&extra_conn));
+    ASSERT_OK(extra_conn.Execute(Format("INSERT INTO t VALUES($0, 10)",
+                                        low_pri_txn_insert_same_key ? "1" : "2")));
+    ASSERT_OK(conn.Execute("INSERT INTO t VALUES(1, 10)"));
+    ASSERT_OK(conn.Execute("COMMIT"));
+    const auto low_pri_txn_commit_status = extra_conn.Execute("COMMIT");
+    if (low_pri_txn_succeed) {
+      ASSERT_OK(low_pri_txn_commit_status);
+    } else {
+      ASSERT_NOK(low_pri_txn_commit_status);
+    }
+    const auto count = ASSERT_RESULT(
+      extra_conn.template FetchValue<int64_t>("SELECT COUNT(*) FROM t WHERE v = 10"));
+    ASSERT_EQ(low_pri_txn_succeed ? 2 : 1, count);
   }
 };
 
@@ -1373,6 +1431,70 @@ TEST_F_EX(PgMiniTest,
   TestSameColumnUpdate();
 }
 
+TEST_F_EX(PgMiniTest,
+          YB_DISABLE_TEST_IN_TSAN(DuplicateInsertSerializable),
+          PgMiniTestTxnHelperSerializable) {
+  TestDuplicateInsert();
+}
+
+TEST_F_EX(PgMiniTest,
+          YB_DISABLE_TEST_IN_TSAN(DuplicateInsertSnapshot),
+          PgMiniTestTxnHelperSnapshot) {
+  TestDuplicateInsert();
+}
+
+TEST_F_EX(PgMiniTest,
+          YB_DISABLE_TEST_IN_TSAN(DuplicateUniqueIndexInsertSerializable),
+          PgMiniTestTxnHelperSerializable) {
+  TestDuplicateUniqueIndexInsert();
+}
+
+TEST_F_EX(PgMiniTest,
+          YB_DISABLE_TEST_IN_TSAN(DuplicateUniqueIndexInsertSnapshot),
+          PgMiniTestTxnHelperSnapshot) {
+  TestDuplicateUniqueIndexInsert();
+}
+
+TEST_F_EX(PgMiniTest,
+          YB_DISABLE_TEST_IN_TSAN(DuplicateNonUniqueIndexInsertSerializable),
+          PgMiniTestTxnHelperSerializable) {
+  TestDuplicateNonUniqueIndexInsert();
+}
+
+TEST_F_EX(PgMiniTest,
+          YB_DISABLE_TEST_IN_TSAN(DuplicateNonUniqueIndexInsertSnapshot),
+          PgMiniTestTxnHelperSnapshot) {
+  TestDuplicateNonUniqueIndexInsert();
+}
+
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(ConcurrentSingleRowUpdate)) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t(k INT PRIMARY KEY, counter INT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO t VALUES(1, 0)"));
+  const size_t thread_count = 10;
+  const size_t increment_per_thread = 5;
+  {
+    CountDownLatch latch(thread_count);
+    TestThreadHolder thread_holder;
+    for (size_t i = 0; i < thread_count; ++i) {
+      thread_holder.AddThreadFunctor([this, &stop = thread_holder.stop_flag(), &latch] {
+        auto thread_conn = ASSERT_RESULT(Connect());
+        ASSERT_OK(thread_conn.Execute("SET yb_enable_expression_pushdown TO true"));
+        latch.CountDown();
+        latch.Wait();
+        for (size_t j = 0; j < increment_per_thread; ++j) {
+          ASSERT_OK(thread_conn.Execute("UPDATE t SET counter = counter + 1 WHERE k = 1"));
+        }
+      });
+    }
+  }
+  auto res = ASSERT_RESULT(conn.Fetch("SELECT counter FROM t WHERE k = 1"));
+  ASSERT_EQ(1, PQnfields(res.get()));
+  ASSERT_EQ(1, PQntuples(res.get()));
+  auto counter = ASSERT_RESULT(GetInt32(res.get(), 0, 0));
+  ASSERT_EQ(thread_count * increment_per_thread, counter);
+}
+
 // ------------------------------------------------------------------------------------------------
 // A test performing manual transaction control on system tables.
 // ------------------------------------------------------------------------------------------------
@@ -1491,7 +1613,7 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBUpdateSysTablet)) {
     num_tables[2] = tablet_lock->pb.table_ids_size();
   }
   // Make sure that the system catalog tablet table_ids is persisted.
-  ASSERT_OK(cluster_->RestartSync());
+  ASSERT_OK(RestartCluster());
   catalog_manager = &ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
   sys_tablet = ASSERT_RESULT(catalog_manager->GetTabletInfo(master::kSysCatalogTabletId));
   {
@@ -1521,7 +1643,7 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBMarkDeleted)) {
   }
   ASSERT_FALSE(catalog_manager->AreTablesDeleting()) << "Tables should have finished deleting";
   // Make sure that the table deletions are persisted.
-  ASSERT_OK(cluster_->RestartSync());
+  ASSERT_OK(RestartCluster());
   // Refresh stale local variable after RestartSync.
   catalog_manager = &ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
   ASSERT_FALSE(catalog_manager->AreTablesDeleting());
@@ -1558,7 +1680,7 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBWithTables)) {
   }
   ASSERT_FALSE(catalog_manager->AreTablesDeleting()) << "Tables should have finished deleting";
   // Make sure that the table deletions are persisted.
-  ASSERT_OK(cluster_->RestartSync());
+  ASSERT_OK(RestartCluster());
   catalog_manager = &ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
   sys_tablet = ASSERT_RESULT(catalog_manager->GetTabletInfo(master::kSysCatalogTabletId));
   ASSERT_FALSE(catalog_manager->AreTablesDeleting());
@@ -1921,7 +2043,7 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(CreateDatabase)) {
   auto conn = ASSERT_RESULT(Connect());
   const std::string kDatabaseName = "testdb";
   ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", kDatabaseName));
-  ASSERT_OK(cluster_->RestartSync());
+  ASSERT_OK(RestartCluster());
 }
 
 void PgMiniTest::TestBigInsert(bool restart) {
@@ -1935,14 +2057,29 @@ void PgMiniTest::TestBigInsert(bool restart) {
   TestThreadHolder thread_holder;
 
   std::atomic<int> post_insert_reads{0};
-  thread_holder.AddThreadFunctor([this, &stop = thread_holder.stop_flag(), &post_insert_reads] {
+  std::atomic<bool> restarted{false};
+  thread_holder.AddThreadFunctor(
+      [this, &stop = thread_holder.stop_flag(), &post_insert_reads, &restarted] {
     auto connection = ASSERT_RESULT(Connect());
     while (!stop.load(std::memory_order_acquire)) {
-      auto res = ASSERT_RESULT(connection.FetchValue<int64_t>("SELECT SUM(a) FROM t"));
+      auto res = connection.FetchValue<int64_t>("SELECT SUM(a) FROM t");
+      if (!res.ok()) {
+        auto msg = res.status().message().ToBuffer();
+        ASSERT_TRUE(msg.find("server closed the connection unexpectedly") != std::string::npos)
+            << res.status();
+        while (!restarted.load() && !stop.load()) {
+          std::this_thread::sleep_for(10ms);
+        }
+        std::this_thread::sleep_for(1s);
+        LOG(INFO) << "Establishing new connection";
+        connection = ASSERT_RESULT(Connect());
+        restarted = false;
+        continue;
+      }
 
       // We should see zero or full sum only.
-      if (res) {
-        ASSERT_EQ(res, kNumRows * (kNumRows + 1) / 2);
+      if (*res) {
+        ASSERT_EQ(*res, kNumRows * (kNumRows + 1) / 2);
         ++post_insert_reads;
       }
     }
@@ -1953,19 +2090,18 @@ void PgMiniTest::TestBigInsert(bool restart) {
 
   if (restart) {
     LOG(INFO) << "Restart cluster";
-    ASSERT_OK(cluster_->RestartSync());
+    ASSERT_OK(RestartCluster());
+    restarted = true;
   }
 
-  ASSERT_OK(WaitFor([this] {
+  ASSERT_OK(WaitFor([this, &post_insert_reads] {
     auto intents_count = CountIntents(cluster_.get());
     LOG(INFO) << "Intents count: " << intents_count;
 
-    return intents_count == 0;
+    return intents_count == 0 && post_insert_reads.load(std::memory_order_acquire) > 0;
   }, 60s * kTimeMultiplier, "Intents cleanup", 200ms));
 
   thread_holder.Stop();
-
-  ASSERT_GT(post_insert_reads.load(std::memory_order_acquire), 0);
 
   FlushAndCompactTablets();
 
@@ -1981,7 +2117,7 @@ void PgMiniTest::TestBigInsert(bool restart) {
 
     for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
       Slice key = iter->key();
-      ASSERT_FALSE(key.TryConsumeByte(docdb::ValueTypeAsChar::kTransactionApplyState))
+      ASSERT_FALSE(key.TryConsumeByte(docdb::KeyEntryTypeAsChar::kTransactionApplyState))
           << "Key: " << iter->key().ToDebugString() << ", value: " << iter->value().ToDebugString();
     }
   }
@@ -2044,6 +2180,26 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(ConcurrentDeleteRowAndUpdateColumnWit
   TestConcurrentDeleteRowAndUpdateColumn(/* select_before_update= */ true);
 }
 
+// The test checks catalog version is updated only in case of changes in sys catalog.
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(CatalogVersionUpdateIfNeeded)) {
+  auto conn = ASSERT_RESULT(Connect());
+  const auto schema_ddl = "CREATE SCHEMA IF NOT EXISTS test";
+  const auto first_create_schema = ASSERT_RESULT(
+      IsCatalogVersionChangedDuringDdl(&conn, schema_ddl));
+  ASSERT_TRUE(first_create_schema);
+  const auto second_create_schema = ASSERT_RESULT(
+      IsCatalogVersionChangedDuringDdl(&conn, schema_ddl));
+  ASSERT_FALSE(second_create_schema);
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY)"));
+  const auto add_column_ddl = "ALTER TABLE t ADD COLUMN IF NOT EXISTS v INT";
+  const auto first_add_column = ASSERT_RESULT(
+      IsCatalogVersionChangedDuringDdl(&conn, add_column_ddl));
+  ASSERT_TRUE(first_add_column);
+  const auto second_add_column = ASSERT_RESULT(
+      IsCatalogVersionChangedDuringDdl(&conn, add_column_ddl));
+  ASSERT_FALSE(second_add_column);
+}
+
 // Test that we don't sequential restart read on the same table if intents were written
 // after the first read. GH #6972.
 TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(NoRestartSecondRead)) {
@@ -2085,41 +2241,120 @@ TEST_F_EX(
 // Tablet Splitting Tests
 // ------------------------------------------------------------------------------------------------
 
+namespace {
+
+YB_DEFINE_ENUM(KeyColumnType, (kHash)(kAsc)(kDesc));
+
 class PgMiniTestAutoScanNextPartitions : public PgMiniTest {
- public:
+ protected:
   void SetUp() override {
     FLAGS_TEST_index_read_multiple_partitions = true;
     PgMiniTest::SetUp();
   }
-};
 
-TEST_F_EX(
-    PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(AutoScanNextPartitions),
-    PgMiniTestAutoScanNextPartitions) {
-  auto conn = ASSERT_RESULT(Connect());
-  constexpr int numRows = 100;
-  ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v1 INT, v2 INT) "
-                         "SPLIT INTO 6 TABLETS"));
-  ASSERT_OK(conn.Execute("CREATE INDEX ON t(v1, v2)"));
+  Status IndexScan(PGConn* conn, KeyColumnType table_key, KeyColumnType index_key) {
+    RETURN_NOT_OK(conn->Execute("DROP TABLE IF EXISTS t"));
+    RETURN_NOT_OK(conn->ExecuteFormat(
+        "CREATE TABLE t (k INT, v1 INT, v2 INT, PRIMARY KEY (k $0)) $1",
+        ToPostgresKeyType(table_key), TableSplitOptions(table_key)));
+    RETURN_NOT_OK(conn->ExecuteFormat(
+        "CREATE INDEX ON t(v1 $0, v2 $0)", ToPostgresKeyType(index_key)));
 
-  // Insert elements into the table
-  for (int i = 0; i < numRows; i++) {
-    ASSERT_OK(conn.ExecuteFormat("INSERT INTO t (k, v1, v2) VALUES ($0, $1, $2)", i, 1, i));
+    constexpr int kNumRows = 100;
+    RETURN_NOT_OK(conn->ExecuteFormat(
+        "INSERT INTO t SELECT s, 1, s FROM generate_series(1, $0) AS s", kNumRows));
+
+    // Secondary index read from the table
+    // While performing secondary index read on ybctids, the pggate layer batches requests belonging
+    // to the same tablet. However, if the tablet is split after batching, we need a mechanism to
+    // execute the batched request across both the sub-tablets. We create a scenario to test this
+    // phenomenon here.
+    //
+    // FLAGS_index_read_multiple_partitions is a test flag when set will create a scenario to check
+    // if index scans of ybctids span across multiple tablets. Specifically in this example, we try
+    // to scan the elements which contain value v1 = 1 and see if they match the expected number
+    // of rows.
+    constexpr auto kQuery = "SELECT k FROM t WHERE v1 = 1";
+    RETURN_NOT_OK(conn->HasIndexScan(kQuery));
+    auto res = VERIFY_RESULT(conn->Fetch(kQuery));
+    auto lines = PQntuples(res.get());
+    SCHECK_EQ(lines, kNumRows, IllegalState, "Unexpected rows count");
+    return Status::OK();
   }
 
-  // Secondary index read from the table
-  // While performing secondary index read on ybctids, the pggate layer batches requests belonging
-  // to the same tablet. However, if the tablet is split after batching, we need a mechanism to
-  // execute the batched request across both the sub-tablets. We create a scenario to test this
-  // phenomenon here.
-  //
-  // FLAGS_index_read_multiple_partitions is a test flag when set will create a scenario to check if
-  // index scans of ybctids span across multiple tablets. Specifically in this example, we try to
-  // scan the for elements that are present in tablets 0,1 which contain value v1=1 and see if they
-  // match the expected number of rows.
-  auto res = ASSERT_RESULT(conn.Fetch("SELECT k FROM t WHERE v1 = 1"));
-  auto lines = PQntuples(res.get());
-  ASSERT_EQ(lines, numRows);
+  Status FKConstraint(PGConn* conn, KeyColumnType key_type) {
+    RETURN_NOT_OK(conn->Execute("DROP TABLE IF EXISTS ref_t, t1, t2"));
+    RETURN_NOT_OK(conn->ExecuteFormat("CREATE TABLE t1 (k INT, PRIMARY KEY(k $0)) $1",
+                                      ToPostgresKeyType(key_type),
+                                      TableSplitOptions(key_type)));
+    RETURN_NOT_OK(conn->ExecuteFormat("CREATE TABLE t2 (k INT, PRIMARY KEY(k $0)) $1",
+                                      ToPostgresKeyType(key_type),
+                                      TableSplitOptions(key_type)));
+    RETURN_NOT_OK(conn->Execute("CREATE TABLE ref_t (k INT,"
+                                "                    fk_1 INT REFERENCES t2(k),"
+                                "                    fk_2 INT REFERENCES t2(k))"));
+    constexpr int kNumRows = 100;
+    RETURN_NOT_OK(conn->ExecuteFormat(
+        "INSERT INTO t1 SELECT s FROM generate_series(1, $0) AS s", kNumRows));
+    RETURN_NOT_OK(conn->ExecuteFormat(
+        "INSERT INTO t2 SELECT s FROM generate_series(1, $0) AS s", kNumRows));
+    RETURN_NOT_OK(conn->ExecuteFormat(
+        "INSERT INTO ref_t SELECT s, s, s FROM generate_series(1, $0) AS s", kNumRows));
+    return Status::OK();
+  }
+
+ private:
+  static std::string TableSplitOptions(KeyColumnType key_type) {
+    switch(key_type) {
+      case KeyColumnType::kHash:
+        return "SPLIT INTO 10 TABLETS";
+      case KeyColumnType::kAsc:
+        return "SPLIT AT VALUES ((12), (25), (37), (50), (62), (75), (87))";
+      case KeyColumnType::kDesc:
+        return "SPLIT AT VALUES ((87), (75), (62), (50), (37), (25), (12))";
+    }
+    FATAL_INVALID_ENUM_VALUE(KeyColumnType, key_type);
+  }
+
+  static std::string ToPostgresKeyType(KeyColumnType key_type) {
+    switch(key_type) {
+      case KeyColumnType::kHash: return "";
+      case KeyColumnType::kAsc: return "ASC";
+      case KeyColumnType::kDesc: return "DESC";
+    }
+    FATAL_INVALID_ENUM_VALUE(KeyColumnType, key_type);
+  }
+
+};
+
+} // namespace
+
+// The test checks all rows are returned in case of index scan with dynamic table splitting for
+// different table and index key column type combinations (hash, asc, desc)
+TEST_F_EX(
+    PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(AutoScanNextPartitionsIndexScan),
+    PgMiniTestAutoScanNextPartitions) {
+  auto conn = ASSERT_RESULT(Connect());
+  for (auto table_key : kKeyColumnTypeArray) {
+    for (auto index_key : kKeyColumnTypeArray) {
+      ASSERT_OK_PREPEND(IndexScan(&conn, table_key, index_key),
+                        Format("Bad status in test with table_key=$0, index_key=$1",
+                               ToString(table_key),
+                               ToString(index_key)));
+    }
+  }
+}
+
+// The test checks foreign key constraint is not violated in case of referenced table dynamic
+// splitting for different key column types (hash, asc, desc).
+TEST_F_EX(
+    PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(AutoScanNextPartitionsFKConstraint),
+    PgMiniTestAutoScanNextPartitions) {
+  auto conn = ASSERT_RESULT(Connect());
+  for (auto table_key : kKeyColumnTypeArray) {
+    ASSERT_OK_PREPEND(FKConstraint(&conn, table_key),
+                      Format("Bad status in test with table_key=$0", ToString(table_key)));
+  }
 }
 
 class PgMiniTabletSplitTest : public PgMiniTest {
@@ -2163,19 +2398,6 @@ void PgMiniTest::DestroyTable(std::string table_name) {
   ASSERT_OK(conn.ExecuteFormat("DROP TABLE $0", table_name));
 }
 
-void PgMiniTest::GetTableIDFromTableName(const std::string table_name, std::string* table_id) {
-  // Get YBClient handler and tablet ID. Using this we can get the number of tablets before starting
-  // the test and before the test ends. With this we can ensure that tablet splitting has occurred.
-  auto client = ASSERT_RESULT(cluster_->CreateClient());
-  const auto tables = ASSERT_RESULT(client->ListTables());
-  for (const auto& table : tables) {
-    if (table.has_table() && table.table_name() == "update_pk_complex_two_hash_one_range_keys") {
-      table_id->assign(table.table_id());
-      break;
-    }
-  }
-}
-
 void PgMiniTest::StartReadWriteThreads(const std::string table_name,
     TestThreadHolder *thread_holder) {
   // Writer thread that does parallel writes into table
@@ -2210,8 +2432,7 @@ TEST_F_EX(
   std::string table_name = "update_pk_complex_two_hash_one_range_keys";
   CreateTableAndInitialize(table_name, 1);
 
-  std::string table_id;
-  GetTableIDFromTableName(table_name, &table_id);
+  auto table_id = ASSERT_RESULT(GetTableIDFromTableName(table_name));
   auto start_num_tablets = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id).size();
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = true;
 
@@ -2246,7 +2467,7 @@ TEST_F_EX(
   // upper_bound for the tablet is empty to empty. Hence, to test both situations we run this test
   // with one tablet and three tablets respectively.
   CreateTableAndInitialize(table_name, 3);
-  GetTableIDFromTableName(table_name, &table_id);
+  table_id = ASSERT_RESULT(GetTableIDFromTableName(table_name));
   start_num_tablets = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id).size();
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = true;
 
@@ -2370,13 +2591,13 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(BigInsertWithAbortedIntentsAndRestart
   ASSERT_OK(conn.Execute("CREATE TABLE t (a int PRIMARY KEY) SPLIT INTO 1 TABLETS"));
 
   ASSERT_OK(conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
-  for (int64_t rowNum = 0; rowNum < kNumRows; ++rowNum) {
-    auto shouldAbort = rowNum % kRowNumModToAbort == 0;
-    if (shouldAbort) {
+  for (int64_t row_num = 0; row_num < kNumRows; ++row_num) {
+    auto should_abort = row_num % kRowNumModToAbort == 0;
+    if (should_abort) {
       ASSERT_OK(conn.Execute("SAVEPOINT A"));
     }
-    ASSERT_OK(conn.ExecuteFormat("INSERT INTO t VALUES ($0)", rowNum));
-    if (shouldAbort) {
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO t VALUES ($0)", row_num));
+    if (should_abort) {
       ASSERT_OK(conn.Execute("ROLLBACK TO A"));
     }
   }
@@ -2384,7 +2605,8 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(BigInsertWithAbortedIntentsAndRestart
   ASSERT_OK(conn.CommitTransaction());
 
   LOG(INFO) << "Restart cluster";
-  ASSERT_OK(cluster_->RestartSync());
+  ASSERT_OK(RestartCluster());
+  conn = ASSERT_RESULT(Connect());
 
   ASSERT_OK(WaitFor([this] {
     auto intents_count = CountIntents(cluster_.get());
@@ -2393,15 +2615,15 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(BigInsertWithAbortedIntentsAndRestart
     return intents_count == 0;
   }, 60s * kTimeMultiplier, "Intents cleanup", 200ms));
 
-  for (int64_t rowNum = 0; rowNum < kNumRows; ++rowNum) {
-    auto shouldAbort = rowNum % kRowNumModToAbort == 0;
+  for (int64_t row_num = 0; row_num < kNumRows; ++row_num) {
+    auto should_abort = row_num % kRowNumModToAbort == 0;
 
-    auto res = ASSERT_RESULT(conn.FetchFormat("SELECT * FROM t WHERE a = $0", rowNum));
-    if (shouldAbort) {
-      EXPECT_NOT_OK(GetInt32(res.get(), 0, 0)) << "Did not expect to find value for: " << rowNum;
+    auto res = ASSERT_RESULT(conn.FetchFormat("SELECT * FROM t WHERE a = $0", row_num));
+    if (should_abort) {
+      EXPECT_NOT_OK(GetInt32(res.get(), 0, 0)) << "Did not expect to find value for: " << row_num;
     } else {
       int64_t value = EXPECT_RESULT(GetInt32(res.get(), 0, 0));
-      EXPECT_EQ(value, rowNum) << "Expected to find " << rowNum << ", found " << value << ".";
+      EXPECT_EQ(value, row_num) << "Expected to find " << row_num << ", found " << value << ".";
     }
   }
 }
@@ -2433,7 +2655,10 @@ TEST_F(
   RunManyConcurrentReadersTest();
 }
 
-TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(TestSerializableStrongReadLockNotAborted)) {
+// TODO(savepoint): This test would start failing until issue #9587 is fixed. It worked earlier but
+// is expected to fail, as pointed out in https://phabricator.dev.yugabyte.com/D17177
+// Change macro to YB_DISABLE_TEST_IN_TSAN if re-enabling.
+TEST_F(PgMiniTest, YB_DISABLE_TEST(TestSerializableStrongReadLockNotAborted)) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE TABLE t (a int PRIMARY KEY, b int) SPLIT INTO 1 TABLETS"));
   for (int i = 0; i < 100; ++i) {
@@ -2457,6 +2682,81 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(TestSerializableStrongReadLockNotAbor
       << "fail.\n"
       << "Commit status: " << commit_status << ".\n"
       << "Update status: " << update_status << ".\n";
+}
+
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(ColocatedCompaction)) {
+  FLAGS_timestamp_history_retention_interval_sec = 0;
+  FLAGS_history_cutoff_propagation_interval_ms = 1;
+
+  const std::string kDatabaseName = "testdb";
+  const auto kNumTables = 3;
+  constexpr int kKeys = 100;
+
+  PGConn conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 with colocated=true", kDatabaseName));
+
+  conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+  for (int i = 0; i < kNumTables; ++i) {
+    ASSERT_OK(conn.ExecuteFormat(R"#(
+        CREATE TABLE test$0 (
+          key INTEGER NOT NULL PRIMARY KEY,
+          value INTEGER,
+          string VARCHAR
+        )
+      )#", i));
+    for (int j = 0; j < kKeys; ++j) {
+      ASSERT_OK(conn.ExecuteFormat(
+          "INSERT INTO test$0(key, value, string) VALUES($1, -$1, '$2')", i, j,
+          RandomHumanReadableString(128_KB)));
+    }
+  }
+
+  ASSERT_OK(cluster_->FlushTablets());
+  uint64_t files_size = 0;
+  for (const auto& peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kAll)) {
+    files_size += peer->tablet()->GetCurrentVersionSstFilesUncompressedSize();
+  }
+
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE test$0 DROP COLUMN string;", kNumTables - 1));
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE test$0 DROP COLUMN string;", 0));
+
+  ASSERT_OK(cluster_->CompactTablets());
+
+  uint64_t new_files_size = 0;
+  for (const auto& peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kAll)) {
+    new_files_size += peer->tablet()->GetCurrentVersionSstFilesUncompressedSize();
+  }
+
+  LOG(INFO) << "Old files size: " << files_size << ", new files size: " << new_files_size;
+  ASSERT_LE(new_files_size * 2, files_size);
+  ASSERT_GE(new_files_size * 3, files_size);
+}
+
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(CompactionAfterDBDrop)) {
+  const std::string kDatabaseName = "testdb";
+  auto& catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
+  auto sys_catalog_tablet = catalog_manager.sys_catalog()->tablet_peer()->tablet();
+
+  ASSERT_OK(sys_catalog_tablet->Flush(tablet::FlushMode::kSync));
+  ASSERT_OK(sys_catalog_tablet->ForceFullRocksDBCompact());
+  uint64_t base_file_size = sys_catalog_tablet->GetCurrentVersionSstFilesUncompressedSize();;
+
+  PGConn conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", kDatabaseName));
+  ASSERT_OK(conn.ExecuteFormat("DROP DATABASE $0", kDatabaseName));
+  ASSERT_OK(sys_catalog_tablet->Flush(tablet::FlushMode::kSync));
+
+  // Make sure compaction works without error for the hybrid_time > history_cutoff case.
+  ASSERT_OK(sys_catalog_tablet->ForceFullRocksDBCompact());
+
+  FLAGS_timestamp_history_retention_interval_sec = 0;
+  FLAGS_history_cutoff_propagation_interval_ms = 1;
+
+  ASSERT_OK(sys_catalog_tablet->ForceFullRocksDBCompact());
+
+  uint64_t new_file_size = sys_catalog_tablet->GetCurrentVersionSstFilesUncompressedSize();;
+  LOG(INFO) << "Base file size: " << base_file_size << ", new file size: " << new_file_size;
+  ASSERT_LE(new_file_size, base_file_size + 100_KB);
 }
 
 // Use special mode when non leader master times out all rpcs.
@@ -2487,6 +2787,51 @@ TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(NonRespondingMaster),
       pg_host_port(), cluster_->GetMasterAddresses(), cluster_->GetTserverHTTPAddresses(),
       *tmp_dir, {"--backup_location", tmp_dir / "backup", "--no_upload", "--keyspace", "ysql.test",
        "create"}));
+}
+
+
+// The test checks that YSQL doesn't wait for sent RPC response in case of process termination.
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(NoWaitForRPCOnTermination)) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t(k INT PRIMARY KEY) SPLIT INTO 1 TABLETS"));
+  constexpr auto kRows = RegularBuildVsDebugVsSanitizers(1000000, 100000, 30000);
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO t SELECT s FROM generate_series(1, $0) AS s", kRows));
+  constexpr auto kLongTimeQuery = "SELECT COUNT(*) FROM t";
+  std::atomic<MonoTime> termination_start;
+  MonoTime termination_end;
+  {
+    CountDownLatch latch(2);
+    TestThreadHolder thread_holder;
+    thread_holder.AddThreadFunctor([this, &latch, &termination_start, kLongTimeQuery] {
+      auto thread_conn = ASSERT_RESULT(Connect());
+      latch.CountDown();
+      latch.Wait();
+      const auto deadline = MonoTime::Now() + MonoDelta::FromSeconds(30);
+      while (MonoTime::Now() < deadline) {
+        const auto local_termination_start = MonoTime::Now();
+        auto res = ASSERT_RESULT(thread_conn.FetchFormat(
+          "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE query like '$0'",
+          kLongTimeQuery));
+        auto lines = PQntuples(res.get());
+        if (lines) {
+          termination_start.store(local_termination_start, std::memory_order_release);
+          break;
+        }
+      }
+    });
+    latch.CountDown();
+    latch.Wait();
+    const auto res = conn.Fetch(kLongTimeQuery);
+    ASSERT_NOK(res);
+    ASSERT_STR_CONTAINS(res.status().ToString(),
+                        "terminating connection due to administrator command");
+    termination_end = MonoTime::Now();
+  }
+  const auto termination_duration =
+      (termination_end - termination_start.load(std::memory_order_acquire)).ToMilliseconds();
+  ASSERT_GT(termination_duration, 0);
+  ASSERT_LT(termination_duration, 2000);
 }
 
 } // namespace pgwrapper

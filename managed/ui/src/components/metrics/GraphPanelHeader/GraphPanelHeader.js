@@ -6,6 +6,7 @@ import { Dropdown, MenuItem, FormControl } from 'react-bootstrap';
 import momentLocalizer from 'react-widgets-moment';
 import { withRouter, browserHistory } from 'react-router';
 import moment from 'moment';
+import { toast } from 'react-toastify';
 
 import _ from 'lodash';
 
@@ -323,7 +324,8 @@ class GraphPanelHeader extends Component {
       showModal,
       closeModal,
       visibleModal,
-      enableNodeComparisonModal
+      enableNodeComparisonModal,
+      enableTopNodes
     } = this.props;
     const {
       filterType,
@@ -393,7 +395,7 @@ class GraphPanelHeader extends Component {
     // TODO: Need to fix handling of query params on Metrics tab
     const liveQueriesLink =
       this.state.currentSelectedUniverse &&
-      this.state.nodeName !== 'all' &&
+      this.state.nodeName !== 'all' && this.state.nodeName !== 'top' &&
       `/universes/${this.state.currentSelectedUniverse.universeUUID}/queries?nodeName=${this.state.nodeName}`;
 
     return (
@@ -415,6 +417,7 @@ class GraphPanelHeader extends Component {
                     nodeItemChanged={this.nodeItemChanged}
                     selectedUniverse={this.state.currentSelectedUniverse}
                     selectedNode={this.state.currentSelectedNode}
+                    topNodesSelection={enableTopNodes}
                   />
                   {liveQueriesLink && !universePaused && (
                     <Link to={liveQueriesLink} style={{ marginLeft: '15px' }}>
@@ -487,6 +490,33 @@ class GraphPanelHeader extends Component {
                           {prometheusQueryEnabled
                             ? 'Disable Prometheus query'
                             : 'Enable Prometheus query'}
+                        </MenuItem>
+                        <MenuItem onClick={() => {
+                          self.props.getGrafanaJson()
+                            .then((response) => {
+                              return new Blob([JSON.stringify(response.data, null, 2)], {
+                                type: 'application/json'
+                              });
+                            })
+                            .catch((error) => {
+                              toast.error("Error in downloading Grafana JSON: " + error.message);
+                              return null;
+                            })
+                            .then((blob) => {
+                              if (blob != null) {
+                                const url = window.URL.createObjectURL(blob);
+                                const a = document.createElement('a');
+                                a.style.display = 'none';
+                                a.href = url;
+                                a.download = 'Grafana_Dashboard.json';
+                                document.body.appendChild(a);
+                                a.click();
+                                window.URL.revokeObjectURL(url);
+                                a.remove();
+                              }
+                            })
+                        }}>
+                          {'Download Grafana JSON'}
                         </MenuItem>
                       </Dropdown.Menu>
                     </Dropdown>

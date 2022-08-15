@@ -45,11 +45,12 @@ autoscales
 autoscaling
 awardable
 awardables
-Ayoa
 Axios
+Ayoa
 Azure
 B-tree
 backfilling
+backoff
 backport
 backported
 backporting
@@ -89,13 +90,14 @@ Caddy
 callstack
 callstacks
 Camo
+Camunda
 canonicalized
 captcha
 CentOS
 Certbot
+chai
 changeset
 changesets
-chai
 ChaosKube
 chatbot
 chatbots
@@ -111,6 +113,7 @@ Codepen
 Cognito
 colocated
 colocating
+colocation
 compilable
 composable
 Conda
@@ -136,6 +139,7 @@ Datadog
 datasource
 datasources
 datetime
+Debezium
 Debian
 Decompressor
 decryptable
@@ -394,6 +398,7 @@ namespacings
 Nanoc
 negatable
 Netlify
+nginx
 Nokogiri
 noteable
 noteables
@@ -455,6 +460,8 @@ prepending
 prepends
 prepopulated
 Prettifier
+Prisma
+Prisma
 Pritaly
 Priyanka
 profiler
@@ -513,6 +520,7 @@ reindexing
 reinitialize
 reinitializing
 relicensing
+relref
 remediations
 replicables
 repmgr
@@ -536,6 +544,7 @@ reverifies
 reverify
 roadmap
 roadmaps
+rollback
 rollout
 rollouts
 rsync
@@ -565,6 +574,8 @@ scrollable
 Semgrep
 Sendmail
 Sentry
+Sequelize
+serializable
 serializer
 serializers
 serializing
@@ -575,6 +586,8 @@ sharding
 shfmt
 Shibboleth
 Shopify
+shortcode
+shortcodes
 Sidekiq
 Silverlight
 Sisense
@@ -651,6 +664,8 @@ Sysbench
 syscall
 syscalls
 syslog
+tablespace
+tablespaces
 tanuki
 tcpdump
 templated
@@ -685,8 +700,8 @@ triaged
 triages
 triaging
 Trivy
-truthy
 Truststore
+truthy
 Twilio
 Twitter
 TypeScript
@@ -824,8 +839,8 @@ worktrees
 Worldline
 Xcode
 Xeon
-YouTrack
 ycqlsh
+YouTrack
 ysqlsh
 ytt
 Yubico

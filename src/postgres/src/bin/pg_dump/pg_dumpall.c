@@ -628,6 +628,10 @@ help(void)
 	printf(_("  --disable-dollar-quoting     disable dollar quoting, use SQL standard quoting\n"));
 	printf(_("  --disable-triggers           disable triggers during data-only restore\n"));
 	printf(_("  --if-exists                  use IF EXISTS when dropping objects\n"));
+	printf(_("  --include-yb-metadata        include Yugabyte-specific metadata, uses extended\n"
+			 "                               YSQL syntax not compatible with PostgreSQL.\n"
+			 "                               (As of now, doesn't automatically include some things\n"
+			 "                               like SPLIT details).\n"));
 	printf(_("  --inserts                    dump data as INSERT commands, rather than COPY\n"));
 	printf(_("  --load-via-partition-root    load partitions via the root table\n"));
 	printf(_("  --no-comments                do not dump comments\n"));

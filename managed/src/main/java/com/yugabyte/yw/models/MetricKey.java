@@ -4,9 +4,7 @@ package com.yugabyte.yw.models;
 
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Map.Entry;
 import java.util.UUID;
-import java.util.stream.Collectors;
 import lombok.Builder;
 import lombok.EqualsAndHashCode;
 import lombok.Value;
@@ -34,8 +32,8 @@ public class MetricKey {
       return this;
     }
 
-    public MetricKeyBuilder targetUuid(UUID targetUuid) {
-      this.sourceUuid = targetUuid;
+    public MetricKeyBuilder sourceUuid(UUID sourceUuid) {
+      this.sourceUuid = sourceUuid;
       return this;
     }
 
@@ -66,13 +64,7 @@ public class MetricKey {
   public static MetricKey from(Metric metric) {
     return MetricKey.builder()
         .sourceKey(MetricSourceKey.from(metric))
-        .sourceLabels(
-            metric
-                .getLabels()
-                .entrySet()
-                .stream()
-                .filter(e -> metric.getKeyLabels().contains(e.getKey()))
-                .collect(Collectors.toMap(Entry::getKey, Entry::getValue)))
+        .sourceLabels(metric.getKeyLabelValues())
         .build();
   }
 }

@@ -12,7 +12,9 @@ import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.eq;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -20,14 +22,14 @@ import static play.inject.Bindings.bind;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.common.ApiUtils;
-import com.yugabyte.yw.common.ShellKubernetesManager;
-import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.RegexMatcher;
-import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.ShellKubernetesManager;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -40,6 +42,10 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import io.fabric8.kubernetes.api.model.Pod;
+import io.fabric8.kubernetes.api.model.PodList;
+import io.fabric8.kubernetes.api.model.Service;
+import io.fabric8.kubernetes.api.model.ServiceList;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -58,15 +64,8 @@ import org.pac4j.play.CallbackController;
 import org.pac4j.play.store.PlayCacheSessionStore;
 import org.pac4j.play.store.PlaySessionStore;
 import org.yaml.snakeyaml.Yaml;
-
-import io.fabric8.kubernetes.api.model.Pod;
-import io.fabric8.kubernetes.api.model.PodList;
-import io.fabric8.kubernetes.api.model.Service;
-import io.fabric8.kubernetes.api.model.ServiceList;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
-import play.modules.swagger.SwaggerModule;
-import play.test.Helpers;
 
 public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
   private static final String CERTS_DIR = "/tmp/yugaware_tests/kcet_certs";
@@ -102,7 +101,6 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     mockSessionStore = mock(PlayCacheSessionStore.class);
     mockAlertConfigurationWriter = mock(AlertConfigurationWriter.class);
     return new GuiceApplicationBuilder()
-        .disable(SwaggerModule.class)
         .disable(GuiceModule.class)
         .configure(testDatabase())
         .overrides(bind(ShellKubernetesManager.class).toInstance(kubernetesManager))
@@ -125,12 +123,14 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     defaultUniverse = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
     defaultUniverse = updateUniverseDetails("small");
     new File(CERTS_DIR).mkdirs();
+    Config spyConf = spy(app.config());
+    doReturn(CERTS_DIR).when(spyConf).getString("yb.storage.path");
     defaultCert =
         CertificateInfo.get(
             CertificateHelper.createRootCA(
+                spyConf,
                 defaultUniverse.getUniverseDetails().nodePrefix,
-                defaultProvider.customerUUID,
-                CERTS_DIR));
+                defaultProvider.customerUUID));
     defaultUniverse.updateConfig(
         ImmutableMap.of(Universe.HELM2_LEGACY, Universe.HelmLegacy.V3.toString()));
   }
@@ -172,7 +172,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     params.providerUUID = defaultProvider.uuid;
     params.commandType = commandType;
     params.config = config;
-    params.nodePrefix = defaultUniverse.getUniverseDetails().nodePrefix;
+    params.helmReleaseName = defaultUniverse.getUniverseDetails().nodePrefix;
     params.universeUUID = defaultUniverse.universeUUID;
     if (setNamespace) {
       params.namespace = namespace;
@@ -189,7 +189,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     params.ybSoftwareVersion = ybSoftwareVersion;
     params.providerUUID = defaultProvider.uuid;
     params.commandType = commandType;
-    params.nodePrefix = defaultUniverse.getUniverseDetails().nodePrefix;
+    params.helmReleaseName = defaultUniverse.getUniverseDetails().nodePrefix;
     params.universeUUID = defaultUniverse.universeUUID;
     params.config = config;
     params.placementInfo = placementInfo;
@@ -356,6 +356,10 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
             == Universe.HelmLegacy.V2TO3;
     if (helmLegacy) {
       expectedOverrides.put("helm2Legacy", helmLegacy);
+    }
+    if (defaultUniverse.getUniverseDetails().useNewHelmNamingStyle) {
+      expectedOverrides.put("oldNamingStyle", false);
+      expectedOverrides.put("fullnameOverride", "host");
     }
 
     return expectedOverrides;
@@ -543,11 +547,11 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
         Universe.saveDetails(
             defaultUniverse.universeUUID,
             ApiUtils.mockUniverseUpdater(defaultUserIntent, "host", true));
+    u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater(defaultCert.uuid));
     hackPlacementUUID = u.getUniverseDetails().getPrimaryCluster().uuid;
     KubernetesCommandExecutor kubernetesCommandExecutor =
         createExecutor(
             KubernetesCommandExecutor.CommandType.HELM_INSTALL, /* set namespace */ true);
-    kubernetesCommandExecutor.taskParams().rootCA = defaultCert.uuid;
     kubernetesCommandExecutor.run();
 
     ArgumentCaptor<String> expectedYbSoftwareVersion = ArgumentCaptor.forClass(String.class);
@@ -591,11 +595,11 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
         Universe.saveDetails(
             defaultUniverse.universeUUID,
             ApiUtils.mockUniverseUpdater(defaultUserIntent, "host", true));
+    u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater(defaultCert.uuid));
     hackPlacementUUID = u.getUniverseDetails().getPrimaryCluster().uuid;
     KubernetesCommandExecutor kubernetesCommandExecutor =
         createExecutor(
             KubernetesCommandExecutor.CommandType.HELM_INSTALL, /* set namespace */ true);
-    kubernetesCommandExecutor.taskParams().rootCA = defaultCert.uuid;
     kubernetesCommandExecutor.run();
 
     ArgumentCaptor<String> expectedYbSoftwareVersion = ArgumentCaptor.forClass(String.class);
@@ -639,11 +643,11 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
         Universe.saveDetails(
             defaultUniverse.universeUUID,
             ApiUtils.mockUniverseUpdater(defaultUserIntent, "host", true));
+    u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater(defaultCert.uuid));
     hackPlacementUUID = u.getUniverseDetails().getPrimaryCluster().uuid;
     KubernetesCommandExecutor kubernetesCommandExecutor =
         createExecutor(
             KubernetesCommandExecutor.CommandType.HELM_INSTALL, /* set namespace */ true);
-    kubernetesCommandExecutor.taskParams().rootCA = defaultCert.uuid;
     kubernetesCommandExecutor.run();
 
     ArgumentCaptor<String> expectedYbSoftwareVersion = ArgumentCaptor.forClass(String.class);
@@ -1015,6 +1019,46 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
   }
 
   @Test
+  public void testHelmInstallNewNaming() throws IOException {
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.universeUUID, ApiUtils.mockUniverseUpdaterWithHelmNamingStyle(true));
+
+    KubernetesCommandExecutor kubernetesCommandExecutor =
+        createExecutor(
+            KubernetesCommandExecutor.CommandType.HELM_INSTALL, /* set namespace */ true);
+    kubernetesCommandExecutor.run();
+
+    ArgumentCaptor<String> expectedYbSoftwareVersion = ArgumentCaptor.forClass(String.class);
+    ArgumentCaptor<UUID> expectedProviderUUID = ArgumentCaptor.forClass(UUID.class);
+    ArgumentCaptor<String> expectedNodePrefix = ArgumentCaptor.forClass(String.class);
+    ArgumentCaptor<String> expectedNamespace = ArgumentCaptor.forClass(String.class);
+    ArgumentCaptor<String> expectedOverrideFile = ArgumentCaptor.forClass(String.class);
+    ArgumentCaptor<Map<String, String>> expectedConfig = ArgumentCaptor.forClass(Map.class);
+    verify(kubernetesManager, times(1))
+        .helmInstall(
+            expectedYbSoftwareVersion.capture(),
+            expectedConfig.capture(),
+            expectedProviderUUID.capture(),
+            expectedNodePrefix.capture(),
+            expectedNamespace.capture(),
+            expectedOverrideFile.capture());
+    assertEquals(ybSoftwareVersion, expectedYbSoftwareVersion.getValue());
+    assertEquals(config, expectedConfig.getValue());
+    assertEquals(defaultProvider.uuid, expectedProviderUUID.getValue());
+    assertEquals(defaultUniverse.getUniverseDetails().nodePrefix, expectedNodePrefix.getValue());
+    assertEquals(namespace, expectedNamespace.getValue());
+
+    String overrideFileRegex = "(.*)" + defaultUniverse.universeUUID + "(.*).yml";
+    assertThat(expectedOverrideFile.getValue(), RegexMatcher.matchesRegex(overrideFileRegex));
+    Yaml yaml = new Yaml();
+    InputStream is = new FileInputStream(new File(expectedOverrideFile.getValue()));
+    Map<String, Object> overrides = yaml.loadAs(is, Map.class);
+
+    assertEquals(getExpectedOverrides(true), overrides);
+  }
+
+  @Test
   public void testHelmDelete() {
     KubernetesCommandExecutor kubernetesCommandExecutor =
         createExecutor(KubernetesCommandExecutor.CommandType.HELM_DELETE, /* set namespace */ true);
@@ -1044,15 +1088,20 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
 
   @Test
   public void testPodInfo() {
-    testPodInfoBase(false);
+    testPodInfoBase(false, false);
   }
 
   @Test
   public void testPodInfoWithNamespace() {
-    testPodInfoBase(true);
+    testPodInfoBase(true, false);
   }
 
-  private void testPodInfoBase(boolean setNamespace) {
+  @Test
+  public void testPodInfoWithNewNaming() {
+    testPodInfoBase(false, true);
+  }
+
+  private void testPodInfoBase(boolean setNamespace, boolean newNamingStyle) {
     String nodePrefix = defaultUniverse.getUniverseDetails().nodePrefix;
     String namespace = nodePrefix;
     Map<String, String> azConfig = new HashMap();
@@ -1065,38 +1114,33 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     }
     defaultAZ.updateConfig(azConfig);
 
+    String helmNameSuffix = "";
+    if (newNamingStyle) {
+      helmNameSuffix = nodePrefix + "-yugabyte-";
+    }
+
     String podsString =
         "{\"items\": [{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\","
-            + " \"podIP\": \"123.456.78.90\"}, \"spec\": {\"hostname\": \"yb-master-0\"},"
-            + " \"metadata\": {\"namespace\": \""
-            + namespace
-            + "\"}},"
+            + " \"podIP\": \"123.456.78.90\"}, \"spec\": {\"hostname\": \"%1$syb-master-0\"},"
+            + " \"metadata\": {\"namespace\": \"%2$s\"}},"
             + "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", "
-            + "\"podIP\": \"123.456.78.91\"}, \"spec\": {\"hostname\": \"yb-tserver-0\"},"
-            + " \"metadata\": {\"namespace\": \""
-            + namespace
-            + "\"}},"
+            + "\"podIP\": \"123.456.78.91\"}, \"spec\": {\"hostname\": \"%1$syb-tserver-0\"},"
+            + " \"metadata\": {\"namespace\": \"%2$s\"}},"
             + "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", "
-            + "\"podIP\": \"123.456.78.92\"}, \"spec\": {\"hostname\": \"yb-master-1\"},"
-            + " \"metadata\": {\"namespace\": \""
-            + namespace
-            + "\"}},"
+            + "\"podIP\": \"123.456.78.92\"}, \"spec\": {\"hostname\": \"%1$syb-master-1\"},"
+            + " \"metadata\": {\"namespace\": \"%2$s\"}},"
             + "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\","
-            + " \"podIP\": \"123.456.78.93\"}, \"spec\": {\"hostname\": \"yb-tserver-1\"},"
-            + " \"metadata\": {\"namespace\": \""
-            + namespace
-            + "\"}},"
+            + " \"podIP\": \"123.456.78.93\"}, \"spec\": {\"hostname\": \"%1$syb-tserver-1\"},"
+            + " \"metadata\": {\"namespace\": \"%2$s\"}},"
             + "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", "
-            + "\"podIP\": \"123.456.78.94\"}, \"spec\": {\"hostname\": \"yb-master-2\"},"
-            + " \"metadata\": {\"namespace\": \""
-            + namespace
-            + "\"}},"
+            + "\"podIP\": \"123.456.78.94\"}, \"spec\": {\"hostname\": \"%1$syb-master-2\"},"
+            + " \"metadata\": {\"namespace\": \"%2$s\"}},"
             + "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", "
-            + "\"podIP\": \"123.456.78.95\"}, \"spec\": {\"hostname\": \"yb-tserver-2\"},"
-            + " \"metadata\": {\"namespace\": \""
-            + namespace
-            + "\"}}]}";
-    List<Pod> podList = TestUtils.deserialize(podsString, PodList.class).getItems();
+            + "\"podIP\": \"123.456.78.95\"}, \"spec\": {\"hostname\": \"%1$syb-tserver-2\"},"
+            + " \"metadata\": {\"namespace\": \"%2$s\"}}]}";
+    List<Pod> podList =
+        TestUtils.deserialize(String.format(podsString, helmNameSuffix, namespace), PodList.class)
+            .getItems();
     when(kubernetesManager.getPodInfos(any(), any(), any())).thenReturn(podList);
     KubernetesCommandExecutor kubernetesCommandExecutor =
         createExecutor(
@@ -1106,7 +1150,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     kubernetesCommandExecutor.run();
     verify(kubernetesManager, times(1)).getPodInfos(azConfig, nodePrefix, namespace);
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.universeUUID);
-    ImmutableList<String> pods =
+    ImmutableList<String> nodeNames =
         ImmutableList.of(
             "yb-master-0",
             "yb-master-1",
@@ -1114,14 +1158,17 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
             "yb-tserver-0",
             "yb-tserver-1",
             "yb-tserver-2");
-    for (String podName : pods) {
-      NodeDetails node = defaultUniverse.getNode(podName);
+    for (String nodeName : nodeNames) {
+      NodeDetails node = defaultUniverse.getNode(nodeName);
       assertNotNull(node);
+      String podName = helmNameSuffix + nodeName;
       String serviceName = podName.contains("master") ? "yb-masters" : "yb-tservers";
       assertTrue(podName.contains("master") ? node.isMaster : node.isTserver);
       assertEquals(
           node.cloudInfo.private_ip,
-          String.format("%s.%s.%s.%s", podName, serviceName, namespace, "svc.cluster.local"));
+          String.format(
+              "%s.%s%s.%s.%s",
+              podName, helmNameSuffix, serviceName, namespace, "svc.cluster.local"));
     }
   }
 

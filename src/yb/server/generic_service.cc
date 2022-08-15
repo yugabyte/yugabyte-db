@@ -97,9 +97,9 @@ void GenericServiceImpl::SetFlag(const SetFlagRequestPB* req,
   }
 
   // Validate that the flag is runtime-changeable.
-  unordered_set<string> tags;
+  unordered_set<FlagTag> tags;
   GetFlagTags(req->flag(), &tags);
-  if (!ContainsKey(tags, "runtime")) {
+  if (!ContainsKey(tags, FlagTag::kRuntime)) {
     if (req->force()) {
       LOG(WARNING) << rpc.requestor_string() << " forcing change of "
                    << "non-runtime-safe flag " << req->flag();
@@ -126,7 +126,7 @@ void GenericServiceImpl::SetFlag(const SetFlagRequestPB* req,
     resp->set_result(SetFlagResponsePB::BAD_VALUE);
     resp->set_msg("Unable to set flag: bad value");
   } else {
-    bool is_sensitive = ContainsKey(tags, "sensitive_info");
+    bool is_sensitive = ContainsKey(tags, FlagTag::kSensitive_info);
     LOG(INFO) << rpc.requestor_string() << " changed flags via RPC: "
               << req->flag() << " from '" << (is_sensitive ? "***" : old_val)
               << "' to '" << (is_sensitive ? "***" : req->value()) << "'";
@@ -193,6 +193,28 @@ void GenericServiceImpl::GetStatus(const GetStatusRequestPB* req,
 
 void GenericServiceImpl::Ping(
     const PingRequestPB* req, PingResponsePB* resp, rpc::RpcContext rpc) {
+  rpc.RespondSuccess();
+}
+
+void GenericServiceImpl::ReloadCertificates(
+    const ReloadCertificatesRequestPB* req, ReloadCertificatesResponsePB* resp,
+    rpc::RpcContext rpc) {
+  const auto status = server_->ReloadKeysAndCertificates();
+  if (!status.ok()) {
+    LOG(ERROR) << "Reloading certificates failed: " << status;
+    rpc.RespondFailure(status);
+    return;
+  }
+
+  LOG(INFO) << "Reloading certificates was successful";
+  rpc.RespondSuccess();
+}
+
+void GenericServiceImpl::GetAutoFlagsConfigVersion(
+    const GetAutoFlagsConfigVersionRequestPB* req, GetAutoFlagsConfigVersionResponsePB* resp,
+    rpc::RpcContext rpc) {
+  resp->set_config_version(server_->GetAutoFlagConfigVersion());
+
   rpc.RespondSuccess();
 }
 

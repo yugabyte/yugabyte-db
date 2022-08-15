@@ -109,7 +109,7 @@ Result<ProcessCallsResult> BinaryCallParser::Parse(
         VLOG(4) << "BinaryCallParser::Parse, tracker_for_throttle memory usage: "
                 << (*tracker_for_throttle)->LogUsage("");
         if (ShouldThrottleRpc(*tracker_for_throttle, call_data_size, "Ignoring RPC call: ")) {
-          call_data_ = CallData(call_data_size, ShouldReject::kTrue);
+          call_data_ = CallData(call_data_size, CallData::ShouldRejectTag());
           return ProcessCallsResult{
               .consumed = full_input_size,
               .buffer = Slice(),
@@ -141,7 +141,7 @@ Result<ProcessCallsResult> BinaryCallParser::Parse(
               << ", blocked by: " << AsString(blocking_mem_tracker)
               << ", consumption: " << consumption << " of " << limit << ". Call will be ignored.\n"
               << DumpMemoryUsage();
-          call_data_ = CallData(call_data_size, ShouldReject::kTrue);
+          call_data_ = CallData(call_data_size, CallData::ShouldRejectTag());
           return ProcessCallsResult{
             .consumed = full_input_size,
             .buffer = Slice(),

@@ -292,6 +292,7 @@ _outPlannedStmt(StringInfo str, const PlannedStmt *node)
 	WRITE_NODE_FIELD(utilityStmt);
 	WRITE_LOCATION_FIELD(stmt_location);
 	WRITE_LOCATION_FIELD(stmt_len);
+	WRITE_INT_FIELD(yb_num_referenced_relations);
 }
 
 /*
@@ -553,6 +554,16 @@ _outSeqScan(StringInfo str, const SeqScan *node)
 }
 
 static void
+_outYbSeqScan(StringInfo str, const YbSeqScan *node)
+{
+	WRITE_NODE_TYPE("YBSEQSCAN");
+
+	_outScanInfo(str, (const Scan *) node);
+	WRITE_NODE_FIELD(remote.qual);
+	WRITE_NODE_FIELD(remote.colrefs);
+}
+
+static void
 _outSampleScan(StringInfo str, const SampleScan *node)
 {
 	WRITE_NODE_TYPE("SAMPLESCAN");
@@ -575,7 +586,12 @@ _outIndexScan(StringInfo str, const IndexScan *node)
 	WRITE_NODE_FIELD(indexorderby);
 	WRITE_NODE_FIELD(indexorderbyorig);
 	WRITE_NODE_FIELD(indexorderbyops);
+	WRITE_NODE_FIELD(indextlist);
 	WRITE_ENUM_FIELD(indexorderdir, ScanDirection);
+	WRITE_NODE_FIELD(index_remote.qual);
+	WRITE_NODE_FIELD(index_remote.colrefs);
+	WRITE_NODE_FIELD(rel_remote.qual);
+	WRITE_NODE_FIELD(rel_remote.colrefs);
 }
 
 static void
@@ -590,6 +606,8 @@ _outIndexOnlyScan(StringInfo str, const IndexOnlyScan *node)
 	WRITE_NODE_FIELD(indexorderby);
 	WRITE_NODE_FIELD(indextlist);
 	WRITE_ENUM_FIELD(indexorderdir, ScanDirection);
+	WRITE_NODE_FIELD(remote.qual);
+	WRITE_NODE_FIELD(remote.colrefs);
 }
 
 static void
@@ -3793,6 +3811,9 @@ outNode(StringInfo str, const void *obj)
 				break;
 			case T_SeqScan:
 				_outSeqScan(str, obj);
+				break;
+			case T_YbSeqScan:
+				_outYbSeqScan(str, obj);
 				break;
 			case T_SampleScan:
 				_outSampleScan(str, obj);

@@ -75,6 +75,9 @@ class LongOperationTrackerHelper {
   }
 
   TrackedOperationPtr Register(const char* message, MonoDelta duration) {
+    if (IsSanitizer()) {
+      return TrackedOperationPtr();
+    }
     auto start = CoarseMonoClock::now();
     auto result = std::make_shared<LongOperationTracker::TrackedOperation>(
         Thread::CurrentThreadIdForStack(), message, start, start + duration * kTimeMultiplier);

@@ -110,8 +110,8 @@ DEFINE_bool(mem_tracker_log_stack_trace, false,
             "Only takes effect if mem_tracker_logging is also enabled.");
 
 DEFINE_int64(mem_tracker_update_consumption_interval_us, 2000000,
-             "Interval that is used to update memory consumption from external source. "
-             "For instance from tcmalloc statistics.");
+    "Interval that is used to update memory consumption from external source. "
+    "For instance from tcmalloc statistics.");
 
 DEFINE_int64(mem_tracker_tcmalloc_gc_release_bytes, -1,
              "When the total amount of memory from calls to Release() since the last GC exceeds "
@@ -295,12 +295,6 @@ void MemTracker::CreateRootTracker() {
   root_tracker = std::make_shared<MemTracker>(
       limit, "root", std::move(consumption_functor), nullptr /* parent */, AddToParent::kTrue,
       CreateMetrics::kFalse);
-
-  LOG(INFO) << StringPrintf("MemTracker: hard memory limit is %.6f GB",
-                            (static_cast<float>(limit) / (1024.0 * 1024.0 * 1024.0)));
-  LOG(INFO) << StringPrintf("MemTracker: soft memory limit is %.6f GB",
-                            (static_cast<float>(root_tracker->soft_limit_) /
-                                (1024.0 * 1024.0 * 1024.0)));
 }
 
 shared_ptr<MemTracker> MemTracker::CreateTracker(int64_t byte_limit,
@@ -384,9 +378,6 @@ MemTracker::MemTracker(int64_t byte_limit, const string& id,
 
 MemTracker::~MemTracker() {
   VLOG(1) << "Destroying tracker " << ToString();
-  if (!consumption_functor_) {
-    DCHECK_EQ(consumption(), 0) << "Memory tracker " << ToString();
-  }
   if (parent_) {
     if (add_to_parent_) {
       parent_->Release(consumption());
@@ -781,9 +772,6 @@ void MemTracker::GcTcmalloc() {
       extra -= 1024 * 1024;
     }
   }
-
-#else
-  // Nothing to do if not using tcmalloc.
 #endif
 }
 
@@ -810,6 +798,13 @@ string MemTracker::LogUsage(const string& prefix, int64_t usage_threshold, int i
     }
   }
   return ss.str();
+}
+
+void MemTracker::LogMemoryLimits() const {
+  LOG(INFO) << StringPrintf("MemTracker: hard memory limit is %.6f GB",
+                            (static_cast<float>(limit_) / (1024.0 * 1024.0 * 1024.0)));
+  LOG(INFO) << StringPrintf("MemTracker: soft memory limit is %.6f GB",
+                            (static_cast<float>(soft_limit_) / (1024.0 * 1024.0 * 1024.0)));
 }
 
 void MemTracker::LogUpdate(bool is_consume, int64_t bytes) const {

@@ -6,7 +6,7 @@
   <parent>
     <groupId>org.yb</groupId>
     <artifactId>yb-parent</artifactId>
-    <version>0.8.15-SNAPSHOT</version>
+    <version>0.8.21-SNAPSHOT</version>
   </parent>
 
   <artifactId>yb-loadtester</artifactId>
@@ -16,14 +16,14 @@
     <dependency>
       <groupId>org.yb</groupId>
       <artifactId>yb-client</artifactId>
-      <version>0.8.15-SNAPSHOT</version>
+      <version>0.8.21-SNAPSHOT</version>
       <type>test-jar</type>
       <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>org.yb</groupId>
       <artifactId>yb-client</artifactId>
-      <version>0.8.15-SNAPSHOT</version>
+      <version>0.8.21-SNAPSHOT</version>
       <scope>test</scope>
     </dependency>
     <dependency>
@@ -40,16 +40,13 @@
       </exclusions>
     </dependency>
     <dependency>
-      <groupId>log4j</groupId>
-      <artifactId>log4j</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>org.slf4j</groupId>
-      <artifactId>slf4j-log4j12</artifactId>
-    </dependency>
-    <dependency>
       <groupId>org.slf4j</groupId>
       <artifactId>slf4j-api</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>ch.qos.logback</groupId>
+      <artifactId>logback-classic</artifactId>
+      <version>1.2.10</version>
     </dependency>
     <dependency>
       <groupId>${junit.groupId}</groupId>

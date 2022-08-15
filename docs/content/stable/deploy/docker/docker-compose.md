@@ -9,9 +9,7 @@ menu:
     name: Docker
     identifier: docker-1-compose
     weight: 625
-type: page
-isTocNested: false
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -21,19 +19,13 @@ showAsideToc: true
       Docker Compose
     </a>
   </li>
-  <li >
-    <a href="{{< relref "./docker-swarm.md" >}}" class="nav-link">
-      <i class="fas fa-layer-group"></i>
-      Docker Swarm
-    </a>
-  </li>
 </ul>
 
 Use [docker-compose](https://docs.docker.com/compose/overview/) utility to create and manage YugabyteDB local clusters. Note that this approach is not recommended for multi-node clusters used for performance testing and production environments. Refer to the [deployment checklist](../../../deploy/checklist/) to understand the configuration to create clusters.
 
 ## Prerequisites
 
-Make sure to have [Docker](https://docs.docker.com/get-docker/) installed on your machine. 
+Make sure to have [Docker](https://docs.docker.com/get-docker/) installed on your machine.
 
 ## 1. Create a single node cluster
 
@@ -79,7 +71,7 @@ services:
       - yb-tserver-data-1:/mnt/tserver
       command: [ "/home/yugabyte/bin/yb-tserver",
                 "--fs_data_dirs=/mnt/tserver",
-                "--start_pgsql_proxy",
+                "--enable_ysql",
                 "--rpc_bind_addresses=yb-tserver-n1:9100",
                 "--tserver_master_addrs=yb-master-n1:7100"]
       ports:
@@ -186,7 +178,7 @@ services:
       - yb-tserver-data-1:/mnt/tserver
       command: [ "/home/yugabyte/bin/yb-tserver",
                 "--fs_data_dirs=/mnt/tserver",
-                "--start_pgsql_proxy",
+                "--enable_ysql",
                 "--rpc_bind_addresses=yb-tserver-n1:9100",
                 "--tserver_master_addrs=yb-master-n1:7100"
                 ]

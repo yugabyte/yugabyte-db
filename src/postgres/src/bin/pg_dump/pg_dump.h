@@ -283,7 +283,6 @@ typedef struct _tableInfo
 	uint32		frozenxid;		/* table's relfrozenxid */
 	uint32		minmxid;		/* table's relminmxid */
 	Oid			toast_oid;		/* toast table's OID, or 0 if none */
-	Oid			tablegroup_oid; /* associated tablegroup OID, or 0 if none */
 	uint32		toast_frozenxid;	/* toast table's relfrozenxid, if any */
 	uint32		toast_minmxid;	/* toast table's relminmxid */
 	int			ncheck;			/* # of CHECK expressions */
@@ -347,6 +346,7 @@ typedef struct _tablegroupInfo
 	 */
 	DumpableObject dobj;
 	char	   *grpowner;		/* name of owner, or empty string */
+	char	   *grptablespace;
 	char	   *grpacl;
 	char	   *grpracl;
 	char	   *grpinitacl;

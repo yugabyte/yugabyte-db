@@ -62,7 +62,6 @@
 namespace yb {
 namespace tools {
 
-using log::LogReader;
 using log::ReadableLogSegment;
 using std::shared_ptr;
 using std::string;
@@ -98,7 +97,7 @@ Status FsTool::Init() {
   // TODO(bogdan): do we use this tool? would we use it for more than tservers?
   opts.server_type = "tserver";
   fs_manager_.reset(new FsManager(Env::Default(), opts));
-  RETURN_NOT_OK(fs_manager_->Open());
+  RETURN_NOT_OK(fs_manager_->CheckAndOpenFileSystemRoots());
 
   LOG(INFO) << "Opened file system with uuid: " << fs_manager_->uuid();
 
@@ -159,6 +158,7 @@ Status FsTool::ListAllLogSegments() {
 Status FsTool::ListLogSegmentsForTablet(const string& tablet_id) {
   DCHECK(initialized_);
 
+  fs_manager_->LookupTablet(tablet_id);
   auto meta = VERIFY_RESULT(RaftGroupMetadata::Load(fs_manager_.get(), tablet_id));
 
   const string& tablet_wal_dir = meta->wal_dir();
@@ -180,8 +180,7 @@ Status FsTool::ListLogSegmentsForTablet(const string& tablet_id) {
 Status FsTool::ListAllTablets() {
   DCHECK(initialized_);
 
-  vector<string> tablets;
-  RETURN_NOT_OK(fs_manager_->ListTabletIds(&tablets));
+  vector<string> tablets = VERIFY_RESULT(fs_manager_->ListTabletIds());
   for (const string& tablet : tablets) {
     if (detail_level_ >= HEADERS_ONLY) {
       std::cout << "Tablet: " << tablet << std::endl;
@@ -239,6 +238,7 @@ Status FsTool::PrintLogSegmentHeader(const string& path,
 }
 
 Status FsTool::PrintTabletMeta(const string& tablet_id, int indent) {
+  fs_manager_->LookupTablet(tablet_id);
   auto meta = VERIFY_RESULT(RaftGroupMetadata::Load(fs_manager_.get(), tablet_id));
 
   const SchemaPtr schema = meta->schema();
@@ -261,6 +261,7 @@ Status FsTool::PrintTabletMeta(const string& tablet_id, int indent) {
 Status FsTool::DumpTabletData(const std::string& tablet_id) {
   DCHECK(initialized_);
 
+  fs_manager_->LookupTablet(tablet_id);
   auto meta = VERIFY_RESULT(RaftGroupMetadata::Load(fs_manager_.get(), tablet_id));
 
   scoped_refptr<log::LogAnchorRegistry> reg(new log::LogAnchorRegistry());
@@ -280,6 +281,10 @@ Status FsTool::DumpTabletData(const std::string& tablet_id) {
     .transaction_coordinator_context = nullptr,
     .txns_enabled = tablet::TransactionsEnabled::kTrue,
     .is_sys_catalog = tablet::IsSysCatalogTablet(tablet_id == master::kSysCatalogTabletId),
+    .snapshot_coordinator = nullptr,
+    .tablet_splitter = nullptr,
+    .allowed_history_cutoff_provider = {},
+    .transaction_manager_provider = nullptr,
   };
   Tablet t(tablet_init_data);
   RETURN_NOT_OK_PREPEND(t.Open(), "Couldn't open tablet");

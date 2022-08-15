@@ -4,13 +4,11 @@ headerTitle: Asynchronous Replication
 linkTitle: Asynchronous replication
 description: Enable deployment using asynchronous replication between two data centers.
 menu:
-  v2.8:
+  v2.8_yugabyte-platform:
     parent: create-deployments
     identifier: async-replication-platform
     weight: 633
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Yugabyte Platform allows you to use its UI or API to manage asynchronous replication between independent YugabyteDB clusters. You can perform deployment via unidirectional (master-follower) or [bidirectional](#setting-up-bidirectional-replication) (multi-master) asynchronous replication between two data centers.
@@ -23,10 +21,10 @@ Within the concept of replication, universes are divided into the following cate
 
 - A target universe is the recepient of the replicated data. One source universe can replicate to one or more target universes.
 
-For additional information on asynchronous replication in YugabyteDB, see the following: 
+For additional information on asynchronous replication in YugabyteDB, see the following:
 
-- [Asynchronous Replication: Overview and Architecture](https://docs.yugabyte.com/latest/architecture/docdb-replication/async-replication/)
-- [Asynchronous Replication Between Universes in YugabyteDB](https://docs.yugabyte.com/latest/deploy/multi-dc/async-replication/)
+- [Asynchronous Replication: Overview and Architecture]/preview/architecture/docdb-replication/async-replication/)
+- [Asynchronous Replication Between Universes in YugabyteDB]/preview/deploy/multi-dc/async-replication/)
 
 ## Using the Yugabyte Platform UI
 
@@ -84,7 +82,7 @@ This page allows you to do the following:
 
     ![Tables](/images/yp/asynch-replication-7.png)<br><br>
 
-  - Click **Modify Tables**. 
+  - Click **Modify Tables**.
 
   - Use the **Add tables to the replication** dialog to change the table selection, as per the following illustration:<br><br>
 

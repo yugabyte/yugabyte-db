@@ -1,0 +1,7 @@
+{
+    "snapshot_url":"s3://backups.yugabyte.com/test/common",
+    "us-west1":"s3://backups.yugabyte.com/test/user/reg1",
+    "us-west2":"s3://backups.yugabyte.com/test/user/reg2",
+    "us-east1":"s3://backups.yugabyte.com/test/user/reg3",
+    "backup_size_in_bytes":"124325"
+}

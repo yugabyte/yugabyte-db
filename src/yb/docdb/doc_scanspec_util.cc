@@ -22,18 +22,25 @@
 namespace yb {
 namespace docdb {
 
-std::vector<PrimitiveValue> GetRangeKeyScanSpec(
+std::vector<KeyEntryValue> GetRangeKeyScanSpec(
     const Schema& schema,
-    const std::vector<PrimitiveValue>* prefixed_hash_components,
+    const std::vector<KeyEntryValue>* prefixed_hash_components,
     const QLScanRange* scan_range,
+    std::vector<bool> *inclusivities,
     bool lower_bound,
-    bool include_static_columns) {
-  std::vector<PrimitiveValue> range_components;
+    bool include_static_columns,
+    bool use_strictness) {
+  std::vector<KeyEntryValue> range_components;
   range_components.reserve(schema.num_range_key_columns());
   if (prefixed_hash_components) {
     range_components.insert(range_components.begin(),
                             prefixed_hash_components->begin(),
                             prefixed_hash_components->end());
+    if (inclusivities) {
+      for (size_t i = 0; i < prefixed_hash_components->size(); i++) {
+        inclusivities->push_back(true);
+      }
+    }
   }
   if (scan_range != nullptr) {
     // Return the lower/upper range components for the scan.
@@ -43,47 +50,88 @@ std::vector<PrimitiveValue> GetRangeKeyScanSpec(
          i++) {
       const auto& column = schema.column(i);
       const auto& range = scan_range->RangeFor(schema.column_id(i));
-      range_components.emplace_back(GetQLRangeBoundAsPVal(range,
-                                                          column.sorting_type(),
-                                                          lower_bound));
+      range_components.emplace_back(
+          GetQLRangeBoundAsPVal(range, column.sorting_type(), lower_bound));
+      if (inclusivities) {
+        inclusivities->push_back(GetQLRangeBoundIsInclusive(range,
+                                                            column.sorting_type(),
+                                                            lower_bound));
+      }
+
+      // If this bound in non-inclusive then we append kHighest/kLowest
+      // after and stop to fit the given bound
+      if (use_strictness
+          && !GetQLRangeBoundIsInclusive(range, column.sorting_type(), lower_bound)) {
+        range_components.push_back(lower_bound ? KeyEntryValue(KeyEntryType::kHighest)
+                                               : KeyEntryValue(KeyEntryType::kLowest));
+        if (inclusivities) {
+          inclusivities->push_back(true);
+        }
+        break;
+      }
     }
   }
 
   if (!lower_bound) {
     // We add +inf as an extra component to make sure this is greater than all keys in range.
     // For lower bound, this is true already, because dockey + suffix is > dockey
-    range_components.emplace_back(PrimitiveValue(ValueType::kHighest));
+    range_components.emplace_back(KeyEntryType::kHighest);
+    if (inclusivities) {
+      inclusivities->push_back(true);
+    }
   } else if (schema.has_statics() && !include_static_columns && range_components.empty()) {
     // If we want to skip static columns, make sure the range components are non-empty.
     // We use kMinPrimitiveValueType instead of kLowest because it compares as higher than
     // kHybridTime in RocksDB.
-    range_components.emplace_back(kMinPrimitiveValueType);
+    range_components.emplace_back(
+        static_cast<KeyEntryType>(to_underlying(KeyEntryType::kHybridTime) + 1));
+    if (inclusivities) {
+      inclusivities->push_back(true);
+    }
   }
   return range_components;
 }
 
-PrimitiveValue GetQLRangeBoundAsPVal(const QLScanRange::QLRange& ql_range,
-                                     SortingType sorting_type,
-                                     bool lower_bound) {
-  const auto sort_order = PrimitiveValue::SortOrderFromColumnSchemaSortingType(sorting_type);
+const boost::optional<QLScanRange::QLBound> &GetQLRangeBound(
+    const QLScanRange::QLRange& ql_range,
+    SortingType sorting_type,
+    bool lower_bound) {
+  const auto sort_order = SortOrderFromColumnSchemaSortingType(sorting_type);
 
   // lower bound for ASC column and upper bound for DESC column -> min value
   // otherwise -> max value
-  // for ASC col: lower -> min_value; upper -> max_value
-  // for DESC   :       -> max_value;       -> min_value
+  // for ASC col: lower -> min_bound; upper -> max_bound
+  // for DESC   :       -> max_bound;       -> min_bound
   bool min_bound = lower_bound ^ (sort_order == SortOrder::kDescending);
-  const auto& ql_bound = min_bound ? ql_range.min_value : ql_range.max_value;
+  const auto& ql_bound = min_bound ? ql_range.min_bound : ql_range.max_bound;
+  return ql_bound;
+}
+
+bool GetQLRangeBoundIsInclusive(const QLScanRange::QLRange& ql_range,
+                                SortingType sorting_type,
+                                bool lower_bound) {
+  const auto &ql_bound = GetQLRangeBound(ql_range, sorting_type, lower_bound);
+  if (ql_bound) {
+    return ql_bound->IsInclusive();
+  }
+
+  return true;
+}
+
+KeyEntryValue GetQLRangeBoundAsPVal(const QLScanRange::QLRange& ql_range,
+                                    SortingType sorting_type,
+                                    bool lower_bound) {
+  const auto &ql_bound = GetQLRangeBound(ql_range, sorting_type, lower_bound);
   if (ql_bound) {
     // Special case for nulls because FromQLValuePB will turn them into kTombstone instead.
-    if (IsNull(*ql_bound)) {
-      return PrimitiveValue::NullValue(sorting_type);
+    if (IsNull(ql_bound->GetValue())) {
+      return KeyEntryValue::NullValue(sorting_type);
     }
-    return PrimitiveValue::FromQLValuePB(*ql_bound, sorting_type);
+    return KeyEntryValue::FromQLValuePB(ql_bound->GetValue(), sorting_type);
   }
 
   // For unset use kLowest/kHighest to ensure we cover entire scanned range.
-  return lower_bound ? PrimitiveValue(ValueType::kLowest)
-                     : PrimitiveValue(ValueType::kHighest);
+  return KeyEntryValue(lower_bound ? KeyEntryType::kLowest : KeyEntryType::kHighest);
 }
 
 }  // namespace docdb

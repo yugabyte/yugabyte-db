@@ -2,6 +2,7 @@
 from __future__ import unicode_literals
 
 import argparse
+import shlex
 import atexit
 import json
 import logging
@@ -17,6 +18,8 @@ import traceback
 import uuid
 import tempfile
 import tarfile
+import operator
+import string
 from datetime import datetime
 from signal import SIGABRT, SIGINT, SIGKILL, SIGTERM, SIG_DFL, SIG_IGN, signal
 from threading import Thread
@@ -27,11 +30,16 @@ if PY_VERSION < 3:
     import Queue as queue
     from urllib2 import Request, urlopen, URLError, HTTPError
     from urllib import urlencode
+    from random import SystemRandom
+    _sysrand = SystemRandom()
+    PASSWORD_GENNERATOR = _sysrand.choice
 else:
     import queue
     from urllib.request import Request, urlopen
     from urllib.error import URLError, HTTPError
     from urllib.parse import urlencode
+    import secrets
+    PASSWORD_GENNERATOR = secrets.choice
 
 """
 Run `yugabyted` to start a single-node YugabyteDB process. If no options are specified,
@@ -54,16 +62,26 @@ yugabyte
 |   |   +-- bin...
 |   |   +-- ...
 """
+# OS constants
+OS_DETAILS = os.uname()
+OS_NAME = OS_DETAILS[0]
+
 # Script constants.
 SCRIPT_NAME = os.path.basename(__file__)
 YUGABYTE_DIR = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 TRUE_CHOICES = ["true", "True", "t", "T", "yes", "Yes", "y", "Y", "1"]
 FALSE_CHOICES = ["false", "False", "f", "F", "no", "No", "n", "N", "0"]
 BOOL_CHOICES = TRUE_CHOICES + FALSE_CHOICES
+FAULT_TOLERANCE_CHOICES = ["zone", "region", "cloud"]
+START_FAULT_TOLERANCE_CHOICES = ["none", "zone", "region", "cloud"]
 SLACK_LINK = "https://www.yugabyte.com/slack"
 COMMUNITY_REWARDS_LINK = "https://www.yugabyte.com/community-rewards/"
 HELP_LINK = "https://docs.yugabyte.com/latest/faq/"
+YUGABYTED_LINK = "https://docs.yugabyte.com/preview/reference/configuration/yugabyted/"
+YUGABYTED_START = "https://docs.yugabyte.com/preview/reference/configuration/yugabyted/#start"
 DEFAULT_DEMO_DATABASE = "northwind"
+DEFAULT_FAULT_TOLERANCE = "zone"
+DEFAULT_START_FAULT_TOLERANCE = "none"
 SAMPLE_DATA_LINKS = {
     "retail": "https://docs.yugabyte.com/latest/quick-start/explore-ysql/",
     "chinook": "https://docs.yugabyte.com/latest/sample-data/chinook/",
@@ -71,6 +89,104 @@ SAMPLE_DATA_LINKS = {
     "northwind": "https://docs.yugabyte.com/latest/sample-data/northwind/"
 }
 EXIT_SIGNALS = (SIGABRT, SIGINT, SIGTERM)
+REQUIRED_TRANSPARENT_HUGEPAGES_LINUX = "always"
+REQUIRED_LOOPBACK_ADDRESSES = [
+    '127\.0\.0\.2',
+    '127\.0\.0\.3',
+    '127\.0\.0\.4',
+    '127\.0\.0\.5',
+    '127\.0\.0\.6',
+    '127\.0\.0\.7'
+]
+MAX_PROC = {
+    'Linux' : 12000,
+    'Darwin' : 2500,
+}
+PREREQS_ERROR_MSGS = {
+    'open_files' :'open files ulimits value set low. Please set soft and hard limits to 1048576.',
+    'max_user_processes' :'max user processes ulimits value set low.' \
+        ' Please set soft and hard limits to {}.'.format(MAX_PROC[OS_NAME]),
+    'transparent_hugepages' :'Transparent hugepages disabled. Please enable transparent_hugepages.',
+    'ntp/chrony' :'ntp/chrony package is missing for clock synchronization. For centos 7, ' +
+        'we recommend installing either ntp or chrony package and for centos 8, ' +
+        'we recommend installing chrony package.'
+}
+QUICK_START_LINKS = {
+    'mac' : 'https://docs.yugabyte.com/latest/quick-start/install/macos/',
+    'linux' : 'https://docs.yugabyte.com/latest/quick-start/install/linux/',
+}
+LINUX_PREREQS_CMDS = {
+    'transparent_hugepages' : 'cat /sys/kernel/mm/transparent_hugepage/enabled',
+    'ntp' : 'which ntpd',
+    'chrony' : 'which chronyd',
+}
+MAC_PREREQS_CMDS = {
+}
+CONFIG_LINK = "https://docs.yugabyte.com/latest/deploy/manual-deployment/system-config"
+
+# Help Message Constants
+PREFIX = {
+    'yugabyted' : "YugabyteDB command-line interface for creating" +
+                    " and configuring YugabyteDB cluster.",
+    'start' : "Install YugabyteDB and start a single node cluster.\n\n" +
+                "Use --join flag to join other nodes that are part of the same cluster.",
+    'stop' : "",
+    'destroy' : "",
+    'status' : "",
+    'version' : "",
+    'collect_logs' : "",
+    'configure' : "",
+    'connect' : "",
+    'connect ycql' : "",
+    'connect ysql' : "",
+    'demo' : "",
+    'demo connect' : "",
+    'demo destroy' : "",
+}
+
+USAGE = {
+    'yugabyted' : "yugabyted [command] [flags]",
+    'start' : "yugabyted start [flags]",
+    'stop' : "yugabyted stop [flags]",
+    'destroy' : "yugabyted destroy [flags]",
+    'status' : "yugabyted status [flags]",
+    'version' : "yugabyted version [flags]",
+    'collect_logs' : "yugabyted collect_logs [flags]",
+    'configure' : "yugabyted configure [flags]",
+    'connect' : "yugabyted connect [command] [flags]",
+    'connect ycql' : "yugabyted connect ycql [flags]",
+    'connect ysql' : "yugabyted connect ysql [flags]",
+    'demo' : "yugabyted demo [command] [flags]",
+    'demo connect' : "yugabyted demo connect [flags]",
+    'demo destroy' : "yugabyted demo destroy [flags]",
+}
+
+EXAMPLE = {
+    'start' : "# Create a single-node local cluster:\n" +
+              "yugabyted start\n\n"+
+              "# Create a single-node locally and join other nodes " +
+              "that are part of the same cluster:\n" +
+              "yugabyted start -join=host:port,[host:port]\n\n",
+    'stop' : "",
+    'destroy' : "",
+    'status' : "",
+    'version' : "",
+    'collect_logs' : "",
+    'configure' : "",
+}
+
+EPILOG_COMMON = "Run '{} [command] -h' for help with specific commands.".format(SCRIPT_NAME)
+
+EPILOG_SPECIFIC = {
+    'start' : "Use conf file to configure advanced flags. Learn more about advanced flags " +
+                "refer to the docs page: {}.\n\n".format(YUGABYTED_START),
+    'stop' : "",
+    'destroy' : "",
+    'status' : "",
+    'version' : "",
+    'collect_logs' : "",
+    'configure' : "",
+}
 
 # YugabyteDB configs.
 IP_ANY = "0.0.0.0"
@@ -87,6 +203,9 @@ DEFAULT_CALLHOME = True
 DEFAULT_YSQL_USER = "yugabyte"
 DEFAULT_YSQL_PASSWORD = "yugabyte"
 DEFAULT_YSQL_DB = "yugabyte"
+DEFAULT_CLOUD_PROVIDER = "cloud1"
+DEFAULT_CLOUD_REGION = "datacenter1"
+DEFAULT_CLOUD_ZONE = "rack1"
 YSQL_PASSWORD_LENGTH_WARNING = "Warning: Your 'YSQL_PASSWORD' length is greater than 99 characters.\
 Please set 'PGPASSWORD' in environment variables to use 'bin/ysqlsh'."
 DEFAULT_YCQL_USER = "cassandra"
@@ -184,6 +303,16 @@ def find_version_metadata_location(version_file):
 
     return search_file_in_paths(dir_candidates, version_file)
 
+# Creates the Head Title for yugabyted CLI
+def get_cli_title():
+    title = Output.make_green(Output.make_green("Yugabyted CLI") + ": YugabyteDB command line")
+    extra_len = len(Output.make_green(""))
+    div_line = "+" + "-" * 98 + "+" + "\n"
+    cli_title = div_line
+    cli_title += ("| {:^" + str(105 + extra_len) + "} |\n").format(title)
+    cli_title += div_line
+    return cli_title
+
 class ControlScript(object):
     def __init__(self):
         self.configs = None
@@ -198,18 +327,16 @@ class ControlScript(object):
         if self.script.is_running():
             Output.print_out("{} is already running!".format(SCRIPT_NAME))
             sys.exit(1)
+
         Output.print_and_log("Starting {}...".format(SCRIPT_NAME))
         self.set_env_vars()
 
-        if self.configs.temp_data.get("daemon"):
+        if self.configs.temp_data.get("background"):
             # In daemon mode, self.daemonize() forks. The child process then executes
             # normal control flow. The parent process waits for the child process until
             # a status message can be printed to the terminal and then exits within daemonize.
             self.daemonize()
         self.script.write_pid(os.getpid())
-        errors = self.script.set_rlimits(print_info=True)
-        if errors:
-            self.alerts.append((ALERT_WARNING, ULIMIT_ERR_CODE, errors))
 
         self.set_signals(self.kill_children)
         atexit.register(self.kill_children)
@@ -307,8 +434,12 @@ class ControlScript(object):
         if self.get_failed_node_processes():
             Output.log_error_and_exit(
                 "{} is not running. Cannot connect to YCQL.".format(SCRIPT_NAME))
+        if self.configs.saved_data.get("secure"):
+            self.setup_env_init.setup_cert_file_path(self.configs.
+                            saved_data.get("ca_cert_file_path"))
         ycql_proxy = YcqlProxy(ip=self.advertise_ip(),
-                        port=self.configs.saved_data.get("ycql_port"))
+                        port=self.configs.saved_data.get("ycql_port"),
+                        secure=self.configs.saved_data.get("secure"))
         ycql_proxy.connect()
 
     # Creates demo database and starts an interactive shell into it. Destroys the sample database
@@ -425,6 +556,174 @@ class ControlScript(object):
         else:
             Output.print_and_log("Logs are packaged into {}".format(tarpath))
 
+    def configure(self):
+
+        # to-do: can be removed after multi-region and geo-replicated feature is implemented
+        fault_tolerance = self.configs.temp_data.get("fault_tolerance")
+        if fault_tolerance == "cloud":
+            Output.log_error_and_exit("Cloud based fault tolerance is not supported yet.")
+
+        join_ip = self.configs.saved_data.get("join")
+        advertise_ip = self.advertise_ip()
+        master_addr = "{}:{}".format(join_ip if join_ip else advertise_ip,
+                                        self.configs.saved_data.get("master_rpc_port"))
+
+        current_masters = self.get_all_masters()
+        current_masters = [ master.split(':')[0] for master in current_masters ]
+        leader_master = self.get_leader_master().split(':')[0]
+
+        leader_master_http_endpoint = "{}:{}".format(leader_master,
+                        self.configs.saved_data.get("master_webserver_port"))
+
+        placement_locations = self.get_all_masters_locations(leader_master_http_endpoint)
+
+        new_masters = self.get_new_valid_masters(current_masters,
+                leader_master, placement_locations)
+
+        masters_to_remove = [ master for master in current_masters if master not in new_masters ]
+        masters_to_add = [ master for master in new_masters if master not in current_masters ]
+
+        if not masters_to_remove and not masters_to_add:
+            Output.log("Desired fault tolerance is already setup. No Masters to move.")
+        else :
+            for i in range(len(masters_to_remove)):
+                self.replace_master(master_addr, masters_to_remove[i], masters_to_add[i])
+
+        current_masters = self.get_all_masters()
+        placement_info = self.configs.temp_data.get("data_placement_constraint")
+        if not placement_info:
+            placement_info = []
+            for master in current_masters:
+                placement_info.append(placement_locations[master.split(":")[0]])
+            placement_info = ",".join(placement_info)
+
+        if not self.is_placement_constraint_valid_length(placement_info):
+            Output.log_error_and_exit("FAILED: Invalid number of placement constraint specified.")
+
+        if not self.is_placement_constraint_valid_values(placement_locations, placement_info):
+            Output.log_error_and_exit("FAILED: Invalid values provided for placement constraint.")
+
+        master_addresses = ",".join(current_masters)
+        rf_value = self.configs.temp_data.get("replication_factor")
+
+        if not YBAdminProxy.modify_placement_info(master_addresses, placement_info, rf_value):
+            Output.log_error_and_exit("FAILED: Setting of placement info of masters")
+        else:
+            Output.log("Configure step was successful.")
+
+        status_details = {}
+        if self.is_master_placement_location_valid(placement_locations, new_masters):
+            success_status = "Universe can survive at least 1 availability {} failure".format(
+                    self.configs.temp_data.get("fault_tolerance"))
+            status_details = [(Output.make_yellow("Status"),
+            "Configuration successful. Primary data placement is geo-redundant"), ]
+            status_details += [
+                (Output.make_yellow("Fault Tolerance"), success_status),
+            ]
+        else:
+            failure_status = Output.make_red("Universe cannot survive even 1 availability " +
+                        "{} failure".format(self.configs.temp_data.get("fault_tolerance")))
+            status_details = [(Output.make_yellow("Status"),
+                "Configuration unsuccessful. " + \
+                "Primary data placement is not geo-redundant"), ]
+            status_details += [
+                (Output.make_yellow("Fault Tolerance"), failure_status),
+            ]
+
+        Output.print_out(self.get_status_string_for_configure(status_details))
+
+    #All Pre-requisites check for Linux
+    def linux_prereqs_check(self):
+        prereqs_failed = set()
+        prereqs_warn = set()
+        prereqs_failed_flag = False
+        prereqs_warn_flag = False
+
+        transparent_hugepages_check = run_process(shlex
+                .split(LINUX_PREREQS_CMDS.get('transparent_hugepages')))
+        transparent_hugepages = re.search("\[(.*)\]", transparent_hugepages_check[0]).group(1)
+        if transparent_hugepages != REQUIRED_TRANSPARENT_HUGEPAGES_LINUX:
+            prereqs_warn.add('transparent_hugepages')
+            prereqs_warn_flag = True
+
+        ntp_check = run_process(shlex.split(LINUX_PREREQS_CMDS.get('ntp')))
+        chrony_check = run_process(shlex.split(LINUX_PREREQS_CMDS.get('chrony')))
+        ntp_exit_code = ntp_check[2]
+        chrony_exit_code = chrony_check[2]
+        if ntp_exit_code != 0 and chrony_exit_code != 0:
+            prereqs_warn.add('ntp/chrony')
+            prereqs_warn_flag = True
+
+        return (prereqs_failed_flag, prereqs_failed, prereqs_warn_flag, prereqs_warn)
+
+    #All Pre-requistes check for MacOS
+    def mac_prereqs_check(self):
+        prereqs_failed = set()
+        prereqs_warn = set()
+        prereqs_failed_flag = False
+        prereqs_warn_flag = False
+
+        return (prereqs_failed_flag, prereqs_failed, prereqs_warn_flag, prereqs_warn)
+
+    # Checks whether the prerequisites are met or not
+    def prereqs_check(self, ulimits=False):
+        help_msg = "Review the following docs and rerun the start command.\n"
+        if OS_NAME == "Linux":
+            check = self.linux_prereqs_check()
+            help_msg+=('Quick start for Linux: '+QUICK_START_LINKS['linux']+'\n')
+        else:
+            check = self.mac_prereqs_check()
+            help_msg+=('Quick start for Mac: '+QUICK_START_LINKS['mac']+'\n')
+
+        prereqs_failed_flag, prereqs_failed, prereqs_warn_flag, prereqs_warn = check
+
+        msg = " System checks. Following pre-reqs are not met:\n"
+        failed_msg = ""
+        for prereq in prereqs_failed:
+            failed_msg+=("- "+PREREQS_ERROR_MSGS[prereq]+"\n")
+        warning_msg = ""
+        for prereq in prereqs_warn:
+            warning_msg+=("- "+PREREQS_ERROR_MSGS[prereq]+"\n")
+        ulimit_msg = {
+            'open_files' :"- "+PREREQS_ERROR_MSGS['open_files']+"\n",
+            'max_user_processes' :"- "+PREREQS_ERROR_MSGS['max_user_processes']+"\n",
+        }
+
+        final_msg = ""
+        check_status = None
+        if prereqs_failed_flag:
+            final_msg += (Output.make_red("FAILED") + msg)
+            final_msg += (failed_msg+warning_msg)
+            if ulimits:
+                for ulimit in ulimits:
+                    final_msg+=ulimit_msg[ulimit]
+            final_msg += ("\n"+help_msg+"\n")
+            check_status = Output.ANIMATION_FAIL
+        elif prereqs_warn_flag:
+            final_msg += (Output.make_yellow("WARNING") + msg)
+            final_msg += warning_msg
+            if ulimits:
+                for ulimit in ulimits:
+                    final_msg+=ulimit_msg[ulimit]
+            final_msg += ("\n"+help_msg+"\n")
+            check_status = Output.ANIMATION_WARNING
+        elif ulimits:
+            final_msg += (Output.make_yellow("WARNING") + msg)
+            for ulimit in ulimits:
+                final_msg+=ulimit_msg[ulimit]
+            final_msg += ("\n"+help_msg+"\n")
+            check_status = Output.ANIMATION_WARNING
+        else:
+            final_msg = "System checks"
+            check_status = Output.ANIMATION_SUCCESS
+
+        result = {
+            'msg' : final_msg,
+            'status' : check_status,
+        }
+
+        return result
+
     # Checks yb-master and yb-tserver are running. Returns failed processes.
     # TODO: Check postmaster.pid.
     def get_failed_node_processes(self):
@@ -500,14 +799,16 @@ class ControlScript(object):
     # Starts yb-master, yb-tserver, and yugaware processes.
     # After initializing, creates a callhome thread.
     def start_processes(self):
-        bind_ip = self.configs.saved_data.get("listen")
+        bind_ip = self.configs.saved_data.get("advertise_address")
         advertise_ip = bind_ip if bind_ip != IP_ANY else IP_LOCALHOST
         master_rpc_port = self.configs.saved_data.get("master_rpc_port")
         join_ip = self.configs.saved_data.get("join")
+        fault_tolerance = self.configs.saved_data.get("fault_tolerance")
         master_addresses  = "{}:{}".format(advertise_ip, master_rpc_port)
         if join_ip:
             master_addresses  = "{}:{},{}".format(join_ip, master_rpc_port, master_addresses)
         tserver_rpc_port = self.configs.saved_data.get("tserver_rpc_port")
+        certs_dir = self.configs.saved_data.get("certs_dir")
 
         common_gflags = [
             "--stop_on_parent_termination",
@@ -518,12 +819,18 @@ class ControlScript(object):
                 ",".join(METRICS_SNAPSHOT_LIST)),
             "--yb_num_shards_per_tserver={}".format(YB_NUM_SHARDS_PER_TSERVER),
             "--ysql_num_shards_per_tserver={}".format(YSQL_NUM_SHARDS_PER_TSERVER),
+            "--placement_cloud={}".format(self.configs.saved_data.get("cloud_provider")),
+            "--placement_region={}".format(self.configs.saved_data.get("cloud_region")),
+            "--placement_zone={}".format(self.configs.saved_data.get("cloud_zone")),
         ]
 
-        if not join_ip:
-            common_gflags.append("--cluster_uuid={}".format(
-                self.configs.saved_data.get("universe_uuid")))
+        if fault_tolerance == "region":
+            common_gflags.append("--leader_failure_max_missed_heartbeat_periods=10")
 
+        if self.configs.saved_data.get("secure"):
+            common_gflags.extend(["--certs_dir={}".format(certs_dir),
+            "--allow_insecure_connections=false",
+            "--use_node_to_node_encryption=true",])
 
         yb_master_cmd = [find_binary_location("yb-master")] + \
             common_gflags + \
@@ -542,6 +849,8 @@ class ControlScript(object):
         # if a join ip is specified, bring up a shell mode master
         if not join_ip:
             yb_master_cmd.append("--master_addresses={}".format(master_addresses))
+            yb_master_cmd.append("--cluster_uuid={}".format(
+                self.configs.saved_data.get("universe_uuid")))
 
         if self.configs.saved_data.get("master_flags"):
             yb_master_cmd.extend(
@@ -573,6 +882,10 @@ class ControlScript(object):
                     self.configs.saved_data.get("tserver_flags").split(",")])
 
         # Add authentication flags in tserver
+        if self.configs.saved_data.get("secure"):
+            yb_tserver_cmd.extend(["--use_client_to_server_encryption=true",
+                "--certs_for_client_dir={}".format(certs_dir),])
+
         if self.configs.saved_data.get("ysql_enable_auth"):
             yb_tserver_cmd.extend(["--ysql_enable_auth=true"])
 
@@ -639,6 +952,22 @@ class ControlScript(object):
             if is_first_run:
                 Output.init_animation("Running system checks...")
 
+                ulimits_failed = self.script.set_rlimits(print_info=True)
+                if ulimits_failed:
+                    msg = "Failed to meet recommended settings. Ulimits too low - {}.\n".format(
+                    ", ".join(ulimits_failed))
+                    ulimit_warn_msg = msg + "Note {} will still run, although it may fail for " \
+                        "larger workloads. For more info, see {}".format(SCRIPT_NAME, CONFIG_LINK)
+                    self.alerts.append((ALERT_WARNING, ULIMIT_ERR_CODE, ulimit_warn_msg))
+
+                prereqs_check_result = self.prereqs_check(ulimits=ulimits_failed)
+                Output.update_animation(msg=prereqs_check_result['msg'],
+                    status=prereqs_check_result['status'])
+                if prereqs_check_result['status']==Output.ANIMATION_FAIL:
+                    Output.log(msg=prereqs_check_result['msg'], level=logging.ERROR)
+
+                Output.init_animation("Starting the YugabyteDB Processes...")
+
                 self.post_install_yb()
 
                 ret = self.start_first_master_tserver(master_addresses)
@@ -647,10 +976,30 @@ class ControlScript(object):
                         status=Output.ANIMATION_FAIL)
                     Output.log_error_and_exit(ret)
 
+                Output.update_animation("YugabyteDB Started")
+
+                if self.configs.saved_data.get("secure"):
+                    Output.init_animation("Enabling SSL Authentication...")
+                    if not join_ip:
+                        alphadigits = string.ascii_letters + string.digits
+                        new_password = ''.join(PASSWORD_GENNERATOR(alphadigits) for i in range(12))
+                        self.update_db_passwords(new_password)
+                        self.create_password_file()
+                    Output.update_animation("SSL Authentication enabled.")
+                    Output.print_and_log(Output.ANIMATION_SUCCESS +
+                            " User Authentication enabled.")
+                else:
+                    Output.print_and_log(Output.make_yellow(Output.ANIMATION_WARNING +
+                        " WARNING:") + " Cluster started in an insecure mode without " +
+                        "authentication and encryption enabled. For non-production use only, " +
+                        "not to be used without firewalls blocking the internet traffic.")
+
                 # Persist the config after successful start
                 self.configs.save_configs()
-
-                Output.update_animation("System checks")
+                if join_ip:
+                    Output.print_and_log(Output.ANIMATION_SUCCESS +
+                            " Node joined a running cluster with UUID {}"
+                            .format(self.configs.saved_data.get("universe_uuid")))
             else:
                 for name in ("master", "tserver"):
                     process = self.processes.get(name)
@@ -673,20 +1022,25 @@ class ControlScript(object):
 
             if is_first_run:
                 status = self.get_status_string() + \
-                    "{} {} started successfully! To load a sample dataset, " \
+                    "{} YugabyteDB started successfully! To load a sample dataset, " \
                     "try '{} demo'.\n" \
                     "{} Join us on Slack at {}\n" \
                     "{} Claim your free t-shirt at {}\n".format(
-                        Output.ROCKET, SCRIPT_NAME, SCRIPT_NAME, Output.PARTY,
+                        Output.ROCKET, SCRIPT_NAME, Output.PARTY,
                         Output.make_underline(SLACK_LINK), Output.SHIRT,
                         Output.make_underline(COMMUNITY_REWARDS_LINK))
+
+                if self.configs.saved_data.get("secure") and not join_ip:
+                    status += "\n{} is stored at {}\n".format(Output.make_cyan("Credentials File"),
+                    os.path.join(self.configs.saved_data.get("data_dir"),
+                        "{}_credentials.txt".format(SCRIPT_NAME)))
 
                 if len(self.setup_env_init.get_ysql_password()) > 99:
                     status = status + Output.make_red(YSQL_PASSWORD_LENGTH_WARNING)
 
                 Output.print_out(status)
 
-                if self.configs.temp_data.get("daemon"):
+                if self.configs.temp_data.get("background"):
                     # Let original process know daemon was successful so it can exit.
                     # This is to display the initial status message.
                     self.script.daemon_success.put(1)
@@ -962,6 +1316,256 @@ class ControlScript(object):
 
         raise RetryableError()
 
+    # Waits till the newly added master comes in the list of masters of cluster
+    def wait_get_master(self, master, timeout=180):
+        Output.log("Waiting for master with address {} to be added".format(master))
+        try:
+            return retry_op_with_argument(self.get_master_at_addrs, master, timeout)
+        except RuntimeError:
+            Output.log("Failed to find master {} in the masters list. Exception: {}".format(
+                traceback.format_exc()))
+            return False
+
+    # Raises a Retryable error if the master is not in the list of master of the cluster
+    def get_master_at_addrs(self, master):
+        join_ip = self.configs.saved_data.get("join")
+        advertise_ip = self.advertise_ip()
+        master_addr = "{}:{}".format(join_ip if join_ip else advertise_ip,
+                                        self.configs.saved_data.get("master_rpc_port"))
+
+        all_masters_and_roles = { m[1].split(":")[0]: m[2]
+                                    for m in YBAdminProxy.get_masters(master_addr) }
+        if master in all_masters_and_roles and all_masters_and_roles[master] == "FOLLOWER":
+            return True
+
+        raise RetryableError()
+
+    # Waits till the newly removed master doesn't comes in the list of masters of cluster
+    def wait_remove_master(self, master, timeout=180):
+        Output.log("Waiting for master with address {} to be removed".format(master))
+        try:
+            return retry_op_with_argument(self.remove_master_at_addrs, master, timeout)
+        except RuntimeError:
+            Output.log("Newly removed master {} is still present in the masters list." +
+                    " Exception: {}".format(traceback.format_exc()))
+            return False
+
+    # Raises a Retryable error if the newly removed master is in the list of master of the cluster
+    def remove_master_at_addrs(self, master):
+        join_ip = self.configs.saved_data.get("join")
+        advertise_ip = self.advertise_ip()
+        master_addr = "{}:{}".format(join_ip if join_ip else advertise_ip,
+                                        self.configs.saved_data.get("master_rpc_port"))
+
+        all_masters = [ m[1].split(":")[0] for m in YBAdminProxy.get_masters(master_addr) ]
+        if master not in all_masters:
+            return True
+
+        raise RetryableError()
+
+    # Get Leader master of the cluster
+    def get_leader_master(self):
+        join_ip = self.configs.saved_data.get("join")
+        advertise_ip = self.advertise_ip()
+        master_addr = "{}:{}".format(join_ip if join_ip else advertise_ip,
+                                        self.configs.saved_data.get("master_rpc_port"))
+        all_masters_info = YBAdminProxy.get_masters(master_addr)
+        for master_info in all_masters_info:
+            if master_info[2] == "LEADER":
+                return master_info[1]
+
+        Output.log_error_and_exit("Couldn't get Leader master")
+
+    # Get all masters placement locations
+    def get_all_masters_locations(self, master_hostport):
+
+        try:
+            leaderMasterURL = "http://{}/api/v1/tablet-servers".format(master_hostport)
+            response = urlopen(Request(leaderMasterURL))
+            jsonResponseFromMaster = json.load(response)
+            dictOfAllNodes = jsonResponseFromMaster.get("")
+
+            placementInfoOfEveryNode = {}
+            for node in dictOfAllNodes:
+                hostname = re.split('[-:]', node)[0]
+                cloudLocationOfHost = "{}.{}.{}".format(dictOfAllNodes[node]["cloud"],
+                    dictOfAllNodes[node]["region"], dictOfAllNodes[node]["zone"])
+                placementInfoOfEveryNode[hostname] = cloudLocationOfHost
+
+            return placementInfoOfEveryNode
+
+        except HTTPError as http_err:
+            print('HTTP error occurred while fetching cloud location: {}', http_err)
+        except Exception as err:
+            print('Other error occurred while fetching cloud location: {}', err)
+
+    # Get the location of a master in accordance to the fault tolerance
+    def get_cloud_location_per_fault_tolerance(self, master_location):
+        fault_tolerance = self.configs.temp_data.get("fault_tolerance")
+        master_location = master_location.split(".")
+        ft_location = ""
+        if fault_tolerance == "cloud":
+            ft_location = master_location[0]
+        elif fault_tolerance == "region":
+            ft_location = ".".join(master_location[:2])
+        else:
+            ft_location = ".".join(master_location)
+
+        return ft_location
+
+    # Get new valid master addresses that does not violate fault tolerance policy
+    # if there are not any masters then raise error and output the same
+    def get_new_valid_masters(self, current_masters, leader_master, master_locations):
+        new_master_locations = dict()
+        new_master_locations[leader_master] = self.get_cloud_location_per_fault_tolerance(
+                                                master_locations[leader_master])
+        self.get_cloud_location_per_fault_tolerance(master_locations[leader_master])
+
+        for master in current_masters:
+            ft_location = self.get_cloud_location_per_fault_tolerance(master_locations[master])
+            if ft_location not in new_master_locations.values():
+                new_master_locations[master] = ft_location
+
+        if len(new_master_locations) == len(current_masters):
+            return new_master_locations.keys()
+
+        for master, location in master_locations.items():
+            ft_location = self.get_cloud_location_per_fault_tolerance(location)
+            if ft_location not in new_master_locations.values():
+                new_master_locations[master] = ft_location
+            if len(new_master_locations) == len(current_masters):
+                break
+
+        new_valid_masters_list = new_master_locations.keys()
+
+        if len(new_valid_masters_list) != len(current_masters):
+            for master in current_masters:
+                if not master in new_valid_masters_list:
+                    new_valid_masters_list.append(master)
+                if len(new_valid_masters_list) == len(current_masters):
+                    break
+
+        return new_valid_masters_list
+
+    # Replace the old master with a new one to maintain fault tolerance policy
+    def replace_master(self, master_addr, old_master, new_master):
+        Output.log("Adding master {} to the cluster.".format(new_master))
+        if not YBAdminProxy.add_master(master_addr, new_master):
+            Output.log_error_and_exit("Failed to add master {} to the cluster."
+                            .format(new_master))
+        if not self.wait_get_master(new_master):
+            Output.log_error_and_exit("Couldn't get master {} in the cluster masters list."
+                            .format(new_master))
+        else:
+            Output.log("Added master {} to the cluster".format(new_master))
+
+        Output.log("Removing master {} from the cluster.".format(old_master))
+        if not YBAdminProxy.remove_master(master_addr, old_master):
+            Output.log_error_and_exit("Failed to remove master {} from the cluster."
+                            .format(old_master))
+        if not self.wait_remove_master(old_master):
+            Output.log_error_and_exit("master {} in the cluster masters list still exists."
+                            .format(old_master))
+        else:
+            Output.log("Removed master {} from the cluster".format(old_master))
+
+    # After Master reconsile step is complete, determine if master placement
+    # is valid per fault tolerance specified in the configure command
+    def is_master_placement_location_valid(self, placement_locations, new_masters):
+
+        fault_tolerance = self.configs.temp_data.get("fault_tolerance")
+        replication_factor = self.configs.temp_data.get("replication_factor")
+
+        master_placement_locations = dict()
+        for master in new_masters:
+            master_placement_locations[master] = placement_locations.get(master)
+
+        # determine the placement location index based on the fault tolerance
+        # default zone fault tolerance.
+        placement_location_index = 2
+        if(fault_tolerance == "region"):
+            placement_location_index = 1
+        if(fault_tolerance == "cloud"):
+            placement_location_index = 0
+
+        placement_location_set = set()
+        for master_node in master_placement_locations:
+            placement_location_temp = master_placement_locations[
+                master_node
+            ].split('.')[placement_location_index]
+            placement_location_set.add(placement_location_temp)
+
+        invalid_placement = True
+        if len(placement_location_set) != int(replication_factor):
+            invalid_placement = False
+
+        return invalid_placement
+
+    # This functions is used to determine if the placement constraint specified in
+    # configure command is valid
+    def is_placement_constraint_valid_values(self, placement_locations, placement_constraint):
+
+        placement_constraint_list = placement_constraint.split(',')
+        placement_locations_list = placement_locations.values()
+        for constraint in placement_constraint_list:
+            if constraint.lower() in placement_locations_list:
+                is_valid = True
+            else:
+                is_valid = False
+                break
+
+        return is_valid
+
+    def is_placement_constraint_valid_length(self, placement_constraint):
+
+        placement_constraint_list = placement_constraint.split(',')
+
+        is_valid = True
+        if len(placement_constraint_list) != 3:
+            is_valid = False
+
+        return is_valid
+
+    # Updating the database user passwords for postgres and cassandra
+    def update_db_passwords(self, new_password):
+        ysql_proxy = YsqlProxy(self.advertise_ip(), self.configs.saved_data.get("ysql_port"))
+        Output.log("Attempting to update Postgres password.")
+        try:
+            retry_op_with_argument(ysql_proxy.try_update_password, new_password, timeout=60)
+        except RuntimeError:
+            Output.log_error_and_exit("Could not update Postgress user password." +
+                " Exception: {}".format(traceback.format_exc()))
+
+        self.setup_env_init.setup_cert_file_path(self.configs.saved_data.get("ca_cert_file_path"))
+        ycql_proxy = YcqlProxy(self.advertise_ip(), self.configs.saved_data.get("ycql_port"),
+                        secure=self.configs.saved_data.get("secure"))
+        Output.log("Attempting to update Cassandra password.")
+        try:
+            retry_op_with_argument(ycql_proxy.try_update_password, new_password, timeout=60)
+        except RuntimeError:
+            Output.log_error_and_exit("Could not update Cassandra user password." +
+                " Exception: {}".format(traceback.format_exc()))
+
+        self.setup_env_init.update_passwords(new_password)
+        self.configs.saved_data["database_password"] = new_password
+
+    # Create a new file in base directory and put Ysql login credentials in it.
+    def create_password_file(self):
+        password_file = os.path.join(self.configs.saved_data.get("data_dir"),
+                "{}_credentials.txt".format(SCRIPT_NAME))
+
+        ysql_username, ysql_password, ysql_db = self.setup_env_init.get_ysql_credentials()
+        ycql_username, ycql_password, ycql_keyspace = self.setup_env_init.get_ycql_credentials()
+
+        content = ""
+        content += "YSQL Credentials:\nUsername: {}\nPassword: {}\n" \
+            "Database: {}\n\n".format(ysql_username, ysql_password, ysql_db)
+        content += "YCQL Credentials:\nUsername: {}\nPassword: {}\n" \
+            "Keyspace: {}\n".format(ycql_username, ycql_password, ycql_keyspace)
+
+        with open(password_file, "w+") as f:
+            f.write(content)
+
     # Verify that the master is in the current list of masters.
     # If not, set it up appropriately.
     def setup_master(self, timeout=180):
@@ -984,7 +1588,7 @@ class ControlScript(object):
 
         # The master was not in the current list of masters
         # and we have a valid join_ip
-        bind_ip = self.configs.saved_data.get("listen")
+        bind_ip = self.configs.saved_data.get("advertise_address")
         master_addrs = "{}:{}".format(join_ip,
                     self.configs.saved_data.get("master_rpc_port"))
         master_uuids = [ m[0] for m in YBAdminProxy.get_masters(master_addrs) ]
@@ -1088,7 +1692,10 @@ class ControlScript(object):
 
     # Returns pretty output table.
     def get_status_string(self):
+        join_ip = self.configs.saved_data.get("join")
         advertise_ip = self.advertise_ip()
+        master_addrs = "{}:{}".format(join_ip if join_ip else advertise_ip,
+                                      self.configs.saved_data.get("master_rpc_port"))
 
         ycql_port = self.configs.saved_data.get("ycql_port")
         cql_hostname_param = ""
@@ -1117,9 +1724,10 @@ class ControlScript(object):
             # the leader election
             # In case of manual start or some other route, we can have a smaller timeout
             if self.wait_get_all_masters(timeout=10):
-                status = "Running. Leader Master is present"
+                status = "Running."
             else:
-                status = "Running. No leader master yet"
+                status = "Status command timed out as YugabyteDB \"yb-master\" " + \
+                            "process is not responding."
 
 
         ysql_flags = " {} {} -U {} -d {}".format(ysql_hostname_param, ysql_port_param,
@@ -1128,6 +1736,8 @@ class ControlScript(object):
                         ycql_username)
         if ycql_keyspace is not None:
             ycql_flags = ycql_flags + " -k {}".format(ycql_keyspace)
+        if self.configs.saved_data.get("secure"):
+            ycql_flags = ycql_flags + " --ssl"
 
         # TODO: Check if YW is disabled. This could be from saving --ui flag, checking PID,
         # or some other method. The first is not preferred because it would deviate from how the
@@ -1140,6 +1750,7 @@ class ControlScript(object):
 
         status_info = [
             (Output.make_yellow("Status"), status),
+            (Output.make_yellow("Replication Factor"), YBAdminProxy.get_cluster_rf(master_addrs)),
         ]
         console_desc = "Web console"
         if self.configs.temp_data.get("ui"):
@@ -1156,6 +1767,23 @@ class ControlScript(object):
             (Output.make_yellow("Log Dir"), self.configs.saved_data.get("log_dir")),
             (Output.make_yellow("Universe UUID"), self.configs.saved_data.get("universe_uuid"))
         ]
+        div_line = "+" + "-" * 106 + "+" + "\n"
+        status = "\n" + div_line
+        status += ("| {:^" + str(104
+         + extra_len) + "} |\n").format(title)
+        status += div_line
+        for k, v in status_info:
+            extra_len = len(Output.make_yellow(""))
+            status += ("| {:" + str(20 + extra_len) + "}: {:<82} |\n").format(k, v)
+        status += div_line
+        return status
+
+    # Returns pretty output table for configure command.
+    def get_status_string_for_configure(self, status_info):
+
+        title = Output.make_bold(Output.make_green(SCRIPT_NAME))
+        extra_len = len(Output.make_bold(Output.make_green("")))
+
         div_line = "+" + "-" * 98 + "+" + "\n"
         status = "\n" + div_line
         status += ("| {:^" + str(96 + extra_len) + "} |\n").format(title)
@@ -1241,6 +1869,44 @@ class ControlScript(object):
         if args.parser == "collect_logs":
             self.configs.temp_data["collect_logs_stdout"] = args.stdout
 
+        if args.parser == "configure":
+            if args.fault_tolerance is not None:
+                if args.fault_tolerance.lower() in FAULT_TOLERANCE_CHOICES:
+                    self.configs.temp_data["fault_tolerance"] = args.fault_tolerance.lower()
+                else:
+                    has_errors = True
+                    Output.print_out(
+                        "Incorrect fault_tolerance value specified. " +
+                        "Please specify one of the following - zone, region or cloud ".format(
+                            args.fault_tolerance.lower()))
+
+            if args.data_placement_constraint is not None:
+                data_constraints = args.data_placement_constraint.split(",")
+                has_errors = False
+                for constraint in data_constraints:
+                    cloud_info = constraint.split(".")
+                    if (len(cloud_info) == 3):
+                        for value in cloud_info:
+                            if not value:
+                                has_errors=True
+                    else:
+                        has_errors = True
+
+                if has_errors:
+                    Output.print_out(
+                        "Incorrect value specified for data_placement_constraint. " +
+                        "Please specify comma sperated value with format " +
+                        "- cloudprovider.region.zone".format(
+                            args.data_placement_constraint))
+                else:
+                    self.configs.temp_data[
+                        "data_placement_constraint"] = args.data_placement_constraint
+
+            if args.rf is not None:
+                self.configs.temp_data["replication_factor"] = str(args.rf)
+            else:
+                self.configs.temp_data["replication_factor"] = str("3")
+
         if args.parser == "start":
             if args.data_dir is not None:
                 config_data_dir = self.configs.saved_data.get("data_dir")
@@ -1259,8 +1925,79 @@ class ControlScript(object):
                         "Old log directory already exists at {}. New logs will go to {}".format(
                             config_log_dir, args.log_dir))
 
+            if args.cloud_location is not None:
+                cloud_location = args.cloud_location.split(".")
+                if len(cloud_location) == 3:
+                    self.configs.saved_data["cloud_provider"] = cloud_location[0]
+                    self.configs.saved_data["cloud_region"] = cloud_location[1]
+                    self.configs.saved_data["cloud_zone"] = cloud_location[2]
+                else:
+                    Output.print_out(Output.make_red("ERROR") +
+                        ": Incorrect format used for flag --cloud_location. " +
+                        "Please use cloud.region.zone format.")
+                    has_errors = True
+
+            if args.fault_tolerance is not None:
+                if args.fault_tolerance.lower() in START_FAULT_TOLERANCE_CHOICES:
+                    self.configs.saved_data["fault_tolerance"] = args.fault_tolerance.lower()
+                else:
+                    has_errors = True
+                    Output.print_out(
+                        "Incorrect fault_tolerance value specified. " +
+                        "Please specify one of the following - zone, region or cloud ".format(
+                            args.fault_tolerance.lower()))
+
+            if args.listen is not None:
+                if args.advertise_address is not None and args.listen != args.advertise_address:
+                    Output.print_out(Output.make_red("ERROR") +
+                        ": --listen and --advertise_address flags " +
+                        "are same. --listen is depricated. Can't have different values for them.")
+                    has_errors = True
+                self.configs.saved_data["advertise_address"] = args.listen
+
+            if args.daemon is not None:
+                if args.background is not None and \
+                        self.parse_bool(args.daemon) != self.parse_bool(args.background):
+                    Output.print_out(Output.make_red("ERROR") +
+                        ": --daemon and --background flags " +
+                        "are same. --daemon is depricated. Can't have different values for them.")
+                    has_errors = True
+                args.background = args.daemon
+
+            if args.background is None:
+                args.background = "True"
+
+            if not args.secure and not args.insecure:
+                args.insecure = True
+
+            if args.secure:
+                if args.insecure:
+                    has_errors = True
+                    Output.print_out(Output.make_red("ERROR") +
+                        ": --secure flag can't be used together with --insecure flag")
+                elif args.certs_dir is None:
+                    has_errors = True
+                    Output.print_out(Output.make_red("ERROR") +
+                        ": --secure flag needs to be accompanied with the path " +
+                            "to the certificates using the --certs_dir")
+                elif not os.path.exists(args.certs_dir):
+                    has_errors = True
+                    Output.print_out(Output.make_red("ERROR") +
+                        ": certs directory provided does not exist.")
+
+                args.ysql_enable_auth="true"
+                args.use_cassandra_authentication="true"
+                self.configs.saved_data["ca_cert_file_path"] = os.path.join(args.certs_dir,
+                                                                        "ca.crt")
+
+            if args.certs_dir is not None:
+                if not args.secure:
+                    has_errors = True
+                    Output.print_out(Output.make_red("ERROR") +
+                        ": --certs_dir flag needs to be accompanied with the --secure flag.")
+
             args.ui = self.parse_bool(args.ui)
-            args.daemon = self.parse_bool(args.daemon)
+            args.background = self.parse_bool(args.background)
             if args.callhome is not None:
                 args.callhome = self.parse_bool(args.callhome)
             elif os.environ.get("YB_DISABLE_CALLHOME") is not None:
@@ -1290,9 +2027,12 @@ class ControlScript(object):
                 Output.print_out('WARNING: UI disabled - Java 1.8 or higher is required.')
                 args.ui = False
 
-            self.configs.temp_data["daemon"] = args.daemon
+            self.configs.temp_data["background"] = args.background
             self.configs.temp_data["ui"] = args.ui
             self.configs.temp_data["initial_scripts_dir"] = args.initial_scripts_dir
+
+        if self.configs.saved_data.get("database_password") is not None:
+            self.setup_env_init.update_passwords(self.configs.saved_data.get("database_password"))
 
         if has_errors:
             sys.exit(1)
@@ -1324,37 +2064,46 @@ class ControlScript(object):
         common_parser = argparse.ArgumentParser(add_help=False)
         common_parser.add_argument(
             "--config", help="{} configuration file path".format(
-                              SCRIPT_NAME))
+                              SCRIPT_NAME), metavar="")
         # TODO: Refactor data_dir to be a list for multi-node. How should the config file and
         # data dir be set for local mulit-node setups? Note: daemon mode may be affected.
         common_parser.add_argument(
-            "--data_dir", help="Directory where {} will store data.".format(SCRIPT_NAME))
+            "--data_dir", help="Directory where {} will store data.".format(SCRIPT_NAME),
+                metavar="")
         common_parser.add_argument(
             "--base_dir", help="Directory under which {} will store data, conf and logs".format(
-                SCRIPT_NAME))
+                SCRIPT_NAME), metavar="")
 
-        start_msg = "To start {}, run '{}'.\n\n".format(
-            SCRIPT_NAME, Output.make_green("{} start".format(SCRIPT_NAME)))
+        start_msg = "To start YugabyteDB cluster, run '{}'.\n\n".format(
+            Output.make_green("{} start".format(SCRIPT_NAME)))
+        start_msg += "Find more information at: {}".format(Output.make_underline(YUGABYTED_LINK))
         parser = PrettyArgParser(description=start_msg)
         all_parsers = {"default": parser}
-        subparsers = parser.add_subparsers(dest="parser")
+        subparsers = parser.add_subparsers(dest="parser", metavar="")
         subparsers.required = True
         for cmd, description in (
-                ("start", "Start {}.".format(SCRIPT_NAME)),
-                ("stop", "Stop running {}.".format(SCRIPT_NAME)),
-                ("destroy", "Destroy {} cluster and remove data.".format(SCRIPT_NAME)),
-                ("status", "Print status of {}.".format(SCRIPT_NAME)),
-                ("version", "Version of {}.".format(SCRIPT_NAME)),
-                ("collect_logs", "Collect and package logs for troubleshooting.")):
-            subparser = subparsers.add_parser(cmd, help=description, parents=[common_parser])
+                ("start", "Start YugabyteDB cluster."),
+                ("stop", "Stop running YugabyteDB cluster."),
+                ("destroy", "Destroy YugabyteDB cluster and remove data."),
+                ("status", "Print status of YugabyteDB cluster."),
+                ("version", "Release version of YugabyteDB cluster."),
+                ("collect_logs", "Collect and package logs for troubleshooting."),
+                ("configure", "Configure multi-zone/multiregion cluster")):
+            example = ""
+            if EXAMPLE[cmd]:
+                example = Output.make_yellow("Examples") + ": \n" + EXAMPLE[cmd]
+            subparser = subparsers.add_parser(cmd, description=example,
+                                                help=description, parents=[common_parser])
+            subparser.epilog = EPILOG_SPECIFIC[cmd] + EPILOG_COMMON
             func = getattr(self, cmd, None)
             subparser.set_defaults(func=func)
             all_parsers[cmd] = subparser
 
         # Add ysql and ycql CLI options
-        connect = subparsers.add_parser("connect", help="Connect to an API through the CLI.")
+        connect = subparsers.add_parser("connect",
+                    help="Connect to YugabyteDB cluster through the CLI.")
         all_parsers["connect"] = connect
-        connect_subparser = connect.add_subparsers(dest="parser")
+        connect_subparser = connect.add_subparsers(dest="parser", metavar="")
         connect_subparser.required = True
         for api in YUGABYTE_API_CLIENT_PROGRAMS:
             cur_parser = connect_subparser.add_parser(
@@ -1367,7 +2116,7 @@ class ControlScript(object):
 
         demo_parser = subparsers.add_parser("demo", help="Load and interact with preset demo data.")
         all_parsers["demo"] = demo_parser
-        demo_subparsers = demo_parser.add_subparsers(dest="parser")
+        demo_subparsers = demo_parser.add_subparsers(dest="parser", metavar="")
         demo_subparsers.required = True
         for cmd, description in (
                 ("connect", "Connect to the demo database."),
@@ -1382,53 +2131,86 @@ class ControlScript(object):
         for cmd in ("collect_logs",):
             cur_parser = all_parsers[cmd]
             cur_parser.add_argument(
-                "--stdout", help="Redirect the logs.tar.gz file's content to stdout. Ex: \
-                docker exec <container-id> bin/yugabyted collect_logs --stdout > yugabyted.tar.gz",
+                "--stdout", help="Redirect the logs.tar.gz file's content to stdout. Ex: "+
+                "docker exec <container-id> bin/yugabyted collect_logs --stdout > yugabyted.tar.gz",
                 action="store_true", default=False)
+
+        # Commands that can change muti-zone/multi-region configuration.
+        for cmd in ("configure",):
+            cur_parser = all_parsers[cmd]
+            cur_parser.add_argument(
+                "--fault_tolerance", help="No more than 1 node in the same " +
+                "fault tolerance can be a master",
+                metavar="")
+            cur_parser.add_argument(
+                "--data_placement_constraint", help="Data placement constriant to be applied " +
+                "on the YugabyteDB Cluster",
+                metavar="")
+            cur_parser.add_argument(
+                "--rf", help="Set the replication factor for each tablet",
+                metavar="")
 
         # Commands that can alter configuration file.
         for cmd in ("start",):
             cur_parser = all_parsers[cmd]
             cur_parser.add_argument(
-                "--log_dir", help="Directory to store {} logs.".format(SCRIPT_NAME))
+                "--log_dir", help="Directory to store {} logs.".format(SCRIPT_NAME), metavar="")
             cur_parser.add_argument(
-                "--ycql_port", help="Port on which YCQL will run.")
+                "--ycql_port", help=argparse.SUPPRESS)
             cur_parser.add_argument(
-                "--ysql_port", help="Port on which YSQL will run.")
+                "--ysql_port", help=argparse.SUPPRESS)
             cur_parser.add_argument(
-                "--master_rpc_port", help="Port on which yb-master will listen for RPCs.")
+                "--master_rpc_port", help=argparse.SUPPRESS)
             cur_parser.add_argument(
-                "--tserver_rpc_port", help="Port on which yb-tserver will listen for RPCs.")
+                "--tserver_rpc_port", help=argparse.SUPPRESS)
             cur_parser.add_argument(
-                "--master_webserver_port", help="Port on which yb-master webserver will run.")
+                "--master_webserver_port", help=argparse.SUPPRESS)
             cur_parser.add_argument(
-                "--tserver_webserver_port", help="Port on which yb-tserver webserver will run.")
+                "--tserver_webserver_port", help=argparse.SUPPRESS)
             cur_parser.add_argument(
-                "--webserver_port", help="Port on which main webserver will run.")
+                "--webserver_port", help=argparse.SUPPRESS)
             cur_parser.add_argument(
-                "--listen",
-                help="IP address or local hostname on which {} will listen.".format(SCRIPT_NAME))
+                "--listen", help=argparse.SUPPRESS)
             cur_parser.add_argument(
-                "--join", help="IP address to which this process will join".format(SCRIPT_NAME))
+                "--advertise_address",
+                help="IP address or local hostname on which {} will listen.".format(SCRIPT_NAME),
+                metavar="")
             cur_parser.add_argument(
-                "--daemon", choices=BOOL_CHOICES, default="true", metavar="BOOL",
+                "--join", help="IP address to which this process will join".format(SCRIPT_NAME),
+                metavar="")
+            cur_parser.add_argument(
+                "--secure", help="Start the cluster in a secure manner", action="store_true")
+            cur_parser.add_argument(
+                "--insecure", help="Start the cluster in an insecure manner", action="store_true")
+            cur_parser.add_argument(
+                "--certs_dir", help="Path to the certificates to be used for secure deployment.",
+                metavar="")
+            cur_parser.add_argument(
+                "--daemon", choices=BOOL_CHOICES, help=argparse.SUPPRESS)
+            cur_parser.add_argument(
+                "--background", choices=BOOL_CHOICES, metavar="",
                 help="Runs {} in the background as a daemon. Does not persist on restart. "
                      "Default true.".format(SCRIPT_NAME))
             cur_parser.add_argument(
-                "--callhome", choices=BOOL_CHOICES, metavar="BOOL",
-                help="Enable or disable callhome feature that sends analytics data to Yugabyte. "
-                     "Default true.")
+                "--callhome", choices=BOOL_CHOICES,
+                help=argparse.SUPPRESS)
             cur_parser.add_argument(
-                "--ui", choices=BOOL_CHOICES, default="false", metavar="BOOL",
+                "--ui", choices=BOOL_CHOICES, default="false", metavar="",
                 help="Toggle enabling or disabling webserver UI. Default false.")
             cur_parser.add_argument(
-                "--ysql_enable_auth", choices=BOOL_CHOICES, metavar="BOOL",
+                "--ysql_enable_auth", choices=BOOL_CHOICES,
                 help=argparse.SUPPRESS)
             cur_parser.add_argument(
-                "--use_cassandra_authentication", choices=BOOL_CHOICES, metavar="BOOL",
+                "--use_cassandra_authentication", choices=BOOL_CHOICES,
                 help=argparse.SUPPRESS)
             cur_parser.add_argument(
-                "--initial_scripts_dir", help="Directory from where yugabyted reads initialization scripts")
+                "--initial_scripts_dir", help=argparse.SUPPRESS)
+            cur_parser.add_argument(
+                "--cloud_location", metavar="",
+                help="Cloud location of the node in form of cloudprovider.region.zone")
+            cur_parser.add_argument(
+                "--fault_tolerance", metavar="",
+                help="Determines the type of deployment of the cluster. Default is None.")
 
             # Hidden commands for development/advanced users
             cur_parser.add_argument(
@@ -1462,7 +2244,8 @@ class ControlScript(object):
 
         # Initialize the binary path of ybadmin
         # TODO(Sanket): Clean up and refactor this file
-        YBAdminProxy.populate_binary_path()
+        YBAdminProxy.init(self.configs.saved_data.get("master_flags"), \
+            self.configs.saved_data.get("secure"), self.configs.saved_data.get("certs_dir"))
 
         try:
             args.func()
@@ -1474,7 +2257,7 @@ class ControlScript(object):
             Output.log_error_and_exit(traceback.format_exc())
 
     def advertise_ip(self):
-        bind_ip = self.configs.saved_data.get("listen")
+        bind_ip = self.configs.saved_data.get("advertise_address")
         return bind_ip if bind_ip != IP_ANY else IP_LOCALHOST
 
     def master_port(self):
@@ -1544,7 +2327,7 @@ class Configs(object):
             "tserver_webserver_port": DEFAULT_TSERVER_WEBSERVER_PORT,
             "ysql_port": DEFAULT_YSQL_PORT,
             "ycql_port": DEFAULT_YCQL_PORT,
-            "listen": DEFAULT_BIND_IP,
+            "advertise_address": DEFAULT_BIND_IP,
             "webserver_port": DEFAULT_WEBSERVER_PORT,
             "universe_uuid": str(uuid.uuid4()),
             "node_uuid": str(uuid.uuid4()),
@@ -1557,14 +2340,26 @@ class Configs(object):
             "join": "",
             "ysql_enable_auth": False,
             "use_cassandra_authentication": False,
+            "cloud_provider": DEFAULT_CLOUD_PROVIDER,
+            "cloud_region": DEFAULT_CLOUD_REGION,
+            "cloud_zone": DEFAULT_CLOUD_ZONE,
+            "fault_tolerance": DEFAULT_START_FAULT_TOLERANCE,
+            "secure": False,
+            "insecure": True,
+            "certs_dir": "",
+            "ca_cert_file_path": "",
+            "database_password": None,
         }
         # Used to store data specific to certain functions that we don't want to save.
         self.temp_data = {
             "demo_db": DEFAULT_DEMO_DATABASE,
-            "daemon": True,
+            "background": True,
             "ui": False,
             "initial_scripts_dir": "",
             "collect_logs_stdout": False,
+            "data_placement_constraint": "",
+            "fault_tolerance": DEFAULT_FAULT_TOLERANCE,
+            "replication_factor":"",
         }
         self.config_file = config_file
 
@@ -1762,9 +2557,9 @@ class ProcessManager(object):
             # "RLIMIT_FSIZE": (rlim_max, "file_size"),
             # "RLIMIT_MEMLOCK": (rlim_max, "max_locked_memory"),
             # "RLIMIT_AS": (rlim_max, "max_memory_size"),
-            "RLIMIT_NOFILE": (64000, "open_files"),
+            "RLIMIT_NOFILE": (1048576, "open_files"),
             # "RLIMIT_CPU": (rlim_max, "cpu_time"),
-            "RLIMIT_NPROC": (64, "max_user_processes"),
+            "RLIMIT_NPROC": (MAX_PROC[OS_NAME], "max_user_processes"),
             # "RLIMIT_VMEM": (rlim_max, "virtual_memory"),
         }
 
@@ -1791,16 +2586,7 @@ class ProcessManager(object):
                             logging.ERROR)
 
         if failed and print_info:
-            config_link = "https://docs.yugabyte.com/latest/deploy/manual-deployment/system-config"
-            msg = "Failed to meet recommended settings. Ulimits too low - {}.\n".format(
-                ", ".join(list(zip(*failed))[0]))
-            yw_alert = msg + "Note {} will still run, although it may fail for larger " \
-                "workloads. For more info, see {}".format(SCRIPT_NAME, config_link)
-            msg += "Note {} will still run, although it may fail for larger workloads. " \
-                "For more info, see {}\n".format(SCRIPT_NAME, Output.make_underline(config_link))
-            msg = Output.make_yellow("WARNING: ") + msg
-            Output.print_and_log(msg, logging.WARNING)
-            return yw_alert
+            return list(zip(*failed))[0]
 
     # Returns the command that was run with the input pid.
     @staticmethod
@@ -1915,7 +2701,7 @@ class Diagnostics(object):
             if p.start_time:
                 payload["{}_start_time".format(p.name)] = p.start_time
 
-        bind_ip = self.configs.saved_data.get("listen")
+        bind_ip = self.configs.saved_data.get("advertise_address")
         advertise_ip = bind_ip if bind_ip != IP_ANY else IP_LOCALHOST
 
         master_addrs = "{}:{}".format(
@@ -1944,40 +2730,64 @@ class Diagnostics(object):
 
 # Proxy for parsing output from yb-admin commands.
 class YBAdminProxy(object):
-    path = None
+    cmd_args = []
 
     @staticmethod
-    def populate_binary_path():
-        YBAdminProxy.path = find_binary_location("yb-admin")
+    def init(master_flags, secure, certs_dir):
+        YBAdminProxy.cmd_args.append(find_binary_location("yb-admin"))
+
+        # If the user is attempting to use TLS, let's point yb-admin to
+        # the same certs dir as the master
+        if secure:
+            YBAdminProxy.cmd_args.append("--certs_dir_name={}".format(certs_dir))
+        elif master_flags:
+            flags_list = master_flags.split(",")
+            if 'use_node_to_node_encryption=true' not in flags_list:
+                return
+            certs_dir_name = [y for y in
+                [re.match('certs_dir=(.*)', x) for x in flags_list]
+                if y is not None]
+            if not certs_dir_name[0]:
+                raise RuntimeError("use_node_to_node_encryption=true must "
+                                "be accompanied by a certs_dir setting")
+            YBAdminProxy.cmd_args.append('--certs_dir_name={}'.format(certs_dir_name[0].group(1)))
 
     @staticmethod
     def add_master(master_addrs, new_master_ip, timeout=10):
-        cmd = [YBAdminProxy.path, "--init_master_addrs", master_addrs,
+        cmd = YBAdminProxy.cmd_args + ["--init_master_addrs", master_addrs,
               "change_master_config", "ADD_SERVER", new_master_ip, "7100"]
         out, err, ret_code = run_process(cmd, timeout=timeout, log_cmd=True)
         return (0 == ret_code)
 
     @staticmethod
+    def remove_master(master_addrs, old_master, timeout=10):
+        cmd = YBAdminProxy.cmd_args + ["--init_master_addrs", master_addrs,
+              "change_master_config", "REMOVE_SERVER", old_master, "7100"]
+        out, err, ret_code = run_process(cmd, timeout=timeout, log_cmd=True)
+        return (0 == ret_code)
+
+    @staticmethod
     def set_rf(master_addrs, rf, timeout=10):
-        cmd = [ YBAdminProxy.path, "--init_master_addrs", master_addrs,
+        cmd = YBAdminProxy.cmd_args + ["--init_master_addrs", master_addrs,
                 "modify_placement_info", "cloud1.datacenter1.rack1", str(rf) ]
         out, err, ret_code = run_process(cmd, timeout=timeout, log_cmd=True)
         return (0 == ret_code)
 
     @staticmethod
-    # Returns [ (uuid, ip:port) ] for each master
+    # Returns [ (uuid, ip:port, role) ] for each master
     def get_masters(master_addrs, timeout=10):
-        cmd = [YBAdminProxy.path, "--init_master_addrs", master_addrs, "list_all_masters"]
+        cmd = YBAdminProxy.cmd_args + ["--master_addresses", master_addrs, "list_all_masters"]
         out, err, ret_code = run_process(cmd, timeout=timeout, log_cmd=True)
         if 0 != ret_code or len(out.splitlines()) <= 1:
             return []
         masters = [ line.split() for line in out.splitlines()[1:] ]
-        return [ (master[0], master[1]) for master in masters ]
+        return [ (master[0], master[1], master[3]) for master in masters ]
 
     # Returns list[tserver uuid] reported by yb-master.
     @staticmethod
     def get_tservers(master_addrs, timeout=10):
-        cmd = [YBAdminProxy.path, "--init_master_addrs", master_addrs, "list_all_tablet_servers"]
+        cmd = YBAdminProxy.cmd_args + ["--master_addresses", master_addrs,
+                "list_all_tablet_servers"]
         out, err, ret_code = run_process(cmd, timeout=timeout, log_cmd=True)
         if 0 != ret_code or len(out.splitlines()) <= 1:
             return None
@@ -1986,19 +2796,40 @@ class YBAdminProxy(object):
     # Returns the cluster_uuid for this universe
     @staticmethod
     def get_cluster_uuid(master_addrs):
-        cmd = [YBAdminProxy.path, "--init_master_addrs", master_addrs, "get_universe_config"]
+        cluster_config = YBAdminProxy.get_cluster_config(master_addrs)
+        if cluster_config:
+            return cluster_config['clusterUuid']
+        else:
+            return None
+
+    # Returns the rf for this universe
+    @staticmethod
+    def get_cluster_rf(master_addrs):
+        cluster_config = YBAdminProxy.get_cluster_config(master_addrs)
+        if cluster_config:
+            if "replicationInfo" in cluster_config:
+                return cluster_config["replicationInfo"]["liveReplicas"]["numReplicas"]
+            else:
+                return 1
+        else:
+            return None
+
+    # Returns the cluster config for this universe
+    @staticmethod
+    def get_cluster_config(master_addrs):
+        cmd = YBAdminProxy.cmd_args + ["--master_addresses", master_addrs, "get_universe_config"]
         out, err, ret_code = run_process(cmd)
         if ret_code:
             return None
         try:
-            return json.loads(out)['clusterUuid']
+            return json.loads(out)
         except Exception:
             return None
 
     # Returns node_uuid by finding the UUID corresponding to current master's IP
     @staticmethod
     def get_node_uuid(master_addrs, cur_master_addr):
-        cmd = [YBAdminProxy.path, "--init_master_addrs", master_addrs, "list_all_masters"]
+        cmd = YBAdminProxy.cmd_args + ["--init_master_addrs", master_addrs, "list_all_masters"]
         out, err, ret_code = run_process(cmd)
         if ret_code:
             return None
@@ -2008,6 +2839,17 @@ class YBAdminProxy(object):
                 return master_uuid
         return None
 
+    # Sets placement info
+    @staticmethod
+    def modify_placement_info(master_addrs, placement_locations, replication_factor, timeout=10):
+
+        if not replication_factor:
+            replication_factor = "3"
+
+        cmd = YBAdminProxy.cmd_args + ["-master_addresses", master_addrs, "modify_placement_info",
+                placement_locations, replication_factor]
+        out, err, ret_code = run_process(cmd, timeout=timeout, log_cmd=True)
+        return (ret_code == 0)
 
 # Proxy for ysqlsh commands.
 class YsqlProxy(object):
@@ -2015,10 +2857,12 @@ class YsqlProxy(object):
                     get_default_credentials=False):
         if path is None:
             path = find_binary_location(YUGABYTE_API_CLIENT_PROGRAMS["ysql"])
-        self.cmd = [path, "-h", str(ip), "-p", str(port)]
         self.setup_env_init = EnvBasedCredentials()
         self.username, self.password, self.db = self.setup_env_init.get_ysql_credentials(
                                                     get_default_credentials)
+        self.cmd_with_password = [path, "postgresql://{}:{}@{}:{}/{}".format(self.username,
+                self.password, ip, port, self.db)]
+        self.cmd_without_password = [path, "-h", str(ip), "-p", str(port)]
         env_var = os.environ.copy()
         env_var["PGUSER"] = self.username
         env_var["PGPASSWORD"] = self.password
@@ -2030,7 +2874,7 @@ class YsqlProxy(object):
     def connect(self, db=None):
         if db is None:
             db = self.db
-        cmd = self.cmd + ["-d", db]
+        cmd = self.cmd_without_password + ["-d", db]
         env_var = os.environ.copy()
         env_var["PGUSER"] = self.username
         shell = subprocess.Popen(cmd, env=env_var)
@@ -2039,23 +2883,23 @@ class YsqlProxy(object):
     # Checks if db exists.
     # Note that this will return false if ysqlsh can't connect, even if db exists.
     def db_exists(self, db):
-        cmd = self.cmd + ["-q", "-c", "\\t", "-c",
+        cmd = self.cmd_with_password + ["-q", "-c", "\\t", "-c",
             "select datname from pg_catalog.pg_database where datname='{}'".format(db)]
         return run_process_checked(cmd=cmd, env_vars=self.env).strip() == db
 
     # Creates specified db.
     def create_db(self, db):
-        cmd = self.cmd + ["-c", "create database \"{}\"".format(db)]
+        cmd = self.cmd_with_password + ["-c", "create database \"{}\"".format(db)]
         run_process_checked(cmd=cmd, env_vars=self.env)
 
     # Deletes specified db.
     def drop_db(self, db):
-        cmd = self.cmd + ["-c", "drop database {}".format(db)]
+        cmd = self.cmd_with_password + ["-c", "drop database {}".format(db)]
         run_process_checked(cmd=cmd, env_vars=self.env)
 
     # Runs ysqlsh with specified files.
     def load_files(self, filepaths, db=None):
-        cmd = self.cmd
+        cmd = self.cmd_with_password
         env = self.env
         if db:
             env['PGDATABASE'] = db
@@ -2068,19 +2912,21 @@ class YsqlProxy(object):
     # Check user exists
     # Note that this will return false if ysqlsh can't connect, even if user exists.
     def user_exists(self, ysql_username):
-        cmd = self.cmd + ["-c", "select rolname from pg_catalog.pg_roles where rolname='{}'".
+        cmd = self.cmd_with_password + \
+                ["-c", "select rolname from pg_catalog.pg_roles where rolname='{}'".
                 format(ysql_username)]
         run_process_checked(cmd=cmd, env_vars=self.env).strip() == ysql_username
 
     # Create specified superuser
     def create_user(self, ysql_username, ysql_password):
-        cmd = self.cmd + ["-c", "create role \"{}\" with LOGIN SUPERUSER password '{}';".
+        cmd = self.cmd_with_password + \
+                ["-c", "create role \"{}\" with LOGIN SUPERUSER password '{}';".
                 format(ysql_username, ysql_password)]
         run_process_checked(cmd=cmd, log_cmd=False, env_vars=self.env)
 
     # Delete specified user
     def delete_user(self, username, password, user_to_delete=DEFAULT_YSQL_USER):
-        cmd = self.cmd + ["-c", "drop role {};".format(user_to_delete)]
+        cmd = self.cmd_with_password + ["-c", "drop role {};".format(user_to_delete)]
         env = self.env
         env['PGUSER'] = username
         env['PGPASSWORD'] = password
@@ -2088,17 +2934,27 @@ class YsqlProxy(object):
 
     # Update specified user's password
     def update_password(self, new_password, user_to_update=DEFAULT_YSQL_USER):
-        cmd = self.cmd + ["-c", "alter role {} password '{}';".format(user_to_update, new_password)]
+        cmd = self.cmd_with_password + \
+            ["-c", "alter role {} password '{}';".format(user_to_update, new_password)]
         run_process_checked(cmd=cmd, log_cmd=False, env_vars=self.env)
+
+    # Try to update specified user's password otherwise throw Retryable Error
+    def try_update_password(self, new_password, user_to_update=DEFAULT_YSQL_USER):
+        cmd = self.cmd_with_password + \
+            ["-c", "alter role {} password '{}';".format(user_to_update, new_password)]
+        out, err, retcode = run_process(cmd=cmd, log_cmd=True, env_vars=self.env)
+        if (retcode != 0):
+            raise RetryableError
 
     # Change specified DB's owner
     def db_owner(self, db, new_owner):
-        cmd = self.cmd + ["-c", "alter database \"{}\" owner to \"{}\";".format(db, new_owner)]
+        cmd = self.cmd_with_password + \
+            ["-c", "alter database \"{}\" owner to \"{}\";".format(db, new_owner)]
         run_process_checked(cmd=cmd, env_vars=self.env)
 
     # Check YSQL is UP
     def is_ysql_up(self):
-        cmd = self.cmd + ["-c", "\\conninfo"]
+        cmd = self.cmd_with_password + ["-c", "\\conninfo"]
         out, err, _ = run_process(cmd=cmd, log_cmd=True, env_vars=self.env)
         if err:
             Output.log("Unable to connect using YSQL. Error: {}".format(err))
@@ -2110,19 +2966,22 @@ class YsqlProxy(object):
 # Proxy for ycqlsh commands.
 class YcqlProxy(object):
     def __init__(self, ip, port, path=None,
-                    get_default_credentials=False):
+                    get_default_credentials=False, secure=False):
         if path is None:
             path = find_binary_location(YUGABYTE_API_CLIENT_PROGRAMS["ycql"])
         self.cmd = [path, str(ip), str(port)]
         self.setup_env_init = EnvBasedCredentials()
         self.username, self.password, self.keyspace = self.setup_env_init.get_ycql_credentials(
                                                         get_default_credentials)
+        self.password_authentication=secure
+
+        if secure:
+            self.cmd.append("--ssl")
 
     # Starts interactive YCQL shell.
     def connect(self):
         cmd = self.cmd
-        if self.setup_env_init.is_exists('YCQL_USER') or \
-                    self.setup_env_init.is_exists('YCQL_PASSWORD'):
+        if self.password_authentication:
             cmd.extend(["-u", self.username])
         if self.keyspace is not None:
             cmd.extend(["-k", self.keyspace])
@@ -2155,6 +3014,14 @@ class YcqlProxy(object):
                 "ALTER ROLE {} WITH PASSWORD = '{}';".format(user_to_update, new_password)]
         run_process_checked(cmd, log_cmd=False)
 
+    # Try to update specified user's password otherwise throw Retryable Error
+    def try_update_password(self, new_password, user_to_update=DEFAULT_YCQL_USER):
+        cmd = self.cmd + ["-u", self.username, "-p", self.password, "-e",
+                "ALTER ROLE {} WITH PASSWORD = '{}';".format(user_to_update, new_password)]
+        out, err, retcode = run_process(cmd=cmd, log_cmd=True, env_vars=os.environ.copy())
+        if (retcode != 0):
+            raise RetryableError
+
     # Check keyspace exists
     # Note that this will return false if ycqlsh can't connect, even if keyspace exists.
     def keyspace_exists(self, keyspace):
@@ -2175,9 +3042,7 @@ class YcqlProxy(object):
     # 2. If environment variables exists: bin/ycqlsh -u user -p password -f directory/b.ycql
     def load_files(self, filepaths):
         cmd = self.cmd
-        if self.setup_env_init.is_exists('YCQL_USER') or \
-                    self.setup_env_init.is_exists('YCQL_PASSWORD'):
-            cmd.extend(["-u", self.username, "-p", self.password])
+        cmd.extend(["-u", self.username, "-p", self.password])
         for path in filepaths:
             cmd.extend(["-f", path])
         run_process_checked(cmd=cmd, log_cmd=False)
@@ -2420,9 +3285,10 @@ class Output(object):
     # Only attempt to write to stdout while we have access to console.
     console_access = True
 
-    ANIMATION_SUCCESS = 0
-    ANIMATION_FAIL = -1
+    ANIMATION_SUCCESS = '\u2705'
+    ANIMATION_FAIL = '\u274C'
     ANIMATION_RUNNING = 1
+    ANIMATION_WARNING = '\u26A0'
     # Tuple of (animation_status, animation_message) to ensure atomicity.
     animation_status = (ANIMATION_SUCCESS, "")
     animation_thread = None
@@ -2453,10 +3319,6 @@ class Output(object):
 
         def animate():
             loading_symbols = ['/', '-', '\\', '|']
-            end_symbols = {
-                Output.ANIMATION_SUCCESS: '\u2705',
-                Output.ANIMATION_FAIL: '\u274C',
-            }
             line_len = 0
             i = 0
             running = True
@@ -2465,7 +3327,7 @@ class Output(object):
                 if status == Output.ANIMATION_RUNNING:
                     symbol = loading_symbols[i]
                 else:
-                    symbol = end_symbols[status]
+                    symbol = status
                     running = False
 
                 line = "\r{} {}".format(symbol, msg)
@@ -2576,10 +3438,9 @@ class Output(object):
 
 # Class to customize argparse output.
 class PrettyArgParser(argparse.ArgumentParser):
-    epilog = "Run '{} [command] -h' for help with specific commands.".format(SCRIPT_NAME)
     def __init__(self, **kwargs):
         kwargs["formatter_class"] = PrettyHelpFormatter
-        kwargs["epilog"] = self.epilog
+        kwargs["epilog"] = EPILOG_COMMON
         super(PrettyArgParser, self).__init__(**kwargs)
         self._positionals.title = Output.make_yellow("Commands")
         self._optionals.title = Output.make_yellow("Flags")
@@ -2592,14 +3453,51 @@ class PrettyArgParser(argparse.ArgumentParser):
 
 
 # Class that capitalizes argparse help message.
-class PrettyHelpFormatter(argparse.HelpFormatter):
-    # Change the "Usage: "  string to yellow
+class PrettyHelpFormatter(argparse.RawTextHelpFormatter):
+    # Add prefix of cli title and change "Usage" to yellow
+    # Add usage according to the command from which help is called
     def add_usage(self, usage, actions, groups, prefix=None):
+        cmd = ('%(prog)s' % dict(prog=self._prog)).split()
+        if len(cmd) > 2 and cmd[1].isalpha() and cmd[-1].isalpha():
+            cmd = cmd[1] + " " +cmd[-1]
+        else:
+            cmd = cmd.pop()
         if prefix is None:
-            prefix = Output.make_yellow('Usage: ')
+            prefix = get_cli_title()
+            prefix += PREFIX[cmd] + "\n\n"
+            prefix += Output.make_yellow('Usage') + ": "
+        if usage is None:
+            usage = USAGE[cmd]
         super(PrettyHelpFormatter, self).add_usage(
             usage, actions, groups, prefix)
 
+    # Sort the flags in alphabetical order for the help message
+    def add_arguments(self, actions):
+        actions = sorted(actions, key=operator.attrgetter('option_strings'))
+        super(PrettyHelpFormatter, self).add_arguments(actions)
+
+    # Remove the help under "Command" section which had all command inside curly braces
+    def _format_action(self, action):
+        result = super(PrettyHelpFormatter,
+                       self)._format_action(action)
+        if isinstance(action, argparse._SubParsersAction):
+            return "%*s%s" % (self._current_indent, "", result.lstrip())
+        return result
+
+    # Remove the help under "Command" section which had all command inside curly braces
+    def _iter_indented_subactions(self, action):
+        if isinstance(action, argparse._SubParsersAction):
+            try:
+                get_subactions = action._get_subactions
+            except AttributeError:
+                pass
+            else:
+                for subaction in get_subactions():
+                    yield subaction
+        else:
+            for subaction in super(PrettyHelpFormatter,
+                                   self)._iter_indented_subactions(action):
+                yield subaction
 
 # Returns key-value pairs of input dict. Independent of python version.
 def get_kv(map):
@@ -2608,10 +3506,11 @@ def get_kv(map):
     else:
         return map.items()
 
-def run_process(cmd, timeout=None, log_cmd=False, env_vars=None):
+def run_process(cmd, timeout=None, log_cmd=False, env_vars=None, shell=False):
     if log_cmd:
         Output.log("run_process: cmd: {}".format(str(cmd)))
-    proc = subprocess.Popen(cmd, stderr=subprocess.PIPE, stdout=subprocess.PIPE, env=env_vars)
+    proc = subprocess.Popen(cmd, stderr=subprocess.PIPE, stdout=subprocess.PIPE,
+                            env=env_vars, shell=shell)
     if PY_VERSION >= 3:
         try:
             out, err = proc.communicate(timeout=timeout)
@@ -2622,7 +3521,7 @@ def run_process(cmd, timeout=None, log_cmd=False, env_vars=None):
         out, err = proc.communicate()
     (ret_out, ret_err, retcode) = (out.decode('utf-8'), err.decode('utf-8'), proc.returncode)
     if log_cmd:
-        Output.log("run_process returned {}: \nOUT >>\n{}\n<< ERR >>\n<<".format(
+        Output.log("run_process returned {}: \nOUT >>\n{}\n<< ERR >>\n{}\n<<".format(
             retcode, ret_out, ret_err))
     return (ret_out, ret_err, retcode)
 
@@ -2666,15 +3565,50 @@ def retry_op(func, timeout=180):
     raise RuntimeError("Failed after retrying operation for {} secs.".format(
         now - start_time))
 
+# Retry the function with argument as long as func throws RetryableError.
+def retry_op_with_argument(func, argument, timeout=180):
+    start_time = time.time()
+    now = start_time
+    while True:
+        try:
+            return func(argument)
+        except RetryableError:
+            pass
+        now = time.time()
+        if now - start_time > timeout:
+            break
+        time.sleep(0.5)
+
+    raise RuntimeError("Failed after retrying operation for {} secs.".format(
+        now - start_time))
+
 
 class EnvBasedCredentials(object):
-    def __init__(self):
-        self.ysql_user = os.environ.get('YSQL_USER')
-        self.ysql_password = os.environ.get('YSQL_PASSWORD')
-        self.ysql_db = os.environ.get('YSQL_DB')
-        self.ycql_user = os.environ.get('YCQL_USER')
-        self.ycql_password = os.environ.get('YCQL_PASSWORD')
-        self.ycql_keyspace = os.environ.get('YCQL_KEYSPACE')
+    _ysql_user = os.environ.get('YSQL_USER')
+    _ysql_password = os.environ.get('YSQL_PASSWORD')
+    _ysql_db = os.environ.get('YSQL_DB')
+    _ycql_user = os.environ.get('YCQL_USER')
+    _ycql_password = os.environ.get('YCQL_PASSWORD')
+    _ycql_keyspace = os.environ.get('YCQL_KEYSPACE')
+    _cert_file_path = os.environ.get('SSL_CERTFILE')
+
+    def attrsetter(attr):
+        def set_any(self, value):
+            setattr(type(self), attr, value)
+        return set_any
+
+    def attrgetter(attr):
+        def get_any(self):
+            return getattr(self, attr)
+        return get_any
+
+    ysql_user = property(attrgetter('_ysql_user'), attrsetter('_ysql_user'))
+    ysql_password = property(attrgetter('_ysql_password'), attrsetter('_ysql_password'))
+    ysql_db = property(attrgetter('_ysql_db'), attrsetter('_ysql_db'))
+    ycql_user = property(attrgetter('_ycql_user'), attrsetter('_ycql_user'))
+    ycql_password = property(attrgetter('_ycql_password'), attrsetter('_ycql_password'))
+    ycql_keyspace = property(attrgetter('_ycql_keyspace'), attrsetter('_ycql_keyspace'))
+    cert_file_path = property(attrgetter('_cert_file_path'), attrsetter('_cert_file_path'))
 
     def get_ysql_user(self):
         return self.ysql_user or DEFAULT_YSQL_USER
@@ -2694,6 +3628,9 @@ class EnvBasedCredentials(object):
     def get_ycql_keyspace(self):
         return self.ycql_keyspace or (self.ycql_user or DEFAULT_YCQL_KEYSPACE)
 
+    def get_cert_file_path(self):
+        return self.cert_file_path
+
     def get_ysql_credentials(self, get_default_credentials=False):
         if get_default_credentials:
             return DEFAULT_YSQL_USER, DEFAULT_YSQL_PASSWORD, DEFAULT_YSQL_DB
@@ -2708,6 +3645,16 @@ class EnvBasedCredentials(object):
 
     def is_exists(self, var_to_check):
         return True if var_to_check in os.environ and os.environ.get(var_to_check) else False
+
+    def update_ysql_password(self, new_password):
+        self.ysql_password = new_password
+
+    def update_ycql_password(self, new_password):
+        self.ycql_password = new_password
+
+    def update_passwords(self, new_password):
+        self.update_ysql_password(new_password)
+        self.update_ycql_password(new_password)
 
     def setup_ysql_credentials(self, proxy_class):
 
@@ -2745,6 +3692,11 @@ class EnvBasedCredentials(object):
 
             # Note: Following lines will be commented till we can decide on default user deletion.
             #proxy_class.delete_user(self.get_ycql_user(), self.get_ycql_password())
+
+    def setup_cert_file_path(self, cert_file_path):
+        if self.get_cert_file_path() is None or self.get_cert_file_path != cert_file_path:
+            os.environ['SSL_CERTFILE'] = cert_file_path
+            self.cert_file_path = cert_file_path
 
 
 if __name__ == '__main__':

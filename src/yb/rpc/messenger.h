@@ -194,7 +194,7 @@ class Messenger : public ProxyContext {
   void Shutdown();
 
   // Setup messenger to listen connections on given address.
-  CHECKED_STATUS ListenAddress(
+  Status ListenAddress(
       ConnectionContextFactoryPtr factory, const Endpoint& accept_endpoint,
       Endpoint* bound_endpoint = nullptr);
 
@@ -202,10 +202,10 @@ class Messenger : public ProxyContext {
   void ShutdownAcceptor();
 
   // Start accepting connections.
-  CHECKED_STATUS StartAcceptor();
+  Status StartAcceptor();
 
   // Register a new RpcService to handle inbound requests.
-  CHECKED_STATUS RegisterService(const std::string& service_name, const RpcServicePtr& service);
+  Status RegisterService(const std::string& service_name, const RpcServicePtr& service);
 
   void UnregisterAllServices();
 
@@ -224,11 +224,11 @@ class Messenger : public ProxyContext {
     return ThreadPool(priority);
   }
 
-  CHECKED_STATUS QueueEventOnAllReactors(
+  Status QueueEventOnAllReactors(
       ServerEventListPtr server_event, const SourceLocation& source_location);
 
   // Dump the current RPCs into the given protobuf.
-  CHECKED_STATUS DumpRunningRpcs(const DumpRunningRpcsRequestPB& req,
+  Status DumpRunningRpcs(const DumpRunningRpcsRequestPB& req,
                                  DumpRunningRpcsResponsePB* resp);
 
   void RemoveScheduledTask(ScheduledTaskId task_id);
@@ -280,8 +280,8 @@ class Messenger : public ProxyContext {
 
   rpc::ThreadPool& ThreadPool(ServicePriority priority = ServicePriority::kNormal);
 
-  RpcMetrics& rpc_metrics() override {
-    return *rpc_metrics_;
+  const std::shared_ptr<RpcMetrics>& rpc_metrics() override {
+    return rpc_metrics_;
   }
 
   const std::shared_ptr<MemTracker>& parent_mem_tracker() override;
@@ -302,7 +302,7 @@ class Messenger : public ProxyContext {
 
   bool TEST_ShouldArtificiallyRejectIncomingCallsFrom(const IpAddress &remote);
 
-  CHECKED_STATUS TEST_GetReactorMetrics(size_t reactor_idx, ReactorMetrics* metrics);
+  Status TEST_GetReactorMetrics(size_t reactor_idx, ReactorMetrics* metrics);
 
  private:
   friend class DelayedTask;
@@ -310,7 +310,7 @@ class Messenger : public ProxyContext {
   explicit Messenger(const MessengerBuilder &bld);
 
   Reactor* RemoteToReactor(const Endpoint& remote, uint32_t idx = 0);
-  CHECKED_STATUS Init();
+  Status Init();
 
   void BreakConnectivity(const IpAddress& address, bool incoming, bool outgoing);
   void RestoreConnectivity(const IpAddress& address, bool incoming, bool outgoing);
@@ -377,7 +377,7 @@ class Messenger : public ProxyContext {
 
   std::unique_ptr<DnsResolver> resolver_;
 
-  std::unique_ptr<RpcMetrics> rpc_metrics_;
+  std::shared_ptr<RpcMetrics> rpc_metrics_;
 
   // Use this IP address as base address for outbound connections from messenger.
   IpAddress test_outbound_ip_base_;

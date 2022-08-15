@@ -34,6 +34,25 @@
 namespace yb {
 namespace tserver {
 
+namespace {
+
+//--------------------------------------------------------------------------------------------------
+// Constants used for the sequences data table.
+//--------------------------------------------------------------------------------------------------
+static constexpr const char* const kPgSequencesNamespaceName = "system_postgres";
+static constexpr const char* const kPgSequencesDataTableName = "sequences_data";
+
+// Columns names and ids.
+static constexpr const char* const kPgSequenceDbOidColName = "db_oid";
+
+static constexpr const char* const kPgSequenceSeqOidColName = "seq_oid";
+
+static constexpr const char* const kPgSequenceLastValueColName = "last_value";
+
+static constexpr const char* const kPgSequenceIsCalledColName = "is_called";
+
+} // namespace
+
 PgCreateTable::PgCreateTable(const PgCreateTableRequestPB& req) : req_(req) {
 }
 
@@ -86,6 +105,9 @@ Status PgCreateTable::Exec(
   if (set_table_properties) {
     schema_builder_.SetTableProperties(table_properties);
   }
+  if (!req_.schema_name().empty()) {
+    schema_builder_.SetSchemaName(req_.schema_name());
+  }
 
   RETURN_NOT_OK(schema_builder_.Build(&schema));
   const auto split_rows = VERIFY_RESULT(BuildSplitRows(schema));
@@ -93,9 +115,10 @@ Status PgCreateTable::Exec(
   // Create table.
   auto table_creator = client->NewTableCreator();
   table_creator->table_name(table_name_).table_type(client::YBTableType::PGSQL_TABLE_TYPE)
-                .table_id(PgObjectId::FromPB(req_.table_id()).GetYBTableId())
+                .table_id(PgObjectId::GetYbTableIdFromPB(req_.table_id()))
                 .schema(&schema)
-                .colocated(req_.colocated());
+                .is_colocated_via_database(req_.is_colocated_via_database())
+                .is_matview(req_.is_matview());
   if (req_.is_pg_catalog_table()) {
     table_creator->is_pg_catalog_table();
   }
@@ -110,17 +133,27 @@ Status PgCreateTable::Exec(
 
   auto tablegroup_oid = PgObjectId::FromPB(req_.tablegroup_oid());
   if (tablegroup_oid.IsValid()) {
-    table_creator->tablegroup_id(tablegroup_oid.GetYBTablegroupId());
+    table_creator->tablegroup_id(tablegroup_oid.GetYbTablegroupId());
+  }
+
+  if (req_.optional_colocation_id_case() !=
+      PgCreateTableRequestPB::OptionalColocationIdCase::OPTIONAL_COLOCATION_ID_NOT_SET) {
+    table_creator->colocation_id(req_.colocation_id());
   }
 
   auto tablespace_oid = PgObjectId::FromPB(req_.tablespace_oid());
   if (tablespace_oid.IsValid()) {
-    table_creator->tablespace_id(tablespace_oid.GetYBTablespaceId());
+    table_creator->tablespace_id(tablespace_oid.GetYbTablespaceId());
+  }
+
+  auto matview_pg_table_oid = PgObjectId::FromPB(req_.matview_pg_table_oid());
+  if (matview_pg_table_oid.IsValid()) {
+    table_creator->matview_pg_table_id(matview_pg_table_oid.GetYbTableId());
   }
 
   // For index, set indexed (base) table id.
   if (indexed_table_id_.IsValid()) {
-    table_creator->indexed_table_id(indexed_table_id_.GetYBTableId());
+    table_creator->indexed_table_id(indexed_table_id_.GetYbTableId());
     if (req_.is_unique_index()) {
       table_creator->is_unique_index(true);
     }
@@ -176,6 +209,7 @@ Status PgCreateTable::AddColumn(const PgCreateColumnPB& req) {
     range_columns_.emplace_back(req.attr_name());
   }
   col->SetSortingType(sorting_type);
+  col->PgTypeOid(req.attr_pgoid());
   return Status::OK();
 }
 
@@ -224,18 +258,29 @@ Result<std::vector<std::string>> PgCreateTable::BuildSplitRows(const client::YBS
         PrimaryKeyRangeColumnCount() - (ybbasectid_added_ ? 1 : 0),
         IllegalState,
         "Number of split row values must be equal to number of primary key columns");
-    std::vector<docdb::PrimitiveValue> range_components;
-    range_components.reserve(row.size());
+
+    // Keeping backward compatibility for old tables
+    const auto partitioning_version = schema.table_properties().partitioning_version();
+    const auto range_components_size = row.size() + (partitioning_version > 0 ? 1 : 0);
+
+    std::vector<docdb::KeyEntryValue> range_components;
+    range_components.reserve(range_components_size);
     bool compare_columns = true;
     for (const auto& row_value : row) {
       const auto column_index = range_components.size();
-      range_components.push_back(row_value.value_case() == QLValuePB::VALUE_NOT_SET
-        ? docdb::PrimitiveValue(docdb::ValueType::kLowest)
-        : docdb::PrimitiveValue::FromQLValuePB(
+      if (partitioning_version > 0) {
+        range_components.push_back(docdb::KeyEntryValue::FromQLValuePBForKey(
             row_value,
             schema.Column(schema.FindColumn(range_columns_[column_index])).sorting_type()));
+      } else {
+        range_components.push_back(row_value.value_case() == QLValuePB::VALUE_NOT_SET
+            ? docdb::KeyEntryValue(docdb::KeyEntryType::kLowest)
+            : docdb::KeyEntryValue::FromQLValuePB(
+                row_value,
+                schema.Column(schema.FindColumn(range_columns_[column_index])).sorting_type()));
+      }
 
-      // Validate that split rows honor column ordering.
+      // Validate that split rows respect column ordering.
       if (compare_columns && !prev_doc_key.empty()) {
         const auto& prev_value = prev_doc_key.range_group()[column_index];
         const auto compare = prev_value.CompareTo(range_components.back());
@@ -246,6 +291,16 @@ Result<std::vector<std::string>> PgCreateTable::BuildSplitRows(const client::YBS
           compare_columns = false;
         }
       }
+    }
+
+    // If `ybuniqueidxkeysuffix` or `ybidxbasectid` are added to a range_columns, their value must
+    // be explicitly specified with defaulted MINVALUE as this is being done for the columns that
+    // are not assigned a value for range partitioning to make YBOperation.partition_key, tablet's
+    // partition bounds and tablet's key_bounds match the same structure; for more details refer to
+    // YBTransformPartitionSplitPoints() and https://github.com/yugabyte/yugabyte-db/issues/12191
+    if ((partitioning_version > 0) && ybbasectid_added_) {
+      range_components.push_back(
+          docdb::KeyEntryValue::FromQLVirtualValue(QLVirtualValuePB::LIMIT_MIN));
     }
     prev_doc_key = docdb::DocKey(std::move(range_components));
     const auto keybytes = prev_doc_key.Encode();
@@ -261,6 +316,52 @@ Result<std::vector<std::string>> PgCreateTable::BuildSplitRows(const client::YBS
 
 size_t PgCreateTable::PrimaryKeyRangeColumnCount() const {
   return range_columns_.size();
+}
+
+Status CreateSequencesDataTable(client::YBClient* client, CoarseTimePoint deadline) {
+  const client::YBTableName table_name(YQL_DATABASE_PGSQL,
+                                       kPgSequencesDataNamespaceId,
+                                       kPgSequencesNamespaceName,
+                                       kPgSequencesDataTableName);
+  RETURN_NOT_OK(client->CreateNamespaceIfNotExists(kPgSequencesNamespaceName,
+                                                   YQLDatabase::YQL_DATABASE_PGSQL,
+                                                   "" /* creator_role_name */,
+                                                   kPgSequencesDataNamespaceId));
+
+  // Set up the schema.
+  client::YBSchemaBuilder schemaBuilder;
+  schemaBuilder.AddColumn(kPgSequenceDbOidColName)->HashPrimaryKey()->Type(yb::INT64)->NotNull();
+  schemaBuilder.AddColumn(kPgSequenceSeqOidColName)->HashPrimaryKey()->Type(yb::INT64)->NotNull();
+  schemaBuilder.AddColumn(kPgSequenceLastValueColName)->Type(yb::INT64)->NotNull();
+  schemaBuilder.AddColumn(kPgSequenceIsCalledColName)->Type(yb::BOOL)->NotNull();
+  client::YBSchema schema;
+  CHECK_OK(schemaBuilder.Build(&schema));
+
+  // Generate the table id.
+  PgObjectId oid(kPgSequencesDataDatabaseOid, kPgSequencesDataTableOid);
+
+  // Try to create the table.
+  auto table_creator(client->NewTableCreator());
+
+  auto status = table_creator->table_name(table_name)
+      .schema(&schema)
+      .table_type(client::YBTableType::PGSQL_TABLE_TYPE)
+      .table_id(oid.GetYbTableId())
+      .hash_schema(YBHashSchema::kPgsqlHash)
+      .timeout(deadline - CoarseMonoClock::now())
+      .Create();
+  // If we could create it, then all good!
+  if (status.ok()) {
+    LOG(INFO) << "Table '" << table_name.ToString() << "' created.";
+    // If the table was already there, also not an error...
+  } else if (status.IsAlreadyPresent()) {
+    LOG(INFO) << "Table '" << table_name.ToString() << "' already exists";
+  } else {
+    // If any other error, report that!
+    LOG(ERROR) << "Error creating table '" << table_name.ToString() << "': " << status;
+    return status;
+  }
+  return Status::OK();
 }
 
 }  // namespace tserver

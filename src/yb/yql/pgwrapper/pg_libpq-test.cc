@@ -25,6 +25,7 @@
 
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_defaults.h"
+#include "yb/master/master_util.h"
 
 #include "yb/util/async_util.h"
 #include "yb/util/barrier.h"
@@ -52,6 +53,9 @@ METRIC_DECLARE_counter(rpc_inbound_calls_created);
 
 namespace yb {
 namespace pgwrapper {
+
+using master::GetColocatedDbParentTableId;
+using master::GetTablegroupParentTableId;
 
 class PgLibPqTest : public LibPqTestBase {
  protected:
@@ -705,7 +709,7 @@ void PgLibPqTest::TestMultiBankAccount(IsolationLevel isolation) {
   for (auto* tserver : cluster_->tserver_daemons()) {
     auto tablets = ASSERT_RESULT(cluster_->GetTabletIds(tserver));
     for (const auto& tablet : tablets) {
-      auto result = tserver->GetInt64Metric(
+      auto result = tserver->GetMetric<int64>(
           &METRIC_ENTITY_tablet, tablet.c_str(), &METRIC_transaction_not_found, "value");
       if (result.ok()) {
         total_not_found += *result;
@@ -1065,7 +1069,7 @@ Result<master::TabletLocationsPB> GetColocatedTabletLocations(
   RETURN_NOT_OK(WaitFor(
       [&]() -> Result<bool> {
         Status s = client->GetTabletsFromTableId(
-            ns_id + master::kColocatedParentTableIdSuffix,
+            GetColocatedDbParentTableId(ns_id),
             0 /* max_tablets */,
             &tablets);
         if (s.ok()) {
@@ -1080,10 +1084,6 @@ Result<master::TabletLocationsPB> GetColocatedTabletLocations(
       "wait for colocated parent tablet"));
 
   return tablets[0];
-}
-
-const TableId GetTableGroupTableId(const std::string& tablegroup_id) {
-  return tablegroup_id + master::kTablegroupParentTableIdSuffix;
 }
 
 Result<master::TabletLocationsPB> GetTablegroupTabletLocations(
@@ -1102,7 +1102,7 @@ Result<master::TabletLocationsPB> GetTablegroupTabletLocations(
   RETURN_NOT_OK(WaitFor(
       [&]() -> Result<bool> {
         Status s = client->GetTabletsFromTableId(
-            GetTableGroupTableId(tablegroup_id),
+            GetTablegroupParentTableId(tablegroup_id),
             0 /* max_tablets */,
             &tablets);
         if (s.ok()) {
@@ -1364,7 +1364,7 @@ struct TableGroupInfo {
   std::shared_ptr<client::YBTable> table;
 };
 
-Result<TableGroupInfo> SelectTableGroup(
+Result<TableGroupInfo> SelectTablegroup(
     client::YBClient* client, PGConn* conn, const std::string& database_name,
     const std::string& group_name) {
   TableGroupInfo group_info;
@@ -1382,7 +1382,10 @@ Result<TableGroupInfo> SelectTableGroup(
       group_info.id,
       30s))
     .tablet_id();
-  group_info.table = VERIFY_RESULT(client->OpenTable(GetTableGroupTableId(group_info.id)));
+  group_info.table = VERIFY_RESULT(client->OpenTable(GetTablegroupParentTableId(group_info.id)));
+  SCHECK(VERIFY_RESULT(client->TablegroupExists(database_name, group_info.id)),
+         InternalError,
+         "YBClient::TablegroupExists couldn't find a tablegroup!");
   return group_info;
 }
 
@@ -1403,7 +1406,7 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ColocatedTablegroups),
   ASSERT_OK(conn.ExecuteFormat("CREATE TABLEGROUP $0", kTablegroupName));
 
   // A parent table with one tablet should be created when the tablegroup is created.
-  const auto tablegroup = ASSERT_RESULT(SelectTableGroup(
+  const auto tablegroup = ASSERT_RESULT(SelectTablegroup(
       client.get(), &conn, kDatabaseName, kTablegroupName));
 
   // Create a range partition table, the table should share the tablet with the parent table.
@@ -1462,7 +1465,7 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ColocatedTablegroups),
   ASSERT_OK(conn.ExecuteFormat("CREATE TABLEGROUP $0", kTablegroupAltName));
 
   // A parent table with one tablet should be created when the tablegroup is created.
-  auto tablegroup_alt = ASSERT_RESULT(SelectTableGroup(
+  auto tablegroup_alt = ASSERT_RESULT(SelectTablegroup(
       client.get(), &conn, kDatabaseName, kTablegroupAltName));
 
   // Create another range partition table - should be part of the second tablegroup
@@ -1512,8 +1515,9 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ColocatedTablegroups),
       30s, "Drop table did not use tablegroups"));
 
   // Drop a tablegroup.
+  ASSERT_TRUE(ASSERT_RESULT(client->TablegroupExists(kDatabaseName, tablegroup_alt.id)));
   ASSERT_OK(conn.ExecuteFormat("DROP TABLEGROUP $0", kTablegroupAltName));
-  ASSERT_FALSE(ASSERT_RESULT(client->TablegroupExists(kDatabaseName, kTablegroupAltName)));
+  ASSERT_FALSE(ASSERT_RESULT(client->TablegroupExists(kDatabaseName, tablegroup_alt.id)));
 
   // The alt tablegroup tablet should be deleted after dropping the tablegroup.
   bool alt_tablet_found = true;
@@ -1540,7 +1544,7 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ColocatedTablegroups),
   ASSERT_OK(conn.ExecuteFormat("CREATE TABLEGROUP $0", kTablegroupAltName));
 
   // A parent table with one tablet should be created when the tablegroup is created.
-  tablegroup_alt = ASSERT_RESULT(SelectTableGroup(
+  tablegroup_alt = ASSERT_RESULT(SelectTablegroup(
         client.get(), &conn, kDatabaseName, kTablegroupAltName));
 
   // Add a table back in and ensure that it is part of the recreated tablegroup.
@@ -1608,29 +1612,44 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ColocatedTablegroups),
       30s, "Drop database with tablegroup (wait for RPCs to finish)"));
 }
 
+namespace {
+
+class PgLibPqTestRF1: public PgLibPqTest {
+  int GetNumMasters() const override {
+    return 1;
+  }
+
+  int GetNumTabletServers() const override {
+    return 1;
+  }
+};
+
+} // namespace
+
 // Test that the number of RPCs sent to master upon first connection is not too high.
 // See https://github.com/yugabyte/yugabyte-db/issues/3049
-TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(NumberOfInitialRpcs)) {
-  auto get_master_inbound_rpcs_created = [&cluster_ = this->cluster_]() -> Result<int64_t> {
+// Test uses RF1 cluster to avoid possible relelections which affects the number of RPCs received
+// by a master.
+TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(NumberOfInitialRpcs), PgLibPqTestRF1) {
+  auto get_master_inbound_rpcs_created = [this]() -> Result<int64_t> {
     int64_t m_in_created = 0;
-    for (auto* master : cluster_->master_daemons()) {
-      m_in_created += VERIFY_RESULT(master->GetInt64Metric(
+    for (const auto* master : this->cluster_->master_daemons()) {
+      m_in_created += VERIFY_RESULT(master->GetMetric<int64>(
           &METRIC_ENTITY_server, "yb.master", &METRIC_rpc_inbound_calls_created, "value"));
     }
     return m_in_created;
   };
 
-  int64_t rpcs_before = ASSERT_RESULT(get_master_inbound_rpcs_created());
+  auto rpcs_before = ASSERT_RESULT(get_master_inbound_rpcs_created());
   ASSERT_RESULT(Connect());
-  int64_t rpcs_after  = ASSERT_RESULT(get_master_inbound_rpcs_created());
-  int64_t rpcs_during = rpcs_after - rpcs_before;
+  auto rpcs_during = ASSERT_RESULT(get_master_inbound_rpcs_created()) - rpcs_before;
 
-  // Real-world numbers (debug build, local Mac): 328 RPCs before, 95 after the fix for #3049
+  // Real-world numbers (debug build, local PC): 58 RPCs
   LOG(INFO) << "Master inbound RPC during connection: " << rpcs_during;
   // RPC counter is affected no only by table read/write operations but also by heartbeat mechanism.
-  // As far as ASAN/TSAN builds are slower they can receive more heartbeats while
-  // processing requests. As a result RPC count might be higher in comparison to other build types.
-  ASSERT_LT(rpcs_during, RegularBuildVsSanitizers(150, 200));
+  // As far as ASAN builds are slower they can receive more heartbeats while processing requests.
+  // As a result RPC count might be higher in comparison to other build types.
+  ASSERT_LT(rpcs_during, 100);
 }
 
 TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(RangePresplit)) {
@@ -2434,6 +2453,379 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(CollationRangePresplit)) {
     ASSERT_TRUE(partition_end.empty() ||
                 partition_end.size() >= partition_key_length + min_collation_extra_bytes);
   }
+}
+
+// The motive of this test is to prove that when a postgres backend crashes
+// while possessing an LWLock, the postmaster will kill all postgres backends
+// and would perform a restart.
+// TEST_lwlock_crash_after_acquire_lock_pg_stat_statements_reset when set true
+// will crash a postgres backend after acquiring a LWLock. Specifically in this
+// example, when pg_stat_statements_reset() function is called when this flag
+// is set, it crashes after acquiring a lock on pgss->lock. This causes the
+// postmaster to terminate all the connections. Hence, the SELECT 1 that is
+// executed by conn2 also fails.
+class PgLibPqYSQLBackendCrash: public PgLibPqTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_tserver_flags.push_back(
+        Format("--TEST_yb_lwlock_crash_after_acquire_pg_stat_statements_reset=true"));
+    options->extra_tserver_flags.push_back(
+        Format("--yb_backend_oom_score_adj=" + expected_oom_score));
+  }
+
+ protected:
+  const std::string expected_oom_score = "123";
+};
+
+TEST_F_EX(PgLibPqTest,
+          YB_DISABLE_TEST_IN_TSAN(TestLWPgBackendKillAfterLWLockAcquire),
+          PgLibPqYSQLBackendCrash) {
+  auto conn1 = ASSERT_RESULT(Connect());
+  auto conn2 = ASSERT_RESULT(Connect());
+  ASSERT_NOK(conn1.FetchFormat("SELECT pg_stat_statements_reset()"));
+  ASSERT_NOK(conn2.FetchFormat("SELECT 1"));
+}
+
+#ifdef __linux__
+TEST_F_EX(PgLibPqTest,
+          YB_DISABLE_TEST_IN_TSAN(TestOomScoreAdjPGBackend),
+          PgLibPqYSQLBackendCrash) {
+
+  auto conn = ASSERT_RESULT(Connect());
+  auto res = ASSERT_RESULT(conn.Fetch("SELECT pg_backend_pid()"));
+
+  auto backend_pid = ASSERT_RESULT(GetInt32(res.get(), 0, 0));
+  std::string file_name = "/proc/" + std::to_string(backend_pid) + "/oom_score_adj";
+  std::ifstream fPtr(file_name);
+  std::string oom_score_adj;
+  getline(fPtr, oom_score_adj);
+  ASSERT_EQ(oom_score_adj, expected_oom_score);
+}
+#endif
+
+class PgLibPqCatalogVersionTest : public PgLibPqTest {
+ public:
+  struct YsqlCatalogVersion {
+    uint32 db_oid;
+    uint64 current_version;
+    uint64 last_breaking_version;
+    std::string ToString() const {
+      return Format("($0, $1, $2)", db_oid, current_version, last_breaking_version);
+    }
+  };
+  typedef std::unordered_map<uint32, YsqlCatalogVersion> CatalogVersionMap;
+
+  // Return a CatalogVersionMap by making a query of the pg_yb_catalog_version table.
+  CatalogVersionMap GetCatalogVersionMap(PGConn* conn) {
+    CatalogVersionMap catalog_version_map;
+    auto res = CHECK_RESULT(conn->Fetch("SELECT * FROM pg_yb_catalog_version"));
+    auto lines = PQntuples(res.get());
+    CHECK_GT(lines, 0);
+    auto columns = PQnfields(res.get());
+    CHECK_EQ(columns, 3);
+    for (int i = 0; i != lines; ++i) {
+      uint32 db_oid = static_cast<uint32>(CHECK_RESULT(GetInt32(res.get(), i, 0)));
+      uint64 current_version = static_cast<uint64>(CHECK_RESULT(GetInt64(res.get(), i, 1)));
+      uint64 last_breaking_version = static_cast<uint64>(CHECK_RESULT(GetInt64(res.get(), i, 2)));
+      catalog_version_map.emplace(
+          db_oid, YsqlCatalogVersion{db_oid, current_version, last_breaking_version});
+    }
+
+    // Log the latest catalog version map we just fetched.
+    std::string output;
+    for (const auto& it : catalog_version_map) {
+      if (!output.empty()) {
+        output += ", ";
+      }
+      output += it.second.ToString();
+    }
+    LOG(INFO) << "Catalog version map: " << output;
+    return catalog_version_map;
+  }
+
+  uint32 GetDatabaseOid(PGConn* conn, const string& db_name) {
+    auto res = CHECK_RESULT(conn->FetchFormat(
+        "SELECT oid FROM pg_database WHERE datname = '$0'", db_name));
+    auto lines = PQntuples(res.get());
+    CHECK_EQ(lines, 1) << db_name;
+    auto columns = PQnfields(res.get());
+    CHECK_EQ(columns, 1) << db_name;
+    uint32 db_oid = static_cast<uint32>(CHECK_RESULT(GetInt32(res.get(), 0, 0)));
+    return db_oid;
+  }
+
+  void AssertSameCatalogVersion(const YsqlCatalogVersion& v1, const YsqlCatalogVersion& v2) {
+    ASSERT_EQ(v1.db_oid, v2.db_oid);
+    ASSERT_EQ(v1.current_version, v2.current_version);
+    ASSERT_EQ(v1.last_breaking_version, v2.last_breaking_version);
+  }
+
+  void WaitForCatalogVersionToPropagate() {
+    // This is an estimate that should exceed the tserver to master hearbeat interval.
+    // However because it is an estimate, this function may return before the catalog version is
+    // actually propagated.
+    constexpr int kSleepSeconds = 2;
+    LOG(INFO) << "Wait " << kSleepSeconds << " seconds for heartbeat to propagate catalog versions";
+    std::this_thread::sleep_for(kSleepSeconds * 1s);
+  }
+};
+
+TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersion),
+          PgLibPqCatalogVersionTest) {
+  const string kYugabyteDatabase = "yugabyte";
+  const string kTestDatabase = "test_db";
+
+  // Prepare the table pg_yb_catalog_version to have one row per database.
+  // The pg_yb_catalog_version row for a database is inserted at CREATE DATABATE time
+  // when the gflag --TEST_enable_db_catalog_version_mode is true. It is expected for
+  // users to add the rows for existing databases manually. If we change to always
+  // insert a row into pg_yb_catalog_version at CREATE DATABATE time regardless of
+  // the value of --TEST_enable_db_catalog_version_mode, then a new YSQL upgrade
+  // migration will take care of adding rows for existing databases.
+  auto conn_yugabyte = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
+  LOG(INFO) << "Preparing pg_yb_catalog_version to have one row per database";
+  ASSERT_OK(conn_yugabyte.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=1"));
+  ASSERT_OK(conn_yugabyte.Execute("INSERT INTO pg_catalog.pg_yb_catalog_version "
+                                  "SELECT oid, 1, 1 from pg_catalog.pg_database where oid != 1"));
+
+  LOG(INFO) << "Restart the cluster and turn on --TEST_enable_db_catalog_version_mode";
+  cluster_->Shutdown();
+  for (size_t i = 0; i != cluster_->num_masters(); ++i) {
+    cluster_->master(i)->mutable_flags()->push_back("--TEST_enable_db_catalog_version_mode=true");
+  }
+  for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
+    cluster_->tablet_server(i)->mutable_flags()->push_back(
+        "--TEST_enable_db_catalog_version_mode=true");
+  }
+  ASSERT_OK(cluster_->Restart());
+
+  LOG(INFO) << "Connects to database 'yugabyte' on node at index 0.";
+  pg_ts = cluster_->tablet_server(0);
+  conn_yugabyte = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
+
+  // Get the initial catalog version map.
+  auto map = GetCatalogVersionMap(&conn_yugabyte);
+  int initial_row_count = static_cast<int>(map.size());
+  ASSERT_GT(initial_row_count, 0);
+
+  // The initial version for every database is (1, 1).
+  for (const auto& it : map) {
+    const uint32 current_db_oid = it.first;
+    AssertSameCatalogVersion(it.second, {current_db_oid, 1, 1});
+  }
+
+  LOG(INFO) << "Create a new database";
+  ASSERT_OK(conn_yugabyte.ExecuteFormat("CREATE DATABASE $0", kTestDatabase));
+
+  // Wait for heartbeat to happen so that we can see from the test logs that the catalog version
+  // change caused by the last DDL is passed from master to tserver via heartbeat. Without the
+  // wait, if the next DDL is executed before the next heartbeat then last DDL's catalog version
+  // change will be overwritten and we will not see the effect of the last DDL from test logs.
+  // So the purpose of this wait is not for correctness but for us to see the catalog version
+  // propagation from the test logs. Same is true for all the following calls to do this wait.
+  WaitForCatalogVersionToPropagate();
+  LOG(INFO) << "Refresh the catalog version map";
+  map = GetCatalogVersionMap(&conn_yugabyte);
+  ASSERT_EQ(map.size(), initial_row_count + 1);
+
+  // There should be a new row in pg_yb_catalog_version for the newly created database.
+  const uint32 new_db_oid = GetDatabaseOid(&conn_yugabyte, kTestDatabase);
+  auto it = map.find(new_db_oid);
+  ASSERT_NE(it, map.end());
+
+  // The initial version for the new database is (1, 1). All others also remain (1, 1).
+  for (const auto& it : map) {
+    const uint32 current_db_oid = it.first;
+    AssertSameCatalogVersion(it.second, {current_db_oid, 1, 1});
+  }
+
+  LOG(INFO) << "Make a new connection to a different node at index 1";
+  pg_ts = cluster_->tablet_server(1);
+  auto conn_test = ASSERT_RESULT(ConnectToDB(kTestDatabase));
+
+  LOG(INFO) << "Create a table";
+  ASSERT_OK(conn_test.ExecuteFormat("CREATE TABLE t(id int)"));
+
+  WaitForCatalogVersionToPropagate();
+  LOG(INFO) << "Refresh the catalog version map";
+  // Should still have the same number of rows in pg_yb_catalog_version.
+  map = GetCatalogVersionMap(&conn_yugabyte);
+  ASSERT_EQ(map.size(), initial_row_count + 1);
+
+  // The above create table statement does not cause catalog version to change.
+  for (const auto& it : map) {
+    const uint32 current_db_oid = it.first;
+    AssertSameCatalogVersion(it.second, {current_db_oid, 1, 1});
+  }
+
+  LOG(INFO) << "Read the table from 'conn_test'";
+  ASSERT_OK(conn_test.Fetch("SELECT * FROM t"));
+
+  LOG(INFO) << "Drop the table from 'conn_test'";
+  ASSERT_OK(conn_test.ExecuteFormat("DROP TABLE t"));
+
+  WaitForCatalogVersionToPropagate();
+  LOG(INFO) << "Refresh the catalog version map";
+  map = GetCatalogVersionMap(&conn_yugabyte);
+  ASSERT_EQ(map.size(), initial_row_count + 1);
+
+  // Under --TEST_enable_db_catalog_version_mode=true, only the row for 'new_db_oid' is updated.
+  for (const auto& it : map) {
+    const uint32 current_db_oid = it.first;
+    if (current_db_oid == new_db_oid) {
+      // We should have incremented the row for 'new_db_oid'.
+      AssertSameCatalogVersion(it.second, {current_db_oid, 2, 1});
+    } else {
+      AssertSameCatalogVersion(it.second, {current_db_oid, 1, 1});
+    }
+  }
+
+  LOG(INFO) << "Execute a DDL statement that causes a breaking catalog change";
+  ASSERT_OK(conn_test.Execute("REVOKE ALL ON SCHEMA public FROM public"));
+
+  WaitForCatalogVersionToPropagate();
+  LOG(INFO) << "Refresh the catalog version map";
+  map = GetCatalogVersionMap(&conn_yugabyte);
+  ASSERT_EQ(map.size(), initial_row_count + 1);
+
+  // Under --TEST_enable_db_catalog_version_mode=true, only the row for 'new_db_oid' is updated.
+  for (const auto& it : map) {
+    const uint32 current_db_oid = it.first;
+    if (current_db_oid == new_db_oid) {
+      // We should have incremented the row for 'new_db_oid', including both the current version
+      // and the last breaking version because REVOKE is a DDL statement that causes a breaking
+      // catalog change.
+      AssertSameCatalogVersion(it.second, {current_db_oid, 3, 3});
+    } else {
+      AssertSameCatalogVersion(it.second, {current_db_oid, 1, 1});
+    }
+  }
+
+  // Even though 'conn_test' is still accessing 'test_db' through node at index 1, we
+  // can still drop it from 'conn_yugabyte'.
+  LOG(INFO) << "Drop the new database from 'conn_yugabyte'";
+  ASSERT_OK(conn_yugabyte.ExecuteFormat("DROP DATABASE $0", kTestDatabase));
+
+  WaitForCatalogVersionToPropagate();
+  LOG(INFO) << "Refresh the catalog version map";
+  // The row for 'new_db_oid' should be deleted.
+  map = GetCatalogVersionMap(&conn_yugabyte);
+  ASSERT_EQ(map.size(), initial_row_count);
+
+  // We should have only incremented the row for 'yugabyte_db_oid' because the drop database
+  // was performed from 'conn_yugabyte'.
+  const uint32 yugabyte_db_oid = GetDatabaseOid(&conn_yugabyte, kYugabyteDatabase);
+  for (const auto& it : map) {
+    const uint32 current_db_oid = it.first;
+    if (current_db_oid == yugabyte_db_oid) {
+      AssertSameCatalogVersion(it.second, {current_db_oid, 2, 1});
+    } else if (current_db_oid == new_db_oid) {
+      FAIL() << "Failed to delete the row for " << new_db_oid;
+    } else {
+      AssertSameCatalogVersion(it.second, {current_db_oid, 1, 1});
+    }
+  }
+
+  // After the test database is dropped, 'conn_test' should no longer succeed.
+  LOG(INFO) << "Read the table from 'conn_test'";
+  ASSERT_NOK(conn_test.Fetch("SELECT * FROM t"));
+}
+
+TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(NonBreakingDDLMode)) {
+  const string kDatabaseName = "yugabyte";
+
+  auto conn1 = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+  auto conn2 = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+  ASSERT_OK(conn1.Execute("CREATE TABLE t1(a int)"));
+  ASSERT_OK(conn1.Execute("CREATE TABLE t2(a int)"));
+  ASSERT_OK(conn1.Execute("BEGIN"));
+  auto res = ASSERT_RESULT(conn1.Fetch("SELECT * FROM t1"));
+  ASSERT_EQ(0, PQntuples(res.get()));
+  ASSERT_OK(conn2.Execute("REVOKE ALL ON t2 FROM public"));
+  // Wait for the new catalog version to propagate to TServers.
+  std::this_thread::sleep_for(2s);
+  // REVOKE is a breaking catalog change, the running transaction on conn1 is aborted.
+  auto result = conn1.Fetch("SELECT * FROM t1");
+  ASSERT_NOK(result);
+  auto status = ResultToStatus(result);
+  const string msg = "catalog snapshot used for this transaction has been invalidated";
+  ASSERT_TRUE(status.ToString().find(msg) != std::string::npos);
+  ASSERT_OK(conn1.Execute("ABORT"));
+
+  // Let's start over, but this time use yb_make_next_ddl_statement_nonbreaking to suppress the
+  // breaking catalog change and the SELECT command on conn1 runs successfully.
+  ASSERT_OK(conn1.Execute("BEGIN"));
+  res = ASSERT_RESULT(conn1.Fetch("SELECT * FROM t1"));
+  ASSERT_EQ(0, PQntuples(res.get()));
+  ASSERT_OK(conn2.Execute("SET yb_make_next_ddl_statement_nonbreaking TO TRUE"));
+  ASSERT_OK(conn2.Execute("REVOKE ALL ON t2 FROM public"));
+  // Wait for the new catalog version to propagate to TServers.
+  std::this_thread::sleep_for(2s);
+  res = ASSERT_RESULT(conn1.Fetch("SELECT * FROM t1"));
+  ASSERT_EQ(0, PQntuples(res.get()));
+
+  // Verify that the session variable yb_make_next_ddl_statement_nonbreaking auto-resets to false.
+  // As a result, the running transaction on conn1 is aborted.
+  ASSERT_OK(conn2.Execute("REVOKE ALL ON t2 FROM public"));
+  // Wait for the new catalog version to propagate to TServers.
+  std::this_thread::sleep_for(2s);
+  result = conn1.Fetch("SELECT * FROM t1");
+  ASSERT_NOK(result);
+  status = ResultToStatus(result);
+  ASSERT_TRUE(status.ToString().find(msg) != std::string::npos);
+  ASSERT_OK(conn1.Execute("ABORT"));
+}
+
+TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(AggrSystemColumn)) {
+  const string kDatabaseName = "yugabyte";
+  auto conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+
+  // Count oid column which is a system column.
+  auto res = ASSERT_RESULT(conn.Fetch("SELECT COUNT(oid) FROM pg_type"));
+  auto lines = PQntuples(res.get());
+  ASSERT_EQ(lines, 1);
+  auto columns = PQnfields(res.get());
+  ASSERT_EQ(columns, 1);
+  int64 count_oid = static_cast<uint32>(CHECK_RESULT(GetInt64(res.get(), 0, 0)));
+  // Should get a positive count.
+  ASSERT_GT(count_oid, 0);
+
+  // Count oid column which is a system column, but cast oid to int.
+  res = ASSERT_RESULT(conn.Fetch("SELECT COUNT(oid::int) FROM pg_type"));
+  lines = PQntuples(res.get());
+  ASSERT_EQ(lines, 1);
+  columns = PQnfields(res.get());
+  ASSERT_EQ(columns, 1);
+  int64 count_oid_int = static_cast<uint32>(CHECK_RESULT(GetInt64(res.get(), 0, 0)));
+  // Should get the same count.
+  ASSERT_EQ(count_oid_int, count_oid);
+
+  // Count typname column which is a regular column.
+  res = ASSERT_RESULT(conn.Fetch("SELECT COUNT(typname) FROM pg_type"));
+  lines = PQntuples(res.get());
+  ASSERT_EQ(lines, 1);
+  columns = PQnfields(res.get());
+  ASSERT_EQ(columns, 1);
+  int64 count_typname = static_cast<uint32>(CHECK_RESULT(GetInt64(res.get(), 0, 0)));
+  // Should get the same count.
+  ASSERT_EQ(count_oid, count_typname);
+
+  // Test unsupported system columns which would otherwise get the same count as shown
+  // in vanilla Postgres.
+  auto result = conn.Fetch("SELECT COUNT(ctid) FROM pg_type");
+  ASSERT_NOK(result);
+  result = conn.Fetch("SELECT COUNT(cmin) FROM pg_type");
+  ASSERT_NOK(result);
+  result = conn.Fetch("SELECT COUNT(cmax) FROM pg_type");
+  ASSERT_NOK(result);
+  result = conn.Fetch("SELECT COUNT(xmin) FROM pg_type");
+  ASSERT_NOK(result);
+  result = conn.Fetch("SELECT COUNT(xmax) FROM pg_type");
+  ASSERT_NOK(result);
+
+  // Test SUM(oid) results in error.
+  result = conn.Fetch("SELECT SUM(oid) FROM pg_type");
+  ASSERT_NOK(result);
 }
 
 } // namespace pgwrapper

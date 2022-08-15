@@ -33,7 +33,7 @@
 #########
 find_package(Protobuf REQUIRED)
 
-macro(YRPC_PROCESS_FILE FIL)
+macro(YRPC_PROCESS_FILE FIL MESSAGES)
   get_filename_component(ABS_FIL ${FIL} ABSOLUTE)
   get_filename_component(FIL_WE ${FIL} NAME_WE)
 
@@ -48,6 +48,10 @@ macro(YRPC_PROCESS_FILE FIL)
     SET(REL_DIR "${REL_DIR}/")
   endif()
 
+  # For all the header files generated here, make sure they are also checked for in the
+  # validate_proto_deps function in dep_graph_common.py. This will make sure that we don't add
+  # depenedencies on these header files without also adding a dependency on a target that will
+  # generate them. A failure to do so may result in non-deterministic build failures.
   set(PROTO_CC_OUT "${ARG_BINARY_ROOT}/${REL_DIR}${FIL_WE}.pb.cc")
   set(PROTO_H_OUT "${ARG_BINARY_ROOT}/${REL_DIR}${FIL_WE}.pb.h")
   set(SERVICE_CC "${ARG_BINARY_ROOT}/${REL_DIR}${FIL_WE}.service.cc")
@@ -69,7 +73,7 @@ macro(YRPC_PROCESS_FILE FIL)
   endif()
 
   set(YRPC_OPTS "")
-  if (${ARG_MESSAGES})
+  if (${MESSAGES})
     list(APPEND ${SRCS} "${MESSAGES_CC}")
     list(APPEND ${HDRS} "${MESSAGES_H}")
     list(APPEND OUTPUT_FILES "${MESSAGES_CC}" "${MESSAGES_H}")
@@ -107,7 +111,7 @@ macro(YRPC_PROCESS_FILE FIL)
       "${SERVICE_CC}" "${SERVICE_H}" protoc-gen-insertions
       "${PROXY_CC}" "${PROXY_H}")
   endif()
-  if(${ARG_MESSAGES})
+  if(${MESSAGES})
     list(APPEND TGT_DEPS "${MESSAGES_CC}" "${MESSAGES_H}")
   endif()
   add_custom_target(${TGT_NAME} DEPENDS ${TGT_DEPS})
@@ -127,7 +131,9 @@ function(YRPC_GENERATE SRCS HDRS TGTS)
 
   set(options)
   set(one_value_args SOURCE_ROOT BINARY_ROOT MESSAGES SERVICE)
-  set(multi_value_args EXTRA_PROTO_PATHS PROTO_FILES NO_SERVICE_PROTO_FILES)
+  set(multi_value_args
+      EXTRA_PROTO_PATHS PROTO_FILES MESSAGES_PROTO_FILES NO_SERVICE_PROTO_FILES
+      NO_SERVICE_MESSAGES_PROTO_FILES)
   cmake_parse_arguments(ARG "${options}" "${one_value_args}" "${multi_value_args}" ${ARGN})
   if(ARG_UNPARSED_ARGUMENTS)
     message(SEND_ERROR "Error: unrecognized arguments: ${ARG_UNPARSED_ARGUMENTS}")
@@ -155,11 +161,17 @@ function(YRPC_GENERATE SRCS HDRS TGTS)
   GET_FILENAME_COMPONENT(ARG_BINARY_ROOT ${ARG_BINARY_ROOT} ABSOLUTE)
 
   foreach(FIL ${ARG_PROTO_FILES})
-    YRPC_PROCESS_FILE(${FIL})
+    YRPC_PROCESS_FILE("${FIL}" "${ARG_MESSAGES}")
+  endforeach()
+  foreach(FIL ${ARG_MESSAGES_PROTO_FILES})
+    YRPC_PROCESS_FILE("${FIL}" "TRUE")
   endforeach()
   set(ARG_SERVICE FALSE)
   foreach(FIL ${ARG_NO_SERVICE_PROTO_FILES})
-    YRPC_PROCESS_FILE(${FIL})
+    YRPC_PROCESS_FILE("${FIL}" "${ARG_MESSAGES}")
+  endforeach()
+  foreach(FIL ${ARG_NO_SERVICE_MESSAGES_PROTO_FILES})
+    YRPC_PROCESS_FILE("${FIL}" "TRUE")
   endforeach()
 
   set_source_files_properties(${${SRCS}} ${${HDRS}} PROPERTIES GENERATED TRUE)

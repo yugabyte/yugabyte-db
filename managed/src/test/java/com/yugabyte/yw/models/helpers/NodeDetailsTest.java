@@ -4,11 +4,13 @@ package com.yugabyte.yw.models.helpers;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.core.AllOf.allOf;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
 
 import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.NodeActionType;
 import java.util.HashSet;
 import java.util.Set;
 import org.junit.Before;
@@ -29,11 +31,11 @@ public class NodeDetailsTest {
         allOf(
             notNullValue(),
             equalTo(
-                "name: host-n1, cloudInfo: az-1.test-region.aws, type: "
+                "{name: host-n1, cloudInfo: az-1.test-region.aws, type: "
                     + ApiUtils.UTIL_INST_TYPE
                     + ", ip: 10.0.0.1, "
                     + "isMaster: false, isTserver: true, state: Live, "
-                    + "azUuid: null, placementUuid: null")));
+                    + "azUuid: null, placementUuid: null}")));
   }
 
   @Test
@@ -52,6 +54,8 @@ public class NodeDetailsTest {
     activeStates.add(NodeDetails.NodeState.Live);
     activeStates.add(NodeDetails.NodeState.Stopping);
     activeStates.add(NodeDetails.NodeState.Resizing);
+    activeStates.add(NodeDetails.NodeState.Reprovisioning);
+    activeStates.add(NodeDetails.NodeState.Rebooting);
     for (NodeDetails.NodeState state : NodeDetails.NodeState.values()) {
       nd.state = state;
       if (activeStates.contains(state)) {
@@ -81,5 +85,27 @@ public class NodeDetailsTest {
         assertFalse(nd.isQueryable());
       }
     }
+  }
+
+  @Test
+  public void testIsRemovable() {
+    Set<NodeDetails.NodeState> expectedRemovableStates = new HashSet<>();
+    expectedRemovableStates.add(NodeDetails.NodeState.ToBeAdded);
+    expectedRemovableStates.add(NodeDetails.NodeState.Adding);
+    expectedRemovableStates.add(NodeDetails.NodeState.InstanceCreated);
+    expectedRemovableStates.add(NodeDetails.NodeState.Provisioned);
+    expectedRemovableStates.add(NodeDetails.NodeState.ServerSetup);
+    expectedRemovableStates.add(NodeDetails.NodeState.SoftwareInstalled);
+    expectedRemovableStates.add(NodeDetails.NodeState.Decommissioned);
+    expectedRemovableStates.add(NodeDetails.NodeState.Terminating);
+    expectedRemovableStates.add(NodeDetails.NodeState.Terminated);
+    for (NodeDetails.NodeState state : expectedRemovableStates) {
+      nd.state = state;
+      assertEquals(true, nd.isRemovable());
+    }
+    // Only the above states must contain the DELETE action.
+    Set<NodeDetails.NodeState> removableStates =
+        NodeDetails.NodeState.allowedStatesForAction(NodeActionType.DELETE);
+    assertEquals(expectedRemovableStates, removableStates);
   }
 }

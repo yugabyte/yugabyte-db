@@ -9,21 +9,20 @@ menu:
     identifier: jepsen-testing-2-ycql
     parent: resilience
     weight: 13
-showAsideToc: true
-isTocNested: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/benchmark/resilience/jepsen-testing-ysql" class="nav-link">
+    <a href="../jepsen-testing-ysql/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
 
   <li >
-    <a href="/latest/benchmark/resilience/jepsen-testing-ycql" class="nav-link active">
+    <a href="../jepsen-testing-ycql/" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>

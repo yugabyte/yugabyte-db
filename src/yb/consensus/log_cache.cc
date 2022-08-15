@@ -288,6 +288,25 @@ int64_t TotalByteSizeForMessage(const ReplicateMsg& msg) {
   return msg_size;
 }
 
+Status UpdateResultHeaderSchemaFromSegment(
+    log::LogReader* log_reader, const int64_t segment_seq_num, ReadOpsResult* result) {
+  const auto segment_result = log_reader->GetSegmentBySequenceNumber(segment_seq_num);
+  if (!segment_result.ok()) {
+    if (segment_result.status().IsNotFound()) {
+      // Just ignore that.
+      return Status::OK();
+    }
+    // Return error.
+    return segment_result.status();
+  }
+  const auto& header = (*segment_result)->header();
+  if (header.has_schema()) {
+    result->header_schema.CopyFrom(header.schema());
+    result->header_schema_version = header.schema_version();
+  }
+  return Status::OK();
+}
+
 } // anonymous namespace
 
 Result<ReadOpsResult> LogCache::ReadOps(int64_t after_op_index, size_t max_size_bytes) {
@@ -304,6 +323,7 @@ Result<ReadOpsResult> LogCache::ReadOps(int64_t after_op_index,
                                << ", to_op_index: " << to_op_index
                                << ", max_size_bytes: " << max_size_bytes;
   ReadOpsResult result;
+  int64_t starting_op_segment_seq_num;
   result.preceding_op = VERIFY_RESULT(LookupOpId(after_op_index));
 
   std::unique_lock<simple_spinlock> l(lock_);
@@ -341,9 +361,16 @@ Result<ReadOpsResult> LogCache::ReadOps(int64_t after_op_index,
 
       ReplicateMsgs raw_replicate_ptrs;
       RETURN_NOT_OK_PREPEND(
-        log_->GetLogReader()->ReadReplicatesInRange(
-            next_index, up_to, remaining_space, &raw_replicate_ptrs, deadline),
-        Substitute("Failed to read ops $0..$1", next_index, up_to));
+          log_->GetLogReader()->ReadReplicatesInRange(
+              next_index, up_to, remaining_space, &raw_replicate_ptrs, &starting_op_segment_seq_num,
+              &result.header_schema, &(result.header_schema_version), deadline),
+          Substitute("Failed to read ops $0..$1", next_index, up_to));
+
+      if ((starting_op_segment_seq_num != -1) && !result.header_schema.IsInitialized()) {
+        RETURN_NOT_OK(UpdateResultHeaderSchemaFromSegment(
+            log_->GetLogReader(), starting_op_segment_seq_num, &result));
+      }
+
       metrics_.disk_reads->IncrementBy(raw_replicate_ptrs.size());
       LOG_WITH_PREFIX_UNLOCKED(INFO)
           << "Successfully read " << raw_replicate_ptrs.size() << " ops from disk.";
@@ -358,10 +385,24 @@ Result<ReadOpsResult> LogCache::ReadOps(int64_t after_op_index,
           break;
         }
         result.messages.push_back(msg);
+        if (msg->op_type() == consensus::OperationType::CHANGE_METADATA_OP) {
+          result.header_schema.CopyFrom(msg->change_metadata_request().schema());
+          result.header_schema_version = msg->change_metadata_request().schema_version();
+        }
         result.read_from_disk_size += current_message_size;
         next_index++;
       }
     } else {
+      const auto seg_num_result = log_->GetLogReader()->LookupOpWalSegmentNumber(next_index);
+      if (seg_num_result.ok()) {
+        starting_op_segment_seq_num = *seg_num_result;
+        RETURN_NOT_OK(UpdateResultHeaderSchemaFromSegment(
+            log_->GetLogReader(), starting_op_segment_seq_num, &result));
+      } else if (!seg_num_result.status().IsNotFound()) {
+        // Unexpected error - to be handled by the caller.
+        return seg_num_result.status();
+      }
+
       // Pull contiguous messages from the cache until the size limit is achieved.
       for (; iter != cache_.end(); ++iter) {
         if (to_op_index > 0 && next_index > to_op_index) {
@@ -380,11 +421,15 @@ Result<ReadOpsResult> LogCache::ReadOps(int64_t after_op_index,
         }
 
         result.messages.push_back(msg);
+        if (msg->op_type() == consensus::OperationType::CHANGE_METADATA_OP) {
+          result.header_schema.CopyFrom(msg->change_metadata_request().schema());
+          result.header_schema_version = msg->change_metadata_request().schema_version();
+        }
         next_index++;
       }
     }
   }
-  result.have_more_messages = remaining_space < 0;
+  result.have_more_messages = HaveMoreMessages(remaining_space < 0);
   return result;
 }
 
@@ -432,10 +477,6 @@ size_t LogCache::EvictSomeUnlocked(int64_t stop_after_index, int64_t bytes_to_ev
   VLOG_WITH_PREFIX_UNLOCKED(1) << "Evicting log cache: after state: " << ToStringUnlocked();
 
   return bytes_evicted;
-}
-
-Status LogCache::FlushIndex() {
-  return log_->FlushIndex();
 }
 
 void LogCache::AccountForMessageRemovalUnlocked(const CacheEntry& entry) {

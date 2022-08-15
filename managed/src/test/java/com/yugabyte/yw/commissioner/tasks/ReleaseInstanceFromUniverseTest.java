@@ -15,8 +15,10 @@ import static org.mockito.Mockito.when;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.NodeActionType;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -76,6 +78,7 @@ public class ReleaseInstanceFromUniverseTest extends CommissionerBaseTest {
     // create default universe
     userIntent = new UniverseDefinitionTaskParams.UserIntent();
     userIntent.numNodes = 3;
+    userIntent.provider = defaultProvider.uuid.toString();
     userIntent.ybSoftwareVersion = "yb-version";
     userIntent.accessKeyCode = "demo-access";
     userIntent.replicationFactor = 3;
@@ -203,5 +206,17 @@ public class ReleaseInstanceFromUniverseTest extends CommissionerBaseTest {
     taskParams.universeUUID = defaultUniverse.universeUUID;
     TaskInfo taskInfo = submitTask(taskParams, "host-n9", 3);
     assertEquals(Failure, taskInfo.getTaskState());
+  }
+
+  @Test
+  public void testReleaseNodeAllowedState() {
+    Set<NodeState> allowedStates = NodeState.allowedStatesForAction(NodeActionType.RELEASE);
+    Set<NodeState> expectedStates =
+        ImmutableSet.of(
+            NodeState.Adding,
+            NodeState.BeingDecommissioned,
+            NodeState.Removed,
+            NodeState.Terminating);
+    assertEquals(expectedStates, allowedStates);
   }
 }

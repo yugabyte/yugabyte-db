@@ -28,6 +28,7 @@
 #include "catalog/pg_type.h"
 #include "commands/copy.h"
 #include "commands/defrem.h"
+#include "commands/progress.h"
 #include "commands/trigger.h"
 #include "executor/execPartition.h"
 #include "executor/executor.h"
@@ -42,6 +43,7 @@
 #include "nodes/makefuncs.h"
 #include "parser/parse_relation.h"
 #include "port/pg_bswap.h"
+#include "pgstat.h"
 #include "rewrite/rewriteHandler.h"
 #include "storage/fd.h"
 #include "tcop/tcopprot.h"
@@ -121,12 +123,15 @@ typedef struct CopyStateData
 	char	   *filename;		/* filename, or NULL for STDIN/STDOUT */
 	bool		is_program;		/* is 'filename' a program to popen? */
 	int			batch_size;		/* copy from executes in batch sizes */
+	uint64		num_initial_skipped_rows;	/* number of rows to skip at the
+											 * beginning of the file */
 	copy_data_source_cb data_source_cb; /* function for reading data */
 	bool		binary;			/* binary format? */
 	bool		oids;			/* include OIDs? */
 	bool		freeze;			/* freeze rows on loading? */
 	bool		csv_mode;		/* Comma Separated Value format? */
 	bool		header_line;	/* CSV header line? */
+	bool		disable_fk_check;	/* Disable FK check? */
 	char	   *null_print;		/* NULL marker string (server encoding!) */
 	int			null_print_len; /* length of same */
 	char	   *null_print_client;	/* same converted to file encoding */
@@ -143,6 +148,8 @@ typedef struct CopyStateData
 	bool		convert_selectively;	/* do selective binary conversion? */
 	List	   *convert_select; /* list of column names (can be NIL) */
 	bool	   *convert_select_flags;	/* per-column CSV/TEXT CS flags */
+	OnConflictAction  on_conflict_action;  /* how to handle when the new row
+											* conflicts with existing row */
 
 	/* these are just for error messages, see CopyFromErrorCallback */
 	const char *cur_relname;	/* table name for error messages */
@@ -217,6 +224,7 @@ typedef struct CopyStateData
 	char	   *raw_buf;
 	int			raw_buf_index;	/* next byte to process */
 	int			raw_buf_len;	/* total # of bytes stored */
+	uint64		bytes_processed;	/* number of bytes processed so far */
 } CopyStateData;
 
 /* DestReceiver for COPY (query) TO */
@@ -545,6 +553,10 @@ CopySendEndOfRow(CopyState cstate)
 			break;
 	}
 
+	/* Update the progress */
+	cstate->bytes_processed += fe_msgbuf->len;
+	pgstat_progress_update_param(PROGRESS_COPY_BYTES_PROCESSED, cstate->bytes_processed);
+
 	resetStringInfo(fe_msgbuf);
 }
 
@@ -765,6 +777,7 @@ CopyLoadRawBuf(CopyState cstate)
 	cstate->raw_buf[nbytes] = '\0';
 	cstate->raw_buf_index = 0;
 	cstate->raw_buf_len = nbytes;
+	cstate->bytes_processed += nbytes;
 	return (inbytes > 0);
 }
 
@@ -1060,6 +1073,12 @@ ProcessCopyOptions(ParseState *pstate,
 
 	cstate->batch_size = -1;
 
+	cstate->num_initial_skipped_rows = 0;
+
+	cstate->disable_fk_check = false;
+
+	cstate->on_conflict_action = ONCONFLICT_NONE;
+
 	/* Extract options from the statement node tree */
 	foreach(option, options)
 	{
@@ -1125,6 +1144,21 @@ ProcessCopyOptions(ParseState *pstate,
 						 errmsg("argument to option \"%s\" must be a positive integer", defel->defname),
 						 parser_errposition(pstate, defel->location)));
 		}
+		else if (strcmp(defel->defname, "skip") == 0)
+		{
+			int64_t num_initial_skipped_rows = defGetInt64(defel);
+			if (num_initial_skipped_rows >= 0)
+				cstate->num_initial_skipped_rows = num_initial_skipped_rows;
+			else
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						 errmsg("argument to option \"%s\" must be a nonnegative integer", defel->defname),
+						 parser_errposition(pstate, defel->location)));
+		}
+		else if (strcmp(defel->defname, "disable_fk_check") == 0)
+			cstate->disable_fk_check = true;
+		else if (strcmp(defel->defname, "replace") == 0)
+			cstate->on_conflict_action = ONCONFLICT_YB_REPLACE;
 		else if (strcmp(defel->defname, "null") == 0)
 		{
 			if (cstate->null_print)
@@ -1724,6 +1758,7 @@ BeginCopy(ParseState *pstate,
 	cstate->encoding_embeds_ascii = PG_ENCODING_IS_CLIENT_ONLY(cstate->file_encoding);
 
 	cstate->copy_dest = COPY_FILE;	/* default */
+	pgstat_progress_update_param(PROGRESS_COPY_STATUS, CP_IN_PROG);
 
 	MemoryContextSwitchTo(oldcontext);
 
@@ -1784,6 +1819,9 @@ EndCopy(CopyState cstate)
 							cstate->filename)));
 	}
 
+	pgstat_progress_end_command();
+	pgstat_progress_update_param(PROGRESS_COPY_STATUS, CP_SUCCESS);
+
 	MemoryContextDelete(cstate->copycontext);
 	pfree(cstate);
 }
@@ -1804,6 +1842,14 @@ BeginCopyTo(ParseState *pstate,
 	CopyState	cstate;
 	bool		pipe = (filename == NULL);
 	MemoryContext oldcontext;
+	const int	progress_cols[] = {
+		PROGRESS_COPY_COMMAND,
+		PROGRESS_COPY_TYPE
+	};
+	int64		progress_vals[] = {
+		PROGRESS_COPY_COMMAND_TO,
+		0
+	};
 
 	if (rel != NULL && rel->rd_rel->relkind != RELKIND_RELATION)
 	{
@@ -1849,6 +1895,8 @@ BeginCopyTo(ParseState *pstate,
 
 	if (pipe)
 	{
+		progress_vals[1] = PROGRESS_COPY_TYPE_PIPE;
+
 		Assert(!is_program);	/* the grammar does not allow this */
 		if (whereToSendOutput != DestRemote)
 			cstate->copy_file = stdout;
@@ -1860,6 +1908,7 @@ BeginCopyTo(ParseState *pstate,
 
 		if (is_program)
 		{
+			progress_vals[1] = PROGRESS_COPY_TYPE_PROGRAM;
 			cstate->copy_file = OpenPipeStream(cstate->filename, PG_BINARY_W);
 			if (cstate->copy_file == NULL)
 				ereport(ERROR,
@@ -1872,6 +1921,7 @@ BeginCopyTo(ParseState *pstate,
 			mode_t		oumask; /* Pre-existing umask value */
 			struct stat st;
 
+			progress_vals[1] = PROGRESS_COPY_TYPE_FILE;
 			/*
 			 * Prevent write to relative path ... too easy to shoot oneself in
 			 * the foot by overwriting a database file ...
@@ -1919,6 +1969,13 @@ BeginCopyTo(ParseState *pstate,
 						 errmsg("\"%s\" is a directory", cstate->filename)));
 		}
 	}
+
+	/* initialize progress */
+	pgstat_progress_start_command(PROGRESS_COMMAND_COPY,
+								  cstate->rel ? RelationGetRelid(cstate->rel) : InvalidOid);
+	pgstat_progress_update_multi_param(2, progress_cols, progress_vals);
+
+	cstate->bytes_processed = 0;
 
 	MemoryContextSwitchTo(oldcontext);
 
@@ -2120,7 +2177,13 @@ CopyTo(CopyState cstate)
 
 			/* Format and send the data */
 			CopyOneRowTo(cstate, HeapTupleGetOid(tuple), values, nulls);
-			processed++;
+
+			/*
+			 * Increment the number of processed tuples, and report the
+			 * progress.
+			 */
+			pgstat_progress_update_param(PROGRESS_COPY_TUPLES_PROCESSED,
+										 ++processed);
 
 			/* Free Yugabyte memory for this row */
 			if (is_yb_relation)
@@ -2267,6 +2330,7 @@ CopyFromErrorCallback(void *arg)
 
 	snprintf(curlineno_str, sizeof(curlineno_str), UINT64_FORMAT,
 			 cstate->cur_lineno);
+	pgstat_progress_update_param(PROGRESS_COPY_STATUS, CP_ERROR);
 
 	if (cstate->binary)
 	{
@@ -2387,14 +2451,13 @@ CopyFrom(CopyState cstate)
 	CommandId	mycid = GetCurrentCommandId(true);
 	int			hi_options = 0; /* start with default heap_insert options */
 	BulkInsertState bistate;
-	uint64		processed = 0;
+	int64		processed = 0;
 	bool		useMultiInsert;
 	bool		useYBMultiInsert;
 	bool		useHeapMultiInsert;
 	int			nBufferedTuples = 0;
 	int			prev_leaf_part_index = -1;
 	bool		useNonTxnInsert;
-	bool		isBatchTxnCopy;
 
 	/*
 	 * If the batch size is not explicitly set in the query by the user,
@@ -2404,7 +2467,6 @@ CopyFrom(CopyState cstate)
 	{
 		cstate->batch_size = yb_default_copy_from_rows_per_transaction;
 	}
-	isBatchTxnCopy = cstate->batch_size > 0;
 
 #define MAX_BUFFERED_TUPLES 1000
 	HeapTuple  *bufferedTuples = NULL;	/* initialize to silence warning */
@@ -2582,6 +2644,7 @@ CopyFrom(CopyState cstate)
 	estate->es_num_result_relations = 1;
 	estate->es_result_relation_info = resultRelInfo;
 	estate->es_range_table = cstate->range_table;
+	estate->yb_es_is_fk_check_disabled = cstate->disable_fk_check;
 
 	/* Set up a tuple slot too */
 	myslot = ExecInitExtraTupleSlot(estate, tupDesc);
@@ -2636,7 +2699,7 @@ CopyFrom(CopyState cstate)
 			ExecSetupChildParentMapForLeaf(proute);
 	}
 
-	if (isBatchTxnCopy)
+	if (cstate->batch_size > 0)
 	{
 		/*
 		 * Batched copy is not supported
@@ -2646,12 +2709,17 @@ CopyFrom(CopyState cstate)
 		int batch_size = 0;
 
 		if (!IsYBRelation(resultRelInfo->ri_RelationDesc))
+		{
+			Assert(resultRelInfo->ri_RelationDesc->rd_rel->relpersistence == RELPERSISTENCE_TEMP ||
+					resultRelInfo->ri_RelationDesc->rd_rel->relkind == RELKIND_FOREIGN_TABLE);
 			ereport(WARNING,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-			 	 errmsg("Batched COPY is not supported on temporary tables. "
-						"Defaulting to using one transaction for the entire copy."),
+			 	 errmsg("Batched COPY is not supported on %s tables. "
+						"Defaulting to using one transaction for the entire copy.",
+						YbIsTempRelation(resultRelInfo->ri_RelationDesc) ? "temporary" : "foreign"),
 				 errhint("Either copy onto non-temporary table or set rows_per_transaction "
 						 "option to `0` to disable batching and remove this warning.")));
+		}
 		else if (YBIsDataSent())
 			ereport(WARNING,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
@@ -2660,11 +2728,16 @@ CopyFrom(CopyState cstate)
 				 errhint("Either run this COPY outside of a transaction block or set "
 						 "rows_per_transaction option to `0` to disable batching and "
 						 "remove this warning.")));
-
-		else
-		{
+		else if (HasNonRITrigger(cstate->rel->trigdesc))
+			ereport(WARNING,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+			 	 errmsg("Batched COPY is not supported on table with non RI trigger. "
+						"Defaulting to using one transaction for the entire copy."),
+				 errhint("Set rows_per_transaction option to `0` to disable batching "
+				 		 "and remove this warning.")));
+		else			
 			batch_size = cstate->batch_size;
-		}
+
 		cstate->batch_size = batch_size;
 	}
 
@@ -2744,8 +2817,19 @@ CopyFrom(CopyState cstate)
 						 "secondary indices or triggers.")));
 
 	bool has_more_tuples = true;
-	while (has_more_tuples)
+
+	/* Skip num_initial_skipped_rows. */
+	for (uint64 i = 0; i < cstate->num_initial_skipped_rows; i++)
 	{
+		Oid	loaded_oid = InvalidOid;
+		has_more_tuples = NextCopyFrom(cstate, econtext, values, nulls,
+			&loaded_oid, true /* skip_row */);
+		if (!has_more_tuples)
+			break;
+	}
+
+	while (has_more_tuples)
+	{		
 		/*
 		 * When batch size is not provided from the query option,
 		 * default behavior is to read each line from the file
@@ -2777,7 +2861,8 @@ CopyFrom(CopyState cstate)
 			if (!IsYBRelation(resultRelInfo->ri_RelationDesc))
 				MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
 
-			has_more_tuples = NextCopyFrom(cstate, econtext, values, nulls, &loaded_oid);
+			has_more_tuples = NextCopyFrom(cstate, econtext, values, nulls,
+				&loaded_oid, false /* skip_row */);
 			if (!has_more_tuples)
 				break;
 
@@ -2921,7 +3006,8 @@ CopyFrom(CopyState cstate)
 			skip_tuple = false;
 
 			/* BEFORE ROW INSERT Triggers */
-			if (resultRelInfo->ri_TrigDesc &&
+			if (!skip_tuple &&
+				resultRelInfo->ri_TrigDesc &&
 				resultRelInfo->ri_TrigDesc->trig_insert_before_row)
 			{
 				slot = ExecBRInsertTriggers(estate, resultRelInfo, slot);
@@ -2996,11 +3082,17 @@ CopyFrom(CopyState cstate)
 						{
 							if (useNonTxnInsert)
 							{
-								YBCExecuteNonTxnInsert(resultRelInfo->ri_RelationDesc, tupDesc, tuple);
+								YBCExecuteNonTxnInsert(resultRelInfo->ri_RelationDesc,
+													   tupDesc,
+													   tuple,
+													   cstate->on_conflict_action);
 							}
 							else
 							{
-								YBCExecuteInsert(resultRelInfo->ri_RelationDesc, tupDesc, tuple);
+								YBCExecuteInsert(resultRelInfo->ri_RelationDesc,
+												 tupDesc,
+												 tuple,
+												 cstate->on_conflict_action);
 							}
 						}
 						else if (resultRelInfo->ri_FdwRoutine != NULL)
@@ -3051,7 +3143,7 @@ CopyFrom(CopyState cstate)
 				 * or FDW; this is the same definition used by nodeModifyTable.c
 				 * for counting tuples inserted by an INSERT command.
 				 */
-				processed++;
+				++processed;
 			}
 
 		next_tuple:
@@ -3068,16 +3160,37 @@ CopyFrom(CopyState cstate)
 			if (IsYBRelation(cstate->rel))
 				ResetPerTupleExprContext(estate);
 		}
-		/*
-		 * Commit transaction per batch.
-		 * When CopyFrom method is called, we are already inside a transaction block
-		 * and relevant transaction state properties have been previously set.
-		 */
-		if (isBatchTxnCopy)
+
+		if (cstate->batch_size > 0)
 		{
+			/* 
+			 * Handle queued AFTER triggers before committing. If there are errors,
+			 * do not commit the current batch. 
+			 */
+			AfterTriggerEndQuery(estate);
+
+			/*
+			 * Commit transaction per batch.
+ 			 * When CopyFrom method is called, we are already inside a transaction block
+			 * and relevant transaction state properties have been previously set.
+			 */
 			YBCCommitTransaction();
+			/* Update progress of the COPY command as well.
+			 */
+			pgstat_progress_update_param(PROGRESS_COPY_TUPLES_PROCESSED, processed);
+			pgstat_progress_update_param(PROGRESS_COPY_BYTES_PROCESSED, cstate->bytes_processed);
 			YBInitializeTransaction();
+
+			/* Start a new AFTER trigger */
+			AfterTriggerBeginQuery();
+			continue;
 		}
+		/* We need to flush buffered operations so that error callback is executed */
+		YBFlushBufferedOperations();
+
+		/* Update progress of the COPY command as well */
+		pgstat_progress_update_param(PROGRESS_COPY_TUPLES_PROCESSED, processed);
+		pgstat_progress_update_param(PROGRESS_COPY_BYTES_PROCESSED, cstate->bytes_processed);
 	}
 
 	/* Flush any remaining buffered tuples */
@@ -3250,6 +3363,16 @@ BeginCopyFrom(ParseState *pstate,
 	ExprState **defexprs;
 	MemoryContext oldcontext;
 	bool		volatile_defexprs;
+	const int	progress_cols[] = {
+		PROGRESS_COPY_COMMAND,
+		PROGRESS_COPY_TYPE,
+		PROGRESS_COPY_BYTES_TOTAL
+	};
+	int64		progress_vals[] = {
+		PROGRESS_COPY_COMMAND_FROM,
+		0,
+		0
+	};
 
 	cstate = BeginCopy(pstate, true, rel, NULL, InvalidOid, attnamelist, options);
 	oldcontext = MemoryContextSwitchTo(cstate->copycontext);
@@ -3343,6 +3466,11 @@ BeginCopyFrom(ParseState *pstate,
 		}
 	}
 
+	/* initialize progress */
+	pgstat_progress_start_command(PROGRESS_COMMAND_COPY,
+								  cstate->rel ? RelationGetRelid(cstate->rel) : InvalidOid);
+	cstate->bytes_processed = 0;
+
 	/* We keep those variables in cstate. */
 	cstate->in_functions = in_functions;
 	cstate->typioparams = typioparams;
@@ -3354,11 +3482,13 @@ BeginCopyFrom(ParseState *pstate,
 
 	if (data_source_cb)
 	{
+		progress_vals[1] = PROGRESS_COPY_TYPE_CALLBACK;
 		cstate->copy_dest = COPY_CALLBACK;
 		cstate->data_source_cb = data_source_cb;
 	}
 	else if (pipe)
 	{
+		progress_vals[1] = PROGRESS_COPY_TYPE_PIPE;
 		Assert(!is_program);	/* the grammar does not allow this */
 		if (whereToSendOutput == DestRemote)
 		{
@@ -3385,6 +3515,7 @@ BeginCopyFrom(ParseState *pstate,
 
 		if (cstate->is_program)
 		{
+			progress_vals[1] = PROGRESS_COPY_TYPE_PROGRAM;
 			cstate->copy_file = OpenPipeStream(cstate->filename, PG_BINARY_R);
 			if (cstate->copy_file == NULL)
 				ereport(ERROR,
@@ -3396,6 +3527,7 @@ BeginCopyFrom(ParseState *pstate,
 		{
 			struct stat st;
 
+			progress_vals[1] = PROGRESS_COPY_TYPE_FILE;
 			cstate->copy_file = AllocateFile(cstate->filename, PG_BINARY_R);
 			if (cstate->copy_file == NULL)
 			{
@@ -3421,8 +3553,11 @@ BeginCopyFrom(ParseState *pstate,
 				ereport(ERROR,
 						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 						 errmsg("\"%s\" is a directory", cstate->filename)));
+
+			progress_vals[2] = st.st_size;
 		}
 	}
+	pgstat_progress_update_multi_param(3, progress_cols, progress_vals);
 
 	if (!cstate->binary)
 	{
@@ -3552,10 +3687,14 @@ NextCopyFromRawFields(CopyState cstate, char ***fields, int *nfields)
  * 'values' and 'nulls' arrays must be the same length as columns of the
  * relation passed to BeginCopyFrom. This function fills the arrays.
  * Oid of the tuple is returned with 'tupleOid' separately.
+
+ * 'skip_row' is used to specify whether we should skip format checking for
+ * this row. In particular, if 'skip_row' is true, we will not raise error
+ * upon reading an invalid row.
  */
 bool
 NextCopyFrom(CopyState cstate, ExprContext *econtext,
-			 Datum *values, bool *nulls, Oid *tupleOid)
+			 Datum *values, bool *nulls, Oid *tupleOid, bool skip_row)
 {
 	TupleDesc	tupDesc;
 	AttrNumber	num_phys_attrs,
@@ -3590,6 +3729,10 @@ NextCopyFrom(CopyState cstate, ExprContext *econtext,
 		/* read raw fields in the next line */
 		if (!NextCopyFromRawFields(cstate, &field_strings, &fldct))
 			return false;
+
+		/* if the row is skipped, ignore all the format checking */
+		if (skip_row)
+			return true;
 
 		/* check for overflowing fields */
 		if (nfields > 0 && fldct > nfields)
@@ -5079,8 +5222,10 @@ copy_dest_receive(TupleTableSlot *slot, DestReceiver *self)
 
 	/* And send the data */
 	CopyOneRowTo(cstate, InvalidOid, slot->tts_values, slot->tts_isnull);
-	myState->processed++;
 
+	/* Increment the number of processed tuples, and report the progress */
+	pgstat_progress_update_param(PROGRESS_COPY_TUPLES_PROCESSED,
+								 ++myState->processed);
 	return true;
 }
 

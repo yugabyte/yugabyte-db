@@ -3,14 +3,13 @@ title: Connect clients to Yugabyte Cloud clusters
 headerTitle: Connect to Yugabyte Cloud clusters
 linkTitle: Connect to clusters
 description: Connect to clusters in Yugabyte Cloud using Yugabyte Cloud shells, remote clients, and third party clients.
-beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
+beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   v2.6:
     identifier: connect-to-clusters
     parent: yugabyte-cloud
     weight: 645
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Connect to your YugabyteDB clusters in Yugabyte Cloud using Yugabyte Cloud shells, remote clients, and third party clients.

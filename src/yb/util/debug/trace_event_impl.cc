@@ -43,6 +43,7 @@
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/debug/trace_event_synthetic_delay.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/status_fwd.h"
 #include "yb/util/thread.h"
 
 DEFINE_string(trace_to_console, "",
@@ -393,7 +394,7 @@ void InitializeMetadataEvent(TraceEvent* trace_event,
 
 // RAII object which marks '*dst' with a non-zero value while in scope.
 // This assumes that no other threads write to '*dst'.
-class MarkFlagInScope {
+class NODISCARD_CLASS MarkFlagInScope {
  public:
   explicit MarkFlagInScope(Atomic32* dst)
       : dst_(dst) {

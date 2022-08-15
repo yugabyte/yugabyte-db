@@ -95,7 +95,7 @@ class PgExplicitLockTest : public PgMiniTestBase {
     }
   }
 
-  static CHECKED_STATUS StartTxn(PGConn* connection) {
+  static Status StartTxn(PGConn* connection) {
     return connection->StartTransaction(level);
   }
 };

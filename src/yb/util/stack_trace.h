@@ -32,7 +32,11 @@ enum class StackTraceLineFormat {
   SHORT,
   CLION_CLICKABLE,
   SYMBOL_ONLY,
+#if !defined(NDEBUG)
+  DEFAULT = CLION_CLICKABLE
+#else
   DEFAULT = SHORT
+#endif
 };
 
 // Active - thread is performing execution.
@@ -145,7 +149,7 @@ std::vector<Result<StackTrace>> ThreadStacks(const std::vector<ThreadIdForStack>
 // Set which POSIX signal number should be used internally for triggering
 // stack traces. If the specified signal handler is already in use, this
 // returns an error, and stack traces will be disabled.
-CHECKED_STATUS SetStackTraceSignal(int signum);
+Status SetStackTraceSignal(int signum);
 
 }  // namespace yb
 

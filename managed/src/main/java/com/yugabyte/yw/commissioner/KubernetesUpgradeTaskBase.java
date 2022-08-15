@@ -42,13 +42,22 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
               .forUniverse(getUniverse())
               .getInt(Util.BLACKLIST_LEADER_WAIT_TIME_MS);
       checkUniverseVersion();
-      // Create the task list sequence.
-      subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
-
       // Update the universe DB with the update to be performed and set the
       // 'updateInProgress' flag to prevent other updates from happening.
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
-      taskParams().rootCA = universe.getUniverseDetails().rootCA;
+
+      if (taskParams().nodePrefix == null) {
+        taskParams().nodePrefix = universe.getUniverseDetails().nodePrefix;
+      }
+      if (taskParams().clusters == null || taskParams().clusters.isEmpty()) {
+        taskParams().clusters = universe.getUniverseDetails().clusters;
+      }
+
+      // This value is used by subsequent calls to helper methods for
+      // creating KubernetesCommandExecutor tasks. This value cannot
+      // be changed once set during the Universe creation, so we don't
+      // allow users to modify it later during edit, upgrade, etc.
+      taskParams().useNewHelmNamingStyle = universe.getUniverseDetails().useNewHelmNamingStyle;
 
       // Execute the lambda which populates subTaskGroupQueue
       upgradeLambda.run();
@@ -58,25 +67,27 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Run all the tasks.
-      subTaskGroupQueue.run();
+      getRunnableTask().runSubTasks();
     } catch (Throwable t) {
       log.error("Error executing task {} with error={}.", getName(), t);
 
-      subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
+      // Clear the previous subtasks if any.
+      getRunnableTask().reset();
       // If the task failed, we don't want the loadbalancer to be
       // disabled, so we enable it again in case of errors.
       createLoadBalancerStateChangeTask(true).setSubTaskGroupType(getTaskSubGroupType());
-      subTaskGroupQueue.run();
+      getRunnableTask().runSubTasks();
 
       throw t;
     } finally {
       try {
         if (isBlacklistLeaders) {
-          subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
+          // Clear the previous subtasks if any.
+          getRunnableTask().reset();
           List<NodeDetails> tServerNodes = getUniverse().getTServers();
           createModifyBlackListTask(tServerNodes, false /* isAdd */, true /* isLeaderBlacklist */)
               .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-          subTaskGroupQueue.run();
+          getRunnableTask().runSubTasks();
         }
       } finally {
         unlockUniverseForUpdate();
@@ -88,17 +99,20 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
 
   public void createUpgradeTask(
       Universe universe,
-      PlacementInfo placementInfo,
       String softwareVersion,
       boolean isMasterChanged,
       boolean isTServerChanged) {
-    createSingleKubernetesExecutorTask(CommandType.POD_INFO, placementInfo);
+    UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+    PlacementInfo placementInfo = universeDetails.getPrimaryCluster().placementInfo;
+    createSingleKubernetesExecutorTask(
+        CommandType.POD_INFO, placementInfo, /*isReadOnlyCluster*/ false);
 
-    KubernetesPlacement placement = new KubernetesPlacement(placementInfo);
+    KubernetesPlacement placement =
+        new KubernetesPlacement(placementInfo, /*isReadOnlyCluster*/ false);
     Provider provider =
         Provider.getOrBadRequest(
             UUID.fromString(taskParams().getPrimaryCluster().userIntent.provider));
-    UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+    boolean newNamingStyle = taskParams().useNewHelmNamingStyle;
 
     String masterAddresses =
         PlacementInfoUtil.computeMasterAddresses(
@@ -106,7 +120,8 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
             placement.masters,
             taskParams().nodePrefix,
             provider,
-            universeDetails.communicationPorts.masterRpcPort);
+            universeDetails.communicationPorts.masterRpcPort,
+            newNamingStyle);
 
     if (isMasterChanged) {
       upgradePodsTask(
@@ -117,7 +132,9 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
           softwareVersion,
           taskParams().sleepAfterMasterRestartMillis,
           isMasterChanged,
-          isTServerChanged);
+          isTServerChanged,
+          newNamingStyle,
+          /*isReadOnlyCluster*/ false);
     }
 
     if (isTServerChanged) {
@@ -133,8 +150,32 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
           softwareVersion,
           taskParams().sleepAfterTServerRestartMillis,
           false, // master change is false since it has already been upgraded.
-          isTServerChanged);
+          isTServerChanged,
+          newNamingStyle,
+          /*isReadOnlyCluster*/ false);
 
+      // Handle read cluster upgrade.
+      if (universeDetails.getReadOnlyClusters().size() != 0) {
+        PlacementInfo readClusterPlacementInfo =
+            universeDetails.getReadOnlyClusters().get(0).placementInfo;
+        createSingleKubernetesExecutorTask(
+            CommandType.POD_INFO, readClusterPlacementInfo, /*isReadOnlyCluster*/ true);
+
+        KubernetesPlacement readClusterPlacement =
+            new KubernetesPlacement(readClusterPlacementInfo, /*isReadOnlyCluster*/ true);
+
+        upgradePodsTask(
+            readClusterPlacement,
+            masterAddresses,
+            null,
+            ServerType.TSERVER,
+            softwareVersion,
+            taskParams().sleepAfterTServerRestartMillis,
+            false, // master change is false since it has already been upgraded.
+            isTServerChanged,
+            newNamingStyle,
+            /*isReadOnlyCluster*/ true);
+      }
       createLoadBalancerStateChangeTask(true).setSubTaskGroupType(getTaskSubGroupType());
     }
   }

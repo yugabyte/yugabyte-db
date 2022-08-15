@@ -16,7 +16,6 @@
 #define YB_YQL_PGGATE_PG_TRUNCATE_COLOCATED_H_
 
 #include "yb/yql/pggate/pg_dml_write.h"
-#include "yb/yql/pggate/pg_env.h"
 #include "yb/yql/pggate/pg_session.h"
 #include "yb/yql/pggate/pg_statement.h"
 
@@ -32,14 +31,15 @@ class PgTruncateColocated : public PgDmlWrite {
   PgTruncateColocated(
       PgSession::ScopedRefPtr pg_session,
       const PgObjectId& table_id,
-      const bool is_single_row_txn = false)
-      : PgDmlWrite(std::move(pg_session), table_id, is_single_row_txn) {}
+      bool is_single_row_txn,
+      bool is_region_local)
+      : PgDmlWrite(std::move(pg_session), table_id, is_single_row_txn, is_region_local) {}
 
   StmtOp stmt_op() const override { return StmtOp::STMT_TRUNCATE; }
 
  private:
-  std::unique_ptr<client::YBPgsqlWriteOp> AllocWriteOperation() const override {
-    return target_->NewPgsqlTruncateColocated();
+  PgsqlWriteRequestPB::PgsqlStmtType stmt_type() const override {
+    return PgsqlWriteRequestPB::PGSQL_TRUNCATE_COLOCATED;
   }
 };
 

@@ -1504,6 +1504,7 @@ _readPlannedStmt(void)
 	READ_NODE_FIELD(utilityStmt);
 	READ_LOCATION_FIELD(stmt_location);
 	READ_LOCATION_FIELD(stmt_len);
+	READ_INT_FIELD(yb_num_referenced_relations);
 
 	READ_DONE();
 }
@@ -1744,6 +1745,22 @@ _readSeqScan(void)
 }
 
 /*
+ * _readYbSeqScan
+ */
+static YbSeqScan *
+_readYbSeqScan(void)
+{
+	READ_LOCALS(YbSeqScan);
+
+	ReadCommonScan(&local_node->scan);
+
+	READ_NODE_FIELD(remote.qual);
+	READ_NODE_FIELD(remote.colrefs);
+
+	READ_DONE();
+}
+
+/*
  * _readSampleScan
  */
 static SampleScan *
@@ -1774,7 +1791,12 @@ _readIndexScan(void)
 	READ_NODE_FIELD(indexorderby);
 	READ_NODE_FIELD(indexorderbyorig);
 	READ_NODE_FIELD(indexorderbyops);
+	READ_NODE_FIELD(indextlist);
 	READ_ENUM_FIELD(indexorderdir, ScanDirection);
+	READ_NODE_FIELD(index_remote.qual);
+	READ_NODE_FIELD(index_remote.colrefs);
+	READ_NODE_FIELD(rel_remote.qual);
+	READ_NODE_FIELD(rel_remote.colrefs);
 
 	READ_DONE();
 }
@@ -1794,6 +1816,8 @@ _readIndexOnlyScan(void)
 	READ_NODE_FIELD(indexorderby);
 	READ_NODE_FIELD(indextlist);
 	READ_ENUM_FIELD(indexorderdir, ScanDirection);
+	READ_NODE_FIELD(remote.qual);
+	READ_NODE_FIELD(remote.colrefs);
 
 	READ_DONE();
 }
@@ -2714,6 +2738,8 @@ parseNodeString(void)
 		return_value = _readScan();
 	else if (MATCH("SEQSCAN", 7))
 		return_value = _readSeqScan();
+	else if (MATCH("YBSEQSCAN", 9))
+		return_value = _readYbSeqScan();
 	else if (MATCH("SAMPLESCAN", 10))
 		return_value = _readSampleScan();
 	else if (MATCH("INDEXSCAN", 9))

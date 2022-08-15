@@ -125,7 +125,10 @@ void YBTableTestBase::SetUp() {
         .num_tablet_servers = num_tablet_servers(),
         .num_drives = num_drives(),
         .master_rpc_ports = master_rpc_ports(),
-        .enable_ysql = enable_ysql()
+        .enable_ysql = enable_ysql(),
+        .extra_tserver_flags = {},
+        .extra_master_flags = {},
+        .cluster_id = {},
     };
     CustomizeExternalMiniCluster(&opts);
 
@@ -265,7 +268,7 @@ void YBTableTestBase::PutKeyValue(YBSession* session, string key, string value) 
   auto insert = table_.NewInsertOp();
   QLAddStringHashValue(insert->mutable_request(), key);
   table_.AddStringColumnValue(insert->mutable_request(), "v", value);
-  ASSERT_OK(session->ApplyAndFlush(insert));
+  ASSERT_OK(session->TEST_ApplyAndFlush(insert));
 }
 
 void YBTableTestBase::PutKeyValue(string key, string value) {

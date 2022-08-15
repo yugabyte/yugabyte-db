@@ -8,9 +8,7 @@ menu:
     name: Node.js
     identifier: nodejs-3
     weight: 551
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -24,6 +22,12 @@ showAsideToc: true
     <a href="{{< relref "./ysql-sequelize.md" >}}" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - Sequelize
+    </a>
+  </li>
+  <li>
+    <a href="{{< relref "./ysql-prisma.md" >}}" class="nav-link ">
+      <i class="icon-cassandra" aria-hidden="true"></i>
+      YSQL - Prisma
     </a>
   </li>
   <li>
@@ -48,7 +52,7 @@ $ npm install yb-ycql-driver
 
 This tutorial assumes that you have:
 
-- installed YugabyteDB and created a cluster. Refer to [Quick start](../../../../quick-start).
+- installed YugabyteDB and created a cluster. Refer to [Quick start](../../../../quick-start/).
 - installed a recent version of [Node.js](https://nodejs.org/en/download/).
 - installed the [async](https://github.com/caolan/async) utility to work with asynchronous Javascript.
 

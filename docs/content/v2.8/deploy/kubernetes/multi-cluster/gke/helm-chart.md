@@ -9,14 +9,12 @@ menu:
     name: Google Kubernetes Engine
     identifier: k8s-mc-gke-1
     weight: 628
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/deploy/kubernetes/multi-cluster/gke/helm-chart" class="nav-link active">
+    <a href="/preview/deploy/kubernetes/multi-cluster/gke/helm-chart" class="nav-link active">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Helm chart
     </a>
@@ -280,12 +278,12 @@ $ helm repo update
 Validate that you have the updated chart version.
 
 ```sh
-$ helm search repo yugabytedb/yugabyte
+$ helm search repo yugabytedb/yugabyte --version {{<yb-version version="v2.8" format="short">}}
 ```
 
 ```output
 NAME                    CHART VERSION   APP VERSION     DESCRIPTION
-yugabytedb/yugabyte     2.8.2           2.8.2.0-b51    YugabyteDB is the high-performance distributed ...
+yugabytedb/yugabyte     {{<yb-version version="v2.8" format="short">}}           {{<yb-version version="v2.8" format="build">}}    YugabyteDB is the high-performance distributed ...
 ```
 
 ### Create override files
@@ -395,6 +393,7 @@ Now create the overall YugabyteDB cluster in such a way that one third of the no
 
 ```sh
 $ helm install yb-demo-us-west1-b yugabytedb/yugabyte \
+  --version {{<yb-version version="v2.8" format="short">}} \
   --namespace yb-demo-us-west1-b \
   -f overrides-us-west1-b.yaml \
   --kube-context gke_yugabyte_us-west1-b_yugabytedb1 --wait
@@ -402,6 +401,7 @@ $ helm install yb-demo-us-west1-b yugabytedb/yugabyte \
 
 ```sh
 $ helm install yb-demo-us-central1-b yugabytedb/yugabyte \
+  --version {{<yb-version version="v2.8" format="short">}} \
   --namespace yb-demo-us-central1-b \
   -f overrides-us-central1-b.yaml \
   --kube-context gke_yugabyte_us-central1-b_yugabytedb2 --wait
@@ -409,6 +409,7 @@ $ helm install yb-demo-us-central1-b yugabytedb/yugabyte \
 
 ```sh
 $ helm install yb-demo-us-east1-b yugabytedb/yugabyte \
+  --version {{<yb-version version="v2.8" format="short">}} \
   --namespace yb-demo-us-east1-b \
   -f overrides-us-east1-b.yaml \
   --kube-context gke_yugabyte_us-east1-b_yugabytedb3 --wait

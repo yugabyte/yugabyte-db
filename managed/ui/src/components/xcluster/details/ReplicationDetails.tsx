@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { useDispatch, useSelector } from 'react-redux';
 import { Link } from 'react-router';
 import { toast } from 'react-toastify';
-import { useMount } from 'react-use';
+import { useInterval, useMount } from 'react-use';
 import { IReplicationStatus } from '..';
 import { closeDialog, openDialog } from '../../../actions/modal';
 import { fetchUniverseList } from '../../../actions/universe';
@@ -16,10 +16,17 @@ import {
 } from '../../../actions/xClusterReplication';
 import { YBButton } from '../../common/forms/fields';
 import { YBLoading } from '../../common/indicators';
+import { YBConfirmModal } from '../../modals';
 import { YBTabsPanel } from '../../panels';
 import { ReplicationContainer } from '../../tables';
 import { IReplication } from '../IClusterReplication';
-import { GetConfiguredThreshold, GetCurrentLag, getReplicationStatus } from '../ReplicationUtils';
+import {
+  findUniverseName,
+  GetConfiguredThreshold,
+  GetCurrentLag,
+  getReplicationStatus,
+  isChangeDisabled
+} from '../ReplicationUtils';
 import { AddTablesToClusterModal } from './AddTablesToClusterModal';
 import { EditReplicationDetails } from './EditReplicationDetails';
 import { LagGraph } from './LagGraph';
@@ -55,11 +62,16 @@ export function ReplicationDetails({ params }: Props) {
     setUniversesList((await resp.payload).data);
   });
 
+  //refresh metrics for every 20 seconds
+  useInterval(() => {
+    queryClient.invalidateQueries('xcluster-metric');
+  }, 20_000);
+
   const switchReplicationStatus = useMutation(
     (replication: IReplication) => {
       return changeXClusterStatus(
         replication,
-        replication.status === IReplicationStatus.PAUSED
+        replication.paused
           ? IReplicationStatus.RUNNING
           : IReplicationStatus.PAUSED
       );
@@ -87,7 +99,7 @@ export function ReplicationDetails({ params }: Props) {
 
   const deleteReplication = useMutation((uuid: string) => {
     return deleteXclusterConfig(uuid).then(() => {
-      window.location.href = `/universes/${replication?.sourceUniverseUUID}/replication`;
+      window.location.href = `/universes/${params.uuid}/replication`;
     });
   });
 
@@ -99,17 +111,16 @@ export function ReplicationDetails({ params }: Props) {
     return universesList.filter((universes: any) => universes.universeUUID === uuid)[0];
   };
 
-  const sourceUniverse: any = getUniverseByUUID(replication.sourceUniverseUUID);
   const destinationUniverse = getUniverseByUUID(replication.targetUniverseUUID);
 
   return (
     <>
       <div className="replication-details">
         <h2 className="content-title">
-          <Link to={`/universes/${sourceUniverse.universeUUID}`}>{sourceUniverse.name}</Link>
+          <Link to={`/universes/${replication.sourceUniverseUUID}`}>{findUniverseName(universesList, replication.sourceUniverseUUID)}</Link>
           <span className="subtext">
             <i className="fa fa-chevron-right submenu-icon" />
-            <Link to={`/universes/${sourceUniverse.universeUUID}/replication/`}>Replication</Link>
+            <Link to={`/universes/${replication.sourceUniverseUUID}/replication/`}>Replication</Link>
             <i className="fa fa-chevron-right submenu-icon" />
             {replication.name}
           </span>
@@ -123,13 +134,10 @@ export function ReplicationDetails({ params }: Props) {
               <Row className="details-actions-button">
                 <YBButton
                   btnText={`${
-                    replication.status === IReplicationStatus.RUNNING ? 'Pause' : 'Enable'
+                    replication.paused ? 'Enable' : 'Pause'
                   } Replication`}
                   btnClass={'btn btn-orange replication-status-button'}
-                  disabled={
-                    replication.status === IReplicationStatus.FAILED ||
-                    replication.status === IReplicationStatus.INIT
-                  }
+                  disabled={ isChangeDisabled(replication?.status) }
                   onClick={() => {
                     toast.success('Please wait...');
                     switchReplicationStatus.mutateAsync(replication);
@@ -140,15 +148,18 @@ export function ReplicationDetails({ params }: Props) {
                     <MenuItem
                       eventKey="1"
                       onClick={(e) => {
-                        dispatch(openDialog('editReplicationConfiguration'));
+                        if (!isChangeDisabled(replication?.status)) {
+                          dispatch(openDialog('editReplicationConfiguration'));
+                        }
                       }}
+                      disabled={ isChangeDisabled(replication?.status) }
                     >
                       Edit replication configurations
                     </MenuItem>
                     <MenuItem
                       eventKey="2"
-                      onClick={(e) => {
-                        deleteReplication.mutateAsync(replication.uuid);
+                      onClick={() => {
+                        dispatch(openDialog('deleteReplicationModal'));
                       }}
                     >
                       Delete replication
@@ -159,7 +170,7 @@ export function ReplicationDetails({ params }: Props) {
             </Col>
           </Row>
           <Row className="replication-status">
-            <Col lg={4}>Replication Status {getReplicationStatus(replication.status)}</Col>
+            <Col lg={4}>Replication Status {getReplicationStatus(replication)}</Col>
             <Col lg={8} className="lag-status-graph">
               <div className="lag-stats">
                 <Row>
@@ -171,7 +182,6 @@ export function ReplicationDetails({ params }: Props) {
                         sourceUniverseUUID={replication.sourceUniverseUUID}
                       />
                     </span>
-                    <span> ms</span>
                   </Col>
                 </Row>
                 <div className="replication-divider" />
@@ -182,8 +192,7 @@ export function ReplicationDetails({ params }: Props) {
                       <GetConfiguredThreshold
                         currentUniverseUUID={replication.sourceUniverseUUID}
                       />
-                    </span>{' '}
-                    ms
+                    </span>
                   </Col>
                 </Row>
               </div>
@@ -199,10 +208,10 @@ export function ReplicationDetails({ params }: Props) {
             <Col lg={12} className="noPadding">
               <YBTabsPanel defaultTab={'overview'} id="replication-tab-panel">
                 <Tab eventKey={'overview'} title={'Overview'}>
-                  <ReplicationOverview
+                  {destinationUniverse !== undefined && <ReplicationOverview
                     replication={replication}
                     destinationUniverse={destinationUniverse}
-                  />
+                  />}
                 </Tab>
                 <Tab eventKey={'tables'} title={'Tables'}>
                   <ReplicationDetailsTable replication={replication} />
@@ -211,6 +220,7 @@ export function ReplicationDetails({ params }: Props) {
                   <ReplicationContainer
                     sourceUniverseUUID={replication.sourceUniverseUUID}
                     hideHeader={true}
+                    replicationUUID={params.replicationUUID}
                   />
                 </Tab>
               </YBTabsPanel>
@@ -227,6 +237,16 @@ export function ReplicationDetails({ params }: Props) {
           visible={showModal && visibleModal === 'editReplicationConfiguration'}
           onHide={hideModal}
         />
+        <YBConfirmModal
+          name="delete-replication"
+          title="Confirm Delete"
+          onConfirm={() => deleteReplication.mutateAsync(replication.uuid)}
+          currentModal={'deleteReplicationModal'}
+          visibleModal={visibleModal}
+          hideConfirmModal={hideModal}
+        >
+          Are you sure you want to delete "{replication.name}"?
+        </YBConfirmModal>
       </div>
     </>
   );

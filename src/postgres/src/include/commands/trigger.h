@@ -161,6 +161,11 @@ extern ObjectAddress CreateTrigger(CreateTrigStmt *stmt, const char *queryString
 			  Oid relOid, Oid refRelOid, Oid constraintOid, Oid indexOid,
 			  Oid funcoid, Oid parentTriggerOid, Node *whenClause,
 			  bool isInternal, bool in_partition);
+extern ObjectAddress CreateTriggerFiringOn(CreateTrigStmt *stmt, const char *queryString,
+					  Oid relOid, Oid refRelOid, Oid constraintOid,
+					  Oid indexOid, Oid funcoid, Oid parentTriggerOid,
+					  Node *whenClause, bool isInternal, bool in_partition,
+					  char trigger_fires_when);
 
 extern void RemoveTriggerById(Oid trigOid);
 extern Oid	get_trigger_oid(Oid relid, const char *name, bool missing_ok);
@@ -263,8 +268,7 @@ extern bool RI_FKey_fk_upd_check_required(Trigger *trigger, Relation fk_rel,
 							  HeapTuple old_row, HeapTuple new_row);
 extern bool RI_Initial_Check(Trigger *trigger,
 				 Relation fk_rel, Relation pk_rel);
-extern YBCPgYBTupleIdDescriptor* YBBuildFKTupleIdDescriptor(Trigger *trigger, Relation fk_rel,
-                                                            HeapTuple new_row);
+extern void YbAddTriggerFKReferenceIntent(Trigger *trigger, Relation fk_rel, HeapTuple new_row);
 
 /* result values for RI_FKey_trigger_type: */
 #define RI_TRIGGER_PK	1		/* is a trigger on the PK relation */
@@ -272,5 +276,8 @@ extern YBCPgYBTupleIdDescriptor* YBBuildFKTupleIdDescriptor(Trigger *trigger, Re
 #define RI_TRIGGER_NONE 0		/* is not an RI trigger function */
 
 extern int	RI_FKey_trigger_type(Oid tgfoid);
+
+/* Return true if the trigger description has non FK trigger. */
+extern bool HasNonRITrigger(const TriggerDesc* trigDesc);
 
 #endif							/* TRIGGER_H */

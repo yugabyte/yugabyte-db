@@ -9,9 +9,7 @@ menu:
     name: Java
     identifier: java-6
     weight: 550
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -34,9 +32,27 @@ showAsideToc: true
     </a>
   </li>
   <li >
+    <a href="../ysql-hibernate/" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL - Hibernate
+    </a>
+  </li>
+  <li >
+    <a href="../ysql-sdyb/" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL - Spring Data YugabyteDB
+    </a>
+  </li>
+  <li >
     <a href="../ysql-spring-data/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - Spring Data JPA
+    </a>
+  </li>
+  <li>
+    <a href="../ysql-ebean/" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL - Ebean
     </a>
   </li>
   <li>

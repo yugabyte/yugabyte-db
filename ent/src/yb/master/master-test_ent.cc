@@ -13,6 +13,8 @@
 #include <boost/algorithm/string.hpp>
 #include <boost/lexical_cast.hpp>
 
+#include "yb/cdc/cdc_service.h"
+
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
 
@@ -27,6 +29,7 @@
 #include "yb/util/result.h"
 
 DECLARE_int32(cdc_state_table_num_tablets);
+DECLARE_bool(disable_truncate_table);
 
 namespace yb {
 namespace master {
@@ -167,6 +170,14 @@ Status MasterTestEnt::DeleteUniverseReplication(const std::string& producer_id) 
   return Status::OK();
 }
 
+TEST_F(MasterTestEnt, TestDisableTruncation) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_disable_truncate_table) = true;
+  TableId table_id;
+  ASSERT_OK(CreateTable(kTableName, kTableSchema, &table_id));
+  auto s = TruncateTableById(table_id);
+  EXPECT_TRUE(s.IsNotSupported());
+}
+
 TEST_F(MasterTestEnt, TestCreateCDCStreamInvalidTable) {
   CreateCDCStreamRequestPB req;
   CreateCDCStreamResponsePB resp;
@@ -228,6 +239,45 @@ TEST_F(MasterTestEnt, TestDeleteTableWithCDCStream) {
   ASSERT_NOK(DeleteTableSync(default_namespace_name, kTableName, &id));
 
   ASSERT_OK(GetCDCStream(stream_id, &resp));
+}
+
+// Just disabled on sanitizers because it doesn't need to run often. It's just a unit test.
+TEST_F(MasterTestEnt, YB_DISABLE_TEST_IN_SANITIZERS(TestDeleteCDCStreamNoForceDelete)) {
+  // #12255.  Added 'force_delete' flag, but only run this check if the client code specifies it.
+  TableId table_id;
+  ASSERT_OK(CreateTable(kTableName, kTableSchema, &table_id));
+
+  CDCStreamId stream_id;
+  FLAGS_cdc_state_table_num_tablets = 1;
+  // CreateCDCStream, simulating a fully-created XCluster configuration.
+  {
+    CreateCDCStreamRequestPB req;
+    CreateCDCStreamResponsePB resp;
+
+    req.set_table_id(table_id);
+    req.set_initial_state(SysCDCStreamEntryPB::ACTIVE);
+    auto source_type_option = req.add_options();
+    source_type_option->set_key(cdc::kRecordFormat);
+    source_type_option->set_value(CDCRecordFormat_Name(cdc::CDCRecordFormat::WAL));
+    ASSERT_OK(proxy_replication_->CreateCDCStream(req, &resp, ResetAndGetController()));
+    if (resp.has_error()) {
+      ASSERT_OK(StatusFromPB(resp.error().status()));
+    }
+
+    stream_id = resp.stream_id();
+  }
+
+  GetCDCStreamResponsePB resp;
+  ASSERT_OK(GetCDCStream(stream_id, &resp));
+  ASSERT_EQ(resp.stream().table_id().Get(0), table_id);
+
+  // Should succeed because we don't use the 'force_delete' safety check in this API call.
+  ASSERT_OK(DeleteCDCStream(stream_id));
+
+  resp.Clear();
+  ASSERT_NOK(GetCDCStream(stream_id, &resp));
+  ASSERT_TRUE(resp.has_error());
+  ASSERT_EQ(MasterErrorPB::OBJECT_NOT_FOUND, resp.error().code());
 }
 
 TEST_F(MasterTestEnt, TestListCDCStreams) {

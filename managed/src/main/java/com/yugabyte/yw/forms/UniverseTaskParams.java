@@ -2,72 +2,21 @@
 
 package com.yugabyte.yw.forms;
 
-import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil.KeyType;
+import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import io.ebean.annotation.EnumValue;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
 public class UniverseTaskParams extends AbstractTaskParams {
-
-  @ApiModel(description = "Encryption at rest configuration")
-  public static class EncryptionAtRestConfig {
-    public enum OpType {
-      @EnumValue("ENABLE")
-      ENABLE,
-      @EnumValue("DISABLE")
-      DISABLE,
-      @EnumValue("UNDEFINED")
-      UNDEFINED;
-    }
-
-    // Whether a universe is currently encrypted at rest or not
-    @ApiModelProperty(value = "Whether a universe is currently encrypted at rest")
-    public boolean encryptionAtRestEnabled;
-
-    // The KMS Configuration associated with the encryption keys being used on this universe
-    @JsonAlias({"configUUID"})
-    @ApiModelProperty(value = "KMS configuration UUID")
-    public UUID kmsConfigUUID;
-
-    // Whether to enable/disable/rotate universe key/encryption at rest
-    @JsonAlias({"key_op"})
-    @ApiModelProperty(
-        value = "Operation type: enable, disable, or rotate the universe key/encryption at rest")
-    public OpType opType;
-
-    // Whether to generate a data key or just retrieve the CMK arn
-    @JsonAlias({"key_type"})
-    @ApiModelProperty(value = "Whether to generate a data key or just retrieve the CMK ARN")
-    public KeyType type;
-
-    public EncryptionAtRestConfig() {
-      this.encryptionAtRestEnabled = false;
-      this.kmsConfigUUID = null;
-      this.type = KeyType.DATA_KEY;
-      this.opType = OpType.UNDEFINED;
-    }
-
-    public EncryptionAtRestConfig(EncryptionAtRestConfig config) {
-      this.encryptionAtRestEnabled = config.encryptionAtRestEnabled;
-      this.kmsConfigUUID = config.kmsConfigUUID;
-      this.type = config.type;
-      this.opType = config.opType;
-    }
-
-    public EncryptionAtRestConfig clone() {
-      return new EncryptionAtRestConfig(this);
-    }
-  }
 
   @ApiModel(description = "Communication ports")
   public static class CommunicationPorts {
@@ -88,6 +37,12 @@ public class UniverseTaskParams extends AbstractTaskParams {
 
     @ApiModelProperty(value = "Tablet server RPC port")
     public int tserverRpcPort;
+
+    @ApiModelProperty(value = "Yb controller HTTP port")
+    public int ybControllerHttpPort;
+
+    @ApiModelProperty(value = "Yb controller RPC port")
+    public int ybControllerrRpcPort;
 
     @ApiModelProperty(value = "Redis HTTP port")
     public int redisServerHttpPort;
@@ -124,6 +79,8 @@ public class UniverseTaskParams extends AbstractTaskParams {
       portsObj.masterRpcPort = node.masterRpcPort;
       portsObj.tserverHttpPort = node.tserverHttpPort;
       portsObj.tserverRpcPort = node.tserverRpcPort;
+      portsObj.ybControllerHttpPort = node.ybControllerHttpPort;
+      portsObj.ybControllerrRpcPort = node.ybControllerRpcPort;
       portsObj.redisServerHttpPort = node.redisServerHttpPort;
       portsObj.redisServerRpcPort = node.redisServerRpcPort;
       portsObj.yqlServerHttpPort = node.yqlServerHttpPort;
@@ -140,6 +97,8 @@ public class UniverseTaskParams extends AbstractTaskParams {
       node.masterRpcPort = ports.masterRpcPort;
       node.tserverHttpPort = ports.tserverHttpPort;
       node.tserverRpcPort = ports.tserverRpcPort;
+      node.ybControllerHttpPort = ports.ybControllerHttpPort;
+      node.ybControllerRpcPort = ports.ybControllerrRpcPort;
       node.redisServerHttpPort = ports.redisServerHttpPort;
       node.redisServerRpcPort = ports.redisServerRpcPort;
       node.yqlServerHttpPort = ports.yqlServerHttpPort;
@@ -157,30 +116,40 @@ public class UniverseTaskParams extends AbstractTaskParams {
     public boolean installNodeExporter = true;
   }
 
-  @JsonProperty(value = "targetXClusterConfigs", access = JsonProperty.Access.READ_ONLY)
+  /**
+   * @deprecated Replaced by {@link
+   *     UniverseDefinitionTaskParams.XClusterInfo#getTargetXClusterConfigs()}, so all the xCluster
+   *     related info are in the same JSON object
+   */
+  @Deprecated
   @ApiModelProperty(value = "The target universe's xcluster replication relationships")
+  @JsonProperty(value = "targetXClusterConfigs", access = JsonProperty.Access.READ_ONLY)
   public List<UUID> getTargetXClusterConfigs() {
     if (universeUUID == null) {
       return new ArrayList<>();
     }
-    return new ArrayList<>(
-        XClusterConfig.getByTargetUniverseUUID(universeUUID)
-            .stream()
-            .map(xClusterConfig -> xClusterConfig.uuid)
-            .collect(Collectors.toList()));
+    return XClusterConfig.getByTargetUniverseUUID(universeUUID)
+        .stream()
+        .map(xClusterConfig -> xClusterConfig.uuid)
+        .collect(Collectors.toList());
   }
 
-  @JsonProperty(value = "sourceXClusterConfigs", access = JsonProperty.Access.READ_ONLY)
+  /**
+   * @deprecated Replaced by {@link
+   *     UniverseDefinitionTaskParams.XClusterInfo#getSourceXClusterConfigs()}, so all the xCluster
+   *     related info are in the same JSON object
+   */
+  @Deprecated
   @ApiModelProperty(value = "The source universe's xcluster replication relationships")
+  @JsonProperty(value = "sourceXClusterConfigs", access = JsonProperty.Access.READ_ONLY)
   public List<UUID> getSourceXClusterConfigs() {
     if (universeUUID == null) {
-      return new ArrayList<>();
+      return Collections.emptyList();
     }
-    return new ArrayList<>(
-        XClusterConfig.getBySourceUniverseUUID(universeUUID)
-            .stream()
-            .map(xClusterConfig -> xClusterConfig.uuid)
-            .collect(Collectors.toList()));
+    return XClusterConfig.getBySourceUniverseUUID(universeUUID)
+        .stream()
+        .map(xClusterConfig -> xClusterConfig.uuid)
+        .collect(Collectors.toList());
   }
 
   // Which user to run the node exporter service on nodes with
@@ -236,6 +205,9 @@ public class UniverseTaskParams extends AbstractTaskParams {
   // Previous task UUID for a retry.
   @ApiModelProperty(value = "Previous task UUID only if this task is a retry")
   public UUID previousTaskUUID;
+
+  // The user that created the task
+  public Users creatingUser;
 
   public static boolean isFirstTryForTask(UniverseTaskParams params) {
     return params.firstTry && params.previousTaskUUID == null;

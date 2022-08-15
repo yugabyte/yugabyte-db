@@ -62,14 +62,24 @@
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/integration-tests/mini_cluster.h"
 
+#include "yb/master/catalog_manager_if.h"
+#include "yb/master/catalog_entity_info.h"
 #include "yb/master/master_client.proxy.h"
 #include "yb/master/master_cluster.proxy.h"
+#include "yb/master/mini_master.h"
 
 #include "yb/rpc/rpc_fwd.h"
 
 #include "yb/server/server_base.proxy.h"
 
+#include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_metadata.h"
+#include "yb/tablet/tablet_peer.h"
+
+#include "yb/tserver/tablet_server.h"
+#include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tablet_server_test_util.h"
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_service.pb.h"
@@ -1001,6 +1011,7 @@ namespace {
     do {
       RETURN_NOT_OK(leader->consensus_proxy->ChangeConfig(req, resp, rpc));
       if (!resp->has_error()) {
+        status = Status::OK();
         break;
       }
       if (error_code) *error_code = resp->error().code();
@@ -1141,6 +1152,34 @@ Status GetTableLocations(ExternalMiniCluster* cluster,
   return Status::OK();
 }
 
+
+Status GetTableLocations(MiniCluster* cluster,
+                         const YBTableName& table_name,
+                         const RequireTabletsRunning require_tablets_running,
+                         master::GetTableLocationsResponsePB* table_locations) {
+  master::GetTableLocationsRequestPB req;
+  table_name.SetIntoTableIdentifierPB(req.mutable_table());
+  req.set_require_tablets_running(require_tablets_running);
+  req.set_max_returned_locations(std::numeric_limits<int32_t>::max());
+  auto& catalog_manager = VERIFY_RESULT(cluster->GetLeaderMiniMaster())->catalog_manager();
+  RETURN_NOT_OK(catalog_manager.GetTableLocations(&req, table_locations));
+  if (table_locations->has_error()) {
+    return StatusFromPB(table_locations->error().status());
+  }
+  return Status::OK();
+}
+
+int GetNumTabletsOfTableOnTS(tserver::TabletServer* const tserver, const TableId& table_id) {
+  const auto peers = tserver->tablet_manager()->GetTabletPeers();
+  int num = 0;
+  for (const auto& peer : peers) {
+    if (peer->tablet_metadata()->table_id() == table_id) {
+      ++num;
+    }
+  }
+  return num;
+}
+
 Status WaitForNumVotersInConfigOnMaster(
     ExternalMiniCluster* cluster,
     const std::string& tablet_id,
@@ -1236,6 +1275,33 @@ Status WaitUntilTabletInState(TServerDetails* ts,
                                      tablet::RaftGroupStatePB_Name(last_state), s.ToString()));
 }
 
+Status WaitUntilTabletInState(const master::TabletInfoPtr tablet,
+                              const std::string& ts_uuid,
+                              tablet::RaftGroupStatePB state) {
+  return WaitFor([&]() -> Result<bool> {
+      const auto replica_map = tablet->GetReplicaLocations();
+      const bool contains = replica_map->contains(ts_uuid);
+      return contains && replica_map->at(ts_uuid).state == state;
+    },
+    20s * kTimeMultiplier,
+    Format("Waiting for replica $0 to be in $1 state",
+           ts_uuid, tablet::RaftGroupStatePB_Name(state)));
+}
+
+Status WaitForTabletConfigChange(const master::TabletInfoPtr tablet,
+                                 const std::string& ts_uuid,
+                                 consensus::ChangeConfigType type) {
+  CHECK(type == consensus::REMOVE_SERVER || type == consensus::ADD_SERVER);
+  const bool is_remove = type == consensus::REMOVE_SERVER;
+  return WaitFor([&]() -> Result<bool> {
+      const auto replica_map = tablet->GetReplicaLocations();
+      const bool contains = replica_map->contains(ts_uuid);
+      return is_remove || contains;
+    },
+    20s * kTimeMultiplier,
+    Format("Waiting for replica $0 to be $1", ts_uuid, is_remove ? "removed" : "added"));
+}
+
 // Wait until the specified tablet is in RUNNING state.
 Status WaitUntilTabletRunning(TServerDetails* ts,
                               const std::string& tablet_id,
@@ -1284,8 +1350,8 @@ Status StartRemoteBootstrap(const TServerDetails* ts,
 
   req.set_dest_uuid(ts->uuid());
   req.set_tablet_id(tablet_id);
-  req.set_bootstrap_peer_uuid(bootstrap_source_uuid);
-  HostPortToPB(bootstrap_source_addr, req.mutable_source_private_addr()->Add());
+  req.set_bootstrap_source_peer_uuid(bootstrap_source_uuid);
+  HostPortToPB(bootstrap_source_addr, req.mutable_bootstrap_source_private_addr()->Add());
   req.set_caller_term(caller_term);
 
   RETURN_NOT_OK(ts->consensus_proxy->StartRemoteBootstrap(req, &resp, &rpc));

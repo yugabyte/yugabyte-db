@@ -9,8 +9,7 @@ menu:
     identifier: going-beyond-sql-tablespaces
     parent: going-beyond-sql
     weight: 320
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 This document provides an overview of YSQL Tablespaces and demonstrates how they can be used to specify data placement for tables and indexes in the cloud.
@@ -62,17 +61,17 @@ The differences between single-zone, multi-zone and multi-region configuration b
   <li>
     <a href="#platform" class="nav-link" id="platform-tab" data-toggle="tab" role="tab" aria-controls="platform" aria-selected="false">
       <i class="fas fa-cloud" aria-hidden="true"></i>
-      Yugabyte Platform
+      YugabyteDB Anywhere
     </a>
   </li>
 </ul>
 
 <div class="tab-content">
   <div id="yugabyted" class="tab-pane fade show active" role="tabpanel" aria-labelledby="yugabyted-tab">
-    {{% includeMarkdown "./tablespaces-yugabyted.md" /%}}
+  {{% includeMarkdown "./tablespaces-yugabyted.md" %}}
   </div>
   <div id="platform" class="tab-pane fade show active" role="tabpanel" aria-labelledby="platform-tab">
-    {{% includeMarkdown "./tablespaces-platform.md" /%}}
+  {{% includeMarkdown "./tablespaces-platform.md" %}}
   </div>
 </div>
 
@@ -209,13 +208,113 @@ yugabyte=# SELECT * FROM multi_region_table;
 Time: 337.154 ms
 ```
 
-{{< tip title="Note" >}}
+## Leader preference
 
-The location of the leader can also play a role in the preceding latency, and the numbers can differ
-based on how far the leader is from the client node. However, controlling leader affinity
-is not supported via tablespaces yet. This feature is tracked [here](https://github.com/yugabyte/yugabyte-db/issues/8100).
+Leader preference helps optimize workloads that require distribution of data over multiple zones for zone-level fault tolerance, but which have clients only in a subset of those zones. It overrides the default behavior of spreading the tablet leaders across all placement zones of the tablespace, and instead places them closer to the clients.
 
-{{< /tip >}}
+The leaders handle all [reads](../../../../architecture/core-functions/read-path/) and [writes](../../../../architecture/core-functions/write-path/), which reduces the number of network hops, which in turn reduces latency for increased performance. Leader preference allows you to specify the zones in which to place the leaders when the system is stable, and fallback zones when an outage or maintenance occurs in the preferred zones.
+
+In the following example our tablespace is setup to have replicas in us-east-1, us-east-2 and us-west-1. This enables it to survive the loss of an entire region. The clients are located in us-east-1. By default we would have a third of the leaders in us-west-1, which has a latency of 62ms from our clients.
+![Multi Region Table](/images/explore/tablespaces/multi_region_latency.png)
+
+```sql
+CREATE TABLESPACE us_east1_region_tablespace
+  WITH (replica_placement='{"num_replicas": 3, "placement_blocks": [
+    {"cloud":"aws","region":"us-east-1","zone":"us-east-1b","min_num_replicas":1,"leader_preference":1},
+    {"cloud":"aws","region":"us-east-2","zone":"us-east-2a","min_num_replicas":1,"leader_preference":2},
+    {"cloud":"aws","region":"us-west-1","zone":"us-west-1a","min_num_replicas":1}]}');
+
+CREATE TABLE preferred_leader_table (id INTEGER, field text)
+  TABLESPACE us_east1_region_tablespace;
+```
+
+```sql
+yugabyte=# INSERT INTO preferred_leader_table VALUES (1, 'field1'), (2, 'field2'), (3, 'field3');
+```
+
+```output
+Time: 43.712 ms
+```
+
+```sql
+yugabyte=# SELECT * FROM preferred_leader_table;
+```
+
+```output
+ id | field
+----+--------
+  3 | field3
+  2 | field2
+  1 | field1
+(3 rows)
+
+Time: 1.052 ms
+```
+
+Setting `leader_preference` of us-east-1b to 1 (most preferred) informs the YugabyteDB load balancer to place all associated tablet leaders in this zone, dropping the latency to less than 1ms. If all the nodes in us-east-1a are unavailable, they we will fallback to the next preferred zone us-east2 which only has a 12ms latency.
+You can specify non-zero contiguous integer values for each zone. When multiple zones have the same preference, the leaders will be evenly spread across them. Zones without any values are least preferred.
+
+You can check the overall leader distribution and [cluster level leader preference](../../../../admin/yb-admin/#set-preferred-zones) on the [tablet-servers page](http://127.0.0.1:7000/tablet-servers).
+
+![Multi Region Table](/images/explore/tablespaces/leader_preference_admin_ui.png)
+
+## Indexes
+
+Like tables, indexes can be associated with a tablespace. If a table has more than one index, YugabyteDB picks the closest index to serve the query. The following example creates three indexes for each region occupied by the `multi_region_table` from above:
+
+```sql
+CREATE TABLESPACE us_east_tablespace
+  WITH (replica_placement='{"num_replicas": 1, "placement_blocks": [
+    {"cloud":"aws","region":"us-east-1","zone":"us-east-1b","min_num_replicas":1}]}');
+
+CREATE TABLESPACE ap_south_tablespace
+  WITH (replica_placement='{"num_replicas": 1, "placement_blocks": [
+    {"cloud":"aws","region":"ap-south-1","zone":"ap-south-1a","min_num_replicas":1}]}');
+
+CREATE TABLESPACE eu_west_tablespace
+  WITH (replica_placement='{"num_replicas": 1, "placement_blocks": [
+    {"cloud":"aws","region":"eu-west-2","zone":"eu-west-2c","min_num_replicas":1}]}');
+
+CREATE INDEX us_east_idx ON multi_region_table(id) INCLUDE (field) TABLESPACE us_east_tablespace;
+CREATE INDEX ap_south_idx ON multi_region_table(id) INCLUDE (field) TABLESPACE ap_south_tablespace;
+CREATE INDEX eu_west_idx ON multi_region_table(id) INCLUDE (field) TABLESPACE eu_west_tablespace;
+```
+
+Now run the following EXPLAIN command by connecting to each region:
+
+```sql
+EXPLAIN SELECT * FROM multi_region_table WHERE id=3;
+```
+
+EXPLAIN output for querying the table from `us-east-1`:
+
+```output
+                                         QUERY PLAN
+---------------------------------------------------------------------------------------------
+ Index Only Scan using us_east_idx on multi_region_table  (cost=0.00..5.06 rows=10 width=36)
+   Index Cond: (id = 3)
+(2 rows)
+```
+
+EXPLAIN output for querying the table from `ap-south-1`:
+
+```output
+                                          QUERY PLAN
+----------------------------------------------------------------------------------------------
+ Index Only Scan using ap_south_idx on multi_region_table  (cost=0.00..5.06 rows=10 width=36)
+   Index Cond: (id = 3)
+(2 rows)
+```
+
+EXPLAIN output for querying the table from `eu-west-2`:
+
+```output
+                                         QUERY PLAN
+---------------------------------------------------------------------------------------------
+ Index Only Scan using eu_west_idx on multi_region_table  (cost=0.00..5.06 rows=10 width=36)
+   Index Cond: (id = 3)
+(2 rows)
+```
 
 ## What's Next?
 
@@ -223,7 +322,7 @@ The following features will be supported in upcoming releases:
 
 * Using `ALTER TABLE` to change the `TABLESPACE` specified for a table.
 * Support `ALTER TABLESPACE`.
-* Setting read replica placements and affinitized leaders using tablespaces.
+* Setting read replica placements using tablespaces.
 * Setting tablespaces for colocated tables and databases.
 
 ## Conclusion

@@ -177,7 +177,7 @@ bool AutoRollLogger::LogExpired() {
   return cached_now >= ctime_ + kLogFileTimeToRoll;
 }
 
-CHECKED_STATUS CreateDirs(Env* env, const std::string& dir) {
+Status CreateDirs(Env* env, const std::string& dir) {
   if (dir == "/" || env->DirExists(dir)) {
     return Status::OK();
   }

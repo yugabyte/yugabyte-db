@@ -69,7 +69,13 @@ public final class StringUtil {
   }
 
   public static List<String> expandTabsAndRemoveTrailingSpaces(List<String> lines) {
-    return lines.stream().map(s -> rtrim(expandTabs(s))).collect(Collectors.toList());
+    return lines.stream()
+        .map(s -> expandTabsAndRemoveTrailingSpaces(s))
+        .collect(Collectors.toList());
+  }
+
+  public static String expandTabsAndRemoveTrailingSpaces(String s) {
+    return rtrim(expandTabs(s));
   }
 
   public static int getMaxLineLength(List<String> lines) {

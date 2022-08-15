@@ -91,17 +91,25 @@ ybcGetForeignRelSize(PlannerInfo *root,
 	ybc_plan = (YbFdwPlanState *) palloc0(sizeof(YbFdwPlanState));
 
 	/* Set the estimate for the total number of rows (tuples) in this table. */
-	if (baserel->tuples == 0)
-		baserel->tuples = YBC_DEFAULT_NUM_ROWS;
+	if (yb_enable_optimizer_statistics)
+	{
+		set_baserel_size_estimates(root, baserel);
+	}
+	else
+	{
+		if (baserel->tuples == 0)
+			baserel->tuples = YBC_DEFAULT_NUM_ROWS;
 
-	/*
-	 * Initialize the estimate for the number of rows returned by this query.
-	 * This does not yet take into account the restriction clauses, but it will
-	 * be updated later by ybcIndexCostEstimate once it inspects the clauses.
-	 */
-	baserel->rows = baserel->tuples;
+		/*
+		* Initialize the estimate for the number of rows returned by this query.
+		* This does not yet take into account the restriction clauses, but it will
+		* be updated later by ybcIndexCostEstimate once it inspects the clauses.
+		*/
+		baserel->rows = baserel->tuples;
+	}
 
 	baserel->fdw_private = ybc_plan;
+
 
 	/*
 	 * Test any indexes of rel for applicability also.
@@ -306,9 +314,10 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 
 	node->fdw_state = (void *) ybc_state;
 	HandleYBStatus(YBCPgNewSelect(YBCGetDatabaseOid(relation),
-				   YbGetStorageRelid(relation),
-				   NULL /* prepare_params */,
-				   &ybc_state->handle));
+								  YbGetStorageRelid(relation),
+								  NULL /* prepare_params */,
+								  YBCIsRegionLocal(relation),
+								  &ybc_state->handle));
 	ybc_state->exec_params = &estate->yb_exec_params;
 
 	ybc_state->exec_params->rowmark = -1;
@@ -516,12 +525,19 @@ ybcSetupScanTargets(ForeignScanState *node)
 
 		/*
 		 * Setup the scan slot based on new tuple descriptor for the given targets. This is a dummy
-		 * tupledesc that only includes the number of attributes. Switch to per-query memory from
-		 * per-tuple memory so the slot persists across iterations.
+		 * tupledesc that only includes the number of attributes.
 		 */
 		TupleDesc target_tupdesc = CreateTemplateTupleDesc(list_length(node->yb_fdw_aggs),
 														   false /* hasoid */);
 		ExecInitScanTupleSlot(estate, &node->ss, target_tupdesc);
+
+		/*
+		 * Consider the example "SELECT COUNT(oid) FROM pg_type", Postgres would have to do a
+		 * sequential scan to fetch the system column oid. Here YSQL does pushdown so what's
+		 * fetched from a tablet is the result of count(oid), which is not even a column, let
+		 * alone a system column. Clear fsSystemCol because no system column is needed.
+		 */
+		foreignScan->fsSystemCol = false;
 	}
 	MemoryContextSwitchTo(oldcontext);
 }
@@ -554,7 +570,7 @@ ybSetupScanQual(ForeignScanState *node)
 		/* Create new PgExpr wrapper for the expression */
 		YBCPgExpr yb_expr = YBCNewEvalExprCall(yb_state->handle, expr);
 		/* Add the PgExpr to the statement */
-		HandleYBStatus(YbPgDmlAppendQual(yb_state->handle, yb_expr));
+		HandleYBStatus(YbPgDmlAppendQual(yb_state->handle, yb_expr, true));
 	}
 
 	MemoryContextSwitchTo(oldcontext);
@@ -586,7 +602,7 @@ ybSetupScanColumnRefs(ForeignScanState *node)
 											param->collid,
 											&type_attrs);
 		/* Add the PgExpr to the statement */
-		HandleYBStatus(YbPgDmlAppendColumnRef(yb_state->handle, yb_expr));
+		HandleYBStatus(YbPgDmlAppendColumnRef(yb_state->handle, yb_expr, true));
 	}
 
 	MemoryContextSwitchTo(oldcontext);
@@ -600,9 +616,7 @@ ybSetupScanColumnRefs(ForeignScanState *node)
 static TupleTableSlot *
 ybcIterateForeignScan(ForeignScanState *node)
 {
-	TupleTableSlot *slot;
 	YbFdwExecState *ybc_state = (YbFdwExecState *) node->fdw_state;
-	bool           has_data   = false;
 
 	/* Execute the select statement one time.
 	 * TODO(neil) Check whether YugaByte PgGate should combine Exec() and Fetch() into one function.
@@ -618,51 +632,13 @@ ybcIterateForeignScan(ForeignScanState *node)
 		ybc_state->is_exec_done = true;
 	}
 
-	/* Clear tuple slot before starting */
-	slot = node->ss.ss_ScanTupleSlot;
-	ExecClearTuple(slot);
-
-	TupleDesc       tupdesc = slot->tts_tupleDescriptor;
-	Datum           *values = slot->tts_values;
-	bool            *isnull = slot->tts_isnull;
-	YBCPgSysColumns syscols;
-
-	/* Fetch one row. */
-	HandleYBStatus(YBCPgDmlFetch(ybc_state->handle,
-	                             tupdesc->natts,
-	                             (uint64_t *) values,
-	                             isnull,
-	                             &syscols,
-	                             &has_data));
-
-	/* If we have result(s) update the tuple slot. */
-	if (has_data)
-	{
-		if (node->yb_fdw_aggs == NIL)
-		{
-			HeapTuple tuple = heap_form_tuple(tupdesc, values, isnull);
-			if (syscols.oid != InvalidOid)
-			{
-				HeapTupleSetOid(tuple, syscols.oid);
-			}
-
-			slot = ExecStoreHeapTuple(tuple, slot, false);
-
-			/* Setup special columns in the slot */
-			slot->tts_ybctid = PointerGetDatum(syscols.ybctid);
-		}
-		else
-		{
-			/*
-			 * Aggregate results stored in virtual slot (no tuple). Set the
-			 * number of valid values and mark as non-empty.
-			 */
-			slot->tts_nvalid = tupdesc->natts;
-			slot->tts_isempty = false;
-		}
-	}
-
-	return slot;
+	/*
+	 * If function forms a heap tuple, the ForeignNext function will set proper
+	 * t_tableOid value there, so do not bother passing valid relid now.
+	 */
+	return ybFetchNext(ybc_state->handle,
+					   node->ss.ss_ScanTupleSlot,
+					   InvalidOid);
 }
 
 static void
@@ -705,6 +681,17 @@ ybcEndForeignScan(ForeignScanState *node)
 	ybcFreeStatementObject(ybc_state);
 }
 
+/*
+ * ybcExplainForeignScan
+ *		Produce extra output for EXPLAIN of a ForeignScan on a foreign table
+ */
+static void
+ybcExplainForeignScan(ForeignScanState *node, ExplainState *es)
+{
+	if (node->yb_fdw_aggs != NIL)
+		ExplainPropertyBool("Partial Aggregate", true, es);
+}
+
 /* ------------------------------------------------------------------------- */
 /*  FDW declaration */
 
@@ -724,9 +711,9 @@ ybc_fdw_handler()
 	fdwroutine->IterateForeignScan = ybcIterateForeignScan;
 	fdwroutine->ReScanForeignScan  = ybcReScanForeignScan;
 	fdwroutine->EndForeignScan     = ybcEndForeignScan;
+	fdwroutine->ExplainForeignScan = ybcExplainForeignScan;
 
 	/* TODO: These are optional but we should support them eventually. */
-	/* fdwroutine->ExplainForeignScan = ybcExplainForeignScan; */
 	/* fdwroutine->AnalyzeForeignTable = ybcAnalyzeForeignTable; */
 	/* fdwroutine->IsForeignScanParallelSafe = ybcIsForeignScanParallelSafe; */
 

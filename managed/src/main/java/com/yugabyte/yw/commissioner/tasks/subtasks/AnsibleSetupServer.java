@@ -14,7 +14,7 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeManager;
-import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.forms.VMImageUpgradeParams.VmUpgradeTaskType;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
@@ -48,6 +48,11 @@ public class AnsibleSetupServer extends NodeTaskBase {
 
     // For cron to systemd upgrades
     public boolean isSystemdUpgrade = false;
+    // To use custom image flow if it is a VM upgrade with custom images.
+    public VmUpgradeTaskType vmUpgradeTaskType = VmUpgradeTaskType.None;
+
+    // In case a node doesn't have custom AMI, ignore the value of USE_CUSTOM_IMAGE config.
+    public boolean ignoreUseCustomImageConfig = false;
   }
 
   @Override
@@ -74,9 +79,9 @@ public class AnsibleSetupServer extends NodeTaskBase {
       log.info("Skipping ansible provision.");
     } else {
       // Execute the ansible command.
-      ShellResponse response =
-          getNodeManager().nodeCommand(NodeManager.NodeCommandType.Provision, taskParams());
-      processShellResponse(response);
+      getNodeManager()
+          .nodeCommand(NodeManager.NodeCommandType.Provision, taskParams())
+          .processErrors();
       setNodeStatus(NodeStatus.builder().nodeState(NodeState.ServerSetup).build());
     }
   }

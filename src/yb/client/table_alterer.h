@@ -87,7 +87,7 @@ class YBTableAlterer {
   // The return value may indicate an error in the alter operation, or a
   // misuse of the builder (e.g. add_column() with default_value=NULL); in
   // the latter case, only the last error is returned.
-  CHECKED_STATUS Alter();
+  Status Alter();
 
  private:
   friend class YBClient;
@@ -95,7 +95,7 @@ class YBTableAlterer {
   YBTableAlterer(YBClient* client, const YBTableName& name);
   YBTableAlterer(YBClient* client, const std::string id);
 
-  CHECKED_STATUS ToRequest(master::AlterTableRequestPB* req);
+  Status ToRequest(master::AlterTableRequestPB* req);
 
   YBClient* const client_;
   const YBTableName table_name_;

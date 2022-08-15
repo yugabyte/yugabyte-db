@@ -54,12 +54,12 @@ class PTInsertJsonClause: public PTCollection {
   }
 
   // Node semantics analysis.
-  CHECKED_STATUS Analyze(SemContext* sem_context) override;
+  Status Analyze(SemContext* sem_context) override;
   void PrintSemanticAnalysisResult(SemContext* sem_context);
 
   // Initialize this clause with JSON string and parsed JSON document.
   // Note that you have to std::move the document here.
-  CHECKED_STATUS PreExecInit(const std::string& json_string,
+  Status PreExecInit(const std::string& json_string,
                              rapidjson::Document json_document) {
     DCHECK(!json_document_) << "Double call to PreExecInit!";
     DCHECK(json_document.IsObject()) << "Supplied JSON should be an object";

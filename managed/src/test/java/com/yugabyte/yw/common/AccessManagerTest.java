@@ -14,6 +14,7 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 import static org.mockito.Matchers.anyList;
 import static org.mockito.Matchers.anyMap;
 import static org.mockito.Matchers.anyString;
@@ -22,7 +23,9 @@ import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.typesafe.config.Config;
 import com.google.common.collect.ImmutableList;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
@@ -45,9 +48,9 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
+import org.mockito.junit.MockitoJUnitRunner;
 import org.mockito.Mock;
 import org.mockito.Mockito;
-import org.mockito.runners.MockitoJUnitRunner;
 import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
@@ -58,6 +61,10 @@ public class AccessManagerTest extends FakeDBApplication {
   @Mock ShellProcessHandler shellProcessHandler;
 
   @Mock play.Configuration appConfig;
+
+  @Mock RuntimeConfigFactory runtimeConfigFactory;
+
+  @Mock Config mockConfig;
 
   private Provider defaultProvider;
   private Region defaultRegion;
@@ -80,6 +87,7 @@ public class AccessManagerTest extends FakeDBApplication {
     defaultProvider = ModelFactory.awsProvider(defaultCustomer);
     defaultRegion = Region.create(defaultProvider, "us-west-2", "US West 2", "yb-image");
     when(appConfig.getString("yb.storage.path")).thenReturn(TMP_STORAGE_PATH);
+    when(runtimeConfigFactory.globalRuntimeConf()).thenReturn(mockConfig);
     command = ArgumentCaptor.forClass(List.class);
     cloudCredentials = ArgumentCaptor.forClass(Map.class);
   }
@@ -93,7 +101,7 @@ public class AccessManagerTest extends FakeDBApplication {
       throws IOException {
     ShellResponse response = new ShellResponse();
     if (mimicError) {
-      response.message = "{\"error\": \"Unknown Error\"}";
+      response.message = "Unknown error occurred";
       response.code = 99;
       return Json.toJson(
           accessManager.uploadKeyFile(
@@ -104,6 +112,9 @@ public class AccessManagerTest extends FakeDBApplication {
               "some-user",
               SSH_PORT,
               false,
+              false,
+              false,
+              null,
               false));
     } else {
       response.code = 0;
@@ -121,6 +132,9 @@ public class AccessManagerTest extends FakeDBApplication {
               "some-user",
               SSH_PORT,
               false,
+              false,
+              false,
+              null,
               false));
     }
   }
@@ -128,7 +142,7 @@ public class AccessManagerTest extends FakeDBApplication {
   private JsonNode runCommand(UUID regionUUID, String commandType, boolean mimicError) {
     ShellResponse response = new ShellResponse();
     if (mimicError) {
-      response.message = "{\"error\": \"Unknown Error\"}";
+      response.message = "Unknown error occurred";
       response.code = 99;
       when(shellProcessHandler.run(anyList(), anyMap(), anyString())).thenReturn(response);
     } else {
@@ -167,7 +181,8 @@ public class AccessManagerTest extends FakeDBApplication {
     }
 
     if (commandType.equals("add-key")) {
-      return Json.toJson(accessManager.addKey(regionUUID, "foo", SSH_PORT, false, false));
+      return Json.toJson(
+          accessManager.addKey(regionUUID, "foo", SSH_PORT, false, false, false, null, false));
     } else if (commandType.equals("list-keys")) {
       return accessManager.listKeys(regionUUID);
     } else if (commandType.equals("create-vault")) {
@@ -274,7 +289,9 @@ public class AccessManagerTest extends FakeDBApplication {
           allOf(
               notNullValue(),
               equalTo(
-                  "Parsing of Region failed with : YBCloud command access (add-key) failed to execute.")));
+                  "Parsing of Region failed with :"
+                      + " YBCloud command access (add-key) failed to execute."
+                      + " Unknown error occurred")));
     }
     Mockito.verify(shellProcessHandler, times(1)).run(anyList(), anyMap(), anyString());
   }
@@ -333,7 +350,10 @@ public class AccessManagerTest extends FakeDBApplication {
     String commandStr = String.join(" ", command.getValue());
     String expectedCmd = getBaseCommand(defaultRegion, "list-keys");
     assertThat(commandStr, allOf(notNullValue(), equalTo(expectedCmd)));
-    assertValue(result, "error", "YBCloud command access (list-keys) failed to execute.");
+    assertValue(
+        result,
+        "error",
+        "YBCloud command access (list-keys) failed to execute. Unknown error occurred");
   }
 
   @Test
@@ -503,7 +523,8 @@ public class AccessManagerTest extends FakeDBApplication {
             + TMP_KEYS_PATH
             + "/"
             + defaultProvider.uuid
-            + " --delete_remote";
+            + " --delete_remote"
+            + " --ignore_auth_failure";
     String commandStr = String.join(" ", command.getValue());
     assertThat(commandStr, allOf(notNullValue(), equalTo(expectedCmd)));
     assertTrue(cloudCredentials.getValue().isEmpty());
@@ -527,7 +548,11 @@ public class AccessManagerTest extends FakeDBApplication {
     } catch (RuntimeException re) {
       assertThat(
           re.getMessage(),
-          allOf(notNullValue(), equalTo("YBCloud command access (delete-key) failed to execute.")));
+          allOf(
+              notNullValue(),
+              equalTo(
+                  "YBCloud command access (delete-key) failed to execute."
+                      + " Unknown error occurred")));
     }
   }
 
@@ -552,7 +577,7 @@ public class AccessManagerTest extends FakeDBApplication {
           "/tmp/yugaware_tests/amt/keys/"
               + defaultProvider.uuid
               + "/"
-              + Util.getFileName(configName),
+              + com.yugabyte.yw.common.utils.FileUtils.getFileName(configName),
           configFile);
       List<String> lines = Files.readAllLines(Paths.get(configFile));
       assertEquals("hello world", lines.get(0));
@@ -569,7 +594,7 @@ public class AccessManagerTest extends FakeDBApplication {
     try {
       Map<String, String> config = new HashMap<>();
       accessManager.createKubernetesConfig(defaultProvider.uuid.toString(), config, false);
-    } catch (IOException | RuntimeException e) {
+    } catch (RuntimeException e) {
       assertEquals("Missing KUBECONFIG_NAME data in the provider config.", e.getMessage());
     }
   }
@@ -601,7 +626,17 @@ public class AccessManagerTest extends FakeDBApplication {
       List<String> lines = Files.readAllLines(Paths.get(configFile));
       assertEquals("{\"foo\":\"bar\",\"hello\":\"world\"}", lines.get(0));
     } catch (IOException e) {
-      assertNull(e.getMessage());
+      fail();
     }
+  }
+
+  @Test
+  public void testReadCredentialsFromFile() {
+    Map<String, String> inputConfig = new HashMap<>();
+    inputConfig.put("foo", "bar");
+    inputConfig.put("hello", "world");
+    accessManager.createCredentialsFile(defaultProvider.uuid, Json.toJson(inputConfig));
+    Map<String, String> configMap = accessManager.readCredentialsFromFile(defaultProvider.uuid);
+    assertEquals(inputConfig, configMap);
   }
 }

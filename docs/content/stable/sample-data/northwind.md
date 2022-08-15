@@ -8,8 +8,7 @@ menu:
     identifier: northwind
     parent: sample-data
     weight: 200
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Install the PostgreSQL-compatible version of the Northwind dataset on the YugabyteDB distributed SQL database.
@@ -17,7 +16,7 @@ Install the PostgreSQL-compatible version of the Northwind dataset on the Yugaby
 You can install and use the Northwind sample database using:
 
 - A local installation of YugabyteDB. To install YugabyteDB, refer to [Quick Start](../../quick-start/).
-- Using cloud shell or a client shell to connect to a cluster in Yugabyte Cloud. Refer to [Connect to clusters in Yugabyte Cloud](../../yugabyte-cloud/cloud-connect/). To get started with Yugabyte Cloud, refer to [Quick Start](../../yugabyte-cloud/cloud-quickstart/).
+- Using cloud shell or a client shell to connect to a cluster in YugabyteDB Managed. Refer to [Connect to clusters in YugabyteDB Managed](../../yugabyte-cloud/cloud-connect/). To get started with YugabyteDB Managed, refer to [Quick Start](../../yugabyte-cloud/cloud-quickstart/).
 
 In either case, you use the YugabyteDB SQL shell ([ysqlsh](../../admin/ysqlsh/)) CLI to interact with YugabyteDB using [YSQL](../../api/ysql/).
 
@@ -55,7 +54,7 @@ If you are using a local installation of YugabyteDB, run the `ysqlsh` command fr
 $ ./bin/ysqlsh
 ```
 
-If you are connecting to Yugabyte Cloud, open the [ysqlsh cloud shell](../../yugabyte-cloud/cloud-connect/connect-cloud-shell/), or [run the YSQL connection string](../../yugabyte-cloud/cloud-connect/connect-client-shell/#ysqlsh) for your cluster from the `yugabyte-client` bin directory.
+If you are connecting to YugabyteDB Managed, open the [ysqlsh cloud shell](../../yugabyte-cloud/cloud-connect/connect-cloud-shell/), or [run the YSQL connection string](../../yugabyte-cloud/cloud-connect/connect-client-shell/#ysqlsh) for your cluster from the `yugabyte-client` bin directory.
 
 ### Create the Northwind database
 
@@ -93,7 +92,7 @@ northwind=# \d
 
 ```output
                 List of relations
- Schema |          Name          | Type  | Owner 
+ Schema |          Name          | Type  | Owner
 --------+------------------------+-------+-------
  public | categories             | table | admin
  public | customer_customer_demo | table | admin
@@ -127,9 +126,9 @@ northwind=# SELECT * FROM customers LIMIT 2;
 ```
 
 ```output
- customer_id |       company_name        | contact_name |    contact_title    |      address       |   city    | region | postal_code | country |     phone     |     fax     
+ customer_id |       company_name        | contact_name |    contact_title    |      address       |   city    | region | postal_code | country |     phone     |     fax
 -------------+---------------------------+--------------+---------------------+--------------------+-----------+--------+-------------+---------+---------------+-------------
- FAMIA       | Familia Arquibaldo        | Aria Cruz    | Marketing Assistant | Rua Orós, 92       | Sao Paulo | SP     | 05442-030   | Brazil  | (11) 555-9857 | 
+ FAMIA       | Familia Arquibaldo        | Aria Cruz    | Marketing Assistant | Rua Orós, 92       | Sao Paulo | SP     | 05442-030   | Brazil  | (11) 555-9857 |
  VINET       | Vins et alcools Chevalier | Paul Henriot | Accounting Manager  | 59 rue de l'Abbaye | Reims     |        | 51100       | France  | 26.47.15.10   | 26.47.15.11
 (2 rows)
 ```

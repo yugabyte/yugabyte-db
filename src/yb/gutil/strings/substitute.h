@@ -188,33 +188,35 @@ char* SubstituteToBuffer(GStringPiece format,
 }  // namespace internal
 
 void SubstituteAndAppend(
-  string* output, GStringPiece format,
-  const internal::SubstituteArg& arg0 = internal::SubstituteArg::NoArg,
-  const internal::SubstituteArg& arg1 = internal::SubstituteArg::NoArg,
-  const internal::SubstituteArg& arg2 = internal::SubstituteArg::NoArg,
-  const internal::SubstituteArg& arg3 = internal::SubstituteArg::NoArg,
-  const internal::SubstituteArg& arg4 = internal::SubstituteArg::NoArg,
-  const internal::SubstituteArg& arg5 = internal::SubstituteArg::NoArg,
-  const internal::SubstituteArg& arg6 = internal::SubstituteArg::NoArg,
-  const internal::SubstituteArg& arg7 = internal::SubstituteArg::NoArg,
-  const internal::SubstituteArg& arg8 = internal::SubstituteArg::NoArg,
-  const internal::SubstituteArg& arg9 = internal::SubstituteArg::NoArg);
+    string* output, GStringPiece format,
+    const internal::SubstituteArg& arg0 = internal::SubstituteArg::NoArg,
+    const internal::SubstituteArg& arg1 = internal::SubstituteArg::NoArg,
+    const internal::SubstituteArg& arg2 = internal::SubstituteArg::NoArg,
+    const internal::SubstituteArg& arg3 = internal::SubstituteArg::NoArg,
+    const internal::SubstituteArg& arg4 = internal::SubstituteArg::NoArg,
+    const internal::SubstituteArg& arg5 = internal::SubstituteArg::NoArg,
+    const internal::SubstituteArg& arg6 = internal::SubstituteArg::NoArg,
+    const internal::SubstituteArg& arg7 = internal::SubstituteArg::NoArg,
+    const internal::SubstituteArg& arg8 = internal::SubstituteArg::NoArg,
+    const internal::SubstituteArg& arg9 = internal::SubstituteArg::NoArg,
+    const internal::SubstituteArg& arg10 = internal::SubstituteArg::NoArg);
 
 inline string Substitute(
-  GStringPiece format,
-  const internal::SubstituteArg& arg0 = internal::SubstituteArg::NoArg,
-  const internal::SubstituteArg& arg1 = internal::SubstituteArg::NoArg,
-  const internal::SubstituteArg& arg2 = internal::SubstituteArg::NoArg,
-  const internal::SubstituteArg& arg3 = internal::SubstituteArg::NoArg,
-  const internal::SubstituteArg& arg4 = internal::SubstituteArg::NoArg,
-  const internal::SubstituteArg& arg5 = internal::SubstituteArg::NoArg,
-  const internal::SubstituteArg& arg6 = internal::SubstituteArg::NoArg,
-  const internal::SubstituteArg& arg7 = internal::SubstituteArg::NoArg,
-  const internal::SubstituteArg& arg8 = internal::SubstituteArg::NoArg,
-  const internal::SubstituteArg& arg9 = internal::SubstituteArg::NoArg) {
+    GStringPiece format,
+    const internal::SubstituteArg& arg0 = internal::SubstituteArg::NoArg,
+    const internal::SubstituteArg& arg1 = internal::SubstituteArg::NoArg,
+    const internal::SubstituteArg& arg2 = internal::SubstituteArg::NoArg,
+    const internal::SubstituteArg& arg3 = internal::SubstituteArg::NoArg,
+    const internal::SubstituteArg& arg4 = internal::SubstituteArg::NoArg,
+    const internal::SubstituteArg& arg5 = internal::SubstituteArg::NoArg,
+    const internal::SubstituteArg& arg6 = internal::SubstituteArg::NoArg,
+    const internal::SubstituteArg& arg7 = internal::SubstituteArg::NoArg,
+    const internal::SubstituteArg& arg8 = internal::SubstituteArg::NoArg,
+    const internal::SubstituteArg& arg9 = internal::SubstituteArg::NoArg,
+    const internal::SubstituteArg& arg10 = internal::SubstituteArg::NoArg) {
   string result;
-  SubstituteAndAppend(&result, format, arg0, arg1, arg2, arg3, arg4,
-                                       arg5, arg6, arg7, arg8, arg9);
+  SubstituteAndAppend(
+      &result, format, arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10);
   return result;
 }
 

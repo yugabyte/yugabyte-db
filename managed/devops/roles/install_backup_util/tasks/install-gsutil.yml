@@ -6,9 +6,23 @@
 #
 # https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 
+- set_fact:
+    gsutil_cur_version: "{{ util_cur_version.stdout | regex_search('gsutil version: (.+)', '\\1')\
+      | first }}"
+  when: util_exists.rc == 0
+
+- debug:
+    msg: "gsutil current version {{ gsutil_cur_version }} new version {{ gsutil_version }}"
+  when: util_exists.rc == 0
+
 - block:
     - set_fact:
         gsutil_package_path: "/usr/local/{{ gsutil_package_name }}"
+
+    - name: gsutil | Remove current gsutil
+      file:
+        path: "{{ gsutil_package_path }}"
+        state: absent
 
     - name: gsutil | Copy and unarchive {{ gsutil_package }} from {{ package_path }}
       unarchive:
@@ -23,3 +37,4 @@
         path: "{{ bin_path }}/gsutil"
         state: link
         force: yes
+  when: util_exists.rc != 0 or gsutil_version != gsutil_cur_version

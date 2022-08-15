@@ -23,6 +23,8 @@
 #include "yb/client/client_fwd.h"
 
 #include "yb/common/pg_types.h"
+#include "yb/common/read_hybrid_time.h"
+#include "yb/common/transaction.h"
 
 #include "yb/master/master_fwd.h"
 
@@ -39,21 +41,40 @@
 namespace yb {
 namespace pggate {
 
+YB_STRONGLY_TYPED_BOOL(DdlMode);
+
 #define YB_PG_CLIENT_SIMPLE_METHODS \
     (AlterDatabase)(AlterTable)(CreateDatabase)(CreateTable)(CreateTablegroup) \
     (DropDatabase)(DropTablegroup)(TruncateTable)
+
+struct PerformResult {
+  Status status;
+  ReadHybridTime catalog_read_time;
+  rpc::CallResponsePtr response;
+
+  std::string ToString() const {
+    return YB_STRUCT_TO_STRING(status, catalog_read_time);
+  }
+};
+
+using PerformCallback = std::function<void(const PerformResult&)>;
 
 class PgClient {
  public:
   PgClient();
   ~PgClient();
 
-  CHECKED_STATUS Start(rpc::ProxyCache* proxy_cache,
+  Status Start(rpc::ProxyCache* proxy_cache,
                        rpc::Scheduler* scheduler,
                        const tserver::TServerSharedObject& tserver_shared_object);
   void Shutdown();
 
-  Result<PgTableDescPtr> OpenTable(const PgObjectId& table_id);
+  void SetTimeout(MonoDelta timeout);
+
+  Result<PgTableDescPtr> OpenTable(
+      const PgObjectId& table_id, bool reopen, CoarseTimePoint invalidate_cache_time);
+
+  Status FinishTransaction(Commit commit, DdlMode ddl_mode);
 
   Result<master::GetNamespaceInfoResponsePB> GetDatabaseInfo(PgOid oid);
 
@@ -63,21 +84,54 @@ class PgClient {
 
   Result<uint64_t> GetCatalogMasterVersion();
 
-  CHECKED_STATUS CreateSequencesDataTable();
+  Status CreateSequencesDataTable();
 
   Result<client::YBTableName> DropTable(
       tserver::PgDropTableRequestPB* req, CoarseTimePoint deadline);
 
-  CHECKED_STATUS BackfillIndex(tserver::PgBackfillIndexRequestPB* req, CoarseTimePoint deadline);
+  Status BackfillIndex(tserver::PgBackfillIndexRequestPB* req, CoarseTimePoint deadline);
 
   Result<int32> TabletServerCount(bool primary_only);
 
   Result<client::TabletServersInfo> ListLiveTabletServers(bool primary_only);
 
-  CHECKED_STATUS ValidatePlacement(const tserver::PgValidatePlacementRequestPB* req);
+  Status SetActiveSubTransaction(
+      SubTransactionId id, tserver::PgPerformOptionsPB* options);
+  Status RollbackToSubTransaction(SubTransactionId id);
+
+  Status ValidatePlacement(const tserver::PgValidatePlacementRequestPB* req);
+
+  Status InsertSequenceTuple(int64_t db_oid,
+                                     int64_t seq_oid,
+                                     uint64_t ysql_catalog_version,
+                                     int64_t last_val,
+                                     bool is_called);
+
+  Result<bool> UpdateSequenceTuple(int64_t db_oid,
+                                   int64_t seq_oid,
+                                   uint64_t ysql_catalog_version,
+                                   int64_t last_val,
+                                   bool is_called,
+                                   boost::optional<int64_t> expected_last_val,
+                                   boost::optional<bool> expected_is_called);
+
+  Result<std::pair<int64_t, bool>> ReadSequenceTuple(int64_t db_oid,
+                                                     int64_t seq_oid,
+                                                     uint64_t ysql_catalog_version);
+
+  Status DeleteSequenceTuple(int64_t db_oid, int64_t seq_oid);
+
+  Status DeleteDBSequences(int64_t db_oid);
+
+  void PerformAsync(
+      tserver::PgPerformOptionsPB* options,
+      PgsqlOps* operations,
+      const PerformCallback& callback);
+
+  Result<bool> CheckIfPitrActive();
 
 #define YB_PG_CLIENT_SIMPLE_METHOD_DECLARE(r, data, method) \
-  CHECKED_STATUS method(                             \
+  Status method(                             \
       tserver::BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), RequestPB)* req, \
       CoarseTimePoint deadline);
 

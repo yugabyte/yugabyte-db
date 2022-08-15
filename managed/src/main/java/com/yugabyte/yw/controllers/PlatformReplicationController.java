@@ -16,6 +16,7 @@ import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.forms.PlatformBackupFrequencyFormData;
 import com.yugabyte.yw.forms.PlatformResults;
+import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.PlatformInstance;
 import java.io.File;
@@ -55,6 +56,12 @@ public class PlatformReplicationController extends AuthenticatedController {
       Duration frequency = Duration.ofMillis(formData.get().frequency_milliseconds);
 
       // Restart the backup schedule with the new frequency.
+      auditService()
+          .createAuditEntryWithReqBody(
+              ctx(),
+              Audit.TargetType.HABackup,
+              configUUID.toString(),
+              Audit.ActionType.StartPeriodicBackup);
       return ok(replicationManager.setFrequencyStartAndEnable(frequency));
     } catch (Exception e) {
       LOG.error("Error starting backup schedule", e);
@@ -73,7 +80,12 @@ public class PlatformReplicationController extends AuthenticatedController {
       return ok(replicationManager.stopAndDisable());
     } catch (Exception e) {
       LOG.error("Error cancelling backup schedule", e);
-
+      auditService()
+          .createAuditEntryWithReqBody(
+              ctx(),
+              Audit.TargetType.HABackup,
+              configUUID.toString(),
+              Audit.ActionType.StopPeriodicBackup);
       return ApiResponse.error(INTERNAL_SERVER_ERROR, "Error stopping replication schedule");
     }
   }

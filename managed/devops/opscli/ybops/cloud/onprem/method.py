@@ -10,17 +10,18 @@
 
 from jinja2 import Environment, FileSystemLoader
 from ybops.common.exceptions import YBOpsRuntimeError, get_exception_message
-from ybops.cloud.common.method import AbstractMethod
+from ybops.cloud.common.method import AbstractAccessMethod, AbstractMethod
 from ybops.cloud.common.method import AbstractInstancesMethod
 from ybops.cloud.common.method import CreateInstancesMethod
 from ybops.cloud.common.method import DestroyInstancesMethod
 from ybops.cloud.common.method import ProvisionInstancesMethod, ListInstancesMethod
-from ybops.utils import get_ssh_host_port, validate_instance, get_datafile_path, YB_HOME_DIR, \
-                        get_mount_roots, remote_exec_command, wait_for_ssh, scp_to_tmp, \
-                        SSH_RETRY_LIMIT_PRECHECK, DEFAULT_MASTER_HTTP_PORT, \
+from ybops.utils import validate_instance, get_datafile_path, YB_HOME_DIR, \
+                        get_mount_roots, remote_exec_command, \
+                        DEFAULT_MASTER_HTTP_PORT, \
                         DEFAULT_MASTER_RPC_PORT, DEFAULT_TSERVER_HTTP_PORT, \
                         DEFAULT_TSERVER_RPC_PORT, DEFAULT_NODE_EXPORTER_HTTP_PORT
 from ybops.utils.remote_shell import RemoteShell
+from ybops.utils.ssh import wait_for_ssh, scp_to_tmp, get_ssh_host_port, SSH_RETRY_LIMIT_PRECHECK
 
 import json
 import logging
@@ -78,7 +79,9 @@ class OnPremValidateMethod(AbstractInstancesMethod):
                                 self.extra_vars["ssh_port"],
                                 self.SSH_USER,
                                 args.private_key_file,
-                                self.mount_points.split(',')))
+                                self.mount_points.split(','),
+                                ssh2_enabled=args.ssh2_enabled
+                                ))
 
 
 class OnPremListInstancesMethod(ListInstancesMethod):
@@ -102,7 +105,8 @@ class OnPremListInstancesMethod(ListInstancesMethod):
                 try:
                     ssh_options = {
                         "ssh_user": host_info['ssh_user'],
-                        "private_key_file": args.private_key_file
+                        "private_key_file": args.private_key_file,
+                        "ssh2_enabled": args.ssh2_enabled
                     }
                     ssh_options.update(get_ssh_host_port(
                                         self.cloud.get_host_info(args),
@@ -188,7 +192,7 @@ class OnPremPrecheckInstanceMethod(AbstractInstancesMethod):
                             self.extra_vars["ssh_port"],
                             self.extra_vars["ssh_user"],
                             args.private_key_file,
-                            num_retries=SSH_RETRY_LIMIT_PRECHECK):
+                            num_retries=SSH_RETRY_LIMIT_PRECHECK, ssh2_enabled=args.ssh2_enabled):
                 return host_info
         else:
             raise YBOpsRuntimeError("Unable to find host info.")
@@ -227,6 +231,8 @@ class OnPremPrecheckInstanceMethod(AbstractInstancesMethod):
                                  help='If instances are air gapped or not.')
         self.parser.add_argument("--install_node_exporter", action="store_true",
                                  help='Check if node exporter can be installed properly.')
+        self.parser.add_argument("--skip_ntp_check", action="store_true",
+                                 help='Skip check for time synchronization.')
 
     def verify_certificates(self, cert_type, root_cert_path, cert_path, key_path, ssh_options,
                             skip_cert_validation, results):
@@ -281,7 +287,8 @@ class OnPremPrecheckInstanceMethod(AbstractInstancesMethod):
 
         scp_result = scp_to_tmp(
             get_datafile_path('preflight_checks.sh'), self.extra_vars["private_ip"],
-            self.extra_vars["ssh_user"], self.extra_vars["ssh_port"], args.private_key_file)
+            self.extra_vars["ssh_user"], self.extra_vars["ssh_port"], args.private_key_file,
+            ssh2_enabled=args.ssh2_enabled)
 
         results["SSH Connection"] = scp_result == 0
 
@@ -289,7 +296,8 @@ class OnPremPrecheckInstanceMethod(AbstractInstancesMethod):
             "ssh_user": "yugabyte",
             "ssh_host": self.extra_vars["private_ip"],
             "ssh_port": self.extra_vars["ssh_port"],
-            "private_key_file": args.private_key_file
+            "private_key_file": args.private_key_file,
+            "ssh2_enabled": args.ssh2_enabled
         }
 
         if args.root_cert_path is not None:
@@ -350,13 +358,16 @@ class OnPremPrecheckInstanceMethod(AbstractInstancesMethod):
         self.update_ansible_vars_with_host_info(host_info, args.custom_ssh_port)
         rc, stdout, stderr = remote_exec_command(
             self.extra_vars["private_ip"], self.extra_vars["ssh_port"],
-            self.extra_vars["ssh_user"], args.private_key_file, cmd)
+            self.extra_vars["ssh_user"], args.private_key_file, cmd,
+            ssh2_enabled=args.ssh2_enabled)
 
         if rc != 0:
             results["Preflight Script Error"] = stderr
         else:
             # stdout will be returned as a list of lines, which should just be one line of json.
-            stdout = json.loads(stdout[0])
+            if isinstance(stdout, list):
+                stdout = stdout[0]
+            stdout = json.loads(stdout)
             stdout = {k: v == "true" for k, v in iteritems(stdout)}
             results.update(stdout)
 
@@ -369,6 +380,7 @@ class OnPremFillInstanceProvisionTemplateMethod(AbstractMethod):
         super(OnPremFillInstanceProvisionTemplateMethod, self).__init__(base_command, 'template')
 
     def add_extra_args(self):
+        super(OnPremFillInstanceProvisionTemplateMethod, self).add_extra_args()
         self.parser.add_argument('--name', default='provision_instance.py', required=False,
                                  help='Desired name for the new provision instance script')
         self.parser.add_argument('--destination', required=True,
@@ -379,10 +391,6 @@ class OnPremFillInstanceProvisionTemplateMethod(AbstractMethod):
         # to 22, without breaking...
         self.parser.add_argument('--custom_ssh_port', required=False, default=22,
                                  help='The port on which to SSH into the instance.')
-        self.parser.add_argument('--vars_file', required=True,
-                                 help='The vault file containing needed vars.')
-        self.parser.add_argument('--vault_password_file', required=True,
-                                 help='The password file to unlock the vault file.')
         self.parser.add_argument('--local_package_path', required=True,
                                  help='Path to the local third party dependency packages.')
         self.parser.add_argument('--private_key_file', required=True,
@@ -396,6 +404,10 @@ class OnPremFillInstanceProvisionTemplateMethod(AbstractMethod):
                                  help="The port for node_exporter to bind to")
         self.parser.add_argument("--node_exporter_user", default="prometheus")
         self.parser.add_argument("--install_node_exporter", action="store_true")
+        self.parser.add_argument("--use_chrony", action="store_true",
+                                 help="Whether to set up chrony for NTP synchronization.")
+        self.parser.add_argument("--ntp_server", required=False, action="append", default=[],
+                                 help="NTP server to connect to.")
 
     def callback(self, args):
         config = {'devops_home': ybutils.YB_DEVOPS_HOME_PERM, 'cloud': self.cloud.name}
@@ -413,3 +425,12 @@ class OnPremFillInstanceProvisionTemplateMethod(AbstractMethod):
             logging.error(e)
             print(json.dumps(
                 {"error": "Unable to create script: {}".format(get_exception_message(e))}))
+
+
+class OnPremAccessAddKeyMethod(AbstractAccessMethod):
+    def __init__(self, base_command):
+        super(OnPremAccessAddKeyMethod, self).__init__(base_command, "add-key")
+
+    def callback(self, args):
+        (private_key_file, public_key_file) = self.validate_key_files(args)
+        print(json.dumps({"private_key": private_key_file, "public_key": public_key_file}))

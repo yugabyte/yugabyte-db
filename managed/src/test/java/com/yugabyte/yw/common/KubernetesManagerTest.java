@@ -4,6 +4,7 @@ package com.yugabyte.yw.common;
 
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertThrows;
 import static org.mockito.Matchers.anyList;
 import static org.mockito.Matchers.anyMap;
 import static org.mockito.Matchers.anyString;
@@ -105,7 +106,6 @@ public class KubernetesManagerTest extends FakeDBApplication {
         break;
       case VOLUME_DELETE:
         kubernetesManager.deleteStorage(configProvider, "demo-universe", "demo-namespace");
-        numOfCalls = 2;
         break;
     }
 
@@ -296,15 +296,7 @@ public class KubernetesManagerTest extends FakeDBApplication {
                 "--namespace",
                 "demo-namespace",
                 "-l",
-                "app=yb-master,release=demo-universe"),
-            ImmutableList.of(
-                "kubectl",
-                "delete",
-                "pvc",
-                "--namespace",
-                "demo-namespace",
-                "-l",
-                "app=yb-tserver,release=demo-universe")),
+                "release=demo-universe")),
         command.getAllValues());
     assertEquals(config.getValue(), configProvider);
   }
@@ -313,7 +305,12 @@ public class KubernetesManagerTest extends FakeDBApplication {
   public void getMasterServiceIPs() {
     ShellResponse response = ShellResponse.create(0, "{}");
     when(shellProcessHandler.run(anyList(), anyMap(), anyString())).thenReturn(response);
-    kubernetesManager.getPreferredServiceIP(configProvider, "demo-universe", true);
+    Throwable exception =
+        assertThrows(
+            RuntimeException.class,
+            () ->
+                kubernetesManager.getPreferredServiceIP(
+                    configProvider, "demo-az1", "demo-universe", true, false));
     Mockito.verify(shellProcessHandler, times(1))
         .run(command.capture(), (Map<String, String>) config.capture(), description.capture());
     assertEquals(
@@ -321,19 +318,24 @@ public class KubernetesManagerTest extends FakeDBApplication {
             "kubectl",
             "get",
             "svc",
-            "yb-master-service",
             "--namespace",
             "demo-universe",
+            "-l",
+            "release=demo-az1,app=yb-master,service-type!=headless",
             "-o",
             "json"),
         command.getValue());
+    assertEquals(
+        "There must be exactly one Master or TServer endpoint service, got 0",
+        exception.getMessage());
   }
 
   @Test
   public void getTserverServiceIPs() {
-    ShellResponse response = ShellResponse.create(0, "{}");
+    ShellResponse response = ShellResponse.create(0, "{\"items\": [{\"kind\": \"Service\"}]}");
     when(shellProcessHandler.run(anyList(), anyMap(), anyString())).thenReturn(response);
-    kubernetesManager.getPreferredServiceIP(configProvider, "demo-universe", false);
+    kubernetesManager.getPreferredServiceIP(
+        configProvider, "demo-az2", "demo-universe", false, true);
     Mockito.verify(shellProcessHandler, times(1))
         .run(command.capture(), (Map<String, String>) config.capture(), description.capture());
     assertEquals(
@@ -341,9 +343,10 @@ public class KubernetesManagerTest extends FakeDBApplication {
             "kubectl",
             "get",
             "svc",
-            "yb-tserver-service",
             "--namespace",
             "demo-universe",
+            "-l",
+            "release=demo-az2,app.kubernetes.io/name=yb-tserver,service-type!=headless",
             "-o",
             "json"),
         command.getValue());

@@ -3,6 +3,7 @@
 import React, { Component, Fragment } from 'react';
 import { Link } from 'react-router';
 import { Image, ProgressBar, ButtonGroup, DropdownButton } from 'react-bootstrap';
+import { toast } from 'react-toastify';
 import tableIcon from '../images/table.png';
 import './ListTables.scss';
 import { isNonEmptyArray } from '../../../utils/ObjectUtils';
@@ -14,10 +15,31 @@ import _ from 'lodash';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { YBResourceCount } from '../../common/descriptors';
 import { isDisabled, isNotHidden } from '../../../utils/LayoutUtils';
+import { formatSchemaName } from '../../../utils/Formatters';
+import { YBButtonLink } from '../../common/forms/fields';
 
 class TableTitle extends Component {
   render() {
-    const { numCassandraTables, numRedisTables, numPostgresTables } = this.props;
+    const {
+      numCassandraTables,
+      numRedisTables,
+      numPostgresTables,
+      universe,
+      tables,
+      fetchUniverseTables
+    } = this.props;
+    const currentUniverseUUID = universe?.currentUniverse?.data?.universeUUID;
+    const fetchCurrentUniverseTables = (currentUniverseUUID) => {
+      fetchUniverseTables(currentUniverseUUID);
+      if (tables?.error?.message) {
+        toast.error('Refresh failed, try again', {
+          // Adding toastId helps prevent multiple duplicate toasts that appears
+          // on screen when user presses refresh button multiple times
+          toastId: 'table-fetch-failure',
+        });
+      }
+    };
+
     return (
       <div className="table-container-title clearfix">
         <div className="pull-left">
@@ -34,6 +56,13 @@ class TableTitle extends Component {
             <Image src={tableIcon} className="table-type-logo" />
             <YBResourceCount kind="YEDIS" size={numRedisTables} />
           </div>
+        </div>
+        <div className="pull-right">
+          <YBButtonLink
+            btnIcon="fa fa-refresh"
+            btnClass="btn btn-default refresh-btn"
+            onClick={() => fetchCurrentUniverseTables(currentUniverseUUID)}
+          />
         </div>
       </div>
     );
@@ -96,7 +125,8 @@ class ListTableGrid extends Component {
       customer: { currentCustomer }
     } = this.props;
     const currentUniverse = this.props.universe.currentUniverse.data;
-    const universePaused = this.props.universe.currentUniverse?.data?.universeDetails?.universePaused;
+    const universePaused = this.props.universe.currentUniverse?.data?.universeDetails
+      ?.universePaused;
     const getTableIcon = function (tableType) {
       if (tableType === 'YQL_TABLE_TYPE') {
         return 'YCQL';
@@ -110,7 +140,10 @@ class ListTableGrid extends Component {
     const getTableName = function (tableName, data) {
       if (data.status === 'success') {
         return (
-          <Link to={`/universes/${currentUniverse.universeUUID}/tables/${data.tableID}`}>
+          <Link
+            title={tableName}
+            to={`/universes/${currentUniverse.universeUUID}/tables/${data.tableID}`}
+          >
             {tableName}
           </Link>
         );
@@ -201,6 +234,7 @@ class ListTableGrid extends Component {
         return {
           keySpace: item.keySpace,
           tableID: item.tableUUID,
+          pgSchemaName: item.pgSchemaName,
           tableType: item.tableType,
           tableName: item.tableName,
           status: 'success',
@@ -226,6 +260,7 @@ class ListTableGrid extends Component {
         if (listItems.findIndex((lItem) => lItem.tableName === pendingTableName) === -1) {
           const pendingTableRow = {
             tableID: pendingTableTasks.id,
+            pgSchemaName: pendingTableTasks.pgSchemaName,
             tableType: 'YQL_TABLE_TYPE',
             tableName: pendingTableName,
             status: 'pending',
@@ -238,17 +273,28 @@ class ListTableGrid extends Component {
     }
     const sortedListItems = _.sortBy(listItems, 'tableName');
     const tableListDisplay = (
-      <BootstrapTable data={sortedListItems} pagination className="backup-list-table middle-aligned-table">
+      <BootstrapTable
+        data={sortedListItems}
+        pagination
+        className="backup-list-table middle-aligned-table"
+      >
         <TableHeaderColumn dataField="tableID" isKey={true} hidden={true} />
         <TableHeaderColumn
           dataField={'tableName'}
           dataFormat={getTableName}
-          width="20%"
+          width="15%"
           columnClassName={'table-name-label yb-table-cell'}
           className={'yb-table-cell'}
           dataSort
         >
           Table Name
+        </TableHeaderColumn>
+        <TableHeaderColumn
+          dataField="pgSchemaName"
+          width="15%"
+          dataFormat={(cell, row) => formatSchemaName(row.tableType, cell)}
+        >
+          Schema Name
         </TableHeaderColumn>
         <TableHeaderColumn
           dataField={'tableType'}
@@ -262,7 +308,7 @@ class ListTableGrid extends Component {
         </TableHeaderColumn>
         <TableHeaderColumn
           dataField={'keySpace'}
-          width="15%"
+          width="10%"
           columnClassName={'yb-table-cell'}
           dataFormat={formatKeySpace}
           dataSort
@@ -271,7 +317,7 @@ class ListTableGrid extends Component {
         </TableHeaderColumn>
         <TableHeaderColumn
           dataField={'status'}
-          width="10%"
+          width="5%"
           columnClassName={'yb-table-cell'}
           dataFormat={formatTableStatus}
         >

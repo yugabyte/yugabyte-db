@@ -27,6 +27,8 @@
 #include "utils/relcache.h"
 #include "utils/reltrigger.h"
 
+/* YB includes. */
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 /*
  * LockRelId and LockInfo really belong to lmgr.h, but it's more convenient
@@ -188,6 +190,8 @@ typedef struct RelationData
 
 	/* use "struct" here to avoid needing to include pgstat.h: */
 	struct PgStat_TableStatus *pgstat_info; /* statistics collection area */
+
+	YbTableProperties yb_table_properties; /* NULL if not loaded */
 } RelationData;
 
 
@@ -268,6 +272,7 @@ typedef struct StdRdOptions
 	/* YB additions. */
 	bool		colocated;
 	Oid 		tablegroup_oid;
+	Oid 		colocation_id;
 	Oid 		table_oid;
 	Oid 		row_type_oid;
 } StdRdOptions;
@@ -324,15 +329,6 @@ typedef struct StdRdOptions
 #define RelationGetParallelWorkers(relation, defaultpw) \
 	((relation)->rd_options ? \
 	 ((StdRdOptions *) (relation)->rd_options)->parallel_workers : (defaultpw))
-
-/*
- * RelationGetTablegroup
- *		Returns the relation's tablegroup reloption setting.
- *		Note multiple eval of argument!
- */
-#define RelationGetTablegroup(relation) \
-	((relation)->rd_options ? \
-	 ((StdRdOptions *) (relation)->rd_options)->tablegroup_oid : 0)
 
 /*
  * RelationGetColocated

@@ -136,7 +136,7 @@ PTMap::PTMap(MemoryContext *memctx,
 PTMap::~PTMap() {
 }
 
-CHECKED_STATUS PTMap::Analyze(SemContext *sem_context) {
+Status PTMap::Analyze(SemContext *sem_context) {
   RETURN_NOT_OK(keys_type_->Analyze(sem_context));
   RETURN_NOT_OK(values_type_->Analyze(sem_context));
   ql_type_ = QLType::CreateTypeMap(keys_type_->ql_type(), values_type_->ql_type());
@@ -171,7 +171,7 @@ PTSet::PTSet(MemoryContext *memctx,
 PTSet::~PTSet() {
 }
 
-CHECKED_STATUS PTSet::Analyze(SemContext *sem_context) {
+Status PTSet::Analyze(SemContext *sem_context) {
   RETURN_NOT_OK(elems_type_->Analyze(sem_context));
   ql_type_ = QLType::CreateTypeSet(elems_type_->ql_type());
 
@@ -204,7 +204,7 @@ PTList::PTList(MemoryContext *memctx,
 PTList::~PTList() {
 }
 
-CHECKED_STATUS PTList::Analyze(SemContext *sem_context) {
+Status PTList::Analyze(SemContext *sem_context) {
   RETURN_NOT_OK(elems_type_->Analyze(sem_context));
   ql_type_ = QLType::CreateTypeList(elems_type_->ql_type());
 
@@ -228,7 +228,7 @@ PTUserDefinedType::PTUserDefinedType(MemoryContext *memctx,
 PTUserDefinedType::~PTUserDefinedType() {
 }
 
-CHECKED_STATUS PTUserDefinedType::Analyze(SemContext *sem_context) {
+Status PTUserDefinedType::Analyze(SemContext *sem_context) {
   RETURN_NOT_OK(name_->AnalyzeName(sem_context, ObjectType::TYPE));
   auto ybname = name_->ToTableName();
   ql_type_ = sem_context->GetUDType(ybname.namespace_name(), ybname.table_name());
@@ -250,7 +250,7 @@ PTFrozen::PTFrozen(MemoryContext *memctx,
 PTFrozen::~PTFrozen() {
 }
 
-CHECKED_STATUS PTFrozen::Analyze(SemContext *sem_context) {
+Status PTFrozen::Analyze(SemContext *sem_context) {
   RETURN_NOT_OK(elems_type_->Analyze(sem_context));
   ql_type_ = QLType::CreateTypeFrozen(elems_type_->ql_type());
 

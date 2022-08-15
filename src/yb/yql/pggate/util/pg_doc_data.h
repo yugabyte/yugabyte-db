@@ -16,16 +16,18 @@
 
 #include "yb/common/common_fwd.h"
 
+#include "yb/rpc/rpc_fwd.h"
+
 #include "yb/yql/pggate/util/pg_wire.h"
 
 namespace yb {
 namespace pggate {
 
-CHECKED_STATUS WriteColumn(const QLValuePB& col_value, faststring *buffer);
+Status WriteColumn(const QLValuePB& col_value, faststring *buffer);
 
 class PgDocData : public PgWire {
  public:
-  static void LoadCache(const std::string& data, int64_t *total_row_count, Slice *cursor);
+  static void LoadCache(const Slice& cache, int64_t *total_row_count, Slice *cursor);
 
   static PgWireDataHeader ReadDataHeader(Slice *cursor);
 };

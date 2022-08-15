@@ -37,7 +37,11 @@ export default class MetricsPanel extends Component {
     const { metricKey, metric, currentUser } = this.props;
     if (isNonEmptyObject(metric)) {
       metric.data.forEach((dataItem, i) => {
-        dataItem['fullname'] = dataItem['name'];
+        if (dataItem['instanceName'] && dataItem['name'] !== dataItem['instanceName']) {
+          dataItem['fullname'] = dataItem['name'] + ' (' + dataItem['instanceName'] + ')';
+        } else {
+          dataItem['fullname'] = dataItem['name'];
+        }
         // Truncate trace names if they are longer than 15 characters, and append ellipsis
         if (dataItem['name'].length > MAX_NAME_LENGTH) {
           dataItem['name'] = dataItem['name'].substring(0, MAX_NAME_LENGTH) + '...';
@@ -175,22 +179,27 @@ export default class MetricsPanel extends Component {
     const { prometheusQueryEnabled } = this.props;
     const tooltip = (
       <Tooltip id="tooltip" className="prometheus-link-tooltip">
-        Query in Prometheus
+        Metric graph in Prometheus
       </Tooltip>
     );
+    const getMetricsUrl = (internalUrl) => {
+      var url = new URL(internalUrl);
+      url.hostname = window.location.hostname;
+      return url.href;
+    }
     return (
       <div id={this.props.metricKey} className="metrics-panel">
-        {prometheusQueryEnabled ? (
+        {prometheusQueryEnabled && this.props.metric.directURLs.length > 0 ? (
           <OverlayTrigger placement="top" overlay={tooltip}>
             <a
               target="_blank"
               rel="noopener noreferrer"
               className="prometheus-link"
-              href={this.props.metric.directURL}
+              href={getMetricsUrl(this.props.metric.directURLs[0])}
             >
               <img
                 className="prometheus-link-icon"
-                alt="Prometheus"
+                alt="Metric graph in Prometheus"
                 src={prometheusIcon}
                 width="25"
               />

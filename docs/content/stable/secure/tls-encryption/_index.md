@@ -1,7 +1,7 @@
 ---
-title: Encryption in Transit on YugabyteDB Clusters
-headerTitle: Encryption in Transit
-linkTitle: Encryption in Transit
+title: Encryption in transit on YugabyteDB Clusters
+headerTitle: Encryption in transit
+linkTitle: Encryption in transit
 description: Enable encryption in transit (using TLS) to protect network communication.
 headcontent: Enable encryption in transit (using TLS) to protect network communication.
 image: /images/section_icons/secure/tls-encryption.png
@@ -10,14 +10,15 @@ menu:
     identifier: tls-encryption
     parent: secure
     weight: 725
+type: indexpage
 ---
 
 YugabyteDB can be configured to protect data in transit using the following:
 
-- [Server-server encryption](./server-to-server) for intra-node communication between YB-Master and YB-TServer nodes.
-- [Client-server](./client-to-server) for communication between clients and nodes when using CLIs, tools, and APIs for YSQL and YCQL.
+- [Server-server encryption](./server-to-server/) for intra-node communication between YB-Master and YB-TServer nodes.
+- [Client-server](./client-to-server/) for communication between clients and nodes when using CLIs, tools, and APIs for YSQL and YCQL.
 
-YugabyteDB supports [Transport Layer Security (TLS)](https://en.wikipedia.org/wiki/Transport_Layer_Security) encryption based on [OpenSSL](https://www.openssl.org) (v. 1.0.2u or later), an open source cryptography toolkit that provides an implementation of the Transport Layer Security (TLS) and Secure Socket Layer (SSL) protocols. 
+YugabyteDB supports [Transport Layer Security (TLS)](https://en.wikipedia.org/wiki/Transport_Layer_Security) encryption based on [OpenSSL](https://www.openssl.org) (v. 1.0.2u or later), an open source cryptography toolkit that provides an implementation of the Transport Layer Security (TLS) and Secure Socket Layer (SSL) protocols.
 
 **Note:** Client-server TLS encryption is not supported for YEDIS.
 

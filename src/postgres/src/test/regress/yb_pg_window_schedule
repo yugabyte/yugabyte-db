@@ -6,10 +6,14 @@
 # Dependencies for `yb_pg_window`
 test: yb_pg_int4
 
+# Dependencies for `yb_pg_groupingsets`
+test: yb_pg_int8
+
 # Chain of dependencies for `yb_pg_window`
 test: yb_pg_create_function_1
 test: yb_pg_create_type
 test: yb_pg_create_table
 test: yb_pg_copy
 
+test: yb_pg_groupingsets
 test: yb_pg_window

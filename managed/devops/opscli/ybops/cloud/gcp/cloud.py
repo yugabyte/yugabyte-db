@@ -15,8 +15,7 @@ import time
 from ybops.cloud.common.cloud import AbstractCloud
 from ybops.cloud.gcp.command import (GcpAccessCommand, GcpInstanceCommand, GcpNetworkCommand,
                                      GcpQueryCommand)
-from ybops.cloud.gcp.utils import (GCP_SCRATCH, GcpMetadata, GoogleCloudAdmin,
-                                   GCP_INTERNAL_INSTANCE_PREFIXES)
+from ybops.cloud.gcp.utils import (GCP_SCRATCH, GcpMetadata, GoogleCloudAdmin)
 from ybops.common.exceptions import YBOpsRuntimeError, get_exception_message
 
 
@@ -108,27 +107,27 @@ class GcpCloud(AbstractCloud):
         return output
 
     def mount_disk(self, args, body):
-        self.get_admin().mount_disk(args.zone, args.search_pattern, body)
+        self.get_admin().mount_disk(args['zone'], args['search_pattern'], body)
 
     def unmount_disk(self, args, name):
-        self.get_admin().unmount_disk(args.zone, args.search_pattern, name)
+        self.get_admin().unmount_disk(args['zone'], args['search_pattern'], name)
 
     def stop_instance(self, args):
-        instance = self.get_admin().get_instances(args.zone, args.search_pattern,
+        instance = self.get_admin().get_instances(args['zone'], args['search_pattern'],
                                                   filters="(status = \"RUNNING\")")
         if not instance:
-            logging.error("Host {} does not exist or not running".format(args.search_pattern))
+            logging.error("Host {} does not exist or not running".format(args['search_pattern']))
             return
         self.admin.stop_instance(instance['zone'], instance['name'])
 
-    def start_instance(self, args, ssh_port):
-        instance = self.get_admin().get_instances(args.zone, args.search_pattern,
+    def start_instance(self, args, ssh_ports):
+        instance = self.get_admin().get_instances(args['zone'], args['search_pattern'],
                                                   filters="(status = \"TERMINATED\")")
         if not instance:
-            logging.error("Host {} does not exist or not stopped".format(args.search_pattern))
+            logging.error("Host {} does not exist or not stopped".format(args['search_pattern']))
             return
         self.admin.start_instance(instance['zone'], instance['name'])
-        self.wait_for_ssh_port(instance['private_ip'], instance['name'], ssh_port)
+        self.wait_for_ssh_ports(instance['private_ip'], instance['name'], ssh_ports)
 
     def delete_instance(self, args, filters=None):
         host_info = self.get_host_info(args, filters=filters)
@@ -215,6 +214,9 @@ class GcpCloud(AbstractCloud):
                 price_per_hour = pricing_map[name_key][region]
             else:
                 price_per_hour = pricing_map[name_key][region[:-1]]
+        # Do not enforce pricing requirement PLAT-4790.
+        except KeyError as k:
+            price_per_hour = 0.0
         except Exception as e:
             raise YBOpsRuntimeError(e)
         return price_per_hour
@@ -241,35 +243,15 @@ class GcpCloud(AbstractCloud):
                 for instance in instances:
                     name = instance["name"]
                     if name not in result:
-                        compute_image_name = self.get_compute_image(name)
-                        if (args.gcp_internal):
-                            # For internal instances (n2) we don't consider the pricing map
-                            if name.upper().startswith(GCP_INTERNAL_INSTANCE_PREFIXES):
-                                result[name] = {
-                                    "prices": {},
-                                    "numCores": instance["guestCpus"],
-                                    "isShared": instance["isSharedCpu"],
-                                    "description": instance["description"],
-                                    "memSizeGb": float(instance["memoryMb"]/1000.0)
-                                }
-                        if compute_image_name not in pricing_map:
-                            continue
-                        if "memory" not in pricing_map[compute_image_name]:
-                            continue
                         result[name] = {
                             "prices": {},
                             "numCores": instance["guestCpus"],
                             "isShared": instance["isSharedCpu"],
                             "description": instance["description"],
-                            "memSizeGb": float(pricing_map[compute_image_name]["memory"])
+                            "memSizeGb": float(instance["memoryMb"]/1024.0)
                         }
                     if region in result[name]["prices"]:
                         continue
-                    if (args.gcp_internal):
-                        # Set internal testing instances to be free so Platform handles it
-                        if (name.upper().startswith(GCP_INTERNAL_INSTANCE_PREFIXES)):
-                            result[name]['prices'][region] = [{'os': 'Linux', 'price': 0.00}]
-                            continue
                     result[name]["prices"][region] = self.get_os_price_map(pricing_map,
                                                                            name,
                                                                            region,
@@ -289,7 +271,6 @@ class GcpCloud(AbstractCloud):
                 to_delete_instance_types.append(name)
         for name in to_delete_instance_types:
             result.pop(name, None)
-
         return result
 
     def network_bootstrap(self, args):
@@ -334,7 +315,7 @@ class GcpCloud(AbstractCloud):
         self.get_admin().update_disk(args, instance['id'])
 
     def change_instance_type(self, args, newInstanceType):
-        self.get_admin().change_instance_type(args.zone, args.search_pattern, newInstanceType)
+        self.get_admin().change_instance_type(args['zone'], args['search_pattern'], newInstanceType)
 
     def get_per_region_meta(self, args):
         if hasattr(args, "custom_payload") and args.custom_payload:
@@ -345,3 +326,11 @@ class GcpCloud(AbstractCloud):
 
     def get_console_output(self, args):
         return self.get_admin().get_console_output(args.zone, args.search_pattern)
+
+    def delete_volumes(self, args):
+        tags = json.loads(args.instance_tags) if args.instance_tags is not None else {}
+        return self.get_admin().delete_disks(args.zone, tags)
+
+    def modify_tags(self, args):
+        instance = self.get_host_info(args)
+        self.get_admin().modify_tags(args, instance['id'], args.instance_tags, args.remove_tags)

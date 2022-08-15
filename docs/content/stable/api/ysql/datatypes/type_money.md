@@ -7,8 +7,7 @@ menu:
   stable:
     identifier: api-ysql-datatypes-money
     parent: api-ysql-datatypes
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis
@@ -21,7 +20,7 @@ MONEY | 8 bytes | -92233720368547758.08 | +92233720368547758.07 |
 
 ## Description
 
-```
+```ebnf
 type_specification ::= MONEY
 ```
 

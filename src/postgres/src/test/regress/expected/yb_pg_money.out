@@ -1,223 +1,225 @@
 --
 -- MONEY
 --
+-- Note that we assume lc_monetary has been set to C.
+--
 SET LC_MONETARY TO 'en_US.UTF-8';
 CREATE TABLE money_data (m money);
 INSERT INTO money_data VALUES ('123');
 SELECT * FROM money_data;
-    m    
+    m
 ---------
  $123.00
 (1 row)
 
 SELECT m + '123' FROM money_data;
- ?column? 
+ ?column?
 ----------
   $246.00
 (1 row)
 
 SELECT m + '123.45' FROM money_data;
- ?column? 
+ ?column?
 ----------
   $246.45
 (1 row)
 
 SELECT m - '123.45' FROM money_data;
- ?column? 
+ ?column?
 ----------
    -$0.45
 (1 row)
 
 SELECT m / '2'::money FROM money_data;
- ?column? 
+ ?column?
 ----------
      61.5
 (1 row)
 
 SELECT m * 2 FROM money_data;
- ?column? 
+ ?column?
 ----------
   $246.00
 (1 row)
 
 SELECT 2 * m FROM money_data;
- ?column? 
+ ?column?
 ----------
   $246.00
 (1 row)
 
 SELECT m / 2 FROM money_data;
- ?column? 
+ ?column?
 ----------
    $61.50
 (1 row)
 
 SELECT m * 2::int2 FROM money_data;
- ?column? 
+ ?column?
 ----------
   $246.00
 (1 row)
 
 SELECT 2::int2 * m FROM money_data;
- ?column? 
+ ?column?
 ----------
   $246.00
 (1 row)
 
 SELECT m / 2::int2 FROM money_data;
- ?column? 
+ ?column?
 ----------
    $61.50
 (1 row)
 
 SELECT m * 2::int8 FROM money_data;
- ?column? 
+ ?column?
 ----------
   $246.00
 (1 row)
 
 SELECT 2::int8 * m FROM money_data;
- ?column? 
+ ?column?
 ----------
   $246.00
 (1 row)
 
 SELECT m / 2::int8 FROM money_data;
- ?column? 
+ ?column?
 ----------
    $61.50
 (1 row)
 
 SELECT m * 2::float8 FROM money_data;
- ?column? 
+ ?column?
 ----------
   $246.00
 (1 row)
 
 SELECT 2::float8 * m FROM money_data;
- ?column? 
+ ?column?
 ----------
   $246.00
 (1 row)
 
 SELECT m / 2::float8 FROM money_data;
- ?column? 
+ ?column?
 ----------
    $61.50
 (1 row)
 
 SELECT m * 2::float4 FROM money_data;
- ?column? 
+ ?column?
 ----------
   $246.00
 (1 row)
 
 SELECT 2::float4 * m FROM money_data;
- ?column? 
+ ?column?
 ----------
   $246.00
 (1 row)
 
 SELECT m / 2::float4 FROM money_data;
- ?column? 
+ ?column?
 ----------
    $61.50
 (1 row)
 
 -- All true
 SELECT m = '$123.00' FROM money_data;
- ?column? 
+ ?column?
 ----------
  t
 (1 row)
 
 SELECT m != '$124.00' FROM money_data;
- ?column? 
+ ?column?
 ----------
  t
 (1 row)
 
 SELECT m <= '$123.00' FROM money_data;
- ?column? 
+ ?column?
 ----------
  t
 (1 row)
 
 SELECT m >= '$123.00' FROM money_data;
- ?column? 
+ ?column?
 ----------
  t
 (1 row)
 
 SELECT m < '$124.00' FROM money_data;
- ?column? 
+ ?column?
 ----------
  t
 (1 row)
 
 SELECT m > '$122.00' FROM money_data;
- ?column? 
+ ?column?
 ----------
  t
 (1 row)
 
 -- All false
 SELECT m = '$123.01' FROM money_data;
- ?column? 
+ ?column?
 ----------
  f
 (1 row)
 
 SELECT m != '$123.00' FROM money_data;
- ?column? 
+ ?column?
 ----------
  f
 (1 row)
 
 SELECT m <= '$122.99' FROM money_data;
- ?column? 
+ ?column?
 ----------
  f
 (1 row)
 
 SELECT m >= '$123.01' FROM money_data;
- ?column? 
+ ?column?
 ----------
  f
 (1 row)
 
 SELECT m > '$124.00' FROM money_data;
- ?column? 
+ ?column?
 ----------
  f
 (1 row)
 
 SELECT m < '$122.00' FROM money_data;
- ?column? 
+ ?column?
 ----------
  f
 (1 row)
 
 SELECT cashlarger(m, '$124.00') FROM money_data;
- cashlarger 
+ cashlarger
 ------------
     $124.00
 (1 row)
 
 SELECT cashsmaller(m, '$124.00') FROM money_data;
- cashsmaller 
+ cashsmaller
 -------------
      $123.00
 (1 row)
 
 SELECT cash_words(m) FROM money_data;
-                   cash_words                    
+                   cash_words
 -------------------------------------------------
  One hundred twenty three dollars and zero cents
 (1 row)
 
 SELECT cash_words(m + '1.23') FROM money_data;
-                       cash_words                       
+                       cash_words
 --------------------------------------------------------
  One hundred twenty four dollars and twenty three cents
 (1 row)
@@ -225,7 +227,7 @@ SELECT cash_words(m + '1.23') FROM money_data;
 DELETE FROM money_data;
 INSERT INTO money_data VALUES ('$123.45');
 SELECT * FROM money_data;
-    m    
+    m
 ---------
  $123.45
 (1 row)
@@ -233,7 +235,7 @@ SELECT * FROM money_data;
 DELETE FROM money_data;
 INSERT INTO money_data VALUES ('$123.451');
 SELECT * FROM money_data;
-    m    
+    m
 ---------
  $123.45
 (1 row)
@@ -241,7 +243,7 @@ SELECT * FROM money_data;
 DELETE FROM money_data;
 INSERT INTO money_data VALUES ('$123.454');
 SELECT * FROM money_data;
-    m    
+    m
 ---------
  $123.45
 (1 row)
@@ -249,7 +251,7 @@ SELECT * FROM money_data;
 DELETE FROM money_data;
 INSERT INTO money_data VALUES ('$123.455');
 SELECT * FROM money_data;
-    m    
+    m
 ---------
  $123.46
 (1 row)
@@ -257,7 +259,7 @@ SELECT * FROM money_data;
 DELETE FROM money_data;
 INSERT INTO money_data VALUES ('$123.456');
 SELECT * FROM money_data;
-    m    
+    m
 ---------
  $123.46
 (1 row)
@@ -265,7 +267,7 @@ SELECT * FROM money_data;
 DELETE FROM money_data;
 INSERT INTO money_data VALUES ('$123.459');
 SELECT * FROM money_data;
-    m    
+    m
 ---------
  $123.46
 (1 row)
@@ -436,13 +438,13 @@ SELECT * FROM money_data;
 
 -- input checks
 SELECT '1234567890'::money;
-       money       
+       money
 -------------------
  $1,234,567,890.00
 (1 row)
 
 SELECT '12345678901234567'::money;
-           money            
+           money
 ----------------------------
  $12,345,678,901,234,567.00
 (1 row)
@@ -458,19 +460,19 @@ SELECT '12345678901234567'::money;
 -- LINE 1: SELECT '9223372036854775807'::money;
 -- ^
 SELECT '-12345'::money;
-    money    
+    money
 -------------
  -$12,345.00
 (1 row)
 
 SELECT '-1234567890'::money;
-       money        
+       money
 --------------------
  -$1,234,567,890.00
 (1 row)
 
 SELECT '-12345678901234567'::money;
-            money            
+            money
 -----------------------------
  -$12,345,678,901,234,567.00
 (1 row)
@@ -486,26 +488,26 @@ SELECT '-12345678901234567'::money;
 --                ^
 -- special characters
 SELECT '(1)'::money;
- money  
+ money
 --------
  -$1.00
 (1 row)
 
 SELECT '($123,456.78)'::money;
-    money     
+    money
 --------------
  -$123,456.78
 (1 row)
 
 -- documented minimums and maximums
 SELECT '-92233720368547758.08'::money;
-            money            
+            money
 -----------------------------
  -$92,233,720,368,547,758.08
 (1 row)
 
 SELECT '92233720368547758.07'::money;
-           money            
+           money
 ----------------------------
  $92,233,720,368,547,758.07
 (1 row)
@@ -531,132 +533,144 @@ LINE 1: SELECT '-92233720368547758.085'::money;
 --                ^
 -- rounding vs. truncation in division
 SELECT '878.08'::money / 11::float8;
- ?column? 
+ ?column?
 ----------
    $79.83
 (1 row)
 
 SELECT '878.08'::money / 11::float4;
- ?column? 
+ ?column?
 ----------
    $79.83
 (1 row)
 
 SELECT '878.08'::money / 11::bigint;
- ?column? 
+ ?column?
 ----------
    $79.82
 (1 row)
 
 SELECT '878.08'::money / 11::int;
- ?column? 
+ ?column?
 ----------
    $79.82
 (1 row)
 
 SELECT '878.08'::money / 11::smallint;
- ?column? 
+ ?column?
 ----------
    $79.82
 (1 row)
 
 -- check for precision loss in division
 SELECT '90000000000000099.00'::money / 10::bigint;
-         ?column?          
+         ?column?
 ---------------------------
  $9,000,000,000,000,009.90
 (1 row)
 
 SELECT '90000000000000099.00'::money / 10::int;
-         ?column?          
+         ?column?
 ---------------------------
  $9,000,000,000,000,009.90
 (1 row)
 
 SELECT '90000000000000099.00'::money / 10::smallint;
-         ?column?          
+         ?column?
 ---------------------------
  $9,000,000,000,000,009.90
 (1 row)
 
 -- Cast int4/int8/numeric to money
 SELECT 1234567890::money;
-       money       
+       money
 -------------------
  $1,234,567,890.00
 (1 row)
 
 SELECT 12345678901234567::money;
-           money            
+           money
 ----------------------------
  $12,345,678,901,234,567.00
 (1 row)
 
 SELECT (-12345)::money;
-    money    
+    money
 -------------
  -$12,345.00
 (1 row)
 
 SELECT (-1234567890)::money;
-       money        
+       money
 --------------------
  -$1,234,567,890.00
 (1 row)
 
 SELECT (-12345678901234567)::money;
-            money            
+            money
 -----------------------------
  -$12,345,678,901,234,567.00
 (1 row)
 
 SELECT 1234567890::int4::money;
-       money       
+       money
 -------------------
  $1,234,567,890.00
 (1 row)
 
 SELECT 12345678901234567::int8::money;
-           money            
+           money
 ----------------------------
  $12,345,678,901,234,567.00
 (1 row)
 
 SELECT 12345678901234567::numeric::money;
-           money            
+           money
 ----------------------------
  $12,345,678,901,234,567.00
 (1 row)
 
 SELECT (-1234567890)::int4::money;
-       money        
+       money
 --------------------
  -$1,234,567,890.00
 (1 row)
 
 SELECT (-12345678901234567)::int8::money;
-            money            
+            money
 -----------------------------
  -$12,345,678,901,234,567.00
 (1 row)
 
 SELECT (-12345678901234567)::numeric::money;
-            money            
+            money
 -----------------------------
  -$12,345,678,901,234,567.00
 (1 row)
 
 -- Cast from money
 SELECT '12345678901234567'::money::numeric;
-       numeric        
+       numeric
 ----------------------
  12345678901234567.00
 (1 row)
 
 SELECT '-12345678901234567'::money::numeric;
-        numeric        
+        numeric
 -----------------------
  -12345678901234567.00
+(1 row)
+
+SELECT '92233720368547758.07'::money::numeric;
+       numeric
+----------------------
+ 92233720368547758.07
+(1 row)
+
+SELECT '-92233720368547758.08'::money::numeric;
+        numeric
+-----------------------
+ -92233720368547758.08
 (1 row)
 
 --

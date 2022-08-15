@@ -160,7 +160,7 @@ void Executor::ExecuteAsync(const ParseTree& parse_tree, const StatementParamete
   if (read_time) {
     session_->SetReadPoint(read_time);
   } else {
-    session_->SetReadPoint(client::Restart::kFalse);
+    session_->RestartNonTxnReadPoint(client::Restart::kFalse);
   }
   RETURN_STMT_NOT_OK(Execute(parse_tree, params), &reset_async_calls);
 
@@ -173,7 +173,7 @@ void Executor::ExecuteAsync(const StatementBatch& batch, StatementExecutedCallba
   cb_ = std::move(cb);
   session_->SetDeadline(rescheduler_->GetDeadline());
   session_->SetForceConsistentRead(client::ForceConsistentRead::kFalse);
-  session_->SetReadPoint(client::Restart::kFalse);
+  session_->RestartNonTxnReadPoint(client::Restart::kFalse);
 
   // Table for DML batches, where all statements must modify the same table.
   client::YBTablePtr dml_batch_table;
@@ -959,11 +959,13 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode, TnodeContext* tnode_conte
   req->set_is_aggregate(tnode->is_aggregate());
   Result<uint64_t> max_rows_estimate = WhereClauseToPB(req, tnode->key_where_ops(),
                                                        tnode->where_ops(),
+                                                       tnode->multi_col_where_ops(),
                                                        tnode->subscripted_col_where_ops(),
                                                        tnode->json_col_where_ops(),
                                                        tnode->partition_key_ops(),
                                                        tnode->func_ops(),
                                                        tnode_context);
+
   if (PREDICT_FALSE(!max_rows_estimate)) {
     return exec_context_->Error(tnode, max_rows_estimate.status(), ErrorCode::INVALID_ARGUMENTS);
   }
@@ -1916,7 +1918,7 @@ void Executor::ProcessAsyncResults(const bool rescheduled, ResetAsyncCalls* rese
       }
 
       YBSessionPtr session = GetSession(exec_context_);
-      session->SetReadPoint(client::Restart::kTrue);
+      session->RestartNonTxnReadPoint(client::Restart::kTrue);
       RETURN_STMT_NOT_OK(ExecTreeNode(root), reset_async_calls);
       need_flush |= NeedsFlush(session);
       exec_itr++;
@@ -2223,6 +2225,7 @@ bool UpdateIndexesLocally(const PTDmlStmt *tnode, const QLWriteRequestPB& req) {
           case QLExpressionPB::ExprCase::kCondition: FALLTHROUGH_INTENDED;
           case QLExpressionPB::ExprCase::kBocall: FALLTHROUGH_INTENDED;
           case QLExpressionPB::ExprCase::kBindId: FALLTHROUGH_INTENDED;
+          case QLExpressionPB::ExprCase::kTuple: FALLTHROUGH_INTENDED;
           case QLExpressionPB::ExprCase::EXPR_NOT_SET:
             return false;
         }

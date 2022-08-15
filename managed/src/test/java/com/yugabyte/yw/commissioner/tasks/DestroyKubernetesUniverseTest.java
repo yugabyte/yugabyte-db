@@ -13,16 +13,13 @@ import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.common.ApiUtils;
-import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.InstanceType;
@@ -30,6 +27,7 @@ import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -73,6 +71,11 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
         defaultUniverse.universeUUID,
         ApiUtils.mockUniverseUpdater(
             userIntent, NODE_PREFIX, true /* setMasters */, updateInProgress));
+  }
+
+  private void setUpdateInProgress(boolean updateInProgress) {
+    Universe.saveDetails(
+        defaultUniverse.universeUUID, ApiUtils.mockUniverseUpdater(updateInProgress));
   }
 
   private void setupUniverseMultiAZ(boolean updateInProgress, boolean skipProviderConfig) {
@@ -157,16 +160,24 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
     }
   }
 
-  private TaskInfo submitTask(DestroyUniverse.Params taskParams) {
+  private TaskInfo submitTask(DestroyUniverse.Params taskParams, Duration otherTaskFinishWaitTime) {
     taskParams.universeUUID = defaultUniverse.universeUUID;
     taskParams.expectedUniverseVersion = 2;
     try {
       UUID taskUUID = commissioner.submit(TaskType.DestroyKubernetesUniverse, taskParams);
+      if (otherTaskFinishWaitTime != null) {
+        Thread.sleep(otherTaskFinishWaitTime.toMillis());
+        setUpdateInProgress(false);
+      }
       return waitForTask(taskUUID);
     } catch (InterruptedException e) {
       assertNull(e.getMessage());
     }
     return null;
+  }
+
+  private TaskInfo submitTask(DestroyUniverse.Params taskParams) {
+    return submitTask(taskParams, null /* otherTaskFinishWaitTime */);
   }
 
   @Test
@@ -212,7 +223,8 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
     taskParams.isForceDelete = true;
     taskParams.customerUUID = defaultCustomer.uuid;
     taskParams.universeUUID = defaultUniverse.universeUUID;
-    TaskInfo taskInfo = submitTask(taskParams);
+    TaskInfo taskInfo =
+        submitTask(taskParams, UniverseTaskBase.SLEEP_TIME_FORCE_LOCK_RETRY.multipliedBy(2));
     verify(mockKubernetesManager, times(1)).helmDelete(config, NODE_PREFIX, NODE_PREFIX);
     verify(mockKubernetesManager, times(1)).deleteStorage(config, NODE_PREFIX, NODE_PREFIX);
     verify(mockKubernetesManager, times(1)).deleteNamespace(config, NODE_PREFIX);

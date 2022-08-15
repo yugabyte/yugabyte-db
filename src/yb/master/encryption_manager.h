@@ -34,31 +34,43 @@ using HostPortSet = std::unordered_set<HostPort, HostPortHash>;
 
 class EncryptionManager {
  public:
+  enum class EncryptionState {
+    kUnknown,
+    kNeverEnabled,
+    kEnabled,
+    kEnabledUnkownIfKeyIsInMem,
+    kEnabledKeyNotInMem,
+    kDisabled
+  };
+
   EncryptionManager();
 
-  CHECKED_STATUS AddUniverseKeys(const AddUniverseKeysRequestPB* req,
+  Status AddUniverseKeys(const AddUniverseKeysRequestPB* req,
                                  AddUniverseKeysResponsePB* resp);
 
-  CHECKED_STATUS GetUniverseKeyRegistry(const GetUniverseKeyRegistryRequestPB* req,
+  Status GetUniverseKeyRegistry(const GetUniverseKeyRegistryRequestPB* req,
                                         GetUniverseKeyRegistryResponsePB* resp);
 
-  CHECKED_STATUS HasUniverseKeyInMemory(const HasUniverseKeyInMemoryRequestPB* req,
+  Status HasUniverseKeyInMemory(const HasUniverseKeyInMemoryRequestPB* req,
                                         HasUniverseKeyInMemoryResponsePB* resp);
 
-  CHECKED_STATUS ChangeEncryptionInfo(const ChangeEncryptionInfoRequestPB* req,
+  Status ChangeEncryptionInfo(const ChangeEncryptionInfoRequestPB* req,
                                       EncryptionInfoPB* encryption_info);
 
-  CHECKED_STATUS IsEncryptionEnabled(const EncryptionInfoPB& encryption_info,
+  Status IsEncryptionEnabled(const EncryptionInfoPB& encryption_info,
                                      IsEncryptionEnabledResponsePB* resp);
 
-  CHECKED_STATUS FillHeartbeatResponseEncryption(const EncryptionInfoPB& encryption_info,
+  EncryptionState GetEncryptionState(
+      const EncryptionInfoPB& encryption_info, IsEncryptionEnabledResponsePB* encryption_resp);
+
+  Status FillHeartbeatResponseEncryption(const EncryptionInfoPB& encryption_info,
                                                  TSHeartbeatResponsePB* resp);
 
-  CHECKED_STATUS GetUniverseKeyRegistry(rpc::ProxyCache* proxy_cache);
+  Status GetUniverseKeyRegistry(rpc::ProxyCache* proxy_cache);
 
   void PopulateUniverseKeys(const encryption::UniverseKeysPB& universe_key_registry);
 
-  CHECKED_STATUS AddPeersToGetUniverseKeyFrom(const HostPortSet& hps);
+  Status AddPeersToGetUniverseKeyFrom(const HostPortSet& hps);
 
  private:
   Result<std::string> GetLatestUniverseKey(const EncryptionInfoPB* encryption_info);

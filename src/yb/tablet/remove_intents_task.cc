@@ -43,10 +43,12 @@ void RemoveIntentsTask::Run() {
   VLOG_WITH_PREFIX(2) << "Remove intents";
 
   RemoveIntentsData data;
-  participant_context_.GetLastReplicatedData(&data);
-  auto status = applier_.RemoveIntents(data, id_);
+  auto status = participant_context_.GetLastReplicatedData(&data);
+  if (status.ok()) {
+    status = applier_.RemoveIntents(data, id_);
+  }
   LOG_IF_WITH_PREFIX(WARNING, !status.ok())
-      << "Failed to remove intents of aborted transaction : " << status;
+      << "Failed to remove intents of aborted transaction: " << status;
   VLOG_WITH_PREFIX(2) << "Removed intents";
 }
 

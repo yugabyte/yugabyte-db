@@ -57,17 +57,6 @@ StateWithTablets::StateWithTablets(
     : context_(*context), initial_state_(initial_state), log_prefix_(std::move(log_prefix)) {
 }
 
-void StateWithTablets::InitTablets(
-    const google::protobuf::RepeatedPtrField<SysSnapshotEntryPB::TabletSnapshotPB>& tablets) {
-  for (const auto& tablet : tablets) {
-    tablets_.emplace(tablet.id(), tablet.state());
-    if (tablet.state() == initial_state_) {
-      ++num_tablets_in_initial_state_;
-    }
-  }
-  CheckCompleteness();
-}
-
 Result<SysSnapshotEntryPB::State> StateWithTablets::AggregatedState() const {
   if (tablets_.empty()) {
     return InitialStateToTerminalState(initial_state_);

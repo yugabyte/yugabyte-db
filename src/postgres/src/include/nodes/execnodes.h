@@ -584,20 +584,21 @@ typedef struct EState
 	 * YugaByte-specific fields
 	 */
 
-	bool es_yb_is_single_row_modify_txn; /* Is this query a single-row modify
+	bool yb_es_is_single_row_modify_txn; /* Is this query a single-row modify
 																				* and the only stmt in this txn. */
+	bool yb_es_is_fk_check_disabled;	/* Is FK check disabled? */
 	TupleTableSlot *yb_conflict_slot; /* If a conflict is to be resolved when inserting data,
 																		 * we cache the conflict tuple here when processing and
 																		 * then free the slot after the conflict is resolved. */
 	YBCPgExecParameters yb_exec_params;
 
 	/*
-	 *  The read hybrid time used for this query. This value is initialized
+	 *  The in txn limit used for this query. This value is initialized
 	 *  to 0, and later updated by the first read operation initiated for this
 	 *  query. All later read operations are then ensured that they will never
 	 *  read any data written past this time.
 	 */
-	uint64_t yb_es_read_ht;
+	uint64_t yb_es_in_txn_limit_ht;
 } EState;
 
 /*
@@ -1264,6 +1265,16 @@ typedef struct SeqScanState
 	ScanState	ss;				/* its first field is NodeTag */
 	Size		pscan_len;		/* size of parallel heap scan descriptor */
 } SeqScanState;
+
+/* ----------------
+ *	 SeqScanState information
+ * ----------------
+ */
+typedef struct YbSeqScanState
+{
+	ScanState	ss;				/* its first field is NodeTag */
+	// TODO handle;				/* size of parallel heap scan descriptor */
+} YbSeqScanState;
 
 /* ----------------
  *	 SampleScanState information

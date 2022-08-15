@@ -81,16 +81,24 @@ using tablet::RaftGroupReplicaSuperBlockPB;
 
 RemoteBootstrapSession::RemoteBootstrapSession(
     const std::shared_ptr<TabletPeer>& tablet_peer, std::string session_id,
-    std::string requestor_uuid, const std::atomic<int>* nsessions)
+    std::string requestor_uuid, const std::atomic<int>* nsessions,
+    const scoped_refptr<RemoteBootstrapAnchorClient>& rbs_anchor_client)
     : tablet_peer_(tablet_peer),
       session_id_(std::move(session_id)),
       requestor_uuid_(std::move(requestor_uuid)),
       succeeded_(false),
-      nsessions_(nsessions) {
+      nsessions_(nsessions),
+      rbs_anchor_client_(rbs_anchor_client) {
   AddSource<RemoteBootstrapSnapshotsSource>();
 }
 
 RemoteBootstrapSession::~RemoteBootstrapSession() {
+  if (rbs_anchor_client_) {
+    WARN_NOT_OK(
+        rbs_anchor_client_->UnregisterLogAnchor(),
+        Format("Couldn't delete log anchor session $0", session_id_));
+  }
+
   // No lock taken in the destructor, should only be 1 thread with access now.
   CHECK_OK(UnregisterAnchorIfNeededUnlocked());
 
@@ -111,67 +119,10 @@ RemoteBootstrapSession::~RemoteBootstrapSession() {
 Status RemoteBootstrapSession::ChangeRole() {
   CHECK(Succeeded());
 
-  shared_ptr<consensus::Consensus> consensus = tablet_peer_->shared_consensus();
-  // This check fixes an issue with test TestDeleteTabletDuringRemoteBootstrap in which a tablet is
-  // tombstoned while the bootstrap is happening. This causes the peer's consensus object to be
-  // null.
-  if (!consensus) {
-    tablet::RaftGroupStatePB tablet_state = tablet_peer_->state();
-    return STATUS(IllegalState, Substitute(
-        "Unable to change role for server $0 in config for tablet $1. Consensus is not available. "
-        "Tablet state: $2 ($3)", requestor_uuid_, tablet_peer_->tablet_id(),
-        tablet::RaftGroupStatePB_Name(tablet_state), tablet_state));
-  }
-
-  // If peer being bootstrapped is already a VOTER, don't send the ChangeConfig request. This could
-  // happen when a tserver that is already a VOTER in the configuration tombstones its tablet, and
-  // the leader starts bootstrapping it.
-  const consensus::RaftConfigPB config = tablet_peer_->RaftConfig();
-  for (const RaftPeerPB& peer_pb : config.peers()) {
-    if (peer_pb.permanent_uuid() != requestor_uuid_) {
-      continue;
-    }
-
-    switch(peer_pb.member_type()) {
-      case PeerMemberType::OBSERVER: FALLTHROUGH_INTENDED;
-      case PeerMemberType::VOTER:
-        LOG(ERROR) << "Peer " << peer_pb.permanent_uuid() << " is a "
-                   << PeerMemberType_Name(peer_pb.member_type())
-                   << " Not changing its role after remote bootstrap";
-
-        // Even though this is an error, we return Status::OK() so the remote server doesn't
-        // tombstone its tablet.
-        return Status::OK();
-
-      case PeerMemberType::PRE_OBSERVER: FALLTHROUGH_INTENDED;
-      case PeerMemberType::PRE_VOTER: {
-        consensus::ChangeConfigRequestPB req;
-        consensus::ChangeConfigResponsePB resp;
-
-        req.set_tablet_id(tablet_peer_->tablet_id());
-        req.set_type(consensus::CHANGE_ROLE);
-        RaftPeerPB* peer = req.mutable_server();
-        peer->set_permanent_uuid(requestor_uuid_);
-
-        boost::optional<TabletServerErrorPB::Code> error_code;
-
-        LOG(INFO) << "Changing config with request: { " << req.ShortDebugString() << " } "
-                  << "in bootstrap session " << session_id_;
-
-        // If another ChangeConfig is being processed, our request will be rejected.
-        return consensus->ChangeConfig(req, &DoNothingStatusCB, &error_code);
-      }
-      case PeerMemberType::UNKNOWN_MEMBER_TYPE:
-        return STATUS(IllegalState, Substitute("Unable to change role for peer $0 in config for "
-                                               "tablet $1. Peer has an invalid member type $2",
-                                               peer_pb.permanent_uuid(), tablet_peer_->tablet_id(),
-                                               PeerMemberType_Name(peer_pb.member_type())));
-    }
-    LOG(FATAL) << "Unexpected peer member type "
-               << PeerMemberType_Name(peer_pb.member_type());
-  }
-  return STATUS(IllegalState, Substitute("Unable to find peer $0 in config for tablet $1",
-                                         requestor_uuid_, tablet_peer_->tablet_id()));
+  LOG(INFO) << "Attempting to ChangeRole for peer " << requestor_uuid_ << " in bootstrap session "
+            << session_id_;
+  return rbs_anchor_client_ ? rbs_anchor_client_->ChangePeerRole()
+                            : tablet_peer_->ChangeRole(requestor_uuid_);
 }
 
 Status RemoteBootstrapSession::SetInitialCommittedState() {
@@ -284,6 +235,11 @@ Status RemoteBootstrapSession::Init() {
     }
   }
 
+  if (rbs_anchor_client_) {
+    RETURN_NOT_OK(rbs_anchor_client_->RegisterLogAnchor(
+        tablet_peer_->tablet_id(), last_logged_opid));
+    rbs_anchor_session_created_ = true;
+  }
   // Re-anchor on the highest OpId that was in the log right before we
   // snapshotted the log segments. This helps ensure that we don't end up in a
   // remote bootstrap loop due to a follower falling too far behind the
@@ -532,18 +488,21 @@ static Status AddImmutableFileToMap(Collection* const cache,
 Status RemoteBootstrapSession::OpenLogSegment(
     uint64_t segment_seqno, RemoteBootstrapErrorPB::Code* error_code) {
   auto active_seqno = tablet_peer_->log()->active_segment_sequence_number();
-  auto log_segment = tablet_peer_->log()->GetSegmentBySequenceNumber(segment_seqno);
+  auto log_segment_result = tablet_peer_->log()->GetSegmentBySequenceNumber(segment_seqno);
   // Usually active log segment is extended, while sent of the wire. So we cannot send next segment,
   // Otherwise entries at end of previously active log segment could be missing.
   if (opened_log_segment_active_) {
     *error_code = RemoteBootstrapErrorPB::WAL_SEGMENT_NOT_FOUND;
     return STATUS_FORMAT(NotFound, "Already sent active log segment, don't send $0", segment_seqno);
   }
-  if (!log_segment) {
+  if (!log_segment_result.ok()) {
     *error_code = RemoteBootstrapErrorPB::WAL_SEGMENT_NOT_FOUND;
-    return STATUS_FORMAT(NotFound, "Log segment $0 not found", segment_seqno);
+    return STATUS_FORMAT(
+        NotFound, "Log segment $0 not found: $1", segment_seqno, log_segment_result.status());
   }
-  opened_log_segment_file_size_ = log_segment->readable_up_to() + log_segment->get_header_size();
+  const log::ReadableLogSegmentPtr log_segment = *log_segment_result;
+  opened_log_segment_file_size_ =
+      log_segment->get_encryption_header_size() + log_segment->readable_to_offset();
   opened_log_segment_seqno_ = segment_seqno;
   opened_log_segment_file_ = log_segment->readable_file_checkpoint();
   opened_log_segment_active_ = active_seqno == segment_seqno;
@@ -551,6 +510,13 @@ Status RemoteBootstrapSession::OpenLogSegment(
   if (log_segment->HasFooter() &&
       log_segment->footer().min_replicate_index() > log_anchor_index_) {
     log_anchor_index_ = log_segment->footer().min_replicate_index();
+
+    // Update log anchor on the tablet leader side
+    if (rbs_anchor_client_) {
+      // return if the tablet leader is not able to anchor on the opid
+      RETURN_NOT_OK(rbs_anchor_client_->UpdateLogAnchorAsync(
+          OpId(tablet_peer_->LeaderTerm(), log_anchor_index_)));
+    }
 
     // Update log anchor, since we don't need older logs anymore.
     auto status = tablet_peer_->log_anchor_registry()->UpdateRegistration(
@@ -584,6 +550,12 @@ void RemoteBootstrapSession::EnsureRateLimiterIsInitialized() {
   }
 }
 
+Status RemoteBootstrapSession::RefreshRemoteLogAnchorSessionAsync() {
+  if (rbs_anchor_client_ && rbs_anchor_session_created_) {
+    RETURN_NOT_OK(rbs_anchor_client_->KeepLogAnchorAliveAsync());
+  }
+  return Status::OK();
+}
 
 void RemoteBootstrapSession::InitRateLimiter() {
   if (FLAGS_remote_bootstrap_rate_limit_bytes_per_sec > 0 && nsessions_) {

@@ -44,7 +44,7 @@ class DocPgExprExecutor::Private {
   }
 
   // Process a column reference
-  CHECKED_STATUS AddColumnRef(const PgsqlColRefPB& column_ref,
+  Status AddColumnRef(const PgsqlColRefPB& column_ref,
                               const Schema *schema) {
     DCHECK(expr_ctx_ == nullptr);
     // Get DocDB column identifier
@@ -72,7 +72,7 @@ class DocPgExprExecutor::Private {
   }
 
   // Process a where clause expression
-  CHECKED_STATUS PreparePgWhereExpr(const PgsqlExpressionPB& ql_expr,
+  Status PreparePgWhereExpr(const PgsqlExpressionPB& ql_expr,
                                     const Schema *schema) {
     YbgPreparedExpr expr;
     // Deserialize Postgres expression. Expression type is known to be boolean
@@ -84,7 +84,7 @@ class DocPgExprExecutor::Private {
   }
 
   // Process a target expression
-  CHECKED_STATUS PreparePgTargetExpr(const PgsqlExpressionPB& ql_expr,
+  Status PreparePgTargetExpr(const PgsqlExpressionPB& ql_expr,
                                      const Schema *schema) {
     YbgPreparedExpr expr;
     DocPgVarRef expr_type;
@@ -98,7 +98,7 @@ class DocPgExprExecutor::Private {
   }
 
   // Deserialize a Postgres expression and optionally determine its result data type info
-  CHECKED_STATUS prepare_pg_expr_call(const PgsqlExpressionPB& ql_expr,
+  Status prepare_pg_expr_call(const PgsqlExpressionPB& ql_expr,
                                       const Schema *schema,
                                       YbgPreparedExpr *expr,
                                       DocPgVarRef *expr_type) {
@@ -126,7 +126,7 @@ class DocPgExprExecutor::Private {
   }
 
   // Retrieve expressions from the row according to the added column references
-  CHECKED_STATUS PreparePgRowData(const QLTableRow& table_row) {
+  Status PreparePgRowData(const QLTableRow& table_row) {
     YbgMemoryContext old;
     Status s = Status::OK();
     if (row_ctx_ == nullptr) {
@@ -153,7 +153,7 @@ class DocPgExprExecutor::Private {
   }
 
   // Create the expression context if does not exist
-  CHECKED_STATUS ensure_expr_context() {
+  Status ensure_expr_context() {
     if (expr_ctx_ == nullptr) {
       YbgMemoryContext old;
       // While contents of the expression container is updated per row, the container itself
@@ -166,7 +166,7 @@ class DocPgExprExecutor::Private {
   }
 
   // Evaluate where clause expressions
-  CHECKED_STATUS EvalWhereExprCalls(bool *result) {
+  Status EvalWhereExprCalls(bool *result) {
     YbgMemoryContext old;
     uint64_t datum;
     bool is_null;
@@ -188,7 +188,7 @@ class DocPgExprExecutor::Private {
   }
 
   // Evaluate target expressions and write results into provided vector elements
-  CHECKED_STATUS EvalTargetExprCalls(std::vector<QLExprResult>* results) {
+  Status EvalTargetExprCalls(std::vector<QLExprResult>* results) {
     YbgMemoryContext old;
     // Shortcut if there is nothing to evaluate
     if (targets_.empty()) {
@@ -204,7 +204,7 @@ class DocPgExprExecutor::Private {
     YbgSetCurrentMemoryContext(row_ctx_, &old);
     for (const DocPgEvalExprData& target : targets_) {
       // Container for the DocDB result
-      QLExprResult &result = results->at(i++);
+      QLExprResult &result = (*results)[i++];
       // Containers for Postgres result
       uint64_t datum;
       bool is_null;
@@ -246,28 +246,28 @@ void DocPgExprExecutor::private_deleter::operator()(DocPgExprExecutor::Private* 
 
 //--------------------------------------------------------------------------------------------------
 
-CHECKED_STATUS DocPgExprExecutor::AddColumnRef(const PgsqlColRefPB& column_ref) {
+Status DocPgExprExecutor::AddColumnRef(const PgsqlColRefPB& column_ref) {
   if (private_.get() == nullptr) {
     private_.reset(new Private());
   }
   return private_->AddColumnRef(column_ref, schema_);
 }
 
-CHECKED_STATUS DocPgExprExecutor::AddWhereExpression(const PgsqlExpressionPB& ql_expr) {
+Status DocPgExprExecutor::AddWhereExpression(const PgsqlExpressionPB& ql_expr) {
   if (private_.get() == nullptr) {
     private_.reset(new Private());
   }
   return private_->PreparePgWhereExpr(ql_expr, schema_);
 }
 
-CHECKED_STATUS DocPgExprExecutor::AddTargetExpression(const PgsqlExpressionPB& ql_expr) {
+Status DocPgExprExecutor::AddTargetExpression(const PgsqlExpressionPB& ql_expr) {
   if (private_.get() == nullptr) {
     private_.reset(new Private());
   }
   return private_->PreparePgTargetExpr(ql_expr, schema_);
 }
 
-CHECKED_STATUS DocPgExprExecutor::Exec(const QLTableRow& table_row,
+Status DocPgExprExecutor::Exec(const QLTableRow& table_row,
                                        std::vector<QLExprResult>* results,
                                        bool* match) {
   if (private_.get() == nullptr) {

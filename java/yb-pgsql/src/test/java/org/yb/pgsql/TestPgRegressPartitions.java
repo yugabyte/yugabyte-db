@@ -23,7 +23,7 @@ import org.yb.util.YBTestRunnerNonTsanOnly;
 public class TestPgRegressPartitions extends BasePgSQLTest {
   @Override
   public int getTestMethodTimeoutSec() {
-    return getPerfMaxRuntime(500, 700, 900, 900, 900);
+    return getPerfMaxRuntime(500, 1000, 1200, 1200, 1200);
   }
 
   @Test

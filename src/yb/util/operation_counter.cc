@@ -24,6 +24,7 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/trace.h"
+#include "yb/util/tsan_util.h"
 
 using namespace std::literals;
 
@@ -80,7 +81,7 @@ uint64_t RWOperationCounter::GetOpCounter() const {
 }
 
 uint64_t RWOperationCounter::Update(uint64_t delta) {
-  uint64_t result = counters_.fetch_add(delta, std::memory_order::memory_order_acq_rel) + delta;
+  uint64_t result = counters_.fetch_add(delta, std::memory_order::acq_rel) + delta;
   VLOG(2) << "[" << this << "] Update(" << static_cast<int64_t>(delta) << "), result = " << result;
   // Ensure that there is no underflow in either counter.
   DCHECK_EQ((result & (kStopDelta >> 1u)), 0); // Counter of DisableAndWaitForOps() calls.
@@ -90,7 +91,7 @@ uint64_t RWOperationCounter::Update(uint64_t delta) {
 
 bool RWOperationCounter::WaitMutexAndIncrement(CoarseTimePoint deadline) {
   if (deadline == CoarseTimePoint()) {
-    deadline = CoarseMonoClock::now() + 10ms;
+    deadline = CoarseMonoClock::now() + 10ms * kTimeMultiplier;
   } else if (deadline == CoarseTimePoint::min()) {
     return false;
   }

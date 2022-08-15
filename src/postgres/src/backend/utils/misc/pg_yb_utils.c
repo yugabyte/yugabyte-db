@@ -40,24 +40,46 @@
 #include "access/tupdesc.h"
 #include "access/xact.h"
 #include "executor/ybcExpr.h"
+#include "catalog/indexing.h"
+#include "catalog/pg_am.h"
+#include "catalog/pg_amproc.h"
+#include "catalog/pg_attrdef.h"
+#include "catalog/pg_auth_members.h"
 #include "catalog/pg_authid.h"
-#include "catalog/pg_collation_d.h"
+#include "catalog/pg_cast.h"
+#include "catalog/pg_collation.h"
+#include "catalog/pg_constraint.h"
 #include "catalog/pg_database.h"
+#include "catalog/pg_db_role_setting.h"
+#include "catalog/pg_inherits.h"
+#include "catalog/pg_namespace.h"
+#include "catalog/pg_opclass.h"
+#include "catalog/pg_operator.h"
+#include "catalog/pg_partitioned_table.h"
+#include "catalog/pg_policy.h"
+#include "catalog/pg_proc.h"
+#include "catalog/pg_rewrite.h"
+#include "catalog/pg_trigger.h"
 #include "catalog/pg_type.h"
 #include "catalog/catalog.h"
 #include "catalog/yb_catalog_version.h"
 #include "catalog/yb_type.h"
 #include "commands/dbcommands.h"
+#include "commands/defrem.h"
 #include "common/pg_yb_common.h"
 #include "lib/stringinfo.h"
+#include "optimizer/cost.h"
 #include "tcop/utility.h"
 #include "utils/builtins.h"
 #include "utils/datum.h"
 #include "utils/lsyscache.h"
 #include "utils/pg_locale.h"
 #include "utils/rel.h"
+#include "utils/spccache.h"
+#include "utils/syscache.h"
 #include "fmgr.h"
 #include "funcapi.h"
+#include "mb/pg_wchar.h"
 
 #include "yb/common/ybc_util.h"
 #include "yb/yql/pggate/ybc_pggate.h"
@@ -120,7 +142,14 @@ CheckIsYBSupportedRelationByKind(char relkind)
 bool
 IsYBRelation(Relation relation)
 {
-	if (!IsYugaByteEnabled()) return false;
+	/*
+	 * NULL relation is possible if regular ForeignScan is confused for
+	 * Yugabyte sequential scan, which is backed by ForeignScan, too.
+	 * Rather than performing probably not trivial and unreliable checks by
+	 * the caller to distinguish them, we allow NULL argument here.
+	 */
+	if (!IsYugaByteEnabled() || !relation)
+		return false;
 
 	const char relkind = relation->rd_rel->relkind;
 
@@ -148,6 +177,12 @@ IsYBBackedRelation(Relation relation)
 	return IsYBRelation(relation) ||
 		(relation->rd_rel->relkind == RELKIND_VIEW &&
 		relation->rd_rel->relpersistence != RELPERSISTENCE_TEMP);
+}
+
+bool
+YbIsTempRelation(Relation relation)
+{
+	return relation->rd_rel->relpersistence == RELPERSISTENCE_TEMP;
 }
 
 bool IsRealYBColumn(Relation rel, int attrNum)
@@ -280,18 +315,10 @@ extern bool YBRelHasOldRowTriggers(Relation rel, CmdType operation)
 }
 
 bool
-YBIsDatabaseColocated(Oid dbId)
+YbIsDatabaseColocated(Oid dbid)
 {
 	bool colocated;
-	HandleYBStatus(YBCPgIsDatabaseColocated(dbId, &colocated));
-	return colocated;
-}
-
-bool
-YBIsTableColocated(Oid dbId, Oid relationId)
-{
-	bool colocated;
-	HandleYBStatus(YBCPgIsTableColocated(dbId, relationId, &colocated));
+	HandleYBStatus(YBCPgIsDatabaseColocated(dbid, &colocated));
 	return colocated;
 }
 
@@ -352,6 +379,24 @@ YBSavepointsEnabled()
 	return IsYugaByteEnabled() && YBTransactionsEnabled() && cached_value;
 }
 
+bool
+YBIsDBCatalogVersionMode()
+{
+	static int cached_value = -1;
+	if (cached_value == -1)
+	{
+		cached_value = YBCIsEnvVarTrueWithDefault(
+			"FLAGS_TEST_enable_db_catalog_version_mode", false);
+	}
+	/*
+	 * During initdb (bootstrap mode), CATALOG_VERSION_PROTOBUF_ENTRY is used
+	 * for catalog version type.
+	 */
+	return IsYugaByteEnabled() &&
+		   YbGetCatalogVersionType() == CATALOG_VERSION_CATALOG_TABLE &&
+		   cached_value;
+}
+
 void
 YBReportFeatureUnsupported(const char *msg)
 {
@@ -379,17 +424,40 @@ HandleYBStatus(YBCStatus status)
    HandleYBStatusAtErrorLevel(status, ERROR);
 }
 
-void HandleYBStatusAtErrorLevel(YBCStatus status, int error_level) {
-	if (!status) {
-		return;
-	}
-	/* Copy the message to the current memory context and free the YBCStatus. */
-	const uint32_t pg_err_code = YBCStatusPgsqlError(status);
-	char* msg_buf = DupYBStatusMessage(status, pg_err_code == ERRCODE_UNIQUE_VIOLATION);
+static const char*
+FetchUniqueConstraintName(Oid relation_id)
+{
+	const char* name = NULL;
+	Relation rel = RelationIdGetRelation(relation_id);
 
-	if (YBShouldReportErrorStatus()) {
-		YBC_LOG_ERROR("HandleYBStatus: %s", msg_buf);
+	if (!rel->rd_index && rel->rd_pkindex != InvalidOid)
+	{
+		Relation pkey = RelationIdGetRelation(rel->rd_pkindex);
+
+		name = pstrdup(RelationGetRelationName(pkey));
+
+		RelationClose(pkey);
 	}
+	else
+		name = pstrdup(RelationGetRelationName(rel));
+
+	RelationClose(rel);
+	return name;
+}
+
+void HandleYBStatusAtErrorLevel(YBCStatus status, int error_level)
+{
+	if (!status)
+		return;
+
+	/* Build message in the current memory context. */
+	const char* msg_buf = BuildYBStatusMessage(
+			status, &FetchUniqueConstraintName);
+
+	if (YBShouldReportErrorStatus())
+		YBC_LOG_ERROR("HandleYBStatus: %s", msg_buf);
+
+	const uint32_t pg_err_code = YBCStatusPgsqlError(status);
 	const uint16_t txn_err_code = YBCStatusTransactionError(status);
 	YBCFreeStatus(status);
 	ereport(error_level,
@@ -402,10 +470,11 @@ void HandleYBStatusAtErrorLevel(YBCStatus status, int error_level) {
 void
 HandleYBStatusIgnoreNotFound(YBCStatus status, bool *not_found)
 {
-	if (!status) {
+	if (!status)
 		return;
-	}
-	if (YBCStatusIsNotFound(status)) {
+
+	if (YBCStatusIsNotFound(status))
+	{
 		*not_found = true;
 		YBCFreeStatus(status);
 		return;
@@ -421,33 +490,6 @@ HandleYBTableDescStatus(YBCStatus status, YBCPgTableDesc table)
 		return;
 
 	HandleYBStatus(status);
-}
-
-/*
- * Fetches relation's unique constraint name to specified buffer.
- * If relation is not an index and it has primary key the name of primary key index is returned.
- * In other cases, relation name is used.
- */
-static void
-FetchUniqueConstraintName(Oid relation_id, char* dest, size_t max_size)
-{
-	// strncat appends source to destination, so destination must be empty.
-	dest[0] = 0;
-	Relation rel = RelationIdGetRelation(relation_id);
-
-	if (!rel->rd_index && rel->rd_pkindex != InvalidOid)
-	{
-		Relation pkey = RelationIdGetRelation(rel->rd_pkindex);
-
-		strncat(dest, RelationGetRelationName(pkey), max_size);
-
-		RelationClose(pkey);
-	} else
-	{
-		strncat(dest, RelationGetRelationName(rel), max_size);
-	}
-
-	RelationClose(rel);
 }
 
 static const char*
@@ -490,7 +532,6 @@ YBInitPostgresBackend(
 		int count;
 		YbGetTypeTable(&type_table, &count);
 		YBCPgCallbacks callbacks;
-		callbacks.FetchUniqueConstraintName = &FetchUniqueConstraintName;
 		callbacks.GetCurrentYbMemctx = &GetCurrentYbMemctx;
 		callbacks.GetDebugQueryString = &GetDebugQueryString;
 		callbacks.WriteExecOutParam = &YbWriteExecOutParam;
@@ -503,7 +544,7 @@ YBInitPostgresBackend(
 		 *
 		 * TODO: do we really need to DB name / username here?
 		 */
-		HandleYBStatus(YBCPgInitSession(/* pg_env */ NULL, db_name ? db_name : user_name));
+		HandleYBStatus(YBCPgInitSession(db_name ? db_name : user_name));
 	}
 }
 
@@ -545,7 +586,7 @@ YBCAbortTransaction()
 		return;
 
 	if (YBTransactionsEnabled())
-		YBCPgAbortTransaction();
+		HandleYBStatus(YBCPgAbortTransaction());
 }
 
 void
@@ -556,10 +597,10 @@ YBCSetActiveSubTransaction(SubTransactionId id)
 }
 
 void
-YBCRollbackSubTransaction(SubTransactionId id)
+YBCRollbackToSubTransaction(SubTransactionId id)
 {
 	if (YBSavepointsEnabled())
-		HandleYBStatus(YBCPgRollbackSubTransaction(id));
+		HandleYBStatus(YBCPgRollbackToSubTransaction(id));
 }
 
 bool
@@ -765,11 +806,9 @@ YBShouldRestartAllChildrenIfOneCrashes() {
 		ereport(LOG, (errmsg("YBShouldRestartAllChildrenIfOneCrashes returning 0, YBIsEnabledInPostgresEnvVar is false")));
 		return true;
 	}
-	const char* flag_file_path =
-		getenv("YB_PG_NO_RESTART_ALL_CHILDREN_ON_CRASH_FLAG_PATH");
 	// We will use PostgreSQL's default behavior (restarting all children if one of them crashes)
 	// if the flag env variable is not specified or the file pointed by it does not exist.
-	return !flag_file_path || access(flag_file_path, F_OK) == -1;
+	return YBCIsEnvVarTrueWithDefault("FLAGS_yb_pg_terminate_child_backend", true);
 }
 
 bool
@@ -914,6 +953,9 @@ PowerWithUpperLimit(double base, int exp, double upper_limit)
 bool yb_enable_create_with_table_oid = false;
 int yb_index_state_flags_update_delay = 1000;
 bool yb_enable_expression_pushdown = false;
+bool yb_enable_optimizer_statistics = false;
+bool yb_make_next_ddl_statement_nonbreaking = false;
+bool yb_plpgsql_disable_prefetch_in_for_query = false;
 
 //------------------------------------------------------------------------------
 // YB Debug utils.
@@ -983,9 +1025,20 @@ static ProcessUtility_hook_type prev_ProcessUtility = NULL;
 static int ddl_nesting_level = 0;
 
 static void
+YBResetEnableNonBreakingDDLMode()
+{
+	/*
+	 * Reset yb_make_next_ddl_statement_nonbreaking to avoid its further side
+	 * effect that may not be intended.
+	 */
+	yb_make_next_ddl_statement_nonbreaking = false;
+}
+
+static void
 YBResetDdlState()
 {
 	ddl_nesting_level = 0;
+	YBResetEnableNonBreakingDDLMode();
 	YBCPgClearSeparateDdlTxnMode();
 }
 
@@ -1006,12 +1059,16 @@ YBIncrementDdlNestingLevel()
 }
 
 void
-YBDecrementDdlNestingLevel(bool is_catalog_version_increment, bool is_breaking_catalog_change)
+YBDecrementDdlNestingLevel(bool is_catalog_version_increment,
+						   bool is_breaking_catalog_change)
 {
 	ddl_nesting_level--;
 	if (ddl_nesting_level == 0)
 	{
-		const bool increment_done = is_catalog_version_increment &&
+		YBResetEnableNonBreakingDDLMode();
+		const bool increment_done =
+			is_catalog_version_increment &&
+			YBCPgHasWriteOperationsInDdlTxnMode() &&
 			YbIncrementMasterCatalogVersionTableEntry(is_breaking_catalog_change);
 
 		HandleYBStatus(YBCPgExitSeparateDdlTxnMode());
@@ -1026,7 +1083,7 @@ YBDecrementDdlNestingLevel(bool is_catalog_version_increment, bool is_breaking_c
 		if (increment_done)
 		{
 			yb_catalog_cache_version += 1;
-			if (YBCGetLogYsqlCatalogVersions())
+			if (*YBCGetGFlags()->log_ysql_catalog_versions)
 				ereport(LOG,
 						(errmsg("%s: set local catalog version: %" PRIu64,
 								__func__, yb_catalog_cache_version)));
@@ -1054,6 +1111,34 @@ YBDecrementDdlNestingLevel(bool is_catalog_version_increment, bool is_breaking_c
 	}
 }
 
+static Node*
+GetActualStmtNode(PlannedStmt *pstmt)
+{
+	if (nodeTag(pstmt->utilityStmt) == T_ExplainStmt)
+	{
+		ExplainStmt *stmt = castNode(ExplainStmt, pstmt->utilityStmt);
+		Node *actual_stmt = castNode(Query, stmt->query)->utilityStmt;
+		if (actual_stmt)
+		{
+			/*
+			 * EXPLAIN statement may have multiple ANALYZE options.
+			 * The value of the last one will take effect.
+			 */
+			bool analyze = false;
+			ListCell *lc;
+			foreach(lc, stmt->options)
+			{
+				DefElem *opt = (DefElem *) lfirst(lc);
+				if (strcmp(opt->defname, "analyze") == 0)
+					analyze = defGetBoolean(opt);
+			}
+			if (analyze)
+				return actual_stmt;
+		}
+	}
+	return pstmt->utilityStmt;
+}
+
 bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
                                  bool *is_catalog_version_increment,
                                  bool *is_breaking_catalog_change)
@@ -1061,7 +1146,9 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 	/* Assume the worst. */
 	*is_catalog_version_increment = true;
 	*is_breaking_catalog_change = true;
-	Node *parsetree = pstmt->utilityStmt;
+
+	bool is_ddl = true;
+	Node *parsetree = GetActualStmtNode(pstmt);
 
 	NodeTag node_tag = nodeTag(parsetree);
 	switch (node_tag) {
@@ -1087,7 +1174,7 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 			 */
 			*is_catalog_version_increment = false;
 			*is_breaking_catalog_change = false;
-			return true;
+			break;
 		}
 		case T_ViewStmt: // CREATE VIEW
 		{
@@ -1101,12 +1188,12 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 				YbIsSystemNamespaceByName(castNode(ViewStmt, parsetree)->view->schemaname))
 			{
 				*is_breaking_catalog_change = false;
-				return true;
+				break;
 			}
 
 			*is_catalog_version_increment = false;
 			*is_breaking_catalog_change = false;
-			return true;
+			break;
 		}
 
 		case T_CompositeTypeStmt: // CREATE TYPE
@@ -1146,7 +1233,7 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 			 *		  order to correctly invalidate negative cache entries
 			 */
 			*is_breaking_catalog_change = false;
-			return true;
+			break;
 		}
 		case T_CreateStmt:
 		{
@@ -1163,7 +1250,7 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 			 */
 			if (stmt->partbound != NULL) {
 				*is_breaking_catalog_change = false;
-				return true;
+				break;
 			}
 
 			/*
@@ -1176,7 +1263,7 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 				YbIsSystemNamespaceByName(stmt->relation->schemaname))
 			{
 				*is_breaking_catalog_change = false;
-				return true;
+				break;
 			}
 
 			foreach (lc, stmt->constraints)
@@ -1194,7 +1281,7 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 					 * have to force a transaction abort on PG side.
 					 */
 					*is_breaking_catalog_change = false;
-					return true;
+					break;
 				}
 			}
 
@@ -1204,7 +1291,7 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 			 */
 			*is_catalog_version_increment = false;
 			*is_breaking_catalog_change = false;
-			return true;
+			break;
 		}
 		case T_CreateSeqStmt:
 		{
@@ -1215,7 +1302,7 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 			{
 				*is_catalog_version_increment = false;
 			}
-			return true;
+			break;
 		}
 		case T_CreateFunctionStmt:
 		{
@@ -1225,7 +1312,7 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 			{
 				*is_catalog_version_increment = false;
 			}
-			return true;
+			break;
 		}
 
 		// All T_Drop... tags from nodes.h:
@@ -1235,11 +1322,11 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 		case T_DropSubscriptionStmt:
 		case T_DropTableSpaceStmt:
 		case T_DropUserMappingStmt:
-			return true;
+			break;
 
 		case T_DropStmt:
 			*is_breaking_catalog_change = false;
-			return true;
+			break;
 
 		case T_DropdbStmt:
 		    /*
@@ -1247,7 +1334,7 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 			 * so nothing to do on the cache side.
 			 */
 			*is_breaking_catalog_change = false;
-			return true;
+			break;
 
 		// All T_Alter... tags from nodes.h:
 		case T_AlterCollationStmt:
@@ -1285,7 +1372,7 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 		case T_ReassignOwnedStmt:
 		/* ALTER .. RENAME TO syntax gets parsed into a T_RenameStmt node. */
 		case T_RenameStmt:
-			return true;
+			break;
 
 		case T_AlterTableStmt:
 		{
@@ -1295,7 +1382,7 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 			if (cmd->subtype == AT_AddColumn || cmd->subtype == AT_DropColumn) {
 				*is_breaking_catalog_change = false;
 			}
-			return true;
+			break;
 		}
 
 		// T_Grant...
@@ -1304,14 +1391,14 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 			/* Grant (add permission) is not a breaking change, but revoke is. */
 			GrantStmt *stmt = castNode(GrantStmt, parsetree);
 			*is_breaking_catalog_change = !stmt->is_grant;
-			return true;
+			break;
 		}
 		case T_GrantRoleStmt:
 		{
 			/* Grant (add permission) is not a breaking change, but revoke is. */
 			GrantRoleStmt *stmt = castNode(GrantRoleStmt, parsetree);
 			*is_breaking_catalog_change = !stmt->is_grant;
-			return true;
+			break;
 		}
 
 		// T_Index...
@@ -1322,23 +1409,56 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 			 * transactions so we don't have to force a transaction abort on PG side.
 			 */
 			*is_breaking_catalog_change = false;
-			return true;
+			break;
 
 		case T_VacuumStmt:
 			/* Vacuum with analyze updates relation and attribute statistics */
 			*is_catalog_version_increment = false;
 			*is_breaking_catalog_change = false;
-			return castNode(VacuumStmt, parsetree)->options & VACOPT_ANALYZE;
+			is_ddl = castNode(VacuumStmt, parsetree)->options & VACOPT_ANALYZE;
+			break;
 
 		case T_RefreshMatViewStmt:
-			return true;
+			break;
+
+		case T_ReindexStmt:
+			/*
+			 * Does not need catalog version increment since only data changes,
+			 * not metadata--unless the data itself is metadata (system index).
+			 * It could be nice to force a cache refresh when fixing a system
+			 * index corruption, but just because a system index is REINDEXed
+			 * doesn't mean it had a corruption.  If there's a system index
+			 * corruption, manual intervention is already needed, so might as
+			 * well let the user deal with refreshing clients.
+			 */
+			*is_catalog_version_increment = false;
+			*is_breaking_catalog_change = false;
+			break;
 
 		default:
 			/* Not a DDL operation. */
 			*is_catalog_version_increment = false;
 			*is_breaking_catalog_change = false;
-			return false;
+			is_ddl = false;
+			break;
 	}
+
+	/*
+	 * If yb_make_next_ddl_statement_nonbreaking is true, then no DDL statement
+	 * will cause a breaking catalog change.
+	 */
+	if (yb_make_next_ddl_statement_nonbreaking)
+		*is_breaking_catalog_change = false;
+
+	/*
+	 * For DDL, it does not make sense to get breaking catalog change without
+	 * catalog version increment.
+	 */
+	Assert(!(is_ddl &&
+			 *is_breaking_catalog_change &&
+			 !*is_catalog_version_increment));
+
+	return is_ddl;
 }
 
 static void YBTxnDdlProcessUtility(
@@ -1455,68 +1575,118 @@ void YBTestFailDdlIfRequested() {
 	elog(ERROR, "DDL failed as requested");
 }
 
+static int YbGetNumberOfFunctionOutputColumns(Oid func_oid)
+{
+	int ncols = 0; /* Equals to the number of OUT arguments. */
+
+	HeapTuple proctup = SearchSysCache1(PROCOID, ObjectIdGetDatum(func_oid));
+	if (!HeapTupleIsValid(proctup))
+		elog(ERROR, "cache lookup failed for function %u", func_oid);
+
+	bool is_null = false;
+	Datum proargmodes = SysCacheGetAttr(PROCOID, proctup,
+										Anum_pg_proc_proargmodes,
+										&is_null);
+	Assert(!is_null);
+	ArrayType* proargmodes_arr = DatumGetArrayTypeP(proargmodes);
+
+	ncols = 0;
+	for (int i = 0; i < ARR_DIMS(proargmodes_arr)[0]; ++i)
+		if (ARR_DATA_PTR(proargmodes_arr)[i] == PROARGMODE_OUT)
+			++ncols;
+
+	ReleaseSysCache(proctup);
+
+	return ncols;
+}
+
+/*
+ * For backward compatibility, this function dynamically adapts to the number
+ * of output columns defined in pg_proc.
+ */
 Datum
 yb_servers(PG_FUNCTION_ARGS)
 {
-  FuncCallContext *funcctx;
-  if (SRF_IS_FIRSTCALL())
-  {
-    MemoryContext oldcontext;
-    TupleDesc tupdesc;
+	FuncCallContext *funcctx;
 
-    funcctx = SRF_FIRSTCALL_INIT();
-    oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
+	int expected_ncols = 9;
 
-    tupdesc = CreateTemplateTupleDesc(8, false);
-    TupleDescInitEntry(tupdesc, (AttrNumber) 1,
-                       "host", TEXTOID, -1, 0);
-    TupleDescInitEntry(tupdesc, (AttrNumber) 2,
-                       "port", INT8OID, -1, 0);
-    TupleDescInitEntry(tupdesc, (AttrNumber) 3,
-                       "num_connections", INT8OID, -1, 0);
-    TupleDescInitEntry(tupdesc, (AttrNumber) 4,
-                       "node_type", TEXTOID, -1, 0);
-    TupleDescInitEntry(tupdesc, (AttrNumber) 5,
-                       "cloud", TEXTOID, -1, 0);
-    TupleDescInitEntry(tupdesc, (AttrNumber) 6,
-                       "region", TEXTOID, -1, 0);
-    TupleDescInitEntry(tupdesc, (AttrNumber) 7,
-                       "zone", TEXTOID, -1, 0);
-    TupleDescInitEntry(tupdesc, (AttrNumber) 8,
-                       "public_ip", TEXTOID, -1, 0);
-    funcctx->tuple_desc = BlessTupleDesc(tupdesc);
+	static int ncols = 0;
 
-    YBCServerDescriptor *servers = NULL;
-    size_t numservers = 0;
-    HandleYBStatus(YBCGetTabletServerHosts(&servers, &numservers));
-    funcctx->max_calls = numservers;
-    funcctx->user_fctx = servers;
-    MemoryContextSwitchTo(oldcontext);
-  }
-  funcctx = SRF_PERCALL_SETUP();
-  while (funcctx->call_cntr < funcctx->max_calls)
-  {
-    Datum		values[8];
-    bool		nulls[8];
-    HeapTuple	tuple;
-    int cntr = funcctx->call_cntr;
-    YBCServerDescriptor *server = (YBCServerDescriptor *)funcctx->user_fctx + cntr;
-    bool is_primary = server->is_primary;
-    const char *node_type = is_primary ? "primary" : "read_replica";
-    // TODO: Remove hard coding of port and num_connections
-    values[0] = CStringGetTextDatum(server->host);
-    values[1] = Int64GetDatum(server->pg_port);
-    values[2] = Int64GetDatum(0);
-    values[3] = CStringGetTextDatum(node_type);
-    values[4] = CStringGetTextDatum(server->cloud);
-    values[5] = CStringGetTextDatum(server->region);
-    values[6] = CStringGetTextDatum(server->zone);
-    values[7] = CStringGetTextDatum(server->public_ip);
-    memset(nulls, 0, sizeof(nulls));
-    tuple = heap_form_tuple(funcctx->tuple_desc, values, nulls);
-    SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tuple));
-  }
-  SRF_RETURN_DONE(funcctx);
+	if (ncols < expected_ncols)
+		ncols = YbGetNumberOfFunctionOutputColumns(8019 /* yb_servers function
+												   oid hardcoded in pg_proc.dat */);
+
+	if (SRF_IS_FIRSTCALL())
+	{
+		MemoryContext oldcontext;
+		TupleDesc tupdesc;
+
+		funcctx = SRF_FIRSTCALL_INIT();
+		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
+		tupdesc = CreateTemplateTupleDesc(ncols, false);
+
+		TupleDescInitEntry(tupdesc, (AttrNumber) 1,
+						   "host", TEXTOID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 2,
+						   "port", INT8OID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 3,
+						   "num_connections", INT8OID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 4,
+						   "node_type", TEXTOID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 5,
+						   "cloud", TEXTOID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 6,
+						   "region", TEXTOID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 7,
+						   "zone", TEXTOID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 8,
+						   "public_ip", TEXTOID, -1, 0);
+		if (ncols >= expected_ncols)
+		{
+			TupleDescInitEntry(tupdesc, (AttrNumber) 9,
+							   "uuid", TEXTOID, -1, 0);
+		}
+		funcctx->tuple_desc = BlessTupleDesc(tupdesc);
+
+		YBCServerDescriptor *servers = NULL;
+		size_t numservers = 0;
+		HandleYBStatus(YBCGetTabletServerHosts(&servers, &numservers));
+		funcctx->max_calls = numservers;
+		funcctx->user_fctx = servers;
+		MemoryContextSwitchTo(oldcontext);
+	}
+	funcctx = SRF_PERCALL_SETUP();
+	if (funcctx->call_cntr < funcctx->max_calls)
+	{
+		Datum		values[ncols];
+		bool		nulls[ncols];
+		HeapTuple	tuple;
+
+		int cntr = funcctx->call_cntr;
+		YBCServerDescriptor *server = (YBCServerDescriptor *)funcctx->user_fctx + cntr;
+		bool is_primary = server->is_primary;
+		const char *node_type = is_primary ? "primary" : "read_replica";
+
+		// TODO: Remove hard coding of port and num_connections
+		values[0] = CStringGetTextDatum(server->host);
+		values[1] = Int64GetDatum(server->pg_port);
+		values[2] = Int64GetDatum(0);
+		values[3] = CStringGetTextDatum(node_type);
+		values[4] = CStringGetTextDatum(server->cloud);
+		values[5] = CStringGetTextDatum(server->region);
+		values[6] = CStringGetTextDatum(server->zone);
+		values[7] = CStringGetTextDatum(server->public_ip);
+		if (ncols >= expected_ncols)
+		{
+			values[8] = CStringGetTextDatum(server->uuid);
+		}
+		memset(nulls, 0, sizeof(nulls));
+		tuple = heap_form_tuple(funcctx->tuple_desc, values, nulls);
+		SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tuple));
+	}
+	else
+		SRF_RETURN_DONE(funcctx);
 }
 
 bool YBIsSupportedLibcLocale(const char *localebuf) {
@@ -1527,6 +1697,49 @@ bool YBIsSupportedLibcLocale(const char *localebuf) {
 		return true;
 	return strcasecmp(localebuf, "en_US.utf8") == 0 ||
 		   strcasecmp(localebuf, "en_US.UTF-8") == 0;
+}
+
+static YBCStatus
+YbGetTablePropertiesCommon(Relation rel)
+{
+	if (rel->yb_table_properties)
+	{
+		/* Already loaded, nothing to do */
+		return YBCStatusOKValue;
+	}
+
+	Oid dbid          = YBCGetDatabaseOid(rel);
+	Oid storage_relid = YbGetStorageRelid(rel);
+
+	YBCPgTableDesc desc = NULL;
+	YBCStatus status = YBCPgGetTableDesc(dbid, storage_relid, &desc);
+	if (!YBCStatusIsOK(status))
+	{
+		return status;
+	}
+
+	/* Relcache entry data must live in CacheMemoryContext */
+	rel->yb_table_properties =
+		MemoryContextAllocZero(CacheMemoryContext, sizeof(YbTablePropertiesData));
+
+	HandleYBStatus(YBCPgGetTableProperties(desc, rel->yb_table_properties));
+
+	return YBCStatusOKValue;
+}
+
+YbTableProperties
+YbGetTableProperties(Relation rel)
+{
+	HandleYBStatus(YbGetTablePropertiesCommon(rel));
+	return rel->yb_table_properties;
+}
+
+YbTableProperties
+YbTryGetTableProperties(Relation rel)
+{
+	bool not_found = false;
+	HandleYBStatusIgnoreNotFound(YbGetTablePropertiesCommon(rel), &not_found);
+	return not_found ? NULL : rel->yb_table_properties;
 }
 
 Datum
@@ -1599,39 +1812,70 @@ yb_hash_code(PG_FUNCTION_ARGS)
 	PG_RETURN_UINT16(hashed_val);
 }
 
+/*
+ * For backward compatibility, this function dynamically adapts to the number
+ * of output columns defined in pg_proc.
+ */
 Datum
 yb_table_properties(PG_FUNCTION_ARGS)
 {
 	Oid			relid = PG_GETARG_OID(0);
 	TupleDesc	tupdesc;
-	Datum		values[3];
-	bool		nulls[3];
-	bool		exists_in_yb = false;
-	YBCPgTableDesc yb_tabledesc = NULL;
-	YBCPgTableProperties yb_table_properties;
 
-	HandleYBStatus(YBCPgTableExists(MyDatabaseId, relid, &exists_in_yb));
-	if (exists_in_yb)
-	{
-		HandleYBStatus(YBCPgGetTableDesc(MyDatabaseId, relid, &yb_tabledesc));
-		HandleYBStatus(YBCPgGetTableProperties(yb_tabledesc, &yb_table_properties));
-	}
+	int expected_ncols = 5;
 
-	tupdesc = CreateTemplateTupleDesc(3, false);
+	static int ncols = 0;
+
+	if (ncols < expected_ncols)
+		ncols = YbGetNumberOfFunctionOutputColumns(8033 /* yb_table_properties function
+												   oid hardcoded in pg_proc.dat */);
+
+	Datum		values[ncols];
+	bool		nulls[ncols];
+
+	Relation	rel = relation_open(relid, AccessShareLock);
+
+	YbTableProperties yb_props = YbTryGetTableProperties(rel);
+
+	tupdesc = CreateTemplateTupleDesc(ncols, false);
 	TupleDescInitEntry(tupdesc, (AttrNumber) 1,
 					   "num_tablets", INT8OID, -1, 0);
 	TupleDescInitEntry(tupdesc, (AttrNumber) 2,
 					   "num_hash_key_columns", INT8OID, -1, 0);
 	TupleDescInitEntry(tupdesc, (AttrNumber) 3,
 					   "is_colocated", BOOLOID, -1, 0);
+	if (ncols >= expected_ncols)
+	{
+		TupleDescInitEntry(tupdesc, (AttrNumber) 4,
+						   "tablegroup_oid", OIDOID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 5,
+						   "colocation_id", OIDOID, -1, 0);
+	}
 	BlessTupleDesc(tupdesc);
 
-	if (exists_in_yb)
+	if (yb_props)
 	{
-		values[0] = Int64GetDatum(yb_table_properties.num_tablets);
-		values[1] = Int64GetDatum(yb_table_properties.num_hash_key_columns);
-		values[2] = BoolGetDatum(yb_table_properties.is_colocated);
+		values[0] = Int64GetDatum(yb_props->num_tablets);
+		values[1] = Int64GetDatum(yb_props->num_hash_key_columns);
+		values[2] = BoolGetDatum(yb_props->is_colocated);
+		if (ncols >= expected_ncols)
+		{
+			values[3] =
+				OidIsValid(yb_props->tablegroup_oid)
+					? ObjectIdGetDatum(yb_props->tablegroup_oid)
+					: (Datum) 0;
+			values[4] =
+				OidIsValid(yb_props->colocation_id)
+					? ObjectIdGetDatum(yb_props->colocation_id)
+					: (Datum) 0;
+		}
+
 		memset(nulls, 0, sizeof(nulls));
+		if (ncols >= expected_ncols)
+		{
+			nulls[3] = !OidIsValid(yb_props->tablegroup_oid);
+			nulls[4] = !OidIsValid(yb_props->colocation_id);
+		}
 	}
 	else
 	{
@@ -1639,7 +1883,327 @@ yb_table_properties(PG_FUNCTION_ARGS)
 		memset(nulls, 1, sizeof(nulls));
 	}
 
+	relation_close(rel, AccessShareLock);
+
 	return HeapTupleGetDatum(heap_form_tuple(tupdesc, values, nulls));
+}
+
+/*
+ * This function is adapted from code of PQescapeLiteral() in fe-exec.c.
+ * Convert a string value to an SQL string literal and append it to
+ * the given StringInfo.
+ */
+static void
+appendStringLiteral(StringInfo buf, const char *str, int encoding)
+{
+	const char *s;
+	int			num_quotes = 0;
+	int			num_backslashes = 0;
+	int 		len = strlen(str);
+	int			input_len;
+
+	/* Scan the string for characters that must be escaped. */
+	for (s = str; (s - str) < strlen(str) && *s != '\0'; ++s)
+	{
+		if (*s == '\'')
+			++num_quotes;
+		else if (*s == '\\')
+			++num_backslashes;
+		else if (IS_HIGHBIT_SET(*s))
+		{
+			int			charlen;
+
+			/* Slow path for possible multibyte characters */
+			charlen = pg_encoding_mblen(encoding, s);
+
+			/* Multibyte character overruns allowable length. */
+			if ((s - str) + charlen > len || memchr(s, 0, charlen) != NULL)
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_DATA_EXCEPTION),
+						 errmsg("incomplete multibyte character")));
+			}
+
+			/* Adjust s, bearing in mind that for loop will increment it. */
+			s += charlen - 1;
+		}
+	}
+
+	input_len = s - str;
+
+	/*
+	 * If we are escaping a literal that contains backslashes, we use the
+	 * escape string syntax so that the result is correct under either value
+	 * of standard_conforming_strings.
+	 */
+	if (num_backslashes > 0)
+	{
+		appendStringInfoChar(buf, 'E');
+	}
+
+	/* Opening quote. */
+	appendStringInfoChar(buf, '\'');
+
+	/*
+	 * Use fast path if possible.
+	 *
+	 * We've already verified that the input string is well-formed in the
+	 * current encoding.  If it contains no quotes and, in the case of
+	 * literal-escaping, no backslashes, then we can just copy it directly to
+	 * the output buffer, adding the necessary quotes.
+	 *
+	 * If not, we must rescan the input and process each character
+	 * individually.
+	 */
+	if (num_quotes == 0 && num_backslashes == 0)
+	{
+		appendStringInfoString(buf, str);
+	}
+	else
+	{
+		for (s = str; s - str < input_len; ++s)
+		{
+			if (*s == '\'' || *s == '\\')
+			{
+				appendStringInfoChar(buf, *s);
+				appendStringInfoChar(buf, *s);
+			}
+			else if (!IS_HIGHBIT_SET(*s))
+				appendStringInfoChar(buf, *s);
+			else
+			{
+				int	charlen = pg_encoding_mblen(encoding, s);
+
+				while (1)
+				{
+					appendStringInfoChar(buf, *s);
+					if (--charlen == 0)
+						break;
+					++s;		/* for loop will provide the final increment */
+				}
+			}
+		}
+	}
+
+	/* Closing quote. */
+	appendStringInfoChar(buf, '\'');
+}
+
+/*
+ * This function is adapted from code in pg_dump.c.
+ * It converts an internal raw datum value to a output string based on
+ * column type, and append the string to the StringInfo input parameter.
+ * Datum of all types can be generated in a quoted string format
+ * (e.g., '100' for integer 100), and rely on PG's type cast to function
+ * correctly. Here, we specifically handle some cases to ignore quotes to
+ * make the generated string look better.
+ */
+static void
+appendDatumToString(StringInfo str, uint64_t datum, Oid typid, int encoding)
+{
+	const char *datum_str = YBDatumToString(datum, typid);
+	switch (typid)
+	{
+		case INT2OID:
+		case INT4OID:
+		case INT8OID:
+		case OIDOID:
+		case FLOAT4OID:
+		case FLOAT8OID:
+		case NUMERICOID:
+			/*
+			 * These types are converted to string without quotes unless
+			 * they contain values: Infinity and NaN.
+			 */
+			if (strspn(datum_str, "0123456789 +-eE.") == strlen(datum_str))
+				appendStringInfoString(str, datum_str);
+			else
+				appendStringInfo(str, "'%s'", datum_str);
+			break;
+		/*
+		 * Currently, cannot create tables/indexes with a key containing
+		 * type 'BIT' or 'VARBIT'.
+		 */
+		case BITOID:
+		case VARBITOID:
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("type: %s not yet supported",
+							YBPgTypeOidToStr(typid))));
+			break;
+		default:
+			/* All other types are appended as string literals. */
+			appendStringLiteral(str, datum_str, encoding);
+			break;
+	}
+}
+
+/*
+ * This function gets range relations' split point values as PG datums.
+ * It also stores key columns' data types in input parameters: pkeys_atttypid.
+ */
+static void
+getSplitPointsInfo(Oid relid, YBCPgTableDesc yb_tabledesc,
+				   YbTableProperties yb_table_properties,
+				   Oid *pkeys_atttypid,
+				   YBCPgSplitDatum *split_datums)
+{
+	Assert(yb_table_properties->num_tablets > 1);
+
+	/* Get key columns' YBCPgTypeEntity and YBCPgTypeAttrs */
+	size_t num_range_key_columns = yb_table_properties->num_range_key_columns;
+	const YBCPgTypeEntity *type_entities[num_range_key_columns];
+	YBCPgTypeAttrs type_attrs_arr[num_range_key_columns];
+	Relation rel = relation_open(relid, AccessShareLock);
+	TupleDesc tupledesc = rel->rd_att;
+	Bitmapset *pkey = YBGetTablePrimaryKeyBms(rel);
+	AttrNumber attr_offset = YBGetFirstLowInvalidAttributeNumber(rel);
+
+	int key_idx = 0;
+	for (int i = 0; i < tupledesc->natts; ++i)
+	{
+		Form_pg_attribute attr = TupleDescAttr(tupledesc, i);
+		/* Key column */
+		if (bms_is_member(attr->attnum - attr_offset, pkey))
+		{
+			type_entities[key_idx] = YbDataTypeFromOidMod(InvalidAttrNumber,
+														  attr->atttypid);
+			YBCPgTypeAttrs type_attrs;
+			type_attrs.typmod = attr->atttypmod;
+			type_attrs_arr[key_idx] = type_attrs;
+			pkeys_atttypid[key_idx] = attr->atttypid;
+			++key_idx;
+		}
+	}
+
+	/* Get Split point values as Postgres datums */
+	HandleYBStatus(YBCGetSplitPoints(yb_tabledesc, type_entities,
+									 type_attrs_arr, split_datums));
+	relation_close(rel, AccessShareLock);
+}
+
+/*
+ * This function constructs SPLIT AT VALUES clause for range-partitioned tables
+ * with more than one tablet.
+ */
+static void
+rangeSplitClause(Oid relid, YBCPgTableDesc yb_tabledesc,
+				 YbTableProperties yb_table_properties, StringInfo str)
+{
+	Assert(yb_table_properties->num_tablets > 1);
+	size_t num_range_key_columns = yb_table_properties->num_range_key_columns;
+	size_t num_splits = yb_table_properties->num_tablets - 1;
+	Oid pkeys_atttypid[num_range_key_columns];
+	YBCPgSplitDatum split_datums[num_splits * num_range_key_columns];
+	StringInfo prev_split_point = makeStringInfo();
+	StringInfo cur_split_point = makeStringInfo();
+
+	/* Get Split point values as Postgres datum */
+	getSplitPointsInfo(relid, yb_tabledesc, yb_table_properties, pkeys_atttypid,
+					   split_datums);
+
+	/* Process Datum and use StringInfo to accumulate c-string data */
+	appendStringInfoString(str, "SPLIT AT VALUES (");
+	for (int split_idx = 0; split_idx < num_splits; ++split_idx)
+	{
+		if (split_idx)
+		{
+			appendStringInfoString(str, ", ");
+		}
+		appendStringInfoChar(cur_split_point, '(');
+		for (int col_idx = 0; col_idx < num_range_key_columns; ++col_idx)
+		{
+			if (col_idx)
+			{
+				appendStringInfoString(cur_split_point, ", ");
+			}
+			int split_datum_idx = split_idx * num_range_key_columns + col_idx;
+			if (split_datums[split_datum_idx].datum_kind ==
+				YB_YQL_DATUM_LIMIT_MIN)
+			{
+				/* Min boundary */
+				appendStringInfoString(cur_split_point, "MINVALUE");
+			}
+			else if (split_datums[split_datum_idx].datum_kind ==
+					 YB_YQL_DATUM_LIMIT_MAX)
+			{
+				/* Max boundary */
+				appendStringInfoString(cur_split_point, "MAXVALUE");
+			}
+			else
+			{
+				/* Actual datum value */
+				appendDatumToString(cur_split_point,
+									split_datums[split_datum_idx].datum,
+									pkeys_atttypid[col_idx],
+									pg_get_client_encoding());
+			}
+		}
+		appendStringInfoChar(cur_split_point, ')');
+
+		/*
+		 * Check for duplicate split points.
+		 * Given current syntax of SPLIT AT VALUES doesn't allow specifying
+		 * hidden column values for indexes, and tablet splitting can
+		 * happen on hidden columns of indexes,
+		 * duplicate split points (excluding the hidden column)
+		 * can happen for indexes.
+		 */
+		if (strcmp(cur_split_point->data, prev_split_point->data) == 0)
+		{
+			ereport(WARNING,
+					(errcode(ERRCODE_WARNING),
+					 errmsg("duplicate split points in SPLIT AT VALUES clause "
+							"of relation with oid %u", relid)));
+			/* Empty string if duplicate split points exist. */
+			resetStringInfo(str);
+			return;
+		}
+		appendStringInfoString(str, cur_split_point->data);
+		resetStringInfo(prev_split_point);
+		appendStringInfoString(prev_split_point, cur_split_point->data);
+		resetStringInfo(cur_split_point);
+	}
+	appendStringInfoChar(str, ')');
+}
+
+Datum
+yb_get_range_split_clause(PG_FUNCTION_ARGS)
+{
+	Oid			relid = PG_GETARG_OID(0);
+	bool		exists_in_yb = false;
+	YBCPgTableDesc yb_tabledesc = NULL;
+	YbTablePropertiesData yb_table_properties;
+	StringInfoData str;
+	char	   *range_split_clause = NULL;
+
+	HandleYBStatus(YBCPgTableExists(MyDatabaseId, relid, &exists_in_yb));
+	if (!exists_in_yb)
+	{
+		elog(NOTICE, "relation with oid %u is not backed by YB", relid);
+		PG_RETURN_NULL();
+	}
+
+	HandleYBStatus(YBCPgGetTableDesc(MyDatabaseId, relid, &yb_tabledesc));
+	HandleYBStatus(YBCPgGetTableProperties(yb_tabledesc, &yb_table_properties));
+
+	if (yb_table_properties.num_hash_key_columns > 0)
+	{
+		elog(NOTICE, "relation with oid %u is not range-partitioned", relid);
+		PG_RETURN_NULL();
+	}
+
+	/*
+	 * Get SPLIT AT VALUES clause for range relations with more than one tablet.
+	 * Skip one-tablet range-partition relations such that this function
+	 * return an empty string for them.
+	 */
+	initStringInfo(&str);
+	if (yb_table_properties.num_tablets > 1)
+		rangeSplitClause(relid, yb_tabledesc, &yb_table_properties, &str);
+	range_split_clause = str.data;
+
+	PG_RETURN_CSTRING(range_split_clause);
 }
 
 Datum
@@ -2046,9 +2610,129 @@ void YBSetParentDeathSignal()
 }
 
 Oid YbGetStorageRelid(Relation relation) {
-	if (relation->rd_rel->relkind == RELKIND_MATVIEW && 
+	if (relation->rd_rel->relkind == RELKIND_MATVIEW &&
 		relation->rd_rel->relfilenode != InvalidOid) {
 		return relation->rd_rel->relfilenode;
 	}
 	return RelationGetRelid(relation);
+}
+
+bool IsYbDbAdminUser(Oid member) {
+	return IsYugaByteEnabled() && has_privs_of_role(member, DEFAULT_ROLE_YB_DB_ADMIN);
+}
+
+bool IsYbDbAdminUserNosuper(Oid member) {
+	return IsYugaByteEnabled() && is_member_of_role_nosuper(member, DEFAULT_ROLE_YB_DB_ADMIN);
+}
+
+void YbCheckUnsupportedSystemColumns(Var *var, const char *colname, RangeTblEntry *rte) {
+	if (rte->relkind == RELKIND_FOREIGN_TABLE)
+		return;
+	switch (var->varattno)
+	{
+		case SelfItemPointerAttributeNumber:
+		case MinTransactionIdAttributeNumber:
+		case MinCommandIdAttributeNumber:
+		case MaxTransactionIdAttributeNumber:
+		case MaxCommandIdAttributeNumber:
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					errmsg("System column \"%s\" is not supported yet", colname)));
+		default:
+			break;
+	}
+}
+
+void YbRegisterSysTableForPrefetching(int sys_table_id) {
+	int db_id = MyDatabaseId;
+	int sys_table_index_id = InvalidOid;
+
+	switch(sys_table_id)
+	{
+		// TemplateDb tables
+		case AuthMemRelationId:                           // pg_auth_members
+			sys_table_index_id = AuthMemMemRoleIndexId;
+			db_id = TemplateDbOid;
+			break;
+		case AuthIdRelationId:                            // pg_authid
+			db_id = TemplateDbOid;
+			sys_table_index_id = AuthIdRolnameIndexId;
+			break;
+		case DatabaseRelationId:                          // pg_database
+			db_id = TemplateDbOid;
+			sys_table_index_id = DatabaseNameIndexId;
+			break;
+
+		case DbRoleSettingRelationId:                     // pg_db_role_setting
+			db_id = TemplateDbOid;
+			break;
+
+		// MyDb tables
+		case AccessMethodProcedureRelationId:             // pg_amproc
+			sys_table_index_id = AccessMethodProcedureIndexId;
+			break;
+		case AccessMethodRelationId:                      // pg_am AmNameIndexId
+			sys_table_index_id = AmNameIndexId;
+			break;
+		case AttrDefaultRelationId:                       // pg_attrdef
+			sys_table_index_id = AttrDefaultIndexId;
+			break;
+		case AttributeRelationId:                         // pg_attribute
+			sys_table_index_id = AttributeRelidNameIndexId;
+			break;
+		case ConstraintRelationId:                        // pg_constraint
+			sys_table_index_id = ConstraintRelidTypidNameIndexId;
+			break;
+		case IndexRelationId:                             // pg_index
+			sys_table_index_id = IndexIndrelidIndexId;
+			break;
+		case InheritsRelationId:                          // pg_inherits
+			sys_table_index_id = InheritsParentIndexId;
+			break;
+		case NamespaceRelationId:                         // pg_namespace
+			sys_table_index_id = NamespaceNameIndexId;
+			break;
+		case OperatorClassRelationId:                     // pg_opclass
+			sys_table_index_id = OpclassAmNameNspIndexId;
+			break;
+		case OperatorRelationId:                          // pg_operator
+			sys_table_index_id = OperatorNameNspIndexId;
+			break;
+		case PolicyRelationId:                            // pg_policy
+			sys_table_index_id = PolicyPolrelidPolnameIndexId;
+			break;
+		case RelationRelationId:                          // pg_class
+			sys_table_index_id = ClassNameNspIndexId;
+			break;
+		case RewriteRelationId:                           // pg_rewrite
+			sys_table_index_id = RewriteRelRulenameIndexId;
+			break;
+		case TriggerRelationId:                           // pg_trigger
+			sys_table_index_id = TriggerRelidNameIndexId;
+			break;
+		case TypeRelationId:                              // pg_type
+			sys_table_index_id = TypeNameNspIndexId;
+			break;
+
+		case CastRelationId:        switch_fallthrough(); // pg_cast
+		case PartitionedRelationId: switch_fallthrough(); // pg_partitioned_table
+		case ProcedureRelationId:   break;                // pg_proc
+
+		default:
+		{
+			ereport(FATAL,
+			        (errcode(ERRCODE_INTERNAL_ERROR),
+			         errmsg("Sys table '%d' is not yet inteded for preloading", sys_table_id)));
+
+		}
+	}
+	YBCRegisterSysTableForPrefetching(db_id, sys_table_id, sys_table_index_id);
+}
+
+bool YBCIsRegionLocal(Relation rel) {
+	double cost = 0.0;
+	return IsNormalProcessingMode() &&
+			!IsSystemRelation(rel) &&
+			get_yb_tablespace_cost(rel->rd_rel->reltablespace, &cost) &&
+			cost <= yb_interzone_cost;
 }

@@ -50,9 +50,11 @@ class MasterClusterServiceImpl : public MasterServiceBase, public MasterClusterI
     if (!req->primary_only()) {
       server_->ts_manager()->GetAllDescriptors(&descs);
     } else {
-      server_->ts_manager()->GetAllLiveDescriptorsInCluster(
-          &descs,
-          server_->catalog_manager_impl()->placement_uuid());
+      auto uuid_result = server_->catalog_manager_impl()->placement_uuid();
+      if (!uuid_result.ok()) {
+        return;
+      }
+      server_->ts_manager()->GetAllLiveDescriptorsInCluster(&descs, *uuid_result);
     }
 
     for (const std::shared_ptr<TSDescriptor>& desc : descs) {
@@ -75,12 +77,24 @@ class MasterClusterServiceImpl : public MasterServiceBase, public MasterClusterI
     if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, &rpc)) {
       return;
     }
-    string placement_uuid = server_->catalog_manager_impl()->placement_uuid();
+    auto placement_uuid_result = server_->catalog_manager_impl()->placement_uuid();
+    if (!placement_uuid_result.ok()) {
+      return;
+    }
+    string placement_uuid = *placement_uuid_result;
 
     vector<std::shared_ptr<TSDescriptor> > descs;
+    auto blacklist_result = server_->catalog_manager()->BlacklistSetFromPB();
+    BlacklistSet blacklist = blacklist_result.ok() ? *blacklist_result : BlacklistSet();
+
     server_->ts_manager()->GetAllLiveDescriptors(&descs);
 
     for (const std::shared_ptr<TSDescriptor>& desc : descs) {
+      // Skip descriptors which are (not "live") OR (blacklisted AND have no tablets)
+      if (!desc->IsLive() || (server_->ts_manager()->IsTsBlacklisted(desc, blacklist)
+        && desc->num_live_replicas() == 0)) {
+        continue;
+      }
       ListLiveTabletServersResponsePB::Entry* entry = resp->add_servers();
       auto ts_info = *desc->GetTSInformationPB();
       *entry->mutable_instance_id() = std::move(*ts_info.mutable_tserver_instance());
@@ -266,6 +280,19 @@ class MasterClusterServiceImpl : public MasterServiceBase, public MasterClusterI
       const GetLoadMovePercentRequestPB* req, GetLoadMovePercentResponsePB* resp,
       rpc::RpcContext rpc) override {
     HANDLE_ON_LEADER_WITH_LOCK(CatalogManager, GetLoadMoveCompletionPercent);
+  }
+
+  void GetAutoFlagsConfig(
+      const GetAutoFlagsConfigRequestPB* req, GetAutoFlagsConfigResponsePB* resp,
+      rpc::RpcContext rpc) override {
+    SCOPED_LEADER_SHARED_LOCK(l, server_->catalog_manager_impl());
+    if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, &rpc)) {
+      return;
+    }
+
+    *resp->mutable_config() = server_->GetAutoFlagConfig();
+
+    rpc.RespondSuccess();
   }
 
   MASTER_SERVICE_IMPL_ON_LEADER_WITH_LOCK(

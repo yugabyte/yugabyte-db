@@ -26,6 +26,8 @@
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/options.h"
 
+#include "yb/util/status_fwd.h"
+
 namespace yb {
 namespace docdb {
 
@@ -125,7 +127,7 @@ class IntentAwareIterator {
   //
   // If the key changes, latest_record_ht is set to the write time of the last merge record seen,
   // result_value is set to its value, and final_key is set to the key.
-  CHECKED_STATUS NextFullValue(
+  Status NextFullValue(
       DocHybridTime* latest_record_ht,
       Slice* result_value,
       Slice* final_key = nullptr);
@@ -133,7 +135,7 @@ class IntentAwareIterator {
   // Finds the latest record for a particular key after the provided max_overwrite_time, returns the
   // write time of the found record, and optionally also the result value. This latest record may
   // not be a full record, but instead a merge record (e.g. a TTL row).
-  CHECKED_STATUS FindLatestRecord(
+  Status FindLatestRecord(
       const Slice& key_without_ht,
       DocHybridTime* max_overwrite_time,
       Slice* result_value = nullptr);
@@ -151,6 +153,8 @@ class IntentAwareIterator {
   }
 
   void DebugDump();
+
+  std::string DebugPosToString();
 
  private:
   friend class IntentAwareIteratorPrefixScope;
@@ -240,7 +244,7 @@ class IntentAwareIterator {
   // Set the exclusive upperbound of the intent iterator to the current SubDocKey of the regular
   // iterator. This is necessary to avoid RocksDB iterator from scanning over the deleted intents
   // beyond the current regular key unnecessarily.
-  CHECKED_STATUS SetIntentUpperbound();
+  Status SetIntentUpperbound();
 
   // Resets the exclusive upperbound of the intent iterator to the beginning of the transaction
   // metadata and reverse index region.
@@ -323,7 +327,7 @@ class IntentAwareIterator {
   Slice seek_key_prefix_;
 };
 
-class IntentAwareIteratorPrefixScope {
+class NODISCARD_CLASS IntentAwareIteratorPrefixScope {
  public:
   IntentAwareIteratorPrefixScope(const Slice& prefix, IntentAwareIterator* iterator)
       : iterator_(iterator) {

@@ -53,7 +53,7 @@ class TabletMemoryManager {
   ~TabletMemoryManager() = default;
 
   // Init and Shutdown start/stop the background memstore management task.
-  CHECKED_STATUS Init();
+  Status Init();
   void Shutdown();
 
   // The MemTracker associated with the block cache.

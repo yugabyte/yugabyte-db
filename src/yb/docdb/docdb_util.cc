@@ -28,6 +28,7 @@
 #include "yb/util/env.h"
 #include "yb/util/status_format.h"
 #include "yb/util/string_trim.h"
+#include "yb/docdb/docdb_pgapi.h"
 
 using std::string;
 using std::make_shared;
@@ -39,6 +40,20 @@ using std::vector;
 
 namespace yb {
 namespace docdb {
+
+Status SetValueFromQLBinaryWrapper(
+    QLValuePB ql_value, const int pg_data_type,
+    const std::unordered_map<uint32_t, string>& enum_oid_label_map,
+    DatumMessagePB* cdc_datum_message) {
+  return yb::docdb::SetValueFromQLBinary(
+      ql_value, pg_data_type, enum_oid_label_map, cdc_datum_message);
+}
+
+DocDBRocksDBUtil::DocDBRocksDBUtil() : doc_read_context_(Schema(), 1) {}
+
+DocDBRocksDBUtil::DocDBRocksDBUtil(InitMarkerBehavior init_marker_behavior)
+    : doc_read_context_(Schema(), 1), init_marker_behavior_(init_marker_behavior) {
+}
 
 rocksdb::DB* DocDBRocksDBUtil::rocksdb() {
   return DCHECK_NOTNULL(regular_db_.get());
@@ -123,14 +138,15 @@ Status DocDBRocksDBUtil::PopulateRocksDBWriteBatch(
   if (decode_dockey) {
     for (const auto& entry : dwb.key_value_pairs()) {
       // Skip key validation for external intents.
-      if (!entry.first.empty() && entry.first[0] == ValueTypeAsChar::kExternalTransactionId) {
+      if (!entry.key.empty() && entry.key[0] == KeyEntryTypeAsChar::kExternalTransactionId) {
         continue;
       }
       SubDocKey subdoc_key;
       // We don't expect any invalid encoded keys in the write batch. However, these encoded keys
       // don't contain the HybridTime.
-      RETURN_NOT_OK_PREPEND(subdoc_key.FullyDecodeFromKeyWithOptionalHybridTime(entry.first),
-          Substitute("when decoding key: $0", FormatBytesAsStr(entry.first)));
+      RETURN_NOT_OK_PREPEND(
+          subdoc_key.FullyDecodeFromKeyWithOptionalHybridTime(entry.key),
+          Substitute("when decoding key: $0", FormatBytesAsStr(entry.key)));
     }
   }
 
@@ -156,14 +172,14 @@ Status DocDBRocksDBUtil::PopulateRocksDBWriteBatch(
       if (hybrid_time.is_valid()) {
         // HybridTime provided. Append a PrimitiveValue with the HybridTime to the key.
         const KeyBytes encoded_ht =
-            PrimitiveValue(DocHybridTime(hybrid_time, write_id)).ToKeyBytes();
-        rocksdb_key = entry.first + encoded_ht.ToStringBuffer();
+            KeyEntryValue(DocHybridTime(hybrid_time, write_id)).ToKeyBytes();
+        rocksdb_key = entry.key + encoded_ht.ToStringBuffer();
       } else {
         // Useful when printing out a write batch that does not yet know the HybridTime it will be
         // committed with.
-        rocksdb_key = entry.first;
+        rocksdb_key = entry.key;
       }
-      rocksdb_write_batch->Put(rocksdb_key, entry.second);
+      rocksdb_write_batch->Put(rocksdb_key, entry.value);
       if (increment_write_id) {
         ++write_id;
       }
@@ -249,12 +265,14 @@ Status DocDBRocksDBUtil::WriteToRocksDBAndClear(
 }
 
 Status DocDBRocksDBUtil::WriteSimple(int index) {
-  auto encoded_doc_key = DocKey(PrimitiveValues(Format("row$0", index), 11111 * index)).Encode();
+  auto encoded_doc_key = DocKey(KeyEntryValues(Format("row$0", index), 11111 * index)).Encode();
   op_id_.term = index / 2;
   op_id_.index = index;
   auto& dwb = DefaultDocWriteBatch();
+  QLValuePB value;
+  value.set_int32_value(index);
   RETURN_NOT_OK(dwb.SetPrimitive(
-      DocPath(encoded_doc_key, PrimitiveValue(ColumnId(10))), PrimitiveValue(index)));
+      DocPath(encoded_doc_key, KeyEntryValue::MakeColumnId(ColumnId(10))), ValueRef(value)));
   return WriteToRocksDBAndClear(&dwb, HybridTime::FromMicros(1000 * index));
 }
 
@@ -263,31 +281,33 @@ void DocDBRocksDBUtil::SetHistoryCutoffHybridTime(HybridTime history_cutoff) {
 }
 
 void DocDBRocksDBUtil::SetTableTTL(uint64_t ttl_msec) {
-  schema_.SetDefaultTimeToLive(ttl_msec);
+  doc_read_context_.schema.SetDefaultTimeToLive(ttl_msec);
   retention_policy_->SetTableTTLForTests(MonoDelta::FromMilliseconds(ttl_msec));
 }
 
 string DocDBRocksDBUtil::DocDBDebugDumpToStr() {
-  return yb::docdb::DocDBDebugDumpToStr(rocksdb()) +
-         yb::docdb::DocDBDebugDumpToStr(intents_db(), StorageDbType::kIntents);
+  return docdb::DocDBDebugDumpToStr(rocksdb(), SchemaPackingStorage()) +
+         docdb::DocDBDebugDumpToStr(
+             intents_db(), SchemaPackingStorage(), StorageDbType::kIntents);
 }
 
 Status DocDBRocksDBUtil::SetPrimitive(
     const DocPath& doc_path,
-    const Value& value,
+    const ValueControlFields& control_fields,
+    const ValueRef& value,
     const HybridTime hybrid_time,
     const ReadHybridTime& read_ht) {
   auto dwb = MakeDocWriteBatch();
-  RETURN_NOT_OK(dwb.SetPrimitive(doc_path, value, read_ht));
+  RETURN_NOT_OK(dwb.SetPrimitive(doc_path, control_fields, value, read_ht));
   return WriteToRocksDB(dwb, hybrid_time);
 }
 
 Status DocDBRocksDBUtil::SetPrimitive(
     const DocPath& doc_path,
-    const PrimitiveValue& primitive_value,
+    const QLValuePB& value,
     const HybridTime hybrid_time,
     const ReadHybridTime& read_ht) {
-  return SetPrimitive(doc_path, Value(primitive_value), hybrid_time, read_ht);
+  return SetPrimitive(doc_path, ValueRef(value), hybrid_time, read_ht);
 }
 
 Status DocDBRocksDBUtil::AddExternalIntents(
@@ -316,8 +336,8 @@ Status DocDBRocksDBUtil::AddExternalIntents(
       kv_pair.set_value(value_.ToStringBuffer());
       ExternalTxnApplyState external_txn_apply_state;
       AddExternalPairToWriteBatch(
-          kv_pair, hybrid_time_, /* write_id= */ 0, &external_txn_apply_state,
-          /* regular_write_batch= */ nullptr, batch);
+          kv_pair, hybrid_time_, &external_txn_apply_state,
+          /* regular_write_batch= */ nullptr, batch, nullptr);
     }
 
     boost::optional<std::pair<Slice, Slice>> Next() override {
@@ -333,7 +353,7 @@ Status DocDBRocksDBUtil::AddExternalIntents(
       for (const auto& subkey : intent.doc_path.subkeys()) {
         subkey.AppendToKey(&intent_key_);
       }
-      intent_value_ = intent.value.Encode();
+      intent_value_ = intent.value;
 
       return std::pair<Slice, Slice>(intent_key_.AsSlice(), intent_value_);
     }
@@ -365,7 +385,7 @@ Status DocDBRocksDBUtil::AddExternalIntents(
 
 Status DocDBRocksDBUtil::InsertSubDocument(
     const DocPath& doc_path,
-    const SubDocument& value,
+    const ValueRef& value,
     const HybridTime hybrid_time,
     MonoDelta ttl,
     const ReadHybridTime& read_ht) {
@@ -377,7 +397,7 @@ Status DocDBRocksDBUtil::InsertSubDocument(
 
 Status DocDBRocksDBUtil::ExtendSubDocument(
     const DocPath& doc_path,
-    const SubDocument& value,
+    const ValueRef& value,
     const HybridTime hybrid_time,
     MonoDelta ttl,
     const ReadHybridTime& read_ht) {
@@ -389,7 +409,7 @@ Status DocDBRocksDBUtil::ExtendSubDocument(
 
 Status DocDBRocksDBUtil::ExtendList(
     const DocPath& doc_path,
-    const SubDocument& value,
+    const ValueRef& value,
     HybridTime hybrid_time,
     const ReadHybridTime& read_ht) {
   auto dwb = MakeDocWriteBatch();
@@ -400,7 +420,7 @@ Status DocDBRocksDBUtil::ExtendList(
 Status DocDBRocksDBUtil::ReplaceInList(
     const DocPath &doc_path,
     const int target_cql_index,
-    const SubDocument& value,
+    const ValueRef& value,
     const ReadHybridTime& read_ht,
     const HybridTime& hybrid_time,
     const rocksdb::QueryId query_id,
@@ -424,7 +444,8 @@ Status DocDBRocksDBUtil::DeleteSubDoc(
 }
 
 void DocDBRocksDBUtil::DocDBDebugDumpToConsole() {
-  DocDBDebugDump(regular_db_.get(), std::cerr, StorageDbType::kRegular);
+  DocDBDebugDump(
+      regular_db_.get(), std::cerr, SchemaPackingStorage(), StorageDbType::kRegular);
 }
 
 Status DocDBRocksDBUtil::FlushRocksDbAndWait() {
@@ -442,9 +463,12 @@ Status DocDBRocksDBUtil::ReinitDBOptions() {
   docdb::InitRocksDBOptions(
       &intents_db_options_, "[I] " /* log_prefix */, intents_db_options_.statistics,
       tablet_options);
-  regular_db_options_.compaction_filter_factory =
-      std::make_shared<docdb::DocDBCompactionFilterFactory>(
-          retention_policy_, &KeyBounds::kNoBounds);
+  regular_db_options_.compaction_context_factory = CreateCompactionContextFactory(
+      retention_policy_, &KeyBounds::kNoBounds,
+      [this](const std::vector<rocksdb::FileMetaData*>&) {
+        return delete_marker_retention_time_;
+      } ,
+      /* schema_packing_provider= */ nullptr);
   regular_db_options_.compaction_file_filter_factory =
       compaction_file_filter_factory_;
   regular_db_options_.max_file_size_for_compaction =

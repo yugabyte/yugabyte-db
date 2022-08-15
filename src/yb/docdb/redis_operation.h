@@ -47,9 +47,9 @@ class RedisWriteOperation :
 
   bool RequireReadSnapshot() const override { return false; }
 
-  CHECKED_STATUS Apply(const DocOperationApplyData& data) override;
+  Status Apply(const DocOperationApplyData& data) override;
 
-  CHECKED_STATUS GetDocPaths(
+  Status GetDocPaths(
       GetDocPathsMode mode, DocPathsToLock *paths, IsolationLevel *level) const override;
 
   RedisResponsePB &response() { return response_; }
@@ -65,18 +65,18 @@ class RedisWriteOperation :
   Result<RedisValue> GetValue(const DocOperationApplyData& data,
       int subkey_index = kNilSubkeyIndex, Expiration* exp = nullptr);
 
-  CHECKED_STATUS ApplySetTtl(const DocOperationApplyData& data);
-  CHECKED_STATUS ApplySet(const DocOperationApplyData& data);
-  CHECKED_STATUS ApplyGetSet(const DocOperationApplyData& data);
-  CHECKED_STATUS ApplyAppend(const DocOperationApplyData& data);
-  CHECKED_STATUS ApplyDel(const DocOperationApplyData& data);
-  CHECKED_STATUS ApplySetRange(const DocOperationApplyData& data);
-  CHECKED_STATUS ApplyIncr(const DocOperationApplyData& data);
-  CHECKED_STATUS ApplyPush(const DocOperationApplyData& data);
-  CHECKED_STATUS ApplyInsert(const DocOperationApplyData& data);
-  CHECKED_STATUS ApplyPop(const DocOperationApplyData& data);
-  CHECKED_STATUS ApplyAdd(const DocOperationApplyData& data);
-  CHECKED_STATUS ApplyRemove(const DocOperationApplyData& data);
+  Status ApplySetTtl(const DocOperationApplyData& data);
+  Status ApplySet(const DocOperationApplyData& data);
+  Status ApplyGetSet(const DocOperationApplyData& data);
+  Status ApplyAppend(const DocOperationApplyData& data);
+  Status ApplyDel(const DocOperationApplyData& data);
+  Status ApplySetRange(const DocOperationApplyData& data);
+  Status ApplyIncr(const DocOperationApplyData& data);
+  Status ApplyPush(const DocOperationApplyData& data);
+  Status ApplyInsert(const DocOperationApplyData& data);
+  Status ApplyPop(const DocOperationApplyData& data);
+  Status ApplyAdd(const DocOperationApplyData& data);
+  Status ApplyRemove(const DocOperationApplyData& data);
 
   RedisResponsePB response_;
   // TODO: Currently we have a separate iterator per operation, but in future, we leave the option
@@ -94,7 +94,7 @@ class RedisReadOperation {
                               const ReadHybridTime& read_time)
       : request_(request), doc_db_(doc_db), deadline_(deadline), read_time_(read_time) {}
 
-  CHECKED_STATUS Execute();
+  Status Execute();
 
   const RedisResponsePB &response();
 
@@ -110,26 +110,24 @@ class RedisReadOperation {
 
   Result<RedisValue> GetValue(int subkey_index = kNilSubkeyIndex);
 
-  CHECKED_STATUS ExecuteGet();
-  CHECKED_STATUS ExecuteGet(const RedisGetRequestPB& get_request);
-  CHECKED_STATUS ExecuteGet(RedisGetRequestPB::GetRequestType type);
-  CHECKED_STATUS ExecuteGetForRename();
-  CHECKED_STATUS ExecuteGetTtl();
+  Status ExecuteGet();
+  Status ExecuteGet(const RedisGetRequestPB& get_request);
+  Status ExecuteGet(RedisGetRequestPB::GetRequestType type);
+  Status ExecuteGetForRename();
+  Status ExecuteGetTtl();
   // Used to implement HGETALL, HKEYS, HVALS, SMEMBERS, HLEN, SCARD
-  CHECKED_STATUS ExecuteHGetAllLikeCommands(
-                                    ValueType value_type,
-                                    bool add_keys,
-                                    bool add_values);
-  CHECKED_STATUS ExecuteStrLen();
-  CHECKED_STATUS ExecuteExists();
-  CHECKED_STATUS ExecuteGetRange();
-  CHECKED_STATUS ExecuteCollectionGetRange();
-  CHECKED_STATUS ExecuteCollectionGetRangeByBounds(
+  Status ExecuteHGetAllLikeCommands(
+      ValueEntryType value_type, bool add_keys, bool add_values);
+  Status ExecuteStrLen();
+  Status ExecuteExists();
+  Status ExecuteGetRange();
+  Status ExecuteCollectionGetRange();
+  Status ExecuteCollectionGetRangeByBounds(
       RedisCollectionGetRangeRequestPB::GetRangeRequestType request_type, bool add_keys);
-  CHECKED_STATUS ExecuteCollectionGetRangeByBounds(
+  Status ExecuteCollectionGetRangeByBounds(
       RedisCollectionGetRangeRequestPB::GetRangeRequestType request_type,
       const RedisSubKeyBoundPB& lower_bound, const RedisSubKeyBoundPB& upper_bound, bool add_keys);
-  CHECKED_STATUS ExecuteKeys();
+  Status ExecuteKeys();
 
   rocksdb::QueryId redis_query_id() { return reinterpret_cast<rocksdb::QueryId> (&request_); }
 

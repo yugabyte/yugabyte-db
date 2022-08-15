@@ -51,7 +51,7 @@ const mapDispatchToProps = (dispatch) => {
     createOnPremAccessKeys: (providerUUID, regionsMap, config) => {
       if (isObject(config) && isNonEmptyArray(config.regions) && isObject(config.key)) {
         dispatch(
-          createAccessKey(providerUUID, regionsMap[config.regions[0].code], config.key)
+          createAccessKey(providerUUID, regionsMap[config.regions[0].code], config.key, config.ntpServers, config.setUpChrony)
         ).then((response) => {
           if (response.error) {
             dispatch(createAccessKeyFailure(response.payload));

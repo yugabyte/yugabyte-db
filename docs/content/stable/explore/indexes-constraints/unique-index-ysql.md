@@ -1,15 +1,14 @@
 ---
-title: Unique Indexes
-linkTitle:  Unique Indexes
-description: Using Unique Indexes in YSQL
+title: Unique indexes
+linkTitle:  Unique indexes
+description: Using Unique indexes in YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
   stable:
     identifier: unique-index-ysql
     parent: explore-indexes-constraints
-    weight: 210
-isTocNested: true
-showAsideToc: true
+    weight: 230
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -30,21 +29,23 @@ showAsideToc: true
 
 If you need values in some of the columns to be unique, you can specify your index as `UNIQUE`.
 
-When a `UNIQUE` index is applied to two or more columns, the combined values in these columns can't be duplicated in multiple rows. Note that because a `NULL` value is treated as a distinct value, you can have multiple `NULL` values in a column with a `UNIQUE` index.
+When a unique index is applied to two or more columns, the combined values in these columns can't be duplicated in multiple rows. Note that because a `NULL` value is treated as a distinct value, you can have multiple `NULL` values in a column with a unique index.
 
-If a table has a primary key or a `UNIQUE` constraint defined, a corresponding `UNIQUE` index is created automatically.
+If a table has a primary key or a [UNIQUE constraint](../other-constraints/#unique-constraint) defined, a corresponding unique index is created automatically.
 
 ## Syntax
 
-```ysql
-CREATE INDEX index_name ON table_name(column_list);
+```sql
+CREATE UNIQUE INDEX index_name ON table_name(column_list);
 ```
 
 ## Example
 
-This example uses the `categories` table from the [Northwind sample database](/latest/sample-data/northwind/). Follow the steps to create a local [cluster](/latest/quick-start/) or in [Yugabyte Cloud](/latest/yugabyte-cloud/cloud-connect/), and [install](/latest/sample-data/northwind/#install-the-northwind-sample-database) the sample Northwind database.
+This example uses the `categories` table from the [Northwind sample database](../../../sample-data/northwind/).
 
-- View the contents of the `categories` table.
+Create a cluster [locally](../../../quick-start/) or in [YugabyteDB Managed](../../../yugabyte-cloud/cloud-basics/create-clusters-free/) and [install](../../../sample-data/northwind/#install-the-northwind-sample-database) the sample Northwind database.
+
+View the contents of the `categories` table:
 
 ```sql
 northwind=# SELECT * FROM categories  LIMIT 5;
@@ -61,14 +62,14 @@ northwind=# SELECT * FROM categories  LIMIT 5;
 (5 rows)
 ```
 
-- Create a `UNIQUE` index for the `category_id` column in the `categories` table.
+Create a `UNIQUE` index for the `category_id` column in the `categories` table.
 
 ```sql
 northwind=# CREATE UNIQUE INDEX index_category_id
               ON categories(category_id);
 ```
 
-- List the index created using the following command:
+List the index created using the following command:
 
 ```sql
 northwind=# SELECT indexname,
@@ -93,7 +94,7 @@ northwind=# EXPLAIN SELECT * FROM categories  LIMIT 5;
    ->  Seq Scan on categories  (cost=0.00..100.00 rows=1000 width=114)
 (2 rows) -->
 
-- After the `CREATE` statement is executed, any attempt to insert a new category with an existing `category_id` will result in an error.
+After the `CREATE` statement is executed, any attempt to insert a new category with an existing `category_id` will result in an error.
 
 ```sql
 northwind=# INSERT INTO categories(category_id, category_name, description) VALUES (1, 'Savories', 'Spicy chips and snacks');
@@ -103,7 +104,7 @@ northwind=# INSERT INTO categories(category_id, category_name, description) VALU
 ERROR:  duplicate key value violates unique constraint "categories_pkey"
 ```
 
-- Insert a row with a new `category_id` and verify its existence in the table.
+Insert a row with a new `category_id` and verify its existence in the table.
 
 ```sql
 northwind=# INSERT INTO categories(category_id, category_name, description) VALUES (9, 'Savories', 'Spicy chips and snacks');
@@ -131,5 +132,7 @@ northwind=# SELECT * FROM categories;
 ## Learn more
 
 - [Unique index with HASH column ordering](../../../api/ysql/the-sql-language/statements/ddl_create_index/#unique-index-with-hash-column-ordering)
+- [UNIQUE constraint](../other-constraints/#unique-constraint)
 - [Indexes on JSON attributes](../../../explore/json-support/jsonb-ysql/#6-indexes-on-json-attributes)
 - [Benefits of Index-only scan](https://blog.yugabyte.com/how-a-distributed-sql-database-boosts-secondary-index-queries-with-index-only-scan/)
+- [CREATE TABLE](../../../api/ysql/the-sql-language/statements/ddl_create_table/)

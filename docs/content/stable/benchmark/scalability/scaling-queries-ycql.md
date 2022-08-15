@@ -8,22 +8,21 @@ menu:
     identifier: scaling-queries-2-ycql
     parent: scalability
     weight: 11
-showAsideToc: true
-isTocNested: true
+type: docs
 ---
 
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/benchmark/scalability/scaling-queries-ysql" class="nav-link">
+    <a href="../scaling-queries-ysql/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
 
   <li >
-    <a href="/latest/benchmark/scalability/scaling-queries-ycql" class="nav-link active">
+    <a href="../scaling-queries-ycql/" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
@@ -59,17 +58,17 @@ The workload was generated using a multi-threaded Cassandra key-value sample app
 
 YugabyteDB performs strongly consistent reads by default. For details, see [Read IO path (single shard)](../../../architecture/core-functions/read-path/). Below is the summary of the performance metrics observed during a 100% read workload:
 
-- **2.6& million read operations per second**, sum across the YugaByte nodes.
+- **2.6& million read operations per second**, sum across the YugabyteDB nodes.
 - **0.2 millisecond average latency** per read on the server side.
-- **65% CPU usage**, averaged across the YugaByte nodes.
+- **65% CPU usage**, averaged across the YugabyteDB nodes.
 
-#### 50-node cluster  read IOPS and latency across the nodes.
+#### 50-node cluster - read IOPS and latency across the nodes
 
 The graphs below were captured for one hour of the run. The operations per second is the sum across all the nodes while the latency is the average. Note that the throughput and latency metrics are very steady over the entire time window.
 
 ![Total YCQL operations per second and YCQL operations latency](/images/benchmark/scalability/total-cql-ops-per-sec-reads.png)
 
-#### 50-node cluster   CPU and memory during the read benchmark
+#### 50-node cluster - CPU and memory during the read benchmark
 
 The two graphs below show the corresponding CPU and memory (RAM) usage during that time interval.
 
@@ -87,7 +86,7 @@ The graphs below are for twelve hours of the run. Note that this is a much longe
 
 #### 50-node cluster — write IOPS and latency across the nodes
 
-The two graphs below are the corresponding CPU and RAM usage for those twelve hours, and are the average across all the YugaByte nodes.
+The two graphs below are the corresponding CPU and RAM usage for those twelve hours, and are the average across all the YugabyteDB nodes.
 
 ![Total YCQL operations per second and YCQL operation latency](/images/benchmark/scalability/total-cql-ops-per-sec-writes-ycql.png)
 
@@ -99,4 +98,4 @@ Note that these writes are the logical writes that the application issued. Each 
 
 ## Next steps
 
-You can visit the [YugabyteDB workload generator](https://github.com/yugabyte/yb-sample-apps) GitHub repository to try out more experiments on your own local setups. After you set up a cluster and test your favorite application, share your feedback and suggestions with other users on the [YugabyteDB Community Slack](https://www.yugabyte.com/slack).
+You can visit the [YugabyteDB workload generator](https://github.com/yugabyte/yb-sample-apps) GitHub repository to try out more experiments on your own local setups. After you set up a cluster and test your favorite application, share your feedback and suggestions with other users on the [YugabyteDB Community Slack]({{<slack-invite>}}).

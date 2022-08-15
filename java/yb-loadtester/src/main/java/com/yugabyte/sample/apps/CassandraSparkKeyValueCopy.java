@@ -22,11 +22,12 @@ import com.datastax.driver.core.SimpleStatement;
 import com.datastax.spark.connector.japi.rdd.CassandraJavaRDD;
 import com.yugabyte.sample.common.CmdLineOpts;
 import org.apache.commons.cli.CommandLine;
-import org.apache.log4j.Logger;
 import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import scala.Tuple2;
 import com.datastax.spark.connector.cql.CassandraConnector;
 import scala.Tuple3;
@@ -37,7 +38,7 @@ import static com.datastax.spark.connector.japi.CassandraJavaUtil.someColumns;
 
 public class CassandraSparkKeyValueCopy extends AppBase {
 
-  private static final Logger LOG = Logger.getLogger(CassandraSparkKeyValueCopy.class);
+  private static final Logger LOG = LoggerFactory.getLogger(CassandraSparkKeyValueCopy.class);
   // Static initialization of this workload's config.
   static {
     // Set the app type to simple.

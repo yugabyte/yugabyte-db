@@ -75,7 +75,7 @@ class BackupTxnTest : public TransactionTestBase<MiniCluster> {
     TransactionTestBase::DoBeforeTearDown();
   }
 
-  CHECKED_STATUS WaitAllSnapshotsDeleted() {
+  Status WaitAllSnapshotsDeleted() {
     RETURN_NOT_OK(snapshot_util_->WaitAllSnapshotsDeleted());
     // Check if deleted in DocDB.
     return WaitFor([this]() -> Result<bool> {
@@ -458,7 +458,7 @@ TEST_F(BackupTxnTest, Consistency) {
         for (int j = 0; j != kKeys; ++j) {
           ASSERT_OK(WriteRow(session, j, v, WriteOpType::INSERT, Flush::kFalse));
         }
-        auto status = session->Flush();
+        auto status = session->TEST_Flush();
         if (status.ok()) {
           status = txn->CommitFuture().get();
         }

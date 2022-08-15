@@ -111,7 +111,7 @@ Status YBPartitionGenerator::LookupTabletIdWithTokenizer(const CsvTokenizer& tok
       return STATUS_SUBSTITUTE(IllegalState, "Primary key cannot be null: $0", *it);
     }
 
-    DataType column_type = schema.column(i).type_info()->type();
+    DataType column_type = schema.column(i).type_info()->type;
     auto* value_pb = ql_read->add_hashed_column_values()->mutable_value();
 
     switch(column_type) {

@@ -8,8 +8,7 @@ menu:
     identifier: sql-nosql
     parent: learn
     weight: 561
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Most application developers have used SQL, and possibly some NoSQL databases, to build applications. YugabyteDB brings the best of these two databases together into one unified platform to simplify development of scalable cloud services.
@@ -56,7 +55,7 @@ Applications and cloud services depend on databases for a variety of built-in fe
 
 Here is a table that lists some of the important features that YugabyteDB supports, and which of YugabyteDB's APIs to use in order to achieve these features. Note that typically, multiple databases are deployed in order to achieve these features.
 
-| Database features  | [Yugabyte SQL API](../../../api/ysql) | [Yugabyte Cloud QL API](../../../api/ycql) |
+| Database features  | [Yugabyte SQL API](../../../api/ysql/) | [Yugabyte Cloud QL API](../../../api/ycql/) |
 | --------------- | ---------------- | ------------------ |
 | Multi-row transactions | Yes | Yes |
 | Consistent secondary indexes | Yes | Yes |

@@ -36,6 +36,16 @@ using namespace std::literals;
 namespace yb {
 namespace pgwrapper {
 
+const std::string& DefaultColumnSeparator() {
+  static const std::string result = ", ";
+  return result;
+}
+
+const std::string& DefaultRowSeparator() {
+  static const std::string result = "; ";
+  return result;
+}
+
 namespace {
 
 // Converts the given element of the ExecStatusType enum to a string.
@@ -99,6 +109,42 @@ inline void ReplaceAll(std::string* str, const std::string& from, const std::str
   }
 }
 
+std::string BuildConnectionString(const PGConnSettings& settings, bool mask_password = false) {
+  std::string result;
+  result.reserve(512);
+  result += Format("host=$0 port=$1", settings.host, settings.port);
+  if (!settings.dbname.empty()) {
+    result += Format(" dbname=$0", PqEscapeLiteral(settings.dbname));
+  }
+  if (settings.connect_timeout) {
+    result += Format(" connect_timeout=$0", settings.connect_timeout);
+  }
+  if (!settings.user.empty()) {
+    result += Format(" user=$0", PqEscapeLiteral(settings.user));
+  }
+  if (!settings.password.empty()) {
+    result += Format(" password=$0", mask_password ? "<REDACTED>" : settings.password);
+  }
+  return result;
+}
+
+std::string FormPQErrorMessage(const char* msg) {
+  std::string result(msg);
+  // Avoid double newline (postgres adds a newline after the error message).
+  if (!result.empty() && result.back() == '\n') {
+    result.pop_back();
+  }
+  return result;
+}
+
+std::string GetPQErrorMessage(const PGresult* res) {
+  return FormPQErrorMessage(PQresultErrorMessage(res));
+}
+
+std::string GetPQErrorMessage(const PGconn* conn) {
+  return FormPQErrorMessage(PQerrorMessage(conn));
+}
+
 }  // anonymous namespace
 
 
@@ -143,25 +189,13 @@ struct PGConn::CopyData {
   }
 };
 
-Result<PGConn> PGConn::Connect(
-    const HostPort& host_port,
-    const std::string& db_name,
-    const std::string& user,
-    bool simple_query_protocol) {
-  auto conn_info = Format(
-      "host=$0 port=$1 user=$2",
-      host_port.host(),
-      host_port.port(),
-      PqEscapeLiteral(user));
-  if (!db_name.empty()) {
-    conn_info = Format("dbname=$0 $1", PqEscapeLiteral(db_name), conn_info);
-  }
-  return Connect(conn_info, simple_query_protocol);
-}
-
 Result<PGConn> PGConn::Connect(const std::string& conn_str,
                                CoarseTimePoint deadline,
-                               bool simple_query_protocol) {
+                               bool simple_query_protocol,
+                               const std::string& explicit_conn_str_for_log) {
+  const auto& conn_str_for_log = explicit_conn_str_for_log.empty()
+      ? conn_str
+      : explicit_conn_str_for_log;
   auto start = CoarseMonoClock::now();
   for (;;) {
     PGConnPtr result(PQconnectdb(conn_str.c_str()));
@@ -169,23 +203,24 @@ Result<PGConn> PGConn::Connect(const std::string& conn_str,
       return STATUS(NetworkError, "Failed to connect to DB");
     }
     auto status = PQstatus(result.get());
-    if (status == ConnStatusType::CONNECTION_OK) {
-      LOG(INFO) << "Connected to PG (" << conn_str << "), time taken: "
+    if (status == CONNECTION_OK) {
+      LOG(INFO) << "Connected to PG ("
+                << conn_str_for_log
+                << "), time taken: "
                 << MonoDelta(CoarseMonoClock::Now() - start);
       return PGConn(std::move(result), simple_query_protocol);
     }
     auto now = CoarseMonoClock::now();
     if (now >= deadline) {
-      std::string msg(yb::Format("$0", status));
-      if (status == CONNECTION_BAD) {
-        msg = PQerrorMessage(result.get());
-        // Avoid double newline (postgres adds a newline after the error message).
-        if (msg.back() == '\n') {
-          msg.resize(msg.size() - 1);
-        }
-      }
-      return STATUS_FORMAT(NetworkError, "Connect failed: $0, passed: $1",
-                           msg, MonoDelta(now - start));
+      const auto msg = status == CONNECTION_BAD
+          ? GetPQErrorMessage(result.get())
+          : std::string();
+      const MonoDelta duration(now - start);
+      LOG(INFO) << "Connect with \"" << conn_str_for_log << "\" failed: "
+                << (msg.empty() ? AsString(status) : msg) << ", time taken: " << duration;
+      return STATUS(NetworkError,
+                    Format("Connect failed: $0, passed: $1", msg, duration),
+                    AuxilaryMessage(msg));
     }
   }
 }
@@ -221,13 +256,14 @@ Status PGConn::Execute(const std::string& command, bool show_query_in_error) {
                            "Tuples received in Execute$0",
                            show_query_in_error ? Format(" of '$0'", command) : "");
     }
+    auto msg = GetPQErrorMessage(res.get());
     return STATUS(NetworkError,
                   Format("Execute$0 failed: $1, message: $2",
                          show_query_in_error ? Format(" of '$0'", command) : "",
                          status,
-                         PQresultErrorMessage(res.get())),
+                         msg),
                   Slice() /* msg2 */,
-                  PgsqlError(GetSqlState(res.get())));
+                  PgsqlError(GetSqlState(res.get()))).CloneAndAddErrorCode(AuxilaryMessage(msg));
   }
   return Status::OK();
 }
@@ -235,11 +271,12 @@ Status PGConn::Execute(const std::string& command, bool show_query_in_error) {
 Result<PGResultPtr> CheckResult(PGResultPtr result, const std::string& command) {
   auto status = PQresultStatus(result.get());
   if (ExecStatusType::PGRES_TUPLES_OK != status && ExecStatusType::PGRES_COPY_IN != status) {
+    auto msg = GetPQErrorMessage(result.get());
     return STATUS(NetworkError,
                   Format("Fetch '$0' failed: $1, message: $2",
-                         command, status, PQresultErrorMessage(result.get())),
+                         command, status, msg),
                   Slice() /* msg2 */,
-                  PgsqlError(GetSqlState(result.get())));
+                  PgsqlError(GetSqlState(result.get()))).CloneAndAddErrorCode(AuxilaryMessage(msg));
   }
   return result;
 }
@@ -271,7 +308,35 @@ Result<PGResultPtr> PGConn::FetchMatrix(const std::string& command, int rows, in
   return res;
 }
 
-CHECKED_STATUS PGConn::StartTransaction(IsolationLevel isolation_level) {
+Result<std::string> PGConn::FetchRowAsString(const std::string& command, const std::string& sep) {
+  auto res = VERIFY_RESULT(Fetch(command));
+
+  auto fetched_rows = PQntuples(res.get());
+  if (fetched_rows != 1) {
+    return STATUS_FORMAT(
+        RuntimeError, "Fetched $0 rows, while 1 expected", fetched_rows);
+  }
+
+  return RowToString(res.get(), 0, sep);
+}
+
+Result<std::string> PGConn::FetchAllAsString(
+    const std::string& command, const std::string& column_sep, const std::string& row_sep) {
+  auto res = VERIFY_RESULT(Fetch(command));
+
+  std::string result;
+  auto fetched_rows = PQntuples(res.get());
+  for (int i = 0; i != fetched_rows; ++i) {
+    if (i) {
+      result += row_sep;
+    }
+    result += VERIFY_RESULT(RowToString(res.get(), i, column_sep));
+  }
+
+  return result;
+}
+
+Status PGConn::StartTransaction(IsolationLevel isolation_level) {
   switch (isolation_level) {
     case IsolationLevel::NON_TRANSACTIONAL:
       return Status::OK();
@@ -286,11 +351,11 @@ CHECKED_STATUS PGConn::StartTransaction(IsolationLevel isolation_level) {
   FATAL_INVALID_ENUM_VALUE(IsolationLevel, isolation_level);
 }
 
-CHECKED_STATUS PGConn::CommitTransaction() {
+Status PGConn::CommitTransaction() {
   return Execute("COMMIT");
 }
 
-CHECKED_STATUS PGConn::RollbackTransaction() {
+Status PGConn::RollbackTransaction() {
   return Execute("ROLLBACK");
 }
 
@@ -469,6 +534,10 @@ Result<std::string> ToString(PGresult* result, int row, int column) {
   constexpr Oid BPCHAROID = 1042;
   constexpr Oid VARCHAROID = 1043;
 
+  if (PQgetisnull(result, row, column)) {
+    return "NULL";
+  }
+
   auto type = PQftype(result, column);
   switch (type) {
     case INT8OID:
@@ -486,18 +555,22 @@ Result<std::string> ToString(PGresult* result, int row, int column) {
   }
 }
 
-void LogResult(PGresult* result) {
+Result<std::string> RowToString(PGresult* result, int row, const std::string& sep) {
   int cols = PQnfields(result);
+  std::string line;
+  for (int col = 0; col != cols; ++col) {
+    if (col) {
+      line += sep;
+    }
+    line += VERIFY_RESULT(ToString(result, row, col));
+  }
+  return line;
+}
+
+void LogResult(PGresult* result) {
   int rows = PQntuples(result);
   for (int row = 0; row != rows; ++row) {
-    std::string line;
-    for (int col = 0; col != cols; ++col) {
-      if (col) {
-        line += ", ";
-      }
-      line += CHECK_RESULT(ToString(result, row, col));
-    }
-    LOG(INFO) << line;
+    LOG(INFO) << RowToString(result, row);
   }
 }
 
@@ -534,6 +607,15 @@ std::string PqEscapeIdentifier(const std::string& input) {
 
 bool HasTryAgain(const Status& status) {
   return status.ToString().find("Try again:") != std::string::npos;
+}
+
+PGConnBuilder::PGConnBuilder(const PGConnSettings& settings)
+    : conn_str_(BuildConnectionString(settings)),
+      conn_str_for_log_(BuildConnectionString(settings, true /* mask_password */)) {
+}
+
+Result<PGConn> PGConnBuilder::Connect(bool simple_query_protocol) const {
+  return PGConn::Connect(conn_str_, simple_query_protocol, conn_str_for_log_);
 }
 
 } // namespace pgwrapper

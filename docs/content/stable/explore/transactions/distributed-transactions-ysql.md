@@ -10,21 +10,20 @@ menu:
     identifier: explore-transactions-distributed-transactions-1-ysql
     parent: explore-transactions
     weight: 230
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/explore/transactions/distributed-transactions-ysql/" class="nav-link active">
+    <a href="../distributed-transactions-ysql/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
 
   <li >
-    <a href="/latest/explore/transactions/distributed-transactions-ycql/" class="nav-link">
+    <a href="../distributed-transactions-ycql/" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
@@ -71,9 +70,9 @@ Now, we will run the following transaction and explain what happens at each step
 
 ```sql
 BEGIN TRANSACTION;
-  UPDATE accounts SET balance = balance - 200 
+  UPDATE accounts SET balance = balance - 200
       WHERE account_name='John' AND account_type='savings';
-  UPDATE accounts SET balance = balance + 200 
+  UPDATE accounts SET balance = balance + 200
       WHERE account_name='John' AND account_type='checking';
 COMMIT;
 ```
@@ -99,21 +98,21 @@ BEGIN TRANSACTION;
   <tr>
     <td style="width:50%;">
     <pre><code style="padding: 0 10px;">
-UPDATE accounts SET balance = balance - 200 
-  WHERE account_name='John' 
+UPDATE accounts SET balance = balance - 200
+  WHERE account_name='John'
   AND account_type='savings';
     </code></pre>
     </td>
     <td style="width:50%; border-left:1px solid rgba(158,159,165,0.5); font-size: 16px;">
-      The transaction coordinator writes a *provisional record* to the tablet that contains this row. The provisional record consists of the transaction id, so the state of the transaction can be determined. If there already exists a provisional record written by another transaction, then the current transaction would use the transaction id that is present in the provisional record to fetch details and check if there is a potential conflict.  
+      The transaction coordinator writes a *provisional record* to the tablet that contains this row. The provisional record consists of the transaction id, so the state of the transaction can be determined. If there already exists a provisional record written by another transaction, then the current transaction would use the transaction id that is present in the provisional record to fetch details and check if there is a potential conflict.
     </td>
   </tr>
 
   <tr>
     <td style="width:50%;">
     <pre><code style="padding: 0 10px;">
-UPDATE accounts SET balance = balance + 200 
-  WHERE account_name='John' 
+UPDATE accounts SET balance = balance + 200
+  WHERE account_name='John'
   AND account_type='checking';
     </code></pre>
     </td>
@@ -161,9 +160,9 @@ Since all nodes of the cluster can process transactions by becoming transaction 
 
 Each update performed as a part of the transaction is replicated across multiple nodes for resilience and persisted on disk. This ensures that the updates made as a part of a transaction that has been acknowledged as successful to the end user is resilient even if failures occur.
 
-### Concurrency control 
+### Concurrency control
 
-[Concurrency control](https://en.wikipedia.org/wiki/Concurrency_control) in databases ensures that multiple transactions can execute concurrently while preserving data integrity. Concurrency control is essential for correctness in environments where two or more transactions can access the same data at the same time. The two primary mechanisms to achieve concurrency control are *optimistic* and *pessimistic*. 
+[Concurrency control](https://en.wikipedia.org/wiki/Concurrency_control) in databases ensures that multiple transactions can execute concurrently while preserving data integrity. Concurrency control is essential for correctness in environments where two or more transactions can access the same data at the same time. The two primary mechanisms to achieve concurrency control are *optimistic* and *pessimistic*.
 
 {{< note title="Note" >}}
 YugabyteDB currently supports optimistic concurrency control, with pessimistic concurrency control being worked on actively.
@@ -202,17 +201,16 @@ yugabyte=# BEGIN READ ONLY;
 BEGIN
 
 yugabyte=# CREATE TABLE example(k INT PRIMARY KEY);
-ERROR: 25P02: current transaction is aborted, commands ignored until end of 
+ERROR: 25P02: current transaction is aborted, commands ignored until end of
               transaction block
 ```
 
 ### `DEFERRABLE` transactions
 
-The `DEFERRABLE` transaction property in YSQL is similar to PostgreSQL in that has no effect unless the transaction is also `SERIALIZABLE` and `READ ONLY`. 
+The `DEFERRABLE` transaction property in YSQL is similar to PostgreSQL in that has no effect unless the transaction is also `SERIALIZABLE` and `READ ONLY`.
 
 When all three of these properties (`SERIALIZABLE`, `DEFERRABLE` and `READ ONLY`) are set for a transaction, the transaction may block when first acquiring its snapshot, after which it is able to run without the normal overhead of a `SERIALIZABLE` transaction and without any risk of contributing to or being canceled by a serialization failure.
 
 {{< tip title="Tip" >}}
 This mode is well suited for long-running reports or backups without being impacting or impacted by other transactions.
 {{< /tip >}}
-

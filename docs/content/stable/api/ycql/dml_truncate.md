@@ -7,8 +7,7 @@ menu:
   stable:
     parent: api-cassandra
     weight: 1330
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis
@@ -89,6 +88,6 @@ ycqlsh:example> SELECT * FROM employees;
 
 - [`CREATE TABLE`](../ddl_create_table)
 - [`INSERT`](../dml_insert)
-- [`SELECT`](../dml_select)
-- [`UPDATE`](../dml_update)
-- [`DELETE`](../dml_delete)
+- [`SELECT`](../dml_select/)
+- [`UPDATE`](../dml_update/)
+- [`DELETE`](../dml_delete/)

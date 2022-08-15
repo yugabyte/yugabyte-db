@@ -34,6 +34,7 @@
 #include "yb/rocksdb/util/stop_watch.h"
 #include "yb/rocksdb/util/testharness.h"
 
+#include "yb/util/random_util.h"
 #include "yb/util/string_util.h"
 #include "yb/util/test_macros.h"
 #include "yb/rocksdb/util/testutil.h"
@@ -261,7 +262,7 @@ void ProfileQueries(bool enabled_time = false) {
   }
 
   if (FLAGS_random_key) {
-    std::random_shuffle(keys.begin(), keys.end());
+    std::shuffle(keys.begin(), keys.end(), yb::ThreadLocalRandom());
   }
   for (const int i : keys) {
     if (i == kFlushFlag) {
@@ -499,7 +500,7 @@ TEST_F(PerfContextTest, SeekKeyComparison) {
   }
 
   if (FLAGS_random_key) {
-    std::random_shuffle(keys.begin(), keys.end());
+    std::shuffle(keys.begin(), keys.end(), yb::ThreadLocalRandom());
   }
 
   HistogramImpl hist_put_time;

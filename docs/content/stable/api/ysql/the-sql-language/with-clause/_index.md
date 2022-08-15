@@ -1,16 +1,16 @@
 ---
-title: The WITH clause and common table expressions (a.k.a. CTEs) [YSQL]
+title: The WITH clause and common table expressions (CTEs) [YSQL]
 headerTitle: The WITH clause and common table expressions
 linkTitle: WITH clause
-description: How to use the WITH clause and common table expressions—a/k/a/ CTEs
+description: How to use the WITH clause and common table expressions (CTEs)
 image: /images/section_icons/api/ysql.png
 menu:
   stable:
     identifier: with-clause
     parent: the-sql-language
     weight: 200
-isTocNested: true
-showAsideToc: true
+type: indexpage
+showRightNav: true
 ---
 
 A `WITH` clause can be used as part of a `SELECT` statement, an `INSERT` statement, an `UPDATE` statement, or a `DELETE` statement. For this reason, the functionality is described in this dedicated section.
@@ -41,7 +41,7 @@ select k, v from t1 order by k;
 
 This component is an example of a CTE:
 
-```
+```sql
 a(k, v) as (select g.v, g.v*2 from generate_series(11, 20) as g(v))
 ```
 
@@ -49,8 +49,8 @@ Notice the (optional) parenthesised parameter list that follows the name, just a
 
 This is the result:
 
-```
- k  | v  
+```output
+ k  | v
 ----+----
  11 | 22
  12 | 24
@@ -88,8 +88,8 @@ order by table_name, k;
 
 This is the result:
 
-```
- table_name | k  | v  
+```output
+ table_name | k  | v
 ------------+----+----
  t1         | 11 | 22
  t1         | 12 | 24
@@ -107,8 +107,8 @@ The central notion is that each CTE that you name in a `WITH` clause can then be
 
 Finally, the use of a _recursive_ CTE in a `WITH` clause enables advanced functionality, like graph analysis. For example, an _"employees"_ table often has a self-referential foreign key like _"manager_id"_ that points to the table's primary key, _"employee_id"_. `SELECT` statements that use a recursive CTE allow the reporting structure to be presented in various ways. This result shows the reporting paths of employees, in an organization with a strict hierarchical reporting scheme, in depth-first order. See the section [Pretty-printing the top-down depth-first report of paths](./emps-hierarchy/#pretty-printing-the-top-down-depth-first-report-of-paths).
 
-```
- emps hierarchy 
+```output
+ emps hierarchy
 ----------------
  mary
    fred
@@ -135,7 +135,7 @@ The remainder of this section has the following subsections:
 
 - [Case study—using a recursive CTE to compute Bacon Numbers for actors listed in the IMDb](./bacon-numbers/)
 
-{{< tip title="Performance considerations." >}}
+{{< tip title="Performance considerations" >}}
 
 A SQL statement that uses a `WITH` clause sometimes gets a worse execution plan than the semantically equivalent statement that _doesn’t_ use a `WITH` clause. The explanation is usually that a “push-down” optimization of a restriction or projection hasn’t penetrated into the `WITH` clause’s CTE. You can usually avoid this problem by manually pushing down what you’d hope would be done automatically into your spellings of the `WITH` clause’s CTEs.
 
@@ -143,7 +143,7 @@ Anyway, the ordinary good practice principle holds even more here: always check 
 
 {{< /tip >}}
 
-{{< tip title="Download a zip of WITH clause demonstration scripts" >}}
+{{< tip title="Downloadable WITH clause demonstration scripts" >}}
 
 The [`recursive-cte-code-examples.zip`](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/recursive-cte-code-examples/recursive-cte-code-examples.zip) file contains the `.sql` scripts that illustrate the use of the [recursive CTE](./recursive-cte/):
 
@@ -153,9 +153,7 @@ The [`recursive-cte-code-examples.zip`](https://raw.githubusercontent.com/yugaby
 
 - [Case study—using a recursive CTE to compute Bacon Numbers for actors listed in the IMDb](./bacon-numbers/).
 
-All of these studies make heavy use of regular (i.e. non-recursive) CTEs. They therefore show the power of the CTE in a natural, rather than a contrived, way.
+All of these studies make heavy use of regular (non-recursive) CTEs. They therefore show the power of the CTE in a natural, rather than a contrived, way.
 
-After unzipping it on a convenient new directory, you'll see a `README.txt`.  It tells you how to start, in turn, a few master-scripts. Simply start each in `ysqlsh`. You can run these time and again. Each one always finishes silently. You can see the reports that they produce on the dedicated spool directories and confirm that the files that are spooled are identical to the corresponding reference copies that are delivered in the zip-file.
+After unzipping it in a convenient new directory, you'll see a `README.txt`. It tells you how to start, in turn, a few master-scripts. Simply start each in `ysqlsh`. You can run these time and again. Each one always finishes silently. You can see the reports that they produce on the dedicated spool directories and confirm that the files that are spooled are identical to the corresponding reference copies that are delivered in the zip-file.
 {{< /tip >}}
-
-

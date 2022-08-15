@@ -8,12 +8,11 @@ menu:
     identifier: interval-interval-comparison
     parent: interval-arithmetic
     weight: 10
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 {{< tip title="Download and install the date-time utilities code." >}}
-The code on this page depends on the code presented in the section [User-defined _interval_ utility functions](../../interval-utilities/). This is included in the larger [code kit](../../../../download-date-time-utilities/) that includes all of the reusable code that the overall _[date-time](../../../../../type_datetime)_ section describes and uses.
+The code on this page depends on the code presented in the section [User-defined _interval_ utility functions](../../interval-utilities/). This is included in the larger [code kit](../../../../download-date-time-utilities/) that includes all of the reusable code that the overall _[date-time](../../../../../type_datetime/)_ section describes and uses.
 {{< /tip >}}
 
 The semantics of the _interval-interval_ overloads of these comparison operators can be understood in terms of the semantics of the _[justify_interval()](../../justfy-and-extract-epoch/#the-justify-hours-justify-days-and-justify-interval-built-in-functions)_ built-in function:
@@ -93,7 +92,7 @@ select
 It finishes silently, showing that the _assert_ holds, and produces this result:
 
 ```output
-   e1    |   e2    
+   e1    |   e2
 ---------+---------
  i1 = i2 | i1 = i2
 ```

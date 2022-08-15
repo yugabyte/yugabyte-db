@@ -1,15 +1,18 @@
 ---
-title: Case study—implementing a stopwatch with SQL [YSQL]
-headerTitle: Case study—implementing a stopwatch with SQL
-linkTitle: Case study—SQL stopwatch
-description: Case study—using YSQL to implement a stopwatch
+title: >
+  Case study: implementing a stopwatch with SQL [YSQL]
+headerTitle: >
+  Case study: implementing a stopwatch with SQL
+linkTitle: >
+  Case study: SQL stopwatch
+description: >
+  Case study: using YSQL to implement a stopwatch
 menu:
   stable:
     identifier: stopwatch
     parent: api-ysql-datatypes-datetime
     weight: 130
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 You sometimes want to time a sequence of several SQL statements, issued from _ysqlsh_, and to record the time in the spool file. The \\_timing on_ metacommand doesn't help here because it reports the time after every individual statement and, on Unix-like operating systems, does this using _stderr_. The \\_o_ metacommand doesn't redirect _stderr_ to the spool file. This case study shows you how to implement a SQL stopwatch that allows you to start it with a procedure call before starting what you want to time and to read it with a _select_ statement when what you want to time finishes. This reading goes to the spool file along with all other _select_ results.
@@ -29,14 +32,14 @@ select
 Here's a typical result:
 
 ```output
-    t0    | slept |    t1    
+    t0    | slept |    t1
 ----------+-------+----------
  20:13:54 | true  | 20:13:59
 ```
 
 (The _pg_sleep()_ built-in function returns _void_, and the _::text_ typecast of _void_ is the empty string.) You can see that _t1_ is five seconds later than _t0_, just as the invocation of _pg_sleep()_ requests.
 
-The return data type of _clock_timestamp()_ is _timestamptz_. (You can confirm this with the \\_df_ metacommand.) Try this. 
+The return data type of _clock_timestamp()_ is _timestamptz_. (You can confirm this with the \\_df_ metacommand.) Try this.
 
 ```plpgsql
 select
@@ -47,7 +50,7 @@ select
 Notice the use of the _[at time zone](../timezones/syntax-contexts-to-spec-offset/#specify-the-utc-offset-using-the-at-time-zone-operator)_ operator to interpret a _timestamptz_ value as a plain _timestamp_ value local to the specified timezone. In this use of the operator (converting from _timestamptz_ to plain _timestamp_), its effect is insensitive to the session's _TimeZone_ setting. Here's a typical result:
 
 ```output
-         LAX         |         HEL         
+         LAX         |         HEL
 ---------------------+---------------------
  2021-07-30 10:26:39 | 2021-07-30 20:26:39
 ```
@@ -79,7 +82,6 @@ The result is _true_. This reflects the fact that _extract()_ accesses the inter
 
 Notice that, if you insist, you could subtract the start _timestamptz_ value directly from the finish _timestamptz_ value to produce an _interval_ value. But you’d have to reason rather more carefully to prove that your timing results are unaffected by the session’s timezone setting—particularly in the rare, but perfectly possible, event that a daylight savings boundary is crossed, in the regime of the session’s _TimeZone_ setting, while the to-be-timed operations execute. (Reasoning does show that these tricky details don’t affect the outcome. But it would be unkind to burden readers of your code with needing to understand this when a more obviously correct approach is available.) Further, the _duration_as_text()_ user-defined function (below) to format the result using appropriate units would be a little bit harder to write when you start with an _interval_ value than when you start with a scalar seconds value.
 
-
 ## How to note the wall-clock time so that you can read it back after several SQL statements have completed
 
 PostgreSQL doesn't provide any construct to encapsulate PL/pgSQL functions and procedures and to represent state that these can jointly set and read that persists across the boundaries of invocations of these subprograms. YSQL inherits this limitation. (Other database programming environments do provide such schemes. For example, Oracle Database's PL/SQL provides the _package_ for this purpose.) However, PostgreSQL and YSQL do support the so-called user-defined run-time parameter. This supports the representation of session-duration, session-private, state as a _text_ value. Here's a simple example:
@@ -95,7 +97,7 @@ select current_setting('my_namespace.my_value') as "current value of 'my_namespa
 This is the result:
 
 ```output
- current value of 'my_namespace.my_value' 
+ current value of 'my_namespace.my_value'
 ------------------------------------------
  Some text.
 ```
@@ -115,7 +117,7 @@ select current_setting('my_namespace.my_value') as "current value of 'my_namespa
 This is the result:
 
 ```output
- current value of 'my_namespace.my_value' 
+ current value of 'my_namespace.my_value'
 ------------------------------------------
  First value.
 ```
@@ -124,7 +126,7 @@ This is the result:
 
 The implementation and testing of this function are utterly straightforward—but a fair amount of typing is needed. The code presented here can save you that effort. You may prefer to use it as a model for implementing your own formatting rules.
 
-### Create function duration_as_text() 
+### Create function duration_as_text()
 
 The return data type of the _extract()_ operator is _double precision_. But it’s better to implement _duration_as_text()_ with a _numeric_ input formal parameter because of this datatype’s greater precision and accuracy. This makes behavior with input values that are very close to the units boundaries that the inequality tests define more accurate than if _double precision_ is used. Of course, this doesn’t matter when the function is used for its ultimate purpose because ordinary stochastic timing variability will drown any concerns about the accuracy of the formatting. But testing is helped when results with synthetic data agree reliably with what you expect.
 
@@ -306,25 +308,25 @@ This is the result:
   s (in seconds)   duration_as_text(s)
   --------------   -------------------
         0.019999 :: less than ~20 ms
- 
+
         0.020000 :: 20 ms
         4.999999 :: 5000 ms
- 
+
         5.000000 :: 5.00 ss
         9.999999 :: 10.00 ss
- 
+
        10.000000 :: 10.0 ss
        59.900000 :: 59.9 ss
        59.999999 :: 60.0 ss
- 
+
        60.000000 :: 01:00 mi:ss
      3599.000000 :: 59:59 mi:ss
      3599.999999 :: 60:00 mi:ss
- 
+
      3600.000000 :: 01:00 hh:mi
     86340.000000 :: 23:59 hh:mi
     86399.999999 :: 24:00 hh:mi
- 
+
     86400.000000 :: 1 days 00:00 hh:mi
    202608.000000 :: 2 days 08:17 hh:mi
 ```
@@ -381,7 +383,6 @@ $body$;
 
 This is a simple wrapper for _stopwatch_reading_as_dp()_ that returns the elapsed time since the stopwatch was started as a _text_ value by applying the function _duration_as_text()_ to the _stopwatch_reading_as_dp()_ return value:
 
-
 ```plpgsql
 drop function if exists stopwatch_reading() cascade;
 
@@ -436,7 +437,7 @@ select stopwatch_reading();
 Here is a typical result, as reported in the file _stopwatch.txt_:
 
 ```output
- stopwatch_reading 
+ stopwatch_reading
 -------------------
  6.79 ss
 ```
@@ -533,7 +534,7 @@ Now try this:
 This is the result:
 
 ```output
-      v       
+      v
 --------------
  Hello \world
 ```
@@ -549,7 +550,7 @@ When you want to define a command as the variable _x_ and within that expand ano
 This is the result:
 
 ```output
-    v     
+    v
 ----------
  Hello 42
 ```
@@ -564,10 +565,11 @@ If you subsequently redefine the variable _y_ without redefining the variable _x
 then you'll get this new result:
 
 ```output
-    v     
+    v
 ----------
  Hello 17
 ```
+
 {{< /tip >}}
 
 ### End-to-end test
@@ -606,7 +608,7 @@ $body$;
 The _test-cross-session-stopwatch.txt_ spool file will contain a result like this:
 
 ```output
- stopwatch_reading 
+ stopwatch_reading
 -------------------
  6.86 ss
 ```
@@ -618,5 +620,5 @@ In this example, session creation cost explains the fact that the reported time,
 The code that this page explains isn't referenced elsewhere in the overall _[date-time](../../type_datetime/)_ section. You might like to install it in any database that you use for development and testing. (This is strongly encouraged.) For this reason, it's bundled for a one-touch installation, separately from the [downloadable date-time utilities code](../download-date-time-utilities/).
 
 {{< tip title="Download the code kit" >}}
-Get it from [HERE](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/date-time-utilities/stopwatch.zip). It has a _README_ that points you to the master-install script and that recommends installing it centrally for use by any user of that database.
+Get the code kit from [this download link](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/date-time-utilities/stopwatch.zip). It has a _README_ that points you to the master-install script and that recommends installing it centrally for use by any user of that database.
 {{< /tip >}}

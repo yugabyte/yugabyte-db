@@ -44,9 +44,10 @@
 
 #include <glog/logging.h>
 
-#include "yb/common/common_fwd.h"
 #include "yb/common/column_id.h"
 #include "yb/common/common_types.pb.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/constants.h"
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/id_mapping.h"
@@ -86,7 +87,7 @@ struct DeletedColumn {
 
   DeletedColumn(ColumnId id_, HybridTime ht_) : id(id_), ht(ht_) {}
 
-  static CHECKED_STATUS FromPB(const DeletedColumnPB& col, DeletedColumn* ret);
+  static Status FromPB(const DeletedColumnPB& col, DeletedColumn* ret);
   void CopyToPB(DeletedColumnPB* pb) const;
 };
 
@@ -148,7 +149,8 @@ class ColumnSchema {
                bool is_static = false,
                bool is_counter = false,
                int32_t order = 0,
-               SortingType sorting_type = SortingType::kNotSpecified)
+               SortingType sorting_type = SortingType::kNotSpecified,
+               int32_t pg_type_oid = 0 /*kInvalidOid*/)
       : name_(std::move(name)),
         type_(type),
         is_nullable_(is_nullable),
@@ -156,7 +158,8 @@ class ColumnSchema {
         is_static_(is_static),
         is_counter_(is_counter),
         order_(order),
-        sorting_type_(sorting_type) {
+        sorting_type_(sorting_type),
+        pg_type_oid_(pg_type_oid) {
   }
 
   // convenience constructor for creating columns with simple (non-parametric) data types
@@ -167,7 +170,8 @@ class ColumnSchema {
                bool is_static = false,
                bool is_counter = false,
                int32_t order = 0,
-               SortingType sorting_type = SortingType::kNotSpecified);
+               SortingType sorting_type = SortingType::kNotSpecified,
+               int32_t pg_type_oid = 0 /*kInvalidOid*/);
 
   const std::shared_ptr<QLType>& type() const {
     return type_;
@@ -195,8 +199,18 @@ class ColumnSchema {
     return is_counter_;
   }
 
+  bool is_collection() const;
+
   int32_t order() const {
     return order_;
+  }
+
+  int32_t pg_type_oid() const {
+    return pg_type_oid_;
+  }
+
+  void set_pg_type_oid(uint32_t pg_type_oid) {
+    pg_type_oid_ = pg_type_oid;
   }
 
   SortingType sorting_type() const {
@@ -286,13 +300,20 @@ class ColumnSchema {
   bool is_counter_;
   int32_t order_;
   SortingType sorting_type_;
+  int32_t pg_type_oid_;
 };
 
 class ContiguousRow;
-const TableId kNoCopartitionTableId = "";
+extern const TableId kNoCopartitionTableId;
+
+inline constexpr uint32_t kCurrentPartitioningVersion = 1;
 
 class TableProperties {
  public:
+  inline TableProperties() {
+    Reset();
+  }
+
   // Containing counters is a internal property instead of a user-defined property, so we don't use
   // it when comparing table properties.
   bool operator==(const TableProperties& other) const {
@@ -306,7 +327,7 @@ class TableProperties {
 
     // Ignoring num_tablets_.
     // Ignoring retain_delete_markers_.
-    // Ignoring wal_retention_secs_.
+    // Ignoring partitioning_version_.
   }
 
   bool operator!=(const TableProperties& other) const {
@@ -337,7 +358,7 @@ class TableProperties {
     // Ignoring use_mangled_column_name_.
     // Ignoring contain_counters_.
     // Ignoring retain_delete_markers_.
-    // Ignoring wal_retention_secs_.
+    // Ignoring partitioning_version_.
     return true;
   }
 
@@ -425,6 +446,14 @@ class TableProperties {
     retain_delete_markers_ = retain_delete_markers;
   }
 
+  uint32_t partitioning_version() const {
+    return partitioning_version_;
+  }
+
+  void set_partitioning_version(uint32_t value) {
+    partitioning_version_ = value;
+  }
+
   void ToTablePropertiesPB(TablePropertiesPB *pb) const;
 
   static TableProperties FromTablePropertiesPB(const TablePropertiesPB& pb);
@@ -441,17 +470,19 @@ class TableProperties {
   // is being taken into consideration when deciding whether properties between
   // two different tables are equal or equivalent.
   static const int kNoDefaultTtl = -1;
-  int64_t default_time_to_live_ = kNoDefaultTtl;
-  bool contain_counters_ = false;
-  bool is_transactional_ = false;
-  bool retain_delete_markers_ = false;
-  YBConsistencyLevel consistency_level_ = YBConsistencyLevel::STRONG;
-  TableId copartition_table_id_ = kNoCopartitionTableId;
-  boost::optional<uint32_t> wal_retention_secs_;
-  bool use_mangled_column_name_ = false;
-  int num_tablets_ = 0;
-  bool is_ysql_catalog_table_ = false;
+  int64_t default_time_to_live_;
+  bool contain_counters_;
+  bool is_transactional_;
+  bool retain_delete_markers_;
+  YBConsistencyLevel consistency_level_;
+  TableId copartition_table_id_;
+  bool use_mangled_column_name_;
+  int num_tablets_;
+  bool is_ysql_catalog_table_;
+  uint32_t partitioning_version_;
 };
+
+typedef std::string PgSchemaName;
 
 // The schema for a set of rows.
 //
@@ -465,7 +496,6 @@ class TableProperties {
 // Schema::swap() or Schema::Reset() rather than returning by value.
 class Schema {
  public:
-
   static const ssize_t kColumnNotFound = -1;
 
   Schema()
@@ -478,7 +508,8 @@ class Schema {
                      NameToIndexMapAllocator(&name_to_index_bytes_)),
       has_nullables_(false),
       cotable_id_(Uuid::Nil()),
-      pgtable_id_(0) {
+      colocation_id_(kColocationIdNotSet),
+      pgschema_name_("") {
   }
 
   Schema(const Schema& other);
@@ -498,7 +529,8 @@ class Schema {
          size_t key_columns,
          const TableProperties& table_properties = TableProperties(),
          const Uuid& cotable_id = Uuid::Nil(),
-         const PgTableOid pgtable_id = 0);
+         const ColocationId colocation_id = kColocationIdNotSet,
+         const PgSchemaName pgschema_name = "");
 
   // Construct a schema with the given information.
   //
@@ -511,25 +543,28 @@ class Schema {
          size_t key_columns,
          const TableProperties& table_properties = TableProperties(),
          const Uuid& cotable_id = Uuid::Nil(),
-         const PgTableOid pgtable_id = 0);
+         const ColocationId colocation_id = kColocationIdNotSet,
+         const PgSchemaName pgschema_name = "");
 
   // Reset this Schema object to the given schema.
   // If this fails, the Schema object is left in an inconsistent
   // state and may not be used.
-  CHECKED_STATUS Reset(const vector<ColumnSchema>& cols, size_t key_columns,
+  Status Reset(const vector<ColumnSchema>& cols, size_t key_columns,
                        const TableProperties& table_properties = TableProperties(),
                        const Uuid& cotable_id = Uuid::Nil(),
-                       const PgTableOid pgtable_id = 0);
+                       const ColocationId colocation_id = kColocationIdNotSet,
+                       const PgSchemaName pgschema_name = "");
 
   // Reset this Schema object to the given schema.
   // If this fails, the Schema object is left in an inconsistent
   // state and may not be used.
-  CHECKED_STATUS Reset(const vector<ColumnSchema>& cols,
+  Status Reset(const vector<ColumnSchema>& cols,
                        const vector<ColumnId>& ids,
                        size_t key_columns,
                        const TableProperties& table_properties = TableProperties(),
                        const Uuid& cotable_id = Uuid::Nil(),
-                       const PgTableOid pgtable_id = 0);
+                       const ColocationId colocation_id = kColocationIdNotSet,
+                       const PgSchemaName pgschema_name = "");
 
   // Return the number of bytes needed to represent a single row of this schema.
   //
@@ -537,12 +572,6 @@ class Schema {
   size_t byte_size() const {
     DCHECK(initialized());
     return col_offsets_.back();
-  }
-
-  // Return the number of bytes needed to represent
-  // only the key portion of this schema.
-  size_t key_byte_size() const {
-    return col_offsets_[num_key_columns_];
   }
 
   // Return the number of columns in this schema
@@ -633,6 +662,18 @@ class Schema {
     table_properties_.SetRetainDeleteMarkers(retain_delete_markers);
   }
 
+  bool has_pgschema_name() const {
+    return !pgschema_name_.empty();
+  }
+
+  void SetSchemaName(std::string pgschema_name) {
+    pgschema_name_ = pgschema_name;
+  }
+
+  PgSchemaName SchemaName() const {
+    return pgschema_name_;
+  }
+
   // Return the column index corresponding to the given column,
   // or kColumnNotFound if the column is not in this schema.
   ssize_t find_column(const GStringPiece col_name) const {
@@ -705,7 +746,7 @@ class Schema {
 
   // Return true if this Schema is initialized and valid.
   bool initialized() const {
-    return !col_offsets_.empty();
+    return !cols_.empty();
   }
 
   // Returns the highest column id in this Schema.
@@ -724,26 +765,26 @@ class Schema {
 
   void set_cotable_id(const Uuid& cotable_id) {
     if (!cotable_id.IsNil()) {
-      DCHECK_EQ(pgtable_id_, 0);
+      DCHECK_EQ(colocation_id_, kColocationIdNotSet);
     }
     cotable_id_ = cotable_id;
   }
 
-  // Gets and sets the PG table OID of the non-primary table this schema belongs to in a tablet
-  // with colocated tables.
-  PgTableOid pgtable_id() const {
-    return pgtable_id_;
+  // Gets the colocation ID of the non-primary table this schema belongs to in a
+  // tablet with colocated tables.
+  ColocationId colocation_id() const {
+    return colocation_id_;
   }
 
-  bool has_pgtable_id() const {
-    return pgtable_id_ > 0;
+  bool has_colocation_id() const {
+    return colocation_id_ != kColocationIdNotSet;
   }
 
-  void set_pgtable_id(const PgTableOid pgtable_id) {
-    if (pgtable_id > 0) {
+  void set_colocation_id(const ColocationId colocation_id) {
+    if (colocation_id != kColocationIdNotSet) {
       DCHECK(cotable_id_.IsNil());
     }
-    pgtable_id_ = pgtable_id;
+    colocation_id_ = colocation_id;
   }
 
   // Extract a given column from a row where the type is
@@ -759,7 +800,7 @@ class Schema {
     DCHECK_SCHEMA_EQ(*this, *row.schema());
     const ColumnSchema& col_schema = cols_[idx];
     DCHECK_LT(idx, cols_.size());
-    DCHECK_EQ(col_schema.type_info()->type(), Type);
+    DCHECK_EQ(col_schema.type_info()->type, Type);
 
     const void *val;
     if (col_schema.is_nullable()) {
@@ -779,36 +820,6 @@ class Schema {
     DCHECK_SCHEMA_EQ(*this, *row.schema());
     return DebugRowColumns(row, num_columns());
   }
-
-  // Stringify the given row, which must have a schema which is
-  // key-compatible with this one. Per above, this is not for use in
-  // hot paths.
-  template<class RowType>
-  std::string DebugRowKey(const RowType& row) const {
-    DCHECK_KEY_PROJECTION_SCHEMA_EQ(*this, *row.schema());
-    return DebugRowColumns(row, num_key_columns());
-  }
-
-  // Decode the specified encoded key into the given 'buffer', which
-  // must be at least as large as this->key_byte_size().
-  //
-  // 'arena' is used for allocating indirect strings, but is unused
-  // for other datatypes.
-  CHECKED_STATUS DecodeRowKey(Slice encoded_key, uint8_t* buffer, Arena* arena) const;
-
-  // Decode and stringify the given contiguous encoded row key in
-  // order to, e.g., provide print human-readable information about a
-  // tablet's start and end keys.
-  //
-  // If the encoded key is empty then '<start of table>' or '<end of table>'
-  // will be returned based on the value of 'start_or_end'.
-  //
-  // See also: DebugRowKey, DecodeRowKey.
-  enum StartOrEnd {
-    START_KEY,
-    END_KEY
-  };
-  std::string DebugEncodedRowKey(Slice encoded_key, StartOrEnd start_or_end) const;
 
   // Compare two rows of this schema.
   template<class RowTypeA, class RowTypeB>
@@ -854,7 +865,7 @@ class Schema {
   // Create a new schema containing only the selected columns.
   // The resulting schema will have no key columns defined.
   // If this schema has IDs, the resulting schema will as well.
-  CHECKED_STATUS CreateProjectionByNames(const std::vector<GStringPiece>& col_names,
+  Status CreateProjectionByNames(const std::vector<GStringPiece>& col_names,
                                          Schema* out, size_t num_key_columns = 0) const;
 
   // Create a new schema containing only the selected column IDs.
@@ -863,7 +874,7 @@ class Schema {
   // result will have fewer columns than requested.
   //
   // The resulting schema will have no key columns defined.
-  CHECKED_STATUS CreateProjectionByIdsIgnoreMissing(const std::vector<ColumnId>& col_ids,
+  Status CreateProjectionByIdsIgnoreMissing(const std::vector<ColumnId>& col_ids,
                                                     Schema* out) const;
 
   // Stringify this Schema. This is not particularly efficient,
@@ -892,7 +903,7 @@ class Schema {
 
   // Return true if the schemas have exactly the same set of columns
   // and respective types, and equivalent properties.
-  // For example, one table property could have different properties for wal_retention_secs_ and
+  // For example, one table property could have different property
   // retain_delete_markers_ but still be equivalent.
   bool EquivalentForDataCopy(const Schema& other) const {
     if (this == &other) return true;
@@ -921,27 +932,27 @@ class Schema {
   // Return a non-OK status if the project is not compatible with the current schema
   // - User columns non present in the tablet are considered errors
   // - Matching columns with different types, at the moment, are considered errors
-  CHECKED_STATUS VerifyProjectionCompatibility(const Schema& projection) const;
+  Status VerifyProjectionCompatibility(const Schema& projection) const;
 
   // Returns the projection schema mapped on the current one
   // If the project is invalid, return a non-OK status.
-  CHECKED_STATUS GetMappedReadProjection(const Schema& projection,
+  Status GetMappedReadProjection(const Schema& projection,
                                  Schema *mapped_projection) const;
 
   // Loops through this schema (the projection) and calls the projector methods once for
   // each column.
   //
-  // - CHECKED_STATUS ProjectBaseColumn(size_t proj_col_idx, size_t base_col_idx)
+  // - Status ProjectBaseColumn(size_t proj_col_idx, size_t base_col_idx)
   //
   //     Called if the column in this schema matches one of the columns in 'base_schema'.
   //     The column type must match exactly.
   //
-  // - CHECKED_STATUS ProjectDefaultColumn(size_t proj_idx)
+  // - Status ProjectDefaultColumn(size_t proj_idx)
   //
   //     Called if the column in this schema does not match any column in 'base_schema',
   //     but has a default or is nullable.
   //
-  // - CHECKED_STATUS ProjectExtraColumn(size_t proj_idx, const ColumnSchema& col)
+  // - Status ProjectExtraColumn(size_t proj_idx, const ColumnSchema& col)
   //
   //     Called if the column in this schema does not match any column in 'base_schema',
   //     and does not have a default, and is not nullable.
@@ -951,7 +962,7 @@ class Schema {
   //
   // TODO(MAYBE): Pass the ColumnSchema and not only the column index?
   template <class Projector>
-  CHECKED_STATUS GetProjectionMapping(const Schema& base_schema, Projector *projector) const {
+  Status GetProjectionMapping(const Schema& base_schema, Projector *projector) const {
     const bool use_column_ids = base_schema.has_column_ids() && has_column_ids();
 
     int proj_idx = 0;
@@ -1073,9 +1084,11 @@ class Schema {
   // primary or single-tenant table.
   Uuid cotable_id_;
 
-  // PG table OID of the non-primary table this schema belongs to in a tablet with colocated
-  // tables. Nil for the primary or single-tenant table.
-  PgTableOid pgtable_id_;
+  // Colocation ID used to distinguish a table within a colocation group.
+  // kColocationIdNotSet for a primary or single-tenant table.
+  ColocationId colocation_id_;
+
+  PgSchemaName pgschema_name_;
 
   // NOTE: if you add more members, make sure to add the appropriate
   // code to swap() and CopyFrom() as well to prevent subtle bugs.
@@ -1116,12 +1129,20 @@ class SchemaBuilder {
     return next_id_;
   }
 
-  void set_pgtable_id(PgTableOid pgtable_id) {
-    pgtable_id_ = pgtable_id;
+  void set_colocation_id(ColocationId colocation_id) {
+    colocation_id_ = colocation_id;
   }
 
-  PgTableOid pgtable_id() const {
-    return pgtable_id_;
+  ColocationId colocation_id() const {
+    return colocation_id_;
+  }
+
+  void set_pgschema_name(PgSchemaName pgschema_name) {
+    pgschema_name_ = pgschema_name;
+  }
+
+  PgSchemaName pgschema_name() const {
+    return pgschema_name_;
   }
 
   void set_cotable_id(Uuid cotable_id) {
@@ -1133,41 +1154,43 @@ class SchemaBuilder {
   }
 
   Schema Build() const {
-    return Schema(cols_, col_ids_, num_key_columns_, table_properties_, cotable_id_, pgtable_id_);
+    return Schema(cols_, col_ids_, num_key_columns_, table_properties_, cotable_id_,
+                  colocation_id_, pgschema_name_);
   }
   Schema BuildWithoutIds() const {
-    return Schema(cols_, num_key_columns_, table_properties_, cotable_id_,  pgtable_id_);
+    return Schema(cols_, num_key_columns_, table_properties_, cotable_id_,
+                  colocation_id_, pgschema_name_);
   }
 
   // assumes type is allowed in primary key -- this should be checked before getting here
   // using DataType (not QLType) since primary key columns only support elementary types
-  CHECKED_STATUS AddKeyColumn(const std::string& name, const std::shared_ptr<QLType>& type);
-  CHECKED_STATUS AddKeyColumn(const std::string& name, DataType type);
+  Status AddKeyColumn(const std::string& name, const std::shared_ptr<QLType>& type);
+  Status AddKeyColumn(const std::string& name, DataType type);
 
   // assumes type is allowed in hash key -- this should be checked before getting here
   // using DataType (not QLType) since hash key columns only support elementary types
-  CHECKED_STATUS AddHashKeyColumn(const std::string& name, const std::shared_ptr<QLType>& type);
-  CHECKED_STATUS AddHashKeyColumn(const std::string& name, DataType type);
+  Status AddHashKeyColumn(const std::string& name, const std::shared_ptr<QLType>& type);
+  Status AddHashKeyColumn(const std::string& name, DataType type);
 
-  CHECKED_STATUS AddColumn(const ColumnSchema& column, bool is_key);
+  Status AddColumn(const ColumnSchema& column, bool is_key);
 
-  CHECKED_STATUS AddColumn(const std::string& name, const std::shared_ptr<QLType>& type) {
+  Status AddColumn(const std::string& name, const std::shared_ptr<QLType>& type) {
     return AddColumn(name, type, false, false, false, false, 0,
                      SortingType::kNotSpecified);
   }
 
   // convenience function for adding columns with simple (non-parametric) data types
-  CHECKED_STATUS AddColumn(const std::string& name, DataType type);
+  Status AddColumn(const std::string& name, DataType type);
 
-  CHECKED_STATUS AddNullableColumn(const std::string& name, const std::shared_ptr<QLType>& type) {
+  Status AddNullableColumn(const std::string& name, const std::shared_ptr<QLType>& type) {
     return AddColumn(name, type, true, false, false, false, 0,
                      SortingType::kNotSpecified);
   }
 
   // convenience function for adding columns with simple (non-parametric) data types
-  CHECKED_STATUS AddNullableColumn(const std::string& name, DataType type);
+  Status AddNullableColumn(const std::string& name, DataType type);
 
-  CHECKED_STATUS AddColumn(const std::string& name,
+  Status AddColumn(const std::string& name,
                            const std::shared_ptr<QLType>& type,
                            bool is_nullable,
                            bool is_hash_key,
@@ -1177,7 +1200,7 @@ class SchemaBuilder {
                            yb::SortingType sorting_type);
 
   // convenience function for adding columns with simple (non-parametric) data types
-  CHECKED_STATUS AddColumn(const std::string& name,
+  Status AddColumn(const std::string& name,
                            DataType type,
                            bool is_nullable,
                            bool is_hash_key,
@@ -1186,9 +1209,10 @@ class SchemaBuilder {
                            int32_t order,
                            yb::SortingType sorting_type);
 
-  CHECKED_STATUS RemoveColumn(const std::string& name);
-  CHECKED_STATUS RenameColumn(const std::string& old_name, const std::string& new_name);
-  CHECKED_STATUS AlterProperties(const TablePropertiesPB& pb);
+  Status RemoveColumn(const std::string& name);
+  Status RenameColumn(const std::string& old_name, const std::string& new_name);
+  Status SetColumnPGType(const std::string& name, const uint32_t pg_type_oid);
+  Status AlterProperties(const TablePropertiesPB& pb);
 
  private:
   ColumnId next_id_;
@@ -1197,7 +1221,8 @@ class SchemaBuilder {
   std::unordered_set<string> col_names_;
   size_t num_key_columns_;
   TableProperties table_properties_;
-  PgTableOid pgtable_id_ = 0;
+  ColocationId colocation_id_ = kColocationIdNotSet;
+  PgSchemaName pgschema_name_ = "";
   Uuid cotable_id_ = Uuid::Nil();
 
   DISALLOW_COPY_AND_ASSIGN(SchemaBuilder);

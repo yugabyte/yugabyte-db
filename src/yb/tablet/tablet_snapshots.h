@@ -17,6 +17,7 @@
 #include "yb/common/hybrid_time.h"
 #include "yb/common/snapshot.h"
 
+#include "yb/tablet/restore_util.h"
 #include "yb/tablet/tablet_fwd.h"
 #include "yb/tablet/tablet_component.h"
 
@@ -55,21 +56,21 @@ class TabletSnapshots : public TabletComponent {
   explicit TabletSnapshots(Tablet* tablet);
 
   // Create snapshot for this tablet.
-  CHECKED_STATUS Create(SnapshotOperation* operation);
+  Status Create(SnapshotOperation* operation);
 
-  CHECKED_STATUS Create(const CreateSnapshotData& data);
+  Status Create(const CreateSnapshotData& data);
 
   // Restore snapshot for this tablet. In addition to backup/restore, this is used for initial
   // syscatalog RocksDB creation without the initdb overhead.
-  CHECKED_STATUS Restore(SnapshotOperation* operation);
+  Status Restore(SnapshotOperation* operation);
 
   // Delete snapshot for this tablet.
-  CHECKED_STATUS Delete(const SnapshotOperation& operation);
+  Status Delete(const SnapshotOperation& operation);
 
-  CHECKED_STATUS RestoreFinished(SnapshotOperation* operation);
+  Status RestoreFinished(SnapshotOperation* operation);
 
   // Prepares the operation context for a snapshot operation.
-  CHECKED_STATUS Prepare(SnapshotOperation* operation);
+  Status Prepare(SnapshotOperation* operation);
 
   Result<std::string> RestoreToTemporary(const TxnSnapshotId& snapshot_id, HybridTime restore_at);
 
@@ -78,7 +79,7 @@ class TabletSnapshots : public TabletComponent {
   // YQL_TABLE_TYPE.
   // use_subdir_for_intents specifies whether to create intents DB checkpoint inside
   // <dir>/<kIntentsSubdir> or <dir>.<kIntentsDBSuffix>
-  CHECKED_STATUS CreateCheckpoint(
+  Status CreateCheckpoint(
       const std::string& dir,
       CreateIntentsCheckpointIn create_intents_checkpoint_in =
           CreateIntentsCheckpointIn::kUseIntentsDbSuffix);
@@ -86,7 +87,7 @@ class TabletSnapshots : public TabletComponent {
   // Returns the location of the last rocksdb checkpoint. Used for tests only.
   std::string TEST_LastRocksDBCheckpointDir() { return TEST_last_rocksdb_checkpoint_dir_; }
 
-  CHECKED_STATUS CreateDirectories(const std::string& rocksdb_dir, FsManager* fs);
+  Status CreateDirectories(const std::string& rocksdb_dir, FsManager* fs);
 
   static std::string SnapshotsDirName(const std::string& rocksdb_dir);
 
@@ -97,17 +98,33 @@ class TabletSnapshots : public TabletComponent {
 
   // Restore the RocksDB checkpoint from the provided directory.
   // Only used when table_type_ == YQL_TABLE_TYPE.
-  CHECKED_STATUS RestoreCheckpoint(
+  Status RestoreCheckpoint(
       const std::string& dir, HybridTime restore_at, const RestoreMetadata& metadata,
       const docdb::ConsensusFrontier& frontier);
 
   // Applies specified snapshot operation.
-  CHECKED_STATUS Apply(SnapshotOperation* operation);
+  Status Apply(SnapshotOperation* operation);
 
-  CHECKED_STATUS CleanupSnapshotDir(const std::string& dir);
+  Status CleanupSnapshotDir(const std::string& dir);
   Env& env();
 
+  Status RestorePartialRows(SnapshotOperation* operation);
+
   std::string TEST_last_rocksdb_checkpoint_dir_;
+};
+
+class TabletRestorePatch : public RestorePatch {
+ public:
+  TabletRestorePatch(
+      FetchState* existing_state, FetchState* restoring_state,
+      docdb::DocWriteBatch* doc_batch, int64_t db_oid)
+      : RestorePatch(existing_state, restoring_state, doc_batch),
+        db_oid_(db_oid) {}
+
+ private:
+  Result<bool> ShouldSkipEntry(const Slice& key, const Slice& value) override;
+
+  int64_t db_oid_;
 };
 
 } // namespace tablet

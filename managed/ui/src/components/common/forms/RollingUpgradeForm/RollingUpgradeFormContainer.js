@@ -85,6 +85,8 @@ function mapStateToProps(state, ownProps) {
     const primaryCluster = getPrimaryCluster(currentUniverse.data.universeDetails.clusters);
     var intialSystemdValue = primaryCluster.userIntent.useSystemd;
     if (isDefinedNotNull(primaryCluster)) {
+      initialValues.ybSoftwareVersion = primaryCluster.userIntent.ybSoftwareVersion;
+
       const masterGFlags = primaryCluster.userIntent.masterGFlags;
       const tserverGFlags = primaryCluster.userIntent.tserverGFlags;
       const gFlagArray = [];
@@ -112,7 +114,6 @@ function mapStateToProps(state, ownProps) {
       initialValues.gFlags = gFlagArray;
     }
   }
-  initialValues.ybSoftwareVersion = state.customer.softwareVersions[0];
   initialValues.timeDelay = TASK_LONG_TIMEOUT / 1000;
   initialValues.upgradeOption = 'Rolling';
   initialValues.rollingUpgrade = true;
@@ -121,13 +122,10 @@ function mapStateToProps(state, ownProps) {
   let certificates = [];
   const allCertificates = state.customer.userCertificates;
   if (getPromiseState(allCertificates).isSuccess()) {
-    const rootCert = allCertificates.data.find(
-      (item) => item.uuid === initialValues.tlsCertificate
-    );
-    // show custom certs with same root cert only
-    certificates = allCertificates.data.filter(
-      (item) => item.certType === 'CustomCertHostPath' && item.checksum === rootCert?.checksum
-    );
+    certificates = [
+      { label: 'Create New Certificate', uuid: null },
+      ...(allCertificates.data || [])
+    ];
   }
 
   const selector = formValueSelector(FORM_NAME);

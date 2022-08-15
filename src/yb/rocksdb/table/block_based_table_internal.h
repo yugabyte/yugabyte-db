@@ -32,7 +32,7 @@ constexpr char kFixedSizeFilterBlockPrefix[] = "fixedsizefilter.";
 // The only relevant option is options.verify_checksums for now.
 // On failure return non-OK.
 // On success fill *result and return OK - caller owns *result
-inline CHECKED_STATUS ReadBlockFromFile(
+inline Status ReadBlockFromFile(
     RandomAccessFileReader* file, const Footer& footer, const ReadOptions& options,
     const BlockHandle& handle, std::unique_ptr<Block>* result, Env* env,
     const std::shared_ptr<yb::MemTracker>& mem_tracker,

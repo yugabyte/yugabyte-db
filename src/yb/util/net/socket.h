@@ -79,10 +79,10 @@ class Socket {
   ~Socket();
 
   // Close the Socket, checking for errors.
-  CHECKED_STATUS Close();
+  Status Close();
 
   // call shutdown() on the socket
-  CHECKED_STATUS Shutdown(bool shut_read, bool shut_write);
+  Status Shutdown(bool shut_read, bool shut_write);
 
   // Start managing a socket.
   void Reset(int fd);
@@ -94,54 +94,54 @@ class Socket {
   // managed.
   int GetFd() const;
 
-  CHECKED_STATUS Init(int flags); // See FLAG_NONBLOCKING
+  Status Init(int flags); // See FLAG_NONBLOCKING
 
   // Set or clear TCP_NODELAY
-  CHECKED_STATUS SetNoDelay(bool enabled);
+  Status SetNoDelay(bool enabled);
 
   // Set or clear O_NONBLOCK
-  CHECKED_STATUS SetNonBlocking(bool enabled);
-  CHECKED_STATUS IsNonBlocking(bool* is_nonblock) const;
+  Status SetNonBlocking(bool enabled);
+  Status IsNonBlocking(bool* is_nonblock) const;
 
   // Set SO_SENDTIMEO to the specified value. Should only be used for blocking sockets.
-  CHECKED_STATUS SetSendTimeout(const MonoDelta& timeout);
+  Status SetSendTimeout(const MonoDelta& timeout);
 
   // Set SO_RCVTIMEO to the specified value. Should only be used for blocking sockets.
-  CHECKED_STATUS SetRecvTimeout(const MonoDelta& timeout);
+  Status SetRecvTimeout(const MonoDelta& timeout);
 
   // Sets SO_REUSEADDR to 'flag'. Should be used prior to Bind().
-  CHECKED_STATUS SetReuseAddr(bool flag);
+  Status SetReuseAddr(bool flag);
 
   // Convenience method to invoke the common sequence:
   // 1) SetReuseAddr(true)
   // 2) Bind()
   // 3) Listen()
-  CHECKED_STATUS BindAndListen(const Endpoint& endpoint, int listen_queue_size);
+  Status BindAndListen(const Endpoint& endpoint, int listen_queue_size);
 
   // Start listening for new connections, with the given backlog size.
   // Requires that the socket has already been bound using Bind().
-  CHECKED_STATUS Listen(int listen_queue_size);
+  Status Listen(int listen_queue_size);
 
   // Call getsockname to get the address of this socket.
-  CHECKED_STATUS GetSocketAddress(Endpoint* out) const;
+  Status GetSocketAddress(Endpoint* out) const;
 
   // Call getpeername to get the address of the connected peer.
-  CHECKED_STATUS GetPeerAddress(Endpoint* out) const;
+  Status GetPeerAddress(Endpoint* out) const;
 
   // Call bind() to bind the socket to a given address.
   // If bind() fails and indicates that the requested port is already in use,
   // and if explain_addr_in_use is set to true, generates an informative log message by calling
   // 'lsof' if available.
-  CHECKED_STATUS Bind(const Endpoint& bind_addr, bool explain_addr_in_use = true);
+  Status Bind(const Endpoint& bind_addr, bool explain_addr_in_use = true);
 
   // Call accept(2) to get a new connection.
-  CHECKED_STATUS Accept(Socket *new_conn, Endpoint* remote, int flags);
+  Status Accept(Socket *new_conn, Endpoint* remote, int flags);
 
   // start connecting this socket to a remote address.
-  CHECKED_STATUS Connect(const Endpoint& remote);
+  Status Connect(const Endpoint& remote);
 
   // get the error status using getsockopt(2)
-  CHECKED_STATUS GetSockError() const;
+  Status GetSockError() const;
 
   Result<size_t> Write(const uint8_t *buf, ssize_t amt);
 
@@ -152,7 +152,7 @@ class Socket {
   // Returns OK if buflen bytes were sent, otherwise IOError.
   // Upon return, num_written will contain the number of bytes actually written.
   // See also writen() from Stevens (2004) or Kerrisk (2010)
-  CHECKED_STATUS BlockingWrite(const uint8_t *buf, size_t buflen, const MonoTime& deadline);
+  Status BlockingWrite(const uint8_t *buf, size_t buflen, const MonoTime& deadline);
 
   Result<size_t> Recv(uint8_t* buf, ssize_t amt);
 
@@ -168,18 +168,18 @@ class Socket {
 
   // Implements the SOL_SOCKET/SO_RCVBUF socket option.
   Result<int32_t> GetReceiveBufferSize();
-  CHECKED_STATUS SetReceiveBufferSize(int32_t size);
+  Status SetReceiveBufferSize(int32_t size);
 
  private:
   // Called internally from SetSend/RecvTimeout().
-  CHECKED_STATUS SetTimeout(int opt, std::string optname, const MonoDelta& timeout);
+  Status SetTimeout(int opt, std::string optname, const MonoDelta& timeout);
 
   // Called internally during socket setup.
-  CHECKED_STATUS SetCloseOnExec();
+  Status SetCloseOnExec();
 
   // Bind the socket to a local address before making an outbound connection,
   // based on the value of FLAGS_local_ip_for_outbound_sockets.
-  CHECKED_STATUS BindForOutgoingConnection();
+  Status BindForOutgoingConnection();
 
   int fd_;
 

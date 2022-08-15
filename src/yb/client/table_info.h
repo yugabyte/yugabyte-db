@@ -33,7 +33,7 @@ struct YBTableInfo {
   IndexMap index_map;
   boost::optional<IndexInfo> index_info;
   YBTableType table_type;
-  bool colocated;
+  bool colocated; // Accounts for databases and tablegroups but not for YSQL system tables.
   boost::optional<master::ReplicationInfoPB> replication_info;
   boost::optional<uint32> wal_retention_secs;
 };

@@ -111,7 +111,7 @@ CreateSchemaCommand(CreateSchemaStmt *stmt, const char *queryString,
 	 * superuser will always have both of these privileges a fortiori.
 	 */
 	aclresult = pg_database_aclcheck(MyDatabaseId, saved_uid, ACL_CREATE);
-	if (aclresult != ACLCHECK_OK)
+	if (aclresult != ACLCHECK_OK && !IsYbDbAdminUser(GetUserId()))
 		aclcheck_error(aclresult, OBJECT_DATABASE,
 					   get_database_name(MyDatabaseId));
 
@@ -131,14 +131,25 @@ CreateSchemaCommand(CreateSchemaStmt *stmt, const char *queryString,
 	 * the permissions checks, but since CREATE TABLE IF NOT EXISTS makes its
 	 * creation-permission check first, we do likewise.
 	 */
-	if (stmt->if_not_exists &&
-		SearchSysCacheExists1(NAMESPACENAME, PointerGetDatum(schemaName)))
+	if (stmt->if_not_exists)
 	{
-		ereport(NOTICE,
-				(errcode(ERRCODE_DUPLICATE_SCHEMA),
-				 errmsg("schema \"%s\" already exists, skipping",
-						schemaName)));
-		return InvalidOid;
+		namespaceId = get_namespace_oid(schemaName, true);
+		if (OidIsValid(namespaceId))
+		{
+			/*
+			 * If we are in an extension script, insist that the pre-existing
+			 * object be a member of the extension, to avoid security risks.
+			 */
+			ObjectAddressSet(address, NamespaceRelationId, namespaceId);
+			checkMembershipInCurrentExtension(&address);
+
+			/* OK to skip */
+			ereport(NOTICE,
+					(errcode(ERRCODE_DUPLICATE_SCHEMA),
+					 errmsg("schema \"%s\" already exists, skipping",
+							schemaName)));
+			return InvalidOid;
+		}
 	}
 
 	/*
@@ -287,12 +298,19 @@ RenameSchema(const char *oldname, const char *newname)
 				 errmsg("schema \"%s\" already exists", newname)));
 
 	/* must be owner */
-	if (!pg_namespace_ownercheck(HeapTupleGetOid(tup), GetUserId()))
+	if (!pg_namespace_ownercheck(HeapTupleGetOid(tup), GetUserId()) && !IsYbDbAdminUser(GetUserId()))
 		aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_SCHEMA,
 					   oldname);
 
 	/* must have CREATE privilege on database */
 	aclresult = pg_database_aclcheck(MyDatabaseId, GetUserId(), ACL_CREATE);
+
+	/* yb_db_admin has superuser-like privileges */
+	if (IsYbDbAdminUser(GetUserId()))
+	{
+		aclresult = ACLCHECK_OK;
+	}
+
 	if (aclresult != ACLCHECK_OK)
 		aclcheck_error(aclresult, OBJECT_DATABASE,
 					   get_database_name(MyDatabaseId));
@@ -395,12 +413,16 @@ AlterSchemaOwner_internal(HeapTuple tup, Relation rel, Oid newOwnerId)
 		AclResult	aclresult;
 
 		/* Otherwise, must be owner of the existing object */
-		if (!pg_namespace_ownercheck(HeapTupleGetOid(tup), GetUserId()))
+		if (!pg_namespace_ownercheck(HeapTupleGetOid(tup), GetUserId()) && !IsYbDbAdminUser(GetUserId()))
 			aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_SCHEMA,
 						   NameStr(nspForm->nspname));
 
 		/* Must be able to become new owner */
-		check_is_member_of_role(GetUserId(), newOwnerId);
+		if (!is_member_of_role(GetUserId(), newOwnerId) && !IsYbDbAdminUser(GetUserId()))
+			ereport(ERROR,
+					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+				 	errmsg("must be member of role \"%s\"",
+							GetUserNameFromId(newOwnerId, false))));
 
 		/*
 		 * must have create-schema rights
@@ -411,8 +433,16 @@ AlterSchemaOwner_internal(HeapTuple tup, Relation rel, Oid newOwnerId)
 		 * schemas.  Because superusers will always have this right, we need
 		 * no special case for them.
 		 */
-		aclresult = pg_database_aclcheck(MyDatabaseId, GetUserId(),
-										 ACL_CREATE);
+		if (IsYbDbAdminUser(GetUserId()))
+		{
+			aclresult = ACLCHECK_OK;
+		}
+		else
+		{
+			aclresult = pg_database_aclcheck(MyDatabaseId, GetUserId(),
+													ACL_CREATE);
+		}
+		
 		if (aclresult != ACLCHECK_OK)
 			aclcheck_error(aclresult, OBJECT_DATABASE,
 						   get_database_name(MyDatabaseId));

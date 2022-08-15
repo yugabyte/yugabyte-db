@@ -10,9 +10,6 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#include "yb/tools/yb-admin_cli.h"
-#include "yb/tools/yb-admin_client.h"
-
 #include <iostream>
 
 #include <boost/algorithm/string.hpp>
@@ -25,12 +22,14 @@
 
 #include "yb/common/entity_ids.h"
 #include "yb/common/json_util.h"
+#include "yb/common/ql_type_util.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/encryption/encryption_util.h"
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/util.h"
+#include "yb/gutil/strings/split.h"
 
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_error.h"
@@ -40,6 +39,12 @@
 #include "yb/master/master_ddl.proxy.h"
 #include "yb/master/master_encryption.proxy.h"
 #include "yb/master/master_replication.proxy.h"
+#include "yb/master/master_admin.pb.h"
+#include "yb/master/master_admin.proxy.h"
+#include "yb/master/master_util.h"
+
+#include "yb/tools/yb-admin_cli.h"
+#include "yb/tools/yb-admin_client.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_controller.h"
@@ -52,12 +57,14 @@
 #include "yb/util/pb_util.h"
 #include "yb/util/physical_time.h"
 #include "yb/util/protobuf_util.h"
+#include "yb/util/stol_utils.h"
 #include "yb/util/string_case.h"
 #include "yb/util/string_trim.h"
 #include "yb/util/string_util.h"
 #include "yb/util/timestamp.h"
 #include "yb/util/format.h"
 #include "yb/util/status_format.h"
+#include "yb/util/test_util.h"
 
 DEFINE_test_flag(int32, metadata_file_format_version, 0,
                  "Used in 'export_snapshot' metadata file format (0 means using latest format).");
@@ -73,8 +80,10 @@ using namespace std::literals;
 
 using std::cout;
 using std::endl;
+using std::pair;
 using std::string;
 using std::vector;
+using std::unordered_map;
 
 using google::protobuf::RepeatedPtrField;
 
@@ -92,15 +101,12 @@ using master::IdPairPB;
 using master::ImportSnapshotMetaRequestPB;
 using master::ImportSnapshotMetaResponsePB;
 using master::ImportSnapshotMetaResponsePB_TableMetaPB;
-using master::IsCreateTableDoneRequestPB;
-using master::IsCreateTableDoneResponsePB;
 using master::ListSnapshotRestorationsRequestPB;
 using master::ListSnapshotRestorationsResponsePB;
 using master::ListSnapshotsRequestPB;
 using master::ListSnapshotsResponsePB;
 using master::ListTablesRequestPB;
 using master::ListTablesResponsePB;
-using master::ListTabletServersRequestPB;
 using master::ListTabletServersResponsePB;
 using master::RestoreSnapshotRequestPB;
 using master::RestoreSnapshotResponsePB;
@@ -111,8 +117,76 @@ using master::SysRowEntryType;
 using master::BackupRowEntryPB;
 using master::SysTablesEntryPB;
 using master::SysSnapshotEntryPB;
+using master::SysUDTypeEntryPB;
 
 PB_ENUM_FORMATTERS(yb::master::SysSnapshotEntryPB::State);
+
+namespace {
+
+template <class Allocator>
+Result<rapidjson::Value> SnapshotScheduleInfoToJson(
+    const master::SnapshotScheduleInfoPB& schedule, Allocator* allocator) {
+  rapidjson::Value json_schedule(rapidjson::kObjectType);
+  AddStringField(
+      "id", VERIFY_RESULT(FullyDecodeSnapshotScheduleId(schedule.id())).ToString(), &json_schedule,
+      allocator);
+
+  const auto& filter = schedule.options().filter();
+  string filter_output;
+  // The user input should only have 1 entry, at namespace level.
+  if (filter.tables().tables_size() == 1) {
+    const auto& table_id = filter.tables().tables(0);
+    if (table_id.has_namespace_()) {
+      string database_type;
+      if (table_id.namespace_().database_type() == YQL_DATABASE_PGSQL) {
+        database_type = "ysql";
+      } else if (table_id.namespace_().database_type() == YQL_DATABASE_CQL) {
+        database_type = "ycql";
+      }
+      if (!database_type.empty()) {
+        filter_output = Format("$0.$1", database_type, table_id.namespace_().name());
+      }
+    }
+  }
+  // If the user input was non standard, just display the whole debug PB.
+  if (filter_output.empty()) {
+    filter_output = filter.ShortDebugString();
+    DCHECK(false) << "Non standard filter " << filter_output;
+  }
+  rapidjson::Value options(rapidjson::kObjectType);
+  AddStringField("filter", filter_output, &options, allocator);
+  auto interval_min = schedule.options().interval_sec() / MonoTime::kSecondsPerMinute;
+  AddStringField("interval", Format("$0 min", interval_min), &options, allocator);
+  auto retention_min = schedule.options().retention_duration_sec() / MonoTime::kSecondsPerMinute;
+  AddStringField("retention", Format("$0 min", retention_min), &options, allocator);
+  auto delete_time = HybridTime::FromPB(schedule.options().delete_time());
+  if (delete_time) {
+    AddStringField("delete_time", HybridTimeToString(delete_time), &options, allocator);
+  }
+
+  json_schedule.AddMember("options", options, *allocator);
+  rapidjson::Value json_snapshots(rapidjson::kArrayType);
+  for (const auto& snapshot : schedule.snapshots()) {
+    rapidjson::Value json_snapshot(rapidjson::kObjectType);
+    AddStringField(
+        "id", VERIFY_RESULT(FullyDecodeTxnSnapshotId(snapshot.id())).ToString(), &json_snapshot,
+        allocator);
+    auto snapshot_ht = HybridTime::FromPB(snapshot.entry().snapshot_hybrid_time());
+    AddStringField("snapshot_time", HybridTimeToString(snapshot_ht), &json_snapshot, allocator);
+    auto previous_snapshot_ht =
+        HybridTime::FromPB(snapshot.entry().previous_snapshot_hybrid_time());
+    if (previous_snapshot_ht) {
+      AddStringField(
+          "previous_snapshot_time", HybridTimeToString(previous_snapshot_ht), &json_snapshot,
+          allocator);
+    }
+    json_snapshots.PushBack(json_snapshot, *allocator);
+  }
+  json_schedule.AddMember("snapshots", json_snapshots, *allocator);
+  return json_schedule;
+}
+
+}  // namespace
 
 Status ClusterAdminClient::ListSnapshots(const ListSnapshotsFlags& flags) {
   ListSnapshotsResponsePB resp;
@@ -177,6 +251,11 @@ Status ClusterAdminClient::ListSnapshots(const ListSnapshotsFlags& flags) {
           case SysRowEntryType::NAMESPACE: {
             auto meta = VERIFY_RESULT(ParseFromSlice<SysNamespaceEntryPB>(entry.data()));
             meta.clear_transaction();
+            decoded_data = JsonWriter::ToJson(meta, JsonWriter::COMPACT);
+            break;
+          }
+          case SysRowEntryType::UDTYPE: {
+            auto meta = VERIFY_RESULT(ParseFromSlice<SysUDTypeEntryPB>(entry.data()));
             decoded_data = JsonWriter::ToJson(meta, JsonWriter::COMPACT);
             break;
           }
@@ -261,6 +340,7 @@ Status ClusterAdminClient::CreateSnapshot(
     }
 
     req.set_add_indexes(add_indexes);
+    req.set_add_ud_types(true); // No-op for YSQL.
     req.set_transaction_aware(true);
     return master_backup_proxy_->CreateSnapshot(req, &resp, rpc);
   }));
@@ -279,6 +359,7 @@ Status ClusterAdminClient::CreateNamespaceSnapshot(const TypedNamespaceName& ns)
     req.set_exclude_system_tables(true);
     req.add_relation_type_filter(master::USER_TABLE_RELATION);
     req.add_relation_type_filter(master::INDEX_TABLE_RELATION);
+    req.add_relation_type_filter(master::MATVIEW_TABLE_RELATION);
     return master_ddl_proxy_->ListTables(req, &resp, rpc);
   }));
 
@@ -291,9 +372,11 @@ Status ClusterAdminClient::CreateNamespaceSnapshot(const TypedNamespaceName& ns)
     const auto& table = resp.tables(i);
     tables[i].set_table_id(table.id());
     tables[i].set_namespace_id(table.namespace_().id());
+    tables[i].set_pgschema_name(table.pgschema_name());
 
     RSTATUS_DCHECK(table.relation_type() == master::USER_TABLE_RELATION ||
-            table.relation_type() == master::INDEX_TABLE_RELATION, InternalError,
+            table.relation_type() == master::INDEX_TABLE_RELATION ||
+            table.relation_type() == master::MATVIEW_TABLE_RELATION, InternalError,
             Format("Invalid relation type: $0", table.relation_type()));
     RSTATUS_DCHECK_EQ(table.namespace_().name(), ns.name, InternalError,
                Format("Invalid namespace name: $0", table.namespace_().name()));
@@ -378,70 +461,9 @@ Result<rapidjson::Document> ClusterAdminClient::ListSnapshotSchedules(
   result.SetObject();
   rapidjson::Value json_schedules(rapidjson::kArrayType);
   for (const auto& schedule : resp.schedules()) {
-    rapidjson::Value json_schedule(rapidjson::kObjectType);
-    AddStringField("id", VERIFY_RESULT(FullyDecodeSnapshotScheduleId(schedule.id())).ToString(),
-                   &json_schedule, &result.GetAllocator());
-
-    const auto& filter = schedule.options().filter();
-    string filter_output;
-    // The user input should only have 1 entry, at namespace level.
-    if (filter.tables().tables_size() == 1) {
-      const auto& table_id = filter.tables().tables(0);
-      if (table_id.has_namespace_()) {
-        string database_type;
-        if (table_id.namespace_().database_type() == YQL_DATABASE_PGSQL) {
-          database_type = "ysql";
-        } else if (table_id.namespace_().database_type() == YQL_DATABASE_CQL) {
-          database_type = "ycql";
-        }
-        if (!database_type.empty()) {
-          filter_output = Format("$0.$1", database_type, table_id.namespace_().name());
-        }
-      }
-    }
-    // If the user input was non standard, just display the whole debug PB.
-    if (filter_output.empty()) {
-      filter_output = filter.ShortDebugString();
-      DCHECK(false) << "Non standard filter " << filter_output;
-    }
-    rapidjson::Value options(rapidjson::kObjectType);
-    AddStringField("filter", filter_output, &options, &result.GetAllocator());
-    auto interval_min = schedule.options().interval_sec() / MonoTime::kSecondsPerMinute;
-    AddStringField("interval",
-                   Format("$0 min", interval_min),
-                   &options, &result.GetAllocator());
-    auto retention_min = schedule.options().retention_duration_sec() / MonoTime::kSecondsPerMinute;
-    AddStringField("retention",
-                   Format("$0 min", retention_min),
-                   &options, &result.GetAllocator());
-    auto delete_time = HybridTime::FromPB(schedule.options().delete_time());
-    if (delete_time) {
-      AddStringField("delete_time", HybridTimeToString(delete_time), &options,
-                     &result.GetAllocator());
-    }
-
-    json_schedule.AddMember("options", options, result.GetAllocator());
-    rapidjson::Value json_snapshots(rapidjson::kArrayType);
-    for (const auto& snapshot : schedule.snapshots()) {
-      rapidjson::Value json_snapshot(rapidjson::kObjectType);
-      AddStringField("id", VERIFY_RESULT(FullyDecodeTxnSnapshotId(snapshot.id())).ToString(),
-                     &json_snapshot, &result.GetAllocator());
-      auto snapshot_ht = HybridTime::FromPB(snapshot.entry().snapshot_hybrid_time());
-      AddStringField("snapshot_time",
-                     HybridTimeToString(snapshot_ht),
-                     &json_snapshot, &result.GetAllocator());
-      auto previous_snapshot_ht = HybridTime::FromPB(
-          snapshot.entry().previous_snapshot_hybrid_time());
-      if (previous_snapshot_ht) {
-        AddStringField(
-            "previous_snapshot_time",
-            HybridTimeToString(previous_snapshot_ht),
-            &json_snapshot, &result.GetAllocator());
-      }
-      json_snapshots.PushBack(json_snapshot, result.GetAllocator());
-    }
-    json_schedule.AddMember("snapshots", json_snapshots, result.GetAllocator());
-    json_schedules.PushBack(json_schedule, result.GetAllocator());
+    json_schedules.PushBack(
+        VERIFY_RESULT(SnapshotScheduleInfoToJson(schedule, &result.GetAllocator())),
+        result.GetAllocator());
   }
   result.AddMember("schedules", json_schedules, result.GetAllocator());
   return result;
@@ -526,10 +548,58 @@ Result<TxnSnapshotId> ClusterAdminClient::SuitableSnapshotId(
   }
 }
 
+Status ClusterAdminClient::DisableTabletSplitsDuringRestore(CoarseTimePoint deadline) {
+  // TODO(Sanket): Eventually all of this logic needs to be moved
+  // to the master and exposed as APIs for the clients to consume.
+  const std::string feature_name = "PITR";
+  const auto splitting_disabled_until =
+      CoarseMonoClock::Now() + MonoDelta::FromSeconds(kPitrSplitDisableDurationSecs);
+  // Disable splitting and then wait for all pending splits to complete before
+  // starting restoration.
+  VERIFY_RESULT_PREPEND(
+      DisableTabletSplitsInternal(kPitrSplitDisableDurationSecs * 1000, feature_name),
+      "Failed to disable tablet split before restore.");
+
+  while (CoarseMonoClock::Now() < std::min(splitting_disabled_until, deadline)) {
+    // Wait for existing split operations to complete.
+    const auto resp = VERIFY_RESULT_PREPEND(
+        IsTabletSplittingCompleteInternal(true /* wait_for_parent_deletion */),
+        "Tablet splitting did not complete. Cannot restore.");
+    if (resp.is_tablet_splitting_complete()) {
+      break;
+    }
+    SleepFor(MonoDelta::FromMilliseconds(kPitrSplitDisableCheckFreqMs));
+  }
+
+  if (CoarseMonoClock::now() >= deadline) {
+    return STATUS(TimedOut, "Timed out waiting for tablet splitting to complete.");
+  }
+
+  // Return if we have used almost all of our time in waiting for splitting to complete,
+  // since we can't guarantee that another split does not start.
+  if (CoarseMonoClock::now() + MonoDelta::FromSeconds(3) >= splitting_disabled_until) {
+    return STATUS(TimedOut, "Not enough time after disabling splitting to disable ",
+                            "splitting again.");
+  }
+
+  // Disable for kPitrSplitDisableDurationSecs again so the restore has the full amount of time with
+  // splitting disables. This overwrites the previous value since the feature_name is the same so
+  // overall the time is still kPitrSplitDisableDurationSecs.
+  VERIFY_RESULT_PREPEND(
+      DisableTabletSplitsInternal(kPitrSplitDisableDurationSecs * 1000, feature_name),
+      "Failed to disable tablet split before restore.");
+
+  return Status::OK();
+}
+
 Result<rapidjson::Document> ClusterAdminClient::RestoreSnapshotSchedule(
     const SnapshotScheduleId& schedule_id, HybridTime restore_at) {
   auto deadline = CoarseMonoClock::now() + timeout_;
 
+  // Disable splitting for the entire run of restore.
+  RETURN_NOT_OK(DisableTabletSplitsDuringRestore(deadline));
+
+  // Get the suitable snapshot to restore from.
   auto snapshot_id = VERIFY_RESULT(SuitableSnapshotId(schedule_id, restore_at, deadline));
 
   for (;;) {
@@ -583,6 +653,33 @@ Result<rapidjson::Document> ClusterAdminClient::RestoreSnapshotSchedule(
   AddStringField("snapshot_id", snapshot_id.ToString(), &document, &document.GetAllocator());
   AddStringField("restoration_id", restoration_id.ToString(), &document, &document.GetAllocator());
 
+  return document;
+}
+
+Result<rapidjson::Document> ClusterAdminClient::EditSnapshotSchedule(
+    const SnapshotScheduleId& schedule_id, std::optional<MonoDelta> new_interval,
+    std::optional<MonoDelta> new_retention) {
+
+  master::EditSnapshotScheduleResponsePB resp;
+  RETURN_NOT_OK(RequestMasterLeader(&resp, [&](RpcController* rpc) {
+    master::EditSnapshotScheduleRequestPB req;
+    req.set_snapshot_schedule_id(schedule_id.data(), schedule_id.size());
+    if (new_interval) {
+      req.set_interval_sec(new_interval->ToSeconds());
+    }
+    if (new_retention) {
+      req.set_retention_duration_sec(new_retention->ToSeconds());
+    }
+    return master_backup_proxy_->EditSnapshotSchedule(req, &resp, rpc);
+  }));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  rapidjson::Document document;
+  document.SetObject();
+  rapidjson::Value json_schedule =
+      VERIFY_RESULT(SnapshotScheduleInfoToJson(resp.schedule(), &document.GetAllocator()));
+  document.AddMember("schedule", json_schedule, document.GetAllocator());
   return document;
 }
 
@@ -677,6 +774,37 @@ Status ClusterAdminClient::CreateSnapshotMetaFile(const string& snapshot_id,
   return Status::OK();
 }
 
+string ClusterAdminClient::GetDBTypeName(const SysNamespaceEntryPB& pb) {
+  const YQLDatabase db_type = GetDatabaseType(pb);
+  switch (db_type) {
+    case YQL_DATABASE_UNKNOWN: return "UNKNOWN DB TYPE";
+    case YQL_DATABASE_CQL: return "YCQL keyspace";
+    case YQL_DATABASE_PGSQL: return "YSQL database";
+    case YQL_DATABASE_REDIS: return "YEDIS namespace";
+  }
+  FATAL_INVALID_ENUM_VALUE(YQLDatabase, db_type);
+}
+
+Status ClusterAdminClient::UpdateUDTypes(
+    QLTypePB* pb_type, bool* update_meta, const NSNameToNameMap& ns_name_to_name) {
+  return IterateAndDoForUDT(
+      pb_type,
+      [update_meta, &ns_name_to_name](QLTypePB::UDTypeInfo* udtype_info) -> Status {
+        auto ns_it = ns_name_to_name.find(udtype_info->keyspace_name());
+        if (ns_it == ns_name_to_name.end()) {
+          return STATUS_FORMAT(
+              InvalidArgument, "No metadata for keyspace '$0' referenced in UDType '$1'",
+              udtype_info->keyspace_name(), udtype_info->name());
+        }
+
+        if (udtype_info->keyspace_name() != ns_it->second) {
+          udtype_info->set_keyspace_name(ns_it->second);
+          *DCHECK_NOTNULL(update_meta) = true;
+        }
+        return Status::OK();
+      });
+}
+
 Status ClusterAdminClient::ImportSnapshotMetaFile(const string& file_name,
                                                   const TypedNamespaceName& keyspace,
                                                   const vector<YBTableName>& tables) {
@@ -710,6 +838,12 @@ Status ClusterAdminClient::ImportSnapshotMetaFile(const string& file_name,
   cout << "Importing snapshot " << SnapshotIdToString(snapshot_info->id())
        << " (" << snapshot_info->entry().state() << ")" << endl;
 
+  // Map: Old namespace ID -> [Old name, New name] pair.
+  typedef pair<NamespaceName, NamespaceName> NSNamePair;
+  typedef unordered_map<NamespaceId, NSNamePair> NSIdToNameMap;
+  NSIdToNameMap ns_id_to_name;
+  NSNameToNameMap ns_name_to_name;
+
   size_t table_index = 0;
   bool was_table_renamed = false;
   for (BackupRowEntryPB& backup_entry : *snapshot_info->mutable_backup_entries()) {
@@ -720,9 +854,41 @@ Status ClusterAdminClient::ImportSnapshotMetaFile(const string& file_name,
     switch (entry.type()) {
       case SysRowEntryType::NAMESPACE: {
         auto meta = VERIFY_RESULT(ParseFromSlice<SysNamespaceEntryPB>(entry.data()));
+        const string db_type = GetDBTypeName(meta);
+        cout << "Target imported " << db_type << " name: "
+             << (keyspace.name.empty() ? meta.name() : keyspace.name) << endl
+             << db_type << " being imported: " << meta.name() << endl;
 
         if (!keyspace.name.empty() && keyspace.name != meta.name()) {
+          ns_id_to_name[entry.id()] = NSNamePair(meta.name(), keyspace.name);
+          ns_name_to_name[meta.name()] = keyspace.name;
+
           meta.set_name(keyspace.name);
+          entry.set_data(meta.SerializeAsString());
+        } else {
+          ns_id_to_name[entry.id()] = NSNamePair(meta.name(), meta.name());
+          ns_name_to_name[meta.name()] = meta.name();
+        }
+        break;
+      }
+      case SysRowEntryType::UDTYPE: {
+        // Note: UDT renaming is not supported.
+        auto meta = VERIFY_RESULT(ParseFromSlice<SysUDTypeEntryPB>(entry.data()));
+        const auto ns_it = ns_id_to_name.find(meta.namespace_id());
+        cout << "Target imported user-defined type name: "
+             << (ns_it == ns_id_to_name.end() ? "[" + meta.namespace_id() + "]" :
+                 ns_it->second.second) << "." << meta.name() << endl
+             << "User-defined type being imported: "
+             << (ns_it == ns_id_to_name.end() ? "[" + meta.namespace_id() + "]" :
+                 ns_it->second.first) << "." << meta.name() << endl;
+
+        bool update_meta = false;
+        // Update QLTypePB::UDTypeInfo::keyspace_name in the UDT params.
+        for (int i = 0; i < meta.field_names_size(); ++i) {
+          RETURN_NOT_OK(UpdateUDTypes(meta.mutable_field_types(i), &update_meta, ns_name_to_name));
+        }
+
+        if (update_meta) {
           entry.set_data(meta.SerializeAsString());
         }
         break;
@@ -736,27 +902,6 @@ Status ClusterAdminClient::ImportSnapshotMetaFile(const string& file_name,
         }
 
         auto meta = VERIFY_RESULT(ParseFromSlice<SysTablesEntryPB>(entry.data()));
-
-        bool update_meta = false;
-        if (!table_name.empty() && table_name.table_name() != meta.name()) {
-          meta.set_name(table_name.table_name());
-          update_meta = true;
-          was_table_renamed = true;
-        }
-        if (!keyspace.name.empty() && keyspace.name != meta.namespace_name()) {
-          meta.set_namespace_name(keyspace.name);
-          update_meta = true;
-        }
-
-        if (meta.name().empty()) {
-          return STATUS(IllegalState, "Could not find table name from snapshot metadata");
-        }
-
-        // Update the table name if needed.
-        if (update_meta) {
-          entry.set_data(meta.SerializeAsString());
-        }
-
         const auto colocated_prefix = meta.colocated() ? "colocated " : "";
 
         if (meta.indexed_table_id().empty()) {
@@ -776,10 +921,40 @@ Status ClusterAdminClient::ImportSnapshotMetaFile(const string& file_name,
                << keyspace.name << "." << meta.name() << endl;
         }
 
+        // Print old table name before the table renaming in the code below.
         cout << (meta.colocated() ? "Colocated t" : "T") << "able being imported: "
              << (meta.namespace_name().empty() ?
                  "[" + meta.namespace_id() + "]" : meta.namespace_name())
              << "." << meta.name() << endl;
+
+        bool update_meta = false;
+        if (!table_name.empty() && table_name.table_name() != meta.name()) {
+          meta.set_name(table_name.table_name());
+          update_meta = true;
+          was_table_renamed = true;
+        }
+        if (!keyspace.name.empty() && keyspace.name != meta.namespace_name()) {
+          meta.set_namespace_name(keyspace.name);
+          update_meta = true;
+        }
+
+        if (meta.name().empty()) {
+          return STATUS(IllegalState, "Could not find table name from snapshot metadata");
+        }
+
+        // Update QLTypePB::UDTypeInfo::keyspace_name in all UDT params in the table Schema.
+        SchemaPB* const schema = meta.mutable_schema();
+        // Recursively update ids in used user-defined types.
+        for (int i = 0; i < schema->columns_size(); ++i) {
+          QLTypePB* const pb_type = schema->mutable_columns(i)->mutable_type();
+          RETURN_NOT_OK(UpdateUDTypes(pb_type, &update_meta, ns_name_to_name));
+        }
+
+        // Update the table name if needed.
+        if (update_meta) {
+          entry.set_data(meta.SerializeAsString());
+        }
+
         ++table_index;
         break;
       }
@@ -788,10 +963,11 @@ Status ClusterAdminClient::ImportSnapshotMetaFile(const string& file_name,
     }
   }
 
+  // RPC timeout is a function of the number of tables that needs to be imported.
   ImportSnapshotMetaResponsePB resp;
   RETURN_NOT_OK(RequestMasterLeader(&resp, [&](RpcController* rpc) {
     return master_backup_proxy_->ImportSnapshotMeta(req, &resp, rpc);
-  }));
+  }, timeout_ * std::max(static_cast<size_t>(1), table_index)));
 
   const int kObjectColumnWidth = 16;
   const auto pad_object_type = [](const string& s) {
@@ -825,6 +1001,14 @@ Status ClusterAdminClient::ImportSnapshotMetaFile(const string& file_name,
     cout << pad_object_type(table_type) << kColumnSep
          << table_meta.table_ids().old_id() << kColumnSep
          << new_table_id << endl;
+
+    const RepeatedPtrField<IdPairPB>& udts_map = table_meta.ud_types_ids();
+    for (int j = 0; j < udts_map.size(); ++j) {
+      const IdPairPB& pair = udts_map.Get(j);
+      cout << pad_object_type("UDType") << kColumnSep
+           << pair.old_id() << kColumnSep
+           << pair.new_id() << endl;
+    }
 
     const RepeatedPtrField<IdPairPB>& tablets_map = table_meta.tablets_ids();
     for (int j = 0; j < tablets_map.size(); ++j) {
@@ -918,29 +1102,82 @@ Status ClusterAdminClient::SetPreferredZones(const std::vector<string>& preferre
   rpc.set_timeout(timeout_);
 
   std::set<string> zones;
+  std::set<int> visited_priorities;
+
   for (const string& zone : preferred_zones) {
-    if (std::find(zones.begin(), zones.end(), zone) != zones.end()) {
-      continue;
-    }
-    size_t last_pos = 0;
-    size_t next_pos;
-    std::vector<string> tokens;
-    while ((next_pos = zone.find(".", last_pos)) != string::npos) {
-      tokens.push_back(zone.substr(last_pos, next_pos - last_pos));
-      last_pos = next_pos + 1;
-    }
-    tokens.push_back(zone.substr(last_pos, zone.size() - last_pos));
-    if (tokens.size() != 3) {
-      return STATUS_SUBSTITUTE(InvalidArgument, "Invalid argument for preferred zone $0, should "
-          "have format cloud.region.zone", zone);
+    if (zones.find(zone) != zones.end()) {
+      return STATUS_SUBSTITUTE(
+          InvalidArgument, "Invalid argument for preferred zone $0, values should not repeat",
+          zone);
     }
 
-    CloudInfoPB* cloud_info = req.add_preferred_zones();
+    std::vector<std::string> zone_priority_split = strings::Split(zone, ":", strings::AllowEmpty());
+    if (zone_priority_split.size() == 0 || zone_priority_split.size() > 2) {
+      return STATUS_SUBSTITUTE(
+          InvalidArgument,
+          "Invalid argument for preferred zone $0, should have format cloud.region.zone[:priority]",
+          zone);
+    }
+
+    std::vector<string> tokens = strings::Split(zone_priority_split[0], ".", strings::AllowEmpty());
+    if (tokens.size() != 3) {
+      return STATUS_SUBSTITUTE(
+          InvalidArgument,
+          "Invalid argument for preferred zone $0, should have format cloud.region.zone:[priority]",
+          zone);
+    }
+
+    uint priority = 1;
+
+    if (zone_priority_split.size() == 2) {
+      auto result = CheckedStoi(zone_priority_split[1]);
+      if (!result.ok() || result.get() < 1) {
+        return STATUS_SUBSTITUTE(
+            InvalidArgument,
+            "Invalid argument for preferred zone $0, priority should be non-zero positive integer",
+            zone);
+      }
+      priority = static_cast<uint>(result.get());
+    }
+
+    // Max priority if each zone has a unique priority value can only be the size of the input array
+    if (priority > preferred_zones.size()) {
+      return STATUS(
+          InvalidArgument,
+          "Priority value cannot be more than the number of zones in the preferred list since each "
+          "priority should be associated with at least one zone from the list");
+    }
+
+    CloudInfoPB* cloud_info = nullptr;
+    visited_priorities.insert(priority);
+
+    while (req.multi_preferred_zones_size() < static_cast<int>(priority)) {
+      req.add_multi_preferred_zones();
+    }
+
+    auto current_list = req.mutable_multi_preferred_zones(priority - 1);
+    cloud_info = current_list->add_zones();
+
     cloud_info->set_placement_cloud(tokens[0]);
     cloud_info->set_placement_region(tokens[1]);
     cloud_info->set_placement_zone(tokens[2]);
 
     zones.emplace(zone);
+
+    if (priority == 1) {
+      // Handle old clusters which can only handle a single priority. New clusters will ignore this
+      // member as multi_preferred_zones is already set.
+      cloud_info = req.add_preferred_zones();
+      cloud_info->set_placement_cloud(tokens[0]);
+      cloud_info->set_placement_region(tokens[1]);
+      cloud_info->set_placement_zone(tokens[2]);
+    }
+  }
+
+  int size = static_cast<int>(visited_priorities.size());
+  if (size > 0 && (*(visited_priorities.rbegin()) != size)) {
+    return STATUS_SUBSTITUTE(
+        InvalidArgument, "Invalid argument, each priority should have at least one zone");
   }
 
   RETURN_NOT_OK(master_cluster_proxy_->SetPreferredZones(req, &resp, &rpc));
@@ -1118,7 +1355,8 @@ Status ClusterAdminClient::WriteUniverseKeyToFile(
   return Status::OK();
 }
 
-Status ClusterAdminClient::CreateCDCSDKDBStream(const TypedNamespaceName& ns) {
+Status ClusterAdminClient::CreateCDCSDKDBStream(
+  const TypedNamespaceName& ns, const std::string& checkpoint_type) {
   HostPort ts_addr = VERIFY_RESULT(GetFirstRpcAddressForTS());
   auto cdc_proxy = std::make_unique<cdc::CDCServiceProxy>(proxy_cache_.get(), ts_addr);
 
@@ -1129,7 +1367,11 @@ Status ClusterAdminClient::CreateCDCSDKDBStream(const TypedNamespaceName& ns) {
   req.set_record_type(cdc::CDCRecordType::CHANGE);
   req.set_record_format(cdc::CDCRecordFormat::PROTO);
   req.set_source_type(cdc::CDCRequestSource::CDCSDK);
-  req.set_checkpoint_type(cdc::CDCCheckpointType::EXPLICIT);
+  if (checkpoint_type == yb::ToString("EXPLICIT")) {
+    req.set_checkpoint_type(cdc::CDCCheckpointType::EXPLICIT);
+  } else {
+    req.set_checkpoint_type(cdc::CDCCheckpointType::IMPLICIT);
+  }
 
   RpcController rpc;
   rpc.set_timeout(timeout_);
@@ -1290,7 +1532,8 @@ Status ClusterAdminClient::WaitForSetupUniverseReplicationToFinish(const string&
     if (!s.ok() || resp.has_error()) {
         LOG(WARNING) << "Encountered error while waiting for setup_universe_replication to complete"
                      << " : " << (!s.ok() ? s.ToString() : resp.error().status().message());
-    } else if (resp.has_done() && resp.done()) {
+    }
+    if (resp.has_done() && resp.done()) {
       return StatusFromPB(resp.replication_error());
     }
 
@@ -1327,50 +1570,24 @@ Status ClusterAdminClient::SetupUniverseReplication(
   rpc.set_timeout(timeout_);
   auto setup_result_status = master_replication_proxy_->SetupUniverseReplication(req, &resp, &rpc);
 
-  // Clean up config files if setup fails.
-  if (!setup_result_status.ok()) {
-    CleanupEnvironmentOnSetupUniverseReplicationFailure(producer_uuid, setup_result_status);
-    return setup_result_status;
-  }
+  setup_result_status = WaitForSetupUniverseReplicationToFinish(producer_uuid);
 
   if (resp.has_error()) {
     cout << "Error setting up universe replication: " << resp.error().status().message() << endl;
-
     Status status_from_error = StatusFromPB(resp.error().status());
-    CleanupEnvironmentOnSetupUniverseReplicationFailure(producer_uuid, status_from_error);
 
     return status_from_error;
   }
 
-  setup_result_status = WaitForSetupUniverseReplicationToFinish(producer_uuid);
-
-  // Clean up config files if setup fails to complete.
+    // Clean up config files if setup fails to complete.
   if (!setup_result_status.ok()) {
-    CleanupEnvironmentOnSetupUniverseReplicationFailure(producer_uuid, setup_result_status);
+    cout << "Error waiting for universe replication setup to complete: "
+         << setup_result_status.message().ToBuffer() << endl;
     return setup_result_status;
   }
 
   cout << "Replication setup successfully" << endl;
   return Status::OK();
-}
-
-// Helper function for deleting the universe if SetupUniverseReplicaion fails.
-void ClusterAdminClient::CleanupEnvironmentOnSetupUniverseReplicationFailure(
-  const std::string& producer_uuid, const Status& failure_status) {
-  // We don't need to delete the universe if the call to SetupUniverseReplication
-  // failed due to one of the sanity checks.
-  if (failure_status.IsInvalidArgument()) {
-    return;
-  }
-
-  cout << "Replication setup failed, cleaning up environment" << endl;
-
-  Status delete_result_status = DeleteUniverseReplication(producer_uuid, false);
-  if (!delete_result_status.ok()) {
-    cout << "Could not clean up environment: " << delete_result_status.message() << endl;
-  } else {
-    cout << "Successfully cleaned up environment" << endl;
-  }
 }
 
 Status ClusterAdminClient::DeleteUniverseReplication(const std::string& producer_id,
@@ -1405,10 +1622,12 @@ Status ClusterAdminClient::AlterUniverseReplication(const std::string& producer_
     const std::vector<TableId>& add_tables,
     const std::vector<TableId>& remove_tables,
     const std::vector<std::string>& producer_bootstrap_ids_to_add,
-    const std::string& new_producer_universe_id) {
+    const std::string& new_producer_universe_id,
+    bool remove_table_ignore_errors) {
   master::AlterUniverseReplicationRequestPB req;
   master::AlterUniverseReplicationResponsePB resp;
   req.set_producer_id(producer_uuid);
+  req.set_remove_table_ignore_errors(remove_table_ignore_errors);
 
   if (!producer_addresses.empty()) {
     req.mutable_producer_master_addresses()->Reserve(narrow_cast<int>(producer_addresses.size()));
@@ -1471,7 +1690,7 @@ Status ClusterAdminClient::AlterUniverseReplication(const std::string& producer_
   return Status::OK();
 }
 
-CHECKED_STATUS ClusterAdminClient::SetUniverseReplicationEnabled(const std::string& producer_id,
+Status ClusterAdminClient::SetUniverseReplicationEnabled(const std::string& producer_id,
                                                                  bool is_enabled) {
   master::SetUniverseReplicationEnabledRequestPB req;
   master::SetUniverseReplicationEnabledResponsePB resp;
@@ -1534,6 +1753,88 @@ Status ClusterAdminClient::BootstrapProducer(const vector<TableId>& table_ids) {
   for (const auto& bootstrap_id : bootstrap_resp.cdc_bootstrap_ids()) {
     cout << "table id: " << table_ids[i++] << ", CDC bootstrap id: " << bootstrap_id << endl;
   }
+  return Status::OK();
+}
+
+Status ClusterAdminClient::WaitForReplicationDrain(const std::vector<CDCStreamId> &stream_ids,
+                                                   const string& target_time) {
+  master::WaitForReplicationDrainRequestPB req;
+  master::WaitForReplicationDrainResponsePB resp;
+  for (const auto& stream_id : stream_ids) {
+    req.add_stream_ids(stream_id);
+  }
+  // If target_time is not provided, it will be set to current time in the master API.
+  if (!target_time.empty()) {
+    auto result = HybridTime::ParseHybridTime(target_time);
+    if (!result.ok()) {
+      return STATUS(InvalidArgument, "Error parsing target_time: " + result.ToString());
+    }
+    req.set_target_time(result->GetPhysicalValueMicros());
+  }
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  RETURN_NOT_OK(master_replication_proxy_->WaitForReplicationDrain(req, &resp, &rpc));
+
+  if (resp.has_error()) {
+    cout << "Error waiting for replication drain: " << resp.error().status().message() << endl;
+    return StatusFromPB(resp.error().status());
+  }
+
+  std::unordered_map<CDCStreamId, std::vector<TabletId>> undrained_streams;
+  for (const auto& stream_info : resp.undrained_stream_info()) {
+    undrained_streams[stream_info.stream_id()].push_back(stream_info.tablet_id());
+  }
+  if (!undrained_streams.empty()) {
+    cout << "Found undrained replications:" << endl;
+    for (const auto& stream_to_tablets : undrained_streams) {
+      cout << "- Under Stream " << stream_to_tablets.first << ":" << endl;
+      for (const auto& tablet_id : stream_to_tablets.second) {
+        cout << "  - Tablet: " << tablet_id << endl;
+      }
+    }
+  } else {
+    cout << "All replications are caught-up." << endl;
+  }
+  return Status::OK();
+}
+
+Status ClusterAdminClient::SetupNSUniverseReplication(
+    const std::string& producer_uuid,
+    const std::vector<std::string>& producer_addresses,
+    const TypedNamespaceName& producer_namespace) {
+  switch (producer_namespace.db_type) {
+    case YQL_DATABASE_CQL:
+      break;
+    case YQL_DATABASE_PGSQL:
+      return STATUS(InvalidArgument,
+          "YSQL not currently supported for namespace-level replication setup");
+    default:
+      return STATUS(InvalidArgument, "Unsupported namespace type");
+  }
+
+  master::SetupNSUniverseReplicationRequestPB req;
+  master::SetupNSUniverseReplicationResponsePB resp;
+  req.set_producer_id(producer_uuid);
+  req.set_producer_ns_name(producer_namespace.name);
+  req.set_producer_ns_type(producer_namespace.db_type);
+
+  req.mutable_producer_master_addresses()->Reserve(narrow_cast<int>(producer_addresses.size()));
+  for (const auto& addr : producer_addresses) {
+    auto hp = VERIFY_RESULT(HostPort::FromString(addr, master::kMasterDefaultPort));
+    HostPortToPB(hp, req.add_producer_master_addresses());
+  }
+
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  RETURN_NOT_OK(master_replication_proxy_->SetupNSUniverseReplication(req, &resp, &rpc));
+
+  if (resp.has_error()) {
+    cout << "Error setting up namespace-level universe replication: "
+         << resp.error().status().message() << endl;
+    return StatusFromPB(resp.error().status());
+  }
+
+  cout << "Namespace-level replication setup successfully" << endl;
   return Status::OK();
 }
 

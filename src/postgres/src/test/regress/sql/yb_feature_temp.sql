@@ -101,25 +101,25 @@ DROP TABLE temptest;
 -- test ON COMMIT DROP
 -- TODO(dmitry) ON COMMIT DROP should be fixed in context of #7926
 
-BEGIN;
+-- BEGIN;
 
-CREATE TEMP TABLE temptest(col int) ON COMMIT DROP;
+-- CREATE TEMP TABLE temptest(col int) ON COMMIT DROP;
 
-INSERT INTO temptest VALUES (1);
-INSERT INTO temptest VALUES (2);
+-- INSERT INTO temptest VALUES (1);
+-- INSERT INTO temptest VALUES (2);
 
-SELECT * FROM temptest;
-COMMIT;
+-- SELECT * FROM temptest;
+-- COMMIT;
 
-SELECT * FROM temptest;
+-- SELECT * FROM temptest;
 
-BEGIN;
-CREATE TEMP TABLE temptest(col) ON COMMIT DROP AS SELECT 1;
+-- BEGIN;
+-- CREATE TEMP TABLE temptest(col) ON COMMIT DROP AS SELECT 1;
 
-SELECT * FROM temptest;
-COMMIT;
+-- SELECT * FROM temptest;
+-- COMMIT;
 
-SELECT * FROM temptest;
+-- SELECT * FROM temptest;
 
 -- ON COMMIT is only allowed for TEMP
 
@@ -339,3 +339,9 @@ CREATE temp TABLE t4(c0 DECIMAL NULL, UNIQUE(c0));
 INSERT INTO t4(c0) VALUES(0.03);
 UPDATE t4 SET c0 = (0.05) WHERE t4.c0 = 0.03;
 SELECT ALL t4.c0 FROM t4 ORDER BY t4.c0 ASC;
+
+CREATE TEMP TABLE tempt (k int PRIMARY KEY, v1 int, v2 int);
+CREATE UNIQUE INDEX ON tempt (v1);
+INSERT INTO tempt VALUES (1, 2, 3), (4, 5, 6);
+INSERT INTO tempt VALUES (2, 2, 3);
+SELECT * FROM tempt ORDER BY k;

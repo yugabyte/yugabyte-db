@@ -80,14 +80,11 @@ using consensus::kMinimumTerm;
 using consensus::MakeOpId;
 using consensus::ReplicateMsg;
 using consensus::ReplicateMsgPtr;
-using log::Log;
 using log::LogAnchorRegistry;
 using log::LogTestBase;
-using log::ReadableLogSegment;
 using log::AppendSync;
 using server::Clock;
 using server::LogicalClock;
-using tserver::WriteRequestPB;
 
 struct BootstrapReport {
   // OpIds replayed using Play... functions.
@@ -178,14 +175,15 @@ class BootstrapTest : public LogTestBase {
     std::pair<PartitionSchema, Partition> partition = CreateDefaultPartition(schema);
 
     auto table_info = std::make_shared<TableInfo>(
-        log::kTestTable, log::kTestNamespace, log::kTestTable, kTableType, schema, IndexMap(),
-        boost::none /* index_info */, 0 /* schema_version */, partition.first);
-    *meta = VERIFY_RESULT(RaftGroupMetadata::LoadOrCreate(RaftGroupMetadataData {
+        Primary::kTrue, log::kTestTable, log::kTestNamespace, log::kTestTable, kTableType, schema,
+        IndexMap(), boost::none /* index_info */, 0 /* schema_version */, partition.first);
+    *meta = VERIFY_RESULT(RaftGroupMetadata::TEST_LoadOrCreate(RaftGroupMetadataData {
       .fs_manager = fs_manager_.get(),
       .table_info = table_info,
       .raft_group_id = log::kTestTablet,
       .partition = partition.second,
       .tablet_data_state = TABLET_DATA_READY,
+      .snapshot_schedules = {},
     }));
     return (*meta)->Flush();
   }
@@ -220,12 +218,17 @@ class BootstrapTest : public LogTestBase {
       .transaction_coordinator_context = nullptr,
       .txns_enabled = TransactionsEnabled::kTrue,
       .is_sys_catalog = IsSysCatalogTablet::kFalse,
+      .snapshot_coordinator = nullptr,
+      .tablet_splitter = nullptr,
+      .allowed_history_cutoff_provider = {},
+      .transaction_manager_provider = nullptr,
     };
     BootstrapTabletData data = {
       .tablet_init_data = tablet_init_data,
       .listener = listener.get(),
       .append_pool = log_thread_pool_.get(),
       .allocation_pool = log_thread_pool_.get(),
+      .log_sync_pool = log_thread_pool_.get(),
       .retryable_requests = nullptr,
       .test_hooks = test_hooks_
     };
@@ -824,6 +827,17 @@ void GenerateRandomInput(size_t num_entries, std::mt19937_64* rng, BootstrapInpu
             }
             if (replay) {
               replayed.push_back(op_id);
+            }
+          }
+        }
+        if (index <= intents_flushed_index && op_id >= first_op_id_of_segment_to_replay) {
+          // We replay Update transactions having an APPLY record even if their intents were only
+          // flushed to intents db.
+          if (op_type == consensus::OperationType::UPDATE_TRANSACTION_OP) {
+            bool replay = batch_data.txn_status == TransactionStatus::APPLYING;
+            if (replay) {
+              replayed.push_back(op_id);
+              replayed_to_intents_only.push_back(op_id);
             }
           }
         }

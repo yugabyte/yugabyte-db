@@ -67,7 +67,7 @@ class WallClockImpl : public PhysicalClock {
 
 #if !defined(__APPLE__)
 
-CHECKED_STATUS CallAdjTime(timex* tx) {
+Status CallAdjTime(timex* tx) {
   // Set mode to 0 to query the current time.
   tx->modes = 0;
   int rc = ntp_adjtime(tx);

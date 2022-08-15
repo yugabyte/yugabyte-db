@@ -266,13 +266,14 @@ int64_t ExternalMiniClusterFsInspector::GetTabletSuperBlockMTimeOrDie(
 Status ExternalMiniClusterFsInspector::ReadConsensusMetadataOnTS(size_t index,
                                                                  const string& tablet_id,
                                                                  ConsensusMetadataPB* cmeta_pb) {
-  string data_dir = cluster_->tablet_server(index)->GetDataDirs()[0];
-  string cmeta_dir = FsManager::GetConsensusMetadataDir(data_dir);
-  string cmeta_file = JoinPathSegments(cmeta_dir, tablet_id);
-  if (!env_->FileExists(cmeta_file)) {
-    return STATUS(NotFound, "Consensus metadata file not found", cmeta_file);
+  for (const auto& data_dir : cluster_->tablet_server(index)->GetDataDirs()) {
+    string cmeta_dir = FsManager::GetConsensusMetadataDir(data_dir);
+    string cmeta_file = JoinPathSegments(cmeta_dir, tablet_id);
+    if (env_->FileExists(cmeta_file)) {
+      return pb_util::ReadPBContainerFromPath(env_, cmeta_file, cmeta_pb);
+    }
   }
-  return pb_util::ReadPBContainerFromPath(env_, cmeta_file, cmeta_pb);
+  return STATUS(NotFound, "Consensus metadata file not found");
 }
 
 Status ExternalMiniClusterFsInspector::CheckTabletDataStateOnTS(size_t index,

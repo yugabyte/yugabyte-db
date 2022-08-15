@@ -3,25 +3,24 @@ title: Point-in-Time Recovery for YSQL
 headerTitle: Point-in-time recovery
 linkTitle: Point-in-time recovery
 description: Restore data from a specific point in time in YugabyteDB for YSQL
-beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
+beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   v2.8:
     identifier: cluster-management-point-in-time-recovery-ysql
     parent: explore-cluster-management
     weight: 704
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/explore/cluster-management/point-in-time-recovery-ysql" class="nav-link active">
+    <a href="/preview/explore/cluster-management/point-in-time-recovery-ysql" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
   <li >
-    <a href="/latest/explore/cluster-management/point-in-time-recovery-ycql" class="nav-link">
+    <a href="/preview/explore/cluster-management/point-in-time-recovery-ycql" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
@@ -62,18 +61,18 @@ Create and populate a table, look at a timestamp to which you'll restore, and th
       salary integer
     );
 
-    INSERT INTO employees (employee_no, name, department, salary) 
-      VALUES 
+    INSERT INTO employees (employee_no, name, department, salary)
+      VALUES
       (1221, 'John Smith', 'Marketing', 50000),
       (1222, 'Bette Davis', 'Sales', 55000),
       (1223, 'Lucille Ball', 'Operations', 70000),
       (1224, 'John Zimmerman', 'Sales', 60000);
-    
+
     SELECT * from employees;
     ```
 
     ```output
-     employee_no |      name      | department | salary 
+     employee_no |      name      | department | salary
     -------------+----------------+------------+--------
             1223 | Lucille Ball   | Operations |  70000
             1224 | John Zimmerman | Sales      |  60000
@@ -125,7 +124,7 @@ Create and populate a table, look at a timestamp to which you'll restore, and th
 1. From a command prompt, get a timestamp.
 
     ```sh
-    $ python -c 'import datetime; print datetime.datetime.now().strftime("%s%f")'
+    $ python -c 'import datetime; print(datetime.datetime.now().strftime("%s%f"))'
     ```
 
     ```output
@@ -135,15 +134,15 @@ Create and populate a table, look at a timestamp to which you'll restore, and th
 1. Add a row for employee 9999 to the table:
 
     ```sql
-    INSERT INTO employees (employee_no, name, department, salary) 
-      VALUES 
+    INSERT INTO employees (employee_no, name, department, salary)
+      VALUES
       (9999, 'Wrong Name', 'Marketing', 10000);
 
     SELECT * FROM employees;
     ```
 
     ```output
-     employee_no |      name      | department | salary 
+     employee_no |      name      | department | salary
     -------------+----------------+------------+--------
             1223 | Lucille Ball   | Operations |  70000
             9999 | Wrong Name     | Marketing  |  10000
@@ -192,7 +191,7 @@ Create and populate a table, look at a timestamp to which you'll restore, and th
     ```
 
     ```output
-     employee_no |      name      | department | salary 
+     employee_no |      name      | department | salary
     -------------+----------------+------------+--------
             1223 | Lucille Ball   | Operations |  70000
             1224 | John Zimmerman | Sales      |  60000
@@ -218,8 +217,6 @@ Relative times can be in any of the following formats (again, note that you can 
 * Abbreviated PostgreSQL: `3 d 4 hrs 5 mins 6 secs`
 * Traditional PostgreSQL: `3 days 4 hours 5 minutes 6 seconds`
 * SQL standard: `D H:M:S`
-
-**Careful!** If you specify a time prior to when you created the table, the restore will leave the table intact, but empty.
 
 Refer to the yb-admin [_restore-snapshot-schedule_ command](../../../admin/yb-admin/#restore-snapshot-schedule) for more details.
 
@@ -271,7 +268,7 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 1. To restore from an absolute time, get a timestamp from the command prompt. You'll create a table, then restore to this time to undo the table creation.
 
     ```sh
-    $ python -c 'import datetime; print datetime.datetime.now().strftime("%s%f")'
+    $ python -c 'import datetime; print(datetime.datetime.now().strftime("%s%f"))'
     ```
 
     ```output
@@ -294,18 +291,18 @@ In addition to data changes, you can also use PITR to recover from metadata chan
       salary integer
     );
 
-    INSERT INTO employees (employee_no, name, department, salary) 
-      VALUES 
+    INSERT INTO employees (employee_no, name, department, salary)
+      VALUES
       (1221, 'John Smith', 'Marketing', 50000),
       (1222, 'Bette Davis', 'Sales', 55000),
       (1223, 'Lucille Ball', 'Operations', 70000),
       (1224, 'John Zimmerman', 'Sales', 60000);
-    
+
     SELECT * from employees;
     ```
 
     ```output
-     employee_no |      name      | department | salary 
+     employee_no |      name      | department | salary
     -------------+----------------+------------+--------
             1223 | Lucille Ball   | Operations |  70000
             1224 | John Zimmerman | Sales      |  60000
@@ -388,18 +385,18 @@ In addition to data changes, you can also use PITR to recover from metadata chan
       salary integer
     );
 
-    INSERT INTO employees (employee_no, name, department, salary) 
-      VALUES 
+    INSERT INTO employees (employee_no, name, department, salary)
+      VALUES
       (1221, 'John Smith', 'Marketing', 50000),
       (1222, 'Bette Davis', 'Sales', 55000),
       (1223, 'Lucille Ball', 'Operations', 70000),
       (1224, 'John Zimmerman', 'Sales', 60000);
-    
+
     SELECT * from employees;
     ```
 
     ```output
-     employee_no |      name      | department | salary 
+     employee_no |      name      | department | salary
     -------------+----------------+------------+--------
             1223 | Lucille Ball   | Operations |  70000
             1224 | John Zimmerman | Sales      |  60000
@@ -448,7 +445,7 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 1. To restore from an absolute time, get a timestamp from the command prompt. You'll delete the table, then restore to this time to undo the delete.
 
     ```sh
-    $ python -c 'import datetime; print datetime.datetime.now().strftime("%s%f")'
+    $ python -c 'import datetime; print(datetime.datetime.now().strftime("%s%f"))'
     ```
 
     ```output
@@ -504,7 +501,7 @@ In addition to data changes, you can also use PITR to recover from metadata chan
     ```
 
     ```output
-     employee_no |      name      | department | salary 
+     employee_no |      name      | department | salary
     -------------+----------------+------------+--------
             1223 | Lucille Ball   | Operations |  70000
             1224 | John Zimmerman | Sales      |  60000
@@ -545,18 +542,18 @@ In addition to data changes, you can also use PITR to recover from metadata chan
       salary integer
     );
 
-    INSERT INTO employees (employee_no, name, department, salary) 
-      VALUES 
+    INSERT INTO employees (employee_no, name, department, salary)
+      VALUES
       (1221, 'John Smith', 'Marketing', 50000),
       (1222, 'Bette Davis', 'Sales', 55000),
       (1223, 'Lucille Ball', 'Operations', 70000),
       (1224, 'John Zimmerman', 'Sales', 60000);
-    
+
     SELECT * from employees;
     ```
 
     ```output
-     employee_no |      name      | department | salary 
+     employee_no |      name      | department | salary
     -------------+----------------+------------+--------
             1223 | Lucille Ball   | Operations |  70000
             1224 | John Zimmerman | Sales      |  60000
@@ -610,7 +607,7 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 1. To restore from an absolute time, get a timestamp from the command prompt. You'll add a column to the table, then restore to this time in order to undo the column addition.
 
     ```sh
-    $ python -c 'import datetime; print datetime.datetime.now().strftime("%s%f")'
+    $ python -c 'import datetime; print(datetime.datetime.now().strftime("%s%f"))'
     ```
 
     ```output
@@ -625,12 +622,12 @@ In addition to data changes, you can also use PITR to recover from metadata chan
     ```
 
     ```output
-     employee_no |      name      | department | salary | v2 
+     employee_no |      name      | department | salary | v2
     -------------+----------------+------------+--------+----
-            1223 | Lucille Ball   | Operations |  70000 |   
-            1224 | John Zimmerman | Sales      |  60000 |   
-            1221 | John Smith     | Marketing  |  50000 |   
-            1222 | Bette Davis    | Sales      |  55000 |   
+            1223 | Lucille Ball   | Operations |  70000 |
+            1224 | John Zimmerman | Sales      |  60000 |
+            1221 | John Smith     | Marketing  |  50000 |
+            1222 | Bette Davis    | Sales      |  55000 |
     (4 rows)
     ```
 
@@ -715,18 +712,18 @@ In addition to data changes, you can also use PITR to recover from metadata chan
       salary integer
     );
 
-    INSERT INTO employees (employee_no, name, department, salary) 
-      VALUES 
+    INSERT INTO employees (employee_no, name, department, salary)
+      VALUES
       (1221, 'John Smith', 'Marketing', 50000),
       (1222, 'Bette Davis', 'Sales', 55000),
       (1223, 'Lucille Ball', 'Operations', 70000),
       (1224, 'John Zimmerman', 'Sales', 60000);
-    
+
     SELECT * from employees;
     ```
 
     ```output
-     employee_no |      name      | department | salary 
+     employee_no |      name      | department | salary
     -------------+----------------+------------+--------
             1223 | Lucille Ball   | Operations |  70000
             1224 | John Zimmerman | Sales      |  60000
@@ -775,7 +772,7 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 1. To restore from an absolute time, get a timestamp from the command prompt. You'll remove a column from the table, then restore to this time to get the column back.
 
     ```sh
-    $ python -c 'import datetime; print datetime.datetime.now().strftime("%s%f")'
+    $ python -c 'import datetime; print(datetime.datetime.now().strftime("%s%f"))'
     ```
 
     ```output
@@ -878,18 +875,18 @@ In addition to data changes, you can also use PITR to recover from metadata chan
       salary integer
     );
 
-    INSERT INTO employees (employee_no, name, department, salary) 
-      VALUES 
+    INSERT INTO employees (employee_no, name, department, salary)
+      VALUES
       (1221, 'John Smith', 'Marketing', 50000),
       (1222, 'Bette Davis', 'Sales', 55000),
       (1223, 'Lucille Ball', 'Operations', 70000),
       (1224, 'John Zimmerman', 'Sales', 60000);
-    
+
     SELECT * from employees;
     ```
 
     ```output
-     employee_no |      name      | department | salary 
+     employee_no |      name      | department | salary
     -------------+----------------+------------+--------
             1223 | Lucille Ball   | Operations |  70000
             1224 | John Zimmerman | Sales      |  60000
@@ -938,7 +935,7 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 1. To restore from an absolute time, get a timestamp from the command prompt. You'll create an index on the table, then restore to this time to undo the index creation.
 
     ```sh
-    $ python -c 'import datetime; print datetime.datetime.now().strftime("%s%f")'
+    $ python -c 'import datetime; print(datetime.datetime.now().strftime("%s%f"))'
     ```
 
     ```output
@@ -954,12 +951,12 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 
     ```output
                   Table "public.employees"
-       Column    |  Type   | Collation | Nullable | Default 
+       Column    |  Type   | Collation | Nullable | Default
     -------------+---------+-----------+----------+---------
-     employee_no | integer |           | not null | 
-     name        | text    |           |          | 
-     department  | text    |           |          | 
-     salary      | integer |           |          | 
+     employee_no | integer |           | not null |
+     name        | text    |           |          |
+     department  | text    |           |          |
+     salary      | integer |           |          |
      Indexes:
          "employees_pkey" PRIMARY KEY, lsm (employee_no HASH)
          "t1_index" lsm (employee_no HASH)
@@ -1006,12 +1003,12 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 
     ```output
                 Table "public.employees"
-       Column    |  Type   | Collation | Nullable | Default 
+       Column    |  Type   | Collation | Nullable | Default
     -------------+---------+-----------+----------+---------
-     employee_no | integer |           | not null | 
-     name        | text    |           |          | 
-     department  | text    |           |          | 
-     salary      | integer |           |          | 
+     employee_no | integer |           | not null |
+     name        | text    |           |          |
+     department  | text    |           |          |
+     salary      | integer |           |          |
      Indexes:
          "employees_pkey" PRIMARY KEY, lsm (employee_no HASH)
     ```

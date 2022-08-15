@@ -21,6 +21,7 @@ import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.CertsRotateParams.CertRotationType;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
+import com.yugabyte.yw.forms.VMImageUpgradeParams.VmUpgradeTaskType;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -48,6 +49,7 @@ public class AnsibleConfigureServers extends NodeTaskBase {
   public static class Params extends NodeTaskParams {
     public UpgradeTaskType type = UpgradeTaskParams.UpgradeTaskType.Everything;
     public String ybSoftwareVersion = null;
+    public String ybcSoftwareVersion = null;
 
     // Optional params.
     public boolean isMasterInShellMode = false;
@@ -80,6 +82,13 @@ public class AnsibleConfigureServers extends NodeTaskBase {
 
     // For cron to systemd upgrades
     public boolean isSystemdUpgrade = false;
+    // To use custom image flow if it is a VM upgrade with custom images.
+    public VmUpgradeTaskType vmUpgradeTaskType = VmUpgradeTaskType.None;
+
+    // In case a node doesn't have custom AMI, ignore the value of USE_CUSTOM_IMAGE config.
+    public boolean ignoreUseCustomImageConfig = false;
+
+    public boolean updatePackages = false;
   }
 
   @Override
@@ -95,8 +104,9 @@ public class AnsibleConfigureServers extends NodeTaskBase {
         universe_temp.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd;
     // Execute the ansible command.
     ShellResponse response =
-        getNodeManager().nodeCommand(NodeManager.NodeCommandType.Configure, taskParams());
-    processShellResponse(response);
+        getNodeManager()
+            .nodeCommand(NodeManager.NodeCommandType.Configure, taskParams())
+            .processErrors();
 
     if (taskParams().type == UpgradeTaskParams.UpgradeTaskType.Everything
         && !taskParams().updateMasterAddrsOnly) {
@@ -106,7 +116,6 @@ public class AnsibleConfigureServers extends NodeTaskBase {
             getNodeManager().nodeCommand(NodeManager.NodeCommandType.CronCheck, taskParams());
       }
 
-      // Create an alert if the cronjobs failed to be created on this node.
       Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
       if (response.code != 0 || taskParams().useSystemd) {
         String nodeName = taskParams().nodeName;
@@ -128,13 +137,14 @@ public class AnsibleConfigureServers extends NodeTaskBase {
         saveUniverseDetails(updater);
       }
 
-      if (!taskParams().useSystemd) {
-        long inactiveCronNodes =
-            universe.getNodes().stream().filter(node -> !node.cronsActive).count();
-        metricService.setMetric(
-            buildMetricTemplate(PlatformMetrics.UNIVERSE_INACTIVE_CRON_NODES, universe),
-            inactiveCronNodes);
+      long inactiveCronNodes = 0;
+      if (!taskParams().useSystemd && !taskParams().isSystemdUpgrade) {
+        inactiveCronNodes = universe.getNodes().stream().filter(node -> !node.cronsActive).count();
       }
+      // Create an alert if the cronjobs failed to be created.
+      metricService.setMetric(
+          buildMetricTemplate(PlatformMetrics.UNIVERSE_INACTIVE_CRON_NODES, universe),
+          inactiveCronNodes);
 
       // AnsibleConfigureServers performs multiple operations based on the parameters.
       String processType = taskParams().getProperty("processType");

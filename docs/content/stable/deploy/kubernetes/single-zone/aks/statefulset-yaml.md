@@ -9,21 +9,19 @@ menu:
     name: Azure Kubernetes Service
     identifier: k8s-aks-2
     weight: 624
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/deploy/kubernetes/single-zone/aks/helm-chart" class="nav-link">
+    <a href="../helm-chart/" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Helm chart
     </a>
   </li>
   <li >
-    <a href="/latest/deploy/kubernetes/single-zone/aks/statefulset-yaml" class="nav-link active">
+    <a href="../statefulset-yaml/" class="nav-link active">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       StatefulSet YAML
     </a>

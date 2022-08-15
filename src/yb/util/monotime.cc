@@ -351,6 +351,16 @@ void SleepFor(const MonoDelta& delta) {
   base::SleepForNanoseconds(delta.ToNanoseconds());
 }
 
+void SleepUntil(const MonoTime& deadline) {
+  while (true) {
+    const auto sleep_for = deadline - MonoTime::Now();
+    if (sleep_for.IsNegative()) {
+      break;
+    }
+    SleepFor(sleep_for);
+  }
+}
+
 CoarseMonoClock::time_point CoarseMonoClock::now() {
 #if defined(__APPLE__)
   int64_t nanos = std::chrono::duration_cast<std::chrono::nanoseconds>(
@@ -389,6 +399,10 @@ CoarseTimePoint ToCoarse(MonoTime monotime) {
 
 std::chrono::steady_clock::time_point ToSteady(CoarseTimePoint time_point) {
   return std::chrono::steady_clock::time_point(time_point.time_since_epoch());
+}
+
+bool IsInitialized(CoarseTimePoint time_point) {
+  return MonoDelta(time_point.time_since_epoch()).Initialized();
 }
 
 } // namespace yb

@@ -82,7 +82,7 @@ void createSST(const std::string& base_file_name,
         TableBaseToDataFileName(base_file_name), &data_file, env_options));
     data_file_writer.reset(new WritableFileWriter(std::move(data_file), EnvOptions()));
   }
-  tb.reset(opts.table_factory->NewTableBuilder(
+  tb = opts.table_factory->NewTableBuilder(
       TableBuilderOptions(imoptions,
                           ikc,
                           int_tbl_prop_collector_factories,
@@ -90,7 +90,7 @@ void createSST(const std::string& base_file_name,
                           CompressionOptions(),
                           /* skip_filters */ false),
       TablePropertiesCollectorFactory::Context::kUnknownColumnFamily,
-      base_file_writer.get(), data_file_writer.get()));
+      base_file_writer.get(), data_file_writer.get());
 
   // Populate slightly more than 1K keys
   uint32_t num_keys = 1024;

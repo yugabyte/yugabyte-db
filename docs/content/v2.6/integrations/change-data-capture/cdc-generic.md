@@ -4,14 +4,13 @@ title: Change Data Capture
 headerTitle: Change Data Capture
 linkTitle: Change Data Capture
 description: Use a local YugabyteDB cluster to stream data changes to stdout using the Change Data Capture API.
-beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
+beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   v2.6:
     identifier: change-data-capture-1-cdc-generic
     parent: integrations
     weight: 610
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 -->
 

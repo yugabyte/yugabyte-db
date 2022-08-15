@@ -59,8 +59,9 @@ class ReleaseUtil(object):
         :param force: whether to skip the prompt in case there are local uncommitted changes.
         :param commit: the Git commit SHA1 to use. If not specified, it is autodetected.
         :param build_root: the build root directory corresponding to the build type.
-        :param package_name: the name of the top-level section of yb_release_manifest.json, such as
-                             "all" or "cli", specifying the set of files to include.
+        :param package_name: the name of the top-level section of yb_release_manifest.json, such
+                             as "yugabyte" or "yugabyte-client", specifying the set of files to
+                             include.
         """
         self.repo = repository
         self.build_type = build_type
@@ -68,6 +69,7 @@ class ReleaseUtil(object):
         self.distribution_path = distribution_path
         self.force = force
         self.commit = commit or ReleaseUtil.get_head_commit_hash()
+        self.package_name = package_name
 
         base_version = None
         with open(os.path.join(self.repo, RELEASE_VERSION_FILE)) as version_file:
@@ -92,7 +94,9 @@ class ReleaseUtil(object):
         return self.release_manifest
 
     def get_seed_executable_patterns(self) -> List[str]:
-        return cast(List[str], self.release_manifest['bin'])
+        return cast(
+            List[str],
+            [x for x in self.release_manifest['bin'] if not x.find("gobin") != -1])
 
     def expand_value(self, old_value: str) -> str:
         """
@@ -201,26 +205,38 @@ class ReleaseUtil(object):
             self.build_type
         ]
         compiler_type = get_compiler_type_from_build_root(self.build_root)
-        # Make the clang12 release package the default, and append the compiler type for all other
+        # Make Clang-based release packages the default, and append the compiler type for all other
         # compiler types so we can still use them with the appropriate support from the downstream
         # tooling.
-        if compiler_type != 'clang12':
+        if compiler_type not in ['clang12', 'clang13']:
             components.append(compiler_type)
         release_name = "-".join(components)
 
         system = platform.system().lower()
         if system == "linux":
-            system = distro.linux_distribution(full_distribution_name=False)[0].lower()
+            # We recently moved from centos7 to almalinux8 as the build host for our universal
+            # x86_64 linux build.  This changes the name of the release tarball we create.
+            # Unfortunately, we have a lot of hard coded references to the centos package names
+            # in our downsstream release code.  So here we munge the name to 'centos' to keep things
+            # working while we fix downstream code.
+            # TODO(jharveymsith): Remove the almalinux to centos mapping once downstream is fixed.
+            if distro.id() == "centos" and distro.major_version() == "7" \
+                    or distro.id() == "almalinux" and platform.machine().lower() == "x86_64":
+                system = "centos"
+            elif distro.id == "ubuntu":
+                system = distro.id() + distro.version()
+            else:
+                system = distro.id() + distro.major_version()
 
-        release_file_name = "yugabyte-{}-{}-{}.tar.gz".format(
-            release_name, system, platform.machine().lower())
+        release_file_name = "{}-{}-{}-{}.tar.gz".format(
+            self.package_name, release_name, system, platform.machine().lower())
         return os.path.join(self.build_path, release_file_name)
 
     def generate_release(self) -> str:
         """
         Generates a release package and returns the path to the release file.
         """
-        yugabyte_folder_prefix = "yugabyte-{}".format(self.base_version)
+        yugabyte_folder_prefix = "{}-{}".format(self.package_name, self.base_version)
         tmp_parent_dir = self.distribution_path + '.tmp_for_tar_gz'
         os.mkdir(tmp_parent_dir)
 
@@ -248,7 +264,7 @@ class ReleaseUtil(object):
             change_permissions('a+X')
             logging.info("Creating a package '%s' from directory %s",
                          release_file, tmp_distribution_dir)
-            run_program(['gtar', 'cvzf', release_file, yugabyte_folder_prefix],
+            run_program(['tar', 'cvzf', release_file, yugabyte_folder_prefix],
                         cwd=tmp_parent_dir)
             return release_file
         finally:

@@ -188,7 +188,7 @@ set(ROCKSDB_SRCS
 
 set(CMAKE_CXX_FLAGS
   "${CMAKE_CXX_FLAGS} \
-   -Wextra -Wsign-compare -Wshadow -Woverloaded-virtual \
+   -Wextra -Wshadow -Woverloaded-virtual \
    -Wno-missing-field-initializers -Wno-unused-parameter -Wno-unused-variable")
 
 if (NOT APPLE)
@@ -286,7 +286,14 @@ ADD_YB_TEST(util/memenv_test)
 ADD_YB_TEST(util/mock_env_test)
 ADD_YB_TEST(util/options_test)
 ADD_YB_TEST(util/rate_limiter_test)
+
 ADD_YB_TEST(util/slice_transform_test)
+if (BUILD_TESTS AND
+    COMPILER_FAMILY STREQUAL "gcc" AND
+    "${COMPILER_VERSION}" MATCHES "^(10|11)[.].*$")
+  target_compile_options(slice_transform_test PRIVATE "-Wno-array-bounds")
+endif()
+
 ADD_YB_TEST(utilities/document/document_db_test)
 ADD_YB_TEST(utilities/document/json_document_test)
 ADD_YB_TEST(utilities/geodb/geodb_test)
@@ -313,6 +320,7 @@ ADD_YB_TEST(db/db_inplace_update_test)
 ADD_YB_TEST(db/db_iter_test)
 ADD_YB_TEST(db/db_log_iter_test)
 ADD_YB_TEST(db/db_properties_test)
+ADD_YB_TEST(db/db_statistics_test)
 ADD_YB_TEST(db/db_sst_test)
 ADD_YB_TEST(db/db_table_properties_test)
 ADD_YB_TEST(db/db_tailing_iter_test)

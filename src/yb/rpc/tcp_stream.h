@@ -72,12 +72,12 @@ class TcpStream : public Stream {
     bool only_heartbeats;
   };
 
-  CHECKED_STATUS Start(bool connect, ev::loop_ref* loop, StreamContext* context) override;
+  Status Start(bool connect, ev::loop_ref* loop, StreamContext* context) override;
   void Close() override;
   void Shutdown(const Status& status) override;
   Result<size_t> Send(OutboundDataPtr data) override;
-  CHECKED_STATUS TryWrite() override;
-  void Cancelled(size_t handle) override;
+  Status TryWrite() override;
+  bool Cancelled(size_t handle) override;
 
   bool Idle(std::string* reason_not_idle) override;
   bool IsConnected() override { return connected_; }
@@ -92,13 +92,13 @@ class TcpStream : public Stream {
 
   void ParseReceived() override;
 
-  CHECKED_STATUS DoWrite();
+  Status DoWrite();
   void HandleOutcome(const Status& status, bool enqueue);
   void ClearSending(const Status& status);
 
   void Handler(ev::io& watcher, int revents); // NOLINT
-  CHECKED_STATUS ReadHandler();
-  CHECKED_STATUS WriteHandler(bool just_connected);
+  Status ReadHandler();
+  Status WriteHandler(bool just_connected);
 
   Result<bool> Receive();
   // Try to parse received data and process it.
@@ -111,7 +111,7 @@ class TcpStream : public Stream {
 
   void DelayConnectHandler(ev::timer& watcher, int revents); // NOLINT
 
-  CHECKED_STATUS DoStart(ev::loop_ref* loop, bool connect);
+  Status DoStart(ev::loop_ref* loop, bool connect);
 
   StreamReadBuffer& ReadBuffer() {
     return context_->ReadBuffer();

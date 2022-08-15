@@ -27,6 +27,7 @@
 #include "yb/gutil/ref_counted.h"
 
 #include "yb/master/master_backup.fwd.h"
+#include "yb/master/tablet_split_fwd.h"
 
 #include "yb/util/enums.h"
 #include "yb/util/math_util.h"
@@ -74,19 +75,17 @@ class SnapshotState;
 class SysCatalogTable;
 class SysConfigInfo;
 class SysRowEntries;
-class TabletSplitCompleteHandlerIf;
-class TabletSplitManager;
 class TSDescriptor;
 class TSManager;
 class UDTypeInfo;
 class XClusterSplitDriverIf;
 class YQLPartitionsVTable;
 class YQLVirtualTable;
+class YsqlTablegroupManager;
 class YsqlTablespaceManager;
 class YsqlTransactionDdl;
 
 struct CDCConsumerStreamInfo;
-struct SplitTabletIds;
 struct TableDescription;
 struct TabletReplica;
 struct TabletReplicaDriveInfo;
@@ -110,7 +109,8 @@ YB_STRONGLY_TYPED_BOOL(RegisteredThroughHeartbeat);
 YB_STRONGLY_TYPED_BOOL(IncludeInactive);
 
 YB_DEFINE_ENUM(
-    CollectFlag, (kAddIndexes)(kIncludeParentColocatedTable)(kSucceedIfCreateInProgress));
+    CollectFlag,
+    (kAddIndexes)(kIncludeParentColocatedTable)(kSucceedIfCreateInProgress)(kAddUDTypes));
 using CollectFlags = EnumBitSet<CollectFlag>;
 
 using TableToTablespaceIdMap = std::unordered_map<TableId, boost::optional<TablespaceId>>;
@@ -121,8 +121,14 @@ using LeaderStepDownFailureTimes = std::unordered_map<TabletServerId, MonoTime>;
 using TabletReplicaMap = std::unordered_map<std::string, TabletReplica>;
 using TabletToTabletServerMap = std::unordered_map<TabletId, TabletServerId>;
 using TabletInfoMap = std::map<TabletId, scoped_refptr<TabletInfo>>;
+struct cloud_hash;
+struct cloud_equal_to;
+using AffinitizedZonesSet = std::unordered_set<CloudInfoPB, cloud_hash, cloud_equal_to>;
 using BlacklistSet = std::unordered_set<HostPort, HostPortHash>;
 using RetryingTSRpcTaskPtr = std::shared_ptr<RetryingTSRpcTask>;
+
+// Use ordered map to make computing fingerprint of the map easier.
+using DbOidToCatalogVersionMap = std::map<uint32_t, std::pair<uint64_t, uint64_t>>;
 
 namespace enterprise {
 

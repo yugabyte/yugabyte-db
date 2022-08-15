@@ -7,6 +7,7 @@ import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.doAnswer;
@@ -43,7 +44,9 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
           TaskType.SetNodeStatus,
           TaskType.AnsibleCreateServer,
           TaskType.AnsibleUpdateNodeInfo,
+          TaskType.RunHooks, // PreNodeProvision
           TaskType.AnsibleSetupServer,
+          TaskType.RunHooks, // PostNodeProvision
           TaskType.AnsibleConfigureServers,
           TaskType.AnsibleConfigureServers, // GFlags
           TaskType.AnsibleConfigureServers, // GFlags
@@ -57,8 +60,8 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
           TaskType.UpdatePlacementInfo,
           TaskType.WaitForTServerHeartBeats,
           TaskType.SwamperTargetsFileUpdate,
-          TaskType.CreateTable,
           TaskType.CreateAlertDefinitions,
+          TaskType.CreateTable,
           TaskType.ChangeAdminPassword,
           TaskType.UniverseUpdateSucceeded);
 
@@ -73,8 +76,8 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
           TaskType.UpdatePlacementInfo,
           TaskType.WaitForTServerHeartBeats,
           TaskType.SwamperTargetsFileUpdate,
-          TaskType.CreateTable,
           TaskType.CreateAlertDefinitions,
+          TaskType.CreateTable,
           TaskType.ChangeAdminPassword,
           TaskType.UniverseUpdateSucceeded);
 
@@ -106,10 +109,12 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
     when(mockListTabletServersResponse.getTabletServersCount()).thenReturn(10);
 
     try {
+      when(mockClient.waitForMaster(any(), anyLong())).thenReturn(true);
       when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
       when(mockClient.changeMasterClusterConfig(any())).thenReturn(mockMasterChangeConfigResponse);
       when(mockClient.listTabletServers()).thenReturn(mockListTabletServersResponse);
     } catch (Exception e) {
+      fail();
     }
     mockWaits(mockClient);
     when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
@@ -164,6 +169,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
               }
             });
     UniverseDefinitionTaskParams universeDetails = result.getUniverseDetails();
+    universeDetails.creatingUser = defaultUser;
     universeDetails.universeUUID = defaultUniverse.universeUUID;
     universeDetails.firstTry = true;
     universeDetails.previousTaskUUID = null;

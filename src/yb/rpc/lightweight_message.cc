@@ -364,13 +364,18 @@ void AppendFieldTitle(const char* name, const char* suffix, bool* first, std::st
   *out += suffix;
 }
 
-CHECKED_STATUS ParseFailed(const char* field_name) {
+Status ParseFailed(const char* field_name) {
   return STATUS_FORMAT(Corruption, "Failed to parse '$0'", field_name);
 }
 
 void SetupLimit(google::protobuf::io::CodedInputStream* in) {
   in->SetTotalBytesLimit(narrow_cast<int>(FLAGS_rpc_max_message_size),
                          narrow_cast<int>(FLAGS_rpc_max_message_size * 3 / 4));
+}
+
+Arena& empty_arena() {
+  static Arena arena(static_cast<size_t>(0), 0);
+  return arena;
 }
 
 } // namespace rpc

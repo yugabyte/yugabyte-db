@@ -1,36 +1,32 @@
 ---
-title: Enable Users in YEDIS
-headerTitle: Enable Users in YEDIS
-linkTitle: Enable Users in YEDIS
-description: Enable Users in YEDIS.
-headcontent: Enable Users in YEDIS.
+title: Enable users in YEDIS
+headerTitle: Enable users in YEDIS
+description: Enable users in YEDIS.
 image: /images/section_icons/secure/authentication.png
 menu:
   stable:
-    name: Enable User Authentication
+    name: Enable users
     identifier: enable-authentication-3-yedis
     parent: enable-authentication
     weight: 715
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/secure/enable-authentication/ysql" class="nav-link">
+    <a href="../ysql/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
   <li >
-    <a href="/latest/secure/enable-authentication/ycql" class="nav-link">
+    <a href="../ycql/" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
   </li>
   <li>
-    <a href="/latest/secure/enable-authentication/yedis" class="nav-link active">
+    <a href="../yedis/" class="nav-link active">
       <i class="icon-redis" aria-hidden="true"></i>
       YEDIS
     </a>

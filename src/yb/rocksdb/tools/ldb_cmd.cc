@@ -1578,7 +1578,7 @@ void DumpWalFile(std::string wal_file, bool print_header, bool print_values,
       log_number = 0;
     }
     DBOptions db_options;
-    log::Reader reader(db_options.info_log, move(wal_file_reader), &reporter,
+    log::Reader reader(db_options.info_log, std::move(wal_file_reader), &reporter,
                        true, 0, log_number);
     string scratch;
     WriteBatch batch;
@@ -2258,7 +2258,7 @@ void DBFileDumperCommand::DoCommand() {
   std::vector<LiveFileMetaData> metadata;
   db_->GetLiveFilesMetaData(&metadata);
   for (auto& fileMetadata : metadata) {
-    std::string filename = fileMetadata.db_path + fileMetadata.name;
+    std::string filename = fileMetadata.FullName();
     std::cout << filename << " level:" << fileMetadata.level << std::endl;
     std::cout << "------------------------------" << std::endl;
     DumpSstFile(filename, false, true);

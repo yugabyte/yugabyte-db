@@ -3,19 +3,17 @@ title: Default ports reference
 headerTitle: Default ports
 linkTitle: Default ports
 description: Default ports for YugabyteDB including client APIs, RPC communication, and monitoring.
-section: REFERENCE
 menu:
   stable:
     identifier: default-ports
     parent: configuration
     weight: 2740
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Client APIs
 
-Application clients connect to these addresses.
+Application clients connect to the following addresses:
 
 | API     | Port  | Server | Flag (default)           |
 | ------- | ----- | ------- |------------------------------------------|
@@ -25,18 +23,18 @@ Application clients connect to these addresses.
 
 ## Internode RPC communication
 
-Internode (server-to-server or node-to-node) communication is managed using RPC calls on these addresses.
+Internode (server-to-server or node-to-node) communication is managed using RPC calls on the following addresses:
 
 | Server    | Port | Flag (default)                              |
 | ---------- | ---- | ------------------------------------------------------------ |
 | yb-master  | 7100 |  [`--rpc_bind_addresses 0.0.0.0:7100`](../yb-master/#rpc-bind-addresses) |
 | yb-tserver | 9100 |  [`--rpc_bind_addresses 0.0.0.0:9100`](../yb-tserver/#rpc-bind-addresses)<br/>[`--tserver_master_addrs 0.0.0.0:7100`](../yb-tserver/#tserver-master-addrs)<br/>[`--server_broadcast_addresses 0.0.0.0:9100`](../yb-tserver/#server-broadcast-addresses) |
 
-If you want to log into the machines running these servers, then the ssh port `22` should be opened as well.
+To enable login to the machines running these servers, the SSH port 22 should be opened.
 
 ## Admin web server
 
-Admin web server UI can be viewed at these addresses.
+Admin web server UI can be viewed at the following addresses:
 
 | Server    | Port  | Flag (default)                             |
 | ---------- | ----- | ------------------------------------------------------------ |
@@ -45,15 +43,18 @@ Admin web server UI can be viewed at these addresses.
 
 ## Firewall Rules
 
-Along with the above, include the following common ports in firewall rules. 
+The following common ports are required for firewall rules:
 
 | Service     | Port
 | ------- | ------------------------- |
 | SSH    | 22 |
-| HTTP for Platform  | 80 |
-| HTTP for Platform (alternate) | 8080 |
-| HTTPS for Platform  | 443 |
+| HTTP for YugabyteDB Anywhere  | 80 |
+| HTTP for YugabyteDB Anywhere (alternate) | 8080 |
+| HTTPS for YugabyteDB Anywhere  | 443 |
 | HTTP for Replicated | 8800 |
+| SSH  **   | 54422 |
+
+** 54422 is a custom SSH port for universe nodes.
 
 ## Prometheus monitoring
 
@@ -63,7 +64,7 @@ YugabyteDB servers expose time-series performance metrics in the [Prometheus exp
 <target>/prometheus-metrics
 ```
 
-You can access the Prometheus server on port `9090` of the Platform node, and you can see the list of targets at the `http://<yugaware-ip>:9090/targets`. In particular, note port `9300` for node level metrics.
+You can access the Prometheus server on port `9090` of the YugabyteDB Anywhere node, and you can see the list of targets at the `http://<yugaware-ip>:9090/targets`. In particular, note port `9300` for node level metrics.
 
 ### Servers
 
@@ -71,7 +72,7 @@ Use the following targets to monitor `yb-tserver` and `yb-master` server metrics
 
 | Server     | Target                      |
 | ---------- | --------------------------- |
-| yb-master  | `<yb-master-address>:7000`  |  
+| yb-master  | `<yb-master-address>:7000`  |
 | yb-tserver | `<yb-tserver-address>:9000` |
 
 ### APIs

@@ -97,6 +97,7 @@ ADD_YB_LIBRARY(remote_bootstrap_proto
 
 YRPC_GENERATE(
   PG_CLIENT_YRPC_SRCS PG_CLIENT_YRPC_HDRS PG_CLIENT_YRPC_TGTS
+  MESSAGES TRUE
   SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
   BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
   PROTO_FILES pg_client.proto)
@@ -149,27 +150,6 @@ ADD_YB_LIBRARY(tserver_service_proto
   NONLINK_DEPS ${TSERVER_YRPC_TGTS})
 
 #########################################
-# tserver_forward_service_proto
-#########################################
-
-YRPC_GENERATE(
-  TSERVER_FORWARD_RPC_SRCS TSERVER_FORWARD_RPC_HDRS TSERVER_FORWARD_RPC_TGTS
-  SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
-  BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
-  PROTO_FILES tserver_forward_service.proto)
-set(TSERVER_FORWARD_RPC_LIBS
-  yrpc
-  yb_common_proto
-  protobuf
-  remote_bootstrap_proto
-  rpc_header_proto
-  tserver_proto)
-ADD_YB_LIBRARY(tserver_forward_service_proto
-  SRCS ${TSERVER_FORWARD_RPC_SRCS}
-  DEPS ${TSERVER_FORWARD_RPC_LIBS}
-  NONLINK_DEPS ${TSERVER_YRPC_TGTS})
-
-#########################################
 # tserver_util
 #########################################
 
@@ -195,7 +175,9 @@ set(TSERVER_SRCS
   pg_client_service.cc
   pg_client_session.cc
   pg_create_table.cc
+  pg_table_cache.cc
   read_query.cc
+  remote_bootstrap_anchor_client.cc
   remote_bootstrap_client.cc
   remote_bootstrap_file_downloader.cc
   remote_bootstrap_service.cc
@@ -218,7 +200,6 @@ set(TSERVER_DEPS
   tserver_proto
   tserver_admin_proto
   tserver_service_proto
-  tserver_forward_service_proto
   remote_bootstrap_proto
   master_rpc
   master_proto
@@ -241,17 +222,38 @@ ADD_YB_LIBRARY(tserver
   NONLINK_DEPS postgres)
 
 #########################################
+# yb-tserver_util
+#########################################
+
+set(YB_TSERVER_UTIL_SRCS
+  tserver_call_home.cc)
+
+ADD_YB_LIBRARY(yb-tserver_util
+  SRCS ${YB_TSERVER_UTIL_SRCS}
+  DEPS tserver)
+
+#########################################
 # yb-tserver
 #########################################
 
 add_executable(yb-tserver tablet_server_main.cc)
 target_link_libraries(yb-tserver
   tserver
+  yb-tserver_util
   yb-cql
   yb-redis
   yb_pgwrapper
-  master
   ${YB_BASE_LIBS})
+
+#########################################
+# Generate tserver_flags.xml
+#########################################
+set(TSERVER_FLAGS_METADATA_FILE ${YB_BUILD_ROOT}/tserver_flags.xml)
+add_custom_command(TARGET yb-tserver POST_BUILD
+  COMMAND "${BUILD_SUPPORT_DIR}/gen_flags_metadata_wrapper"
+    "--program_name" "yb-tserver"
+    "--output_file_path" "${TSERVER_FLAGS_METADATA_FILE}"
+  BYPRODUCTS "${TSERVER_FLAGS_METADATA_FILE}")
 
 #########################################
 # tserver_test_util
@@ -263,7 +265,7 @@ add_library(tserver_test_util
   tablet_server-test-base.cc
   tablet_server_test_util.cc
   universe_key_test_util.cc)
-target_link_libraries(tserver_test_util tablet_test_util tserver yb_test_util)
+target_link_libraries(tserver_test_util tablet_test_util tserver yb_test_util yb_util)
 
 #########################################
 # tserver tests
@@ -274,6 +276,7 @@ set(YB_TEST_LINK_LIBS
   tserver
   tserver_test_util
   yb_client # yb::client::YBTableName
+  yb-tserver_util
   tablet_test_util
   ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(remote_bootstrap_rocksdb_client-test)

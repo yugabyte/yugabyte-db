@@ -4,32 +4,30 @@
 # re-execute UPDATE and DELETE operations against rows that were updated
 # by some concurrent transaction.
 
+# TODO: Currently ALTER TABLE on YB results in test failure because an online schema change
+# marks the other sessions's txns as expired. To fix it, we will have to make changes to
+# isolationtester.c and start other sessions only after setup is done. The following lines were
+# removed from setup of tests related to ALTER TABLE:
+#
+# CREATE TABLE accounts_ext (accountid text PRIMARY KEY, balance numeric not null, other text);
+# INSERT INTO accounts_ext VALUES ('checking', 600, 'other'), ('savings', 700, null);
+# ALTER TABLE accounts_ext ADD COLUMN newcol int DEFAULT 42;
+# ALTER TABLE accounts_ext ADD COLUMN newcol2 text DEFAULT NULL;
+
+# TODO: YSQL doesn't support table inheritance yet. Below is the setup of tests with table
+# inheritance:
+# CREATE TABLE p (a int, b int, c int);
+# CREATE TABLE c1 () INHERITS (p);
+# CREATE TABLE c2 () INHERITS (p);
+# CREATE TABLE c3 () INHERITS (p);
+# INSERT INTO c1 SELECT 0, a / 3, a % 3 FROM generate_series(0, 9) a;
+# INSERT INTO c2 SELECT 1, a / 3, a % 3 FROM generate_series(0, 9) a;
+# INSERT INTO c3 SELECT 2, a / 3, a % 3 FROM generate_series(0, 9) a;
+
 setup
 {
  CREATE TABLE accounts (accountid text PRIMARY KEY, balance numeric not null);
  INSERT INTO accounts VALUES ('checking', 600), ('savings', 600);
-
- /*
-  * TODO: Currently alter on YB results in test failure because an online schema change
-	* marks the other sessions's txns as expired. To fix it, we will have to make changes to
-	* isolationtester.c and start other sessions only after setup is done.
-	*
-	* CREATE TABLE accounts_ext (accountid text PRIMARY KEY, balance numeric not null, other text);
-  * INSERT INTO accounts_ext VALUES ('checking', 600, 'other'), ('savings', 700, null);
-  * ALTER TABLE accounts_ext ADD COLUMN newcol int DEFAULT 42;
-  * ALTER TABLE accounts_ext ADD COLUMN newcol2 text DEFAULT NULL;
-	*/
-
- /*
-  * Commenting out tests with table inheritance since we don't support it yet.
-	* CREATE TABLE p (a int, b int, c int);
-  * CREATE TABLE c1 () INHERITS (p);
-  * CREATE TABLE c2 () INHERITS (p);
-  * CREATE TABLE c3 () INHERITS (p);
-  * INSERT INTO c1 SELECT 0, a / 3, a % 3 FROM generate_series(0, 9) a;
-  * INSERT INTO c2 SELECT 1, a / 3, a % 3 FROM generate_series(0, 9) a;
-  * INSERT INTO c3 SELECT 2, a / 3, a % 3 FROM generate_series(0, 9) a;
-	*/
 
  CREATE TABLE table_a (id integer, value text);
  CREATE TABLE table_b (id integer, value text);
@@ -44,11 +42,6 @@ teardown
 {
  DROP TABLE accounts;
  DROP TABLE table_a, table_b, jointest;
-
- /*
-  * DROP TABLE accounts_ext;
-  * DROP TABLE p CASCADE;
-	*/
 }
 
 session "s1"

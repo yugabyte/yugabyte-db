@@ -55,7 +55,7 @@ class JsonReader {
   explicit JsonReader(std::string text);
   ~JsonReader();
 
-  CHECKED_STATUS Init();
+  Status Init();
 
   // Extractor methods.
   //
@@ -64,36 +64,36 @@ class JsonReader {
   // 'field' is NULL, will try to convert 'object' directly into the
   // desire type.
 
-  CHECKED_STATUS ExtractBool(const rapidjson::Value* object,
+  Status ExtractBool(const rapidjson::Value* object,
                       const char* field,
                       bool* result) const;
 
-  CHECKED_STATUS ExtractInt32(const rapidjson::Value* object,
+  Status ExtractInt32(const rapidjson::Value* object,
                       const char* field,
                       int32_t* result) const;
 
-  CHECKED_STATUS ExtractInt64(const rapidjson::Value* object,
+  Status ExtractInt64(const rapidjson::Value* object,
                       const char* field,
                       int64_t* result) const;
 
-  CHECKED_STATUS ExtractString(const rapidjson::Value* object,
+  Status ExtractString(const rapidjson::Value* object,
                        const char* field,
                        std::string* result) const;
 
   // 'result' is only valid for as long as JsonReader is alive.
-  CHECKED_STATUS ExtractObject(const rapidjson::Value* object,
+  Status ExtractObject(const rapidjson::Value* object,
                        const char* field,
                        const rapidjson::Value** result) const;
 
   // 'result' is only valid for as long as JsonReader is alive.
-  CHECKED_STATUS ExtractObjectArray(const rapidjson::Value* object,
+  Status ExtractObjectArray(const rapidjson::Value* object,
                             const char* field,
                             std::vector<const rapidjson::Value*>* result) const;
 
   const rapidjson::Value* root() const { return &document_; }
 
  private:
-  CHECKED_STATUS ExtractField(const rapidjson::Value* object,
+  Status ExtractField(const rapidjson::Value* object,
                       const char* field,
                       const rapidjson::Value** result) const;
 

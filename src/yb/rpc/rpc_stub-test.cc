@@ -74,6 +74,8 @@ using namespace std::chrono_literals;
 namespace yb {
 namespace rpc {
 
+using base::subtle::NoBarrier_Load;
+
 using yb::rpc_test::AddRequestPB;
 using yb::rpc_test::AddResponsePB;
 using yb::rpc_test::EchoRequestPB;
@@ -82,20 +84,13 @@ using yb::rpc_test::ForwardRequestPB;
 using yb::rpc_test::ForwardResponsePB;
 using yb::rpc_test::PanicRequestPB;
 using yb::rpc_test::PanicResponsePB;
-using yb::rpc_test::SendStringsRequestPB;
-using yb::rpc_test::SendStringsResponsePB;
 using yb::rpc_test::SleepRequestPB;
 using yb::rpc_test::SleepResponsePB;
 using yb::rpc_test::WhoAmIRequestPB;
 using yb::rpc_test::WhoAmIResponsePB;
 using yb::rpc_test::PingRequestPB;
 using yb::rpc_test::PingResponsePB;
-using yb::rpc_test::DisconnectRequestPB;
-using yb::rpc_test::DisconnectResponsePB;
-using yb::rpc_test_diff_package::ReqDiffPackagePB;
-using yb::rpc_test_diff_package::RespDiffPackagePB;
 
-using std::shared_ptr;
 using std::vector;
 
 using rpc_test::AddRequestPartialPB;
@@ -141,7 +136,7 @@ class RpcStubTest : public RpcTestBase {
     EXPECT_OK(messenger->StartAcceptor());
     EXPECT_FALSE(messenger->io_service().stopped());
     ProxyCache proxy_cache(messenger.get());
-    return { move(messenger),
+    return { std::move(messenger),
         std::make_unique<CalculatorServiceProxy>(&proxy_cache, HostPort(remote)) };
   }
 
@@ -899,6 +894,17 @@ void Generate(rpc_test::LightweightSubMessagePB* sub_message) {
   }
   if (RandomUniformBool()) {
     Generate(msg.mutable_cycle());
+  }
+  switch (RandomUniformInt(0, 2)) {
+    case 0:
+      msg.set_v_i32(RandomUniformInt<int32_t>());
+      break;
+    case 1:
+      msg.set_v_str(RandomHumanReadableString(32));
+      break;
+    case 2:
+      Generate(msg.mutable_v_message());
+      break;
   }
 }
 

@@ -41,7 +41,7 @@ const AlertPopover = (universeUUID: string, isPopoverShown: boolean, limit: numb
     onSuccess: () => {
       queryClient.invalidateQueries(['alert', universeUUID]);
       queryClient.invalidateQueries(['alerts', universeUUID, 'count']);
-      toast.success('Acknowledged!.');
+      toast.success('Acknowledged!');
     },
     onError: () => {
       toast.error('Unable to acknowledge. An Error Occured!.');

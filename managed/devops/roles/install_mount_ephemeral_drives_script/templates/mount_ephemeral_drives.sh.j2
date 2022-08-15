@@ -20,7 +20,9 @@ set -euo pipefail
 readonly CLOUD_TYPE="{{ cloud_type }}"
 readonly DEFAULT_SSD_DRIVES="{{ device_paths }}"
 readonly MOUNT_PATHS="{{ mount_paths }}"
+readonly LUN_INDEXES="{{ disk_lun_indexes }}"
 
+{% raw %}
 should_check_aws_meta() {
   [[ -z $DEFAULT_SSD_DRIVES && $CLOUD_TYPE == "aws" ]]
 }
@@ -41,6 +43,30 @@ get_device_path() {
     output=$ephemeral_name
   fi
   get_device_path_rv="/dev/$output"
+}
+
+get_azu_scsi_drives() {
+  # Check if we have enough LUN indexes passed.
+  lun_indexes=( $LUN_INDEXES )
+  num_lun_indexes=${#lun_indexes[@]}
+  if [[ $num_lun_indexes -lt ${#mounts[@]} ]]; then
+    echo >&2 "Too less LUN indexes provided, cannot mount all the devices."
+    exit
+  fi
+
+  get_azu_scsi_drives_rv=""
+
+  # Iterate through LUN indexes to search device names.
+  lun_indexes=( $LUN_INDEXES )
+  for (( i=0; i<$num_lun_indexes; ++i )); do
+    current_lun_index=${lun_indexes[i]}
+    device=$(ls -l /dev/disk/azure/scsi1/lun$current_lun_index | awk -F'/' '{print $NF}' | grep -o "sd\w*$")
+    # Checking vendor.
+    device_info=$(lsscsi | awk -v device="/dev/$device" '($7 == device) && ($3 == "Msft") && ($4 == "Virtual") && ($5 == "Disk") {print $0}')
+    if [ -n "$device" ] && [ -n "$device_info" ]; then
+      get_azu_scsi_drives_rv="$get_azu_scsi_drives_rv $device"
+    fi
+  done
 }
 
 get_ephemeral_drives() {
@@ -69,6 +95,9 @@ get_ephemeral_drives() {
     get_ephemeral_drives_rv=$(
         curl --silent $METADATA_URL_BASE/meta-data/block-device-mapping/ | grep ephemeral )
     set -e
+  elif [[ $CLOUD_TYPE == "azu" ]]; then
+    get_azu_scsi_drives
+    get_ephemeral_drives_rv=$get_azu_scsi_drives_rv
   else
     get_ephemeral_drives_rv=$DEFAULT_SSD_DRIVES
   fi
@@ -79,12 +108,12 @@ get_ephemeral_drives() {
   declare -i exit_code=0
 
   # Take into account xvdb or sdb
-  root_drive=$(df | awk '$6 == "/" {print $1}')
+  root_drive=$(lsblk | awk '$7 == "/" {print $1}' | tr -cd '[:alnum:]/')
 
-  if [[ "$root_drive" == "/dev/xvda1" ]]; then
+  if [[ "$root_drive" =~ .*xvd.* ]]; then
     echo "Detected 'xvd' drive naming scheme (root: $root_drive)"
     DRIVE_SCHEME='xvd'
-  elif [[ "$root_drive" =~ ^/dev/nvme.* ]]; then
+  elif [[ "$root_drive" =~ .*nvme.* ]]; then
     echo "Detected 'nvme' drive naming scheme (root: $root_drive)"
     DRIVE_SCHEME='nvme'
   else
@@ -92,11 +121,12 @@ get_ephemeral_drives() {
     DRIVE_SCHEME='sd'
   fi
 
+  declare -g mounts=( $MOUNT_PATHS )
+
   get_ephemeral_drives
   ephemerals=( $get_ephemeral_drives_rv )
 
-  {% raw %}
-  num_devices=${#ephemerals[@]}
+  declare -i num_devices=${#ephemerals[@]}
 
   if [[ $num_devices -eq 0 ]]; then
     echo "Found no volumes to mount"
@@ -110,8 +140,6 @@ get_ephemeral_drives() {
 
   # For old generation aws instances, we assume YugaWare requests a number of ephemerals appropriate
   # to the instance type. E.g. m3.medium only supports 1 ephemeral, but m3.xlarge supports 2.
-  mounts=( $MOUNT_PATHS )
-
   if [[ ${#mounts[@]} -eq 0 ]]; then
     echo >&2 "No mount points provided, cannot mount any devices."
     exit 1
@@ -147,7 +175,7 @@ get_ephemeral_drives() {
     # available for an instance type and the meta-data API will happily tell you it exists when it
     # really does not.
     # Also check to make sure we don't try to mount on root volume
-    if [ -b "$device_path" ] && ! grep -q "$device_path" <<< "$root_drive"; then
+    if [ -b "$device_path" ] && ! grep -q "$device_path" <<< "/dev/${root_drive}"; then
       echo "Detected ephemeral disk: $device_path"
       set +e
       # NOTE: This does not seem to return the actual file system
@@ -176,16 +204,31 @@ get_ephemeral_drives() {
       mkdir -p "$mount_path"
       chmod 777 "$mount_path"
 
+      device_uuid=$(/sbin/blkid -o value -s UUID -c /dev/null $device_path)
+      echo "device uuid = $device_uuid"
+
       if grep -q "#$mount_path" /etc/fstab; then
         echo "Entry for $mount_path in fstab already exists."
+        if egrep -q "^$device_path .*" /etc/fstab; then
+          echo "Device $device_path is mounted not using UUID, need to rewrite"
+          sed -i "s|^$device_path |UUID=$device_uuid |g" /etc/fstab
+        fi
       else
         echo "Adding entry for $mount_path to fstab..."
         echo "#$mount_path" >> /etc/fstab
-        echo "$device_path $mount_path $file_system defaults,noatime,nofail,allocsize=4m 0 2" \
-              >> /etc/fstab
+        # Mounting using UUID
+        echo "UUID=$device_uuid $mount_path $file_system defaults,noatime,nofail,allocsize=4m 0 2" \
+                        >> /etc/fstab
       fi
-
-      if mount | egrep -q "^$device_path on $mount_path "; then
+      echo "checking actual path"
+      already_mounted=false
+      # Sometimes link does not exist at the time of checking
+      if test -e "/dev/disk/by-uuid/$device_uuid"; then
+        actual_path=$(readlink -eq "/dev/disk/by-uuid/$device_uuid")
+        echo "actual_path is $actual_path"
+        mount | egrep -q "^$actual_path on $mount_path " && already_mounted=true
+      fi
+      if $already_mounted; then
         echo "$device_path is already mounted on $mount_path"
       else
         echo "Mounting $device_path on $mount_path"

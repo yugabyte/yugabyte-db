@@ -23,6 +23,7 @@ enum RelationType {
   SYSTEM_TABLE_RELATION = 1;
   USER_TABLE_RELATION = 2;
   INDEX_TABLE_RELATION = 3;
+  MATVIEW_TABLE_RELATION = 4;
 }
 
 enum SysRowEntryType {
@@ -40,6 +41,7 @@ enum SysRowEntryType {
   UNIVERSE_REPLICATION = 11;
   SNAPSHOT_SCHEDULE = 12;
   DDL_LOG_ENTRY = 13;
+  SNAPSHOT_RESTORATION = 14;
 }
 
 // Master specific errors use this protobuf.
@@ -197,4 +199,5 @@ message TServerMetricsPB {
     optional uint64 total_space = 3;
   }
   repeated PathMetrics path_metrics = 8;
+  optional bool disable_tablet_split_if_default_ttl = 9;
 }

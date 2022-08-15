@@ -31,8 +31,6 @@ namespace yb {
 namespace tools {
 namespace enterprise {
 
-using std::cerr;
-using std::endl;
 using std::string;
 using std::vector;
 
@@ -62,7 +60,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
   super::RegisterCommandHandlers(client);
 
   std::string options = "";
-  for (auto flag : kListSnapshotsFlagList) {
+  for (auto flag : ListSnapshotsFlagList()) {
     options += Format(" [$0]", flag);
   }
   Register(
@@ -75,7 +73,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
           ToUpperCase(args[i], &uppercase_flag);
 
           bool found = false;
-          for (auto flag : kListSnapshotsFlagList) {
+          for (auto flag : ListSnapshotsFlagList()) {
             if (uppercase_flag == ToString(flag)) {
               flags.Set(flag);
               found = true;
@@ -95,7 +93,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       "create_snapshot",
       " <table>"
       " [<table>]..."
-      " [flush_timeout_in_seconds] (default 60, set 0 to skip flushing)",
+      " [<flush_timeout_in_seconds>] (default 60, set 0 to skip flushing)",
       [client](const CLIArguments& args) -> Status {
         int timeout_secs = 60;
         const auto tables = VERIFY_RESULT(ResolveTableNames(
@@ -145,6 +143,11 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
         if (tables.size() != 1 || !tables[0].has_namespace()) {
           return STATUS(InvalidArgument, "Expecting exactly one keyspace argument");
         }
+        if (tables[0].namespace_type() != YQL_DATABASE_CQL &&
+            tables[0].namespace_type() != YQL_DATABASE_PGSQL) {
+          return STATUS(
+              InvalidArgument, "Snapshot schedule can only be setup on YCQL or YSQL namespace");
+        }
         return client->CreateSnapshotSchedule(tables[0], interval, retention);
       });
 
@@ -185,6 +188,38 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
         return client->RestoreSnapshotSchedule(schedule_id, restore_at);
       });
 
+  RegisterJson(
+      "edit_snapshot_schedule",
+      " <schedule_id> (interval <new_interval_in_minutes> | retention "
+      "<new_retention_in_minutes>){1,2}",
+      [client](const CLIArguments& args) -> Result<rapidjson::Document> {
+        if (args.size() != 3 && args.size() != 5) {
+          return STATUS(InvalidArgument,
+                        Format("Expected 3 or 5 arguments, received $0", args.size()));
+        }
+        auto schedule_id = VERIFY_RESULT(SnapshotScheduleId::FromString(args[0]));
+        std::optional<MonoDelta> new_interval;
+        std::optional<MonoDelta> new_retention;
+        for (size_t i = 1; i + 1 < args.size(); i += 2) {
+          if (args[i] == "interval") {
+            if (new_interval) {
+              return STATUS(InvalidArgument, "Repeated interval");
+            }
+            new_interval = MonoDelta::FromMinutes(VERIFY_RESULT(CheckedStold(args[i + 1])));
+          } else if (args[i] == "retention") {
+            if (new_retention) {
+              return STATUS(InvalidArgument, "Repeated retention");
+            }
+            new_retention = MonoDelta::FromMinutes(VERIFY_RESULT(CheckedStold(args[i + 1])));
+          } else {
+            return STATUS(
+                InvalidArgument,
+                Format("Expected either \"retention\" or \"interval\", got: $0", args[i]));
+          }
+        }
+        return client->EditSnapshotSchedule(schedule_id, new_interval, new_retention);
+      });
+
   Register(
       "create_keyspace_snapshot", " [ycql.]<keyspace_name>",
       [client](const CLIArguments& args) -> Status {
@@ -223,7 +258,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
-      "restore_snapshot", Format(" <snapshot_id> [{<timestamp> | $0 {interval}]", kMinus),
+      "restore_snapshot", Format(" <snapshot_id> [<timestamp> | $0 <interval>]", kMinus),
       [client](const CLIArguments& args) -> Status {
         if (args.size() < 1 || 3 < args.size()) {
           return ClusterAdminCli::kInvalidArguments;
@@ -319,7 +354,8 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
-      "set_preferred_zones", " <cloud.region.zone> [<cloud.region.zone>]...",
+      "set_preferred_zones",
+      " <cloud.region.zone>[:<priority>] [<cloud.region.zone>[:<priority>]]...",
       [client](const CLIArguments& args) -> Status {
         if (args.size() < 1) {
           return ClusterAdminCli::kInvalidArguments;
@@ -329,7 +365,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
-      "rotate_universe_key", " key_path",
+      "rotate_universe_key", " <key_path>",
       [client](const CLIArguments& args) -> Status {
         if (args.size() < 1) {
           return ClusterAdminCli::kInvalidArguments;
@@ -354,7 +390,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
-      "add_universe_key_to_all_masters", " key_id key_path",
+      "add_universe_key_to_all_masters", " <key_id> <key_path>",
       [client](const CLIArguments& args) -> Status {
         if (args.size() != 2) {
           return ClusterAdminCli::kInvalidArguments;
@@ -370,7 +406,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
-      "all_masters_have_universe_key_in_memory", " key_id",
+      "all_masters_have_universe_key_in_memory", " <key_id>",
       [client](const CLIArguments& args) -> Status {
         if (args.size() != 1) {
           return ClusterAdminCli::kInvalidArguments;
@@ -381,7 +417,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
-      "rotate_universe_key_in_memory", " key_id",
+      "rotate_universe_key_in_memory", " <key_id>",
       [client](const CLIArguments& args) -> Status {
         if (args.size() != 1) {
           return ClusterAdminCli::kInvalidArguments;
@@ -427,11 +463,24 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
-    "create_change_data_stream", " <namespace>",
+    "create_change_data_stream", " <namespace> [<checkpoint_type>]",
     [client](const CLIArguments& args) -> Status {
       if (args.size() < 1) {
         return ClusterAdminCli::kInvalidArguments;
       }
+
+      std::string checkpoint_type = yb::ToString("IMPLICIT");
+      std::string uppercase_checkpoint_type;
+
+      if (args.size() > 1) {
+         ToUpperCase(args[1], &uppercase_checkpoint_type);
+         if (uppercase_checkpoint_type != yb::ToString("EXPLICIT")
+            && uppercase_checkpoint_type != yb::ToString("IMPLICIT")) {
+            return ClusterAdminCli::kInvalidArguments;
+         }
+         checkpoint_type = uppercase_checkpoint_type;
+      }
+
       const string namespace_name = args[0];
 
       const TypedNamespaceName database =
@@ -440,7 +489,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
         database.db_type, YQL_DATABASE_PGSQL, InvalidArgument,
         Format("Wrong database type: $0", YQLDatabase_Name(database.db_type)));
 
-      RETURN_NOT_OK_PREPEND(client->CreateCDCSDKDBStream(database),
+      RETURN_NOT_OK_PREPEND(client->CreateCDCSDKDBStream(database, checkpoint_type),
                             Substitute("Unable to create CDC stream for database $0",
                                        namespace_name));
       return Status::OK();
@@ -477,7 +526,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
     });
 
   Register(
-      "list_cdc_streams", " [table_id]",
+      "list_cdc_streams", " [<table_id>]",
       [client](const CLIArguments& args) -> Status {
         if (args.size() != 0 && args.size() != 1) {
           return ClusterAdminCli::kInvalidArguments;
@@ -489,12 +538,12 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
-    "list_change_data_streams", " [namespace]",
+    "list_change_data_streams", " [<namespace>]",
     [client](const CLIArguments& args) -> Status {
       if (args.size() != 0 && args.size() != 1) {
         return ClusterAdminCli::kInvalidArguments;
       }
-      const string namespace_name = (args.size() == 1 ? args[0] : "");
+      const string namespace_name = args.size() == 1 ? args[0] : "";
       string msg = (args.size() == 1)
                        ? Substitute("Unable to list CDC streams for namespace $0", namespace_name)
                        : "Unable to list CDC streams";
@@ -519,7 +568,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
   Register(
       "setup_universe_replication",
       " <producer_universe_uuid> <producer_master_addresses> <comma_separated_list_of_table_ids>"
-          " [comma_separated_list_of_producer_bootstrap_ids]"  ,
+          " [<comma_separated_list_of_producer_bootstrap_ids>]"  ,
       [client](const CLIArguments& args) -> Status {
         if (args.size() < 3) {
           return ClusterAdminCli::kInvalidArguments;
@@ -566,16 +615,16 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
   Register(
       "alter_universe_replication",
       " <producer_universe_id>"
-      " {set_master_addresses [comma_separated_list_of_producer_master_addresses] |"
-      "  add_table [comma_separated_list_of_table_ids]"
-      "            [comma_separated_list_of_producer_bootstrap_ids] |"
-      "  remove_table [comma_separated_list_of_table_ids] |"
-      "  rename_id <new_producer_universe_id>}",
+      " (set_master_addresses [<comma_separated_list_of_producer_master_addresses>] |"
+       " add_table [<comma_separated_list_of_table_ids>]"
+                 " [<comma_separated_list_of_producer_bootstrap_ids>] |"
+       " remove_table [<comma_separated_list_of_table_ids>] [ignore-errors] |"
+       " rename_id <new_producer_universe_id>)",
       [client](const CLIArguments& args) -> Status {
         if (args.size() < 3 || args.size() > 4) {
           return ClusterAdminCli::kInvalidArguments;
         }
-        if (args.size() == 4 && args[1] != "add_table") {
+        if (args.size() == 4 && args[1] != "add_table" && args[1] != "remove_table") {
           return ClusterAdminCli::kInvalidArguments;
         }
 
@@ -585,6 +634,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
         vector<string> remove_tables;
         vector<string> bootstrap_ids_to_add;
         string new_producer_universe_id = "";
+        bool remove_table_ignore_errors = false;
 
         vector<string> newElem, *lst;
         if (args[1] == "set_master_addresses") {
@@ -593,6 +643,9 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
           lst = &add_tables;
         } else if (args[1] == "remove_table") {
           lst = &remove_tables;
+          if (args.size() == 4 && args[3] == "ignore-errors") {
+            remove_table_ignore_errors = true;
+          }
         } else if (args[1] == "rename_id") {
           lst = nullptr;
           new_producer_universe_id = args[2];
@@ -614,14 +667,15 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
                                                                add_tables,
                                                                remove_tables,
                                                                bootstrap_ids_to_add,
-                                                               new_producer_universe_id),
+                                                               new_producer_universe_id,
+                                                               remove_table_ignore_errors),
             Substitute("Unable to alter replication for universe $0", producer_uuid));
 
         return Status::OK();
       });
 
   Register(
-      "set_universe_replication_enabled", " <producer_universe_uuid> <0|1>",
+      "set_universe_replication_enabled", " <producer_universe_uuid> (0|1)",
       [client](const CLIArguments& args) -> Status {
         if (args.size() < 2) {
           return ClusterAdminCli::kInvalidArguments;
@@ -634,7 +688,6 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
                 producer_id));
         return Status::OK();
       });
-
 
   Register(
       "bootstrap_cdc_producer", " <comma_separated_list_of_table_ids>",
@@ -650,7 +703,46 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
                               "Unable to bootstrap CDC producer");
         return Status::OK();
       });
-}
+
+  Register(
+      "wait_for_replication_drain",
+      Format(" <comma_separated_list_of_stream_ids>"
+             " [<timestamp> | $0 <interval>]", kMinus),
+      [client](const CLIArguments& args) -> Status {
+        RETURN_NOT_OK(CheckArgumentsCount(args.size(), 1, 3));
+        vector<CDCStreamId> stream_ids;
+        boost::split(stream_ids, args[0], boost::is_any_of(","));
+        string target_time;
+        if (args.size() == 2) {
+          target_time = args[1];
+        } else if (args.size() == 3) {
+          if (args[1] != kMinus) {
+            return ClusterAdminCli::kInvalidArguments;
+          }
+          target_time = "-" + args[2];
+        }
+
+        return client->WaitForReplicationDrain(stream_ids, target_time);
+      });
+
+  Register(
+      "setup_namespace_universe_replication",
+      " <producer_universe_uuid> <producer_master_addresses> <namespace>",
+      [client](const CLIArguments& args) -> Status {
+        RETURN_NOT_OK(CheckArgumentsCount(args.size(), 3, 3));
+        const string producer_uuid = args[0];
+        vector<string> producer_addresses;
+        boost::split(producer_addresses, args[1], boost::is_any_of(","));
+        TypedNamespaceName producer_namespace = VERIFY_RESULT(ParseNamespaceName(args[2]));
+
+        RETURN_NOT_OK_PREPEND(client->SetupNSUniverseReplication(producer_uuid,
+                                                                 producer_addresses,
+                                                                 producer_namespace),
+                              Substitute("Unable to setup namespace replication from universe $0",
+                                         producer_uuid));
+        return Status::OK();
+      });
+}  // NOLINT -- a long function but that is OK
 
 }  // namespace enterprise
 }  // namespace tools

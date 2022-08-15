@@ -480,7 +480,7 @@ void CompactionPicker::MarkL0FilesForDeletion(
       vstorage->LevelFiles(0));
   for (FileMetaData* f : vstorage->LevelFiles(0)) {
     if (file_filter && file_filter->Filter(f) == FilterDecision::kDiscard) {
-      f->delete_after_compaction = true;
+      f->set_delete_after_compaction(true);
     }
   }
 }
@@ -668,10 +668,24 @@ std::unique_ptr<Compaction> CompactionPicker::CompactRange(
 
 // Test whether two files have overlapping key-ranges.
 bool HaveOverlappingKeyRanges(const Comparator* c,
-                              const SstFileMetaData& a,
+                              const SstFileMetaData::BoundaryValues& a_smallest,
+                              const SstFileMetaData::BoundaryValues& a_largest,
+                              const SstFileMetaData::BoundaryValues& b_smallest,
+                              const SstFileMetaData::BoundaryValues& b_largest) {
+  return c->Compare(a_largest.key, b_smallest.key) >= 0 &&
+         c->Compare(b_largest.key, a_smallest.key) >= 0;
+}
+
+bool HaveOverlappingKeyRanges(const Comparator* c,
+                              const SstFileMetaData::BoundaryValues& a_smallest,
+                              const SstFileMetaData::BoundaryValues& a_largest,
                               const SstFileMetaData& b) {
-  return c->Compare(a.largest.key, b.smallest.key) >= 0 &&
-         c->Compare(b.largest.key, a.smallest.key) >= 0;
+  return HaveOverlappingKeyRanges(c, a_smallest, a_largest, b.smallest, b.largest);
+}
+
+bool HaveOverlappingKeyRanges(
+    const Comparator* c, const SstFileMetaData& a, const SstFileMetaData& b) {
+  return HaveOverlappingKeyRanges(c, a.smallest, a.largest, b.smallest, b.largest);
 }
 
 #ifndef ROCKSDB_LITE
@@ -727,8 +741,7 @@ Status CompactionPicker::SanitizeCompactionInputFilesForAllLevels(
     // identify the first and the last compaction input files
     // in the current level.
     for (size_t f = 0; f < current_files.size(); ++f) {
-      if (input_files->find(TableFileNameToNumber(current_files[f].name)) !=
-          input_files->end()) {
+      if (input_files->count(current_files[f].name_id)) {
         first_included = std::min(first_included, static_cast<int>(f));
         last_included = std::max(last_included, static_cast<int>(f));
         if (is_first) {
@@ -769,11 +782,10 @@ Status CompactionPicker::SanitizeCompactionInputFilesForAllLevels(
     for (int f = first_included; f <= last_included; ++f) {
       if (current_files[f].being_compacted) {
         return STATUS(Aborted,
-            "Necessary compaction input file " + current_files[f].name +
+            "Necessary compaction input file " + current_files[f].Name() +
             " is currently being compacted.");
       }
-      input_files->insert(
-          TableFileNameToNumber(current_files[f].name));
+      input_files->insert(current_files[f].name_id);
     }
 
     // update smallest and largest key
@@ -786,10 +798,6 @@ Status CompactionPicker::SanitizeCompactionInputFilesForAllLevels(
       UpdateBoundaryKeys(comparator, current_files[last_included], nullptr, &largest);
     }
 
-    SstFileMetaData aggregated_file_meta;
-    aggregated_file_meta.smallest = smallest;
-    aggregated_file_meta.largest = largest;
-
     // For all lower levels, include all overlapping files.
     // We need to add overlapping files from the current level too because even
     // if there no input_files in level l, we would still need to add files
@@ -799,15 +807,14 @@ Status CompactionPicker::SanitizeCompactionInputFilesForAllLevels(
     for (int m = std::max(l, 1); m <= output_level; ++m) {
       for (auto& next_lv_file : levels[m].files) {
         if (HaveOverlappingKeyRanges(
-            comparator, aggregated_file_meta, next_lv_file)) {
+            comparator, smallest, largest, next_lv_file)) {
           if (next_lv_file.being_compacted) {
             return STATUS(Aborted,
-                "File " + next_lv_file.name +
+                "File " + next_lv_file.Name() +
                 " that has overlapping key range with one of the compaction "
                 " input file is currently being compacted.");
           }
-          input_files->insert(
-              TableFileNameToNumber(next_lv_file.name));
+          input_files->insert(next_lv_file.name_id);
         }
       }
     }
@@ -859,7 +866,7 @@ Status CompactionPicker::SanitizeCompactionInputFiles(
     bool found = false;
     for (auto level_meta : cf_meta.levels) {
       for (auto file_meta : level_meta.files) {
-        if (file_num == TableFileNameToNumber(file_meta.name)) {
+        if (file_num == file_meta.name_id) {
           if (file_meta.being_compacted) {
             return STATUS(Aborted,
                 "Specified compaction input file " +
@@ -1210,7 +1217,7 @@ struct UniversalCompactionPicker::SortedRun {
   }
 
   bool delete_after_compaction() const {
-    return file ? file->delete_after_compaction : false;
+    return file ? file->delete_after_compaction() : false;
   }
 
   int level;
@@ -1272,7 +1279,7 @@ std::vector<std::vector<UniversalCompactionPicker::SortedRun>>
   for (FileMetaData* f : vstorage.LevelFiles(0)) {
     // Any files that can be directly removed during compaction can be included, even if they
     // exceed the "max file size for compaction."
-    if (f->fd.GetTotalFileSize() <= max_file_size || f->delete_after_compaction) {
+    if (f->fd.GetTotalFileSize() <= max_file_size || f->delete_after_compaction()) {
       ret.back().emplace_back(0, f, f->fd.GetTotalFileSize(), f->compensated_file_size,
           f->being_compacted);
     // If last sequence is empty it means that there are multiple too-large-to-compact files in

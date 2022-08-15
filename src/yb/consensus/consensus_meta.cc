@@ -102,10 +102,12 @@ Status ConsensusMetadata::Load(FsManager* fs_manager,
                                const std::string& tablet_id,
                                const std::string& peer_uuid,
                                std::unique_ptr<ConsensusMetadata>* cmeta_out) {
-  std::unique_ptr<ConsensusMetadata> cmeta(new ConsensusMetadata(fs_manager, tablet_id, peer_uuid));
+  std::unique_ptr<ConsensusMetadata> cmeta(new ConsensusMetadata(fs_manager,
+                                                                 tablet_id,
+                                                                 peer_uuid));
   RETURN_NOT_OK(pb_util::ReadPBContainerFromPath(fs_manager->env(),
-                                                 fs_manager->GetConsensusMetadataPath(tablet_id),
-                                                 &cmeta->pb_));
+      VERIFY_RESULT(fs_manager->GetConsensusMetadataPath(tablet_id)),
+      &cmeta->pb_));
   cmeta->UpdateActiveRole(); // Needs to happen here as we sidestep the accessor APIs.
   RETURN_NOT_OK(cmeta->UpdateOnDiskSize());
   cmeta_out->swap(cmeta);
@@ -113,7 +115,10 @@ Status ConsensusMetadata::Load(FsManager* fs_manager,
 }
 
 Status ConsensusMetadata::DeleteOnDiskData(FsManager* fs_manager, const string& tablet_id) {
-  string cmeta_path = fs_manager->GetConsensusMetadataPath(tablet_id);
+  if (!fs_manager->LookupTablet(tablet_id)) {
+    return Status::OK();
+  }
+  auto cmeta_path = VERIFY_RESULT(fs_manager->GetConsensusMetadataPath(tablet_id));
   Env* env = fs_manager->env();
   if (!env->FileExists(cmeta_path)) {
     return Status::OK();
@@ -192,13 +197,27 @@ const RaftConfigPB& ConsensusMetadata::pending_config() const {
 void ConsensusMetadata::clear_pending_config() {
   has_pending_config_ = false;
   pending_config_.Clear();
+  pending_config_op_id_ = OpId();
   UpdateActiveRole();
 }
 
-void ConsensusMetadata::set_pending_config(const RaftConfigPB& config) {
+void ConsensusMetadata::set_pending_config(const RaftConfigPB& config, const OpId& config_op_id) {
   has_pending_config_ = true;
   pending_config_ = config;
+  pending_config_op_id_ = config_op_id;
   UpdateActiveRole();
+}
+
+Status ConsensusMetadata::set_pending_config_op_id(const OpId& config_op_id) {
+  SCHECK(has_pending_config_, IllegalState, "Expected pending config to be set");
+  if (pending_config_op_id_.is_valid_not_empty() && pending_config_op_id_ != config_op_id) {
+    return STATUS_FORMAT(
+        InvalidArgument,
+        "Pending config OpId is already set to $0, but requested to overwrite with $1",
+        pending_config_op_id_, config_op_id);
+  }
+  pending_config_op_id_ = config_op_id;
+  return Status::OK();
 }
 
 const RaftConfigPB& ConsensusMetadata::active_config() const {
@@ -262,26 +281,14 @@ Status ConsensusMetadata::Flush() {
   RETURN_NOT_OK_PREPEND(VerifyRaftConfig(pb_.committed_config(), COMMITTED_QUORUM),
                         "Invalid config in ConsensusMetadata, cannot flush to disk");
 
-  // Create directories if needed.
-  string dir = fs_manager_->GetConsensusMetadataDir();
-  bool created_dir = false;
-  RETURN_NOT_OK_PREPEND(fs_manager_->CreateDirIfMissing(dir, &created_dir),
-                        "Unable to create consensus metadata root dir");
-  // fsync() parent dir if we had to create the dir.
-  if (PREDICT_FALSE(created_dir)) {
-    string parent_dir = DirName(dir);
-    RETURN_NOT_OK_PREPEND(Env::Default()->SyncDir(parent_dir),
-                          "Unable to fsync consensus parent dir " + parent_dir);
-  }
-
-  string meta_file_path = fs_manager_->GetConsensusMetadataPath(tablet_id_);
+  string meta_file_path = VERIFY_RESULT(fs_manager_->GetConsensusMetadataPath(tablet_id_));
   RETURN_NOT_OK_PREPEND(pb_util::WritePBContainerToPath(
-      fs_manager_->env(), meta_file_path, pb_,
-      pb_util::OVERWRITE,
-      // Always fsync the consensus metadata.
-      pb_util::SYNC),
-          Substitute("Unable to write consensus meta file for tablet $0 to path $1",
-                     tablet_id_, meta_file_path));
+                          fs_manager_->env(), meta_file_path, pb_,
+                          pb_util::OVERWRITE,
+                          // Always fsync the consensus metadata.
+                          pb_util::SYNC),
+                        Substitute("Unable to write consensus meta file for tablet $0 to path $1",
+                                   tablet_id_, meta_file_path));
   RETURN_NOT_OK(UpdateOnDiskSize());
   return Status::OK();
 }
@@ -314,7 +321,7 @@ void ConsensusMetadata::UpdateActiveRole() {
 }
 
 Status ConsensusMetadata::UpdateOnDiskSize() {
-  string path = fs_manager_->GetConsensusMetadataPath(tablet_id_);
+  string path = VERIFY_RESULT(fs_manager_->GetConsensusMetadataPath(tablet_id_));
   on_disk_size_.store(VERIFY_RESULT(fs_manager_->env()->GetFileSize(path)));
   return Status::OK();
 }

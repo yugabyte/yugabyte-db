@@ -8,17 +8,16 @@ menu:
     identifier: ysql-client-libraries
     parent: drivers
     weight: 2940
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
-The [Yugabyte Structured Query Language (YSQL) API](../../../api/ysql) builds upon and extends a fork of the query layer from PostgreSQL 11.2, with the intent of supporting most PostgreSQL functionality and adding new functionality to supported distributed SQL databases.
+The [Yugabyte Structured Query Language (YSQL) API](../../../api/ysql/) builds upon and extends a fork of the query layer from PostgreSQL 11.2, with the intent of supporting most PostgreSQL functionality and adding new functionality to supported distributed SQL databases.
 
 For details on PostgreSQL feature support in YSQL, see [What Features Does YSQL Support?](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/YSQL-Features-Supported.md)
 
 Yugabyte and third party client drivers listed below are supported for developing applications that connect to and interact with the YSQL API. Most of the drivers use [libpq](#libpq) and support the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
 
-For help using these drivers with YSQL, ask your questions in the [Slack community](https://www.yugabyte.com/slack).
+For help using these drivers with YSQL, ask your questions in the [Slack community]({{<slack-invite>}}).
 
 If you encounter an issue or have an enhancement request, [file a GitHub issue](https://github.com/yugabyte/yugabyte-db/issues/new/choose).
 
@@ -117,7 +116,7 @@ connStringBuilder.ServerCompatibilityMode = ServerCompatibilityMode.NoTypeLoadin
 
 The [Go PostgreSQL driver package (pq)](https://pkg.go.dev/github.com/lib/pq?tab=doc) is a Go PostgreSQL driver for the `database/sql` package. pq is not based on [libpq](#libpq), but supports the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
 
-For a tutorial on building a sample Go application with pq, see [Build a Go application](../../../quick-start/build-apps/go/ysql-pq).
+For a tutorial on building a sample Go application with pq, see [Build a Go application](../../../quick-start/build-apps/go/ysql-pq/).
 
 #### Install the pq driver
 

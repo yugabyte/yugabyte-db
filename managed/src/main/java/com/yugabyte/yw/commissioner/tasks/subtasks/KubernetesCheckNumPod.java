@@ -17,13 +17,11 @@ import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.forms.AbstractTaskParams;
 import com.yugabyte.yw.models.Provider;
-
 import io.fabric8.kubernetes.api.model.Pod;
-
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.TimeUnit;
 
 public class KubernetesCheckNumPod extends AbstractTaskBase {
   public enum CommandType {
@@ -58,9 +56,7 @@ public class KubernetesCheckNumPod extends AbstractTaskBase {
     public UUID providerUUID;
     public CommandType commandType;
     public UUID universeUUID;
-    // We use the nodePrefix as Helm Chart's release name,
-    // so we would need that for any sort helm operations.
-    public String nodePrefix;
+    public String helmReleaseName;
     public String namespace;
     public int podNum = 0;
     public Map<String, String> config = null;
@@ -83,11 +79,7 @@ public class KubernetesCheckNumPod extends AbstractTaskBase {
           if (status) {
             break;
           }
-          try {
-            TimeUnit.SECONDS.sleep(getSleepMultiplier() * SLEEP_TIME);
-          } catch (InterruptedException ex) {
-            // Do nothing
-          }
+          waitFor(Duration.ofSeconds(getSleepMultiplier() * SLEEP_TIME));
         } while (!status && iters < MAX_ITERS);
         if (iters >= MAX_ITERS) {
           throw new RuntimeException("Pods' start taking too long.");
@@ -105,7 +97,7 @@ public class KubernetesCheckNumPod extends AbstractTaskBase {
     List<Pod> pods =
         kubernetesManagerFactory
             .getManager()
-            .getPodInfos(config, taskParams().nodePrefix, taskParams().namespace);
+            .getPodInfos(config, taskParams().helmReleaseName, taskParams().namespace);
     if (pods.size() == taskParams().podNum) {
       return true;
     } else {

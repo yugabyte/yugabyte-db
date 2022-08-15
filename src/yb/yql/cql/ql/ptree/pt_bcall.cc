@@ -77,7 +77,7 @@ string PTBcall::QLName(QLNameOption option) const {
   if (strcmp(name_->c_str(), bfql::kCqlCastFuncName) == 0) {
     CHECK_GE(args_->size(), 2);
     const string column_name = args_->element(0)->QLName(option);
-    const string type =  QLType::ToCQLString(args_->element(1)->ql_type()->type_info()->type());
+    const string type =  QLType::ToCQLString(args_->element(1)->ql_type()->type_info()->type);
     return strings::Substitute("cast($0 as $1)", column_name, type);
   }
 
@@ -101,7 +101,7 @@ bool PTBcall::IsAggregateCall() const {
   return is_server_operator_ && BFDecl::is_aggregate_op(static_cast<TSOpcode>(bfopcode_));
 }
 
-CHECKED_STATUS PTBcall::Analyze(SemContext *sem_context) {
+Status PTBcall::Analyze(SemContext *sem_context) {
   // Before traversing the expression, check if this whole expression is actually a column.
   if (CheckIndexColumn(sem_context)) {
     return Status::OK();
@@ -361,7 +361,7 @@ bool PTBcall::HaveColumnRef() const {
   return false;
 }
 
-CHECKED_STATUS PTBcall::CheckOperator(SemContext *sem_context) {
+Status PTBcall::CheckOperator(SemContext *sem_context) {
   if (sem_context->processing_set_clause() && sem_context->lhs_col() != nullptr) {
     if (sem_context->lhs_col()->ql_type()->IsCollection()) {
       // Only increment ("+") and decrement ("-") operators are allowed for collections.
@@ -387,7 +387,7 @@ CHECKED_STATUS PTBcall::CheckOperator(SemContext *sem_context) {
   return Status::OK();
 }
 
-CHECKED_STATUS PTBcall::CheckCounterUpdateSupport(SemContext *sem_context) const {
+Status PTBcall::CheckCounterUpdateSupport(SemContext *sem_context) const {
   PTExpr::SharedPtr arg1 = args_->element(0);
   if (arg1->expr_op() != ExprOperator::kRef) {
     return sem_context->Error(arg1, "Right and left arguments must reference the same counter",
@@ -403,7 +403,7 @@ CHECKED_STATUS PTBcall::CheckCounterUpdateSupport(SemContext *sem_context) const
   return Status::OK();
 }
 
-CHECKED_STATUS PTBcall::CheckOperatorAfterArgAnalyze(SemContext *sem_context) {
+Status PTBcall::CheckOperatorAfterArgAnalyze(SemContext *sem_context) {
   if (*name_ == "tojson") {
     // The arguments must be analyzed and correct types must be set.
     const QLType::SharedPtr type = args_->element(0)->ql_type();
@@ -443,7 +443,7 @@ yb::bfql::TSOpcode PTBcall::aggregate_opcode() const {
 //--------------------------------------------------------------------------------------------------
 
 // Collection constants.
-CHECKED_STATUS PTToken::Analyze(SemContext *sem_context) {
+Status PTToken::Analyze(SemContext *sem_context) {
 
   RETURN_NOT_OK(PTBcall::Analyze(sem_context));
 
@@ -511,7 +511,7 @@ CHECKED_STATUS PTToken::Analyze(SemContext *sem_context) {
   return CheckExpectedTypeCompatibility(sem_context);
 }
 
-CHECKED_STATUS PTToken::CheckOperator(SemContext *sem_context) {
+Status PTToken::CheckOperator(SemContext *sem_context) {
   // Nothing to do.
   return Status::OK();
 }

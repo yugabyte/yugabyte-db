@@ -10,8 +10,8 @@ menu:
     identifier: explore-scalability
     parent: explore
     weight: 220
+type: indexpage
 ---
-
 A YugabyteDB cluster can be scaled horizontally (to increase the aggregate vCPUs, memory and disk in the database cluster) by dynamically adding nodes to a running cluster, or by increasing the number of pods in the `yb-tserver` StatefulSet in the case of Kubernetes deployments.
 
 A YugabyteDB cluster is scaled out so that it can handle:
@@ -42,7 +42,7 @@ The various features are explained in these sections:
 <div class="row">
 
    <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="scaling-transactions">
+    <a class="section-link icon-offset" href="scaling-transactions/">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/linear_scalability.png" aria-hidden="true" />
         <div class="title">Scaling transactions per second</div>

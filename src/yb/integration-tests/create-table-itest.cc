@@ -30,44 +30,7 @@
 // under the License.
 //
 
-#include <map>
-#include <memory>
-#include <set>
-#include <string>
-
-#include <glog/stl_logging.h>
-#include <gtest/gtest.h>
-
-#include "yb/client/client_fwd.h"
-#include "yb/client/client-test-util.h"
-#include "yb/client/table.h"
-#include "yb/client/table_creator.h"
-#include "yb/client/table_info.h"
-
-#include "yb/common/common.pb.h"
-#include "yb/common/transaction.h"
-#include "yb/common/wire_protocol-test-util.h"
-
-#include "yb/integration-tests/external_mini_cluster-itest-base.h"
-#include "yb/integration-tests/external_mini_cluster.h"
-
-#include "yb/master/master_client.pb.h"
-#include "yb/master/master_defaults.h"
-#include "yb/master/master_util.h"
-
-#include "yb/tserver/tserver_service.pb.h"
-
-#include "yb/util/metrics.h"
-#include "yb/util/path_util.h"
-#include "yb/util/tsan_util.h"
-
-using std::multimap;
-using std::set;
-using std::string;
-using std::vector;
-using strings::Substitute;
-using yb::client::YBTableType;
-using yb::client::YBTableName;
+#include "yb/integration-tests/create-table-itest-base.h"
 
 METRIC_DECLARE_entity(server);
 METRIC_DECLARE_entity(tablet);
@@ -80,77 +43,7 @@ DECLARE_int32(yb_num_shards_per_tserver);
 
 namespace yb {
 
-static const YBTableName kTableName(YQL_DATABASE_CQL, "my_keyspace", "test-table");
-
-class CreateTableITest : public ExternalMiniClusterITestBase {
- public:
-  Status CreateTableWithPlacement(
-      const master::ReplicationInfoPB& replication_info, const string& table_suffix,
-      const YBTableType table_type = YBTableType::YQL_TABLE_TYPE) {
-    auto db_type = master::GetDatabaseTypeForTable(
-        client::ClientToPBTableType(table_type));
-    RETURN_NOT_OK(client_->CreateNamespaceIfNotExists(kTableName.namespace_name(), db_type));
-    std::unique_ptr<client::YBTableCreator> table_creator(client_->NewTableCreator());
-    client::YBSchema client_schema(client::YBSchemaFromSchema(yb::GetSimpleTestSchema()));
-    if (table_type != YBTableType::REDIS_TABLE_TYPE) {
-      table_creator->schema(&client_schema);
-    }
-    return table_creator->table_name(
-        YBTableName(db_type,
-                    kTableName.namespace_name(),
-                    Substitute("$0:$1", kTableName.table_name(), table_suffix)))
-        .replication_info(replication_info)
-        .table_type(table_type)
-        .wait(true)
-        .Create();
-  }
-
-  Result<bool> VerifyTServerTablets(int idx, int num_tablets, int num_leaders,
-                                    const std::string& table_name, bool verify_leaders) {
-    auto tablets = VERIFY_RESULT(cluster_->GetTablets(cluster_->tablet_server(idx)));
-
-    int leader_count = 0, tablet_count = 0;
-    for (const auto& tablet : tablets) {
-      if (tablet.table_name() != table_name) {
-        continue;
-      }
-      if (tablet.state() != tablet::RaftGroupStatePB::RUNNING) {
-        return false;
-      }
-      tablet_count++;
-      if (tablet.is_leader()) {
-        leader_count++;
-      }
-    }
-    LOG(INFO) << "For table " << table_name << ", on tserver " << idx << " number of leaders "
-              << leader_count << " number of tablets " << tablet_count;
-    if ((verify_leaders && leader_count != num_leaders) || tablet_count != num_tablets) {
-      return false;
-    }
-    return true;
-  }
-
-  void PreparePlacementInfo(const std::unordered_map<string, int>& zone_to_replica_count,
-                            int num_replicas, master::PlacementInfoPB* placement_info) {
-    placement_info->set_num_replicas(num_replicas);
-    for (const auto& zone_and_count : zone_to_replica_count) {
-      auto* pb = placement_info->add_placement_blocks();
-      pb->mutable_cloud_info()->set_placement_cloud("c");
-      pb->mutable_cloud_info()->set_placement_region("r");
-      pb->mutable_cloud_info()->set_placement_zone(zone_and_count.first);
-      pb->set_min_num_replicas(zone_and_count.second);
-    }
-  }
-
-  void AddTServerInZone(const string& zone) {
-    vector<std::string> flags = {
-      "--placement_cloud=c",
-      "--placement_region=r",
-      "--placement_zone=" + zone
-    };
-    ASSERT_OK(cluster_->AddTabletServer(true, flags));
-  }
-};
+class CreateTableITest : public CreateTableITestBase {};
 
 // TODO(bogdan): disabled until ENG-2687
 TEST_F(CreateTableITest, DISABLED_TestCreateRedisTable) {
@@ -262,7 +155,7 @@ TEST_F(CreateTableITest, TestCreateWhenMajorityOfReplicasFailCreation) {
   int64_t num_create_attempts = 0;
   while (num_create_attempts < 3) {
     SleepFor(MonoDelta::FromMilliseconds(100));
-    num_create_attempts = ASSERT_RESULT(cluster_->tablet_server(0)->GetInt64Metric(
+    num_create_attempts = ASSERT_RESULT(cluster_->tablet_server(0)->GetMetric<int64>(
         &METRIC_ENTITY_server,
         "yb.tabletserver",
         &METRIC_handler_latency_yb_tserver_TabletServerAdminService_CreateTablet,
@@ -379,7 +272,7 @@ TEST_F(CreateTableITest, TableColocationRemoteBootstrapTest) {
       }
     }
     ASSERT_FALSE(ns_id.empty());
-    parent_table_id = ns_id + master::kColocatedParentTableIdSuffix;
+    parent_table_id = master::GetColocatedDbParentTableId(ns_id);
   }
 
   {
@@ -429,7 +322,7 @@ TEST_F(CreateTableITest, YB_DISABLE_TEST_IN_TSAN(TablegroupRemoteBootstrapTest))
   vector<string> ts_flags;
   vector<string> master_flags;
   string namespace_name = "tablegroup_test_namespace_name";
-  TablegroupId tablegroup_id = "tablegroup_test_id00000000000000";
+  TablegroupId tablegroup_id = "11223344556677889900aabbccddeeff";
   TablespaceId tablespace_id = "";
   string namespace_id;
 
@@ -450,7 +343,7 @@ TEST_F(CreateTableITest, YB_DISABLE_TEST_IN_TSAN(TablegroupRemoteBootstrapTest))
         break;
       }
     }
-    ASSERT_FALSE(namespace_id.empty());
+    ASSERT_TRUE(IsIdLikeUuid(namespace_id));
   }
 
   // Since this is just for testing purposes, we do not bother generating a valid PgsqlTablegroupId
@@ -460,7 +353,7 @@ TEST_F(CreateTableITest, YB_DISABLE_TEST_IN_TSAN(TablegroupRemoteBootstrapTest))
   // Now want to ensure that the newly created tablegroup shows up in the list.
   auto exists = ASSERT_RESULT(client_->TablegroupExists(namespace_name, tablegroup_id));
   ASSERT_TRUE(exists);
-  parent_table_id = tablegroup_id + master::kTablegroupParentTableIdSuffix;
+  parent_table_id = master::GetTablegroupParentTableId(tablegroup_id);
 
   {
     google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
@@ -527,7 +420,7 @@ TEST_F(CreateTableITest, TestIsRaftLeaderMetric) {
     auto tablet_ids = ASSERT_RESULT(cluster_->GetTabletIds(cluster_->tablet_server(i)));
     for(size_t ti = 0; ti < inspect_->ListTabletsOnTS(i).size(); ti++) {
       const char *tabletId = tablet_ids[ti].c_str();
-      kNumRaftLeaders += ASSERT_RESULT(cluster_->tablet_server(i)->GetInt64Metric(
+      kNumRaftLeaders += ASSERT_RESULT(cluster_->tablet_server(i)->GetMetric<int64>(
           &METRIC_ENTITY_tablet, tabletId, &METRIC_is_raft_leader, "value"));
     }
   }

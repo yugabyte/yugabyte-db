@@ -79,7 +79,7 @@ class WriteOperation : public OperationBase<OperationType::kWrite, WritePB>  {
   //
   // Decodes the operations in the request PB and acquires row locks for each of the
   // affected rows.
-  CHECKED_STATUS Prepare() override;
+  Status Prepare() override;
 
   // Executes an Apply for a write transaction.
   //
@@ -100,10 +100,10 @@ class WriteOperation : public OperationBase<OperationType::kWrite, WritePB>  {
   // original requests) which is already a requirement of the consensus
   // algorithm.
   // Commits the mvcc transaction and updates the metrics.
-  CHECKED_STATUS DoReplicated(int64_t leader_term, Status* complete_status) override;
+  Status DoReplicated(int64_t leader_term, Status* complete_status) override;
 
   // Aborts the mvcc transaction.
-  CHECKED_STATUS DoAborted(const Status& status) override;
+  Status DoAborted(const Status& status) override;
 
   HybridTime WriteHybridTime() const override;
 };

@@ -61,8 +61,17 @@ public class UserTaskDetails {
     // Bootstrapping Region
     BootstrappingRegion,
 
+    // Checkpointing a table on the source universe to set up xCluster replication.
+    BootstrappingProducer,
+
     // Creating Access Key
     CreateAccessKey,
+
+    // Deleting all the xCluster replications and cleaning up their states on the universes.
+    DeleteXClusterReplication,
+
+    // Rotate access key to all nodes of a universe
+    RotateAccessKey,
 
     // Initializing Cloud Metadata
     InitializeCloudMetadata,
@@ -72,6 +81,9 @@ public class UserTaskDetails {
 
     // Creating Table
     CreatingTable,
+
+    // Creating Tablespaces
+    CreatingTablespaces,
 
     // Importing Data
     ImportingData,
@@ -111,6 +123,9 @@ public class UserTaskDetails {
 
     // Deleting Backup
     DeletingBackup,
+
+    // Creating a backup
+    CreatingBackup,
 
     // Creating Table Backup
     CreatingTableBackup,
@@ -173,7 +188,16 @@ public class UserTaskDetails {
     SystemdUpgrade,
 
     // Add certificates and toggle TLS gflags
-    ToggleTls;
+    ToggleTls,
+
+    // Rebooting the node.
+    RebootingNode,
+
+    // Running custom hooks
+    RunningHooks,
+
+    // Updating Packages
+    UpdatePackage
   }
 
   public List<SubTaskDetails> taskDetails;
@@ -255,9 +279,19 @@ public class UserTaskDetails {
         title = "Bootstrapping Region";
         description = "Set up AccessKey, Region, and Provider for a given cloud Provider.";
         break;
+      case BootstrappingProducer:
+        title = "Bootstrapping Source Universe";
+        description = "Creating a checkpoint on the source universe.";
+        break;
       case CreateAccessKey:
         title = "Creating AccessKey";
         description = "Set up AccessKey in the given Provider Vault";
+        break;
+      case DeleteXClusterReplication:
+        title = "Deleting XCluster Replication";
+        description =
+            "Deleting xCluster replications and cleaning up their corresponding states "
+                + "on the participating universes.";
         break;
       case InitializeCloudMetadata:
         title = "Initializing Cloud Metadata";
@@ -270,6 +304,10 @@ public class UserTaskDetails {
       case CreatingTable:
         title = "Creating Table";
         description = "Create a table.";
+        break;
+      case CreatingTablespaces:
+        title = "Creating Tablespaces";
+        description = "Create tablespaces.";
         break;
       case ImportingData:
         title = "Importing Data";
@@ -314,6 +352,10 @@ public class UserTaskDetails {
       case DeletingBackup:
         title = "Deleting Backup";
         description = "Delete an existing backup of a universe.";
+        break;
+      case CreatingBackup:
+        title = "Creating Backup";
+        description = "Creating backup for either a keyspace or a set of tables.";
         break;
       case CreatingTableBackup:
         title = "Creating Table Backup";
@@ -402,6 +444,22 @@ public class UserTaskDetails {
       case ToggleTls:
         title = "Toggle TLS";
         description = "Add certificates and toggle TLS gflags";
+        break;
+      case RotateAccessKey:
+        title = "Rotate Access Key";
+        description = "Rotate the access key for a universe";
+        break;
+      case RebootingNode:
+        title = "Rebooting Node";
+        description = "Rebooting node";
+        break;
+      case RunningHooks:
+        title = "Running Hooks";
+        description = "Run custom hooks";
+        break;
+      case UpdatePackage:
+        title = "Update Packages";
+        description = "Updating packages installed on the nodes";
         break;
       default:
         LOG.warn("UserTaskDetails: Missing SubTaskDetails for : {}", subTaskGroupType);

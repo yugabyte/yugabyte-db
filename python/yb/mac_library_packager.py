@@ -5,14 +5,17 @@ import logging
 import os
 import shutil
 import stat
-import subprocess
-import sys
+import glob
+
+from argparse import ArgumentParser
 
 from yb.command_util import run_program
 from yb.common_util import get_thirdparty_dir
 
+from typing import List, Dict, Optional, Tuple
 
-def add_common_arguments(parser):
+
+def add_common_arguments(parser: ArgumentParser) -> None:
     """
     Add command-line arguments common between library_packager_old.py invoked as a script, and
     the yb_release.py script.
@@ -22,12 +25,32 @@ def add_common_arguments(parser):
                         action='store_true')
 
 
+def find_library_by_glob(glob_pattern: str) -> str:
+    libs_found = glob.glob(glob_pattern)
+    if not libs_found:
+        raise IOError("Library not found for glob: %s" % glob_pattern)
+    if len(libs_found) > 1:
+        raise IOError("Too many libraries found for glob pattern %s: %s" % (
+            glob_pattern, libs_found))
+    lib_path = libs_found[0]
+    if not os.path.exists(lib_path):
+        raise IOError("Library does not exist: %s" % lib_path)
+    return lib_path
+
+
 class MacLibraryPackager:
-    def __init__(self,
-                 build_dir,
-                 seed_executable_patterns,
-                 dest_dir,
-                 verbose_mode=False):
+    build_dir: str
+    seed_executable_patterns: List[str]
+    dest_dir: str
+    verbose_mode: bool
+    absolute_paths_by_libname: Dict[str, str]
+
+    def __init__(
+            self,
+            build_dir: str,
+            seed_executable_patterns: List[str],
+            dest_dir: str,
+            verbose_mode: bool = False) -> None:
         self.build_dir = os.path.realpath(build_dir)
         if not os.path.exists(self.build_dir):
             raise IOError("Build directory '{}' does not exist".format(self.build_dir))
@@ -36,14 +59,12 @@ class MacLibraryPackager:
         logging.debug(
             "Traversing the dependency graph of executables/libraries, starting "
             "with seed executable patterns: {}".format(", ".join(seed_executable_patterns)))
-        self.nodes_by_digest = {}
-        self.nodes_by_path = {}
 
         self.dest_dir = dest_dir
         self.verbose_mode = verbose_mode
         self.absolute_paths_by_libname = {}
 
-    def package_binaries(self):
+    def package_binaries(self) -> None:
         src = self.build_dir
         dst = self.dest_dir
 
@@ -52,8 +73,9 @@ class MacLibraryPackager:
 
         try:
             os.makedirs(dst_bin_dir)
-        except OSError as e:
-            raise RuntimeError('Unable to create directory %s', dst)
+        except OSError as ex:
+            logging.warning('Unable to create directory %s', dst_bin_dir)
+            raise ex
 
         logging.debug('Created directory %s', dst)
 
@@ -72,19 +94,21 @@ class MacLibraryPackager:
                 seed_executable_glob = updated_glob
             glob_results = glob.glob(seed_executable_glob)
             if not glob_results:
-                raise RuntimeError("No files found matching the pattern '{}'".format(
+                raise IOError("No files found matching the pattern '{}'".format(
                     seed_executable_glob))
             for executable in glob_results:
                 shutil.copy(executable, dst_bin_dir)
 
         src_lib_dir = os.path.join(src, 'lib')
         yb_lib_file_for_postgres = os.path.join(src_lib_dir, 'libyb_pggate.dylib')
-        libedit_file_for_postgres = os.path.join(get_thirdparty_dir(),
-                                                 'installed/common/lib/libedit.dylib')
-        libldap_file_for_postgres = os.path.join(get_thirdparty_dir(),
-                                                 'installed/common/lib/libldap-2.4.2.dylib')
-        libldap_r_file_for_postgres = os.path.join(get_thirdparty_dir(),
-                                                   'installed/common/lib/libldap_r-2.4.2.dylib')
+
+        extra_postgres_libs_dir_glob = os.path.join(
+            get_thirdparty_dir(), 'installed', '*', 'lib')
+        extra_postgres_libs = [
+            find_library_by_glob(os.path.join(extra_postgres_libs_dir_glob, lib_name))
+            for lib_name in ['libedit.dylib', 'libldap-2.4.2.dylib', 'libldap_r-2.4.2.dylib']]
+        for extra_postgres_lib in extra_postgres_libs:
+            logging.info("Extra library for Postgres: %s", extra_postgres_lib)
         processed_libs = []
         for bin_file in os.listdir(dst_bin_dir):
             if bin_file.endswith('.sh') or bin_file in bin_dir_files:
@@ -103,11 +127,10 @@ class MacLibraryPackager:
             # Elements in libs are absolute paths.
             logging.debug('library dependencies for file %s: %s', bin_file, libs)
 
-            # Treat this as a special case for now (10/14/18).
+            # Treat this as a special case as implemented in
+            # 8bcc38cdf30bb37f778825c9ba5975a0b354b12d.
             libs.append(yb_lib_file_for_postgres)
-            libs.append(libedit_file_for_postgres)
-            libs.append(libldap_file_for_postgres)
-            libs.append(libldap_r_file_for_postgres)
+            libs.extend(extra_postgres_libs)
             for lib in libs:
                 if lib in processed_libs:
                     continue
@@ -147,10 +170,12 @@ class MacLibraryPackager:
             logging.debug("Processing postgres library %s", lib_file)
             self.fix_postgres_load_paths(os.path.join(postgres_lib, lib_file), dst)
 
-    # Run otool to extract information from an object file. Returns the command's output to stdout,
-    # or an empty string if filename is not a valid object file.
-    # parameter must include the dash.
-    def run_otool(self, parameter, filename):
+    def run_otool(self, parameter: str, filename: str) -> Optional[str]:
+        """
+        Run otool to extract information from an object file. Returns the command's output to
+        stdout, or an empty string if filename is not a valid object file. Parameter must include
+        the dash.
+        """
         result = run_program(['otool', parameter, filename], error_ok=True)
 
         if result.stdout.endswith('is not an object file') or \
@@ -165,7 +190,7 @@ class MacLibraryPackager:
 
         return result.stdout
 
-    def extract_rpaths(self, filename):
+    def extract_rpaths(self, filename: str) -> List[str]:
         stdout = self.run_otool('-l', filename)
 
         if not stdout:
@@ -189,7 +214,8 @@ class MacLibraryPackager:
 
         return rpaths
 
-    def extract_dependency_paths(self, filename, rpaths):
+    def extract_dependency_paths(
+            self, filename: str, rpaths: List[str]) -> Tuple[List[str], List[str]]:
         stdout = self.run_otool('-L', filename)
 
         if not stdout:
@@ -198,6 +224,12 @@ class MacLibraryPackager:
         dependency_paths = []
         absolute_dependency_paths = []
         lines = stdout.splitlines()
+
+        def log_error_context() -> None:
+            logging.error(
+                f"Error when trying to extract dependency paths from file {filename}. "
+                f"Output from otool -L:\n{stdout}")
+
         # Skip the first line that is always the library path.
         for line in lines[1:]:
             path = line.split()[0]
@@ -234,6 +266,7 @@ class MacLibraryPackager:
             elif path.startswith('@loader_path'):
                 absolute_path = self.absolute_paths_by_libname[os.path.basename(filename)]
                 if not os.path.isfile(absolute_path):
+                    log_error_context()
                     raise RuntimeError("File %s doesn't exist" % absolute_path)
 
                 # Replace @loader_path with the absolute dir path of filename.
@@ -241,6 +274,7 @@ class MacLibraryPackager:
                 new_lib_path = path.replace('@loader_path', absolute_dir)
                 name = os.path.basename(path)
                 if not os.path.isfile(new_lib_path):
+                    log_error_context()
                     raise RuntimeError("File %s doesn't exist" % new_lib_path)
                 absolute_dependency_paths.append(new_lib_path)
                 self.absolute_paths_by_libname[name] = new_lib_path
@@ -249,24 +283,29 @@ class MacLibraryPackager:
                 if os.path.isfile(path):
                     absolute_dependency_paths.append(path)
                     self.absolute_paths_by_libname[os.path.basename(path)] = path
+                elif path.startswith('/System/Library/Frameworks/'):
+                    # E.g. otool -L libintl.8.dylib includes the following line:
+                    # /System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation
+                    # We ignore entries like that but throw an error for any other missing path.
+                    continue
                 else:
+                    log_error_context()
                     raise RuntimeError("File %s doesn't exist" % path)
             dependency_paths.append(path)
 
         return dependency_paths, absolute_dependency_paths
 
-    def remove_rpaths(self, filename, rpaths):
+    def remove_rpaths(self, filename: str, rpaths: List[str]) -> None:
         for rpath in rpaths:
             run_program(['install_name_tool', '-delete_rpath', rpath, filename])
             logging.debug('Successfully removed rpath %s from %s', rpath, filename)
 
-    def set_new_path(self, filename, old_path, new_path):
+    def set_new_path(self, filename: str, old_path: str, new_path: str) -> None:
         # We need to use a different command if the path is pointing to itself. Example:
         # otool - L ./build/debug-clang-dynamic-enterprise/lib/libmaster.dylib
         # ./build/debug-clang-dynamic-enterprise/ lib/libmaster.dylib:
         #      @rpath/libmaster.dylib
 
-        cmd = []
         if os.path.basename(filename) == os.path.basename(old_path):
             run_program(['install_name_tool', '-id', new_path, filename])
             logging.debug('install_name_tool -id %s %s', new_path, filename)
@@ -274,7 +313,7 @@ class MacLibraryPackager:
             run_program(['install_name_tool', '-change', old_path, new_path, filename])
             logging.debug('install_name_tool -change %s %s %s', old_path, new_path, filename)
 
-    def fix_load_paths(self, filename, lib_bin_dir, loader_path):
+    def fix_load_paths(self, filename: str, lib_bin_dir: str, loader_path: str) -> List[str]:
         logging.debug('Processing file %s', filename)
 
         original_mode = os.stat(filename).st_mode
@@ -329,10 +368,11 @@ class MacLibraryPackager:
 
         return absolute_dependency_paths
 
-    # Special case for now (10/14/18).
-    def fix_postgres_load_paths(self, filename, dst):
+    # Special case, as implemented in the following commit:
+    # https://github.com/yugabyte/yugabyte-db/commit/8bcc38cdf30bb37f778825c9ba5975a0b354b12d
+    def fix_postgres_load_paths(self, filename: str, dst: str) -> None:
         if os.path.islink(filename):
-            return []
+            return
 
         libs = []
 
@@ -352,7 +392,7 @@ class MacLibraryPackager:
 
         logging.debug('Processing file %s for rpaths %s', filename, rpaths)
         if len(rpaths) == 0:
-            return []
+            return
 
         # Dependency path will have the paths as extracted by 'otool -L'
         dependency_paths, absolute_dependency_paths = \

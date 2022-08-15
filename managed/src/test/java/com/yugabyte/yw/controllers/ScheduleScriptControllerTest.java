@@ -4,16 +4,23 @@ import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
+import static com.yugabyte.yw.common.TestHelper.testDatabase;
 import static org.junit.Assert.assertEquals;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+import static play.inject.Bindings.bind;
 import static play.test.Helpers.contentAsString;
 
 import akka.stream.javadsl.FileIO;
 import akka.stream.javadsl.Source;
 import akka.util.ByteString;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.config.DummyRuntimeConfigFactoryImpl;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
@@ -21,12 +28,18 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import kamon.instrumentation.play.GuiceModule;
 import org.junit.Before;
 import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.mockito.junit.MockitoJUnitRunner;
+import play.Application;
+import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;
 import play.mvc.Http;
 import play.mvc.Result;
 
+@RunWith(MockitoJUnitRunner.class)
 public class ScheduleScriptControllerTest extends FakeDBApplication {
   private Customer defaultCustomer;
   private Universe defaultUniverse;
@@ -36,11 +49,27 @@ public class ScheduleScriptControllerTest extends FakeDBApplication {
 
   int OK = 200;
 
+  private Config mockConfig;
+
+  @Override
+  protected Application provideApplication() {
+    mockConfig = mock(Config.class);
+    // when(mockConfig.getString(anyString())).thenReturn("");
+    return super.configureApplication(
+            new GuiceApplicationBuilder().disable(GuiceModule.class).configure(testDatabase()))
+        .overrides(
+            bind(RuntimeConfigFactory.class)
+                .toInstance(new DummyRuntimeConfigFactoryImpl(mockConfig)))
+        .build();
+  }
+
   @Before
   public void setUp() throws Exception {
     defaultCustomer = ModelFactory.testCustomer();
     defaultUniverse = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
     Users defaultUser = ModelFactory.testUser(defaultCustomer);
+    when(mockConfig.getBoolean(ScheduleScriptController.PLT_EXT_SCRIPT_ACCESS_FULL_PATH))
+        .thenReturn(true);
   }
 
   private Result createScriptSchedule(
@@ -148,6 +177,18 @@ public class ScheduleScriptControllerTest extends FakeDBApplication {
     assertEquals(OK, result.status());
     JsonNode json = Json.parse(contentAsString(result));
     assertValue(json, "status", "Active");
+  }
+
+  @Test
+  public void testInvalidAccess() {
+    when(mockConfig.getBoolean(ScheduleScriptController.PLT_EXT_SCRIPT_ACCESS_FULL_PATH))
+        .thenReturn(false);
+    Result result =
+        assertPlatformException(
+            () ->
+                createScriptSchedule(
+                    defaultUniverse.universeUUID, "5 * * * *", validScriptParam, "5", true));
+    assertBadRequest(result, "External Script APIs are disabled. Please contact support team");
   }
 
   @Test

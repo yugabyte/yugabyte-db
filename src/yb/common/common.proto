@@ -93,6 +93,9 @@ message ColumnSchemaPB {
   optional bool is_counter = 8 [default = false];
   optional int32 order = 12 [default = 0];
   optional uint32 sorting_type = 9 [default = 0];
+  // Added pg_type_oid for decoding the column value for CDC in 2.13.
+  // If the cluster has been upgraded, the value will be default and not the expected value.
+  optional uint32 pg_type_oid = 14 [default = 0];
   // Reserved for deprecated read_default_value and write_default_value fields.
   reserved 10, 11;
   // The JSON attribute was mistakenly placed here, but it is not used.
@@ -104,8 +107,8 @@ message ColumnSchemaPB {
 message ColocatedTableIdentifierPB {
   // Note: an absent value means NULL.
   oneof value {
-    // Colocated YSQL user tables use 4-byte PG table ID.
-    uint32 pgtable_id = 1;
+    // Colocated YSQL user tables use 4-byte ID.
+    uint32 colocation_id = 1;
     // Colocated YSQL system tables use 16-byte UUID.
     bytes cotable_id = 2;
   }
@@ -145,12 +148,18 @@ message TablePropertiesPB {
   optional bool is_ysql_catalog_table = 8 [ default = false ];
   optional bool retain_delete_markers = 9 [ default = false ];
   optional uint64 backfilling_timestamp = 10;
+
+  // Used to distinguish which algorithm should be used for partition key and bounds generation,
+  // value == 0 stands for the default buggy algorithm for range partitioning case, see #12189.
+  optional uint32 partitioning_version = 11;
 }
 
 message SchemaPB {
   repeated ColumnSchemaPB columns = 1;
   optional TablePropertiesPB table_properties = 2;
   optional ColocatedTableIdentifierPB colocated_table_id = 3;
+  // Added in 2.13, any upgraded cluster may not have this value so use it appropriately.
+  optional string pgschema_name = 4;
 }
 
 // This message contains the metadata of a secondary index of a table.
@@ -427,6 +436,11 @@ message QLJsonOperationPB {
   required QLExpressionPB operand = 2;
 }
 
+// Tuple expression in LHS of IN operation (in future for =, >, < too).
+message QLTupleExpressionPB {
+  repeated QLExpressionPB elems = 1;
+}
+
 // An expression in a WHERE condition
 message QLExpressionPB {
   oneof expr {
@@ -439,6 +453,7 @@ message QLExpressionPB {
     QLBCallPB tscall = 7;                   // Tablet server builtin calls.
     QLBCallPB bocall = 8;                   // Builtin operator calls.
     QLJsonColumnOperationsPB json_column = 9; // Json column operators.
+    QLTupleExpressionPB tuple = 10;           // Tuple expression in LHS.
   }
 }
 

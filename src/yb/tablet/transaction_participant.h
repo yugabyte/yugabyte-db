@@ -40,6 +40,7 @@
 #include "yb/util/enums.h"
 #include "yb/util/math_util.h"
 #include "yb/util/opid.h"
+#include "yb/util/opid.pb.h"
 
 namespace rocksdb {
 
@@ -85,6 +86,11 @@ struct RemoveIntentsData {
   HybridTime log_ht;
 };
 
+struct GetIntentsData {
+  OpIdPB op_id;
+  HybridTime log_ht;
+};
+
 struct TransactionalBatchData {
   // Write id of last strong write intent in transaction.
   IntraTxnWriteId next_write_id = 0;
@@ -114,7 +120,7 @@ class TransactionParticipant : public TransactionStatusManager {
   // Returns true if transaction was added, false if transaction already present.
   Result<bool> Add(const TransactionMetadata& metadata);
 
-  Result<TransactionMetadata> PrepareMetadata(const TransactionMetadataPB& id) override;
+  Result<TransactionMetadata> PrepareMetadata(const TransactionMetadataPB& pb) override;
 
   // Prepares batch data for specified transaction id.
   // I.e. adds specified batch idx to set of replicated batches and fills encoded_replicated_batches
@@ -130,7 +136,7 @@ class TransactionParticipant : public TransactionStatusManager {
 
   HybridTime LocalCommitTime(const TransactionId& id) override;
 
-  boost::optional<CommitMetadata> LocalCommitData(const TransactionId& id) override;
+  boost::optional<TransactionLocalState> LocalTxnData(const TransactionId& id) override;
 
   void RequestStatusAt(const StatusRequest& request) override;
 
@@ -152,13 +158,13 @@ class TransactionParticipant : public TransactionStatusManager {
     std::string ToString() const;
   };
 
-  CHECKED_STATUS ProcessReplicated(const ReplicatedData& data);
+  Status ProcessReplicated(const ReplicatedData& data);
 
   void SetDB(
       const docdb::DocDB& db, const docdb::KeyBounds* key_bounds,
       RWOperationCounter* pending_op_counter);
 
-  CHECKED_STATUS CheckAborted(const TransactionId& id);
+  Status CheckAborted(const TransactionId& id);
 
   void FillPriorities(
       boost::container::small_vector_base<std::pair<TransactionId, uint64_t>>* inout) override;
@@ -187,18 +193,26 @@ class TransactionParticipant : public TransactionStatusManager {
   // After this function returns with success:
   // - All intents of committed transactions will have been applied.
   // - No transactions can be committed with commit time <= resolve_at from that point on..
-  CHECKED_STATUS ResolveIntents(HybridTime resolve_at, CoarseTimePoint deadline);
+  Status ResolveIntents(HybridTime resolve_at, CoarseTimePoint deadline);
 
   // Attempts to abort all transactions that started prior to cutoff time.
   // Waits until deadline, for txns to abort. If not, it returns a TimedOut.
   // After this call, there should be no active (non-aborted/committed) txn that
   // started before cutoff which is active on this tablet.
-  CHECKED_STATUS StopActiveTxnsPriorTo(
+  Status StopActiveTxnsPriorTo(
       HybridTime cutoff, CoarseTimePoint deadline, TransactionId* exclude_txn_id = nullptr);
 
   void IgnoreAllTransactionsStartedBefore(HybridTime limit);
 
+  // Update transaction metadata to change the status tablet for the given transaction.
+  Result<TransactionMetadata> UpdateTransactionStatusLocation(
+      const TransactionId& transaction_id, const TabletId& new_status_tablet);
+
   std::string DumpTransactions() const;
+
+  void SetIntentRetainOpIdAndTime(const yb::OpId& op_id, const MonoDelta& cdc_sdk_op_id_expiration);
+
+  OpId GetRetainOpId() const;
 
   const TabletId& tablet_id() const override;
 

@@ -506,6 +506,8 @@ static int set_config_int32_option(const char *name, int32 value,
 static int set_config_double_option(const char *name, double value,
 									GucContext context);
 
+static void pg_hint_ExecutorEnd(QueryDesc *queryDesc);
+
 /* GUC variables */
 static bool	pg_hint_plan_enable_hint = true;
 static int debug_level = 0;
@@ -561,6 +563,7 @@ static planner_hook_type prev_planner = NULL;
 static join_search_hook_type prev_join_search = NULL;
 static set_rel_pathlist_hook_type prev_set_rel_pathlist = NULL;
 static ProcessUtility_hook_type prev_ProcessUtility_hook = NULL;
+static ExecutorEnd_hook_type prev_ExecutorEnd = NULL;
 
 /* Hold reference to currently active hint */
 static HintState *current_hint_state = NULL;
@@ -692,6 +695,8 @@ _PG_init(void)
 	set_rel_pathlist_hook = pg_hint_plan_set_rel_pathlist;
 	prev_ProcessUtility_hook = ProcessUtility_hook;
 	ProcessUtility_hook = pg_hint_plan_ProcessUtility;
+	prev_ExecutorEnd = ExecutorEnd_hook;
+	ExecutorEnd_hook = pg_hint_ExecutorEnd;
 
 	/* setup PL/pgSQL plugin hook */
 	var_ptr = (PLpgSQL_plugin **) find_rendezvous_variable("PLpgSQL_plugin");
@@ -715,6 +720,7 @@ _PG_fini(void)
 	join_search_hook = prev_join_search;
 	set_rel_pathlist_hook = prev_set_rel_pathlist;
 	ProcessUtility_hook = prev_ProcessUtility_hook;
+	ExecutorEnd_hook = prev_ExecutorEnd;
 
 	/* uninstall PL/pgSQL plugin hook */
 	var_ptr = (PLpgSQL_plugin **) find_rendezvous_variable("PLpgSQL_plugin");
@@ -4900,6 +4906,16 @@ void plpgsql_query_erase_callback(ResourceReleasePhase phase,
 		return;
 	/* Cancel plpgsql nest level*/
 	plpgsql_recurse_level = 0;
+}
+
+static void pg_hint_ExecutorEnd(QueryDesc *queryDesc) {
+	if (plpgsql_recurse_level <= 0) {
+		current_hint_retrieved = false;
+	}
+	if (prev_ExecutorEnd)
+		prev_ExecutorEnd(queryDesc);
+	else
+		standard_ExecutorEnd(queryDesc);
 }
 
 #define standard_join_search pg_hint_plan_standard_join_search

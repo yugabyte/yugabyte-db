@@ -9,8 +9,7 @@ menu:
     identifier: explore-ysql-language-features-data-types
     parent: explore-ysql-language-features
     weight: 150
-isTocNested: false
-showAsideToc: true
+type: docs
 ---
 
 This document describes the data types supported in YSQL, from the basic data types to the `SERIAL` pseudo-type (for implementing an auto-incrementing primary key column in a table), arrays, composite types, and range types.
@@ -263,7 +262,7 @@ Expect the following output:
 
 ## Enumerations - `ENUM` Type
 
-YugabyteDB supports the `ENUM` type in PostgreSQL. The following examples are adapted from [Enums](http://postgresguide.com/sexy/enums.html):
+YugabyteDB supports the `ENUM` type in PostgreSQL. The following examples are adapted from [Enums](http://postgresguide.com/cool/enums.html):
 
 ### 1. Create `ENUM`
 ```sql
@@ -437,5 +436,4 @@ CREATE TYPE textrange
 SELECT '( " a " " a ", " z " " z " )'::textrange;
 ```
 
-For more information on range types, see [Range Data Types](/latest/api/ysql/datatypes/type_range/).
-
+For more information on range types, see [Range Data Types](/preview/api/ysql/datatypes/type_range/).

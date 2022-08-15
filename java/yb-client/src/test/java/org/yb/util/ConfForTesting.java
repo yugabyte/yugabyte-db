@@ -62,4 +62,11 @@ public final class ConfForTesting {
     return EnvAndSysPropertyUtil.isEnvVarOrSystemPropertyTrue("YB_COLLECT_TESTS_ONLY");
   }
 
+  /**
+   * @return true if requested to keep all data, including cluster data and core files.
+   */
+  public static boolean keepData() {
+    return EnvAndSysPropertyUtil.isEnvVarOrSystemPropertyTrue("YB_JAVATEST_KEEPDATA");
+  }
+
 }

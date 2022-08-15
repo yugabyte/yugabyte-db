@@ -580,8 +580,32 @@ init_execution_state(List *queryTree_list,
 		lasttages->setsResult = true;
 		if (lazyEvalOK &&
 			lasttages->stmt->commandType == CMD_SELECT &&
-			!lasttages->stmt->hasModifyingCTE)
+			!lasttages->stmt->hasModifyingCTE &&
+			!IsYBReadCommitted())
+		{
+			/*
+			 * In YB, a consistent read point is the analogue of a snapshot. The information about a
+			 * consistent read point is maintained in pg_client_session.cc on the tserver process of the
+			 * same node. Only one consistent read point can be stored for a transaction at a single point
+			 * in time. YSQL is allowed to change the consistent read point in limited ways: change it to
+			 * the current time as seen by the tserver process, set it to the restart read time it in case
+			 * of a read restart or update it to a specific value in case of backfill. But YSQL doesn't
+			 * have the capability to read the consistent read point that is chosen by the tserver process
+			 * if set to the current time. So, it is not possible to switch back to the consistent read
+			 * point of a lazily evaluated query.
+			 *
+			 * This limitation results in later invocations of a lazily evaluated query to possibly use
+			 * later consistent read points that were set as part of other execution between invocations
+			 * to the lazily evaluated query. This breaks correctness since the data now doesn't
+			 * correspond to a single snapshot.
+			 *
+			 * This limitation will be addressed in #12959. Till we add the necessary framework to allow
+			 * saving and reusing snapshots, YSQL disables lazy evaluation in READ COMMITTED isolation to
+			 * avoid correctness issues that can stem from not using a single snapshot for a lazily
+			 * evaluated query.
+			 */
 			fcache->lazyEval = lasttages->lazyEval = true;
+		}
 	}
 
 	return eslist;
@@ -1150,6 +1174,29 @@ fmgr_sql(PG_FUNCTION_ARGS)
 				}
 				else
 					UpdateActiveSnapshotCommandId();
+			}
+
+			/*
+			 * Flush buffered operations before executing a new statement since it
+			 * might have non-transactional side-effects that won't be reverted in
+			 * case the buffered operations (i.e., from previous statements) lead to
+			 * an exception.
+			 *
+			 * If we know that the new statement is an INSERT, UPDATE or DELETE, we
+			 * can skip flushing since these statements have only transactional
+			 * effects. And an exception that occurs later due to previously buffered
+			 * operations (i.e., from previous statements) will lead to reverting
+			 * of the transactional effects of the new statement too.
+			 */
+			switch (es->stmt->commandType)
+			{
+				case CMD_UPDATE:
+				case CMD_INSERT:
+				case CMD_DELETE:
+					break;
+				default:
+					YBFlushBufferedOperations();
+					break;
 			}
 
 			postquel_start(es, fcache);

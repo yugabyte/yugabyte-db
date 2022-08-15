@@ -30,6 +30,8 @@ from yb import library_packager as library_packager_module
 from yb.mac_library_packager import MacLibraryPackager, add_common_arguments
 from yb.release_util import ReleaseUtil, check_for_local_changes
 from yb.common_util import init_env, get_build_type_from_build_root, set_thirdparty_dir
+from yb.linuxbrew import set_build_root
+
 
 YB_SRC_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -65,8 +67,8 @@ def main():
                         help='Do not re-create the initial sys catalog snapshot. Useful when '
                              'debugging the release process.')
     parser.add_argument('--package_name',
-                        default='all',
-                        help='Name of package to release (e.g. cli).')
+                        default='yugabyte',
+                        help='Name of package to release ("yugabyte" or "yugabyte-client").')
     add_common_arguments(parser)
     args = parser.parse_args()
 
@@ -206,7 +208,7 @@ def main():
             "specified on the command line ('{}')".format(build_root))
 
     # We are guaranteed to have a build_root by now.
-    library_packager_module.set_build_root(build_root)
+    set_build_root(build_root)
 
     thirdparty_dir = build_desc["thirdparty_dir"]
     thirdparty_dir_from_env = os.environ.get("YB_THIRDPARTY_DIR", thirdparty_dir)

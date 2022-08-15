@@ -6,9 +6,9 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.ApiHelper;
+import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.metrics.data.AlertData;
 import com.yugabyte.yw.metrics.data.AlertsResponse;
@@ -26,10 +26,12 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import javax.inject.Inject;
 import org.apache.commons.lang3.StringUtils;
 import org.joda.time.DateTime;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import play.Configuration;
 import play.libs.Json;
 
 @Singleton
@@ -47,11 +49,25 @@ public class MetricQueryHelper {
   private static final String PROMETHEUS_MANAGEMENT_URL_PATH = "yb.metrics.management.url";
   public static final String PROMETHEUS_MANAGEMENT_ENABLED = "yb.metrics.management.enabled";
 
-  @Inject play.Configuration appConfig;
+  private final play.Configuration appConfig;
 
-  @Inject ApiHelper apiHelper;
+  private final ApiHelper apiHelper;
 
-  @Inject YBMetricQueryComponent ybMetricQueryComponent;
+  private final MetricUrlProvider metricUrlProvider;
+
+  private final PlatformExecutorFactory platformExecutorFactory;
+
+  @Inject
+  public MetricQueryHelper(
+      Configuration appConfig,
+      ApiHelper apiHelper,
+      MetricUrlProvider metricUrlProvider,
+      PlatformExecutorFactory platformExecutorFactory) {
+    this.appConfig = appConfig;
+    this.apiHelper = apiHelper;
+    this.metricUrlProvider = metricUrlProvider;
+    this.platformExecutorFactory = platformExecutorFactory;
+  }
 
   /**
    * Query prometheus for a given metricType and query params
@@ -62,14 +78,16 @@ public class MetricQueryHelper {
    */
   public JsonNode query(List<String> metricKeys, Map<String, String> params) {
     HashMap<String, Map<String, String>> filterOverrides = new HashMap<>();
-    return query(metricKeys, params, filterOverrides, false);
+    List<MetricSettings> metricSettings = MetricSettings.defaultSettings(metricKeys);
+    return query(metricSettings, params, filterOverrides, false);
   }
 
   public JsonNode query(
       List<String> metricKeys,
       Map<String, String> params,
       Map<String, Map<String, String>> filterOverrides) {
-    return query(metricKeys, params, filterOverrides, false);
+    List<MetricSettings> metricSettings = MetricSettings.defaultSettings(metricKeys);
+    return query(metricSettings, params, filterOverrides, false);
   }
 
   /**
@@ -80,12 +98,12 @@ public class MetricQueryHelper {
    * @return MetricQueryResponse Object
    */
   public JsonNode query(
-      List<String> metricKeys,
+      List<MetricSettings> metricsWithSettings,
       Map<String, String> params,
       Map<String, Map<String, String>> filterOverrides,
       boolean isRecharts) {
-    if (metricKeys.isEmpty()) {
-      throw new PlatformServiceException(BAD_REQUEST, "Empty metricKeys data provided.");
+    if (metricsWithSettings.isEmpty()) {
+      throw new PlatformServiceException(BAD_REQUEST, "Empty metricsWithSettings data provided.");
     }
 
     long timeDifference;
@@ -99,9 +117,24 @@ public class MetricQueryHelper {
       timeDifference = endTime - Long.parseLong(startTime);
     }
 
-    if (params.get("step") == null) {
+    params.put("range", Long.toString(timeDifference));
+
+    String step = params.get("step");
+    if (step == null) {
+      if (timeDifference <= STEP_SIZE) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Should be at least " + STEP_SIZE + " seconds between start and end time");
+      }
       int resolution = Math.round(timeDifference / STEP_SIZE);
       params.put("step", String.valueOf(resolution));
+    } else {
+      try {
+        if (Integer.parseInt(step) <= 0) {
+          throw new PlatformServiceException(BAD_REQUEST, "Step should not be less than 1 second");
+        }
+      } catch (NumberFormatException nfe) {
+        throw new PlatformServiceException(BAD_REQUEST, "Step should be a valid integer");
+      }
     }
 
     // Adjust the start time so the graphs are consistent for different requests.
@@ -127,47 +160,54 @@ public class MetricQueryHelper {
     }
 
     String metricsUrl = appConfig.getString(PROMETHEUS_METRICS_URL_PATH);
-    boolean useNativeMetrics = appConfig.getBoolean("yb.metrics.useNative", false);
-    if ((null == metricsUrl || metricsUrl.isEmpty()) && !useNativeMetrics) {
+    if ((null == metricsUrl || metricsUrl.isEmpty())) {
       LOG.error("Error fetching metrics data: no prometheus metrics URL configured");
       return Json.newObject();
     }
 
-    ExecutorService threadPool = Executors.newFixedThreadPool(QUERY_EXECUTOR_THREAD_POOL);
-    Set<Future<JsonNode>> futures = new HashSet<Future<JsonNode>>();
-    for (String metricKey : metricKeys) {
-      Map<String, String> queryParams = params;
-      queryParams.put("queryKey", metricKey);
+    ExecutorService threadPool =
+        platformExecutorFactory.createFixedExecutor(
+            getClass().getSimpleName(),
+            QUERY_EXECUTOR_THREAD_POOL,
+            Executors.defaultThreadFactory());
+    try {
+      Set<Future<JsonNode>> futures = new HashSet<Future<JsonNode>>();
+      for (MetricSettings metricSettings : metricsWithSettings) {
+        Map<String, String> queryParams = params;
+        queryParams.put("queryKey", metricSettings.getMetric());
 
-      Map<String, String> specificFilters = filterOverrides.getOrDefault(metricKey, null);
-      if (specificFilters != null) {
-        additionalFilters.putAll(specificFilters);
+        Map<String, String> specificFilters =
+            filterOverrides.getOrDefault(metricSettings.getMetric(), null);
+        if (specificFilters != null) {
+          additionalFilters.putAll(specificFilters);
+        }
+
+        Callable<JsonNode> callable =
+            new MetricQueryExecutor(
+                metricUrlProvider,
+                apiHelper,
+                queryParams,
+                additionalFilters,
+                metricSettings,
+                isRecharts);
+        Future<JsonNode> future = threadPool.submit(callable);
+        futures.add(future);
       }
 
-      Callable<JsonNode> callable =
-          new MetricQueryExecutor(
-              appConfig,
-              apiHelper,
-              queryParams,
-              additionalFilters,
-              ybMetricQueryComponent,
-              isRecharts);
-      Future<JsonNode> future = threadPool.submit(callable);
-      futures.add(future);
-    }
-
-    ObjectNode responseJson = Json.newObject();
-    for (Future<JsonNode> future : futures) {
-      JsonNode response = Json.newObject();
-      try {
-        response = future.get();
-        responseJson.set(response.get("queryKey").asText(), response);
-      } catch (InterruptedException | ExecutionException e) {
-        LOG.error("Error fetching metrics data", e);
+      ObjectNode responseJson = Json.newObject();
+      for (Future<JsonNode> future : futures) {
+        JsonNode response = Json.newObject();
+        try {
+          response = future.get();
+          responseJson.set(response.get("queryKey").asText(), response);
+        } catch (InterruptedException | ExecutionException e) {
+          LOG.error("Error fetching metrics data", e);
+        }
       }
+      return responseJson;
+    } finally {
+      threadPool.shutdown();
     }
-    threadPool.shutdown();
-    return responseJson;
   }
 
   /**

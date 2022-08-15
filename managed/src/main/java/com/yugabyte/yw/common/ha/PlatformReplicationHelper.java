@@ -16,13 +16,11 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.ApiHelper;
-import com.yugabyte.yw.common.PlatformInstanceClient;
-import com.yugabyte.yw.common.PlatformInstanceClientFactory;
 import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager.PlatformBackupParams;
+import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.PlatformInstance;
 import java.io.BufferedWriter;
@@ -63,6 +61,7 @@ public class PlatformReplicationHelper {
   private static final String PROMETHEUS_FEDERATED_CONFIG_DIR_KEY = "yb.ha.prometheus_config_dir";
   private static final String NUM_BACKUP_RETENTION_KEY = "yb.ha.num_backup_retention";
   static final String PROMETHEUS_HOST_CONFIG_KEY = "yb.metrics.host";
+  static final String PROMETHEUS_PORT_CONFIG_KEY = "yb.metrics.port";
   static final String REPLICATION_FREQUENCY_KEY = "yb.ha.replication_frequency";
   static final String DB_USERNAME_CONFIG_KEY = "db.default.username";
   static final String DB_PASSWORD_CONFIG_KEY = "db.default.password";
@@ -195,7 +194,9 @@ public class PlatformReplicationHelper {
     try {
       String localPromHost =
           runtimeConfigFactory.globalRuntimeConf().getString(PROMETHEUS_HOST_CONFIG_KEY);
-      URL reloadEndpoint = new URL("http", localPromHost, 9090, "/-/reload");
+      int localPromPort =
+          runtimeConfigFactory.globalRuntimeConf().getInt(PROMETHEUS_PORT_CONFIG_KEY);
+      URL reloadEndpoint = new URL("http", localPromHost, localPromPort, "/-/reload");
 
       // Send the reload request.
       this.apiHelper.postRequest(reloadEndpoint.toString(), Json.newObject());
@@ -266,11 +267,14 @@ public class PlatformReplicationHelper {
 
       // Move the old file if it hasn't already been moved.
       if (configFile.exists() && !previousConfigFile.exists()) {
-        Util.moveFile(configFile.toPath(), previousConfigFile.toPath());
+        FileUtils.moveFile(configFile.toPath(), previousConfigFile.toPath());
       }
 
       // Write the filled in template to disk.
-      String federatedAddr = remoteAddr.getHost() + ":" + 9090;
+      // TBD: Need to fetch the Prometheus port from the remote PlatformInstance and use that here.
+      // For now we assume that the remote instance also uses the same port as the local one.
+      int remotePort = runtimeConfigFactory.globalRuntimeConf().getInt(PROMETHEUS_PORT_CONFIG_KEY);
+      String federatedAddr = remoteAddr.getHost() + ":" + remotePort;
       this.writeFederatedPrometheusConfig(federatedAddr, configFile);
 
       // Reload the config.
@@ -290,7 +294,7 @@ public class PlatformReplicationHelper {
         throw new RuntimeException("Previous prometheus config file could not be found");
       }
 
-      Util.moveFile(previousConfigFile.toPath(), configFile.toPath());
+      FileUtils.moveFile(previousConfigFile.toPath(), configFile.toPath());
       this.reloadPrometheusConfig();
     } catch (Exception e) {
       LOG.error("Error switching prometheus config to standalone", e);
@@ -352,7 +356,7 @@ public class PlatformReplicationHelper {
 
   Optional<File> getMostRecentBackup() {
     try {
-      return Optional.of(Util.listFiles(this.getBackupDir(), BACKUP_FILE_PATTERN).get(0));
+      return Optional.of(FileUtils.listFiles(this.getBackupDir(), BACKUP_FILE_PATTERN).get(0));
     } catch (Exception exception) {
       LOG.error("Could not locate recent backup", exception);
     }
@@ -362,7 +366,7 @@ public class PlatformReplicationHelper {
 
   void cleanupCreatedBackups() {
     try {
-      List<File> backups = Util.listFiles(this.getBackupDir(), BACKUP_FILE_PATTERN);
+      List<File> backups = FileUtils.listFiles(this.getBackupDir(), BACKUP_FILE_PATTERN);
       this.cleanupBackups(backups, 0);
     } catch (IOException ioException) {
       LOG.warn("Failed to list or delete backups");
@@ -395,7 +399,7 @@ public class PlatformReplicationHelper {
         return new ArrayList<>();
       }
 
-      return Util.listFiles(backupDir, PlatformReplicationHelper.BACKUP_FILE_PATTERN);
+      return FileUtils.listFiles(backupDir, PlatformReplicationHelper.BACKUP_FILE_PATTERN);
     } catch (Exception e) {
       LOG.error("Error listing backups for platform instance {}", leader.getHost(), e);
 

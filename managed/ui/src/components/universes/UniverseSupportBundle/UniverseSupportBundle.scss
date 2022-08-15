@@ -1,0 +1,106 @@
+/* Copyright (c) YugaByte, Inc. */
+.universe-support-bundle {
+
+  .modal-footer {
+    div {
+      display: flex;
+      justify-content: space-between;
+      width: 100%;
+      flex-direction: row-reverse;
+    }
+  }
+
+  .modal-content {
+    height: 652px;
+    width: 750px;
+
+    .subtitle-text {
+      font-style: normal;
+      font-weight: 400;
+      font-size: 13px;
+      line-height: 21px;
+      color: #4C4C4C;
+      margin-top: 22px;
+    }
+
+    .modal-body {
+      display: flex;
+      justify-content: center;
+      padding: 21px;
+
+      .universe-support-bundle-step-one {
+        display: flex;
+        margin-top: 105px;
+        flex-direction: column;
+        align-items: center;
+        width: 520px;
+        padding-bottom: 200px;
+
+        .first-step-icon {
+          color: #67666C;
+          opacity: 0.3;
+          font-size: 40px;
+          width: max-content;
+          margin-bottom: 27px;
+        }
+
+        .create-bundle-icon {
+          color: #000;
+        }
+
+        .subtitle-text {
+          text-align: center;
+        }
+      }
+      .universe-support-bundle-step-two {
+        .filters {
+          width: 100%;
+          display: flex;
+          justify-content: flex-end;
+          margin-bottom: 16px;
+          padding-right: 0;
+
+          i {
+            color: #000;
+          }
+
+          .caret {
+            border-top-color: #000;
+          }
+
+          .dropdown-text {
+            padding-right: 8px;
+          }
+        }
+
+        .selection-area {
+          border: 1px solid #E3E3E5;
+          padding: 16px;
+          border-radius: 8px;
+
+          .title {
+            font-style: normal;
+            font-weight: 600;
+            font-size: 13px;
+            line-height: 16px;
+            color: #4C4C4C;
+          }
+
+          .selection-option {
+            margin-top: 12px;
+
+            span {
+              font-style: normal;
+              font-weight: 400;
+              font-size: 13px;
+              line-height: 16px;
+              color: #333333;
+            }
+          }
+        }
+      }
+    }
+
+
+  }
+}

@@ -18,6 +18,7 @@
 #include <glog/logging.h>
 
 #include "yb/client/client.h"
+#include "yb/client/schema.h"
 #include "yb/client/table.h"
 
 #include "yb/common/entity_ids.h"
@@ -31,6 +32,7 @@
 
 #include "yb/docdb/cql_operation.h"
 #include "yb/docdb/doc_operation.h"
+#include "yb/docdb/doc_read_context.h"
 
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_util.h"
@@ -109,11 +111,12 @@ class BulkLoadTask : public Runnable {
                const YBTable *table, YBPartitionGenerator *partition_generator);
   void Run();
  private:
-  CHECKED_STATUS PopulateColumnValue(const string &column,
+  Status PopulateColumnValue(const string &column,
                                      const DataType data_type,
                                      QLExpressionPB *column_value);
-  CHECKED_STATUS InsertRow(const string &row,
+  Status InsertRow(const string &row,
                            const Schema &schema,
+                           uint32_t schema_version,
                            const IndexMap& index_map,
                            BulkLoadDocDBUtil *const db_fixture,
                            docdb::DocWriteBatch *const doc_write_batch,
@@ -136,15 +139,15 @@ class CompactionTask: public Runnable {
 
 class BulkLoad {
  public:
-  CHECKED_STATUS RunBulkLoad();
+  Status RunBulkLoad();
 
  private:
-  CHECKED_STATUS InitYBBulkLoad();
-  CHECKED_STATUS InitDBUtil(const TabletId &tablet_id);
-  CHECKED_STATUS FinishTabletProcessing(const TabletId &tablet_id,
+  Status InitYBBulkLoad();
+  Status InitDBUtil(const TabletId &tablet_id);
+  Status FinishTabletProcessing(const TabletId &tablet_id,
                                         vector<pair<TabletId, string>> rows);
-  CHECKED_STATUS RetryableSubmit(vector<pair<TabletId, string>> rows);
-  CHECKED_STATUS CompactFiles();
+  Status RetryableSubmit(vector<pair<TabletId, string>> rows);
+  Status CompactFiles();
 
   std::unique_ptr<YBClient> client_;
   shared_ptr<YBTable> table_;
@@ -188,8 +191,8 @@ void BulkLoadTask::Run() {
     const string &row = entry.second;
 
     // Populate the row.
-    CHECK_OK(InsertRow(row, table_->InternalSchema(), table_->index_map(), db_fixture_,
-                       &doc_write_batch, partition_generator_));
+    CHECK_OK(InsertRow(row, table_->InternalSchema(), table_->schema().version(),
+                       table_->index_map(), db_fixture_, &doc_write_batch, partition_generator_));
   }
 
   // Flush the batch.
@@ -251,6 +254,7 @@ Status BulkLoadTask::PopulateColumnValue(const string &column,
 
 Status BulkLoadTask::InsertRow(const string &row,
                                const Schema &schema,
+                               uint32_t schema_version,
                                const IndexMap& index_map,
                                BulkLoadDocDBUtil *const db_fixture,
                                docdb::DocWriteBatch *const doc_write_batch,
@@ -286,7 +290,7 @@ Status BulkLoadTask::InsertRow(const string &row,
       column_value = req.add_range_column_values();
     }
 
-    RETURN_NOT_OK(PopulateColumnValue(*it, schema.column(i).type_info()->type(), column_value));
+    RETURN_NOT_OK(PopulateColumnValue(*it, schema.column(i).type_info()->type, column_value));
     i++;  // Avoid this if we are skipping the column.
   }
 
@@ -301,7 +305,7 @@ Status BulkLoadTask::InsertRow(const string &row,
       // Use empty value for null.
       column_value->mutable_expr()->mutable_value();
     } else {
-      RETURN_NOT_OK(PopulateColumnValue(*it, schema.column(i).type_info()->type(),
+      RETURN_NOT_OK(PopulateColumnValue(*it, schema.column(i).type_info()->type,
                                         column_value->mutable_expr()));
     }
     i++;  // Avoid this if we are skipping the column.
@@ -320,13 +324,14 @@ Status BulkLoadTask::InsertRow(const string &row,
   // once we have secondary indexes we probably might need to ensure bulk load builds the indexes
   // as well.
   docdb::QLWriteOperation op(
-      req, std::shared_ptr<const Schema>(&schema, [](const Schema*){}),
+      req, std::make_shared<docdb::DocReadContext>(schema, schema_version),
       index_map, nullptr /* unique_index_key_schema */, TransactionOperationContext());
   RETURN_NOT_OK(op.Init(&resp));
-  RETURN_NOT_OK(op.Apply({
-      doc_write_batch,
-      CoarseTimePoint::max() /* deadline */,
-      ReadHybridTime::SingleTime(HybridTime::FromMicros(kYugaByteMicrosecondEpoch))}));
+  RETURN_NOT_OK(op.Apply(docdb::DocOperationApplyData{
+      .doc_write_batch = doc_write_batch,
+      .deadline = CoarseTimePoint::max(),
+      .read_time = ReadHybridTime::SingleTime(HybridTime::FromMicros(kYugaByteMicrosecondEpoch)),
+      .restart_read_ht = nullptr}));
   return Status::OK();
 }
 
@@ -363,7 +368,7 @@ Status BulkLoad::CompactFiles() {
   vector<string> sst_files;
   sst_files.reserve(live_files_metadata.size());
   for (const rocksdb::LiveFileMetaData& file : live_files_metadata) {
-    sst_files.push_back(file.name);
+    sst_files.push_back(file.Name());
   }
 
   // Batch the files for compaction.
@@ -482,7 +487,7 @@ Status BulkLoad::FinishTabletProcessing(const TabletId &tablet_id,
 }
 
 
-CHECKED_STATUS BulkLoad::InitDBUtil(const TabletId &tablet_id) {
+Status BulkLoad::InitDBUtil(const TabletId &tablet_id) {
   db_fixture_.reset(new BulkLoadDocDBUtil(tablet_id, FLAGS_base_dir,
                                           FLAGS_memtable_size_bytes,
                                           FLAGS_bulk_load_num_memtables,

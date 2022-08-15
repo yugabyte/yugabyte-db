@@ -37,6 +37,7 @@
 #include <list>
 #include <mutex>
 #include <set>
+#include <shared_mutex>
 #include <string>
 #include <thread>
 
@@ -77,8 +78,9 @@ using namespace std::literals;
 using namespace std::placeholders;
 using namespace yb::size_literals;
 
-using std::string;
+using std::shared_lock;
 using std::shared_ptr;
+using std::string;
 using strings::Substitute;
 
 DECLARE_int32(num_connections_to_server);
@@ -553,7 +555,7 @@ Messenger::Messenger(const MessengerBuilder &bld)
       scheduler_(&io_thread_pool_.io_service()),
       normal_thread_pool_(new rpc::ThreadPool(name_, bld.queue_limit_, bld.workers_limit_)),
       resolver_(new DnsResolver(&io_thread_pool_.io_service())),
-      rpc_metrics_(new RpcMetrics(bld.metric_entity_)),
+      rpc_metrics_(std::make_shared<RpcMetrics>(bld.metric_entity_)),
       num_connections_to_server_(bld.num_connections_to_server_) {
 #ifndef NDEBUG
   creation_stack_trace_.Collect(/* skip_frames */ 1);

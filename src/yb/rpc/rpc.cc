@@ -80,10 +80,7 @@ using strings::SubstituteAndAppend;
 
 namespace rpc {
 
-RpcCommand::RpcCommand() : trace_(new Trace) {
-  if (Trace::CurrentTrace()) {
-    Trace::CurrentTrace()->AddChildTrace(trace_.get());
-  }
+RpcCommand::RpcCommand() : trace_(Trace::NewTraceForParent(Trace::CurrentTrace())) {
 }
 
 RpcCommand::~RpcCommand() {}
@@ -394,32 +391,6 @@ Rpcs::Handle Rpcs::Prepare() {
 
 void Rpcs::RequestAbortAll() {
   DoRequestAbortAll(RequestShutdown::kFalse);
-}
-
-void Rpcs::Abort(std::initializer_list<Handle*> list) {
-  std::vector<RpcCommandPtr> to_abort;
-  {
-    std::lock_guard<std::mutex> lock(*mutex_);
-    for (auto& handle : list) {
-      if (*handle != calls_.end()) {
-        to_abort.push_back(**handle);
-      }
-    }
-  }
-  if (to_abort.empty()) {
-    return;
-  }
-  for (auto& rpc : to_abort) {
-    rpc->Abort();
-  }
-  {
-    std::unique_lock<std::mutex> lock(*mutex_);
-    for (auto& handle : list) {
-      while (*handle != calls_.end()) {
-        cond_.wait(lock);
-      }
-    }
-  }
 }
 
 } // namespace rpc

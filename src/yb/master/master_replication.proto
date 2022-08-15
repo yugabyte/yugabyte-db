@@ -17,6 +17,7 @@ package yb.master;
 option java_package = "org.yb.master";
 
 import "yb/common/common_net.proto";
+import "yb/common/common_types.proto";
 import "yb/common/wire_protocol.proto";
 import "yb/master/catalog_entity_info.proto";
 import "yb/master/master_types.proto";
@@ -109,12 +110,52 @@ message GetCDCDBStreamInfoResponsePB {
 }
 
 message UpdateCDCStreamRequestPB {
+  message StreamUpdateInfo {
+    optional bytes stream_id = 1;
+    optional SysCDCStreamEntryPB entry = 2;
+  }
+
   optional bytes stream_id = 1;
   optional SysCDCStreamEntryPB entry = 2;
+  // For batch update.
+  repeated StreamUpdateInfo streams = 3;
 }
 
 message UpdateCDCStreamResponsePB {
   optional MasterErrorPB error = 1;
+}
+
+message IsBootstrapRequiredRequestPB {
+  repeated string table_ids = 1;
+  repeated string stream_ids = 2;
+}
+
+message IsBootstrapRequiredResponsePB {
+  message TableResult {
+    optional bytes table_id = 1;
+    optional bool bootstrap_required = 2;
+  }
+  optional MasterErrorPB error = 1;
+  repeated TableResult results = 2;
+}
+
+message GetUDTypeMetadataRequestPB {
+  // The table namespace (if empty - uses default namespace).
+ optional NamespaceIdentifierPB namespace = 1;
+ optional bool pg_enum_info = 2 [default = false];
+}
+
+message PgEnumInfoPB {
+  // PG enum Oid.
+ required uint32 oid = 1;
+ // PG enum label.
+ required string label = 2;
+}
+
+message GetUDTypeMetadataResponsePB {
+ // The error, if an error occurred with this request.
+ optional MasterErrorPB error = 1;
+ repeated PgEnumInfoPB enums = 2;
 }
 
 message SetupUniverseReplicationRequestPB {
@@ -151,6 +192,8 @@ message AlterUniverseReplicationRequestPB {
 
   // Optional bootstrap ids for the add table operation.
   repeated string producer_bootstrap_ids_to_add = 6;
+
+  optional bool remove_table_ignore_errors = 8 [default = false];
 }
 
 message AlterUniverseReplicationResponsePB {
@@ -209,9 +252,37 @@ message UpdateConsumerOnProducerSplitResponsePB {
   optional MasterErrorPB error = 1;
 }
 
+message WaitForReplicationDrainRequestPB {
+  repeated bytes stream_ids = 1;
+  optional uint64 target_time = 2;
+}
+
+message WaitForReplicationDrainResponsePB {
+  // Metadata regarding replication status of a stream set up on a tablet.
+  message UndrainedStreamInfoPB {
+    required bytes stream_id = 1;
+    required bytes tablet_id = 2;
+  }
+
+  optional MasterErrorPB error = 1;
+  repeated UndrainedStreamInfoPB undrained_stream_info = 2;
+}
+
+message SetupNSUniverseReplicationRequestPB {
+  optional string producer_id = 1;
+  repeated HostPortPB producer_master_addresses = 2;
+  optional string producer_ns_name = 3;
+  optional YQLDatabase producer_ns_type = 4;
+}
+
+message SetupNSUniverseReplicationResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
 service MasterReplication {
   option (yb.rpc.custom_service_name) = "yb.master.MasterService";
 
+  // Tablet-level Replication.
   rpc ValidateReplicationInfo(ValidateReplicationInfoRequestPB)
       returns (ValidateReplicationInfoResponsePB);
 
@@ -221,9 +292,13 @@ service MasterReplication {
   rpc ListCDCStreams(ListCDCStreamsRequestPB) returns (ListCDCStreamsResponsePB);
   rpc GetCDCStream(GetCDCStreamRequestPB) returns (GetCDCStreamResponsePB);
   rpc GetCDCDBStreamInfo(GetCDCDBStreamInfoRequestPB) returns (GetCDCDBStreamInfoResponsePB);
-  rpc UpdateCDCStream (UpdateCDCStreamRequestPB)
-      returns (UpdateCDCStreamResponsePB);
+  rpc UpdateCDCStream (UpdateCDCStreamRequestPB) returns (UpdateCDCStreamResponsePB);
+  rpc IsBootstrapRequired (IsBootstrapRequiredRequestPB) returns (IsBootstrapRequiredResponsePB);
+  rpc GetUDTypeMetadata(GetUDTypeMetadataRequestPB) returns (GetUDTypeMetadataResponsePB);
+  rpc WaitForReplicationDrain (WaitForReplicationDrainRequestPB)
+      returns (WaitForReplicationDrainResponsePB);
 
+  // Cluster-level Replication.
   rpc SetupUniverseReplication(SetupUniverseReplicationRequestPB)
       returns (SetupUniverseReplicationResponsePB);
   rpc DeleteUniverseReplication(DeleteUniverseReplicationRequestPB)
@@ -236,6 +311,9 @@ service MasterReplication {
       returns (GetUniverseReplicationResponsePB);
   rpc IsSetupUniverseReplicationDone(IsSetupUniverseReplicationDoneRequestPB)
       returns (IsSetupUniverseReplicationDoneResponsePB);
+  rpc SetupNSUniverseReplication(SetupNSUniverseReplicationRequestPB)
+      returns (SetupNSUniverseReplicationResponsePB);
+
   rpc UpdateConsumerOnProducerSplit(UpdateConsumerOnProducerSplitRequestPB)
       returns (UpdateConsumerOnProducerSplitResponsePB);
 

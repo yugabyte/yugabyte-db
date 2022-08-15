@@ -10,13 +10,12 @@ menu:
     identifier: host-based-authentication
     parent: authentication
     weight: 733
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/secure/authentication/host-based-authentication" class="nav-link active">
+    <a href="/preview/secure/authentication/host-based-authentication" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
@@ -160,11 +159,11 @@ Specify that for a connecting user, the password supplied must match the passwor
 
 ##### ident
 
-Obtain the operating system user name of the client by contacting the ident server on the client and check if it matches the requested database user name. Ident authentication can only be used on TCP/IP connections. When specified for local connections, peer authentication will be used instead. 
+Obtain the operating system user name of the client by contacting the ident server on the client and check if it matches the requested database user name. Ident authentication can only be used on TCP/IP connections. When specified for local connections, peer authentication will be used instead.
 
 ##### peer
 
-Obtain the client's operating system user name from the operating system and check if it matches the requested database user name. This is only available for local connections. 
+Obtain the client's operating system user name from the operating system and check if it matches the requested database user name. This is only available for local connections.
 
 #### *auth-options*
 

@@ -17,6 +17,7 @@
 
 #include <functional>
 #include <unordered_map>
+#include <string>
 
 #include "yb/common/ql_type.h"
 

@@ -6,6 +6,15 @@
 #
 # https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 
+- set_fact:
+    s3cmd_cur_version: "{{ util_cur_version.stdout | regex_search('s3cmd version (.+)', '\\1')\
+      | first }}"
+  when: util_exists.rc == 0
+
+- debug:
+    msg: "s3cmd current version {{ s3cmd_cur_version }} new version {{ s3cmd_version }}"
+  when: util_exists.rc == 0
+
 - block:
     - set_fact:
         setuptools_package_path: "/usr/local/setuptools-44.1.1"
@@ -21,6 +30,7 @@
     - set_fact:
         python_interpreter: "python2"
 
+    # in case of changed dependencies - create purging tasks for reprovisioning
     - name: s3cmd | Copy and unarchive setuptools from {{ package_path }}
       unarchive:
         src: "{{ package_path }}/setuptools-44.1.1.tar.gz"
@@ -87,34 +97,34 @@
       ansible.builtin.package:
         name: python3-distutils
         state: present
-      when: py_version.stdout is match("Python 3.") and ansible_architecture != 'aarch64'
+      when: py_version.stdout is match("Python 3.") and ansible_os_family == "Debian"
 
     - name: s3cmd | Install setuptools
-      command: "chdir={{ setuptools_package_path }}
-                      {{ python_interpreter }} setup.py install {{ prefix }}"
+      raw: "cd {{ setuptools_package_path }} && umask 0022 && {{ python_interpreter }} \
+             setup.py install {{ prefix }}"
 
     - name: s3cmd | Install python magic
-      command: "chdir={{ python_magic_package_path }}
-                      {{ python_interpreter }} setup.py install {{ prefix }}"
+      raw: "cd {{ python_magic_package_path }} && umask 0022 && {{ python_interpreter }} \
+             setup.py install {{ prefix }}"
 
     - name: s3cmd | Install setuptools_scm
-      command: "chdir={{ setuptools_scm_package_path }}
-                      {{ python_interpreter }} setup.py install {{ prefix }}"
+      raw: "cd {{ setuptools_scm_package_path }} && umask 0022 && {{ python_interpreter }} \
+             setup.py install {{ prefix }}"
 
     - name: s3cmd | Build dateutil
-      command: "chdir={{ python_dateutil_package_path }}
-                      {{ python_interpreter }} setup.py build"
+      raw: "cd {{ python_dateutil_package_path }} && umask 0022 && {{ python_interpreter }} \
+             setup.py build"
 
     - name: s3cmd | Install dateutil
-      command: "chdir={{ python_dateutil_package_path }}
-                      {{ python_interpreter }} setup.py install {{ prefix }}"
+      raw: "cd {{ python_dateutil_package_path }} && umask 0022 && {{ python_interpreter }} \
+             setup.py install {{ prefix }}"
       environment:
         PYTHONPATH: "{{ setuptools_package_path }}:{{ python_magic_package_path }}:\
                       {{ setuptools_scm_package_path }}"
 
     - name: s3cmd | Install s3cmd
-      command: "chdir={{ s3cmd_package_path }}
-                      {{ python_interpreter }} setup.py install {{ prefix }}"
+      raw: "cd {{ s3cmd_package_path }} && umask 0022 && {{ python_interpreter }} \
+             setup.py install {{ prefix }}"
       environment:
         PYTHONPATH: "{{ setuptools_package_path }}:{{ python_magic_package_path }}:\
                      {{ setuptools_scm_package_path }}:{{ python_dateutil_package_path }}"
@@ -127,3 +137,4 @@
         force: yes
       # We don't want to symlink on db hosts on which python3 is used rather than python2.
       when: py_version.stdout is match("Python 2.")
+  when: util_exists.rc != 0 or s3cmd_version != s3cmd_cur_version

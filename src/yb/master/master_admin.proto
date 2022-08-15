@@ -93,6 +93,7 @@ message SplitTabletResponsePB {
 
 message CreateTransactionStatusTableRequestPB {
   required string table_name = 1;
+  optional ReplicationInfoPB replication_info = 2;
 }
 
 message CreateTransactionStatusTableResponsePB {
@@ -107,12 +108,37 @@ message DeleteNotServingTabletResponsePB {
   optional MasterErrorPB error = 1;
 }
 
+message DisableTabletSplittingRequestPB {
+  optional uint64 disable_duration_ms = 1;
+  optional string feature_name = 2;
+}
+
+message DisableTabletSplittingResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+message IsTabletSplittingCompleteRequestPB {
+  optional bool wait_for_parent_deletion = 1;
+}
+
+message IsTabletSplittingCompleteResponsePB {
+  optional MasterErrorPB error = 1;
+  optional bool is_tablet_splitting_complete = 2;
+}
+
 message DdlLogRequestPB {
 }
 
 message DdlLogResponsePB {
   optional MasterErrorPB error = 1;
   repeated DdlLogEntryPB entries = 2;
+}
+
+message CheckIfPitrActiveRequestPB {}
+
+message CheckIfPitrActiveResponsePB {
+  optional MasterErrorPB error = 1;
+  optional bool is_pitr_active = 2;
 }
 
 service MasterAdmin {
@@ -132,5 +158,13 @@ service MasterAdmin {
   rpc DeleteNotServingTablet(DeleteNotServingTabletRequestPB)
       returns (DeleteNotServingTabletResponsePB);
 
+  rpc DisableTabletSplitting(DisableTabletSplittingRequestPB)
+      returns (DisableTabletSplittingResponsePB);
+  rpc IsTabletSplittingComplete(IsTabletSplittingCompleteRequestPB)
+      returns (IsTabletSplittingCompleteResponsePB);
+
   rpc DdlLog(DdlLogRequestPB) returns (DdlLogResponsePB);
+
+  rpc CheckIfPitrActive(CheckIfPitrActiveRequestPB)
+      returns (CheckIfPitrActiveResponsePB);
 }

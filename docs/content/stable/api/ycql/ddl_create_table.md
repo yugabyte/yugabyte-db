@@ -7,8 +7,7 @@ menu:
   stable:
     parent: api-cassandra
     weight: 1240
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis
@@ -265,8 +264,8 @@ ycqlsh:example> CREATE TABLE tracking (id int PRIMARY KEY) WITH tablets = 10 AND
 ## See also
 
 - [`ALTER TABLE`](../ddl_alter_table)
-- [`DELETE`](../dml_delete)
+- [`DELETE`](../dml_delete/)
 - [`DROP TABLE`](../ddl_drop_table)
 - [`INSERT`](../dml_insert)
-- [`SELECT`](../dml_select)
-- [`UPDATE`](../dml_update)
+- [`SELECT`](../dml_select/)
+- [`UPDATE`](../dml_update/)

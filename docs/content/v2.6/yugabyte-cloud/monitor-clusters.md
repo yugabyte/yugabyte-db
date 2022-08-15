@@ -4,14 +4,13 @@ linkTitle: Monitor clusters
 description: Monitor clusters
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
-beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
+beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   v2.6:
     identifier: monitor-clusters
     parent: yugabyte-cloud
     weight: 642
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Use the Yugabyte Cloud Console to monitor your clusters in Yugabyte Cloud. The console displays

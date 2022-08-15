@@ -514,15 +514,23 @@ message StartRemoteBootstrapRequestPB {
   optional bytes split_parent_tablet_id = 8;
 
   // Identification for the host we are bootstrapping from.
-  // TODO: Consider renaming these to bootstrap_source_*.
-  required bytes bootstrap_peer_uuid = 2;
-  repeated HostPortPB source_private_addr = 3;
-  repeated HostPortPB source_broadcast_addr = 6;
-  optional CloudInfoPB source_cloud_info = 7;
+  required bytes bootstrap_source_peer_uuid = 2;
+  repeated HostPortPB bootstrap_source_private_addr = 3;
+  repeated HostPortPB bootstrap_source_broadcast_addr = 6;
+  optional CloudInfoPB bootstrap_source_cloud_info = 7;
 
   // The caller's term. In the case that the target of this request has a
   // TOMBSTONED replica with a term higher than this one, the request will fail.
   optional int64 caller_term = 4 [ default = -1 ];
+
+  // When the remote bootstrap request is served by a closest follower to the
+  // new peer, the new peer needs to update the leader on progessing the log
+  // anchor.
+  optional bool is_served_by_tablet_leader = 9 [ default = true ];
+  optional bytes tablet_leader_peer_uuid = 10;
+  repeated HostPortPB tablet_leader_private_addr = 11;
+  repeated HostPortPB tablet_leader_broadcast_addr = 12;
+  optional CloudInfoPB tablet_leader_cloud_info = 13;
 }
 
 message StartRemoteBootstrapResponsePB {

@@ -16,8 +16,11 @@ import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.common.NodeActionType;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import java.util.Arrays;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
+import org.apache.commons.lang3.StringUtils;
 
 /** Represents all the details of a cloud node that are of interest. */
 @JsonIgnoreProperties(
@@ -54,6 +57,13 @@ public class NodeDetails {
   @ApiModelProperty(value = "Machine image name")
   public String machineImage;
 
+  // Indicates that disks in fstab are mounted using using uuid (not as by path).
+  @ApiModelProperty(value = "Disks are mounted by uuid")
+  public boolean disksAreMountedByUUID;
+
+  @ApiModelProperty(value = "True if this a custom YB AMI")
+  public boolean ybPrebuiltAmi;
+
   // Possible states in which this node can exist.
   public enum NodeState {
     // Set when a new node needs to be added into a Universe and has not yet been created.
@@ -65,6 +75,8 @@ public class NodeDetails {
     // Set when a new node is provisioned and configured but before it is added into
     // the existing cluster.
     ToJoinCluster(REMOVE),
+    // Set when reprovision node.
+    Reprovisioning(),
     // Set after the node (without any configuration) is created using the IaaS provider at the
     // end of the provision step before it is set up and configured.
     Provisioned(DELETE),
@@ -76,25 +88,32 @@ public class NodeDetails {
     UpdateGFlags(),
     // Set after all the services (master, tserver, etc) on a node are successfully running.
     Live(STOP, REMOVE, QUERY),
-
     // Set when node is about to enter the stopped state.
-    Stopping(),
+    // The actions in Live state should apply because of the transition from Live to Stopping.
+    Stopping(STOP, REMOVE),
     // Set when node is about to be set to live state.
-    Starting(),
+    // The actions in Stopped state should apply because of the transition from Stopped to Starting.
+    Starting(START, REMOVE),
     // Set when node has been stopped and no longer has a master or a tserver running.
     Stopped(START, REMOVE, QUERY),
-    // Set when node is unreachable but has not been Removed from the universe.
+    // Nodes are never set to Unreachable, this is just one of the possible return values in a
+    // status query.
     Unreachable(),
+    // Nodes are never set to MetricsUnavailable, this is just one of the possible return values in
+    // a status query
+    MetricsUnavailable(),
     // Set when a node is marked for removal. Note that we will wait to get all its data out.
     ToBeRemoved(REMOVE),
-    // Set just before sending the request to the IaaS provider to terminate this node.
-    Removing(),
-    // Set after the node has been removed.
+    // Set when a node is about to be removed (unjoined) from the cluster.
+    Removing(REMOVE),
+    // Set after the node has been removed (unjoined) from the cluster.
     Removed(ADD, RELEASE),
     // Set when node is about to enter the Live state from Removed/Decommissioned state.
-    Adding(DELETE),
+    Adding(DELETE, RELEASE),
     // Set when a stopped/removed node is about to enter the Decommissioned state.
-    BeingDecommissioned(),
+    // The actions in Removed state should apply because of the transition from Removed to
+    // BeingDecommissioned.
+    BeingDecommissioned(ADD, RELEASE),
     // After a stopped/removed node is returned back to the IaaS.
     Decommissioned(ADD, DELETE),
     // Set when the cert is being updated.
@@ -104,7 +123,15 @@ public class NodeDetails {
     // Set when the node is being resized to a new intended type
     Resizing(),
     // Set when the node is being upgraded to systemd from cron
-    SystemdUpgrade();
+    SystemdUpgrade(),
+    // Set just before sending the request to the IaaS provider to terminate this node.
+    // In this state, the node is no longer a part of any cluster.
+    Terminating(RELEASE, DELETE),
+    // Set after the node has been terminated in the IaaS provider.
+    // If the node is still hanging around due to failure, it can be deleted.
+    Terminated(DELETE),
+    // Set when the node is being rebooted
+    Rebooting();
 
     private final NodeActionType[] allowedActions;
 
@@ -114,6 +141,12 @@ public class NodeDetails {
 
     public ImmutableSet<NodeActionType> allowedActions() {
       return ImmutableSet.copyOf(allowedActions);
+    }
+
+    public static Set<NodeState> allowedStatesForAction(NodeActionType actionType) {
+      return Arrays.stream(NodeState.values())
+          .filter(state -> state.allowedActions().contains(actionType))
+          .collect(Collectors.toSet());
     }
   }
 
@@ -153,6 +186,12 @@ public class NodeDetails {
 
   @ApiModelProperty(value = "Tablet server RPC port")
   public int tserverRpcPort = 9100;
+
+  @ApiModelProperty(value = "Yb controller HTTP port")
+  public int ybControllerHttpPort = 14000;
+
+  @ApiModelProperty(value = "Yb controller RPC port")
+  public int ybControllerRpcPort = 18018;
 
   // True if this node is a Redis server, along with port info.
   @ApiModelProperty(value = "True if this node is a REDIS server")
@@ -199,7 +238,8 @@ public class NodeDetails {
           NodeState.Stopped,
           NodeState.Decommissioned,
           NodeState.Resizing,
-          NodeState.SystemdUpgrade);
+          NodeState.SystemdUpgrade,
+          NodeState.Terminated);
 
   @Override
   public NodeDetails clone() {
@@ -217,13 +257,14 @@ public class NodeDetails {
     clone.nodeUuid = this.nodeUuid;
     clone.placementUuid = this.placementUuid;
     clone.machineImage = this.machineImage;
+    clone.ybPrebuiltAmi = this.ybPrebuiltAmi;
     return clone;
   }
 
   @Override
   public String toString() {
     StringBuilder sb = new StringBuilder();
-    sb.append("name: ")
+    sb.append("{name: ")
         .append(nodeName)
         .append(", ")
         .append(cloudInfo.toString())
@@ -236,13 +277,35 @@ public class NodeDetails {
         .append(", azUuid: ")
         .append(azUuid)
         .append(", placementUuid: ")
-        .append(placementUuid);
+        .append(placementUuid)
+        .append("}");
     return sb.toString();
+  }
+
+  @JsonIgnore
+  public boolean isActionAllowedOnState(NodeActionType actionType) {
+    return state == null ? false : state.allowedActions().contains(actionType);
+  }
+
+  /** Validates if the action is allowed on the state for the node. */
+  @JsonIgnore
+  public void validateActionOnState(NodeActionType actionType) {
+    if (!isActionAllowedOnState(actionType)) {
+      String msg =
+          String.format(
+              "Node %s is not in %s, but is in one of %s, so action %s is not allowed.",
+              nodeName,
+              state,
+              StringUtils.join(NodeState.allowedStatesForAction(actionType), ","),
+              actionType);
+      throw new RuntimeException(msg);
+    }
   }
 
   @JsonIgnore
   public boolean isActive() {
     return !(state == NodeState.Unreachable
+        || state == NodeState.MetricsUnavailable
         || state == NodeState.ToBeRemoved
         || state == NodeState.Removing
         || state == NodeState.Removed
@@ -251,7 +314,9 @@ public class NodeDetails {
         || state == NodeState.Adding
         || state == NodeState.BeingDecommissioned
         || state == NodeState.Decommissioned
-        || state == NodeState.SystemdUpgrade);
+        || state == NodeState.SystemdUpgrade
+        || state == NodeState.Terminating
+        || state == NodeState.Terminated);
   }
 
   @JsonIgnore
@@ -271,15 +336,10 @@ public class NodeDetails {
     return IN_TRANSIT_STATES.contains(state);
   }
 
+  // This is invoked to see if the node can be deleted from the universe JSON.
   @JsonIgnore
   public boolean isRemovable() {
-    return state == NodeState.ToBeAdded
-        || state == NodeState.Adding
-        || state == NodeState.InstanceCreated
-        || state == NodeState.Provisioned
-        || state == NodeState.ServerSetup
-        || state == NodeState.SoftwareInstalled
-        || state == NodeState.Decommissioned;
+    return isActionAllowedOnState(NodeActionType.DELETE);
   }
 
   @JsonIgnore
@@ -309,7 +369,7 @@ public class NodeDetails {
     return nodeName;
   }
 
-  public UUID getNodeUUID() {
+  public UUID getNodeUuid() {
     return nodeUuid;
   }
 }

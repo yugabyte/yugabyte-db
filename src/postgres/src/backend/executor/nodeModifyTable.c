@@ -1139,7 +1139,7 @@ ExecCrossPartitionUpdate(ModifyTableState *mtstate,
 	bool		tuple_deleted;
 	TupleTableSlot *epqslot = NULL;
 	bool    prev_yb_is_single_row_modify_txn =
-		estate->es_yb_is_single_row_modify_txn;
+		estate->yb_es_is_single_row_modify_txn;
 
 	*inserted_tuple = NULL;
 	*retry_slot = NULL;
@@ -1245,7 +1245,7 @@ ExecCrossPartitionUpdate(ModifyTableState *mtstate,
 
 	/* Revert ExecPrepareTupleRouting's node change. */
 	estate->es_result_relation_info = resultRelInfo;
-	estate->es_yb_is_single_row_modify_txn = prev_yb_is_single_row_modify_txn;
+	estate->yb_es_is_single_row_modify_txn = prev_yb_is_single_row_modify_txn;
 	if (mtstate->mt_transition_capture)
 	{
 		mtstate->mt_transition_capture->tcs_original_insert_tuple = NULL;
@@ -2246,9 +2246,9 @@ ExecPrepareTupleRouting(ModifyTableState *mtstate,
 	 * As such, we should reevaluate single-row transaction constraints after
 	 * we determine the concrete partition.
 	 */
-	if (estate->es_yb_is_single_row_modify_txn)
+	if (estate->yb_es_is_single_row_modify_txn)
 	{
-		estate->es_yb_is_single_row_modify_txn = YBCIsSingleRowTxnCapableRel(partrel);
+		estate->yb_es_is_single_row_modify_txn = YBCIsSingleRowTxnCapableRel(partrel);
 	}
 
 	return slot;
@@ -2645,7 +2645,7 @@ ExecModifyTable(PlanState *pstate)
 				else
 				{
 					bool prev_yb_is_single_row_modify_txn =
-							estate->es_yb_is_single_row_modify_txn;
+							estate->yb_es_is_single_row_modify_txn;
 
 					/* Prepare for tuple routing. */
 					slot = ExecPrepareTupleRouting(node, estate, proute,
@@ -2656,7 +2656,7 @@ ExecModifyTable(PlanState *pstate)
 
 					/* Revert ExecPrepareTupleRouting's state change. */
 					estate->es_result_relation_info = resultRelInfo;
-					estate->es_yb_is_single_row_modify_txn = prev_yb_is_single_row_modify_txn;
+					estate->yb_es_is_single_row_modify_txn = prev_yb_is_single_row_modify_txn;
 				}
 				break;
 			case CMD_UPDATE:

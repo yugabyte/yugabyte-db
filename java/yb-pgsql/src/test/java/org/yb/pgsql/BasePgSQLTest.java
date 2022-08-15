@@ -12,48 +12,42 @@
 //
 package org.yb.pgsql;
 
-import static com.google.common.base.Preconditions.*;
-import static org.yb.AssertionWrappers.*;
+import static com.google.common.base.Preconditions.checkArgument;
+import static com.google.common.base.Preconditions.checkNotNull;
+import static org.yb.AssertionWrappers.assertEquals;
+import static org.yb.AssertionWrappers.assertFalse;
+import static org.yb.AssertionWrappers.assertLessThan;
+import static org.yb.AssertionWrappers.assertNotEquals;
+import static org.yb.AssertionWrappers.assertTrue;
+import static org.yb.AssertionWrappers.fail;
 import static org.yb.util.BuildTypeUtil.isASAN;
 import static org.yb.util.BuildTypeUtil.isTSAN;
 
-import com.google.common.collect.ImmutableMap;
-import com.google.common.net.HostAndPort;
-import com.google.gson.JsonArray;
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
-
-import org.apache.commons.io.IOUtils;
-import org.apache.commons.lang3.StringUtils;
-import org.junit.After;
-import org.junit.AfterClass;
-import org.junit.Before;
-import com.yugabyte.core.TransactionState;
-import com.yugabyte.jdbc.PgArray;
-import com.yugabyte.jdbc.PgConnection;
-import com.yugabyte.util.PGobject;
-import com.yugabyte.util.PSQLException;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.yb.client.IsInitDbDoneResponse;
-import org.yb.client.TestUtils;
-import org.yb.minicluster.*;
-import org.yb.minicluster.Metrics.YSQLStat;
-import org.yb.util.EnvAndSysPropertyUtil;
-import org.yb.util.MiscUtil.ThrowingCallable;
-import org.yb.util.BuildTypeUtil;
-import org.yb.util.YBBackupUtil;
-import org.yb.util.YBBackupException;
-import org.yb.master.MasterDdlOuterClass;
-
+import java.io.ByteArrayOutputStream;
+import java.io.PrintStream;
 import java.io.File;
 import java.net.InetSocketAddress;
 import java.net.URL;
 import java.net.URLConnection;
 import java.nio.charset.StandardCharsets;
-import java.sql.*;
-import java.util.*;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.SQLWarning;
+import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Properties;
+import java.util.Scanner;
+import java.util.Set;
+import java.util.TreeMap;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
@@ -61,8 +55,53 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import org.apache.commons.io.IOUtils;
+import org.apache.commons.lang3.StringUtils;
+import org.junit.After;
+import org.junit.AfterClass;
+import org.junit.Before;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.yb.client.IsInitDbDoneResponse;
+import org.yb.client.TestUtils;
+import org.yb.master.MasterDdlOuterClass;
+import org.yb.minicluster.BaseMiniClusterTest;
+import org.yb.minicluster.Metrics;
+import org.yb.minicluster.Metrics.YSQLStat;
+import org.yb.minicluster.MiniYBCluster;
+import org.yb.minicluster.MiniYBClusterBuilder;
+import org.yb.minicluster.MiniYBDaemon;
+import org.yb.minicluster.RocksDBMetrics;
+import org.yb.minicluster.YsqlSnapshotVersion;
+import org.yb.util.BuildTypeUtil;
+import org.yb.util.EnvAndSysPropertyUtil;
+import org.yb.util.MiscUtil.ThrowingCallable;
+import org.yb.util.YBBackupException;
+import org.yb.util.YBBackupUtil;
+
+import com.google.common.collect.ImmutableMap;
+import com.google.common.net.HostAndPort;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+import com.yugabyte.core.TransactionState;
+import com.yugabyte.jdbc.PgArray;
+import com.yugabyte.jdbc.PgConnection;
+import com.yugabyte.util.PGobject;
+import com.yugabyte.util.PSQLException;
+
 public class BasePgSQLTest extends BaseMiniClusterTest {
   private static final Logger LOG = LoggerFactory.getLogger(BasePgSQLTest.class);
+
+  /** Corresponds to the original value of YB_MIN_UNUSED_OID. */
+  protected final long FIRST_YB_OID = 8000;
+
+  /** Matches Postgres' FirstBootstrapObjectId */
+  protected final long FIRST_BOOTSTRAP_OID = 10000;
+
+  /** Matches Postgres' FirstNormalObjectId */
+  protected final long FIRST_NORMAL_OID = 16384;
 
   // Postgres settings.
   protected static final String DEFAULT_PG_DATABASE = "yugabyte";
@@ -124,8 +163,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
         .setDatabase("yugabyte")
         .setEnvVars(getPgRegressEnvVars())
         .getProcessBuilder();
-    pgRegress.start(procBuilder);
-    pgRegress.stop();
+    pgRegress.run(procBuilder);
   }
 
   public void runPgRegressTest(File inputDir, String schedule) throws Exception {
@@ -212,6 +250,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     flagMap.put("ysql_beta_features", "true");
     flagMap.put("ysql_sleep_before_retry_on_txn_conflict", "false");
     flagMap.put("ysql_max_write_restart_attempts", "2");
+    flagMap.put("ysql_enable_reindex", "true");
 
     return flagMap;
   }
@@ -419,21 +458,41 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     try (Statement stmt = connection.createStatement()) {
       for (int i = 0; i < 2; i++) {
         try {
-        List<String> roles = getRowList(stmt, "SELECT rolname FROM pg_roles"
-            + " WHERE rolname <> 'postgres'"
-            + " AND rolname NOT LIKE 'pg_%'"
-            + " AND rolname NOT LIKE 'yb_%'").stream()
-                .map(r -> r.getString(0))
-                .collect(Collectors.toList());
+          List<String> roles = getRowList(stmt, "SELECT rolname FROM pg_roles"
+              + " WHERE rolname <> 'postgres'"
+              + " AND rolname NOT LIKE 'pg_%'"
+              + " AND rolname NOT LIKE 'yb_%'").stream()
+                  .map(r -> r.getString(0))
+                  .collect(Collectors.toList());
 
-        for (String role : roles) {
-          boolean isPersistent = persistentUsers.contains(role);
-          LOG.info("Cleaning up role {} (persistent? {})", role, isPersistent);
-          stmt.execute("DROP OWNED BY " + role + " CASCADE");
-          if (!isPersistent) {
-            stmt.execute("DROP ROLE " + role);
+          for (String role : roles) {
+            boolean isPersistent = persistentUsers.contains(role);
+            LOG.info("Cleaning up role {} (persistent? {})", role, isPersistent);
+            stmt.execute("DROP OWNED BY " + role + " CASCADE");
           }
-        }
+
+          // Documentation for DROP OWNED BY explicitly states that databases and tablespaces
+          // are not removed, so we do this ourself.
+          // Ref: https://www.postgresql.org/docs/11/sql-drop-owned.html
+          List<String> tablespaces = getRowList(stmt, "SELECT spcname FROM pg_tablespace"
+              + " WHERE spcowner NOT IN ("
+              + "   SELECT oid FROM pg_roles "
+              + "   WHERE rolname = 'postgres' OR rolname LIKE 'pg_%' OR rolname LIKE 'yb_%'"
+              + ")").stream()
+                  .map(r -> r.getString(0))
+                  .collect(Collectors.toList());
+
+          for (String tablespace : tablespaces) {
+            stmt.execute("DROP TABLESPACE " + tablespace);
+          }
+
+          for (String role : roles) {
+            boolean isPersistent = persistentUsers.contains(role);
+            if (!isPersistent) {
+              LOG.info("Dropping role {}", role);
+              stmt.execute("DROP ROLE " + role);
+            }
+          }
         } catch (Exception e) {
           if (e.toString().contains("Catalog Version Mismatch: A DDL occurred while processing")) {
             continue;
@@ -686,6 +745,11 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     Row row = Row.fromResultSet(rs);
     assertFalse("Result set has more than one row", rs.next());
     return row.getString(0);
+  }
+
+  protected int getNumTableColumns(Statement stmt, String tableName) throws Exception {
+    return getSingleRow(stmt, "SELECT relnatts FROM pg_class WHERE relname = '" +
+                                     tableName + "'").getInt(0);
   }
 
   protected long getMetricCounter(String metricName) throws Exception {
@@ -943,6 +1007,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       }
       // Pre-initialize stuff while connection is still available
       for (Object el : elems) {
+        // TODO(alex): Store as List to begin with?
         if (el instanceof PgArray)
           ((PgArray) el).getArray();
       }
@@ -1205,7 +1270,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return rows;
   }
 
-  protected Row getSingleRow(ResultSet rs) throws SQLException {
+  protected static Row getSingleRow(ResultSet rs) throws SQLException {
     assertTrue("Result set has no rows", rs.next());
     Row row = Row.fromResultSet(rs);
     assertFalse("Result set has more than one row", rs.next());
@@ -1243,7 +1308,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     }
   }
 
-  protected Row getSingleRow(Statement stmt, String query) throws SQLException {
+  protected static Row getSingleRow(Statement stmt, String query) throws SQLException {
     try (ResultSet rs = stmt.executeQuery(query)) {
       return getSingleRow(rs);
     }
@@ -1276,7 +1341,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       unexpected.removeAll(expected);
       List<T> missing = new ArrayList<>(expected);
       missing.removeAll(actual);
-      fail(errorPrefix + "Collection length mismatch: expected<" + expected.size()
+      fail(errorPrefix + " Collection length mismatch: expected<" + expected.size()
           + "> but was:<" + actual.size() + ">"
           + "\nUnexpected rows: " + unexpected
           + "\nMissing rows:    " + missing);
@@ -1411,6 +1476,12 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   protected boolean isIndexOnlyScan(Statement stmt, String query, String index)
       throws SQLException {
     return doesQueryPlanContainsSubstring(stmt, query, "Index Only Scan using " + index);
+  }
+
+  /** Whether or not this select query uses Seq Scan. */
+  protected boolean isSeqScan(Statement stmt, String query)
+      throws SQLException {
+    return doesQueryPlanContainsSubstring(stmt, query, "Seq Scan on");
   }
 
   /**
@@ -1653,6 +1724,42 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
                              warning.getMessage(), warningSubstring),
                StringUtils.containsIgnoreCase(warning.getMessage(), warningSubstring));
     assertEquals("Expected (at most) one warning", null, warning.getNextWarning());
+  }
+
+  /**
+   * Verify that a (write) query succeeds with multiple lines of warnings.
+   * @param statement The statement used to execute the query.
+   * @param query The query string.
+   * @param warningSubstring A (case-insensitive) list of substrings of expected warning messages.
+   */
+  protected void verifyStatementWarnings(Statement statement,
+                                        String query,
+                                        List<String> warningSubstrings) throws SQLException {
+    int warningLineIndex = 0;
+    int expectedWarningCount = warningSubstrings.size();
+    statement.execute(query);
+    SQLWarning warning = statement.getWarnings();
+
+    // make sure number of warnings match expected number of warnings
+    int warningCount = 0;
+    while (warning != null) {
+      warningCount++;
+      warning = warning.getNextWarning();
+    }
+    assertEquals("Expected " + expectedWarningCount + " warnings.", expectedWarningCount,
+      warningCount);
+
+    // check each warning matches expected list of warnings
+    warning = statement.getWarnings();
+    while (warning != null) {
+      assertTrue(String.format("Unexpected Warning Message. Got: '%s', expected to contain : '%s",
+                            warning.getMessage(), warningSubstrings.get(warningLineIndex)),
+                 StringUtils.containsIgnoreCase(warning.getMessage(),
+                            warningSubstrings.get(warningLineIndex)));
+      warning = warning.getNextWarning();
+      warningLineIndex++;
+    }
+
   }
 
   protected String getSimpleTableCreationStatement(
@@ -1932,6 +2039,26 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       }
       return sb.toString().trim();
     }
+  }
+
+  protected String [] getDocdbRequests(Statement stmt, String query) throws Exception {
+    // Executing query once just in case if master catalog cache is not refreshed
+    stmt.execute(query);
+
+    final ByteArrayOutputStream docDbReq = new ByteArrayOutputStream();
+    final PrintStream origOut = System.out; // saving original print console to restore it
+    origOut.flush();
+    System.setOut(new PrintStream(docDbReq, true/*autoFlush*/));
+    stmt.execute("SET yb_debug_log_docdb_requests = true");
+    stmt.execute(query);
+    stmt.execute("SET yb_debug_log_docdb_requests = false");
+    System.setOut(origOut);
+    String[] docDbReqStrArray = docDbReq.toString().split(System.getProperty("line.separator"));
+    return docDbReqStrArray;
+  }
+
+  protected int getNumDocdbRequests(Statement stmt, String query) throws Exception{
+    return getDocdbRequests(stmt, query).length;
   }
 
   protected int spawnTServerWithFlags(Map<String, String> additionalFlags) throws Exception {

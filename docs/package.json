@@ -1,27 +1,25 @@
 {
   "name": "docs",
-  "version": "1.1.0",
+  "version": "1.3.0",
   "description": "Yugabyte Docs",
   "main": "public/index.html",
   "scripts": {
-    "start": "run-p webpack-watch sass-watch hugo-server",
-    "build": "rm -rf public && npm ci && run-s webpack-build sass-build hugo-build",
-    "debug-build": "rm -rf public && npm ci && run-s webpack-build sass-build hugo-build-with-metrics",
+    "start": "run-p webpack-watch hugo-server",
+    "start-production": "run-p webpack-watch hugo-server-production",
+    "start-static": "run-p webpack-watch hugo-server-static",
+    "build": "rm -rf public && npm ci && run-s webpack-build hugo-build",
+    "debug-build": "rm -rf public && npm ci && run-s webpack-build hugo-build-with-metrics",
     "hugo-build": "hugo -b https://docs.yugabyte.com",
     "hugo-build-with-metrics": "hugo --templateMetrics --templateMetricsHints -b https://docs.yugabyte.com",
     "hugo-server": "hugo server --bind 0.0.0.0 --baseURL ${YB_HUGO_BASE:-localhost}",
-    "sass-build": "node_modules/node-sass/bin/node-sass --output-style compressed styles/site.scss > static/css/site.css",
-    "sass-watch": "npm run sass-build; node_modules/node-sass/bin/node-sass --watch --output static/css --output-style compressed styles/site.scss",
+    "hugo-server-production": "hugo server --bind 0.0.0.0 --baseURL ${YB_HUGO_BASE:-localhost} --environment production",
+    "hugo-server-static": "hugo server --renderStaticToDisk --bind 0.0.0.0 --baseURL ${YB_HUGO_BASE:-localhost}",
     "webpack-build": "webpack --mode=production",
     "webpack-watch": "webpack --mode=production -w"
   },
-  "repository": {
-    "type": "git",
-    "url": "git+ssh://git@bitbucket.org/yugabyte/docs.git"
-  },
   "author": "Yugabyte, Inc.",
-  "license": "UNLICENSED",
-  "homepage": "https://bitbucket.org/yugabyte/docs#readme",
+  "license": "Apache License 2.0",
+  "homepage": "https://github.com/yugabyte/yugabyte-db/docs#readme",
   "dependencies": {
     "babel": "6.23.0",
     "babel-core": "6.26.3",
@@ -41,12 +39,16 @@
     "hugo-algolia": "1.2.14",
     "node-sass": "6.0.1",
     "npm-run-all": "4.1.5",
-    "particles.js": "2.0.0",
     "react-dev-tools": "0.0.1",
     "react-dev-utils": "11.0.4",
     "run-p": "0.0.0",
     "webpack": "4.44.2",
     "webpack-cli": "4.7.2",
     "webpack-dev-server": "3.11.2"
+  },
+  "devDependencies": {
+    "autoprefixer": "10.4.4",
+    "postcss": "8.4.12",
+    "postcss-cli": "9.1.0"
   }
 }

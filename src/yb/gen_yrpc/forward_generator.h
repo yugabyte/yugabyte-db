@@ -21,7 +21,12 @@ namespace gen_yrpc {
 
 class ForwardGenerator {
  public:
+  explicit ForwardGenerator(bool need_lw);
+
   void Header(YBPrinter printer, const google::protobuf::FileDescriptor* file);
+
+ private:
+  bool need_lw_;
 };
 
 }  // namespace gen_yrpc

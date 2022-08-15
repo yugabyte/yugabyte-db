@@ -1,3 +1,4 @@
+// Licensed to the Apache Software Foundation (ASF) under one
 // or more contributor license agreements.  See the NOTICE file
 // distributed with this work for additional information
 // regarding copyright ownership.  The ASF licenses this file
@@ -45,7 +46,9 @@
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/substitute.h"
 
-#include "yb/master/call_home.h"
+#include "yb/master/master_call_home.h"
+#include "yb/server/call_home-test-util.h"
+#include "yb/server/call_home.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master-test-util.h"
 #include "yb/master/master-test_base.h"
@@ -64,7 +67,6 @@
 #include "yb/server/server_base.proxy.h"
 
 #include "yb/util/countdown_latch.h"
-#include "yb/util/jsonreader.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/random_util.h"
@@ -75,11 +77,6 @@
 #include "yb/util/tsan_util.h"
 #include "yb/util/user.h"
 
-DECLARE_string(callhome_collection_level);
-DECLARE_string(callhome_tag);
-DECLARE_string(callhome_url);
-DECLARE_bool(callhome_enabled);
-DECLARE_int32(callhome_interval_secs);
 DECLARE_double(leader_failure_max_missed_heartbeat_periods);
 DECLARE_int32(TEST_simulate_slow_table_create_secs);
 DECLARE_bool(TEST_return_error_if_namespace_not_found);
@@ -123,143 +120,18 @@ TEST_F(MasterTest, TestShutdownWithoutStart) {
 }
 
 TEST_F(MasterTest, TestCallHome) {
-  string json;
-  CountDownLatch latch(1);
-  const char* tag_value = "callhome-test";
-
   auto webserver_dir = GetTestPath("webserver-docroot");
   CHECK_OK(env_->CreateDir(webserver_dir));
-
-  WebserverOptions opts;
-  opts.port = 0;
-  opts.doc_root = webserver_dir;
-  Webserver webserver(opts, "WebserverTest");
-  ASSERT_OK(webserver.Start());
-
-  std::vector<Endpoint> addrs;
-  ASSERT_OK(webserver.GetBoundAddresses(&addrs));
-  ASSERT_EQ(addrs.size(), 1);
-  auto addr = addrs[0];
-
-  auto handler = [&json, &latch] (const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
-    ASSERT_EQ(req.request_method, "POST");
-    ASSERT_EQ(json, req.post_data);
-    latch.CountDown();
-  };
-
-  webserver.RegisterPathHandler("/callhome", "callhome", handler);
-  FLAGS_callhome_tag = tag_value;
-  FLAGS_callhome_url = Format("http://$0/callhome", addr);
-
-  set<string> low {"cluster_uuid", "node_uuid", "server_type", "version_info",
-                   "timestamp", "tables", "masters",  "tservers", "tablets", "gflags"};
-  std::unordered_map<string, set<string>> collection_levels;
-  collection_levels["low"] = low;
-  collection_levels["medium"] = low;
-  collection_levels["medium"].insert({"hostname", "current_user"});
-  collection_levels["high"] = collection_levels["medium"];
-  collection_levels["high"].insert({"metrics", "rpcs"});
-
-  for (const auto& collection_level : collection_levels) {
-    LOG(INFO) << "Collection level: " << collection_level.first;
-    FLAGS_callhome_collection_level = collection_level.first;
-    CallHome call_home(mini_master_->master(), ServerType::MASTER);
-    json = call_home.BuildJson();
-    ASSERT_TRUE(!json.empty());
-    JsonReader reader(json);
-    ASSERT_OK(reader.Init());
-    for (const auto& field : collection_level.second) {
-      LOG(INFO) << "Checking json has field: " << field;
-      ASSERT_TRUE(reader.root()->HasMember(field.c_str()));
-    }
-    LOG(INFO) << "Checking json has field: tag";
-    ASSERT_TRUE(reader.root()->HasMember("tag"));
-
-    string received_tag;
-    ASSERT_OK(reader.ExtractString(reader.root(), "tag", &received_tag));
-    ASSERT_EQ(received_tag, tag_value);
-
-    if (collection_level.second.find("hostname") != collection_level.second.end()) {
-      string received_hostname;
-      ASSERT_OK(reader.ExtractString(reader.root(), "hostname", &received_hostname));
-      ASSERT_EQ(received_hostname, mini_master_->master()->get_hostname());
-    }
-
-    if (collection_level.second.find("current_user") != collection_level.second.end()) {
-      string received_user;
-      ASSERT_OK(reader.ExtractString(reader.root(), "current_user", &received_user));
-      auto expected_user = ASSERT_RESULT(GetLoggedInUser());
-      ASSERT_EQ(received_user, expected_user);
-    }
-
-    auto count = reader.root()->MemberEnd() - reader.root()->MemberBegin();
-    LOG(INFO) << "Number of elements for level " << collection_level.first << ": " << count;
-    // The number of fields should be equal to the number of collectors plus one for the tag field.
-    ASSERT_EQ(count, collection_level.second.size() + 1);
-
-    call_home.SendData(json);
-    ASSERT_TRUE(latch.WaitFor(MonoDelta::FromSeconds(10)));
-    latch.Reset(1);
-  }
+  TestCallHome<Master, MasterCallHome>(
+      webserver_dir, {"version_info", "masters", "tservers", "tables"}, mini_master_->master());
 }
 
 // This tests whether the enabling/disabling of callhome is happening dynamically
 // during runtime.
 TEST_F(MasterTest, TestCallHomeFlag) {
-  CountDownLatch latch(1);
-  const char* tag_value = "callhome-test";
-  bool disabled = false;
-
-  // Set up the webserver.
   auto webserver_dir = GetTestPath("webserver-docroot");
   CHECK_OK(env_->CreateDir(webserver_dir));
-
-  WebserverOptions opts;
-  opts.port = 0;
-  opts.doc_root = webserver_dir;
-  Webserver webserver(opts, "WebserverTest");
-  ASSERT_OK(webserver.Start());
-
-  std::vector<Endpoint> addrs;
-  ASSERT_OK(webserver.GetBoundAddresses(&addrs));
-  ASSERT_EQ(addrs.size(), 1);
-  auto addr = addrs[0];
-
-  // By default callhome is enabled. This handler is expected to be called
-  // before disabling the flag. Once the flag is disabled, there shouldn't be any http posts.
-  auto handler = [&latch, &disabled] (const Webserver::WebRequest& req,
-                                        Webserver::WebResponse* resp) {
-    ASSERT_EQ(req.request_method, "POST");
-    // After callhome is disabled, assert if we get any more POST.
-    ASSERT_FALSE(disabled);
-    LOG(INFO) << "Received callhome data\n" << req.post_data;
-    latch.CountDown();
-  };
-
-  webserver.RegisterPathHandler("/callhome", "callhome", handler);
-  LOG(INFO) << "Started webserver to listen for callhome post requests.";
-
-  FLAGS_callhome_tag = tag_value;
-  FLAGS_callhome_url = Format("http://$0/callhome", addr);
-  // Set the interval to 3 secs.
-  FLAGS_callhome_interval_secs = 3 * kTimeMultiplier;
-  // Start with the default value i.e. callhome enabled.
-  disabled = false;
-
-  CallHome call_home(mini_master_->master(), ServerType::MASTER);
-  call_home.ScheduleCallHome(1 * kTimeMultiplier);
-
-  // Wait for at least one non-empty response.
-  ASSERT_TRUE(latch.WaitFor(MonoDelta::FromSeconds(10 * kTimeMultiplier)));
-
-  // Disable the callhome flag now.
-  disabled = true;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_callhome_enabled) = false;
-  LOG(INFO) << "Callhome disabled. No more traffic";
-
-  // Wait for 3 cycles for no callhome posts. The handler is expected to assert
-  // if it gets any new HTTP POST now.
-  SleepFor(MonoDelta::FromSeconds(3 * FLAGS_callhome_interval_secs * kTimeMultiplier));
+  TestCallHomeFlag<Master, MasterCallHome>(webserver_dir, mini_master_->master());
 }
 
 TEST_F(MasterTest, TestRegisterAndHeartbeat) {
@@ -556,6 +428,13 @@ TEST_F(MasterTest, TestCatalog) {
 
   {
     ListTablesRequestPB req;
+    req.add_relation_type_filter(MATVIEW_TABLE_RELATION);
+    DoListTables(req, &tables);
+    ASSERT_EQ(0, tables.tables_size());
+  }
+
+  {
+    ListTablesRequestPB req;
     req.add_relation_type_filter(SYSTEM_TABLE_RELATION);
     DoListTables(req, &tables);
     ASSERT_EQ(kNumSystemTables, tables.tables_size());
@@ -601,26 +480,26 @@ TEST_F(MasterTest, TestCatalogHasBlockCache) {
 }
 
 TEST_F(MasterTest, TestTablegroups) {
-  // Tablegroup ID must be 32 characters in length
-  const char *kTablegroupId = "test_tablegroup00000000000000000";
-  const char *kTableName = "test_table";
+  TablegroupId kTablegroupId = GetPgsqlTablegroupId(12345, 67890);
+  TableId      kTableId = GetPgsqlTableId(123455, 67891);
+  const char*  kTableName = "test_table";
   const Schema kTableSchema({ ColumnSchema("key", INT32) }, 1);
   const NamespaceName ns_name = "test_tablegroup_ns";
 
   // Create a new namespace.
   NamespaceId ns_id;
-  ListNamespacesResponsePB namespaces;
   {
     CreateNamespaceResponsePB resp;
     ASSERT_OK(CreateNamespace(ns_name, YQL_DATABASE_PGSQL, &resp));
     ns_id = resp.id();
   }
+
   {
-    ASSERT_NO_FATALS(DoListAllNamespaces(&namespaces));
-    ASSERT_EQ(2 + kNumSystemNamespaces, namespaces.namespaces_size());
+    ListNamespacesResponsePB namespaces;
+    ASSERT_NO_FATALS(DoListAllNamespaces(YQL_DATABASE_PGSQL, &namespaces));
+    ASSERT_EQ(1, namespaces.namespaces_size());
     CheckNamespaces(
         {
-            EXPECTED_DEFAULT_AND_SYSTEM_NAMESPACES,
             std::make_tuple(ns_name, ns_id)
         }, namespaces);
   }
@@ -631,38 +510,45 @@ TEST_F(MasterTest, TestTablegroups) {
   SetAtomicFlag(false, &FLAGS_TEST_tablegroup_master_only);
 
   ListTablegroupsRequestPB req;
-  ListTablegroupsResponsePB resp;
   req.set_namespace_id(ns_id);
-  ASSERT_NO_FATALS(DoListTablegroups(req, &resp));
+  {
+    ListTablegroupsResponsePB resp;
+    ASSERT_NO_FATALS(DoListTablegroups(req, &resp));
 
-  bool tablegroup_found = false;
-  for (auto& tg : *resp.mutable_tablegroups()) {
-    if (tg.id().compare(kTablegroupId) == 0) {
-      tablegroup_found = true;
+    bool tablegroup_found = false;
+    for (auto& tg : *resp.mutable_tablegroups()) {
+      if (tg.id().compare(kTablegroupId) == 0) {
+        tablegroup_found = true;
+      }
     }
+    ASSERT_TRUE(tablegroup_found);
   }
-  ASSERT_TRUE(tablegroup_found);
 
   // Restart the master, verify the tablegroup still shows up
   ASSERT_OK(mini_master_->Restart());
   ASSERT_OK(mini_master_->master()->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
 
-  ListTablegroupsResponsePB new_resp;
-  ASSERT_NO_FATALS(DoListTablegroups(req, &new_resp));
+  {
+    ListTablegroupsResponsePB resp;
+    ASSERT_NO_FATALS(DoListTablegroups(req, &resp));
 
-  tablegroup_found = false;
-  for (auto& tg : *new_resp.mutable_tablegroups()) {
-    if (tg.id().compare(kTablegroupId) == 0) {
-      tablegroup_found = true;
+    bool tablegroup_found = false;
+    for (auto& tg : *resp.mutable_tablegroups()) {
+      if (tg.id().compare(kTablegroupId) == 0) {
+        tablegroup_found = true;
+      }
     }
+    ASSERT_TRUE(tablegroup_found);
   }
-  ASSERT_TRUE(tablegroup_found);
 
   // Now ensure that a table can be created in the tablegroup.
-  ASSERT_OK(CreateTablegroupTable(ns_id, kTableName, kTablegroupId, kTableSchema));
+  ASSERT_OK(CreateTablegroupTable(ns_id, kTableId, kTableName, kTablegroupId, kTableSchema));
 
-  // Delete the tablegroup
-  ASSERT_OK(DeleteTablegroup(kTablegroupId, ns_id));
+  // Delete the table to clean up tablegroup.
+  ASSERT_OK(DeleteTableById(kTableId));
+
+  // Delete the tablegroup.
+  ASSERT_OK(DeleteTablegroup(kTablegroupId));
 }
 
 // Regression test for KUDU-253/KUDU-592: crash if the schema passed to CreateTable
@@ -1930,6 +1816,36 @@ TEST_F(MasterTest, TestNetworkErrorOnFirstRun) {
   FLAGS_TEST_simulate_port_conflict_error = false;
   // Restarting master should succeed.
   ASSERT_OK(mini_master_->Start());
+}
+
+TEST_F(MasterTest, TestMasterAddressInBroadcastAddress) {
+  // Test the scenario where master_address exists in broadcast_addresses
+  // but not in rpc_bind_addresses.
+  std::vector<std::string> master_addresses = {"127.0.0.51"};
+  std::vector<std::string> rpc_bind_addresses = {"127.0.0.52"};
+  std::vector<std::string> broadcast_addresses = {"127.0.0.51"};
+
+  TearDown();
+  mini_master_.reset(new MiniMaster(Env::Default(), GetTestPath("Master-test"),
+                                    AllocateFreePort(), AllocateFreePort(), 0));
+  mini_master_->SetCustomAddresses(
+      master_addresses, rpc_bind_addresses, broadcast_addresses);
+  ASSERT_OK(mini_master_->Start());
+}
+
+TEST_F(MasterTest, TestMasterAddressNotInRpcAndBroadcastAddress) {
+  // Test the scenario where master_address does not exist in either
+  // broadcast_addresses or rpc_bind_addresses.
+  std::vector<std::string> master_addresses = {"127.0.0.51"};
+  std::vector<std::string> rpc_bind_addresses = {"127.0.0.52"};
+  std::vector<std::string> broadcast_addresses = {"127.0.0.53"};
+
+  TearDown();
+  mini_master_.reset(new MiniMaster(Env::Default(), GetTestPath("Master-test"),
+                                    AllocateFreePort(), AllocateFreePort(), 0));
+  mini_master_->SetCustomAddresses(
+      master_addresses, rpc_bind_addresses, broadcast_addresses);
+  ASSERT_NOK(mini_master_->Start());
 }
 
 namespace {

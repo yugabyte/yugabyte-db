@@ -13,14 +13,15 @@
 
 #include "yb/docdb/doc_pgsql_scanspec.h"
 
+#include <boost/optional/optional_io.hpp>
+
 #include "yb/common/pgsql_protocol.pb.h"
 #include "yb/common/schema.h"
 
 #include "yb/docdb/doc_key.h"
+#include "yb/docdb/doc_ql_filefilter.h"
 #include "yb/docdb/doc_scanspec_util.h"
 #include "yb/docdb/value_type.h"
-
-#include "yb/rocksdb/db/compaction.h"
 
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
@@ -29,65 +30,6 @@ DECLARE_bool(disable_hybrid_scan);
 
 namespace yb {
 namespace docdb {
-
-//--------------------------------------------------------------------------------------------------
-extern rocksdb::UserBoundaryTag TagForRangeComponent(size_t index);
-
-// TODO(neil) The following implementation is just a prototype. Need to complete the implementation
-// and test accordingly.
-class PgsqlRangeBasedFileFilter : public rocksdb::ReadFileFilter {
- public:
-  PgsqlRangeBasedFileFilter(const std::vector<PrimitiveValue>& lower_bounds,
-                            const std::vector<PrimitiveValue>& upper_bounds)
-      : lower_bounds_(EncodePrimitiveValues(lower_bounds, upper_bounds.size())),
-        upper_bounds_(EncodePrimitiveValues(upper_bounds, lower_bounds.size())) {
-  }
-
-  std::vector<KeyBytes> EncodePrimitiveValues(const std::vector<PrimitiveValue>& source,
-                                              size_t min_size) {
-    size_t size = source.size();
-    std::vector<KeyBytes> result(std::max(min_size, size));
-    for (size_t i = 0; i != size; ++i) {
-      if (source[i].value_type() != ValueType::kTombstone) {
-        source[i].AppendToKey(&result[i]);
-      }
-    }
-    return result;
-  }
-
-  bool Filter(const rocksdb::FdWithBoundaries& file) const override {
-    for (size_t i = 0; i != lower_bounds_.size(); ++i) {
-      const Slice lower_bound = lower_bounds_[i].AsSlice();
-      const Slice upper_bound = upper_bounds_[i].AsSlice();
-
-      rocksdb::UserBoundaryTag tag = TagForRangeComponent(i);
-      const Slice *smallest = file.smallest.user_value_with_tag(tag);
-      const Slice *largest = file.largest.user_value_with_tag(tag);
-
-      if (!GreaterOrEquals(&upper_bound, smallest) || !GreaterOrEquals(largest, &lower_bound)) {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  bool GreaterOrEquals(const Slice *lhs, const Slice *rhs) const {
-    // TODO(neil) Need to double check this NULL-equals-all logic or make the code clearer.
-    if (lhs == nullptr || rhs == nullptr) {
-      return true;
-    }
-    if (lhs->empty() || rhs->empty()) {
-      return true;
-    }
-    return lhs->compare(*rhs) >= 0;
-  }
-
- private:
-  std::vector<KeyBytes> lower_bounds_;
-  std::vector<KeyBytes> upper_bounds_;
-};
-
-//--------------------------------------------------------------------------------------------------
 
 DocPgsqlScanSpec::DocPgsqlScanSpec(const Schema& schema,
                                    const rocksdb::QueryId query_id,
@@ -116,8 +58,7 @@ DocPgsqlScanSpec::DocPgsqlScanSpec(const Schema& schema,
     DocKey lower_doc_key = DocKey(doc_key);
     lower_doc_key.set_hash(*hash_code);
     if (lower_doc_key.hashed_group().empty()) {
-      lower_doc_key.hashed_group()
-                    .push_back(PrimitiveValue(ValueType::kLowest));
+      lower_doc_key.hashed_group().emplace_back(KeyEntryType::kLowest);
     }
     lower_doc_key_ = lower_doc_key.Encode();
   }
@@ -126,26 +67,27 @@ DocPgsqlScanSpec::DocPgsqlScanSpec(const Schema& schema,
     DocKey upper_doc_key = DocKey(doc_key);
     upper_doc_key.set_hash(*max_hash_code);
     if (upper_doc_key.hashed_group().empty()) {
-      upper_doc_key.hashed_group()
-                    .push_back(PrimitiveValue(ValueType::kHighest));
+      upper_doc_key.hashed_group().emplace_back(KeyEntryType::kHighest);
     }
     upper_doc_key_ = upper_doc_key.Encode();
   }
 
-  upper_doc_key_.AppendValueTypeBeforeGroupEnd(ValueType::kHighest);
+  upper_doc_key_.AppendKeyEntryTypeBeforeGroupEnd(KeyEntryType::kHighest);
 }
 
 DocPgsqlScanSpec::DocPgsqlScanSpec(
     const Schema& schema,
     const rocksdb::QueryId query_id,
-    std::reference_wrapper<const std::vector<PrimitiveValue>> hashed_components,
-    std::reference_wrapper<const std::vector<PrimitiveValue>> range_components,
+    std::reference_wrapper<const std::vector<KeyEntryValue>> hashed_components,
+    std::reference_wrapper<const std::vector<KeyEntryValue>> range_components,
     const PgsqlConditionPB* condition,
     const boost::optional<int32_t> hash_code,
     const boost::optional<int32_t> max_hash_code,
     const PgsqlExpressionPB *where_expr,
     const DocKey& start_doc_key,
-    bool is_forward_scan)
+    bool is_forward_scan,
+    const DocKey& lower_doc_key,
+    const DocKey& upper_doc_key)
     : PgsqlScanSpec(where_expr),
       range_bounds_(condition ? new QLScanRange(schema, *condition) : nullptr),
       schema_(schema),
@@ -155,9 +97,20 @@ DocPgsqlScanSpec::DocPgsqlScanSpec(
       hash_code_(hash_code),
       max_hash_code_(max_hash_code),
       start_doc_key_(start_doc_key.empty() ? KeyBytes() : start_doc_key.Encode()),
-      lower_doc_key_(bound_key(schema, true)),
-      upper_doc_key_(bound_key(schema, false)),
+      lower_doc_key_(lower_doc_key.Encode()),
+      upper_doc_key_(upper_doc_key.Encode()),
       is_forward_scan_(is_forward_scan) {
+
+  auto lower_bound_key = bound_key(schema, true);
+  lower_doc_key_ = lower_bound_key > lower_doc_key_
+                    || lower_doc_key.empty()
+                    ? lower_bound_key : lower_doc_key_;
+
+  auto upper_bound_key = bound_key(schema, false);
+  upper_doc_key_ = upper_bound_key < upper_doc_key_
+                    || upper_doc_key.empty()
+                    ? upper_bound_key : upper_doc_key_;
+
   if (where_expr_) {
     // Should never get here until WHERE clause is supported.
     LOG(FATAL) << "DEVELOPERS: Add support for condition (where clause)";
@@ -173,8 +126,8 @@ DocPgsqlScanSpec::DocPgsqlScanSpec(
       schema_.num_range_key_columns() > 0 &&
       range_bounds_ && range_bounds_->has_in_range_options()) {
     DCHECK(condition);
-    range_options_ =
-        std::make_shared<std::vector<std::vector<PrimitiveValue>>>(schema_.num_range_key_columns());
+    range_options_ = std::make_shared<std::vector<OptionList>>(schema_.num_range_key_columns());
+    range_options_num_cols_ = std::vector<size_t>(schema_.num_range_key_columns(), 0);
     InitRangeOptions(*condition);
 
     if (FLAGS_disable_hybrid_scan) {
@@ -224,9 +177,11 @@ void DocPgsqlScanSpec::InitRangeOptions(const PgsqlConditionPB& condition) {
       SortingType sortingType = schema_.column(col_idx).sorting_type();
       range_options_indexes_.emplace_back(condition.operands(0).column_id());
 
+      range_options_num_cols_[col_idx - num_hash_cols] = 1;
+
       if (condition.op() == QL_OP_EQUAL) {
-        auto pv = PrimitiveValue::FromQLValuePB(condition.operands(1).value(), sortingType);
-        (*range_options_)[col_idx - num_hash_cols].push_back(std::move(pv));
+        auto pv = KeyEntryValue::FromQLValuePBForKey(condition.operands(1).value(), sortingType);
+        (*range_options_)[col_idx - num_hash_cols].push_back({pv});
       } else { // QL_OP_IN
         DCHECK_EQ(condition.op(), QL_OP_IN);
         DCHECK(condition.operands(1).value().has_list_value());
@@ -240,8 +195,8 @@ void DocPgsqlScanSpec::InitRangeOptions(const PgsqlConditionPB& condition) {
         for (int i = 0; i < opt_size; i++) {
           int elem_idx = is_reverse_order ? opt_size - i - 1 : i;
           const auto &elem = options.elems(elem_idx);
-          auto pv = PrimitiveValue::FromQLValuePB(elem, sortingType);
-          (*range_options_)[col_idx - num_hash_cols].push_back(std::move(pv));
+          auto pv = KeyEntryValue::FromQLValuePBForKey(elem, sortingType);
+          (*range_options_)[col_idx - num_hash_cols].push_back({pv});
         }
       }
 
@@ -264,31 +219,28 @@ KeyBytes DocPgsqlScanSpec::bound_key(const Schema& schema, const bool lower_boun
     // use lower bound hash code if set in request (for scans using token)
     if (lower_bound && hash_code_) {
       encoder.HashAndRange(*hash_code_,
-      {PrimitiveValue(ValueType::kLowest)},
-      {PrimitiveValue(ValueType::kLowest)});
+                           {KeyEntryValue(KeyEntryType::kLowest)},
+                           {KeyEntryValue(KeyEntryType::kLowest)});
     }
     // use upper bound hash code if set in request (for scans using token)
     if (!lower_bound) {
       if (max_hash_code_) {
         encoder.HashAndRange(*max_hash_code_,
-        {PrimitiveValue(ValueType::kHighest)},
-        {PrimitiveValue(ValueType::kHighest)});
+                             {KeyEntryValue(KeyEntryType::kHighest)},
+                             {KeyEntryValue(KeyEntryType::kHighest)});
       } else {
-        result.AppendValueTypeBeforeGroupEnd(ValueType::kHighest);
+        result.AppendKeyEntryTypeBeforeGroupEnd(KeyEntryType::kHighest);
       }
     }
     return result;
   }
 
   if (has_hash_columns) {
-    DocKeyHash min_hash = hash_code_ ?
-        static_cast<DocKeyHash> (*hash_code_) : std::numeric_limits<DocKeyHash>::min();
-    DocKeyHash max_hash = max_hash_code_ ?
-        static_cast<DocKeyHash> (*max_hash_code_) : std::numeric_limits<DocKeyHash>::max();
+    uint16_t hash = lower_bound
+        ? hash_code_.get_value_or(std::numeric_limits<DocKeyHash>::min())
+        : max_hash_code_.get_value_or(std::numeric_limits<DocKeyHash>::max());
 
-    encoder.HashAndRange(lower_bound ? min_hash : max_hash,
-                         *hashed_components_,
-                         range_components(lower_bound));
+    encoder.HashAndRange(hash, *hashed_components_, range_components(lower_bound));
   } else {
     // If no hash columns use default hash code (0).
     encoder.Hash(false, 0, *hashed_components_).Range(range_components(lower_bound));
@@ -296,8 +248,16 @@ KeyBytes DocPgsqlScanSpec::bound_key(const Schema& schema, const bool lower_boun
   return result;
 }
 
-std::vector<PrimitiveValue> DocPgsqlScanSpec::range_components(const bool lower_bound) const {
-  return GetRangeKeyScanSpec(schema_, range_components_, range_bounds_.get(), lower_bound);
+std::vector<KeyEntryValue> DocPgsqlScanSpec::range_components(const bool lower_bound,
+                                                              std::vector<bool> *inclusivities,
+                                                              bool use_strictness) const {
+  return GetRangeKeyScanSpec(schema_,
+                             range_components_,
+                             range_bounds_.get(),
+                             inclusivities,
+                             lower_bound,
+                             false,
+                             use_strictness);
 }
 
 // Return inclusive lower/upper range doc key considering the start_doc_key.
@@ -327,18 +287,25 @@ Result<KeyBytes> DocPgsqlScanSpec::Bound(const bool lower_bound) const {
   // the target start_doc_key itself (dockey + suffix < dockey + kHighest).
   // For lower bound, this is true already, because dockey + suffix is > dockey.
   KeyBytes result = start_doc_key_;
-  result.AppendValueTypeBeforeGroupEnd(ValueType::kHighest);
+  result.AppendKeyEntryTypeBeforeGroupEnd(KeyEntryType::kHighest);
   return result;
 }
 
 std::shared_ptr<rocksdb::ReadFileFilter> DocPgsqlScanSpec::CreateFileFilter() const {
-  auto lower_bound = range_components(true);
-  auto upper_bound = range_components(false);
+  std::vector<bool> lower_bound_incl;
+  auto lower_bound = range_components(true, &lower_bound_incl, false);
+  CHECK_EQ(lower_bound.size(), lower_bound_incl.size());
+
+  std::vector<bool> upper_bound_incl;
+  auto upper_bound = range_components(false, &upper_bound_incl, false);
+  CHECK_EQ(upper_bound.size(), upper_bound_incl.size());
   if (lower_bound.empty() && upper_bound.empty()) {
     return std::shared_ptr<rocksdb::ReadFileFilter>();
   } else {
-    return std::make_shared<PgsqlRangeBasedFileFilter>(std::move(lower_bound),
-                                                       std::move(upper_bound));
+    return std::make_shared<QLRangeBasedFileFilter>(std::move(lower_bound),
+                                                    std::move(lower_bound_incl),
+                                                    std::move(upper_bound),
+                                                    std::move(upper_bound_incl));
   }
 }
 

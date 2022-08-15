@@ -67,7 +67,7 @@ class ExternalMiniClusterFsInspector {
   explicit ExternalMiniClusterFsInspector(ExternalMiniCluster* cluster);
   ~ExternalMiniClusterFsInspector();
 
-  CHECKED_STATUS ListFilesInDir(const std::string& path, std::vector<std::string>* entries);
+  Status ListFilesInDir(const std::string& path, std::vector<std::string>* entries);
   size_t CountFilesInDir(const std::string& path);
   int CountWALSegmentsOnTS(size_t index);
 
@@ -89,35 +89,35 @@ class ExternalMiniClusterFsInspector {
   bool DoesConsensusMetaExistForTabletOnTS(size_t index, const std::string& tablet_id);
 
   int CountReplicasInMetadataDirs();
-  CHECKED_STATUS CheckNoDataOnTS(size_t index);
-  CHECKED_STATUS CheckNoData();
+  Status CheckNoDataOnTS(size_t index);
+  Status CheckNoData();
 
-  CHECKED_STATUS ReadTabletSuperBlockOnTS(
+  Status ReadTabletSuperBlockOnTS(
       size_t index, const std::string& tablet_id, tablet::RaftGroupReplicaSuperBlockPB* sb);
 
   // Get the modification time (in micros) of the tablet superblock for the given tablet
   // server index and tablet ID.
   int64_t GetTabletSuperBlockMTimeOrDie(size_t ts_index, const std::string& tablet_id);
 
-  CHECKED_STATUS ReadConsensusMetadataOnTS(
+  Status ReadConsensusMetadataOnTS(
       size_t index, const std::string& tablet_id, consensus::ConsensusMetadataPB* cmeta_pb);
 
   std::string GetTabletSuperBlockPathOnTS(size_t ts_index, const std::string& tablet_id) const;
 
-  CHECKED_STATUS CheckTabletDataStateOnTS(
+  Status CheckTabletDataStateOnTS(
       size_t index, const std::string& tablet_id, tablet::TabletDataState state);
 
-  CHECKED_STATUS WaitForNoData(const MonoDelta& timeout = MonoDelta::FromSeconds(30));
-  CHECKED_STATUS WaitForNoDataOnTS(
+  Status WaitForNoData(const MonoDelta& timeout = MonoDelta::FromSeconds(30));
+  Status WaitForNoDataOnTS(
       size_t index, const MonoDelta& timeout = MonoDelta::FromSeconds(30));
-  CHECKED_STATUS WaitForMinFilesInTabletWalDirOnTS(
+  Status WaitForMinFilesInTabletWalDirOnTS(
       size_t index,
       const std::string& tablet_id,
       int count,
       const MonoDelta& timeout = MonoDelta::FromSeconds(60));
-  CHECKED_STATUS WaitForReplicaCount(
+  Status WaitForReplicaCount(
       int expected, const MonoDelta& timeout = MonoDelta::FromSeconds(30));
-  CHECKED_STATUS WaitForTabletDataStateOnTS(size_t index,
+  Status WaitForTabletDataStateOnTS(size_t index,
                                             const std::string& tablet_id,
                                             tablet::TabletDataState data_state,
                                             const MonoDelta& timeout = MonoDelta::FromSeconds(30));
@@ -129,7 +129,7 @@ class ExternalMiniClusterFsInspector {
   // * For each string in 'substrings_disallowed', we find *no files* whose name
   //   contains that string, even if the file also matches a string in the
   //   'substrings_required'.
-  CHECKED_STATUS WaitForFilePatternInTabletWalDirOnTs(
+  Status WaitForFilePatternInTabletWalDirOnTs(
       int ts_index,
       const std::string& tablet_id,
       const std::vector<std::string>& substrings_required,

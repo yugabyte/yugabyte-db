@@ -190,11 +190,10 @@ Result<std::shared_ptr<QLRowBlock>> YQLIndexesVTable::RetrieveData(
     RETURN_NOT_OK(SetColumnValue(kOptions, options.value(), &row));
 
     // Create appropriate table uuids.
-    Uuid uuid;
     // Note: table id is in host byte order.
-    RETURN_NOT_OK(uuid.FromHexString(indexed_table_id));
+    auto uuid = VERIFY_RESULT(Uuid::FromHexString(indexed_table_id));
     RETURN_NOT_OK(SetColumnValue(kTableId, uuid, &row));
-    RETURN_NOT_OK(uuid.FromHexString(table->id()));
+    uuid = VERIFY_RESULT(Uuid::FromHexString(table->id()));
     RETURN_NOT_OK(SetColumnValue(kIndexId, uuid, &row));
 
     Schema schema;

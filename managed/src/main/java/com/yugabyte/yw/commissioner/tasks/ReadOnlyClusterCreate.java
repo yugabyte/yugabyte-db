@@ -12,8 +12,8 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import static com.yugabyte.yw.forms.UniverseTaskParams.isFirstTryForTask;
 
+import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
@@ -42,8 +42,6 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
     log.info("Started {} task for uuid={}", getName(), taskParams().universeUUID);
 
     try {
-      // Create the task list sequence.
-      subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
 
       // Set the 'updateInProgress' flag to prevent other updates from happening.
       Universe universe =
@@ -70,6 +68,7 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
       // Sanity checks for clusters list validity are performed in the controller.
       Cluster cluster = taskParams().getReadOnlyClusters().get(0);
       Set<NodeDetails> readOnlyNodes = taskParams().getNodesInCluster(cluster.uuid);
+      boolean ignoreUseCustomImageConfig = !readOnlyNodes.stream().allMatch(n -> n.ybPrebuiltAmi);
 
       // There should be no masters in read only clusters.
       if (!PlacementInfoUtil.getMastersToProvision(readOnlyNodes).isEmpty()) {
@@ -92,7 +91,11 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
       // Provision the nodes.
       // State checking is enabled because the subtasks are not idempotent.
       createProvisionNodeTasks(
-          universe, nodesToProvision, true /* isShell */, false /* ignore node status check */);
+          universe,
+          nodesToProvision,
+          true /* isShell */,
+          false /* ignore node status check */,
+          ignoreUseCustomImageConfig);
 
       // Set of processes to be started, note that in this case it is same as nodes provisioned.
       Set<NodeDetails> newTservers = PlacementInfoUtil.getTserversToProvision(readOnlyNodes);
@@ -116,14 +119,25 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Run all the tasks.
-      subTaskGroupQueue.run();
+      getRunnableTask().runSubTasks();
     } catch (Throwable t) {
       log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
       throw t;
     } finally {
       // Mark the update of the universe as done. This will allow future edits/updates to the
       // universe to happen.
-      unlockUniverseForUpdate();
+      Universe universe = unlockUniverseForUpdate();
+      if (universe.getConfig().getOrDefault(Universe.USE_CUSTOM_IMAGE, "false").equals("true")) {
+        universe.updateConfig(
+            ImmutableMap.of(
+                Universe.USE_CUSTOM_IMAGE,
+                Boolean.toString(
+                    universe
+                        .getUniverseDetails()
+                        .nodeDetailsSet
+                        .stream()
+                        .allMatch(n -> n.ybPrebuiltAmi))));
+      }
     }
     log.info("Finished {} task.", getName());
   }

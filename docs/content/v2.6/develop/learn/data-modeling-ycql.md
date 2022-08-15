@@ -8,21 +8,20 @@ menu:
     identifier: data-modeling-1-ycql
     parent: learn
     weight: 562
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/develop/learn/data-modeling-ysql" class="nav-link">
+    <a href="../data-modeling-ysql/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
 
   <li >
-    <a href="/latest/develop/learn/data-modeling-ycql" class="nav-link active">
+    <a href="../data-modeling-ycql/" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
@@ -32,7 +31,7 @@ showAsideToc: true
 
 Data modeling is a process that involves identifying the entities (items to be stored) and the relationships between entities. To create your data model, identify the patterns used to access data and the types of queries to be performed. These two ideas inform the organization and structure of the data, and the design and creation of the database's tables.
 
-This topic documents data modeling with [Yugabyte Cloud Query Language (YCQL)](../../../api/ycql), YugabyteDB's Cassandra-compatible API.
+This topic documents data modeling with [Yugabyte Cloud Query Language (YCQL)](../../../api/ycql/), YugabyteDB's Cassandra-compatible API.
 
 ## Keyspaces, tables, rows, and columns
 
@@ -55,7 +54,7 @@ Each row is composed of one or more columns. A column is a fundamental data elem
 As the example of a `users` table which holds information about users of a service.
 
 | user_id  | firstname | lastname | address
-| -------- | --------- | -------- | -------- 
+| -------- | --------- | -------- | --------
 | 1001     | Sherlock  | Holmes   | 221b Baker St, London, UK
 | 1003     | Clark     | Kent     | 344 Clinton Street, Metropolis
 | 1007     | James     | Bond     |
@@ -69,7 +68,7 @@ Note the following about the `users` table:
 Now consider another example of the `books` table that keeps track of authors and the books they have written.
 
 | author               | book_title           | price  | year | genre
-| -------------------- | -------------------- | ------ | ---- | ----- 
+| -------------------- | -------------------- | ------ | ---- | -----
 | William Shakespeare  | Hamlet               | 6.75   | 1602 | tragedy
 | William Shakespeare  | Macbeth              | 7.50   | 1606 | tragedy
 | Charles Dickens      | Oliver Twist         | 9.25   | 1837 | serial novel
@@ -85,11 +84,11 @@ Note the following about the `books` table:
 
 When creating a table, the primary key of the table must be specified in addition to the table name. The primary key uniquely identifies each row in the table, therefore no two rows can have the same key.
 
-There are two types of primary keys, and they are described below.
+There are two components of primary keys, and they are described below.
 
 ### Partition key columns (required)
 
-Such tables have *simple primary keys*. One or more columns of a table can be made the partition key columns. The values of the partition key columns are used to compute an internal hash value. This hash value determines the tablet (or partition) in which the row will be stored. This has two implications:
+One or more columns of a table are made the partition key columns. The values of the partition key columns are used to compute an internal hash value. This hash value determines the tablet (or partition) in which the row will be stored. This has two implications:
 
 - Each unique set of partition key values is hashed and distributed across nodes randomly to ensure uniform utilization of the cluster.
 
@@ -98,7 +97,7 @@ Such tables have *simple primary keys*. One or more columns of a table can be ma
 In the case of the `users` table, you can make `user_id` column the only primary key column. This is a good choice for a partition key because our queries do not care about the order of the `user_id`s. If the table is split into a number of tablets (partitions), the data may be assigned as follows.
 
 | tablet    | user_id  | firstname | lastname | address
-| --------- | -------- | --------- | -------- | -------- 
+| --------- | -------- | --------- | -------- | --------
 | tablet-22 | 1001     | Sherlock  | Holmes   | 221b Baker St, London, UK
 | tablet-4  | 1003     | Clark     | Kent     | 344 Clinton Street, Metropolis
 | tablet-17 | 1007     | James     | Bond     |
@@ -107,12 +106,12 @@ In the case of the `users` table, you can make `user_id` column the only primary
 
 The clustering columns specify the order in which the column data is sorted and stored on disk for a given unique partition key value. More than one clustering column can be specified, and the columns are sorted in the order they are declared in the clustering column. It is also possible to control the sort order (ascending or descending sort) for these columns. Note that the sort order respects the data type.
 
-In a table that has both partition keys and clustering keys, it is possible for two rows to have the same partition key value and therefore they end up on the same node. However, those rows must have different clustering key values in order to satisfy the primary key requirements.
+In a table that has both partition keys and clustering keys, it is possible for two rows to have the same partition key value and therefore they end up on the same node. However, those rows must have different clustering key values in order to satisfy the primary key requirements. Tables without clustering key columns are said to have *simple primary keys*.
 
 In the case of the `books` table, `author` is a good partition key and `book_title` is a good clustering key. Such a data model would allow easily listing all the books for a given author, as well as look up details of a specific book. This would cause the data to be stored as follows.
 
 | tablet    | author               | book_title           | price  | year | genre
-| --------- | -------------------- | -------------------- | ------ | ---- | ----- 
+| --------- | -------------------- | -------------------- | ------ | ---- | -----
 | tablet-15 | William Shakespeare  | Hamlet               | 6.75   | 1602 | tragedy
 | tablet-15 | William Shakespeare  | Macbeth              | 7.50   | 1606 | tragedy
 | tablet-21 | Charles Dickens      | A Tale of Two Cities | 11.40  | 1859 | historical novel
@@ -159,19 +158,19 @@ ycqlsh> CREATE INDEX user_by_email ON example.users (email)
 Next let us insert some data.
 
 ```sql
-ycqlsh> INSERT INTO example.users (user_id, firstname, lastname, email) 
-       VALUES (1, 'James', 'Bond', 'bond@yb.com');
+ycqlsh> INSERT INTO example.users (user_id, firstname, lastname, email)
+       VALUES (1, 'James', 'Bond', 'bond@example.com');
 ```
 
 ```sql
-ycqlsh> INSERT INTO example.users (user_id, firstname, lastname, email) 
-       VALUES (2, 'Sherlock', 'Holmes', 'sholmes@yb.com');
+ycqlsh> INSERT INTO example.users (user_id, firstname, lastname, email)
+       VALUES (2, 'Sherlock', 'Holmes', 'sholmes@example.com');
 ```
 
 You can now query the table by the email of a user efficiently as follows.
 
 ```sql
-ycqlsh> SELECT * FROM example.users WHERE email='bond@yb.com';
+ycqlsh> SELECT * FROM example.users WHERE email='bond@example.com';
 ```
 
 Read more about using secondary indexes to speed up queries in this quick guide to YugabyteDB secondary indexes.
@@ -200,20 +199,20 @@ ycqlsh> CREATE UNIQUE INDEX unique_emails ON example.users (email);
 Inserts would succeed as long as the email is unique.
 
 ```sql
-ycqlsh> INSERT INTO example.users (user_id, firstname, lastname, email) 
-       VALUES (1, 'James', 'Bond', 'bond@yb.com');
+ycqlsh> INSERT INTO example.users (user_id, firstname, lastname, email)
+       VALUES (1, 'James', 'Bond', 'bond@example.com');
 ```
 
 ```sql
-ycqlsh> INSERT INTO example.users (user_id, firstname, lastname, email) 
-       VALUES (2, 'Sherlock', 'Holmes', 'sholmes@yb.com');
+ycqlsh> INSERT INTO example.users (user_id, firstname, lastname, email)
+       VALUES (2, 'Sherlock', 'Holmes', 'sholmes@example.com');
 ```
 
 But upon inserting a duplicate email, you get an error.
 
 ```sql
-ycqlsh> INSERT INTO example.users (user_id, firstname, lastname, email) 
-       VALUES (3, 'Fake', 'Bond', 'bond@yb.com');
+ycqlsh> INSERT INTO example.users (user_id, firstname, lastname, email)
+       VALUES (3, 'Fake', 'Bond', 'bond@example.com');
 ```
 
 ```

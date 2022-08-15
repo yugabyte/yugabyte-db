@@ -2,9 +2,14 @@
 
 package com.yugabyte.yw.forms;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.google.common.collect.Sets;
+import com.yugabyte.yw.models.helpers.NodeConfiguration;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 import javax.validation.constraints.NotNull;
 import javax.validation.constraints.Size;
 
@@ -47,5 +52,31 @@ public class NodeInstanceFormData {
 
     @ApiModelProperty(value = "Node name", example = "India node")
     public String nodeName;
+
+    // TODO This is not mandatory for nodes added from the UI.
+    // When it becomes mandatory, add validations in all cases.
+    @ApiModelProperty(value = "Node configurations")
+    public Set<NodeConfiguration> nodeConfigurations;
+
+    /**
+     * Returns all the types which fail the configuration checks.
+     *
+     * @param typeGroup the type group.
+     * @return the set of failed types.
+     */
+    @JsonIgnore
+    public Set<NodeConfiguration.Type> getFailedNodeConfigurationTypes(
+        NodeConfiguration.TypeGroup typeGroup) {
+      if (nodeConfigurations == null) {
+        return typeGroup.getRequiredConfigTypes();
+      }
+      Set<NodeConfiguration.Type> configuredTypes =
+          nodeConfigurations
+              .stream()
+              .filter(NodeConfiguration::isConfigured)
+              .map(config -> config.type)
+              .collect(Collectors.toSet());
+      return Sets.difference(typeGroup.getRequiredConfigTypes(), configuredTypes);
+    }
   }
 }

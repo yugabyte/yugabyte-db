@@ -87,20 +87,21 @@ class CodeGenerator : public google::protobuf::compiler::CodeGenerator {
     for (const auto& p : params_temp) {
       params.emplace(p.first, p.second);
     }
+    bool need_messages = params.count("messages");
 
     FileSubstitutions name_info(file);
 
     SubstitutionContext subs;
     subs.Push(name_info.Create());
 
-    Generate<ForwardGenerator>(file, gen_context, &subs, name_info.forward());
+    Generate<ForwardGenerator>(file, gen_context, &subs, name_info.forward(), need_messages);
 
     if (file->service_count() != 0) {
       Generate<ServiceGenerator>(file, gen_context, &subs, name_info.service());
       Generate<ProxyGenerator>(file, gen_context, &subs, name_info.proxy());
     }
 
-    if (params.count("messages")) {
+    if (need_messages) {
       Generate<MessagesGenerator>(
           file, gen_context, &subs, name_info.messages());
     }
@@ -109,12 +110,13 @@ class CodeGenerator : public google::protobuf::compiler::CodeGenerator {
   }
 
  private:
-  template <class Generator>
+  template <class Generator, class... Args>
   void Generate(
       const google::protobuf::FileDescriptor *file,
       google::protobuf::compiler::GeneratorContext *gen_context,
-      SubstitutionContext *subs, const std::string& fname) const {
-    Generator generator;
+      SubstitutionContext *subs, const std::string& fname,
+      Args&&... args) const {
+    Generator generator(std::forward<Args>(args)...);
     DoGenerate(
         file, gen_context, subs, fname + ".h",
         std::bind(&Generator::Header, &generator, _1, _2));

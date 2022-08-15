@@ -39,9 +39,6 @@
 #include "yb/util/flag_tags.h"
 #include "yb/util/result.h"
 
-using std::make_shared;
-using std::vector;
-
 namespace yb {
 namespace master {
 

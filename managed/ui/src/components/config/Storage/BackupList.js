@@ -8,11 +8,14 @@
 import React, { useState } from 'react';
 import { Button, DropdownButton, MenuItem } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
+import { AssociatedBackups } from '../../backupv2/components/AssociatedBackups';
 import { AssociatedUniverse } from '../../common/associatedUniverse/AssociatedUniverse';
 import YBInfoTip from '../../common/descriptors/YBInfoTip';
 import { FlexContainer, FlexShrink } from '../../common/flexbox/YBFlexBox';
-import { YBConfirmModal } from '../../modals';
+
 import { YBPanelItem } from '../../panels';
+
+import { StorageConfigDeleteModal } from './StorageConfigDeleteModal';
 
 /**
  * This method is used to return the current in-use status
@@ -57,6 +60,8 @@ export const BackupList = (props) => {
   const [configData, setConfigData] = useState({});
   const [associatedUniverses, setUniverseDetails] = useState([]);
   const [isUniverseVisible, setIsUniverseVisible] = useState(false);
+  const [showAssociatedBackups, setShowAssociatedBackups] = useState(false);
+
   const {
     activeTab,
     data,
@@ -76,33 +81,38 @@ export const BackupList = (props) => {
       configName,
       configUUID,
       inUse,
-      name,
       universeDetails
     } = row;
-
     return (
       <>
         <DropdownButton
-          className="backup-config-actions btn btn-default"
+          className="backup-config-action-but btn btn-default"
           title="Actions"
           id="bg-nested-dropdown"
           pullRight
         >
           <MenuItem onClick={() => onEditConfig(row)}>
-            <i className="fa fa-pencil"></i> Edit Configuration
+            Edit Configuration
+          </MenuItem>
+          <MenuItem onClick={(e) => {
+            e.stopPropagation();
+            setShowAssociatedBackups(true);
+            setConfigData({ configUUID, configName });
+          }}>
+            Show associated backups
           </MenuItem>
           <MenuItem
             disabled={inUse}
             onClick={() => {
               if (!inUse) {
                 setConfigData(configUUID);
-                showDeleteStorageConfig(name);
+                showDeleteStorageConfig(configName);
               }
             }}
           >
             {!inUse && (
               <>
-                <i className="fa fa-trash"></i> Delete Configuration
+                Delete Configuration
               </>
             )}
 
@@ -112,25 +122,20 @@ export const BackupList = (props) => {
                 placement="top"
               >
                 <span className="disable-delete">
-                  <i className="fa fa-ban"></i> Delete Configuration
+                  Delete Configuration
                 </span>
               </YBInfoTip>
             )}
           </MenuItem>
-
-          {
-            <YBConfirmModal
-              name="delete-storage-config"
-              title="Confirm Delete"
-              onConfirm={() => deleteStorageConfig(configData)}
-              currentModal={'delete' + name + 'StorageConfig'}
-              visibleModal={visibleModal}
-              hideConfirmModal={hideDeleteStorageConfig}
-            >
-              Are you sure you want to delete {name} Storage Configuration?
-            </YBConfirmModal>
-          }
-
+          <StorageConfigDeleteModal
+            visible={visibleModal === 'delete' + configName + 'StorageConfig'}
+            onHide={hideDeleteStorageConfig}
+            configName={configName}
+            configUUID={configData}
+            onDelete={() => {
+              deleteStorageConfig(configData)
+            }}
+          />
           <MenuItem
             onClick={() => {
               setConfigData(configName);
@@ -138,7 +143,7 @@ export const BackupList = (props) => {
               setIsUniverseVisible(true);
             }}
           >
-            <i className="fa fa-eye"></i> Show Universes
+            Show Universes
           </MenuItem>
         </DropdownButton>
       </>
@@ -156,30 +161,35 @@ export const BackupList = (props) => {
               dataField="configName"
               columnClassName="no-border name-column"
               className="no-border"
+              width="30%"
             >
               Configuration Name
-            </TableHeaderColumn>
-            <TableHeaderColumn
-              dataField="status"
-              dataFormat={getBackupStatus}
-              columnClassName="no-border name-column"
-              className="no-border"
-            >
-              Status
             </TableHeaderColumn>
             <TableHeaderColumn
               dataField="backupLocation"
               dataFormat={getBackupLocation}
               columnClassName="no-border name-column"
               className="no-border"
+              width="30%"
             >
               Backup Location
+            </TableHeaderColumn>
+            <TableHeaderColumn
+              dataField="status"
+              dataFormat={getBackupStatus}
+              columnClassName="no-border name-column"
+              className="no-border"
+              width="10%"
+            >
+              Status
             </TableHeaderColumn>
             <TableHeaderColumn
               dataField="configActions"
               dataFormat={(cell, row) => formatConfigActions(cell, row)}
               columnClassName="yb-actions-cell"
               className="yb-actions-cell"
+              width="10%"
+              dataAlign='center'
             >
               Actions
             </TableHeaderColumn>
@@ -190,6 +200,7 @@ export const BackupList = (props) => {
             associatedUniverses={associatedUniverses}
             title={`Backup Configuration ${configData}`}
           />
+          <AssociatedBackups visible={showAssociatedBackups} onHide={() => setShowAssociatedBackups(false)} storageConfigData={configData} />
         </>
       }
       noBackground

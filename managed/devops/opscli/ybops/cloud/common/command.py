@@ -14,7 +14,9 @@ from ybops.cloud.common.method import CreateInstancesMethod, ProvisionInstancesM
     DestroyInstancesMethod, ListInstancesMethod, ConfigureInstancesMethod, \
     ControlInstanceMethod, AbstractMethod, AccessCreateVaultMethod, InitYSQLMethod, \
     UpdateDiskMethod, CronCheckMethod, AccessEditVaultMethod, AccessDeleteKeyMethod, \
-    CreateRootVolumesMethod, ReplaceRootVolumeMethod, ChangeInstanceTypeMethod
+    CreateRootVolumesMethod, ReplaceRootVolumeMethod, ChangeInstanceTypeMethod, \
+    UpdateMountedDisksMethod, DeleteRootVolumesMethod, TransferXClusterCerts, VerifySSHConnection, \
+    AddAuthorizedKey, RemoveAuthorizedKey, RebootInstancesMethod, RunHooks
 
 
 class InstanceCommand(AbstractPerCloudCommand):
@@ -31,6 +33,7 @@ class InstanceCommand(AbstractPerCloudCommand):
         """
         self.add_method(CreateInstancesMethod(self))
         self.add_method(CreateRootVolumesMethod(self))
+        self.add_method(DeleteRootVolumesMethod(self))
         self.add_method(ReplaceRootVolumeMethod(self))
         self.add_method(ProvisionInstancesMethod(self))
         self.add_method(DestroyInstancesMethod(self))
@@ -38,8 +41,15 @@ class InstanceCommand(AbstractPerCloudCommand):
         self.add_method(ConfigureInstancesMethod(self))
         self.add_method(InitYSQLMethod(self))
         self.add_method(UpdateDiskMethod(self))
+        self.add_method(UpdateMountedDisksMethod(self))
         self.add_method(CronCheckMethod(self))
         self.add_method(ChangeInstanceTypeMethod(self))
+        self.add_method(TransferXClusterCerts(self))
+        self.add_method(VerifySSHConnection(self))
+        self.add_method(AddAuthorizedKey(self))
+        self.add_method(RemoveAuthorizedKey(self))
+        self.add_method(RebootInstancesMethod(self))
+        self.add_method(RunHooks(self))
 
 
 class NetworkCommand(AbstractPerCloudCommand):
@@ -62,7 +72,8 @@ class ControlInstanceCommand(AbstractPerCloudCommand):
         super(ControlInstanceCommand, self).__init__("control")
         self.commands_per_server_type = {
             "master": self.MASTER_COMMANDS,
-            "tserver": self.BASE_COMMANDS
+            "tserver": self.BASE_COMMANDS,
+            "controller": self.BASE_COMMANDS
             }
 
     def add_subcommands(self):

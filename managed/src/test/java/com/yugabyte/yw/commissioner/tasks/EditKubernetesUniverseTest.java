@@ -257,7 +257,8 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
       PlacementInfo pi) {
     taskParams.upsertPrimaryCluster(userIntent, pi);
     taskParams.nodePrefix = NODE_PREFIX;
-
+    taskParams.getPrimaryCluster().uuid =
+        defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid;
     try {
       UUID taskUUID = commissioner.submit(TaskType.EditKubernetesUniverse, taskParams);
       return waitForTask(taskUUID);

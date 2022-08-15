@@ -21,10 +21,11 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicLong;
 
 import org.apache.commons.codec.binary.Hex;
-import org.apache.log4j.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class SimpleLoadGenerator {
-  private static final Logger LOG = Logger.getLogger(SimpleLoadGenerator.class);
+  private static final Logger LOG = LoggerFactory.getLogger(SimpleLoadGenerator.class);
 
   public static class Key {
     // The underlying key is an integer.
@@ -72,7 +73,7 @@ public class SimpleLoadGenerator {
 
     public void verify(String value) {
       if (value == null || !value.equals(getValueStr())) {
-        LOG.fatal("Value mismatch for key: " + key.toString() +
+        LOG.error("Value mismatch for key: " + key.toString() +
                   ", expected: " + getValueStr() +
                   ", got: " + value);
       }

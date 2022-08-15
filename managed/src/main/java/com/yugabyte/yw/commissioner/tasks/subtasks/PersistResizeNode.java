@@ -11,6 +11,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -31,8 +32,8 @@ public class PersistResizeNode extends UniverseTaskBase {
     public List<UUID> clusters;
   }
 
-  protected PersistResizeNode.Params taskParams() {
-    return (PersistResizeNode.Params) taskParams;
+  protected Params taskParams() {
+    return (Params) taskParams;
   }
 
   @Override
@@ -66,6 +67,10 @@ public class PersistResizeNode extends UniverseTaskBase {
                 userIntent.instanceType = taskParams().instanceType;
                 if (taskParams().volumeSize != null) {
                   userIntent.deviceInfo.volumeSize = taskParams().volumeSize;
+                }
+                for (NodeDetails nodeDetails :
+                    universe.getUniverseDetails().getNodesInCluster(cluster.uuid)) {
+                  nodeDetails.disksAreMountedByUUID = true;
                 }
               }
 

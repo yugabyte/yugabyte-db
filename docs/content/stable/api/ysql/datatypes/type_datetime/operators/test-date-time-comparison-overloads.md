@@ -8,8 +8,7 @@ menu:
     identifier: test-date-time-comparison-overloads
     parent: date-time-operators
     weight: 10
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Tests (not shown here) confirm that if the `>` operator is legal between a particular pair of different _date-time_ data types, then all of the other comparison operators, `<=`, `=`, `>=`, `>`, and `<>`, are also legal. Consider these two overloads of some operator, _A_:
@@ -26,7 +25,7 @@ data_type_2_value A data_type_1_value
 
 The fact that one is legal does not imply that the other is. The legality of each is informed by its own mental model; and each requires its own test.
 
-The [start page](../../../type_datetime) of the overall _date-time_ section explains why _timetz_ is not covered. So there are five _date-time_ data types to consider here and therefore twenty-five overloads to test. (You can't assume that you can always compare values of the same data type. For example, if the data type represents the latitude and longitude of a location, then you can't ask which location is greater than the other.)
+The [start page](../../../type_datetime/) of the overall _date-time_ section explains why _timetz_ is not covered. So there are five _date-time_ data types to consider here and therefore twenty-five overloads to test. (You can't assume that you can always compare values of the same data type. For example, if the data type represents the latitude and longitude of a location, then you can't ask which location is greater than the other.)
 
 The following code implements all of the tests. The design of the code (it tests the legal comparisons and the illegal comparisons separately) was informed by _ad hoc_ tests during its development.
 

@@ -61,6 +61,7 @@
 #include "commands/tablespace.h"
 #include "commands/dbcommands.h"
 #include "commands/defrem.h"
+#include "commands/ybccmds.h"
 #include "common/file_perm.h"
 #include "miscadmin.h"
 #include "postmaster/bgwriter.h"
@@ -78,8 +79,6 @@
 #include "utils/tqual.h"
 #include "utils/varlena.h"
 
-/*  YB includes. */
-#include "commands/ybccmds.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "pg_yb_utils.h"
 
@@ -189,7 +188,7 @@ CreateTableGroup(CreateTableGroupStmt *stmt)
 									 tablespaceoid);
 	recordDependencyOnOwner(YbTablegroupRelationId, tablegroupoid, owneroid);
 
-	/* We keep the lock on pg_tablegroup until commit */
+	/* We keep the lock on pg_yb_tablegroup until commit */
 	heap_close(rel, NoLock);
 
 	return tablegroupoid;
@@ -218,8 +217,8 @@ get_tablegroup_oid(const char *tablegroupname, bool missing_ok)
 	}
 
 	/*
-	 * Search pg_tablegroup.  We use a heapscan here even though there is an
-	 * index on name, on the theory that pg_tablegroup will usually have just
+	 * Search pg_yb_tablegroup.  We use a heapscan here even though there is an
+	 * index on name, on the theory that pg_yb_tablegroup will usually have just
 	 * a few entries and so an indexed lookup is a waste of effort.
 	 */
 	rel = heap_open(YbTablegroupRelationId, AccessShareLock);
@@ -250,59 +249,6 @@ get_tablegroup_oid(const char *tablegroupname, bool missing_ok)
 }
 
 /*
- * get_tablegroup_oid_by_table_oid - given a table oid, look up its tablegroup oid (if any)
- */
-Oid
-get_tablegroup_oid_by_table_oid(Oid table_oid)
-{
-	Oid			result = InvalidOid;
-	HeapTuple	tuple;
-
-	// get_tablegroup_oid_by_table_oid will only be called if YbTablegroupCatalogExists so this point
-	// error should not occur here. Added check just in case.
-	if (!YbTablegroupCatalogExists)
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("Tablegroup system catalog does not exist.")));
-	}
-
-	/*
-	 * Search pg_class using a cache lookup as pg_class can grow large.
-	 */
-	tuple = SearchSysCache1(RELOID, ObjectIdGetDatum(table_oid));
-
-	/* We assume that there can be at most one matching tuple */
-	if (HeapTupleIsValid(tuple))
-	{
-		bool isnull;
-		Datum datum = SysCacheGetAttr(RELOID,
-									  tuple,
-									  Anum_pg_class_reloptions,
-									  &isnull);
-
-		if (!isnull) {
-			List *reloptions = untransformRelOptions(datum);
-			ListCell *cell;
-			foreach(cell, reloptions)
-			{
-				DefElem	*defel = (DefElem *) lfirst(cell);
-				// Every node is a string node when untransformed. Need to type cast.
-				if (strcmp(defel->defname, "tablegroup") == 0)
-				{
-					result = (Oid) pg_atoi(defGetString(defel), sizeof(Oid), 0);
-				}
-			}
-		}
-
-	}
-
-	ReleaseSysCache(tuple);
-
-	return result;
-}
-
-/*
  * get_tablegroup_name - given a tablegroup OID, look up the name
  *
  * Returns a palloc'd string, or NULL if no such tablegroup.
@@ -321,7 +267,7 @@ get_tablegroup_name(Oid grp_oid)
 	}
 
 	/*
-	 * Search pg_tablegroup using a cache lookup.
+	 * Search pg_yb_tablegroup using a cache lookup.
 	 */
 	tuple = SearchSysCache1(YBTABLEGROUPOID, ObjectIdGetDatum(grp_oid));
 
@@ -338,13 +284,13 @@ get_tablegroup_name(Oid grp_oid)
 }
 
 /*
- * RemoveTableGroupById - remove a tablegroup by its OID.
+ * RemoveTablegroupById - remove a tablegroup by its OID.
  * If a tablegroup does not exist with the provided oid, then an error is raised.
  *
  * grp_oid - the oid of the tablegroup.
  */
 void
-RemoveTableGroupById(Oid grp_oid)
+RemoveTablegroupById(Oid grp_oid)
 {
 	Relation		pg_tblgrp_rel;
 	HeapScanDesc	scandesc;
@@ -383,7 +329,7 @@ RemoveTableGroupById(Oid grp_oid)
 	InvokeObjectDropHook(YbTablegroupRelationId, grp_oid, 0);
 
 	/*
-	 * Remove the pg_tablegroup tuple
+	 * Remove the pg_yb_tablegroup tuple
 	 */
 	CatalogTupleDelete(pg_tblgrp_rel, tuple);
 
@@ -394,7 +340,7 @@ RemoveTableGroupById(Oid grp_oid)
 		YBCDropTablegroup(grp_oid);
 	}
 
-	/* We keep the lock on pg_tablegroup until commit */
+	/* We keep the lock on pg_yb_tablegroup until commit */
 	heap_close(pg_tblgrp_rel, NoLock);
 }
 
@@ -468,7 +414,7 @@ RenameTablegroup(const char *oldname, const char *newname)
 	heap_freetuple(newtup);
 
 	/*
-	 * Close pg_tablegroup, but keep lock till commit.
+	 * Close pg_yb_tablegroup, but keep lock till commit.
 	 */
 	heap_close(rel, NoLock);
 
@@ -526,7 +472,7 @@ AlterTablegroupOwner(const char *grpname, Oid newOwnerId)
 		HeapTuple	newtuple;
 
 		/* Otherwise, must be owner of the existing object or a superuser */
-		if (!superuser() && !pg_tablegroup_ownercheck(HeapTupleGetOid(tuple), GetUserId()))
+		if (!superuser() && !pg_tablegroup_ownercheck(tablegroupoid, GetUserId()))
 			aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_YBTABLEGROUP, grpname);
 
 		/* Must be able to become new owner */
@@ -569,7 +515,7 @@ AlterTablegroupOwner(const char *grpname, Oid newOwnerId)
 
 	heap_endscan(scandesc);
 
-	/* Close pg_tablegroup, but keep lock till commit */
+	/* Close pg_yb_tablegroup, but keep lock till commit */
 	heap_close(rel, NoLock);
 
 	return address;

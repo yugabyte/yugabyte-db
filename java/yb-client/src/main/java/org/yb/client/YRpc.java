@@ -44,6 +44,8 @@ import com.google.protobuf.CodedOutputStream;
 import com.google.protobuf.InvalidProtocolBufferException;
 import com.google.protobuf.Message;
 import com.stumbleupon.async.Deferred;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.yb.annotations.InterfaceAudience;
 import org.yb.util.Pair;
 import org.yb.util.Slice;
@@ -69,6 +71,7 @@ import java.io.IOException;
  */
 @InterfaceAudience.Private
 public abstract class YRpc<R> {
+  public static final Logger LOG = LoggerFactory.getLogger(YRpc.class);
 
   // Service names.
   protected static final String GENERIC_SERVICE_NAME = "yb.server.GenericService";
@@ -247,8 +250,13 @@ public abstract class YRpc<R> {
     }
     buf.append(", attempt=").append(attempt);
     buf.append(", maxAttempts=").append(maxAttempts);
-    buf.append(", ").append(deadlineTracker);
-    buf.append(", ").append(deferred);
+    if (LOG.isTraceEnabled()) {
+      buf.append(", ").append(deadlineTracker);
+      buf.append(", ").append(deferred);
+    } else {
+      buf.append(", maxTimeoutMs=").append(deadlineTracker.getDeadline());
+      buf.append(", elapsedTimeMs=").append(deadlineTracker.getElapsedMillis());
+    }
     buf.append(')');
     return buf.toString();
   }

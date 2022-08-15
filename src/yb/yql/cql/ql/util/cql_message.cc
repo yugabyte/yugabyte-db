@@ -64,7 +64,7 @@ constexpr char CQLMessage::kTopologyChangeEvent[];
 constexpr char CQLMessage::kStatusChangeEvent[];
 constexpr char CQLMessage::kSchemaChangeEvent[];
 
-CHECKED_STATUS CQLMessage::QueryParameters::GetBindVariableValue(const std::string& name,
+Status CQLMessage::QueryParameters::GetBindVariableValue(const std::string& name,
                                                                  const size_t pos,
                                                                  const Value** value) const {
   if (!value_map.empty()) {
@@ -248,6 +248,19 @@ bool CQLRequest::ParseRequest(
   const uint8_t* body_data = body_size > 0 ? mesg.data() + kMessageHeaderLength : to_uchar_ptr("");
   unique_ptr<uint8_t[]> buffer;
 
+  if (header.flags & kMetadataFlag) {
+    if (body_size < kMetadataSize) {
+      error_response->reset(
+          new ErrorResponse(
+              header.stream_id, ErrorResponse::Code::PROTOCOL_ERROR,
+              "Metadata flag set, but request body too small"));
+      return false;
+    }
+    // Ignore the request metadata.
+    body_size -= kMetadataSize;
+    body_data += kMetadataSize;
+  }
+
   // If the message body is compressed, uncompress it.
   if (body_size > 0 && (header.flags & kCompressionFlag)) {
     if (header.opcode == Opcode::STARTUP) {
@@ -388,6 +401,16 @@ bool CQLRequest::ParseRequest(
   (*request)->body_.clear();
 
   return true;
+}
+
+int64_t CQLRequest::ParseRpcQueueLimit(const Slice& mesg) {
+  Flags flags = LoadByte<Flags>(mesg, kHeaderPosFlags);
+  if (!(flags & kMetadataFlag)) {
+    return std::numeric_limits<int64_t>::max();
+  }
+  uint16_t queue_limit = LoadShort<uint16_t>(
+      mesg, kMessageHeaderLength + kMetadataQueueLimitOffset);
+  return static_cast<int64_t>(queue_limit);
 }
 
 CQLRequest::CQLRequest(const Header& header, const Slice& body) : CQLMessage(header), body_(body) {
@@ -564,43 +587,43 @@ Status CQLRequest::ParseQueryParameters(QueryParameters* params) {
   return Status::OK();
 }
 
-CHECKED_STATUS CQLRequest::ParseByte(uint8_t* value) {
+Status CQLRequest::ParseByte(uint8_t* value) {
   static_assert(sizeof(*value) == kByteSize, "inconsistent byte size");
   return ParseNum("CQL byte", Load8, value);
 }
 
-CHECKED_STATUS CQLRequest::ParseShort(uint16_t* value) {
+Status CQLRequest::ParseShort(uint16_t* value) {
   static_assert(sizeof(*value) == kShortSize, "inconsistent short size");
   return ParseNum("CQL byte", NetworkByteOrder::Load16, value);
 }
 
-CHECKED_STATUS CQLRequest::ParseInt(int32_t* value) {
+Status CQLRequest::ParseInt(int32_t* value) {
   static_assert(sizeof(*value) == kIntSize, "inconsistent int size");
   return ParseNum("CQL int", NetworkByteOrder::Load32, value);
 }
 
-CHECKED_STATUS CQLRequest::ParseLong(int64_t* value) {
+Status CQLRequest::ParseLong(int64_t* value) {
   static_assert(sizeof(*value) == kLongSize, "inconsistent long size");
   return ParseNum("CQL long", NetworkByteOrder::Load64, value);
 }
 
-CHECKED_STATUS CQLRequest::ParseString(std::string* value)  {
+Status CQLRequest::ParseString(std::string* value)  {
   return ParseBytes("CQL string", &CQLRequest::ParseShort, value);
 }
 
-CHECKED_STATUS CQLRequest::ParseLongString(std::string* value)  {
+Status CQLRequest::ParseLongString(std::string* value)  {
   return ParseBytes("CQL long string", &CQLRequest::ParseInt, value);
 }
 
-CHECKED_STATUS CQLRequest::ParseShortBytes(std::string* value) {
+Status CQLRequest::ParseShortBytes(std::string* value) {
   return ParseBytes("CQL short bytes", &CQLRequest::ParseShort, value);
 }
 
-CHECKED_STATUS CQLRequest::ParseBytes(std::string* value) {
+Status CQLRequest::ParseBytes(std::string* value) {
   return ParseBytes("CQL bytes", &CQLRequest::ParseInt, value);
 }
 
-CHECKED_STATUS CQLRequest::ParseConsistency(Consistency* consistency) {
+Status CQLRequest::ParseConsistency(Consistency* consistency) {
   static_assert(sizeof(*consistency) == kConsistencySize, "inconsistent consistency size");
   return ParseNum("CQL consistency", NetworkByteOrder::Load16, consistency);
 }
@@ -651,7 +674,7 @@ Status AuthResponseRequest::ParseBody() {
   return STATUS(InvalidArgument, error_msg);
 }
 
-CHECKED_STATUS AuthResponseRequest::AuthQueryParameters::GetBindVariable(
+Status AuthResponseRequest::AuthQueryParameters::GetBindVariable(
     const std::string& name,
     int64_t pos,
     const std::shared_ptr<QLType>& type,
@@ -969,7 +992,10 @@ void SerializeValue(const CQLMessage::Value& value, faststring* mesg) {
 
 // ------------------------------------ CQL response -----------------------------------
 CQLResponse::CQLResponse(const CQLRequest& request, const Opcode opcode)
-    : CQLMessage(Header(request.version() | kResponseVersion, 0, request.stream_id(), opcode)) {
+    : CQLMessage(Header(request.version() | kResponseVersion,
+                        request.flags() & kMetadataFlag,
+                        request.stream_id(),
+                        opcode)) {
 }
 
 CQLResponse::CQLResponse(const StreamId stream_id, const Opcode opcode)
@@ -993,6 +1019,11 @@ void CQLResponse::Serialize(const CompressionScheme compression_scheme, faststri
   const size_t start_pos = mesg->size(); // save the start position
   const bool compress = (compression_scheme != CQLMessage::CompressionScheme::kNone);
   SerializeHeader(compress, mesg);
+  if (flags() & kMetadataFlag) {
+    uint8_t buffer[kMetadataSize] = {0};
+    SERIALIZE_SHORT(buffer, kMetadataQueuePosOffset, static_cast<uint16_t>(rpc_queue_position_));
+    mesg->append(buffer, sizeof(buffer));
+  }
   if (compress) {
     faststring body;
     SerializeBody(&body);
@@ -1361,6 +1392,17 @@ ResultResponse::RowsMetadata::Type::Type(const shared_ptr<QLType>& ql_type) {
       }
       new(&udt_type) shared_ptr<const UDTType>(std::make_shared<UDTType>(
           UDTType{type->udtype_keyspace_name(), type->udtype_name(), fields}));
+      return;
+    }
+    case DataType::TUPLE: {
+      id = Id::TUPLE;
+      std::vector<std::shared_ptr<const Type>> elem_types;
+      for (size_t i = 0; i < type->params().size(); i++) {
+        auto elem_type = std::make_shared<const Type>(Type(type->param_type(i)));
+        elem_types.emplace_back(std::move(elem_type));
+      }
+      new (&tuple_component_types)
+          shared_ptr<const TupleComponentTypes>(std::make_shared<TupleComponentTypes>(elem_types));
       return;
     }
     case DataType::FROZEN: FALLTHROUGH_INTENDED;

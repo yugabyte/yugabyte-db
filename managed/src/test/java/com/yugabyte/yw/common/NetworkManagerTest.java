@@ -11,6 +11,8 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.typesafe.config.Config;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import java.util.Arrays;
@@ -32,6 +34,10 @@ public class NetworkManagerTest extends FakeDBApplication {
 
   @Mock ShellProcessHandler shellProcessHandler;
 
+  @Mock RuntimeConfigFactory runtimeConfigFactory;
+
+  @Mock Config mockConfig;
+
   private Provider defaultProvider;
   private Region defaultRegion;
   ArgumentCaptor<List<String>> command;
@@ -43,13 +49,14 @@ public class NetworkManagerTest extends FakeDBApplication {
     defaultRegion = Region.create(defaultProvider, "us-west-2", "US West 2", "yb-image");
     command = ArgumentCaptor.forClass(List.class);
     cloudCredentials = ArgumentCaptor.forClass(Map.class);
+    when(runtimeConfigFactory.globalRuntimeConf()).thenReturn(mockConfig);
   }
 
   private JsonNode runBootstrap(
       UUID regionUUID, UUID providerUUID, String customPayload, boolean mimicError) {
     ShellResponse response = new ShellResponse();
     if (mimicError) {
-      response.message = "{\"error\": \"Unknown Error\"}";
+      response.message = "Unknown error occurred";
       response.code = 99;
     } else {
       response.code = 0;
@@ -62,7 +69,7 @@ public class NetworkManagerTest extends FakeDBApplication {
   private JsonNode runCommand(UUID regionUUID, String commandType, boolean mimicError) {
     ShellResponse response = new ShellResponse();
     if (mimicError) {
-      response.message = "{\"error\": \"Unknown Error\"}";
+      response.message = "Unknown error occurred";
       response.code = 99;
     } else {
       response.code = 0;
@@ -98,7 +105,9 @@ public class NetworkManagerTest extends FakeDBApplication {
           } catch (RuntimeException re) {
             assertEquals(
                 re.getMessage(),
-                "YBCloud command network (" + commandType + ") failed to execute.");
+                "YBCloud command network ("
+                    + commandType
+                    + ") failed to execute. Unknown error occurred");
           }
         });
   }

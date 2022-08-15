@@ -51,6 +51,7 @@
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
+#include "yb/rpc/secure_stream.h"
 
 #include "yb/server/default-path-handlers.h"
 #include "yb/server/generic_service.h"
@@ -264,6 +265,8 @@ Status RpcServerBase::SetupMessengerBuilder(rpc::MessengerBuilder* builder) {
   return Status::OK();
 }
 
+Status RpcServerBase::InitAutoFlags() { return Status::OK(); }
+
 Status RpcServerBase::Init() {
   CHECK(!initialized_);
 
@@ -443,7 +446,7 @@ RpcAndWebServerBase::RpcAndWebServerBase(
     : RpcServerBase(name, options, metric_namespace, std::move(mem_tracker), clock),
       web_server_(new Webserver(options_.CompleteWebserverOptions(), name_)) {
   FsManagerOpts fs_opts;
-  fs_opts.metric_entity = metric_entity_;
+  fs_opts.metric_registry = metric_registry_.get();
   fs_opts.parent_mem_tracker = mem_tracker_;
   fs_opts.wal_paths = options.fs_opts.wal_paths;
   fs_opts.data_paths = options.fs_opts.data_paths;
@@ -457,10 +460,10 @@ RpcAndWebServerBase::~RpcAndWebServerBase() {
   Shutdown();
 }
 
-Endpoint RpcAndWebServerBase::first_http_address() const {
+Result<Endpoint> RpcAndWebServerBase::first_http_address() const {
   std::vector<Endpoint> addrs;
-  WARN_NOT_OK(web_server_->GetBoundAddresses(&addrs),
-              "Couldn't get bound webserver addresses");
+  RETURN_NOT_OK_PREPEND(web_server_->GetBoundAddresses(&addrs),
+                        "Couldn't get bound webserver addresses");
   CHECK(!addrs.empty()) << "Not bound";
   return addrs[0];
 }
@@ -479,21 +482,23 @@ void RpcAndWebServerBase::GenerateInstanceID() {
 }
 
 Status RpcAndWebServerBase::Init() {
-  encryption::InitOpenSSL();
+  rpc::InitOpenSSL();
 
-  Status s = fs_manager_->Open();
+  Status s = fs_manager_->CheckAndOpenFileSystemRoots();
   if (s.IsNotFound() || (!s.ok() && fs_manager_->HasAnyLockFiles())) {
     LOG(INFO) << "Could not load existing FS layout: " << s.ToString();
     LOG(INFO) << "Creating new FS layout";
     RETURN_NOT_OK_PREPEND(fs_manager_->CreateInitialFileSystemLayout(true),
                           "Could not create new FS layout");
-    s = fs_manager_->Open();
+    s = fs_manager_->CheckAndOpenFileSystemRoots();
   }
   RETURN_NOT_OK_PREPEND(s, "Failed to load FS layout");
 
   if (PREDICT_FALSE(FLAGS_TEST_simulate_port_conflict_error)) {
     return STATUS(NetworkError, "Simulated port conflict error");
   }
+
+  RETURN_NOT_OK(InitAutoFlags());
 
   RETURN_NOT_OK(RpcServerBase::Init());
 
@@ -610,6 +615,8 @@ void RpcAndWebServerBase::DisplayGeneralInfoIcons(std::stringstream* output) {
   DisplayIconTile(output, "fa-microchip", "Threads", "/threadz");
   // Drives.
   DisplayIconTile(output, "fa-hdd-o", "Drives", "/drives");
+  // TLS.
+  DisplayIconTile(output, "fa-lock", "TLS", "/tls");
 }
 
 Status RpcAndWebServerBase::DisplayRpcIcons(std::stringstream* output) {
@@ -641,6 +648,7 @@ Status RpcAndWebServerBase::Start() {
   AddRpczPathHandlers(messenger_.get(), web_server_.get());
   RegisterMetricsJsonHandler(web_server_.get(), metric_registry_.get());
   RegisterPathUsageHandler(web_server_.get(), fs_manager_.get());
+  RegisterTlsHandler(web_server_.get(), this);
   TracingPathHandlers::RegisterHandlers(web_server_.get());
   web_server_->RegisterPathHandler("/utilz", "Utilities",
                                    std::bind(&RpcAndWebServerBase::HandleDebugPage, this, _1, _2),

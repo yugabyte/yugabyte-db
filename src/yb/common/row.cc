@@ -20,7 +20,7 @@ const TypeInfo* SimpleConstCell::typeinfo() const {
 }
 
 size_t SimpleConstCell::size() const {
-  return col_schema_->type_info()->size();
+  return col_schema_->type_info()->size;
 }
 
 bool SimpleConstCell::is_nullable() const {
@@ -33,11 +33,11 @@ RowProjector::RowProjector(const Schema* base_schema, const Schema* projection)
 }
 
 // Initialize the projection mapping with the specified base_schema and projection
-CHECKED_STATUS RowProjector::Init() {
+Status RowProjector::Init() {
   return projection_->GetProjectionMapping(*base_schema_, this);
 }
 
-CHECKED_STATUS RowProjector::Reset(const Schema* base_schema, const Schema* projection) {
+Status RowProjector::Reset(const Schema* base_schema, const Schema* projection) {
   base_schema_ = base_schema;
   projection_ = projection;
   base_cols_mapping_.clear();
@@ -46,7 +46,7 @@ CHECKED_STATUS RowProjector::Reset(const Schema* base_schema, const Schema* proj
   return Init();
 }
 
-CHECKED_STATUS RowProjector::ProjectExtraColumn(size_t proj_col_idx) {
+Status RowProjector::ProjectExtraColumn(size_t proj_col_idx) {
   return STATUS(InvalidArgument,
     "The column '" + projection_->column(proj_col_idx).name() +
     "' does not exist in the projection, and it does not have a nullable type");

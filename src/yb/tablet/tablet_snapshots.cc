@@ -22,12 +22,14 @@
 
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
+#include "yb/docdb/doc_write_batch.h"
 
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/util/file_util.h"
 #include "yb/rocksdb/utilities/checkpoint.h"
 
 #include "yb/tablet/operations/snapshot_operation.h"
+#include "yb/tablet/restore_util.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
 
@@ -47,6 +49,11 @@ namespace tablet {
 namespace {
 
 const std::string kTempSnapshotDirSuffix = ".tmp";
+const std::string kTabletMetadataFile = "tablet.metadata";
+
+std::string TabletMetadataFile(const std::string& dir) {
+  return JoinPathSegments(dir, kTabletMetadataFile);
+}
 
 } // namespace
 
@@ -161,6 +168,10 @@ Status TabletSnapshots::Create(const CreateSnapshotData& data) {
     RETURN_NOT_OK(patcher.SetHybridTimeFilter(snapshot_hybrid_time));
   }
 
+  bool need_flush = data.schedule_id && tablet().metadata()->AddSnapshotSchedule(data.schedule_id);
+
+  RETURN_NOT_OK(tablet().metadata()->SaveTo(TabletMetadataFile(tmp_snapshot_dir)));
+
   RETURN_NOT_OK_PREPEND(
       env->RenameFile(tmp_snapshot_dir, snapshot_dir),
       Format("Cannot rename temp snapshot dir $0 to $1", tmp_snapshot_dir, snapshot_dir));
@@ -168,7 +179,7 @@ Status TabletSnapshots::Create(const CreateSnapshotData& data) {
       env->SyncDir(top_snapshots_dir),
       Format("Cannot sync top snapshots dir $0", top_snapshots_dir));
 
-  if (data.schedule_id && tablet().metadata()->AddSnapshotSchedule(data.schedule_id)) {
+  if (need_flush) {
     RETURN_NOT_OK(tablet().metadata()->Flush());
   }
 
@@ -205,6 +216,11 @@ Status TabletSnapshots::Restore(SnapshotOperation* operation) {
   auto restore_at = HybridTime::FromPB(request.snapshot_hybrid_time());
   auto restoration_id = TryFullyDecodeTxnSnapshotRestorationId(request.restoration_id());
 
+  if (request.db_oid()) {
+    RETURN_NOT_OK(RestorePartialRows(operation));
+    return tablet().RestoreStarted(restoration_id);
+  }
+
   VLOG_WITH_PREFIX_AND_FUNC(1) << YB_STRUCT_TO_STRING(snapshot_dir, restore_at);
 
   if (!snapshot_dir.empty()) {
@@ -231,6 +247,47 @@ Status TabletSnapshots::Restore(SnapshotOperation* operation) {
     s = tablet().RestoreStarted(restoration_id);
   }
   return s;
+}
+
+Status TabletSnapshots::RestorePartialRows(SnapshotOperation* operation) {
+  // Restore snapshot to temporary folder and create rocksdb out of it.
+  const auto& request = *operation->request();
+  LOG_WITH_PREFIX(INFO) << "Restoring only rows with db oid " << request.db_oid();
+  auto snapshot_id = VERIFY_RESULT(FullyDecodeTxnSnapshotId(request.snapshot_id()));
+  auto restore_at = HybridTime::FromPB(request.snapshot_hybrid_time());
+  auto dir = VERIFY_RESULT(RestoreToTemporary(snapshot_id, restore_at));
+  rocksdb::Options rocksdb_options;
+  std::string log_prefix = LogPrefix();
+  // Remove ": " to patch suffix.
+  log_prefix.erase(log_prefix.size() - 2);
+  tablet().InitRocksDBOptions(&rocksdb_options, log_prefix + " [TMP]: ");
+  auto db = VERIFY_RESULT(rocksdb::DB::Open(rocksdb_options, dir));
+  auto doc_db = docdb::DocDB::FromRegularUnbounded(db.get());
+
+  docdb::DocWriteBatch write_batch(
+      tablet().doc_db(), docdb::InitMarkerBehavior::kOptional);
+  FetchState restoring_state(doc_db, ReadHybridTime::SingleTime(restore_at));
+  FetchState existing_state(tablet().doc_db(), ReadHybridTime::Max());
+
+  RETURN_NOT_OK(restoring_state.SetPrefix(""));
+  RETURN_NOT_OK(existing_state.SetPrefix(""));
+
+  TabletRestorePatch restore_patch(
+      &existing_state, &restoring_state, &write_batch, request.db_oid());
+
+  RETURN_NOT_OK(restore_patch.PatchCurrentStateFromRestoringState());
+
+  size_t total_changes = restore_patch.TotalTickerCount();
+
+  if (total_changes != 0 || VLOG_IS_ON(3)) {
+    LOG(INFO) << "PITR: Sequences data tablet: " << tablet().tablet_id()
+              << ", " << restore_patch.TickersToString();
+  }
+
+  WriteToRocksDB(
+      &write_batch, operation->WriteHybridTime(), operation->op_id(), &tablet(), std::nullopt);
+
+  return Status::OK();
 }
 
 Status TabletSnapshots::RestoreCheckpoint(
@@ -264,6 +321,10 @@ Status TabletSnapshots::RestoreCheckpoint(
       LOG_WITH_PREFIX(WARNING) << "Copy checkpoint files status: " << s;
       return STATUS(IllegalState, "Unable to copy checkpoint files", s.ToString());
     }
+    auto tablet_metadata_file = TabletMetadataFile(db_dir);
+    if (env().FileExists(tablet_metadata_file)) {
+      RETURN_NOT_OK(env().DeleteFile(tablet_metadata_file));
+    }
   }
 
   {
@@ -278,12 +339,27 @@ Status TabletSnapshots::RestoreCheckpoint(
     }
   }
 
+  bool need_flush = false;
+
   if (restore_metadata.schema) {
     // TODO(pitr) check deleted columns
     tablet().metadata()->SetSchema(
         *restore_metadata.schema, *restore_metadata.index_map, {} /* deleted_columns */,
         restore_metadata.schema_version);
     tablet().metadata()->SetHidden(restore_metadata.hide);
+    need_flush = true;
+  }
+
+  if (!dir.empty()) {
+    auto tablet_metadata_file = TabletMetadataFile(dir);
+    // Old snapshots could lack tablet metadata, so just do nothing in this case.
+    if (env().FileExists(tablet_metadata_file)) {
+      LOG_WITH_PREFIX(INFO) << "Merging metadata with restored: " << tablet_metadata_file;
+      RETURN_NOT_OK(tablet().metadata()->MergeWithRestored(tablet_metadata_file));
+    }
+  }
+
+  if (need_flush) {
     RETURN_NOT_OK(tablet().metadata()->Flush());
     RefreshYBMetaDataCache();
   }
@@ -426,6 +502,20 @@ Status TabletSnapshots::RestoreFinished(SnapshotOperation* operation) {
   return tablet().RestoreFinished(
       VERIFY_RESULT(FullyDecodeTxnSnapshotRestorationId(operation->request()->restoration_id())),
       HybridTime::FromPB(operation->request()->restoration_hybrid_time()));
+}
+
+Result<bool> TabletRestorePatch::ShouldSkipEntry(const Slice& key, const Slice& value) {
+  KeyBuffer key_copy;
+  key_copy = key;
+  docdb::SubDocKey sub_doc_key;
+  RETURN_NOT_OK(sub_doc_key.FullyDecodeFrom(
+      key_copy.AsSlice(), docdb::HybridTimeRequired::kFalse));
+  // Get the db_oid.
+  int64_t db_oid = sub_doc_key.doc_key().hashed_group()[0].GetInt64();
+  if (db_oid != db_oid_) {
+    return true;
+  }
+  return false;
 }
 
 } // namespace tablet

@@ -13,11 +13,14 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.typesafe.config.Config;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import java.io.File;
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
@@ -47,6 +50,10 @@ public class TemplateManagerTest extends FakeDBApplication {
   @Mock ShellProcessHandler shellProcessHandler;
 
   @Mock play.Configuration mockAppConfig;
+
+  @Mock RuntimeConfigFactory runtimeConfigFactory;
+
+  @Mock Config mockConfig;
 
   @InjectMocks TemplateManager templateManager;
 
@@ -94,6 +101,7 @@ public class TemplateManagerTest extends FakeDBApplication {
     testProvider = ModelFactory.onpremProvider(testCustomer);
     when(mockAppConfig.getString(YB_STORAGE_PATH_KEY)).thenReturn(YB_STORAGE_PATH_VALUE);
     when(mockAppConfig.getString(YB_THIRDPARTY_KEY)).thenReturn(YB_THIRDPARTY_VALUE);
+    when(runtimeConfigFactory.globalRuntimeConf()).thenReturn(mockConfig);
   }
 
   @After
@@ -105,10 +113,12 @@ public class TemplateManagerTest extends FakeDBApplication {
       AccessKey accessKey,
       boolean airGapInstall,
       boolean passwordlessSudo,
-      boolean installNodeExporter) {
+      boolean installNodeExporter,
+      boolean setUpChrony) {
     assertEquals(airGapInstall, accessKey.getKeyInfo().airGapInstall);
     assertEquals(passwordlessSudo, accessKey.getKeyInfo().passwordlessSudoAccess);
     assertEquals(installNodeExporter, accessKey.getKeyInfo().installNodeExporter);
+    assertEquals(setUpChrony, accessKey.getKeyInfo().setUpChrony);
     if (airGapInstall || passwordlessSudo) {
       String expectedProvisionScript =
           String.format(
@@ -132,10 +142,11 @@ public class TemplateManagerTest extends FakeDBApplication {
     expectedCommand.add("prometheus");
     when(shellProcessHandler.run(eq(expectedCommand), eq(new HashMap<>()), anyString()))
         .thenReturn(ShellResponse.create(0, "{}"));
-    templateManager.createProvisionTemplate(accessKey, true, false, true, 9300, "prometheus");
+    templateManager.createProvisionTemplate(
+        accessKey, true, false, true, 9300, "prometheus", false, null);
     verify(shellProcessHandler, times(1))
         .run(eq(expectedCommand), eq(new HashMap<>()), anyString());
-    assertAccessKeyInfo(accessKey, true, false, true);
+    assertAccessKeyInfo(accessKey, true, false, true, false);
   }
 
   @Test
@@ -151,10 +162,11 @@ public class TemplateManagerTest extends FakeDBApplication {
     expectedCommand.add("prometheus");
     when(shellProcessHandler.run(eq(expectedCommand), eq(new HashMap<>()), anyString()))
         .thenReturn(ShellResponse.create(0, "{}"));
-    templateManager.createProvisionTemplate(accessKey, true, true, true, 9300, "prometheus");
+    templateManager.createProvisionTemplate(
+        accessKey, true, true, true, 9300, "prometheus", false, null);
     verify(shellProcessHandler, times(1))
         .run(eq(expectedCommand), eq(new HashMap<>()), anyString());
-    assertAccessKeyInfo(accessKey, true, true, true);
+    assertAccessKeyInfo(accessKey, true, true, true, false);
   }
 
   @Test
@@ -169,10 +181,11 @@ public class TemplateManagerTest extends FakeDBApplication {
     expectedCommand.add("prometheus");
     when(shellProcessHandler.run(eq(expectedCommand), eq(new HashMap<>()), anyString()))
         .thenReturn(ShellResponse.create(0, "{}"));
-    templateManager.createProvisionTemplate(accessKey, false, true, true, 9300, "prometheus");
+    templateManager.createProvisionTemplate(
+        accessKey, false, true, true, 9300, "prometheus", false, null);
     verify(shellProcessHandler, times(1))
         .run(eq(expectedCommand), eq(new HashMap<>()), anyString());
-    assertAccessKeyInfo(accessKey, false, true, true);
+    assertAccessKeyInfo(accessKey, false, true, true, false);
   }
 
   @Test
@@ -182,10 +195,31 @@ public class TemplateManagerTest extends FakeDBApplication {
     expectedCommand.add("--passwordless_sudo");
     when(shellProcessHandler.run(eq(expectedCommand), eq(new HashMap<>()), anyString()))
         .thenReturn(ShellResponse.create(0, "{}"));
-    templateManager.createProvisionTemplate(accessKey, false, true, false, 9300, "prometheus");
+    templateManager.createProvisionTemplate(
+        accessKey, false, true, false, 9300, "prometheus", false, null);
     verify(shellProcessHandler, times(1))
         .run(eq(expectedCommand), eq(new HashMap<>()), anyString());
-    assertAccessKeyInfo(accessKey, false, true, false);
+    assertAccessKeyInfo(accessKey, false, true, false, false);
+  }
+
+  @Test
+  public void testTemplateCommandWithNTPServers() {
+    AccessKey accessKey = setupTestAccessKey();
+    List<String> expectedCommand = getExpectedCommmand(accessKey.getKeyInfo());
+    List<String> servers = Arrays.asList("0.yb.pool.ntp.org", "1.yb.pool.ntp.org");
+    expectedCommand.add("--passwordless_sudo");
+    expectedCommand.add("--use_chrony");
+    for (String server : servers) {
+      expectedCommand.add("--ntp_server");
+      expectedCommand.add(server);
+    }
+    when(shellProcessHandler.run(eq(expectedCommand), eq(new HashMap<>()), anyString()))
+        .thenReturn(ShellResponse.create(0, "{}"));
+    templateManager.createProvisionTemplate(
+        accessKey, false, true, false, 9300, "prometheus", true, servers);
+    verify(shellProcessHandler, times(1))
+        .run(eq(expectedCommand), eq(new HashMap<>()), anyString());
+    assertAccessKeyInfo(accessKey, false, true, false, true);
   }
 
   @Test
@@ -203,6 +237,7 @@ public class TemplateManagerTest extends FakeDBApplication {
         .thenReturn(ShellResponse.create(1, "foobar"));
     expectedException.expect(PlatformServiceException.class);
     expectedException.expectMessage("YBCloud command instance (template) failed to execute.");
-    templateManager.createProvisionTemplate(accessKey, true, true, true, 9300, "prometheus");
+    templateManager.createProvisionTemplate(
+        accessKey, true, true, true, 9300, "prometheus", false, null);
   }
 }

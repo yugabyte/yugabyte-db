@@ -85,8 +85,8 @@ class PosixMmapReadableFile : public RandomAccessFile {
   PosixMmapReadableFile(const int fd, const std::string& fname, void* base,
                         size_t length, const EnvOptions& options);
   ~PosixMmapReadableFile();
-  CHECKED_STATUS Read(uint64_t offset, size_t n, Slice* result, uint8_t* scratch) const override;
-  CHECKED_STATUS InvalidateCache(size_t offset, size_t length) override;
+  Status Read(uint64_t offset, size_t n, Slice* result, uint8_t* scratch) const override;
+  Status InvalidateCache(size_t offset, size_t length) override;
   yb::Result<uint64_t> Size() const override;
   yb::Result<uint64_t> INode() const override;
   // Doesn't include memory usage by mmap.

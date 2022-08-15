@@ -235,7 +235,7 @@ public class EncryptionAtRestControllerTest extends FakeDBApplication {
         .thenReturn(fakeTaskUUID);
     CloudAPI mockCloudAPI = mock(CloudAPI.class);
     when(mockCloudAPIFactory.get(any())).thenReturn(mockCloudAPI);
-    when(mockCloudAPI.isValidCreds(any(), any())).thenReturn(true);
+    when(mockCloudAPI.isValidCredsKms(any(), any())).thenReturn(true);
     Result createKMSResult =
         doRequestWithAuthTokenAndBody("POST", kmsConfigUrl, authToken, kmsConfigReq);
     assertOk(createKMSResult);
@@ -273,6 +273,9 @@ public class EncryptionAtRestControllerTest extends FakeDBApplication {
                 EncryptionAtRestController.AWS_KMS_ENDPOINT_FIELDNAME,
                 "https://kms.ap-south-1.amazonaws.com")
             .put("name", "test");
+    CloudAPI mockCloudAPI = mock(CloudAPI.class);
+    when(mockCloudAPIFactory.get(any())).thenReturn(mockCloudAPI);
+    when(mockCloudAPI.isValidCredsKms(any(), any())).thenReturn(true);
     Result createKMSResult =
         assertPlatformException(
             () -> doRequestWithAuthTokenAndBody("POST", kmsConfigUrl, authToken, kmsConfigReq));

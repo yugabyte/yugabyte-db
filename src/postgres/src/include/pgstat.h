@@ -932,7 +932,8 @@ typedef enum
 typedef enum ProgressCommandType
 {
 	PROGRESS_COMMAND_INVALID,
-	PROGRESS_COMMAND_VACUUM
+	PROGRESS_COMMAND_VACUUM,
+	PROGRESS_COMMAND_COPY
 } ProgressCommandType;
 
 #define PGSTAT_NUM_PROGRESS_PARAM	10
@@ -1227,6 +1228,7 @@ extern void pgstat_report_deadlock(void);
 
 extern void pgstat_initialize(void);
 extern void pgstat_bestart(void);
+extern void yb_pgstat_clear_entry_pid(int pid);
 
 extern void pgstat_report_activity(BackendState state, const char *cmd_str);
 extern void pgstat_report_tempfile(size_t filesize);

@@ -2,14 +2,13 @@
 title: Create a KMS configuration using HashiCorp Vault
 headerTitle: Create a KMS configuration using HashiCorp Vault
 linkTitle: Create a KMS configuration
-description: Use Yugabyte Platform to create a KMS configuration for HashiCorp Vault.
+description: Use YugabyteDB Anywhere to create a KMS configuration for HashiCorp Vault.
 menu:
-  stable:
+  stable_yugabyte-platform:
     parent: security
     identifier: create-kms-config-3-hashicorp-kms
     weight: 27
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -29,17 +28,17 @@ showAsideToc: true
 
 </ul>
 
-Encryption at rest uses universe keys to encrypt and decrypt universe data keys. You can use the Yugabyte Platform UI to create key management service (KMS) configurations for generating the required universe keys for one or more YugabyteDB universes. Encryption at rest in Yugabyte Platform supports the use of [HashiCorp Vault](https://www.vaultproject.io/) as a KMS.
+Encryption at rest uses universe keys to encrypt and decrypt universe data keys. You can use the YugabyteDB Anywhere UI to create key management service (KMS) configurations for generating the required universe keys for one or more YugabyteDB universes. Encryption at rest in YugabyteDB Anywhere supports the use of [HashiCorp Vault](https://www.vaultproject.io/) as a KMS.
 
 ## Configure HashiCorp Vault
 
-Before you can start configuring HashiCorp Vault, install it on a virtual machine, as per instructions provided in [Install Vault](https://www.vaultproject.io/docs/install). The vault can be set up as a multi-node cluster. Ensure that your vault installation meets the following requirements: 
+Before you can start configuring HashiCorp Vault, install it on a virtual machine, as per instructions provided in [Install Vault](https://www.vaultproject.io/docs/install). The vault can be set up as a multi-node cluster. Ensure that your vault installation meets the following requirements:
 
 - Has transit secret engine enabled.
 - Its seal and unseal mechanism is secure and repeatable.
 - Its token creation mechanism is repeatable.
 
-You need to configure HashiCorp Vault in order to use it with Yugabyte Platform, as follows: 
+You need to configure HashiCorp Vault in order to use it with YugabyteDB Anywhere, as follows:
 
 - Create a vault configuration file that references your nodes and specifies the address, as follows:
 
@@ -48,12 +47,12 @@ You need to configure HashiCorp Vault in order to use it with Yugabyte Platform,
    path  = "./vault/data/"
    node_id = "node1"
   }
-  
+
   listener "tcp" {
    address   = "127.0.0.1:8200"
    tls_disable = "true"
   }
-  
+
   api_addr = "http://127.0.0.1:8200"
   cluster_addr = "https://127.0.0.1:8201"
   ui = true
@@ -66,14 +65,14 @@ You need to configure HashiCorp Vault in order to use it with Yugabyte Platform,
 
   For additional configuration options, see [Parameters](https://www.vaultproject.io/docs/configuration#parameters).
 
-- Initialize the vault server by following instructions provided in [operator init](https://www.vaultproject.io/docs/commands/operator/init).
+- Initialize the vault server by following instructions provided in [Operator init](https://www.vaultproject.io/docs/commands/operator/init).
 
 - Allow access to the vault by following instructions provided in [Unsealing](https://www.vaultproject.io/docs/concepts/seal#unsealing).
 
 - Enable the secret engine by executing the following command:
 
   ```shell
-  vault secrets enable transit 
+  vault secrets enable transit
   ```
 
   <br>For more information, see [Transit Secrets Engine](https://www.vaultproject.io/docs/secrets/transit) and [Setup](https://www.vaultproject.io/docs/secrets/transit#setup).
@@ -84,19 +83,19 @@ You need to configure HashiCorp Vault in order to use it with Yugabyte Platform,
   path "transit/*" {
     capabilities = ["create", "read", "update", "delete", "list"]
   }
-  
+
   path "auth/token/lookup-self" {
           capabilities = ["read"]
   }
-  
+
   path "sys/capabilities-self" {
           capabilities = ["read", "update"]
   }
-  
+
   path "auth/token/renew-self" {
           capabilities = ["update"]
   }
-  
+
   path "sys/*" {
           capabilities = ["read"]
   }
@@ -108,7 +107,7 @@ You need to configure HashiCorp Vault in order to use it with Yugabyte Platform,
   vault token create -no-default-policy -policy=trx
   ```
 
-  <br>You may also specify the following for your token: 
+  <br>You may also specify the following for your token:
 
   - `ttl` — Time to live (TTL). If not specified, the default TTL of 32 days is used, which means that the generated token will expire after 32 days.
 
@@ -118,11 +117,11 @@ You need to configure HashiCorp Vault in order to use it with Yugabyte Platform,
 
 You can create a new KMS configuration that uses HashiCorp Vault as follows:
 
-1. Using the Yugabyte Platform UI, navigate to **Configs > Security > Encryption At Rest** to open a list of existing configurations.
+1. Using the YugabyteDB Anywhere UI, navigate to **Configs > Security > Encryption At Rest** to open a list of existing configurations.
 
-2. Click **Create New Config**.
+1. Click **Create New Config**.
 
-3. Provide the following configuration details:
+1. Provide the following configuration details:
 
     - **Configuration Name** — Enter a meaningful name for your configuration.
     - **KMS Provider** — Select **Hashicorp Vault**.
@@ -130,26 +129,26 @@ You can create a new KMS configuration that uses HashiCorp Vault as follows:
     - **Secret Token** — Enter the token you obtained from the vault.
     - **Secret Engine** — This is a read-only field with its value set to `transit`. It identifies the secret engine.
     - **Mount Path** — Specify the path to the secret engine within the vault. The default value is `transit/`.<br><br>
-    
-    ![Create config](/images/yp/security/hashicorp-config.png)<br>
-    
-4. Click **Save**. Your new configuration should appear in the list of configurations.
 
-6. Optionally, to confirm that the information is correct, click **Show details**. Note that sensitive configuration values are displayed partially masked.
+    ![Create config](/images/yp/security/hashicorp-config.png)<br><br>
+
+1. Click **Save**. Your new configuration should appear in the list of configurations.
+
+1. Optionally, to confirm that the information is correct, click **Show details**. Note that sensitive configuration values are displayed partially masked.
 
 ## Modify a KMS configuration
 
 You can modify an existing KMS configuration as follows:
 
-1. Using the Yugabyte Platform UI, navigate to **Configs > Security > Encryption At Rest** to open a list of existing configurations.
+1. Using the YugabyteDB Anywhere UI, navigate to **Configs > Security > Encryption At Rest** to open a list of existing configurations.
 
-2. Find the configuration you want to modify and click its corresponding **Actions > Edit Configuration**.
+1. Find the configuration you want to modify and click its corresponding **Actions > Edit Configuration**.
 
-3. Provide new values for the **Vault Address** and **Secret Token** fields.
+1. Provide new values for the **Vault Address** and **Secret Token** fields.
 
-4. Click **Save**.
+1. Click **Save**.
 
-5. Optionally, to confirm that the information is correct, click **Show details** or **Actions > Details**.
+1. Optionally, to confirm that the information is correct, click **Show details** or **Actions > Details**.
 
 ## Delete a KMS configuration
 

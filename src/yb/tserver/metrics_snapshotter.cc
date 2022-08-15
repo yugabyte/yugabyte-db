@@ -142,10 +142,10 @@ class MetricsSnapshotter::Thread {
   void RunThread();
   int GetMillisUntilNextMetricsSnapshot() const;
 
-  CHECKED_STATUS DoPrometheusMetricsSnapshot(const client::TableHandle& table,
+  Status DoPrometheusMetricsSnapshot(const client::TableHandle& table,
     shared_ptr<YBSession> session, const std::string& entity_type, const std::string& entity_id,
     const std::string& metric_name, int64_t metric_val, const rapidjson::Document* details);
-  CHECKED_STATUS DoMetricsSnapshot();
+  Status DoMetricsSnapshot();
 
   void FlushSession(const std::shared_ptr<YBSession>& session,
       const std::vector<std::shared_ptr<YBqlOp>>& ops = {});
@@ -235,9 +235,9 @@ MetricsSnapshotter::Thread::Thread(const TabletServerOptions& opts, TabletServer
   table_metrics_whitelist_ = CSVToSet(FLAGS_metrics_snapshotter_table_metrics_whitelist);
 
   async_client_init_.emplace(
-      "tserver_metrics_snapshotter_client", 0 /* num_reactors */,
-      FLAGS_tserver_metrics_snapshotter_yb_client_default_timeout_ms / 1000, "" /* tserver_uuid */,
-      &server->options(), server->metric_entity(), server->mem_tracker(),
+      "tserver_metrics_snapshotter_client",
+      std::chrono::milliseconds(FLAGS_tserver_metrics_snapshotter_yb_client_default_timeout_ms),
+      "" /* tserver_uuid */, &server->options(), server->metric_entity(), server->mem_tracker(),
       server->messenger());
 }
 
@@ -272,9 +272,11 @@ void MetricsSnapshotter::Thread::LogSessionErrors(const client::FlushStatus& flu
   }
 }
 
-void MetricsSnapshotter::Thread::FlushSession(const std::shared_ptr<YBSession>& session,
-                       const std::vector<std::shared_ptr<YBqlOp>>& ops) {
-  auto flush_status = session->FlushAndGetOpsErrors();
+void MetricsSnapshotter::Thread::FlushSession(
+    const std::shared_ptr<YBSession>& session,
+    const std::vector<std::shared_ptr<YBqlOp>>& ops) {
+  // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
+  auto flush_status = session->TEST_FlushAndGetOpsErrors();
   if (PREDICT_FALSE(!flush_status.status.ok())) {
     LogSessionErrors(flush_status);
     return;

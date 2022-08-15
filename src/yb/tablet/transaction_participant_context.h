@@ -36,7 +36,7 @@ class TransactionParticipantContext {
   virtual rpc::Scheduler& scheduler() const = 0;
 
   // Fills RemoveIntentsData with information about replicated state.
-  virtual void GetLastReplicatedData(RemoveIntentsData* data) = 0;
+  virtual Status GetLastReplicatedData(RemoveIntentsData* data) = 0;
 
   // Enqueue task to participant context strand.
   virtual void StrandEnqueue(rpc::StrandTask* task) = 0;

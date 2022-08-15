@@ -75,6 +75,10 @@ message TabletSnapshotOpRequestPB {
   fixed64 previous_snapshot_hybrid_time = 15;
 
   bool hide = 16;
+
+  // This is the database oid that needs to be restored partially. Applicable
+  // only for tablets of sequences_data table currently.
+  int64 db_oid = 18;
 }
 
 message TabletSnapshotOpResponsePB {

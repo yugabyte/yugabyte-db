@@ -30,7 +30,6 @@ import org.junit.AfterClass;
 import org.junit.Before;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 import org.yb.BaseYBTest;
 import org.yb.client.TestUtils;
 import org.yb.util.BuildTypeUtil;

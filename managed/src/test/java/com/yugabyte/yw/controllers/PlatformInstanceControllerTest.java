@@ -39,6 +39,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.UUID;
 import java.util.function.Predicate;
+import org.apache.commons.lang3.StringUtils;
 import org.junit.Before;
 import org.junit.Test;
 import play.libs.Json;
@@ -223,7 +224,27 @@ public class PlatformInstanceControllerTest extends FakeDBApplication {
             () -> createPlatformInstance(configUUID, "http://abc.com::abc/", true, false));
     assertBadRequest(createResult, "");
     JsonNode node = Json.parse(contentAsString(createResult));
-    assertErrorNodeValue(node, "address", "Invalid URL provided");
+    assertErrorNodeValue(node, "address", "must be a valid URL");
+  }
+
+  @Test
+  public void testLongAddress() {
+    JsonNode haConfigJson = createHAConfig();
+    UUID configUUID = UUID.fromString(haConfigJson.get("uuid").asText());
+
+    // just within limits. DNS length 254 (which is <= 255)
+    String shortAddress = "http://" + StringUtils.repeat("abcdefghi.", 25) + ".com/";
+    Result createResult = createPlatformInstance(configUUID, shortAddress, true, true);
+    assertOk(createResult);
+
+    // Exceed dns length 264 (total address length is 272 > 263)
+    final String expectedError = "Maximum length is 263";
+    String longAddress = "http://" + StringUtils.repeat("abcdefghi.", 26) + ".com/";
+    createResult =
+        assertPlatformException(() -> createPlatformInstance(configUUID, longAddress, true, false));
+    assertBadRequest(createResult, "");
+    JsonNode node = Json.parse(contentAsString(createResult));
+    assertErrorNodeValue(node, "address", expectedError);
   }
 
   @Test

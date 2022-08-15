@@ -72,7 +72,7 @@ class RemoteBootstrapClientTest : public RemoteBootstrapTest {
 
     fs_manager_.reset(new FsManager(Env::Default(), GetTestPath("client_tablet"), "tserver_test"));
     ASSERT_OK(fs_manager_->CreateInitialFileSystemLayout());
-    ASSERT_OK(fs_manager_->Open());
+    ASSERT_OK(fs_manager_->CheckAndOpenFileSystemRoots());
 
     ASSERT_OK(tablet_peer_->WaitUntilConsensusRunning(MonoDelta::FromSeconds(10.0)));
     SetUpRemoteBootstrapClient();
@@ -92,11 +92,12 @@ class RemoteBootstrapClientTest : public RemoteBootstrapTest {
         ->ConsensusState(consensus::CONSENSUS_CONFIG_COMMITTED), &leader_));
 
     HostPort host_port = HostPortFromPB(leader_.last_known_private_addr()[0]);
-    ASSERT_OK(client_->Start(leader_.permanent_uuid(), proxy_cache_.get(), host_port, &meta_));
+    ASSERT_OK(client_->Start(leader_.permanent_uuid(), proxy_cache_.get(),
+        host_port, ServerRegistrationPB(), &meta_));
   }
 
  protected:
-  CHECKED_STATUS CompareFileContents(const string& path1, const string& path2);
+  Status CompareFileContents(const string& path1, const string& path2);
 
   std::unique_ptr<FsManager> fs_manager_;
   std::unique_ptr<rpc::Messenger> messenger_;

@@ -4349,7 +4349,7 @@ pg_namespace_aclmask(Oid nsp_oid, Oid roleid,
 	Oid			ownerId;
 
 	/* Superusers bypass all permission checking. */
-	if (superuser_arg(roleid))
+	if (superuser_arg(roleid) || (IsYbExtensionUser(roleid) && creating_extension))
 		return mask;
 
 	/*
@@ -4430,7 +4430,7 @@ pg_tablegroup_aclmask(Oid grp_oid, Oid roleid,
 	Acl		   *acl;
 	Oid			ownerId;
 
-	// First check that the pg_tablegroup catalog actually exists.
+	/* First check that the pg_tablegroup catalog actually exists. */
 	if (!YbTablegroupCatalogExists) {
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
@@ -4442,7 +4442,7 @@ pg_tablegroup_aclmask(Oid grp_oid, Oid roleid,
 		return mask;
 
 	/*
-	 * Get the tablegroup's ACL from pg_tablegroup
+	 * Get the tablegroup's ACL from pg_yb_tablegroup
 	 */
 	tuple = SearchSysCache1(YBTABLEGROUPOID, ObjectIdGetDatum(grp_oid));
 	if (!HeapTupleIsValid(tuple))
@@ -4492,8 +4492,8 @@ pg_tablespace_aclmask(Oid spc_oid, Oid roleid,
 	Acl		   *acl;
 	Oid			ownerId;
 
-	/* Superusers bypass all permission checking. */
-	if (superuser_arg(roleid))
+	/* Superusers and yb_db_admin role bypass all permission checking. */
+	if (superuser_arg(roleid) || IsYbDbAdminUser(roleid))
 		return mask;
 
 	/*
@@ -5203,18 +5203,18 @@ pg_tablegroup_ownercheck(Oid grp_oid, Oid roleid)
 	HeapTuple	grptuple;
 	Oid			grpowner;
 
-	// Ensure that the pg_tablegroup catalog actually exists.
+	/* Ensure that the pg_yb_tablegroup catalog actually exists. */
 	if (!YbTablegroupCatalogExists) {
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("Tablegroup system catalog does not exist.")));
 	}
 
-	/* Superusers bypass all permission checking. */
-	if (superuser_arg(roleid))
+	/* Superusers and yb_db_admin role bypass all permission checking. */
+	if (superuser_arg(roleid) || IsYbDbAdminUser(GetUserId()))
 		return true;
 
-	/* Search syscache for pg_tablegroup */
+	/* Search syscache for the tablegroup */
 	grptuple = SearchSysCache1(YBTABLEGROUPOID, ObjectIdGetDatum(grp_oid));
 	if (!HeapTupleIsValid(grptuple))
 			ereport(ERROR,
@@ -5237,8 +5237,8 @@ pg_tablespace_ownercheck(Oid spc_oid, Oid roleid)
 	HeapTuple	spctuple;
 	Oid			spcowner;
 
-	/* Superusers bypass all permission checking. */
-	if (superuser_arg(roleid))
+	/* Superusers and yb_db_admin role bypass all permission checking. */
+	if (superuser_arg(roleid) || IsYbDbAdminUser(roleid))
 		return true;
 
 	/* Search syscache for pg_tablespace */
@@ -5426,8 +5426,8 @@ pg_event_trigger_ownercheck(Oid et_oid, Oid roleid)
 	HeapTuple	tuple;
 	Oid			ownerId;
 
-	/* Superusers bypass all permission checking. */
-	if (superuser_arg(roleid))
+	/* Superusers and yb_db_admin bypass all permission checking. */
+	if (superuser_arg(roleid) || IsYbDbAdminUser(roleid))
 		return true;
 
 	tuple = SearchSysCache1(EVENTTRIGGEROID, ObjectIdGetDatum(et_oid));

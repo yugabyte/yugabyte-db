@@ -7,8 +7,7 @@ menu:
   stable:
     identifier: api-ysql-datatypes-serial
     parent: api-ysql-datatypes
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis
@@ -17,9 +16,11 @@ SMALLSERIAL, SERIAL, and BIGSERIAL are short notation for sequences of `SMALLINT
 
 ## Description
 
-```
+```ebnf
 type_specification ::= SMALLSERIAL | SERIAL | BIGSERIAL
 ```
+
+### Notes
 
 - Columns of serial types are auto-incremented.
 - `SERIAL` does not imply that an index is created on the column.

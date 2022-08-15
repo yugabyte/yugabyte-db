@@ -83,14 +83,14 @@ class YBInboundConnectionContext : public YBConnectionContext {
   static std::string Name() { return "Inbound RPC"; }
  private:
   // Takes ownership of call_data content.
-  CHECKED_STATUS HandleCall(const ConnectionPtr& connection, CallData* call_data) override;
+  Status HandleCall(const ConnectionPtr& connection, CallData* call_data) override;
   void Connected(const ConnectionPtr& connection) override;
   Result<ProcessCallsResult> ProcessCalls(const ConnectionPtr& connection,
                                           const IoVecs& data,
                                           ReadBufferFull read_buffer_full) override;
 
   // Takes ownership of call_data content.
-  CHECKED_STATUS HandleInboundCall(const ConnectionPtr& connection, std::vector<char>* call_data);
+  Status HandleInboundCall(const ConnectionPtr& connection, std::vector<char>* call_data);
 
   void HandleTimeout(ev::timer& watcher, int revents); // NOLINT
 
@@ -110,7 +110,7 @@ class YBInboundConnectionContext : public YBConnectionContext {
 
 class YBInboundCall : public InboundCall {
  public:
-  YBInboundCall(ConnectionPtr conn, CallProcessedListener call_processed_listener);
+  YBInboundCall(ConnectionPtr conn, CallProcessedListener* call_processed_listener);
   explicit YBInboundCall(RpcMetrics* rpc_metrics, const RemoteMethod& remote_method);
   virtual ~YBInboundCall();
 
@@ -125,7 +125,7 @@ class YBInboundCall : public InboundCall {
   // from the reactor thread.
   //
   // Takes ownership of call_data content.
-  CHECKED_STATUS ParseFrom(const MemTrackerPtr& mem_tracker, CallData* call_data);
+  Status ParseFrom(const MemTrackerPtr& mem_tracker, CallData* call_data);
 
   int32_t call_id() const {
     return header_.call_id;
@@ -185,7 +185,7 @@ class YBInboundCall : public InboundCall {
     return timing_.time_received;
   }
 
-  virtual CHECKED_STATUS ParseParam(RpcCallParams* params);
+  virtual Status ParseParam(RpcCallParams* params);
 
   size_t ObjectSize() const override { return sizeof(*this); }
 
@@ -208,7 +208,7 @@ class YBInboundCall : public InboundCall {
   // Serialize a response message for either success or failure. If it is a success,
   // 'response' should be the user-defined response type for the call. If it is a
   // failure, 'response' should be an ErrorStatusPB instance.
-  CHECKED_STATUS SerializeResponseBuffer(AnyMessageConstPtr response, bool is_success);
+  Status SerializeResponseBuffer(AnyMessageConstPtr response, bool is_success);
 
   // Returns number of bytes copied.
   size_t CopyToLastSidecarBuffer(const Slice& slice);
@@ -238,7 +238,7 @@ class YBOutboundConnectionContext : public YBConnectionContext {
   }
 
   // Takes ownership of call_data content.
-  CHECKED_STATUS HandleCall(const ConnectionPtr& connection, CallData* call_data) override;
+  Status HandleCall(const ConnectionPtr& connection, CallData* call_data) override;
   void Connected(const ConnectionPtr& connection) override;
   void AssignConnection(const ConnectionPtr& connection) override;
   Result<ProcessCallsResult> ProcessCalls(const ConnectionPtr& connection,

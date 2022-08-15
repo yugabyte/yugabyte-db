@@ -78,7 +78,7 @@ class SecureConnectionTest : public client::KeyValueTableTest<MiniCluster> {
     return JoinPathSegments(root_dir, sub_dir);
   }
 
-  CHECKED_STATUS CreateClient() override {
+  Status CreateClient() override {
     auto host = "127.0.0.52";
     client_ = VERIFY_RESULT(DoCreateClient(host, host, &secure_context_));
     return Status::OK();
@@ -131,6 +131,19 @@ TEST_F(SecureConnectionTest, Simple) {
   TestSimpleOps();
 }
 
+TEST_F(SecureConnectionTest, CertificateDetails) {
+  TestSimpleOps();
+
+  auto certDetails = secure_context_->GetCertificateDetails();
+  ASSERT_STR_CONTAINS(certDetails, "Node certificate details");
+  ASSERT_STR_CONTAINS(certDetails, "Issuer");
+  ASSERT_STR_CONTAINS(certDetails, "Serial Number");
+  ASSERT_STR_CONTAINS(certDetails, "Validity");
+  ASSERT_STR_CONTAINS(certDetails, "Not Before");
+  ASSERT_STR_CONTAINS(certDetails, "Not After");
+  ASSERT_STR_CONTAINS(certDetails, "Subject");
+}
+
 class SecureConnectionTLS12Test : public SecureConnectionTest {
   void SetUp() override {
     FLAGS_ssl_protocols = "tls12";
@@ -161,7 +174,7 @@ TEST_F(SecureConnectionTest, BigWrite) {
     auto* const req = op->mutable_request();
     QLAddInt32HashValue(req, kKey);
     table_.AddStringColumnValue(req, kValueColumn, kValue);
-    ASSERT_OK(session->ApplyAndFlush(op));
+    ASSERT_OK(session->TEST_ApplyAndFlush(op));
     ASSERT_OK(CheckOp(op.get()));
   }
 
@@ -170,7 +183,7 @@ TEST_F(SecureConnectionTest, BigWrite) {
     auto* const req = op->mutable_request();
     QLAddInt32HashValue(req, kKey);
     table_.AddColumns({kValueColumn}, req);
-    ASSERT_OK(session->ApplyAndFlush(op));
+    ASSERT_OK(session->TEST_ApplyAndFlush(op));
     ASSERT_OK(CheckOp(op.get()));
     auto rowblock = yb::ql::RowsResult(op.get()).GetRowBlock();
     ASSERT_EQ(rowblock->row_count(), 1);

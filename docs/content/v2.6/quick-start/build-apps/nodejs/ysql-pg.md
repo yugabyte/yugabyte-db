@@ -9,9 +9,7 @@ menu:
     name: NodeJS
     identifier: nodejs-1
     weight: 551
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 
@@ -50,7 +48,7 @@ The `node-postgres` module is installed.
 
 This tutorial assumes that you have:
 
-- installed YugabyteDB and created a universe. If not, follow the steps in [Quick Start](../../../../quick-start).
+- installed YugabyteDB and created a universe. If not, follow the steps in [Quick Start](../../../../quick-start/).
 - installed a recent version of [`node`](https://nodejs.org/en/download/).
 - installed the [async](https://github.com/caolan/async) JS utility to work with asynchronous Javascript. Install this by running the following command:
 

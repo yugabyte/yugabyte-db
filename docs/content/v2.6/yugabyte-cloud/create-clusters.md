@@ -4,14 +4,13 @@ linkTitle: Create clusters
 description: Create clusters
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
-beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
+beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   v2.6:
     identifier: create-clusters
     parent: yugabyte-cloud
     weight: 641
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 As a fully-managed YugabyteDB-as-a-service, Yugabyte Cloud makes it easy for you to create a YugabyteDB cluster without

@@ -37,6 +37,8 @@
 #include <mutex>
 #include <vector>
 
+#include <boost/bimap.hpp>
+
 #include "yb/common/entity_ids.h"
 #include "yb/common/index.h"
 
@@ -265,7 +267,7 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
   void GetLeaderStepDownFailureTimes(MonoTime forget_failures_before,
                                      LeaderStepDownFailureTimes* dest);
 
-  CHECKED_STATUS CheckRunning() const;
+  Status CheckRunning() const;
 
   bool InitiateElection() {
     bool expected = false;
@@ -280,7 +282,7 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
 
   ~TabletInfo();
   TSDescriptor* GetLeaderUnlocked() const REQUIRES_SHARED(lock_);
-  CHECKED_STATUS GetLeaderNotFoundStatus() const REQUIRES_SHARED(lock_);
+  Status GetLeaderNotFoundStatus() const REQUIRES_SHARED(lock_);
 
   const TabletId tablet_id_;
   const scoped_refptr<TableInfo> table_;
@@ -399,9 +401,21 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   const NamespaceId namespace_id() const;
   const NamespaceName namespace_name() const;
 
-  const CHECKED_STATUS GetSchema(Schema* schema) const;
+  const Status GetSchema(Schema* schema) const;
 
+  bool has_pgschema_name() const;
+
+  const std::string& pgschema_name() const;
+
+  // True if all the column schemas have pg_type_oid set.
+  bool has_pg_type_oid() const;
+
+  // True if the table is colocated (including tablegroups, excluding YSQL system tables).
   bool colocated() const;
+
+  std::string matview_pg_table_id() const;
+  // True if the table is a materialized view.
+  bool is_matview() const;
 
   // Return the table's ID. Does not require synchronization.
   virtual const std::string& id() const override { return table_id_; }
@@ -466,13 +480,20 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // Return whether given partition start keys match partitions_.
   bool HasPartitions(const std::vector<PartitionKey> other) const;
 
+  // Returns true if all active split children are running, and all non-active tablets (e.g. split
+  // parents) have already been deleted / hidden.
+  // This function should not be called for colocated tables with wait_for_parent_deletion set to
+  // true, since colocated tablets are not deleted / hidden if the table is dropped (the tablet may
+  // be part of another table).
+  bool HasOutstandingSplits(bool wait_for_parent_deletion) const;
+
   // Get all tablets of the table.
   // If include_inactive is true then it also returns inactive tablets along with the active ones.
   // See the declaration of partitions_ structure to understand what constitutes inactive tablets.
   TabletInfos GetTablets(IncludeInactive include_inactive = IncludeInactive::kFalse) const;
 
-  // Get the tablet of the table.  The table must be colocated.
-  TabletInfoPtr GetColocatedTablet() const;
+  // Get the tablet of the table. The table must satisfy IsColocatedUserTable.
+  TabletInfoPtr GetColocatedUserTablet() const;
 
   // Get info of the specified index.
   IndexInfo GetIndexInfo(const TableId& index_id) const;
@@ -482,6 +503,10 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
 
   // Returns true if all tablets of the table are deleted or hidden.
   bool AreAllTabletsHidden() const;
+
+  // Verify that all tablets in partitions_ are running. Newly created tablets (e.g. because of a
+  // tablet split) might not be running.
+  Status CheckAllActiveTabletsRunning() const;
 
   // Clears partitons_ and tablets_.
   // If deactivate_only is set to true then clear only the partitions_.
@@ -496,7 +521,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
     return is_backfilling_;
   }
 
-  CHECKED_STATUS SetIsBackfilling();
+  Status SetIsBackfilling();
 
   void ClearIsBackfilling() {
     std::lock_guard<decltype(lock_)> l(lock_);
@@ -510,7 +535,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   void SetCreateTableErrorStatus(const Status& status);
 
   // Get the Status of the last error from the current CreateTable.
-  CHECKED_STATUS GetCreateTableErrorStatus() const;
+  Status GetCreateTableErrorStatus() const;
 
   std::size_t NumLBTasks() const;
   std::size_t NumTasks() const;
@@ -526,13 +551,14 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   void WaitTasksCompletion();
 
   // Allow for showing outstanding tasks in the master UI.
-  std::unordered_set<std::shared_ptr<server::MonitoredTask>> GetTasks();
+  std::unordered_set<std::shared_ptr<server::MonitoredTask>> GetTasks() const;
 
   // Returns whether this is a type of table that will use tablespaces
   // for placement.
   bool UsesTablespacesForPlacement() const;
 
-  bool IsColocatedParentTable() const;
+  bool IsColocationParentTable() const;
+  bool IsColocatedDbParentTable() const;
   bool IsTablegroupParentTable() const;
   bool IsColocatedUserTable() const;
 
@@ -544,6 +570,8 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // Set the tablespace to use during table creation. This will determine
   // where the tablets of the newly created table should reside.
   void SetTablespaceIdForTableCreation(const TablespaceId& tablespace_id);
+
+  void SetMatview();
 
  private:
   friend class RefCountedThreadSafe<TableInfo>;
@@ -566,7 +594,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
 
   // Sorted index of tablet start partition-keys to TabletInfo.
   // The TabletInfo objects are owned by the CatalogManager.
-  // At any point in time it contains only the active tablets.
+  // At any point in time it contains only the active tablets (defined in the comment on tablets_).
   std::map<PartitionKey, TabletInfo*> partitions_ GUARDED_BY(lock_);
   // At any point in time it contains both active and inactive tablets.
   // Currently there are two cases for a tablet to be categorized as inactive:
@@ -681,37 +709,6 @@ class NamespaceInfo : public RefCountedThreadSafe<NamespaceInfo>,
   DISALLOW_COPY_AND_ASSIGN(NamespaceInfo);
 };
 
-// The information about a tablegroup.
-class TablegroupInfo : public RefCountedThreadSafe<TablegroupInfo>{
- public:
-  explicit TablegroupInfo(TablegroupId tablegroup_id,
-                          NamespaceId namespace_id);
-
-  const std::string& id() const { return tablegroup_id_; }
-  const std::string& namespace_id() const { return namespace_id_; }
-
-  // Operations to track table_set_ information (what tables belong to the tablegroup)
-  void AddChildTable(const TableId& table_id);
-  void DeleteChildTable(const TableId& table_id);
-  bool HasChildTables() const;
-  std::size_t NumChildTables() const;
-
- private:
-  friend class RefCountedThreadSafe<TablegroupInfo>;
-  ~TablegroupInfo() = default;
-
-  // The tablegroup ID is used in the catalog manager maps to look up the proper
-  // tablet to add user tables to.
-  const TablegroupId tablegroup_id_;
-  const NamespaceId namespace_id_;
-
-  // Protects table_set_.
-  mutable simple_spinlock lock_;
-  std::unordered_set<TableId> table_set_ GUARDED_BY(lock_);
-
-  DISALLOW_COPY_AND_ASSIGN(TablegroupInfo);
-};
-
 // The data related to a User-Defined Type which is persisted on disk.
 // This portion of UDTypeInfo is managed via CowObject.
 // It wraps the underlying protobuf to add useful accessors.
@@ -783,21 +780,16 @@ struct PersistentClusterConfigInfo : public Persistent<SysClusterConfigEntryPB,
 
 // This is the in memory representation of the cluster config information serialized proto data,
 // using metadata() for CowObject access.
-class ClusterConfigInfo : public RefCountedThreadSafe<ClusterConfigInfo>,
-                          public MetadataCowWrapper<PersistentClusterConfigInfo> {
+class ClusterConfigInfo : public MetadataCowWrapper<PersistentClusterConfigInfo> {
  public:
   ClusterConfigInfo() {}
+  ~ClusterConfigInfo() = default;
 
   virtual const std::string& id() const override { return fake_id_; }
 
  private:
-  friend class RefCountedThreadSafe<ClusterConfigInfo>;
-  ~ClusterConfigInfo() = default;
-
   // We do not use the ID field in the sys_catalog table.
   const std::string fake_id_;
-
-  DISALLOW_COPY_AND_ASSIGN(ClusterConfigInfo);
 };
 
 struct PersistentRedisConfigInfo
@@ -932,7 +924,7 @@ void FillInfoEntry(const Info& info, SysRowEntry* entry) {
 }
 
 template <class Info>
-auto AddInfoEntry(Info* info, google::protobuf::RepeatedPtrField<SysRowEntry>* out) {
+auto AddInfoEntryToPB(Info* info, google::protobuf::RepeatedPtrField<SysRowEntry>* out) {
   auto lock = info->LockForRead();
   FillInfoEntry(*info, out->Add());
   return lock;

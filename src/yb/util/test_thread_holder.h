@@ -71,7 +71,7 @@ class TestThreadHolder {
   void JoinAll();
 
   template <class Cond>
-  CHECKED_STATUS WaitCondition(const Cond& cond) {
+  Status WaitCondition(const Cond& cond) {
     while (!cond()) {
       if (stop_flag_.load(std::memory_order_acquire)) {
         return STATUS(Aborted, "Wait aborted");

@@ -12,6 +12,13 @@ COPY x (a, b, c, d, e) from stdin;
 COPY x (b, d) from stdin;
 COPY x (b, d) from stdin;
 COPY x (a, b, c, d, e) from stdin;
+SELECT relid::regclass, command, yb_status, type, bytes_processed, bytes_total,
+          tuples_processed, tuples_excluded FROM pg_stat_progress_copy;
+ relid |  command  | yb_status | type | bytes_processed | bytes_total | tuples_processed | tuples_excluded
+-------+-----------+-----------+------+-----------------+-------------+------------------+-----------------
+ x     | COPY FROM | SUCCESS   | PIPE |              90 |           0 |                5 |               0
+(1 row)
+
 -- non-existent column in column list: should fail
 COPY x (xyz) from stdin;
 ERROR:  column "xyz" of relation "x" does not exist
@@ -275,9 +282,23 @@ CREATE UNIQUE INDEX ON t(v);
 -- should fail, non unique primary key
 COPY t FROM stdin;
 ERROR:  duplicate key value violates unique constraint "t_pkey"
+SELECT relid::regclass, command, yb_status, type, bytes_processed, bytes_total,
+          tuples_processed, tuples_excluded FROM pg_stat_progress_copy;
+ relid |  command  | yb_status | type | bytes_processed | bytes_total | tuples_processed | tuples_excluded
+-------+-----------+-----------+------+-----------------+-------------+------------------+-----------------
+ t     | COPY FROM | ERROR     | PIPE |               0 |           0 |                0 |               0
+(1 row)
+
 -- should fail, non unique index
 COPY t FROM stdin;
 ERROR:  duplicate key value violates unique constraint "t_v_idx"
+SELECT relid::regclass, command, yb_status, type, bytes_processed, bytes_total,
+          tuples_processed, tuples_excluded FROM pg_stat_progress_copy;
+ relid |  command  | yb_status | type | bytes_processed | bytes_total | tuples_processed | tuples_excluded
+-------+-----------+-----------+------+-----------------+-------------+------------------+-----------------
+ t     | COPY FROM | ERROR     | PIPE |               0 |           0 |                0 |               0
+(1 row)
+
 SELECT COUNT(*) FROM t;
  count
 -------
@@ -457,7 +478,6 @@ NOTICE:  a: 9
 NOTICE:  a: 10
 -- should fail, duplicate key (1, 5)
 copy v (b) from stdin;
-NOTICE:  a: 5
 ERROR:  duplicate key value violates unique constraint "v1_a_b_idx"
 select * from v ORDER BY a,b;
  a | b
@@ -469,6 +489,65 @@ select * from v ORDER BY a,b;
  1 |  9
  1 | 10
 (6 rows)
+
+-- Test various copy options
+create table copy_options (a int primary key, b int);
+-- skip
+copy copy_options from stdin with (format csv, skip 2);
+select * from copy_options order by a;
+ a | b
+---+---
+ 3 | 3
+ 4 | 4
+ 5 | 5
+(3 rows)
+
+-- skip with invalid rows being included
+truncate copy_options;
+copy copy_options from stdin with (format csv, skip 3);
+select * from copy_options order by a;
+ a | b
+---+---
+ 4 | 4
+ 5 | 5
+(2 rows)
+
+-- replace
+truncate copy_options;
+insert into copy_options (a, b) values (1, 0), (2, 1), (3, 2);
+select a, b from copy_options order by a;
+ a | b
+---+---
+ 1 | 0
+ 2 | 1
+ 3 | 2
+(3 rows)
+
+copy copy_options from stdin with (format csv, replace);
+select * from copy_options order by a;
+ a | b
+---+---
+ 1 | 1
+ 2 | 2
+ 3 | 3
+ 4 | 4
+ 5 | 5
+(5 rows)
+
+-- DISABLE_FK_CHECK
+create table ref_table(a int primary key);
+insert into ref_table(a) values (1), (2), (3);
+create table main_table(a int references ref_table, b int);
+copy main_table from stdin with (format csv, disable_fk_check);
+select * from main_table order by a;
+ a | b
+---+---
+ 1 | 1
+ 2 | 2
+ 3 | 3
+ 4 | 4
+ 5 | 5
+(5 rows)
 
 -- clean up
 DROP TABLE forcetest;
@@ -485,3 +564,6 @@ DROP TABLE w;
 DROP TABLE p;
 DROP TABLE u;
 DROP TABLE v;
+DROP TABLE copy_options;
+DROP TABLE main_table;
+DROP TABLE ref_table;

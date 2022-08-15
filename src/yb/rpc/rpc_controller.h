@@ -93,9 +93,9 @@ class RpcController {
   // * a network error occurred which caused the connection to be torn
   //   down
   // * the call timed out
-  CHECKED_STATUS status() const;
+  Status status() const;
 
-  CHECKED_STATUS thread_pool_failure() const;
+  Status thread_pool_failure() const;
 
   // If status() returns a RemoteError object, then this function returns
   // the error response provided by the server. Service implementors may
@@ -148,8 +148,11 @@ class RpcController {
   //
   // May fail if index is invalid.
   Result<Slice> GetSidecar(int idx) const;
+  Result<SidecarHolder> GetSidecarHolder(int idx) const;
 
   int32_t call_id() const;
+
+  CallResponsePtr response() const;
 
  private:
   friend class OutboundCall;

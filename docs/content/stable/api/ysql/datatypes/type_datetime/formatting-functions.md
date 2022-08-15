@@ -9,8 +9,7 @@ menu:
     identifier: date-time-formatting-functions
     parent: api-ysql-datatypes-datetime
     weight: 100
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 This page describes all of the _date-time_ formatting functions, both in the direction _date-time_ value to _text_ value and in the direction _text_ value to _date-time_ value. The functions use a so-called _template_ to determine, in the to _text_ value direction, how the _date-time_ value will be rendered as a _text_ value and, in the to _date-time_ value direction, how the to-be-converted _text_ value is to be interpreted. The template, in turn, is made up of a mixture of pre-defined so-called _template patterns_ and free text, intermingled in a user-defined order. See the section [Date-time template patterns](#date-time-template-patterns). The effects of these template patterns, again in turn, can be modified. See the section [Date-time template pattern modifiers](#date-time-template-pattern-modifiers).
@@ -28,7 +27,7 @@ select
 This is the result:
 
 ```output
-  timestamp to text   |    text to timestamptz    | text to date 
+  timestamp to text   |    text to timestamptz    | text to date
 ----------------------+---------------------------+--------------
  15:00 on 17-May-2021 | 2021-05-17 15:00:00+05:45 | 2021-05-17
 ```
@@ -68,6 +67,7 @@ If you want to output the double quote character within the free text, then you 
 select
   to_char('2021-05-17'::timestamp, '"Here is the \"year\" c\o\m\p\o\n\e\n\t of a date\\time value:" yyyy');
 ```
+
 This is the result:
 
 ```output
@@ -159,7 +159,7 @@ from c;
 This is the result:
 
 ```output
- implicit cast to timestamptz | explicit cast to timestamptz | explicit cast to plain timestamp 
+ implicit cast to timestamptz | explicit cast to timestamptz | explicit cast to plain timestamp
 ------------------------------+------------------------------+----------------------------------
  15-Jun-2021                  | 15-Jun-2021                  | 15-Jun-2021
 ```
@@ -180,7 +180,7 @@ from c;
 This is the result:
 
 ```output
- implicit cast to interval | explicit cast to interval 
+ implicit cast to interval | explicit cast to interval
 ---------------------------+---------------------------
  03-00-00 PM               | 03-00-00 PM
 ```
@@ -250,7 +250,7 @@ from c;
 This is the result:
 
 ```output
-          pg_typeof          |          t          
+          pg_typeof          |          t
 -----------------------------+---------------------
  timestamp without time zone | 2021-05-17 15:00:00
 ```
@@ -272,7 +272,7 @@ The _FM_ modifier is explained in the subsection [Date-time template pattern mod
 This is the result:
 
 ```output
-                  d1                  |                     d2                     
+                  d1                  |                     d2
 --------------------------------------+--------------------------------------------
  The date is:Tuesday, 15, June, 2,021 | The date is:Saturday, 18, September, 2,021
 ```
@@ -299,7 +299,7 @@ select
 This is the result:
 
 ```output
-     d1     |     d2     
+     d1     |     d2
 ------------+------------
  2021-06-15 | 2021-09-18
 ```
@@ -357,11 +357,11 @@ This is the result:
 ```output
  »   1234567890abTuesday   ,   15   ,   June   ,   2,021   «...... OK
  »   1           Tuesday   ,   15   ,   June   ,   2,021   «...... OK
- 
+
  Too long.
  »   1234567890abcTuesday   ,   15   ,   June   ,   2,021   «..... failed
  »   1           cTuesday   ,   15   ,   June   ,   2,021   «..... failed
- 
+
  Too short.
  »   1234567890aTuesday   ,   15   ,   June   ,   2,021   «....... failed
  »   1          Tuesday   ,   15   ,   June   ,   2,021   «....... failed
@@ -384,11 +384,11 @@ This is the new result:
 ```outout
  »   1234567890ab Tuesday   ,   15   ,   June   ,   2,021   «..... OK
  »   1            Tuesday   ,   15   ,   June   ,   2,021   «..... OK
- 
+
  Too long.
  »   1234567890abc Tuesday   ,   15   ,   June   ,   2,021   «.... failed
  »   1           c Tuesday   ,   15   ,   June   ,   2,021   «.... failed
- 
+
  Too short.
  »   1234567890a Tuesday   ,   15   ,   June   ,   2,021   «...... OK
  »   1           Tuesday   ,   15   ,   June   ,   2,021   «...... OK
@@ -398,7 +398,7 @@ The _"Too long"_ tests still fail. but the _"Too short"_ tests now succeed.
 
 {{< tip title="Avoid using 'years' substring values less than one to specify BC in 'to_date()' and 'to_timestamp()'." >}}
 
-The section "Usage notes for date/time formatting" on the page "9.8. Data Type Formatting Functions" just under <a href="https://www.postgresql.org/docs/11/functions-formatting.html#FUNCTIONS-FORMATTING-DATETIMEMOD-TABLE" target="_blank">Table 9.25. Template Pattern Modifiers for Date/Time Formatting <i class="fas fa-external-link-alt"></i></a> says this:
+The section "Usage notes for date/time formatting" on the page "9.8. Data Type Formatting Functions" just under [Table 9.25. Template Pattern Modifiers for Date/Time Formatting](https://www.postgresql.org/docs/11/functions-formatting.html#FUNCTIONS-FORMATTING-DATETIMEMOD-TABLE) says this:
 
 > In to_timestamp and to_date, negative years are treated as signifying BC. If you write both a negative year and an explicit BC field, you get AD again. An input of year zero is treated as 1 BC.
 
@@ -430,7 +430,7 @@ Notice that the difference between the first two expressions (that produce the v
 ```outout
 a1 | 2022-06-15 BC
 a2 | 2022-06-15 BC
--  | 
+-  |
 b1 | 2021-06-15
 b2 | 2021-06-15 BC
 ```
@@ -681,10 +681,11 @@ with c as (select '0020-05-03 BC'::timestamp as t)
     to_char(t, 'FMMMth "month ("FMMonth")", FMDDth "day", FMYYYY AD')  as "using FM"
 from c;
 ```
+
 This is the result:
 
 ```output
-              plain                   |            using FM             
+              plain                   |            using FM
 -------------------------------------------+---------------------------------
 05th month (May      ), 03rd day, 0020 BC | 5th month (May), 3rd day, 20 BC
 ```
@@ -721,6 +722,7 @@ Here are the results:
   Monday   , 01st February , 2,021 | Lundi, 01st Février, 2,021
   Monday   , 01st February , 2,021 | Maanantai, 01st Helmikuu, 2,021
 ```
+
 ### The FX modifier
 
 The _to_date()_ and _to_timestamp()_ functions treat runs of spaces as a single space in the to-be-converted _text_ value unless the _FX_ modifier is used. Try this:
@@ -770,7 +772,7 @@ from c;
 This is the result:
 
 ```output
- t1 using YYYY | t2 using YYYY | t1 using YYY | t2 using YYY 
+ t1 using YYYY | t2 using YYYY | t1 using YYY | t2 using YYY
 ---------------+---------------+--------------+--------------
  0100-06-15    | 0999-06-15    | 2100-06-15   | 1999-06-15
 ```
@@ -791,7 +793,7 @@ select
 This is the result:
 
 ```output
-  1st try   |  2nd try   | workaround 
+  1st try   |  2nd try   | workaround
 ------------+------------+------------
  6781-12-03 | 1678-11-23 | 0678-11-23
 ```
@@ -811,12 +813,12 @@ select
 This is the result:
 
 ```output
-      d1      |     d2     
+      d1      |     d2
 -------------+------------
   21234-11-23 | 2123-11-23
 ```
 
-But you simply _cannot_ write a template that lets 
+But you simply _cannot_ write a template that lets
 
 you use _to_date()_ and _to_timestamp()_ to convert a _text_ value like _'212341123'_ . Try this:
 
@@ -855,7 +857,7 @@ select
 This is the result:
 
 ```output
-  result 1  |  result 2  |  result 3  
+  result 1  |  result 2  |  result 3
 ------------+------------+------------
  2021-01-01 | 1821-01-01 | 1801-01-01
 ```
@@ -886,7 +888,7 @@ from c2;
 This is the result:
 
 ```output
-Monday, 20-May-2019     result date     | d1 = d2 
+Monday, 20-May-2019     result date     | d1 = d2
 ---------------------+---------
  Monday, 20-May-2019 | true
 ```
@@ -906,7 +908,7 @@ from c;
 This is the result:
 
 ```output
-     d1     |     d2     
+     d1     |     d2
 ------------+------------
  2021-05-27 | 2021-09-18
 ```
@@ -1067,7 +1069,7 @@ This is the result:
  2021-06-15 13:17:47.123456
 ```
 
-The input _text_ value has been exactly recreated in the output. 
+The input _text_ value has been exactly recreated in the output.
 
 {{< tip title="Always use 'SS.US' in to_timestamp()." >}}
 Yugabyte recommends that you Always use _SS.US_ in to _timestamp()_ when your input _text_ value has a "seconds" substring. The demonstration above shows that specifying _US_ (for microseconds) has no harmful effect over all range of possible trailing digits after the decimal point, from _zero_ through the maximum supported precision of _six_.
@@ -1106,7 +1108,6 @@ Notice the descriptions of the _D_ and _ID_ patterns from the table in the subse
 | _D_     | Day of the week, Sunday (1) to Saturday (7).        |
 | _ID_    | ISO 8601 day of the week, Monday (1) to Sunday (7). |
 
-
 And notice the descriptions of the _dow_ and _isodow_ keywords from the table in the subsection [List of keywords](../functions/miscellaneous/extract/#list-of-keywords) on the [Function extract() | date_part() returns double precision](../functions/miscellaneous/extract/) page:
 
 | Keyword  | Description                                        |
@@ -1133,7 +1134,7 @@ from c;
 This is the result:
 
 ```output
- 'D' value | 'dow' value | 'ID' value | 'isodow' value 
+ 'D' value | 'dow' value | 'ID' value | 'isodow' value
 -----------+-------------+------------+----------------
  5         | 4           | 4          | 4
 ```
@@ -1160,7 +1161,7 @@ from c;
 This is the result:
 
 ```output
- Natural use of HH24 | Strange use of HH12 | Natural use of HH24 | Strange use of HH12 
+ Natural use of HH24 | Strange use of HH12 | Natural use of HH24 | Strange use of HH12
 ---------------------+---------------------+---------------------+---------------------
  10000:00:00         | 04:00:00            | -15:00:00           | -03:00:00
 ```

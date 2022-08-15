@@ -14,6 +14,7 @@ import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
 
 import akka.actor.ActorSystem;
 import com.google.common.annotations.VisibleForTesting;
+import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.SwamperHelper;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.metrics.MetricService;
@@ -26,6 +27,7 @@ import com.yugabyte.yw.models.filters.AlertConfigurationFilter;
 import com.yugabyte.yw.models.filters.AlertDefinitionFilter;
 import com.yugabyte.yw.models.filters.MaintenanceWindowFilter;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -34,14 +36,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
-import scala.concurrent.ExecutionContext;
-import scala.concurrent.duration.Duration;
 
 @Singleton
 @Slf4j
@@ -52,12 +51,11 @@ public class AlertConfigurationWriter {
   @VisibleForTesting
   static final String CONFIG_SYNC_INTERVAL_PARAM = "yb.alert.config_sync_interval_sec";
 
-  private final AtomicBoolean running = new AtomicBoolean(false);
   private final AtomicBoolean requiresReload = new AtomicBoolean(true);
 
-  private final ActorSystem actorSystem;
+  private final AtomicBoolean requiresRecordingRulesWrite = new AtomicBoolean(true);
 
-  private final ExecutionContext executionContext;
+  private final PlatformScheduler platformScheduler;
 
   private final MetricService metricService;
 
@@ -75,8 +73,7 @@ public class AlertConfigurationWriter {
 
   @Inject
   public AlertConfigurationWriter(
-      ExecutionContext executionContext,
-      ActorSystem actorSystem,
+      PlatformScheduler platformScheduler,
       MetricService metricService,
       AlertDefinitionService alertDefinitionService,
       AlertConfigurationService alertConfigurationService,
@@ -84,8 +81,7 @@ public class AlertConfigurationWriter {
       MetricQueryHelper metricQueryHelper,
       RuntimeConfigFactory configFactory,
       MaintenanceService maintenanceService) {
-    this.actorSystem = actorSystem;
-    this.executionContext = executionContext;
+    this.platformScheduler = platformScheduler;
     this.metricService = metricService;
     this.alertDefinitionService = alertDefinitionService;
     this.alertConfigurationService = alertConfigurationService;
@@ -105,17 +101,11 @@ public class AlertConfigurationWriter {
           MIN_CONFIG_SYNC_INTERVAL_SEC);
       configSyncPeriodSec = MIN_CONFIG_SYNC_INTERVAL_SEC;
     }
-    this.actorSystem
-        .scheduler()
-        .schedule(
-            Duration.Zero(),
-            Duration.create(configSyncPeriodSec, TimeUnit.SECONDS),
-            this::process,
-            this.executionContext);
-  }
-
-  public void scheduleDefinitionSync(UUID definitionUuid) {
-    this.actorSystem.dispatcher().execute(() -> syncDefinition(definitionUuid));
+    platformScheduler.schedule(
+        getClass().getSimpleName(),
+        Duration.ZERO,
+        Duration.ofSeconds(configSyncPeriodSec),
+        this::process);
   }
 
   private SyncResult syncDefinition(UUID definitionUuid) {
@@ -125,7 +115,10 @@ public class AlertConfigurationWriter {
           definition != null
               ? alertConfigurationService.get(definition.getConfigurationUUID())
               : null;
-      if (definition == null || configuration == null || !configuration.isActive()) {
+      if (definition == null
+          || !definition.isActive()
+          || configuration == null
+          || !configuration.isActive()) {
         swamperHelper.removeAlertDefinition(definitionUuid);
         requiresReload.set(true);
         return SyncResult.REMOVED;
@@ -147,16 +140,9 @@ public class AlertConfigurationWriter {
 
   @VisibleForTesting
   void process() {
-    if (!running.compareAndSet(false, true)) {
-      log.info("Previous run of alert configuration writer is still underway");
-      return;
-    }
-    try {
-      applyMaintenanceWindows();
-      syncDefinitions();
-    } finally {
-      running.set(false);
-    }
+    applyMaintenanceWindows();
+    writeRecordingRules();
+    syncDefinitions();
   }
 
   private void applyMaintenanceWindows() {
@@ -230,6 +216,20 @@ public class AlertConfigurationWriter {
       metricService.setFailureStatusMetric(
           buildMetricTemplate(PlatformMetrics.ALERT_MAINTENANCE_WINDOW_PROCESSOR_STATUS));
       log.error("Error processing maintenance windows:", e);
+    }
+  }
+
+  private void writeRecordingRules() {
+    try {
+      if (requiresRecordingRulesWrite.get()) {
+        swamperHelper.writeRecordingRules();
+        if (metricQueryHelper.isPrometheusManagementEnabled()) {
+          metricQueryHelper.postManagementCommand(MetricQueryHelper.MANAGEMENT_COMMAND_RELOAD);
+        }
+        requiresRecordingRulesWrite.compareAndSet(true, false);
+      }
+    } catch (Exception e) {
+      log.error("Error syncing metric recording rules", e);
     }
   }
 

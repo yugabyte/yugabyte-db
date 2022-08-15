@@ -6,7 +6,7 @@ import static org.junit.Assert.assertNull;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.kms.services.EncryptionAtRestService;
-import com.yugabyte.yw.forms.UniverseTaskParams.EncryptionAtRestConfig;
+import com.yugabyte.yw.forms.EncryptionAtRestConfig;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import org.junit.Before;

@@ -41,6 +41,8 @@
 
 #include <glog/logging.h>
 
+#include "yb/client/auto_flags_manager.h"
+#include "yb/client/client.h"
 #include "yb/client/transaction_manager.h"
 #include "yb/client/universe_key_client.h"
 
@@ -126,6 +128,10 @@ DEFINE_int32(ts_remote_bootstrap_svc_queue_length, 50,
              "RPC queue length for the TS remote bootstrap service");
 TAG_FLAG(ts_remote_bootstrap_svc_queue_length, advanced);
 
+DEFINE_int32(pg_client_svc_queue_length, yb::tserver::TabletServer::kDefaultSvcQueueLength,
+             "RPC queue length for the Pg Client service.");
+TAG_FLAG(pg_client_svc_queue_length, advanced);
+
 DEFINE_bool(enable_direct_local_tablet_server_call,
             true,
             "Enable direct call to local tablet server");
@@ -142,21 +148,24 @@ DECLARE_int32(pgsql_proxy_webserver_port);
 
 DEFINE_int64(inbound_rpc_memory_limit, 0, "Inbound RPC memory limit");
 
-DEFINE_bool(start_pgsql_proxy, false,
-            "Whether to run a PostgreSQL server as a child process of the tablet server");
-
 DEFINE_bool(tserver_enable_metrics_snapshotter, false, "Should metrics snapshotter be enabled");
 DECLARE_int32(num_concurrent_backfills_allowed);
 DECLARE_int32(svc_queue_length_default);
+
+constexpr int kTServerYbClientDefaultTimeoutMs = 60 * 1000;
+
+DEFINE_int32(tserver_yb_client_default_timeout_ms, kTServerYbClientDefaultTimeoutMs,
+             "Default timeout for the YBClient embedded into the tablet server that is used "
+             "for distributed transactions.");
 
 namespace yb {
 namespace tserver {
 
 TabletServer::TabletServer(const TabletServerOptions& opts)
-    : DbServerBase(
-          "TabletServer", opts, "yb.tabletserver", server::CreateMemTrackerForServer()),
+    : DbServerBase("TabletServer", opts, "yb.tabletserver", server::CreateMemTrackerForServer()),
       fail_heartbeats_for_tests_(false),
       opts_(opts),
+      auto_flags_manager_(new AutoFlagsManager("yb-tserver", fs_manager_.get())),
       tablet_manager_(new TSTabletManager(fs_manager_.get(), this, metric_registry())),
       path_handlers_(new TabletServerPathHandlers(this)),
       maintenance_manager_(new MaintenanceManager(MaintenanceManager::DEFAULT_OPTIONS)),
@@ -177,6 +186,21 @@ std::string TabletServer::ToString() const {
   return strings::Substitute("TabletServer : rpc=$0, uuid=$1",
                              yb::ToString(first_rpc_address()),
                              fs_manager_->uuid());
+}
+
+MonoDelta TabletServer::default_client_timeout() {
+  return std::chrono::milliseconds(FLAGS_tserver_yb_client_default_timeout_ms);
+}
+
+void TabletServer::SetupAsyncClientInit(client::AsyncClientInitialiser* async_client_init) {
+  // If enabled, creates a proxy to call this tablet server locally.
+  if (FLAGS_enable_direct_local_tablet_server_call) {
+    proxy_ = std::make_shared<TabletServerServiceProxy>(proxy_cache_.get(), HostPort());
+    async_client_init->AddPostCreateHook(
+        [proxy = proxy_, uuid = permanent_uuid(), tserver = this](client::YBClient* client) {
+      client->SetLocalTabletServer(uuid, proxy, tserver);
+    });
+  }
 }
 
 Status TabletServer::ValidateMasterAddressResolution() const {
@@ -261,7 +285,8 @@ Status TabletServer::Init() {
   // our heartbeat thread will loop until successfully connecting.
   RETURN_NOT_OK(ValidateMasterAddressResolution());
 
-  RETURN_NOT_OK(RpcAndWebServerBase::Init());
+  RETURN_NOT_OK(DbServerBase::Init());
+
   RETURN_NOT_OK(path_handlers_->Register(web_server_.get()));
 
   log_prefix_ = Format("P $0: ", permanent_uuid());
@@ -303,6 +328,23 @@ Status TabletServer::Init() {
   shared_object().SetPostgresAuthKey(RandomUniformInt<uint64_t>());
 
   return Status::OK();
+}
+
+Status TabletServer::InitAutoFlags() {
+  if (!VERIFY_RESULT(auto_flags_manager_->LoadFromFile())) {
+    RETURN_NOT_OK(auto_flags_manager_->LoadFromMaster(
+        options_.HostsString(), *opts_.GetMasterAddresses(), ApplyNonRuntimeAutoFlags::kTrue));
+  }
+
+  return Status::OK();
+}
+
+uint32_t TabletServer::GetAutoFlagConfigVersion() const {
+  return auto_flags_manager_->GetConfigVersion();
+}
+
+AutoFlagsConfigPB TabletServer::TEST_GetAutoFlagConfig() const {
+  return auto_flags_manager_->GetConfig();
 }
 
 Status TabletServer::GetRegistration(ServerRegistrationPB* reg, server::RpcOnly rpc_only) const {
@@ -365,22 +407,19 @@ Status TabletServer::RegisterServices() {
 
   std::unique_ptr<ServiceIf> remote_bootstrap_service =
       std::make_unique<RemoteBootstrapServiceImpl>(
-          fs_manager_.get(), tablet_manager_.get(), metric_entity());
+          fs_manager_.get(), tablet_manager_.get(), metric_entity(), this->MakeCloudInfoPB(),
+          &this->proxy_cache());
   LOG(INFO) << "yb::tserver::RemoteBootstrapServiceImpl created at " <<
     remote_bootstrap_service.get();
   RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_ts_remote_bootstrap_svc_queue_length,
                                                      std::move(remote_bootstrap_service)));
 
-  std::unique_ptr<ServiceIf> forward_service =
-    std::make_unique<TabletServerForwardServiceImpl>(tablet_server_service_, this);
-  LOG(INFO) << "yb::tserver::ForwardServiceImpl created at " << forward_service.get();
-  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_tablet_server_svc_queue_length,
-                                                     std::move(forward_service)));
-
   RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(
-      FLAGS_svc_queue_length_default,
+      FLAGS_pg_client_svc_queue_length,
       std::make_unique<PgClientServiceImpl>(
-          tablet_manager_->client_future(), std::bind(&TabletServer::TransactionPool, this),
+          tablet_manager_->client_future(),
+          clock(),
+          std::bind(&TabletServer::TransactionPool, this),
           metric_entity(),
           &messenger()->scheduler())));
 
@@ -393,12 +432,7 @@ Status TabletServer::Start() {
   AutoInitServiceFlags();
 
   RETURN_NOT_OK(RegisterServices());
-  RETURN_NOT_OK(RpcAndWebServerBase::Start());
-
-  // If enabled, creates a proxy to call this tablet server locally.
-  if (FLAGS_enable_direct_local_tablet_server_call) {
-    proxy_ = std::make_shared<TabletServerServiceProxy>(proxy_cache_.get(), HostPort());
-  }
+  RETURN_NOT_OK(DbServerBase::Start());
 
   RETURN_NOT_OK(tablet_manager_->Start());
 
@@ -562,12 +596,12 @@ uint64_t TabletServer::GetSharedMemoryPostgresAuthKey() {
   return shared_object().postgres_auth_key();
 }
 
-void TabletServer::SetYSQLCatalogVersion(uint64_t new_version, uint64_t new_breaking_version) {
+void TabletServer::SetYsqlCatalogVersion(uint64_t new_version, uint64_t new_breaking_version) {
   std::lock_guard<simple_spinlock> l(lock_);
 
   if (new_version > ysql_catalog_version_) {
     ysql_catalog_version_ = new_version;
-    shared_object().SetYSQLCatalogVersion(new_version);
+    shared_object().SetYsqlCatalogVersion(new_version);
     ysql_last_breaking_catalog_version_ = new_breaking_version;
     if (FLAGS_log_ysql_catalog_versions) {
       LOG_WITH_FUNC(INFO) << "set catalog version: " << new_version << ", breaking version: "
@@ -576,6 +610,54 @@ void TabletServer::SetYSQLCatalogVersion(uint64_t new_version, uint64_t new_brea
   } else if (new_version < ysql_catalog_version_) {
     LOG(DFATAL) << "Ignoring ysql catalog version update: new version too old. "
                  << "New: " << new_version << ", Old: " << ysql_catalog_version_;
+  }
+}
+
+void TabletServer::SetYsqlDBCatalogVersions(
+  const master::DBCatalogVersionDataPB& db_catalog_version_data) {
+  std::lock_guard<simple_spinlock> l(lock_);
+
+  std::unordered_set<uint32_t> db_oid_set;
+  for (int i = 0; i < db_catalog_version_data.db_catalog_versions_size(); i++) {
+    const auto& db_catalog_version = db_catalog_version_data.db_catalog_versions(i);
+    const uint32_t db_oid = db_catalog_version.db_oid();
+    const uint64_t new_version = db_catalog_version.current_version();
+    const uint64_t new_breaking_version = db_catalog_version.last_breaking_version();
+    if (!db_oid_set.insert(db_oid).second) {
+      LOG(DFATAL) << "Ignoring duplicate db oid " << db_oid;
+      continue;
+    }
+    const auto it = ysql_db_catalog_version_map_.insert(
+      std::make_pair(db_oid, std::make_pair(new_version, new_breaking_version)));
+    bool row_inserted = it.second;
+    bool row_updated = false;
+    if (!row_inserted) {
+      auto& existing_entry = it.first->second;
+      if (new_version > existing_entry.first) {
+        existing_entry.first = new_version;
+        existing_entry.second = new_breaking_version;
+        row_updated = true;
+      } else if (new_version < existing_entry.first) {
+        LOG(DFATAL) << "Ignoring ysql db " << db_oid
+                    << " catalog version update: new version too old. "
+                    << "New: " << new_version << ", Old: " << existing_entry.first;
+      }
+    }
+    if (FLAGS_log_ysql_catalog_versions && (row_inserted || row_updated)) {
+      LOG_WITH_FUNC(INFO) << "set db " << db_oid
+                          << " catalog version: " << new_version
+                          << ", breaking version: " << new_breaking_version;
+    }
+  }
+
+  // We only do full catalog report for now, remove entries that no longer exist.
+  for (auto it = ysql_db_catalog_version_map_.begin();
+       it != ysql_db_catalog_version_map_.end();) {
+    if (db_oid_set.count(it->first) == 0) {
+      it = ysql_db_catalog_version_map_.erase(it);
+    } else {
+      ++it;
+    }
   }
 }
 
@@ -591,10 +673,10 @@ TabletPeerLookupIf* TabletServer::tablet_peer_lookup() {
 }
 
 const std::shared_future<client::YBClient*>& TabletServer::client_future() const {
-  return tablet_manager_->client_future();
+  return DbServerBase::client_future();
 }
 
-client::TransactionPool* TabletServer::TransactionPool() {
+client::TransactionPool& TabletServer::TransactionPool() {
   return DbServerBase::TransactionPool();
 }
 

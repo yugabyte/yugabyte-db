@@ -8,13 +8,12 @@ menu:
     identifier: table-t2
     parent: data-sets
     weight: 30
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 {{< note title=" " >}}
 
-Make sure that you read the section [The data sets used by the code examples](../../data-sets/) before running the script to create table _"t2"_. In particular, it's essential that you have installed the [pgcrypto](../../../../../extensions/#pgcrypto) extension.
+Make sure that you read the section [The data sets used by the code examples](../../data-sets/) before running the script to create table _"t2"_. In particular, it's essential that you have installed the [pgcrypto](../../../../../../../explore/ysql-language-features/pg-extensions/#pgcrypto-example) extension.
 
 {{< /note >}}
 
@@ -101,7 +100,7 @@ order by class, k;
 ```
 Here is the result of the second `SELECT`. To make it easier to see the pattern, several blank lines have been manually inserted here between each successive set of rows with the same value for _"class"_. And in the second set, which has ties, one blank line has been inserted between each tie group.
 ```
- class | k  | score 
+ class | k  | score
 -------+----+-------
      1 |  1 |     1
      1 |  2 |     2
@@ -130,4 +129,3 @@ Here is the result of the second `SELECT`. To make it easier to see the pattern,
 
      2 | 18 |     9
 ```
-

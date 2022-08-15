@@ -230,7 +230,8 @@ class RaftConsensusTest : public YBTest {
     // monitors and pretty much everything else.
     fs_manager_.reset(new FsManager(env_.get(), test_path, "tserver_test"));
     ASSERT_OK(fs_manager_->CreateInitialFileSystemLayout());
-    ASSERT_OK(fs_manager_->Open());
+    ASSERT_OK(fs_manager_->CheckAndOpenFileSystemRoots());
+    fs_manager_->SetTabletPathByDataPath(kTestTablet, fs_manager_->GetDataRootDirs()[0]);
     ASSERT_OK(ThreadPoolBuilder("log").Build(&log_thread_pool_));
     ASSERT_OK(Log::Open(LogOptions(),
                        kTestTablet,
@@ -240,6 +241,7 @@ class RaftConsensusTest : public YBTest {
                        0, // schema_version
                        nullptr, // table_metric_entity
                        nullptr, // tablet_metric_entity
+                       log_thread_pool_.get(),
                        log_thread_pool_.get(),
                        log_thread_pool_.get(),
                        std::numeric_limits<int64_t>::max(), // cdc_min_replicated_index

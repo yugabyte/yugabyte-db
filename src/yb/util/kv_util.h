@@ -22,7 +22,8 @@
 
 namespace yb {
 
-typedef ByteBuffer<64> KeyBuffer;
+using KeyBuffer = ByteBuffer<0x40>;
+using ValueBuffer = ByteBuffer<0x100>;
 
 namespace util {
 
@@ -133,7 +134,8 @@ inline void AppendInt64ToKey(int64_t val, Buffer* dest) {
   dest->append(buf, sizeof(buf));
 }
 
-inline void AppendBigEndianUInt64(uint64_t u, std::string* dest) {
+template <class Buffer>
+inline void AppendBigEndianUInt64(uint64_t u, Buffer* dest) {
   char buf[sizeof(uint64_t)];
   BigEndian::Store64(buf, u);
   dest->append(buf, sizeof(buf));

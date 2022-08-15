@@ -18,6 +18,7 @@
 
 #include "yb/common/ql_scanspec.h"
 
+#include "yb/docdb/doc_ql_scanspec.h"
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/key_bytes.h"
 
@@ -47,14 +48,16 @@ class DocPgsqlScanSpec : public PgsqlScanSpec {
   // DocPgsqlScanSpec spec(...{} /* hashed_components */, {} /* range_components */...);
   DocPgsqlScanSpec(const Schema& schema,
                    const rocksdb::QueryId query_id,
-                   std::reference_wrapper<const std::vector<PrimitiveValue>> hashed_components,
-                   std::reference_wrapper<const std::vector<PrimitiveValue>> range_components,
+                   std::reference_wrapper<const std::vector<KeyEntryValue>> hashed_components,
+                   std::reference_wrapper<const std::vector<KeyEntryValue>> range_components,
                    const PgsqlConditionPB* condition,
                    boost::optional<int32_t> hash_code,
                    boost::optional<int32_t> max_hash_code,
                    const PgsqlExpressionPB *where_expr,
                    const DocKey& start_doc_key = DefaultStartDocKey(),
-                   bool is_forward_scan = true);
+                   bool is_forward_scan = true,
+                   const DocKey& lower_doc_key = DefaultStartDocKey(),
+                   const DocKey& upper_doc_key = DefaultStartDocKey());
 
   //------------------------------------------------------------------------------------------------
   // Access funtions.
@@ -75,15 +78,15 @@ class DocPgsqlScanSpec : public PgsqlScanSpec {
   Result<KeyBytes> UpperBound() const;
 
   // Returns the lower/upper range components of the key.
-  std::vector<PrimitiveValue> range_components(const bool lower_bound) const;
+  std::vector<KeyEntryValue> range_components(const bool lower_bound,
+                                              std::vector<bool> *inclusivities = nullptr,
+                                              bool use_strictness = true) const;
 
   const QLScanRange* range_bounds() const {
     return range_bounds_.get();
   }
 
-  const std::shared_ptr<std::vector<std::vector<PrimitiveValue>>>& range_options() const {
-    return range_options_;
-  }
+  const std::shared_ptr<std::vector<OptionList>>& range_options() const { return range_options_; }
 
   const std::vector<ColumnId> range_options_indexes() const {
     return range_options_indexes_;
@@ -91,6 +94,10 @@ class DocPgsqlScanSpec : public PgsqlScanSpec {
 
   const std::vector<ColumnId> range_bounds_indexes() const {
     return range_bounds_indexes_;
+  }
+
+  const std::vector<size_t> range_options_num_cols() const {
+    return range_options_num_cols_;
   }
 
  private:
@@ -105,7 +112,7 @@ class DocPgsqlScanSpec : public PgsqlScanSpec {
   // The scan range within the hash key when a WHERE condition is specified.
   const std::unique_ptr<const QLScanRange> range_bounds_;
 
-  // Indexes of columns that have range bounds such as c2 < 4 AND c2 >= 1
+  // Ids of columns that have range bounds such as c2 < 4 AND c2 >= 1.
   std::vector<ColumnId> range_bounds_indexes_;
 
   // Initialize range_options_ if hashed_components_ in set and all range columns have one or more
@@ -114,11 +121,15 @@ class DocPgsqlScanSpec : public PgsqlScanSpec {
   void InitRangeOptions(const PgsqlConditionPB& condition);
 
   // The range value options if set. (possibly more than one due to IN conditions).
-  std::shared_ptr<std::vector<std::vector<PrimitiveValue>>> range_options_;
+  std::shared_ptr<std::vector<OptionList>> range_options_;
 
-  // Indexes of columns that have range option filters such as
-  // c2 IN (1, 5, 6, 9)
+  // Ids of columns that have range option filters such as c2 IN (1, 5, 6, 9).
   std::vector<ColumnId> range_options_indexes_;
+
+  // Stores the number of columns involved in a range option filter.
+  // For filter: A in (..) AND (C, D) in (...) AND E in (...) where A, B, C, D, E are
+  // range columns, range_options_num_cols_ will contain [1, 0, 2, 2, 1]
+  std::vector<size_t> range_options_num_cols_;
 
   // Schema of the columns to scan.
   const Schema& schema_;
@@ -127,9 +138,9 @@ class DocPgsqlScanSpec : public PgsqlScanSpec {
   const rocksdb::QueryId query_id_;
 
   // The hashed_components are owned by the caller of QLScanSpec.
-  const std::vector<PrimitiveValue> *hashed_components_;
+  const std::vector<KeyEntryValue> *hashed_components_;
   // The range_components are owned by the caller of QLScanSpec.
-  const std::vector<PrimitiveValue> *range_components_;
+  const std::vector<KeyEntryValue> *range_components_;
 
   // Hash code is used if hashed_components_ vector is empty.
   // hash values are positive int16_t.

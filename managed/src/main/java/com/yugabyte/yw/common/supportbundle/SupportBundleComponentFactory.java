@@ -3,14 +3,6 @@ package com.yugabyte.yw.common.supportbundle;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.models.helpers.BundleDetails.ComponentType;
-import com.yugabyte.yw.common.supportbundle.ApplicationLogsComponent;
-import com.yugabyte.yw.common.supportbundle.UniverseLogsComponent;
-import com.yugabyte.yw.common.supportbundle.OutputFilesComponent;
-import com.yugabyte.yw.common.supportbundle.ErrorFilesComponent;
-import com.yugabyte.yw.common.supportbundle.GFlagsComponent;
-import com.yugabyte.yw.common.supportbundle.InstanceComponent;
-import com.yugabyte.yw.common.supportbundle.ConsensusMetaComponent;
-import com.yugabyte.yw.common.supportbundle.TabletMetaComponent;
 
 @Singleton
 public class SupportBundleComponentFactory {
@@ -23,6 +15,7 @@ public class SupportBundleComponentFactory {
   private final InstanceComponent instanceComponent;
   private final ConsensusMetaComponent consensusMetaComponent;
   private final TabletMetaComponent tabletMetaComponent;
+  private final YbcLogsComponent ybcLogsComponent;
 
   @Inject
   public SupportBundleComponentFactory(
@@ -33,7 +26,8 @@ public class SupportBundleComponentFactory {
       GFlagsComponent gFlagsComponent,
       InstanceComponent instanceComponent,
       ConsensusMetaComponent consensusMetaComponent,
-      TabletMetaComponent tabletMetaComponent) {
+      TabletMetaComponent tabletMetaComponent,
+      YbcLogsComponent ybcLogsComponent) {
     this.applicationLogsComponent = applicationLogsComponent;
     this.universeLogsComponent = universeLogsComponent;
     this.outputFilesComponent = outputFilesComponent;
@@ -42,6 +36,7 @@ public class SupportBundleComponentFactory {
     this.instanceComponent = instanceComponent;
     this.consensusMetaComponent = consensusMetaComponent;
     this.tabletMetaComponent = tabletMetaComponent;
+    this.ybcLogsComponent = ybcLogsComponent;
   }
 
   // Maps the support bundle component type to its respective implementation
@@ -72,6 +67,9 @@ public class SupportBundleComponentFactory {
         break;
       case TabletMeta:
         supportBundleComponent = this.tabletMetaComponent;
+        break;
+      case YbcLogs:
+        supportBundleComponent = this.ybcLogsComponent;
         break;
       default:
         break;

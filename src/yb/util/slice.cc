@@ -53,7 +53,7 @@ void Slice::CopyToBuffer(std::string* buffer) const {
 
 // Return a string that contains the copy of the referenced data.
 std::string Slice::ToBuffer() const {
-  return std::string(cdata(), size());
+  return std::string(static_cast<std::string_view>(*this));
 }
 
 std::string Slice::ToString(bool hex) const {

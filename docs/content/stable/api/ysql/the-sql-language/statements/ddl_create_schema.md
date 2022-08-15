@@ -7,8 +7,7 @@ menu:
   stable:
     identifier: ddl_create_schema
     parent: statements
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis
@@ -36,10 +35,10 @@ Named objects in a schema can be accessed by using the schema name as prefix or 
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_schema_name,create_schema_role,schema_element,role_specification.grammar.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_schema_name,create_schema_role,schema_element,role_specification.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_schema_name,create_schema_role,schema_element,role_specification.diagram.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_schema_name,create_schema_role,schema_element,role_specification.diagram.md" %}}
   </div>
 </div>
 
@@ -50,7 +49,7 @@ Where
 - `role_name` is the role who will own the new schema. If omitted, it defaults to the user executing the command. To create a schema owned by another role, you must be a direct or indirect member of that role, or be a superuser.
 
 - `schema_element` is a YSQL statement defining an object to be created within the schema.
-Currently, only [`CREATE TABLE`](../ddl_create_table), [`CREATE VIEW`](../ddl_create_view), [`CREATE INDEX`](../ddl_create_index), [`CREATE SEQUENCE`](../ddl_create_sequence), [`CREATE TRIGGER`](../ddl_create_trigger) and [`GRANT`](../dcl_grant) are supported as clauses within `CREATE SCHEMA`.
+Currently, only [`CREATE TABLE`](../ddl_create_table), [`CREATE VIEW`](../ddl_create_view), [`CREATE INDEX`](../ddl_create_index/), [`CREATE SEQUENCE`](../ddl_create_sequence), [`CREATE TRIGGER`](../ddl_create_trigger) and [`GRANT`](../dcl_grant) are supported as clauses within `CREATE SCHEMA`.
 Other kinds of objects may be created in separate commands after the schema is created.
 
 ## Examples
@@ -89,6 +88,6 @@ yugabyte=# CREATE SCHEMA branch
 
 - [`CREATE TABLE`](../ddl_create_table)
 - [`CREATE VIEW`](../ddl_create_view)
-- [`CREATE INDEX`](../ddl_create_index)
+- [`CREATE INDEX`](../ddl_create_index/)
 - [`CREATE SEQUENCE`](../ddl_create_sequence)
 - [`GRANT`](../dcl_grant)

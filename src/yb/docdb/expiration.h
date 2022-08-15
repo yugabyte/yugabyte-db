@@ -22,18 +22,22 @@ namespace docdb {
 // Useful for calculating expiration.
 struct Expiration {
   Expiration() :
-    ttl(Value::kMaxTtl) {}
+    ttl(ValueControlFields::kMaxTtl) {}
 
   explicit Expiration(MonoDelta default_ttl) :
     ttl(default_ttl) {}
 
   explicit Expiration(HybridTime new_write_ht) :
-    ttl(Value::kMaxTtl),
+    ttl(ValueControlFields::kMaxTtl),
     write_ht(new_write_ht) {}
 
   explicit Expiration(HybridTime new_write_ht, MonoDelta new_ttl) :
     ttl(new_ttl),
     write_ht(new_write_ht) {}
+
+  explicit operator bool() const {
+    return ttl != ValueControlFields::kMaxTtl;
+  }
 
   MonoDelta ttl;
   HybridTime write_ht = HybridTime::kMin;

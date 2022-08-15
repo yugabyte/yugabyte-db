@@ -15,13 +15,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
-import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.kms.algorithms.SupportedAlgorithmInterface;
 import com.yugabyte.yw.common.kms.services.EncryptionAtRestService;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil.BackupEntry;
+import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
-import com.yugabyte.yw.forms.UniverseTaskParams.EncryptionAtRestConfig;
+import com.yugabyte.yw.forms.EncryptionAtRestConfig;
 import com.yugabyte.yw.models.KmsConfig;
 import java.io.File;
 import java.lang.reflect.Constructor;
@@ -219,8 +219,26 @@ public class EncryptionAtRestManager {
         throw new RuntimeException("Error creating backup encryption key file!");
       }
 
-      Util.writeStringToFile(backupKeysFile, backupContent);
+      FileUtils.writeStringToFile(backupKeysFile, backupContent);
     }
+  }
+
+  /**
+   * Function to get universe keys history as ObjectNode, for use in YB-Controller extended args.
+   *
+   * @param universeUUID
+   * @return ObjectNode consisting of universe key history.
+   * @throws Exception
+   */
+  public ObjectNode backupUniverseKeyHistory(UUID universeUUID) throws Exception {
+    ObjectNode backup = Json.newObject();
+    ArrayNode universeKeys = backup.putArray("universe_keys");
+    List<ObjectNode> universeKeyRefs = getUniverseKeyRefsForBackup(universeUUID);
+    if (universeKeyRefs.size() > 0) {
+      universeKeyRefs.forEach(universeKeys::add);
+      return backup;
+    }
+    return null;
   }
 
   // Restore universe keys from metadata file
@@ -249,10 +267,24 @@ public class EncryptionAtRestManager {
       JsonNode backup = mapper.readTree(backupContents);
       JsonNode universeKeys = backup.get("universe_keys");
       if (universeKeys != null && universeKeys.isArray()) {
-        universeKeys.forEach(restorer);
 
         // Cleanup encrypted key metadata file since it is no longer needed
         backupKeysFile.delete();
+        result = restoreUniverseKeyHistory(universeKeys, restorer);
+      }
+    } catch (Exception e) {
+      LOG.error("Error occurred restoring universe key history", e);
+    }
+
+    return result;
+  }
+
+  public RestoreKeyResult restoreUniverseKeyHistory(
+      JsonNode universeKeys, Consumer<JsonNode> restorer) {
+    RestoreKeyResult result = RestoreKeyResult.RESTORE_FAILED;
+    try {
+      if (universeKeys != null && universeKeys.isArray()) {
+        universeKeys.forEach(restorer);
 
         LOG.info("Restore universe keys succeeded!");
         result = RestoreKeyResult.RESTORE_SUCCEEDED;
@@ -260,7 +292,6 @@ public class EncryptionAtRestManager {
     } catch (Exception e) {
       LOG.error("Error occurred restoring universe key history", e);
     }
-
     return result;
   }
 }

@@ -99,6 +99,14 @@ typedef struct PlannedStmt
 	/* statement location in source string (copied from Query) */
 	int			stmt_location;	/* start location, or -1 if unknown */
 	int			stmt_len;		/* length in bytes; 0 means "rest of string" */
+
+	/* YB specific fields */
+
+	/*
+	 * Number of relations that are still referenced by the plan after
+	 * constraint exclusion and partition pruning.
+	 */
+	int		yb_num_referenced_relations;
 } PlannedStmt;
 
 /* macro for fetching the Plan associated with a SubPlan node */
@@ -360,6 +368,23 @@ typedef struct Scan
 typedef Scan SeqScan;
 
 /* ----------------
+ *		YB table sequential scan node
+ * ----------------
+ */
+
+typedef struct PushdownExprs
+{
+	List *qual;
+	List *colrefs;
+} PushdownExprs;
+
+typedef struct YbSeqScan
+{
+	Scan		scan;
+	PushdownExprs remote;
+} YbSeqScan;
+
+/* ----------------
  *		table sample scan node
  * ----------------
  */
@@ -416,7 +441,10 @@ typedef struct IndexScan
 	List	   *indexorderby;	/* list of index ORDER BY exprs */
 	List	   *indexorderbyorig;	/* the same in original form */
 	List	   *indexorderbyops;	/* OIDs of sort ops for ORDER BY exprs */
+	List	   *indextlist;		/* TargetEntry list describing index's cols */
 	ScanDirection indexorderdir;	/* forward or backward or don't care */
+	PushdownExprs index_remote;
+	PushdownExprs rel_remote;
 } IndexScan;
 
 /* ----------------
@@ -444,6 +472,7 @@ typedef struct IndexOnlyScan
 	List	   *indexorderby;	/* list of index ORDER BY exprs */
 	List	   *indextlist;		/* TargetEntry list describing index's cols */
 	ScanDirection indexorderdir;	/* forward or backward or don't care */
+	PushdownExprs remote;
 } IndexOnlyScan;
 
 /* ----------------

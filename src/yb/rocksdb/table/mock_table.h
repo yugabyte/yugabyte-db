@@ -156,6 +156,10 @@ class MockTableBuilder : public TableBuilder {
     return TableProperties();
   }
 
+  const std::string& LastKey() const override {
+    return (--table_.end())->first;
+  }
+
  private:
   uint32_t id_;
   MockTableFileSystem* file_system_;
@@ -173,7 +177,7 @@ class MockTableFactory : public TableFactory {
 
   bool IsSplitSstForWriteSupported() const override { return false; }
 
-  TableBuilder* NewTableBuilder(
+  std::unique_ptr<TableBuilder> NewTableBuilder(
       const TableBuilderOptions& table_builder_options, uint32_t column_familly_id,
       WritableFileWriter* base_file, WritableFileWriter* data_file = nullptr) const override;
 

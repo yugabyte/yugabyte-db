@@ -4,12 +4,11 @@ headerTitle: Install Yugabyte Platform Software - OpenShift
 linkTitle: Install software
 description: Install Yugabyte Platform software in your OpenShift environment
 menu:
-  v2.8:
+  v2.8_yugabyte-platform:
     parent: install-yugabyte-platform
     identifier: install-software-2-openshift
     weight: 77
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -298,12 +297,12 @@ To create a Yugabyte Platform instance, perform the following:
   To search for the available chart version, execute the following command:
 
   ```shell
-  helm search repo yugabytedb/yugaware -l
+  helm search repo yugabytedb/yugaware --version {{<yb-version version="v2.8" format="short">}}
   ```
 
   ```output
   NAME                 CHART VERSION  APP VERSION  DESCRIPTION
-  yugabytedb/yugaware  2.8.2          2.8.2.0-b51  YugaWare is YugaByte Database's Orchestration a...
+  yugabytedb/yugaware {{<yb-version version="v2.8" format="short">}}          {{<yb-version version="v2.8" format="build">}}  YugaWare is YugaByte Database's Orchestration a...
   ```
 
 - Verify the StorageClass setting for your cluster by executing the following command as admin user:
@@ -318,6 +317,7 @@ To create a Yugabyte Platform instance, perform the following:
 
   ```shell
   helm install yw-test yugabytedb/yugaware -n yb-platform \
+     --version {{<yb-version version="v2.8" format="short">}} \
      --set image.repository=quay.io/yugabyte/yugaware-ubi \
      --set ocpCompatibility.enabled=true --set rbac.create=false --wait
   ```

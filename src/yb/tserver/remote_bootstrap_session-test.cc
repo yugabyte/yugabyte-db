@@ -45,9 +45,14 @@ void RemoteBootstrapSessionTest::SetUp() {
 }
 
 void RemoteBootstrapSessionTest::TearDown() {
+  multi_raft_manager_->StartShutdown();
   messenger_->Shutdown();
   session_.reset();
-  WARN_NOT_OK(tablet_peer_->Shutdown(), "Tablet peer shutdown failed");
+  WARN_NOT_OK(
+    tablet_peer_->Shutdown(
+        tablet::ShouldAbortActiveTransactions::kTrue, tablet::DisableFlushOnShutdown::kFalse),
+    "Tablet peer shutdown failed");
+  multi_raft_manager_->CompleteShutdown();
   YBTabletTest::TearDown();
 }
 
@@ -61,6 +66,7 @@ void RemoteBootstrapSessionTest::SetUpTabletPeer() {
                      0,  // schema_version
                      nullptr, // table_metric_entity
                      nullptr, // tablet_metric_entity
+                     log_thread_pool_.get(),
                      log_thread_pool_.get(),
                      log_thread_pool_.get(),
                      std::numeric_limits<int64_t>::max(), // cdc_min_replicated_index

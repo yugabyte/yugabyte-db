@@ -14,7 +14,8 @@
 #ifndef YB_TABLET_TABLET_RETENTION_POLICY_H_
 #define YB_TABLET_TABLET_RETENTION_POLICY_H_
 
-#include "yb/docdb/docdb_compaction_filter.h"
+#include "yb/docdb/docdb_compaction_context.h"
+
 #include "yb/server/clock.h"
 
 #include "yb/tablet/tablet_fwd.h"
@@ -47,7 +48,7 @@ class TabletRetentionPolicy : public docdb::HistoryRetentionPolicy {
 
   // Register/Unregister a read operation, with an associated timestamp, for the purpose of
   // tracking the oldest read point.
-  CHECKED_STATUS RegisterReaderTimestamp(HybridTime timestamp);
+  Status RegisterReaderTimestamp(HybridTime timestamp);
   void UnregisterReaderTimestamp(HybridTime timestamp);
 
   void EnableHistoryCutoffPropagation(bool value);

@@ -2,17 +2,17 @@
 
 package com.yugabyte.yw.common;
 
-import static com.yugabyte.yw.common.BackupUtil.EMR_MULTIPLE;
 import static com.yugabyte.yw.common.BackupUtil.BACKUP_PREFIX_LENGTH;
+import static com.yugabyte.yw.common.BackupUtil.BACKUP_SCRIPT;
+import static com.yugabyte.yw.common.BackupUtil.EMR_MULTIPLE;
+import static com.yugabyte.yw.common.BackupUtil.K8S_CERT_PATH;
+import static com.yugabyte.yw.common.BackupUtil.REGION_LOCATIONS;
+import static com.yugabyte.yw.common.BackupUtil.REGION_NAME;
 import static com.yugabyte.yw.common.BackupUtil.TS_FMT_LENGTH;
 import static com.yugabyte.yw.common.BackupUtil.UNIV_PREFIX_LENGTH;
 import static com.yugabyte.yw.common.BackupUtil.UUID_LENGTH;
 import static com.yugabyte.yw.common.BackupUtil.VM_CERT_DIR;
 import static com.yugabyte.yw.common.BackupUtil.YB_CLOUD_COMMAND_TYPE;
-import static com.yugabyte.yw.common.BackupUtil.K8S_CERT_PATH;
-import static com.yugabyte.yw.common.BackupUtil.BACKUP_SCRIPT;
-import static com.yugabyte.yw.common.BackupUtil.REGION_LOCATIONS;
-import static com.yugabyte.yw.common.BackupUtil.REGION_NAME;
 import static com.yugabyte.yw.common.TableManager.CommandSubType.BACKUP;
 import static com.yugabyte.yw.common.TableManager.CommandSubType.BULK_IMPORT;
 import static com.yugabyte.yw.common.TableManager.CommandSubType.DELETE;
@@ -26,28 +26,32 @@ import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.BulkImportParams;
 import com.yugabyte.yw.forms.TableManagerParams;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import java.io.File;
 import java.text.ParseException;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.stream.Collectors;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang.StringUtils;
 import org.yb.CommonTypes.TableType;
 import play.libs.Json;
 
 @Singleton
+@Slf4j
 public class TableManager extends DevopsBase {
 
   public enum CommandSubType {
@@ -67,28 +71,48 @@ public class TableManager extends DevopsBase {
   }
 
   @Inject ReleaseManager releaseManager;
+  @Inject BackupUtil backupUtil;
 
   public ShellResponse runCommand(CommandSubType subType, TableManagerParams taskParams) {
     Universe universe = Universe.getOrBadRequest(taskParams.universeUUID);
     Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
     Region region = Region.get(primaryCluster.userIntent.regionList.get(0));
-    UniverseDefinitionTaskParams.UserIntent userIntent = primaryCluster.userIntent;
+    UserIntent userIntent = primaryCluster.userIntent;
     Provider provider = Provider.get(region.provider.uuid);
 
     String accessKeyCode = userIntent.accessKeyCode;
     AccessKey accessKey = AccessKey.get(region.provider.uuid, accessKeyCode);
     List<String> commandArgs = new ArrayList<>();
     Map<String, String> extraVars = region.provider.getUnmaskedConfig();
-    Map<String, String> namespaceToConfig = new HashMap<>();
+    Map<String, String> podFQDNToConfig = new HashMap<>();
     Map<String, String> secondaryToPrimaryIP = new HashMap<>();
+    Map<String, String> ipToSshKeyPath = new HashMap<>();
 
     boolean nodeToNodeTlsEnabled = userIntent.enableNodeToNodeEncrypt;
 
     if (region.provider.code.equals("kubernetes")) {
       PlacementInfo pi = primaryCluster.placementInfo;
-      namespaceToConfig =
-          PlacementInfoUtil.getConfigPerNamespace(
-              pi, universe.getUniverseDetails().nodePrefix, provider);
+      podFQDNToConfig =
+          PlacementInfoUtil.getKubernetesConfigPerPod(
+              pi, universe.getUniverseDetails().getNodesInCluster(primaryCluster.uuid));
+    } else {
+      // Populate the map so that we use the correct SSH Keys for the different
+      // nodes in different clusters.
+      for (Cluster cluster : universe.getUniverseDetails().clusters) {
+        UserIntent clusterUserIntent = cluster.userIntent;
+        Provider clusterProvider =
+            Provider.getOrBadRequest(UUID.fromString(clusterUserIntent.provider));
+        AccessKey accessKeyForCluster =
+            AccessKey.getOrBadRequest(clusterProvider.uuid, clusterUserIntent.accessKeyCode);
+        Collection<NodeDetails> nodesInCluster = universe.getNodesInCluster(cluster.uuid);
+        for (NodeDetails nodeInCluster : nodesInCluster) {
+          if (nodeInCluster.cloudInfo.private_ip != null
+              && !nodeInCluster.cloudInfo.private_ip.equals("null")) {
+            ipToSshKeyPath.put(
+                nodeInCluster.cloudInfo.private_ip, accessKeyForCluster.getKeyInfo().privateKey);
+          }
+        }
+      }
     }
 
     List<NodeDetails> tservers = universe.getTServers();
@@ -239,7 +263,8 @@ public class TableManager extends DevopsBase {
                 commandArgs.add("--region");
                 commandArgs.add(regionName.asText().toLowerCase());
                 commandArgs.add("--region_location");
-                commandArgs.add(regionLocation.asText());
+                commandArgs.add(
+                    BackupUtil.getExactRegionLocation(backupTableParams, regionLocation.asText()));
               }
             }
           }
@@ -250,14 +275,15 @@ public class TableManager extends DevopsBase {
             region,
             customerConfig,
             provider,
-            namespaceToConfig,
+            podFQDNToConfig,
             nodeToNodeTlsEnabled,
+            ipToSshKeyPath,
             commandArgs);
         // Update env vars with customer config data after provider config to make sure the correct
         // credentials are used.
         extraVars.putAll(customerConfig.dataAsMap());
 
-        LOG.info("Command to run: [" + String.join(" ", commandArgs) + "]");
+        log.info("Command to run: [" + String.join(" ", commandArgs) + "]");
         return shellProcessHandler.run(commandArgs, extraVars, backupTableParams.backupUuid);
         // TODO: Add support for TLS connections for bulk-loading.
         // Tracked by issue: https://github.com/YugaByte/yugabyte-db/issues/1864
@@ -273,7 +299,7 @@ public class TableManager extends DevopsBase {
           throw new RuntimeException(
               "Unable to fetch yugabyte release for version: " + userIntent.ybSoftwareVersion);
         }
-        String ybServerPackage = metadata.filePath;
+        String ybServerPackage = metadata.getFilePath(region);
         if (bulkImportParams.instanceCount == 0) {
           bulkImportParams.instanceCount = userIntent.numNodes * EMR_MULTIPLE;
         }
@@ -300,21 +326,22 @@ public class TableManager extends DevopsBase {
         commandArgs.add(universe.getTserverHTTPAddresses());
         customer = Customer.find.query().where().idEq(universe.customerId).findOne();
         customerConfig = CustomerConfig.get(customer.uuid, backupTableParams.storageConfigUUID);
-        LOG.info("Deleting backup at location {}", backupTableParams.storageLocation);
+        log.info("Deleting backup at location {}", backupTableParams.storageLocation);
         addCommonCommandArgs(
             backupTableParams,
             accessKey,
             region,
             customerConfig,
             provider,
-            namespaceToConfig,
+            podFQDNToConfig,
             nodeToNodeTlsEnabled,
+            ipToSshKeyPath,
             commandArgs);
         extraVars.putAll(customerConfig.dataAsMap());
         break;
     }
 
-    LOG.info("Command to run: [" + String.join(" ", commandArgs) + "]");
+    log.info("Command to run: [" + String.join(" ", commandArgs) + "]");
     return shellProcessHandler.run(commandArgs, extraVars);
   }
 
@@ -367,17 +394,22 @@ public class TableManager extends DevopsBase {
       Region region,
       CustomerConfig customerConfig,
       Provider provider,
-      Map<String, String> namespaceToConfig,
+      Map<String, String> podFQDNToConfig,
       boolean nodeToNodeTlsEnabled,
+      Map<String, String> ipToSshKeyPath,
       List<String> commandArgs) {
     if (region.provider.code.equals("kubernetes")) {
       commandArgs.add("--k8s_config");
-      commandArgs.add(Json.stringify(Json.toJson(namespaceToConfig)));
+      commandArgs.add(Json.stringify(Json.toJson(podFQDNToConfig)));
     } else {
       commandArgs.add("--ssh_port");
       commandArgs.add(accessKey.getKeyInfo().sshPort.toString());
       commandArgs.add("--ssh_key_path");
       commandArgs.add(accessKey.getKeyInfo().privateKey);
+      if (!ipToSshKeyPath.isEmpty()) {
+        commandArgs.add("--ip_to_ssh_key_path");
+        commandArgs.add(Json.stringify(Json.toJson(ipToSshKeyPath)));
+      }
     }
     commandArgs.add("--backup_location");
     commandArgs.add(backupTableParams.storageLocation);
@@ -398,6 +430,15 @@ public class TableManager extends DevopsBase {
     }
     if (backupTableParams.useTablespaces) {
       commandArgs.add("--use_tablespaces");
+    }
+    if (backupTableParams.disableChecksum) {
+      commandArgs.add("--disable_checksums");
+    }
+    if (backupTableParams.disableParallelism) {
+      commandArgs.add("--disable_parallelism");
+    }
+    if (runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.security.ssh2_enabled")) {
+      commandArgs.add("--ssh2_enabled");
     }
   }
 

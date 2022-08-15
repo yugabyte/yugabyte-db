@@ -35,7 +35,7 @@ class NonTransactionalWriter : public rocksdb::DirectWriter {
 
   bool Empty() const;
 
-  CHECKED_STATUS Apply(rocksdb::DirectWriteHandler* handler) override;
+  Status Apply(rocksdb::DirectWriteHandler* handler) override;
 
  private:
   const docdb::KeyValueWriteBatchPB& put_batch_;
@@ -70,7 +70,7 @@ class TransactionalWriter : public rocksdb::DirectWriter {
       const Slice& replicated_batches_state,
       IntraTxnWriteId intra_txn_write_id);
 
-  CHECKED_STATUS Apply(rocksdb::DirectWriteHandler* handler) override;
+  Status Apply(rocksdb::DirectWriteHandler* handler) override;
 
   IntraTxnWriteId intra_txn_write_id() const {
     return intra_txn_write_id_;
@@ -80,13 +80,13 @@ class TransactionalWriter : public rocksdb::DirectWriter {
     metadata_to_store_ = value;
   }
 
-  CHECKED_STATUS operator()(
+  Status operator()(
       IntentStrength intent_strength, FullDocKey, Slice value_slice, KeyBytes* key,
       LastKey last_key);
 
  private:
-  CHECKED_STATUS Finish();
-  CHECKED_STATUS AddWeakIntent(
+  Status Finish();
+  Status AddWeakIntent(
       const std::pair<KeyBuffer, IntentTypeSet>& intent_and_types,
       const std::array<Slice, 2>& value,
       DocHybridTimeBuffer* doc_ht_buffer);
@@ -168,12 +168,15 @@ class IntentsWriter : public rocksdb::DirectWriter {
                 rocksdb::DB* intents_db,
                 IntentsWriterContext* context);
 
-  CHECKED_STATUS Apply(rocksdb::DirectWriteHandler* handler) override;
+  Status Apply(rocksdb::DirectWriteHandler* handler) override;
 
  private:
   Slice start_key_;
   rocksdb::DB* intents_db_;
   IntentsWriterContext& context_;
+  KeyBytes txn_reverse_index_prefix_;
+  Slice reverse_index_upperbound_;
+  BoundedRocksDbIterator reverse_index_iter_;
 };
 
 class ApplyIntentsContext : public IntentsWriterContext {

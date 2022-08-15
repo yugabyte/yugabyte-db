@@ -12,6 +12,7 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.ServerSubTaskParams;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -46,8 +47,13 @@ public class WaitForServer extends ServerSubTaskBase {
     try {
       HostAndPort hp = getHostPort();
       client = getClient();
-
-      ret = client.waitForServer(hp, taskParams().serverWaitTimeoutMs);
+      if (taskParams().serverType == ServerType.MASTER) {
+        // This first calls waitForServer followed by availability check of master UUID.
+        // Check for master UUID retries until timeout.
+        ret = client.waitForMaster(hp, taskParams().serverWaitTimeoutMs);
+      } else {
+        ret = client.waitForServer(hp, taskParams().serverWaitTimeoutMs);
+      }
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage());
       throw new RuntimeException(e);
@@ -55,7 +61,7 @@ public class WaitForServer extends ServerSubTaskBase {
       closeClient(client);
     }
     if (!ret) {
-      throw new RuntimeException(getName() + " did not respond to pings in the set time.");
+      throw new RuntimeException(getName() + " did not respond in the set time.");
     }
     log.info(
         "Server {} responded to RPC calls in {} ms",

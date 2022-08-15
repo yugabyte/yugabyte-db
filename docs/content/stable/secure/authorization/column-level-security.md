@@ -1,22 +1,18 @@
 ---
-title: Column-Level Security
-headerTitle: Column-Level Security
-linkTitle: Column-Level Security
-description: Column-Level Security in YugabyteDB
+title: Column-level security
+description: Column-level security in YugabyteDB
 menu:
   stable:
-    name: Column-Level Security
+    name: Column-level security
     identifier: ysql-column-level-security
     parent: authorization
     weight: 755
-type: page
-isTocNested: false
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/secure/authorization/ysql-grant-permissions" class="nav-link active">
+    <a href="../column-level-security/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
@@ -27,45 +23,36 @@ Column level security in YugabyteDB is used to restrict the users to view a part
 
 The steps below show how to enable column-level security using `CREATE VIEW` command.
 
-
 ## Step 1. Create example table
 
 Open the YSQL shell (ysqlsh), specifying the `yugabyte` user and prompting for the password.
 
-
+```sh
+./ysqlsh -U yugabyte -W
 ```
-$ ./ysqlsh -U yugabyte -W
-```
-
 
 When prompted for the password, enter the yugabyte password. You should be able to login and see a response like below.
 
-
-```
+```output
 ysqlsh (11.2-YB-2.5.0.0-b0)
 Type "help" for help.
 yugabyte=#
 ```
 
+Create an employee table and insert a few sample rows.
 
-  
+```sql
+create table employees ( empno int, ename text,
+                         address text, salary int, account_number text );
 
-Create a employee table and insert few sample rows
+insert into employees values (1, 'joe', '56 grove st',  20000, 'AC-22001' );
+insert into employees values (2, 'mike', '129 81 st',  80000, 'AC-48901' );
+insert into employees values (3, 'julia', '1 finite loop',  40000, 'AC-77051');
 
-
+select * from employees;
 ```
-yugabyte=# create table employees ( empno int, ename text, 
-           address text, salary int, account_number text );
-CREATE TABLE
 
-yugabyte=# insert into employees values (1, 'joe', '56 grove st',  20000, 'AC-22001' );
-INSERT 0 1
-yugabyte=# insert into employees values (2, 'mike', '129 81 st',  80000, 'AC-48901' );
-INSERT 0 1
-yugabyte=# insert into employees values (3, 'julia', '1 finite loop',  40000, 'AC-77051');
-INSERT 0 1
-
-yugabyte=# select * from employees;
+```output
  empno | ename |    address    | salary | account_number
 -------+-------+---------------+--------+----------------
      1 | Joe   | 56 grove st   |  20000 | AC-22001
@@ -74,48 +61,44 @@ yugabyte=# select * from employees;
 (3 rows)
 ```
 
-
-
 ## Step 2. Create `ybadmin` user
 
-Create a user `ybadmin` and provide all privileges on the table to `ybadmin` user
+Create a user `ybadmin` and provide all privileges on the table to `ybadmin` user.
 
+```sql
+\c yugabyte yugabyte;
 
-```
-yugabyte=> \c yugabyte yugabyte;
-You are now connected to database "yugabyte" as user "yugabyte".
+create user ybadmin;
 
-yugabyte=# create user ybadmin;
-CREATE ROLE
-
-yugabyte=# GRANT ALL PRIVILEGES ON employees TO ybadmin;
-GRANT
+GRANT ALL PRIVILEGES ON employees TO ybadmin;
 ```
 
+Connect to the database with the `ybadmin` user.
 
-Connect to the database with` ybadmin `user
-
-
+```sql
+\c yugabyte ybadmin;
 ```
-yugabyte=# \c yugabyte ybadmin;
-You are now connected to database "yugabyte" as user "ybadmin".
-```
-
-
 
 ## Step 3. Verify permissions
 
 User `ybadmin `has access to view all the contents of the table.
 
-
+```sql
+select current_user;
 ```
-yugabyte=> select current_user;
+
+```output
  current_user
 --------------
  ybadmin
 (1 row)
+```
 
-yugabyte=> select * from employees;
+```sql
+select * from employees;
+```
+
+```output
  empno | ename |    address    | salary | account_number
 -------+-------+---------------+--------+----------------
      1 | joe   | 56 grove st   |  20000 | AC-22001
@@ -124,59 +107,52 @@ yugabyte=> select * from employees;
 (3 rows)
 ```
 
-
-
 ## Step 4a. Restrict column access using `CREATE VIEW`
 
 Admin user `ybadmin` has permissions to view all the contents on employees table. In order to prevent admin users from viewing sensitivity information like salary and account_number, the `CREATE VIEW` statement can be used to secure the sensitive columns.
 
+```sql
+\c yugabyte yugabyte;
 
+REVOKE SELECT ON employees FROM ybadmin;
+CREATE VIEW emp_info as select empno, ename, address from employees;
+GRANT SELECT on emp_info TO ybadmin;
 ```
-yugabyte=> \c yugabyte yugabyte;
-You are now connected to database "yugabyte" as user "yugabyte".
-
-yugabyte=# REVOKE SELECT ON employees FROM ybadmin;
-REVOKE
-yugabyte=# CREATE VIEW emp_info as select empno, ename, address from employees;
-CREATE VIEW
-
-yugabyte=# grant SELECT on emp_info TO ybadmin;
-GRANT
-```
-
-
 
 ### Verify access privileges
 
-Verify the permissions of ybadmin user on employee table as shown below.
+Verify the permissions of the ybadmin user on the employee table.
 
+```sql
+\c yugabyte ybadmin;
 
+select current_user;
 ```
-yugabyte=# \c yugabyte ybadmin;
-You are now connected to database "yugabyte" as user "ybadmin".
 
-yugabyte=> select current_user;
+```output
  current_user
 --------------
  ybadmin
 (1 row)
 ```
 
-
 Since permission is revoked for `ybadmin`, this user will not be able to query employees table.
 
-
+```sql
+select * from employees;
 ```
-yugabyte=> select * from employees;
+
+```output
 ERROR:  permission denied for table employees
 ```
 
-
 Since `ybadmin` was granted select permission on `emp_info` table, `ybadmin` user will be able to query `emp_info` table.
 
-
+```sql
+select * from emp_info;
 ```
-yugabyte=> select * from emp_info;
+
+```output
  empno | ename |    address
 -------+-------+---------------
      1 | joe   | 56 grove st
@@ -184,8 +160,6 @@ yugabyte=> select * from emp_info;
      2 | mike  | 129 81 st
 (3 rows)
 ```
-
-
 
 ## Step 4b. Restrict column access using `GRANT`
 
@@ -193,27 +167,23 @@ Instead of creating views, YugabyteDB supports column level permissions, where u
 
 Considering the above example, instead of creating a new view, `ybadmin` user can be provided with permissions to view all columns except salary and account_number like below.
 
+```sql
+\c yugabyte yugabyte;
 
+grant select (empno, ename, address) on employees to ybadmin;
 ```
-yugabyte=> \c yugabyte yugabyte;
-You are now connected to database "yugabyte" as user "yugabyte".
-
-yugabyte=# grant select (empno, ename, address) on employees to ybadmin;
-GRANT
-```
-
-
 
 ### Verify access privileges
 
-User `ybadmin` will now be able to access the columns to which permissions were granted
+User `ybadmin` will now be able to access the columns to which permissions were granted.
 
+```sql
+\c yugabyte ybadmin;
 
+select empno, ename, address from employees;
 ```
-yugabyte=# \c yugabyte ybadmin;
-You are now connected to database "yugabyte" as user "ybadmin".
 
-yugabyte=> select empno, ename, address from employees;
+```output
  empno | ename |    address
 -------+-------+---------------
      1 | joe   | 56 grove st
@@ -222,12 +192,12 @@ yugabyte=> select empno, ename, address from employees;
 (3 rows)
 ```
 
+`ybadmin` will still be denied if user tries to access other columns.
 
-`ybadmin` will still be denied if user tries to access other columns, 
-
-
+```sql
+select empno, ename, address, salary from employees;
 ```
-yugabyte=> select empno, ename, address, salary from employees;
+
+```output
 ERROR:  permission denied for table employees
 ```
-

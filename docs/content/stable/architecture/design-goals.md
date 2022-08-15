@@ -8,8 +8,7 @@ menu:
     identifier: architecture-design-goals
     parent: architecture
     weight: 1105
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 This page outlines the design goals with which YugabyteDB has been built.
@@ -26,7 +25,7 @@ Split-brain is a computing scenario in which data and availability inconsistenci
 
 ### Single-row linearizability
 
-YugabyteDB supports single-row linearizable writes. Linearizability is one of the strongest single-row consistency models, and implies that every operation appears to take place atomically and in some total linear order that is consistent with the real-time ordering of those operations. In other words, the following should be true of operations on a single row: 
+YugabyteDB supports single-row linearizable writes. Linearizability is one of the strongest single-row consistency models, and implies that every operation appears to take place atomically and in some total linear order that is consistent with the real-time ordering of those operations. In other words, the following should be true of operations on a single row:
 
 - Operations can execute concurrently, but the state of the database at any point in time must appear to be the result of some totally ordered, sequential execution of operations.
 - If operation A completes before operation B begins, then B should logically take effect after A.
@@ -38,11 +37,11 @@ YugabyteDB supports multi-row transactions with three isolation levels: `Seriali
 - The [YSQL](../../api/ysql/) API supports `Serializable`, `Snapshot` (default<sup>$</sup>) and `Read Committed` Isolation using the PostgreSQL isolation level syntax of `SERIALIZABLE`, `REPEATABLE READ` and `READ COMMITTED` respectively.
 - The [YCQL](../../api/ycql/dml_transaction/) API supports only `Snapshot Isolation` (default) using the `BEGIN TRANSACTION` syntax.
 
-<sup>$</sup> - `READ COMMITTED` is the default isolation level in PostgreSQL and YSQL. If `yb_enable_read_committed_isolation=true`, `READ COMMITTED` is mapped to Read Committed of YugabyteDB's transactional layer (i.e., a statement will see all rows that are committed before it begins). But, by default `yb_enable_read_committed_isolation=false` and in this case Read Committed of YugabyteDB's transactional layer maps to Snapshot Isolation. Essentially this boils down to the fact that Snapshot Isolation is the default in YSQL.
+<sup>$</sup> - `READ COMMITTED` is the default isolation level in PostgreSQL and YSQL. If `yb_enable_read_committed_isolation=true`, `READ COMMITTED` is mapped to Read Committed of YugabyteDB's transactional layer (i.e., a statement will see all rows that are committed before it begins). But, by default `yb_enable_read_committed_isolation=false` and in this case Read Committed of YugabyteDB's transactional layer maps to Snapshot Isolation. Essentially this boils down to the fact that Snapshot Isolation is the default in YSQL. Read Committed support is currently in [Beta](/preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag).
 
 {{< tip title="YSQL vs PostgreSQL isolation levels" >}}
 
-Refer to the [table of isolation levels](/latest/explore/transactions/isolation-levels/) to learn how YSQL's isolation levels map to the levels defined by PostgreSQL.
+Refer to the [table of isolation levels](/preview/explore/transactions/isolation-levels/) to learn how YSQL's isolation levels map to the levels defined by PostgreSQL.
 
 {{< /tip >}}
 
@@ -80,7 +79,7 @@ YugabyteDB does not reinvent data client APIs. It is wire-compatible with existi
 
 ### YCQL
 
-[YCQL](../../api/ycql/) is a semi-relational SQL API that is best fit for internet-scale OLTP and HTAP apps needing massive write scalability as well as blazing-fast queries. It supports distributed transactions, strongly consistent secondary indexes and a native JSON column type. YCQL has its roots in the Cassandra Query Language. 
+[YCQL](../../api/ycql/) is a semi-relational SQL API that is best fit for internet-scale OLTP and HTAP apps needing massive write scalability as well as blazing-fast queries. It supports distributed transactions, strongly consistent secondary indexes and a native JSON column type. YCQL has its roots in the Cassandra Query Language.
 
 {{< tip title="Read more" >}}
 

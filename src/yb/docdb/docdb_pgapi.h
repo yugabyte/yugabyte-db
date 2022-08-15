@@ -25,12 +25,14 @@
 #define YB_DOCDB_DOCDB_PGAPI_H_
 
 #include <map>
+#include <unordered_map>
 #include <vector>
 
 #include "yb/common/column_id.h"
 #include "yb/common/common_fwd.h"
 
 #include "yb/util/status_fwd.h"
+#include "yb/util/decimal.h"
 
 #include "ybgate/ybgate_api.h"
 
@@ -93,18 +95,18 @@ Status DocPgEvalExpr(YbgPreparedExpr expr,
 
 // Given a 'ql_value' with a binary value, interpret the binary value as a text
 // array, and store the individual elements in 'ql_value_vec';
-Status ExtractTextArrayFromQLBinaryValue(const QLValuePB& ql_value,
-                                         std::vector<QLValuePB> *const ql_value_vec);
+Result<std::vector<std::string>> ExtractTextArrayFromQLBinaryValue(const QLValuePB& ql_value);
 
-// Given a 'ql_value', interpret the binary value in it as an array of type
-// 'array_type' with elements of type 'elem_type' and store the individual
-// elements in 'result'. Here, 'array_type' and 'elem_type' are PG typoids
-// corresponding to the required array and element types.
-Status ExtractVectorFromQLBinaryValueHelper(
-    const QLValuePB& ql_value,
-    const int array_type,
+Status SetValueFromQLBinary(const QLValuePB ql_value,
+                            const int pg_data_type,
+                            const std::unordered_map<uint32_t, std::string> &enum_oid_label_map,
+                            DatumMessagePB* cdc_datum_message = NULL);
+
+Status SetValueFromQLBinaryHelper(
+    const QLValuePB ql_value,
     const int elem_type,
-    std::vector<QLValuePB> *result);
+    const std::unordered_map<uint32_t, std::string> &enum_oid_label_map,
+    DatumMessagePB *cdc_datum_message = NULL);
 
 } // namespace docdb
 } // namespace yb

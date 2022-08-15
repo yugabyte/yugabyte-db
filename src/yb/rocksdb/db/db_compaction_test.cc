@@ -135,7 +135,7 @@ void GetOverlappingFileNumbersForLevelCompaction(
       for (auto* included_file : overlapping_files) {
         if (HaveOverlappingKeyRanges(comparator, *included_file, file)) {
           overlapping_files.insert(&file);
-          overlapping_file_names->insert(file.name);
+          overlapping_file_names->insert(file.Name());
           break;
         }
       }
@@ -149,7 +149,7 @@ void VerifyCompactionResult(
 #ifndef NDEBUG
   for (auto& level : cf_meta.levels) {
     for (auto& file : level.files) {
-      assert(overlapping_file_numbers.find(file.name) ==
+      assert(overlapping_file_numbers.find(file.Name()) ==
              overlapping_file_numbers.end());
     }
   }
@@ -1082,7 +1082,7 @@ TEST_P(DBCompactionTestWithParam, TrivialMoveOneFile) {
   metadata.clear();
   db_->GetLiveFilesMetaData(&metadata);
   ASSERT_EQ(metadata.size(), 1U);
-  ASSERT_EQ(metadata[0].name /* level1_file.name */, level0_file.name);
+  ASSERT_EQ(metadata[0].name_id /* level1_file.name */, level0_file.name_id);
   ASSERT_EQ(metadata[0].total_size /* level1_file.size */, level0_file.total_size);
 
   for (int i = 0; i < num_keys; i++) {
@@ -2258,7 +2258,7 @@ TEST_P(DBCompactionTestWithParam, DISABLED_CompactFilesOnLevelCompaction) {
     for (int f = 0; f < file_picked; ++f) {
       int level = 0;
       auto file_meta = PickFileRandomly(cf_meta, &rnd, &level);
-      compaction_input_file_names.push_back(file_meta->name);
+      compaction_input_file_names.push_back(file_meta->Name());
       GetOverlappingFileNumbersForLevelCompaction(
           cf_meta, options.comparator, level, output_level,
           file_meta, &overlapping_file_names);
@@ -2416,7 +2416,7 @@ TEST_P(DBCompactionTestWithParam, DeleteMovedFileAfterCompaction) {
     std::vector<LiveFileMetaData> metadata;
     db_->GetLiveFilesMetaData(&metadata);
     ASSERT_EQ(metadata.size(), 1U);
-    auto moved_file_name = metadata[0].name;
+    auto moved_file_name = metadata[0].Name();
 
     // Create two more 1MB sst files
     for (int i = 0; i < 2; ++i) {
@@ -2755,7 +2755,7 @@ TEST_P(CompactionPriTest, Test) {
   for (int i = 0; i < kNKeys; i++) {
     keys[i] = i;
   }
-  std::random_shuffle(std::begin(keys), std::end(keys));
+  std::shuffle(std::begin(keys), std::end(keys), yb::ThreadLocalRandom());
 
   for (int i = 0; i < kNKeys; i++) {
     ASSERT_OK(Put(Key(keys[i]), RandomString(&rnd, 102)));
@@ -2865,7 +2865,7 @@ TEST_F_EX(DBCompactionTest, AbortManualCompactionOnShutdown, RocksDBTest) {
         const auto last_file_path =
             db_info.flushed_file_collector->GetFlushedFileInfos().back().file_path;
         for (const auto& file_meta : db->GetLiveFilesMetaData()) {
-          if (file_meta.db_path + file_meta.name == last_file_path) {
+          if (file_meta.FullName() == last_file_path) {
             last_sst_size = file_meta.total_size;
             break;
           }

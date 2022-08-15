@@ -18,6 +18,7 @@ import openshiftLogo from './images/redhat.png';
 import tanzuLogo from './images/tanzu.png';
 import gcpLogo from './images/gcp.svg';
 import { isAvailable, showOrRedirect } from '../../../utils/LayoutUtils';
+import { NewStorageConfiguration } from '../Storage/StorageConfigurationNew';
 import './DataCenterConfiguration.scss';
 
 class DataCenterConfiguration extends Component {
@@ -82,7 +83,8 @@ class DataCenterConfiguration extends Component {
     const {
       customer: { currentCustomer },
       params: { tab, section },
-      params
+      params,
+      featureFlags
     } = this.props;
     showOrRedirect(currentCustomer.data.features, 'menu.config');
     const defaultTab = isAvailable(currentCustomer.data.features, 'config.infra')
@@ -179,6 +181,14 @@ class DataCenterConfiguration extends Component {
               <SecurityConfiguration activeTab={section} />
             </Tab>
           )}
+          {
+            (featureFlags.test['enableMultiRegionConfig'] || featureFlags.released['enableMultiRegionConfig']) && (
+              <Tab eventKey="newBackupConfig" title="New Backup Config" key="new-backup-config">
+                <NewStorageConfiguration activeTab={section}/>
+            </Tab>
+            )
+          }
+         
         </YBTabsWithLinksPanel>
       </div>
     );

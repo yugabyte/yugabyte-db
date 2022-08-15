@@ -8,6 +8,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.common.Util;
 import play.mvc.Http.Status;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -15,6 +16,7 @@ import play.mvc.Http.Status;
 public class SoftwareUpgradeParams extends UpgradeTaskParams {
 
   public String ybSoftwareVersion = null;
+  public boolean upgradeSystemCatalog = true;
 
   public SoftwareUpgradeParams() {}
 

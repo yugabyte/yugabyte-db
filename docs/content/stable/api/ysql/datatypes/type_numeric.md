@@ -7,8 +7,7 @@ menu:
   stable:
     identifier: api-ysql-datatypes-numeric
     parent: api-ysql-datatypes
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis
@@ -23,7 +22,7 @@ Data type | Description | Min | Max |
 `DOUBLE PRECISION` | Inexact 64-bit floating point number | 15-digit precision | 15-digit precision|
 `FLOAT` | Inexact 64-bit floating point number | variable | variable |
 `INTEGER` | 4-byte integer | -2,147,483,648 | 2,147,483,647 |
-`INT` | 4-byte interger | -2,147,483,648 | 2,147,483,647 |
+`INT` | 4-byte integer | -2,147,483,648 | 2,147,483,647 |
 `NUMERIC` | user-specified precision, exact | <131072 digits.16383 digits> | <131072 digits.16383 digits> |
 `REAL` | Inexact 32-bit floating point number | 6-digit precision | 6-digit precision |
 `SMALLINT` | 2-byte integer | -32,768 | 32,767 |
@@ -32,7 +31,7 @@ Data type | Description | Min | Max |
 
 The following keywords are used to specify a column of type integer for different constraints, including its value ranges.
 
-```
+```ebnf
 type_specification ::= SMALLINT | INT | INTEGER | BIGINT
 integer_literal ::= [ + | - ] digit [ { digit | , } ... ]
 ```
@@ -46,7 +45,7 @@ integer_literal ::= [ + | - ] digit [ { digit | , } ... ]
 
 The following keywords are used to specify a column of floating-point types for different constraints including its value ranges.
 
-```
+```ebnf
 type_specification ::= { FLOAT | DOUBLE PRECISION | REAL }
 floating_point_literal ::= non_integer_fixed_point_literal | "NaN" | "Infinity" | "-Infinity"
 ```
@@ -59,13 +58,11 @@ floating_point_literal ::= non_integer_fixed_point_literal | "NaN" | "Infinity" 
 
 ## Fixed-point numbers
 
-The following keywords are used to specify a column of exact user-specified precision types for different constraints
- including its value ranges.
+The following keywords are used to specify a column of exact user-specified precision types for different constraints including its value ranges.
 
-```
+```ebnf
 type_specification ::= { DEC | DECIMAL | NUMERIC }
 fixed_point_literal ::= [ + | - ] { digit [ digit ...] '.' [ digit ...] | '.' digit [ digit ...] }
-
 ```
 
 - Columns of type `DEC`, `DECIMAL`, and `NUMERIC` can be part of the `PRIMARY KEY`.

@@ -7,8 +7,7 @@ menu:
   stable:
     parent: api-cassandra
     weight: 1320
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis
@@ -43,9 +42,9 @@ ttl_or_timestamp_expression = 'TTL' ttl_expression | 'TIMESTAMP' timestamp_expre
 <svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="305" height="65" viewbox="0 0 305 65"><path class="connector" d="M0 22h25m41 0h10m104 0h120m-290 0q5 0 5 5v20q0 5 5 5h5m90 0h10m155 0h5q5 0 5-5v-20q0-5 5-5m5 0h5"/><rect class="literal" x="25" y="5" width="41" height="25" rx="7"/><text class="text" x="35" y="22">TTL</text><a xlink:href="../grammar_diagrams#ttl-expression"><rect class="rule" x="76" y="5" width="104" height="25"/><text class="text" x="86" y="22">ttl_expression</text></a><rect class="literal" x="25" y="35" width="90" height="25" rx="7"/><text class="text" x="35" y="52">TIMESTAMP</text><a xlink:href="../grammar_diagrams#timestamp-expression"><rect class="rule" x="125" y="35" width="155" height="25"/><text class="text" x="135" y="52">timestamp_expression</text></a></svg>
 
 ```
-update ::= UPDATE table_name [ USING using_expression ] SET assignment 
-               [ , ... ]  WHERE where_expression 
-               [ IF { [ NOT ] EXISTS | if_expression } ] 
+update ::= UPDATE table_name [ USING using_expression ] SET assignment
+               [ , ... ]  WHERE where_expression
+               [ IF { [ NOT ] EXISTS | if_expression } ]
                [ RETURNS STATUS AS ROW ]
 
 
@@ -67,7 +66,7 @@ Where
 - **NOTE**: You should either use the `USING TIMESTAMP` clause in all of your statements or none of
   them. Using a mix of statements where some have `USING TIMESTAMP` and others do not will lead to
   very confusing results.
-- Updating rows `USING TTL` is not supported on tables with [transactions enabled](./../ddl_create_table#table-properties-1). 
+- Updating rows `USING TTL` is not supported on tables with [transactions enabled](./../ddl_create_table#table-properties-1).
 
 ### `WHERE` clause
 
@@ -91,10 +90,10 @@ Where
 ### Update a value in a table
 
 ```sql
-ycqlsh:example> CREATE TABLE employees(department_id INT, 
-                                      employee_id INT, 
-                                      name TEXT, 
-                                      age INT, 
+ycqlsh:example> CREATE TABLE employees(department_id INT,
+                                      employee_id INT,
+                                      name TEXT,
+                                      age INT,
                                       PRIMARY KEY(department_id, employee_id));
 ```
 
@@ -269,7 +268,7 @@ See examples in [batch docs](../batch#row-status).
 ## See also
 
 - [`CREATE TABLE`](../ddl_create_table)
-- [`DELETE`](../dml_delete)
+- [`DELETE`](../dml_delete/)
 - [`INSERT`](../dml_insert)
-- [`SELECT`](../dml_select)
+- [`SELECT`](../dml_select/)
 - [`Expression`](..#expressions)

@@ -143,7 +143,7 @@ class RemoteYsckTest : public YBTest {
     for (uint64_t i = 0; continue_writing.Load(); i++) {
       std::shared_ptr<client::YBqlWriteOp> insert(table->NewQLInsert());
       GenerateDataForRow(table->schema(), i, &random_, insert->mutable_request());
-      status = session->ApplyAndFlush(insert);
+      status = session->TEST_ApplyAndFlush(insert);
       if (!status.ok()) {
         promise->Set(status);
         return;
@@ -167,10 +167,10 @@ class RemoteYsckTest : public YBTest {
       session->Apply(insert);
 
       if (i > 0 && i % 1000 == 0) {
-        RETURN_NOT_OK(session->Flush());
+        RETURN_NOT_OK(session->TEST_Flush());
       }
     }
-    RETURN_NOT_OK(session->Flush());
+    RETURN_NOT_OK(session->TEST_Flush());
     return Status::OK();
   }
 

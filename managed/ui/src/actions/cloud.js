@@ -63,6 +63,7 @@ export const RESET_PROVIDER_BOOTSTRAP = 'RESET_PROVIDER_BOOTSTRAP';
 
 export const LIST_ACCESS_KEYS = 'LIST_ACCESS_KEYS';
 export const LIST_ACCESS_KEYS_RESPONSE = 'LIST_ACCESS_KEYS_RESPONSE';
+export const LIST_ACCESS_KEYS_REQUEST_COMPLETED = 'LIST_ACCESS_KEYS_REQUEST_COMPLETED';
 
 export const GET_EBS_TYPE_LIST = 'GET_EBS_TYPES';
 export const GET_EBS_TYPE_LIST_RESPONSE = 'GET_EBS_TYPES_RESPONSE';
@@ -336,7 +337,7 @@ export function createNodeInstancesResponse(result) {
   };
 }
 
-export function createAccessKey(providerUUID, regionUUID, keyInfo) {
+export function createAccessKey(providerUUID, regionUUID, keyInfo, ntpServers, setUpChrony) {
   const formValues = {
     keyCode: keyInfo.code,
     regionUUID: regionUUID,
@@ -349,7 +350,9 @@ export function createAccessKey(providerUUID, regionUUID, keyInfo) {
     installNodeExporter: keyInfo.installNodeExporter,
     nodeExporterUser: keyInfo.nodeExporterUser,
     nodeExporterPort: keyInfo.nodeExporterPort,
-    skipProvisioning: keyInfo.skipProvisioning
+    skipProvisioning: keyInfo.skipProvisioning,
+    ntpServers,
+    setUpChrony
   };
   const url = getProviderEndpoint(providerUUID) + '/access_keys';
   const request = axios.post(url, formValues);
@@ -517,6 +520,12 @@ export function listAccessKeysResponse(response) {
     type: LIST_ACCESS_KEYS_RESPONSE,
     payload: response
   };
+}
+
+export function listAccessKeysReqCompleted(){
+  return {
+    type: LIST_ACCESS_KEYS_REQUEST_COMPLETED
+  }
 }
 
 export function getEBSTypeList() {

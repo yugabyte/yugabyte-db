@@ -124,7 +124,7 @@ class OperationDriver : public RefCountedThreadSafe<OperationDriver>,
   // that will be executed.
   // if term == kUnknownTerm then we launch this operation as replica, otherwise
   // we are leader and operation should be bound to this term.
-  CHECKED_STATUS Init(std::unique_ptr<Operation>* operation, int64_t term);
+  Status Init(std::unique_ptr<Operation>* operation, int64_t term);
 
   // Returns the OpId of the operation being executed or an uninitialized
   // OpId if none has been assigned. Returns a copy and thus should not
@@ -140,7 +140,7 @@ class OperationDriver : public RefCountedThreadSafe<OperationDriver>,
   // multiple stages by multiple executors it might not be possible to stop
   // the operation immediately, but this will make sure it is aborted
   // at the next synchronization point.
-  void Abort(const Status& status);
+  void TEST_Abort(const Status& status);
 
   // Callback from Consensus when replication is complete, and thus the operation
   // is considered "committed" from the consensus perspective (ie it will be
@@ -178,7 +178,7 @@ class OperationDriver : public RefCountedThreadSafe<OperationDriver>,
   // Actually prepare and start. In case of leader-side operations, this stops short of calling
   // Consensus::Replicate, which is the responsibility of the caller. This is being done so that
   // we can append multiple rounds to the consensus queue together.
-  CHECKED_STATUS PrepareAndStart();
+  Status PrepareAndStart();
 
   // The task used to be submitted to the prepare threadpool to prepare and start the operation.
   // If PrepareAndStart() fails, calls HandleFailure. Since 07/07/2017 this is being used for

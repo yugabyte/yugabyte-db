@@ -44,19 +44,20 @@ class TransactionPool {
   //
   // Ready means that transaction is registered at status tablet and intents could be written
   // immediately.
-  YBTransactionPtr Take(ForceGlobalTransaction force_global_transaction);
+  YBTransactionPtr Take(ForceGlobalTransaction force_global_transaction, CoarseTimePoint deadline);
 
   // Takes and initializes a transaction from the pool. See Take for details.
   Result<YBTransactionPtr> TakeAndInit(
-      IsolationLevel isolation, const ReadHybridTime& read_time = ReadHybridTime());
+      IsolationLevel isolation, CoarseTimePoint deadline,
+      const ReadHybridTime& read_time = ReadHybridTime());
 
   // Takes a transaction from the pool and sets it up as a restart of the original transaction.
   // See Take for details.
-  Result<YBTransactionPtr> TakeRestarted(const YBTransactionPtr& source);
+  Result<YBTransactionPtr> TakeRestarted(const YBTransactionPtr& source, CoarseTimePoint deadline);
 
   // Gets the last transaction returned by the pool. Only for testing, returns nullptr unless the
   // TEST_track_last_transaction gflag is set.
-  YBTransactionPtr GetLastTransaction();
+  YBTransactionPtr TEST_GetLastTransaction();
 
  private:
   class Impl;

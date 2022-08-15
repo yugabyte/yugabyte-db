@@ -10,7 +10,6 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -26,12 +25,10 @@ public class CreatePrometheusSwamperConfig extends UniverseDefinitionTaskBase {
   @Override
   public void run() {
     try {
-      // Create the task list sequence.
-      subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
       // Create a Prometheus config to pull from targets.
       createSwamperTargetUpdateTask(false /* removeFile */);
       // Run the task.
-      subTaskGroupQueue.run();
+      getRunnableTask().runSubTasks();
     } catch (Throwable t) {
       log.error("Error executing task {}, error='{}'", getName(), t.getMessage(), t);
       throw t;

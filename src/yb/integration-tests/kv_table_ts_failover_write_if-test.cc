@@ -126,7 +126,7 @@ class KVTableTsFailoverWriteIfTest : public integration_tests::YBTableTestBase {
 
   boost::optional<int32_t> GetValue(const YBSessionPtr& session, int32_t key) {
     const auto op = client::CreateReadOp(key, table_, kValueColumnName);
-    Status s = session->ApplyAndFlush(op);
+    Status s = session->TEST_ApplyAndFlush(op);
     if (!s.ok()) {
       return boost::none;
     }

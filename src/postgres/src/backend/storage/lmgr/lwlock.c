@@ -132,7 +132,7 @@ LWLockPadded *MainLWLockArray = NULL;
  */
 #define MAX_SIMUL_LWLOCKS	200
 
-/* struct representing the LWLocks we're holding */
+ /* struct representing the LWLocks we're holding */
 typedef struct LWLockHandle
 {
 	LWLock	   *lock;
@@ -1152,6 +1152,22 @@ LWLockAcquire(LWLock *lock, LWLockMode mode)
 	if (num_held_lwlocks >= MAX_SIMUL_LWLOCKS)
 		elog(ERROR, "too many LWLocks taken");
 
+    /*
+	 * ybAnyLockAcquired is true when a postgres backend has acquired one or more
+	 * LWLocks.ybAnyLockAcquired is false if and only if a backed does not hold
+	 * any LWLock.
+	 *
+	 * When ybAnyLockAcquired is set true, when the backend starts the process of
+	 * acquiring a LWLock. If a postgres backend dies at a point when
+	 * ybAnyLockAcquired is true the postmaster issues a full postmaster restart.
+	 * This is because during the acquisition of LWLocks by postgres backends,
+	 * they are prone to modify shared memory. At this time, if the backend dies
+	 * there is a chance of shared memory being corrupted. Hence,
+	 * the postmaster issues a full postmaster restart.
+	 */
+	if (proc != NULL)
+		proc->ybAnyLockAcquired = true;
+
 	/*
 	 * Lock out cancel/die interrupts until we exit the code section protected
 	 * by the LWLock.  This ensures that interrupts will not interfere with
@@ -1323,6 +1339,8 @@ LWLockConditionalAcquire(LWLock *lock, LWLockMode mode)
 	else
 	{
 		/* Add lock to list of locks held by this backend */
+		if (MyProc != NULL)
+			MyProc->ybAnyLockAcquired = true;
 		held_lwlocks[num_held_lwlocks].lock = lock;
 		held_lwlocks[num_held_lwlocks++].mode = mode;
 		TRACE_POSTGRESQL_LWLOCK_CONDACQUIRE(T_NAME(lock), mode);
@@ -1370,6 +1388,8 @@ LWLockAcquireOrWait(LWLock *lock, LWLockMode mode)
 	 * manipulations of data structures in shared memory.
 	 */
 	HOLD_INTERRUPTS();
+	if (MyProc != NULL)
+		MyProc->ybAnyLockAcquired = true;
 
 	/*
 	 * NB: We're using nearly the same twice-in-a-row lock acquisition
@@ -1784,6 +1804,16 @@ LWLockRelease(LWLock *lock)
 	}
 
 	TRACE_POSTGRESQL_LWLOCK_RELEASE(T_NAME(lock));
+
+	/*
+	 * ybAnyLockAcquired is true when the current backend is holding any of the
+	 * shared LWLock. Similarly, ybAnyLockAcquired is false when it is holding 0
+	 * (zero) LWLocks. Hence, in situations where a backend acquires multiple
+	 * LWLocks, ybAnyLockAcquired is set to false only when the number of acquired
+	 * LWLocks is 0.
+	 */
+	if (MyProc != NULL && !num_held_lwlocks)
+		MyProc->ybAnyLockAcquired = false;
 
 	/*
 	 * Now okay to allow cancel/die interrupts.

@@ -44,7 +44,6 @@
 
 #include <glog/logging.h>
 #include <gtest/gtest.h>
-#include <rapidjson/document.h>
 
 #include "yb/client/client.h"
 
@@ -60,7 +59,6 @@
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/singleton.h"
 #include "yb/gutil/strings/join.h"
-#include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/strings/util.h"
 
 #include "yb/integration-tests/cluster_itest_util.h"
@@ -81,13 +79,10 @@
 #include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/async_util.h"
-#include "yb/util/curl_util.h"
 #include "yb/util/env.h"
 #include "yb/util/faststring.h"
 #include "yb/util/format.h"
-#include "yb/util/jsonreader.h"
 #include "yb/util/logging.h"
-#include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/net/sockaddr.h"
@@ -112,9 +107,6 @@ using std::shared_ptr;
 using std::string;
 using std::thread;
 using std::unique_ptr;
-
-using rapidjson::Value;
-using strings::Substitute;
 
 using yb::master::GetLeaderMasterRpc;
 using yb::master::IsInitDbDoneRequestPB;
@@ -427,6 +419,12 @@ Status ExternalMiniCluster::Restart() {
     }
   }
 
+  // Wait for every tserver to heartbeat to master to avoid exception like:
+  // Bad narrow cast: 2694805214 > 2147483647. This is because master has last_heartbeat_
+  // initialized to MonoTime::kMin and needs the first heartbeat from tserver to set it
+  // properly. If last_heartbeat_ is still MonoTime::kMin then the return value from
+  // GetDeltaSince(last_heartbeat_) overflows 2147483647.
+  sleep(5);
   RETURN_NOT_OK(WaitForTabletServerCount(tablet_servers_.size(), kTabletServerRegistrationTimeout));
 
   running_ = true;
@@ -728,7 +726,7 @@ Status ExternalMiniCluster::ChangeConfig(ExternalMaster* master,
 
 // We look for the exact master match. Since it is possible to stop/restart master on
 // a given host/port, we do not want a stale master pointer input to match a newer master.
-int ExternalMiniCluster::GetIndexOfMaster(ExternalMaster* master) const {
+int ExternalMiniCluster::GetIndexOfMaster(const ExternalMaster* master) const {
   for (size_t i = 0; i < masters_.size(); i++) {
     if (masters_[i].get() == master) {
       return narrow_cast<int>(i);
@@ -737,7 +735,7 @@ int ExternalMiniCluster::GetIndexOfMaster(ExternalMaster* master) const {
   return -1;
 }
 
-Status ExternalMiniCluster::PingMaster(ExternalMaster* master) const {
+Status ExternalMiniCluster::PingMaster(const ExternalMaster* master) const {
   int index = GetIndexOfMaster(master);
   server::PingRequestPB req;
   server::PingResponsePB resp;
@@ -1072,6 +1070,35 @@ Status ExternalMiniCluster::WaitForMastersToCommitUpTo(int64_t target_index) {
   }
 }
 
+Status ExternalMiniCluster::WaitForAllIntentsApplied(const MonoDelta& timeout) {
+  auto deadline = MonoTime::Now() + timeout;
+  for (const auto& ts : tablet_servers_) {
+    RETURN_NOT_OK(WaitForAllIntentsApplied(ts.get(), deadline));
+  }
+  return Status::OK();
+}
+
+Status ExternalMiniCluster::WaitForAllIntentsApplied(
+    ExternalTabletServer* ts, const MonoDelta& timeout) {
+  return WaitForAllIntentsApplied(ts, MonoTime::Now() + timeout);
+}
+
+
+Status ExternalMiniCluster::WaitForAllIntentsApplied(
+    ExternalTabletServer* ts, const MonoTime& deadline) {
+  auto proxy = GetProxy<tserver::TabletServerAdminServiceProxy>(ts);
+  return Wait(
+      [proxy, &deadline]() -> Result<bool> {
+        tserver::CountIntentsRequestPB req;
+        tserver::CountIntentsResponsePB resp;
+        rpc::RpcController rpc;
+        rpc.set_deadline(deadline);
+        RETURN_NOT_OK(proxy.CountIntents(req, &resp, &rpc));
+        return resp.num_intents() == 0;
+      },
+      deadline, Format("Waiting for all intents to be applied at tserver $0", ts->uuid()));
+}
+
 Status ExternalMiniCluster::GetIsMasterLeaderServiceReady(ExternalMaster* master) {
   IsMasterLeaderReadyRequestPB req;
   IsMasterLeaderReadyResponsePB resp;
@@ -1302,7 +1329,7 @@ Result<bool> ExternalMiniCluster::is_ts_stale(int ts_idx, MonoDelta deadline) {
   return is_stale;
 }
 
-CHECKED_STATUS ExternalMiniCluster::WaitForMasterToMarkTSAlive(int ts_idx, MonoDelta deadline) {
+Status ExternalMiniCluster::WaitForMasterToMarkTSAlive(int ts_idx, MonoDelta deadline) {
   RETURN_NOT_OK(WaitFor([&]() -> Result<bool> {
     return !VERIFY_RESULT(is_ts_stale(ts_idx));
   }, deadline * kTimeMultiplier, "Is TS Alive", 1s));
@@ -1310,7 +1337,7 @@ CHECKED_STATUS ExternalMiniCluster::WaitForMasterToMarkTSAlive(int ts_idx, MonoD
   return Status::OK();
 }
 
-CHECKED_STATUS ExternalMiniCluster::WaitForMasterToMarkTSDead(int ts_idx, MonoDelta deadline) {
+Status ExternalMiniCluster::WaitForMasterToMarkTSDead(int ts_idx, MonoDelta deadline) {
   RETURN_NOT_OK(WaitFor([&]() -> Result<bool> {
     return is_ts_stale(ts_idx);
   }, deadline * kTimeMultiplier, "Is TS dead", 1s));
@@ -1683,7 +1710,7 @@ ExternalMaster* ExternalMiniCluster::GetLeaderMaster() {
 Result<size_t> ExternalMiniCluster::GetTabletLeaderIndex(const std::string& tablet_id) {
   for (size_t i = 0; i < num_tablet_servers(); ++i) {
     auto tserver = tablet_server(i);
-    if (tserver->IsProcessAlive()) {
+    if (tserver->IsProcessAlive() && !tserver->IsProcessPaused()) {
       auto tablets = VERIFY_RESULT(GetTablets(tserver));
       for (const auto& tablet : tablets) {
         if (tablet.tablet_id() == tablet_id && tablet.is_leader()) {
@@ -1885,13 +1912,13 @@ struct GlobalLogTailerState {
 
 class ExternalDaemon::LogTailerThread {
  public:
-  LogTailerThread(const string line_prefix,
+  LogTailerThread(const std::string& line_prefix,
                   const int child_fd,
                   ostream* const out)
       : id_(global_state()->next_log_tailer_id.fetch_add(1)),
         stopped_(CreateStoppedFlagForId(id_)),
         thread_desc_(Substitute("log tailer thread for prefix $0", line_prefix)),
-        thread_([=] {
+        thread_([this, line_prefix, child_fd, out] {
           VLOG(1) << "Starting " << thread_desc_;
           FILE* const fp = fdopen(child_fd, "rb");
           char buf[65536];
@@ -1952,6 +1979,8 @@ class ExternalDaemon::LogTailerThread {
   void RemoveListener(StringListener* listener) {
     listener_.compare_exchange_strong(listener, nullptr);
   }
+
+  StringListener* listener() { return listener_.load(std::memory_order_acquire); }
 
   ~LogTailerThread() {
     VLOG(1) << "Stopping " << thread_desc_;
@@ -2132,13 +2161,21 @@ Status ExternalDaemon::StartProcess(const vector<string>& user_flags) {
   RETURN_NOT_OK_PREPEND(p->Start(),
                         Substitute("Failed to start subprocess $0", exe_));
 
+  auto* listener = stdout_tailer_thread_ ? stdout_tailer_thread_->listener() : nullptr;
   stdout_tailer_thread_ = std::make_unique<LogTailerThread>(
       Substitute("[$0 stdout]", daemon_id_), p->ReleaseChildStdoutFd(), &std::cout);
+  if (listener) {
+    stdout_tailer_thread_->SetListener(listener);
+  }
 
+  listener = stderr_tailer_thread_ ? stderr_tailer_thread_->listener() : nullptr;
   // We will mostly see stderr output from the child process (because of --logtostderr), so we'll
   // assume that by default in the output prefix.
   stderr_tailer_thread_ = std::make_unique<LogTailerThread>(
       default_output_prefix, p->ReleaseChildStderrFd(), &std::cerr);
+  if (listener) {
+    stderr_tailer_thread_->SetListener(listener);
+  }
 
   // The process is now starting -- wait for the bound port info to show up.
   Stopwatch sw;
@@ -2180,13 +2217,17 @@ Status ExternalDaemon::StartProcess(const vector<string>& user_flags) {
 Status ExternalDaemon::Pause() {
   if (!process_) return Status::OK();
   VLOG(1) << "Pausing " << ProcessNameAndPidStr();
-  return process_->Kill(SIGSTOP);
+  RETURN_NOT_OK(process_->Kill(SIGSTOP));
+  is_paused_ = true;
+  return Status::OK();
 }
 
 Status ExternalDaemon::Resume() {
   if (!process_) return Status::OK();
   VLOG(1) << "Resuming " << ProcessNameAndPidStr();
-  return process_->Kill(SIGCONT);
+  RETURN_NOT_OK(process_->Kill(SIGCONT));
+  is_paused_ = false;
+  return Status::OK();
 }
 
 Status ExternalDaemon::Kill(int signal) {
@@ -2210,6 +2251,11 @@ bool ExternalDaemon::IsProcessAlive() const {
   // is running.
   return s.IsTimedOut();
 }
+
+bool ExternalDaemon::IsProcessPaused() const {
+  return is_paused_;
+}
+
 
 pid_t ExternalDaemon::pid() const {
   return process_->pid();
@@ -2322,73 +2368,22 @@ const string& ExternalDaemon::uuid() const {
   return status_->node_instance().permanent_uuid();
 }
 
-Result<int64_t> ExternalDaemon::GetInt64MetricFromHost(const HostPort& hostport,
-                                                       const MetricEntityPrototype* entity_proto,
-                                                       const char* entity_id,
-                                                       const MetricPrototype* metric_proto,
-                                                       const char* value_field) {
-  return GetInt64MetricFromHost(hostport, entity_proto->name(), entity_id, metric_proto->name(),
-                                value_field);
+template<>
+Result<int64_t> ExternalDaemon::ExtractMetricValue<int64_t>(const JsonReader& r,
+                                                            const Value* metric,
+                                                            const char* value_field) {
+  int64_t value;
+  RETURN_NOT_OK(r.ExtractInt64(metric, value_field, &value));
+  return value;
 }
 
-Result<int64_t> ExternalDaemon::GetInt64MetricFromHost(const HostPort& hostport,
-                                                       const char* entity_proto_name,
-                                                       const char* entity_id,
-                                                       const char* metric_proto_name,
-                                                       const char* value_field) {
-  // Fetch metrics whose name matches the given prototype.
-  string url = Substitute(
-      "http://$0/jsonmetricz?metrics=$1",
-      hostport.ToString(),
-      metric_proto_name);
-  EasyCurl curl;
-  faststring dst;
-  RETURN_NOT_OK(curl.FetchURL(url, &dst));
-
-  // Parse the results, beginning with the top-level entity array.
-  JsonReader r(dst.ToString());
-  RETURN_NOT_OK(r.Init());
-  vector<const Value*> entities;
-  RETURN_NOT_OK(r.ExtractObjectArray(r.root(), NULL, &entities));
-  for (const Value* entity : entities) {
-    // Find the desired entity.
-    string type;
-    RETURN_NOT_OK(r.ExtractString(entity, "type", &type));
-    if (type != entity_proto_name) {
-      continue;
-    }
-    if (entity_id) {
-      string id;
-      RETURN_NOT_OK(r.ExtractString(entity, "id", &id));
-      if (id != entity_id) {
-        continue;
-      }
-    }
-
-    // Find the desired metric within the entity.
-    vector<const Value*> metrics;
-    RETURN_NOT_OK(r.ExtractObjectArray(entity, "metrics", &metrics));
-    for (const Value* metric : metrics) {
-      string name;
-      RETURN_NOT_OK(r.ExtractString(metric, "name", &name));
-      if (name != metric_proto_name) {
-        continue;
-      }
-      int64_t value;
-      RETURN_NOT_OK(r.ExtractInt64(metric, value_field, &value));
-      return value;
-    }
-  }
-  string msg;
-  if (entity_id) {
-    msg = Substitute("Could not find metric $0.$1 for entity $2",
-                     entity_proto_name, metric_proto_name,
-                     entity_id);
-  } else {
-    msg = Substitute("Could not find metric $0.$1",
-                     entity_proto_name, metric_proto_name);
-  }
-  return STATUS(NotFound, msg);
+template<>
+Result<bool> ExternalDaemon::ExtractMetricValue<bool>(const JsonReader& r,
+                                                      const Value* metric,
+                                                      const char* value_field) {
+  bool value;
+  RETURN_NOT_OK(r.ExtractBool(metric, value_field, &value));
+  return value;
 }
 
 string ExternalDaemon::LogPrefix() {
@@ -2418,22 +2413,6 @@ Result<string> ExternalDaemon::GetFlag(const std::string& flag) {
     return STATUS_FORMAT(RemoteError, "Failed to get gflag $0 value.", flag);
   }
   return resp.value();
-}
-
-Result<int64_t> ExternalDaemon::GetInt64Metric(const MetricEntityPrototype* entity_proto,
-                                               const char* entity_id,
-                                               const MetricPrototype* metric_proto,
-                                               const char* value_field) const {
-  return GetInt64MetricFromHost(
-      bound_http_hostport(), entity_proto, entity_id, metric_proto, value_field);
-}
-
-Result<int64_t> ExternalDaemon::GetInt64Metric(const char* entity_proto_name,
-                                               const char* entity_id,
-                                               const char* metric_proto_name,
-                                               const char* value_field) const {
-  return GetInt64MetricFromHost(
-      bound_http_hostport(), entity_proto_name, entity_id, metric_proto_name, value_field);
 }
 
 LogWaiter::LogWaiter(ExternalDaemon* daemon, const std::string& string_to_wait) :
@@ -2666,7 +2645,7 @@ Result<int64_t> ExternalTabletServer::GetInt64CQLMetric(const MetricEntityProtot
                                                         const char* entity_id,
                                                         const MetricPrototype* metric_proto,
                                                         const char* value_field) const {
-  return GetInt64MetricFromHost(
+  return GetMetricFromHost<int64>(
       HostPort(bind_host(), cql_http_port()),
       entity_proto, entity_id, metric_proto, value_field);
 }
@@ -2687,6 +2666,34 @@ Status RestartAllMasters(ExternalMiniCluster* cluster) {
   }
   for (size_t i = 0; i != cluster->num_masters(); ++i) {
     RETURN_NOT_OK(cluster->master(i)->Restart());
+  }
+
+  return Status::OK();
+}
+
+Status CompactTablets(ExternalMiniCluster* cluster) {
+  for (auto* daemon : cluster->master_daemons()) {
+    master::CompactSysCatalogRequestPB req;
+    master::CompactSysCatalogResponsePB resp;
+    rpc::RpcController controller;
+    controller.set_timeout(60s * kTimeMultiplier);
+
+    auto proxy = cluster->GetProxy<master::MasterAdminProxy>(daemon);
+    RETURN_NOT_OK(proxy.CompactSysCatalog(req, &resp, &controller));
+  }
+
+  for (auto* daemon : cluster->tserver_daemons()) {
+    tserver::FlushTabletsRequestPB req;
+    tserver::FlushTabletsResponsePB resp;
+    rpc::RpcController controller;
+    controller.set_timeout(10s * kTimeMultiplier);
+
+    req.set_dest_uuid(daemon->uuid());
+    req.set_operation(tserver::FlushTabletsRequestPB::COMPACT);
+    req.set_all_tablets(true);
+
+    auto proxy = cluster->GetProxy<tserver::TabletServerAdminServiceProxy>(daemon);
+    RETURN_NOT_OK(proxy.FlushTablets(req, &resp, &controller));
   }
 
   return Status::OK();

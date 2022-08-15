@@ -55,6 +55,8 @@ explain_get_index_name_hook_type explain_get_index_name_hook = NULL;
 #define X_CLOSE_IMMEDIATE 2
 #define X_NOWHITESPACE 4
 
+#define CEILING_K(s) ((s + 1023) / 1024)
+
 static void ExplainOneQuery(Query *query, int cursorOptions,
 				IntoClause *into, ExplainState *es,
 				const char *queryString, ParamListInfo params,
@@ -133,7 +135,7 @@ static void ExplainXMLTag(const char *tagname, int flags, ExplainState *es);
 static void ExplainJSONLineEnding(ExplainState *es);
 static void ExplainYAMLLineStarting(ExplainState *es);
 static void escape_yaml(StringInfo buf, const char *str);
-
+static void appendPgMemInfo(ExplainState *es, const Size peakMem);
 
 
 /*
@@ -521,6 +523,8 @@ ExplainOnePlan(PlannedStmt *plannedstmt, IntoClause *into, ExplainState *es,
 	/* call ExecutorStart to prepare the plan for execution */
 	ExecutorStart(queryDesc, eflags);
 
+	int64 peakMem = 0;
+
 	/* Execute the plan for statistics if asked for */
 	if (es->analyze)
 	{
@@ -534,6 +538,9 @@ ExplainOnePlan(PlannedStmt *plannedstmt, IntoClause *into, ExplainState *es,
 
 		/* run the plan */
 		ExecutorRun(queryDesc, dir, 0L, true);
+
+		/* take a snapshot on the max PG memory consumption */
+		peakMem = PgMemTracker.stmt_max_mem_bytes;
 
 		/* run cleanup too */
 		ExecutorFinish(queryDesc);
@@ -592,8 +599,13 @@ ExplainOnePlan(PlannedStmt *plannedstmt, IntoClause *into, ExplainState *es,
 	 * the output).  By default, ANALYZE sets SUMMARY to true.
 	 */
 	if (es->summary && es->analyze)
+	{
 		ExplainPropertyFloat("Execution Time", "ms", 1000.0 * totaltime, 3,
 							 es);
+
+		if (IsYugaByteEnabled())
+			appendPgMemInfo(es, peakMem);
+	}
 
 	ExplainCloseGroup("Query", NULL, true, es);
 }
@@ -930,6 +942,7 @@ ExplainPreScanNode(PlanState *planstate, Bitmapset **rels_used)
 	switch (nodeTag(plan))
 	{
 		case T_SeqScan:
+		case T_YbSeqScan:
 		case T_SampleScan:
 		case T_IndexScan:
 		case T_IndexOnlyScan:
@@ -1057,6 +1070,9 @@ ExplainNode(PlanState *planstate, List *ancestors,
 		case T_SeqScan:
 			pname = sname = "Seq Scan";
 			break;
+		case T_YbSeqScan:
+			pname = sname = "YB Seq Scan";
+			break;
 		case T_SampleScan:
 			pname = sname = "Sample Scan";
 			break;
@@ -1182,7 +1198,8 @@ ExplainNode(PlanState *planstate, List *ancestors,
 					partialmode = "Partial";
 					pname = psprintf("%s %s", partialmode, pname);
 				}
-				else if (DO_AGGSPLIT_COMBINE(agg->aggsplit))
+				else if (DO_AGGSPLIT_COMBINE(agg->aggsplit) ||
+						 ((AggState*) planstate)->yb_pushdown_supported)
 				{
 					partialmode = "Finalize";
 					pname = psprintf("%s %s", partialmode, pname);
@@ -1273,6 +1290,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 	switch (nodeTag(plan))
 	{
 		case T_SeqScan:
+		case T_YbSeqScan:
 		case T_SampleScan:
 		case T_BitmapHeapScan:
 		case T_TidScan:
@@ -1517,8 +1535,16 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			if (((IndexScan *) plan)->indexqualorig)
 				show_instrumentation_count("Rows Removed by Index Recheck", 2,
 										   planstate, es);
+			/*
+			 * Quals are shown in the order they are applied: index pushdown,
+			 * relation pushdown, local clauses.
+			 */
 			show_scan_qual(((IndexScan *) plan)->indexorderbyorig,
 						   "Order By", planstate, ancestors, es);
+			show_scan_qual(((IndexScan *) plan)->index_remote.qual,
+						   "Remote Index Filter", planstate, ancestors, es);
+			show_scan_qual(((IndexScan *) plan)->rel_remote.qual,
+						   "Remote Filter", planstate, ancestors, es);
 			show_scan_qual(plan->qual, "Filter", planstate, ancestors, es);
 			if (plan->qual)
 				show_instrumentation_count("Rows Removed by Filter", 1,
@@ -1532,6 +1558,11 @@ ExplainNode(PlanState *planstate, List *ancestors,
 										   planstate, es);
 			show_scan_qual(((IndexOnlyScan *) plan)->indexorderby,
 						   "Order By", planstate, ancestors, es);
+			/*
+			 * Remote filter is applied first, so it is output first.
+			 */
+			show_scan_qual(((IndexOnlyScan *) plan)->remote.qual,
+						   "Remote Filter", planstate, ancestors, es);
 			show_scan_qual(plan->qual, "Filter", planstate, ancestors, es);
 			if (plan->qual)
 				show_instrumentation_count("Rows Removed by Filter", 1,
@@ -1568,6 +1599,17 @@ ExplainNode(PlanState *planstate, List *ancestors,
 		case T_NamedTuplestoreScan:
 		case T_WorkTableScan:
 		case T_SubqueryScan:
+			show_scan_qual(plan->qual, "Filter", planstate, ancestors, es);
+			if (plan->qual)
+				show_instrumentation_count("Rows Removed by Filter", 1,
+										   planstate, es);
+			break;
+		case T_YbSeqScan:
+			/*
+			 * Remote filter is applied first, so it is output first.
+			 */
+			show_scan_qual(((YbSeqScan *) plan)->remote.qual, "Remote Filter",
+						   planstate, ancestors, es);
 			show_scan_qual(plan->qual, "Filter", planstate, ancestors, es);
 			if (plan->qual)
 				show_instrumentation_count("Rows Removed by Filter", 1,
@@ -2979,6 +3021,7 @@ ExplainTargetRel(Plan *plan, Index rti, ExplainState *es)
 	switch (nodeTag(plan))
 	{
 		case T_SeqScan:
+		case T_YbSeqScan:
 		case T_SampleScan:
 		case T_IndexScan:
 		case T_IndexOnlyScan:
@@ -3863,4 +3906,15 @@ static void
 escape_yaml(StringInfo buf, const char *str)
 {
 	escape_json(buf, str);
+}
+
+/*
+ * Append YbPgMemTracker related info to EXPLAIN output,
+ * currently only the max memory info.
+ */
+static void
+appendPgMemInfo(ExplainState *es, const Size peakMem)
+{
+	Size peakMemKb = CEILING_K(peakMem);
+	ExplainPropertyInteger("Peak Memory Usage", "kB", peakMemKb, es);
 }

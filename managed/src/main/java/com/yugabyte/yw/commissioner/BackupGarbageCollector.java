@@ -1,54 +1,53 @@
+// Copyright (c) YugaByte, Inc.
+
 package com.yugabyte.yw.commissioner;
 
-import akka.actor.ActorSystem;
 import com.amazonaws.SDKGlobalConfiguration;
-import com.cronutils.utils.VisibleForTesting;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
-import com.yugabyte.yw.common.AWSUtil;
-import com.yugabyte.yw.common.AZUtil;
-import com.yugabyte.yw.common.GCPUtil;
+import com.yugabyte.yw.common.PlatformScheduler;
+import com.yugabyte.yw.common.BackupUtil;
+import com.yugabyte.yw.common.CloudUtil;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TableManagerYb;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.YbcManager;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.Backup;
+import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Backup.BackupState;
+import com.yugabyte.yw.models.configs.CustomerConfig;
+import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.Universe;
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
-import scala.concurrent.ExecutionContext;
 
 @Singleton
 @Slf4j
 public class BackupGarbageCollector {
 
-  private final ActorSystem actorSystem;
-
-  private final ExecutionContext executionContext;
+  private final PlatformScheduler platformScheduler;
 
   private final TableManagerYb tableManagerYb;
 
+  private final YbcManager ybcManager;
+
   private final CustomerConfigService customerConfigService;
+
+  private final BackupUtil backupUtil;
 
   private final RuntimeConfigFactory runtimeConfigFactory;
 
   private static final String YB_BACKUP_GARBAGE_COLLECTOR_INTERVAL = "yb.backupGC.gc_run_interval";
-
-  private AtomicBoolean running = new AtomicBoolean(false);
 
   private static final String AZ = Util.AZ;
   private static final String GCS = Util.GCS;
@@ -57,23 +56,24 @@ public class BackupGarbageCollector {
 
   @Inject
   public BackupGarbageCollector(
-      ExecutionContext executionContext,
-      ActorSystem actorSystem,
+      PlatformScheduler platformScheduler,
       CustomerConfigService customerConfigService,
       RuntimeConfigFactory runtimeConfigFactory,
-      TableManagerYb tableManagerYb) {
-    this.actorSystem = actorSystem;
-    this.executionContext = executionContext;
+      TableManagerYb tableManagerYb,
+      BackupUtil backupUtil,
+      YbcManager ybcManager) {
+    this.platformScheduler = platformScheduler;
     this.customerConfigService = customerConfigService;
     this.runtimeConfigFactory = runtimeConfigFactory;
     this.tableManagerYb = tableManagerYb;
+    this.backupUtil = backupUtil;
+    this.ybcManager = ybcManager;
   }
 
   public void start() {
     Duration gcInterval = this.gcRunInterval();
-    this.actorSystem
-        .scheduler()
-        .schedule(Duration.ZERO, gcInterval, this::scheduleRunner, this.executionContext);
+    platformScheduler.schedule(
+        getClass().getSimpleName(), Duration.ZERO, gcInterval, this::scheduleRunner);
   }
 
   private Duration gcRunInterval() {
@@ -82,13 +82,7 @@ public class BackupGarbageCollector {
         .getDuration(YB_BACKUP_GARBAGE_COLLECTOR_INTERVAL);
   }
 
-  @VisibleForTesting
   void scheduleRunner() {
-    if (!running.compareAndSet(false, true)) {
-      log.info("Previous Backup Garbage Collector still running");
-      return;
-    }
-
     log.info("Running Backup Garbage Collector");
     try {
       List<Customer> customersList = Customer.getAll();
@@ -127,8 +121,6 @@ public class BackupGarbageCollector {
           });
     } catch (Exception e) {
       log.error("Error running backup garbage collector", e);
-    } finally {
-      running.set(false);
     }
   }
 
@@ -151,29 +143,46 @@ public class BackupGarbageCollector {
       UUID storageConfigUUID = backup.getBackupInfo().storageConfigUUID;
       CustomerConfig customerConfig =
           customerConfigService.getOrBadRequest(backup.customerUUID, storageConfigUUID);
-      if (isCredentialUsable(customerConfig.data, customerConfig.name)) {
+      if (isCredentialUsable(customerConfig)) {
         List<String> backupLocations = null;
         log.info("Backup {} deletion started", backupUUID);
         backup.transitionState(BackupState.DeleteInProgress);
         try {
           switch (customerConfig.name) {
+              // for cases S3, NFS, GCS, we get Util from CloudUtil class
             case S3:
-              backupLocations = getBackupLocations(backup);
-              AWSUtil.deleteKeyIfExists(customerConfig.data, backupLocations.get(0));
-              AWSUtil.deleteStorage(customerConfig.data, backupLocations);
-              backup.delete();
-              break;
+              CustomerConfigStorageS3Data s3Data =
+                  (CustomerConfigStorageS3Data) customerConfig.getDataObject();
+              if (s3Data.isIAMInstanceProfile) {
+                if (isUniversePresent(backup)) {
+                  BackupTableParams backupParams = backup.getBackupInfo();
+                  List<BackupTableParams> backupList =
+                      backupParams.backupList == null
+                          ? ImmutableList.of(backupParams)
+                          : backupParams.backupList;
+                  boolean success = deleteScriptBackup(backupList);
+                  if (success) {
+                    backup.delete();
+                    log.info("Backup {} is successfully deleted", backupUUID);
+                  } else {
+                    backup.transitionState(BackupState.FailedToDelete);
+                  }
+                } else {
+                  backup.transitionState(BackupState.FailedToDelete);
+                  log.info(
+                      "Cannot delete S3 IAM Backup {} as universe is not present",
+                      backup.backupUUID);
+                }
+                break;
+              }
             case GCS:
-              backupLocations = getBackupLocations(backup);
-              GCPUtil.deleteKeyIfExists(customerConfig.data, backupLocations.get(0));
-              GCPUtil.deleteStorage(customerConfig.data, backupLocations);
-              backup.delete();
-              break;
             case AZ:
-              backupLocations = getBackupLocations(backup);
-              AZUtil.deleteKeyIfExists(customerConfig.data, backupLocations.get(0));
-              AZUtil.deleteStorage(customerConfig.data, backupLocations);
+              CloudUtil cloudUtil = CloudUtil.getCloudUtil(customerConfig.name);
+              backupLocations = backupUtil.getBackupLocations(backup);
+              cloudUtil.deleteKeyIfExists(customerConfig.getDataObject(), backupLocations.get(0));
+              cloudUtil.deleteStorage(customerConfig.getDataObject(), backupLocations);
               backup.delete();
+              log.info("Backup {} is successfully deleted", backupUUID);
               break;
             case NFS:
               if (isUniversePresent(backup)) {
@@ -182,7 +191,13 @@ public class BackupGarbageCollector {
                     backupParams.backupList == null
                         ? ImmutableList.of(backupParams)
                         : backupParams.backupList;
-                if (deleteNFSBackup(backupList)) {
+                boolean success;
+                if (backup.category.equals(BackupCategory.YB_CONTROLLER)) {
+                  success = ybcManager.deleteNfsDirectory(backup);
+                } else {
+                  success = deleteScriptBackup(backupList);
+                }
+                if (success) {
                   backup.delete();
                   log.info("Backup {} is successfully deleted", backupUUID);
                 } else {
@@ -225,17 +240,17 @@ public class BackupGarbageCollector {
     return universe.isPresent();
   }
 
-  private boolean deleteNFSBackup(List<BackupTableParams> backupList) {
+  private boolean deleteScriptBackup(List<BackupTableParams> backupList) {
     boolean success = true;
     for (BackupTableParams childBackupParams : backupList) {
-      if (!deleteChildNFSBackups(childBackupParams)) {
+      if (!deleteChildScriptBackups(childBackupParams)) {
         success = false;
       }
     }
     return success;
   }
 
-  private boolean deleteChildNFSBackups(BackupTableParams backupTableParams) {
+  private boolean deleteChildScriptBackups(BackupTableParams backupTableParams) {
     ShellResponse response = tableManagerYb.deleteBackup(backupTableParams);
     JsonNode jsonNode = null;
     try {
@@ -256,42 +271,17 @@ public class BackupGarbageCollector {
           jsonNode.has("error"));
       return false;
     } else {
-      log.info("NFS Backup deleted successfully STDOUT: " + response.message);
+      log.info("Backup deleted successfully STDOUT: " + response.message);
       return true;
     }
   }
 
-  private static List<String> getBackupLocations(Backup backup) {
-    BackupTableParams backupParams = backup.getBackupInfo();
-    List<String> backupLocations = new ArrayList<>();
-    if (backupParams.backupList != null) {
-      for (BackupTableParams params : backupParams.backupList) {
-        backupLocations.add(params.storageLocation);
-      }
-    } else {
-      backupLocations.add(backupParams.storageLocation);
-    }
-    return backupLocations;
-  }
-
-  private Boolean isCredentialUsable(JsonNode credentials, String configName) {
-    Boolean isValid = false;
-    switch (configName) {
-      case S3:
-        isValid = AWSUtil.canCredentialListObjects(credentials);
-        break;
-      case GCS:
-        isValid = GCPUtil.canCredentialListObjects(credentials);
-        break;
-      case AZ:
-        isValid = AZUtil.canCredentialListObjects(credentials);
-        break;
-      case NFS:
-        isValid = true;
-        break;
-      default:
-        log.error("Invalid Config type {} provided", configName);
-        isValid = false;
+  private Boolean isCredentialUsable(CustomerConfig config) {
+    Boolean isValid = true;
+    try {
+      backupUtil.validateStorageConfig(config);
+    } catch (Exception e) {
+      isValid = false;
     }
     return isValid;
   }

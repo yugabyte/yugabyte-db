@@ -10,13 +10,12 @@ menu:
     identifier: tls-authentication
     parent: tls-encryption
     weight: 800
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/secure/authentication/tls-authentication" class="nav-link active">
+    <a href="../tls-authentication/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>

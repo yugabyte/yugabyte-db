@@ -44,7 +44,6 @@
 using namespace std::literals;
 
 using std::atomic;
-using std::atomic_bool;
 using std::unique_ptr;
 
 using strings::Substitute;
@@ -207,7 +206,7 @@ SingleThreadedWriter* RedisNoopSessionFactory::GetWriter(MultiThreadedWriter* wr
 
 MultiThreadedAction::MultiThreadedAction(
     const string& description, int64_t num_keys, int64_t start_key, int num_action_threads,
-    int num_extra_threads, const string& client_id, atomic_bool* stop_requested_flag,
+    int num_extra_threads, const string& client_id, atomic<bool>* stop_requested_flag,
     int value_size)
     : description_(description),
       num_keys_(num_keys),
@@ -266,7 +265,7 @@ void MultiThreadedAction::WaitForCompletion() {
 
 MultiThreadedWriter::MultiThreadedWriter(
     int64_t num_keys, int64_t start_key, int num_writer_threads, SessionFactory* session_factory,
-    atomic_bool* stop_flag, int value_size, size_t max_num_write_errors)
+    atomic<bool>* stop_flag, int value_size, size_t max_num_write_errors)
     : MultiThreadedAction(
           "writers", num_keys, start_key, num_writer_threads, 2, session_factory->ClientId(),
           stop_flag, value_size),
@@ -408,7 +407,7 @@ bool YBSingleThreadedWriter::Write(
   // submit a the put to apply.
   // If successful, add to inserted
   session_->Apply(insert);
-  const auto flush_status = session_->FlushAndGetOpsErrors();
+  const auto flush_status = session_->TEST_FlushAndGetOpsErrors();
   const auto& status = flush_status.status;
   if (!status.ok()) {
     for (const auto& error : flush_status.errors) {
@@ -494,8 +493,8 @@ MultiThreadedReader::MultiThreadedReader(int64_t num_keys, int num_reader_thread
                                          SessionFactory* session_factory,
                                          atomic<int64_t>* insertion_point,
                                          const KeyIndexSet* inserted_keys,
-                                         const KeyIndexSet* failed_keys, atomic_bool* stop_flag,
-                                         int value_size, int max_num_read_errors,
+                                         const KeyIndexSet* failed_keys, atomic<bool>* stop_flag,
+                                         int value_size, size_t max_num_read_errors,
                                          MultiThreadedReaderOptions options)
     : MultiThreadedAction(
           "readers", num_keys, 0, num_reader_threads, 1, session_factory->ClientId(),
@@ -589,7 +588,7 @@ ReadStatus YBSingleThreadedReader::PerformRead(
     auto read_op = table_->NewReadOp();
     QLAddStringHashValue(read_op->mutable_request(), key_str);
     table_->AddColumns({"k", "v"}, read_op->mutable_request());
-    auto status = session_->ApplyAndFlush(read_op);
+    auto status = session_->TEST_ApplyAndFlush(read_op);
     boost::optional<QLRowBlock> row_block;
     if (status.ok()) {
       auto result = read_op->MakeRowBlock();

@@ -132,22 +132,22 @@ class WriteQuery {
 
   void Complete(const Status& status);
 
-  CHECKED_STATUS InitExecute(ExecuteMode mode);
+  Status InitExecute(ExecuteMode mode);
 
   void ExecuteDone(const Status& status);
 
   Result<bool> PrepareExecute();
-  CHECKED_STATUS DoExecute();
+  Status DoExecute();
 
   void NonTransactionalConflictsResolved(HybridTime now, HybridTime result);
 
   void TransactionalConflictsResolved();
 
-  CHECKED_STATUS DoTransactionalConflictsResolved();
+  Status DoTransactionalConflictsResolved();
 
   void CompleteExecute();
 
-  CHECKED_STATUS DoCompleteExecute();
+  Status DoCompleteExecute();
 
   Result<bool> SimplePrepareExecute();
   Result<bool> RedisPrepareExecute();
@@ -167,6 +167,12 @@ class WriteQuery {
       const IndexOps& index_ops, client::FlushStatus* flush_status);
 
   void CompleteQLWriteBatch(const Status& status);
+
+  template <class Code, class Resp>
+  void SchemaVersionMismatch(Code code, int size, Resp* resp);
+
+  bool CqlCheckSchemaVersion();
+  bool PgsqlCheckSchemaVersion();
 
   Tablet& tablet() const;
 

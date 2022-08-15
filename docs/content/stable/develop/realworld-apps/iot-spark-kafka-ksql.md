@@ -8,8 +8,7 @@ menu:
     identifier: iot-spark-kafka
     parent: realworld-apps
     weight: 583
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Overview
@@ -52,7 +51,7 @@ App architecture with the SKY stack is shown below. The Kafka Connect Sink Conne
 
 ## Data store
 
-Stores all the user-facing data. YugabyteDB is used here, with the Cassandra-compatible [YCQL](../../../api/ycql) as the programming language.
+Stores all the user-facing data. YugabyteDB is used here, with the Cassandra-compatible [YCQL](../../../api/ycql/) as the programming language.
 
 All the data is stored in the keyspace `TrafficKeySpace`:
 
@@ -237,7 +236,7 @@ Create non-filtered and filtered streams, to be used later in actual processing:
 JavaDStream<IoTData> nonFilteredIotDataStream = directKafkaStream.map(tuple -> tuple._2());
 
 // Filtered stream for total and traffic data calculation
-JavaPairDStream<String,IoTData> iotDataPairStream = 
+JavaPairDStream<String,IoTData> iotDataPairStream =
   nonFilteredIotDataStream.mapToPair(iot -> new Tuple2<String,IoTData>(iot.getVehicleId(),iot)).reduceByKey((a, b) -> a );
 
 // Check vehicle ID is already processed
@@ -277,7 +276,7 @@ JavaPairDStream<AggregateKey, Long> countDStreamPair =
   filteredIotDataStream
     .mapToPair(iot -> new Tuple2<>(new AggregateKey(iot.getRouteId(), iot.getVehicleType()), 1L))
     .reduceByKey((a, b) -> a + b);
-    
+
 // Keep state for total count
 JavaMapWithStateDStream<AggregateKey, Long, Long, Tuple2<AggregateKey, Long>> countDStreamWithStatePair =
   countDStreamPair.mapWithState(

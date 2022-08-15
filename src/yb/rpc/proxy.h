@@ -137,13 +137,13 @@ class Proxy {
 
   // The same as AsyncRequest(), except that the call blocks until the call
   // finishes. If the call fails, returns a non-OK result.
-  CHECKED_STATUS SyncRequest(const RemoteMethod* method,
+  Status SyncRequest(const RemoteMethod* method,
                              std::shared_ptr<const OutboundMethodMetrics> method_metrics,
                              const google::protobuf::Message& req,
                              google::protobuf::Message* resp,
                              RpcController* controller);
 
-  CHECKED_STATUS SyncRequest(const RemoteMethod* method,
+  Status SyncRequest(const RemoteMethod* method,
                              std::shared_ptr<const OutboundMethodMetrics> method_metrics,
                              const LightweightMessage& request,
                              LightweightMessage* resp,
@@ -173,13 +173,24 @@ class Proxy {
                       ResponseCallback callback,
                       bool force_run_callback_on_reactor);
 
-  CHECKED_STATUS DoSyncRequest(const RemoteMethod* method,
+  Status DoSyncRequest(const RemoteMethod* method,
                                std::shared_ptr<const OutboundMethodMetrics> method_metrics,
                                AnyMessageConstPtr req,
                                AnyMessagePtr resp,
                                RpcController* controller);
 
   static void NotifyFailed(RpcController* controller, const Status& status);
+
+  void AsyncLocalCall(
+      const RemoteMethod* method, AnyMessageConstPtr req, AnyMessagePtr resp,
+      RpcController* controller, ResponseCallback callback);
+
+  void AsyncRemoteCall(
+      const RemoteMethod* method, std::shared_ptr<const OutboundMethodMetrics> method_metrics,
+      AnyMessageConstPtr req, AnyMessagePtr resp, RpcController* controller,
+      ResponseCallback callback, bool force_run_callback_on_reactor);
+
+  bool PrepareCall(AnyMessageConstPtr req, RpcController* controller);
 
   ProxyContext* context_;
   HostPort remote_;

@@ -26,6 +26,8 @@
 namespace yb {
 namespace docdb {
 
+typedef uint64_t LockState;
+
 // This class manages six types of locks on string keys. On each key, the possibilities are:
 // - No locks
 // - A single kStrongSnapshotWrite

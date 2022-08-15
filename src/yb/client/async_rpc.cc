@@ -32,6 +32,8 @@
 
 #include "yb/rpc/rpc_controller.h"
 
+#include "yb/tserver/tserver_service.proxy.h"
+
 #include "yb/util/cast.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
@@ -87,7 +89,7 @@ DEFINE_bool(detect_duplicates_for_retryable_requests, true,
                 "twice.");
 
 DEFINE_bool(ysql_forward_rpcs_to_local_tserver, false,
-            "When true, forward the PGSQL rpcs to the local tServer.");
+            "DEPRECATED. Feature has been removed");
 
 DEFINE_CAPABILITY(PickReadTimeAtTabletServer, 0x8284d67b);
 
@@ -157,16 +159,19 @@ AsyncRpc::AsyncRpc(
 }
 
 AsyncRpc::~AsyncRpc() {
-  if (trace_->must_print()) {
-    LOG(INFO) << ToString() << " took " << ToMicroseconds(CoarseMonoClock::Now() - start_)
-              << "us. Trace:\n" << trace_->DumpToString(true);
-  } else {
-    const auto print_trace_every_n = GetAtomicFlag(&FLAGS_ybclient_print_trace_every_n);
-    if (print_trace_every_n > 0) {
-      YB_LOG_EVERY_N(INFO, print_trace_every_n)
-          << ToString() << " took "
-          << ToMicroseconds(CoarseMonoClock::Now() - start_)
-          << "us. Trace:\n" << trace_->DumpToString(true);
+  if (trace_) {
+    if (trace_->must_print()) {
+      LOG(INFO) << ToString() << " took " << ToMicroseconds(CoarseMonoClock::Now() - start_)
+                << "us. Trace:\n"
+                << trace_->DumpToString(true);
+    } else {
+      const auto print_trace_every_n = GetAtomicFlag(&FLAGS_ybclient_print_trace_every_n);
+      if (print_trace_every_n > 0) {
+        YB_LOG_EVERY_N(INFO, print_trace_every_n)
+            << ToString() << " took " << ToMicroseconds(CoarseMonoClock::Now() - start_)
+            << "us. Trace:\n"
+            << trace_->DumpToString(true);
+      }
     }
   }
 }
@@ -458,12 +463,6 @@ void HandleExtraFields(YBqlReadOp* op, tserver::ReadRequestPB* req) {
   }
 }
 
-void HandleExtraFields(YBPgsqlReadOp* op, tserver::ReadRequestPB* req) {
-  if (op->read_time()) {
-    op->read_time().AddToPB(req);
-  }
-}
-
 template <class OpType, class Req, class Out>
 void FillOps(
     const InFlightOps& ops, YBOperation::Type expected_type, Req* req, Out* out) {
@@ -551,8 +550,8 @@ void WriteRpc::CallRemoteMethod() {
   TRACE_TO(trace, "SendRpcToTserver");
   ADOPT_TRACE(trace.get());
 
-  tablet_invoker_.WriteAsync(req_, &resp_, PrepareController(),
-                             std::bind(&WriteRpc::Finished, this, Status::OK()));
+  tablet_invoker_.proxy()->WriteAsync(
+      req_, &resp_, PrepareController(), std::bind(&WriteRpc::Finished, this, Status::OK()));
   TRACE_TO(trace, "RpcDispatched Asynchronously");
 }
 
@@ -603,10 +602,9 @@ void WriteRpc::SwapResponses() {
         pgsql_op->mutable_response()->Swap(resp_.mutable_pgsql_response_batch(pgsql_idx));
         const auto& pgsql_response = pgsql_op->response();
         if (pgsql_response.has_rows_data_sidecar()) {
-          Slice rows_data = CHECK_RESULT(retrier().controller().GetSidecar(
-              pgsql_response.rows_data_sidecar()));
-          down_cast<YBPgsqlWriteOp*>(yb_op)->mutable_rows_data()->assign(
-              to_char_ptr(rows_data.data()), rows_data.size());
+          auto holder = CHECK_RESULT(
+              retrier().controller().GetSidecarHolder(pgsql_response.rows_data_sidecar()));
+          down_cast<YBPgsqlWriteOp*>(yb_op)->SetRowsData(holder.first, holder.second);
         }
         pgsql_idx++;
         break;
@@ -696,8 +694,8 @@ void ReadRpc::CallRemoteMethod() {
   TRACE_TO(trace, "SendRpcToTserver");
   ADOPT_TRACE(trace.get());
 
-  tablet_invoker_.ReadAsync(req_, &resp_, PrepareController(),
-                            std::bind(&ReadRpc::Finished, this, Status::OK()));
+  tablet_invoker_.proxy()->ReadAsync(
+    req_, &resp_, PrepareController(), std::bind(&ReadRpc::Finished, this, Status::OK()));
   TRACE_TO(trace, "RpcDispatched Asynchronously");
 }
 
@@ -705,7 +703,7 @@ void ReadRpc::SwapResponses() {
   int redis_idx = 0;
   int ql_idx = 0;
   int pgsql_idx = 0;
-
+  bool used_read_time_set = false;
   // Retrieve Redis and QL responses and make sure we received all the responses back.
   for (auto& op : ops_) {
     YBOperation* yb_op = op.yb_op.get();
@@ -745,16 +743,17 @@ void ReadRpc::SwapResponses() {
         }
         // Restore PGSQL read request PB and extract response.
         auto* pgsql_op = down_cast<YBPgsqlReadOp*>(yb_op);
-        if (resp_.has_used_read_time()) {
+        if (!used_read_time_set && resp_.has_used_read_time()) {
+          // Single operation in a group required used read time.
+          used_read_time_set = true;
           pgsql_op->SetUsedReadTime(ReadHybridTime::FromPB(resp_.used_read_time()));
         }
         pgsql_op->mutable_response()->Swap(resp_.mutable_pgsql_batch(pgsql_idx));
         const auto& pgsql_response = pgsql_op->response();
         if (pgsql_response.has_rows_data_sidecar()) {
-          Slice rows_data = CHECK_RESULT(retrier().controller().GetSidecar(
-              pgsql_response.rows_data_sidecar()));
-          down_cast<YBPgsqlReadOp*>(yb_op)->mutable_rows_data()->assign(
-              rows_data.cdata(), rows_data.size());
+          auto holder = CHECK_RESULT(
+              retrier().controller().GetSidecarHolder(pgsql_response.rows_data_sidecar()));
+          down_cast<YBPgsqlReadOp*>(yb_op)->SetRowsData(holder.first, holder.second);
         }
         pgsql_idx++;
         break;

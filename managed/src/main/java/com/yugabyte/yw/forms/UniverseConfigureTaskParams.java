@@ -22,6 +22,8 @@ public class UniverseConfigureTaskParams extends UniverseDefinitionTaskParams {
 
   @ApiModelProperty public boolean allowGeoPartitioning;
 
+  @ApiModelProperty public Boolean regionsChanged;
+
   public enum ClusterOperationType {
     CREATE,
     EDIT,

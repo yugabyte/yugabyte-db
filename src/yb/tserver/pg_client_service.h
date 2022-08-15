@@ -20,29 +20,57 @@
 
 #include "yb/rpc/rpc_fwd.h"
 
+#include "yb/tserver/tserver_fwd.h"
 #include "yb/tserver/pg_client.service.h"
 
 namespace yb {
 namespace tserver {
 
 #define YB_PG_CLIENT_METHODS \
-    (Heartbeat)(AlterDatabase)(AlterTable)(BackfillIndex)(CreateDatabase) \
-    (CreateSequencesDataTable)(CreateTable)(CreateTablegroup)(DropDatabase)(DropTable) \
-    (DropTablegroup)(GetCatalogMasterVersion)(GetDatabaseInfo)(IsInitDbDone) \
-    (ListLiveTabletServers)(OpenTable)(ReserveOids)(TabletServerCount)(TruncateTable) \
-    (ValidatePlacement)
-
-using TransactionPoolProvider = std::function<client::TransactionPool*()>;
+    (AlterDatabase) \
+    (AlterTable) \
+    (BackfillIndex) \
+    (CreateDatabase) \
+    (CreateSequencesDataTable) \
+    (CreateTable) \
+    (CreateTablegroup) \
+    (DeleteDBSequences) \
+    (DeleteSequenceTuple) \
+    (DropDatabase) \
+    (DropTable) \
+    (DropTablegroup) \
+    (FinishTransaction) \
+    (GetCatalogMasterVersion) \
+    (GetDatabaseInfo) \
+    (Heartbeat) \
+    (InsertSequenceTuple) \
+    (IsInitDbDone) \
+    (ListLiveTabletServers) \
+    (OpenTable) \
+    (ReadSequenceTuple) \
+    (ReserveOids) \
+    (RollbackToSubTransaction) \
+    (SetActiveSubTransaction) \
+    (TabletServerCount) \
+    (TruncateTable) \
+    (UpdateSequenceTuple) \
+    (ValidatePlacement) \
+    (CheckIfPitrActive) \
+    /**/
 
 class PgClientServiceImpl : public PgClientServiceIf {
  public:
   explicit PgClientServiceImpl(
       const std::shared_future<client::YBClient*>& client_future,
+      const scoped_refptr<ClockBase>& clock,
       TransactionPoolProvider transaction_pool_provider,
       const scoped_refptr<MetricEntity>& entity,
       rpc::Scheduler* scheduler);
 
   ~PgClientServiceImpl();
+
+  void Perform(
+      const PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext context) override;
 
 #define YB_PG_CLIENT_METHOD_DECLARE(r, data, method) \
   void method( \

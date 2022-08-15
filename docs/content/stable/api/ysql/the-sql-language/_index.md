@@ -8,11 +8,9 @@ menu:
   stable:
     identifier: the-sql-language
     parent: api-ysql
-    weight: 10
-isTocNested: true
-showAsideToc: true
+    weight: 100
+type: indexpage
 ---
-
 This page describes the categorization scheme for the SQL statements and links to lists of the statements that fall into each category. It also describes notions, like the `WITH` clause, that need careful explanation and have applicability across two or more statement kinds.
 
 {{< note title="Under construction." >}}
@@ -49,6 +47,6 @@ Statements in this class support the preparation of SQL statements, and their su
 
 In the performance control class, the [`EXPLAIN`](./statements/perf_explain/) statement shows what access methods a DML statement will use and (for statements with joins) the join order and method.
 
-## The WITH clause: [here](./with-clause)
+## The WITH clause: [here](./with-clause/)
 
 The `WITH` clause (sometimes known as the _common table expression_) can be used as part of a `SELECT` statement, an `INSERT` statement, an `UPDATE` statement, or a `DELETE` statement. For this reason, the functionality is described in a dedicated section.

@@ -67,7 +67,7 @@ set(DOCDB_SRCS
         docdb_pgapi.cc
         docdb_util.cc
         doc_ttl_util.cc
-        docdb_compaction_filter.cc
+        docdb_compaction_context.cc
         docdb_compaction_filter_intents.cc
         docdb-internal.cc
         doc_reader.cc
@@ -80,21 +80,24 @@ set(DOCDB_SRCS
         doc_rowwise_iterator.cc
         doc_write_batch_cache.cc
         doc_write_batch.cc
+        doc_ql_filefilter.cc
         expiration.cc
         compaction_file_filter.cc
         intent_aware_iterator.cc
         lock_batch.cc
+        packed_row.cc
         pgsql_operation.cc
         ql_rocksdb_storage.cc
         ql_rowwise_iterator_interface.cc
         redis_operation.cc
         rocksdb_writer.cc
+        schema_packing.cc
         shared_lock_manager.cc
         subdocument.cc
-        subdoc_reader.cc
         transaction_dump.cc
         transaction_status_cache.cc
         value.cc
+        wait_queue.cc
         kv_debug.cc
         )
 
@@ -147,10 +150,10 @@ ADD_YB_TEST(doc_operation-test)
 ADD_YB_TEST(docdb_rocksdb_util-test)
 ADD_YB_TEST(docdb-test)
 ADD_YB_TEST(docrowwiseiterator-test)
+ADD_YB_TEST(packed_row-test)
 ADD_YB_TEST(primitive_value-test)
 ADD_YB_TEST(randomized_docdb-test)
 ADD_YB_TEST(shared_lock_manager-test)
 ADD_YB_TEST(subdocument-test)
-ADD_YB_TEST(value-test)
 ADD_YB_TEST(consensus_frontier-test)
 ADD_YB_TEST(compaction_file_filter-test)

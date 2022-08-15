@@ -56,31 +56,31 @@ class AuditLogger {
   // because in that case separate commands might arrive to different tservers.
   //
   // If this returns non-OK status, batch mode isn't activated.
-  CHECKED_STATUS StartBatchRequest(size_t statements_count,
+  Status StartBatchRequest(size_t statements_count,
                                    IsRescheduled is_rescheduled);
 
   // Exits the batch request mode. Does nothing outside of a batch request.
-  CHECKED_STATUS EndBatchRequest();
+  Status EndBatchRequest();
 
   // Log the response to a user's authentication request.
-  CHECKED_STATUS LogAuthResponse(const CQLResponse& response);
+  Status LogAuthResponse(const CQLResponse& response);
 
   // Log the statement execution start.
   // tnode might be nullptr, in which case this does nothing.
-  CHECKED_STATUS LogStatement(const TreeNode* tnode,
+  Status LogStatement(const TreeNode* tnode,
                               const std::string& statement,
                               IsPrepare is_prepare);
 
   // Log the statement analysis/execution failure.
   // tnode might be nullptr, in which case this does nothing.
-  CHECKED_STATUS LogStatementError(const TreeNode* tnode,
+  Status LogStatementError(const TreeNode* tnode,
                                    const std::string& statement,
                                    const Status& error_status,
                                    ErrorIsFormatted error_is_formatted);
 
   // Log a general statement processing failure.
   // We should only use this directly when the parse tree is not present.
-  CHECKED_STATUS LogStatementError(const std::string& statement,
+  Status LogStatementError(const std::string& statement,
                                    const Status& error_status,
                                    ErrorIsFormatted error_is_formatted);
 

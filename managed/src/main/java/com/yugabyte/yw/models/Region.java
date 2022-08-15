@@ -15,6 +15,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonManagedReference;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.models.helpers.ProviderAndRegion;
 import io.ebean.Ebean;
@@ -63,14 +64,14 @@ public class Region extends Model {
   @ApiModelProperty(
       value = "Cloud provider region code",
       example = "us-west-2",
-      accessMode = READ_ONLY)
+      accessMode = READ_WRITE)
   public String code;
 
   @Column(length = 100, nullable = false)
   @ApiModelProperty(
       value = "Cloud provider region name",
       example = "US West (Oregon)",
-      accessMode = READ_WRITE)
+      accessMode = READ_ONLY)
   public String name;
 
   @ApiModelProperty(
@@ -78,12 +79,6 @@ public class Region extends Model {
       example = "TODO",
       accessMode = READ_WRITE)
   public String ybImage;
-
-  @ApiModelProperty(
-      value = "Indicates whether to use YB Prebuilt AMI flow or not for the supplied AMI ID",
-      accessMode = READ_WRITE)
-  @Column(nullable = false, columnDefinition = "boolean default false")
-  public boolean ybPrebuiltAmi = false;
 
   @Column(columnDefinition = "float")
   @ApiModelProperty(value = "The region's longitude", example = "-120.01", accessMode = READ_ONLY)
@@ -123,6 +118,7 @@ public class Region extends Model {
 
     public String sg_id; // Security group ID.
     public String vnet; // Vnet key.
+    public Architecture arch; // ybImage architecture.
   }
 
   @DbJson
@@ -135,7 +131,6 @@ public class Region extends Model {
       details = new RegionDetails();
     }
     details.sg_id = securityGroupId;
-    save();
   }
 
   @ApiModelProperty(required = false)
@@ -152,7 +147,6 @@ public class Region extends Model {
       details = new RegionDetails();
     }
     details.vnet = vnetName;
-    save();
   }
 
   @ApiModelProperty(required = false)
@@ -160,6 +154,22 @@ public class Region extends Model {
     if (details != null) {
       String vnetNode = details.vnet;
       return vnetNode == null || vnetNode.isEmpty() ? null : vnetNode;
+    }
+    return null;
+  }
+
+  public void setArchitecture(Architecture arch) {
+    if (details == null) {
+      details = new RegionDetails();
+    }
+    details.arch = arch;
+    save();
+  }
+
+  @ApiModelProperty(required = false)
+  public Architecture getArchitecture() {
+    if (details != null) {
+      return details.arch;
     }
     return null;
   }

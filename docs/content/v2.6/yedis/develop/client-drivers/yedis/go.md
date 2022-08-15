@@ -7,8 +7,7 @@ menu:
   v2.6:
     identifier: client-drivers-yedis-go
     parent: develop-yedis
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Prerequisites

@@ -5,13 +5,13 @@ linkTitle: Configuration
 description: Configuration reference for core database services, including yb-tserver, yb-master, and yugabyted.
 headcontent: Configuration of the core database services.
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
-section: REFERENCE
 menu:
   stable:
     identifier: configuration
+    parent: reference
     weight: 2600
+type: indexpage
 ---
-
 <div class="row">
 
    <div class="col-12 col-md-6 col-lg-12 col-xl-6">

@@ -41,7 +41,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
-import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
@@ -58,8 +57,8 @@ import org.yb.Schema;
 import org.yb.Type;
 import org.yb.annotations.InterfaceAudience;
 import org.yb.annotations.InterfaceStability;
-import org.yb.consensus.Metadata;
 import org.yb.master.CatalogEntityInfo;
+import org.yb.master.MasterReplicationOuterClass;
 import org.yb.tserver.TserverTypes;
 import org.yb.util.Pair;
 
@@ -68,7 +67,7 @@ import org.yb.util.Pair;
  * <p>
  * This class acts as a wrapper around {@link AsyncYBClient}. The {@link Deferred} objects are
  * joined against using the default admin operation timeout
- * (see {@link org.yb.client.YBClient.YBClientBuilder#defaultAdminOperationTimeoutMs(long)} (long)}).
+ * (see {@link org.yb.client.YBClient.YBClientBuilder#defaultAdminOperationTimeoutMs(long)}(long)}).
  */
 @InterfaceAudience.Public
 @InterfaceStability.Evolving
@@ -125,18 +124,54 @@ public class YBClient implements AutoCloseable {
     return cto;
   }
 
+  /**
+   * Creates the redis namespace "system_redis".
+   *
+   * @throws Exception if the namespace already exists or creation fails.
+   */
   public void createRedisNamespace() throws Exception {
-    CreateKeyspaceResponse resp = this.createKeyspace(REDIS_KEYSPACE_NAME,
-                                                      YQLDatabase.YQL_DATABASE_REDIS);
-    if (resp.hasError()) {
-      throw new RuntimeException("Could not create keyspace " + REDIS_KEYSPACE_NAME +
-                                 ". Error :" + resp.errorMessage());
+    createRedisNamespace(false);
+  }
+
+  /**
+   * Creates the redis namespace "system_redis".
+   *
+   * @param ifNotExist if true, error is ignored if the namespace already exists.
+   * @return true if created, false if already exists.
+   * @throws Exception throws exception on creation failure.
+   */
+  public boolean createRedisNamespace(boolean ifNotExist) throws Exception {
+    Exception exception = null;
+    try {
+      // TODO As there is no way to get an existing namespace or create if it does not exist,
+      // the RPC call is made first that may fail.
+      // Change this when we have better support for namespace.
+      CreateKeyspaceResponse resp = this.createKeyspace(REDIS_KEYSPACE_NAME,
+          YQLDatabase.YQL_DATABASE_REDIS);
+      if (resp.hasError()) {
+        exception = new RuntimeException("Could not create keyspace " + REDIS_KEYSPACE_NAME +
+            ". Error: " + resp.errorMessage());
+      }
+    } catch (YBServerException e) {
+      // The RPC call also throws exception on conflict.
+      exception = e;
     }
+    if (exception != null) {
+      String errMsg = exception.getMessage();
+      if (ifNotExist && errMsg != null && errMsg.contains("ALREADY_PRESENT")) {
+        LOG.info("Redis namespace {} already exists.", REDIS_KEYSPACE_NAME);
+        return false;
+      }
+      throw exception;
+    }
+    return true;
   }
 
   /**
    * Create a redis table on the cluster with the specified name and tablet count.
-   * @param name Tables name
+   * It also creates the redis namespace 'system_redis'.
+   *
+   * @param name the table name
    * @param numTablets number of pre-split tablets
    * @return an object to communicate with the created table.
    */
@@ -148,17 +183,62 @@ public class YBClient implements AutoCloseable {
 
   /**
    * Create a redis table on the cluster with the specified name.
-   * @param name Table name
+   * It also creates the redis namespace 'system_redis'.
+   *
+   * @param name the table name
    * @return an object to communicate with the created table.
    */
   public YBTable createRedisTable(String name) throws Exception {
-    createRedisNamespace();
-    return createRedisTableOnly(name);
+    return createRedisTable(name, false);
   }
 
+  /**
+   * Create a redis table on the cluster with the specified name.
+   * It also creates the redis namespace 'system_redis'.
+   *
+   * @param name the table name.
+   * @param ifNotExist if true, table is not created if it already exists.
+   * @return an object to communicate with the created table if it is created.
+   * @throws Exception throws exception on creation failure.
+   */
+  public YBTable createRedisTable(String name, boolean ifNotExist) throws Exception {
+    if (createRedisNamespace(ifNotExist)) {
+      // Namespace is just created, so there is no redis table.
+      return createRedisTableOnly(name, false);
+    }
+    return createRedisTableOnly(name, ifNotExist);
+  }
+
+  /**
+   * Create a redis table on the cluster with the specified name.
+   * The redis namespace 'system_redis' must already be existing.
+   *
+   * @param name the table name.
+   * @return an object to communicate with the created table if it is created.
+   * @throws Exception throws exception on creation failure.
+   */
   public YBTable createRedisTableOnly(String name) throws Exception {
+    return createRedisTableOnly(name, false);
+  }
+
+  /**
+   * Create a redis table on the cluster with the specified name.
+   * The redis namespace 'system_redis' must already be existing.
+   *
+   * @param name the table name.
+   * @param ifNotExist if true, table is not created if it already exists.
+   * @return an object to communicate with the created table if it is created.
+   * @throws Exception throws exception on creation failure.
+   */
+  public YBTable createRedisTableOnly(String name, boolean ifNotExist) throws Exception {
+    if (ifNotExist) {
+      ListTablesResponse response = getTablesList(name);
+      if (response.getTablesList().stream().anyMatch(n -> n.equals(name))) {
+        return openTable(REDIS_KEYSPACE_NAME, name);
+      }
+    }
     return createTable(REDIS_KEYSPACE_NAME, name, getRedisSchema(),
-                       new CreateTableOptions().setTableType(TableType.REDIS_TABLE_TYPE));
+        new CreateTableOptions().setTableType(TableType.REDIS_TABLE_TYPE));
   }
 
   /**
@@ -640,6 +720,8 @@ public class YBClient implements AutoCloseable {
    * @param port RPC port of the host being added or removed.
    * @param isAdd true if we are adding a server to the master configuration, false if removing.
    * @param useHost if caller wants to use host/port instead of uuid of server being removed.
+   * @param hostAddrToAdd if caller wants to use a different address for the master
+   *                      for the config update
    *
    * @return The change config response object.
    */
@@ -650,6 +732,12 @@ public class YBClient implements AutoCloseable {
 
   public ChangeConfigResponse changeMasterConfig(
       String host, int port, boolean isAdd, boolean useHost) throws Exception {
+    return changeMasterConfig(host, port, isAdd, useHost, null /* hostAddrToAdd */);
+  }
+
+  public ChangeConfigResponse changeMasterConfig(String host, int port,
+                                                 boolean isAdd, boolean useHost,
+                                                 String hostAddrToAdd) throws Exception {
     String masterUuid = null;
 
     if (isAdd || !useHost) {
@@ -666,11 +754,16 @@ public class YBClient implements AutoCloseable {
     long timeout = getDefaultAdminOperationTimeoutMs();
     ChangeConfigResponse resp = null;
     boolean changeConfigDone;
+
+    // It is possible that we might need different addresses for reaching from the client
+    // than the one the DB nodes use to communicate. If the client provides an address
+    // to add to the config explicitly, use that.
+    String hostAddr = hostAddrToAdd == null ? host : hostAddrToAdd;
     do {
       changeConfigDone = true;
       try {
         Deferred<ChangeConfigResponse> d =
-            asyncClient.changeMasterConfig(host, port, masterUuid, isAdd, useHost);
+            asyncClient.changeMasterConfig(hostAddr, port, masterUuid, isAdd, useHost);
         resp = d.join(timeout);
         if (!resp.hasError()) {
           asyncClient.updateMasterAdresses(host, port, isAdd);
@@ -1222,8 +1315,23 @@ public class YBClient implements AutoCloseable {
    * @return a deferred object for the response from server.
    */
   public CreateCDCStreamResponse createCDCStream(
-          final HostAndPort hp, String tableId) throws Exception{
-    Deferred<CreateCDCStreamResponse> d = asyncClient.createCDCStream(hp, tableId);
+          final HostAndPort hp, String tableId,
+          String nameSpaceName, String format,
+          String checkpointType) throws Exception{
+    Deferred<CreateCDCStreamResponse> d = asyncClient.createCDCStream(hp,
+      tableId,
+      nameSpaceName,
+      format,
+      checkpointType);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  public CreateCDCStreamResponse createCDCStream(YBTable table,
+                                                  String nameSpaceName,
+                                                  String format,
+                                                  String checkpointType) throws Exception {
+    Deferred<CreateCDCStreamResponse> d = asyncClient.createCDCStream(table,
+      nameSpaceName, format, checkpointType);
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
@@ -1330,14 +1438,20 @@ public class YBClient implements AutoCloseable {
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
+  /**
+   * It is the same as {@link AsyncYBClient#setupUniverseReplication(String, Map, Set)}
+   * except that it is synchronous.
+   *
+   * @see AsyncYBClient#setupUniverseReplication(String, Map, Set)
+   */
   public SetupUniverseReplicationResponse setupUniverseReplication(
     String replicationGroupName,
-    Set<String> sourceTableIDs,
+    Map<String, String> sourceTableIdsBootstrapIdMap,
     Set<CommonNet.HostPortPB> sourceMasterAddresses) throws Exception {
     Deferred<SetupUniverseReplicationResponse> d =
       asyncClient.setupUniverseReplication(
         replicationGroupName,
-        sourceTableIDs,
+        sourceTableIdsBootstrapIdMap,
         sourceMasterAddresses);
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
@@ -1358,19 +1472,19 @@ public class YBClient implements AutoCloseable {
 
   public AlterUniverseReplicationResponse alterUniverseReplicationAddTables(
     String replicationGroupName,
-    Set<String> sourceTableIDsToAdd) throws Exception {
+    Map<String, String> sourceTableIdsToAddBootstrapIdMap) throws Exception {
     Deferred<AlterUniverseReplicationResponse> d =
       asyncClient.alterUniverseReplicationAddTables(
-        replicationGroupName, sourceTableIDsToAdd);
+        replicationGroupName, sourceTableIdsToAddBootstrapIdMap);
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
   public AlterUniverseReplicationResponse alterUniverseReplicationRemoveTables(
     String replicationGroupName,
-    Set<String> sourceTableIDsToRemove) throws Exception {
+    Set<String> sourceTableIdsToRemove) throws Exception {
     Deferred<AlterUniverseReplicationResponse> d =
       asyncClient.alterUniverseReplicationRemoveTables(
-        replicationGroupName, sourceTableIDsToRemove);
+        replicationGroupName, sourceTableIdsToRemove);
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
@@ -1399,11 +1513,80 @@ public class YBClient implements AutoCloseable {
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
+  public GetChangesResponse getChangesCDCSDK(YBTable table, String streamId,
+                                             String tabletId, long term,
+                                             long index, byte[] key,
+                                             int write_id, long time,
+                                             boolean needSchemaInfo) throws Exception {
+    Deferred<GetChangesResponse> d = asyncClient.getChangesCDCSDK(
+      table, streamId, tabletId, term, index, key, write_id, time, needSchemaInfo);
+    return d.join(2*getDefaultAdminOperationTimeoutMs());
+  }
+
+  public GetCheckpointResponse getCheckpoint(YBTable table, String streamId,
+                                              String tabletId) throws Exception {
+    Deferred<GetCheckpointResponse> d = asyncClient
+      .getCheckpoint(table, streamId, tabletId);
+    return d.join(2*getDefaultAdminOperationTimeoutMs());
+  }
+
+  public GetDBStreamInfoResponse getDBStreamInfo(String streamId) throws Exception {
+    Deferred<GetDBStreamInfoResponse> d = asyncClient
+      .getDBStreamInfo(streamId);
+    return d.join(2*getDefaultAdminOperationTimeoutMs());
+  }
+
+  public SetCheckpointResponse commitCheckpoint(YBTable table, String streamId,
+                                                String tabletId,
+                                                long term,
+                                                long index,
+                                                boolean initialCheckpoint) throws Exception {
+    Deferred<SetCheckpointResponse> d = asyncClient.setCheckpoint(table, streamId, tabletId, term,
+      index, initialCheckpoint);
+    d.addErrback(new Callback<Exception, Exception>() {
+      @Override
+      public Exception call(Exception o) throws Exception {
+        o.printStackTrace();
+        throw o;
+      }
+    });
+    d.addCallback(setCheckpointResponse -> {
+      return setCheckpointResponse;
+    });
+    return d.join(2 * getDefaultAdminOperationTimeoutMs());
+  }
+
+  public SetCheckpointResponse bootstrapTablet(YBTable table, String streamId,
+                                               String tabletId,
+                                               long term,
+                                               long index,
+                                               boolean initialCheckpoint,
+                                               boolean bootstrap) throws Exception {
+    Deferred<SetCheckpointResponse> d = asyncClient.setCheckpointWithBootstrap(table, streamId,
+        tabletId, term, index, initialCheckpoint, bootstrap);
+    d.addErrback(new Callback<Exception, Exception>() {
+      @Override
+      public Exception call(Exception o) throws Exception {
+        o.printStackTrace();
+        throw o;
+      }
+    });
+    d.addCallback(setCheckpointResponse -> {
+      return setCheckpointResponse;
+    });
+    return d.join(2 * getDefaultAdminOperationTimeoutMs());
+  }
+
+  public DeleteUniverseReplicationResponse deleteUniverseReplication(
+    String replicationGroupName, boolean ignoreErrors) throws Exception {
+    Deferred<DeleteUniverseReplicationResponse> d =
+        asyncClient.deleteUniverseReplication(replicationGroupName, ignoreErrors);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
   public DeleteUniverseReplicationResponse deleteUniverseReplication(
     String replicationGroupName) throws Exception {
-    Deferred<DeleteUniverseReplicationResponse> d =
-      asyncClient.deleteUniverseReplication(replicationGroupName);
-    return d.join(getDefaultAdminOperationTimeoutMs());
+    return deleteUniverseReplication(replicationGroupName, false /* ignoreErrors */);
   }
 
   public GetUniverseReplicationResponse getUniverseReplication(
@@ -1413,9 +1596,49 @@ public class YBClient implements AutoCloseable {
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
-  public BootstrapUniverseResponse bootstrapUniverse(List<String> tableIDs) throws Exception {
+  public BootstrapUniverseResponse bootstrapUniverse(
+    final HostAndPort hostAndPort, List<String> tableIds) throws Exception {
     Deferred<BootstrapUniverseResponse> d =
-      asyncClient.bootstrapUniverse(tableIDs);
+      asyncClient.bootstrapUniverse(hostAndPort, tableIds);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  /**
+   * It checks whether a bootstrap flow is required to set up replication or in case an existing
+   * stream has fallen far behind.
+   *
+   * @param tableIdsStreamIdMap A map of table ids to their corresponding stream id if any
+   * @return A deferred object that yields a {@link IsBootstrapRequiredResponse} which contains
+   *         a map of each table id to a boolean showing whether bootstrap is required for that
+   *         table
+   */
+  public IsBootstrapRequiredResponse isBootstrapRequired(
+      Map<String, String> tableIdsStreamIdMap) throws Exception {
+    Deferred<IsBootstrapRequiredResponse> d =
+        asyncClient.isBootstrapRequired(tableIdsStreamIdMap);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  /**
+   * @see AsyncYBClient#listCDCStreams(String, String, MasterReplicationOuterClass.IdTypePB)
+   */
+  public ListCDCStreamsResponse listCDCStreams(
+      String tableId,
+      String namespaceId,
+      MasterReplicationOuterClass.IdTypePB idType) throws Exception {
+    Deferred<ListCDCStreamsResponse> d =
+        asyncClient.listCDCStreams(tableId, namespaceId, idType);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  /**
+   * @see AsyncYBClient#deleteCDCStream(Set, boolean, boolean)
+   */
+  public DeleteCDCStreamResponse deleteCDCStream(Set<String> streamIds,
+                                                 boolean ignoreErrors,
+                                                 boolean forceDelete) throws Exception {
+    Deferred<DeleteCDCStreamResponse> d =
+      asyncClient.deleteCDCStream(streamIds, ignoreErrors, forceDelete);
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 

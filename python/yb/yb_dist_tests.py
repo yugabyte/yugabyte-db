@@ -315,6 +315,7 @@ ARCHIVED_PATHS_IN_BUILD_DIR = [
     'lib',
     'postgres',
     'share',
+    'auto_flags.json',
     'version_metadata.json',
     'linuxbrew_path.txt',
     'thirdparty_path.txt',
@@ -322,6 +323,7 @@ ARCHIVED_PATHS_IN_BUILD_DIR = [
     'postgres_build/contrib',
     'postgres_build/src/test/regress',
     'postgres_build/src/test/isolation',
+    'postgres_build/src/include/catalog/pg_yb_migration.dat',  # used by TestYsqlUpgrade
 ]
 
 ARCHIVED_PATHS_IN_SRC_DIR = [

@@ -26,7 +26,6 @@
 #include "yb/common/transaction_error.h"
 
 #include "yb/docdb/doc_ttl_util.h"
-#include "yb/docdb/docdb_compaction_filter.h"
 
 #include "yb/gutil/ref_counted.h"
 
@@ -93,15 +92,7 @@ HistoryRetentionDirective TabletRetentionPolicy::GetRetentionDirective() {
     }
   }
 
-  auto deleted_before_history_cutoff = std::make_shared<docdb::ColumnIds>();
-  for (const auto& deleted_col : *metadata_.deleted_cols()) {
-    if (deleted_col.ht < history_cutoff) {
-      deleted_before_history_cutoff->insert(deleted_col.id);
-    }
-  }
-
-  return {history_cutoff, std::move(deleted_before_history_cutoff),
-          TableTTL(*metadata_.schema()),
+  return {history_cutoff, TableTTL(*metadata_.schema()),
           docdb::ShouldRetainDeleteMarkersInMajorCompaction(
               ShouldRetainDeleteMarkersInMajorCompaction())};
 }

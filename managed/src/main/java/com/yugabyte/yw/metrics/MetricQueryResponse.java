@@ -1,6 +1,8 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.metrics;
 
+import static com.yugabyte.yw.metrics.MetricQueryExecutor.EXPORTED_INSTANCE;
+
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -11,6 +13,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -55,8 +58,12 @@ public class MetricQueryResponse {
 
     for (final JsonNode objNode : data.result) {
       MetricGraphData metricGraphData = new MetricGraphData();
-      JsonNode metricInfo = objNode.get("metric");
+      ObjectNode metricInfo = (ObjectNode) objNode.get("metric");
 
+      if (metricInfo.has(EXPORTED_INSTANCE)) {
+        metricGraphData.instanceName = metricInfo.get(EXPORTED_INSTANCE).asText();
+        metricInfo.remove(EXPORTED_INSTANCE);
+      }
       if (metricInfo.has("node_prefix")) {
         metricGraphData.name = metricInfo.get("node_prefix").asText();
       } else if (metricInfo.size() == 1) {
@@ -70,7 +77,11 @@ public class MetricQueryResponse {
         // passed in.
         //
         // https://www.robustperception.io/whats-in-a-__name__
-        metricGraphData.name = metricName;
+        if (StringUtils.isNotBlank(metricGraphData.instanceName)) {
+          metricGraphData.name = metricGraphData.instanceName;
+        } else {
+          metricGraphData.name = metricName;
+        }
       }
 
       if (metricInfo.size() <= 1) {
@@ -79,16 +90,19 @@ public class MetricQueryResponse {
         }
       } else {
         if (layout.yaxis != null) {
-          metricGraphData.labels = new HashMap<String, String>();
+          metricGraphData.labels = new HashMap<>();
           for (Map.Entry<String, String> entry : layout.yaxis.alias.entrySet()) {
             boolean validLabels = false;
             for (String key : entry.getKey().split(",")) {
               validLabels = false;
+              boolean useInstanceName = layout.yaxis.alias.containsKey("useInstanceName");
+              if (useInstanceName) {
+                metricGraphData.name = metricGraphData.instanceName;
+              }
               // Java conversion from Iterator to Iterable...
-              for (JsonNode metricEntry : (Iterable<JsonNode>) () -> metricInfo.elements()) {
+              for (JsonNode metricEntry : (Iterable<JsonNode>) metricInfo::elements) {
                 // In case we want to graph per server, we want to display the node name.
-                if (layout.yaxis.alias.containsKey("useInstanceName")) {
-                  metricGraphData.name = metricInfo.get("exported_instance").asText();
+                if (useInstanceName) {
                   // If the alias contains more entries, we want to highlight it via the
                   // saved name of the metric.
                   if (layout.yaxis.alias.entrySet().size() > 1) {
@@ -112,7 +126,7 @@ public class MetricQueryResponse {
             }
           }
         } else {
-          metricGraphData.labels = new HashMap<String, String>();
+          metricGraphData.labels = new HashMap<>();
           metricInfo
               .fields()
               .forEachRemaining(

@@ -48,8 +48,8 @@ public class TestPgRegressTransactionSavepoints extends BasePgSQLTest {
   @Test
   public void testPgRegressTransactionWithReadCommitted() throws Exception {
     restartClusterWithFlags(Collections.emptyMap(),
-                            Collections.singletonMap("TEST_inject_sleep_before_applying_intents_ms",
-                                                     "100"));
+                            Collections.singletonMap("yb_enable_read_committed_isolation",
+                                                     "true"));
     runPgRegressTest("yb_transaction_savepoints_schedule");
   }
 }

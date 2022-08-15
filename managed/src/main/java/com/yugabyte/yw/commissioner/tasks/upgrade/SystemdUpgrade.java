@@ -65,7 +65,7 @@ public class SystemdUpgrade extends UpgradeTaskBase {
     taskParams().clusters = getUniverse().getUniverseDetails().clusters;
 
     // Conditional Provisioning
-    createSetupServerTasks(nodes, true /* isSystemdUpgrade */)
+    createSetupServerTasks(nodes, p -> p.isSystemdUpgrade = true)
         .setSubTaskGroupType(SubTaskGroupType.Provisioning);
 
     UniverseDefinitionTaskParams universeDetails = getUniverse().getUniverseDetails();
@@ -76,7 +76,7 @@ public class SystemdUpgrade extends UpgradeTaskBase {
     taskParams().setTxnTableWaitCountFlag = universeDetails.setTxnTableWaitCountFlag;
 
     // Conditional Configuring
-    createConfigureServerTasks(nodes, false, false, false, true /* isSystemdUpgrade */)
+    createConfigureServerTasks(nodes, params -> params.isSystemdUpgrade = true)
         .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
   }
 }

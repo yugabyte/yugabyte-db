@@ -24,16 +24,31 @@ namespace yb {
 namespace docdb {
 
 // Get the scanspec for range key components.
-std::vector<PrimitiveValue> GetRangeKeyScanSpec(
+std::vector<KeyEntryValue> GetRangeKeyScanSpec(
     const Schema& schema,
-    const std::vector<PrimitiveValue>* prefixed_range_components,
+    const std::vector<KeyEntryValue>* prefixed_range_components,
     const QLScanRange* scan_range,
+    std::vector<bool> *inclusivities,
     bool lower_bound,
-    bool include_static_columns = false);
+    bool include_static_columns = false,
+    bool use_strictness = true);
 
-PrimitiveValue GetQLRangeBoundAsPVal(const QLScanRange::QLRange& ql_range,
-                                     SortingType sorting_type,
-                                     bool lower_bound);
+// Gets the lower/upper bound value of the given range
+KeyEntryValue GetQLRangeBoundAsPVal(const QLScanRange::QLRange& ql_range,
+                                    SortingType sorting_type,
+                                    bool lower_bound);
+
+const boost::optional<QLScanRange::QLBound> &GetQLRangeBound(
+    const QLScanRange::QLRange& ql_range,
+    SortingType sorting_type,
+    bool lower_bound);
+
+// Gets whether the lower/upper bound of the given range is inclusive
+bool GetQLRangeBoundIsInclusive(
+    const QLScanRange::QLRange& ql_range,
+    SortingType sorting_type,
+    bool lower_bound);
+
 }  // namespace docdb
 }  // namespace yb
 

@@ -3,11 +3,13 @@
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.SubTaskGroup;
+import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -17,7 +19,9 @@ import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 public class GFlagsUpgrade extends UpgradeTaskBase {
 
   @Inject
@@ -44,19 +48,33 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
   public void run() {
     runUpgrade(
         () -> {
+          UniverseDefinitionTaskParams.UserIntent userIntent = getUserIntent();
+
+          boolean changedByMasterFlags =
+              GFlagsUtil.syncGflagsToIntent(taskParams().masterGFlags, userIntent);
+          boolean changedByTserverFlags =
+              GFlagsUtil.syncGflagsToIntent(taskParams().tserverGFlags, userIntent);
+          log.debug(
+              "Intent changed by master {} by tserver {}",
+              changedByMasterFlags,
+              changedByTserverFlags);
+
           // Fetch master and tserver nodes if there is change in gflags
           List<NodeDetails> masterNodes =
-              !taskParams().masterGFlags.equals(getUserIntent().masterGFlags)
+              (changedByMasterFlags || changedByTserverFlags)
+                      || !taskParams().masterGFlags.equals(getUserIntent().masterGFlags)
                   ? fetchMasterNodes(taskParams().upgradeOption)
                   : new ArrayList<>();
+
           List<NodeDetails> tServerNodes =
-              !taskParams().tserverGFlags.equals(getUserIntent().tserverGFlags)
+              (changedByMasterFlags || changedByTserverFlags)
+                      || !taskParams().tserverGFlags.equals(getUserIntent().tserverGFlags)
                   ? fetchTServerNodes(taskParams().upgradeOption)
                   : new ArrayList<>();
           // Verify the request params and fail if invalid
           taskParams().verifyParams(getUniverse());
           // Upgrade GFlags in all nodes
-          createGFlagUpgradeTasks(masterNodes, tServerNodes);
+          createGFlagUpgradeTasks(userIntent, masterNodes, tServerNodes);
           // Update the list of parameter key/values in the universe with the new ones.
           updateGFlagsPersistTasks(taskParams().masterGFlags, taskParams().tserverGFlags)
               .setSubTaskGroupType(getTaskSubGroupType());
@@ -64,21 +82,31 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
   }
 
   private void createGFlagUpgradeTasks(
-      List<NodeDetails> masterNodes, List<NodeDetails> tServerNodes) {
+      UniverseDefinitionTaskParams.UserIntent userIntent,
+      List<NodeDetails> masterNodes,
+      List<NodeDetails> tServerNodes) {
     switch (taskParams().upgradeOption) {
       case ROLLING_UPGRADE:
         createRollingUpgradeTaskFlow(
-            this::createServerConfFileUpdateTasks, masterNodes, tServerNodes, RUN_BEFORE_STOPPING);
+            (nodes, processTypes) ->
+                createServerConfFileUpdateTasks(userIntent, nodes, processTypes),
+            masterNodes,
+            tServerNodes,
+            RUN_BEFORE_STOPPING);
         break;
       case NON_ROLLING_UPGRADE:
         createNonRollingUpgradeTaskFlow(
-            this::createServerConfFileUpdateTasks, masterNodes, tServerNodes, RUN_BEFORE_STOPPING);
+            (nodes, processTypes) ->
+                createServerConfFileUpdateTasks(userIntent, nodes, processTypes),
+            masterNodes,
+            tServerNodes,
+            RUN_BEFORE_STOPPING);
         break;
       case NON_RESTART_UPGRADE:
         createNonRestartUpgradeTaskFlow(
             (List<NodeDetails> nodeList, Set<ServerType> processTypes) -> {
               ServerType processType = getSingle(processTypes);
-              createServerConfFileUpdateTasks(nodeList, processTypes);
+              createServerConfFileUpdateTasks(userIntent, nodeList, processTypes);
               createSetFlagInMemoryTasks(
                       nodeList,
                       processType,
@@ -90,35 +118,40 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
                   .setSubTaskGroupType(getTaskSubGroupType());
             },
             masterNodes,
-            tServerNodes);
+            tServerNodes,
+            DEFAULT_CONTEXT);
         break;
     }
   }
 
   private void createServerConfFileUpdateTasks(
-      List<NodeDetails> nodes, Set<ServerType> processTypes) {
+      UniverseDefinitionTaskParams.UserIntent userIntent,
+      List<NodeDetails> nodes,
+      Set<ServerType> processTypes) {
     // If the node list is empty, we don't need to do anything.
     if (nodes.isEmpty()) {
       return;
     }
-
     String subGroupDescription =
         String.format(
             "AnsibleConfigureServers (%s) for: %s",
             SubTaskGroupType.UpdatingGFlags, taskParams().nodePrefix);
-    SubTaskGroup taskGroup = new SubTaskGroup(subGroupDescription, executor);
+    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup(subGroupDescription, executor);
     for (NodeDetails node : nodes) {
-      taskGroup.addTask(getAnsibleConfigureServerTask(node, getSingle(processTypes)));
+      subTaskGroup.addSubTask(
+          getAnsibleConfigureServerTask(userIntent, node, getSingle(processTypes)));
     }
-    taskGroup.setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
-    subTaskGroupQueue.add(taskGroup);
+    subTaskGroup.setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
   }
 
   private AnsibleConfigureServers getAnsibleConfigureServerTask(
-      NodeDetails node, ServerType processType) {
+      UniverseDefinitionTaskParams.UserIntent userIntent,
+      NodeDetails node,
+      ServerType processType) {
     AnsibleConfigureServers.Params params =
         getAnsibleConfigureServerParams(
-            node, processType, UpgradeTaskType.GFlags, UpgradeTaskSubType.None);
+            userIntent, node, processType, UpgradeTaskType.GFlags, UpgradeTaskSubType.None);
     if (processType.equals(ServerType.MASTER)) {
       params.gflags = taskParams().masterGFlags;
       params.gflagsToRemove =

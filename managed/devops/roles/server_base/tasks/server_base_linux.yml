@@ -92,10 +92,30 @@
     become: yes
     when: ansible_os_family == "RedHat" and update_yum_cache
 
+  - name: Update package cache on apt platforms
+    become: yes
+    become_method: sudo
+    apt:
+      update_cache: yes
+    when: ansible_pkg_mgr == "apt"
+
   - name: Set Azure packages to Install
     set_fact:
       linux_packages: "{{ linux_packages + azure_packages }}"
     when: cloud_type == "azu"
+
+  - name: Install epel-release repo on centos if not present
+    become: yes
+    become_method: sudo
+    yum:
+      name: epel-release
+      state: latest
+      update_cache: yes
+    register: result
+    until: result.rc == 0
+    retries: "{{ yum_retry_count }}"
+    when: ansible_os_family == 'RedHat' and "epel-release not in ansible_facts.packages"
+    tags: yb-prebuilt-ami
 
   - block:
     - name: Find all yum repos
@@ -156,7 +176,7 @@
     retries: "{{ yum_retry_count }}"
     when: ansible_os_family != 'RedHat' and "item not in ansible_facts.packages"
 
-  - name: Install linux packages we need on our YugaByte clusters on aarch64 architecture
+  - name: Install linux packages we need on our YugaByte clusters on RedHat aarch64 architecture
     become: yes
     become_method: sudo
     module_defaults:
@@ -170,6 +190,27 @@
     register: result
     until: result is succeeded
     retries: "{{ yum_retry_count }}"
-    when: ansible_architecture == 'aarch64' and "item not in ansible_facts.packages"
+    when: >
+      ansible_architecture == 'aarch64' and
+      "item not in ansible_facts.packages" and
+      ansible_os_family == 'RedHat'
 
+  - name: Install linux packages we need on our YugaByte clusters on Debian aarch64 architecture
+    become: yes
+    become_method: sudo
+    module_defaults:
+      yum:
+        lock_timeout: 600
+    package:
+      name: "{{ item }}"
+      state: latest
+    with_items:
+      - "{{ linux_packages + debian_aarch64_packages }}"
+    register: result
+    until: result is succeeded
+    retries: "{{ yum_retry_count }}"
+    when: >
+      ansible_architecture == 'aarch64' and
+      "item not in ansible_facts.packages" and
+      ansible_os_family == 'Debian'
   when: not air_gap

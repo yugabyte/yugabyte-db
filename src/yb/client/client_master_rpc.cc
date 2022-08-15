@@ -116,18 +116,21 @@ void ClientMasterRpcBase::Finished(const Status& status) {
       return;
     } else {
       // Operation deadline expired during this latest RPC.
-      new_status = new_status.CloneAndPrepend(
-          "RPC timed out after deadline expired");
+      new_status = STATUS_FORMAT(
+          TimedOut, "$0 timed out after deadline expired, passed $1 of $2",
+          *this, now - retrier().start(), retrier().deadline() - retrier().start());
       ResetMasterLeader(Retry::kFalse);
     }
   }
 
   if (new_status.IsNetworkError() || new_status.IsRemoteError()) {
-    LOG(WARNING) << ToString() << ": Encountered a network error from the Master("
-                 << client_data_->leader_master_hostport().ToString() << "): "
-                 << new_status.ToString() << ", retrying...";
-    ResetMasterLeader(Retry::kTrue);
-    return;
+    if (rpc::RpcError(new_status) != rpc::ErrorStatusPB::ERROR_NO_SUCH_METHOD) {
+      LOG(WARNING) << ToString() << ": Encountered a network error from the Master("
+                   << client_data_->leader_master_hostport().ToString()
+                   << "): " << new_status.ToString() << ", retrying...";
+      ResetMasterLeader(Retry::kTrue);
+      return;
+    }
   }
 
   if (ShouldRetry(new_status)) {

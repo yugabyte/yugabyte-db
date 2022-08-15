@@ -179,7 +179,7 @@ struct LeaderTabletPeer {
     return !peer;
   }
 
-  CHECKED_STATUS FillTerm();
+  Status FillTerm();
   void FillTabletPeer(TabletPeerTablet source);
 };
 
@@ -207,12 +207,12 @@ LeaderTabletPeer LookupLeaderTabletOrRespond(
   return *result;
 }
 
-CHECKED_STATUS CheckPeerIsLeader(const tablet::TabletPeer& tablet_peer);
+Status CheckPeerIsLeader(const tablet::TabletPeer& tablet_peer);
 
 // Checks if the peer is ready for servicing IOs.
 // allow_split_tablet specifies whether to reject requests to tablets which have been already
 // split.
-CHECKED_STATUS CheckPeerIsReady(
+Status CheckPeerIsReady(
     const tablet::TabletPeer& tablet_peer, AllowSplitTablet allow_split_tablet);
 
 Result<std::shared_ptr<tablet::AbstractTablet>> GetTablet(
@@ -220,7 +220,7 @@ Result<std::shared_ptr<tablet::AbstractTablet>> GetTablet(
     tablet::TabletPeerPtr tablet_peer, YBConsistencyLevel consistency_level,
     AllowSplitTablet allow_split_tablet);
 
-CHECKED_STATUS CheckWriteThrottling(double score, tablet::TabletPeer* tablet_peer);
+Status CheckWriteThrottling(double score, tablet::TabletPeer* tablet_peer);
 
 }  // namespace tserver
 }  // namespace yb

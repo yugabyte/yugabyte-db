@@ -2136,14 +2136,14 @@ begin
 	return 1;
 end$$ language plpgsql;
 select trap_foreign_key(1);
- trap_foreign_key 
+ trap_foreign_key
 ------------------
                 1
 (1 row)
 
 select trap_foreign_key(2);	-- detects FK violation
 NOTICE:  caught foreign_key_violation
- trap_foreign_key 
+ trap_foreign_key
 ------------------
                 0
 (1 row)
@@ -2151,7 +2151,7 @@ NOTICE:  caught foreign_key_violation
 begin;
   set constraints all deferred;
   select trap_foreign_key(2);	-- should not detect FK violation
- trap_foreign_key 
+ trap_foreign_key
 ------------------
                 1
 (1 row)
@@ -2163,7 +2163,7 @@ DETAIL:  Key (f1)=(2) is not present in table "master".
   rollback to x;
   select trap_foreign_key_2();  -- detects FK violation
 NOTICE:  caught foreign_key_violation
- trap_foreign_key_2 
+ trap_foreign_key_2
 --------------------
                   0
 (1 row)
@@ -4364,7 +4364,7 @@ CONTEXT:  SQL function "error1" statement 1
 PL/pgSQL function error2(text) line 3 at RETURN
 ROLLBACK TO a;
 select error2('public.stuffs');
- error2 
+ error2
 --------
  stuffs
 (1 row)
@@ -4408,7 +4408,7 @@ select cast_invoker(20150718);
 
 savepoint s1;
 select cast_invoker(20150718);
- cast_invoker 
+ cast_invoker
 --------------
  07-18-2015
 (1 row)
@@ -4419,13 +4419,13 @@ CONTEXT:  SQL function "sql_to_date" statement 1
 PL/pgSQL function cast_invoker(integer) while casting return value to function's return type
 rollback to savepoint s1;
 select cast_invoker(20150719);
- cast_invoker 
+ cast_invoker
 --------------
  07-19-2015
 (1 row)
 
 select cast_invoker(20150720);
- cast_invoker 
+ cast_invoker
 --------------
  07-20-2015
 (1 row)
@@ -5664,3 +5664,24 @@ END; $$ LANGUAGE plpgsql;
 ERROR:  "x" is not a scalar variable
 LINE 3:   GET DIAGNOSTICS x = ROW_COUNT;
                           ^
+-- inner COMMIT with output arguments
+CREATE PROCEDURE test_proc7c(x int, INOUT a int, INOUT b numeric)
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  a := x / 10;
+  b := x / 2;
+  COMMIT;
+END;
+$$;
+CREATE PROCEDURE test_proc7cc(_x int)
+LANGUAGE plpgsql
+AS $$
+DECLARE _a int; _b numeric;
+BEGIN
+  CALL test_proc7c(_x, _a, _b);
+  RAISE NOTICE '_x: %,_a: %, _b: %', _x, _a, _b;
+END
+$$;
+CALL test_proc7cc(10);
+NOTICE:  _x: 10,_a: 1, _b: 5

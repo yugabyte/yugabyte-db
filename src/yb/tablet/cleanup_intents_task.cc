@@ -33,8 +33,11 @@ void CleanupIntentsTask::Prepare(std::shared_ptr<CleanupIntentsTask> self) {
 
 void CleanupIntentsTask::Run() {
   RemoveIntentsData data;
-  participant_context_.GetLastReplicatedData(&data);
-  WARN_NOT_OK(applier_.RemoveIntents(data, id_),
+  auto status = participant_context_.GetLastReplicatedData(&data);
+  if (status.ok()) {
+    status = applier_.RemoveIntents(data, id_);
+  }
+  WARN_NOT_OK(status,
               Format("Failed to remove intents of possible completed transaction $0", id_));
   VLOG(2) << "Cleaned intents for: " << id_;
 }

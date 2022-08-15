@@ -65,7 +65,10 @@
 #include "yb/gutil/strings/human_readable.h"
 #include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/substitute.h"
+#include "yb/rpc/secure_stream.h"
 #include "yb/server/pprof-path-handlers.h"
+#include "yb/server/server_base.h"
+#include "yb/server/secure.h"
 #include "yb/server/webserver.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/format.h"
@@ -85,6 +88,8 @@ DEFINE_uint64(web_log_bytes, 1024 * 1024,
 DECLARE_int32(max_tables_metrics_breakdowns);
 TAG_FLAG(web_log_bytes, advanced);
 TAG_FLAG(web_log_bytes, runtime);
+
+DECLARE_bool(TEST_mini_cluster_mode);
 
 namespace yb {
 
@@ -152,7 +157,7 @@ static void LogsHandler(const Webserver::WebRequest& req, Webserver::WebResponse
   }
 }
 
-// Registered to handle "/flags", and prints out all command-line flags and their values
+// Registered to handle "/varz", and prints out all command-line flags and their values.
 static void FlagsHandler(const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
   std::stringstream *output = &resp->output;
   bool as_text = (req.parsed_args.find("raw") != req.parsed_args.end());
@@ -161,11 +166,37 @@ static void FlagsHandler(const Webserver::WebRequest& req, Webserver::WebRespons
   (*output) << tags.pre_tag;
   std::vector<google::CommandLineFlagInfo> flag_infos;
   google::GetAllFlags(&flag_infos);
+
+  if (FLAGS_TEST_mini_cluster_mode) {
+    const string* custom_varz_ptr = FindOrNull(req.parsed_args, "TEST_custom_varz");
+    if (custom_varz_ptr != nullptr) {
+      map<string, string> varz;
+      SplitStringToMapUsing(*custom_varz_ptr, "\n", &varz);
+
+      // Replace values for existing flags.
+      for (auto& flag_info : flag_infos) {
+        auto varz_it = varz.find(flag_info.name);
+        if (varz_it != varz.end()) {
+          flag_info.current_value  = varz_it->second;
+          varz.erase(varz_it);
+        }
+      }
+
+      // Add new flags.
+      for (auto const& flag : varz) {
+        google::CommandLineFlagInfo flag_info;
+        flag_info.name = flag.first;
+        flag_info.current_value = flag.second;
+        flag_infos.push_back(flag_info);
+      }
+    }
+  }
+
   for (const auto& flag_info : flag_infos) {
     (*output) << "--" << flag_info.name << "=";
-    std::unordered_set<string> tags;
+    std::unordered_set<FlagTag> tags;
     GetFlagTags(flag_info.name, &tags);
-    if (PREDICT_FALSE(ContainsKey(tags, "sensitive_info"))) {
+    if (PREDICT_FALSE(ContainsKey(tags, FlagTag::kSensitive_info))) {
       (*output) << "****" << endl;
     } else {
       (*output) << flag_info.current_value << endl;
@@ -243,15 +274,32 @@ static void MemTrackersHandler(const Webserver::WebRequest& req, Webserver::WebR
   *output << "</table>\n";
 }
 
-static MetricLevel MetricLevelFromName(const std::string& level) {
+static Result<MetricLevel> MetricLevelFromName(const std::string& level) {
   if (level == "debug") {
     return MetricLevel::kDebug;
   } else if (level == "info") {
     return MetricLevel::kInfo;
   } else if (level == "warn") {
     return MetricLevel::kWarn;
+  }
+  return STATUS(NotSupported, Substitute("Unknown Metric Level $0", level));
+}
+
+static Result<AggregationMetricLevel> AggregationMetricLevelFromName(const std::string& str) {
+  if (str == "server") {
+    return AggregationMetricLevel::kServer;
+  } else if (str == "table") {
+    return AggregationMetricLevel::kTable;
+  }
+  return STATUS(NotSupported, Substitute("Unknown Aggregation Metric Level $0", str));
+}
+
+template<class Value>
+void SetParsedValue(Value* v, const Result<Value>& result) {
+  if (result.ok()) {
+    *v = *result;
   } else {
-    return MetricLevel::kDebug;
+    LOG(WARNING) << "Can't parse option: " << result.status();
   }
 }
 
@@ -280,15 +328,17 @@ static void ParseRequestOptions(const Webserver::WebRequest& req,
     json_opts->include_schema_info = ParseLeadingBoolValue(arg.c_str(), false);
 
     arg = FindWithDefault(req.parsed_args, "level", "debug");
-    json_opts->level = MetricLevelFromName(arg);
+    SetParsedValue(&json_opts->level, MetricLevelFromName(arg));
   }
 
   if (promethus_opts) {
-    arg = FindWithDefault(req.parsed_args, "level", "debug");
-    promethus_opts->level = MetricLevelFromName(arg);
+    SetParsedValue(&promethus_opts->level,
+                   MetricLevelFromName(FindWithDefault(req.parsed_args, "level", "debug")));
     promethus_opts->max_tables_metrics_breakdowns = std::stoi(FindWithDefault(req.parsed_args,
       "max_tables_metrics_breakdowns", std::to_string(FLAGS_max_tables_metrics_breakdowns)));
     promethus_opts->priority_regex = FindWithDefault(req.parsed_args, "priority_regex", "");
+    SetParsedValue(&promethus_opts->aggregation_level, AggregationMetricLevelFromName(
+      FindWithDefault(req.parsed_args, "aggregation_level", "table")));
   }
 
   if (json_mode) {
@@ -319,7 +369,7 @@ static void WriteMetricsForPrometheus(const MetricRegistry* const metrics,
   ParseRequestOptions(req, &requested_metrics, &opts);
 
   std::stringstream *output = &resp->output;
-  PrometheusWriter writer(output);
+  PrometheusWriter writer(output, opts.aggregation_level);
   WARN_NOT_OK(metrics->WriteForPrometheus(&writer, requested_metrics, opts),
               "Couldn't write text metrics for Prometheus");
 }
@@ -396,11 +446,12 @@ static void PathUsageHandler(FsManager* fsmanager,
       "<th>Total Space</th></tr>\n";
 
   Env* env = fsmanager->env();
-  for (const auto& path : fsmanager->GetDataRootDirs()) {
+  for (const auto& path : fsmanager->GetFsRootDirs()) {
     const auto stats = env->GetFilesystemStatsBytes(path);
     if (!stats.ok()) {
       LOG(WARNING) << stats.status();
-      *output << Format("  <tr><td>$0</td><td>NA</td><td>NA</td></tr>\n", path);
+      *output << Format("  <tr><td>$0</td><td colspan=\"2\">$1</td></tr>\n",
+                        path, stats.status().message());
       continue;
     }
     const std::string used_space_str = HumanReadableNumBytes::ToString(stats->used_space);
@@ -414,6 +465,49 @@ static void PathUsageHandler(FsManager* fsmanager,
 void RegisterPathUsageHandler(Webserver* webserver, FsManager* fsmanager) {
   Webserver::PathHandlerCallback callback = std::bind(PathUsageHandler, fsmanager, _1, _2);
   webserver->RegisterPathHandler("/drives", "Drives", callback, true, false);
+}
+
+// Registered to handle "/tls", and prints out certificate details
+static void CertificateHandler(server::RpcServerBase* server,
+                             const Webserver::WebRequest& req,
+                             Webserver::WebResponse* resp) {
+  std::stringstream *output = &resp->output;
+  bool as_text = (req.parsed_args.find("raw") != req.parsed_args.end());
+  Tags tags(as_text);
+  (*output) << tags.header << "TLS Settings" << tags.end_header << endl;
+
+  (*output) << tags.pre_tag;
+
+  (*output) << "Node to node encryption enabled: "
+      << (yb::server::IsNodeToNodeEncryptionEnabled() ? "true" : "false");
+
+  (*output) << tags.line_break << "Client to server encryption enabled: "
+      << (yb::server::IsClientToServerEncryptionEnabled() ? "true" : "false");
+
+  (*output) << tags.line_break << "Allow insecure connections: "
+      << (yb::rpc::AllowInsecureConnections() ? "on" : "off");
+
+  (*output) << tags.line_break << "SSL Protocols: " << yb::rpc::GetSSLProtocols();
+
+  (*output) << tags.line_break << "Cipher list: " << yb::rpc::GetCipherList();
+
+  (*output) << tags.line_break << "Ciphersuites: " << yb::rpc::GetCipherSuites();
+
+  (*output) << tags.end_pre_tag;
+
+  auto details = server->GetCertificateDetails();
+
+  if(!details.empty()) {
+    (*output) << tags.header << "Certificate details" << tags.end_header << endl;
+
+    (*output) << tags.pre_tag << details << tags.end_pre_tag << endl;
+  }
+}
+
+void RegisterTlsHandler(Webserver* webserver, server::RpcServerBase* server) {
+  Webserver::PathHandlerCallback callback = std::bind(CertificateHandler, server, _1, _2);
+  webserver->RegisterPathHandler("/tls", "TLS", callback,
+    true /*is_styled*/, false /*is_on_nav_bar*/);
 }
 
 } // namespace yb

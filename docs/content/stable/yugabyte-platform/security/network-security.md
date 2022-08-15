@@ -4,17 +4,16 @@ headerTitle: Network security
 linkTitle: Network security
 description: Network security
 menu:
-  stable:
+  stable_yugabyte-platform:
     parent: security
     identifier: network-security
     weight: 30
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
-To ensure that Yugabyte Platform YugabyteDB runs in a trusted network environment you can restrict machine and port access. Here are some steps to ensure that:
+You need to ensure that YugabyteDB Anywhere and the database run in a trusted network environment. You should restrict machine and port access, based on the following guidelines:
 
-- Servers running YugabyteDB services are directly accessible only by the Yugabyte Platform, servers running the application, and database administrators.
-- Only Yugabyte Platform and servers running applications can connect to YugabyteDB services on the RPC ports. Access to the YugabyteDB ports should be denied to everybody else.
+- Servers running YugabyteDB services are directly accessible only by YugabyteDB Anywhere, servers running the application, and database administrators.
+- Only YugabyteDB Anywhere and servers running applications can connect to YugabyteDB services on the RPC ports. Access to the YugabyteDB ports should be denied to everybody else.
 
-Check the list of [default ports](../../../reference/configuration/default-ports) that need to be opened on the YugabyteDB servers for the Yugabyte Platform and other applications to connect.
+For information on ports that need to be opened on the YugabyteDB servers for YugabyteDB Anywhere and other applications to connect, see [Default ports](../../../reference/configuration/default-ports).

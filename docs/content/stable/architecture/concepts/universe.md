@@ -1,5 +1,5 @@
 ---
-title: Universe 
+title: Universe
 headerTitle: Universe
 linkTitle: Universe
 description: Learn about the YugabyteDB universe (or cluster).
@@ -8,8 +8,7 @@ menu:
     identifier: architecture-concepts-universe
     parent: key-concepts
     weight: 1122
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 A YugabyteDB universe is a group of nodes (VMs, physical machines, or containers) that collectively function as a resilient and scalable distributed database.
@@ -56,13 +55,13 @@ These serve different purposes as described below.
 
 The **YB-TServer** (aka the *YugabyteDB Tablet Server*) service is responsible for hosting/serving user data (for example, tables). They deal with all the user queries.
 
-For details, see [YB-TServer](../yb-tserver).
+For details, see [YB-TServer](../yb-tserver/).
 
 ### YB-Master
 
 The **YB-Master** (aka the *YugabyteDB Master Server*) service is responsible for keeping system metadata, coordinating system-wide operations, such as create/alter/drop tables, and initiating maintenance operations such as load balancing.
 
-For details, see [YB-Master](../yb-master).
+For details, see [YB-Master](../yb-master/).
 
 Below is an illustration of a simple 4-node YugabyteDB universe:
 
@@ -70,10 +69,10 @@ Below is an illustration of a simple 4-node YugabyteDB universe:
 
 ## Universe vs cluster
 
-A YugabyteDB universe comprises of exactly one primary cluster and zero or more read replica clusters. 
+A YugabyteDB universe comprises of exactly one primary cluster and zero or more read replica clusters.
 
 - A primary cluster can perform both writes and reads. Replication between nodes in a primary cluster is performed synchronously.
 
-- Read replica clusters can perform only reads. Writes sent to read replica clusters get automatically rerouted to the primary cluster for the universe. These clusters help in powering reads in regions that are far away from the primary cluster with timeline-consistent data. This ensures low latency reads for geo-distributed applications. Data is brought into the read replica clusters through asynchronous replication from the primary cluster. In other words, nodes in a read replica cluster act as Raft observers that do not participate in the write path involing the Raft leader and Raft followers present in the primary cluster.
+- Read replica clusters can perform only reads. Writes sent to read replica clusters get automatically rerouted to the primary cluster for the universe. These clusters help in powering reads in regions that are far away from the primary cluster with timeline-consistent data. This ensures low latency reads for geo-distributed applications. Data is brought into the read replica clusters through asynchronous replication from the primary cluster. In other words, nodes in a read replica cluster act as Raft observers that do not participate in the write path involving the Raft leader and Raft followers present in the primary cluster.
 
 For more information about read replica clusters, see [read replicas](../../docdb-replication/read-replicas/).

@@ -183,7 +183,7 @@ public class AlertConfiguration extends Model {
   @ApiModelProperty(
       value = "Duration in seconds, while condition is met to raise an alert",
       accessMode = READ_WRITE)
-  private Integer durationSec = 15;
+  private Integer durationSec = 0;
 
   @NotNull
   @ApiModelProperty(value = "Is configured alerts raised or not", accessMode = READ_WRITE)

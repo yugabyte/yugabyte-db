@@ -1,0 +1,85 @@
+#!/usr/bin/env bash
+#
+# Copyright 2022 YugaByte, Inc. and Contributors
+#
+# Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
+# may not use this file except in compliance with the License. You
+# may obtain a copy of the License at
+#
+# https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
+#
+# This script generates the Ybanystaller go linux binary (ybanystaller) in the required destination.
+# Might be modified in the future to also generate relevant bundled dependencies such as
+# Postgres and Nginx.
+
+set -euo pipefail
+
+print_help() {
+  cat <<-EOT
+Generates the Yba-installer go binary executable (yba-installer) in destination.
+Binary necessary for a complete automated install.
+Usage: ${0##*/} <options>
+Options:
+  -h, --help
+    Show usage.
+  -d, --destination
+    Directory into which the Yba-installer package should be copied.
+EOT
+}
+
+export DEVOPS_HOME="${BASH_SOURCE%/*}"/../devops
+export YB_MANAGED_DEVOPS_USE_PYTHON3=1
+
+. "$DEVOPS_HOME/bin/"/common.sh
+
+readonly yba_installer_home=$( cd "${BASH_SOURCE%/*}" && pwd )
+
+destination=""
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -h|--help)
+      print_help
+      exit 0
+    ;;
+    -d|--destination)
+      destination="$2"
+      shift
+  esac
+  shift
+done
+
+# verify that the destination directory exists
+if [[ ! -d $destination ]]; then
+  fatal "No destination directory found ('$destination')"
+fi
+
+# Create the go binary at release time (now supported by
+# all Jenkins build images. Change directory into the
+# yba-installer directory, run go mod tidy and go build
+# to construct the binary, and rename the binary
+# appropriately (also move in the other files required
+# for the binary to operate, such as the configuration
+# ymls and the input json schema).
+
+# Will modify when merging with other diffs to include the
+# updated
+BINARY_NAME="yba-ctl"
+CONFIG_NGINX="yba-installer-nginx.yml"
+CONFIG_PLATFORM="yba-installer-platform.yml"
+CONFIG_PROM="yba-installer-prometheus.yml"
+CONFIG_INPUT_FILE_NAME="yba-installer-input.yml"
+JSON_SCHEMA_FILE="yba-installer-input-json-schema.json"
+
+#Need underscore in the PACKAGE_NAME for proper file parsing.
+PACKAGE_NAME="yba_installer.tar.gz"
+cd $yba_installer_home
+go mod tidy
+go build -o $BINARY_NAME
+
+tar -czvf $PACKAGE_NAME $BINARY_NAME $CONFIG_NGINX $CONFIG_PLATFORM \
+$CONFIG_PROM $CONFIG_INPUT_FILE_NAME $JSON_SCHEMA_FILE
+
+command="--package $PACKAGE_NAME --destination $destination"
+activate_virtualenv
+"$( dirname "${BASH_SOURCE[0]}" )"/yb_release.py $command

@@ -11,14 +11,12 @@ menu:
     identifier: session-audit-logging-1-ysql
     parent: audit-logging
     weight: 760
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/secure/audit-logging/audit-logging-ysql" class="nav-link active">
+    <a href="/preview/secure/audit-logging/audit-logging-ysql" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
@@ -110,7 +108,7 @@ You should see the following output in the logs:
 
 
 ```
-2020-11-09 19:19:09.262 UTC [3710] LOG:  AUDIT: SESSION,1,1,DDL,CREATE 
+2020-11-09 19:19:09.262 UTC [3710] LOG:  AUDIT: SESSION,1,1,DDL,CREATE
 TABLE,TABLE,public.account,"create table account
         (
             id int,

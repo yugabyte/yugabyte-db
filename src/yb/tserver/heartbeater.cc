@@ -157,9 +157,9 @@ class Heartbeater::Thread {
   Status ConnectToMaster();
   int GetMinimumHeartbeatMillis() const;
   int GetMillisUntilNextHeartbeat() const;
-  CHECKED_STATUS DoHeartbeat();
-  CHECKED_STATUS TryHeartbeat();
-  CHECKED_STATUS SetupRegistration(master::TSRegistrationPB* reg);
+  Status DoHeartbeat();
+  Status TryHeartbeat();
+  Status SetupRegistration(master::TSRegistrationPB* reg);
   void SetupCommonField(master::TSToMasterCommonPB* common);
   bool IsCurrentThread() const;
 
@@ -419,6 +419,9 @@ Status Heartbeater::Thread::TryHeartbeat() {
   req.set_config_index(server_->GetCurrentMasterIndex());
   req.set_cluster_config_version(server_->cluster_config_version());
   req.set_rtt_us(heartbeat_rtt_.ToMicroseconds());
+  if (server_->has_faulty_drive()) {
+    req.set_faulty_drive(true);
+  }
 
   // Include the hybrid time of this tablet server in the heartbeat.
   auto* hybrid_clock = dynamic_cast<server::HybridClock*>(server_->Clock());
@@ -495,6 +498,12 @@ Status Heartbeater::Thread::TryHeartbeat() {
           SetConfigVersionAndConsumerRegistry(resp.cluster_config_version(), nullptr));
     }
 
+    // Check whether the cluster is a producer of a CDC stream.
+    if (resp.has_xcluster_enabled_on_producer() &&
+        resp.xcluster_enabled_on_producer()) {
+      RETURN_NOT_OK(static_cast<enterprise::TabletServer*>(server_)->SetCDCServiceEnabled());
+    }
+
     // At this point we know resp is a successful heartbeat response from the master so set it as
     // the last heartbeat response. This invalidates resp so we should use last_hb_response_ instead
     // below (hence using the nested scope for resp until here).
@@ -525,22 +534,38 @@ Status Heartbeater::Thread::TryHeartbeat() {
   sending_full_report_ = sending_full_report_ && !all_processed;
 
   // Update the master's YSQL catalog version (i.e. if there were schema changes for YSQL objects).
-  if (last_hb_response_.has_ysql_catalog_version()) {
-    if (FLAGS_log_ysql_catalog_versions) {
-      VLOG_WITH_FUNC(1) << "got master catalog version: "
-                        << last_hb_response_.ysql_catalog_version()
-                        << ", breaking version: "
-                        << (last_hb_response_.has_ysql_last_breaking_catalog_version()
-                            ? Format("$1", last_hb_response_.ysql_last_breaking_catalog_version())
-                            : "(none)");
+  if (FLAGS_TEST_enable_db_catalog_version_mode) {
+    // We never expect rolling gflag change of --TEST_enable_db_catalog_version_mode. In per-db
+    // mode, we do not use ysql_catalog_version.
+    DCHECK(!last_hb_response_.has_ysql_catalog_version());
+    if (last_hb_response_.has_db_catalog_version_data()) {
+      if (FLAGS_log_ysql_catalog_versions) {
+        VLOG_WITH_FUNC(1) << "got master db catalog version data: "
+                          << last_hb_response_.db_catalog_version_data().ShortDebugString();
+      }
+      server_->SetYsqlDBCatalogVersions(last_hb_response_.db_catalog_version_data());
     }
-    if (last_hb_response_.has_ysql_last_breaking_catalog_version()) {
-      server_->SetYSQLCatalogVersion(last_hb_response_.ysql_catalog_version(),
-                                     last_hb_response_.ysql_last_breaking_catalog_version());
-    } else {
-      /* Assuming all changes are breaking if last breaking version not explicitly set. */
-      server_->SetYSQLCatalogVersion(last_hb_response_.ysql_catalog_version(),
-                                     last_hb_response_.ysql_catalog_version());
+  } else {
+    // We never expect rolling gflag change of --TEST_enable_db_catalog_version_mode. In
+    // non-per-db mode, we do not use db_catalog_version_data.
+    DCHECK(!last_hb_response_.has_db_catalog_version_data());
+    if (last_hb_response_.has_ysql_catalog_version()) {
+      if (FLAGS_log_ysql_catalog_versions) {
+        VLOG_WITH_FUNC(1) << "got master catalog version: "
+                          << last_hb_response_.ysql_catalog_version()
+                          << ", breaking version: "
+                          << (last_hb_response_.has_ysql_last_breaking_catalog_version()
+                              ? Format("$0", last_hb_response_.ysql_last_breaking_catalog_version())
+                              : "(none)");
+      }
+      if (last_hb_response_.has_ysql_last_breaking_catalog_version()) {
+        server_->SetYsqlCatalogVersion(last_hb_response_.ysql_catalog_version(),
+                                       last_hb_response_.ysql_last_breaking_catalog_version());
+      } else {
+        /* Assuming all changes are breaking if last breaking version not explicitly set. */
+        server_->SetYsqlCatalogVersion(last_hb_response_.ysql_catalog_version(),
+                                       last_hb_response_.ysql_catalog_version());
+      }
     }
   }
 

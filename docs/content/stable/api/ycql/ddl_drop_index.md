@@ -7,8 +7,7 @@ menu:
   stable:
     parent: api-cassandra
     weight: 1255
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis
@@ -53,4 +52,4 @@ ycqlsh:example> DROP INDEX users_by_name;
 ## See also
 
 - [`CREATE TABLE`](../ddl_create_table)
-- [`CREATE INDEX`](../ddl_create_index)
+- [`CREATE INDEX`](../ddl_create_index/)

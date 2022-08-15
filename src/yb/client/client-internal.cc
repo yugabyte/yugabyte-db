@@ -55,6 +55,7 @@
 
 #include "yb/common/index.h"
 #include "yb/common/redis_constants_common.h"
+#include "yb/common/placement_info.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
 
@@ -92,6 +93,7 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
+#include "yb/util/string_util.h"
 
 using namespace std::literals;
 
@@ -126,6 +128,7 @@ using rpc::RpcController;
 namespace client {
 
 using internal::GetTableSchemaRpc;
+using internal::GetTablegroupSchemaRpc;
 using internal::GetColocatedTabletSchemaRpc;
 using internal::RemoteTablet;
 using internal::RemoteTabletServer;
@@ -259,6 +262,7 @@ YB_CLIENT_SPECIALIZE_SIMPLE(DeleteTable);
 YB_CLIENT_SPECIALIZE_SIMPLE(DeleteTablegroup);
 YB_CLIENT_SPECIALIZE_SIMPLE(DeleteUDType);
 YB_CLIENT_SPECIALIZE_SIMPLE(FlushTables);
+YB_CLIENT_SPECIALIZE_SIMPLE(GetTablegroupSchema);
 YB_CLIENT_SPECIALIZE_SIMPLE(GetColocatedTabletSchema);
 YB_CLIENT_SPECIALIZE_SIMPLE(GetMasterClusterConfig);
 YB_CLIENT_SPECIALIZE_SIMPLE(GetNamespaceInfo);
@@ -277,6 +281,7 @@ YB_CLIENT_SPECIALIZE_SIMPLE(ListTables);
 YB_CLIENT_SPECIALIZE_SIMPLE(ListUDTypes);
 YB_CLIENT_SPECIALIZE_SIMPLE(TruncateTable);
 YB_CLIENT_SPECIALIZE_SIMPLE(ValidateReplicationInfo);
+YB_CLIENT_SPECIALIZE_SIMPLE(CheckIfPitrActive);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Admin, CreateTransactionStatusTable);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, GetTableLocations);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, GetTabletLocations);
@@ -285,6 +290,7 @@ YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, GetYsqlCatalogConfig);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, RedisConfigGet);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, RedisConfigSet);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, ReservePgsqlOids);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Cluster, GetAutoFlagsConfig);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Cluster, IsLoadBalanced);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Cluster, IsLoadBalancerIdle);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Cluster, ListLiveTabletServers);
@@ -302,12 +308,15 @@ YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, GetCDCDBStreamInfo);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, GetCDCStream);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, ListCDCStreams);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, UpdateCDCStream);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, IsBootstrapRequired);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, GetUDTypeMetadata);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, UpdateConsumerOnProducerSplit);
 
 YBClient::Data::Data()
     : leader_master_rpc_(rpcs_.InvalidHandle()),
       latest_observed_hybrid_time_(YBClient::kNoHybridTime),
-      id_(ClientId::GenerateRandom()) {
+      id_(ClientId::GenerateRandom()),
+      log_prefix_(Format("Client $0: ", id_)) {
   for(auto& cache : tserver_count_cached_) {
     cache.store(0, std::memory_order_relaxed);
   }
@@ -363,24 +372,17 @@ RemoteTabletServer* YBClient::Data::SelectTServer(RemoteTablet* rt,
         }
       } else if (selection == CLOSEST_REPLICA) {
         // Choose the closest replica.
-        bool local_zone_ts = false;
+        LocalityLevel best_locality_level = LocalityLevel::kNone;
         for (RemoteTabletServer* rts : filtered) {
           if (IsTabletServerLocal(*rts)) {
             ret = rts;
             // If the tserver is local, we are done here.
             break;
-          } else if (cloud_info_pb_.has_placement_region() &&
-                     rts->cloud_info().has_placement_region() &&
-                     cloud_info_pb_.placement_region() == rts->cloud_info().placement_region()) {
-            if (cloud_info_pb_.has_placement_zone() && rts->cloud_info().has_placement_zone() &&
-                cloud_info_pb_.placement_zone() == rts->cloud_info().placement_zone()) {
-              // Note down that we have found a zone local tserver and continue looking for node
-              // local tserver.
+          } else {
+            auto locality_level = rts->LocalityLevelWith(cloud_info_pb_);
+            if (locality_level > best_locality_level) {
               ret = rts;
-              local_zone_ts = true;
-            } else if (!local_zone_ts) {
-              // Look for a region local tserver only if we haven't found a zone local tserver yet.
-              ret = rts;
+              best_locality_level = locality_level;
             }
           }
         }
@@ -401,14 +403,14 @@ RemoteTabletServer* YBClient::Data::SelectTServer(RemoteTablet* rt,
     LOG(FATAL) << "Selected replica is not the local tablet server";
   }
   if (PREDICT_FALSE(!FLAGS_TEST_assert_tablet_server_select_is_in_zone.empty())) {
-    if (ret->cloud_info().placement_zone() != FLAGS_TEST_assert_tablet_server_select_is_in_zone) {
+    if (ret->TEST_PlacementZone() != FLAGS_TEST_assert_tablet_server_select_is_in_zone) {
       string msg = Substitute("\nZone placement:\nNumber of candidates: $0\n", candidates->size());
       for (RemoteTabletServer* rts : *candidates) {
         msg += Substitute("Replica: $0 in zone $1\n",
-                          rts->ToString(), rts->cloud_info().placement_zone());
+                          rts->ToString(), rts->TEST_PlacementZone());
       }
       LOG(FATAL) << "Selected replica " << ret->ToString()
-                 << " is in zone " << ret->cloud_info().placement_zone()
+                 << " is in zone " << ret->TEST_PlacementZone()
                  << " instead of the expected zone "
                  << FLAGS_TEST_assert_tablet_server_select_is_in_zone
                  << " Cloud info: " << cloud_info_pb_.ShortDebugString()
@@ -497,11 +499,11 @@ Status YBClient::Data::CreateTable(YBClient* client,
           GetTableSchema(client, table_name, deadline, &info),
           Substitute("Unable to check the schema of table $0", table_name.ToString()));
       if (!schema.Equals(info.schema)) {
-         string msg = Format("Table $0 already exists with a different "
-                             "schema. Requested schema was: $1, actual schema is: $2",
-                             table_name,
-                             internal::GetSchema(schema),
-                             internal::GetSchema(info.schema));
+        string msg = Format("Table $0 already exists with a different "
+                            "schema. Requested schema was: $1, actual schema is: $2",
+                            table_name,
+                            internal::GetSchema(schema),
+                            internal::GetSchema(info.schema));
         LOG(ERROR) << msg;
         return STATUS(AlreadyPresent, msg);
       }
@@ -743,6 +745,123 @@ Status YBClient::Data::AlterNamespace(YBClient* client,
       deadline, req, &resp, "AlterNamespace", &master::MasterDdlProxy::AlterNamespaceAsync);
 }
 
+Status YBClient::Data::CreateTablegroup(YBClient* client,
+                                        CoarseTimePoint deadline,
+                                        const std::string& namespace_name,
+                                        const std::string& namespace_id,
+                                        const std::string& tablegroup_id,
+                                        const std::string& tablespace_id) {
+  CreateTablegroupRequestPB req;
+  CreateTablegroupResponsePB resp;
+  req.set_id(tablegroup_id);
+  req.set_namespace_id(namespace_id);
+  req.set_namespace_name(namespace_name);
+
+  if (!tablespace_id.empty()) {
+    req.set_tablespace_id(tablespace_id);
+  }
+
+  int attempts = 0;
+  RETURN_NOT_OK(SyncLeaderMasterRpc(
+      deadline, req, &resp, "CreateTablegroup",
+      &master::MasterDdlProxy::CreateTablegroupAsync, &attempts));
+
+  // This case should not happen but need to validate contents since fields are optional in PB.
+  SCHECK(resp.has_parent_table_id() && resp.has_parent_table_name(),
+         InternalError,
+         "Parent table information not found in CREATE TABLEGROUP response");
+
+  const YBTableName table_name(YQL_DATABASE_PGSQL, namespace_name, resp.parent_table_name());
+
+  // Handle special cases based on resp.error().
+  if (resp.has_error()) {
+    if (resp.error().code() == master::MasterErrorPB::OBJECT_ALREADY_PRESENT && attempts > 1) {
+      // If the table already exists and the number of attempts is >
+      // 1, then it means we may have succeeded in creating the
+      // table, but client didn't receive the successful
+      // response (e.g., due to failure before the successful
+      // response could be sent back, or due to a I/O pause or a
+      // network blip leading to a timeout, etc...)
+      YBTableInfo info;
+
+      // A fix for https://yugabyte.atlassian.net/browse/ENG-529:
+      // If we've been retrying table creation, and the table is now in the process is being
+      // created, we can sometimes see an empty schema. Wait until the table is fully created
+      // before we compare the schema.
+      RETURN_NOT_OK_PREPEND(
+          WaitForCreateTableToFinish(client, table_name, resp.parent_table_id(), deadline),
+          strings::Substitute("Failed waiting for a parent table $0 to finish being created",
+                              table_name.ToString()));
+
+      RETURN_NOT_OK_PREPEND(
+          GetTableSchema(client, table_name, deadline, &info),
+          strings::Substitute("Unable to check the schema of parent table $0",
+                              table_name.ToString()));
+
+      YBSchemaBuilder schemaBuilder;
+      schemaBuilder.AddColumn("parent_column")->Type(BINARY)->PrimaryKey()->NotNull();
+      YBSchema ybschema;
+      CHECK_OK(schemaBuilder.Build(&ybschema));
+
+      if (!ybschema.Equals(info.schema)) {
+        string msg = Format("Table $0 already exists with a different "
+                            "schema. Requested schema was: $1, actual schema is: $2",
+                            table_name,
+                            internal::GetSchema(ybschema),
+                            internal::GetSchema(info.schema));
+        LOG(ERROR) << msg;
+        return STATUS(AlreadyPresent, msg);
+      }
+
+      return Status::OK();
+    }
+
+    return StatusFromPB(resp.error().status());
+  }
+
+  RETURN_NOT_OK(WaitForCreateTableToFinish(client, table_name, resp.parent_table_id(), deadline));
+
+  return Status::OK();
+}
+
+Status YBClient::Data::DeleteTablegroup(YBClient* client,
+                                        CoarseTimePoint deadline,
+                                        const std::string& tablegroup_id) {
+  DeleteTablegroupRequestPB req;
+  DeleteTablegroupResponsePB resp;
+  req.set_id(tablegroup_id);
+
+  int attempts = 0;
+  RETURN_NOT_OK(SyncLeaderMasterRpc(
+      deadline, req, &resp, "DeleteTablegroup",
+      &master::MasterDdlProxy::DeleteTablegroupAsync, &attempts));
+
+  // This case should not happen but need to validate contents since fields are optional in PB.
+  SCHECK(resp.has_parent_table_id(),
+         InternalError,
+         "Parent table information not found in DELETE TABLEGROUP response");
+
+  // Handle special cases based on resp.error().
+  if (resp.has_error()) {
+    if (resp.error().code() == master::MasterErrorPB::OBJECT_NOT_FOUND && attempts > 1) {
+      // A prior attempt to delete the table has succeeded, but
+      // appeared as a failure to the client due to, e.g., an I/O or
+      // network issue.
+      LOG(INFO) << "Tablegroup " << tablegroup_id << " is already deleted.";
+      return Status::OK();
+    }
+
+    return StatusFromPB(resp.error().status());
+  }
+
+  // Spin until the table is deleted. Currently only waits till the table reaches DELETING state
+  // See github issue #5290
+  RETURN_NOT_OK(WaitForDeleteTableToFinish(client, resp.parent_table_id(), deadline));
+
+  LOG(INFO) << "Deleted tablegroup " << tablegroup_id;
+  return Status::OK();
+}
+
 Status YBClient::Data::BackfillIndex(YBClient* client,
                                      const YBTableName& index_name,
                                      const TableId& index_id,
@@ -957,7 +1076,7 @@ Status YBClient::Data::WaitForAlterTableToFinish(YBClient* client,
               alter_name, table_id, _1, _2));
 }
 
-CHECKED_STATUS YBClient::Data::FlushTablesHelper(YBClient* client,
+Status YBClient::Data::FlushTablesHelper(YBClient* client,
                                                 const CoarseTimePoint deadline,
                                                 const FlushTablesRequestPB& req) {
   FlushTablesResponsePB resp;
@@ -977,7 +1096,7 @@ CHECKED_STATUS YBClient::Data::FlushTablesHelper(YBClient* client,
   return Status::OK();
 }
 
-CHECKED_STATUS YBClient::Data::FlushTables(YBClient* client,
+Status YBClient::Data::FlushTables(YBClient* client,
                                            const vector<YBTableName>& table_names,
                                            bool add_indexes,
                                            const CoarseTimePoint deadline,
@@ -992,7 +1111,7 @@ CHECKED_STATUS YBClient::Data::FlushTables(YBClient* client,
   return FlushTablesHelper(client, deadline, req);
 }
 
-CHECKED_STATUS YBClient::Data::FlushTables(YBClient* client,
+Status YBClient::Data::FlushTables(YBClient* client,
                                            const vector<TableId>& table_ids,
                                            bool add_indexes,
                                            const CoarseTimePoint deadline,
@@ -1032,68 +1151,10 @@ Status YBClient::Data::WaitForFlushTableToFinish(YBClient* client,
       std::bind(&YBClient::Data::IsFlushTableInProgress, this, client, flush_id, _1, _2));
 }
 
-Status YBClient::Data::InitLocalHostNames() {
-  std::vector<IpAddress> addresses;
-  auto status = GetLocalAddresses(&addresses, AddressFilter::EXTERNAL);
-  if (!status.ok()) {
-    LOG(WARNING) << "Failed to enumerate network interfaces" << status.ToString();
-  }
-
-  string hostname;
-  status = GetFQDN(&hostname);
-
-  if (status.ok()) {
-    // We don't want to consider 'localhost' to be local - otherwise if a misconfigured
-    // server reports its own name as localhost, all clients will hammer it.
-    if (hostname != "localhost" && hostname != "localhost.localdomain") {
-      local_host_names_.insert(hostname);
-      VLOG(1) << "Considering host " << hostname << " local";
-    }
-
-    std::vector<Endpoint> endpoints;
-    status = HostPort(hostname, 0).ResolveAddresses(&endpoints);
-    if (!status.ok()) {
-      const auto message = Substitute("Could not resolve local host name '$0'", hostname);
-      LOG(WARNING) << message;
-      if (addresses.empty()) {
-        return status.CloneAndPrepend(message);
-      }
-    } else {
-      addresses.reserve(addresses.size() + endpoints.size());
-      for (const auto& endpoint : endpoints) {
-        addresses.push_back(endpoint.address());
-      }
-    }
-  } else {
-    LOG(WARNING) << "Failed to get hostname: " << status.ToString();
-    if (addresses.empty()) {
-      return status;
-    }
-  }
-
-  for (const auto& addr : addresses) {
-    // Similar to above, ignore local or wildcard addresses.
-    if (addr.is_unspecified() || addr.is_loopback()) continue;
-
-    VLOG(1) << "Considering host " << addr << " local";
-    local_host_names_.insert(addr.to_string());
-  }
-
-  return Status::OK();
-}
-
-bool YBClient::Data::IsLocalHostPort(const HostPort& hp) const {
-  return ContainsKey(local_host_names_, hp.host());
-}
-
 bool YBClient::Data::IsTabletServerLocal(const RemoteTabletServer& rts) const {
   // If the uuid's are same, we are sure the tablet server is local, since if this client is used
   // via the CQL proxy, the tablet server's uuid is set in the client.
-  if (uuid_ == rts.permanent_uuid()) {
-    return true;
-  }
-
-  return rts.HasHostFrom(local_host_names_);
+  return uuid_ == rts.permanent_uuid();
 }
 
 template <class T, class... Args>
@@ -1142,6 +1203,35 @@ class GetTableSchemaRpc
   master::GetTableSchemaResponsePB* resp_copy_;
 };
 
+// Gets all table schemas for a tablegroup from the leader master. See ClientMasterRpc.
+class GetTablegroupSchemaRpc
+    : public ClientMasterRpc<GetTablegroupSchemaRequestPB, GetTablegroupSchemaResponsePB> {
+ public:
+  GetTablegroupSchemaRpc(YBClient* client,
+                         StatusCallback user_cb,
+                         const TablegroupId& tablegroup_id,
+                         vector<YBTableInfo>* info,
+                         CoarseTimePoint deadline);
+
+  std::string ToString() const override;
+
+  virtual ~GetTablegroupSchemaRpc();
+
+ private:
+  GetTablegroupSchemaRpc(YBClient* client,
+                         StatusCallback user_cb,
+                         const master::TablegroupIdentifierPB& tablegroup,
+                         vector<YBTableInfo>* info,
+                         CoarseTimePoint deadline);
+
+  void CallRemoteMethod() override;
+  void ProcessResponse(const Status& status) override;
+
+  StatusCallback user_cb_;
+  master::TablegroupIdentifierPB tablegroup_identifier_;
+  vector<YBTableInfo>* info_;
+};
+
 // Gets all table schemas for a colocated tablet from the leader master. See ClientMasterRpc.
 class GetColocatedTabletSchemaRpc : public ClientMasterRpc<GetColocatedTabletSchemaRequestPB,
     GetColocatedTabletSchemaResponsePB> {
@@ -1187,6 +1277,13 @@ master::TableIdentifierPB ToTableIdentifierPB(const YBTableName& table_name) {
 master::TableIdentifierPB ToTableIdentifierPB(const TableId& table_id) {
   master::TableIdentifierPB id;
   id.set_table_id(table_id);
+  return id;
+}
+
+master::TablegroupIdentifierPB ToTablegroupIdentifierPB(const TablegroupId& tablegroup_id) {
+  DCHECK(IsIdLikeUuid(tablegroup_id)) << tablegroup_id;
+  master::TablegroupIdentifierPB id;
+  id.set_id(tablegroup_id);
   return id;
 }
 
@@ -1278,6 +1375,63 @@ void GetTableSchemaRpc::ProcessResponse(const Status& status) {
     new_status = CreateTableInfoFromTableSchemaResp(resp_, info_);
     if (resp_copy_) {
       resp_copy_->Swap(&resp_);
+    }
+  }
+  if (!new_status.ok()) {
+    LOG(WARNING) << ToString() << " failed: " << new_status.ToString();
+  }
+  user_cb_.Run(new_status);
+}
+
+GetTablegroupSchemaRpc::GetTablegroupSchemaRpc(
+    YBClient* client,
+    StatusCallback user_cb,
+    const TablegroupId& tablegroup_id,
+    vector<YBTableInfo>* info,
+    CoarseTimePoint deadline)
+    : ClientMasterRpc(client, deadline),
+      user_cb_(std::move(user_cb)),
+      tablegroup_identifier_(ToTablegroupIdentifierPB(tablegroup_id)),
+      info_(DCHECK_NOTNULL(info)) {
+  req_.mutable_tablegroup()->CopyFrom(tablegroup_identifier_);
+}
+
+GetTablegroupSchemaRpc::GetTablegroupSchemaRpc(
+    YBClient* client,
+    StatusCallback user_cb,
+    const master::TablegroupIdentifierPB& tablegroup_identifier,
+    vector<YBTableInfo>* info,
+    CoarseTimePoint deadline)
+    : ClientMasterRpc(client, deadline),
+      user_cb_(std::move(user_cb)),
+      tablegroup_identifier_(tablegroup_identifier),
+      info_(DCHECK_NOTNULL(info)) {
+  req_.mutable_tablegroup()->CopyFrom(tablegroup_identifier_);
+}
+
+GetTablegroupSchemaRpc::~GetTablegroupSchemaRpc() {
+}
+
+void GetTablegroupSchemaRpc::CallRemoteMethod() {
+  master_ddl_proxy()->GetTablegroupSchemaAsync(
+      req_, &resp_, mutable_retrier()->mutable_controller(),
+      std::bind(&GetTablegroupSchemaRpc::Finished, this, Status::OK()));
+}
+
+string GetTablegroupSchemaRpc::ToString() const {
+  return Substitute("GetTablegroupSchemaRpc(table_identifier: $0, num_attempts: $1",
+                    tablegroup_identifier_.ShortDebugString(), num_attempts());
+}
+
+void GetTablegroupSchemaRpc::ProcessResponse(const Status& status) {
+  auto new_status = status;
+  if (new_status.ok()) {
+    for (const auto& resp : resp_.get_table_schema_response_pbs()) {
+      info_->emplace_back();
+      new_status = CreateTableInfoFromTableSchemaResp(resp, &info_->back());
+      if (!new_status.ok()) {
+        break;
+      }
     }
   }
   if (!new_status.ok()) {
@@ -1723,6 +1877,20 @@ Status YBClient::Data::GetTableSchema(YBClient* client,
   return sync.Wait();
 }
 
+Status YBClient::Data::GetTableSchema(YBClient* client,
+                                      const YBTableName& table_name,
+                                      CoarseTimePoint deadline,
+                                      std::shared_ptr<YBTableInfo> info,
+                                      StatusCallback callback) {
+  auto rpc = StartRpc<GetTableSchemaRpc>(
+      client,
+      callback,
+      table_name,
+      info.get(),
+      deadline);
+  return Status::OK();
+}
+
 Status YBClient::Data::GetTableSchemaById(YBClient* client,
                                           const TableId& table_id,
                                           CoarseTimePoint deadline,
@@ -1738,7 +1906,22 @@ Status YBClient::Data::GetTableSchemaById(YBClient* client,
   return Status::OK();
 }
 
-Status YBClient::Data::GetColocatedTabletSchemaById(
+Status YBClient::Data::GetTablegroupSchemaById(
+    YBClient* client,
+    const TablegroupId& tablegroup_id,
+    CoarseTimePoint deadline,
+    std::shared_ptr<std::vector<YBTableInfo>> info,
+    StatusCallback callback) {
+  auto rpc = StartRpc<GetTablegroupSchemaRpc>(
+      client,
+      callback,
+      tablegroup_id,
+      info.get(),
+      deadline);
+  return Status::OK();
+}
+
+Status YBClient::Data::GetColocatedTabletSchemaByParentTableId(
     YBClient* client,
     const TableId& parent_colocated_table_id,
     CoarseTimePoint deadline,
@@ -2220,6 +2403,22 @@ Status YBClient::Data::ValidateReplicationInfo(
   }
 
   return Status::OK();
+}
+
+Result<bool> YBClient::Data::CheckIfPitrActive(CoarseTimePoint deadline) {
+  CheckIfPitrActiveRequestPB req;
+  CheckIfPitrActiveResponsePB resp;
+
+  Status status = SyncLeaderMasterRpc(
+      deadline, req, &resp, "CheckIfPitrActive",
+      &master::MasterAdminProxy::CheckIfPitrActiveAsync);
+  RETURN_NOT_OK(status);
+
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  return resp.is_pitr_active();
 }
 
 HostPort YBClient::Data::leader_master_hostport() const {

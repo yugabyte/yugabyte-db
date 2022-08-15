@@ -30,12 +30,17 @@
 #include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
+
+class RefCntBuffer;
+class Slice;
+
 namespace rpc {
 
 class Acceptor;
 class AcceptorPool;
 class AnyMessageConstPtr;
 class AnyMessagePtr;
+class CallResponse;
 class ConnectionContext;
 class DelayedTask;
 class DumpRunningRpcsRequestPB;
@@ -43,6 +48,7 @@ class DumpRunningRpcsResponsePB;
 class GrowableBufferAllocator;
 class LightweightMessage;
 class MessengerBuilder;
+class PeriodicTimer;
 class Proxy;
 class ProxyCache;
 class ProxyContext;
@@ -140,6 +146,9 @@ YB_DEFINE_ENUM(InvokeCallbackMode,
     // On thread pool.
     (kThreadPoolNormal)
     (kThreadPoolHigh));
+
+using SidecarHolder = std::pair<RefCntBuffer, Slice>;
+using CallResponsePtr = std::shared_ptr<CallResponse>;
 
 } // namespace rpc
 } // namespace yb

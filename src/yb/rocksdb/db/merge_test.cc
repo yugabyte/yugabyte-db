@@ -308,7 +308,7 @@ void testCounters(Counters* counters_ptr, DB *db, bool test_compaction) {
   std::cout << "1\n";
 
   // 1+...+49 = ?
-  uint64_t sum = 0;
+  uint64_t sum __attribute__((__unused__)) = 0;
   for (int i = 1; i < 50; i++) {
     counters.assert_add("b", i);
     sum += i;
@@ -329,8 +329,8 @@ void testCounters(Counters* counters_ptr, DB *db, bool test_compaction) {
 
     dumpDb(db);
 
-    assert(counters.assert_get("a") == 3);
-    assert(counters.assert_get("b") == sum);
+    DCHECK_EQ(counters.assert_get("a"), 3);
+    DCHECK(counters.assert_get("b") == sum);
   }
 }
 
@@ -339,7 +339,7 @@ void testSuccessiveMerge(Counters *counters_ptr, size_t max_num_merges,
   Counters& counters = *counters_ptr;
 
   counters.assert_remove("z");
-  uint64_t sum = 0;
+  uint64_t sum __attribute__((__unused__)) = 0;
 
   for (size_t i = 1; i <= num_merges; ++i) {
     resetNumMergeOperatorCalls();
@@ -353,8 +353,8 @@ void testSuccessiveMerge(Counters *counters_ptr, size_t max_num_merges,
     }
 
     resetNumMergeOperatorCalls();
-    assert(counters.assert_get("z") == sum);
-    assert(num_merge_operator_calls == i % (max_num_merges + 1));
+    DCHECK(counters.assert_get("z") == sum);
+    DCHECK(num_merge_operator_calls == i % (max_num_merges + 1));
   }
 }
 

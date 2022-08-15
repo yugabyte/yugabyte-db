@@ -130,6 +130,8 @@ endif()
 set(UTIL_SRCS
   ${SEMAPHORE_CC}
   allocation_tracker.cc
+  auto_flags.cc
+  auto_flags_util.cc
   async_task_util.cc
   atomic.cc
   background_task.cc
@@ -242,6 +244,7 @@ set(UTIL_SRCS
   threadlocal.cc
   threadpool.cc
   timestamp.cc
+  tostring.cc
   trace.cc
   trilean.cc
   ulimit.cc
@@ -277,10 +280,6 @@ set(UTIL_LIBS
   ${OPENSSL_CRYPTO_LIBRARY}
   ${OPENSSL_SSL_LIBRARY})
 
-if (NOT APPLE AND NOT USING_LINUXBREW)
-  set(UTIL_LIBS ${UTIL_LIBS} atomic)
-endif()
-
 if(NOT APPLE)
   set(UTIL_LIBS
     ${UTIL_LIBS}
@@ -311,6 +310,7 @@ add_dependencies(yb_util gen_version_info)
 ADD_YB_TEST_LIBRARY(
   yb_test_util
   SRCS logging_test_util.cc memory/memory_usage_test_util.cc test_util.cc test_thread_holder.cc
+       multi_drive_test_env.cc
   DEPS gflags glog gmock yb_util)
 
 #######################################
@@ -331,6 +331,7 @@ endif()
 
 set(YB_TEST_LINK_LIBS yb_test_util gutil gmock ${YB_TEST_LINK_LIBS_EXTENSIONS} ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(atomic-test)
+ADD_YB_TEST(auto_flags-test)
 ADD_YB_TEST(background_task-test)
 ADD_YB_TEST(bit-util-test)
 ADD_YB_TEST(bitmap-test)
@@ -370,6 +371,7 @@ ADD_YB_TEST(mt-threadlocal-test RUN_SERIAL true)
 ADD_YB_TEST(net/dns_resolver-test)
 ADD_YB_TEST(net/net_util-test)
 ADD_YB_TEST(net/rate_limiter-test)
+ADD_YB_TEST(numbered_deque-test)
 ADD_YB_TEST(object_pool-test)
 ADD_YB_TEST(once-test)
 ADD_YB_TEST(os-util-test)

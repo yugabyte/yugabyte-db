@@ -6,6 +6,7 @@ import com.yugabyte.yw.forms.AvailabilityZoneFormData;
 import com.yugabyte.yw.forms.AvailabilityZoneFormData.AvailabilityZoneData;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
+import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Region;
 import io.swagger.annotations.Api;
@@ -13,6 +14,8 @@ import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
+
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -72,12 +75,20 @@ public class AvailabilityZoneController extends AuthenticatedController {
 
     List<AvailabilityZoneData> azDataList = formData.get().availabilityZones;
     Map<String, AvailabilityZone> availabilityZones = new HashMap<>();
+    List<String> createdAvailabilityZonesUUID = new ArrayList<String>();
     for (AvailabilityZoneData azData : azDataList) {
       AvailabilityZone az =
           AvailabilityZone.createOrThrow(region, azData.code, azData.name, azData.subnet);
       availabilityZones.put(az.code, az);
+      createdAvailabilityZonesUUID.add(az.uuid.toString());
     }
-    auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.AvailabilityZone,
+            createdAvailabilityZonesUUID.toString(),
+            Audit.ActionType.Create,
+            Json.toJson(formData.rawData()));
     return PlatformResults.withData(availabilityZones);
   }
 
@@ -98,7 +109,9 @@ public class AvailabilityZoneController extends AuthenticatedController {
     AvailabilityZone az = AvailabilityZone.getByRegionOrBadRequest(azUUID, regionUUID);
     az.setActiveFlag(false);
     az.update();
-    auditService().createAuditEntry(ctx(), request());
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(), Audit.TargetType.AvailabilityZone, az.uuid.toString(), Audit.ActionType.Delete);
     return YBPSuccess.empty();
   }
 }

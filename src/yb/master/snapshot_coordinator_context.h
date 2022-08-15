@@ -60,10 +60,12 @@ class SnapshotCoordinatorContext {
   virtual Result<SysRowEntries> CollectEntriesForSnapshot(
       const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables) = 0;
 
-  virtual CHECKED_STATUS RestoreSysCatalog(
+  virtual Status RestoreSysCatalog(
       SnapshotScheduleRestoration* restoration, tablet::Tablet* tablet,
       Status* complete_status) = 0;
-  virtual CHECKED_STATUS VerifyRestoredObjects(const SnapshotScheduleRestoration& restoration) = 0;
+  virtual Status VerifyRestoredObjects(
+      const std::unordered_map<std::string, SysRowEntryType>& objects,
+      const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables) = 0;
 
   virtual void CleanupHiddenObjects(const ScheduleMinRestoreTime& schedule_min_restore_time) = 0;
 
@@ -71,13 +73,17 @@ class SnapshotCoordinatorContext {
 
   virtual void Submit(std::unique_ptr<tablet::Operation> operation, int64_t leader_term) = 0;
 
+  virtual void PrepareRestore() = 0;
+
   virtual rpc::Scheduler& Scheduler() = 0;
 
   virtual int64_t LeaderTerm() = 0;
 
   virtual server::Clock* Clock() = 0;
 
-  virtual size_t GetNumLiveTServersForActiveCluster() = 0;
+  virtual Result<size_t> GetNumLiveTServersForActiveCluster() = 0;
+
+  virtual void EnableTabletSplitting(const std::string& feature) = 0;
 
   virtual ~SnapshotCoordinatorContext() = default;
 };

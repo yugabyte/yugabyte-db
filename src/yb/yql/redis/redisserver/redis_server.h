@@ -32,7 +32,7 @@ class RedisServer : public server::RpcAndWebServerBase {
 
   explicit RedisServer(const RedisServerOptions& opts, tserver::TabletServerIf* tserver);
 
-  CHECKED_STATUS Start();
+  Status Start();
 
   using server::RpcAndWebServerBase::Shutdown;
 

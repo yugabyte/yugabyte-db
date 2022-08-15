@@ -308,7 +308,6 @@ typedef struct SubXactCallbackItem
 
 static SubXactCallbackItem *SubXact_callbacks = NULL;
 
-
 /* local function prototypes */
 static void AssignTransactionId(TransactionState s);
 static void AbortTransaction(void);
@@ -1907,6 +1906,28 @@ YBStartTransaction(TransactionState s)
 	}
 }
 
+/*
+ * The isolation level in Postgres code (i.e., XactIsoLevel) maps to a certain
+ * isolation level as seen by pggate. This function returns the mapped isolation
+ * level that pggate layer is supposed to see.
+ */
+int YBGetEffectivePggateIsolationLevel() {
+	int mapped_pg_isolation_level = XactIsoLevel;
+
+	// For the txn manager, logic for XACT_READ_UNCOMMITTED is same as
+	// XACT_READ_COMMITTED.
+	if (mapped_pg_isolation_level == XACT_READ_UNCOMMITTED)
+		mapped_pg_isolation_level = XACT_READ_COMMITTED;
+
+	// If READ COMMITTED mode is not on, XACT_READ_COMMITTED maps to
+	// XACT_REPEATABLE_READ.
+	if ((mapped_pg_isolation_level == XACT_READ_COMMITTED) &&
+			!IsYBReadCommitted())
+		mapped_pg_isolation_level = XACT_REPEATABLE_READ;
+
+	return mapped_pg_isolation_level;
+}
+
 void
 YBInitializeTransaction(void)
 {
@@ -1914,15 +1935,8 @@ YBInitializeTransaction(void)
 	{
 		HandleYBStatus(YBCPgBeginTransaction());
 
-		int	pg_isolation_level = XactIsoLevel;
-
-		if (pg_isolation_level == XACT_READ_UNCOMMITTED)
-			pg_isolation_level = XACT_READ_COMMITTED;
-
-		if ((pg_isolation_level == XACT_READ_COMMITTED) && !IsYBReadCommitted())
-			pg_isolation_level = XACT_REPEATABLE_READ;
-
-		HandleYBStatus(YBCPgSetTransactionIsolationLevel(pg_isolation_level));
+		HandleYBStatus(
+			YBCPgSetTransactionIsolationLevel(YBGetEffectivePggateIsolationLevel()));
 		HandleYBStatus(YBCPgEnableFollowerReads(YBReadFromFollowersEnabled(), YBFollowerReadStalenessMs()));
 		HandleYBStatus(YBCPgSetTransactionReadOnly(XactReadOnly));
 		HandleYBStatus(YBCPgSetTransactionDeferrable(XactDeferrable));
@@ -2884,10 +2898,10 @@ CleanupTransaction(void)
 }
 
 /*
- *	StartTransactionCommand
+ *	StartTransactionCommandInternal
  */
-void
-StartTransactionCommand(void)
+static void
+StartTransactionCommandInternal(bool yb_skip_read_committed_handling)
 {
 	TransactionState s = CurrentTransactionState;
 
@@ -2932,7 +2946,7 @@ StartTransactionCommand(void)
 			 * Read restart retries are handled transparently for every statement in the txn in
 			 * yb_attempt_to_restart_on_error().
 			 */
-			if (YBTransactionsEnabled() && IsYBReadCommitted())
+			if (YBTransactionsEnabled() && IsYBReadCommitted() && !yb_skip_read_committed_handling)
 			{
 				/*
 				 * Reset field ybDataSentForCurrQuery (indicates whether any data was sent as part of the
@@ -2940,8 +2954,6 @@ StartTransactionCommand(void)
 				 * READ COMMITTED isolation level.
 				 */
 				s->ybDataSentForCurrQuery = false;
-				HandleYBStatus(YBCPgResetTransactionReadPoint());
-				elog(DEBUG2, "Resetting read point for statement in Read Committed txn");
 
 				/*
 				 * Create a new internal sub txn before any execution. This aids in rolling back any changes
@@ -3002,6 +3014,15 @@ StartTransactionCommand(void)
 	 */
 	Assert(CurTransactionContext != NULL);
 	MemoryContextSwitchTo(CurTransactionContext);
+}
+
+/*
+ *	StartTransactionCommand
+ */
+void
+StartTransactionCommand(void)
+{
+	StartTransactionCommandInternal(false /* yb_skip_read_committed_handling */);
 }
 
 void
@@ -4133,6 +4154,8 @@ DefineSavepoint(const char *name)
 			/* Normal subtransaction start */
 			PushTransaction();
 			s = CurrentTransactionState;	/* changed by push */
+			elog(DEBUG2, "new sub txn created by savepoint, subtxn_id: %d",
+					 s->subTransactionId);
 
 			/*
 			 * Savepoint names, like the TransactionState block itself, live
@@ -4419,7 +4442,7 @@ RollbackToSavepoint(const char *name)
 		elog(FATAL, "RollbackToSavepoint: unexpected state %s",
 			 BlockStateAsString(xact->blockState));
 
-	YBCRollbackSubTransaction(target->subTransactionId);
+	YBCRollbackToSubTransaction(target->subTransactionId);
 }
 
 /*
@@ -4470,6 +4493,8 @@ BeginInternalSubTransaction(const char *name)
 			/* Normal subtransaction start */
 			PushTransaction();
 			s = CurrentTransactionState;	/* changed by push */
+			elog(DEBUG2, "new sub txn created internally, subtxn_id: %d",
+					 s->subTransactionId);
 
 			/*
 			 * Savepoint names, like the TransactionState block itself, live
@@ -4500,7 +4525,8 @@ BeginInternalSubTransaction(const char *name)
 	}
 
 	CommitTransactionCommand();
-	StartTransactionCommand();
+
+	StartTransactionCommandInternal(true /* yb_skip_read_committed_handling */);
 }
 
 /*
@@ -4515,6 +4541,7 @@ BeginInternalSubTransaction(const char *name)
  */
 void
 BeginInternalSubTransactionForReadCommittedStatement() {
+
 	YBFlushBufferedOperations();
 	TransactionState s = CurrentTransactionState;
 
@@ -4530,6 +4557,7 @@ BeginInternalSubTransactionForReadCommittedStatement() {
 	/* Normal subtransaction start */
 	PushTransaction();
 	s = CurrentTransactionState;	/* changed by push */
+	elog(DEBUG2, "new internal sub txn in READ COMMITTED subtxn_id: %d", s->subTransactionId);
 
 	s->name = MemoryContextStrdup(TopTransactionContext, YB_READ_COMMITTED_INTERNAL_SUB_TXN_NAME);
 
@@ -5132,7 +5160,7 @@ AbortSubTransaction(void)
 		AtEOSubXact_ApplyLauncher(false, s->nestingLevel);
 	}
 
-	YBCRollbackSubTransaction(s->subTransactionId);
+	YBCRollbackToSubTransaction(s->subTransactionId);
 
 	/*
 	 * Restore the upper transaction's read-only state, too.  This should be

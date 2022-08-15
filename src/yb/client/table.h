@@ -45,6 +45,8 @@ struct VersionedTablePartitionList {
   TablePartitionList keys;
   // See SysTablesEntryPB::partition_list_version.
   PartitionListVersion version;
+
+  std::string ToString() const;
 };
 
 typedef Result<VersionedTablePartitionListPtr> FetchPartitionsResult;
@@ -106,7 +108,7 @@ class YBTable : public std::enable_shared_from_this<YBTable> {
   // For index table: information about this index.
   const IndexInfo& index_info() const;
 
-  // Is the table colocated?
+  // True if the table is colocated (including tablegroups, excluding YSQL system tables).
   bool colocated() const;
 
   // Returns the replication info for the table.
@@ -137,6 +139,7 @@ class YBTable : public std::enable_shared_from_this<YBTable> {
  private:
   friend class YBClient;
   friend class internal::GetTableSchemaRpc;
+  friend class internal::GetTablegroupSchemaRpc;
   friend class internal::GetColocatedTabletSchemaRpc;
 
   void InvokeRefreshPartitionsCallbacks(const Status& status);

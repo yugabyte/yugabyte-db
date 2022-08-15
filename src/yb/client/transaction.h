@@ -36,12 +36,6 @@ class HybridTime;
 
 class Trace;
 
-enum TxnPriorityRequirement {
-  kLowerPriorityRange,
-  kHigherPriorityRange,
-  kHighestPriority
-};
-
 namespace client {
 
 using Waiter = boost::function<void(const Status&)>;
@@ -90,7 +84,7 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
 
   // Should be invoked to complete transaction creation.
   // Transaction is unusable before Init is called.
-  CHECKED_STATUS Init(
+  Status Init(
       IsolationLevel isolation, const ReadHybridTime& read_time = ReadHybridTime());
 
   // Allows starting a transaction that reuses an existing read point.
@@ -112,6 +106,9 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
   // Aborts this transaction.
   void Abort(CoarseTimePoint deadline = CoarseTimePoint());
 
+  // Promote a local transaction into a global transaction.
+  Status PromoteToGlobal(CoarseTimePoint deadline = CoarseTimePoint());
+
   // Returns transaction ID.
   const TransactionId& id() const;
 
@@ -124,7 +121,7 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
   Result<YBTransactionPtr> CreateRestartedTransaction();
 
   // Setup precreated transaction to be restarted version of this transaction.
-  CHECKED_STATUS FillRestartedTransaction(const YBTransactionPtr& dest);
+  Status FillRestartedTransaction(const YBTransactionPtr& dest);
 
   // Prepares child data, so child transaction could be started in another server.
   // Should be async because status tablet could be not ready yet.
@@ -140,9 +137,9 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
 
   // Apply results from child to this parent transaction.
   // `result` should be prepared with FinishChild of child transaction.
-  CHECKED_STATUS ApplyChildResult(const ChildTransactionResultPB& result);
+  Status ApplyChildResult(const ChildTransactionResultPB& result);
 
-  std::shared_future<Result<TransactionMetadata>> GetMetadata() const;
+  std::shared_future<Result<TransactionMetadata>> GetMetadata(CoarseTimePoint deadline) const;
 
   std::string ToString() const;
 
@@ -158,7 +155,7 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
 
   void SetActiveSubTransaction(SubTransactionId id);
 
-  CHECKED_STATUS RollbackSubTransaction(SubTransactionId id);
+  Status RollbackToSubTransaction(SubTransactionId id, CoarseTimePoint deadline);
 
   bool HasSubTransactionState();
 
@@ -169,20 +166,26 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
 
 class YBSubTransaction {
  public:
-  YBSubTransaction();
+  bool active() const {
+    return highest_subtransaction_id_ >= kMinSubTransactionId;
+  }
 
   void SetActiveSubTransaction(SubTransactionId id);
 
-  CHECKED_STATUS RollbackSubTransaction(SubTransactionId id);
+  Status RollbackToSubTransaction(SubTransactionId id);
 
   const SubTransactionMetadata& get();
+
+  std::string ToString() const;
+
+  bool operator==(const YBSubTransaction& other) const;
 
  private:
   SubTransactionMetadata sub_txn_;
 
   // Tracks the highest observed subtransaction_id. Used during "ROLLBACK TO s" to abort from s to
   // the highest live subtransaction_id.
-  SubTransactionId highest_subtransaction_id_ = kMinSubTransactionId;
+  SubTransactionId highest_subtransaction_id_ = 0;
 };
 
 } // namespace client

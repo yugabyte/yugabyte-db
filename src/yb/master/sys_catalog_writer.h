@@ -41,19 +41,19 @@ class SysCatalogWriter {
 
   ~SysCatalogWriter();
 
-  CHECKED_STATUS Mutate(QLWriteRequestPB::QLStmtType op_type) {
+  Status Mutate(QLWriteRequestPB::QLStmtType op_type) {
     return Status::OK();
   }
 
   template <class Item, class... Items>
-  CHECKED_STATUS Mutate(
+  Status Mutate(
       QLWriteRequestPB::QLStmtType op_type, const Item& item, Items&&... items) {
     RETURN_NOT_OK(MutateHelper(item, op_type));
     return Mutate(op_type, std::forward<Items>(items)...);
   }
 
   // Insert a row into a Postgres sys catalog table.
-  CHECKED_STATUS InsertPgsqlTableRow(const Schema& source_schema,
+  Status InsertPgsqlTableRow(const Schema& source_schema,
                                      const QLTableRow& source_row,
                                      const TableId& target_table_id,
                                      const Schema& target_schema,
@@ -70,7 +70,7 @@ class SysCatalogWriter {
 
  private:
   template <class Item>
-  CHECKED_STATUS MutateHelper(const Item* item, QLWriteRequestPB::QLStmtType op_type) {
+  Status MutateHelper(const Item* item, QLWriteRequestPB::QLStmtType op_type) {
     const auto& old_pb = item->old_pb();
     const auto& new_pb = IsWrite(op_type) ? item->new_pb() : old_pb;
     return DoMutateItem(Item::type(), item->id(), old_pb, new_pb, op_type);
@@ -78,7 +78,7 @@ class SysCatalogWriter {
 
 
   template <class Item>
-  CHECKED_STATUS MutateHelper(const scoped_refptr<Item>& item,
+  Status MutateHelper(const scoped_refptr<Item>& item,
                             QLWriteRequestPB::QLStmtType op_type) {
     return MutateHelper(item.get(), op_type);
   }
@@ -93,7 +93,7 @@ class SysCatalogWriter {
     return Status::OK();
   }
 
-  CHECKED_STATUS DoMutateItem(
+  Status DoMutateItem(
       int8_t type,
       const std::string& item_id,
       const google::protobuf::Message& prev_pb,
@@ -107,11 +107,11 @@ class SysCatalogWriter {
   DISALLOW_COPY_AND_ASSIGN(SysCatalogWriter);
 };
 
-CHECKED_STATUS FillSysCatalogWriteRequest(
+Status FillSysCatalogWriteRequest(
     int8_t type, const std::string& item_id, const google::protobuf::Message& new_pb,
     QLWriteRequestPB::QLStmtType op_type, const Schema& schema_with_ids, QLWriteRequestPB* req);
 
-CHECKED_STATUS FillSysCatalogWriteRequest(
+Status FillSysCatalogWriteRequest(
     int8_t type, const std::string& item_id, const Slice& data,
     QLWriteRequestPB::QLStmtType op_type, const Schema& schema_with_ids, QLWriteRequestPB* req);
 
@@ -119,10 +119,10 @@ using EnumerationCallback = std::function<Status(const Slice& id, const Slice& d
 
 // Enumerate sys catalog calling provided callback for all entries of the specified type in sys
 // catalog.
-CHECKED_STATUS EnumerateSysCatalog(
+Status EnumerateSysCatalog(
     tablet::Tablet* tablet, const Schema& schema, int8_t entry_type,
     const EnumerationCallback& callback);
-CHECKED_STATUS EnumerateSysCatalog(
+Status EnumerateSysCatalog(
     docdb::DocRowwiseIterator* doc_iter, const Schema& schema, int8_t entry_type,
     const EnumerationCallback& callback);
 

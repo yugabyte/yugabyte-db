@@ -11,21 +11,20 @@ menu:
     identifier: explore-transactions-isolation-levels-1-ysql
     parent: explore-transactions
     weight: 235
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/explore/transactions/isolation-levels/" class="nav-link active">
+    <a href="../isolation-levels/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
 <!--
   <li >
-    <a href="/latest/explore/multi-region-deployments/synchronous-replication-ycql/" class="nav-link">
+    <a href="../isolation-levels-ycql/" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
@@ -43,12 +42,13 @@ Read <br/>committed   | Read Committed<sup>$</sup> | Not possible | Possible | P
 Repeatable <br/>read  | Snapshot | Not possible | Not possible | Allowed, but not in YSQL | Possible
 Serializable     | Serializable | Not possible | Not possible | Not possible | Not possible
 
-<sup>$</sup> Read Committed Isolation is supported only if the gflag `yb_enable_read_committed_isolation` is set to `true`. By default this gflag is `false` and in this case the Read Committed isolation level of Yugabyte's transactional layer falls back to the stricter Snapshot Isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot Isolation).
+<sup>$</sup> Read Committed Isolation is supported only if the tserver gflag `yb_enable_read_committed_isolation` is set to `true`. By default this gflag is `false` and in this case the Read Committed isolation level of Yugabyte's transactional layer falls back to the stricter Snapshot Isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot Isolation). Read Committed support is currently in [Beta](/preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag).
 
 {{< note title="Note" >}}
-The default isolation level for the YSQL API is essentially Snapshot (i.e., same as PostgreSQL's `REPEATABLE READ`) because `READ COMMITTED`, which is the YSQL API's (and also PostgreSQL's) syntactic default, maps to Snapshot Isolation (unless `yb_enable_read_committed_isolation` is set to `true`).
+The default isolation level for the YSQL API is essentially Snapshot (i.e., same as PostgreSQL's `REPEATABLE READ`) because `READ COMMITTED`, which is the YSQL API's (and also PostgreSQL's) syntactic default, maps to Snapshot Isolation (unless the tserver gflag `yb_enable_read_committed_isolation` is set to `true`).
 
 To set the transaction isolation level of a transaction, use the command `SET TRANSACTION`.
+
 {{< /note >}}
 
 As seen from the table above, the most strict isolation level is `Serializable`, which requires that any concurrent execution of a set of `Serializable` transactions is guaranteed to produce the same effect as running them in some serial (one transaction at a time) order. The other levels are defined by which anomalies must not occur as a result of interactions between concurrent transactions. Due to the definition of Serializable isolation, none of these anomalies are possible at that level. For reference, the various transaction anomalies are described briefly below:
@@ -151,7 +151,7 @@ update account
   set balance = balance - 900::money
   where name = 'kevin' and type = 'checking';
 
-ERROR:  40001: Operation failed. 
+ERROR:  40001: Operation failed.
   Try again.: Transaction aborted: XXXX
     </code></pre>
     </td>
@@ -183,9 +183,9 @@ select type, balance from account
 
 The Snapshot isolation level only sees data committed before the transaction began (or in other words, it works on a "snapshot" of the table). Transactions running under Snapshot isolation do not see either uncommitted data or changes committed during transaction execution by other concurrently running transactions. Note that the query does see the effects of previous updates executed within its own transaction, even though they are not yet committed. This is a stronger guarantee than is required by the SQL standard for the `REPEATABLE READ` isolation level.
 
-Snapshot isolation detects only write-write conflicts, it does not detect read-write conflicts. In other words: 
+Snapshot isolation detects only write-write conflicts, it does not detect read-write conflicts. In other words:
 
-* `INSERT`, `UPDATE`, and `DELETE` commands behave the same as SELECT in terms of searching for target rows. They will only find target rows that were committed as of the transaction start time. 
+* `INSERT`, `UPDATE`, and `DELETE` commands behave the same as SELECT in terms of searching for target rows. They will only find target rows that were committed as of the transaction start time.
 * If such a target row might have already been updated (or deleted or locked) by another concurrent transaction by the time it is found. This scenario is called a *transaction conflict*, where the current transaction conflicts with the transaction that made (or is attempting to make) an update. In such cases, one of the two transactions get aborted, depending on priority.
 
 {{< note title="Note" >}}
@@ -201,7 +201,7 @@ CREATE TABLE IF NOT EXISTS example (k INT PRIMARY KEY);
 TRUNCATE TABLE example;
 ```
 
-Next, connect to the cluster using two independent `ysqlsh` instances called *session #1* and *session #2* below. 
+Next, connect to the cluster using two independent `ysqlsh` instances called *session #1* and *session #2* below.
 
 {{< note title="Note" >}}
 You can connect the session #1 and session #2 `ysqlsh` instances to the same server, or to different servers.
@@ -244,7 +244,7 @@ SELECT * FROM example;
     <td style="width:50%;">
     </td>
     <td style="width:50%; border-left:1px solid rgba(158,159,165,0.5);">
-    Insert a different row here. Verify that the row inserted in the transaction in session #1 is not visible in this session. 
+    Insert a different row here. Verify that the row inserted in the transaction in session #1 is not visible in this session.
     <pre><code style="padding: 0 10px;">
 INSERT INTO example VALUES (2);<br/>
 SELECT * FROM example;
@@ -315,7 +315,7 @@ INSERT INTO test VALUES (1, 2);
 
   <tr>
     <td style="width:50%;">
-    By default, the gflag yb_enable_read_committed_isolation=false. In this case, Read Committed maps to Snapshot Isolation at the transactional layer. So, READ COMMITTED of YSQL API in turn maps to Snapshot Isolation.
+    By default, the tserver gflag yb_enable_read_committed_isolation=false. In this case, Read Committed maps to Snapshot Isolation at the transactional layer. So, READ COMMITTED of YSQL API in turn maps to Snapshot Isolation.
     <pre><code style="padding: 0 10px;">BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;
 SELECT * FROM test;<br/>
  k | v
@@ -354,7 +354,7 @@ COMMIT;<br/>
 
   <tr>
     <td style="width:50%;">
-    Set gflag yb_enable_read_committed_isolation=true
+    Set tserver gflag yb_enable_read_committed_isolation=true
     <pre><code style="padding: 0 10px;">BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;
 SELECT * FROM test;<br/>
  k | v

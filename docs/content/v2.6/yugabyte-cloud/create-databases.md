@@ -4,14 +4,13 @@ linkTitle: Create databases
 description: Create databases
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
-beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
+beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   v2.6:
     identifier: create-databases
     parent: yugabyte-cloud
     weight: 643
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Create a database using YSQL

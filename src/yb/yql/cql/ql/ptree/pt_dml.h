@@ -30,6 +30,8 @@
 #include "yb/yql/cql/ql/ptree/ptree_fwd.h"
 #include "yb/yql/cql/ql/ptree/tree_node.h"
 
+#include "yb/yql/cql/ql/ptree/column_arg.h"
+
 namespace yb {
 namespace ql {
 
@@ -93,7 +95,8 @@ class WhereExprState {
                  MCVector<ColumnOpCounter> *op_counters,
                  ColumnOpCounter *partition_key_counter,
                  TreeNodeOpcode statement_type,
-                 MCList<FuncOp> *func_ops)
+                 MCList<FuncOp> *func_ops,
+                 MCList<MultiColumnOp> *multi_col_ops)
     : ops_(ops),
       key_ops_(key_ops),
       subscripted_col_ops_(subscripted_col_ops),
@@ -102,21 +105,27 @@ class WhereExprState {
       op_counters_(op_counters),
       partition_key_counter_(partition_key_counter),
       statement_type_(statement_type),
-      func_ops_(func_ops) {
+      func_ops_(func_ops),
+      multi_colum_ops_(multi_col_ops) {
   }
 
-  CHECKED_STATUS AnalyzeColumnOp(SemContext *sem_context,
+  Status AnalyzeColumnOp(SemContext *sem_context,
                                  const PTRelationExpr *expr,
                                  const ColumnDesc *col_desc,
                                  PTExprPtr value,
                                  PTExprListNodePtr args = nullptr);
 
-  CHECKED_STATUS AnalyzeColumnFunction(SemContext *sem_context,
+  Status AnalyzeMultiColumnOp(SemContext *sem_context,
+                                      const PTRelationExpr *expr,
+                                      const std::vector<const ColumnDesc *> col_desc,
+                                      PTExprPtr value);
+
+  Status AnalyzeColumnFunction(SemContext *sem_context,
                                        const PTRelationExpr *expr,
                                        PTExprPtr value,
                                        PTBcallPtr call);
 
-  CHECKED_STATUS AnalyzePartitionKeyOp(SemContext *sem_context,
+  Status AnalyzePartitionKeyOp(SemContext *sem_context,
                                        const PTRelationExpr *expr,
                                        PTExprPtr value);
 
@@ -148,6 +157,8 @@ class WhereExprState {
   TreeNodeOpcode statement_type_;
 
   MCList<FuncOp> *func_ops_;
+
+  MCList<MultiColumnOp> *multi_colum_ops_;
 };
 
 //--------------------------------------------------------------------------------------------------
@@ -207,7 +218,7 @@ class PTDmlStmt : public PTCollection {
   }
 
   // Node semantics analysis.
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
+  virtual Status Analyze(SemContext *sem_context) override;
 
   virtual ExplainPlanPB AnalysisResultToPB() = 0;
 
@@ -252,6 +263,10 @@ class PTDmlStmt : public PTCollection {
 
   const MCList<ColumnOp>& where_ops() const {
     return where_ops_;
+  }
+
+  const MCList<MultiColumnOp> &multi_col_where_ops() const {
+    return multi_col_where_ops_;
   }
 
   const MCList<SubscriptedColumnOp>& subscripted_col_where_ops() const {
@@ -396,7 +411,7 @@ class PTDmlStmt : public PTCollection {
   std::string PartitionKeyToString(const MCList<PartitionKeyOp>& conds);
 
   // Lookup table from the metadata database.
-  CHECKED_STATUS LookupTable(SemContext *sem_context);
+  Status LookupTable(SemContext *sem_context);
 
   // Load table schema into symbol table.
   static void LoadSchema(SemContext *sem_context,
@@ -405,25 +420,25 @@ class PTDmlStmt : public PTCollection {
                          bool is_index);
 
   // Semantic-analyzing the where clause.
-  CHECKED_STATUS AnalyzeWhereClause(SemContext *sem_context);
+  Status AnalyzeWhereClause(SemContext *sem_context);
 
   // Semantic-analyzing the if clause.
-  CHECKED_STATUS AnalyzeIfClause(SemContext *sem_context);
+  Status AnalyzeIfClause(SemContext *sem_context);
 
   // Semantic-analyzing the USING TTL clause.
-  CHECKED_STATUS AnalyzeUsingClause(SemContext *sem_context);
+  Status AnalyzeUsingClause(SemContext *sem_context);
 
   // Semantic-analyzing the indexes for write operations.
-  CHECKED_STATUS AnalyzeIndexesForWrites(SemContext *sem_context);
+  Status AnalyzeIndexesForWrites(SemContext *sem_context);
 
   // Protected functions.
-  CHECKED_STATUS AnalyzeWhereExpr(SemContext *sem_context, PTExpr *expr);
+  Status AnalyzeWhereExpr(SemContext *sem_context, PTExpr *expr);
 
   // Semantic-analyzing the bind variables for hash columns.
-  CHECKED_STATUS AnalyzeHashColumnBindVars(SemContext *sem_context);
+  Status AnalyzeHashColumnBindVars(SemContext *sem_context);
 
   // Semantic-analyzing the modified columns for inter-statement dependency.
-  CHECKED_STATUS AnalyzeColumnArgs(SemContext *sem_context);
+  Status AnalyzeColumnArgs(SemContext *sem_context);
 
   // Does column_args_ contain static columns only (i.e. writing static column only)?
   bool StaticColumnArgsOnly() const;
@@ -455,6 +470,7 @@ class PTDmlStmt : public PTCollection {
   MCList<FuncOp> func_ops_;
   MCVector<ColumnOp> key_where_ops_;
   MCList<ColumnOp> where_ops_;
+  MCList<MultiColumnOp> multi_col_where_ops_;
   MCList<SubscriptedColumnOp> subscripted_col_where_ops_;
   MCList<JsonColumnOp> json_col_where_ops_;
 

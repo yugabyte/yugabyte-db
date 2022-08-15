@@ -148,6 +148,7 @@ class MonoTime {
   static constexpr int64_t kMicrosecondsPerMillisecond = 1000L;
   static constexpr int64_t kMillisecondsPerSecond = 1000L;
   static constexpr int64_t kSecondsPerMinute = 60L;
+  static constexpr int64_t kSecondsPerHour = 60L * kSecondsPerMinute;
 
   static constexpr int64_t kNanosecondsPerMillisecond =
       kNanosecondsPerMicrosecond * kMicrosecondsPerMillisecond;
@@ -263,12 +264,16 @@ inline bool operator!=(const MonoTime& lhs, const MonoTime& rhs) { return !(lhs 
 // MonoDelta duration.
 void SleepFor(const MonoDelta& delta);
 
+void SleepUntil(const MonoTime& deadline);
+
 class CoarseMonoClock {
  public:
   typedef std::chrono::nanoseconds duration;
   typedef duration Duration;
   typedef std::chrono::time_point<CoarseMonoClock> time_point;
   typedef time_point TimePoint;
+  typedef time_point::period period;
+  typedef time_point::rep rep;
 
   static constexpr bool is_steady = true;
 
@@ -317,6 +322,8 @@ std::string ToString(CoarseMonoClock::TimePoint value);
 
 CoarseTimePoint ToCoarse(MonoTime monotime);
 std::chrono::steady_clock::time_point ToSteady(CoarseTimePoint time_point);
+
+bool IsInitialized(CoarseTimePoint time_point);
 
 } // namespace yb
 

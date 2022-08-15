@@ -27,7 +27,6 @@
 #include "yb/server/server_fwd.h"
 
 #include "yb/tablet/tablet_fwd.h"
-#include "yb/util/metrics.h"
 
 namespace rocksdb {
 class Cache;
@@ -41,11 +40,8 @@ namespace yb {
 class Env;
 class MemTracker;
 class MetricRegistry;
-class MetricEntity;
 
 namespace tablet {
-
-YB_STRONGLY_TYPED_BOOL(IsDropTable);
 
 // Common for all tablets within TabletManager.
 struct TabletOptions {
@@ -55,8 +51,9 @@ struct TabletOptions {
   yb::Env* env = Env::Default();
   rocksdb::Env* rocksdb_env = rocksdb::Env::Default();
   std::shared_ptr<rocksdb::RateLimiter> rate_limiter;
-  scoped_refptr<MetricEntity> ServerMetricEntity;
 };
+
+using TransactionManagerProvider = std::function<client::TransactionManager&()>;
 
 struct TabletInitData {
   RaftGroupMetadataPtr metadata;
@@ -76,6 +73,7 @@ struct TabletInitData {
   SnapshotCoordinator* snapshot_coordinator = nullptr;
   TabletSplitter* tablet_splitter = nullptr;
   std::function<HybridTime(RaftGroupMetadata*)> allowed_history_cutoff_provider;
+  TransactionManagerProvider transaction_manager_provider;
 };
 
 } // namespace tablet

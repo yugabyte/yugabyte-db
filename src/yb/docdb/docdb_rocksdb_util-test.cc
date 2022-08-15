@@ -24,6 +24,7 @@ DECLARE_int32(rocksdb_base_background_compactions);
 DECLARE_int32(rocksdb_max_background_compactions);
 DECLARE_int32(priority_thread_pool_size);
 DECLARE_int32(block_restart_interval);
+DECLARE_int32(index_block_restart_interval);
 DECLARE_int64(rocksdb_compact_flush_rate_limit_bytes_per_sec);
 DECLARE_string(rocksdb_compact_flush_rate_limit_sharing_mode);
 
@@ -31,6 +32,26 @@ namespace yb {
 namespace docdb {
 
 class DocDBRocksDBUtilTest : public YBTest {};
+
+TEST_F(DocDBRocksDBUtilTest, CaseInsensitiveCompressionType) {
+  rocksdb::CompressionType got_compression_type =
+      CHECK_RESULT(TEST_GetConfiguredCompressionType("snappy"));
+
+  ASSERT_EQ(got_compression_type, rocksdb::kSnappyCompression);
+
+  got_compression_type = CHECK_RESULT(TEST_GetConfiguredCompressionType("SNappy"));
+  ASSERT_EQ(got_compression_type, rocksdb::kSnappyCompression);
+  got_compression_type = CHECK_RESULT(TEST_GetConfiguredCompressionType("snaPPy"));
+  ASSERT_EQ(got_compression_type, rocksdb::kSnappyCompression);
+
+  ASSERT_NOK(TEST_GetConfiguredCompressionType("snappy-"));
+
+  got_compression_type = CHECK_RESULT(TEST_GetConfiguredCompressionType("Lz4"));
+  ASSERT_EQ(got_compression_type, rocksdb::kLZ4Compression);
+
+  got_compression_type = CHECK_RESULT(TEST_GetConfiguredCompressionType("zLiB"));
+  ASSERT_EQ(got_compression_type, rocksdb::kZlibCompression);
+}
 
 TEST_F(DocDBRocksDBUtilTest, MaxBackgroundFlushesDefault) {
   FLAGS_num_cpus = 16;
@@ -140,6 +161,29 @@ TEST_F(DocDBRocksDBUtilTest, DefaultBlockRestartInterval) {
   CHECK_EQ(blockBasedOptions.block_restart_interval, 16);
 }
 
+TEST_F(DocDBRocksDBUtilTest, MinIndexBlockRestartInterval) {
+  FLAGS_index_block_restart_interval = 0;
+  auto blockBasedOptions = TEST_AutoInitFromRocksDbTableFlags();
+  CHECK_EQ(blockBasedOptions.index_block_restart_interval, 1);
+}
+
+TEST_F(DocDBRocksDBUtilTest, MaxIndexBlockRestartInterval) {
+  FLAGS_index_block_restart_interval = 512;
+  auto blockBasedOptions = TEST_AutoInitFromRocksDbTableFlags();
+  CHECK_EQ(blockBasedOptions.index_block_restart_interval, 256);
+}
+
+TEST_F(DocDBRocksDBUtilTest, ValidIndexBlockRestartInterval) {
+  FLAGS_index_block_restart_interval = 8;
+  auto blockBasedOptions = TEST_AutoInitFromRocksDbTableFlags();
+  CHECK_EQ(blockBasedOptions.index_block_restart_interval, 8);
+}
+
+TEST_F(DocDBRocksDBUtilTest, DefaultIndexBlockRestartInterval) {
+  auto blockBasedOptions = TEST_AutoInitFromRocksDbTableFlags();
+  CHECK_EQ(blockBasedOptions.index_block_restart_interval, 1);
+}
+
 TEST_F(DocDBRocksDBUtilTest, RocksDBRateLimiter) {
   // Check `ParseEnumInsensitive<RateLimiterSharingMode>`
   {
@@ -179,7 +223,7 @@ TEST_F(DocDBRocksDBUtilTest, RocksDBRateLimiter) {
 
   // Check `GetRocksDBRateLimiterSharingMode`
   {
-    for (auto mode : kRateLimiterSharingModeList) {
+    for (auto mode : RateLimiterSharingModeList()) {
       ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_compact_flush_rate_limit_sharing_mode) =
           ToString(mode);
       ASSERT_EQ(mode, GetRocksDBRateLimiterSharingMode());

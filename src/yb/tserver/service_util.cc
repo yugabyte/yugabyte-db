@@ -160,7 +160,7 @@ void LeaderTabletPeer::FillTabletPeer(TabletPeerTablet source) {
   tablet = std::move(source.tablet);
 }
 
-CHECKED_STATUS LeaderTabletPeer::FillTerm() {
+Status LeaderTabletPeer::FillTerm() {
   auto leader_term_result = LeaderTerm(*peer);
   if (!leader_term_result.ok()) {
     auto tablet = peer->shared_tablet();
@@ -231,7 +231,7 @@ Status CheckPeerIsReady(
 }
 
 
-CHECKED_STATUS CheckPeerIsLeader(const tablet::TabletPeer& tablet_peer) {
+Status CheckPeerIsLeader(const tablet::TabletPeer& tablet_peer) {
   return ResultToStatus(LeaderTerm(tablet_peer));
 }
 
@@ -249,7 +249,8 @@ Result<TabletPeerTablet> LookupTabletPeer(
   // Check RUNNING state.
   tablet::RaftGroupStatePB state = result.tablet_peer->state();
   if (PREDICT_FALSE(state != tablet::RUNNING)) {
-    Status s = STATUS(IllegalState, "Tablet not RUNNING", tablet::RaftGroupStateError(state))
+    Status s = STATUS(IllegalState,  Format("Tablet $0 not RUNNING", tablet_id),
+                      tablet::RaftGroupStateError(state))
         .CloneAndAddErrorCode(TabletServerError(TabletServerErrorPB::TABLET_NOT_RUNNING));
     return s;
   }
@@ -345,7 +346,7 @@ Result<std::shared_ptr<tablet::AbstractTablet>> GetTablet(
 // overlimit is calculated as:
 // score + (value - lower_bound) / (upper_bound - lower_bound).
 // And it will be >= 1.0 when this function is invoked.
-CHECKED_STATUS RejectWrite(
+Status RejectWrite(
     tablet::TabletPeer* tablet_peer, const std::string& message, double overlimit) {
   int64_t delay_ms = fit_bounds<int64_t>((overlimit - 1.0) * FLAGS_max_rejection_delay_ms,
                                          FLAGS_min_rejection_delay_ms,
@@ -358,7 +359,7 @@ CHECKED_STATUS RejectWrite(
   return status;
 }
 
-CHECKED_STATUS CheckWriteThrottling(double score, tablet::TabletPeer* tablet_peer) {
+Status CheckWriteThrottling(double score, tablet::TabletPeer* tablet_peer) {
   // Check for memory pressure; don't bother doing any additional work if we've
   // exceeded the limit.
   auto tablet = tablet_peer->tablet();

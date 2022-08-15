@@ -7,8 +7,7 @@ menu:
   stable:
     parent: api-cassandra
     weight: 1310
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis
@@ -30,7 +29,7 @@ Use the `SELECT` statement to retrieve (part of) rows of specified columns that 
 ### Grammar
 
 ```
-select ::= SELECT [ DISTINCT ] { * | column_name [ , column_name ... ] } 
+select ::= SELECT [ DISTINCT ] { * | column_name [ , column_name ... ] }
                FROM table_name
                [ WHERE where_expression ]
                [ IF where_expression ]
@@ -68,7 +67,7 @@ Where
 - The `where_expression` can specify conditions on any columns including partition, clustering, and regular columns.
 - The `where_expression` has a restricted list of operators.
 
-  - Only `=`, `!=`, `IN` and `NOT IN` operators can be used for conditions on partition columns. 
+  - Only `=`, `!=`, `IN` and `NOT IN` operators can be used for conditions on partition columns.
   - Only operators `=`, `!=`, `<`, `<=`, `>`, `>=`, `IN` and `NOT IN` can be used for conditions on clustering and regular columns.
 
 ### `IF` clause
@@ -89,7 +88,7 @@ Some best practices are:
 
 - Use equality conditions on all partition columns (to fix the value of the partition key).
 - Use comparison operators on the clustering columns (tighter restrictions are more valuable for left-most clustering columns).
-- Generally, the closer a column is to the beginning of the primary key, the higher the performance gain for setting tighter restrictions on it. 
+- Generally, the closer a column is to the beginning of the primary key, the higher the performance gain for setting tighter restrictions on it.
 
 Ideally, these performance considerations should be taken into account when creating the table schema.{{< /note >}}
 
@@ -98,30 +97,30 @@ Ideally, these performance considerations should be taken into account when crea
 ### Select all rows from a table
 
 ```sql
-ycqlsh:example> CREATE TABLE employees(department_id INT, 
-                                      employee_id INT, 
+ycqlsh:example> CREATE TABLE employees(department_id INT,
+                                      employee_id INT,
                                       dept_name TEXT STATIC,
-                                      employee_name TEXT, 
+                                      employee_name TEXT,
                                       PRIMARY KEY(department_id, employee_id));
 ```
 
 ```sql
-ycqlsh:example> INSERT INTO employees(department_id, employee_id, dept_name, employee_name) 
+ycqlsh:example> INSERT INTO employees(department_id, employee_id, dept_name, employee_name)
                    VALUES (1, 1, 'Accounting', 'John');
 ```
 
 ```sql
-ycqlsh:example> INSERT INTO employees(department_id, employee_id, dept_name, employee_name) 
+ycqlsh:example> INSERT INTO employees(department_id, employee_id, dept_name, employee_name)
                    VALUES (1, 2, 'Accounting', 'Jane');
 ```
 
 ```sql
-ycqlsh:example> INSERT INTO employees(department_id, employee_id, dept_name, employee_name) 
+ycqlsh:example> INSERT INTO employees(department_id, employee_id, dept_name, employee_name)
                    VALUES (1, 3, 'Accounting', 'John');
 ```
 
 ```sql
-ycqlsh:example> INSERT INTO employees(department_id, employee_id, dept_name, employee_name) 
+ycqlsh:example> INSERT INTO employees(department_id, employee_id, dept_name, employee_name)
                    VALUES (2, 1, 'Marketing', 'Joe');
 ```
 
@@ -303,6 +302,6 @@ SELECT * FROM sensor_data WHERE device_id = 1 ORDER BY sensor_id ASC, ts ASC;
 
 - [`CREATE TABLE`](../ddl_create_table)
 - [`INSERT`](../dml_insert)
-- [`UPDATE`](../dml_update)
-- [`DELETE`](../dml_delete)
+- [`UPDATE`](../dml_update/)
+- [`DELETE`](../dml_delete/)
 - [`Expression`](..#expressions)

@@ -94,7 +94,7 @@ class Stream {
   Stream(const Stream&) = delete;
   void operator=(const Stream&) = delete;
 
-  virtual CHECKED_STATUS Start(bool connect, ev::loop_ref* loop, StreamContext* context) = 0;
+  virtual Status Start(bool connect, ev::loop_ref* loop, StreamContext* context) = 0;
   virtual void Close() = 0;
   virtual void Shutdown(const Status& status) = 0;
 
@@ -103,10 +103,10 @@ class Stream {
   // For instance when unsent call times out.
   virtual Result<size_t> Send(OutboundDataPtr data) = 0;
 
-  virtual CHECKED_STATUS TryWrite() = 0;
+  virtual Status TryWrite() = 0;
   virtual void ParseReceived() = 0;
   virtual size_t GetPendingWriteBytes() = 0;
-  virtual void Cancelled(size_t handle) = 0;
+  virtual bool Cancelled(size_t handle) = 0;
 
   virtual bool Idle(std::string* reason_not_idle) = 0;
   virtual bool IsConnected() = 0;

@@ -47,6 +47,7 @@
 #include "yb/client/client_fwd.h"
 
 #include "yb/common/partition.h"
+#include "yb/common/placement_info.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/consensus/metadata.pb.h"
 
@@ -78,7 +79,6 @@
 namespace yb {
 
 class Histogram;
-class YBPartialRow;
 
 namespace client {
 
@@ -108,7 +108,7 @@ class RemoteTabletServer {
   // Initialize the RPC proxy to this tablet server, if it is not already set up.
   // This will involve a DNS lookup if there is not already an active proxy.
   // If there is an active proxy, does nothing.
-  CHECKED_STATUS InitProxy(YBClient* client);
+  Status InitProxy(YBClient* client);
 
   // Update information from the given pb.
   // Requires that 'pb''s UUID matches this server.
@@ -133,26 +133,28 @@ class RemoteTabletServer {
   // Returns the remote server's uuid.
   const std::string& permanent_uuid() const;
 
-  const CloudInfoPB& cloud_info() const;
-
-  const google::protobuf::RepeatedPtrField<HostPortPB>& public_rpc_hostports() const;
-
-  const google::protobuf::RepeatedPtrField<HostPortPB>& private_rpc_hostports() const;
-
   bool HasCapability(CapabilityId capability) const;
+
+  bool IsLocalRegion() const;
+
+  LocalityLevel LocalityLevelWith(const CloudInfoPB& cloud_info) const;
+
+  HostPortPB DesiredHostPort(const CloudInfoPB& cloud_info) const;
+
+  std::string TEST_PlacementZone() const;
 
  private:
   mutable rw_spinlock mutex_;
   const std::string uuid_;
 
-  google::protobuf::RepeatedPtrField<HostPortPB> public_rpc_hostports_;
-  google::protobuf::RepeatedPtrField<HostPortPB> private_rpc_hostports_;
-  yb::CloudInfoPB cloud_info_pb_;
+  google::protobuf::RepeatedPtrField<HostPortPB> public_rpc_hostports_ GUARDED_BY(mutex_);
+  google::protobuf::RepeatedPtrField<HostPortPB> private_rpc_hostports_ GUARDED_BY(mutex_);
+  yb::CloudInfoPB cloud_info_pb_ GUARDED_BY(mutex_);
   std::shared_ptr<tserver::TabletServerServiceProxy> proxy_;
   ::yb::HostPort proxy_endpoint_;
   const tserver::LocalTabletServer* const local_tserver_ = nullptr;
   scoped_refptr<Histogram> dns_resolve_histogram_;
-  std::vector<CapabilityId> capabilities_;
+  std::vector<CapabilityId> capabilities_ GUARDED_BY(mutex_);
 
   DISALLOW_COPY_AND_ASSIGN(RemoteTabletServer);
 };
@@ -301,6 +303,9 @@ class RemoteTablet : public RefCountedThreadSafe<RemoteTablet> {
     GetRemoteTabletServers(&result, include_failed_replicas);
     return result;
   }
+
+  // Returns whether the tablet is located solely in the local region.
+  bool IsLocalRegion();
 
   // Return true if the tablet currently has a known LEADER replica
   // (i.e the next call to LeaderTServer() is likely to return non-NULL)
@@ -513,7 +518,7 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
       CoarseTimePoint deadline);
 
   // Lookup all tablets corresponding to a table.
-  void LookupAllTablets(const std::shared_ptr<const YBTable>& table,
+  void LookupAllTablets(const std::shared_ptr<YBTable>& table,
                         CoarseTimePoint deadline,
                         LookupTabletRangeCallback callback);
 
@@ -552,7 +557,7 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   // REQUIRES locations to be in order of partitions and without overlaps.
   // There could be gaps due to post-tablets not yet being running, in this case, MetaCache will
   // just skip updating cache for these tablets until they become running.
-  CHECKED_STATUS ProcessTabletLocations(
+  Status ProcessTabletLocations(
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& locations,
       boost::optional<PartitionListVersion> table_partition_list_version, LookupRpc* lookup_rpc);
 
@@ -656,6 +661,10 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   bool DoLookupAllTablets(const std::shared_ptr<const YBTable>& table,
                           CoarseTimePoint deadline,
                           LookupTabletRangeCallback* callback);
+
+  template <class Func, class Callback>
+  void RefreshTablePartitions(
+      Func&& func, const std::shared_ptr<YBTable>& table, Callback&& callback);
 
   YBClient* const client_;
 

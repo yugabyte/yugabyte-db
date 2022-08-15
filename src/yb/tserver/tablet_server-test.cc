@@ -59,6 +59,8 @@
 #include "yb/tserver/tablet_server_test_util.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver_admin.proxy.h"
+#include "yb/tserver/tserver_call_home.h"
+#include "yb/server/call_home-test-util.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/crc.h"
@@ -112,7 +114,7 @@ class TabletServerTest : public TabletServerTestBase {
     StartTabletServer();
   }
 
-  CHECKED_STATUS CallDeleteTablet(const std::string& uuid,
+  Status CallDeleteTablet(const std::string& uuid,
                     const char* tablet_id,
                     tablet::TabletDataState state) {
     DeleteTabletRequestPB req;
@@ -556,8 +558,8 @@ TEST_F(TabletServerTest, TestClientGetsErrorBackWhenRecoveryFailed) {
 
   // Save the log path before shutting down the tablet (and destroying
   // the tablet peer).
-  string log_path = tablet_peer_->log()->ActiveSegmentForTests()->path();
-  auto idx = tablet_peer_->log()->ActiveSegmentForTests()->first_entry_offset() + 300;
+  string log_path = tablet_peer_->log()->TEST_ActiveSegment()->path();
+  auto idx = tablet_peer_->log()->TEST_ActiveSegment()->first_entry_offset() + 300;
 
   ShutdownTablet();
   ASSERT_OK(log::CorruptLogFile(env_.get(), log_path, log::FLIP_BYTE, idx));
@@ -578,7 +580,8 @@ TEST_F(TabletServerTest, TestClientGetsErrorBackWhenRecoveryFailed) {
   // We're expecting the write to fail.
   ASSERT_OK(DCHECK_NOTNULL(proxy_.get())->Write(req, &resp, &controller));
   ASSERT_EQ(TabletServerErrorPB::TABLET_NOT_RUNNING, resp.error().code());
-  ASSERT_STR_CONTAINS(resp.error().status().message(), "Tablet not RUNNING: FAILED");
+  ASSERT_STR_CONTAINS(
+      resp.error().status().message(), Format("Tablet $0 not RUNNING: FAILED", kTabletId));
 }
 
 TEST_F(TabletServerTest, TestCreateTablet_TabletExists) {
@@ -811,8 +814,8 @@ TEST_F(TabletServerTest, TestWriteOutOfBounds) {
 
   Partition partition;
   auto table_info = std::make_shared<tablet::TableInfo>(
-      "TestWriteOutOfBoundsTable", "test_ns", tabletId, YQL_TABLE_TYPE, schema, IndexMap(),
-      boost::none /* index_info */, 0 /* schema_version */, partition_schema);
+      tablet::Primary::kTrue, "TestWriteOutOfBoundsTable", "test_ns", tabletId, YQL_TABLE_TYPE,
+      schema, IndexMap(), boost::none /* index_info */, 0 /* schema_version */, partition_schema);
   ASSERT_OK(mini_server_->server()->tablet_manager()->CreateNewTablet(
       table_info, tabletId, partition, mini_server_->CreateLocalConfig()));
 
@@ -904,6 +907,21 @@ TEST_F(TabletServerTest, TestChecksumScan) {
   ASSERT_OK(proxy_->Checksum(req, &resp, &controller));
   ASSERT_NE(total_crc, resp.checksum());
   ASSERT_EQ(first_crc, resp.checksum());
+}
+
+TEST_F(TabletServerTest, TestCallHome) {
+  auto webserver_dir = GetTestPath("webserver-docroot");
+  CHECK_OK(env_->CreateDir(webserver_dir));
+  TestCallHome<TabletServer, TserverCallHome>(
+      webserver_dir, {} /*additional_collections*/, mini_server_->server());
+}
+
+// This tests whether the enabling/disabling of callhome is happening dynamically
+// during runtime.
+TEST_F(TabletServerTest, TestCallHomeFlag) {
+  auto webserver_dir = GetTestPath("webserver-docroot");
+  CHECK_OK(env_->CreateDir(webserver_dir));
+  TestCallHomeFlag<TabletServer, TserverCallHome>(webserver_dir, mini_server_->server());
 }
 
 } // namespace tserver

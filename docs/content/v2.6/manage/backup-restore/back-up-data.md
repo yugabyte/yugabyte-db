@@ -8,19 +8,18 @@ menu:
     identifier: back-up-data
     parent: backup-restore
     weight: 703
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/manage/backup-restore/back-up-data" class="nav-link active">
+    <a href="/preview/manage/backup-restore/back-up-data" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
   <li >
-    <a href="/latest/manage/backup-restore/back-up-data-ycql" class="nav-link">
+    <a href="/preview/manage/backup-restore/back-up-data-ycql" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>

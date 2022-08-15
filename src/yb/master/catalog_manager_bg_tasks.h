@@ -57,7 +57,7 @@ class CatalogManagerBgTasks final {
 
   ~CatalogManagerBgTasks() {}
 
-  CHECKED_STATUS Init();
+  Status Init();
   void Shutdown();
 
   void Wake();

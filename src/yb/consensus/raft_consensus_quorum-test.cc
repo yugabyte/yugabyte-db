@@ -129,7 +129,7 @@ class RaftConsensusQuorumTest : public YBTest {
       opts.server_type = "tserver_test";
       std::unique_ptr<FsManager> fs_manager(new FsManager(env_.get(), opts));
       RETURN_NOT_OK(fs_manager->CreateInitialFileSystemLayout());
-      RETURN_NOT_OK(fs_manager->Open());
+      RETURN_NOT_OK(fs_manager->CheckAndOpenFileSystemRoots());
 
       scoped_refptr<Log> log;
       RETURN_NOT_OK(Log::Open(LogOptions(),
@@ -140,6 +140,7 @@ class RaftConsensusQuorumTest : public YBTest {
                               0, // schema_version
                               nullptr, // table_metric_entity
                               nullptr, // tablet_metric_entity
+                              log_thread_pool_.get(),
                               log_thread_pool_.get(),
                               log_thread_pool_.get(),
                               std::numeric_limits<int64_t>::max(), // cdc_min_replicated_index
@@ -161,6 +162,7 @@ class RaftConsensusQuorumTest : public YBTest {
       string peer_uuid = Substitute("peer-$0", i);
 
       std::unique_ptr<ConsensusMetadata> cmeta;
+      fs_managers_[i]->SetTabletPathByDataPath(kTestTablet, fs_managers_[i]->GetDataRootDirs()[0]);
       ASSERT_OK(ConsensusMetadata::Create(fs_managers_[i], kTestTablet, peer_uuid, config_,
                                          kMinimumTerm, &cmeta));
 
@@ -828,7 +830,10 @@ TEST_F(RaftConsensusQuorumTest, TestLeaderElectionWithQuiescedQuorum) {
     // This will force an election in which we expect to make the last
     // non-shutdown peer in the list become leader.
     LOG(INFO) << "Running election for future leader with index " << (current_config_size - 1);
-    ASSERT_OK(new_leader->StartElection({ElectionMode::ELECT_EVEN_IF_LEADER_IS_ALIVE}));
+    ASSERT_OK(new_leader->StartElection(LeaderElectionData{
+        .mode = consensus::ElectionMode::ELECT_EVEN_IF_LEADER_IS_ALIVE,
+        .pending_commit = false,
+        .must_be_committed_opid = OpId()}));
     ASSERT_OK(new_leader->WaitUntilLeaderForTests(MonoDelta::FromSeconds(15)));
     LOG(INFO) << "Election won";
 

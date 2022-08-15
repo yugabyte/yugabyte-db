@@ -16,6 +16,7 @@ import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPError;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
+import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
 import io.swagger.annotations.Api;
@@ -26,6 +27,7 @@ import io.swagger.annotations.ApiResponses;
 import io.swagger.annotations.Authorization;
 import java.util.Date;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -113,7 +115,13 @@ public class CertificateController extends AuthenticatedController {
                     label,
                     runtimeConfigFactory.staticApplicationConf().getString("yb.storage.path"),
                     hcVaultParams);
-            auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
+            auditService()
+                .createAuditEntryWithReqBody(
+                    ctx(),
+                    Audit.TargetType.Certificate,
+                    certUUID.toString(),
+                    Audit.ActionType.Create,
+                    Json.toJson(formData.rawData()));
             return PlatformResults.withData(certUUID);
 
           } catch (Exception e) {
@@ -135,12 +143,16 @@ public class CertificateController extends AuthenticatedController {
             runtimeConfigFactory.staticApplicationConf().getString("yb.storage.path"),
             certContent,
             keyContent,
-            certStart,
-            certExpiry,
             certType,
             customCertInfo,
             customServerCertData);
-    auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.Certificate,
+            certUUID.toString(),
+            Audit.ActionType.Create,
+            Json.toJson(formData.rawData()));
     return PlatformResults.withData(certUUID);
   }
 
@@ -162,8 +174,19 @@ public class CertificateController extends AuthenticatedController {
     LOG.info("CertificateController: creating self signed certificate with label {}", certLabel);
     UUID certUUID =
         CertificateHelper.createRootCA(
-            certLabel, customerUUID, appConfig.getString("yb.storage.path"));
-    auditService().createAuditEntry(ctx(), request());
+            runtimeConfigFactory.staticApplicationConf(), certLabel, customerUUID);
+
+    if (certUUID == null) {
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "Root certificate creation failed");
+    }
+
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.Certificate,
+            certUUID.toString(),
+            Audit.ActionType.CreateSelfSignedCert,
+            Json.toJson(formData));
     return PlatformResults.withData(certUUID);
   }
 
@@ -185,9 +208,20 @@ public class CertificateController extends AuthenticatedController {
 
     CertificateDetails result =
         CertificateHelper.createClientCertificate(
-            rootCA, null, formData.get().username, certStart, certExpiry);
+            runtimeConfigFactory.staticApplicationConf(),
+            rootCA,
+            null,
+            formData.get().username,
+            certStart,
+            certExpiry);
 
-    auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.Certificate,
+            rootCA.toString(),
+            Audit.ActionType.AddClientCertificate,
+            Json.toJson(formData.rawData()));
     return PlatformResults.withData(result);
   }
 
@@ -202,11 +236,17 @@ public class CertificateController extends AuthenticatedController {
 
       if (info.certType == CertConfigType.HashicorpVault) {
         EncryptionInTransitUtil.fetchLatestCAForHashicorpPKI(
-            info, runtimeConfigFactory.staticApplicationConf().getString("yb.storage.path"));
+            info, runtimeConfigFactory.staticApplicationConf());
       }
 
       String certContents = CertificateHelper.getCertPEMFileContents(rootCA);
-      auditService().createAuditEntry(ctx(), request());
+      auditService()
+          .createAuditEntryWithReqBody(
+              ctx(),
+              Audit.TargetType.Certificate,
+              rootCA.toString(),
+              Audit.ActionType.GetRootCertificate,
+              request().body().asJson());
       ObjectNode result = Json.newObject();
       result.put(CertificateHelper.ROOT_CERT, certContents);
       return PlatformResults.withRawData(result);
@@ -245,7 +285,9 @@ public class CertificateController extends AuthenticatedController {
       nickname = "deleteCertificate")
   public Result delete(UUID customerUUID, UUID reqCertUUID) {
     CertificateInfo.delete(reqCertUUID, customerUUID);
-    auditService().createAuditEntry(ctx(), request());
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(), Audit.TargetType.Certificate, reqCertUUID.toString(), Audit.ActionType.Delete);
     LOG.info("Successfully deleted the certificate:" + reqCertUUID);
     return YBPSuccess.empty();
   }
@@ -292,7 +334,9 @@ public class CertificateController extends AuthenticatedController {
           runtimeConfigFactory.staticApplicationConf().getString("yb.storage.path"),
           formParams);
     }
-    auditService().createAuditEntry(ctx(), request());
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(), Audit.TargetType.Certificate, reqCertUUID.toString(), Audit.ActionType.Edit);
     LOG.info("Successfully edited the certificate information:" + reqCertUUID);
     return YBPSuccess.empty();
   }
@@ -304,6 +348,12 @@ public class CertificateController extends AuthenticatedController {
     CertificateInfo certificate = CertificateInfo.getOrBadRequest(rootCA, customerUUID);
     CertificateParams.CustomCertInfo customCertInfo = formData.get().customCertInfo;
     certificate.setCustomCertPathParams(customCertInfo, rootCA, customerUUID);
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.Certificate,
+            Objects.toString(certificate.uuid, null),
+            Audit.ActionType.UpdateEmptyCustomerCertificate);
     return PlatformResults.withData(certificate);
   }
 }

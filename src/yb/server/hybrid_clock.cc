@@ -228,7 +228,8 @@ void HybridClock::NowWithError(HybridTime *hybrid_time, uint64_t *max_error_usec
 
   // We've already atomically incremented the logical, so subtract 1.
   *hybrid_time = HybridTimeFromMicrosecondsAndLogicalValue(
-      new_components.last_usec, new_components.logical).Decremented();
+      new_components.last_usec,
+      narrow_cast<LogicalTimeComponent>(new_components.logical)).Decremented();
   if (PREDICT_FALSE(VLOG_IS_ON(2))) {
     VLOG(2) << "Current clock is lower than the last one. Returning last read and incrementing"
         " logical values. Hybrid time: " << *hybrid_time << " Error: " << *max_error_usec;

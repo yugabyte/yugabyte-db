@@ -1,9 +1,14 @@
 {
-  "all": {
+  "yugabyte": {
     "%symlinks%": {
       "bin/ysqlsh": "../postgres/bin/ysqlsh"
     },
-    ".": ["$BUILD_ROOT/version_metadata.json"],
+    ".": [
+      "$BUILD_ROOT/auto_flags.json",
+      "$BUILD_ROOT/master_flags.xml",
+      "$BUILD_ROOT/tserver_flags.xml",
+      "$BUILD_ROOT/version_metadata.json"
+    ],
     "bin": [
       "$BUILD_ROOT/bin/ldb",
       "$BUILD_ROOT/bin/log-dump",
@@ -16,6 +21,7 @@
       "$BUILD_ROOT/bin/yb-ts-cli",
       "$BUILD_ROOT/bin/yb-tserver",
       "$BUILD_ROOT/bin/yb-ysck",
+      "$BUILD_ROOT/gobin/yugabyted-ui",
       "$BUILD_ROOT/postgres/bin/*",
       "$THIRDPARTY_BUILD_SPECIFIC_DIR/bin/pprof",
       "bin/bulk_load_cleanup.sh",
@@ -43,11 +49,12 @@
       "bin/yb-prof.py",
       "bin/print_stacks.sh",
       "bin/yb-check-failed-tablets.sh",
-      "scripts/k8s_preflight.py"
+      "scripts/k8s_preflight.py",
+      "scripts/k8s_parent.py"
     ],
     "www": ["www/*"]
   },
-  "cli": {
+  "yugabyte-client": {
     "%symlinks%": {
       "bin/ysqlsh": "../postgres/bin/ysqlsh"
     },

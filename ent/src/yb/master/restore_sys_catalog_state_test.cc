@@ -45,6 +45,16 @@ TEST(RestoreSysCatalogStateTest, Filter) {
       .snapshot_id = TxnSnapshotId::GenerateRandom(),
       .restore_at = HybridTime(),
       .restoration_id = TxnSnapshotRestorationId::GenerateRandom(),
+      .op_id = OpId(),
+      .write_time = {},
+      .term = 0,
+      .schedules = {},
+      .non_system_obsolete_tablets = {},
+      .non_system_obsolete_tables = {},
+      .non_system_objects_to_restore = {},
+      .existing_system_tables = {},
+      .restoring_system_tables = {},
+      .non_system_tablets_to_restore = {},
   };
   RestoreSysCatalogState state(&restoration);
   SysNamespaceEntryPB namespace_entry;

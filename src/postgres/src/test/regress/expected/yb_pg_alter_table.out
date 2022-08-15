@@ -7,6 +7,237 @@ DROP ROLE IF EXISTS regress_alter_table_user1;
 RESET client_min_messages;
 CREATE USER regress_alter_table_user1;
 --
+-- add attribute
+--
+CREATE TABLE attmp (initial int4);
+COMMENT ON TABLE attmp_wrong IS 'table comment';
+ERROR:  relation "attmp_wrong" does not exist
+COMMENT ON TABLE attmp IS 'table comment';
+COMMENT ON TABLE attmp IS NULL;
+ALTER TABLE attmp ADD COLUMN xmin integer; -- fails
+ERROR:  column name "xmin" conflicts with a system column name
+ALTER TABLE attmp ADD COLUMN a int4 default 3;
+ALTER TABLE attmp ADD COLUMN b name;
+ALTER TABLE attmp ADD COLUMN c text;
+ALTER TABLE attmp ADD COLUMN d float8;
+ALTER TABLE attmp ADD COLUMN e float4;
+ALTER TABLE attmp ADD COLUMN f int2;
+ALTER TABLE attmp ADD COLUMN g polygon;
+ALTER TABLE attmp ADD COLUMN h abstime;
+ERROR:  Type not yet supported in YugaByte: 702 (ABSTIME)
+ALTER TABLE attmp ADD COLUMN i char;
+ALTER TABLE attmp ADD COLUMN j abstime[];
+ALTER TABLE attmp ADD COLUMN k int4;
+ALTER TABLE attmp ADD COLUMN l tid;
+ALTER TABLE attmp ADD COLUMN m xid;
+ALTER TABLE attmp ADD COLUMN n oidvector;
+--ALTER TABLE attmp ADD COLUMN o lock;
+ALTER TABLE attmp ADD COLUMN p smgr;
+ALTER TABLE attmp ADD COLUMN q point;
+ALTER TABLE attmp ADD COLUMN r lseg;
+ALTER TABLE attmp ADD COLUMN s path;
+ALTER TABLE attmp ADD COLUMN t box;
+ALTER TABLE attmp ADD COLUMN u tinterval;
+ERROR:  Type not yet supported in YugaByte: 704 (TINTERVAL)
+ALTER TABLE attmp ADD COLUMN v timestamp;
+ALTER TABLE attmp ADD COLUMN w interval;
+ALTER TABLE attmp ADD COLUMN x float8[];
+ALTER TABLE attmp ADD COLUMN y float4[];
+ALTER TABLE attmp ADD COLUMN z int2[];
+-- This is the original query. This should be uncommented after we support abstime type (col h) and
+-- tinterval type (col u)
+-- INSERT INTO attmp (a, b, c, d, e, f, g, h, i, j, k, l, m, n, p, q, r, s, t, u,
+-- 	v, w, x, y, z)
+--    VALUES (4, 'name', 'text', 4.1, 4.1, 2, '(4.1,4.1,3.1,3.1)',
+--         'Mon May  1 00:30:30 1995', 'c', '{Mon May  1 00:30:30 1995, Monday Aug 24 14:43:07 1992, epoch}',
+-- 	314159, '(1,1)', '512',
+-- 	'1 2 3 4 5 6 7 8', 'magnetic disk', '(1.1,1.1)', '(4.1,4.1,3.1,3.1)',
+-- 	'(0,2,4.1,4.1,3.1,3.1)', '(4.1,4.1,3.1,3.1)', '["epoch" "infinity"]',
+-- 	'epoch', '01:00:10', '{1.0,2.0,3.0,4.0}', '{1.0,2.0,3.0,4.0}', '{1,2,3,4}');
+INSERT INTO attmp (a, b, c, d, e, f, g, i, j, k, l, m, n, p, q, r, s, t,
+	v, w, x, y, z)
+   VALUES (4, 'name', 'text', 4.1, 4.1, 2, '(4.1,4.1,3.1,3.1)',
+        'c', '{Mon May  1 00:30:30 1995, Monday Aug 24 14:43:07 1992, epoch}',
+	314159, '(1,1)', '512',
+	'1 2 3 4 5 6 7 8', 'magnetic disk', '(1.1,1.1)', '(4.1,4.1,3.1,3.1)',
+	'(0,2,4.1,4.1,3.1,3.1)', '(4.1,4.1,3.1,3.1)',
+	'epoch', '01:00:10', '{1.0,2.0,3.0,4.0}', '{1.0,2.0,3.0,4.0}', '{1,2,3,4}');
+SELECT * FROM attmp;
+ initial | a |  b   |  c   |  d  |  e  | f |           g           | i |                                               j                                                |   k    |   l   |  m  |        n        |       p       |     q     |           r           |              s              |          t          |            v             |        w         |     x     |     y     |     z
+---------+---+------+------+-----+-----+---+-----------------------+---+------------------------------------------------------------------------------------------------+--------+-------+-----+-----------------+---------------+-----------+-----------------------+-----------------------------+---------------------+--------------------------+------------------+-----------+-----------+-----------
+         | 4 | name | text | 4.1 | 4.1 | 2 | ((4.1,4.1),(3.1,3.1)) | c | {"Mon May 01 00:30:30 1995 PDT","Mon Aug 24 14:43:07 1992 PDT","Wed Dec 31 16:00:00 1969 PST"} | 314159 | (1,1) | 512 | 1 2 3 4 5 6 7 8 | magnetic disk | (1.1,1.1) | [(4.1,4.1),(3.1,3.1)] | ((0,2),(4.1,4.1),(3.1,3.1)) | (4.1,4.1),(3.1,3.1) | Thu Jan 01 00:00:00 1970 | @ 1 hour 10 secs | {1,2,3,4} | {1,2,3,4} | {1,2,3,4}
+(1 row)
+
+DROP TABLE attmp;
+-- the wolf bug - schema mods caused inconsistent row descriptors
+CREATE TABLE attmp (
+	initial 	int4
+);
+ALTER TABLE attmp ADD COLUMN a int4;
+ALTER TABLE attmp ADD COLUMN b name;
+ALTER TABLE attmp ADD COLUMN c text;
+ALTER TABLE attmp ADD COLUMN d float8;
+ALTER TABLE attmp ADD COLUMN e float4;
+ALTER TABLE attmp ADD COLUMN f int2;
+ALTER TABLE attmp ADD COLUMN g polygon;
+ALTER TABLE attmp ADD COLUMN h abstime;
+ERROR:  Type not yet supported in YugaByte: 702 (ABSTIME)
+ALTER TABLE attmp ADD COLUMN i char;
+ALTER TABLE attmp ADD COLUMN j abstime[];
+ALTER TABLE attmp ADD COLUMN k int4;
+ALTER TABLE attmp ADD COLUMN l tid;
+ALTER TABLE attmp ADD COLUMN m xid;
+ALTER TABLE attmp ADD COLUMN n oidvector;
+--ALTER TABLE attmp ADD COLUMN o lock;
+ALTER TABLE attmp ADD COLUMN p smgr;
+ALTER TABLE attmp ADD COLUMN q point;
+ALTER TABLE attmp ADD COLUMN r lseg;
+ALTER TABLE attmp ADD COLUMN s path;
+ALTER TABLE attmp ADD COLUMN t box;
+ALTER TABLE attmp ADD COLUMN u tinterval;
+ERROR:  Type not yet supported in YugaByte: 704 (TINTERVAL)
+ALTER TABLE attmp ADD COLUMN v timestamp;
+ALTER TABLE attmp ADD COLUMN w interval;
+ALTER TABLE attmp ADD COLUMN x float8[];
+ALTER TABLE attmp ADD COLUMN y float4[];
+ALTER TABLE attmp ADD COLUMN z int2[];
+-- This is the original query. This should be uncommented after we support abstime type (col h) and
+-- tinterval type (col u)
+-- INSERT INTO attmp (a, b, c, d, e, f, g, h, i, j, k, l, m, n, p, q, r, s, t, u,
+-- 	v, w, x, y, z)
+--    VALUES (4, 'name', 'text', 4.1, 4.1, 2, '(4.1,4.1,3.1,3.1)',
+--         'Mon May  1 00:30:30 1995', 'c', '{Mon May  1 00:30:30 1995, Monday Aug 24 14:43:07 1992, epoch}',
+-- 	314159, '(1,1)', '512',
+-- 	'1 2 3 4 5 6 7 8', 'magnetic disk', '(1.1,1.1)', '(4.1,4.1,3.1,3.1)',
+-- 	'(0,2,4.1,4.1,3.1,3.1)', '(4.1,4.1,3.1,3.1)', '["epoch" "infinity"]',
+-- 	'epoch', '01:00:10', '{1.0,2.0,3.0,4.0}', '{1.0,2.0,3.0,4.0}', '{1,2,3,4}');
+INSERT INTO attmp (a, b, c, d, e, f, g, i, j, k, l, m, n, p, q, r, s, t,
+	v, w, x, y, z)
+   VALUES (4, 'name', 'text', 4.1, 4.1, 2, '(4.1,4.1,3.1,3.1)',
+        'c', '{Mon May  1 00:30:30 1995, Monday Aug 24 14:43:07 1992, epoch}',
+	314159, '(1,1)', '512',
+	'1 2 3 4 5 6 7 8', 'magnetic disk', '(1.1,1.1)', '(4.1,4.1,3.1,3.1)',
+	'(0,2,4.1,4.1,3.1,3.1)', '(4.1,4.1,3.1,3.1)',
+	'epoch', '01:00:10', '{1.0,2.0,3.0,4.0}', '{1.0,2.0,3.0,4.0}', '{1,2,3,4}');
+SELECT * FROM attmp;
+ initial | a |  b   |  c   |  d  |  e  | f |           g           | i |                                               j                                                |   k    |   l   |  m  |        n        |       p       |     q     |           r           |              s              |          t          |            v             |        w         |     x     |     y     |     z
+---------+---+------+------+-----+-----+---+-----------------------+---+------------------------------------------------------------------------------------------------+--------+-------+-----+-----------------+---------------+-----------+-----------------------+-----------------------------+---------------------+--------------------------+------------------+-----------+-----------+-----------
+         | 4 | name | text | 4.1 | 4.1 | 2 | ((4.1,4.1),(3.1,3.1)) | c | {"Mon May 01 00:30:30 1995 PDT","Mon Aug 24 14:43:07 1992 PDT","Wed Dec 31 16:00:00 1969 PST"} | 314159 | (1,1) | 512 | 1 2 3 4 5 6 7 8 | magnetic disk | (1.1,1.1) | [(4.1,4.1),(3.1,3.1)] | ((0,2),(4.1,4.1),(3.1,3.1)) | (4.1,4.1),(3.1,3.1) | Thu Jan 01 00:00:00 1970 | @ 1 hour 10 secs | {1,2,3,4} | {1,2,3,4} | {1,2,3,4}
+(1 row)
+
+CREATE INDEX attmp_idx ON attmp (a, (d + e), b);
+ALTER INDEX attmp_idx ALTER COLUMN 0 SET STATISTICS 1000;
+ERROR:  column number must be in range from 1 to 32767
+LINE 1: ALTER INDEX attmp_idx ALTER COLUMN 0 SET STATISTICS 1000;
+                                           ^
+ALTER INDEX attmp_idx ALTER COLUMN 1 SET STATISTICS 1000;
+ERROR:  ALTER INDEX not supported yet
+LINE 1: ALTER INDEX attmp_idx ALTER COLUMN 1 SET STATISTICS 1000;
+        ^
+HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1130. Click '+' on the description to raise its priority
+ALTER INDEX attmp_idx ALTER COLUMN 2 SET STATISTICS 1000;
+ERROR:  ALTER INDEX not supported yet
+LINE 1: ALTER INDEX attmp_idx ALTER COLUMN 2 SET STATISTICS 1000;
+        ^
+HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1130. Click '+' on the description to raise its priority
+\d+ attmp_idx
+                        Index "public.attmp_idx"
+ Column |       Type       | Key? | Definition | Storage | Stats target
+--------+------------------+------+------------+---------+--------------
+ a      | integer          | yes  | a          | plain   |
+ expr   | double precision | yes  | (d + e)    | plain   |
+ b      | name             | yes  | b          | plain   |
+lsm, for table "public.attmp"
+
+ALTER INDEX attmp_idx ALTER COLUMN 3 SET STATISTICS 1000;
+ERROR:  ALTER INDEX not supported yet
+LINE 1: ALTER INDEX attmp_idx ALTER COLUMN 3 SET STATISTICS 1000;
+        ^
+HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1130. Click '+' on the description to raise its priority
+ALTER INDEX attmp_idx ALTER COLUMN 4 SET STATISTICS 1000;
+ERROR:  ALTER INDEX not supported yet
+LINE 1: ALTER INDEX attmp_idx ALTER COLUMN 4 SET STATISTICS 1000;
+        ^
+HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1130. Click '+' on the description to raise its priority
+ALTER INDEX attmp_idx ALTER COLUMN 2 SET STATISTICS -1;
+ERROR:  ALTER INDEX not supported yet
+LINE 1: ALTER INDEX attmp_idx ALTER COLUMN 2 SET STATISTICS -1;
+        ^
+HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1130. Click '+' on the description to raise its priority
+DROP TABLE attmp;
+--
+-- rename - check on both non-temp and temp tables
+--
+CREATE TABLE attmp (regtable int);
+CREATE TEMP TABLE attmp (attmptable int);
+ALTER TABLE attmp RENAME TO attmp_new;
+SELECT * FROM attmp;
+ regtable
+----------
+(0 rows)
+
+SELECT * FROM attmp_new;
+ attmptable
+------------
+(0 rows)
+
+ALTER TABLE attmp RENAME TO attmp_new2;
+SELECT * FROM attmp;		-- should fail
+ERROR:  relation "attmp" does not exist
+LINE 1: SELECT * FROM attmp;
+                      ^
+SELECT * FROM attmp_new;
+ attmptable
+------------
+(0 rows)
+
+SELECT * FROM attmp_new2;
+ regtable
+----------
+(0 rows)
+
+DROP TABLE attmp_new;
+DROP TABLE attmp_new2;
+-- check rename of partitioned tables and indexes also
+CREATE TABLE part_attmp (a int primary key) partition by range (a);
+CREATE TABLE part_attmp1 PARTITION OF part_attmp FOR VALUES FROM (0) TO (100);
+ALTER INDEX part_attmp_pkey RENAME TO part_attmp_index;
+ALTER INDEX part_attmp1_pkey RENAME TO part_attmp1_index;
+ALTER TABLE part_attmp RENAME TO part_at2tmp;
+ALTER TABLE part_attmp1 RENAME TO part_at2tmp1;
+SET ROLE regress_alter_table_user1;
+ALTER INDEX part_attmp_index RENAME TO fail;
+ERROR:  must be owner of index part_attmp_index
+ALTER INDEX part_attmp1_index RENAME TO fail;
+ERROR:  must be owner of index part_attmp1_index
+ALTER TABLE part_at2tmp RENAME TO fail;
+ERROR:  must be owner of table part_at2tmp
+ALTER TABLE part_at2tmp1 RENAME TO fail;
+ERROR:  must be owner of table part_at2tmp1
+RESET ROLE;
+DROP TABLE part_at2tmp;
+-- ALTER TABLE ... RENAME on non-table relations
+-- renaming indexes (FIXME: this should probably test the index's functionality)
+ALTER INDEX IF EXISTS __onek_unique1 RENAME TO attmp_onek_unique1;
+NOTICE:  relation "__onek_unique1" does not exist, skipping
+ALTER INDEX IF EXISTS __attmp_onek_unique1 RENAME TO onek_unique1;
+NOTICE:  relation "__attmp_onek_unique1" does not exist, skipping
+ALTER INDEX onek_unique1 RENAME TO attmp_onek_unique1;
+ERROR:  relation "onek_unique1" does not exist
+ALTER INDEX attmp_onek_unique1 RENAME TO onek_unique1;
+ERROR:  relation "attmp_onek_unique1" does not exist
+SET ROLE regress_alter_table_user1;
+ALTER INDEX onek_unique1 RENAME TO fail;  -- permission denied
+ERROR:  relation "onek_unique1" does not exist
+RESET ROLE;
+-- renaming index should rename constraint as well
+ALTER TABLE onek ADD CONSTRAINT onek_unique1_constraint UNIQUE (unique1);
+ERROR:  relation "onek" does not exist
+ALTER INDEX onek_unique1_constraint RENAME TO onek_unique1_constraint_foo;
+ERROR:  relation "onek_unique1_constraint" does not exist
+ALTER TABLE onek DROP CONSTRAINT onek_unique1_constraint_foo;
+ERROR:  relation "onek" does not exist
+--
 -- lock levels
 --
 drop type lockmodes;
@@ -40,12 +271,11 @@ insert into alterlock values (1, 'foo');
 create table alterlock2 (f3 int primary key, f1 int);
 insert into alterlock2 values (1, 1);
 begin; alter table alterlock alter column f2 set statistics 150;
-ERROR:  ALTER TABLE ALTER column not supported yet
-LINE 1: alter table alterlock alter column f2 set statistics 150;
-                              ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
 select * from my_locks order by 1;
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
+ relname | max_lockmode
+---------+--------------
+(0 rows)
+
 rollback;
 begin; alter table alterlock cluster on alterlock_pkey;
 ERROR:  ALTER TABLE CLUSTER not supported yet
@@ -124,6 +354,20 @@ rollback;
 -- begin; alter table alterlock alter column f2 set default 'x';
 -- select * from my_locks order by 1;
 -- rollback;
+--
+-- alter object set schema
+--
+create schema alter1;
+create schema alter2;
+create text search parser alter1.prs(start = prsd_start, gettoken = prsd_nexttoken, end = prsd_end, lextypes = prsd_lextype);
+create text search configuration alter1.cfg(parser = alter1.prs);
+alter text search parser alter1.prs set schema alter2;
+alter text search configuration alter1.cfg set schema alter2;
+-- clean up
+drop schema alter2 cascade;
+NOTICE:  drop cascades to 2 other objects
+DETAIL:  drop cascades to text search configuration alter2.cfg
+drop cascades to text search parser alter2.prs
 --
 -- typed tables: OF / NOT OF
 --

@@ -57,7 +57,7 @@ class PTStartTransaction : public TreeNode {
   }
 
   // Node semantics analysis.
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
+  virtual Status Analyze(SemContext *sem_context) override;
 
   // Node type.
   virtual TreeNodeOpcode opcode() const override {
@@ -87,7 +87,7 @@ class PTCommit : public TreeNode {
   }
 
   // Node semantics analysis.
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
+  virtual Status Analyze(SemContext *sem_context) override;
 
   // Node type.
   virtual TreeNodeOpcode opcode() const override {

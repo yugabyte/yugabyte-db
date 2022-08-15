@@ -46,6 +46,6 @@ public class PrecheckNodeDetached extends AbstractTaskBase {
         }
       }
     }
-    processShellResponse(response);
+    response.processErrors();
   }
 }

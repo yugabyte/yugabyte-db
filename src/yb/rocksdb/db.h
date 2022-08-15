@@ -821,7 +821,7 @@ class DB {
 
   virtual UserFrontierPtr GetFlushedFrontier() { return nullptr; }
 
-  virtual CHECKED_STATUS ModifyFlushedFrontier(
+  virtual Status ModifyFlushedFrontier(
       UserFrontierPtr values,
       FrontierModificationMode mode) {
     return Status::OK();
@@ -830,6 +830,10 @@ class DB {
   virtual FlushAbility GetFlushAbility() { return FlushAbility::kHasNewData; }
 
   virtual UserFrontierPtr GetMutableMemTableFrontier(UpdateUserValueType type) { return nullptr; }
+
+  virtual UserFrontierPtr CalcMemTableFrontier(UpdateUserValueType type) {
+    return nullptr;
+  }
 
   virtual void ListenFilesChanged(std::function<void()> listener) {}
 
@@ -905,7 +909,7 @@ class DB {
   // Needed for StackableDB
   virtual DB* GetRootDB() { return this; }
 
-  virtual CHECKED_STATUS Import(const std::string& source_dir) {
+  virtual Status Import(const std::string& source_dir) {
     return STATUS(NotSupported, "");
   }
 
@@ -913,6 +917,11 @@ class DB {
 
   // Returns approximate middle key (see Version::GetMiddleKey).
   virtual yb::Result<std::string> GetMiddleKey() = 0;
+
+  // Returns a table reader for the largest SST file.
+  virtual yb::Result<TableReader*> TEST_GetLargestSstTableReader() {
+    return STATUS(NotSupported, "");
+  }
 
   // Used in testing to make the old memtable immutable and start writing to a new one.
   virtual void TEST_SwitchMemtable() {}

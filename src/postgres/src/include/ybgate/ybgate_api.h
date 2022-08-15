@@ -117,6 +117,14 @@ typedef struct YbgTypeDesc YbgTypeDesc;
  */
 YbgStatus YbgGetTypeTable(const YBCPgTypeEntity **type_table, int *count);
 
+/*
+ * For non-primitive types (the ones without a corresponding YBCPgTypeEntity),
+ * get the corresponding primitive type's oid.
+ */
+YbgStatus YbgGetPrimitiveTypeOid(uint32_t type_oid, char typtype,
+								 uint32_t typbasetype,
+								 uint32_t *primitive_type_oid);
+
 //-----------------------------------------------------------------------------
 // Expression Evaluation
 //-----------------------------------------------------------------------------
@@ -194,6 +202,24 @@ YbgStatus YbgSamplerRandomFract(YbgReservoirState yb_rs, double *value);
  * and requested sample size.
  */
 YbgStatus YbgReservoirGetNextS(YbgReservoirState yb_rs, double t, int n, double *s);
+
+char* DecodeDatum(char const* fn_name, uintptr_t datum);
+
+char* DecodeTZDatum(char const* fn_name, uintptr_t datum, const char *timezone, bool from_YB);
+
+char* DecodeArrayDatum(char const* arr_fn_name, uintptr_t datum,
+		int16_t elem_len, bool elem_by_val, char elem_align, char elem_delim, bool from_YB,
+		char const* fn_name, const char *timezone, char option);
+
+char* DecodeRangeDatum(char const* range_fn_name, uintptr_t datum,
+		int16_t elem_len, bool elem_by_val, char elem_align, char option, bool from_YB,
+		char const* elem_fn_name, int range_type, const char *timezone);
+
+char* DecodeRangeArrayDatum(char const* arr_fn_name, uintptr_t datum,
+		int16_t elem_len, int16_t range_len, bool elem_by_val, bool range_by_val,
+		char elem_align, char range_align, char elem_delim, char option, char range_option,
+		bool from_YB, char const* elem_fn_name, char const* range_fn_name, int range_type,
+		const char *timezone);
 
 #ifdef __cplusplus
 }

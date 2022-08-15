@@ -8,8 +8,7 @@ menu:
     identifier: do-assert-bucket-ok
     parent: analyzing-a-normal-distribution
     weight: 90
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 Save this script as `do_assert_bucket_ok.sql`.
 ```plpgsql

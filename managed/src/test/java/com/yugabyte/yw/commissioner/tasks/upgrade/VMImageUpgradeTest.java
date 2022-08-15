@@ -182,6 +182,17 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
     assertTaskType(createRootVolumeTasks, TaskType.CreateRootVolumes);
     assertEquals(expectedRootVolumeCreationTasks, createRootVolumeTasks.size());
 
+    /*
+     * Leader blacklisting may add ModifyBlackList task to subTasks.
+     * Task details for ModifyBlacklist task do not contain the required
+     * keys being asserted here. So, remove task types of ModifyBlackList
+     * from subTasks before asserting for required keys.
+     */
+    createRootVolumeTasks =
+        createRootVolumeTasks
+            .stream()
+            .filter(t -> t.getTaskType() != TaskType.ModifyBlackList)
+            .collect(Collectors.toList());
     createRootVolumeTasks.forEach(
         task -> {
           JsonNode details = task.getTaskDetails();

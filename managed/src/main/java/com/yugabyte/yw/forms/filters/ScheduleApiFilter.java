@@ -17,7 +17,6 @@ import java.util.UUID;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.apache.commons.collections.CollectionUtils;
-import org.apache.commons.lang3.StringUtils;
 
 @Data
 @NoArgsConstructor
@@ -25,6 +24,7 @@ public class ScheduleApiFilter {
 
   private Set<TaskType> taskTypes;
   private Set<Schedule.State> status;
+  private Set<UUID> universeUUIDList;
 
   public ScheduleFilter toFilter() {
     ScheduleFilter.ScheduleFilterBuilder builder = ScheduleFilter.builder();
@@ -33,6 +33,9 @@ public class ScheduleApiFilter {
     }
     if (!CollectionUtils.isEmpty(status)) {
       builder.status(status);
+    }
+    if (!CollectionUtils.isEmpty(universeUUIDList)) {
+      builder.universeUUIDList(universeUUIDList);
     }
     return builder.build();
   }

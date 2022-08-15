@@ -88,7 +88,7 @@ DEFINE_int32(load_balancer_max_concurrent_removals,
              "load balancer.");
 
 DEFINE_int32(load_balancer_max_concurrent_moves,
-             2,
+             10,
              "Maximum number of tablet leaders on tablet servers (across the cluster) to move in "
              "any one run of the load balancer.");
 
@@ -135,10 +135,12 @@ DEFINE_bool(load_balancer_ignore_cloud_info_similarity, false,
             "If true, ignore the similarity between cloud infos when deciding which tablet "
             "to move.");
 
-// TODO(tsplit): make false by default or even remove flag after
-// https://github.com/yugabyte/yugabyte-db/issues/10301 is fixed.
-DEFINE_test_flag(
-    bool, load_balancer_skip_inactive_tablets, true, "Don't move inactive (hidden) tablets");
+METRIC_DEFINE_gauge_int64(cluster,
+                          is_load_balancing_enabled,
+                          "Is Load Balancing Enabled",
+                          yb::MetricUnit::kUnits,
+                          "Is load balancing enabled in the cluster where "
+                          "1 indicates it is enabled.");
 
 namespace yb {
 namespace master {
@@ -204,58 +206,47 @@ std::vector<std::pair<TabletId, std::string>> GetLeadersOnTSToMove(
 } // namespace
 
 Result<ReplicationInfoPB> ClusterLoadBalancer::GetTableReplicationInfo(
-    const scoped_refptr<TableInfo>& table) const {
-
-  // Return custom placement policy if it exists.
-  {
-    auto l = table->LockForRead();
-    if (l->pb.has_replication_info()) {
-      return l->pb.replication_info();
-    }
-  }
-
-  // Custom placement policy does not exist. Check whether this table
-  // has a tablespace associated with it, if so, return the placement info
-  // for that tablespace.
-  auto replication_info = VERIFY_RESULT(tablespace_manager_->GetTableReplicationInfo(table));
-  if (replication_info) {
-    return replication_info.value();
-  }
-
-  // No custom policy or tablespace specified for table.
-  return GetClusterReplicationInfo();
+    const scoped_refptr<const TableInfo>& table) const {
+  return catalog_manager_->GetTableReplicationInfo(table);
 }
 
 void ClusterLoadBalancer::InitTablespaceManager() {
   tablespace_manager_ = catalog_manager_->GetTablespaceManager();
 }
 
-Status ClusterLoadBalancer::PopulatePlacementInfo(TabletInfo* tablet, PlacementInfoPB* pb) {
+Status ClusterLoadBalancer::PopulateReplicationInfo(
+    const scoped_refptr<TableInfo>& table, const ReplicationInfoPB& replication_info) {
+  PlacementInfoPB pb;
+
   if (state_->options_->type == LIVE) {
-    const auto& replication_info = VERIFY_RESULT(GetTableReplicationInfo(tablet->table()));
-    pb->CopyFrom(replication_info.live_replicas());
-    return Status::OK();
+    pb.CopyFrom(replication_info.live_replicas());
+  } else if (state_->options_->type == READ_ONLY) {
+    if (replication_info.read_replicas_size() == 0) {
+      // Should not reach here as tables that should not have read replicas should
+      // have already been skipped before reaching here.
+      return STATUS_FORMAT(
+          IllegalState, "Encountered a table $0 with no read replicas. Placement info $1",
+          table->id(), replication_info);
+    }
+    pb.CopyFrom(GetReadOnlyPlacementFromUuid(replication_info));
   }
-  auto l = tablet->table()->LockForRead();
-  if (state_->options_->type == READ_ONLY &&
-      l->pb.has_replication_info() &&
-      !l->pb.replication_info().read_replicas().empty()) {
-    pb->CopyFrom(GetReadOnlyPlacementFromUuid(l->pb.replication_info()));
-  } else {
-    pb->CopyFrom(GetClusterPlacementInfo());
+
+  state_->placement_by_table_[table->id()] = std::move(pb);
+
+  bool is_txn_table = table->GetTableType() == TRANSACTION_STATUS_TABLE_TYPE;
+  state_->use_preferred_zones_ = !is_txn_table || FLAGS_transaction_tables_use_preferred_zones;
+  if (state_->use_preferred_zones_) {
+    GetAllAffinitizedZones(replication_info, &state_->affinitized_zones_);
   }
+
   return Status::OK();
 }
 
 Status ClusterLoadBalancer::UpdateTabletInfo(TabletInfo* tablet) {
-  const auto& table_id = tablet->table()->id();
-  // Set the placement information on a per-table basis, only once.
-  if (!state_->placement_by_table_.count(table_id)) {
-    PlacementInfoPB pb;
-    {
-      RETURN_NOT_OK(PopulatePlacementInfo(tablet, &pb));
-    }
-    state_->placement_by_table_[table_id] = std::move(pb);
+  // The placement information should already be set.
+  if (!state_->placement_by_table_.count(tablet->table()->id())) {
+    return STATUS_FORMAT(
+        IllegalState, "Encountered a table $0 with no Placement info.", tablet->table()->name());
   }
 
   return state_->UpdateTablet(tablet);
@@ -323,6 +314,11 @@ void set_remaining(T pending_tasks, T* remaining_tasks) {
 // Needed as we have a unique_ptr to the forward declared PerTableLoadState class.
 ClusterLoadBalancer::~ClusterLoadBalancer() = default;
 
+void ClusterLoadBalancer::InitMetrics() {
+  is_load_balancing_enabled_metric_ = METRIC_is_load_balancing_enabled.Instantiate(
+      catalog_manager_->master_->metric_entity_cluster(), 0);
+}
+
 void ClusterLoadBalancer::RunLoadBalancerWithOptions(Options* options) {
   ResetGlobalState();
 
@@ -365,22 +361,50 @@ void ClusterLoadBalancer::RunLoadBalancerWithOptions(Options* options) {
       continue;
     }
     const TableId& table_id = table.first;
-    if (tablespace_manager_->NeedsRefreshToFindTablePlacement(table.second)) {
+    const auto& table_info = table.second;
+
+    if (tablespace_manager_->NeedsRefreshToFindTablePlacement(table_info)) {
       // Placement information was not present in catalog manager cache. This is probably a
       // recently created table, skip load balancing for now, hopefully by the next run,
       // the background task in the catalog manager will pick up the placement information
       // for this table from the PG catalog tables.
       // TODO(deepthi) Keep track of the number of times this happens, take appropriate action
       // if placement stays missing over period of time.
-      YB_LOG_EVERY_N(INFO, 10) << "Skipping load balancing for table " << table.second->name()
+      YB_LOG_EVERY_N(INFO, 10) << "Skipping load balancing for table " << table_id
                                << " as its placement information is not available yet";
       master_errors++;
       continue;
     }
+
+    const auto& replication_info = GetTableReplicationInfo(table_info);
+    if (!replication_info) {
+      YB_LOG_EVERY_N(WARNING, 10) << "Skipping load balancing for table " << table_id << ": "
+                                  << "as fetching replication info failed with error "
+                                  << StatusToString(replication_info.status());
+      master_errors++;
+      continue;
+    }
+
+    if (options->type == READ_ONLY) {
+      if (replication_info->read_replicas_size() == 0) {
+        // The table has a replication policy without any read replicas present.
+        // The LoadBalancer is handling read replicas in this run, so this
+        // table can be skipped.
+        continue;
+      }
+    }
+
     ResetTableStatePtr(table_id, options);
 
-    bool is_txn_table = table.second->GetTableType() == TRANSACTION_STATUS_TABLE_TYPE;
-    state_->use_preferred_zones_ = !is_txn_table || FLAGS_transaction_tables_use_preferred_zones;
+    auto populate_ri_status = PopulateReplicationInfo(table_info, *replication_info);
+    if (!populate_ri_status.ok()) {
+      YB_LOG_EVERY_N(WARNING, 10) << "Skipping load balancing for table " << table_id << ": "
+                                  << "as populating replication info failed with error "
+                                  << StatusToString(populate_ri_status);
+      master_errors++;
+      continue;
+    }
+
     InitializeTSDescriptors();
 
     Status s = CountPendingTasksUnlocked(table_id,
@@ -389,7 +413,7 @@ void ClusterLoadBalancer::RunLoadBalancerWithOptions(Options* options) {
                                          &pending_stepdown_leader_tasks);
     if (!s.ok()) {
       // Found uninitialized ts_meta, so don't load balance this table yet.
-      LOG(WARNING) << "Skipping load balancing " << table.first << ": " << StatusToString(s);
+      LOG(WARNING) << "Skipping load balancing for table " << table_id << ": " << StatusToString(s);
       per_table_states_.erase(table_id);
       master_errors++;
       continue;
@@ -442,6 +466,8 @@ void ClusterLoadBalancer::RunLoadBalancerWithOptions(Options* options) {
   VLOG(1) << "Number of remote bootstraps before running load balancer: "
           << global_state_->total_starting_tablets_;
 
+  bool task_added = false;
+
   // Iterate over all the tables to take actions based on the data collected on the previous loop.
   for (const auto& table : GetTableMap()) {
     state_ = nullptr;
@@ -471,6 +497,29 @@ void ClusterLoadBalancer::RunLoadBalancerWithOptions(Options* options) {
     TabletServerId out_from_ts;
     TabletServerId out_to_ts;
 
+    if (!PREDICT_FALSE(FLAGS_TEST_load_balancer_handle_under_replicated_tablets_only)) {
+      // Handle cleanup after over-replication.
+      for (; remaining_removals > 0; --remaining_removals) {
+        if (state_->allow_only_leader_balancing_) {
+          YB_LOG_EVERY_N_SECS(INFO, 30)
+              << "Skipping remove replicas. Only leader balancing table " << table.first;
+          break;
+        }
+        auto handle_remove = HandleRemoveReplicas(&out_tablet_id, &out_from_ts);
+        if (!handle_remove.ok()) {
+          LOG(WARNING) << "Skipping remove replicas for " << table.first << ": "
+                       << StatusToString(handle_remove);
+          master_errors++;
+          break;
+        }
+        if (!*handle_remove) {
+          break;
+        }
+
+        task_added = true;
+      }
+    }
+
     // Handle adding and moving replicas.
     for ( ; remaining_adds > 0; --remaining_adds) {
       if (state_->allow_only_leader_balancing_) {
@@ -488,29 +537,13 @@ void ClusterLoadBalancer::RunLoadBalancerWithOptions(Options* options) {
       if (!*handle_add) {
         break;
       }
+
+      task_added = true;
     }
+
     if (PREDICT_FALSE(FLAGS_TEST_load_balancer_handle_under_replicated_tablets_only)) {
       LOG(INFO) << "Skipping remove replicas and leader moves for " << table.first;
       continue;
-    }
-
-    // Handle cleanup after over-replication.
-    for ( ; remaining_removals > 0; --remaining_removals) {
-      if (state_->allow_only_leader_balancing_) {
-        YB_LOG_EVERY_N_SECS(INFO, 30) << "Skipping remove replicas. Only leader balancing table "
-                                      << table.first;
-        break;
-      }
-      auto handle_remove = HandleRemoveReplicas(&out_tablet_id, &out_from_ts);
-      if (!handle_remove.ok()) {
-        LOG(WARNING) << "Skipping remove replicas for " << table.first << ": "
-                     << StatusToString(handle_remove);
-        master_errors++;
-        break;
-      }
-      if (!*handle_remove) {
-        break;
-      }
     }
 
     // Handle tablet servers with too many leaders.
@@ -532,10 +565,12 @@ void ClusterLoadBalancer::RunLoadBalancerWithOptions(Options* options) {
       if (!*handle_leader) {
         break;
       }
+
+      task_added = true;
     }
   }
 
-  RecordActivity(master_errors);
+  RecordActivity(task_added, master_errors);
 }
 
 void ClusterLoadBalancer::RunLoadBalancer(Options* options) {
@@ -565,7 +600,7 @@ void ClusterLoadBalancer::RunLoadBalancer(Options* options) {
   }
 }
 
-void ClusterLoadBalancer::RecordActivity(uint32_t master_errors) {
+void ClusterLoadBalancer::RecordActivity(bool tasks_added_in_this_run, uint32_t master_errors) {
   // Update the list of tables for whom load-balancing has been
   // skipped in this run.
   {
@@ -576,6 +611,12 @@ void ClusterLoadBalancer::RecordActivity(uint32_t master_errors) {
   uint32_t table_tasks = 0;
   for (const auto& table : GetTableMap()) {
     table_tasks += table.second->NumLBTasks();
+  }
+
+  if (!master_errors && !table_tasks && tasks_added_in_this_run) {
+    VLOG(1) << "Tasks scheduled by Load balancer have already completed. Force setting table tasks "
+               "count to 1 so that it does not appear idle";
+    ++table_tasks;
   }
 
   struct ActivityInfo ai {table_tasks, master_errors};
@@ -624,6 +665,10 @@ Status ClusterLoadBalancer::IsIdle() const {
 
 bool ClusterLoadBalancer::CanBalanceGlobalLoad() const {
   return FLAGS_enable_global_load_balancing && can_perform_global_operations_;
+}
+
+void ClusterLoadBalancer::ReportMetrics() {
+  is_load_balancing_enabled_metric_->set_value(IsLoadBalancerEnabled());
 }
 
 void ClusterLoadBalancer::ReportUnusualLoadBalancerState() const {
@@ -686,10 +731,6 @@ Status ClusterLoadBalancer::AnalyzeTabletsUnlocked(const TableId& table_uuid) {
       RETURN_NOT_OK(UpdateTabletInfo(tablet.get()));
     }
   }
-
-  // After updating the tablets and tablet servers, adjust the configured threshold if it is too
-  // low for the given configuration.
-  state_->AdjustLeaderBalanceThreshold();
 
   // Once we've analyzed both the tablet server information as well as the tablets, we can sort the
   // load and are ready to apply the load balancing rules.
@@ -1031,22 +1072,43 @@ Result<bool> ClusterLoadBalancer::GetTabletToMove(
   return false;
 }
 
-Result<bool> ClusterLoadBalancer::GetLeaderToMove(TabletId* moving_tablet_id,
-                                                  TabletServerId* from_ts,
-                                                  TabletServerId* to_ts,
-                                                  std::string* to_ts_path) {
-  if (state_->sorted_leader_load_.empty()) {
+Result<bool> ClusterLoadBalancer::GetLeaderToMoveWithinAffinitizedPriorities(
+    TabletId* moving_tablet_id,
+    TabletServerId* from_ts,
+    TabletServerId* to_ts,
+    std::string* to_ts_path) {
+  for (const auto& leader_set : state_->sorted_leader_load_) {
+    if (VERIFY_RESULT(GetLeaderToMove(leader_set, moving_tablet_id, from_ts, to_ts, to_ts_path))) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+Result<bool> ClusterLoadBalancer::GetLeaderToMove(
+    const vector<TabletServerId>& sorted_leader_load,
+    TabletId* moving_tablet_id,
+    TabletServerId* from_ts,
+    TabletServerId* to_ts,
+    std::string* to_ts_path) {
+  if (sorted_leader_load.empty()) {
     return false;
   }
 
+  // Adjust the configured threshold if it is too low for the given configuration.
+  size_t adjusted_leader_threshold = implicit_cast<size_t>(
+      state_->AdjustLeaderBalanceThreshold(static_cast<int>(sorted_leader_load.size())));
+
   // Find out if there are leaders to be moved.
-  for (auto right = state_->sorted_leader_load_.size(); right > 0;) {
+  for (auto right = sorted_leader_load.size(); right > 0;) {
     --right;
-    const TabletServerId& high_load_uuid = state_->sorted_leader_load_[right];
-    auto high_leader_blacklisted = (state_->leader_blacklisted_servers_.find(high_load_uuid) !=
-      state_->leader_blacklisted_servers_.end());
+    const TabletServerId& high_load_uuid = sorted_leader_load[right];
+    auto high_leader_blacklisted =
+        (state_->leader_blacklisted_servers_.find(high_load_uuid) !=
+         state_->leader_blacklisted_servers_.end());
+    auto high_load = state_->GetLeaderLoad(high_load_uuid);
     if (high_leader_blacklisted) {
-      auto high_load = state_->GetLeaderLoad(high_load_uuid);
       if (high_load > 0) {
         // Leader blacklisted tserver with a leader replica.
         break;
@@ -1055,7 +1117,7 @@ Result<bool> ClusterLoadBalancer::GetLeaderToMove(TabletId* moving_tablet_id,
         continue;
       }
     } else {
-      if (state_->IsLeaderLoadBelowThreshold(state_->sorted_leader_load_[right])) {
+      if (adjusted_leader_threshold > 0 && high_load <= adjusted_leader_threshold) {
         // Non-leader blacklisted tserver with not too many leader replicas.
         // TODO(Sanket): Even though per table load is below the configured threshold,
         // we might want to do global leader balancing above a certain threshold that is lower
@@ -1090,9 +1152,9 @@ Result<bool> ClusterLoadBalancer::GetLeaderToMove(TabletId* moving_tablet_id,
   // and are already breaking the invariance rule, as that means that any further differences in
   // the interval between left and right cannot have load > kMinLeaderLoadVarianceToBalance.
   const auto current_time = MonoTime::Now();
-  ssize_t last_pos = state_->sorted_leader_load_.size() - 1;
+  ssize_t last_pos = sorted_leader_load.size() - 1;
   for (ssize_t left = 0; left <= last_pos; ++left) {
-    const TabletServerId& low_load_uuid = state_->sorted_leader_load_[left];
+    const TabletServerId& low_load_uuid = sorted_leader_load[left];
     auto low_leader_blacklisted = (state_->leader_blacklisted_servers_.find(low_load_uuid) !=
         state_->leader_blacklisted_servers_.end());
     if (low_leader_blacklisted) {
@@ -1101,7 +1163,7 @@ Result<bool> ClusterLoadBalancer::GetLeaderToMove(TabletId* moving_tablet_id,
     }
 
     for (auto right = last_pos; right >= 0; --right) {
-      const TabletServerId& high_load_uuid = state_->sorted_leader_load_[right];
+      const TabletServerId& high_load_uuid = sorted_leader_load[right];
       auto high_leader_blacklisted = (state_->leader_blacklisted_servers_.find(high_load_uuid) !=
           state_->leader_blacklisted_servers_.end());
       ssize_t load_variance =
@@ -1262,42 +1324,57 @@ Result<bool> ClusterLoadBalancer::HandleRemoveIfWrongPlacement(
   return false;
 }
 
-Result<bool> ClusterLoadBalancer::HandleLeaderLoadIfNonAffinitized(TabletId* moving_tablet_id,
-                                                                   TabletServerId* from_ts,
-                                                                   TabletServerId* to_ts,
-                                                                   std::string* to_ts_path) {
-  // Similar to normal leader balancing, we double iterate from most loaded to least loaded
-  // non-affinitized nodes and least to most affinitized nodes. For each pair, we check whether
-  // there is any tablet intersection and if so, there is a match and we return true.
+Result<bool> ClusterLoadBalancer::GetLeaderToMoveAcrossAffinitizedPriorities(
+    TabletId* moving_tablet_id,
+    TabletServerId* from_ts,
+    TabletServerId* to_ts,
+    std::string* to_ts_path) {
+  // Similar to normal leader balancing, we double iterate from lowest priority most loaded and
+  // higher priority least loaded nodes. For each pair, we check whether there is any tablet
+  // intersection and if so, there is a match and we return true.
   //
-  // If we go through all the node pairs or we see that the current non-affinitized
-  // leader load is 0, we know that there is no match from non-affinitized to affinitized nodes
-  // and we return false.
-  for (size_t non_affinitized_idx = state_->sorted_non_affinitized_leader_load_.size();
-       non_affinitized_idx > 0;) {
-    --non_affinitized_idx;
-    const TabletServerId& non_affinitized_uuid =
-        state_->sorted_non_affinitized_leader_load_[non_affinitized_idx];
-    if (state_->GetLeaderLoad(non_affinitized_uuid) == 0) {
-      // All subsequent non-affinitized nodes have no leaders, no match found.
-      return false;
-    }
-    const set<TabletId>& leaders = state_->per_ts_meta_[non_affinitized_uuid].leaders;
-    for (const auto& affinitized_uuid : state_->sorted_leader_load_) {
-      auto peers = GetLeadersOnTSToMove(global_state_->drive_aware_,
-                                        leaders,
-                                        state_->per_ts_meta_[affinitized_uuid]);
+  // If the current leader load is 0, we know that there is no match in this priority and move to
+  // higher priorities.
+  for (auto lower_priority = state_->sorted_leader_load_.size(); lower_priority > 1;) {
+    lower_priority--;
+    auto& leader_set = state_->sorted_leader_load_[lower_priority];
+    for (size_t idx = leader_set.size(); idx > 0;) {
+      idx--;
+      const TabletServerId& from_uuid = leader_set[idx];
+      if (state_->GetLeaderLoad(from_uuid) == 0) {
+        bool is_blacklisted = state_->leader_blacklisted_servers_.find(from_uuid) !=
+                              state_->leader_blacklisted_servers_.end();
+        if (is_blacklisted) {
+          // Blacklisted nodes are sorted to the end even if their load is 0.
+          // There could still be non-blacklisted nodes with higher loads. So keep looking.
+          continue;
+        } else {
+          // All subsequent non-blacklisted nodes in this priority have no leaders, no match found.
+          break;
+        }
+      }
 
-      if (!peers.empty()) {
-        auto peer = peers.begin();
-        *moving_tablet_id = peer->first;
-        *to_ts_path = peer->first;
-        *from_ts = non_affinitized_uuid;
-        *to_ts = affinitized_uuid;
-        return true;
+      const set<TabletId>& leaders = state_->per_ts_meta_[from_uuid].leaders;
+      for (size_t higher_priority = 0; higher_priority < lower_priority; higher_priority++) {
+        // higher_priority is always guaranteed not to contain blacklisted servers.
+        for (const auto& to_uuid : state_->sorted_leader_load_[higher_priority]) {
+          auto peers = GetLeadersOnTSToMove(
+              global_state_->drive_aware_, leaders, state_->per_ts_meta_[to_uuid]);
+
+          if (!peers.empty()) {
+            auto peer = peers.begin();
+            *moving_tablet_id = peer->first;
+            *to_ts_path = peer->first;
+            *from_ts = from_uuid;
+            *to_ts = to_uuid;
+
+            return true;
+          }
+        }
       }
     }
   }
+
   return false;
 }
 
@@ -1308,13 +1385,14 @@ Result<bool> ClusterLoadBalancer::HandleLeaderMoves(
   // preferred zones and instead proceed to normal leader balancing.
   string out_ts_ts_path;
   if (state_->use_preferred_zones_ &&
-    VERIFY_RESULT(HandleLeaderLoadIfNonAffinitized(
-                    out_tablet_id, out_from_ts, out_to_ts, &out_ts_ts_path))) {
+      VERIFY_RESULT(GetLeaderToMoveAcrossAffinitizedPriorities(
+          out_tablet_id, out_from_ts, out_to_ts, &out_ts_ts_path))) {
     RETURN_NOT_OK(MoveLeader(*out_tablet_id, *out_from_ts, *out_to_ts, out_ts_ts_path));
     return true;
   }
 
-  if (VERIFY_RESULT(GetLeaderToMove(out_tablet_id, out_from_ts, out_to_ts, &out_ts_ts_path))) {
+  if (VERIFY_RESULT(GetLeaderToMoveWithinAffinitizedPriorities(
+          out_tablet_id, out_from_ts, out_to_ts, &out_ts_ts_path))) {
     RETURN_NOT_OK(MoveLeader(*out_tablet_id, *out_from_ts, *out_to_ts, out_ts_ts_path));
     return true;
   }
@@ -1358,20 +1436,12 @@ Status ClusterLoadBalancer::MoveLeader(const TabletId& tablet_id,
   return state_->MoveLeader(tablet_id, from_ts, to_ts, to_ts_path);
 }
 
-void ClusterLoadBalancer::GetAllAffinitizedZones(AffinitizedZonesSet* affinitized_zones) const {
-  SysClusterConfigEntryPB config;
-  CHECK_OK(catalog_manager_->GetClusterConfig(&config));
-  const int num_zones = config.replication_info().affinitized_leaders_size();
-  for (int i = 0; i < num_zones; i++) {
-    CloudInfoPB ci = config.replication_info().affinitized_leaders(i);
-    affinitized_zones->insert(ci);
-  }
+void ClusterLoadBalancer::GetAllAffinitizedZones(
+  const ReplicationInfoPB& replication_info, vector<AffinitizedZonesSet>* affinitized_zones) const {
+  CatalogManagerUtil::GetAllAffinitizedZones(replication_info, affinitized_zones);
 }
 
 void ClusterLoadBalancer::InitializeTSDescriptors() {
-  if (state_->use_preferred_zones_) {
-    GetAllAffinitizedZones(&state_->affinitized_zones_);
-  }
   // Set the blacklist so we can also mark the tablet servers as we add them up.
   state_->SetBlacklist(GetServerBlacklist());
 
@@ -1413,7 +1483,7 @@ Result<TabletInfos> ClusterLoadBalancer::GetTabletsForTable(const TableId& table
         table_uuid);
   }
 
-  return table_info->GetTablets(IncludeInactive(!FLAGS_TEST_load_balancer_skip_inactive_tablets));
+  return table_info->GetTablets(IncludeInactive::kTrue);
 }
 
 const TableInfoMap& ClusterLoadBalancer::GetTableMap() const {
@@ -1421,12 +1491,11 @@ const TableInfoMap& ClusterLoadBalancer::GetTableMap() const {
 }
 
 const ReplicationInfoPB& ClusterLoadBalancer::GetClusterReplicationInfo() const {
-  return catalog_manager_->cluster_config_->LockForRead()->pb.replication_info();
+  return catalog_manager_->ClusterConfig()->LockForRead()->pb.replication_info();
 }
 
 const PlacementInfoPB& ClusterLoadBalancer::GetClusterPlacementInfo() const {
-  auto l = down_cast<enterprise::CatalogManager*>
-                      (catalog_manager_)->GetClusterConfigInfo()->LockForRead();
+  auto l = catalog_manager_->ClusterConfig()->LockForRead();
   if (state_->options_->type == LIVE) {
     return l->pb.replication_info().live_replicas();
   } else {
@@ -1435,11 +1504,11 @@ const PlacementInfoPB& ClusterLoadBalancer::GetClusterPlacementInfo() const {
 }
 
 const BlacklistPB& ClusterLoadBalancer::GetServerBlacklist() const {
-  return catalog_manager_->cluster_config_->LockForRead()->pb.server_blacklist();
+  return catalog_manager_->ClusterConfig()->LockForRead()->pb.server_blacklist();
 }
 
 const BlacklistPB& ClusterLoadBalancer::GetLeaderBlacklist() const {
-  return catalog_manager_->cluster_config_->LockForRead()->pb.leader_blacklist();
+  return catalog_manager_->ClusterConfig()->LockForRead()->pb.leader_blacklist();
 }
 
 bool ClusterLoadBalancer::SkipLoadBalancing(const TableInfo& table) const {
@@ -1551,8 +1620,7 @@ const PlacementInfoPB& ClusterLoadBalancer::GetReadOnlyPlacementFromUuid(
 }
 
 const PlacementInfoPB& ClusterLoadBalancer::GetLiveClusterPlacementInfo() const {
-  auto l = down_cast<enterprise::CatalogManager*>
-                    (catalog_manager_)->GetClusterConfigInfo()->LockForRead();
+  auto l = catalog_manager_->ClusterConfig()->LockForRead();
   return l->pb.replication_info().live_replicas();
 }
 

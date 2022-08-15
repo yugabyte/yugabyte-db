@@ -37,6 +37,8 @@
 #include <string>
 #include <vector>
 
+#include "yb/common/wire_protocol.pb.h"
+
 #include "yb/consensus/consensus.fwd.h"
 #include "yb/consensus/metadata.fwd.h"
 
@@ -57,6 +59,8 @@ class MaintenanceManager;
 class RpcServer;
 class ServerEntryPB;
 class ThreadPool;
+class AutoFlagsManager;
+class AutoFlagsConfigPB;
 
 namespace server {
 
@@ -71,20 +75,22 @@ class Master : public tserver::DbServerBase {
   explicit Master(const MasterOptions& opts);
   virtual ~Master();
 
-  CHECKED_STATUS Init();
-  CHECKED_STATUS Start();
+  virtual Status InitAutoFlags() override;
+  Status InitAutoFlagsFromMasterLeader(const HostPort& leader_address);
+  Status Init() override;
+  Status Start() override;
 
-  CHECKED_STATUS StartAsync();
-  CHECKED_STATUS WaitForCatalogManagerInit();
+  Status StartAsync();
+  Status WaitForCatalogManagerInit();
 
   // Wait until this Master's catalog manager instance is the leader and is ready.
   // This method is intended for use by unit tests.
   // If 'timeout' time is exceeded, returns Status::TimedOut.
-  CHECKED_STATUS WaitUntilCatalogManagerIsLeaderAndReadyForTests(
+  Status WaitUntilCatalogManagerIsLeaderAndReadyForTests(
     const MonoDelta& timeout = MonoDelta::FromSeconds(15))
       WARN_UNUSED_RESULT;
 
-  void Shutdown();
+  void Shutdown() override;
 
   std::string ToString() const override;
 
@@ -109,7 +115,7 @@ class Master : public tserver::DbServerBase {
   const MasterOptions& opts() { return opts_; }
 
   // Get the RPC and HTTP addresses for this master instance.
-  CHECKED_STATUS GetMasterRegistration(ServerRegistrationPB* registration) const;
+  Status GetMasterRegistration(ServerRegistrationPB* registration) const;
 
   // Get node instance, Raft role, RPC and HTTP addresses for all
   // masters from the in-memory options used at master startup.
@@ -117,13 +123,13 @@ class Master : public tserver::DbServerBase {
   // client; cache this information with a TTL (possibly in another
   // SysTable), so that we don't have to perform an RPC call on every
   // request.
-  CHECKED_STATUS ListMasters(std::vector<ServerEntryPB>* masters) const;
+  Status ListMasters(std::vector<ServerEntryPB>* masters) const;
 
   // Get node instance, Raft role, RPC and HTTP addresses for all
   // masters from the Raft config
-  CHECKED_STATUS ListRaftConfigMasters(std::vector<consensus::RaftPeerPB>* masters) const;
+  Status ListRaftConfigMasters(std::vector<consensus::RaftPeerPB>* masters) const;
 
-  CHECKED_STATUS InformRemovedMaster(const HostPortPB& hp_pb);
+  Status InformRemovedMaster(const HostPortPB& hp_pb);
 
   bool IsShutdown() const {
     return state_ == kStopped;
@@ -134,7 +140,7 @@ class Master : public tserver::DbServerBase {
   }
 
   // Recreates the master list based on the new config peers
-  CHECKED_STATUS ResetMemoryState(const consensus::RaftConfigPB& new_config);
+  Status ResetMemoryState(const consensus::RaftConfigPB& new_config);
 
   void DumpMasterOptionsInfo(std::ostream* out);
 
@@ -144,9 +150,12 @@ class Master : public tserver::DbServerBase {
 
   // Not a full shutdown, but makes this master go into a dormant mode (state_ is still kRunning).
   // Called currently by cluster master leader which is removing this master from the quorum.
-  CHECKED_STATUS GoIntoShellMode();
+  Status GoIntoShellMode();
 
   SysCatalogTable& sys_catalog() const;
+
+  uint32_t GetAutoFlagConfigVersion() const override;
+  AutoFlagsConfigPB GetAutoFlagConfig() const;
 
   yb::client::AsyncClientInitialiser& async_client_initializer() {
     return *async_client_init_;
@@ -161,7 +170,7 @@ class Master : public tserver::DbServerBase {
     AttemptMetric,
   };
 
-  // Functon that returns a object pointer to a RPC's histogram metric. If a histogram
+  // Function that returns an object pointer to a RPC's histogram metric. If a histogram
   // metric pointer is not created, it will create a new object pointer and return it.
   scoped_refptr<Histogram> GetMetric(const std::string& metric_identifier,
                                      Master::MasterMetricType type,
@@ -173,7 +182,7 @@ class Master : public tserver::DbServerBase {
   }
 
  protected:
-  virtual CHECKED_STATUS RegisterServices();
+  virtual Status RegisterServices();
 
   void DisplayGeneralInfoIcons(std::stringstream* output) override;
 
@@ -181,13 +190,11 @@ class Master : public tserver::DbServerBase {
   friend class MasterTest;
 
   void InitCatalogManagerTask();
-  CHECKED_STATUS InitCatalogManager();
+  Status InitCatalogManager();
 
   // Initialize registration_.
   // Requires that the web server and RPC server have been started.
-  CHECKED_STATUS InitMasterRegistration();
-
-  const std::shared_future<client::YBClient*>& client_future() const override;
+  Status InitMasterRegistration();
 
   client::LocalTabletFilter CreateLocalTabletFilter() override;
 
@@ -197,8 +204,15 @@ class Master : public tserver::DbServerBase {
     kRunning
   };
 
+  MonoDelta default_client_timeout() override;
+
+  const std::string& permanent_uuid() const override;
+
+  void SetupAsyncClientInit(client::AsyncClientInitialiser* async_client_init) override;
+
   MasterState state_;
 
+  std::unique_ptr<AutoFlagsManager> auto_flags_manager_;
   std::unique_ptr<TSManager> ts_manager_;
   std::unique_ptr<enterprise::CatalogManager> catalog_manager_;
   std::unique_ptr<MasterPathHandlers> path_handlers_;
@@ -225,7 +239,6 @@ class Master : public tserver::DbServerBase {
   // Master's tablet server implementation used to host virtual tables like system.peers.
   std::unique_ptr<MasterTabletServer> master_tablet_server_;
 
-  std::unique_ptr<yb::client::AsyncClientInitialiser> async_client_init_;
   std::unique_ptr<yb::client::AsyncClientInitialiser> cdc_state_client_init_;
   std::mutex master_metrics_mutex_;
   std::map<std::string, scoped_refptr<Histogram>> master_metrics_ GUARDED_BY(master_metrics_mutex_);

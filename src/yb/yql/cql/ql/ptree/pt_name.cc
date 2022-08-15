@@ -76,7 +76,7 @@ void PTQualifiedName::Prepend(const PTName::SharedPtr& ptname) {
   ptnames_.push_front(ptname);
 }
 
-CHECKED_STATUS PTQualifiedName::Analyze(SemContext *sem_context) {
+Status PTQualifiedName::Analyze(SemContext *sem_context) {
   // We don't support qualified name yet except for a keyspace.
   // Support only the names like: '<keyspace_name>.<table_name>'.
   if (ptnames_.size() >= 3) {
@@ -86,7 +86,7 @@ CHECKED_STATUS PTQualifiedName::Analyze(SemContext *sem_context) {
   return Status::OK();
 }
 
-CHECKED_STATUS PTQualifiedName::AnalyzeName(SemContext *sem_context, const ObjectType object_type) {
+Status PTQualifiedName::AnalyzeName(SemContext *sem_context, const ObjectType object_type) {
   switch (object_type) {
     case ObjectType::SCHEMA:
       if (ptnames_.size() != 1) {

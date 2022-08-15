@@ -81,6 +81,8 @@ class ClusterAdminCli {
   virtual void RegisterCommandHandlers(ClusterAdminClientClass* client);
 
  private:
+  Status RunCommand(
+      const Command& command, const CLIArguments& command_args, const std::string& program_name);
   std::vector<Command> commands_;
   std::map<std::string, size_t> command_indexes_;
 };
@@ -102,7 +104,7 @@ Result<client::YBTableName> ResolveSingleTableName(
     const CLIArgumentsIterator& end,
     TailArgumentsProcessor tail_processor = TailArgumentsProcessor());
 
-CHECKED_STATUS CheckArgumentsCount(size_t count, size_t min, size_t max);
+Status CheckArgumentsCount(size_t count, size_t min, size_t max);
 
 }  // namespace tools
 }  // namespace yb

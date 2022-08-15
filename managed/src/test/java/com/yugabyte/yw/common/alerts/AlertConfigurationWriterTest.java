@@ -15,21 +15,18 @@ import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.nullValue;
 import static org.mockito.Mockito.any;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import akka.actor.ActorSystem;
-import akka.actor.Scheduler;
-import akka.dispatch.Dispatcher;
 import com.google.common.collect.ImmutableList;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.AlertTemplate;
 import com.yugabyte.yw.common.AssertHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.SwamperHelper;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.filters.AlertConfigurationApiFilter;
@@ -50,14 +47,11 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnitRunner;
-import scala.concurrent.ExecutionContext;
 
 @RunWith(MockitoJUnitRunner.Silent.class)
 public class AlertConfigurationWriterTest extends FakeDBApplication {
 
-  @Mock private ExecutionContext executionContext;
-
-  @Mock private ActorSystem actorSystem;
+  @Mock PlatformScheduler mockPlatformScheduler;
 
   @Mock private SwamperHelper swamperHelper;
 
@@ -81,15 +75,12 @@ public class AlertConfigurationWriterTest extends FakeDBApplication {
 
   @Before
   public void setUp() {
-    when(actorSystem.scheduler()).thenReturn(mock(Scheduler.class));
     when(globalConfig.getInt(AlertConfigurationWriter.CONFIG_SYNC_INTERVAL_PARAM)).thenReturn(1);
     when(configFactory.globalRuntimeConf()).thenReturn(globalConfig);
-    when(actorSystem.dispatcher()).thenReturn(mock(Dispatcher.class));
     maintenanceService = app.injector().instanceOf(MaintenanceService.class);
     configurationWriter =
         new AlertConfigurationWriter(
-            executionContext,
-            actorSystem,
+            mockPlatformScheduler,
             metricService,
             alertDefinitionService,
             alertConfigurationService,
@@ -113,7 +104,8 @@ public class AlertConfigurationWriterTest extends FakeDBApplication {
     AlertDefinition expected = alertDefinitionService.get(definition.getUuid());
 
     verify(swamperHelper, times(1)).writeAlertDefinition(configuration, expected);
-    verify(queryHelper, times(1)).postManagementCommand("reload");
+    verify(swamperHelper, times(1)).writeRecordingRules();
+    verify(queryHelper, times(2)).postManagementCommand("reload");
 
     AssertHelper.assertMetricValue(
         metricService,
@@ -137,7 +129,8 @@ public class AlertConfigurationWriterTest extends FakeDBApplication {
     configurationWriter.process();
 
     verify(swamperHelper, times(1)).removeAlertDefinition(definition.getUuid());
-    verify(queryHelper, times(1)).postManagementCommand("reload");
+    verify(swamperHelper, times(1)).writeRecordingRules();
+    verify(queryHelper, times(2)).postManagementCommand("reload");
 
     AssertHelper.assertMetricValue(
         metricService,
@@ -163,7 +156,8 @@ public class AlertConfigurationWriterTest extends FakeDBApplication {
 
     verify(swamperHelper, times(1)).writeAlertDefinition(configuration, expected);
     verify(swamperHelper, times(1)).removeAlertDefinition(missingDefinitionUuid);
-    verify(queryHelper, times(1)).postManagementCommand("reload");
+    verify(swamperHelper, times(1)).writeRecordingRules();
+    verify(queryHelper, times(2)).postManagementCommand("reload");
 
     AssertHelper.assertMetricValue(
         metricService,
@@ -191,14 +185,16 @@ public class AlertConfigurationWriterTest extends FakeDBApplication {
     verify(swamperHelper, never()).writeAlertDefinition(any(), any());
     verify(swamperHelper, never()).removeAlertDefinition(any());
     // Called once after startup
-    verify(queryHelper, times(1)).postManagementCommand("reload");
+    verify(swamperHelper, times(1)).writeRecordingRules();
+    verify(queryHelper, times(2)).postManagementCommand("reload");
 
     configurationWriter.process();
 
     verify(swamperHelper, never()).writeAlertDefinition(any(), any());
     verify(swamperHelper, never()).removeAlertDefinition(any());
     // Not called on subsequent run
-    verify(queryHelper, times(1)).postManagementCommand("reload");
+    verify(swamperHelper, times(1)).writeRecordingRules();
+    verify(queryHelper, times(2)).postManagementCommand("reload");
 
     AssertHelper.assertMetricValue(
         metricService,
@@ -275,7 +271,7 @@ public class AlertConfigurationWriterTest extends FakeDBApplication {
                 + ","
                 + maintenanceWindow2.getUuid().toString()));
     verify(swamperHelper, times(1)).writeAlertDefinition(updatedConfiguration, updatedDefinition);
-    verify(queryHelper, times(1)).postManagementCommand("reload");
+    verify(queryHelper, times(2)).postManagementCommand("reload");
 
     maintenanceWindow.setEndTime(CommonUtils.nowMinusWithoutMillis(1, ChronoUnit.HOURS));
     maintenanceWindow.save();
@@ -292,7 +288,7 @@ public class AlertConfigurationWriterTest extends FakeDBApplication {
         updatedDefinition.getLabelValue(KnownAlertLabels.MAINTENANCE_WINDOW_UUIDS),
         equalTo(maintenanceWindow2.getUuid().toString()));
     verify(swamperHelper, times(1)).writeAlertDefinition(updatedConfiguration, updatedDefinition);
-    verify(queryHelper, times(2)).postManagementCommand("reload");
+    verify(queryHelper, times(3)).postManagementCommand("reload");
 
     maintenanceService.delete(maintenanceWindow2.getUuid());
 
@@ -305,6 +301,6 @@ public class AlertConfigurationWriterTest extends FakeDBApplication {
     assertThat(
         updatedDefinition.getLabelValue(KnownAlertLabels.MAINTENANCE_WINDOW_UUIDS), nullValue());
     verify(swamperHelper, times(1)).writeAlertDefinition(updatedConfiguration, updatedDefinition);
-    verify(queryHelper, times(3)).postManagementCommand("reload");
+    verify(queryHelper, times(4)).postManagementCommand("reload");
   }
 }

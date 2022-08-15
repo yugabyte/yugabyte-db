@@ -36,8 +36,6 @@ namespace server {
 
 YB_DEFINE_ENUM(SecureContextType, (kInternal)(kExternal));
 
-std::string DefaultRootDir(const FsManager& fs_manager);
-
 std::string DefaultCertsDir(const FsManager& fs_manager);
 
 // Creates secure context and sets up messenger builder to use it.
@@ -53,6 +51,10 @@ Result<std::unique_ptr<rpc::SecureContext>> SetupSecureContext(
     const std::string& cert_dir, const std::string& root_dir, const std::string& name,
     SecureContextType type, rpc::MessengerBuilder* builder);
 
+Result<std::unique_ptr<rpc::SecureContext>> SetupInternalSecureContext(
+    const std::string& local_hosts, const FsManager& fs_manager,
+    rpc::MessengerBuilder* messenger_builder);
+
 YB_STRONGLY_TYPED_BOOL(UseClientCerts);
 
 Result<std::unique_ptr<rpc::SecureContext>> CreateSecureContext(
@@ -60,7 +62,22 @@ Result<std::unique_ptr<rpc::SecureContext>> CreateSecureContext(
     const std::string& node_name = std::string(),
     const std::string& required_uid = std::string());
 
+Status ReloadSecureContextKeysAndCertificates(
+    rpc::SecureContext* context, const std::string& root_dir, SecureContextType type,
+    const std::string& hosts);
+
+Status ReloadSecureContextKeysAndCertificates(
+    rpc::SecureContext* context, const std::string& node_name, const std::string& root_dir,
+    SecureContextType type);
+
+Status ReloadSecureContextKeysAndCertificates(
+    rpc::SecureContext* context, const std::string& certs_dir, const std::string& node_name);
+
 void ApplySecureContext(const rpc::SecureContext* context, rpc::MessengerBuilder* builder);
+
+bool IsNodeToNodeEncryptionEnabled();
+
+bool IsClientToServerEncryptionEnabled();
 
 } // namespace server
 } // namespace yb

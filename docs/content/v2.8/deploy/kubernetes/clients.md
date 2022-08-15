@@ -8,9 +8,7 @@ menu:
     identifier: clients-kubernetes
     parent: deploy-kubernetes
     weight: 626
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Introduction
@@ -112,7 +110,7 @@ Status:
 
 ## Connecting TLS-Secured YugabyteDB Cluster Deployed by Helm Charts
 
-To start a YugabyteDB cluster with encryption in transit (TLS) enabled, follow the steps at [Google Kubernetes Service (GKE) - Helm Chart](/latest/deploy/kubernetes/single-zone/gke/helm-chart/) and set the flag `tls.enabled=true` in the helm command line, as shown in the following example:
+To start a YugabyteDB cluster with encryption in transit (TLS) enabled, follow the steps at [Google Kubernetes Service (GKE) - Helm Chart](/preview/deploy/kubernetes/single-zone/gke/helm-chart/) and set the flag `tls.enabled=true` in the helm command line, as shown in the following example:
 
 ```shell
 helm install yugabyte --namespace yb-demo --name yb-demo --set=tls.enabled=true
@@ -210,4 +208,3 @@ Use HELP for help.
 cqlsh> SHOW HOST
 Connected to local cluster at 35.200.205.208:9042.
 ```
-

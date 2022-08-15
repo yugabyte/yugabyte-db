@@ -10,21 +10,20 @@ menu:
     identifier: explore-transactions-distributed-transactions-2-ycql
     parent: explore-transactions
     weight: 230
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/explore/transactions/distributed-transactions-ysql/" class="nav-link">
+    <a href="../distributed-transactions-ysql/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
 
   <li >
-    <a href="/latest/explore/transactions/distributed-transactions-ycql/" class="nav-link active">
+    <a href="../distributed-transactions-ycql/" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
@@ -158,7 +157,7 @@ ycqlsh> SELECT SUM(balance) as Johns_balance FROM banking.accounts WHERE account
 Further, the checking and savings account balances for John should have been written at the same write timestamp.
 
 ```sql
-ycqlsh> select account_name, account_type, balance, writetime(balance) 
+ycqlsh> select account_name, account_type, balance, writetime(balance)
 from banking.accounts where account_name='John';
 ```
 

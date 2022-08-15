@@ -8,8 +8,7 @@ menu:
     identifier: chinook
     parent: sample-data
     weight: 2751
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 The Chinook sample database for a digital media store can be used to explore and learn YugabyteDB.
@@ -21,7 +20,7 @@ The Chinook data model represents a digital media store, including tables for ar
 - Media-related data was created using real data from an Apple iTunes library.
 - Customer and employee information was created using fictitious names and addresses that can be located on Google maps, and other well formatted data (phone, fax, email, etc.)
 - Sales information was auto generated using random data for a four year period.
-  
+
 The Chinook sample database includes:
 
 - 11 tables
@@ -34,7 +33,7 @@ For details, here's the entity relationship diagram of the Chinook data model.
 
 ## Before you begin
 
-To install and use the Chinook sample database, you need to have installed and configured YugabyteDB. To get up and running quickly, see [Quick Start](/latest/quick-start/).
+To install and use the Chinook sample database, you need to have installed and configured YugabyteDB. To get up and running quickly, see [Quick Start](/preview/quick-start/).
 
 Install the Chinook sample database
 

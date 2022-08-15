@@ -53,6 +53,7 @@ typedef enum NodeTag
 	T_BitmapOr,
 	T_Scan,
 	T_SeqScan,
+	T_YbSeqScan,
 	T_SampleScan,
 	T_IndexScan,
 	T_IndexOnlyScan,
@@ -109,6 +110,7 @@ typedef enum NodeTag
 	T_BitmapOrState,
 	T_ScanState,
 	T_SeqScanState,
+	T_YbSeqScanState,
 	T_SampleScanState,
 	T_IndexScanState,
 	T_IndexOnlyScanState,
@@ -478,7 +480,6 @@ typedef enum NodeTag
 	T_PartitionCmd,
 	T_VacuumRelation,
 	T_OptSplit,
-	T_OptTableGroup,
 	T_RowBounds,
 
 	/*
@@ -822,7 +823,8 @@ typedef enum OnConflictAction
 {
 	ONCONFLICT_NONE,			/* No "ON CONFLICT" clause */
 	ONCONFLICT_NOTHING,			/* ON CONFLICT ... DO NOTHING */
-	ONCONFLICT_UPDATE			/* ON CONFLICT ... DO UPDATE */
+	ONCONFLICT_UPDATE,			/* ON CONFLICT ... DO UPDATE */
+	ONCONFLICT_YB_REPLACE		/* Replace the existing tuple (upsert mode) */
 } OnConflictAction;
 
 #endif							/* NODES_H */

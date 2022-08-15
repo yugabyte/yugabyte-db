@@ -13,6 +13,8 @@
 
 #include "yb/yql/pgwrapper/pg_wrapper_test_base.h"
 
+#include "yb/tserver/tserver_service.pb.h"
+
 #include "yb/util/env_util.h"
 #include "yb/util/path_util.h"
 #include "yb/util/size_literals.h"
@@ -65,6 +67,20 @@ void PgWrapperTestBase::SetUp() {
   DontVerifyClusterBeforeNextTearDown();
 }
 
+Result<TabletId> PgWrapperTestBase::GetSingleTabletId(const TableName& table_name) {
+  TabletId tablet_id_to_split;
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
+    const auto ts = cluster_->tablet_server(i);
+    const auto tablets = VERIFY_RESULT(cluster_->GetTablets(ts));
+    for (const auto& tablet : tablets) {
+      if (tablet.table_name() == table_name) {
+        return tablet.tablet_id();
+      }
+    }
+  }
+  return STATUS(NotFound, Format("No tablet found for table $0.", table_name));
+}
+
 namespace {
 
 string TrimSqlOutput(string output) {
@@ -78,7 +94,8 @@ string CertsDir() {
 
 } // namespace
 
-void PgCommandTestBase::RunPsqlCommand(const string &statement, const string &expected_output) {
+void PgCommandTestBase::RunPsqlCommand(
+    const string& statement, const string& expected_output, bool tuples_only) {
   string tmp_dir;
   ASSERT_OK(Env::Default()->GetTestDirectory(&tmp_dir));
 
@@ -110,6 +127,10 @@ void PgCommandTestBase::RunPsqlCommand(const string &statement, const string &ex
     argv.push_back(Format(
         "sslmode=require sslcert=$0/ysql.crt sslrootcert=$0/ca.crt sslkey=$0/ysql.key",
         CertsDir()));
+  }
+
+  if (tuples_only) {
+    argv.push_back("-t");
   }
 
   LOG(INFO) << "Run tool: " << yb::ToString(argv);

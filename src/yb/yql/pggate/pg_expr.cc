@@ -44,40 +44,65 @@ namespace {
 constexpr uint8_t kDeterministicCollation = 0x01;
 constexpr uint8_t kCollationMarker = 0x80;
 
-string MakeCollationEncodedString(
-  const char* value, int64_t bytes, uint8_t collation_flags, const char* sortkey) {
-
+Slice MakeCollationEncodedString(
+  Arena* arena, const char* value, int64_t bytes, uint8_t collation_flags, const char* sortkey) {
   // A postgres character value cannot have \0 byte.
   DCHECK(memchr(value, '\0', bytes) == nullptr);
 
   // We need to build a collation encoded string to include both the
   // collation sortkey and the original character value.
-  string collstr;
-  collstr.reserve(2 + strlen(sortkey) + 1 + bytes);
+  size_t sortkey_len = strlen(sortkey);
+  size_t len = 2 + sortkey_len + 1 + bytes;
+  char* result = static_cast<char*>(arena->AllocateBytes(len));
 
+  char* buf = result;
   // We set the first byte to '\0' which indicates that collstr is
   // collation encoded. We also put the collation flags byte in case
   // it is of any use in the future.
-  collstr.append(1, '\0');
+  *buf++ = 0;
   static_assert(sizeof(collation_flags) == 1, "invalid size");
-  collstr.append(1, collation_flags);
+  *buf++ = collation_flags;
 
   // Add the sort key. This will appends a copy of sortkey. The sortkey itself
   // was allocated using palloc and therefore will be freed automatically at
   // the end of each transaction.
-  collstr.append(sortkey);
+  memcpy(buf, sortkey, sortkey_len);
+  buf += sortkey_len;
 
   // Append a \0 byte which acts as a separator between sort key and the
   // original value.
-  collstr.append(1, '\0');
+  *buf++ = 0;
 
   // Add the original value.
-  collstr.append(value, bytes);
-
-  return collstr;
+  memcpy(buf, value, bytes);
+  DCHECK_EQ(buf - result, len - bytes);
+  return Slice(result, len);
 }
 
 } // namespace
+
+void DecodeCollationEncodedString(const char** text_ptr, int64_t* text_len_ptr) {
+  DCHECK(*text_len_ptr >= 0 && (*text_ptr)[*text_len_ptr] == '\0')
+    << "Data received from DocDB does not have expected format";
+  // is_original_value = true means that we have done storage space optimization
+  // to only store the original value for non-key columns.
+  const bool is_original_value = (*text_len_ptr == 0 || (*text_ptr)[0] != '\0');
+  if (!is_original_value) {
+    // This is a collation encoded string, we need to fetch the original value.
+    CHECK_GE(*text_len_ptr, 3);
+    uint8_t collation_flags = (*text_ptr)[1];
+    CHECK_EQ(collation_flags, kCollationMarker | kDeterministicCollation);
+    // Skip the collation and sortkey get the original character value.
+    const char *p = static_cast<const char*>(memchr(*text_ptr + 2, '\0', *text_len_ptr - 2));
+    CHECK(p);
+    ++p;
+    const char* end = *text_ptr + *text_len_ptr;
+    CHECK_LE(p, end);
+    // update *text_ptr && *text_len_ptr to reflect original string value
+    *text_ptr = p;
+    *text_len_ptr = end - p;
+  }
+}
 
 //--------------------------------------------------------------------------------------------------
 // Mapping Postgres operator names to YugaByte opcodes.
@@ -177,26 +202,50 @@ bfpg::TSOpcode PgExpr::OperandTypeToSumTSOpcode(InternalType type) {
   }
 }
 
-Status PgExpr::PrepareForRead(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb) {
+Status PgExpr::PrepareForRead(PgDml *pg_stmt, LWPgsqlExpressionPB *expr_pb) {
   // For expression that doesn't need to be setup and prepared at construction time.
   return Status::OK();
 }
 
-Status PgExpr::Eval(PgsqlExpressionPB *expr_pb) {
-  // Expressions that are neither bind_variable nor constant don't need to be updated.
-  // Only values for bind variables and constants need to be updated in the SQL requests.
+Status PgExpr::EvalTo(LWPgsqlExpressionPB *expr_pb) {
+  auto value = VERIFY_RESULT(Eval());
+  if (value) {
+    expr_pb->ref_value(value);
+  }
   return Status::OK();
 }
 
-Status PgExpr::Eval(QLValuePB *result) {
-  // Expressions that are neither bind_variable nor constant don't need to be updated.
-  // Only values for bind variables and constants need to be updated in the SQL requests.
+Status PgExpr::EvalTo(LWQLValuePB *out) {
+  auto value = VERIFY_RESULT(Eval());
+  if (value) {
+    *out = *value;
+  }
   return Status::OK();
 }
 
-void PgExpr::TranslateText(Slice *yb_cursor, const PgWireDataHeader& header, int index,
-                           const YBCPgTypeEntity *type_entity, const PgTypeAttrs *type_attrs,
-                           PgTuple *pg_tuple) {
+Result<LWQLValuePB*> PgExpr::Eval() {
+  // Expressions that are neither bind_variable nor constant don't need to be updated.
+  // Only values for bind variables and constants need to be updated in the SQL requests.
+  return nullptr;
+}
+
+namespace {
+
+// Translate system column.
+template<typename data_type>
+void TranslateSysCol(Slice *yb_cursor, const PgWireDataHeader& header, data_type *value) {
+  *value = 0;
+  if (header.is_null()) {
+    // 0 is an invalid OID.
+    return;
+  }
+  size_t read_size = PgDocData::ReadNumber(yb_cursor, value);
+  yb_cursor->remove_prefix(read_size);
+}
+
+void TranslateText(Slice *yb_cursor, const PgWireDataHeader& header, int index,
+                   const YBCPgTypeEntity *type_entity, const PgTypeAttrs *type_attrs,
+                   PgTuple *pg_tuple) {
   if (header.is_null()) {
     return pg_tuple->WriteNull(index, header);
   }
@@ -225,7 +274,7 @@ void PgExpr::TranslateText(Slice *yb_cursor, const PgWireDataHeader& header, int
   yb_cursor->remove_prefix(data_size);
 }
 
-void PgExpr::TranslateCollateText(
+void TranslateCollateText(
     Slice *yb_cursor, const PgWireDataHeader& header, int index,
     const YBCPgTypeEntity *type_entity, const PgTypeAttrs *type_attrs, PgTuple *pg_tuple) {
   if (header.is_null()) {
@@ -241,32 +290,14 @@ void PgExpr::TranslateCollateText(
   const char* text = yb_cursor->cdata();
   int64_t text_len = data_size - 1;
 
-  DCHECK(text_len >= 0 && text[text_len] == '\0')
-    << "Data received from DocDB does not have expected format";
-  const bool is_original_value = (text_len == 0 || text[0] != '\0');
-  if (is_original_value) {
-    // This means that we have done storage space optimization to only store the
-    // original value for non-key columns.
-    pg_tuple->WriteDatum(index, type_entity->yb_to_datum(text, text_len, type_attrs));
-  } else {
-    // This is a collation encoded string, we need to fetch the original value.
-    CHECK_GE(text_len, 3);
-    uint8_t collation_flags = text[1];
-    CHECK_EQ(collation_flags, kCollationMarker | kDeterministicCollation);
-    // Skip the collation and sortkey get the original character value.
-    const char *p = static_cast<const char*>(memchr(text + 2, '\0', text_len - 2));
-    CHECK(p);
-    ++p;
-    const char* end = text + text_len;
-    CHECK_LE(p, end);
-    pg_tuple->WriteDatum(index, type_entity->yb_to_datum(p, end - p, type_attrs));
-  }
+  DecodeCollationEncodedString(&text, &text_len);
+  pg_tuple->WriteDatum(index, type_entity->yb_to_datum(text, text_len, type_attrs));
   yb_cursor->remove_prefix(data_size);
 }
 
-void PgExpr::TranslateBinary(Slice *yb_cursor, const PgWireDataHeader& header, int index,
-                             const YBCPgTypeEntity *type_entity, const PgTypeAttrs *type_attrs,
-                             PgTuple *pg_tuple) {
+void TranslateBinary(Slice *yb_cursor, const PgWireDataHeader& header, int index,
+                     const YBCPgTypeEntity *type_entity, const PgTypeAttrs *type_attrs,
+                     PgTuple *pg_tuple) {
   if (header.is_null()) {
     return pg_tuple->WriteNull(index, header);
   }
@@ -280,9 +311,9 @@ void PgExpr::TranslateBinary(Slice *yb_cursor, const PgWireDataHeader& header, i
 
 
 // Expects a serialized string representation of YB Decimal.
-void PgExpr::TranslateDecimal(Slice *yb_cursor, const PgWireDataHeader& header, int index,
-                              const YBCPgTypeEntity *type_entity, const PgTypeAttrs *type_attrs,
-                              PgTuple *pg_tuple) {
+void TranslateDecimal(Slice *yb_cursor, const PgWireDataHeader& header, int index,
+                      const YBCPgTypeEntity *type_entity, const PgTypeAttrs *type_attrs,
+                      PgTuple *pg_tuple) {
   if (header.is_null()) {
     return pg_tuple->WriteNull(index, header);
   }
@@ -309,8 +340,8 @@ void PgExpr::TranslateDecimal(Slice *yb_cursor, const PgWireDataHeader& header, 
 
 //--------------------------------------------------------------------------------------------------
 // Translating system columns.
-void PgExpr::TranslateSysCol(Slice *yb_cursor, const PgWireDataHeader& header, PgTuple *pg_tuple,
-                             uint8_t **pgbuf) {
+void TranslateSysCol(Slice *yb_cursor, const PgWireDataHeader& header, PgTuple *pg_tuple,
+                     uint8_t **pgbuf) {
   *pgbuf = nullptr;
   if (header.is_null()) {
     return;
@@ -324,13 +355,7 @@ void PgExpr::TranslateSysCol(Slice *yb_cursor, const PgWireDataHeader& header, P
   yb_cursor->remove_prefix(data_size);
 }
 
-void PgExpr::TranslateData(Slice *yb_cursor, const PgWireDataHeader& header, int index,
-                           PgTuple *pg_tuple) const {
-  CHECK(translate_data_) << "Data format translation is not provided";
-  translate_data_(yb_cursor, header, index, type_entity_, &type_attrs_, pg_tuple);
-}
-
-bool PgExpr::TranslateNumberHelper(
+bool TranslateNumberHelper(
     const PgWireDataHeader& header, int index, const YBCPgTypeEntity *type_entity,
     PgTuple *pg_tuple) {
   if (header.is_null()) {
@@ -343,58 +368,82 @@ bool PgExpr::TranslateNumberHelper(
   return false;
 }
 
-void PgExpr::TranslateCtid(Slice *yb_cursor, const PgWireDataHeader& header, int index,
-                           const YBCPgTypeEntity *type_entity, const PgTypeAttrs *type_attrs,
-                           PgTuple *pg_tuple) {
+// Implementation for "translate_data()" for each supported datatype.
+// Translates DocDB-numeric datatypes.
+template<typename data_type>
+void TranslateNumber(Slice *yb_cursor, const PgWireDataHeader& header, int index,
+                     const YBCPgTypeEntity *type_entity, const PgTypeAttrs *type_attrs,
+                     PgTuple *pg_tuple) {
+  if (TranslateNumberHelper(header, index, type_entity, pg_tuple)) {
+    return;
+  }
+
+  data_type result = 0;
+  size_t read_size = PgDocData::ReadNumber(yb_cursor, &result);
+  yb_cursor->remove_prefix(read_size);
+  pg_tuple->WriteDatum(index, type_entity->yb_to_datum(&result, read_size, type_attrs));
+}
+
+void TranslateCtid(Slice *yb_cursor, const PgWireDataHeader& header, int index,
+                   const YBCPgTypeEntity *type_entity, const PgTypeAttrs *type_attrs,
+                   PgTuple *pg_tuple) {
   TranslateSysCol<uint64_t>(yb_cursor, header, &pg_tuple->syscols()->ctid);
 }
 
-void PgExpr::TranslateOid(Slice *yb_cursor, const PgWireDataHeader& header, int index,
-                          const YBCPgTypeEntity *type_entity, const PgTypeAttrs *type_attrs,
-                          PgTuple *pg_tuple) {
+void TranslateOid(Slice *yb_cursor, const PgWireDataHeader& header, int index,
+                  const YBCPgTypeEntity *type_entity, const PgTypeAttrs *type_attrs,
+                  PgTuple *pg_tuple) {
   TranslateSysCol<uint32_t>(yb_cursor, header, &pg_tuple->syscols()->oid);
 }
 
-void PgExpr::TranslateTableoid(Slice *yb_cursor, const PgWireDataHeader& header, int index,
-                               const YBCPgTypeEntity *type_entity, const PgTypeAttrs *type_attrs,
-                               PgTuple *pg_tuple) {
+void TranslateTableoid(Slice *yb_cursor, const PgWireDataHeader& header, int index,
+                       const YBCPgTypeEntity *type_entity, const PgTypeAttrs *type_attrs,
+                       PgTuple *pg_tuple) {
   TranslateSysCol<uint32_t>(yb_cursor, header, &pg_tuple->syscols()->tableoid);
 }
 
-void PgExpr::TranslateXmin(Slice *yb_cursor, const PgWireDataHeader& header, int index,
-                           const YBCPgTypeEntity *type_entity, const PgTypeAttrs *type_attrs,
-                           PgTuple *pg_tuple) {
+void TranslateXmin(Slice *yb_cursor, const PgWireDataHeader& header, int index,
+                   const YBCPgTypeEntity *type_entity, const PgTypeAttrs *type_attrs,
+                   PgTuple *pg_tuple) {
   TranslateSysCol<uint32_t>(yb_cursor, header, &pg_tuple->syscols()->xmin);
 }
 
-void PgExpr::TranslateCmin(Slice *yb_cursor, const PgWireDataHeader& header, int index,
-                           const YBCPgTypeEntity *type_entity, const PgTypeAttrs *type_attrs,
-                           PgTuple *pg_tuple) {
+void TranslateCmin(Slice *yb_cursor, const PgWireDataHeader& header, int index,
+                   const YBCPgTypeEntity *type_entity, const PgTypeAttrs *type_attrs,
+                   PgTuple *pg_tuple) {
   TranslateSysCol<uint32_t>(yb_cursor, header, &pg_tuple->syscols()->cmin);
 }
 
-void PgExpr::TranslateXmax(Slice *yb_cursor, const PgWireDataHeader& header, int index,
-                           const YBCPgTypeEntity *type_entity, const PgTypeAttrs *type_attrs,
-                           PgTuple *pg_tuple) {
+void TranslateXmax(Slice *yb_cursor, const PgWireDataHeader& header, int index,
+                   const YBCPgTypeEntity *type_entity, const PgTypeAttrs *type_attrs,
+                   PgTuple *pg_tuple) {
   TranslateSysCol<uint32_t>(yb_cursor, header, &pg_tuple->syscols()->xmax);
 }
 
-void PgExpr::TranslateCmax(Slice *yb_cursor, const PgWireDataHeader& header, int index,
-                           const YBCPgTypeEntity *type_entity, const PgTypeAttrs *type_attrs,
-                           PgTuple *pg_tuple) {
+void TranslateCmax(Slice *yb_cursor, const PgWireDataHeader& header, int index,
+                   const YBCPgTypeEntity *type_entity, const PgTypeAttrs *type_attrs,
+                   PgTuple *pg_tuple) {
   TranslateSysCol<uint32_t>(yb_cursor, header, &pg_tuple->syscols()->cmax);
 }
 
-void PgExpr::TranslateYBCtid(Slice *yb_cursor, const PgWireDataHeader& header, int index,
-                             const YBCPgTypeEntity *type_entity, const PgTypeAttrs *type_attrs,
-                             PgTuple *pg_tuple) {
+void TranslateYBCtid(Slice *yb_cursor, const PgWireDataHeader& header, int index,
+                     const YBCPgTypeEntity *type_entity, const PgTypeAttrs *type_attrs,
+                     PgTuple *pg_tuple) {
   TranslateSysCol(yb_cursor, header, pg_tuple, &pg_tuple->syscols()->ybctid);
 }
 
-void PgExpr::TranslateYBBasectid(Slice *yb_cursor, const PgWireDataHeader& header, int index,
-                                 const YBCPgTypeEntity *type_entity, const PgTypeAttrs *type_attrs,
-                                 PgTuple *pg_tuple) {
+void TranslateYBBasectid(Slice *yb_cursor, const PgWireDataHeader& header, int index,
+                         const YBCPgTypeEntity *type_entity, const PgTypeAttrs *type_attrs,
+                         PgTuple *pg_tuple) {
   TranslateSysCol(yb_cursor, header, pg_tuple, &pg_tuple->syscols()->ybbasectid);
+}
+
+} // namespace
+
+void PgExpr::TranslateData(Slice *yb_cursor, const PgWireDataHeader& header, int index,
+                           PgTuple *pg_tuple) const {
+  CHECK(translate_data_) << "Data format translation is not provided";
+  translate_data_(yb_cursor, header, index, type_entity_, &type_attrs_, pg_tuple);
 }
 
 InternalType PgExpr::internal_type() const {
@@ -488,14 +537,15 @@ void PgExpr::InitializeTranslateData() {
 
 //--------------------------------------------------------------------------------------------------
 
-PgConstant::PgConstant(const YBCPgTypeEntity *type_entity,
+PgConstant::PgConstant(Arena* arena,
+                       const YBCPgTypeEntity *type_entity,
                        bool collate_is_valid_non_c,
                        const char *collation_sortkey,
                        uint64_t datum,
                        bool is_null,
                        PgExpr::Opcode opcode)
     : PgExpr(opcode, type_entity, collate_is_valid_non_c),
-      collation_sortkey_(collation_sortkey) {
+      ql_value_(arena), collation_sortkey_(collation_sortkey) {
 
   switch (type_entity_->yb_type) {
     case YB_YQL_DATA_TYPE_INT8:
@@ -561,12 +611,11 @@ PgConstant::PgConstant(const YBCPgTypeEntity *type_entity,
           CHECK(collation_sortkey_);
           // Once YSQL supports non-deterministic collations, we need to compute
           // the deterministic attribute properly.
-          string collstr = MakeCollationEncodedString(value, bytes,
-            kCollationMarker | kDeterministicCollation, collation_sortkey_);
-          ql_value_.set_string_value(std::move(collstr));
+          ql_value_.ref_string_value(MakeCollationEncodedString(
+              arena, value, bytes, kCollationMarker | kDeterministicCollation, collation_sortkey_));
         } else {
           CHECK(!collation_sortkey_);
-          ql_value_.set_string_value(value, bytes);
+          ql_value_.dup_string_value(Slice(value, bytes));
         }
       }
       break;
@@ -600,7 +649,7 @@ PgConstant::PgConstant(const YBCPgTypeEntity *type_entity,
         uint8_t *value;
         int64_t bytes = type_entity_->datum_fixed_size;
         type_entity_->datum_to_yb(datum, &value, &bytes);
-        ql_value_.set_binary_value(value, bytes);
+        ql_value_.dup_binary_value(Slice(value, bytes));
       }
       break;
 
@@ -618,7 +667,7 @@ PgConstant::PgConstant(const YBCPgTypeEntity *type_entity,
         // Calls YBCDatumToDecimalText in yb_type.c
         type_entity_->datum_to_yb(datum, &plaintext, nullptr);
         util::Decimal yb_decimal(plaintext);
-        ql_value_.set_decimal_value(yb_decimal.EncodeToComparable());
+        ql_value_.dup_decimal_value(yb_decimal.EncodeToComparable());
       }
       break;
 
@@ -637,11 +686,13 @@ PgConstant::PgConstant(const YBCPgTypeEntity *type_entity,
   InitializeTranslateData();
 }
 
-PgConstant::PgConstant(const YBCPgTypeEntity *type_entity,
+PgConstant::PgConstant(Arena* arena,
+                       const YBCPgTypeEntity *type_entity,
                        bool collate_is_valid_non_c,
                        PgDatumKind datum_kind,
                        PgExpr::Opcode opcode)
-    : PgExpr(opcode, type_entity, collate_is_valid_non_c), collation_sortkey_(nullptr) {
+    : PgExpr(opcode, type_entity, collate_is_valid_non_c), ql_value_(arena),
+      collation_sortkey_(nullptr) {
   switch (datum_kind) {
     case PgDatumKind::YB_YQL_DATUM_STANDARD_VALUE:
       // Leave the result as NULL.
@@ -711,7 +762,7 @@ void PgConstant::UpdateConstant(const char *value, bool is_null) {
     // Currently this is only used in C++ test code. In the future if this
     // is used in production code we need to consider collation encoding.
     CHECK(!collate_is_valid_non_c_);
-    ql_value_.set_string_value(value);
+    ql_value_.dup_string_value(value);
   }
 }
 
@@ -722,20 +773,12 @@ void PgConstant::UpdateConstant(const void *value, size_t bytes, bool is_null) {
     // Currently this is only used in C++ test code. In the future if this
     // is used in production code we need to consider collation encoding.
     CHECK(!collate_is_valid_non_c_);
-    ql_value_.set_binary_value(value, bytes);
+    ql_value_.dup_binary_value(Slice(static_cast<const char*>(value), bytes));
   }
 }
 
-Status PgConstant::Eval(PgsqlExpressionPB *expr_pb) {
-  QLValuePB *result = expr_pb->mutable_value();
-  *result = ql_value_;
-  return Status::OK();
-}
-
-Status PgConstant::Eval(QLValuePB *result) {
-  CHECK(result != nullptr);
-  *result = ql_value_;
-  return Status::OK();
+Result<LWQLValuePB*> PgConstant::Eval() {
+  return &ql_value_;
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -788,40 +831,41 @@ bool PgColumnRef::is_ybbasetid() const {
   return attr_num_ == static_cast<int>(PgSystemAttrNum::kYBIdxBaseTupleId);
 }
 
-Status PgColumnRef::PrepareForRead(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb) {
+Status PgColumnRef::PrepareForRead(PgDml *pg_stmt, LWPgsqlExpressionPB *expr_pb) {
   RETURN_NOT_OK(pg_stmt->PrepareColumnForRead(attr_num_, expr_pb));
   return Status::OK();
 }
 
 //--------------------------------------------------------------------------------------------------
 
-PgOperator::PgOperator(const char *opname,
+PgOperator::PgOperator(Arena* arena,
+                       const char *opname,
                        const YBCPgTypeEntity *type_entity,
                        bool collate_is_valid_non_c)
     : PgExpr(NameToOpcode(opname), type_entity, collate_is_valid_non_c),
-      opname_(opname) {
+      opname_(opname), args_(arena) {
   InitializeTranslateData();
 }
 
 void PgOperator::AppendArg(PgExpr *arg) {
-  args_.push_back(arg);
+  args_.push_back_ref(arg);
 }
 
-Status PgOperator::PrepareForRead(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb) {
-  PgsqlBCallPB *tscall = expr_pb->mutable_tscall();
+Status PgOperator::PrepareForRead(PgDml *pg_stmt, LWPgsqlExpressionPB *expr_pb) {
+  auto *tscall = expr_pb->mutable_tscall();
   bfpg::TSOpcode tsopcode;
   if (opcode_ == Opcode::PG_EXPR_SUM) {
     // SUM is special case as it has input type of the operand column but output
     // type of a larger similar type (e.g. INT64 for integers).
-    tsopcode = OperandTypeToSumTSOpcode(args_.front()->internal_type());
+    tsopcode = OperandTypeToSumTSOpcode(args_.front().internal_type());
   } else {
     tsopcode = PGOpcodeToTSOpcode(opcode_);
   }
   tscall->set_opcode(static_cast<int32_t>(tsopcode));
-  for (const auto& arg : args_) {
-    PgsqlExpressionPB *op = tscall->add_operands();
-    RETURN_NOT_OK(arg->PrepareForRead(pg_stmt, op));
-    RETURN_NOT_OK(arg->Eval(op));
+  for (auto& arg : args_) {
+    LWPgsqlExpressionPB *op = tscall->add_operands();
+    RETURN_NOT_OK(arg.PrepareForRead(pg_stmt, op));
+    RETURN_NOT_OK(arg.EvalTo(op));
   }
   return Status::OK();
 }

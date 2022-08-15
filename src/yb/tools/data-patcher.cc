@@ -26,6 +26,7 @@
 #include "yb/docdb/value_type.h"
 #include "yb/docdb/kv_debug.h"
 #include "yb/docdb/docdb-internal.h"
+#include "yb/docdb/schema_packing.h"
 #include "yb/docdb/value.h"
 
 #include "yb/fs/fs_manager.h"
@@ -53,6 +54,7 @@
 #include "yb/util/metrics.h"
 #include "yb/util/path_util.h"
 #include "yb/util/pb_util.h"
+#include "yb/util/random_util.h"
 #include "yb/util/result.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
@@ -107,7 +109,7 @@ std::unique_ptr<OptionsDescription> HelpOptions() {
   return result;
 }
 
-CHECKED_STATUS HelpExecute(const HelpArguments& args) {
+Status HelpExecute(const HelpArguments& args) {
   if (args.command.empty()) {
     ShowCommands<DataPatcherAction>();
     return Status::OK();
@@ -176,7 +178,7 @@ class RocksDBHelper {
   }
 
   Result<std::unique_ptr<rocksdb::TableReader>> NewTableReader(const std::string& fname) {
-    uint64_t base_file_size;
+    uint64_t base_file_size = 0;
     auto file_reader = VERIFY_RESULT(NewFileReader(fname, &base_file_size));
 
     std::unique_ptr<rocksdb::TableReader> table_reader;
@@ -195,10 +197,10 @@ class RocksDBHelper {
       rocksdb::WritableFileWriter* base_file_writer,
       rocksdb::WritableFileWriter* data_file_writer) {
       rocksdb::ImmutableCFOptions immutable_cf_options(options_);
-     return std::unique_ptr<rocksdb::TableBuilder>(rocksdb::NewTableBuilder(
+     return rocksdb::NewTableBuilder(
         immutable_cf_options, internal_key_comparator_, int_tbl_prop_collector_factories_,
         /* column_family_id= */ 0, base_file_writer, data_file_writer,
-        rocksdb::CompressionType::kSnappyCompression, rocksdb::CompressionOptions()));
+        rocksdb::CompressionType::kSnappyCompression, rocksdb::CompressionOptions());
   }
 
   Result<std::unique_ptr<rocksdb::RandomAccessFileReader>> NewFileReader(
@@ -336,7 +338,7 @@ struct DeltaData {
 
 };
 
-CHECKED_STATUS AddDeltaToSstFile(
+Status AddDeltaToSstFile(
     const std::string& fname, MonoDelta delta, HybridTime bound_time,
     size_t max_num_old_wal_entries, bool debug, RocksDBHelper* helper) {
   LOG(INFO) << "Patching: " << fname << ", " << static_cast<const void*>(&fname);
@@ -370,6 +372,7 @@ CHECKED_STATUS AddDeltaToSstFile(
     auto builder = helper->NewTableBuilder(base_file_writer.get(), data_file_writer.get());
     const auto add_kv = [&builder, debug, storage_db_type](const Slice& k, const Slice& v) {
       if (debug) {
+        static docdb::SchemaPackingStorage schema_packing_storage;
         const Slice user_key(k.data(), k.size() - kKeySuffixLen);
         auto key_type = docdb::GetKeyType(user_key, storage_db_type);
         auto rocksdb_value_type = static_cast<rocksdb::ValueType>(*(k.end() - kKeySuffixLen));
@@ -380,7 +383,7 @@ CHECKED_STATUS AddDeltaToSstFile(
                   << "): "
                   << docdb::DocDBKeyToDebugStr(user_key, storage_db_type)
                   << " => "
-                  << docdb::DocDBValueToDebugStr(key_type, user_key, v);
+                  << docdb::DocDBValueToDebugStr(key_type, user_key, v, schema_packing_storage);
       }
       builder->Add(k, v);
     };
@@ -406,7 +409,7 @@ CHECKED_STATUS AddDeltaToSstFile(
         const auto rocksdb_value_type =
             static_cast<rocksdb::ValueType>(*(key.end() - kKeySuffixLen));
         if (storage_db_type == StorageDbType::kRegular ||
-            key[0] != docdb::ValueTypeAsChar::kTransactionId) {
+            key[0] != docdb::KeyEntryTypeAsChar::kTransactionId) {
           // Regular DB entry, or a normal intent entry (not txn metadata or reverse index).
           // Update the timestamp at the end of the key.
           const auto key_without_suffix = key.WithoutSuffix(kKeySuffixLen);
@@ -414,16 +417,18 @@ CHECKED_STATUS AddDeltaToSstFile(
           bool value_updated = false;
           if (storage_db_type == StorageDbType::kRegular) {
             docdb::Value docdb_value;
-            RETURN_NOT_OK(docdb_value.Decode(iterator->value()));
-            if (docdb_value.intent_doc_ht().is_valid()) {
-              auto intent_ht = docdb_value.intent_doc_ht().hybrid_time();
+            auto value_slice = iterator->value();
+            auto control_fields = VERIFY_RESULT(docdb::ValueControlFields::Decode(&value_slice));
+            if (control_fields.intent_doc_ht.is_valid()) {
+              auto intent_ht = control_fields.intent_doc_ht.hybrid_time();
               if (is_final_pass) {
                 DocHybridTime new_intent_doc_ht(
                     VERIFY_RESULT(delta_data.AddDelta(intent_ht, FileType::kSST)),
                     docdb_value.intent_doc_ht().write_id());
-                docdb_value.set_intent_doc_ht(new_intent_doc_ht);
+                control_fields.intent_doc_ht = new_intent_doc_ht;
                 value_buffer.clear();
-                docdb_value.EncodeAndAppend(&value_buffer);
+                control_fields.AppendEncoded(&value_buffer);
+                value_buffer.append(value_slice.cdata(), value_slice.size());
                 value_updated = true;
               } else {
                 delta_data.AddEarlyTime(intent_ht);
@@ -470,7 +475,7 @@ CHECKED_STATUS AddDeltaToSstFile(
                 HybridTime(metadata_pb.start_hybrid_time()), FileType::kSST));
             metadata_pb.set_start_hybrid_time(new_start_ht.ToUint64());
             txn_metadata_buffer.clear();
-            pb_util::SerializeToString(metadata_pb, &txn_metadata_buffer);
+            RETURN_NOT_OK(pb_util::SerializeToString(metadata_pb, &txn_metadata_buffer));
             add_kv(key, txn_metadata_buffer);
           } else {
             delta_data.AddEarlyTime(HybridTime(metadata_pb.start_hybrid_time()));
@@ -498,7 +503,8 @@ CHECKED_STATUS AddDeltaToSstFile(
                 << "key " << key.ToDebugHexString() << " (" << FormatSliceAsStr(key) << "), "
                 << "value " << value.ToDebugHexString() << " (" << FormatSliceAsStr(value) << "), "
                 << "decoded value " << DocDBValueToDebugStr(
-                    docdb::KeyType::kReverseTxnKey, iterator->key(), iterator->value());
+                    docdb::KeyType::kReverseTxnKey, iterator->key(), iterator->value(),
+                    docdb::SchemaPackingStorage());
             return doc_ht_result.status();
           }
           delta_data.AddEarlyTime(doc_ht_result->hybrid_time());
@@ -541,7 +547,7 @@ void CheckDataFile(
   out->push_back(full_path);
 }
 
-CHECKED_STATUS ChangeTimeInDataFiles(
+Status ChangeTimeInDataFiles(
     MonoDelta delta, HybridTime bound_time, size_t max_num_old_wal_entries,
     const std::vector<std::string>& dirs, bool debug, TaskRunner* runner) {
   std::vector<std::string> files_to_process;
@@ -561,7 +567,7 @@ CHECKED_STATUS ChangeTimeInDataFiles(
   for (const auto& dir : dirs) {
     RETURN_NOT_OK(env->Walk(dir, Env::DirectoryOrder::POST_ORDER, callback));
   }
-  std::random_shuffle(files_to_process.begin(), files_to_process.end());
+  std::shuffle(files_to_process.begin(), files_to_process.end(), ThreadLocalRandom());
   for (const auto& fname : files_to_process) {
     runner->Submit([fname, delta, bound_time, max_num_old_wal_entries, debug]() {
       RocksDBHelper helper;
@@ -571,11 +577,11 @@ CHECKED_STATUS ChangeTimeInDataFiles(
   return Status::OK();
 }
 
-CHECKED_STATUS ChangeTimeInWalDir(
+Status ChangeTimeInWalDir(
     MonoDelta delta, HybridTime bound_time, size_t max_num_old_wal_entries,
     const std::string& dir) {
   auto env = Env::Default();
-  auto log_index = make_scoped_refptr<log::LogIndex>(dir);
+  auto log_index = VERIFY_RESULT(log::LogIndex::NewLogIndex(dir));
   std::unique_ptr<log::LogReader> log_reader;
   RETURN_NOT_OK(log::LogReader::Open(
       env, log_index, kLogPrefix, dir, /* table_metric_entity= */ nullptr,
@@ -600,7 +606,7 @@ CHECKED_STATUS ChangeTimeInWalDir(
   header.set_minor_version(log::kLogMinorVersion);
   header.set_sequence_number(1);
   header.set_unused_tablet_id("TABLET ID");
-  header.mutable_unused_schema();
+  header.mutable_schema();
 
   RETURN_NOT_OK(new_segment.WriteHeaderAndOpen(header));
 
@@ -626,9 +632,9 @@ CHECKED_STATUS ChangeTimeInWalDir(
       OpId committed_op_id;
       int64_t last_index = -1;
 
-      auto write_entry_batch = [
-          &batch, &buffer, &num_entries, &new_segment, &read_result, &committed_op_id](
-              bool last_batch_of_segment) -> Status {
+      auto write_entry_batch = [&batch, &buffer, &num_entries, &new_segment, &read_result,
+                                &committed_op_id,
+                                &log_index](bool last_batch_of_segment) -> Status {
         if (last_batch_of_segment) {
           read_result.committed_op_id.ToPB(batch.mutable_committed_op_id());
         } else if (committed_op_id.valid()) {
@@ -638,8 +644,23 @@ CHECKED_STATUS ChangeTimeInWalDir(
           batch.set_mono_time(read_result.entry_metadata.back().entry_time.ToUInt64());
         }
         buffer.clear();
-        pb_util::AppendToString(batch, &buffer);
+        RETURN_NOT_OK(pb_util::AppendToString(batch, &buffer));
         num_entries += batch.entry().size();
+
+        const auto batch_offset = new_segment.written_offset();
+        for (const auto& entry_pb : batch.entry()) {
+          if (!entry_pb.has_replicate()) {
+            continue;
+          }
+
+          log::LogIndexEntry index_entry;
+
+          index_entry.op_id = yb::OpId::FromPB(entry_pb.replicate().id());
+          index_entry.segment_sequence_number = new_segment.header().sequence_number();
+          index_entry.offset_in_segment = batch_offset;
+          RETURN_NOT_OK(log_index->AddEntry(index_entry));
+        }
+
         RETURN_NOT_OK(new_segment.WriteEntryBatch(Slice(buffer)));
         batch.clear_entry();
         return Status::OK();
@@ -712,11 +733,11 @@ CHECKED_STATUS ChangeTimeInWalDir(
     footer.set_max_replicate_index(max_replicate_index);
   }
 
-  RETURN_NOT_OK(new_segment.WriteFooterAndClose(footer));
+  RETURN_NOT_OK(new_segment.WriteIndexWithFooterAndClose(log_index.get(), &footer));
   return Env::Default()->RenameFile(tmp_segment_path, new_segment_path);
 }
 
-CHECKED_STATUS ChangeTimeInWalDirs(
+Status ChangeTimeInWalDirs(
     MonoDelta delta, HybridTime bound_time, size_t max_num_old_wal_entries,
     const std::vector<std::string>& dirs, TaskRunner* runner) {
   Env* env = Env::Default();
@@ -736,7 +757,7 @@ CHECKED_STATUS ChangeTimeInWalDirs(
   for (const auto& dir : dirs) {
     RETURN_NOT_OK(env->Walk(dir, Env::DirectoryOrder::POST_ORDER, callback));
   }
-  std::random_shuffle(wal_dirs.begin(), wal_dirs.end());
+  std::shuffle(wal_dirs.begin(), wal_dirs.end(), ThreadLocalRandom());
   for (const auto& dir : wal_dirs) {
     runner->Submit([delta, bound_time, max_num_old_wal_entries, dir] {
       return ChangeTimeInWalDir(delta, bound_time, max_num_old_wal_entries, dir);
@@ -745,7 +766,7 @@ CHECKED_STATUS ChangeTimeInWalDirs(
   return Status::OK();
 }
 
-CHECKED_STATUS ChangeTimeExecute(const ChangeTimeArguments& args, bool subtract) {
+Status ChangeTimeExecute(const ChangeTimeArguments& args, bool subtract) {
   auto delta = VERIFY_RESULT(DateTime::IntervalFromString(args.delta));
   if (subtract) {
     delta = -delta;
@@ -781,7 +802,7 @@ std::unique_ptr<OptionsDescription> AddTimeOptions() {
   return ChangeTimeOptions(kAddTimeDescription);
 }
 
-CHECKED_STATUS AddTimeExecute(const AddTimeArguments& args) {
+Status AddTimeExecute(const AddTimeArguments& args) {
   return ChangeTimeExecute(args, /* subtract= */ false);
 }
 
@@ -797,7 +818,7 @@ std::unique_ptr<OptionsDescription> SubTimeOptions() {
   return ChangeTimeOptions(kSubTimeDescription);
 }
 
-CHECKED_STATUS SubTimeExecute(const SubTimeArguments& args) {
+Status SubTimeExecute(const SubTimeArguments& args) {
   return ChangeTimeExecute(args, /* subtract= */ true);
 }
 
@@ -832,7 +853,7 @@ std::unique_ptr<OptionsDescription> ApplyPatchOptions() {
 
 class ApplyPatch {
  public:
-  CHECKED_STATUS Execute(const ApplyPatchArguments& args) {
+  Status Execute(const ApplyPatchArguments& args) {
     dry_run_ = args.dry_run;
     revert_ = args.revert;
     LOG(INFO) << "Running the ApplyPatch command";
@@ -924,7 +945,7 @@ class ApplyPatch {
   // Functions for traversing RocksDB data directories
   // ----------------------------------------------------------------------------------------------
 
-  CHECKED_STATUS WalkDataCallback(
+  Status WalkDataCallback(
       Env::FileType type, const std::string& dirname, const std::string& fname) {
     switch (type) {
       case Env::FileType::FILE_TYPE:
@@ -939,7 +960,7 @@ class ApplyPatch {
   // Handles a file found during walking through the a data (RocksDB) directory tree. Looks for
   // CURRENT and MANIFEST files and copies them to the corresponding .patched directory. Does not
   // modify live data of the cluster.
-  CHECKED_STATUS HandleDataFile(const std::string& dirname, const std::string& fname) {
+  Status HandleDataFile(const std::string& dirname, const std::string& fname) {
     if (revert_) {
       // We don't look at any of the manifest files during the revert operation.
       return Status::OK();
@@ -974,7 +995,7 @@ class ApplyPatch {
   // Traversing WAL directories
   // ----------------------------------------------------------------------------------------------
 
-  CHECKED_STATUS WalkWalCallback(
+  Status WalkWalCallback(
       Env::FileType type, const std::string& dirname, const std::string& fname) {
     if (type != Env::FileType::DIRECTORY_TYPE) {
       return Status::OK();
@@ -1006,7 +1027,7 @@ class ApplyPatch {
   }
 
   // Renames dir1 -> dir2 -> dir3, starting from the end of the chain.
-  CHECKED_STATUS ChainRename(
+  Status ChainRename(
       const std::string& dir1, const std::string& dir2, const std::string& dir3) {
     RETURN_NOT_OK(SafeRename(dir2, dir3, /* check_dst_collision= */ true));
 
@@ -1017,7 +1038,7 @@ class ApplyPatch {
 
   // A logging wrapper over directory renaming. In dry-run mode, checks for some errors, but
   // check_dst_collision=false allows to skip ensuring that the destination does not exist.
-  CHECKED_STATUS SafeRename(
+  Status SafeRename(
       const std::string& src, const std::string& dst, bool check_dst_collision) {
     if (dry_run_) {
       if (!env_->FileExists(src)) {
@@ -1051,7 +1072,7 @@ class ApplyPatch {
   bool revert_ = false;
 };
 
-CHECKED_STATUS ApplyPatchExecute(const ApplyPatchArguments& args) {
+Status ApplyPatchExecute(const ApplyPatchArguments& args) {
   ApplyPatch apply_patch;
   return apply_patch.Execute(args);
 }

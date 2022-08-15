@@ -9,8 +9,7 @@ menu:
     identifier: sysbench-ysql
     parent: benchmark
     weight: 5
-showAsideToc: true
-isTocNested: true
+type: docs
 ---
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
@@ -24,12 +23,13 @@ isTocNested: true
 </ul>
 
 ## Overview
+
 sysbench is a popular tool for benchmarking databases like Postgres and MySQL, as well as system capabilities like CPU, memory and I/O. Follow the steps below to run Sysbench against YugabyteDB.
 
 The [YugabyteDB version of sysbench](https://github.com/yugabyte/sysbench) is forked from the [official](https://github.com/akopytov/sysbench) version with a few modifications to better reflect YugabyteDB's distributed nature.
 
 {{< note title="Note" >}}
-To ensure the recommended hardware requirements are met and the database is correctly configured before benchmarking, review the [deployment checklist](../../deploy/checklist/)  
+To ensure the recommended hardware requirements are met and the database is correctly configured before benchmarking, review the [deployment checklist](../../deploy/checklist/)
 {{< /note >}}
 
 ## Running the benchmark
@@ -50,11 +50,13 @@ The above steps will install the sysbench utility in '/usr/local/bin'
 {{< /note >}}
 
 Make sure you have the YSQL shell `ysqlsh` exported to the `PATH` variable. You can download [`ysqlsh`](https://download.yugabyte.com/) if you do not have it.
+
 ```sh
 $ export PATH=$PATH:/path/to/ysqlsh
 ```
 
 ### 2. Start YugabyteDB
+
 Start your YugabyteDB cluster by following the steps [here](../../deploy/manual-deployment/).
 
 {{< tip title="Tip" >}}
@@ -62,11 +64,15 @@ You will need the IP addresses of the nodes in the cluster for the next step.
 {{< /tip>}}
 
 ### 3. Run the benchmark
+
 There is a handy shell script `run_sysbench.sh` that loads the data and runs the various workloads.
+
 ```sh
 ./run_sysbench.sh --ip <ip>
 ```
+
 This script runs all the 8 workloads using 64 threads with the number of tables as 10 and the table size as 100k. If you want to run the benchmark with a different count of tables and tablesize:
+
 ```sh
 ./run_sysbench.sh --ip <ip> --numtables <number of tables> --tablesize <number of rows in each table>
 ```
@@ -107,6 +113,7 @@ $ sysbench oltp_point_select        \
 ```
 
 The choice of different workloads are:
+
 * oltp_insert
 * oltp_point_select
 * oltp_write_only
@@ -124,13 +131,13 @@ When run on a 3-node cluster with each node on a c5.4xlarge AWS instance (16 cor
 
 ### 10 Tables Each with 100k Rows
 
-| Workload   | Throughput (txns/sec) | Latency (ms)
--------------|-----------|----------|
-OLTP_READ_ONLY | 3276 | 39
-OLTP_READ_WRITE | 487 | 265
-OLTP_WRITE_ONLY | 1818 | 70
-OLTP_POINT_SELECT| 95695 | 1.3
-OLTP_INSERT | 6348 | 20.1
-OLTP_UPDATE_INDEX | 4052 | 31
-OLTP_UPDATE_NON_INDEX | 11496 | 11
-OLTP_DELETE | 67499 | 1.9
+| Workload | Throughput (txns/sec) | Latency (ms) |
+| :------- | :-------------------- | :----------- |
+| OLTP_READ_ONLY | 3276 | 39 |
+| OLTP_READ_WRITE | 487 | 265 |
+| OLTP_WRITE_ONLY | 1818 | 70 |
+| OLTP_POINT_SELECT| 95695 | 1.3 |
+| OLTP_INSERT | 6348 | 20.1 |
+| OLTP_UPDATE_INDEX | 4052 | 31 |
+| OLTP_UPDATE_NON_INDEX | 11496 | 11 |
+| OLTP_DELETE | 67499 | 1.9 |

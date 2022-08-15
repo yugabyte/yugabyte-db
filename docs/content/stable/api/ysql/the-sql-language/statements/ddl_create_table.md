@@ -7,8 +7,7 @@ menu:
   stable:
     identifier: ddl_create_table
     parent: statements
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis
@@ -34,10 +33,10 @@ Use the `CREATE TABLE` statement to create a table in a database. It defines the
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_table,table_elem,column_constraint,table_constraint,key_columns,hash_columns,range_columns,storage_parameters,storage_parameter,index_parameters,references_clause,split_row.grammar.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_table,table_elem,column_constraint,table_constraint,key_columns,hash_columns,range_columns,storage_parameters,storage_parameter,index_parameters,references_clause,split_row.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_table,table_elem,column_constraint,table_constraint,key_columns,hash_columns,range_columns,storage_parameters,storage_parameter,index_parameters,references_clause,split_row.diagram.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_table,table_elem,column_constraint,table_constraint,key_columns,hash_columns,range_columns,storage_parameters,storage_parameter,index_parameters,references_clause,split_row.diagram.md" %}}
   </div>
 </div>
 
@@ -55,11 +54,9 @@ By default, only the first column is treated as the hash-partition column. But t
 
 - `Range primary key columns`: A table can have zero or more range primary key columns and it controls the top-level ordering of rows within a table (if there are no hash partition columns) or the ordering of rows among rows that share a common set of hash partitioned column values. By default, the range primary key columns are stored in ascending order. But this behavior can be controlled by explicit use of `ASC` or `DESC`.
 
-For example, if the primary key specification is `PRIMARY KEY ((a, b) HASH, c DESC)` then columns `a` & `b` are used together to hash partition the table, and rows that share the same values for `a` and `b` are stored in descending order of their value for `c`.
+For example, if the primary key specification is `PRIMARY KEY ((a, b) HASH, c DESC)`, then columns `a` & `b` are used together to hash partition the table, and rows that share the same values for `a` and `b` are stored in descending order of their value for `c`.
 
-If the primary key specification is `PRIMARY KEY(a, b)`, then column `a` is used to hash partition
-the table and rows that share the same value for `a` are stored in ascending order of their value
-for `b`.
+If the primary key specification is `PRIMARY KEY(a, b)`, then column `a` is used to hash partition the table, and rows that share the same value for `a` are stored in ascending order of their value for `b`.
 
 ### Foreign key
 
@@ -91,6 +88,10 @@ Constraints marked as `INITIALLY DEFERRED` will be checked at the end of the tra
 ### Temporary or Temp
 
 Using this qualifier will create a temporary table. Temporary tables are only visible in the current client session or transaction in which they are created and are automatically dropped at the end of the session or transaction. Any indexes created on temporary tables are temporary as well.
+
+### TABLESPACE
+
+Specify the name of the [tablespace](../../../../../explore/ysql-language-features/going-beyond-sql/tablespaces/) that describes the placement configuration for this table. By default, tables are placed in the `pg_default` tablespace, which spreads the tablets of the table evenly across the cluster.
 
 ### SPLIT INTO
 
@@ -150,7 +151,7 @@ yugabyte=# CREATE TABLE sample(k1 int,
 
 In this example, the first column `k1` will be `HASH`, while second column `k2` will be `ASC`.
 
-```
+```output.sql
 yugabyte=# \d sample
                Table "public.sample"
  Column |  Type   | Collation | Nullable | Default
@@ -214,7 +215,7 @@ yugabyte=# INSERT INTO orders VALUES (1, 1, 3), (2, 1, 3), (3, 2, 2);
 yugabyte=# SELECT o.id AS order_id, p.id as product_id, p.descr, o.amount FROM products p, orders o WHERE o.pid = p.id;
 ```
 
-```
+```output
 order_id | product_id |  descr   | amount
 ----------+------------+----------+--------
         1 |          1 | Phone X  |      3
@@ -229,7 +230,7 @@ Inserting a row referencing a non-existent product is not allowed.
 yugabyte=# INSERT INTO orders VALUES (1, 3, 3);
 ```
 
-```
+```output
 ERROR:  insert or update on table "orders" violates foreign key constraint "orders_pid_fkey"
 DETAIL:  Key (pid)=(3) is not present in table "products".
 ```
@@ -241,7 +242,7 @@ yugabyte=# DELETE from products where id = 1;
 yugabyte=# SELECT o.id AS order_id, p.id as product_id, p.descr, o.amount FROM products p, orders o WHERE o.pid = p.id;
 ```
 
-```
+```output
  order_id | product_id |  descr   | amount
 ----------+------------+----------+--------
         3 |          2 | Tablet Z |      2

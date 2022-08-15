@@ -149,4 +149,19 @@ public class TestPgIndexSelectiveUpdate extends BasePgSQLTest {
       checkWrites(0, 0, 0, 0, 2);
     }
   }
+
+  @Test
+  public void testUpdateTableAvoidTransactionSingleRowModify() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE orders ( k int PRIMARY KEY, v1 text, v2 int)");
+      stmt.execute("CREATE INDEX v1_idx ON orders(v1)");
+      stmt.execute("INSERT INTO orders(k, v1, v2) values (1, 'hello', 2)");
+      long oldTxnValue = getMetricCounter(SINGLE_SHARD_TRANSACTIONS_METRIC);
+      // Since its a single row update, we avoid creating a distributed transaction.
+      // Hence the number of transactions remains unchanged.
+      stmt.execute("UPDATE orders SET v2 = 4 where k = 1;");
+      long newTxnValue = getMetricCounter(SINGLE_SHARD_TRANSACTIONS_METRIC);
+      assertEquals(oldTxnValue, newTxnValue);
+    }
+  }
 }

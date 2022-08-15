@@ -9,29 +9,43 @@ import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.NodeActionType;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.controllers.JWTVerifier.ClientType;
+import com.yugabyte.yw.controllers.handlers.NodeAgentHandler;
 import com.yugabyte.yw.forms.NodeActionFormData;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
 import com.yugabyte.yw.forms.NodeInstanceFormData.NodeInstanceData;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
+import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.NodeAgent;
+import com.yugabyte.yw.models.NodeAgent.State;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.AllowedActionsHelper;
+import com.yugabyte.yw.models.helpers.NodeConfiguration;
+import com.yugabyte.yw.models.helpers.NodeConfiguration.TypeGroup;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
+
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections.CollectionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
@@ -41,9 +55,11 @@ import play.mvc.Results;
 @Api(
     value = "Node instances",
     authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
+@Slf4j
 public class NodeInstanceController extends AuthenticatedController {
 
   @Inject Commissioner commissioner;
+  @Inject NodeAgentHandler nodeAgentHandler;
 
   public static final Logger LOG = LoggerFactory.getLogger(NodeInstanceController.class);
 
@@ -127,15 +143,35 @@ public class NodeInstanceController extends AuthenticatedController {
 
     NodeInstanceFormData nodeInstanceFormData = parseJsonAndValidate(NodeInstanceFormData.class);
     List<NodeInstanceData> nodeDataList = nodeInstanceFormData.nodes;
+    Optional<ClientType> clientTypeOp = maybeGetJWTClientType();
+    List<String> createdNodeUuids = new ArrayList<String>();
     Map<String, NodeInstance> nodes = new HashMap<>();
     for (NodeInstanceData nodeData : nodeDataList) {
       if (!NodeInstance.checkIpInUse(nodeData.ip)) {
+        if (clientTypeOp.isPresent() && clientTypeOp.get() == ClientType.NODE_AGENT) {
+          NodeAgent nodeAgent = NodeAgent.getOrBadRequest(customerUuid, getJWTClientUuid());
+          nodeAgent.ensureState(State.LIVE);
+          Set<NodeConfiguration.Type> failedTypes =
+              nodeData.getFailedNodeConfigurationTypes(TypeGroup.ALL);
+          if (CollectionUtils.isNotEmpty(failedTypes)) {
+            log.error("Failed node configuration types: {}", failedTypes);
+            throw new PlatformServiceException(
+                BAD_REQUEST, "Invalid configurations " + failedTypes);
+          }
+        }
         NodeInstance node = NodeInstance.create(zoneUuid, nodeData);
         nodes.put(node.getDetails().ip, node);
+        createdNodeUuids.add(node.getNodeUuid().toString());
       }
     }
     if (nodes.size() > 0) {
-      auditService().createAuditEntry(ctx(), request(), Json.toJson(nodeInstanceFormData));
+      auditService()
+          .createAuditEntryWithReqBody(
+              ctx(),
+              Audit.TargetType.NodeInstance,
+              createdNodeUuids.toString(),
+              Audit.ActionType.Create,
+              Json.toJson(nodeInstanceFormData));
       return PlatformResults.withData(nodes);
     }
     throw new PlatformServiceException(
@@ -176,7 +212,14 @@ public class NodeInstanceController extends AuthenticatedController {
         nodeAction.getCustomerTask(),
         node.getNodeName());
 
-    auditService().createAuditEntry(ctx(), request());
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.NodeInstance,
+            Objects.toString(node.getNodeUuid(), null),
+            Audit.ActionType.Create,
+            Json.toJson(nodeActionFormData),
+            taskUUID);
     return Results.status(OK);
   }
 
@@ -188,8 +231,13 @@ public class NodeInstanceController extends AuthenticatedController {
     if (nodeToBeFound.isInUse()) {
       throw new PlatformServiceException(BAD_REQUEST, "Node is in use");
     }
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.NodeInstance,
+            Objects.toString(nodeToBeFound.getNodeUuid(), null),
+            Audit.ActionType.Delete);
     nodeToBeFound.delete();
-    auditService().createAuditEntry(ctx(), request());
     return YBPSuccess.empty();
   }
 
@@ -275,7 +323,14 @@ public class NodeInstanceController extends AuthenticatedController {
         universe.universeUUID,
         universe.name,
         nodeName);
-    auditService().createAuditEntry(ctx(), request(), Json.toJson(nodeActionFormData), taskUUID);
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.NodeInstance,
+            nodeName,
+            Audit.ActionType.Update,
+            Json.toJson(nodeActionFormData),
+            taskUUID);
     return new YBPTask(taskUUID).asResult();
   }
 

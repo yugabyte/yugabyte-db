@@ -53,10 +53,10 @@ YQLVirtualTable::YQLVirtualTable(const TableName& table_name,
 
 YQLVirtualTable::~YQLVirtualTable() = default;
 
-CHECKED_STATUS YQLVirtualTable::GetIterator(
+Status YQLVirtualTable::GetIterator(
     const QLReadRequestPB& request,
     const Schema& projection,
-    const Schema& schema,
+      std::reference_wrapper<const docdb::DocReadContext> doc_read_context,
     const TransactionOperationContext& txn_op_context,
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
@@ -74,7 +74,7 @@ CHECKED_STATUS YQLVirtualTable::GetIterator(
   return Status::OK();
 }
 
-CHECKED_STATUS YQLVirtualTable::BuildYQLScanSpec(
+Status YQLVirtualTable::BuildYQLScanSpec(
     const QLReadRequestPB& request,
     const ReadHybridTime& read_time,
     const Schema& schema,
@@ -113,7 +113,7 @@ Result<std::pair<int, DataType>> YQLVirtualTable::ColumnIndexAndType(
   if (column_index == Schema::kColumnNotFound) {
     return STATUS_SUBSTITUTE(NotFound, "Couldn't find column $0 in schema", col_name);
   }
-  const DataType data_type = schema_->column(column_index).type_info()->type();
+  const DataType data_type = schema_->column(column_index).type_info()->type;
   return std::make_pair(column_index, data_type);
 }
 

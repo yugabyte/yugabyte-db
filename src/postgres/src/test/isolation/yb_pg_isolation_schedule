@@ -1,7 +1,9 @@
+# Tests related to READ COMMITTED isolation
 test: yb_pg_eval-plan-qual
 test: yb_read_committed_update_and_explicit_locking
 test: yb_read_committed_insert
 test: yb_read_committed_test_internal_savepoint
+test: yb_read_committed_test_do_call
 
 # Skip locked related tests from Pg
 test: yb_pg_skip-locked
@@ -16,3 +18,19 @@ test: yb-skip-locked-after-update
 #    inherit it back from nested sub txns once they are removed.
 # 2. Test to ensure clean-up of partial intents using savepoints.
 # 3. Test all skip locked specs with REPEATABLE READ isolation as well.
+
+test: update-locked-tuple
+test: delete-abort-savept
+test: fk-deadlock
+test: fk-deadlock2
+test: insert-conflict-do-nothing
+test: insert-conflict-do-update-2
+test: insert-conflict-do-update
+test: multixact-no-deadlock
+test: read-only-anomaly
+test: nowait-2
+test: nowait-3
+test: aborted-keyrevoke
+test: delete-abort-savept-2
+test: ignore-intent-of-rolled-back-savepoint-cross-txn
+test: ensure-lock-only-conflict-always-ignored

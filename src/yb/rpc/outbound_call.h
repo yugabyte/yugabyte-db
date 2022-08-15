@@ -84,13 +84,6 @@ class Message;
 namespace yb {
 namespace rpc {
 
-class CallResponse;
-class DumpRunningRpcsRequestPB;
-class YBInboundTransfer;
-class RpcCallInProgressPB;
-class RpcCallDetailsPB;
-class RpcController;
-
 // Used to key on Connection information.
 // For use as a key in an unordered STL collection, use ConnectionIdHash and ConnectionIdEqual.
 // This class is copyable for STL compatibility, but not assignable (use CopyFrom() for that).
@@ -154,7 +147,7 @@ class CallResponse {
 
   // Parse the response received from a call. This must be called before any
   // other methods on this object. Takes ownership of data content.
-  CHECKED_STATUS ParseFrom(CallData* data);
+  Status ParseFrom(CallData* data);
 
   // Return true if the call succeeded.
   bool is_success() const {
@@ -176,6 +169,7 @@ class CallResponse {
   }
 
   Result<Slice> GetSidecar(size_t idx) const;
+  Result<SidecarHolder> GetSidecarHolder(size_t idx) const;
 
   size_t DynamicMemoryUsage() const {
     return DynamicMemoryUsageOf(header_, response_data_) +
@@ -236,7 +230,7 @@ class OutboundCall : public RpcCall {
                std::shared_ptr<const OutboundMethodMetrics> method_metrics,
                AnyMessagePtr response_storage,
                RpcController* controller,
-               RpcMetrics* rpc_metrics,
+               std::shared_ptr<RpcMetrics> rpc_metrics,
                ResponseCallback callback,
                ThreadPool* callback_thread_pool);
 
@@ -246,7 +240,7 @@ class OutboundCall : public RpcCall {
   //
   // Because the data is fully serialized by this call, 'req' may be
   // subsequently mutated with no ill effects.
-  virtual CHECKED_STATUS SetRequestParam(
+  virtual Status SetRequestParam(
       AnyMessageConstPtr req, const MemTrackerPtr& mem_tracker);
 
   // Serialize the call for the wire. Requires that SetRequestParam()
@@ -344,6 +338,7 @@ class OutboundCall : public RpcCall {
   friend class RpcController;
 
   virtual Result<Slice> GetSidecar(size_t idx) const;
+  virtual Result<SidecarHolder> GetSidecarHolder(size_t idx) const;
 
   ConnectionId conn_id_;
   const std::string* hostname_;
@@ -373,13 +368,13 @@ class OutboundCall : public RpcCall {
   void set_state_unlocked(State new_state);
 
   // return current status
-  CHECKED_STATUS status() const;
+  Status status() const;
 
   // Return the error protobuf, if a remote error occurred.
   // This will only be non-NULL if status().IsRemoteError().
   const ErrorStatusPB* error_pb() const;
 
-  CHECKED_STATUS InitHeader(RequestHeader* header);
+  Status InitHeader(RequestHeader* header);
 
   // Lock for state_ status_, error_pb_ fields, since they
   // may be mutated by the reactor thread while the client thread
@@ -394,7 +389,7 @@ class OutboundCall : public RpcCall {
 
   Result<uint32_t> TimeoutMs() const;
 
-  int32_t call_id_;
+  const int32_t call_id_;
 
   // The remote method being called.
   const RemoteMethod* remote_method_;
@@ -416,7 +411,7 @@ class OutboundCall : public RpcCall {
 
   std::shared_ptr<OutboundCallMetrics> outbound_call_metrics_;
 
-  RpcMetrics* rpc_metrics_;
+  std::shared_ptr<RpcMetrics> rpc_metrics_;
 
   Status thread_pool_failure_;
 

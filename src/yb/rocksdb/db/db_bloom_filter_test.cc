@@ -15,6 +15,8 @@
 #include "yb/rocksdb/perf_context.h"
 #include "yb/rocksdb/port/stack_trace.h"
 
+#include "yb/util/random_util.h"
+
 namespace rocksdb {
 
 // DB tests related to bloom filter.
@@ -1219,7 +1221,7 @@ TEST_F(DBBloomFilterTest, OptimizeFiltersForHits) {
   for (int i = 0; i < numkeys; i += 2) {
     keys.push_back(i);
   }
-  std::random_shuffle(std::begin(keys), std::end(keys));
+  std::shuffle(std::begin(keys), std::end(keys), yb::ThreadLocalRandom());
 
   int num_inserted = 0;
   for (int key : keys) {

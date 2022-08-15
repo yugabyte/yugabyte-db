@@ -2,7 +2,9 @@
 
 import React, { Component, Fragment } from 'react';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
-import 'react-bootstrap-table/css/react-bootstrap-table.css';
+import moment from 'moment';
+import pluralize from 'pluralize';
+
 import { YBLoadingCircleIcon } from '../../common/indicators';
 import { isDefinedNotNull, isNonEmptyString } from '../../../utils/ObjectUtils';
 import {
@@ -13,13 +15,19 @@ import {
 import { isNotHidden, isDisabled, isHidden } from '../../../utils/LayoutUtils';
 import { YBPanelItem } from '../../panels';
 import { NodeAction } from '../../universes';
-import moment from 'moment';
-import pluralize from 'pluralize';
+import { setCookiesFromLocalStorage } from '../../../routes';
+import { getUniverseStatus, universeState } from '../helpers/universeHelpers';
+
+import 'react-bootstrap-table/css/react-bootstrap-table.css';
 
 export default class NodeDetailsTable extends Component {
   render() {
     const {
-      nodeDetails, providerUUID, clusterType, customer, currentUniverse,
+      nodeDetails,
+      providerUUID,
+      clusterType,
+      customer,
+      currentUniverse,
       providers
     } = this.props;
     const loadingIcon = <YBLoadingCircleIcon size="inline" />;
@@ -27,8 +35,8 @@ export default class NodeDetailsTable extends Component {
     const warningIcon = <i className="fa fa-warning yb-fail-color" />;
     const sortedNodeDetails = nodeDetails.sort((a, b) => a.nodeIdx - b.nodeIdx);
     const universeUUID = currentUniverse.data.universeUUID;
-    const universePaused = currentUniverse?.data?.universeDetails?.universePaused;
-    const providerConfig = providers.data.find((provider) => provider.uuid === providerUUID)?.config;
+    const providerConfig = providers.data.find((provider) => provider.uuid === providerUUID)
+      ?.config;
 
     const formatIpPort = function (cell, row, type) {
       if (cell === '-') {
@@ -41,12 +49,18 @@ export default class NodeDetailsTable extends Component {
         row.privateIP,
         isMaster ? row.masterPort : row.tserverPort
       );
-      if (row.nodeAlive) {
+      const isAlive = isMaster ? row.isMasterAlive : row.isTserverAlive;
+      if (!row.isLoading) {
         return (
           <div>
-            {successIcon}&nbsp;
+            {isAlive ? successIcon : warningIcon}&nbsp;
             {isNotHidden(customer.currentCustomer.data.features, 'universes.proxyIp') ? (
-              <a href={href} target="_blank" rel="noopener noreferrer">
+              <a
+                href={href}
+                onClick={setCookiesFromLocalStorage}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
                 {isMaster ? 'Master' : 'TServer'}
               </a>
             ) : (
@@ -58,7 +72,7 @@ export default class NodeDetailsTable extends Component {
       } else {
         return (
           <div>
-            {row.isLoading ? loadingIcon : warningIcon}&nbsp;{isMaster ? 'Master' : 'TServer'}
+            {loadingIcon}&nbsp;{isMaster ? 'Master' : 'TServer'}
           </div>
         );
       }
@@ -75,7 +89,7 @@ export default class NodeDetailsTable extends Component {
 
     const getNodeNameLink = (cell, row) => {
       const showIp = isNotHidden(customer.currentCustomer.data.features, 'universes.proxyIp');
-      const ip = showIp ? <div className={'text-lightgray'}>{row['privateIP']}</div>: null;
+      const ip = showIp ? <div className={'text-lightgray'}>{row['privateIP']}</div> : null;
       let nodeName = cell;
       let onPremNodeName = '';
       if (showIp) {
@@ -94,9 +108,9 @@ export default class NodeDetailsTable extends Component {
             </a>
           );
         } else if (row.cloudInfo.cloud === 'azu' && isDefinedNotNull(providerConfig)) {
-          const tenantId = providerConfig["AZURE_TENANT_ID"];
-          const subscriptionId = providerConfig["AZURE_SUBSCRIPTION_ID"];
-          const resourceGroup = providerConfig["AZURE_RG"];
+          const tenantId = providerConfig['AZURE_TENANT_ID'];
+          const subscriptionId = providerConfig['AZURE_SUBSCRIPTION_ID'];
+          const resourceGroup = providerConfig['AZURE_RG'];
           const azuURI = `https://portal.azure.com/#@${tenantId}/resource/subscriptions/${subscriptionId}/resourceGroups/${resourceGroup}/providers/Microsoft.Compute/virtualMachines/${cell}`;
           nodeName = (
             <a href={azuURI} target="_blank" rel="noopener noreferrer">
@@ -152,11 +166,12 @@ export default class NodeDetailsTable extends Component {
            not removing all zeros, as we want to display something like 10 min 0 sec -
            so that precision is clear for the user */
         let foundNonZero = false;
-        const filteredDurations = diffArray.filter((duration) =>
-          foundNonZero === true || (duration[0] !== 0 && (foundNonZero = true)));
+        const filteredDurations = diffArray.filter(
+          (duration) => foundNonZero === true || (duration[0] !== 0 && (foundNonZero = true))
+        );
         if (filteredDurations.length === 1) {
           const diffEntry = filteredDurations[0];
-          uptime = `${diffEntry[0]} ${pluralize(diffEntry[1], diffEntry[0])}`
+          uptime = `${diffEntry[0]} ${pluralize(diffEntry[1], diffEntry[0])}`;
         } else if (filteredDurations.length > 1) {
           const firstEntry = filteredDurations[0];
           const secondEntry = filteredDurations[1];
@@ -238,8 +253,12 @@ export default class NodeDetailsTable extends Component {
     };
 
     const panelTitle = clusterType === 'primary' ? 'Primary Cluster' : 'Read Replicas';
-    const displayNodeActions = !this.props.isReadOnlyUniverse && !universePaused
-      && isNotHidden(customer.currentCustomer.data.features, 'universes.tableActions');
+
+    const universeStatus = getUniverseStatus(currentUniverse.data);
+    const displayNodeActions =
+      !this.props.isReadOnlyUniverse &&
+      universeStatus.state !== universeState.PAUSED &&
+      isNotHidden(customer.currentCustomer.data.features, 'universes.tableActions');
 
     return (
       <YBPanelItem

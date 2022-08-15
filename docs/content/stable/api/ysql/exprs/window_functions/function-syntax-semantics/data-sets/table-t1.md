@@ -8,12 +8,11 @@ menu:
     identifier: table-t1
     parent: data-sets
     weight: 20
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 {{< note title=" " >}}
-Make sure that you read the section [The data sets used by the code examples](../../data-sets/) before running the script to create table _"t1"_. In particular, it's essential that you have installed the [pgcrypto](../../../../../extensions/#pgcrypto) extension.
+Make sure that you read the section [The data sets used by the code examples](../../data-sets/) before running the script to create table _"t1"_. In particular, it's essential that you have installed the [pgcrypto](../../../../../../../explore/ysql-language-features/pg-extensions/#pgcrypto-example) extension.
 {{< /note >}}
 
 The rows in table  _"t1"_ are inserted in random order. The table is used for demonstrating these window functions:
@@ -85,7 +84,7 @@ order by class, k;
 ```
 Here is the result of the second `SELECT`. To make it easier to see the pattern, a blank line has been manually inserted here between each successive set of rows with the same value for _"class"_. (The same "break" technique is used to present the results that follow these.)
 ```
- class | k  | v  
+ class | k  | v
 -------+----+----
      1 |  1 |  1
      1 |  2 |  2
@@ -130,32 +129,32 @@ order by class, k;
 ```
 Here is a typical result set:
 ```
- class | k  | r  
+ class | k  | r
 -------+----+----
      1 |  1 |  6
      1 |  2 | 18
      1 |  3 | 16
      1 |  4 | 14
      1 |  5 |  5
-     
+
      2 |  6 | 20
      2 |  7 | 17
      2 |  8 |  8
      2 |  9 | 12
      2 | 10 | 23
-     
+
      3 | 11 | 19
      3 | 12 | 25
      3 | 13 |  7
      3 | 14 | 24
      3 | 15 |  2
-     
+
      4 | 16 |  1
      4 | 17 |  9
      4 | 18 | 11
      4 | 19 | 21
      4 | 20 | 22
-     
+
      5 | 21 | 15
      5 | 22 |  4
      5 | 23 |  3
@@ -174,32 +173,32 @@ order by class, k;
 ```
 This is the result:
 ```
- class | k  | min(k) 
+ class | k  | min(k)
 -------+----+--------
      1 |  1 |      1
      1 |  2 |      1
      1 |  3 |      1
      1 |  4 |      1
      1 |  5 |      1
-     
+
      2 |  6 |      6
      2 |  7 |      6
      2 |  8 |      6
      2 |  9 |      6
      2 | 10 |      6
-     
+
      3 | 11 |     11
      3 | 12 |     11
      3 | 13 |     11
      3 | 14 |     11
      3 | 15 |     11
-     
+
      4 | 16 |     16
      4 | 17 |     16
      4 | 18 |     16
      4 | 19 |     16
      4 | 20 |     16
-     
+
      5 | 21 |     21
      5 | 22 |     21
      5 | 23 |     21

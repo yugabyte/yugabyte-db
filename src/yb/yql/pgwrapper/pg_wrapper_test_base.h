@@ -33,6 +33,8 @@ class PgWrapperTestBase : public MiniClusterTestWithClient<ExternalMiniCluster> 
 
   virtual void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) {}
 
+  Result<TabletId> GetSingleTabletId(const TableName& table_name);
+
   // Tablet server to use to perform PostgreSQL operations.
   ExternalTabletServer* pg_ts = nullptr;
 };
@@ -46,7 +48,8 @@ class PgCommandTestBase : public PgWrapperTestBase {
     db_name_ = db_name;
   }
 
-  void RunPsqlCommand(const std::string &statement, const std::string &expected_output);
+  void RunPsqlCommand(
+      const std::string &statement, const std::string &expected_output, bool tuples_only = false);
 
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override;
 

@@ -139,7 +139,7 @@ void TransactionTestBase<MiniClusterType>::CreateTable() {
 }
 
 template <class MiniClusterType>
-CHECKED_STATUS TransactionTestBase<MiniClusterType>::CreateTable(const Schema& schema) {
+Status TransactionTestBase<MiniClusterType>::CreateTable(const Schema& schema) {
   Schema new_schema { schema };
   new_schema.mutable_table_properties()->SetTransactional(
       GetIsolationLevel() != IsolationLevel::NON_TRANSACTIONAL);
@@ -242,7 +242,7 @@ void TransactionTestBase<MiniClusterType>::VerifyRows(
   for (size_t r = 0; r != kNumRows; ++r) {
     ops.push_back(ReadRow(session, KeyForTransactionAndIndex(transaction, r), column));
   }
-  ASSERT_OK(session->Flush());
+  ASSERT_OK(session->TEST_Flush());
   for (size_t r = 0; r != kNumRows; ++r) {
     SCOPED_TRACE(Format("Row: $0, key: $1", r, KeyForTransactionAndIndex(transaction, r)));
     auto& op = ops[r];

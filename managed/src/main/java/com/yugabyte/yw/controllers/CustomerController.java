@@ -30,26 +30,32 @@ import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertService;
+import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.metrics.MetricService;
-import com.yugabyte.yw.forms.AlertingFormData;
+import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.AlertingData;
+import com.yugabyte.yw.forms.AlertingFormData;
 import com.yugabyte.yw.forms.CustomerDetailsData;
 import com.yugabyte.yw.forms.FeatureUpdateFormData;
 import com.yugabyte.yw.forms.MetricQueryParams;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPError;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
+import com.yugabyte.yw.metrics.MetricSettings;
 import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.Alert.State;
+import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.XClusterConfig;
+import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
 import com.yugabyte.yw.models.filters.AlertFilter;
 import com.yugabyte.yw.models.helpers.CommonUtils;
@@ -62,11 +68,16 @@ import io.swagger.annotations.ApiResponses;
 import io.swagger.annotations.Authorization;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.Form;
@@ -89,6 +100,8 @@ public class CustomerController extends AuthenticatedController {
   @Inject private CloudQueryHelper cloudQueryHelper;
 
   @Inject private AlertConfigurationService alertConfigurationService;
+
+  @Inject private CustomerConfigService customerConfigService;
 
   private static boolean checkNonNullMountRoots(NodeDetails n) {
     return n.cloudInfo != null
@@ -115,7 +128,21 @@ public class CustomerController extends AuthenticatedController {
       responseContainer = "List",
       nickname = "ListOfCustomers")
   public Result list() {
-    return PlatformResults.withData(Customer.getAll());
+    // There is no way to hide the query param from swagger if it is passed
+    // as a parameter to the method. So, it is manually retrieved.
+    boolean includeUniverseUuids =
+        Boolean.parseBoolean(request().getQueryString("includeUniverseUuids"));
+    List<Customer> customers = Customer.getAll();
+    if (includeUniverseUuids) {
+      Map<Long, Set<UUID>> allUniverseUuids = Universe.getAllCustomerUniverseUUIDs();
+      customers
+          .stream()
+          .forEach(
+              c ->
+                  c.setTransientUniverseUUIDs(
+                      allUniverseUuids.getOrDefault(c.getCustomerId(), Collections.emptySet())));
+    }
+    return PlatformResults.withData(customers);
   }
 
   @ApiOperation(
@@ -186,15 +213,16 @@ public class CustomerController extends AuthenticatedController {
             alertingFormData.alertingData.activeAlertNotificationIntervalMs;
         long oldActiveAlertNotificationPeriod = 0;
         if (config == null) {
-          CustomerConfig.createAlertConfig(
-              customerUUID, Json.toJson(alertingFormData.alertingData));
+          customerConfigService.create(
+              CustomerConfig.createAlertConfig(
+                  customerUUID, Json.toJson(alertingFormData.alertingData)));
         } else {
           AlertingData oldData = Json.fromJson(config.getData(), AlertingData.class);
           if (oldData != null) {
             oldActiveAlertNotificationPeriod = oldData.activeAlertNotificationIntervalMs;
           }
           config.unmaskAndSetData((ObjectNode) Json.toJson(alertingFormData.alertingData));
-          config.update();
+          customerConfigService.edit(config);
         }
 
         if (activeAlertNotificationPeriod != oldActiveAlertNotificationPeriod) {
@@ -240,10 +268,11 @@ public class CustomerController extends AuthenticatedController {
 
       CustomerConfig smtpConfig = CustomerConfig.getSmtpConfig(customerUUID);
       if (smtpConfig == null && alertingFormData.smtpData != null) {
-        CustomerConfig.createSmtpConfig(customerUUID, Json.toJson(alertingFormData.smtpData));
+        customerConfigService.create(
+            CustomerConfig.createSmtpConfig(customerUUID, Json.toJson(alertingFormData.smtpData)));
       } else if (smtpConfig != null && alertingFormData.smtpData != null) {
         smtpConfig.unmaskAndSetData((ObjectNode) Json.toJson(alertingFormData.smtpData));
-        smtpConfig.update();
+        customerConfigService.edit(smtpConfig);
       } // In case we want to reset the smtpData and use the default mailing server.
       else if (request.has("smtpData") && alertingFormData.smtpData == null) {
         if (smtpConfig != null) {
@@ -259,7 +288,13 @@ public class CustomerController extends AuthenticatedController {
     }
 
     CustomerConfig.upsertCallhomeConfig(customerUUID, alertingFormData.callhomeLevel);
-
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.Customer,
+            customerUUID.toString(),
+            Audit.ActionType.Update,
+            Json.toJson(formData));
     return ok(Json.toJson(customer));
   }
 
@@ -280,9 +315,11 @@ public class CustomerController extends AuthenticatedController {
           INTERNAL_SERVER_ERROR, "Unable to delete Customer UUID: " + customerUUID);
     }
 
-    metricService.handleSourceRemoval(customerUUID, null);
+    metricService.markSourceRemoved(customerUUID, null);
 
-    auditService().createAuditEntry(ctx(), request());
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(), Audit.TargetType.Customer, customerUUID.toString(), Audit.ActionType.Delete);
     return YBPSuccess.empty();
   }
 
@@ -313,7 +350,13 @@ public class CustomerController extends AuthenticatedController {
 
     customer.upsertFeatures(formData.features);
 
-    auditService().createAuditEntry(ctx(), request(), requestBody);
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.Customer,
+            customerUUID.toString(),
+            Audit.ActionType.UpsertCustomerFeatures,
+            requestBody);
     return ok(customer.getFeatures());
   }
 
@@ -338,6 +381,29 @@ public class CustomerController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
 
     Form<MetricQueryParams> formData = formFactory.getFormDataOrBadRequest(MetricQueryParams.class);
+    MetricQueryParams metricQueryParams = formData.get();
+
+    if (CollectionUtils.isEmpty(metricQueryParams.getMetrics())
+        && CollectionUtils.isEmpty(metricQueryParams.getMetricsWithSettings())) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Either metrics or metricsWithSettings should not be empty");
+    }
+
+    Map<String, MetricSettings> metricSettingsMap = new LinkedHashMap<>();
+    if (CollectionUtils.isNotEmpty(metricQueryParams.getMetrics())) {
+      metricQueryParams
+          .getMetrics()
+          .stream()
+          .map(MetricSettings::defaultSettings)
+          .forEach(
+              metricSettings -> metricSettingsMap.put(metricSettings.getMetric(), metricSettings));
+    }
+    if (CollectionUtils.isNotEmpty(metricQueryParams.getMetricsWithSettings())) {
+      metricQueryParams
+          .getMetricsWithSettings()
+          .forEach(
+              metricSettings -> metricSettingsMap.put(metricSettings.getMetric(), metricSettings));
+    }
 
     Map<String, String> params = new HashMap<>(formData.rawData());
     HashMap<String, Map<String, String>> filterOverrides = new HashMap<>();
@@ -346,7 +412,7 @@ public class CustomerController extends AuthenticatedController {
     // container or not, and use pod_name vs exported_instance accordingly.
     // Expect for container metrics, all the metrics would with node_prefix and exported_instance.
     boolean hasContainerMetric =
-        formData.get().getMetrics().stream().anyMatch(s -> s.startsWith("container"));
+        metricSettingsMap.keySet().stream().anyMatch(s -> s.startsWith("container"));
     String universeFilterLabel = hasContainerMetric ? "namespace" : "node_prefix";
     String nodeFilterLabel = hasContainerMetric ? "pod_name" : "exported_instance";
     String containerLabel = "container_name";
@@ -365,25 +431,59 @@ public class CustomerController extends AuthenticatedController {
       // Check if it is a Kubernetes deployment.
       if (hasContainerMetric) {
         final String nodePrefix = params.remove("nodePrefix");
-        if (params.containsKey("nodeName")) {
-          // We calculate the correct namespace by using the zone if
-          // it exists. Example: it is yb-tserver-0_az1 (multi AZ) or
-          // yb-tserver-0 (single AZ).
-          String[] nodeWithZone = params.remove("nodeName").split("_");
-          filterJson.put(nodeFilterLabel, nodeWithZone[0]);
-          // TODO(bhavin192): might need to account for multiple
-          // releases in one namespace.
-          // The pod name is of the format yb-<server>-<replica_num> and we just need the
-          // container, which is yb-<server>.
-          String containerName = nodeWithZone[0].substring(0, nodeWithZone[0].lastIndexOf("-"));
-          String pvcName = String.format("(.*)-%s", nodeWithZone[0]);
-          String azName = nodeWithZone.length == 2 ? nodeWithZone[1] : null;
+        // Check if the universe is using newNamingStyle.
+        List<Universe> universes =
+            customer
+                .getUniverses()
+                .stream()
+                .filter(universe -> universe.getUniverseDetails().nodePrefix.equals(nodePrefix))
+                .collect(Collectors.toList());
+        if (universes.isEmpty()) {
+          throw new PlatformServiceException(
+              INTERNAL_SERVER_ERROR,
+              String.format("No universe found with nodePrefix %s.", nodePrefix));
+        }
+        if (universes.size() > 1) {
+          LOG.warn("Found mulitple universes with nodePrefix {}, using first one.", nodePrefix);
+        }
+        Universe universe = universes.get(0);
 
+        boolean newNamingStyle = universe.getUniverseDetails().useNewHelmNamingStyle;
+
+        if (params.containsKey("nodeName")) {
+          String nodeName = params.remove("nodeName");
+          NodeDetails node =
+              universe
+                  .maybeGetNode(nodeName)
+                  .orElseThrow(() -> new PlatformServiceException(NOT_FOUND, nodeName));
+
+          String podFQDN = node.cloudInfo.private_ip;
+          if (StringUtils.isBlank(podFQDN)) {
+            throw new PlatformServiceException(
+                INTERNAL_SERVER_ERROR, nodeName + " has a blank FQDN");
+          }
+
+          String podName = podFQDN.split("\\.")[0];
+          String namespace = podFQDN.split("\\.")[2];
+          // The pod name is of the format
+          // <helm_prefix>-yb-<server>-<replica_num> and we just need
+          // the container, which is yb-<server>.
+          String containerName = podName.contains("yb-master") ? "yb-master" : "yb-tserver";
+          String pvcName = String.format("(.*)-%s", podName);
+          filterJson.put(nodeFilterLabel, podName);
           filterJson.put(containerLabel, containerName);
           filterJson.put(pvcLabel, pvcName);
-          filterJson.put(universeFilterLabel, getNamespacesFilter(customer, nodePrefix, azName));
+          filterJson.put(universeFilterLabel, namespace);
         } else {
-          filterJson.put(universeFilterLabel, getNamespacesFilter(customer, nodePrefix));
+          filterJson.put(
+              universeFilterLabel, getNamespacesFilter(universe, nodePrefix, newNamingStyle));
+          // Check if the universe is using newNamingStyle.
+          if (newNamingStyle) {
+            // TODO(bhavin192): account for max character limit in
+            // Helm release name, which is 53 characters.
+            // The default value in metrics.yml is yb-tserver-(.*)
+            filterJson.put(nodeFilterLabel, nodePrefix + "-(.*)-yb-tserver-(.*)");
+          }
         }
       } else {
         final String nodePrefix = params.remove("nodePrefix");
@@ -392,11 +492,15 @@ public class CustomerController extends AuthenticatedController {
           filterJson.put(nodeFilterLabel, params.remove("nodeName"));
         }
 
-        filterOverrides.putAll(getFilterOverrides(customer, nodePrefix, formData.get()));
+        filterOverrides.putAll(
+            getFilterOverrides(customer, nodePrefix, metricSettingsMap.keySet()));
       }
     }
     if (params.containsKey("tableName")) {
       filterJson.put("table_name", params.remove("tableName"));
+    }
+    if (params.containsKey("tableId")) {
+      filterJson.put("table_id", params.remove("tableId"));
     }
     if (params.containsKey("xClusterConfigUuid")) {
       XClusterConfig xClusterConfig =
@@ -406,56 +510,49 @@ public class CustomerController extends AuthenticatedController {
     }
     params.put("filters", Json.stringify(filterJson));
     JsonNode response;
-    if (formData.get().getIsRecharts()) {
-      response =
-          metricQueryHelper.query(
-              formData.get().getMetrics(), params, filterOverrides, formData.get().getIsRecharts());
-    } else {
-      response = metricQueryHelper.query(formData.get().getMetrics(), params, filterOverrides);
-    }
+    response =
+        metricQueryHelper.query(
+            new ArrayList<>(metricSettingsMap.values()),
+            params,
+            filterOverrides,
+            metricQueryParams.getIsRecharts());
 
     if (response.has("error")) {
       throw new PlatformServiceException(BAD_REQUEST, response.get("error"));
     }
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.Customer,
+            customerUUID.toString(),
+            Audit.ActionType.AddMetrics,
+            request().body().asJson());
     return PlatformResults.withRawData(response);
   }
 
-  private String getNamespacesFilter(Customer customer, String nodePrefix) {
-    return getNamespacesFilter(customer, nodePrefix, null);
-  }
-
   // Return a regex string for filtering the metrics based on
-  // namespaces of the universe matching the given customer and
-  // nodePrefix. If azName is not null, then returns the only
-  // namespace corresponding to the given AZ. Should be used for
-  // Kubernetes universes only.
-  private String getNamespacesFilter(Customer customer, String nodePrefix, String azName) {
+  // namespaces of the given universe and nodePrefix. Should be used
+  // for Kubernetes universes only.
+  private String getNamespacesFilter(Universe universe, String nodePrefix, boolean newNamingStyle) {
     // We need to figure out the correct namespace for each AZ.  We do
-    // that by getting the correct universe and its provider and then
-    // go through the azConfigs.
-    List<Universe> universes =
-        customer
-            .getUniverses()
-            .stream()
-            .filter(u -> u.getUniverseDetails().nodePrefix.equals(nodePrefix))
-            .collect(Collectors.toList());
-    // TODO: account for readonly replicas when we support them for
-    // Kubernetes providers.
-    Provider provider =
-        Provider.get(
-            UUID.fromString(
-                universes.get(0).getUniverseDetails().getPrimaryCluster().userIntent.provider));
+    // that by getting the the universe's provider and then go through
+    // the azConfigs.
     List<String> namespaces = new ArrayList<>();
-    boolean isMultiAZ = PlacementInfoUtil.isMultiAZ(provider);
 
-    for (Region r : Region.getByProvider(provider.uuid)) {
-      for (AvailabilityZone az : AvailabilityZone.getAZsForRegion(r.uuid)) {
-        if (azName != null && !azName.equals(az.code)) {
-          continue;
+    for (UniverseDefinitionTaskParams.Cluster cluster : universe.getUniverseDetails().clusters) {
+      Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+      for (Region r : Region.getByProvider(provider.uuid)) {
+        for (AvailabilityZone az : AvailabilityZone.getAZsForRegion(r.uuid)) {
+          boolean isMultiAZ = PlacementInfoUtil.isMultiAZ(provider);
+          namespaces.add(
+              PlacementInfoUtil.getKubernetesNamespace(
+                  isMultiAZ,
+                  nodePrefix,
+                  az.code,
+                  az.getUnmaskedConfig(),
+                  newNamingStyle,
+                  cluster.clusterType == ClusterType.ASYNC));
         }
-        namespaces.add(
-            PlacementInfoUtil.getKubernetesNamespace(
-                isMultiAZ, nodePrefix, az.code, az.getUnmaskedConfig()));
       }
     }
 
@@ -481,12 +578,12 @@ public class CustomerController extends AuthenticatedController {
   }
 
   private HashMap<String, HashMap<String, String>> getFilterOverrides(
-      Customer customer, String nodePrefix, MetricQueryParams mqParams) {
+      Customer customer, String nodePrefix, Set<String> metricNames) {
 
     HashMap<String, HashMap<String, String>> filterOverrides = new HashMap<>();
     // For a disk usage metric query, the mount point has to be modified to match the actual
     // mount point for an onprem universe.
-    if (mqParams.getMetrics().contains("disk_usage")) {
+    if (metricNames.contains("disk_usage")) {
       List<Universe> universes =
           customer
               .getUniverses()
@@ -496,6 +593,12 @@ public class CustomerController extends AuthenticatedController {
                       u.getUniverseDetails().nodePrefix != null
                           && u.getUniverseDetails().nodePrefix.equals(nodePrefix))
               .collect(Collectors.toList());
+      if (CollectionUtils.isEmpty(universes)) {
+        LOG.warn(
+            "Failed to find universe with node prefix {}, will not add mount point filter",
+            nodePrefix);
+        return filterOverrides;
+      }
       if (universes.get(0).getUniverseDetails().getPrimaryCluster().userIntent.providerType
           == CloudType.onprem) {
         final String mountRoots =

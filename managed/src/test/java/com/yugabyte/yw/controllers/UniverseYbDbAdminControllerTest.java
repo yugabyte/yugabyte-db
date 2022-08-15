@@ -107,10 +107,8 @@ public class UniverseYbDbAdminControllerTest extends UniverseControllerTestBase 
       String responseError) {
     Universe u = createUniverse(customer.getCustomerId());
     if (isCloudCustomer) {
-      customer.code = "cloud";
+      when(mockRuntimeConfig.getBoolean("yb.cloud.enabled")).thenReturn(true);
     }
-    customer.addUniverseUUID(u.universeUUID);
-    customer.save();
     ObjectNode bodyJson =
         Json.newObject()
             .put("ycqlAdminUsername", ycqlAdminUsername)
@@ -131,14 +129,15 @@ public class UniverseYbDbAdminControllerTest extends UniverseControllerTestBase 
       Mockito.verify(mockYcqlQueryExecutor, times(ycqlProcessed ? 1 : 0)).createUser(any(), any());
       Mockito.verify(mockYsqlQueryExecutor, times(ysqlProcessed ? 1 : 0)).createUser(any(), any());
       assertOk(result);
+      assertAuditEntry(1, customer.uuid);
     } else {
       Result result =
           assertPlatformException(
               () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
       Mockito.verifyNoMoreInteractions(mockYcqlQueryExecutor, mockYsqlQueryExecutor);
       assertErrorResponse(result, responseError);
+      assertAuditEntry(0, customer.uuid);
     }
-    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -179,10 +178,8 @@ public class UniverseYbDbAdminControllerTest extends UniverseControllerTestBase 
       String responseError) {
     Universe u = createUniverse(customer.getCustomerId());
     if (isCloudCustomer) {
-      customer.code = "cloud";
+      when(mockRuntimeConfig.getBoolean("yb.cloud.enabled")).thenReturn(true);
     }
-    customer.addUniverseUUID(u.universeUUID);
-    customer.save();
     ObjectNode bodyJson =
         Json.newObject()
             .put("ycqlAdminUsername", ycqlAdminUsername)
@@ -205,14 +202,15 @@ public class UniverseYbDbAdminControllerTest extends UniverseControllerTestBase 
       Mockito.verify(mockYsqlQueryExecutor, times(ysqlProcessed ? 1 : 0))
           .updateAdminPassword(any(), any());
       assertOk(result);
+      assertAuditEntry(1, customer.uuid);
     } else {
       Result result =
           assertPlatformException(
               () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
       Mockito.verifyNoMoreInteractions(mockYcqlQueryExecutor, mockYsqlQueryExecutor);
       assertErrorResponse(result, responseError);
+      assertAuditEntry(0, customer.uuid);
     }
-    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -233,8 +231,6 @@ public class UniverseYbDbAdminControllerTest extends UniverseControllerTestBase 
   public void testRunQuery_ValidPlatform(
       boolean insecure, String origin, String ybmode, boolean isGoodResult) throws Exception {
     Universe u = createUniverse(customer.getCustomerId());
-    customer.addUniverseUUID(u.universeUUID);
-    customer.save();
 
     if (insecure) {
       ConfigHelper configHelper = new ConfigHelper();

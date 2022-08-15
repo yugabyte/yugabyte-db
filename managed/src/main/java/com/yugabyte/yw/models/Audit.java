@@ -9,9 +9,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.common.PlatformServiceException;
 import io.ebean.Finder;
 import io.ebean.Model;
-import io.ebean.annotation.EnumValue;
 import io.ebean.annotation.CreatedTimestamp;
 import io.ebean.annotation.DbJson;
+import io.ebean.annotation.EnumValue;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.Date;
@@ -49,14 +49,11 @@ public class Audit extends Model {
     @EnumValue("Availability Zone")
     AvailabilityZone,
 
-    @EnumValue("Instance Type")
-    InstanceType,
-
     @EnumValue("Customer Configuration")
     CustomerConfig,
 
-    @EnumValue("Encryption At Rest")
-    EncryptionAtRest,
+    @EnumValue("KMS Configuration")
+    KMSConfig,
 
     @EnumValue("Customer")
     Customer,
@@ -69,6 +66,12 @@ public class Audit extends Model {
 
     @EnumValue("Alert")
     Alert,
+
+    @EnumValue("Alert Channel")
+    AlertChannel,
+
+    @EnumValue("Alert Destination")
+    AlertDestination,
 
     @EnumValue("Maintenance Window")
     MaintenanceWindow,
@@ -94,169 +97,130 @@ public class Audit extends Model {
     @EnumValue("Node Instance")
     NodeInstance,
 
+    @EnumValue("Platform Instance")
+    PlatformInstance,
+
     @EnumValue("Schedule")
     Schedule,
 
     @EnumValue("User")
-    User
+    User,
+
+    @EnumValue("Logging Configuration")
+    LoggingConfig,
+
+    @EnumValue("Runtime Configuration Key")
+    RuntimeConfigKey,
+
+    @EnumValue("HA Configuration")
+    HAConfig,
+
+    @EnumValue("HA Backup")
+    HABackup,
+
+    @EnumValue("Scheduled Script")
+    ScheduledScript,
+
+    @EnumValue("Support Bundle")
+    SupportBundle,
+
+    @EnumValue("GFlags")
+    GFlags,
+
+    @EnumValue("Hook")
+    Hook,
+
+    @EnumValue("Hook Scope")
+    HookScope,
+
+    @EnumValue("NodeAgent")
+    NodeAgent
   }
 
   public enum ActionType {
-    @EnumValue("Register Session")
-    RegisterSession,
+    @EnumValue("Set")
+    Set,
 
-    @EnumValue("Create Cloud Provider")
-    CreateCloudProvider,
+    @EnumValue("Create")
+    Create,
 
-    @EnumValue("Delete Cloud Provider")
-    DeleteCloudProvider,
+    @EnumValue("Edit")
+    Edit,
 
-    @EnumValue("Edit Cloud Provider")
-    EditCloudProvider,
+    @EnumValue("Update")
+    Update,
 
-    @EnumValue("Refresh Cloud Provider Pricing")
-    RefreshPricingCloudProvider,
+    @EnumValue("Delete")
+    Delete,
 
-    @EnumValue("Create Kubernetes Cloud Provider")
-    CreateKubernetesCloudProvider,
+    @EnumValue("Register")
+    Register,
 
-    @EnumValue("Bootstrap Cloud Provider")
-    BootstrapCloudProvider,
+    @EnumValue("Refresh")
+    Refresh,
 
-    @EnumValue("Setup Docker Cloud Provider")
-    SetupDockerCloudProvider,
+    @EnumValue("Upload")
+    Upload,
 
-    @EnumValue("Create Region")
-    CreateRegion,
+    @EnumValue("Upgrade")
+    Upgrade,
 
-    @EnumValue("Delete Region")
-    DeleteRegion,
+    @EnumValue("Import")
+    Import,
 
-    @EnumValue("Create Availability Zone")
-    CreateAvailabilityZone,
+    @EnumValue("Pause")
+    Pause,
 
-    @EnumValue("Delete Availability Zone")
-    DeleteAvailabilityZone,
+    @EnumValue("Resume")
+    Resume,
 
-    @EnumValue("Create Instance")
-    CreateInstance,
+    @EnumValue("Restart")
+    Restart,
 
-    @EnumValue("Delete Instance")
-    DeleteInstance,
+    @EnumValue("Abort")
+    Abort,
 
-    @EnumValue("Create Customer Configuration")
-    CreateCustomerConfiguration,
+    @EnumValue("Retry")
+    Retry,
 
-    @EnumValue("Edit Customer Configuration")
-    EditCustomerConfiguration,
+    @EnumValue("Restore")
+    Restore,
 
-    @EnumValue("Delete Customer Configuration")
-    DeleteCustomerConfiguration,
+    @EnumValue("Alter")
+    Alter,
 
-    @EnumValue("Create KMS Configuration")
-    CreateKmsConfiguration,
+    @EnumValue("Drop")
+    Drop,
 
-    @EnumValue("Edit KMS Configuration")
-    EditKmsConfiguration,
+    @EnumValue("Stop")
+    Stop,
 
-    @EnumValue("Delete KMS Configuration")
-    DeleteKmsConfiguration,
+    @EnumValue("Validate")
+    Validate,
 
-    @EnumValue("Retrieve KMS Key")
-    RetrieveKmsKey,
+    @EnumValue("Acknowledge")
+    Acknowledge,
 
-    @EnumValue("Remove KMS Key Reference History")
-    RemoveKmsKeyReferenceHistory,
+    @EnumValue("Sync XCluster Configuration")
+    SyncXClusterConfig,
 
-    @EnumValue("Delete Customer")
-    DeleteCustomer,
+    @EnumValue("Login")
+    Login,
 
-    @EnumValue("Upsert Features Customer")
-    UpsertFeaturesCustomer,
+    @EnumValue("Promote")
+    Promote,
 
-    @EnumValue("Create Release")
-    CreateRelease,
+    @EnumValue("Bootstrap")
+    Bootstrap,
 
-    @EnumValue("Update Release")
-    UpdateRelease,
+    @EnumValue("Configure")
+    Configure,
 
-    @EnumValue("Upload Certificate")
-    UploadCertificate,
+    @EnumValue("Update Options")
+    UpdateOptions,
 
-    @EnumValue("Delete Certificate")
-    DeleteCertificate,
-
-    @EnumValue("Get Client's Root Certificate")
-    GetRootCertificate,
-
-    @EnumValue("Add Client Certificate")
-    AddClientCertificate,
-
-    @EnumValue("Create Alert Configuration")
-    CreateAlertConfiguration,
-
-    @EnumValue("Edit Alert Configuration")
-    EditAlertConfiguration,
-
-    @EnumValue("Delete Alert Configuration")
-    DeleteAlertConfiguration,
-
-    @EnumValue("Create Alert Channel")
-    CreateAlertChannel,
-
-    @EnumValue("Update Alert Channel")
-    UpdateAlertChannel,
-
-    @EnumValue("Delete Alert Channel")
-    DeleteAlertChannel,
-
-    @EnumValue("Get Alert Destination")
-    GetAlertDestination,
-
-    @EnumValue("Update Alert Destination")
-    UpdateAlertDestination,
-
-    @EnumValue("Delete Alert Destination")
-    DeleteAlertDestination,
-
-    @EnumValue("Create Maintenance Window")
-    CreateMaintenanceWindow,
-
-    @EnumValue("Update Maintenance Window")
-    UpdateMaintenanceWindow,
-
-    @EnumValue("Delete Maintenance Window")
-    DeleteMaintenanceWindow,
-
-    @EnumValue("Create Access Key")
-    CreateAccessKey,
-
-    @EnumValue("Delete Access Key")
-    DeleteAccessKey,
-
-    @EnumValue("Create Universe")
-    CreateUniverse,
-
-    @EnumValue("Update Universe")
-    UpdateUniverse,
-
-    @EnumValue("Upgrade Universe")
-    UpgradeUniverse,
-
-    @EnumValue("Destroy Universe")
-    DestroyUniverse,
-
-    @EnumValue("Import Universe")
-    ImportUniverse,
-
-    @EnumValue("Pause Universe")
-    PauseUniverse,
-
-    @EnumValue("Resume Universe")
-    ResumeUniverse,
-
-    @EnumValue("Restart Universe")
-    RestartUniverse,
+    @EnumValue("Refresh Pricing")
+    RefreshPricing,
 
     @EnumValue("Upgrade Software")
     UpgradeSoftware,
@@ -276,14 +240,62 @@ public class Audit extends Model {
     @EnumValue("Upgrade Systemd")
     UpgradeSystemd,
 
+    @EnumValue("Reboot Universe")
+    RebootUniverse,
+
+    @EnumValue("Resize Node")
+    ResizeNode,
+
+    @EnumValue("Add Metrics")
+    AddMetrics,
+
+    @EnumValue("Create Kubernetes")
+    CreateKubernetes,
+
+    @EnumValue("Setup Docker")
+    SetupDocker,
+
+    @EnumValue("Retrieve KMS Key")
+    RetrieveKmsKey,
+
+    @EnumValue("Remove KMS Key Reference History")
+    RemoveKmsKeyReferenceHistory,
+
+    @EnumValue("Upsert Customer Features")
+    UpsertCustomerFeatures,
+
+    @EnumValue("Create Self Signed Certificate")
+    CreateSelfSignedCert,
+
+    @EnumValue("Update Empty Customer Certificate")
+    UpdateEmptyCustomerCertificate,
+
+    @EnumValue("Get Client's Root Certificate")
+    GetRootCertificate,
+
+    @EnumValue("Add Client Certificate")
+    AddClientCertificate,
+
+    @EnumValue("Set DB Credentials")
+    SetDBCredentials,
+
+    @EnumValue("Create User in DB")
+    CreateUserInDB,
+
     @EnumValue("Set Universe Helm3 Compatible")
     SetHelm3Compatible,
 
     @EnumValue("Set Universe's Backup Flag")
-    setBackupFlag,
+    SetBackupFlag,
 
-    @EnumValue("Set Universe's Key")
-    setUniverseKey,
+    @EnumValue("Set Universe Key")
+    SetUniverseKey,
+
+    @EnumValue("Reset Universe Version")
+    ResetUniverseVersion,
+
+    @EnumValue("Configure Universe Alert")
+    ConfigUniverseAlert,
 
     @EnumValue("Toggle Universe's TLS State")
     ToggleTls,
@@ -318,50 +330,32 @@ public class Audit extends Model {
     @EnumValue("Run YSQL Query in Universe")
     RunYsqlQuery,
 
-    @EnumValue("Edit XCluster Configuration")
-    EditXClusterConfig,
-
-    @EnumValue("Delete XCluster Configuration")
-    DeleteXClusterConfig,
-
-    @EnumValue("Sync XCluster Configuration")
-    SyncXClusterConfig,
-
-    @EnumValue("Create Table")
-    CreateTable,
-
-    @EnumValue("Drop Table")
-    DropTable,
-
     @EnumValue("Bulk Import Data into Table")
     BulkImport,
 
-    @EnumValue("Create a Backup")
+    @EnumValue("Create Backup")
     CreateBackup,
+
+    @EnumValue("Restore Backup")
+    RestoreBackup,
+
+    @EnumValue("Create Single Table Backup")
+    CreateSingleTableBackup,
 
     @EnumValue("Create a Multi Table Backup")
     CreateMultiTableBackup,
 
-    @EnumValue("Restore from a Backup")
-    RestoreBackup,
+    @EnumValue("Create Backup Schedule")
+    CreateBackupSchedule,
 
-    @EnumValue("Delete Backups")
-    DeleteBackups,
+    @EnumValue("Edit Backup Schedule")
+    EditBackupSchedule,
 
-    @EnumValue("Stop a Backup")
-    StopBackup,
+    @EnumValue("Start Periodic Backup")
+    StartPeriodicBackup,
 
-    @EnumValue("Edit a Backup")
-    EditBackup,
-
-    @EnumValue("Retry a Universe Task")
-    RetryTask,
-
-    @EnumValue("Create Node Instance")
-    CreateNodeInstance,
-
-    @EnumValue("Delete Node Instance")
-    DeleteNodeInstance,
+    @EnumValue("Stop Periodic Backup")
+    StopPeriodicBackup,
 
     @EnumValue("Detached Node Instance Action")
     DetachedNodeInstanceAction,
@@ -372,17 +366,86 @@ public class Audit extends Model {
     @EnumValue("Delete a Backup Schedule")
     DeleteBackupSchedule,
 
-    @EnumValue("Create User")
-    CreateUser,
-
     @EnumValue("Change User Role")
     ChangeUserRole,
 
-    @EnumValue("Update User Profile")
-    UpdateUserProfile,
+    @EnumValue("Change User Password")
+    ChangeUserPassword,
 
-    @EnumValue("Delete User")
-    DeleteUser
+    @EnumValue("Set Security")
+    SetSecurity,
+
+    @EnumValue("Generate API Token")
+    GenerateApiToken,
+
+    @EnumValue("Reset Slow Queries")
+    ResetSlowQueries,
+
+    @EnumValue("External Script Schedule")
+    ExternalScriptSchedule,
+
+    @EnumValue("Stop Scheduled Script")
+    StopScheduledScript,
+
+    @EnumValue("Update Scheduled Script")
+    UpdateScheduledScript,
+
+    @EnumValue("Create Instance Type")
+    CreateInstanceType,
+
+    @EnumValue("Delete Instance Type")
+    DeleteInstanceType,
+
+    @EnumValue("Get Universe Resources")
+    GetUniverseResources,
+
+    @EnumValue("Third-party Software Upgrade")
+    ThirdpartySoftwareUpgrade,
+
+    @EnumValue("Create TableSpaces")
+    CreateTableSpaces,
+
+    @EnumValue("Create Hook")
+    CreateHook,
+
+    @EnumValue("Delete Hook")
+    DeleteHook,
+
+    @EnumValue("Update Hook")
+    UpdateHook,
+
+    @EnumValue("Create Hook Scope")
+    CreateHookScope,
+
+    @EnumValue("Delete Hook Scope")
+    DeleteHookScope,
+
+    @EnumValue("Add Hook to Hook Scope")
+    AddHook,
+
+    @EnumValue("Remove Hook from Hook Scope")
+    RemoveHook,
+
+    @EnumValue("Rotate AccessKey")
+    RotateAccessKey,
+
+    @EnumValue("Create And Rotate Access Key")
+    CreateAndRotateAccessKey,
+
+    @EnumValue("Run Hook")
+    RunHook,
+
+    @EnumValue("Run API Triggered Tasks")
+    RunApiTriggeredHooks,
+
+    @EnumValue("Add Node Agent")
+    AddNodeAgent,
+
+    @EnumValue("Update Node Agent")
+    UpdateNodeAgent,
+
+    @EnumValue("Delete Node Agent")
+    DeleteNodeAgent
   }
 
   // An auto incrementing, user-friendly ID for the audit entry.
@@ -446,6 +509,15 @@ public class Audit extends Model {
     this.save();
   }
 
+  @ApiModelProperty(value = "Additional Details", accessMode = READ_ONLY, dataType = "Object")
+  @Column(columnDefinition = "TEXT")
+  @DbJson
+  private JsonNode additionalDetails;
+
+  public JsonNode getAdditionalDetails() {
+    return this.additionalDetails;
+  }
+
   @ApiModelProperty(
       value = "API call",
       example = "/api/v1/customers/<496fdea8-df25-11eb-ba80-0242ac130004>/providers",
@@ -480,12 +552,12 @@ public class Audit extends Model {
     this.save();
   }
 
-  @ApiModelProperty(value = "Target UUID", accessMode = READ_ONLY)
+  @ApiModelProperty(value = "Target ID", accessMode = READ_ONLY)
   @Column(nullable = true)
-  private UUID targetUUID;
+  private String targetID;
 
-  public UUID getTargetUUID() {
-    return this.targetUUID;
+  public String getTargetID() {
+    return this.targetID;
   }
 
   @ApiModelProperty(value = "Action", example = "Create User", accessMode = READ_ONLY)
@@ -530,10 +602,11 @@ public class Audit extends Model {
       String apiCall,
       String apiMethod,
       TargetType target,
-      UUID targetUUID,
+      String targetID,
       ActionType action,
       JsonNode body,
-      UUID taskUUID) {
+      UUID taskUUID,
+      JsonNode details) {
     Audit entry = new Audit();
     entry.customerUUID = user.customerUUID;
     entry.userUUID = user.uuid;
@@ -541,10 +614,11 @@ public class Audit extends Model {
     entry.apiCall = apiCall;
     entry.apiMethod = apiMethod;
     entry.target = target;
-    entry.targetUUID = targetUUID;
+    entry.targetID = targetID;
     entry.action = action;
     entry.taskUUID = taskUUID;
     entry.payload = body;
+    entry.additionalDetails = details;
     entry.save();
     return entry;
   }

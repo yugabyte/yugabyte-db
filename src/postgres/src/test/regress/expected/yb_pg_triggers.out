@@ -2336,6 +2336,74 @@ select tgrelid::regclass, count(*) from pg_trigger
   group by tgrelid::regclass order by tgrelid::regclass;
 */
 drop table trg_clone;
+-- Verify that firing state propagates correctly
+CREATE TABLE trgfire (i int) PARTITION BY RANGE (i);
+CREATE TABLE trgfire1 PARTITION OF trgfire FOR VALUES FROM (1) TO (10);
+CREATE OR REPLACE FUNCTION tgf() RETURNS trigger LANGUAGE plpgsql
+  AS $$ begin raise exception 'except'; end $$;
+CREATE TRIGGER tg AFTER INSERT ON trgfire FOR EACH ROW EXECUTE FUNCTION tgf();
+INSERT INTO trgfire VALUES (1);
+ERROR:  except
+CONTEXT:  PL/pgSQL function tgf() line 1 at RAISE
+ALTER TABLE trgfire DISABLE TRIGGER tg;
+INSERT INTO trgfire VALUES (1);
+CREATE TABLE trgfire2 PARTITION OF trgfire FOR VALUES FROM (10) TO (20);
+INSERT INTO trgfire VALUES (11);
+CREATE TABLE trgfire3 (LIKE trgfire);
+ERROR:  LIKE clause not supported yet
+LINE 1: CREATE TABLE trgfire3 (LIKE trgfire);
+                               ^
+HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1129. Click '+' on the description to raise its priority
+ALTER TABLE trgfire ATTACH PARTITION trgfire3 FOR VALUES FROM (20) TO (30);
+ERROR:  relation "trgfire3" does not exist
+INSERT INTO trgfire VALUES (21);
+ERROR:  no partition of relation "trgfire" found for row
+DETAIL:  Partition key of the failing row contains (i) = (21).
+CREATE TABLE trgfire4 PARTITION OF trgfire FOR VALUES FROM (30) TO (40) PARTITION BY LIST (i);
+CREATE TABLE trgfire4_30 PARTITION OF trgfire4 FOR VALUES IN (30);
+INSERT INTO trgfire VALUES (30);
+CREATE TABLE trgfire5 (LIKE trgfire) PARTITION BY LIST (i);
+ERROR:  LIKE clause not supported yet
+LINE 1: CREATE TABLE trgfire5 (LIKE trgfire) PARTITION BY LIST (i);
+                               ^
+HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1129. Click '+' on the description to raise its priority
+CREATE TABLE trgfire5_40 PARTITION OF trgfire5 FOR VALUES IN (40);
+ERROR:  relation "trgfire5" does not exist
+ALTER TABLE trgfire ATTACH PARTITION trgfire5 FOR VALUES FROM (40) TO (50);
+ERROR:  relation "trgfire5" does not exist
+INSERT INTO trgfire VALUES (40);
+ERROR:  no partition of relation "trgfire" found for row
+DETAIL:  Partition key of the failing row contains (i) = (40).
+SELECT tgrelid::regclass, tgenabled FROM pg_trigger
+  WHERE tgrelid::regclass IN (SELECT oid from pg_class where relname LIKE 'trgfire%')
+  ORDER BY tgrelid::regclass::text;
+   tgrelid   | tgenabled
+-------------+-----------
+ trgfire     | D
+ trgfire1    | D
+ trgfire2    | D
+ trgfire4    | D
+ trgfire4_30 | D
+(5 rows)
+
+ALTER TABLE trgfire ENABLE TRIGGER tg;
+INSERT INTO trgfire VALUES (1);
+ERROR:  except
+CONTEXT:  PL/pgSQL function tgf() line 1 at RAISE
+INSERT INTO trgfire VALUES (11);
+ERROR:  except
+CONTEXT:  PL/pgSQL function tgf() line 1 at RAISE
+INSERT INTO trgfire VALUES (21);
+ERROR:  no partition of relation "trgfire" found for row
+DETAIL:  Partition key of the failing row contains (i) = (21).
+INSERT INTO trgfire VALUES (30);
+ERROR:  except
+CONTEXT:  PL/pgSQL function tgf() line 1 at RAISE
+INSERT INTO trgfire VALUES (40);
+ERROR:  no partition of relation "trgfire" found for row
+DETAIL:  Partition key of the failing row contains (i) = (40).
+DROP TABLE trgfire;
+DROP FUNCTION tgf();
 --
 -- Test the interaction between transition tables and both kinds of
 -- inheritance.  We'll dump the contents of the transition tables in a
@@ -2874,6 +2942,26 @@ drop table self_ref;
 drop function dump_insert();
 drop function dump_update();
 drop function dump_delete();
+--
+-- Rows per transaction should be disabled if table contains non Referential Integrity triggers.
+--
+CREATE TABLE tbl(k INT PRIMARY KEY);
+CREATE TABLE shadow_tbl(k INT PRIMARY KEY);
+CREATE OR REPLACE FUNCTION trigger_func() RETURNS trigger AS $$
+BEGIN
+  INSERT INTO shadow_tbl VALUES(NEW.k);
+  RETURN NEW;
+END; $$
+LANGUAGE 'plpgsql';
+CREATE TRIGGER tbl_insert_trigger AFTER INSERT
+  ON tbl FOR EACH ROW EXECUTE PROCEDURE trigger_func();
+-- A warning should be shown disabling the ROWS_PER_TRANSACTION value.
+COPY tbl FROM STDIN WITH (ROWS_PER_TRANSACTION 2);
+WARNING:  Batched COPY is not supported on table with non RI trigger. Defaulting to using one transaction for the entire copy.
+HINT:  Set rows_per_transaction option to `0` to disable batching and remove this warning.
+DROP TRIGGER tbl_insert_trigger ON tbl;
+DROP TABLE shadow_tbl;
+DROP TABLE tbl;
 -- Leave around some objects for other tests
 create table trigger_parted (a int primary key) partition by list (a);
 create function trigger_parted_trigfunc() returns trigger language plpgsql as

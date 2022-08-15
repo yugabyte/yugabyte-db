@@ -137,22 +137,9 @@ class CompactionFilter {
   // using a snapshot.
   virtual bool IgnoreSnapshots() const { return false; }
 
-  // Gives the compaction filter an opportunity to return a "user frontier" that will be used to
-  // update the frontier stored in the version edit metadata when the compaction result is
-  // installed.
-  //
-  // As a concrete use case, we use this to pass the history cutoff timestamp from the DocDB
-  // compaction filter into the version edit metadata. See DocDBCompactionFilter.
-  virtual UserFrontierPtr GetLargestUserFrontier() const { return nullptr; }
-
   // Returns a name that identifies this compaction filter.
   // The name will be printed to LOG file on start up for diagnosis.
   virtual const char* Name() const = 0;
-
-  // Returns a list of the ranges which should be considered "live" on this tablet. Returns an empty
-  // list if the whole key range of the tablet should be considered live. Returned ranges are
-  // represented as pairs of Slices denoting the beginning and end of the range in user space.
-  virtual std::vector<std::pair<Slice, Slice>> GetLiveRanges() const { return {}; }
 };
 
 // Each compaction will create a new CompactionFilter allowing the

@@ -172,6 +172,10 @@ bool AsyncTabletSnapshotOp::SendRequest(int attempt) {
     *req.mutable_indexes() = indexes_;
     req.set_hide(hide_);
   }
+
+  if (db_oid_) {
+    req.set_db_oid(*db_oid_);
+  }
   req.set_propagated_hybrid_time(master_->clock()->Now().ToUint64());
 
   ts_backup_proxy_->TabletSnapshotOpAsync(req, &resp_, &rpc_, BindRpcCallback());

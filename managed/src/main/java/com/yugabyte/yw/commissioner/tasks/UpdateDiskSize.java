@@ -11,7 +11,6 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.DiskIncreaseFormData;
@@ -41,16 +40,16 @@ public class UpdateDiskSize extends UniverseDefinitionTaskBase {
   public void run() {
     try {
       checkUniverseVersion();
-      // Create the task list sequence.
-      subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
 
       // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
       // to prevent other updates from happening.
-      Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
-
-      // Update the user intent.
-      universe = writeUserIntentToUniverse();
-      updateOnPremNodeUuids(universe);
+      Universe universe =
+          lockUniverseForUpdate(
+              taskParams().expectedUniverseVersion,
+              u -> {
+                // Set the task param data to universe in-memory.
+                setUserIntentToUniverse(u, taskParams(), false);
+              });
 
       Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
 
@@ -64,7 +63,7 @@ public class UpdateDiskSize extends UniverseDefinitionTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Run all the tasks.
-      subTaskGroupQueue.run();
+      getRunnableTask().runSubTasks();
     } catch (Throwable t) {
       log.error("Error executing task {} with error={}.", getName(), t);
       throw t;

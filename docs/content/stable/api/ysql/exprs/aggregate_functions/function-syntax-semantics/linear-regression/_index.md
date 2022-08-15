@@ -9,8 +9,7 @@ menu:
     identifier: linear-regression
     parent: aggregate-function-syntax-semantics
     weight: 50
-isTocNested: true
-showAsideToc: true
+type: indexpage
 ---
 
 This parent section and its two child sections describe these aggregate functions for linear regression analysis:
@@ -30,7 +29,7 @@ In terms of the high school equation for a straight line:
 y = m*x + c
 ```
 
-the function [`regr_slope(y, x)`](./regr/#regr-slope-regr-intercept) estimates the gradient, _"m"_,  of the straight line that best fits the set of coordinate pairs over which the aggregation is done; and the function [`regr_intercept(y, x)`](./regr/#regr-slope-regr-intercept) estimates its intercept with the y-axis, _"c"_. The so-called "R-squared " measure, implemented by   [`regr_r2(y, x)`](./regr/#regr-r2), indicates the goodness-of-fit. It measures the percentage of the variance in the dependent variable that the independent variables explain collectively—in other words, the strength of the relationship between your model and the dependent variable on a 0 – 100% scale. For example, if `regr_r2()` returns a value of _0.7_, it means that seventy percent of the relationship between the putative dependent variable and the independent variable can be explained by a straight line with the gradient and intercept returned, respectively, by `regr_slope()` and `regr_intercept()`.  The remaining thirty percent can be attributed to stochastic variation. 
+the function [`regr_slope(y, x)`](./regr/#regr-slope-regr-intercept) estimates the gradient, _"m"_,  of the straight line that best fits the set of coordinate pairs over which the aggregation is done; and the function [`regr_intercept(y, x)`](./regr/#regr-slope-regr-intercept) estimates its intercept with the y-axis, _"c"_. The so-called "R-squared " measure, implemented by   [`regr_r2(y, x)`](./regr/#regr-r2), indicates the goodness-of-fit. It measures the percentage of the variance in the dependent variable that the independent variables explain collectively—in other words, the strength of the relationship between your model and the dependent variable on a 0 – 100% scale. For example, if `regr_r2()` returns a value of _0.7_, it means that seventy percent of the relationship between the putative dependent variable and the independent variable can be explained by a straight line with the gradient and intercept returned, respectively, by `regr_slope()` and `regr_intercept()`.  The remaining thirty percent can be attributed to stochastic variation.
 
 The purpose of each of the functions is rather specialized; but the domain is also very familiar to people who need to do linear regression. For this reason, the aim here is simply to explain enough for specialists to be able to understand exactly what is available, and how to invoke what they decide that they need. Each function is illustrated with a simple example.
 
@@ -48,7 +47,7 @@ Each one of the aggregate functions for linear regression analysis, except for `
 
 ```
 input value:       double precision, double precision
-                   
+
 return value:      double precision
 ```
 
@@ -56,7 +55,7 @@ Because it returns a count, `regr_count()` returns a `bigint`, thus:
 
 ```
 input value:       double precision, double precision
-                   
+
 return value:      bigint
 ```
 In all cases, the first input parameter represents the values that you want to be taken as the _dependent variable_ (conventionally denoted by _"y"_) and the second input parameter represents the values that you want to be taken as the _independent variable_ (conventionally denoted by _"x"_).
@@ -69,13 +68,13 @@ If, for a particular input row, _either_ the expression for _"y"_, _or_ the expr
 
 The same test table recipe serves for illustrating all of the functions for linear regression analysis. The design is straightforward. Noise is added to a pure linear function, thus:
 
-```
+```output
   y = slope*x + intercept + delta
 ```
 
 where _"delta"_ is picked, for each _"x"_ value from a pseudorandom normal distribution with specified mean and standard deviation.
 
-The procedure _"populate_t()"_ lets you try different values for _"slope"_, _"intercept"_, and for the size and variability of _"delta"_. It uses the function `normal_rand()`, brought by the [tablefunc](../../../../extensions/#tablefunc) extension.
+The procedure _"populate_t()"_ lets you try different values for _"slope"_, _"intercept"_, and for the size and variability of _"delta"_. It uses the function `normal_rand()`, brought by the [tablefunc](../../../../../../explore/ysql-language-features/pg-extensions/#tablefunc-example) extension.
 
 ```plpgsql
 drop procedure if exists populate_t(
@@ -133,7 +132,7 @@ call populate_t(
   stddev      => 20.0,
   slope       =>  5.0,
   intercept   =>  3.0);
-  
+
 \pset null <null>
 with a as(
   select k, x, y, delta from t where x between 1 and 5
@@ -150,14 +149,14 @@ order by k;
 Here is an impression of the result of invoking  _"populate_t()"_ with the values shown. The whitespace has been manually added.
 
 ```
-   x    |   y    | y + delta 
+   x    |   y    | y + delta
 --------+--------+-----------
     1.0 |    8.0 |   -5.9595
     2.0 |   13.0 |  -14.8400
     3.0 |   18.0 |   40.4009
     4.0 |   23.0 |   27.8537
     5.0 |   28.0 |   68.7411
-  
+
    96.0 |  483.0 |  483.9196
    97.0 |  488.0 |  464.3205
    98.0 |  493.0 |  528.2446
@@ -172,5 +171,3 @@ The individual functions are described in these two child-sections
 - [`covar_pop()`, `covar_samp()`, `corr()`](./covar-corr/)
 
 - [`regr_%()`](./regr/)
-
-

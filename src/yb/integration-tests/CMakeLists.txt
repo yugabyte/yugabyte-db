@@ -43,6 +43,7 @@ YB_INCLUDE_EXTENSIONS()
 set(INTEGRATION_TESTS_SRCS
   cluster_itest_util.cc
   cluster_verifier.cc
+  create-table-itest-base.cc
   external_mini_cluster.cc
   external_mini_cluster_fs_inspector.cc
   load_balancer_test_util.cc
@@ -50,6 +51,7 @@ set(INTEGRATION_TESTS_SRCS
   mini_cluster.cc
   mini_cluster_base.cc
   mini_cluster_utils.cc
+  packed_row_test_base.cc
   redis_table_test_base.cc
   test_workload.cc
   ts_itest-base.cc
@@ -78,12 +80,15 @@ target_link_libraries(integration-tests
 
 add_dependencies(integration-tests
   yb-tserver
-  yb-master)
+  yb-master
+  yb-admin
+  gen_auto_flags_json
+  yb-ts-cli)
 
 ADD_YB_TEST_LIBRARY(
     cql_test_util
     SRCS cql_test_base.cc cql_test_util.cc
-    DEPS cassandra integration-tests yb-cql yb_test_util)
+    DEPS cassandra integration-tests yb-cql yb_test_util tools_test_utils)
 
 # Requires ql-dml-test-base, so separating from integration-tests.
 add_library(tablet-split-itest-base tablet-split-itest-base.cc)
@@ -99,10 +104,12 @@ set(YB_TEST_LINK_LIBS
     master_test_common
     yb_common_test_util
     tablet-split-itest-base
+    cql_test_util
     ${YB_MIN_TEST_LIBS})
 
 ADD_YB_TEST(alter_table-test)
 ADD_YB_TEST(alter_table-randomized-test)
+ADD_YB_TEST(auto_flags-itest)
 ADD_YB_TEST(registration-test)
 ADD_YB_TEST(clock_synchronization-itest)
 ADD_YB_TEST(client_failover-itest)
@@ -111,6 +118,7 @@ ADD_YB_TEST(cluster_trace-test)
 ADD_YB_TEST(tablet_server-itest)
 ADD_YB_TEST(tablet-split-itest)
 ADD_YB_TEST(xcluster-tablet-split-itest)
+ADD_YB_TEST(cdcsdk_gflag-test)
 
 # Tests which fail on purpose for checking Jenkins test failures reporting, disabled
 # (commented out) by default:
@@ -126,6 +134,7 @@ ADD_YB_TEST(master_sysnamespace-itest)
 ADD_YB_TEST(master_path_handlers-itest)
 ADD_YB_TEST(master_failover-itest)
 ADD_YB_TEST(master_config-itest)
+ADD_YB_TEST(master_tasks-test)
 ADD_YB_TEST(network_failure-test)
 ADD_YB_TEST(system_table_fault_tolerance)
 ADD_YB_TEST(raft_consensus-itest)
@@ -164,7 +173,7 @@ ADD_YB_TEST_DEPENDENCIES(yb-ts-cli-itest
   yb-ts-cli)
 
 set(YB_TEST_LINK_LIBS_SAVED ${YB_TEST_LINK_LIBS})
-set(YB_TEST_LINK_LIBS ${YB_TEST_LINK_LIBS} cassandra cql_test_util)
+set(YB_TEST_LINK_LIBS ${YB_TEST_LINK_LIBS} cassandra)
 set(CASS_DRIVER_VERSION "2.9.0-yb-4")
 set(CASS_DRIVER_INTERNAL_INCLUDE
     "${YB_THIRDPARTY_DIR}/src/cassandra-cpp-driver-${CASS_DRIVER_VERSION}/src")
@@ -185,8 +194,10 @@ function(ADD_YB_CQL_TEST TEST_NAME)
 endfunction()
 
 ADD_YB_CQL_TEST(cql-index-test)
-ADD_YB_CQL_TEST(cql-test)
+ADD_YB_CQL_TEST(cql-packed-row-test)
 ADD_YB_CQL_TEST(cql-tablet-split-test)
+ADD_YB_CQL_TEST(cql-test)
+ADD_YB_CQL_TEST(cql_geo_transactions-test)
 ADD_YB_CQL_TEST(external_mini_cluster_secure_test)
 
 set(YB_TEST_LINK_LIBS ${YB_TEST_LINK_LIBS_SAVED})

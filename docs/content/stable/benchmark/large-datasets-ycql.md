@@ -10,8 +10,7 @@ menu:
     identifier: large-datasets-1-ycql
     parent: benchmark
     weight: 7
-showAsideToc: true
-isTocNested: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -118,21 +117,21 @@ The results you see should be similar to the observations shown below.
 
 ### Load phase results
 
-Name    | Observation
---------|------
-Records inserted   | 30 Billion
-Size of each record | ~ 300 bytes
-Time taken to insert data | 4.4 days
-Sustained insert Rate        | 85K inserts/second
-Final dataset in cluster  | 26TB across 4 nodes
-Final dataset size per node     | 6.5TB / node
+| Name | Observation |
+| :--- | :---------- |
+| Records inserted | 30 Billion |
+| Size of each record | ~ 300 bytes |
+| Time taken to insert data | 4.4 days |
+| Sustained insert Rate | 85K inserts/second |
+| Final dataset in cluster | 26TB across 4 nodes |
+| Final dataset size per node | 6.5TB / node |
 
 ### Read-heavy workload results
 
-Name    | Observation
---------|------
-Random-data read heavy workload | 185K reads/sec and 1K writes/sec
-Recent-data read heavy Workload | 385K reads/sec and 6.5K writes/sec
+| Name | Observation |
+| :--- | :---------- |
+| Random-data read heavy workload | 185K reads/sec and 1K writes/sec |
+| Recent-data read heavy Workload | 385K reads/sec and 6.5K writes/sec |
 
 ### Cluster expansion and induced failures
 

@@ -271,7 +271,7 @@ bool IsChangeConfigOperation(OperationType op_type) {
 class NonTrackedRoundCallback : public ConsensusRoundCallback {
  public:
   explicit NonTrackedRoundCallback(ConsensusRound* round, const StdStatusCallback& callback)
-      : round_(round), callback_(callback) {
+      : round_(DCHECK_NOTNULL(round)), callback_(callback) {
   }
 
   void AddedToLeader(const OpId& op_id, const OpId& committed_op_id) override {
@@ -940,7 +940,8 @@ Status RaftConsensus::ElectionLostByProtege(const std::string& election_lost_by_
   }
 
   if (start_election) {
-    return StartElection({ElectionMode::NORMAL_ELECTION});
+    return StartElection(LeaderElectionData{
+        .mode = ElectionMode::NORMAL_ELECTION, .must_be_committed_opid = OpId()});
   }
 
   return Status::OK();
@@ -982,7 +983,7 @@ void RaftConsensus::RunLeaderElectionResponseRpcCallback(
 
 void RaftConsensus::ReportFailureDetectedTask() {
   auto scope_exit = ScopeExit([this] {
-    outstanding_report_failure_task_.clear(std::memory_order_release);
+    outstanding_report_failure_task_.store(false, std::memory_order_release);
   });
 
   MonoTime now;
@@ -1013,7 +1014,8 @@ void RaftConsensus::ReportFailureDetectedTask() {
 
   // Start an election.
   LOG_WITH_PREFIX(INFO) << "ReportFailDetected: Starting NORMAL_ELECTION...";
-  Status s = StartElection({ElectionMode::NORMAL_ELECTION});
+  Status s = StartElection(LeaderElectionData{
+      .mode = ElectionMode::NORMAL_ELECTION, .must_be_committed_opid = OpId()});
   if (PREDICT_FALSE(!s.ok())) {
     LOG_WITH_PREFIX(WARNING) << "Failed to trigger leader election: " << s.ToString();
   }
@@ -1021,7 +1023,7 @@ void RaftConsensus::ReportFailureDetectedTask() {
 
 void RaftConsensus::ReportFailureDetected() {
   if (FLAGS_raft_disallow_concurrent_outstanding_report_failure_tasks &&
-      outstanding_report_failure_task_.test_and_set(std::memory_order_acq_rel)) {
+      outstanding_report_failure_task_.exchange(true, std::memory_order_acq_rel)) {
     VLOG(4)
         << "Returning from ReportFailureDetected as there is already an outstanding report task.";
   } else {
@@ -1030,7 +1032,7 @@ void RaftConsensus::ReportFailureDetected() {
         std::bind(&RaftConsensus::ReportFailureDetectedTask, shared_from_this()));
     WARN_NOT_OK(s, "Failed to submit failure detected task");
     if (!s.ok()) {
-      outstanding_report_failure_task_.clear(std::memory_order_release);
+      outstanding_report_failure_task_.store(false, std::memory_order_release);
     }
   }
 }
@@ -1146,7 +1148,7 @@ Status RaftConsensus::ReplicateBatch(const ConsensusRounds& rounds) {
         << " operations as failed with that status";
     // Treat all the operations in the batch as failed.
     for (size_t i = rounds.size(); i != processed_rounds;) {
-      rounds[--i]->callback()->ReplicationFailed(status);
+      rounds[--i]->NotifyReplicationFailed(status);
     }
   }
   return status;
@@ -1171,30 +1173,7 @@ Status RaftConsensus::DoReplicateBatch(const ConsensusRounds& rounds, size_t* pr
     for (const auto& round : rounds) {
       RETURN_NOT_OK(round->CheckBoundTerm(current_term));
     }
-    auto status = AppendNewRoundsToQueueUnlocked(rounds, processed_rounds);
-    if (!status.ok()) {
-      // In general we have 3 kinds of rounds in case of failure:
-      // 1) Rounds that were rejected by retryable requests.
-      //    We should not call ReplicationFinished for them.
-      // 2) Rounds that were registered with retryable requests.
-      //    We should call state_->NotifyReplicationFinishedUnlocked for them.
-      // 3) Rounds that were not registered with retryable requests.
-      //    We should call ReplicationFinished directly for them. Could do it after releasing
-      //    the lock. I.e. in ReplicateBatch.
-      //
-      // (3) is all rounds starting with index *processed_rounds and above.
-      // For (1) we reset bound term, so could use it to distinguish between (1) and (2).
-      for (size_t i = *processed_rounds; i != 0;) {
-        --i;
-        if (rounds[i]->bound_term() == OpId::kUnknownTerm) {
-          // Already rejected by retryable requests.
-          continue;
-        }
-        state_->NotifyReplicationFinishedUnlocked(
-            rounds[i], status, OpId::kUnknownTerm, /* applied_op_ids */ nullptr);
-      }
-      return status;
-    }
+    RETURN_NOT_OK(AppendNewRoundsToQueueUnlocked(rounds, processed_rounds));
   }
 
   peer_manager_->SignalRequest(RequestTriggerMode::kNonEmptyOnly);
@@ -1247,15 +1226,54 @@ Status RaftConsensus::AppendNewRoundsToQueueUnlocked(
 
   std::vector<ReplicateMsgPtr> replicate_msgs;
   replicate_msgs.reserve(rounds.size());
+
+  auto status = DoAppendNewRoundsToQueueUnlocked(rounds, processed_rounds, &replicate_msgs);
+  if (!status.ok()) {
+    for (auto iter = replicate_msgs.rbegin(); iter != replicate_msgs.rend(); ++iter) {
+      RollbackIdAndDeleteOpId(*iter, /* should_exists = */ true);
+    }
+    // In general we have 3 kinds of rounds in case of failure:
+    // 1) Rounds that were rejected by retryable requests.
+    //    We should not call ReplicationFinished for them, because it has been already called.
+    // 2) Rounds that were registered with retryable requests.
+    //    We should call state_->NotifyReplicationFinishedUnlocked for them.
+    // 3) Rounds that were not registered with retryable requests.
+    //    We should call ReplicationFinished directly for them. Could do it after releasing
+    //    the lock. I.e. in ReplicateBatch.
+    //
+    // (3) is all rounds starting with index *processed_rounds and above.
+    // For (1) we reset bound term, so could use it to distinguish between (1) and (2).
+    for (size_t i = *processed_rounds; i != 0;) {
+      --i;
+      if (rounds[i]->bound_term() == OpId::kUnknownTerm) {
+        // Already notified.
+        continue;
+      }
+      state_->NotifyReplicationFinishedUnlocked(
+          rounds[i], status, OpId::kUnknownTerm, /* applied_op_ids */ nullptr);
+    }
+  }
+  return status;
+}
+
+Status RaftConsensus::DoAppendNewRoundsToQueueUnlocked(
+    const ConsensusRounds& rounds, size_t* processed_rounds,
+    std::vector<ReplicateMsgPtr>* replicate_msgs) {
   const OpId& committed_op_id = state_->GetCommittedOpIdUnlocked();
 
   for (const auto& round : rounds) {
     ++*processed_rounds;
 
-    if (round->replicate_msg()->op_type() == OperationType::WRITE_OP &&
-        !state_->RegisterRetryableRequest(round)) {
-      round->BindToTerm(OpId::kUnknownTerm); // Mark round as non replicating
-      continue;
+    if (round->replicate_msg()->op_type() == OperationType::WRITE_OP) {
+      auto result = state_->RegisterRetryableRequest(round);
+      if (!result.ok()) {
+        round->NotifyReplicationFinished(
+            result.status(), round->bound_term(), /* applied_op_ids = */ nullptr);
+      }
+      if (!result.ok() || !*result) {
+        round->BindToTerm(OpId::kUnknownTerm); // Mark round as non replicating
+        continue;
+      }
     }
 
     OpId op_id = state_->NewIdUnlocked();
@@ -1264,24 +1282,18 @@ Status RaftConsensus::AppendNewRoundsToQueueUnlocked(
     // the write batch inside the write operation.
     //
     // TODO: we could allocate multiple HybridTimes in batch, only reading system clock once.
-    round->callback()->AddedToLeader(op_id, committed_op_id);
+    round->NotifyAddedToLeader(op_id, committed_op_id);
 
-    Status s = state_->AddPendingOperation(round, OperationMode::kLeader);
+    auto s = state_->AddPendingOperation(round, OperationMode::kLeader);
     if (!s.ok()) {
       RollbackIdAndDeleteOpId(round->replicate_msg(), false /* should_exists */);
-
-      // Iterate rounds in the reverse order and release ids.
-      while (!replicate_msgs.empty()) {
-        RollbackIdAndDeleteOpId(replicate_msgs.back(), true /* should_exists */);
-        replicate_msgs.pop_back();
-      }
       return s;
     }
 
-    replicate_msgs.push_back(round->replicate_msg());
+    replicate_msgs->push_back(round->replicate_msg());
   }
 
-  if (replicate_msgs.empty()) {
+  if (replicate_msgs->empty()) {
     return Status::OK();
   }
 
@@ -1290,24 +1302,21 @@ Status RaftConsensus::AppendNewRoundsToQueueUnlocked(
   auto s = CheckLeasesUnlocked(rounds.back());
 
   if (s.ok()) {
-    s = queue_->AppendOperations(replicate_msgs, committed_op_id, state_->Clock().Now());
+    s = queue_->AppendOperations(*replicate_msgs, committed_op_id, state_->Clock().Now());
   }
 
   // Handle Status::ServiceUnavailable(), which means the queue is full.
   // TODO: what are we doing about other errors here? Should we also release OpIds in those cases?
   if (PREDICT_FALSE(!s.ok())) {
-    LOG_WITH_PREFIX(WARNING) << "Could not append replicate request: " << s << ", queue status: "
-                             << queue_->ToString();
-    for (auto iter = replicate_msgs.rbegin(); iter != replicate_msgs.rend(); ++iter) {
-      RollbackIdAndDeleteOpId(*iter, true /* should_exists */);
-      // TODO Possibly evict a dangling peer from the configuration here.
-      // TODO count of number of ops failed due to consensus queue overflow.
-    }
+    LOG_WITH_PREFIX(WARNING) << "Could not append replicate request: " << s
+                             << ", queue status: " << queue_->ToString();
+    // TODO Possibly evict a dangling peer from the configuration here.
+    // TODO count of number of ops failed due to consensus queue overflow.
 
     return s.CloneAndPrepend("Unable to append operations to consensus queue");
   }
 
-  state_->UpdateLastReceivedOpIdUnlocked(replicate_msgs.back()->id());
+  state_->UpdateLastReceivedOpIdUnlocked(replicate_msgs->back()->id());
   return Status::OK();
 }
 
@@ -1319,7 +1328,7 @@ void RaftConsensus::MajorityReplicatedNumSSTFilesChanged(
 void RaftConsensus::UpdateMajorityReplicated(
     const MajorityReplicatedData& majority_replicated_data, OpId* committed_op_id,
     OpId* last_applied_op_id) {
-  TEST_PAUSE_IF_FLAG(TEST_pause_update_majority_replicated);
+  TEST_PAUSE_IF_FLAG_WITH_LOG_PREFIX(TEST_pause_update_majority_replicated);
   ReplicaState::UniqueLock lock;
   Status s = state_->LockForMajorityReplicatedIndexUpdate(&lock);
   if (PREDICT_FALSE(!s.ok())) {
@@ -1540,8 +1549,10 @@ Status RaftConsensus::Update(ConsensusRequestPB* request,
   // StartElection will ensure the pending election will be started just once only even if
   // UpdateReplica happens in multiple threads in parallel.
   if (result.start_election) {
-    RETURN_NOT_OK(StartElection(
-        {consensus::ElectionMode::ELECT_EVEN_IF_LEADER_IS_ALIVE, true /* pending_commit */}));
+    RETURN_NOT_OK(StartElection(LeaderElectionData{
+        .mode = consensus::ElectionMode::ELECT_EVEN_IF_LEADER_IS_ALIVE,
+        .pending_commit = true,
+        .must_be_committed_opid = OpId()}));
   }
 
   RETURN_NOT_OK(ExecuteHook(POST_UPDATE));
@@ -2363,29 +2374,19 @@ Status RaftConsensus::RequestVote(const VoteRequestPB* request, VoteResponsePB* 
 Status RaftConsensus::IsLeaderReadyForChangeConfigUnlocked(ChangeConfigType type,
                                                            const string& server_uuid) {
   const RaftConfigPB& active_config = state_->GetActiveConfigUnlocked();
-  size_t servers_in_transition = 0;
-  if (type == ADD_SERVER) {
-    servers_in_transition = CountServersInTransition(active_config);
-  } else if (type == REMOVE_SERVER) {
-    // If we are trying to remove the server in transition, then servers_in_transition shouldn't
-    // count it so we can proceed with the operation.
-    servers_in_transition = CountServersInTransition(active_config, server_uuid);
-  }
 
   // Check that all the following requirements are met:
   // 1. We are required by Raft to reject config change operations until we have
   //    committed at least one operation in our current term as leader.
   //    See https://groups.google.com/forum/#!topic/raft-dev/t4xj6dJTP6E
   // 2. Ensure there is no other pending change config.
-  // 3. There are no peers that are in the process of becoming VOTERs or OBSERVERs.
   if (!state_->AreCommittedAndCurrentTermsSameUnlocked() ||
-      state_->IsConfigChangePendingUnlocked() ||
-      servers_in_transition != 0) {
+      state_->IsConfigChangePendingUnlocked()) {
     return STATUS_FORMAT(IllegalState,
                          "Leader is not ready for Config Change, can try again. "
-                         "Num peers in transit: $0. Type: $1. Has opid: $2. Committed config: $3. "
-                         "Pending config: $4. Current term: $5. Committed op id: $6.",
-                         servers_in_transition, ChangeConfigType_Name(type),
+                         "Type: $0. Has opid: $1. Committed config: $2. "
+                         "Pending config: $3. Current term: $4. Committed op id: $5.",
+                         ChangeConfigType_Name(type),
                          active_config.has_opid_index(),
                          state_->GetCommittedConfigUnlocked().ShortDebugString(),
                          state_->IsConfigChangePendingUnlocked() ?
@@ -2825,7 +2826,11 @@ Status RaftConsensus::StartConsensusOnlyRoundUnlocked(const ReplicateMsgPtr& msg
                 &DoNothingStatusCB,
                 std::placeholders::_1);
   round->SetCallback(MakeNonTrackedRoundCallback(round.get(), std::move(client_cb)));
-  return state_->AddPendingOperation(round, OperationMode::kFollower);
+  auto status = state_->AddPendingOperation(round, OperationMode::kFollower);
+  if (!status.ok()) {
+    round->NotifyReplicationFailed(status);
+  }
+  return status;
 }
 
 Status RaftConsensus::WaitForLeaderLeaseImprecise(CoarseTimePoint deadline) {
@@ -3040,10 +3045,11 @@ Status RaftConsensus::ReplicateConfigChangeUnlocked(const ReplicateMsgPtr& repli
                                                     const RaftConfigPB& new_config,
                                                     ChangeConfigType type,
                                                     StdStatusCallback client_cb) {
-  LOG(INFO) << "Setting replicate pending config " << new_config.ShortDebugString()
-            << ", type = " << ChangeConfigType_Name(type);
+  LOG_WITH_PREFIX(INFO) << "Setting replicate pending config " << new_config.ShortDebugString()
+                        << ", type = " << ChangeConfigType_Name(type);
 
-  RETURN_NOT_OK(state_->SetPendingConfigUnlocked(new_config));
+  // We will set pending config op id below once we have it.
+  RETURN_NOT_OK(state_->SetPendingConfigUnlocked(new_config, OpId()));
 
   if (type == CHANGE_ROLE &&
       PREDICT_FALSE(FLAGS_TEST_inject_delay_leader_change_role_append_secs)) {
@@ -3059,13 +3065,18 @@ Status RaftConsensus::ReplicateConfigChangeUnlocked(const ReplicateMsgPtr& repli
   round->SetCallback(MakeNonTrackedRoundCallback(round.get(), std::move(client_cb)));
   auto status = AppendNewRoundToQueueUnlocked(round);
   if (!status.ok()) {
-    // We could just cancel pending config, because there is could be only one pending config.
+    // We could just cancel pending config, because there could be only one pending config that
+    // we've just set above and it corresponds to replicate_ref.
     auto clear_status = state_->ClearPendingConfigUnlocked();
     if (!clear_status.ok()) {
       LOG(WARNING) << "Could not clear pending config: " << clear_status;
     }
+    return status;
   }
-  return status;
+
+  RETURN_NOT_OK(state_->SetPendingConfigOpIdUnlocked(round->id()));
+
+  return Status::OK();
 }
 
 void RaftConsensus::RefreshConsensusQueueAndPeersUnlocked() {
@@ -3123,6 +3134,10 @@ ConsensusStatePB RaftConsensus::ConsensusStateUnlocked(
 
 RaftConfigPB RaftConsensus::CommittedConfig() const {
   auto lock = state_->LockForRead();
+  return state_->GetCommittedConfigUnlocked();
+}
+
+RaftConfigPB RaftConsensus::CommittedConfigUnlocked() const {
   return state_->GetCommittedConfigUnlocked();
 }
 
@@ -3356,7 +3371,7 @@ void RaftConsensus::NonTrackedRoundReplicationFinished(ConsensusRound* round,
     LOG_WITH_PREFIX(INFO) << op_str << " replication failed: " << status << "\n" << GetStackTrace();
 
     // Clear out the pending state (ENG-590).
-    if (IsChangeConfigOperation(op_type)) {
+    if (IsChangeConfigOperation(op_type) && state_->GetPendingConfigOpIdUnlocked() == round->id()) {
       WARN_NOT_OK(state_->ClearPendingConfigUnlocked(), "Could not clear pending state");
     }
   } else if (IsChangeConfigOperation(op_type)) {

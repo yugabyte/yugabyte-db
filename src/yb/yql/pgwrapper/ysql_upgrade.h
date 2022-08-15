@@ -38,18 +38,18 @@ class YsqlUpgradeHelper {
                     uint32_t heartbeat_interval_ms);
 
   // Main actor method, perform the full upgrade process.
-  CHECKED_STATUS Upgrade();
+  Status Upgrade();
 
  private:
   // Analyze the on-disk list of available migrations to determine latest_version_
   // and fill in migration_filenames_map_.
-  CHECKED_STATUS AnalyzeMigrationFiles();
+  Status AnalyzeMigrationFiles();
 
   // Connect to the given database.
   Result<PGConn> Connect(const std::string& database_name);
 
   // Migrate a given database to the next version, updating it in the given database entry.
-  CHECKED_STATUS MigrateOnce(DatabaseEntry* db_entry);
+  Status MigrateOnce(DatabaseEntry* db_entry);
 
   const HostPort ysql_proxy_addr_;
 

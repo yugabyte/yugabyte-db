@@ -43,6 +43,8 @@ set(INTEGRATION_TESTS_EXTENSIONS_TESTS
   cdc_service-int-test
   cdc_service-txn-test
   cdcsdk_stream-test
+  cdcsdk_ysql-test
+  cql-backup-test
   twodc_ysql-test
   twodc-test
   PARENT_SCOPE)

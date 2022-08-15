@@ -19,6 +19,7 @@ import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseResp;
+import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import io.swagger.annotations.Api;
@@ -26,6 +27,8 @@ import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
+
+import java.util.Objects;
 import java.util.UUID;
 import play.mvc.Result;
 
@@ -55,7 +58,7 @@ public class UniverseClustersController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
 
     UniverseConfigureTaskParams taskParams =
-        bindFormDataToTaskParams(request(), UniverseConfigureTaskParams.class);
+        bindFormDataToTaskParams(ctx(), request(), UniverseConfigureTaskParams.class);
 
     taskParams.clusterOperation = UniverseConfigureTaskParams.ClusterOperationType.CREATE;
     taskParams.currentClusterType = ClusterType.PRIMARY;
@@ -69,7 +72,14 @@ public class UniverseClustersController extends AuthenticatedController {
       universeCRUDHandler.configure(customer, taskParams);
     }
     UniverseResp universeResp = universeCRUDHandler.createUniverse(customer, taskParams);
-    auditService().createAuditEntryWithReqBody(ctx(), universeResp.taskUUID);
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.Universe,
+            Objects.toString(universeResp.universeUUID, null),
+            Audit.ActionType.CreateCluster,
+            request().body().asJson(),
+            universeResp.taskUUID);
 
     return new YBPTask(universeResp.taskUUID, universeResp.universeUUID).asResult();
   }
@@ -95,14 +105,21 @@ public class UniverseClustersController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
     UniverseConfigureTaskParams taskParams =
-        bindFormDataToTaskParams(request(), UniverseConfigureTaskParams.class);
+        bindFormDataToTaskParams(ctx(), request(), UniverseConfigureTaskParams.class);
 
     taskParams.clusterOperation = UniverseConfigureTaskParams.ClusterOperationType.EDIT;
     taskParams.currentClusterType = ClusterType.PRIMARY;
     universeCRUDHandler.configure(customer, taskParams);
 
     UUID taskUUID = universeCRUDHandler.update(customer, universe, taskParams);
-    auditService().createAuditEntryWithReqBody(ctx(), taskUUID);
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.Universe,
+            universeUUID.toString(),
+            Audit.ActionType.UpdatePrimaryCluster,
+            request().body().asJson(),
+            taskUUID);
     return new YBPTask(taskUUID, universeUUID).asResult();
   }
 
@@ -127,9 +144,16 @@ public class UniverseClustersController extends AuthenticatedController {
         universeCRUDHandler.createCluster(
             customer,
             universe,
-            bindFormDataToTaskParams(request(), UniverseDefinitionTaskParams.class));
+            bindFormDataToTaskParams(ctx(), request(), UniverseDefinitionTaskParams.class));
 
-    auditService().createAuditEntryWithReqBody(ctx(), taskUUID);
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.Universe,
+            universeUUID.toString(),
+            Audit.ActionType.CreateReadOnlyCluster,
+            request().body().asJson(),
+            taskUUID);
     return new YBPTask(taskUUID, universeUUID).asResult();
   }
 
@@ -146,7 +170,13 @@ public class UniverseClustersController extends AuthenticatedController {
     UUID taskUUID =
         universeCRUDHandler.clusterDelete(customer, universe, clusterUUID, isForceDelete);
 
-    auditService().createAuditEntry(ctx(), request(), taskUUID);
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.Universe,
+            universeUUID.toString(),
+            Audit.ActionType.DeleteReadOnlyCluster,
+            taskUUID);
     return new YBPTask(taskUUID, universeUUID).asResult();
   }
 
@@ -174,14 +204,21 @@ public class UniverseClustersController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
     UniverseConfigureTaskParams taskParams =
-        bindFormDataToTaskParams(request(), UniverseConfigureTaskParams.class);
+        bindFormDataToTaskParams(ctx(), request(), UniverseConfigureTaskParams.class);
 
     taskParams.clusterOperation = UniverseConfigureTaskParams.ClusterOperationType.EDIT;
     taskParams.currentClusterType = ClusterType.ASYNC;
     universeCRUDHandler.configure(customer, taskParams);
 
     UUID taskUUID = universeCRUDHandler.update(customer, universe, taskParams);
-    auditService().createAuditEntryWithReqBody(ctx(), taskUUID);
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.Universe,
+            universeUUID.toString(),
+            Audit.ActionType.UpdateReadOnlyCluster,
+            request().body().asJson(),
+            taskUUID);
     return new YBPTask(taskUUID, universeUUID).asResult();
   }
 }

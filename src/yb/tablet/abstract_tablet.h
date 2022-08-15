@@ -33,7 +33,7 @@ class AbstractTablet {
  public:
   virtual ~AbstractTablet() {}
 
-  virtual yb::SchemaPtr GetSchema(const std::string& table_id = "") const = 0;
+  virtual docdb::DocReadContextPtr GetDocReadContext(const std::string& table_id = "") const = 0;
 
   virtual const docdb::YQLStorageIf& QLStorage() const = 0;
 
@@ -45,7 +45,7 @@ class AbstractTablet {
 
   //------------------------------------------------------------------------------------------------
   // Redis support.
-  virtual CHECKED_STATUS HandleRedisReadRequest(
+  virtual Status HandleRedisReadRequest(
       CoarseTimePoint deadline,
       const ReadHybridTime& read_time,
       const RedisReadRequestPB& redis_read_request,
@@ -53,14 +53,14 @@ class AbstractTablet {
 
   //------------------------------------------------------------------------------------------------
   // CQL support.
-  virtual CHECKED_STATUS HandleQLReadRequest(
+  virtual Status HandleQLReadRequest(
       CoarseTimePoint deadline,
       const ReadHybridTime& read_time,
       const QLReadRequestPB& ql_read_request,
       const TransactionMetadataPB& transaction_metadata,
       QLReadRequestResult* result) = 0;
 
-  virtual CHECKED_STATUS CreatePagingStateForRead(const QLReadRequestPB& ql_read_request,
+  virtual Status CreatePagingStateForRead(const QLReadRequestPB& ql_read_request,
                                                   const size_t row_count,
                                                   QLResponsePB* response) const = 0;
 
@@ -86,7 +86,7 @@ class AbstractTablet {
     return GetIsolationLevel(pb.transaction());
   }
 
-  virtual CHECKED_STATUS HandlePgsqlReadRequest(
+  virtual Status HandlePgsqlReadRequest(
       CoarseTimePoint deadline,
       const ReadHybridTime& read_time,
       bool is_explicit_request_read_time,
@@ -102,24 +102,25 @@ class AbstractTablet {
   // PGSQL support.
   //-----------------------------------------------------------------------------------------------
 
-  CHECKED_STATUS HandleQLReadRequest(
+  Status HandleQLReadRequest(
       CoarseTimePoint deadline,
       const ReadHybridTime& read_time,
       const QLReadRequestPB& ql_read_request,
       const TransactionOperationContext& txn_op_context,
       QLReadRequestResult* result);
 
-  virtual CHECKED_STATUS CreatePagingStateForRead(const PgsqlReadRequestPB& pgsql_read_request,
+  virtual Status CreatePagingStateForRead(const PgsqlReadRequestPB& pgsql_read_request,
                                                   const size_t row_count,
                                                   PgsqlResponsePB* response) const = 0;
 
-  CHECKED_STATUS HandlePgsqlReadRequest(CoarseTimePoint deadline,
-                                        const ReadHybridTime& read_time,
-                                        bool is_explicit_request_read_time,
-                                        const PgsqlReadRequestPB& pgsql_read_request,
-                                        const TransactionOperationContext& txn_op_context,
-                                        PgsqlReadRequestResult* result,
-                                        size_t* num_rows_read);
+  Status ProcessPgsqlReadRequest(CoarseTimePoint deadline,
+                                         const ReadHybridTime& read_time,
+                                         bool is_explicit_request_read_time,
+                                         const PgsqlReadRequestPB& pgsql_read_request,
+                                         const std::shared_ptr<TableInfo>& table_info,
+                                         const TransactionOperationContext& txn_op_context,
+                                         PgsqlReadRequestResult* result,
+                                         size_t* num_rows_read);
 
   virtual bool IsTransactionalRequest(bool is_ysql_request) const = 0;
 

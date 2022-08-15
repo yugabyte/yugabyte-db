@@ -71,9 +71,9 @@ class ScopedOperation {
 // fine-grained control, such as preventing new operations from being started.
 class RWOperationCounter {
  public:
-  explicit RWOperationCounter(const std::string resource_name) : resource_name_(resource_name) {}
+  explicit RWOperationCounter(const std::string& resource_name) : resource_name_(resource_name) {}
 
-  CHECKED_STATUS DisableAndWaitForOps(const CoarseTimePoint& deadline, Stop stop);
+  Status DisableAndWaitForOps(const CoarseTimePoint& deadline, Stop stop);
 
   void Enable(Unlock unlock, Stop was_stop);
 
@@ -85,7 +85,7 @@ class RWOperationCounter {
 
   void Decrement() { Update(-1); }
   uint64_t Get() const {
-    return counters_.load(std::memory_order::memory_order_acquire);
+    return counters_.load(std::memory_order::acquire);
   }
 
   // Return pending operations counter value only.
@@ -97,7 +97,7 @@ class RWOperationCounter {
     return resource_name_;
   }
  private:
-  CHECKED_STATUS WaitForOpsToFinish(
+  Status WaitForOpsToFinish(
       const CoarseTimePoint& start_time, const CoarseTimePoint& deadline);
 
   uint64_t Update(uint64_t delta);

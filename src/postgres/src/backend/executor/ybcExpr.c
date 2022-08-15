@@ -144,10 +144,41 @@ Expr *YbExprInstantiateParams(Expr* expr, ParamListInfo paramLI)
 	if (paramLI == NULL)
 		return expr;
 
-	return (Expr *) expression_tree_mutator((Node *) expr,
-											yb_expr_instantiate_params_mutator,
-											(void *) paramLI);
+	/*
+	 * This does not follow common pattern of mutator invocation due to the
+	 * corner case when expr is a bare T_Param node. The expression_tree_mutator
+	 * just makes a copy of primitive nodes without running the mutator function
+	 * on them. So here we run the mutator to make sure the bare T_Param is
+	 * getting replaced, and if the expr is anything else, it will be properly
+	 * forwarded to the expression_tree_mutator.
+	 */
+	return (Expr *) yb_expr_instantiate_params_mutator((Node *) expr, paramLI);
 }
+
+/*
+ * YbInstantiateRemoteParams
+ *	  Replace the Param nodes of the expression trees with Const nodes carrying
+ *	  current parameter values before pushing the expression down to DocDB.
+ */
+PushdownExprs *
+YbInstantiateRemoteParams(PushdownExprs *remote, ParamListInfo paramLI)
+{
+	PushdownExprs *result;
+	if (remote->qual == NIL)
+		return NULL;
+	/* Make new instance for the scan state. */
+	result = (PushdownExprs *) palloc(sizeof(PushdownExprs));
+	/* Store mutated list of expressions. */
+	result->qual = (List *) YbExprInstantiateParams((Expr *) remote->qual,
+													paramLI);
+	/*
+	 * Column references are not modified by the executor, so it is OK to copy
+	 * the reference.
+	 */
+	result->colrefs = remote->colrefs;
+	return result;
+}
+
 
 /*
  * yb_can_pushdown_func

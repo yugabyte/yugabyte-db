@@ -3,8 +3,7 @@ package com.yugabyte.yw.commissioner.tasks;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.SubTaskGroup;
-import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
+import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RunExternalScript;
 
 public class ExternalScript extends AbstractTaskBase {
@@ -21,13 +20,13 @@ public class ExternalScript extends AbstractTaskBase {
   public void run() {
     createThreadpool();
     try {
-      SubTaskGroupQueue subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
+      SubTaskGroup subTaskGroup =
+          getTaskExecutor().createSubTaskGroup("RunExternalScript", executor);
       RunExternalScript task = createTask(RunExternalScript.class);
       task.initialize(params());
-      SubTaskGroup subTaskGroup = new SubTaskGroup("RunExternalScript", executor);
-      subTaskGroup.addTask(task);
-      subTaskGroupQueue.add(subTaskGroup);
-      subTaskGroupQueue.run();
+      subTaskGroup.addSubTask(task);
+      getRunnableTask().addSubTaskGroup(subTaskGroup);
+      getRunnableTask().runSubTasks();
     } catch (Exception e) {
       throw new RuntimeException(e);
     } finally {

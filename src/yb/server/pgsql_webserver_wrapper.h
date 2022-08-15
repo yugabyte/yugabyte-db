@@ -18,6 +18,7 @@
 using std::atomic_ullong;
 using int64 = int64_t;
 using uint8 = uint8_t;
+using uint64 = uint64_t;
 #else
 #include <stdatomic.h>
 #endif
@@ -66,6 +67,7 @@ typedef struct YsqlStatementStat {
   double mean_time;    /* mean execution time in msec */
   double sum_var_time; /* sum of variances in execution time in msec */
   int64 rows;          /* total # of retrieved or affected rows */
+  uint64 query_id;     /* query id of the pgssHashKey for the query */
 } YsqlStatementStat;
 
 typedef struct {

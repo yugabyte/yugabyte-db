@@ -26,10 +26,10 @@
 
 #include <assert.h>         // for use with down_cast<>
 #include <string.h>         // for memcpy
-#include <limits.h>         // for enumeration casts and tests
 
 #include <limits>
 #include <string>
+#include <type_traits>
 
 #include "yb/gutil/macros.h"
 #include "yb/gutil/template_util.h"
@@ -91,7 +91,9 @@ inline To down_cast(From* f) {                   // so we only accept pointers
 
   // TODO(user): This should use COMPILE_ASSERT.
   if (false) {
-    yb::implicit_cast<From*, To>(nullptr);
+    yb::implicit_cast<typename base::remove_const<From>::type*,
+                      typename base::remove_const<
+                          typename base::remove_pointer<To>::type>::type*>(nullptr);
   }
 
   // uses RTTI in dbg and fastbuild. asserts are disabled in opt builds.
@@ -110,13 +112,14 @@ inline To down_cast(From* f) {                   // so we only accept pointers
 template<typename To, typename From>
 inline To down_cast(From& f) { // NOLINT
   COMPILE_ASSERT(base::is_reference<To>::value, target_type_not_a_reference);
-  typedef typename base::remove_reference<To>::type* ToAsPointer;
+  typedef typename base::remove_reference<To>::type ToType;
   if (false) {
     // Compile-time check that To inherits from From. See above for details.
-    yb::implicit_cast<From*, ToAsPointer>(nullptr);
+    yb::implicit_cast<typename base::remove_const<From>::type*,
+                      typename base::remove_const<ToType>::type*>(nullptr);
   }
 
-  assert(dynamic_cast<ToAsPointer>(&f) != nullptr);  // RTTI: debug mode only
+  assert(dynamic_cast<ToType*>(&f) != nullptr);  // RTTI: debug mode only
   return static_cast<To>(f);
 }
 
@@ -392,6 +395,27 @@ Out narrow_cast(const In& in) {
   }
   if (std::is_signed<In>::value && in < static_cast<In>(std::numeric_limits<Out>::min())) {
     BadNarrowCast('<', std::to_string(in), std::to_string(std::numeric_limits<Out>::min()));
+  }
+  return static_cast<Out>(in);
+}
+
+// make_unsigned should be used to cast from signed to unsigned representation of the same size.
+// If value is out of range of output type the system will crash with FATAL error message.
+template <class In>
+typename std::enable_if<std::is_signed_v<In>, typename std::make_unsigned<In>::type>::type
+    make_unsigned(const In& in) {
+  if (in < 0) {
+    BadNarrowCast('<', std::to_string(in), "0");
+  }
+  return static_cast<typename std::make_unsigned<In>::type>(in);
+}
+
+template <class In>
+typename std::enable_if<std::is_unsigned_v<In>, typename std::make_signed<In>::type>::type
+    make_signed(const In& in) {
+  using Out = typename std::make_signed<In>::type;
+  if (in > static_cast<In>(std::numeric_limits<Out>::max())) {
+    BadNarrowCast('<', std::to_string(in), std::to_string(std::numeric_limits<Out>::max()));
   }
   return static_cast<Out>(in);
 }

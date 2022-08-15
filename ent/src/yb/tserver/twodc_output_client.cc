@@ -76,10 +76,11 @@ class TwoDCOutputClient : public cdc::CDCOutputClient {
 
   ~TwoDCOutputClient() {
     std::lock_guard<decltype(lock_)> l(lock_);
+    shutdown_ = true;
     rpcs_->Abort({&write_handle_});
   }
 
-  CHECKED_STATUS ApplyChanges(const cdc::GetChangesResponsePB* resp) override;
+  Status ApplyChanges(const cdc::GetChangesResponsePB* resp) override;
 
   void WriteCDCRecordDone(const Status& status, const WriteResponsePB& response);
 
@@ -88,23 +89,21 @@ class TwoDCOutputClient : public cdc::CDCOutputClient {
   // Process all records in twodc_resp_copy_ starting from the start index. If we find a ddl
   // record, then we process the current changes first, wait for those to complete, then process
   // the ddl + other changes after.
-  CHECKED_STATUS ProcessChangesStartingFromIndex(int start);
+  Status ProcessChangesStartingFromIndex(int start);
 
-  CHECKED_STATUS ProcessRecordForTablet(
-      const int record_idx, const Result<client::internal::RemoteTabletPtr>& tablet);
+  Status ProcessRecordForTablet(
+      const cdc::CDCRecordPB& record, const Result<client::internal::RemoteTabletPtr>& tablet);
 
-  CHECKED_STATUS ProcessRecordForLocalTablet(const int record_idx);
+  Status ProcessRecordForLocalTablet(const cdc::CDCRecordPB& record);
 
-  CHECKED_STATUS ProcessRecordForTabletRange(
-      const int record_idx,
-      const std::string partition_key_start,
-      const std::string partition_key_end,
+  Status ProcessRecordForTabletRange(
+      const cdc::CDCRecordPB& record,
       const Result<std::vector<client::internal::RemoteTabletPtr>>& tablets);
 
-  CHECKED_STATUS ProcessSplitOp(const cdc::CDCRecordPB& record);
+  Result<bool> ProcessSplitOp(const cdc::CDCRecordPB& record);
 
   // Processes the Record and sends the CDCWrite for it.
-  CHECKED_STATUS ProcessRecord(
+  Status ProcessRecord(
       const std::vector<std::string>& tablet_ids, const cdc::CDCRecordPB& record);
 
   void SendNextCDCWriteToTablet(std::unique_ptr<WriteRequestPB> write_request);
@@ -138,6 +137,7 @@ class TwoDCOutputClient : public cdc::CDCOutputClient {
   Status error_status_ GUARDED_BY(lock_);
   OpIdPB op_id_ GUARDED_BY(lock_) = consensus::MinimumOpId();
   bool done_processing_ GUARDED_BY(lock_) = false;
+  bool shutdown_ GUARDED_BY(lock_) = false;
 
   uint32_t processed_record_count_ GUARDED_BY(lock_) = 0;
   uint32_t record_count_ GUARDED_BY(lock_) = 0;
@@ -225,23 +225,25 @@ Status TwoDCOutputClient::ProcessChangesStartingFromIndex(int start) {
         break;
       }
       // No other records to process, so we can process the SPLIT_OP.
-      RETURN_NOT_OK(ProcessSplitOp(record));
+      bool done = VERIFY_RESULT(ProcessSplitOp(record));
+      if (done) {
+        HandleResponse();
+        return Status::OK();
+      }
       continue;
     }
 
     if (UseLocalTserver()) {
-      RETURN_NOT_OK(ProcessRecordForLocalTablet(i));
+      RETURN_NOT_OK(ProcessRecordForLocalTablet(record));
     } else {
       if (record.operation() == cdc::CDCRecordPB::APPLY) {
-        RETURN_NOT_OK(ProcessRecordForTabletRange(
-            i, record.partition().partition_key_start(),
-            record.partition().partition_key_end(), all_tablets_result_));
+        RETURN_NOT_OK(ProcessRecordForTabletRange(record, all_tablets_result_));
       } else {
         auto partition_hash_key = PartitionSchema::EncodeMultiColumnHashValue(
             VERIFY_RESULT(CheckedStoInt<uint16_t>(record.key(0).key())));
         auto tablet_result = local_client_->client->LookupTabletByKeyFuture(
             table_, partition_hash_key, CoarseMonoClock::now() + timeout_ms_).get();
-        RETURN_NOT_OK(ProcessRecordForTablet(i, tablet_result));
+        RETURN_NOT_OK(ProcessRecordForTablet(record, tablet_result));
       }
     }
     processed_write_record = true;
@@ -283,37 +285,38 @@ Status TwoDCOutputClient::ProcessRecord(const std::vector<std::string>& tablet_i
 }
 
 Status TwoDCOutputClient::ProcessRecordForTablet(
-    const int record_idx,
-    const Result<client::internal::RemoteTabletPtr>& tablet) {
+    const cdc::CDCRecordPB& record, const Result<client::internal::RemoteTabletPtr>& tablet) {
   RETURN_NOT_OK(tablet);
-  return ProcessRecord({tablet->get()->tablet_id()}, twodc_resp_copy_.records(record_idx));
+  return ProcessRecord({tablet->get()->tablet_id()}, record);
 }
 
 Status TwoDCOutputClient::ProcessRecordForTabletRange(
-    const int record_idx,
-    const std::string partition_key_start,
-    const std::string partition_key_end,
+    const cdc::CDCRecordPB& record,
     const Result<std::vector<client::internal::RemoteTabletPtr>>& tablets) {
   RETURN_NOT_OK(tablets);
 
   auto filtered_tablets_result = client::FilterTabletsByHashPartitionKeyRange(
-      *tablets, partition_key_start, partition_key_end);
+      *tablets, record.partition().partition_key_start(), record.partition().partition_key_end());
   RETURN_NOT_OK(filtered_tablets_result);
 
   auto filtered_tablets = *filtered_tablets_result;
+  if (filtered_tablets.empty()) {
+    table_->MarkPartitionsAsStale();
+    return STATUS(TryAgain, "No tablets found for key range, refreshing partitions to try again.");
+  }
   auto tablet_ids = std::vector<std::string>(filtered_tablets.size());
   std::transform(filtered_tablets.begin(), filtered_tablets.end(), tablet_ids.begin(),
                  [&](const auto& tablet_ptr) {
     return tablet_ptr->tablet_id();
   });
-  return ProcessRecord(tablet_ids, twodc_resp_copy_.records(record_idx));
+  return ProcessRecord(tablet_ids, record);
 }
 
-Status TwoDCOutputClient::ProcessRecordForLocalTablet(const int record_idx) {
-  return ProcessRecord({consumer_tablet_info_.tablet_id}, twodc_resp_copy_.records(record_idx));
+Status TwoDCOutputClient::ProcessRecordForLocalTablet(const cdc::CDCRecordPB& record) {
+  return ProcessRecord({consumer_tablet_info_.tablet_id}, record);
 }
 
-Status TwoDCOutputClient::ProcessSplitOp(const cdc::CDCRecordPB& record) {
+Result<bool> TwoDCOutputClient::ProcessSplitOp(const cdc::CDCRecordPB& record) {
   // Construct and send the update request.
   master::ProducerSplitTabletInfoPB split_info;
   split_info.set_tablet_id(record.split_tablet_request().tablet_id());
@@ -322,13 +325,13 @@ Status TwoDCOutputClient::ProcessSplitOp(const cdc::CDCRecordPB& record) {
   split_info.set_split_encoded_key(record.split_tablet_request().split_encoded_key());
   split_info.set_split_partition_key(record.split_tablet_request().split_partition_key());
 
-  RETURN_NOT_OK(local_client_->client->UpdateConsumerOnProducerSplit(
-      producer_tablet_info_.universe_uuid, producer_tablet_info_.stream_id, split_info));
-
   if (PREDICT_FALSE(FLAGS_TEST_xcluster_consumer_fail_after_process_split_op)) {
     return STATUS(
         InternalError, "Fail due to FLAGS_TEST_xcluster_consumer_fail_after_process_split_op");
   }
+
+  RETURN_NOT_OK(local_client_->client->UpdateConsumerOnProducerSplit(
+      producer_tablet_info_.universe_uuid, producer_tablet_info_.stream_id, split_info));
 
   // Increment processed records, and check for completion.
   bool done;
@@ -336,10 +339,7 @@ Status TwoDCOutputClient::ProcessSplitOp(const cdc::CDCRecordPB& record) {
     std::lock_guard<decltype(lock_)> l(lock_);
     done = IncProcessedRecordCount();
   }
-  if (done) {
-    HandleResponse();
-  }
-  return Status::OK();
+  return done;
 }
 
 void TwoDCOutputClient::SendNextCDCWriteToTablet(std::unique_ptr<WriteRequestPB> write_request) {
@@ -370,6 +370,10 @@ void TwoDCOutputClient::WriteCDCRecordDone(const Status& status, const WriteResp
   {
     std::lock_guard<decltype(lock_)> l(lock_);
     retained = rpcs_->Unregister(&write_handle_);
+    if (shutdown_) {
+      LOG(INFO) << "Aborting ApplyChanges since the client is shutting down.";
+      return;
+    }
   }
   if (!status.ok()) {
     HandleError(status, true /* done */);

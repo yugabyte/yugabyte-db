@@ -306,9 +306,8 @@ size_t WritableFileWriter::RequestToken(size_t bytes, bool align) {
   if (suspender_ && FLAGS_allow_preempting_compactions) {
     suspender_->PauseIfNecessary();
   }
-  Env::IOPriority io_priority;
-  if (rate_limiter_ && (io_priority = writable_file_->GetIOPriority()) <
-      Env::IO_TOTAL) {
+  yb::IOPriority io_priority;
+  if (rate_limiter_ && (io_priority = writable_file_->GetIOPriority()) < yb::IOPriority::kTotal) {
     bytes = std::min(
       bytes, static_cast<size_t>(rate_limiter_->GetSingleBurstBytes()));
 
@@ -447,7 +446,7 @@ class ReadaheadRandomAccessFile : public yb::RandomAccessFileWrapper {
 
   ReadaheadRandomAccessFile& operator=(const ReadaheadRandomAccessFile&) = delete;
 
-  CHECKED_STATUS Read(uint64_t offset, size_t n, Slice* result, uint8_t* scratch) const override {
+  Status Read(uint64_t offset, size_t n, Slice* result, uint8_t* scratch) const override {
     if (n >= readahead_size_) {
       return RandomAccessFileWrapper::Read(offset, n, result, scratch);
     }

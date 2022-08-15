@@ -9,6 +9,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.net.HostAndPort;
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.PortType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -28,6 +29,8 @@ import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.SqlQuery;
 import io.ebean.annotation.DbJson;
+import io.ebean.annotation.Transactional;
+import io.ebean.annotation.TxIsolation;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
@@ -49,6 +52,7 @@ import javax.persistence.Transient;
 import javax.persistence.UniqueConstraint;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 import org.yb.client.YBClient;
 import play.api.Play;
 import play.data.validation.Constraints;
@@ -62,6 +66,7 @@ public class Universe extends Model {
   public static final String TAKE_BACKUPS = "takeBackups";
   public static final String HELM2_LEGACY = "helm2Legacy";
   public static final String DUAL_NET_LEGACY = "dualNetLegacy";
+  public static final String USE_CUSTOM_IMAGE = "useCustomImage";
 
   // This is a key lock for Universe by UUID.
   public static final KeyLock<UUID> UNIVERSE_KEY_LOCK = new KeyLock<UUID>();
@@ -78,6 +83,8 @@ public class Universe extends Model {
 
   public static Universe getValidUniverseOrBadRequest(UUID universeUUID, Customer customer) {
     Universe universe = getOrBadRequest(universeUUID);
+    MDC.put("universe-id", universeUUID.toString());
+    MDC.put("cluster-id", universeUUID.toString());
     checkUniverseInCustomer(universeUUID, customer);
     return universe;
   }
@@ -168,6 +175,27 @@ public class Universe extends Model {
         .collect(Collectors.toList());
   }
 
+  @Transactional(isolation = TxIsolation.REPEATABLE_READ)
+  @Override
+  public boolean delete() {
+    // Delete xCluster configs without universes.
+    XClusterConfig.getByUniverseUuid(universeUUID)
+        .stream()
+        .filter(
+            xClusterConfig -> {
+              if (xClusterConfig.sourceUniverseUUID == null) {
+                return true;
+              } else {
+                if (universeUUID.equals(xClusterConfig.sourceUniverseUUID)) {
+                  return xClusterConfig.targetUniverseUUID == null;
+                }
+                return false;
+              }
+            })
+        .forEach(Model::delete);
+    return super.delete();
+  }
+
   public static final Finder<UUID, Universe> find = new Finder<UUID, Universe>(Universe.class) {};
 
   // Prefix added to read only node.
@@ -231,6 +259,26 @@ public class Universe extends Model {
   public static Set<UUID> getAllUUIDs(Customer customer) {
     return ImmutableSet.copyOf(
         find.query().where().eq("customer_id", customer.getCustomerId()).findIds());
+  }
+
+  public static Set<UUID> getAllUUIDs() {
+    return ImmutableSet.copyOf(find.query().where().findIds());
+  }
+
+  /**
+   * Fetches the universe UUIDs associated with customer IDs.
+   *
+   * @return map of customer ID to a set of its universe UUIDs.
+   */
+  public static Map<Long, Set<UUID>> getAllCustomerUniverseUUIDs() {
+    return find.query()
+        .select("customerId, universeUUID")
+        .findList()
+        .stream()
+        .collect(
+            Collectors.groupingBy(
+                u -> u.customerId,
+                Collectors.mapping(Universe::getUniverseUUID, Collectors.toSet())));
   }
 
   public static Set<Universe> getAllWithoutResources(Customer customer) {
@@ -381,6 +429,17 @@ public class Universe extends Model {
   }
 
   /**
+   * Checks if all nodes in universe have the node state 'Live'
+   *
+   * @return true if all nodes are in LIVE state
+   */
+  public boolean allNodesLive() {
+    return getNodes()
+        .stream()
+        .allMatch(nodeDetails -> nodeDetails.state.equals(NodeDetails.NodeState.Live));
+  }
+
+  /**
    * Checks if there is any node in a transit state across the universe.
    *
    * @return true if there is any such node.
@@ -448,6 +507,42 @@ public class Universe extends Model {
    */
   public List<NodeDetails> getTServers() {
     return getServers(ServerType.TSERVER);
+  }
+
+  /**
+   * Return the list of TServers in the primary cluster for this universe. E.g. the TServers in a
+   * read replica will not be included.
+   *
+   * @return a list of TServers nodes
+   */
+  public List<NodeDetails> getTServersInPrimaryCluster() {
+    List<NodeDetails> servers = getServers(ServerType.TSERVER);
+    Collection<NodeDetails> primaryNodes =
+        getNodesInCluster(getUniverseDetails().getPrimaryCluster().uuid);
+    return servers
+        .stream()
+        .filter(server -> primaryNodes.contains(server))
+        .collect(Collectors.toList());
+  }
+
+  /**
+   * Return the list of live TServers in the primary cluster. TODO: junit tests for this
+   * functionality (UniverseTest.java)
+   *
+   * @return a list of TServer nodes
+   */
+  public List<NodeDetails> getLiveTServersInPrimaryCluster() {
+    List<NodeDetails> servers = getTServersInPrimaryCluster();
+    List<NodeDetails> filteredServers =
+        servers
+            .stream()
+            .filter(nodeDetails -> nodeDetails.state.equals(NodeDetails.NodeState.Live))
+            .collect(Collectors.toList());
+
+    if (filteredServers.isEmpty()) {
+      LOG.trace("No live nodes for getLiveTServersInPrimaryCluster in universe {}", universeUUID);
+    }
+    return filteredServers;
   }
 
   /**
@@ -576,6 +671,16 @@ public class Universe extends Model {
   }
 
   /**
+   * It returns a comma separated list of <privateIp:tserverHTTPPort> for all tservers in the
+   * primary cluster of this universe.
+   *
+   * @return A comma separated string of 'host:port'
+   */
+  public String getTserverAddresses() {
+    return getHostPortsString(getTServersInPrimaryCluster(), ServerType.TSERVER, PortType.RPC);
+  }
+
+  /**
    * Returns the certificate path in case node to node TLS is enabled.
    *
    * @return path to the certfile.
@@ -665,9 +770,7 @@ public class Universe extends Model {
     for (NodeDetails node : serverNodes) {
       // Only get secondary if dual net legacy is false.
       boolean shouldGetSecondary =
-          this.getConfig().getOrDefault(DUAL_NET_LEGACY, "true").equals("false")
-              ? getSecondary
-              : false;
+          this.getConfig().getOrDefault(DUAL_NET_LEGACY, "true").equals("false") && getSecondary;
       String nodeIp =
           shouldGetSecondary ? node.cloudInfo.secondary_private_ip : node.cloudInfo.private_ip;
       // In case the secondary IP is null, just re-assign to primary.
@@ -739,6 +842,21 @@ public class Universe extends Model {
   }
 
   /**
+   * Get deployment mode of node (on-prem/kubernetes/cloud provider)
+   *
+   * @param node - node to get info on
+   * @return Get deployment details
+   */
+  public Common.CloudType getNodeDeploymentMode(NodeDetails node) {
+    if (node == null) {
+      throw new RuntimeException("node must be nonnull");
+    }
+    UniverseDefinitionTaskParams.Cluster cluster =
+        getUniverseDetails().getClusterByUuid(node.placementUuid);
+    return cluster.userIntent.providerType;
+  }
+
+  /**
    * Returns the cluster with the given uuid in the universe.
    *
    * @param clusterUUID UUID of the cluster to check.
@@ -788,6 +906,15 @@ public class Universe extends Model {
   }
 
   /**
+   * Fine the current master leader node
+   *
+   * @return NodeDetails of the master leader
+   */
+  public NodeDetails getMasterLeaderNode() {
+    return getNodeByPrivateIP(getMasterLeaderHostText());
+  }
+
+  /**
    * Find the current master leader in the universe
    *
    * @return a String of the private_ip of the current master leader in the universe or an empty
@@ -801,6 +928,10 @@ public class Universe extends Model {
 
   public boolean universeIsLocked() {
     return getUniverseDetails().updateInProgress;
+  }
+
+  public boolean isYbcEnabled() {
+    return getUniverseDetails().enableYbc;
   }
 
   public boolean nodeExists(String host, int port) {
@@ -859,6 +990,27 @@ public class Universe extends Model {
 
   public static boolean existsRelease(String version) {
     return universeDetailsIfReleaseExists(version).size() != 0;
+  }
+
+  static Set<UUID> getUniverseUUIDsForCustomer(Long customerId) {
+    return find.query()
+        .select("universeUUID")
+        .where()
+        .eq("customer_id", customerId)
+        .findList()
+        .stream()
+        .map(Universe::getUniverseUUID)
+        .collect(Collectors.toSet());
+  }
+
+  static Set<Universe> getUniversesForCustomer(Long customerId) {
+    return find.query()
+        .where()
+        .eq("customer_id", customerId)
+        .findSet()
+        .stream()
+        .peek(Universe::fillUniverseDetails)
+        .collect(Collectors.toSet());
   }
 
   static boolean isUniversePaused(UUID uuid) {

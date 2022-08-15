@@ -32,14 +32,27 @@ DECLARE_bool(TEST_check_broadcast_address);
 DECLARE_bool(flush_rocksdb_on_shutdown);
 DECLARE_bool(cdc_enable_replicate_intents);
 
+DECLARE_int32(replication_factor);
+DECLARE_int32(cdc_max_apply_batch_num_records);
+DECLARE_int32(client_read_write_timeout_ms);
+DECLARE_int32(pgsql_proxy_webserver_port);
+DECLARE_bool(enable_ysql);
+DECLARE_bool(hide_pg_catalog_table_creation_logs);
+DECLARE_bool(master_auto_run_initdb);
+DECLARE_int32(pggate_rpc_timeout_secs);
+
 namespace yb {
 using client::YBClient;
+using client::YBTableName;
 
 namespace cdc {
 namespace enterprise {
 constexpr int kRpcTimeout = NonTsanVsTsan(60, 120);
 static const std::string kUniverseId = "test_universe";
 static const std::string kNamespaceName = "test_namespace";
+constexpr static const char* const kTableName = "test_table";
+constexpr static const char* const kKeyColumnName = "key";
+constexpr static const char* const kValueColumnName = "value";
 
 struct CDCSDKTestParams {
   CDCSDKTestParams(int batch_size_, bool enable_replicate_intents_) :
@@ -60,11 +73,15 @@ class CDCSDKTestBase : public YBTest {
     boost::optional<client::TransactionManager> txn_mgr_;
 
     Result<pgwrapper::PGConn> Connect() {
-      return pgwrapper::PGConn::Connect(pg_host_port_);
+      return ConnectToDB(std::string() /* dbname */);
     }
 
     Result<pgwrapper::PGConn> ConnectToDB(const std::string& dbname) {
-      return pgwrapper::PGConn::Connect(pg_host_port_, dbname);
+      return pgwrapper::PGConnBuilder({
+        .host = pg_host_port_.host(),
+        .port = pg_host_port_.port(),
+        .dbname = dbname,
+      }).Connect();
     }
   };
 
@@ -73,7 +90,7 @@ class CDCSDKTestBase : public YBTest {
     // Allow for one-off network instability by ensuring a single CDC RPC timeout << test timeout.
     FLAGS_cdc_read_rpc_timeout_ms = (kRpcTimeout / 4) * 1000;
     FLAGS_cdc_write_rpc_timeout_ms = (kRpcTimeout / 4) * 1000;
-    // Not a useful test for us. It's testing Public+Private IP NW errors and we're only public
+
     FLAGS_TEST_check_broadcast_address = false;
     FLAGS_flush_rocksdb_on_shutdown = false;
   }
@@ -94,7 +111,58 @@ class CDCSDKTestBase : public YBTest {
     return test_cluster_.client_.get();
   }
 
+  Status CreateDatabase(
+      Cluster* cluster,
+      const std::string& namespace_name = kNamespaceName,
+      bool colocated = false);
+
+  Status InitPostgres(Cluster* cluster);
+
+  Status SetUpWithParams(
+      uint32_t replication_factor,
+      uint32_t num_masters = 1,
+      bool colocated = false);
+
+  Result<YBTableName> GetTable(
+      Cluster* cluster,
+      const std::string& namespace_name,
+      const std::string& table_name,
+      bool verify_table_name = true,
+      bool exclude_system_tables = true);
+
+  Result<YBTableName> CreateTable(
+      Cluster* cluster,
+      const std::string& namespace_name,
+      const std::string& table_name,
+      const uint32_t num_tablets = 1,
+      const bool add_primary_key = true,
+      bool colocated = false,
+      const int table_oid = 0,
+      bool enum_value = false,
+      const std::string& enum_suffix = "",
+      const std::string& schema_name = "public");
+
+  Result<std::string> GetNamespaceId(const std::string& namespace_name);
+
+  Result<std::string> GetTableId(
+      Cluster* cluster,
+      const std::string& namespace_name,
+      const std::string& table_name,
+      bool verify_table_name = true,
+      bool exclude_system_tables = true);
+
+  void InitCreateStreamRequest(
+      CreateCDCStreamRequestPB* create_req,
+      const CDCCheckpointType& checkpoint_type = CDCCheckpointType::EXPLICIT,
+      const std::string& namespace_name = kNamespaceName);
+
+  Result<std::string> CreateDBStream(
+      CDCCheckpointType checkpoint_type = CDCCheckpointType::EXPLICIT);
+
  protected:
+  // Every test needs to initialize this cdc_proxy_.
+  std::unique_ptr<CDCServiceProxy> cdc_proxy_;
+
   Cluster test_cluster_;
 };
 } // namespace enterprise

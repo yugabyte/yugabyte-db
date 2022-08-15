@@ -11,17 +11,22 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.commissioner.tasks.DestroyUniverse;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.models.AlertConfiguration;
-import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import javax.inject.Inject;
 
 public class RemoveUniverseEntry extends UniverseTaskBase {
+
+  private final HealthChecker healthChecker;
+
   @Inject
-  protected RemoveUniverseEntry(BaseTaskDependencies baseTaskDependencies) {
+  protected RemoveUniverseEntry(
+      BaseTaskDependencies baseTaskDependencies, HealthChecker healthChecker) {
     super(baseTaskDependencies);
+    this.healthChecker = healthChecker;
   }
 
   @Override
@@ -31,15 +36,13 @@ public class RemoveUniverseEntry extends UniverseTaskBase {
 
   @Override
   public void run() {
-    Customer customer = Customer.get(taskParams().customerUUID);
-    customer.removeUniverseUUID(taskParams().universeUUID);
-    customer.save();
     Universe.delete(taskParams().universeUUID);
 
     alertConfigurationService.handleSourceRemoval(
         taskParams().customerUUID,
         AlertConfiguration.TargetType.UNIVERSE,
         taskParams().universeUUID);
-    metricService.handleSourceRemoval(taskParams().customerUUID, taskParams().universeUUID);
+    metricService.markSourceRemoved(taskParams().customerUUID, taskParams().universeUUID);
+    healthChecker.handleUniverseRemoval(taskParams().universeUUID);
   }
 }

@@ -8,8 +8,7 @@ menu:
     identifier: manage-bulk-export
     parent: manage-bulk-import-export
     weight: 707
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -21,7 +20,7 @@ showAsideToc: true
   </li>
 </ul>
 
-This page documents bulk export for YugabyteDB’s [Cassandra-compatible YCQL API](../../../../api/ycql). To export data from a YugabyteDB (or an Apache Cassandra) table, you can use the [`cassandra-unloader`](https://github.com/yugabyte/cassandra-loader#cassandra-unloader) tool.
+This page documents bulk export for YugabyteDB’s [Cassandra-compatible YCQL API](../../../../api/ycql/). To export data from a YugabyteDB (or an Apache Cassandra) table, you can use the [`cassandra-unloader`](https://github.com/yugabyte/cassandra-loader#cassandra-unloader) tool.
 
 We will first create a source YugabyteDB table and populate it with data. Then you will export the data out using the cassandra-unloader tool. We will use a generic gaming user profile use case as a running example to illustrate the export process.
 
@@ -34,10 +33,10 @@ CREATE KEYSPACE load;
 USE load;
 
 CREATE TABLE users(
-	user_id varchar, 
-	score1 double, 
+	user_id varchar,
+	score1 double,
 	score2 double,
-	points int, 
+	points int,
 	object_id varchar,
    PRIMARY KEY (user_id));
 ```

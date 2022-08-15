@@ -135,7 +135,7 @@ std::string RelativeClassPath(const std::string& clazz, const std::string& servi
 }
 
 std::string UnnestedName(
-    const google::protobuf::Descriptor* message, Lightweight lightweight, bool full_path) {
+    const google::protobuf::Descriptor* message, Lightweight lightweight, FullPath full_path) {
   auto name = lightweight ? MakeLightweightName(message->name()) : message->name();
   if (message->options().map_entry()) {
     name += "_DoNotUse";
@@ -172,8 +172,9 @@ std::string MapFieldType(const google::protobuf::FieldDescriptor* field, Lightwe
     case WireFormatLite::CppType::CPPTYPE_ENUM:
       return RelativeClassPath(
           field->enum_type()->containing_type()
-              ? UnnestedName(field->enum_type()->containing_type(), lightweight, true) + "." +
-                    field->enum_type()->name()
+              ? UnnestedName(
+                    field->enum_type()->containing_type(), Lightweight::kFalse, FullPath::kTrue)
+                + "." + field->enum_type()->name()
               : field->enum_type()->full_name(),
           field->containing_type()->full_name());
     case WireFormatLite::CppType::CPPTYPE_STRING:
@@ -182,7 +183,7 @@ std::string MapFieldType(const google::protobuf::FieldDescriptor* field, Lightwe
       if (IsPbAny(field->message_type()) && lightweight) {
         return "::yb::rpc::LWAny";
       }
-      return RelativeClassPath(UnnestedName(field->message_type(), lightweight, true),
+      return RelativeClassPath(UnnestedName(field->message_type(), lightweight, FullPath::kTrue),
                                field->containing_type()->full_name());
     default:
       break;

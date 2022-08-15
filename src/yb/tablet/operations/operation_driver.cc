@@ -92,20 +92,24 @@ OperationDriver::OperationDriver(OperationTracker *operation_tracker,
     : operation_tracker_(operation_tracker),
       consensus_(consensus),
       preparer_(preparer),
-      trace_(new Trace()),
+      trace_(Trace::NewTraceForParent(Trace::CurrentTrace())),
       start_time_(MonoTime::Now()),
       replication_state_(NOT_REPLICATING),
       prepare_state_(NOT_PREPARED),
       table_type_(table_type) {
-  if (Trace::CurrentTrace()) {
-    Trace::CurrentTrace()->AddChildTrace(trace_.get());
-  }
   DCHECK(IsAcceptableAtomicImpl(op_id_copy_));
 }
 
 Status OperationDriver::Init(std::unique_ptr<Operation>* operation, int64_t term) {
   if (operation) {
     operation_ = std::move(*operation);
+  }
+
+  auto result = operation_tracker_->Add(this);
+
+  if (!result.ok() && operation) {
+    *operation = std::move(operation_);
+    return result;
   }
 
   if (term == OpId::kUnknownTerm) {
@@ -123,16 +127,11 @@ Status OperationDriver::Init(std::unique_ptr<Operation>* operation, int64_t term
     }
   }
 
-  auto result = operation_tracker_->Add(this);
-  if (!result.ok() && operation) {
-    *operation = std::move(operation_);
-  }
-
   if (term == OpId::kUnknownTerm && operation_) {
     operation_->AddedToFollower();
   }
 
-  return result;
+  return Status::OK();
 }
 
 yb::OpId OperationDriver::GetOpId() {
@@ -177,8 +176,8 @@ void OperationDriver::ExecuteAsync() {
   if (delay != 0 &&
       operation_type() == OperationType::kWrite &&
       operation_->tablet()->tablet_id() != master::kSysCatalogTabletId) {
-    LOG(INFO) << "T " << operation_->tablet()->tablet_id()
-              << " Debug sleep for: " << MonoDelta(1ms * delay) << "\n" << GetStackTrace();
+    LOG_WITH_PREFIX(INFO) << " Debug sleep for: " << MonoDelta(1ms * delay) << "\n"
+                          << GetStackTrace();
     std::this_thread::sleep_for(1ms * delay);
   }
 
@@ -357,7 +356,7 @@ void OperationDriver::ReplicationFinished(
   }
 }
 
-void OperationDriver::Abort(const Status& status) {
+void OperationDriver::TEST_Abort(const Status& status) {
   CHECK(!status.ok());
 
   ReplicationState repl_state_copy;
@@ -393,7 +392,7 @@ void OperationDriver::ApplyTask(int64_t leader_term, OpIds* applied_op_ids) {
   scoped_refptr<OperationDriver> ref(this);
 
   {
-    auto status = operation_->Replicated(leader_term);
+    auto status = operation_->Replicated(leader_term, WasPending::kTrue);
     LOG_IF_WITH_PREFIX(FATAL, !status.ok())
         << "Apply failed: " << status
         << ", request: " << operation_->request()->ShortDebugString();
@@ -451,11 +450,11 @@ std::string OperationDriver::LogPrefix() const {
   string state_str = StateString(repl_state_copy, prep_state_copy);
   // We use the tablet and the peer (T, P) to identify ts and tablet and the hybrid_time (Ts) to
   // (help) identify the operation. The state string (S) describes the state of the operation.
-  return Format("T $0 P $1 S $2 Ts $3 $4: ",
+  return Format("T $0 P $1 S $2 Ts $3 $4 ($5): ",
                 // consensus_ is NULL in some unit tests.
                 PREDICT_TRUE(consensus_) ? consensus_->tablet_id() : "(unknown)",
                 PREDICT_TRUE(consensus_) ? consensus_->peer_uuid() : "(unknown)",
-                state_str, ts_string, operation_type);
+                state_str, ts_string, operation_type, static_cast<const void*>(this));
 }
 
 int64_t OperationDriver::SpaceUsed() {

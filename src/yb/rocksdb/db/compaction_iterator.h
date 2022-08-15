@@ -65,6 +65,10 @@ class CompactionIterator {
 
   void ResetRecordCounts();
 
+  // Add live ranges to this iterator.
+  // See live_key_ranges_stack_ comment for details.
+  void AddLiveRanges(const std::vector<std::pair<Slice, Slice>>& ranges);
+
   // Seek to the beginning of the compaction iterator output.
   //
   // REQUIRED: Call only once.

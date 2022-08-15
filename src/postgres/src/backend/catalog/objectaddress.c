@@ -2302,7 +2302,7 @@ check_object_ownership(Oid roleid, ObjectType objtype, ObjectAddress address,
 							   NameListToString((castNode(ObjectWithArgs, object))->objname));
 			break;
 		case OBJECT_SCHEMA:
-			if (!pg_namespace_ownercheck(address.objectId, roleid))
+			if (!pg_namespace_ownercheck(address.objectId, roleid) && !IsYbDbAdminUser(roleid))
 				aclcheck_error(ACLCHECK_NOT_OWNER, objtype,
 							   strVal((Value *) object));
 			break;

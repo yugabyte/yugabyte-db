@@ -31,9 +31,9 @@ namespace tablet {
 class TransactionIntentApplier {
  public:
   virtual Result<docdb::ApplyTransactionState> ApplyIntents(const TransactionApplyData& data) = 0;
-  virtual CHECKED_STATUS RemoveIntents(
+  virtual Status RemoveIntents(
       const RemoveIntentsData& data, const TransactionId& transaction_id) = 0;
-  virtual CHECKED_STATUS RemoveIntents(
+  virtual Status RemoveIntents(
       const RemoveIntentsData& data, const TransactionIdSet& transactions) = 0;
 
   virtual Result<HybridTime> ApplierSafeTime(HybridTime min_allowed, CoarseTimePoint deadline) = 0;

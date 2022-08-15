@@ -4,14 +4,13 @@ linkTitle: Manage database access
 description: Manage database access
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
-beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
+beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   v2.6:
     identifier: manage-access
     parent: yugabyte-cloud
     weight: 644
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Use the Database Access page to manage YugabyteDB users. This page displays a user list that includes username, cluster, authenication method, and YugabyteDB roles. Here's an example of the page:
@@ -39,9 +38,8 @@ To delete a user, click **Delete** next to the username in the list. The user is
 
 ## View user details
 
-The user details include a note that the credentials give admin access to the Yugabyte database, the username, and the password. 
+The user details include a note that the credentials give admin access to the Yugabyte database, the username, and the password.
 Click **INFO** under **Actions** for the user whose details you want to see.
 To see the password, click **Show password**. Click **Close** when finished.
 
 ![User Details dialog](/images/deploy/yugabyte-cloud/user-details.png)
-

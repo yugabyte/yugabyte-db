@@ -3,20 +3,36 @@
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.SubTaskGroup;
+import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
+import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType;
-import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
+import java.io.File;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.stream.Collectors;
 import javax.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.tuple.Pair;
 
+@Slf4j
 public class SoftwareUpgrade extends UpgradeTaskBase {
+
+  private static final UpgradeContext SOFTWARE_UPGRADE_CONTEXT =
+      UpgradeContext.builder()
+          .reconfigureMaster(false)
+          .runBeforeStopping(false)
+          .processInactiveMaster(true)
+          .build();
 
   @Inject
   protected SoftwareUpgrade(BaseTaskDependencies baseTaskDependencies) {
@@ -43,66 +59,174 @@ public class SoftwareUpgrade extends UpgradeTaskBase {
     runUpgrade(
         () -> {
           Pair<List<NodeDetails>, List<NodeDetails>> nodes = fetchNodes(taskParams().upgradeOption);
-          // Verify the request params and fail if invalid
-          taskParams().verifyParams(getUniverse());
-          // Download software to all nodes
-          createDownloadTasks(nodes.getRight());
-          // Install software on nodes
+          Universe universe = getUniverse();
+          // Verify the request params and fail if invalid.
+          taskParams().verifyParams(universe);
+          // Precheck for Available Memory on tserver nodes.
+          long memAvailableLimit =
+              runtimeConfigFactory
+                  .forUniverse(universe)
+                  .getLong("yb.dbmem.checks.mem_available_limit_kb");
+          createAvailabeMemoryCheck(nodes.getRight(), Util.AVAILABLE_MEMORY, memAvailableLimit)
+              .setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
+
+          if (!universe
+              .getUniverseDetails()
+              .xClusterInfo
+              .isSourceRootCertDirPathGflagConfigured()) {
+            createXClusterSourceRootCertDirPathGFlagTasks();
+          }
+
+          String newVersion = taskParams().ybSoftwareVersion;
+
+          createPackageInstallTasks(nodes.getRight());
+          // Download software to all nodes.
+          createDownloadTasks(nodes.getRight(), newVersion);
+          // Install software on nodes.
           createUpgradeTaskFlow(
-              (nodes1, processTypes) -> createSoftwareInstallTasks(nodes1, getSingle(processTypes)),
-              taskParams().upgradeOption,
+              (nodes1, processTypes) ->
+                  createSoftwareInstallTasks(
+                      nodes1, getSingle(processTypes), newVersion, getTaskSubGroupType()),
               nodes,
-              DEFAULT_CONTEXT);
-          // Run YSQL upgrade on the universe
-          createRunYsqlUpgradeTask(taskParams().ybSoftwareVersion)
-              .setSubTaskGroupType(getTaskSubGroupType());
-          // Mark the final software version on the universe
-          createUpdateSoftwareVersionTask(taskParams().ybSoftwareVersion)
+              SOFTWARE_UPGRADE_CONTEXT);
+          if (taskParams().upgradeSystemCatalog) {
+            // Run YSQL upgrade on the universe.
+            createRunYsqlUpgradeTask(newVersion).setSubTaskGroupType(getTaskSubGroupType());
+          }
+
+          // Update software version in the universe metadata.
+          createUpdateSoftwareVersionTask(newVersion, false /*isSoftwareUpdateViaVm*/)
               .setSubTaskGroupType(getTaskSubGroupType());
         });
   }
 
-  private void createDownloadTasks(List<NodeDetails> nodes) {
+  private void createDownloadTasks(List<NodeDetails> nodes, String softwareVersion) {
     String subGroupDescription =
         String.format(
             "AnsibleConfigureServers (%s) for: %s",
             SubTaskGroupType.DownloadingSoftware, taskParams().nodePrefix);
-    SubTaskGroup downloadTaskGroup = new SubTaskGroup(subGroupDescription, executor);
+
+    SubTaskGroup downloadTaskGroup =
+        getTaskExecutor().createSubTaskGroup(subGroupDescription, executor);
     for (NodeDetails node : nodes) {
-      downloadTaskGroup.addTask(
-          getAnsibleConfigureServerTask(node, ServerType.TSERVER, UpgradeTaskSubType.Download));
+      downloadTaskGroup.addSubTask(
+          getAnsibleConfigureServerTask(
+              node, ServerType.TSERVER, UpgradeTaskSubType.Download, softwareVersion));
     }
     downloadTaskGroup.setSubTaskGroupType(SubTaskGroupType.DownloadingSoftware);
-    subTaskGroupQueue.add(downloadTaskGroup);
+    getRunnableTask().addSubTaskGroup(downloadTaskGroup);
   }
 
-  private void createSoftwareInstallTasks(List<NodeDetails> nodes, ServerType processType) {
-    // If the node list is empty, we don't need to do anything.
-    if (nodes.isEmpty()) {
-      return;
-    }
-
+  private void createPackageInstallTasks(List<NodeDetails> nodes) {
     String subGroupDescription =
         String.format(
             "AnsibleConfigureServers (%s) for: %s",
-            SubTaskGroupType.InstallingSoftware, taskParams().nodePrefix);
-    SubTaskGroup taskGroup = new SubTaskGroup(subGroupDescription, executor);
+            SubTaskGroupType.UpdatePackage, taskParams().nodePrefix);
+    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup(subGroupDescription, executor);
     for (NodeDetails node : nodes) {
-      taskGroup.addTask(
-          getAnsibleConfigureServerTask(node, processType, UpgradeTaskSubType.Install));
+      subTaskGroup.addSubTask(
+          getAnsibleConfigureServerTask(
+              node, ServerType.TSERVER, UpgradeTaskSubType.PackageReInstall, null));
     }
-    taskGroup.setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
-    subTaskGroupQueue.add(taskGroup);
+    subTaskGroup.setSubTaskGroupType(SubTaskGroupType.UpdatePackage);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
   }
 
-  private AnsibleConfigureServers getAnsibleConfigureServerTask(
-      NodeDetails node, ServerType processType, UpgradeTaskSubType taskSubType) {
-    AnsibleConfigureServers.Params params =
-        getAnsibleConfigureServerParams(node, processType, UpgradeTaskType.Software, taskSubType);
-    params.ybSoftwareVersion = taskParams().ybSoftwareVersion;
-    AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
-    task.initialize(params);
-    task.setUserTaskUUID(userTaskUUID);
-    return task;
+  private void createXClusterSourceRootCertDirPathGFlagTasks() {
+    Universe targetUniverse = getUniverse();
+    UniverseDefinitionTaskParams targetUniverseDetails = targetUniverse.getUniverseDetails();
+    UniverseDefinitionTaskParams.UserIntent targetPrimaryUserIntent =
+        targetUniverseDetails.getPrimaryCluster().userIntent;
+    List<XClusterConfig> xClusterConfigsAsTarget =
+        XClusterConfig.getByTargetUniverseUUID(targetUniverse.universeUUID);
+
+    // If the gflag was set manually before, use its old value.
+    File manualSourceRootCertDirPath = targetUniverseDetails.getSourceRootCertDirPath();
+    if (manualSourceRootCertDirPath != null) {
+      log.debug(
+          "{} gflag has already been set manually",
+          XClusterConfigTaskBase.SOURCE_ROOT_CERTS_DIR_GFLAG);
+      targetUniverseDetails.xClusterInfo.sourceRootCertDirPath =
+          manualSourceRootCertDirPath.toString();
+      targetPrimaryUserIntent.masterGFlags.remove(
+          XClusterConfigTaskBase.SOURCE_ROOT_CERTS_DIR_GFLAG);
+      targetPrimaryUserIntent.tserverGFlags.remove(
+          XClusterConfigTaskBase.SOURCE_ROOT_CERTS_DIR_GFLAG);
+    } else {
+      targetUniverseDetails.xClusterInfo.sourceRootCertDirPath =
+          XClusterConfigTaskBase.getProducerCertsDir(
+              targetUniverseDetails.getPrimaryCluster().userIntent.provider);
+    }
+    log.debug(
+        "sourceRootCertDirPath={} will be used", targetUniverseDetails.getSourceRootCertDirPath());
+
+    // Copy the source certs to the corresponding directory on the target universe.
+    Map<UUID, List<XClusterConfig>> sourceUniverseUuidToXClusterConfigsMap =
+        xClusterConfigsAsTarget
+            .stream()
+            .collect(Collectors.groupingBy(xClusterConfig -> xClusterConfig.sourceUniverseUUID));
+
+    // Put all the universes in the locked list. The unlock operation is a no-op if the universe
+    // does not get locked by this task.
+    lockedXClusterUniversesUuidSet = sourceUniverseUuidToXClusterConfigsMap.keySet();
+
+    sourceUniverseUuidToXClusterConfigsMap.forEach(
+        (sourceUniverseUuid, xClusterConfigs) -> {
+          try {
+            // Lock the source universe.
+            Universe sourceUniverse =
+                lockUniverseIfExist(sourceUniverseUuid, -1 /* expectedUniverseVersion */);
+            if (sourceUniverse == null) {
+              log.info("Other universe is deleted; No further action is needed");
+              return;
+            }
+
+            // Create the subtasks to transfer all source universe root certificates to the target
+            // universe if required.
+            String sourceCertificatePath = sourceUniverse.getCertificateNodetoNode();
+            if (sourceCertificatePath != null) {
+              File sourceCertificate = new File(sourceCertificatePath);
+              if (!sourceCertificate.exists()) {
+                throw new IllegalStateException(
+                    String.format(
+                        "sourceCertificate file \"%s\" for universe \"%s\" does not exist",
+                        sourceCertificate, sourceUniverse.universeUUID));
+              }
+              xClusterConfigs.forEach(
+                  xClusterConfig ->
+                      createTransferXClusterCertsCopyTasks(
+                          targetUniverse.getNodes(),
+                          xClusterConfig.getReplicationGroupName(),
+                          sourceCertificate,
+                          targetUniverseDetails.getSourceRootCertDirPath()));
+            }
+            log.debug(
+                "Subtasks created to transfer all source universe root certificates to "
+                    + "the target universe for these xCluster configs: {}",
+                xClusterConfigs);
+          } catch (Exception e) {
+            log.error(
+                "{} hit error while creating subtasks for transferring source universe TLS "
+                    + "certificates : {}",
+                getName(),
+                e.getMessage());
+            throw new RuntimeException(e);
+          }
+        });
+
+    // Put the gflag into xCluster info of the universe and persist it.
+    createXClusterInfoPersistTask();
+
+    // If the gflags were manually set, persist the new target universe user intent without those
+    // gflags. Otherwise, it means the gflags do not already exist in the conf files on the DB
+    // nodes, and it should regenerate the conf files.
+    if (manualSourceRootCertDirPath != null) {
+      updateGFlagsPersistTasks(
+              targetPrimaryUserIntent.masterGFlags, targetPrimaryUserIntent.tserverGFlags)
+          .setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
+    } else {
+      createGFlagsOverrideTasks(targetUniverse.getMasters(), ServerType.MASTER);
+      createGFlagsOverrideTasks(targetUniverse.getTServersInPrimaryCluster(), ServerType.TSERVER);
+    }
   }
 }

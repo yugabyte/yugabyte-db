@@ -37,14 +37,18 @@ YRPC_GENERATE(
   MASTER_YRPC_SRCS MASTER_YRPC_HDRS MASTER_YRPC_TGTS
   SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
   BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
-  PROTO_FILES master_admin.proto master_client.proto master_cluster.proto master_dcl.proto
-              master_ddl.proto master_encryption.proto master_heartbeat.proto
-              master_replication.proto
-  NO_SERVICE_PROTO_FILES master_types.proto catalog_entity_info.proto)
+  PROTO_FILES
+      master_admin.proto master_client.proto master_cluster.proto master_dcl.proto
+      master_encryption.proto master_heartbeat.proto master_replication.proto
+  MESSAGES_PROTO_FILES
+      master_ddl.proto
+  NO_SERVICE_MESSAGES_PROTO_FILES
+      catalog_entity_info.proto master_types.proto)
 set(MASTER_YRPC_LIBS
   consensus_metadata_proto
   yrpc
   protobuf
+  encryption_proto
   rpc_base_proto
   rpc_header_proto
   tablet_proto
@@ -66,7 +70,8 @@ include_directories(${YB_BUILD_ROOT}/postgres/include/server)
 set(MASTER_SRCS
   async_flush_tablets_task.cc
   async_rpc_tasks.cc
-  call_home.cc
+  auto_flags_orchestrator.cc
+  master_call_home.cc
   backfill_index.cc
   catalog_manager.cc
   catalog_manager_util.cc
@@ -129,6 +134,7 @@ set(MASTER_SRCS
   yql_views_vtable.cc
   yql_partitions_vtable.cc
   ysql_transaction_ddl.cc
+  ysql_tablegroup_manager.cc
   ysql_tablespace_manager.cc
   ${MASTER_SRCS_EXTENSIONS})
 
@@ -211,3 +217,22 @@ add_executable(yb-master master_main.cc)
 target_link_libraries(yb-master
   master
   ${YB_BASE_LIBS})
+
+# Generate master_flags.xml
+set(MASTER_FLAGS_METADATA_FILE ${YB_BUILD_ROOT}/master_flags.xml)
+add_custom_command(TARGET yb-master POST_BUILD
+  COMMAND "${BUILD_SUPPORT_DIR}/gen_flags_metadata_wrapper"
+    "--program_name" "yb-master"
+    "--output_file_path" "${MASTER_FLAGS_METADATA_FILE}"
+  BYPRODUCTS "${MASTER_FLAGS_METADATA_FILE}")
+
+# Generate auto_flags.json
+set(AUTO_FLAGS_FILE ${YB_BUILD_ROOT}/auto_flags.json)
+list(APPEND GEN_AUTO_FLAGS_COMMAND "${BUILD_SUPPORT_DIR}/gen_auto_flags"
+  "--program_list" "yb-master,yb-tserver"
+  "--output_file_path" "${AUTO_FLAGS_FILE}")
+add_custom_target(
+  gen_auto_flags_json ALL
+  COMMAND ${GEN_AUTO_FLAGS_COMMAND}
+  BYPRODUCTS "${AUTO_FLAGS_FILE}"
+  DEPENDS yb-master yb-tserver)

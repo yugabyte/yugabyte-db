@@ -2,32 +2,41 @@
 
 package com.yugabyte.yw.controllers;
 
+import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.tasks.DeleteCustomerConfig;
+import com.yugabyte.yw.commissioner.tasks.DeleteCustomerStorageConfig;
+import com.yugabyte.yw.common.CloudUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.ConfigHelper.ConfigType;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.customer.config.CustomerConfigUI;
 import com.yugabyte.yw.forms.PlatformResults;
-import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
-import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.forms.PlatformResults.YBPTask;
+import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.CustomerConfig;
-import com.yugabyte.yw.models.helpers.CommonUtils;
-import com.yugabyte.yw.models.helpers.CustomerConfigValidator;
-import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.CustomerTask;
-import com.yugabyte.yw.models.CustomerConfig.ConfigState;
-import com.yugabyte.yw.commissioner.tasks.DeleteCustomerConfig;
-import com.yugabyte.yw.commissioner.tasks.DeleteCustomerStorageConfig;
+import com.yugabyte.yw.models.configs.CustomerConfig;
+import com.yugabyte.yw.models.configs.CustomerConfig.ConfigState;
+import com.yugabyte.yw.models.configs.data.CustomerConfigData;
+import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data;
+import com.yugabyte.yw.models.helpers.CommonUtils;
+import com.yugabyte.yw.models.helpers.TaskType;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
+import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import javax.inject.Inject;
+import org.apache.commons.lang.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import play.libs.Json;
 import play.mvc.Result;
 
 @Api(
@@ -45,8 +54,6 @@ public class CustomerConfigController extends AuthenticatedController {
 
   @Inject Commissioner commissioner;
 
-  @Inject CustomerConfigValidator configValidator;
-
   @ApiOperation(
       value = "Create a customer configuration",
       response = CustomerConfig.class,
@@ -56,7 +63,7 @@ public class CustomerConfigController extends AuthenticatedController {
         name = "Config",
         value = "Configuration data to be created",
         required = true,
-        dataType = "Object",
+        dataType = "com.yugabyte.yw.models.configs.CustomerConfig",
         paramType = "body")
   })
   public Result create(UUID customerUUID) {
@@ -64,9 +71,14 @@ public class CustomerConfigController extends AuthenticatedController {
     customerConfig.setCustomerUUID(customerUUID);
 
     customerConfigService.create(customerConfig);
-
-    auditService().createAuditEntry(ctx(), request());
-    return PlatformResults.withData(customerConfig);
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.CustomerConfig,
+            Objects.toString(customerConfig.configUUID, null),
+            Audit.ActionType.Create,
+            request().body().asJson());
+    return PlatformResults.withData(this.customerConfigService.getConfigMasked(customerConfig));
   }
 
   @ApiOperation(
@@ -102,13 +114,20 @@ public class CustomerConfigController extends AuthenticatedController {
             CustomerTask.TargetType.CustomerConfiguration,
             CustomerTask.TaskType.Delete,
             customerConfig.configName);
-        auditService().createAuditEntry(ctx(), request());
+        auditService()
+            .createAuditEntryWithReqBody(
+                ctx(),
+                Audit.TargetType.CustomerConfig,
+                configUUID.toString(),
+                Audit.ActionType.Delete);
         return new YBPTask(taskUUID, configUUID).asResult();
       }
     }
     customerConfigService.delete(customerUUID, configUUID);
 
-    auditService().createAuditEntry(ctx(), request());
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(), Audit.TargetType.CustomerConfig, configUUID.toString(), Audit.ActionType.Delete);
     return YBPSuccess.withMessage("Config " + configUUID + " deleted");
   }
 
@@ -144,11 +163,18 @@ public class CustomerConfigController extends AuthenticatedController {
           CustomerTask.TargetType.CustomerConfiguration,
           CustomerTask.TaskType.Delete,
           customerConfig.configName);
-      auditService().createAuditEntry(ctx(), request());
+      auditService()
+          .createAuditEntryWithReqBody(
+              ctx(),
+              Audit.TargetType.CustomerConfig,
+              configUUID.toString(),
+              Audit.ActionType.Delete);
       return new YBPTask(taskUUID, configUUID).asResult();
     }
     customerConfigService.delete(customerUUID, configUUID);
-    auditService().createAuditEntry(ctx(), request());
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(), Audit.TargetType.CustomerConfig, configUUID.toString(), Audit.ActionType.Delete);
     return YBPSuccess.withMessage("Config " + configUUID + " is queued for deletion");
   }
 
@@ -164,13 +190,13 @@ public class CustomerConfigController extends AuthenticatedController {
   @ApiOperation(
       value = "Update a customer configuration",
       response = CustomerConfig.class,
-      nickname = "getCustomerConfig")
+      nickname = "editCustomerConfig")
   @ApiImplicitParams({
     @ApiImplicitParam(
         name = "Config",
         value = "Configuration data to be updated",
         required = true,
-        dataType = "Object",
+        dataType = "com.yugabyte.yw.models.configs.CustomerConfig",
         paramType = "body")
   })
   public Result edit(UUID customerUUID, UUID configUUID) {
@@ -183,20 +209,26 @@ public class CustomerConfigController extends AuthenticatedController {
 
     customerConfigService.edit(unmaskedConfig);
 
-    auditService().createAuditEntry(ctx(), request());
-    return PlatformResults.withData(unmaskedConfig);
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.CustomerConfig,
+            Objects.toString(customerConfig.configUUID, null),
+            Audit.ActionType.Update,
+            request().body().asJson());
+    return PlatformResults.withData(this.customerConfigService.getConfigMasked(unmaskedConfig));
   }
 
   @ApiOperation(
       value = "Update a customer configuration V2",
       response = CustomerConfig.class,
-      nickname = "getCustomerConfig")
+      nickname = "editCustomerConfig")
   @ApiImplicitParams({
     @ApiImplicitParam(
         name = "Config",
         value = "Configuration data to be updated",
         required = true,
-        dataType = "Object",
+        dataType = "com.yugabyte.yw.models.configs.CustomerConfig",
         paramType = "body")
   })
   public Result editYb(UUID customerUUID, UUID configUUID) {
@@ -213,7 +245,40 @@ public class CustomerConfigController extends AuthenticatedController {
     CustomerConfig unmaskedConfig = CommonUtils.unmaskObject(existingConfig, customerConfig);
     customerConfigService.edit(unmaskedConfig);
 
-    auditService().createAuditEntry(ctx(), request());
-    return PlatformResults.withData(unmaskedConfig);
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.CustomerConfig,
+            Objects.toString(customerConfig.configUUID, null),
+            Audit.ActionType.Update,
+            request().body().asJson());
+    return PlatformResults.withData(this.customerConfigService.getConfigMasked(unmaskedConfig));
+  }
+
+  @ApiOperation(
+      value = "List buckets with provided credentials",
+      response = Object.class,
+      nickname = "listBuckets")
+  @ApiImplicitParams({
+    @ApiImplicitParam(
+        name = "Credentials",
+        value = "Credentials to list buckets",
+        required = true,
+        dataType = "com.yugabyte.yw.models.configs.data.CustomerConfigData",
+        paramType = "body")
+  })
+  public Result listBuckets(UUID customerUUID, String cloud) {
+    Customer.getOrBadRequest(customerUUID);
+    CustomerConfigData configData = null;
+    try {
+      Class<? extends CustomerConfigData> configClass =
+          CustomerConfig.getDataClass(CustomerConfig.ConfigType.STORAGE, cloud);
+      configData = parseJson(configClass);
+    } catch (NullPointerException e) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, String.format("Unsupported cloud type %s", cloud));
+    }
+    CloudUtil cloudUtil = CloudUtil.getCloudUtil(cloud);
+    return PlatformResults.withData(cloudUtil.listBuckets(configData));
   }
 }
