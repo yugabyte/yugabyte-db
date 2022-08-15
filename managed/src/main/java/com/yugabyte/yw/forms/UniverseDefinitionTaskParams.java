@@ -15,9 +15,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Iterables;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
-import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
-import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
@@ -41,6 +39,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import javax.validation.constraints.Size;
 import lombok.ToString;
 import org.apache.commons.lang3.StringUtils;
 import play.data.validation.Constraints;
@@ -70,7 +69,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       ImmutableSet.of("i3.", "c5d.", "c6gd.");
 
   @Constraints.Required()
-  @Constraints.MinLength(1)
+  @Size(min = 1)
   public List<Cluster> clusters = new LinkedList<>();
 
   // This is set during configure to figure out which cluster type is intended to be modified.
