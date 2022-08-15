@@ -1,34 +1,35 @@
 ---
 title: Build a Scala application using Apache Spark and YugabyteDB
-headerTitle: Apache Spark
-linkTitle: Apache Spark
+linkTitle: YCQL
 description: Build a Scala application using Apache Spark and YugabyteDB
 aliases:
+  - /preview/integrations/apache-spark/scala/
 menu:
   preview:
-    identifier: apache-spark-1-scala
+    identifier: apache-spark-1-scala-ycql
     parent: integrations
     weight: 572
 type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li >
-    <a href="{{< relref "./scala.md" >}}" class="nav-link active">
-      <i class="icon-scala" aria-hidden="true"></i>
-      Scala
-    </a>
-  </li>
 
   <li >
-    <a href="{{< relref "./java.md" >}}" class="nav-link">
+    <a href="../java-ycql/" class="nav-link">
       <i class="icon-java-bold" aria-hidden="true"></i>
       Java
     </a>
   </li>
 
   <li >
-    <a href="{{< relref "./python.md" >}}" class="nav-link">
+    <a href="../scala-ycql/" class="nav-link active">
+      <i class="icon-scala" aria-hidden="true"></i>
+      Scala
+    </a>
+  </li>
+
+  <li >
+    <a href="../python-ycql/" class="nav-link">
       <i class="icon-python" aria-hidden="true"></i>
       Python
     </a>
@@ -36,28 +37,28 @@ type: docs
 
 </ul>
 
-## Before you begin
+The following tutorial describes how to build a Scala application using the YugabyteDB Spark Connector for YCQL.
 
-### sbt
 
-To build your Scala application using the YugabyteDB Spark Connector for YCQL, add the following sbt dependency to your application:
-
-```scala
-libraryDependencies += "com.yugabyte.spark" %% "spark-cassandra-connector" % "2.4-yb-3"
-```
-
-## Build a sample application
+## Prerequisites
 
 This tutorial assumes that you have:
 
-- installed YugabyteDB, created a universe, and are able to interact with it using the YCQL shell (`ycqlsh`). If not, please follow instructions in the [Quick start guide](../../../quick-start/explore/ycql/).
-
-- installed Scala version 2.12 or later and sbt 1.3.8 or later.
-
+- YugabyteDB running. If you are new to YugabyteDB, follow the steps in [Quick start](../../../quick-start/).
+- Scala version 2.12 or later.
+- sbt 1.3.8 or later.
 - installed the [`sbt-assembly`](https://github.com/sbt/sbt-assembly) plugin in your sbt project, as follows:
 
+    ```scala
+    addSbtPlugin("com.eed3si9n" % "sbt-assembly" % "0.14.10")
+    ```
+
+### sbt
+
+Add the following sbt dependency to your application:
+
 ```scala
-addSbtPlugin("com.eed3si9n" % "sbt-assembly" % "0.14.10")
+libraryDependencies += "com.yugabyte.spark" %% "spark-cassandra-connector" % "2.4-yb-3"
 ```
 
 ### Create the sbt build file
