@@ -193,7 +193,7 @@ This tutorial assumes that:
     }
     ```
 
-1. Run your new program.
+1. Run the program.
 
     ```sh
     $ mvn -q package exec:java -DskipTests -Dexec.mainClass=com.yugabyte.vertxPgExample
