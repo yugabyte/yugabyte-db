@@ -211,4 +211,4 @@ This tutorial assumes that:
     ```
 ## Limitation
 
-[PubSub](https://vertx.io/docs/vertx-pg-client/java/#_pubsub) feature of Vertx PG client is currently not supported with YugabyteDB.
+[Pub/sub](https://vertx.io/docs/vertx-pg-client/java/#_pubsub) feature of Vertx PG client is currently not supported with YugabyteDB.
