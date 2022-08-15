@@ -145,7 +145,7 @@ bool ShouldTestPromoteAllAutoFlags();
       "Target value of AutoFlag " BOOST_PP_STRINGIZE(name) \
       " '" BOOST_PP_STRINGIZE(target_val) "' is not assignable to " BOOST_PP_STRINGIZE(type)); \
   BOOST_PP_CAT(DEFINE_, type)(name, initial_val, txt); \
-  TAG_FLAG(name, automatic); \
+  TAG_FLAG(name, auto); \
   TAG_FLAG(name, stable) \
   namespace { \
   yb::auto_flags_internal::AutoFlagDescRegisterer BOOST_PP_CAT(afr_, name)(\
