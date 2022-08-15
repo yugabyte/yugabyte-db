@@ -241,6 +241,8 @@ _nls_run_strxfrm(text *string, text *locale)
 			if (!setlocale(LC_COLLATE, lc_collate_cache))
 				elog(FATAL, "failed to set back the default LC_COLLATE value [%s]", lc_collate_cache);
 		}
+
+		PG_RE_THROW();
 	}
 	PG_END_TRY ();
 

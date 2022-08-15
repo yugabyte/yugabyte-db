@@ -227,15 +227,13 @@ ora_lock_shmem(size_t size, int max_pipes, int max_events, int max_locks, bool r
 
 	sh_memory *sh_mem;
 
+	/* reset is always false, really */
+	Assert(!reset);
+
 	if (pipes == NULL)
 	{
+		LWLockAcquire(AddinShmemInitLock, LW_EXCLUSIVE);
 		sh_mem = ShmemInitStruct("dbms_pipe", size, &found);
-		if (sh_mem == NULL)
-			ereport(FATAL,
-					(errcode(ERRCODE_OUT_OF_MEMORY),
-					 errmsg("out of memory"),
-					 errdetail("Failed while allocation block %lu bytes in shared memory.", (unsigned long) size)));
-
 		if (!found)
 		{
 
@@ -270,8 +268,6 @@ ora_lock_shmem(size_t size, int max_pipes, int max_events, int max_locks, bool r
 
 #endif
 
-			LWLockAcquire(shmem_lockid, LW_EXCLUSIVE);
-
 			sh_mem->size = size - sh_memory_size;
 			ora_sinit(sh_mem->data, size, true);
 			pipes = sh_mem->pipes = ora_salloc(max_pipes*sizeof(orafce_pipe));
@@ -296,7 +292,7 @@ ora_lock_shmem(size_t size, int max_pipes, int max_events, int max_locks, bool r
 			}
 
 		}
-		else if (pipes == NULL)
+		else
 		{
 
 #if PG_VERSION_NUM >= 90600
@@ -326,20 +322,18 @@ ora_lock_shmem(size_t size, int max_pipes, int max_events, int max_locks, bool r
 #endif
 
 			pipes = sh_mem->pipes;
-			LWLockAcquire(shmem_lockid, LW_EXCLUSIVE);
-
-			ora_sinit(sh_mem->data, sh_mem->size, reset);
+			ora_sinit(sh_mem->data, sh_mem->size, false);
 			sid = ++(sh_mem->sid);
 			events = sh_mem->events;
 			locks = sh_mem->locks;
 		}
-	}
-	else
-	{
-		LWLockAcquire(shmem_lockid, LW_EXCLUSIVE);
+
+		LWLockRelease(AddinShmemInitLock);
 	}
 
-	return pipes != NULL;
+	Assert(pipes != NULL);
+	LWLockAcquire(shmem_lockid, LW_EXCLUSIVE);
+	return true;
 }
 
 
