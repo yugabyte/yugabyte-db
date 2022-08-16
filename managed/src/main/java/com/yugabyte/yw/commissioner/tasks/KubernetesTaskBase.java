@@ -257,6 +257,10 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     getRunnableTask().addSubTaskGroup(podsWait);
   }
 
+  /*
+  Performs the updates to the helm charts to modify the master addresses as well as
+  update the instance type.
+  */
   public void upgradePodsTask(
       KubernetesPlacement newPlacement,
       String masterAddresses,
