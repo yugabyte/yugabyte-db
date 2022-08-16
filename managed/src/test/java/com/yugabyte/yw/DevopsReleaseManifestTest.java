@@ -60,7 +60,7 @@ public class DevopsReleaseManifestTest {
           .build();
 
   private static final Set<String> PREFIXES_TO_SKIP =
-      ImmutableSet.of("build", "python_virtual_env", "tests", "third-party", "venv");
+      ImmutableSet.of("build", "python_virtual_env", "tests", "third-party", "venv", ".idea");
 
   private static final Set<String> FILE_EXTENSIONS_TO_SKIP =
       ImmutableSet.of("gitignore", "retry", "pyc", "orig");

@@ -10,19 +10,28 @@
 
 package com.yugabyte.yw.common;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.FORBIDDEN;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
+import static play.mvc.Http.Status.NOT_FOUND;
+
 import com.google.common.base.Throwables;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.typesafe.config.Config;
+import com.yugabyte.yw.forms.PlatformResults.ClientError;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import javax.inject.Provider;
+import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.Environment;
 import play.api.OptionalSourceMapper;
+import play.api.UsefulException;
 import play.api.routing.Router;
 import play.http.DefaultHttpErrorHandler;
+import play.libs.Json;
 import play.mvc.Http;
 import play.mvc.Http.RequestHeader;
 import play.mvc.Result;
@@ -53,13 +62,79 @@ public final class YWErrorHandler extends DefaultHttpErrorHandler {
   }
 
   @Override
-  public CompletionStage<Result> onClientError(
+  protected CompletionStage<Result> onProdServerError(
+      RequestHeader request, UsefulException exception) {
+    if (request.accepts("application/json")) {
+      return CompletableFuture.completedFuture(
+          new PlatformServiceException(
+                  INTERNAL_SERVER_ERROR,
+                  "HTTP Server Error. This exception has been logged with id " + exception)
+              .getResult());
+    }
+    return super.onProdServerError(request, exception);
+  }
+
+  @Override
+  protected CompletionStage<Result> onDevServerError(
+      RequestHeader request, UsefulException exception) {
+    if (request.accepts("application/json")) {
+      return CompletableFuture.completedFuture(
+          new PlatformServiceException(
+                  INTERNAL_SERVER_ERROR, "HTTP Server Error", Json.toJson(exception))
+              .getResult());
+    }
+    return super.onProdServerError(request, exception);
+  }
+
+  @NotNull
+  public CompletableFuture<Result> onJsonClientError(
+      RequestHeader request, int statusCode, String message) {
+    LOG.trace("Json formatting client error {}: {}", statusCode, message);
+    return CompletableFuture.completedFuture(
+        new PlatformServiceException(
+                statusCode,
+                "HTTP Client Error",
+                Json.toJson(new ClientError(request.method(), request.uri(), message)))
+            .getResult());
+  }
+
+  @Override
+  protected CompletionStage<Result> onBadRequest(RequestHeader request, String message) {
+    if (request.accepts("application/json")) {
+      // keep it same since we will have too many tests depending on this behaviour
+      return CompletableFuture.completedFuture(
+          new PlatformServiceException(BAD_REQUEST, message).getResult());
+    }
+    return super.onBadRequest(request, message);
+  }
+
+  @Override
+  protected CompletionStage<Result> onForbidden(RequestHeader request, String message) {
+    if (request.accepts("application/json")) {
+      return onJsonClientError(
+          request, FORBIDDEN, String.format("(%d)Forbidden, details: %s", FORBIDDEN, message));
+    }
+    return super.onForbidden(request, message);
+  }
+
+  @Override
+  protected CompletionStage<Result> onNotFound(RequestHeader request, String message) {
+    if (request.accepts("application/json")) {
+      return onJsonClientError(
+          request, NOT_FOUND, String.format("%d(Not Found), details: %s", NOT_FOUND, message));
+    }
+    return super.onNotFound(request, message);
+  }
+
+  @Override
+  protected CompletionStage<Result> onOtherClientError(
       RequestHeader request, int statusCode, String message) {
     if (request.accepts("application/json")) {
-      LOG.trace("Json formatting client error {}: {}", statusCode, message);
-      return CompletableFuture.completedFuture(
-          new PlatformServiceException(statusCode, message).getResult());
+      return onJsonClientError(
+          request,
+          statusCode,
+          String.format("Http Client Error Code: %d details: %s", statusCode, message));
     }
-    return super.onClientError(request, statusCode, message);
+    return super.onOtherClientError(request, statusCode, message);
   }
 }
