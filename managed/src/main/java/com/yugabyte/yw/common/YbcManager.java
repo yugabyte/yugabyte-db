@@ -60,7 +60,7 @@ public class YbcManager {
                   .getDataObject();
       String nfsDir = configData.backupLocation;
       for (String location : backupUtil.getBackupLocations(backup)) {
-        String cloudDir = BackupUtil.getBackupIdentifier(backup.universeUUID, location);
+        String cloudDir = BackupUtil.getBackupIdentifier(configData.backupLocation, location);
         BackupServiceNfsDirDeleteRequest nfsDirDelRequest =
             BackupServiceNfsDirDeleteRequest.newBuilder()
                 .setNfsDir(nfsDir)

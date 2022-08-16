@@ -106,6 +106,10 @@ public class BackupTableYbc extends YbcTaskBase {
       backup.setTotalBackupSize(totalSizeinBytes);
       backup.transitionState(Backup.BackupState.Completed);
     } catch (CancellationException ce) {
+      if (ce.getMessage().contains("task aborted")) {
+        ybcManager.deleteYbcBackupTask(taskParams().universeUUID, taskID);
+        Throwables.propagate(ce);
+      }
       ybcManager.abortBackupTask(taskParams().customerUuid, taskParams().backupUuid, taskID);
       // Backup stopped state will be updated in the main createBackup task
       Throwables.propagate(ce);
@@ -116,7 +120,7 @@ public class BackupTableYbc extends YbcTaskBase {
       Throwables.propagate(e);
     } finally {
       if (ybcClient != null) {
-        ybcClient.close();
+        ybcService.closeClient(ybcClient);
       }
     }
   }
