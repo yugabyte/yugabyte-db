@@ -168,6 +168,7 @@ class ListTableGrid extends Component {
             actionType="create-backup"
             disabled={actions_disabled || !disableManualBackup}
             btnClass={'btn-orange'}
+            universeUUID={currentUniverse.universeUUID}
           />
         ];
         if (getTableIcon(row.tableType) === 'YCQL') {
