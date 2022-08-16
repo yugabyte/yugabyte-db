@@ -4,9 +4,12 @@ package com.yugabyte.yw.forms;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.google.common.collect.Sets;
-import com.yugabyte.yw.models.helpers.NodeConfiguration;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.helpers.NodeConfig;
+import com.yugabyte.yw.models.helpers.NodeConfig.Type;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -56,7 +59,7 @@ public class NodeInstanceFormData {
     // TODO This is not mandatory for nodes added from the UI.
     // When it becomes mandatory, add validations in all cases.
     @ApiModelProperty(value = "Node configurations")
-    public Set<NodeConfiguration> nodeConfigurations;
+    public Set<NodeConfig> nodeConfigs;
 
     /**
      * Returns all the types which fail the configuration checks.
@@ -65,18 +68,17 @@ public class NodeInstanceFormData {
      * @return the set of failed types.
      */
     @JsonIgnore
-    public Set<NodeConfiguration.Type> getFailedNodeConfigurationTypes(
-        NodeConfiguration.TypeGroup typeGroup) {
-      if (nodeConfigurations == null) {
-        return typeGroup.getRequiredConfigTypes();
+    public Set<Type> getFailedNodeConfigTypes(Provider provider) {
+      if (nodeConfigs == null) {
+        return EnumSet.allOf(Type.class);
       }
-      Set<NodeConfiguration.Type> configuredTypes =
-          nodeConfigurations
+      Set<Type> configuredTypes =
+          nodeConfigs
               .stream()
-              .filter(NodeConfiguration::isConfigured)
+              .filter(n -> n.isConfigured(provider))
               .map(config -> config.type)
               .collect(Collectors.toSet());
-      return Sets.difference(typeGroup.getRequiredConfigTypes(), configuredTypes);
+      return Sets.difference(EnumSet.allOf(Type.class), configuredTypes);
     }
   }
 }

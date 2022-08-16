@@ -15,6 +15,9 @@ JWT=""
 API_TOKEN_HEADER="X-AUTH-YW-API-TOKEN"
 JWT_HEADER="X-AUTH-YW-API-JWT"
 INSTALLER_NAME="node-agent-installer.sh"
+SYSTEMD_DIR="/etc/systemd/system"
+SERVICE_NAME="yb-node-agent.service"
+SERVICE_RESTART_INTERVAL_SEC=2
 
 set -e
 
@@ -25,6 +28,7 @@ pushd () {
 popd () {
     command popd "$@" > /dev/null
 }
+
 
 node_agent_dir_setup(){
     echo "* Creating Node Agent Directory"
@@ -80,16 +84,19 @@ run_yb_node_agent_installer(){
     pushd $NODE_AGENT_RELEASE_DIR
     echo "* Downloading YB Node Agent build package"
     #Get OS version and Hardware info
-    ARCH=$(uname -p)
+    ARCH=$(uname -m)
 
     #Change x86_64 to amd64
-    if [ $ARCH="x86_64" ]; then
+    if [ "$ARCH" = "x86_64" ]; then
       ARCH="amd64"
+    elif [ "$ARCH" = "aarch64" ]; then
+      ARCH="arm64"
     fi
     OS=$(uname -s)
 
-    BUILD_TAR="node-agent.tgz"
+    echo "* Getting $OS/$ARCH package"
 
+    BUILD_TAR="node-agent.tgz"
     if [ $TYPE = "install" ]; then
       HEADER=$API_TOKEN_HEADER
       HEADER_VAL=$API_TOKEN
@@ -126,13 +133,43 @@ run_yb_node_agent_installer(){
     rm -rf $BUILD_TAR
 }
 
+install_systemd_service(){
+  echo "* Installing Node Agent Systemd Service"
+  sudo cat > $SYSTEMD_DIR/$SERVICE_NAME  <<-EOF
+  [Unit]
+  Description=YB Anywhere Node Agent
+  After=network-online.target
+
+  [Service]
+  User=$YUGABYTE_USER
+  WorkingDirectory=$ROOT_DIR
+  ExecStart=$NODE_AGENT_PKG_DIR/bin/node-agent server start
+  Restart=always
+  RestartSec=$SERVICE_RESTART_INTERVAL_SEC
+
+  [Install]
+  WantedBy=multi-user.target
+EOF
+  echo "* Starting the systemd service"
+  sudo systemctl daemon-reload
+  #To enable the node-agent service on reboot
+  sudo systemctl enable yb-node-agent
+  sudo systemctl start yb-node-agent
+  echo "* Started the systemd service"
+  echo "* Run 'systemctl status yb-node-agent' to check\
+ the status of the yb-node-agent"
+  echo "* Run 'sudo systemctl stop yb-node-agent' to stop\
+ the yb-node-agent service"
+}
+
 show_usage() {
   cat <<-EOT
 Usage: ${0##*/} [<options>]
 
 Options:
   -t, --type (REQUIRED)
-    Type of install to perform. Must be in ['install', 'upgrade'].
+    Type of install to perform. Must be in ['install', 'upgrade',\
+  'install-service' (Requires sudo access)].
   -u, --url (REQUIRED)
     Platform URL
   -at, --api_token (REQUIRED with install type)
@@ -156,9 +193,9 @@ fi
 while [[ $# -gt 0 ]]; do
   case $1 in
     -t|--type)
-      options="install upgrade"
+      options="install upgrade install-service"
       if [[ ! $options =~ (^|[[:space:]])"$2"($|[[:space:]]) ]]; then
-        err_msg "Invalid option: $2. Must be one of ['install', 'upgrade'].\n"
+        err_msg "Invalid option: $2. Must be one of ['install', 'upgrade', 'install-service'].\n"
         show_usage >&2
         exit 1
       fi
@@ -192,13 +229,24 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 
+if [ -z "$TYPE" ]; then
+  show_usage >&2
+  exit 1
+fi
+
+if [ "$TYPE" = "install-service" ]; then
+  install_systemd_service
+  exit $?
+fi
+
+
 #Trim leading and trailing whitespaces
 PLATFORM_URL=$(echo $PLATFORM_URL | xargs)
 API_TOKEN=$(echo $API_TOKEN | xargs)
 JWT=$(echo $JWT | xargs)
 
 #Return error if type is not passed
-if [ -z "$TYPE" ] || [ -z "$PLATFORM_URL" ]; then
+if [ -z "$PLATFORM_URL" ]; then
   show_usage >&2
   exit 1
 fi
@@ -220,4 +268,7 @@ else
   run_yb_node_agent_installer
   #Call the yb_node_agent.sh script to complete the registration/upgrade flow.
   source $NODE_AGENT_RELEASE_DIR/$VERSION/bin/$NODE_AGENT_RUNNER_FILE $TYPE $VERSION $PLATFORM_URL $API_TOKEN
+  echo "You can install a systemd service on linux machines \
+  by running node-agent-installer.sh -t install-service \
+  (Requires sudo access)"
 fi

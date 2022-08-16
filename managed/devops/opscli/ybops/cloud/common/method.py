@@ -581,7 +581,7 @@ class CreateInstancesMethod(AbstractInstancesMethod):
             host_info = self.cloud.get_host_info(args)
             self.extra_vars.update(
                 get_ssh_host_port(host_info, args.custom_ssh_port, default_port=True))
-            ssh_port_updated = self.update_open_ssh_port(args,)
+            ssh_port_updated = self.update_open_ssh_port(args)
             use_default_port = not ssh_port_updated
             logging.info(
                 'Waiting for the startup script to finish on {}'.format(args.search_pattern))

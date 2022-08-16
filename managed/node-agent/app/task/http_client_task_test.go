@@ -52,25 +52,17 @@ func TestHandleAgentRegistrationFailure(t *testing.T) {
 	cuid := config.GetString(util.CustomerId)
 	config.Update(util.CustomerId, "dummy")
 	defer config.Update(util.CustomerId, cuid)
-	t.Logf("cuuid: %s", config.GetString(util.CustomerId))
 	testRegistrationHandler := HandleAgentRegistration(dummyApiToken)
 	ctx := context.Background()
-	result, err := testRegistrationHandler(ctx)
+	_, err = testRegistrationHandler(ctx)
 
 	if err == nil {
 		t.Errorf("Expected error")
 		return
 	}
 
-	//Test Success Response.
-	data, ok := result.(*model.ResponseError)
-	if !ok {
-		t.Errorf("Error while inferencing data to Register response success")
-		return
-	}
-
-	if data.SuccessStatus != false {
-		t.Errorf("Error in the response data.")
+	if err.Error() != "Bad Request" {
+		t.Errorf("Expected a different error")
 	}
 }
 
@@ -107,7 +99,7 @@ func TestUnmarshalResponse(t *testing.T) {
 		StatusCode: 200,
 	}
 	var testValue map[string]string
-	data, err := UnmarshalResponse(&testValue, nil, &res)
+	data, err := UnmarshalResponse(&testValue, &res)
 	if err != nil {
 		t.Errorf("Unmarshaling error.")
 		return
