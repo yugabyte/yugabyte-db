@@ -801,8 +801,8 @@ DefineIndex(Oid relationId,
 		ereport(ERROR,
 				(errmsg("index method \"%s\" not supported yet",
 						accessMethodName),
-				 errhint("See https://github.com/YugaByte/yugabyte-db/issues/1337. "
-						 "Click '+' on the description to raise its priority")));
+				 errhint("See https://github.com/yugabyte/yugabyte-db/issues/1337. "
+						 "React with thumbs up to raise its priority")));
 	if (!IsYBRelation(rel) && (accessMethodId == LSM_AM_OID ||
 							   accessMethodId == YBGIN_AM_OID))
 		ereport(ERROR,
