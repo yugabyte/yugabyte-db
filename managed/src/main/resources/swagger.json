@@ -7022,6 +7022,10 @@
           "format" : "double",
           "type" : "number"
         },
+        "pricingKnown" : {
+          "description" : "Known pricing info",
+          "type" : "boolean"
+        },
         "volumeCount" : {
           "description" : "Volume count",
           "format" : "int32",
