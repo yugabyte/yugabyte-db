@@ -30,34 +30,34 @@ RESET SESSION AUTHORIZATION;
 CREATE TABLE no_pk_tbl(k INT);
 ALTER TABLE no_pk_tbl ADD COLUMN s1 TIMESTAMP DEFAULT clock_timestamp();
 ERROR:  Rewriting of YB table is not yet implemented
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/13278. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/13278. React with thumbs up to raise its priority
 ALTER TABLE no_pk_tbl ADD COLUMN v1 SERIAL;
 ERROR:  Rewriting of YB table is not yet implemented
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/13278. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/13278. React with thumbs up to raise its priority
 --- Non-empty case
 INSERT INTO no_pk_tbl VALUES(1), (2), (3);
 ALTER TABLE no_pk_tbl ADD COLUMN s2 TIMESTAMP DEFAULT clock_timestamp();
 ERROR:  Rewriting of YB table is not yet implemented
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/13278. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/13278. React with thumbs up to raise its priority
 ALTER TABLE no_pk_tbl ADD COLUMN v2 SERIAL;
 ERROR:  Rewriting of YB table is not yet implemented
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/13278. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/13278. React with thumbs up to raise its priority
 DROP TABLE no_pk_tbl;
 --- Table with primary key index
 --- Empty table case
 CREATE TABLE pk_tbl(k INT PRIMARY KEY);
 ALTER TABLE pk_tbl ADD COLUMN s1 TIMESTAMP DEFAULT clock_timestamp();
 ERROR:  Rewriting of YB table is not yet implemented
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/13278. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/13278. React with thumbs up to raise its priority
 ALTER TABLE pk_tbl ADD COLUMN v1 SERIAL;
 ERROR:  Rewriting of YB table is not yet implemented
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/13278. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/13278. React with thumbs up to raise its priority
 --- Non-empty case
 INSERT INTO pk_tbl VALUES(1), (2), (3);
 ALTER TABLE pk_tbl ADD COLUMN s2 TIMESTAMP DEFAULT clock_timestamp();
 ERROR:  Rewriting of YB table is not yet implemented
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/13278. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/13278. React with thumbs up to raise its priority
 ALTER TABLE pk_tbl ADD COLUMN v2 SERIAL;
 ERROR:  Rewriting of YB table is not yet implemented
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/13278. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/13278. React with thumbs up to raise its priority
 DROP TABLE pk_tbl;

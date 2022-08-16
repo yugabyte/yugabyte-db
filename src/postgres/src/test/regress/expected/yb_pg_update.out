@@ -236,7 +236,7 @@ CREATE TRIGGER trans_updatetrig
 ERROR:  REFERENCING clause (transition tables) not supported yet
 LINE 2:   AFTER UPDATE ON range_parted REFERENCING OLD TABLE AS old_...
                                        ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1668. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1668. React with thumbs up to raise its priority
 /*
 UPDATE range_parted set c = (case when c = 96 then 110 else c + 1 end ) WHERE a = 'b' and b > 10 and c >= 96;
 :show_data;

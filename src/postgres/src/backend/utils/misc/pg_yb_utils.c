@@ -914,8 +914,8 @@ YBRaiseNotSupportedSignal(const char *msg, int issue_no, int signal_level)
 		ereport(signal_level,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("%s", msg),
-				 errhint("See https://github.com/YugaByte/yugabyte-db/issues/%d. "
-						 "Click '+' on the description to raise its priority", issue_no)));
+				 errhint("See https://github.com/yugabyte/yugabyte-db/issues/%d. "
+						 "React with thumbs up to raise its priority", issue_no)));
 	}
 	else
 	{
