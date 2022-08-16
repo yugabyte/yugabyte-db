@@ -260,7 +260,7 @@ Physical nodes (or cloud instances) are installed with a standard Centos 7 serve
 
 1. Copy the SSH public key to each DB node.
 This public key should correspond to the private key entered into the YugabyteDB Anywhere provider.
-    
+   
 1. Run the following commands as the `yugabyte` user, after copying the SSH public key file to the user home directory:
 
     ```sh
@@ -299,11 +299,11 @@ This public key should correspond to the private key entered into the YugabyteDB
 
     ```sh
     sudo yum install openssl
-sudo yum install rsync
+    sudo yum install rsync
     sudo yum install xxhash
     ```
     
-    
+
 For airgapped environments, make sure your Yum repository mirror contains these packages.
     
 1. If running on a virtual machine, execute the following to tune kernel settings:
