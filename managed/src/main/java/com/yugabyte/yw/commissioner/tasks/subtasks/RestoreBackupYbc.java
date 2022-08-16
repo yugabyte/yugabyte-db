@@ -2,6 +2,8 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
+import java.util.concurrent.CancellationException;
+
 import com.google.api.client.util.Throwables;
 import com.yugabyte.yw.commissioner.YbcTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
@@ -87,16 +89,21 @@ public class RestoreBackupYbc extends YbcTaskBase {
       try {
         pollTaskProgress(ybcClient, taskId);
         handleBackupResult(taskId);
+      } catch (CancellationException ce) {
+        ybcManager.deleteYbcBackupTask(taskParams().universeUUID, taskId);
+        Throwables.propagate(ce);
       } catch (PlatformServiceException e) {
         log.error(String.format("Failed with error %s", e.getMessage()));
-        ybcService.closeClient(ybcClient);
         Throwables.propagate(e);
       }
 
     } catch (Exception e) {
       log.error(String.format("Failed with error %s", e.getMessage()));
-      ybcService.closeClient(ybcClient);
       Throwables.propagate(e);
+    } finally {
+      if (ybcClient != null) {
+        ybcService.closeClient(ybcClient);
+      }
     }
   }
 
