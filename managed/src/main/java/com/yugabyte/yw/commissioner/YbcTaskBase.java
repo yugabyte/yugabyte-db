@@ -7,6 +7,8 @@ import com.yugabyte.yw.common.YbcBackupUtil;
 import com.yugabyte.yw.common.services.YbcClientService;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import java.time.Duration;
+import java.util.concurrent.CancellationException;
+
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.client.YbcClient;
@@ -62,6 +64,9 @@ public abstract class YbcTaskBase extends AbstractTaskBase {
         case NOT_FOUND:
           log.info(String.format("%s task complete.", baseLogMessage));
           return;
+        case ABORT:
+          log.info(String.format("%s task aborted on YB-Controller.", baseLogMessage));
+          throw new CancellationException("Yb-Controller task aborted.");
         default:
           if (!retriesExhausted
               && backupServiceTaskProgressResponse.getRetryCount() <= MAX_TASK_RETRIES) {

@@ -174,14 +174,17 @@ public class YbcBackupUtil {
       Map<String, BucketLocation> regionMap, BackupTableParams tableParams) {
     CustomerConfig config =
         configService.getOrBadRequest(tableParams.customerUuid, tableParams.storageConfigUUID);
+    CustomerConfigStorageData configData = (CustomerConfigStorageData) config.getDataObject();
     Map<String, String> regionLocationMap =
-        StorageUtil.getStorageUtil(config.name).getRegionLocationsMap(config.getDataObject());
+        StorageUtil.getStorageUtil(config.name).getRegionLocationsMap(configData);
     List<BackupUtil.RegionLocations> regionLocations = new ArrayList<>();
     regionMap.forEach(
         (r, bL) -> {
           BackupUtil.RegionLocations rL = new BackupUtil.RegionLocations();
           rL.REGION = r;
-          rL.LOCATION = BackupUtil.getExactRegionLocation(tableParams, regionLocationMap.get(r));
+          rL.LOCATION =
+              BackupUtil.getExactRegionLocation(
+                  tableParams.storageLocation, configData.backupLocation, regionLocationMap.get(r));
           regionLocations.add(rL);
         });
     return regionLocations;
@@ -227,7 +230,8 @@ public class YbcBackupUtil {
     NamespaceType namespaceType = getNamespaceType(backupTableParams.backupType);
     String specificCloudDir =
         BackupUtil.getBackupIdentifier(
-            backupTableParams.universeUUID, backupTableParams.storageLocation);
+            ((CustomerConfigStorageData) config.getDataObject()).backupLocation,
+            backupTableParams.storageLocation);
     CloudStoreConfig cloudStoreConfig = createCloudStoreConfig(config, specificCloudDir, false);
     BackupServiceTaskExtendedArgs extendedArgs = getExtendedArgsForBackup(backupTableParams);
 
@@ -258,10 +262,10 @@ public class YbcBackupUtil {
     CustomerConfig config =
         configService.getOrBadRequest(
             restoreBackupParams.customerUUID, restoreBackupParams.storageConfigUUID);
-
+    CustomerConfigStorageData configData = (CustomerConfigStorageData) config.getDataObject();
     String specificCloudDir =
         BackupUtil.getBackupIdentifier(
-            restoreBackupParams.universeUUID, backupStorageInfo.storageLocation);
+            configData.backupLocation, backupStorageInfo.storageLocation);
 
     // Redundant for now.
     boolean setCompression = false;
