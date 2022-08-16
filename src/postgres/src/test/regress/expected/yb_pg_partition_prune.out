@@ -149,7 +149,7 @@ create table coll_pruning (a text collate "C") partition by list (a);
 ERROR:  COLLATE not supported yet
 LINE 1: create table coll_pruning (a text collate "C") partition by ...
                                           ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1127. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1127. React with thumbs up to raise its priority
 -- Support following cases after collation is supported.
 /*
 create table coll_pruning_a partition of coll_pruning for values in ('a');
@@ -2064,7 +2064,7 @@ explain (analyze, costs off, summary off, timing off)
 -- TODO(jason): fix output when closing issue #5310
 update ab_a1 set b = 3 from ab where ab.a = 1 and ab.a = ab_a1.a;
 ERROR:  This operation would cause a row to change the partition, this is not yet supported
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/5310. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/5310. React with thumbs up to raise its priority
 table ab;
  a | b
 ---+---
@@ -2739,7 +2739,7 @@ create table inh_lp1 (a int, value int, check(a = 1)) inherits (inh_lp);
 ERROR:  INHERITS not supported yet
 LINE 1: ...te table inh_lp1 (a int, value int, check(a = 1)) inherits (...
                                                              ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1129. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1129. React with thumbs up to raise its priority
 /*
 create table inh_lp2 (a int, value int, check(a = 2)) inherits (inh_lp);
 

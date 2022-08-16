@@ -596,7 +596,7 @@ ALTER TYPE bogus RENAME TO bogon;
 ERROR:  ALTER TYPE not supported yet
 LINE 1: ALTER TYPE bogus RENAME TO bogon;
         ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1893. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1893. React with thumbs up to raise its priority
 ALTER TYPE bogon ADD VALUE 'bad';
 ERROR:  current transaction is aborted, commands ignored until end of transaction block
 ROLLBACK;

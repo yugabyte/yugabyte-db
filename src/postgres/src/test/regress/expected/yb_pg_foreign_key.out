@@ -874,7 +874,7 @@ create table pktable (ptest1 int, primary key(base1), unique(base1, ptest1)) inh
 ERROR:  INHERITS not supported yet
 LINE 1: ...1 int, primary key(base1), unique(base1, ptest1)) inherits (...
                                                              ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1129. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1129. React with thumbs up to raise its priority
 /*
 create table fktable (ftest1 int references pktable(base1));
 -- now some ins, upd, del
@@ -1158,7 +1158,7 @@ SAVEPOINT savept1;
 ERROR:  SAVEPOINT <transaction> not supported yet
 LINE 1: SAVEPOINT savept1;
         ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1125. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1125. React with thumbs up to raise its priority
 -- don't change FK
 UPDATE fktable SET id = id + 1;
 ERROR:  current transaction is aborted, commands ignored until end of transaction block
@@ -1170,7 +1170,7 @@ SAVEPOINT savept1;
 ERROR:  SAVEPOINT <transaction> not supported yet
 LINE 1: SAVEPOINT savept1;
         ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1125. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1125. React with thumbs up to raise its priority
 -- doesn't match PK, but no error yet
 INSERT INTO fktable VALUES (0, 20);
 ERROR:  current transaction is aborted, commands ignored until end of transaction block
@@ -1178,7 +1178,7 @@ RELEASE SAVEPOINT savept1;
 ERROR:  RELEASE SAVEPOINT <transaction> not supported yet
 LINE 1: RELEASE SAVEPOINT savept1;
         ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1125. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1125. React with thumbs up to raise its priority
 -- don't change FK
 UPDATE fktable SET id = id + 1;
 ERROR:  current transaction is aborted, commands ignored until end of transaction block
@@ -1192,7 +1192,7 @@ SAVEPOINT savept1;
 ERROR:  SAVEPOINT <transaction> not supported yet
 LINE 1: SAVEPOINT savept1;
         ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1125. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1125. React with thumbs up to raise its priority
 -- don't change FK
 UPDATE fktable SET id = id + 1;
 ERROR:  current transaction is aborted, commands ignored until end of transaction block
@@ -1201,7 +1201,7 @@ ROLLBACK TO savept1;
 ERROR:  ROLLBACK <transaction> not supported yet
 LINE 1: ROLLBACK TO savept1;
         ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1125. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1125. React with thumbs up to raise its priority
 -- should catch error from initial INSERT
 COMMIT;
 --
@@ -1212,7 +1212,7 @@ ALTER TABLE fktable ALTER CONSTRAINT fktable_fk_fkey DEFERRABLE INITIALLY IMMEDI
 ERROR:  ALTER TABLE ALTER CONSTRAINT not supported yet
 LINE 1: ALTER TABLE fktable ALTER CONSTRAINT fktable_fk_fkey DEFERRA...
                             ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
 BEGIN;
 -- doesn't match FK, should throw error now
 UPDATE pktable SET id = 10 WHERE id = 5;
@@ -1230,7 +1230,7 @@ ALTER TABLE fktable ALTER CONSTRAINT fktable_fk_fkey NOT DEFERRABLE;
 ERROR:  ALTER TABLE ALTER CONSTRAINT not supported yet
 LINE 1: ALTER TABLE fktable ALTER CONSTRAINT fktable_fk_fkey NOT DEF...
                             ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
 -- illegal option
 ALTER TABLE fktable ALTER CONSTRAINT fktable_fk_fkey NOT DEFERRABLE INITIALLY DEFERRED;
 ERROR:  constraint declared INITIALLY DEFERRED must be DEFERRABLE
@@ -1440,14 +1440,14 @@ savepoint x;
 ERROR:  SAVEPOINT <transaction> not supported yet
 LINE 1: savepoint x;
         ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1125. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1125. React with thumbs up to raise its priority
 delete from fktable2;
 ERROR:  current transaction is aborted, commands ignored until end of transaction block
 rollback to x;
 ERROR:  ROLLBACK <transaction> not supported yet
 LINE 1: rollback to x;
         ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1125. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1125. React with thumbs up to raise its priority
 commit;
 begin;
 insert into fktable2 values(2);
@@ -1455,14 +1455,14 @@ savepoint x;
 ERROR:  SAVEPOINT <transaction> not supported yet
 LINE 1: savepoint x;
         ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1125. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1125. React with thumbs up to raise its priority
 delete from fktable2;
 ERROR:  current transaction is aborted, commands ignored until end of transaction block
 rollback to x;
 ERROR:  ROLLBACK <transaction> not supported yet
 LINE 1: rollback to x;
         ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1125. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1125. React with thumbs up to raise its priority
 commit; -- fail
 --
 -- Test that we prevent dropping FK constraint with pending trigger events
@@ -1632,7 +1632,7 @@ SELECT tableoid::regclass, a, b FROM fk_partitioned_fk WHERE b IS NULL ORDER BY 
 --           should be reworked. (#5310)
 UPDATE fk_notpartitioned_pk SET a = a + 1 WHERE a = 2502;
 ERROR:  This operation would cause a row to change the partition, this is not yet supported
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/5310. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/5310. React with thumbs up to raise its priority
 CONTEXT:  SQL statement "UPDATE "public"."fk_partitioned_fk" SET "a" = NULL, "b" = NULL WHERE $1 OPERATOR(pg_catalog.=) "a" AND $2 OPERATOR(pg_catalog.=) "b""
 DELETE FROM fk_partitioned_fk WHERE a = 2502;
 INSERT INTO fk_partitioned_fk (a,b) VALUES (NULL, NULL);
