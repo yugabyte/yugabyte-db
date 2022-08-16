@@ -75,7 +75,7 @@ type NodeDetails struct {
 	InstanceType string       `json:"instanceType"`
 	InstanceName string       `json:"instanceName"`
 	NodeName     string       `json:"nodeName"`
-	NodeConfigs  []NodeConfig `json:"nodeConfigurations"`
+	NodeConfigs  []NodeConfig `json:"nodeConfigs"`
 }
 
 type NodeConfig struct {

@@ -6,7 +6,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io/ioutil"
 	"net/http"
 	"node-agent/model"
@@ -15,7 +14,7 @@ import (
 )
 
 const (
-	mountPoint    = "mount_point"
+	mountPoints   = "mount_points"
 	portAvailable = "ports"
 )
 
@@ -46,7 +45,7 @@ func HandleAgentRegistration(apiToken string) func(ctx context.Context) (any, er
 		if err != nil {
 			return nil, err
 		}
-		return UnmarshalResponse(&model.RegisterResponseSuccess{}, &model.ResponseError{}, res)
+		return UnmarshalResponse(&model.RegisterResponseSuccess{}, res)
 	}
 }
 
@@ -77,7 +76,7 @@ func HandleAgentUnregister(useJWT bool, apiToken string) func(ctx context.Contex
 		if err != nil {
 			return nil, err
 		}
-		return UnmarshalResponse(&model.RegisterResponseEmpty{}, &model.ResponseError{}, res)
+		return UnmarshalResponse(&model.RegisterResponseEmpty{}, res)
 	}
 }
 
@@ -101,7 +100,7 @@ func HandleGetPlatformConfig() func(ctx context.Context) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		return UnmarshalResponse(&model.NodeInstanceType{}, &model.ResponseError{}, res)
+		return UnmarshalResponse(&model.NodeInstanceType{}, res)
 	}
 }
 
@@ -127,7 +126,7 @@ func HandleSendNodeCapability(
 			return nil, err
 		}
 		var result map[string]model.NodeCapabilityResponse
-		return UnmarshalResponse(&result, &model.ResponseError{}, res)
+		return UnmarshalResponse(&result, res)
 	}
 }
 
@@ -138,7 +137,7 @@ func HandleGetCustomers(apiToken string) func(ctx context.Context) (any, error) 
 		if err != nil {
 			return nil, err
 		}
-		return UnmarshalResponse(&[]model.Customer{}, &model.ResponseError{}, res)
+		return UnmarshalResponse(&[]model.Customer{}, res)
 	}
 }
 
@@ -155,7 +154,7 @@ func HandleGetProviders(apiToken string) func(ctx context.Context) (any, error) 
 		if err != nil {
 			return nil, err
 		}
-		return UnmarshalResponse(&[]model.Provider{}, &model.ResponseError{}, res)
+		return UnmarshalResponse(&[]model.Provider{}, res)
 	}
 }
 
@@ -172,7 +171,7 @@ func HandleGetUsers(apiToken string) func(ctx context.Context) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		return UnmarshalResponse(&[]model.User{}, &model.ResponseError{}, res)
+		return UnmarshalResponse(&[]model.User{}, res)
 	}
 }
 
@@ -192,7 +191,7 @@ func HandleGetInstanceTypes(apiToken string) func(ctx context.Context) (any, err
 		if err != nil {
 			return nil, err
 		}
-		return UnmarshalResponse(&[]model.NodeInstanceType{}, &model.ResponseError{}, res)
+		return UnmarshalResponse(&[]model.NodeInstanceType{}, res)
 	}
 }
 
@@ -212,7 +211,7 @@ func HandleGetAgentState() func(ctx context.Context) (any, error) {
 			return nil, err
 		}
 		var state string
-		return UnmarshalResponse(&state, &model.ResponseError{}, res)
+		return UnmarshalResponse(&state, res)
 	}
 }
 
@@ -238,7 +237,7 @@ func HandlePutAgentState(
 		if err != nil {
 			return nil, err
 		}
-		return UnmarshalResponse(&model.NodeAgent{}, &model.ResponseError{}, res)
+		return UnmarshalResponse(&model.NodeAgent{}, res)
 	}
 }
 
@@ -261,7 +260,7 @@ func HandlePutAgent() func(ctx context.Context) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		return UnmarshalResponse(&model.NodeAgent{}, &model.ResponseError{}, res)
+		return UnmarshalResponse(&model.NodeAgent{}, res)
 	}
 }
 
@@ -271,14 +270,15 @@ func HandleGetVersion() func(ctx context.Context) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		return UnmarshalResponse(&model.VersionRequest{}, &model.ResponseError{}, res)
+		return UnmarshalResponse(&model.VersionRequest{}, res)
 	}
 }
 
 //Unmarshals the response body to the provided target.
-//Takes Expected Success and Fail targets.
-//Returns pointer to the target.
-func UnmarshalResponse(successTarget any, failTarget error, res *http.Response) (any, error) {
+//Tries to unmarshal the response into model.ResponseError if
+//the response status code is not 200.
+//If the unmarshaling fails, converts the response body to string.
+func UnmarshalResponse(successTarget any, res *http.Response) (any, error) {
 	body, err := ioutil.ReadAll(res.Body)
 	res.Body.Close()
 	if err != nil {
@@ -292,14 +292,15 @@ func UnmarshalResponse(successTarget any, failTarget error, res *http.Response) 
 			string(body),
 			res.StatusCode,
 		)
-		err = json.Unmarshal(body, failTarget)
+		var failTarget model.ResponseError
+		err = json.Unmarshal(body, &failTarget)
 		if err == nil {
-			return failTarget, errors.New(res.Status)
+			return nil, errors.New(failTarget.Error())
 		}
 
 		//Unmarshal the error response into a string
 		errStr := string(body)
-		return &errStr, fmt.Errorf("%s %s", res.Status, failTarget.Error())
+		return nil, errors.New(errStr)
 	}
 	err = json.Unmarshal(body, successTarget)
 	if err != nil {
@@ -385,17 +386,22 @@ func getNodeConfig(data map[string]model.PreflightCheckVal) []model.NodeConfig {
 	result := make([]model.NodeConfig, 0)
 	for k, v := range data {
 		if v.Error == "none" {
-			k_split := strings.Split(k, ":")
-			if len(k_split) == 0 {
-				result = append(result, model.NodeConfig{Type: strings.ToUpper(k), Value: v.Value})
-			} else {
-				switch k_split[0] {
-				case mountPoint:
-					mountPointsMap[k_split[1]] = v.Value
-				case portAvailable:
-					portsMap[k_split[1]] = v.Value
-				default:
-					result = append(result, model.NodeConfig{Type: strings.ToUpper(k_split[0]), Value: v.Value})
+			kSplit := strings.Split(k, ":")
+			switch kSplit[0] {
+			case mountPoints:
+				mountPointsMap[kSplit[1]] = v.Value
+			case portAvailable:
+				portsMap[kSplit[1]] = v.Value
+			default:
+				//Try Getting Python Version.
+				vSplit := strings.Split(v.Value, " ")
+				if len(vSplit) > 0 && strings.EqualFold(vSplit[0], "Python") {
+					result = append(
+						result,
+						model.NodeConfig{Type: strings.ToUpper(kSplit[0]), Value: vSplit[1]},
+					)
+				} else {
+					result = append(result, model.NodeConfig{Type: strings.ToUpper(kSplit[0]), Value: v.Value})
 				}
 			}
 		}
@@ -409,7 +415,7 @@ func getNodeConfig(data map[string]model.PreflightCheckVal) []model.NodeConfig {
 		}
 		result = append(
 			result,
-			model.NodeConfig{Type: strings.ToUpper(mountPoint), Value: string(mountPointsJson)},
+			model.NodeConfig{Type: strings.ToUpper(mountPoints), Value: string(mountPointsJson)},
 		)
 	}
 
