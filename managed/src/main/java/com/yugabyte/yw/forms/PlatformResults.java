@@ -48,6 +48,14 @@ public class PlatformResults {
     return Results.ok(dataObj);
   }
 
+  @lombok.AllArgsConstructor
+  @lombok.NoArgsConstructor
+  public static class ClientError {
+    public String method;
+    public String uri;
+    public String message;
+  }
+
   @ApiModel(description = "Generic error response from the YugabyteDB Anywhere API")
   public static class YBPError {
     @ApiModelProperty(value = "Always set to false to indicate failure", example = "false")
