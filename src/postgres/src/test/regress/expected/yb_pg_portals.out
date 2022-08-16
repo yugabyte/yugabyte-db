@@ -553,7 +553,7 @@ FETCH -3 FROM foo25;
 ERROR:  FETCH - not supported yet
 LINE 1: FETCH -3 FROM foo25;
               ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/6514. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/6514. React with thumbs up to raise its priority
 SELECT name, statement, is_holdable, is_binary, is_scrollable FROM pg_cursors;
  name  |                                    statement                                    | is_holdable | is_binary | is_scrollable
 -------+---------------------------------------------------------------------------------+-------------+-----------+---------------
@@ -752,7 +752,7 @@ DELETE FROM uctest WHERE CURRENT OF c1;
 ERROR:  WHERE CURRENT OF not supported yet
 LINE 1: DELETE FROM uctest WHERE CURRENT OF c1;
                            ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/737. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/737. React with thumbs up to raise its priority
 -- should show deletion
 SELECT * FROM uctest;
 ERROR:  current transaction is aborted, commands ignored until end of transaction block
@@ -764,7 +764,7 @@ MOVE BACKWARD ALL IN c1;
 ERROR:  FETCH BACKWARD not supported yet
 LINE 1: MOVE BACKWARD ALL IN c1;
              ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/6514. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/6514. React with thumbs up to raise its priority
 FETCH ALL FROM c1;
 ERROR:  current transaction is aborted, commands ignored until end of transaction block
 COMMIT;
@@ -792,7 +792,7 @@ UPDATE uctest SET f1 = 8 WHERE CURRENT OF c1;
 ERROR:  WHERE CURRENT OF not supported yet
 LINE 1: UPDATE uctest SET f1 = 8 WHERE CURRENT OF c1;
                                  ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/737. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/737. React with thumbs up to raise its priority
 SELECT * FROM uctest;
 ERROR:  current transaction is aborted, commands ignored until end of transaction block
 COMMIT;
@@ -817,14 +817,14 @@ UPDATE uctest SET f1 = f1 + 10 WHERE CURRENT OF c1;
 ERROR:  WHERE CURRENT OF not supported yet
 LINE 1: UPDATE uctest SET f1 = f1 + 10 WHERE CURRENT OF c1;
                                        ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/737. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/737. React with thumbs up to raise its priority
 SELECT * FROM uctest;
 ERROR:  current transaction is aborted, commands ignored until end of transaction block
 UPDATE uctest SET f1 = f1 + 10 WHERE CURRENT OF c1;
 ERROR:  WHERE CURRENT OF not supported yet
 LINE 1: UPDATE uctest SET f1 = f1 + 10 WHERE CURRENT OF c1;
                                        ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/737. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/737. React with thumbs up to raise its priority
 SELECT * FROM uctest;
 ERROR:  current transaction is aborted, commands ignored until end of transaction block
 -- insensitive cursor should not show effects of updates or deletes
@@ -833,21 +833,21 @@ DELETE FROM uctest WHERE CURRENT OF c1;
 ERROR:  WHERE CURRENT OF not supported yet
 LINE 1: DELETE FROM uctest WHERE CURRENT OF c1;
                            ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/737. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/737. React with thumbs up to raise its priority
 SELECT * FROM uctest;
 ERROR:  current transaction is aborted, commands ignored until end of transaction block
 DELETE FROM uctest WHERE CURRENT OF c1; -- no-op
 ERROR:  WHERE CURRENT OF not supported yet
 LINE 1: DELETE FROM uctest WHERE CURRENT OF c1;
                            ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/737. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/737. React with thumbs up to raise its priority
 SELECT * FROM uctest;
 ERROR:  current transaction is aborted, commands ignored until end of transaction block
 UPDATE uctest SET f1 = f1 + 10 WHERE CURRENT OF c1; -- no-op
 ERROR:  WHERE CURRENT OF not supported yet
 LINE 1: UPDATE uctest SET f1 = f1 + 10 WHERE CURRENT OF c1;
                                        ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/737. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/737. React with thumbs up to raise its priority
 SELECT * FROM uctest;
 ERROR:  current transaction is aborted, commands ignored until end of transaction block
 -- FETCH RELATIVE 0 FROM c1;
@@ -874,35 +874,35 @@ UPDATE uctest SET f1 = f1 + 10 WHERE CURRENT OF c1;
 ERROR:  WHERE CURRENT OF not supported yet
 LINE 1: UPDATE uctest SET f1 = f1 + 10 WHERE CURRENT OF c1;
                                        ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/737. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/737. React with thumbs up to raise its priority
 SELECT * FROM uctest;
 ERROR:  current transaction is aborted, commands ignored until end of transaction block
 UPDATE uctest SET f1 = f1 + 10 WHERE CURRENT OF c1;
 ERROR:  WHERE CURRENT OF not supported yet
 LINE 1: UPDATE uctest SET f1 = f1 + 10 WHERE CURRENT OF c1;
                                        ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/737. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/737. React with thumbs up to raise its priority
 SELECT * FROM uctest;
 ERROR:  current transaction is aborted, commands ignored until end of transaction block
 DELETE FROM uctest WHERE CURRENT OF c1;
 ERROR:  WHERE CURRENT OF not supported yet
 LINE 1: DELETE FROM uctest WHERE CURRENT OF c1;
                            ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/737. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/737. React with thumbs up to raise its priority
 SELECT * FROM uctest;
 ERROR:  current transaction is aborted, commands ignored until end of transaction block
 DELETE FROM uctest WHERE CURRENT OF c1; -- no-op
 ERROR:  WHERE CURRENT OF not supported yet
 LINE 1: DELETE FROM uctest WHERE CURRENT OF c1;
                            ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/737. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/737. React with thumbs up to raise its priority
 SELECT * FROM uctest;
 ERROR:  current transaction is aborted, commands ignored until end of transaction block
 UPDATE uctest SET f1 = f1 + 10 WHERE CURRENT OF c1; -- no-op
 ERROR:  WHERE CURRENT OF not supported yet
 LINE 1: UPDATE uctest SET f1 = f1 + 10 WHERE CURRENT OF c1;
                                        ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/737. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/737. React with thumbs up to raise its priority
 SELECT * FROM uctest;
 ERROR:  current transaction is aborted, commands ignored until end of transaction block
 --- sensitive cursors cannot currently scroll back, so this is an error:
@@ -921,7 +921,7 @@ CREATE TEMP TABLE ucchild () inherits (uctest);
 ERROR:  INHERITS not supported yet
 LINE 1: CREATE TEMP TABLE ucchild () inherits (uctest);
                                      ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1129. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1129. React with thumbs up to raise its priority
 INSERT INTO ucchild values(100, 'hundred');
 ERROR:  relation "ucchild" does not exist
 LINE 1: INSERT INTO ucchild values(100, 'hundred');
@@ -948,21 +948,21 @@ UPDATE uctest SET f1 = f1 + 10 WHERE CURRENT OF c1;
 ERROR:  WHERE CURRENT OF not supported yet
 LINE 1: UPDATE uctest SET f1 = f1 + 10 WHERE CURRENT OF c1;
                                        ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/737. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/737. React with thumbs up to raise its priority
 FETCH 1 FROM c1;
 ERROR:  current transaction is aborted, commands ignored until end of transaction block
 UPDATE uctest SET f1 = f1 + 10 WHERE CURRENT OF c1;
 ERROR:  WHERE CURRENT OF not supported yet
 LINE 1: UPDATE uctest SET f1 = f1 + 10 WHERE CURRENT OF c1;
                                        ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/737. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/737. React with thumbs up to raise its priority
 FETCH 1 FROM c1;
 ERROR:  current transaction is aborted, commands ignored until end of transaction block
 UPDATE uctest SET f1 = f1 + 10 WHERE CURRENT OF c1;
 ERROR:  WHERE CURRENT OF not supported yet
 LINE 1: UPDATE uctest SET f1 = f1 + 10 WHERE CURRENT OF c1;
                                        ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/737. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/737. React with thumbs up to raise its priority
 FETCH 1 FROM c1;
 ERROR:  current transaction is aborted, commands ignored until end of transaction block
 COMMIT;
@@ -986,7 +986,7 @@ UPDATE uctest SET f1 = f1 + 10 WHERE CURRENT OF c1;  -- fail
 ERROR:  WHERE CURRENT OF not supported yet
 LINE 1: UPDATE uctest SET f1 = f1 + 10 WHERE CURRENT OF c1;
                                        ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/737. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/737. React with thumbs up to raise its priority
 ROLLBACK;
 BEGIN;
 -- Disable 'FOR UPDATE' due to github #9915
@@ -1001,7 +1001,7 @@ UPDATE uctest SET f1 = f1 + 10 WHERE CURRENT OF c1;  -- fail
 ERROR:  WHERE CURRENT OF not supported yet
 LINE 1: UPDATE uctest SET f1 = f1 + 10 WHERE CURRENT OF c1;
                                        ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/737. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/737. React with thumbs up to raise its priority
 ROLLBACK;
 BEGIN;
 DECLARE c1 CURSOR FOR SELECT * FROM uctest a, uctest b WHERE a.f1 = b.f1 + 5 FOR SHARE OF a;
@@ -1014,7 +1014,7 @@ UPDATE uctest SET f1 = f1 + 10 WHERE CURRENT OF c1;
 ERROR:  WHERE CURRENT OF not supported yet
 LINE 1: UPDATE uctest SET f1 = f1 + 10 WHERE CURRENT OF c1;
                                        ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/737. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/737. React with thumbs up to raise its priority
 SELECT * FROM uctest;
 ERROR:  current transaction is aborted, commands ignored until end of transaction block
 ROLLBACK;
@@ -1023,20 +1023,20 @@ DELETE FROM uctest WHERE CURRENT OF c1;  -- fail, no such cursor
 ERROR:  WHERE CURRENT OF not supported yet
 LINE 1: DELETE FROM uctest WHERE CURRENT OF c1;
                            ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/737. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/737. React with thumbs up to raise its priority
 DECLARE cx CURSOR WITH HOLD FOR SELECT * FROM uctest;
 DELETE FROM uctest WHERE CURRENT OF cx;  -- fail, can't use held cursor
 ERROR:  WHERE CURRENT OF not supported yet
 LINE 1: DELETE FROM uctest WHERE CURRENT OF cx;
                            ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/737. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/737. React with thumbs up to raise its priority
 BEGIN;
 DECLARE c CURSOR FOR SELECT * FROM tenk2;
 DELETE FROM uctest WHERE CURRENT OF c;  -- fail, cursor on wrong table
 ERROR:  WHERE CURRENT OF not supported yet
 LINE 1: DELETE FROM uctest WHERE CURRENT OF c;
                            ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/737. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/737. React with thumbs up to raise its priority
 ROLLBACK;
 BEGIN;
 DECLARE c CURSOR FOR SELECT * FROM tenk2 FOR SHARE;
@@ -1044,7 +1044,7 @@ DELETE FROM uctest WHERE CURRENT OF c;  -- fail, cursor on wrong table
 ERROR:  WHERE CURRENT OF not supported yet
 LINE 1: DELETE FROM uctest WHERE CURRENT OF c;
                            ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/737. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/737. React with thumbs up to raise its priority
 ROLLBACK;
 BEGIN;
 DECLARE c CURSOR FOR SELECT * FROM tenk1 JOIN tenk2 USING (unique1);
@@ -1052,7 +1052,7 @@ DELETE FROM tenk1 WHERE CURRENT OF c;  -- fail, cursor is on a join
 ERROR:  WHERE CURRENT OF not supported yet
 LINE 1: DELETE FROM tenk1 WHERE CURRENT OF c;
                           ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/737. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/737. React with thumbs up to raise its priority
 ROLLBACK;
 BEGIN;
 DECLARE c CURSOR FOR SELECT f1,count(*) FROM uctest GROUP BY f1;
@@ -1060,7 +1060,7 @@ DELETE FROM uctest WHERE CURRENT OF c;  -- fail, cursor is on aggregation
 ERROR:  WHERE CURRENT OF not supported yet
 LINE 1: DELETE FROM uctest WHERE CURRENT OF c;
                            ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/737. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/737. React with thumbs up to raise its priority
 ROLLBACK;
 BEGIN;
 DECLARE c1 CURSOR FOR SELECT * FROM uctest;
@@ -1068,7 +1068,7 @@ DELETE FROM uctest WHERE CURRENT OF c1; -- fail, no current row
 ERROR:  WHERE CURRENT OF not supported yet
 LINE 1: DELETE FROM uctest WHERE CURRENT OF c1;
                            ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/737. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/737. React with thumbs up to raise its priority
 ROLLBACK;
 BEGIN;
 -- DISABLE 'FOR UPDATE' due to github #9915
@@ -1091,7 +1091,7 @@ DELETE FROM ucview WHERE CURRENT OF c1; -- fail, views not supported
 ERROR:  WHERE CURRENT OF not supported yet
 LINE 1: DELETE FROM ucview WHERE CURRENT OF c1;
                            ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/737. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/737. React with thumbs up to raise its priority
 ROLLBACK;
 -- Check WHERE CURRENT OF with an index-only scan
 BEGIN;
@@ -1114,7 +1114,7 @@ DELETE FROM onek WHERE CURRENT OF c1;
 ERROR:  WHERE CURRENT OF not supported yet
 LINE 1: DELETE FROM onek WHERE CURRENT OF c1;
                          ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/737. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/737. React with thumbs up to raise its priority
 SELECT stringu1 FROM onek WHERE stringu1 = 'DZAAAA';
 ERROR:  current transaction is aborted, commands ignored until end of transaction block
 ROLLBACK;
@@ -1126,12 +1126,12 @@ CREATE TABLE current_check_1 () INHERITS (current_check);
 ERROR:  INHERITS not supported yet
 LINE 1: CREATE TABLE current_check_1 () INHERITS (current_check);
                                         ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1129. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1129. React with thumbs up to raise its priority
 CREATE TABLE current_check_2 () INHERITS (current_check);
 ERROR:  INHERITS not supported yet
 LINE 1: CREATE TABLE current_check_2 () INHERITS (current_check);
                                         ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1129. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1129. React with thumbs up to raise its priority
 INSERT INTO current_check_1 SELECT i, 'p' || i FROM generate_series(1,9) i;
 ERROR:  current transaction is aborted, commands ignored until end of transaction block
 INSERT INTO current_check_2 SELECT i, 'P' || i FROM generate_series(10,19) i;
@@ -1145,7 +1145,7 @@ DELETE FROM current_check WHERE CURRENT OF c1 RETURNING *;
 ERROR:  WHERE CURRENT OF not supported yet
 LINE 1: DELETE FROM current_check WHERE CURRENT OF c1 RETURNING *;
                                   ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/737. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/737. React with thumbs up to raise its priority
 -- This tests the ExecutorRewind code path
 -- FETCH ABSOLUTE 13 FROM c1;
 -- FETCH ABSOLUTE 1 FROM c1;
@@ -1153,7 +1153,7 @@ DELETE FROM current_check WHERE CURRENT OF c1 RETURNING *;
 ERROR:  WHERE CURRENT OF not supported yet
 LINE 1: DELETE FROM current_check WHERE CURRENT OF c1 RETURNING *;
                                   ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/737. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/737. React with thumbs up to raise its priority
 SELECT * FROM current_check;
 ERROR:  current transaction is aborted, commands ignored until end of transaction block
 ROLLBACK;
@@ -1185,7 +1185,7 @@ move backward all in c;
 ERROR:  FETCH BACKWARD not supported yet
 LINE 1: move backward all in c;
              ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/6514. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/6514. React with thumbs up to raise its priority
 fetch all from c;
 ERROR:  current transaction is aborted, commands ignored until end of transaction block
 rollback;
@@ -1219,7 +1219,7 @@ fetch backward all in c1;
 ERROR:  FETCH BACKWARD not supported yet
 LINE 1: fetch backward all in c1;
               ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/6514. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/6514. React with thumbs up to raise its priority
 rollback;
 begin;
 explain (costs off) declare c2 cursor for select generate_series(1,3) as g;
@@ -1250,5 +1250,5 @@ fetch backward all in c2;
 ERROR:  FETCH BACKWARD not supported yet
 LINE 1: fetch backward all in c2;
               ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/6514. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/6514. React with thumbs up to raise its priority
 rollback;
