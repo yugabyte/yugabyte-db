@@ -3494,7 +3494,7 @@ $$ language plpgsql;
 ERROR:  WHERE CURRENT OF not supported yet
 LINE 7:     update forc_test set i = i * 100, j = r.j * 2 where curr...
                                                           ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/737. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/737. React with thumbs up to raise its priority
 select forc01();
 NOTICE:  5 from c
 NOTICE:  6 from c
@@ -3551,7 +3551,7 @@ $$ language plpgsql;
 ERROR:  WHERE CURRENT OF not supported yet
 LINE 11:     update forc_test set i = i * 100, j = r.j * 2 where curr...
                                                            ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/737. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/737. React with thumbs up to raise its priority
 select forc01();
 NOTICE:  5 from c
 NOTICE:  6 from c
@@ -5311,7 +5311,7 @@ CREATE TRIGGER transition_table_base_ins_trig
 ERROR:  REFERENCING clause (transition tables) not supported yet
 LINE 3:   REFERENCING OLD TABLE AS oldtable NEW TABLE AS newtable
           ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1668. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1668. React with thumbs up to raise its priority
 CREATE TRIGGER transition_table_base_ins_trig
   AFTER INSERT ON transition_table_base
   REFERENCING NEW TABLE AS newtable
@@ -5320,7 +5320,7 @@ CREATE TRIGGER transition_table_base_ins_trig
 ERROR:  REFERENCING clause (transition tables) not supported yet
 LINE 3:   REFERENCING NEW TABLE AS newtable
           ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1668. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1668. React with thumbs up to raise its priority
 INSERT INTO transition_table_base VALUES (1, 'One'), (2, 'Two');
 INSERT INTO transition_table_base VALUES (3, 'Three'), (4, 'Four');
 CREATE OR REPLACE FUNCTION transition_table_base_upd_func()
@@ -5352,7 +5352,7 @@ CREATE TRIGGER transition_table_base_upd_trig
 ERROR:  REFERENCING clause (transition tables) not supported yet
 LINE 3:   REFERENCING OLD TABLE AS oldtable NEW TABLE AS newtable
           ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1668. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1668. React with thumbs up to raise its priority
 UPDATE transition_table_base
   SET val = '*' || val || '*'
   WHERE id BETWEEN 2 AND 3;
@@ -5397,7 +5397,7 @@ CREATE TRIGGER transition_table_level1_ri_parent_del_trigger
 ERROR:  REFERENCING clause (transition tables) not supported yet
 LINE 3:   REFERENCING OLD TABLE AS p
           ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1668. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1668. React with thumbs up to raise its priority
 CREATE FUNCTION transition_table_level1_ri_parent_upd_func()
   RETURNS TRIGGER
   LANGUAGE plpgsql
@@ -5428,7 +5428,7 @@ CREATE TRIGGER transition_table_level1_ri_parent_upd_trigger
 ERROR:  REFERENCING clause (transition tables) not supported yet
 LINE 3:   REFERENCING OLD TABLE AS d NEW TABLE AS i
           ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1668. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1668. React with thumbs up to raise its priority
 CREATE FUNCTION transition_table_level2_ri_child_insupd_func()
   RETURNS TRIGGER
   LANGUAGE plpgsql
@@ -5452,7 +5452,7 @@ CREATE TRIGGER transition_table_level2_ri_child_ins_trigger
 ERROR:  REFERENCING clause (transition tables) not supported yet
 LINE 3:   REFERENCING NEW TABLE AS i
           ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1668. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1668. React with thumbs up to raise its priority
 CREATE TRIGGER transition_table_level2_ri_child_upd_trigger
   AFTER UPDATE ON transition_table_level2
   REFERENCING NEW TABLE AS i
@@ -5461,7 +5461,7 @@ CREATE TRIGGER transition_table_level2_ri_child_upd_trigger
 ERROR:  REFERENCING clause (transition tables) not supported yet
 LINE 3:   REFERENCING NEW TABLE AS i
           ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1668. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1668. React with thumbs up to raise its priority
 -- create initial test data
 INSERT INTO transition_table_level1 (level1_no)
   SELECT generate_series(1,200);
@@ -5498,7 +5498,7 @@ CREATE TRIGGER transition_table_level2_bad_usage_trigger
 ERROR:  REFERENCING clause (transition tables) not supported yet
 LINE 3:   REFERENCING OLD TABLE AS dx
           ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1668. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1668. React with thumbs up to raise its priority
 DELETE FROM transition_table_level2
   WHERE level2_no BETWEEN 301 AND 305;
 DROP TRIGGER transition_table_level2_bad_usage_trigger
@@ -5558,7 +5558,7 @@ CREATE TRIGGER alter_table_under_transition_tables_upd_trigger
 ERROR:  REFERENCING clause (transition tables) not supported yet
 LINE 3:   REFERENCING OLD TABLE AS d NEW TABLE AS i
           ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1668. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1668. React with thumbs up to raise its priority
 -- should work
 CREATE TRIGGER alter_table_under_transition_tables_upd_trigger
   AFTER UPDATE ON alter_table_under_transition_tables
@@ -5568,7 +5568,7 @@ CREATE TRIGGER alter_table_under_transition_tables_upd_trigger
 ERROR:  REFERENCING clause (transition tables) not supported yet
 LINE 3:   REFERENCING OLD TABLE AS d NEW TABLE AS i
           ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1668. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1668. React with thumbs up to raise its priority
 INSERT INTO alter_table_under_transition_tables
   VALUES (1, '1'), (2, '2'), (3, '3');
 UPDATE alter_table_under_transition_tables
@@ -5604,7 +5604,7 @@ CREATE TRIGGER my_trigger AFTER UPDATE ON multi_test
 ERROR:  REFERENCING clause (transition tables) not supported yet
 LINE 2:   REFERENCING NEW TABLE AS new_test OLD TABLE as old_test
           ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1668. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1668. React with thumbs up to raise its priority
 UPDATE multi_test SET i = i;
 DROP TABLE multi_test;
 DROP FUNCTION multi_test_trig();

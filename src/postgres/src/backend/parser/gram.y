@@ -17353,8 +17353,8 @@ raise_feature_not_supported_signal(int pos, core_yyscan_t yyscanner, const char 
 		ereport(signal_level,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("%s", msg),
-				 errhint("See https://github.com/YugaByte/yugabyte-db/issues/%d. "
-						 "Click '+' on the description to raise its priority", issue),
+				 errhint("See https://github.com/yugabyte/yugabyte-db/issues/%d. "
+						 "React with thumbs up to raise its priority", issue),
 				 parser_errposition(pos)));
 
 	}
