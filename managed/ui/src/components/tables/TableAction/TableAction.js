@@ -15,6 +15,9 @@ import { MenuItem } from 'react-bootstrap';
 import { YBLabelWithIcon } from '../../common/descriptors';
 import { YBButton } from '../../common/forms/fields';
 import _ from 'lodash';
+import { BackupCreateModal } from '../../backupv2/components/BackupCreateModal';
+import { TABLE_TYPE_MAP } from '../../../redesign/helpers/dtos';
+import { BACKUP_API_TYPES, Backup_Options_Type } from '../../backupv2';
 
 export default class TableAction extends Component {
   constructor(props) {
@@ -101,12 +104,19 @@ export default class TableAction extends Component {
       btnLabel = 'Create Backup';
       btnIcon = 'fa fa-upload';
       modalContainer = (
-        <CreateBackupContainer
+        <BackupCreateModal
           visible={this.state.showModal}
           onHide={this.closeModal}
-          tableInfo={this.state.selectedRow}
-          onSubmit={onSubmit}
-          onError={onError}
+          currentUniverseUUID={this.props.universeUUID}
+          editValues={{
+            api_type: {
+              value: this.state.selectedRow?.tableType,
+              label: TABLE_TYPE_MAP[this.state.selectedRow?.tableType]
+            },
+            db_to_backup: { value: this.state.selectedRow?.keySpace, label: this.state.selectedRow?.keySpace },
+            selected_ycql_tables: this.state.selectedRow?.tableType !== BACKUP_API_TYPES.YSQL ? [{ ...this.state.selectedRow, tableUUID: this.state.selectedRow?.tableID }] : [],
+            backup_tables: Backup_Options_Type.CUSTOM
+          }}
         />
       );
     } else if (actionType === 'stop-backup') {
