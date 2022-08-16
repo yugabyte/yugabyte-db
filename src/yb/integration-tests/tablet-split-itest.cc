@@ -2215,6 +2215,18 @@ TEST_P(TabletSplitExternalMiniClusterCrashITest, CrashLeaderTest) {
 
   ASSERT_OK(WaitForTabletsExcept(2, leader_idx, tablet_id));
 
+  // Wait until child tablets have leaders elected in case we get tablet not running
+  // when calling GetTableLocations rpc.
+  auto ts_map = ASSERT_RESULT(itest::CreateTabletServerMap(
+      cluster_->GetLeaderMasterProxy<master::MasterClusterProxy>(), &cluster_->proxy_cache()));
+  auto tablet_ids = CHECK_RESULT(GetTestTableTabletIds());
+  for (const auto& id : tablet_ids) {
+    if (id != tablet_id) {
+      itest::TServerDetails *leader_ts = nullptr;
+      ASSERT_OK(itest::FindTabletLeader(ts_map, id, 20s * kTimeMultiplier, &leader_ts));
+    }
+  }
+
   // Check number of rows is correct after recovery.
   ASSERT_OK(CheckRowsCount(kDefaultNumRows));
 
@@ -3052,5 +3064,6 @@ INSTANTIATE_TEST_CASE_P(
     TabletSplitExternalMiniClusterCrashITest,
     ::testing::Values(
         "TEST_crash_before_apply_tablet_split_op",
-        "TEST_crash_before_source_tablet_mark_split_done"));
+        "TEST_crash_before_source_tablet_mark_split_done",
+        "TEST_crash_after_tablet_split_completed"));
 }  // namespace yb
