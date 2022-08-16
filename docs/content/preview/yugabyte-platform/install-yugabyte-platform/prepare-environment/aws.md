@@ -89,7 +89,7 @@ In order for YugabyteDB Anywhere to manage YugabyteDB nodes, limited access to y
 
 ```sh
 {
-    "Version": "2020-10-17",
+    "Version": "2012-10-17",
     "Statement": [
         {
             "Sid": "VisualEditor0",
@@ -142,6 +142,7 @@ In order for YugabyteDB Anywhere to manage YugabyteDB nodes, limited access to y
                 "ec2:CreateSubnet",
                 "ec2:CreateVpc",
                 "ec2:CreateVpcPeeringConnection",
+                "ec2:AcceptVpcPeeringConnection",
                 "ec2:DisassociateRouteTable",
                 "ec2:ModifyVpcAttribute",
                 "ec2:GetConsoleOutput",
