@@ -79,7 +79,7 @@ showAsideToc: true
 
 [Vertx PG Client](https://vertx.io/docs/vertx-pg-client/java/) is the client for PostgreSQL with simple APIs to communicate with the database. It is a reactive and non-blocking client for handling the database connections with a single threaded API.
 
-As this client is for PostgreSQL and YugabyteDB is wire compatible with PostgreSQL, it is also supported by YugabyteDB with one [limitation](#limitation).
+Because Vertx is a PostgreSQL client and YugabyteDB is PostgreSQL compatible, it is supported by YugabyteDB with a [limitation](#limitation).
 
 ## Prerequisites
 
@@ -101,6 +101,14 @@ This tutorial assumes that:
         -DinteractiveMode=false
 
     $ cd vertx-pg-example
+    ```
+1. Add the following below the `<url>` element.
+
+    ```xml
+    <properties>
+      <maven.compiler.source>1.8</maven.compiler.source>
+      <maven.compiler.target>1.8</maven.compiler.target>
+    </properties>
     ```
 
 1. Add the following dependency for the Vertx PG Client within the `<dependencies>` element in the `pom.xml` file.
@@ -211,4 +219,5 @@ This tutorial assumes that:
     ```
 ## Limitation
 
-[Pub/sub](https://vertx.io/docs/vertx-pg-client/java/#_pubsub) feature of Vertx PG client is currently not supported with YugabyteDB.
+[PubSub](https://vertx.io/docs/vertx-pg-client/java/#_pubsub) feature of Vertx PG client is currently not supported with YugabyteDB. This limitation will be lifted when `LISTEN`/`NOTIFY` support is added to YugabyteDB. Tracking issue: [#1872](https://github.com/yugabyte/yugabyte-db/issues/1872).
+
