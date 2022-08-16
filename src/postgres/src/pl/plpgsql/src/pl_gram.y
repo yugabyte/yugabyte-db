@@ -4100,8 +4100,8 @@ ybc_not_support(int pos, const char *feature, int issue) {
 		ereport(signal_level,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("%s not supported yet", feature),
-				 errhint("See https://github.com/YugaByte/yugabyte-db/issues/%d. "
-						 "Click '+' on the description to raise its priority", issue),
+				 errhint("See https://github.com/yugabyte/yugabyte-db/issues/%d. "
+						 "React with thumbs up to raise its priority", issue),
 				 parser_errposition(pos)));
 	}
 	else

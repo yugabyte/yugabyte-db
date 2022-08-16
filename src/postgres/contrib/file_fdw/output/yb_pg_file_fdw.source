@@ -110,7 +110,7 @@ ALTER FOREIGN TABLE text_csv OPTIONS (SET format 'csv');
 ERROR:  ALTER TABLE not supported yet
 LINE 1: ALTER FOREIGN TABLE text_csv OPTIONS (SET format 'csv');
                                      ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
 DROP FOREIGN TABLE text_csv;
 CREATE FOREIGN TABLE text_csv (
     word1 text OPTIONS (force_not_null 'true'),
@@ -272,7 +272,7 @@ ALTER FOREIGN TABLE agg_csv INHERIT agg;
 ERROR:  ALTER TABLE INHERIT not supported yet
 LINE 1: ALTER FOREIGN TABLE agg_csv INHERIT agg;
                                     ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
 --SELECT tableoid::regclass, * FROM agg;
 --SELECT tableoid::regclass, * FROM agg_csv;
 --SELECT tableoid::regclass, * FROM ONLY agg;
@@ -419,14 +419,14 @@ ALTER FOREIGN TABLE agg_text OPTIONS (SET format 'text');
 ERROR:  ALTER TABLE not supported yet
 LINE 1: ALTER FOREIGN TABLE agg_text OPTIONS (SET format 'text');
                                      ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
 SET ROLE regress_file_fdw_user;
 -- YB note: Change expected output when ALTER TABLE from #1124 is supported
 ALTER FOREIGN TABLE agg_text OPTIONS (SET format 'text');
 ERROR:  ALTER TABLE not supported yet
 LINE 1: ALTER FOREIGN TABLE agg_text OPTIONS (SET format 'text');
                                      ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
 SET ROLE regress_file_fdw_superuser;
 -- cleanup
 RESET ROLE;

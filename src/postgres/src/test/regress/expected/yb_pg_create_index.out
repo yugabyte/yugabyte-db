@@ -46,7 +46,7 @@ DROP INDEX intarrayidx, textarrayidx;
 ERROR:  DROP multiple objects not supported yet
 LINE 1: DROP INDEX intarrayidx, textarrayidx;
                    ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/880. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/880. React with thumbs up to raise its priority
 -- TODO(jason): remove the following drops when working on issue #880
 DROP INDEX intarrayidx;
 ERROR:  index "intarrayidx" does not exist
