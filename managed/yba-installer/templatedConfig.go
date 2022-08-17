@@ -5,7 +5,6 @@
 package main
 
 import (
-    "github.com/hashicorp/go-version"
     "bytes"
     "encoding/json"
     "fmt"
@@ -55,9 +54,7 @@ func validateJSONSchema(filename string) {
 
     jsonStringInput := string(jsonBytesInput)
 
-    serviceName := strings.TrimSuffix(strings.Split(filename, ".")[0], "\n")
-
-    schemaLoader := gojsonschema.NewReferenceLoader("file://./"+serviceName+"-json-schema.json")
+    schemaLoader := gojsonschema.NewReferenceLoader("file://./yba-installer-input-json-schema.json")
     documentLoader := gojsonschema.NewStringLoader(jsonStringInput)
 
     result, err := gojsonschema.Validate(schemaLoader, documentLoader)
@@ -105,9 +102,36 @@ func getYamlPathData(text string) (string) {
         err = path.Read(bytes.NewReader(inputYml), &val)
         if strings.Contains(pathString, "platformDbPassword") && val == "" {
         return randomDbPassword
-       }
+    }
     return val
     }
+}
+
+func getNginxModeTemplate(text string) (string) {
+
+    inputYml, errYml := ioutil.ReadFile("yba-installer-input.yml")
+    if errYml != nil {
+        log.Fatalf("error: %v", errYml)
+    }
+
+    pathString := strings.ReplaceAll(text, " ", "")
+    yamlPathString := "$" + pathString
+    path, err := yaml2.PathString(yamlPathString)
+    if err != nil {
+        log.Fatalf("Yaml Path string " + yamlPathString + " not valid!")
+    }
+
+    var val string
+    err = path.Read(bytes.NewReader(inputYml), &val)
+
+    if val == "http" {
+
+        return val
+
+    }
+
+    return ""
+
 }
 
 
@@ -122,6 +146,7 @@ func readConfigAndTemplate(configYmlFileName string) ([]byte, error)  {
         // The name "yamlPath" is what the function will be called
         //in the template text.
         "yamlPath": getYamlPathData,
+        "yamlHttpCheck": getNginxModeTemplate,
     }
 
     tmpl, err := template.New(filepath.Base(configYmlFileName)).
@@ -185,7 +210,9 @@ func WriteBytes(byteSlice []byte, fileName []byte) ([]byte, error) {
 
 }
 
-func GenerateTemplatedConfiguration(vers string, httpMode string) {
+//GenerateTemplatedConfiguration creates the templated configuration files for
+//all Yugabyte Anywhere services.
+func GenerateTemplatedConfiguration() {
 
     inputYmlName := "yba-installer-input.yml"
 
@@ -202,10 +229,6 @@ func GenerateTemplatedConfiguration(vers string, httpMode string) {
 
         numberOfServices := len(jsonData["services"].([]interface{}))
 
-        v1, _ := version.NewVersion(vers)
-        v2, _ := version.NewVersion("2.8.0.0")
-        isOld := v1.LessThan(v2)
-
         for i := 0; i < numberOfServices; i++ {
 
         service := jsonData["services"].([]interface{})[i]
@@ -215,31 +238,11 @@ func GenerateTemplatedConfiguration(vers string, httpMode string) {
 
         serviceContents := fmt.Sprint(service.(map[string]interface{})["contents"])
 
-        if strings.Contains(serviceName, "nginx") {
-            if httpMode == "http" && serviceName == "nginxHttp" {
-                WriteBytes([]byte(serviceContents), []byte(serviceFileName))
-                fmt.Println("Templated configuration for " + serviceName +
-                " succesfully applied!")
-            } else if httpMode == "https" && serviceName == "nginxHttps" {
-                WriteBytes([]byte(serviceContents), []byte(serviceFileName))
-                fmt.Println("Templated configuration for " + serviceName +
-                " succesfully applied!")
-            }
-        }
+        WriteBytes([]byte(serviceContents), []byte(serviceFileName))
 
-        if isOld {
-            if strings.Contains(serviceName, "Old") {
-                WriteBytes([]byte(serviceContents), []byte(serviceFileName))
-                fmt.Println("Templated configuration for " + serviceName +
-                " succesfully applied!")
-                }
-            } else {
-            if strings.Contains(serviceName, "New") {
-                WriteBytes([]byte(serviceContents), []byte(serviceFileName))
-                fmt.Println("Templated configuration for " + serviceName +
-                    " succesfully applied!")
-                }
-            }
+        fmt.Println("Templated configuration for " + serviceName +
+        " succesfully applied!")
+
          }
     }
  }

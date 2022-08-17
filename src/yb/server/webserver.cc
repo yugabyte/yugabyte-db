@@ -43,17 +43,19 @@
 
 #include "yb/server/webserver.h"
 
-#include <cds/init.h>
 #include <stdio.h>
 
 #include <algorithm>
 #include <functional>
 #include <map>
+#include <mutex>
+#include <shared_mutex>
 #include <string>
 #include <type_traits>
 #include <vector>
 
 #include <boost/algorithm/string.hpp>
+#include <cds/init.h>
 #include <glog/logging.h>
 #include <squeasel.h>
 
@@ -112,7 +114,133 @@ using std::make_pair;
 
 using namespace std::placeholders;
 
-Webserver::Webserver(const WebserverOptions& opts, const std::string& server_name)
+class Webserver::Impl {
+ public:
+  Impl(const WebserverOptions& opts, const std::string& server_name);
+
+  ~Impl();
+
+  Status Start();
+
+  void Stop();
+
+  Status GetBoundAddresses(std::vector<Endpoint>* addrs) const;
+
+  Status GetInputHostPort(HostPort* hp) const;
+
+  void RegisterPathHandler(const std::string& path, const std::string& alias,
+                                   const PathHandlerCallback& callback,
+                                   bool is_styled = true,
+                                   bool is_on_nav_bar = true,
+                                   const std::string icon = "");
+
+  void set_footer_html(const std::string& html);
+
+  bool IsSecure() const;
+
+ private:
+  // Container class for a list of path handler callbacks for a single URL.
+  class PathHandler {
+   public:
+    PathHandler(bool is_styled, bool is_on_nav_bar, std::string alias, const std::string icon)
+        : is_styled_(is_styled),
+          is_on_nav_bar_(is_on_nav_bar),
+          alias_(std::move(alias)),
+          icon_(icon) {}
+
+    void AddCallback(const PathHandlerCallback& callback) {
+      callbacks_.push_back(callback);
+    }
+
+    bool is_styled() const { return is_styled_; }
+    bool is_on_nav_bar() const { return is_on_nav_bar_; }
+    const std::string& alias() const { return alias_; }
+    const std::string& icon() const { return icon_; }
+    const std::vector<PathHandlerCallback>& callbacks() const { return callbacks_; }
+
+   private:
+    // If true, the page appears is rendered styled.
+    bool is_styled_;
+
+    // If true, the page appears in the navigation bar.
+    bool is_on_nav_bar_;
+
+    // Alias used when displaying this link on the nav bar.
+    std::string alias_;
+
+    // Icon used when displaying this link on the nav bar.
+    std::string icon_;
+
+    // List of callbacks to render output for this page, called in order.
+    std::vector<PathHandlerCallback> callbacks_;
+  };
+
+  bool static_pages_available() const;
+
+  // Build the string to pass to mongoose specifying where to bind.
+  Status BuildListenSpec(std::string* spec) const;
+
+  // Renders a common Bootstrap-styled header
+  void BootstrapPageHeader(std::stringstream* output);
+
+  // Renders a common Bootstrap-styled footer. Must be used in conjunction with
+  // BootstrapPageHeader.
+  void BootstrapPageFooter(std::stringstream* output);
+
+  static int EnterWorkerThreadCallbackStatic();
+  static void LeaveWorkerThreadCallbackStatic();
+
+  // Dispatch point for all incoming requests.
+  // Static so that it can act as a function pointer, and then call the next method
+  static sq_callback_result_t BeginRequestCallbackStatic(struct sq_connection* connection);
+  sq_callback_result_t BeginRequestCallback(struct sq_connection* connection,
+                                            struct sq_request_info* request_info);
+
+  sq_callback_result_t RunPathHandler(const PathHandler& handler,
+                                      struct sq_connection* connection,
+                                      struct sq_request_info* request_info);
+
+  // Callback to funnel mongoose logs through glog.
+  static int LogMessageCallbackStatic(const struct sq_connection* connection,
+                                      const char* message);
+
+  // Registered to handle "/", and prints a list of available URIs
+  void RootHandler(const WebRequest& args, Webserver::WebResponse* resp);
+
+  // Builds a map of argument name to argument value from a typical URL argument
+  // string (that is, "key1=value1&key2=value2.."). If no value is given for a
+  // key, it is entered into the map as (key, "").
+  void BuildArgumentMap(const std::string& args, ArgumentMap* output);
+
+  const WebserverOptions opts_;
+
+  // Lock guarding the path_handlers_ map and footer_html.
+  std::shared_timed_mutex lock_;
+
+  // Map of path to a PathHandler containing a list of handlers for that
+  // path. More than one handler may register itself with a path so that many
+  // components may contribute to a single page.
+  typedef std::map<std::string, PathHandler*> PathHandlerMap;
+  PathHandlerMap path_handlers_;
+
+  // Snippet of HTML which will be displayed in the footer of all pages
+  // rendered by this server. Protected by 'lock_'.
+  std::string footer_html_;
+
+  // The address of the interface on which to run this webserver.
+  std::string http_address_;
+
+  // Handle to Mongoose context; owned and freed by Mongoose internally
+  struct sq_context* context_;
+
+  // Server name for display purposes
+  std::string server_name_;
+
+  // Mutex guarding against concurrenct calls to Stop().
+  std::mutex stop_mutex_;
+};
+
+Webserver::Impl::Impl(const WebserverOptions& opts, const std::string& server_name)
   : opts_(opts),
     context_(nullptr),
     server_name_(server_name) {
@@ -120,15 +248,15 @@ Webserver::Webserver(const WebserverOptions& opts, const std::string& server_nam
   http_address_ = host + ":" + std::to_string(opts.port);
 }
 
-Webserver::~Webserver() {
+Webserver::Impl::~Impl() {
   Stop();
   STLDeleteValues(&path_handlers_);
 }
 
-void Webserver::RootHandler(const Webserver::WebRequest& args, Webserver::WebResponse* resp) {
+void Webserver::Impl::RootHandler(const Webserver::WebRequest& args, Webserver::WebResponse* resp) {
 }
 
-void Webserver::BuildArgumentMap(const string& args, ArgumentMap* output) {
+void Webserver::Impl::BuildArgumentMap(const string& args, ArgumentMap* output) {
   vector<GStringPiece> arg_pairs = strings::Split(args, "&");
 
   for (const GStringPiece& arg_pair : arg_pairs) {
@@ -144,11 +272,11 @@ void Webserver::BuildArgumentMap(const string& args, ArgumentMap* output) {
   }
 }
 
-bool Webserver::IsSecure() const {
+bool Webserver::Impl::IsSecure() const {
   return !opts_.certificate_file.empty();
 }
 
-Status Webserver::BuildListenSpec(string* spec) const {
+Status Webserver::Impl::BuildListenSpec(string* spec) const {
   std::vector<Endpoint> endpoints;
   RETURN_NOT_OK(ParseAddressList(http_address_, 80, &endpoints));
   if (endpoints.empty()) {
@@ -167,7 +295,7 @@ Status Webserver::BuildListenSpec(string* spec) const {
   return Status::OK();
 }
 
-Status Webserver::Start() {
+Status Webserver::Impl::Start() {
   LOG(INFO) << "Starting webserver on " << http_address_;
 
   vector<const char*> options;
@@ -184,8 +312,23 @@ Status Webserver::Start() {
 
   if (IsSecure()) {
     LOG(INFO) << "Webserver: Enabling HTTPS support";
+
     options.push_back("ssl_certificate");
     options.push_back(opts_.certificate_file.c_str());
+
+    if (opts_.private_key_file.c_str()) {
+      options.push_back("ssl_private_key");
+      options.push_back(opts_.private_key_file.c_str());
+    }
+
+    if (opts_.private_key_password.c_str()) {
+      options.push_back("ssl_private_key_password");
+      options.push_back(opts_.private_key_password.c_str());
+    }
+
+    // We already initialize OpenSSL, so no need for Squeasel to do it.
+    options.push_back("ssl_global_init");
+    options.push_back("no");
   }
 
   if (!opts_.authentication_domain.empty()) {
@@ -226,10 +369,10 @@ Status Webserver::Start() {
 
   sq_callbacks callbacks;
   memset(&callbacks, 0, sizeof(callbacks));
-  callbacks.begin_request = &Webserver::BeginRequestCallbackStatic;
-  callbacks.log_message = &Webserver::LogMessageCallbackStatic;
-  callbacks.enter_worker_thread = &Webserver::EnterWorkerThreadCallbackStatic;
-  callbacks.leave_worker_thread = &Webserver::LeaveWorkerThreadCallbackStatic;
+  callbacks.begin_request = &Webserver::Impl::BeginRequestCallbackStatic;
+  callbacks.log_message = &Webserver::Impl::LogMessageCallbackStatic;
+  callbacks.enter_worker_thread = &Webserver::Impl::EnterWorkerThreadCallbackStatic;
+  callbacks.leave_worker_thread = &Webserver::Impl::LeaveWorkerThreadCallbackStatic;
 
   // To work around not being able to pass member functions as C callbacks, we store a
   // pointer to this server in the per-server state, and register a static method as the
@@ -248,25 +391,27 @@ Status Webserver::Start() {
   }
 
   PathHandlerCallback default_callback =
-      std::bind(boost::mem_fn(&Webserver::RootHandler), this, _1, _2);
+      std::bind(boost::mem_fn(&Webserver::Impl::RootHandler), this, _1, _2);
 
   RegisterPathHandler("/", "Home", default_callback);
 
   std::vector<Endpoint> addrs;
   RETURN_NOT_OK(GetBoundAddresses(&addrs));
   string bound_addresses_str;
+  string protocol = IsSecure() ? "https://" : "http://";
   for (const auto& addr : addrs) {
     if (!bound_addresses_str.empty()) {
       bound_addresses_str += ", ";
     }
-    bound_addresses_str += "http://" + ToString(addr) + "/";
+
+    bound_addresses_str += protocol + ToString(addr) + "/";
   }
 
   LOG(INFO) << "Webserver started. Bound to: " << bound_addresses_str;
   return Status::OK();
 }
 
-void Webserver::Stop() {
+void Webserver::Impl::Stop() {
   std::lock_guard<std::mutex> lock_(stop_mutex_);
   if (context_ != nullptr) {
     sq_stop(context_);
@@ -274,7 +419,7 @@ void Webserver::Stop() {
   }
 }
 
-Status Webserver::GetInputHostPort(HostPort* hp) const {
+Status Webserver::Impl::GetInputHostPort(HostPort* hp) const {
   std::vector<HostPort> parsed_hps;
   RETURN_NOT_OK(HostPort::ParseStrings(
     http_address_,
@@ -291,7 +436,7 @@ Status Webserver::GetInputHostPort(HostPort* hp) const {
   return Status::OK();
 }
 
-Status Webserver::GetBoundAddresses(std::vector<Endpoint>* addrs_ptr) const {
+Status Webserver::Impl::GetBoundAddresses(std::vector<Endpoint>* addrs_ptr) const {
   if (!context_) {
     return STATUS(IllegalState, "Not started");
   }
@@ -340,8 +485,9 @@ Status Webserver::GetBoundAddresses(std::vector<Endpoint>* addrs_ptr) const {
 
   return Status::OK();
 }
-int Webserver::LogMessageCallbackStatic(const struct sq_connection* connection,
-                                        const char* message) {
+
+int Webserver::Impl::LogMessageCallbackStatic(const struct sq_connection* connection,
+                                              const char* message) {
   if (message != nullptr) {
     LOG(INFO) << "Webserver: " << message;
     return 1;
@@ -349,14 +495,14 @@ int Webserver::LogMessageCallbackStatic(const struct sq_connection* connection,
   return 0;
 }
 
-int Webserver::BeginRequestCallbackStatic(struct sq_connection* connection) {
+sq_callback_result_t Webserver::Impl::BeginRequestCallbackStatic(struct sq_connection* connection) {
   struct sq_request_info* request_info = sq_get_request_info(connection);
-  Webserver* instance = reinterpret_cast<Webserver*>(request_info->user_data);
+  Webserver::Impl* instance = reinterpret_cast<Webserver::Impl*>(request_info->user_data);
   return instance->BeginRequestCallback(connection, request_info);
 }
 
-int Webserver::BeginRequestCallback(struct sq_connection* connection,
-                                    struct sq_request_info* request_info) {
+sq_callback_result_t Webserver::Impl::BeginRequestCallback(struct sq_connection* connection,
+                                                           struct sq_request_info* request_info) {
   PathHandler* handler;
   {
     SharedLock<std::shared_timed_mutex> lock(lock_);
@@ -366,12 +512,12 @@ int Webserver::BeginRequestCallback(struct sq_connection* connection,
       // to the default handler which will serve files.
       if (static_pages_available()) {
         VLOG(2) << "HTTP File access: " << request_info->uri;
-        return 0;
+        return SQ_CONTINUE_HANDLING;
       } else {
         sq_printf(connection, "HTTP/1.1 404 Not Found\r\n"
                   "Content-Type: text/plain\r\n\r\n");
         sq_printf(connection, "No handler for URI %s\r\n\r\n", request_info->uri);
-        return 1;
+        return SQ_HANDLED_OK;
       }
     }
     handler = it->second;
@@ -380,9 +526,9 @@ int Webserver::BeginRequestCallback(struct sq_connection* connection,
   return RunPathHandler(*handler, connection, request_info);
 }
 
-int Webserver::RunPathHandler(const PathHandler& handler,
-                              struct sq_connection* connection,
-                              struct sq_request_info* request_info) {
+sq_callback_result_t Webserver::Impl::RunPathHandler(const PathHandler& handler,
+                                                     struct sq_connection* connection,
+                                                     struct sq_request_info* request_info) {
   // Should we render with css styles?
   bool use_style = true;
 
@@ -405,14 +551,14 @@ int Webserver::RunPathHandler(const PathHandler& handler,
     if (content_len_str == nullptr ||
         !safe_strto32(content_len_str, &content_len)) {
       sq_printf(connection, "HTTP/1.1 411 Length Required\r\n");
-      return 1;
+      return SQ_HANDLED_OK;
     }
     if (content_len > FLAGS_webserver_max_post_length_bytes) {
       // TODO: for this and other HTTP requests, we should log the
       // remote IP, etc.
       LOG(WARNING) << "Rejected POST with content length " << content_len;
       sq_printf(connection, "HTTP/1.1 413 Request Entity Too Large\r\n");
-      return 1;
+      return SQ_HANDLED_CLOSE_CONNECTION;
     }
 
     char buf[8192];
@@ -424,7 +570,7 @@ int Webserver::RunPathHandler(const PathHandler& handler,
                      << content_len << " bytes but only read "
                      << req.post_data.size();
         sq_printf(connection, "HTTP/1.1 500 Internal Server Error\r\n");
-        return 1;
+        return SQ_HANDLED_CLOSE_CONNECTION;
       }
 
       req.post_data.append(buf, n);
@@ -448,7 +594,7 @@ int Webserver::RunPathHandler(const PathHandler& handler,
     callback_(req, resp_ptr);
     if (resp_ptr->code == 503) {
       sq_printf(connection, "HTTP/1.1 503 Service Unavailable\r\n");
-      return 1;
+      return SQ_HANDLED_CLOSE_CONNECTION;
     }
   }
   if (use_style) {
@@ -503,15 +649,15 @@ int Webserver::RunPathHandler(const PathHandler& handler,
 
   // Make sure to use sq_write for printing the body; sq_printf truncates at 8kb
   sq_write(connection, str.c_str(), str.length());
-  return 1;
+  return SQ_HANDLED_OK;
 }
 
-void Webserver::RegisterPathHandler(const string& path,
-                                    const string& alias,
-                                    const PathHandlerCallback& callback,
-                                    bool is_styled,
-                                    bool is_on_nav_bar,
-                                    const std::string icon) {
+void Webserver::Impl::RegisterPathHandler(const string& path,
+                                          const string& alias,
+                                          const PathHandlerCallback& callback,
+                                          bool is_styled,
+                                          bool is_on_nav_bar,
+                                          const std::string icon) {
   std::lock_guard<std::shared_timed_mutex> lock(lock_);
   auto it = path_handlers_.find(path);
   if (it == path_handlers_.end()) {
@@ -547,7 +693,7 @@ static const char* const NAVIGATION_BAR_SUFFIX =
 "\n\n"
 "    <div class='yb-main container-fluid'>";
 
-void Webserver::BootstrapPageHeader(stringstream* output) {
+void Webserver::Impl::BootstrapPageHeader(stringstream* output) {
   (*output) << PAGE_HEADER;
   (*output) << NAVIGATION_BAR_PREFIX;
   for (const PathHandlerMap::value_type& handler : path_handlers_) {
@@ -568,16 +714,16 @@ void Webserver::BootstrapPageHeader(stringstream* output) {
   }
 }
 
-bool Webserver::static_pages_available() const {
+bool Webserver::Impl::static_pages_available() const {
   return !opts_.doc_root.empty() && opts_.enable_doc_root;
 }
 
-void Webserver::set_footer_html(const std::string& html) {
+void Webserver::Impl::set_footer_html(const std::string& html) {
   std::lock_guard<std::shared_timed_mutex> l(lock_);
   footer_html_ = html;
 }
 
-void Webserver::BootstrapPageFooter(stringstream* output) {
+void Webserver::Impl::BootstrapPageFooter(stringstream* output) {
   SharedLock<std::shared_timed_mutex> l(lock_);
   *output << "<div class='yb-bottom-spacer'></div></div>\n"; // end bootstrap 'container' div
   if (!footer_html_.empty()) {
@@ -588,12 +734,56 @@ void Webserver::BootstrapPageFooter(stringstream* output) {
   *output << "</body></html>";
 }
 
-void Webserver::EnterWorkerThreadCallbackStatic() {
-  cds::threading::Manager::attachThread();
+int Webserver::Impl::EnterWorkerThreadCallbackStatic() {
+  try {
+    cds::threading::Manager::attachThread();
+  } catch (const std::system_error&) {
+    return 1;
+  }
+  return 0;
 }
 
-void Webserver::LeaveWorkerThreadCallbackStatic() {
+void Webserver::Impl::LeaveWorkerThreadCallbackStatic() {
   cds::threading::Manager::detachThread();
+}
+
+Webserver::Webserver(const WebserverOptions& opts, const std::string& server_name)
+    : impl_(std::make_unique<Impl>(opts, server_name)) {
+}
+
+Webserver::~Webserver() { }
+
+Status Webserver::Start() {
+  return impl_->Start();
+}
+
+void Webserver::Stop() {
+  impl_->Stop();
+}
+
+Status Webserver::GetBoundAddresses(std::vector<Endpoint>* addrs) const {
+  return impl_->GetBoundAddresses(addrs);
+}
+
+Status Webserver::GetInputHostPort(HostPort* hp) const {
+  return impl_->GetInputHostPort(hp);
+}
+
+void Webserver::RegisterPathHandler(const std::string& path,
+                                    const std::string& alias,
+                                    const PathHandlerCallback& callback,
+                                    bool is_styled,
+                                    bool is_on_nav_bar,
+                                    const std::string icon) {
+  return impl_->RegisterPathHandler(path, alias, callback, is_styled, is_on_nav_bar, icon);
+}
+
+void Webserver::set_footer_html(const std::string& html) {
+  return impl_->set_footer_html(html);
+}
+
+bool Webserver::IsSecure() const {
+  return impl_->IsSecure();
 }
 
 } // namespace yb

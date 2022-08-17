@@ -387,7 +387,7 @@ TEST_F(PgWrapperFlagsTest, YB_DISABLE_TEST_IN_TSAN(VerifyGFlagDefaults)) {
 
     auto expected_val = flag.default_value;
 
-    if (tags.contains(FlagTag::kAutomatic)) {
+    if (tags.contains(FlagTag::kAuto)) {
       auto* desc = GetAutoFlagDescription(flag.name);
       CHECK_NOTNULL(desc);
       expected_val = desc->target_val;

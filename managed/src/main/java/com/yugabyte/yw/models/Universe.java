@@ -71,21 +71,17 @@ public class Universe extends Model {
   // This is a key lock for Universe by UUID.
   public static final KeyLock<UUID> UNIVERSE_KEY_LOCK = new KeyLock<UUID>();
 
-  private static void checkUniverseInCustomer(UUID universeUUID, Customer customer) {
-    if (!customer.getUniverseUUIDs().contains(universeUUID)) {
+  public static Universe getValidUniverseOrBadRequest(UUID universeUUID, Customer customer) {
+    Universe universe = getOrBadRequest(universeUUID);
+    MDC.put("universe-id", universeUUID.toString());
+    MDC.put("cluster-id", universeUUID.toString());
+    if (!universe.customerId.equals(customer.getCustomerId())) {
       throw new PlatformServiceException(
           BAD_REQUEST,
           String.format(
               "Universe UUID: %s doesn't belong " + "to Customer UUID: %s",
               universeUUID, customer.uuid));
     }
-  }
-
-  public static Universe getValidUniverseOrBadRequest(UUID universeUUID, Customer customer) {
-    Universe universe = getOrBadRequest(universeUUID);
-    MDC.put("universe-id", universeUUID.toString());
-    MDC.put("cluster-id", universeUUID.toString());
-    checkUniverseInCustomer(universeUUID, customer);
     return universe;
   }
 
@@ -931,7 +927,7 @@ public class Universe extends Model {
   }
 
   public boolean isYbcEnabled() {
-    return getUniverseDetails().enableYbc;
+    return getUniverseDetails().ybcInstalled;
   }
 
   public boolean nodeExists(String host, int port) {

@@ -60,22 +60,23 @@ public class CertsRotate extends UpgradeTaskBase {
             // Append new root cert to the existing ca.crt
             createCertUpdateTasks(nodes.getRight(), CertRotateAction.APPEND_NEW_ROOT_CERT);
             // Do a rolling restart
-            createRestartTasks(nodes, UpgradeOption.ROLLING_UPGRADE);
+            createRestartTasks(nodes, UpgradeOption.ROLLING_UPGRADE, false);
             // Copy new server certs to all nodes
             createCertUpdateTasks(nodes.getRight(), CertRotateAction.ROTATE_CERTS);
             // Do a rolling restart
-            createRestartTasks(nodes, UpgradeOption.ROLLING_UPGRADE);
+            createRestartTasks(nodes, UpgradeOption.ROLLING_UPGRADE, false);
             // Remove old root cert from the ca.crt
             createCertUpdateTasks(nodes.getRight(), CertRotateAction.REMOVE_OLD_ROOT_CERT);
             // Update gflags of cert directories
             createUpdateCertDirsTask(nodes.getLeft(), ServerType.MASTER);
             createUpdateCertDirsTask(nodes.getRight(), ServerType.TSERVER);
+
             // Reset the old rootCA content in platform
             createUniverseUpdateRootCertTask(UpdateRootCertAction.Reset);
             // Update universe details with new cert values
             createUniverseSetTlsParamsTask();
             // Do a rolling restart
-            createRestartTasks(nodes, UpgradeOption.ROLLING_UPGRADE);
+            createRestartTasks(nodes, UpgradeOption.ROLLING_UPGRADE, taskParams().ybcInstalled);
           } else {
             // Update the rootCA in platform to have both old cert and new cert
             if (taskParams().rootCARotationType == CertRotationType.RootCert) {
@@ -86,8 +87,12 @@ public class CertsRotate extends UpgradeTaskBase {
             // Update gflags of cert directories
             createUpdateCertDirsTask(nodes.getLeft(), ServerType.MASTER);
             createUpdateCertDirsTask(nodes.getRight(), ServerType.TSERVER);
+            if (taskParams().ybcInstalled) {
+              createYbcUpdateCertDirsTask(nodes.getRight());
+            }
+
             // Do a rolling/non-rolling restart
-            createRestartTasks(nodes, taskParams().upgradeOption);
+            createRestartTasks(nodes, taskParams().upgradeOption, taskParams().ybcInstalled);
             // Reset the old rootCA content in platform
             if (taskParams().rootCARotationType == CertRotationType.RootCert) {
               createUniverseUpdateRootCertTask(UpdateRootCertAction.Reset);
@@ -118,6 +123,31 @@ public class CertsRotate extends UpgradeTaskBase {
       params.rootCARotationType = taskParams().rootCARotationType;
       params.clientRootCARotationType = taskParams().clientRootCARotationType;
       params.certRotateAction = certRotateAction;
+      AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
+      task.initialize(params);
+      task.setUserTaskUUID(userTaskUUID);
+      subTaskGroup.addSubTask(task);
+    }
+    subTaskGroup.setSubTaskGroupType(getTaskSubGroupType());
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+  }
+
+  private void createYbcUpdateCertDirsTask(List<NodeDetails> nodes) {
+    String subGroupDescription =
+        String.format(
+            "AnsibleConfigureServers (%s) for: %s", getTaskSubGroupType(), taskParams().nodePrefix);
+    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup(subGroupDescription, executor);
+    for (NodeDetails node : nodes) {
+      AnsibleConfigureServers.Params params =
+          getAnsibleConfigureServerParams(
+              node,
+              ServerType.CONTROLLER,
+              UpgradeTaskParams.UpgradeTaskType.Certs,
+              UpgradeTaskParams.UpgradeTaskSubType.None);
+      params.enableNodeToNodeEncrypt = getUserIntent().enableNodeToNodeEncrypt;
+      params.enableClientToNodeEncrypt = getUserIntent().enableClientToNodeEncrypt;
+      params.rootAndClientRootCASame = taskParams().rootAndClientRootCASame;
+      params.certRotateAction = CertRotateAction.UPDATE_CERT_DIRS;
       AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
       task.initialize(params);
       task.setUserTaskUUID(userTaskUUID);

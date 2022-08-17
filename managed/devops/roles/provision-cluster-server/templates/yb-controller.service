@@ -17,7 +17,7 @@ Group={{ user_name }}
 # Start
 ExecStart={{yb_home_dir}}/controller/bin/yb-controller-server \
     --flagfile {{yb_home_dir}}/controller/conf/server.conf
-Restart=on-failure
+Restart=always
 RestartSec=5
 # Stop -> SIGTERM - 10s - SIGKILL (if not stopped) [matches existing cron behavior]
 KillMode=control-group

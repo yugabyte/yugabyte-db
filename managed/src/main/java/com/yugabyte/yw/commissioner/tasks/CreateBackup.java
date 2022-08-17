@@ -26,6 +26,7 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
+import com.yugabyte.yw.common.YbcManager;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
 import com.yugabyte.yw.forms.BackupRequestParams;
@@ -78,6 +79,8 @@ public class CreateBackup extends UniverseTaskBase {
 
   @Inject CustomerConfigService customerConfigService;
 
+  @Inject YbcManager ybcManager;
+
   @Override
   public void run() {
     Set<String> tablesToBackup = new HashSet<>();
@@ -85,7 +88,8 @@ public class CreateBackup extends UniverseTaskBase {
     MetricLabelsBuilder metricLabelsBuilder = MetricLabelsBuilder.create().appendSource(universe);
     BACKUP_ATTEMPT_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
     boolean isUniverseLocked = false;
-    boolean ybcBackup = universe.isYbcEnabled();
+    boolean ybcBackup =
+        universe.isYbcEnabled() && !params().backupType.equals(TableType.REDIS_TABLE_TYPE);
     try {
       checkUniverseVersion();
 
@@ -106,6 +110,14 @@ public class CreateBackup extends UniverseTaskBase {
         }
         // Clear any previous subtasks if any.
         getRunnableTask().reset();
+
+        if (universe.isYbcEnabled()
+            && !universe
+                .getUniverseDetails()
+                .ybcSoftwareVersion
+                .equals(ybcManager.getStableYbcVersion())) {
+          createUpgradeYbcTask(params().universeUUID, ybcManager.getStableYbcVersion(), true);
+        }
 
         Backup backup =
             createAllBackupSubtasks(
@@ -151,6 +163,14 @@ public class CreateBackup extends UniverseTaskBase {
     } catch (Throwable t) {
       try {
         log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
+        // Ensures that backup reaches a final state
+        Backup.fetchAllBackupsByTaskUUID(userTaskUUID)
+            .forEach(
+                backup -> {
+                  if (backup.state.equals(BackupState.InProgress)) {
+                    backup.transitionState(BackupState.Failed);
+                  }
+                });
         BACKUP_FAILURE_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
         metricService.setFailureStatusMetric(
             buildMetricTemplate(PlatformMetrics.CREATE_BACKUP_STATUS, universe));

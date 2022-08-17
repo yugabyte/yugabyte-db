@@ -1,8 +1,8 @@
 services:
 
-  - name: nginxHttp
+  - name: nginx
     fileName: /etc/nginx/nginx.conf
-    contents: |
+    contents: {{if yamlHttpCheck ".nginx.mode" }} |
       worker_processes  1;
       events {
         worker_connections  1024;
@@ -18,7 +18,7 @@ services:
 
           server {
               listen       80;
-              server_name  {{ yamlPath ".nginxHttp.serverName" }};
+              server_name  {{ yamlPath ".nginx.serverName" }};
 
               proxy_http_version 1.1;
               proxy_set_header X-Real-IP  $remote_addr;
@@ -26,23 +26,19 @@ services:
               proxy_set_header Host $host;
 
           location / {
-              proxy_pass http://127.0.0.1:9000;
+              proxy_pass http://{{ yamlPath ".nginx.privateIp" }}:{{ yamlPath ".nginx.containerExposedPort" }};
           }
           location ~ /settings/ha/internal/upload$ {
-              proxy_pass http://127.0.0.1:9000;
+              proxy_pass http://{{ yamlPath ".nginx.privateIp" }}:{{ yamlPath ".nginx.containerExposedPort" }};
               # HA backp upload endpoint needs to allow bigger request size
               # Broaden the location match regex to cover more endpoints as needed
-              client_max_body_size 100G;
+              client_max_body_size {{ yamlPath ".nginx.uploadSize" }}G;
           }
                 add_header X-Frame-Options "SAMEORIGIN";
         }
       }
-
-  - name: nginxHttps
-    fileName: /etc/nginx/nginx.conf
-    contents: |
+      {{else}} |
       worker_processes  1;
-
       events {
           worker_connections  1024;
       }
@@ -61,14 +57,14 @@ services:
 
         server {
           listen       80;
-          server_name  {{ yamlPath ".nginxHttps.serverName" }};
+          server_name  {{ yamlPath ".nginx.serverName" }};
           return 301 https://$host$request_uri;
         }
         server {
         listen       443 ssl;
-        ssl_certificate /opt/yugabyte/certs/server.crt;
-        ssl_certificate_key /opt/yugabyte/certs/server.key;
-        server_name  {{ yamlPath ".nginxHttps.serverName" }};
+        ssl_certificate /opt/yugabyte/certs/cert.pem;
+        ssl_certificate_key /opt/yugabyte/certs/key.pem;
+        server_name  {{ yamlPath ".nginx.serverName" }};
           proxy_http_version 1.1;
           proxy_set_header X-Real-IP  $remote_addr;
           # proxy_set_header X-Forwarded-For $remote_addr;
@@ -76,14 +72,15 @@ services:
           proxy_set_header Host $host;
 
           location / {
-            proxy_pass http://127.0.0.1:9000;
+            proxy_pass http://{{ yamlPath ".nginx.privateIp" }}:{{ yamlPath ".nginx.containerExposedPort" }};
           }
           location ~ /settings/ha/internal/upload$ {
-            proxy_pass http://127.0.0.1:9000;
+            proxy_pass http://{{ yamlPath ".nginx.privateIp" }}:{{ yamlPath ".nginx.containerExposedPort" }};
             # HA backp upload endpoint needs to allow bigger request size
             # Broaden the location match regex to cover more endpoints as needed
-            client_max_body_size 100G;
+            client_max_body_size {{ yamlPath ".nginx.uploadSize" }}G;
           }
           add_header X-Frame-Options "SAMEORIGIN";
         }
       }
+      {{end}}

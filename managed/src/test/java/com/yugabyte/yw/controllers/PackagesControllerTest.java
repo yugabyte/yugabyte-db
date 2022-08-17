@@ -49,8 +49,6 @@ public class PackagesControllerTest extends WithApplication {
 
   @Mock Config mockConfig;
   @Mock Commissioner mockCommissioner;
-  private Customer customer;
-  private Users user;
   private static String fakeYbcReleasesPath = "/tmp/yugaware_tests/ybc/releases";
 
   @Override
@@ -66,12 +64,6 @@ public class PackagesControllerTest extends WithApplication {
         .build();
   }
 
-  @Before
-  public void setUp() {
-    customer = ModelFactory.testCustomer();
-    user = ModelFactory.testUser(customer);
-  }
-
   @After
   public void tearDown() throws IOException {
     FileUtils.deleteDirectory(new File(fakeYbcReleasesPath));
@@ -79,7 +71,7 @@ public class PackagesControllerTest extends WithApplication {
 
   private Result fetchPackage(ObjectNode body) {
     String uri = "/api/fetch_package";
-    return FakeApiHelper.doRequestWithAuthTokenAndBody("POST", uri, user.createAuthToken(), body);
+    return FakeApiHelper.doRequestWithBodyAndWithoutAuthToken("POST", uri, body);
   }
 
   @Test

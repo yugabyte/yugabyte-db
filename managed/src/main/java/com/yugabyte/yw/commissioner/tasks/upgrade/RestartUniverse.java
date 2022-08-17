@@ -36,7 +36,7 @@ public class RestartUniverse extends UpgradeTaskBase {
           // Verify the request params and fail if invalid
           taskParams().verifyParams(getUniverse());
           // Restart all nodes
-          createRestartTasks(nodes, taskParams().upgradeOption);
+          createRestartTasks(nodes, taskParams().upgradeOption, taskParams().ybcInstalled);
         });
   }
 }

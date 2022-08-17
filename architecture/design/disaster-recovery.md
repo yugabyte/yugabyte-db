@@ -1,21 +1,20 @@
-# Disaster recovery
+# Business continuity and disaster recovery
 
 This document describes supported options for cross-region disaster recovery when using YugabyteDB.
 
-## Option 1: synchronous active-active replication
+## Option 1: three data centers with synchronous replication
 
-Deploying a single cluster across [three or more regions](https://docs.yugabyte.com/preview/deploy/multi-dc/3dc-deployment/)  provides out-of-the-box disaster recovery in case one of the regions becomes unavailable. The advantages of this approach are:
+Deploying a single cluster across [three or more regions](https://docs.yugabyte.com/preview/deploy/multi-dc/3dc-deployment/) provides out-of-the-box disaster recovery in case one of the regions becomes unavailable. The advantages of this approach are:
 
 - No additional configuration needed
 - Operationally simple (automatic failover and switchover, automatic DDL propagation)
 - Zero RPO
-- RTO within 3 seconds
 
-The major tradeoff, however, is that update latencies are increased due to replication across regions. The asynchronous option, which is described below, allows you to minimize the latencies by paying the price of non-zero RPO and potentially higher RTO.
+The major tradeoff, however, is that update latencies are increased due to replication across regions. The second option, which is described below, allows you to minimize the latencies by paying the price of non-zero RPO.
 
-## Option 2: asynchronous active-passive replication
+## Option 2: two data centers with asynchronous replication
 
-Asynchronous option is based on the following requirements:
+This option is based on the following requirements:
 
 1. Presence of the disaster recovery solution should not negatively increase update latencies.
 1. RPO should be minimized, however non-zero RPO is acceptable.

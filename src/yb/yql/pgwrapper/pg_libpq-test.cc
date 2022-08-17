@@ -2757,8 +2757,12 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(NonBreakingDDLMode)) {
   ASSERT_OK(conn1.Execute("BEGIN"));
   res = ASSERT_RESULT(conn1.Fetch("SELECT * FROM t1"));
   ASSERT_EQ(0, PQntuples(res.get()));
+
+  // Do grant first otherwise the next two REVOKE statements will be no-ops.
+  ASSERT_OK(conn2.Execute("GRANT ALL ON t2 TO public"));
+
   ASSERT_OK(conn2.Execute("SET yb_make_next_ddl_statement_nonbreaking TO TRUE"));
-  ASSERT_OK(conn2.Execute("REVOKE ALL ON t2 FROM public"));
+  ASSERT_OK(conn2.Execute("REVOKE SELECT ON t2 FROM public"));
   // Wait for the new catalog version to propagate to TServers.
   std::this_thread::sleep_for(2s);
   res = ASSERT_RESULT(conn1.Fetch("SELECT * FROM t1"));
@@ -2766,7 +2770,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(NonBreakingDDLMode)) {
 
   // Verify that the session variable yb_make_next_ddl_statement_nonbreaking auto-resets to false.
   // As a result, the running transaction on conn1 is aborted.
-  ASSERT_OK(conn2.Execute("REVOKE ALL ON t2 FROM public"));
+  ASSERT_OK(conn2.Execute("REVOKE INSERT ON t2 FROM public"));
   // Wait for the new catalog version to propagate to TServers.
   std::this_thread::sleep_for(2s);
   result = conn1.Fetch("SELECT * FROM t1");

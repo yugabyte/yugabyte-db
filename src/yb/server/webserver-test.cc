@@ -41,7 +41,9 @@
 #include "yb/server/default-path-handlers.h"
 #include "yb/server/webserver.h"
 
+#include "yb/util/file_util.h"
 #include "yb/util/curl_util.h"
+#include "yb/util/env_util.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/status.h"
 #include "yb/util/status_log.h"
@@ -62,15 +64,19 @@ class WebserverTest : public YBTest {
   WebserverTest() {
     static_dir_ = GetTestPath("webserver-docroot");
     CHECK_OK(env_->CreateDir(static_dir_));
+  }
 
+  virtual WebserverOptions ServerOptions() {
     WebserverOptions opts;
     opts.port = 0;
     opts.doc_root = static_dir_;
-    server_.reset(new Webserver(opts, "WebserverTest"));
+    return opts;
   }
 
   void SetUp() override {
     YBTest::SetUp();
+
+    server_.reset(new Webserver(ServerOptions(), "WebserverTest"));
 
     AddDefaultPathHandlers(server_.get());
     ASSERT_OK(server_->Start());
@@ -238,6 +244,35 @@ TEST_F(WebserverTest, TestStaticFiles) {
   s = curl_.FetchURL(strings::Substitute("http://$0/dir/", ToString(addr_)),
                      &buf_);
   ASSERT_EQ("Remote error: HTTP 403", s.ToString(/* no file/line */ false));
+}
+
+class WebserverSecureTest : public WebserverTest {
+ public:
+  WebserverOptions ServerOptions() override {
+    auto opts = WebserverTest::ServerOptions();
+    opts.bind_interface = "127.0.0.2";
+
+    const auto sub_dir = JoinPathSegments("ent", "test_certs");
+    const auto certs_dir = JoinPathSegments(env_util::GetRootDir(sub_dir), sub_dir);
+    opts.certificate_file = JoinPathSegments(certs_dir, Format("node.$0.crt", opts.bind_interface));
+    opts.private_key_file = JoinPathSegments(certs_dir, Format("node.$0.key", opts.bind_interface));
+    ca_cert_ = JoinPathSegments(certs_dir, "ca.crt");
+    return opts;
+  }
+
+  void SetUp() override {
+    WebserverTest::SetUp();
+
+    url_ = Substitute("https://$0", ToString(addr_));
+  }
+
+ protected:
+  std::string ca_cert_;
+};
+
+// Test HTTPS endpoint.
+TEST_F(WebserverSecureTest, TestIndexPage) {
+  ASSERT_OK(curl_.FetchURL(url_, &buf_, EasyCurl::kDefaultTimeoutSec, {} /* headers */, ca_cert_));
 }
 
 } // namespace yb

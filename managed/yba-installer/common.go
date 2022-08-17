@@ -12,6 +12,7 @@
     "strings"
     "strconv"
     "log"
+    "github.com/spf13/viper"
  )
 
  // Common (general setup operations)
@@ -34,7 +35,7 @@
  func (com Common) Install() {
     installPrerequisites()
     createYugabyteUser()
-    GenerateTemplatedConfiguration(com.Version, com.Mode)
+    GenerateTemplatedConfiguration()
     com.downloadPlatformSupportPackageAndYugabundle(com.Version)
     com.copyThirdPartyDependencies()
  }
@@ -58,12 +59,61 @@
           ExecuteBashCommand(command, argStop)
        }
     }
-
+    RemoveAllExceptDataVolumes([]string{"platform", "prometheus"})
  }
+
+ // RemoveAllExceptDataVolumes removes the install directory from the host's
+ // operating system, except for data volumes specified in the input config
+ // file.
+ func RemoveAllExceptDataVolumes(services []string) {
+
+      viper.SetConfigFile("yba-installer-input.yml")
+      viper.ReadInConfig()
+      baseDirs := fmt.Sprint(viper.Get("basedirs"))
+      baseDirs = baseDirs[1:len(baseDirs) - 1]
+      splitBaseDirs := strings.Split(baseDirs, " ")
+      for _, baseDir := range(splitBaseDirs) {
+      // Only remove all except data volumes if the base directories exist.
+      if _, err := os.Stat(baseDir); err == nil {
+         splitBaseDir := strings.Split(baseDir, "/")
+         baseDirOneUp := strings.Join(splitBaseDir[0:len(splitBaseDir)  - 1], "/")
+         for _, service := range(services) {
+          dataVolumes := fmt.Sprint(viper.Get("datavolumes." + service))
+          dataVolumes = dataVolumes[1:len(dataVolumes) - 1]
+          splitDataVolumes := strings.Split(dataVolumes, " ")
+          for _, volume := range(splitDataVolumes) {
+           // Only move out the data volume if it exists.
+            if _, err := os.Stat(volume); err == nil {
+             if strings.Contains(volume, baseDir) {
+                 volumeMoved := strings.ReplaceAll(volume, baseDir, baseDirOneUp)
+                 MoveFileGolang(volume, volumeMoved)
+               }
+             }
+           }
+         }
+          os.RemoveAll(baseDir)
+          os.MkdirAll(baseDir, os.ModePerm)
+          for _, service := range(services) {
+            dataVolumes := fmt.Sprint(viper.Get("datavolumes." + service))
+            dataVolumes = dataVolumes[1:len(dataVolumes) - 1]
+            splitDataVolumes := strings.Split(dataVolumes, " ")
+            for _, volume := range(splitDataVolumes) {
+             if strings.Contains(volume, baseDir) {
+                 volumeMoved := strings.ReplaceAll(volume, baseDir, baseDirOneUp)
+                  // Only move in the data volume if it exists.
+                 if _, err := os.Stat(volumeMoved); err == nil {
+                     MoveFileGolang(volumeMoved, volume)
+                 }
+                 }
+               }
+             }
+           }
+        }
+     }
 
  // Upgrade performs the upgrade procedures common to all services.
  func (com Common) Upgrade() {
-     GenerateTemplatedConfiguration(com.Version, com.Mode)
+     GenerateTemplatedConfiguration()
      com.downloadPlatformSupportPackageAndYugabundle(com.Version)
      com.copyThirdPartyDependencies()
  }
@@ -122,7 +172,6 @@
       fmt.Println("User yugabyte already exists, skipping user creation.")
    }
 
-   os.RemoveAll("/opt/yugabyte")
    os.MkdirAll("/opt/yugabyte", os.ModePerm)
    fmt.Println("/opt/yugabyte directory successfully created.")
    command3 := "chown"

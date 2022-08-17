@@ -72,4 +72,45 @@ class PosixRandomAccessFile : public RandomAccessFile {
 
 } // namespace yb
 
+namespace rocksdb {
+
+// TODO(unify_env): remove `using` statement once filesystem classes are fully merged into yb
+// namespace:
+using yb::FileSystemOptions;
+
+class PosixWritableFile : public WritableFile {
+ private:
+  const std::string filename_;
+  int fd_;
+  uint64_t filesize_;
+#ifdef ROCKSDB_FALLOCATE_PRESENT
+  bool allow_fallocate_;
+  bool fallocate_with_keep_size_;
+#endif
+
+ public:
+  PosixWritableFile(const std::string& fname, int fd,
+                    const FileSystemOptions& options);
+  ~PosixWritableFile();
+
+  // Means Close() will properly take care of truncate
+  // and it does not need any additional information
+  Status Truncate(uint64_t size) override;
+  Status Close() override;
+  Status Append(const Slice& data) override;
+  Status Flush() override;
+  Status Sync() override;
+  Status Fsync() override;
+  uint64_t GetFileSize() override;
+  bool IsSyncThreadSafe() const override;
+  Status InvalidateCache(size_t offset, size_t length) override;
+#ifdef ROCKSDB_FALLOCATE_PRESENT
+  Status Allocate(uint64_t offset, uint64_t len) override;
+  Status RangeSync(uint64_t offset, uint64_t nbytes) override;
+  size_t GetUniqueId(char* id) const override;
+#endif
+};
+
+} // namespace rocksdb
+
 #endif  // YB_UTIL_FILE_SYSTEM_POSIX_H

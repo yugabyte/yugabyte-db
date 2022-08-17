@@ -296,10 +296,10 @@ public class YbcBackupUtilTest extends FakeDBApplication {
         "s3://foo/univ-" + tableParams.universeUUID + "backup-timestamp/keyspace-bar";
     BucketLocation bL1 = new BucketLocation();
     bL1.bucket = "region-1";
-    bL1.cloudDir = "/univ-" + tableParams.universeUUID + "backup-timestamp/keyspace-bar";
+    bL1.cloudDir = "univ-" + tableParams.universeUUID + "backup-timestamp/keyspace-bar";
     BucketLocation bL2 = new BucketLocation();
     bL2.bucket = "region-2";
-    bL2.cloudDir = "/univ-" + tableParams.universeUUID + "backup-timestamp/keyspace-bar";
+    bL2.cloudDir = "univ-" + tableParams.universeUUID + "backup-timestamp/keyspace-bar";
     Map<String, BucketLocation> regionMap =
         new HashMap<String, BucketLocation>() {
           {

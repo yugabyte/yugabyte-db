@@ -239,6 +239,7 @@ set(UTIL_SRCS
   subprocess.cc
   sync_point.cc
   test_graph.cc
+  test_kill.cc
   thread.cc
   thread_restrictions.cc
   threadlocal.cc
@@ -281,6 +282,7 @@ set(UTIL_LIBS
   ${OPENSSL_SSL_LIBRARY})
 
 if(NOT APPLE)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DROCKSDB_FALLOCATE_PRESENT")
   set(UTIL_LIBS
     ${UTIL_LIBS}
     rt

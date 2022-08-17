@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -ue -o pipefail
 
+# Source common-build-env to get "log" function.
+. "${BASH_SOURCE[0]%/*}/../build-support/common-build-env.sh"
+
 readonly BASEDIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 (
 cd "${BASEDIR}"
@@ -12,13 +15,13 @@ mkdir -p "${OUTDIR}"
 
 if ! command -v npm -version &> /dev/null
 then
-  echo "npm could not be found"
+  log "npm could not be found"
   exit
 fi
 
 if ! command -v go version &> /dev/null
 then
-  echo "go lang could not be found"
+  log "go lang could not be found"
   exit
 fi
 
@@ -34,8 +37,8 @@ go build -o "${OUTFILE}"
 
 if [[ -f "${OUTFILE}" ]]
 then
-  echo "Yugabyted UI Binary generated successfully at ${OUTFILE}"
+  log "Yugabyted UI Binary generated successfully at ${OUTFILE}"
 else
-  echo "Build Failed."
+  log "Build Failed."
 fi
 )
