@@ -2,7 +2,7 @@
 title: Bulk export
 headerTitle: Bulk export for YSQL
 linkTitle: Bulk export
-description: Bulk export for YSQL using cassandra-loader and cassandra-unloader.
+description: Bulk export for YSQL using ysql_dump.
 menu:
   preview:
     identifier: manage-bulk-export-ysql

@@ -2,7 +2,7 @@
 title: Bulk import
 headerTitle: Bulk import for YCQL
 linkTitle: Bulk import
-description: Export data from Apache Cassandra and MySQL and bulk import data into YugabyteDB for YCQL.
+description: Import data from Apache Cassandra to YugabyteDB.
 aliases:
   - /preview/manage/data-migration/ycql/bulk-import/
 menu:
