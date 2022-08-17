@@ -110,7 +110,6 @@ public class NodeManager extends DevopsBase {
   static final String SKIP_CERT_VALIDATION = "yb.tls.skip_cert_validation";
   public static final String POSTGRES_MAX_MEM_MB = "yb.dbmem.postgres.max_mem_mb";
   public static final String YBC_NFS_DIRS = "yb.ybc_flags.nfs_dirs";
-  public static final String YBC_DEFAULT_VERSION = "ybc.releases.stable_version";
   private static final String YBC_PACKAGE_REGEX = ".+ybc(.*).tar.gz";
   private static final Pattern YBC_PACKAGE_PATTERN = Pattern.compile(YBC_PACKAGE_REGEX);
 

@@ -70,6 +70,8 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateMountedDisks;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdatePlacementInfo;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateSoftwareVersion;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateYbcSoftwareVersion;
+import com.yugabyte.yw.commissioner.tasks.subtasks.UpgradeYbc;
+import com.yugabyte.yw.commissioner.tasks.subtasks.UpgradeYbc;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForDataMove;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForEncryptionKeyInMemory;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForFollowerLag;
@@ -2044,6 +2046,29 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     SubTaskGroup subTaskGroup =
         getTaskExecutor().createSubTaskGroup("RestoreUniverseKeysYbc", executor);
     RestoreUniverseKeysYbc task = createTask(RestoreUniverseKeysYbc.class);
+    task.initialize(params);
+    task.setUserTaskUUID(userTaskUUID);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  /**
+   * Creates a task to upgrade desired ybc version on a universe.
+   *
+   * @param universeUUID universe on which ybc need to be upgraded
+   * @param ybcVersion desired ybc version
+   * @param validateOnlyMasterLeader flag to check only if master leader node's ybc is upgraded or
+   *     not
+   */
+  public SubTaskGroup createUpgradeYbcTask(
+      UUID universeUUID, String ybcVersion, boolean validateOnlyMasterLeader) {
+    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("UpgradeYbc", executor);
+    UpgradeYbc task = createTask(UpgradeYbc.class);
+    UpgradeYbc.Params params = new UpgradeYbc.Params();
+    params.universeUUID = universeUUID;
+    params.ybcVersion = ybcVersion;
+    params.validateOnlyMasterLeader = validateOnlyMasterLeader;
     task.initialize(params);
     task.setUserTaskUUID(userTaskUUID);
     subTaskGroup.addSubTask(task);

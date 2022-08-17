@@ -372,7 +372,9 @@ public enum TaskType {
 
   RunHooks("subtasks.RunHooks"),
 
-  UpdateUniverseTags("subtasks.UpdateUniverseTags");
+  UpdateUniverseTags("subtasks.UpdateUniverseTags"),
+
+  UpgradeYbc("subtasks.UpgradeYbc");
 
   private String relativeClassPath;
 
