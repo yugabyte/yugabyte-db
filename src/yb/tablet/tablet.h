@@ -699,13 +699,6 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
     return retention_policy_.get();
   }
 
-  // Triggers a compaction on this tablet if it is the result of a tablet split but has not yet been
-  // compacted. Assumes ownership of the provided thread pool token, and uses it to submit the
-  // compaction task. It is an error to call this method if a post-split compaction has been
-  // triggered previously by this tablet.
-  Status TriggerPostSplitCompactionIfNeeded(
-    std::function<std::unique_ptr<ThreadPoolToken>()> get_token_for_compaction);
-
   // Verifies the data on this tablet for consistency. Returns status OK if checks pass.
   Status VerifyDataIntegrity();
 
@@ -836,6 +829,15 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   const docdb::SchemaPackingStorage& PrimarySchemaPackingStorage();
 
   Status AddTableInMemory(const TableInfoPB& table_info);
+
+  // Triggers a compaction on this tablet if it is the result of a tablet split but has not yet been
+  // compacted. It is an error to call this method if a post-split compaction has been triggered
+  // previously by this tablet.
+  Status TriggerPostSplitCompactionIfNeeded();
+
+  // Returns true if the tablet was created after a split but it has not yet had data from it's
+  // parent which are now outside of its key range removed.
+  bool StillHasOrphanedPostSplitDataAbortable();
 
   std::unique_ptr<const Schema> key_schema_;
 
@@ -1025,6 +1027,12 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // compaction if this member is already set, as the existence of this member implies that such a
   // compaction has already been triggered for this instance.
   std::unique_ptr<ThreadPoolToken> post_split_compaction_task_pool_token_ = nullptr;
+
+  // Pointer to shared thread pool in TsTabletManager. Managed by the TsTabletManager.
+  ThreadPool* post_split_compaction_pool_ = nullptr;
+
+  // Gauge to monitor post-split compactions that have been started.
+  scoped_refptr<yb::AtomicGauge<uint64_t>> ts_split_compaction_added_;
 
   simple_spinlock operation_filters_mutex_;
 
