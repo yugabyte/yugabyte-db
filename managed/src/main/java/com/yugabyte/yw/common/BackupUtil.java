@@ -335,11 +335,18 @@ public class BackupUtil {
     validateStorageConfigOnLocations(config, locations);
   }
 
+  /**
+   * Get exact storage location for regional locations, while persisting in backup object
+   *
+   * @param backupLocation The default location of the backup, containing the md/success file
+   * @param configDefaultLocation The default config location
+   * @param configRegionLocation The regional location from the config
+   * @return
+   */
   public static String getExactRegionLocation(
-      BackupTableParams backupTableParams, String regionLocation) {
-    String backupIdentifier =
-        getBackupIdentifier(backupTableParams.universeUUID, backupTableParams.storageLocation);
-    String location = String.format("%s/%s", regionLocation, backupIdentifier);
+      String backupLocation, String configDefaultLocation, String configRegionLocation) {
+    String backupIdentifier = getBackupIdentifier(configDefaultLocation, backupLocation);
+    String location = String.format("%s/%s", configRegionLocation, backupIdentifier);
     return location;
   }
 
@@ -347,13 +354,16 @@ public class BackupUtil {
     return storageLocation.endsWith(YBC_BACKUP_IDENTIFIER);
   }
 
-  // returns the /univ-<>/backup-<>-<>/some_identifier extracted from the default backup location.
-  public static String getBackupIdentifier(UUID universeUUID, String defaultBackupLocation) {
-    String universeString = String.format("univ-%s", universeUUID);
+  /**
+   * Returns the univ-<>/backup-<>-<>/some_identifier extracted from the default backup location.
+   *
+   * @param configDefaultLocation The default config location
+   * @param defaultbackupLocation The default location of the backup, containing the md/success file
+   */
+  public static String getBackupIdentifier(
+      String configDefaultLocation, String defaultBackupLocation) {
     String backupIdentifier =
-        String.format(
-            "%s%s",
-            universeString, StringUtils.substringAfterLast(defaultBackupLocation, universeString));
+        StringUtils.removeStart(defaultBackupLocation, configDefaultLocation + "/");
     return backupIdentifier;
   }
 

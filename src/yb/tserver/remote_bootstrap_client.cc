@@ -197,6 +197,7 @@ Status RemoteBootstrapClient::SetTabletToReplace(const RaftGroupMetadataPtr& met
 Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
                                     rpc::ProxyCache* proxy_cache,
                                     const HostPort& bootstrap_peer_addr,
+                                    const ServerRegistrationPB& tablet_leader_conn_info,
                                     RaftGroupMetadataPtr* meta,
                                     TSTabletManager* ts_manager) {
   CHECK(!started_);
@@ -211,6 +212,11 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
   BeginRemoteBootstrapSessionRequestPB req;
   req.set_requestor_uuid(permanent_uuid());
   req.set_tablet_id(tablet_id_);
+  // if tablet_leader_conn_info is populated, then propagate it through
+  // the BeginRemoteBootstrapSessionRequestPB req.
+  if (tablet_leader_conn_info.has_cloud_info()) {
+    *req.mutable_tablet_leader_conn_info() = tablet_leader_conn_info;
+  }
 
   rpc::RpcController controller;
   controller.set_timeout(MonoDelta::FromMilliseconds(
@@ -542,12 +548,12 @@ Status RemoteBootstrapClient::Remove() {
   rpc::RpcController controller;
   controller.set_timeout(MonoDelta::FromSeconds(FLAGS_remote_bootstrap_end_session_timeout_sec));
 
-  RemoveSessionRequestPB req;
+  RemoveRemoteBootstrapSessionRequestPB req;
   req.set_session_id(session_id());
-  RemoveSessionResponsePB resp;
+  RemoveRemoteBootstrapSessionResponsePB resp;
 
   LOG_WITH_PREFIX(INFO) << "Removing remote bootstrap session " << session_id();
-  const auto status = proxy_->RemoveSession(req, &resp, &controller);
+  const auto status = proxy_->RemoveRemoteBootstrapSession(req, &resp, &controller);
   if (status.ok()) {
     LOG_WITH_PREFIX(INFO) << "Remote bootstrap session " << session_id() << " removed successfully";
     return Status::OK();

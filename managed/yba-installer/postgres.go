@@ -10,6 +10,8 @@
     "io/ioutil"
     "os"
     "strings"
+    "log"
+    "time"
  )
 
  // Component 1: Postgres
@@ -34,7 +36,7 @@
     runInitDB()
     pg.Start()
     createYugawareDatabase()
-    editPgHbaConfFile(pg.ConfFileLocation[0])
+    pg.editPgHbaConfFile(pg.ConfFileLocation[0])
  }
 
  func (pg Postgres) Start() {
@@ -63,6 +65,95 @@
     ExecuteBashCommand(command1, arg1)
  }
 
+ func (pg Postgres) SetUpPrereqsBundled() {
+
+   // Only extract Postgres package if it exists.
+   if _, err := os.Stat("/var/lib/pgsql"); err == nil {
+      extractPostgresPackageBundled()
+   }
+
+ }
+
+ func (pg Postgres) InstallBundled() {
+
+   runInitDBBundled()
+   //Need to edit PostgresConf before creating Yugaware database.
+   pg.editPostgresConf(pg.ConfFileLocation[1])
+   //5 second sleep to give enough time for database to start up, so
+   //that createYugawareDatabaseBundled() can execute succesfully (5 seconds
+   //on each side)
+   time.Sleep(5 * time.Second)
+   pg.StartBundled()
+   log.Println("About to create Yugaware database...")
+   time.Sleep(5 * time.Second)
+   createYugawareDatabaseBundled()
+
+ }
+
+ func (pg Postgres) RestartBundled() {
+
+   pg.StopBundled()
+   pg.StartBundled()
+
+ }
+
+ func (pg Postgres) StartBundled() {
+   log.Println("Starting the Postgres service...")
+   command1 := "sudo"
+   arg1 := []string{"-u", "postgres", "bash", "-c",
+   "/var/lib/pgsql/bin/pg_ctl -D /var/lib/pgsql/data start " +
+   "-l /var/lib/pgsql/logfile -m smart"}
+   ExecuteBashCommand(command1, arg1)
+   log.Println("Postgres service started succesfully!")
+
+ }
+
+ func (pg Postgres) StopBundled() {
+   log.Println("Stopping the Postgres service...")
+   command1 := "sudo"
+   arg1 := []string{"-u", "postgres", "bash", "-c",
+   "/var/lib/pgsql/bin/pg_ctl -D /var/lib/pgsql/data stop " +
+   "-l /var/lib/pgsql/logfile"}
+   ExecuteBashCommand(command1, arg1)
+   log.Println("Postgres service stopped succesfully!")
+ }
+
+ func extractPostgresPackageBundled() {
+
+   binaryName := "postgresql-9.6.24-1-linux-x64-binaries.tar.gz"
+
+   command1 := "bash"
+   arg1 := []string{"-c", "tar -zvxf " + binaryName + " -C /var/lib"}
+
+   ExecuteBashCommand(command1, arg1)
+
+ }
+
+ func runInitDBBundled() {
+
+   // Need to give the postgres user ownership of the /var/lib/pgsql directory,
+   // since we cannot execute initdb as root.
+   command0 := "chown"
+   arg0 := []string{"postgres", "/var/lib/pgsql"}
+
+   ExecuteBashCommand(command0, arg0)
+
+   // Create and provide logfile so that the terminal does not hang. Give the
+   // Postgres user ownership of this file as well.
+   os.Create("/var/lib/pgsql/logfile")
+
+   command1 := "chown"
+   arg1 := []string{"postgres", "/var/lib/pgsql/logfile"}
+
+   ExecuteBashCommand(command1, arg1)
+
+   command2 := "sudo"
+   arg2 := []string{"-u", "postgres", "bash", "-c",
+   "/var/lib/pgsql/bin/initdb -U postgres -D /var/lib/pgsql/data"}
+   ExecuteBashCommand(command2, arg2)
+
+}
+
  func (pg Postgres) GetSystemdFile() string {
     return pg.SystemdFileLocation
  }
@@ -76,8 +167,7 @@
     command1 := "dropdb"
     arg1 := []string{"-U", "postgres", "yugaware"}
     ExecuteBashCommand(command1, arg1)
-
-    os.RemoveAll("/opt/yugabyte")
+    //RemoveAllExceptDataVolumes([]string{"postgres"})
     }
 
  func (pg Postgres) VersionInfo() string {
@@ -117,7 +207,6 @@
 
     command1 := "/usr/pgsql-11/bin/postgresql-11-setup"
     arg1 := []string{"initdb"}
-    os.RemoveAll("/var/lib/pgsql")
     ExecuteBashCommand(command1, arg1)
 
  }
@@ -140,34 +229,60 @@
 
  }
 
- func editPgHbaConfFile(pgHbaConfLocation string) {
+ func createYugawareDatabaseBundled() {
 
-    splitPgHbaConf := strings.Split(pgHbaConfLocation, "/")
-    lengthSplitPgHbaConf := len(splitPgHbaConf)
-    joinedHbaConf := strings.Join(splitPgHbaConf[0:lengthSplitPgHbaConf-1], "/")
-    directory_hba_conf := strings.ReplaceAll(joinedHbaConf, " ", "") + "/"
-    joinedHbaConfFile := strings.Join(splitPgHbaConf[lengthSplitPgHbaConf-1:], "/")
-    file_hba_conf := strings.TrimSuffix(strings.ReplaceAll(joinedHbaConfFile, " ", ""), "\n")
+   command1 := "sudo"
+   arg1 := []string{"-u", "postgres", "bash", "-c", "dropdb yugaware"}
+   _, err1 := ExecuteBashCommand(command1, arg1)
 
-    os.Chdir(directory_hba_conf)
+   if err1 != nil {
+       fmt.Println("Yugaware database doesn't exist yet, skipping drop!")
+   } else {
+       fmt.Println(command1 + " " + strings.Join(arg1, " ") + " executed succesfully!")
+   }
 
-    input1, err1 := ioutil.ReadFile(file_hba_conf)
+   command2 := "sudo"
+   arg2 := []string{"-u", "postgres", "bash", "-c", "createdb yugaware"}
+   ExecuteBashCommand(command2, arg2)
+
+}
+
+ func (pg Postgres) editPgHbaConfFile(pgHbaConfLocation string) {
+
+    input1, err1 := ioutil.ReadFile(pgHbaConfLocation)
     if err1 != nil {
         fmt.Println(err1)
     }
 
     output1 := bytes.Replace(input1, []byte("peer"), []byte("trust"), -1)
-    if err1 = ioutil.WriteFile(file_hba_conf, output1, 0666); err1 != nil {
+    if err1 = ioutil.WriteFile(pgHbaConfLocation, output1, 0666); err1 != nil {
         fmt.Println(err1)
     }
 
-    input2, err2 := ioutil.ReadFile(file_hba_conf)
+    input2, err2 := ioutil.ReadFile(pgHbaConfLocation)
     if err2 != nil {
         fmt.Println(err2)
     }
 
     output2 := bytes.Replace(input2, []byte("ident"), []byte("trust"), -1)
-    if err2 = ioutil.WriteFile(file_hba_conf, output2, 0666); err2 != nil {
+    if err2 = ioutil.WriteFile(pgHbaConfLocation, output2, 0666); err2 != nil {
         fmt.Println(err2)
     }
  }
+
+ func (pg Postgres) editPostgresConf(postgresConfLocation string) {
+
+   input1, err1 := ioutil.ReadFile(postgresConfLocation)
+   if err1 != nil {
+       fmt.Println(err1)
+   }
+
+   stringToReplace := "#unix_socket_directories = '/tmp'"
+   stringToReplaceWith := "unix_socket_directories = '/var/run/postgresql/'"
+
+   output1 := bytes.Replace(input1, []byte(stringToReplace), []byte(stringToReplaceWith), -1)
+   if err1 = ioutil.WriteFile(postgresConfLocation, output1, 0666); err1 != nil {
+       fmt.Println(err1)
+   }
+
+}

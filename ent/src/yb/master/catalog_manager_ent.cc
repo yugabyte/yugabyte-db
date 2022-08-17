@@ -167,6 +167,15 @@ DEFINE_test_flag(bool, hang_wait_replication_drain, false,
                  "Used in tests to temporarily block WaitForReplicationDrain.");
 DEFINE_test_flag(bool, import_snapshot_failed, false,
                  "Return a error from ImportSnapshotMeta RPC for testing the RPC failure.");
+DEFINE_int32(ns_replication_sync_retry_secs, 5,
+             "Frequency at which the bg task will try to sync with producer and add tables to "
+             "the current NS-level replication, when there are non-replicated consumer tables.");
+DEFINE_int32(ns_replication_sync_backoff_secs, 60,
+             "Frequency of the add table task for a NS-level replication, when there are no "
+             "non-replicated consumer tables.");
+DEFINE_int32(ns_replication_sync_error_backoff_secs, 300,
+             "Frequency of the add table task for a NS-level replication, when there are too "
+             "many consecutive errors happening for the replication.");
 
 DEFINE_uint64(import_snapshot_max_concurrent_create_table_requests, 20,
              "Maximum number of create table requests to the master that can be outstanding "
@@ -397,6 +406,17 @@ class UniverseReplicationLoader : public Visitor<PersistentUniverseReplicationIn
           l->pb.state() == SysUniverseReplicationEntryPB::DELETING ||
           cdc::IsAlterReplicationUniverseId(l->pb.producer_id())) {
         catalog_manager_->universes_to_clear_.push_back(ri->id());
+      }
+
+      // Check if this is a namespace-level replication.
+      if (l->pb.has_is_ns_replication() && l->pb.is_ns_replication()) {
+        DCHECK(!ContainsKey(catalog_manager_->namespace_replication_map_, producer_id))
+            << "Duplicated namespace-level replication producer universe:" << producer_id;
+        catalog_manager_->namespace_replication_enabled_.store(true, std::memory_order_release);
+
+        // Force the consumer to sync with producer immediately.
+        auto& metadata = catalog_manager_->namespace_replication_map_[producer_id];
+        metadata.next_add_table_task_time = CoarseMonoClock::Now();
       }
 
       l.Commit();
@@ -3057,6 +3077,16 @@ Status CatalogManager::DeleteSnapshotSchedule(const DeleteSnapshotScheduleReques
       snapshot_schedule_id, leader_ready_term(), rpc->GetClientDeadline());
 }
 
+Status CatalogManager::EditSnapshotSchedule(
+    const EditSnapshotScheduleRequestPB* req,
+    EditSnapshotScheduleResponsePB* resp,
+    rpc::RpcContext* rpc) {
+  auto id = TryFullyDecodeSnapshotScheduleId(req->snapshot_schedule_id());
+  *resp->mutable_schedule() = VERIFY_RESULT(snapshot_coordinator_.EditSnapshotSchedule(
+      id, *req, leader_ready_term(), rpc->GetClientDeadline()));
+  return Status::OK();
+}
+
 void CatalogManager::DumpState(std::ostream* out, bool on_disk_dump) const {
   super::DumpState(out, on_disk_dump);
 
@@ -4207,9 +4237,9 @@ Status CatalogManager::IsBootstrapRequired(const IsBootstrapRequiredRequestPB* r
                  InvalidArgument, "Stream ID optional, but must match table IDs if specified");
   bool streams_given = req->stream_ids_size() > 0;
 
-  std::map<std::shared_ptr<cdc::CDCServiceProxy>, std::list<std::string>> proxy_to_tablet;
-
   for (int t = 0; t < req->table_ids_size(); ++t) {
+    std::map<std::shared_ptr<cdc::CDCServiceProxy>, std::list<std::string>> proxy_to_tablet;
+
     // Find out the server : tablet mapping of the given table.
     auto table_id = req->table_ids(t);
     auto stream_id = streams_given ? req->stream_ids(t) : "";
@@ -4620,7 +4650,7 @@ Status CatalogManager::IsBootstrapRequiredOnProducer(
   }
 
   auto cdc_rpc = VERIFY_RESULT(universe->GetOrCreateCDCRpcTasks(master_addresses));
-  if (VERIFY_RESULT(cdc_rpc->client()->IsBootstrapRequired(producer_table, bootstrap_id))) {
+  if (VERIFY_RESULT(cdc_rpc->client()->IsBootstrapRequired({producer_table}, bootstrap_id))) {
     return STATUS(IllegalState, Substitute(
       "Error Missing Data in Logs. Bootstrap is required for producer $0", universe->id()));
   }
@@ -5567,6 +5597,8 @@ Status CatalogManager::DeleteUniverseReplicationUnlocked(
   if (universe_replication_map_.erase(universe->id()) < 1) {
     LOG(WARNING) << "Failed to remove replication info from map: universe_id: " << universe->id();
   }
+  // If replication is at namespace-level, also remove from the namespace-level map.
+  namespace_replication_map_.erase(universe->id());
   // Also update the mapping of consumer tables.
   for (const auto& table : universe->metadata().state().pb.validated_tables()) {
     if (xcluster_consumer_tables_to_stream_map_[table.second].erase(universe->id()) < 1) {
@@ -6377,6 +6409,128 @@ Status CatalogManager::WaitForReplicationDrain(const WaitForReplicationDrainRequ
   return Status::OK();
 }
 
+Status CatalogManager::SetupNSUniverseReplication(const SetupNSUniverseReplicationRequestPB* req,
+                                                  SetupNSUniverseReplicationResponsePB* resp,
+                                                  rpc::RpcContext* rpc) {
+  LOG(INFO) << "SetupNSUniverseReplication from " << RequestorString(rpc)
+            << ": " << req->DebugString();
+
+  SCHECK(req->has_producer_id() && !req->producer_id().empty(), InvalidArgument,
+         "Producer universe ID must be provided");
+  SCHECK(req->has_producer_ns_name() && !req->producer_ns_name().empty(), InvalidArgument,
+         "Producer universe namespace name must be provided");
+  SCHECK(req->has_producer_ns_type(), InvalidArgument,
+         "Producer universe namespace type must be provided");
+  SCHECK(req->producer_master_addresses_size() > 0, InvalidArgument,
+         "Producer master address must be provided");
+
+  std::string ns_name = req->producer_ns_name();
+  YQLDatabase ns_type = req->producer_ns_type();
+  switch (ns_type) {
+    case YQLDatabase::YQL_DATABASE_CQL:
+      break;
+    case YQLDatabase::YQL_DATABASE_PGSQL:
+      return STATUS(InvalidArgument,
+          "YSQL not currently supported for namespace-level replication setup");
+    default:
+      return STATUS(InvalidArgument, Format("Unrecognized namespace type: $0", ns_type));
+  }
+
+  // 1. Find all producer tables with a name-matching consumer table. Ensure that no
+  //    bootstrapping is required for these producer tables.
+  std::vector<TableId> producer_tables;
+  NamespaceIdentifierPB producer_namespace;
+  NamespaceIdentifierPB consumer_namespace;
+  // namespace_id will be filled in XClusterFindProducerConsumerOverlap.
+  producer_namespace.set_name(ns_name);
+  producer_namespace.set_database_type(ns_type);
+  consumer_namespace.set_name(ns_name);
+  consumer_namespace.set_database_type(ns_type);
+  size_t num_non_matched_consumer_tables = 0;
+  {
+    std::vector<HostPort> hp;
+    HostPortsFromPBs(req->producer_master_addresses(), &hp);
+    std::string producer_addrs = HostPort::ToCommaSeparatedString(hp);
+    auto cdc_rpc = VERIFY_RESULT(CDCRpcTasks::CreateWithMasterAddrs(
+        req->producer_id(), producer_addrs));
+    producer_tables = VERIFY_RESULT(XClusterFindProducerConsumerOverlap(
+        cdc_rpc, &producer_namespace, &consumer_namespace,
+        &num_non_matched_consumer_tables));
+
+    // TODO: Remove this check after NS-level bootstrap is implemented.
+    auto bootstrap_required = VERIFY_RESULT(
+        cdc_rpc->client()->IsBootstrapRequired(producer_tables));
+    SCHECK(!bootstrap_required, IllegalState,
+           Format("Producer tables under namespace $0 require bootstrapping.", ns_name));
+  }
+  SCHECK(!producer_tables.empty(), NotFound, Format(
+      "No producer tables under namespace $0 can be set up for replication. Please make "
+      "sure that there are at least one pair of (producer, consumer) table with matching "
+      "name and schema in order to initialize the namespace-level replication.", ns_name));
+
+  // 2. Setup universe replication for these producer tables.
+  {
+    SetupUniverseReplicationRequestPB setup_req;
+    SetupUniverseReplicationResponsePB setup_resp;
+    setup_req.set_producer_id(req->producer_id());
+    setup_req.mutable_producer_master_addresses()->CopyFrom(req->producer_master_addresses());
+    for (const auto& tid : producer_tables) {
+      setup_req.add_producer_table_ids(tid);
+    }
+    auto s = SetupUniverseReplication(&setup_req, &setup_resp, rpc);
+    if (!s.ok()) {
+      if (setup_resp.has_error()) {
+        resp->mutable_error()->Swap(setup_resp.mutable_error());
+        return s;
+      }
+      return SetupError(resp->mutable_error(), s);
+    }
+  }
+
+  // 3. Wait for the universe replication setup to finish.
+  // TODO: Put all the following code in an async task to avoid this expensive wait.
+  CoarseTimePoint deadline = rpc->GetClientDeadline();
+  auto s = WaitForSetupUniverseReplicationToFinish(req->producer_id(), deadline);
+  if (!s.ok()) {
+    return SetupError(resp->mutable_error(), s);
+  }
+
+  // 4. Update the persisted data.
+  scoped_refptr<UniverseReplicationInfo> universe;
+  {
+    SharedLock lock(mutex_);
+    TRACE("Acquired catalog manager lock");
+    universe = FindPtrOrNull(universe_replication_map_, req->producer_id());
+    if (universe == nullptr) {
+      return STATUS(NotFound, "Could not find universe after SetupUniverseReplication",
+                    req->ShortDebugString(), MasterError(MasterErrorPB::UNKNOWN_ERROR));
+    }
+  }
+  auto l = universe->LockForWrite();
+  l.mutable_data()->pb.set_is_ns_replication(true);
+  l.mutable_data()->pb.mutable_producer_namespace()->CopyFrom(producer_namespace);
+  l.mutable_data()->pb.mutable_consumer_namespace()->CopyFrom(consumer_namespace);
+  l.Commit();
+
+  // 5. Initialize in-memory entry and start the periodic task.
+  {
+    LockGuard lock(mutex_);
+    auto& metadata = namespace_replication_map_[req->producer_id()];
+    if (num_non_matched_consumer_tables > 0) {
+      // Start the periodic sync immediately.
+      metadata.next_add_table_task_time = CoarseMonoClock::Now() +
+          MonoDelta::FromSeconds(GetAtomicFlag(&FLAGS_ns_replication_sync_retry_secs));
+    } else {
+      // Delay the sync since there are currently no non-replicated consumer tables.
+      metadata.next_add_table_task_time = CoarseMonoClock::Now() +
+          MonoDelta::FromSeconds(GetAtomicFlag(&FLAGS_ns_replication_sync_backoff_secs));
+    }
+  }
+  namespace_replication_enabled_.store(true, std::memory_order_release);
+
+  return Status::OK();
+}
+
 bool CatalogManager::IsTableCdcProducer(const TableInfo& table_info) const {
   auto it = xcluster_producer_tables_to_stream_map_.find(table_info.id());
   if (it != xcluster_producer_tables_to_stream_map_.end()) {
@@ -6705,6 +6859,264 @@ void CatalogManager::PrepareRestore() {
 
 void CatalogManager::EnableTabletSplitting(const std::string& feature) {
   DisableTabletSplittingInternal(MonoDelta::FromMilliseconds(0), feature);
+}
+
+void CatalogManager::ScheduleXClusterNSReplicationAddTableTask() {
+  if (!namespace_replication_enabled_.load(std::memory_order_acquire)) {
+    return;
+  }
+
+  LockGuard lock(mutex_);
+  for (auto& map_entry : namespace_replication_map_) {
+    auto& metadata = map_entry.second;
+    if (CoarseMonoClock::Now() <= metadata.next_add_table_task_time) {
+      continue;
+    }
+    // Enqueue the async add table task, which involves syncing with producer and adding
+    // tables to the existing replication.
+    const auto& universe_id = map_entry.first;
+    CoarseTimePoint deadline = CoarseMonoClock::Now() + MonoDelta::FromSeconds(60);
+    auto s = background_tasks_thread_pool_->SubmitFunc(
+        std::bind(&CatalogManager::XClusterAddTableToNSReplication, this, universe_id, deadline));
+    if (!s.ok()) {
+      // By not setting next_add_table_task_time, this enforces the task to be resheduled the
+      // next time the background thread runs.
+      LOG(WARNING) << "Failed to schedule: XClusterAddTableToNSReplication";
+    } else {
+      // Prevent new tasks from being scheduled when the current task is running.
+      metadata.next_add_table_task_time = deadline;
+    }
+  }
+}
+
+void CatalogManager::XClusterAddTableToNSReplication(string universe_id,
+                                                    CoarseTimePoint deadline) {
+  // TODO: In ScopeExit, find a way to report non-OK task_status to user.
+  bool has_non_replicated_consumer_table = true;
+  Status task_status = Status::OK();
+  auto scope_exit = ScopeExit([&, this] {
+    LockGuard lock(mutex_);
+    auto metadata_iter = namespace_replication_map_.find(universe_id);
+
+    // Only update metadata if we are the most recent task for this universe.
+    if (metadata_iter != namespace_replication_map_.end() &&
+        metadata_iter->second.next_add_table_task_time == deadline) {
+      auto& metadata = metadata_iter->second;
+      // a. If there are error, emit to prometheus (TODO) and force another round of syncing.
+      //    When there are too many consecutive errors, stop the task for a long period.
+      // b. Else if there is non-replicated consumer table, force another round of syncing.
+      // c. Else, stop the task temporarily.
+      if (!task_status.ok()) {
+        metadata.num_accumulated_errors++;
+        if (metadata.num_accumulated_errors == 5) {
+          metadata.num_accumulated_errors = 0;
+          metadata.next_add_table_task_time = CoarseMonoClock::now() +
+              MonoDelta::FromSeconds(GetAtomicFlag(&FLAGS_ns_replication_sync_error_backoff_secs));
+        } else {
+          metadata.next_add_table_task_time = CoarseMonoClock::now() +
+              MonoDelta::FromSeconds(GetAtomicFlag(&FLAGS_ns_replication_sync_retry_secs));
+        }
+      } else {
+        metadata.num_accumulated_errors = 0;
+        metadata.next_add_table_task_time = CoarseMonoClock::now() +
+            MonoDelta::FromSeconds(has_non_replicated_consumer_table
+                ? GetAtomicFlag(&FLAGS_ns_replication_sync_retry_secs)
+                : GetAtomicFlag(&FLAGS_ns_replication_sync_backoff_secs));
+      }
+    }
+  });
+
+  if (deadline - CoarseMonoClock::Now() <= 1ms || !CheckIsLeaderAndReady().ok()) {
+    return;
+  }
+
+  // 1. Sync with producer to find new producer tables that can be added to the current
+  //    replication, and verify that these tables do not require bootstrapping.
+  scoped_refptr<UniverseReplicationInfo> universe;
+  {
+    SharedLock lock(mutex_);
+    universe = FindPtrOrNull(universe_replication_map_, universe_id);
+    if (universe == nullptr) {
+      task_status = STATUS(NotFound, "Universe not found: " + universe_id);
+      LOG_WITH_FUNC(WARNING) << task_status;
+      return;
+    }
+  }
+  std::vector<TableId> tables_to_add;
+  task_status = XClusterNSReplicationSyncWithProducer(
+      universe, &tables_to_add, &has_non_replicated_consumer_table);
+  if (!task_status.ok()) {
+    LOG_WITH_FUNC(WARNING) << "Error finding producer tables to add to universe "
+                           << universe->id() << " : " << task_status;
+    return;
+  }
+  if (tables_to_add.empty()) {
+    return;
+  }
+
+  // 2. Run AlterUniverseReplication to add the new tables to the current replication.
+  AlterUniverseReplicationRequestPB alter_req;
+  AlterUniverseReplicationResponsePB alter_resp;
+  alter_req.set_producer_id(universe_id);
+  for (const auto& table : tables_to_add) {
+    alter_req.add_producer_table_ids_to_add(table);
+  }
+
+  task_status = AlterUniverseReplication(&alter_req, &alter_resp, /* RpcContext */ nullptr);
+  if (task_status.ok() && alter_resp.has_error()) {
+    task_status = StatusFromPB(alter_resp.error().status());
+  }
+  if (!task_status.ok()) {
+    LOG_WITH_FUNC(WARNING) << "Unable to add producer tables to namespace-level replication: "
+                           << task_status;
+    return;
+  }
+
+  // 3. Wait for AlterUniverseReplication to finish.
+  task_status = WaitForSetupUniverseReplicationToFinish(universe_id + ".ALTER", deadline);
+  if (!task_status.ok()) {
+    LOG_WITH_FUNC(WARNING) << "Error while waiting for AlterUniverseReplication on "
+                           << universe_id << " to complete: " << task_status;
+    return;
+  }
+  LOG_WITH_FUNC(INFO) << "Tables added to namespace-level replication " << universe->id()
+                      << " : " << alter_req.ShortDebugString();
+}
+
+Status CatalogManager::XClusterNSReplicationSyncWithProducer(
+    scoped_refptr<UniverseReplicationInfo> universe,
+    std::vector<TableId>* producer_tables_to_add,
+    bool* has_non_replicated_consumer_table) {
+  auto l = universe->LockForRead();
+  size_t num_non_matched_consumer_tables = 0;
+
+  // 1. Find producer tables with a name-matching consumer table.
+  auto cdc_rpc = VERIFY_RESULT(
+      universe->GetOrCreateCDCRpcTasks(l->pb.producer_master_addresses()));
+  auto producer_namespace = l->pb.producer_namespace();
+  auto consumer_namespace = l->pb.consumer_namespace();
+
+  auto producer_tables = VERIFY_RESULT(XClusterFindProducerConsumerOverlap(
+      cdc_rpc, &producer_namespace, &consumer_namespace, &num_non_matched_consumer_tables));
+
+  // 2. Filter out producer tables that are already in the replication.
+  for (const auto& tid : producer_tables) {
+    if (ContainsKey(l->pb.validated_tables(), tid)) {
+      continue;
+    }
+    producer_tables_to_add->push_back(tid);
+  }
+
+  // 3. If all consumer tables have a name-matching producer tables, and there is no additional
+  //    producer table to add to the replication, this means that all consumer tables are
+  //    currently replicated and we can stop the periodic sync temporarily.
+  *has_non_replicated_consumer_table =
+      num_non_matched_consumer_tables > 0 || !producer_tables_to_add->empty();
+
+  // 4. Finally, verify that all producer tables to be added do not require bootstrapping.
+  // TODO: Remove this check after NS-level bootstrap is implemented.
+  if (!producer_tables_to_add->empty()) {
+    auto bootstrap_required = VERIFY_RESULT(
+        cdc_rpc->client()->IsBootstrapRequired(*producer_tables_to_add));
+    if (bootstrap_required) {
+      std::ostringstream ptable_stream;
+      for (const auto& ptable : *producer_tables_to_add) {
+        ptable_stream << ptable << ",";
+      }
+      std::string ptable_str = ptable_stream.str();
+      ptable_str.pop_back(); // Remove the last comma.
+      return STATUS(IllegalState,
+          Format("Producer tables [$0] require bootstrapping, which is not currently "
+                 "supported by the namespace-level replication setup.", ptable_str));
+    }
+  }
+  return Status::OK();
+}
+
+Result<std::vector<TableId>> CatalogManager::XClusterFindProducerConsumerOverlap(
+    std::shared_ptr<CDCRpcTasks> producer_cdc_rpc,
+    NamespaceIdentifierPB* producer_namespace,
+    NamespaceIdentifierPB* consumer_namespace,
+    size_t* num_non_matched_consumer_tables) {
+  // TODO: Add support for colocated (parent) tables. Currently they are not supported because
+  // parent colocated tables are system tables and are therefore excluded by ListUserTables.
+  SCHECK(producer_cdc_rpc != nullptr, InternalError, "Producer CDC RPC is null");
+
+  // 1. Find all producer tables. Also record the producer namespace ID.
+  auto producer_tables = VERIFY_RESULT(
+      producer_cdc_rpc->client()->ListUserTables(*producer_namespace, true /* include_indexes */));
+  SCHECK(!producer_tables.empty(), NotFound,
+         "No producer table found under namespace " + producer_namespace->ShortDebugString());
+
+  if (!producer_tables.empty()) {
+    producer_namespace->set_id(producer_tables[0].namespace_id());
+  }
+
+  // 2. Find all consumer tables. Only collect the table names as we are doing name matching.
+  //    Also record the consumer namespace ID.
+  std::unordered_set<std::string> consumer_tables;
+  {
+    ListTablesRequestPB list_req;
+    ListTablesResponsePB list_resp;
+    list_req.add_relation_type_filter(USER_TABLE_RELATION);
+    list_req.add_relation_type_filter(INDEX_TABLE_RELATION);
+    list_req.mutable_namespace_()->CopyFrom(*consumer_namespace);
+
+    auto s = ListTables(&list_req, &list_resp);
+    std::ostringstream error_stream;
+    if (!s.ok() || list_resp.has_error()) {
+      error_stream << (!s.ok() ? s.ToString() : list_resp.error().status().message());
+    }
+    SCHECK(list_resp.tables_size() > 0, NotFound,
+           Format("No consumer table found under namespace $0. Error: $1",
+                  consumer_namespace->ShortDebugString(), error_stream.str()));
+    for (const auto& table : list_resp.tables()) {
+      auto table_name = Format("$0.$1.$2",
+          table.namespace_().name(),
+          table.pgschema_name(), // Empty for YCQL tables.
+          table.name());
+      consumer_tables.insert(table_name);
+    }
+    consumer_namespace->set_id(list_resp.tables(0).namespace_().id());
+  }
+
+  // 3. Find producer tables with a name-matching consumer table.
+  std::vector<TableId> overlap_tables;
+  for (const auto& table : producer_tables) {
+    auto table_name = Format("$0.$1.$2",
+        table.namespace_name(),
+        table.pgschema_name(), // Empty for YCQL tables.
+        table.table_name());
+    if (consumer_tables.find(table_name) != consumer_tables.end()) {
+      overlap_tables.push_back(table.table_id());
+      consumer_tables.erase(table_name);
+    }
+  }
+
+  // 4. Count the number of consumer tables without a name-matching producer table.
+  *num_non_matched_consumer_tables = consumer_tables.size();
+
+  return overlap_tables;
+}
+
+Status CatalogManager::WaitForSetupUniverseReplicationToFinish(const string& producer_uuid,
+                                                               CoarseTimePoint deadline) {
+  while (true) {
+    if (deadline - CoarseMonoClock::Now() <= 1ms) {
+      return STATUS(TimedOut, "Timed out while waiting for SetupUniverseReplication to finish");
+    }
+    IsSetupUniverseReplicationDoneRequestPB check_req;
+    IsSetupUniverseReplicationDoneResponsePB check_resp;
+    check_req.set_producer_id(producer_uuid);
+    auto s = IsSetupUniverseReplicationDone(&check_req, &check_resp, /* RpcContext */ nullptr);
+    if (!s.ok() || check_resp.has_error()) {
+      return !s.ok() ? s : StatusFromPB(check_resp.error().status());
+    }
+    if (check_resp.has_done() && check_resp.done()) {
+      return StatusFromPB(check_resp.replication_error());
+    }
+    SleepFor(MonoDelta::FromMilliseconds(200));
+  }
 }
 
 }  // namespace enterprise

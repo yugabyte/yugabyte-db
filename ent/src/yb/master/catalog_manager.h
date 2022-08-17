@@ -75,8 +75,13 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
                                         DeleteSnapshotScheduleResponsePB* resp,
                                         rpc::RpcContext* rpc);
 
+  Status EditSnapshotSchedule(
+      const EditSnapshotScheduleRequestPB* req,
+      EditSnapshotScheduleResponsePB* resp,
+      rpc::RpcContext* rpc);
+
   Status ChangeEncryptionInfo(const ChangeEncryptionInfoRequestPB* req,
-                                      ChangeEncryptionInfoResponsePB* resp) override;
+                              ChangeEncryptionInfoResponsePB* resp) override;
 
   Status UpdateXClusterConsumerOnTabletSplit(
       const TableId& consumer_table_id, const SplitTabletIds& split_tablet_ids) override;
@@ -203,6 +208,11 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
                                          WaitForReplicationDrainResponsePB* resp,
                                          rpc::RpcContext* rpc);
 
+  // Setup Universe Replication for an entire producer namespace.
+  Status SetupNSUniverseReplication(const SetupNSUniverseReplicationRequestPB* req,
+                                    SetupNSUniverseReplicationResponsePB* resp,
+                                    rpc::RpcContext* rpc);
+
   // Find all the CDC streams that have been marked as DELETED.
   Status FindCDCStreamsMarkedAsDeleting(std::vector<scoped_refptr<CDCStreamInfo>>* streams);
 
@@ -256,6 +266,8 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   void StartXClusterParentTabletDeletionTaskIfStopped();
 
   void ScheduleXClusterParentTabletDeletionTask();
+
+  void ScheduleXClusterNSReplicationAddTableTask();
 
  private:
   friend class SnapshotLoader;
@@ -626,6 +638,35 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   // True when the cluster is a producer of a valid replication stream.
   std::atomic<bool> cdc_enabled_{false};
+
+  // Metadata on namespace-level replication setup. Map producer ID -> metadata.
+  struct NSReplicationInfo {
+    // Until after this time, no additional add table task will be scheduled.
+    // Actively modified by the background thread.
+    CoarseTimePoint next_add_table_task_time = CoarseTimePoint::max();
+    int num_accumulated_errors;
+  };
+  std::unordered_map<std::string, NSReplicationInfo> namespace_replication_map_ GUARDED_BY(mutex_);
+
+  void XClusterAddTableToNSReplication(string universe_id, CoarseTimePoint deadline);
+
+  // Find the list of producer table IDs that can be added to the current NS-level replication.
+  Status XClusterNSReplicationSyncWithProducer(scoped_refptr<UniverseReplicationInfo> universe,
+                                               std::vector<TableId>* producer_tables_to_add,
+                                               bool* has_non_replicated_consumer_table);
+
+  // Compute the list of producer table IDs that have a name-matching consumer table.
+  Result<std::vector<TableId>> XClusterFindProducerConsumerOverlap(
+      std::shared_ptr<CDCRpcTasks> producer_cdc_rpc,
+      NamespaceIdentifierPB* producer_namespace,
+      NamespaceIdentifierPB* consumer_namespace,
+      size_t* num_non_matched_consumer_tables);
+
+  // True when the cluster is a consumer of a NS-level replication stream.
+  std::atomic<bool> namespace_replication_enabled_{false};
+
+  Status WaitForSetupUniverseReplicationToFinish(const string& producer_uuid,
+                                                 CoarseTimePoint deadline);
 
   DISALLOW_COPY_AND_ASSIGN(CatalogManager);
 };

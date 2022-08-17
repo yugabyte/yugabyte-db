@@ -3,6 +3,7 @@ package com.yugabyte.yw.common;
 
 import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType.MASTER;
 import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType.TSERVER;
+import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType.CONTROLLER;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType.Download;
 import static com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType.Install;
@@ -1987,7 +1988,7 @@ public class NodeManagerTest extends FakeDBApplication {
           UniverseDefinitionTaskBase.ServerType.values()) {
         try {
           // master and tserver are valid process types.
-          if (ImmutableList.of(MASTER, TSERVER).contains(type)) {
+          if (ImmutableList.of(MASTER, TSERVER, CONTROLLER).contains(type)) {
             continue;
           }
           params.setProperty("processType", type.toString());
@@ -2184,7 +2185,7 @@ public class NodeManagerTest extends FakeDBApplication {
           UniverseDefinitionTaskBase.ServerType.values()) {
         try {
           // master and tserver are valid process types.
-          if (ImmutableList.of(MASTER, TSERVER).contains(type)) {
+          if (ImmutableList.of(MASTER, TSERVER, CONTROLLER).contains(type)) {
             continue;
           }
           params.setProperty("processType", type.toString());
@@ -2827,7 +2828,7 @@ public class NodeManagerTest extends FakeDBApplication {
           UniverseDefinitionTaskBase.ServerType.values()) {
         try {
           // Master and TServer are valid process types
-          if (ImmutableList.of(MASTER, TSERVER).contains(type)) {
+          if (ImmutableList.of(MASTER, TSERVER, CONTROLLER).contains(type)) {
             continue;
           }
           params.setProperty("processType", type.toString());

@@ -121,6 +121,73 @@ using master::SysUDTypeEntryPB;
 
 PB_ENUM_FORMATTERS(yb::master::SysSnapshotEntryPB::State);
 
+namespace {
+
+template <class Allocator>
+Result<rapidjson::Value> SnapshotScheduleInfoToJson(
+    const master::SnapshotScheduleInfoPB& schedule, Allocator* allocator) {
+  rapidjson::Value json_schedule(rapidjson::kObjectType);
+  AddStringField(
+      "id", VERIFY_RESULT(FullyDecodeSnapshotScheduleId(schedule.id())).ToString(), &json_schedule,
+      allocator);
+
+  const auto& filter = schedule.options().filter();
+  string filter_output;
+  // The user input should only have 1 entry, at namespace level.
+  if (filter.tables().tables_size() == 1) {
+    const auto& table_id = filter.tables().tables(0);
+    if (table_id.has_namespace_()) {
+      string database_type;
+      if (table_id.namespace_().database_type() == YQL_DATABASE_PGSQL) {
+        database_type = "ysql";
+      } else if (table_id.namespace_().database_type() == YQL_DATABASE_CQL) {
+        database_type = "ycql";
+      }
+      if (!database_type.empty()) {
+        filter_output = Format("$0.$1", database_type, table_id.namespace_().name());
+      }
+    }
+  }
+  // If the user input was non standard, just display the whole debug PB.
+  if (filter_output.empty()) {
+    filter_output = filter.ShortDebugString();
+    DCHECK(false) << "Non standard filter " << filter_output;
+  }
+  rapidjson::Value options(rapidjson::kObjectType);
+  AddStringField("filter", filter_output, &options, allocator);
+  auto interval_min = schedule.options().interval_sec() / MonoTime::kSecondsPerMinute;
+  AddStringField("interval", Format("$0 min", interval_min), &options, allocator);
+  auto retention_min = schedule.options().retention_duration_sec() / MonoTime::kSecondsPerMinute;
+  AddStringField("retention", Format("$0 min", retention_min), &options, allocator);
+  auto delete_time = HybridTime::FromPB(schedule.options().delete_time());
+  if (delete_time) {
+    AddStringField("delete_time", HybridTimeToString(delete_time), &options, allocator);
+  }
+
+  json_schedule.AddMember("options", options, *allocator);
+  rapidjson::Value json_snapshots(rapidjson::kArrayType);
+  for (const auto& snapshot : schedule.snapshots()) {
+    rapidjson::Value json_snapshot(rapidjson::kObjectType);
+    AddStringField(
+        "id", VERIFY_RESULT(FullyDecodeTxnSnapshotId(snapshot.id())).ToString(), &json_snapshot,
+        allocator);
+    auto snapshot_ht = HybridTime::FromPB(snapshot.entry().snapshot_hybrid_time());
+    AddStringField("snapshot_time", HybridTimeToString(snapshot_ht), &json_snapshot, allocator);
+    auto previous_snapshot_ht =
+        HybridTime::FromPB(snapshot.entry().previous_snapshot_hybrid_time());
+    if (previous_snapshot_ht) {
+      AddStringField(
+          "previous_snapshot_time", HybridTimeToString(previous_snapshot_ht), &json_snapshot,
+          allocator);
+    }
+    json_snapshots.PushBack(json_snapshot, *allocator);
+  }
+  json_schedule.AddMember("snapshots", json_snapshots, *allocator);
+  return json_schedule;
+}
+
+}  // namespace
+
 Status ClusterAdminClient::ListSnapshots(const ListSnapshotsFlags& flags) {
   ListSnapshotsResponsePB resp;
   RETURN_NOT_OK(RequestMasterLeader(&resp, [&](RpcController* rpc) {
@@ -394,70 +461,9 @@ Result<rapidjson::Document> ClusterAdminClient::ListSnapshotSchedules(
   result.SetObject();
   rapidjson::Value json_schedules(rapidjson::kArrayType);
   for (const auto& schedule : resp.schedules()) {
-    rapidjson::Value json_schedule(rapidjson::kObjectType);
-    AddStringField("id", VERIFY_RESULT(FullyDecodeSnapshotScheduleId(schedule.id())).ToString(),
-                   &json_schedule, &result.GetAllocator());
-
-    const auto& filter = schedule.options().filter();
-    string filter_output;
-    // The user input should only have 1 entry, at namespace level.
-    if (filter.tables().tables_size() == 1) {
-      const auto& table_id = filter.tables().tables(0);
-      if (table_id.has_namespace_()) {
-        string database_type;
-        if (table_id.namespace_().database_type() == YQL_DATABASE_PGSQL) {
-          database_type = "ysql";
-        } else if (table_id.namespace_().database_type() == YQL_DATABASE_CQL) {
-          database_type = "ycql";
-        }
-        if (!database_type.empty()) {
-          filter_output = Format("$0.$1", database_type, table_id.namespace_().name());
-        }
-      }
-    }
-    // If the user input was non standard, just display the whole debug PB.
-    if (filter_output.empty()) {
-      filter_output = filter.ShortDebugString();
-      DCHECK(false) << "Non standard filter " << filter_output;
-    }
-    rapidjson::Value options(rapidjson::kObjectType);
-    AddStringField("filter", filter_output, &options, &result.GetAllocator());
-    auto interval_min = schedule.options().interval_sec() / MonoTime::kSecondsPerMinute;
-    AddStringField("interval",
-                   Format("$0 min", interval_min),
-                   &options, &result.GetAllocator());
-    auto retention_min = schedule.options().retention_duration_sec() / MonoTime::kSecondsPerMinute;
-    AddStringField("retention",
-                   Format("$0 min", retention_min),
-                   &options, &result.GetAllocator());
-    auto delete_time = HybridTime::FromPB(schedule.options().delete_time());
-    if (delete_time) {
-      AddStringField("delete_time", HybridTimeToString(delete_time), &options,
-                     &result.GetAllocator());
-    }
-
-    json_schedule.AddMember("options", options, result.GetAllocator());
-    rapidjson::Value json_snapshots(rapidjson::kArrayType);
-    for (const auto& snapshot : schedule.snapshots()) {
-      rapidjson::Value json_snapshot(rapidjson::kObjectType);
-      AddStringField("id", VERIFY_RESULT(FullyDecodeTxnSnapshotId(snapshot.id())).ToString(),
-                     &json_snapshot, &result.GetAllocator());
-      auto snapshot_ht = HybridTime::FromPB(snapshot.entry().snapshot_hybrid_time());
-      AddStringField("snapshot_time",
-                     HybridTimeToString(snapshot_ht),
-                     &json_snapshot, &result.GetAllocator());
-      auto previous_snapshot_ht = HybridTime::FromPB(
-          snapshot.entry().previous_snapshot_hybrid_time());
-      if (previous_snapshot_ht) {
-        AddStringField(
-            "previous_snapshot_time",
-            HybridTimeToString(previous_snapshot_ht),
-            &json_snapshot, &result.GetAllocator());
-      }
-      json_snapshots.PushBack(json_snapshot, result.GetAllocator());
-    }
-    json_schedule.AddMember("snapshots", json_snapshots, result.GetAllocator());
-    json_schedules.PushBack(json_schedule, result.GetAllocator());
+    json_schedules.PushBack(
+        VERIFY_RESULT(SnapshotScheduleInfoToJson(schedule, &result.GetAllocator())),
+        result.GetAllocator());
   }
   result.AddMember("schedules", json_schedules, result.GetAllocator());
   return result;
@@ -647,6 +653,33 @@ Result<rapidjson::Document> ClusterAdminClient::RestoreSnapshotSchedule(
   AddStringField("snapshot_id", snapshot_id.ToString(), &document, &document.GetAllocator());
   AddStringField("restoration_id", restoration_id.ToString(), &document, &document.GetAllocator());
 
+  return document;
+}
+
+Result<rapidjson::Document> ClusterAdminClient::EditSnapshotSchedule(
+    const SnapshotScheduleId& schedule_id, std::optional<MonoDelta> new_interval,
+    std::optional<MonoDelta> new_retention) {
+
+  master::EditSnapshotScheduleResponsePB resp;
+  RETURN_NOT_OK(RequestMasterLeader(&resp, [&](RpcController* rpc) {
+    master::EditSnapshotScheduleRequestPB req;
+    req.set_snapshot_schedule_id(schedule_id.data(), schedule_id.size());
+    if (new_interval) {
+      req.set_interval_sec(new_interval->ToSeconds());
+    }
+    if (new_retention) {
+      req.set_retention_duration_sec(new_retention->ToSeconds());
+    }
+    return master_backup_proxy_->EditSnapshotSchedule(req, &resp, rpc);
+  }));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  rapidjson::Document document;
+  document.SetObject();
+  rapidjson::Value json_schedule =
+      VERIFY_RESULT(SnapshotScheduleInfoToJson(resp.schedule(), &document.GetAllocator()));
+  document.AddMember("schedule", json_schedule, document.GetAllocator());
   return document;
 }
 
@@ -1762,6 +1795,46 @@ Status ClusterAdminClient::WaitForReplicationDrain(const std::vector<CDCStreamId
   } else {
     cout << "All replications are caught-up." << endl;
   }
+  return Status::OK();
+}
+
+Status ClusterAdminClient::SetupNSUniverseReplication(
+    const std::string& producer_uuid,
+    const std::vector<std::string>& producer_addresses,
+    const TypedNamespaceName& producer_namespace) {
+  switch (producer_namespace.db_type) {
+    case YQL_DATABASE_CQL:
+      break;
+    case YQL_DATABASE_PGSQL:
+      return STATUS(InvalidArgument,
+          "YSQL not currently supported for namespace-level replication setup");
+    default:
+      return STATUS(InvalidArgument, "Unsupported namespace type");
+  }
+
+  master::SetupNSUniverseReplicationRequestPB req;
+  master::SetupNSUniverseReplicationResponsePB resp;
+  req.set_producer_id(producer_uuid);
+  req.set_producer_ns_name(producer_namespace.name);
+  req.set_producer_ns_type(producer_namespace.db_type);
+
+  req.mutable_producer_master_addresses()->Reserve(narrow_cast<int>(producer_addresses.size()));
+  for (const auto& addr : producer_addresses) {
+    auto hp = VERIFY_RESULT(HostPort::FromString(addr, master::kMasterDefaultPort));
+    HostPortToPB(hp, req.add_producer_master_addresses());
+  }
+
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  RETURN_NOT_OK(master_replication_proxy_->SetupNSUniverseReplication(req, &resp, &rpc));
+
+  if (resp.has_error()) {
+    cout << "Error setting up namespace-level universe replication: "
+         << resp.error().status().message() << endl;
+    return StatusFromPB(resp.error().status());
+  }
+
+  cout << "Namespace-level replication setup successfully" << endl;
   return Status::OK();
 }
 

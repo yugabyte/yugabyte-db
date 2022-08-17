@@ -1,0 +1,174 @@
+  {
+    "$schema": "https://json-schema.org/draft/2022-08/schema",
+    "$id": "yba-installer-input-json-schema.json",
+    "title": "Configuration Validation",
+    "description": "Validation of user Configuration parameters in YAML",
+    "type": "object",
+    "properties": {
+        "prometheus": {
+            "description": "Prometheus Config Parameters",
+            "type": "object",
+            "properties": {
+              "fileName": {
+                "type": "string",
+                "pattern": "^(/[^/]+)+$"
+              },
+              "storagePath": {
+                "type": "string",
+                "pattern": "^(/[^/]+)+(/)*$"
+              },
+              "scrapeInterval": {
+                "type": "integer"
+              },
+              "evaluationInterval": {
+                "type": "integer"
+              },
+              "scrapeTimeout": {
+                "type": "integer"
+              },
+              "privateIp": {
+                "type": "string",
+                "format": "ipv4"
+              },
+              "externalPort": {
+                "type": "integer"
+              },
+              "appExternalPort": {
+                "type": "integer"
+              }
+            },
+            "required": ["fileName", "scrapeInterval", "evaluationInterval",
+          "scrapeTimeout", "privateIp", "externalPort", "appExternalPort"]
+        }, "platform": {
+      "description": "Platform Config Parameters",
+      "type": "object",
+      "properties": {
+        "fileName": {
+          "type": "string",
+          "pattern": "^(/[^/]+)+$"
+        },
+        "platformDbUser": {
+          "type": "string"
+        },
+        "platformDbPassword": {
+          "type": "string"
+        },
+        "devopsHome": {
+          "type": "string",
+          "pattern": "^(/[^/]+)+(/)*$"
+        },
+        "swamperTargetPath": {
+          "type": "string",
+          "pattern": "^(/[^/]+)+(/)*$"
+        },
+        "metricsUrl": {
+          "type": "string",
+          "format": "uri"
+        },
+        "useOauth": {
+          "type": "boolean"
+        },
+        "ybSecurityType": {
+          "type": "string"
+        },
+        "ybOidcClientId": {
+          "type": "string"
+        },
+        "ybOidcSecret": {
+          "type": "string"
+        },
+        "ybOidcDiscoveryUri": {
+          "anyOf": [
+              {
+                  "type": "string",
+                  "format": "uri"
+              },
+              {
+                  "type": "string",
+                  "maxLength": 0
+              }
+          ]
+        },
+        "ywUrl": {
+          "anyOf": [
+              {
+                  "type": "string",
+                  "format": "uri"
+              },
+              {
+                  "type": "string",
+                  "maxLength": 0
+              }
+          ]
+        },
+        "ybOidcScope": {
+          "type": "string"
+        },
+        "ybOidcEmailAttr": {
+          "anyOf": [
+              {
+                  "type": "string",
+                  "pattern":
+                  "^[a-z0-9][-a-z0-9._]+@([-a-z0-9]+.)+[a-z]{2,5}$"
+              },
+              {
+                  "type": "string",
+                  "maxLength": 0
+              }
+          ]
+        },
+        "privateIp": {
+          "type": "string",
+          "format": "ipv4"
+        },
+        "externalPort": {
+          "type": "integer"
+        }
+      },
+      "required": ["fileName", "platformDbUser",
+      "platformDbPassword", "devopsHome", "swamperTargetPath",
+      "metricsUrl", "useOauth","ybSecurityType", "ybOidcClientId",
+      "ybOidcSecret", "ybOidcDiscoveryUri", "ywUrl",
+      "ybOidcScope", "ybOidcEmailAttr", "privateIp", "externalPort"]
+  }, "nginx": {
+        "description": "Nginx Config parameters",
+        "type": "object",
+        "properties": {
+          "mode": {
+            "type": "string",
+            "pattern": "^(http|https)$"
+          },
+          "fileName": {
+            "type": "string",
+            "pattern": "^(/[^/]+)+$"
+          },
+          "serverName": {
+            "type": "string"
+          },
+          "privateIp": {
+            "type": "string",
+            "format": "ipv4"
+          },
+          "containerExposedPort": {
+            "type": "integer"
+          },
+          "uploadSize": {
+            "type": "integer"
+          }
+        },
+        "required": [ "mode", "fileName", "serverName", "privateIp",
+        "containerExposedPort", "uploadSize"]
+      },
+      "preflight": {
+          "description": "Preflight Config parameters",
+          "type": "object",
+          "properties": {
+            "overrideWarning": {
+              "type": "boolean"
+            }
+          },
+          "required": [ "overrideWarning"]
+      }
+    },
+    "required": ["prometheus", "platform", "nginx", "preflight"]
+  }

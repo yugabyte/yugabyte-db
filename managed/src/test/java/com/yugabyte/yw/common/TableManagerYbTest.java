@@ -16,6 +16,7 @@ import com.typesafe.config.Config;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -167,9 +168,11 @@ public class TableManagerYbTest extends FakeDBApplication {
 
     if (testProvider.code.equals("kubernetes")) {
       PlacementInfo pi = testUniverse.getUniverseDetails().getPrimaryCluster().placementInfo;
-      podFQDNToConfig =
-          PlacementInfoUtil.getKubernetesConfigPerPod(
-              pi, testUniverse.getUniverseDetails().nodeDetailsSet);
+      for (Cluster cluster : testUniverse.getUniverseDetails().clusters) {
+        podFQDNToConfig.putAll(
+            PlacementInfoUtil.getKubernetesConfigPerPod(
+                pi, testUniverse.getUniverseDetails().getNodesInCluster(cluster.uuid)));
+      }
     }
 
     List<String> cmd = new LinkedList<>();

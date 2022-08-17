@@ -56,8 +56,13 @@ class ClusterAdminClient : public yb::tools::ClusterAdminClient {
   Result<rapidjson::Document> DeleteSnapshotSchedule(const SnapshotScheduleId& schedule_id);
   Result<rapidjson::Document> RestoreSnapshotSchedule(
       const SnapshotScheduleId& schedule_id, HybridTime restore_at);
-  Status RestoreSnapshot(const std::string& snapshot_id,
-                                 HybridTime timestamp);
+  Status RestoreSnapshot(const std::string& snapshot_id, HybridTime timestamp);
+
+  Result<rapidjson::Document> EditSnapshotSchedule(
+      const SnapshotScheduleId& schedule_id,
+      std::optional<MonoDelta> new_interval,
+      std::optional<MonoDelta> new_retention);
+
   Status DeleteSnapshot(const std::string& snapshot_id);
 
   Status CreateSnapshotMetaFile(const std::string& snapshot_id,
@@ -130,6 +135,10 @@ class ClusterAdminClient : public yb::tools::ClusterAdminClient {
 
   Status WaitForReplicationDrain(const std::vector<CDCStreamId>& stream_ids,
                                  const string& target_time);
+
+  Status SetupNSUniverseReplication(const std::string& producer_uuid,
+                                    const std::vector<std::string>& producer_addresses,
+                                    const TypedNamespaceName& producer_namespace);
 
  private:
   Result<TxnSnapshotId> SuitableSnapshotId(

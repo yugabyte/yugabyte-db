@@ -98,6 +98,12 @@ public class FakeApiHelper {
     return route(request);
   }
 
+  public static Result doRequestWithBodyAndWithoutAuthToken(
+      String method, String url, JsonNode body) {
+    Http.RequestBuilder request = Helpers.fakeRequest(method, url).bodyJson(body);
+    return route(request);
+  }
+
   public static Result doRequestWithJWTAndBody(
       String method, String url, String authToken, JsonNode body) {
     Http.RequestBuilder request =

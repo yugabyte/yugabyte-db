@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
@@ -94,6 +95,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   public enum ServerType {
     MASTER,
     TSERVER,
+    CONTROLLER,
     // TODO: Replace all YQLServer with YCQLserver
     YQLSERVER,
     YSQLSERVER,
@@ -605,6 +607,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
 
       // The software package to install for this cluster.
       params.ybSoftwareVersion = userIntent.ybSoftwareVersion;
+      params.enableYbc = taskParams().enableYbc;
       params.ybcSoftwareVersion = taskParams().ybcSoftwareVersion;
       // Set the InstanceType
       params.instanceType = node.cloudInfo.instance_type;
@@ -974,6 +977,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // Set if this node is a master in shell mode.
       // The software package to install for this cluster.
       params.ybSoftwareVersion = userIntent.ybSoftwareVersion;
+      params.enableYbc = taskParams().enableYbc;
       params.ybcSoftwareVersion = taskParams().ybcSoftwareVersion;
       // Set the InstanceType
       params.instanceType = node.cloudInfo.instance_type;
@@ -1552,7 +1556,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     }
 
     // Wait for yb-controller to be responsive on each node.
-    createWaitForYbcServerTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+    createWaitForYbcServerTask(null).setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
   }
 
   /**
@@ -1645,11 +1649,38 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     getRunnableTask().addSubTaskGroup(subTaskGroup);
   }
 
+  public void createYbcSoftwareInstallTasks(
+      List<NodeDetails> nodes, String softwareVersion, SubTaskGroupType subTaskGroupType) {
+
+    // If the node list is empty, we don't need to do anything.
+    if (nodes.isEmpty()) {
+      return;
+    }
+
+    String subGroupDescription =
+        String.format(
+            "AnsibleConfigureServers (%s) for: %s",
+            SubTaskGroupType.InstallingSoftware, taskParams().nodePrefix);
+    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup(subGroupDescription, executor);
+    for (NodeDetails node : nodes) {
+      subTaskGroup.addSubTask(
+          getAnsibleConfigureServerTask(
+              node,
+              ServerType.CONTROLLER,
+              UpgradeTaskSubType.YbcInstall,
+              softwareVersion,
+              taskParams().ybcSoftwareVersion));
+    }
+    subTaskGroup.setSubTaskGroupType(subTaskGroupType);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+  }
+
   protected AnsibleConfigureServers getAnsibleConfigureServerTask(
       NodeDetails node,
       ServerType processType,
       UpgradeTaskSubType taskSubType,
-      String softwareVersion) {
+      String softwareVersion,
+      String ybcSoftwareVersion) {
     AnsibleConfigureServers.Params params =
         getAnsibleConfigureServerParams(node, processType, UpgradeTaskType.Software, taskSubType);
     if (taskSubType == UpgradeTaskSubType.PackageReInstall) {
@@ -1661,10 +1692,21 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     } else {
       params.ybSoftwareVersion = softwareVersion;
     }
+    params.ybcSoftwareVersion = ybcSoftwareVersion;
+
     AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
     task.initialize(params);
     task.setUserTaskUUID(userTaskUUID);
     return task;
+  }
+
+  protected AnsibleConfigureServers getAnsibleConfigureServerTask(
+      NodeDetails node,
+      ServerType processType,
+      UpgradeTaskSubType taskSubType,
+      String softwareVersion) {
+    return getAnsibleConfigureServerTask(
+        node, processType, taskSubType, softwareVersion, taskParams().ybcSoftwareVersion);
   }
 
   public AnsibleConfigureServers.Params getAnsibleConfigureServerParams(
@@ -1707,7 +1749,12 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
 
     // The software package to install for this cluster.
     params.ybSoftwareVersion = userIntent.ybSoftwareVersion;
+
+    params.enableYbc = taskParams().enableYbc;
     params.ybcSoftwareVersion = taskParams().ybcSoftwareVersion;
+    params.installYbc = taskParams().installYbc;
+    params.ybcInstalled = taskParams().ybcInstalled;
+
     // Set the InstanceType
     params.instanceType = node.cloudInfo.instance_type;
     params.enableNodeToNodeEncrypt = userIntent.enableNodeToNodeEncrypt;

@@ -549,13 +549,10 @@ class MasterSnapshotCoordinator::Impl {
       }
     }
 
-    SnapshotScheduleState schedule(&context_, req);
-
+    auto schedule = VERIFY_RESULT(SnapshotScheduleState::Create(&context_, req.options()));
     docdb::KeyValueWriteBatchPB write_batch;
     RETURN_NOT_OK(schedule.StoreToWriteBatch(&write_batch));
-
     RETURN_NOT_OK(SynchronizedWrite(std::move(write_batch), leader_term, deadline, &context_));
-
     return schedule.id();
   }
 
@@ -613,17 +610,29 @@ class MasterSnapshotCoordinator::Impl {
     {
       std::lock_guard<std::mutex> lock(mutex_);
       SnapshotScheduleState& schedule = VERIFY_RESULT(FindSnapshotSchedule(snapshot_schedule_id));
-      auto encoded_key = VERIFY_RESULT(schedule.EncodedKey());
-      auto pair = write_batch.add_write_pairs();
-      pair->set_key(encoded_key.AsSlice().cdata(), encoded_key.size());
-      auto options = schedule.options();
-      options.set_delete_time(context_.Clock()->Now().ToUint64());
-      auto* value = pair->mutable_value();
-      value->push_back(docdb::ValueEntryTypeAsChar::kString);
-      RETURN_NOT_OK(pb_util::AppendPartialToString(options, value));
+      SnapshotScheduleOptionsPB updated_options = schedule.options();
+      updated_options.set_delete_time(context_.Clock()->Now().ToUint64());
+      RETURN_NOT_OK(schedule.StoreToWriteBatch(updated_options, &write_batch));
     }
-
     return SynchronizedWrite(std::move(write_batch), leader_term, deadline, &context_);
+  }
+
+  Result<SnapshotScheduleInfoPB> EditSnapshotSchedule(
+      const SnapshotScheduleId& id, const EditSnapshotScheduleRequestPB& req, int64_t leader_term,
+      CoarseTimePoint deadline) {
+    docdb::KeyValueWriteBatchPB write_batch;
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      SnapshotScheduleState& schedule = VERIFY_RESULT(FindSnapshotSchedule(id));
+      auto updated_options = VERIFY_RESULT(schedule.GetUpdatedOptions(req));
+      RETURN_NOT_OK(schedule.StoreToWriteBatch(updated_options, &write_batch));
+    }
+    auto status = SynchronizedWrite(std::move(write_batch), leader_term, deadline, &context_);
+    std::lock_guard<std::mutex> lock(mutex_);
+    SnapshotScheduleState& schedule = VERIFY_RESULT(FindSnapshotSchedule(id));
+    SnapshotScheduleInfoPB result;
+    RETURN_NOT_OK(FillSchedule(schedule, &result));
+    return result;
   }
 
   Status FillHeartbeatResponse(TSHeartbeatResponsePB* resp) {
@@ -1826,6 +1835,13 @@ Status MasterSnapshotCoordinator::ListSnapshotSchedules(
 Status MasterSnapshotCoordinator::DeleteSnapshotSchedule(
     const SnapshotScheduleId& snapshot_schedule_id, int64_t leader_term, CoarseTimePoint deadline) {
   return impl_->DeleteSnapshotSchedule(snapshot_schedule_id, leader_term, deadline);
+}
+
+Result<SnapshotScheduleInfoPB> MasterSnapshotCoordinator::EditSnapshotSchedule(
+    const SnapshotScheduleId& id,
+    const EditSnapshotScheduleRequestPB& req,
+    int64_t leader_term, CoarseTimePoint deadline) {
+  return impl_->EditSnapshotSchedule(id, req, leader_term, deadline);
 }
 
 Status MasterSnapshotCoordinator::Load(tablet::Tablet* tablet) {

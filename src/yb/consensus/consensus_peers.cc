@@ -136,7 +136,7 @@ void Peer::SetTermForTest(int term) {
 
 Status Peer::Init() {
   std::lock_guard<simple_spinlock> lock(peer_lock_);
-  queue_->TrackPeer(peer_pb_.permanent_uuid());
+  queue_->TrackPeer(peer_pb_);
   // Capture a weak_ptr reference into the functor so it can safely handle
   // outliving the peer.
   std::weak_ptr<Peer> weak_peer = shared_from_this();

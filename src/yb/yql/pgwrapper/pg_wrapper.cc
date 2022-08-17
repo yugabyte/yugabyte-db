@@ -236,7 +236,7 @@ void AppendPgGFlags(vector<string>* lines) {
 
     // Skip flags that do not have a custom override
     if (flag.is_default) {
-      if (!tags.contains(FlagTag::kAutomatic)) {
+      if (!tags.contains(FlagTag::kAuto)) {
         continue;
       }
 

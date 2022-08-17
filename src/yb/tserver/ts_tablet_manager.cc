@@ -1052,7 +1052,7 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
   // - first mark as closing
   // - then wait for num_tablets_being_remote_bootstrapped_ == 0
   ++num_tablets_being_remote_bootstrapped_;
-  auto private_addr = req.source_private_addr()[0].host();
+  auto private_addr = req.bootstrap_source_private_addr()[0].host();
   auto decrement_num_rbs_se = ScopeExit([this, &private_addr](){
     {
       std::lock_guard<RWMutex> lock(mutex_);
@@ -1067,10 +1067,20 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
   LongOperationTracker tracker("StartRemoteBootstrap", 5s);
 
   const string& tablet_id = req.tablet_id();
-  const string& bootstrap_peer_uuid = req.bootstrap_peer_uuid();
+  const string& bootstrap_peer_uuid = req.bootstrap_source_peer_uuid();
   HostPort bootstrap_peer_addr = HostPortFromPB(DesiredHostPort(
-      req.source_broadcast_addr(), req.source_private_addr(), req.source_cloud_info(),
-      server_->MakeCloudInfoPB()));
+      req.bootstrap_source_broadcast_addr(), req.bootstrap_source_private_addr(),
+      req.bootstrap_source_cloud_info(), server_->MakeCloudInfoPB()));
+
+  ServerRegistrationPB tablet_leader_peer_conn_info;
+  if (!req.is_served_by_tablet_leader()) {
+    *tablet_leader_peer_conn_info.mutable_broadcast_addresses() =
+        req.tablet_leader_broadcast_addr();
+    *tablet_leader_peer_conn_info.mutable_private_rpc_addresses() =
+        req.tablet_leader_private_addr();
+    *tablet_leader_peer_conn_info.mutable_cloud_info() = req.tablet_leader_cloud_info();
+  }
+
   int64_t leader_term = req.caller_term();
 
   const string kLogPrefix = TabletLogPrefix(tablet_id);
@@ -1122,6 +1132,7 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
   RETURN_NOT_OK(rb_client->Start(bootstrap_peer_uuid,
                                  &server_->proxy_cache(),
                                  bootstrap_peer_addr,
+                                 tablet_leader_peer_conn_info,
                                  &meta,
                                  this));
 

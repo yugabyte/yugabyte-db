@@ -143,9 +143,6 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
         if (tables.size() != 1 || !tables[0].has_namespace()) {
           return STATUS(InvalidArgument, "Expecting exactly one keyspace argument");
         }
-        if (interval > retention) {
-          return STATUS(InvalidArgument, "Interval cannot be greater than retention");
-        }
         if (tables[0].namespace_type() != YQL_DATABASE_CQL &&
             tables[0].namespace_type() != YQL_DATABASE_PGSQL) {
           return STATUS(
@@ -189,6 +186,38 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
         }
 
         return client->RestoreSnapshotSchedule(schedule_id, restore_at);
+      });
+
+  RegisterJson(
+      "edit_snapshot_schedule",
+      " <schedule_id> (interval <new_interval_in_minutes> | retention "
+      "<new_retention_in_minutes>){1,2}",
+      [client](const CLIArguments& args) -> Result<rapidjson::Document> {
+        if (args.size() != 3 && args.size() != 5) {
+          return STATUS(InvalidArgument,
+                        Format("Expected 3 or 5 arguments, received $0", args.size()));
+        }
+        auto schedule_id = VERIFY_RESULT(SnapshotScheduleId::FromString(args[0]));
+        std::optional<MonoDelta> new_interval;
+        std::optional<MonoDelta> new_retention;
+        for (size_t i = 1; i + 1 < args.size(); i += 2) {
+          if (args[i] == "interval") {
+            if (new_interval) {
+              return STATUS(InvalidArgument, "Repeated interval");
+            }
+            new_interval = MonoDelta::FromMinutes(VERIFY_RESULT(CheckedStold(args[i + 1])));
+          } else if (args[i] == "retention") {
+            if (new_retention) {
+              return STATUS(InvalidArgument, "Repeated retention");
+            }
+            new_retention = MonoDelta::FromMinutes(VERIFY_RESULT(CheckedStold(args[i + 1])));
+          } else {
+            return STATUS(
+                InvalidArgument,
+                Format("Expected either \"retention\" or \"interval\", got: $0", args[i]));
+          }
+        }
+        return client->EditSnapshotSchedule(schedule_id, new_interval, new_retention);
       });
 
   Register(
@@ -694,6 +723,24 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
         }
 
         return client->WaitForReplicationDrain(stream_ids, target_time);
+      });
+
+  Register(
+      "setup_namespace_universe_replication",
+      " <producer_universe_uuid> <producer_master_addresses> <namespace>",
+      [client](const CLIArguments& args) -> Status {
+        RETURN_NOT_OK(CheckArgumentsCount(args.size(), 3, 3));
+        const string producer_uuid = args[0];
+        vector<string> producer_addresses;
+        boost::split(producer_addresses, args[1], boost::is_any_of(","));
+        TypedNamespaceName producer_namespace = VERIFY_RESULT(ParseNamespaceName(args[2]));
+
+        RETURN_NOT_OK_PREPEND(client->SetupNSUniverseReplication(producer_uuid,
+                                                                 producer_addresses,
+                                                                 producer_namespace),
+                              Substitute("Unable to setup namespace replication from universe $0",
+                                         producer_uuid));
+        return Status::OK();
       });
 }  // NOLINT -- a long function but that is OK
 

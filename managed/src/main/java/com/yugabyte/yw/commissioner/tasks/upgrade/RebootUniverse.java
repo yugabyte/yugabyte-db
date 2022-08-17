@@ -53,7 +53,8 @@ public class RebootUniverse extends UpgradeTaskBase {
                   .reconfigureMaster(false)
                   .runBeforeStopping(false)
                   .processInactiveMaster(false)
-                  .build());
+                  .build(),
+              taskParams().ybcInstalled);
         });
   }
 

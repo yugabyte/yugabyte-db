@@ -128,7 +128,7 @@ Complete the **Regions and Zones** fields, as per the following illustration, to
 
 ![Configure On-Premises Cloud Provider](/images/ee/onprem/configure-onprem-3.png)
 
-<br><br>YugabyteDB Anywhere will use these values during the universe creation.
+YugabyteDB Anywhere will use these values during the universe creation.
 
 ## Add YugabyteDB nodes
 
@@ -157,7 +157,7 @@ You can manually provision each node using the preprovisioning Python script, as
 
 1. Login to YugabyteDB Anywhere virtual machine via SSH.
 
-1. Access the docker `yugaware` container, as follows:
+1. Access the Docker `yugaware` container, as follows:
 
     ```sh
     sudo docker exec -it yugaware bash
@@ -234,19 +234,19 @@ Physical nodes (or cloud instances) are installed with a standard Centos 7 serve
 
 1. Login to each database node as a user with sudo enabled (the `centos` user in centos7 images).
 
-1. Add the following line to `/etc/chrony.conf` (sudo is required):
+1. Add the following line to the `/etc/chrony.conf` file:
 
     ```text
     server <your-time-server-IP-address> prefer iburst
     ```
 
-    <br>Then, run the following command:
+    Then run the following command:
 
     ```sh
     sudo chronyc makestep   # (force instant sync to NTP server)
     ```
 
-1. Add a new `yugabyte:yugabyte` user and group with the default login shell `/bin/bash` that you set via the `-s` flag (sudo is required):
+1. Add a new `yugabyte:yugabyte` user and group with the default login shell `/bin/bash` that you set via the `-s` flag, as follows:
 
     ```bash
     sudo useradd -s /bin/bash -m yugabyte   # (add user yugabyte and create /home/yugabyte)
@@ -259,10 +259,8 @@ Physical nodes (or cloud instances) are installed with a standard Centos 7 serve
     Ensure that the `yugabyte` user has permissions to SSH into the YugabyteDB nodes (as defined in `/etc/ssh/sshd_config`).
 
 1. Copy the SSH public key to each DB node.
-
-    \
-    This public key should correspond to the private key entered into the YugabyteDB Anywhere provider.
-
+This public key should correspond to the private key entered into the YugabyteDB Anywhere provider.
+   
 1. Run the following commands as the `yugabyte` user, after copying the SSH public key file to the user home directory:
 
     ```sh
@@ -291,33 +289,31 @@ Physical nodes (or cloud instances) are installed with a standard Centos 7 serve
     *                -       locks           unlimited
     ```
 
-1. Modify the following line in the `/etc/security/limits.d/20-nproc.conf` file (sudo is required):
+1. Modify the following line in the `/etc/security/limits.d/20-nproc.conf` file:
 
     ```text
     *          soft    nproc     12000
     ```
 
-1. Install the rsync and OpenSSL packages (sudo is required).
-
-    \
-    Note that most Linux distributions include rsync and OpenSSL. If your distribution is missing these packages, install them using the following commands:
+1. Install the rsync, OpenSSL, and xxHash packages (if not already included with your Linux distribution) using the following commands:
 
     ```sh
     sudo yum install openssl
     sudo yum install rsync
+    sudo yum install xxhash
     ```
+    
 
-    \
-    For airgapped environments, make sure your Yum repository mirror contains these packages.
-
-1. If running on a virtual machine, execute the following to tune kernel settings (sudo is required):
+For airgapped environments, make sure your Yum repository mirror contains these packages.
+    
+1. If running on a virtual machine, execute the following to tune kernel settings:
 
     ```sh
     sudo bash -c 'sysctl vm.swappiness=0 >> /etc/sysctl.conf'
     sysctl kernel.core_pattern=/home/yugabyte/cores/core_%e.%p >> /etc/sysctl.conf
     ```
 
-1. Perform the following to prepare and mount the data volume (separate partition for database data) (sudo is required):
+1. Perform the following to prepare and mount the data volume (separate partition for database data):
 
     * List the available storage volumes, as follows:
 
@@ -358,7 +354,7 @@ wget https://github.com/prometheus/node_exporter/releases/download/v1.3.1/node_e
 For YugabyteDB Anywhere versions prior to 2.8, download the 0.13.0 version of the exporter, as follows:
 
 ```sh
-$ wget https://github.com/prometheus/node_exporter/releases/download/v0.13.0/node_exporter-0.13.0.linux-amd64.tar.gz
+wget https://github.com/prometheus/node_exporter/releases/download/v0.13.0/node_exporter-0.13.0.linux-amd64.tar.gz
 ```
 
 If you are doing an airgapped installation, download the node exporter using a computer connected to the internet and copy it over to the database nodes.
@@ -369,7 +365,7 @@ On each node, perform the following as a user with sudo access:
 
 1. Copy the `node_exporter-....tar.gz` package file that you downloaded into the `/tmp` directory on each of the YugabyteDB nodes. Ensure this file is readable by the `centos` user on each node (or another user with sudo privileges).
 
-1. Run the following commands (sudo required):
+1. Run the following commands:
 
     ```sh
     sudo mkdir /opt/prometheus
@@ -394,14 +390,14 @@ On each node, perform the following as a user with sudo access:
     exit   # (exit from prometheus user back to previous user)
     ```
 
-1. Edit the following file (sudo required):
+1. Edit the following file:
 
     ```sh
     sudo vi /etc/systemd/system/node_exporter.service
     ```
 
-    \
-    Add the following to `/etc/systemd/system/node_exporter.service`:
+    
+    Add the following to the `/etc/systemd/system/node_exporter.service` file:
 
       ```conf
       [Unit]
@@ -425,7 +421,7 @@ On each node, perform the following as a user with sudo access:
       ExecStart=/opt/prometheus/node_exporter-0.13.0.linux-amd64/node_exporter  --web.listen-address=:9300 --collector.textfile.directory=/tmp/yugabyte/metrics
       ```
 
-1. Exit from vi, and continue, as follows (sudo required):
+1. Exit from vi, and continue, as follows:
 
     ```sh
     sudo systemctl daemon-reload

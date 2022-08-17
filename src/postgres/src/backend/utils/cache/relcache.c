@@ -1700,6 +1700,31 @@ YBUpdateRelationsPartitioning(bool sys_relations_update_required)
 	heap_close(pg_partitioned_table_desc, AccessShareLock);
 }
 
+static void
+YBUpdateRelationsIndicies(bool sys_relations_update_required)
+{
+	HASH_SEQ_STATUS status;
+	hash_seq_init(&status, RelationIdCache);
+
+	for (RelIdCacheEnt *idhentry;
+	     (idhentry = (RelIdCacheEnt *) hash_seq_search(&status)) != NULL;)
+	{
+		Relation relation = idhentry->reldesc;
+		if (sys_relations_update_required || !IsSystemRelation(relation))
+		{
+			/*
+			 * The result of the RelationGetIndexList function is not interesting.
+			 * The goal of calling this function is to cache index list in the
+			 * 'relation->rd_indexlist' field for future use.
+			 * It is cheap to get the index list now as all required data is already
+			 * preloaded (i.e. no read RPC will be sent to a master).
+			 */
+			List *indexlist = RelationGetIndexList(relation);
+			list_free(indexlist);
+		}
+	}
+}
+
 static bool
 YBIsDBConnectionValid()
 {
@@ -1746,6 +1771,8 @@ YBPreloadRelCache()
 	YbRegisterSysTableForPrefetching(ConstraintRelationId);            // pg_constraint
 	YbRegisterSysTableForPrefetching(PartitionedRelationId);           // pg_partitioned_table
 	YbRegisterSysTableForPrefetching(TypeRelationId);                  // pg_type
+	YbRegisterSysTableForPrefetching(NamespaceRelationId);             // pg_namespace
+	YbRegisterSysTableForPrefetching(AuthIdRelationId);                // pg_authid
 
 	if (!YBIsDBConnectionValid())
 		ereport(FATAL,
@@ -1767,16 +1794,18 @@ YBPreloadRelCache()
 	 * The more effective approach is to build entire cache first. In this case
 	 * only N tuples will be built.
 	 */
-	YBPreloadCatalogCache(DATABASEOID, -1);      // pg_database
-	YBPreloadCatalogCache(RELOID, RELNAMENSP);   // pg_class
-	YBPreloadCatalogCache(ATTNAME, ATTNUM);      // pg_attribute
-	YBPreloadCatalogCache(CLAOID, CLAAMNAMENSP); // pg_opclass
-	YBPreloadCatalogCache(AMOID, AMNAME);        // pg_am
-	YBPreloadCatalogCache(INDEXRELID, -1);       // pg_index
-	YBPreloadCatalogCache(RULERELNAME, -1);      // pg_rewrite
-	YBPreloadCatalogCache(CONSTROID, -1);        // pg_constraint
-	YBPreloadCatalogCache(PARTRELID, -1);        // pg_partitioned_table
-	YBPreloadCatalogCache(TYPEOID, TYPENAMENSP); // pg_type
+	YBPreloadCatalogCache(DATABASEOID, -1);             // pg_database
+	YBPreloadCatalogCache(RELOID, RELNAMENSP);          // pg_class
+	YBPreloadCatalogCache(ATTNAME, ATTNUM);             // pg_attribute
+	YBPreloadCatalogCache(CLAOID, CLAAMNAMENSP);        // pg_opclass
+	YBPreloadCatalogCache(AMOID, AMNAME);               // pg_am
+	YBPreloadCatalogCache(INDEXRELID, -1);              // pg_index
+	YBPreloadCatalogCache(RULERELNAME, -1);             // pg_rewrite
+	YBPreloadCatalogCache(CONSTROID, -1);               // pg_constraint
+	YBPreloadCatalogCache(PARTRELID, -1);               // pg_partitioned_table
+	YBPreloadCatalogCache(TYPEOID, TYPENAMENSP);        // pg_type
+	YBPreloadCatalogCache(NAMESPACEOID, NAMESPACENAME); // pg_namespace
+	YBPreloadCatalogCache(AUTHOID, AUTHNAME);           // pg_authid
 
 	YBLoadRelationsResult relations_result = YBLoadRelations();
 
@@ -1810,6 +1839,19 @@ YBPreloadRelCache()
 		YBPreloadCatalogCache(PROCOID, PROCNAMEARGSNSP); // pg_proc
 		YBPreloadCatalogCache(INHERITSRELID, -1);        // pg_inherits
 	}
+
+	YBUpdateRelationsIndicies(relations_result.sys_relations_update_required);
+	/*
+	 * The first request after the cache refresh will call the
+	 * recomputeNamespacePath function. And this function will try to find
+	 * namespace equal to username. In spite of the fact that we have already
+	 * loaded caches for the `pg_namespace` table such finding may initiate read
+	 * RPC to a master in case such namespace doesn't exists. In this case cache
+	 * will create negative entry. To avoid this RPC we try to find namespace
+	 * here. As far as data for the `pg_namespace` table is preloaded no RPC will
+	 * be sent a master and negative cache entry will be created for a future use.
+	 */
+	get_namespace_oid(GetUserNameFromId(GetUserId(), false), true);
 }
 
 /*

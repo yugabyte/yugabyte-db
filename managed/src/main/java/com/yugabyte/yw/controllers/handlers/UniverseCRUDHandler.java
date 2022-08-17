@@ -26,6 +26,7 @@ import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.YbcManager;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
@@ -99,7 +100,7 @@ public class UniverseCRUDHandler {
 
   @Inject UpgradeUniverseHandler upgradeUniverseHandler;
 
-  public static final String YBC_DEFAULT_VERSION = "ybc.releases.stable_version";
+  @Inject YbcManager ybcManager;
 
   private enum OpType {
     CONFIGURE,
@@ -490,7 +491,7 @@ public class UniverseCRUDHandler {
       taskParams.ybcSoftwareVersion =
           StringUtils.isNotBlank(taskParams.ybcSoftwareVersion)
               ? taskParams.ybcSoftwareVersion
-              : runtimeConfigFactory.globalRuntimeConf().getString(YBC_DEFAULT_VERSION);
+              : ybcManager.getStableYbcVersion();
     }
 
     Universe universe = Universe.create(taskParams, customer.getCustomerId());

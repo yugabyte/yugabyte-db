@@ -229,6 +229,9 @@ void CatalogManagerBgTasks::Run() {
 
       // Restart xCluster parent tablet deletion bg task.
       catalog_manager_->StartXClusterParentTabletDeletionTaskIfStopped();
+
+      // Run periodic task for namespace-level replications.
+      catalog_manager_->ScheduleXClusterNSReplicationAddTableTask();
     } else {
       // Reset Metrics when leader_status is not ok.
       catalog_manager_->ResetMetrics();

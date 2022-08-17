@@ -1350,8 +1350,8 @@ Status StartRemoteBootstrap(const TServerDetails* ts,
 
   req.set_dest_uuid(ts->uuid());
   req.set_tablet_id(tablet_id);
-  req.set_bootstrap_peer_uuid(bootstrap_source_uuid);
-  HostPortToPB(bootstrap_source_addr, req.mutable_source_private_addr()->Add());
+  req.set_bootstrap_source_peer_uuid(bootstrap_source_uuid);
+  HostPortToPB(bootstrap_source_addr, req.mutable_bootstrap_source_private_addr()->Add());
   req.set_caller_term(caller_term);
 
   RETURN_NOT_OK(ts->consensus_proxy->StartRemoteBootstrap(req, &resp, &rpc));

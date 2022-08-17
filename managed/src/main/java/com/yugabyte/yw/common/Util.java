@@ -13,6 +13,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import io.swagger.annotations.ApiModel;
@@ -81,6 +82,8 @@ public class Util {
   public static final String UNIVERSE_NAME_REGEX = "^[a-zA-Z0-9]([-a-zA-Z0-9]*[a-zA-Z0-9])?$";
 
   public static final double EPSILON = 0.000001d;
+
+  public static final String YBC_COMPATIBLE_DB_VERSION = "2.14.0.0-b1";
 
   /**
    * Returns a list of Inet address objects in the proxy tier. This is needed by Cassandra clients.
@@ -611,5 +614,12 @@ public class Util {
       throw new RuntimeException("Failed to create " + dirPath);
     }
     return dirPath;
+  }
+
+  public static String getNodeHomeDir(UUID universeUUID, String nodeName) {
+    Universe universe = Universe.getOrBadRequest(universeUUID);
+    String providerUUID = Universe.getCluster(universe, nodeName).userIntent.provider;
+    Provider provider = Provider.getOrBadRequest(UUID.fromString(providerUUID));
+    return provider.getYbHome();
   }
 }

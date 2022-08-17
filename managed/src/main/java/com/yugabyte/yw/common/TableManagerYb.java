@@ -26,6 +26,7 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.CustomerConfig;
+import com.yugabyte.yw.models.configs.data.CustomerConfigStorageData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageNFSData;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
@@ -84,10 +85,12 @@ public class TableManagerYb extends DevopsBase {
     boolean nodeToNodeTlsEnabled = userIntent.enableNodeToNodeEncrypt;
 
     if (region.provider.code.equals("kubernetes")) {
-      PlacementInfo pi = primaryCluster.placementInfo;
-      podFQDNToConfig =
-          PlacementInfoUtil.getKubernetesConfigPerPod(
-              pi, universe.getUniverseDetails().getNodesInCluster(primaryCluster.uuid));
+      for (Cluster cluster : universe.getUniverseDetails().clusters) {
+        PlacementInfo pi = cluster.placementInfo;
+        podFQDNToConfig.putAll(
+            PlacementInfoUtil.getKubernetesConfigPerPod(
+                pi, universe.getUniverseDetails().getNodesInCluster(cluster.uuid)));
+      }
     } else {
       // Populate the map so that we use the correct SSH Keys for the different
       // nodes in different clusters.
@@ -164,17 +167,19 @@ public class TableManagerYb extends DevopsBase {
         }
         customer = Customer.find.query().where().idEq(universe.customerId).findOne();
         customerConfig = CustomerConfig.get(customer.uuid, backupTableParams.storageConfigUUID);
-
+        CustomerConfigStorageData configData =
+            (CustomerConfigStorageData) customerConfig.getDataObject();
         Map<String, String> regionLocationMap =
-            StorageUtil.getStorageUtil(customerConfig.name)
-                .getRegionLocationsMap(customerConfig.getDataObject());
+            StorageUtil.getStorageUtil(customerConfig.name).getRegionLocationsMap(configData);
         if (MapUtils.isNotEmpty(regionLocationMap)) {
           regionLocationMap.forEach(
               (r, bL) -> {
                 commandArgs.add("--region");
                 commandArgs.add(r);
                 commandArgs.add("--region_location");
-                commandArgs.add(BackupUtil.getExactRegionLocation(backupTableParams, bL));
+                commandArgs.add(
+                    BackupUtil.getExactRegionLocation(
+                        backupTableParams.storageLocation, configData.backupLocation, bL));
               });
         }
 

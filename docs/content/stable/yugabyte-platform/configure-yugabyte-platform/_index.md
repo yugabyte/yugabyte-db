@@ -28,6 +28,18 @@ type: indexpage
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="supported-os-and-arch/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/deploy/manual-deployment.png" aria-hidden="true" />
+        <div class="title">Supported operating systems</div>
+      </div>
+      <div class="body">
+        Supported operating systems and architectures.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="create-admin-user/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/enterprise/edit_universe.png" aria-hidden="true" />

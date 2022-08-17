@@ -113,4 +113,31 @@ public class BackupUtilTest extends FakeDBApplication {
       assertTrue(regionLocations.equals(REGION_LOCATIONS));
     }
   }
+
+  @Test
+  @Parameters(value = {"s3://backup, s3://backup/foo, foo", "s3://backup/, s3://backup//foo, foo"})
+  public void testGetBackupIdentifier(
+      String configDefaultLocation, String defaultBackupLocation, String expectedIdentifier) {
+    String actualIdentifier =
+        BackupUtil.getBackupIdentifier(configDefaultLocation, defaultBackupLocation);
+    assertEquals(expectedIdentifier, actualIdentifier);
+  }
+
+  @Test
+  @Parameters(
+      value = {
+        "s3://backup/foo, s3://backup, s3://region/, s3://region//foo",
+        "s3://backup/foo, s3://backup, s3://region, s3://region/foo",
+        "s3://backup//foo, s3://backup/, s3://region, s3://region/foo"
+      })
+  public void getExactRegionLocation(
+      String backupLocation,
+      String configDefaultLocation,
+      String configRegionLocation,
+      String expectedRegionLocation) {
+    String actualRegionLocation =
+        BackupUtil.getExactRegionLocation(
+            backupLocation, configDefaultLocation, configRegionLocation);
+    assertEquals(expectedRegionLocation, actualRegionLocation);
+  }
 }
