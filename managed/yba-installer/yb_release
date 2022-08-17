@@ -70,15 +70,20 @@ CONFIG_PLATFORM="yba-installer-platform.yml"
 CONFIG_PROM="yba-installer-prometheus.yml"
 CONFIG_INPUT_FILE_NAME="yba-installer-input.yml"
 JSON_SCHEMA_FILE="yba-installer-input-json-schema.json"
+POSTGRES_BINARY_NAME="postgresql-9.6.24-1-linux-x64-binaries.tar.gz"
 
 #Need underscore in the PACKAGE_NAME for proper file parsing.
 PACKAGE_NAME="yba_installer.tar.gz"
 cd $yba_installer_home
+
+wget -qi externalDependencies.txt
+
 go mod tidy
 go build -o $BINARY_NAME
 
 tar -czvf $PACKAGE_NAME $BINARY_NAME $CONFIG_NGINX $CONFIG_PLATFORM \
-$CONFIG_PROM $CONFIG_INPUT_FILE_NAME $JSON_SCHEMA_FILE
+$CONFIG_PROM $CONFIG_INPUT_FILE_NAME $POSTGRES_BINARY_NAME \
+$JSON_SCHEMA_FILE
 
 command="--package $PACKAGE_NAME --destination $destination"
 activate_virtualenv
