@@ -572,6 +572,24 @@ EXECUTE si_param(0, 0);
 (2 rows)
 
 DEALLOCATE si_param;
+-- Index scan with remote filter on a system table
+EXPLAIN (COSTS FALSE) SELECT relname, relkind FROM pg_class WHERE relname LIKE 'pushdown_c%';
+                                   QUERY PLAN
+--------------------------------------------------------------------------------
+ Index Scan using pg_class_relname_nsp_index on pg_class
+   Index Cond: ((relname >= 'pushdown'::name) AND (relname < 'pushdowo'::name))
+   Remote Index Filter: (relname ~~ 'pushdown_c%'::text)
+(3 rows)
+
+SELECT relname, relkind FROM pg_class WHERE relname LIKE 'pushdown_c%';
+         relname         | relkind
+-------------------------+---------
+ pushdown_collation      | r
+ pushdown_collation_pkey | i
+ pushdown_composite      | r
+ pushdown_composite_pkey | i
+(4 rows)
+
 DROP TABLE pushdown_index;
 DROP TABLE pushdown_test;
 DROP TABLE pushdown_lookup;

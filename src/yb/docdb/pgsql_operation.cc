@@ -1106,10 +1106,16 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const YQLStorageIf& ql_storage,
                                                  faststring *result_buffer,
                                                  HybridTime *restart_read_ht,
                                                  bool *has_paging_state) {
-  const auto& schema = doc_read_context.schema;
+  // Retrieve target table schema from the context, as well as the pointer to optional index schema
+  // Index schema is only available if queried table is colocated. Indexes on colocated table
+  // columns are stored on the same tablet/node as their table, while indexes on regular tables are
+  // partitioned differently and have to be queried separately.
+  const auto& doc_schema = doc_read_context.schema;
+  const auto* index_schema =
+      request_.has_index_request() ? &index_doc_read_context->schema : nullptr;
   *has_paging_state = false;
-
   size_t fetched_rows = 0;
+  // Requests normally have a limit on how many rows to return
   size_t row_count_limit = std::numeric_limits<std::size_t>::max();
   if (request_.has_limit()) {
     if (request_.limit() == 0) {
@@ -1122,51 +1128,81 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const YQLStorageIf& ql_storage,
   // the WHERE condition. When DocRowwiseIterator::NextRow() populates the value map, it uses this
   // projection only to scan sub-documents. The query schema is used to select only referenced
   // columns and key columns.
-  Schema projection;
+  Schema doc_projection;
+  // The index_projection is only created in case of colocated index scan
   Schema index_projection;
   YQLRowwiseIteratorIf *iter;
-  const Schema* scan_schema;
-  DocPgExprExecutor expr_exec(&schema);
+  // Prepare expression executors, separate for main table and index, as they have different schemas
+  // and different sets of expressions.
+  // The index_expr_exec is used only in colocated index scan, it's OK to initialize it with null
+  // schema.
+  DocPgExprExecutor doc_expr_exec(&doc_schema);
+  DocPgExprExecutor index_expr_exec(index_schema);
+  // Initialize the main executor with info from the read request
   for (const PgsqlColRefPB& column_ref : request_.col_refs()) {
-    RETURN_NOT_OK(expr_exec.AddColumnRef(column_ref));
+    RETURN_NOT_OK(doc_expr_exec.AddColumnRef(column_ref));
     VLOG(1) << "Added column reference to the executor";
   }
   for (const PgsqlExpressionPB& expr : request_.where_clauses()) {
-    RETURN_NOT_OK(expr_exec.AddWhereExpression(expr));
+    RETURN_NOT_OK(doc_expr_exec.AddWhereExpression(expr));
     VLOG(1) << "Added where expression to the executor";
   }
 
+  // Old code might send column references using the deprecated column_refs field. Values in this
+  // field can not be used to evaluate expressions due to lack of type information, but can help
+  // to build projection. Fortunately, old code does not know about expression pushdown, so the
+  // request is expected to be executed correctly.
   if (!request_.col_refs().empty()) {
-    RETURN_NOT_OK(CreateProjection(schema, request_.col_refs(), &projection));
+    RETURN_NOT_OK(CreateProjection(doc_schema, request_.col_refs(), &doc_projection));
   } else {
     // Compatibility: Either request indeed has no column refs, or it comes from a legacy node.
-    RETURN_NOT_OK(CreateProjection(schema, request_.column_refs(), &projection));
+    RETURN_NOT_OK(CreateProjection(doc_schema, request_.column_refs(), &doc_projection));
   }
+  // Create iterator over the target table
   table_iter_ = VERIFY_RESULT(CreateIterator(
-      ql_storage, request_, projection, doc_read_context, txn_op_context_,
-      deadline, read_time, is_explicit_request_read_time));
+      ql_storage, request_, doc_projection, doc_read_context, txn_op_context_, deadline, read_time,
+      is_explicit_request_read_time));
 
   ColumnId ybbasectid_id;
   if (request_.has_index_request()) {
-    scan_schema = &index_doc_read_context->schema;
+    // The presence of index_request indicates index scan over colocated table.
+    // We need to set up expression executor and projection, similarly to main table, but
+    // taking the column references and conditions from the index_request.
     const PgsqlReadRequestPB& index_request = request_.index_request();
-    RETURN_NOT_OK(CreateProjection(
-        *scan_schema, index_request.column_refs(), &index_projection));
+    for (const PgsqlColRefPB& column_ref : index_request.col_refs()) {
+      RETURN_NOT_OK(index_expr_exec.AddColumnRef(column_ref));
+      VLOG(1) << "Added column reference to the index executor";
+    }
+    for (const PgsqlExpressionPB& expr : index_request.where_clauses()) {
+      RETURN_NOT_OK(index_expr_exec.AddWhereExpression(expr));
+      VLOG(1) << "Added where expression to the index executor";
+    }
+    if (!request_.col_refs().empty()) {
+      RETURN_NOT_OK(CreateProjection(*index_schema, index_request.col_refs(), &index_projection));
+    } else {
+      // Compatibility: Either request indeed has no column refs, or it comes from a legacy node.
+      RETURN_NOT_OK(CreateProjection(
+          *index_schema, index_request.column_refs(), &index_projection));
+    }
+    // Create iterator over the index
     index_iter_ = VERIFY_RESULT(CreateIterator(
         ql_storage, index_request, index_projection, *index_doc_read_context,
         txn_op_context_, deadline, read_time, is_explicit_request_read_time));
+    // The index iterator is to be looped over, main table rows are to be retrieved by their ybctids
     iter = index_iter_.get();
-    const auto idx = scan_schema->find_column("ybidxbasectid");
+    const auto idx = index_schema->find_column("ybidxbasectid");
     SCHECK_NE(idx, Schema::kColumnNotFound, Corruption, "ybidxbasectid not found in index schema");
-    ybbasectid_id = scan_schema->column_id(idx);
+    ybbasectid_id = index_schema->column_id(idx);
   } else {
+    // Loop over the main table iterator
     iter = table_iter_.get();
-    scan_schema = &schema;
   }
 
   VLOG(1) << "Started iterator";
 
-  // Set scan start time.
+  // Set scan end time. We want to iterate as long as we can, but stop before client timeout.
+  // The more rows we do per request, the less RPCs will be needed, but if client times out,
+  // efforts are wasted.
   bool scan_time_exceeded = false;
   CoarseTimePoint stop_scan = deadline - FLAGS_ysql_scan_deadline_margin_ms * 1ms;
 
@@ -1175,20 +1211,30 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const YQLStorageIf& ql_storage,
   QLTableRow row;
   while (fetched_rows < row_count_limit && VERIFY_RESULT(iter->HasNext()) &&
          !scan_time_exceeded) {
+    bool is_match = true;
     row.Clear();
 
-    // If there is an index request, fetch ybbasectid from the index and use it as ybctid
-    // to fetch from the base table. Otherwise, fetch from the base table directly.
     if (request_.has_index_request()) {
+      // Index scan over colocated table case, get next index row
       RETURN_NOT_OK(iter->NextRow(&row));
+      // Check index conditions
+      RETURN_NOT_OK(index_expr_exec.Exec(row, nullptr, &is_match));
+      if (!is_match) {
+        // If no match continue with next tuple from the iterator
+        VLOG(1) << "Row filtered out by colocated index condition";
+        continue;
+      }
+      // Index matches the condition, get the ybctid of the target row
       const auto& tuple_id = row.GetValue(ybbasectid_id);
       SCHECK_NE(tuple_id, boost::none, Corruption, "ybbasectid not found in index row");
+      // Seek the target row using main table iterator
+      // unless index is corrupted, seek is expected to be successful
       if (!VERIFY_RESULT(table_iter_->SeekTuple(tuple_id->binary_value()))) {
-        DocKey doc_key;
-        RETURN_NOT_OK(doc_key.DecodeFrom(tuple_id->binary_value()));
         if (FLAGS_TEST_ysql_suppress_ybctid_corruption_details) {
           return STATUS(Corruption, "ybctid not found in indexed table");
         } else {
+          DocKey doc_key;
+          RETURN_NOT_OK(doc_key.DecodeFrom(tuple_id->binary_value()));
           return STATUS_FORMAT(
               Corruption,
               "ybctid $0 not found in indexed table. index table id is $1",
@@ -1196,15 +1242,17 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const YQLStorageIf& ql_storage,
               request_.index_request().table_id());
         }
       }
+      // Remove index row currently held by the variable
       row.Clear();
-      RETURN_NOT_OK(table_iter_->NextRow(projection, &row));
+      // Fetch main table row
+      RETURN_NOT_OK(table_iter_->NextRow(doc_projection, &row));
     } else {
-      RETURN_NOT_OK(iter->NextRow(projection, &row));
+      // Fetch main table row
+      RETURN_NOT_OK(iter->NextRow(doc_projection, &row));
     }
 
     // Match the row with the where condition before adding to the row block.
-    bool is_match = true;
-    RETURN_NOT_OK(expr_exec.Exec(row, nullptr, &is_match));
+    RETURN_NOT_OK(doc_expr_exec.Exec(row, nullptr, &is_match));
     if (is_match) {
       match_count++;
       if (request_.is_aggregate()) {
@@ -1213,6 +1261,8 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const YQLStorageIf& ql_storage,
         RETURN_NOT_OK(PopulateResultSet(row, result_buffer));
         ++fetched_rows;
       }
+    } else {
+      VLOG(1) << "Row filtered out by the condition";
     }
 
     // Check if we are running out of time
@@ -1223,6 +1273,7 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const YQLStorageIf& ql_storage,
           << fetched_rows << " rows fetched";
   VLOG(1) << "Deadline is " << (scan_time_exceeded ? "" : "not ") << "exceeded";
 
+  // Output aggregate values accumulated while looping over rows
   if (request_.is_aggregate() && match_count > 0) {
     RETURN_NOT_OK(PopulateAggregate(row, result_buffer));
     ++fetched_rows;
@@ -1233,9 +1284,11 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const YQLStorageIf& ql_storage,
     SleepFor(MonoDelta::FromMilliseconds(FLAGS_TEST_slowdown_pgsql_aggregate_read_ms));
   }
 
+  // Unless iterated to the end, pack current iterator position into response, so follow up request
+  // can seek to correct position and continue
   RETURN_NOT_OK(SetPagingStateIfNecessary(
-      iter, fetched_rows, row_count_limit, scan_time_exceeded, *scan_schema,
-      read_time, has_paging_state));
+      iter, fetched_rows, row_count_limit, scan_time_exceeded,
+      request_.has_index_request() ? *index_schema : doc_schema, read_time, has_paging_state));
   return fetched_rows;
 }
 
