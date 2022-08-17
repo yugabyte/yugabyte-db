@@ -228,7 +228,7 @@
  // Per current cleanup.sh script.
  func (plat Platform) Uninstall() {
     plat.Stop()
-    os.RemoveAll("/opt/yugabyte")
+    RemoveAllExceptDataVolumes([]string{"platform"})
  }
 
  func (plat Platform) VersionInfo() string {

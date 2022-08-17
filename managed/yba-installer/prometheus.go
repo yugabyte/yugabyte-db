@@ -72,7 +72,7 @@
  //Per current cleanup.sh script.
  func (prom Prometheus) Uninstall() {
     prom.Stop()
-    os.RemoveAll("/opt/yugabyte")
+    RemoveAllExceptDataVolumes([]string{"prometheus"})
  }
 
  func (prom Prometheus) VersionInfo() string {

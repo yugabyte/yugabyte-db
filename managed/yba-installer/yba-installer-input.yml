@@ -1,12 +1,20 @@
-# Configurable parameters: fileName, scrapeInterval,
-# evaluationInterval, scrapeTimeout, privateIp,
-# externalPort, maxConcurrency, maxSamples, timeout
+# Configurable parameters: fileName, storagePath,
+# scrapeInterval, evaluationInterval, scrapeTimeout,
+# privateIp, externalPort, maxConcurrency, maxSamples,
+# timeout
 
 # fileName: The location of the Prometheus
 # Config File that is being created by this template.
 # We recommend keeping this file in the same folder
 # path where you have other config files pertaining to
 # the Yugabyte platform (must be an absolute file path).
+
+# storagePath: If you want to keep your prometheus data
+# in a NAS location or mount path with a lot of storage,
+# change this parameter in the service file to dictate
+# which location you want to use. Keep in mind that
+# Prometheus data grows quickly as you have more
+# universes (must be an absolute directory path).
 
 # scrapeInterval: The interval of time between the Prometheus
 # instance scraping for database metrics on the Yugabyte Platform
@@ -229,7 +237,7 @@ preflight:
 # fixed).
 random:
 
-# Edit this file if you are bringing in your
+# Edit this section if you are bringing in your
 # own version of Python to the Yugabyte
 # Platform Installation. Make sure you specify
 # all the required fields correctly, and specify
@@ -244,7 +252,7 @@ postgres:
    postgresConf: "/var/lib/pgsql/11/data/postgresql.conf"
    systemdLocation : "/usr/lib/systemd/system/postgresql-11.service"
 
-# Edit this file if you are bringing in your
+# Edit this section if you are bringing in your
 # own version of Python to the Yugabyte
 # Platform Installation. Make sure you specify
 # all the required fields correctly, and specify
@@ -253,3 +261,24 @@ python:
    bringOwn: false
    path: "/usr/bin/python3"
    version: 3.6
+
+# The data directories where all of your Yugabyte Platform installation reside,
+# defaults to /opt/yugabyte for Platform, Prometheus and Postgres.
+# Edit if you are performing a custom installation of Yugabyte Platform and have your
+# data directories in a different location.
+baseDirs:
+   - "/opt/yugabyte"
+
+# The dataVolumes section refers to any directories that are not
+# deleted during the uninstall operation of yba-installer. Edit this
+# section if you have any more directories that you would like preserved
+# during uninstalls of Yugabyte Platform, and add it to the list. All
+# data volumes must have a baseDir corresponding to the baseDir specified in
+# the configuration setting above (separate directories for platform, postgres,
+# and prometheus)
+dataVolumes:
+   platform:
+      - "/opt/yugabyte/data"
+   prometheus:
+      - "/opt/yugabyte/swamper_targets"
+      - "/opt/yugabyte/swamper_rules"
