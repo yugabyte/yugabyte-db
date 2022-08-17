@@ -8,7 +8,7 @@
     "bytes"
     "fmt"
     "io/ioutil"
-    "os"
+    //"os"
     "strings"
  )
 
@@ -76,9 +76,8 @@
     command1 := "dropdb"
     arg1 := []string{"-U", "postgres", "yugaware"}
     ExecuteBashCommand(command1, arg1)
-
-    os.RemoveAll("/opt/yugabyte")
-    }
+    //RemoveAllExceptDataVolumes([]string{"postgres"})
+  }
 
  func (pg Postgres) VersionInfo() string {
     return pg.Version
@@ -117,7 +116,6 @@
 
     command1 := "/usr/pgsql-11/bin/postgresql-11-setup"
     arg1 := []string{"initdb"}
-    os.RemoveAll("/var/lib/pgsql")
     ExecuteBashCommand(command1, arg1)
 
  }
