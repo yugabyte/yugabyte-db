@@ -489,43 +489,42 @@ enum class MetricLevel {
   kWarn = 2
 };
 
-struct MetricJsonOptions {
-  MetricJsonOptions() :
-    include_raw_histograms(false),
-    include_schema_info(false),
-    level(MetricLevel::kDebug) {
-  }
+enum class AggregationMetricLevel {
+  kServer,
+  kTable
+};
 
+struct MetricJsonOptions {
   // Include the raw histogram values and counts in the JSON output.
   // This allows consumers to do cross-server aggregation or window
   // data over time.
   // Default: false
-  bool include_raw_histograms;
+  bool include_raw_histograms = false;
 
   // Include the metrics "schema" information (i.e description, label,
   // unit, etc).
   // Default: false
-  bool include_schema_info;
+  bool include_schema_info = false;
 
   // Include the metrics at a level and above.
   // Default: debug
-  MetricLevel level;
+  MetricLevel level = MetricLevel::kDebug;
 };
 
 struct MetricPrometheusOptions {
-  MetricPrometheusOptions() :
-    level(MetricLevel::kDebug) {
-  }
-
   // Include the metrics at a level and above.
   // Default: debug
-  MetricLevel level;
+  MetricLevel level = MetricLevel::kDebug;
+
+  // Aggregation level for table metrics.
+  // Default: table
+  AggregationMetricLevel aggregation_level = AggregationMetricLevel::kTable;
 
   // Number of tables to include metrics for.
   uint32_t max_tables_metrics_breakdowns;
 
   // Regex for metrics that should always be included for all tables.
-  string priority_regex;
+  std::string priority_regex;
 };
 
 class MetricEntityPrototype {
@@ -680,10 +679,13 @@ typedef scoped_refptr<MetricEntity> MetricEntityPtr;
 
 class PrometheusWriter {
  public:
-  explicit PrometheusWriter(std::stringstream* output)
+  explicit PrometheusWriter(
+      std::stringstream* output,
+      AggregationMetricLevel aggregation_Level = AggregationMetricLevel::kTable)
     : output_(output),
       timestamp_(std::chrono::duration_cast<std::chrono::milliseconds>(
-          std::chrono::system_clock::now().time_since_epoch()).count()) {}
+          std::chrono::system_clock::now().time_since_epoch()).count()),
+      aggregation_level_(aggregation_Level) {}
 
   virtual ~PrometheusWriter() {}
 
@@ -704,17 +706,24 @@ class PrometheusWriter {
 
   void InvalidAggregationFunction(AggregationFunction aggregation_function);
 
-  struct TableData {
+  void AddAggregatedEntry(const std::string& key,
+                          const MetricEntity::AttributeMap& attr,
+                          const std::string& name, int64_t value,
+                          AggregationFunction aggregation_function);
+
+  struct AggregatedData {
     MetricEntity::AttributeMap attributes;
     std::map<std::string, int64_t> values;
   };
 
-  // Map from table_id to table data.
-  std::map<std::string, TableData> tables_;
+  // Map from table_id to aggregated data.
+  std::map<std::string, AggregatedData> aggregated_data_;
   // Output stream
   std::stringstream* output_;
   // Timestamp for all metrics belonging to this writer instance.
   int64_t timestamp_;
+
+  AggregationMetricLevel aggregation_level_;
 };
 
 // Native Metrics Storage Writer - writes prometheus metrics into system table.

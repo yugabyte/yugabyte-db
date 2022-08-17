@@ -268,15 +268,32 @@ static void MemTrackersHandler(const Webserver::WebRequest& req, Webserver::WebR
   *output << "</table>\n";
 }
 
-static MetricLevel MetricLevelFromName(const std::string& level) {
+static Result<MetricLevel> MetricLevelFromName(const std::string& level) {
   if (level == "debug") {
     return MetricLevel::kDebug;
   } else if (level == "info") {
     return MetricLevel::kInfo;
   } else if (level == "warn") {
     return MetricLevel::kWarn;
+  }
+  return STATUS(NotSupported, Substitute("Unknown Metric Level $0", level));
+}
+
+static Result<AggregationMetricLevel> AggregationMetricLevelFromName(const std::string& str) {
+  if (str == "server") {
+    return AggregationMetricLevel::kServer;
+  } else if (str == "table") {
+    return AggregationMetricLevel::kTable;
+  }
+  return STATUS(NotSupported, Substitute("Unknown Aggregation Metric Level $0", str));
+}
+
+template<class Value>
+void SetParsedValue(Value* v, const Result<Value>& result) {
+  if (result.ok()) {
+    *v = *result;
   } else {
-    return MetricLevel::kDebug;
+    LOG(WARNING) << "Can't parse option: " << result.status();
   }
 }
 
@@ -305,15 +322,17 @@ static void ParseRequestOptions(const Webserver::WebRequest& req,
     json_opts->include_schema_info = ParseLeadingBoolValue(arg.c_str(), false);
 
     arg = FindWithDefault(req.parsed_args, "level", "debug");
-    json_opts->level = MetricLevelFromName(arg);
+    SetParsedValue(&json_opts->level, MetricLevelFromName(arg));
   }
 
   if (promethus_opts) {
-    arg = FindWithDefault(req.parsed_args, "level", "debug");
-    promethus_opts->level = MetricLevelFromName(arg);
+    SetParsedValue(&promethus_opts->level,
+                   MetricLevelFromName(FindWithDefault(req.parsed_args, "level", "debug")));
     promethus_opts->max_tables_metrics_breakdowns = std::stoi(FindWithDefault(req.parsed_args,
       "max_tables_metrics_breakdowns", std::to_string(FLAGS_max_tables_metrics_breakdowns)));
     promethus_opts->priority_regex = FindWithDefault(req.parsed_args, "priority_regex", "");
+    SetParsedValue(&promethus_opts->aggregation_level, AggregationMetricLevelFromName(
+      FindWithDefault(req.parsed_args, "aggregation_level", "table")));
   }
 
   if (json_mode) {
@@ -344,7 +363,7 @@ static void WriteMetricsForPrometheus(const MetricRegistry* const metrics,
   ParseRequestOptions(req, &requested_metrics, &opts);
 
   std::stringstream *output = &resp->output;
-  PrometheusWriter writer(output);
+  PrometheusWriter writer(output, opts.aggregation_level);
   WARN_NOT_OK(metrics->WriteForPrometheus(&writer, requested_metrics, opts),
               "Couldn't write text metrics for Prometheus");
 }
