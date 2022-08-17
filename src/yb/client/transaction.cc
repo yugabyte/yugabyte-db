@@ -250,6 +250,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   }
 
   void InitWithReadPoint(IsolationLevel isolation, ConsistentReadPoint&& read_point) {
+    TRACE_TO(trace_, __func__);
     VLOG_WITH_PREFIX(1) << __func__ << "(" << IsolationLevel_Name(isolation) << ", "
                         << read_point.GetReadTime() << ")";
 
