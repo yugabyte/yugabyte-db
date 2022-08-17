@@ -100,27 +100,27 @@ Starting from Ubuntu 20.04, `python` isn't available anymore. An easy fix is to 
 1. Download the YugabyteDB package using the following `wget` command.
 
     ```sh
-    $ wget https://downloads.yugabyte.com/releases/{{< yb-version version="stable">}}/yugabyte-{{< yb-version version="stable" format="build">}}-linux-x86_64.tar.gz
+    $ wget https://downloads.yugabyte.com/releases/{{<yb-version version="v2.12">}}/yugabyte-{{<yb-version version="v2.12" format="build">}}-linux-x86_64.tar.gz
     ```
 
     \
     OR:
 
     ```sh
-    $ wget https://downloads.yugabyte.com/releases/{{< yb-version version="stable">}}/yugabyte-{{< yb-version version="stable" format="build">}}-el8-aarch64.tar.gz
+    $ wget https://downloads.yugabyte.com/releases/{{<yb-version version="v2.12">}}/yugabyte-{{<yb-version version="v2.12" format="build">}}-el8-aarch64.tar.gz
     ```
 
 1. Extract the package and then change directories to the YugabyteDB home.
 
     ```sh
-    $ tar xvfz yugabyte-{{< yb-version version="stable" format="build">}}-linux-x86_64.tar.gz && cd yugabyte-{{< yb-version version="stable">}}/
+    $ tar xvfz yugabyte-{{<yb-version version="v2.12" format="build">}}-linux-x86_64.tar.gz && cd yugabyte-{{<yb-version version="v2.12">}}/
     ```
 
     \
     OR:
 
     ```sh
-    $ tar xvfz yugabyte-{{< yb-version version="stable" format="build">}}-el8-aarch64.tar.gz && cd yugabyte-{{< yb-version version="stable">}}/
+    $ tar xvfz yugabyte-{{<yb-version version="v2.12" format="build">}}-el8-aarch64.tar.gz && cd yugabyte-{{<yb-version version="v2.12">}}/
     ```
 
 ### Configure YugabyteDB
