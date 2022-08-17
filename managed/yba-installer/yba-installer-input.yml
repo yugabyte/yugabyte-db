@@ -216,7 +216,7 @@ platform:
 # Nginx instance. Defaults to 100G, override if you wish to specify
 # a different maximum upload size.
 nginx:
-   mode: "http"
+   mode: "https"
    fileName: "/etc/nginx/nginx.conf"
    serverName: "_"
    privateIp: "127.0.0.1"
