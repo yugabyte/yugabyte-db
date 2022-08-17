@@ -76,10 +76,9 @@
  }
 
  // Uninstall performs the uninstallation procedures specific
- // to Nginx.
+ // to Nginx (no data volumes to retain).
  func (ngi Nginx) Uninstall() {
      ngi.Stop()
-     os.RemoveAll("/opt/yugabyte")
  }
 
  func configureNginxConfHTTPS(server_cert_location string,
