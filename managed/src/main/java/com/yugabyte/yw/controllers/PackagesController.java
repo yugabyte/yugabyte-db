@@ -9,20 +9,16 @@ import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
-import io.swagger.annotations.Authorization;
 import java.io.File;
 import java.util.StringJoiner;
-import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import play.mvc.Result;
 import play.mvc.Results;
 
-@Api(
-    value = "PackagesController",
-    authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
+@Api(value = "PackagesController")
 @Slf4j
-public class PackagesController extends AuthenticatedController {
+public class PackagesController extends AbstractPlatformController {
 
   @Inject private RuntimeConfigFactory runtimeConfigFactory;
 

@@ -4,6 +4,7 @@ package com.yugabyte.yw.common;
 
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.services.YbcClientService;
 import com.yugabyte.yw.models.Backup;
@@ -33,20 +34,25 @@ public class YbcManager {
   private final CustomerConfigService customerConfigService;
   private final YbcBackupUtil ybcBackupUtil;
   private final BackupUtil backupUtil;
+  private final RuntimeConfigFactory runtimeConfigFactory;
 
   private static final int WAIT_EACH_ATTEMPT_MS = 5000;
   private static final int MAX_RETRIES = 10;
+
+  private static final String YBC_STABLE_RELEASE_PATH = "ybc.releases.stable_version";
 
   @Inject
   public YbcManager(
       YbcClientService ybcClientService,
       CustomerConfigService customerConfigService,
       YbcBackupUtil ybcBackupUtil,
-      BackupUtil backupUtil) {
+      BackupUtil backupUtil,
+      RuntimeConfigFactory runtimeConfigFactory) {
     this.ybcClientService = ybcClientService;
     this.customerConfigService = customerConfigService;
     this.ybcBackupUtil = ybcBackupUtil;
     this.backupUtil = backupUtil;
+    this.runtimeConfigFactory = runtimeConfigFactory;
   }
 
   public boolean deleteNfsDirectory(Backup backup) {
@@ -212,5 +218,9 @@ public class YbcManager {
     } finally {
       ybcClientService.closeClient(ybcClient);
     }
+  }
+
+  public String getStableYbcVersion() {
+    return runtimeConfigFactory.globalRuntimeConf().getString(YBC_STABLE_RELEASE_PATH);
   }
 }

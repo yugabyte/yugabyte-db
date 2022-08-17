@@ -48,6 +48,7 @@ import java.util.stream.Stream;
 import lombok.extern.slf4j.Slf4j;
 import play.mvc.Http.Status;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.YbcManager;
 
 @Slf4j
 public class UpgradeUniverseHandler {
@@ -56,17 +57,20 @@ public class UpgradeUniverseHandler {
   private final KubernetesManagerFactory kubernetesManagerFactory;
   private final RuntimeConfigFactory runtimeConfigFactory;
   private final GFlagsValidationHandler gFlagsValidationHandler;
+  private final YbcManager ybcManager;
 
   @Inject
   public UpgradeUniverseHandler(
       Commissioner commissioner,
       KubernetesManagerFactory kubernetesManagerFactory,
       RuntimeConfigFactory runtimeConfigFactory,
-      GFlagsValidationHandler gFlagsValidationHandler) {
+      GFlagsValidationHandler gFlagsValidationHandler,
+      YbcManager ybcManager) {
     this.commissioner = commissioner;
     this.kubernetesManagerFactory = kubernetesManagerFactory;
     this.runtimeConfigFactory = runtimeConfigFactory;
     this.gFlagsValidationHandler = gFlagsValidationHandler;
+    this.ybcManager = ybcManager;
   }
 
   public UUID restartUniverse(
@@ -139,8 +143,7 @@ public class UpgradeUniverseHandler {
             > 0
         && !universe.isYbcEnabled()
         && requestParams.enableYbc) {
-      requestParams.ybcSoftwareVersion =
-          runtimeConfigFactory.staticApplicationConf().getString(Util.YBC_DEFAULT_VERSION);
+      requestParams.ybcSoftwareVersion = ybcManager.getStableYbcVersion();
       requestParams.installYbc = true;
     } else {
       requestParams.ybcSoftwareVersion = universe.getUniverseDetails().ybcSoftwareVersion;
