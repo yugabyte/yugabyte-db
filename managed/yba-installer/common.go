@@ -34,7 +34,7 @@
  func (com Common) Install() {
     installPrerequisites()
     createYugabyteUser()
-    GenerateTemplatedConfiguration(com.Version, com.Mode)
+    GenerateTemplatedConfiguration()
     com.downloadPlatformSupportPackageAndYugabundle(com.Version)
     com.copyThirdPartyDependencies()
  }
@@ -63,7 +63,7 @@
 
  // Upgrade performs the upgrade procedures common to all services.
  func (com Common) Upgrade() {
-     GenerateTemplatedConfiguration(com.Version, com.Mode)
+     GenerateTemplatedConfiguration()
      com.downloadPlatformSupportPackageAndYugabundle(com.Version)
      com.copyThirdPartyDependencies()
  }
