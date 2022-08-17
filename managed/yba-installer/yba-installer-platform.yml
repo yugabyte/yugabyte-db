@@ -10,7 +10,7 @@ services:
       play.i18n.langs = [ "en" ]
       pidfile.path = "/dev/null"
       db {
-        default.url="jdbc:postgresql://127.0.0.1:5432/yugaware"
+        default.url="jdbc:postgresql://{{ yamlPath ".platformOldConfig.privateIp" }}:{{ yamlPath ".platformOldConfig.externalPort" }}/yugaware"
         default.driver=org.postgresql.Driver
         default.username="{{ yamlPath ".platformOldConfig.platformDbUser" }}"
         default.password="{{ yamlPath ".platformOldConfig.platformDbPassword" }}"
@@ -107,7 +107,7 @@ services:
       play.i18n.langs = [ "en" ]
       pidfile.path = "/dev/null"
       db {
-        default.url="jdbc:postgresql://127.0.0.1:5432/yugaware"
+        default.url="jdbc:postgresql://{{ yamlPath ".platformNewConfig.privateIp" }}:{{ yamlPath ".platformNewConfig.externalPort" }}/yugaware"
         default.driver=org.postgresql.Driver
         default.username="{{ yamlPath ".platformNewConfig.platformDbUser" }}"
         default.password="{{ yamlPath ".platformNewConfig.platformDbPassword" }}"
