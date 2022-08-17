@@ -499,10 +499,8 @@ components:
                   proxy_set_header X-Forwarded-Proto $scheme;
                   proxy_set_header Host $host;
 
-                  #Changing default timeout values
-
                   proxy_read_timeout 600;
-                  proxy_send_timeout 600;
+
 
                 location / {
                   proxy_pass http://{{repl HostPrivateIpAddress "app" "yugabyte/yugaware" }}:{{repl ContainerExposedPort "app" "yugabyte/yugaware" "9000" }};
