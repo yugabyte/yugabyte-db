@@ -41,7 +41,7 @@
 
  var nginx = Nginx{"nginx",
                 "/etc/nginx/nginx.conf",
-                httpMode, "_", "", ""}
+                httpMode, "_"}
 
  var platformInstall = Platform{"platform",
             "/etc/systemd/system/yb-platform.service",
