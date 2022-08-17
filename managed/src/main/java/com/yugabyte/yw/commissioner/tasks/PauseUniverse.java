@@ -13,10 +13,13 @@ package com.yugabyte.yw.commissioner.tasks;
 import com.google.common.collect.Sets;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
@@ -62,8 +65,18 @@ public class PauseUniverse extends UniverseTaskBase {
               .stream()
               .collect(Collectors.toMap(c -> c.uuid, c -> c));
 
-      Set<NodeDetails> tserverNodes = new HashSet<>(universe.getTServers());
-      Set<NodeDetails> masterNodes = new HashSet<>(universe.getMasters());
+      Set<NodeDetails> tserverNodes =
+          universe
+              .getTServers()
+              .stream()
+              .filter(tserverNode -> tserverNode.state == NodeDetails.NodeState.Live)
+              .collect(Collectors.toSet());
+      Set<NodeDetails> masterNodes =
+          universe
+              .getMasters()
+              .stream()
+              .filter(masterNode -> masterNode.state == NodeDetails.NodeState.Live)
+              .collect(Collectors.toSet());
 
       for (NodeDetails node : Sets.union(masterNodes, tserverNodes)) {
         if (!node.disksAreMountedByUUID) {
@@ -83,7 +96,8 @@ public class PauseUniverse extends UniverseTaskBase {
 
       if (!universe.getUniverseDetails().isImportedUniverse()) {
         // Create tasks to pause the existing nodes.
-        createPauseServerTasks(universe.getNodes())
+        Collection<NodeDetails> activeUniverseNodes = getActiveUniverseNodes(universe.getNodes());
+        createPauseServerTasks(activeUniverseNodes) // Pass in filtered nodes
             .setSubTaskGroupType(SubTaskGroupType.PauseUniverse);
       }
       createSwamperTargetUpdateTask(false);
@@ -115,5 +129,22 @@ public class PauseUniverse extends UniverseTaskBase {
       unlockUniverseForUpdate();
     }
     log.info("Finished {} task.", getName());
+  }
+
+  private Collection<NodeDetails> getActiveUniverseNodes(Collection<NodeDetails> universeNodes) {
+    Collection<NodeDetails> activeNodes = new HashSet<>();
+    for (NodeDetails node : universeNodes) {
+      NodeTaskParams nodeParams = new NodeTaskParams();
+      nodeParams.universeUUID = taskParams().universeUUID;
+      nodeParams.nodeName = node.nodeName;
+      nodeParams.nodeUuid = node.nodeUuid;
+      nodeParams.azUuid = node.azUuid;
+      nodeParams.placementUuid = node.placementUuid;
+
+      if (instanceExists(nodeParams)) {
+        activeNodes.add(node);
+      }
+    }
+    return activeNodes;
   }
 }
