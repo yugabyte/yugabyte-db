@@ -506,7 +506,7 @@ class YbAdminSnapshotScheduleTestWithYsql : public YbAdminSnapshotScheduleTest {
     return Timestamp(VERIFY_RESULT(WallClock()->Now()).time_point);
   }
 
-  void TestPgsqlDropDefault();
+  void TestPgsqlDropDefault(bool colocated = false);
 };
 
 class YbAdminSnapshotScheduleTestWithYsqlAndPackedRow : public YbAdminSnapshotScheduleTestWithYsql {
@@ -907,24 +907,69 @@ TEST_F(YbAdminSnapshotScheduleTest, CleanupDeletedTablets) {
   }, deadline, "Deleted table cleanup"));
 }
 
-class YbAdminSnapshotScheduleTestWithYsqlColocatedParam
+// This class simplifies the way to run PITR tests against (not) colocated database.
+// After setting proper callback functions, calling RunTestWithColocatedParam performs the test.
+// You can also write tests inherit from this class without using this framework.
+class YbAdminSnapshotScheduleTestWithYsqlParam
     : public YbAdminSnapshotScheduleTestWithYsql,
       public ::testing::WithParamInterface<bool> {
  public:
   Result<std::string> PreparePgWithColocatedParam() { return PreparePg(GetParam()); }
+
+  // To test PITR against a colocated database, two by default colocated tables and
+  // one not colocated table are created where same operations are performed on them.
+  void RunTestWithColocatedParam(std::string schedule_id) {
+    std::string colocated_prefix = "colocated";
+    std::string colocated_prefix2 = "colocated2";
+    std::string default_option = "";
+
+    std::string not_colocated_prefix = "not_colocated";
+    std::string not_colocated_option = "with (colocated = false)";
+
+    if (ExecBeforeRestoreTS != nullptr) {
+      if (GetParam()) {
+        ExecBeforeRestoreTS(colocated_prefix, default_option);
+        ExecBeforeRestoreTS(colocated_prefix2, default_option);
+      }
+      ExecBeforeRestoreTS(not_colocated_prefix, not_colocated_option);
+    }
+
+    Timestamp time = ASSERT_RESULT(GetCurrentTime());
+    LOG(INFO) << "Time noted to restore the database back: " << time;
+
+    if (ExecAfterRestoreTS != nullptr) {
+      if (GetParam()) {
+        ExecAfterRestoreTS(colocated_prefix, default_option);
+        ExecAfterRestoreTS(colocated_prefix2, default_option);
+      }
+      ExecAfterRestoreTS(not_colocated_prefix, not_colocated_option);
+    }
+
+    LOG(INFO) << "Perform a Restore to the time noted above";
+    ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
+
+    ASSERT_NE(CheckAfterPITR, nullptr);
+    if (GetParam()) {
+      CheckAfterPITR(colocated_prefix, default_option);
+      CheckAfterPITR(colocated_prefix2, default_option);
+    }
+    CheckAfterPITR(not_colocated_prefix, not_colocated_option);
+  }
+
+  std::function<void(const std::string, const std::string)> ExecBeforeRestoreTS;
+  std::function<void(const std::string, const std::string)> ExecAfterRestoreTS;
+  std::function<void(const std::string, const std::string)> CheckAfterPITR;
 };
 
-INSTANTIATE_TEST_CASE_P(PITRFlags, YbAdminSnapshotScheduleTestWithYsqlColocatedParam,
+INSTANTIATE_TEST_CASE_P(ColocatedDB, YbAdminSnapshotScheduleTestWithYsqlParam,
                         ::testing::Values(false, true));
 
-TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocatedParam, Pgsql) {
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, Pgsql) {
   YB_SKIP_TEST_IN_TSAN();
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
-
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
   ASSERT_OK(conn.Execute("CREATE TABLE test_table (key INT PRIMARY KEY, value TEXT)"));
-
   ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (1, 'before')"));
 
   Timestamp time = ASSERT_RESULT(GetCurrentTime());
@@ -934,14 +979,12 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocatedParam, Pgsql) {
   ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
 
   auto res = ASSERT_RESULT(conn.FetchValue<std::string>("SELECT value FROM test_table"));
-
   ASSERT_EQ(res, "before");
 }
 
-TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocatedParam, PgsqlDropDatabaseAndSchedule) {
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlDropDatabaseAndSchedule) {
   YB_SKIP_TEST_IN_TSAN();
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
-
   auto conn = ASSERT_RESULT(PgConnect());
 
   auto res = conn.Execute(Format("DROP DATABASE $0", client::kTableName.namespace_name()));
@@ -953,224 +996,298 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocatedParam, PgsqlDropDatabaseAndSc
   ASSERT_OK(conn.Execute(Format("DROP DATABASE $0", client::kTableName.namespace_name())));
 }
 
-TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocatedParam, PgsqlCreateTable) {
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlCreateTable) {
   YB_SKIP_TEST_IN_TSAN();
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
-  Timestamp time = ASSERT_RESULT(GetCurrentTime());
+  ExecAfterRestoreTS = [&](std::string prefix, std::string option) {
+    std::string table_name = prefix + "_table";
 
-  ASSERT_OK(conn.Execute("CREATE TABLE test_table (key INT PRIMARY KEY, value TEXT)"));
-  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (1, 'before')"));
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (key INT PRIMARY KEY, value TEXT) $1",
+        table_name, option));
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 'before')", table_name));
+  };
 
-  auto restore_status = RestoreSnapshotSchedule(schedule_id, time);
-  ASSERT_OK(restore_status);
+  CheckAfterPITR = [&](std::string prefix, std::string option) {
+    std::string table_name = prefix + "_table";
 
-  // Wait for Restore to complete.
-  ASSERT_OK(WaitFor([this]() -> Result<bool> {
-    bool all_tablets_hidden = true;
-    for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
-      auto proxy = cluster_->GetTServerProxy<tserver::TabletServerServiceProxy>(i);
-      tserver::ListTabletsRequestPB req;
-      tserver::ListTabletsResponsePB resp;
-      rpc::RpcController controller;
-      controller.set_timeout(30s);
-      RETURN_NOT_OK(proxy.ListTablets(req, &resp, &controller));
-      for (const auto& tablet : resp.status_and_schema()) {
-        if (tablet.tablet_status().namespace_name() == client::kTableName.namespace_name()) {
-          LOG(INFO) << "Tablet " << tablet.tablet_status().tablet_id() << " of table "
-                    << tablet.tablet_status().table_name() << ", hidden status "
-                    << tablet.tablet_status().is_hidden();
-          all_tablets_hidden = all_tablets_hidden && tablet.tablet_status().is_hidden();
+    // Wait for Restore to complete.
+    ASSERT_OK(WaitFor([this]() -> Result<bool> {
+      bool all_tablets_hidden = true;
+      for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
+        auto proxy = cluster_->GetTServerProxy<tserver::TabletServerServiceProxy>(i);
+        tserver::ListTabletsRequestPB req;
+        tserver::ListTabletsResponsePB resp;
+        rpc::RpcController controller;
+        controller.set_timeout(30s);
+        RETURN_NOT_OK(proxy.ListTablets(req, &resp, &controller));
+        for (const auto& tablet : resp.status_and_schema()) {
+          if (tablet.tablet_status().namespace_name() == client::kTableName.namespace_name()) {
+            LOG(INFO) << "Tablet " << tablet.tablet_status().tablet_id() << " of table "
+                      << tablet.tablet_status().table_name() << ", hidden status "
+                      << tablet.tablet_status().is_hidden();
+            all_tablets_hidden = all_tablets_hidden && tablet.tablet_status().is_hidden();
+          }
         }
       }
-    }
-    return all_tablets_hidden;
-  }, 30s, "Restore failed."));
+      return all_tablets_hidden;
+    }, 30s, "Restore failed."));
 
-  ASSERT_NOK(conn.Execute("INSERT INTO test_table VALUES (2, 'now')"));
-  ASSERT_OK(conn.Execute("CREATE TABLE test_table (key INT PRIMARY KEY, value TEXT)"));
-  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (1, 'after')"));
-  auto res = ASSERT_RESULT(conn.FetchValue<std::string>(
-      "SELECT value FROM test_table WHERE key = 1"));
-  ASSERT_EQ(res, "after");
+    ASSERT_NOK(conn.ExecuteFormat("INSERT INTO $0 VALUES (2, 'now')", table_name));
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (key INT PRIMARY KEY, value TEXT) $1",
+        table_name, option));
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 'after')", table_name));
+    auto res = ASSERT_RESULT(conn.FetchValue<std::string>(Format(
+        "SELECT value FROM $0 WHERE key = 1", table_name)));
+    ASSERT_EQ(res, "after");
+  };
+
+  RunTestWithColocatedParam(schedule_id);
 }
 
-TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocatedParam, FailAfterMigration) {
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlDropTable) {
   YB_SKIP_TEST_IN_TSAN();
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+
+  ExecBeforeRestoreTS = [&](std::string prefix, std::string option) {
+    std::string table_name = prefix + "_table";
+
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (key INT PRIMARY KEY, value TEXT) $1",
+        table_name, option));
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 'before')", table_name));
+  };
+
+  ExecAfterRestoreTS = [&](std::string prefix, std::string option) {
+    std::string table_name = prefix + "_table";
+
+    ASSERT_OK(conn.ExecuteFormat("DROP TABLE $0", table_name));
+  };
+
+  CheckAfterPITR = [&](std::string prefix, std::string option) {
+    std::string table_name = prefix + "_table";
+
+    auto res = ASSERT_RESULT(conn.FetchValue<std::string>(Format(
+        "SELECT value FROM $0 WHERE key = 1", table_name)));
+    ASSERT_EQ(res, "before");
+    ASSERT_OK(conn.ExecuteFormat("UPDATE $0 SET value = 'after'", table_name));
+    res = ASSERT_RESULT(conn.FetchValue<std::string>(Format(
+        "SELECT value FROM $0 WHERE key = 1", table_name)));
+    ASSERT_EQ(res, "after");
+  };
+
+  RunTestWithColocatedParam(schedule_id);
+}
+
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, FailAfterMigration) {
+  YB_SKIP_TEST_IN_TSAN();
+  auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
+  auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+
   Timestamp time = ASSERT_RESULT(GetCurrentTime());
   LOG(INFO) << "Save time to restore to: " << time;
-  LOG(INFO) << "Insert new row into pb_yg_migration table.";
+
+  LOG(INFO) << "Insert new row into pb_yg_migration table";
   ASSERT_OK(conn.Execute(
       "INSERT INTO pg_yb_migration (major, minor, name) VALUES (2147483640, 0, 'version n')"));
   LOG(INFO) << "Assert restore for time " << time
-            << " fails because of new row in pg_yb_migration.";
+            << " fails because of new row in pg_yb_migration";
+
   auto restore_status = RestoreSnapshotSchedule(schedule_id, time);
   ASSERT_NOK(restore_status);
+
   ASSERT_STR_CONTAINS(
       restore_status.message().ToBuffer(), "Unable to restore as YSQL upgrade was performed");
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlCreateIndex),
-          YbAdminSnapshotScheduleTestWithYsql) {
-  auto schedule_id = ASSERT_RESULT(PreparePg());
-  auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
-
-  ASSERT_OK(conn.Execute("CREATE TABLE test_table (key INT PRIMARY KEY, value TEXT)"));
-  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (1, 'before')"));
-
-  Timestamp time = ASSERT_RESULT(GetCurrentTime());
-
-  ASSERT_OK(conn.Execute("CREATE INDEX test_table_idx ON test_table (value)"));
-
-  auto restore_status = RestoreSnapshotSchedule(schedule_id, time);
-  ASSERT_OK(restore_status);
-
-  auto res = ASSERT_RESULT(conn.FetchValue<std::string>("SELECT value FROM test_table"));
-  ASSERT_EQ(res, "before");
-  ASSERT_OK(conn.Execute("CREATE INDEX test_table_idx ON test_table (value)"));
-  ASSERT_OK(conn.Execute("UPDATE test_table SET value = 'after'"));
-  res = ASSERT_RESULT(conn.FetchValue<std::string>("SELECT value FROM test_table"));
-  ASSERT_EQ(res, "after");
-}
-
-TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocatedParam, PgsqlDropTable) {
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlCreateIndex) {
   YB_SKIP_TEST_IN_TSAN();
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
-  ASSERT_OK(conn.Execute("CREATE TABLE test_table (key INT PRIMARY KEY, value TEXT)"));
-  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (1, 'before')"));
+  ExecBeforeRestoreTS = [&](std::string prefix, std::string option) {
+    std::string table_name = prefix + "_table";
 
-  Timestamp time = ASSERT_RESULT(GetCurrentTime());
-  ASSERT_OK(conn.Execute("DROP TABLE test_table"));
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (key INT PRIMARY KEY, value TEXT) $1",
+        table_name, option));
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 'before')", table_name));
+  };
 
-  auto restore_status = RestoreSnapshotSchedule(schedule_id, time);
-  ASSERT_OK(restore_status);
+  ExecAfterRestoreTS = [&](std::string prefix, std::string option) {
+    std::string table_name = prefix + "_table";
+    std::string table_idx_name = prefix + "_table_idx";
 
-  auto res = ASSERT_RESULT(conn.FetchValue<std::string>(
-      "SELECT value FROM test_table WHERE key = 1"));
-  ASSERT_EQ(res, "before");
-  ASSERT_OK(conn.Execute("UPDATE test_table SET value = 'after'"));
-  res = ASSERT_RESULT(conn.FetchValue<std::string>("SELECT value FROM test_table WHERE key = 1"));
-  ASSERT_EQ(res, "after");
+    ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0 ON $1 (value)", table_idx_name, table_name));
+  };
+
+  CheckAfterPITR = [&](std::string prefix, std::string option) {
+    std::string table_name = prefix + "_table";
+    std::string table_idx_name = prefix + "_table_idx";
+
+    auto res = ASSERT_RESULT(conn.FetchValue<std::string>(Format(
+        "SELECT value FROM $0", table_name)));
+    ASSERT_EQ(res, "before");
+    ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0 ON $1 (value)", table_idx_name, table_name));
+    ASSERT_OK(conn.ExecuteFormat("UPDATE $0 SET value = 'after'", table_name));
+    res = ASSERT_RESULT(conn.FetchValue<std::string>(Format("SELECT value FROM $0", table_name)));
+    ASSERT_EQ(res, "after");
+  };
+
+  RunTestWithColocatedParam(schedule_id);
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlDropIndex),
-          YbAdminSnapshotScheduleTestWithYsql) {
-  auto schedule_id = ASSERT_RESULT(PreparePg());
-
-  auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
-
-  ASSERT_OK(conn.Execute("CREATE TABLE test_table (key INT PRIMARY KEY, value TEXT)"));
-  ASSERT_OK(conn.Execute("CREATE INDEX test_table_idx ON test_table (value)"));
-  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (1, 'before')"));
-
-  Timestamp time = ASSERT_RESULT(GetCurrentTime());
-
-  ASSERT_OK(conn.Execute("DROP INDEX test_table_idx"));
-
-  auto restore_status = RestoreSnapshotSchedule(schedule_id, time);
-  ASSERT_OK(restore_status);
-
-  auto res = ASSERT_RESULT(conn.FetchValue<std::string>("SELECT value FROM test_table"));
-  ASSERT_EQ(res, "before");
-  ASSERT_NOK(conn.Execute("CREATE INDEX test_table_idx ON test_table (value)"));
-  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (2, 'after')"));
-  res = ASSERT_RESULT(conn.FetchValue<std::string>("SELECT value FROM test_table WHERE key = 2"));
-  ASSERT_EQ(res, "after");
-}
-
-TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocatedParam, PgsqlAddColumn) {
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlDropIndex) {
   YB_SKIP_TEST_IN_TSAN();
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
-
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
-  LOG(INFO) << "Create table 'test_table' and insert a row";
-  ASSERT_OK(conn.Execute("CREATE TABLE test_table (key INT PRIMARY KEY, value TEXT)"));
-  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (1, 'before')"));
+  ExecBeforeRestoreTS = [&](std::string prefix, std::string option) {
+    std::string table_name = prefix + "_table";
+    std::string table_idx_name = prefix + "_table_idx";
 
-  Timestamp time = ASSERT_RESULT(GetCurrentTime());
-  LOG(INFO) << "Time to restore back: " << time;
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (key INT PRIMARY KEY, value TEXT) $1",
+        table_name, option));
+    ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0 ON $1 (value)", table_idx_name, table_name));
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 'before')", table_name));
+  };
 
-  LOG(INFO) << "Alter table test_table -> Add 'value2' column";
-  ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD COLUMN value2 TEXT"));
-  ASSERT_OK(conn.Execute("UPDATE test_table SET value = 'now'"));
-  ASSERT_OK(conn.Execute("UPDATE test_table SET value2 = 'now2'"));
-  auto res = ASSERT_RESULT(conn.FetchValue<std::string>("SELECT value2 FROM test_table"));
-  ASSERT_EQ(res, "now2");
+  ExecAfterRestoreTS = [&](std::string prefix, std::string option) {
+    std::string table_idx_name = prefix + "_table_idx";
 
-  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
+    ASSERT_OK(conn.ExecuteFormat("DROP INDEX $0", table_idx_name));
+  };
 
-  LOG(INFO) << "Select data from table after restore";
-  res = ASSERT_RESULT(conn.FetchValue<std::string>("SELECT value FROM test_table"));
-  ASSERT_EQ(res, "before");
+  CheckAfterPITR = [&](std::string prefix, std::string option) {
+    std::string table_name = prefix + "_table";
+    std::string table_idx_name = prefix + "_table_idx";
 
-  LOG(INFO) << "Insert data to the table after restore";
-  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (2, 'one more')"));
+    auto res = ASSERT_RESULT(conn.FetchValue<std::string>(Format(
+        "SELECT value FROM $0", table_name)));
+    ASSERT_EQ(res, "before");
+    ASSERT_NOK(conn.ExecuteFormat("CREATE INDEX $0 ON $1 (value)", table_idx_name, table_name));
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (2, 'after')", table_name));
+    res = ASSERT_RESULT(conn.FetchValue<std::string>(Format(
+        "SELECT value FROM $0 WHERE key = 2", table_name)));
+    ASSERT_EQ(res, "after");
+  };
 
-  // There might be a transient period when we get stale data before
-  // the new catalog version gets propagated to all tservers via heartbeats.
-  std::string query_template = "INSERT INTO test_table VALUES ($0, 'again one more', 'new_value')";
-  ASSERT_OK(WaitForInsertQueryToStopWorking(query_template, &conn, 3));
-
-  auto result_status = conn.FetchValue<std::string>("SELECT value2 FROM test_table");
-  ASSERT_FALSE(result_status.ok());
+  RunTestWithColocatedParam(schedule_id);
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlDeleteColumn),
-          YbAdminSnapshotScheduleTestWithYsql) {
-  auto schedule_id = ASSERT_RESULT(PreparePg());
-
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlAddColumn) {
+  YB_SKIP_TEST_IN_TSAN();
+  auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
-  LOG(INFO) << "Create table 'test_table' and insert a row";
-  ASSERT_OK(conn.Execute("CREATE TABLE test_table (key INT PRIMARY KEY, value TEXT)"));
-  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (1, 'before')"));
 
-  Timestamp time = ASSERT_RESULT(GetCurrentTime());
-  LOG(INFO) << "Time to restore back: " << time;
+  ExecBeforeRestoreTS = [&](std::string prefix, std::string option) {
+    std::string table_name = prefix + "_table";
 
-  LOG(INFO) << "Alter table 'test_table' -> Drop 'value' column";
-  ASSERT_OK(conn.Execute("ALTER TABLE test_table DROP COLUMN value"));
-  auto query_and_result = conn.FetchValue<std::string>("SELECT value FROM test_table");
-  ASSERT_FALSE(query_and_result.ok());
-  ASSERT_STR_CONTAINS(query_and_result.status().ToString(), "does not exist");
+    LOG(INFO) << "Create a table and insert data";
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (key INT PRIMARY KEY, value TEXT) $1",
+        table_name, option));
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 'before')", table_name));
+  };
 
-  LOG(INFO) << "Reading Rows";
-  auto select_res = ASSERT_RESULT(conn.FetchValue<int>("SELECT * FROM test_table"));
-  LOG(INFO) << "Read result: " << select_res;
-  ASSERT_EQ(select_res, 1);
+  ExecAfterRestoreTS = [&](std::string prefix, std::string option) {
+    std::string table_name = prefix + "_table";
 
-  auto insert_status = conn.Execute("INSERT INTO test_table VALUES (2, 'new_value')");
-  ASSERT_FALSE(insert_status.ok());
-  ASSERT_STR_CONTAINS(insert_status.ToString(), "more expressions than target columns");
+    LOG(INFO) << "Alter the table -> Add 'value2' column";
+    ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN value2 TEXT", table_name));
+    ASSERT_OK(conn.ExecuteFormat("UPDATE $0 SET value = 'now'", table_name));
+    ASSERT_OK(conn.ExecuteFormat("UPDATE $0 SET value2 = 'now2'", table_name));
+    auto res = ASSERT_RESULT(conn.FetchValue<std::string>(Format(
+        "SELECT value2 FROM $0", table_name)));
+    ASSERT_EQ(res, "now2");
+  };
 
-  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
+  CheckAfterPITR = [&](std::string prefix, std::string option) {
+    std::string table_name = prefix + "_table";
 
-  LOG(INFO) << "Select data from table after restore";
-  std::string query = "SELECT value FROM test_table";
-  // There might be a transient period when we get stale data before
-  // the new catalog version gets propagated to all tservers via heartbeats.
-  ASSERT_OK(WaitForSelectQueryToMatchExpectation(query, "before", &conn));
+    LOG(INFO) << "Select data from the table after restore";
+    auto res = ASSERT_RESULT(conn.FetchValue<std::string>(Format(
+        "SELECT value FROM $0", table_name)));
+    ASSERT_EQ(res, "before");
 
-  // We should now be able to insert with restored column.
-  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (2, 'next value')"));
+    LOG(INFO) << "Insert data to the table after restore";
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (2, 'one more')", table_name));
+
+    // There might be a transient period when we get stale data before
+    // the new catalog version gets propagated to all tservers via heartbeats.
+    std::string query_template = Format(
+        "INSERT INTO $0 VALUES ($$0, 'again one more', 'new_value')", table_name);
+    ASSERT_OK(WaitForInsertQueryToStopWorking(query_template, &conn, 3));
+
+    auto result_status = conn.FetchValue<std::string>(Format(
+        "SELECT value2 FROM $0", table_name));
+    ASSERT_FALSE(result_status.ok());
+  };
+
+  RunTestWithColocatedParam(schedule_id);
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlRenameTable),
-          YbAdminSnapshotScheduleTestWithYsql) {
-  auto schedule_id = ASSERT_RESULT(PreparePg());
-
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlDeleteColumn) {
+  YB_SKIP_TEST_IN_TSAN();
+  auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+
+  ExecBeforeRestoreTS = [&](std::string prefix, std::string option) {
+    std::string table_name = prefix + "_table";
+
+    LOG(INFO) << "Create a table and insert data";
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (key INT PRIMARY KEY, value TEXT) $1",
+        table_name, option));
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 'before')", table_name));
+  };
+
+  ExecAfterRestoreTS = [&](std::string prefix, std::string option) {
+    std::string table_name = prefix + "_table";
+
+    LOG(INFO) << "Alter the table -> Drop 'value' column";
+    ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 DROP COLUMN value", table_name));
+    auto query_and_result = conn.FetchValue<std::string>(Format(
+        "SELECT value FROM $0", table_name));
+    ASSERT_FALSE(query_and_result.ok());
+    ASSERT_STR_CONTAINS(query_and_result.status().ToString(), "does not exist");
+
+    LOG(INFO) << "Reading Rows";
+    auto select_res = ASSERT_RESULT(conn.FetchValue<int>(Format("SELECT * FROM $0", table_name)));
+    LOG(INFO) << "Read result: " << select_res;
+    ASSERT_EQ(select_res, 1);
+
+    auto insert_status = conn.ExecuteFormat("INSERT INTO $0 VALUES (2, 'new_value')", table_name);
+    ASSERT_FALSE(insert_status.ok());
+    ASSERT_STR_CONTAINS(insert_status.ToString(), "more expressions than target columns");
+  };
+
+  CheckAfterPITR = [&](std::string prefix, std::string option) {
+    std::string table_name = prefix + "_table";
+
+    LOG(INFO) << "Select data from the table after restore";
+    std::string query = Format("SELECT value FROM $0", table_name);
+    // There might be a transient period when we get stale data before
+    // the new catalog version gets propagated to all tservers via heartbeats.
+    ASSERT_OK(WaitForSelectQueryToMatchExpectation(query, "before", &conn));
+
+    // We should now be able to insert with restored column.
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (2, 'next value')", table_name));
+  };
+
+  RunTestWithColocatedParam(schedule_id);
+}
+
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlRenameTable) {
+  YB_SKIP_TEST_IN_TSAN();
+  auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
+  auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+
   LOG(INFO) << "Create table 'test_table' and insert a row";
   ASSERT_OK(conn.Execute("CREATE TABLE test_table (key INT PRIMARY KEY, value TEXT)"));
   ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (1, 'before')"));
 
   Timestamp time = ASSERT_RESULT(GetCurrentTime());
   LOG(INFO) << "Time to restore back: " << time;
+
   LOG(INFO) << "Alter table 'test_table' -> Rename table to 'new_table'";
   ASSERT_OK(conn.Execute("ALTER TABLE test_table RENAME TO new_table"));
 
@@ -1202,11 +1319,11 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlRenameTable)
   ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (2, 'new value')"));
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlRenameColumn),
-          YbAdminSnapshotScheduleTestWithYsql) {
-  auto schedule_id = ASSERT_RESULT(PreparePg());
-
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlRenameColumn) {
+  YB_SKIP_TEST_IN_TSAN();
+  auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+
   LOG(INFO) << "Create table 'test_table' and insert a row";
   ASSERT_OK(conn.Execute("CREATE TABLE test_table (key INT PRIMARY KEY, value TEXT)"));
   ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (1, 'before')"));
@@ -1238,14 +1355,15 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlRenameColumn
   auto insert_res = conn.Execute("INSERT INTO test_table(key, value2) VALUES (2, 'new_value')");
   ASSERT_FALSE(insert_res.ok());
   ASSERT_STR_CONTAINS(insert_res.ToString(), "does not exist");
+
   ASSERT_OK(conn.Execute("INSERT INTO test_table(key, value) VALUES (2, 'new_value')"));
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlSetDefault),
-          YbAdminSnapshotScheduleTestWithYsql) {
-  auto schedule_id = ASSERT_RESULT(PreparePg());
-
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlSetDefault) {
+  YB_SKIP_TEST_IN_TSAN();
+  auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+
   LOG(INFO) << "Create table and insert a row";
   ASSERT_OK(conn.Execute("CREATE TABLE test_table (key INT PRIMARY KEY, value TEXT)"));
   ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (1, 'before')"));
@@ -1280,9 +1398,9 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlSetDefault),
   ASSERT_FALSE(result_status.ok());
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlDropDefault),
-          YbAdminSnapshotScheduleTestWithYsql) {
-  TestPgsqlDropDefault();
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlDropDefault) {
+  YB_SKIP_TEST_IN_TSAN();
+  TestPgsqlDropDefault(GetParam());
 }
 
 // Check that postgres sys catalog schema is correctly restored during PITR.
@@ -1332,9 +1450,8 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlAddColumnCom
   ASSERT_EQ(res, "1, one, NULL; 2, two, dva");
 }
 
-void YbAdminSnapshotScheduleTestWithYsql::TestPgsqlDropDefault() {
-  auto schedule_id = ASSERT_RESULT(PreparePg());
-
+void YbAdminSnapshotScheduleTestWithYsql::TestPgsqlDropDefault(bool colocated) {
+  auto schedule_id = ASSERT_RESULT(PreparePg(colocated));
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
   LOG(INFO) << "Create table with default on the value column and insert a row";
@@ -1375,10 +1492,9 @@ void YbAdminSnapshotScheduleTestWithYsql::TestPgsqlDropDefault() {
   ASSERT_FALSE(result_status.ok());
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlSetNotNull),
-          YbAdminSnapshotScheduleTestWithYsql) {
-  auto schedule_id = ASSERT_RESULT(PreparePg());
-
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlSetNotNull) {
+  YB_SKIP_TEST_IN_TSAN();
+  auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
   LOG(INFO) << "Create a table and insert data";
@@ -1411,10 +1527,9 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlSetNotNull),
   ASSERT_EQ(res3, "");
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlDropNotNull),
-          YbAdminSnapshotScheduleTestWithYsql) {
-  auto schedule_id = ASSERT_RESULT(PreparePg());
-
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlDropNotNull) {
+  YB_SKIP_TEST_IN_TSAN();
+  auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
   LOG(INFO) << "Create a table with not null clause and insert data";
@@ -1446,88 +1561,105 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlDropNotNull)
   ASSERT_OK(WaitForInsertQueryToStopWorking(query_template, &conn, 3));
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlAlterTableAddPK),
-          YbAdminSnapshotScheduleTestWithYsql) {
-  auto schedule_id = ASSERT_RESULT(PreparePg());
-
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlAlterTableAddPK) {
+  YB_SKIP_TEST_IN_TSAN();
+  auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
-  LOG(INFO) << "Create a table and insert data";
-  ASSERT_OK(conn.Execute(
-      "CREATE TABLE test_table (key INT, value TEXT)"));
-  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (1, 'BeforePK')"));
+  ExecBeforeRestoreTS = [&](std::string prefix, std::string option) {
+    std::string table_name = prefix + "_table";
 
-  Timestamp time = ASSERT_RESULT(GetCurrentTime());
-  LOG(INFO) << "Time noted to to restore the database: " << time;
+    LOG(INFO) << "Create a table and insert data";
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (key INT, value TEXT) $1", table_name, option));
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 'BeforePK')", table_name));
+  };
 
-  LOG(INFO) << "Alter table and add primary key constraint";
-  ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD PRIMARY KEY (key)"));
+  ExecAfterRestoreTS = [&](std::string prefix, std::string option) {
+    std::string table_name = prefix + "_table";
 
-  LOG(INFO) << "Verify Primary key constraint added";
-  auto insert_res = conn.Execute("INSERT INTO test_table(key, value) VALUES (1, 'AfterPK')");
-  ASSERT_FALSE(insert_res.ok());
-  ASSERT_STR_CONTAINS(insert_res.ToString(), "violates unique constraint");
+    LOG(INFO) << "Alter the table and add primary key constraint";
+    ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD PRIMARY KEY (key)", table_name));
 
-  insert_res = conn.Execute("INSERT INTO test_table(value) VALUES ('DuringPK')");
-  ASSERT_FALSE(insert_res.ok());
-  ASSERT_STR_CONTAINS(insert_res.ToString(), "violates not-null constraint");
+    LOG(INFO) << "Verify Primary key constraint added";
+    auto insert_res = conn.ExecuteFormat(
+        "INSERT INTO $0(key, value) VALUES (1, 'AfterPK')", table_name);
+    ASSERT_FALSE(insert_res.ok());
+    ASSERT_STR_CONTAINS(insert_res.ToString(), "violates unique constraint");
 
-  LOG(INFO) << "Perform a Restore to the time noted above";
-  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
+    insert_res = conn.ExecuteFormat("INSERT INTO $0(value) VALUES ('DuringPK')", table_name);
+    ASSERT_FALSE(insert_res.ok());
+    ASSERT_STR_CONTAINS(insert_res.ToString(), "violates not-null constraint");
+  };
 
-  LOG(INFO) << "Verify Primary key constraint no longer exists";
-  LOG(INFO) << "Insert a row with key=1 and verify that it succeeds.";
-  // There might be a transient period of time when constraint exists since
-  // relcache is refreshed after a cycle of heartbeats.
-  std::string query = "INSERT INTO test_table VALUES (1, 'AfterPKRemoval')";
-  ASSERT_OK(WaitForInsertQueryToSucceed(query, &conn));
+  CheckAfterPITR = [&](std::string prefix, std::string option) {
+    std::string table_name = prefix + "_table";
 
-  // We should now be able to insert a null as well.
-  ASSERT_OK(conn.Execute("INSERT INTO test_table(value) VALUES ('AfterPITR')"));
+    LOG(INFO) << "Verify primary key constraint no longer exists";
+    LOG(INFO) << "Insert a row with key=1 and verify that it succeeds";
+    // There might be a transient period of time when constraint exists since
+    // relcache is refreshed after a cycle of heartbeats.
+    std::string query = Format("INSERT INTO $0 VALUES (1, 'AfterPKRemoval')", table_name);
+    ASSERT_OK(WaitForInsertQueryToSucceed(query, &conn));
+
+    // We should now be able to insert a null as well.
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0(value) VALUES ('AfterPITR')", table_name));
+  };
+
+  RunTestWithColocatedParam(schedule_id);
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlAlterTableAddFK),
-          YbAdminSnapshotScheduleTestWithYsql) {
-  auto schedule_id = ASSERT_RESULT(PreparePg());
-
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlAlterTableAddFK) {
+  YB_SKIP_TEST_IN_TSAN();
+  auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
-  LOG(INFO) << "Create tables and insert data";
-  ASSERT_OK(conn.Execute(
-      "CREATE TABLE test_table (key INT PRIMARY KEY, value TEXT)"));
-  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (1, 'BeforeFK')"));
-  ASSERT_OK(conn.Execute(
-      "CREATE TABLE test_table_2 (key_id1 INT PRIMARY KEY, key_id2 INT)"));
+  ExecBeforeRestoreTS = [&](std::string prefix, std::string option) {
+    std::string table_name = prefix + "_table";
+    std::string table_name_2 = prefix + "_table_2";
 
-  Timestamp time = ASSERT_RESULT(GetCurrentTime());
-  LOG(INFO) << "Time noted to to restore the database: " << time;
+    LOG(INFO) << "Create tables and insert data";
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (key INT PRIMARY KEY, value TEXT) $1",
+        table_name, option));
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 'BeforeFK')", table_name));
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (key_id1 INT PRIMARY KEY, key_id2 INT) $1",
+        table_name_2, option));
+  };
 
-  LOG(INFO) << "Alter table 2 and add Foreign key constraint";
-  ASSERT_OK(conn.Execute("ALTER TABLE test_table_2 ADD CONSTRAINT fk2 "
-      "FOREIGN KEY (key_id2) REFERENCES test_table(key)"));
-  LOG(INFO) << "Verify that foreign key is in effect";
-  auto insert_res = conn.Execute("INSERT INTO test_table_2 VALUES (1, 2)");
-  ASSERT_FALSE(insert_res.ok());
-  ASSERT_STR_CONTAINS(insert_res.ToString(), "violates foreign key constraint");
+  ExecAfterRestoreTS = [&](std::string prefix, std::string option) {
+    std::string table_name = prefix + "_table";
+    std::string table_name_2 = prefix + "_table_2";
 
-  LOG(INFO) << "Perform a Restore to the time noted above";
-  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
+    LOG(INFO) << "Alter table 2 and add foreign key constraint";
+    ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD CONSTRAINT fk2 "
+        "FOREIGN KEY (key_id2) REFERENCES $1(key)", table_name_2, table_name));
+    LOG(INFO) << "Verify that foreign key is in effect";
+    auto insert_res = conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 2)", table_name_2);
+    ASSERT_FALSE(insert_res.ok());
+    ASSERT_STR_CONTAINS(insert_res.ToString(), "violates foreign key constraint");
+  };
 
-  LOG(INFO) << "Verify Foreign key no longer exists post PITR";
-  // There might be a transient period of time when constraint exists since
-  // relcache is refreshed after a cycle of heartbeats.
-  std::string query = "INSERT INTO test_table_2 VALUES (1, 2)";
-  ASSERT_OK(WaitForInsertQueryToSucceed(query, &conn));
+  CheckAfterPITR = [&](std::string prefix, std::string option) {
+    std::string table_name = prefix + "_table";
+    std::string table_name_2 = prefix + "_table_2";
 
-  // We should now be able to drop the table.
-  ASSERT_OK(conn.Execute("DROP TABLE test_table"));
+    LOG(INFO) << "Verify foreign key no longer exists post PITR";
+    // There might be a transient period of time when constraint exists since
+    // relcache is refreshed after a cycle of heartbeats.
+    std::string query = Format("INSERT INTO $0 VALUES (1, 2)", table_name_2);
+    ASSERT_OK(WaitForInsertQueryToSucceed(query, &conn));
+
+    // We should now be able to drop the table.
+    ASSERT_OK(conn.ExecuteFormat("DROP TABLE $0", table_name));
+  };
+
+  RunTestWithColocatedParam(schedule_id);
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlAlterTableSetOwner),
-          YbAdminSnapshotScheduleTestWithYsql) {
-  auto schedule_id = ASSERT_RESULT(PreparePg());
-
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlAlterTableSetOwner) {
+  YB_SKIP_TEST_IN_TSAN();
+  auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+
   LOG(INFO) << "Create user user1";
   ASSERT_OK(conn.Execute("CREATE USER user1"));
 
@@ -1577,87 +1709,105 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlAlterTableSe
   ASSERT_OK(conn.Execute("ALTER TABLE test_table RENAME key TO key_new3"));
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlAddUniqueConstraint),
-          YbAdminSnapshotScheduleTestWithYsql) {
-  auto schedule_id = ASSERT_RESULT(PreparePg());
-
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlAddUniqueConstraint) {
+  YB_SKIP_TEST_IN_TSAN();
+  auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
-  LOG(INFO) << "Create table and insert data";
-  ASSERT_OK(conn.Execute(
-      "CREATE TABLE test_table (key INT, value TEXT)"));
-  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (1, 'ABC')"));
+  ExecBeforeRestoreTS = [&](std::string prefix, std::string option) {
+    std::string table_name = prefix + "_table";
 
-  Timestamp time = ASSERT_RESULT(GetCurrentTime());
-  LOG(INFO) << "Time noted to to restore the database: " << time;
+    LOG(INFO) << "Create a table and insert data";
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (key INT, value TEXT) $1", table_name, option));
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 'ABC')", table_name));
+  };
 
-  LOG(INFO) << "Alter table add unique constraint";
-  ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD CONSTRAINT uniquecst UNIQUE (value)"));
+  ExecAfterRestoreTS = [&](std::string prefix, std::string option) {
+    std::string table_name = prefix + "_table";
+    std::string constraint_name = prefix + "_uniquecst";
 
-  LOG(INFO) << "Verify Unique constraint added";
-  auto insert_res = conn.Execute("INSERT INTO test_table VALUES (2, 'ABC')");
-  ASSERT_FALSE(insert_res.ok());
-  ASSERT_STR_CONTAINS(insert_res.ToString(), "violates unique constraint");
+    LOG(INFO) << "Alter the table add unique constraint";
+    ASSERT_OK(conn.ExecuteFormat(
+        "ALTER TABLE $0 ADD CONSTRAINT $1 UNIQUE (value)", table_name, constraint_name));
 
-  LOG(INFO) << "Perform a Restore to the time noted above";
-  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
+    LOG(INFO) << "Verify unique constraint added";
+    auto insert_res = conn.ExecuteFormat("INSERT INTO $0 VALUES (2, 'ABC')", table_name);
+    ASSERT_FALSE(insert_res.ok());
+    ASSERT_STR_CONTAINS(insert_res.ToString(), "violates unique constraint");
+  };
 
-  LOG(INFO) << "Verify unique constraint is no longer present";
-  // There might be a transient period of time when constraint exists since
-  // relcache is refreshed after a cycle of heartbeats.
-  std::string query = "INSERT INTO test_table VALUES (2, 'ABC')";
-  ASSERT_OK(WaitForInsertQueryToSucceed(query, &conn));
+  CheckAfterPITR = [&](std::string prefix, std::string option) {
+    std::string table_name = prefix + "_table";
+
+    LOG(INFO) << "Verify unique constraint is no longer present";
+    // There might be a transient period of time when constraint exists since
+    // relcache is refreshed after a cycle of heartbeats.
+    std::string query = Format("INSERT INTO $0 VALUES (2, 'ABC')", table_name);
+    ASSERT_OK(WaitForInsertQueryToSucceed(query, &conn));
+  };
+
+  RunTestWithColocatedParam(schedule_id);
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlDropUniqueConstraint),
-          YbAdminSnapshotScheduleTestWithYsql) {
-  auto schedule_id = ASSERT_RESULT(PreparePg());
-
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlDropUniqueConstraint) {
+  YB_SKIP_TEST_IN_TSAN();
+  auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
-  LOG(INFO) << "Create table and insert data";
-  ASSERT_OK(conn.Execute(
-      "CREATE TABLE test_table (key INT, value TEXT)"));
-  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (1, 'ABC')"));
+  ExecBeforeRestoreTS = [&](std::string prefix, std::string option) {
+    std::string table_name = prefix + "_table";
+    std::string constraint_name = prefix + "_uniquecst";
 
-  LOG(INFO) << "Add unique constraint to the table";
-  ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD CONSTRAINT uniquecst UNIQUE (value)"));
+    LOG(INFO) << "Create a table and insert data";
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (key INT, value TEXT) $1", table_name, option));
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 'ABC')", table_name));
 
-  LOG(INFO) << "Verify unique constraint added";
-  auto insert_res = conn.Execute("INSERT INTO test_table VALUES (2, 'ABC')");
-  ASSERT_FALSE(insert_res.ok());
-  ASSERT_STR_CONTAINS(insert_res.ToString(), "violates unique constraint");
+    LOG(INFO) << "Add unique constraint to the table";
+    ASSERT_OK(conn.ExecuteFormat(
+        "ALTER TABLE $0 ADD CONSTRAINT $1 UNIQUE (value)", table_name, constraint_name));
 
-  Timestamp time = ASSERT_RESULT(GetCurrentTime());
-  LOG(INFO) << "Time noted to to restore the database " << time;
+    LOG(INFO) << "Verify unique constraint added";
+    auto insert_res = conn.ExecuteFormat("INSERT INTO $0 VALUES (2, 'ABC')", table_name);
+    ASSERT_FALSE(insert_res.ok());
+    ASSERT_STR_CONTAINS(insert_res.ToString(), "violates unique constraint");
+  };
 
-  LOG(INFO) << "Drop Unique constraint";
-  ASSERT_OK(conn.Execute("ALTER TABLE test_table DROP CONSTRAINT uniquecst"));
+  ExecAfterRestoreTS = [&](std::string prefix, std::string option) {
+    std::string table_name = prefix + "_table";
+    std::string constraint_name = prefix + "_uniquecst";
 
-  LOG(INFO) << "Verify unique constraint is dropped";
-  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (2, 'ABC')"));
+    LOG(INFO) << "Drop unique constraint";
+    ASSERT_OK(conn.ExecuteFormat(
+        "ALTER TABLE $0 DROP CONSTRAINT $1", table_name, constraint_name));
 
-  LOG(INFO) << "Perform a Restore to the time noted above";
-  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
+    LOG(INFO) << "Verify unique constraint is dropped";
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (2, 'ABC')", table_name));
+  };
 
-  LOG(INFO) << "Verify that the unique constraint is present and drop is restored";
-  // There might be a transient period of time when constraint does not exist
-  // since relcache is refreshed after a cycle of heartbeats.
-  std::string query_template = "INSERT INTO test_table VALUES ($0, 'ABC')";
-  ASSERT_OK(WaitForInsertQueryToStopWorking(query_template, &conn, 3));
+  CheckAfterPITR = [&](std::string prefix, std::string option) {
+    std::string table_name = prefix + "_table";
 
-  LOG(INFO) << "Verify that insertion of a row satisfying the unique constraint works";
-  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (3, 'DEF')"));
+    LOG(INFO) << "Verify that the unique constraint is present and drop is restored";
+    // There might be a transient period of time when constraint does not exist
+    // since relcache is refreshed after a cycle of heartbeats.
+    std::string query_template = Format("INSERT INTO $0 VALUES ($$0, 'ABC')", table_name);
+    ASSERT_OK(WaitForInsertQueryToStopWorking(query_template, &conn, 3));
 
-  LOG(INFO) << "Verify that the row with key=2 is no longer present after restore";
-  auto result_status = conn.FetchValue<std::string>("SELECT * FROM test_table where key=2");
-  ASSERT_FALSE(result_status.ok());
+    LOG(INFO) << "Verify that insertion of a row satisfying the unique constraint works";
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (3, 'DEF')", table_name));
+
+    LOG(INFO) << "Verify that the row with key=2 is no longer present after restore";
+    auto result_status = conn.FetchValue<std::string>(Format(
+        "SELECT * FROM $0 where key=2", table_name));
+    ASSERT_FALSE(result_status.ok());
+  };
+
+  RunTestWithColocatedParam(schedule_id);
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlAddCheckConstraint),
-          YbAdminSnapshotScheduleTestWithYsql) {
-  auto schedule_id = ASSERT_RESULT(PreparePg());
-
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlAddCheckConstraint) {
+  YB_SKIP_TEST_IN_TSAN();
+  auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
   LOG(INFO) << "Create table and insert data";
@@ -1686,10 +1836,9 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlAddCheckCons
   ASSERT_OK(WaitForInsertQueryToSucceed(query, &conn));
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlDropCheckConstraint),
-          YbAdminSnapshotScheduleTestWithYsql) {
-  auto schedule_id = ASSERT_RESULT(PreparePg());
-
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlDropCheckConstraint) {
+  YB_SKIP_TEST_IN_TSAN();
+  auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
   LOG(INFO) << "Create table and insert data";
@@ -1723,11 +1872,11 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlDropCheckCon
   ASSERT_FALSE(result_status.ok());
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlSequenceUndoDeletedData),
-          YbAdminSnapshotScheduleTestWithYsql) {
-  auto schedule_id = ASSERT_RESULT(PreparePg());
-
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlSequenceUndoDeletedData) {
+  YB_SKIP_TEST_IN_TSAN();
+  auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+
   LOG(INFO) << "Create table 'test_table'";
   ASSERT_OK(conn.Execute("CREATE TABLE test_table (key INT PRIMARY KEY, value INT)"));
   LOG(INFO) << "Create Sequence 'value_data'";
@@ -1761,11 +1910,11 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlSequenceUndo
   ASSERT_EQ(res, 16);
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlSequenceUndoInsertedData),
-          YbAdminSnapshotScheduleTestWithYsql) {
-  auto schedule_id = ASSERT_RESULT(PreparePg());
-
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlSequenceUndoInsertedData) {
+  YB_SKIP_TEST_IN_TSAN();
+  auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+
   LOG(INFO) << "Create table 'test_table'";
   ASSERT_OK(conn.Execute("CREATE TABLE test_table (key INT PRIMARY KEY, value INT)"));
   LOG(INFO) << "Create Sequence 'value_data'";
@@ -1807,143 +1956,200 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlSequenceUndo
   ASSERT_EQ(res, 21);
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlSequenceUndoCreateSequence),
-          YbAdminSnapshotScheduleTestWithYsql) {
-  auto schedule_id = ASSERT_RESULT(PreparePg());
-
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlSequenceUndoCreateSequence) {
+  YB_SKIP_TEST_IN_TSAN();
+  auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
-  LOG(INFO) << "Create table 'test_table'";
-  ASSERT_OK(conn.Execute("CREATE TABLE test_table (key INT PRIMARY KEY, value INT)"));
 
-  Timestamp time_before_create = ASSERT_RESULT(GetCurrentTime());
-  LOG(INFO) << "Time to restore back before sequence creation : " << time_before_create;
+  ExecBeforeRestoreTS = [&](std::string prefix, std::string option) {
+    std::string table_name = prefix + "_table";
 
-  LOG(INFO) << "Create Sequence 'value_data'";
-  ASSERT_OK(conn.Execute("CREATE SEQUENCE value_data INCREMENT 5 OWNED BY test_table.value"));
+    LOG(INFO) << Format("Create table $0", table_name);
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (key INT PRIMARY KEY, value INT) $1",
+        table_name, option));
+  };
 
-  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (1, nextval('value_data'))"));
+  ExecAfterRestoreTS = [&](std::string prefix, std::string option) {
+    std::string table_name = prefix + "_table";
+    std::string sequence_name = prefix + "_value_seq";
 
-  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time_before_create));
-  ASSERT_NOK(conn.Execute("INSERT INTO test_table VALUES (1, nextval('value_data'))"));
-  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (1, 45)"));
+    LOG(INFO) << Format("Create sequence $0", table_name);
+    ASSERT_OK(conn.ExecuteFormat(
+        "CREATE SEQUENCE $0 INCREMENT 5 OWNED BY $1.value", sequence_name, table_name));
+    ASSERT_OK(conn.ExecuteFormat(
+        "INSERT INTO $0 VALUES (1, nextval('$1'))", table_name, sequence_name));
+  };
 
-  // Ensure that you are able to create sequences post restore.
-  LOG(INFO) << "Create Sequence 'value_data'";
-  ASSERT_OK(conn.Execute("CREATE SEQUENCE value_data INCREMENT 5 OWNED BY test_table.value"));
-  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (2, nextval('value_data'))"));
+  CheckAfterPITR = [&](std::string prefix, std::string option) {
+    std::string table_name = prefix + "_table";
+    std::string sequence_name = prefix + "_value_seq";
+
+    ASSERT_NOK(conn.ExecuteFormat(
+        "INSERT INTO $0 VALUES (1, nextval('$1'))", table_name, sequence_name));
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 45)", table_name));
+
+    // Ensure that you are able to create sequences post restore.
+    LOG(INFO) << Format("Create sequence $0", sequence_name);
+    ASSERT_OK(conn.ExecuteFormat(
+        "CREATE SEQUENCE $0 INCREMENT 5 OWNED BY $1.value", sequence_name, table_name));
+    ASSERT_OK(conn.ExecuteFormat(
+        "INSERT INTO $0 VALUES (2, nextval('$1'))", table_name, sequence_name));
+  };
+
+  RunTestWithColocatedParam(schedule_id);
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlSequenceUndoDropSequence),
-          YbAdminSnapshotScheduleTestWithYsql) {
-  auto schedule_id = ASSERT_RESULT(PreparePg());
-
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlSequenceUndoDropSequence) {
+  YB_SKIP_TEST_IN_TSAN();
+  auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
-  LOG(INFO) << "Create table 'test_table'";
-  ASSERT_OK(conn.Execute("CREATE TABLE test_table (key SERIAL, value TEXT)"));
 
-  ASSERT_OK(conn.Execute("INSERT INTO test_table (value) values ('before')"));
+  ExecBeforeRestoreTS = [&](std::string prefix, std::string option) {
+    std::string table_name = prefix + "_table";
 
-  Timestamp time_before_drop = ASSERT_RESULT(GetCurrentTime());
-  LOG(INFO) << "Time to restore back before table drop : " << time_before_drop;
+    LOG(INFO) << Format("Create table $0", table_name);
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (key SERIAL, value TEXT) $1",
+        table_name, option));
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 (value) values ('before')", table_name));
+  };
 
-  LOG(INFO) << "Drop table 'test_table'";
-  ASSERT_OK(conn.Execute("DROP TABLE test_table"));
+  ExecAfterRestoreTS = [&](std::string prefix, std::string option) {
+    std::string table_name = prefix + "_table";
 
-  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time_before_drop));
-  auto res = ASSERT_RESULT(
-      conn.FetchValue<std::string>("SELECT value FROM test_table where key=1"));
-  ASSERT_EQ(res, "before");
-  ASSERT_OK(conn.Execute("INSERT INTO test_table (value) values ('after')"));
+    LOG(INFO) << Format("Drop table $0", table_name);
+    ASSERT_OK(conn.ExecuteFormat("DROP TABLE $0", table_name));
+  };
 
-  // Verify that we are able to create more sequences post restore.
-  LOG(INFO) << "Create table 'test_table_new'";
-  ASSERT_OK(conn.Execute("CREATE TABLE test_table_new (key SERIAL, value TEXT)"));
-  ASSERT_OK(conn.Execute("INSERT INTO test_table_new (value) values ('before')"));
+  CheckAfterPITR = [&](std::string prefix, std::string option) {
+    std::string table_name = prefix + "_table";
+    std::string new_table_name = prefix + "_table_new";
+
+    auto res = ASSERT_RESULT(conn.FetchValue<std::string>(Format(
+        "SELECT value FROM $0 where key=1", table_name)));
+    ASSERT_EQ(res, "before");
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 (value) values ('after')", table_name));
+
+    // Verify that we are able to create more sequences post restore.
+    LOG(INFO) << Format("Create table $0", new_table_name);
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (key SERIAL, value TEXT) $1",
+        new_table_name, option));
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 (value) values ('before')", new_table_name));
+  };
+
+  RunTestWithColocatedParam(schedule_id);
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlSequenceVerifyPartialRestore),
-          YbAdminSnapshotScheduleTestWithYsql) {
-  auto schedule_id = ASSERT_RESULT(PreparePg());
-
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlSequenceVerifyPartialRestore) {
+  YB_SKIP_TEST_IN_TSAN();
+  auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
   // Connection to yugabyte database.
   auto conn_yugabyte = ASSERT_RESULT(PgConnect());
 
-  LOG(INFO) << "Create table 'demo.test_table'";
-  ASSERT_OK(conn.Execute("CREATE TABLE test_table (key SERIAL, value TEXT)"));
-  ASSERT_OK(conn.Execute("INSERT INTO test_table (value) values ('before')"));
+  ExecBeforeRestoreTS = [&](std::string prefix, std::string option) {
+    std::string table_name = prefix + "_table";
+    std::string table_name_2 = prefix + "_table_2";
 
-  LOG(INFO) << "Create table 'yugabyte.test_table'";
-  ASSERT_OK(conn_yugabyte.Execute("CREATE TABLE test_table (key SERIAL, value TEXT)"));
-  ASSERT_OK(conn_yugabyte.Execute("INSERT INTO test_table (value) values ('before')"));
+    LOG(INFO) << Format("Create table 'demo.$0'", table_name);
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (key SERIAL, value TEXT) $1",
+        table_name, option));
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 (value) values ('before')", table_name));
 
-  LOG(INFO) << "Create table 'demo.test_table2'";
-  ASSERT_OK(conn.Execute("CREATE TABLE test_table2 (key SERIAL, value TEXT)"));
-  ASSERT_OK(conn.Execute("INSERT INTO test_table2 (value) values ('before')"));
+    LOG(INFO) << Format("Create table 'yugabyte.$0'", table_name);
+    ASSERT_OK(conn_yugabyte.ExecuteFormat(
+        "CREATE TABLE $0 (key SERIAL, value TEXT) $1", table_name, option));
+    ASSERT_OK(conn_yugabyte.ExecuteFormat(
+        "INSERT INTO $0 (value) values ('before')", table_name));
 
-  LOG(INFO) << "Create table 'yugabyte.test_table2'";
-  ASSERT_OK(conn_yugabyte.Execute("CREATE TABLE test_table2 (key SERIAL, value TEXT)"));
-  ASSERT_OK(conn_yugabyte.Execute("INSERT INTO test_table2 (value) values ('before')"));
+    LOG(INFO) << Format("Create table 'demo.$0'", table_name_2);
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (key SERIAL, value TEXT) $1",
+        table_name_2, option));
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 (value) values ('before')", table_name_2));
 
-  Timestamp time_before_drop = ASSERT_RESULT(GetCurrentTime());
-  LOG(INFO) << "Time to restore back before table drop : " << time_before_drop;
+    LOG(INFO) << Format("Create table 'yugabyte.$0'", table_name_2);
+    ASSERT_OK(conn_yugabyte.ExecuteFormat(
+        "CREATE TABLE $0 (key SERIAL, value TEXT) $1", table_name_2, option));
+    ASSERT_OK(conn_yugabyte.ExecuteFormat(
+        "INSERT INTO $0 (value) values ('before')", table_name_2));
+  };
 
-  LOG(INFO) << "Create table 'demo.test_table3'";
-  ASSERT_OK(conn.Execute("CREATE TABLE test_table3 (key SERIAL, value TEXT)"));
-  ASSERT_OK(conn.Execute("INSERT INTO test_table3 (value) values ('before')"));
+  ExecAfterRestoreTS = [&](std::string prefix, std::string option) {
+    std::string table_name = prefix + "_table";
+    std::string table_name_3 = prefix + "_table_3";
 
-  LOG(INFO) << "Create table 'yugabyte.test_table3'";
-  ASSERT_OK(conn_yugabyte.Execute("CREATE TABLE test_table3 (key SERIAL, value TEXT)"));
-  ASSERT_OK(conn_yugabyte.Execute("INSERT INTO test_table3 (value) values ('before')"));
+    LOG(INFO) << Format("Create table 'demo.$0'", table_name_3);
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (key SERIAL, value TEXT) $1",
+        table_name_3, option));
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 (value) values ('before')", table_name_3));
 
-  LOG(INFO) << "Drop table 'demo.test_table'";
-  ASSERT_OK(conn.Execute("DROP TABLE test_table"));
-  LOG(INFO) << "Drop table 'yugabyte.test_table'";
-  ASSERT_OK(conn_yugabyte.Execute("DROP TABLE test_table"));
+    LOG(INFO) << Format("Create table 'yugabyte.$0'", table_name_3);
+    ASSERT_OK(conn_yugabyte.ExecuteFormat(
+        "CREATE TABLE $0 (key SERIAL, value TEXT) $1", table_name_3, option));
+    ASSERT_OK(conn_yugabyte.ExecuteFormat(
+        "INSERT INTO $0 (value) values ('before')", table_name_3));
 
-  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time_before_drop));
-  // demo.test_table should be recreated.
-  LOG(INFO) << "Select from demo.test_table";
-  auto res = ASSERT_RESULT(
-      conn.FetchValue<std::string>("SELECT value FROM test_table where key=1"));
-  ASSERT_EQ(res, "before");
-  ASSERT_OK(conn.Execute("INSERT INTO test_table (value) values ('after')"));
+    LOG(INFO) << Format("Drop table 'demo.$0'", table_name);
+    ASSERT_OK(conn.ExecuteFormat("DROP TABLE $0", table_name));
+    LOG(INFO) << Format("Drop table 'yugabyte.$0'", table_name);
+    ASSERT_OK(conn_yugabyte.ExecuteFormat("DROP TABLE $0", table_name));
+  };
 
-  // demo.test_table2 should remain as it was.
-  LOG(INFO) << "Select from demo.test_table2s";
-  res = ASSERT_RESULT(
-      conn.FetchValue<std::string>("SELECT value FROM test_table2 where key=1"));
-  ASSERT_EQ(res, "before");
-  ASSERT_OK(conn.Execute("INSERT INTO test_table2 (value) values ('after')"));
+  CheckAfterPITR = [&](std::string prefix, std::string option) {
+    std::string table_name = prefix + "_table";
+    std::string table_name_2 = prefix + "_table_2";
+    std::string table_name_3 = prefix + "_table_3";
+    std::string new_table_name = prefix + "_table_new";
 
-  // demo.test_table3 should be dropped.
-  LOG(INFO) << "Select from demo.test_table3";
-  auto r = conn.FetchValue<std::string>("SELECT value FROM test_table3 where key=1");
-  ASSERT_EQ(r.ok(), false);
+    // demo.table_name should be recreated.
+    LOG(INFO) << Format("Select from demo.$0", table_name);
+    auto res = ASSERT_RESULT(conn.FetchValue<std::string>(Format(
+        "SELECT value FROM $0 where key=1", table_name)));
+    ASSERT_EQ(res, "before");
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 (value) values ('after')", table_name));
 
-  // yugabyte.test_table shouldn't be recreated.
-  LOG(INFO) << "Select from yugabyte.test_table";
-  r = conn_yugabyte.FetchValue<std::string>("SELECT value FROM test_table where key=1");
-  ASSERT_EQ(r.ok(), false);
+    // demo.table_name_2 should remain as it was.
+    LOG(INFO) << Format("Select from demo.$0", table_name_2);
+    res = ASSERT_RESULT(conn.FetchValue<std::string>(Format(
+        "SELECT value FROM $0 where key=1", table_name_2)));
+    ASSERT_EQ(res, "before");
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 (value) values ('after')", table_name_2));
 
-  // yugabyte.test_table2 should remain as it was.
-  LOG(INFO) << "Select from yugabyte.test_table2";
-  res = ASSERT_RESULT(
-      conn_yugabyte.FetchValue<std::string>("SELECT value FROM test_table2 where key=1"));
-  ASSERT_EQ(res, "before");
-  ASSERT_OK(conn_yugabyte.Execute("INSERT INTO test_table2 (value) values ('after')"));
+    // demo.table_name_3 should be dropped.
+    LOG(INFO) << Format("Select from demo.$0", table_name_3);
+    auto r = conn.FetchValue<std::string>(Format(
+        "SELECT value FROM $0 where key=1", table_name_3));
+    ASSERT_EQ(r.ok(), false);
 
-  // yugabyte.test_table3 should remain as it was.
-  LOG(INFO) << "Select from yugabyte.test_table3";
-  res = ASSERT_RESULT(
-      conn_yugabyte.FetchValue<std::string>("SELECT value FROM test_table3 where key=1"));
-  ASSERT_EQ(res, "before");
-  ASSERT_OK(conn_yugabyte.Execute("INSERT INTO test_table3 (value) values ('after')"));
+    // yugabyte.table_name shouldn't be recreated.
+    LOG(INFO) << Format("Select from yugabyte.$0", table_name);
+    r = conn_yugabyte.FetchValue<std::string>(Format(
+        "SELECT value FROM $0 where key=1", table_name));
+    ASSERT_EQ(r.ok(), false);
 
-  // Verify that we are able to create more sequences post restore.
-  LOG(INFO) << "Create table 'test_table_new'";
-  ASSERT_OK(conn.Execute("CREATE TABLE test_table_new (key SERIAL, value TEXT)"));
-  ASSERT_OK(conn.Execute("INSERT INTO test_table_new (value) values ('before')"));
+    // yugabyte.table_name_2 should remain as it was.
+    LOG(INFO) << Format("Select from yugabyte.$0", table_name_2);
+    res = ASSERT_RESULT(conn_yugabyte.FetchValue<std::string>(Format(
+        "SELECT value FROM $0 where key=1", table_name_2)));
+    ASSERT_EQ(res, "before");
+    ASSERT_OK(conn_yugabyte.ExecuteFormat(
+        "INSERT INTO $0 (value) values ('after')", table_name_2));
+
+    // yugabyte.table_name_3 should remain as it was.
+    LOG(INFO) << Format("Select from yugabyte.$0", table_name_3);
+    res = ASSERT_RESULT(conn_yugabyte.FetchValue<std::string>(Format(
+        "SELECT value FROM $0 where key=1", table_name_3)));
+    ASSERT_EQ(res, "before");
+    ASSERT_OK(conn_yugabyte.ExecuteFormat(
+        "INSERT INTO $0 (value) values ('after')", table_name_3));
+
+    // Verify that we are able to create more sequences post restore.
+    LOG(INFO) << Format("Create table $0", new_table_name);
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (key SERIAL, value TEXT) $1",
+        new_table_name, option));
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 (value) values ('before')", new_table_name));
+  };
+
+  RunTestWithColocatedParam(schedule_id);
 }
 
 TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlTestTruncateDisallowedWithPitr),
