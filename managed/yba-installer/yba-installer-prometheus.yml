@@ -9,8 +9,8 @@
 
         global:
          # By default, scrape targets every 15 seconds.
-         scrape_interval:     15s
-         evaluation_interval: 15s
+         scrape_interval:     {{ yamlPath ".prometheusOldConfig.scrapeInterval" }}s
+         evaluation_interval: {{ yamlPath ".prometheusOldConfig.evaluationInterval" }}s
          # scrape_timeout is set to the global default (10s).
 
          # The labels to add to any time series or alerts when communicating with
@@ -24,9 +24,9 @@
 
         - job_name: 'prometheus'
           scrape_interval: 10s
-          scrape_timeout:  10s
+          scrape_timeout:  {{ yamlPath ".prometheusOldConfig.scrapeTimeout" }}s
           static_configs:
-            - targets: ['localhost:9090']
+            - targets: ['{{ yamlPath ".prometheusOldConfig.privateIp" }}:{{ yamlPath ".prometheusOldConfig.externalPort" }}']
 
         - job_name: "node"
           file_sd_configs:
@@ -74,8 +74,8 @@
 
           global:
            # By default, scrape targets every 15 seconds.
-           scrape_interval:     15s
-           evaluation_interval: 15s
+           scrape_interval:     {{ yamlPath ".prometheusNewConfig.scrapeInterval" }}s
+           evaluation_interval: {{ yamlPath ".prometheusNewConfig.evaluationInterval" }}s
            # scrape_timeout is set to the global default (10s).
 
            # The labels to add to any time series or alerts when communicating with
@@ -91,15 +91,15 @@
 
           - job_name: 'prometheus'
             scrape_interval: 10s
-            scrape_timeout:  10s
+            scrape_timeout:  {{ yamlPath ".prometheusNewConfig.scrapeTimeout" }}s
             static_configs:
-              - targets: ['localhost:9090']
+              - targets: ['{{ yamlPath ".prometheusNewConfig.privateIp" }}:{{ yamlPath ".prometheusNewConfig.externalPort" }}']
 
           - job_name: 'platform'
-            scrape_timeout:  10s
+            scrape_timeout:  {{ yamlPath ".prometheusNewConfig.scrapeTimeout" }}s
             metrics_path: "/api/v1/prometheus_metrics"
             static_configs:
-              - targets: ['localhost:9000']
+              - targets: ['{{ yamlPath ".prometheusNewConfig.privateIp" }}:{{ yamlPath ".prometheusNewConfig.appExternalPort" }}']
 
           - job_name: "node"
             file_sd_configs:
@@ -270,9 +270,9 @@
           --web.console.libraries=/etc/prometheus/console_libraries \
           --web.enable-admin-api \
           --web.enable-lifecycle \
-          --query.max-concurrency=20 \
-          --query.max-samples=5000000 \
-          --query.timeout=30s
+          --query.max-concurrency={{ yamlPath ".prometheusNewService.maxConcurrency" }} \
+          --query.max-samples={{ yamlPath ".prometheusNewService.maxSamples" }} \
+          --query.timeout={{ yamlPath ".prometheusNewService.timeout" }}s
 
           [Install]
           WantedBy=multi-user.target

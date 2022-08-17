@@ -17,21 +17,32 @@
 
     configurableParameters["preflight"] = []string{"overrideWarning"}
 
-    configurableParameters["prometheusOldConfig"] = []string{"fileName"}
+    configurableParameters["prometheusOldConfig"] = []string{"fileName",
+    "scrapeInterval", "evaluationInterval", "scrapeTimeout", "privateIp",
+    "externalPort"}
 
-    configurableParameters["prometheusNewConfig"] = []string{"fileName"}
+   configurableParameters["prometheusOldConfig"] = []string{"fileName",
+   "scrapeInterval", "evaluationInterval", "scrapeTimeout", "privateIp",
+   "externalPort", "appExternalPort"}
 
     configurableParameters["prometheusOldService"] = []string{"storagePath"}
 
-    configurableParameters["prometheusNewService"] = []string{"storagePath"}
+    configurableParameters["prometheusNewService"] = []string{"storagePath",
+    "maxConcurrency", "maxSamples", "timeout"}
 
     configurableParameters["platformOldConfig"] = []string{"fileName",
     "platformDbUser", "platformdDbPassword", "devopsHome",
     "swamperTargetPath", "metricsUrl", "useOauth", "ybSecurityType",
     "ybOidcClientId", "ybOldcSecret", "ybOidcDiscoveryUri",
-     "ywUrl", "ybOidcScope", "ybOidcEmailAttr"}
+    "ywUrl", "ybOidcScope", "ybOidcEmailAttr", "privateIp",
+    "externalPort"}
 
-    configurableParameters["platformNewConfig"] = []string{"fileName"}
+    configurableParameters["platformNewConfig"] = []string{"fileName",
+    "platformDbUser", "platformdDbPassword", "devopsHome",
+    "swamperTargetPath", "metricsUrl", "swapmerRulesPath",
+    "metricsManagementUrl","useOauth", "ybSecurityType", "ybOidcClientId",
+    "ybOldcSecret", "ybOidcDiscoveryUri", "ywUrl", "ybOidcScope",
+    "ybOidcEmailAttr", "privateIp", "externalPort"}
 
     configurableParameters["platformOldService"] = []string{"useOauth",
     "ybSecurityType", "ybOidcClientId", "ybOldcSecret",
@@ -41,9 +52,11 @@
     "ybSecurityType", "ybOidcClientId", "ybOldcSecret",
     "ybOidcDiscoveryUri", "ywUrl", "ybOidcScope", "ybOidcEmailAttr"}
 
-    configurableParameters["nginxHttp"] = []string{"serverName"}
+    configurableParameters["nginxHttp"] = []string{"serverName",
+    "privateIp", "containerExposedPort", "uploadSize"}
 
-    configurableParameters["nginxHttps"] = []string{"serverName"}
+    configurableParameters["nginxHttps"] = []string{"serverName",
+    "privateIp", "containerExposedPort", "uploadSize"}
 
     splitKey := strings.Split(key, ".")
 
