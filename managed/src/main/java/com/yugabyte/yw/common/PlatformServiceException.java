@@ -11,19 +11,34 @@
 package com.yugabyte.yw.common;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.google.common.annotations.VisibleForTesting;
 import com.yugabyte.yw.forms.PlatformResults.YBPError;
 import com.yugabyte.yw.forms.PlatformResults.YBPStructuredError;
+import lombok.Getter;
 import play.libs.Json;
+import play.mvc.Http.Context;
 import play.mvc.Result;
 import play.mvc.Results;
 
 public class PlatformServiceException extends RuntimeException {
-  private final int httpStatus;
+  @Getter private final int httpStatus;
   private final String userVisibleMessage;
   private final JsonNode errJson;
+  private String method;
+  private String uri;
+
   // TODO: also accept throwable and expose stack trace in when in dev server mode
   PlatformServiceException(int httpStatus, String userVisibleMessage, JsonNode errJson) {
     super(userVisibleMessage);
+    Context c = Context.current.get();
+    if (c == null) {
+      // no request context. This can only happen in a unittest
+      method = "TEST";
+      uri = "/test";
+    } else {
+      method = c.request().method();
+      uri = c.request().uri();
+    }
     this.httpStatus = httpStatus;
     this.userVisibleMessage = userVisibleMessage;
     this.errJson = errJson;
@@ -37,9 +52,14 @@ public class PlatformServiceException extends RuntimeException {
     this(httpStatus, "errorJson: " + errJson.toString(), errJson);
   }
 
-  public Result getResult() {
+  public Result buildResult() {
+    return buildResult(this.method, this.uri);
+  }
+
+  @VisibleForTesting() // for routeWithYWErrHandler
+  Result buildResult(String method, String uri) {
     if (errJson == null) {
-      YBPError ybpError = new YBPError(userVisibleMessage);
+      YBPError ybpError = new YBPError(method, uri, userVisibleMessage, null);
       return Results.status(httpStatus, Json.toJson(ybpError));
     } else {
       YBPStructuredError ybpError = new YBPStructuredError(errJson);

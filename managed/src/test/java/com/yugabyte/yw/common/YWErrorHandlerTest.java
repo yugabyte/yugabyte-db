@@ -20,8 +20,7 @@ import static play.test.Helpers.contentAsString;
 import static play.test.Helpers.fakeRequest;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.yugabyte.yw.forms.PlatformResults.ClientError;
-import com.yugabyte.yw.forms.PlatformResults.YBPStructuredError;
+import com.yugabyte.yw.forms.PlatformResults.YBPError;
 import java.util.UUID;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeoutException;
@@ -39,13 +38,11 @@ public class YWErrorHandlerTest extends FakeDBApplication {
     final UUID uuid1 = UUID.randomUUID();
     final Result result = createSupportBundleMalformedUri(bodyJson, uuid, uuid1);
     assertEquals(NOT_FOUND, result.status());
-    YBPStructuredError json =
-        Json.fromJson(Json.parse(contentAsString(result)), YBPStructuredError.class);
+    YBPError json = Json.fromJson(Json.parse(contentAsString(result)), YBPError.class);
     assertFalse(json.success);
-    ClientError clientError = Json.fromJson(json.error, ClientError.class);
-    assertEquals(clientError.method, "POST");
-    assertThat(clientError.uri, endsWith("/support_bundle"));
-    assertThat(clientError.message, startsWith("404(Not Found), details:"));
+    assertEquals(json.httpMethod, "POST");
+    assertThat(json.requestUri, endsWith("/support_bundle"));
+    assertThat(json.error, startsWith("HTTP Client Error: 404(Not Found), details:"));
   }
 
   private Result createSupportBundleMalformedUri(ObjectNode bodyJson, UUID uuid, UUID uuid1)

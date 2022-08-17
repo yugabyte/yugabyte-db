@@ -8828,9 +8828,19 @@
           "type" : "string"
         },
         "errorJson" : {
-          "description" : "User visible error message as json object",
+          "description" : "User visible structured error message as json object",
           "example" : "{ \"foo\" : \"bar\", \"baz\" : [1, 2, 3] }",
           "type" : "object"
+        },
+        "httpMethod" : {
+          "description" : "Method for HTTP call that resulted in this error",
+          "example" : "POST",
+          "type" : "string"
+        },
+        "requestUri" : {
+          "description" : "URI for HTTP request that resulted in this error",
+          "example" : "/customers/8918921-af3782-633de/universe/8173ab-fd2453/create",
+          "type" : "string"
         },
         "success" : {
           "description" : "Always set to false to indicate failure",
