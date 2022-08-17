@@ -391,4 +391,4 @@ The `yb-voyager import data` command automatically creates indexes after it succ
 
 After the `yb-voyager import data` command completes, the automated part of the database migration process is considered complete. You should manually run validation queries on both the source and target database to ensure that the data is correctly migrated. A sample query to validate the databases can include checking the row count of each table.
 
-Refer to [Verify a migration](../../manual-import/verify-migration/) to validate queries and ensure a successful migration.
+Refer to [Verify a migration](../../../manage/data-migration/bulk-import-ysql/#verify-a-migration) to validate queries and ensure a successful migration.
