@@ -26,13 +26,13 @@ services:
               proxy_set_header Host $host;
 
           location / {
-              proxy_pass http://127.0.0.1:9000;
+              proxy_pass http://{{ yamlPath ".nginxHttp.privateIp" }}:{{ yamlPath ".nginxHttp.containerExposedPort" }};
           }
           location ~ /settings/ha/internal/upload$ {
-              proxy_pass http://127.0.0.1:9000;
+              proxy_pass http://{{ yamlPath ".nginxHttp.privateIp" }}:{{ yamlPath ".nginxHttp.containerExposedPort" }};
               # HA backp upload endpoint needs to allow bigger request size
               # Broaden the location match regex to cover more endpoints as needed
-              client_max_body_size 100G;
+              client_max_body_size {{ yamlPath ".nginxHttp.uploadSize" }}G;
           }
                 add_header X-Frame-Options "SAMEORIGIN";
         }
@@ -76,13 +76,13 @@ services:
           proxy_set_header Host $host;
 
           location / {
-            proxy_pass http://127.0.0.1:9000;
+            proxy_pass http://{{ yamlPath ".nginxHttps.privateIp" }}:{{ yamlPath ".nginxHttps.externalPort" }};
           }
           location ~ /settings/ha/internal/upload$ {
-            proxy_pass http://127.0.0.1:9000;
+            proxy_pass http://{{ yamlPath ".nginxHttps.privateIp" }}:{{ yamlPath ".nginxHttps.externalPort" }};
             # HA backp upload endpoint needs to allow bigger request size
             # Broaden the location match regex to cover more endpoints as needed
-            client_max_body_size 100G;
+            client_max_body_size {{ yamlPath ".nginxHttp.uploadSize" }}G;
           }
           add_header X-Frame-Options "SAMEORIGIN";
         }
