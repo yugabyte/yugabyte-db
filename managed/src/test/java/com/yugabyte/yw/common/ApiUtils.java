@@ -150,6 +150,7 @@ public class ApiUtils {
         universeDetails.nodeDetailsSet = new HashSet<>();
         universeDetails.updateInProgress = updateInProgress;
         universeDetails.enableYbc = enableYbc;
+        universeDetails.ybcInstalled = enableYbc;
         List<UUID> azUUIDList = null;
         if (placementInfo != null) {
           PlacementCloud placementCloud = placementInfo.cloudList.get(0);

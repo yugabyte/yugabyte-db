@@ -12,6 +12,7 @@ import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.commissioner.SetUniverseKey;
 import com.yugabyte.yw.commissioner.SupportBundleCleanup;
 import com.yugabyte.yw.commissioner.TaskGarbageCollector;
+import com.yugabyte.yw.commissioner.YbcUpgrade;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.ExtraMigrationManager;
@@ -75,7 +76,8 @@ public class AppInit {
       ShellLogsManager shellLogsManager,
       Config config,
       SupportBundleCleanup supportBundleCleanup,
-      NodeAgentHandler nodeAgentHandler)
+      NodeAgentHandler nodeAgentHandler,
+      YbcUpgrade ybcUpgrade)
       throws ReflectiveOperationException {
     Logger.info("Yugaware Application has started");
 
@@ -204,6 +206,8 @@ public class AppInit {
       healthChecker.initialize();
       shellLogsManager.startLogsGC();
       nodeAgentHandler.init();
+
+      ybcUpgrade.start();
 
       // Add checksums for all certificates that don't have a checksum.
       CertificateHelper.createChecksums();

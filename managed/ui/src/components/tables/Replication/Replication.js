@@ -277,8 +277,8 @@ export default class Replication extends Component {
               {!hideHeader && infoBlock}
               {!hideHeader && <div className="replication-content-stats">{recentStatBlock}</div>}
               {!showMetrics && <div className="no-data">No data to display.</div>}
-              {
-                showMetrics && <div className={`time-range-option ${!hideHeader ? 'old-view' : ''}`}>
+              {showMetrics && (
+                <div className={`time-range-option ${!hideHeader ? 'old-view' : ''}`}>
                   {datePicker}
                   <Dropdown id="graphFilterDropdown" className="graph-filter-dropdown" pullRight>
                     <Dropdown.Toggle>
@@ -288,7 +288,7 @@ export default class Replication extends Component {
                     <Dropdown.Menu>{menuItems}</Dropdown.Menu>
                   </Dropdown>
                 </div>
-              }
+              )}
 
               {showMetrics && metrics[GRAPH_TYPE] && (
                 <div className={`graph-container ${!hideHeader ? 'old-view' : ''}`}>
@@ -300,6 +300,7 @@ export default class Replication extends Component {
                     width={this.state.graphWidth}
                     height={540}
                     prometheusQueryEnabled={prometheusQueryEnabled}
+                    shouldAbbreviateTraceName={false}
                   />
                 </div>
               )}

@@ -15,8 +15,7 @@
      ConfFileLocation   string
      Mode               string
      ServerName         string
-     ServerKeyLocation  string
-     ServerCertLocation string
+
  }
 
  // SetUpPrereqs performs the setup operations specific
@@ -32,8 +31,7 @@
  // to Nginx.
  func (ngi Nginx) Install() {
      if ngi.Mode == "https" {
-         configureNginxConfHTTPS(ngi.ServerKeyLocation, ngi.ServerCertLocation,
-         ngi.ConfFileLocation)
+         configureNginxConfHTTPS()
      }
      certTLSstorage()
  }
@@ -76,29 +74,28 @@
  }
 
  // Uninstall performs the uninstallation procedures specific
- // to Nginx.
+ // to Nginx (no data volumes to retain).
  func (ngi Nginx) Uninstall() {
      ngi.Stop()
-     os.RemoveAll("/opt/yugabyte")
  }
 
- func configureNginxConfHTTPS(server_cert_location string,
-  server_key_location string, confFileLoc string) {
+ func configureNginxConfHTTPS() {
 
-     os.MkdirAll("/opt/yugabyte/certs", os.ModePerm)
-     fmt.Println("/opt/yugabyte/certs directory successfully created.")
-     destination_tls := "/opt/yugabyte/certs"
-     CopyFileGolang(server_key_location, destination_tls)
-     CopyFileGolang(server_cert_location, destination_tls)
+     generateCertGolang()
 
-     command1 := "chown"
-     arg1 := []string{"yugabyte:yugabyte", "/opt/yugabyte/certs/server.key"}
-     ExecuteBashCommand(command1, arg1)
+    os.MkdirAll("/opt/yugabyte/certs", os.ModePerm)
+    fmt.Println("/opt/yugabyte/certs directory successfully created.")
+    MoveFileGolang("key.pem", "/opt/yugabyte/certs/key.pem")
+    MoveFileGolang("cert.pem", "/opt/yugabyte/certs/cert.pem")
 
-     command2 := "chown"
-     arg2 := []string{"yugabyte:yugabyte", "/opt/yugabyte/certs/server.crt"}
-     ExecuteBashCommand(command2, arg2)
- }
+    command1 := "chown"
+    arg1 := []string{"yugabyte:yugabyte", "/opt/yugabyte/certs/key.pem"}
+    ExecuteBashCommand(command1, arg1)
+
+    command2 := "chown"
+    arg2 := []string{"yugabyte:yugabyte", "/opt/yugabyte/certs/cert.pem"}
+    ExecuteBashCommand(command2, arg2)
+}
 
  func certTLSstorage() {
 

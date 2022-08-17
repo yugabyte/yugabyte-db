@@ -349,6 +349,8 @@ components:
             container_path: /opt/yugabyte/yugaware/data
           - host_path: '{{repl ConfigOption "storage_path"}}/releases'
             container_path: /opt/yugabyte/releases
+          - host_path: '{{repl ConfigOption "storage_path"}}/ybc/releases'
+            container_path: /opt/yugabyte/ybc/releases
           - host_path: '{{repl ConfigOption "storage_path"}}/prometheusv2'
             container_path: /prometheus
           - host_path: '{{repl ConfigOption "storage_path"}}/prometheus_configs'
@@ -453,6 +455,11 @@ components:
                 security.ssh2_enabled = false
               }
 
+              ybc {
+                releases.path = "/opt/yugabyte/ybc/releases"
+                docker.release = "/opt/yugabyte/ybc/release"
+              }
+
   - name: nginx
     containers:
       - source: public
@@ -492,10 +499,8 @@ components:
                   proxy_set_header X-Forwarded-Proto $scheme;
                   proxy_set_header Host $host;
 
-                  #Changing default timeout values
-
                   proxy_read_timeout 600;
-                  proxy_send_timeout 600;
+
 
                 location / {
                   proxy_pass http://{{repl HostPrivateIpAddress "app" "yugabyte/yugaware" }}:{{repl ContainerExposedPort "app" "yugabyte/yugaware" "9000" }};

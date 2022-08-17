@@ -120,7 +120,7 @@ POST    /customers/:cUUID/universes/:uniUUID/kms                               c
 DELETE  /customers/:cUUID/universes/:uniUUID/kms                               com.yugabyte.yw.controllers.EncryptionAtRestController.removeKeyRefHistory(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 GET     /customers/:cUUID/universes/:uniUUID/kms/key_ref                       com.yugabyte.yw.controllers.EncryptionAtRestController.getCurrentKeyRef(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 
-# Package Manager API
+# Package Manager public API
 + forceNoAudit
 POST    /fetch_package                                                         com.yugabyte.yw.controllers.PackagesController.fetchPackage()
 
