@@ -1270,7 +1270,7 @@ replication_info {
   }
 }
 ```
-<!-- ### Master-follower deployment commands -->
+
 ### Read replica deployment commands
 
 #### add_read_replica_placement_info
@@ -1717,27 +1717,6 @@ yb-admin \
 * *source_universe_uuid*: The UUID of the source universe.
 * *replication_name*: The name of the replication to be enabled or disabled.
 * `0` | `1`: Disabled (`0`) or enabled (`1`). Default is `1`.
-
-<!-- #### create_cdc_stream
-
-Creates a change data capture (CDC) stream for the specified table.
-
-**Syntax**
-
-```sh
-yb-admin \
-    -master_addresses <master-addresses> \
-    create_cdc_stream <table_id>
-```
-
-* *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-* *table_id*: The identifier (ID) of the table.
-
-{{< note title="Tip" >}}
-
-To display a list of tables and their UUID (`table_id`) values, open the **YB-Master UI** (`<master_host>:7000/`) and click **Tables** in the navigation bar.
-
-{{< /note >}} -->
 
 #### list_cdc_streams
 
