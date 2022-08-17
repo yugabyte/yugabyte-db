@@ -24,6 +24,7 @@ import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.HashMap;
 import java.util.List;
@@ -136,5 +137,24 @@ public class PauseUniverseTest extends CommissionerBaseTest {
     taskParams.universeUUID = defaultUniverse.universeUUID;
     TaskInfo taskInfo = submitTask(taskParams);
     assertEquals(Failure, taskInfo.getTaskState());
+  }
+
+  @Test
+  public void testPauseUniverseSuccessWithNodesAlreadyStopped() {
+    setupUniverse(false);
+    PauseUniverse.Params taskParams = new PauseUniverse.Params();
+    taskParams.customerUUID = defaultCustomer.uuid;
+    taskParams.universeUUID = defaultUniverse.universeUUID;
+    for (NodeDetails node : defaultUniverse.getNodes()) {
+      node.state = NodeDetails.NodeState.Stopped;
+      defaultUniverse.save();
+    }
+    TaskInfo taskInfo = submitTask(taskParams);
+    List<TaskInfo> subTasks = taskInfo.getSubTasks();
+    Map<Integer, List<TaskInfo>> subTasksByPosition =
+        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
+    assertTaskSequence(subTasksByPosition);
+    assertEquals(Success, taskInfo.getTaskState());
+    assertTrue(defaultCustomer.getUniverseUUIDs().contains(defaultUniverse.universeUUID));
   }
 }
