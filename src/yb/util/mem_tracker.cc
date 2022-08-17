@@ -267,8 +267,8 @@ void MemTracker::SetTCMallocCacheMemory() {
     const auto mem_limit = MemTracker::GetRootTracker()->limit();
     FLAGS_server_tcmalloc_max_total_thread_cache_bytes =
         std::min(std::max(static_cast<size_t>(2.5 * mem_limit / 100), 32_MB), 2_GB);
-    FLAGS_tserver_tcmalloc_max_total_thread_cache_bytes =
-        FLAGS_server_tcmalloc_max_total_thread_cache_bytes;
+  } else {
+    FLAGS_server_tcmalloc_max_total_thread_cache_bytes = flag_value_to_use;
   }
   LOG(INFO) << "Setting tcmalloc max thread cache bytes to: "
             << FLAGS_server_tcmalloc_max_total_thread_cache_bytes;
