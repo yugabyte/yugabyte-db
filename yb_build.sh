@@ -89,6 +89,9 @@ Build options:
   --resolve-java-dependencies
     Force Maven to download all Java dependencies to the local repository
 
+  --build-yugabyted-ui
+    Build yugabyted-ui. If specified with --cmake-only, it won't be built.
+
   --target, --targets
     Pass the given target or set of targets to make or ninja.
   --rebuild-file <source_file_to_rebuild>
@@ -705,6 +708,7 @@ make_opts=()
 force=false
 build_cxx=true
 build_java=true
+build_yugabyted_ui=false
 run_java_tests=false
 save_log=false
 make_targets=()
@@ -933,6 +937,9 @@ while [[ $# -gt 0 ]]; do
     --java-only|--jo)
       build_cxx=false
       java_only=true
+    ;;
+    --build-yugabyted-ui)
+      build_yugabyted_ui=true
     ;;
     --num-repetitions|--num-reps|-n)
       ensure_option_has_arg "$@"
@@ -1588,7 +1595,8 @@ if [[ ${build_cxx} == "true" ||
   run_cxx_build
 fi
 
-if [[ ${cmake_only} != "true" ]]; then
+if [[ ${build_yugabyted_ui} == "true" && ${cmake_only} != "true" ]] ||
+   is_jenkins; then
   run_yugabyted-ui_build
 fi
 
