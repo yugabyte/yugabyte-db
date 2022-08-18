@@ -121,3 +121,8 @@ Upgrading the YSQL system catalog is an online operation and doesn't require sto
 {{< note title="Note" >}}
 Concurrent operations in a cluster can lead to various transactional conflicts, catalog version mismatches, and read restart errors. This is expected, and should be addressed by re-running `upgrade_ysql`.
 {{< /note >}}
+
+{{< note title="Note" >}}
+Downgrades are currently unsupported. Please see issue #xxxx.
+{{< /note >}}
+
