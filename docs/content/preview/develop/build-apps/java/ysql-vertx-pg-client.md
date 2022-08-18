@@ -76,7 +76,7 @@ type: docs
 
 [Vertx PG Client](https://vertx.io/docs/vertx-pg-client/java/) is the client for PostgreSQL with simple APIs to communicate with the database. It is a reactive and non-blocking client for handling the database connections with a single threaded API.
 
-Because Vertx is a PostgreSQL client and YugabyteDB is PostgreSQL compatible, it is supported by YugabyteDB with a [limitation](#limitation).
+Since YugabyteDB is wire compatible with PostgreSQL, Vertx PG Client works with YugabyteDB as well.
 
 ## Prerequisites
 
