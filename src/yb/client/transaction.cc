@@ -306,6 +306,16 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       UNIQUE_LOCK(lock, mutex_);
       const bool defer = !ready_;
 
+      if (!status_.ok()) {
+        auto status = status_;
+        lock.unlock();
+        VLOG_WITH_PREFIX(2) << "Prepare, transaction already failed: " << status;
+        if (waiter) {
+          waiter(status);
+        }
+        return false;
+      }
+
       if (!defer || initial) {
         Status status = CheckTransactionLocality(ops_info);
         if (!status.ok()) {
