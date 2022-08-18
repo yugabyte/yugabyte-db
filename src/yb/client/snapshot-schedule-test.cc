@@ -135,18 +135,19 @@ TEST_F(SnapshotScheduleTest, Snapshot) {
 
 TEST_F(SnapshotScheduleTest, GC) {
   FLAGS_snapshot_coordinator_cleanup_delay_ms = 100;
-  // When retention matches snapshot interval we expect at most 2 snapshots for schedule.
+  // When retention matches snapshot interval we expect at most 3 snapshots for schedule.
   ASSERT_RESULT(snapshot_util_->CreateSchedule(
-    table_, YQLDatabase::YQL_DATABASE_PGSQL, "yugabyte", kSnapshotInterval, kSnapshotInterval));
+      table_, YQLDatabase::YQL_DATABASE_PGSQL, "yugabyte", kSnapshotInterval,
+      kSnapshotInterval * 2));
 
   std::unordered_set<SnapshotScheduleId, SnapshotScheduleIdHash> all_snapshot_ids;
-  while (all_snapshot_ids.size() < 4) {
+  while (all_snapshot_ids.size() < 6) {
     auto snapshots = ASSERT_RESULT(
         snapshot_util_->ListSnapshots(TxnSnapshotId::Nil(), ListDeleted::kFalse));
     for (const auto& snapshot : snapshots) {
       all_snapshot_ids.insert(ASSERT_RESULT(FullyDecodeSnapshotScheduleId(snapshot.id())));
     }
-    ASSERT_LE(snapshots.size(), 2);
+    ASSERT_LE(snapshots.size(), 3);
 
     auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
     auto master_leader = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
@@ -157,11 +158,11 @@ TEST_F(SnapshotScheduleTest, GC) {
       }
       auto dir = ASSERT_RESULT(peer->tablet_metadata()->TopSnapshotsDir());
       auto children = ASSERT_RESULT(Env::Default()->GetChildren(dir, ExcludeDots::kTrue));
-      // At most 3 files (including an extra for intents).
+      // At most 4 files (including an extra for intents).
       // For e.g. [985a49e5-d7c7-491f-a95f-da8aa55a8cf9,
       // 105d49d2-4e55-45bf-a6a4-73a8b0977242.tmp.intents,
       // 105d49d2-4e55-45bf-a6a4-73a8b0977242.tmp].
-      ASSERT_LE(children.size(), 3) << AsString(children);
+      ASSERT_LE(children.size(), 4) << AsString(children);
     }
 
     std::this_thread::sleep_for(100ms);

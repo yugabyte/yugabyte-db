@@ -51,6 +51,9 @@ def main():
     parser.add_argument('--force', help='Skip prompts', action='store_true')
     parser.add_argument('--commit', help='Specifies a custom git commit to use in archive name.')
     parser.add_argument('--skip_build', help='Skip building the code', action='store_true')
+    parser.add_argument('--skip_yugabyted_ui_build',
+                        help='Skip building the yugabyted-ui code',
+                        action='store_true')
     parser.add_argument('--build_target',
                         help='Target directory to put the YugaByte distribution into. This can '
                              'be used for debugging this script without having to build the '
@@ -151,6 +154,9 @@ def main():
 
     if args.skip_build:
         build_cmd_list += ["--skip-build"]
+
+    if not args.skip_yugabyted_ui_build:
+        build_cmd_list += ["--build-yugabyted-ui"]
 
     if args.build_args:
         # TODO: run with shell=True and append build_args as is.

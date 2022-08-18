@@ -3067,26 +3067,22 @@ Status CDCServiceImpl::CheckTabletValidForStream(const ProducerTabletInfo& info)
   return impl_->CheckTabletValidForStream(info, tablets);
 }
 
-void CDCServiceImpl::TabletLeaderIsBootstrapRequired(
-        const IsBootstrapRequiredRequestPB* req,
-        IsBootstrapRequiredResponsePB* resp,
-        rpc::RpcContext* context,
-        const std::shared_ptr<tablet::TabletPeer>& peer) {
+Status CDCServiceImpl::TabletLeaderIsBootstrapRequired(
+    const IsBootstrapRequiredRequestPB* req,
+    IsBootstrapRequiredResponsePB* resp,
+    rpc::RpcContext* context,
+    const std::shared_ptr<tablet::TabletPeer>& peer) {
   auto result = GetLeaderTServer(peer->tablet_id());
-  RPC_CHECK_AND_RETURN_ERROR(result.ok(), result.status(), resp->mutable_error(),
-                            CDCErrorPB::TABLET_NOT_FOUND, *context);
+  RETURN_NOT_OK_SET_CODE(result, CDCError(CDCErrorPB::TABLET_NOT_FOUND));
 
   auto ts_leader = *result;
   // Check that tablet leader identified by master is not current tablet peer.
   // This can happen during tablet rebalance if master and tserver have different views of
   // leader. We need to avoid self-looping in this case.
-  if (peer) {
-    RPC_CHECK_NE_AND_RETURN_ERROR(ts_leader->permanent_uuid(), peer->permanent_uuid(),
-                                  STATUS(IllegalState,
-                                        Format("Tablet leader changed: leader=$0, peer=$1",
-                                                ts_leader->permanent_uuid(),
-                                                peer->permanent_uuid())),
-                                  resp->mutable_error(), CDCErrorPB::NOT_LEADER, *context);
+  if (peer && ts_leader->permanent_uuid() == peer->permanent_uuid()) {
+    return STATUS(IllegalState, Format("Tablet leader changed: leader=$0, peer=$1",
+                                       ts_leader->permanent_uuid(), peer->permanent_uuid()),
+                  req->ShortDebugString(), CDCError(CDCErrorPB::NOT_LEADER));
   }
 
   auto cdc_proxy = GetCDCServiceProxy(ts_leader);
@@ -3096,10 +3092,7 @@ void CDCServiceImpl::TabletLeaderIsBootstrapRequired(
   IsBootstrapRequiredRequestPB new_req;
   new_req.set_stream_id(req->stream_id());
   new_req.add_tablet_ids(peer->tablet_id());
-  auto status = cdc_proxy->IsBootstrapRequired(new_req, resp, &rpc);
-  RPC_STATUS_RETURN_ERROR(status, resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, *context);
-
-  context->RespondSuccess();
+  return cdc_proxy->IsBootstrapRequired(new_req, resp, &rpc);
 }
 
 void CDCServiceImpl::IsBootstrapRequired(const IsBootstrapRequiredRequestPB* req,
@@ -3115,7 +3108,11 @@ void CDCServiceImpl::IsBootstrapRequired(const IsBootstrapRequiredRequestPB* req
     auto s = tablet_manager_->GetTabletPeer(tablet_id, &tablet_peer);
     if (s.IsNotFound() || !IsTabletPeerLeader(tablet_peer)) {
       LOG_WITH_FUNC(INFO) << "Not the leader for " << tablet_id << ".  Running proxy query.";
-      TabletLeaderIsBootstrapRequired(req, resp, &context, tablet_peer);
+      RPC_STATUS_RETURN_ERROR(
+          TabletLeaderIsBootstrapRequired(req, resp, &context, tablet_peer),
+          resp->mutable_error(),
+          CDCErrorPB::INTERNAL_ERROR,
+          context);
       continue;
     }
 

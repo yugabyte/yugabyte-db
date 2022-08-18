@@ -11,6 +11,7 @@ import (
 	"node-agent/model"
 	"node-agent/util"
 	"strconv"
+	"strings"
 
 	"github.com/spf13/cobra"
 )
@@ -112,8 +113,18 @@ func interactiveConfigHandler(cmd *cobra.Command) error {
 	if !ok {
 		panic("Incorrect inference type passed")
 	}
-	ops = make([]model.DisplayInterface, len(*usersData))
-	for i, v := range *usersData {
+	//Do not display Read Only User.
+	i := 0
+	for _, data := range *usersData {
+		if !strings.EqualFold(data.Role, "ReadOnly") {
+			(*usersData)[i] = data
+			i++
+		}
+	}
+
+	validUsers := (*usersData)[:i]
+	ops = make([]model.DisplayInterface, len(validUsers))
+	for i, v := range validUsers {
 		ops[i] = v
 	}
 	userNum, err := displayOptionsAndGetSelected(ops, "User")
@@ -121,7 +132,7 @@ func interactiveConfigHandler(cmd *cobra.Command) error {
 		util.CliLogger.Errorf("Error while displaying customers: %s", err.Error())
 		return err
 	}
-	appConfig.Update(util.UserId, (*usersData)[userNum].UserId)
+	appConfig.Update(util.UserId, (validUsers)[userNum].UserId)
 
 	// Get Providers from the platform (only on-prem providers displayed)
 	response, err = taskExecutor.ExecuteTask(ctx, task.HandleGetProviders(apiToken))
@@ -134,7 +145,7 @@ func interactiveConfigHandler(cmd *cobra.Command) error {
 	if !ok {
 		panic("Incorrect inference type passed")
 	}
-	i := 0
+	i = 0
 	for _, data := range *providersData {
 		if data.Code == "onprem" {
 			(*providersData)[i] = data

@@ -4236,55 +4236,56 @@ Status CatalogManager::IsBootstrapRequired(const IsBootstrapRequiredRequestPB* r
   RSTATUS_DCHECK(req->stream_ids_size() == 0 || req->stream_ids_size() == req->table_ids_size(),
                  InvalidArgument, "Stream ID optional, but must match table IDs if specified");
   bool streams_given = req->stream_ids_size() > 0;
+  CoarseTimePoint deadline = rpc->GetClientDeadline();
 
-  for (int t = 0; t < req->table_ids_size(); ++t) {
-    std::map<std::shared_ptr<cdc::CDCServiceProxy>, std::list<std::string>> proxy_to_tablet;
+  // To be updated by asynchronous callbacks. All these variables are allocated on the heap
+  // because we could short-circuit and go out of scope while callbacks are still on the fly.
+  auto data_lock = std::make_shared<std::mutex>();
+  auto table_bootstrap_required = std::make_shared<std::unordered_map<TableId, bool>>();
 
-    // Find out the server : tablet mapping of the given table.
+  // For thread joining. See XClusterAsyncPromiseCallback.
+  auto promise = std::make_shared<std::promise<Status>>();
+  auto future = promise->get_future();
+  auto task_completed = std::make_shared<bool>(false); // Protected by data_lock.
+  auto finished_tasks = std::make_shared<size_t>(0); // Protected by data_lock.
+  size_t total_tasks = req->table_ids_size();
+
+  for (int t = 0; t < req->table_ids_size(); t++) {
     auto table_id = req->table_ids(t);
     auto stream_id = streams_given ? req->stream_ids(t) : "";
-    bool bootstrap_required = false;
-    scoped_refptr<TableInfo> table = VERIFY_RESULT(FindTableById(table_id));
-    RSTATUS_DCHECK(table != nullptr, NotFound, "Table ID not found: " + table_id);
 
-    for (const auto& tablet : table->GetTablets()) {
-      auto ts = VERIFY_RESULT(tablet->GetLeader());
-      std::shared_ptr<cdc::CDCServiceProxy> proxy;
-      RETURN_NOT_OK(ts->GetProxy(&proxy));
-      proxy_to_tablet[proxy].push_back(tablet->id());
-    }
-
-    // Make a batch call for IsBootstrapRequired on every relevant TServer.
-    for (auto& pair : proxy_to_tablet) {
-      cdc::IsBootstrapRequiredRequestPB tablet_req;
-      cdc::IsBootstrapRequiredResponsePB tablet_resp;
-      rpc::RpcController tablet_rpc;
-
-      for (auto& tablet_id : pair.second) {
-        tablet_req.add_tablet_ids(tablet_id);
+    // TODO: Submit the task to a thread pool.
+    // Capture everything by value to increase their refcounts.
+    std::thread async_task([this, table_id, stream_id, deadline, data_lock, task_completed,
+                            table_bootstrap_required, finished_tasks, total_tasks, promise] {
+      bool bootstrap_required = false;
+      auto status = IsTableBootstrapRequired(
+          table_id, stream_id, deadline, &bootstrap_required);
+      std::lock_guard<std::mutex> lock(*data_lock);
+      if (*task_completed) {
+        return; // Prevent calling set_value below twice.
       }
-      if (!stream_id.empty()) {
-        tablet_req.set_stream_id(stream_id);
+      (*table_bootstrap_required)[table_id] = bootstrap_required;
+      if (!status.ok() || ++(*finished_tasks) == total_tasks) {
+        // Short-circuit if error already encountered.
+        *task_completed = true;
+        promise->set_value(status);
       }
-
-      // TODO: Make this call Async to allow for parallelization and perf speedup.
-      auto& cdc_service = pair.first;
-      RETURN_NOT_OK(cdc_service->IsBootstrapRequired(tablet_req, &tablet_resp, &tablet_rpc));
-      if (tablet_resp.has_error()) {
-        RETURN_NOT_OK(StatusFromPB(tablet_resp.error().status()));
-      }
-      if (tablet_resp.bootstrap_required()) {
-        // Short circuit.  We don't need to continue if we we missing data on just one tablet.
-        bootstrap_required = true;
-        break;
-      }
-    }
-
-    auto new_result = resp->add_results();
-    new_result->set_table_id(table_id);
-    new_result->set_bootstrap_required(bootstrap_required);
+    });
+    async_task.detach();
   }
 
+  // Wait until the first promise is raised, and prepare response.
+  if (future.wait_until(deadline) == std::future_status::timeout) {
+    return SetupError(resp->mutable_error(),
+        STATUS(TimedOut, "Timed out waiting for IsTableBootstrapRequired to finish"));
+  }
+  RETURN_NOT_OK(future.get());
+  for (const auto& table_bool : *table_bootstrap_required) {
+    auto new_result = resp->add_results();
+    new_result->set_table_id(table_bool.first);
+    new_result->set_bootstrap_required(table_bool.second);
+  }
   return Status::OK();
 }
 
@@ -4654,6 +4655,49 @@ Status CatalogManager::IsBootstrapRequiredOnProducer(
     return STATUS(IllegalState, Substitute(
       "Error Missing Data in Logs. Bootstrap is required for producer $0", universe->id()));
   }
+  return Status::OK();
+}
+
+Status CatalogManager::IsTableBootstrapRequired(
+    const TableId& table_id,
+    const CDCStreamId& stream_id,
+    CoarseTimePoint deadline,
+    bool* const bootstrap_required) {
+  scoped_refptr<TableInfo> table = VERIFY_RESULT(FindTableById(table_id));
+  RSTATUS_DCHECK(table != nullptr, NotFound, "Table ID not found: " + table_id);
+
+  // Make a batch call for IsBootstrapRequired on every relevant TServer.
+  std::map<std::shared_ptr<cdc::CDCServiceProxy>, cdc::IsBootstrapRequiredRequestPB>
+      proxy_to_request;
+  for (const auto& tablet : table->GetTablets()) {
+    auto ts = VERIFY_RESULT(tablet->GetLeader());
+    std::shared_ptr<cdc::CDCServiceProxy> proxy;
+    RETURN_NOT_OK(ts->GetProxy(&proxy));
+    proxy_to_request[proxy].add_tablet_ids(tablet->id());
+  }
+
+  // TODO: Make the RPCs async and parallel.
+  *bootstrap_required = false;
+  for (auto& proxy_request : proxy_to_request) {
+    auto& tablet_req = proxy_request.second;
+    cdc::IsBootstrapRequiredResponsePB tablet_resp;
+    rpc::RpcController rpc;
+    rpc.set_deadline(deadline);
+    if (!stream_id.empty()) {
+      tablet_req.set_stream_id(stream_id);
+    }
+    auto& cdc_service = proxy_request.first;
+
+    RETURN_NOT_OK(cdc_service->IsBootstrapRequired(tablet_req, &tablet_resp, &rpc));
+    if (tablet_resp.has_error()) {
+      RETURN_NOT_OK(StatusFromPB(tablet_resp.error().status()));
+    } else if (tablet_resp.has_bootstrap_required() &&
+               tablet_resp.bootstrap_required()) {
+      *bootstrap_required = true;
+      break;
+    }
+  }
+
   return Status::OK();
 }
 

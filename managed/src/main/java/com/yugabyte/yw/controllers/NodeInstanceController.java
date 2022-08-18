@@ -28,14 +28,12 @@ import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.AllowedActionsHelper;
-import com.yugabyte.yw.models.helpers.NodeConfiguration;
-import com.yugabyte.yw.models.helpers.NodeConfiguration.TypeGroup;
+import com.yugabyte.yw.models.helpers.NodeConfig;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
-
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -59,6 +57,7 @@ import play.mvc.Results;
 public class NodeInstanceController extends AuthenticatedController {
 
   @Inject Commissioner commissioner;
+
   @Inject NodeAgentHandler nodeAgentHandler;
 
   public static final Logger LOG = LoggerFactory.getLogger(NodeInstanceController.class);
@@ -139,20 +138,19 @@ public class NodeInstanceController extends AuthenticatedController {
   })
   public Result create(UUID customerUuid, UUID zoneUuid) {
     Customer.getOrBadRequest(customerUuid);
-    AvailabilityZone.getOrBadRequest(zoneUuid);
-
+    AvailabilityZone az = AvailabilityZone.getOrBadRequest(zoneUuid);
     NodeInstanceFormData nodeInstanceFormData = parseJsonAndValidate(NodeInstanceFormData.class);
     List<NodeInstanceData> nodeDataList = nodeInstanceFormData.nodes;
     Optional<ClientType> clientTypeOp = maybeGetJWTClientType();
     List<String> createdNodeUuids = new ArrayList<String>();
+    Provider provider = az.getProvider();
     Map<String, NodeInstance> nodes = new HashMap<>();
     for (NodeInstanceData nodeData : nodeDataList) {
       if (!NodeInstance.checkIpInUse(nodeData.ip)) {
         if (clientTypeOp.isPresent() && clientTypeOp.get() == ClientType.NODE_AGENT) {
           NodeAgent nodeAgent = NodeAgent.getOrBadRequest(customerUuid, getJWTClientUuid());
           nodeAgent.ensureState(State.LIVE);
-          Set<NodeConfiguration.Type> failedTypes =
-              nodeData.getFailedNodeConfigurationTypes(TypeGroup.ALL);
+          Set<NodeConfig.Type> failedTypes = nodeData.getFailedNodeConfigTypes(provider);
           if (CollectionUtils.isNotEmpty(failedTypes)) {
             log.error("Failed node configuration types: {}", failedTypes);
             throw new PlatformServiceException(
