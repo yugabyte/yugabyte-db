@@ -140,6 +140,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     public ServerType serverType = ServerType.EITHER;
     public int tserverPartition = 0;
     public int masterPartition = 0;
+    public Map<String, Object> universeOverrides;
+    public Map<String, Object> azOverrides;
 
     // Master addresses in multi-az case (to have control over different deployments).
     public String masterAddresses = null;
@@ -195,7 +197,9 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
                 taskParams().providerUUID,
                 taskParams().helmReleaseName,
                 taskParams().namespace,
-                overridesFile);
+                overridesFile,
+                taskParams().universeOverrides,
+                taskParams().azOverrides);
         break;
       case HELM_UPGRADE:
         overridesFile = this.generateHelmOverride();
@@ -206,7 +210,9 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
                 config,
                 taskParams().helmReleaseName,
                 taskParams().namespace,
-                overridesFile);
+                overridesFile,
+                taskParams().universeOverrides,
+                taskParams().azOverrides);
         break;
       case UPDATE_NUM_NODES:
         int numNodes = this.getNumNodes();

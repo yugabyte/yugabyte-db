@@ -205,6 +205,8 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
           ServerType.MASTER,
           ybSoftwareVersion,
           taskParams().sleepAfterMasterRestartMillis,
+          null, // Is this old code to update k8s universe?
+          null,
           masterChanged,
           tserverChanged,
           newNamingStyle,
@@ -222,6 +224,8 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
           ServerType.TSERVER,
           ybSoftwareVersion,
           taskParams().sleepAfterTServerRestartMillis,
+          null,
+          null,
           false /* master change is false since it has already been upgraded.*/,
           tserverChanged,
           newNamingStyle,

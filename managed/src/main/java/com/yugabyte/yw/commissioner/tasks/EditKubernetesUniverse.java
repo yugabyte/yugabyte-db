@@ -25,7 +25,6 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -175,10 +174,15 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       // This method uses rep factor to place masters.
       selectNumMastersAZ(newPI);
     }
+    Cluster primaryCluster = taskParams().getPrimaryCluster();
+    if (primaryCluster == null) {
+      primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
+    }
+
     KubernetesPlacement newPlacement = new KubernetesPlacement(newPI, isReadOnlyCluster),
         curPlacement = new KubernetesPlacement(curPI, isReadOnlyCluster);
-    boolean isMultiAZ =
-        PlacementInfoUtil.isMultiAZ(Provider.getOrBadRequest(UUID.fromString(newIntent.provider)));
+    Provider provider = Provider.getOrBadRequest(UUID.fromString(newIntent.provider));
+    boolean isMultiAZ = PlacementInfoUtil.isMultiAZ(provider);
 
     boolean instanceTypeChanged = false;
     if (!curIntent.instanceType.equals(newIntent.instanceType)) {
@@ -283,6 +287,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           ServerType.MASTER,
           newIntent.ybSoftwareVersion,
           DEFAULT_WAIT_TIME_MS,
+          primaryCluster.userIntent.universeOverrides,
+          primaryCluster.userIntent.azOverrides,
           true,
           true,
           newNamingStyle,
@@ -296,6 +302,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           ServerType.TSERVER,
           newIntent.ybSoftwareVersion,
           DEFAULT_WAIT_TIME_MS,
+          primaryCluster.userIntent.universeOverrides,
+          primaryCluster.userIntent.azOverrides,
           false,
           true,
           newNamingStyle,
@@ -314,6 +322,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           newPlacement,
           instanceTypeChanged,
           isMultiAZ,
+          provider,
           isReadOnlyCluster);
       createModifyBlackListTask(
               new ArrayList<>(tserversToRemove), false /* isAdd */, false /* isLeaderBlacklist */)
@@ -328,6 +337,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
 
   private void validateEditParams(Cluster newCluster, Cluster curCluster) {
     // TODO we should look for y(c)sql auth, gflags changes and so on.
+    // Move this logic to UniverseDefinitionTaskBase.
     if (newCluster.userIntent.replicationFactor != curCluster.userIntent.replicationFactor) {
       String msg =
           String.format(

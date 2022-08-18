@@ -8030,6 +8030,9 @@
         "awsArnString" : {
           "type" : "string"
         },
+        "azOverrides" : {
+          "type" : "string"
+        },
         "deviceInfo" : {
           "$ref" : "#/definitions/DeviceInfo"
         },
@@ -8112,6 +8115,9 @@
           "type" : "object"
         },
         "universeName" : {
+          "type" : "string"
+        },
+        "universeOverrides" : {
           "type" : "string"
         },
         "useHostname" : {
