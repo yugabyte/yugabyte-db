@@ -1754,7 +1754,7 @@ Result<TabletOpIdMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
             << ", last replicated time: " << last_replicated_time_str;
 
     // Add the {tablet_id, stream_id} pair to the set if its checkpoint is OpId::Max().
-    if (checkpoint == OpId::Max().ToString()) {
+    if (tablet_stream_to_be_deleted && checkpoint == OpId::Max().ToString()) {
       tablet_stream_to_be_deleted->insert({tablet_id, stream_id});
     }
 

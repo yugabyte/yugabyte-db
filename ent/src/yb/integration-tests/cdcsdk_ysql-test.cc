@@ -3066,6 +3066,82 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestMultiStreamOnSameTableAndDele
       MonoDelta::FromSeconds(60), "Waiting for stream metadata cleanup."));
 }
 
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCreateStreamAfterSetCheckpointMax)) {
+  FLAGS_update_min_cdc_indices_interval_secs = 1;
+  // We want to force every GetChanges to update the cdc_state table.
+  FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
+
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+  const uint32_t num_tablets = 1;
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), num_tablets);
+
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+
+  auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(resp.has_error());
+
+  // Insert some records in transaction.
+  ASSERT_OK(WriteRowsHelper(0 /* start */, 100 /* end */, &test_cluster_, true));
+  ASSERT_OK(test_client()->FlushTables(
+      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ false));
+  GetChangesResponsePB change_resp_1 = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+  LOG(INFO) << "Number of records after first transaction: " << change_resp_1.records().size();
+
+  // Forcefully update the checkpoint of the stream as MAX.
+  OpId commit_op_id = OpId::Max();
+  client::TableHandle cdc_state;
+  client::YBTableName cdc_state_table(
+      YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
+  ASSERT_OK(cdc_state.Open(cdc_state_table, test_client()));
+  const auto op = cdc_state.NewUpdateOp();
+  auto* const req = op->mutable_request();
+  QLAddStringHashValue(req, tablets[0].tablet_id());
+  QLAddStringRangeValue(req, stream_id);
+  cdc_state.AddStringColumnValue(req, master::kCdcCheckpoint, commit_op_id.ToString());
+  auto* condition = req->mutable_if_expr()->mutable_condition();
+  condition->set_op(QL_OP_EXISTS);
+  auto session = test_client()->NewSession();
+  EXPECT_OK(session->TEST_ApplyAndFlush(op));
+
+  // Now Read the cdc_state table check checkpoint is updated to MAX.
+  const auto read_op = cdc_state.NewReadOp();
+  auto* const req_read = read_op->mutable_request();
+  auto req_cond = req->mutable_where_expr()->mutable_condition();
+  req_cond->set_op(QLOperator::QL_OP_AND);
+  QLAddStringCondition(
+      req_cond, Schema::first_column_id() + master::kCdcTabletIdIdx, QL_OP_EQUAL,
+      tablets[0].tablet_id());
+  QLAddStringCondition(
+      req_cond, Schema::first_column_id() + master::kCdcStreamIdIdx, QL_OP_EQUAL, stream_id);
+  cdc_state.AddColumns({master::kCdcCheckpoint}, req_read);
+
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        EXPECT_OK(session->TEST_ApplyAndFlush(read_op));
+        auto row_block = ql::RowsResult(read_op.get()).GetRowBlock();
+        if (row_block->row_count() == 1 &&
+            row_block->row(0).column(0).string_value()  == OpId::Max().ToString()) {
+          return true;
+        }
+        return false;
+      },
+      MonoDelta::FromSeconds(60),
+      "Failed to read from cdc_state table."));
+  VerifyCdcStateMatches(
+      test_client(), stream_id, tablets[0].tablet_id(), commit_op_id.term, commit_op_id.index);
+
+  CDCStreamId stream_id_2 = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id_2, tablets));
+  ASSERT_FALSE(resp.has_error());
+}
+
 }  // namespace enterprise
 }  // namespace cdc
 }  // namespace yb
