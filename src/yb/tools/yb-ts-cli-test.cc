@@ -82,6 +82,65 @@ string YBTsCliTest::GetTsCliToolPath() const {
   return GetToolPath(kTsCliToolName);
 }
 
+// Test setting vmodule
+TEST_F(YBTsCliTest, TestVModuleUpdate) {
+  std::vector<std::string> ts_flags = {
+      "--vmodule=foo=0,bar=1",
+  };
+  std::vector<std::string> master_flags = {};
+  ASSERT_NO_FATALS(StartCluster(ts_flags, master_flags));
+
+  string exe_path = GetTsCliToolPath();
+  vector<string> argv;
+  argv.push_back(exe_path);
+  argv.push_back("--server_address");
+  argv.push_back(yb::ToString(cluster_->tablet_server(0)->bound_rpc_addr()));
+  argv.push_back("set_flag");
+  argv.push_back("vmodule");
+
+  {
+    // Should be able to update for specified modules.
+    argv.push_back("foo=1,bar=2");
+    ASSERT_OK(Subprocess::Call(argv));
+    argv.pop_back();
+  }
+
+  {
+    // Should be able to update for a subset of the modules specified.
+    argv.push_back("foo=1");
+    ASSERT_OK(Subprocess::Call(argv));
+    argv.pop_back();
+  }
+
+  {
+    // Test with an empty string.
+    argv.push_back("");
+    ASSERT_OK(Subprocess::Call(argv));
+    argv.pop_back();
+  }
+
+  {
+    // Should NOT be able to update for any module unspecified at start-up.
+    argv.push_back("foo=1,baz=2");
+    ASSERT_NOK(Subprocess::Call(argv));
+    argv.pop_back();
+  }
+
+  {
+    // Test with an empty string.
+    argv.push_back("foo=,baz=2");
+    ASSERT_NOK(Subprocess::Call(argv));
+    argv.pop_back();
+  }
+
+  {
+    // Test with an empty string.
+    argv.push_back("foo=1,=2");
+    ASSERT_NOK(Subprocess::Call(argv));
+    argv.pop_back();
+  }
+}
+
 // Test deleting a tablet.
 TEST_F(YBTsCliTest, TestDeleteTablet) {
   MonoDelta timeout = MonoDelta::FromSeconds(kTabletTimeout);
