@@ -1,17 +1,14 @@
 ---
 title: Build a Java application that uses YSQL
 headerTitle: Build a Java application
-linkTitle: Java
+linkTitle: More examples
 description: Build a sample Java application with the Vertx PG Client and use the YSQL API to connect to and interact with YugabyteDB.
 menu:
   preview:
-    parent: build-apps
-    name: Java
+    parent: cloud-java
     identifier: java-10
     weight: 550
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -85,13 +82,16 @@ Because Vertx is a PostgreSQL client and YugabyteDB is PostgreSQL compatible, it
 
 This tutorial assumes that:
 
-- YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](../../../../quick-start/).
+- YugabyteDB up and running. Download and install the latest version of YugabyteDB by following the steps in [Quick start](../../../../quick-start/).
+{{< note title="Note" >}}
+The `executeBatch()` API of the Vertx PG Client is supported in the YugabyteDB version - `2.15.2.0-b0` onwards. 
+{{< /note >}}
 - Java Development Kit (JDK) 1.8, or later, is installed. 
 - [Apache Maven](https://maven.apache.org/index.html) 3.3 or later, is installed.
 
 ## Create and configure the Java project
 
-1. Create a project called "MySample".
+1. Create a project called "vertx-pg-example".
 
     ```sh
     $ mvn archetype:generate \
@@ -102,7 +102,7 @@ This tutorial assumes that:
 
     $ cd vertx-pg-example
     ```
-1. Add the following below the `<url>` element.
+1. Add the following properties in the `pom.xml` file within the `<project>` element.
 
     ```xml
     <properties>
@@ -219,5 +219,5 @@ This tutorial assumes that:
     ```
 ## Limitation
 
-[PubSub](https://vertx.io/docs/vertx-pg-client/java/#_pubsub) feature of Vertx PG client is currently not supported with YugabyteDB. This limitation will be lifted when `LISTEN`/`NOTIFY` support is added to YugabyteDB. Tracking issue: [#1872](https://github.com/yugabyte/yugabyte-db/issues/1872).
+[Pub/sub](https://vertx.io/docs/vertx-pg-client/java/#_pubsub) feature of Vertx PG client is currently not supported with YugabyteDB. This limitation will go away when `LISTEN`/`NOTIFY` support is added to YugabyteDB. See [GitHub issue](https://github.com/yugabyte/yugabyte-db/issues/1872).
 
