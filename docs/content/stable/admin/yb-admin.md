@@ -1685,6 +1685,19 @@ yb-admin -master_addresses <target_master_addresses> \
 * *replication_name*: The name of the replication to be altered.
 * *comma_separated_list_of_table_ids*: Comma-separated list of source universe table identifiers (`table_id`).
 
+Use the `rename_id` subcommand to rename xCluster replication streams.
+
+```sh
+yb-admin -master_addresses <target_master_addresses> \
+    alter_universe_replication <source_universe_uuid>_<replication_name> \
+    rename_id <source_universe_uuid>_<new_replication_name>
+```
+
+* *target_master_addresses*: Comma-separated list of target YB-Master hosts and ports. Default value is `localhost:7100`.
+* *source_universe_uuid*: The UUID of the source universe.
+* *replication_name*: The name of the replication to be altered.
+* *new_replication_name*: The new name of the replication stream.
+
 #### delete_universe_replication <source_universe_uuid>
 
 Deletes universe replication for the specified source universe.
