@@ -3,7 +3,7 @@
 [[top_nav]]
   name = "Register for DSS 2022"
   weight = 1
-  url = "https://info.yugabyte.com/2022-virtual-event-dss-lp"
+  url = "https://distributedsql.org/"
   [top_nav.params]
     newTab = true
     classes = "gradient-link"
