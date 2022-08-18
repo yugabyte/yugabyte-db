@@ -123,6 +123,6 @@ Concurrent operations in a cluster can lead to various transactional conflicts, 
 {{< /note >}}
 
 {{< note title="Note" >}}
-Downgrades are currently unsupported. Please see issue #xxxx.
+Downgrades are currently unsupported. Please see issue [#13686](https://github.com/yugabyte/yugabyte-db/issues/13686) on Github.
 {{< /note >}}
 
