@@ -179,6 +179,7 @@ TAG_FLAG(v, runtime);
 
 DECLARE_string(vmodule);
 TAG_FLAG(vmodule, stable);
+TAG_FLAG(vmodule, runtime);
 TAG_FLAG(vmodule, advanced);
 
 DECLARE_bool(symbolize_stacktrace);
