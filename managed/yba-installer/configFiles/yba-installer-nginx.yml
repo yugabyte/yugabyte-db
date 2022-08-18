@@ -2,7 +2,7 @@ services:
 
   - name: nginx
     fileName: /etc/nginx/nginx.conf
-    contents: {{if yamlHttpCheck ".nginx.mode" }} |
+    contents:  {{ if eq (yamlPath ".nginx.mode") "http" }} |
       worker_processes  1;
       events {
         worker_connections  1024;
@@ -37,7 +37,7 @@ services:
                 add_header X-Frame-Options "SAMEORIGIN";
         }
       }
-      {{else}} |
+      {{else if eq (yamlPath ".nginx.mode") "https"}} |
       worker_processes  1;
       events {
           worker_connections  1024;

@@ -109,34 +109,6 @@ func getYamlPathData(text string) (string) {
     }
 }
 
-func getNginxModeTemplate(text string) (string) {
-
-    inputYml, errYml := ioutil.ReadFile("yba-installer-input.yml")
-    if errYml != nil {
-        log.Fatalf("error: %v", errYml)
-    }
-
-    pathString := strings.ReplaceAll(text, " ", "")
-    yamlPathString := "$" + pathString
-    path, err := yaml2.PathString(yamlPathString)
-    if err != nil {
-        log.Fatalf("Yaml Path string " + yamlPathString + " not valid!")
-    }
-
-    var val string
-    err = path.Read(bytes.NewReader(inputYml), &val)
-
-    if val == "http" {
-
-        return val
-
-    }
-
-    return ""
-
-}
-
-
 // ReadConfigAndTemplate Reads info from input config file and sets
 // all template parameters for each individual config file directly, without
 // having to rely on variable names in app data.
@@ -148,7 +120,6 @@ func readConfigAndTemplate(configYmlFileName string) ([]byte, error)  {
         // The name "yamlPath" is what the function will be called
         // in the template text.
         "yamlPath": getYamlPathData,
-        "yamlHttpCheck": getNginxModeTemplate,
     }
 
     tmpl, err := template.New(filepath.Base("configFiles/" +configYmlFileName)).
