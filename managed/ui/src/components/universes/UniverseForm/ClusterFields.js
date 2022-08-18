@@ -2780,15 +2780,7 @@ export default class ClusterFields extends Component {
                     readOnlySelect={isSWVersionReadOnly}
                   />
 
-                  {(featureFlags.test['enableYbc'] || featureFlags.released['enableYbc']) && (
-                    <Field
-                      name={`${clusterType}.ybcSoftwareVersion`}
-                      type="text"
-                      component={YBTextInputWithLabel}
-                      label="YBC Software version"
-                      isReadOnly={isFieldReadOnly}
-                    />
-                  )}
+
                 </div>
               </Col>
               {!this.state.isKubernetesUniverse && (
