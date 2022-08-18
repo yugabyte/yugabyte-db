@@ -725,8 +725,8 @@ Status BackfillTable::Launch() {
   // This must be a shared pointer and not just 'this' so we do not accidentally clean up
   // BackfillTable when the last shared pointer to BackfillTable is deleted in Abort() (when the
   // backfill job is deleted).
-  Status status = threadpool()->SubmitFunc(std::bind(&BackfillTable::LaunchBackfill,
-                                                     this->shared_from_this()));
+  Status status = threadpool()->SubmitFunc(
+      std::bind(&BackfillTable::LaunchBackfillOrAbort, this->shared_from_this()));
   if (!status.ok()) {
     RETURN_NOT_OK_PREPEND(Abort(), "Failed to run LaunchBackfill.");
     return status;
@@ -734,7 +734,7 @@ Status BackfillTable::Launch() {
   return Status::OK();
 }
 
-void BackfillTable::LaunchBackfill() {
+void BackfillTable::LaunchBackfillOrAbort() {
   Status status = WaitForTabletSplitting();
   if (!status.ok()) {
     LOG(WARNING) << status;
@@ -894,46 +894,45 @@ Status BackfillTable::DoBackfill() {
   tablets_pending_.store(tablets.size(), std::memory_order_release);
   for (const scoped_refptr<TabletInfo>& tablet : tablets) {
     auto backfill_tablet = std::make_shared<BackfillTablet>(shared_from_this(), tablet);
-    backfill_tablet->Launch();
+    RETURN_NOT_OK(backfill_tablet->Launch());
   }
   return Status::OK();
 }
 
-void BackfillTable::Done(const Status& s, const std::unordered_set<TableId>& failed_indexes) {
+Status BackfillTable::Done(const Status& s, const std::unordered_set<TableId>& failed_indexes) {
   if (!s.ok()) {
     LOG_WITH_PREFIX(ERROR) << "failed to backfill the index: " << yb::ToString(failed_indexes)
                            << " due to " << s;
-    WARN_NOT_OK(
+    RETURN_NOT_OK_PREPEND(
         MarkIndexesAsFailed(failed_indexes, s.message().ToBuffer()),
         "Couldn't mark indexes as failed");
-    CheckIfDone();
-    return;
+    return CheckIfDone();
   }
 
   // If OK then move on to READ permissions.
   if (!done() && --tablets_pending_ == 0) {
     LOG_WITH_PREFIX(INFO) << "Completed backfilling the index table.";
     done_.store(true, std::memory_order_release);
-    WARN_NOT_OK(MarkAllIndexesAsSuccess(), "Failed to mark indexes as successfully backfilled.");
-    WARN_NOT_OK(UpdateIndexPermissionsForIndexes(), "Failed to complete backfill.");
+    RETURN_NOT_OK_PREPEND(
+        MarkAllIndexesAsSuccess(), "Failed to mark indexes as successfully backfilled.");
+    RETURN_NOT_OK_PREPEND(UpdateIndexPermissionsForIndexes(), "Failed to complete backfill.");
   } else {
     VLOG_WITH_PREFIX(1) << "Still backfilling " << tablets_pending_ << " more tablets.";
   }
+  return Status::OK();
 }
 
 Status BackfillTable::MarkIndexesAsFailed(
     const std::unordered_set<TableId>& failed_indexes, const string& message) {
   if (indexes_to_build() == failed_indexes) {
+    done_.store(true, std::memory_order_release);
     backfill_job_->SetState(MonitoredTaskState::kFailed);
   }
   return MarkIndexesAsDesired(failed_indexes, BackfillJobPB::FAILED, message);
 }
 
 Status BackfillTable::MarkAllIndexesAsFailed() {
-  backfill_job_->SetState(MonitoredTaskState::kFailed);
-  RETURN_NOT_OK_PREPEND(MarkIndexesAsDesired(indexes_to_build(), BackfillJobPB::FAILED, "failed"),
-                        "Failed to mark backfill as failed.");
-  return Status::OK();
+  return MarkIndexesAsFailed(indexes_to_build(), "failed");
 }
 
 Status BackfillTable::MarkAllIndexesAsSuccess() {
@@ -980,18 +979,18 @@ Status BackfillTable::MarkIndexesAsDesired(
 }
 
 Status BackfillTable::Abort() {
-  LOG(WARNING) << "Backfill failed.";
+  LOG(WARNING) << "Backfill failed/aborted.";
   RETURN_NOT_OK(MarkAllIndexesAsFailed());
-  CheckIfDone();
-  return Status::OK();
+  return CheckIfDone();
 }
 
-void BackfillTable::CheckIfDone() {
+Status BackfillTable::CheckIfDone() {
   if (indexes_to_build().empty()) {
     done_.store(true, std::memory_order_release);
-    WARN_NOT_OK(
+    RETURN_NOT_OK_PREPEND(
         UpdateIndexPermissionsForIndexes(), "Could not update index permissions after backfill");
   }
+  return Status::OK();
 }
 
 Status BackfillTable::UpdateIndexPermissionsForIndexes() {
@@ -1210,36 +1209,35 @@ std::string BackfillTablet::LogPrefix() const {
                 tablet_->id());
 }
 
-void BackfillTablet::LaunchNextChunkOrDone() {
+Status BackfillTablet::LaunchNextChunkOrDone() {
   if (done()) {
     VLOG_WITH_PREFIX(1) << "is done";
-    backfill_table_->Done(Status::OK(), /* failed_indexes */ {});
+    return backfill_table_->Done(Status::OK(), /* failed_indexes */ {});
   } else if (!backfill_table_->done()) {
     VLOG_WITH_PREFIX(2) << "Launching next chunk from " << backfilled_until_;
     auto chunk = std::make_shared<BackfillChunk>(shared_from_this(),
                                                  backfilled_until_);
-    chunk->Launch();
+    return chunk->Launch();
   }
+  return Status::OK();
 }
 
-void BackfillTablet::Done(
+Status BackfillTablet::Done(
     const Status& status, const boost::optional<string>& backfilled_until,
     const uint64_t number_rows_processed, const std::unordered_set<TableId>& failed_indexes) {
   if (!status.ok()) {
     LOG(INFO) << "Failed to backfill the tablet " << yb::ToString(tablet_) << ": " << status
               << "\nFailed_indexes are " << yb::ToString(failed_indexes);
-    backfill_table_->Done(status, failed_indexes);
+    RETURN_NOT_OK(backfill_table_->Done(status, failed_indexes));
   }
 
   if (backfilled_until) {
-    auto s = UpdateBackfilledUntil(*backfilled_until, number_rows_processed);
-    if (!s.ok()) {
-      LOG(WARNING) << "Could not persist how far the tablet is done backfilling. " << s.ToString();
-      return;
-    }
+    RETURN_NOT_OK_PREPEND(
+        UpdateBackfilledUntil(*backfilled_until, number_rows_processed),
+        "Could not persist how far the tablet is done backfilling.");
   }
 
-  LaunchNextChunkOrDone();
+  return LaunchNextChunkOrDone();
 }
 
 Status BackfillTablet::UpdateBackfilledUntil(
@@ -1367,10 +1365,10 @@ BackfillChunk::BackfillChunk(std::shared_ptr<BackfillTablet> backfill_tablet,
 // -----------------------------------------------------------------------------------------------
 // BackfillChunk
 // -----------------------------------------------------------------------------------------------
-void BackfillChunk::Launch() {
+Status BackfillChunk::Launch() {
   backfill_tablet_->tablet()->table()->AddTask(shared_from_this());
   Status status = Run();
-  WARN_NOT_OK(
+  RETURN_NOT_OK_PREPEND(
       status, Substitute(
                   "Failed to send backfill Chunk request for $0",
                   backfill_tablet_->tablet().get()->ToString()));
@@ -1380,6 +1378,7 @@ void BackfillChunk::Launch() {
   if (status.ok()) {
     LOG(INFO) << "Started BackfillChunk : " << this->description();
   }
+  return Status::OK();
 }
 
 MonoTime BackfillChunk::ComputeDeadline() {
@@ -1519,10 +1518,14 @@ void BackfillChunk::UnregisterAsyncTaskCallback() {
   }
 
   if (resp_.has_backfilled_until()) {
-    backfill_tablet_->Done(
-        status, resp_.backfilled_until(), resp_.number_rows_processed(), failed_indexes);
+    WARN_NOT_OK(
+        backfill_tablet_->Done(
+            status, resp_.backfilled_until(), resp_.number_rows_processed(), failed_indexes),
+        "Failed marking BackfillTablet as done.");
   } else {
-    backfill_tablet_->Done(status, boost::none, resp_.number_rows_processed(), failed_indexes);
+    WARN_NOT_OK(
+        backfill_tablet_->Done(status, boost::none, resp_.number_rows_processed(), failed_indexes),
+        "Failed marking BackfillTablet as done.");
   }
 }
 
