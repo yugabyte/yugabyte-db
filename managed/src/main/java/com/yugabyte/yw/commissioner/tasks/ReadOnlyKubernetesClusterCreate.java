@@ -37,6 +37,7 @@ public class ReadOnlyKubernetesClusterCreate extends KubernetesTaskBase {
   public void run() {
     log.info("Started {} task for uuid={}", getName(), taskParams().universeUUID);
     try {
+      verifyParams(UniverseOpType.CREATE); // Is this EDIT?
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
       preTaskActions(universe);
 

@@ -6,6 +6,7 @@ import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
@@ -18,6 +19,8 @@ import com.yugabyte.yw.common.RegexMatcher;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
+
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -174,7 +177,9 @@ public class GFlagsKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
             expectedConfig.capture(),
             expectedNodePrefix.capture(),
             expectedNamespace.capture(),
-            expectedOverrideFile.capture());
+            expectedOverrideFile.capture(),
+            eq(new HashMap<String, Object>()),
+            eq(new HashMap<String, Object>()));
     verify(mockKubernetesManager, times(6))
         .getPodStatus(
             expectedConfig.capture(), expectedNodePrefix.capture(), expectedPodName.capture());
@@ -220,7 +225,9 @@ public class GFlagsKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
             expectedConfig.capture(),
             expectedNodePrefix.capture(),
             expectedNamespace.capture(),
-            expectedOverrideFile.capture());
+            expectedOverrideFile.capture(),
+            eq(new HashMap<String, Object>()),
+            eq(new HashMap<String, Object>()));
     verify(mockKubernetesManager, times(6))
         .getPodStatus(
             expectedConfig.capture(), expectedNodePrefix.capture(), expectedPodName.capture());
