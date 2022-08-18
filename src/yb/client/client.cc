@@ -488,6 +488,7 @@ Status YBClientBuilder::DoBuild(rpc::Messenger* messenger, std::unique_ptr<YBCli
   // is clearer to see "mastercb" instead.
   ThreadPoolBuilder tpb(data_->client_name_ + "cb");
   tpb.set_max_threads(narrow_cast<int>(callback_threadpool_size));
+  tpb.set_min_threads(1);
   std::unique_ptr<ThreadPool> tp;
   RETURN_NOT_OK_PREPEND(
       tpb.Build(&tp),
