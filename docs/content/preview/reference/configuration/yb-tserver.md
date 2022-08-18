@@ -607,8 +607,8 @@ Specifies the lowest YSQL message level to log.
 
 ##### --temp_file_limit
 
-Specifies the amount of disk space used for temp files for each YSQL connection. 
-Any query whose disk space usage exceeds `temp_file_limit` will terminate with the error: `ERROR:  temporary file size exceeds temp_file_limit`. 
+Specifies the amount of disk space used for temp files for each YSQL connection, such as sort and hash temporary files, or the storage file for a held cursor. 
+Any query whose disk space usage exceeds `temp_file_limit` will terminate with the error: `ERROR:  temporary file size exceeds temp_file_limit`. Note that temporary tables do not count against this limit.
 
 Users can reset the `temp_file_limit` to no limit using `SET temp_file_limit=-1`.
 
