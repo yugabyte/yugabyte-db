@@ -16,7 +16,10 @@
 
   p > code {
     white-space: nowrap;
-    padding: 2px 4px;
+    padding: 0 4px;
+    border-width: 0 !important;
+    font-size: 90% !important;
+    line-height: 20px;
   }
 
   h1 > code,
@@ -24,10 +27,17 @@
   h3 > code,
   h4 > code,
   h5 > code,
-  h6 > code,
-  a > code {
+  h6 > code {
     color: inherit !important;
     margin: 0 0 2px;
+  }
+
+  a > code {
+    color: inherit !important;
+    margin: 0;
+    padding: 0 4px !important;
+    line-height: 18px;
+    font-size: 90% !important;
   }
 
   pre {
