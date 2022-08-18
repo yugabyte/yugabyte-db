@@ -8,6 +8,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.Com
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
@@ -103,15 +104,15 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
       boolean isMasterChanged,
       boolean isTServerChanged) {
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-    PlacementInfo placementInfo = universeDetails.getPrimaryCluster().placementInfo;
+    Cluster primaryCluster = universeDetails.getPrimaryCluster();
+    PlacementInfo placementInfo = primaryCluster.placementInfo;
     createSingleKubernetesExecutorTask(
         CommandType.POD_INFO, placementInfo, /*isReadOnlyCluster*/ false);
 
     KubernetesPlacement placement =
         new KubernetesPlacement(placementInfo, /*isReadOnlyCluster*/ false);
     Provider provider =
-        Provider.getOrBadRequest(
-            UUID.fromString(taskParams().getPrimaryCluster().userIntent.provider));
+        Provider.getOrBadRequest(UUID.fromString(primaryCluster.userIntent.provider));
     boolean newNamingStyle = taskParams().useNewHelmNamingStyle;
 
     String masterAddresses =
@@ -131,6 +132,8 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
           ServerType.MASTER,
           softwareVersion,
           taskParams().sleepAfterMasterRestartMillis,
+          primaryCluster.userIntent.universeOverrides,
+          primaryCluster.userIntent.azOverrides,
           isMasterChanged,
           isTServerChanged,
           newNamingStyle,
@@ -149,6 +152,8 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
           ServerType.TSERVER,
           softwareVersion,
           taskParams().sleepAfterTServerRestartMillis,
+          primaryCluster.userIntent.universeOverrides,
+          primaryCluster.userIntent.azOverrides,
           false, // master change is false since it has already been upgraded.
           isTServerChanged,
           newNamingStyle,
@@ -171,6 +176,8 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
             ServerType.TSERVER,
             softwareVersion,
             taskParams().sleepAfterTServerRestartMillis,
+            primaryCluster.userIntent.universeOverrides,
+            primaryCluster.userIntent.azOverrides,
             false, // master change is false since it has already been upgraded.
             isTServerChanged,
             newNamingStyle,
