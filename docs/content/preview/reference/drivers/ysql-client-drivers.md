@@ -150,6 +150,14 @@ To download binary JAR files, go to [PostgreSQL JDBC driver – Downloads](https
 
 To get the latest versions for projects using [Apache Maven](https://maven.apache.org), see [Maven Central Repository Search](https://search.maven.org/artifact/org.postgresql/postgresql/42.2.14.jre7/jar).
 
+### Vertx PG Client 
+
+[Vertx PG Client](https://vertx.io/docs/vertx-pg-client/java/) is the client for PostgreSQL with simple APIs to communicate with the database. It is a reactive and non-blocking client for handling the database connections with a single threaded API.
+
+For a tutorial on building a sample Java application with the Vertx PG Client, see [Build a Java application](../../../develop/build-apps/java/ysql-vertx-pg-client/).
+
+To get the latest versions for projects using [Apache Maven](https://maven.apache.org), see [Maven Central Repository of Vertx PG Client](https://mvnrepository.com/artifact/io.vertx/vertx-pg-client).
+
 ## Node.JS
 
 ### node-postgres
