@@ -372,6 +372,11 @@ class TransactionParticipant::Impl
     return cdc_sdk_min_checkpoint_op_id_;
   }
 
+  CoarseTimePoint GetCheckpointExpirationTime() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return cdc_sdk_min_checkpoint_op_id_expiration_;
+  }
+
   // Cleans transactions that are requested and now is safe to clean.
   // See RemoveUnlocked for details.
   void CleanTransactionsUnlocked(MinRunningNotifier* min_running_notifier) REQUIRES(mutex_) {
@@ -1835,6 +1840,10 @@ void TransactionParticipant::SetIntentRetainOpIdAndTime(
 
 OpId TransactionParticipant::GetRetainOpId() const {
   return impl_->GetRetainOpId();
+}
+
+CoarseTimePoint TransactionParticipant::GetCheckpointExpirationTime() const {
+  return impl_->GetCheckpointExpirationTime();
 }
 
 }  // namespace tablet
