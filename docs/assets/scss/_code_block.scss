@@ -14,12 +14,15 @@
     overflow: auto;
   }
 
+  table code,
+  li > code,
   p > code {
     white-space: nowrap;
     padding: 0 4px;
     border-width: 0 !important;
     font-size: 90% !important;
     line-height: 20px;
+    color: inherit !important;
   }
 
   h1 > code,
