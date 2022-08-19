@@ -1343,11 +1343,7 @@ Encryption status: ENABLED with key id <key_id_2>
 
 Lists the CDC streams for the specified YB-Master servers.
 
-{{< note title="Tip" >}}
-
 Use this command when setting up universe replication to verify if any tables are configured for replication. If not, run [`setup_universe_replication`](#setup-universe-replication); if tables are already configured for replication, use [`alter_universe_replication`](#alter-universe-replication) to add more tables.
-
-{{< /note >}}
 
 **Syntax**
 
@@ -1397,14 +1393,11 @@ yb-admin \
 * *comma_separated_list_of_producer_bootstrap_ids*: Comma-separated list of source universe bootstrap identifiers (`bootstrap_id`). Obtain these with [bootstrap_cdc_producer](#bootstrap-cdc-producer-comma-separated-list-of-table-ids), using a comma-separated list of source universe table IDs.
 
 {{< warning title="Important" >}}
-Enter the source universe bootstrap_ids in the same order as their corresponding table_ids.
+Enter the source universe bootstrap IDs in the same order as their corresponding table IDs.
 {{< /warning >}}
-
-{{< note title="Tip" >}}
 
 To display a list of tables and their UUID (`table_id`) values, open the **YB-Master UI** (`<master_host>:7000/`) and click **Tables** in the navigation bar.
 
-{{< /note >}}
 
 **Example**
 
@@ -1418,10 +1411,10 @@ To display a list of tables and their UUID (`table_id`) values, open the **YB-Ma
 
 #### alter_universe_replication
 
-Changes the universe replication for the specified source universe. Use this command to:
+Changes the universe replication for the specified source universe. Use this command to do the following:
 
-* Add or remove tables in an existing replication UUID
-* Modify the source master addresses
+* Add or remove tables in an existing replication UUID.
+* Modify the source master addresses.
 
 If no tables have been configured for replication, use [setup_universe_replication](#setup-universe-replication).
 
@@ -1458,7 +1451,7 @@ yb-admin -master_addresses <target_master_addresses> \
 * *comma_separated_list_of_producer_bootstrap_ids*: Comma-separated list of source universe bootstrap identifiers (`bootstrap_id`). Obtain these with [bootstrap_cdc_producer](#bootstrap-cdc-producer-comma-separated-list-of-table-ids), using a comma-separated list of source universe table IDs.
 
 {{< warning title="Important" >}}
-Enter the source universe bootstrap_ids in the same order as their corresponding table_ids.
+Enter the source universe bootstrap IDs in the same order as their corresponding table IDs.
 {{< /warning >}}
 
 Use the `remove_table` subcommand to remove one or more tables from the existing list:
