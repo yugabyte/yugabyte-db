@@ -1199,8 +1199,8 @@ TEST_F_EX(YBBackupTest,
   //       -0x3fff | 1  | 0x1210 | 1                     | 1                   | N
   // 0x3fff-0x5555 | 6  | 0x4e58 | 1                     | 2                   | Y
   // 0x5555-0x7ffe | 9  | 0x5d60 | 2                     | 2                   | N
-  // 0x7ffe-0x9c76 | 23 | 0x986c | 2                     | 3                   | Y
-  // 0x9c76-0xaaaa | 4  | 0x9eaf | 3                     | 3                   | N
+  // 0x7ffe-0xa6e8 | 23 | 0x986c | 2                     | 3                   | Y
+  // 0xa6e8-0xaaaa | 4  | 0x9eaf | 3                     | 3                   | N
   // 0xaaaa-0xbffd | 27 | 0xbd51 | 4                     | 3                   | Y
   // 0xbffd-       | 2  | 0xc0c4 | 4                     | 4                   | N
   //
@@ -1248,16 +1248,16 @@ TEST_F_EX(YBBackupTest,
 
   // Verify that it has these four tablets:
   // -       -0x5555
-  // - 0x5555-0x9c76
-  // - 0x9c76-0xaaaa
+  // - 0x5555-0xa6e8
+  // - 0xa6e8-0xaaaa
   // - 0xaaaa-
-  // 0x9c76 just happens to be what tablet splitting chooses.  Tablet splitting should choose the
+  // 0xa6e8 just happens to be what tablet splitting chooses.  Tablet splitting should choose the
   // split point based on the existing data.  Don't verify that it chose the right split point: that
   // is out of scope of this test.  Just trust what it chose.
   tablets = ASSERT_RESULT(GetTablets(table_name, "post-split"));
   LogTabletsInfo(tablets);
   ASSERT_EQ(tablets.size(), num_tablets);
-  ASSERT_TRUE(CheckPartitions(tablets, {"\x55\x55", "\x9c\x76", "\xaa\xaa"}));
+  ASSERT_TRUE(CheckPartitions(tablets, {"\x55\x55", "\xa6\xe8", "\xaa\xaa"}));
 
   const string backup_dir = GetTempDir("backup");
   ASSERT_OK(RunBackupCommand(
@@ -1291,7 +1291,7 @@ TEST_F_EX(YBBackupTest,
   // Validate.
   tablets = ASSERT_RESULT(GetTablets(table_name, "post-restore"));
   ASSERT_EQ(tablets.size(), 4);
-  ASSERT_TRUE(CheckPartitions(tablets, {"\x55\x55", "\x9c\x76", "\xaa\xaa"}));
+  ASSERT_TRUE(CheckPartitions(tablets, {"\x55\x55", "\xa6\xe8", "\xaa\xaa"}));
   ASSERT_NO_FATALS(RunPsqlCommand(select_query, select_output));
 
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
@@ -1486,7 +1486,7 @@ TEST_F_EX(YBBackupTest,
 TEST_F_EX(YBBackupTest,
           YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYSQLAutomaticTabletSplitRangeTable),
           YBBackupTestNumTablets) {
-  ASSERT_OK(cluster_->SetFlagOnMasters("tablet_split_low_phase_size_threshold_bytes", "3500"));
+  ASSERT_OK(cluster_->SetFlagOnMasters("tablet_split_low_phase_size_threshold_bytes", "2500"));
   // Override the master flag to enable automatic tablet splitting
   ASSERT_OK(cluster_->SetFlagOnMasters("enable_automatic_tablet_splitting", "true"));
 
@@ -1526,7 +1526,7 @@ TEST_F_EX(YBBackupTest,
   tablets = ASSERT_RESULT(GetTablets(table_name, "post-split"));
   LogTabletsInfo(tablets);
   ASSERT_EQ(tablets.size(), num_tablets);
-  ASSERT_TRUE(CheckPartitions(tablets, {"S133a\0\0!"s, "S147a\0\0!"s, "S4a\0\0!"s}));
+  ASSERT_TRUE(CheckPartitions(tablets, {"S133a\0\0!"s, "S150a\0\0!"s, "S4a\0\0!"s}));
 
   // Backup
   const string backup_dir = GetTempDir("backup");
@@ -1542,7 +1542,7 @@ TEST_F_EX(YBBackupTest,
   // Validate
   tablets = ASSERT_RESULT(GetTablets(table_name, "post-restore"));
   ASSERT_EQ(tablets.size(), 4);
-  ASSERT_TRUE(CheckPartitions(tablets, {"S133a\0\0!"s, "S147a\0\0!"s, "S4a\0\0!"s}));
+  ASSERT_TRUE(CheckPartitions(tablets, {"S133a\0\0!"s, "S150a\0\0!"s, "S4a\0\0!"s}));
 
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
@@ -1600,13 +1600,13 @@ TEST_F_EX(YBBackupTest,
   tablets = ASSERT_RESULT(GetTablets(table_name, "post-split"));
   LogTabletsInfo(tablets);
   ASSERT_EQ(tablets.size(), num_tablets);
-  ASSERT_TRUE(CheckPartitions(tablets, {"S147a\0\0!"s, "S4a\0\0!"s}));
+  ASSERT_TRUE(CheckPartitions(tablets, {"S150a\0\0!"s, "S4a\0\0!"s}));
 
   // Further split at split depth 1
-  // Choose the first tablet among tablets: "" --- "147a", "147a" --- "4a", and "4a" --- ""
+  // Choose the first tablet among tablets: "" --- "150a", "150a" --- "4a", and "4a" --- ""
   split_index = 0;
   ASSERT_EQ(tablets[split_index].partition().partition_key_start(), "");
-  ASSERT_EQ(tablets[split_index].partition().partition_key_end(), "S147a\0\0!"s);
+  ASSERT_EQ(tablets[split_index].partition().partition_key_end(), "S150a\0\0!"s);
   tablet_id = tablets[split_index].tablet_id();
 
   // Split it && Wait for split to complete.
@@ -1617,7 +1617,7 @@ TEST_F_EX(YBBackupTest,
   tablets = ASSERT_RESULT(GetTablets(table_name, "post-split"));
   LogTabletsInfo(tablets);
   ASSERT_EQ(tablets.size(), num_tablets);
-  ASSERT_TRUE(CheckPartitions(tablets, {"S133a\0\0!"s, "S147a\0\0!"s, "S4a\0\0!"s}));
+  ASSERT_TRUE(CheckPartitions(tablets, {"S133a\0\0!"s, "S150a\0\0!"s, "S4a\0\0!"s}));
 
   // Backup
   const string backup_dir = GetTempDir("backup");
@@ -1633,7 +1633,7 @@ TEST_F_EX(YBBackupTest,
   // Validate
   tablets = ASSERT_RESULT(GetTablets(table_name, "post-restore"));
   ASSERT_EQ(tablets.size(), 4);
-  ASSERT_TRUE(CheckPartitions(tablets, {"S133a\0\0!"s, "S147a\0\0!"s, "S4a\0\0!"s}));
+  ASSERT_TRUE(CheckPartitions(tablets, {"S133a\0\0!"s, "S150a\0\0!"s, "S4a\0\0!"s}));
 
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
