@@ -1047,6 +1047,15 @@ OpId TabletPeer::cdc_sdk_min_checkpoint_op_id() {
   return meta_->cdc_sdk_min_checkpoint_op_id();
 }
 
+CoarseTimePoint TabletPeer::cdc_sdk_min_checkpoint_op_id_expiration() {
+  auto txn_participant = tablet()->transaction_participant();
+  if (txn_participant) {
+    return txn_participant->GetCheckpointExpirationTime();
+  }
+
+  return CoarseTimePoint();
+}
+
 Status TabletPeer::SetCDCSDKRetainOpIdAndTime(
     const OpId& cdc_sdk_op_id, const MonoDelta& cdc_sdk_op_id_expiration) {
   if (cdc_sdk_op_id == OpId::Invalid()) {
