@@ -199,7 +199,7 @@ components:
                   metrics_path: "/api/v1/prometheus_metrics"
                   static_configs:
                     - targets: [
-                      '{{repl HostPrivateIpAddress "app" "yugabyte/yugaware" }}:{{repl ConfigOption "app_external_port"}}'
+                      '{{repl HostPrivateIpAddress "prometheus" "prom/prometheus" }}:{{repl ConfigOption "app_external_port"}}'
                     ]
 
                 - job_name: "node"
