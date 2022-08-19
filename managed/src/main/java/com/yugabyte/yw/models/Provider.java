@@ -134,7 +134,7 @@ public class Provider extends Model {
   // Port to open for connections on the instance.
   @Transient
   @ApiModelProperty(TRANSIENT_PROPERTY_IN_MUTATE_API_REQUEST)
-  public Integer sshPort = 54422;
+  public Integer sshPort = 22;
 
   @Transient
   @ApiModelProperty(TRANSIENT_PROPERTY_IN_MUTATE_API_REQUEST)
