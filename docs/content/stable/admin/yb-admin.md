@@ -1608,14 +1608,10 @@ yb-admin \
 * *comma_separated_list_of_producer_bootstrap_ids*: Comma-separated list of source universe bootstrap identifiers (`bootstrap_id`). Obtain these with [bootstrap_cdc_producer](#bootstrap-cdc-producer-comma-separated-list-of-table-ids), using a comma-separated list of source universe table IDs.
 
 {{< warning title="Important" >}}
-Enter the source universe bootstrap_ids in the same order as their corresponding table_ids.
+Enter the source universe bootstrap IDs in the same order as their corresponding table IDs.
 {{< /warning >}}
 
-{{< note title="Tip" >}}
-
 To display a list of tables and their UUID (`table_id`) values, open the **YB-Master UI** (`<master_host>:7000/`) and click **Tables** in the navigation bar.
-
-{{< /note >}}
 
 **Example**
 
