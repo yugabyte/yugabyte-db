@@ -413,6 +413,7 @@ message UpdateCdcReplicatedIndexRequestPB {
   // Minimum checkpoint term and index  for CDCSDK stream, to do intent cleanup for this tablet.
   repeated OpIdPB cdc_sdk_consumed_ops = 7;
   repeated uint64 cdc_sdk_ops_expiration_ms = 8;
+  repeated bytes stream_ids = 9;
 }
 
 message UpdateCdcReplicatedIndexResponsePB {

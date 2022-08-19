@@ -6145,7 +6145,7 @@ Status CatalogManager::GetUniverseReplication(const GetUniverseReplicationReques
  * Checks if the universe replication setup has completed.
  * Returns Status::OK() if this call succeeds, and uses resp->done() to determine if the setup has
  * completed (either failed or succeeded). If the setup has failed, then resp->replication_error()
- * is also set.
+ * is also set. If it succeeds, replication_error() gets set to OK.
  */
 Status CatalogManager::IsSetupUniverseReplicationDone(
     const IsSetupUniverseReplicationDoneRequestPB* req,
@@ -6168,7 +6168,11 @@ Status CatalogManager::IsSetupUniverseReplicationDone(
   // If the universe was deleted, we're done.  This is normal with ALTER tmp files.
   if (s.IsNotFound()) {
     resp->set_done(true);
-    return isAlterRequest ? Status::OK() : s;
+    if (isAlterRequest) {
+      s = Status::OK();
+      StatusToPB(s, resp->mutable_replication_error());
+    }
+    return s;
   }
   RETURN_NOT_OK(s);
   if (universe_resp.has_error()) {

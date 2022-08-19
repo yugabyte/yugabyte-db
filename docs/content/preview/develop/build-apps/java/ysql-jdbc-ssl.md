@@ -25,6 +25,12 @@ type: docs
     </a>
   </li>
   <li >
+    <a href="../ysql-vertx-pg-client/" class="nav-link ">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL - Vertx PG Client
+    </a>
+  </li>
+  <li >
     <a href="../ysql-jdbc-ssl/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - JDBC SSL/TLS
