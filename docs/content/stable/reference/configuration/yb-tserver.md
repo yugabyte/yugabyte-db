@@ -531,7 +531,7 @@ Comma-separated list of PostgreSQL server configuration parameters that is appen
 For example:
 
 ```sh
---ysql_pg_conf_csv="suppress_nonpg_logs=true"
+--ysql_pg_conf_csv="suppress_nonpg_logs=true,log_connections=on"
 ```
 
 For information on available PostgreSQL server configuration parameters, refer to [Server Configuration](https://www.postgresql.org/docs/11/runtime-config.html) in the PostgreSQL documentation.
