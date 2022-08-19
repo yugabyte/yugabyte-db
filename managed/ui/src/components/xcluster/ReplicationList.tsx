@@ -10,7 +10,7 @@ import {
   getXclusterConfig
 } from '../../actions/xClusterReplication';
 import { YBLoading } from '../common/indicators';
-import { IReplication } from './IClusterReplication';
+import { Replication } from './XClusterReplicationTypes';
 
 import {
   convertToLocalTime,
@@ -52,7 +52,7 @@ function ReplicationItem({
   sourceUniverseName,
   currentUserTimezone
 }: {
-  replication: IReplication;
+  replication: Replication;
   currentUniverseUUID: string;
   targetUniverseName: string;
   sourceUniverseName: string;
