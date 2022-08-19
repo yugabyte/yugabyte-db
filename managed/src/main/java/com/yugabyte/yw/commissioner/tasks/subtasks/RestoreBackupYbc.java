@@ -97,7 +97,7 @@ public class RestoreBackupYbc extends YbcTaskBase {
         Throwables.propagate(e);
       }
 
-    } catch (Exception e) {
+    } catch (Throwable e) {
       log.error(String.format("Failed with error %s", e.getMessage()));
       Throwables.propagate(e);
     } finally {
