@@ -78,13 +78,6 @@ public class ResumeUniverse extends UniverseDefinitionTaskBase {
       createWaitForServersTasks(tserverNodes, ServerType.TSERVER)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
-      createSwamperTargetUpdateTask(false);
-      // Create alert definition files.
-      createUnivManageAlertDefinitionsTask(true)
-          .setSubTaskGroupType(SubTaskGroupType.ResumeUniverse);
-      // Mark universe task state to success.
-      createMarkUniverseUpdateSuccessTasks().setSubTaskGroupType(SubTaskGroupType.ResumeUniverse);
-
       // Set the node state to live.
       Set<NodeDetails> nodesToMarkLive =
           nodes
@@ -93,6 +86,14 @@ public class ResumeUniverse extends UniverseDefinitionTaskBase {
               .collect(Collectors.toSet());
       createSetNodeStateTasks(nodesToMarkLive, NodeDetails.NodeState.Live)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+
+      // Create alert definition files.
+      createUnivManageAlertDefinitionsTask(true)
+          .setSubTaskGroupType(SubTaskGroupType.ResumeUniverse);
+
+      createSwamperTargetUpdateTask(false);
+      // Mark universe task state to success.
+      createMarkUniverseUpdateSuccessTasks().setSubTaskGroupType(SubTaskGroupType.ResumeUniverse);
 
       // Run all the tasks.
       getRunnableTask().runSubTasks();
