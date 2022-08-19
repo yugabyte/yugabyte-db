@@ -34,6 +34,7 @@ import com.yugabyte.yw.models.Backup.StorageConfigType;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.CustomerConfig.ConfigState;
 import com.yugabyte.yw.models.configs.CustomerConfig.ConfigType;
+import com.yugabyte.yw.models.configs.data.CustomerConfigStorageData;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Schedule;
@@ -369,7 +370,9 @@ public class BackupsController extends AuthenticatedController {
       storageLocations.add(storageInfo.storageLocation);
     }
     backupUtil.validateStorageConfigOnLocations(customerConfig, storageLocations);
-    if (backupUtil.isYbcBackup(taskParams.backupStorageInfoList.get(0).storageLocation)) {
+    if (backupUtil.isYbcBackup(
+        ((CustomerConfigStorageData) customerConfig.getDataObject()).backupLocation,
+        taskParams.backupStorageInfoList.get(0).storageLocation)) {
       taskParams.category = BackupCategory.YB_CONTROLLER;
     }
     UUID taskUUID = commissioner.submit(TaskType.RestoreBackup, taskParams);

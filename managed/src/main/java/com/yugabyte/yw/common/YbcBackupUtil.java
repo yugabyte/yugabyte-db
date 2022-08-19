@@ -231,7 +231,8 @@ public class YbcBackupUtil {
     String specificCloudDir =
         BackupUtil.getBackupIdentifier(
             ((CustomerConfigStorageData) config.getDataObject()).backupLocation,
-            backupTableParams.storageLocation);
+            backupTableParams.storageLocation,
+            true);
     CloudStoreConfig cloudStoreConfig = createCloudStoreConfig(config, specificCloudDir, false);
     BackupServiceTaskExtendedArgs extendedArgs = getExtendedArgsForBackup(backupTableParams);
 
@@ -265,7 +266,7 @@ public class YbcBackupUtil {
     CustomerConfigStorageData configData = (CustomerConfigStorageData) config.getDataObject();
     String specificCloudDir =
         BackupUtil.getBackupIdentifier(
-            configData.backupLocation, backupStorageInfo.storageLocation);
+            configData.backupLocation, backupStorageInfo.storageLocation, true);
 
     // Redundant for now.
     boolean setCompression = false;
