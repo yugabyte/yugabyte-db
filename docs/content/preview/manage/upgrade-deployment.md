@@ -118,6 +118,9 @@ $ ./bin/yb-admin -timeout_ms 180000 upgrade_ysql
 
 Upgrading the YSQL system catalog is an online operation and doesn't require stopping a running cluster. `upgrade_ysql` is idempotent and can be run multiple times without any side effects.
 
-{{< note title="Note" >}}
+{{< note title="Notes" >}}
 Concurrent operations in a cluster can lead to various transactional conflicts, catalog version mismatches, and read restart errors. This is expected, and should be addressed by re-running `upgrade_ysql`.
+
+Downgrades aren't currently supported. This is tracked in GitHub issue [#13686](https://github.com/yugabyte/yugabyte-db/issues/13686).
 {{< /note >}}
+
