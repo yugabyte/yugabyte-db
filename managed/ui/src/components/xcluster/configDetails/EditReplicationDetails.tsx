@@ -4,13 +4,13 @@ import { toast } from 'react-toastify';
 import { editXclusterName, fetchUniversesList } from '../../../actions/xClusterReplication';
 import { YBModalForm } from '../../common/forms';
 import { TargetUniverseForm } from '../ConfigureReplicationModal';
-import { IReplication } from '../IClusterReplication';
+import { Replication } from '../XClusterReplicationTypes';
 import * as Yup from 'yup';
 
 interface Props {
   visible: boolean;
   onHide: () => void;
-  replication: IReplication;
+  replication: Replication;
 }
 const validationSchema = Yup.object().shape({
   name: Yup.string().required('Replication name is required'),
@@ -34,7 +34,7 @@ export function EditReplicationDetails({ onHide, visible, replication }: Props) 
   }
 
   const modifyXclusterOperation = useMutation(
-    (values: IReplication) => {
+    (values: Replication) => {
       return editXclusterName(values);
     },
     {

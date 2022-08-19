@@ -1,4 +1,5 @@
 export { ReplicationList } from './ReplicationList';
-export { ReplicationDetails } from './details/ReplicationDetails';
+export { ReplicationDetails } from './configDetails/ReplicationDetails';
+export { ReplicationStatus } from './constants';
 
-export * from './IClusterReplication';
+export * from './XClusterReplicationTypes';

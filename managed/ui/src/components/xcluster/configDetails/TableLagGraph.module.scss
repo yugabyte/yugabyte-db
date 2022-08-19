@@ -1,0 +1,17 @@
+.modalToolBar {
+    display: flex;
+    justify-content: flex-end;
+
+    margin: 0 6px;
+
+    & > *:not(:last-child) {
+        margin-right: 10px;
+    }
+}
+
+.graphContainer {
+    margin-top: 25px;
+    width: fit-content;
+    height: fit-content;
+}
+
