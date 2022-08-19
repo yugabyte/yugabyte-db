@@ -21,7 +21,7 @@ import { getUniverseStatus, universeState } from '../universes/helpers/universeH
 import { formatSchemaName } from '../../utils/Formatters';
 
 import { TableType, TABLE_TYPE_MAP } from '../../redesign/helpers/dtos';
-import { IReplicationTable } from './IClusterReplication';
+import { ReplicationTable } from './XClusterReplicationTypes';
 
 import './ConfigureReplicationModal.scss';
 
@@ -67,7 +67,7 @@ export function ConfigureReplicationModal({ onHide, visible, currentUniverseUUID
         values['targetUniverseUUID'].value,
         currentUniverseUUID,
         values['name'],
-        values['tables'].map((t: IReplicationTable) => t.tableUUID.replaceAll('-', ''))
+        values['tables'].map((t: ReplicationTable) => t.tableUUID.replaceAll('-', ''))
       );
     },
     {
@@ -100,7 +100,7 @@ export function ConfigureReplicationModal({ onHide, visible, currentUniverseUUID
   );
 
   const { data: tables, isLoading: isTablesLoading } = useQuery(
-    ['xcluster',currentUniverseUUID, 'tables'],
+    ['xcluster', currentUniverseUUID, 'tables'],
     () => fetchTablesInUniverse(currentUniverseUUID).then((res) => res.data)
   );
 
@@ -229,18 +229,18 @@ function SelectTablesForm({
 }: {
   values: any;
   setFieldValue: any;
-  tables: IReplicationTable[];
+  tables: ReplicationTable[];
 }) {
-  const handleTableSelect = (row: IReplicationTable, isSelected: boolean) => {
+  const handleTableSelect = (row: ReplicationTable, isSelected: boolean) => {
     if (isSelected) {
       setFieldValue('tables', [...values['tables'], row]);
     } else {
       setFieldValue('tables', [
-        ...values['tables'].filter((r: IReplicationTable) => r.tableUUID !== row.tableUUID)
+        ...values['tables'].filter((r: ReplicationTable) => r.tableUUID !== row.tableUUID)
       ]);
     }
   };
-  const handleAllTableSelect = (isSelected: boolean, rows: IReplicationTable[]): boolean => {
+  const handleAllTableSelect = (isSelected: boolean, rows: ReplicationTable[]): boolean => {
     if (isSelected) {
       setFieldValue('tables', rows);
     } else {
@@ -273,7 +273,7 @@ function SelectTablesForm({
       <Row className="tables-list">
         <Col lg={12}>
           <BootstrapTable
-            data={tables.filter((table: IReplicationTable) => {
+            data={tables.filter((table: ReplicationTable) => {
               if (!values['search']) {
                 return true;
               }
@@ -295,7 +295,7 @@ function SelectTablesForm({
             <TableHeaderColumn
               dataField="pgSchemaName"
               width="20%"
-              dataFormat={(cell: string, row: IReplicationTable) =>
+              dataFormat={(cell: string, row: ReplicationTable) =>
                 formatSchemaName(row.tableType, cell)
               }
             >

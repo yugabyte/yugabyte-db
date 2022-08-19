@@ -1,4 +1,4 @@
-import { IReplication, IReplicationStatus } from '../components/xcluster';
+import { Replication, ReplicationStatus, TableReplicationMetric } from '../components/xcluster';
 import axios from 'axios';
 import { ROOT_URL } from '../config';
 import moment from 'moment';
@@ -41,21 +41,21 @@ export function getXclusterConfig(uuid: string) {
     .then((resp) => resp.data);
 }
 
-export function changeXClusterStatus(replication: IReplication, status: IReplicationStatus) {
+export function changeXClusterStatus(replication: Replication, status: ReplicationStatus) {
   const customerId = localStorage.getItem('customerId');
   return axios.put(`${ROOT_URL}/customers/${customerId}/xcluster_configs/${replication.uuid}`, {
     status
   });
 }
 
-export function editXclusterName(replication: IReplication) {
+export function editXclusterName(replication: Replication) {
   const customerId = localStorage.getItem('customerId');
   return axios.put(`${ROOT_URL}/customers/${customerId}/xcluster_configs/${replication.uuid}`, {
     name: replication.name
   });
 }
 
-export function editXClusterTables(replication: IReplication) {
+export function editXClusterTables(replication: Replication) {
   const customerId = localStorage.getItem('customerId');
   return axios.put(`${ROOT_URL}/customers/${customerId}/xcluster_configs/${replication.uuid}`, {
     tables: replication.tables
@@ -71,8 +71,6 @@ export function queryLagMetricsForUniverse(
   nodePrefix: string | undefined,
   replicationUUID: string
 ) {
-
-
   const DEFAULT_GRAPH_FILTER = {
     start: moment().utc().subtract('1', 'hour').format('X'),
     end: moment().utc().format('X'),
@@ -85,16 +83,24 @@ export function queryLagMetricsForUniverse(
   return axios.post(`${ROOT_URL}/customers/${customerUUID}/metrics`, DEFAULT_GRAPH_FILTER);
 }
 
-export function queryLagMetricsForTable(tableId: string, nodePrefix: string | undefined) {
+export function queryLagMetricsForTable(
+  tableId: string,
+  nodePrefix: string | undefined,
+  start = moment().utc().subtract('1', 'hour').format('X'),
+  end = moment().utc().format('X')
+) {
   const DEFAULT_GRAPH_FILTER = {
-    start: moment().utc().subtract('1', 'hour').format('X'),
-    end: moment().utc().format('X'),
+    start,
+    end,
     tableId,
     nodePrefix,
     metrics: ['tserver_async_replication_lag_micros']
   };
   const customerUUID = localStorage.getItem('customerId');
-  return axios.post(`${ROOT_URL}/customers/${customerUUID}/metrics`, DEFAULT_GRAPH_FILTER);
+  return axios.post<TableReplicationMetric>(
+    `${ROOT_URL}/customers/${customerUUID}/metrics`,
+    DEFAULT_GRAPH_FILTER
+  );
 }
 
 export function fetchTaskProgress(taskUUID: string) {

@@ -2,14 +2,14 @@ import React from 'react';
 import { Col, Row } from 'react-bootstrap';
 import { useSelector } from 'react-redux';
 import { Link } from 'react-router';
-import { IReplication } from '../IClusterReplication';
+import { Replication } from '../XClusterReplicationTypes';
 import { convertToLocalTime, getMasterNodeAddress } from '../ReplicationUtils';
 
 export function ReplicationOverview({
   replication,
   destinationUniverse
 }: {
-  replication: IReplication;
+  replication: Replication;
   destinationUniverse: any;
 }) {
   const {
