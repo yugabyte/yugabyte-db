@@ -45,6 +45,7 @@
 
 #include "yb/rocksutil/yb_rocksdb_logger.h"
 
+#include "yb/util/flags.h"
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/priority_thread_pool.h"
 #include "yb/util/result.h"
@@ -128,8 +129,10 @@ DEFINE_int32(max_nexts_to_avoid_seek, 2,
 
 DEFINE_bool(use_multi_level_index, true, "Whether to use multi-level data index.");
 
-DEFINE_string(
-    regular_tablets_data_block_key_value_encoding, "shared_prefix",
+// Using class kExternal as this change affects the format of data in the SST files which are sent
+// to xClusters during bootstrap.
+DEFINE_AUTO_string(regular_tablets_data_block_key_value_encoding,
+    kExternal, "shared_prefix", "three_shared_parts",
     "Key-value encoding to use for regular data blocks in RocksDB. Possible options: "
     "shared_prefix, three_shared_parts");
 
