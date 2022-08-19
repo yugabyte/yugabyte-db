@@ -24,7 +24,7 @@ You can configure Amazon S3 as your backup target, as follows:
 
 3. Use the **Configuration Name** field to provide a meaningful name for your backup configuration.
 
-4. Enable **IAM Role** to use the YugabyteDB Anywhere instance's Identity Access Management (IAM) role for the S3 backup.
+4. Enable **IAM Role** to use the YugabyteDB Anywhere instance's Identity Access Management (IAM) role for the S3 backup. See [Required S3 IAM permissions](#required-s3-iam-permissions).
 
 5. If **IAM Role** is disabled, enter values for the **Access Key** and **Access Secret** fields.
 
@@ -37,8 +37,20 @@ You can configure Amazon S3 as your backup target, as follows:
 You can configure access control for the S3 bucket as follows:
 
 - Provide the required access control list (ACL), and then define **List, Write** permissions to access **Objects**, as well as **Read, Write** permissions for the bucket, as shown in the following illustration: <br><br>
-  ![S3](/images/yp/backup-aws-access-control.png)
+  ![S3](/images/yp/backup-aws-access-control.png)<br><br>
 - Create Bucket policy to enable access to the objects stored in the bucket.
+
+### Required S3 IAM permissions
+
+The following S3 IAM permissions are required:
+
+```properties
+"s3:DeleteObject",
+"s3:PutObject",
+"s3:GetObject",
+"s3:ListBucket",
+"s3:GetBucketLocation"
+```
 
 ## Network File System
 
