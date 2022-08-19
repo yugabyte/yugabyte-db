@@ -384,6 +384,8 @@ class TabletPeer : public consensus::ConsensusContext,
 
   OpId cdc_sdk_min_checkpoint_op_id();
 
+  CoarseTimePoint cdc_sdk_min_checkpoint_op_id_expiration();
+
   Status SetCDCSDKRetainOpIdAndTime(
       const OpId& cdc_sdk_op_id, const MonoDelta& cdc_sdk_op_id_expiration);
 
