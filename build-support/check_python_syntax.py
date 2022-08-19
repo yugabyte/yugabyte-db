@@ -27,9 +27,7 @@ def horizontal_line():
 if __name__ == '__main__':
     filename = sys.argv[1]
     if not os.path.exists(filename):
-        sys.stderr.write(
-            "Python file does not exist, cannot check syntax: %s" % filename + "\n")
-        sys.stderr.write("This file might have been deleted as part of the latest commit.\n")
+        sys.stderr.write(f"Python file does not exist, cannot check syntax: {filename}\n")
         # Don't consider this an error.
         sys.exit(0)
 
