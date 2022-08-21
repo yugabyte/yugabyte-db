@@ -1,17 +1,13 @@
 ---
-title: NodeJS drivers
-linkTitle: NodeJS drivers
-description: NodeJS drivers for YSQL
-headcontent: NodeJS drivers for YSQL
+title: Connect an app
+linkTitle: Connect an app
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
-    name: NodeJS drivers
     identifier: yugabyte-node-driver
     parent: nodejs-drivers
     weight: 500
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

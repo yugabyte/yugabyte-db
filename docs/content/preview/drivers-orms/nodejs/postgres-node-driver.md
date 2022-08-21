@@ -20,7 +20,7 @@ type: docs
   </li>
 
    <li >
-    <a href="/preview/drivers-orms/nodejs/postgres-node-driver/" class="nav-link">
+    <a href="/preview/drivers-orms/nodejs/yugabyte-node-driver/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YugabyteDB node-postgres Driver
     </a>
