@@ -60,7 +60,11 @@ class MasterClusterServiceImpl : public MasterServiceBase, public MasterClusterI
       auto ts_info = *desc->GetTSInformationPB();
       *entry->mutable_instance_id() = std::move(*ts_info.mutable_tserver_instance());
       *entry->mutable_registration() = std::move(*ts_info.mutable_registration());
-      entry->set_millis_since_heartbeat(desc->TimeSinceHeartbeat().ToMilliseconds());
+      auto last_heartbeat = desc->LastHeartbeatTime();
+      if (last_heartbeat) {
+        entry->set_millis_since_heartbeat(
+            MonoTime::Now().GetDeltaSince(last_heartbeat).ToMilliseconds());
+      }
       entry->set_alive(desc->IsLive());
       desc->GetMetrics(entry->mutable_metrics());
     }
