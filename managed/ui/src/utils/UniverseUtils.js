@@ -2,8 +2,9 @@
 import _ from 'lodash';
 
 import { isNonEmptyArray, isNonEmptyObject, isDefinedNotNull } from './ObjectUtils';
-import { PROVIDER_TYPES, IN_DEVELOPMENT_MODE } from '../config';
+import { PROVIDER_TYPES } from '../config';
 import { NodeState } from '../redesign/helpers/dtos';
+import { BASE_URL } from '../config';
 
 export const nodeInClusterStates = [
   NodeState.Live,
@@ -189,12 +190,6 @@ export const readUploadedFile = (inputFile, isRequired) => {
   });
 };
 
-export const getProxyNodeAddress = (universeUUID, customer, nodeIp, nodePort) => {
-  let href = '';
-  if (IN_DEVELOPMENT_MODE || !!customer.INSECURE_apiToken) {
-    href = `http://${nodeIp}:${nodePort}`;
-  } else {
-    href = `/universes/${universeUUID}/proxy/${nodeIp}:${nodePort}/`;
-  }
-  return href;
+export const getProxyNodeAddress = (universeUUID, nodeIp, nodePort) => {
+  return `${BASE_URL}/universes/${universeUUID}/proxy/${nodeIp}:${nodePort}/`;
 };

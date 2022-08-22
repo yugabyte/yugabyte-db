@@ -45,7 +45,6 @@ export default class NodeDetailsTable extends Component {
       const isMaster = type === 'master';
       const href = getProxyNodeAddress(
         universeUUID,
-        customer,
         row.privateIP,
         isMaster ? row.masterPort : row.tserverPort
       );
