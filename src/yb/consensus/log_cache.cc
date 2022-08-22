@@ -196,6 +196,13 @@ LogCache::PrepareAppendResult LogCache::PrepareAppendOperations(const ReplicateM
     }
   }
 
+  // Set back min_pinned_op_index_ in case the newly inserted ops are evicted.
+  if (first_idx_in_batch < min_pinned_op_index_) {
+    LOG_WITH_PREFIX_UNLOCKED(INFO) << Format(
+        "Updating min_pinned_op_index_ from $0 to $1", min_pinned_op_index_, first_idx_in_batch);
+    min_pinned_op_index_ = first_idx_in_batch;
+  }
+
   for (auto& e : entries_to_insert) {
     auto index = e.msg->id().index();
     EmplaceOrDie(&cache_, index, std::move(e));
