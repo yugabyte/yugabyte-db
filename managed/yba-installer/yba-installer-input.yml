@@ -232,10 +232,17 @@ nginx:
 preflight:
    overrideWarning: false
 
-# For random entries that might be pulled in to platform.conf
-# (No JSON schema validation needed here as the format is not
-# fixed).
-random:
+# This section is for and additional data entries that you can
+# add to platform.conf if you desire. Please enter the text
+# exactly in the correct format starting from the lines below the
+# piped delimiter, as it will be appended to the end of yb-platform.conf
+# in the exact format typed.
+
+# Example:
+# db {
+#   default.password=password123
+# }
+additional: |
 
 # Edit this section if you are bringing in your
 # own version of Python to the Yugabyte
