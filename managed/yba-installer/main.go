@@ -130,7 +130,7 @@ var commonUpgrade = Common{"common", versionToUpgrade, httpMode}
  }
 
  var startCmd = &cobra.Command{
-    Use:   "start",
+    Use:   "start [serviceName]",
     Short: "The start command is used to start service(s) required for your Yugabyte " +
     "Anywhere installation.",
     Long:  `
@@ -169,7 +169,7 @@ var commonUpgrade = Common{"common", versionToUpgrade, httpMode}
  }
 
  var stopCmd = &cobra.Command{
-    Use:   "stop",
+    Use:   "stop [serviceName]",
     Short: "The stop command is used to stop service(s) required for your Yugabyte " +
     "Anywhere installation.",
     Long:  `
@@ -208,7 +208,7 @@ var commonUpgrade = Common{"common", versionToUpgrade, httpMode}
  }
 
  var restartCmd = &cobra.Command{
-    Use:   "restart",
+    Use:   "restart [serviceName]",
     Short: "The restart command is used to restart service(s) required for your Yugabyte " +
     "Anywhere installation.",
     Long:  `
@@ -264,7 +264,7 @@ var commonUpgrade = Common{"common", versionToUpgrade, httpMode}
  }
 
  var paramsCmd = &cobra.Command{
-    Use:   "params",
+    Use:   "params key value",
     Short: "The params command can be used to update entries in the user configuration file.",
     Long:  `
     The params command is used to update configuration entries in yba-installer-input.yml,
@@ -288,7 +288,7 @@ var commonUpgrade = Common{"common", versionToUpgrade, httpMode}
  }
 
 var reConfigureCmd = &cobra.Command{
-Use:   "reconfigure",
+Use:   "reconfigure [key] [value]",
 Short: "The reconfigure command updates configuration entries in yba-installer-input.yml " +
 "if desired, and restarts all Yugabyte Anywhere services.",
 Long:  `
@@ -301,7 +301,7 @@ reconfigure with a key and value argument pair (the configuration setting you wa
 will update the configuration files accordingly, and restart all Yugabyte Anywhere services.
 
 Invoke as either: sudo ./yba-installer reconfigure key value (for config updates + restart)
-                    sudo ./yba-installer reconfigure (for restart only)
+                  sudo ./yba-installer reconfigure (for restart only)
 `,
 Run: func(cmd *cobra.Command, args []string) {
     if len(args) != 2 && len(args) != 0 {
@@ -338,107 +338,88 @@ Run: func(cmd *cobra.Command, args []string) {
     },
 }
 
-var createBackupCmd = &cobra.Command{
-   Use:   "createBackup",
-   Short: "The createBackup command is used to take a backup of your Yugabyte Anywhere instance.",
-   Long:  `
-   The createBackup command executes our createBackup() script that creates a backup of your
-   Yugabyte Anywhere instance. Executing this command requires that you create and specify the
-   output_path where you want the backup .tar.gz file to be stored. Optional specifications in
-   this command's execution are data_dir (data directory to be backed up, default /opt/yugabyte),
-   exclude_prometheus (boolean as to whether you want to exclude Prometheus metrics from the
-   backup, default false), skip_restart (boolean as to whether you want to skip restarting the
-   Yugabyte Anywhere services after taking the backup, default false), and verbose (boolean as
-   to whether you want verbose log messages during the createBackup script's execution, default
-   false)
+func createBackupCmd() *cobra.Command {
+    var dataDir string
+    var excludePrometheus bool
+    var skipRestart bool
+    var verbose bool
 
-   Invoke as: sudo ./yba-installer createBackup output_path [data_dir=/opt/yugabyte]
-   [exclude_prometheus=false] [skip_restart=false] [verbose=false]`,
-   Run: func(cmd *cobra.Command, args []string) {
-      if len(args) < 1 || len(args) > 5 {
-         log.Println("Invalid provided arguments: " + strings.Join(args, " "))
-         log.Fatal("The arguments for the createBackup command have been improperly specified. " +
-         "Please refer to the help menu description for more information.")
-      }
-        output_path := args[0]
+  createBackup := &cobra.Command{
+    Use:   "createBackup outputPath",
+    Short: "The createBackup command is used to take a backup of your Yugabyte Anywhere instance.",
+    Long:  `
+    The createBackup command executes our yb_platform_backup.sh that creates a backup of your
+    Yugabyte Anywhere instance. Executing this command requires that you create and specify the
+    outputPath where you want the backup .tar.gz file to be stored as the first argument to
+    createBackup. There are also optional flag specifications you can specify for the execution
+    of createBackup, which are listed below in the flags section.
 
-        data_dir := "/opt/yugabyte"
-        exclude_prometheus := false
-        skip_restart := false
-        verbose := false
+    Invoke as: sudo ./yba-installer createBackup outputPath [--data_dir=DIRECTORY]
+    [--exclude_prometheus] [--skip_restart] [--verbose]
+    `,
+    Run: func(cmd *cobra.Command, args []string) {
+       if len(args) != 1 {
+          log.Println("Invalid provided arguments: " + strings.Join(args, " "))
+          log.Fatal("The createBackup command takes in exactly one argument, the output path " +
+          "where the platform backup is written to! Please specify the output path.")
+       }
 
-        createBackupArgs := args[1:]
+         outputPath := args[0]
 
-        if len(createBackupArgs) == 4 {
-            data_dir = createBackupArgs[0]
-            exclude_prometheus, _ = strconv.ParseBool(createBackupArgs[1])
-            skip_restart, _ = strconv.ParseBool(createBackupArgs[2])
-            verbose, _ = strconv.ParseBool(createBackupArgs[3])
+        CreateBackupScript(outputPath, dataDir, excludePrometheus,
+            skipRestart, verbose)
+    },
+ }
 
-        } else if len(createBackupArgs) == 3 {
-            data_dir = createBackupArgs[0]
-            exclude_prometheus, _ = strconv.ParseBool(createBackupArgs[1])
-            skip_restart, _ = strconv.ParseBool(createBackupArgs[2])
-
-        } else if len(createBackupArgs) == 2 {
-            data_dir = createBackupArgs[0]
-            exclude_prometheus, _ = strconv.ParseBool(createBackupArgs[1])
-
-        } else if len(createBackupArgs) == 1 {
-            data_dir = createBackupArgs[0]
-
-        }
-        CreateBackupScript(output_path, data_dir, exclude_prometheus,
-            skip_restart, verbose)
-   },
+    createBackup.Flags().StringVar(&dataDir, "data_dir", "/opt/yugabyte",
+    "data directory to be backed up")
+    createBackup.Flags().BoolVar(&excludePrometheus, "exclude_prometheus", false,
+    "exclude prometheus metric data from backup (default: false)")
+    createBackup.Flags().BoolVar(&skipRestart, "skip_restart", false,
+    "don't restart processes during execution (default: false)")
+    createBackup.Flags().BoolVar(&verbose, "verbose", false,
+    "verbose output of script (default: false)")
+    return createBackup
 }
 
-var restoreBackupCmd = &cobra.Command{
-   Use:   "restoreBackup",
-   Short: "The restoreBackup command is used to restore a backup of your Yugabyte Anywhere instance.",
-   Long:  `
-   The restoreBackup command executes our restoreBackup() script that creates a backup of your
-   Yugabyte Anywhere instance. Executing this command requires that you create and specify the
-   input path where the backup .tar.gz file that will be restored is located. Optional specifications in
-   this command's execution are destination (directory you want the backup restored to,
-   default /opt/yugabyte), skip_restart (boolean as to whether you want to skip restarting the
-   Yugabyte Anywhere services after restoring the backup, default false), and verbose (boolean as
-   to whether you want verbose log messages during the restoreBackup script's execution, default
-   false)
+func restoreBackupCmd() *cobra.Command {
+    var destination string
+    var skipRestart bool
+    var verbose bool
 
-   Invoke as: sudo ./yba-installer restoreBackup input_path [destination=/opt/yugabyte]
-   [skip_restart=false] [verbose=false]`,
-   Run: func(cmd *cobra.Command, args []string) {
-      if len(args) < 1 || len(args) > 4 {
-         log.Println("Invalid provided arguments: " + strings.Join(args, " "))
-         log.Fatal("The arguments for the restoreBackup command have been improperly specified. " +
-         "Please refer to the help menu description for more information.")
-      }
+  restoreBackup := &cobra.Command{
+    Use:   "restoreBackup inputPath",
+    Short: "The restoreBackup command restores a backup of your Yugabyte Anywhere instance.",
+    Long:  `
+    The restoreBackup command executes our yb_platform_backup.sh that restores the backup of your
+    Yugabyte Anywhere instance. Executing this command requires that you create and specify the
+    inputPath where the backup .tar.gz file that will be restored is located as the first argument
+    to restoreBackup. There are also optional flag specifications you can specify for the execution
+    of restoreBackup, which are listed below in the flags section.
 
-        input_path := args[0]
+    Invoke as: sudo ./yba-installer restoreBackup inputPath [--destination=DIRECTORY]
+    [--skip_restart] [--verbose]
+    `,
+    Run: func(cmd *cobra.Command, args []string) {
+       if len(args) != 1 {
+          log.Println("Invalid provided arguments: " + strings.Join(args, " "))
+          log.Fatal("The restoreBackup command takes in exactly one argument, the input path " +
+          "where the platform backup tar gz is located at! Please specify the input path.")
+       }
 
-        destination := "/opt/yugabyte"
-        skip_restart := false
-        verbose := false
+        inputPath := args[0]
 
-        restoreBackupArgs := args[1:]
+        RestoreBackupScript(inputPath, destination, skipRestart, verbose)
+    },
+ }
 
-        if len(restoreBackupArgs) == 3 {
-            destination = restoreBackupArgs[0]
-            skip_restart, _ = strconv.ParseBool(restoreBackupArgs[1])
-            verbose, _ = strconv.ParseBool(restoreBackupArgs[2])
-
-        } else if len(restoreBackupArgs) == 2 {
-            destination = restoreBackupArgs[0]
-            skip_restart, _ = strconv.ParseBool(restoreBackupArgs[1])
-
-        } else if len(restoreBackupArgs) == 1 {
-            destination = restoreBackupArgs[0]
-        }
-
-        RestoreBackupScript(input_path, destination,
-            skip_restart, verbose)
-   },
+    restoreBackup.Flags().StringVar(&destination, "destination", "/opt/yugabyte",
+    "where to un-tar the backup")
+    restoreBackup.Flags().BoolVar(&skipRestart, "skip_restart", false,
+    "don't restart processes during execution (default: false)")
+    restoreBackup.Flags().BoolVar(&verbose, "verbose", false,
+    "verbose output of script (default: false)")
+    return restoreBackup
 }
 
 var installCmd = &cobra.Command{
@@ -585,7 +566,7 @@ var upgradeCmd = &cobra.Command{
 
 func init() {
     rootCmd.AddCommand(cleanCmd, preflightCmd, licenseCmd, versionCmd,
-    paramsCmd, reConfigureCmd, createBackupCmd, restoreBackupCmd, installCmd,
+    paramsCmd, reConfigureCmd, createBackupCmd(), restoreBackupCmd(), installCmd,
     upgradeCmd, startCmd, stopCmd, restartCmd)
  }
 
