@@ -28,13 +28,13 @@
             scrape_interval: 10s
             scrape_timeout:  {{ yamlPath ".prometheus.scrapeTimeout" }}s
             static_configs:
-              - targets: ['{{ yamlPath ".prometheus.privateIp" }}:{{ yamlPath ".prometheus.externalPort" }}']
+              - targets: ['127.0.0.1:{{ yamlPath ".prometheus.externalPort" }}']
 
           - job_name: 'platform'
             scrape_timeout:  {{ yamlPath ".prometheus.scrapeTimeout" }}s
             metrics_path: "/api/v1/prometheus_metrics"
             static_configs:
-              - targets: ['{{ yamlPath ".prometheus.privateIp" }}:{{ yamlPath ".prometheus.appExternalPort" }}']
+              - targets: ['127.0.0.1:{{ yamlPath ".prometheus.appExternalPort" }}']
 
           - job_name: "node"
             file_sd_configs:
