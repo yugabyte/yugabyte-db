@@ -262,7 +262,7 @@ class TestLoadBalancerBase {
   }
 
   void StopTsHeartbeat(std::shared_ptr<TSDescriptor> ts_desc) {
-    ts_desc->last_heartbeat_ = MonoTime::kMin;
+    ts_desc->last_heartbeat_ = MonoTime();
   }
 
   void ResumeTsHeartbeat(std::shared_ptr<TSDescriptor> ts_desc) {
