@@ -249,6 +249,9 @@ DEFINE_test_flag(bool, pause_before_post_split_compaction, false,
 DEFINE_test_flag(bool, disable_adding_user_frontier_to_sst, false,
                  "Prevents adding the UserFrontier to SST file in order to mimic older files.");
 
+DEFINE_test_flag(bool, skip_post_split_compaction, false,
+                 "Skip processing post split compaction.");
+
 // FLAGS_TEST_disable_getting_user_frontier_from_mem_table is used in conjunction with
 // FLAGS_TEST_disable_adding_user_frontier_to_sst.  Two flags are needed for the case in which
 // we're writing a mixture of SST files with and without UserFrontiers, to ensure that we're
@@ -407,7 +410,9 @@ Tablet::Tablet(const TabletInitData& data)
       is_sys_catalog_(data.is_sys_catalog),
       txns_enabled_(data.txns_enabled),
       retention_policy_(std::make_shared<TabletRetentionPolicy>(
-          clock_, data.allowed_history_cutoff_provider, metadata_.get())) {
+          clock_, data.allowed_history_cutoff_provider, metadata_.get())),
+      post_split_compaction_pool_(data.post_split_compaction_pool),
+      ts_split_compaction_added_(std::move(data.split_compaction_added)) {
   CHECK(schema()->has_column_ids());
   LOG_WITH_PREFIX(INFO) << "Schema version for " << metadata_->table_name() << " is "
                         << metadata_->schema_version();
@@ -783,6 +788,13 @@ Status Tablet::OpenKeyValueTablet() {
         static_cast<const docdb::ConsensusFrontier&>(*regular_flushed_frontier).history_cutoff());
   }
 
+  if (PREDICT_TRUE(!FLAGS_TEST_skip_post_split_compaction)) {
+    auto status = TriggerPostSplitCompactionIfNeeded();
+    if (!status.ok()) {
+      LOG_WITH_PREFIX(WARNING) << "Failed to submit compaction for post-split tablet: "
+          << status.ToString();
+    }
+  }
   LOG_WITH_PREFIX(INFO) << "Successfully opened a RocksDB database at " << db_dir
                         << ", obj: " << db;
 
@@ -3165,6 +3177,10 @@ ScopedRWOperation Tablet::GetPermitToWrite(CoarseTimePoint deadline) {
 Result<bool> Tablet::StillHasOrphanedPostSplitData() {
   auto scoped_operation = CreateNonAbortableScopedRWOperation();
   RETURN_NOT_OK(scoped_operation);
+  return StillHasOrphanedPostSplitDataAbortable();
+}
+
+bool Tablet::StillHasOrphanedPostSplitDataAbortable() {
   return doc_db().key_bounds->IsInitialized() && !metadata()->has_been_fully_compacted();
 }
 
@@ -3608,16 +3624,20 @@ Result<std::string> Tablet::GetEncodedMiddleSplitKey(std::string *partition_spli
   return middle_key;
 }
 
-Status Tablet::TriggerPostSplitCompactionIfNeeded(
-    std::function<std::unique_ptr<ThreadPoolToken>()> get_token_for_compaction) {
+Status Tablet::TriggerPostSplitCompactionIfNeeded() {
+  if (!post_split_compaction_pool_) {
+    return Status::OK();
+  }
   if (post_split_compaction_task_pool_token_) {
     return STATUS(
         IllegalState, "Already triggered post split compaction for this tablet instance.");
   }
-  if (VERIFY_RESULT(StillHasOrphanedPostSplitData())) {
-    post_split_compaction_task_pool_token_ = get_token_for_compaction();
-    return post_split_compaction_task_pool_token_->SubmitFunc(
-        std::bind(&Tablet::TriggerPostSplitCompactionSync, this));
+  if (StillHasOrphanedPostSplitDataAbortable()) {
+    post_split_compaction_task_pool_token_ =
+        post_split_compaction_pool_->NewToken(ThreadPool::ExecutionMode::SERIAL);
+    RETURN_NOT_OK(post_split_compaction_task_pool_token_->SubmitFunc(
+        std::bind(&Tablet::TriggerPostSplitCompactionSync, this)));
+    ts_split_compaction_added_->Increment();
   }
   return Status::OK();
 }

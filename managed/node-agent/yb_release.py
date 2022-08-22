@@ -34,7 +34,8 @@ try:
     for platform in NODE_AGENT_PLATFORMS:
         parts = platform.split("/")
         packaged_file = os.path.join(args.source_dir, "build",
-                                     "node-agent-{}-{}-{}.tgz".format(version, parts[0], parts[1]))
+                                     "node_agent-{}-{}-{}.tar.gz"
+                                     .format(version, parts[0], parts[1]))
         # Devops cannot parse names separated by dashes.
         release_file = get_release_file(args.source_dir,
                                         "node_agent", os_type=parts[0], arch_type=parts[1])

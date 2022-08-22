@@ -93,16 +93,11 @@ public class NodeAgentDownloadHandler {
           Objects.requireNonNull(
               (String)
                   configHelper.getConfig(ConfigHelper.ConfigType.SoftwareVersion).get("version"));
+      // An example from build job is node_agent-2.15.3.0-b1372-darwin-amd64.tar.gz.
       String buildPkgFile =
-          new StringBuilder()
-              .append("node-agent-")
-              .append(softwareVersion)
-              .append("-")
-              .append(osType.name().toLowerCase())
-              .append("-")
-              .append(archType.name().toLowerCase())
-              .append(".tgz")
-              .toString();
+          String.format(
+              "node_agent-%s-%s-%s.tar.gz",
+              softwareVersion, osType.name().toLowerCase(), archType.name().toLowerCase());
       File buildZip = new File(nodeAgentsBuildPath.toString(), buildPkgFile);
       is = com.yugabyte.yw.common.utils.FileUtils.getInputStreamOrFail(buildZip);
       return new NodeAgentDownloadFile("application/gzip", is, buildPkgFile);

@@ -113,7 +113,7 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
 
   Status UpdateSafeTime(const Status& s, HybridTime ht);
 
-  void Done(const Status& s, const std::unordered_set<TableId>& failed_indexes);
+  Status Done(const Status& s, const std::unordered_set<TableId>& failed_indexes);
 
   Master* master() { return master_; }
 
@@ -155,7 +155,7 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
   Status UpdateRowsProcessedForIndexTable(const uint64_t number_rows_processed);
 
  private:
-  void LaunchBackfill();
+  void LaunchBackfillOrAbort();
   Status WaitForTabletSplitting();
   Status DoLaunchBackfill();
   Status LaunchComputeSafeTimeForRead();
@@ -174,7 +174,7 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
   Status AlterTableStateToSuccess();
 
   Status Abort();
-  void CheckIfDone();
+  Status CheckIfDone();
   Status UpdateIndexPermissionsForIndexes();
   Status ClearCheckpointStateInTablets();
 
@@ -258,10 +258,10 @@ class BackfillTablet : public std::enable_shared_from_this<BackfillTablet> {
   BackfillTablet(
       std::shared_ptr<BackfillTable> backfill_table, const scoped_refptr<TabletInfo>& tablet);
 
-  void Launch() { LaunchNextChunkOrDone(); }
+  Status Launch() { return LaunchNextChunkOrDone(); }
 
-  void LaunchNextChunkOrDone();
-  void Done(
+  Status LaunchNextChunkOrDone();
+  Status Done(
       const Status& status,
       const boost::optional<string>& backfilled_until,
       const uint64_t number_rows_processed,
@@ -361,7 +361,7 @@ class BackfillChunk : public RetryingTSRpcTask {
   BackfillChunk(std::shared_ptr<BackfillTablet> backfill_tablet,
                 const std::string& start_key);
 
-  void Launch();
+  Status Launch();
 
   Type type() const override { return ASYNC_BACKFILL_TABLET_CHUNK; }
 

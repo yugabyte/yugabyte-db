@@ -86,6 +86,7 @@ struct TabletCDCCheckpointInfo {
   OpId cdc_sdk_op_id = OpId::Invalid();
   MonoDelta cdc_sdk_op_id_expiration = MonoDelta::kZero;
   CoarseTimePoint cdc_sdk_most_active_time = CoarseTimePoint::min();
+  std::unordered_set<CDCStreamId> active_stream_list;
 };
 
 using TabletOpIdMap = std::unordered_map<TabletId, TabletCDCCheckpointInfo>;
@@ -117,6 +118,8 @@ class CDCServiceImpl : public CDCServiceIf {
   void GetCheckpoint(const GetCheckpointRequestPB* req,
                      GetCheckpointResponsePB* resp,
                      rpc::RpcContext rpc) override;
+
+  Result<TabletCheckpoint> TEST_GetTabletInfoFromCache(const ProducerTabletInfo& producer_tablet);
 
   // Update peers in other tablet servers about the latest minimum applied cdc index for a specific
   // tablet.
@@ -242,10 +245,10 @@ class CDCServiceImpl : public CDCServiceIf {
 
   Result<OpId> TabletLeaderLatestEntryOpId(const TabletId& tablet_id);
 
-  void TabletLeaderIsBootstrapRequired(const IsBootstrapRequiredRequestPB* req,
-                                       IsBootstrapRequiredResponsePB* resp,
-                                       rpc::RpcContext* context,
-                                       const std::shared_ptr<tablet::TabletPeer>& peer);
+  Status TabletLeaderIsBootstrapRequired(const IsBootstrapRequiredRequestPB* req,
+                                         IsBootstrapRequiredResponsePB* resp,
+                                         rpc::RpcContext* context,
+                                         const std::shared_ptr<tablet::TabletPeer>& peer);
 
   Result<client::internal::RemoteTabletPtr> GetRemoteTablet(const TabletId& tablet_id);
   Result<client::internal::RemoteTabletServer *> GetLeaderTServer(const TabletId& tablet_id);

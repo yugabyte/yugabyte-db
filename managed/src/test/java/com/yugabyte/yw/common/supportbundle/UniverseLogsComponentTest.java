@@ -51,7 +51,8 @@ public class UniverseLogsComponentTest extends FakeDBApplication {
 
   private final SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");
   private final String testRegexPattern =
-      "(?:.*)(?:yb-)(master|tserver)(?:.*)(\\d{8})-(?:\\d*)\\.(?:\\d*)(?:\\.gz|\\.zip)?";
+      "(?:(?:.*)(?:yb-)(?:master|tserver)(?:.*)(\\d{8})-(?:\\d*)\\.(?:.*))"
+          + "|(?:(?:.*)(?:postgresql)-(.{10})(?:.*))";
 
   private Universe universe;
   private Customer customer;

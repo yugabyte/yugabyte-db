@@ -66,7 +66,7 @@ preflight_provision_check() {
 
   # Check ulimit settings.
   ulimit_filepath="/etc/security/limits.conf"
-  check_filepath "pam_limits" $ulimit_filepath true
+  check_filepath "pam_limits_writable" $ulimit_filepath true
 
   # Check NTP synchronization
   if [[ "$skip_ntp_check" = false ]]; then
@@ -117,7 +117,7 @@ preflight_provision_check() {
   # Check mount points are writeable.
   IFS="," read -ra mount_points_arr <<< "$mount_points"
   for path in "${mount_points_arr[@]}"; do
-    check_filepath "mount_point" "$path" false
+    check_filepath "mount_points" "$path" false
   done
 
   # Check ports are available.
@@ -149,20 +149,13 @@ preflight_provision_check() {
 }
 
 check_yugabyte_user() {
-  # Check yugabyte user belongs to yugabyte group if it exists.
-  result=$(id -nu yugabyte 2>&1)
-  if [ "$?" = "0" ]; then
-    yb_group=$(id -gn "yugabyte")
-    user_status=false
-    if [[ "$yb_group" = "yugabyte" ]]; then
-      user_status=true
-    fi
-    update_result_json_with_val_err "yugabyte_user_group" "$user_status" "0"
-    update_result_json_with_val_err "yugabyte_user" "true" "0"
-  else
-    update_result_json_with_val_err "yugabyte_user" "$result" "1"
-    update_result_json_with_val_err "yugabyte_user_group" "false" "0"
-  fi
+  # Get user
+  result=$(id -nu 2>&1)
+  update_result_json_with_val_err "user" "$result" "$?"
+
+  # Get Group
+  result=$(id -gn 2>&1)
+  update_result_json_with_val_err "user_group" "$result" "$?"
 }
 
 preflight_configure_check() {

@@ -56,6 +56,12 @@ struct CQLQueryParameters : public CQLMessage::QueryParameters {
     PushBack(name, qv, DataType::INT32);
   }
 
+  void PushBackString(const string& name, const string& val) {
+    QLValue qv;
+    qv.set_string_value(val);
+    PushBack(name, qv, DataType::STRING);
+  }
+
   void PushBack(const string& name, const QLValue& qv, DataType data_type) {
     PushBack(name, qv, QLType::Create(data_type));
   }
@@ -2477,5 +2483,67 @@ TEST_F(QLTestSelectedExpr, BindVarsMultiColumnInTest) {
   EXPECT_EQ(vl_binds[1].ToString(), "tup2[tuple NOT NULL NOT A PARTITION KEY]");
   EXPECT_EQ(vl_binds[1].type()->ToString(), "tuple<int, text>");
 }
+
+TEST_F(QLTestSelectedExpr, TestPreparedStatementWithEmbeddedNull) {
+  // Init the simulated cluster.
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
+
+  // Get a processor.
+  TestQLProcessor *processor = GetQLProcessor();
+  PreparedResult::UniPtr result;
+
+  LOG(INFO) << "Create and setup test table.";
+  CHECK_VALID_STMT("CREATE TABLE test_tbl (h TEXT, r TEXT, v1 TEXT, v2 INT, PRIMARY KEY((h), r))");
+
+  // Test INSERT into the prepared statement.
+  LOG(INFO) << "Prepare insert into statement.";
+  Statement insert_statement(processor->CurrentKeyspace(),
+                             "INSERT INTO test_tbl (h, r, v1, v2) VALUES(?, ?, ?, ?);");
+  EXPECT_OK(insert_statement.Prepare(
+      &processor->ql_processor(), nullptr /* mem_tracker */, false /* internal */, &result));
+  auto binds = result->bind_variable_schemas();
+  EXPECT_EQ(binds.size(), 4);
+  EXPECT_EQ(binds[0].ToString(), "h[string NOT NULL NOT A PARTITION KEY]");
+  EXPECT_EQ(binds[1].ToString(), "r[string NOT NULL NOT A PARTITION KEY]");
+  EXPECT_EQ(binds[2].ToString(), "v1[string NOT NULL NOT A PARTITION KEY]");
+  EXPECT_EQ(binds[3].ToString(), "v2[int32 NOT NULL NOT A PARTITION KEY]");
+
+  // Bind and execute the prepared statement with values where the text column value
+  // embedded null byte.
+  CQLQueryParameters params1;
+  string null_embedding_str1("\0a", 2);
+  params1.PushBackString("h", null_embedding_str1);
+  params1.PushBackString("r", null_embedding_str1);
+  params1.PushBackString("v1", null_embedding_str1);
+  params1.PushBackInt32("v2", 1);
+  CQLQueryParameters params2;
+  string null_embedding_str2("a\0", 2);
+  params2.PushBackString("h", null_embedding_str2);
+  params2.PushBackString("r", null_embedding_str2);
+  params2.PushBackString("v1", null_embedding_str2);
+  params2.PushBackInt32("v2", 2);
+  CQLQueryParameters params3;
+  string null_embedding_str3("a\0b", 3);
+  params3.PushBackString("h", null_embedding_str3);
+  params3.PushBackString("r", null_embedding_str3);
+  params3.PushBackString("v1", null_embedding_str3);
+  params3.PushBackInt32("v2", 3);
+
+  EXPECT_OK(processor->Run(insert_statement, params1));
+  EXPECT_OK(processor->Run(insert_statement, params2));
+  EXPECT_OK(processor->Run(insert_statement, params3));
+
+  //----------------------------------------------------------------------------------------------
+  // Checking rows.
+  //----------------------------------------------------------------------------------------------
+  CheckSelectedRow(processor, "SELECT * FROM test_tbl WHERE v2 = 1",
+      "{ string:\"\\x00a\", string:\"\\x00a\", string:\"\\x00a\", int32:1 }");
+  CheckSelectedRow(processor, "SELECT * FROM test_tbl WHERE v2 = 2",
+      "{ string:\"a\\x00\", string:\"a\\x00\", string:\"a\\x00\", int32:2 }");
+  CheckSelectedRow(processor, "SELECT * FROM test_tbl WHERE v2 = 3",
+      "{ string:\"a\\x00b\", string:\"a\\x00b\", string:\"a\\x00b\", int32:3 }");
+  LOG(INFO) << "Done.";
+}
+
 } // namespace ql
 } // namespace yb
