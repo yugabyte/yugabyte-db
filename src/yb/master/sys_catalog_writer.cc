@@ -157,7 +157,7 @@ Status FillSysCatalogWriteRequest(
   if (IsWrite(op_type)) {
     faststring metadata_buf;
 
-    pb_util::SerializeToString(new_pb, &metadata_buf);
+    RETURN_NOT_OK(pb_util::SerializeToString(new_pb, &metadata_buf));
 
     return FillSysCatalogWriteRequest(
         type, item_id, Slice(metadata_buf.data(), metadata_buf.size()), op_type, schema_with_ids,

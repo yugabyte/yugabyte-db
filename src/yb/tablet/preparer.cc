@@ -24,11 +24,13 @@
 #include <gflags/gflags.h>
 
 #include "yb/consensus/consensus.h"
+#include "yb/consensus/consensus.pb.h"
 
 #include "yb/gutil/macros.h"
 
 #include "yb/tablet/operations/operation_driver.h"
 
+#include "yb/util/debug-util.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/lockfree.h"
 #include "yb/util/logging.h"
@@ -39,6 +41,8 @@ DEFINE_int32(max_group_replicate_batch_size, 16,
 
 DEFINE_test_flag(int32, preparer_batch_inject_latency_ms, 0,
                  "Inject latency before replicating batch.");
+
+DECLARE_int32(protobuf_message_total_bytes_limit);
 
 using namespace std::literals;
 using std::vector;
@@ -103,6 +107,8 @@ class PreparerImpl {
   std::condition_variable stop_cond_;
 
   OperationDrivers leader_side_batch_;
+  size_t leader_side_batch_size_estimate_ = 0;
+  const size_t leader_side_batch_size_limit_;
 
   std::unique_ptr<ThreadPoolToken> tablet_prepare_pool_token_;
 
@@ -123,6 +129,8 @@ class PreparerImpl {
 
 PreparerImpl::PreparerImpl(consensus::Consensus* consensus, ThreadPool* tablet_prepare_pool)
     : consensus_(consensus),
+      // Reserve 5% for other LogEntryBatchPB fields in case of big batches.
+      leader_side_batch_size_limit_(FLAGS_protobuf_message_total_bytes_limit * 0.95),
       tablet_prepare_pool_token_(tablet_prepare_pool
                                      ->NewToken(ThreadPool::ExecutionMode::SERIAL)) {
 }
@@ -251,15 +259,21 @@ void PreparerImpl::ProcessItem(OperationDriver* item) {
   const bool apply_separately = ShouldApplySeparately(operation_type);
   const int64_t bound_term = apply_separately ? -1 : item->consensus_round()->bound_term();
 
+  const auto item_replicate_msg_size =
+      item->consensus_round() && item->consensus_round()->replicate_msg()
+          ? item->consensus_round()->replicate_msg()->ByteSizeLong()
+          : 0;
   // Don't add more than the max number of operations to a batch, and also don't add
   // operations bound to different terms, so as not to fail unrelated operations
   // unnecessarily in case of a bound term mismatch.
   if (leader_side_batch_.size() >= FLAGS_max_group_replicate_batch_size ||
+      leader_side_batch_size_estimate_ + item_replicate_msg_size > leader_side_batch_size_limit_ ||
       (!leader_side_batch_.empty() &&
           bound_term != leader_side_batch_.back()->consensus_round()->bound_term())) {
     ProcessAndClearLeaderSideBatch();
   }
   leader_side_batch_.push_back(item);
+  leader_side_batch_size_estimate_ += item_replicate_msg_size;
   if (apply_separately) {
     ProcessAndClearLeaderSideBatch();
   }
@@ -270,7 +284,9 @@ void PreparerImpl::ProcessAndClearLeaderSideBatch() {
     return;
   }
 
-  VLOG(2) << "Preparing a batch of " << leader_side_batch_.size() << " leader-side operations";
+  VLOG(2) << "Preparing a batch of " << leader_side_batch_.size()
+          << " leader-side operations, estimated size: " << leader_side_batch_size_estimate_
+          << " bytes";
 
   auto iter = leader_side_batch_.begin();
   auto replication_subbatch_begin = iter;
@@ -302,6 +318,7 @@ void PreparerImpl::ProcessAndClearLeaderSideBatch() {
   ReplicateSubBatch(replication_subbatch_begin, replication_subbatch_end);
 
   leader_side_batch_.clear();
+  leader_side_batch_size_estimate_ = 0;
 }
 
 void PreparerImpl::ReplicateSubBatch(

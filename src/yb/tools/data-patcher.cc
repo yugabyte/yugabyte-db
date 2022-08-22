@@ -551,7 +551,7 @@ CHECKED_STATUS ChangeTimeInWalDir(MonoDelta delta, HybridTime bound_time, const 
           batch.set_mono_time(read_result.entry_metadata.back().entry_time.ToUInt64());
         }
         buffer.clear();
-        pb_util::AppendToString(batch, &buffer);
+        RETURN_NOT_OK(pb_util::AppendToString(batch, &buffer));
         num_entries += batch.entry().size();
         RETURN_NOT_OK(new_segment.WriteEntryBatch(Slice(buffer)));
       }

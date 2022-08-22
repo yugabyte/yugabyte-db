@@ -204,7 +204,7 @@ Status RestoreSysCatalogState::AddRestoringEntry(
   auto& entry = *entries_.mutable_entries()->Add();
   entry.set_type(type);
   entry.set_id(id);
-  pb_util::SerializeToString(*pb, buffer);
+  RETURN_NOT_OK(pb_util::SerializeToString(*pb, buffer));
   entry.set_data(buffer->data(), buffer->size());
   restoration_.non_system_objects_to_restore.emplace(id, type);
 

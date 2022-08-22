@@ -344,7 +344,7 @@ Status ReadableLogSegment::CopyTo(
 
     write_buf.clear();
     write_buf.reserve(current_batch.ByteSize());
-    pb_util::AppendToString(current_batch, &write_buf);
+    RETURN_NOT_OK(pb_util::AppendToString(current_batch, &write_buf));
     RETURN_NOT_OK(dest_segment->WriteEntryBatch(write_buf));
 
     num_entries += current_batch.entry().size();
@@ -839,8 +839,11 @@ Status ReadableLogSegment::ReadEntryBatch(int64_t *offset,
                                     &entry_batch_slice,
                                     tmp_buf->data());
 
-  if (!s.ok()) return STATUS(IOError, Substitute("Could not read entry. Cause: $0",
-                                                 s.ToString()));
+  if (!s.ok()) {
+    return STATUS_FORMAT(
+        IOError, "Could not read entry at offset: $0, length: $1. Cause: $2", *offset,
+        header.msg_length, s);
+  }
 
   // Verify the CRC.
   uint32_t read_crc = crc::Crc32c(entry_batch_slice.data(), entry_batch_slice.size());
@@ -857,8 +860,11 @@ Status ReadableLogSegment::ReadEntryBatch(int64_t *offset,
                               entry_batch_slice.data(),
                               header.msg_length);
 
-  if (!s.ok()) return STATUS(Corruption, Substitute("Could parse PB. Cause: $0",
-                                                    s.ToString()));
+  if (!s.ok()) {
+    return STATUS_FORMAT(
+        Corruption, "Failed to parse PB at offset: $0, length: $1. Cause: $2", *offset,
+        header.msg_length, s);
+  }
 
   *offset += entry_batch_slice.size();
   entry_batch->Swap(&read_entry_batch);
@@ -889,7 +895,7 @@ Status WritableLogSegment::WriteHeaderAndOpen(const LogSegmentHeaderPB& new_head
   // Then Length-prefixed header.
   PutFixed32(&buf, new_header.ByteSize());
   // Then Serialize the PB.
-  pb_util::AppendToString(new_header, &buf);
+  RETURN_NOT_OK(pb_util::AppendToString(new_header, &buf));
   RETURN_NOT_OK(writable_file()->Append(Slice(buf)));
 
   header_.CopyFrom(new_header);
@@ -909,7 +915,7 @@ Status WritableLogSegment::WriteFooterAndClose(const LogSegmentFooterPB& footer)
 
   faststring buf;
 
-  pb_util::AppendToString(footer, &buf);
+  RETURN_NOT_OK(pb_util::AppendToString(footer, &buf));
 
   buf.append(kLogSegmentFooterMagicString);
   PutFixed32(&buf, footer.ByteSize());

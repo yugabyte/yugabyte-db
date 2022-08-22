@@ -503,7 +503,7 @@ class MasterSnapshotCoordinator::Impl {
       options.set_delete_time(context_.Clock()->Now().ToUint64());
       auto* value = pair->mutable_value();
       value->push_back(docdb::ValueTypeAsChar::kString);
-      pb_util::AppendPartialToString(options, value);
+      RETURN_NOT_OK(pb_util::AppendPartialToString(options, value));
     }
 
     return SynchronizedWrite(std::move(write_batch), leader_term, deadline, &context_);
