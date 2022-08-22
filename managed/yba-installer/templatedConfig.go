@@ -16,6 +16,7 @@ import (
     "github.com/xeipuuv/gojsonschema"
     "text/template"
     "path/filepath"
+    "os"
 )
 
 //PlatformAppSecret is special cased because it is not configurable by the user.
@@ -145,7 +146,7 @@ func readConfigAndTemplate(configYmlFileName string) ([]byte, error)  {
     funcMap := template.FuncMap{
 
         // The name "yamlPath" is what the function will be called
-        //in the template text.
+        // in the template text.
         "yamlPath": getYamlPathData,
         "yamlHttpCheck": getNginxModeTemplate,
     }
@@ -236,6 +237,23 @@ func GenerateTemplatedConfiguration() {
         serviceContents := fmt.Sprint(service.(map[string]interface{})["contents"])
 
         WriteBytes([]byte(serviceContents), []byte(serviceFileName))
+
+        if strings.Contains(serviceFileName, "platform.conf") {
+
+            file, err := os.OpenFile(serviceFileName, os.O_APPEND|os.O_WRONLY, 0644)
+            if err != nil {
+                log.Println(err)
+            }
+            defer file.Close()
+
+            // Add the additional raw text to yb-platform.conf if it exists.
+            additionalEntryString := strings.TrimSuffix(getYamlPathData(".additional"), "\n")
+
+            if _, err := file.WriteString(additionalEntryString); err != nil {
+                log.Fatal(err)
+            }
+
+        }
 
         fmt.Println("Templated configuration for " + serviceName +
         " succesfully applied!")
