@@ -111,4 +111,6 @@ If you are using custom ports for Prometheus in your YugabyteDB Anywhere install
 
 - All YugabyteDB Anywhere instances configured under high availability must use the same custom port.
 
-  The default Prometheus port for YugabyteDB Anywhere is `9090`. Custom ports are configured through the settings section of the Replicated installer UI available at `https://<yugabyteanywhere-ip>:8800/`.
+  The default Prometheus port for YugabyteDB Anywhere is `9090`. Custom ports are configured through the settings section of the Replicated installer UI that is typically available at `https://<yugabyteanywhere-ip>:8800/`.
+
+  For information on how to access the Replicated settings page, see [Install YugabyteDB Anywhere](https://docs.yugabyte.com/preview/yugabyte-platform/install-yugabyte-platform/install-software/default/).
