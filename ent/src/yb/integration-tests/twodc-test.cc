@@ -2174,7 +2174,7 @@ TEST_P(TwoDCTest, TestProducerUniverseExpansion) {
 }
 
 TEST_P(TwoDCTest, TestAlterDDLBasic) {
-  FLAGS_xcluster_wait_on_ddl_alter = true;
+  SetAtomicFlag(true, &FLAGS_xcluster_wait_on_ddl_alter);
 
   uint32_t replication_factor = 1;
   // Use just one tablet here to more easily catch lower-level write issues with this test.
@@ -2265,7 +2265,7 @@ TEST_P(TwoDCTest, TestAlterDDLBasic) {
 }
 
 TEST_P(TwoDCTest, TestAlterDDLWithRestarts) {
-  FLAGS_xcluster_wait_on_ddl_alter = true;
+  SetAtomicFlag(true, &FLAGS_xcluster_wait_on_ddl_alter);
 
   uint32_t replication_factor = 3;
   auto tables = ASSERT_RESULT(SetUpWithParams({1}, {1}, replication_factor, 2, 3));

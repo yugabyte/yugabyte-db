@@ -227,28 +227,10 @@ void CatalogManagerBgTasks::Run() {
       if (!to_delete.empty() || catalog_manager_->AreTablesDeleting()) {
         catalog_manager_->CleanUpDeletedTables();
       }
-      std::vector<scoped_refptr<CDCStreamInfo>> streams;
-      auto s = catalog_manager_->FindCDCStreamsMarkedAsDeleting(&streams);
-      if (s.ok() && !streams.empty()) {
-        s = catalog_manager_->CleanUpDeletedCDCStreams(streams);
-      }
-
-      // Do a failed universe clean up
-      if (s.ok()) {
-        s = catalog_manager_->ClearFailedUniverse();
-      }
-      // DELETING_METADATA special state is used by CDC, to do CDC streams metadata cleanup from
-      // cache as well as from the system catalog for the drop table scenario.
-      std::vector<scoped_refptr<CDCStreamInfo>> cdcsdk_streams;
-      auto status_delete_metadata = catalog_manager_->FindCDCStreamsMarkedForMetadataDeletion(
-          &cdcsdk_streams, SysCDCStreamEntryPB::DELETING_METADATA);
-      if (status_delete_metadata.ok() && !cdcsdk_streams.empty()) {
-        status_delete_metadata = catalog_manager_->CleanUpCDCStreamsMetadata(cdcsdk_streams);
-      }
 
       // Ensure the master sys catalog tablet follows the cluster's affinity specification.
       if (FLAGS_sys_catalog_respect_affinity_task) {
-        s = catalog_manager_->SysCatalogRespectLeaderAffinity();
+        Status s = catalog_manager_->SysCatalogRespectLeaderAffinity();
         if (!s.ok()) {
           YB_LOG_EVERY_N(INFO, 10) << s.message().ToBuffer();
         }
@@ -259,11 +241,8 @@ void CatalogManagerBgTasks::Run() {
         catalog_manager_->StartTablespaceBgTaskIfStopped();
       }
 
-      // Restart xCluster parent tablet deletion bg task.
-      catalog_manager_->StartXClusterParentTabletDeletionTaskIfStopped();
-
-      // Run periodic task for namespace-level replications.
-      catalog_manager_->ScheduleXClusterNSReplicationAddTableTask();
+      // Run background tasks related to XCluster & CDC Schema.
+      WARN_NOT_OK(catalog_manager_->RunXClusterBgTasks(), "Failed XCluster Background Task");
 
       was_leader_ = true;
     } else {
