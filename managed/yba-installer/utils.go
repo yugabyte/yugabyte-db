@@ -92,7 +92,10 @@ func TestSudoPermission() {
     if i == 0 {
         fmt.Println("Awesome! You are now running this program with root permissions!")
     } else {
-        log.Fatal("This program must be run as root! (sudo). Please try again with sudo.")
+        fmt.Println("You are not running this program with root permissions. " +
+        "Executing Preflight root checks...")
+        PreflightRoot()
+        //log.Fatal("This program must be run as root! (sudo). Please try again with sudo.")
     }
 }
 
@@ -226,6 +229,25 @@ func SetUpSudoWhiteList() {
     for _, rule := range whitelistRules {
         AddWhitelistRuleIfNotExists(rule)
     }
+}
+
+// Create a file at a relative path for the non-root case. Have to make the directory before
+// inserting the file in that directory.
+func Create(p string) (*os.File, error) {
+    if err := os.MkdirAll(filepath.Dir(p), 0770); err != nil {
+        return nil, err
+    }
+    return os.Create(p)
+}
+
+// DetectOS detects the operating system yba-installer is running on.
+func DetectOS() (string) {
+
+    command1 := "bash"
+    args1 := []string{"-c", "awk -F= '/^NAME/{print $2}' /etc/os-release"}
+    output, _ := ExecuteBashCommand(command1, args1)
+
+    return string(output)
 }
 
 // Untar reads the gzip-compressed tar file from r and writes it into dir.

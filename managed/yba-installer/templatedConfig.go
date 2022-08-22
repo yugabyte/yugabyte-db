@@ -8,7 +8,6 @@ import (
     "bytes"
     "encoding/json"
     "fmt"
-    "os"
     "sigs.k8s.io/yaml"
     yaml2 "github.com/goccy/go-yaml"
     "strings"
@@ -54,7 +53,9 @@ func validateJSONSchema(filename string) {
 
     jsonStringInput := string(jsonBytesInput)
 
-    schemaLoader := gojsonschema.NewReferenceLoader("file://./yba-installer-input-json-schema.json")
+    jsonSchemaName := "file://./configFiles/yba-installer-input-json-schema.json"
+
+    schemaLoader := gojsonschema.NewReferenceLoader(jsonSchemaName)
     documentLoader := gojsonschema.NewStringLoader(jsonStringInput)
 
     result, err := gojsonschema.Validate(schemaLoader, documentLoader)
@@ -149,8 +150,8 @@ func readConfigAndTemplate(configYmlFileName string) ([]byte, error)  {
         "yamlHttpCheck": getNginxModeTemplate,
     }
 
-    tmpl, err := template.New(filepath.Base(configYmlFileName)).
-    Funcs(funcMap).ParseFiles(configYmlFileName)
+    tmpl, err := template.New(filepath.Base("configFiles/" +configYmlFileName)).
+    Funcs(funcMap).ParseFiles("configFiles/" + configYmlFileName)
 
     if err != nil {
         fmt.Println(err)
@@ -190,11 +191,7 @@ func WriteBytes(byteSlice []byte, fileName []byte) ([]byte, error) {
 
     fileNameString := string(fileName)
 
-    file, createErr := os.OpenFile(
-        fileNameString,
-        os.O_WRONLY|os.O_TRUNC|os.O_CREATE,
-        os.ModePerm,
-    )
+    file, createErr := Create(fileNameString)
 
     if createErr != nil {
         return nil, createErr

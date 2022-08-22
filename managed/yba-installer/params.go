@@ -80,7 +80,9 @@
 
     jsonStringInput := string(jsonBytesInput)
 
-    schemaLoader := gojsonschema.NewReferenceLoader("file://./yba-installer-input-json-schema.json")
+    jsonSchemaName := "file://./configFiles/yba-installer-input-json-schema.json"
+
+    schemaLoader := gojsonschema.NewReferenceLoader(jsonSchemaName)
     documentLoader := gojsonschema.NewStringLoader(jsonStringInput)
 
     result, err := gojsonschema.Validate(schemaLoader, documentLoader)

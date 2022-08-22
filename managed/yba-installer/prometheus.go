@@ -123,6 +123,9 @@
         os.MkdirAll("/var/lib/prometheus", os.ModePerm)
         fmt.Println("/var/lib/prometheus directory successfully created.")
 
+        //Make the swamper_targets directory for prometheus
+        os.MkdirAll("/opt/yugabyte/swamper_targets", os.ModePerm)
+
         command3 := "chown"
         arg3 := []string{"prometheus:prometheus", "/etc/prometheus"}
         ExecuteBashCommand(command3, arg3)
