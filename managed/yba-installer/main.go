@@ -28,13 +28,11 @@
 
  var bringOwnPython, errPython = strconv.ParseBool(getYamlPathData(".python.bringOwn"))
 
-// Will not be running as a Systemd service, so no service file path
-// needed when using bundled postgres.
-var postgres = Postgres{"postgres",
-"",
-[]string{"/var/lib/pgsql/data/pg_hba.conf",
-"/var/lib/pgsql/data/postgresql.conf"},
-"9.6"}
+ var postgres = Postgres{"postgres",
+ "/usr/lib/systemd/system/postgresql-11.service",
+ []string{"/var/lib/pgsql/11/data/pg_hba.conf",
+ "/var/lib/pgsql/11/data/postgresql.conf"},
+ "11"}
 
  var prometheus = Prometheus{"prometheus",
          "/etc/systemd/system/prometheus.service",
@@ -378,9 +376,10 @@ var installCmd = &cobra.Command{
 
         if ! bringOwnPostgres {
 
-            // InstallBundled will automatically start Postgres in the setup stage.
-            steps[postgres.Name] = []functionPointer{postgres.SetUpPrereqsBundled,
-                postgres.InstallBundled}
+            //Change to postgres bundled if we are doing a non-root installation where
+            //all services are crontab managed.
+            steps[postgres.Name] = []functionPointer{postgres.SetUpPrereqs,
+            postgres.Install, postgres.Start}
 
         }
 
