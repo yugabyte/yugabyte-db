@@ -9070,7 +9070,8 @@ void CatalogManager::CreateNewReplicaForLocalMemory(TSDescriptor* ts_desc,
   new_replica->state = report.state();
   new_replica->ts_desc = ts_desc;
   if (!ts_desc->registered_through_heartbeat()) {
-    new_replica->time_updated = MonoTime::Now() - ts_desc->TimeSinceHeartbeat();
+    auto last_heartbeat = ts_desc->LastHeartbeatTime();
+    new_replica->time_updated = last_heartbeat ? last_heartbeat : MonoTime::kMin;
   }
 }
 
