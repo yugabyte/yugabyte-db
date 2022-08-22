@@ -44,6 +44,8 @@
 #include "yb/consensus/log_util.h"
 #include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/opid_util.h"
+
+#include "yb/gutil/bind.h"
 #include "yb/gutil/macros.h"
 #include "yb/rpc/messenger.h"
 #include "yb/server/clock.h"
@@ -56,6 +58,8 @@
 #include "yb/tablet/tablet_peer_mm_ops.h"
 #include "yb/tablet/tablet-test-util.h"
 #include "yb/tserver/tserver.pb.h"
+
+#include "yb/util/debug-util.h"
 #include "yb/util/metrics.h"
 #include "yb/util/test_util.h"
 #include "yb/util/test_macros.h"
@@ -64,7 +68,11 @@
 METRIC_DECLARE_entity(table);
 METRIC_DECLARE_entity(tablet);
 
+DECLARE_uint64(initial_log_segment_size_bytes);
 DECLARE_int32(log_min_seconds_to_retain);
+DECLARE_uint64(log_segment_size_bytes);
+DECLARE_int32(max_group_replicate_batch_size);
+DECLARE_int32(protobuf_message_total_bytes_limit);
 
 DECLARE_bool(quick_leader_election_on_create);
 
@@ -97,8 +105,10 @@ static Schema GetTestSchema() {
 
 class TabletPeerTest : public YBTabletTest {
  public:
-  TabletPeerTest()
-    : YBTabletTest(GetTestSchema(), YQL_TABLE_TYPE),
+  TabletPeerTest() : TabletPeerTest(GetTestSchema()) {}
+
+  explicit TabletPeerTest(const Schema& schema)
+    : YBTabletTest(schema, YQL_TABLE_TYPE),
       insert_counter_(0),
       delete_counter_(0) {
   }
@@ -217,7 +227,7 @@ class TabletPeerTest : public YBTabletTest {
     AddTestRowDelete(delete_counter_++, write_req);
   }
 
-  Status ExecuteWriteAndRollLog(TabletPeer* tablet_peer, const WriteRequestPB& req) {
+  void ExecuteWrite(TabletPeer* tablet_peer, const WriteRequestPB& req) {
     WriteResponsePB resp;
     auto operation = std::make_unique<WriteOperation>(
         /* leader_term */ 1, CoarseTimePoint::max(), tablet_peer, tablet_peer->tablet(), &resp);
@@ -230,13 +240,20 @@ class TabletPeerTest : public YBTabletTest {
     tablet_peer->WriteAsync(std::move(operation));
     rpc_latch.Wait();
     CHECK(!resp.has_error())
-        << "\nReq:\n" << req.DebugString() << "Resp:\n" << resp.DebugString();
+        << "\nResp:\n" << resp.DebugString() << "Req:\n" << req.DebugString();
+  }
 
+  Status RollLog(TabletPeer* tablet_peer) {
     Synchronizer synchronizer;
     CHECK_OK(tablet_peer->log_->TEST_SubmitFuncToAppendToken([&synchronizer, tablet_peer] {
       synchronizer.StatusCB(tablet_peer->log_->AllocateSegmentAndRollOver());
     }));
     return synchronizer.Wait();
+  }
+
+  Status ExecuteWriteAndRollLog(TabletPeer* tablet_peer, const WriteRequestPB& req) {
+    ExecuteWrite(tablet_peer, req);
+    return RollLog(tablet_peer);
   }
 
   // Execute insert requests and roll log after each one.
@@ -424,6 +441,95 @@ TEST_F(TabletPeerTest, TestGCEmptyLog) {
   ASSERT_OK(tablet_peer_->Start(info));
   // We don't wait on consensus on purpose.
   ASSERT_OK(tablet_peer_->RunLogGC());
+}
+
+class TabletPeerProtofBufSizeLimitTest : public TabletPeerTest {
+ public:
+  TabletPeerProtofBufSizeLimitTest() : TabletPeerTest(GetSimpleTestSchema()) {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_protobuf_message_total_bytes_limit) = kProtobufSizeLimit;
+    // Avoid unnecessary log segments rolling.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_initial_log_segment_size_bytes) = kProtobufSizeLimit * 2;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_segment_size_bytes) = kProtobufSizeLimit * 2;
+  }
+
+  static constexpr auto kProtobufSizeLimit = 10_MB;
+};
+
+constexpr size_t TabletPeerProtofBufSizeLimitTest::kProtobufSizeLimit;
+
+TEST_F_EX(TabletPeerTest, MaxRaftBatchProtobufLimit, TabletPeerProtofBufSizeLimitTest) {
+  constexpr auto kNumOps = 10;
+
+  // Make sure batch of kNumOps operations is larger than kProtobufSizeLimit to test limit overflow.
+  constexpr auto kValueSize = kProtobufSizeLimit / (kNumOps - 1);
+
+  // Make sure we don't reach max_group_replicate_batch_size limit.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_group_replicate_batch_size) = kNumOps * 2;
+
+  ConsensusBootstrapInfo info;
+  ASSERT_OK(StartPeer(info));
+
+  std::string value(kValueSize, 'X');
+
+  std::vector<WriteRequestPB> requests(kNumOps);
+  std::vector<WriteResponsePB> responses(kNumOps);
+  std::vector<std::unique_ptr<WriteOperation>> queries;
+  queries.reserve(kNumOps);
+  CountDownLatch latch(kNumOps);
+
+  auto* const tablet_peer = tablet_peer_.get();
+
+  for (int i = 0; i < kNumOps; ++i) {
+    auto* req = &requests[i];
+    auto* resp = &responses[i];
+
+    req->set_tablet_id(tablet()->tablet_id());
+    AddTestRowInsert(i, i, value, req);
+    auto query = std::make_unique<WriteOperation>(
+        /* leader_term = */ 1, CoarseTimePoint::max(), tablet_peer, tablet_peer->tablet(), resp);
+    *query->AllocateRequest() = *req;
+    query->set_completion_callback([&latch, resp](const Status& status) {
+      if (!status.ok()) {
+        StatusToPB(status, resp->mutable_error()->mutable_status());
+      }
+      latch.CountDown();
+    });
+    queries.push_back(std::move(query));
+  }
+
+  for (auto& query : queries) {
+    tablet_peer->WriteAsync(std::move(query));
+  }
+  latch.Wait();
+
+  for (size_t i = 0; i < responses.size(); ++i) {
+    const auto& resp = responses[i];
+    ASSERT_FALSE(responses[i].has_error()) << "\n Response[" << i << "]:\n" << resp.DebugString();
+  }
+
+  ASSERT_OK(RollLog(tablet_peer_.get()));
+
+  auto* log = tablet_peer_->log();
+
+  log::SegmentSequence segments;
+  ASSERT_OK(log->GetLogReader()->GetSegmentsSnapshot(&segments));
+
+  for (auto& segment : segments) {
+    auto entries = segment->ReadEntries();
+    ASSERT_OK(entries.status);
+
+    size_t current_batch_size = 0;
+    int64_t current_batch_offset = 0;
+    for (const auto& meta : entries.entry_metadata) {
+      if (meta.offset == current_batch_offset) {
+        ++current_batch_size;
+      } else {
+        current_batch_offset = meta.offset;
+        current_batch_size = 1;
+      }
+      ASSERT_LE(current_batch_size, kProtobufSizeLimit);
+    }
+  }
 }
 
 } // namespace tablet

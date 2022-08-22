@@ -71,7 +71,7 @@ CHECKED_STATUS RotateUniverseKey(const Slice& old_universe_key,
   Slice registry_for_flush;
   string encrypted;
   if (!enable) {
-    pb_util::SerializeToString(universe_key_registry, &encoded);
+    RETURN_NOT_OK(pb_util::SerializeToString(universe_key_registry, &encoded));
     registry_for_flush = Slice(encoded);
   } else {
     LOG_IF(DFATAL, new_universe_key.empty());
@@ -80,7 +80,7 @@ CHECKED_STATUS RotateUniverseKey(const Slice& old_universe_key,
     params->ToEncryptionParamsPB(&params_pb);
     (*universe_key_registry.mutable_universe_keys())[new_key_version_id] = params_pb;
     universe_key_registry.set_latest_version_id(new_key_version_id);
-    pb_util::SerializeToString(universe_key_registry, &encoded);
+    RETURN_NOT_OK(pb_util::SerializeToString(universe_key_registry, &encoded));
 
     encrypted = VERIFY_RESULT(EncryptUniverseKeyRegistry(Slice(encoded), new_universe_key));
     registry_for_flush = Slice(encrypted);
