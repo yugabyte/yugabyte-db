@@ -2137,6 +2137,16 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
                value);
   }
 
+  /*
+   * A helper method to get the current RSS memory (in kilobytes) for a PID.
+   */
+  protected static long getRssForPid(int pid) throws Exception {
+    Process process = Runtime.getRuntime().exec(String.format("ps -p %d -o rss=", pid));
+    try (Scanner scanner = new Scanner(process.getInputStream())) {
+      return scanner.nextLong();
+    }
+  }
+
   public static class ConnectionBuilder implements Cloneable {
     private static final int MAX_CONNECTION_ATTEMPTS = 15;
     private static final int INITIAL_CONNECTION_DELAY_MS = 500;

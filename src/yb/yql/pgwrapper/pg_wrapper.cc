@@ -54,6 +54,12 @@ DEFINE_int32(pgsql_proxy_webserver_port, 13000, "Webserver port for PGSQL");
 
 DEFINE_test_flag(bool, pg_collation_enabled, true,
                  "True to enable collation support in YugaByte PostgreSQL.");
+// Default to 5MB
+DEFINE_int64(
+    pg_mem_tracker_tcmalloc_gc_release_bytes, 5 * 1024 * 1024,
+    "Overriding the gflag mem_tracker_tcmalloc_gc_release_bytes "
+    "defined in mem_tracker.cc. The overriding value is specifically "
+    "set for Postgres backends");
 
 DECLARE_string(metric_node_name);
 TAG_FLAG(pg_transactions_enabled, advanced);
@@ -478,6 +484,9 @@ Status PgWrapper::Start() {
   pg_proc_->SetEnv("FLAGS_yb_pg_terminate_child_backend",
                     FLAGS_yb_pg_terminate_child_backend ? "true" : "false");
   pg_proc_->SetEnv("FLAGS_yb_backend_oom_score_adj", FLAGS_yb_backend_oom_score_adj);
+  pg_proc_->SetEnv(
+      "FLAGS_pg_mem_tracker_tcmalloc_gc_release_bytes",
+      std::to_string(FLAGS_pg_mem_tracker_tcmalloc_gc_release_bytes));
 
   // See YBSetParentDeathSignal in pg_yb_utils.c for how this is used.
   pg_proc_->SetEnv("YB_PG_PDEATHSIG", Format("$0", SIGINT));
