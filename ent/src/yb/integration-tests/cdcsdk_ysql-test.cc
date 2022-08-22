@@ -1598,7 +1598,9 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestDropTableBeforeXClusterStream
   delete_req.add_stream_id(create_resp.stream_id());
   // The following line assumes that cdc_proxy_ has been initialized in the test already
   ASSERT_OK(cdc_proxy_->DeleteCDCStream(delete_req, &delete_resp, &delete_rpc));
-  ASSERT_EQ(!delete_resp.has_error(), true);
+  // Currently drop table on YSQL tables doesn't delete xCluster streams, so this will fail.
+  ASSERT_EQ(delete_resp.has_error(), true);
+  ASSERT_TRUE(delete_resp.error().status().message().find(create_resp.stream_id()) != string::npos);
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCheckPointPersistencyNodeRestart)) {
