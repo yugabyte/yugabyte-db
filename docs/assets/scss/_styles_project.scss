@@ -484,10 +484,10 @@ body:not(.td-home) .td-main main {
     margin-bottom: 0.25rem;
   }
 
+  .admonition a,
   p a,
   li:not(.nav-item) a,
-  .note a,
-  td a {
+  .note a {
     color: #3176d9;
 
     i {
@@ -497,6 +497,16 @@ body:not(.td-home) .td-main main {
 
     &:hover {
       text-decoration: underline;
+    }
+  }
+
+  td a {
+    color: #3176d9;
+    border-bottom: 1px solid transparent;
+
+    &:hover {
+      text-decoration: none;
+      border-bottom-color: #3176d9;
     }
   }
 }
