@@ -1,5 +1,4 @@
 ---
-
 title: Node.js Drivers
 linkTitle: Node.js Drivers
 description: Node.js Drivers for YSQL
@@ -8,11 +7,10 @@ image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
     name: Node.js Drivers
-    identifier: ref-postgres-pg-driver
+    identifier: ref-yugabyte-pg-driver
     parent: drivers
-    weight: 600
-isTocNested: true
-showAsideToc: true
+    weight: 500
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -50,18 +48,10 @@ The YugabyteDB node-postgres driver has the following load balancing features:
 
 - Uniform load balancing
 
-<<<<<<< HEAD
-=======
-   <br></br>
->>>>>>> c9e253e95129e6c176f1938cc2d6998c2a4a17d9
    In this mode, the driver makes the best effort to uniformly distribute the connections to each YugabyteDB server. For example, if a client application creates 100 connections to a YugabyteDB cluster consisting of 10 servers, then the driver creates 10 connections to each server. If the number of connections are not exactly divisible by the number of servers, then a few may have 1 less or 1 more connection than the others. This is the client view of the load, so the servers may not be well balanced if other client applications are not using the Yugabyte JDBC driver.
 
 - Topology-aware load balancing
 
-<<<<<<< HEAD
-=======
-   <br></br>
->>>>>>> c9e253e95129e6c176f1938cc2d6998c2a4a17d9
    Because YugabyteDB clusters can have servers in different regions and availability zones, the YugabyteDB JDBC driver is topology-aware, and can be configured to create connections only on servers that are in specific regions and zones. This is useful for client applications that need to connect to the geographically nearest regions and availability zone for lower latency; the driver tries to uniformly load only those servers that belong to the specified regions and zone.
 
 The Yugabyte Psycopg2 driver can be configured with pooling as well.
