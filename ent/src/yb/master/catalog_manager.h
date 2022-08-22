@@ -280,6 +280,8 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   void EnableTabletSplitting(const std::string& feature) override;
 
+  Status RunXClusterBgTasks();
+
   void StartXClusterParentTabletDeletionTaskIfStopped();
 
   void ScheduleXClusterParentTabletDeletionTask();
