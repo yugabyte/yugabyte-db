@@ -107,6 +107,8 @@ YugabyteDB Managed clusters support 10 simultaneous connections per vCPU. So a c
 | 6x4 | 240 |
 | 6x8 | 360 |
 
+When sizing your cluster to your workload, ensure you have enough additional capacity to support rolling updates with minimal impact on application performance. During an update, one node is always offline; you can also mitigate the effect of updates on performance by [scheduling them](../../cloud-clusters/cloud-maintenance/) during periods of lower traffic.
+
 YugabyteDB Managed supports both vertical and horizontal scaling. Depending on your performance requirements, you can increase the number of vCPUs per node, as well as the total number of nodes. You can also increase the disk size per node. However, once increased, you can't lower the disk size per node.
 
 If your configuration doesn't match your performance requirements, you can change these values after the cluster is created (increasing or decreasing vCPUs and increasing storage, and adding or removing nodes). Refer to [Scaling clusters](../../cloud-clusters/configure-clusters/).
