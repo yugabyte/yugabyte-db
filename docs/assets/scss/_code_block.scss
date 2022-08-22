@@ -53,6 +53,7 @@
     }
   }
 
+  li:not(.nav-item) > a,
   p > a,
   td > a {
     position: relative;
@@ -62,6 +63,10 @@
       position: relative;
       z-index: -1;
     }
+  }
+
+  li:not(.nav-item) > a:hover > code {
+    text-decoration: underline;
   }
 
   pre {
