@@ -121,6 +121,10 @@ class TwoDCTestBase : public YBTest {
       YBClient* consumer_client, const std::string& producer_uuid,
       master::IsSetupUniverseReplicationDoneResponsePB* resp);
 
+  Status IsSetupUniverseReplicationDone(
+      MiniCluster* consumer_cluster, YBClient* consumer_client,
+      const std::string& universe_id, master::IsSetupUniverseReplicationDoneResponsePB* resp);
+
   Status GetCDCStreamForTable(
       const std::string& table_id, master::ListCDCStreamsResponsePB* resp);
 
