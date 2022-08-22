@@ -536,6 +536,14 @@ class TwoDCYsqlTest : public TwoDCTestBase, public testing::WithParamInterface<T
     RETURN_NOT_OK(cluster->client_->TruncateTables(table_ids));
     return Status::OK();
   }
+
+  Result<YBTableName> CreateMaterializedView(Cluster* cluster, const YBTableName& table) {
+    auto conn = EXPECT_RESULT(cluster->ConnectToDB(table.namespace_name()));
+    RETURN_NOT_OK(conn.ExecuteFormat(
+        "CREATE MATERIALIZED VIEW $0_mv AS SELECT COUNT(*) FROM $0", table.table_name()));
+    return GetTable(
+      cluster, table.namespace_name(), table.pgschema_name(), table.table_name() + "_mv");
+  }
 };
 INSTANTIATE_TEST_CASE_P(
     TwoDCTestParams, TwoDCYsqlTest,
@@ -1641,6 +1649,45 @@ TEST_P(TwoDCYsqlTest, TruncateTableChecks) {
   FLAGS_enable_delete_truncate_xcluster_replicated_table = true;
   ASSERT_OK(TruncateTable(&producer_cluster_, {producer_table_id}));
   ASSERT_OK(TruncateTable(&consumer_cluster_, {consumer_table_id}));
+}
+
+TEST_P(TwoDCYsqlTest, SetupReplicationWithMaterializedViews) {
+  YB_SKIP_TEST_IN_TSAN();
+  constexpr int kNTabletsPerTable = 1;
+  std::vector<uint32_t> tables_vector = {kNTabletsPerTable, kNTabletsPerTable};
+  auto tables = ASSERT_RESULT(SetUpWithParams(tables_vector, tables_vector, 1));
+  const string kUniverseId = ASSERT_RESULT(GetUniverseId(&producer_cluster_));
+
+  std::vector<std::shared_ptr<client::YBTable>> producer_tables;
+  producer_tables.reserve(tables.size() / 2);
+  std::shared_ptr<client::YBTable> producer_mv;
+  std::shared_ptr<client::YBTable> consumer_mv;
+  for (size_t i = 0; i < 2; ++i) {
+    if (i % 2 == 0) {
+      WriteWorkload(0, 5, &producer_cluster_, tables[i]->name());
+      ASSERT_OK(producer_client()->OpenTable(
+          ASSERT_RESULT(CreateMaterializedView(&producer_cluster_, tables[i]->name())),
+          &producer_mv));
+      producer_tables.push_back(producer_mv);
+    } else {
+      ASSERT_OK(consumer_client()->OpenTable(
+          ASSERT_RESULT(CreateMaterializedView(&consumer_cluster_, tables[i]->name())),
+          &consumer_mv));
+    }
+  }
+
+  ASSERT_OK(SetupUniverseReplication(
+      producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, producer_tables));
+  LOG(INFO) << "Setup replication completed.";
+
+  master::IsSetupUniverseReplicationDoneResponsePB resp;
+  ASSERT_OK(VerifyUniverseReplicationFailed(consumer_cluster(), consumer_client(),
+                                            kUniverseId, &resp));
+  ASSERT_TRUE(resp.has_replication_error());
+  auto status = StatusFromPB(resp.replication_error());
+  ASSERT_TRUE(status.IsNotSupported());
+  ASSERT_STR_CONTAINS(status.ToString(), "Replication is not supported for materialized view");
+  LOG(INFO) << "Replication verification failed : " << status.ToString();
 }
 
 void PrepareChangeRequest(

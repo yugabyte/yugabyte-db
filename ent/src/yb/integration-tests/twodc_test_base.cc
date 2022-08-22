@@ -236,6 +236,25 @@ Status TwoDCTestBase::VerifyUniverseReplicationFailed(MiniCluster* consumer_clus
   }, MonoDelta::FromSeconds(kRpcTimeout), "Verify universe replication failed");
 }
 
+Status TwoDCTestBase::IsSetupUniverseReplicationDone(MiniCluster* consumer_cluster,
+  YBClient* consumer_client, const std::string& universe_id,
+    master::IsSetupUniverseReplicationDoneResponsePB* resp) {
+  return LoggedWaitFor([=]() -> Result<bool> {
+    master::IsSetupUniverseReplicationDoneRequestPB req;
+    req.set_producer_id(universe_id);
+    resp->Clear();
+
+    auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
+        &consumer_client->proxy_cache(),
+        VERIFY_RESULT(consumer_cluster->GetLeaderMiniMaster())->bound_rpc_addr());
+    rpc::RpcController rpc;
+    rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
+
+    Status s = master_proxy->IsSetupUniverseReplicationDone(req, resp, &rpc);
+    return s.ok() && resp->has_done() && resp->done();
+  }, MonoDelta::FromSeconds(kRpcTimeout), "Is setup replication done");
+}
+
 Status TwoDCTestBase::GetCDCStreamForTable(
     const std::string& table_id, master::ListCDCStreamsResponsePB* resp) {
   return LoggedWaitFor([this, table_id, resp]() -> Result<bool> {

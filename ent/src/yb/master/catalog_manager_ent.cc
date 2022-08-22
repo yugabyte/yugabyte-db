@@ -4589,6 +4589,13 @@ Status CatalogManager::ValidateTableSchema(
       }
     }
 
+    // Verify that the table on the target side supports replication.
+    if (is_ysql_table && t.has_relation_type() && t.relation_type() == MATVIEW_TABLE_RELATION) {
+      return STATUS_FORMAT(NotSupported,
+          "Replication is not supported for materialized view: $0",
+          info->table_name.ToString());
+    }
+
     // We now have a table match. Validate the schema.
     auto result = info->schema.EquivalentForDataCopy(resp->schema());
     if (!result.ok() || !*result) {
