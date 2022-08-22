@@ -488,7 +488,7 @@ DEFINE_bool(enable_delete_truncate_xcluster_replicated_table, false,
             "When set, enables deleting/truncating tables currently in xCluster replication");
 TAG_FLAG(enable_delete_truncate_xcluster_replicated_table, runtime);
 
-DEFINE_bool(xcluster_wait_on_ddl_alter, false,
+DEFINE_bool(xcluster_wait_on_ddl_alter, true,
             "When xCluster replication sends a DDL change, wait for the user to enter a "
             "compatible/matching entry.  Note: Can also set at runtime to resume after stall.");
 TAG_FLAG(xcluster_wait_on_ddl_alter, runtime);
@@ -6255,7 +6255,7 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
   }
 
 
-  if (FLAGS_xcluster_wait_on_ddl_alter &&
+  if (GetAtomicFlag(&FLAGS_xcluster_wait_on_ddl_alter) &&
       [&]() {SharedLock lock(mutex_); return IsTableCdcConsumer(*table);}()) {
     // If we're waiting for a Schema because we saw the a replication source with a change,
     // ensure this alter is compatible with what we're expecting.
