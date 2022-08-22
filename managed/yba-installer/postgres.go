@@ -67,7 +67,7 @@
 
  func (pg Postgres) SetUpPrereqsBundled() {
 
-   // Only extract Postgres package if it doesn't exist.
+   // Only extract the Postgres package if it doesn't exist.
    if _, err := os.Stat("/var/lib/pgsql"); err != nil {
       extractPostgresPackageBundled()
    }
@@ -93,6 +93,7 @@
  func (pg Postgres) RestartBundled() {
 
    pg.StopBundled()
+   time.Sleep(5 * time.Second)
    pg.StartBundled()
 
  }

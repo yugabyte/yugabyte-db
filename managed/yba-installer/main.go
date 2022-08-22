@@ -128,6 +128,120 @@ var commonUpgrade = Common{"common", versionToUpgrade, httpMode}
     },
  }
 
+ var startCmd = &cobra.Command{
+    Use:   "start",
+    Short: "The start command is used to start service(s) required for your Yugabyte " +
+    "Anywhere installation.",
+    Long:  `
+    The start command can be invoked to start any service that is required for the
+    running of Yugabyte Anywhere. Can be invoked without any arguments to start all
+    services, or invoked with a specific service name to start only that service.
+    Valid service names: postgres, prometheus, yb-platform, nginx
+
+    Invoke as: sudo ./yba-installer start (to start all services)
+    sudo ./yba-installer start serviceName (to start that particular service)`,
+    Run: func(cmd *cobra.Command, args []string) {
+       if len(args) > 1{
+          log.Fatal("The subcommand start only takes in one optional argument, the " +
+          " service to start!")
+       } else if len(args) == 1 {
+        if args[0] == "postgres" {
+            postgres.Start()
+        } else if args[0] == "prometheus" {
+            prometheus.Start()
+        } else if args[0] == "yb-platform" {
+            platformInstall.Start()
+        } else if args[0] == "nginx" {
+            nginx.Start()
+        } else {
+            log.Fatal("Invalid service name passed in. Valid options: postgres, prometheus " +
+            "yb-platform, nginx")
+            }
+        } else {
+            postgres.Start()
+            prometheus.Start()
+            platformInstall.Start()
+            nginx.Start()
+        }
+    },
+ }
+
+ var stopCmd = &cobra.Command{
+    Use:   "stop",
+    Short: "The stop command is used to stop service(s) required for your Yugabyte " +
+    "Anywhere installation.",
+    Long:  `
+    The stop command can be invoked to stop any service that is required for the
+    running of Yugabyte Anywhere. Can be invoked without any arguments to stop all
+    services, or invoked with a specific service name to stop only that service.
+    Valid service names: postgres, prometheus, yb-platform, nginx
+
+    Invoke as: sudo ./yba-installer stop (to stop all services)
+    sudo ./yba-installer stop serviceName (to stop that particular service)`,
+    Run: func(cmd *cobra.Command, args []string) {
+       if len(args) > 1{
+          log.Fatal("The subcommand stop only takes in one optional argument, the " +
+          " service to stop!")
+       } else if len(args) == 1 {
+        if args[0] == "postgres" {
+            postgres.Stop()
+        } else if args[0] == "prometheus" {
+            prometheus.Stop()
+        } else if args[0] == "yb-platform" {
+            platformInstall.Stop()
+        } else if args[0] == "nginx" {
+            nginx.Stop()
+        } else {
+            log.Fatal("Invalid service name passed in. Valid options: postgres, prometheus " +
+            "yb-platform, nginx")
+        }
+        } else {
+            postgres.Stop()
+            prometheus.Stop()
+            platformInstall.Stop()
+            nginx.Stop()
+        }
+    },
+ }
+
+ var restartCmd = &cobra.Command{
+    Use:   "restart",
+    Short: "The restart command is used to restart service(s) required for your Yugabyte " +
+    "Anywhere installation.",
+    Long:  `
+    The restart command can be invoked to stop any service that is required for the
+    running of Yugabyte Anywhere. Can be invoked without any arguments to restart all
+    services, or invoked with a specific service name to restart only that service.
+    Valid service names: postgres, prometheus, yb-platform, nginx
+
+    Invoke as: sudo ./yba-installer restart (to restart all services)
+    sudo ./yba-installer restart serviceName (to restart that particular service)`,
+    Run: func(cmd *cobra.Command, args []string) {
+       if len(args) > 1{
+          log.Fatal("The subcommand restart only takes in one optional argument, the " +
+          " service to stop!")
+       } else if len(args) == 1 {
+        if args[0] == "postgres" {
+            postgres.Restart()
+        } else if args[0] == "prometheus" {
+            prometheus.Restart()
+        } else if args[0] == "yb-platform" {
+            platformInstall.Restart()
+        } else if args[0] == "nginx" {
+            nginx.Restart()
+        } else {
+            log.Fatal("Invalid service name passed in. Valid options: postgres, prometheus " +
+            "yb-platform, nginx")
+        }
+        } else {
+            postgres.Restart()
+            prometheus.Restart()
+            platformInstall.Restart()
+            nginx.Restart()
+        }
+    },
+ }
+
  var versionCmd = &cobra.Command{
     Use:   "version",
     Short: "The version command prints out the current version associated with yba-installer.",
@@ -462,7 +576,7 @@ var upgradeCmd = &cobra.Command{
 func init() {
     rootCmd.AddCommand(cleanCmd, preflightCmd, licenseCmd, versionCmd,
     paramsCmd, configureCmd, createBackupCmd, restoreBackupCmd, installCmd,
-    upgradeCmd)
+    upgradeCmd, startCmd, stopCmd, restartCmd)
  }
 
  func Execute() {
