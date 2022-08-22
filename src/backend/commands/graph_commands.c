@@ -67,11 +67,18 @@ Datum create_graph(PG_FUNCTION_ARGS)
     if (PG_ARGISNULL(0))
     {
         ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                        errmsg("graph name must not be NULL")));
+                        errmsg("graph name can not be NULL")));
     }
     graph_name = PG_GETARG_NAME(0);
 
     graph_name_str = NameStr(*graph_name);
+
+    if (strlen(graph_name_str) == 0)
+    {
+        ereport(ERROR,
+                (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("graph name can not be empty")));
+    }
     if (graph_exists(graph_name_str))
     {
         ereport(ERROR,
@@ -158,7 +165,7 @@ Datum drop_graph(PG_FUNCTION_ARGS)
     if (PG_ARGISNULL(0))
     {
         ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                        errmsg("graph name must not be NULL")));
+                        errmsg("graph name can not be NULL")));
     }
     graph_name = PG_GETARG_NAME(0);
     cascade = PG_GETARG_BOOL(1);

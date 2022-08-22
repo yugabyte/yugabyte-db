@@ -52,7 +52,7 @@ SELECT count(*) FROM pg_namespace WHERE nspname = 'g';
 -- invalid cases
 SELECT create_graph(NULL);
 SELECT drop_graph(NULL);
-
+SELECT create_graph('');
 --
 -- alter_graph() RENAME function tests
 --

@@ -97,9 +97,11 @@ SELECT count(*) FROM pg_namespace WHERE nspname = 'g';
 
 -- invalid cases
 SELECT create_graph(NULL);
-ERROR:  graph name must not be NULL
+ERROR:  graph name can not be NULL
 SELECT drop_graph(NULL);
-ERROR:  graph name must not be NULL
+ERROR:  graph name can not be NULL
+SELECT create_graph('');
+ERROR:  graph name can not be empty
 --
 -- alter_graph() RENAME function tests
 --
