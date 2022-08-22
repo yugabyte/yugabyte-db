@@ -5,25 +5,25 @@
  package main
 
  import (
-    "fmt"
-    "github.com/spf13/viper"
+    "os"
+    "strings"
  )
 
- func Version(versionMetadataFileName string) {
+// GetVersion gets the version at execution time so that yba-installer
+// installs the correct version of Yugabyte Anywhere.
+ func GetVersion() (string){
 
-    viper.SetConfigName(versionMetadataFileName)
-    viper.SetConfigType("json")
-    viper.AddConfigPath(".")
-    err := viper.ReadInConfig()
-    if err != nil {
-        panic(err)
-    }
+   cwd, _ := os.Getwd()
+   currentFolderPathList := strings.Split(cwd, "/")
+   lenFolder := len(currentFolderPathList)
+   currFolder := currentFolderPathList[lenFolder - 1]
 
-    versionNumber := fmt.Sprint(viper.Get("version_number"))
-    buildNumber := fmt.Sprint(viper.Get("build_number"))
+   versionInformation := strings.Split(currFolder, "-")
 
-    version := versionNumber + "-" + buildNumber
+   versionNumber := versionInformation[1]
+   buildNumber := versionInformation[2]
 
-    fmt.Println("You are on version " + version + " of yba-installer!")
+   version := versionNumber + "-" + buildNumber
 
- }
+   return version
+}

@@ -34,7 +34,6 @@
      if ngi.Mode == "https" {
          configureNginxConfHTTPS()
      }
-     certTLSstorage()
  }
 
  func disableSELinux() {
@@ -118,13 +117,3 @@
         disableSELinux()
     }
 }
-
- func certTLSstorage() {
-
-     os.MkdirAll("/opt/yugaware", os.ModePerm)
-     fmt.Println("/opt/yugaware directory successfully created.")
-     command1 := "chown"
-     arg1 := []string{"yugabyte:yugabyte", "-R", "/opt/yugaware"}
-     ExecuteBashCommand(command1, arg1)
-
- }
