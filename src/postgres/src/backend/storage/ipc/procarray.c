@@ -416,6 +416,8 @@ ProcArrayEndTransaction(PGPROC *proc, TransactionId latestXid)
 		 */
 		Assert(TransactionIdIsValid(allPgXact[proc->pgprocno].xid));
 
+		if (!IsCurrentTxnWithPGRel())
+			return;
 		/*
 		 * If we can immediately acquire ProcArrayLock, we clear our own XID
 		 * and release the lock.  If not, use group XID clearing to improve
@@ -423,12 +425,10 @@ ProcArrayEndTransaction(PGPROC *proc, TransactionId latestXid)
 		 */
 		if (LWLockConditionalAcquire(ProcArrayLock, LW_EXCLUSIVE))
 		{
-			if (IsCurrentTxnWithPGRel())
-				ProcArrayEndTransactionInternal(proc, pgxact, latestXid);
+			ProcArrayEndTransactionInternal(proc, pgxact, latestXid);
 			LWLockRelease(ProcArrayLock);
 		}
-		else if (IsCurrentTxnWithPGRel())
-			ProcArrayGroupClearXid(proc, latestXid);
+		else ProcArrayGroupClearXid(proc, latestXid);
 	}
 	else
 	{
