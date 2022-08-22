@@ -330,8 +330,13 @@ Run: func(cmd *cobra.Command, args []string) {
 
     steps[nginx.Name] = []functionPointer{nginx.Stop, nginx.Start}
 
-    order = []string{postgres.Name, prometheus.Name, platformInstall.Name,
-        nginx.Name}
+    order = []string{prometheus.Name, platformInstall.Name, nginx.Name}
+
+    if ! bringOwnPostgres {
+
+        order = []string{postgres.Name, prometheus.Name, platformInstall.Name, nginx.Name}
+
+    }
 
     loopAndExecute("reconfigure")
 
@@ -447,18 +452,9 @@ var installCmd = &cobra.Command{
 
       if bringOwnPostgres {
 
-        postgresParams, valid := ValidateUserPostgres("yba-installer-input.yml")
-
-        if valid {
-            postgres = Postgres{"postgres",
-            postgresParams["systemdLocation"],
-            []string{postgresParams["pgHbaConf"],
-                postgresParams["postgresConf"]},
-                postgresParams["version"]}
-        } else {
-
+        if ! ValidateUserPostgres("yba-installer-input.yml") {
             log.Fatalf("User Postgres not correctly configured! " +
-                    "Check settings.")
+                    "Check settings and the above logging message.")
         }
 
     }
@@ -469,40 +465,32 @@ var installCmd = &cobra.Command{
 
             log.Fatalf("User Python not correctly configured! " +
             "Check settings.")
-        }
+         }
 
-    }
+     }
 
         steps[commonInstall.Name] = []functionPointer{commonInstall.SetUpPrereqs,
-         commonInstall.Uninstall, commonInstall.Install}
+            commonInstall.Uninstall, commonInstall.Install}
 
         steps[prometheus.Name] = []functionPointer{prometheus.SetUpPrereqs,
             prometheus.Install, prometheus.Start}
 
-        if ! bringOwnPostgres {
-
-            //Change to postgres bundled if we are doing a non-root installation where
-            //all services are crontab managed.
-            steps[postgres.Name] = []functionPointer{postgres.SetUpPrereqs,
-            postgres.Install, postgres.Start}
-
-        }
+        steps[postgres.Name] = []functionPointer{postgres.SetUpPrereqs,
+        postgres.Install, postgres.Start}
 
         steps[platformInstall.Name] = []functionPointer{platformInstall.Install, platformInstall.Start}
 
         steps[nginx.Name] = []functionPointer{nginx.SetUpPrereqs,
             nginx.Install, nginx.Start}
 
+        order = []string{commonInstall.Name, prometheus.Name,
+                platformInstall.Name, nginx.Name}
+
         if ! bringOwnPostgres {
 
             order = []string{commonInstall.Name, prometheus.Name,
                 postgres.Name, platformInstall.Name, nginx.Name}
-        }  else {
-
-            order = []string{commonInstall.Name, prometheus.Name,
-                platformInstall.Name, nginx.Name}
-
-            }
+        }
 
         loopAndExecute("install")
 
