@@ -26,9 +26,8 @@ A local instance of Prometheus displaying the metrics of your YugabyteDB cluster
 ## Set up Grafana and add Prometheus as a data source
 
 - Install Grafana and start the server according to the [Grafana documentation](https://grafana.com/docs/grafana/latest/installation/mac/).
-
 - Open the Grafana UI on <http://localhost:3000>. The default login is `admin`, with a password of `admin`.
-- Follow the steps on [this page](https://prometheus.io/docs/visualization/grafana/) to create a Prometheus data source.
+- Follow the steps on [Grafana support for Prometheus](https://prometheus.io/docs/visualization/grafana/) to create a Prometheus data source.
 
 ## Create a dashboard
 
@@ -51,7 +50,7 @@ There are different ways to create a dashboard in Grafana. For this tutorial, yo
   ![Grafana dashboard](/images/ce/graf-server-status.png)
 
 - Because this example uses the `CassandraKeyValue` workload generator from the [Prometheus integration](../../prometheus-integration/macos/) page, you can see different YCQL related metrics in addition to the master and t-server statuses. The [source code](https://github.com/yugabyte/yugabyte-db/blob/master/java/yb-loadtester/src/main/java/com/yugabyte/sample/apps/CassandraSparkKeyValueCopy.java) of the application uses only SELECT statements for reads and INSERT statements for writes (aside from the initial CREATE TABLE). This means that throughput and latency can be measured using the metrics corresponding to the SELECT and INSERT statements.
-The following is a YCQL OPS and latency metrics :
+The following is a YCQL OPS and latency metrics:
 
   ![Grafana YCQL-OPS](/images/ce/graf-ycql-ops.png "YCQL-OPS")
 
