@@ -55,8 +55,7 @@ Result<master::BackfillJobPB> GetBackfillJobs(
     const client::YBTableName& table_name) {
   master::TableIdentifierPB table_identifier;
   table_name.SetIntoTableIdentifierPB(&table_identifier);
-  return GetBackfillJobs(
-      cluster->GetMasterProxy<master::MasterDdlProxy>(), table_identifier);
+  return GetBackfillJobs(cluster->GetLeaderMasterProxy<master::MasterDdlProxy>(), table_identifier);
 }
 
 Result<master::BackfillJobPB> GetBackfillJobs(
@@ -66,8 +65,7 @@ Result<master::BackfillJobPB> GetBackfillJobs(
   if (!table_id.empty()) {
     table_identifier.set_table_id(table_id);
   }
-  return GetBackfillJobs(
-      cluster->GetMasterProxy<master::MasterDdlProxy>(), table_identifier);
+  return GetBackfillJobs(cluster->GetLeaderMasterProxy<master::MasterDdlProxy>(), table_identifier);
 }
 
 Status WaitForBackfillSatisfyCondition(
@@ -142,7 +140,7 @@ Status WaitForBackfillSafeTimeOn(
     const client::YBTableName& table_name,
     MonoDelta max_wait = MonoDelta::FromSeconds(60)) {
   return WaitForBackfillSafeTimeOn(
-      cluster->GetMasterProxy<master::MasterDdlProxy>(), table_name, max_wait);
+      cluster->GetLeaderMasterProxy<master::MasterDdlProxy>(), table_name, max_wait);
 }
 
 Status WaitForBackfillSafeTimeOn(
@@ -150,7 +148,7 @@ Status WaitForBackfillSafeTimeOn(
     const TableId& table_id,
     MonoDelta max_wait = MonoDelta::FromSeconds(60)) {
   return WaitForBackfillSafeTimeOn(
-      cluster->GetMasterProxy<master::MasterDdlProxy>(), table_id, max_wait);
+      cluster->GetLeaderMasterProxy<master::MasterDdlProxy>(), table_id, max_wait);
 }
 
 }  // namespace yb

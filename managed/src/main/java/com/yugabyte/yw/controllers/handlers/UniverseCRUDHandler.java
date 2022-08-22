@@ -251,11 +251,19 @@ public class UniverseCRUDHandler {
                     .filter(n -> n.isActive() && defaultRegion.code.equals(n.cloudInfo.region))
                     .count();
         if (nodesInDefRegion < intent.replicationFactor) {
-          throw new PlatformServiceException(
-              BAD_REQUEST,
-              String.format(
-                  "Could not pick %d masters, only %d nodes available in default region %s.",
-                  intent.replicationFactor, nodesInDefRegion, defaultRegion.name));
+          if (taskParams.mastersInDefaultRegion) {
+            throw new PlatformServiceException(
+                BAD_REQUEST,
+                String.format(
+                    "Could not pick %d masters, only %d nodes available in default region %s.",
+                    intent.replicationFactor, nodesInDefRegion, defaultRegion.name));
+          } else {
+            throw new PlatformServiceException(
+                BAD_REQUEST,
+                String.format(
+                    "Could not pick %d nodes in default region %s to place enough data replicas.",
+                    intent.replicationFactor, defaultRegion.name));
+          }
         }
       }
     }

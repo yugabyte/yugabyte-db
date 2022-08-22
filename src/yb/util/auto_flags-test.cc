@@ -26,9 +26,12 @@ DEFINE_AUTO_string(test_auto_string, kExternal, "false", "true", "Testing!");
 DISABLE_PROMOTE_ALL_AUTO_FLAGS_FOR_TEST;
 
 namespace yb {
+
 const string kFlagName = "test_auto_flag";
 const string kFlagNameArg = "--test_auto_flag";
 const string kPromoteAllAutoFlagsArg = "--TEST_promote_all_auto_flags";
+
+namespace {
 
 void VerifyFlagDefault(const int expected_val) {
   gflags::CommandLineFlagInfo flags;
@@ -49,11 +52,20 @@ void ParseCommandLineFlags(vector<string> arguments) {
   yb::ParseCommandLineFlags(&argc, &argv_ptr, true /* remove_flags */);
 }
 
+}  // namespace
+
 TEST(AutoFlagsTest, TestPromote) {
   ASSERT_NOK(PromoteAutoFlag("Invalid_flag"));
 
   ASSERT_EQ(FLAGS_test_auto_flag, 0);
   VerifyFlagDefault(0);
+
+  ASSERT_EQ(FLAGS_test_auto_bool, false);
+  ASSERT_EQ(FLAGS_test_auto_int32, 1);
+  ASSERT_EQ(FLAGS_test_auto_int64, 1);
+  ASSERT_EQ(FLAGS_test_auto_uint64, 1);
+  ASSERT_EQ(FLAGS_test_auto_double, 1);
+  ASSERT_EQ(FLAGS_test_auto_string, "false");
 
   ASSERT_OK(PromoteAutoFlag(kFlagName));
   ASSERT_EQ(FLAGS_test_auto_flag, 100);
@@ -74,6 +86,13 @@ TEST(AutoFlagsTest, TestAutoPromoted) {
 
   ASSERT_EQ(FLAGS_test_auto_flag, 100);
   VerifyFlagDefault(100);
+
+  ASSERT_EQ(FLAGS_test_auto_bool, true);
+  ASSERT_EQ(FLAGS_test_auto_int32, 2);
+  ASSERT_EQ(FLAGS_test_auto_int64, 2);
+  ASSERT_EQ(FLAGS_test_auto_uint64, 2);
+  ASSERT_EQ(FLAGS_test_auto_double, 2);
+  ASSERT_EQ(FLAGS_test_auto_string, "true");
 
   // promote again should be no-op
   ASSERT_OK(PromoteAutoFlag(kFlagName));

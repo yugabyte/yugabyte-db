@@ -2278,6 +2278,9 @@
         "kubernetesUpgradeSupported" : {
           "type" : "boolean"
         },
+        "mastersInDefaultRegion" : {
+          "type" : "boolean"
+        },
         "nextClusterIndex" : {
           "format" : "int32",
           "type" : "integer"
@@ -3307,6 +3310,9 @@
           },
           "type" : "object"
         },
+        "mastersInDefaultRegion" : {
+          "type" : "boolean"
+        },
         "nextClusterIndex" : {
           "format" : "int32",
           "type" : "integer"
@@ -4255,11 +4261,11 @@
       "required" : [ "nodeAction" ],
       "type" : "object"
     },
-    "NodeConfiguration" : {
+    "NodeConfig" : {
       "description" : "A node configuration.",
       "properties" : {
         "type" : {
-          "enum" : [ "NTP_SERVICE_STATUS", "PROMETHEUS_SPACE", "MOUNT_POINT", "PORT_AVAILABLE", "YUGABYTE_USER", "YUGABYTE_USER_GROUP", "HOME_DIR_SPACE", "RAM_SIZE", "INTERNET_CONNECTION", "CPU_CORES", "PROMETHEUS_NO_NODE_EXPORTER", "TMP_DIR_SPACE", "PAM_LIMITS", "PORTS", "PYTHON_VERSION" ],
+          "enum" : [ "NTP_SERVICE_STATUS", "PROMETHEUS_SPACE", "MOUNT_POINTS", "USER", "USER_GROUP", "HOME_DIR_SPACE", "RAM_SIZE", "INTERNET_CONNECTION", "CPU_CORES", "PROMETHEUS_NO_NODE_EXPORTER", "TMP_DIR_SPACE", "PAM_LIMITS_WRITABLE", "PORTS", "PYTHON_VERSION" ],
           "type" : "string"
         },
         "value" : {
@@ -4635,10 +4641,10 @@
           "example" : "1.1.1.1",
           "type" : "string"
         },
-        "nodeConfigurations" : {
+        "nodeConfigs" : {
           "description" : "Node configurations",
           "items" : {
-            "$ref" : "#/definitions/NodeConfiguration"
+            "$ref" : "#/definitions/NodeConfig"
           },
           "type" : "array",
           "uniqueItems" : true
@@ -5302,6 +5308,9 @@
         "kubernetesUpgradeSupported" : {
           "type" : "boolean"
         },
+        "mastersInDefaultRegion" : {
+          "type" : "boolean"
+        },
         "nextClusterIndex" : {
           "format" : "int32",
           "type" : "integer"
@@ -5958,6 +5967,9 @@
         "kubernetesUpgradeSupported" : {
           "type" : "boolean"
         },
+        "mastersInDefaultRegion" : {
+          "type" : "boolean"
+        },
         "nextClusterIndex" : {
           "format" : "int32",
           "type" : "integer"
@@ -6236,6 +6248,9 @@
           "type" : "string"
         },
         "kubernetesUpgradeSupported" : {
+          "type" : "boolean"
+        },
+        "mastersInDefaultRegion" : {
           "type" : "boolean"
         },
         "nextClusterIndex" : {
@@ -6672,6 +6687,9 @@
         "kubernetesUpgradeSupported" : {
           "type" : "boolean"
         },
+        "mastersInDefaultRegion" : {
+          "type" : "boolean"
+        },
         "nextClusterIndex" : {
           "format" : "int32",
           "type" : "integer"
@@ -6883,6 +6901,9 @@
           "type" : "string"
         },
         "kubernetesUpgradeSupported" : {
+          "type" : "boolean"
+        },
+        "mastersInDefaultRegion" : {
           "type" : "boolean"
         },
         "nextClusterIndex" : {
@@ -7107,6 +7128,9 @@
         "itestS3PackagePath" : {
           "type" : "string"
         },
+        "mastersInDefaultRegion" : {
+          "type" : "boolean"
+        },
         "nextClusterIndex" : {
           "format" : "int32",
           "type" : "integer"
@@ -7302,6 +7326,9 @@
         "itestS3PackagePath" : {
           "type" : "string"
         },
+        "mastersInDefaultRegion" : {
+          "type" : "boolean"
+        },
         "nextClusterIndex" : {
           "format" : "int32",
           "type" : "integer"
@@ -7493,6 +7520,9 @@
         },
         "itestS3PackagePath" : {
           "type" : "string"
+        },
+        "mastersInDefaultRegion" : {
+          "type" : "boolean"
         },
         "nextClusterIndex" : {
           "format" : "int32",
@@ -7853,6 +7883,9 @@
           "type" : "string"
         },
         "kubernetesUpgradeSupported" : {
+          "type" : "boolean"
+        },
+        "mastersInDefaultRegion" : {
           "type" : "boolean"
         },
         "nextClusterIndex" : {
@@ -8379,6 +8412,9 @@
           },
           "type" : "object"
         },
+        "mastersInDefaultRegion" : {
+          "type" : "boolean"
+        },
         "nextClusterIndex" : {
           "format" : "int32",
           "type" : "integer"
@@ -8792,9 +8828,19 @@
           "type" : "string"
         },
         "errorJson" : {
-          "description" : "User visible error message as json object",
+          "description" : "User visible structured error message as json object",
           "example" : "{ \"foo\" : \"bar\", \"baz\" : [1, 2, 3] }",
           "type" : "object"
+        },
+        "httpMethod" : {
+          "description" : "Method for HTTP call that resulted in this error",
+          "example" : "POST",
+          "type" : "string"
+        },
+        "requestUri" : {
+          "description" : "URI for HTTP request that resulted in this error",
+          "example" : "/customers/8918921-af3782-633de/universe/8173ab-fd2453/create",
+          "type" : "string"
         },
         "success" : {
           "description" : "Always set to false to indicate failure",

@@ -168,6 +168,10 @@ EXPLAIN (COSTS FALSE) EXECUTE si_param(0, 0);
 EXECUTE si_param(0, 0);
 DEALLOCATE si_param;
 
+-- Index scan with remote filter on a system table
+EXPLAIN (COSTS FALSE) SELECT relname, relkind FROM pg_class WHERE relname LIKE 'pushdown_c%';
+SELECT relname, relkind FROM pg_class WHERE relname LIKE 'pushdown_c%';
+
 DROP TABLE pushdown_index;
 DROP TABLE pushdown_test;
 DROP TABLE pushdown_lookup;

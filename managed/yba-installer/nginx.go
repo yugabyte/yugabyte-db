@@ -7,6 +7,7 @@
  import (
      "fmt"
      "os"
+     "strings"
  )
 
  // Component 4: Nginx
@@ -36,11 +37,21 @@
      certTLSstorage()
  }
 
+ func disableSELinux() {
+    command0 := "sudo"
+    arg0 := []string{"setenforce", "0"}
+    ExecuteBashCommand(command0, arg0)
+ }
+
  // Start performs the startup operations specific to Nginx.
  func (ngi Nginx) Start() {
      command1 := "systemctl"
      arg1 := []string{"daemon-reload"}
      ExecuteBashCommand(command1, arg1)
+
+     if strings.Contains(DetectOS(), "CentOS") {
+        disableSELinux()
+    }
 
      command2 := "systemctl"
      arg2 := []string{"start", "nginx"}
@@ -62,6 +73,9 @@
  // Restart performs the restart operations specific to Nginx.
  func (ngi Nginx) Restart() {
 
+    if strings.Contains(DetectOS(), "CentOS") {
+        disableSELinux()
+    }
      command1 := "systemctl"
      arg1 := []string{"restart", "nginx"}
      ExecuteBashCommand(command1, arg1)
@@ -81,12 +95,16 @@
 
  func configureNginxConfHTTPS() {
 
-     generateCertGolang()
+    generateCertGolang()
+
+    os.Chmod("key.pem", os.ModePerm)
+    os.Chmod("cert.pem", os.ModePerm)
 
     os.MkdirAll("/opt/yugabyte/certs", os.ModePerm)
     fmt.Println("/opt/yugabyte/certs directory successfully created.")
-    MoveFileGolang("key.pem", "/opt/yugabyte/certs/key.pem")
-    MoveFileGolang("cert.pem", "/opt/yugabyte/certs/cert.pem")
+
+    ExecuteBashCommand("bash", []string{"-c", "cp " + "key.pem" + " " + "/opt/yugabyte/certs"})
+    ExecuteBashCommand("bash", []string{"-c", "cp " + "cert.pem" + " " + "/opt/yugabyte/certs"})
 
     command1 := "chown"
     arg1 := []string{"yugabyte:yugabyte", "/opt/yugabyte/certs/key.pem"}
@@ -95,6 +113,10 @@
     command2 := "chown"
     arg2 := []string{"yugabyte:yugabyte", "/opt/yugabyte/certs/cert.pem"}
     ExecuteBashCommand(command2, arg2)
+
+    if strings.Contains(DetectOS(), "CentOS") {
+        disableSELinux()
+    }
 }
 
  func certTLSstorage() {

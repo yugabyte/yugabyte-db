@@ -114,7 +114,7 @@ package_for_platform() {
     local os=$1
     local arch=$2
     local version=$3
-    staging_dir_name="node-agent-${version}-${os}-${arch}"
+    staging_dir_name="node_agent-${version}-${os}-${arch}"
     script_dir="${build_output_dir}/${staging_dir_name}/${version}/scripts"
     bin_dir="${build_output_dir}/${staging_dir_name}/${version}/bin"
     echo "Packaging ${staging_dir_name}"
@@ -136,7 +136,7 @@ package_for_platform() {
     chmod 755 ${script_dir}/*.sh
     chmod 755 ${bin_dir}/*.sh
     popd
-    tar -zcf ${staging_dir_name}.tgz -C $staging_dir_name .
+    tar -zcf ${staging_dir_name}.tar.gz -C $staging_dir_name .
     rm -rf $staging_dir_name
     popd
 }

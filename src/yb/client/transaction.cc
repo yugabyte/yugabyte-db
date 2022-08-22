@@ -250,6 +250,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   }
 
   void InitWithReadPoint(IsolationLevel isolation, ConsistentReadPoint&& read_point) {
+    TRACE_TO(trace_, __func__);
     VLOG_WITH_PREFIX(1) << __func__ << "(" << IsolationLevel_Name(isolation) << ", "
                         << read_point.GetReadTime() << ")";
 
@@ -319,6 +320,16 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
         return false;
       }
       const bool defer = !ready_ || *promotion_started;
+
+      if (!status_.ok()) {
+        auto status = status_;
+        lock.unlock();
+        VLOG_WITH_PREFIX(2) << "Prepare, transaction already failed: " << status;
+        if (waiter) {
+          waiter(status);
+        }
+        return false;
+      }
 
       if (!defer || initial) {
         PrepareOpsGroups(initial, ops_info->groups);
@@ -799,11 +810,6 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       lock.lock();
     }
     return metadata_;
-  }
-
-  void StartHeartbeat() {
-    VLOG_WITH_PREFIX(2) << __PRETTY_FUNCTION__;
-    RequestStatusTablet(TransactionRpcDeadline());
   }
 
   void SetActiveSubTransaction(SubTransactionId id) {
@@ -2121,13 +2127,6 @@ Result<TransactionMetadata> YBTransaction::Release() {
 
 Trace* YBTransaction::trace() {
   return impl_->trace();
-}
-
-YBTransactionPtr YBTransaction::Take(
-    TransactionManager* manager, const TransactionMetadata& metadata) {
-  auto result = std::make_shared<YBTransaction>(manager, metadata, PrivateOnlyTag());
-  result->impl_->StartHeartbeat();
-  return result;
 }
 
 void YBTransaction::SetActiveSubTransaction(SubTransactionId id) {

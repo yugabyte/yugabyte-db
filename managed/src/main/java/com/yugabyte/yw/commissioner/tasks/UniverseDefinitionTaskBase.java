@@ -497,7 +497,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
               masterLeader,
               primaryNodes,
               primaryCluster.userIntent.replicationFactor,
-              PlacementInfoUtil.getDefaultRegionCode(taskParams()),
+              taskParams().mastersInDefaultRegion
+                  ? PlacementInfoUtil.getDefaultRegionCode(taskParams())
+                  : null,
               applySelection);
       log.info(
           "Active masters count after balancing = "

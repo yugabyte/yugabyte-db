@@ -8,12 +8,14 @@ import static org.mockito.MockitoAnnotations.initMocks;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yugabyte.yw.common.services.YBClientService;
-import com.yugabyte.yw.models.configs.data.CustomerConfigData;
+import com.yugabyte.yw.forms.BackupTableParams;
 import java.io.IOException;
-import java.util.Arrays;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
+
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import org.junit.Before;
@@ -115,11 +117,34 @@ public class BackupUtilTest extends FakeDBApplication {
   }
 
   @Test
-  @Parameters(value = {"s3://backup, s3://backup/foo, foo", "s3://backup/, s3://backup//foo, foo"})
-  public void testGetBackupIdentifier(
+  @Parameters(
+      value = {
+        "/tmp/nfs/, /tmp/nfs//yugabyte_backup/foo, yugabyte_backup/foo",
+        "/tmp/nfs, /tmp/nfs/yugabyte_backup/foo, yugabyte_backup/foo",
+        "/tmp/nfs/, /tmp/nfs//foo, foo",
+        "s3://backup, s3://backup/foo, foo",
+        "s3://backup/, s3://backup//foo, foo"
+      })
+  public void testGetBackupIdentifierWithoutNfsCheck(
       String configDefaultLocation, String defaultBackupLocation, String expectedIdentifier) {
     String actualIdentifier =
-        BackupUtil.getBackupIdentifier(configDefaultLocation, defaultBackupLocation);
+        BackupUtil.getBackupIdentifier(configDefaultLocation, defaultBackupLocation, false);
+    assertEquals(expectedIdentifier, actualIdentifier);
+  }
+
+  @Test
+  @Parameters(
+      value = {
+        "/tmp/nfs/, /tmp/nfs//yugabyte_backup/foo, foo",
+        "/tmp/nfs, /tmp/nfs/yugabyte_backup/foo, foo",
+        "/tmp/nfs/, /tmp/nfs//foo, foo",
+        "s3://backup, s3://backup/foo, foo",
+        "s3://backup/, s3://backup//foo, foo"
+      })
+  public void testGetBackupIdentifierWithNfsCheck(
+      String configDefaultLocation, String defaultBackupLocation, String expectedIdentifier) {
+    String actualIdentifier =
+        BackupUtil.getBackupIdentifier(configDefaultLocation, defaultBackupLocation, true);
     assertEquals(expectedIdentifier, actualIdentifier);
   }
 
@@ -139,5 +164,54 @@ public class BackupUtilTest extends FakeDBApplication {
         BackupUtil.getExactRegionLocation(
             backupLocation, configDefaultLocation, configRegionLocation);
     assertEquals(expectedRegionLocation, actualRegionLocation);
+  }
+
+  @Test
+  @Parameters(value = {"true, true", "true, false", "false, false", "false, true"})
+  public void testBackupLocationFormat(boolean emptyTableList, boolean isYbc) {
+    BackupTableParams tableParams = new BackupTableParams();
+    tableParams.universeUUID = UUID.randomUUID();
+    tableParams.backupUuid = UUID.randomUUID();
+    tableParams.setKeyspace("foo");
+    if (emptyTableList) {
+      tableParams.tableUUIDList = null;
+    } else {
+      tableParams.tableUUIDList = new ArrayList<>();
+    }
+    String formattedLocation = BackupUtil.formatStorageLocation(tableParams, isYbc);
+    if (isYbc) {
+      assertTrue(formattedLocation.contains("/ybc_backup"));
+      if (emptyTableList) {
+        assertTrue(formattedLocation.contains("/keyspace-foo"));
+      } else {
+        assertTrue(formattedLocation.contains("/multi-table-foo"));
+      }
+    } else {
+      assertTrue(formattedLocation.contains("/backup"));
+      if (emptyTableList) {
+        assertTrue(formattedLocation.contains("/keyspace-foo"));
+      } else {
+        assertTrue(formattedLocation.contains("/multi-table-foo"));
+      }
+    }
+  }
+
+  @Test
+  @Parameters(
+      value = {
+        "s3://foo, s3://foo/univ-318eef98-044b-4293-b560-73ef2e1f2df9/ybc_backup-foo/bar, true",
+        "s3://foo, s3://foo/univ-318EEf98-044b-4293-b560-73ef2e1f2df9/ybc_backup-foo/bar, true",
+        "s3://foo, s3://foo/univ-318eef98-044B-42A3-b560-73ef2e1f2df9/ybc_backup-foo/bar, true",
+        "s3://foo, s3://foo/univ-318eef98-044b-4293-b560-73ef2e1f2df9/backup_ybc-foo/bar, false",
+        "s3://foo, s3://foo/univ-318eef98-044b-4293-b560-73ef2e1f2df9/backup-foo/bar_ybc, false",
+        "s3://foo, s3://foo/univ-318eef98-044b-4293-b560-73ef2e1f2df9/backup-foo/ybc_backup, false",
+        "/tmp/nfs, /tmp/nfs/univ-318eef98-044b-4293-b560-73ef2e1f2df9/backup-foo/ybc_backup, false",
+        "/tmp/nfs, /tmp/nfs/univ-318eef98-044b-4293-b560-73ef2e1f2df9/ybc_backup-foo/bar, true",
+        "/nfs, /nfs/yugabyte_backup/univ-318eef98-044b-4293-b560-73ef2e1f2df9/ybc_backup-foo/bar"
+            + ", true"
+      })
+  public void testIsYbcBackup(String configLocation, String backupLocation, boolean expected) {
+    boolean actual = backupUtil.isYbcBackup(configLocation, backupLocation);
+    assertEquals(expected, actual);
   }
 }

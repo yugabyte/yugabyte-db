@@ -2,7 +2,6 @@ module node-agent
 
 go 1.18
 
-
 require (
 	github.com/apex/log v1.9.0
 	github.com/golang-jwt/jwt/v4 v4.4.2

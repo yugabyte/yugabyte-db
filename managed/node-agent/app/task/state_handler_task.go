@@ -37,7 +37,7 @@ func (handler *stateHandlerTask) Process(ctx context.Context) (any, error) {
 		util.FileLogger.Errorf("Error in getting node agent state. Error: %s", err)
 	}
 	ptr := result.(*string)
-	util.CliLogger.Infof("Agent State is - %s", *ptr)
+	util.FileLogger.Infof("Agent State is - %s", *ptr)
 	state := model.NodeState(*ptr)
 	switch state {
 	case model.Registering:
@@ -100,7 +100,7 @@ func (handler *stateHandlerTask) handleUpgradingState(ctx context.Context, confi
 	util.FileLogger.Info("Starting the node agent Upgrading process")
 	result, err := HandlePutAgent()(ctx)
 	if err != nil {
-		errStr := "Error while posting upgrading state to the platform"
+		errStr := "Error while posting upgrading state to the platform -"
 		util.CliLogger.Errorf("%s %s", errStr, err)
 		util.FileLogger.Errorf("%s %s", errStr, err)
 		return
@@ -116,7 +116,7 @@ func (handler *stateHandlerTask) handleUpgradingState(ctx context.Context, confi
 	uuid := util.NewUUID().String()
 
 	if err := util.SaveCerts(config, newCert, newKey, uuid); err != nil {
-		util.CliLogger.Errorf(
+		util.FileLogger.Errorf(
 			"Error while saving new certs during upgrading step - %s",
 			err.Error(),
 		)
@@ -128,7 +128,7 @@ func (handler *stateHandlerTask) handleUpgradingState(ctx context.Context, confi
 		err := util.DeleteCerts(util.PlatformCertsUpgrade)
 		//Log the error while deleting the certs but do not suspend the process.
 		if err != nil {
-			util.CliLogger.Errorf(
+			util.FileLogger.Errorf(
 				"Error while deleting certs - %s from past failures",
 				config.GetString(util.PlatformCertsUpgrade),
 			)
@@ -139,7 +139,7 @@ func (handler *stateHandlerTask) handleUpgradingState(ctx context.Context, confi
 
 	//Run the update script to change the symlink to the updated version
 	if err := HandleUpgradeScript(config, ctx, config.GetString(util.PlatformVersionUpdate)); err != nil {
-		util.CliLogger.Errorf(
+		util.FileLogger.Errorf(
 			"Error while changing the symlink to the updated version - %s",
 			err.Error(),
 		)
@@ -153,7 +153,7 @@ func (handler *stateHandlerTask) handleUpgradingState(ctx context.Context, confi
 	)
 	if result, err := HandlePutAgentState(model.Upgraded, config.GetString(util.PlatformVersionUpdate))(ctx); err != nil {
 		data, _ := result.(*string)
-		util.CliLogger.Errorf("Error while updating agent state to Upgraded - %s", *data)
+		util.FileLogger.Errorf("Error while updating agent state to Upgraded - %s", *data)
 		return
 	}
 
@@ -161,6 +161,7 @@ func (handler *stateHandlerTask) handleUpgradingState(ctx context.Context, confi
 }
 
 func (handler *stateHandlerTask) handleUpgradedState(ctx context.Context, config *util.Config) {
+	util.FileLogger.Info("Starting the node agent Upgraded step")
 	// Stop the service after cleaning up the config
 	pid := os.Getpid()
 	defer syscall.Kill(pid, syscall.SIGTERM)

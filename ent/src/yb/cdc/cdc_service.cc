@@ -581,12 +581,29 @@ class CDCServiceImpl::Impl {
           CoarseMonoClock::Now() >
               it->cdc_state_checkpoint.last_active_time +
                   MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_cdc_intent_retention_ms))) {
+        LOG(ERROR) << "Stream ID: " << producer_tablet.stream_id
+                   << " expired for Tablet ID: " << producer_tablet.tablet_id
+                   << " with active time :"
+                   << it->cdc_state_checkpoint.last_active_time.time_since_epoch();
         return STATUS_FORMAT(
             InternalError, "stream ID $0 is expired for Tablet ID $1", producer_tablet.stream_id,
             producer_tablet.tablet_id);
       }
+      VLOG(1) << "Tablet  :" << producer_tablet.ToString()
+              << " found in CDCSerive Cache with active time: "
+              << ": " << it->cdc_state_checkpoint.last_active_time.time_since_epoch();
     }
     return Status::OK();
+  }
+
+  Result<TabletCheckpoint> TEST_GetTabletInfoFromCache(const ProducerTabletInfo& producer_tablet) {
+    SharedLock<rw_spinlock> l(mutex_);
+    auto it = tablet_checkpoints_.find(producer_tablet);
+    if (it != tablet_checkpoints_.end()) {
+      return it->cdc_state_checkpoint;
+    }
+    return STATUS_FORMAT(
+        InternalError, "Tablet info: $0 not found in cache.", producer_tablet.ToString());
   }
 
   void UpdateActiveTime(const ProducerTabletInfo& producer_tablet) {
@@ -1208,6 +1225,11 @@ Result<google::protobuf::RepeatedPtrField<master::TabletLocationsPB>> CDCService
   return all_tablets;
 }
 
+Result<TabletCheckpoint> CDCServiceImpl::TEST_GetTabletInfoFromCache(
+    const ProducerTabletInfo& producer_tablet) {
+  return impl_->TEST_GetTabletInfoFromCache(producer_tablet);
+}
+
 void CDCServiceImpl::GetChanges(const GetChangesRequestPB* req,
                                 GetChangesResponsePB* resp,
                                 RpcContext context) {
@@ -1440,6 +1462,7 @@ Status CDCServiceImpl::UpdatePeersCdcMinReplicatedIndex(
   std::vector<client::internal::RemoteTabletServer *> servers;
   RETURN_NOT_OK(GetTServers(tablet_id, &servers));
 
+  auto ts_leader = VERIFY_RESULT(GetLeaderTServer(tablet_id));
   for (const auto &server : servers) {
     if (server->IsLocal()) {
       // We modify our log directly. Avoid calling itself through the proxy.
@@ -1455,6 +1478,12 @@ Status CDCServiceImpl::UpdatePeersCdcMinReplicatedIndex(
     cdc_checkpoint_min.cdc_sdk_op_id.ToPB(update_index_req.add_cdc_sdk_consumed_ops());
     update_index_req.add_cdc_sdk_ops_expiration_ms(
         cdc_checkpoint_min.cdc_sdk_op_id_expiration.ToMilliseconds());
+    // Don't update active time for the TABLET LEADER. Only update in FOLLOWERS.
+    if (server->permanent_uuid() != ts_leader->permanent_uuid()) {
+      for (auto& stream_id : cdc_checkpoint_min.active_stream_list) {
+        update_index_req.add_stream_ids(stream_id);
+      }
+    }
 
     rpc::RpcController rpc;
     rpc.set_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_write_rpc_timeout_ms));
@@ -1754,7 +1783,7 @@ Result<TabletOpIdMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
             << ", last replicated time: " << last_replicated_time_str;
 
     // Add the {tablet_id, stream_id} pair to the set if its checkpoint is OpId::Max().
-    if (checkpoint == OpId::Max().ToString()) {
+    if (tablet_stream_to_be_deleted && checkpoint == OpId::Max().ToString()) {
       tablet_stream_to_be_deleted->insert({tablet_id, stream_id});
     }
 
@@ -1795,13 +1824,17 @@ Result<TabletOpIdMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
     // Check stream associated with the tablet is active or not.
     // Don't consider those inactive stream for the min_checkpoint calculation.
     CoarseTimePoint latest_active_time = CoarseTimePoint ::min();
-    if (record.source_type == CDCSDK) {
+    // if current tsever is the tablet LEADER, send the FOLLOWER tablets to
+    // update their active_time in their CDCService Cache.
+    std::shared_ptr<tablet::TabletPeer> tablet_peer;
+    Status s = tablet_manager_->GetTabletPeer(tablet_id, &tablet_peer);
+    if (s.ok() && record.source_type == CDCSDK && IsTabletPeerLeader(tablet_peer)) {
       auto status = impl_->CheckStreamActive(producer_tablet);
       if (!status.ok()) {
         // Inactive stream read from cdc_state table are not considered for the minimum
         // cdc_sdk_op_id calculation except if tablet is associated with a single stream, This is
-        // required to update the cdc_sdk_op_id_expiration in the tablet_min_checkpoint_map for the
-        // corresponding tablet, so that the tablet PEERS will be updated with
+        // required to update the cdc_sdk_op_id_expiration in the tablet_min_checkpoint_map for
+        // the corresponding tablet, so that the tablet PEERS will be updated with
         // cdc_sdk_min_checkpoint_op_id_expiration_ as EXPIRED.
         if (tablet_min_checkpoint_map.find(tablet_id) == tablet_min_checkpoint_map.end()) {
           auto& tablet_info = tablet_min_checkpoint_map[tablet_id];
@@ -1810,6 +1843,7 @@ Result<TabletOpIdMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
         }
         continue;
       }
+      tablet_min_checkpoint_map[tablet_id].active_stream_list.insert(stream_id);
       latest_active_time = impl_->GetLatestActiveTime(producer_tablet, *result);
     }
 
@@ -2223,6 +2257,14 @@ void CDCServiceImpl::UpdateCdcReplicatedIndex(const UpdateCdcReplicatedIndexRequ
         cdc_sdk_op,
         cdc_sdk_op_id_expiration);
     RPC_STATUS_RETURN_ERROR(s, resp->mutable_error(), CDCErrorPB::INVALID_REQUEST, context);
+
+    if (req->stream_ids_size() > 0) {
+      for (int stream_idx = 0; stream_idx < req->stream_ids_size(); stream_idx++) {
+        ProducerTabletInfo producer_tablet = {
+            "" /* UUID */, req->stream_ids(stream_idx), req->tablet_ids(i)};
+        impl_->UpdateActiveTime(producer_tablet);
+      }
+    }
   }
   context.RespondSuccess();
 }
@@ -3067,26 +3109,22 @@ Status CDCServiceImpl::CheckTabletValidForStream(const ProducerTabletInfo& info)
   return impl_->CheckTabletValidForStream(info, tablets);
 }
 
-void CDCServiceImpl::TabletLeaderIsBootstrapRequired(
-        const IsBootstrapRequiredRequestPB* req,
-        IsBootstrapRequiredResponsePB* resp,
-        rpc::RpcContext* context,
-        const std::shared_ptr<tablet::TabletPeer>& peer) {
+Status CDCServiceImpl::TabletLeaderIsBootstrapRequired(
+    const IsBootstrapRequiredRequestPB* req,
+    IsBootstrapRequiredResponsePB* resp,
+    rpc::RpcContext* context,
+    const std::shared_ptr<tablet::TabletPeer>& peer) {
   auto result = GetLeaderTServer(peer->tablet_id());
-  RPC_CHECK_AND_RETURN_ERROR(result.ok(), result.status(), resp->mutable_error(),
-                            CDCErrorPB::TABLET_NOT_FOUND, *context);
+  RETURN_NOT_OK_SET_CODE(result, CDCError(CDCErrorPB::TABLET_NOT_FOUND));
 
   auto ts_leader = *result;
   // Check that tablet leader identified by master is not current tablet peer.
   // This can happen during tablet rebalance if master and tserver have different views of
   // leader. We need to avoid self-looping in this case.
-  if (peer) {
-    RPC_CHECK_NE_AND_RETURN_ERROR(ts_leader->permanent_uuid(), peer->permanent_uuid(),
-                                  STATUS(IllegalState,
-                                        Format("Tablet leader changed: leader=$0, peer=$1",
-                                                ts_leader->permanent_uuid(),
-                                                peer->permanent_uuid())),
-                                  resp->mutable_error(), CDCErrorPB::NOT_LEADER, *context);
+  if (peer && ts_leader->permanent_uuid() == peer->permanent_uuid()) {
+    return STATUS(IllegalState, Format("Tablet leader changed: leader=$0, peer=$1",
+                                       ts_leader->permanent_uuid(), peer->permanent_uuid()),
+                  req->ShortDebugString(), CDCError(CDCErrorPB::NOT_LEADER));
   }
 
   auto cdc_proxy = GetCDCServiceProxy(ts_leader);
@@ -3096,10 +3134,7 @@ void CDCServiceImpl::TabletLeaderIsBootstrapRequired(
   IsBootstrapRequiredRequestPB new_req;
   new_req.set_stream_id(req->stream_id());
   new_req.add_tablet_ids(peer->tablet_id());
-  auto status = cdc_proxy->IsBootstrapRequired(new_req, resp, &rpc);
-  RPC_STATUS_RETURN_ERROR(status, resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, *context);
-
-  context->RespondSuccess();
+  return cdc_proxy->IsBootstrapRequired(new_req, resp, &rpc);
 }
 
 void CDCServiceImpl::IsBootstrapRequired(const IsBootstrapRequiredRequestPB* req,
@@ -3115,7 +3150,11 @@ void CDCServiceImpl::IsBootstrapRequired(const IsBootstrapRequiredRequestPB* req
     auto s = tablet_manager_->GetTabletPeer(tablet_id, &tablet_peer);
     if (s.IsNotFound() || !IsTabletPeerLeader(tablet_peer)) {
       LOG_WITH_FUNC(INFO) << "Not the leader for " << tablet_id << ".  Running proxy query.";
-      TabletLeaderIsBootstrapRequired(req, resp, &context, tablet_peer);
+      RPC_STATUS_RETURN_ERROR(
+          TabletLeaderIsBootstrapRequired(req, resp, &context, tablet_peer),
+          resp->mutable_error(),
+          CDCErrorPB::INTERNAL_ERROR,
+          context);
       continue;
     }
 

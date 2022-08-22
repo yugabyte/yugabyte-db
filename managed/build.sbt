@@ -299,6 +299,7 @@ versionGenerate := {
     (Compile / resourceDirectory).value / "version_metadata.json").!
   ybLog("version_metadata.json Generated")
   Process("rm -f " + (Compile / resourceDirectory).value / "gen_version_info.log").!
+  Process("./download_ybc.sh -c " + (Compile / resourceDirectory).value / "reference.conf", baseDirectory.value).!
   status
 }
 

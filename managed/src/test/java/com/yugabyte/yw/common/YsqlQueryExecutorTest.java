@@ -89,7 +89,7 @@ public class YsqlQueryExecutorTest extends WithApplication {
       PlatformServiceException exception =
           assertThrows(
               PlatformServiceException.class, () -> ysqlQueryExecutor.createUser(universe, dbForm));
-      assertEquals(errorCode, exception.getResult().status());
+      assertEquals(errorCode, exception.getHttpStatus());
     } else {
       ysqlQueryExecutor.createUser(universe, dbForm);
     }

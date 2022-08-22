@@ -104,8 +104,9 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
           TaskType.WaitForServer,
           TaskType.AnsibleClusterServerCtl,
           TaskType.WaitForServer,
-          TaskType.SwamperTargetsFileUpdate,
+          TaskType.SetNodeState,
           TaskType.ManageAlertDefinitions,
+          TaskType.SwamperTargetsFileUpdate,
           TaskType.UniverseUpdateSucceeded);
 
   private static final List<TaskType> RESUME_ENCRYPTION_AT_REST_UNIVERSE_TASKS =
@@ -116,8 +117,9 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
           TaskType.SetActiveUniverseKeys,
           TaskType.AnsibleClusterServerCtl,
           TaskType.WaitForServer,
-          TaskType.SwamperTargetsFileUpdate,
+          TaskType.SetNodeState,
           TaskType.ManageAlertDefinitions,
+          TaskType.SwamperTargetsFileUpdate,
           TaskType.UniverseUpdateSucceeded);
 
   private static final List<JsonNode> RESUME_UNIVERSE_EXPECTED_RESULTS =
@@ -126,6 +128,7 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
           Json.toJson(ImmutableMap.of("process", "master", "command", "start")),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("process", "tserver", "command", "start")),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -138,6 +141,7 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("process", "tserver", "command", "start")),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
