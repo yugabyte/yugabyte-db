@@ -49,7 +49,7 @@ SSH_TIMEOUT = 45
 RSA_KEY_LENGTH = 2048
 RELEASE_VERSION_FILENAME = "version.txt"
 RELEASE_VERSION_PATTERN = "\d+.\d+.\d+.\d+"
-RELEASE_REPOS = set(["devops", "yugaware", "yugabyte"])
+RELEASE_REPOS = set(["devops", "yugaware", "yugabyte", "yugabundle_support"])
 
 # Home directory of node instances. Try to read home dir from env, else assume it's /home/yugabyte.
 YB_HOME_DIR = os.environ.get("YB_HOME_DIR") or "/home/yugabyte"
