@@ -88,7 +88,7 @@ Although you can't change the cluster fault tolerance after the cluster is creat
 - For Availability zone level, you can add or remove nodes in increments of 3.
 - For Node level, you can add or remove nodes in increments of 1.
 
-For production clusters, multi-region clusters providing region level fault tolerance  is recommended.
+For production clusters, a minimum of Availability zone level is recommended. Whether you choose Region or Availability zone level depends on your application architecture, design, and latency requirements.
 
 For application development and testing, you can set fault tolerance to **None** to create a single-node cluster. Single-node clusters can't be scaled.
 
@@ -107,7 +107,7 @@ YugabyteDB Managed clusters support 10 simultaneous connections per vCPU. So a c
 | 6x4 | 240 |
 | 6x8 | 360 |
 
-When sizing your cluster to your workload, ensure you have enough additional capacity to support rolling updates with minimal impact on application performance. During an update, one node is always offline; you can also mitigate the effect of updates on performance by [scheduling them](../../cloud-clusters/cloud-maintenance/) during periods of lower traffic.
+During an update, one node is always offline. When sizing your cluster to your workload, ensure you have enough additional capacity to support rolling updates with minimal impact on application performance. You can also mitigate the effect of updates on performance by [scheduling them](../../cloud-clusters/cloud-maintenance/) during periods of lower traffic.
 
 YugabyteDB Managed supports both vertical and horizontal scaling. Depending on your performance requirements, you can increase the number of vCPUs per node, as well as the total number of nodes. You can also increase the disk size per node. However, once increased, you can't lower the disk size per node.
 
@@ -129,7 +129,7 @@ Yugabyte manages upgrades for you. After you choose a track, database upgrades c
 
 Yugabyte tests every version in the stable branch for backwards compatibility. However, it's good practice to first test database updates against your pre-production environment (aka development, testing, staging, or canary environment) to ensure compatibility before upgrading your production clusters.
 
-Create a staging cluster (this can be smaller than your production cluster) and configure your pre-production environment to connect to it. Be sure to configure the [maintenance windows](../../cloud-clusters/cloud-maintenance/) for the staging and production cluster so that you can validate updates against your applications in your pre-production environment before updating your production cluster.
+Create a staging cluster (this can be smaller than your production cluster) and configure your pre-production environment to connect to it. When you are notified of an upcoming maintenance event, schedule the [maintenance windows](../../cloud-clusters/cloud-maintenance/) for the staging and production cluster so that you can validate updates against your applications in your pre-production environment before updating your production cluster.
 
 ### Backups
 
