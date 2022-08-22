@@ -48,10 +48,10 @@ public abstract class YbcTaskBase extends AbstractTaskBase {
         ybcBackupUtil.createYbcBackupTaskProgressRequest(taskId);
     String baseLogMessage = String.format("Task id %s status", taskId);
     boolean retriesExhausted = false;
+    boolean doingRetries = false;
     while (true) {
       BackupServiceTaskProgressResponse backupServiceTaskProgressResponse =
           ybcClient.backupServiceTaskProgress(backupServiceTaskProgressRequest);
-
       switch (backupServiceTaskProgressResponse.getTaskStatus()) {
         case NOT_STARTED:
           log.info(String.format("%s %s", baseLogMessage, ControllerStatus.NOT_STARTED.toString()));
@@ -68,6 +68,14 @@ public abstract class YbcTaskBase extends AbstractTaskBase {
           log.info(String.format("%s task aborted on YB-Controller.", baseLogMessage));
           throw new CancellationException("Yb-Controller task aborted.");
         default:
+          // In-case YB-Controller fails and does not retry, throw exception and come out.
+          if (doingRetries && (backupServiceTaskProgressResponse.getRetryCount() == 0)) {
+            throw new PlatformServiceException(
+                backupServiceTaskProgressResponse.getTaskStatus().getNumber(),
+                String.format(
+                    "%s Failed with error %s",
+                    baseLogMessage, backupServiceTaskProgressResponse.getTaskStatus().name()));
+          }
           if (!retriesExhausted
               && backupServiceTaskProgressResponse.getRetryCount() <= MAX_TASK_RETRIES) {
             log.info(
@@ -80,6 +88,7 @@ public abstract class YbcTaskBase extends AbstractTaskBase {
                 backupServiceTaskProgressResponse.getTaskStatus().name());
             retriesExhausted =
                 (backupServiceTaskProgressResponse.getRetryCount() >= MAX_TASK_RETRIES);
+            doingRetries = true;
             waitFor(Duration.ofMillis(WAIT_EACH_ATTEMPT_MS));
             break;
           }

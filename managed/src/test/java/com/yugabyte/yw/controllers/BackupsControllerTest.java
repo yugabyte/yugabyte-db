@@ -16,36 +16,25 @@ import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.doCallRealMethod;
-import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static org.mockito.Mockito.mock;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.FORBIDDEN;
 import static play.mvc.Http.Status.OK;
 import static play.test.Helpers.contentAsString;
-import static play.test.Helpers.contextComponents;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableMap;
-import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.common.ValidatingFormFactory;
-import com.yugabyte.yw.common.audit.AuditService;
-import com.yugabyte.yw.common.customer.config.CustomerConfigService;
-import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.RestoreBackupParams;
 import com.yugabyte.yw.models.Backup;
@@ -55,17 +44,14 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.TaskInfo.State;
-import com.yugabyte.yw.models.configs.CustomerConfig;
-import com.yugabyte.yw.models.configs.CustomerConfig.ConfigState;
-import com.yugabyte.yw.models.extended.UserWithFeatures;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.configs.CustomerConfig;
+import com.yugabyte.yw.models.configs.CustomerConfig.ConfigState;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
@@ -79,9 +65,7 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
-import play.data.FormFactory;
 import play.libs.Json;
-import play.mvc.Http;
 import play.mvc.Result;
 
 @RunWith(JUnitParamsRunner.class)
@@ -553,7 +537,10 @@ public class BackupsControllerTest extends FakeDBApplication {
         Json.parse(
             "{\"backupType\": \"PGSQL_TABLE_TYPE\","
                 + "\"keyspace\": \"bar\","
-                + "\"storageLocation\": \"s3://foo/bar_ybc\"}");
+                + "\"storageLocation\": \"s3://foo/"
+                + "univ-"
+                + defaultUniverse.universeUUID.toString()
+                + "/ybc_backup/bar\"}");
     ArrayNode storageArrayNode = Json.newArray();
     storageArrayNode.add(storageInfoParam);
     bodyJson.put("backupStorageInfoList", storageArrayNode);
@@ -566,13 +553,57 @@ public class BackupsControllerTest extends FakeDBApplication {
         ArgumentCaptor.forClass(RestoreBackupParams.class);
 
     UUID fakeTaskUUID = UUID.randomUUID();
-    when(mockBackupUtil.isYbcBackup(any())).thenCallRealMethod();
+    when(mockBackupUtil.isYbcBackup(anyString(), anyString())).thenCallRealMethod();
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     Result result = restoreBackupYb(bodyJson, null);
     verify(mockCommissioner, times(1)).submit(taskType.capture(), taskParams.capture());
     assertEquals(TaskType.RestoreBackup, taskType.getValue());
     // Assert category is set to YB_CONTROLLER for YB-Controller backups.
     assertEquals(BackupCategory.YB_CONTROLLER, taskParams.getValue().category);
+    assertOk(result);
+    JsonNode resultJson = Json.parse(contentAsString(result));
+    assertValue(resultJson, "taskUUID", fakeTaskUUID.toString());
+    CustomerTask ct = CustomerTask.findByTaskUUID(fakeTaskUUID);
+    assertNotNull(ct);
+    assertEquals(Restore, ct.getType());
+    assertAuditEntry(1, defaultCustomer.uuid);
+  }
+
+  @Test
+  public void testYbcBackupCategoryNonYbc() {
+    CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST15");
+    BackupTableParams bp = new BackupTableParams();
+    bp.storageConfigUUID = customerConfig.configUUID;
+    bp.universeUUID = defaultUniverse.universeUUID;
+    Backup b = Backup.create(defaultCustomer.uuid, bp);
+    ObjectNode bodyJson = Json.newObject();
+    JsonNode storageInfoParam =
+        Json.parse(
+            "{\"backupType\": \"PGSQL_TABLE_TYPE\","
+                + "\"keyspace\": \"bar\","
+                + "\"storageLocation\": \"s3://foo/"
+                + "univ-"
+                + defaultUniverse.universeUUID.toString()
+                + "/backup/bar\"}");
+    ArrayNode storageArrayNode = Json.newArray();
+    storageArrayNode.add(storageInfoParam);
+    bodyJson.put("backupStorageInfoList", storageArrayNode);
+    bodyJson.put("storageConfigUUID", bp.storageConfigUUID.toString());
+    bodyJson.put("universeUUID", bp.universeUUID.toString());
+    bodyJson.put("customerUUID", defaultCustomer.uuid.toString());
+
+    ArgumentCaptor<TaskType> taskType = ArgumentCaptor.forClass(TaskType.class);
+    ArgumentCaptor<RestoreBackupParams> taskParams =
+        ArgumentCaptor.forClass(RestoreBackupParams.class);
+
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockBackupUtil.isYbcBackup(anyString(), anyString())).thenCallRealMethod();
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    Result result = restoreBackupYb(bodyJson, null);
+    verify(mockCommissioner, times(1)).submit(taskType.capture(), taskParams.capture());
+    assertEquals(TaskType.RestoreBackup, taskType.getValue());
+    // Assert category is set to YB_BACKUP_SCRIPT for Script backups.
+    assertEquals(BackupCategory.YB_BACKUP_SCRIPT, taskParams.getValue().category);
     assertOk(result);
     JsonNode resultJson = Json.parse(contentAsString(result));
     assertValue(resultJson, "taskUUID", fakeTaskUUID.toString());
@@ -903,21 +934,19 @@ public class BackupsControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testStopBackupCompleted()
-      throws IOException, InterruptedException, ExecutionException {
+  public void testStopBackupCompleted() {
     defaultBackup.transitionState(BackupState.Completed);
     Result result =
         assertThrows(
                 PlatformServiceException.class, () -> stopBackup(null, defaultBackup.backupUUID))
-            .getResult();
+            .buildResult();
     assertEquals(400, result.status());
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(json.get("error").asText(), "The process you want to stop is not in progress.");
   }
 
   @Test
-  public void testStopBackupMaxRetry()
-      throws IOException, InterruptedException, ExecutionException {
+  public void testStopBackupMaxRetry() throws IOException {
     ProcessBuilder processBuilderObject = new ProcessBuilder("test");
     Process process = processBuilderObject.start();
     Util.setPID(defaultBackup.backupUUID, process);
@@ -932,7 +961,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     Result result =
         assertThrows(
                 PlatformServiceException.class, () -> stopBackup(null, defaultBackup.backupUUID))
-            .getResult();
+            .buildResult();
     taskInfo.save();
 
     assertEquals(400, result.status());
@@ -942,7 +971,7 @@ public class BackupsControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testEditBackupWithStateNotComplete() throws Exception {
+  public void testEditBackupWithStateNotComplete() {
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("timeBeforeDeleteFromPresentInMillis", 86400000L);
 
@@ -952,7 +981,7 @@ public class BackupsControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testEditBackupWithNonPositiveDeletionTime() throws Exception {
+  public void testEditBackupWithNonPositiveDeletionTime() {
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("timeBeforeDeleteFromPresentInMillis", -1L);
 
@@ -970,7 +999,7 @@ public class BackupsControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testEditBackup() throws Exception {
+  public void testEditBackup() {
 
     defaultBackup.state = BackupState.Completed;
     defaultBackup.update();

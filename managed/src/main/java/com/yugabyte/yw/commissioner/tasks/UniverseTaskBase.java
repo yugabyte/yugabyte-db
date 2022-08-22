@@ -1762,12 +1762,13 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
                 continue;
               }
 
-              if (tableType.equals(TableType.PGSQL_TABLE_TYPE)
-                  && !keyspaceMap.containsKey(tableKeySpace)) {
-                keyspaceMap.put(tableKeySpace, backupParams);
-                backupTableParamsList.add(backupParams);
-                if (tablesToBackup != null) {
-                  tablesToBackup.add(String.format("%s:%s", tableKeySpace, table.getName()));
+              if (tableType.equals(TableType.PGSQL_TABLE_TYPE)) {
+                if (!keyspaceMap.containsKey(tableKeySpace)) {
+                  keyspaceMap.put(tableKeySpace, backupParams);
+                  backupTableParamsList.add(backupParams);
+                  if (tablesToBackup != null) {
+                    tablesToBackup.add(String.format("%s:%s", tableKeySpace, table.getName()));
+                  }
                 }
               } else if (tableType.equals(TableType.YQL_TABLE_TYPE)
                   || tableType.equals(TableType.REDIS_TABLE_TYPE)) {
@@ -1808,14 +1809,15 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
             continue;
           }
 
-          if (tableType.equals(TableType.PGSQL_TABLE_TYPE)
-              && !keyspaceMap.containsKey(tableKeySpace)) {
-            BackupTableParams backupParams =
-                new BackupTableParams(backupRequestParams, tableKeySpace);
-            keyspaceMap.put(tableKeySpace, backupParams);
-            backupTableParamsList.add(backupParams);
-            if (tablesToBackup != null) {
-              tablesToBackup.add(String.format("%s:%s", tableKeySpace, table.getName()));
+          if (tableType.equals(TableType.PGSQL_TABLE_TYPE)) {
+            if (!keyspaceMap.containsKey(tableKeySpace)) {
+              BackupTableParams backupParams =
+                  new BackupTableParams(backupRequestParams, tableKeySpace);
+              keyspaceMap.put(tableKeySpace, backupParams);
+              backupTableParamsList.add(backupParams);
+              if (tablesToBackup != null) {
+                tablesToBackup.add(String.format("%s:%s", tableKeySpace, table.getName()));
+              }
             }
           } else if (tableType.equals(TableType.YQL_TABLE_TYPE)
               || tableType.equals(TableType.REDIS_TABLE_TYPE)) {

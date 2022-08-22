@@ -22,7 +22,6 @@ import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.AlertConfigFormData;
 import com.yugabyte.yw.forms.EncryptionAtRestKeyParams;
-import com.yugabyte.yw.forms.PlatformResults.YBPError;
 import com.yugabyte.yw.forms.ToggleTlsParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UpgradeParams;
@@ -126,12 +125,7 @@ public class UniverseActionsHandler {
         universe.universeUUID,
         customer.uuid);
 
-    YBPError error = requestParams.verifyParams(universeDetails);
-    if (error != null) {
-      throw new PlatformServiceException(
-          Http.Status.BAD_REQUEST, error.error + " - for universe: " + universe.universeUUID);
-    }
-
+    requestParams.verifyParams(universeDetails);
     if (!universeDetails.isUniverseEditable()) {
       throw new PlatformServiceException(
           Http.Status.BAD_REQUEST, "Universe UUID " + universe.universeUUID + " cannot be edited.");
