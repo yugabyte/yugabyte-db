@@ -10,6 +10,7 @@
      "github.com/spf13/cobra"
      "log"
      "os"
+     "strings"
  )
 
  type functionPointer func()
@@ -142,6 +143,7 @@ var commonUpgrade = Common{"common", versionToUpgrade, httpMode}
     sudo ./yba-installer start serviceName (to start that particular service)`,
     Run: func(cmd *cobra.Command, args []string) {
        if len(args) > 1{
+          log.Println("Invalid provided arguments: " + strings.Join(args, " "))
           log.Fatal("The subcommand start only takes in one optional argument, the " +
           " service to start!")
        } else if len(args) == 1 {
@@ -180,6 +182,7 @@ var commonUpgrade = Common{"common", versionToUpgrade, httpMode}
     sudo ./yba-installer stop serviceName (to stop that particular service)`,
     Run: func(cmd *cobra.Command, args []string) {
        if len(args) > 1{
+          log.Println("Invalid provided arguments: " + strings.Join(args, " "))
           log.Fatal("The subcommand stop only takes in one optional argument, the " +
           " service to stop!")
        } else if len(args) == 1 {
@@ -218,6 +221,7 @@ var commonUpgrade = Common{"common", versionToUpgrade, httpMode}
     sudo ./yba-installer restart serviceName (to restart that particular service)`,
     Run: func(cmd *cobra.Command, args []string) {
        if len(args) > 1{
+          log.Println("Invalid provided arguments: " + strings.Join(args, " "))
           log.Fatal("The subcommand restart only takes in one optional argument, the " +
           " service to stop!")
        } else if len(args) == 1 {
@@ -271,6 +275,7 @@ var commonUpgrade = Common{"common", versionToUpgrade, httpMode}
     Invoke as: sudo ./yba-installer params key value`,
     Run: func(cmd *cobra.Command, args []string) {
        if len(args) != 2 {
+          log.Println("Invalid provided arguments: " + strings.Join(args, " "))
           log.Fatal("The subcommand params takes in exactly 2 arguments! (the configuration key" +
          " and the value you want to set the key to)")
        }
@@ -282,52 +287,55 @@ var commonUpgrade = Common{"common", versionToUpgrade, httpMode}
     },
  }
 
- var configureCmd = &cobra.Command{
-   Use:   "configure",
-   Short: "The configure command updates configuration entries in yba-installer-input.yml " +
-   "if desired, and restarts all Yugabyte Anywhere services.",
-   Long:  `
-   The configure command can be used to update configuration entries in yba-installer-input.yml,
-   corresponding to the settings for your Yugabyte Anywhere installation. Invoking this
-   command will also restart all of the associated Yugabyte Anywhere services. Can be invoked
-   with a key and value setting(similar to params) for configuration updates prior to the restart,
-   or with no arguments for just a simple service restart.
+var reConfigureCmd = &cobra.Command{
+Use:   "reconfigure",
+Short: "The reconfigure command updates configuration entries in yba-installer-input.yml " +
+"if desired, and restarts all Yugabyte Anywhere services.",
+Long:  `
+The reconfigure command is used to update configuration entries in the user configuration file
+yba-installer-input.yml, and performs a restart of all Yugabyte Anywhere services to make the
+changes from the updated configuration take effect. It is possible to invoke this method in
+one oftwo ways. Executing reconfigure without any arguments will perform a simple restart of all
+Yugabyte Anywhere services without any updates to the configuration files. Executing
+reconfigure with a key and value argument pair (the configuration setting you want to update)
+will update the configuration files accordingly, and restart all Yugabyte Anywhere services.
 
-   Invoke as either: sudo ./yba-installer configure key value (for configuration updates + restart)
-                     sudo ./yba-installer configure (for restart only)
-   `,
-   Run: func(cmd *cobra.Command, args []string) {
-      if len(args) != 2 && len(args) != 0 {
-         log.Fatal("The subcommand configure takes in either no arguments for a simple restart, or two " +
-         "arguments for a configuration update! (the configuration key" +
-         " and the value you want to set the key to)")
+Invoke as either: sudo ./yba-installer reconfigure key value (for config updates + restart)
+                    sudo ./yba-installer reconfigure (for restart only)
+`,
+Run: func(cmd *cobra.Command, args []string) {
+    if len(args) != 2 && len(args) != 0 {
+        log.Println("Invalid provided arguments: " + strings.Join(args, " "))
+        log.Fatal("The subcommand reconfigure takes in either no arguments for a simple " +
+        "restart, or two arguments for a configuration update! (the configuration key" +
+        " and the value you want to set the key to)")
+    }
+
+    if (len(args) == 2) {
+
+        key := args[0]
+        value := args[1]
+
+        Params(key, value)
+
       }
 
-       if (len(args) == 2) {
+    GenerateTemplatedConfiguration()
 
-         key := args[0]
-         value := args[1]
+    steps[postgres.Name] = []functionPointer{postgres.Stop, postgres.Start}
 
-         Params(key, value)
+    steps[prometheus.Name] = []functionPointer{prometheus.Stop, prometheus.Start}
 
-       }
+    steps[platformInstall.Name] = []functionPointer{platformInstall.Stop, platformInstall.Start}
 
-       GenerateTemplatedConfiguration()
+    steps[nginx.Name] = []functionPointer{nginx.Stop, nginx.Start}
 
-       steps[postgres.Name] = []functionPointer{postgres.StopBundled, postgres.StartBundled}
+    order = []string{postgres.Name, prometheus.Name, platformInstall.Name,
+        nginx.Name}
 
-       steps[prometheus.Name] = []functionPointer{prometheus.Stop, prometheus.Start}
+    loopAndExecute("reconfigure")
 
-       steps[platformInstall.Name] = []functionPointer{platformInstall.Stop, platformInstall.Start}
-
-       steps[nginx.Name] = []functionPointer{nginx.Stop, nginx.Start}
-
-       order = []string{postgres.Name, prometheus.Name, platformInstall.Name,
-         nginx.Name}
-
-      loopAndExecute("configure")
-
-   },
+    },
 }
 
 var createBackupCmd = &cobra.Command{
@@ -348,6 +356,7 @@ var createBackupCmd = &cobra.Command{
    [exclude_prometheus=false] [skip_restart=false] [verbose=false]`,
    Run: func(cmd *cobra.Command, args []string) {
       if len(args) < 1 || len(args) > 5 {
+         log.Println("Invalid provided arguments: " + strings.Join(args, " "))
          log.Fatal("The arguments for the createBackup command have been improperly specified. " +
          "Please refer to the help menu description for more information.")
       }
@@ -401,6 +410,7 @@ var restoreBackupCmd = &cobra.Command{
    [skip_restart=false] [verbose=false]`,
    Run: func(cmd *cobra.Command, args []string) {
       if len(args) < 1 || len(args) > 4 {
+         log.Println("Invalid provided arguments: " + strings.Join(args, " "))
          log.Fatal("The arguments for the restoreBackup command have been improperly specified. " +
          "Please refer to the help menu description for more information.")
       }
@@ -575,7 +585,7 @@ var upgradeCmd = &cobra.Command{
 
 func init() {
     rootCmd.AddCommand(cleanCmd, preflightCmd, licenseCmd, versionCmd,
-    paramsCmd, configureCmd, createBackupCmd, restoreBackupCmd, installCmd,
+    paramsCmd, reConfigureCmd, createBackupCmd, restoreBackupCmd, installCmd,
     upgradeCmd, startCmd, stopCmd, restartCmd)
  }
 
