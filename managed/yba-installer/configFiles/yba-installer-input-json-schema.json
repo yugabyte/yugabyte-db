@@ -26,10 +26,6 @@
               "scrapeTimeout": {
                 "type": "integer"
               },
-              "privateIp": {
-                "type": "string",
-                "format": "ipv4"
-              },
               "externalPort": {
                 "type": "integer"
               },
@@ -38,7 +34,7 @@
               }
             },
             "required": ["fileName", "scrapeInterval", "evaluationInterval",
-          "scrapeTimeout", "privateIp", "externalPort", "appExternalPort"]
+          "scrapeTimeout", "externalPort", "appExternalPort"]
         }, "platform": {
       "description": "Platform Config Parameters",
       "type": "object",
@@ -117,10 +113,6 @@
               }
           ]
         },
-        "privateIp": {
-          "type": "string",
-          "format": "ipv4"
-        },
         "externalPort": {
           "type": "integer"
         }
@@ -129,7 +121,7 @@
       "platformDbPassword", "devopsHome", "swamperTargetPath",
       "metricsUrl", "useOauth","ybSecurityType", "ybOidcClientId",
       "ybOidcSecret", "ybOidcDiscoveryUri", "ywUrl",
-      "ybOidcScope", "ybOidcEmailAttr", "privateIp", "externalPort"]
+      "ybOidcScope", "ybOidcEmailAttr", "externalPort"]
   }, "nginx": {
         "description": "Nginx Config parameters",
         "type": "object",
@@ -145,10 +137,6 @@
           "serverName": {
             "type": "string"
           },
-          "privateIp": {
-            "type": "string",
-            "format": "ipv4"
-          },
           "containerExposedPort": {
             "type": "integer"
           },
@@ -156,7 +144,7 @@
             "type": "integer"
           }
         },
-        "required": [ "mode", "fileName", "serverName", "privateIp",
+        "required": [ "mode", "fileName", "serverName",
         "containerExposedPort", "uploadSize"]
       },
       "preflight": {

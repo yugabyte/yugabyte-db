@@ -31,7 +31,6 @@
  func (plat Platform) Install() {
 
     createNecessaryDirectories(plat.Version)
-    extractPackageInsidePackageFolder(plat.Version)
     createDevopsAndYugawareDirectories(plat.Version)
     untarDevopsAndYugawarePackages(plat.Version)
     copyYugabyteReleaseFile(plat.Version)
@@ -47,17 +46,6 @@
     os.MkdirAll(installPath+"/swamper_targets", os.ModePerm)
     os.MkdirAll(installPath+"/data", os.ModePerm)
     os.MkdirAll(installPath+"/third-party", os.ModePerm)
-
- }
-
- func extractPackageInsidePackageFolder(version string) {
-
-    packageName := "yugabundle-" + version + ".tar.gz"
-    rExtract, errExtract := os.Open("/opt/yugabyte/packages/" + packageName)
-    if errExtract != nil {
-       log.Fatalf("Error in starting the File Extraction process")
-    }
-    Untar(rExtract, "/opt/yugabyte/packages")
 
  }
 
