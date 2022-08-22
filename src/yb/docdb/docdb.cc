@@ -1063,7 +1063,7 @@ void PutApplyState(
   regular_batch->Put(key_parts, value_parts);
 }
 
-ApplyTransactionState StoreApplyState(
+Result<ApplyTransactionState> StoreApplyState(
     const Slice& transaction_id_slice, const Slice& key, IntraTxnWriteId write_id,
     HybridTime commit_ht, rocksdb::WriteBatch* regular_batch) {
   auto result = ApplyTransactionState {
@@ -1074,7 +1074,7 @@ ApplyTransactionState StoreApplyState(
   result.ToPB(&pb);
   pb.set_commit_ht(commit_ht.ToUint64());
   faststring encoded_pb;
-  pb_util::SerializeToString(pb, &encoded_pb);
+  RETURN_NOT_OK(pb_util::SerializeToString(pb, &encoded_pb));
   char string_value_type = ValueTypeAsChar::kString;
   std::array<Slice, 2> value_parts = {{
     Slice(&string_value_type, 1),

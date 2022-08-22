@@ -68,9 +68,12 @@
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/env.h"
 #include "yb/util/env_util.h"
+#include "yb/util/flag_tags.h"
 #include "yb/util/path_util.h"
 #include "yb/util/pb_util-internal.h"
 #include "yb/util/pb_util.pb.h"
+#include "yb/util/result.h"
+#include "yb/util/size_literals.h"
 #include "yb/util/status.h"
 
 using google::protobuf::Descriptor;
@@ -98,6 +101,8 @@ using std::vector;
 using strings::Substitute;
 using strings::Utf8SafeCEscape;
 
+using yb::operator"" _MB;
+
 static const char* const kTmpTemplateSuffix = ".tmp.XXXXXX";
 
 // Protobuf container constants.
@@ -111,6 +116,15 @@ static const int kPBContainerChecksumLen = sizeof(uint32_t);
 
 COMPILE_ASSERT((arraysize(kPBContainerMagic) - 1) == kPBContainerMagicLen,
                kPBContainerMagic_does_not_match_expected_length);
+
+// To permit parsing of very large PB messages, we must use parse through a CodedInputStream and
+// bump the byte limit. The SetTotalBytesLimit() docs say that 512MB is the shortest theoretical
+// message length that may produce integer overflow warnings, so that's what we'll use.
+DEFINE_int32(
+    protobuf_message_total_bytes_limit, 511_MB,
+    "Limits single protobuf message size for deserialization.");
+TAG_FLAG(protobuf_message_total_bytes_limit, advanced);
+TAG_FLAG(protobuf_message_total_bytes_limit, hidden);
 
 namespace yb {
 namespace pb_util {
@@ -165,9 +179,15 @@ uint8_t* GetUInt8Ptr(uint8_t* buffer) {
 }
 
 template <class Out>
-void DoAppendPartialToString(const MessageLite &msg, Out* output) {
-  int old_size = output->size();
+Status DoAppendPartialToString(const MessageLite &msg, Out* output) {
+  auto old_size = output->size();
   int byte_size = msg.ByteSize();
+
+  if (byte_size > FLAGS_protobuf_message_total_bytes_limit) {
+    return STATUS_FORMAT(
+        InternalError, "Serialized protobuf message is too big: $0 > $1", byte_size,
+        FLAGS_protobuf_message_total_bytes_limit);
+  }
 
   output->resize(old_size + byte_size);
 
@@ -176,26 +196,27 @@ void DoAppendPartialToString(const MessageLite &msg, Out* output) {
   if (end - start != byte_size) {
     ByteSizeConsistencyError(byte_size, msg.ByteSize(), end - start);
   }
+  return Status::OK();
 }
 
 } // anonymous namespace
 
-void AppendToString(const MessageLite &msg, faststring *output) {
+Status AppendToString(const MessageLite &msg, faststring *output) {
   DCHECK(msg.IsInitialized()) << InitializationErrorMessage("serialize", msg);
-  AppendPartialToString(msg, output);
+  return AppendPartialToString(msg, output);
 }
 
-void AppendPartialToString(const MessageLite &msg, faststring* output) {
-  DoAppendPartialToString(msg, output);
+Status AppendPartialToString(const MessageLite &msg, faststring* output) {
+  return DoAppendPartialToString(msg, output);
 }
 
-void AppendPartialToString(const MessageLite &msg, std::string* output) {
-  DoAppendPartialToString(msg, output);
+Status AppendPartialToString(const MessageLite &msg, std::string* output) {
+  return DoAppendPartialToString(msg, output);
 }
 
-void SerializeToString(const MessageLite &msg, faststring *output) {
+Status SerializeToString(const MessageLite &msg, faststring *output) {
   output->clear();
-  AppendToString(msg, output);
+  return AppendToString(msg, output);
 }
 
 bool ParseFromSequentialFile(MessageLite *msg, SequentialFile *rfile) {
@@ -203,9 +224,9 @@ bool ParseFromSequentialFile(MessageLite *msg, SequentialFile *rfile) {
   return msg->ParseFromZeroCopyStream(&istream);
 }
 
-Status ParseFromArray(MessageLite* msg, const uint8_t* data, uint32_t length) {
+Status ParseFromArray(MessageLite* msg, const uint8_t* data, size_t length) {
   CodedInputStream in(data, length);
-  in.SetTotalBytesLimit(511 * 1024 * 1024, -1);
+  in.SetTotalBytesLimit(FLAGS_protobuf_message_total_bytes_limit, -1);
   // Parse data into protobuf message
   if (!msg->ParseFromCodedStream(&in)) {
     return STATUS(Corruption, "Error parsing msg", InitializationErrorMessage("parse", *msg));
@@ -539,13 +560,9 @@ Status ReadablePBContainerFile::ReadNextPB(Message* msg) {
   // 2. ParseFromArray() should fail if the data cannot be parsed into the
   //    provided message type.
 
-  // To permit parsing of very large PB messages, we must use parse through a
-  // CodedInputStream and bump the byte limit. The SetTotalBytesLimit() docs
-  // say that 512MB is the shortest theoretical message length that may produce
-  // integer overflow warnings, so that's what we'll use.
   ArrayInputStream ais(body.data(), body.size());
   CodedInputStream cis(&ais);
-  cis.SetTotalBytesLimit(512 * 1024 * 1024, -1);
+  cis.SetTotalBytesLimit(FLAGS_protobuf_message_total_bytes_limit, -1);
   if (PREDICT_FALSE(!msg->ParseFromCodedStream(&cis))) {
     return STATUS(IOError, "Unable to parse PB from path", reader_->filename());
   }

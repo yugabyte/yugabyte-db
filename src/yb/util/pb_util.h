@@ -82,14 +82,14 @@ enum CreateMode {
 };
 
 // See MessageLite::AppendToString
-void AppendToString(const MessageLite &msg, faststring *output);
+Status AppendToString(const MessageLite &msg, faststring *output);
 
 // See MessageLite::AppendPartialToString
-void AppendPartialToString(const MessageLite &msg, faststring *output);
-void AppendPartialToString(const MessageLite &msg, std::string *output);
+Status AppendPartialToString(const MessageLite &msg, faststring *output);
+Status AppendPartialToString(const MessageLite &msg, std::string *output);
 
 // See MessageLite::SerializeToString.
-void SerializeToString(const MessageLite &msg, faststring *output);
+Status SerializeToString(const MessageLite &msg, faststring *output);
 
 // See MessageLite::ParseFromZeroCopyStream
 // TODO: change this to return Status - differentiate IO error from bad PB
@@ -97,7 +97,7 @@ bool ParseFromSequentialFile(MessageLite *msg, SequentialFile *rfile);
 
 // Similar to MessageLite::ParseFromArray, with the difference that it returns
 // Status::kCorruption if the message could not be parsed.
-Status ParseFromArray(MessageLite* msg, const uint8_t* data, uint32_t length);
+Status ParseFromArray(MessageLite* msg, const uint8_t* data, size_t length);
 
 template<class T>
 Result<T> ParseFromSlice(const Slice& slice) {

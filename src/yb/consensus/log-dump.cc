@@ -125,6 +125,8 @@ void PrintIdOnly(const LogEntryPB& entry) {
            << "@" << entry.replicate().hybrid_time() << "\t";
       cout << "REPLICATE "
            << OperationType_Name(entry.replicate().op_type());
+      cout << ", SIZE: "
+           << entry.replicate().ByteSizeLong();
       break;
     }
     default:
