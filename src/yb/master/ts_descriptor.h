@@ -98,14 +98,14 @@ class TSDescriptor {
 
   static std::string generate_placement_id(const CloudInfoPB& ci);
 
-  virtual ~TSDescriptor();
+  virtual ~TSDescriptor() = default;
 
   // Set the last-heartbeat time to now.
   void UpdateHeartbeat(const TSHeartbeatRequestPB* req);
 
-  // Return the amount of time since the last heartbeat received
-  // from this TS.
+  // Return the amount of time since the last heartbeat received from this TS.
   MonoDelta TimeSinceHeartbeat() const;
+  MonoTime LastHeartbeatTime() const;
 
   // Register this tablet server.
   Status Register(const NodeInstancePB& instance,
@@ -286,7 +286,9 @@ class TSDescriptor {
     removed_.store(removed, std::memory_order_release);
   }
 
-  explicit TSDescriptor(std::string perm_id);
+  explicit TSDescriptor(
+      std::string perm_id,
+      RegisteredThroughHeartbeat registered_through_heartbeat = RegisteredThroughHeartbeat::kTrue);
 
   std::size_t NumTasks() const;
 
@@ -407,7 +409,7 @@ class TSDescriptor {
 
   // Did this tserver register by heartbeating through master. If false, we registered through
   // peer's Raft config.
-  RegisteredThroughHeartbeat registered_through_heartbeat_ = RegisteredThroughHeartbeat::kTrue;
+  const RegisteredThroughHeartbeat registered_through_heartbeat_;
 
   DISALLOW_COPY_AND_ASSIGN(TSDescriptor);
 };
