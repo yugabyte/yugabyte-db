@@ -322,7 +322,43 @@ txn_type      | debit
 created_at    | 2020-11-07 21:45:26.067444
 ```
 
-## Step 4. Users travelling across geographic locations
+## Step 4. Querying the local partition
+
+Querying from a particular partition can be accomplished by using a WHERE clause on the partition key. For example, if the client is in the US, querying the local partition can be done by running the following query:
+
+```sql
+yugabyte=# select * from bank_transactions where geo_partition='US';
+```
+
+```output
+-[ RECORD 1 ]-+---------------------------
+user_id       | 300
+account_id    | 30001
+geo_partition | US
+account_type  | checking
+amount        | 105.25
+txn_type      | debit
+created_at    | 2020-11-07 21:45:26.067444
+```
+
+However, if you need to query the local partition without specifying the partition column, you can use the function [yb_is_local_table](../../../api/ysql/exprs/func_yb_is_local_table). To implement the same query as above using `yb_is_local_table`, you can do the following:
+
+```sql
+yugabyte=# select * from bank_transactions where yb_is_local_table(tableoid);
+```
+
+```
+-[ RECORD 1 ]-+---------------------------
+user_id       | 300
+account_id    | 30001
+geo_partition | US
+account_type  | checking
+amount        | 105.25
+txn_type      | debit
+created_at    | 2020-11-07 21:45:26.067444
+```
+
+## Step 5. Users travelling across geographic locations
 
 In order to make things interesting, let us say user 100, whose first bank transaction was performed in the EU region travels to India and the US, and performs two other bank transactions. This can be simulated by using the following statements.
 
@@ -398,7 +434,7 @@ txn_type      | debit
 created_at    | 2020-11-07 21:28:11.056236
 ```
 
-## Step 5. Running distributed transactions
+## Step 6. Running distributed transactions
 
 So far, we have only been running `SELECT` and [single-row transactions](../../architecture/transactions/transactions-overview/#single-row-transactions). Geo-partitioning introduces a new complication for general distributed transactions.
 
@@ -515,7 +551,7 @@ DELETE FROM bank_transactions_eu_west_1 WHERE user_id = 200 AND account_id = 100
 DELETE 1
 ```
 
-## Step 6. Adding a new geographic location
+## Step 7. Adding a new geographic location
 
 Assume that after a while, our fictitious Yuga Bank gets a lot of customers across the globe, and wants to offer the service to residents of Brazil, which also has data residency laws. Thanks to row-level geo-partitioning, this can be accomplished easily. We can simply add a new partition and pin it to the AWS South America (São Paulo) region `sa-east-1` as shown below.
 
