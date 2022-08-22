@@ -245,25 +245,21 @@ preflight:
 additional: |
 
 # Edit this section if you are bringing in your
-# own version of Python to the Yugabyte
+# own version of Postgres to the Yugabyte
 # Platform Installation. Make sure you specify
 # all the required fields correctly, and specify
-# bringOwn = true (default false).
+# bringOwn = true (defaults to false).
 postgres:
    bringOwn: false
-   dataPath: "/var/lib/pgsql/11/data/"
-   postmasterPath: "/usr/pgsql-11/bin/postmaster"
-   version: "11"
    port: "5432"
-   pgHbaConf: "/var/lib/pgsql/11/data/pg_hba.conf"
-   postgresConf: "/var/lib/pgsql/11/data/postgresql.conf"
-   systemdLocation : "/usr/lib/systemd/system/postgresql-11.service"
+   username: "postgres"
+   password: ""
 
 # Edit this section if you are bringing in your
 # own version of Python to the Yugabyte
 # Platform Installation. Make sure you specify
 # all the required fields correctly, and specify
-# bringOwn = true (default false).
+# bringOwn = true (defaults to false).
 python:
    bringOwn: false
    path: "/usr/bin/python3"
