@@ -135,6 +135,11 @@ void YBSubTransaction::SetActiveSubTransaction(SubTransactionId id) {
   highest_subtransaction_id_ = std::max(highest_subtransaction_id_, id);
 }
 
+bool YBSubTransaction::HasSubTransaction(SubTransactionId id) const {
+  // See the condition in YBSubTransaction::RollbackToSubTransaction.
+  return highest_subtransaction_id_ >= id;
+}
+
 Status YBSubTransaction::RollbackToSubTransaction(SubTransactionId id) {
   // We should abort the range [id, sub_txn_.highest_subtransaction_id]. It's possible that we
   // have created and released savepoints, such that there have been writes with a
@@ -837,6 +842,11 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     });
   }
 
+  bool HasSubTransaction(SubTransactionId id) EXCLUDES(mutex_) {
+    SharedLock<std::shared_mutex> lock(mutex_);
+    return subtransaction_.active() && subtransaction_.HasSubTransaction(id);
+  }
+
   Status RollbackToSubTransaction(SubTransactionId id, CoarseTimePoint deadline) EXCLUDES(mutex_) {
     SCHECK(
         subtransaction_.active(), InternalError,
@@ -938,11 +948,6 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
                         << "; subtransaction_=" << subtransaction_.ToString();
 
     return Status::OK();
-  }
-
-  bool HasSubTransactionState() EXCLUDES(mutex_) {
-    SharedLock<std::shared_mutex> lock(mutex_);
-    return subtransaction_.active();
   }
 
  private:
@@ -2137,8 +2142,8 @@ Status YBTransaction::RollbackToSubTransaction(SubTransactionId id, CoarseTimePo
   return impl_->RollbackToSubTransaction(id, deadline);
 }
 
-bool YBTransaction::HasSubTransactionState() {
-  return impl_->HasSubTransactionState();
+bool YBTransaction::HasSubTransaction(SubTransactionId id) {
+  return impl_->HasSubTransaction(id);
 }
 
 } // namespace client
