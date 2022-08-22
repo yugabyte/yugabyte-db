@@ -20,6 +20,7 @@ import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigRenderOptions;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.RuntimeConfigPreChangeNotifier;
 import com.yugabyte.yw.common.config.impl.RuntimeConfig;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.common.ha.PlatformInstanceClientFactory;
@@ -48,6 +49,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import lombok.extern.slf4j.Slf4j;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.mvc.Result;
@@ -55,6 +57,7 @@ import play.mvc.Result;
 @Api(
     value = "Runtime configuration",
     authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
+@Slf4j
 public class RuntimeConfController extends AuthenticatedController {
   private static final Logger LOG = LoggerFactory.getLogger(RuntimeConfController.class);
   private final SettableRuntimeConfigFactory settableRuntimeConfigFactory;
@@ -64,6 +67,8 @@ public class RuntimeConfController extends AuthenticatedController {
   private final Set<String> mutableKeys;
   private static final Set<String> sensitiveKeys =
       ImmutableSet.of("yb.security.ldap.ldap_service_account_password", "yb.security.secret");
+
+  @Inject private RuntimeConfigPreChangeNotifier preChangeNotifier;
 
   @Inject
   public RuntimeConfController(
@@ -249,6 +254,7 @@ public class RuntimeConfController extends AuthenticatedController {
         scopeUUID,
         (logValue.length() < 50 ? logValue : "[long value hidden]"),
         logValue.length());
+    preConfigChangeValidate(scopeUUID, path, newValue);
     boolean isObject = mutableObjects.contains(path);
     getMutableRuntimeConfigForScopeOrFail(customerUUID, scopeUUID)
         .setValue(path, newValue, isObject);
@@ -284,6 +290,10 @@ public class RuntimeConfController extends AuthenticatedController {
           scopeUUID,
           path);
     }
+  }
+
+  private void preConfigChangeValidate(UUID scopeUUID, String path, String newValue) {
+    preChangeNotifier.notifyListeners(scopeUUID, path, newValue);
   }
 
   @ApiOperation(value = "Delete a configuration key", response = YBPSuccess.class)
