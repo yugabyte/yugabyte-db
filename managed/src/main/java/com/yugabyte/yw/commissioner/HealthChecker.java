@@ -38,6 +38,7 @@ import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.YbcManager;
 import com.yugabyte.yw.common.alerts.SmtpData;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.metrics.MetricService;
@@ -611,7 +612,9 @@ public class HealthChecker {
   private static boolean isUniverseBusyByTask(UniverseDefinitionTaskParams details) {
     return details.updateInProgress
         && details.updatingTask != TaskType.BackupTable
-        && details.updatingTask != TaskType.MultiTableBackup;
+        && details.updatingTask != TaskType.MultiTableBackup
+        && details.updatingTask != TaskType.CreateBackup
+        && details.updatingTask != TaskType.RestoreBackup;
   }
 
   public void checkSingleUniverse(CheckSingleUniverseParams params) {
@@ -716,6 +719,12 @@ public class HealthChecker {
         if (!provider.code.equals(CloudType.onprem.toString())
             && !provider.code.equals(CloudType.kubernetes.toString())) {
           nodeInfo.setCheckClock(true);
+        }
+        if (params.universe.isYbcEnabled()) {
+          nodeInfo
+              .setEnableYbc(true)
+              .setYbcPort(
+                  params.universe.getUniverseDetails().communicationPorts.ybControllerrRpcPort);
         }
         nodeMetadata.add(nodeInfo);
       }
@@ -1009,6 +1018,8 @@ public class HealthChecker {
     private boolean checkClock = false;
     private Long nodeStartTime = null;
     private boolean testReadWrite = true;
+    private boolean enableYbc = false;
+    private int ybcPort = 18018;
     private UUID universeUuid;
     @JsonIgnore @EqualsAndHashCode.Exclude private NodeDetails nodeDetails;
   }

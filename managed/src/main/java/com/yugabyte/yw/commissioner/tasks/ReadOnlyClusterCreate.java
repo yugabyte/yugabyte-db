@@ -103,6 +103,13 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
       // Start the tservers in the clusters.
       createStartTserverProcessTasks(newTservers);
 
+      // Start ybc process on all the nodes
+      if (taskParams().enableYbc) {
+        createStartYbcProcessTasks(newTservers);
+        createUpdateYbcTask(taskParams().ybcSoftwareVersion)
+            .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      }
+
       // Set the node state to live.
       createSetNodeStateTasks(newTservers, NodeDetails.NodeState.Live)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
