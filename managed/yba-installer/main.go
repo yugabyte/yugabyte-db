@@ -25,6 +25,8 @@
 
  var httpMode = getYamlPathData(".nginx.mode")
 
+ var serviceManagementMode = getYamlPathData(".serviceManagementMode")
+
  var bringOwnPostgres, errPostgres = strconv.ParseBool(getYamlPathData(".postgres.bringOwn"))
 
  var bringOwnPython, errPython = strconv.ParseBool(getYamlPathData(".python.bringOwn"))
@@ -41,6 +43,7 @@
          "2.37.0", false}
 
  var nginx = Nginx{"nginx",
+                "/usr/lib/systemd/system/nginx.service",
                 "/etc/nginx/nginx.conf",
                 httpMode, "_"}
 

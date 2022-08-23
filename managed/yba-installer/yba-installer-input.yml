@@ -269,3 +269,17 @@ dataVolumes:
    prometheus:
       - "/opt/yugabyte/swamper_targets"
       - "/opt/yugabyte/swamper_rules"
+
+# Service Management. For installation of Yugabyte Anywhere, you can choose
+# to have all of your services either be systemd managed or crontab managed,
+# where systemd is for root installs and crontab is for non-root installs.
+# Edit this section to specify your desired service management mode (either
+# "systemd" or "crontab", defaults to "systemd")
+
+# Note that if you specify systemd as your desired service management mode,
+# and then choose to execute a non-root install, then your Operating System
+# must be capable of enabling user level systemd units, which we will
+# perform in the pre-flight checks. If this is the case, then we will be able
+# to create user-level systemd unit files for the current user. If not, please
+# select "crontab" as your desired service management mode.
+serviceManagementMode: "systemd"
