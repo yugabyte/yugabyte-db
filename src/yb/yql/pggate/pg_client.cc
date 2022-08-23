@@ -493,6 +493,19 @@ class PgClient::Impl {
     return ResponseStatus(resp);
   }
 
+  Result<client::TableSizeInfo> GetTableDiskSize(
+      const PgObjectId& table_oid) {
+    tserver::PgGetTableDiskSizeResponsePB resp;
+
+    tserver::PgGetTableDiskSizeRequestPB req;
+    table_oid.ToPB(req.mutable_table_id());
+
+    RETURN_NOT_OK(proxy_->GetTableDiskSize(req, &resp, PrepareController()));
+    RETURN_NOT_OK(ResponseStatus(resp));
+
+    return client::TableSizeInfo{resp.size(), resp.num_missing_tablets()};
+  }
+
   Result<bool> CheckIfPitrActive() {
     tserver::PgCheckIfPitrActiveRequestPB req;
     tserver::PgCheckIfPitrActiveResponsePB resp;
@@ -639,6 +652,11 @@ Status PgClient::RollbackToSubTransaction(SubTransactionId id) {
 
 Status PgClient::ValidatePlacement(const tserver::PgValidatePlacementRequestPB* req) {
   return impl_->ValidatePlacement(req);
+}
+
+Result<client::TableSizeInfo> PgClient::GetTableDiskSize(
+    const PgObjectId& table_oid) {
+  return impl_->GetTableDiskSize(table_oid);
 }
 
 Status PgClient::InsertSequenceTuple(int64_t db_oid,

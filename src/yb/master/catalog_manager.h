@@ -770,6 +770,10 @@ class CatalogManager :
   Status WaitForWorkerPoolTests(
       const MonoDelta& timeout = MonoDelta::FromSeconds(10)) const override;
 
+  // Get the disk size of tables (Used for YSQL \d+ command)
+  Status GetTableDiskSize(
+      const GetTableDiskSizeRequestPB* req, GetTableDiskSizeResponsePB* resp, rpc::RpcContext* rpc);
+
   Result<scoped_refptr<UDTypeInfo>> FindUDTypeById(
       const UDTypeId& udt_id) const EXCLUDES(mutex_);
 

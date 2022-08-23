@@ -41,6 +41,11 @@ struct YBTableInfo {
 Result<YBTableType> PBToClientTableType(TableType table_type_from_pb);
 TableType ClientToPBTableType(YBTableType table_type);
 
+struct TableSizeInfo {
+  int64 table_size;
+  int32 num_missing_tablets;
+};
+
 }  // namespace client
 }  // namespace yb
 

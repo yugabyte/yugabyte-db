@@ -315,6 +315,8 @@ class PgApiImpl {
 
   Status SetCatalogCacheVersion(PgStatement *handle, uint64_t catalog_cache_version);
 
+  Result<client::TableSizeInfo> GetTableDiskSize(const PgObjectId& table_oid);
+
   //------------------------------------------------------------------------------------------------
   // Create and drop index.
   Status NewCreateIndex(const char *database_name,

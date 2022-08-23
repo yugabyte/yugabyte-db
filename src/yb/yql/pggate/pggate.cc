@@ -25,6 +25,7 @@
 #include <ev++.h>
 
 #include "yb/client/client_utils.h"
+#include "yb/client/table_info.h"
 
 #include "yb/common/partition.h"
 #include "yb/common/pg_system_attr.h"
@@ -971,6 +972,10 @@ Status PgApiImpl::SetCatalogCacheVersion(PgStatement *handle, uint64_t catalog_c
   }
 
   return STATUS(InvalidArgument, "Invalid statement handle");
+}
+
+Result<client::TableSizeInfo> PgApiImpl::GetTableDiskSize(const PgObjectId& table_oid) {
+  return pg_session_->GetTableDiskSize(table_oid);
 }
 
 //--------------------------------------------------------------------------------------------------
