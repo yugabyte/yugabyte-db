@@ -73,6 +73,9 @@ export function ConfigureReplicationModal({ onHide, visible, currentUniverseUUID
     {
       onSuccess: (resp) => {
         onHide();
+        // Update the sourceXClusterConfigs, and targetXClusterConfigs values to reflect the
+        // new replication config we are setting up.
+        queryClient.invalidateQueries(['universe', currentUniverseUUID], { exact: true });
         fetchTaskUntilItCompletes(resp.data.taskUUID, (err: boolean) => {
           if (err) {
             toast.error(
@@ -85,7 +88,7 @@ export function ConfigureReplicationModal({ onHide, visible, currentUniverseUUID
               </span>
             );
           }
-          queryClient.invalidateQueries('universe');
+          queryClient.invalidateQueries(['universe', currentUniverseUUID], { exact: true });
         });
       },
       onError: (err: any) => {

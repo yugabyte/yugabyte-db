@@ -72,3 +72,6 @@ export const TABLE_LAG_GRAPH_EMPTY_METRIC: TableReplicationMetric = {
 };
 
 export const REPLICATION_LAG_ALERT_NAME = 'Replication Lag';
+
+export const TRANSITORY_STATES = [ReplicationStatus.INIT, ReplicationStatus.UPDATING] as const;
+export const XCLUSTER_CONFIG_REFETCH_INTERVAL_MS = 10_000;
