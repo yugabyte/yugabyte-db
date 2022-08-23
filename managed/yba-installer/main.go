@@ -19,11 +19,13 @@
 
  var order []string
 
- var versionToInstall = "2.8.1.0-b37"
+ var versionToInstall = GetVersion()
 
- var versionToUpgrade = "2.15.0.1-b4"
+ var versionToUpgrade = GetVersion()
 
  var httpMode = getYamlPathData(".nginx.mode")
+
+ var serviceManagementMode = getYamlPathData(".serviceManagementMode")
 
  var bringOwnPostgres, errPostgres = strconv.ParseBool(getYamlPathData(".postgres.bringOwn"))
 
@@ -38,9 +40,10 @@
  var prometheus = Prometheus{"prometheus",
          "/etc/systemd/system/prometheus.service",
          "/etc/prometheus/prometheus.yml",
-         "2.27.1", false}
+         "2.37.0", false}
 
  var nginx = Nginx{"nginx",
+                "/usr/lib/systemd/system/nginx.service",
                 "/etc/nginx/nginx.conf",
                 httpMode, "_"}
 
@@ -259,7 +262,8 @@ var commonUpgrade = Common{"common", versionToUpgrade, httpMode}
        if len(args) > 0{
           log.Fatal("The subcommand license does not take in any arguments!")
        }
-       Version("version_metadata.json")
+       fmt.Println("You are on version " + versionToInstall +
+       " of Yba-installer!")
     },
  }
 
@@ -295,7 +299,7 @@ Long:  `
 The reconfigure command is used to update configuration entries in the user configuration file
 yba-installer-input.yml, and performs a restart of all Yugabyte Anywhere services to make the
 changes from the updated configuration take effect. It is possible to invoke this method in
-one oftwo ways. Executing reconfigure without any arguments will perform a simple restart of all
+one of two ways. Executing reconfigure without any arguments will perform a simple restart of all
 Yugabyte Anywhere services without any updates to the configuration files. Executing
 reconfigure with a key and value argument pair (the configuration setting you want to update)
 will update the configuration files accordingly, and restart all Yugabyte Anywhere services.

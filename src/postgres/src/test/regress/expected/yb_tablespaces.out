@@ -41,7 +41,7 @@ CREATE TABLESPACE x LOCATION '/data';
 WARNING:  LOCATION not supported yet and will be ignored
 LINE 1: CREATE TABLESPACE x LOCATION '/data';
                             ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/6569. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/6569. React with thumbs up to raise its priority
 -- Sum of min_num_replicas lesser than num_replicas.
 CREATE TABLESPACE y WITH (replica_placement='{"num_replicas":3, "placement_blocks":[{"cloud":"cloud1","region":"r1","zone":"z1","min_num_replicas":1},{"cloud":"cloud2","region":"r2", "zone":"z2", "min_num_replicas":1}]}');
 NOTICE:  num_replicas is 3, and the total min_num_replicas fields is 2. The location of the additional 1 replicas among the specified zones will be decided dynamically based on the cluster load
@@ -86,13 +86,13 @@ CREATE TABLESPACE regress_tblspace LOCATION '/data';
 WARNING:  LOCATION not supported yet and will be ignored
 LINE 1: CREATE TABLESPACE regress_tblspace LOCATION '/data';
                                            ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/6569. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/6569. React with thumbs up to raise its priority
 -- try setting and resetting some properties for the new tablespace
 ALTER TABLESPACE regress_tblspace SET (random_page_cost = 1.0, seq_page_cost = 1.1);
 ERROR:  ALTER TABLESPACE not supported yet
 LINE 1: ALTER TABLESPACE regress_tblspace SET (random_page_cost = 1....
         ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1153. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1153. React with thumbs up to raise its priority
 -- Enable these tests after ALTER is supported.
 /*
 ALTER TABLESPACE regress_tblspace SET (some_nonexistent_parameter = true);  -- fail
@@ -583,7 +583,7 @@ ALTER TABLESPACE tblspace SET (random_page_cost = 1.0, seq_page_cost = 1.1);
 ERROR:  ALTER TABLESPACE not supported yet
 LINE 1: ALTER TABLESPACE tblspace SET (random_page_cost = 1.0, seq_p...
         ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1153. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1153. React with thumbs up to raise its priority
 -- Verify yb_db_admin role can DROP tablespace
 DROP TABLE tbl;
 DROP TABLE tbl_other;

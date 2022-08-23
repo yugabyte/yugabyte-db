@@ -1508,7 +1508,7 @@ CREATE TABLE test_cube (c cube);
 \copy test_cube from 'data/test_cube.data'
 CREATE INDEX test_cube_ix ON test_cube USING gist (c);
 ERROR:  index method "gist" not supported yet
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1337. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1337. React with thumbs up to raise its priority
 INSERT INTO test_cube VALUES ('(1,1)'), ('(100000)'), ('(0, 100000)'); -- Some corner cases
 RESET enable_seqscan;
 SET enable_indexscan = OFF;

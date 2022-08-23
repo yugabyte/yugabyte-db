@@ -83,6 +83,8 @@ class CDCConsumer {
 
   std::vector<std::string> TEST_producer_tablets_running();
 
+  std::vector<std::shared_ptr<CDCPoller>> TEST_ListPollers();
+
   std::string LogPrefix();
 
   // Return the value stored in cluster_config_version_. Since we are reading an atomic variable,
@@ -134,6 +136,8 @@ class CDCConsumer {
                      GUARDED_BY(master_data_mutex_);
 
   std::unordered_set<std::string> streams_with_local_tserver_optimization_
+      GUARDED_BY(master_data_mutex_);
+  std::unordered_map<std::string, uint32_t> stream_to_schema_version_
       GUARDED_BY(master_data_mutex_);
 
   scoped_refptr<Thread> run_trigger_poll_thread_;

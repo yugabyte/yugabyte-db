@@ -419,12 +419,6 @@ Status ExternalMiniCluster::Restart() {
     }
   }
 
-  // Wait for every tserver to heartbeat to master to avoid exception like:
-  // Bad narrow cast: 2694805214 > 2147483647. This is because master has last_heartbeat_
-  // initialized to MonoTime::kMin and needs the first heartbeat from tserver to set it
-  // properly. If last_heartbeat_ is still MonoTime::kMin then the return value from
-  // GetDeltaSince(last_heartbeat_) overflows 2147483647.
-  sleep(5);
   RETURN_NOT_OK(WaitForTabletServerCount(tablet_servers_.size(), kTabletServerRegistrationTimeout));
 
   running_ = true;

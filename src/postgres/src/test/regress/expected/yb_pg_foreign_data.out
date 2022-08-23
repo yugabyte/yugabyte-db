@@ -786,13 +786,13 @@ ALTER FOREIGN TABLE ft1 ALTER COLUMN c1 SET (n_distinct = 100);
 ERROR:  ALTER TABLE ALTER column not supported yet
 LINE 1: ALTER FOREIGN TABLE ft1 ALTER COLUMN c1 SET (n_distinct = 10...
                                 ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
 ALTER FOREIGN TABLE ft1 ALTER COLUMN c8 SET STATISTICS -1;
 ALTER FOREIGN TABLE ft1 ALTER COLUMN c8 SET STORAGE PLAIN;
 ERROR:  ALTER TABLE ALTER column not supported yet
 LINE 1: ALTER FOREIGN TABLE ft1 ALTER COLUMN c8 SET STORAGE PLAIN;
                                 ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
 \d+ ft1
                                                  Foreign table "public.ft1"
  Column |  Type   | Collation | Nullable | Default |          FDW options           | Storage  | Stats target | Description
@@ -827,7 +827,7 @@ ALTER FOREIGN TABLE ft1 ALTER CONSTRAINT ft1_c9_check DEFERRABLE; -- ERROR, orig
 ERROR:  ALTER TABLE ALTER CONSTRAINT not supported yet
 LINE 1: ALTER FOREIGN TABLE ft1 ALTER CONSTRAINT ft1_c9_check DEFERR...
                                 ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
 ALTER FOREIGN TABLE ft1 DROP CONSTRAINT ft1_c9_check;
 ALTER FOREIGN TABLE ft1 DROP CONSTRAINT no_const;               -- ERROR
 ERROR:  constraint "no_const" of relation "ft1" does not exist
@@ -837,13 +837,13 @@ ALTER FOREIGN TABLE ft1 SET WITH OIDS;
 ERROR:  ALTER TABLE SET WITH OIDS not supported yet
 LINE 1: ALTER FOREIGN TABLE ft1 SET WITH OIDS;
                                 ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
 ALTER FOREIGN TABLE ft1 OWNER TO regress_test_role;
 ALTER FOREIGN TABLE ft1 OPTIONS (DROP delimiter, SET quote '~', ADD escape '@');
 ERROR:  ALTER TABLE not supported yet
 LINE 1: ALTER FOREIGN TABLE ft1 OPTIONS (DROP delimiter, SET quote '...
                                 ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
 ALTER FOREIGN TABLE ft1 DROP COLUMN no_column;                  -- ERROR
 ERROR:  column "no_column" of relation "ft1" does not exist
 ALTER FOREIGN TABLE ft1 DROP COLUMN IF EXISTS no_column;
@@ -909,7 +909,7 @@ ALTER FOREIGN TABLE IF EXISTS doesnt_exist_ft1 OPTIONS (DROP delimiter, SET quot
 ERROR:  ALTER TABLE not supported yet
 LINE 1: ALTER FOREIGN TABLE IF EXISTS doesnt_exist_ft1 OPTIONS (DROP...
                                                        ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
 ALTER FOREIGN TABLE IF EXISTS doesnt_exist_ft1 DROP COLUMN IF EXISTS no_column;
 NOTICE:  relation "doesnt_exist_ft1" does not exist, skipping
 ALTER FOREIGN TABLE IF EXISTS doesnt_exist_ft1 DROP COLUMN c9;
@@ -1328,7 +1328,7 @@ EXECUTE PROCEDURE dummy_trigger();
 ERROR:  REFERENCING clause (transition tables) not supported yet
 LINE 3: REFERENCING NEW TABLE AS new_table
         ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1668. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1668. React with thumbs up to raise its priority
 -- ^^^ original:
 -- ERROR:  "foreign_table_1" is a foreign table
 -- DETAIL:  Triggers on foreign tables cannot have transition tables.
@@ -1347,7 +1347,7 @@ EXECUTE PROCEDURE dummy_trigger();
 ERROR:  CREATE CONSTRAINT TRIGGER not supported yet
 LINE 1: CREATE CONSTRAINT TRIGGER trigtest_constraint AFTER INSERT O...
         ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1709. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1709. React with thumbs up to raise its priority
 -- ^^^ original:
 -- ERROR:  "foreign_table_1" is a foreign table
 -- DETAIL:  Foreign tables cannot have constraint triggers.
@@ -1371,7 +1371,7 @@ CREATE FOREIGN TABLE ft2 () INHERITS (fd_pt1)
 ERROR:  INHERITS not supported yet
 LINE 1: CREATE FOREIGN TABLE ft2 () INHERITS (fd_pt1)
                                     ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1129. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1129. React with thumbs up to raise its priority
 \d+ fd_pt1
                                    Table "public.fd_pt1"
  Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description
@@ -1425,7 +1425,7 @@ ALTER FOREIGN TABLE ft2 INHERIT fd_pt1;
 ERROR:  ALTER TABLE INHERIT not supported yet
 LINE 1: ALTER FOREIGN TABLE ft2 INHERIT fd_pt1;
                                 ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
 \d+ fd_pt1
                                    Table "public.fd_pt1"
  Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description
@@ -1454,7 +1454,7 @@ CREATE TABLE ct3() INHERITS(ft2);
 ERROR:  INHERITS not supported yet
 LINE 1: CREATE TABLE ct3() INHERITS(ft2);
                            ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1129. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1129. React with thumbs up to raise its priority
 CREATE FOREIGN TABLE ft3 (
 	c1 integer NOT NULL,
 	c2 text,
@@ -1464,7 +1464,7 @@ CREATE FOREIGN TABLE ft3 (
 ERROR:  INHERITS not supported yet
 LINE 5: ) INHERITS(ft2)
           ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1129. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1129. React with thumbs up to raise its priority
 -- ^^^ originally:
 -- NOTICE:  merging column "c1" with inherited definition
 -- NOTICE:  merging column "c2" with inherited definition
@@ -1593,13 +1593,13 @@ ALTER TABLE fd_pt1 ALTER COLUMN c1 SET (n_distinct = 100);
 ERROR:  ALTER TABLE ALTER column not supported yet
 LINE 1: ALTER TABLE fd_pt1 ALTER COLUMN c1 SET (n_distinct = 100);
                            ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
 ALTER TABLE fd_pt1 ALTER COLUMN c8 SET STATISTICS -1;
 ALTER TABLE fd_pt1 ALTER COLUMN c8 SET STORAGE EXTERNAL;
 ERROR:  ALTER TABLE ALTER column not supported yet
 LINE 1: ALTER TABLE fd_pt1 ALTER COLUMN c8 SET STORAGE EXTERNAL;
                            ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
 \d+ fd_pt1
                                    Table "public.fd_pt1"
  Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description
@@ -1733,7 +1733,7 @@ ALTER FOREIGN TABLE ft2 INHERIT fd_pt1;                            -- ERROR
 ERROR:  ALTER TABLE INHERIT not supported yet
 LINE 1: ALTER FOREIGN TABLE ft2 INHERIT fd_pt1;
                                 ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
 -- ^^^ originally:
 -- ERROR:  child table is missing constraint "fd_pt1chk2"
 ALTER FOREIGN TABLE ft2 ADD CONSTRAINT fd_pt1chk2 CHECK (c2 <> '');
@@ -1741,7 +1741,7 @@ ALTER FOREIGN TABLE ft2 INHERIT fd_pt1;
 ERROR:  ALTER TABLE INHERIT not supported yet
 LINE 1: ALTER FOREIGN TABLE ft2 INHERIT fd_pt1;
                                 ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
 -- child does not inherit NO INHERIT constraints
 \d+ fd_pt1
                                    Table "public.fd_pt1"
@@ -1813,7 +1813,7 @@ ALTER TABLE fd_pt1 VALIDATE CONSTRAINT fd_pt1chk3;
 ERROR:  ALTER TABLE VALIDATE CONSTRAINT not supported yet
 LINE 1: ALTER TABLE fd_pt1 VALIDATE CONSTRAINT fd_pt1chk3;
                            ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
 \d+ fd_pt1
                                    Table "public.fd_pt1"
  Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description
@@ -1849,7 +1849,7 @@ ALTER TABLE fd_pt1 SET WITH OIDS;
 ERROR:  ALTER TABLE SET WITH OIDS not supported yet
 LINE 1: ALTER TABLE fd_pt1 SET WITH OIDS;
                            ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
 \d+ fd_pt1
                                    Table "public.fd_pt1"
  Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description

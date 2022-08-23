@@ -33,7 +33,7 @@ type: docs
   <li >
     <a href="../ysql-vertx-pg-client/" class="nav-link ">
       <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - Vertx PG Client
+      YSQL - Vert.x PG Client
     </a>
   </li>
   <li >

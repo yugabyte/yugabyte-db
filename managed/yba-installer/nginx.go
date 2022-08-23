@@ -13,6 +13,7 @@
  // Component 4: Nginx
  type Nginx struct {
      Name               string
+     SystemdFileLocation string
      ConfFileLocation   string
      Mode               string
      ServerName         string
@@ -34,7 +35,6 @@
      if ngi.Mode == "https" {
          configureNginxConfHTTPS()
      }
-     certTLSstorage()
  }
 
  func disableSELinux() {
@@ -54,12 +54,16 @@
     }
 
      command2 := "systemctl"
-     arg2 := []string{"start", "nginx"}
+     arg2 := []string{"enable", "nginx"}
      ExecuteBashCommand(command2, arg2)
 
      command3 := "systemctl"
-     arg3 := []string{"status", "nginx"}
+     arg3 := []string{"start", "nginx"}
      ExecuteBashCommand(command3, arg3)
+
+     command4 := "systemctl"
+     arg4 := []string{"status", "nginx"}
+     ExecuteBashCommand(command4, arg4)
  }
 
  // Stop performs the stop operations specific to Nginx.
@@ -118,13 +122,3 @@
         disableSELinux()
     }
 }
-
- func certTLSstorage() {
-
-     os.MkdirAll("/opt/yugaware", os.ModePerm)
-     fmt.Println("/opt/yugaware directory successfully created.")
-     command1 := "chown"
-     arg1 := []string{"yugabyte:yugabyte", "-R", "/opt/yugaware"}
-     ExecuteBashCommand(command1, arg1)
-
- }

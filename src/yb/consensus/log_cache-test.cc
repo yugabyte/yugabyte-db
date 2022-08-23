@@ -44,6 +44,7 @@
 #include "yb/consensus/consensus-test-util.h"
 #include "yb/consensus/log.h"
 #include "yb/consensus/log_cache.h"
+#include "yb/consensus/log_reader.h"
 
 #include "yb/fs/fs_manager.h"
 
@@ -58,6 +59,7 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/test_util.h"
+#include "yb/util/tsan_util.h"
 
 using std::atomic;
 using std::shared_ptr;
@@ -66,6 +68,7 @@ using std::thread;
 DECLARE_int32(log_cache_size_limit_mb);
 DECLARE_int32(global_log_cache_size_limit_mb);
 DECLARE_int32(global_log_cache_size_limit_percentage);
+DECLARE_bool(TEST_pause_before_wal_sync);
 
 METRIC_DECLARE_entity(tablet);
 
@@ -143,13 +146,18 @@ class LogCacheTest : public YBTest {
     for (int64_t cur_index = first; cur_index < first + count; cur_index++) {
       int64_t term = cur_index / kTermDivisor;
       int64_t index = cur_index;
-      ReplicateMsgs msgs = { CreateDummyReplicate(term, index, clock_->Now(), payload_size) };
-      RETURN_NOT_OK(cache_->AppendOperations(
-          msgs, yb::OpId() /* committed_op_id */, RestartSafeCoarseMonoClock().Now(),
-          Bind(&FatalOnError)));
-      cache_->TrackOperationsMemory({yb::OpId::FromPB(msgs[0]->id())});
+      RETURN_NOT_OK(AppendReplicateMessageToCache(term, index, payload_size));
       std::this_thread::sleep_for(100ms);
     }
+    return Status::OK();
+  }
+
+  Status AppendReplicateMessageToCache(int64_t term, int64_t index, size_t payload_size = 0) {
+    ReplicateMsgs msgs = { CreateDummyReplicate(term, index, clock_->Now(), payload_size) };
+    RETURN_NOT_OK(cache_->AppendOperations(
+        msgs, yb::OpId() /* committed_op_id */, RestartSafeCoarseMonoClock().Now(),
+        Bind(&FatalOnError)));
+    cache_->TrackOperationsMemory({yb::OpId::FromPB(msgs[0]->id())});
     return Status::OK();
   }
 
@@ -210,6 +218,32 @@ TEST_F(LogCacheTest, TestAppendAndGetMessages) {
   EXPECT_EQ(OpIdStrForIndex(start + 1), OpIdToString(read_result.messages[0]->id()));
 }
 
+// Test cache entry shouldn't be evicted until it's synced to disk.
+TEST_F(LogCacheTest, ShouldNotEvictUnsyncedOpFromCache) {
+  // Write one NoOp and wait sync done, min_pinned_op_index_ should be 2.
+  ASSERT_OK(AppendReplicateMessageToCache(/* term = */ 1, /* index = */ 1));
+  ASSERT_OK(log_->WaitUntilAllFlushed());
+  // Gc the first op from cache.
+  cache_->EvictThroughOp(1);
+  ASSERT_EQ(cache_->num_cached_ops(), 0);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_wal_sync) = true;
+
+  // Overwrite the op to simulate the leader change.
+  ASSERT_OK(AppendReplicateMessageToCache(/* term = */ 2, /* index = */ 1));
+
+  // Shouldn't evict the second NoOp.
+  cache_->EvictThroughOp(1);
+  ASSERT_EQ(cache_->num_cached_ops(), 1);
+
+  // Can be read from cache.
+  auto read_result = ASSERT_RESULT(cache_->ReadOps(0, 8_MB));
+  EXPECT_EQ(1, read_result.messages.size());
+  EXPECT_EQ(OpIdStrForIndex(0), OpIdToString(read_result.preceding_op));
+
+  // Let Appender continue doing Log::Sync and normally exit.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_wal_sync) = false;
+}
 
 // Ensure that the cache always yields at least one message,
 // even if that message is larger than the batch size. This ensures

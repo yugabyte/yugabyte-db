@@ -476,6 +476,11 @@ DEFINE_bool(enable_delete_truncate_xcluster_replicated_table, false,
             "When set, enables deleting/truncating tables currently in xCluster replication");
 TAG_FLAG(enable_delete_truncate_xcluster_replicated_table, runtime);
 
+DEFINE_bool(xcluster_wait_on_ddl_alter, false,
+            "When xCluster replication sends a DDL change, wait for the user to enter a "
+            "compatible/matching entry.  Note: Can also set at runtime to resume after stall.");
+TAG_FLAG(xcluster_wait_on_ddl_alter, runtime);
+
 DEFINE_test_flag(bool, sequential_colocation_ids, false,
                  "When set, colocation IDs will be assigned sequentially (starting from 20001) "
                  "rather than at random. This is especially useful for making pg_regress "
@@ -6036,6 +6041,14 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
     SchemaToPB(new_schema, table_pb.mutable_schema());
   }
 
+
+  if (FLAGS_xcluster_wait_on_ddl_alter &&
+      [&]() {SharedLock lock(mutex_); return IsTableCdcConsumer(*table);}()) {
+    // If we're waiting for a Schema because we saw the a replication source with a change,
+    // ensure this alter is compatible with what we're expecting.
+    RETURN_NOT_OK(ValidateNewSchemaWithCdc(*table, new_schema));
+  }
+
   // Only increment the version number if it is a schema change (AddTable change goes through a
   // different path and it's not processed here).
   if (!req->has_wal_retention_secs()) {
@@ -9070,7 +9083,8 @@ void CatalogManager::CreateNewReplicaForLocalMemory(TSDescriptor* ts_desc,
   new_replica->state = report.state();
   new_replica->ts_desc = ts_desc;
   if (!ts_desc->registered_through_heartbeat()) {
-    new_replica->time_updated = MonoTime::Now() - ts_desc->TimeSinceHeartbeat();
+    auto last_heartbeat = ts_desc->LastHeartbeatTime();
+    new_replica->time_updated = last_heartbeat ? last_heartbeat : MonoTime::kMin;
   }
 }
 
@@ -9801,6 +9815,14 @@ Status CatalogManager::HandleTabletSchemaVersionReport(
                                    << current_version << ")";
       return Status::OK();
     }
+  }
+
+  // With Replication Enabled, verify that we've finished applying the New Schema.
+  // This may need to be refactored when we support Replication + Active Index Backfill in #7613.
+  if ([&]() {SharedLock lock(mutex_); return IsTableCdcConsumer(*table);}()) {
+    // If we're waiting for a Schema because we saw the a replication source with a change,
+    // resume replication now that the alter is complete.
+    RETURN_NOT_OK(ResumeCdcAfterNewSchema(*table));
   }
 
   return MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(this, table, version);

@@ -184,6 +184,17 @@ std::vector<std::string> CDCConsumer::TEST_producer_tablets_running() {
   return tablets;
 }
 
+std::vector<std::shared_ptr<CDCPoller>> CDCConsumer::TEST_ListPollers() {
+  std::vector<std::shared_ptr<CDCPoller>> ret;
+  {
+    SharedLock<rw_spinlock> read_lock(producer_pollers_map_mutex_);
+    for (const auto& producer : producer_pollers_map_) {
+      ret.push_back(producer.second);
+    }
+  }
+  return ret;
+}
+
 // NOTE: This happens on TS.heartbeat, so it needs to finish quickly
 void CDCConsumer::UpdateInMemoryState(const cdc::ConsumerRegistryPB* consumer_registry,
     int32_t cluster_config_version) {
@@ -208,6 +219,7 @@ void CDCConsumer::UpdateInMemoryState(const cdc::ConsumerRegistryPB* consumer_re
   LOG_WITH_PREFIX(INFO) << "Updating CDC consumer registry: " << consumer_registry->DebugString();
 
   streams_with_local_tserver_optimization_.clear();
+  stream_to_schema_version_.clear();
   for (const auto& producer_map : DCHECK_NOTNULL(consumer_registry)->producer_map()) {
     const auto& producer_entry_pb = producer_map.second;
     if (producer_entry_pb.disable_stream()) {
@@ -232,6 +244,10 @@ void CDCConsumer::UpdateInMemoryState(const cdc::ConsumerRegistryPB* consumer_re
         LOG_WITH_PREFIX(INFO) << Format("Stream $0 will use local tserver optimization",
                                         stream_entry.first);
         streams_with_local_tserver_optimization_.insert(stream_entry.first);
+      }
+      if (stream_entry_pb.has_producer_schema()) {
+        stream_to_schema_version_[stream_entry.first] =
+            stream_entry_pb.producer_schema().validated_schema_version();
       }
       for (const auto& tablet_entry : stream_entry_pb.consumer_producer_tablet_map()) {
         const auto& consumer_tablet_id = tablet_entry.first;
@@ -343,6 +359,14 @@ void CDCConsumer::TriggerPollForNewTablets() {
             entry.first.tablet_id);
         producer_pollers_map_[entry.first] = cdc_poller;
         cdc_poller->Poll();
+      }
+    }
+    auto schema_version_iter = stream_to_schema_version_.find(entry.first.stream_id);
+    if (schema_version_iter != stream_to_schema_version_.end()) {
+      SharedLock<rw_spinlock> read_lock_pollers(producer_pollers_map_mutex_);
+      auto cdc_poller_iter = producer_pollers_map_.find(entry.first);
+      if (cdc_poller_iter != producer_pollers_map_.end()) {
+        cdc_poller_iter->second->SetSchemaVersion(schema_version_iter->second);
       }
     }
   }
