@@ -878,9 +878,9 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
               }
             }
             if (current_expiry_time >= prev_leader_expiry_time) {
-              LOG(INFO) << "The expiry time for the initial leader is: "
+              LOG(INFO) << "The expiration time for the current LEADER is: "
                         << current_expiry_time.time_since_epoch().count()
-                        << ", and the correct expiry time should be: "
+                        << ", and the previous LEADER expiration time should be: "
                         << prev_leader_expiry_time.time_since_epoch().count();
               return true;
             }
@@ -908,9 +908,9 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
               return false;
             }
             if (tablet_info->last_active_time >= prev_leader_active_time) {
-              LOG(INFO) << "current_last_active_time: "
+              LOG(INFO) << "Current LEADER active time in Cache: "
                         << tablet_info->last_active_time.time_since_epoch().count()
-                        << " prev_leader_active_time: "
+                        << " previoud LEADER actibe time in Cache: "
                         << prev_leader_active_time.time_since_epoch().count();
               return true;
             }
@@ -3406,7 +3406,6 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKCacheWithLeaderReElect)
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKCacheWithLeaderRestart)) {
   FLAGS_update_min_cdc_indices_interval_secs = 1;
-  FLAGS_update_metrics_interval_ms = 1000;
   FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
   const int num_tservers = 3;
   ASSERT_OK(SetUpWithParams(num_tservers, 1, false));
@@ -3455,7 +3454,6 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKCacheWithLeaderRestart)
   SleepFor(MonoDelta::FromSeconds(10));
 
   size_t second_leader_index = -1;
-  size_t second_follower_index = -1;
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets2;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets2, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
@@ -3477,7 +3475,6 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKCacheWithLeaderRestart)
         if (i == first_leader_index) continue;
         if (test_cluster()->mini_tablet_server(i)->server()->permanent_uuid() ==
             replica.ts_info().permanent_uuid()) {
-          second_follower_index = i;
           LOG(INFO) << "Found second follower index: " << i;
           break;
         }
@@ -3496,7 +3493,11 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKCacheWithLeaderRestart)
       /* is_compaction = */ false));
 
   // Call GetChanges so that the last active time is updated on the new leader.
-  auto result = GetChangesFromCDC(stream_id, tablets2, &change_resp.cdc_sdk_checkpoint());
+  GetChangesResponsePB prev_change_resp = change_resp;
+  change_resp =
+      ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets2, &prev_change_resp.cdc_sdk_checkpoint()));
+  record_size = change_resp.cdc_sdk_proto_records_size();
+  ASSERT_GE(record_size, 100);
 
   SleepFor(MonoDelta::FromSeconds(2));
   CoarseTimePoint correct_expiry_time;
@@ -3505,7 +3506,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKCacheWithLeaderRestart)
       correct_expiry_time = peer->cdc_sdk_min_checkpoint_op_id_expiration();
     }
   }
-  LOG(INFO) << "The correct expiry time after the final GetChanges call: "
+  LOG(INFO) << "CDKSDK checkpoint expiration time with LEADER tserver:"
+            << second_leader_index << " : "
             << correct_expiry_time.time_since_epoch().count();
 
   const auto& tserver = test_cluster()->mini_tablet_server(second_leader_index)->server();
@@ -3515,12 +3517,20 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKCacheWithLeaderRestart)
       cdc_service->TEST_GetTabletInfoFromCache({"", stream_id, tablets[0].tablet_id()}));
   auto correct_last_active_time = tablet_info.last_active_time;
 
-  ASSERT_OK(ChangeLeaderOfTablet(second_follower_index, tablets[0].tablet_id()));
-  // Now shutdown the second leader again, so that the previous leader can become the leader again.
-  test_cluster()->mini_tablet_server(second_leader_index)->Shutdown();
-
   // We need to ensure the initial leader get's back leadership.
   ASSERT_OK(ChangeLeaderOfTablet(first_leader_index, tablets[0].tablet_id()));
+
+  ASSERT_OK(WriteRowsHelper(200 /* start */, 300 /* end */, &test_cluster_, true));
+  ASSERT_OK(test_client()->FlushTables(
+      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ false));
+
+  // Call GetChanges so that the last active time is updated on the new leader.
+  prev_change_resp = change_resp;
+  change_resp =
+      ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets2, &prev_change_resp.cdc_sdk_checkpoint()));
+  record_size = change_resp.cdc_sdk_proto_records_size();
+  ASSERT_GE(record_size, 100);
 
   // Call the test RPC to get last active time of the current leader (original), and it will
   // be lower than the previously recorded last_active_time.
