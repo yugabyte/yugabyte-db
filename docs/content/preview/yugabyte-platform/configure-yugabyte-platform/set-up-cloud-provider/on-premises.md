@@ -304,8 +304,7 @@ This public key should correspond to the private key entered into the YugabyteDB
     ```
     
 
-For airgapped environments, make sure your Yum repository mirror contains these packages.
-    
+For airgapped environments, make sure your Yum repository mirror contains these packages.    
 1. If running on a virtual machine, execute the following to tune kernel settings:
 
     ```sh
@@ -345,21 +344,13 @@ For airgapped environments, make sure your Yum repository mirror contains these 
 
 ##### Install Prometheus node exporter
 
-For YugabyteDB Anywhere versions 2.8 and later, download the 1.3.1 version of the Prometheus node exporter, as follows:
+Download the 1.3.1 version of the Prometheus node exporter, as follows:
 
 ```sh
 wget https://github.com/prometheus/node_exporter/releases/download/v1.3.1/node_exporter-1.3.1.linux-amd64.tar.gz
 ```
 
-For YugabyteDB Anywhere versions prior to 2.8, download the 0.13.0 version of the exporter, as follows:
-
-```sh
-wget https://github.com/prometheus/node_exporter/releases/download/v0.13.0/node_exporter-0.13.0.linux-amd64.tar.gz
-```
-
 If you are doing an airgapped installation, download the node exporter using a computer connected to the internet and copy it over to the database nodes.
-
-Note that the instructions are for the 0.13.0 version. The same instructions are applicable to the 1.3.1 version, but you need to use the correct file name.
 
 On each node, perform the following as a user with sudo access:
 
@@ -372,13 +363,13 @@ On each node, perform the following as a user with sudo access:
     sudo mkdir /etc/prometheus
     sudo mkdir /var/log/prometheus
     sudo mkdir /var/run/prometheus
-    sudo mv /tmp/node_exporter-0.13.0.linux-amd64.tar  /opt/prometheus
+    sudo mv /tmp/node_exporter-1.3.1.linux-amd64.tar  /opt/prometheus
     sudo adduser prometheus # (also adds group “prometheus”)
     sudo chown -R prometheus:prometheus /opt/prometheus
     sudo chown -R prometheus:prometheus /etc/prometheus
     sudo chown -R prometheus:prometheus /var/log/prometheus
     sudo chown -R prometheus:prometheus /var/run/prometheus
-    sudo chmod +r /opt/prometheus/node_exporter-0.13.0.linux-amd64.tar
+    sudo chmod +r /opt/prometheus/node_exporter-1.3.1.linux-amd64.tar
     sudo su - prometheus (user session is now as user “prometheus”)
     ```
 
@@ -386,7 +377,7 @@ On each node, perform the following as a user with sudo access:
 
     ```sh
     cd /opt/prometheus
-    tar zxf node_exporter-0.13.0.linux-amd64.tar.gz
+    tar zxf node_exporter-1.3.1.linux-amd64.tar.gz
     exit   # (exit from prometheus user back to previous user)
     ```
 
@@ -418,7 +409,7 @@ On each node, perform the following as a user with sudo access:
       User=prometheus
       Group=prometheus
 
-      ExecStart=/opt/prometheus/node_exporter-0.13.0.linux-amd64/node_exporter  --web.listen-address=:9300 --collector.textfile.directory=/tmp/yugabyte/metrics
+      ExecStart=/opt/prometheus/node_exporter-1.3.1.linux-amd64/node_exporter  --web.listen-address=:9300 --collector.textfile.directory=/tmp/yugabyte/metrics
       ```
 
 1. Exit from vi, and continue, as follows:
