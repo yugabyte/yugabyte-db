@@ -553,14 +553,16 @@ class CDCServiceImpl::Impl {
         LOG(ERROR) << "Stream ID: " << producer_tablet.stream_id
                    << " expired for Tablet ID: " << producer_tablet.tablet_id
                    << " with active time :"
-                   << it->cdc_state_checkpoint.last_active_time.time_since_epoch();
+                   << ToSeconds((it->cdc_state_checkpoint.last_active_time.time_since_epoch()))
+                   << " current time: " << ToSeconds(CoarseMonoClock::Now().time_since_epoch());
         return STATUS_FORMAT(
             InternalError, "stream ID $0 is expired for Tablet ID $1", producer_tablet.stream_id,
             producer_tablet.tablet_id);
       }
       VLOG(1) << "Tablet  :" << producer_tablet.ToString()
               << " found in CDCSerive Cache with active time: "
-              << ": " << it->cdc_state_checkpoint.last_active_time.time_since_epoch();
+              << ": " << it->cdc_state_checkpoint.last_active_time.time_since_epoch()
+              << " current time: " << ToSeconds(CoarseMonoClock::Now().time_since_epoch());
     }
     return Status::OK();
   }
@@ -1021,10 +1023,21 @@ Result<SetCDCCheckpointResponsePB> CDCServiceImpl::SetCDCCheckpoint(
   std::shared_ptr<tablet::TabletPeer> tablet_peer;
   auto s = tablet_manager_->GetTabletPeer(req.tablet_id(), &tablet_peer);
 
-  if (s.IsNotFound()) {
-    RETURN_NOT_OK_SET_CODE(s, CDCError(CDCErrorPB::TABLET_NOT_FOUND));
-  } else if (tablet_peer->LeaderStatus() == consensus::LeaderStatus::NOT_LEADER) {
-    RETURN_NOT_OK_SET_CODE(s, CDCError(CDCErrorPB::NOT_LEADER));
+  // Case-1 The connected tserver does not contain the requested tablet_id.
+  // Case-2 The connected tserver does not contain the tablet LEADER.
+  if (s.IsNotFound() || !IsTabletPeerLeader(tablet_peer)) {
+    // Get tablet LEADER.
+    auto result = GetLeaderTServer(req.tablet_id());
+    RETURN_NOT_OK_SET_CODE(result, CDCError(CDCErrorPB::NOT_LEADER));
+    auto ts_leader = *result;
+    auto cdc_proxy = GetCDCServiceProxy(ts_leader);
+
+    rpc::RpcController rpc;
+    rpc.set_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_read_rpc_timeout_ms));
+    SetCDCCheckpointResponsePB resp;
+    auto status = cdc_proxy->SetCDCCheckpoint(req, &resp, &rpc);
+    RETURN_NOT_OK_SET_CODE(status, CDCError(CDCErrorPB::INTERNAL_ERROR));
+    return SetCDCCheckpointResponsePB();
   } else if (!s.ok()) {
     RETURN_NOT_OK_SET_CODE(s, CDCError(CDCErrorPB::LEADER_NOT_READY));
   }
