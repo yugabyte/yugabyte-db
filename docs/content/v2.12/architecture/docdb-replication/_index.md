@@ -16,7 +16,7 @@ type: indexpage
 {{< note title="Note" >}}
 
 * YugabyteDB's synchronous replication architecture is inspired by <a href="https://research.google.com/archive/spanner-osdi2012.pdf">Google Spanner</a>.
-* YugabyteDB asynchronous replication architecture is inspired by RDBMS databases such as Oracle, MySQL and PostgreSQL.
+* YugabyteDB xCluster replication architecture is inspired by RDBMS databases such as Oracle, MySQL and PostgreSQL.
 
 {{</note >}}
 

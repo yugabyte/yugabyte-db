@@ -1,11 +1,11 @@
 ---
-title: Asynchronous replication (2+ regions) in YCQL
-headerTitle: Asynchronous replication (2+ regions) in YCQL
-linkTitle: Async replication (2+ regions)
+title: xCluster replication (2+ regions) in YCQL
+headerTitle: xCluster replication (2+ regions) in YCQL
+linkTitle: xCluster replication (2+ regions)
 description: Multi-region deployment using asynchronous replication across two or more data centers in YCQL.
 menu:
   stable:
-    name: Async Replication (2+ regions)
+    name: xCluster replication (2+ regions)
     identifier: explore-multi-region-deployments-async-replication-2-ycql
     parent: explore-multi-region-deployments
     weight: 720
@@ -30,9 +30,9 @@ type: docs
 
 </ul>
 
-By default, YugabyteDB provides synchronous replication and strong consistency across geo-distributed data centers (also known as universes). But sometimes asynchronous replication will meet your need for disaster recovery, auditing and compliance, and other applications. For more information, see [Two data center (2DC) deployments](../../../architecture/docdb-replication/async-replication/) in the Architecture section.
+By default, YugabyteDB provides synchronous replication and strong consistency across geo-distributed data centers (also known as universes). But sometimes xCluster replication will meet your need for disaster recovery, auditing and compliance, and other applications. For more information, see [Two data center (2DC) deployments](../../../architecture/docdb-replication/async-replication/) in the Architecture section.
 
-This tutorial simulates a geo-distributed two data center (2DC) deployment using two local YugabyteDB clusters, one representing "Data Center - East" and the other representing "Data Center - West." You can explore unidirectional (master-follower) asynchronous replication and bidirectional (multi-master) asynchronous replication using the [yugabyted](../../../reference/configuration/yugabyted/) and [yb-admin](../../../admin/yb-admin/) utilities.
+This tutorial simulates a geo-distributed two data center (2DC) deployment using two local YugabyteDB clusters, one representing "Data Center - East" and the other representing "Data Center - West." You can explore unidirectional (master-follower) xCluster replication and bidirectional (multi-master) xCluster replication using the [yugabyted](../../../reference/configuration/yugabyted/) and [yb-admin](../../../admin/yb-admin/) utilities.
 
 ## 1. Create two "data centers"
 
@@ -152,7 +152,7 @@ Create the `users` table by executing the following:
 CREATE TABLE users ( email varchar PRIMARY KEY, username varchar );
 ```
 
-You now have the identical database table on each of your clusters and can set up 2DC asynchronous replication.
+You now have the identical database table on each of your clusters and can set up 2DC xCluster replication.
 
 ## 3. Configure unidirectional replication
 
@@ -222,9 +222,9 @@ You should see the following output:
 
 ## 5. Configure bidirectional replication (optional)
 
-Bidirectional asynchronous replication lets you insert data into the same table on either of the clusters and have the data changes added to the other cluster.
+Bidirectional xCluster replication lets you insert data into the same table on either of the clusters and have the data changes added to the other cluster.
 
-To configure bidirectional asynchronous replication for the same table, you need to run the following `yb-admin` `setup_universe_replication` command to set up the "Data Center - East" cluster to be the target of the "Data Center - West" cluster:
+To configure bidirectional xCluster replication for the same table, you need to run the following `yb-admin` `setup_universe_replication` command to set up the "Data Center - East" cluster to be the target of the "Data Center - West" cluster:
 
 ```sh
 $ ./bin/yb-admin -master_addresses 127.0.0.1:7100 \
@@ -305,5 +305,5 @@ $ ./bin/yugabyted destroy \
 
 For more information, see the following:
 
-- [Asynchronous replication](../../../architecture/docdb-replication/async-replication/)
+- [xCluster replication](../../../architecture/docdb-replication/async-replication/)
 - [Change data capture (CDC)](../../../architecture/docdb-replication/change-data-capture/)

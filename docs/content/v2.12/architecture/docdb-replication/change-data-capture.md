@@ -22,7 +22,7 @@ Change data capture is useful in a number of scenarios, such as the ones describ
 
 Some microservices require a stream of changes to the data and using CDC in YugabyteDB can provide consumable data changes to CDC subscribers.
 
-### Asynchronous replication to remote systems
+### xCluster replication to remote systems
 
 Remote systems may subscribe to a stream of data changes and then transform and consume the changes. Maintaining separate database instances for transactional and reporting purposes can be used to manage workload performance.
 

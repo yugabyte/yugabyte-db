@@ -16,8 +16,8 @@ YugabyteDB supports a rich set of multi-region deployment topologies. This secti
 
 * **Default synchronous** replication across regions
 * **Geo-partitioning** to keep data pinned to different geographic locations based on policy
-* **xCluster asynchronous replication** for unidirectional and bidirectional replication
-* **Read replicas** which internally use asynchronous replication and can only serve reads
+* **xCluster replication** for unidirectional and bidirectional replication
+* **Read replicas** which internally use xCluster replication and can only serve reads
 
 The following table summarizes these different multi-region deployments in YugabyteDB along with some of their key characteristics.
 
@@ -51,7 +51,7 @@ The deployment types are explained in the following sections:
     <a class="section-link icon-offset" href="asynchronous-replication-ysql/">
       <div class="head">
         <img class="icon" src="/images/section_icons/secure/rbac-model.png" aria-hidden="true" />
-        <div class="title">Asynchronous Replication</div>
+        <div class="title">xCluster replication</div>
       </div>
       <div class="body">
           Achieve asynchronous replication across two or more regions in YugabyteDB.
