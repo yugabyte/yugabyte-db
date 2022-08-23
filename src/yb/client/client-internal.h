@@ -400,6 +400,10 @@ class YBClient::Data {
   Status ValidateReplicationInfo(
         const master::ReplicationInfoPB& replication_info, CoarseTimePoint deadline);
 
+  // Get disk size of table, calculated as WAL + SST file size.
+  // It does not take replication factor into account
+  Result<TableSizeInfo> GetTableDiskSize(const TableId& table_id, CoarseTimePoint deadline);
+
   Result<bool> CheckIfPitrActive(CoarseTimePoint deadline);
 
   template <class ProxyClass, class ReqClass, class RespClass>

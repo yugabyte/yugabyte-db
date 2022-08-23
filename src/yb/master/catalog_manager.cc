@@ -392,6 +392,9 @@ DEFINE_double(heartbeat_safe_deadline_ratio, .20,
 DECLARE_int32(heartbeat_rpc_timeout_ms);
 DECLARE_CAPABILITY(TabletReportLimit);
 
+DEFINE_test_flag(int32, num_missing_tablets, 0, "Simulates missing tablets in a table");
+TAG_FLAG(TEST_num_missing_tablets, runtime);
+
 DEFINE_int32(partitions_vtable_cache_refresh_secs, 0,
              "Amount of time to wait before refreshing the system.partitions cached vtable. "
              "If generate_partitions_vtable_on_changes is set, then this background task will "
@@ -1030,6 +1033,51 @@ Status CatalogManager::WaitForWorkerPoolTests(const MonoDelta& timeout) const {
   if (!async_task_pool_->WaitFor(timeout)) {
     return STATUS(TimedOut, "Worker Pool hasn't finished processing tasks");
   }
+  return Status::OK();
+}
+
+Status CatalogManager::GetTableDiskSize(const GetTableDiskSizeRequestPB* req,
+                                        GetTableDiskSizeResponsePB *resp,
+                                        rpc::RpcContext* rpc) {
+  auto table_id = req->table().table_id();
+
+  const auto table_info = GetTableInfo(table_id);
+  if (!table_info) {
+    auto s = STATUS_SUBSTITUTE(NotFound, "Table with id $0 does not exist", table_id);
+    return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
+  }
+
+  int64 table_size = 0;
+  int32 num_missing_tablets = 0;
+  if (!table_info->IsColocatedUserTable()) {
+    // Colocated user tables do not have size info
+
+    // Set missing tablets if test flag is set
+    num_missing_tablets =
+        PREDICT_FALSE(FLAGS_TEST_num_missing_tablets > 0) ? FLAGS_TEST_num_missing_tablets : 0;
+
+    const auto tablets = table_info->GetTablets();
+    for (const auto& tablet : tablets) {
+      const auto drive_info_result = tablet->GetLeaderReplicaDriveInfo();
+      if (drive_info_result.ok()) {
+        const auto& drive_info = drive_info_result.get();
+        VLOG(4)
+            << "tablet " << tablet->ToString()
+            << " WAL file size: " << drive_info.wal_files_size
+            << "\ntablet " << tablet->ToString()
+            << " SST file size: " << drive_info.sst_files_size;
+
+        table_size += drive_info.wal_files_size;
+        table_size += drive_info.sst_files_size;
+      } else {
+        ++num_missing_tablets;
+      }
+    }
+  }
+
+  resp->set_size(table_size);
+  resp->set_num_missing_tablets(num_missing_tablets);
+
   return Status::OK();
 }
 

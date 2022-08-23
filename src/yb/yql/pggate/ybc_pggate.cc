@@ -19,6 +19,7 @@
 #include <utility>
 
 #include "yb/client/tablet_server.h"
+#include "yb/client/table_info.h"
 
 #include "yb/common/common_flags.h"
 #include "yb/common/hybrid_time.h"
@@ -85,13 +86,20 @@ namespace {
 pggate::PgApiImpl* pgapi;
 std::atomic<bool> pgapi_shutdown_done;
 
-template<class T>
-YBCStatus ExtractValueFromResult(const Result<T>& result, T* value) {
+template<class T, class Functor>
+YBCStatus ExtractValueFromResult(Result<T> result, const Functor& functor) {
   if (result.ok()) {
-    *value = *result;
+    functor(std::move(*result));
     return YBCStatusOK();
   }
   return ToYBCStatus(result.status());
+}
+
+template<class T>
+YBCStatus ExtractValueFromResult(Result<T> result, T* value) {
+  return ExtractValueFromResult(std::move(result), [value](T src) {
+    *value = std::move(src);
+  });
 }
 
 YBCStatus ProcessYbctid(
@@ -628,6 +636,17 @@ YBCStatus YBCPgTableExists(const YBCPgOid database_oid,
   } else {
     return ToYBCStatus(result.status());
   }
+}
+
+YBCStatus YBCPgGetTableDiskSize(YBCPgOid table_oid,
+                                YBCPgOid database_oid,
+                                int64_t *size,
+                                int32_t *num_missing_tablets) {
+  return ExtractValueFromResult(pgapi->GetTableDiskSize({database_oid, table_oid}),
+                                [size, num_missing_tablets](auto value) {
+     *size = value.table_size;
+     *num_missing_tablets = value.num_missing_tablets;
+  });
 }
 
 // Index Operations -------------------------------------------------------------------------------
