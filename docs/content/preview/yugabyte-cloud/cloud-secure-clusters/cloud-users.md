@@ -79,8 +79,11 @@ In YCQL, there is a single superuser called `cassandra` used during database cre
 
 ## Learn more
 
-- [Add database users](../add-users/)
 - [Manage Users and Roles in YugabyteDB](../../../secure/authorization/create-roles/)
 - [Role-based access control](../../../secure/authorization/)
 - [PostgreSQL extensions](../../../explore/ysql-language-features/pg-extensions/)
 - [Create YSQL extensions in YugabyteDB Managed](../../cloud-clusters/add-extensions/)
+
+## Next step
+
+- [Add database users](../add-users/)

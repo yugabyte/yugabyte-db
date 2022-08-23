@@ -46,21 +46,25 @@ To add IP allow lists to a cluster:
 
 1. On the **Clusters** page, select the cluster, and select the **Settings** tab.
 1. Under **IP Allow Lists**, click **Edit List** to display the **Add IP Allow List** sheet.
-    \
-    The sheet lists all IP allow lists that have been created for your account.
 
-1. Select the box for the IP allow lists you want to add to the cluster.
-1. If you do not have any IP allow lists or want to create a new one, click **Create New List and Add to Cluster** and do the following:
-    - Enter a name and description for the list.
-    - Enter one or more IP addresses or CIDR ranges; delimit entries using commas or new lines.
-    - Click **Detect and add my IP to this list** to add your own IP address.
+    The sheet lists all IP allow lists that have been assigned to the cluster.
+
+1. You can add IP addresses using any combination of the following options.
+
+    | Option | Description |
+    | --- | --- |
+    | Add Current IP Address | Creates an allow list using the public IP address of your computer and adds it to the cluster IP allow list.
+    | Add Peered VPC Networks | Only available for clusters deployed in a VPC. VPCs must be peered, and the peering connection active for the networks to be added to the IP allow list.<br>Choose **Add All Peered Networks** to create an IP allow list from every network peered with the cluster VPC, and add it to the cluster.<br>Choose **Add Individual Peered Networks** to select specific peered networks to add to the cluster IP allow list.
+    | Add Existing IP Allow List | Choose from a list of IP allow lists already [created for your account](#create-an-ip-allow-list).
+    | Create New IP Allow List | Create a new IP allow list and manually enter the CIDR and public IP addresses.
+
 1. Click **Save** when done.
 
 The allow list takes up to 30 seconds to become active.
 
 ## Manage IP allow lists
 
-Any IP allow list that you create is also added to your cloud's **Network Access**.
+Any IP allow list that you create is also added to your account's **Network Access**.
 
 The **IP Allow List** tab displays a list of IP allow lists configured for your account.
 
