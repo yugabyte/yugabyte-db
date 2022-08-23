@@ -23,6 +23,7 @@ type: indexpage
 This section describes how replication works in DocDB. The data in a DocDB table is split into tablets. By default, each tablet is synchronously replicated using the Raft algorithm across various nodes or fault domains (such as availability zones/racks/regions/cloud providers).
 
 There are other advanced replication features in YugabyteDB. These include two forms of asynchronous replication of data:
+
 * **xCluster replication** Data is asynchronously replicated between different YugabyteDB clusters - both unidirectional replication (master-slave) or  bidirectional replication across two clusters.
 * **Read replicas** The in-cluster asynchronous replicas are called read replicas.
 
