@@ -184,12 +184,16 @@
   ExecuteBashCommand(command1, arg1)
 
   command2 := "systemctl"
-  arg2 := []string{"start", "yb-platform.service"}
+  arg2 := []string{"enable", "yb-platform.service"}
   ExecuteBashCommand(command2, arg2)
 
   command3 := "systemctl"
-  arg3 := []string{"status", "yb-platform.service"}
+  arg3 := []string{"start", "yb-platform.service"}
   ExecuteBashCommand(command3, arg3)
+
+  command4 := "systemctl"
+  arg4 := []string{"status", "yb-platform.service"}
+  ExecuteBashCommand(command4, arg4)
  }
 
  func (plat Platform) Stop() {
