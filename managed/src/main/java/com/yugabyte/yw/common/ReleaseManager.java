@@ -3,7 +3,6 @@ package com.yugabyte.yw.common;
 
 import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 
-import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.common.utils.FileUtils;
@@ -238,12 +237,6 @@ public class ReleaseManager {
   }
 
   public static final Logger LOG = LoggerFactory.getLogger(ReleaseManager.class);
-  public static final Map<Architecture, String> ybcArchMap =
-      ImmutableMap.of(
-          Architecture.x86_64,
-          "glob:**ybc*{centos,alma,linux,el}*x86_64.tar.gz",
-          Architecture.arm64,
-          "glob:**ybc*{centos,alma,linux,el}*aarch64.tar.gz");
 
   private Predicate<Path> getPackageFilter(String pathMatchGlob) {
     return p -> Files.isRegularFile(p) && getPathMatcher(pathMatchGlob).matches(p);
@@ -267,9 +260,10 @@ public class ReleaseManager {
       Pattern.compile("(.*)(\\d+.\\d+.\\d+(.\\d+)?)(-(b(\\d+)|(\\w+)))?(.*)");
 
   private static final Pattern ybcPackagePattern =
-      Pattern.compile("[^.]+ybc-(?:ee-)?(.*)-(linux|centos)(.*).tar.gz");
+      Pattern.compile("[^.]+ybc-(?:ee-)?(.*)-(linux|el8)(.*).tar.gz");
 
-  public Map<String, String> getReleaseFiles(String releasesPath, Predicate<Path> fileFilter) {
+  public Map<String, String> getReleaseFiles(
+      String releasesPath, Predicate<Path> fileFilter, boolean ybcRelease) {
     Map<String, String> fileMap = new HashMap<>();
     Set<String> duplicateKeys = new HashSet<>();
     try {
@@ -277,7 +271,12 @@ public class ReleaseManager {
           .filter(fileFilter)
           .forEach(
               p -> {
-                String key = p.getName(p.getNameCount() - 2).toString();
+                // In case of ybc release, we want to store osType, archType in version key.
+                String key =
+                    ybcRelease
+                        ? StringUtils.removeEnd(
+                            p.getName(p.getNameCount() - 1).toString(), ".tar.gz")
+                        : p.getName(p.getNameCount() - 2).toString();
                 String value = p.toAbsolutePath().toString();
                 if (!fileMap.containsKey(key)) {
                   fileMap.put(key, value);
@@ -316,10 +315,10 @@ public class ReleaseManager {
 
   public Map<String, ReleaseMetadata> getLocalReleases(String releasesPath) {
     Map<String, String> releaseFiles;
-    Map<String, String> releaseCharts = getReleaseFiles(releasesPath, ybChartFilter);
+    Map<String, String> releaseCharts = getReleaseFiles(releasesPath, ybChartFilter, false);
     Map<String, ReleaseMetadata> localReleases = new HashMap<>();
     for (Architecture arch : Architecture.values()) {
-      releaseFiles = getReleaseFiles(releasesPath, getPackageFilter(arch.getGlob()));
+      releaseFiles = getReleaseFiles(releasesPath, getPackageFilter(arch.getDBGlob()), false);
       updateLocalReleases(localReleases, releaseFiles, releaseCharts, arch);
     }
     return localReleases;
@@ -329,7 +328,7 @@ public class ReleaseManager {
     Map<String, String> releaseFiles;
     Map<String, ReleaseMetadata> localReleases = new HashMap<>();
     for (Architecture arch : Architecture.values()) {
-      releaseFiles = getReleaseFiles(releasesPath, getPackageFilter(ybcArchMap.get(arch)));
+      releaseFiles = getReleaseFiles(releasesPath, getPackageFilter(arch.getYbcGlob()), true);
       updateLocalReleases(localReleases, releaseFiles, new HashMap<>(), arch);
     }
     return localReleases;
@@ -703,7 +702,7 @@ public class ReleaseManager {
             }
             if (fp != null) {
               for (Architecture arch : Architecture.values()) {
-                if (getPathMatcher(arch.getGlob()).matches(fp)) {
+                if (getPathMatcher(arch.getDBGlob()).matches(fp)) {
                   rm.packages = new ArrayList<>();
                   rm = rm.withPackage(rm.filePath, arch);
                 }
@@ -784,7 +783,8 @@ public class ReleaseManager {
     return metadataFromObject(metadata);
   }
 
-  public ReleaseMetadata getYbcReleaseByVersion(String version) {
+  public ReleaseMetadata getYbcReleaseByVersion(String version, String osType, String archType) {
+    version = String.format("ybc-%s-%s-%s", version, osType, archType);
     Object metadata = getReleaseMetadata(ConfigHelper.ConfigType.YbcSoftwareReleases).get(version);
     if (metadata == null) {
       return null;

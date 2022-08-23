@@ -4716,7 +4716,7 @@
     "Package" : {
       "properties" : {
         "arch" : {
-          "enum" : [ "x86_64", "arm64" ],
+          "enum" : [ "x86_64", "arm64", "aarch64" ],
           "type" : "string"
         },
         "path" : {
@@ -5048,7 +5048,7 @@
           "type" : "boolean"
         },
         "architecture" : {
-          "enum" : [ "x86_64", "arm64" ],
+          "enum" : [ "x86_64", "arm64", "aarch64" ],
           "type" : "string"
         },
         "code" : {
