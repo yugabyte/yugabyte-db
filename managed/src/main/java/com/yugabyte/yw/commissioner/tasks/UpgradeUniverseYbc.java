@@ -6,6 +6,8 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.ReleaseManager;
+import com.yugabyte.yw.common.YbcManager;
+import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import lombok.extern.slf4j.Slf4j;
@@ -14,6 +16,7 @@ import lombok.extern.slf4j.Slf4j;
 public class UpgradeUniverseYbc extends UniverseTaskBase {
 
   @Inject private ReleaseManager releaseManager;
+  @Inject private YbcManager ybcManager;
 
   @Inject
   protected UpgradeUniverseYbc(BaseTaskDependencies baseTaskDependencies) {
@@ -40,11 +43,25 @@ public class UpgradeUniverseYbc extends UniverseTaskBase {
             "Ybc is either not installed or enabled on the universe: " + universe.universeUUID);
       }
 
-      // Check whether the target ybc version is present in YB-Anywhere.
-      if (releaseManager.getYbcReleaseByVersion(taskParams().ybcSoftwareVersion) == null) {
-        throw new RuntimeException(
-            "Target ybc package " + taskParams().ybcSoftwareVersion + " does not exists.");
-      }
+      // Check whether the target ybc version is present in YB-Anywhere for each node.
+      universe
+          .getNodes()
+          .forEach(
+              (node) -> {
+                Pair<String, String> ybcPackageDetails =
+                    ybcManager.getYbcPackageDetailsForNode(universe, node);
+                if (releaseManager.getYbcReleaseByVersion(
+                        taskParams().ybcSoftwareVersion,
+                        ybcPackageDetails.getFirst(),
+                        ybcPackageDetails.getSecond())
+                    == null) {
+                  throw new RuntimeException(
+                      "Target ybc package "
+                          + taskParams().ybcSoftwareVersion
+                          + " does not exists for node"
+                          + node.nodeName);
+                }
+              });
 
       // create task for upgrading ybc version on universe.
       createUpgradeYbcTask(
