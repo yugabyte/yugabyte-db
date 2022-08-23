@@ -26,9 +26,6 @@ import (
 	"time"
 )
 
-// Common constant for YUGAWARE_DUMP_FNAME in performing
-var YUGAWARE_DUMP_FNAME string = "yugaware_dump.sql"
-
 func ExecuteBashCommand(command string, args []string) (o string, e error) {
 
     cmd := exec.Command(command, args...)
@@ -95,7 +92,6 @@ func TestSudoPermission() {
         fmt.Println("You are not running this program with root permissions. " +
         "Executing Preflight root checks...")
         PreflightRoot()
-        //log.Fatal("This program must be run as root! (sudo). Please try again with sudo.")
     }
 }
 
