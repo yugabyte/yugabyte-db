@@ -45,6 +45,7 @@ import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.forms.CertsRotateParams.CertRotationType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -61,7 +62,6 @@ import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.io.File;
@@ -110,8 +110,8 @@ public class NodeManager extends DevopsBase {
   static final String SKIP_CERT_VALIDATION = "yb.tls.skip_cert_validation";
   public static final String POSTGRES_MAX_MEM_MB = "yb.dbmem.postgres.max_mem_mb";
   public static final String YBC_NFS_DIRS = "yb.ybc_flags.nfs_dirs";
-  private static final String YBC_PACKAGE_REGEX = ".+ybc(.*).tar.gz";
-  private static final Pattern YBC_PACKAGE_PATTERN = Pattern.compile(YBC_PACKAGE_REGEX);
+  public static final String YBC_PACKAGE_REGEX = ".+ybc(.*).tar.gz";
+  public static final Pattern YBC_PACKAGE_PATTERN = Pattern.compile(YBC_PACKAGE_REGEX);
 
   @Inject ReleaseManager releaseManager;
 
@@ -689,8 +689,18 @@ public class NodeManager extends DevopsBase {
     }
 
     if (taskParam.enableYbc) {
+      if (ybServerPackage == null) {
+        throw new RuntimeException(
+            "ybServerPackage cannot be null as we require it to fetch"
+                + " the osType, archType of ybcServerPackage");
+      }
+      Pair<String, String> ybcPackageDetails =
+          Util.getYbcPackageDetailsFromYbServerPackage(ybServerPackage);
       ReleaseManager.ReleaseMetadata releaseMetadata =
-          releaseManager.getYbcReleaseByVersion(taskParam.ybcSoftwareVersion);
+          releaseManager.getYbcReleaseByVersion(
+              taskParam.ybcSoftwareVersion,
+              ybcPackageDetails.getFirst(),
+              ybcPackageDetails.getSecond());
       ybcPackage = releaseMetadata.getFilePath(taskParam.getRegion());
       if (StringUtils.isBlank(ybcPackage)) {
         throw new RuntimeException("Ybc package cannot be empty with ybc enabled");
@@ -2096,5 +2106,23 @@ public class NodeManager extends DevopsBase {
       throw new RuntimeException("No key found at the private key file path!");
     }
     return commandArgs;
+  }
+
+  public String getYbServerPackageName(String ybSoftwareVersion, Region region) {
+    String ybServerPackage = null;
+    ReleaseManager.ReleaseMetadata releaseMetadata =
+        releaseManager.getReleaseByVersion(ybSoftwareVersion);
+    if (releaseMetadata != null) {
+      if (releaseMetadata.s3 != null) {
+        ybServerPackage = releaseMetadata.s3.paths.x86_64;
+      } else if (releaseMetadata.gcs != null) {
+        ybServerPackage = releaseMetadata.gcs.paths.x86_64;
+      } else if (releaseMetadata.http != null) {
+        ybServerPackage = releaseMetadata.http.paths.x86_64;
+      } else {
+        ybServerPackage = releaseMetadata.getFilePath(region);
+      }
+    }
+    return ybServerPackage;
   }
 }
