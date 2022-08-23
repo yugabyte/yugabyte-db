@@ -1358,12 +1358,9 @@ def is_equal_or_newer_release_build(current_release_build, threshold_release_bui
             parsed_current_build_number = parse_build_number(current_build)
             parsed_threshold_build_number = parse_build_number(threshold_build)
             # Threat PRE_RELEASE and dev builds as later than regular builds
-            if not parsed_current_build_number:
-                # Both non-digit builds OR current build is non-digit
+            if not parsed_current_build_number or not parsed_threshold_build_number:
+                # One of the builds is non-digit - it's dev builds so treat as equal
                 return True
-            if not parsed_threshold_build_number:
-                # Current is digit builds, while threshold build is non-digit
-                return False
             # Regular builds
             c = int(parsed_current_build_number.group(1))
             t = int(parsed_threshold_build_number.group(1))
