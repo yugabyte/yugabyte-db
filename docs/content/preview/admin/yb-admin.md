@@ -484,7 +484,7 @@ yb-admin \
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
 * *keyspace*: The namespace, or name of the database or keyspace.
 * *table_name*: The name of the table.
-* *table_id*: The unique uuid associated with the table whose placement policy is being changed.
+* *table_id*: The unique UUID associated with the table whose placement policy is being changed.
 * *placement_info*: Comma-delimited list of placements for *cloud*.*region*.*zone*. Default value is `cloud1.datacenter1.rack1`.
 * *replication_factor*: The number of replicas for each tablet.
 * *placement_id*: Identifier of the primary cluster. Optional. If set, it has to match the `placement_id` specified for the primary cluster in the cluster configuration.
@@ -509,7 +509,7 @@ Use this command to create custom placement policies only for YCQL tables or tra
 
 #### create_transaction_table
 
-Creates a transaction status table to be used in a region. This command should always be followed by [`modify_table_placement_info`](#modify-table-placement-info) to set the placement information for the newly created transaction status table.
+Creates a transaction status table to be used in a region. This command should always be followed by [`modify_table_placement_info`](#modify-table-placement-info) to set the placement information for the newly-created transaction status table.
 
 **Syntax**
 
@@ -1608,7 +1608,7 @@ yb-admin \
 * *comma_separated_list_of_producer_bootstrap_ids*: Comma-separated list of source universe bootstrap identifiers (`bootstrap_id`). Obtain these with [bootstrap_cdc_producer](#bootstrap-cdc-producer-comma-separated-list-of-table-ids), using a comma-separated list of source universe table IDs.
 
 {{< warning title="Important" >}}
-Enter the source universe bootstrap_ids in the same order as their corresponding table_ids.
+Enter the source universe bootstrap IDs in the same order as their corresponding table IDs.
 {{< /warning >}}
 
 {{< note title="Tip" >}}
@@ -1629,10 +1629,10 @@ To display a list of tables and their UUID (`table_id`) values, open the **YB-Ma
 
 #### alter_universe_replication
 
-Changes the universe replication for the specified source universe. Use this command to:
+Changes the universe replication for the specified source universe. Use this command to do the following:
 
-* Add or remove tables in an existing replication UUID
-* Modify the source master addresses
+* Add or remove tables in an existing replication UUID.
+* Modify the source master addresses.
 
 If no tables have been configured for replication, use [setup_universe_replication](#setup-universe-replication).
 
@@ -1669,7 +1669,7 @@ yb-admin -master_addresses <target_master_addresses> \
 * *comma_separated_list_of_producer_bootstrap_ids*: Comma-separated list of source universe bootstrap identifiers (`bootstrap_id`). Obtain these with [bootstrap_cdc_producer](#bootstrap-cdc-producer-comma-separated-list-of-table-ids), using a comma-separated list of source universe table IDs.
 
 {{< warning title="Important" >}}
-Enter the source universe bootstrap_ids in the same order as their corresponding table_ids.
+Enter the source universe bootstrap IDs in the same order as their corresponding table IDs.
 {{< /warning >}}
 
 Use the `remove_table` subcommand to remove one or more tables from the existing list:
@@ -1684,6 +1684,19 @@ yb-admin -master_addresses <target_master_addresses> \
 * *source_universe_uuid*: The UUID of the source universe.
 * *replication_name*: The name of the replication to be altered.
 * *comma_separated_list_of_table_ids*: Comma-separated list of source universe table identifiers (`table_id`).
+
+Use the `rename_id` subcommand to rename xCluster replication streams.
+
+```sh
+yb-admin -master_addresses <target_master_addresses> \
+    alter_universe_replication <source_universe_uuid>_<replication_name> \
+    rename_id <source_universe_uuid>_<new_replication_name>
+```
+
+* *target_master_addresses*: Comma-separated list of target YB-Master hosts and ports. Default value is `localhost:7100`.
+* *source_universe_uuid*: The UUID of the source universe.
+* *replication_name*: The name of the replication to be altered.
+* *new_replication_name*: The new name of the replication stream.
 
 #### delete_universe_replication <source_universe_uuid>
 
