@@ -1588,19 +1588,26 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestDropTableBeforeXClusterStream
   create_req.set_table_id(table_id);
   create_req.set_source_type(XCLUSTER);
   ASSERT_OK(cdc_proxy_->CreateCDCStream(create_req, &create_resp, &rpc));
+  // Drop table on YSQL tables deletes associated xCluster streams.
   DropTable(&test_cluster_, kTableName);
 
-  RpcController delete_rpc;
-  delete_rpc.set_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_write_rpc_timeout_ms));
+  // Wait for bg thread to cleanup entries from cdc_state.
+  client::TableHandle table_handle_cdc;
+  client::YBTableName cdc_state_table(
+      YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
+  ASSERT_OK(table_handle_cdc.Open(cdc_state_table, test_client()));
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    for (const auto& row : client::TableRange(table_handle_cdc)) {
+      auto stream_id = row.column(master::kCdcStreamIdIdx).string_value();
+      if (stream_id == create_resp.stream_id()) {
+        return false;
+      }
+    }
+    return true;
+  }, MonoDelta::FromSeconds(60), "Waiting for stream metadata cleanup."));
 
-  DeleteCDCStreamRequestPB delete_req;
-  DeleteCDCStreamResponsePB delete_resp;
-  delete_req.add_stream_id(create_resp.stream_id());
-  // The following line assumes that cdc_proxy_ has been initialized in the test already
-  ASSERT_OK(cdc_proxy_->DeleteCDCStream(delete_req, &delete_resp, &delete_rpc));
-  // Currently drop table on YSQL tables doesn't delete xCluster streams, so this will fail.
-  ASSERT_EQ(delete_resp.has_error(), true);
-  ASSERT_TRUE(delete_resp.error().status().message().find(create_resp.stream_id()) != string::npos);
+  // This should fail now as the stream is deleted.
+  ASSERT_EQ(DeleteCDCStream(create_resp.stream_id()), false);
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCheckPointPersistencyNodeRestart)) {
