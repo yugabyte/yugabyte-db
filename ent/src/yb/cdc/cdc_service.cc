@@ -584,14 +584,16 @@ class CDCServiceImpl::Impl {
         LOG(ERROR) << "Stream ID: " << producer_tablet.stream_id
                    << " expired for Tablet ID: " << producer_tablet.tablet_id
                    << " with active time :"
-                   << it->cdc_state_checkpoint.last_active_time.time_since_epoch();
+                   << ToSeconds((it->cdc_state_checkpoint.last_active_time.time_since_epoch()))
+                   << " current time: " << ToSeconds(CoarseMonoClock::Now().time_since_epoch());
         return STATUS_FORMAT(
             InternalError, "stream ID $0 is expired for Tablet ID $1", producer_tablet.stream_id,
             producer_tablet.tablet_id);
       }
       VLOG(1) << "Tablet  :" << producer_tablet.ToString()
               << " found in CDCSerive Cache with active time: "
-              << ": " << it->cdc_state_checkpoint.last_active_time.time_since_epoch();
+              << ": " << it->cdc_state_checkpoint.last_active_time.time_since_epoch()
+              << " current time: " << ToSeconds(CoarseMonoClock::Now().time_since_epoch());
     }
     return Status::OK();
   }
