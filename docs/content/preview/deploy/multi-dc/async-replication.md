@@ -1,8 +1,9 @@
 ---
 title: Deploy to two universes with xCluster replication
-headerTitle: xCluster replication
-linkTitle: xCluster replication
+headerTitle: xCluster deployment
+linkTitle: xCluster
 description: Enable deployment using unidirectional (master-follower) or bidirectional (multi-master) replication between universes
+headContent: Unidirectional (master-follower) and bidirectional (multi-master) replication
 aliases:
   - /preview/deploy/multi-dc/2dc-deployment
 menu:
@@ -13,9 +14,9 @@ menu:
 type: docs
 ---
 
-You can perform deployment using unidirectional (master-follower) or bidirectional (multi-master) xCluster replication between universes (also known as data centers).
+Using an xCluster deployment, you can use unidirectional (master-follower) or bidirectional (multi-master) asynchronous replication between two universes (aka data centers).
 
-For information on two data center (2DC) deployment architecture and replication scenarios, see [Two data center (2DC) deployments](../../../architecture/docdb-replication/async-replication/).
+For information on xCluster deployment architecture and replication scenarios, see [xCluster replication](../../../architecture/docdb-replication/async-replication/).
 
 ## Set up universes
 
