@@ -10402,4 +10402,16 @@
   proargmodes => '{o,o,o,o,o,o,o}',
   proargnames => '{total_heap_requested, total_heap_usage, total_heap_allocation, cached_free_memory, total_heap_released, PostgreSQL_memory_usage, PostgreSQL_storage_gateway_usage}',
   prosrc => 'yb_heap_stats' },
+
+{ oid => '8049',
+  descr => 'Get the current distributed transaction\'s priority. If no distributed transaction is active, return 0.',
+  proname => 'yb_get_current_transaction_priority', provolatile => 'v',
+  prorettype => 'cstring', proargtypes => '',
+  prosrc => 'yb_get_current_transaction_priority' },
+
+{ oid => '8050',
+  descr => 'Get the effective YugabyteDB transaction isolation level used by the current active transaction',
+  proname => 'yb_get_effective_transaction_isolation_level', provolatile => 'v',
+  prorettype => 'cstring', proargtypes => '',
+  prosrc => 'yb_get_effective_transaction_isolation_level' },
 ]
