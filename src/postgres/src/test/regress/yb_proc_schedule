@@ -5,3 +5,4 @@
 ####################################################################################################
 test: yb_hash_code
 test: yb_function
+test: yb_get_current_transaction_priority
