@@ -10,6 +10,7 @@ import com.yugabyte.yw.commissioner.BackupGarbageCollector;
 import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.commissioner.SetUniverseKey;
+import com.yugabyte.yw.commissioner.PitrConfigPoller;
 import com.yugabyte.yw.commissioner.SupportBundleCleanup;
 import com.yugabyte.yw.commissioner.TaskGarbageCollector;
 import com.yugabyte.yw.commissioner.YbcUpgrade;
@@ -60,6 +61,7 @@ public class AppInit {
       CustomerTaskManager taskManager,
       YamlWrapper yaml,
       ExtraMigrationManager extraMigrationManager,
+      PitrConfigPoller pitrConfigPoller,
       TaskGarbageCollector taskGC,
       SetUniverseKey setUniverseKey,
       BackupGarbageCollector backupGC,
@@ -209,6 +211,7 @@ public class AppInit {
       healthChecker.initialize();
       shellLogsManager.startLogsGC();
       nodeAgentHandler.init();
+      pitrConfigPoller.start();
 
       ybcUpgrade.start();
 
