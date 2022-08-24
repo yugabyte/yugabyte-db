@@ -2,7 +2,7 @@
 title: yb-tserver configuration reference
 headerTitle: yb-tserver
 linkTitle: yb-tserver
-description: YugabyteDB Tablet Server (yb-tserver/) binary and configuration flags to store and manage data for client applications.
+description: YugabyteDB Tablet Server (yb-tserver) binary and configuration flags to store and manage data for client applications.
 menu:
   stable:
     identifier: yb-tserver
@@ -36,22 +36,6 @@ To display the online help, run `yb-tserver --help` from the YugabyteDB home dir
 ```sh
 $ ./bin/yb-tserver --help
 ```
-
-## Configuration flags
-
-- [Help](#help-flags)
-- [General](#general-flags)
-- [Logging](#logging-flags)
-- [Raft](#raft-flags)
-  - [Write Ahead Log (WAL)](#write-ahead-log-wal-flags)
-- [Sharding](#sharding-flags)
-- [Geo-distribution](#geo-distribution-flags)
-- [YSQL](#ysql-flags)
-- [YCQL](#ycql-flags)
-- [YEDIS](#yedis-flags)
-- [Performance](#performance-flags)
-- [Security](#security-flags)
-- [Change data capture (CDC)](#change-data-capture-cdc-flags)
 
 ---
 
@@ -141,7 +125,7 @@ Default: `60000` (1 minute)
 
 {{< note title="Note" >}}
 
-If this value is changed from the default, make sure to add the identical value to all YB-Master and YB-TSever configurations.
+If you change this value from the default, be sure to add the identical value to all YB-Master and YB-TServer configurations.
 
 {{< /note >}}
 
@@ -245,7 +229,7 @@ Ensure that values used for Raft and the write ahead log (WAL) in `yb-tserver` c
 
 ##### --follower_unavailable_considered_failed_sec
 
-The duration, in seconds, after which a follower is considered to be failed because the leader has not received a heartbeat. The follower is then evicted from the configuration and the data is rereplicated elsewhere.
+The duration, in seconds, after which a follower is considered to be failed because the leader has not received a heartbeat. The follower is then evicted from the configuration and the data is re-replicated elsewhere.
 
 Default: `900` (15 minutes)
 
@@ -380,13 +364,13 @@ Default: `1`
 
 ##### --post_split_trigger_compaction_pool_max_queue_size
 
-The maximum number of post-split compaction tasks that can be queued simultaneously (i.e. compactions that remove irrelevant data from new tablets after splits).
+The maximum number of post-split compaction tasks that can be queued simultaneously (compactions that remove irrelevant data from new tablets after splits).
 
 Default: `16`
 
 ##### --automatic_compaction_extra_priority
 
-Assigns an extra priority to automatic (i.e. minor) compactions when automatic tablet splitting is enabled. This deprioritizes post-split compactions and ensures that smaller compactions are not starved. Suggested values are between 0 and 50.
+Assigns an extra priority to automatic (minor) compactions when automatic tablet splitting is enabled. This deprioritizes post-split compactions and ensures that smaller compactions are not starved. Suggested values are between 0 and 50.
 
 Default: `50`
 
@@ -438,7 +422,7 @@ If true, transaction status tables will be created under each YSQL tablespace th
 
 Default: `true`
 
-#### --auto-promote-nonlocal-transactions-to-global
+##### --auto-promote-nonlocal-transactions-to-global
 
 If true, local transactions using transaction status tables other than `system.transactions` will be automatically promoted to global transactions using the `system.transactions` transaction status table upon accessing data outside of the local region.
 
@@ -466,13 +450,7 @@ Default: `true`
 
 Enables YSQL authentication.
 
-{{< note title="Note" >}}
-
-**Release 2.0:** Assign a password for the default `yugabyte` user to be able to sign in after enabling YSQL authentication.
-
-**Release 2.0.1:** When YSQL authentication is enabled, you can sign into `ysqlsh` using the default `yugabyte` user that has a default password of `yugabyte`.
-
-{{< /note >}}
+When YSQL authentication is enabled, you can sign into `ysqlsh` using the default `yugabyte` user that has a default password of `yugabyte`.
 
 Default: `false`
 
@@ -492,13 +470,7 @@ Default: `13000`
 
 ##### --ysql_hba_conf
 
-{{< note title="Note" >}}
-`--ysql_hba_conf` tserver flag is deprecated. Use `--ysql_hba_conf_csv` instead.
-{{< /note >}}
-
-Specifies a comma-separated list of PostgreSQL client authentication settings that is written to the `ysql_hba.conf` file.
-
-Default: `"host all all 0.0.0.0/0 trust,host all all ::0/0 trust"`
+Deprecated. Use `--ysql_hba_conf_csv` instead.
 
 ##### --ysql_hba_conf_csv
 
@@ -601,6 +573,18 @@ Default: `-1` (disables logging statement durations)
 ##### --ysql_log_min_messages
 
 Specifies the lowest YSQL message level to log.
+
+##### --temp_file_limit
+
+ Specifies the amount of disk space used for temp files for each YSQL connection, such as sort and hash temporary files, or the storage file for a held cursor.
+
+ Any query whose disk space usage exceeds `temp_file_limit` will terminate with the error `ERROR:  temporary file size exceeds temp_file_limit`. Note that temporary tables do not count against this limit.
+
+ You can remove the limit (set the size to unlimited) using `SET temp_file_limit=-1`.
+
+ Valid values are `-1` (unlimited), `integer` (in kilobytes), `xMB` (in megabytes), and `xGB` (in gigabytes).
+
+ Default: `1GB`
 
 ---
 
@@ -714,7 +698,7 @@ Only change this flag to `three_shared_parts` after you migrate the whole cluste
 
 Used to control rate of memstore flush and SSTable file compaction.
 
-Default: `256MB`
+Default: `256MB` (256 MB/second)
 
 ##### --rocksdb_universal_compaction_min_merge_width
 
@@ -732,13 +716,13 @@ Default: `20`
 
 The time interval, in seconds, to retain history/older versions of data. Point-in-time reads at a hybrid time prior to this interval might not be allowed after a compaction and return a `Snapshot too old` error. Set this to be greater than the expected maximum duration of any single transaction in your application.
 
-Default: `900`
+Default: `900` (15 minutes)
 
 ##### --remote_bootstrap_rate_limit_bytes_per_sec
 
 Rate control across all tablets being remote bootstrapped from or to this process.
 
-Default: `256MB`
+Default: `256MB` (256 MB/second)
 
 ---
 
@@ -884,19 +868,19 @@ Default: `250`
 
 ##### --cdc_min_replicated_index_considered_stale_seconds
 
-If cdc_min_replicated_index hasn't been replicated in this amount of time, we reset its value to max int64 to avoid retaining any logs.
+If `cdc_min_replicated_index` hasn't been replicated in this amount of time, we reset its value to max int64 to avoid retaining any logs.
 
-Default: `900`
+Default: `900` (15 minutes)
 
 ##### --timestamp_history_retention_interval_sec
 
-Time interval, in seconds, to retain history or older versions of data.
+Time interval (in seconds) to retain history or older versions of data.
 
-Default: `900`
+Default: `900` (15 minutes)
 
 ##### --update_min_cdc_indices_interval_secs
 
-How often to read the cdc_state table to get the minimum applied index for each tablet across all streams. This information is used to correctly keep log files that contain unapplied entries. This is also the rate at which a tablet's minimum replicated index across all streams is sent to the other peers in the configuration. If flag `enable_log_retention_by_op_idx` (default: `true`) is disabled, this flag has no effect.
+How often to read the `cdc_state` table to get the minimum applied index for each tablet across all streams. This information is used to correctly keep log files that contain unapplied entries. This is also the rate at which a tablet's minimum replicated index across all streams is sent to the other peers in the configuration. If flag `enable_log_retention_by_op_idx` (default: `true`) is disabled, this flag has no effect.
 
 Default: `60`
 
@@ -908,7 +892,7 @@ Default: `60000`
 
 {{< warning title="Warning" >}}
 
-If you are using multiple streams, it is advised that you set this flag to `1800000` i.e. 30 minutes.
+If you are using multiple streams, it is advised that you set this flag to `1800000` (30 minutes).
 
 {{< /warning >}}
 
@@ -956,7 +940,7 @@ Default: `false`
 
 For tables with a `default_time_to_live` table property, sets a size threshold at which files will no longer be considered for compaction. Files over this threshold will still be considered for expiration. Disabled if value is `0`.
 
-Ideally, rocksdb_max_file_size_for_compaction needs to be chosen as a balance between expiring data at a reasonable frequency while also not creating too many SST files (as this can impact read performance). For instance, if 90 days worth of data is stored, perhaps this flag should be set to roughly the size of one day's worth of data.
+Ideally, `rocksdb_max_file_size_for_compaction` should strike a balance between expiring data at a reasonable frequency and not creating too many SST files (which can impact read performance). For instance, if 90 days worth of data is stored, consider setting this flag to roughly the size of one day's worth of data.
 
 Default: `0`
 
@@ -994,7 +978,7 @@ Default: `false`
 
 ## PostgreSQL logging options
 
-YugabyteDB uses PostgreSQL server configuration parameters to apply server configuration settings to new server instances. You can modify these parameters using the [ysql_pg_conf_csv](#ysql-pg-conf-csv) flag.
+YugabyteDB uses PostgreSQL server configuration parameters to apply server configuration settings to new server instances. You can modify these parameters using the [`ysql_pg_conf_csv`](#ysql-pg-conf-csv) flag.
 
 For information on available PostgreSQL server configuration parameters, refer to [Server Configuration](https://www.postgresql.org/docs/11/runtime-config.html) in the PostgreSQL documentation.
 
@@ -1015,7 +999,7 @@ For information on using `log_line_prefix`, refer to [log_line_prefix](https://w
 
 ### suppress_nonpg_logs (boolean)
 
-When set, suppresses logging of non-PostgreSQL output to the postgresql log file in the `tserver/logs` directory.
+When set, suppresses logging of non-PostgreSQL output to the PostgreSQL log file in the `tserver/logs` directory.
 
 Default: `off`
 
