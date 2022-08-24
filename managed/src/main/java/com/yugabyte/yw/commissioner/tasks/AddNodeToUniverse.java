@@ -27,7 +27,9 @@ import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -202,6 +204,10 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
       // Wait for new tablet servers to be responsive.
       createWaitForServersTasks(nodeSet, ServerType.TSERVER)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+
+      if (universe.isYbcEnabled()) {
+        createStartYbcProcessTasks(nodeSet);
+      }
 
       // Update the swamper target file.
       createSwamperTargetUpdateTask(false /* removeFile */);
