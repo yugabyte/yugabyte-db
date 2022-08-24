@@ -1,5 +1,5 @@
 /*
- * Created on Thu Jul 28 2022
+ * Created on Mon Aug 22 2022
  *
  * Copyright 2021 YugaByte, Inc. and Contributors
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License")
@@ -8,7 +8,7 @@
  */
 
 import { Field, FieldArray, FormikValues } from 'formik';
-import React, { FC, useState } from 'react';
+import React, { FC } from 'react';
 import { Col, Row } from 'react-bootstrap';
 import { useSelector } from 'react-redux';
 import * as Yup from 'yup';
@@ -16,20 +16,19 @@ import { YBControlledTextInput, YBFormInput, YBFormToggle } from '../../../../co
 import { StorageConfigCreationForm, YBReduxFormSelect } from '../common/StorageConfigCreationForm';
 import { OptionTypeBase } from 'react-select';
 import { flatten, isEmpty, uniq, uniqBy } from 'lodash';
-import { useMutation, useQuery } from 'react-query';
+import { useMutation } from 'react-query';
 import {
   addCustomerConfig,
   editCustomerConfig,
-  fetchBucketsList
 } from '../common/StorageConfigApi';
 import { IStorageProviders } from '../IStorageConfigs';
 import { CloudType } from '../../../../../redesign/helpers/dtos';
 import { toast } from 'react-toastify';
-import './CreateGCSConfigForm.scss';
+import './CreateAzureConfigForm.scss';
 import Close from '../../../../universes/images/close.svg';
 import { createErrorMessage } from '../../../../../utils/ObjectUtils';
 
-interface CreateGCSConfigFormProps {
+interface CreateAzureConfigFormProps {
   visible: boolean;
   editInitialValues: Record<string, any>;
   onHide: () => void;
@@ -38,52 +37,47 @@ interface CreateGCSConfigFormProps {
 
 type configs = {
   region: OptionTypeBase;
-  bucket: OptionTypeBase;
+  sas_token: string;
+  container: string;
   folder: string;
 };
 
 interface InitialValuesTypes {
-  GCS_CONFIGURATION_NAME: string;
-  GCS_CREDENTIALS_JSON: string;
+  AZ_CONFIGURATION_NAME: string;
   multi_regions: configs[];
-  MULTI_REGION_GCP_ENABLED: boolean;
+  MULTI_REGION_AZ_ENABLED: boolean;
   default_bucket: string;
 }
 
-export const GCS_PREFIX = 'gs://';
-
-const MUTLI_REGION_DEFAULT_VALUES = {
-  bucket: { value: null, label: null },
+const MUTLI_REGION_DEFAULT_VALUES: configs = {
+  sas_token: '',
   folder: '',
+  container: '',
   region: { value: null, label: null }
 };
 
-/**
- *  splits the location into buckets and folder
- *  gs://foo/bar => bucket:foo, folder:bar
- */
-const convertLocationToBucketAndFolder = (location: string) => {
-  const gcs_prefix_removed = location.substring(GCS_PREFIX.length);
-  const s = gcs_prefix_removed.split('/');
+const convertLocationToContainerAndFolder = (location: string) => {
+  const url = location.split('//');
+  const protocol = url[0];
+
+  const s = url[1].split('/');
   return {
-    bucket: s[0],
+    container: `${protocol}//${s[0]}`,
     folder: s[1] ?? ''
   };
 };
 
-export const CreateGCSConfigForm: FC<CreateGCSConfigFormProps> = ({
+export const CreateAzureConfigForm: FC<CreateAzureConfigFormProps> = ({
   visible,
   editInitialValues,
   onHide,
   fetchConfigs
 }) => {
-  const [GCSCredentials, setGCSCredentials] = useState('');
-
   const isEditMode = !isEmpty(editInitialValues);
 
-  const gcpProviders = useSelector((state: any) =>
+  const azureProviders = useSelector((state: any) =>
     state.cloud.providers.data
-      .filter((p: any) => p.code === CloudType.gcp)
+      .filter((p: any) => p.code === CloudType.azu)
       .map((t: any) => t.regions)
   );
 
@@ -125,29 +119,13 @@ export const CreateGCSConfigForm: FC<CreateGCSConfigFormProps> = ({
     }
   );
 
-  const { data: resp, isLoading: isBucketListLoading } = useQuery(
-    ['gcsBucketList', GCSCredentials],
-    () =>
-      fetchBucketsList(IStorageProviders.GCS, {
-        GCS_CREDENTIALS_JSON: GCSCredentials
-      }),
-    {
-      enabled: GCSCredentials !== ''
-    }
-  );
-
   if (!visible) {
     return null;
   }
 
-  const buckets =
-    resp?.data?.map((t: string) => {
-      return { value: t, label: t };
-    }) ?? [];
-
   //grab all distinct regions from gcp provider
-  const regionsInGcp: OptionTypeBase[] = uniqBy(
-    flatten(gcpProviders)?.map((r: any) => {
+  const regionsInAzure: OptionTypeBase[] = uniqBy(
+    flatten(azureProviders)?.map((r: any) => {
       return { value: r.code, label: r.code };
     }) ?? [],
     'label'
@@ -156,30 +134,33 @@ export const CreateGCSConfigForm: FC<CreateGCSConfigFormProps> = ({
   const onSubmit = (values: InitialValuesTypes | FormikValues, _: any) => {
     const payload = {
       type: 'STORAGE',
-      name: IStorageProviders.GCS.toUpperCase(),
-      configName: values['GCS_CONFIGURATION_NAME'],
+      name: IStorageProviders.AZURE.toUpperCase(),
+      configName: values.AZ_CONFIGURATION_NAME,
       data: {
-        GCS_CREDENTIALS_JSON: values['GCS_CREDENTIALS_JSON']
+        BACKUP_LOCATION: `${values.multi_regions[0].container}/${
+          values.multi_regions[0].folder ?? ''
+        }`,
+        AZURE_STORAGE_SAS_TOKEN: values.multi_regions[0].sas_token
       }
     };
 
-    if (values['MULTI_REGION_GCP_ENABLED']) {
+    if (values.MULTI_REGION_AZ_ENABLED) {
       payload['data']['REGION_LOCATIONS'] = values['multi_regions'].map((r: configs) => {
         return {
           REGION: r.region.value,
-          LOCATION: `${GCS_PREFIX}${r.bucket.value}/${r.folder}`
+          LOCATION: `${r.container}/${r.folder}`,
+          AZURE_STORAGE_SAS_TOKEN: r.sas_token
         };
       });
     }
 
-    // if multi_region is enabled, then get the option selected , else default to the first one.
-    const default_bucket_index = values['MULTI_REGION_GCP_ENABLED']
+    const default_bucket_index = values.MULTI_REGION_AZ_ENABLED
       ? parseInt(values['default_bucket'])
       : 0;
 
     payload['data'][
       'BACKUP_LOCATION'
-    ] = `${GCS_PREFIX}${values['multi_regions'][default_bucket_index].bucket.value}/${values['multi_regions'][default_bucket_index].folder}`;
+    ] = `${values['multi_regions'][default_bucket_index].container}/${values['multi_regions'][default_bucket_index].folder}`;
 
     if (isEditMode) {
       doUpdateStorageConfig.mutate({ configUUID: editInitialValues['configUUID'], ...payload });
@@ -188,34 +169,23 @@ export const CreateGCSConfigForm: FC<CreateGCSConfigFormProps> = ({
     }
   };
 
-  // after user enter the gcs credentials, then try to fetch the list of buckets configured.
-  const onGCSCredentialsBlur = (e: any) => {
-    const val = e.target.value;
-    if (val && val !== GCSCredentials && !isEditMode) {
-      setGCSCredentials(val);
-    }
-  };
-
   const initialValues: InitialValuesTypes = {
-    GCS_CONFIGURATION_NAME: '',
-    GCS_CREDENTIALS_JSON: '',
-    MULTI_REGION_GCP_ENABLED: false,
+    AZ_CONFIGURATION_NAME: '',
+    MULTI_REGION_AZ_ENABLED: false,
     multi_regions: [MUTLI_REGION_DEFAULT_VALUES],
     default_bucket: '0'
   };
 
   // in Edit mode , convert api values to form values
   if (isEditMode) {
-    initialValues['GCS_CONFIGURATION_NAME'] = editInitialValues['configName'];
-    initialValues['GCS_CREDENTIALS_JSON'] = editInitialValues.data['GCS_CREDENTIALS_JSON'];
+    initialValues.AZ_CONFIGURATION_NAME = editInitialValues['configName'];
 
-    initialValues['MULTI_REGION_GCP_ENABLED'] =
-      editInitialValues.data['REGION_LOCATIONS']?.length > 0;
+    initialValues.MULTI_REGION_AZ_ENABLED = editInitialValues.data['REGION_LOCATIONS']?.length > 0;
 
-    if (initialValues['MULTI_REGION_GCP_ENABLED']) {
+    if (initialValues.MULTI_REGION_AZ_ENABLED) {
       initialValues['multi_regions'] = editInitialValues.data['REGION_LOCATIONS'].map(
         (r: any, i: number) => {
-          const bucketAndFolder = convertLocationToBucketAndFolder(r.LOCATION);
+          const containerAndFolder = convertLocationToContainerAndFolder(r.LOCATION);
 
           if (r.LOCATION === editInitialValues.data['BACKUP_LOCATION']) {
             initialValues['default_bucket'] = i + '';
@@ -223,30 +193,31 @@ export const CreateGCSConfigForm: FC<CreateGCSConfigFormProps> = ({
 
           return {
             region: { value: r.REGION, label: r.REGION },
-            bucket: { value: bucketAndFolder.bucket, label: bucketAndFolder.bucket },
-            folder: bucketAndFolder.folder
+            containet: containerAndFolder.container,
+            folder: containerAndFolder.folder,
+            sas_token: r.AZURE_STORAGE_SAS_TOKEN
           };
         }
       );
     } else {
-      const bucketAndFolder = convertLocationToBucketAndFolder(
+      const containerAndFolder = convertLocationToContainerAndFolder(
         editInitialValues.data['BACKUP_LOCATION']
       );
       initialValues['multi_regions'] = [
         {
-          bucket: { value: bucketAndFolder.bucket, label: bucketAndFolder.bucket },
-          folder: bucketAndFolder.folder,
-          region: { value: null, region: null }
+          container: containerAndFolder.container,
+          folder: containerAndFolder.folder,
+          region: { value: null, region: null },
+          sas_token: editInitialValues.data['AZURE_STORAGE_SAS_TOKEN']
         }
       ];
     }
   }
 
   const validationSchema = Yup.object().shape({
-    GCS_CONFIGURATION_NAME: Yup.string().required('Configuration name is required'),
-    GCS_CREDENTIALS_JSON: Yup.string().required('Credentials JSON is required'),
+    AZ_CONFIGURATION_NAME: Yup.string().required('Configuration name is required'),
     multi_regions: Yup.array()
-      .when('MULTI_REGION_GCP_ENABLED', {
+      .when('MULTI_REGION_AZ_ENABLED', {
         is: (enabled) => enabled,
         then: Yup.array()
           .of(
@@ -254,9 +225,8 @@ export const CreateGCSConfigForm: FC<CreateGCSConfigFormProps> = ({
               region: Yup.object().shape({
                 value: Yup.string().required().typeError('Region is required')
               }),
-              bucket: Yup.object().shape({
-                value: Yup.string().required().typeError('Bucket is required')
-              }),
+              sas_token: Yup.string().required('SAS token is required'),
+              container: Yup.string().required('Container is required'),
               folder: Yup.string()
             })
           )
@@ -268,13 +238,12 @@ export const CreateGCSConfigForm: FC<CreateGCSConfigFormProps> = ({
             return regions.length === uniq(regions).length;
           })
       })
-      .when('MULTI_REGION_GCP_ENABLED', {
+      .when('MULTI_REGION_AZ_ENABLED', {
         is: (enabled) => !enabled,
         then: Yup.array().of(
           Yup.object().shape({
-            bucket: Yup.object().shape({
-              value: Yup.string().required().typeError('Bucket is required')
-            }),
+            sas_token: Yup.string().required('SAS token is required'),
+            container: Yup.string().required('Container is required'),
             folder: Yup.string()
           })
         )
@@ -288,7 +257,7 @@ export const CreateGCSConfigForm: FC<CreateGCSConfigFormProps> = ({
       validationSchema={validationSchema}
       type="CREATE"
       onSubmit={onSubmit}
-      components={({ setFieldValue, values, errors }) => {
+      components={({ setFieldValue, values, errors, touched }) => {
         return (
           <Row>
             <Col lg={8}>
@@ -298,26 +267,9 @@ export const CreateGCSConfigForm: FC<CreateGCSConfigFormProps> = ({
                 </Col>
                 <Col lg={9}>
                   <Field
-                    name="GCS_CONFIGURATION_NAME"
+                    name="AZ_CONFIGURATION_NAME"
                     placeHolder="Configuration Name"
                     component={YBFormInput}
-                    onValueChanged={(value: string) =>
-                      setFieldValue('GCS_CONFIGURATION_NAME', value)
-                    }
-                  />
-                </Col>
-              </Row>
-              <Row>
-                <Col lg={2} className="form-item-custom-label">
-                  <div>GCS Credentials</div>
-                </Col>
-                <Col lg={9}>
-                  <Field
-                    name="GCS_CREDENTIALS_JSON"
-                    placeHolder="GCS Credentials JSON"
-                    component={YBFormInput}
-                    onValueChanged={(value: string) => setFieldValue('GCS_CREDENTIALS_JSON', value)}
-                    onBlur={onGCSCredentialsBlur}
                   />
                 </Col>
               </Row>
@@ -328,41 +280,65 @@ export const CreateGCSConfigForm: FC<CreateGCSConfigFormProps> = ({
                 </Col>
                 <Col lg={9}>
                   <Field
-                    name="MULTI_REGION_GCP_ENABLED"
+                    name="MULTI_REGION_AZ_ENABLED"
                     component={YBFormToggle}
                     isReadOnly={isEditMode}
                     subLabel="Specify a bucket for each region"
                   />
                 </Col>
               </Row>
-              {!values.MULTI_REGION_GCP_ENABLED && (
-                <Row className="config-provider-row">
-                  <Col lg={2} className="gcs-bucket-label form-item-custom-label">
-                    <div>GCS Bucket</div>
-                  </Col>
-                  <Col lg={9} className="multi-region-enabled">
-                    <div className="multi-region-enabled-fields">
-                      {getGCPBucketAndFolder(
-                        values.multi_regions[0],
-                        0,
-                        buckets,
-                        () => {},
-                        (fieldName: string, val: any) => {
-                          setFieldValue(fieldName, val);
-                        },
-                        false,
-                        false,
-                        isEditMode || GCSCredentials === '',
-                        false,
-                        isBucketListLoading,
-                        errors?.multi_regions?.[0]
-                      )}
-                    </div>
-                  </Col>
-                </Row>
+              {!values.MULTI_REGION_AZ_ENABLED && (
+                <>
+                  <Row className="config-provider-row">
+                    <Col lg={2} className="form-item-custom-label">
+                      <div>SAS Token</div>
+                    </Col>
+                    <Col lg={9}>
+                      <div>
+                        <Field
+                          name="SAS_TOKEN"
+                          placeHolder="SAS Token"
+                          component={YBControlledTextInput}
+                          onValueChanged={(e: React.ChangeEvent<HTMLInputElement>) => {
+                            setFieldValue(`multi_regions.${0}.sas_token`, e.target.value);
+                          }}
+                          val={values?.multi_regions?.[0]?.sas_token ?? ''}
+                        />
+                        {touched?.multi_regions?.[0]?.sas_token && (
+                          <span className="field-error">
+                            {errors?.multi_regions?.[0]?.sas_token}
+                          </span>
+                        )}
+                      </div>
+                    </Col>
+                  </Row>
+                  <Row className="config-provider-row">
+                    <Col lg={2} className="az-bucket-label form-item-custom-label">
+                      <div>Container URL</div>
+                    </Col>
+                    <Col lg={9} className="az-multi-region-disabled">
+                      <div className="multi-region-disabled-fields az">
+                        {getContainerTokenAndFolder(
+                          values.multi_regions[0],
+                          0,
+                          () => {},
+                          (fieldName: string, val: any) => {
+                            setFieldValue(fieldName, val);
+                          },
+                          false,
+                          false,
+                          isEditMode,
+                          false,
+                          errors?.multi_regions?.[0],
+                          touched?.multi_regions?.[0]
+                        )}
+                      </div>
+                    </Col>
+                  </Row>
+                </>
               )}
-              {values.MULTI_REGION_GCP_ENABLED && (
-                <div className="multi-region-enabled with-border">
+              {values.MULTI_REGION_AZ_ENABLED && (
+                <div className="multi-region-enabled with-border az">
                   <FieldArray
                     name="multi_regions"
                     render={(arrayHelper) => (
@@ -373,18 +349,17 @@ export const CreateGCSConfigForm: FC<CreateGCSConfigFormProps> = ({
                               {MultiRegionControls(
                                 region,
                                 index,
-                                buckets,
-                                regionsInGcp,
+                                regionsInAzure,
                                 () => {
                                   arrayHelper.remove(index);
                                 },
                                 (fieldName: string, val: any) => {
                                   setFieldValue(fieldName, val);
                                 },
-                                isEditMode || GCSCredentials === '',
+                                isEditMode,
                                 values['default_bucket'] === String(index),
-                                isBucketListLoading,
-                                errors?.multi_regions?.[index]
+                                errors?.multi_regions?.[index],
+                                touched?.multi_regions?.[index]
                               )}
                             </Col>
                           </Row>
@@ -423,23 +398,21 @@ export const CreateGCSConfigForm: FC<CreateGCSConfigFormProps> = ({
 const MultiRegionControls = (
   field: configs,
   index: number,
-  buckets: OptionTypeBase[],
-  regionsInGcp: OptionTypeBase[],
+  regionsInAZ: OptionTypeBase[],
   onremoveField: Function,
   updateFieldVal: Function,
   isDisabled = false,
   isdefaultBucket = false,
-  isBucketListLoading: boolean,
-  errors: Record<string, any> | undefined
+  errors: Record<string, any> | undefined,
+  touched: Record<string, boolean> | Record<string, any>
 ) => (
-  <div className="multi-region-enabled-fields">
+  <div className="multi-region-enabled-fields az">
     <div>
       <Field
         name={`multi_regions.${index}.region`}
         component={YBReduxFormSelect}
-        options={regionsInGcp}
+        options={regionsInAZ}
         label="Region"
-        width="280px"
         className="field-region"
         placeholder="Select region"
         value={field?.region ?? { value: null, label: null }}
@@ -448,54 +421,68 @@ const MultiRegionControls = (
         }}
         isDisabled={isDisabled}
       />
-      <span className="field-error">{errors?.region?.value}</span>
+      {touched?.region?.value && <span className="field-error">{errors?.region?.value}</span>}
     </div>
-    {getGCPBucketAndFolder(
+    <div>
+      <Field
+        name={`multi_regions.${index}.sas_token`}
+        component={YBControlledTextInput}
+        label="SAS Token"
+        placeHolder="SAS Token"
+        className="field-SAS-TOKEN"
+        onValueChanged={(e: React.ChangeEvent<HTMLInputElement>) => {
+          updateFieldVal(`multi_regions.${index}.sas_token`, e.target.value);
+        }}
+        val={field?.sas_token ?? ''}
+        isDisabled={isDisabled}
+      />
+      {touched?.sas_token && <span className="field-error">{errors?.sas_token}</span>}
+    </div>
+    <div className="divider" />
+    {getContainerTokenAndFolder(
       field,
       index,
-      buckets,
       onremoveField,
       updateFieldVal,
       true,
       true,
       isDisabled,
       isdefaultBucket,
-      isBucketListLoading,
-      errors
+      errors,
+      touched
     )}
   </div>
 );
 
-const getGCPBucketAndFolder = (
+const getContainerTokenAndFolder = (
   field: configs,
   index: number,
-  bucketsList: OptionTypeBase[],
   onremoveField: Function,
   updateFieldVal: Function,
   showCloseIcon = false,
   showDefaultRegionOption = false,
   isDisabled = false,
   isDefaultBucket = false,
-  isBucketListLoading: boolean,
-  errors: Record<string, any> | undefined
+  errors: Record<string, any> | undefined,
+  touched: Record<string, boolean> | Record<string, any>
 ) => (
   <>
     <div>
       <Field
-        name={`multi_regions.${index}.bucket`}
-        component={YBReduxFormSelect}
-        options={bucketsList}
-        label="Bucket"
-        className="field-bucket"
-        placeholder="Select bucket"
-        value={field?.bucket ?? ''}
-        onChange={(val: any) => {
-          updateFieldVal(`multi_regions.${index}.bucket`, val);
+        name={`multi_regions.${index}.container`}
+        component={YBControlledTextInput}
+        label="Container URL"
+        className="field-container"
+        placeHolder="Container URL"
+        onValueChanged={(e: React.ChangeEvent<HTMLInputElement>) => {
+          updateFieldVal(`multi_regions.${index}.container`, e.target.value);
         }}
+        val={field?.container ?? ''}
+        insetError="Error"
+        isReadOnly={isDisabled}
         isDisabled={isDisabled}
-        isLoading={isBucketListLoading}
       />
-      <span className="field-error">{errors?.bucket?.value}</span>
+      {touched?.container && <span className="field-error">{errors?.container}</span>}
     </div>
     <div className="divider lean" />
     <div className="folder">
