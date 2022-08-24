@@ -254,8 +254,6 @@ Physical nodes (or cloud instances) are installed with a standard Centos 7 serve
     sudo su - yugabyte   # (change to yugabyte user for execution of next steps)
     ```
 
-    <br>
-
     Ensure that the `yugabyte` user has permissions to SSH into the YugabyteDB nodes (as defined in `/etc/ssh/sshd_config`).
 
 1. Copy the SSH public key to each DB node.
@@ -304,8 +302,7 @@ This public key should correspond to the private key entered into the YugabyteDB
     ```
     
 
-For airgapped environments, make sure your Yum repository mirror contains these packages.
-    
+For airgapped environments, make sure your Yum repository mirror contains these packages.    
 1. If running on a virtual machine, execute the following to tune kernel settings:
 
     ```sh
@@ -345,25 +342,17 @@ For airgapped environments, make sure your Yum repository mirror contains these 
 
 ##### Install Prometheus node exporter
 
-For YugabyteDB Anywhere versions 2.8 and later, download the 1.3.1 version of the Prometheus node exporter, as follows:
+Download the 1.3.1 version of the Prometheus node exporter, as follows:
 
 ```sh
 wget https://github.com/prometheus/node_exporter/releases/download/v1.3.1/node_exporter-1.3.1.linux-amd64.tar.gz
 ```
 
-For YugabyteDB Anywhere versions prior to 2.8, download the 0.13.0 version of the exporter, as follows:
-
-```sh
-wget https://github.com/prometheus/node_exporter/releases/download/v0.13.0/node_exporter-0.13.0.linux-amd64.tar.gz
-```
-
 If you are doing an airgapped installation, download the node exporter using a computer connected to the internet and copy it over to the database nodes.
-
-Note that the instructions are for the 0.13.0 version. The same instructions are applicable to the 1.3.1 version, but you need to use the correct file name.
 
 On each node, perform the following as a user with sudo access:
 
-1. Copy the `node_exporter-....tar.gz` package file that you downloaded into the `/tmp` directory on each of the YugabyteDB nodes. Ensure this file is readable by the `centos` user on each node (or another user with sudo privileges).
+1. Copy the `node_exporter-1.3.1.linux-amd64.gz` package file that you downloaded into the `/tmp` directory on each of the YugabyteDB nodes. Ensure that this file is readable by the user (for example, `centos`).
 
 1. Run the following commands:
 
@@ -372,13 +361,13 @@ On each node, perform the following as a user with sudo access:
     sudo mkdir /etc/prometheus
     sudo mkdir /var/log/prometheus
     sudo mkdir /var/run/prometheus
-    sudo mv /tmp/node_exporter-0.13.0.linux-amd64.tar  /opt/prometheus
+    sudo mv /tmp/node_exporter-1.3.1.linux-amd64.tar  /opt/prometheus
     sudo adduser prometheus # (also adds group “prometheus”)
     sudo chown -R prometheus:prometheus /opt/prometheus
     sudo chown -R prometheus:prometheus /etc/prometheus
     sudo chown -R prometheus:prometheus /var/log/prometheus
     sudo chown -R prometheus:prometheus /var/run/prometheus
-    sudo chmod +r /opt/prometheus/node_exporter-0.13.0.linux-amd64.tar
+    sudo chmod +r /opt/prometheus/node_exporter-1.3.1.linux-amd64.tar
     sudo su - prometheus (user session is now as user “prometheus”)
     ```
 
@@ -386,7 +375,7 @@ On each node, perform the following as a user with sudo access:
 
     ```sh
     cd /opt/prometheus
-    tar zxf node_exporter-0.13.0.linux-amd64.tar.gz
+    tar zxf node_exporter-1.3.1.linux-amd64.tar.gz
     exit   # (exit from prometheus user back to previous user)
     ```
 
@@ -399,7 +388,7 @@ On each node, perform the following as a user with sudo access:
     
     Add the following to the `/etc/systemd/system/node_exporter.service` file:
 
-      ```conf
+    ```conf
       [Unit]
       Description=node_exporter - Exporter for machine metrics.
       Documentation=https://github.com/William-Yeh/ansible-prometheus
@@ -411,16 +400,13 @@ On each node, perform the following as a user with sudo access:
       [Service]
       Type=simple
 
-      #ExecStartPre=/bin/sh -c  " mkdir -p '/var/run/prometheus' '/var/log/prometheus' "
-      #ExecStartPre=/bin/sh -c  " chown -R prometheus '/var/run/prometheus' '/var/log/prometheus' "
-      #PIDFile=/var/run/prometheus/node_exporter.pid
-
       User=prometheus
       Group=prometheus
-
-      ExecStart=/opt/prometheus/node_exporter-0.13.0.linux-amd64/node_exporter  --web.listen-address=:9300 --collector.textfile.directory=/tmp/yugabyte/metrics
-      ```
-
+      
+      ExecStart=/opt/prometheus/node_exporter-1.3.1.linux-amd64/node_exporter  --web.listen-address=:9300 --collector.textfile.directory=/tmp/yugabyte/metrics
+    
+    ```
+    
 1. Exit from vi, and continue, as follows:
 
     ```sh
@@ -606,7 +592,7 @@ As an alternative to setting crontab permissions, you can install systemd-specif
    WantedBy=default.target
    ```
 
-   <br><br>
+   
 
    `yb-tserver.service`
 
@@ -647,7 +633,7 @@ As an alternative to setting crontab permissions, you can install systemd-specif
    WantedBy=default.target
    ```
 
-   <br><br>`yb-zip_purge_yb_logs.service`
+   <br>`yb-zip_purge_yb_logs.service`
 
    ```sh
    [Unit]
@@ -665,7 +651,7 @@ As an alternative to setting crontab permissions, you can install systemd-specif
    WantedBy=multi-user.target
    ```
 
-   <br><br>
+   <br>
 
    `yb-zip_purge_yb_logs.timer`
 
@@ -685,7 +671,7 @@ As an alternative to setting crontab permissions, you can install systemd-specif
    WantedBy=timers.target
    ```
 
-   <br><br>
+   <br>
 
    `yb-clean_cores.service`
 
@@ -705,7 +691,7 @@ As an alternative to setting crontab permissions, you can install systemd-specif
    WantedBy=multi-user.target
    ```
 
-   <br><br>
+   <br>
 
    `yb-clean_cores.timer`
 
@@ -725,7 +711,7 @@ As an alternative to setting crontab permissions, you can install systemd-specif
    WantedBy=timers.target
    ```
 
-   <br><br>
+   <br>
 
    `yb-collect_metrics.service`
 
@@ -745,7 +731,7 @@ As an alternative to setting crontab permissions, you can install systemd-specif
    WantedBy=multi-user.target
    ```
 
-   <br><br>
+   <br>
 
    `yb-collect_metrics.timer`
 
@@ -787,13 +773,9 @@ You can remove YugabyteDB components and configuration from the database server 
   ./bin/yb-server-ctl.sh clean-instance
   ```
 
-  <br>This removes all YugabyteDB code and settings from the node, removing it from the Universe.
-
-{{< note title="Note" >}}
-
-If you cannot find the `bin` directory, it means YugabyteDB Anywhere already cleared it during a successful deletion of the universe.
-
-{{< /note >}}
+  This removes all YugabyteDB code and settings from the node, removing it from the Universe.
+  
+  If you cannot find the `bin` directory, it means YugabyteDB Anywhere already cleared it during a successful deletion of the universe.
 
 You shoud also erase the data from the volume mounted under the `/data` subdirectory, unless this volume is to be permanently erased by the underlying storage subsystem when the volume is deleted.
 
