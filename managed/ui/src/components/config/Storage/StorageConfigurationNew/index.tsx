@@ -14,10 +14,11 @@ import { fetchCustomerConfigs, fetchCustomerConfigsResponse } from '../../../../
 import { YBTabsPanel } from '../../../panels';
 
 import awss3Logo from '../images/aws-s3.png';
-// import azureLogo from '../images/azure_logo.svg';
+import azureLogo from '../images/azure_logo.svg';
 import gcsLogo from '../images/gcs-logo.png';
 import nfsIcon from '../images/nfs.svg';
 import { AWSBackupConfig } from './AWS';
+import { AzureBackupConfig } from './AZURE';
 import { GCSBackupConfig } from './GCS';
 import { IStorageProviders } from './IStorageConfigs';
 import { NFSBackupConfig } from './NFS';
@@ -42,12 +43,14 @@ const getTabTitle = (configName: IStorageProviders) => {
           <img src={nfsIcon} alt="NFS" className="nfs-icon" /> Network File System
         </span>
       );
-    default:
+    case IStorageProviders.AZURE:
       return (
         <span>
-          <img src={nfsIcon} alt="NFS" className="nfs-icon" /> Network File System
+          <img src={azureLogo} alt="Azure" className="azure-logo" /> Azure Storage
         </span>
       );
+    default:
+      throw new Error('Undefined storage')
   }
 };
 
@@ -104,6 +107,17 @@ export const NewStorageConfiguration: FC<NewStorageConfigurationProps> = ({ acti
       >
         <NFSBackupConfig
           visible={tabToDisplay === IStorageProviders.NFS}
+          fetchConfigs={fetchConfigs}
+        />
+      </Tab>
+      <Tab
+        eventKey={IStorageProviders.AZURE}
+        title={getTabTitle(IStorageProviders.AZURE)}
+        key={IStorageProviders.AZURE}
+        unmountOnExit={true}
+      >
+        <AzureBackupConfig
+          visible={tabToDisplay === IStorageProviders.AZURE}
           fetchConfigs={fetchConfigs}
         />
       </Tab>
