@@ -14,7 +14,7 @@ INSERT INTO vectors (v) VALUES
     (to_tsvector('simple', 'ccd'));
 CREATE INDEX ON vectors USING ybgin (v);
 ERROR:  index method "ybgin" not supported yet
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1337. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1337. React with thumbs up to raise its priority
 -- Cleanup
 DROP TABLE vectors;
 --

@@ -50,18 +50,18 @@ ALTER TABLE part_b_10_b_20 ATTACH PARTITION part_c_1_100 FOR VALUES FROM (1) TO 
 -- fail.
 UPDATE part_c_100_200 set c = c - 20, d = c WHERE c = 105 and b = 15;
 ERROR:  This operation would cause a row to change the partition, this is not yet supported
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/5310. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/5310. React with thumbs up to raise its priority
 -- fail, no partition key update, but "a = 'a'" violates partition
 -- constraint enforced by root partition)
 UPDATE part_b_10_b_20 set a = 'a' WHERE c = 97;
 ERROR:  This operation would cause a row to change the partition, this is not yet supported
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/5310. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/5310. React with thumbs up to raise its priority
 -- fail, partition key update that requires row movement.
 -- When this behavior is supported by Yugabyte, enable all
 -- the following tests.
 UPDATE range_parted set d = d - 10 WHERE d > 16;
 ERROR:  This operation would cause a row to change the partition, this is not yet supported
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/5310. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/5310. React with thumbs up to raise its priority
 /*
 -- ok, no partition key update, no constraint violation
 UPDATE range_parted set e = d;

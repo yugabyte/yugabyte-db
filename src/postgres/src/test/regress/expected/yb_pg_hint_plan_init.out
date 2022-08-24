@@ -17,7 +17,7 @@ CREATE TABLE p1_c1 (LIKE p1 INCLUDING ALL, CHECK (id <= 100)) INHERITS(p1);
 ERROR:  LIKE ALL not supported yet
 LINE 1: CREATE TABLE p1_c1 (LIKE p1 INCLUDING ALL, CHECK (id <= 100)...
                                               ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1129. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1129. React with thumbs up to raise its priority
 -- CREATE TABLE p1_c2 (LIKE p1 INCLUDING ALL, CHECK (id > 100 AND id <= 200)) INHERITS(p1);
 -- CREATE TABLE p1_c3 (LIKE p1 INCLUDING ALL, CHECK (id > 200 AND id <= 300)) INHERITS(p1);
 -- CREATE TABLE p1_c4 (LIKE p1 INCLUDING ALL, CHECK (id > 300)) INHERITS(p1);

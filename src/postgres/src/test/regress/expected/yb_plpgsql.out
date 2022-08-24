@@ -91,7 +91,7 @@ end$$ language plpgsql;
 ERROR:  COLLATE not supported yet
 LINE 2: declare a text collate "en_US";
                        ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1127. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1127. React with thumbs up to raise its priority
 create table test(k int, v int);
 create procedure intermediate_commit() as $$
 begin

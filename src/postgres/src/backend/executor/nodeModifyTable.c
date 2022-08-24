@@ -1238,8 +1238,8 @@ ExecUpdate(ModifyTableState *mtstate,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("This operation would cause a row to change the partition, "
 							"this is not yet supported"),
-					 errhint("See https://github.com/YugaByte/yugabyte-db/issues/%d. "
-							 "Click '+' on the description to raise its priority", 5310)));
+					 errhint("See https://github.com/yugabyte/yugabyte-db/issues/%d. "
+							 "React with thumbs up to raise its priority", 5310)));
 
 		RangeTblEntry *rte = rt_fetch(resultRelInfo->ri_RangeTableIndex,
 									  estate->es_range_table);

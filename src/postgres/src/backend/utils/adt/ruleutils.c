@@ -1503,7 +1503,7 @@ pg_get_indexdef_worker(Oid indexrelid, int colno,
 									   generate_relation_name(indrelid, NIL),
 									   yb_table_properties.num_tablets),
 							 errhint("See https://github.com/yugabyte/yugabyte-db/issues/4873."
-									 " Click '+' on the description to raise its priority.")));
+									 " React with thumbs up to raise its priority.")));
 				}
 			}
 		}
