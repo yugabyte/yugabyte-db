@@ -352,6 +352,10 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
 
       // Start tservers on all nodes.
       createStartTserverProcessTasks(newTservers);
+
+      if (universe.isYbcEnabled()) {
+        createStartYbcProcessTasks(newTservers);
+      }
     }
     if (!nodesToProvision.isEmpty()) {
       // Set the new nodes' state to live.
