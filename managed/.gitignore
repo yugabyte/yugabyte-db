@@ -35,6 +35,7 @@ react/npm-debug.log
 conf/*
 src/main/public/*
 src/main/resources/version_metadata.json
+src/universal/ybc/*
 *.pyc
 docker/yugaware/*.yml
 
