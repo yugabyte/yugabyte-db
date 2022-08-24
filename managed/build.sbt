@@ -427,6 +427,11 @@ dependencyOverrides += "com.fasterxml.jackson.core" % "jackson-databind" % "2.9.
 
 concurrentRestrictions in Global := Seq(Tags.limitAll(16))
 
+javaOptions in Universal ++= Seq(
+  "-Djdk.tls.client.protocols=TLSv1.2",
+  "-Dhttps.protocols=TLSv1.2"
+)
+
 val testParallelForks = SettingKey[Int]("testParallelForks",
   "Number of parallel forked JVMs, running tests")
 testParallelForks := 4
