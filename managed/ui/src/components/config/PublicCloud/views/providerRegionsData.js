@@ -6,10 +6,10 @@ export const regionsData = [
   },
   // This is disabled in devops, so keep it disabled here as well. Pending on fetching data from a
   // YW API: ENG-4225
-  // {
-  //   destVpcRegion: 'ap-northeast-2',
-  //   zones: ['ap-northeast-2a', 'ap-northeast-2c']
-  // },
+  {
+    destVpcRegion: 'ap-northeast-2',
+    zones: ['ap-northeast-2a', 'ap-northeast-2c']
+  },
   {
     destVpcRegion: 'ap-south-1',
     zones: ['ap-south-1a', 'ap-south-1b', 'ap-south-1c']
