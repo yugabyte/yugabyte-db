@@ -33,6 +33,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -48,6 +49,7 @@ import org.apache.commons.lang.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.CommonTypes.TableType;
+import org.yb.CommonTypes.YQLDatabase;
 import org.yb.client.YBClient;
 import org.yb.master.MasterDdlOuterClass.ListTablesResponsePB.TableInfo;
 import org.yb.master.MasterTypes.RelationType;
@@ -89,6 +91,25 @@ public class BackupUtil {
           + YBC_BACKUP_IDENTIFIER;
   public static final Pattern PATTERN_FOR_YBC_BACKUP_LOCATION =
       Pattern.compile(YBC_BACKUP_LOCATION_IDENTIFIER_STRING);
+
+  public static Map<TableType, YQLDatabase> TABLE_TYPE_TO_YQL_DATABASE_MAP;
+
+  static {
+    TABLE_TYPE_TO_YQL_DATABASE_MAP = new HashMap<>();
+    TABLE_TYPE_TO_YQL_DATABASE_MAP.put(TableType.YQL_TABLE_TYPE, YQLDatabase.YQL_DATABASE_CQL);
+    TABLE_TYPE_TO_YQL_DATABASE_MAP.put(TableType.PGSQL_TABLE_TYPE, YQLDatabase.YQL_DATABASE_PGSQL);
+  }
+
+  public static TableType getTableType(String tableType) {
+    switch (tableType) {
+      case "YSQL":
+        return TableType.PGSQL_TABLE_TYPE;
+      case "YCQL":
+        return TableType.YQL_TABLE_TYPE;
+      default:
+        throw new IllegalArgumentException("Unexpected table type " + tableType);
+    }
+  }
 
   /**
    * Use for cases apart from customer configs. Currently used in backup listing API, and fetching

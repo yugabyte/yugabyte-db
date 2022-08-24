@@ -34,6 +34,19 @@ package org.yb.client;
 import com.google.common.net.HostAndPort;
 import com.stumbleupon.async.Callback;
 import com.stumbleupon.async.Deferred;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.*;
@@ -42,6 +55,7 @@ import org.yb.CommonTypes.YQLDatabase;
 import org.yb.annotations.InterfaceAudience;
 import org.yb.annotations.InterfaceStability;
 import org.yb.master.CatalogEntityInfo;
+import org.yb.master.MasterBackupOuterClass;
 import org.yb.master.MasterReplicationOuterClass;
 import org.yb.tserver.TserverTypes;
 import org.yb.util.Pair;
@@ -1631,6 +1645,45 @@ public class YBClient implements AutoCloseable {
                                                  boolean forceDelete) throws Exception {
     Deferred<DeleteCDCStreamResponse> d =
       asyncClient.deleteCDCStream(streamIds, ignoreErrors, forceDelete);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  public CreateSnapshotScheduleResponse createSnapshotSchedule(
+    YQLDatabase databaseType,
+    String keyspaceName,
+    long retentionInSecs,
+    long timeIntervalInSecs) throws Exception {
+    Deferred<CreateSnapshotScheduleResponse> d =
+      asyncClient.createSnapshotSchedule(databaseType, keyspaceName,
+          retentionInSecs, timeIntervalInSecs);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  public DeleteSnapshotScheduleResponse deleteSnapshotSchedule(
+      UUID snapshotScheduleUUID) throws Exception {
+    Deferred<DeleteSnapshotScheduleResponse> d =
+      asyncClient.deleteSnapshotSchedule(snapshotScheduleUUID);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  public ListSnapshotSchedulesResponse listSnapshotSchedules(
+      UUID snapshotScheduleUUID) throws Exception {
+    Deferred<ListSnapshotSchedulesResponse> d =
+      asyncClient.listSnapshotSchedules(snapshotScheduleUUID);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  public RestoreSnapshotResponse restoreSnapshot(UUID snapshotUUID,
+                                                 long restoreHybridTime) throws Exception {
+    Deferred<RestoreSnapshotResponse> d =
+      asyncClient.restoreSnapshot(snapshotUUID, restoreHybridTime);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  public ListSnapshotsResponse listSnapshots(UUID snapshotUUID,
+                                             boolean listDeletedSnapshots) throws Exception {
+    Deferred<ListSnapshotsResponse> d =
+      asyncClient.listSnapshots(snapshotUUID, listDeletedSnapshots);
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
