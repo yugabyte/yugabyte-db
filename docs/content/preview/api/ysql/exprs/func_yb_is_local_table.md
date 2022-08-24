@@ -12,7 +12,7 @@ type: docs
 
 ## Synopsis
 
-`yb_is_local_table` is a function used to find whether a table is pinned to the local region. It takes the OID (Object Identifier) of the table as an argument and looks for a tablespace associated with the table. It checks whether the tablespace is confined to the same region as that of the PostgreSQL backend processing the query. If so, it returns true, false otherwise.
+`yb_is_local_table` indicates whether a table is pinned to the local region. The function takes a table's OID (object identifier), and looks for a tablespace associated with that table. If the tablespace is confined to the same region as that of the PostgreSQL backend processing the query, the function returns `true`. Otherwise, the function returns `false`.
 
 {{< note title="Note" >}}
 
