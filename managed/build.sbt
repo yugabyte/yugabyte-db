@@ -295,6 +295,12 @@ dependencyOverrides += "com.google.guava" % "guava" % "23.0"
 dependencyOverrides += "com.google.code.gson" % "gson" % "2.8.9"
 
 // Is just required to make platform phabricator pipeline working.
+
+javaOptions in Universal ++= Seq(
+  "-Djdk.tls.client.protocols=TLSv1.2",
+  "-Dhttps.protocols=TLSv1.2"
+)
+
 val testParallelForks = SettingKey[Int]("testParallelForks",
   "Number of parallel forked JVMs, running tests")
 testParallelForks := 4

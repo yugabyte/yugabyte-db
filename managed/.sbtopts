@@ -1,0 +1,7 @@
+-J-XX:MinHeapFreeRatio=10
+-J-XX:MaxHeapFreeRatio=20
+-J-Xmx2g
+-J-XX:MaxMetaspaceSize=600m
+-J-XX:MetaspaceSize=200m
+-Djdk.tls.client.protocols=TLSv1.2
+-Dhttps.protocols=TLSv1.2
