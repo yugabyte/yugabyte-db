@@ -213,6 +213,8 @@ YBCStatus YBCPgAlterTableDropColumn(YBCPgStatement handle, const char *name);
 YBCStatus YBCPgAlterTableRenameTable(YBCPgStatement handle, const char *db_name,
                                      const char *newname);
 
+YBCStatus YBCPgAlterTableIncrementSchemaVersion(YBCPgStatement handle);
+
 YBCStatus YBCPgExecAlterTable(YBCPgStatement handle);
 
 YBCStatus YBCPgNewDropTable(YBCPgOid database_oid,

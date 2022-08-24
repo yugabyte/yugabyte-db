@@ -13,6 +13,8 @@
 
 #include "yb/tserver/remote_bootstrap_file_downloader.h"
 
+#include <iomanip>
+
 #include "yb/common/wire_protocol.h"
 
 #include "yb/gutil/casts.h"
@@ -29,6 +31,7 @@
 #include "yb/util/net/rate_limiter.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status_format.h"
+#include "yb/util/stopwatch.h"
 
 using namespace yb::size_literals;
 
@@ -48,7 +51,7 @@ DEFINE_int64(remote_bootstrap_rate_limit_bytes_per_sec, 256_MB,
              "the total limit will be 2 * remote_bootstrap_rate_limit_bytes_per_sec because a "
              "tserver or master can act both as a sender and receiver at the same time.");
 
-DEFINE_int32(bytes_remote_bootstrap_durable_write_mb, 8,
+DEFINE_int32(bytes_remote_bootstrap_durable_write_mb, 1024,
              "Explicitly call fsync after downloading the specified amount of data in MB "
              "during a remote bootstrap session. If 0 fsync() is not called.");
 
@@ -174,6 +177,11 @@ Status RemoteBootstrapFileDownloader::DownloadFile(
   rpc::RpcController controller;
   controller.set_timeout(session_idle_timeout_);
   FetchDataRequestPB req;
+  Stopwatch verify_data_timer;
+  Stopwatch append_data_timer;
+  Stopwatch sync_timer;
+  Stopwatch file_download_timer;
+  file_download_timer.start();
 
   bool done = false;
   while (!done) {
@@ -198,13 +206,17 @@ Status RemoteBootstrapFileDownloader::DownloadFile(
     DCHECK_LE(resp.chunk().data().size(), max_length);
 
     // Sanity-check for corruption.
+    verify_data_timer.resume();
     RETURN_NOT_OK_PREPEND(VerifyData(offset, resp.chunk()),
                           Format("Error validating data item $0", data_id));
+    verify_data_timer.stop();
 
     // Write the data.
     VLOG_WITH_PREFIX(3) << "Verifying received data";
+    append_data_timer.resume();
     RETURN_NOT_OK(appendable->Append(resp.chunk().data()));
-    VLOG_WITH_PREFIX(3) << "Verified successfully: resp size: " << resp.ByteSize()
+    append_data_timer.stop();
+    VLOG_WITH_PREFIX(3) << "Verified and appended successfully: resp size: " << resp.ByteSize()
                         << ", chunk size: " << resp.chunk().data().size();
 
     if (offset + resp.chunk().data().size() ==
@@ -215,13 +227,30 @@ Status RemoteBootstrapFileDownloader::DownloadFile(
     if (FLAGS_bytes_remote_bootstrap_durable_write_mb != 0) {
       periodic_sync_unsynced_bytes += resp.chunk().data().size();
       if (periodic_sync_unsynced_bytes > FLAGS_bytes_remote_bootstrap_durable_write_mb * 1_MB) {
+        sync_timer.resume();
         RETURN_NOT_OK(appendable->Sync());
+        sync_timer.stop();
         periodic_sync_unsynced_bytes = 0;
       }
     }
   }
 
-  VLOG_WITH_PREFIX(2) << "Transmission rate: " << rate_limiter->GetRate();
+  sync_timer.resume();
+  RETURN_NOT_OK(appendable->Sync());
+  sync_timer.stop();
+
+  file_download_timer.stop();
+
+  const auto total_bytes = rate_limiter->total_bytes();
+  LOG_WITH_PREFIX(INFO) << std::fixed << std::setprecision(3)
+    << "Downloaded file: " << data_id.file_name()
+    << "; Stats: Total time: " << file_download_timer.elapsed().wall_millis() << " ms"
+    << ", Transmission rate: " << rate_limiter->GetRate()
+    << ", RateLimiter total time slept: " << rate_limiter->total_time_slept().ToMilliseconds()
+    << " ms, Total bytes: " << total_bytes
+    << ", CRC/verify rate " << (verify_data_timer.elapsed().wall_millis() / total_bytes)
+    << " bytes/msec, Append rate " << (append_data_timer.elapsed().wall_millis() / total_bytes)
+    << " bytes/msec, File sync time " << sync_timer.elapsed().wall_millis() << "ms";
 
   return Status::OK();
 }

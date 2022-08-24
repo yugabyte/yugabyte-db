@@ -100,7 +100,8 @@ class TwoDCOutputClient : public cdc::CDCOutputClient {
       const cdc::CDCRecordPB& record,
       const Result<std::vector<client::internal::RemoteTabletPtr>>& tablets);
 
-  Result<bool> ProcessSplitOp(const cdc::CDCRecordPB& record);
+  bool IsValidMetaOp(const cdc::CDCRecordPB& record);
+  Result<bool> ProcessMetaOp(const cdc::CDCRecordPB& record);
 
   // Processes the Record and sends the CDCWrite for it.
   Status ProcessRecord(
@@ -138,6 +139,7 @@ class TwoDCOutputClient : public cdc::CDCOutputClient {
   OpIdPB op_id_ GUARDED_BY(lock_) = consensus::MinimumOpId();
   bool done_processing_ GUARDED_BY(lock_) = false;
   bool shutdown_ GUARDED_BY(lock_) = false;
+  uint32_t wait_for_version_ GUARDED_BY(lock_) = 0;
 
   uint32_t processed_record_count_ GUARDED_BY(lock_) = 0;
   uint32_t record_count_ GUARDED_BY(lock_) = 0;
@@ -179,6 +181,7 @@ Status TwoDCOutputClient::ApplyChanges(const cdc::GetChangesResponsePB* poller_r
     op_id_ = poller_resp->checkpoint().op_id();
     error_status_ = Status::OK();
     done_processing_ = false;
+    wait_for_version_ = 0;
     processed_record_count_ = 0;
     record_count_ = poller_resp->records_size();
     ResetWriteInterface(&write_strategy_);
@@ -210,30 +213,27 @@ Status TwoDCOutputClient::ApplyChanges(const cdc::GetChangesResponsePB* poller_r
 
 Status TwoDCOutputClient::ProcessChangesStartingFromIndex(int start) {
   bool processed_write_record = false;
-  for (int i = start; i < twodc_resp_copy_.records_size(); i++) {
+  auto records_size = twodc_resp_copy_.records_size();
+  for (int i = start; i < records_size; i++) {
     // All KV-pairs within a single CDC record will be for the same row.
     // key(0).key() will contain the hash code for that row. We use this to lookup the tablet.
     const auto& record = twodc_resp_copy_.records(i);
 
-    if (record.operation() == cdc::CDCRecordPB::SPLIT_OP) {
+    if (IsValidMetaOp(record)) {
       if (processed_write_record) {
-        // We have existing write operations to handle first, so we'll handle those first, and
-        // then return to processing this split op later (see WriteCDCRecordDone).
-        // It is important to handle these buffered writes first, since handling the split op will
-        // cause us to replace this poller, and thus if any of those writes fail, we would end up
-        // losing those records (as the new pollers would start processing ops after the split op).
+        // We have existing write operations, so flush them first (see WriteCDCRecordDone).
         break;
       }
-      // No other records to process, so we can process the SPLIT_OP.
-      bool done = VERIFY_RESULT(ProcessSplitOp(record));
+      // No other records to process, so we can process the meta ops.
+      bool done = VERIFY_RESULT(ProcessMetaOp(record));
       if (done) {
+        // Currently, we expect Producers to send any terminating ops last.
+        DCHECK(i == records_size - 1);
         HandleResponse();
         return Status::OK();
       }
       continue;
-    }
-
-    if (UseLocalTserver()) {
+    } else if (UseLocalTserver()) {
       RETURN_NOT_OK(ProcessRecordForLocalTablet(record));
     } else {
       if (record.operation() == cdc::CDCRecordPB::APPLY) {
@@ -316,28 +316,46 @@ Status TwoDCOutputClient::ProcessRecordForLocalTablet(const cdc::CDCRecordPB& re
   return ProcessRecord({consumer_tablet_info_.tablet_id}, record);
 }
 
-Result<bool> TwoDCOutputClient::ProcessSplitOp(const cdc::CDCRecordPB& record) {
-  // Construct and send the update request.
-  master::ProducerSplitTabletInfoPB split_info;
-  split_info.set_tablet_id(record.split_tablet_request().tablet_id());
-  split_info.set_new_tablet1_id(record.split_tablet_request().new_tablet1_id());
-  split_info.set_new_tablet2_id(record.split_tablet_request().new_tablet2_id());
-  split_info.set_split_encoded_key(record.split_tablet_request().split_encoded_key());
-  split_info.set_split_partition_key(record.split_tablet_request().split_partition_key());
+bool TwoDCOutputClient::IsValidMetaOp(const cdc::CDCRecordPB& record) {
+  auto type = record.operation();
+  return type == cdc::CDCRecordPB::SPLIT_OP || type == cdc::CDCRecordPB::CHANGE_METADATA;
+}
 
-  if (PREDICT_FALSE(FLAGS_TEST_xcluster_consumer_fail_after_process_split_op)) {
-    return STATUS(
-        InternalError, "Fail due to FLAGS_TEST_xcluster_consumer_fail_after_process_split_op");
+Result<bool> TwoDCOutputClient::ProcessMetaOp(const cdc::CDCRecordPB& record) {
+  uint32_t wait_for_version = 0;
+  if (record.operation() == cdc::CDCRecordPB::SPLIT_OP) {
+    // Construct and send the update request.
+    master::ProducerSplitTabletInfoPB split_info;
+    split_info.set_tablet_id(record.split_tablet_request().tablet_id());
+    split_info.set_new_tablet1_id(record.split_tablet_request().new_tablet1_id());
+    split_info.set_new_tablet2_id(record.split_tablet_request().new_tablet2_id());
+    split_info.set_split_encoded_key(record.split_tablet_request().split_encoded_key());
+    split_info.set_split_partition_key(record.split_tablet_request().split_partition_key());
+
+    if (PREDICT_FALSE(FLAGS_TEST_xcluster_consumer_fail_after_process_split_op)) {
+      return STATUS(
+          InternalError, "Fail due to FLAGS_TEST_xcluster_consumer_fail_after_process_split_op");
+    }
+
+    RETURN_NOT_OK(local_client_->client->UpdateConsumerOnProducerSplit(
+        producer_tablet_info_.universe_uuid, producer_tablet_info_.stream_id, split_info));
+  } else if (record.operation() == cdc::CDCRecordPB::CHANGE_METADATA) {
+    bool should_halt = VERIFY_RESULT(local_client_->client->UpdateConsumerOnProducerMetadata(
+        producer_tablet_info_.universe_uuid, producer_tablet_info_.stream_id,
+        record.change_metadata_request()));
+    if (should_halt) {
+      LOG(INFO) << "Halting Polling for " << producer_tablet_info_.tablet_id;
+      wait_for_version = record.change_metadata_request().schema_version();
+    }
   }
 
-  RETURN_NOT_OK(local_client_->client->UpdateConsumerOnProducerSplit(
-      producer_tablet_info_.universe_uuid, producer_tablet_info_.stream_id, split_info));
-
   // Increment processed records, and check for completion.
-  bool done;
+  bool done = false;
   {
     std::lock_guard<decltype(lock_)> l(lock_);
     done = IncProcessedRecordCount();
+    wait_for_version_ = wait_for_version;
+    DCHECK(wait_for_version == 0 || done); // If (should_wait) then done.
   }
   return done;
 }
@@ -438,6 +456,7 @@ cdc::OutputClientResponse TwoDCOutputClient::PrepareResponse() {
   if (response.status.ok()) {
     response.last_applied_op_id = op_id_;
     response.processed_record_count = processed_record_count_;
+    response.wait_for_version = wait_for_version_;
   }
   op_id_ = consensus::MinimumOpId();
   processed_record_count_ = 0;

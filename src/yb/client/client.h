@@ -541,6 +541,11 @@ class YBClient {
                                                const TableId& table_id,
                                                const master::ProducerSplitTabletInfoPB& split_info);
 
+  // Update after a producer DDL change. Returns if caller should wait for a similar Consumer DDL.
+  Result<bool> UpdateConsumerOnProducerMetadata(const string& producer_id,
+                                                const TableId& table_id,
+                                                const tablet::ChangeMetadataRequestPB& meta_info);
+
   void GetTableLocations(
       const TableId& table_id, int32_t max_tablets, RequireTabletsRunning require_tablets_running,
       GetTableLocationsCallback callback);

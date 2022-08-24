@@ -63,6 +63,7 @@ CDCPoller::CDCPoller(const cdc::ProducerTabletInfo& producer_tablet_info,
     should_continue_polling_(std::move(should_continue_polling)),
     remove_self_from_pollers_map_(std::move(remove_self_from_pollers_map)),
     op_id_(consensus::MinimumOpId()),
+    validated_schema_version_(0),
     resp_(std::make_unique<cdc::GetChangesResponsePB>()),
     output_client_(CreateTwoDCOutputClient(
         cdc_consumer,
@@ -99,6 +100,30 @@ bool CDCPoller::CheckOnline() {
     LOG_WITH_PREFIX_UNLOCKED(WARNING) << "CDC Poller went offline"; \
     return; \
   }
+
+void CDCPoller::SetSchemaVersion(uint32_t cur_version) {
+  RETURN_WHEN_OFFLINE();
+  WARN_NOT_OK(thread_pool_->SubmitFunc(std::bind(&CDCPoller::DoSetSchemaVersion,
+                                                 shared_from_this(), cur_version)),
+              "Could not submit SetSchemaVersion to thread pool");
+}
+
+void CDCPoller::DoSetSchemaVersion(uint32_t cur_version) {
+  RETURN_WHEN_OFFLINE();
+  auto retained = shared_from_this();
+  std::lock_guard<std::mutex> l(data_mutex_);
+
+  if (validated_schema_version_ < cur_version) {
+    validated_schema_version_ = cur_version;
+    // re-enable polling.
+    if (!is_polling_) {
+      is_polling_ = true;
+      LOG(INFO) << "Restarting polling on " << producer_tablet_info_.tablet_id;
+      WARN_NOT_OK(thread_pool_->SubmitFunc(std::bind(&CDCPoller::DoPoll, this)),
+                  "Could not submit Poll to thread pool");
+    }
+  }
+}
 
 void CDCPoller::Poll() {
   RETURN_WHEN_OFFLINE();
@@ -231,7 +256,12 @@ void CDCPoller::DoHandleApplyChanges(cdc::OutputClientResponse response) {
 
   idle_polls_ = (response.processed_record_count == 0) ? idle_polls_ + 1 : 0;
 
-  Poll();
+  if (validated_schema_version_ < response.wait_for_version) {
+    is_polling_ = false;
+    validated_schema_version_ = response.wait_for_version - 1;
+  } else {
+    Poll();
+  }
 }
 #undef RETURN_WHEN_OFFLINE
 

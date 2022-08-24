@@ -9,22 +9,23 @@ import {
   queryLagMetricsForUniverse
 } from '../../actions/xClusterReplication';
 import { formatLagMetric } from '../../utils/Formatters';
-import { IReplication, IReplicationStatus } from './IClusterReplication';
+import { Replication } from './XClusterReplicationTypes';
+import { ReplicationStatus, REPLICATION_LAG_ALERT_NAME } from './constants';
 
 import './ReplicationUtils.scss';
 
 export const YSQL_TABLE_TYPE = 'PGSQL_TABLE_TYPE';
 
-export const getReplicationStatus = (replication: IReplication) => {
+export const getReplicationStatus = (replication: Replication) => {
   switch (replication.status) {
-    case IReplicationStatus.UPDATING:
+    case ReplicationStatus.UPDATING:
       return (
         <span className="replication-status-text updating">
           <i className="fa fa-spinner fa-spin" />
           Updating
         </span>
       );
-    case IReplicationStatus.RUNNING:
+    case ReplicationStatus.RUNNING:
       return replication.paused ? (
         <span className="replication-status-text paused">
           <i className="fa fa-pause-circle-o" />
@@ -36,28 +37,28 @@ export const getReplicationStatus = (replication: IReplication) => {
           Enabled
         </span>
       );
-    case IReplicationStatus.INIT:
+    case ReplicationStatus.INIT:
       return (
         <span className="replication-status-text success">
           <i className="fa fa-info" />
           Init
         </span>
       );
-    case IReplicationStatus.FAILED:
+    case ReplicationStatus.FAILED:
       return (
         <span className="replication-status-text failed">
           <i className="fa fa-info-circle" />
           Failed
         </span>
       );
-    case IReplicationStatus.DELETED:
+    case ReplicationStatus.DELETED:
       return (
         <span className="replication-status-text failed">
           <i className="fa fa-close" />
           Deleted
         </span>
       );
-    case IReplicationStatus.DELETED_UNIVERSE:
+    case ReplicationStatus.DELETED_UNIVERSE:
       return (
         <span className="replication-status-text failed">
           <i className="fa fa-close" />
@@ -78,15 +79,13 @@ export const getReplicationStatus = (replication: IReplication) => {
   }
 };
 
-const ALERT_NAME = 'Replication Lag';
-
 export const GetConfiguredThreshold = ({
   currentUniverseUUID
 }: {
   currentUniverseUUID: string;
 }) => {
   const configurationFilter = {
-    name: ALERT_NAME,
+    name: REPLICATION_LAG_ALERT_NAME,
     targetUuid: currentUniverseUUID
   };
   const { data: metricsData, isFetching } = useQuery(
@@ -125,7 +124,7 @@ export const GetCurrentLag = ({
     }
   );
   const configurationFilter = {
-    name: ALERT_NAME,
+    name: REPLICATION_LAG_ALERT_NAME,
     targetUuid: sourceUniverseUUID
   };
   const { data: configuredThreshold, isLoading: threshholdLoading } = useQuery(
@@ -190,7 +189,7 @@ export const GetCurrentLagForTable = ({
   );
 
   const configurationFilter = {
-    name: ALERT_NAME,
+    name: REPLICATION_LAG_ALERT_NAME,
     targetUuid: sourceUniverseUUID
   };
   const { data: configuredThreshold, isLoading: thresholdLoading } = useQuery(
@@ -268,13 +267,15 @@ export const findUniverseName = function (universeList: Array<any>, universeUUID
   return universeList.find((universe: any) => universe.universeUUID === universeUUID)?.name;
 };
 
-export const isChangeDisabled = function (status: IReplicationStatus | undefined) {
+export const isChangeDisabled = function (status: ReplicationStatus | undefined) {
   // Allow the operation for an unknown situation to avoid bugs.
   if (status === undefined) {
     return true;
   }
-  return status === IReplicationStatus.INIT
-    || status === IReplicationStatus.UPDATING
-    || status === IReplicationStatus.DELETED
-    || status === IReplicationStatus.DELETED_UNIVERSE;
+  return (
+    status === ReplicationStatus.INIT ||
+    status === ReplicationStatus.UPDATING ||
+    status === ReplicationStatus.DELETED ||
+    status === ReplicationStatus.DELETED_UNIVERSE
+  );
 };

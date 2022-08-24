@@ -134,12 +134,12 @@ ALTER INDEX attmp_idx ALTER COLUMN 1 SET STATISTICS 1000;
 ERROR:  ALTER INDEX not supported yet
 LINE 1: ALTER INDEX attmp_idx ALTER COLUMN 1 SET STATISTICS 1000;
         ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1130. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1130. React with thumbs up to raise its priority
 ALTER INDEX attmp_idx ALTER COLUMN 2 SET STATISTICS 1000;
 ERROR:  ALTER INDEX not supported yet
 LINE 1: ALTER INDEX attmp_idx ALTER COLUMN 2 SET STATISTICS 1000;
         ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1130. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1130. React with thumbs up to raise its priority
 \d+ attmp_idx
                         Index "public.attmp_idx"
  Column |       Type       | Key? | Definition | Storage | Stats target
@@ -153,17 +153,17 @@ ALTER INDEX attmp_idx ALTER COLUMN 3 SET STATISTICS 1000;
 ERROR:  ALTER INDEX not supported yet
 LINE 1: ALTER INDEX attmp_idx ALTER COLUMN 3 SET STATISTICS 1000;
         ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1130. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1130. React with thumbs up to raise its priority
 ALTER INDEX attmp_idx ALTER COLUMN 4 SET STATISTICS 1000;
 ERROR:  ALTER INDEX not supported yet
 LINE 1: ALTER INDEX attmp_idx ALTER COLUMN 4 SET STATISTICS 1000;
         ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1130. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1130. React with thumbs up to raise its priority
 ALTER INDEX attmp_idx ALTER COLUMN 2 SET STATISTICS -1;
 ERROR:  ALTER INDEX not supported yet
 LINE 1: ALTER INDEX attmp_idx ALTER COLUMN 2 SET STATISTICS -1;
         ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1130. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1130. React with thumbs up to raise its priority
 DROP TABLE attmp;
 --
 -- rename - check on both non-temp and temp tables
@@ -281,7 +281,7 @@ begin; alter table alterlock cluster on alterlock_pkey;
 ERROR:  ALTER TABLE CLUSTER not supported yet
 LINE 1: alter table alterlock cluster on alterlock_pkey;
                               ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
 select * from my_locks order by 1;
 ERROR:  current transaction is aborted, commands ignored until end of transaction block
 commit;
@@ -289,7 +289,7 @@ begin; alter table alterlock set without cluster;
 ERROR:  ALTER TABLE SET WITHOUT CLUSTER not supported yet
 LINE 1: alter table alterlock set without cluster;
                               ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
 select * from my_locks order by 1;
 ERROR:  current transaction is aborted, commands ignored until end of transaction block
 commit;
@@ -297,7 +297,7 @@ begin; alter table alterlock set (fillfactor = 100);
 ERROR:  ALTER TABLE SET not supported yet
 LINE 1: alter table alterlock set (fillfactor = 100);
                               ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
 select * from my_locks order by 1;
 ERROR:  current transaction is aborted, commands ignored until end of transaction block
 commit;
@@ -305,7 +305,7 @@ begin; alter table alterlock reset (fillfactor);
 ERROR:  ALTER TABLE RESET not supported yet
 LINE 1: alter table alterlock reset (fillfactor);
                               ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
 select * from my_locks order by 1;
 ERROR:  current transaction is aborted, commands ignored until end of transaction block
 commit;
@@ -313,7 +313,7 @@ begin; alter table alterlock set (toast.autovacuum_enabled = off);
 ERROR:  ALTER TABLE SET not supported yet
 LINE 1: alter table alterlock set (toast.autovacuum_enabled = off);
                               ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
 select * from my_locks order by 1;
 ERROR:  current transaction is aborted, commands ignored until end of transaction block
 commit;
@@ -321,7 +321,7 @@ begin; alter table alterlock set (autovacuum_enabled = off);
 ERROR:  ALTER TABLE SET not supported yet
 LINE 1: alter table alterlock set (autovacuum_enabled = off);
                               ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
 select * from my_locks order by 1;
 ERROR:  current transaction is aborted, commands ignored until end of transaction block
 commit;
@@ -329,7 +329,7 @@ begin; alter table alterlock alter column f2 set (n_distinct = 1);
 ERROR:  ALTER TABLE ALTER column not supported yet
 LINE 1: alter table alterlock alter column f2 set (n_distinct = 1);
                               ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
 select * from my_locks order by 1;
 ERROR:  current transaction is aborted, commands ignored until end of transaction block
 rollback;
@@ -338,7 +338,7 @@ begin; alter table alterlock set (autovacuum_enabled = off, fillfactor = 80);
 ERROR:  ALTER TABLE SET not supported yet
 LINE 1: alter table alterlock set (autovacuum_enabled = off, fillfac...
                               ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
 select * from my_locks order by 1;
 ERROR:  current transaction is aborted, commands ignored until end of transaction block
 commit;
@@ -346,7 +346,7 @@ begin; alter table alterlock alter column f2 set storage extended;
 ERROR:  ALTER TABLE ALTER column not supported yet
 LINE 1: alter table alterlock alter column f2 set storage extended;
                               ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
 select * from my_locks order by 1;
 ERROR:  current transaction is aborted, commands ignored until end of transaction block
 rollback;
@@ -376,7 +376,7 @@ ALTER TYPE tt_t0 DROP ATTRIBUTE z;
 ERROR:  ALTER TYPE DROP ATTRIBUTE not supported yet
 LINE 1: ALTER TYPE tt_t0 DROP ATTRIBUTE z;
                          ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1893. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1893. React with thumbs up to raise its priority
 CREATE TABLE tt0 (x int NOT NULL, y numeric(8,2));	-- OK
 CREATE TABLE tt1 (x int, y bigint);					-- wrong base type
 CREATE TABLE tt2 (x int, y numeric(9,2));			-- wrong typmod
@@ -387,7 +387,7 @@ CREATE TABLE tt6 () INHERITS (tt0);					-- can't have a parent
 ERROR:  INHERITS not supported yet
 LINE 1: CREATE TABLE tt6 () INHERITS (tt0);
                             ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1129. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1129. React with thumbs up to raise its priority
 CREATE TABLE tt7 (x int, q text, y numeric(8,2)) WITH OIDS;
 ERROR:  OIDs are not supported for user tables.
 ALTER TABLE tt7 DROP q;								-- OK
@@ -396,51 +396,51 @@ ALTER TABLE tt0 OF tt_t0;
 ERROR:  ALTER TABLE OF not supported yet
 LINE 1: ALTER TABLE tt0 OF tt_t0;
                         ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
 ALTER TABLE tt1 OF tt_t0;
 ERROR:  ALTER TABLE OF not supported yet
 LINE 1: ALTER TABLE tt1 OF tt_t0;
                         ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
 ALTER TABLE tt2 OF tt_t0;
 ERROR:  ALTER TABLE OF not supported yet
 LINE 1: ALTER TABLE tt2 OF tt_t0;
                         ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
 ALTER TABLE tt3 OF tt_t0;
 ERROR:  ALTER TABLE OF not supported yet
 LINE 1: ALTER TABLE tt3 OF tt_t0;
                         ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
 ALTER TABLE tt4 OF tt_t0;
 ERROR:  ALTER TABLE OF not supported yet
 LINE 1: ALTER TABLE tt4 OF tt_t0;
                         ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
 ALTER TABLE tt5 OF tt_t0;
 ERROR:  ALTER TABLE OF not supported yet
 LINE 1: ALTER TABLE tt5 OF tt_t0;
                         ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
 ALTER TABLE tt6 OF tt_t0;
 ERROR:  ALTER TABLE OF not supported yet
 LINE 1: ALTER TABLE tt6 OF tt_t0;
                         ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
 ALTER TABLE tt7 OF tt_t0;
 ERROR:  ALTER TABLE OF not supported yet
 LINE 1: ALTER TABLE tt7 OF tt_t0;
                         ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
 CREATE TYPE tt_t1 AS (x int, y numeric(8,2));
 ALTER TABLE tt7 OF tt_t1;			-- reassign an already-typed table
 ERROR:  ALTER TABLE OF not supported yet
 LINE 1: ALTER TABLE tt7 OF tt_t1;
                         ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
 ALTER TABLE tt7 NOT OF;
 ERROR:  ALTER TABLE NOT OF not supported yet
 LINE 1: ALTER TABLE tt7 NOT OF;
                         ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
 \d tt7

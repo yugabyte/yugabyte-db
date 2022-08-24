@@ -176,7 +176,7 @@ CREATE TABLE trunc_fa (col2a text) INHERITS (trunc_f);
 ERROR:  INHERITS not supported yet
 LINE 1: CREATE TABLE trunc_fa (col2a text) INHERITS (trunc_f);
                                            ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1129. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1129. React with thumbs up to raise its priority
 INSERT INTO trunc_fa VALUES (3, 'three');
 ERROR:  relation "trunc_fa" does not exist
 LINE 1: INSERT INTO trunc_fa VALUES (3, 'three');

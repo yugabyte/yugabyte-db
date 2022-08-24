@@ -10,7 +10,7 @@ import './LagGraph.scss';
 const ALERT_NAME = 'Replication Lag';
 
 const METRIC_NAME = 'tserver_async_replication_lag_micros';
-
+// TODO: Rename. Confusing to call this LagGraph when we have another "lag graph".
 interface LagGraphProps {
   replicationUUID: string;
   sourceUniverseUUID: string;

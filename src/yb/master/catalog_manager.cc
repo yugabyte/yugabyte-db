@@ -476,6 +476,11 @@ DEFINE_bool(enable_delete_truncate_xcluster_replicated_table, false,
             "When set, enables deleting/truncating tables currently in xCluster replication");
 TAG_FLAG(enable_delete_truncate_xcluster_replicated_table, runtime);
 
+DEFINE_bool(xcluster_wait_on_ddl_alter, false,
+            "When xCluster replication sends a DDL change, wait for the user to enter a "
+            "compatible/matching entry.  Note: Can also set at runtime to resume after stall.");
+TAG_FLAG(xcluster_wait_on_ddl_alter, runtime);
+
 DEFINE_test_flag(bool, sequential_colocation_ids, false,
                  "When set, colocation IDs will be assigned sequentially (starting from 20001) "
                  "rather than at random. This is especially useful for making pg_regress "
@@ -6001,6 +6006,10 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
     has_changes = true;
   }
 
+  if (req->increment_schema_version()) {
+    has_changes = true;
+  }
+
   // TODO(hector): Simplify the AlterSchema workflow to avoid doing the same checks on every layer
   // this request goes through: https://github.com/YugaByte/yugabyte-db/issues/1882.
   if (req->has_wal_retention_secs()) {
@@ -6034,6 +6043,14 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
       MultiStageAlterTable::CopySchemaDetailsToFullyApplied(&table_pb);
     }
     SchemaToPB(new_schema, table_pb.mutable_schema());
+  }
+
+
+  if (FLAGS_xcluster_wait_on_ddl_alter &&
+      [&]() {SharedLock lock(mutex_); return IsTableCdcConsumer(*table);}()) {
+    // If we're waiting for a Schema because we saw the a replication source with a change,
+    // ensure this alter is compatible with what we're expecting.
+    RETURN_NOT_OK(ValidateNewSchemaWithCdc(*table, new_schema));
   }
 
   // Only increment the version number if it is a schema change (AddTable change goes through a
@@ -9308,19 +9325,8 @@ Status CatalogManager::SendAlterTableRequest(const scoped_refptr<TableInfo>& tab
       req->has_transaction() &&
       req->transaction().has_transaction_id();
 
-  bool alter_table_has_add_or_drop_column_step = false;
-  if (req && (req->alter_schema_steps_size() || req->has_alter_properties())) {
-    for (const AlterTableRequestPB::Step& step : req->alter_schema_steps()) {
-      if (step.type() == AlterTableRequestPB::ADD_COLUMN ||
-          step.type() == AlterTableRequestPB::DROP_COLUMN) {
-        alter_table_has_add_or_drop_column_step = true;
-        break;
-      }
-    }
-  }
-
   TransactionId txn_id = TransactionId::Nil();
-  if (is_ysql_table_with_transaction_metadata && alter_table_has_add_or_drop_column_step) {
+  if (is_ysql_table_with_transaction_metadata) {
     {
       LOG(INFO) << "Persist transaction metadata into SysTableEntryPB for table ID " << table->id();
       TRACE("Locking table");
@@ -9802,6 +9808,14 @@ Status CatalogManager::HandleTabletSchemaVersionReport(
                                    << current_version << ")";
       return Status::OK();
     }
+  }
+
+  // With Replication Enabled, verify that we've finished applying the New Schema.
+  // This may need to be refactored when we support Replication + Active Index Backfill in #7613.
+  if ([&]() {SharedLock lock(mutex_); return IsTableCdcConsumer(*table);}()) {
+    // If we're waiting for a Schema because we saw the a replication source with a change,
+    // resume replication now that the alter is complete.
+    RETURN_NOT_OK(ResumeCdcAfterNewSchema(*table));
   }
 
   return MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(this, table, version);
