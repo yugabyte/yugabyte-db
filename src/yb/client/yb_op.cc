@@ -110,8 +110,8 @@ Status InitHashPartitionKey(
   // 1. Not specified hash condition - Full scan.
   // 2. paging_state -- Set by server to continue current request.
   // 3. ybctid -- Given to fetch row(s) with specific ybctid(s).
-  // 4. lower and upper bound -- Set by PgGate to query a specific set of hash values.
-  // 5. hash column values -- Given to scan ONE SET of specific hash values.
+  // 4. hash column values -- Given to scan ONE SET of specific hash values.
+  // 5. lower and upper bound -- Set by PgGate to query a specific set of hash values.
   // 6. range and regular condition - These are filter expression and will be processed by DocDB.
   //    Shouldn't we able to set RANGE boundary here?
 
@@ -151,27 +151,6 @@ Status InitHashPartitionKey(
   } else if (!IsNull(ybctid)) {
     const auto hash_code = VERIFY_RESULT(docdb::DocKey::DecodeHash(ybctid.binary_value()));
     SetPartitionKey(PartitionSchema::EncodeMultiColumnHashValue(hash_code), request);
-  } else if (request->has_lower_bound() || request->has_upper_bound()) {
-    // If the read request does not provide a specific partition key, but it does provide scan
-    // boundary, use the given boundary to setup the scan lower and upper bound.
-    if (request->has_lower_bound()) {
-      auto hash = PartitionSchema::DecodeMultiColumnHashValue(request->lower_bound().key());
-      if (!request->lower_bound().is_inclusive()) {
-        ++hash;
-      }
-      request->set_hash_code(hash);
-
-      // Set partition key to lower bound.
-      SetPartitionKey(request->lower_bound().key(), request);
-    }
-    if (request->has_upper_bound()) {
-      auto hash = PartitionSchema::DecodeMultiColumnHashValue(request->upper_bound().key());
-      if (!request->upper_bound().is_inclusive()) {
-        --hash;
-      }
-      request->set_max_hash_code(hash);
-    }
-
   } else if (!request->partition_column_values().empty()) {
     // If hashed columns are set, use them to compute the exact key and set the bounds
     std::string temp;
@@ -197,13 +176,33 @@ Status InitHashPartitionKey(
     }
 
     if (!request->partition_key().empty()) {
-      // If one specifc partition_key is found, set both bounds to equal partition key now because
+      // If one specific partition_key is found, set both bounds to equal partition key now because
       // this is a point get.
       auto hash_code = PartitionSchema::DecodeMultiColumnHashValue(request->partition_key());
       request->set_hash_code(hash_code);
       request->set_max_hash_code(hash_code);
     }
 
+  } else if (request->has_lower_bound() || request->has_upper_bound()) {
+    // If the read request does not provide a specific partition key, but it does provide scan
+    // boundary, use the given boundary to setup the scan lower and upper bound.
+    if (request->has_lower_bound()) {
+      auto hash = PartitionSchema::DecodeMultiColumnHashValue(request->lower_bound().key());
+      if (!request->lower_bound().is_inclusive()) {
+        ++hash;
+      }
+      request->set_hash_code(hash);
+
+      // Set partition key to lower bound.
+      SetPartitionKey(request->lower_bound().key(), request);
+    }
+    if (request->has_upper_bound()) {
+      auto hash = PartitionSchema::DecodeMultiColumnHashValue(request->upper_bound().key());
+      if (!request->upper_bound().is_inclusive()) {
+        --hash;
+      }
+      request->set_max_hash_code(hash);
+    }
   } else {
     // Full scan. Default to empty key.
     request->clear_partition_key();

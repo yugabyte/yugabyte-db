@@ -517,7 +517,8 @@ Result<bool> PgDocReadOp::DoCreateRequests() {
   // All information from the SQL request has been collected and setup. This code populates
   // Protobuf requests before sending them to DocDB. For performance reasons, requests are
   // constructed differently for different statements.
-  if (read_op_->read_request().has_sampling_state()) {
+  const auto& req = read_op_->read_request();
+  if (req.has_sampling_state()) {
     VLOG(1) << __PRETTY_FUNCTION__ << ": Preparing sampling requests ";
     return PopulateSamplingOps();
 
@@ -527,15 +528,14 @@ Result<bool> PgDocReadOp::DoCreateRequests() {
   // simultaneous processing.
   // Effect may be less than expected if the nodes are already heavily loaded and CPU consumption
   // is high, or selectivity of the filter is low.
-  } else if (read_op_->read_request().is_aggregate() ||
-             !read_op_->read_request().where_clauses().empty()) {
-    return PopulateParallelSelectOps();
-
-  } else if (!read_op_->read_request().partition_column_values().empty()) {
+  } else if (!req.partition_column_values().empty()) {
     // Optimization for multiple hash keys.
     // - SELECT * FROM sql_table WHERE hash_c1 IN (1, 2, 3) AND hash_c2 IN (4, 5, 6);
-    // - Multiple requests for differrent hash permutations / keys.
+    // - Multiple requests for different hash permutations / keys.
     return PopulateNextHashPermutationOps();
+
+  } else if (req.is_aggregate() || !req.where_clauses().empty()) {
+    return PopulateParallelSelectOps();
 
   } else {
     // No optimization.
@@ -744,6 +744,9 @@ Status PgDocReadOp::InitializeHashPermutationStates() {
 }
 
 Result<bool> PgDocReadOp::PopulateParallelSelectOps() {
+  SCHECK(read_op_->read_request().partition_column_values().empty(),
+         IllegalState,
+         "Request with non empty partition_column_values can't be parallelized");
   // Create batch operators, one per partition, to execute in parallel.
   // TODO(tsplit): what if table partition is changed during PgDocReadOp lifecycle before or after
   // the following line?
