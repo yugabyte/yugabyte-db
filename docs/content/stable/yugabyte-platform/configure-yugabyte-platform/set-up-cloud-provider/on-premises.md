@@ -357,7 +357,7 @@ If you are doing an airgapped installation, download the node exporter using a c
 
 On each node, perform the following as a user with sudo access:
 
-1. Copy the `node_exporter-....tar.gz` package file that you downloaded into the `/tmp` directory on each of the YugabyteDB nodes. Ensure this file is readable by the `centos` user on each node (or another user with sudo privileges).
+1. Copy the `node_exporter-1.3.1.linux-amd64.gz` package file that you downloaded into the `/tmp` directory on each of the YugabyteDB nodes. Ensure that this file is readable by the user (for example, `centos`).
 
 1. Run the following commands:
 
@@ -404,10 +404,6 @@ On each node, perform the following as a user with sudo access:
    
      [Service]
      Type=simple
-   
-     #ExecStartPre=/bin/sh -c  " mkdir -p '/var/run/prometheus' '/var/log/prometheus' "
-     #ExecStartPre=/bin/sh -c  " chown -R prometheus '/var/run/prometheus' '/var/log/prometheus' "
-     #PIDFile=/var/run/prometheus/node_exporter.pid
    
      User=prometheus
      Group=prometheus

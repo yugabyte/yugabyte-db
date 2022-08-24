@@ -254,8 +254,6 @@ Physical nodes (or cloud instances) are installed with a standard Centos 7 serve
     sudo su - yugabyte   # (change to yugabyte user for execution of next steps)
     ```
 
-    <br>
-
     Ensure that the `yugabyte` user has permissions to SSH into the YugabyteDB nodes (as defined in `/etc/ssh/sshd_config`).
 
 1. Copy the SSH public key to each DB node.
@@ -354,7 +352,7 @@ If you are doing an airgapped installation, download the node exporter using a c
 
 On each node, perform the following as a user with sudo access:
 
-1. Copy the `node_exporter-....tar.gz` package file that you downloaded into the `/tmp` directory on each of the YugabyteDB nodes. Ensure this file is readable by the `centos` user on each node (or another user with sudo privileges).
+1. Copy the `node_exporter-1.3.1.linux-amd64.gz` package file that you downloaded into the `/tmp` directory on each of the YugabyteDB nodes. Ensure that this file is readable by the user (for example, `centos`).
 
 1. Run the following commands:
 
@@ -390,7 +388,7 @@ On each node, perform the following as a user with sudo access:
     
     Add the following to the `/etc/systemd/system/node_exporter.service` file:
 
-      ```conf
+    ```conf
       [Unit]
       Description=node_exporter - Exporter for machine metrics.
       Documentation=https://github.com/William-Yeh/ansible-prometheus
@@ -402,16 +400,13 @@ On each node, perform the following as a user with sudo access:
       [Service]
       Type=simple
 
-      #ExecStartPre=/bin/sh -c  " mkdir -p '/var/run/prometheus' '/var/log/prometheus' "
-      #ExecStartPre=/bin/sh -c  " chown -R prometheus '/var/run/prometheus' '/var/log/prometheus' "
-      #PIDFile=/var/run/prometheus/node_exporter.pid
-
       User=prometheus
       Group=prometheus
-
+      
       ExecStart=/opt/prometheus/node_exporter-1.3.1.linux-amd64/node_exporter  --web.listen-address=:9300 --collector.textfile.directory=/tmp/yugabyte/metrics
-      ```
-
+    
+    ```
+    
 1. Exit from vi, and continue, as follows:
 
     ```sh
@@ -597,7 +592,7 @@ As an alternative to setting crontab permissions, you can install systemd-specif
    WantedBy=default.target
    ```
 
-   <br><br>
+   
 
    `yb-tserver.service`
 
@@ -638,7 +633,7 @@ As an alternative to setting crontab permissions, you can install systemd-specif
    WantedBy=default.target
    ```
 
-   <br><br>`yb-zip_purge_yb_logs.service`
+   <br>`yb-zip_purge_yb_logs.service`
 
    ```sh
    [Unit]
@@ -656,7 +651,7 @@ As an alternative to setting crontab permissions, you can install systemd-specif
    WantedBy=multi-user.target
    ```
 
-   <br><br>
+   <br>
 
    `yb-zip_purge_yb_logs.timer`
 
@@ -676,7 +671,7 @@ As an alternative to setting crontab permissions, you can install systemd-specif
    WantedBy=timers.target
    ```
 
-   <br><br>
+   <br>
 
    `yb-clean_cores.service`
 
@@ -696,7 +691,7 @@ As an alternative to setting crontab permissions, you can install systemd-specif
    WantedBy=multi-user.target
    ```
 
-   <br><br>
+   <br>
 
    `yb-clean_cores.timer`
 
@@ -716,7 +711,7 @@ As an alternative to setting crontab permissions, you can install systemd-specif
    WantedBy=timers.target
    ```
 
-   <br><br>
+   <br>
 
    `yb-collect_metrics.service`
 
@@ -736,7 +731,7 @@ As an alternative to setting crontab permissions, you can install systemd-specif
    WantedBy=multi-user.target
    ```
 
-   <br><br>
+   <br>
 
    `yb-collect_metrics.timer`
 
@@ -778,13 +773,9 @@ You can remove YugabyteDB components and configuration from the database server 
   ./bin/yb-server-ctl.sh clean-instance
   ```
 
-  <br>This removes all YugabyteDB code and settings from the node, removing it from the Universe.
-
-{{< note title="Note" >}}
-
-If you cannot find the `bin` directory, it means YugabyteDB Anywhere already cleared it during a successful deletion of the universe.
-
-{{< /note >}}
+  This removes all YugabyteDB code and settings from the node, removing it from the Universe.
+  
+  If you cannot find the `bin` directory, it means YugabyteDB Anywhere already cleared it during a successful deletion of the universe.
 
 You shoud also erase the data from the volume mounted under the `/data` subdirectory, unless this volume is to be permanently erased by the underlying storage subsystem when the volume is deleted.
 
