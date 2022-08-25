@@ -362,7 +362,7 @@ On each node, perform the following as a user with sudo access:
     sudo mkdir /var/log/prometheus
     sudo mkdir /var/run/prometheus
     sudo mv /tmp/node_exporter-1.3.1.linux-amd64.tar  /opt/prometheus
-    sudo adduser prometheus # (also adds group “prometheus”)
+    sudo adduser --shell /bin/bash prometheus # (also adds group “prometheus”)
     sudo chown -R prometheus:prometheus /opt/prometheus
     sudo chown -R prometheus:prometheus /etc/prometheus
     sudo chown -R prometheus:prometheus /var/log/prometheus
