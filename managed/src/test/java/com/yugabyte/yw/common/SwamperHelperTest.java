@@ -8,26 +8,28 @@ import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.equalTo;
-import static org.hamcrest.Matchers.is;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.common.config.DummyRuntimeConfigFactoryImpl;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.AlertDefinition;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
-
+import com.yugabyte.yw.models.helpers.MetricCollectionLevel;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 import org.apache.commons.exec.OS;
@@ -39,7 +41,6 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.runners.MockitoJUnitRunner;
-import play.Configuration;
 import play.Environment;
 import play.Mode;
 import play.libs.Json;
@@ -48,7 +49,7 @@ import play.libs.Json;
 public class SwamperHelperTest extends FakeDBApplication {
   private Customer defaultCustomer;
 
-  @Mock Configuration appConfig;
+  @Mock Config appConfig;
 
   SwamperHelper swamperHelper;
 
@@ -61,7 +62,7 @@ public class SwamperHelperTest extends FakeDBApplication {
 
     ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
     Environment env = new Environment(new File("."), classLoader, Mode.TEST);
-    swamperHelper = new SwamperHelper(appConfig, env);
+    swamperHelper = new SwamperHelper(new DummyRuntimeConfigFactoryImpl(appConfig), env);
   }
 
   @After
@@ -71,44 +72,72 @@ public class SwamperHelperTest extends FakeDBApplication {
   }
 
   @Test
-  public void testWriteUniverseTargetJson() {
+  public void testWriteUniverseTargetNormalJson() {
+    testWriteUniverseTargetJson(MetricCollectionLevel.NORMAL, "metric/targets_normal.json");
+  }
+
+  @Test
+  public void testWriteUniverseTargetFullJson() {
+    testWriteUniverseTargetJson(MetricCollectionLevel.ALL, "metric/targets_all.json");
+  }
+
+  @Test
+  public void testWriteUniverseTargetMinimalJson() {
+    testWriteUniverseTargetJson(MetricCollectionLevel.MINIMAL, "metric/targets_minimal.json");
+  }
+
+  private void testWriteUniverseTargetJson(MetricCollectionLevel level, String expectedFile) {
     when(appConfig.getString("yb.swamper.targetPath")).thenReturn(SWAMPER_TMP_PATH);
+    when(appConfig.getString("yb.metrics.collection_level")).thenReturn(level.name().toLowerCase());
     Universe u = createUniverse(defaultCustomer.getCustomerId());
     u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdaterWithInactiveNodes());
     UserIntent ui = u.getUniverseDetails().getPrimaryCluster().userIntent;
     ui.provider = Provider.get(defaultCustomer.uuid, Common.CloudType.aws).get(0).uuid.toString();
     u.getUniverseDetails().upsertPrimaryCluster(ui, null);
 
+    String targetFilePath = SWAMPER_TMP_PATH + "yugabyte." + u.universeUUID + ".json";
     try {
       swamperHelper.writeUniverseTargetJson(u.universeUUID);
-      BufferedReader br =
-          new BufferedReader(
-              new FileReader(SWAMPER_TMP_PATH + "yugabyte." + u.universeUUID + ".json"));
+      BufferedReader br = new BufferedReader(new FileReader(targetFilePath));
       String line;
       StringBuilder sb = new StringBuilder();
       while ((line = br.readLine()) != null) {
         sb.append(line);
       }
 
-      JsonNode targetsJson = Json.parse(sb.toString());
-      // no masters in this node details
-      assertThat(targetsJson.size(), is(equalTo(12)));
-      List<String> targetTypes = new ArrayList<>();
-      for (SwamperHelper.TargetType t : Arrays.asList(SwamperHelper.TargetType.values())) {
-        targetTypes.add(t.toString());
-      }
-      for (int i = 0; i < targetsJson.size(); ++i) {
-        JsonNode target = targetsJson.get(i);
-        assertTrue(target.get("targets").isArray());
-        assertThat(target.get("targets").size(), equalTo(1));
-        assertThat(target.get("targets").toString(), RegexMatcher.matchesRegex("(.*)(|:)([0-9]*)"));
-        JsonNode labels = target.get("labels");
-        assertThat(labels.get("node_prefix").asText(), equalTo("host"));
-        assertTrue(targetTypes.contains(labels.get("export_type").asText().toUpperCase()));
-      }
+      ArrayNode targetsJson = (ArrayNode) Json.parse(sb.toString());
+      ArrayNode targetsExpectedJson = (ArrayNode) TestUtils.readResourceAsJson(expectedFile);
+
+      List<JsonNode> targets = new ArrayList<>();
+      List<JsonNode> expectedTargets = new ArrayList<>();
+      targetsJson.forEach(targets::add);
+      targetsExpectedJson.forEach(expectedTargets::add);
+      assertThat(targets, containsInAnyOrder(expectedTargets.toArray()));
     } catch (Exception e) {
-      assertTrue(false);
+      fail("Error occurred reading target json file: " + targetFilePath);
     }
+  }
+
+  @Test
+  public void testWriteUniverseTargetOffJson() {
+    when(appConfig.getString("yb.swamper.targetPath")).thenReturn(SWAMPER_TMP_PATH);
+    when(appConfig.getString("yb.metrics.collection_level"))
+        .thenReturn(MetricCollectionLevel.OFF.name().toLowerCase());
+    Universe u = createUniverse(defaultCustomer.getCustomerId());
+    u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdaterWithInactiveNodes());
+    UserIntent ui = u.getUniverseDetails().getPrimaryCluster().userIntent;
+    ui.provider = Provider.get(defaultCustomer.uuid, Common.CloudType.aws).get(0).uuid.toString();
+    u.getUniverseDetails().upsertPrimaryCluster(ui, null);
+
+    File targetFile = new File(SWAMPER_TMP_PATH + "yugabyte." + u.universeUUID + ".json");
+    try {
+      targetFile.createNewFile();
+      assertTrue(targetFile.exists());
+    } catch (IOException e) {
+      fail("Error occurred creating target json file: " + targetFile);
+    }
+    swamperHelper.writeUniverseTargetJson(u.universeUUID);
+    assertFalse(targetFile.exists());
   }
 
   @Test
@@ -134,6 +163,8 @@ public class SwamperHelperTest extends FakeDBApplication {
     if (OS.isFamilyMac()) {
       swamperFilePath = "/System";
     }
+    when(appConfig.getString("yb.metrics.collection_level"))
+        .thenReturn(MetricCollectionLevel.NORMAL.name().toLowerCase());
     when(appConfig.getString("yb.swamper.targetPath")).thenReturn(swamperFilePath);
     Universe u = createUniverse();
     u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater());

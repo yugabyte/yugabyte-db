@@ -46,6 +46,7 @@ import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUniverseKeyCache;
 import com.yugabyte.yw.common.kms.util.GcpEARServiceUtil;
 import com.yugabyte.yw.common.metrics.PlatformMetricsProcessor;
+import com.yugabyte.yw.common.metrics.SwamperTargetsFileUpdater;
 import com.yugabyte.yw.common.services.LocalYBClientService;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.common.ybflyway.YBFlywayInit;
@@ -132,6 +133,7 @@ public class Module extends AbstractModule {
       bind(PlatformMetricsProcessor.class).asEagerSingleton();
       bind(AlertsGarbageCollector.class).asEagerSingleton();
       bind(AlertConfigurationWriter.class).asEagerSingleton();
+      bind(SwamperTargetsFileUpdater.class).asEagerSingleton();
       bind(PlatformReplicationManager.class).asEagerSingleton();
       bind(PlatformInstanceClientFactory.class).asEagerSingleton();
       bind(PlatformReplicationHelper.class).asEagerSingleton();
