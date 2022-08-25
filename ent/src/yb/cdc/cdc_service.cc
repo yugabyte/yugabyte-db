@@ -543,6 +543,32 @@ class CDCServiceImpl::Impl {
     return it->cdc_state_checkpoint.last_active_time;
   }
 
+  void UpdateFollowerCache(const ProducerTabletInfo& producer_tablet, const OpId& checkpoint) {
+    auto now = CoarseMonoClock::Now();
+    SharedLock<rw_spinlock> lock(mutex_);
+    auto it = tablet_checkpoints_.find(producer_tablet);
+    if (it == tablet_checkpoints_.end()) {
+      TabletCheckpoint sent_checkpoint = {
+          .op_id = OpId::Max(),
+          .last_update_time = now,
+          .last_active_time = now,
+      };
+      TabletCheckpoint commit_checkpoint = {
+          .op_id = checkpoint,
+          .last_update_time = now,
+          .last_active_time = now,
+      };
+      tablet_checkpoints_.emplace(TabletCheckpointInfo{
+          .producer_tablet_info = producer_tablet,
+          .cdc_state_checkpoint = commit_checkpoint,
+          .sent_checkpoint = sent_checkpoint,
+          .mem_tracker = nullptr,
+      });
+    } else {
+      it->cdc_state_checkpoint.last_active_time = now;
+    }
+  }
+
   Status CheckStreamActive(const ProducerTabletInfo& producer_tablet) {
     SharedLock<rw_spinlock> l(mutex_);
     auto it = tablet_checkpoints_.find(producer_tablet);
@@ -1774,11 +1800,7 @@ Result<std::shared_ptr<client::TableHandle>> CDCServiceImpl::GetCdcStateTable() 
       // Check stream associated with the tablet is active or not.
       // Don't consider those inactive stream for the min_checkpoint calculation.
       CoarseTimePoint latest_active_time = CoarseTimePoint ::min();
-      // if current tsever is the tablet LEADER, send the FOLLOWER tablets to
-      // update their active_time in their CDCService Cache.
-      std::shared_ptr<tablet::TabletPeer> tablet_peer;
-      Status s = tablet_manager_->GetTabletPeer(tablet_id, &tablet_peer);
-      if (s.ok() && record.source_type == CDCSDK && IsTabletPeerLeader(tablet_peer)) {
+      if (record.source_type == CDCSDK) {
         auto status = impl_->CheckStreamActive(producer_tablet);
         if (!status.ok()) {
           // Inactive stream read from cdc_state table are not considered for the minimum
@@ -2212,7 +2234,7 @@ Result<std::shared_ptr<client::TableHandle>> CDCServiceImpl::GetCdcStateTable() 
         for (int stream_idx = 0; stream_idx < req->stream_ids_size(); stream_idx++) {
           ProducerTabletInfo producer_tablet = {
               "" /* UUID */, req->stream_ids(stream_idx), req->tablet_ids(i)};
-          impl_->UpdateActiveTime(producer_tablet);
+          impl_->UpdateFollowerCache(producer_tablet, cdc_sdk_op);
         }
       }
     }
