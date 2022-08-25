@@ -19,6 +19,7 @@ import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.NodeActionType;
+import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -36,7 +37,7 @@ import java.util.stream.Collectors;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.runners.MockitoJUnitRunner;
+import org.mockito.junit.MockitoJUnitRunner;
 import org.yb.client.ChangeMasterClusterConfigResponse;
 import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.YBClient;
@@ -105,9 +106,27 @@ public class ReleaseInstanceFromUniverseTest extends CommissionerBaseTest {
     }
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     when(mockNodeManager.nodeCommand(any(), any())).thenReturn(new ShellResponse());
-    ShellResponse dummyShellResponse = new ShellResponse();
-    dummyShellResponse.message = "true";
-    when(mockNodeManager.nodeCommand(any(), any())).thenReturn(dummyShellResponse);
+    when(mockNodeManager.nodeCommand(any(), any()))
+        .then(
+            invocation -> {
+              if (invocation.getArgument(0).equals(NodeManager.NodeCommandType.List)) {
+                ShellResponse listResponse = new ShellResponse();
+                NodeTaskParams params = invocation.getArgument(1);
+                if (params.nodeUuid == null) {
+                  listResponse.message = "{\"universe_uuid\":\"" + params.universeUUID + "\"}";
+                } else {
+                  listResponse.message =
+                      "{\"universe_uuid\":\""
+                          + params.universeUUID
+                          + "\", "
+                          + "\"node_uuid\": \""
+                          + params.nodeUuid
+                          + "\"}";
+                }
+                return listResponse;
+              }
+              return ShellResponse.create(ShellResponse.ERROR_CODE_SUCCESS, "true");
+            });
   }
 
   private TaskInfo submitTask(NodeTaskParams taskParams, String nodeName, int version) {

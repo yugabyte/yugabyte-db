@@ -145,7 +145,8 @@ public class NodeManager extends DevopsBase {
     Add_Authorized_Key,
     Remove_Authorized_Key,
     Reboot,
-    RunHooks
+    RunHooks,
+    Wait_For_SSH
   }
 
   public enum CertRotateAction {
@@ -1885,6 +1886,12 @@ public class NodeManager extends DevopsBase {
             commandArgs.add("--runtime_args");
             commandArgs.add(Json.stringify(Json.toJson(runtimeArgs)));
           }
+          commandArgs.addAll(getAccessKeySpecificCommand(nodeTaskParam, type));
+          break;
+        }
+      case Wait_For_SSH:
+        {
+          log.info("Connecting to node {}", nodeTaskParam.nodeName);
           commandArgs.addAll(getAccessKeySpecificCommand(nodeTaskParam, type));
           break;
         }
