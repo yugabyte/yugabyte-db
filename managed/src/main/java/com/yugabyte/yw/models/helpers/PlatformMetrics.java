@@ -81,6 +81,7 @@ public enum PlatformMetrics {
   ALERT_MANAGER_STATUS("Common alert manager status for customer", Unit.STATUS),
   ALERT_MANAGER_CHANNEL_STATUS("Alert manager channel status", Unit.STATUS),
   METRIC_PROCESSOR_STATUS("Platform metrics processor status", Unit.STATUS),
+  SWAMPER_FILE_UPDATER_STATUS("Swamper target updater status", Unit.STATUS),
 
   UNIVERSE_EXISTS("Flag, indicating that universe exists", Unit.STATUS, false),
   UNIVERSE_PAUSED("Flag, indicating that universe is paused", Unit.STATUS, false),
