@@ -278,6 +278,12 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   void ScheduleXClusterParentTabletDeletionTask();
 
   void ScheduleXClusterNSReplicationAddTableTask();
+  Result<scoped_refptr<TableInfo>> GetTableById(const TableId& table_id) const override;
+
+  void AddPendingBackFill(const TableId& id) override {
+    std::lock_guard<MutexType> lock(backfill_mutex_);
+    pending_backfill_tables_.emplace(id);
+  }
 
  private:
   friend class SnapshotLoader;
@@ -435,6 +441,8 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   rpc::Scheduler& Scheduler() override;
 
   int64_t LeaderTerm() override;
+
+  Result<bool> IsTableUndergoingPitrRestore(const TableInfo& table_info) override;
 
   Result<bool> IsTablePartOfSomeSnapshotSchedule(const TableInfo& table_info) override;
 

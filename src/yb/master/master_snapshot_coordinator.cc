@@ -813,15 +813,50 @@ class MasterSnapshotCoordinator::Impl {
     return result;
   }
 
+  Result<bool> TableMatchesSchedule(
+      const TableIdentifiersPB& table_identifiers, const SysTablesEntryPB& pb, const string& id) {
+    for (const auto& table_identifier : table_identifiers.tables()) {
+      if (VERIFY_RESULT(TableMatchesIdentifier(id, pb, table_identifier))) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   Result<bool> IsTableCoveredBySomeSnapshotSchedule(const TableInfo& table_info) {
     auto lock = table_info.LockForRead();
     {
-      std::lock_guard<std::mutex> l(mutex_);
+      std::lock_guard<decltype(mutex_)> l(mutex_);
       for (const auto& schedule : schedules_) {
-        for (const auto& table_identifier : schedule->options().filter().tables().tables()) {
-          if (VERIFY_RESULT(TableMatchesIdentifier(table_info.id(),
-                                                   lock->pb,
-                                                   table_identifier))) {
+        if (VERIFY_RESULT(TableMatchesSchedule(
+                schedule->options().filter().tables(), lock->pb, table_info.id()))) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  Result<bool> IsTableUndergoingPitrRestore(const TableInfo& table_info) {
+    {
+      std::lock_guard<decltype(mutex_)> l(mutex_);
+      for (const auto& restoration : restorations_) {
+        // If restore does not have a snapshot schedule then it
+        // is not a PITR restore.
+        if (!restoration->schedule_id()) {
+          continue;
+        }
+        // If PITR restore is already complete.
+        if (restoration->complete_time()) {
+          continue;
+        }
+        // Ongoing PITR restore.
+        SnapshotScheduleState& schedule = VERIFY_RESULT(
+            FindSnapshotSchedule(restoration->schedule_id()));
+        {
+          auto lock = table_info.LockForRead();
+          if (VERIFY_RESULT(TableMatchesSchedule(
+                  schedule.options().filter().tables(), lock->pb, table_info.id()))) {
             return true;
           }
         }
@@ -1079,6 +1114,15 @@ class MasterSnapshotCoordinator::Impl {
     task->SetRestorationId(operation.restoration_id);
     if (operation.sys_catalog_restore_needed) {
       task->SetMetadata(tablet_info->table()->LockForRead()->pb);
+      // Populate metadata for colocated tables.
+      if (tablet_info->colocated()) {
+        auto lock = tablet_info->LockForRead();
+        for (const auto& table_id : lock->pb.table_ids()) {
+          auto table_info_result = context_.GetTableById(table_id);
+          LOG_IF(FATAL, !table_info_result.ok()) << "Table not found for table id" << table_id;
+          task->SetColocatedTableMetadata(table_id, (*table_info_result)->LockForRead()->pb);
+        }
+      }
     }
     // For sequences_data_table, we should set partial restore and db_oid.
     if (tablet_info->table()->id() == kPgSequencesDataTableId) {
@@ -1530,6 +1574,16 @@ class MasterSnapshotCoordinator::Impl {
     }
     SubmitWrite(std::move(write_batch), leader_term, &context_);
 
+    // Resume index backfill for restored tables.
+    // They are actually resumed by the catalog manager bg tasks thread.
+    if (restoration->schedule_id()) {
+      for (const auto& entry : restoration->MasterMetadata()) {
+        if (entry.second == SysRowEntryType::TABLE) {
+          context_.AddPendingBackFill(entry.first);
+        }
+      }
+    }
+
     // Enable tablet splitting again.
     if (restoration->schedule_id()) {
       context_.EnableTabletSplitting("PITR");
@@ -1872,6 +1926,11 @@ Result<SnapshotSchedulesToObjectIdsMap>
 Result<bool> MasterSnapshotCoordinator::IsTableCoveredBySomeSnapshotSchedule(
     const TableInfo& table_info) {
   return impl_->IsTableCoveredBySomeSnapshotSchedule(table_info);
+}
+
+Result<bool> MasterSnapshotCoordinator::IsTableUndergoingPitrRestore(
+    const TableInfo& table_info) {
+  return impl_->IsTableUndergoingPitrRestore(table_info);
 }
 
 void MasterSnapshotCoordinator::SysCatalogLoaded(int64_t term) {
