@@ -30,7 +30,7 @@ Geo-partitioning allows you to move data closer to users to:
 
 Geo-partitioning of data enables fine-grained, row-level control over the placement of table data across different geographical locations. This is accomplished in two steps:
 
-* partition a table into user-defined table partitions
+1. Partition a table into user-defined table partitions.
 * pin these partitions to the desired geographic locations by configuring metadata for each partition
 
 To create user-defined table partitions, designate a column of the table as the partition column that will be used to geo-partition the data. The value of this column for a given row is used to determine the table partition that the row belongs to.
