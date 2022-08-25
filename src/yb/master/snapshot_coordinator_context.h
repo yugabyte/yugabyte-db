@@ -85,6 +85,10 @@ class SnapshotCoordinatorContext {
 
   virtual void EnableTabletSplitting(const std::string& feature) = 0;
 
+  virtual Result<scoped_refptr<TableInfo>> GetTableById(const TableId& table_id) const = 0;
+
+  virtual void AddPendingBackFill(const TableId& id) = 0;
+
   virtual ~SnapshotCoordinatorContext() = default;
 };
 

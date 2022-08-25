@@ -132,6 +132,10 @@ DEFINE_test_flag(
     int32, slowdown_backfill_job_deletion_ms, 0,
     "Slows down backfill job deletion so that backfill job can be read by test.");
 
+DEFINE_test_flag(
+    bool, skip_index_backfill, false,
+    "Skips backfilling the data on tservers and leaves the index in inconsistent state.");
+
 namespace yb {
 namespace master {
 
@@ -378,6 +382,12 @@ Status MultiStageAlterTable::StartBackfillingData(
   TRACE("Starting backfill process");
   VLOG(0) << __func__ << " starting backfill on " << indexed_table->ToString() << " for "
           << yb::ToString(idx_infos);
+
+  if (FLAGS_TEST_skip_index_backfill) {
+    TRACE("Skipping backfill of data on tservers");
+    LOG(INFO) << "Skipping backfill of data on tservers";
+    return Status::OK();
+  }
 
   auto backfill_table = std::make_shared<BackfillTable>(
       catalog_manager->master_, catalog_manager->AsyncTaskPool(), indexed_table, idx_infos,

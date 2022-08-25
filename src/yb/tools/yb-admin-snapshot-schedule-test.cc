@@ -429,6 +429,15 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
     options->num_masters = 3;
   }
 
+  Result<Timestamp> GetCurrentTime() {
+    // IMPORTANT NOTE: THE SLEEP IS TEMPORARY AND
+    // SHOULD BE REMOVED ONCE GH#12796 IS FIXED.
+    SleepFor(MonoDelta::FromSeconds(4 * kTimeMultiplier));
+    auto time = Timestamp(VERIFY_RESULT(WallClock()->Now()).time_point);
+    LOG(INFO) << "Time to restore: " << time.ToHumanReadableTime();
+    return time;
+  }
+
   std::unique_ptr<CppCassandraDriver> cql_driver_;
 };
 
@@ -497,13 +506,6 @@ class YbAdminSnapshotScheduleTestWithYsql : public YbAdminSnapshotScheduleTest {
       LOG(INFO) << "Got result: " << res << ", expected: " << expectation;
       return res == expectation;
     }, 5s * kTimeMultiplier, "Wait for query to match expectation");
-  }
-
-  Result<Timestamp> GetCurrentTime() {
-    // IMPORTANT NOTE: THE SLEEP IS TEMPORARY AND
-    // SHOULD BE REMOVED ONCE GH#12796 IS FIXED.
-    SleepFor(MonoDelta::FromSeconds(4 * kTimeMultiplier));
-    return Timestamp(VERIFY_RESULT(WallClock()->Now()).time_point);
   }
 
   void TestPgsqlDropDefault(bool colocated = false);
@@ -1012,7 +1014,7 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlCreateTable) {
   CheckAfterPITR = [&](std::string prefix, std::string option) {
     std::string table_name = prefix + "_table";
 
-    // Wait for Restore to complete.
+    // Wait for Restore to complete. Applicable only for non-colocated tablets.
     ASSERT_OK(WaitFor([this]() -> Result<bool> {
       bool all_tablets_hidden = true;
       for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
@@ -1023,7 +1025,8 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlCreateTable) {
         controller.set_timeout(30s);
         RETURN_NOT_OK(proxy.ListTablets(req, &resp, &controller));
         for (const auto& tablet : resp.status_and_schema()) {
-          if (tablet.tablet_status().namespace_name() == client::kTableName.namespace_name()) {
+          if (tablet.tablet_status().namespace_name() == client::kTableName.namespace_name()
+              && tablet.tablet_status().table_name().find("colocated.parent") == string::npos) {
             LOG(INFO) << "Tablet " << tablet.tablet_status().tablet_id() << " of table "
                       << tablet.tablet_status().table_name() << ", hidden status "
                       << tablet.tablet_status().is_hidden();
@@ -1119,6 +1122,12 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlCreateIndex) {
     std::string table_idx_name = prefix + "_table_idx";
 
     ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0 ON $1 (value)", table_idx_name, table_name));
+
+    // Scans should use the index now.
+    bool is_index_scan = ASSERT_RESULT(
+        conn.HasIndexScan(Format("SELECT value FROM $0 where value='before'", table_name)));
+    LOG(INFO) << "Scans uses index scan " << is_index_scan;
+    ASSERT_TRUE(is_index_scan);
   };
 
   CheckAfterPITR = [&](std::string prefix, std::string option) {
@@ -1128,8 +1137,22 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlCreateIndex) {
     auto res = ASSERT_RESULT(conn.FetchValue<std::string>(Format(
         "SELECT value FROM $0", table_name)));
     ASSERT_EQ(res, "before");
+
+    // Scans should not use index.
+    bool is_index_scan = ASSERT_RESULT(
+        conn.HasIndexScan(Format("SELECT value FROM $0 where value='before'", table_name)));
+    LOG(INFO) << "Post restore scans uses index scan " << is_index_scan;
+    ASSERT_FALSE(is_index_scan);
+
     ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0 ON $1 (value)", table_idx_name, table_name));
     ASSERT_OK(conn.ExecuteFormat("UPDATE $0 SET value = 'after'", table_name));
+
+    // Scans should use index.
+    is_index_scan = ASSERT_RESULT(
+        conn.HasIndexScan(Format("SELECT value FROM $0 where value='after'", table_name)));
+    LOG(INFO) << "Scans uses index scan " << is_index_scan;
+    ASSERT_TRUE(is_index_scan);
+
     res = ASSERT_RESULT(conn.FetchValue<std::string>(Format("SELECT value FROM $0", table_name)));
     ASSERT_EQ(res, "after");
   };
@@ -1153,14 +1176,27 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlDropIndex) {
   };
 
   ExecAfterRestoreTS = [&](std::string prefix, std::string option) {
+    std::string table_name = prefix + "_table";
     std::string table_idx_name = prefix + "_table_idx";
 
     ASSERT_OK(conn.ExecuteFormat("DROP INDEX $0", table_idx_name));
+
+    // Reads should not use the index scan.
+    bool is_index_scan = ASSERT_RESULT(
+        conn.HasIndexScan(Format("SELECT value FROM $0 where value='before'", table_name)));
+    LOG(INFO) << "Post drop scans uses index scan " << is_index_scan;
+    ASSERT_FALSE(is_index_scan);
   };
 
   CheckAfterPITR = [&](std::string prefix, std::string option) {
     std::string table_name = prefix + "_table";
     std::string table_idx_name = prefix + "_table_idx";
+
+    // Reads should use the index scan now.
+    bool is_index_scan = ASSERT_RESULT(
+        conn.HasIndexScan(Format("SELECT value FROM $0 where value='before'", table_name)));
+    LOG(INFO) << "Post restore scans uses index scan " << is_index_scan;
+    ASSERT_TRUE(is_index_scan);
 
     auto res = ASSERT_RESULT(conn.FetchValue<std::string>(Format(
         "SELECT value FROM $0", table_name)));
@@ -1170,6 +1206,10 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlDropIndex) {
     res = ASSERT_RESULT(conn.FetchValue<std::string>(Format(
         "SELECT value FROM $0 WHERE key = 2", table_name)));
     ASSERT_EQ(res, "after");
+
+    is_index_scan = ASSERT_RESULT(
+        conn.HasIndexScan(Format("SELECT value FROM $0 where value='after'", table_name)));
+    ASSERT_TRUE(is_index_scan);
   };
 
   RunTestWithColocatedParam(schedule_id);
@@ -1984,8 +2024,11 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlSequenceUndoCreateSequence
     std::string table_name = prefix + "_table";
     std::string sequence_name = prefix + "_value_seq";
 
-    ASSERT_NOK(conn.ExecuteFormat(
-        "INSERT INTO $0 VALUES (1, nextval('$1'))", table_name, sequence_name));
+    std::string insert_query =
+        "INSERT INTO " + table_name + " VALUES ($0, nextval('" + sequence_name + "'))";
+    LOG(INFO) << "Insert query " << insert_query;
+    ASSERT_OK(WaitForInsertQueryToStopWorking(insert_query, &conn, 1));
+
     ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 45)", table_name));
 
     // Ensure that you are able to create sequences post restore.
@@ -2306,6 +2349,11 @@ TEST_F(YbAdminSnapshotScheduleTest, UndeleteIndex) {
       "WITH transactions = { 'enabled' : true }"));
   ASSERT_OK(conn.ExecuteQuery("CREATE UNIQUE INDEX test_table_idx ON test_table (value)"));
 
+  // Wait for backfill to complete.
+  // TODO(Sanket): We should remove this sleep once
+  // https://github.com/yugabyte/yugabyte-db/issues/13744 is fixed.
+  SleepFor(MonoDelta::FromSeconds(5 * kTimeMultiplier));
+
   ASSERT_OK(conn.ExecuteQuery("INSERT INTO test_table (key, value) VALUES (1, 'value')"));
 
   Timestamp time(ASSERT_RESULT(WallClock()->Now()).time_point);
@@ -2320,6 +2368,54 @@ TEST_F(YbAdminSnapshotScheduleTest, UndeleteIndex) {
 
   auto res = ASSERT_RESULT(conn.FetchValue<int32_t>(
       "SELECT key FROM test_table WHERE value = 'value'"));
+
+  ASSERT_EQ(res, 1);
+}
+
+TEST_F(YbAdminSnapshotScheduleTest, UndeleteIndexToBackfillTime) {
+  auto schedule_id = ASSERT_RESULT(PrepareCql());
+
+  auto conn = ASSERT_RESULT(CqlConnect(client::kTableName.namespace_name()));
+
+  ASSERT_OK(conn.ExecuteQuery(
+      "CREATE TABLE test_table (key INT PRIMARY KEY, value TEXT) "
+      "WITH transactions = { 'enabled' : true }"));
+
+  // Insert enough data so as to have a non-trivial backfill.
+  for (int i = 0; i < 1000; i++) {
+    ASSERT_OK(conn.ExecuteQuery(
+        Format("INSERT INTO test_table (key, value) VALUES ($0, 'before$1')", i, i)));
+  }
+
+  // Leave the index in an inconsistent state.
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_skip_index_backfill", "true"));
+  ASSERT_OK(conn.ExecuteQuery("CREATE UNIQUE INDEX test_table_idx ON test_table (value)"));
+
+  auto time = ASSERT_RESULT(GetCurrentTime());
+  LOG(INFO) << "Time to restore " << time.ToHumanReadableTime();
+
+  ASSERT_OK(conn.ExecuteQuery("DROP INDEX test_table_idx"));
+
+  ASSERT_OK(conn.ExecuteQuery("INSERT INTO test_table (key, value) VALUES (1001, 'after')"));
+
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_skip_index_backfill", "false"));
+
+  LOG(INFO) << "Restoring to a time when backfill was in progress";
+  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
+
+  // Wait for backfill to complete.
+  SleepFor(MonoDelta::FromSeconds(5 * kTimeMultiplier));
+
+  // Check for unique constraint.
+  for (int i = 0; i < 1000; i++) {
+    auto err_msg = conn.ExecuteQuery(
+        Format("INSERT INTO test_table (key, value) VALUES ($0, 'before$1')", i + 2000, i));
+    ASSERT_FALSE(err_msg.ok());
+    ASSERT_STR_CONTAINS(err_msg.ToString(), "Duplicate value disallowed by unique index");
+  }
+
+  auto res = ASSERT_RESULT(conn.FetchValue<int32_t>(
+      "SELECT key FROM test_table WHERE value = 'before1'"));
 
   ASSERT_EQ(res, 1);
 }
