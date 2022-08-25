@@ -77,9 +77,14 @@ public class AnsibleCreateServer extends NodeTaskBase {
     if (skipProvision) {
       log.info("Skipping ansible creation.");
     } else if (instanceExists(taskParams())) {
-      log.info("Skipping creation of already existing instance {}", taskParams().nodeName);
+      log.info("Waiting for SSH to succeed on existing instance {}", taskParams().nodeName);
+      getNodeManager()
+          .nodeCommand(NodeManager.NodeCommandType.Wait_For_SSH, taskParams())
+          .processErrors();
+      setNodeStatus(NodeStatus.builder().nodeState(NodeState.InstanceCreated).build());
     } else {
-      //   Execute the ansible command.
+      // Execute the ansible command to create the node.
+      // It waits for SSH connection to work.
       ShellResponse response =
           getNodeManager()
               .nodeCommand(NodeManager.NodeCommandType.Create, taskParams())

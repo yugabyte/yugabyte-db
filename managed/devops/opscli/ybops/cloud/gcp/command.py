@@ -13,7 +13,7 @@ from ybops.cloud.common.command import InstanceCommand, QueryCommand, AccessComm
 from ybops.cloud.common.method import AddAuthorizedKey, ConfigureInstancesMethod, \
     ListInstancesMethod, AccessCreateVaultMethod, InitYSQLMethod, UpdateDiskMethod, \
     CronCheckMethod, AccessEditVaultMethod, AccessDeleteKeyMethod, TransferXClusterCerts, \
-    VerifySSHConnection, RemoveAuthorizedKey, RebootInstancesMethod, RunHooks
+    VerifySSHConnection, RemoveAuthorizedKey, RebootInstancesMethod, RunHooks, WaitForSSHConnection
 from ybops.cloud.gcp.method import GcpCreateInstancesMethod, GcpProvisionInstancesMethod, \
     GcpQueryRegionsMethod, GcpQueryZonesMethod, GcpQueryInstanceTypesMethod, \
     GcpQueryCurrentHostMethod, GcpQueryPreemptibleInstanceMethod, GcpDestroyInstancesMethod, \
@@ -53,6 +53,7 @@ class GcpInstanceCommand(InstanceCommand):
         self.add_method(RemoveAuthorizedKey(self))
         self.add_method(RebootInstancesMethod(self))
         self.add_method(RunHooks(self))
+        self.add_method(WaitForSSHConnection(self))
 
 
 class GcpQueryCommand(QueryCommand):
