@@ -14,13 +14,12 @@ aliases:
   - /preview/api/ysql/
   - /preview/api/postgresql/
 type: indexpage
+showRightNav: true
 ---
 
-## Introduction
+Yugabyte Structured Query Language (YSQL) is an ANSI SQL, fully-relational API that is best fit for scale-out RDBMS applications that need ultra resilience, massive write scalability, and geographic data distribution. The YugabyteDB SQL processing layer is built by using the PostgreSQL code (starting with version 11.2) directly.
 
-Yugabyte Structured Query Language (YSQL) is an ANSI SQL, fully-relational API that is best fit for scale-out RDBMS applications that need ultra resilience, massive write scalability and geographic data distribution. The YugabyteDB SQL processing layer is built by using the PostgreSQL code (starting with version 11.2) directly.
-
-YSQL therefore supports all of the traditional relational modeling features, such as referential integrity (implemented using a foreign key constraint from a child table to a primary key to its parent table), joins, partial indexes, triggers and stored procedures. It extends the familiar transactional notions into the YugabyteDB Distributed SQL Database architecture.
+YSQL therefore supports all of the traditional relational modeling features, such as referential integrity (implemented using a foreign key constraint from a child table to a primary key to its parent table), joins, partial indexes, triggers, and stored procedures. It extends the familiar transactional notions into the YugabyteDB Distributed SQL Database architecture.
 
 The main components of YSQL include the data definition language (DDL), the data manipulation language (DML), the data control language (DCL), built-in SQL functions, and the PL/pgSQL procedural language for stored procedures. These components depend on underlying features like the data type system (common for both SQL and PL/pgSQL), expressions, database objects with qualified names, and comments. Other components support purposes such as system control, transaction control and performance tuning.
 
@@ -34,10 +33,9 @@ To find the version of the PostgreSQL processing layer used in YugabyteDB, you c
 select rpad(version(), 18)||'...' as v;
 ```
 
-For the “latest” release series of YugabyteDB, as reflected in this main documentation URL,
-the query result shows that the PostgreSQL version is 11.2:
+For the latest release series of YugabyteDB, as reflected in this main documentation URL, the query result shows that the PostgreSQL version is 11.2:
 
-```
+```output
            v
 -----------------------
  PostgreSQL 11.2-YB...
@@ -51,7 +49,7 @@ You can explore the basics of the YSQL API using the [Quick Start](../../quick-s
 
 ## The SQL language
 
-The section [The SQL language](./the-sql-language) describes of all of the YugabyteDB SQL statements. Each statement has its own dedicated page. Each page starts with a formal specification of the syntax: both as a _railroad diagram_; and as a _grammar_ using the PostgreSQL convention. Then it explains the semantics and illustrates the explanation with code examples.
+The section [YSQL statements](./the-sql-language) describes of all of the YugabyteDB SQL statements. Each statement has its own dedicated page. Each page starts with a formal specification of the syntax: both as a _railroad diagram_; and as a _grammar_ using the PostgreSQL convention. Then it explains the semantics and illustrates the explanation with code examples.
 
 ## Supporting language elements
 
@@ -62,7 +60,7 @@ This section lists the main elements that support the YugabyteDB SQL language su
 - Data types: Most PostgreSQL-compatible data types are supported. List of [data types](datatypes/).
 - [Built-in SQL functions](exprs/)
 
-## Make sure that you have your own sandbox YugabyteDB cluster
+## Use your own YugabyteDB sandbox cluster
 
 It always helps to have access to a sandbox YugabyteDB cluster where you can, when you need to, do whatever you want without considering any risk of doing harm. Here are the kinds of things you'll want to do:
 
