@@ -208,6 +208,7 @@ std::string CreateMetricDescription(const MemTracker& mem_tracker) {
   return CreateMetricLabel(mem_tracker);
 }
 
+#ifdef TCMALLOC_ENABLED
 // If the mem_tracker is in Postgres backends, the default value of
 // FLAGS_mem_tracker_tcmalloc_gc_release_bytes will be overriden by a dedicated value for Postgres
 // from FLAGS_pg_mem_tracker_tcmalloc_gc_release_bytes.
@@ -218,6 +219,7 @@ void OverrideTcmallocGcThresholdForPg() {
               << FLAGS_mem_tracker_tcmalloc_gc_release_bytes;
   }
 }
+#endif
 
 } // namespace
 
