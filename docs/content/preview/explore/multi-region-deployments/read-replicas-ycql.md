@@ -3,6 +3,7 @@ title: Read replicas
 headerTitle: Read replicas
 linkTitle: Read replicas
 description: Read replicas
+headContent: Replicate data asynchronously to one or more read replica clusters
 aliases:
   - /preview/explore/multi-region-deployments/read-replicas
 menu:

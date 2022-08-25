@@ -37,7 +37,7 @@ While primary election is Raft-based in MongoDB, actual data replication is not.
 
 ## Durable and fast writes
 
-Durability can be achieved in MongoDB only w/ majority writeConcern which suffers from xCluster replication lag. On the other hand, durability is by default in YugabyteDB since the write path is based on Raft's synchronous data replication and majority consensus. Synchronous replication is typically of lower latency than the completely asynchronous approach of MongoDB.
+Durability can be achieved in MongoDB only w/ majority writeConcern which suffers from asynchronous replication lag. On the other hand, durability is by default in YugabyteDB since the write path is based on Raft's synchronous data replication and majority consensus. Synchronous replication is typically of lower latency than the completely asynchronous approach of MongoDB.
 
 ## Linearizable and fast reads
 
