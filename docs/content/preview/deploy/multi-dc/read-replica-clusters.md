@@ -60,6 +60,6 @@ You can deploy a read replica cluster that asynchronously replicates data with a
    - [--placement_zone *placement_zone*](../../../reference/configuration/yb-tserver/#placement-zone)
    - [--placement_uuid *read_replica_id*](../../../reference/configuration/yb-tserver/#placement-uuid)
 
-    <br>The placements should match the information in step 3.
+    The placements should match the information in step 3.
 
 The primary cluster should begin xCluster replication with the read replica cluster.
