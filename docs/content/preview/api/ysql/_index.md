@@ -21,13 +21,29 @@ Yugabyte Structured Query Language (YSQL) is an ANSI SQL, fully-relational API t
 
 YSQL therefore supports all of the traditional relational modeling features, such as referential integrity (implemented using a foreign key constraint from a child table to a primary key to its parent table), joins, partial indexes, triggers, and stored procedures. It extends the familiar transactional notions into the YugabyteDB Distributed SQL Database architecture.
 
+## The SQL language
+
 The main components of YSQL include the data definition language (DDL), the data manipulation language (DML), the data control language (DCL), built-in SQL functions, and the PL/pgSQL procedural language for stored procedures. These components depend on underlying features like the data type system (common for both SQL and PL/pgSQL), expressions, database objects with qualified names, and comments. Other components support purposes such as system control, transaction control and performance tuning.
 
-{{< note title="Note" >}}
+The section [YSQL statements](statements/) describes of all of the YugabyteDB SQL statements. Each statement has its own dedicated page. Each page starts with a formal specification of the syntax: both as a _railroad diagram_; and as a _grammar_ using the PostgreSQL convention. Then it explains the semantics and illustrates the explanation with code examples.
+
+The section [WITH clause and common table expressions](with-clause/) (CTE) describes how to use the WITH clause in YSQL.
+
+### Supporting language elements
+
+The following main elements support the YugabyteDB SQL language subsystem:
+
+- [Keywords](keywords).
+- Names and Qualifiers - some names are reserved for the system. List of [reserved names](reserved_names).
+- Data types - most PostgreSQL-compatible data types are supported. List of [data types](datatypes/).
+- [Built-in SQL functions](exprs/).
+- [User-defined subprograms and anonymous blocks](user-defined-subprograms-and-anon-blocks/), including some stored procedures.
+
+### PostgreSQL documentation
 
 If you don't find what you're looking for in the YSQL documentation, you might find answers in the relevant [PostgreSQL documentation](https://www.postgresql.org/docs/11/index.html). Successive YugabyteDB releases honor PostgreSQL syntax and semantics, although some features (for example those that are specific to the PostgreSQL monolithic SQL database architecture) might not be supported for distributed SQL. The YSQL documentation specifies the supported syntax and extensions.
 
-To find the version of the PostgreSQL processing layer used in YugabyteDB, you can use the `version()` function. The following YSQL query displays only the first part of the returned value:
+To find the version of the PostgreSQL processing layer used in YugabyteDB, use the `version()` function. The following YSQL query displays only the first part of the returned value:
 
 ```plpgsql
 select rpad(version(), 18)||'...' as v;
@@ -41,26 +57,9 @@ For the latest release series of YugabyteDB, as reflected in this main documenta
  PostgreSQL 11.2-YB...
 ```
 
-{{< /note >}}
-
 ## Quick Start
 
-You can explore the basics of the YSQL API using the [Quick Start](../../quick-start/explore/ysql/) steps.
-
-## The SQL language
-
-The section [YSQL statements](./the-sql-language) describes of all of the YugabyteDB SQL statements. Each statement has its own dedicated page. Each page starts with a formal specification of the syntax: both as a _railroad diagram_; and as a _grammar_ using the PostgreSQL convention. Then it explains the semantics and illustrates the explanation with code examples.
-
-## Supporting language elements
-
-This section lists the main elements that support the YugabyteDB SQL language subsystem.
-
-- [Keywords](keywords).
-- Names and Qualifiers: Some names are reserved for the system. List of [reserved names](reserved_names).
-- Data types: Most PostgreSQL-compatible data types are supported. List of [data types](datatypes/).
-- [Built-in SQL functions](exprs/)
-
-## Use your own YugabyteDB sandbox cluster
+Create a sandbox cluster and explore the basics of the YSQL API by following the [Quick Start](../../quick-start-yugabytedb-managed/).
 
 It always helps to have access to a sandbox YugabyteDB cluster where you can, when you need to, do whatever you want without considering any risk of doing harm. Here are the kinds of things you'll want to do:
 
@@ -75,6 +74,4 @@ Moreover, for some experiments, you'll need operating system access so that you 
 
 It also helps to have a vanilla PostgreSQL installation on the same server so that you can confirm for yourself that the SQL systems of each (at least for the functionality that application developers use, and in the overwhelming majority of cases) are syntactically and semantically identical.
 
-To do all this confidently, you need to be sure that nobody else can use your sandbox so that you know that everything that you observe will be explained by what you deliberately did. Occasionally, you'll even want to destroy a cluster at one version and replace it with a cluster at a different version 
-
-The simplest way to achieve this ideal sandbox regime is to use you own laptop. The [Quick Start](../../quick-start/explore/ysql/) section shows you how to do this.
+To do all this confidently, you need to be sure that nobody else can use your sandbox so that you know that everything that you observe will be explained by what you deliberately did. Occasionally, you'll even want to destroy a cluster at one version and replace it with a cluster at a different version.
