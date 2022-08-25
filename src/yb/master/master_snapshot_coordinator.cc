@@ -1633,33 +1633,28 @@ class MasterSnapshotCoordinator::Impl {
     return context_.CollectEntriesForSnapshot(filter.tables().tables());
   }
 
-  Status ConsecutiveRestoreCheck(
+  Status ForwardRestoreCheck(
       const SnapshotState& snapshot, HybridTime restore_at,
-      const TxnSnapshotRestorationId& restoration_id) REQUIRES(mutex_) {
-    SnapshotScheduleState& schedule =
-        VERIFY_RESULT(FindSnapshotSchedule(snapshot.schedule_id()));
+      const TxnSnapshotRestorationId& restoration_id) const REQUIRES(mutex_) {
+    const auto& index = restorations_.get<ScheduleTag>();
+    // Fetch all restorations under the given schedule id.
+    auto restores = index.equal_range(snapshot.schedule_id());
 
-    // Find the latest restore.
-    HybridTime latest_restore_ht = HybridTime::kMin;
-    for (const auto& restoration_ht : schedule.options().restoration_times()) {
-      if (HybridTime::FromPB(restoration_ht) > latest_restore_ht) {
-        latest_restore_ht = HybridTime::FromPB(restoration_ht);
+    for (auto it = restores.first; it != restores.second; it++) {
+      RestorationState* restore_state = it->get();
+      if (restore_state->restore_at() <= restore_at &&
+          restore_state->complete_time() >= restore_at) {
+        std::string error_msg = Format(
+            "Cannot perform a forward restore. Existing restoration $0 was restored to $1 "
+            "and completed at $2, while the requested restoration for $3 is in between.",
+            restore_state->restoration_id(), restore_state->restore_at(),
+            restore_state->complete_time(), restore_at);
+
+        LOG(WARNING) << error_msg;
+        return STATUS(NotSupported, error_msg);
       }
     }
-    LOG(INFO) << "Last successful restoration completed at "
-              << latest_restore_ht;
 
-    if (restore_at <= latest_restore_ht) {
-      LOG(INFO) << "Restore with id " << restoration_id << " not supported "
-                << "because it is consecutive. Attempting to restore to "
-                << restore_at << " while last successful restoration completed at "
-                << latest_restore_ht;
-      return STATUS_FORMAT(NotSupported,
-                            "Cannot restore before the previous restoration time. "
-                              "A Restoration was performed at $0 and the requested "
-                              "restoration is for $1 which is before the last restoration.",
-                            latest_restore_ht, restore_at);
-    }
     return Status::OK();
   }
 
@@ -1688,8 +1683,8 @@ class MasterSnapshotCoordinator::Impl {
                       MasterError(MasterErrorPB::SNAPSHOT_IS_NOT_READY));
       }
       restore_sys_catalog = phase == RestorePhase::kInitial && !snapshot.schedule_id().IsNil();
-      if (!FLAGS_allow_consecutive_restore && restore_sys_catalog) {
-        RETURN_NOT_OK(ConsecutiveRestoreCheck(snapshot, restore_at, restoration_id));
+      if (restore_sys_catalog) {
+        RETURN_NOT_OK(ForwardRestoreCheck(snapshot, restore_at, restoration_id));
       }
       // Get the restoration state. Construct if in initial phase.
       RestorationState* restoration_ptr;
@@ -1808,6 +1803,12 @@ class MasterSnapshotCoordinator::Impl {
               boost::multi_index::const_mem_fun<
                   RestorationState, const TxnSnapshotRestorationId&,
                   &RestorationState::restoration_id>
+          >,
+          boost::multi_index::hashed_non_unique<
+              boost::multi_index::tag<ScheduleTag>,
+              boost::multi_index::const_mem_fun<
+                  RestorationState, const SnapshotScheduleId&,
+                  &RestorationState::schedule_id>
           >
       >
   >;
