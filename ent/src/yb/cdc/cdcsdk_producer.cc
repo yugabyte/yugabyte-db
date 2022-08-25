@@ -476,6 +476,18 @@ CHECKED_STATUS ProcessIntents(
   auto tablet = tablet_peer->shared_tablet();
   RETURN_NOT_OK(tablet->GetIntents(transaction_id, keyValueIntents, stream_state));
 
+  const OpId& checkpoint_op_id = tablet_peer->GetLatestCheckPoint();
+  if ((*keyValueIntents).size() == 0 && op_id <= checkpoint_op_id) {
+    LOG(ERROR) << "CDCSDK is trying to get intents for a transaction: " << transaction_id
+               << ", whose Apply record's OpId " << op_id
+               << "is lesser than the checkpoint in the tablet peer: " << checkpoint_op_id
+               << ", on tablet: " << tablet_peer->tablet_id()
+               << ". The intents would have already been removed from IntentsDB.";
+    return STATUS_FORMAT(
+        InternalError, "CDCSDK Trying to fetch already GCed intents for transaction $0",
+        transaction_id);
+  }
+
   for (auto& keyValue : *keyValueIntents) {
     docdb::SubDocKey sub_doc_key;
     CHECK_OK(

@@ -377,6 +377,25 @@ class TransactionParticipant::Impl
     CleanTransactionsUnlocked(&min_running_notifier);
   }
 
+  OpId GetLatestCheckPoint() REQUIRES(mutex_) {
+    return GetLatestCheckPointUnlocked();
+  }
+
+  OpId GetLatestCheckPointUnlocked() {
+    OpId min_checkpoint;
+    if (CoarseMonoClock::Now() < cdc_sdk_min_checkpoint_op_id_expiration_ &&
+        cdc_sdk_min_checkpoint_op_id_ != OpId::Invalid()) {
+      min_checkpoint = cdc_sdk_min_checkpoint_op_id_;
+    } else {
+      VLOG(1) << "Tablet peer checkpoint is expired with the current time: "
+              << ToSeconds(CoarseMonoClock::Now().time_since_epoch()) << " expiration time: "
+              << ToSeconds(cdc_sdk_min_checkpoint_op_id_expiration_.time_since_epoch())
+              << " checkpoint op_id: " << cdc_sdk_min_checkpoint_op_id_;
+      min_checkpoint = OpId::Max();
+    }
+    return min_checkpoint;
+  }
+
   OpId GetRetainOpId() {
     std::lock_guard<std::mutex> lock(mutex_);
     return cdc_sdk_min_checkpoint_op_id_;
@@ -1523,13 +1542,6 @@ class TransactionParticipant::Impl
     }
   }
 
-  OpId GetLatestCheckPoint() REQUIRES(mutex_) {
-    return CoarseMonoClock::Now() < cdc_sdk_min_checkpoint_op_id_expiration_ &&
-                   cdc_sdk_min_checkpoint_op_id_ != OpId::Invalid()
-               ? cdc_sdk_min_checkpoint_op_id_
-               : OpId::Max();
-  }
-
   TransactionStatusResolver& AddStatusResolver() override EXCLUDES(status_resolvers_mutex_) {
     std::lock_guard<std::mutex> lock(status_resolvers_mutex_);
     status_resolvers_.emplace_back(
@@ -1817,6 +1829,10 @@ OpId TransactionParticipant::GetRetainOpId() const {
 
 CoarseTimePoint TransactionParticipant::GetCheckpointExpirationTime() const {
   return impl_->GetCheckpointExpirationTime();
+}
+
+OpId TransactionParticipant::GetLatestCheckPoint() const {
+  return impl_->GetLatestCheckPointUnlocked();
 }
 
 }  // namespace tablet

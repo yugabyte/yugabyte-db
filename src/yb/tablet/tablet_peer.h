@@ -391,6 +391,8 @@ class TabletPeer : public consensus::ConsensusContext,
 
   Result<MonoDelta> GetCDCSDKIntentRetainTime(const CoarseTimePoint& cdc_sdk_latest_active_time);
 
+  OpId GetLatestCheckPoint();
+
   TableType table_type();
 
   // Returns the number of segments in log_.
