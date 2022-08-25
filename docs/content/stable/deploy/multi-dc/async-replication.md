@@ -29,7 +29,7 @@ If you already have existing data in your tables, follow the bootstrap process d
 
 ## Set up unidirectional replication
 
-After you created the required tables, you can set up xCluster replication as follows:
+After you created the required tables, you can set up unidirectional replication as follows:
 
 - Look up the source universe UUID and the table IDs for the two tables and the index table:
 
