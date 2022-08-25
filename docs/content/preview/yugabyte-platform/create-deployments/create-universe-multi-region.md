@@ -123,6 +123,6 @@ You can find the region code of each node by navigating to **Nodes** and looking
 The application is expected to have the following characteristics based on its deployment configuration:
 
 - Global consistency on writes, which would cause higher latencies in order to replicate data across multiple geographic regions.
-- Low latency reads from the nearest data center, which offers timeline consistency (similar to xCluster replication).
+- Low latency reads from the nearest data center, which offers timeline consistency (similar to asynchronous replication).
 
 You can verify this by navigating to **Metrics** and checking the overall performance of the application.
