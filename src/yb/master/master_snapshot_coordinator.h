@@ -139,6 +139,8 @@ class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
   // snapshot schedules present.
   bool IsPitrActive();
 
+  Result<bool> IsTableUndergoingPitrRestore(const TableInfo& table_info);
+
   void Start();
 
   void Shutdown();

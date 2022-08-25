@@ -1435,6 +1435,11 @@ class CatalogManager :
     return false;
   }
 
+  virtual Result<bool> IsTableUndergoingPitrRestore(const TableInfo& table_info) {
+    // Default value.
+    return false;
+  }
+
   virtual bool IsCdcEnabled(const TableInfo& table_info) const override {
     // Default value.
     return false;
@@ -1697,6 +1702,9 @@ class CatalogManager :
   // Mutex to avoid simultaneous creation of transaction tables for a tablespace.
   std::mutex tablespace_transaction_table_creation_mutex_;
 
+  mutable MutexType backfill_mutex_;
+  std::unordered_set<TableId> pending_backfill_tables_ GUARDED_BY(backfill_mutex_);
+
   void StartElectionIfReady(
       const consensus::ConsensusStatePB& cstate, TabletInfo* tablet);
 
@@ -1786,10 +1794,10 @@ class CatalogManager :
       TSDescriptor* ts_desc,
       bool is_incremental,
       const ReportedTabletPB& report,
-      const std::map<TableId, TableInfo::WriteLock>& table_write_locks,
+      std::map<TableId, TableInfo::WriteLock>* table_write_locks,
       const TabletInfoPtr& tablet,
       const TabletInfo::WriteLock& tablet_lock,
-      const std::map<TableId, scoped_refptr<TableInfo>>& tables,
+      std::map<TableId, scoped_refptr<TableInfo>>* tables,
       std::vector<RetryingTSRpcTaskPtr>* rpcs);
 
   struct ReportedTablet {
