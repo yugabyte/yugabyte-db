@@ -94,9 +94,38 @@ export const ConfigDetails = ({ data, visible, onHide }) => {
     return data;
   };
 
+  const getForGCP = () => {
+    const {
+      CRYPTO_KEY_ID,
+      KEY_RING_ID,
+      LOCATION_ID,
+      GCP_CONFIG: { client_email }
+    } = credentials;
+    const data = [
+      {
+        label: 'Service Account Email',
+        value: client_email
+      },
+      {
+        label: 'Location',
+        value: LOCATION_ID
+      },
+      {
+        label: 'Key Ring Name',
+        value: KEY_RING_ID
+      },
+      {
+        label: 'Crypto Key Name',
+        value: CRYPTO_KEY_ID
+      }
+    ];
+    return data;
+  };
+
   const getDetails = () => {
     if (provider === 'AWS') return getForAWS();
     if (provider === 'SMARTKEY') return getForSmartKey();
+    if (provider === 'GCP') return getForGCP();
 
     return getForHashicorp();
   };
