@@ -62,4 +62,4 @@ You can deploy a read replica cluster that asynchronously replicates data with a
 
     The placements should match the information in step 3.
 
-The primary cluster should begin xCluster replication with the read replica cluster.
+The primary cluster should begin asynchronous replication with the read replica cluster.
