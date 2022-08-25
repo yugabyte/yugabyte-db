@@ -473,35 +473,13 @@ Status PgDocReadOp::PopulateDmlByYbctidOps(const vector<Slice> *ybctids) {
            "Ybctid value is not within partition boundary");
 
     // Assign ybctids to operators.
-    YBPgsqlReadOp *read_op = GetReadOp(partition);
-    if (!read_op->mutable_request()->has_ybctid_column_value()) {
-      // We must set "ybctid_column_value" in the request for two reasons.
-      // - "client::yb_op" uses it to set the hash_code.
-      // - Rolling upgrade: Older server will read only "ybctid_column_value" as it doesn't know
-      //   of ybctid-batching operation.
-      read_op->set_active(true);
-      read_op->mutable_request()->set_is_forward_scan(true);
-      read_op->mutable_request()->mutable_ybctid_column_value()->mutable_value()
-        ->set_binary_value(ybctid.data(), ybctid.size());
-
-      // For every read operation set partition boundary. In case a tablet is split between
-      // preparing requests and executing them, docDB will return a paging state for pggate to
-      // contiunue till the end of current tablet is reached.
-      std::string upper_bound;
-      if (partition < partition_keys.size() - 1) {
-        upper_bound = partition_keys[partition + 1];
-      }
-      RETURN_NOT_OK(table_->SetScanBoundary(read_op->mutable_request(),
-                                            partition_keys[partition],
-                                            /* lower_bound_is_inclusive */ true,
-                                            upper_bound,
-                                            /* upper_bound_is_inclusive */ false));
-    }
+    auto* read_op = GetReadOp(partition);
+    auto& read_req = *read_op->mutable_request();
 
     // Append ybctid and its order to batch_arguments.
     // The "ybctid" values are returned in the same order as the row in the IndexTable. To keep
     // track of this order, each argument is assigned an order-number.
-    auto batch_arg = read_op->mutable_request()->add_batch_arguments();
+    auto batch_arg = read_req.add_batch_arguments();
     batch_arg->set_order(batch_row_ordering_counter_);
     batch_arg->mutable_ybctid()->mutable_value()->set_binary_value(ybctid.data(), ybctid.size());
 
@@ -509,7 +487,37 @@ Status PgDocReadOp::PopulateDmlByYbctidOps(const vector<Slice> *ybctids) {
     batch_row_orders_[partition].push_back(batch_row_ordering_counter_);
 
     // Increment counter for the next row.
-    batch_row_ordering_counter_++;
+    ++batch_row_ordering_counter_;
+
+    if (!read_req.has_ybctid_column_value()) {
+      // We must set "ybctid_column_value" in the request for two reasons.
+      // - "client::yb_op" uses it to set the hash_code.
+      // - Rolling upgrade: Older server will read only "ybctid_column_value" as it doesn't know
+      //   of ybctid-batching operation.
+      // Note: lowest ybctid per partition must be used to correctly handle possible dynamic table
+      // splitting.
+      read_op->set_active(true);
+      read_req.set_is_forward_scan(true);
+      read_req.mutable_ybctid_column_value()->mutable_value()
+        ->set_binary_value(ybctid.data(), ybctid.size());
+
+      // For every read operation set partition boundary. In case a tablet is split between
+      // preparing requests and executing them, docDB will return a paging state for pggate to
+      // continue till the end of current tablet is reached.
+      const std::string default_upper_bound;
+      const auto& upper_bound = (partition < partition_keys.size() - 1)
+          ? partition_keys[partition + 1]
+          : default_upper_bound;
+      RETURN_NOT_OK(table_->SetScanBoundary(&read_req,
+                                            partition_keys[partition],
+                                            /* lower_bound_is_inclusive */ true,
+                                            upper_bound,
+                                            /* upper_bound_is_inclusive */ false));
+    } else if (ybctid.compare(read_req.ybctid_column_value().value().binary_value()) < 0) {
+      read_req.mutable_ybctid_column_value()->mutable_value()
+        ->set_binary_value(ybctid.data(), ybctid.size());
+    }
+
   }
 
   // Done creating request, but not all partition or operator has arguments (inactive).

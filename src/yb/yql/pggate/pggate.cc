@@ -139,10 +139,7 @@ CHECKED_STATUS FetchExistingYbctids(PgSession::ScopedRefPtr session,
                                     std::vector<TableYbctid>* ybctids) {
   // Group the items by the table ID.
   std::sort(ybctids->begin(), ybctids->end(), [](const auto& a, const auto& b) {
-    if (a.table_id != b.table_id) {
-      return a.table_id < b.table_id;
-    }
-    return a.ybctid < b.ybctid;
+    return a.table_id < b.table_id;
   });
 
   // Start all the doc_ops to read from docdb in parallel, one doc_op per table ID.

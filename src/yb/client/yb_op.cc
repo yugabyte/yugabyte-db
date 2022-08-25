@@ -886,18 +886,18 @@ Status YBPgsqlReadOp::GetRangePartitionKey(string* partition_key) const {
 
   // Seek a specific partition_key from read_request.
   // 1. Not specified range condition - Full scan.
-  // 2. ybctid -- Given to fetch one specific row.
-  // 3. paging_state -- Set by server to continue the same request.
+  // 2. paging_state -- Set by server to continue the same request.
+  // 3. ybctid -- Given to fetch one specific row.
   // 4. upper and lower bound -- Set by PgGate to fetch rows within a boundary.
   // 5. range column values -- Given to fetch rows for one set of specific range values.
   // 6. condition expr -- Given to fetch rows that satisfy specific conditions.
-  if (!IsNull(ybctid)) {
-    *partition_key = ybctid.binary_value();
-
-  } else if (read_request_->has_paging_state() &&
-             read_request_->paging_state().has_next_partition_key()) {
+  if (read_request_->has_paging_state() &&
+      read_request_->paging_state().has_next_partition_key()) {
     // If this is a subsequent query, use the partition key from the paging state.
     *partition_key = read_request_->paging_state().next_partition_key();
+
+  } else if (!IsNull(ybctid)) {
+    *partition_key = ybctid.binary_value();
 
   } else if (read_request_->has_lower_bound()) {
     // When PgGate optimizes RANGE expressions, it will set lower_bound and upper_bound by itself.
