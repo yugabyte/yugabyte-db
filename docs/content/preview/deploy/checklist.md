@@ -65,7 +65,7 @@ Memory depends on your application query pattern. Writes require memory but only
 
 YugabyteDB explicitly manages a block cache, and does not need the entire data set to fit in memory. It does not rely on the OS to keep data in its buffers. If you provide YugabyteDB sufficient memory, data accessed and present in block cache stays in memory.
 
-### Verify support for SSE2
+### Verify support for SSE2 and SSE4.2
 
 YugabyteDB requires the SSE2 instruction set support, which was introduced into Intel chips with the Pentium 4 in 2001 and AMD processors in 2003. Most systems produced in the last several years are equipped with SSE2.
 
@@ -112,7 +112,7 @@ It is recommended to plan for about 20% headroom on each node to allow space for
 
 ### Network
 
-The following is a minimal list of default ports (along with the network access required) required to use YugabyteDB:
+The following is a list of default ports along with the network access required for using YugabyteDB:
 
 - Each of the nodes in the YugabyteDB cluster must be able to communicate with each other using TCP/IP on the following ports:
 
