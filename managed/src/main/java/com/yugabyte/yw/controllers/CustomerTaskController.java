@@ -277,7 +277,7 @@ public class CustomerTaskController extends AuthenticatedController {
       return ApiResponse.error(BAD_REQUEST, errMsg);
     }
     taskParams.firstTry = false;
-    taskParams.previousTaskUUID = taskUUID;
+    taskParams.setPreviousTaskUUID(taskUUID);
     UUID newTaskUUID = commissioner.submit(taskType, taskParams);
     LOG.info(
         "Submitted retry task to universe for {}:{}, task uuid = {}.",

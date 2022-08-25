@@ -380,7 +380,9 @@ public enum TaskType {
 
   UpgradeUniverseYbc("UpgradeUniverseYbc"),
 
-  DisableYbc("DisableYbc");
+  DisableYbc("DisableYbc"),
+
+  InstanceExistCheck("subtasks.InstanceExistCheck");
 
   private String relativeClassPath;
 

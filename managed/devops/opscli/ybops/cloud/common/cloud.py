@@ -48,7 +48,7 @@ class AbstractCloud(AbstractCommandParser):
     CERT_LOCATION_PLATFORM = "platform"
     SSH_RETRY_COUNT = 180
     SSH_WAIT_SECONDS = 5
-    SSH_TIMEOUT_SECONDS = 10
+    SSH_TIMEOUT_SECONDS = 4
     MOUNT_PATH_PREFIX = "/mnt/d"
 
     def __init__(self, name):
@@ -680,9 +680,8 @@ class AbstractCloud(AbstractCommandParser):
         sock = None
         retry_count = 0
 
-        while retry_count < self.SSH_RETRY_COUNT:
+        while True:
             logging.info("[app] Waiting for ssh: {}:{}".format(private_ip, str(ssh_ports)))
-            time.sleep(self.SSH_WAIT_SECONDS)
             # Try connecting with the given ssh ports in succession.
             for ssh_port in ssh_ports:
                 ssh_port = int(ssh_port)
@@ -700,12 +699,14 @@ class AbstractCloud(AbstractCommandParser):
                         sock.close()
             # Increment retry only after attempts on all ports fail.
             retry_count += 1
-        else:
-            logging.error("[app] Start instance {} exceeded maxRetries!".format(instance_name))
-            raise YBOpsRuntimeError(
-                "Cannot reach the instance {} after its start at ports {}".format(
-                    instance_name, str(ssh_ports))
-            )
+            if retry_count < self.SSH_RETRY_COUNT:
+                time.sleep(self.SSH_WAIT_SECONDS)
+            else:
+                logging.error("[app] Start instance {} exceeded maxRetries!".format(instance_name))
+                raise YBOpsRuntimeError(
+                    "Cannot reach the instance {} after its start at ports {}".format(
+                        instance_name, str(ssh_ports))
+                )
 
     def wait_for_startup_script(self, args, host_info):
         if self._wait_for_startup_script_command:

@@ -502,7 +502,7 @@ class AzureCloudAdmin():
                 logging.info("[app] Deleted ip {}".format(ip_name))
         except CloudError as e:
             if e.error and e.error.error == 'ResourceNotFound':
-                logging.info("[app] Resource ip {} is not found".format(ip_addr))
+                logging.info("[app] Resource ip name {} is not found".format(ip_name))
             else:
                 raise e
 
@@ -667,8 +667,7 @@ class AzureCloudAdmin():
                 lun_indexes.append(lun)
 
             if json_output:
-                print(json.dumps({"lun_indexes": lun_indexes}))
-        return
+                return {"lun_indexes": lun_indexes}
 
     def query_vpc(self):
         """
@@ -798,7 +797,7 @@ class AzureCloudAdmin():
 
     def get_host_info(self, vm_name, get_all=False):
         try:
-            vm = self.compute_client.virtual_machines.get(RESOURCE_GROUP, vm_name)
+            vm = self.compute_client.virtual_machines.get(RESOURCE_GROUP, vm_name, 'instanceView')
         except Exception as e:
             return None
         nic_name = id_to_name(vm.network_profile.network_interfaces[0].id)
@@ -812,17 +811,26 @@ class AzureCloudAdmin():
             ip_name = id_to_name(nic.ip_configurations[0].public_ip_address.id)
             public_ip = (self.network_client.public_ip_addresses
                          .get(RESOURCE_GROUP, ip_name).ip_address)
-
         subnet = id_to_name(nic.ip_configurations[0].subnet.id)
         server_type = vm.tags.get("yb-server-type", None) if vm.tags else None
         node_uuid = vm.tags.get("node-uuid", None) if vm.tags else None
         universe_uuid = vm.tags.get("universe-uuid", None) if vm.tags else None
         zone_full = "{}-{}".format(region, zone) if zone is not None else region
+        instance_state = None
+        if vm.instance_view is not None and vm.instance_view.statuses is not None:
+            for status in vm.instance_view.statuses:
+                logging.info("VM state {}".format(status.code))
+                parts = status.code.split("/")
+                if len(parts) != 2 or parts[0] != "PowerState":
+                    continue
+                instance_state = parts[1]
+        is_running = True if instance_state == "running" else False
         return {"private_ip": private_ip, "public_ip": public_ip, "region": region,
                 "zone": zone_full, "name": vm.name, "ip_name": ip_name,
                 "instance_type": vm.hardware_profile.vm_size, "server_type": server_type,
                 "subnet": subnet, "nic": nic_name, "id": vm.name, "node_uuid": node_uuid,
-                "universe_uuid": universe_uuid}
+                "universe_uuid": universe_uuid, "instance_state": instance_state,
+                "is_running": is_running}
 
     def get_dns_client(self, subscription_id):
         if self.dns_client is None:
