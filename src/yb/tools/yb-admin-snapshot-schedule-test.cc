@@ -3420,14 +3420,12 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(SplitDisabledDuri
   ASSERT_TRUE(all_good);
 }
 
-TEST_F(YbAdminSnapshotScheduleTest, ConsecutiveRestore) {
+TEST_F(YbAdminSnapshotScheduleTest, RestoreToBeforePreviousRestoreAt) {
   const auto retention = kInterval * 5 * kTimeMultiplier;
   auto schedule_id = ASSERT_RESULT(PrepareCql(kInterval, retention));
-
   auto conn = ASSERT_RESULT(CqlConnect(client::kTableName.namespace_name()));
 
   std::this_thread::sleep_for(FLAGS_max_clock_skew_usec * 1us);
-
   Timestamp time1(ASSERT_RESULT(WallClock()->Now()).time_point);
   LOG(INFO) << "Time1: " << time1;
 
@@ -3438,27 +3436,116 @@ TEST_F(YbAdminSnapshotScheduleTest, ConsecutiveRestore) {
   auto insert_pattern = Format(
       "INSERT INTO $0 (key, value) VALUES (1, '$$0')", client::kTableName.table_name());
   ASSERT_OK(conn.ExecuteQueryFormat(insert_pattern, "before"));
+
+  auto select_expr = Format("SELECT * FROM $0", client::kTableName.table_name());
+  auto rows = ASSERT_RESULT(conn.ExecuteAndRenderToString(select_expr));
+  ASSERT_EQ(rows, "1,before");
+
+  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time1));
+  std::this_thread::sleep_for(3s * kTimeMultiplier);
+
+  auto s = conn.ExecuteAndRenderToString(select_expr);
+  ASSERT_NOK(s);
+  ASSERT_STR_CONTAINS(s.status().message().ToBuffer(), "Object Not Found");
+
+  ASSERT_OK(conn.ExecuteQueryFormat(
+      "CREATE TABLE $0 (key INT PRIMARY KEY, value TEXT) WITH tablets = 1",
+      client::kTableName.table_name()));
+  ASSERT_OK(conn.ExecuteQueryFormat(insert_pattern, "new"));
+
+  // Restore to time0 which is 1 us before time1.
+  Timestamp time0(time1.value() - 1);
+  LOG(INFO) << "Time0: " << time0;
+  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time0));
+  std::this_thread::sleep_for(3s * kTimeMultiplier);
+  ASSERT_OK(WaitTabletsCleaned(CoarseMonoClock::now() + retention + kInterval));
+}
+
+TEST_F(YbAdminSnapshotScheduleTest, RestoreToAfterPreviousCompleteAt) {
+  const auto retention = kInterval * 5 * kTimeMultiplier;
+  auto schedule_id = ASSERT_RESULT(PrepareCql(kInterval, retention));
+  auto conn = ASSERT_RESULT(CqlConnect(client::kTableName.namespace_name()));
+
+  std::this_thread::sleep_for(FLAGS_max_clock_skew_usec * 1us);
+  Timestamp time1(ASSERT_RESULT(WallClock()->Now()).time_point);
+  LOG(INFO) << "Time1: " << time1;
+
+  ASSERT_OK(conn.ExecuteQueryFormat(
+      "CREATE TABLE $0 (key INT PRIMARY KEY, value TEXT) WITH tablets = 1",
+      client::kTableName.table_name()));
+
+  auto insert_pattern = Format(
+      "INSERT INTO $0 (key, value) VALUES (1, '$$0')", client::kTableName.table_name());
+  ASSERT_OK(conn.ExecuteQueryFormat(insert_pattern, "before"));
+
+  auto select_expr = Format("SELECT * FROM $0", client::kTableName.table_name());
+  auto rows = ASSERT_RESULT(conn.ExecuteAndRenderToString(select_expr));
+  ASSERT_EQ(rows, "1,before");
+
+  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time1));
+  std::this_thread::sleep_for(3s * kTimeMultiplier);
+
+  auto s = conn.ExecuteAndRenderToString(select_expr);
+  ASSERT_NOK(s);
+  ASSERT_STR_CONTAINS(s.status().message().ToBuffer(), "Object Not Found");
+
+  ASSERT_OK(conn.ExecuteQueryFormat(
+      "CREATE TABLE $0 (key INT PRIMARY KEY, value TEXT) WITH tablets = 1",
+      client::kTableName.table_name()));
+
   Timestamp time2(ASSERT_RESULT(WallClock()->Now()).time_point);
+  LOG(INFO) << "Time2: " << time2;
+
+  ASSERT_OK(conn.ExecuteQueryFormat(insert_pattern, "new"));
+
+  rows = ASSERT_RESULT(conn.ExecuteAndRenderToString(select_expr));
+  ASSERT_EQ(rows, "1,new");
+
+  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time2));
+  std::this_thread::sleep_for(3s * kTimeMultiplier);
+
+  rows = ASSERT_RESULT(conn.ExecuteAndRenderToString(select_expr));
+  ASSERT_EQ(rows, "");
+}
+
+TEST_F(YbAdminSnapshotScheduleTest, DisallowForwardRestore) {
+  const auto retention = kInterval * 5 * kTimeMultiplier;
+  auto schedule_id = ASSERT_RESULT(PrepareCql(kInterval, retention));
+  auto conn = ASSERT_RESULT(CqlConnect(client::kTableName.namespace_name()));
+
+  std::this_thread::sleep_for(FLAGS_max_clock_skew_usec * 1us);
+  Timestamp time1(ASSERT_RESULT(WallClock()->Now()).time_point);
+  LOG(INFO) << "Time1: " << time1;
+
+  ASSERT_OK(conn.ExecuteQueryFormat(
+      "CREATE TABLE $0 (key INT PRIMARY KEY, value TEXT) WITH tablets = 1",
+      client::kTableName.table_name()));
+
+  auto insert_pattern = Format(
+      "INSERT INTO $0 (key, value) VALUES (1, '$$0')", client::kTableName.table_name());
+  ASSERT_OK(conn.ExecuteQueryFormat(insert_pattern, "before"));
+
+  Timestamp time2(ASSERT_RESULT(WallClock()->Now()).time_point);
+  LOG(INFO) << "Time2: " << time2;
+
   ASSERT_OK(conn.ExecuteQueryFormat(insert_pattern, "after"));
 
   auto select_expr = Format("SELECT * FROM $0", client::kTableName.table_name());
   auto rows = ASSERT_RESULT(conn.ExecuteAndRenderToString(select_expr));
   ASSERT_EQ(rows, "1,after");
 
+  LOG(INFO) << "Start restoring to Time1";
   ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time1));
-
   std::this_thread::sleep_for(3s * kTimeMultiplier);
 
-  ASSERT_NOK(conn.ExecuteAndRenderToString(select_expr));
+  auto s = conn.ExecuteAndRenderToString(select_expr);
+  ASSERT_NOK(s);
+  ASSERT_STR_CONTAINS(s.status().message().ToBuffer(), "Object Not Found");
 
-  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time2));
-
-  rows = ASSERT_RESULT(conn.ExecuteAndRenderToString(select_expr));
-  ASSERT_EQ(rows, "1,before");
-
-  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time1));
-
-  ASSERT_OK(WaitTabletsCleaned(CoarseMonoClock::now() + retention + kInterval));
+  Status s2 = RestoreSnapshotSchedule(schedule_id, time2);
+  ASSERT_NOK(s2);
+  ASSERT_STR_CONTAINS(
+      s2.message().ToBuffer(), "Cannot perform a forward restore.");
 }
 
 TEST_F(YbAdminSnapshotScheduleTest, CatalogLoadRace) {
@@ -3806,76 +3893,6 @@ TEST_F(YbAdminSnapshotScheduleFailoverTests, LeaderFailoverRestoreSnapshot) {
   rows = ASSERT_RESULT(conn.ExecuteAndRenderToString(select_expr));
   LOG(INFO) << "Rows after restoration: " << rows;
   ASSERT_EQ(rows, "1,before");
-}
-
-class YbAdminSnapshotScheduleTestWithoutConsecutiveRestore : public YbAdminSnapshotScheduleTest {
-  std::vector<std::string> ExtraMasterFlags() override {
-    // To speed up tests.
-    return { "--snapshot_coordinator_cleanup_delay_ms=1000",
-             "--snapshot_coordinator_poll_interval_ms=500",
-             "--enable_automatic_tablet_splitting=true",
-             "--enable_transactional_ddl_gc=false",
-             "--allow_consecutive_restore=false" };
-  }
-};
-
-TEST_F(YbAdminSnapshotScheduleTestWithoutConsecutiveRestore, DisallowConsecutiveRestore) {
-  const auto retention = kInterval * 5 * kTimeMultiplier;
-  auto schedule_id = ASSERT_RESULT(PrepareCql(kInterval, retention));
-
-  auto conn = ASSERT_RESULT(CqlConnect(client::kTableName.namespace_name()));
-
-  std::this_thread::sleep_for(FLAGS_max_clock_skew_usec * 1us);
-
-  Timestamp time1(ASSERT_RESULT(WallClock()->Now()).time_point);
-  LOG(INFO) << "Time1: " << time1;
-
-  ASSERT_OK(conn.ExecuteQueryFormat(
-      "CREATE TABLE $0 (key INT PRIMARY KEY, value TEXT) WITH tablets = 1",
-      client::kTableName.table_name()));
-
-  auto insert_pattern = Format(
-      "INSERT INTO $0 (key, value) VALUES (1, '$$0')", client::kTableName.table_name());
-  ASSERT_OK(conn.ExecuteQueryFormat(insert_pattern, "before"));
-  Timestamp time2(ASSERT_RESULT(WallClock()->Now()).time_point);
-  ASSERT_OK(conn.ExecuteQueryFormat(insert_pattern, "after"));
-
-  auto select_expr = Format("SELECT * FROM $0", client::kTableName.table_name());
-  auto rows = ASSERT_RESULT(conn.ExecuteAndRenderToString(select_expr));
-  ASSERT_EQ(rows, "1,after");
-
-  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time1));
-
-  std::this_thread::sleep_for(3s * kTimeMultiplier);
-
-  auto s = conn.ExecuteAndRenderToString(select_expr);
-  ASSERT_NOK(s);
-  ASSERT_STR_CONTAINS(s.status().message().ToBuffer(), "Object Not Found");
-
-  Status s2 = RestoreSnapshotSchedule(schedule_id, time2);
-  ASSERT_NOK(s2);
-  ASSERT_STR_CONTAINS(
-      s2.message().ToBuffer(), "Cannot restore before the previous restoration time");
-
-  Timestamp time3(ASSERT_RESULT(WallClock()->Now()).time_point);
-  LOG(INFO) << "Time3: " << time1;
-
-  ASSERT_OK(conn.ExecuteQueryFormat(
-      "CREATE TABLE $0 (key INT PRIMARY KEY, value TEXT) WITH tablets = 1",
-      client::kTableName.table_name()));
-
-  ASSERT_OK(conn.ExecuteQueryFormat(insert_pattern, "after"));
-
-  rows = ASSERT_RESULT(conn.ExecuteAndRenderToString(select_expr));
-  ASSERT_EQ(rows, "1,after");
-
-  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time3));
-
-  std::this_thread::sleep_for(3s * kTimeMultiplier);
-
-  s = conn.ExecuteAndRenderToString(select_expr);
-  ASSERT_NOK(s);
-  ASSERT_STR_CONTAINS(s.status().message().ToBuffer(), "Object Not Found");
 }
 
 class YbAdminSnapshotScheduleTestWithLB : public YbAdminSnapshotScheduleTest {
