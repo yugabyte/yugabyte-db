@@ -85,6 +85,15 @@ public class Universe extends Model {
     return universe;
   }
 
+  public Boolean getSwamperConfigWritten() {
+    return swamperConfigWritten;
+  }
+
+  public void updateSwamperConfigWritten(Boolean swamperConfigWritten) {
+    this.swamperConfigWritten = swamperConfigWritten;
+    this.save();
+  }
+
   public enum HelmLegacy {
     V3,
     V2TO3
@@ -113,6 +122,8 @@ public class Universe extends Model {
   @DbJson
   @Column(columnDefinition = "TEXT")
   private Map<String, String> config;
+
+  private Boolean swamperConfigWritten;
 
   @JsonIgnore
   public void setConfig(Map<String, String> newConfig) {
@@ -224,6 +235,7 @@ public class Universe extends Model {
     universe.universeDetails = taskParams;
     universe.universeDetailsJson =
         Json.stringify(RedactingService.filterSecretFields(Json.toJson(universe.universeDetails)));
+    universe.swamperConfigWritten = true;
     LOG.info("Created db entry for universe {} [{}]", universe.name, universe.universeUUID);
     LOG.debug(
         "Details for universe {} [{}] : [{}].",
@@ -277,6 +289,11 @@ public class Universe extends Model {
                 Collectors.mapping(Universe::getUniverseUUID, Collectors.toSet())));
   }
 
+  public static Set<Universe> getAllWithoutResources() {
+    List<Universe> rawList = find.query().findList();
+    return rawList.stream().peek(Universe::fillUniverseDetails).collect(Collectors.toSet());
+  }
+
   public static Set<Universe> getAllWithoutResources(Customer customer) {
     List<Universe> rawList =
         find.query().where().eq("customer_id", customer.getCustomerId()).findList();
@@ -287,6 +304,11 @@ public class Universe extends Model {
     ExpressionList<Universe> query = find.query().where();
     CommonUtils.appendInClause(query, "universeUUID", uuids);
     List<Universe> rawList = query.findList();
+    return rawList.stream().peek(Universe::fillUniverseDetails).collect(Collectors.toSet());
+  }
+
+  public static Set<Universe> getUniversesForSwamperConfigUpdate() {
+    List<Universe> rawList = find.query().where().eq("swamperConfigWritten", false).findList();
     return rawList.stream().peek(Universe::fillUniverseDetails).collect(Collectors.toSet());
   }
 
