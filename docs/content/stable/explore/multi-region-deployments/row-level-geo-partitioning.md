@@ -30,12 +30,12 @@ Geo-partitioning makes it easy for developers to move data closer to users for:
 * Meeting data residency requirements to comply with regulations such as GDPR
 {{< /tip >}}
 
-Geo-partitioning of data enables fine-grained, row-level control over the placement of table data across different geographical locations. This is accomplished in two simple steps – first, partitioning a table into user-defined table partitions; then, pinning these partitions to the desired geographic locations by configuring metadata for each partition.
+Geo-partitioning of data enables fine-grained, row-level control over the placement of table data across different geographical locations. This is accomplished in two basic steps – first, partitioning a table into user-defined table partitions; then, pinning these partitions to the desired geographic locations by configuring metadata for each partition.
 
 * The first step of creating user-defined table partitions is done by designating a column of the table as the partition column that will be used to geo-partition the data. The value of this column for a given row is used to determine the table partition that the row belongs to.
 * The second step involves creating partitions in the respective geographic locations using tablespaces. Note that the data in each partition can be configured to get replicated across multiple zones in a cloud provider region, or across multiple nearby regions / datacenters.
 
-An entirely new geographic partition can be introduced dynamically by adding a new table partition and configuring it to keep the data resident in the desired geographic location. Data in one or more of the existing geographic locations can be purged efficiently simply by dropping the necessary partitions. Users of traditional RDBMS would recognize this scheme as being close to user-defined list-based table partitions, with the ability to control the geographic location of each partition.
+An entirely new geographic partition can be introduced dynamically by adding a new table partition and configuring it to keep the data resident in the desired geographic location. Data in one or more of the existing geographic locations can be purged efficiently by dropping the necessary partitions. Users of traditional RDBMS would recognize this scheme as being close to user-defined list-based table partitions, with the ability to control the geographic location of each partition.
 
 In this deployment, users can access their data with low latencies because the data resides on servers that are geographically close by, and the queries do not need to access data in far away geographic locations.
 
@@ -207,7 +207,7 @@ Expanded display is used automatically.
     created_at    | 2020-11-07 21:28:11.056236
     ```
 
-Additionally, the row must be present only in the `bank_transactions_eu` partition, which can be easily verified by running the select statement directly against that partition. The other partitions should contain no rows.
+Additionally, the row must be present only in the `bank_transactions_eu` partition, which can be verified by running the select statement directly against that partition. The other partitions should contain no rows.
 
 ```sql
 yugabyte=# select * from bank_transactions_eu;
@@ -287,7 +287,7 @@ created_at    | 2020-11-07 21:45:26.067444
 
 ## Step 4. Querying the local partition
 
-Querying from a particular partition can be accomplished by using a WHERE clause on the partition key. For example, if the client is in the US, querying the local partition can be done by running the following query:
+Querying from a particular partition can be accomplished by using a `WHERE` clause on the partition key. For example, if the client is in the US, querying the local partition can be done by running the following query:
 
 ```sql
 yugabyte=# select * from bank_transactions where geo_partition='US';
@@ -310,7 +310,7 @@ However, if you need to query the local partition without specifying the partiti
 yugabyte=# select * from bank_transactions where yb_is_local_table(tableoid);
 ```
 
-```
+```output
 -[ RECORD 1 ]-+---------------------------
 user_id       | 300
 account_id    | 30001
@@ -399,7 +399,7 @@ created_at    | 2020-11-07 21:28:11.056236
 
 ## Step 6. Adding a new geographic location
 
-Assume that after a while, our fictitious Yuga Bank gets a lot of customers across the globe, and wants to offer the service to residents of Brazil, which also has data residency laws. Thanks to row-level geo-partitioning, this can be accomplished easily. We can simply add a new partition and pin it to the AWS South America (São Paulo) region `sa-east-1` as shown below.
+Assume that after a while, our fictitious Yuga Bank gets a lot of customers across the globe, and wants to offer the service to residents of Brazil, which also has data residency laws. Thanks to row-level geo-partitioning, this can be accomplished easily. We can add a new partition and pin it to the AWS South America (São Paulo) region `sa-east-1` as shown below.
 
 First, create the tablespace:
 
@@ -445,7 +445,7 @@ created_at    | 2020-11-07 22:09:04.8537
 
 ## Step 7. Fault tolerance during a region outage
 
-So far we've set up replication with 3 copies of the data, which helps us tolerate the loss of a single node or zone. However, a regional outage will cause unavailability, since all the nodes are in one region. Placing each replica in a different region helps solve this issue.
+So far we've set up replication with 3 copies of the data, which helps us tolerate the loss of a single node or zone. However, a regional outage will cause unavailability, as all the nodes are in one region. Placing each replica in a different region helps solve this issue.
 
 Let's recreate the `us_west_2_tablespace` from earlier, and place one copy each in us-west2, us-west1, and us-east1. We'll use `leader_preference` to continue placing all leaders in us-west-2, so that they remain close to the client and we get the best performance. (You can find more information in [Leader preference](../../ysql-language-features/going-beyond-sql/tablespaces/#leader-preference))
 

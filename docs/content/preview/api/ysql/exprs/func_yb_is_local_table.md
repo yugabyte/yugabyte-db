@@ -21,17 +21,17 @@ type: docs
 
 {{< /note >}}
 
-## Usage in Row-Level Geo-Partitioning
+## Usage in Row-level geo-partitioning
 
-This function is primarily helpful while implementing [Row-Level Geo-Partitioning](../../../../explore/multi-region-deployments/row-level-geo-partitioning/), as it can significantly simplify selecting rows from the local partition. Every table contains a system column called `tableoid`. This stores the `oid` of the table to which the row belongs. While querying a partitioned table, the `tableoid` column thus returns the `oid` of the partition to which the row belongs. The following sections describe how the `tableoid` column can be used with `yb_is_local_table` function to query the local partition.
+This function is primarily helpful while implementing [Row-level geo-partitioning](../../../../explore/multi-region-deployments/row-level-geo-partitioning/), as it can significantly simplify selecting rows from the local partition. Every table contains a system column called `tableoid`. This stores the `oid` of the table to which the row belongs. While querying a partitioned table, the `tableoid` column thus returns the `oid` of the partition to which the row belongs. The following sections describe how the `tableoid` column can be used with `yb_is_local_table` function to query the local partition.
 
 ## Use case examples
 
-### Set up
+### Setup
 
-Create a 3 node multi-region cluster and a geo-partitioned table using tablespaces with the following steps:
+ You can create a 3 node multi-region cluster and a geo-partitioned table using tablespaces with the following steps:
 
-1. You can create a cluster spread across 3 regions us-west-1, us-east-1, us-east-2 using yugabyted as follows:
+1. Create a cluster spread across 3 regions us-west-1, us-east-1, us-east-2 using yugabyted as follows:
 
     ```sh
     ./bin/yugabyted start                           \
