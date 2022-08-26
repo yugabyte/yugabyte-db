@@ -43,6 +43,8 @@
 #include <string>
 #include <vector>
 
+#include <boost/container/small_vector.hpp>
+
 #include <glog/logging.h>
 #include <gtest/gtest_prod.h>
 
@@ -200,10 +202,14 @@ class LogCache {
     bool tracked = false;
   };
 
+  typedef boost::container::small_vector<ReplicateMsgPtr, 8> ReplicateMsgVector;
+
   // Try to evict the oldest operations from the queue, stopping either when
   // 'bytes_to_evict' bytes have been evicted, or the op with index
   // 'stop_after_index' has been evicted, whichever comes first.
-  size_t EvictSomeUnlocked(int64_t stop_after_index, int64_t bytes_to_evict);
+  size_t EvictSomeUnlocked(int64_t stop_after_index,
+      int64_t bytes_to_evict,
+      ReplicateMsgVector* evicted_messages);
 
   // Update metrics and MemTracker to account for the removal of the
   // given message.
