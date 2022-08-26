@@ -53,7 +53,9 @@ service CDCService {
   rpc UpdateCdcReplicatedIndex (UpdateCdcReplicatedIndexRequestPB)
       returns (UpdateCdcReplicatedIndexResponsePB);
   rpc BootstrapProducer (BootstrapProducerRequestPB) returns (BootstrapProducerResponsePB);
-  rpc GetLatestEntryOpId (GetLatestEntryOpIdRequestPB) returns (GetLatestEntryOpIdResponsePB);
+  rpc GetLatestEntryOpId (GetLatestEntryOpIdRequestPB) returns (GetLatestEntryOpIdResponsePB) {
+    option (yb.rpc.trivial) = true;
+  };
   rpc GetCDCDBStreamInfo (GetCDCDBStreamInfoRequestPB) returns (GetCDCDBStreamInfoResponsePB);
   rpc SetCDCCheckpoint (SetCDCCheckpointRequestPB) returns (SetCDCCheckpointResponsePB) {
     option (yb.rpc.trivial) = true;
