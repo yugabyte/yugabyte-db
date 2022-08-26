@@ -1360,7 +1360,7 @@ fi
 if "$clean_before_build"; then
   log "Removing '$BUILD_ROOT' (--clean specified)"
   ( set -x; rm -rf "$BUILD_ROOT" )
-  save_paths_to_build_dir
+  save_paths_and_archive_urls_to_build_dir
 else
   if "$clean_postgres"; then
     log "Removing contents of 'postgres_build' and 'postgres' subdirectories of '$BUILD_ROOT'"

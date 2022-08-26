@@ -188,7 +188,6 @@ readonly -a VALID_COMPILER_TYPES=(
   clang10
   clang11
   clang12
-  zapcc
 )
 make_regex_from_list VALID_COMPILER_TYPES "${VALID_COMPILER_TYPES[@]}"
 
@@ -292,6 +291,11 @@ if [[ -n ${YB_LINUXBREW_DIR:-} ]]; then
   yb_linuxbrew_dir_origin=" (from environment)"
 fi
 
+yb_llvm_toolchain_url_origin=""
+if [[ -n ${YB_LLVM_TOOLCHAIN_URL:-} ]]; then
+  yb_llvm_toolchain_url_origin=" (from environment)"
+fi
+
 yb_llvm_toolchain_dir_origin=""
 if [[ -n ${YB_LLVM_TOOLCHAIN_DIR:-} ]]; then
   yb_llvm_toolchain_dir_origin=" (from environment)"
@@ -328,6 +332,25 @@ normalize_build_type() {
   fi
 }
 
+decide_whether_to_use_linuxbrew() {
+  expect_vars_to_be_set YB_COMPILER_TYPE build_type
+  if [[ -z ${YB_USE_LINUXBREW:-} ]]; then
+    if [[ -n ${predefined_build_root:-} ]]; then
+      if [[ ${predefined_build_root##*/} == *-linuxbrew-* ]]; then
+        YB_USE_LINUXBREW=1
+      fi
+    elif [[ -n ${YB_LINUXBREW_DIR:-} || ${YB_COMPILER_TYPE} =~ ^gcc5?$ ]]; then
+      YB_USE_LINUXBREW=1
+    elif [[ -n ${YB_LINUXBREW_DIR:-} ||
+              ( ${YB_COMPILER_TYPE} =~ ^clang[0-9]+$ &&
+                $build_type == "release" &&
+                "$( uname -m )" == "x86_64" ) ]]; then
+      YB_USE_LINUXBREW=1
+    fi
+    export YB_USE_LINUXBREW=${YB_USE_LINUXBREW:-0}
+  fi
+}
+
 # Sets the build directory based on the given build type (the build_type variable) and the value of
 # the YB_COMPILER_TYPE environment variable.
 set_build_root() {
@@ -351,6 +374,7 @@ set_build_root() {
 
   BUILD_ROOT=$YB_BUILD_PARENT_DIR/$build_type-$YB_COMPILER_TYPE
 
+  decide_whether_to_use_linuxbrew
   if [[ -z ${YB_USE_LINUXBREW:-} ]]; then
     if [[ -n ${predefined_build_root:-} ]]; then
       if [[ ${predefined_build_root##*/} == *-linuxbrew-* ]]; then
@@ -1063,15 +1087,6 @@ find_compiler_by_type() {
         done
       fi
     ;;
-    zapcc)
-      if [[ -n ${YB_ZAPCC_INSTALL_PATH:-} ]]; then
-        cc_executable=$YB_ZAPCC_INSTALL_PATH/bin/zapcc
-        cxx_executable=$YB_ZAPCC_INSTALL_PATH/bin/zapcc++
-      else
-        cc_executable=zapcc
-        cxx_executable=zapcc++
-      fi
-    ;;
     *)
       fatal "Unknown compiler type '$YB_COMPILER_TYPE'"
   esac
@@ -1216,15 +1231,18 @@ download_thirdparty() {
 }
 
 download_toolchain() {
+  expect_vars_to_be_set YB_COMPILER_TYPE
   local toolchain_urls=()
-  if [[ -n ${YB_THIRDPARTY_URL:-} && ${YB_THIRDPARTY_URL##*/} == *linuxbrew* ]]; then
-    # TODO: get rid of this and always include linuxbrew_url.txt in the thirdparty archives that are
-    # built for Linuxbrew.
-    toolchain_urls+=( "https://github.com/yugabyte/brew-build/releases/download/\
-20181203T161736v9/linuxbrew-20181203T161736v9.tar.gz" )
-    if [[ -f $BUILD_ROOT/llvm_url.txt ]]; then
-      toolchain_urls+=( "$(<"$BUILD_ROOT/llvm_url.txt")" )
-    fi
+  local linuxbrew_url=""
+  if [[ -n ${YB_THIRDPARTY_DIR:-} && -f "$YB_THIRDPARTY_DIR/linuxbrew_url.txt" ]]; then
+    local linuxbrew_url_file_path="${YB_THIRDPARTY_DIR}/linuxbrew_url.txt"
+    linuxbrew_url="$(<"${linuxbrew_url_file_path}")"
+  elif [[ -n ${YB_THIRDPARTY_URL:-} && ${YB_THIRDPARTY_URL##*/} == *linuxbrew* ||
+          -n ${YB_THIRDPARTY_DIR:-} && ${YB_THIRDPARTY_DIR##*/} == *linuxbrew* ]]; then
+    # TODO: get rid of the hard-coded URL below and always include linuxbrew_url.txt in the
+    # thirdparty archives that are built for Linuxbrew.
+    local linuxbrew_url="https://github.com/yugabyte/brew-build/releases/download/"
+    linuxbrew_url+="20181203T161736v9/linuxbrew-20181203T161736v9.tar.gz"
   else
     for file_name_part in linuxbrew toolchain; do
       local url_file_path="$YB_THIRDPARTY_DIR/${file_name_part}_url.txt"
@@ -1234,6 +1252,25 @@ download_toolchain() {
       fi
     done
   fi
+  if [[ -n ${linuxbrew_url:-} ]]; then
+    toolchain_urls+=( "$linuxbrew_url" )
+  fi
+  if [[ -z ${YB_LLVM_TOOLCHAIN_URL:-} && ${YB_COMPILER_TYPE:-} =~ ^clang[0-9]+$ ]] && is_linux; then
+    YB_LLVM_TOOLCHAIN_URL=$(
+      activate_virtualenv &>/dev/null
+      python3 -m llvm_installer --print-url "--llvm-major-version=${YB_COMPILER_TYPE#clang}"
+    )
+    if [[ ${YB_LLVM_TOOLCHAIN_URL} != https://* ]]; then
+      fatal "Failed to determine LLVM toolchain URL using the llvm-installer utility." \
+            "YB_LLVM_TOOLCHAIN_URL=${YB_LLVM_TOOLCHAIN_URL}. See" \
+            "https://github.com/yugabyte/llvm-installer for details."
+    fi
+    export YB_LLVM_TOOLCHAIN_URL
+  fi
+  if [[ -n ${YB_LLVM_TOOLCHAIN_URL:-} ]]; then
+    toolchain_urls+=( "${YB_LLVM_TOOLCHAIN_URL}" )
+  fi
+
   if [[ ${#toolchain_urls[@]} -eq 0 ]]; then
     return
   fi
@@ -1254,7 +1291,7 @@ download_toolchain() {
     fi
 
     download_and_extract_archive "$toolchain_url" "$toolchain_dir_parent"
-    if "$is_linuxbrew"; then
+    if [[ ${is_linuxbrew} == "true" ]]; then
       if [[ -n ${YB_LINUXBREW_DIR:-} &&
             $YB_LINUXBREW_DIR != "$extracted_dir" ]]; then
         log_thirdparty_and_toolchain_details
@@ -1266,16 +1303,20 @@ download_toolchain() {
       save_brew_path_to_build_dir
     fi
 
-    if "$is_llvm"; then
+    if [[ ${is_llvm} == "true" ]]; then
       if [[ -n ${YB_LLVM_TOOLCHAIN_DIR:-} &&
-            $YB_LLVM_TOOLCHAIN_DIR != "$extracted_dir" ]]; then
+            $YB_LLVM_TOOLCHAIN_DIR != "$extracted_dir" &&
+            ${YB_LLVM_TOOLCHAIN_DIR_MISMATCH_WARNING_LOGGED:-0} == "0" ]]; then
         log_thirdparty_and_toolchain_details
-        fatal "YB_LLVM_TOOLCHAIN_DIR is already set to '$YB_LLVM_TOOLCHAIN_DIR', cannot set it " \
-              "to '$extracted_dir'"
+        log "Warning: YB_LLVM_TOOLCHAIN_DIR is already set to '$YB_LLVM_TOOLCHAIN_DIR', cannot " \
+            "set it to '$extracted_dir'. This may happen in case the LLVM toolchain version used " \
+            "to built third-party dependencies is different from the most recent one for the " \
+            "same major version that we have just picked to build YugabyteDB with."
+        export YB_LLVM_TOOLCHAIN_DIR_MISMATCH_WARNING_LOGGED=1
       fi
       export YB_LLVM_TOOLCHAIN_DIR=$extracted_dir
       yb_llvm_toolchain_dir_origin=" (downloaded from $toolchain_url)"
-      save_llvm_toolchain_path_to_build_dir
+      save_llvm_toolchain_info_to_build_dir
     fi
   done
 }
@@ -1345,9 +1386,10 @@ save_brew_path_to_build_dir() {
   fi
 }
 
-save_llvm_toolchain_path_to_build_dir() {
+save_llvm_toolchain_info_to_build_dir() {
   if is_linux; then
     save_var_to_file_in_build_dir "${YB_LLVM_TOOLCHAIN_DIR:-}" "llvm_path.txt"
+    save_var_to_file_in_build_dir "${YB_LLVM_TOOLCHAIN_URL:-}" "llvm_url.txt"
   fi
 }
 
@@ -1356,9 +1398,10 @@ save_thirdparty_info_to_build_dir() {
   save_var_to_file_in_build_dir "${YB_THIRDPARTY_URL:-}" "thirdparty_url.txt"
 }
 
-save_paths_to_build_dir() {
+save_paths_and_archive_urls_to_build_dir() {
   save_brew_path_to_build_dir
   save_thirdparty_info_to_build_dir
+  save_llvm_toolchain_info_to_build_dir
 }
 
 detect_linuxbrew() {
@@ -1681,7 +1724,6 @@ debugging_remote_compilation() {
 }
 
 cmd_line_to_env_vars_for_remote_cmd() {
-  declare -i i=1
   YB_ENCODED_REMOTE_CMD_LINE=""
   # This must match the separator in remote_cmd.sh.
   declare -r ARG_SEPARATOR=$'=:\t:='
@@ -1889,6 +1931,9 @@ log_thirdparty_and_toolchain_details() {
     echo "    YB_THIRDPARTY_DIR: ${YB_THIRDPARTY_DIR:-undefined}$yb_thirdparty_dir_origin"
     if is_linux && [[ -n ${YB_LINUXBREW_DIR:-} ]]; then
       echo "    YB_LINUXBREW_DIR: $YB_LINUXBREW_DIR$yb_linuxbrew_dir_origin"
+    fi
+    if [[ -n ${YB_LLVM_TOOLCHAIN_URL:-} ]]; then
+      echo "    YB_LLVM_TOOLCHAIN_URL: $YB_LLVM_TOOLCHAIN_URL$yb_llvm_toolchain_url_origin"
     fi
     if [[ -n ${YB_LLVM_TOOLCHAIN_DIR:-} ]]; then
       echo "    YB_LLVM_TOOLCHAIN_DIR: $YB_LLVM_TOOLCHAIN_DIR$yb_llvm_toolchain_dir_origin"
@@ -2169,6 +2214,7 @@ activate_virtualenv() {
      ! "$yb_readonly_virtualenv"; then
     log "YB_RECREATE_VIRTUALENV is set, deleting virtualenv at '$virtualenv_dir'"
     rm -rf "$virtualenv_dir"
+    # We don't want to be re-creating the virtual environment over and over again.
     unset YB_RECREATE_VIRTUALENV
   fi
 
@@ -2211,7 +2257,6 @@ activate_virtualenv() {
     pip_no_cache="--no-cache-dir"
   fi
 
-  which pip3
   local pip_executable=pip3
   if ! "$yb_readonly_virtualenv"; then
     local requirements_file_path="$YB_SRC_ROOT/requirements_frozen.txt"
@@ -2418,19 +2463,14 @@ set_prebuilt_thirdparty_url() {
       if [[ -f $thirdparty_url_file_path ]]; then
         rm -f "$thirdparty_url_file_path"
       fi
-      local is_linuxbrew_arg=""
-      if [[ -n ${YB_USE_LINUXBREW:-} ]]; then
-        if [[ $YB_USE_LINUXBREW == "1" ]]; then
-          is_linuxbrew_arg="--is-linuxbrew=true"
-        else
-          is_linuxbrew_arg="--is-linuxbrew=false"
-        fi
-      fi
-      "$YB_BUILD_SUPPORT_DIR/thirdparty_tool" \
-          --save-thirdparty-url-to-file "$thirdparty_url_file_path" \
-          --save-llvm-url-to-file "$llvm_url_file_path" \
-          --compiler-type "$YB_COMPILER_TYPE" \
-          $is_linuxbrew_arg
+      local thirdparty_tool_cmd_line=(
+        "$YB_BUILD_SUPPORT_DIR/thirdparty_tool"
+        --save-thirdparty-url-to-file "$thirdparty_url_file_path"
+        --compiler-type "$YB_COMPILER_TYPE"
+      )
+      # See arg_str_to_bool in Python code for how the boolean parameter is interpreted.
+      thirdparty_tool_cmd_line+=( "--is-linuxbrew=$YB_USE_LINUXBREW" )
+      "${thirdparty_tool_cmd_line[@]}"
       YB_THIRDPARTY_URL=$(<"$BUILD_ROOT/thirdparty_url.txt")
       export YB_THIRDPARTY_URL
       yb_thirdparty_url_origin=" (determined automatically based on the OS and compiler type)"
@@ -2439,7 +2479,15 @@ set_prebuilt_thirdparty_url() {
       fi
       log "Setting third-party URL to $YB_THIRDPARTY_URL"
 
-      save_var_to_file_in_build_dir "$YB_THIRDPARTY_URL" thirdparty_url.txt
+      save_thirdparty_info_to_build_dir
+
+      if [[ -f $llvm_url_file_path ]]; then
+        YB_LLVM_TOOLCHAIN_URL=$(<"$llvm_url_file_path")
+        export YB_LLVM_TOOLCHAIN_URL
+        yb_llvm_toolchain_url_origin=" (from $llvm_url_file_path)"
+        log "Setting LLVM toolchain URL to $YB_LLVM_TOOLCHAIN_URL"
+        save_llvm_toolchain_info_to_build_dir
+      fi
     else
       log "YB_THIRDPARTY_URL is already set to '$YB_THIRDPARTY_URL', not trying to set it" \
           "automatically."
