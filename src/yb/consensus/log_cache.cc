@@ -441,11 +441,19 @@ Result<ReadOpsResult> LogCache::ReadOps(int64_t after_op_index,
 }
 
 size_t LogCache::EvictThroughOp(int64_t index, int64_t bytes_to_evict) {
-  std::lock_guard<simple_spinlock> lock(lock_);
-  return EvictSomeUnlocked(index, bytes_to_evict);
+  // Capture the evicted messages and release the memory outside of lock.
+  ReplicateMsgVector evicted_messages;
+  size_t bytes_evicted = 0;
+  {
+    std::lock_guard<simple_spinlock> lock(lock_);
+    bytes_evicted = EvictSomeUnlocked(index, bytes_to_evict, &evicted_messages);
+  }
+
+  return bytes_evicted;
 }
 
-size_t LogCache::EvictSomeUnlocked(int64_t stop_after_index, int64_t bytes_to_evict) {
+size_t LogCache::EvictSomeUnlocked(int64_t stop_after_index, int64_t bytes_to_evict,
+    ReplicateMsgVector* evicted_messages) {
   DCHECK(lock_.is_locked());
   VLOG_WITH_PREFIX_UNLOCKED(2) << "Evicting log cache index <= "
                       << stop_after_index
@@ -475,6 +483,8 @@ size_t LogCache::EvictSomeUnlocked(int64_t stop_after_index, int64_t bytes_to_ev
     VLOG_WITH_PREFIX_UNLOCKED(2) << "Evicting cache. Removing: " << msg->id();
     AccountForMessageRemovalUnlocked(entry);
     bytes_evicted += entry.mem_usage;
+
+    evicted_messages->push_back(msg);
     cache_.erase(iter++);
 
     if (bytes_evicted >= bytes_to_evict) {
@@ -589,37 +599,42 @@ void LogCache::TrackOperationsMemory(const OpIds& op_ids) {
     return;
   }
 
-  std::lock_guard<simple_spinlock> lock(lock_);
+  // Capture the evicted messages and release the memory outside of lock.
+  ReplicateMsgVector evicted_messages;
 
-  size_t mem_required = 0;
-  for (const auto& op_id : op_ids) {
-    auto it = cache_.find(op_id.index);
-    if (it != cache_.end() && it->second.msg->id().term() == op_id.term) {
-      mem_required += it->second.mem_usage;
-      it->second.tracked = true;
+  {
+    std::lock_guard<simple_spinlock> lock(lock_);
+
+    size_t mem_required = 0;
+    for (const auto& op_id : op_ids) {
+      auto it = cache_.find(op_id.index);
+      if (it != cache_.end() && it->second.msg->id().term() == op_id.term) {
+        mem_required += it->second.mem_usage;
+        it->second.tracked = true;
+      }
     }
-  }
 
-  if (mem_required == 0) {
-    return;
-  }
+    if (mem_required == 0) {
+      return;
+    }
 
-  // Try to consume the memory. If it can't be consumed, we may need to evict.
-  if (!tracker_->TryConsume(mem_required)) {
-    auto spare = tracker_->SpareCapacity();
-    auto need_to_free = mem_required - spare;
-    VLOG_WITH_PREFIX_UNLOCKED(1)
-        << "Memory limit would be exceeded trying to append "
-        << HumanReadableNumBytes::ToString(mem_required)
-        << " to log cache (available="
-        << HumanReadableNumBytes::ToString(spare)
-        << "): attempting to evict some operations...";
+    // Try to consume the memory. If it can't be consumed, we may need to evict.
+    if (!tracker_->TryConsume(mem_required)) {
+      auto spare = tracker_->SpareCapacity();
+      auto need_to_free = mem_required - spare;
+      VLOG_WITH_PREFIX_UNLOCKED(1)
+          << "Memory limit would be exceeded trying to append "
+          << HumanReadableNumBytes::ToString(mem_required)
+          << " to log cache (available="
+          << HumanReadableNumBytes::ToString(spare)
+          << "): attempting to evict some operations...";
 
-    tracker_->Consume(mem_required);
+      tracker_->Consume(mem_required);
 
-    // TODO: we should also try to evict from other tablets - probably better to evict really old
-    // ops from another tablet than evict recent ops from this one.
-    EvictSomeUnlocked(min_pinned_op_index_, need_to_free);
+      // TODO: we should also try to evict from other tablets - probably better to evict really old
+      // ops from another tablet than evict recent ops from this one.
+      EvictSomeUnlocked(min_pinned_op_index_, need_to_free, &evicted_messages);
+    }
   }
 }
 
