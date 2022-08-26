@@ -32,9 +32,10 @@
 
 #include "yb/consensus/consensus_queue.h"
 
+#include <shared_mutex>
+
 #include <algorithm>
 #include <mutex>
-#include <shared_mutex>
 #include <string>
 #include <utility>
 
@@ -393,6 +394,9 @@ void PeerMessageQueue::LocalPeerAppendFinished(const OpId& id, const Status& sta
   if (context_) {
     fake_response.set_num_sst_files(context_->NumSSTFiles());
   }
+  PeerMessageQueueMetrics metrics_value;
+  int64_t evict_index = -1;
+  bool is_leader;
   {
     LockGuard lock(queue_lock_);
 
@@ -401,17 +405,24 @@ void PeerMessageQueue::LocalPeerAppendFinished(const OpId& id, const Status& sta
     if (queue_state_.last_appended.index < id.index) {
       queue_state_.last_appended = id;
     }
-    fake_response.mutable_status()->set_last_committed_idx(queue_state_.committed_op_id.index);
-    queue_state_.last_applied_op_id.ToPB(fake_response.mutable_status()->mutable_last_applied());
 
-    if (queue_state_.mode != Mode::LEADER) {
-      log_cache_.EvictThroughOp(id.index);
-
-      UpdateMetrics();
-      return;
+    is_leader = (queue_state_.mode == Mode::LEADER);
+    if (is_leader) {  // fake_response is only used in Leader case
+      fake_response.mutable_status()->set_last_committed_idx(queue_state_.committed_op_id.index);
+      queue_state_.last_applied_op_id.ToPB(fake_response.mutable_status()->mutable_last_applied());
+    } else {
+      evict_index = id.index;
+      metrics_value = ComputeMetricsUnderLock();
     }
   }
-  ResponseFromPeer(local_peer_uuid_, fake_response);
+
+  if (is_leader) {
+    ResponseFromPeer(local_peer_uuid_, fake_response);
+  } else {
+    log_cache_.EvictThroughOp(evict_index);
+
+    UpdateMetrics(metrics_value);
+  }
 }
 
 Status PeerMessageQueue::TEST_AppendOperation(const ReplicateMsgPtr& msg) {
@@ -425,9 +436,9 @@ Status PeerMessageQueue::AppendOperations(const ReplicateMsgs& msgs,
   DFAKE_SCOPED_LOCK(append_fake_lock_);
   OpId last_id;
   if (!msgs.empty()) {
-    std::unique_lock<simple_spinlock> lock(queue_lock_);
-
     last_id = OpId::FromPB(msgs.back()->id());
+
+    std::unique_lock<simple_spinlock> lock(queue_lock_);
 
     if (last_id.term > queue_state_.current_term) {
       queue_state_.current_term = last_id.term;
@@ -448,9 +459,13 @@ Status PeerMessageQueue::AppendOperations(const ReplicateMsgs& msgs,
       Bind(&PeerMessageQueue::LocalPeerAppendFinished, Unretained(this), last_id)));
 
   if (!msgs.empty()) {
-    std::unique_lock<simple_spinlock> lock(queue_lock_);
-    queue_state_.last_appended = last_id;
-    UpdateMetrics();
+    PeerMessageQueueMetrics metrics_value;
+    {
+      std::unique_lock<simple_spinlock> lock(queue_lock_);
+      queue_state_.last_appended = last_id;
+      metrics_value = ComputeMetricsUnderLock();
+    }
+    UpdateMetrics(metrics_value);
   }
 
   return Status::OK();
@@ -1193,6 +1208,8 @@ bool PeerMessageQueue::ResponseFromPeer(const std::string& peer_uuid,
   MajorityReplicatedData majority_replicated;
   Mode mode_copy;
   bool result = false;
+  int64_t evict_index = -1;
+  PeerMessageQueueMetrics metrics_value;
   {
     LockGuard scoped_lock(queue_lock_);
     DCHECK_NE(State::kQueueConstructed, queue_state_.state);
@@ -1364,7 +1381,7 @@ bool PeerMessageQueue::ResponseFromPeer(const std::string& peer_uuid,
     UpdateAllReplicatedOpId(&queue_state_.all_replicated_op_id);
     UpdateAllAppliedOpId(&queue_state_.all_applied_op_id);
 
-    auto evict_index = GetCDCConsumerOpIdToEvict().index;
+    evict_index = GetCDCConsumerOpIdToEvict().index;
 
     int32_t lagging_follower_threshold = FLAGS_consensus_lagging_follower_threshold;
     if (lagging_follower_threshold > 0) {
@@ -1374,9 +1391,13 @@ bool PeerMessageQueue::ResponseFromPeer(const std::string& peer_uuid,
       evict_index = std::min(evict_index, queue_state_.all_replicated_op_id.index);
     }
 
+    metrics_value = ComputeMetricsUnderLock();
+  }
+
+  if (evict_index != -1) {
     log_cache_.EvictThroughOp(evict_index);
 
-    UpdateMetrics();
+    UpdateMetrics(metrics_value);
   }
 
   if (mode_copy == Mode::LEADER) {
@@ -1422,12 +1443,19 @@ OpId PeerMessageQueue::TEST_GetLastAppliedOpId() const {
   return queue_state_.last_applied_op_id;
 }
 
-void PeerMessageQueue::UpdateMetrics() {
+PeerMessageQueue::PeerMessageQueueMetrics PeerMessageQueue::ComputeMetricsUnderLock() const {
+  return PeerMessageQueueMetrics {
+      .num_majority_done_ops = queue_state_.committed_op_id.index
+          - queue_state_.all_replicated_op_id.index,
+      .num_in_progress_ops = queue_state_.last_appended.index
+          - queue_state_.committed_op_id.index
+    };
+}
+
+void PeerMessageQueue::UpdateMetrics(const PeerMessageQueueMetrics& metrics_value) {
   // Since operations have consecutive indices we can update the metrics based on simple index math.
-  metrics_.num_majority_done_ops->set_value(
-      queue_state_.committed_op_id.index - queue_state_.all_replicated_op_id.index);
-  metrics_.num_in_progress_ops->set_value(
-      queue_state_.last_appended.index - queue_state_.committed_op_id.index);
+  metrics_.num_majority_done_ops->set_value(metrics_value.num_majority_done_ops);
+  metrics_.num_in_progress_ops->set_value(metrics_value.num_in_progress_ops);
 }
 
 void PeerMessageQueue::DumpToHtml(std::ostream& out) const {
