@@ -43,7 +43,7 @@ Use the `DELETE` statement to remove rows that meet certain conditions, and when
 </div>
 
 {{< note title="Table inheritance is not yet supported" >}}
-The [table_expr](../../../syntax_resources/grammar_diagrams/#table-expr) rule specifies syntax that is useful only when at least one other table inherits one of the tables that the `truncate` statement lists explicitly. See [this note](../ddl_alter_table#table-expr-note) for more detail. Until inheritance is supported, use a bare [table_name](../../../syntax_resources/grammar_diagrams/#table-name).
+The [table_expr](../../syntax_resources/grammar_diagrams/#table-expr) rule specifies syntax that is useful only when at least one other table inherits one of the tables that the `truncate` statement lists explicitly. See [this note](../ddl_alter_table#table-expr-note) for more detail. Until inheritance is supported, use a bare [table_name](../../syntax_resources/grammar_diagrams/#table-name).
 {{< /note >}}
 
 See the section [The WITH clause and common table expressions](../../with-clause/) for more information about the semantics of the `common_table_expression` grammar rule.
@@ -68,7 +68,7 @@ Specify the name of the table to be deleted.
 
 ##### *alias*
 
-Specify the identifier of the target table within the DELETE statement. When an alias is specified, it must be used in place of the actual table in the statement.
+Specify the identifier of the target table in the DELETE statement. When an alias is specified, it must be used in place of the actual table in the statement.
 
 ### *returning_clause*
 
@@ -94,7 +94,7 @@ INSERT INTO sample VALUES (1, 2.0, 3, 'a'), (2, 3.0, 4, 'b'), (3, 4.0, 5, 'c');
 yugabyte=# SELECT * FROM sample ORDER BY k1;
 ```
 
-```
+```output
  k1 | k2 | v1 | v2
 ----+----+----+----
   1 |  2 |  3 | a
@@ -111,11 +111,11 @@ DELETE FROM sample WHERE k1 = 2 AND k2 = 3;
 yugabyte=# SELECT * FROM sample ORDER BY k1;
 ```
 
-```
+```output
 DELETE 1
 ```
 
-```
+```output
  k1 | k2 | v1 | v2
 ----+----+----+----
   1 |  2 |  3 | a

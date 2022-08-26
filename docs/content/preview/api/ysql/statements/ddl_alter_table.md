@@ -59,7 +59,7 @@ or this:
 alter table only t add column y text;
 ```
 
-These variants are useful only when at least one other table inherits `t`. But as yet, no table can inherit `t`. This means that if the unadorned variant `alter table t...` runs without error, then each of these variants will run without error too. But the effect of each is the same as that of the unadorned variant. Until inheritance is supported, use a bare [table_name](../../../syntax_resources/grammar_diagrams/#table-name).
+These variants are useful only when at least one other table inherits `t`. But as yet, no table can inherit `t`. This means that if the unadorned variant `alter table t...` runs without error, then each of these variants will run without error too. But the effect of each is the same as that of the unadorned variant. Until inheritance is supported, use a bare [table_name](../../syntax_resources/grammar_diagrams/#table-name).
 {{< /note >}}
 
 ## Semantics

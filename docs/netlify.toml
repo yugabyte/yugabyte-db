@@ -252,6 +252,23 @@
   to = "/preview/quick-start-yugabytedb-managed/"
   force = true
 
+# YSQL API
+
+[[redirects]]
+  from = "/preview/api/ysql/commands/*"
+  to = "/preview/api/ysql/statements/:splat"
+  force = true
+
+[[redirects]]
+  from = "/preview/api/ysql/the-sql-language/statements/*"
+  to = "/preview/api/ysql/statements/:splat"
+  force = true
+
+[[redirects]]
+  from = "/preview/api/ysql/the-sql-language/"
+  to = "/preview/api/ysql/"
+  force = true
+
 # Yugabyte Extensions top hit
 
 [[redirects]]

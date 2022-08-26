@@ -43,7 +43,7 @@ Use the `LOCK` statement to lock a table.
 </div>
 
 {{< note title="Table inheritance is not yet supported" >}}
-The [table_expr](../../../syntax_resources/grammar_diagrams/#table-expr) rule specifies syntax that is useful only when at least one other table inherits one of the tables that the `truncate` statement lists explicitly. See [this note](../ddl_alter_table#table-expr-note) for more detail. Until inheritance is supported, use a bare [table_name](../../../syntax_resources/grammar_diagrams/#table-name).
+The [table_expr](../../syntax_resources/grammar_diagrams/#table-expr) rule specifies syntax that is useful only when at least one other table inherits one of the tables that the `truncate` statement lists explicitly. See [this note](../ddl_alter_table#table-expr-note) for more detail. Until inheritance is supported, use a bare [table_name](../../syntax_resources/grammar_diagrams/#table-name).
 {{< /note >}}
 
 ## Semantics
@@ -59,7 +59,7 @@ Specify a table to lock.
 - Only `ACCESS SHARE` lock mode is supported at this time.
 - All other modes listed in *lockmode* are under development.
 
-```
+```output
 ACCESS SHARE
   | ROW SHARE
   | ROW EXCLUSIVE

@@ -62,11 +62,11 @@ When you write a `CREATE FUNCTION` statement, you will already have decided what
 ## Semantics
 
 - The meanings of the various function attributes are explained in the section [Subprogram attributes](../../../user-defined-subprograms-and-anon-blocks/subprogram-attributes/).
-- A function, like other schema objects such as a table, inevitably has an owner. You cannot specify the owner explicitly when a function is created. Rather, it's defined implicitly as what the built-in _current_user_ function returns when it's invoked in the session that creates the function. This user must have the _usage_ privilege on the function's schema, its argument data types, and its return data type. You (optionally) specify the function's schema and (mandatorily) its name within its schema as the argument of the _[subprogram_name](../../../syntax_resources/grammar_diagrams/#subprogram-name)_ rule.
+- A function, like other schema objects such as a table, inevitably has an owner. You cannot specify the owner explicitly when a function is created. Rather, it's defined implicitly as what the built-in _current_user_ function returns when it's invoked in the session that creates the function. This user must have the _usage_ privilege on the function's schema, its argument data types, and its return data type. You (optionally) specify the function's schema and (mandatorily) its name in its schema as the argument of the _[subprogram_name](../../syntax_resources/grammar_diagrams/#subprogram-name)_ rule.
 
 - If a function with the given name, schema, and argument types already exists then `CREATE FUNCTION` will draw an error unless the `CREATE OR REPLACE FUNCTION` variant is used.
 
-- Functions with different _[subprogram_call_signatures](../../../user-defined-subprograms-and-anon-blocks/subprogram-overloading/#subprogram-call-signature)_ can share the same _[subprogram_name](../../../syntax_resources/grammar_diagrams/#subprogram-name)_. (The same holds for procedures.) See section [Subprogram overloading](../../../user-defined-subprograms-and-anon-blocks/subprogram-overloading/).
+- Functions with different _[subprogram_call_signatures](../../../user-defined-subprograms-and-anon-blocks/subprogram-overloading/#subprogram-call-signature)_ can share the same _[subprogram_name](../../syntax_resources/grammar_diagrams/#subprogram-name)_. (The same holds for procedures.) See section [Subprogram overloading](../../../user-defined-subprograms-and-anon-blocks/subprogram-overloading/).
 
 - `CREATE OR REPLACE FUNCTION` doesn't change permissions that have been granted on an existing function. To use this statement, the current user must own the function, or be a member of the role that owns it.
 
@@ -117,7 +117,7 @@ This is the result:
  84 | dogdog
 ```
 
-#### Table function example:
+#### Table function example
 
 Try this
 
@@ -181,11 +181,11 @@ This is the result:
  bird
 ```
 
-This kind of table function provides a convenient way to produce an arbitrarily formatted report that can easily be spooled to a file. This is because the _select_ output is easily accessible (in _ysqlsh_) on _stdout_—and it's correspondingly easily accessible in client-side programming languages that do SQL like say, Python. In contrast, the output from _raise info_ is tricky to capture (and definitely very hard to interleave in proper sequence with _select_ results) because it comes on _stderr_.
+This kind of table function provides a convenient way to produce an arbitrarily formatted report that can be spooled to a file. This is because the _select_ output is  accessible (in _ysqlsh_) on _stdout_—and it's correspondingly accessible in client-side programming languages that do SQL like say, Python. In contrast, the output from _raise info_ is tricky to capture (and definitely very hard to interleave in proper sequence with _select_ results) because it comes on _stderr_.
 
 ## Examples
 
-### Define a function using the SQL language.
+### Define a function using the SQL language
 
 ```plpgsql
 create function mul(integer, integer) returns integer
@@ -204,7 +204,7 @@ select mul(2,3), mul(10, 12);
 (1 row)
 ```
 
-### Define a function using the PL/pgSQL language.
+### Define a function using the PL/pgSQL language
 
 ```plpgsql
 create or replace function inc(i integer)

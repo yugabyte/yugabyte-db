@@ -45,7 +45,7 @@ Applying `TRUNCATE` to a set of tables produces the same ultimate outcome as doe
 </div>
 
 {{< note title="Table inheritance is not yet supported" >}}
-The [table_expr](../../../syntax_resources/grammar_diagrams/#table-expr) rule specifies syntax that is useful only when at least one other table inherits one of the tables that the `truncate` statement lists explicitly. See [this note](../ddl_alter_table#table-expr-note) for more detail. Until inheritance is supported, use a bare [table_name](../../../syntax_resources/grammar_diagrams/#table-name).
+The [table_expr](../../syntax_resources/grammar_diagrams/#table-expr) rule specifies syntax that is useful only when at least one other table inherits one of the tables that the `truncate` statement lists explicitly. See [this note](../ddl_alter_table#table-expr-note) for more detail. Until inheritance is supported, use a bare [table_name](../../syntax_resources/grammar_diagrams/#table-name).
 {{< /note >}}
 
 ## Semantics
@@ -55,7 +55,6 @@ Specify the name of the table to be truncated.
 - `TRUNCATE` acquires `ACCESS EXCLUSIVE` lock on the tables to be truncated. The `ACCESS EXCLUSIVE` locking option is not yet fully supported.
 - `TRUNCATE` is not supported for foreign tables.
 - `CASCADE` and `RESTRICT` affect what happens when the table that the `TRUNCATE` statement targets has dependent tables. A dependent table (and, in turn, its dependent tables) have that status because they have direct or transitive foreign key constrains to the target table. `CASCADE` causes the closure of dependent tables all to be truncated. And `RESTRICT` causes the `TRUNCATE` attempt to fail if the target table has any dependent tables. This error outcome is the same even when all of the tables are empty. If neither `CASCADE` nor `RESTRICT` is written, then the effect is as if `RESTRICT` had been written.
-
 
 ## Example
 
@@ -114,7 +113,7 @@ This is the result:
  frog      | frog-child-c
 ```
 
-The `\d children` metacommand shows that it has a foreign key constraint to the  `parents` table.  This makes it a (transitive) dependent object of that table:
+The `\d children` meta-command shows that it has a foreign key constraint to the  `parents` table.  This makes it a (transitive) dependent object of that table:
 
 ```output
 Indexes:
@@ -122,6 +121,7 @@ Indexes:
 Foreign-key constraints:
     "children_fk" FOREIGN KEY (parent_k) REFERENCES parents(k) MATCH FULL ON UPDATE RESTRICT ON DELETE CASCADE
 ```
+
 Notice that the effect of the `on delete cascade` clause is limited to what the `delete` statement does. It has no effect on the behavior of `truncate`. (There is no `on truncate cascade` clause.) Try `delete from parents`. It quietly succeeds and removes all the rows from both the `parents` table and the `children` table.
 
 With all the rows that the setup code above inserts, try this:
@@ -159,7 +159,7 @@ select
 
 The `truncate` statement now finishes without error. This is the result:
 
-```
+```output
  parents count | children count
 ---------------+----------------
              0 |              0

@@ -25,19 +25,15 @@ YSQL therefore supports all of the traditional relational modeling features, suc
 
 The main components of YSQL include the data definition language (DDL), the data manipulation language (DML), the data control language (DCL), built-in SQL functions, and the PL/pgSQL procedural language for stored procedures. These components depend on underlying features like the data type system (common for both SQL and PL/pgSQL), expressions, database objects with qualified names, and comments. Other components support purposes such as system control, transaction control and performance tuning.
 
-The section [YSQL statements](statements/) describes of all of the YugabyteDB SQL statements. Each statement has its own dedicated page. Each page starts with a formal specification of the syntax: both as a _railroad diagram_; and as a _grammar_ using the PostgreSQL convention. Then it explains the semantics and illustrates the explanation with code examples.
-
-The section [WITH clause and common table expressions](with-clause/) (CTE) describes how to use the WITH clause in YSQL.
-
-### Supporting language elements
-
-The following main elements support the YugabyteDB SQL language subsystem:
-
-- [Keywords](keywords).
-- Names and Qualifiers - some names are reserved for the system. List of [reserved names](reserved_names).
-- Data types - most PostgreSQL-compatible data types are supported. List of [data types](datatypes/).
-- [Built-in SQL functions](exprs/).
-- [User-defined subprograms and anonymous blocks](user-defined-subprograms-and-anon-blocks/), including some stored procedures.
+| Section | Description |
+| :--- | :--- |
+| [YSQL statements](statements/) | Each statement has its own dedicated page. Each page starts with a formal specification of the syntax: both as a _railroad diagram_; and as a _grammar_ using the PostgreSQL convention. Then it explains the semantics and illustrates the explanation with code examples. |
+| [WITH clause](with-clause/) | Using the WITH clause and common table expressions. |
+| [Built-in SQL functions](exprs/) | YSQL supports all PostgreSQL-compatible built-in functions and operators. |
+| [User-defined subprograms](user-defined-subprograms-and-anon-blocks/) | Functions, procedures, and anonymous blocks. |
+| [Data types](datatypes/) | Data types in YSQL, which supports most PostgreSQL-compatible data types. |
+| [Keywords](keywords) | Lists the keywords in YSQL. |
+| [Reserved names](reserved_names) | Lists names and qualifiers reserved for the system. |
 
 ### PostgreSQL documentation
 

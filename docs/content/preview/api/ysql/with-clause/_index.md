@@ -15,9 +15,17 @@ type: indexpage
 showRightNav: true
 ---
 
-A `WITH` clause can be used as part of a `SELECT` statement, an `INSERT` statement, an `UPDATE` statement, or a `DELETE` statement. For this reason, the functionality is described in this dedicated section.
+A `WITH` clause can be used as part of a `SELECT` statement, an `INSERT` statement, an `UPDATE` statement, or a `DELETE` statement. For this reason, the functionality is described in this dedicated section, which includes the following topics.
 
-## Introduction
+| Section | Description |
+| :--- | :--- |
+| [Syntax and semantics](with-clause-syntax-semantics/) | Syntax and semantics of the WITH clause and CTEs. |
+| [The recursive CTE](recursive-cte/) | Syntax and semantics of recursive CTEs. |
+| [Case study: traverse an employee hierarchy](emps-hierarchy/) | Example of the use of a recursive CTE to traverse an employee hierarchy. |
+| [Traverse graphs of all kinds](traversing-general-graphs/) | Example of the use of a recursive CTE to traverse graphs of all kinds. |
+| [Case study: compute Bacon Numbers](bacon-numbers/) | Example of the use of a recursive CTE to compute Bacon Numbers for actors listed in the IMDb. |
+
+## Introduction to common table expressions
 
 The `WITH` clause lets you name one or several so-called _common table expressions_. This latter term is a term of art, and doesn't reflect the spellings of SQL keywords. It is normally abbreviated to CTE, and this acronym will be used throughout the rest of the whole of this "WITH clause" section. See the section [WITH clause—SQL syntax and semantics](./with-clause-syntax-semantics) for the formal treatment.
 
@@ -125,27 +133,13 @@ Finally, the use of a _recursive_ CTE in a `WITH` clause enables advanced functi
    susan
 ```
 
-The remainder of this section has the following subsections:
+## Performance considerations
 
-- [`WITH` clause—SQL syntax and semantics](./with-clause-syntax-semantics/)
-
-- [The recursive CTE](./recursive-cte/)
-
-- [Case study—Using a recursive CTE to traverse an employee hierarchy](./emps-hierarchy/)
-
-- [Using a recursive CTE to traverse graphs of all kinds](./traversing-general-graphs/)
-
-- [Case study—using a recursive CTE to compute Bacon Numbers for actors listed in the IMDb](./bacon-numbers/)
-
-{{< tip title="Performance considerations" >}}
-
-A SQL statement that uses a `WITH` clause sometimes gets a worse execution plan than the semantically equivalent statement that _doesn’t_ use a `WITH` clause. The explanation is usually that a “push-down” optimization of a restriction or projection hasn’t penetrated into the `WITH` clause’s CTE. You can usually avoid this problem by manually pushing down what you’d hope would be done automatically into your spellings of the `WITH` clause’s CTEs.
+A SQL statement that uses a `WITH` clause sometimes gets a worse execution plan than the semantically equivalent statement that _doesn't_ use a `WITH` clause. The explanation is usually that a "push-down" optimization of a restriction or projection hasn't penetrated into the `WITH` clause's CTE. You can usually avoid this problem by manually pushing down what you'd hope would be done automatically into your spellings of the `WITH` clause's CTEs.
 
 Anyway, the ordinary good practice principle holds even more here: always check the execution plans of the SQL statements that your application issues, on representative samples of data, before moving the code to the production environment.
 
-{{< /tip >}}
-
-{{< tip title="Downloadable WITH clause demonstration scripts" >}}
+## Demonstration scripts
 
 The [`recursive-cte-code-examples.zip`](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/recursive-cte-code-examples/recursive-cte-code-examples.zip) file contains the `.sql` scripts that illustrate the use of the [recursive CTE](./recursive-cte/):
 
@@ -157,5 +151,4 @@ The [`recursive-cte-code-examples.zip`](https://raw.githubusercontent.com/yugaby
 
 All of these studies make heavy use of regular (non-recursive) CTEs. They therefore show the power of the CTE in a natural, rather than a contrived, way.
 
-After unzipping it in a convenient new directory, you'll see a `README.txt`. It tells you how to start, in turn, a few master-scripts. Simply start each in `ysqlsh`. You can run these time and again. Each one always finishes silently. You can see the reports that they produce on the dedicated spool directories and confirm that the files that are spooled are identical to the corresponding reference copies that are delivered in the zip-file.
-{{< /tip >}}
+After unzipping it in a convenient new directory, you'll see a `README.txt`. It tells you how to start, in turn, a few master-scripts. Start each in `ysqlsh`. You can run these time and again. Each one always finishes silently. You can see the reports that they produce on the dedicated spool directories and confirm that the files that are spooled are identical to the corresponding reference copies that are delivered in the zip-file.

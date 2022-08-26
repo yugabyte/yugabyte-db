@@ -13,7 +13,7 @@ type: docs
 
 ## Syntax
 
-The [with_clause](../../../syntax_resources/grammar_diagrams/#with-clause)  and [`common_table_expression`](../../../syntax_resources/grammar_diagrams/#common-table-expression) diagrams are reproduced from the section that describes the [`SELECT` statement](../../../the-sql-language/statements/dml_select/).
+The [with_clause](../../syntax_resources/grammar_diagrams/#with-clause)  and [`common_table_expression`](../../syntax_resources/grammar_diagrams/#common-table-expression) diagrams are reproduced from the section that describes the [`SELECT` statement](../../statements/dml_select/).
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
@@ -41,11 +41,11 @@ The [with_clause](../../../syntax_resources/grammar_diagrams/#with-clause)  and 
 
 ## Semantics
 
-The `WITH` clause lets you name a SQL statement which might be one of [`SELECT`](../../../the-sql-language/statements/dml_select/), [`VALUES`](../../../the-sql-language/statements/dml_values/), [`INSERT`](../../../the-sql-language/statements/dml_insert/), [`UPDATE`](../../../the-sql-language/statements/dml_update/), or [`DELETE`](../../../the-sql-language/statements/dml_delete/). You can then refer to the statement by name (just as if it were a schema-level view that names a `SELECT` statement) in a subsequent CTE definition or in the statement's final section. A very common use of the data-changing statements in the `WITH` clause is when they have a `RETURNING` clause. Then when you later refer to that statement by name, it behaves the same as if it were a named `SELECT` statement.
+The `WITH` clause lets you name a SQL statement which might be one of [`SELECT`](../../statements/dml_select/), [`VALUES`](../../statements/dml_values/), [`INSERT`](../../statements/dml_insert/), [`UPDATE`](../../statements/dml_update/), or [`DELETE`](../../statements/dml_delete/). You can then refer to the statement by name (just as if it were a schema-level view that names a `SELECT` statement) in a subsequent CTE definition or in the statement's final section. A very common use of the data-changing statements in the `WITH` clause is when they have a `RETURNING` clause. Then when you later refer to that statement by name, it behaves the same as if it were a named `SELECT` statement.
 
 The uniqueness scope for the name of the CTE is the relation names defined in a particular `WITH` clause. You can define column aliases compactly in the optional parenthesized list that follows the name of the CTE, just as you can with a schema-level view. See the section [Example where a CTE defined in the WITH clause itself has a WITH clause](#example-where-a-cte-defined-in-the-with-clause-itself-has-a-with-clause).
 
-Notice that the `WITH` clause is legal in the `SELECT` statement and in each of the kinds of data-changing statements, but not in the `VALUES` statement. See the syntax diagrams for [`SELECT`](../../../syntax_resources/grammar_diagrams/#select), [`VALUES`](../../../syntax_resources/grammar_diagrams/#values), [`INSERT`](../../../syntax_resources/grammar_diagrams/#insert), [`UPDATE`](../../../syntax_resources/grammar_diagrams/#update), and [`DELETE`](../../../syntax_resources/grammar_diagrams/#delete).
+Notice that the `WITH` clause is legal in the `SELECT` statement and in each of the kinds of data-changing statements, but not in the `VALUES` statement. See the syntax diagrams for [`SELECT`](../../syntax_resources/grammar_diagrams/#select), [`VALUES`](../../syntax_resources/grammar_diagrams/#values), [`INSERT`](../../syntax_resources/grammar_diagrams/#insert), [`UPDATE`](../../syntax_resources/grammar_diagrams/#update), and [`DELETE`](../../syntax_resources/grammar_diagrams/#delete).
 
 The recursive CTE is explained in a [dedicated section](../recursive-cte/).
 
