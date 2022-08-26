@@ -315,6 +315,26 @@ Status ResultToStatus(const Result<TValue>& result) {
   return result.ok() ? Status::OK() : result.status();
 }
 
+template<class TValue>
+TValue ResultToValue(const Result<TValue>& result, const TValue& value_for_error) {
+  return result.ok() ? *result : value_for_error;
+}
+
+template<class TValue>
+TValue ResultToValue(Result<TValue>&& result, const TValue& value_for_error) {
+  return result.ok() ? std::move(*result) : value_for_error;
+}
+
+template<class TValue>
+TValue ResultToValue(const Result<TValue>& result, TValue&& value_for_error) {
+  return result.ok() ? *result : std::move(value_for_error);
+}
+
+template<class TValue>
+TValue ResultToValue(Result<TValue>&& result, TValue&& value_for_error) {
+  return result.ok() ? std::move(*result) : std::move(value_for_error);
+}
+
 /*
  * GNU statement expression extension forces to return value and not rvalue reference.
  * As a result VERIFY_RESULT or similar helpers will call move or copy constructor of T even

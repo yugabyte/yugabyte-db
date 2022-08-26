@@ -90,8 +90,8 @@ TEST_F(RestartTest, WalFooterProperlyInitialized) {
 
   string tablet_id;
   ASSERT_NO_FATALS(GetTablet(table_.name(), &tablet_id));
-  std::shared_ptr<tablet::TabletPeer> tablet_peer;
-  ASSERT_OK(tablet_server->server()->tablet_manager()->GetTabletPeer(tablet_id, &tablet_peer));
+  auto tablet_peer = ASSERT_RESULT(
+      tablet_server->server()->tablet_manager()->GetServingTablet(tablet_id));
   ASSERT_OK(tablet_server->WaitStarted());
   log::SegmentSequence segments;
   ASSERT_OK(tablet_peer->log()->GetLogReader()->GetSegmentsSnapshot(&segments));
@@ -112,13 +112,14 @@ TEST_F(LogSyncTest, BackgroundSync) {
   auto* tablet_server = mini_cluster()->mini_tablet_server(0);
   string tablet_id;
   ASSERT_NO_FATALS(GetTablet(table_.name(), &tablet_id));
-  std::shared_ptr<tablet::TabletPeer> tablet_peer;
-  ASSERT_OK(tablet_server->server()->tablet_manager()->GetTabletPeer(tablet_id, &tablet_peer));
+  auto tablet_peer = ASSERT_RESULT(
+      tablet_server->server()->tablet_manager()->GetServingTablet(tablet_id));
   CheckSampleKeysValues(0, 0);
 
   ASSERT_OK(tablet_server->Restart());
   ASSERT_NO_FATALS(GetTablet(table_.name(), &tablet_id));
-  ASSERT_OK(tablet_server->server()->tablet_manager()->GetTabletPeer(tablet_id, &tablet_peer));
+  tablet_peer = ASSERT_RESULT(
+      tablet_server->server()->tablet_manager()->GetServingTablet(tablet_id));
   ASSERT_OK(tablet_server->WaitStarted());
 
   // shutting down tablet_peer resets the BG sync threapool token maintained in the Log.

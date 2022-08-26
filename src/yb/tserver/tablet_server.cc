@@ -494,17 +494,14 @@ Status TabletServer::GetLiveTServers(
 Status TabletServer::GetTabletStatus(const GetTabletStatusRequestPB* req,
                                      GetTabletStatusResponsePB* resp) const {
   VLOG(3) << "GetTabletStatus called for tablet " << req->tablet_id();
-  tablet::TabletPeerPtr peer;
-  if (!tablet_manager_->LookupTablet(req->tablet_id(), &peer)) {
-    return STATUS(NotFound, "Tablet not found", req->tablet_id());
-  }
-  peer->GetTabletStatusPB(resp->mutable_tablet_status());
+  auto tablet_peer = VERIFY_RESULT(tablet_manager_->GetTablet(req->tablet_id()));
+  tablet_peer->GetTabletStatusPB(resp->mutable_tablet_status());
   return Status::OK();
 }
 
 bool TabletServer::LeaderAndReady(const TabletId& tablet_id, bool allow_stale) const {
-  tablet::TabletPeerPtr peer;
-  if (!tablet_manager_->LookupTablet(tablet_id, &peer)) {
+  auto peer = tablet_manager_->LookupTablet(tablet_id);
+  if (!peer) {
     return false;
   }
   return peer->LeaderStatus(allow_stale) == consensus::LeaderStatus::LEADER_AND_READY;
