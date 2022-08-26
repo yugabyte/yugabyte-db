@@ -161,8 +161,7 @@ class CDCServiceTest : public YBMiniClusterTestBase<MiniCluster>,
   void CreateTable(int num_tablets, TableHandle* table);
   void GetTablets(std::vector<TabletId>* tablet_ids,
                   const client::YBTableName& table_name = kTableName);
-  void GetTablet(std::string* tablet_id,
-                 const client::YBTableName& table_name = kTableName);
+  std::string GetTablet(const client::YBTableName& table_name = kTableName);
   void GetChanges(const TabletId& tablet_id, const CDCStreamId& stream_id,
                   int64_t term, int64_t index,
                   bool* has_error = nullptr, ::yb::cdc::CDCErrorPB_Code* code = nullptr);
@@ -307,11 +306,10 @@ void CDCServiceTest::GetTablets(std::vector<TabletId>* tablet_ids,
   ASSERT_EQ(tablet_ids->size(), tablet_count());
 }
 
-void CDCServiceTest::GetTablet(std::string* tablet_id,
-                               const client::YBTableName& table_name) {
+std::string CDCServiceTest::GetTablet(const client::YBTableName& table_name) {
   std::vector<TabletId> tablet_ids;
   GetTablets(&tablet_ids, table_name);
-  *tablet_id = tablet_ids[0];
+  return tablet_ids[0];
 }
 
 void CDCServiceTest::GetChanges(const TabletId& tablet_id, const CDCStreamId& stream_id,
@@ -467,8 +465,7 @@ TEST_P(CDCServiceTest, TestCompoundKey) {
   // Create a stream on the table
   CreateCDCStream(cdc_proxy_, table.table()->id(), &stream_id_);
 
-  std::string tablet_id;
-  GetTablet(&tablet_id, table.name());
+  std::string tablet_id = GetTablet(table.name());
 
   GetChangesRequestPB change_req;
   GetChangesResponsePB change_resp;
@@ -560,8 +557,7 @@ TEST_P(CDCServiceTest, TestDeleteCDCStream) {
 
   {
     const auto& tserver = cluster_->mini_tablet_server(0)->server();
-    std::string tablet_id;
-    GetTablet(&tablet_id, table_.name());
+    std::string tablet_id = GetTablet(table_.name());
     ASSERT_NO_FATALS(WriteTestRow(0, 10, "key0", tablet_id, tserver->proxy()));
   }
 
@@ -596,11 +592,9 @@ TEST_P(CDCServiceTest, TestSafeTime) {
   CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id_);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_collect_cdc_metrics) = true;
 
-  std::string tablet_id;
-  GetTablet(&tablet_id);
+  std::string tablet_id = GetTablet();
   auto leader_tserver = GetLeaderForTablet(tablet_id)->server();
-  std::shared_ptr<tablet::TabletPeer> tablet_peer;
-  ASSERT_OK(leader_tserver->tablet_manager()->GetTabletPeer(tablet_id, &tablet_peer));
+  auto tablet_peer = ASSERT_RESULT(leader_tserver->tablet_manager()->GetServingTablet(tablet_id));
 
   GetChangesRequestPB change_req;
   GetChangesResponsePB change_resp;
@@ -649,8 +643,7 @@ TEST_P(CDCServiceTest, TestMetricsOnDeletedReplication) {
   CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id_);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_collect_cdc_metrics) = true;
 
-  std::string tablet_id;
-  GetTablet(&tablet_id);
+  std::string tablet_id = GetTablet();
 
   const auto& tserver = cluster_->mini_tablet_server(0)->server();
   // Use proxy for to most accurately simulate normal requests.
@@ -712,8 +705,7 @@ TEST_P(CDCServiceTest, TestGetChanges) {
   CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id_);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_collect_cdc_metrics) = true;
 
-  std::string tablet_id;
-  GetTablet(&tablet_id);
+  std::string tablet_id = GetTablet();
 
   const auto& tserver = cluster_->mini_tablet_server(0)->server();
   // Use proxy for to most accurately simulate normal requests.
@@ -850,8 +842,7 @@ TEST_P(CDCServiceTest, TestGetChangesWithDeadline) {
   // Skip the META_OP that has the initial table Schema.  This method avoids LogCache.
   FLAGS_TEST_xcluster_skip_meta_ops = true;
 
-  std::string tablet_id;
-  GetTablet(&tablet_id);
+  std::string tablet_id = GetTablet();
 
   GetChangesRequestPB change_req;
   GetChangesResponsePB change_resp;
@@ -869,35 +860,41 @@ TEST_P(CDCServiceTest, TestGetChangesWithDeadline) {
     WriteTestRow(i, i, Format("key$0", i), tablet_id, proxy);
   }
 
-  // Get CDC changes. Note that the timeout value and read delay
-  // should ensure that some, but not all records are read.
-  FLAGS_TEST_get_changes_read_loop_delay_ms = 10 * kTimeMultiplier;
-  FLAGS_cdc_read_rpc_timeout_ms = 50 * kTimeMultiplier;
   change_req.set_max_records(num_records);
 
   SCOPED_TRACE(change_req.DebugString());
-  ASSERT_OK(GetChangesWithRetries(change_req, &change_resp,
-                                  FLAGS_cdc_read_rpc_timeout_ms));
 
-  SCOPED_TRACE(change_resp.DebugString());
-  ASSERT_FALSE(change_resp.has_error());
+  {
+    // Get CDC changes. Note that the timeout value and read delay
+    // should ensure that some, but not all records are read.
+    FLAGS_TEST_get_changes_read_loop_delay_ms = 10 * kTimeMultiplier;
+    FLAGS_cdc_read_rpc_timeout_ms = 50 * kTimeMultiplier;
 
-  // Ensure that partial results are returned
-  ASSERT_GT(change_resp.records_size(), 0);
-  ASSERT_LT(change_resp.records_size(), num_records);
+    ASSERT_OK(GetChangesWithRetries(change_req, &change_resp,
+        FLAGS_cdc_read_rpc_timeout_ms));
 
-  // Try again, but use a timeout value large enough such that
-  // all records should be read before timeout.
-  FLAGS_TEST_get_changes_read_loop_delay_ms = 0;
-  FLAGS_cdc_read_rpc_timeout_ms = 30 * 1000 * kTimeMultiplier;
+    SCOPED_TRACE(change_resp.DebugString());
+    ASSERT_FALSE(change_resp.has_error());
 
-  ASSERT_OK(GetChangesWithRetries(change_req, &change_resp,
-                                  FLAGS_cdc_read_rpc_timeout_ms));
-  SCOPED_TRACE(change_resp.DebugString());
-  ASSERT_FALSE(change_resp.has_error());
+    // Ensure that partial results are returned
+    ASSERT_GT(change_resp.records_size(), 0);
+    ASSERT_LT(change_resp.records_size(), num_records);
+  }
 
-  // This time, we expect all records to be read.
-  ASSERT_EQ(change_resp.records_size(), num_records);
+  {
+    // Try again, but use a timeout value large enough such that
+    // all records should be read before timeout.
+    FLAGS_TEST_get_changes_read_loop_delay_ms = 0;
+    FLAGS_cdc_read_rpc_timeout_ms = 30 * 1000 * kTimeMultiplier;
+
+    ASSERT_OK(GetChangesWithRetries(change_req, &change_resp,
+                                    FLAGS_cdc_read_rpc_timeout_ms));
+    SCOPED_TRACE(change_resp.DebugString());
+    ASSERT_FALSE(change_resp.has_error());
+
+    // This time, we expect all records to be read.
+    ASSERT_EQ(change_resp.records_size(), num_records);
+  }
 
   // Cleanup stream before shutdown.
   ASSERT_OK(client_->DeleteCDCStream(stream_id_));
@@ -905,8 +902,7 @@ TEST_P(CDCServiceTest, TestGetChangesWithDeadline) {
 }
 
 TEST_P(CDCServiceTest, TestGetChangesInvalidStream) {
-  std::string tablet_id;
-  GetTablet(&tablet_id);
+  std::string tablet_id = GetTablet();
 
   // Get CDC changes for non-existent stream.
   GetChangesRequestPB change_req;
@@ -925,8 +921,7 @@ TEST_P(CDCServiceTest, TestGetChangesInvalidStream) {
 TEST_P(CDCServiceTest, TestGetCheckpoint) {
   CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id_);
 
-  std::string tablet_id;
-  GetTablet(&tablet_id);
+  std::string tablet_id = GetTablet();
 
   GetCheckpointRequestPB req;
   GetCheckpointResponsePB resp;
@@ -959,8 +954,7 @@ TEST_P(CDCServiceTestMultipleServersOneTablet, TestMetricsAfterServerFailure) {
   CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id_);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_collect_cdc_metrics) = false;
 
-  std::string tablet_id;
-  GetTablet(&tablet_id);
+  std::string tablet_id = GetTablet();
 
   GetChangesRequestPB change_req;
   change_req.set_tablet_id(tablet_id);
@@ -1001,8 +995,7 @@ TEST_P(CDCServiceTestMultipleServersOneTablet, TestUpdateLagMetrics) {
   CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id_);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_collect_cdc_metrics) = true;
 
-  std::string tablet_id;
-  GetTablet(&tablet_id);
+  std::string tablet_id = GetTablet();
 
   // Get the leader and a follower for the tablet.
   tserver::MiniTabletServer* leader_mini_tserver = nullptr;
@@ -1012,13 +1005,12 @@ TEST_P(CDCServiceTestMultipleServersOneTablet, TestUpdateLagMetrics) {
     leader_mini_tserver = nullptr;
     follower_mini_tserver = nullptr;
     for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
-      std::shared_ptr<tablet::TabletPeer> tablet_peer;
-      Status s = cluster_->mini_tablet_server(i)->server()->tablet_manager()->
-                 GetTabletPeer(tablet_id, &tablet_peer);
-      if (!s.ok()) {
+      auto tablet_peer_result =
+          cluster_->mini_tablet_server(i)->server()->tablet_manager()->GetServingTablet(tablet_id);
+      if (!tablet_peer_result.ok()) {
         continue;
       }
-      if (tablet_peer->LeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY) {
+      if ((**tablet_peer_result).LeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY) {
         leader_mini_tserver = cluster_->mini_tablet_server(i);
       } else {
         follower_mini_tserver = cluster_->mini_tablet_server(i);
@@ -1163,8 +1155,7 @@ INSTANTIATE_TEST_CASE_P(EnableReplicateIntents, CDCServiceTestMultipleServers, :
 TEST_P(CDCServiceTestMultipleServers, TestListTablets) {
   CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id_);
 
-  std::string tablet_id;
-  GetTablet(&tablet_id);
+  std::string tablet_id = GetTablet();
 
   ListTabletsRequestPB req;
   ListTabletsResponsePB resp;
@@ -1308,8 +1299,7 @@ TEST_P(CDCServiceTestMultipleServers, TestGetChangesProxyRouting) {
 TEST_P(CDCServiceTest, TestOnlyGetLocalChanges) {
   CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id_);
 
-  std::string tablet_id;
-  GetTablet(&tablet_id);
+  std::string tablet_id = GetTablet();
 
   const auto& proxy = cluster_->mini_tablet_server(0)->server()->proxy();
 
@@ -1401,9 +1391,9 @@ TEST_P(CDCServiceTest, TestOnlyGetLocalChanges) {
   ASSERT_OK(cluster_->RestartSync());
 
   ASSERT_OK(WaitFor([&](){
-    std::shared_ptr<tablet::TabletPeer> tablet_peer;
-    if (!cluster_->mini_tablet_server(0)->server()->tablet_manager()->
-        LookupTablet(tablet_id, &tablet_peer)) {
+    auto tablet_peer = cluster_->mini_tablet_server(0)->server()->tablet_manager()->LookupTablet(
+        tablet_id);
+    if (!tablet_peer) {
       return false;
     }
     return tablet_peer->LeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY;
@@ -1419,8 +1409,7 @@ TEST_P(CDCServiceTest, TestOnlyGetLocalChanges) {
 TEST_P(CDCServiceTest, TestCheckpointUpdatedForRemoteRows) {
   CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id_);
 
-  std::string tablet_id;
-  GetTablet(&tablet_id);
+  std::string tablet_id = GetTablet();
 
   GetChangesRequestPB change_req;
   change_req.set_tablet_id(tablet_id);
@@ -1479,8 +1468,7 @@ TEST_P(CDCServiceTest, TestCheckpointUpdate) {
 
   CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id_);
 
-  std::string tablet_id;
-  GetTablet(&tablet_id);
+  std::string tablet_id = GetTablet();
 
   const auto& proxy = cluster_->mini_tablet_server(0)->server()->proxy();
 
@@ -1602,14 +1590,12 @@ INSTANTIATE_TEST_CASE_P(EnableReplicateIntents, CDCServiceTestMaxRentionTime, ::
 TEST_P(CDCServiceTestMaxRentionTime, TestLogRetentionByOpId_MaxRentionTime) {
   CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id_);
 
-  std::string tablet_id;
-  GetTablet(&tablet_id);
+  std::string tablet_id = GetTablet();
 
   const auto& proxy = cluster_->mini_tablet_server(0)->server()->proxy();
 
-  std::shared_ptr<tablet::TabletPeer> tablet_peer;
-  ASSERT_TRUE(cluster_->mini_tablet_server(0)->server()->tablet_manager()->LookupTablet(tablet_id,
-      &tablet_peer));
+  auto tablet_peer = ASSERT_RESULT(
+      cluster_->mini_tablet_server(0)->server()->tablet_manager()->GetTablet(tablet_id));
 
   // Write a row so that the next GetChanges request doesn't fail.
   WriteTestRow(0, 10, "key0", tablet_id, proxy);
@@ -1671,8 +1657,7 @@ INSTANTIATE_TEST_CASE_P(EnableReplicateIntents, CDCServiceTestDurableMinReplicat
 TEST_P(CDCServiceTestDurableMinReplicatedIndex, TestBootstrapProducer) {
   constexpr int kNRows = 100;
 
-  std::string tablet_id;
-  GetTablet(&tablet_id);
+  std::string tablet_id = GetTablet();
 
   const auto& proxy = cluster_->mini_tablet_server(0)->server()->proxy();
   for (int i = 0; i < kNRows; i++) {
@@ -1716,9 +1701,8 @@ TEST_P(CDCServiceTestDurableMinReplicatedIndex, TestBootstrapProducer) {
   ASSERT_EQ(nrows, 1);
 
   // Ensure that cdc_min_replicated_index is set to the correct value after Bootstrap.
-  std::shared_ptr<tablet::TabletPeer> tablet_peer;
-  ASSERT_TRUE(cluster_->mini_tablet_server(0)->server()->tablet_manager()->LookupTablet(tablet_id,
-              &tablet_peer));
+  auto tablet_peer = ASSERT_RESULT(
+      cluster_->mini_tablet_server(0)->server()->tablet_manager()->GetTablet(tablet_id));
 
   auto latest_opid = tablet_peer->log()->GetLatestEntryOpId();
   WaitForCDCIndex(tablet_peer, latest_opid.index, 4 * FLAGS_update_min_cdc_indices_interval_secs);
@@ -1727,14 +1711,12 @@ TEST_P(CDCServiceTestDurableMinReplicatedIndex, TestBootstrapProducer) {
 TEST_P(CDCServiceTestDurableMinReplicatedIndex, TestLogCDCMinReplicatedIndexIsDurable) {
   CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id_);
 
-  std::string tablet_id;
-  GetTablet(&tablet_id);
+  std::string tablet_id = GetTablet();
 
   const auto& proxy = cluster_->mini_tablet_server(0)->server()->proxy();
 
-  std::shared_ptr<tablet::TabletPeer> tablet_peer;
-  ASSERT_TRUE(cluster_->mini_tablet_server(0)->server()->tablet_manager()->LookupTablet(tablet_id,
-      &tablet_peer));
+  auto tablet_peer = ASSERT_RESULT(
+      cluster_->mini_tablet_server(0)->server()->tablet_manager()->GetTablet(tablet_id));
   // Write a row so that the next GetChanges request doesn't fail.
   WriteTestRow(0, 10, "key0", tablet_id, proxy);
 
@@ -1746,9 +1728,10 @@ TEST_P(CDCServiceTestDurableMinReplicatedIndex, TestLogCDCMinReplicatedIndexIsDu
   // Restart the entire cluster to verify that the CDC tablet metadata got loaded from disk.
   ASSERT_OK(cluster_->RestartSync());
 
-  ASSERT_OK(WaitFor([&](){
-    if (cluster_->mini_tablet_server(0)->server()->tablet_manager()->
-            LookupTablet(tablet_id, &tablet_peer)) {
+  ASSERT_OK(WaitFor([&]() {
+    auto tablet_peer =
+        cluster_->mini_tablet_server(0)->server()->tablet_manager()->LookupTablet(tablet_id);
+    if (tablet_peer) {
       if (tablet_peer->LeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY &&
           tablet_peer->log() != nullptr) {
         LOG(INFO) << "TServer is ready ";
@@ -1786,14 +1769,12 @@ class CDCServiceTestMinSpace : public CDCServiceTest {
 TEST_P(CDCServiceTestMinSpace, TestLogRetentionByOpId_MinSpace) {
   CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id_);
 
-  std::string tablet_id;
-  GetTablet(&tablet_id);
+  std::string tablet_id = GetTablet();
 
   const auto& proxy = cluster_->mini_tablet_server(0)->server()->proxy();
 
-  std::shared_ptr<tablet::TabletPeer> tablet_peer;
-  ASSERT_TRUE(cluster_->mini_tablet_server(0)->server()->tablet_manager()->LookupTablet(tablet_id,
-      &tablet_peer));
+  auto tablet_peer = ASSERT_RESULT(
+      cluster_->mini_tablet_server(0)->server()->tablet_manager()->GetTablet(tablet_id));
   // Write a row so that the next GetChanges request doesn't fail.
   WriteTestRow(0, 10, "key0", tablet_id, proxy);
 
@@ -1862,8 +1843,7 @@ TEST_P(CDCLogAndMetaIndex, TestLogAndMetaCdcIndex) {
     CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id[i]);
   }
 
-  std::string tablet_id;
-  GetTablet(&tablet_id);
+  std::string tablet_id = GetTablet();
 
   const auto &proxy = cluster_->mini_tablet_server(0)->server()->proxy();
 
@@ -1872,9 +1852,8 @@ TEST_P(CDCLogAndMetaIndex, TestLogAndMetaCdcIndex) {
     WriteTestRow(i, 10 + i, "key" + std::to_string(i), tablet_id, proxy);
   }
 
-  std::shared_ptr<tablet::TabletPeer> tablet_peer;
-  ASSERT_TRUE(cluster_->mini_tablet_server(0)->server()->tablet_manager()->LookupTablet(tablet_id,
-      &tablet_peer));
+  auto tablet_peer = ASSERT_RESULT(
+      cluster_->mini_tablet_server(0)->server()->tablet_manager()->GetTablet(tablet_id));
 
   // Before any cdc request, the min index should be max value.
   ASSERT_EQ(tablet_peer->log()->cdc_min_replicated_index(), std::numeric_limits<int64_t>::max());
@@ -1930,8 +1909,7 @@ TEST_P(CDCLogAndMetaIndexReset, TestLogAndMetaCdcIndexAreReset) {
     CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id[i]);
   }
 
-  std::string tablet_id;
-  GetTablet(&tablet_id);
+  std::string tablet_id = GetTablet();
 
   const auto &proxy = cluster_->mini_tablet_server(0)->server()->proxy();
 
@@ -1940,9 +1918,8 @@ TEST_P(CDCLogAndMetaIndexReset, TestLogAndMetaCdcIndexAreReset) {
     WriteTestRow(i, 10 + i, "key" + std::to_string(i), tablet_id, proxy);
   }
 
-  std::shared_ptr<tablet::TabletPeer> tablet_peer;
-  ASSERT_TRUE(cluster_->mini_tablet_server(0)->server()->tablet_manager()->LookupTablet(tablet_id,
-      &tablet_peer));
+  auto tablet_peer = ASSERT_RESULT(
+      cluster_->mini_tablet_server(0)->server()->tablet_manager()->GetTablet(tablet_id));
 
   // Before any cdc request, the min index should be max value.
   ASSERT_EQ(tablet_peer->log()->cdc_min_replicated_index(), std::numeric_limits<int64_t>::max());
@@ -2083,12 +2060,13 @@ TEST_P(CDCServiceTestThreeServers, TestNewLeaderUpdatesLogCDCAppliedIndex) {
   std::shared_ptr<tablet::TabletPeer> tablet_peer;
   // Check that the index hasn't been updated in any of the peers.
   for (int idx = 0; idx < server_count(); idx++) {
-    if (cluster_->mini_tablet_server(idx)->server()->tablet_manager()->
-        LookupTablet(tablet_id, &tablet_peer)) {
+    auto new_tablet_peer =
+        cluster_->mini_tablet_server(idx)->server()->tablet_manager()->LookupTablet(tablet_id);
+    if (new_tablet_peer) {
+      tablet_peer = new_tablet_peer;
       ASSERT_EQ(tablet_peer->log()->cdc_min_replicated_index(), std::numeric_limits<int64>::max());
       ASSERT_EQ(tablet_peer->tablet_metadata()->cdc_min_replicated_index(),
                 std::numeric_limits<int64>::max());
-
     }
   }
 
@@ -2118,12 +2096,11 @@ TEST_P(CDCServiceTestThreeServers, TestNewLeaderUpdatesLogCDCAppliedIndex) {
         // This TServer is shutdown for now.
         continue;
       }
-      if (cluster_->mini_tablet_server(idx)->server()->tablet_manager()->
-          LookupTablet(tablet_id, &tablet_peer)) {
-        if (tablet_peer->LeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY) {
-          LOG(INFO) << "Found new leader for tablet " << tablet_id << " in TS " << idx;
-          return true;
-        }
+      tablet_peer =
+          cluster_->mini_tablet_server(idx)->server()->tablet_manager()->LookupTablet(tablet_id);
+      if (tablet_peer && tablet_peer->LeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY) {
+        LOG(INFO) << "Found new leader for tablet " << tablet_id << " in TS " << idx;
+        return true;
       }
     }
     return false;
@@ -2156,8 +2133,7 @@ INSTANTIATE_TEST_CASE_P(EnableReplicateIntents, CDCServiceLowRpc, ::testing::Val
 TEST_P(CDCServiceLowRpc, TestGetChangesRpcMax) {
   CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id_);
 
-  std::string tablet_id;
-  GetTablet(&tablet_id);
+  std::string tablet_id = GetTablet();
 
   tserver::MiniTabletServer* leader_mini_tserver;
   ASSERT_OK(WaitFor([&]() -> Result<bool> {

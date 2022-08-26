@@ -9110,8 +9110,11 @@ void CatalogManager::CreateNewReplicaForLocalMemory(TSDescriptor* ts_desc,
   }
 }
 
-Status CatalogManager::GetTabletPeer(const TabletId& tablet_id,
-                                     std::shared_ptr<TabletPeer>* ret_tablet_peer) const {
+Result<tablet::TabletPeerPtr> CatalogManager::GetServingTablet(const TabletId& tablet_id) const {
+  return GetServingTablet(Slice(tablet_id));
+}
+
+Result<tablet::TabletPeerPtr> CatalogManager::GetServingTablet(const Slice& tablet_id) const {
   // Note: CatalogManager has only one table, 'sys_catalog', with only
   // one tablet.
 
@@ -9127,18 +9130,17 @@ Status CatalogManager::GetTabletPeer(const TabletId& tablet_id,
   CHECK(sys_catalog_) << "sys_catalog_ must be initialized!";
 
   if (master_->opts().IsShellMode()) {
-    return STATUS_SUBSTITUTE(NotFound,
-        "In shell mode: no tablet_id $0 exists in CatalogManager.", tablet_id);
+    return STATUS_FORMAT(NotFound,
+        "In shell mode: no tablet_id $0 exists in CatalogManager", tablet_id);
   }
 
   if (sys_catalog_->tablet_id() == tablet_id && sys_catalog_->tablet_peer().get() != nullptr &&
       sys_catalog_->tablet_peer()->CheckRunning().ok()) {
-    *ret_tablet_peer = tablet_peer();
-  } else {
-    return STATUS_SUBSTITUTE(NotFound,
-        "no SysTable in the RUNNING state exists with tablet_id $0 in CatalogManager", tablet_id);
+    return tablet_peer();
   }
-  return Status::OK();
+
+  return STATUS_FORMAT(NotFound,
+      "no SysTable in the RUNNING state exists with tablet_id $0 in CatalogManager", tablet_id);
 }
 
 const NodeInstancePB& CatalogManager::NodeInstance() const {
@@ -9153,14 +9155,14 @@ Status CatalogManager::UpdateMastersListInMemoryAndDisk() {
   DCHECK(master_->opts().IsShellMode());
 
   if (!master_->opts().IsShellMode()) {
-    return STATUS(IllegalState, "Cannot update master's info when process is not in shell mode.");
+    return STATUS(IllegalState, "Cannot update master's info when process is not in shell mode");
   }
 
   consensus::ConsensusStatePB consensus_state;
   RETURN_NOT_OK(GetCurrentConfig(&consensus_state));
 
   if (!consensus_state.has_config()) {
-    return STATUS(NotFound, "No Raft config found.");
+    return STATUS(NotFound, "No Raft config found");
   }
 
   RETURN_NOT_OK(sys_catalog_->ConvertConfigToMasterAddresses(consensus_state.config()));
@@ -11488,8 +11490,7 @@ Result<bool> CatalogManager::SysCatalogLeaderStepDown(const ServerEntryPB& maste
       LOG_WITH_PREFIX(FATAL) << "For test: Crashing the server instead of performing sys "
                                 "catalog leader affinity move.";
     }
-  std::shared_ptr<TabletPeer> tablet_peer;
-  RETURN_NOT_OK(GetTabletPeer(sys_catalog_->tablet_id(), &tablet_peer));
+  auto tablet_peer = VERIFY_RESULT(GetServingTablet(sys_catalog_->tablet_id()));
 
   consensus::LeaderStepDownRequestPB req;
   req.set_tablet_id(sys_catalog_->tablet_id());

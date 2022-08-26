@@ -341,7 +341,7 @@ TEST_F(TabletSplitITest, PostSplitCompactionDoesntBlockTabletCleanup) {
         first_child_tablet_peer_results.clear();
         for (auto mini_ts : cluster_->mini_tablet_servers()) {
           auto tablet_peer_result =
-              mini_ts->server()->tablet_manager()->LookupTablet(first_child_tablet->tablet_id());
+              mini_ts->server()->tablet_manager()->GetTablet(first_child_tablet->tablet_id());
           if (tablet_peer_result.ok() || !tablet_peer_result.status().IsNotFound()) {
             first_child_tablet_peer_results.push_back(tablet_peer_result);
           }
@@ -2923,7 +2923,7 @@ TEST_F(TabletSplitITest, ParentRemoteBootstrapAfterWritesToChildren) {
   // Trigger and wait for RBS to complete on the followers of split parent tablet.
   for (auto& ts : cluster_->mini_tablet_servers()) {
     const auto* tablet_manager = ts->server()->tablet_manager();
-    const auto peer = ASSERT_RESULT(tablet_manager->LookupTablet(source_tablet_id));
+    const auto peer = ASSERT_RESULT(tablet_manager->GetTablet(source_tablet_id));
     if (peer->consensus()->GetLeaderStatus() != consensus::LeaderStatus::NOT_LEADER) {
       continue;
     }
@@ -2938,7 +2938,7 @@ TEST_F(TabletSplitITest, ParentRemoteBootstrapAfterWritesToChildren) {
 
     ASSERT_OK(LoggedWaitFor(
         [&] {
-          const auto result = tablet_manager->LookupTablet(source_tablet_id);
+          const auto result = tablet_manager->GetTablet(source_tablet_id);
           if (!result.ok()) {
             return false;
           }
