@@ -60,7 +60,7 @@ Use `redis-cli` to connect to the local node, as follows:
 ./redis-cli -h <yb-local-address>
 ```
 
-Depending on your configuration, you may need to install `redis-cli`. For more information, see [Initialize YEDIS API and connect with redis-cli](../../yedis/quick-start/#1-initialize-yedis-api-and-connect-with-redis-cli).
+Depending on your configuration, you may need to install `redis-cli`. For more information, see [Initialize YEDIS API and connect with redis-cli](../../../yedis/quick-start/).
 
 In the preceding command, `<yb-local-address>` is the address where the YEDIS service is listening (for example, as returned by `lsof`).
 

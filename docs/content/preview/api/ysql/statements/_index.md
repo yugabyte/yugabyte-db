@@ -152,7 +152,7 @@ Statements in this class allow database parameters to be set at the session or t
 
 Statements in this class support the preparation of SQL statements, and their subsequent execution, to allow a more efficient execution by _binding_ actual arguments to placeholders in a SQL statement that is compiled just once, per session, rather than _every_ time actual arguments are presented. The canonical example of this feature is provided by the actual arguments that a `WHERE` clause restriction uses or the actual values than an `INSERT` statement will use.
 
-In the performance control class, the [`EXPLAIN`](./statements/perf_explain/) statement shows what access methods a DML statement will use and (for statements with joins) the join order and method.
+In the performance control class, the [`EXPLAIN`](perf_explain/) statement shows what access methods a DML statement will use and (for statements with joins) the join order and method.
 
 | Statement | Description |
 | :-------- | :---------- |
