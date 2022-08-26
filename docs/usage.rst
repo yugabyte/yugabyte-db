@@ -193,10 +193,10 @@ Some other convenience functions and views are available:
 .. code-block:: psql
 
   SELECT * FROM hypopg() ;
-      indexname       | indexrelid | indrelid | innatts | indisunique | indkey | indcollation | indclass | indoption | indexprs | indpred | amid
-----------------------+------------+----------+---------+-------------+--------+--------------+----------+-----------+----------+---------+------
- <18284>btree_hypo_id |      13543 |    18122 |       1 | f           | 1      | 0            | 1978     | <NULL>    | <NULL>   | <NULL>  |  403
-(1 row)
+        indexname       | indexrelid | indrelid | innatts | indisunique | indkey | indcollation | indclass | indoption | indexprs | indpred | amid
+  ----------------------+------------+----------+---------+-------------+--------+--------------+----------+-----------+----------+---------+------
+   <18284>btree_hypo_id |      13543 |    18122 |       1 | f           | 1      | 0            | 1978     | <NULL>    | <NULL>   | <NULL>  |  403
+  (1 row)
 
 - **hypopg_get_indexdef(oid)**: function that lists the CREATE INDEX statement
   that would recreate a stored hypothetical index
