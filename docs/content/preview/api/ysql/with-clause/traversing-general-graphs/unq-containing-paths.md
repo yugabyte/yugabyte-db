@@ -61,7 +61,7 @@ This is the result:
       3             5   n01 > n09 > n05 > n10 > n08
 ```
 
-These are the unique containing paths of the shortest paths from the raw paths. Here they are. The pictures are numbered with the value assigned by [`row_number()`](../../../../exprs/window_functions/function-syntax-semantics/row-number-rank-dense-rank/#row-number) (see the implementation of _["list_paths()"](../common-code/#cr-list-paths-sql)_):
+These are the unique containing paths of the shortest paths from the raw paths. Here they are. The pictures are numbered with the value assigned by [`row_number()`](../../../exprs/window_functions/function-syntax-semantics/row-number-rank-dense-rank/#row-number) (see the implementation of _["list_paths()"](../common-code/#cr-list-paths-sql)_):
 
 ![unq-containing-paths-1](/images/api/ysql/the-sql-language/with-clause/traversing-general-graphs/unq-containing-paths-1.jpg)
 

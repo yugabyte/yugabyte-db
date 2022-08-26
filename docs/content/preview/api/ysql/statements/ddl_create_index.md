@@ -73,7 +73,7 @@ Regarding colocation, indexes follow their table. If the table is colocated, its
 Creating an index on a partitioned table automatically creates a corresponding index for every partition in the default tablespace. It's also possible to create an index on each partition individually, which you should do in the following cases:
 
 * Parallel writes are expected while creating the index, because concurrent builds for indexes on partitioned tables aren't supported. In this case, it's better to use concurrent builds to create indexes on each partition individually.
-* [Row-level geo-partitioning](../../../../../explore/multi-region-deployments/row-level-geo-partitioning/) is being used. In this case, create the index separately on each partition to customize the tablespace in which each index is created.
+* [Row-level geo-partitioning](../../../../explore/multi-region-deployments/row-level-geo-partitioning/) is being used. In this case, create the index separately on each partition to customize the tablespace in which each index is created.
 * `CREATE INDEX CONCURRENTLY` is not supported for partitioned tables (see [CONCURRENTLY](#concurrently)).
 
 ### UNIQUE
@@ -98,7 +98,7 @@ Indicates not to recurse creating indexes on partitions, if the table is partiti
 
 The name of the index access method.
 By default, `lsm` is used for YugabyteDB tables and `btree` is used otherwise (for example, temporary tables).
-[GIN indexes](../../../../../explore/indexes-constraints/gin/) can be created in YugabyteDB by using the `ybgin` access method.
+[GIN indexes](../../../../explore/indexes-constraints/gin/) can be created in YugabyteDB by using the `ybgin` access method.
 
 ### INCLUDE clause
 
@@ -106,7 +106,7 @@ Specify a list of columns which will be included in the index as non-key columns
 
 ### TABLESPACE clause
 
-Specify the name of the [tablespace](../../../../../explore/ysql-language-features/going-beyond-sql/tablespaces/) that describes the placement configuration for this index. By default, indexes are placed in the `pg_default` tablespace, which spreads the tablets of the index evenly across the cluster.
+Specify the name of the [tablespace](../../../../explore/ysql-language-features/going-beyond-sql/tablespaces/) that describes the placement configuration for this index. By default, indexes are placed in the `pg_default` tablespace, which spreads the tablets of the index evenly across the cluster.
 
 ### WHERE clause
 

@@ -80,7 +80,7 @@ Change the current value of the sequence. If no value is specified, the current 
 
 Specify how many numbers from the sequence to cache in the client. Default is `1`.
 
-When YB-TServer [ysql_sequence_cache_minval](../../../../../reference/configuration/yb-tserver/#ysql-sequence-cache-minval) configuration flag is not explicitly turned off (set to `0`), the maximum value of the flag and the cache clause will be used.
+When YB-TServer [ysql_sequence_cache_minval](../../../../reference/configuration/yb-tserver/#ysql-sequence-cache-minval) configuration flag is not explicitly turned off (set to `0`), the maximum value of the flag and the cache clause will be used.
 
 #### OWNED BY *table_name.table_column* | NONE
 
@@ -94,7 +94,7 @@ Create a simple sequence.
 yugabyte=# CREATE SEQUENCE s;
 ```
 
-```
+```output
 CEATE SEQUENCE
 ```
 
@@ -104,7 +104,7 @@ Modify the increment value.
 yugabyte=# ALTER SEQUENCE s INCREMENT BY 5;
 ```
 
-```
+```output
 ALTER SEQUENCE
 ```
 
@@ -112,7 +112,7 @@ ALTER SEQUENCE
 yugabyte=# SELECT nextval('s');
 ```
 
-```
+```output
  nextval
 ---------
        1
@@ -123,7 +123,7 @@ yugabyte=# SELECT nextval('s');
 yugabyte=# SELECT nextval('s');
 ```
 
-```
+```output
  nextval
 ---------
        6
@@ -136,7 +136,7 @@ Modify the starting value.
 yugabyte=# ALTER SEQUENCE s RESTART WITH 2;
 ```
 
-```
+```output
 ALTER SEQUENCE
 ```
 
@@ -144,7 +144,7 @@ ALTER SEQUENCE
 yugabyte=# SELECT nextval('s');
 ```
 
-```
+```output
  nextval
 ---------
        2
@@ -155,7 +155,7 @@ yugabyte=# SELECT nextval('s');
 yugabyte=# SELECT nextval('s');
 ```
 
-```
+```output
  nextval
 ---------
        7
@@ -166,6 +166,6 @@ yugabyte=# SELECT nextval('s');
 
 - [`CREATE SEQUENCE`](../ddl_create_sequence)
 - [`DROP SEQUENCE`](../ddl_drop_sequence)
-- [`currval()`](../../../exprs/func_currval)
-- [`lastval()`](../../../exprs/func_lastval)
-- [`nextval()`](../../../exprs/func_nextval)
+- [`currval()`](../../exprs/func_currval)
+- [`lastval()`](../../exprs/func_lastval)
+- [`nextval()`](../../exprs/func_nextval)

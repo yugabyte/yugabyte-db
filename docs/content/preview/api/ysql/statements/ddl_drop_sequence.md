@@ -67,7 +67,7 @@ Dropping a sequence that has an object depending on it, fails.
 yugabyte=# CREATE TABLE t(k SERIAL, v INT);
 ```
 
-```
+```output
 CREATE TABLE
 ```
 
@@ -75,7 +75,7 @@ CREATE TABLE
 \d t
 ```
 
-```
+```output
                            Table "public.t"
  Column |  Type   | Collation | Nullable |           Default
 --------+---------+-----------+----------+------------------------------
@@ -87,7 +87,7 @@ CREATE TABLE
 yugabyte=#  DROP SEQUENCE t_k_seq;
 ```
 
-```
+```output
 ERROR:  cannot drop sequence t_k_seq because other objects depend on it
 DETAIL:  default for table t column k depends on sequence t_k_seq
 HINT:  Use DROP ... CASCADE to drop the dependent objects too.
@@ -99,7 +99,7 @@ Dropping the sequence with the `CASCADE` option solves the problem and also dele
 yugabyte=# DROP SEQUENCE t_k_seq CASCADE;
 ```
 
-```
+```output
 NOTICE:  drop cascades to default for table t column k
 DROP SEQUENCE
 ```
@@ -108,7 +108,7 @@ DROP SEQUENCE
 \d t
 ```
 
-```
+```output
                  Table "public.t"
  Column |  Type   | Collation | Nullable | Default
 --------+---------+-----------+----------+---------
@@ -121,8 +121,7 @@ DROP SEQUENCE
 
 - [`ALTER SEQUENCE`](../ddl_alter_sequence)
 - [`CREATE SEQUENCE`](../ddl_create_sequence)
-- [`currval()`](../../../exprs/func_currval)
-- [`lastval()`](../../../exprs/func_lastval)
-- [`nextval()`](../../../exprs/func_nextval)
-- [`setval()`](../../../exprs/func_setval)
--
+- [`currval()`](../../exprs/func_currval)
+- [`lastval()`](../../exprs/func_lastval)
+- [`nextval()`](../../exprs/func_nextval)
+- [`setval()`](../../exprs/func_setval)

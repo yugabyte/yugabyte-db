@@ -16,7 +16,7 @@ type: docs
 
 A hierarchy is a specialization of the general notion of a graph—and, as such, it's the simplest kind of graph that still deserves that name. The taxonomy of successive specializations starts with the most general (the _undirected cyclic graph_) and successively descends to the most restricted, a hierarchy. The taxonomy refers to a hierarchy as a _rooted tree_. All this is explained in the section [Using a recursive CTE to traverse graphs of all kinds](../traversing-general-graphs/).
 
-The representation of a general graph requires an explicit, distinct, representation of the nodes and the edges. Of course, a hierarchy can be represented in this way. But because of how it's restricted, it allows a simpler representation in a SQL database where only the nodes are explicitly represented, in a single table, and where the edges are inferred using a self-referential foreign key:
+The representation of a general graph requires an explicit, distinct representation of the nodes and the edges. Of course, a hierarchy can be represented in this way. But because of how it's restricted, it allows a simpler representation in a SQL database where only the nodes are explicitly represented, in a single table, and where the edges are inferred using a self-referential foreign key:
 
 - A _"parent ID"_ column [list] references the table's primary key—the _"ID"_ column [list] enforced by a foreign key constraint.
 
@@ -80,7 +80,7 @@ select name, mgr_name from emps order by 2 nulls first, 1;
 
 This is the result:
 
-```
+```output
   name  | mgr_name
 --------+----------
  mary   |
@@ -111,7 +111,7 @@ insert into emps(name, mgr_name) values ('bad', null);
 
 It causes this error:
 
-```
+```output
 23505: duplicate key value violates unique constraint "t_mgr_name"
 ```
 
@@ -123,7 +123,7 @@ delete from emps where name = 'fred';
 
 It causes this error:
 
-```
+```output
 23503: update or delete on table "emps" violates foreign key constraint "emps_mgr_name_fk" on table "emps"
 Key (name)=(fred) is still referenced from table "emps".
 ```
@@ -191,7 +191,7 @@ select
 from hierarchy_of_emps;
 ```
 
-Each successive iteration of the _recursive term_ accumulates the set of direct reports, where such a report exists, of the employees produced first by the _non-recursive term_ (i.e. the ultimate manager) and then by the employees produced by the previous iteration of the _recursive term_. The iteration stops when none of the employees produced by  the previous  iteration of the _recursive term_ has a report.
+Each successive iteration of the _recursive term_ accumulates the set of direct reports, where such a report exists, of the employees produced first by the _non-recursive term_ (that is, the ultimate manager) and then by the employees produced by the previous iteration of the _recursive term_. The iteration stops when none of the employees produced by  the previous  iteration of the _recursive term_ has a report.
 
 Notice that the choice to define the ultimate manager to be at depth _1_ is just that: a design choice. You might prefer to define the ultimate manager to be at depth _0_, arguing that it's better to interpret this measure as the number of managers up the chain that the present employee has.
 
@@ -213,7 +213,7 @@ order by
 
 This produces a so-called "breadth first" order. This is the result:
 
-```
+```output
  depth | mgr_name |  name
 -------+----------+--------
      1 | -        | mary
@@ -238,7 +238,7 @@ The blank lines were added by hand to make the results easier to read.
 
 ## List the path top-down from the ultimate manager to each employee in breadth first order
 
-The term of art "path" denotes the list of managers from the ultimate manager through each next direct report down to the current employee. It is easily calculated by using array concatenation as described in [the&nbsp;||&nbsp;operator](../../../datatypes/type_array/functions-operators/concatenation/#the-160-160-160-160-operator) subsection of the [Array data types and functionality](../../../datatypes/type_array/) major section. Yet again, "array" functionality comes to the rescue.
+The term of art "path" denotes the list of managers from the ultimate manager through each next direct report down to the current employee. It is easily calculated by using array concatenation as described in [the&nbsp;||&nbsp;operator](../../datatypes/type_array/functions-operators/concatenation/#the-160-160-160-160-operator) subsection of the [Array data types and functionality](../../datatypes/type_array/) major section. Yet again, "array" functionality comes to the rescue.
 
 ##### `cr-view-top-down-paths.sql`
 
@@ -275,13 +275,13 @@ order by
   path[5] asc nulls first;
 ```
 
-The design of the `ORDER BY` clause relies on the following fact—documented in the [Array data types and functionality](../../../datatypes/type_array/#synopsis) major section:
+The design of the `ORDER BY` clause relies on the following fact—documented in the [Array data types and functionality](../../datatypes/type_array/#synopsis) major section:
 
 > If you read a within-array value with a tuple of index values that puts it outside of the array bounds, then you silently get `NULL`.
 
 This is the result:
 
-```
+```output
  depth |         path
 -------+-----------------------
      1 | {mary}
@@ -373,7 +373,7 @@ This query is almost identical to the query shown at [`do-breadth-first-path-que
 
 This is the result:
 
-```
+```output
  depth |         path
 -------+-----------------------
      1 | {mary}
@@ -397,6 +397,7 @@ Notice that this:
 ```plpgsql
 select max(cardinality(path)) from top_down_paths;
 ```
+
 returns the value _4_ for the present example. This means that `path[5]` returns `NULL`—as would, for example, `path[6]`, `path[17]`, and `path[42]`. When such a query is issued programmatically, you can determine the maximum path cardinality and build the `ORDER BY	` clause to have just the necessary and sufficient number of terms. Alternatively, for simpler code, you could write it with a number of terms that exceeds your best estimate of the maximum cardinality of the arrays that your program will have to deal with, ensuring safety with a straightforward test of the actual maximum cardinality.
 
 ## Pretty-printing the top-down depth-first report of paths
@@ -418,7 +419,7 @@ order by
 
 This is the result:
 
-```
+```output
  emps hierarchy
 ----------------
  mary
@@ -435,7 +436,7 @@ This is the result:
    susan
 ```
 
-You've probably seen how the Unix `tree` command presents the hierarchy that it computes using the long vertical bar, the long horizontal bar, the sideways "T", and the "L" symbols: `│`, `─`, `├`, and `└`. It's easy to output an approximation to this, that omits the long vertical bar, with a single SQL statement. The trick is to use the [`lead()`](../../../exprs/window_functions/function-syntax-semantics/lag-lead/#lead) window function to calculate the _"next_depth"_ for each row as well as the _"depth"_. If the _"next_depth"_ value is equal to the _"depth"_ value: then output the sideways "T"; else output the "L" (at the appropriate indentation level).
+You've probably seen how the Unix `tree` command presents the hierarchy that it computes using the long vertical bar, the long horizontal bar, the sideways "T", and the "L" symbols: `│`, `─`, `├`, and `└`. It's easy to output an approximation to this, that omits the long vertical bar, with a single SQL statement. The trick is to use the [`lead()`](../../exprs/window_functions/function-syntax-semantics/lag-lead/#lead) window function to calculate the _"next_depth"_ for each row as well as the _"depth"_. If the _"next_depth"_ value is equal to the _"depth"_ value: then output the sideways "T"; else output the "L" (at the appropriate indentation level).
 
 ##### `do-unix-tree-query.sql`
 
@@ -651,7 +652,7 @@ execute bottom_up_simple('joan');
 
 This is the result:
 
-```
+```output
  depth | name | mgr_name
 -------+------+----------
      0 | joan | bill
@@ -698,7 +699,7 @@ select bottom_up_path('joan');
 
 This is the result:
 
-```
+```output
     bottom_up_path
 -----------------------
  {joan,bill,john,mary}
@@ -730,7 +731,7 @@ select bottom_up_path_display('joan');
 
 This is the result:
 
-```
+```output
   bottom_up_path_display
 ---------------------------
  joan > bill > john > mary

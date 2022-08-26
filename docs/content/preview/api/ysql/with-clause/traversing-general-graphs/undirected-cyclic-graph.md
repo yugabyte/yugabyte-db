@@ -91,7 +91,7 @@ Notice what the changes are.
 
 - The hierarchy's _"parent_node_id"_ column is replaced by the general graph's _"node_1"_ column. Similarly, the hierarchy's _"node_id"_, is replaced by the general graph's _"node_2"_.
 
-- The fixed starting condition for the hierarchy in the non-recursive term (`parent_node_id is null`) is replaced by the parameterized choice of start node for the general graph (`node_1 = $1`). And this implies replacing the `SELECT` list's [`array[]` value constructor](../../../../datatypes/type_array/array-constructor/) (`array[node_id]`) with `array[$1, node_2]`.
+- The fixed starting condition for the hierarchy in the non-recursive term (`parent_node_id is null`) is replaced by the parameterized choice of start node for the general graph (`node_1 = $1`). And this implies replacing the `SELECT` list's [`array[]` value constructor](../../../datatypes/type_array/array-constructor/) (`array[node_id]`) with `array[$1, node_2]`.
 
 - The stopping condition in the hierarchy's recursive term (`n.parent_node_id = p.path[cardinality(path)]`) is replaced with `node_1 = terminal(p.path)` -- but this is only a cosmetic change because the function "_terminal()"_ is just a wrapper for the final element in the path.
 
@@ -105,7 +105,7 @@ execute stmt ('n1');
 
 Though the statement compiled without error, and seems to be executing, it will never stop. You must interrupt it with `ctrl-C`. The reason, of course, is that the traversal reached one of the cycles (either _"n2→n3→n5→n4→n2..."_ or _"n2→n4→n5→n3→n2..."_) and will go around it time and again indefinitely. Extra SQL is needed to preempt this problem.
 
-Notice that the next node along the path that is so-far defined by the row that the `WHERE` predicate tests for accumulation into the growing results set under the present repetition of the _recursive term_, and that would begin the unending cycle, might be anywhere along the present path, according to the graph's topology. The [`ANY`](../../../../datatypes/type_array/functions-operators/any-all/) test comes to the rescue. Try this:
+Notice that the next node along the path that is so-far defined by the row that the `WHERE` predicate tests for accumulation into the growing results set under the present repetition of the _recursive term_, and that would begin the unending cycle, might be anywhere along the present path, according to the graph's topology. The [`ANY`](../../../datatypes/type_array/functions-operators/any-all/) test comes to the rescue. Try this:
 
 ```plpgsql
 select ('n3' = any (array['n1', 'n2', 'n3', 'n5', 'n4']::text[]))::text as "cycle starting";
@@ -190,7 +190,7 @@ This is the result:
      14             6   n1 > n2 > n4 > n6 > n5 > n3
 ```
 
-The whitespace was added manually to separate the paths into groups of the same cardinality to improve readability. The index on the _"path"_ column confirms that each of the fourteen paths is unique. Here they are. The pictures are numbered with the value assigned by [`row_number()`](../../../../exprs/window_functions/function-syntax-semantics/row-number-rank-dense-rank/#row-number) (see the implementation of _["list_paths()"](../common-code/#cr-list-paths-sql)_) and the cardinality groups are distinguished by boxing in each group.
+The whitespace was added manually to separate the paths into groups of the same cardinality to improve readability. The index on the _"path"_ column confirms that each of the fourteen paths is unique. Here they are. The pictures are numbered with the value assigned by [`row_number()`](../../../exprs/window_functions/function-syntax-semantics/row-number-rank-dense-rank/#row-number) (see the implementation of _["list_paths()"](../common-code/#cr-list-paths-sql)_) and the cardinality groups are distinguished by boxing in each group.
 
 ![undirected-cyclic-graph-all-paths](/images/api/ysql/the-sql-language/with-clause/traversing-general-graphs/undirected-cyclic-graph-all-paths.jpg)
 

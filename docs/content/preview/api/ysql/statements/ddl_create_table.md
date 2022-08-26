@@ -83,7 +83,7 @@ can be deferred in YugabyteDB. A constraint that is not deferrable will be check
 within a statement. In the case of deferrable constraints, the checking of the constraint can be postponed
 until the end of the transaction.
 
-Constraints marked as `INITIALLY IMMEDIATE` will be checked after every row within a statement.
+Constraints marked as `INITIALLY IMMEDIATE` will be checked after every row in a statement.
 
 Constraints marked as `INITIALLY DEFERRED` will be checked at the end of the transaction.
 
@@ -93,7 +93,7 @@ Using this qualifier will create a temporary table. Temporary tables are only vi
 
 ### TABLESPACE
 
-Specify the name of the [tablespace](../../../../../explore/ysql-language-features/going-beyond-sql/tablespaces/) that describes the placement configuration for this table. By default, tables are placed in the `pg_default` tablespace, which spreads the tablets of the table evenly across the cluster.
+Specify the name of the [tablespace](../../../../explore/ysql-language-features/going-beyond-sql/tablespaces/) that describes the placement configuration for this table. By default, tables are placed in the `pg_default` tablespace, which spreads the tablets of the table evenly across the cluster.
 
 ### SPLIT INTO
 

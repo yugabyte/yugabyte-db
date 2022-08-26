@@ -44,7 +44,7 @@ Use the `CREATE FUNCTION` statement to create a function in a database.
 
 <a name="make-function-returns-mandatory"></a>
 {{< tip title="'Regard the 'RETURNS' clause as mandatory." >}}
-The [general introduction](../../../user-defined-subprograms-and-anon-blocks/#user-defined-subprograms) to the topic of user-defined subprograms explains that, for historical reasons, you can create a function, when a creating a procedure is the proper choice, by omitting the `RETURNS` clause and by giving it `OUT` or `INOUT` arguments.
+The [general introduction](../../user-defined-subprograms-and-anon-blocks/#user-defined-subprograms) to the topic of user-defined subprograms explains that, for historical reasons, you can create a function, when a creating a procedure is the proper choice, by omitting the `RETURNS` clause and by giving it `OUT` or `INOUT` arguments.
 
 **Yugabyte recommends that you don't exploit this freedom.**
 
@@ -56,17 +56,17 @@ When the purpose is to return more than just a single scalar value, you should c
 {{< /tip >}}
 
 {{< tip title="'create function' and the 'subprogram_signature' rule." >}}
-When you write a `CREATE FUNCTION` statement, you will already have decided what formal arguments it will have—i.e. for each, what will be its name, mode, data type, and optionally its default value. When, later, you alter or drop a function, you must identify it. You do this, in  [`ALTER FUNCTION`](../ddl_alter_function/) and [`DROP FUNCTION`](../ddl_drop_function/), typically by specifying just its _[subprogram_call_signature](../../../user-defined-subprograms-and-anon-blocks/subprogram-overloading/#subprogram-call-signature)_. You are allowed to use the full _subprogram_signature_. But this is unconventional. Notice that the _subprogram_signature_ does not include the optional specification of default values; and you _cannot_ mention these when you alter or drop a function. The distinction between the _subprogram_signature_ and the _subprogram_call_signature_ is discussed carefully in the section [Subprogram overloading](../../../user-defined-subprograms-and-anon-blocks/subprogram-overloading/).
+When you write a `CREATE FUNCTION` statement, you will already have decided what formal arguments it will have; that is, for each, what will be its name, mode, data type, and optionally its default value. When you later alter or drop a function, you must identify it. You do this, in  [`ALTER FUNCTION`](../ddl_alter_function/) and [`DROP FUNCTION`](../ddl_drop_function/), typically by specifying just its _[subprogram_call_signature](../../user-defined-subprograms-and-anon-blocks/subprogram-overloading/#subprogram-call-signature)_. You are allowed to use the full _subprogram_signature_. But this is unconventional. Notice that the _subprogram_signature_ does not include the optional specification of default values; and you _cannot_ mention these when you alter or drop a function. The distinction between the _subprogram_signature_ and the _subprogram_call_signature_ is discussed carefully in the section [Subprogram overloading](../../user-defined-subprograms-and-anon-blocks/subprogram-overloading/).
 {{< /tip >}}
 
 ## Semantics
 
-- The meanings of the various function attributes are explained in the section [Subprogram attributes](../../../user-defined-subprograms-and-anon-blocks/subprogram-attributes/).
+- The meanings of the various function attributes are explained in the section [Subprogram attributes](../../user-defined-subprograms-and-anon-blocks/subprogram-attributes/).
 - A function, like other schema objects such as a table, inevitably has an owner. You cannot specify the owner explicitly when a function is created. Rather, it's defined implicitly as what the built-in _current_user_ function returns when it's invoked in the session that creates the function. This user must have the _usage_ privilege on the function's schema, its argument data types, and its return data type. You (optionally) specify the function's schema and (mandatorily) its name in its schema as the argument of the _[subprogram_name](../../syntax_resources/grammar_diagrams/#subprogram-name)_ rule.
 
 - If a function with the given name, schema, and argument types already exists then `CREATE FUNCTION` will draw an error unless the `CREATE OR REPLACE FUNCTION` variant is used.
 
-- Functions with different _[subprogram_call_signatures](../../../user-defined-subprograms-and-anon-blocks/subprogram-overloading/#subprogram-call-signature)_ can share the same _[subprogram_name](../../syntax_resources/grammar_diagrams/#subprogram-name)_. (The same holds for procedures.) See section [Subprogram overloading](../../../user-defined-subprograms-and-anon-blocks/subprogram-overloading/).
+- Functions with different _[subprogram_call_signatures](../../user-defined-subprograms-and-anon-blocks/subprogram-overloading/#subprogram-call-signature)_ can share the same _[subprogram_name](../../syntax_resources/grammar_diagrams/#subprogram-name)_. (The same holds for procedures.) See section [Subprogram overloading](../../user-defined-subprograms-and-anon-blocks/subprogram-overloading/).
 
 - `CREATE OR REPLACE FUNCTION` doesn't change permissions that have been granted on an existing function. To use this statement, the current user must own the function, or be a member of the role that owns it.
 

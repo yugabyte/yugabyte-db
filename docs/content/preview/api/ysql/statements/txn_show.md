@@ -58,4 +58,4 @@ The `TRANSACTION ISOLATION LEVEL` returned is either `SERIALIZABLE`, `REPEATABLE
 ## See also
 
 - [`SET TRANSACTION`](../txn_set)
-- [`Transaction isolation levels`](../../../../../architecture/transactions/isolation-levels)
+- [`Transaction isolation levels`](../../../../architecture/transactions/isolation-levels)
