@@ -18,3 +18,4 @@ People who contributed to hypopg:
   * ibrahim edib kokdemir
   * github user nikhil-postgres
   * Xiaozhe Yao
+  * Krzysztof Szularz
