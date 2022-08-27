@@ -1639,36 +1639,6 @@ public class NodeManager extends DevopsBase {
           commandArgs.add(taskParam.process);
           commandArgs.add(taskParam.command);
 
-          // if (taskParam.enableYbc && taskParam.process == "controller") {
-          //   Map<String, String> ybcFlags = new HashMap<>();
-          //   String ybcPackage = null, ybcDir = null;
-          //   ReleaseManager.ReleaseMetadata releaseMetadata =
-          //       releaseManager.getYbcReleaseByVersion(taskParam.ybcSoftwareVersion);
-          //   ybcPackage = releaseMetadata.getFilePath(taskParam.getRegion());
-          //   if (StringUtils.isBlank(ybcPackage)) {
-          //     throw new RuntimeException("Ybc package cannot be empty with ybc enabled");
-          //   }
-          //   Matcher matcher = YBC_PACKAGE_PATTERN.matcher(ybcPackage);
-          //   boolean matches = matcher.matches();
-          //   if (!matches) {
-          //     throw new RuntimeException(
-          //         String.format(
-          //             "Ybc package: %s does not follow the format required: %s",
-          //             ybcPackage, YBC_PACKAGE_REGEX));
-          //   }
-          //   ybcDir = "ybc" + matcher.group(1);
-          //   ybcFlags = GFlagsUtil.getYbcFlags(taskParam);
-          //   String nfsDirs = runtimeConfigFactory.forUniverse(universe).getString(YBC_NFS_DIRS);
-          //   ybcFlags.put("nfs_dirs", nfsDirs);
-          //   commandArgs.add("--ybc_flags");
-          //   commandArgs.add(Json.stringify(Json.toJson(ybcFlags)));
-          //   commandArgs.add("--configure_ybc");
-          //   commandArgs.add("--ybc_package");
-          //   commandArgs.add(ybcPackage);
-          //   commandArgs.add("--ybc_dir");
-          //   commandArgs.add(ybcDir);
-          // }
-
           // Systemd vs Cron Option
           if (taskParam.useSystemd) {
             commandArgs.add("--systemd_services");

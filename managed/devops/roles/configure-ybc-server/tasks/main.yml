@@ -2,6 +2,7 @@
     that:
       - user_name is defined
       - systemd_option is defined
+      - _mount_points is defined
 
 - name: Download ybc package
   include: download-ybc-package.yml
@@ -84,6 +85,19 @@
     when: ybc_flags is defined
 
 - block:
+  - name: Configure | Add yb server ctl script
+    vars:
+      mount_paths: "{{ _mount_points | join(' ') }}"
+    template:
+      src: "roles/configure-cluster-server/templates/yb-server-ctl.sh.j2"
+      dest: "{{ yb_bin_dir }}/yb-server-ctl.sh"
+      owner: "{{ user_name }}"
+      mode: 0755
+    when: not systemd_option
+    tags:
+      - ybc-install
+      - yb-prebuilt-ami
+
   # Cronjob approach for starting yb-controller
   - name: Setup cron to check liveness of controller
     cron:
