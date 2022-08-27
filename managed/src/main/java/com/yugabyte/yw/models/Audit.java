@@ -445,7 +445,16 @@ public class Audit extends Model {
     UpdateNodeAgent,
 
     @EnumValue("Delete Node Agent")
-    DeleteNodeAgent
+    DeleteNodeAgent,
+
+    @EnumValue("Disable Ybc")
+    DisableYbc,
+
+    @EnumValue("Upgrade Ybc")
+    UpgradeYbc,
+
+    @EnumValue("Install Ybc")
+    InstallYbc
   }
 
   // An auto incrementing, user-friendly ID for the audit entry.

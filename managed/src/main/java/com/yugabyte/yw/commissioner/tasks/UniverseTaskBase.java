@@ -69,8 +69,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateAndPersistGFlags;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateMountedDisks;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdatePlacementInfo;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateSoftwareVersion;
-import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateYbcSoftwareVersion;
-import com.yugabyte.yw.commissioner.tasks.subtasks.UpgradeYbc;
+import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseYbcDetails;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpgradeYbc;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForDataMove;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForEncryptionKeyInMemory;
@@ -702,10 +701,29 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   public SubTaskGroup createUpdateYbcTask(String ybcSoftwareVersion) {
     SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("FinalizeYbcUpdate", executor);
-    UpdateYbcSoftwareVersion.Params params = new UpdateYbcSoftwareVersion.Params();
+    UpdateUniverseYbcDetails.Params params = new UpdateUniverseYbcDetails.Params();
     params.universeUUID = taskParams().universeUUID;
     params.ybcSoftwareVersion = ybcSoftwareVersion;
-    UpdateYbcSoftwareVersion task = createTask(UpdateYbcSoftwareVersion.class);
+    params.enableYbc = true;
+    params.ybcInstalled = true;
+    UpdateUniverseYbcDetails task = createTask(UpdateUniverseYbcDetails.class);
+    task.initialize(params);
+    task.setUserTaskUUID(userTaskUUID);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  /** Creates task to update disabled ybc state in universe details. */
+  public SubTaskGroup createDisableYbcUniverseDetails() {
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup("UpdateDisableYbcDetails", executor);
+    UpdateUniverseYbcDetails.Params params = new UpdateUniverseYbcDetails.Params();
+    params.universeUUID = taskParams().universeUUID;
+    params.ybcSoftwareVersion = null;
+    params.enableYbc = false;
+    params.ybcInstalled = false;
+    UpdateUniverseYbcDetails task = createTask(UpdateUniverseYbcDetails.class);
     task.initialize(params);
     task.setUserTaskUUID(userTaskUUID);
     subTaskGroup.addSubTask(task);
