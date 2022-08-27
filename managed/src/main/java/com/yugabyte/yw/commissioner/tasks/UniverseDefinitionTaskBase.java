@@ -1732,6 +1732,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.ybSoftwareVersion = softwareVersion;
     }
     params.ybcSoftwareVersion = ybcSoftwareVersion;
+    if (!StringUtils.isEmpty(params.ybcSoftwareVersion)) {
+      params.enableYbc = true;
+    }
 
     AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
     task.initialize(params);

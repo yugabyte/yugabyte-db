@@ -207,7 +207,7 @@ public enum TaskType {
 
   UpdateSoftwareVersion("subtasks.UpdateSoftwareVersion"),
 
-  UpdateYbcSoftwareVersion("subtasks.UpdateYbcSoftwareVersion"),
+  UpdateUniverseYbcDetails("subtasks.UpdateUniverseYbcDetails"),
 
   VerifyNodeSSHAccess("subtasks.VerifyNodeSSHAccess"),
 
@@ -374,7 +374,13 @@ public enum TaskType {
 
   UpdateUniverseTags("subtasks.UpdateUniverseTags"),
 
-  UpgradeYbc("subtasks.UpgradeYbc");
+  UpgradeYbc("subtasks.UpgradeYbc"),
+
+  InstallYbcSoftware("InstallYbcSoftware"),
+
+  UpgradeUniverseYbc("UpgradeUniverseYbc"),
+
+  DisableYbc("DisableYbc");
 
   private String relativeClassPath;
 
