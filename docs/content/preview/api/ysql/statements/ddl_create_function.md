@@ -35,10 +35,10 @@ Use the `CREATE FUNCTION` statement to create a function in a database.
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-  {{% includeMarkdown "../syntax_resources/the-sql-language/statements/create_function,arg_decl_with_dflt,arg_decl,subprogram_signature,unalterable_fn_attribute,lang_name,implementation_definition,sql_stmt_list,alterable_fn_and_proc_attribute,alterable_fn_only_attribute,volatility,on_null_input,parallel_mode.grammar.md" %}}
+  {{% includeMarkdown "../syntax_resources/statements/create_function,arg_decl_with_dflt,arg_decl,subprogram_signature,unalterable_fn_attribute,lang_name,implementation_definition,sql_stmt_list,alterable_fn_and_proc_attribute,alterable_fn_only_attribute,volatility,on_null_input,parallel_mode.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-  {{% includeMarkdown "../syntax_resources/the-sql-language/statements/create_function,arg_decl_with_dflt,arg_decl,subprogram_signature,unalterable_fn_attribute,lang_name,implementation_definition,sql_stmt_list,alterable_fn_and_proc_attribute,alterable_fn_only_attribute,volatility,on_null_input,parallel_mode.diagram.md" %}}
+  {{% includeMarkdown "../syntax_resources/statements/create_function,arg_decl_with_dflt,arg_decl,subprogram_signature,unalterable_fn_attribute,lang_name,implementation_definition,sql_stmt_list,alterable_fn_and_proc_attribute,alterable_fn_only_attribute,volatility,on_null_input,parallel_mode.diagram.md" %}}
   </div>
 </div>
 

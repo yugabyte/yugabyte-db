@@ -35,10 +35,10 @@ The owner of a foreign server can create user mappings for the server for any us
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-  {{% includeMarkdown "../syntax_resources/the-sql-language/statements/create_user_mapping.grammar.md" %}}
+  {{% includeMarkdown "../syntax_resources/statements/create_user_mapping.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-  {{% includeMarkdown "../syntax_resources/the-sql-language/statements/create_user_mapping.diagram.md" %}}
+  {{% includeMarkdown "../syntax_resources/statements/create_user_mapping.diagram.md" %}}
   </div>
 </div>
 

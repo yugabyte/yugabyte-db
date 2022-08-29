@@ -35,10 +35,10 @@ Only superusers or users with the yb_fdw role can create foreign data wrappers.
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-  {{% includeMarkdown "../syntax_resources/the-sql-language/statements/create_foreign_data_wrapper.grammar.md" %}}
+  {{% includeMarkdown "../syntax_resources/statements/create_foreign_data_wrapper.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-  {{% includeMarkdown "../syntax_resources/the-sql-language/statements/create_foreign_data_wrapper.diagram.md" %}}
+  {{% includeMarkdown "../syntax_resources/statements/create_foreign_data_wrapper.diagram.md" %}}
   </div>
 </div>
 

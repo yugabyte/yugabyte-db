@@ -33,10 +33,10 @@ Use the `CREATE SERVER` command to create a foreign table.
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-  {{% includeMarkdown "../syntax_resources/the-sql-language/statements/create_server.grammar.md" %}}
+  {{% includeMarkdown "../syntax_resources/statements/create_server.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-  {{% includeMarkdown "../syntax_resources/the-sql-language/statements/create_server.diagram.md" %}}
+  {{% includeMarkdown "../syntax_resources/statements/create_server.diagram.md" %}}
   </div>
 </div>
 

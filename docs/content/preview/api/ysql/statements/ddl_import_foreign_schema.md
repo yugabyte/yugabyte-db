@@ -35,10 +35,10 @@ To use this command, the user must have `USAGE` privileges on the foreign server
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-  {{% includeMarkdown "../syntax_resources/the-sql-language/statements/import_foreign_schema.grammar.md" %}}
+  {{% includeMarkdown "../syntax_resources/statements/import_foreign_schema.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-  {{% includeMarkdown "../syntax_resources/the-sql-language/statements/import_foreign_schema.diagram.md" %}}
+  {{% includeMarkdown "../syntax_resources/statements/import_foreign_schema.diagram.md" %}}
   </div>
 </div>
 
