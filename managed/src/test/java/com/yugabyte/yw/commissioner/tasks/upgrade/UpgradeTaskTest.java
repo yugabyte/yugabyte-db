@@ -166,7 +166,7 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
       when(mockClient.waitForMaster(any(HostAndPort.class), anyLong())).thenReturn(true);
       when(mockClient.waitForServer(any(HostAndPort.class), anyLong())).thenReturn(true);
       when(mockClient.getLeaderMasterHostAndPort())
-          .thenReturn(HostAndPort.fromString("host-n2").withDefaultPort(11));
+          .thenReturn(HostAndPort.fromString("10.0.0.2").withDefaultPort(11));
       IsServerReadyResponse okReadyResp = new IsServerReadyResponse(0, "", null, 0, 0);
       when(mockClient.isServerReady(any(HostAndPort.class), anyBoolean())).thenReturn(okReadyResp);
     } catch (Exception ignored) {

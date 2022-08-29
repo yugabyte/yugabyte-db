@@ -521,7 +521,7 @@ public class ApiUtils {
     node.cloudInfo.az = zone;
     node.cloudInfo.region = region;
     node.cloudInfo.subnet_id = subnet;
-    node.cloudInfo.private_ip = "host-n" + idx;
+    node.cloudInfo.private_ip = "10.0.0." + idx;
     node.cloudInfo.instance_type = UTIL_INST_TYPE;
     node.isTserver = true;
     node.state = state;

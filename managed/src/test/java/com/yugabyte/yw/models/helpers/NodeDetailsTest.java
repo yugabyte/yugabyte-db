@@ -3,18 +3,16 @@ package com.yugabyte.yw.models.helpers;
 
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.notNullValue;
-import static org.hamcrest.core.AllOf.allOf;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.core.AllOf.allOf;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.NodeActionType;
-import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
-import java.util.stream.Collectors;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -35,7 +33,7 @@ public class NodeDetailsTest {
             equalTo(
                 "name: host-n1, cloudInfo: az-1.test-region.aws, type: "
                     + ApiUtils.UTIL_INST_TYPE
-                    + ", ip: host-n1, "
+                    + ", ip: 10.0.0.1, "
                     + "isMaster: false, isTserver: true, state: Live, "
                     + "azUuid: null, placementUuid: null")));
   }

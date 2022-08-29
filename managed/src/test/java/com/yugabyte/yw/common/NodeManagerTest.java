@@ -70,7 +70,6 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
-import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.io.File;
@@ -129,7 +128,7 @@ public class NodeManagerTest extends FakeDBApplication {
   @Mock Config mockConfig;
 
   private final String DOCKER_NETWORK = "yugaware_bridge";
-  private final String MASTER_ADDRESSES = "host-n1:7100,host-n2:7100,host-n3:7100";
+  private final String MASTER_ADDRESSES = "10.0.0.1:7100,10.0.0.2:7100,10.0.0.3:7100";
   private final String fakeMountPath1 = "/fake/path/d0";
   private final String fakeMountPath2 = "/fake/path/d1";
   private final String fakeMountPaths = fakeMountPath1 + "," + fakeMountPath2;
@@ -521,7 +520,8 @@ public class NodeManagerTest extends FakeDBApplication {
       gflags.put("fs_data_dirs", mount_points);
     }
 
-    String private_ip = testData.node.getDetails().nodeName;
+    String index = testData.node.getDetails().nodeName.split("-n")[1];
+    String private_ip = "10.0.0." + index;
     String processType = params.getProperty("processType");
 
     if (processType == null) {
@@ -566,8 +566,8 @@ public class NodeManagerTest extends FakeDBApplication {
       gflags.put("webserver_interface", private_ip);
     }
 
-    String pgsqlProxyBindAddress = configureParams.nodeName;
-    String cqlProxyBindAddress = configureParams.nodeName;
+    String pgsqlProxyBindAddress = private_ip;
+    String cqlProxyBindAddress = private_ip;
     if (useHostname) {
       pgsqlProxyBindAddress = "0.0.0.0";
       cqlProxyBindAddress = "0.0.0.0";
@@ -803,7 +803,7 @@ public class NodeManagerTest extends FakeDBApplication {
           expectedCommand.add("/yb/release.tar.gz");
         }
 
-        boolean useHostname = !NodeManager.isIpAddress(configureParams.nodeName);
+        boolean useHostname = false;
 
         if (configureParams.getProperty("taskSubType") != null) {
           UpgradeTaskSubType taskSubType =
