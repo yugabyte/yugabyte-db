@@ -1265,11 +1265,8 @@ Status CatalogManager::RunLoaders(int64_t term) {
   // Clear transaction tables config.
   transaction_tables_config_.reset();
 
-  // Clear recent tasks.
-  tasks_tracker_->Reset();
-
-  // Clear recent jobs.
-  jobs_tracker_->Reset();
+  // Clear recent jobs/tasks.
+  ResetTasksTrackers();
 
   std::vector<std::shared_ptr<TSDescriptor>> descs;
   master_->ts_manager()->GetAllDescriptors(&descs);
@@ -1880,6 +1877,7 @@ Status CatalogManager::CheckIsLeaderAndReady() const {
 }
 
 std::shared_ptr<tablet::TabletPeer> CatalogManager::tablet_peer() const {
+  DCHECK(sys_catalog_);
   return sys_catalog_->tablet_peer();
 }
 
@@ -1951,9 +1949,7 @@ void CatalogManager::CompleteShutdown() {
     sys_catalog_->CompleteShutdown();
   }
 
-  // Reset the jobs/tasks tracker.
-  tasks_tracker_->Reset();
-  jobs_tracker_->Reset();
+  ResetTasksTrackers();
 
   if (initdb_future_ && initdb_future_->wait_for(0s) != std::future_status::ready) {
     LOG(WARNING) << "initdb is still running, waiting for it to complete.";
@@ -11153,6 +11149,16 @@ Status CatalogManager::GetLoadMoveCompletionPercent(GetLoadMovePercentResponsePB
   resp->set_total(initial_load);
 
   return Status::OK();
+}
+
+void CatalogManager::ResetTasksTrackers() {
+  VLOG_WITH_FUNC(1) << "Begin";
+
+  // Reset the jobs/tasks tracker.
+  tasks_tracker_->Reset();
+  jobs_tracker_->Reset();
+
+  VLOG_WITH_FUNC(1) << "End";
 }
 
 void CatalogManager::AbortAndWaitForAllTasks(const vector<scoped_refptr<TableInfo>>& tables) {
