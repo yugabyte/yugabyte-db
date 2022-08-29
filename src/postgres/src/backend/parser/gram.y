@@ -3483,7 +3483,7 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 				}
 		| CREATE OptTemp TABLE qualified_name PARTITION OF qualified_name
 			OptTypedTableElementList PartitionBoundSpec OptPartitionSpec OptWith
-			OnCommitOption OptTableSpace OptSplit OptTableGroup
+			OnCommitOption OptTableSpace OptSplit
 				{
 					CreateStmt *n = makeNode(CreateStmt);
 					$4->relpersistence = $2;
@@ -3499,32 +3499,15 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 					n->tablespacename = $13;
 					n->if_not_exists = false;
 					n->split_options = $14;
-					n->tablegroupname = $15;
 					if ($14 && $2 == RELPERSISTENCE_TEMP)
 					{
 						ereport(WARNING, (errmsg("Split options on TEMP table will be ignored")));
-					}
-					if ($15 && $2 == RELPERSISTENCE_TEMP)
-					{
-						ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
-										errmsg("Cannot use TABLEGROUP with TEMP table.")));
-					}
-					if ($13 && $15)
-					{
-						ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
-										errmsg("Cannot use TABLEGROUP with TABLESPACE."),
-										errdetail("The tablespace of the tablegroup will be used.")));
-					}
-					if ($14 && $15)
-					{
-						ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
-										errmsg("Cannot use TABLEGROUP with SPLIT.")));
 					}
 					$$ = (Node *)n;
 				}
 		| CREATE OptTemp TABLE IF_P NOT EXISTS qualified_name PARTITION OF
 			qualified_name OptTypedTableElementList PartitionBoundSpec OptPartitionSpec
-			OptWith OnCommitOption OptTableSpace OptSplit OptTableGroup
+			OptWith OnCommitOption OptTableSpace OptSplit
 				{
 					CreateStmt *n = makeNode(CreateStmt);
 					$7->relpersistence = $2;
@@ -3540,26 +3523,9 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 					n->tablespacename = $16;
 					n->if_not_exists = true;
 					n->split_options = $17;
-					n->tablegroupname = $18;
 					if ($17 && $2 == RELPERSISTENCE_TEMP)
 					{
 						ereport(WARNING, (errmsg("Split options on TEMP table will be ignored")));
-					}
-					if ($18 && $2 == RELPERSISTENCE_TEMP)
-					{
-						ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
-										errmsg("Cannot use TABLEGROUP with TEMP table.")));
-					}
-					if ($16 && $18)
-					{
-						ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
-										errmsg("Cannot use TABLEGROUP with TABLESPACE."),
-										errdetail("The tablespace of the tablegroup will be used.")));
-					}
-					if ($17 && $18)
-					{
-						ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
-										errmsg("Cannot use TABLEGROUP with SPLIT.")));
 					}
 					$$ = (Node *)n;
 				}
