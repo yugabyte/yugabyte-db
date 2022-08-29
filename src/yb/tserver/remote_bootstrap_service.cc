@@ -74,9 +74,9 @@ using namespace std::literals;
 
 #define RPC_RETURN_NOT_OK(expr, app_err, message) \
   do { \
-    Status s = (expr); \
+    auto&& s = (expr); \
     if (!s.ok()) { \
-      RPC_RETURN_APP_ERROR(app_err, message, s); \
+      RPC_RETURN_APP_ERROR(app_err, message, MoveStatus(s)); \
     } \
   } while (false)
 
@@ -185,11 +185,11 @@ void RemoteBootstrapServiceImpl::BeginRemoteBootstrapSession(
             local_cloud_info_pb_))));
   }
 
-
-  std::shared_ptr<TabletPeer> tablet_peer;
-  RPC_RETURN_NOT_OK(tablet_peer_lookup_->GetTabletPeer(tablet_id, &tablet_peer),
+  auto tablet_peer_result = tablet_peer_lookup_->GetServingTablet(tablet_id);
+  RPC_RETURN_NOT_OK(tablet_peer_result,
                     RemoteBootstrapErrorPB::TABLET_NOT_FOUND,
                     Substitute("Unable to find specified tablet: $0", tablet_id));
+  auto tablet_peer = std::move(*tablet_peer_result);
   RPC_RETURN_NOT_OK(tablet_peer->CheckRunning(),
                     RemoteBootstrapErrorPB::TABLET_NOT_FOUND,
                     Substitute("Tablet is not running yet: $0", tablet_id));
@@ -522,11 +522,12 @@ void RemoteBootstrapServiceImpl::RegisterLogAnchor(
     const RegisterLogAnchorRequestPB* req,
     RegisterLogAnchorResponsePB* resp,
     rpc::RpcContext context) {
-  std::shared_ptr<tablet::TabletPeer> tablet_peer;
+  auto tablet_peer_result = tablet_peer_lookup_->GetServingTablet(req->tablet_id());
   RPC_RETURN_NOT_OK(
-      tablet_peer_lookup_->GetTabletPeer(req->tablet_id(), &tablet_peer),
+      tablet_peer_result,
       RemoteBootstrapErrorPB::TABLET_NOT_FOUND,
       Substitute("Unable to find specified tablet: $0", req->tablet_id()));
+  auto tablet_peer = std::move(*tablet_peer_result);
   RPC_RETURN_NOT_OK(
       tablet_peer->CheckRunning(),
       RemoteBootstrapErrorPB::TABLET_NOT_FOUND,

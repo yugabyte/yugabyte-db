@@ -32,6 +32,7 @@
 #include "catalog/pg_am.h"
 #include "catalog/pg_attribute.h"
 #include "catalog/pg_class.h"
+#include "catalog/pg_constraint.h"
 #include "catalog/pg_database.h"
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_tablespace.h"
@@ -885,8 +886,8 @@ YBCCreateIndex(const char *indexName,
 	HandleYBStatus(YBCPgExecCreateIndex(handle));
 }
 
-static void
-YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, YBCPgStatement handle,
+static List*
+YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 						int* col, bool* needsYBAlter,
 						YBCPgStatement* rollbackHandle,
 						bool isPartitionOfAlteredTable)
@@ -910,7 +911,7 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, YBCPgStatement handle,
 				 * needs to trickle down to its child partitions. Nothing to
 				 * do.
 				 */
-				return;
+				return handles;
 		}
 	}
 	Oid relationId = RelationGetRelid(rel);
@@ -942,8 +943,13 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, YBCPgStatement handle,
 			order = RelationGetNumberOfAttributes(rel) + *col;
 			const YBCPgTypeEntity *col_type = YbDataTypeFromOidMod(order, typeOid);
 
-			HandleYBStatus(YBCPgAlterTableAddColumn(handle, colDef->colname,
-						   order, col_type));
+			Assert(list_length(handles) == 1);
+			YBCPgStatement add_col_handle =
+				(YBCPgStatement) lfirst(list_head(handles));
+			HandleYBStatus(YBCPgAlterTableAddColumn(add_col_handle,
+													colDef->colname,
+													order,
+													col_type));
 			++(*col);
 			*needsYBAlter = true;
 
@@ -976,21 +982,26 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, YBCPgStatement handle,
 				ReleaseSysCache(tuple);
 			}
 
-			HandleYBStatus(YBCPgAlterTableDropColumn(handle, cmd->name));
+			Assert(list_length(handles) == 1);
+			YBCPgStatement drop_col_handle =
+				(YBCPgStatement) lfirst(list_head(handles));
+			HandleYBStatus(YBCPgAlterTableDropColumn(drop_col_handle,
+													 cmd->name));
 			*needsYBAlter = true;
 
 			break;
 		}
 
-		case AT_AddIndex:
 		case AT_AddIndexConstraint:
 		{
 			IndexStmt *index = (IndexStmt *) cmd->def;
 			/* Only allow adding indexes when it is a unique or primary key constraint */
 			if (!(index->unique || index->primary) || !index->isconstraint)
 			{
-				ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						errmsg("This ALTER TABLE command is not yet supported.")));
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("This ALTER TABLE command"
+								" is not yet supported.")));
 			}
 
 			break;
@@ -1079,6 +1090,7 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, YBCPgStatement handle,
 			break;
 		}
 
+		case AT_AddIndex:
 		case AT_AddConstraint:
 		case AT_AddConstraintRecurse:
 		case AT_DropConstraint:
@@ -1107,17 +1119,157 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, YBCPgStatement handle,
 		case AT_AttachPartition:
 		case AT_DetachPartition:
 		case AT_SetTableSpace:
-			/* For these cases a YugaByte alter isn't required, so we do nothing. */
+		{
+			Assert(cmd->subtype != AT_DropConstraint);
+
+			/*
+			 * Excluding the ALTER ADD PRIMARY KEY use case as
+			 * the operation will update schema version itself.
+			 */
+			if (cmd->yb_is_add_primary_key)
+				return handles;
+
+			/*
+			 * For these cases a YugaByte metadata does not need to be updated
+			 * but we still need to increment the schema version.
+			 */
+			ListCell* handle = NULL;
+			foreach(handle, handles)
+			{
+				YBCPgStatement increment_schema_handle =
+					(YBCPgStatement) lfirst(handle);
+				HandleYBStatus(
+					YBCPgAlterTableIncrementSchemaVersion(
+						increment_schema_handle));
+			}
+			Relation dependent_rel = NULL;
+			YBCPgStatement alter_cmd_handle = NULL;
+			/*
+			 * For attach and detach partition cases, assigning
+			 * the partition table as dependent relation.
+			 */
+			if (cmd->subtype == AT_AttachPartition ||
+				cmd->subtype == AT_DetachPartition)
+			{
+				dependent_rel = heap_openrv(((PartitionCmd *)cmd->def)->name,
+											AccessExclusiveLock);
+				/*
+				 * If the partition table is not YB supported table including
+				 * foreign table, skip schema version increment.
+				 */
+				if (!IsYBBackedRelation(dependent_rel) ||
+					dependent_rel->rd_rel->relkind == RELKIND_FOREIGN_TABLE)
+				{
+					heap_close(dependent_rel, AccessExclusiveLock);
+					dependent_rel = NULL;
+				}
+			}
+			/*
+			 * For add foreign key case, assigning the primary key table
+			 * as dependent relation.
+			 */
+			else if (cmd->subtype == AT_AddConstraintRecurse &&
+					 ((Constraint *) cmd->def)->contype == CONSTR_FOREIGN)
+			{
+				dependent_rel = heap_openrv(((Constraint *) cmd->def)->pktable,
+											AccessExclusiveLock);
+			}
+			/*
+			 * For drop foreign key case, assigning the primary key table
+			 * as dependent relation.
+			 */
+			else if (cmd->subtype == AT_DropConstraintRecurse)
+			{
+				HeapTuple reltup =
+					SearchSysCache1(RELOID, ObjectIdGetDatum(relationId));
+				if (!HeapTupleIsValid(reltup))
+					elog(ERROR,
+						 "Cache lookup failed for relation %u",
+						  relationId);
+				Form_pg_class relform = (Form_pg_class) GETSTRUCT(reltup);
+				ReleaseSysCache(reltup);
+				if (!relform->relispartition)
+				{
+					Oid constraint_oid = get_relation_constraint_oid(relationId,
+																	 cmd->name,
+																	 false);
+					HeapTuple tuple = SearchSysCache1(
+						CONSTROID, ObjectIdGetDatum(constraint_oid));
+					if (!HeapTupleIsValid(tuple))
+					{
+						ereport(ERROR,
+								(errcode(ERRCODE_SYSTEM_ERROR),
+								 errmsg("Cache lookup failed for constraint %u",
+										constraint_oid)));
+					}
+					Form_pg_constraint con =
+						(Form_pg_constraint) GETSTRUCT(tuple);
+					ReleaseSysCache(tuple);
+					/*
+					 * Excluding the ALTER DROP PRIMARY KEY use case
+					 * as the operation will update schema version itself.
+					 */
+					if (con->contype == CONSTRAINT_PRIMARY)
+						return handles;
+					if (con->contype == CONSTRAINT_FOREIGN &&
+						relationId != con->confrelid)
+					{
+						dependent_rel = heap_open(con->confrelid,
+												  AccessExclusiveLock);
+					}
+				}
+			}
+			/*
+			 * For add index case, assigning the table where index
+			 * is built on as dependent relation.
+			 */
+			else if (cmd->subtype == AT_AddIndex)
+			{
+				IndexStmt *index = (IndexStmt *) cmd->def;
+				/*
+				 * Only allow adding indexes when it is a unique
+				 * or primary key constraint
+				 */
+				if (!(index->unique || index->primary) || !index->isconstraint)
+				{
+					ereport(ERROR,
+							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							 errmsg("This ALTER TABLE command is"
+									" not yet supported.")));
+				}
+				dependent_rel = heap_openrv(index->relation,
+											AccessExclusiveLock);
+			}
+			/*
+			 * If dependent relation exists, apply increment schema version
+			 * operation on the dependent relation.
+			 */
+			if (dependent_rel != NULL)
+			{
+				Oid relationId = RelationGetRelid(dependent_rel);
+				HandleYBStatus(
+					YBCPgNewAlterTable(
+						YBCGetDatabaseOidByRelid(relationId),
+						relationId,
+						&alter_cmd_handle));
+				HandleYBStatus(
+					YBCPgAlterTableIncrementSchemaVersion(alter_cmd_handle));
+				handles = lappend(handles, alter_cmd_handle);
+				heap_close(dependent_rel, AccessExclusiveLock);
+			}
+			*needsYBAlter = true;
 			break;
+		}
 
 		default:
 			ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					errmsg("This ALTER TABLE command is not yet supported.")));
 			break;
 	}
+	return handles;
 }
 
-YBCPgStatement
+List*
 YBCPrepareAlterTable(List** subcmds,
 					 int subcmds_size,
 					 Oid relationId,
@@ -1133,11 +1285,12 @@ YBCPrepareAlterTable(List** subcmds,
 		return NULL;
 	}
 
-	YBCPgStatement handle = NULL;
+	List *handles = NIL;
+	YBCPgStatement db_handle = NULL;
 	HandleYBStatus(YBCPgNewAlterTable(YBCGetDatabaseOidByRelid(relationId),
 									  relationId,
-									  &handle));
-
+									  &db_handle));
+	handles = lappend(handles, db_handle);
 	ListCell *lcmd;
 	int col = 1;
 	bool needsYBAlter = false;
@@ -1146,9 +1299,10 @@ YBCPrepareAlterTable(List** subcmds,
 	{
 		foreach(lcmd, subcmds[cmd_idx])
 		{
-			YBCPrepareAlterTableCmd((AlterTableCmd *) lfirst(lcmd), rel, handle,
-									 &col, &needsYBAlter, rollbackHandle,
-									 isPartitionOfAlteredTable);
+			handles = YBCPrepareAlterTableCmd(
+						(AlterTableCmd *) lfirst(lcmd), rel, handles,
+						&col, &needsYBAlter, rollbackHandle,
+						isPartitionOfAlteredTable);
 		}
 	}
 	relation_close(rel, NoLock);
@@ -1158,7 +1312,7 @@ YBCPrepareAlterTable(List** subcmds,
 		return NULL;
 	}
 
-	return handle;
+	return handles;
 }
 
 void

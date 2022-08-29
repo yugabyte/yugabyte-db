@@ -216,6 +216,8 @@ class TransactionParticipant : public TransactionStatusManager {
 
   CoarseTimePoint GetCheckpointExpirationTime() const;
 
+  OpId GetLatestCheckPoint() const;
+
   const TabletId& tablet_id() const override;
 
   size_t TEST_GetNumRunningTransactions() const;

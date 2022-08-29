@@ -3,7 +3,6 @@
 package com.yugabyte.yw.controllers;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;

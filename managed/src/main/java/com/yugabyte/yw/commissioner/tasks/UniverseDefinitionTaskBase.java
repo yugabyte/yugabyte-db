@@ -27,6 +27,7 @@ import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil.SelectMastersResult;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
+import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.common.password.RedactingService;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -981,6 +982,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.ybSoftwareVersion = userIntent.ybSoftwareVersion;
       params.enableYbc = taskParams().enableYbc;
       params.ybcSoftwareVersion = taskParams().ybcSoftwareVersion;
+      params.ybcInstalled = taskParams().ybcInstalled;
       // Set the InstanceType
       params.instanceType = node.cloudInfo.instance_type;
       params.enableNodeToNodeEncrypt = userIntent.enableNodeToNodeEncrypt;
@@ -1075,9 +1077,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
     for (Cluster cluster : taskParams().clusters) {
+      Cluster univCluster = universeDetails.getClusterByUuid(cluster.uuid);
       if (opType == UniverseOpType.EDIT
           && cluster.userIntent.instanceTags.containsKey(NODE_NAME_KEY)) {
-        Cluster univCluster = universeDetails.getClusterByUuid(cluster.uuid);
         if (univCluster == null) {
           throw new IllegalStateException(
               "No cluster " + cluster.uuid + " found in " + taskParams().universeUUID);
@@ -1092,6 +1094,42 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       }
       PlacementInfoUtil.verifyNodesAndRF(
           cluster.clusterType, cluster.userIntent.numNodes, cluster.userIntent.replicationFactor);
+
+      // Verify k8s overrides.
+      if (cluster.userIntent.providerType == CloudType.kubernetes) {
+        if (cluster.clusterType == ClusterType.ASYNC) {
+          // Readonly cluster should not have k8s overrides.
+          if (StringUtils.isNotBlank(cluster.userIntent.universeOverrides)
+              || StringUtils.isNotBlank(cluster.userIntent.azOverrides)) {
+            throw new IllegalArgumentException("Readonly cluster can't have overrides defined");
+          }
+        } else { // During edit universe, overrides can't be changed.
+          if (opType == UniverseOpType.EDIT) {
+            Map<String, String> curUnivOverrides =
+                HelmUtils.flattenMap(
+                    HelmUtils.convertYamlToMap(univCluster.userIntent.universeOverrides));
+            Map<String, String> curAZOverrides =
+                HelmUtils.flattenMap(
+                    HelmUtils.convertYamlToMap(univCluster.userIntent.azOverrides));
+            Map<String, String> newUnivOverrides =
+                HelmUtils.flattenMap(
+                    HelmUtils.convertYamlToMap(cluster.userIntent.universeOverrides));
+            Map<String, String> newAZOverrides =
+                HelmUtils.flattenMap(HelmUtils.convertYamlToMap(cluster.userIntent.azOverrides));
+            if (!(curUnivOverrides.equals(newUnivOverrides)
+                && curAZOverrides.equals(newAZOverrides))) {
+              throw new IllegalArgumentException(
+                  "Universe overrides can't be modifed during the edit operation.");
+            }
+          }
+        }
+      } else {
+        // Non k8s universes should not have k8s overrides.
+        if (StringUtils.isNotBlank(cluster.userIntent.universeOverrides)
+            || StringUtils.isNotBlank(cluster.userIntent.azOverrides)) {
+          throw new IllegalArgumentException("Non k8s Universe can't have k8s overrides defined");
+        }
+      }
     }
   }
 
@@ -1695,6 +1733,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.ybSoftwareVersion = softwareVersion;
     }
     params.ybcSoftwareVersion = ybcSoftwareVersion;
+    if (!StringUtils.isEmpty(params.ybcSoftwareVersion)) {
+      params.enableYbc = true;
+    }
 
     AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
     task.initialize(params);

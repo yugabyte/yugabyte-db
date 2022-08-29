@@ -54,10 +54,13 @@ public class UniverseSetTlsParams extends UniverseTaskBase {
               throw new RuntimeException(errMsg);
             }
 
-            UniverseDefinitionTaskParams.UserIntent userIntent =
-                universeDetails.getPrimaryCluster().userIntent;
-            userIntent.enableNodeToNodeEncrypt = taskParams().enableNodeToNodeEncrypt;
-            userIntent.enableClientToNodeEncrypt = taskParams().enableClientToNodeEncrypt;
+            universeDetails.clusters.forEach(
+                cluster -> {
+                  cluster.userIntent.enableNodeToNodeEncrypt = taskParams().enableNodeToNodeEncrypt;
+                  cluster.userIntent.enableClientToNodeEncrypt =
+                      taskParams().enableClientToNodeEncrypt;
+                });
+
             universeDetails.allowInsecure = taskParams().allowInsecure;
             universeDetails.rootCA = null;
             universeDetails.clientRootCA = null;

@@ -470,7 +470,13 @@ public class HealthCheckerTest extends FakeDBApplication {
   }
 
   @Test
-  @Parameters({"BackupTable, true", "MultiTableBackup, true", "AddNodeToUniverse, false"})
+  @Parameters({
+    "BackupTable, true",
+    "MultiTableBackup, true",
+    "AddNodeToUniverse, false",
+    "CreateBackup, true",
+    "RestoreBackup, true"
+  })
   public void testCheckSingleUniverse_UpdateInProgress(TaskType updatingTask, boolean shouldCheck) {
     Universe u = setupUniverse("test");
     // Set updateInProgress to true.

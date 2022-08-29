@@ -6006,6 +6006,10 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
     has_changes = true;
   }
 
+  if (req->increment_schema_version()) {
+    has_changes = true;
+  }
+
   // TODO(hector): Simplify the AlterSchema workflow to avoid doing the same checks on every layer
   // this request goes through: https://github.com/YugaByte/yugabyte-db/issues/1882.
   if (req->has_wal_retention_secs()) {
@@ -6737,10 +6741,10 @@ bool CatalogManager::ProcessCommittedConsensusState(
     TSDescriptor* ts_desc,
     bool is_incremental,
     const ReportedTabletPB& report,
-    const std::map<TableId, TableInfo::WriteLock>& table_write_locks,
+    std::map<TableId, TableInfo::WriteLock>* table_write_locks,
     const TabletInfoPtr& tablet,
     const TabletInfo::WriteLock& tablet_lock,
-    const std::map<TableId, scoped_refptr<TableInfo>>& tables,
+    std::map<TableId, scoped_refptr<TableInfo>>* tables,
     std::vector<RetryingTSRpcTaskPtr>* rpcs) {
   const ConsensusStatePB& prev_cstate = tablet_lock->pb.committed_consensus_state();
   ConsensusStatePB cstate = report.committed_consensus_state();
@@ -6891,8 +6895,8 @@ bool CatalogManager::ProcessCommittedConsensusState(
   }
 
   // 7. Send an AlterSchema RPC if the tablet has an old schema version.
-  if (table_write_locks.count(tablet->table()->id())) {
-    const TableInfo::WriteLock& table_lock = table_write_locks.at(tablet->table()->id());
+  if (table_write_locks->count(tablet->table()->id())) {
+    const TableInfo::WriteLock& table_lock = (*table_write_locks)[tablet->table()->id()];
     if (report.has_schema_version() &&
         report.schema_version() != table_lock->pb.version()) {
       if (report.schema_version() > table_lock->pb.version()) {
@@ -6909,24 +6913,33 @@ bool CatalogManager::ProcessCommittedConsensusState(
                   << ". Expected version " << table_lock->pb.version()
                   << " got " << report.schema_version();
       }
-      // It's possible that the tablet being reported is a laggy replica, and in fact
-      // the leader has already received an AlterTable RPC. That's OK, though --
-      // it'll safely ignore it if we send another.
-      TransactionId txn_id = TransactionId::Nil();
-      if (table_lock->pb.has_transaction() &&
-          table_lock->pb.transaction().has_transaction_id()) {
-        LOG(INFO) << "Parsing transaction ID for tablet ID " << tablet->tablet_id();
-        auto txn_id_res = FullyDecodeTransactionId(table_lock->pb.transaction().transaction_id());
-        if (!txn_id_res.ok()) {
-          LOG(WARNING) << "Parsing transaction ID failed for tablet ID " << tablet->tablet_id();
-          return false;
+      // All metadata related changes for the tablet is passed as part of RESTORE_ON_TABLET rpcs
+      // and we should not trigger anything else during restore so as to not race schema versions.
+      // TODO(Sanket): What if restore is stuck then this block is muted forever.
+      auto restore_result = IsTableUndergoingPitrRestore(*tablet->table());
+      LOG_IF(DFATAL, !restore_result.ok())
+          << "Failed to determine if table has PITR restore in progress";
+      if (!restore_result.ok() || !*restore_result) {
+        // It's possible that the tablet being reported is a laggy replica, and in fact
+        // the leader has already received an AlterTable RPC. That's OK, though --
+        // it'll safely ignore it if we send another.
+        TransactionId txn_id = TransactionId::Nil();
+        if (table_lock->pb.has_transaction() &&
+            table_lock->pb.transaction().has_transaction_id()) {
+          LOG(INFO) << "Parsing transaction ID for tablet ID " << tablet->tablet_id();
+          auto txn_id_res = FullyDecodeTransactionId(
+              table_lock->pb.transaction().transaction_id());
+          if (!txn_id_res.ok()) {
+            LOG(WARNING) << "Parsing transaction ID failed for tablet ID " << tablet->tablet_id();
+            return false;
+          }
+          txn_id = txn_id_res.get();
         }
-        txn_id = txn_id_res.get();
+        LOG(INFO) << "Triggering AlterTable with transaction ID " << txn_id
+                  << " due to heartbeat delay for tablet ID " << tablet->tablet_id();
+        rpcs->push_back(std::make_shared<AsyncAlterTable>(
+            master_, AsyncTaskPool(), tablet, tablet->table(), txn_id));
       }
-      LOG(INFO) << "Triggering AlterTable with transaction ID " << txn_id
-                << " due to heartbeat delay for tablet ID " << tablet->tablet_id();
-      rpcs->push_back(std::make_shared<AsyncAlterTable>(
-          master_, AsyncTaskPool(), tablet, tablet->table(), txn_id));
     }
   }
 
@@ -6936,8 +6949,8 @@ bool CatalogManager::ProcessCommittedConsensusState(
     if (tablet->table()->id() == id_to_version.first) {
       continue;
     }
-    if (tables.count(id_to_version.first)) {
-      const auto& table_lock = table_write_locks.at(id_to_version.first);
+    if (tables->count(id_to_version.first)) {
+      const auto& table_lock = (*table_write_locks)[id_to_version.first];
       // Ignore if same version.
       if (table_lock->pb.version() == id_to_version.second) {
         continue;
@@ -6955,10 +6968,19 @@ bool CatalogManager::ProcessCommittedConsensusState(
                   << ". Expected version " << table_lock->pb.version()
                   << " got " << id_to_version.second;
       }
-      LOG(INFO) << "Triggering AlterTable for table id " << id_to_version.first
-                << " due to heartbeat delay for tablet ID " << tablet->tablet_id();
-      rpcs->push_back(std::make_shared<AsyncAlterTable>(
-          master_, AsyncTaskPool(), tablet, tables.at(id_to_version.first), TransactionId::Nil()));
+      // All metadata related changes for the tablet is passed as part of RESTORE_ON_TABLET rpcs
+      // and we should not trigger anything else during restore so as to not race schema versions.
+      // TODO(Sanket): What if restore is stuck then this block is muted forever.
+      auto restore_result = IsTableUndergoingPitrRestore(*(*tables)[id_to_version.first]);
+      LOG_IF(DFATAL, !restore_result.ok())
+          << "Failed to determine if table has PITR restore in progress";
+      if (!restore_result.ok() || !*restore_result) {
+        LOG(INFO) << "Triggering AlterTable for table id " << id_to_version.first
+                  << " due to heartbeat delay for tablet ID " << tablet->tablet_id();
+        rpcs->push_back(std::make_shared<AsyncAlterTable>(
+            master_, AsyncTaskPool(), tablet, (*tables)[id_to_version.first],
+            TransactionId::Nil()));
+      }
     }
   }
 
@@ -7104,8 +7126,8 @@ Status CatalogManager::ProcessTabletReportBatch(
     // replica so that the balancer knows how many tablets are in the middle of remote bootstrap.
     if (report.has_committed_consensus_state()) {
       if (ProcessCommittedConsensusState(
-          ts_desc, is_incremental, report, table_write_locks, tablet, tablet_lock,
-          it->tables, rpcs)) {
+          ts_desc, is_incremental, report, &table_write_locks, tablet, tablet_lock,
+          &it->tables, rpcs)) {
         // 6. If the tablet was mutated, add it to the tablets to be re-persisted.
         //
         // Done here and not on a per-mutation basis to avoid duplicate entries.
@@ -9088,8 +9110,11 @@ void CatalogManager::CreateNewReplicaForLocalMemory(TSDescriptor* ts_desc,
   }
 }
 
-Status CatalogManager::GetTabletPeer(const TabletId& tablet_id,
-                                     std::shared_ptr<TabletPeer>* ret_tablet_peer) const {
+Result<tablet::TabletPeerPtr> CatalogManager::GetServingTablet(const TabletId& tablet_id) const {
+  return GetServingTablet(Slice(tablet_id));
+}
+
+Result<tablet::TabletPeerPtr> CatalogManager::GetServingTablet(const Slice& tablet_id) const {
   // Note: CatalogManager has only one table, 'sys_catalog', with only
   // one tablet.
 
@@ -9105,18 +9130,17 @@ Status CatalogManager::GetTabletPeer(const TabletId& tablet_id,
   CHECK(sys_catalog_) << "sys_catalog_ must be initialized!";
 
   if (master_->opts().IsShellMode()) {
-    return STATUS_SUBSTITUTE(NotFound,
-        "In shell mode: no tablet_id $0 exists in CatalogManager.", tablet_id);
+    return STATUS_FORMAT(NotFound,
+        "In shell mode: no tablet_id $0 exists in CatalogManager", tablet_id);
   }
 
   if (sys_catalog_->tablet_id() == tablet_id && sys_catalog_->tablet_peer().get() != nullptr &&
       sys_catalog_->tablet_peer()->CheckRunning().ok()) {
-    *ret_tablet_peer = tablet_peer();
-  } else {
-    return STATUS_SUBSTITUTE(NotFound,
-        "no SysTable in the RUNNING state exists with tablet_id $0 in CatalogManager", tablet_id);
+    return tablet_peer();
   }
-  return Status::OK();
+
+  return STATUS_FORMAT(NotFound,
+      "no SysTable in the RUNNING state exists with tablet_id $0 in CatalogManager", tablet_id);
 }
 
 const NodeInstancePB& CatalogManager::NodeInstance() const {
@@ -9131,14 +9155,14 @@ Status CatalogManager::UpdateMastersListInMemoryAndDisk() {
   DCHECK(master_->opts().IsShellMode());
 
   if (!master_->opts().IsShellMode()) {
-    return STATUS(IllegalState, "Cannot update master's info when process is not in shell mode.");
+    return STATUS(IllegalState, "Cannot update master's info when process is not in shell mode");
   }
 
   consensus::ConsensusStatePB consensus_state;
   RETURN_NOT_OK(GetCurrentConfig(&consensus_state));
 
   if (!consensus_state.has_config()) {
-    return STATUS(NotFound, "No Raft config found.");
+    return STATUS(NotFound, "No Raft config found");
   }
 
   RETURN_NOT_OK(sys_catalog_->ConvertConfigToMasterAddresses(consensus_state.config()));
@@ -9321,19 +9345,8 @@ Status CatalogManager::SendAlterTableRequest(const scoped_refptr<TableInfo>& tab
       req->has_transaction() &&
       req->transaction().has_transaction_id();
 
-  bool alter_table_has_add_or_drop_column_step = false;
-  if (req && (req->alter_schema_steps_size() || req->has_alter_properties())) {
-    for (const AlterTableRequestPB::Step& step : req->alter_schema_steps()) {
-      if (step.type() == AlterTableRequestPB::ADD_COLUMN ||
-          step.type() == AlterTableRequestPB::DROP_COLUMN) {
-        alter_table_has_add_or_drop_column_step = true;
-        break;
-      }
-    }
-  }
-
   TransactionId txn_id = TransactionId::Nil();
-  if (is_ysql_table_with_transaction_metadata && alter_table_has_add_or_drop_column_step) {
+  if (is_ysql_table_with_transaction_metadata) {
     {
       LOG(INFO) << "Persist transaction metadata into SysTableEntryPB for table ID " << table->id();
       TRACE("Locking table");
@@ -9813,6 +9826,12 @@ Status CatalogManager::HandleTabletSchemaVersionReport(
     if (table->IsAlterInProgress(current_version)) {
       VLOG_WITH_PREFIX_AND_FUNC(2) << "Table " << table->ToString() << " has IsAlterInProgress ("
                                    << current_version << ")";
+      return Status::OK();
+    }
+
+    // If it's undergoing a PITR restore, no need to launch next version.
+    if (VERIFY_RESULT(IsTableUndergoingPitrRestore(*table))) {
+      LOG(INFO) << "Table " << table->ToString() << " is undergoing a PITR restore currently";
       return Status::OK();
     }
   }
@@ -11471,8 +11490,7 @@ Result<bool> CatalogManager::SysCatalogLeaderStepDown(const ServerEntryPB& maste
       LOG_WITH_PREFIX(FATAL) << "For test: Crashing the server instead of performing sys "
                                 "catalog leader affinity move.";
     }
-  std::shared_ptr<TabletPeer> tablet_peer;
-  RETURN_NOT_OK(GetTabletPeer(sys_catalog_->tablet_id(), &tablet_peer));
+  auto tablet_peer = VERIFY_RESULT(GetServingTablet(sys_catalog_->tablet_id()));
 
   consensus::LeaderStepDownRequestPB req;
   req.set_tablet_id(sys_catalog_->tablet_id());

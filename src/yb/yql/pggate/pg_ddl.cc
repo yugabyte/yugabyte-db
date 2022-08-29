@@ -369,6 +369,11 @@ Status PgAlterTable::RenameTable(const char *db_name, const char *newname) {
   return Status::OK();
 }
 
+Status PgAlterTable::IncrementSchemaVersion() {
+  req_.set_increment_schema_version(true);
+  return Status::OK();
+}
+
 Status PgAlterTable::Exec() {
   RETURN_NOT_OK(pg_session_->pg_client().AlterTable(&req_, DdlDeadline()));
   pg_session_->InvalidateTableCache(

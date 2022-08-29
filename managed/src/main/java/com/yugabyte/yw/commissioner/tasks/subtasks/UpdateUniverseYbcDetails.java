@@ -9,15 +9,17 @@ import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
-public class UpdateYbcSoftwareVersion extends UniverseTaskBase {
+public class UpdateUniverseYbcDetails extends UniverseTaskBase {
 
   @Inject
-  protected UpdateYbcSoftwareVersion(BaseTaskDependencies baseTaskDependencies) {
+  protected UpdateUniverseYbcDetails(BaseTaskDependencies baseTaskDependencies) {
     super(baseTaskDependencies);
   }
 
   public static class Params extends UniverseDefinitionTaskParams {
     public String ybcSoftwareVersion;
+    public boolean enableYbc;
+    public boolean ybcInstalled;
   }
 
   protected Params taskParams() {
@@ -48,8 +50,8 @@ public class UpdateYbcSoftwareVersion extends UniverseTaskBase {
                 throw new RuntimeException(errMsg);
               }
               universeDetails.ybcSoftwareVersion = taskParams().ybcSoftwareVersion;
-              universeDetails.enableYbc = true;
-              universeDetails.ybcInstalled = true;
+              universeDetails.enableYbc = taskParams().enableYbc;
+              universeDetails.ybcInstalled = taskParams().ybcInstalled;
               universe.setUniverseDetails(universeDetails);
             }
           };

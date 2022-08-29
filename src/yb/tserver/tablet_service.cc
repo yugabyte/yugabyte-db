@@ -2145,9 +2145,9 @@ void ConsensusServiceImpl::StartRemoteBootstrap(const StartRemoteBootstrapReques
     // split_parent_tablet_id. However, our local tablet manager should only know about the parent
     // if it was part of the raft group which committed the split to the parent, and if the parent
     // tablet has yet to be deleted across the cluster.
-    TabletPeerPtr tablet_peer;
-    if (tablet_manager_->GetTabletPeer(req->split_parent_tablet_id(), &tablet_peer).ok()) {
-      auto tablet = tablet_peer->shared_tablet();
+    auto tablet_peer = tablet_manager_->GetServingTablet(req->split_parent_tablet_id());
+    if (tablet_peer.ok()) {
+      auto tablet = (**tablet_peer).shared_tablet();
       // If local parent tablet replica has been already split or remote bootstrapped from remote
       // replica that has been already split - allow RBS of child tablets.
       // In this case we can't rely on local parent tablet replica split to create child tablet

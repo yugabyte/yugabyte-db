@@ -13,7 +13,7 @@ type: docs
 
 Yugabyte’s distributed architecture enables database clusters (also referred to as universes) to have extremely high availability.
 
-YugabyteDB Anywhere's high availability is an active standby model for multiple instances in a cluster with asynchronous replication. Your YugabyteDB Anywhere data is replicated across multiple virtual machines (VMs), ensuring that you can recover quickly from a VM failure and continue to manage and monitor your universes, with your configuration and metrics data intact.
+YugabyteDB Anywhere's high availability is an active standby model for multiple instances in a cluster with xCluster replication. Your YugabyteDB Anywhere data is replicated across multiple virtual machines (VMs), ensuring that you can recover quickly from a VM failure and continue to manage and monitor your universes, with your configuration and metrics data intact.
 
 Each high-availability cluster includes a single active YugabyteDB Anywhere instance and at least one standby YugabyteDB Anywhere instance, configured as follows:
 
@@ -56,7 +56,7 @@ You can configure the active instance as follows:
 
     The address for this instance should be the only information under **Instances**.
 
-    
+
 
 Your active instance is now configured.
 
@@ -88,7 +88,7 @@ You can make a standby instance active as follows:
 
 1. Click **Continue**.<br>
 The restore take a few seconds, after which expect to be logged out.
-   
+
 1. Login using credentials that you had configured on the previously active instance.
 
 You should be able to see that all of the data has been restored into the instance, including universes, users, metrics, alerts, task history, cloud providers, and so on.
@@ -107,7 +107,7 @@ After you have returned a standby instance to standalone mode, the information o
 
 ## Limitations
 
-If you are using custom ports for Prometheus in your YugabyteDB Anywhere installation and the YugabyteDB Anywhere instance is configured for high availability with other YugabyteDB Anywhere instances, then the following limitation applies: 
+If you are using custom ports for Prometheus in your YugabyteDB Anywhere installation and the YugabyteDB Anywhere instance is configured for high availability with other YugabyteDB Anywhere instances, then the following limitation applies:
 
 - All YugabyteDB Anywhere instances configured under high availability must use the same custom port.
 

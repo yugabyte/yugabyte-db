@@ -41,6 +41,10 @@ static StatusCategoryRegisterer cdc_error_category_registerer(
 
 void SetupError(::yb::cdc::CDCErrorPB* error, const Status& status) {
   StatusToPB(status, error->mutable_status());
+  auto code = CDCError::ValueFromStatus(status);
+  if (code) {
+    error->set_code(*code);
+  }
 }
 
 } // namespace cdc

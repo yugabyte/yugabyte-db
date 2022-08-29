@@ -1,7 +1,7 @@
 ---
-title: Deploy to two universes with asynchronous replication
-headerTitle: Asynchronous Replication
-linkTitle: Asynchronous Replication
+title: Deploy to two universes with xCluster replication
+headerTitle: xCluster replication
+linkTitle: xCluster replication
 description: Enable deployment using unidirectional (master-follower) or bidirectional (multi-master) replication between universes
 menu:
   v2.12:
@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-You can perform deployment using unidirectional (master-follower) or bidirectional (multi-master) asynchronous replication between universes (also known as data centers).
+You can perform deployment using unidirectional (master-follower) or bidirectional (multi-master) xCluster replication between universes (also known as data centers).
 
 For information on two data center (2DC) deployment architecture and supported replication scenarios, see [Two data center (2DC) deployments](../../../architecture/docdb-replication/async-replication/).
 
@@ -27,7 +27,7 @@ You can create source and target universes as follows:
 
 ## Setting Up Unidirectional Replication
 
-After you created the required tables, you can set up asynchronous replication as follows:
+After you created the required tables, you can set up unidirectional replication as follows:
 
 - Look up the source universe UUID and the table IDs for the two tables and the index table:
 

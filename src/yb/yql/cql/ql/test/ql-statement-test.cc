@@ -15,6 +15,8 @@
 
 #include "yb/gutil/strings/substitute.h"
 
+#include "yb/client/client.h"
+
 #include "yb/util/async_util.h"
 #include "yb/util/status_log.h"
 
@@ -45,6 +47,12 @@ class TestQLStatement : public QLTestBase {
                               Bind(&TestQLStatement::ExecuteAsyncDone, Unretained(this), cb));
   }
 
+  void WaitForIndex(const string& table_name, const string& index_name) {
+    client::YBTableName yb_table_name(YQL_DATABASE_CQL, kDefaultKeyspaceName, table_name);
+    client::YBTableName yb_index_name(YQL_DATABASE_CQL, kDefaultKeyspaceName, index_name);
+    ASSERT_OK(client_->WaitUntilIndexPermissionsAtLeast(
+        yb_table_name, yb_index_name, INDEX_PERM_READ_WRITE_AND_DELETE));
+  }
 };
 
 TEST_F(TestQLStatement, TestExecutePrepareAfterTableDrop) {
@@ -115,10 +123,27 @@ TEST_F(TestQLStatement, TestPrepareWithUnknownSystemTableAndUnknownField) {
   LOG(INFO) << "Done.";
 }
 
+void prepareAndCheck(TestQLProcessor* processor,
+                     const string& query,
+                     std::initializer_list<int64_t> positions) {
+  // Prepare a select statement.
+  LOG(INFO) << "Prepare statement: " << query;
+  PreparedResult::UniPtr result;
+  Statement stmt(processor->CurrentKeyspace(), query);
+  ASSERT_OK(stmt.Prepare(
+      &processor->ql_processor(), nullptr /* mem_tracker */, false /* internal */, &result));
+
+  const std::vector<int64_t>& hash_col_indices = result->hash_col_indices();
+  EXPECT_EQ(hash_col_indices.size(), positions.size());
+  std::initializer_list<int64_t>::iterator it = positions.begin();
+  for (int i = 0; it != positions.end(); ++i, ++it) {
+    EXPECT_EQ(hash_col_indices[i], *it);
+  }
+}
+
 TEST_F(TestQLStatement, TestPKIndices) {
   // Init the simulated cluster.
   ASSERT_NO_FATALS(CreateSimulatedCluster());
-
   // Get a processor.
   TestQLProcessor *processor = GetQLProcessor();
 
@@ -127,21 +152,110 @@ TEST_F(TestQLStatement, TestPKIndices) {
   EXEC_VALID_STMT("create table test_pk_indices "
                   "(h1 int, h2 text, h3 timestamp, r int, primary key ((h1, h2, h3), r));");
 
-  // Prepare a select statement.
-  LOG(INFO) << "Prepare select statement.";
-  Statement stmt(processor->CurrentKeyspace(),
-                 "select * from test_pk_indices where h3 = ? and h1 = ? and h2 = ?;");
-  PreparedResult::UniPtr result;
-  CHECK_OK(stmt.Prepare(
-      &processor->ql_processor(), nullptr /* mem_tracker */, false /* internal */, &result));
+  // The hash columns: h1 (pos=1 in SELECT), h2 (pos=2 in SELECT), h3 (pos=0 in SELECT).
+  prepareAndCheck(
+      processor, "select * from test_pk_indices where h3 = ? and h1 = ? and h2 = ?;", {1, 2, 0});
 
-  const std::vector<int64_t>& hash_col_indices = result->hash_col_indices();
-  EXPECT_EQ(hash_col_indices.size(), 3);
-  EXPECT_EQ(hash_col_indices[0], 1);
-  EXPECT_EQ(hash_col_indices[1], 2);
-  EXPECT_EQ(hash_col_indices[2], 0);
+  EXEC_VALID_STMT("DROP TABLE test_pk_indices;");
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
 
-  LOG(INFO) << "Done.";
+TEST_F(TestQLStatement, TestBindVarPositions) {
+  // Init the simulated cluster.
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
+  // Get a processor.
+  TestQLProcessor *processor = GetQLProcessor();
+
+  LOG(INFO) << "Create test table and index.";
+  EXEC_VALID_STMT(
+      "CREATE TABLE tbl (h1 INT, h2 TEXT, r1 INT, r2 TEXT, c1 INT, "
+      "PRIMARY KEY ((h1, h2), r1, r2)) WITH transactions = {'enabled' : 'true'};");
+  EXEC_VALID_STMT("CREATE INDEX ind1 ON tbl ((h1, r2), h2, r1);");
+  EXEC_VALID_STMT("CREATE INDEX ind2 ON tbl ((h2, r1), h1, c1);");
+  // Wait for read permissions on the indexes.
+  WaitForIndex("tbl", "ind1");
+  WaitForIndex("tbl", "ind2");
+
+  // Primary index 'tbl' is the chosen scan method. Hash columns: h1, h2.
+  prepareAndCheck(processor, "SELECT * FROM tbl WHERE h2 = ? AND h1 = ?;", {1, 0});
+  prepareAndCheck(processor, "SELECT * FROM tbl WHERE h2 = ? AND h1 = ? AND r1 IN (?, ?);", {1, 0});
+  prepareAndCheck(processor, "SELECT * FROM tbl WHERE r1 IN (?, ?) AND h2 = ? AND h1 = ?;", {3, 2});
+
+  prepareAndCheck(processor, "SELECT * FROM tbl WHERE h1 = ? AND h2 = ?;", {0, 1});
+  prepareAndCheck(processor, "SELECT * FROM tbl WHERE h1 = ? AND h2 = ? AND r1 = ?;", {0, 1});
+  prepareAndCheck(processor, "SELECT * FROM tbl WHERE r1 = ? AND h1 = ? AND h2 = ?;", {1, 2});
+  prepareAndCheck(processor,
+      "SELECT * FROM tbl WHERE h1 = ? AND h2 = ? AND (r1, r2) IN ((?, ?));", {0, 1});
+  prepareAndCheck(processor,
+      "SELECT * FROM tbl WHERE (r1, r2) IN ((?, ?)) AND h1 = ? AND h2 = ?;", {2, 3});
+
+  // Test operator IN with a hash column.
+  // TOFIX: EMPTY HASH-COL POSITIONS ARE NOT EXPECTED HERE.
+  //        https://github.com/yugabyte/yugabyte-db/issues/13710
+  prepareAndCheck(processor, "SELECT * FROM tbl WHERE h1 IN (?);", {});
+  prepareAndCheck(processor, "SELECT * FROM tbl WHERE h1 IN (?) AND h2 = ?;", {});
+  prepareAndCheck(processor, "SELECT * FROM tbl WHERE h1 = ? AND h2 IN (?);", {});
+  prepareAndCheck(processor, "SELECT * FROM tbl WHERE h1 IN (?, ?) AND h2 = ?;", {});
+
+  // Index 'ind1' is the chosen scan method. Hash columns: h1, r2.
+  prepareAndCheck(processor, "SELECT * FROM tbl WHERE h1 = ? AND h2 = ? AND r2 = ?;", {0, 2});
+  prepareAndCheck(processor, "SELECT * FROM tbl WHERE r2 = ? AND h2 = ? AND h1 = ?;", {2, 0});
+  prepareAndCheck(processor, "SELECT * FROM tbl WHERE h1 = ? AND r2 = ? AND h2 = ?;", {0, 1});
+  prepareAndCheck(processor, "SELECT * FROM tbl WHERE r2 = ? AND h1 = ? AND h2 = ?;", {1, 0});
+
+  // Index 'ind2' is the chosen scan method. Hash columns: h2, r1.
+  prepareAndCheck(processor, "SELECT h2, c1 FROM tbl WHERE c1 = ? AND r1 = ? AND h2 = ?;", {2, 1});
+  prepareAndCheck(processor, "SELECT h2, c1 FROM tbl WHERE c1 = ? AND h2 = ? AND r1 = ?;", {1, 2});
+  prepareAndCheck(processor, "SELECT h2, c1 FROM tbl WHERE h2 = ? AND c1 = ? AND r1 = ?;", {0, 2});
+  prepareAndCheck(processor, "SELECT h2, c1 FROM tbl WHERE r1 = ? AND c1 = ? AND h2 = ?;", {2, 0});
+
+  // Test UPDATE.
+  prepareAndCheck(processor,
+      "UPDATE tbl SET c1 = 0 WHERE h1 = ? AND h2 = ? AND r2 = ? AND r1 = ?;", {0, 1});
+  prepareAndCheck(processor,
+      "UPDATE tbl SET c1 = 0 WHERE r2 = ? AND r1 = ? AND h2 = ? AND h1 = ?;", {3, 2});
+
+  // Test DELETE.
+  prepareAndCheck(processor,
+      "DELETE FROM tbl WHERE h2 = ? AND h1 = ? AND r2 = ? AND r1 = ?;", {1, 0});
+  prepareAndCheck(processor,
+      "DELETE FROM tbl WHERE r2 = ? AND r1 = ? AND h1 = ? AND h2 = ? IF EXISTS;", {2, 3});
+
+  // Test hash column based on json attribute.
+  EXEC_VALID_STMT("CREATE TABLE tbl_json (\"j->>'a'\" INT, \"j->>'b'\" INT, j JSONB, "
+                  "PRIMARY KEY(\"j->>'a'\")) WITH transactions = {'enabled' : true};");
+  prepareAndCheck(processor, "SELECT * FROM tbl_json WHERE j = ?;", {});
+  prepareAndCheck(processor, "SELECT * FROM tbl_json WHERE \"j->>'a'\" = ?;", {0});
+  prepareAndCheck(processor,
+      "SELECT * FROM tbl_json WHERE \"j->>'b'\" = ? AND \"j->>'a'\" = ?;", {1});
+  prepareAndCheck(processor, "UPDATE tbl_json SET \"j->>'b'\" = ? WHERE \"j->>'a'\" = ?;", {1});
+  prepareAndCheck(processor, "DELETE FROM tbl_json WHERE \"j->>'a'\" = ?;", {0});
+
+  EXEC_VALID_STMT("CREATE TABLE tbl_json2 (h1 INT, \"j->>'a'\" INT, j JSONB, v1 INT, "
+                  "PRIMARY KEY((h1, \"j->>'a'\"))) WITH transactions = {'enabled' : true};");
+  EXEC_VALID_STMT("CREATE INDEX ind ON tbl_json2 ((j->>'b', h1));");
+  WaitForIndex("tbl_json2", "ind");
+
+  // Using main table PRIMARY KEY: (h1, j->>'a').
+  // TOFIX: Memory error: out of bounds index: "Bad op index=2 for vector size=2"
+  //        https://github.com/yugabyte/yugabyte-db/issues/13731
+  //        Uncomment following 2 lines to reproduce the error:
+  //  prepareAndCheck(processor,
+  //      "SELECT * FROM tbl_json2 WHERE v1 = ? AND h1 = ? AND \"j->>'a'\" = ?;", {1, 2});
+  prepareAndCheck(processor,
+      "UPDATE tbl_json2 SET v1 = ? WHERE \"j->>'a'\" = ? AND h1 = ?;", {2, 1});
+  prepareAndCheck(processor, "DELETE FROM tbl_json2 WHERE h1 = ? AND \"j->>'a'\" = ?;", {0, 1});
+  // Using index PRIMARY KEY: (j->>'b', h1)
+  prepareAndCheck(processor,
+      "SELECT h1 FROM tbl_json2 WHERE j->>'b' = ? AND h1 = ?;", {0, 1});
+  prepareAndCheck(processor,
+      "SELECT * FROM tbl_json2 WHERE v1 = ? AND h1 = ? AND j->>'b' = ?;", {2, 1});
+
+  // Clean-up.
+  EXEC_VALID_STMT("DROP TABLE tbl;");
+  EXEC_VALID_STMT("DROP TABLE tbl_json;");
+  EXEC_VALID_STMT("DROP TABLE tbl_json2;");
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
 } // namespace ql

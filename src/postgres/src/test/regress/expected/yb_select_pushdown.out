@@ -590,6 +590,64 @@ SELECT relname, relkind FROM pg_class WHERE relname LIKE 'pushdown_c%';
  pushdown_composite_pkey | i
 (4 rows)
 
+-- Index scan with remote filter on a range table
+CREATE TABLE pushdown_range(k1 text, v1 int, v2 int, primary key(k1 asc)) SPLIT AT VALUES (('2 '), ('3 '), ('4 '), ('5 '), ('6 '), ('7 '), ('8 '), ('9 '));
+INSERT INTO pushdown_range SELECT i::text, i, i FROM  generate_series(1,100) AS i;
+EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_range WHERE k1 IN ('11', '17', '33', '42', '87') AND (v1 = 17 OR v2 = 87);
+                       QUERY PLAN
+--------------------------------------------------------
+ Index Scan using pushdown_range_pkey on pushdown_range
+   Index Cond: (k1 = ANY ('{11,17,33,42,87}'::text[]))
+   Remote Filter: ((v1 = 17) OR (v2 = 87))
+(3 rows)
+
+SELECT * FROM pushdown_range WHERE k1 IN ('11', '17', '33', '42', '87') AND (v1 = 17 OR v2 = 87);
+ k1 | v1 | v2
+----+----+----
+ 17 | 17 | 17
+ 87 | 87 | 87
+(2 rows)
+
+EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_range WHERE v1 > 5 AND v2 < 33 ORDER BY k1;
+                       QUERY PLAN
+--------------------------------------------------------
+ Index Scan using pushdown_range_pkey on pushdown_range
+   Remote Filter: ((v1 > 5) AND (v2 < 33))
+(2 rows)
+
+SELECT * FROM pushdown_range WHERE v1 > 5 AND v2 < 33 ORDER BY k1;
+ k1 | v1 | v2
+----+----+----
+ 10 | 10 | 10
+ 11 | 11 | 11
+ 12 | 12 | 12
+ 13 | 13 | 13
+ 14 | 14 | 14
+ 15 | 15 | 15
+ 16 | 16 | 16
+ 17 | 17 | 17
+ 18 | 18 | 18
+ 19 | 19 | 19
+ 20 | 20 | 20
+ 21 | 21 | 21
+ 22 | 22 | 22
+ 23 | 23 | 23
+ 24 | 24 | 24
+ 25 | 25 | 25
+ 26 | 26 | 26
+ 27 | 27 | 27
+ 28 | 28 | 28
+ 29 | 29 | 29
+ 30 | 30 | 30
+ 31 | 31 | 31
+ 32 | 32 | 32
+ 6  |  6 |  6
+ 7  |  7 |  7
+ 8  |  8 |  8
+ 9  |  9 |  9
+(27 rows)
+
+DROP TABLE pushdown_range;
 DROP TABLE pushdown_index;
 DROP TABLE pushdown_test;
 DROP TABLE pushdown_lookup;

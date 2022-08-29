@@ -2825,6 +2825,18 @@ public class PlacementInfoUtil {
     }
   }
 
+  public static String getAZNameFromUUID(Provider provider, UUID azUUID) {
+    for (Region r : provider.regions) {
+      for (AvailabilityZone az : r.zones) {
+        if (az.uuid.equals(azUUID)) {
+          return az.name;
+        }
+      }
+    }
+    throw new IllegalArgumentException(
+        String.format("Provider %s doesn't have AZ with UUID %s", provider.name, azUUID));
+  }
+
   /**
    * Get default region (Geo-partitioning) from placementInfo of PRIMARY cluster. Assumed that each
    * placementInfo has only one cloud in the list.

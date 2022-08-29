@@ -248,7 +248,16 @@ public class CustomerTask extends Model {
     CreateAndRotateAccessKey,
 
     @EnumValue("RunApiTriggeredHooks")
-    RunApiTriggeredHooks;
+    RunApiTriggeredHooks,
+
+    @EnumValue("InstallYbcSoftware")
+    InstallYbcSoftware,
+
+    @EnumValue("UpgradeUniverseYbc")
+    UpgradeUniverseYbc,
+
+    @EnumValue("DisableYbc")
+    DisableYbc;
 
     public String toString(boolean completed) {
       switch (this) {
@@ -361,6 +370,12 @@ public class CustomerTask extends Model {
               : "Created New Access Key and Rotation Tasks";
         case RunApiTriggeredHooks:
           return completed ? "Ran API Triggered Hooks" : "Running API Triggered Hooks";
+        case InstallYbcSoftware:
+          return completed ? "Installed Ybc" : "Installing Ybc";
+        case UpgradeUniverseYbc:
+          return completed ? "Upgraded Ybc" : "Upgrading Ybc";
+        case DisableYbc:
+          return completed ? "Disabled Ybc" : "Disabling Ybc";
         default:
           return null;
       }

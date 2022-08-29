@@ -40,14 +40,14 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
 
   protected abstract T[] getSupportedAlgorithms();
 
-  private T validateEncryptionAlgorithm(String algorithm) {
+  public T validateEncryptionAlgorithm(String algorithm) {
     return Arrays.stream(getSupportedAlgorithms())
         .filter(algo -> algo.name().equals(algorithm))
         .findFirst()
         .orElse(null);
   }
 
-  private boolean validateKeySize(int keySize, T algorithm) {
+  public boolean validateKeySize(int keySize, T algorithm) {
     return algorithm
         .getKeySizes()
         .stream()

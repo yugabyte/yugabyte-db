@@ -9,9 +9,12 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.annotations.VisibleForTesting;
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
@@ -621,5 +624,23 @@ public class Util {
     String providerUUID = Universe.getCluster(universe, nodeName).userIntent.provider;
     Provider provider = Provider.getOrBadRequest(UUID.fromString(providerUUID));
     return provider.getYbHome();
+  }
+
+  public static boolean isOnPremManualProvisioning(Universe universe) {
+    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    if (userIntent.providerType == Common.CloudType.onprem) {
+      boolean manualProvisioning = false;
+      try {
+        AccessKey accessKey =
+            AccessKey.getOrBadRequest(
+                UUID.fromString(userIntent.provider), userIntent.accessKeyCode);
+        AccessKey.KeyInfo keyInfo = accessKey.getKeyInfo();
+        manualProvisioning = keyInfo.skipProvisioning;
+      } catch (PlatformServiceException ex) {
+        // no access code
+      }
+      return manualProvisioning;
+    }
+    return false;
   }
 }

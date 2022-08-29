@@ -102,12 +102,69 @@ cmds:
     cmd: publicip
 
 components:
+  - name: db_stale_9_6
+    containers:
+    - source: public
+      image_name: postgres
+      name: postgres_stale_9_6
+      version: 9.6
+      env_vars:
+        - name: POSTGRES_DB
+          static_val: 'yugaware'
+        - name: POSTGRES_USER
+          static_val: 'postgres'
+        - name: POSTGRES_PASSWORD
+          static_val: '{{repl ConfigOption "dbpass"}}'
+        - name: PGDATA
+          static_val: '/var/lib/postgresql/data/yugaware'
+      ports:
+        - private_port: "5432"
+      volumes:
+        - host_path: '{{repl ConfigOption "storage_path"}}/postgresql'
+          container_path: /var/lib/postgresql/data
+          owner: "999"
+      publish_events:
+        - name: Postgres started
+          trigger: exec
+          args: ["sh", "/home/post_container_start.sh"]
+          subscriptions:
+            - component: db
+              container: postgres
+              action: start
+      config_files:
+        - filename: /home/update_password.sql
+          contents: |
+            ALTER USER postgres WITH PASSWORD '{{repl ConfigOption "dbpass"}}';
+        - filename: /home/entrypoint.sh
+          contents: |
+            if  [ ! -f /var/lib/postgresql/data/backup_9_6.sql ]
+            then
+                echo "Starting Postgres in the container";
+                docker-entrypoint.sh postgres;
+            else
+                echo "Starting tail -f command";
+                tail -f /dev/null;
+            fi
+        - filename: /home/post_container_start.sh
+          contents: |
+            if [ ! -f /var/lib/postgresql/data/backup_9_6.sql ]
+            then
+              psql -U postgres -f /home/update_password.sql;
+              pg_dumpall -c -U postgres > /var/lib/postgresql/data/backup_9_6.sql;
+              rm -rf /var/lib/postgresql/data/yugaware;
+            else
+              # Kill all the process in the container.
+              kill -9 -1;
+            fi
+      ephemeral: true
+      entrypoint: ["sh", "/home/entrypoint.sh"]
+
   - name: db
     containers:
       - source: public
         image_name: postgres
         name: postgres
-        version: 9.6
+        version: 14.4
         env_vars:
           - name: POSTGRES_DB
             static_val: 'yugaware'
@@ -127,7 +184,7 @@ components:
         publish_events:
           - name: Postgres started
             trigger: exec
-            args: ["psql", "-U", "postgres", "-f", "/home/update_password.sql"]
+            args: ["sh", "/home/post_container_start.sh"]
             subscriptions:
               - component: app
                 container: yugabyte/yugaware
@@ -136,6 +193,15 @@ components:
           - filename: /home/update_password.sql
             contents: |
               ALTER USER postgres WITH PASSWORD '{{repl ConfigOption "dbpass"}}';
+          - filename: /home/post_container_start.sh
+            contents: |
+                if [ ! -f "/var/lib/postgresql/data/db_upgraded_9_6_to_14_4" ] \
+                  && [ -f /var/lib/postgresql/data/backup_9_6.sql ]
+                then
+                    psql -U postgres -f /var/lib/postgresql/data/backup_9_6.sql && \
+                      echo "true" >> /var/lib/postgresql/data/db_upgraded_9_6_to_14_4;
+                fi
+                psql -U postgres -f /home/update_password.sql;
 
   - name: prometheus
     containers:
@@ -172,7 +238,7 @@ components:
           - name: Prometheus started
             trigger: container-start
             subscriptions:
-              - component: db
+              - component: db_stale_9_6
                 container: postgres
                 action: start
         config_files:
@@ -289,24 +355,6 @@ components:
 
                 - job_name: "yugabyte"
                   metrics_path: "/prometheus-metrics"
-                  params:
-                    # Enable priority regex on all tables
-                    # URL encoding done by prometheus
-                    priority_regex:
-                      - "rocksdb_(number_db_(next|seek)\
-                      |block_cache_(add|single_touch_add|multi_touch_add)\
-                      |current_version_(sst_files_size|num_sst_files)\
-                      |db_([^_]+_micros_[^_]+|mutex_wait_micros)|block_cache_(hit|miss)\
-                      |bloom_filter_(checked|useful)|stall_micros|flush_write_bytes\
-                      |compact_[^_]+_bytes|compaction_times_micros_[^_]+\
-                      |numfiles_in_singlecompaction_[^_]+)\
-                      |async_replication_[^_]+_lag_micros|transaction_conflicts\
-                      |majority_sst_files_rejections|expired_transactions\
-                      |log_(sync_latency_[^_]+|group_commit_latency_[^_]+\
-                      |append_latency_[^_]+|bytes_logged|reader_bytes_read\
-                      |append_latency_count|sync_latency_count|cache_size|cache_num_ops)\
-                      |glog_[^_]+_messages|follower_lag_ms|[^_]+_memory_pressure_rejections\
-                      |is_raft_leader"
                   file_sd_configs:
                     - files:
                       - '/opt/yugabyte/prometheus/targets/yugabyte.*.json'

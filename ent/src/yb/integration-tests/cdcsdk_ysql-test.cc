@@ -2389,12 +2389,12 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestIntentCountPersistencyRemoteB
   for (uint32_t i = 0; i < test_cluster()->num_tablet_servers(); ++i) {
     if (i == leader_index_pre_shutdown) continue;
 
-    std::shared_ptr<tablet::TabletPeer> tablet_peer;
-    auto status =
-      test_cluster()->GetTabletManager(i)->GetTabletPeer(tablets[0].tablet_id(), &tablet_peer);
-    if (!status.IsOk()) {
+    auto tablet_peer_result = test_cluster()->GetTabletManager(i)->GetServingTablet(
+        tablets[0].tablet_id());
+    if (!tablet_peer_result.ok()) {
       continue;
     }
+    auto tablet_peer = std::move(*tablet_peer_result);
 
     OpId checkpoint = (*tablet_peer).cdc_sdk_min_checkpoint_op_id();
     LOG(INFO) << "Checkpoint OpId : " << checkpoint << " ,  on tserver index: " << i;

@@ -1018,6 +1018,23 @@ T* OptionalToPointer(std::optional<T>* opt) {
   return *opt ? &**opt : nullptr;
 }
 
+struct StringHash {
+  using HashType = std::hash<std::string_view>;
+  using is_transparent = void;
+
+  size_t operator()(const char* str) const {
+    return HashType()(str);
+  }
+
+  size_t operator()(std::string_view str) const {
+    return HashType()(str);
+  }
+
+  size_t operator()(const std::string& str) const {
+    return HashType()(str);
+  }
+};
+
 } // namespace yb
 
 // For backward compatibility

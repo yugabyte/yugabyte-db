@@ -4,6 +4,7 @@ package com.yugabyte.yw.commissioner.tasks.upgrade;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
+import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.forms.SystemdUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -45,12 +46,16 @@ public class SystemdUpgrade extends UpgradeTaskBase {
           // Verify the request params and fail if invalid
           taskParams().verifyParams(getUniverse());
 
+          if (taskParams().ybcInstalled) {
+            createServerControlTasks(nodes.getRight(), ServerType.CONTROLLER, "stop")
+                .setSubTaskGroupType(getTaskSubGroupType());
+          }
           // Rolling Upgrade Systemd
           createRollingUpgradeTaskFlow(
               (nodes1, processTypes) -> createSystemdUpgradeTasks(nodes1, getSingle(processTypes)),
               nodes,
               DEFAULT_CONTEXT,
-              getUniverse().isYbcEnabled());
+              false);
 
           // Persist useSystemd changes
           createPersistSystemdUpgradeTask(true).setSubTaskGroupType(getTaskSubGroupType());
@@ -75,9 +80,6 @@ public class SystemdUpgrade extends UpgradeTaskBase {
     taskParams().rootAndClientRootCASame = universeDetails.rootAndClientRootCASame;
     taskParams().allowInsecure = universeDetails.allowInsecure;
     taskParams().setTxnTableWaitCountFlag = universeDetails.setTxnTableWaitCountFlag;
-    taskParams().ybcSoftwareVersion = universeDetails.ybcSoftwareVersion;
-    taskParams().ybcInstalled = universeDetails.ybcInstalled;
-    taskParams().enableYbc = universeDetails.ybcInstalled;
 
     // Conditional Configuring
     createConfigureServerTasks(nodes, params -> params.isSystemdUpgrade = true)

@@ -1823,6 +1823,7 @@ typedef struct AlterTableCmd	/* one subcommand of an ALTER TABLE */
 								 * constraint, or parent table */
 	DropBehavior behavior;		/* RESTRICT or CASCADE for DROP cases */
 	bool		missing_ok;		/* skip error if missing? */
+	bool		yb_is_add_primary_key;	/* checks if adding primary key */
 } AlterTableCmd;
 
 

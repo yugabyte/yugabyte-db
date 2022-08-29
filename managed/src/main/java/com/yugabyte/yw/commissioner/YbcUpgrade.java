@@ -206,7 +206,7 @@ public class YbcUpgrade {
           log.warn("Skipping node {} for YBC upgrade as it is unreachable", nodeIp);
           continue;
         }
-        // yb-controller throws this error only when we tries to upgrade it to same version.
+        // yb-controller throws this error only when we try to upgrade it to same version.
         if (resp.getStatus().getCode().equals(ControllerStatus.HTTP_BAD_REQUEST)) {
           log.warn(
               "YBC {} version is already present on the node {} of universe {}",
@@ -305,7 +305,7 @@ public class YbcUpgrade {
             universe.setUniverseDetails(universeDetails);
           }
         };
-    Universe.saveDetails(universeUUID, updater);
+    Universe.saveDetails(universeUUID, updater, false);
   }
 
   public String getUniverseYbcVersion(UUID universeUUID) {
