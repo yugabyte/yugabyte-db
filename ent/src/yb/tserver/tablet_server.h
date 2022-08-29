@@ -15,16 +15,11 @@
 
 #include "../../../../src/yb/tserver/tablet_server.h"
 
+#include "yb/cdc/cdc_fwd.h"
 #include "yb/encryption/encryption_fwd.h"
-  #include "yb/rpc/rpc_fwd.h"
+#include "yb/rpc/rpc_fwd.h"
 
 namespace yb {
-
-namespace cdc {
-
-class CDCServiceImpl;
-
-} // namespace cdc
 
 namespace tserver {
 namespace enterprise {

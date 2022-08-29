@@ -5,6 +5,7 @@ package com.yugabyte.yw.common;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThrows;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Matchers.anyList;
 import static org.mockito.Matchers.anyMap;
 import static org.mockito.Matchers.anyString;
@@ -88,7 +89,9 @@ public class KubernetesManagerTest extends FakeDBApplication {
             defaultProvider.uuid,
             "demo-universe",
             "demo-namespace",
-            "/tmp/override.yml");
+            "/tmp/override.yml",
+            new HashMap<String, Object>(),
+            new HashMap<String, Object>());
         break;
       case HELM_UPGRADE:
         kubernetesManager.helmUpgrade(
@@ -96,7 +99,9 @@ public class KubernetesManagerTest extends FakeDBApplication {
             configProvider,
             "demo-universe",
             "demo-namespace",
-            "/tmp/override.yml");
+            "/tmp/override.yml",
+            new HashMap<String, Object>(),
+            new HashMap<String, Object>());
         break;
       case POD_INFO:
         kubernetesManager.getPodInfos(configProvider, "demo-universe", "demo-namespace");

@@ -449,11 +449,10 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
     for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
       auto* tablet_manager = cluster_->mini_tablet_server(i)->server()->tablet_manager();
       for (size_t j = 0; j != source_infos.size(); ++j) {
-        tablet::TabletPeerPtr source_peer, dest_peer;
-        tablet_manager->LookupTablet(source_infos[j]->id(), &source_peer);
+        auto source_peer = tablet_manager->LookupTablet(source_infos[j]->id());
         EXPECT_NE(nullptr, source_peer);
         auto source_dir = source_peer->tablet()->metadata()->rocksdb_dir();
-        tablet_manager->LookupTablet(dest_infos[j]->id(), &dest_peer);
+        auto dest_peer = tablet_manager->LookupTablet(dest_infos[j]->id());
         EXPECT_NE(nullptr, dest_peer);
         auto status = dest_peer->tablet()->ImportData(source_dir);
         if (!status.ok() && !status.IsNotFound()) {

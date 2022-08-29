@@ -316,6 +316,16 @@ class PTDmlStmt : public PTCollection {
     return bind_variables_;
   }
 
+  // Compare 2 bind variables for their hash column ids.
+  struct HashColCmp {
+    bool operator()(const PTBindVar* v1, const PTBindVar* v2) const;
+  };
+  typedef MCSet<PTBindVar*, HashColCmp> PTBindVarSet;
+
+  const PTBindVarSet& TEST_hash_col_bindvars() const {
+    return hash_col_bindvars_;
+  }
+
   virtual std::vector<int64_t> hash_col_indices() const;
 
   // Access for column_args.
@@ -477,13 +487,8 @@ class PTDmlStmt : public PTCollection {
   // restrictions involving all hash/partition columns -- i.e. read requests using Token builtin
   MCList<PartitionKeyOp> partition_key_ops_;
 
-  // Compare 2 bind variables for their hash column ids.
-  struct HashColCmp {
-    bool operator()(const PTBindVar* v1, const PTBindVar* v2) const;
-  };
-
   // List of bind variables associated with hash columns ordered by their column ids.
-  MCSet<PTBindVar*, HashColCmp> hash_col_bindvars_;
+  PTBindVarSet hash_col_bindvars_;
 
   MCSharedPtr<MCVector<ColumnArg>> column_args_;
   MCSharedPtr<MCVector<SubscriptedColumnArg>> subscripted_col_args_;

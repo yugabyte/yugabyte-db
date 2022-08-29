@@ -140,9 +140,6 @@ Result<bool> SetCommittedRecordIndexForReplicateMsg(
       records->emplace_back(msg->hybrid_time(), index);
       return true;  // Don't need to process any records after a SPLIT_OP.
     }
-
-    case consensus::OperationType::CHANGE_CONFIG_OP:
-      FALLTHROUGH_INTENDED;
     case consensus::OperationType::CHANGE_METADATA_OP: {
       if (FLAGS_TEST_xcluster_skip_meta_ops) {
         FALLTHROUGH_INTENDED;
@@ -151,6 +148,8 @@ Result<bool> SetCommittedRecordIndexForReplicateMsg(
         return true;  // Stop processing records after a CHANGE_METADATA_OP, wait for the Consumer.
       }
     }
+    case consensus::OperationType::CHANGE_CONFIG_OP:
+      FALLTHROUGH_INTENDED;
     case consensus::OperationType::HISTORY_CUTOFF_OP:
       FALLTHROUGH_INTENDED;
     case consensus::OperationType::NO_OP:
@@ -528,6 +527,9 @@ Status GetChangesForXCluster(const std::string& stream_id,
         }
         break;
       case consensus::OperationType::CHANGE_METADATA_OP:
+        if (FLAGS_TEST_xcluster_skip_meta_ops) {
+          break;
+        }
         SCHECK(msg->has_change_metadata_request(), InvalidArgument,
                Format("Change Meta op message requires payload $0", msg->ShortDebugString()));
         if (msg->change_metadata_request().tablet_id() == tablet_id) {

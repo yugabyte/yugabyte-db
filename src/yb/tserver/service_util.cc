@@ -235,16 +235,20 @@ Status CheckPeerIsLeader(const tablet::TabletPeer& tablet_peer) {
   return ResultToStatus(LeaderTerm(tablet_peer));
 }
 
-Result<TabletPeerTablet> LookupTabletPeer(
+namespace {
+
+template <class Key>
+Result<TabletPeerTablet> DoLookupTabletPeer(
     TabletPeerLookupIf* tablet_manager,
-    const TabletId& tablet_id) {
+    const Key& tablet_id) {
   TabletPeerTablet result;
-  auto status = tablet_manager->GetTabletPeer(tablet_id, &result.tablet_peer);
-  if (PREDICT_FALSE(!status.ok())) {
-    auto code = status.IsServiceUnavailable() ? TabletServerErrorPB::UNKNOWN_ERROR
-                                              : TabletServerErrorPB::TABLET_NOT_FOUND;
-    return status.CloneAndAddErrorCode(TabletServerError(code));
+  auto tablet_peer_result = tablet_manager->GetServingTablet(tablet_id);
+  if (PREDICT_FALSE(!tablet_peer_result.ok())) {
+    auto code = tablet_peer_result.status().IsServiceUnavailable()
+        ? TabletServerErrorPB::UNKNOWN_ERROR : TabletServerErrorPB::TABLET_NOT_FOUND;
+    return tablet_peer_result.status().CloneAndAddErrorCode(TabletServerError(code));
   }
+  result.tablet_peer = std::move(*tablet_peer_result);
 
   // Check RUNNING state.
   tablet::RaftGroupStatePB state = result.tablet_peer->state();
@@ -263,6 +267,20 @@ Result<TabletPeerTablet> LookupTabletPeer(
     return s;
   }
   return result;
+}
+
+} // namespace
+
+Result<TabletPeerTablet> LookupTabletPeer(
+    TabletPeerLookupIf* tablet_manager,
+    const TabletId& tablet_id) {
+  return DoLookupTabletPeer(tablet_manager, tablet_id);
+}
+
+Result<TabletPeerTablet> LookupTabletPeer(
+    TabletPeerLookupIf* tablet_manager,
+    const Slice& tablet_id) {
+  return DoLookupTabletPeer(tablet_manager, tablet_id);
 }
 
 Result<std::shared_ptr<tablet::AbstractTablet>> GetTablet(

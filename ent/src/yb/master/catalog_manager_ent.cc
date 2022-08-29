@@ -136,7 +136,7 @@ DEFINE_test_flag(bool, disable_cdc_state_insert_on_setup, false,
 DECLARE_bool(xcluster_wait_on_ddl_alter);
 
 DEFINE_bool(allow_consecutive_restore, true,
-            "Is it allowed to restore to a time before the last restoration was done.");
+            "DEPRECATED. Has no effect, use ForwardRestoreCheck to disallow any forward restores.");
 TAG_FLAG(allow_consecutive_restore, runtime);
 
 DEFINE_bool(check_bootstrap_required, false,
@@ -6873,6 +6873,10 @@ Result<SnapshotSchedulesToObjectIdsMap> CatalogManager::MakeSnapshotSchedulesToO
   return snapshot_coordinator_.MakeSnapshotSchedulesToObjectIdsMap(type);
 }
 
+Result<bool> CatalogManager::IsTableUndergoingPitrRestore(const TableInfo& table_info) {
+  return snapshot_coordinator_.IsTableUndergoingPitrRestore(table_info);
+}
+
 Result<bool> CatalogManager::IsTablePartOfSomeSnapshotSchedule(const TableInfo& table_info) {
   return snapshot_coordinator_.IsTableCoveredBySomeSnapshotSchedule(table_info);
 }
@@ -7375,6 +7379,10 @@ Status CatalogManager::WaitForSetupUniverseReplicationToFinish(const string& pro
     }
     SleepFor(MonoDelta::FromMilliseconds(200));
   }
+}
+
+Result<scoped_refptr<TableInfo>> CatalogManager::GetTableById(const TableId& table_id) const {
+  return FindTableById(table_id);
 }
 
 }  // namespace enterprise

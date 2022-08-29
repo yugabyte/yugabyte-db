@@ -2178,7 +2178,7 @@ check_python_script_syntax() {
   # through git sparse-checkout), and check their syntax.
   git ls-files -t '*.py' \
     | grep -v '^S' \
-    | sed 's/^\w //' \
+    | sed 's/^[[:alpha:]] //' \
     | xargs -P 8 -n 1 "$YB_BUILD_SUPPORT_DIR/check_python_syntax.py"
   popd
 }

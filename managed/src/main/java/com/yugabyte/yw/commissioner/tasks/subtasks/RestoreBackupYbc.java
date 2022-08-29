@@ -90,7 +90,6 @@ public class RestoreBackupYbc extends YbcTaskBase {
         pollTaskProgress(ybcClient, taskId);
         handleBackupResult(taskId);
       } catch (CancellationException ce) {
-        ybcManager.deleteYbcBackupTask(taskParams().universeUUID, taskId);
         Throwables.propagate(ce);
       } catch (PlatformServiceException e) {
         log.error(String.format("Failed with error %s", e.getMessage()));
@@ -99,6 +98,9 @@ public class RestoreBackupYbc extends YbcTaskBase {
 
     } catch (Throwable e) {
       log.error(String.format("Failed with error %s", e.getMessage()));
+      if (StringUtils.isNotBlank(taskId)) {
+        ybcManager.deleteYbcBackupTask(taskParams().universeUUID, taskId);
+      }
       Throwables.propagate(e);
     } finally {
       if (ybcClient != null) {

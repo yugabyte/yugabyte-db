@@ -25,6 +25,7 @@ public abstract class YbcTaskBase extends AbstractTaskBase {
 
   // Time to wait (in millisec) between each poll to ybc.
   private static final int WAIT_EACH_ATTEMPT_MS = 15000;
+  private static final int WAIT_FIRST_RETRY_MS = 45000;
   private static final int MAX_TASK_RETRIES = 10;
 
   @Inject
@@ -88,8 +89,10 @@ public abstract class YbcTaskBase extends AbstractTaskBase {
                 backupServiceTaskProgressResponse.getTaskStatus().name());
             retriesExhausted =
                 (backupServiceTaskProgressResponse.getRetryCount() >= MAX_TASK_RETRIES);
-            doingRetries = true;
-            waitFor(Duration.ofMillis(WAIT_EACH_ATTEMPT_MS));
+            if (!doingRetries) {
+              doingRetries = true;
+              waitFor(Duration.ofMillis(WAIT_FIRST_RETRY_MS));
+            }
             break;
           }
           throw new PlatformServiceException(

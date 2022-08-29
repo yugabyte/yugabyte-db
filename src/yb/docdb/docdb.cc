@@ -835,7 +835,8 @@ Result<ApplyTransactionState> GetIntentsBatch(
           intent_iter.Seek(reverse_index_value);
           if (!intent_iter.Valid() || intent_iter.key() != reverse_index_value) {
             LOG(WARNING) << "Unable to find intent: " << reverse_index_value.ToDebugHexString()
-                        << " for " << key_slice.ToDebugHexString();
+                         << " for " << key_slice.ToDebugHexString()
+                         << ", transactionId: " << transaction_id;
             return ApplyTransactionState{};
           }
 

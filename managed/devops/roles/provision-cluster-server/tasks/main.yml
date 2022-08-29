@@ -214,7 +214,7 @@
       group: "{{ user_name }}"
       mode: 0644
 
- # Adding systemd service files for yb-controller
+  # Adding systemd service files for yb-controller
   - name: Add yb-controller.service
     template:
       src: "yb-controller.service"

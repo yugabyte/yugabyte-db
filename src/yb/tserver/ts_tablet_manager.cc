@@ -630,8 +630,7 @@ TSTabletManager::StartTabletStateTransitionForCreation(const TabletId& tablet_id
   TRACE("Acquired tablet manager lock");
 
   // Sanity check that the tablet isn't already registered.
-  TabletPeerPtr junk;
-  if (LookupTabletUnlocked(tablet_id, &junk)) {
+  if (LookupTabletUnlocked(tablet_id) != nullptr) {
     return STATUS(AlreadyPresent, "Tablet already registered", tablet_id);
   }
 
@@ -853,7 +852,7 @@ Status TSTabletManager::ApplyTabletSplit(
   LOG_WITH_PREFIX(INFO) << "Tablet " << tablet_id << " split operation " << split_op_id
                         << " apply started";
 
-  auto tablet_peer = VERIFY_RESULT(LookupTablet(tablet_id));
+  auto tablet_peer = VERIFY_RESULT(GetTablet(tablet_id));
   auto* raft_consensus = tablet_peer->raft_consensus();
   if (raft_log == nullptr) {
     raft_log = DCHECK_NOTNULL(raft_consensus)->log().get();
@@ -1097,7 +1096,8 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
       return result;
     }
 
-    if (LookupTabletUnlocked(tablet_id, &old_tablet_peer)) {
+    old_tablet_peer = LookupTabletUnlocked(tablet_id);
+    if (old_tablet_peer) {
       meta = old_tablet_peer->tablet_metadata();
       replacing_tablet = true;
     }
@@ -1250,7 +1250,8 @@ Status TSTabletManager::DeleteTablet(
     TRACE("Acquired tablet manager lock");
     RETURN_NOT_OK(CheckRunningUnlocked(error_code));
 
-    if (!LookupTabletUnlocked(tablet_id, &tablet_peer)) {
+    tablet_peer = LookupTabletUnlocked(tablet_id);
+    if (!tablet_peer) {
       *error_code = TabletServerErrorPB::TABLET_NOT_FOUND;
       return STATUS(NotFound, "Tablet not found", tablet_id);
     }
@@ -1386,9 +1387,7 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
   TRACE_EVENT1("tserver", "TSTabletManager::OpenTablet",
                "tablet_id", tablet_id);
 
-  TabletPeerPtr tablet_peer;
-  CHECK(LookupTablet(tablet_id, &tablet_peer))
-      << "Tablet not registered prior to OpenTabletAsync call: " << tablet_id;
+  TabletPeerPtr tablet_peer = CHECK_RESULT(GetTablet(tablet_id));
 
   tablet::TabletPtr tablet;
   scoped_refptr<Log> log;
@@ -1691,41 +1690,59 @@ Status TSTabletManager::RegisterTablet(const TabletId& tablet_id,
   return Status::OK();
 }
 
-bool TSTabletManager::LookupTablet(const string& tablet_id,
-                                   TabletPeerPtr* tablet_peer) const {
+template <class Key>
+TabletPeerPtr TSTabletManager::DoLookupTablet(const Key& tablet_id) const {
   SharedLock<RWMutex> shared_lock(mutex_);
-  return LookupTabletUnlocked(tablet_id, tablet_peer);
+  return LookupTabletUnlocked(tablet_id);
 }
 
-Result<std::shared_ptr<tablet::TabletPeer>> TSTabletManager::LookupTablet(
-    const TabletId& tablet_id) const {
-  TabletPeerPtr tablet_peer;
-  SCHECK(LookupTablet(tablet_id, &tablet_peer), NotFound, Format("Tablet $0 not found", tablet_id));
-  return tablet_peer;
+TabletPeerPtr TSTabletManager::LookupTablet(const TabletId& tablet_id) const {
+  return DoLookupTablet(tablet_id);
 }
 
-bool TSTabletManager::LookupTabletUnlocked(const string& tablet_id,
-                                           TabletPeerPtr* tablet_peer) const {
-  const TabletPeerPtr* found = FindOrNull(tablet_map_, tablet_id);
-  if (!found) {
-    return false;
-  }
-  *tablet_peer = *found;
-  return true;
+TabletPeerPtr TSTabletManager::LookupTablet(const Slice& tablet_id) const {
+  return DoLookupTablet(tablet_id);
 }
 
-Status TSTabletManager::GetTabletPeer(const string& tablet_id,
-                                      TabletPeerPtr* tablet_peer) const {
-  if (!LookupTablet(tablet_id, tablet_peer)) {
-    return STATUS(NotFound, "Tablet not found", tablet_id);
-  }
-  TabletDataState data_state = (*tablet_peer)->tablet_metadata()->tablet_data_state();
+template <class Key>
+Result<tablet::TabletPeerPtr> TSTabletManager::DoGetTablet(const Key& tablet_id) const {
+  auto tablet = LookupTablet(tablet_id);
+  SCHECK(tablet != nullptr, NotFound, Format("Tablet $0 not found", tablet_id));
+  return tablet;
+}
+
+Result<tablet::TabletPeerPtr> TSTabletManager::GetTablet(const TabletId& tablet_id) const {
+  return DoGetTablet(tablet_id);
+}
+
+Result<tablet::TabletPeerPtr> TSTabletManager::GetTablet(const Slice& tablet_id) const {
+  return DoGetTablet(tablet_id);
+}
+
+template <class Key>
+TabletPeerPtr TSTabletManager::LookupTabletUnlocked(const Key& tablet_id) const {
+  auto it = tablet_map_.find(std::string_view(tablet_id));
+  return it != tablet_map_.end() ? it->second : nullptr;
+}
+
+template <class Key>
+Result<TabletPeerPtr> TSTabletManager::DoGetServingTablet(const Key& tablet_id) const {
+  auto tablet = VERIFY_RESULT(GetTablet(tablet_id));
+  TabletDataState data_state = tablet->tablet_metadata()->tablet_data_state();
   if (!CanServeTabletData(data_state)) {
-    return STATUS(
-        IllegalState, "Tablet data state not ready: " + TabletDataState_Name(data_state),
-        tablet_id);
+    return STATUS_FORMAT(
+        IllegalState, "Tablet $0 data state not ready: $1", tablet_id,
+        TabletDataState_Name(data_state));
   }
-  return Status::OK();
+  return tablet;
+}
+
+Result<TabletPeerPtr> TSTabletManager::GetServingTablet(const TabletId& tablet_id) const {
+  return DoGetServingTablet(tablet_id);
+}
+
+Result<TabletPeerPtr> TSTabletManager::GetServingTablet(const Slice& tablet_id) const {
+  return DoGetServingTablet(tablet_id);
 }
 
 const NodeInstancePB& TSTabletManager::NodeInstance() const {
