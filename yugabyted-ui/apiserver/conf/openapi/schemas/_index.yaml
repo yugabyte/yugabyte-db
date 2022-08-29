@@ -1779,6 +1779,8 @@ NodeData:
     cloud_info:
       type: object
       properties:
+        cloud:
+          type: string
         region:
           type: string
         zone:
@@ -1786,6 +1788,8 @@ NodeData:
       required:
         - region
         - zone
+    software_version:
+      type: string
   required:
     - name
     - is_node_up
@@ -1793,6 +1797,7 @@ NodeData:
     - is_tserver
     - cloud_info
     - metrics
+    - software_version
 ClusterInstantMetricsData:
   title: Cluster Instant Metrics Data
   description: Cluster instance metrics data

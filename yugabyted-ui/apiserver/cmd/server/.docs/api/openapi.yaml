@@ -14729,6 +14729,7 @@ components:
         is_node_up: true
         name: name
         cloud_info:
+          cloud: cloud
           zone: zone
           region: region
         metrics:
@@ -14737,6 +14738,7 @@ components:
           memory_used_bytes: 0
           write_ops_per_sec: 5.637376656633329
           total_sst_file_size_bytes: 6
+        software_version: software_version
       properties:
         name:
           nullable: false
@@ -14751,6 +14753,8 @@ components:
           $ref: '#/components/schemas/NodeData_metrics'
         cloud_info:
           $ref: '#/components/schemas/NodeData_cloud_info'
+        software_version:
+          type: string
       required:
       - cloud_info
       - is_master
@@ -14758,6 +14762,7 @@ components:
       - is_tserver
       - metrics
       - name
+      - software_version
       type: object
     ClusterInstantMetricsData:
       description: Cluster instance metrics data
@@ -20690,6 +20695,7 @@ components:
           is_node_up: true
           name: name
           cloud_info:
+            cloud: cloud
             zone: zone
             region: region
           metrics:
@@ -20698,6 +20704,7 @@ components:
             memory_used_bytes: 0
             write_ops_per_sec: 5.637376656633329
             total_sst_file_size_bytes: 6
+          software_version: software_version
       properties:
         data:
           $ref: '#/components/schemas/NodeData'
@@ -20732,6 +20739,7 @@ components:
           is_node_up: true
           name: name
           cloud_info:
+            cloud: cloud
             zone: zone
             region: region
           metrics:
@@ -20740,11 +20748,13 @@ components:
             memory_used_bytes: 0
             write_ops_per_sec: 5.637376656633329
             total_sst_file_size_bytes: 6
+          software_version: software_version
         - is_master: true
           is_tserver: true
           is_node_up: true
           name: name
           cloud_info:
+            cloud: cloud
             zone: zone
             region: region
           metrics:
@@ -20753,6 +20763,7 @@ components:
             memory_used_bytes: 0
             write_ops_per_sec: 5.637376656633329
             total_sst_file_size_bytes: 6
+          software_version: software_version
       properties:
         data:
           items:
@@ -23121,9 +23132,12 @@ components:
       type: object
     NodeData_cloud_info:
       example:
+        cloud: cloud
         zone: zone
         region: region
       properties:
+        cloud:
+          type: string
         region:
           type: string
         zone:
