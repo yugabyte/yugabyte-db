@@ -39,5 +39,5 @@ decimal, binary, timestamp, etc.) and composite types (such as collections, UDTs
 ## Multi-data center deployment
 
 Flexible deployment choices across multiple DCs or availability zones. HBase provides
-strong-consistency only within a single data center and offers only async replication alternative for
+strong-consistency only within a single data center and offers only an asynchronous replication alternative for
 cross-DC deployments.

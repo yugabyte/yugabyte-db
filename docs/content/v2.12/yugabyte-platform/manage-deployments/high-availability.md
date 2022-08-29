@@ -13,7 +13,7 @@ type: docs
 
 Yugabyte’s distributed architecture enables your database clusters (called universes) to have extremely high availability. And as the central source of database orchestration, monitoring, alerting, and more, Yugabyte Platform brings its own distributed architecture to the table in the form of the High Availability feature.
 
-Platform's high availability feature is an active-standby model for multiple platforms in a cluster with asynchronous replication. Your platform data is replicated across multiple VMs, ensuring that you can recover smoothly and quickly from a VM failure and continue to manage and monitor your universes, with your configuration and metrics data intact.
+Platform's high availability feature is an active-standby model for multiple platforms in a cluster with xCluster replication. Your platform data is replicated across multiple VMs, ensuring that you can recover smoothly and quickly from a VM failure and continue to manage and monitor your universes, with your configuration and metrics data intact.
 
 ## General Architecture
 
