@@ -199,6 +199,7 @@ DEFAULT_TSERVER_WEBSERVER_PORT = 9000
 DEFAULT_YSQL_PORT = 5433
 DEFAULT_YCQL_PORT = 9042
 DEFAULT_WEBSERVER_PORT = 7200
+DEFAULT_YUGABYTED_UI_PORT = 15433
 DEFAULT_CALLHOME = True
 DEFAULT_YSQL_USER = "yugabyte"
 DEFAULT_YSQL_PASSWORD = "yugabyte"
@@ -271,6 +272,11 @@ def find_binary_location(binary_name):
     # Development environment
     dir_candidates += [
         os.path.join(YUGABYTE_DIR, "build", "latest", "bin"),
+    ]
+
+    # Development environment for UI
+    dir_candidates += [
+        os.path.join(YUGABYTE_DIR, "build", "latest", "gobin"),
     ]
 
     return search_file_in_paths(dir_candidates, binary_name)
@@ -892,13 +898,13 @@ class ControlScript(object):
         if self.configs.saved_data.get("use_cassandra_authentication"):
             yb_tserver_cmd.extend(["--use_cassandra_authentication=true"])
 
-        yw_cmd = [
-            os.path.join(YUGAWARE_BIN_DIR, "yugaware"), "-Dconfig.file={}".format(YUGAWARE_CONF),
-            "-Dplay.evolutions.db.default.autoApply=true",
-            "-Dhttp.port={}".format(self.configs.saved_data.get("webserver_port")),
-            "-Dhttp.address={}".format(bind_ip),
-            "-Dlog.override.path={}".format(self.configs.saved_data.get("log_dir"))
-        ]
+        # yw_cmd = [
+        #     os.path.join(YUGAWARE_BIN_DIR, "yugaware"), "-Dconfig.file={}".format(YUGAWARE_CONF),
+        #     "-Dplay.evolutions.db.default.autoApply=true",
+        #     "-Dhttp.port={}".format(self.configs.saved_data.get("webserver_port")),
+        #     "-Dhttp.address={}".format(bind_ip),
+        #     "-Dlog.override.path={}".format(self.configs.saved_data.get("log_dir"))
+        # ]
 
         self.processes = {
             "master": YBProcessManager(
@@ -909,9 +915,15 @@ class ControlScript(object):
                 self.configs.saved_data.get("data_dir")),
         }
 
+        # if self.configs.temp_data.get("ui"):
+        #     self.processes["yugaware"] = ProcessManager(
+        #         "yugaware", yw_cmd, self.configs.saved_data.get("log_dir"),
+        #         self.configs.saved_data.get("data_dir"))
+
         if self.configs.temp_data.get("ui"):
-            self.processes["yugaware"] = ProcessManager(
-                "yugaware", yw_cmd, self.configs.saved_data.get("log_dir"),
+            yugabyted_ui_cmd = [ find_binary_location("yugabyted-ui")]
+            self.processes["yugabyted-ui"] = ProcessManager(
+                "yugabyted-ui", yugabyted_ui_cmd, self.configs.saved_data.get("log_dir"),
                 self.configs.saved_data.get("data_dir"))
 
         for p in self.processes.values():
@@ -996,6 +1008,7 @@ class ControlScript(object):
 
                 # Persist the config after successful start
                 self.configs.save_configs()
+                Output.update_animation("YugabyteDB Started")
                 if join_ip:
                     Output.print_and_log(Output.ANIMATION_SUCCESS +
                             " Node joined a running cluster with UUID {}"
@@ -1014,7 +1027,7 @@ class ControlScript(object):
                         should_callhome = True
 
             if self.configs.temp_data.get("ui"):
-                (_, was_started) = self.maybe_start_yw(is_first_run, is_first_install)
+                (_, was_started) = self.verify_start_yugabyted_ui(is_first_run, is_first_install)
                 should_callhome = should_callhome or was_started
 
             if is_first_install and not join_ip:
@@ -1072,6 +1085,41 @@ class ControlScript(object):
         # Stop callhome. Useful in future if we do anything after quitting.
         self.stop_callhome = True
         callhome_thread.join()
+
+    def verify_start_yugabyted_ui(self, is_first_run, is_first_install):
+
+        was_started = False
+        err = None
+
+        if not self.configs.temp_data.get("ui"):
+            return (err, was_started)
+
+        yugabyted_ui_process = self.processes.get("yugabyted-ui")
+
+        try:
+            if is_first_run:
+                Output.init_animation("Bringing up UI...")
+
+            # Start YW process.
+            if not yugabyted_ui_process.is_running():
+                if not is_first_run:
+                    Output.log(
+                        "Webserver died unexpectedly. Restarting...", logging.ERROR)
+                yugabyted_ui_process.start()
+                was_started = True
+
+            # After first run, do not attempt any more setup, just return.
+            if not is_first_run:
+                return (err, was_started)
+
+            if is_first_run:
+                Output.update_animation("UI ready")
+
+        finally:
+            if is_first_run:
+                animation_status = Output.ANIMATION_FAIL if err else Output.ANIMATION_SUCCESS
+                # Output.update_animation("UI status", status=animation_status)
+        return (err, was_started)
 
     # Returns (error string, yw_started).
     # yw_started is True if YW was actually started
@@ -1745,6 +1793,8 @@ class ControlScript(object):
 
         yw_status = "http://{}:{}".format(advertise_ip,
                                           self.configs.saved_data.get("webserver_port"))
+        yugabyted_ui_status = "http://{}:{}".format(advertise_ip,
+                                          self.configs.saved_data.get("yugabyted_ui_port"))
         yb_master_status = "http://{}:{}".format(advertise_ip,
                                           self.configs.saved_data.get("master_webserver_port"))
 
@@ -1754,7 +1804,8 @@ class ControlScript(object):
         ]
         console_desc = "Web console"
         if self.configs.temp_data.get("ui"):
-            status_info += [ (Output.make_yellow(console_desc), yw_status), ]
+            console_desc = "YugabyteDB UI"
+            status_info += [ (Output.make_yellow(console_desc), yugabyted_ui_status), ]
         else:
             status_info += [ (Output.make_yellow(console_desc), yb_master_status), ]
 
@@ -1825,6 +1876,47 @@ class ControlScript(object):
     def set_signals(self, func):
         for sig in EXIT_SIGNALS:
             signal(sig, func)
+
+    # Download the yugabyted-ui binary. Return true if yugabyted ui binary
+    # is downloaded and extracted into bin directory. Otherwise returns false.
+    def download_extract_yugabyted_ui_binary(self):
+
+        url = None
+        fileName = None
+        if OS_NAME == "Linux":
+            url = 'https://github.com/yugabyte/yugabyte-db/releases/download/' + \
+                'v1.0.0-beta-yugabyted-ui/yugabyted-ui-1.0.0-linux-x86_64.tar.gz'
+            fileName = 'yugabyted-ui-1.0.0-linux-x86_64.tar.gz'
+        else:
+            url = 'https://github.com/yugabyte/yugabyte-db/releases/download/' + \
+                'v1.0.0-beta-yugabyted-ui/yugabyted-ui-1.0.0-darwin-x86_64.tar.gz'
+            fileName = 'yugabyted-ui-1.0.0-darwin-x86_64.tar.gz'
+
+        target_path = os.path.join(YUGABYTE_DIR, "bin")
+
+        try:
+            response = urlopen(url)
+            CHUNK_SIZE = 1 << 20
+            with open(fileName, 'wb') as f:
+                while True:
+                    chunk = response.read(CHUNK_SIZE)
+                    if not chunk:
+                        break
+                    f.write(chunk)
+        except Exception as e:
+            Output.log("Failed to download Yugabyted UI binaries: {}".format(e), logging.ERROR)
+            return False
+
+        try:
+            tarFilePath = os.path.join(target_path, fileName)
+            file = tarfile.open(tarFilePath)
+            file.extractall(target_path)
+            file.close()
+        except Exception as e:
+            Output.log("Failed to extract Yugabyted UI binaries: {}".format(e), logging.ERROR)
+            return False
+
+        return True
 
     # Returns true if Java is installed. While Java 8+ is necessary for YW, we don't explicitly
     # check for it so that future version format changes (e.g. Java 1.4 to Java 5) won't give
@@ -2022,6 +2114,11 @@ class ControlScript(object):
                 if self.setup_env_init.is_exists('YCQL_USER') or \
                         self.setup_env_init.is_exists('YCQL_PASSWORD'):
                     args.use_cassandra_authentication = True
+
+            # Output.log("Downloading the Yugabyted UI Binaries.")
+            # if args.ui and not self.download_extract_yugabyted_ui_binary():
+            #     Output.print_out('WARNING: UI disabled - Unable to download ui binaries.')
+            #     args.ui = False
 
             if args.ui and not self.java_installed():
                 Output.print_out('WARNING: UI disabled - Java 1.8 or higher is required.')
@@ -2329,6 +2426,7 @@ class Configs(object):
             "ycql_port": DEFAULT_YCQL_PORT,
             "advertise_address": DEFAULT_BIND_IP,
             "webserver_port": DEFAULT_WEBSERVER_PORT,
+            "yugabyted_ui_port": DEFAULT_YUGABYTED_UI_PORT,
             "universe_uuid": str(uuid.uuid4()),
             "node_uuid": str(uuid.uuid4()),
             "tserver_uuid": str(uuid.uuid4()).replace("-", ""),
