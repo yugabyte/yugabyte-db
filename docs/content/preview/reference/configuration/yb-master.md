@@ -287,6 +287,14 @@ For read replica clusters, set the value to `10` in all `yb-tserver` and `yb-mas
 
 Default: `6`
 
+##### --leader_lease_duration_ms
+
+The leader lease duration, in milliseconds. A leader keeps establishing a new lease or extending the existing one with every consensus update. A new server is not allowed to serve as a leader (that is, serve up-to-date read requests or acknowledge write requests) until a lease of this duration has definitely expired on the old leader's side.
+
+Leader lease duration should be longer than the heartbeat interval, and less than the multiple of `--leader_failure_max_missed_heartbeat_periods` multiplied by `--raft_heartbeat_interval_ms`.
+
+Default: `2000`
+
 ##### --raft_heartbeat_interval_ms
 
 The heartbeat interval, in milliseconds, for Raft replication. The leader produces heartbeats to followers at this interval. The followers expect a heartbeat at this interval and consider a leader to have failed if it misses several in a row.
@@ -669,7 +677,7 @@ Default: `true`
 
 ##### --dump_certificate_entries
 
-Adds certificate entries, including IP addresses and hostnames, to log for handshake error messages.  Enabling this flag is useful for debugging certificate issues.
+Adds certificate entries, including IP addresses and hostnames, to log for handshake error messages. Enabling this flag is helpful for debugging certificate issues.
 
 Default: `false`
 
