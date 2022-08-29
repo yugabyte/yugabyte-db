@@ -364,13 +364,16 @@ TEST_P(AlterTableTest, TestAlterOnTSRestart) {
     ASSERT_TRUE(s.IsTimedOut());
   }
 
-  // Verify that the Schema is the old one
+  LOG(INFO) << "Original " << schema_.ToString();
+  // Verify that the Schema is the new one.
   YBSchema schema;
   PartitionSchema partition_schema;
   bool alter_in_progress = false;
   string table_id;
   ASSERT_OK(client_->GetTableSchema(kTableName, &schema, &partition_schema));
-  ASSERT_TRUE(schema_.Equals(schema));
+  LOG(INFO) << "Got " << schema.ToString();
+  ASSERT_EQ(3, schema.num_columns()); // New schema.
+
   ASSERT_OK(client_->IsAlterTableInProgress(kTableName, table_id, &alter_in_progress));
   ASSERT_TRUE(alter_in_progress);
 
