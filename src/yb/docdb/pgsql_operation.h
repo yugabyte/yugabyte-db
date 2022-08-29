@@ -164,7 +164,7 @@ class PgsqlReadOperation : public DocExprExecutor {
 
   Status GetTupleId(QLValuePB *result) const override;
 
-  Status GetIntents(const Schema& schema, KeyValueWriteBatchPB* out);
+  Status GetIntents(const Schema& schema, LWKeyValueWriteBatchPB* out);
 
  private:
   // Execute a READ operator for a given scalar argument.

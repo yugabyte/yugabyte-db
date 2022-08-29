@@ -18,7 +18,7 @@
 #include <boost/multi_index/ordered_index.hpp>
 #include <boost/multi_index_container.hpp>
 
-#include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/consensus.messages.h"
 #include "yb/consensus/consensus_round.h"
 
 #include "yb/tablet/operations.pb.h"
@@ -155,13 +155,12 @@ class ReplicateData {
  public:
   ReplicateData() : client_id_(ClientId::Nil()), write_(nullptr) {}
 
-  explicit ReplicateData(const tablet::WritePB* write, const OpIdPB& op_id)
+  explicit ReplicateData(const tablet::LWWritePB* write, const LWOpIdPB& op_id)
       : client_id_(write->client_id1(), write->client_id2()),
         write_(write), op_id_(OpId::FromPB(op_id)) {
-
   }
 
-  static ReplicateData FromMsg(const ReplicateMsg& replicate_msg) {
+  static ReplicateData FromMsg(const LWReplicateMsg& replicate_msg) {
     if (!replicate_msg.has_write()) {
       return ReplicateData();
     }
@@ -181,7 +180,7 @@ class ReplicateData {
     return client_id_;
   }
 
-  const tablet::WritePB& write() const {
+  const tablet::LWWritePB& write() const {
     return *write_;
   }
 
@@ -195,8 +194,8 @@ class ReplicateData {
 
  private:
   ClientId client_id_;
-  const tablet::WritePB* write_;
-  yb::OpId op_id_;
+  const tablet::LWWritePB* write_;
+  OpId op_id_;
 };
 
 std::ostream& operator<<(std::ostream& out, const ReplicateData& data) {
@@ -301,7 +300,7 @@ class RetryableRequests::Impl {
   }
 
   void ReplicationFinished(
-      const ReplicateMsg& replicate_msg, const Status& status, int64_t leader_term) {
+      const LWReplicateMsg& replicate_msg, const Status& status, int64_t leader_term) {
     auto data = ReplicateData::FromMsg(replicate_msg);
     if (!data) {
       return;
@@ -340,7 +339,7 @@ class RetryableRequests::Impl {
   }
 
   void Bootstrap(
-      const ReplicateMsg& replicate_msg, RestartSafeCoarseTimePoint entry_time) {
+      const LWReplicateMsg& replicate_msg, RestartSafeCoarseTimePoint entry_time) {
     auto data = ReplicateData::FromMsg(replicate_msg);
     if (!data) {
       return;
@@ -573,12 +572,12 @@ yb::OpId RetryableRequests::CleanExpiredReplicatedAndGetMinOpId() {
 }
 
 void RetryableRequests::ReplicationFinished(
-    const ReplicateMsg& replicate_msg, const Status& status, int64_t leader_term) {
+    const LWReplicateMsg& replicate_msg, const Status& status, int64_t leader_term) {
   impl_->ReplicationFinished(replicate_msg, status, leader_term);
 }
 
 void RetryableRequests::Bootstrap(
-    const ReplicateMsg& replicate_msg, RestartSafeCoarseTimePoint entry_time) {
+    const LWReplicateMsg& replicate_msg, RestartSafeCoarseTimePoint entry_time) {
   impl_->Bootstrap(replicate_msg, entry_time);
 }
 

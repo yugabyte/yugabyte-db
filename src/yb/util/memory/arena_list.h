@@ -123,6 +123,14 @@ class ArenaList {
     return iterator(list_.erase(it.base()));
   }
 
+  iterator erase(iterator it, iterator stop) {
+    return iterator(list_.erase(it.base(), stop.base()));
+  }
+
+  const_iterator erase(const_iterator it, const_iterator stop) {
+    return const_iterator(list_.erase(it.base(), stop.base()));
+  }
+
   bool empty() const {
     return list_.empty();
   }

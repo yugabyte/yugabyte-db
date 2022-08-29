@@ -30,7 +30,7 @@
 #include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/doc_write_batch.h"
-#include "yb/docdb/docdb.pb.h"
+#include "yb/docdb/docdb.messages.h"
 #include "yb/docdb/docdb_debug.h"
 #include "yb/docdb/docdb_pgapi.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
@@ -128,10 +128,11 @@ Status CreateProjection(
   return schema.CreateProjectionByIdsIgnoreMissing(column_ids, projection);
 }
 
-void AddIntent(const std::string& encoded_key, WaitPolicy wait_policy, KeyValueWriteBatchPB *out) {
-  auto pair = out->mutable_read_pairs()->Add();
-  pair->set_key(encoded_key);
-  pair->set_value(std::string(1, ValueEntryTypeAsChar::kNullLow));
+void AddIntent(
+    const std::string& encoded_key, WaitPolicy wait_policy, LWKeyValueWriteBatchPB *out) {
+  auto* pair = out->add_read_pairs();
+  pair->dup_key(encoded_key);
+  pair->dup_value(Slice(&ValueEntryTypeAsChar::kNullLow, 1));
   // Since we don't batch read RPCs that lock rows, we can get away with using a singular
   // wait_policy field. Once we start batching read requests (issue #2495), we will need a repeated
   // wait policies field.
@@ -139,7 +140,7 @@ void AddIntent(const std::string& encoded_key, WaitPolicy wait_policy, KeyValueW
 }
 
 Status AddIntent(const PgsqlExpressionPB& ybctid, WaitPolicy wait_policy,
-                         KeyValueWriteBatchPB* out) {
+                 LWKeyValueWriteBatchPB* out) {
   const auto &val = ybctid.value().binary_value();
   SCHECK(!val.empty(), InternalError, "empty ybctid");
   AddIntent(val, wait_policy, out);
@@ -1441,7 +1442,7 @@ Status PgsqlReadOperation::PopulateAggregate(const QLTableRow& table_row,
   return Status::OK();
 }
 
-Status PgsqlReadOperation::GetIntents(const Schema& schema, KeyValueWriteBatchPB* out) {
+Status PgsqlReadOperation::GetIntents(const Schema& schema, LWKeyValueWriteBatchPB* out) {
   if (request_.batch_arguments_size() > 0) {
     for (const auto& batch_argument : request_.batch_arguments()) {
       SCHECK(batch_argument.has_ybctid(), InternalError, "ybctid batch argument is expected");

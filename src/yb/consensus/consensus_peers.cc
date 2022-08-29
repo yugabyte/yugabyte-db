@@ -109,7 +109,6 @@ namespace yb {
 namespace consensus {
 
 using log::Log;
-using log::LogEntryBatch;
 using std::shared_ptr;
 using std::string;
 using rpc::Messenger;
@@ -131,8 +130,9 @@ Peer::Peer(
       consensus_(consensus),
       messenger_(messenger) {}
 
-void Peer::SetTermForTest(int term) {
-  update_response_.set_responder_term(term);
+void Peer::TEST_SetTerm(int term, Arena* arena) {
+  update_response_ = arena->NewObject<LWConsensusResponsePB>(arena);
+  update_response_->set_responder_term(term);
 }
 
 Status Peer::Init() {
@@ -208,28 +208,25 @@ void Peer::SendNextRequest(RequestTriggerMode trigger_mode) {
   if (!processing_lock.owns_lock()) {
     return;
   }
-  // Since there's a couple of return paths from this function, setup a cleanup, in case we fill in
-  // ops inside update_request_, but do not get to use them.
-  bool needs_cleanup = true;
-  const auto scope_exit = ScopeExit([&needs_cleanup, this](){
-    if (needs_cleanup) {
-      // Since we will not be using update_request_, we should cleanup the reserved ops.
-      CleanRequestOps(&update_request_);
-    }
-  });
+
+  int64_t commit_index_before = update_request_ && update_request_->has_committed_op_id() ?
+      update_request_->committed_op_id().index() : kMinimumOpIdIndex;
+
+  arena_.Reset(ResetMode::kKeepFirst);
+  update_request_ = arena_.NewObject<LWConsensusRequestPB>(&arena_);
+  update_response_ = arena_.NewObject<LWConsensusResponsePB>(&arena_);
 
   // The peer has no pending request nor is sending: send the request.
   bool needs_remote_bootstrap = false;
   bool last_exchange_successful = false;
   PeerMemberType member_type = PeerMemberType::UNKNOWN_MEMBER_TYPE;
-  int64_t commit_index_before = update_request_.has_committed_op_id() ?
-      update_request_.committed_op_id().index() : kMinimumOpIdIndex;
-  ReplicateMsgsHolder msgs_holder;
+  LWReplicateMsgsHolder msgs_holder;
+  std::vector<std::shared_ptr<Arena>> msg_arenas;
   Status s = queue_->RequestForPeer(
-      peer_pb_.permanent_uuid(), &update_request_, &msgs_holder, &needs_remote_bootstrap,
+      peer_pb_.permanent_uuid(), update_request_, &msgs_holder, &needs_remote_bootstrap,
       &member_type, &last_exchange_successful);
-  int64_t commit_index_after = update_request_.has_committed_op_id() ?
-      update_request_.committed_op_id().index() : kMinimumOpIdIndex;
+  int64_t commit_index_after = update_request_->has_committed_op_id() ?
+      update_request_->committed_op_id().index() : kMinimumOpIdIndex;
 
   if (PREDICT_FALSE(!s.ok())) {
     LOG_WITH_PREFIX(INFO) << "Could not obtain request from queue for peer: " << s;
@@ -269,8 +266,6 @@ void Peer::SendNextRequest(RequestTriggerMode trigger_mode) {
     if (PREDICT_TRUE(consensus_)) {
       auto uuid = peer_pb_.permanent_uuid();
       // Remove these here, before we drop the locks.
-      needs_cleanup = false;
-      CleanRequestOps(&update_request_);
       processing_lock.unlock();
       performing_update_lock.unlock();
       consensus::ChangeConfigRequestPB req;
@@ -301,13 +296,13 @@ void Peer::SendNextRequest(RequestTriggerMode trigger_mode) {
     }
   }
 
-  if (update_request_.tablet_id().empty()) {
-    update_request_.set_tablet_id(tablet_id_);
-    update_request_.set_caller_uuid(leader_uuid_);
-    update_request_.set_dest_uuid(peer_pb_.permanent_uuid());
+  if (update_request_->tablet_id().empty()) {
+    update_request_->ref_tablet_id(tablet_id_);
+    update_request_->ref_caller_uuid(leader_uuid_);
+    update_request_->ref_dest_uuid(peer_pb_.permanent_uuid());
   }
 
-  const bool req_is_heartbeat = update_request_.ops_size() == 0 &&
+  const bool req_is_heartbeat = update_request_->ops().empty() &&
                                 commit_index_after <= commit_index_before;
 
   // If the queue is empty, check if we were told to send a status-only message (which is what
@@ -324,11 +319,6 @@ void Peer::SendNextRequest(RequestTriggerMode trigger_mode) {
 
   MAYBE_FAULT(FLAGS_TEST_fault_crash_on_leader_request_fraction);
 
-  // We will cleanup ops from request in ProcessResponse, because otherwise there could be race
-  // condition. When rest of this function is running in parallel to ProcessResponse.
-  needs_cleanup = false;
-  msgs_holder.ReleaseOps();
-
   // Heartbeat batching allows for network layer savings by reducing CPU cycles
   // spent on computing state, context switching (sending/receiving RPC's)
   // and serializing/deserializing protobufs.
@@ -339,8 +329,10 @@ void Peer::SendNextRequest(RequestTriggerMode trigger_mode) {
       // Outstanding heartbeat already in flight so don't schedule another.
       return;
     }
-    heartbeat_request_.Swap(&update_request_);
-    heartbeat_response_.Swap(&update_response_);
+
+    // TODO(lw_uc) support multiraft heartbeat with LW
+    update_request_->ToGoogleProtobuf(&heartbeat_request_);
+    update_response_->ToGoogleProtobuf(&heartbeat_response_);
     cur_heartbeat_id_++;
     processing_lock.unlock();
     performing_update_lock.unlock();
@@ -362,7 +354,7 @@ void Peer::SendNextRequest(RequestTriggerMode trigger_mode) {
   processing_lock.unlock();
   performing_update_lock.release();
   controller_.set_invoke_callback_mode(rpc::InvokeCallbackMode::kThreadPoolHigh);
-  proxy_->UpdateAsync(&update_request_, trigger_mode, &update_response_, &controller_,
+  proxy_->UpdateAsync(update_request_, trigger_mode, update_response_, &controller_,
                       std::bind(&Peer::ProcessResponse, retain_self));
 }
 
@@ -377,7 +369,7 @@ std::unique_lock<simple_spinlock> Peer::StartProcessingUnlocked() {
 }
 
 bool Peer::ProcessResponseWithStatus(const Status& status,
-                                     ConsensusResponsePB* response) {
+                                     LWConsensusResponsePB* response) {
   if (!status.ok()) {
     if (status.IsRemoteError()) {
       // Most controller errors are caused by network issues or corner cases like shutdown and
@@ -451,14 +443,13 @@ void Peer::ProcessResponse() {
     status = controller_.thread_pool_failure();
   }
   controller_.Reset();
-  CleanRequestOps(&update_request_);
 
   auto performing_update_lock = LockPerformingUpdate(std::adopt_lock);
   auto processing_lock = StartProcessingUnlocked();
   if (!processing_lock.owns_lock()) {
     return;
   }
-  bool more_pending = ProcessResponseWithStatus(status, &update_response_);
+  bool more_pending = ProcessResponseWithStatus(status, update_response_);
 
   if (more_pending) {
     processing_lock.unlock();
@@ -469,7 +460,7 @@ void Peer::ProcessResponse() {
 
 void Peer::ProcessHeartbeatResponse(const Status& status) {
   DCHECK(performing_heartbeat_mutex_.is_locked()) << "Got a heartbeat when nothing was pending.";
-  DCHECK(heartbeat_request_.ops_size() == 0) << "Got a heartbeat with a non-zero number of ops.";
+  DCHECK(heartbeat_request_.ops().empty()) << "Got a heartbeat with a non-zero number of ops.";
 
   auto performing_heartbeat_lock = LockPerformingHeartbeat(std::adopt_lock);
   auto processing_lock = StartProcessingUnlocked();
@@ -484,7 +475,10 @@ void Peer::ProcessHeartbeatResponse(const Status& status) {
     // TODO: Add a metric to track the frequency of this
     return;
   }
-  bool more_pending = ProcessResponseWithStatus(status, &heartbeat_response_);
+
+  // TODO(lw_uc) support multiraft heartbeat with LW
+  auto lw_response = rpc::CopySharedMessage(heartbeat_response_);
+  bool more_pending = ProcessResponseWithStatus(status, lw_response.get());
 
   if (more_pending) {
     auto performing_update_lock = LockPerformingUpdate(std::try_to_lock);
@@ -591,17 +585,13 @@ Peer::~Peer() {
   CHECK_EQ(state_, kPeerClosed) << "Peer cannot be implicitly closed";
 }
 
-void Peer::CleanRequestOps(ConsensusRequestPB* request) {
-  request->mutable_ops()->ExtractSubrange(0, request->ops().size(), nullptr /* elements */);
-}
-
 RpcPeerProxy::RpcPeerProxy(HostPort hostport, ConsensusServiceProxyPtr consensus_proxy)
     : hostport_(std::move(hostport)), consensus_proxy_(std::move(consensus_proxy)) {
 }
 
-void RpcPeerProxy::UpdateAsync(const ConsensusRequestPB* request,
+void RpcPeerProxy::UpdateAsync(const LWConsensusRequestPB* request,
                                RequestTriggerMode trigger_mode,
-                               ConsensusResponsePB* response,
+                               LWConsensusResponsePB* response,
                                rpc::RpcController* controller,
                                const rpc::ResponseCallback& callback) {
   controller->set_timeout(MonoDelta::FromMilliseconds(FLAGS_consensus_rpc_timeout_ms));

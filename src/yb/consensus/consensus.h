@@ -48,6 +48,8 @@
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/substitute.h"
 
+#include "yb/rpc/rpc_fwd.h"
+
 #include "yb/tserver/tserver_types.pb.h"
 
 #include "yb/util/status_fwd.h"
@@ -236,9 +238,8 @@ class Consensus {
   // returning an UNKNOWN_ERROR RPC error code to the caller and including the
   // stringified Status message.
   virtual Status Update(
-      ConsensusRequestPB* request,
-      ConsensusResponsePB* response,
-      CoarseTimePoint deadline) = 0;
+      const std::shared_ptr<LWConsensusRequestPB>& request,
+      LWConsensusResponsePB* response, CoarseTimePoint deadline) = 0;
 
   // Messages sent from CANDIDATEs to voting peers to request their vote
   // in leader election.
@@ -268,10 +269,10 @@ class Consensus {
   int64_t LeaderTerm() const;
 
   // Returns the uuid of this peer.
-  virtual std::string peer_uuid() const = 0;
+  virtual const std::string& peer_uuid() const = 0;
 
   // Returns the id of the tablet whose updates this consensus instance helps coordinate.
-  virtual std::string tablet_id() const = 0;
+  virtual const TabletId& tablet_id() const = 0;
 
   virtual const TabletId& split_parent_tablet_id() const = 0;
 

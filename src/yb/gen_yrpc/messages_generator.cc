@@ -311,7 +311,7 @@ class Message {
 
     printer(
         "size_t cached_size() const {\n"
-        "  return cached_size_;\n"
+        "  return cached_size_.load(std::memory_order_relaxed);\n"
         "}\n\n"
     );
 
@@ -332,7 +332,7 @@ class Message {
       );
     }
     printer(
-        "mutable size_t cached_size_ = 0;\n"
+        "mutable std::atomic<size_t> cached_size_{0};\n"
     );
 
     for (int j = 0; j != message_->field_count(); ++j) {
@@ -849,7 +849,7 @@ class Message {
 
 
     printer(
-        "cached_size_ = result;\n"
+        "cached_size_.store(result, std::memory_order_relaxed);\n"
         "return result;\n"
     );
     method_indent.Reset("}\n\n");
@@ -1072,6 +1072,12 @@ class MessagesGenerator::Impl {
     printer("\n");
 
     for (int i = 0; i != file->message_type_count(); ++i) {
+      ToLightweightMessage(printer, file->message_type(i));
+    }
+
+    printer("\n");
+
+    for (int i = 0; i != file->message_type_count(); ++i) {
       MessageDeclaration(printer, file->message_type(i));
     }
 
@@ -1106,6 +1112,15 @@ class MessagesGenerator::Impl {
 
     ScopedSubstituter message_substituter(printer, message);
     printer("class $message_lw_name$;\n");
+  }
+
+  void ToLightweightMessage(YBPrinter printer, const google::protobuf::Descriptor* message) {
+    for (auto i = 0; i != message->nested_type_count(); ++i) {
+      ToLightweightMessage(printer, message->nested_type(i));
+    }
+
+    ScopedSubstituter message_substituter(printer, message);
+    printer("$message_lw_name$* LightweightMessageType($message_name$*);\n");
   }
 
   bool MessageDeclaration(YBPrinter printer, const google::protobuf::Descriptor* message) {

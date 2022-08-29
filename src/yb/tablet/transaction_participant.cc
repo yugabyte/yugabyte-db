@@ -279,7 +279,8 @@ class TransactionParticipant::Impl
     return result;
   }
 
-  Result<TransactionMetadata> PrepareMetadata(const TransactionMetadataPB& pb) {
+  template <class PB>
+  Result<TransactionMetadata> PrepareMetadata(const PB& pb) {
     if (pb.has_isolation()) {
       auto metadata = VERIFY_RESULT(TransactionMetadata::FromPB(pb));
       std::unique_lock<std::mutex> lock(mutex_);
@@ -1514,7 +1515,7 @@ class TransactionParticipant::Impl
 
   Status ReplicatedApplying(const TransactionId& id, const ReplicatedData& data) {
     // data.state.tablets contains only status tablet.
-    if (data.state.tablets_size() != 1) {
+    if (data.state.tablets().size() != 1) {
       return STATUS_FORMAT(InvalidArgument,
                            "Expected only one table during APPLYING, state received: $0",
                            data.state);
@@ -1528,7 +1529,7 @@ class TransactionParticipant::Impl
         .commit_ht = commit_time,
         .log_ht = data.hybrid_time,
         .sealed = data.sealed,
-        .status_tablet = data.state.tablets(0),
+        .status_tablet = data.state.tablets().front().ToBuffer(),
         .is_external = data.state.has_external_commit_ht()
       };
     if (!data.already_applied_to_regular_db) {
@@ -1744,6 +1745,11 @@ void TransactionParticipant::Start() {
 
 Result<bool> TransactionParticipant::Add(const TransactionMetadata& metadata) {
   return impl_->Add(metadata);
+}
+
+Result<TransactionMetadata> TransactionParticipant::PrepareMetadata(
+    const LWTransactionMetadataPB& pb) {
+  return impl_->PrepareMetadata(pb);
 }
 
 Result<TransactionMetadata> TransactionParticipant::PrepareMetadata(

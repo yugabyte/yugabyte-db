@@ -51,6 +51,17 @@ void SetupErrorAndRespond(TabletServerErrorPB* error,
 
 void SetupError(TabletServerErrorPB* error, const Status& s);
 
+void SetupErrorAndRespond(LWTabletServerErrorPB* error,
+                          const Status& s,
+                          TabletServerErrorPB::Code code,
+                          rpc::RpcContext* context);
+
+void SetupErrorAndRespond(LWTabletServerErrorPB* error,
+                          const Status& s,
+                          rpc::RpcContext* context);
+
+void SetupError(LWTabletServerErrorPB* error, const Status& s);
+
 Result<int64_t> LeaderTerm(const tablet::TabletPeer& tablet_peer);
 
 // Template helpers.
@@ -73,7 +84,7 @@ Result<bool> CheckUuidMatch(TabletPeerLookupIf* tablet_manager,
     return true;
   }
   if (PREDICT_FALSE(req->dest_uuid() != local_uuid)) {
-    const Status s = STATUS_SUBSTITUTE(InvalidArgument,
+    const Status s = STATUS_FORMAT(InvalidArgument,
         "$0: Wrong destination UUID requested. Local UUID: $1. Requested UUID: $2",
         method_name, local_uuid, req->dest_uuid());
     LOG(WARNING) << s.ToString() << ": from " << requestor_string

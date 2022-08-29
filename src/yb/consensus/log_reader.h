@@ -39,6 +39,7 @@
 #include <gtest/gtest.h>
 
 #include "yb/consensus/consensus_fwd.h"
+#include "yb/consensus/log.fwd.h"
 #include "yb/consensus/log_metrics.h"
 #include "yb/consensus/log_fwd.h"
 
@@ -193,9 +194,8 @@ class LogReader {
 
   // Read the LogEntryBatch pointed to by the provided index entry.
   // 'tmp_buf' is used as scratch space to avoid extra allocation.
-  Status ReadBatchUsingIndexEntry(const LogIndexEntry& index_entry,
-                                          faststring* tmp_buf,
-                                          LogEntryBatchPB* batch) const;
+  Result<std::shared_ptr<LWLogEntryBatchPB>> ReadBatchUsingIndexEntry(
+      const LogIndexEntry& index_entry) const;
 
   LogReader(Env* env, const scoped_refptr<LogIndex>& index,
             std::string log_prefix,

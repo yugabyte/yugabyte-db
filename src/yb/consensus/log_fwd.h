@@ -25,7 +25,6 @@ namespace log {
 class Log;
 class LogAnchorRegistry;
 using LogPtr = scoped_refptr<Log>;
-class LogEntryBatch;
 class LogEntryBatchPB;
 class LogEntryPB;
 class LogIndex;

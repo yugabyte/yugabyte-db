@@ -34,6 +34,8 @@
 #include <mutex>
 #include <vector>
 
+#include "yb/consensus/log.h"
+#include "yb/consensus/log.messages.h"
 #include "yb/consensus/log-test-base.h"
 #include "yb/consensus/log_index.h"
 
@@ -104,7 +106,7 @@ class MultiThreadedLogTest : public LogTestBase {
     CountDownLatch latch(FLAGS_num_batches_per_thread);
     vector<Status> errors;
     for (int i = 0; i < FLAGS_num_batches_per_thread; i++) {
-      LogEntryBatch* entry_batch;
+      std::shared_ptr<LWLogEntryBatchPB> entry_batch_pb;
       ReplicateMsgs batch_replicates;
       int num_ops = static_cast<int>(random_.Normal(
           static_cast<double>(FLAGS_num_ops_per_batch_avg), 1.0));
@@ -113,9 +115,9 @@ class MultiThreadedLogTest : public LogTestBase {
       {
         std::lock_guard<simple_spinlock> lock_guard(lock_);
         for (int j = 0; j < num_ops; j++) {
-          auto replicate = std::make_shared<ReplicateMsg>();
+          auto replicate = rpc::MakeSharedMessage<consensus::LWReplicateMsg>();
           auto index = current_index_++;
-          OpIdPB* op_id = replicate->mutable_id();
+          auto* op_id = replicate->mutable_id();
           op_id->set_term(0);
           op_id->set_index(index);
 
@@ -128,13 +130,12 @@ class MultiThreadedLogTest : public LogTestBase {
           batch_replicates.push_back(replicate);
         }
 
-        auto entry_batch_pb = CreateBatchFromAllocatedOperations(batch_replicates);
-
-        log_->Reserve(REPLICATE, &entry_batch_pb, &entry_batch);
+        entry_batch_pb = CreateBatchFromAllocatedOperations(batch_replicates);
       } // lock_guard scope
+
       auto cb = new CustomLatchCallback(&latch, &errors);
-      ASSERT_OK(log_->TEST_AsyncAppendWithReplicates(
-          entry_batch, batch_replicates, cb->AsStatusCallback()));
+      ASSERT_OK(log_->TEST_ReserveAndAppend(
+          std::move(entry_batch_pb), batch_replicates, cb->AsStatusCallback()));
     }
     LOG_TIMING(INFO, strings::Substitute("thread $0 waiting to append and sync $1 batches",
                                          thread_id, FLAGS_num_batches_per_thread)) {

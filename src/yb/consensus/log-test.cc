@@ -42,6 +42,7 @@
 
 #include "yb/common/wire_protocol.h"
 
+#include "yb/consensus/log.messages.h"
 #include "yb/consensus/log-test-base.h"
 #include "yb/consensus/log_index.h"
 #include "yb/consensus/opid_util.h"
@@ -1154,7 +1155,7 @@ TEST_F(LogTest, TestReadLogWithReplacedReplicates) {
           ASSERT_EQ(expected_index, repl->id().index());
           ASSERT_EQ(terms_by_index[expected_index], repl->id().term());
           expected_index++;
-          total_size += repl->SpaceUsed();
+          total_size += repl->SerializedSize();
         }
         if (total_size > size_limit) {
           ASSERT_EQ(1, repls.size());
@@ -1256,7 +1257,7 @@ namespace {
 
 Status CheckEntryEq(const LogEntries& lhs, const LogEntries& rhs, const size_t entry_idx) {
   SCHECK_EQ(
-      lhs[entry_idx]->DebugString(), rhs[entry_idx]->DebugString(), InternalError,
+      lhs[entry_idx]->ShortDebugString(), rhs[entry_idx]->ShortDebugString(), InternalError,
       Format("entries[$0]", entry_idx));
   return Status::OK();
 }
@@ -1408,7 +1409,7 @@ Result<std::vector<LogTest::Op>> LogTest::GenerateOpsAndAppendToLog(
     for (auto batch_idx = 0; batch_idx < num_batches_per_segment; ++batch_idx) {
       ReplicateMsgs replicates;
       for (int i = 0; i < num_entries_per_batch; i++) {
-        replicates.emplace_back(std::make_shared<ReplicateMsg>());
+        replicates.emplace_back(rpc::MakeSharedMessage<consensus::LWReplicateMsg>());
         auto& replicate = replicates.back();
         current_op_id.ToPB(replicate->mutable_id());
         replicate->set_op_type(NO_OP);
