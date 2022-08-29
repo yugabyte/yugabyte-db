@@ -691,7 +691,9 @@
         "delete": "Delete",
         "transaction": "Transaction",
         "other": "Other",
-        "ycqlRemoteOps": "YCQL Remote Operations"
+        "ycqlRemoteOps": "YCQL Remote Operations",
+        "totalLiveNodes": "Total Live Nodes",
+        "liveNodes": "Live Nodes"
       },
       "contactSupportForFailedCluster": "Cluster operation failed due to unexpected error. <1>{{contactSupport}}</1>",
       "contactSupport": "Contact Support",

@@ -597,6 +597,25 @@ func (c *Container) GetClusterMetric(ctx echo.Context) error {
                 Name:   metric,
                 Values: metricValues,
             })
+        case "TOTAL_LIVE_NODES":
+            rawMetricValues, err := getRawMetricsForAllNodes("node_up", nodeList, hostToUuid,
+                startTime, endTime, session, false)
+            if err != nil {
+                return ctx.String(http.StatusInternalServerError, err.Error())
+            }
+            reducedMetric := reduceGranularityForAllNodes(startTime, endTime, rawMetricValues,
+                GRANULARITY_NUM_INTERVALS, true)
+            metricValues := calculateCombinedMetric(reducedMetric, false)
+            // In cases where there is no data, set to 0
+            for i, metric := range metricValues {
+                if len(metric) < 2 {
+                    metricValues[i] = append(metricValues[i], 0)
+                }
+            }
+            metricResponse.Data = append(metricResponse.Data, models.MetricData{
+                Name: metric,
+                Values: metricValues,
+            })
         }
     }
     return ctx.JSON(http.StatusOK, metricResponse)
