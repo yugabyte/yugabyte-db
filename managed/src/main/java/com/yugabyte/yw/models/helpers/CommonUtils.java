@@ -93,7 +93,14 @@ public class CommonUtils {
           "KEY", "SECRET", "CREDENTIALS", "API", "POLICY", "HC_VAULT_TOKEN", "vaultToken");
   // Exclude following strings from being sensitive fields
   private static final List<String> excludedFieldNames =
-      Arrays.asList("KEY_RING_ID", "CRYPTO_KEY_ID");
+      Arrays.asList(
+          // GCP KMS fields
+          "KEY_RING_ID",
+          "CRYPTO_KEY_ID",
+          // Azure KMS fields
+          "AZU_KEY_NAME",
+          "AZU_KEY_ALGORITHM",
+          "AZU_KEY_SIZE");
 
   /**
    * Checks whether the field name represents a field with a sensitive data or not.
