@@ -31,7 +31,7 @@ public class NodeDetailsTest {
             equalTo(
                 "name: host-n1, cloudInfo: az-1.test-region.aws, type: "
                     + ApiUtils.UTIL_INST_TYPE
-                    + ", ip: host-n1, "
+                    + ", ip: 10.0.0.1, "
                     + "isMaster: false, isTserver: true, state: Live, "
                     + "azUuid: null, placementUuid: null")));
   }

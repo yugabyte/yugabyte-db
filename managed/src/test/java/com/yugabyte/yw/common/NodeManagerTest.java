@@ -120,7 +120,7 @@ public class NodeManagerTest extends FakeDBApplication {
   @Mock Config mockConfig;
 
   private final String DOCKER_NETWORK = "yugaware_bridge";
-  private final String MASTER_ADDRESSES = "host-n1:7100,host-n2:7100,host-n3:7100";
+  private final String MASTER_ADDRESSES = "10.0.0.1:7100,10.0.0.2:7100,10.0.0.3:7100";
   private final String fakeMountPath1 = "/fake/path/d0";
   private final String fakeMountPath2 = "/fake/path/d1";
   private final String fakeMountPaths = fakeMountPath1 + "," + fakeMountPath2;
@@ -455,6 +455,9 @@ public class NodeManagerTest extends FakeDBApplication {
     Common.CloudType cloud = testData.cloudType;
     List<String> expectedCommand = new ArrayList<>();
 
+    String index = testData.node.getDetails().nodeName.split("-n")[1];
+    String private_ip = "10.0.0." + index;
+
     expectedCommand.add("instance");
     expectedCommand.add(type.toString().toLowerCase());
     switch (type) {
@@ -607,7 +610,7 @@ public class NodeManagerTest extends FakeDBApplication {
                 "pgsql_proxy_bind_address",
                 String.format(
                     "%s:%s",
-                    configureParams.nodeName,
+                    private_ip,
                     Universe.getOrBadRequest(configureParams.universeUUID)
                         .getNode(configureParams.nodeName)
                         .ysqlServerRpcPort));
@@ -663,7 +666,7 @@ public class NodeManagerTest extends FakeDBApplication {
                 "allow_insecure_connections", configureParams.allowInsecure ? "true" : "false");
             String yb_home_dir = configureParams.getProvider().getYbHome();
 
-            gflags.put("cert_node_filename", params.nodeName);
+            gflags.put("cert_node_filename", private_ip);
 
             if (configureParams.enableNodeToNodeEncrypt
                 || (configureParams.rootAndClientRootCASame

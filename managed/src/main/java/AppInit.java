@@ -19,6 +19,7 @@ import com.yugabyte.yw.common.alerts.AlertsGarbageCollector;
 import com.yugabyte.yw.common.alerts.QueryAlerts;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.common.metrics.PlatformMetricsProcessor;
+import com.yugabyte.yw.common.metrics.SwamperTargetsFileUpdater;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.ExtraMigration;
 import com.yugabyte.yw.models.InstanceType;
@@ -54,6 +55,7 @@ public class AppInit {
       AlertsGarbageCollector alertsGC,
       QueryAlerts queryAlerts,
       AlertConfigurationWriter alertConfigurationWriter,
+      SwamperTargetsFileUpdater swamperTargetsFileUpdater,
       AlertConfigurationService alertConfigurationService,
       AlertDestinationService alertDestinationService,
       PlatformMetricsProcessor platformMetricsProcessor,
@@ -138,6 +140,7 @@ public class AppInit {
 
       platformMetricsProcessor.start();
       alertConfigurationWriter.start();
+      swamperTargetsFileUpdater.start();
 
       // Startup platform HA.
       replicationManager.init();

@@ -27,6 +27,7 @@ import play.libs.ws.WSClient;
 @Slf4j
 public class PlatformInstanceClientFactory {
 
+  public static final String YB_HA_WS_KEY = "yb.ha.ws";
   private final CustomWsClientFactory customWsClientFactory;
   private final RuntimeConfigFactory runtimeConfigFactory;
   private final ApiHelper fallbackApiHelper;

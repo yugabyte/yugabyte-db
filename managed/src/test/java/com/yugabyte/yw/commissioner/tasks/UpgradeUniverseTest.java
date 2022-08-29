@@ -226,7 +226,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     when(mockYBClient.getClientWithConfig(any())).thenReturn(mockClient);
     when(mockClient.waitForServer(any(HostAndPort.class), anyLong())).thenReturn(true);
     when(mockClient.getLeaderMasterHostAndPort())
-        .thenReturn(HostAndPort.fromString("host-n2").withDefaultPort(11));
+        .thenReturn(HostAndPort.fromString("10.0.0.2").withDefaultPort(11));
     IsServerReadyResponse okReadyResp = new IsServerReadyResponse(0, "", null, 0, 0);
     try {
       when(mockClient.waitForMaster(any(HostAndPort.class), anyLong())).thenReturn(true);

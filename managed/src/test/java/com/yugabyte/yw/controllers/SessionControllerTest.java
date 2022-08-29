@@ -7,7 +7,6 @@ import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertConflict;
 import static com.yugabyte.yw.common.AssertHelper.assertForbidden;
-import static com.yugabyte.yw.common.AssertHelper.assertInternalServerError;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.AssertHelper.assertUnauthorized;
@@ -752,7 +751,14 @@ public class SessionControllerTest {
     Universe.saveDetails(
         universe.universeUUID, ApiUtils.mockUniverseUpdater(userIntent, "test-prefix"));
     universe = Universe.getOrBadRequest(universe.universeUUID);
-    NodeDetails node = universe.getUniverseDetails().nodeDetailsSet.stream().findFirst().get();
+    UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+    NodeDetails node = details.nodeDetailsSet.stream().findFirst().get();
+
+    // Set to an invalid IP
+    node.cloudInfo.private_ip = "host-n1";
+    universe.setUniverseDetails(details);
+    universe.update();
+    universe = Universe.getOrBadRequest(universe.universeUUID);
     String nodeAddr = node.cloudInfo.private_ip + ":" + node.masterHttpPort;
     Http.RequestBuilder request =
         fakeRequest("GET", "/universes/" + universe.universeUUID + "/proxy/" + nodeAddr + "/")
@@ -760,7 +766,7 @@ public class SessionControllerTest {
     Result result = routeWithYWErrHandler(request, app);
     // Expect the request to fail since the hostname isn't real.
     // This shows that it got past validation though
-    assertInternalServerError(result, null /*errorStr*/);
+    assertBadRequest(result, null /*errorStr*/);
   }
 
   @Test
