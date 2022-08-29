@@ -62,7 +62,7 @@ You can configure an existing replication as follows:
 
    ![Replication](/images/yp/asynch-replication-1.png)<br><br>
 
-3. Click **Configure Replication** and perform steps 4 through 7 from [How to set up replication](#set-up).
+3. Click **Configure Replication** and perform steps 4 through 7 from [How to set up replication](#how-to-set-up-replication).
 
 ### How to view, manage, and monitor replication
 
