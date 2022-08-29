@@ -141,6 +141,11 @@ tserver::TServerSharedData& MasterTabletServer::SharedObject() {
   return master_->shared_object();
 }
 
+Status MasterTabletServer::get_ysql_db_oid_to_cat_version_info_map(
+    tserver::GetTserverCatalogVersionInfoResponsePB *resp) const {
+  return STATUS_FORMAT(NotSupported, "Unexpected call of %s", __FUNCTION__);
+}
+
 const std::shared_future<client::YBClient*>& MasterTabletServer::client_future() const {
   return master_->async_client_initializer().get_client_future();
 }
