@@ -224,6 +224,26 @@ public class EncryptionAtRestController extends AuthenticatedController {
         }
         LOG.info("Verified that all the fields in the request are editable");
         break;
+      case AZU:
+        // All the below fields are non editable in AZU
+        List<String> nonEditableFieldsAzu =
+            Arrays.asList(
+                AzuEARServiceUtil.AZU_VAULT_URL_FIELDNAME,
+                AzuEARServiceUtil.AZU_KEY_NAME_FIELDNAME,
+                AzuEARServiceUtil.AZU_KEY_ALGORITHM_FIELDNAME,
+                AzuEARServiceUtil.AZU_KEY_SIZE_FIELDNAME);
+        for (String field : nonEditableFieldsAzu) {
+          if (formData.has(field)) {
+            if (!authconfig.has(field)
+                || (authconfig.has(field) && !authconfig.get(field).equals(formData.get(field)))) {
+              throw new PlatformServiceException(
+                  BAD_REQUEST,
+                  String.format("AZU Kms config field '%s' cannot be changed.", field));
+            }
+          }
+        }
+        LOG.info("Verified that all the fields in the AZU edit request are editable");
+        break;
       default:
         throw new PlatformServiceException(
             BAD_REQUEST, "Unrecognized key provider while editing kms config: " + keyProvider);
@@ -282,6 +302,31 @@ public class EncryptionAtRestController extends AuthenticatedController {
               authConfig.get(GcpEARServiceUtil.GCP_CONFIG_FIELDNAME));
         }
         LOG.info("Added all required fields to the formData to be edited");
+        break;
+      case AZU:
+        // All these fields must be kept the same from the old authConfig (if it has)
+        List<String> nonEditableFieldsAzu =
+            Arrays.asList(
+                AzuEARServiceUtil.AZU_VAULT_URL_FIELDNAME,
+                AzuEARServiceUtil.AZU_KEY_NAME_FIELDNAME,
+                AzuEARServiceUtil.AZU_KEY_ALGORITHM_FIELDNAME,
+                AzuEARServiceUtil.AZU_KEY_SIZE_FIELDNAME);
+        for (String field : nonEditableFieldsAzu) {
+          if (authConfig.has(field)) {
+            formData.set(field, authConfig.get(field));
+          }
+        }
+        // Below fields can change. If no new field is specified, use the same old one.
+        List<String> editableFieldsAzu =
+            Arrays.asList(
+                AzuEARServiceUtil.CLIENT_ID_FIELDNAME,
+                AzuEARServiceUtil.CLIENT_SECRET_FIELDNAME,
+                AzuEARServiceUtil.TENANT_ID_FIELDNAME);
+        for (String field : editableFieldsAzu) {
+          if (!formData.has(field) && authConfig.has(field)) {
+            formData.set(field, authConfig.get(field));
+          }
+        }
         break;
       default:
         throw new PlatformServiceException(

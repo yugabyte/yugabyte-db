@@ -22,6 +22,7 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.eq;
+import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static play.test.Helpers.contentAsString;
@@ -35,6 +36,9 @@ import com.yugabyte.yw.commissioner.tasks.params.KMSConfigTaskParams;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.kms.services.SmartKeyEARService;
+import com.yugabyte.yw.common.kms.util.AzuEARServiceUtil;
+import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
+import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.KmsConfig;
 import com.yugabyte.yw.models.Universe;
@@ -371,5 +375,40 @@ public class EncryptionAtRestControllerTest extends FakeDBApplication {
         assertPlatformException(
             () -> doRequestWithAuthTokenAndBody("POST", kmsConfigUrl, authToken, kmsConfigReq));
     assertBadRequest(updateKMSResult, "KmsConfig region cannot be changed.");
+  }
+
+  @Test
+  public void testEditAZUKMSConfigKeyName() {
+    // Negative test case where a field that should not be changed is attempted to be edited
+    // Create the request body with all test fields
+    KeyProvider keyProvider = KeyProvider.valueOf("AZU");
+    String configName = "test-azu-kms-config";
+    ObjectNode kmsConfigReq =
+        Json.newObject()
+            .put("name", configName)
+            .put(AzuEARServiceUtil.CLIENT_ID_FIELDNAME, "test-client-id")
+            .put(AzuEARServiceUtil.CLIENT_SECRET_FIELDNAME, "test-client-secret")
+            .put(AzuEARServiceUtil.TENANT_ID_FIELDNAME, "test-tenant-id")
+            .put(AzuEARServiceUtil.AZU_VAULT_URL_FIELDNAME, "test-vault-url")
+            .put(AzuEARServiceUtil.AZU_KEY_NAME_FIELDNAME, "test-key-name")
+            .put(AzuEARServiceUtil.AZU_KEY_ALGORITHM_FIELDNAME, "RSA")
+            .put(AzuEARServiceUtil.AZU_KEY_SIZE_FIELDNAME, 2048);
+
+    // Mask the config data and insert into local db
+    ObjectNode maskedConfig =
+        EncryptionAtRestUtil.maskConfigData(customer.uuid, kmsConfigReq, keyProvider);
+    KmsConfig result =
+        KmsConfig.createKMSConfig(customer.uuid, keyProvider, maskedConfig, configName);
+
+    // Edit the key name field in the request body
+    String kmsConfigUrl =
+        String.format("/api/customers/%s/kms_configs/%s/edit", customer.uuid, result.configUUID);
+    kmsConfigReq.put(AzuEARServiceUtil.AZU_KEY_NAME_FIELDNAME, "test-key-name-2");
+
+    // Call the API and assert that the POST request throws exception
+    Result updateKMSResult =
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("POST", kmsConfigUrl, authToken, kmsConfigReq));
+    assertBadRequest(updateKMSResult, "AZU Kms config field 'AZU_KEY_NAME' cannot be changed.");
   }
 }
