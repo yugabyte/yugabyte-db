@@ -16,11 +16,14 @@
 #include <mutex>
 #include <string>
 
-#include "yb/tablet/tablet_fwd.h"
 #include "yb/gutil/macros.h"
+
+#include "yb/tablet/tablet_fwd.h"
 #include "yb/tablet/operation_filter.h"
+#include "yb/tablet/operations.messages.h"
 #include "yb/tablet/operations/operation.h"
-#include "yb/tserver/backup.pb.h"
+
+#include "yb/tserver/backup.messages.h"
 #include "yb/util/locks.h"
 
 namespace yb {
@@ -30,7 +33,7 @@ namespace tablet {
 // Keeps track of the Operation states (request, result, ...)
 // Executes the TabletSnapshotOp operation.
 class SnapshotOperation :
-    public ExclusiveSchemaOperation<OperationType::kSnapshot, tserver::TabletSnapshotOpRequestPB>,
+    public ExclusiveSchemaOperation<OperationType::kSnapshot, tserver::LWTabletSnapshotOpRequestPB>,
     public OperationFilter {
  public:
   template <class... Args>

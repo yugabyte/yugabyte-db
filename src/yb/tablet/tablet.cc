@@ -52,7 +52,7 @@
 #include "yb/common/transaction_error.h"
 #include "yb/common/wire_protocol.h"
 
-#include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/consensus.messages.h"
 #include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/opid_util.h"
 
@@ -278,7 +278,6 @@ using namespace std::literals;  // NOLINT
 
 using rocksdb::WriteBatch;
 using rocksdb::SequenceNumber;
-using yb::docdb::KeyValueWriteBatchPB;
 
 namespace yb {
 namespace tablet {
@@ -1186,7 +1185,7 @@ Status Tablet::ApplyRowOperations(
           ? operation->consensus_round()->replicate_msg()->write()
           // Bootstrap case.
           : *operation->request();
-  const KeyValueWriteBatchPB& put_batch = write_request.write_batch();
+  const auto& put_batch = write_request.write_batch();
   if (metrics_) {
     VLOG(3) << "Applying write batch (write_pairs=" << put_batch.write_pairs().size() << "): "
             << put_batch.ShortDebugString();
@@ -1199,7 +1198,7 @@ Status Tablet::ApplyRowOperations(
 
 Status Tablet::ApplyOperation(
     const Operation& operation, int64_t batch_idx,
-    const docdb::KeyValueWriteBatchPB& write_batch,
+    const docdb::LWKeyValueWriteBatchPB& write_batch,
     AlreadyAppliedToRegularDB already_applied_to_regular_db) {
   auto hybrid_time = operation.WriteHybridTime();
 
@@ -1229,7 +1228,7 @@ Status Tablet::ApplyOperation(
 
 Status Tablet::WriteTransactionalBatch(
     int64_t batch_idx,
-    const KeyValueWriteBatchPB& put_batch,
+    const docdb::LWKeyValueWriteBatchPB& put_batch,
     HybridTime hybrid_time,
     const rocksdb::UserFrontiers* frontiers,
     bool external_transaction) {
@@ -1285,36 +1284,41 @@ Status Tablet::WriteTransactionalBatch(
 
 namespace {
 
-std::vector<KeyValueWriteBatchPB> SplitWriteBatchByTransaction(
-    const KeyValueWriteBatchPB& put_batch) {
-  std::map<std::string, KeyValueWriteBatchPB> map;
+std::vector<docdb::LWKeyValueWriteBatchPB*> SplitWriteBatchByTransaction(
+    const docdb::LWKeyValueWriteBatchPB& put_batch, Arena* arena) {
+  std::map<Slice, docdb::LWKeyValueWriteBatchPB*> map;
   for (const auto& write_pair : put_batch.write_pairs()) {
     if (!write_pair.has_transaction()) {
       continue;
     }
     // The write pair has transaction metadata, so it should be part of the transaction write batch.
     auto transaction_id = write_pair.transaction().transaction_id();
-    auto& write_batch = map[transaction_id];
-    if (!write_batch.has_transaction()) {
-      *write_batch.mutable_transaction() = write_pair.transaction();
+    auto& write_batch_ref = map[transaction_id];
+    if (!write_batch_ref) {
+      write_batch_ref = arena->NewObject<docdb::LWKeyValueWriteBatchPB>(arena);
     }
-    auto *new_write_pair = write_batch.add_write_pairs();
-    new_write_pair->set_key(write_pair.key());
-    new_write_pair->set_value(write_pair.value());
+    auto* write_batch = write_batch_ref;
+    if (!write_batch->has_transaction()) {
+      *write_batch->mutable_transaction() = write_pair.transaction();
+    }
+    auto *new_write_pair = write_batch->add_write_pairs();
+    new_write_pair->ref_key(write_pair.key());
+    new_write_pair->ref_value(write_pair.value());
     new_write_pair->set_external_hybrid_time(write_pair.external_hybrid_time());
   }
-  std::vector<KeyValueWriteBatchPB> v;
+  std::vector<docdb::LWKeyValueWriteBatchPB*> result;
+  result.reserve(map.size());
   for (auto& entry : map) {
-    v.push_back(std::move(entry.second));
+    result.push_back(entry.second);
   }
-  return v;
+  return result;
 }
 
 } // namespace
 
 Status Tablet::ApplyKeyValueRowOperations(
     int64_t batch_idx,
-    const KeyValueWriteBatchPB& put_batch,
+    const docdb::LWKeyValueWriteBatchPB& put_batch,
     const rocksdb::UserFrontiers* frontiers,
     const HybridTime hybrid_time,
     AlreadyAppliedToRegularDB already_applied_to_regular_db) {
@@ -1335,10 +1339,11 @@ Status Tablet::ApplyKeyValueRowOperations(
 
     // See comments for PrepareExternalWriteBatch.
     if (put_batch.enable_replicate_transaction_status_table()) {
-      auto batches_by_transaction = SplitWriteBatchByTransaction(put_batch);
+      Arena arena;
+      auto batches_by_transaction = SplitWriteBatchByTransaction(put_batch, &arena);
       for (const auto& write_batch : batches_by_transaction) {
         RETURN_NOT_OK(WriteTransactionalBatch(
-            batch_idx, write_batch, hybrid_time, frontiers, true /* external_transaction */));
+            batch_idx, *write_batch, hybrid_time, frontiers, true /* external_transaction */));
       }
     }
     rocksdb::WriteBatch intents_write_batch;
@@ -1919,7 +1924,8 @@ Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> Tablet::CreateCDCSnapshotIt
 Status Tablet::CreatePreparedChangeMetadata(
     ChangeMetadataOperation *operation, const Schema* schema) {
   if (schema) {
-    auto key_schema = GetKeySchema(operation->has_table_id() ? operation->table_id() : "");
+    auto key_schema = GetKeySchema(
+        operation->has_table_id() ? operation->table_id().ToBuffer() : "");
     if (!key_schema.KeyEquals(*schema)) {
       return STATUS_FORMAT(
           InvalidArgument,
@@ -1990,7 +1996,7 @@ Status Tablet::MarkBackfillDone(const TableId& table_id) {
 Status Tablet::AlterSchema(ChangeMetadataOperation *operation) {
   auto current_table_info = VERIFY_RESULT(metadata_->GetTableInfo(
         operation->request()->has_alter_table_id() ?
-        operation->request()->alter_table_id() : ""));
+        operation->request()->alter_table_id().ToBuffer() : ""));
   auto key_schema = current_table_info->schema().CreateKeyProjection();
 
   RSTATUS_DCHECK_NE(operation->schema(), static_cast<void*>(nullptr), InvalidArgument,
@@ -2028,13 +2034,14 @@ Status Tablet::AlterSchema(ChangeMetadataOperation *operation) {
   metadata_->SetSchema(*operation->schema(), operation->index_map(), deleted_cols,
                       operation->schema_version(), current_table_info->table_id);
   if (operation->has_new_table_name()) {
-    metadata_->SetTableName(current_table_info->namespace_name, operation->new_table_name());
+    metadata_->SetTableName(
+        current_table_info->namespace_name, operation->new_table_name().ToBuffer());
     if (table_metrics_entity_) {
-      table_metrics_entity_->SetAttribute("table_name", operation->new_table_name());
+      table_metrics_entity_->SetAttribute("table_name", operation->new_table_name().ToBuffer());
       table_metrics_entity_->SetAttribute("namespace_name", current_table_info->namespace_name);
     }
     if (tablet_metrics_entity_) {
-      tablet_metrics_entity_->SetAttribute("table_name", operation->new_table_name());
+      tablet_metrics_entity_->SetAttribute("table_name", operation->new_table_name().ToBuffer());
       tablet_metrics_entity_->SetAttribute("namespace_name", current_table_info->namespace_name);
     }
   }
@@ -3406,15 +3413,15 @@ Result<TransactionOperationContext> Tablet::CreateTransactionOperationContext(
     const TransactionMetadataPB& transaction_metadata,
     bool is_ysql_catalog_table,
     const SubTransactionMetadataPB* subtransaction_metadata) const {
-  if (!txns_enabled_)
+  if (!txns_enabled_) {
     return TransactionOperationContext();
+  }
 
   if (transaction_metadata.has_transaction_id()) {
-    Result<TransactionId> txn_id = FullyDecodeTransactionId(
-        transaction_metadata.transaction_id());
-    RETURN_NOT_OK(txn_id);
+    auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(
+        transaction_metadata.transaction_id()));
     return CreateTransactionOperationContext(
-        boost::make_optional(*txn_id), is_ysql_catalog_table, subtransaction_metadata);
+        boost::make_optional(txn_id), is_ysql_catalog_table, subtransaction_metadata);
   } else {
     return CreateTransactionOperationContext(
         /* transaction_id */ boost::none, is_ysql_catalog_table, subtransaction_metadata);
@@ -3461,7 +3468,7 @@ Status Tablet::CreateReadIntents(
     const SubTransactionMetadataPB& subtransaction_metadata,
     const google::protobuf::RepeatedPtrField<QLReadRequestPB>& ql_batch,
     const google::protobuf::RepeatedPtrField<PgsqlReadRequestPB>& pgsql_batch,
-    docdb::KeyValueWriteBatchPB* write_batch) {
+    docdb::LWKeyValueWriteBatchPB* write_batch) {
   auto txn_op_ctx = VERIFY_RESULT(CreateTransactionOperationContext(
       transaction_metadata,
       /* is_ysql_catalog_table */ pgsql_batch.size() > 0 && is_sys_catalog_,
@@ -3494,6 +3501,15 @@ bool Tablet::ShouldApplyWrite() {
 }
 
 Result<IsolationLevel> Tablet::GetIsolationLevel(const TransactionMetadataPB& transaction) {
+  return DoGetIsolationLevel(transaction);
+}
+
+Result<IsolationLevel> Tablet::GetIsolationLevel(const LWTransactionMetadataPB& transaction) {
+  return DoGetIsolationLevel(transaction);
+}
+
+template <class PB>
+Result<IsolationLevel> Tablet::DoGetIsolationLevel(const PB& transaction) {
   if (transaction.has_isolation()) {
     return transaction.isolation();
   }

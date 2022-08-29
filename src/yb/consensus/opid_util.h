@@ -38,6 +38,8 @@
 #include <string>
 #include <utility>
 
+#include "yb/consensus/consensus_fwd.h"
+
 #include "yb/util/opid.h"
 
 namespace yb {
@@ -122,7 +124,7 @@ OpIdPB MaximumOpId();
 
 std::string OpIdToString(const OpIdPB& id);
 
-std::string OpsRangeString(const ConsensusRequestPB& req);
+std::string OpsRangeString(const LWConsensusRequestPB& req);
 
 OpIdPB MakeOpId(int64_t term, int64_t index);
 OpIdPB MakeOpIdPB(const yb::OpId& op_id);

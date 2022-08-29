@@ -28,7 +28,7 @@
 #include "yb/docdb/conflict_resolution.h"
 #include "yb/docdb/cql_operation.h"
 #include "yb/docdb/docdb-internal.h"
-#include "yb/docdb/docdb.pb.h"
+#include "yb/docdb/docdb.messages.h"
 #include "yb/docdb/docdb_debug.h"
 #include "yb/docdb/doc_kv_util.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
@@ -122,7 +122,7 @@ struct DetermineKeysToLockResult {
 
 Result<DetermineKeysToLockResult> DetermineKeysToLock(
     const std::vector<std::unique_ptr<DocOperation>>& doc_write_ops,
-    const google::protobuf::RepeatedPtrField<KeyValuePairPB>& read_pairs,
+    const ArenaList<LWKeyValuePairPB>& read_pairs,
     const IsolationLevel isolation_level,
     const OperationKind operation_kind,
     const RowMarkType row_mark_type,
@@ -242,7 +242,7 @@ void FilterKeysToLock(LockBatchEntries *keys_locked) {
 
 Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
     const std::vector<std::unique_ptr<DocOperation>>& doc_write_ops,
-    const google::protobuf::RepeatedPtrField<KeyValuePairPB>& read_pairs,
+    const ArenaList<LWKeyValuePairPB>& read_pairs,
     const scoped_refptr<Histogram>& write_lock_latency,
     const IsolationLevel isolation_level,
     const OperationKind operation_kind,
@@ -260,7 +260,7 @@ Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
   VLOG_WITH_FUNC(4) << "determine_keys_to_lock_result=" << determine_keys_to_lock_result.ToString();
   if (determine_keys_to_lock_result.lock_batch.empty() && !write_transaction_metadata) {
     LOG(ERROR) << "Empty lock batch, doc_write_ops: " << yb::ToString(doc_write_ops)
-               << ", read pairs: " << yb::ToString(read_pairs);
+               << ", read pairs: " << AsString(read_pairs);
     return STATUS(Corruption, "Empty lock batch");
   }
   result.need_read_snapshot = determine_keys_to_lock_result.need_read_snapshot;
@@ -304,14 +304,14 @@ Status SetDocOpQLErrorResponse(DocOperation* doc_op, string err_msg) {
 }
 
 Status AssembleDocWriteBatch(const vector<unique_ptr<DocOperation>>& doc_write_ops,
-                                CoarseTimePoint deadline,
-                                const ReadHybridTime& read_time,
-                                const DocDB& doc_db,
-                                KeyValueWriteBatchPB* write_batch,
-                                InitMarkerBehavior init_marker_behavior,
-                                std::atomic<int64_t>* monotonic_counter,
-                                HybridTime* restart_read_ht,
-                                const string& table_name) {
+                             CoarseTimePoint deadline,
+                             const ReadHybridTime& read_time,
+                             const DocDB& doc_db,
+                             LWKeyValueWriteBatchPB* write_batch,
+                             InitMarkerBehavior init_marker_behavior,
+                             std::atomic<int64_t>* monotonic_counter,
+                             HybridTime* restart_read_ht,
+                             const string& table_name) {
   DCHECK_ONLY_NOTNULL(restart_read_ht);
   DocWriteBatch doc_write_batch(doc_db, init_marker_behavior, monotonic_counter);
   DocOperationApplyData data = {&doc_write_batch, deadline, read_time, restart_read_ht};
@@ -441,7 +441,7 @@ Status PrepareApplyExternalIntents(
   return Status::OK();
 }
 
-ExternalTxnApplyState ProcessApplyExternalTransactions(const KeyValueWriteBatchPB& put_batch) {
+ExternalTxnApplyState ProcessApplyExternalTransactions(const LWKeyValueWriteBatchPB& put_batch) {
   ExternalTxnApplyState result;
   for (const auto& apply : put_batch.apply_external_transactions()) {
     auto txn_id = CHECK_RESULT(FullyDecodeTransactionId(apply.transaction_id()));
@@ -469,7 +469,7 @@ void ExternalTxnIntentsState::EraseEntry(const TransactionId& txn_id) {
 }
 
 bool AddExternalPairToWriteBatch(
-    const KeyValuePairPB& kv_pair,
+    const LWKeyValuePairPB& kv_pair,
     HybridTime hybrid_time,
     ExternalTxnApplyState* apply_external_transactions,
     rocksdb::WriteBatch* regular_write_batch,
@@ -546,7 +546,7 @@ bool AddExternalPairToWriteBatch(
 //   those intents will be applied directly to regular DB, avoiding unnecessary write to intents DB.
 //   This case is very common for short running transactions.
 bool PrepareExternalWriteBatch(
-    const KeyValueWriteBatchPB& put_batch,
+    const LWKeyValueWriteBatchPB& put_batch,
     HybridTime hybrid_time,
     rocksdb::DB* intents_db,
     rocksdb::WriteBatch* regular_write_batch,
@@ -747,18 +747,25 @@ Status EnumerateIntents(
 }
 
 Status EnumerateIntents(
-    const google::protobuf::RepeatedPtrField<KeyValuePairPB> &kv_pairs,
+    const ArenaList<docdb::LWKeyValuePairPB>& kv_pairs,
     const EnumerateIntentsCallback& functor, PartialRangeKeyIntents partial_range_key_intents) {
+  if (kv_pairs.empty()) {
+    return Status::OK();
+  }
   KeyBytes encoded_key;
 
-  for (int index = 0; index < kv_pairs.size(); ) {
-    const auto &kv_pair = kv_pairs.Get(index);
-    ++index;
+  auto it = kv_pairs.begin();
+  for (;;) {
+    const auto& kv_pair = *it;
+    LastKey last_key(++it == kv_pairs.end());
     CHECK(!kv_pair.key().empty());
     CHECK(!kv_pair.value().empty());
     RETURN_NOT_OK(EnumerateIntents(
         kv_pair.key(), kv_pair.value(), functor, &encoded_key, partial_range_key_intents,
-        LastKey(index == kv_pairs.size())));
+        last_key));
+    if (last_key) {
+      break;
+    }
   }
 
   return Status::OK();

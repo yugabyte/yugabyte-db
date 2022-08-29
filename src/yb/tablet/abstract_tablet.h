@@ -95,6 +95,7 @@ class AbstractTablet {
       PgsqlReadRequestResult* result,
       size_t* number_rows_read) = 0;
 
+  virtual Result<IsolationLevel> GetIsolationLevel(const LWTransactionMetadataPB& transaction) = 0;
   virtual Result<IsolationLevel> GetIsolationLevel(const TransactionMetadataPB& transaction) = 0;
 
   //-----------------------------------------------------------------------------------------------

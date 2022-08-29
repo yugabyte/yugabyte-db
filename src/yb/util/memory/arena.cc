@@ -224,7 +224,7 @@ void ArenaBase<Traits>::AddComponentUnlocked(Buffer buffer, Component* component
 
   buffer.Release();
   ReleaseStoreCurrent(component);
-  if (!second_) {
+  if (!second_ && component->next()) {
     second_ = component;
   }
   arena_footprint_ += component->full_size();
@@ -250,20 +250,24 @@ void ArenaBase<Traits>::Reset(ResetMode mode) {
     second_ = nullptr;
   }
 
-  current->Reset(buffer_allocator_);
   warned_ = false;
+  if (current) {
+    current->Reset(buffer_allocator_);
 
 #ifndef NDEBUG
-  // In debug mode release the last component too for (hopefully) better
-  // detection of memory-related bugs (invalid shallow copies, etc.).
-  size_t last_size = current->full_size();
-  current->Destroy(buffer_allocator_);
-  arena_footprint_ = 0;
-  ReleaseStoreCurrent(nullptr);
-  AddComponentUnlocked(NewBuffer(last_size, 0));
+    // In debug mode release the last component too for (hopefully) better
+    // detection of memory-related bugs (invalid shallow copies, etc.).
+    size_t last_size = current->full_size();
+    current->Destroy(buffer_allocator_);
+    arena_footprint_ = 0;
+    ReleaseStoreCurrent(nullptr);
+    AddComponentUnlocked(NewBuffer(last_size, 0));
 #else
-  arena_footprint_ = current->full_size();
+    arena_footprint_ = current->full_size();
 #endif
+  } else {
+    arena_footprint_ = 0;
+  }
 }
 
 template <class Traits>

@@ -44,7 +44,7 @@ class WriteQuery {
     return *operation_;
   }
 
-  WritePB& request();
+  LWWritePB& request();
 
   // Returns the prepared response to the client that will be sent when this
   // transaction is completed, if this transaction was started by a client.

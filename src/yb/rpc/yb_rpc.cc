@@ -433,7 +433,7 @@ void YBInboundCall::DoSerialize(boost::container::small_vector_base<RefCntBuffer
 Status YBInboundCall::ParseParam(RpcCallParams* params) {
   RETURN_NOT_OK(ThrottleRpcStatus(consumption_.mem_tracker(), *this));
 
-  auto consumption = params->ParseRequest(serialized_request());
+  auto consumption = params->ParseRequest(serialized_request(), request_data_.buffer());
   if (!consumption.ok()) {
     auto status = consumption.status().CloneAndPrepend(
         Format("Invalid parameter for call $0", header_.RemoteMethodAsString()));

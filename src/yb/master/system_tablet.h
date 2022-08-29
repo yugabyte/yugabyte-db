@@ -80,6 +80,10 @@ class SystemTablet : public tablet::AbstractTablet {
 
   const TableName& GetTableName() const;
 
+  Result<IsolationLevel> GetIsolationLevel(const LWTransactionMetadataPB& transaction) override {
+    return IsolationLevel::NON_TRANSACTIONAL;
+  }
+
   Result<IsolationLevel> GetIsolationLevel(const TransactionMetadataPB& transaction) override {
     return IsolationLevel::NON_TRANSACTIONAL;
   }

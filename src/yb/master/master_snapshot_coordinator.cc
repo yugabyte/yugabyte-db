@@ -230,7 +230,7 @@ class MasterSnapshotCoordinator::Impl {
     VLOG(1) << __func__ << "(" << id << ", " << operation.ToString() << ")";
 
     auto snapshot = std::make_unique<SnapshotState>(
-        &context_, id, *operation.request(),
+        &context_, id, operation.request()->ToGoogleProtobuf(),
         GetRpcLimit(FLAGS_max_concurrent_snapshot_rpcs,
                     FLAGS_max_concurrent_snapshot_rpcs_per_tserver, leader_term));
 
@@ -264,7 +264,8 @@ class MasterSnapshotCoordinator::Impl {
       snapshot_empty = (**emplace_result.first).Empty();
     }
 
-    RETURN_NOT_OK(operation.tablet()->ApplyOperation(operation, /* batch_idx= */ -1, write_batch));
+    RETURN_NOT_OK(operation.tablet()->ApplyOperation(
+        operation, /* batch_idx= */ -1, *rpc::CopySharedMessage(write_batch)));
     if (sys_catalog_snapshot_data) {
       RETURN_NOT_OK(operation.tablet()->snapshots().Create(*sys_catalog_snapshot_data));
     }
@@ -439,7 +440,8 @@ class MasterSnapshotCoordinator::Impl {
       RETURN_NOT_OK(operation.tablet()->snapshots().Delete(operation));
     }
 
-    RETURN_NOT_OK(operation.tablet()->ApplyOperation(operation, /* batch_idx= */ -1, write_batch));
+    RETURN_NOT_OK(operation.tablet()->ApplyOperation(
+        operation, /* batch_idx= */ -1, *rpc::CopySharedMessage(write_batch)));
 
     ExecuteOperations(operations, leader_term);
 
@@ -1411,9 +1413,9 @@ class MasterSnapshotCoordinator::Impl {
 
     auto* write_batch = query->operation().AllocateRequest()->mutable_write_batch();
     auto pair = write_batch->add_write_pairs();
-    pair->set_key((*encoded_key).AsSlice().cdata(), (*encoded_key).size());
-    char value = { docdb::ValueEntryTypeAsChar::kTombstone };
-    pair->set_value(&value, 1);
+    pair->dup_key(encoded_key->AsSlice());
+    char value = docdb::ValueEntryTypeAsChar::kTombstone;
+    pair->dup_value(Slice(&value, 1));
 
     query->set_callback([this, id, &map](const Status& s) {
       if (s.ok()) {
@@ -1483,23 +1485,26 @@ class MasterSnapshotCoordinator::Impl {
         if (unique_tablet_ids.insert(entry.id()).second) {
           VLOG(1) << __func__ << "(Adding tablet " << entry.id()
                   << " for snapshot " << snapshot_id << ")";
-          request->add_tablet_id(entry.id());
+          request->mutable_tablet_id()->push_back(request->arena().DupSlice(entry.id()));
         }
       }
     }
 
     request->set_snapshot_hybrid_time(context_.Clock()->MaxGlobalNow().ToUint64());
     request->set_operation(tserver::TabletSnapshotOpRequestPB::CREATE_ON_MASTER);
-    request->set_snapshot_id(snapshot_id.data(), snapshot_id.size());
+    request->dup_snapshot_id(snapshot_id.AsSlice());
     request->set_imported(imported);
     if (schedule_id) {
-      request->set_schedule_id(schedule_id.data(), schedule_id.size());
+      request->dup_schedule_id(schedule_id.AsSlice());
     }
     if (previous_snapshot_hybrid_time) {
       request->set_previous_snapshot_hybrid_time(previous_snapshot_hybrid_time.ToUint64());
     }
 
-    request->mutable_extra_data()->PackFrom(entries);
+    // TODO(lw_uc) implement PackFrom for LWAny.
+    google::protobuf::Any temp_any;
+    temp_any.PackFrom(entries);
+    request->mutable_extra_data()->CopyFrom(temp_any);
 
     operation->set_completion_callback(std::move(completion_clbk));
 
@@ -1512,7 +1517,7 @@ class MasterSnapshotCoordinator::Impl {
     auto request = operation->AllocateRequest();
 
     request->set_operation(tserver::TabletSnapshotOpRequestPB::DELETE_ON_MASTER);
-    request->set_snapshot_id(snapshot_id.data(), snapshot_id.size());
+    request->dup_snapshot_id(snapshot_id.AsSlice());
 
     operation->set_completion_callback(
         [this, wsynchronizer = std::weak_ptr<Synchronizer>(synchronizer), snapshot_id]
@@ -1538,10 +1543,10 @@ class MasterSnapshotCoordinator::Impl {
     auto request = operation->AllocateRequest();
 
     request->set_operation(tserver::TabletSnapshotOpRequestPB::RESTORE_SYS_CATALOG);
-    request->set_snapshot_id(snapshot_id.data(), snapshot_id.size());
+    request->dup_snapshot_id(snapshot_id.AsSlice());
     request->set_snapshot_hybrid_time(restore_at.ToUint64());
     if (restoration_id) {
-      request->set_restoration_id(restoration_id.data(), restoration_id.size());
+      request->dup_restoration_id(restoration_id.AsSlice());
     }
 
     operation->set_completion_callback(

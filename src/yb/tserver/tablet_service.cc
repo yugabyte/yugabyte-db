@@ -479,7 +479,8 @@ void TabletServiceAdminImpl::BackfillDone(
   }
 
   auto operation = std::make_unique<ChangeMetadataOperation>(
-      tablet.tablet, tablet.peer->log(), req);
+      tablet.tablet, tablet.peer->log());
+  operation->AllocateRequest()->CopyFrom(*req);
 
   operation->set_completion_callback(
       MakeRpcOperationCompletionCallback(std::move(context), resp, server_->Clock()));
@@ -923,7 +924,8 @@ void TabletServiceAdminImpl::AlterSchema(const tablet::ChangeMetadataRequestPB* 
     }
   }
   auto operation = std::make_unique<ChangeMetadataOperation>(
-      tablet.tablet, tablet.peer->log(), req);
+      tablet.tablet, tablet.peer->log());
+  operation->AllocateRequest()->CopyFrom(*req);
 
   operation->set_completion_callback(
       MakeRpcOperationCompletionCallback(std::move(context), resp, server_->Clock()));
@@ -1064,7 +1066,8 @@ void TabletServiceImpl::UpdateTransaction(const UpdateTransactionRequestPB* req,
     return;
   }
 
-  auto state = std::make_unique<tablet::UpdateTxnOperation>(tablet.tablet, &req->state());
+  auto state = std::make_unique<tablet::UpdateTxnOperation>(tablet.tablet);
+  state->AllocateRequest()->CopyFrom(req->state());
   state->set_completion_callback(MakeRpcOperationCompletionCallback(
       std::move(context), resp, server_->Clock()));
 
@@ -1333,7 +1336,8 @@ void TabletServiceImpl::Truncate(const TruncateRequestPB* req,
     return;
   }
 
-  auto operation = std::make_unique<TruncateOperation>(tablet.tablet, &req->truncate());
+  auto operation = std::make_unique<TruncateOperation>(tablet.tablet);
+  operation->AllocateRequest()->CopyFrom(req->truncate());
 
   operation->set_completion_callback(
       MakeRpcOperationCompletionCallback(std::move(context), resp, server_->Clock()));
@@ -1666,9 +1670,9 @@ void TabletServiceAdminImpl::SplitTablet(
   }
 
   auto operation = std::make_unique<tablet::SplitOperation>(
-      leader_tablet_peer.tablet, server_->tablet_manager(), req);
+      leader_tablet_peer.tablet, server_->tablet_manager());
   *operation->AllocateRequest() = *req;
-  operation->mutable_request()->set_split_parent_leader_uuid(
+  operation->mutable_request()->dup_split_parent_leader_uuid(
       leader_tablet_peer.peer->permanent_uuid());
 
   operation->set_completion_callback(
@@ -1896,7 +1900,7 @@ ConsensusServiceImpl::~ConsensusServiceImpl() {
 
 void ConsensusServiceImpl::CompleteUpdateConsensusResponse(
     std::shared_ptr<tablet::TabletPeer> tablet_peer,
-    consensus::ConsensusResponsePB* resp) {
+    consensus::LWConsensusResponsePB* resp) {
   auto tablet = tablet_peer->shared_tablet();
   if (tablet) {
     resp->set_num_sst_files(tablet->GetCurrentVersionNumSSTFiles());
@@ -1941,8 +1945,11 @@ void ConsensusServiceImpl::MultiRaftUpdateConsensus(
       }
       auto consensus = *consensus_res;
 
+      // TODO(lw_uc) effective update for multiraft.
+      auto temp_resp = rpc::MakeSharedMessage<consensus::LWConsensusResponsePB>();
       Status s = consensus->Update(
-        consensus_req, consensus_resp, context.GetClientDeadline());
+         rpc::CopySharedMessage(*consensus_req),
+         temp_resp.get(), context.GetClientDeadline());
       if (PREDICT_FALSE(!s.ok())) {
         // Clear the response first, since a partially-filled response could
         // result in confusing a caller, or in having missing required fields
@@ -1952,13 +1959,14 @@ void ConsensusServiceImpl::MultiRaftUpdateConsensus(
         continue;
       }
 
-      CompleteUpdateConsensusResponse(tablet_peer, consensus_resp);
+      CompleteUpdateConsensusResponse(tablet_peer, temp_resp.get());
+      temp_resp->ToGoogleProtobuf(consensus_resp);
     }
     context.RespondSuccess();
 }
 
-void ConsensusServiceImpl::UpdateConsensus(const ConsensusRequestPB* req,
-                                           ConsensusResponsePB* resp,
+void ConsensusServiceImpl::UpdateConsensus(const consensus::LWConsensusRequestPB* req,
+                                           consensus::LWConsensusResponsePB* resp,
                                            rpc::RpcContext context) {
   DVLOG(3) << "Received Consensus Update RPC: " << req->ShortDebugString();
   if (!CheckUuidMatchOrRespond(tablet_manager_, "UpdateConsensus", req, resp, &context)) {
@@ -1976,7 +1984,8 @@ void ConsensusServiceImpl::UpdateConsensus(const ConsensusRequestPB* req,
   // gives us a const request, but we need to be able to move messages out of the request for
   // efficiency.
   Status s = consensus->Update(
-      const_cast<ConsensusRequestPB*>(req), resp, context.GetClientDeadline());
+      rpc::SharedField(context.shared_params(), const_cast<consensus::LWConsensusRequestPB*>(req)),
+      resp, context.GetClientDeadline());
   if (PREDICT_FALSE(!s.ok())) {
     // Clear the response first, since a partially-filled response could
     // result in confusing a caller, or in having missing required fields
@@ -2456,23 +2465,6 @@ void TabletServiceImpl::IsTabletServerReady(const IsTabletServerReadyRequestPB* 
     SetupErrorAndRespond(resp->mutable_error(), s, &context);
     return;
   }
-  context.RespondSuccess();
-}
-
-void TabletServiceImpl::TakeTransaction(const TakeTransactionRequestPB* req,
-                                        TakeTransactionResponsePB* resp,
-                                        rpc::RpcContext context) {
-  auto transaction = server_->TransactionPool().Take(
-      client::ForceGlobalTransaction(req->has_is_global() && req->is_global()),
-      context.GetClientDeadline());
-  auto metadata = transaction->Release();
-  if (!metadata.ok()) {
-    LOG(INFO) << "Take failed: " << metadata.status();
-    context.RespondFailure(metadata.status());
-    return;
-  }
-  metadata->ForceToPB(resp->mutable_metadata());
-  VLOG(2) << "Taken metadata: " << metadata->ToString();
   context.RespondSuccess();
 }
 
