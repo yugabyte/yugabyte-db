@@ -55,6 +55,9 @@ class MasterTabletServer : public tserver::TabletServerIf,
   void get_ysql_catalog_version(uint64_t* current_version,
                                 uint64_t* last_breaking_version) const override;
 
+  Status get_ysql_db_oid_to_cat_version_info_map(
+      tserver::GetTserverCatalogVersionInfoResponsePB *resp) const override;
+
   client::TransactionPool& TransactionPool() override;
 
   tserver::TServerSharedData& SharedObject() override;
