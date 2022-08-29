@@ -56,10 +56,16 @@
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/integration-tests/mini_cluster.h"
+#include "yb/integration-tests/yb_mini_cluster_test_base.h"
 
+#include "yb/master/catalog_manager_if.h"
 #include "yb/master/master_cluster.proxy.h"
+#include "yb/master/mini_master.h"
 
 #include "yb/rpc/rpc_controller.h"
+
+#include "yb/server/monitored_task.h"
 
 #include "yb/tools/yb-admin_client.h"
 
@@ -67,14 +73,17 @@
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/result.h"
+#include "yb/util/scope_exit.h"
+#include "yb/util/test_thread_holder.h"
 #include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
 
 using namespace std::literals;
 
+DECLARE_int32(catalog_manager_bg_task_wait_ms);
+DECLARE_int32(heartbeat_interval_ms);
 DECLARE_int32(ycql_num_tablets);
 DECLARE_int32(ysql_num_tablets);
-DECLARE_int32(heartbeat_interval_ms);
 
 namespace yb {
 
@@ -641,6 +650,261 @@ TEST_F_EX(MasterFailoverTest, TestFailoverWithReadReplicas, MasterFailoverTestWi
   ASSERT_NO_FATALS(AssertTserverHasPlacementUuid(
       rr_ts_uuid, kReadReplicaPlacementUuid, tablet_servers));
   cluster_->AssertNoCrashes();
+}
+
+class MasterFailoverMiniClusterTest : public YBMiniClusterTestBase<MiniCluster> {
+ public:
+  MasterFailoverMiniClusterTest() {
+    opts_.num_masters = num_masters_ = 3;
+    opts_.num_tablet_servers = kNumTabletServerReplicas;
+  }
+
+  void SetUp() override {
+    YBMiniClusterTestBase::SetUp();
+    cluster_.reset(new MiniCluster(opts_));
+    ASSERT_OK(cluster_->Start());
+    ASSERT_OK(cluster_->WaitForTabletServerCount(kNumTabletServerReplicas));
+  }
+
+  void DoTearDown() override {
+    if (cluster_) {
+      cluster_->Shutdown();
+      cluster_.reset();
+    }
+    YBMiniClusterTestBase::DoTearDown();
+  }
+
+ private:
+  int num_masters_;
+  MiniClusterOptions opts_;
+};
+
+// Do a TRUNCATE, which creates an AsyncTruncate task (a shared_ptr).  When it finishes, there
+// should still be a ref to it from tasks_tracker_, which tracks recent tasks to show in master UI.
+// When master loses leadership, recent job/tasks trackers should be cleared, so make sure that that
+// last ref is removed.
+//
+// Run yb_build.sh with `--test-args --vmodule=master_failover-itest=1,catalog_manager=4` for
+// helpful logs.
+TEST_F_EX(MasterFailoverTest, DereferenceTasks, MasterFailoverMiniClusterTest) {
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  const auto& kKeyspaceName = "mykeyspace";
+  const auto* master_leader = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
+  TestThreadHolder thread_holder;
+  auto kSpinWaitTime = 10ms;
+  auto kWaitForMaxDelay = 100ms;
+
+  LOG(INFO) << "Ensure there are exactly zero truncate tasks";
+  {
+    const auto tasks = master_leader->catalog_manager().GetRecentTasks();
+    for (const auto& task : tasks) {
+      ASSERT_NE(task->type(), server::MonitoredTask::Type::ASYNC_TRUNCATE_TABLET) << task;
+    }
+  }
+
+  LOG(INFO) << "Create keyspace";
+  ASSERT_OK(client->CreateNamespaceIfNotExists(kKeyspaceName));
+
+  LOG(INFO) << "Create table";
+  const YBTableName table_name(YQL_DATABASE_CQL, kKeyspaceName, "dereference_tasks_table");
+  YBSchema schema;
+  YBSchemaBuilder b;
+  b.AddColumn("key")->Type(INT32)->NotNull()->PrimaryKey();
+  ASSERT_OK(b.Build(&schema));
+  auto table_creator = client->NewTableCreator();
+  ASSERT_OK(table_creator->table_name(table_name)
+                         .schema(&schema)
+                         .hash_schema(YBHashSchema::kMultiColumnHash)
+                         .num_tablets(1)
+                         .Create());
+
+  thread_holder.AddThreadFunctor(
+      [&stop = thread_holder.stop_flag(), &table_name, &client] {
+        LOG(INFO) << "Begin truncate table thread";
+        auto table_id = ASSERT_RESULT(GetTableId(client.get(), table_name));
+        LOG(INFO) << "Truncate table: start";
+        ASSERT_OK(client->TruncateTable(table_id));
+        LOG(INFO) << "Truncate table: done";
+        // Spin until end of test to prevent this thread from setting stop flag.
+        ASSERT_OK(Wait(
+            [&stop]() -> Result<bool> {
+              return stop.load(std::memory_order_acquire);
+            },
+            MonoTime::kMax,
+            "wait for end of test"));
+      });
+
+  // The one truncate on the one-tablet table should produce one truncate task.
+  LOG(INFO) << "Wait for and ensure there is exactly one truncate task";
+  // Use a weak_ptr because we want to passively observe the mini master's shared_ptr, not
+  // influencing the refcount.
+  std::weak_ptr<server::MonitoredTask> truncate_task;
+  ASSERT_OK(LoggedWaitFor(
+      [&master_leader, &truncate_task]() -> Result<bool> {
+        const auto tasks = master_leader->catalog_manager().GetRecentTasks();
+
+        // Look for truncate tasks.  There should only be one truncate task.  We try to enforce this
+        // by looking at every task returned in the GetRecentTasks call.  It could be the case that
+        // a second truncate task appears later, but that is less easy to check for and less likely
+        // to happen, so don't bother.
+        for (const auto& task : tasks) {
+          if (task->type() == server::MonitoredTask::Type::ASYNC_TRUNCATE_TABLET) {
+            // Check whether truncate_task is already loaded.  All truncate tasks should have
+            // refcount at least one because tasks tracker holds a reference even after the task is
+            // complete.  The task could lose all refcounts when master leadership changes, but that
+            // should be very unlikely without an explicit stepdown request.
+            if (truncate_task.use_count() != 0) {
+              return STATUS(RuntimeError, "Did not expect to find a second truncate task");
+            }
+            truncate_task = task;
+          }
+        }
+
+        // Check whether truncate_task is loaded.  When loaded, the count could vary between 1-4
+        // because of refs from places like
+        // - recent tasks tracker
+        // - lambda function to schedule task (SubmitFunc from CatalogManager::ScheduleTask)
+        // - async task callback (BindRpcCallback from AsyncTruncate::SendRequest)
+        // - local variables
+        return truncate_task.use_count() != 0;
+      },
+      RegularBuildVsSanitizers(3s, 5s),
+      "wait for truncate task to show up in catalog manager tasks",
+      MonoDelta::FromMilliseconds(test_util::kDefaultInitialWaitMs),
+      test_util::kDefaultWaitDelayMultiplier,
+      kWaitForMaxDelay));
+
+  if (VLOG_IS_ON(1)) {
+    thread_holder.AddThreadFunctor(
+        [&stop = thread_holder.stop_flag(), &truncate_task, kSpinWaitTime] {
+          while (!stop.load(std::memory_order_acquire)) {
+            VLOG(1) << "Observing use count: " << truncate_task.use_count();
+            SleepFor(kSpinWaitTime);
+          }
+        });
+  }
+
+  LOG(INFO) << "Wait for truncate to complete";
+  ASSERT_OK(LoggedWaitFor(
+      [&truncate_task]() -> Result<bool> {
+        return server::MonitoredTask::IsStateTerminal(truncate_task.lock()->state());
+      },
+      RegularBuildVsSanitizers(10s, 20s),
+      "wait for truncate task terminal state",
+      MonoDelta::FromMilliseconds(test_util::kDefaultInitialWaitMs),
+      test_util::kDefaultWaitDelayMultiplier,
+      kWaitForMaxDelay));
+  ASSERT_EQ(truncate_task.lock()->state(), server::MonitoredTaskState::kComplete)
+      << truncate_task.lock()->state();
+
+  // AsyncTruncate::HandleResponse does TransitionToCompleteState.  We are at that point right now,
+  // according to the above assert.  The callback holding reference to the AsyncTruncate task could
+  // still be active (it is the caller of HandleResponse).  Wait a bit longer for the callback to
+  // complete and eventually be destroyed (see OutboundCall::InvokeCallbackSync).
+  LOG(INFO) << "Wait for truncate task callback to be cleaned up";
+  ASSERT_OK(LoggedWaitFor(
+      [&truncate_task]() -> Result<bool> {
+        const auto use_count = truncate_task.use_count();
+
+        // Expect one ref from CatalogManager tasks_tracker_.
+        if (use_count == 1) {
+          return true;
+        } else if (use_count > 1) {
+          return false;
+        }
+        return STATUS(
+            RuntimeError,
+            "Truncate task totally dereferenced before invoking master leader failover:"
+            " did leader failover happen circumstantially?");
+      },
+      RegularBuildVsSanitizers(1s, 2s),
+      "wait for truncate task to have exactly one ref",
+      MonoDelta::FromMilliseconds(test_util::kDefaultInitialWaitMs),
+      test_util::kDefaultWaitDelayMultiplier,
+      kWaitForMaxDelay));
+
+  LOG(INFO) << "Check references on truncate task shared ptr (before leader failover)";
+  // Verify the one ref is in tasks_tracker_.
+  bool found = false;
+  auto tasks = master_leader->catalog_manager().GetRecentTasks();
+  for (const auto& task : tasks) {
+    if (task->type() == server::MonitoredTask::Type::ASYNC_TRUNCATE_TABLET &&
+        task == truncate_task.lock()) {
+      found = true;
+    }
+  }
+  ASSERT_TRUE(found) << "The last ref to the truncate task was not found in tasks_tracker_";
+  // Clear tasks local var because it holds a ref to the truncate task.
+  tasks.clear();
+  // Double-check it's still one ref.
+  ASSERT_EQ(truncate_task.use_count(), 1);
+
+  LOG(INFO) << "Cause master leader failover";
+  ASSERT_OK(StepDown(
+      master_leader->tablet_peer(), std::string() /* new_leader_uuid */, ForceStepDown::kTrue));
+
+  LOG(INFO) << "Ensure leadership is lost";
+  ASSERT_OK(LoggedWaitFor(
+      [&master_leader]() -> Result<bool> {
+        const auto s = master_leader->catalog_manager().CheckIsLeaderAndReady();
+        if (s.ok()) {
+          // Still the leader.
+          return false;
+        } else if (!s.IsIllegalState()) {
+          // Unexpected status code.
+          return s;
+        } else if (s.message().ToBuffer().find("Not the leader") == std::string::npos) {
+          // Unexpected status message.
+          return s;
+        }
+        return true;
+      },
+      RegularBuildVsSanitizers(2s, 5s),
+      "lose leadership",
+      MonoDelta::FromMilliseconds(test_util::kDefaultInitialWaitMs),
+      test_util::kDefaultWaitDelayMultiplier,
+      kWaitForMaxDelay));
+
+  // Add some extra margin for the bg task to do its work.
+  const auto wait_time = (
+      MonoDelta::FromMilliseconds(FLAGS_catalog_manager_bg_task_wait_ms) +
+      RegularBuildVsSanitizers(1s, 2s));
+  LOG(INFO) << "Wait " << wait_time << " for catalog manager bg task to happen";
+  ASSERT_OK(LoggedWaitFor(
+      [&truncate_task]() -> Result<bool> {
+        const auto use_count = truncate_task.use_count();
+
+        // Expect all refs on the task to be released after losing leadership.  Specifically, expect
+        // the catalog manager bg task to abort and reset tasks, especially tasks_tracker_, which
+        // should be the last ref.
+        if (use_count == 0) {
+          return true;
+        } else if (use_count == 1) {
+          return false;
+        }
+        return STATUS(
+            RuntimeError,
+            "Truncate task gained ref(s) after it was down to one ref in tasks_tracker_");
+      },
+      wait_time,
+      "wait for truncate task to have no refs",
+      MonoDelta::FromMilliseconds(test_util::kDefaultInitialWaitMs),
+      test_util::kDefaultWaitDelayMultiplier,
+      kWaitForMaxDelay));
+
+  // By default, DoBeforeTearDown checks cluster consistency using ysck.  Since we recently stepped
+  // down master leader, the new master will be registering tservers.  ysck will try to get master
+  // and tservers.  It internally calls MasterClusterServiceImpl::ListTabletServers to get live
+  // tservers.  It is possible for there to be no live tservers because the new master leader is
+  // initializing.  In that case, ysck is intelligent to realize this and will sleep and try again
+  // later.  However, if there is at least one live tserver and ysck successfully connects to them,
+  // it considers it a success, even if it did not get all tservers.  Later, when checksumming, it
+  // will CHECK fail because a table has a tablet on a tserver it did not find in the initial
+  // collection.
+  //
+  // Avoid this by waiting for all tservers to register before ending the test.
+  LOG(INFO) << "Wait for all tservers to be re-registered to new master leader";
+  ASSERT_OK(cluster_->WaitForAllTabletServers());
 }
 
 }  // namespace client
