@@ -165,7 +165,7 @@ HINT:  Use OVERRIDING SYSTEM VALUE to override.
 
 ## Learn more
 
-- [Primary Key](../../../api/ysql/the-sql-language/statements/ddl_create_table/#primary-key)
-- [Table with Primary Key](../../../api/ysql/the-sql-language/statements/ddl_create_table/#table-with-primary-key)
+- [Primary Key](../../../api/ysql/statements/ddl_create_table/#primary-key)
+- [Table with Primary Key](../../../api/ysql/statements/ddl_create_table/#table-with-primary-key)
 - [Natural versus Surrogate Primary Keys in a Distributed SQL Database](https://blog.yugabyte.com/natural-versus-surrogate-primary-keys-in-a-distributed-sql-database/)
 - [Primary Keys in PostgreSQL documentation](https://www.postgresql.org/docs/12/ddl-constraints.html#DDL-CONSTRAINTS-PRIMARY-KEYS)

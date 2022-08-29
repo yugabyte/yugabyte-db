@@ -31,7 +31,7 @@ Not every programming language distinguishes between functions and procedures wi
 
 ### Functions
 
-A function is invoked by writing it as a term within a surrounding expression of arbitrary complexity—and this is the _only_ way to invoke a function. The degenerate case is that the function invocation is the entirety of the expression. You evaluate an expression, in SQL, by writing it as the argument of a bare `select` or at one of the many syntax spots in a more complex SQL statement where it's legal to write a placeholder in a [`prepare`](../the-sql-language/statements/perf_prepare/) statement. An expression is evaluated in PL/pgSQL source code just as it would be in other languages—as the argument of an explicit or implicit assignment. (Invoking a subprogram using an expression to provide the value for one of its arguments provides an example of implicit assignment).
+A function is invoked by writing it as a term within a surrounding expression of arbitrary complexity—and this is the _only_ way to invoke a function. The degenerate case is that the function invocation is the entirety of the expression. You evaluate an expression, in SQL, by writing it as the argument of a bare `select` or at one of the many syntax spots in a more complex SQL statement where it's legal to write a placeholder in a [`prepare`](../statements/perf_prepare/) statement. An expression is evaluated in PL/pgSQL source code just as it would be in other languages—as the argument of an explicit or implicit assignment. (Invoking a subprogram using an expression to provide the value for one of its arguments provides an example of implicit assignment).
 
 A function is a syntactic peer of a variable in PL/plSQL or a column in SQL. The overwhelmingly common convention is to name variables and columns with a noun or noun phrase. (It would be very odd to see a variable called _get_time_.)  Stylists argue, therefore, that functions should also be named with a noun or noun phrase to denote the value that invocation produces.
 
@@ -39,11 +39,11 @@ A function is a syntactic peer of a variable in PL/plSQL or a column in SQL. The
 
 ### Procedures
 
-The purpose of a function is to _do_ something. The syntax of [`create [or replace] procedure`](../the-sql-language/statements/ddl_create_procedure/) statement therefore does not allow specifying `returns`. A procedure can be invoked only as the argument of a [`call`](../the-sql-language/statements/cmd_call/) statement—both in top-level SQL and in PL/pgSQL source code.
+The purpose of a function is to _do_ something. The syntax of [`create [or replace] procedure`](../statements/ddl_create_procedure/) statement therefore does not allow specifying `returns`. A procedure can be invoked only as the argument of a [`call`](../statements/cmd_call/) statement—both in top-level SQL and in PL/pgSQL source code.
 
 Stylists argue, therefore, that procedures should be named with an imperative verb or an imperative verb phrase to denote the action that the invocation performs.
 
-A procedure _can_ have an argument whose mode is `inout`. Use this if you want to pass back, say, a success/failure status to the caller. See the subsection [Example with 'inout' arguments](../the-sql-language/statements/cmd_call/) in the `call` statement account.
+A procedure _can_ have an argument whose mode is `inout`. Use this if you want to pass back, say, a success/failure status to the caller. See the subsection [Example with 'inout' arguments](../statements/cmd_call/) in the `call` statement account.
 
 ## Procedures were first supported in PostgreSQL Version 11
 
@@ -86,7 +86,7 @@ Yugabyte recommends that you ignore the possibility to use a function for the pu
 
 ## Anonymous blocks
 
-You can also execute a so-called anonymous block. This is a procedure that's defined _only_ by its source code—in other words, has no name and isn't persisted in the catalog. You simply execute it immediately using the [`do`](../the-sql-language/statements/cmd_do/) SQL statement. An anonymous block differs from statements like `insert`, `update`, and `delete` in that it cannot be the object of a [`prepare`](../the-sql-language/statements/perf_prepare) statement. (However, any DML SQL statements that an anonymous block issues are implicitly prepared. And you take advantage of the preparation by repeatedly executing the same `do` statement.)
+You can also execute a so-called anonymous block. This is a procedure that's defined _only_ by its source code—in other words, has no name and isn't persisted in the catalog. You simply execute it immediately using the [`do`](../statements/cmd_do/) SQL statement. An anonymous block differs from statements like `insert`, `update`, and `delete` in that it cannot be the object of a [`prepare`](../statements/perf_prepare) statement. (However, any DML SQL statements that an anonymous block issues are implicitly prepared. And you take advantage of the preparation by repeatedly executing the same `do` statement.)
 
 YSQL inherits, from PostgreSQL, the restriction that the implementation language for an anonymous block must be PL/pgSQL; and there are no plans for PostgreSQL to be enhanced to support other languages for anonymous blocks. The defining text of an anonymous block is governed by the grammar for the _[plpgsql_block_stmt](../syntax_resources/grammar_diagrams/#plpgsql-block-stmt)_—a particular kind of PL/pgSQL compound statement. Notice that _[plpgsql_block_stmt](../syntax_resources/grammar_diagrams/#plpgsql-block-stmt)_ denotes a rule in the [YSQL Grammar](../syntax_resources/grammar_diagrams/). When the context has established the intended meaning, the prose equivalent "block statement" will be used instead.
 
@@ -98,9 +98,9 @@ A subsection that describes user-defined subprograms that are implemented using 
 
 These are the relevant SQL statements:
 
-- [`create [or replace] function`](../the-sql-language/statements/ddl_create_function/)
-- [`alter function`](../the-sql-language/statements/ddl_alter_function/)
-- [`create [or replace] procedure`](../the-sql-language/statements/ddl_create_procedure/)
-- [`alter procedure`](../the-sql-language/statements/ddl_alter_procedure/)
-- [`drop function`](../the-sql-language/statements/ddl_drop_function/)
-- [`drop procedure`](../the-sql-language/statements/ddl_drop_procedure/)
+- [`create [or replace] function`](../statements/ddl_create_function/)
+- [`alter function`](../statements/ddl_alter_function/)
+- [`create [or replace] procedure`](../statements/ddl_create_procedure/)
+- [`alter procedure`](../statements/ddl_alter_procedure/)
+- [`drop function`](../statements/ddl_drop_function/)
+- [`drop procedure`](../statements/ddl_drop_procedure/)

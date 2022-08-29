@@ -42,7 +42,7 @@ Like SQL, YSQL is case-insensitive by default. When specifying an identifier, su
 
 ## Create roles
 
-You can create roles with the [CREATE ROLE](../../../api/ysql/the-sql-language/statements/dcl_create_role/) statement.
+You can create roles with the [CREATE ROLE](../../../api/ysql/statements/dcl_create_role/) statement.
 
 For example, to create a role `engineering` for an engineering team in an organization, do the following:
 
@@ -60,7 +60,7 @@ Read about [how to create users in YugabyteDB](../../enable-authentication/ysql/
 
 ## Grant roles
 
-You can grant a role to another role (which can be a user), or revoke a role that has already been granted. Executing the [GRANT](../../../api/ysql/the-sql-language/statements/dcl_grant/) and the [REVOKE](../../../api/ysql/the-sql-language/statements/dcl_revoke/) operations requires the `AUTHORIZE` privilege on the role being granted or revoked.
+You can grant a role to another role (which can be a user), or revoke a role that has already been granted. Executing the [GRANT](../../../api/ysql/statements/dcl_grant/) and the [REVOKE](../../../api/ysql/statements/dcl_revoke/) operations requires the `AUTHORIZE` privilege on the role being granted or revoked.
 
 For example, you can grant the `engineering` role you created above to the user `john` as follows:
 
@@ -118,7 +118,7 @@ In the table, note the following:
 
 ## Revoke roles
 
-Revoke roles using the [REVOKE](../../../api/ysql/the-sql-language/statements/dcl_revoke/) statement.
+Revoke roles using the [REVOKE](../../../api/ysql/statements/dcl_revoke/) statement.
 
 For example, you can revoke the `engineering` role from the user `john` as follows:
 
@@ -145,7 +145,7 @@ yugabyte     | t           | t        | {}
 
 ## Drop roles
 
-Drop roles using the [DROP ROLE](../../../api/ysql/the-sql-language/statements/dcl_drop_role/) statement.
+Drop roles using the [DROP ROLE](../../../api/ysql/statements/dcl_drop_role/) statement.
 
 For example, you can drop the `developer` role with the following statement:
 

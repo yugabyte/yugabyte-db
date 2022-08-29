@@ -141,7 +141,7 @@ CREATE INDEX ON order_changes_2020_12 (change_date);
 CREATE INDEX ON order_changes_2021_01 (change_date);
 ```
 
-For the implications of creating an index on a partitioned table as opposed to creating indexes separately on each partition, see [CREATE INDEX](../../../../api/ysql/the-sql-language/statements/ddl_create_index/).
+For the implications of creating an index on a partitioned table as opposed to creating indexes separately on each partition, see [CREATE INDEX](../../../../api/ysql/statements/ddl_create_index/).
 
 Partitioning is a flexible technique that allows you to remove old partitions and add new partitions for new data when required. You do this by changing the partition structure instead of the actual data.
 

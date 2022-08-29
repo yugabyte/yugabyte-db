@@ -43,7 +43,7 @@ The system view `pg_hba_file_rules` can be helpful for pre-testing changes to th
 
 {{< note title="Tip" >}}
 
-To connect to a particular database, a user must not only pass the `--ysql_hba_conf_csv` checks, but must have the `CONNECT` privilege for the database. To restrict which users can connect to which databases, granting or revoking the `CONNECT` privilege is typically easier than putting the rules in `--ysql_hba_conf_csv` entries. Refer to the [`GRANT`](../../../api/ysql/the-sql-language/statements/dcl_grant/) and [`REVOKE`](../../../api/ysql/the-sql-language/statements/dcl_revoke/) YSQL statements.
+To connect to a particular database, a user must not only pass the `--ysql_hba_conf_csv` checks, but must have the `CONNECT` privilege for the database. To restrict which users can connect to which databases, granting or revoking the `CONNECT` privilege is typically easier than putting the rules in `--ysql_hba_conf_csv` entries. Refer to the [`GRANT`](../../../api/ysql/statements/dcl_grant/) and [`REVOKE`](../../../api/ysql/statements/dcl_revoke/) YSQL statements.
 
 {{< /note >}}
 

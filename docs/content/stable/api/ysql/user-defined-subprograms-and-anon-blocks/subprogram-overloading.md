@@ -74,7 +74,7 @@ The _subprogram_signature_ is a list of _arg_decls_; and an _arg_decl_ has two o
 {{< tip title="'OUT' arguments are not included in the 'subprogram_call_signature'." >}}
 This rule is stated in the PostgreSQL documentation in the account of the  _[pg_proc](https://www.postgresql.org/docs/11/catalog-pg-proc.html)_ catalog table. See the description of the _proargtypes_ column.
 
-Yugabyte recommends that you never create a function with an `out` or `inout` argument but, rather, that you return all values of interest by specifying an appropriate composite data type for the `returns` clause. See [this tip](../../the-sql-language/statements/ddl_create_function/#make-function-returns-mandatory) in the account of the `create function` statement.
+Yugabyte recommends that you never create a function with an `out` or `inout` argument but, rather, that you return all values of interest by specifying an appropriate composite data type for the `returns` clause. See [this tip](../../statements/ddl_create_function/#make-function-returns-mandatory) in the account of the `create function` statement.
 
 As it happens, YSQL does not yet allow a procedure to have an `out` argument—so you must use an `inout` argument instead. See [GitHub Issue #12348](https://github.com/yugabyte/yugabyte-db/issues/12348). When this issue is fixed, and if you decide to give a procedure a bare `out` argument, then you should remember that it will not be included in the procedure's call signature.
 {{< /tip >}}

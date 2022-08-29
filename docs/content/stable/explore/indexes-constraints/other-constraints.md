@@ -69,7 +69,7 @@ ALTER TABLE employees
 
 For additional examples, see:
 
-- [Table with CHECK constraint](../../../api/ysql/the-sql-language/statements/ddl_create_table/#table-with-check-constraint)
+- [Table with CHECK constraint](../../../api/ysql/statements/ddl_create_table/#table-with-check-constraint)
 - [Create indexes and check constraints on JSON columns](../../../api/ysql/datatypes/type_json/create-indexes-check-constraints/#check-constraints-on-jsonb-columns)
 
 ## UNIQUE Constraint
@@ -114,7 +114,7 @@ CREATE TABLE employees (
 );
 ```
 
-For additional examples, see [Table with UNIQUE constraint](../../../api/ysql/the-sql-language/statements/ddl_create_table/#table-with-unique-constraint).
+For additional examples, see [Table with UNIQUE constraint](../../../api/ysql/statements/ddl_create_table/#table-with-unique-constraint).
 
 ## NOT NULL Constraint
 

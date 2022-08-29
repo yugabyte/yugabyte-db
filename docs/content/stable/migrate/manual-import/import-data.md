@@ -82,7 +82,7 @@ yugabyte=# SELECT * FROM t;
 (3 rows)
 ```
 
-For detailed information on the COPY FROM command, refer to the [COPY](../../../api/ysql/the-sql-language/statements/cmd_copy/) statement reference.
+For detailed information on the COPY FROM command, refer to the [COPY](../../../api/ysql/statements/cmd_copy/) statement reference.
 
 ### Error handling
 

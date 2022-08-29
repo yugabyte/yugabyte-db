@@ -15,7 +15,7 @@ type: docs
 
 ### Reproduced from the SELECT statement section
 
-The following six diagrams, [`select_start`](../../../syntax_resources/grammar_diagrams/#select-start), [`ordinary_aggregate_fn_invocation`](../../../syntax_resources/grammar_diagrams/#ordinary-aggregate-fn-invocation), [`within_group_aggregate_fn_invocation`](../../../syntax_resources/grammar_diagrams/#within-group-aggregate-fn-invocation), [`group_by_clause`](../../../syntax_resources/grammar_diagrams/#group-by-clause), [`grouping_element`](../../../syntax_resources/grammar_diagrams/#grouping-element), and [`having_clause`](../../../syntax_resources/grammar_diagrams/#having-clause) are reproduced from the section that describes the [`SELECT` statement](../../../the-sql-language/statements/dml_select/).
+The following six diagrams, [`select_start`](../../../syntax_resources/grammar_diagrams/#select-start), [`ordinary_aggregate_fn_invocation`](../../../syntax_resources/grammar_diagrams/#ordinary-aggregate-fn-invocation), [`within_group_aggregate_fn_invocation`](../../../syntax_resources/grammar_diagrams/#within-group-aggregate-fn-invocation), [`group_by_clause`](../../../syntax_resources/grammar_diagrams/#group-by-clause), [`grouping_element`](../../../syntax_resources/grammar_diagrams/#grouping-element), and [`having_clause`](../../../syntax_resources/grammar_diagrams/#having-clause) are reproduced from the section that describes the [`SELECT` statement](../../../statements/dml_select/).
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >

@@ -211,7 +211,7 @@ Referenced by:
 
 ### SQL updates
 
-The [UPDATE](../../../api/ysql/the-sql-language/statements/dml_update/) statement can compute a new value and return it without the need to do another query. Using the `RETURNING` clause returns the new values in the same call.
+The [UPDATE](../../../api/ysql/statements/dml_update/) statement can compute a new value and return it without the need to do another query. Using the `RETURNING` clause returns the new values in the same call.
 
 The following adds 100 to the salaries of all employees who are not managers and shows the new value:
 
@@ -267,7 +267,7 @@ ORDER BY employee.sal;
 
 ### Prepared statements
 
-Use a [prepared statement](../../../api/ysql/the-sql-language/statements/perf_prepare/) with typed input to prevent SQL injection. A prepared statement declares parameterized SQL.
+Use a [prepared statement](../../../api/ysql/statements/perf_prepare/) with typed input to prevent SQL injection. A prepared statement declares parameterized SQL.
 
 1. Prepare the statement `employee_salary` with a parameterized query. The following prepared statement accepts the input of an employee number as an integer only and displays the name and salary:
 
@@ -802,7 +802,7 @@ To get fast on-demand reports, create a [materialized view](../../../explore/ysq
     CREATE INDEX
     ```
 
-1. You can schedule a daily refresh to recompute the view in the background. Use the [REFRESH MATERIALIZED VIEW](../../../api/ysql/the-sql-language/statements/ddl_refresh_matview/) command to refresh the view:
+1. You can schedule a daily refresh to recompute the view in the background. Use the [REFRESH MATERIALIZED VIEW](../../../api/ysql/statements/ddl_refresh_matview/) command to refresh the view:
 
     ```sql
     REFRESH MATERIALIZED VIEW report_sal_per_dept;

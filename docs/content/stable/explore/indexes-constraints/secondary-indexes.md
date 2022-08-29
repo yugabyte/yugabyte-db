@@ -27,7 +27,7 @@ You can also create a functional index in YSQL, in which case you would replace 
 
 YSQL currently supports index access methods `lsm` (log-structured merge-tree) and `ybgin`. These indexes are based on YugabyteDB's DocDB storage and are similar in functionality to PostgreSQL's `btree` and `gin` indexes, respectively. The index access method can be specified with `USING <access_method_name>` after *table_name*. By default, `lsm` is chosen. For more information on `ybgin`, see [Generalized inverted index](../../../explore/indexes-constraints/gin/).
 
-You can apply sort order on the indexed columns as `HASH` (default option for the first column), `ASC` (default option for the second and subsequent columns), as well as `DESC`. For examples, see [HASH and ASC examples in YSQL](../../../api/ysql/the-sql-language/statements/ddl_create_index/#unique-index-with-hash-column-ordering)
+You can apply sort order on the indexed columns as `HASH` (default option for the first column), `ASC` (default option for the second and subsequent columns), as well as `DESC`. For examples, see [HASH and ASC examples in YSQL](../../../api/ysql/statements/ddl_create_index/#unique-index-with-hash-column-ordering)
 
 ## List indexes and verify the query plan
 
@@ -49,7 +49,7 @@ You can also use the `EXPLAIN` statement to check if a query uses an index and d
 
 For information regarding the EXPLAIN statement, see:
 
-- [EXPLAIN statement in YSQL](../../../api/ysql/the-sql-language/statements/perf_explain/)
+- [EXPLAIN statement in YSQL](../../../api/ysql/statements/perf_explain/)
 - [EXPLAIN statement in YCQL](../../../api/ycql/explain/)
 
 ## Remove indexes
@@ -113,7 +113,7 @@ Index Cond: (department = 'Operations'::text)
 
 For additional information, see:
 
-- [CREATE INDEX YSQL API](../../../api/ysql/the-sql-language/statements/ddl_create_index/)
+- [CREATE INDEX YSQL API](../../../api/ysql/statements/ddl_create_index/)
 - [CREATE INDEX YSQL API](../../../api/ycql/ddl_create_index/)
 
 The following example shows how to remove `index_employees_department` that was created in Create indexes:

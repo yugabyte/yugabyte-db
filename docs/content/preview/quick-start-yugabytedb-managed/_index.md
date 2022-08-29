@@ -312,7 +312,7 @@ To build and run the application, do the following:
         - **port** - the port number that will be used by the driver (the default YugabyteDB YSQL port is 5433).
         - **dbName** - the name of the database you are connecting to (the default database is named `yugabyte`).
         - **dbUser** and **dbPassword** - the username and password for the YugabyteDB database. If you are using the credentials you created when deploying a cluster in YugabyteDB Managed, these can be found in the credentials file you downloaded.
-        - **sslMode** - the SSL mode to use. YugabyteDB Managed [requires SSL connections](../../../cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql); use `verify-full`.
+        - **sslMode** - the SSL mode to use. YugabyteDB Managed [requires SSL connections](../cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql); use `verify-full`.
         - **sslRootCert** - the full path to the YugabyteDB Managed cluster CA certificate.
 
     3. Save the file.

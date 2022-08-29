@@ -54,7 +54,7 @@ YugabyteDB database passwords are separate from operating system passwords. The 
 
 Database passwords can be managed using the following:
 
-- YSQL API: [CREATE ROLE](../../../api/ysql/the-sql-language/statements/dcl_create_role) and [ALTER ROLE](../../../api/ysql/the-sql-language/statements/dcl_alter_role)
+- YSQL API: [CREATE ROLE](../../../api/ysql/statements/dcl_create_role) and [ALTER ROLE](../../../api/ysql/statements/dcl_alter_role)
 - `ysqlsh` meta-command: [`\password`](../../../admin/ysqlsh/#password-username)
 
 ## Enable SCRAM-SHA-256 authentication

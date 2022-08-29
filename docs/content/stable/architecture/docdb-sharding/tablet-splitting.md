@@ -85,8 +85,8 @@ CREATE TABLE customers (
 
 For information on the relevant YSQL API, see the following:
 
-* [CREATE TABLE ... SPLIT INTO](../../../api/ysql/the-sql-language/statements/ddl_create_table/#split-into) and the example, [Create a table specifying the number of tablets](../../../api/ysql/the-sql-language/statements/ddl_create_table/#create-a-table-specifying-the-number-of-tablets).
-* [CREATE INDEX ... SPLIT INTO](../../../api/ysql/the-sql-language/statements/ddl_create_index/#split-into) and the example, [Create an index specifying the number of tablets](../../../api/ysql/the-sql-language/statements/ddl_create_index/#create-an-index-specifying-the-number-of-tablets).
+* [CREATE TABLE ... SPLIT INTO](../../../api/ysql/statements/ddl_create_table/#split-into) and the example, [Create a table specifying the number of tablets](../../../api/ysql/statements/ddl_create_table/#create-a-table-specifying-the-number-of-tablets).
+* [CREATE INDEX ... SPLIT INTO](../../../api/ysql/statements/ddl_create_index/#split-into) and the example, [Create an index specifying the number of tablets](../../../api/ysql/statements/ddl_create_index/#create-an-index-specifying-the-number-of-tablets).
 
 For information on the relevant YCQL API, see the following:
 
@@ -115,7 +115,7 @@ CREATE TABLE customers (
 ) SPLIT AT VALUES ((1000), (2000), (3000), ... );
 ```
 
-For information on the relevant YSQL API, see [CREATE TABLE ... SPLIT AT VALUES](../../../api/ysql/the-sql-language/statements/ddl_create_table/#split-at-values) for use with range-sharded tables.
+For information on the relevant YSQL API, see [CREATE TABLE ... SPLIT AT VALUES](../../../api/ysql/statements/ddl_create_table/#split-at-values) for use with range-sharded tables.
 
 ## Manual tablet splitting
 

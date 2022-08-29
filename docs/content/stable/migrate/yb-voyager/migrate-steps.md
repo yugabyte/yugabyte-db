@@ -84,7 +84,7 @@ Prepare your target YugabyteDB cluster by creating a database, and a user for yo
 
 ### Create a user
 
-1. Create a user with [`SUPERUSER`](../../../api/ysql/the-sql-language/statements/dcl_create_role/#syntax) role.
+1. Create a user with [`SUPERUSER`](../../../api/ysql/statements/dcl_create_role/#syntax) role.
 
    - For a local YugabyteDB cluster or YugabyteDB Anywhere versions below 2.13.1 or 2.12.4, create a user and role with the superuser privileges using the following command:
 

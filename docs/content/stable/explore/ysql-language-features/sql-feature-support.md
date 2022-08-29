@@ -42,19 +42,19 @@ To understand which standard SQL features we support, refer to the following tab
 
 | Operation | Supported | Documentation |
 | :-------- | :-------: | :------------ |
-| Altering tables | ✓ | [`ALTER TABLE`  documentation](../../../api/ysql/the-sql-language/statements/ddl_alter_table/) |
-| Altering databases | ✓ | [`ALTER DATABASE` documentation](../../../api/ysql/the-sql-language/statements/ddl_alter_db/) |
+| Altering tables | ✓ | [`ALTER TABLE`  documentation](../../../api/ysql/statements/ddl_alter_table/) |
+| Altering databases | ✓ | [`ALTER DATABASE` documentation](../../../api/ysql/statements/ddl_alter_db/) |
 | Altering columns | ✗ | |
 | Altering a column's data type | ✗ | |
-| Adding columns | ✓ | [`ADD COLUMN` documentation](../../../api/ysql/the-sql-language/statements/ddl_alter_table/#add-column-column-name-data-type-constraint-constraints) |
-| Removing columns | ✓ | [`DROP COLUMN` documentation](../../../api/ysql/the-sql-language/statements/ddl_alter_table/#drop-column-column-name-restrict-cascade) |
-| Adding constraints | ✓ | [`ADD CONSTRAINT` documentation](../../../api/ysql/the-sql-language/statements/ddl_alter_table/#add-alter-table-constraint-constraints) |
-| Removing constraints | ✓ | [`DROP CONSTRAINT` documentation](../../../api/ysql/the-sql-language/statements/ddl_alter_table/#drop-constraint-constraint-name-restrict-cascade) |
+| Adding columns | ✓ | [`ADD COLUMN` documentation](../../../api/ysql/statements/ddl_alter_table/#add-column-column-name-data-type-constraint-constraints) |
+| Removing columns | ✓ | [`DROP COLUMN` documentation](../../../api/ysql/statements/ddl_alter_table/#drop-column-column-name-restrict-cascade) |
+| Adding constraints | ✓ | [`ADD CONSTRAINT` documentation](../../../api/ysql/statements/ddl_alter_table/#add-alter-table-constraint-constraints) |
+| Removing constraints | ✓ | [`DROP CONSTRAINT` documentation](../../../api/ysql/statements/ddl_alter_table/#drop-constraint-constraint-name-restrict-cascade) |
 | Altering indexes | ✗ | |
-| Adding indexes | ✓ | [`CREATE INDEX` documentation](../../../api/ysql/the-sql-language/statements/ddl_create_index/) |
+| Adding indexes | ✓ | [`CREATE INDEX` documentation](../../../api/ysql/statements/ddl_create_index/) |
 | Removing indexes | ✗ | |
 | Altering a primary key | ✗ | |
-| Adding user-defined schemas | ✓ |  [`CREATE SCHEMA` documentation](../../../api/ysql/the-sql-language/statements/ddl_create_schema/) |
+| Adding user-defined schemas | ✓ |  [`CREATE SCHEMA` documentation](../../../api/ysql/statements/ddl_create_schema/) |
 | Removing user-defined schemas | ✗ | |
 | Altering user-defined schemas | ✗ | |
 
@@ -94,11 +94,11 @@ To understand which standard SQL features we support, refer to the following tab
 | Feature | Supported | Documentation |
 | :------ | :-------: | :------------ |
 | Transactions | ✓ | [Transactions documentation](../../transactions/) |
-| `BEGIN` | ✓ | [`BEGIN` documentation](../../../api/ysql/the-sql-language/statements/txn_begin/) |
-| `COMMIT` | ✓ | [`COMMIT` documentation](../../../api/ysql/the-sql-language/statements/txn_commit/) |
-| `ROLLBACK` | ✓ | [`ROLLBACK` documentation](../../../api/ysql/the-sql-language/statements/txn_rollback/) |
-| `SAVEPOINT` | ✓ |  [`SAVEPOINT` documentation](../../../api/ysql/the-sql-language/statements/savepoint_create/) |
-| `ROLLBACK TO SAVEPOINT` | ✓ |  [`ROLLBACK TO SAVEPOINT` documentation](../../../api/ysql/the-sql-language/statements/savepoint_create/) |
+| `BEGIN` | ✓ | [`BEGIN` documentation](../../../api/ysql/statements/txn_begin/) |
+| `COMMIT` | ✓ | [`COMMIT` documentation](../../../api/ysql/statements/txn_commit/) |
+| `ROLLBACK` | ✓ | [`ROLLBACK` documentation](../../../api/ysql/statements/txn_rollback/) |
+| `SAVEPOINT` | ✓ |  [`SAVEPOINT` documentation](../../../api/ysql/statements/savepoint_create/) |
+| `ROLLBACK TO SAVEPOINT` | ✓ |  [`ROLLBACK TO SAVEPOINT` documentation](../../../api/ysql/statements/savepoint_create/) |
 
 ### Roles and Permissions
 

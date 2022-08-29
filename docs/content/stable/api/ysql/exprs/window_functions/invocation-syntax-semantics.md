@@ -32,7 +32,7 @@ Notice these three different orthography styles:
 
 ### Reproduced from the SELECT statement section
 
-The following three diagrams, [`select_start`](../../../syntax_resources/grammar_diagrams/#select-start), [`WINDOW` clause](../../../syntax_resources/grammar_diagrams/#window-clause), and [`fn_over_window`](../../../syntax_resources/grammar_diagrams/#fn-over-window) rule, are reproduced from the section that describes the [`SELECT` statement](../../../the-sql-language/statements/dml_select/).
+The following three diagrams, [`select_start`](../../../syntax_resources/grammar_diagrams/#select-start), [`WINDOW` clause](../../../syntax_resources/grammar_diagrams/#window-clause), and [`fn_over_window`](../../../syntax_resources/grammar_diagrams/#fn-over-window) rule, are reproduced from the section that describes the [`SELECT` statement](../../../statements/dml_select/).
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >

@@ -105,7 +105,7 @@ The output should look similar to below, where you see that the `engineering` ro
         |                   |       | engineering=r/yugabyte   +|                   |
 ```
 
-The access privileges "arwdDxt" include all privileges for the user `yugabyte` (superuser), while the role `engineering` has only "r" (read) privileges. For details on the `GRANT` statement, refer to [GRANT](../../../api/ysql/the-sql-language/statements/dcl_grant).
+The access privileges "arwdDxt" include all privileges for the user `yugabyte` (superuser), while the role `engineering` has only "r" (read) privileges. For details on the `GRANT` statement, refer to [GRANT](../../../api/ysql/statements/dcl_grant).
 
 ### Row-level access
 

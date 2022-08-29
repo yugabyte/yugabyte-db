@@ -296,7 +296,7 @@ This utility also uses the environment variables supported by `libpq`.
 
 `ysql_dump` internally executes `SELECT` statements. If you have problems running `ysql_dump`, make sure you are able to select information from the database using, for example, [`ysqlsh`](../ysqlsh/). Also, any default connection settings and environment variables used by the `libpq` front-end library will apply.
 
-The database activity of `ysql_dump` is normally collected by the statistics collector. If this is undesirable, you can set parameter `track_counts` to `false` using `PGOPTIONS` or the [`ALTER USER`](../../api/ysql/the-sql-language/statements/dcl_alter_user) statement.
+The database activity of `ysql_dump` is normally collected by the statistics collector. If this is undesirable, you can set parameter `track_counts` to `false` using `PGOPTIONS` or the [`ALTER USER`](../../api/ysql/statements/dcl_alter_user) statement.
 
 ## Notes
 

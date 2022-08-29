@@ -76,8 +76,8 @@ yugabyte=# SELECT lastval()
 
 ## See also
 
-- [`CREATE SEQUENCE`](../../the-sql-language/statements/ddl_create_sequence)
-- [`DROP SEQUENCE`](../../the-sql-language/statements/ddl_drop_sequence)
+- [`CREATE SEQUENCE`](../../statements/ddl_create_sequence)
+- [`DROP SEQUENCE`](../../statements/ddl_drop_sequence)
 - [`currval()`](../func_currval)
 - [`nextval()`](../func_nextval)
 - [`setval()`](../func_setval)
