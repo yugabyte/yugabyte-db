@@ -14,7 +14,7 @@ import {  Route, Switch, useRouteMatch } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 
 import { YBDropdown } from '@app/components';
-// import { ClusterBreadcrumbs } from '@app/features/clusters/ClusterBreadcrumbs';
+import { ClusterHeader } from '@app/features/clusters/ClusterHeader';
 import HelpIcon from '@app/assets/help.svg';
 import FileIcon from '@app/assets/file.svg';
 import SlackIcon from '@app/assets/slack.svg';
@@ -79,10 +79,7 @@ export const Header: FC = () => {
           </Route>
           <Route path={`/cluster`}>
             {/* <ProjectPicker /> */}
-            {/*<ClusterBreadcrumbs />*/}
-            <Typography variant="h4" color="inherit">
-              {t('common.cluster')}
-            </Typography>
+            <ClusterHeader />
           </Route>
           <Route path={`/performance`}>
             <Typography variant="h4" color="inherit">
