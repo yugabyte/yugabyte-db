@@ -16,6 +16,7 @@
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/docdb.h"
+#include "yb/docdb/docdb.messages.h"
 #include "yb/docdb/docdb_debug.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/rocksdb_writer.h"
@@ -156,7 +157,8 @@ Status DocDBRocksDBUtil::PopulateRocksDBWriteBatch(
       return STATUS(
           InternalError, "For transactional write only increment_write_id=true is supported");
     }
-    KeyValueWriteBatchPB kv_write_batch;
+    Arena arena;
+    LWKeyValueWriteBatchPB kv_write_batch(&arena);
     dwb.TEST_CopyToWriteBatchPB(&kv_write_batch);
     TransactionalWriter writer(
         kv_write_batch, hybrid_time, *current_txn_id_, txn_isolation_level_,
@@ -332,9 +334,10 @@ Status DocDBRocksDBUtil::AddExternalIntents(
     }
 
     void Apply(rocksdb::WriteBatch* batch) {
-      KeyValuePairPB kv_pair;
-      kv_pair.set_key(key_.ToStringBuffer());
-      kv_pair.set_value(value_.ToStringBuffer());
+      Arena arena;
+      LWKeyValuePairPB kv_pair(&arena);
+      kv_pair.dup_key(key_.AsSlice());
+      kv_pair.dup_value(value_.AsSlice());
       ExternalTxnApplyState external_txn_apply_state;
       AddExternalPairToWriteBatch(
           kv_pair, hybrid_time_, &external_txn_apply_state,

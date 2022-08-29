@@ -395,6 +395,10 @@ class ArenaComponent {
     }
   }
 
+  ArenaComponent* next() const {
+    return next_;
+  }
+
   ArenaComponent* SetNext(ArenaComponent* next) {
     auto* result = next_;
     next_ = next;

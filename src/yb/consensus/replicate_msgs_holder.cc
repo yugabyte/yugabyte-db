@@ -50,5 +50,27 @@ void ReplicateMsgsHolder::Reset() {
   consumption_ = ScopedTrackedConsumption();
 }
 
+LWReplicateMsgsHolder::LWReplicateMsgsHolder(
+    ReplicateMsgs messages, ScopedTrackedConsumption consumption)
+    : messages_(std::move(messages)),
+      consumption_(std::move(consumption)) {
+}
+
+LWReplicateMsgsHolder::LWReplicateMsgsHolder(LWReplicateMsgsHolder&& rhs)
+    : messages_(std::move(rhs.messages_)),
+      consumption_(std::move(rhs.consumption_)) {
+}
+
+void LWReplicateMsgsHolder::operator=(LWReplicateMsgsHolder&& rhs) {
+  Reset();
+  messages_ = std::move(rhs.messages_);
+  consumption_ = std::move(rhs.consumption_);
+}
+
+void LWReplicateMsgsHolder::Reset() {
+  messages_.clear();
+  consumption_ = ScopedTrackedConsumption();
+}
+
 }  // namespace consensus
 }  // namespace yb

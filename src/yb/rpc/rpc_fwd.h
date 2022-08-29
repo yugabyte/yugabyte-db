@@ -148,6 +148,7 @@ YB_DEFINE_ENUM(InvokeCallbackMode,
 
 using SidecarHolder = std::pair<RefCntBuffer, Slice>;
 using CallResponsePtr = std::shared_ptr<CallResponse>;
+using RpcCallParamsPtr = std::shared_ptr<RpcCallParams>;
 
 } // namespace rpc
 } // namespace yb

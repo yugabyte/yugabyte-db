@@ -67,6 +67,7 @@
 #include "yb/util/status_fwd.h"
 #include "yb/util/enums.h"
 #include "yb/util/locks.h"
+#include "yb/util/memory/arena_list.h"
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/operation_counter.h"
 #include "yb/util/strongly_typed_bool.h"
@@ -317,14 +318,14 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   Status ApplyOperation(
       const Operation& operation, int64_t batch_idx,
-      const docdb::KeyValueWriteBatchPB& write_batch,
+      const docdb::LWKeyValueWriteBatchPB& write_batch,
       AlreadyAppliedToRegularDB already_applied_to_regular_db = AlreadyAppliedToRegularDB::kFalse);
 
   // Apply a set of RocksDB row operations.
   // If rocksdb_write_batch is specified it could contain preencoded RocksDB operations.
   Status ApplyKeyValueRowOperations(
       int64_t batch_idx, // index of this batch in its transaction
-      const docdb::KeyValueWriteBatchPB& put_batch,
+      const docdb::LWKeyValueWriteBatchPB& put_batch,
       const rocksdb::UserFrontiers* frontiers,
       HybridTime hybrid_time,
       AlreadyAppliedToRegularDB already_applied_to_regular_db = AlreadyAppliedToRegularDB::kFalse);
@@ -596,7 +597,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       const SubTransactionMetadataPB& subtransaction_metadata,
       const google::protobuf::RepeatedPtrField<QLReadRequestPB>& ql_batch,
       const google::protobuf::RepeatedPtrField<PgsqlReadRequestPB>& pgsql_batch,
-      docdb::KeyValueWriteBatchPB* out);
+      docdb::LWKeyValueWriteBatchPB* out);
 
   uint64_t GetCurrentVersionSstFilesSize() const;
   uint64_t GetCurrentVersionSstFilesUncompressedSize() const;
@@ -645,6 +646,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   // Get the isolation level of the given transaction from the metadata stored in the provisional
   // records RocksDB.
+  Result<IsolationLevel> GetIsolationLevel(const LWTransactionMetadataPB& transaction) override;
   Result<IsolationLevel> GetIsolationLevel(const TransactionMetadataPB& transaction) override;
 
   // Creates an on-disk sub tablet of this tablet with specified ID, partition and key bounds.
@@ -797,7 +799,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   Status WriteTransactionalBatch(
       int64_t batch_idx, // index of this batch in its transaction
-      const docdb::KeyValueWriteBatchPB& put_batch,
+      const docdb::LWKeyValueWriteBatchPB& put_batch,
       HybridTime hybrid_time,
       const rocksdb::UserFrontiers* frontiers,
       bool external_transaction = false);
@@ -870,6 +872,9 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // Returns true if the tablet was created after a split but it has not yet had data from it's
   // parent which are now outside of its key range removed.
   bool StillHasOrphanedPostSplitDataAbortable();
+
+  template <class PB>
+  Result<IsolationLevel> DoGetIsolationLevel(const PB& transaction);
 
   std::unique_ptr<const Schema> key_schema_;
 

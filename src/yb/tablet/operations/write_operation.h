@@ -37,15 +37,9 @@
 #include <vector>
 
 #include "yb/tablet/operations/operation.h"
-#include "yb/tablet/operations.pb.h"
+#include "yb/tablet/operations.messages.h"
 
 namespace yb {
-
-namespace tserver {
-class WriteRequestPB;
-class WriteResponsePB;
-}
-
 namespace tablet {
 
 // An operation for a batch of inserts/mutates. This class holds and
@@ -63,7 +57,7 @@ namespace tablet {
 // on the WAL.
 //
 // NOTE: this class isn't thread safe.
-class WriteOperation : public OperationBase<OperationType::kWrite, WritePB>  {
+class WriteOperation : public OperationBase<OperationType::kWrite, LWWritePB>  {
  public:
   template <class... Args>
   explicit WriteOperation(Args&&... args)

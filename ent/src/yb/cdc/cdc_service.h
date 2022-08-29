@@ -372,7 +372,7 @@ class CDCServiceImpl : public CDCServiceIf {
 
   Status UpdateChildrenTabletsOnSplitOp(
       const ProducerTabletInfo& producer_tablet,
-      std::shared_ptr<yb::consensus::ReplicateMsg> split_op_msg,
+      const consensus::ReplicateMsg& split_op_msg,
       const client::YBSessionPtr& session);
 
   Status UpdateChildrenTabletsOnSplitOpForCDCSDK(

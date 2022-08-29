@@ -419,7 +419,7 @@ Status ReadQuery::DoPerform() {
       write_batch.set_row_mark_type(batch_row_mark);
       query->set_read_time(read_time_);
     }
-    write.set_unused_tablet_id(""); // For backward compatibility.
+    write.ref_unused_tablet_id(""); // For backward compatibility.
     write_batch.set_deprecated_may_have_metadata(true);
     write.set_batch_idx(req_->batch_idx());
     if (req_->has_subtransaction() && req_->subtransaction().has_subtransaction_id()) {

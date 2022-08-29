@@ -49,7 +49,7 @@ class TransactionStatusManagerMock : public TransactionStatusManager {
         << " has been already committed.";
   }
 
-  Result<TransactionMetadata> PrepareMetadata(const TransactionMetadataPB& pb) override {
+  Result<TransactionMetadata> PrepareMetadata(const LWTransactionMetadataPB& pb) override {
     return STATUS(Expired, "");
   }
 

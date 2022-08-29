@@ -54,6 +54,7 @@
 #include <boost/algorithm/string/predicate.hpp>
 
 #include "yb/consensus/log_util.h"
+#include "yb/consensus/log.messages.h"
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/map-util.h"

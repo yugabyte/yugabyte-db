@@ -51,7 +51,7 @@
 #include "yb/common/wire_protocol-test-util.h"
 #include "yb/common/wire_protocol.h"
 
-#include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/consensus.messages.h"
 #include "yb/consensus/consensus.proxy.h"
 #include "yb/consensus/consensus_peers.h"
 #include "yb/consensus/consensus_types.pb.h"
@@ -257,7 +257,7 @@ class RaftConsensusITest : public TabletServerIntegrationTestBase {
 
   // Add an Insert operation to the given consensus request.
   // The row to be inserted is generated based on the OpId.
-  void AddOp(const OpIdPB& id, ConsensusRequestPB* req);
+  void AddOp(const OpId& id, consensus::LWConsensusRequestPB* req);
 
   string DumpToString(TServerDetails* leader,
                       const vector<string>& leader_results,
@@ -1806,14 +1806,14 @@ TEST_F(RaftConsensusITest, VerifyTransactionOrder) {
   }
 }
 
-void RaftConsensusITest::AddOp(const OpIdPB& id, ConsensusRequestPB* req) {
-  ReplicateMsg* msg = req->add_ops();
-  msg->mutable_id()->CopyFrom(id);
+void RaftConsensusITest::AddOp(const OpId& id, consensus::LWConsensusRequestPB* req) {
+  auto* msg = req->add_ops();
+  id.ToPB(msg->mutable_id());
   msg->set_hybrid_time(clock_->Now().ToUint64());
   msg->set_op_type(consensus::WRITE_OP);
   auto* write_req = msg->mutable_write();
-  int32_t key = static_cast<int32_t>(id.index() * 10000 + id.term());
-  string str_val = Substitute("term: $0 index: $1", id.term(), id.index());
+  int32_t key = static_cast<int32_t>(id.index * 10000 + id.term);
+  string str_val = Substitute("term: $0 index: $1", id.term, id.index);
   AddKVToPB(key, key + 10, str_val, write_req->mutable_write_batch());
 }
 
@@ -1866,28 +1866,29 @@ TEST_F(RaftConsensusITest, TestReplicaBehaviorViaRPC) {
 
   ConsensusServiceProxy* c_proxy = CHECK_NOTNULL(replica_ts->consensus_proxy.get());
 
-  ConsensusRequestPB req;
-  ConsensusResponsePB resp;
+  Arena arena;
+  consensus::LWConsensusRequestPB req(&arena);
+  consensus::LWConsensusResponsePB resp(&arena);
   RpcController rpc;
 
   LOG(INFO) << "Send a simple request with no ops.";
-  req.set_tablet_id(tablet_id_);
-  req.set_dest_uuid(replica_ts->uuid());
-  req.set_caller_uuid("fake_caller");
+  req.ref_tablet_id(tablet_id_);
+  req.ref_dest_uuid(replica_ts->uuid());
+  req.ref_caller_uuid("fake_caller");
   req.set_caller_term(2);
-  req.mutable_committed_op_id()->CopyFrom(MakeOpId(1, 1));
-  req.mutable_preceding_id()->CopyFrom(MakeOpId(1, 1));
+  OpId(1, 1).ToPB(req.mutable_committed_op_id());
+  OpId(1, 1).ToPB(req.mutable_preceding_id());
 
   ASSERT_OK(c_proxy->UpdateConsensus(req, &resp, &rpc));
-  ASSERT_FALSE(resp.has_error()) << resp.DebugString();
+  ASSERT_FALSE(resp.has_error()) << resp.ShortDebugString();
 
   LOG(INFO) << "Send some operations, but don't advance the commit index. They should not commit.";
-  AddOp(MakeOpId(2, 2), &req);
-  AddOp(MakeOpId(2, 3), &req);
-  AddOp(MakeOpId(2, 4), &req);
+  AddOp(OpId(2, 2), &req);
+  AddOp(OpId(2, 3), &req);
+  AddOp(OpId(2, 4), &req);
   rpc.Reset();
   ASSERT_OK(c_proxy->UpdateConsensus(req, &resp, &rpc));
-  ASSERT_FALSE(resp.has_error()) << resp.DebugString();
+  ASSERT_FALSE(resp.has_error()) << resp.ShortDebugString();
 
   LOG(INFO) << "We shouldn't read anything yet, because the ops should be pending.";
   {
@@ -1899,25 +1900,25 @@ TEST_F(RaftConsensusITest, TestReplicaBehaviorViaRPC) {
   LOG(INFO) << "Send op 2.6, but set preceding OpId to 2.4. "
             << "This is an invalid request, and the replica should reject it.";
   req.mutable_preceding_id()->CopyFrom(MakeOpId(2, 4));
-  req.clear_ops();
-  AddOp(MakeOpId(2, 6), &req);
+  req.mutable_ops()->clear();
+  AddOp(OpId(2, 6), &req);
   rpc.Reset();
   ASSERT_OK(c_proxy->UpdateConsensus(req, &resp, &rpc));
-  ASSERT_TRUE(resp.has_error()) << resp.DebugString();
+  ASSERT_TRUE(resp.has_error()) << resp.ShortDebugString();
   ASSERT_EQ(resp.error().status().message(),
             "New operation's index does not follow the previous op's index. "
             "Current: 2.6. Previous: 2.4");
 
   resp.Clear();
-  req.clear_ops();
+  req.mutable_ops()->clear();
   LOG(INFO) << "Send ops 3.5 and 2.6, then commit up to index 6, the replica "
             << "should fail because of the out-of-order terms.";
   req.mutable_preceding_id()->CopyFrom(MakeOpId(2, 4));
-  AddOp(MakeOpId(3, 5), &req);
-  AddOp(MakeOpId(2, 6), &req);
+  AddOp(OpId(3, 5), &req);
+  AddOp(OpId(2, 6), &req);
   rpc.Reset();
   ASSERT_OK(c_proxy->UpdateConsensus(req, &resp, &rpc));
-  ASSERT_TRUE(resp.has_error()) << resp.DebugString();
+  ASSERT_TRUE(resp.has_error()) << resp.ShortDebugString();
   ASSERT_EQ(resp.error().status().message(),
             "New operation's term is not >= than the previous op's term. "
             "Current: 2.6. Previous: 3.5");
@@ -1931,13 +1932,13 @@ TEST_F(RaftConsensusITest, TestReplicaBehaviorViaRPC) {
   // but we set the committed index to 2.4. This should only commit
   // 2.2 and 2.3.
   resp.Clear();
-  req.clear_ops();
+  req.mutable_ops()->clear();
   req.mutable_preceding_id()->CopyFrom(MakeOpId(2, 2));
-  AddOp(MakeOpId(2, 3), &req);
+  AddOp(OpId(2, 3), &req);
   req.mutable_committed_op_id()->CopyFrom(MakeOpId(2, 4));
   rpc.Reset();
   ASSERT_OK(c_proxy->UpdateConsensus(req, &resp, &rpc));
-  ASSERT_FALSE(resp.has_error()) << resp.DebugString();
+  ASSERT_FALSE(resp.has_error()) << resp.ShortDebugString();
   LOG(INFO) << "Verify only 2.2 and 2.3 are committed.";
   {
     vector<string> results;
@@ -1947,15 +1948,15 @@ TEST_F(RaftConsensusITest, TestReplicaBehaviorViaRPC) {
   }
 
   resp.Clear();
-  req.clear_ops();
+  req.mutable_ops()->clear();
   LOG(INFO) << "Now send some more ops, and commit the earlier ones.";
   req.mutable_committed_op_id()->CopyFrom(MakeOpId(2, 4));
   req.mutable_preceding_id()->CopyFrom(MakeOpId(2, 4));
-  AddOp(MakeOpId(2, 5), &req);
-  AddOp(MakeOpId(2, 6), &req);
+  AddOp(OpId(2, 5), &req);
+  AddOp(OpId(2, 6), &req);
   rpc.Reset();
   ASSERT_OK(c_proxy->UpdateConsensus(req, &resp, &rpc));
-  ASSERT_FALSE(resp.has_error()) << resp.DebugString();
+  ASSERT_FALSE(resp.has_error()) << resp.ShortDebugString();
 
   LOG(INFO) << "Verify they are committed.";
   {
@@ -1967,7 +1968,7 @@ TEST_F(RaftConsensusITest, TestReplicaBehaviorViaRPC) {
   }
 
   resp.Clear();
-  req.clear_ops();
+  req.mutable_ops()->clear();
   int leader_term = 2;
   const int kNumTerms = AllowSlowTests() ? 10000 : 100;
   while (leader_term < kNumTerms) {
@@ -1975,15 +1976,15 @@ TEST_F(RaftConsensusITest, TestReplicaBehaviorViaRPC) {
     // Now pretend to be a new leader (term 3) and replace the earlier ops
     // without committing the new replacements.
     req.set_caller_term(leader_term);
-    req.set_caller_uuid("new_leader");
+    req.ref_caller_uuid("new_leader");
     req.mutable_preceding_id()->CopyFrom(MakeOpId(2, 4));
-    req.clear_ops();
-    AddOp(MakeOpId(leader_term, 5), &req);
-    AddOp(MakeOpId(leader_term, 6), &req);
+    req.mutable_ops()->clear();
+    AddOp(OpId(leader_term, 5), &req);
+    AddOp(OpId(leader_term, 6), &req);
     rpc.Reset();
     ASSERT_OK(c_proxy->UpdateConsensus(req, &resp, &rpc));
     ASSERT_FALSE(resp.has_error()) << "Req: " << req.ShortDebugString()
-        << " Resp: " << resp.DebugString();
+        << " Resp: " << resp.ShortDebugString();
   }
 
   LOG(INFO) << "Send an empty request from the newest term which should commit "
@@ -1991,10 +1992,10 @@ TEST_F(RaftConsensusITest, TestReplicaBehaviorViaRPC) {
   {
     req.mutable_preceding_id()->CopyFrom(MakeOpId(leader_term, 6));
     req.mutable_committed_op_id()->CopyFrom(MakeOpId(leader_term, 6));
-    req.clear_ops();
+    req.mutable_ops()->clear();
     rpc.Reset();
     ASSERT_OK(c_proxy->UpdateConsensus(req, &resp, &rpc));
-    ASSERT_FALSE(resp.has_error()) << resp.DebugString();
+    ASSERT_FALSE(resp.has_error()) << resp.ShortDebugString();
   }
 
   LOG(INFO) << "Verify the new rows are committed.";
@@ -3192,17 +3193,18 @@ TEST_F(RaftConsensusITest, TestUpdateConsensusErrorNonePrepared) {
                 "TEST_follower_fail_all_prepare", "true"));
 
   // Pretend to be the leader and send a request that should return an error.
-  ConsensusRequestPB req;
-  ConsensusResponsePB resp;
+  Arena arena;
+  consensus::LWConsensusRequestPB req(&arena);
+  consensus::LWConsensusResponsePB resp(&arena);
   RpcController rpc;
-  req.set_dest_uuid(replica_ts->uuid());
-  req.set_tablet_id(tablet_id_);
-  req.set_caller_uuid(tservers[2]->instance_id.permanent_uuid());
+  req.ref_dest_uuid(replica_ts->uuid());
+  req.ref_tablet_id(tablet_id_);
+  req.ref_caller_uuid(tservers[2]->instance_id.permanent_uuid());
   req.set_caller_term(0);
-  req.mutable_committed_op_id()->CopyFrom(MakeOpId(0, 0));
-  req.mutable_preceding_id()->CopyFrom(MakeOpId(0, 0));
+  OpId(0, 0).ToPB(req.mutable_committed_op_id());
+  OpId(0, 0).ToPB(req.mutable_preceding_id());
   for (int i = 0; i < kNumOps; i++) {
-    AddOp(MakeOpId(0, 1 + i), &req);
+    AddOp(OpId(0, 1 + i), &req);
   }
 
   ASSERT_OK(replica_ts->consensus_proxy->UpdateConsensus(req, &resp, &rpc));

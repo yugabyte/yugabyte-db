@@ -17,13 +17,13 @@
 
 #include "yb/tablet/operations/operation.h"
 
-#include "yb/tablet/operations.pb.h"
+#include "yb/tablet/operations.messages.h"
 
 namespace yb {
 namespace tablet {
 
 class UpdateTxnOperation
-    : public OperationBase<OperationType::kUpdateTransaction, TransactionStatePB> {
+    : public OperationBase<OperationType::kUpdateTransaction, LWTransactionStatePB> {
  public:
   template <class... Args>
   explicit UpdateTxnOperation(Args&&... args)

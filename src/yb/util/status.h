@@ -74,7 +74,6 @@ namespace yb {
 
 class Slice;
 
-YB_STRONGLY_TYPED_BOOL(DupFileName);
 YB_STRONGLY_TYPED_BOOL(AddRef);
 
 class StatusErrorCode;
@@ -171,7 +170,7 @@ class NODISCARD_CLASS Status {
          // Error message details. If present - would be combined as "msg: msg2".
          const Slice& msg2 = Slice(),
          const StatusErrorCode* error = nullptr,
-         DupFileName dup_file_name = DupFileName::kFalse);
+         size_t file_name_len = 0);
 
   Status(Code code,
          const char* file_name,
@@ -180,29 +179,29 @@ class NODISCARD_CLASS Status {
          // Error message details. If present - would be combined as "msg: msg2".
          const Slice& msg2,
          const StatusErrorCode& error,
-         DupFileName dup_file_name = DupFileName::kFalse)
-      : Status(code, file_name, line_number, msg, msg2, &error, dup_file_name) {
+         size_t file_name_len = 0)
+      : Status(code, file_name, line_number, msg, msg2, &error, file_name_len) {
   }
 
   Status(Code code,
          const char* file_name,
          int line_number,
          const StatusErrorCode& error,
-         DupFileName dup_file_name = DupFileName::kFalse);
+         size_t file_name_len = 0);
 
   Status(Code code,
          const char* file_name,
          int line_number,
          const Slice& msg,
          const StatusErrorCode& error,
-         DupFileName dup_file_name = DupFileName::kFalse);
+         size_t file_name_len = 0);
 
   Status(Code code,
          const char* file_name,
          int line_number,
          const Slice& msg,
          const Slice& errors,
-         DupFileName dup_file_name);
+         size_t file_name_len);
 
   Code code() const;
 
@@ -223,6 +222,8 @@ class NODISCARD_CLASS Status {
   struct State;
 
   bool file_name_duplicated() const;
+
+  size_t file_name_len_for_copy() const;
 
   typedef boost::intrusive_ptr<State> StatePtr;
 
