@@ -81,6 +81,7 @@ DECLARE_int32(log_min_seconds_to_retain);
 DECLARE_uint64(log_segment_size_bytes);
 DECLARE_int32(max_group_replicate_batch_size);
 DECLARE_int32(protobuf_message_total_bytes_limit);
+DECLARE_int32(rpc_max_message_size);
 
 DECLARE_bool(quick_leader_election_on_create);
 
@@ -463,15 +464,18 @@ class TabletPeerProtofBufSizeLimitTest : public TabletPeerTest {
  public:
   TabletPeerProtofBufSizeLimitTest() : TabletPeerTest(GetSimpleTestSchema()) {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_protobuf_message_total_bytes_limit) = kProtobufSizeLimit;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rpc_max_message_size) = kMaxRpcMsgSize;
     // Avoid unnecessary log segments rolling.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_initial_log_segment_size_bytes) = kProtobufSizeLimit * 2;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_segment_size_bytes) = kProtobufSizeLimit * 2;
   }
 
   static constexpr auto kProtobufSizeLimit = 10_MB;
+  static constexpr auto kMaxRpcMsgSize = kProtobufSizeLimit / 2;
 };
 
 constexpr size_t TabletPeerProtofBufSizeLimitTest::kProtobufSizeLimit;
+constexpr size_t TabletPeerProtofBufSizeLimitTest::kMaxRpcMsgSize;
 
 TEST_F_EX(TabletPeerTest, MaxRaftBatchProtobufLimit, TabletPeerProtofBufSizeLimitTest) {
   constexpr auto kNumOps = 10;
@@ -546,6 +550,39 @@ TEST_F_EX(TabletPeerTest, MaxRaftBatchProtobufLimit, TabletPeerProtofBufSizeLimi
       ASSERT_LE(current_batch_size, kProtobufSizeLimit);
     }
   }
+}
+
+TEST_F_EX(TabletPeerTest, SingleOpExceedsRpcMsgLimit, TabletPeerProtofBufSizeLimitTest) {
+  // Make sure batch of kNumOps operations is larger than kMaxRpcMsgSize to test limit overflow.
+  constexpr auto kValueSize = kMaxRpcMsgSize * 11 / 10;
+
+  ConsensusBootstrapInfo info;
+  ASSERT_OK(StartPeer(info));
+
+  std::string value(kValueSize, 'X');
+
+  WriteRequestPB req;
+  WriteResponsePB resp;
+  CountDownLatch latch(1);
+
+  auto* const tablet_peer = tablet_peer_.get();
+
+  req.set_tablet_id(tablet()->tablet_id());
+  AddTestRowInsert(1, 1, value, &req);
+  auto query = std::make_unique<WriteQuery>(
+      /* leader_term = */ 1, CoarseTimePoint::max(), tablet_peer, tablet_peer->tablet(), &resp);
+      query->set_client_request(req);
+      query->set_callback([&latch, &resp](const Status& status) {
+        if (!status.ok()) {
+        StatusToPB(status, resp.mutable_error()->mutable_status());
+      }
+      latch.CountDown();
+  });
+
+  tablet_peer->WriteAsync(std::move(query));
+  latch.Wait();
+
+  ASSERT_TRUE(resp.has_error()) << "\n Response:\n" << resp.DebugString();
 }
 
 } // namespace tablet
