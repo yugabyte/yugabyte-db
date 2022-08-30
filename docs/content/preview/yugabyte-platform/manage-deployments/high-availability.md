@@ -95,13 +95,13 @@ You should be able to see that all of the data has been restored into the instan
 
 ## Upgrade instances
 
-All instances involved in high availability should be of the same YugabyteDB Anywhere version. If the versions are different, an attempt to promote a standby instance using a YugabyteDB Anywhere backup from an active instance will result in errors.
+All instances involved in high availability should be of the same YugabyteDB Anywhere version. If the versions are different, an attempt to promote a standby instance using a YugabyteDB Anywhere backup from an active instance may result in errors.
 
 Even though you can perform an upgrade of all YugabyteDB Anywhere instances simultaneously and there are no explicit ordering requirements regarding upgrades of active and standby instances, it is recommended to follow these guidelines: 
 
 - Start an upgrade with an active instance.
 - After the active instance has been upgraded, ensure that YugabyteDB Anywhere is reachable by logging in and checking various pages.
-- Proceed with upgrading standby instances, possibly in parallel. 
+- Proceed with upgrading standby instances. 
 
 ## Remove a standby instance
 
