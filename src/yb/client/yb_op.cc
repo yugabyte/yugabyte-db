@@ -109,10 +109,9 @@ Status InitHashPartitionKey(
   // Seek a specific partition_key from read_request.
   // 1. Not specified hash condition - Full scan.
   // 2. paging_state -- Set by server to continue current request.
-  // 3. ybctid -- Given to fetch row(s) with specific ybctid(s).
-  // 4. hash column values -- Given to scan ONE SET of specific hash values.
-  // 5. lower and upper bound -- Set by PgGate to query a specific set of hash values.
-  // 6. range and regular condition - These are filter expression and will be processed by DocDB.
+  // 3. hash column values -- Given to scan ONE SET of specific hash values.
+  // 4. lower and upper bound -- Set by PgGate to query a specific set of hash values.
+  // 5. range and regular condition - These are filter expression and will be processed by DocDB.
   //    Shouldn't we able to set RANGE boundary here?
 
   // If primary index lookup using ybctid requests are batched, there is a possibility that tablets
@@ -124,7 +123,6 @@ Status InitHashPartitionKey(
   // In order to represent a single ybctid or a batch of ybctids, we leverage the lower bound and
   // upper bounds to set hash codes and max hash codes.
 
-  const auto& ybctid = request->ybctid_column_value().value();
   bool has_paging_state =
       request->has_paging_state() && request->paging_state().has_next_partition_key();
   if (has_paging_state) {
@@ -148,9 +146,6 @@ Status InitHashPartitionKey(
       }
       request->set_hash_code(paging_state_hash_code);
     }
-  } else if (!IsNull(ybctid)) {
-    const auto hash_code = VERIFY_RESULT(docdb::DocKey::DecodeHash(ybctid.binary_value()));
-    SetPartitionKey(PartitionSchema::EncodeMultiColumnHashValue(hash_code), request);
   } else if (!request->partition_column_values().empty()) {
     // If hashed columns are set, use them to compute the exact key and set the bounds
     std::string temp;
@@ -184,6 +179,17 @@ Status InitHashPartitionKey(
     }
 
   } else if (request->has_lower_bound() || request->has_upper_bound()) {
+    // Batched requests contain the combination of lower and upper bounds (except during single
+    // tablet scenario). For example, ybctids are always prepared as batched requests grouping them
+    // into their respective tablets that they belong to.
+    // Here there are two components that are of importance.
+    // 1. partition key -- We start scanning from the tablet containing partition key.
+    // 2. upper bound -- We end scanning when we reach the upper bound.
+    // During automatic tablet splitting, batched request could be prepared before the tablets
+    // are split. In that case, if docDB's scanning iterator that starts scanning from the
+    // partition key does not reach the end of the tablet (upper bound), it will throw a paging
+    // state and continue from there.
+
     // If the read request does not provide a specific partition key, but it does provide scan
     // boundary, use the given boundary to setup the scan lower and upper bound.
     if (request->has_lower_bound()) {
@@ -193,8 +199,6 @@ Status InitHashPartitionKey(
       }
       request->set_hash_code(hash);
 
-      // Set partition key to lower bound.
-      SetPartitionKey(request->lower_bound().key(), request);
     }
     if (request->has_upper_bound()) {
       auto hash = PartitionSchema::DecodeMultiColumnHashValue(request->upper_bound().key());
@@ -203,6 +207,10 @@ Status InitHashPartitionKey(
       }
       request->set_max_hash_code(hash);
     }
+    // Set partition key to lower bound. If lower bound is empty, then it is set to 0 which is the
+    // first potential hash_key from which table entries start. Lower bounds are empty for the
+    // first tablet or if it is a single tablet scenario.
+    SetPartitionKey(request->lower_bound().key(), request);
   } else {
     // Full scan. Default to empty key.
     request->clear_partition_key();
@@ -249,26 +257,34 @@ Status InitRangePartitionKey(
   // Seek a specific partition_key from read_request.
   // 1. Not specified range condition - Full scan.
   // 2. paging_state -- Set by server to continue the same request.
-  // 3. ybctid -- Given to fetch row(s) with specific ybctid(s).
-  // 4. upper and lower bound -- Set by PgGate to fetch rows within a boundary.
-  // 5. range column values -- Given to fetch rows for one set of specific range values.
-  // 6. condition expr -- Given to fetch rows that satisfy specific conditions.
+  // 3. upper and lower bound -- Set by PgGate to fetch rows within a boundary.
+  // 4. range column values -- Given to fetch rows for one set of specific range values.
+  // 5. condition expr -- Given to fetch rows that satisfy specific conditions.
 
-  const auto& ybctid = request->ybctid_column_value().value();
   if (request->has_paging_state() &&
       request->paging_state().has_next_partition_key()) {
     // If this is a subsequent query, use the partition key from the paging state.
     SetPartitionKey(request->paging_state().next_partition_key(), request);
-  } else if (!IsNull(ybctid)) {
-    SetPartitionKey(ybctid.binary_value(), request);
   } else if (request->has_lower_bound()) {
-    // When PgGate optimizes RANGE expressions, it will set lower_bound and upper_bound by itself.
-    // In that case, we use them without recompute them here.
-    //
-    // NOTE: Currently, PgGate uses this optimization ONLY for COUNT operator and backfill request.
-    // It has not done any optimization on RANGE values yet.
-    SetPartitionKey(request->lower_bound().key(), request);
-
+      // There are two cases here.
+      // Case 1: batching ybctids
+      // In this situation, requests belonging to the same tablets are batched. Here there are two
+      // components that are of importance.
+      // partition key --  We start scanning from the tablet containing partition key.
+      // upper bound -- We end scanning when we reach the upper bound.
+      // During automatic tablet splitting, batched request could be prepared before the tablets
+      // are split. In that case, if docDB's scanning iterator that starts scanning from the
+      // partition key does not reach the end of the tablet (upper bound), it will throw a paging
+      // state and continue from there.
+      //
+      // Case 2: Range expression optimization
+      //
+      // When PgGate optimizes RANGE expressions, it will set lower_bound and upper_bound by itself.
+      // In that case, we use them without recompute them here.
+      //
+      // NOTE: Currently, PgGate uses this optimization ONLY for COUNT operator and backfill
+      // requests. It has not done any optimization on RANGE values yet.
+      SetPartitionKey(request->lower_bound().key(), request);
   } else {
     // Evaluate condition to return partition_key and set the upper bound.
     string max_key;
