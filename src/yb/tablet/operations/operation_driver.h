@@ -38,6 +38,7 @@
 #include <boost/atomic.hpp>
 
 #include "yb/consensus/log_fwd.h"
+#include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus_round.h"
 
 #include "yb/gutil/ref_counted.h"
@@ -199,6 +200,12 @@ class OperationDriver : public RefCountedThreadSafe<OperationDriver>,
   }
 
   int64_t SpaceUsed();
+
+  size_t ReplicateMsgSize() {
+    return consensus_round() && consensus_round()->replicate_msg()
+               ? consensus_round()->replicate_msg()->ByteSizeLong()
+               : 0;
+  }
 
  private:
   friend class RefCountedThreadSafe<OperationDriver>;
