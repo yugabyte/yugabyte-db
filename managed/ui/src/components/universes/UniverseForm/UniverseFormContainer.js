@@ -307,7 +307,8 @@ const portFields = [
   'yqlHttpPort',
   'yqlRpcPort',
   'ysqlHttpPort',
-  'ysqlRpcPort'
+  'ysqlRpcPort',
+  'nodeExporterPort'
 ];
 
 function getFormData(currentUniverse, formType, clusterType) {
@@ -521,6 +522,7 @@ function mapStateToProps(state, ownProps) {
       'primary.yqlRpcPort',
       'primary.ysqlHttpPort',
       'primary.ysqlRpcPort',
+      'primary.nodeExporterPort',
       'primary.useSystemd',
       'primary.ybcSoftwareVersion',
       'primary.dedicatedNodes',

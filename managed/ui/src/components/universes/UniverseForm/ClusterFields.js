@@ -75,7 +75,8 @@ const DEFAULT_PORTS = {
   YQL_HTTP_PORT: 12000,
   YQL_RPC_PORT: 9042,
   YSQL_HTTP_PORT: 13000,
-  YSQL_RPC_PORT: 5433
+  YSQL_RPC_PORT: 5433,
+  NODE_EXPORTER_PORT: 9300
 };
 
 const DEFAULT_STORAGE_TYPES = {
@@ -290,7 +291,8 @@ export default class ClusterFields extends Component {
       communicationPorts.yqlServerHttpPort !== DEFAULT_PORTS.YQL_HTTP_PORT ||
       communicationPorts.yqlServerRpcPort !== DEFAULT_PORTS.YQL_RPC_PORT ||
       communicationPorts.ysqlServerHttpPort !== DEFAULT_PORTS.YSQL_HTTP_PORT ||
-      communicationPorts.ysqlServerRpcPort !== DEFAULT_PORTS.YSQL_RPC_PORT
+      communicationPorts.ysqlServerRpcPort !== DEFAULT_PORTS.YSQL_RPC_PORT ||
+      communicationPorts.nodeExporterPort !== DEFAULT_PORTS.NODE_EXPORTER_PORT
     );
   };
 
@@ -334,6 +336,7 @@ export default class ClusterFields extends Component {
       updateFormField('primary.yqlRpcPort', DEFAULT_PORTS.YQL_RPC_PORT);
       updateFormField('primary.ysqlHttpPort', DEFAULT_PORTS.YSQL_HTTP_PORT);
       updateFormField('primary.ysqlRpcPort', DEFAULT_PORTS.YSQL_RPC_PORT);
+      updateFormField('primary.nodeExporterPort', DEFAULT_PORTS.NODE_EXPORTER_PORT);
     } else if (type === 'Edit') {
       const { communicationPorts } = universeDetails;
       const customPorts = this.portsCustomized(communicationPorts);
@@ -349,6 +352,7 @@ export default class ClusterFields extends Component {
       updateFormField('primary.yqlRpcPort', communicationPorts.yqlServerRpcPort);
       updateFormField('primary.ysqlHttpPort', communicationPorts.ysqlServerHttpPort);
       updateFormField('primary.ysqlRpcPort', communicationPorts.ysqlServerRpcPort);
+      updateFormField('primary.nodeExporterPort', communicationPorts.nodeExporterPort);
     }
 
     if (isNonEmptyObject(formValues['primary']) && clusterType !== 'primary') {
@@ -3129,6 +3133,23 @@ export default class ClusterFields extends Component {
                       normalize={normalizeToValidPort}
                       validate={portValidation}
                       label="Yedis RPC Port"
+                      isReadOnly={isFieldReadOnly}
+                    />
+                  </div>
+                </Col>
+              </Row>
+            )}
+            {this.state.customizePorts && currentProvider.code !== "onPrem" && (
+              <Row>
+                <Col sm={3}>
+                  <div className="form-right-aligned-labels">
+                    <Field
+                      name={`${clusterType}.nodeExporterPort`}
+                      type="text"
+                      component={YBTextInputWithLabel}
+                      normalize={normalizeToValidPort}
+                      validate={portValidation}
+                      label="Node Exporter Port"
                       isReadOnly={isFieldReadOnly}
                     />
                   </div>
