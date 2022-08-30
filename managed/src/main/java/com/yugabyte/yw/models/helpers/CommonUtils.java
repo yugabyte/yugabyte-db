@@ -36,6 +36,7 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.time.temporal.TemporalUnit;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Date;
@@ -86,6 +87,21 @@ public class CommonUtils {
           .mappingProvider(new JacksonMappingProvider())
           .build();
 
+  // Sensisitve field substrings
+  private static final List<String> sensitiveFieldSubstrings =
+      Arrays.asList(
+          "KEY", "SECRET", "CREDENTIALS", "API", "POLICY", "HC_VAULT_TOKEN", "vaultToken");
+  // Exclude following strings from being sensitive fields
+  private static final List<String> excludedFieldNames =
+      Arrays.asList(
+          // GCP KMS fields
+          "KEY_RING_ID",
+          "CRYPTO_KEY_ID",
+          // Azure KMS fields
+          "AZU_KEY_NAME",
+          "AZU_KEY_ALGORITHM",
+          "AZU_KEY_SIZE");
+
   /**
    * Checks whether the field name represents a field with a sensitive data or not.
    *
@@ -94,14 +110,18 @@ public class CommonUtils {
    */
   public static boolean isSensitiveField(String fieldname) {
     String ucFieldname = fieldname.toUpperCase();
-    return isStrictlySensitiveField(ucFieldname)
-        || ucFieldname.contains("KEY")
-        || ucFieldname.contains("SECRET")
-        || ucFieldname.contains("CREDENTIALS")
-        || ucFieldname.contains("API")
-        || ucFieldname.contains("POLICY")
-        || ucFieldname.contains("HC_VAULT_TOKEN")
-        || ucFieldname.contains("vaultToken");
+    if (isStrictlySensitiveField(ucFieldname)) {
+      return true;
+    }
+
+    // Needed for GCP KMS UI - more specifically listKMSConfigs()
+    // Can add more exclusions if required
+    if (excludedFieldNames.contains(ucFieldname)) {
+      return false;
+    }
+
+    // Check if any of sensitiveFieldSubstrings are substrings in ucFieldname and mark as sensitive
+    return sensitiveFieldSubstrings.stream().anyMatch(sfs -> ucFieldname.contains(sfs));
   }
 
   /**

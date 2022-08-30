@@ -105,7 +105,7 @@ size_t NumProducerTabletsPolled(MiniCluster* cluster) {
     size_t new_size = 0;
     auto* tserver = dynamic_cast<tserver::enterprise::TabletServer*>(mini_tserver->server());
     tserver::enterprise::CDCConsumer* cdc_consumer;
-    if (tserver && (cdc_consumer = tserver->GetCDCConsumer())) {
+    if (tserver && (cdc_consumer = tserver->GetCDCConsumer()) && mini_tserver->is_started()) {
       auto tablets_running = cdc_consumer->TEST_producer_tablets_running();
       new_size = tablets_running.size();
     }

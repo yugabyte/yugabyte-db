@@ -667,7 +667,7 @@ CREATE TABLE t2 (c float) INHERITS (t1);
 ERROR:  INHERITS not supported yet
 LINE 1: CREATE TABLE t2 (c float) INHERITS (t1);
                                   ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1129. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1129. React with thumbs up to raise its priority
 GRANT ALL ON t2 TO public;
 ERROR:  relation "t2" does not exist
 -- TODO(dmitry): Uncomment when table t2 will be created (ie INHERITS feature will be enabled #1129)
@@ -682,7 +682,7 @@ ALTER TABLE t3 INHERIT t1;
 ERROR:  ALTER TABLE INHERIT not supported yet
 LINE 1: ALTER TABLE t3 INHERIT t1;
                        ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
 GRANT ALL ON t3 TO public;
 COPY t3(a,b,c) FROM stdin;
 CREATE POLICY p1 ON t1 FOR ALL TO PUBLIC USING (a % 2 = 0); -- be even number
@@ -3072,24 +3072,24 @@ FETCH ABSOLUTE 1 FROM current_check_cursor;
 ERROR:  FETCH ABSOLUTE not supported yet
 LINE 1: FETCH ABSOLUTE 1 FROM current_check_cursor;
               ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/6514. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/6514. React with thumbs up to raise its priority
 -- Still cannot UPDATE row 2 through cursor
 UPDATE current_check SET payload = payload || '_new' WHERE CURRENT OF current_check_cursor RETURNING *;
 ERROR:  WHERE CURRENT OF not supported yet
 LINE 1: ...ATE current_check SET payload = payload || '_new' WHERE CURR...
                                                              ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/737. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/737. React with thumbs up to raise its priority
 -- Can update row 4 through cursor, which is the next visible row
 FETCH RELATIVE 1 FROM current_check_cursor;
 ERROR:  FETCH RELATIVE not supported yet
 LINE 1: FETCH RELATIVE 1 FROM current_check_cursor;
               ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/6514. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/6514. React with thumbs up to raise its priority
 UPDATE current_check SET payload = payload || '_new' WHERE CURRENT OF current_check_cursor RETURNING *;
 ERROR:  WHERE CURRENT OF not supported yet
 LINE 1: ...ATE current_check SET payload = payload || '_new' WHERE CURR...
                                                              ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/737. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/737. React with thumbs up to raise its priority
 SELECT * FROM current_check;
 ERROR:  current transaction is aborted, commands ignored until end of transaction block
 -- Plan should be a subquery TID scan
@@ -3097,28 +3097,28 @@ EXPLAIN (COSTS OFF) UPDATE current_check SET payload = payload WHERE CURRENT OF 
 ERROR:  WHERE CURRENT OF not supported yet
 LINE 1: ...S OFF) UPDATE current_check SET payload = payload WHERE CURR...
                                                              ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/737. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/737. React with thumbs up to raise its priority
 -- Similarly can only delete row 4
 FETCH ABSOLUTE 1 FROM current_check_cursor;
 ERROR:  FETCH ABSOLUTE not supported yet
 LINE 1: FETCH ABSOLUTE 1 FROM current_check_cursor;
               ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/6514. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/6514. React with thumbs up to raise its priority
 DELETE FROM current_check WHERE CURRENT OF current_check_cursor RETURNING *;
 ERROR:  WHERE CURRENT OF not supported yet
 LINE 1: DELETE FROM current_check WHERE CURRENT OF current_check_cur...
                                   ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/737. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/737. React with thumbs up to raise its priority
 FETCH RELATIVE 1 FROM current_check_cursor;
 ERROR:  FETCH RELATIVE not supported yet
 LINE 1: FETCH RELATIVE 1 FROM current_check_cursor;
               ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/6514. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/6514. React with thumbs up to raise its priority
 DELETE FROM current_check WHERE CURRENT OF current_check_cursor RETURNING *;
 ERROR:  WHERE CURRENT OF not supported yet
 LINE 1: DELETE FROM current_check WHERE CURRENT OF current_check_cur...
                                   ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/737. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/737. React with thumbs up to raise its priority
 SELECT * FROM current_check;
 ERROR:  current transaction is aborted, commands ignored until end of transaction block
 COMMIT;

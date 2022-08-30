@@ -22,6 +22,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+
 import java.util.UUID;
 import org.junit.After;
 import org.junit.Before;
@@ -102,7 +103,6 @@ public class YbcUpgradeTest extends FakeDBApplication {
         Universe.getOrBadRequest(defaultUniverse.universeUUID)
             .getUniverseDetails()
             .ybcSoftwareVersion);
-    // assertEquals(false, true);
   }
 
   @Test

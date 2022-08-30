@@ -2126,7 +2126,7 @@ CREATE TEMP TABLE child1 ( ) INHERITS ( parent );
 ERROR:  INHERITS not supported yet
 LINE 1: CREATE TEMP TABLE child1 ( ) INHERITS ( parent );
                                      ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1129. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1129. React with thumbs up to raise its priority
 /*
 CREATE TEMP TABLE child2 ( ) INHERITS ( parent );
 INSERT INTO parent VALUES ( 1, 'p1' );

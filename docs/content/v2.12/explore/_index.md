@@ -93,7 +93,7 @@ Use [yb-ctl](../admin/yb-ctl) local cluster management utility to explore the co
         <div class="title">Multi-region deployments</div>
       </div>
       <div class="body">
-        Multi-region deployment topologies supported by YugabyteDB such as sync and async replication, geo-partitioning, etc.
+        Multi-region deployment topologies, including synchronous and xCluster replication, geo-partitioning, and more.
       </div>
     </a>
   </div>

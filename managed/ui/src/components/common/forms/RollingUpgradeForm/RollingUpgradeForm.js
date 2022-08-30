@@ -167,8 +167,9 @@ export default class RollingUpgradeForm extends Component {
       }
     }
 
-    if(!isDefinedNotNull(primaryCluster.enableYbc))
+    if (!isDefinedNotNull(primaryCluster.enableYbc))
       payload.enableYbc = featureFlags.released.enableYbc || featureFlags.test.enableYbc;
+
     this.props.submitRollingUpgradeForm(payload, universeUUID).then((response) => {
       if (response.payload.status === 200) {
         this.props.fetchCurrentUniverse(universeUUID);
@@ -326,11 +327,13 @@ export default class RollingUpgradeForm extends Component {
             formName="RollingUpgradeForm"
             onHide={this.resetAndClose}
             footerAccessory={
-              formValues.upgradeOption === 'Non-Restart' && (
+              formValues.upgradeOption === 'Non-Restart' ? (
                 <span className="non-rolling-msg">
                   <img alt="Note" src={WarningIcon} />
                   &nbsp; <b>Note!</b> &nbsp; Flags that require rolling restart won't be applied
                 </span>
+              ) : (
+                <></>
               )
             }
             title="G-Flags"
@@ -383,7 +386,7 @@ export default class RollingUpgradeForm extends Component {
                   ))}
                 </div>
               </FlexContainer>
-              {errorAlert}
+              <div className="gflag-err-msg">{errorAlert}</div>
             </div>
           </YBModal>
         );
@@ -549,7 +552,7 @@ export default class RollingUpgradeForm extends Component {
             asyncValidating={!this.state.formConfirmed}
           >
             <div className="form-right-aligned-labels rolling-upgrade-form top-10 time-delay-container">
-              { overrideIntentParams.instanceType ? (
+              {overrideIntentParams.instanceType ? (
                 <Field
                   name="timeDelay"
                   type="number"

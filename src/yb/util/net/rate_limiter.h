@@ -68,9 +68,9 @@ class RateLimiter {
 
   void SetTargetRate(uint64_t target_rate);
 
-#if defined(OS_MACOSX)
   MonoDelta total_time_slept() { return total_time_slept_; }
 
+#if defined(OS_MACOSX)
   // Only used in MacOS. Instead of using the elapsed time for the calculation, we use the time
   // we spent sleeping. Used only for testing.
   // additional_time is passed by the test to include this time in the rate calculation.
@@ -84,6 +84,10 @@ class RateLimiter {
 
   uint64_t time_slot_ms() const {
     return time_slot_ms_;
+  }
+
+  uint64_t total_bytes() const {
+    return total_bytes_;
   }
 
  private:
@@ -102,10 +106,8 @@ class RateLimiter {
   // Reset every time the rate changes
   MonoTime rate_start_time_;
 
-#if defined(OS_MACOSX)
   // Total amount of time this object has spent sleeping.
   MonoDelta total_time_slept_ = MonoDelta::FromMicroseconds(0);
-#endif
 
   // Total number of bytes sent or received by the user of this RateLimiter object.
   uint64_t total_bytes_ = 0;

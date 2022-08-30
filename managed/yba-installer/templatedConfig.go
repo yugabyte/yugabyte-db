@@ -8,7 +8,6 @@ import (
     "bytes"
     "encoding/json"
     "fmt"
-    "os"
     "sigs.k8s.io/yaml"
     yaml2 "github.com/goccy/go-yaml"
     "strings"
@@ -17,6 +16,7 @@ import (
     "github.com/xeipuuv/gojsonschema"
     "text/template"
     "path/filepath"
+    "os"
 )
 
 //PlatformAppSecret is special cased because it is not configurable by the user.
@@ -54,7 +54,9 @@ func validateJSONSchema(filename string) {
 
     jsonStringInput := string(jsonBytesInput)
 
-    schemaLoader := gojsonschema.NewReferenceLoader("file://./yba-installer-input-json-schema.json")
+    jsonSchemaName := "file://./configFiles/yba-installer-input-json-schema.json"
+
+    schemaLoader := gojsonschema.NewReferenceLoader(jsonSchemaName)
     documentLoader := gojsonschema.NewStringLoader(jsonStringInput)
 
     result, err := gojsonschema.Validate(schemaLoader, documentLoader)
@@ -107,34 +109,6 @@ func getYamlPathData(text string) (string) {
     }
 }
 
-func getNginxModeTemplate(text string) (string) {
-
-    inputYml, errYml := ioutil.ReadFile("yba-installer-input.yml")
-    if errYml != nil {
-        log.Fatalf("error: %v", errYml)
-    }
-
-    pathString := strings.ReplaceAll(text, " ", "")
-    yamlPathString := "$" + pathString
-    path, err := yaml2.PathString(yamlPathString)
-    if err != nil {
-        log.Fatalf("Yaml Path string " + yamlPathString + " not valid!")
-    }
-
-    var val string
-    err = path.Read(bytes.NewReader(inputYml), &val)
-
-    if val == "http" {
-
-        return val
-
-    }
-
-    return ""
-
-}
-
-
 // ReadConfigAndTemplate Reads info from input config file and sets
 // all template parameters for each individual config file directly, without
 // having to rely on variable names in app data.
@@ -144,13 +118,12 @@ func readConfigAndTemplate(configYmlFileName string) ([]byte, error)  {
     funcMap := template.FuncMap{
 
         // The name "yamlPath" is what the function will be called
-        //in the template text.
+        // in the template text.
         "yamlPath": getYamlPathData,
-        "yamlHttpCheck": getNginxModeTemplate,
     }
 
-    tmpl, err := template.New(filepath.Base(configYmlFileName)).
-    Funcs(funcMap).ParseFiles(configYmlFileName)
+    tmpl, err := template.New(filepath.Base("configFiles/" +configYmlFileName)).
+    Funcs(funcMap).ParseFiles("configFiles/" + configYmlFileName)
 
     if err != nil {
         fmt.Println(err)
@@ -190,11 +163,7 @@ func WriteBytes(byteSlice []byte, fileName []byte) ([]byte, error) {
 
     fileNameString := string(fileName)
 
-    file, createErr := os.OpenFile(
-        fileNameString,
-        os.O_WRONLY|os.O_TRUNC|os.O_CREATE,
-        os.ModePerm,
-    )
+    file, createErr := Create(fileNameString)
 
     if createErr != nil {
         return nil, createErr
@@ -239,6 +208,23 @@ func GenerateTemplatedConfiguration() {
         serviceContents := fmt.Sprint(service.(map[string]interface{})["contents"])
 
         WriteBytes([]byte(serviceContents), []byte(serviceFileName))
+
+        if strings.Contains(serviceFileName, "platform.conf") {
+
+            file, err := os.OpenFile(serviceFileName, os.O_APPEND|os.O_WRONLY, 0644)
+            if err != nil {
+                log.Println(err)
+            }
+            defer file.Close()
+
+            // Add the additional raw text to yb-platform.conf if it exists.
+            additionalEntryString := strings.TrimSuffix(getYamlPathData(".additional"), "\n")
+
+            if _, err := file.WriteString(additionalEntryString); err != nil {
+                log.Fatal(err)
+            }
+
+        }
 
         fmt.Println("Templated configuration for " + serviceName +
         " succesfully applied!")

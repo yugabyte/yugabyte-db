@@ -59,6 +59,8 @@ service PgClientService {
   rpc TruncateTable(PgTruncateTableRequestPB) returns (PgTruncateTableResponsePB);
   rpc ValidatePlacement(PgValidatePlacementRequestPB)
       returns (PgValidatePlacementResponsePB);
+  rpc GetTableDiskSize(PgGetTableDiskSizeRequestPB)
+      returns (PgGetTableDiskSizeResponsePB);
 
   rpc InsertSequenceTuple(PgInsertSequenceTupleRequestPB) returns (PgInsertSequenceTupleResponsePB);
   rpc UpdateSequenceTuple(PgUpdateSequenceTupleRequestPB) returns (PgUpdateSequenceTupleResponsePB);
@@ -120,6 +122,7 @@ message PgAlterTableRequestPB {
   repeated PgRenameColumnPB rename_columns = 5;
   repeated string drop_columns = 6;
   PgRenameTablePB rename_table = 7;
+  bool increment_schema_version = 8;
 }
 
 message PgAlterTableResponsePB {
@@ -491,6 +494,18 @@ message PgDeleteDBSequencesRequestPB {
 
 message PgDeleteDBSequencesResponsePB {
   AppStatusPB status = 1;
+}
+
+message PgGetTableDiskSizeRequestPB {
+  PgObjectIdPB table_id = 1;
+}
+
+message PgGetTableDiskSizeResponsePB {
+  AppStatusPB status = 1;
+
+  // size is 0 for colocated tables
+  int64 size = 2;
+  int32 num_missing_tablets = 3;
 }
 
 message PgCheckIfPitrActiveRequestPB {}

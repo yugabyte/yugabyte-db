@@ -3,3 +3,5 @@
 -J-Xmx2g
 -J-XX:MaxMetaspaceSize=700m
 -J-XX:MetaspaceSize=200m
+-Djdk.tls.client.protocols=TLSv1.2
+-Dhttps.protocols=TLSv1.2

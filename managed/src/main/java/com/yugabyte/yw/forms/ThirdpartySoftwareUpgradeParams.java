@@ -10,11 +10,13 @@ import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Universe;
 import java.util.UUID;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 import play.mvc.Http;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 @JsonDeserialize(converter = ThirdpartySoftwareUpgradeParams.Converter.class)
 @Data
+@EqualsAndHashCode(callSuper = true)
 public class ThirdpartySoftwareUpgradeParams extends UpgradeTaskParams {
 
   private boolean forceAll;

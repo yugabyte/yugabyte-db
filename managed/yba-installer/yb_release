@@ -65,11 +65,11 @@ fi
 # Will modify when merging with other diffs to include the
 # updated
 BINARY_NAME="yba-ctl"
-CONFIG_NGINX="yba-installer-nginx.yml"
-CONFIG_PLATFORM="yba-installer-platform.yml"
-CONFIG_PROM="yba-installer-prometheus.yml"
+CONFIG_NGINX="configFiles/yba-installer-nginx.yml"
+CONFIG_PLATFORM="configFiles/yba-installer-platform.yml"
+CONFIG_PROM="configFiles/yba-installer-prometheus.yml"
 CONFIG_INPUT_FILE_NAME="yba-installer-input.yml"
-JSON_SCHEMA_FILE="yba-installer-input-json-schema.json"
+JSON_SCHEMA_FILE="configFiles/yba-installer-input-json-schema.json"
 POSTGRES_BINARY_NAME="postgresql-9.6.24-1-linux-x64-binaries.tar.gz"
 
 #Need underscore in the PACKAGE_NAME for proper file parsing.

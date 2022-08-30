@@ -67,8 +67,8 @@
 
  func (pg Postgres) SetUpPrereqsBundled() {
 
-   // Only extract Postgres package if it exists.
-   if _, err := os.Stat("/var/lib/pgsql"); err == nil {
+   // Only extract the Postgres package if it doesn't exist.
+   if _, err := os.Stat("/var/lib/pgsql"); err != nil {
       extractPostgresPackageBundled()
    }
 
@@ -93,6 +93,7 @@
  func (pg Postgres) RestartBundled() {
 
    pg.StopBundled()
+   time.Sleep(5 * time.Second)
    pg.StartBundled()
 
  }
@@ -112,8 +113,8 @@
    log.Println("Stopping the Postgres service...")
    command1 := "sudo"
    arg1 := []string{"-u", "postgres", "bash", "-c",
-   "/var/lib/pgsql/bin/pg_ctl -D /var/lib/pgsql/data stop " +
-   "-l /var/lib/pgsql/logfile"}
+   "/var/lib/pgsql/bin/pg_ctl -D /var/lib/pgsql/data " +
+   "-l /var/lib/pgsql/logfile stop"}
    ExecuteBashCommand(command1, arg1)
    log.Println("Postgres service stopped succesfully!")
  }
@@ -131,6 +132,20 @@
 
  func runInitDBBundled() {
 
+   commandCheck := "bash"
+   argsCheck := []string{"-c", "id -u postgres"}
+   _, err := ExecuteBashCommand(commandCheck, argsCheck)
+
+   if err != nil {
+
+       commandUser := "useradd"
+       argUser := []string{"--no-create-home", "--shell", "/bin/false", "postgres"}
+       ExecuteBashCommand(commandUser, argUser)
+
+   } else {
+       fmt.Println("User postgres already exists, skipping user creation.")
+   }
+
    // Need to give the postgres user ownership of the /var/lib/pgsql directory,
    // since we cannot execute initdb as root.
    command0 := "chown"
@@ -147,10 +162,18 @@
 
    ExecuteBashCommand(command1, arg1)
 
-   command2 := "sudo"
-   arg2 := []string{"-u", "postgres", "bash", "-c",
-   "/var/lib/pgsql/bin/initdb -U postgres -D /var/lib/pgsql/data"}
+   // Create the mount directory for Postgres to execute on (not default /tmp)
+   os.MkdirAll("/var/run/postgresql", os.ModePerm)
+
+   command2 := "chown"
+   arg2 := []string{"postgres", "/var/run/postgresql"}
+
    ExecuteBashCommand(command2, arg2)
+
+   command3 := "sudo"
+   arg3 := []string{"-u", "postgres", "bash", "-c",
+   "/var/lib/pgsql/bin/initdb -U postgres -D /var/lib/pgsql/data"}
+   ExecuteBashCommand(command3, arg3)
 
 }
 
@@ -231,8 +254,11 @@
 
  func createYugawareDatabaseBundled() {
 
+   mountPath := "/var/run/postgresql/"
+
    command1 := "sudo"
-   arg1 := []string{"-u", "postgres", "bash", "-c", "dropdb yugaware"}
+   arg1 := []string{"-u", "postgres", "bash", "-c", "/var/lib/pgsql/bin/dropdb -h " +
+   mountPath + " yugaware"}
    _, err1 := ExecuteBashCommand(command1, arg1)
 
    if err1 != nil {
@@ -242,7 +268,8 @@
    }
 
    command2 := "sudo"
-   arg2 := []string{"-u", "postgres", "bash", "-c", "createdb yugaware"}
+   arg2 := []string{"-u", "postgres", "bash", "-c", "/var/lib/pgsql/bin/createdb -h " +
+   mountPath + " yugaware"}
    ExecuteBashCommand(command2, arg2)
 
 }

@@ -10,6 +10,7 @@
      "github.com/spf13/cobra"
      "log"
      "os"
+     "strings"
  )
 
  type functionPointer func()
@@ -18,30 +19,31 @@
 
  var order []string
 
- var versionToInstall = "2.8.1.0-b37"
+ var versionToInstall = GetVersion()
 
- var versionToUpgrade = "2.15.0.1-b4"
+ var versionToUpgrade = GetVersion()
 
  var httpMode = getYamlPathData(".nginx.mode")
+
+ var serviceManagementMode = getYamlPathData(".serviceManagementMode")
 
  var bringOwnPostgres, errPostgres = strconv.ParseBool(getYamlPathData(".postgres.bringOwn"))
 
  var bringOwnPython, errPython = strconv.ParseBool(getYamlPathData(".python.bringOwn"))
 
-// Will not be running as a Systemd service, so no service file path
-// needed when using bundled postgres.
-var postgres = Postgres{"postgres",
-"",
-[]string{"/var/lib/pgsql/data/pg_hba.conf",
-"/var/lib/pgsql/data/postgresql.conf"},
-"9.6"}
+ var postgres = Postgres{"postgres",
+ "/usr/lib/systemd/system/postgresql-11.service",
+ []string{"/var/lib/pgsql/11/data/pg_hba.conf",
+ "/var/lib/pgsql/11/data/postgresql.conf"},
+ "11"}
 
  var prometheus = Prometheus{"prometheus",
          "/etc/systemd/system/prometheus.service",
          "/etc/prometheus/prometheus.yml",
-         "2.27.1", false}
+         "2.37.0", false}
 
  var nginx = Nginx{"nginx",
+                "/usr/lib/systemd/system/nginx.service",
                 "/etc/nginx/nginx.conf",
                 httpMode, "_"}
 
@@ -130,6 +132,123 @@ var commonUpgrade = Common{"common", versionToUpgrade, httpMode}
     },
  }
 
+ var startCmd = &cobra.Command{
+    Use:   "start [serviceName]",
+    Short: "The start command is used to start service(s) required for your Yugabyte " +
+    "Anywhere installation.",
+    Long:  `
+    The start command can be invoked to start any service that is required for the
+    running of Yugabyte Anywhere. Can be invoked without any arguments to start all
+    services, or invoked with a specific service name to start only that service.
+    Valid service names: postgres, prometheus, yb-platform, nginx
+
+    Invoke as: sudo ./yba-installer start (to start all services)
+    sudo ./yba-installer start serviceName (to start that particular service)`,
+    Run: func(cmd *cobra.Command, args []string) {
+       if len(args) > 1{
+          log.Println("Invalid provided arguments: " + strings.Join(args, " "))
+          log.Fatal("The subcommand start only takes in one optional argument, the " +
+          " service to start!")
+       } else if len(args) == 1 {
+        if args[0] == "postgres" {
+            postgres.Start()
+        } else if args[0] == "prometheus" {
+            prometheus.Start()
+        } else if args[0] == "yb-platform" {
+            platformInstall.Start()
+        } else if args[0] == "nginx" {
+            nginx.Start()
+        } else {
+            log.Fatal("Invalid service name passed in. Valid options: postgres, prometheus " +
+            "yb-platform, nginx")
+            }
+        } else {
+            postgres.Start()
+            prometheus.Start()
+            platformInstall.Start()
+            nginx.Start()
+        }
+    },
+ }
+
+ var stopCmd = &cobra.Command{
+    Use:   "stop [serviceName]",
+    Short: "The stop command is used to stop service(s) required for your Yugabyte " +
+    "Anywhere installation.",
+    Long:  `
+    The stop command can be invoked to stop any service that is required for the
+    running of Yugabyte Anywhere. Can be invoked without any arguments to stop all
+    services, or invoked with a specific service name to stop only that service.
+    Valid service names: postgres, prometheus, yb-platform, nginx
+
+    Invoke as: sudo ./yba-installer stop (to stop all services)
+    sudo ./yba-installer stop serviceName (to stop that particular service)`,
+    Run: func(cmd *cobra.Command, args []string) {
+       if len(args) > 1{
+          log.Println("Invalid provided arguments: " + strings.Join(args, " "))
+          log.Fatal("The subcommand stop only takes in one optional argument, the " +
+          " service to stop!")
+       } else if len(args) == 1 {
+        if args[0] == "postgres" {
+            postgres.Stop()
+        } else if args[0] == "prometheus" {
+            prometheus.Stop()
+        } else if args[0] == "yb-platform" {
+            platformInstall.Stop()
+        } else if args[0] == "nginx" {
+            nginx.Stop()
+        } else {
+            log.Fatal("Invalid service name passed in. Valid options: postgres, prometheus " +
+            "yb-platform, nginx")
+        }
+        } else {
+            postgres.Stop()
+            prometheus.Stop()
+            platformInstall.Stop()
+            nginx.Stop()
+        }
+    },
+ }
+
+ var restartCmd = &cobra.Command{
+    Use:   "restart [serviceName]",
+    Short: "The restart command is used to restart service(s) required for your Yugabyte " +
+    "Anywhere installation.",
+    Long:  `
+    The restart command can be invoked to stop any service that is required for the
+    running of Yugabyte Anywhere. Can be invoked without any arguments to restart all
+    services, or invoked with a specific service name to restart only that service.
+    Valid service names: postgres, prometheus, yb-platform, nginx
+
+    Invoke as: sudo ./yba-installer restart (to restart all services)
+    sudo ./yba-installer restart serviceName (to restart that particular service)`,
+    Run: func(cmd *cobra.Command, args []string) {
+       if len(args) > 1{
+          log.Println("Invalid provided arguments: " + strings.Join(args, " "))
+          log.Fatal("The subcommand restart only takes in one optional argument, the " +
+          " service to stop!")
+       } else if len(args) == 1 {
+        if args[0] == "postgres" {
+            postgres.Restart()
+        } else if args[0] == "prometheus" {
+            prometheus.Restart()
+        } else if args[0] == "yb-platform" {
+            platformInstall.Restart()
+        } else if args[0] == "nginx" {
+            nginx.Restart()
+        } else {
+            log.Fatal("Invalid service name passed in. Valid options: postgres, prometheus " +
+            "yb-platform, nginx")
+        }
+        } else {
+            postgres.Restart()
+            prometheus.Restart()
+            platformInstall.Restart()
+            nginx.Restart()
+        }
+    },
+ }
+
  var versionCmd = &cobra.Command{
     Use:   "version",
     Short: "The version command prints out the current version associated with yba-installer.",
@@ -143,12 +262,13 @@ var commonUpgrade = Common{"common", versionToUpgrade, httpMode}
        if len(args) > 0{
           log.Fatal("The subcommand license does not take in any arguments!")
        }
-       Version("version_metadata.json")
+       fmt.Println("You are on version " + versionToInstall +
+       " of Yba-installer!")
     },
  }
 
  var paramsCmd = &cobra.Command{
-    Use:   "params",
+    Use:   "params key value",
     Short: "The params command can be used to update entries in the user configuration file.",
     Long:  `
     The params command is used to update configuration entries in yba-installer-input.yml,
@@ -159,6 +279,7 @@ var commonUpgrade = Common{"common", versionToUpgrade, httpMode}
     Invoke as: sudo ./yba-installer params key value`,
     Run: func(cmd *cobra.Command, args []string) {
        if len(args) != 2 {
+          log.Println("Invalid provided arguments: " + strings.Join(args, " "))
           log.Fatal("The subcommand params takes in exactly 2 arguments! (the configuration key" +
          " and the value you want to set the key to)")
        }
@@ -170,153 +291,144 @@ var commonUpgrade = Common{"common", versionToUpgrade, httpMode}
     },
  }
 
- var configureCmd = &cobra.Command{
-   Use:   "configure",
-   Short: "The configure command updates configuration entries in yba-installer-input.yml " +
-   "if desired, and restarts all Yugabyte Anywhere services.",
-   Long:  `
-   The configure command can be used to update configuration entries in yba-installer-input.yml,
-   corresponding to the settings for your Yugabyte Anywhere installation. Invoking this
-   command will also restart all of the associated Yugabyte Anywhere services. Can be invoked
-   with a key and value setting(similar to params) for configuration updates prior to the restart,
-   or with no arguments for just a simple service restart.
+var reConfigureCmd = &cobra.Command{
+Use:   "reconfigure [key] [value]",
+Short: "The reconfigure command updates configuration entries in yba-installer-input.yml " +
+"if desired, and restarts all Yugabyte Anywhere services.",
+Long:  `
+The reconfigure command is used to update configuration entries in the user configuration file
+yba-installer-input.yml, and performs a restart of all Yugabyte Anywhere services to make the
+changes from the updated configuration take effect. It is possible to invoke this method in
+one of two ways. Executing reconfigure without any arguments will perform a simple restart of all
+Yugabyte Anywhere services without any updates to the configuration files. Executing
+reconfigure with a key and value argument pair (the configuration setting you want to update)
+will update the configuration files accordingly, and restart all Yugabyte Anywhere services.
 
-   Invoke as either: sudo ./yba-installer configure key value (for configuration updates + restart)
-                     sudo ./yba-installer configure (for restart only)
-   `,
-   Run: func(cmd *cobra.Command, args []string) {
-      if len(args) != 2 && len(args) != 0 {
-         log.Fatal("The subcommand configure takes in either no arguments for a simple restart, or two " +
-         "arguments for a configuration update! (the configuration key" +
-         " and the value you want to set the key to)")
+Invoke as either: sudo ./yba-installer reconfigure key value (for config updates + restart)
+                  sudo ./yba-installer reconfigure (for restart only)
+`,
+Run: func(cmd *cobra.Command, args []string) {
+    if len(args) != 2 && len(args) != 0 {
+        log.Println("Invalid provided arguments: " + strings.Join(args, " "))
+        log.Fatal("The subcommand reconfigure takes in either no arguments for a simple " +
+        "restart, or two arguments for a configuration update! (the configuration key" +
+        " and the value you want to set the key to)")
+    }
+
+    if (len(args) == 2) {
+
+        key := args[0]
+        value := args[1]
+
+        Params(key, value)
+
       }
 
-       if (len(args) == 2) {
+    GenerateTemplatedConfiguration()
 
-         key := args[0]
-         value := args[1]
+    steps[postgres.Name] = []functionPointer{postgres.Stop, postgres.Start}
 
-         Params(key, value)
+    steps[prometheus.Name] = []functionPointer{prometheus.Stop, prometheus.Start}
 
+    steps[platformInstall.Name] = []functionPointer{platformInstall.Stop, platformInstall.Start}
+
+    steps[nginx.Name] = []functionPointer{nginx.Stop, nginx.Start}
+
+    order = []string{prometheus.Name, platformInstall.Name, nginx.Name}
+
+    if ! bringOwnPostgres {
+
+        order = []string{postgres.Name, prometheus.Name, platformInstall.Name, nginx.Name}
+
+    }
+
+    loopAndExecute("reconfigure")
+
+    },
+}
+
+func createBackupCmd() *cobra.Command {
+    var dataDir string
+    var excludePrometheus bool
+    var skipRestart bool
+    var verbose bool
+
+  createBackup := &cobra.Command{
+    Use:   "createBackup outputPath",
+    Short: "The createBackup command is used to take a backup of your Yugabyte Anywhere instance.",
+    Long:  `
+    The createBackup command executes our yb_platform_backup.sh that creates a backup of your
+    Yugabyte Anywhere instance. Executing this command requires that you create and specify the
+    outputPath where you want the backup .tar.gz file to be stored as the first argument to
+    createBackup. There are also optional flag specifications you can specify for the execution
+    of createBackup, which are listed below in the flags section.
+
+    Invoke as: sudo ./yba-installer createBackup outputPath [--data_dir=DIRECTORY]
+    [--exclude_prometheus] [--skip_restart] [--verbose]
+    `,
+    Run: func(cmd *cobra.Command, args []string) {
+       if len(args) != 1 {
+          log.Println("Invalid provided arguments: " + strings.Join(args, " "))
+          log.Fatal("The createBackup command takes in exactly one argument, the output path " +
+          "where the platform backup is written to! Please specify the output path.")
        }
 
-       GenerateTemplatedConfiguration()
+         outputPath := args[0]
 
-       steps[postgres.Name] = []functionPointer{postgres.StopBundled, postgres.StartBundled}
+        CreateBackupScript(outputPath, dataDir, excludePrometheus,
+            skipRestart, verbose)
+    },
+ }
 
-       steps[prometheus.Name] = []functionPointer{prometheus.Stop, prometheus.Start}
-
-       steps[platformInstall.Name] = []functionPointer{platformInstall.Stop, platformInstall.Start}
-
-       steps[nginx.Name] = []functionPointer{nginx.Stop, nginx.Start}
-
-       order = []string{postgres.Name, prometheus.Name, platformInstall.Name,
-         nginx.Name}
-
-      loopAndExecute("configure")
-
-   },
+    createBackup.Flags().StringVar(&dataDir, "data_dir", "/opt/yugabyte",
+    "data directory to be backed up")
+    createBackup.Flags().BoolVar(&excludePrometheus, "exclude_prometheus", false,
+    "exclude prometheus metric data from backup (default: false)")
+    createBackup.Flags().BoolVar(&skipRestart, "skip_restart", false,
+    "don't restart processes during execution (default: false)")
+    createBackup.Flags().BoolVar(&verbose, "verbose", false,
+    "verbose output of script (default: false)")
+    return createBackup
 }
 
-var createBackupCmd = &cobra.Command{
-   Use:   "createBackup",
-   Short: "The createBackup command is used to take a backup of your Yugabyte Anywhere instance.",
-   Long:  `
-   The createBackup command executes our createBackup() script that creates a backup of your
-   Yugabyte Anywhere instance. Executing this command requires that you create and specify the
-   output_path where you want the backup .tar.gz file to be stored. Optional specifications in
-   this command's execution are data_dir (data directory to be backed up, default /opt/yugabyte),
-   exclude_prometheus (boolean as to whether you want to exclude Prometheus metrics from the
-   backup, default false), skip_restart (boolean as to whether you want to skip restarting the
-   Yugabyte Anywhere services after taking the backup, default false), and verbose (boolean as
-   to whether you want verbose log messages during the createBackup script's execution, default
-   false)
+func restoreBackupCmd() *cobra.Command {
+    var destination string
+    var skipRestart bool
+    var verbose bool
 
-   Invoke as: sudo ./yba-installer createBackup output_path [data_dir=/opt/yugabyte]
-   [exclude_prometheus=false] [skip_restart=false] [verbose=false]`,
-   Run: func(cmd *cobra.Command, args []string) {
-      if len(args) < 1 || len(args) > 5 {
-         log.Fatal("The arguments for the createBackup command have been improperly specified. " +
-         "Please refer to the help menu description for more information.")
-      }
-        output_path := args[0]
+  restoreBackup := &cobra.Command{
+    Use:   "restoreBackup inputPath",
+    Short: "The restoreBackup command restores a backup of your Yugabyte Anywhere instance.",
+    Long:  `
+    The restoreBackup command executes our yb_platform_backup.sh that restores the backup of your
+    Yugabyte Anywhere instance. Executing this command requires that you create and specify the
+    inputPath where the backup .tar.gz file that will be restored is located as the first argument
+    to restoreBackup. There are also optional flag specifications you can specify for the execution
+    of restoreBackup, which are listed below in the flags section.
 
-        data_dir := "/opt/yugabyte"
-        exclude_prometheus := false
-        skip_restart := false
-        verbose := false
+    Invoke as: sudo ./yba-installer restoreBackup inputPath [--destination=DIRECTORY]
+    [--skip_restart] [--verbose]
+    `,
+    Run: func(cmd *cobra.Command, args []string) {
+       if len(args) != 1 {
+          log.Println("Invalid provided arguments: " + strings.Join(args, " "))
+          log.Fatal("The restoreBackup command takes in exactly one argument, the input path " +
+          "where the platform backup tar gz is located at! Please specify the input path.")
+       }
 
-        createBackupArgs := args[1:]
+        inputPath := args[0]
 
-        if len(createBackupArgs) == 4 {
-            data_dir = createBackupArgs[0]
-            exclude_prometheus, _ = strconv.ParseBool(createBackupArgs[1])
-            skip_restart, _ = strconv.ParseBool(createBackupArgs[2])
-            verbose, _ = strconv.ParseBool(createBackupArgs[3])
+        RestoreBackupScript(inputPath, destination, skipRestart, verbose)
+    },
+ }
 
-        } else if len(createBackupArgs) == 3 {
-            data_dir = createBackupArgs[0]
-            exclude_prometheus, _ = strconv.ParseBool(createBackupArgs[1])
-            skip_restart, _ = strconv.ParseBool(createBackupArgs[2])
-
-        } else if len(createBackupArgs) == 2 {
-            data_dir = createBackupArgs[0]
-            exclude_prometheus, _ = strconv.ParseBool(createBackupArgs[1])
-
-        } else if len(createBackupArgs) == 1 {
-            data_dir = createBackupArgs[0]
-
-        }
-        CreateBackupScript(output_path, data_dir, exclude_prometheus,
-            skip_restart, verbose)
-   },
-}
-
-var restoreBackupCmd = &cobra.Command{
-   Use:   "restoreBackup",
-   Short: "The restoreBackup command is used to restore a backup of your Yugabyte Anywhere instance.",
-   Long:  `
-   The restoreBackup command executes our restoreBackup() script that creates a backup of your
-   Yugabyte Anywhere instance. Executing this command requires that you create and specify the
-   input path where the backup .tar.gz file that will be restored is located. Optional specifications in
-   this command's execution are destination (directory you want the backup restored to,
-   default /opt/yugabyte), skip_restart (boolean as to whether you want to skip restarting the
-   Yugabyte Anywhere services after restoring the backup, default false), and verbose (boolean as
-   to whether you want verbose log messages during the restoreBackup script's execution, default
-   false)
-
-   Invoke as: sudo ./yba-installer restoreBackup input_path [destination=/opt/yugabyte]
-   [skip_restart=false] [verbose=false]`,
-   Run: func(cmd *cobra.Command, args []string) {
-      if len(args) < 1 || len(args) > 4 {
-         log.Fatal("The arguments for the restoreBackup command have been improperly specified. " +
-         "Please refer to the help menu description for more information.")
-      }
-
-        input_path := args[0]
-
-        destination := "/opt/yugabyte"
-        skip_restart := false
-        verbose := false
-
-        restoreBackupArgs := args[1:]
-
-        if len(restoreBackupArgs) == 3 {
-            destination = restoreBackupArgs[0]
-            skip_restart, _ = strconv.ParseBool(restoreBackupArgs[1])
-            verbose, _ = strconv.ParseBool(restoreBackupArgs[2])
-
-        } else if len(restoreBackupArgs) == 2 {
-            destination = restoreBackupArgs[0]
-            skip_restart, _ = strconv.ParseBool(restoreBackupArgs[1])
-
-        } else if len(restoreBackupArgs) == 1 {
-            destination = restoreBackupArgs[0]
-        }
-
-        RestoreBackupScript(input_path, destination,
-            skip_restart, verbose)
-   },
+    restoreBackup.Flags().StringVar(&destination, "destination", "/opt/yugabyte",
+    "where to un-tar the backup")
+    restoreBackup.Flags().BoolVar(&skipRestart, "skip_restart", false,
+    "don't restart processes during execution (default: false)")
+    restoreBackup.Flags().BoolVar(&verbose, "verbose", false,
+    "verbose output of script (default: false)")
+    return restoreBackup
 }
 
 var installCmd = &cobra.Command{
@@ -344,18 +456,9 @@ var installCmd = &cobra.Command{
 
       if bringOwnPostgres {
 
-        postgresParams, valid := ValidateUserPostgres("yba-installer-input.yml")
-
-        if valid {
-            postgres = Postgres{"postgres",
-            postgresParams["systemdLocation"],
-            []string{postgresParams["pgHbaConf"],
-                postgresParams["postgresConf"]},
-                postgresParams["version"]}
-        } else {
-
+        if ! ValidateUserPostgres("yba-installer-input.yml") {
             log.Fatalf("User Postgres not correctly configured! " +
-                    "Check settings.")
+                    "Check settings and the above logging message.")
         }
 
     }
@@ -366,39 +469,32 @@ var installCmd = &cobra.Command{
 
             log.Fatalf("User Python not correctly configured! " +
             "Check settings.")
-        }
+         }
 
-    }
+     }
 
         steps[commonInstall.Name] = []functionPointer{commonInstall.SetUpPrereqs,
-         commonInstall.Uninstall, commonInstall.Install}
+            commonInstall.Uninstall, commonInstall.Install}
 
         steps[prometheus.Name] = []functionPointer{prometheus.SetUpPrereqs,
             prometheus.Install, prometheus.Start}
 
-        if ! bringOwnPostgres {
-
-            // InstallBundled will automatically start Postgres in the setup stage.
-            steps[postgres.Name] = []functionPointer{postgres.SetUpPrereqsBundled,
-                postgres.InstallBundled}
-
-        }
+        steps[postgres.Name] = []functionPointer{postgres.SetUpPrereqs,
+        postgres.Install, postgres.Start}
 
         steps[platformInstall.Name] = []functionPointer{platformInstall.Install, platformInstall.Start}
 
         steps[nginx.Name] = []functionPointer{nginx.SetUpPrereqs,
             nginx.Install, nginx.Start}
 
+        order = []string{commonInstall.Name, prometheus.Name,
+                platformInstall.Name, nginx.Name}
+
         if ! bringOwnPostgres {
 
             order = []string{commonInstall.Name, prometheus.Name,
                 postgres.Name, platformInstall.Name, nginx.Name}
-        }  else {
-
-            order = []string{commonInstall.Name, prometheus.Name,
-                platformInstall.Name, nginx.Name}
-
-            }
+        }
 
         loopAndExecute("install")
 
@@ -462,8 +558,8 @@ var upgradeCmd = &cobra.Command{
 
 func init() {
     rootCmd.AddCommand(cleanCmd, preflightCmd, licenseCmd, versionCmd,
-    paramsCmd, configureCmd, createBackupCmd, restoreBackupCmd, installCmd,
-    upgradeCmd)
+    paramsCmd, reConfigureCmd, createBackupCmd(), restoreBackupCmd(), installCmd,
+    upgradeCmd, startCmd, stopCmd, restartCmd)
  }
 
  func Execute() {

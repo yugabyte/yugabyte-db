@@ -190,6 +190,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   Result<PgTableDescPtr> LoadTable(const PgObjectId& table_id);
   void InvalidateTableCache(
       const PgObjectId& table_id, InvalidateOnPgClient invalidate_on_pg_client);
+  Result<client::TableSizeInfo> GetTableDiskSize(const PgObjectId& table_oid);
 
   // Start operation buffering. Buffering must not be in progress.
   Status StartOperationsBuffering();

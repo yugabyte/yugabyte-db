@@ -55,6 +55,9 @@ DEFINE_test_flag(bool, xcluster_simulate_have_more_records, false,
                  "Whether GetChanges should indicate that it has more records for safe time "
                  "calculation.");
 
+DEFINE_test_flag(bool, xcluster_skip_meta_ops, false,
+                 "Whether GetChanges should skip processing meta operations ");
+
 namespace yb {
 namespace cdc {
 
@@ -137,10 +140,15 @@ Result<bool> SetCommittedRecordIndexForReplicateMsg(
       records->emplace_back(msg->hybrid_time(), index);
       return true;  // Don't need to process any records after a SPLIT_OP.
     }
-
+    case consensus::OperationType::CHANGE_METADATA_OP: {
+      if (FLAGS_TEST_xcluster_skip_meta_ops) {
+        FALLTHROUGH_INTENDED;
+      } else {
+        records->emplace_back(msg->hybrid_time(), index);
+        return true;  // Stop processing records after a CHANGE_METADATA_OP, wait for the Consumer.
+      }
+    }
     case consensus::OperationType::CHANGE_CONFIG_OP:
-      FALLTHROUGH_INTENDED;
-    case consensus::OperationType::CHANGE_METADATA_OP:
       FALLTHROUGH_INTENDED;
     case consensus::OperationType::HISTORY_CUTOFF_OP:
       FALLTHROUGH_INTENDED;
@@ -416,6 +424,15 @@ Status PopulateSplitOpRecord(const ReplicateMsgPtr& msg, CDCRecordPB* record) {
   return Status::OK();
 }
 
+Status PopulateChangeMetadataRecord(const ReplicateMsgPtr& msg, CDCRecordPB* record) {
+  SCHECK(msg->has_change_metadata_request(), InvalidArgument,
+      Format("METADATA message requires change_metadata_request: $0", msg->ShortDebugString()));
+  record->set_operation(CDCRecordPB::CHANGE_METADATA);
+  record->set_time(msg->hybrid_time());
+  record->mutable_change_metadata_request()->CopyFrom(msg->change_metadata_request());
+  return Status::OK();
+}
+
 Result<HybridTime> GetSafeTimeForTarget(const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
                                         HybridTime ht_of_last_returned_message,
                                         HaveMoreMessages have_more_messages) {
@@ -509,7 +526,20 @@ Status GetChangesForXCluster(const std::string& stream_id,
           }
         }
         break;
-
+      case consensus::OperationType::CHANGE_METADATA_OP:
+        if (FLAGS_TEST_xcluster_skip_meta_ops) {
+          break;
+        }
+        SCHECK(msg->has_change_metadata_request(), InvalidArgument,
+               Format("Change Meta op message requires payload $0", msg->ShortDebugString()));
+        if (msg->change_metadata_request().tablet_id() == tablet_id) {
+          RETURN_NOT_OK(PopulateChangeMetadataRecord(msg, resp->add_records()));
+          // This should be the last record we send to the Consumer.
+          checkpoint = OpId::FromPB(msg->id());
+          first_unreplicated_index = i+1;
+          exit_early = true;
+        }
+        break;
       default:
         // Nothing to do for other operation types.
         break;

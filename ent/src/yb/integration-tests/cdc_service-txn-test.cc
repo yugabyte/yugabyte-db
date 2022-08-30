@@ -68,8 +68,32 @@ class CDCServiceTxnTest : public TransactionTestBase<MiniCluster>,
         &client_->proxy_cache(), HostPort::FromBoundEndpoint(mini_server->bound_rpc_addr()));
   }
 
+  Status GetChangesInitialSchema(GetChangesRequestPB const& change_req,
+                                 CDCCheckpointPB* mutable_checkpoint);
+
   std::unique_ptr<CDCServiceProxy> cdc_proxy_;
 };
+
+Status CDCServiceTxnTest::GetChangesInitialSchema(GetChangesRequestPB const& req_in,
+                                                  CDCCheckpointPB* mutable_checkpoint) {
+  GetChangesRequestPB change_req(req_in);
+  GetChangesResponsePB change_resp;
+  change_req.set_max_records(1);
+
+  // Consume the META_OP that has the original Schema.
+  {
+    RpcController rpc;
+    SCOPED_TRACE(change_req.DebugString());
+    RETURN_NOT_OK(cdc_proxy_->GetChanges(change_req, &change_resp, &rpc));
+    SCHECK(!change_resp.has_error(), IllegalState,
+           Format("Response Error: $0", change_resp.error().DebugString()));
+    SCHECK_EQ(change_resp.records_size(), 1, IllegalState, "Expected only 1 record");
+    SCHECK_EQ(change_resp.records(0).operation(), CDCRecordPB::CHANGE_METADATA,
+              IllegalState, "Expected the CHANGE_METADATA related to the initial schema");
+    mutable_checkpoint->CopyFrom(change_resp.checkpoint());
+  }
+  return Status::OK();
+}
 
 INSTANTIATE_TEST_CASE_P(EnableIntentReplication, CDCServiceTxnTest, ::testing::Bool());
 
@@ -169,8 +193,8 @@ TEST_P(CDCServiceTxnTest, TestGetChanges) {
     SCOPED_TRACE(change_resp.DebugString());
     ASSERT_FALSE(change_resp.has_error());
 
-    // Expect total 7 records: 5 WRITE_OP records and 2 UPDATE_TRANSACTION_OP records.
-    ASSERT_EQ(change_resp.records_size(), 7);
+    // Expect total 8 records: 1 META OP, 5 WRITE_OP, and 2 UPDATE_TRANSACTION_OP records.
+    ASSERT_EQ(change_resp.records_size(), 8);
 
     struct Record {
       int32_t value; // 0 if apply record.
@@ -223,6 +247,14 @@ TEST_P(CDCServiceTxnTest, TestGetChangesForPendingTransaction) {
   CDCStreamId stream_id;
   CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id);
 
+  GetChangesRequestPB change_req;
+  GetChangesResponsePB change_resp;
+  change_req.set_stream_id(stream_id);
+  change_req.set_tablet_id(tablets.Get(0).tablet_id());
+
+  // Consume the META_OP that has the initial table Schema.
+  ASSERT_OK(GetChangesInitialSchema(change_req, change_req.mutable_from_checkpoint()));
+
   auto txn = CreateTransaction();
   auto session = CreateSession(txn);
   ASSERT_RESULT(WriteRow(session, kStartKey /* key */, kStartKey /* value */, WriteOpType::INSERT,
@@ -231,14 +263,6 @@ TEST_P(CDCServiceTxnTest, TestGetChangesForPendingTransaction) {
                          WriteOpType::INSERT, Flush::kTrue));
   ASSERT_RESULT(WriteRow(session, kStartKey + 2 /* key */, kStartKey + 2 /* value */,
                          WriteOpType::INSERT, Flush::kTrue));
-
-  GetChangesRequestPB change_req;
-  GetChangesResponsePB change_resp;
-
-  change_req.set_stream_id(stream_id);
-  change_req.set_tablet_id(tablets.Get(0).tablet_id());
-  change_req.mutable_from_checkpoint()->mutable_op_id()->set_index(0);
-  change_req.mutable_from_checkpoint()->mutable_op_id()->set_term(0);
 
   // Get CDC changes.
   {
@@ -329,7 +353,8 @@ TEST_P(CDCServiceTxnTestEnableReplicateIntents, MetricsTest) {
     SCOPED_TRACE(change_resp.DebugString());
     ASSERT_FALSE(change_resp.has_error());
 
-    ASSERT_EQ(change_resp.records_size(), 2);
+    // 1 META_OP, 1 TXN, 1 WRITE
+    ASSERT_EQ(change_resp.records_size(), 3);
   }
 
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
@@ -341,7 +366,7 @@ TEST_P(CDCServiceTxnTestEnableReplicateIntents, MetricsTest) {
     YB_LOG_EVERY_N_SECS(INFO, 1) << "Sent lag: " << lag << "us";
     // Only check sent lag, since we're just calling GetChanges once and expect committed lag to be
     // greater than 0.
-    return lag == 0;
+    return lag <= 0;
   }, MonoDelta::FromSeconds(10), "Wait for Sent Lag == 0"));
 
 

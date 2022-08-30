@@ -33,6 +33,7 @@
 #include "yb/tserver/remote_bootstrap_service.h"
 
 #include <algorithm>
+#include <iomanip>
 #include <string>
 #include <vector>
 
@@ -73,9 +74,9 @@ using namespace std::literals;
 
 #define RPC_RETURN_NOT_OK(expr, app_err, message) \
   do { \
-    Status s = (expr); \
+    auto&& s = (expr); \
     if (!s.ok()) { \
-      RPC_RETURN_APP_ERROR(app_err, message, s); \
+      RPC_RETURN_APP_ERROR(app_err, message, MoveStatus(s)); \
     } \
   } while (false)
 
@@ -184,11 +185,11 @@ void RemoteBootstrapServiceImpl::BeginRemoteBootstrapSession(
             local_cloud_info_pb_))));
   }
 
-
-  std::shared_ptr<TabletPeer> tablet_peer;
-  RPC_RETURN_NOT_OK(tablet_peer_lookup_->GetTabletPeer(tablet_id, &tablet_peer),
+  auto tablet_peer_result = tablet_peer_lookup_->GetServingTablet(tablet_id);
+  RPC_RETURN_NOT_OK(tablet_peer_result,
                     RemoteBootstrapErrorPB::TABLET_NOT_FOUND,
                     Substitute("Unable to find specified tablet: $0", tablet_id));
+  auto tablet_peer = std::move(*tablet_peer_result);
   RPC_RETURN_NOT_OK(tablet_peer->CheckRunning(),
                     RemoteBootstrapErrorPB::TABLET_NOT_FOUND,
                     Substitute("Tablet is not running yet: $0", tablet_id));
@@ -302,11 +303,15 @@ void RemoteBootstrapServiceImpl::FetchData(const FetchDataRequestPB* req,
   RPC_RETURN_NOT_OK(ValidateFetchRequestDataId(data_id, &info.error_code, session),
                     info.error_code, "Invalid DataId");
 
+  session->data_read_timer().resume();
   RPC_RETURN_NOT_OK(session->GetDataPiece(data_id, &info),
                     info.error_code, "Unable to get piece of data file");
+  session->data_read_timer().stop();
 
   session->rate_limiter().UpdateDataSizeAndMaybeSleep(info.data.size());
+  session->crc_compute_timer().resume();
   uint32_t crc32 = Crc32c(info.data.data(), info.data.length());
+  session->crc_compute_timer().stop();
 
   DataChunkPB* data_chunk = resp->mutable_chunk();
   *data_chunk->mutable_data() = std::move(info.data);
@@ -439,7 +444,21 @@ Status RemoteBootstrapServiceImpl::DoEndRemoteBootstrapSession(
   auto session = it->second.session;
 
   if (session_succeeded || session->Succeeded()) {
-    session->SetSuccess();
+    if(!session->Succeeded()) {
+      session->SetSuccess();
+
+      const auto total_bytes = session->rate_limiter().total_bytes();
+      LOG(INFO) << std::fixed << std::setprecision(3) << "Remote bootstrap session with id "
+        << session_id << " completed. Stats: Transmission rate: "
+        << session->rate_limiter().GetRate() << ", RateLimiter total time slept: "
+        << session->rate_limiter().total_time_slept() << ", Total bytes: "
+        << total_bytes << ", Read rate "
+        << (total_bytes / session->data_read_timer().elapsed().wall_millis())
+        << " bytes/msec (Total ms: " << session->data_read_timer().elapsed().wall_millis()
+        << "), CRC computation rate: "
+        << (total_bytes / session->crc_compute_timer().elapsed().wall_millis()) << " bytes/msec"
+        << "(Total ms: " << session->crc_compute_timer().elapsed().wall_millis() << ")";
+    }
 
     if (PREDICT_FALSE(FLAGS_TEST_inject_latency_before_change_role_secs)) {
       LOG(INFO) << "Injecting latency for test";
@@ -503,11 +522,12 @@ void RemoteBootstrapServiceImpl::RegisterLogAnchor(
     const RegisterLogAnchorRequestPB* req,
     RegisterLogAnchorResponsePB* resp,
     rpc::RpcContext context) {
-  std::shared_ptr<tablet::TabletPeer> tablet_peer;
+  auto tablet_peer_result = tablet_peer_lookup_->GetServingTablet(req->tablet_id());
   RPC_RETURN_NOT_OK(
-      tablet_peer_lookup_->GetTabletPeer(req->tablet_id(), &tablet_peer),
+      tablet_peer_result,
       RemoteBootstrapErrorPB::TABLET_NOT_FOUND,
       Substitute("Unable to find specified tablet: $0", req->tablet_id()));
+  auto tablet_peer = std::move(*tablet_peer_result);
   RPC_RETURN_NOT_OK(
       tablet_peer->CheckRunning(),
       RemoteBootstrapErrorPB::TABLET_NOT_FOUND,

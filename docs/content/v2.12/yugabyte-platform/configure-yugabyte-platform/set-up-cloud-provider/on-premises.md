@@ -265,7 +265,7 @@ Physical nodes (or cloud instances) are installed with a standard Centos 7 serve
 
 
     <br>Then, run the following command:
-
+    
     ```sh
     $ sudo chronyc makestep   # (force instant sync to NTP server)
     ```
@@ -371,95 +371,83 @@ Physical nodes (or cloud instances) are installed with a standard Centos 7 serve
 
 ##### Install Prometheus node exporter
 
-For Yugabyte Platform versions 2.8 and later, download the 1.3.1 version of the Prometheus node exporter, as follows:
+Download the 1.3.1 version of the Prometheus node exporter, as follows:
 
 ```sh
 wget https://github.com/prometheus/node_exporter/releases/download/v1.3.1/node_exporter-1.3.1.linux-amd64.tar.gz
 ```
 
-For Yugabyte Platform versions prior to 2.8, download the 0.13.0 version of the exporter, as follows:
-
-```sh
-$ wget https://github.com/prometheus/node_exporter/releases/download/v0.13.0/node_exporter-0.13.0.linux-amd64.tar.gz
-```
-
 If you are doing an airgapped installation, download the node exporter using a computer connected to the internet and copy it over to the database nodes.
-
-Note that the instructions are for the 0.13.0 version. The same instructions are applicable to the 1.3.1 version, but you need to use the correct file name.
 
 On each node, perform the following as a user with sudo access:
 
-1. Copy the `node_exporter-....tar.gz` package file that you downloaded into the `/tmp` directory on each of the YugabyteDB nodes. Ensure this file is readable by the `centos` user on each node (or another user with sudo privileges).
+1. Copy the `node_exporter-1.3.1.linux-amd64.gz` package file that you downloaded into the `/tmp` directory on each of the YugabyteDB nodes. Ensure that this file is readable by the user (for example, `centos`).
 
-1. Run the following commands (sudo required):
+1. Run the following commands:
 
-    ```sh
-    $ sudo mkdir /opt/prometheus
-    $ sudo mkdir /etc/prometheus
-    $ sudo mkdir /var/log/prometheus
-    $ sudo mkdir /var/run/prometheus
-    $ sudo mv /tmp/node_exporter-0.13.0.linux-amd64.tar  /opt/prometheus
-    $ sudo adduser prometheus (also adds group “prometheus”)
-    $ sudo chown -R prometheus:prometheus /opt/prometheus
-    $ sudo chown -R prometheus:prometheus /etc/prometheus
-    $ sudo chown -R prometheus:prometheus /var/log/prometheus
-    $ sudo chown -R prometheus:prometheus /var/run/prometheus
-    $ sudo chmod +r /opt/prometheus/node_exporter-0.13.0.linux-amd64.tar
-    $ sudo su - prometheus (user session is now as user “prometheus”)
-    ```
+   ```sh
+   sudo mkdir /opt/prometheus
+   sudo mkdir /etc/prometheus
+   sudo mkdir /var/log/prometheus
+   sudo mkdir /var/run/prometheus
+   sudo mv /tmp/node_exporter-1.3.1.linux-amd64.tar  /opt/prometheus
+   sudo adduser prometheus # (also adds group “prometheus”)
+   sudo chown -R prometheus:prometheus /opt/prometheus
+   sudo chown -R prometheus:prometheus /etc/prometheus
+   sudo chown -R prometheus:prometheus /var/log/prometheus
+   sudo chown -R prometheus:prometheus /var/run/prometheus
+   sudo chmod +r /opt/prometheus/node_exporter-1.3.1.linux-amd64.tar
+   sudo su - prometheus (user session is now as user “prometheus”)
+   ```
 
 1. Run the following commands as user `prometheus`:
 
-    ```sh
-    $ cd /opt/prometheus
-    $ tar zxf node_exporter-0.13.0.linux-amd64.tar.gz
-    $ exit   # (exit from prometheus user back to previous user)
-    ```
+   ```sh
+   cd /opt/prometheus
+   tar zxf node_exporter-1.3.1.linux-amd64.tar.gz
+   exit   # (exit from prometheus user back to previous user)
+   ```
 
-1. Edit the following file (sudo required):
+1. Edit the following file:
 
-    ```sh
-    $ sudo vi /etc/systemd/system/node_exporter.service
-    ```
+   ```sh
+   sudo vi /etc/systemd/system/node_exporter.service
+   ```
 
-    \
-    Add the following to `/etc/systemd/system/node_exporter.service`:
 
-      ```conf
-      [Unit]
-      Description=node_exporter - Exporter for machine metrics.
-      Documentation=https://github.com/William-Yeh/ansible-prometheus
-      After=network.target
+   Add the following to the `/etc/systemd/system/node_exporter.service` file:
 
-      [Install]
-      WantedBy=multi-user.target
+     ```conf
+     [Unit]
+     Description=node_exporter - Exporter for machine metrics.
+     Documentation=https://github.com/William-Yeh/ansible-prometheus
+     After=network.target
+   
+     [Install]
+     WantedBy=multi-user.target
+   
+     [Service]
+     Type=simple
+   
+     User=prometheus
+     Group=prometheus
+   
+     ExecStart=/opt/prometheus/node_exporter-1.3.1.linux-amd64/node_exporter  --web.listen-address=:9300 --collector.textfile.directory=/tmp/yugabyte/metrics
+     ```
 
-      [Service]
-      Type=simple
+1. Exit from vi, and continue, as follows:
 
-      #ExecStartPre=/bin/sh -c  " mkdir -p '/var/run/prometheus' '/var/log/prometheus' "
-      #ExecStartPre=/bin/sh -c  " chown -R prometheus '/var/run/prometheus' '/var/log/prometheus' "
-      #PIDFile=/var/run/prometheus/node_exporter.pid
-
-      User=prometheus
-      Group=prometheus
-
-      ExecStart=/opt/prometheus/node_exporter-0.13.0.linux-amd64/node_exporter  --web.listen-address=:9300 --collector.textfile.directory=/tmp/yugabyte/metrics
-      ```
-
-1. Exit from vi, and continue (sudo required):
-
-    ```sh
-    $ sudo systemctl daemon-reload
-    $ sudo systemctl enable node_exporter
-    $ sudo systemctl start node_exporter
-    ```
+   ```sh
+   sudo systemctl daemon-reload
+   sudo systemctl enable node_exporter
+   sudo systemctl start node_exporter
+   ```
 
 1. Check the status of the `node_exporter` service with the following command:
 
-    ```sh
-    $ sudo systemctl status node_exporter
-    ```
+   ```sh
+   sudo systemctl status node_exporter
+   ```
 
 ##### Install backup utilities
 

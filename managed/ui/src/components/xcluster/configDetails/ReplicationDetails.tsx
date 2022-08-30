@@ -5,7 +5,8 @@ import { useDispatch, useSelector } from 'react-redux';
 import { Link } from 'react-router';
 import { toast } from 'react-toastify';
 import { useInterval, useMount } from 'react-use';
-import { IReplicationStatus } from '..';
+import _ from 'lodash';
+
 import { closeDialog, openDialog } from '../../../actions/modal';
 import { fetchUniverseList } from '../../../actions/universe';
 import {
@@ -19,7 +20,8 @@ import { YBLoading } from '../../common/indicators';
 import { YBConfirmModal } from '../../modals';
 import { YBTabsPanel } from '../../panels';
 import { ReplicationContainer } from '../../tables';
-import { IReplication } from '../IClusterReplication';
+import { Replication } from '../XClusterReplicationTypes';
+import { ReplicationStatus, TRANSITORY_STATES } from '../constants';
 import {
   findUniverseName,
   GetConfiguredThreshold,
@@ -30,10 +32,11 @@ import {
 import { AddTablesToClusterModal } from './AddTablesToClusterModal';
 import { EditReplicationDetails } from './EditReplicationDetails';
 import { LagGraph } from './LagGraph';
+import { ReplicationTables } from './ReplicationTables';
+import { ReplicationOverview } from './ReplicationOverview';
 
 import './ReplicationDetails.scss';
-import { ReplicationDetailsTable } from './ReplicationDetailsTable';
-import { ReplicationOverview } from './ReplicationOverview';
+
 
 interface Props {
   params: {
@@ -52,7 +55,7 @@ export function ReplicationDetails({ params }: Props) {
   const {
     data: replication,
     isLoading
-  }: { data: IReplication | undefined; isLoading: boolean } = useQuery(
+  }: { data: Replication | undefined; isLoading: boolean } = useQuery(
     ['Xcluster', params.replicationUUID],
     () => getXclusterConfig(params.replicationUUID)
   );
@@ -65,15 +68,16 @@ export function ReplicationDetails({ params }: Props) {
   //refresh metrics for every 20 seconds
   useInterval(() => {
     queryClient.invalidateQueries('xcluster-metric');
+    if (_.includes(TRANSITORY_STATES, replication?.status)) {
+      queryClient.invalidateQueries('Xcluster');
+    }
   }, 20_000);
 
   const switchReplicationStatus = useMutation(
-    (replication: IReplication) => {
+    (replication: Replication) => {
       return changeXClusterStatus(
         replication,
-        replication.paused
-          ? IReplicationStatus.RUNNING
-          : IReplicationStatus.PAUSED
+        replication.paused ? ReplicationStatus.RUNNING : ReplicationStatus.PAUSED
       );
     },
     {
@@ -117,10 +121,14 @@ export function ReplicationDetails({ params }: Props) {
     <>
       <div className="replication-details">
         <h2 className="content-title">
-          <Link to={`/universes/${replication.sourceUniverseUUID}`}>{findUniverseName(universesList, replication.sourceUniverseUUID)}</Link>
+          <Link to={`/universes/${replication.sourceUniverseUUID}`}>
+            {findUniverseName(universesList, replication.sourceUniverseUUID)}
+          </Link>
           <span className="subtext">
             <i className="fa fa-chevron-right submenu-icon" />
-            <Link to={`/universes/${replication.sourceUniverseUUID}/replication/`}>Replication</Link>
+            <Link to={`/universes/${replication.sourceUniverseUUID}/replication/`}>
+              Replication
+            </Link>
             <i className="fa fa-chevron-right submenu-icon" />
             {replication.name}
           </span>
@@ -133,11 +141,9 @@ export function ReplicationDetails({ params }: Props) {
             <Col lg={5} className="noPadding">
               <Row className="details-actions-button">
                 <YBButton
-                  btnText={`${
-                    replication.paused ? 'Enable' : 'Pause'
-                  } Replication`}
+                  btnText={`${replication.paused ? 'Enable' : 'Pause'} Replication`}
                   btnClass={'btn btn-orange replication-status-button'}
-                  disabled={ isChangeDisabled(replication?.status) }
+                  disabled={isChangeDisabled(replication?.status)}
                   onClick={() => {
                     toast.success('Please wait...');
                     switchReplicationStatus.mutateAsync(replication);
@@ -152,7 +158,7 @@ export function ReplicationDetails({ params }: Props) {
                           dispatch(openDialog('editReplicationConfiguration'));
                         }
                       }}
-                      disabled={ isChangeDisabled(replication?.status) }
+                      disabled={isChangeDisabled(replication?.status)}
                     >
                       Edit replication configurations
                     </MenuItem>
@@ -208,13 +214,15 @@ export function ReplicationDetails({ params }: Props) {
             <Col lg={12} className="noPadding">
               <YBTabsPanel defaultTab={'overview'} id="replication-tab-panel">
                 <Tab eventKey={'overview'} title={'Overview'}>
-                  {destinationUniverse !== undefined && <ReplicationOverview
-                    replication={replication}
-                    destinationUniverse={destinationUniverse}
-                  />}
+                  {destinationUniverse !== undefined && (
+                    <ReplicationOverview
+                      replication={replication}
+                      destinationUniverse={destinationUniverse}
+                    />
+                  )}
                 </Tab>
                 <Tab eventKey={'tables'} title={'Tables'}>
-                  <ReplicationDetailsTable replication={replication} />
+                  <ReplicationTables replication={replication} />
                 </Tab>
                 <Tab eventKey={'metrics'} title="Metrics" id="universe-tab-panel">
                   <ReplicationContainer

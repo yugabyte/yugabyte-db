@@ -466,4 +466,9 @@ DELETE /customers/:cUUID/node_agents/:nUUID                                    c
 GET    /node_agents/download                                                   com.yugabyte.yw.controllers.NodeAgentController.download(downloadType: String ?= "INSTALLER", os: String ?= "", arch: String ?= "")
 
 # List buckets API
-POST     /customers/:cUUID/cloud/:cloud/buckets                                 com.yugabyte.yw.controllers.CustomerConfigController.listBuckets(cUUID: java.util.UUID, cloud: String)
+POST     /customers/:cUUID/cloud/:cloud/buckets                                com.yugabyte.yw.controllers.CustomerConfigController.listBuckets(cUUID: java.util.UUID, cloud: String)
+
+# Ybc Management API
+PUT /customers/:cUUID/universes/:uniUUID/ybc/disable                           com.yugabyte.yw.controllers.YbcController.disable(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+PUT /customers/:cUUID/universes/:uniUUID/ybc/upgrade                           com.yugabyte.yw.controllers.YbcController.upgrade(cUUID: java.util.UUID, uniUUID: java.util.UUID, ybcVersion: String ?= "")
+PUT /customers/:cUUID/universes/:uniUUID/ybc/install                           com.yugabyte.yw.controllers.YbcController.install(cUUID: java.util.UUID, uniUUID: java.util.UUID, ybcVersion: String ?= "")

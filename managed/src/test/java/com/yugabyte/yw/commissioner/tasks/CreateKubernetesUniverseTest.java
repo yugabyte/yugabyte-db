@@ -424,7 +424,9 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
             eq(defaultProvider.uuid),
             eq(nodePrefix1),
             eq(ns1),
-            expectedOverrideFile.capture());
+            expectedOverrideFile.capture(),
+            eq(new HashMap<String, Object>()),
+            eq(new HashMap<String, Object>()));
     verify(mockKubernetesManager, times(1))
         .helmInstall(
             eq(YB_SOFTWARE_VERSION),
@@ -432,7 +434,9 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
             eq(defaultProvider.uuid),
             eq(nodePrefix2),
             eq(ns2),
-            expectedOverrideFile.capture());
+            expectedOverrideFile.capture(),
+            eq(new HashMap<String, Object>()),
+            eq(new HashMap<String, Object>()));
     verify(mockKubernetesManager, times(1))
         .helmInstall(
             eq(YB_SOFTWARE_VERSION),
@@ -440,7 +444,9 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
             eq(defaultProvider.uuid),
             eq(nodePrefix3),
             eq(ns3),
-            expectedOverrideFile.capture());
+            expectedOverrideFile.capture(),
+            eq(new HashMap<String, Object>()),
+            eq(new HashMap<String, Object>()));
 
     String overrideFileRegex = "(.*)" + defaultUniverse.universeUUID + "(.*).yml";
     assertThat(expectedOverrideFile.getValue(), RegexMatcher.matchesRegex(overrideFileRegex));
@@ -502,7 +508,9 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
             eq(defaultProvider.uuid),
             eq(NODE_PREFIX),
             eq(ns),
-            expectedOverrideFile.capture());
+            expectedOverrideFile.capture(),
+            eq(new HashMap<String, Object>()),
+            eq(new HashMap<String, Object>()));
 
     String overrideFileRegex = "(.*)" + defaultUniverse.universeUUID + "(.*).yml";
     assertThat(expectedOverrideFile.getValue(), RegexMatcher.matchesRegex(overrideFileRegex));

@@ -290,6 +290,8 @@ class PgApiImpl {
   Status AlterTableRenameTable(PgStatement *handle, const char *db_name,
                                        const char *newname);
 
+  Status AlterTableIncrementSchemaVersion(PgStatement *handle);
+
   Status ExecAlterTable(PgStatement *handle);
 
   Status NewDropTable(const PgObjectId& table_id,
@@ -312,6 +314,8 @@ class PgApiImpl {
   Status SetIsSysCatalogVersionChange(PgStatement *handle);
 
   Status SetCatalogCacheVersion(PgStatement *handle, uint64_t catalog_cache_version);
+
+  Result<client::TableSizeInfo> GetTableDiskSize(const PgObjectId& table_oid);
 
   //------------------------------------------------------------------------------------------------
   // Create and drop index.

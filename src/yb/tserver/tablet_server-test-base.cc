@@ -126,7 +126,7 @@ void TabletServerTestBase::StartTabletServer() {
   // Set up a tablet inside the server.
   CHECK_OK(mini_server_->AddTestTablet(
       kTableName.namespace_name(), kTableName.table_name(), kTabletId, schema_, table_type_));
-  CHECK(mini_server_->server()->tablet_manager()->LookupTablet(kTabletId, &tablet_peer_));
+  tablet_peer_ = CHECK_RESULT(mini_server_->server()->tablet_manager()->GetTablet(kTabletId));
 
   // Creating a tablet is async, we wait here instead of having to handle errors later.
   CHECK_OK(WaitForTabletRunning(kTabletId));
@@ -137,8 +137,7 @@ void TabletServerTestBase::StartTabletServer() {
 
 Status TabletServerTestBase::WaitForTabletRunning(const char *tablet_id) {
   auto* tablet_manager = mini_server_->server()->tablet_manager();
-  std::shared_ptr<tablet::TabletPeer> tablet_peer;
-  RETURN_NOT_OK(tablet_manager->GetTabletPeer(tablet_id, &tablet_peer));
+  auto tablet_peer = VERIFY_RESULT(tablet_manager->GetServingTablet(Slice(tablet_id)));
 
   // Sometimes the disk can be really slow and hence we need a high timeout to wait for consensus.
   RETURN_NOT_OK(tablet_peer->WaitUntilConsensusRunning(MonoDelta::FromSeconds(60)));
@@ -330,9 +329,7 @@ Status TabletServerTestBase::ShutdownAndRebuildTablet() {
   RETURN_NOT_OK(mini_server_->Start());
   RETURN_NOT_OK(mini_server_->WaitStarted());
 
-  if (!mini_server_->server()->tablet_manager()->LookupTablet(kTabletId, &tablet_peer_)) {
-    return STATUS(NotFound, "Tablet was not found");
-  }
+  tablet_peer_ = VERIFY_RESULT(mini_server_->server()->tablet_manager()->GetTablet(kTabletId));
   // Connect to it.
   ResetClientProxies();
 

@@ -1547,6 +1547,27 @@ Status YBClient::UpdateConsumerOnProducerSplit(
   return Status::OK();
 }
 
+Result<bool> YBClient::UpdateConsumerOnProducerMetadata(
+    const string& producer_id,
+    const CDCStreamId& stream_id,
+    const tablet::ChangeMetadataRequestPB& meta_info) {
+  if (producer_id.empty()) {
+    return STATUS(InvalidArgument, "Producer id is required.");
+  }
+  if (stream_id.empty()) {
+    return STATUS(InvalidArgument, "Stream id is required.");
+  }
+
+  master::UpdateConsumerOnProducerMetadataRequestPB req;
+  req.set_producer_id(producer_id);
+  req.set_stream_id(stream_id);
+  req.mutable_producer_change_metadata_request()->CopyFrom(meta_info);
+
+  master::UpdateConsumerOnProducerMetadataResponsePB resp;
+  CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, resp, UpdateConsumerOnProducerMetadata);
+  return resp.should_wait();
+}
+
 void YBClient::DeleteNotServingTablet(const TabletId& tablet_id, StdStatusCallback callback) {
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
   data_->DeleteNotServingTablet(this, tablet_id, deadline, callback);
@@ -2005,6 +2026,11 @@ Status YBClient::SetReplicationInfo(const ReplicationInfoPB& replication_info) {
 Status YBClient::ValidateReplicationInfo(const ReplicationInfoPB& replication_info) {
   auto deadline = CoarseMonoClock::Now() + default_rpc_timeout();
   return data_->ValidateReplicationInfo(replication_info, deadline);
+}
+
+Result<TableSizeInfo> YBClient::GetTableDiskSize(const TableId& table_id) {
+  auto deadline = CoarseMonoClock::Now() + default_rpc_timeout();
+  return data_->GetTableDiskSize(table_id, deadline);
 }
 
 Result<bool> YBClient::CheckIfPitrActive() {

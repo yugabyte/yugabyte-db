@@ -310,8 +310,7 @@ TEST_F(TabletServerTest, TestInsert) {
   WriteResponsePB resp;
   RpcController controller;
 
-  std::shared_ptr<TabletPeer> tablet;
-  ASSERT_TRUE(mini_server_->server()->tablet_manager()->LookupTablet(kTabletId, &tablet));
+  auto tablet = ASSERT_RESULT(mini_server_->server()->tablet_manager()->GetTablet(kTabletId));
   scoped_refptr<Counter> rows_inserted =
       METRIC_rows_inserted.Instantiate(tablet->tablet()->GetTabletMetricsEntity());
   ASSERT_EQ(0, rows_inserted->value());
@@ -371,10 +370,7 @@ TEST_F(TabletServerTest, TestExternalConsistencyModes_ClientPropagated) {
   WriteResponsePB resp;
   RpcController controller;
 
-  std::shared_ptr<TabletPeer> tablet;
-  ASSERT_TRUE(
-      mini_server_->server()->tablet_manager()->LookupTablet(kTabletId,
-                                                             &tablet));
+  auto tablet = ASSERT_RESULT(mini_server_->server()->tablet_manager()->GetTablet(kTabletId));
   // get the current time
   HybridTime current = mini_server_->server()->clock()->Now();
   // advance current to some time in the future. we do 5 secs to make
@@ -404,10 +400,7 @@ TEST_F(TabletServerTest, TestExternalConsistencyModes_ClientPropagated) {
 }
 
 TEST_F(TabletServerTest, TestInsertAndMutate) {
-
-  std::shared_ptr<TabletPeer> tablet;
-  ASSERT_TRUE(mini_server_->server()->tablet_manager()->LookupTablet(kTabletId, &tablet));
-  tablet.reset();
+  ASSERT_OK(mini_server_->server()->tablet_manager()->GetTablet(kTabletId));
 
   RpcController controller;
 
@@ -609,10 +602,8 @@ TEST_F(TabletServerTest, TestCreateTablet_TabletExists) {
 }
 
 TEST_F(TabletServerTest, TestDeleteTablet) {
-  std::shared_ptr<TabletPeer> tablet;
-
   // Verify that the tablet exists
-  ASSERT_TRUE(mini_server_->server()->tablet_manager()->LookupTablet(kTabletId, &tablet));
+  ASSERT_OK(mini_server_->server()->tablet_manager()->GetTablet(kTabletId));
 
   // Put some data in the tablet. We flush and insert more rows to ensure that
   // there is data both in the MRS and on disk.
@@ -624,14 +615,14 @@ TEST_F(TabletServerTest, TestDeleteTablet) {
   // so that when we delete it on the server, it's not held alive
   // by the test code.
   tablet_peer_.reset();
-  tablet.reset();
 
   ASSERT_OK(CallDeleteTablet(mini_server_->server()->fs_manager()->uuid(),
                              kTabletId,
                              tablet::TABLET_DATA_DELETED));
 
   // Verify that the tablet is removed from the tablet map
-  ASSERT_FALSE(mini_server_->server()->tablet_manager()->LookupTablet(kTabletId, &tablet));
+  ASSERT_TRUE(ResultToStatus(
+      mini_server_->server()->tablet_manager()->GetTablet(kTabletId)).IsNotFound());
 
   // Verify that fetching metrics doesn't crash. Regression test for KUDU-638.
   EasyCurl c;
@@ -644,7 +635,8 @@ TEST_F(TabletServerTest, TestDeleteTablet) {
   // This ensures that the on-disk metadata got removed.
   Status s = ShutdownAndRebuildTablet();
   ASSERT_TRUE(s.IsNotFound()) << s.ToString();
-  ASSERT_FALSE(mini_server_->server()->tablet_manager()->LookupTablet(kTabletId, &tablet));
+  ASSERT_TRUE(ResultToStatus(
+      mini_server_->server()->tablet_manager()->GetTablet(kTabletId)).IsNotFound());
 }
 
 TEST_F(TabletServerTest, TestDeleteTablet_TabletNotCreated) {
@@ -658,8 +650,7 @@ TEST_F(TabletServerTest, TestDeleteTablet_TabletNotCreated) {
 // the other fails, with no assertion failures. Regression test for KUDU-345.
 TEST_F(TabletServerTest, TestConcurrentDeleteTablet) {
   // Verify that the tablet exists
-  std::shared_ptr<TabletPeer> tablet;
-  ASSERT_TRUE(mini_server_->server()->tablet_manager()->LookupTablet(kTabletId, &tablet));
+  ASSERT_OK(mini_server_->server()->tablet_manager()->GetTablet(kTabletId));
 
   static const int kNumDeletes = 2;
   RpcController rpcs[kNumDeletes];
@@ -689,7 +680,8 @@ TEST_F(TabletServerTest, TestConcurrentDeleteTablet) {
   }
 
   // Verify that the tablet is removed from the tablet map
-  ASSERT_FALSE(mini_server_->server()->tablet_manager()->LookupTablet(kTabletId, &tablet));
+  ASSERT_TRUE(ResultToStatus(
+      mini_server_->server()->tablet_manager()->GetTablet(kTabletId)).IsNotFound());
   ASSERT_EQ(1, num_success);
 }
 

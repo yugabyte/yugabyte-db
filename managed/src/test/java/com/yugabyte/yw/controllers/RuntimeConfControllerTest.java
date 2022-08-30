@@ -16,6 +16,7 @@ import static com.yugabyte.yw.models.ScopedRuntimeConfig.GLOBAL_SCOPE_UUID;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import static play.test.Helpers.FORBIDDEN;
 import static play.test.Helpers.NOT_FOUND;
 import static play.test.Helpers.OK;
@@ -29,6 +30,9 @@ import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.RuntimeConfigChangeListener;
+import com.yugabyte.yw.common.config.RuntimeConfigChangeNotifier;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.RuntimeConfigFormData.ScopedConfig.ScopeType;
 import com.yugabyte.yw.models.Customer;
@@ -383,5 +387,35 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
             .header("X-AUTH-TOKEN", authToken)
             .bodyText("true");
     route(app, request);
+  }
+
+  @Test
+  public void testFailingListener() {
+    assertEquals(
+        NOT_FOUND,
+        assertPlatformException(() -> getKey(defaultUniverse.universeUUID, GC_CHECK_INTERVAL_KEY))
+            .status());
+    String newInterval = "2 days";
+    RuntimeConfigChangeNotifier runtimeConfigChangeNotifier =
+        getApp().injector().instanceOf(RuntimeConfigChangeNotifier.class);
+    runtimeConfigChangeNotifier.addListener(
+        new RuntimeConfigChangeListener() {
+          @Override
+          public String getKeyPath() {
+            return GC_CHECK_INTERVAL_KEY;
+          }
+
+          public void processUniverse(Universe universe) {
+            throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "Some error");
+          }
+        });
+    assertEquals(
+        INTERNAL_SERVER_ERROR,
+        assertPlatformException(() -> setGCInterval(newInterval, defaultUniverse.universeUUID))
+            .status());
+    assertEquals(
+        NOT_FOUND,
+        assertPlatformException(() -> getKey(defaultUniverse.universeUUID, GC_CHECK_INTERVAL_KEY))
+            .status());
   }
 }

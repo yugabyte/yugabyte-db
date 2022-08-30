@@ -1,0 +1,56 @@
+// Copyright (c) YugaByte, Inc.
+
+package com.yugabyte.yw.commissioner.tasks;
+
+import com.google.inject.Inject;
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseTaskParams;
+import com.yugabyte.yw.models.Universe;
+import lombok.extern.slf4j.Slf4j;
+
+@Slf4j
+public class DisableYbc extends UniverseTaskBase {
+
+  @Inject
+  protected DisableYbc(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
+  }
+
+  protected UniverseTaskParams taskParams() {
+    return (UniverseTaskParams) taskParams;
+  }
+
+  @Override
+  public void run() {
+    try {
+      // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
+      // to prevent other updates from happening. Does not alter 'updateSucceeded' flag so as not
+      // to lock out the universe completely in case this task fails.
+      lockUniverse(-1 /* expectedUniverseVersion */);
+
+      Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
+      UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+
+      if (!universeDetails.enableYbc || !universeDetails.ybcInstalled) {
+        throw new RuntimeException(
+            "Ybc is either not installed or enabled on the universe: " + universe.universeUUID);
+      }
+      // Stop yb-controller processes on nodes
+      createStopYbControllerTasks(universe.getNodes())
+          .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+
+      // Update yb-controller state in universe details
+      createDisableYbcUniverseDetails().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+
+      getRunnableTask().runSubTasks();
+    } catch (Throwable t) {
+      log.error("Error executing task {}, error='{}'", getName(), t.getMessage(), t);
+      throw t;
+    } finally {
+      unlockUniverseForUpdate();
+    }
+    log.info("Finished {} task.", getName());
+  }
+}
