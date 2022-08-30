@@ -251,7 +251,7 @@ public class MultiTableBackup extends UniverseTaskBase {
           tableBackupParams.backupList = backupParamsList;
           tableBackupParams.storageConfigUUID = params().storageConfigUUID;
           tableBackupParams.actionType = BackupTableParams.ActionType.CREATE;
-          tableBackupParams.storageConfigUUID = params().storageConfigUUID;
+          tableBackupParams.scheduleUUID = params().scheduleUUID;
           tableBackupParams.universeUUID = params().universeUUID;
           tableBackupParams.sse = params().sse;
           tableBackupParams.parallelism = params().parallelism;
