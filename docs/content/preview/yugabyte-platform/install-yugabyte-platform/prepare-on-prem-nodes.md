@@ -103,7 +103,7 @@ Disabling Crontab creates alerts after the universe is created, but they can be 
 * Set `mount` path permissions to 0755.
 
 {{< note title="Note" >}}
-By default, YugabyteDB Anywhere uses SSH via OpenSSH. YugabyteDB Anywhere also supports the use of SSH2 via Tectia SSH. For more information, see [Enable Tectia SSH](#enable-tectia-ssh).
+By default, YugabyteDB Anywhere uses OpenSSH for SSH to remote nodes. YugabyteDB Anywhere also supports the use of Tectia SSH that is based on the latest SSH G3 protocol. For more information, see [Enable Tectia SSH](#enable-tectia-ssh).
 {{< /note >}}
 
 ### Enable Tectia SSH
