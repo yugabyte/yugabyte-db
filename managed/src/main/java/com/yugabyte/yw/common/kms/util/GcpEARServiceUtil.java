@@ -66,7 +66,7 @@ public class GcpEARServiceUtil {
   public static final String CRYPTO_KEY_ID_FIELDNAME = "CRYPTO_KEY_ID";
 
   public ObjectNode getAuthConfig(UUID configUUID) {
-    return EncryptionAtRestUtil.getAuthConfig(configUUID, KeyProvider.GCP);
+    return EncryptionAtRestUtil.getAuthConfig(configUUID);
   }
 
   /**

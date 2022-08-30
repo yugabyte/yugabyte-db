@@ -49,7 +49,7 @@ public class AzuEARServiceUtil {
   public static final String AZU_KEY_SIZE_FIELDNAME = "AZU_KEY_SIZE";
 
   public ObjectNode getAuthConfig(UUID configUUID) {
-    return EncryptionAtRestUtil.getAuthConfig(configUUID, KeyProvider.AZU);
+    return EncryptionAtRestUtil.getAuthConfig(configUUID);
   }
 
   /**

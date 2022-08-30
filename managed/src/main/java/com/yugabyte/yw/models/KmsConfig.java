@@ -12,12 +12,12 @@ package com.yugabyte.yw.models;
 
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.DbJson;
+import io.ebean.annotation.Encrypted;
 import io.ebean.annotation.JsonIgnore;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
@@ -59,9 +59,10 @@ public class KmsConfig extends Model {
   @Constraints.Required
   @Column(nullable = false, columnDefinition = "TEXT")
   @DbJson
+  @Encrypted
   @JsonIgnore
   @ApiModelProperty(value = "Auth config")
-  public JsonNode authConfig;
+  public ObjectNode authConfig;
 
   @Constraints.Required
   @Column(nullable = false)
@@ -91,7 +92,7 @@ public class KmsConfig extends Model {
   public static ObjectNode getKMSAuthObj(UUID configUUID) {
     KmsConfig config = get(configUUID);
     if (config == null) return null;
-    return (ObjectNode) config.authConfig.deepCopy();
+    return config.authConfig;
   }
 
   public static List<KmsConfig> listKMSConfigs(UUID customerUUID) {
