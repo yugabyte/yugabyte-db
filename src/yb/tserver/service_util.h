@@ -138,10 +138,14 @@ Result<TabletPeerTablet> LookupTabletPeer(
     TabletPeerLookupIf* tablet_manager,
     const TabletId& tablet_id);
 
-template<class RespClass>
+Result<TabletPeerTablet> LookupTabletPeer(
+    TabletPeerLookupIf* tablet_manager,
+    const Slice& tablet_id);
+
+template<class RespClass, class Key>
 Result<TabletPeerTablet> LookupTabletPeerOrRespond(
     TabletPeerLookupIf* tablet_manager,
-    const string& tablet_id,
+    const Key& tablet_id,
     RespClass* resp,
     rpc::RpcContext* context) {
   Result<TabletPeerTablet> result = LookupTabletPeer(tablet_manager, tablet_id);

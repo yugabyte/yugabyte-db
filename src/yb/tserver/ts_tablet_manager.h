@@ -52,6 +52,7 @@
 
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
+#include "yb/gutil/stl_util.h"
 
 #include "yb/master/master_fwd.h"
 #include "yb/master/master_heartbeat.fwd.h"
@@ -195,23 +196,24 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
       bool hide_only,
       boost::optional<TabletServerErrorPB::Code>* error_code);
 
-  // Lookup the given tablet peer by its ID.
-  // Returns true if the tablet is found successfully.
-  bool LookupTablet(const TabletId& tablet_id,
-                    std::shared_ptr<tablet::TabletPeer>* tablet_peer) const;
+  // Lookup the given tablet peer by its ID. Returns nullptr if the tablet is not found.
+  tablet::TabletPeerPtr LookupTablet(const TabletId& tablet_id) const;
+  tablet::TabletPeerPtr LookupTablet(const Slice& tablet_id) const;
 
   // Lookup the given tablet peer by its ID.
   // Returns NotFound error if the tablet is not found.
-  Result<std::shared_ptr<tablet::TabletPeer>> LookupTablet(const TabletId& tablet_id) const;
+  Result<tablet::TabletPeerPtr> GetTablet(const TabletId& tablet_id) const;
+  Result<tablet::TabletPeerPtr> GetTablet(const Slice& tablet_id) const;
 
-  // Same as LookupTablet but doesn't acquired the shared lock.
-  bool LookupTabletUnlocked(const TabletId& tablet_id,
-                            std::shared_ptr<tablet::TabletPeer>* tablet_peer) const
-      REQUIRES_SHARED(mutex_);
+  Result<tablet::TabletPeerPtr> GetTablet(const char* tablet_id) const {
+    return GetTablet(Slice(tablet_id));
+  }
 
-  Status GetTabletPeer(
-      const TabletId& tablet_id,
-      std::shared_ptr<tablet::TabletPeer>* tablet_peer) const override;
+  // Lookup the given tablet peer by its ID.
+  // Returns NotFound error if the tablet is not found.
+  // Returns IllegalState if the tablet cannot serve requests.
+  Result<tablet::TabletPeerPtr> GetServingTablet(const TabletId& tablet_id) const override;
+  Result<tablet::TabletPeerPtr> GetServingTablet(const Slice& tablet_id) const override;
 
   const NodeInstancePB& NodeInstance() const override;
 
@@ -497,6 +499,19 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   HybridTime AllowedHistoryCutoff(tablet::RaftGroupMetadata* metadata);
 
+  template <class Key>
+  Result<tablet::TabletPeerPtr> DoGetServingTablet(const Key& tablet_id) const;
+
+  template <class Key>
+  tablet::TabletPeerPtr DoLookupTablet(const Key& tablet_id) const;
+
+  template <class Key>
+  Result<tablet::TabletPeerPtr> DoGetTablet(const Key& tablet_id) const;
+
+  // Same as LookupTablet but doesn't acquired the shared lock.
+  template <class Key>
+  tablet::TabletPeerPtr LookupTabletUnlocked(const Key& tablet_id) const REQUIRES_SHARED(mutex_);
+
   const CoarseTimePoint start_time_;
 
   FsManager* const fs_manager_;
@@ -505,7 +520,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   consensus::RaftPeerPB local_peer_pb_;
 
-  typedef std::unordered_map<TabletId, std::shared_ptr<tablet::TabletPeer>> TabletMap;
+  using TabletMap = std::unordered_map<
+      TabletId, std::shared_ptr<tablet::TabletPeer>, StringHash, std::equal_to<void>>;
 
   // Lock protecting tablet_map_, dirty_tablets_, state_, tablets_blocked_from_lb_ and
   // tablets_being_remote_bootstrapped_.

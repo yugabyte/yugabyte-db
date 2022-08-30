@@ -644,9 +644,8 @@ class CatalogManager :
   // table specified by 'tablet_id'.
   //
   // See also: TabletPeerLookupIf, ConsensusServiceImpl.
-  Status GetTabletPeer(
-      const TabletId& tablet_id,
-      std::shared_ptr<tablet::TabletPeer>* tablet_peer) const override;
+  Result<tablet::TabletPeerPtr> GetServingTablet(const TabletId& tablet_id) const override;
+  Result<tablet::TabletPeerPtr> GetServingTablet(const Slice& tablet_id) const override;
 
   const NodeInstancePB& NodeInstance() const override;
 
@@ -770,6 +769,10 @@ class CatalogManager :
   // the provided timeout, TimedOut Status otherwise.
   Status WaitForWorkerPoolTests(
       const MonoDelta& timeout = MonoDelta::FromSeconds(10)) const override;
+
+  // Get the disk size of tables (Used for YSQL \d+ command)
+  Status GetTableDiskSize(
+      const GetTableDiskSizeRequestPB* req, GetTableDiskSizeResponsePB* resp, rpc::RpcContext* rpc);
 
   Result<scoped_refptr<UDTypeInfo>> FindUDTypeById(
       const UDTypeId& udt_id) const EXCLUDES(mutex_);
@@ -1435,6 +1438,11 @@ class CatalogManager :
     return false;
   }
 
+  virtual Result<bool> IsTableUndergoingPitrRestore(const TableInfo& table_info) {
+    // Default value.
+    return false;
+  }
+
   virtual bool IsCdcEnabled(const TableInfo& table_info) const override {
     // Default value.
     return false;
@@ -1448,6 +1456,20 @@ class CatalogManager :
   virtual bool IsTableCdcProducer(const TableInfo& table_info) const REQUIRES_SHARED(mutex_) {
     // Default value.
     return false;
+  }
+
+  virtual bool IsTableCdcConsumer(const TableInfo& table_info) const REQUIRES_SHARED(mutex_) {
+    // Default value.
+    return false;
+  }
+
+  virtual Status ValidateNewSchemaWithCdc(const TableInfo& table_info, const Schema& new_schema)
+      const {
+    return Status::OK();
+  }
+
+  virtual Status ResumeCdcAfterNewSchema(const TableInfo& table_info) {
+    return Status::OK();
   }
 
   virtual Result<SnapshotSchedulesToObjectIdsMap> MakeSnapshotSchedulesToObjectIdsMap(
@@ -1683,6 +1705,9 @@ class CatalogManager :
   // Mutex to avoid simultaneous creation of transaction tables for a tablespace.
   std::mutex tablespace_transaction_table_creation_mutex_;
 
+  mutable MutexType backfill_mutex_;
+  std::unordered_set<TableId> pending_backfill_tables_ GUARDED_BY(backfill_mutex_);
+
   void StartElectionIfReady(
       const consensus::ConsensusStatePB& cstate, TabletInfo* tablet);
 
@@ -1772,10 +1797,10 @@ class CatalogManager :
       TSDescriptor* ts_desc,
       bool is_incremental,
       const ReportedTabletPB& report,
-      const std::map<TableId, TableInfo::WriteLock>& table_write_locks,
+      std::map<TableId, TableInfo::WriteLock>* table_write_locks,
       const TabletInfoPtr& tablet,
       const TabletInfo::WriteLock& tablet_lock,
-      const std::map<TableId, scoped_refptr<TableInfo>>& tables,
+      std::map<TableId, scoped_refptr<TableInfo>>* tables,
       std::vector<RetryingTSRpcTaskPtr>* rpcs);
 
   struct ReportedTablet {

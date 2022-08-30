@@ -93,7 +93,9 @@
         }
       },
       "back": "Back",
-      "or": "or"
+      "or": "or",
+      "preview": "Preview",
+      "stable": "Stable"
     },
     "validations": {
       "alphanumericPattern": "Only lower case alphanumeric characters and dashes \"-\" are allowed. The first character must be a lower case letter. The last character can not be a dash. Must be between 3 and 63 characters.",
@@ -689,7 +691,9 @@
         "delete": "Delete",
         "transaction": "Transaction",
         "other": "Other",
-        "ycqlRemoteOps": "YCQL Remote Operations"
+        "ycqlRemoteOps": "YCQL Remote Operations",
+        "totalLiveNodes": "Total Live Nodes",
+        "liveNodes": "Live Nodes"
       },
       "contactSupportForFailedCluster": "Cluster operation failed due to unexpected error. <1>{{contactSupport}}</1>",
       "contactSupport": "Contact Support",
@@ -723,7 +727,10 @@
         "size": "Size",
         "read": "Read",
         "write": "Write",
-        "status": "Status"
+        "status": "Status",
+        "tables": "Tables",
+        "ysql": "YSQL",
+        "ycql": "YCQL"
       },
       "maintenance": {
         "maintenanceTitle": "Scheduled Maintenance",
@@ -998,8 +1005,10 @@
         "numNodes_plural": "{{count}} Nodes",
         "noNodesCopy": "No nodes to display",
         "name": "Name",
+        "cloud": "Cloud",
         "region": "Region",
         "zone": "Zone",
+        "version": "Version",
         "processes": "Processes",
         "ramUsed": "RAM Used",
         "sstSize": "SST Size",

@@ -25,6 +25,7 @@ import com.google.api.client.util.Throwables;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
+import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.common.YbcManager;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
@@ -116,7 +117,8 @@ public class CreateBackup extends UniverseTaskBase {
                 .getUniverseDetails()
                 .ybcSoftwareVersion
                 .equals(ybcManager.getStableYbcVersion())) {
-          createUpgradeYbcTask(params().universeUUID, ybcManager.getStableYbcVersion(), true);
+          createUpgradeYbcTask(params().universeUUID, ybcManager.getStableYbcVersion(), true)
+              .setSubTaskGroupType(SubTaskGroupType.UpgradingYbc);
         }
 
         Backup backup =

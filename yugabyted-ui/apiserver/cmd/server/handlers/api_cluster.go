@@ -53,10 +53,14 @@ func (c *Container) GetCluster(ctx echo.Context) error {
         return ctx.String(http.StatusInternalServerError, tabletServersResponse.Error.Error())
     }
 
-    // Now that we have tabletServersResponse, we can start getting gflags for each tserver/master
+    // Now that we have tabletServersResponse, we can start doing queries that need to be made to
+    // each node separately
+    // - Getting gflags for each tserver/master
+    // - Getting version information from each node
     nodeList := helpers.GetNodesList(tabletServersResponse)
     gFlagsTserverFutures := []chan helpers.GFlagsFuture{}
     gFlagsMasterFutures := []chan helpers.GFlagsFuture{}
+    versionInfoFutures := []chan helpers.VersionInfoFuture{}
     for _, nodeHost := range nodeList {
         gFlagsTserverFuture := make(chan helpers.GFlagsFuture)
         gFlagsTserverFutures = append(gFlagsTserverFutures, gFlagsTserverFuture)
@@ -64,6 +68,9 @@ func (c *Container) GetCluster(ctx echo.Context) error {
         gFlagsMasterFuture := make(chan helpers.GFlagsFuture)
         gFlagsMasterFutures = append(gFlagsMasterFutures, gFlagsMasterFuture)
         go helpers.GetGFlagsFuture(nodeHost, true, gFlagsTserverFuture)
+        versionInfoFuture := make(chan helpers.VersionInfoFuture)
+        versionInfoFutures = append(versionInfoFutures, versionInfoFuture)
+        go helpers.GetVersionFuture(nodeHost, versionInfoFuture)
     }
 
     // Getting relevant data from tabletServersResponse
@@ -145,11 +152,11 @@ func (c *Container) GetCluster(ctx echo.Context) error {
     // Determine if encryption at rest is enabled
     // Checks cluster-config response encryption_info.encryption_enabled
     clusterConfigResponse := <-clusterConfigFuture
-    if clusterConfigResponse.Error != nil {
-        return ctx.String(http.StatusInternalServerError, clusterConfigResponse.Error.Error())
+    isEncryptionAtRestEnabled := false
+    if clusterConfigResponse.Error == nil {
+        resultConfig := clusterConfigResponse.ClusterConfig
+        isEncryptionAtRestEnabled = resultConfig.EncryptionInfo.EncryptionEnabled
     }
-    resultConfig := clusterConfigResponse.ClusterConfig
-    isEncryptionAtRestEnabled := resultConfig.EncryptionInfo.EncryptionEnabled
     // Determine if encryption in transit is enabled
     // It is enabled if and only if each master and tserver has the flags:
     //   --use_node_to_node_encryption=true
@@ -160,10 +167,8 @@ func (c *Container) GetCluster(ctx echo.Context) error {
     isEncryptionInTransitEnabled := true
     for _, gFlagsTserverFuture := range gFlagsTserverFutures {
         tserverFlags := <-gFlagsTserverFuture
-        if tserverFlags.Error != nil {
-            return ctx.String(http.StatusInternalServerError, tserverFlags.Error.Error())
-        }
-        if tserverFlags.GFlags["use_node_to_node_encryption"] != "true" ||
+        if tserverFlags.Error != nil ||
+           tserverFlags.GFlags["use_node_to_node_encryption"] != "true" ||
            tserverFlags.GFlags["allow_insecure_connections"] != "false" ||
            tserverFlags.GFlags["use_client_to_server_encryption"] != "true" {
             isEncryptionInTransitEnabled = false
@@ -175,10 +180,8 @@ func (c *Container) GetCluster(ctx echo.Context) error {
     if isEncryptionInTransitEnabled {
         for _, gFlagsMasterFuture := range gFlagsMasterFutures {
             masterFlags := <-gFlagsMasterFuture
-            if masterFlags.Error != nil {
-                return ctx.String(http.StatusInternalServerError, masterFlags.Error.Error())
-            }
-            if masterFlags.GFlags["use_node_to_node_encryption"] != "true" ||
+            if masterFlags.Error != nil ||
+               masterFlags.GFlags["use_node_to_node_encryption"] != "true" ||
                masterFlags.GFlags["allow_insecure_connections"] != "false" {
                 isEncryptionInTransitEnabled = false
                 break
@@ -196,38 +199,50 @@ func (c *Container) GetCluster(ctx echo.Context) error {
 
     // Create the session.
     session, err := cluster.CreateSession()
-    if err != nil {
-        return ctx.String(http.StatusInternalServerError, err.Error())
-    }
-    defer session.Close()
-    hostToUuid, err := helpers.GetHostToUuidMap(helpers.HOST)
-    if err != nil {
-        return ctx.String(http.StatusInternalServerError, err.Error())
-    }
-    sum := float64(0)
-    for _, uuid := range hostToUuid {
-        query := fmt.Sprintf(QUERY_LIMIT_ONE, "system.metrics", "cpu_usage_user", uuid)
-        iter := session.Query(query).Iter()
-        var ts int64
-        var value int
-        var details string
-        iter.Scan(&ts, &value, &details)
-        detailObj := DetailObj{}
-        json.Unmarshal([]byte(details), &detailObj)
-        sum += detailObj.Value
-        if err := iter.Close(); err != nil {
-            return ctx.String(http.StatusInternalServerError, err.Error())
+    averageCpu := float64(0)
+    if err == nil {
+        defer session.Close()
+        hostToUuid, err := helpers.GetHostToUuidMap(helpers.HOST)
+        if err == nil {
+            sum := float64(0)
+            for _, uuid := range hostToUuid {
+                query := fmt.Sprintf(QUERY_LIMIT_ONE, "system.metrics", "cpu_usage_user", uuid)
+                iter := session.Query(query).Iter()
+                var ts int64
+                var value int
+                var details string
+                iter.Scan(&ts, &value, &details)
+                detailObj := DetailObj{}
+                json.Unmarshal([]byte(details), &detailObj)
+                sum += detailObj.Value
+                if err := iter.Close(); err != nil {
+                    continue
+                }
+                query = fmt.Sprintf(QUERY_LIMIT_ONE, "system.metrics", "cpu_usage_system", uuid)
+                iter = session.Query(query).Iter()
+                iter.Scan(&ts, &value, &details)
+                json.Unmarshal([]byte(details), &detailObj)
+                sum += detailObj.Value
+                if err := iter.Close(); err != nil {
+                    continue
+                }
+            }
+            averageCpu = (sum * 100) / float64(len(hostToUuid))
         }
-        query = fmt.Sprintf(QUERY_LIMIT_ONE, "system.metrics", "cpu_usage_system", uuid)
-        iter = session.Query(query).Iter()
-        iter.Scan(&ts, &value, &details)
-        json.Unmarshal([]byte(details), &detailObj)
-        sum += detailObj.Value
-        if err := iter.Close(); err != nil {
-            return ctx.String(http.StatusInternalServerError, err.Error())
+    }
+
+    // Get software version
+    smallestVersion := ""
+    for _, versionInfoFuture := range versionInfoFutures {
+        versionInfo := <-versionInfoFuture
+        if versionInfo.Error == nil {
+            versionNumber := versionInfo.VersionInfo.VersionNumber
+            if smallestVersion == "" ||
+               helpers.CompareVersions(smallestVersion, versionNumber) > 0 {
+                smallestVersion = versionNumber
+            }
         }
     }
-    averageCpu := (sum * 100) / float64(len(hostToUuid))
 
     response := models.ClusterResponse{
         Data: models.ClusterData{
@@ -255,78 +270,10 @@ func (c *Container) GetCluster(ctx echo.Context) error {
                     CreatedOn: &createdOn,
                     UpdatedOn: &createdOn,
                 },
+                SoftwareVersion: smallestVersion,
             },
         },
     }
-    // Sample hard coded response from a YugabyteDB Managed free cluster
-    // In the above we will only include the fields that are directly used by the UI
-    // version := int32(7)
-    // trackId := "942e8716-618f-4f39-a464-e58d29ba1b50"
-    // multiZone := false
-    // isAffinitized := true
-    // endpoint := "us-west-2.219245be-d09a-4206-8fff-750a4c545b15.cloudportal.yugabyte.com"
-    // endpoints := map[string]string{
-    // 	"us-west-2": endpoint,
-    // }
-    // createdOn := "2022-05-30T15:17:33.506Z"
-    // response := models.ClusterResponse{
-    // 	Data: models.ClusterData{
-    // 		Spec: models.ClusterSpec{
-    // 			Name: "glimmering-lemur",
-    // 			CloudInfo: models.CloudInfo{
-    // 				Code:   models.CLOUDENUM_AWS,
-    // 				Region: "us-west-2",
-    // 			},
-    // 			ClusterInfo: models.ClusterInfo{
-    // 				ClusterTier:    models.CLUSTERTIER_FREE,
-    // 				ClusterType:    models.CLUSTERTYPE_SYNCHRONOUS,
-    // 				NumNodes:       1,
-    // 				FaultTolerance: models.CLUSTERFAULTTOLERANCE_NONE,
-    // 				NodeInfo: models.ClusterNodeInfo{
-    // 					NumCores:   2,
-    // 					MemoryMb:   4096,
-    // 					DiskSizeGb: 10,
-    // 				},
-    // 				IsProduction: false,
-    // 				Version:      &version,
-    // 			},
-    // 			NetworkInfo: models.Networking{
-    // 				SingleTenantVpcId: nil,
-    // 			},
-    // 			SoftwareInfo: models.SoftwareInfo{
-    // 				TrackId: &trackId,
-    // 			},
-    // 			ClusterRegionInfo: &[]models.ClusterRegionInfo{
-    // 				{
-    // 					PlacementInfo: models.PlacementInfo{
-    // 						CloudInfo: models.CloudInfo{
-    // 							Code:   models.CLOUDENUM_AWS,
-    // 							Region: "us-west-2",
-    // 						},
-    // 						NumNodes:    1,
-    // 						VpcId:       nil,
-    // 						NumReplicas: nil,
-    // 						MultiZone:   &multiZone,
-    // 					},
-    // 					IsDefault:     true,
-    // 					IsAffinitized: &isAffinitized,
-    // 				},
-    // 			},
-    // 		},
-    // 		Info: models.ClusterDataInfo{
-    // 			Id:              "219245be-d09a-4206-8fff-750a4c545b15",
-    // 			State:           "Active",
-    // 			Endpoint:        &endpoint,
-    // 			Endpoints:       &endpoints,
-    // 			ProjectId:       "b33f4166-b581-4ec3-8b24-b3ec6b22671d",
-    // 			SoftwareVersion: "2.13.1.0-b112",
-    // 			Metadata: models.EntityMetadata{
-    // 				CreatedOn: &createdOn,
-    // 				UpdatedOn: &createdOn,
-    // 			},
-    // 		},
-    // 	},
-    // }
     return ctx.JSON(http.StatusOK, response)
 }
 

@@ -95,6 +95,7 @@ class TabletSnapshots : public TabletComponent {
 
  private:
   struct RestoreMetadata;
+  struct ColocatedTableMetadata;
 
   // Restore the RocksDB checkpoint from the provided directory.
   // Only used when table_type_ == YQL_TABLE_TYPE.

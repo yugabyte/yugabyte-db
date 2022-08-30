@@ -283,6 +283,7 @@ Status ReadQuery::DoPerform() {
   const bool has_row_mark = IsValidRowMarkType(batch_row_mark);
 
   LeaderTabletPeer leader_peer;
+  auto tablet_peer = peer_tablet.tablet_peer;
 
   if (serializable_isolation || has_row_mark) {
     // At this point we expect that we don't have pure read serializable transactions, and
@@ -306,16 +307,16 @@ Status ReadQuery::DoPerform() {
     }
   }
 
-  tablet::TabletPeerPtr tablet_peer;
-  auto tablet_peer_status =
-      server_.tablet_peer_lookup()->GetTabletPeer(req_->tablet_id(), &tablet_peer);
   // For virtual tables held at master the tablet peer may not be found.
-  reading_from_non_leader_ = tablet_peer_status.ok() && !CheckPeerIsLeader(*tablet_peer).ok();
+  if (!tablet_peer) {
+    tablet_peer = ResultToValue(
+        server_.tablet_peer_lookup()->GetServingTablet(req_->tablet_id()), {});
+  }
+  reading_from_non_leader_ = tablet_peer && !CheckPeerIsLeader(*tablet_peer).ok();
   if (PREDICT_FALSE(FLAGS_TEST_assert_reads_served_by_follower)) {
     CHECK_NE(req_->consistency_level(), YBConsistencyLevel::STRONG)
         << "--TEST_assert_reads_served_by_follower is true but consistency level is "
            "invalid: YBConsistencyLevel::STRONG";
-    RETURN_NOT_OK(tablet_peer_status);
     CHECK(reading_from_non_leader_)
         << "--TEST_assert_reads_served_by_follower is true but read is being served by "
         << " peer " << tablet_peer->permanent_uuid() << " which is the leader for tablet "

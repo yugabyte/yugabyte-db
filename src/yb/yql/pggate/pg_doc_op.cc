@@ -355,6 +355,7 @@ Status PgDocOp::SendRequestImpl(bool force_non_bufferable) {
 
   // Send at most "parallelism_level_" number of requests at one time.
   size_t send_count = std::min(parallelism_level_, active_op_count_);
+  VLOG(1) << "Number of operations to send: " << send_count;
   response_ = VERIFY_RESULT(sender_(
       pg_session_.get(), pgsql_ops_.data(), send_count,
       *table_, GetInTxnLimit(), force_non_bufferable));
@@ -517,25 +518,40 @@ Result<bool> PgDocReadOp::DoCreateRequests() {
   // All information from the SQL request has been collected and setup. This code populates
   // Protobuf requests before sending them to DocDB. For performance reasons, requests are
   // constructed differently for different statements.
-  if (read_op_->read_request().has_sampling_state()) {
+  const auto& req = read_op_->read_request();
+  if (req.has_sampling_state()) {
     VLOG(1) << __PRETTY_FUNCTION__ << ": Preparing sampling requests ";
     return PopulateSamplingOps();
 
+  // Use partition column values to filter out partitions without possible matches.
+  // If there is a query with conditions on multiple partition columns, like
+  // - SELECT * FROM sql_table WHERE hash_c1 IN (1, 2, 3) AND hash_c2 IN (4, 5, 6);
+  // the function creates multiple requests for possible hash permutations / keys.
+  // The requests are also configured to run in parallel.
+  } else if (!req.partition_column_values().empty()) {
+    return PopulateNextHashPermutationOps();
+
+  // There is no key values to filter out partitions, send requests to all of them.
   // Requests pushing down aggregates and/or filter expression tend to do more work on DocDB side,
   // so it takes longer to return responses, and Postgres side has generally less work to do.
-  // Hence we optimize by sending multiple parallel requests to the nodes, allowing their
+  // Hence we optimize by sending multiple parallel requests to the tablets, allowing their
   // simultaneous processing.
   // Effect may be less than expected if the nodes are already heavily loaded and CPU consumption
   // is high, or selectivity of the filter is low.
-  } else if (read_op_->read_request().is_aggregate() ||
-             !read_op_->read_request().where_clauses().empty()) {
+  // Other concern than Postgres being a bottleneck, is an index scan over a range partitioned
+  // table. Such scan is able to return rows ordered, and that order may be relied upon by upper
+  // plan nodes, but parallel execution messes the order up. Here where we are preparing the
+  // requests, we do not know if the query relies on the row order, we even may not be able to tell,
+  // if we are doing sequential or primary key scan, hence we should not parallelize scans on range
+  // partitioned tables. In the past neither aggregates nor where clause pushdown was supported by
+  // the index scan, so the same criteria worked and only sequential scans over range tables were
+  // parallelized. As of today, IndexScan still does not support aggregate pushdown, so we allow
+  // parallel execution of requests with aggregates, but this implicit criteria is not reliable.
+  // TODO(GHI 13737): as explained above, explicitly indicate, if operation should return ordered
+  // results.
+  } else if (req.is_aggregate() ||
+             (!table_->IsRangePartitioned() && !req.where_clauses().empty())) {
     return PopulateParallelSelectOps();
-
-  } else if (!read_op_->read_request().partition_column_values().empty()) {
-    // Optimization for multiple hash keys.
-    // - SELECT * FROM sql_table WHERE hash_c1 IN (1, 2, 3) AND hash_c2 IN (4, 5, 6);
-    // - Multiple requests for differrent hash permutations / keys.
-    return PopulateNextHashPermutationOps();
 
   } else {
     // No optimization.
@@ -744,6 +760,9 @@ Status PgDocReadOp::InitializeHashPermutationStates() {
 }
 
 Result<bool> PgDocReadOp::PopulateParallelSelectOps() {
+  SCHECK(read_op_->read_request().partition_column_values().empty(),
+         IllegalState,
+         "Request with non empty partition_column_values can't be parallelized");
   // Create batch operators, one per partition, to execute in parallel.
   // TODO(tsplit): what if table partition is changed during PgDocReadOp lifecycle before or after
   // the following line?

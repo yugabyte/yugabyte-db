@@ -79,7 +79,7 @@ class NodeConnectModal extends Component {
       accessTitle = 'Access your node';
       const accessKey = accessKeys.data.filter((key) => key.idKey.providerUUID === providerUUID)[0];
       const accessKeyInfo = accessKey.keyInfo;
-      const sshPort = accessKeyInfo.sshPort || 54422;
+      const sshPort = accessKeyInfo.sshPort || 22;
       if (!isTectiaSSHEnabled) {
         accessCommand = `sudo ssh -i ${accessKeyInfo.privateKey} -ostricthostkeychecking=no -p ${sshPort} yugabyte@${nodeIPs.privateIP}`;
       } else {

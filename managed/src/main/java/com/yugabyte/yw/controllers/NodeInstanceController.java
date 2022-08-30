@@ -265,6 +265,12 @@ public class NodeInstanceController extends AuthenticatedController {
     taskParams.expectedUniverseVersion = universe.version;
     taskParams.nodeName = nodeName;
     taskParams.useSystemd = universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd;
+    if (universe.isYbcEnabled()) {
+      taskParams.installYbc = true;
+      taskParams.enableYbc = true;
+      taskParams.ybcSoftwareVersion = universe.getUniverseDetails().ybcSoftwareVersion;
+      taskParams.ybcInstalled = true;
+    }
     NodeActionType nodeAction = nodeActionFormData.getNodeAction();
 
     // Check deleting/removing a node will not go below the RF

@@ -123,6 +123,30 @@ void CatalogManagerBgTasks::Shutdown() {
   }
 }
 
+void CatalogManagerBgTasks::TryResumeBackfillForTables(std::unordered_set<TableId>* tables) {
+  for (auto it = tables->begin(); it != tables->end(); it = tables->erase(it)) {
+    const auto& table_info_result = catalog_manager_->FindTableById(*it);
+    if (!table_info_result.ok()) {
+      LOG(WARNING) << "Table Info not found for id " << *it;
+      continue;
+    }
+    const auto& table_info = *table_info_result;
+    // Get schema version.
+    uint32_t version = table_info->LockForRead()->pb.version();
+    const auto& tablets = table_info->GetTablets();
+    for (const auto& tablet : tablets) {
+      LOG(INFO) << "PITR: Try resuming backfill for tablet " << tablet->id()
+                << ". If it is not a table for which backfill needs to be resumed"
+                << " then this is a NO-OP";
+      auto s = catalog_manager_->HandleTabletSchemaVersionReport(
+          tablet.get(), version, table_info);
+      // If schema version changed since PITR restore then backfill should restart
+      // by virtue of that particular alter if needed.
+      WARN_NOT_OK(s, Format("PITR: Resume backfill failed for tablet ", tablet->id()));
+    }
+  }
+}
+
 void CatalogManagerBgTasks::Run() {
   while (!closing_.load()) {
     TEST_PAUSE_IF_FLAG(TEST_pause_catalog_manager_bg_loop_start);
@@ -174,6 +198,14 @@ void CatalogManagerBgTasks::Run() {
           // create/alter fault tolerant.
         }
       }
+
+      // Trigger pending backfills.
+      std::unordered_set<TableId> table_map;
+      {
+        std::lock_guard<rw_spinlock> lock(catalog_manager_->backfill_mutex_);
+        table_map.swap(catalog_manager_->pending_backfill_tables_);
+      }
+      TryResumeBackfillForTables(&table_map);
 
       // Do the LB enabling check
       if (!processed_tablets) {

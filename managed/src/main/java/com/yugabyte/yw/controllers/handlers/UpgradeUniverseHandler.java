@@ -81,6 +81,13 @@ public class UpgradeUniverseHandler {
     requestParams.universeUUID = universe.universeUUID;
     requestParams.expectedUniverseVersion = universe.version;
 
+    if (universe.isYbcEnabled()) {
+      requestParams.installYbc = true;
+      requestParams.enableYbc = true;
+      requestParams.ybcSoftwareVersion = universe.getUniverseDetails().ybcSoftwareVersion;
+      requestParams.ybcInstalled = true;
+    }
+
     return submitUpgradeTask(
         TaskType.RestartUniverse,
         CustomerTask.TaskType.RestartUniverse,
@@ -471,6 +478,12 @@ public class UpgradeUniverseHandler {
     // Update request params with additional metadata for upgrade task
     requestParams.universeUUID = universe.universeUUID;
     requestParams.expectedUniverseVersion = universe.version;
+    if (universe.isYbcEnabled()) {
+      requestParams.installYbc = true;
+      requestParams.enableYbc = true;
+      requestParams.ybcSoftwareVersion = universe.getUniverseDetails().ybcSoftwareVersion;
+      requestParams.ybcInstalled = true;
+    }
 
     return submitUpgradeTask(
         TaskType.SystemdUpgrade,
@@ -485,6 +498,13 @@ public class UpgradeUniverseHandler {
     requestParams.verifyParams(universe);
     requestParams.universeUUID = universe.universeUUID;
     requestParams.expectedUniverseVersion = universe.version;
+
+    if (universe.isYbcEnabled()) {
+      requestParams.installYbc = true;
+      requestParams.enableYbc = true;
+      requestParams.ybcSoftwareVersion = universe.getUniverseDetails().ybcSoftwareVersion;
+      requestParams.ybcInstalled = true;
+    }
 
     return submitUpgradeTask(
         TaskType.RebootUniverse,

@@ -17,7 +17,7 @@ YugabyteDB is a geo-distributed SQL database that can be easily deployed across 
 
 The first configuration uses a single cluster stretched across 3 or more data centers with data getting automatically sharded across all data centers. This configuration is default for [Spanner-inspired databases](../../architecture/docdb/) like YugabyteDB. Data replication across data centers is synchronous and is based on the Raft consensus protocol. This means writes are globally consistent and reads are either globally consistent or timeline consistent (when application clients use follower reads). Additionally, resilience against data center failures is fully automatic. This configuration has the potential to incur Wide Area Network (WAN) latency in the write path if the data centers are geographically located far apart from each other and are connected through the shared/unreliable Internet.
 
-For users not requiring global consistency and automatic resilience to data center failures, the WAN latency can be eliminated altogether through the second configuration where two independent, single-DC clusters are connected through asynchronous replication based on <a href="../../architecture/docdb-replication/change-data-capture//">Change Data Capture</a>.
+For users not requiring global consistency and automatic resilience to data center failures, the WAN latency can be eliminated altogether through the second configuration where two independent, single-DC clusters are connected through xCluster replication based on <a href="../../architecture/docdb-replication/change-data-capture//">Change Data Capture</a>.
 
 <a href="https://blog.yugabyte.com/9-techniques-to-build-cloud-native-geo-distributed-sql-apps-with-low-latency/" target="_blank">9 Techniques to Build Cloud-Native, Geo-Distributed SQL Apps with Low Latency</a> highlights the various multi-DC deployment strategies for a distributed SQL database like YugabyteDB. Note that YugabyteDB is the only Spanner-inspired distributed SQL database to support a 2DC deployment.
 
@@ -50,7 +50,7 @@ For users not requiring global consistency and automatic resilience to data cent
     <a class="section-link icon-offset" href="async-replication/">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/planet_scale.png"  aria-hidden="true" />
-        <div class="title">Asynchronous replication </div>
+        <div class="title">xCluster replication </div>
       </div>
       <div class="body">
         Enable unidirectional and bidirectional replication

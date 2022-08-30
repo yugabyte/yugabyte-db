@@ -191,6 +191,12 @@ export const useChartConfig = (): Record<string, ChartConfig> => {
       chartDrawingType: ['line'],
       metric: ['AVERAGE_SSTABLES_PER_NODE']
     },
+    totalLiveNodes: {
+        title: t('clusterDetail.charts.totalLiveNodes'),
+        chartLabels: [t('clusterDetail.charts.liveNodes')],
+        chartDrawingType: ['line'],
+        metric: ['TOTAL_LIVE_NODES']
+    },
     walBytes: {
       title: t('clusterDetail.charts.walBytesWritten'),
       chartLabels: [t('clusterDetail.charts.bytesLogged')],

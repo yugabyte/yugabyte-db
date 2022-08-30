@@ -41,12 +41,16 @@
     ExecuteBashCommand(command1, arg1)
 
     command2 := "systemctl"
-    arg2 := []string{"start", "prometheus"}
+    arg2 := []string{"enable", "prometheus"}
     ExecuteBashCommand(command2, arg2)
 
     command3 := "systemctl"
-    arg3 := []string{"status", "prometheus"}
+    arg3 := []string{"start", "prometheus"}
     ExecuteBashCommand(command3, arg3)
+
+    command4 := "systemctl"
+    arg4 := []string{"status", "prometheus"}
+    ExecuteBashCommand(command4, arg4)
  }
 
  func (prom Prometheus) Stop() {
@@ -122,6 +126,9 @@
 
         os.MkdirAll("/var/lib/prometheus", os.ModePerm)
         fmt.Println("/var/lib/prometheus directory successfully created.")
+
+        //Make the swamper_targets directory for prometheus
+        os.MkdirAll("/opt/yugabyte/swamper_targets", os.ModePerm)
 
         command3 := "chown"
         arg3 := []string{"prometheus:prometheus", "/etc/prometheus"}

@@ -172,6 +172,15 @@ DEALLOCATE si_param;
 EXPLAIN (COSTS FALSE) SELECT relname, relkind FROM pg_class WHERE relname LIKE 'pushdown_c%';
 SELECT relname, relkind FROM pg_class WHERE relname LIKE 'pushdown_c%';
 
+-- Index scan with remote filter on a range table
+CREATE TABLE pushdown_range(k1 text, v1 int, v2 int, primary key(k1 asc)) SPLIT AT VALUES (('2 '), ('3 '), ('4 '), ('5 '), ('6 '), ('7 '), ('8 '), ('9 '));
+INSERT INTO pushdown_range SELECT i::text, i, i FROM  generate_series(1,100) AS i;
+EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_range WHERE k1 IN ('11', '17', '33', '42', '87') AND (v1 = 17 OR v2 = 87);
+SELECT * FROM pushdown_range WHERE k1 IN ('11', '17', '33', '42', '87') AND (v1 = 17 OR v2 = 87);
+EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_range WHERE v1 > 5 AND v2 < 33 ORDER BY k1;
+SELECT * FROM pushdown_range WHERE v1 > 5 AND v2 < 33 ORDER BY k1;
+
+DROP TABLE pushdown_range;
 DROP TABLE pushdown_index;
 DROP TABLE pushdown_test;
 DROP TABLE pushdown_lookup;

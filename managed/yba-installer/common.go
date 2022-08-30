@@ -5,9 +5,7 @@
  package main
 
  import (
-    "errors"
     "fmt"
-    "github.com/hashicorp/go-version"
     "os"
     "strings"
     "strconv"
@@ -25,7 +23,8 @@
  // SetUpPrereqs performs the setup operations common to
  // all services.
  func (com Common) SetUpPrereqs() {
-    Version("version_metadata.json")
+    fmt.Println("You are on version " + versionToInstall +
+    " of Yba-installer!")
     License()
     Preflight("yba-installer-input.yml")
  }
@@ -36,8 +35,8 @@
     installPrerequisites()
     createYugabyteUser()
     GenerateTemplatedConfiguration()
-    com.downloadPlatformSupportPackageAndYugabundle(com.Version)
-    com.copyThirdPartyDependencies()
+    com.extractPlatformSupportPackageAndYugabundle(com.Version)
+    com.renameThirdPartyDependencies()
  }
 
  // Uninstall performs the uninstallation procedures common to
@@ -114,8 +113,8 @@
  // Upgrade performs the upgrade procedures common to all services.
  func (com Common) Upgrade() {
      GenerateTemplatedConfiguration()
-     com.downloadPlatformSupportPackageAndYugabundle(com.Version)
-     com.copyThirdPartyDependencies()
+     com.extractPlatformSupportPackageAndYugabundle(com.Version)
+     com.renameThirdPartyDependencies()
  }
 
  func installPrerequisites() {
@@ -179,99 +178,46 @@
    ExecuteBashCommand(command3, arg3)
 }
 
-func (com Common) downloadPlatformSupportPackageAndYugabundle(vers string) {
+func (com Common) extractPlatformSupportPackageAndYugabundle(vers string) {
 
    command0 := "su"
    arg0 := []string{"yugabyte"}
    ExecuteBashCommand(command0, arg0)
    os.RemoveAll("/opt/yugabyte/packages")
 
-   YumInstall([]string{"wget"})
-   command1 := "wget"
-   v1, _ := version.NewVersion(vers)
-   v2, _ := version.NewVersion("2.8.0.0")
-   arg1 := []string{}
-   path1 := ""
+   path0 := "yugabundle-"+vers+"-centos-x86_64.tar.gz"
 
-   if v1.LessThan(v2) {
-      arg1 = []string{"-P", "/opt/yugabyte",
-      "https://downloads.yugabyte.com/platform-support-packages-2.6.tar.gz"}
-      path1 = "/opt/yugabyte/platform-support-packages-2.6.tar.gz"
-   } else {
-      arg1 = []string{"-P", "/opt/yugabyte",
-      "https://downloads.yugabyte.com/platform-support-packages-2.12.tar.gz"}
-      path1 = "/opt/yugabyte/platform-support-packages-2.12.tar.gz"
-   }
-
-   if _, err := os.Stat(path1); err == nil {
-      fmt.Println("Package already exists at /opt/yugabyte, skipping download.")
-   } else if errors.Is(err, os.ErrNotExist) {
-      ExecuteBashCommand(command1, arg1)
-   }
-
-   rExtract1, errExtract1 := os.Open(path1)
+   rExtract1, errExtract1 := os.Open(path0)
    if errExtract1 != nil {
       fmt.Println("Error in starting the File Extraction process")
    }
 
    Untar(rExtract1, "/opt/yugabyte")
 
-   fmt.Println(path1 + " successfully extracted!")
+   path1 := "/opt/yugabyte/yugabyte-"+vers+
+   "/yugabundle_support-"+vers+"-centos-x86_64.tar.gz"
 
-   command2 := "wget"
-   location := strings.Split(vers, "-")[0]
-   d := "https://downloads.yugabyte.com"
-   str2 := d + "/releases/" + location + "/yugabundle-" + vers + "-linux-x86_64.tar.gz"
-   arg2 := []string{"-P", "/opt/yugabyte/packages", str2}
-   path2 := "/opt/yugabyte/packages/yugabundle-" + vers + "-linux-x86_64.tar.gz"
-
-   if _, err := os.Stat(path2); err == nil {
-      fmt.Println("Package already exists at /opt/yugabyte/packages, skipping download.")
-   } else if errors.Is(err, os.ErrNotExist) {
-      if _, err := os.Stat("/opt/yugabyte/packages/yugabundle-" + vers + ".tar.gz"); err == nil {
-         fmt.Println("Package already renamed at /opt/yugabyte/packages, skipping download.")
-      } else {
-         ExecuteBashCommand(command2, arg2)
-      }
-   }
-
-   command3 := "mv"
-   path3 := "/opt/yugabyte/packages/yugabundle-" + vers + "-linux-x86_64.tar.gz"
-   pathRenamed3 := "/opt/yugabyte/packages/yugabundle-" + vers + ".tar.gz"
-   arg3 := []string{path3, pathRenamed3}
-
-   if _, err := os.Stat(path3); err == nil {
-      ExecuteBashCommand(command3, arg3)
-   } else if errors.Is(err, os.ErrNotExist) {
-      if _, err := os.Stat("/opt/yugabyte/packages/yugabundle-" + vers + ".tar.gz"); err == nil {
-         fmt.Println("Package has already been renamed at /opt/yugabyte/packages.")
-      } else {
-         fmt.Println("Package not present, please make sure it has been downloaded.")
-      }
-   }
-
-   rExtract2, errExtract2 := os.Open("/opt/yugabyte/packages/yugabundle-" + vers + ".tar.gz")
+   rExtract2, errExtract2 := os.Open(path1)
    if errExtract2 != nil {
       fmt.Println("Error in starting the File Extraction process")
    }
-   Untar(rExtract2, "/opt/yugabyte/packages")
-   fmt.Println("/opt/yugabyte/packages/yugabundle-" + vers + ".tar.gz successfully extracted!")
+
+   Untar(rExtract2, "/opt/yugabyte")
+
+   fmt.Println(path1 + " successfully extracted!")
+
+   MoveFileGolang("/opt/yugabyte/yugabyte-"+vers,
+   "/opt/yugabyte/packages/yugabyte-"+vers)
+
 }
 
-func (com Common) copyThirdPartyDependencies() {
+func (com Common) renameThirdPartyDependencies() {
 
-   os.RemoveAll("/opt/yugabyte/third-party")
-
-   _, errExtract := os.Open("/opt/yugabyte/packages/thirdparty-deps.tar.gz")
-   if errExtract != nil {
-      fmt.Println("Error in starting the File Extraction process")
-   }
-   if _, err := os.Stat("/opt/yugabyte/prometheus-dependencies/"); err == nil {
-      fmt.Println("/opt/yugabyte/prometheus-dependencies/ exists, skipping re-extract.")
-   } else {
-      rExtract, _ := os.Open("/opt/yugabyte/packages/thirdparty-deps.tar.gz")
-      Untar(rExtract, "/opt/yugabyte")
-      fmt.Println("/opt/yugabyte/packages/thirdparty-deps.tar.gz successfully extracted!")
-   }
-   MoveFileGolang("/opt/yugabyte/prometheus-dependencies", "/opt/yugabyte/third-party")
+   //Remove any thirdparty directories if they already exist, so
+   //that the install action is idempotent.
+   os.RemoveAll("/opt/yugabyte/thirdparty")
+   rExtract, _ := os.Open("/opt/yugabyte/packages/thirdparty-deps.tar.gz")
+   Untar(rExtract, "/opt/yugabyte")
+   fmt.Println("/opt/yugabyte/packages/thirdparty-deps.tar.gz successfully extracted!")
+   MoveFileGolang("/opt/yugabyte/thirdparty", "/opt/yugabyte/third-party")
 }

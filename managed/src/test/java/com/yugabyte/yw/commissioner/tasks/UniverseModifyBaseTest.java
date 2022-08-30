@@ -49,7 +49,6 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
 
   protected ShellResponse dummyShellResponse;
   protected ShellResponse preflightResponse;
-  protected ShellResponse listResponse;
 
   protected YBClient mockClient;
 
@@ -68,7 +67,6 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
     dummyShellResponse.message = "true";
     preflightResponse = new ShellResponse();
     preflightResponse.message = "{\"test\": true}";
-    listResponse = new ShellResponse();
     when(mockNodeManager.nodeCommand(any(), any()))
         .then(
             invocation -> {
@@ -78,6 +76,7 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
                 return preflightResponse;
               }
               if (invocation.getArgument(0).equals(NodeManager.NodeCommandType.List)) {
+                ShellResponse listResponse = new ShellResponse();
                 NodeTaskParams params = invocation.getArgument(1);
                 if (params.nodeUuid == null) {
                   listResponse.message = "{\"universe_uuid\":\"" + params.universeUUID + "\"}";

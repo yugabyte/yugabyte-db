@@ -387,6 +387,9 @@ message AlterTableRequestPB {
 
   // If set, updates the pgschema_name in SchemaPB.
   optional string pgschema_name = 10;
+
+  // Used for YSQL to notify DocDB of DDL changes that affect only PG metadata
+  optional bool increment_schema_version = 11 [default = false];
 }
 
 message AlterTableResponsePB {
@@ -409,6 +412,20 @@ message IsAlterTableDoneResponsePB {
 
   // true if the alter operation is completed, false otherwise
   optional bool done = 3;
+}
+
+message GetTableDiskSizeRequestPB {
+  // GetTableDiskSizePB used for YSQL \d+ command
+  optional TableIdentifierPB table = 1;
+}
+
+message GetTableDiskSizeResponsePB {
+  // The error, if an error occurred with this request.
+  optional MasterErrorPB error = 1;
+
+  // Size is 0 for colocated tables
+  optional int64 size = 2;
+  optional int32 num_missing_tablets = 3;
 }
 
 // ============================================================================
@@ -646,6 +663,8 @@ service MasterDdl {
   rpc AlterNamespace(AlterNamespaceRequestPB) returns (AlterNamespaceResponsePB);
   rpc ListNamespaces(ListNamespacesRequestPB) returns (ListNamespacesResponsePB);
   rpc GetNamespaceInfo(GetNamespaceInfoRequestPB) returns (GetNamespaceInfoResponsePB);
+
+  rpc GetTableDiskSize(GetTableDiskSizeRequestPB) returns (GetTableDiskSizeResponsePB);
 
   // For Tablegroup:
   rpc CreateTablegroup(CreateTablegroupRequestPB) returns (CreateTablegroupResponsePB);

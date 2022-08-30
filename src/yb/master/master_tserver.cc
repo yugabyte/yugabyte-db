@@ -60,32 +60,34 @@ const scoped_refptr<MetricEntity>& MasterTabletServer::MetricEnt() const {
   return metric_entity_;
 }
 
-Status MasterTabletServer::GetTabletPeer(const string& tablet_id,
-                                         std::shared_ptr<tablet::TabletPeer>* tablet_peer) const {
+Result<tablet::TabletPeerPtr> MasterTabletServer::GetServingTablet(
+    const TabletId& tablet_id) const {
+  return GetServingTablet(Slice(tablet_id));
+}
+
+Result<tablet::TabletPeerPtr> MasterTabletServer::GetServingTablet(const Slice& tablet_id) const {
   if (tablet_id == kSysCatalogTabletId) {
-    *tablet_peer = master_->catalog_manager()->tablet_peer();
-    return Status::OK();
+    return master_->catalog_manager()->tablet_peer();
   }
-  return STATUS_FORMAT(NotFound, "tablet $0 not found", tablet_id);
+  return STATUS_FORMAT(NotFound, "Tablet $0 not found", tablet_id);
 }
 
 Status MasterTabletServer::GetTabletStatus(const tserver::GetTabletStatusRequestPB* req,
                                            tserver::GetTabletStatusResponsePB* resp) const {
-  std::shared_ptr<tablet::TabletPeer> tablet_peer;
   // Tablets for YCQL virtual tables have no peer and we will return the NotFound status. That is
   // ok because GetTabletStatus is called for the cases when a tablet is moved or otherwise down
   // and being boostrapped, which should not happen to those tables.
-  RETURN_NOT_OK(GetTabletPeer(req->tablet_id(), &tablet_peer));
+  auto tablet_peer = VERIFY_RESULT(GetServingTablet(req->tablet_id()));
   tablet_peer->GetTabletStatusPB(resp->mutable_tablet_status());
   return Status::OK();
 }
 
 bool MasterTabletServer::LeaderAndReady(const TabletId& tablet_id, bool allow_stale) const {
-  std::shared_ptr<tablet::TabletPeer> tablet_peer;
-  if (!GetTabletPeer(tablet_id, &tablet_peer).ok()) {
+  auto tablet_peer = GetServingTablet(tablet_id);
+  if (!tablet_peer.ok()) {
     return false;
   }
-  return tablet_peer->LeaderStatus(allow_stale) == consensus::LeaderStatus::LEADER_AND_READY;
+  return (**tablet_peer).LeaderStatus(allow_stale) == consensus::LeaderStatus::LEADER_AND_READY;
 }
 
 const NodeInstancePB& MasterTabletServer::NodeInstance() const {

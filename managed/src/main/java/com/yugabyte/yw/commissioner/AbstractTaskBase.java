@@ -134,6 +134,11 @@ public abstract class AbstractTaskBase implements ITask {
     this.userTaskUUID = userTaskUUID;
   }
 
+  @Override
+  public boolean isFirstTry() {
+    return taskParams().getPreviousTaskUUID() == null;
+  }
+
   /**
    * We would try to parse the shell response message as JSON and return JsonNode
    *

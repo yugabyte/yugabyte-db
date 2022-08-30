@@ -3,6 +3,8 @@
 package com.yugabyte.yw.common;
 
 import com.google.common.collect.ImmutableList;
+import com.yugabyte.yw.common.helm.HelmUtils;
+
 import io.fabric8.kubernetes.api.model.LoadBalancerIngress;
 import io.fabric8.kubernetes.api.model.Node;
 import io.fabric8.kubernetes.api.model.Pod;
@@ -11,11 +13,15 @@ import io.fabric8.kubernetes.api.model.PodStatus;
 import io.fabric8.kubernetes.api.model.Secret;
 import io.fabric8.kubernetes.api.model.Service;
 import java.io.File;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import javax.annotation.Nullable;
 import javax.inject.Inject;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -41,27 +47,48 @@ public abstract class KubernetesManager {
       UUID providerUUID,
       String universePrefix,
       String namespace,
-      String overridesFile) {
+      String overridesFile,
+      Map<String, Object> universeOverrides,
+      Map<String, Object> azOverrides) {
 
     String helmPackagePath = this.getHelmPackagePath(ybSoftwareVersion);
     String helmReleaseName = Util.sanitizeHelmReleaseName(universePrefix);
 
-    List<String> commandList =
-        ImmutableList.of(
-            "helm",
-            "install",
-            helmReleaseName,
-            helmPackagePath,
-            "--namespace",
-            namespace,
-            "-f",
-            overridesFile,
-            "--timeout",
-            getTimeout(),
-            "--wait");
-    LOG.info(String.join(" ", commandList));
-    ShellResponse response = execCommand(config, commandList);
+    List<String> commandArrayList =
+        new ArrayList<>(
+            Arrays.asList(
+                "helm",
+                "install",
+                helmReleaseName,
+                helmPackagePath,
+                "--namespace",
+                namespace,
+                "-f",
+                overridesFile,
+                "--timeout",
+                getTimeout(),
+                "--wait"));
+    LOG.info("After Overrides excluded - {}" + String.join(" ", commandArrayList));
+    if (universeOverrides != null) {
+      commandArrayList.addAll(setOverrides(HelmUtils.flattenMap(universeOverrides)));
+    }
+    if (azOverrides != null) {
+      commandArrayList.addAll(setOverrides(HelmUtils.flattenMap(azOverrides)));
+    }
+    // TODO gflags we need to add here. Don't know the order yet.
+
+    List<String> unmodifiableList = Collections.unmodifiableList(commandArrayList);
+    ShellResponse response = execCommand(config, unmodifiableList);
     processHelmResponse(config, universePrefix, namespace, response);
+  }
+
+  private List<String> setOverrides(Map<String, String> overrides) {
+    List<String> res = new ArrayList<>();
+    for (Map.Entry<String, String> entry : overrides.entrySet()) {
+      res.add("--set");
+      res.add(String.format("%s=%s", entry.getKey(), entry.getValue()));
+    }
+    return res;
   }
 
   public void helmUpgrade(
@@ -69,26 +96,34 @@ public abstract class KubernetesManager {
       Map<String, String> config,
       String universePrefix,
       String namespace,
-      String overridesFile) {
+      String overridesFile,
+      Map<String, Object> universeOverrides,
+      Map<String, Object> azOverrides) {
 
     String helmPackagePath = this.getHelmPackagePath(ybSoftwareVersion);
     String helmReleaseName = Util.sanitizeHelmReleaseName(universePrefix);
 
-    List<String> commandList =
-        ImmutableList.of(
-            "helm",
-            "upgrade",
-            helmReleaseName,
-            helmPackagePath,
-            "-f",
-            overridesFile,
-            "--namespace",
-            namespace,
-            "--timeout",
-            getTimeout(),
-            "--wait");
-    LOG.info(String.join(" ", commandList));
-    ShellResponse response = execCommand(config, commandList);
+    List<String> commandArrayList =
+        new ArrayList<>(
+            Arrays.asList(
+                "helm",
+                "upgrade",
+                helmReleaseName,
+                helmPackagePath,
+                "-f",
+                overridesFile,
+                "--namespace",
+                namespace,
+                "--timeout",
+                getTimeout(),
+                "--wait"));
+    LOG.info("After Overrides excluded - " + String.join(" ", commandArrayList));
+    commandArrayList.addAll(setOverrides(HelmUtils.flattenMap(universeOverrides)));
+    commandArrayList.addAll(setOverrides(HelmUtils.flattenMap(azOverrides)));
+    // TODO gflags we need to add here. Don't know the order yet.
+
+    List<String> unmodifiableList = Collections.unmodifiableList(commandArrayList);
+    ShellResponse response = execCommand(config, unmodifiableList);
     processHelmResponse(config, universePrefix, namespace, response);
   }
 

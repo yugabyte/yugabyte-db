@@ -65,7 +65,13 @@ class GetPriceWorker(Thread):
     def run(self):
         url = VM_PRICING_URL_FORMAT.format(self.region)
         while url:
-            price_info = requests.get(url).json()
+            try:
+                price_info = requests.get(url).json()
+            except Exception as e:
+                logging.error("Error getting price information for region {}: {}"
+                              .format(self.region, str(e)))
+                break
+
             for info in price_info.get('Items'):
                 # Azure API doesn't support regex as of 3/08/2021, so manually parse out Windows.
                 # Some VMs also show $0.0 as the price for some reason, so ignore those as well.
@@ -496,7 +502,7 @@ class AzureCloudAdmin():
                 logging.info("[app] Deleted ip {}".format(ip_name))
         except CloudError as e:
             if e.error and e.error.error == 'ResourceNotFound':
-                logging.info("[app] Resource ip {} is not found".format(ip_addr))
+                logging.info("[app] Resource ip name {} is not found".format(ip_name))
             else:
                 raise e
 
@@ -661,8 +667,7 @@ class AzureCloudAdmin():
                 lun_indexes.append(lun)
 
             if json_output:
-                print(json.dumps({"lun_indexes": lun_indexes}))
-        return
+                return {"lun_indexes": lun_indexes}
 
     def query_vpc(self):
         """
@@ -719,11 +724,21 @@ class AzureCloudAdmin():
         for worker in workers:
             worker.join()
             price_info = worker.vm_name_to_price_dict
-            common_vms = set(price_info.keys()) & set(all_vms.keys())
-            for vm_name in common_vms:
+            # Adding missed items.
+            missed_price = set(all_vms.keys()) - set(price_info.keys())
+            for vm_name in missed_price:
+                price_info[vm_name] = {
+                    "unit": "Hours",
+                    "pricePerUnit": 0.0,
+                    "pricePerHour": 0.0,
+                    "pricePerDay": 0.0,
+                    "pricePerMonth": 0.0,
+                    "currency": "USD",
+                    "effectiveDate": "2000-01-01T00:00:00.0000"
+                }
+
+            for vm_name in all_vms:
                 all_vms[vm_name]['prices'][worker.region] = price_info[vm_name]
-            # Only return VMs that are present in all regions
-            all_vms = {k: all_vms[k] for k in common_vms}
 
         execution_time = datetime.datetime.now() - operation_start
         logging.info("Finished price retrieving process [ %s ms ]",
@@ -782,7 +797,7 @@ class AzureCloudAdmin():
 
     def get_host_info(self, vm_name, get_all=False):
         try:
-            vm = self.compute_client.virtual_machines.get(RESOURCE_GROUP, vm_name)
+            vm = self.compute_client.virtual_machines.get(RESOURCE_GROUP, vm_name, 'instanceView')
         except Exception as e:
             return None
         nic_name = id_to_name(vm.network_profile.network_interfaces[0].id)
@@ -796,17 +811,26 @@ class AzureCloudAdmin():
             ip_name = id_to_name(nic.ip_configurations[0].public_ip_address.id)
             public_ip = (self.network_client.public_ip_addresses
                          .get(RESOURCE_GROUP, ip_name).ip_address)
-
         subnet = id_to_name(nic.ip_configurations[0].subnet.id)
         server_type = vm.tags.get("yb-server-type", None) if vm.tags else None
         node_uuid = vm.tags.get("node-uuid", None) if vm.tags else None
         universe_uuid = vm.tags.get("universe-uuid", None) if vm.tags else None
         zone_full = "{}-{}".format(region, zone) if zone is not None else region
+        instance_state = None
+        if vm.instance_view is not None and vm.instance_view.statuses is not None:
+            for status in vm.instance_view.statuses:
+                logging.info("VM state {}".format(status.code))
+                parts = status.code.split("/")
+                if len(parts) != 2 or parts[0] != "PowerState":
+                    continue
+                instance_state = parts[1]
+        is_running = True if instance_state == "running" else False
         return {"private_ip": private_ip, "public_ip": public_ip, "region": region,
                 "zone": zone_full, "name": vm.name, "ip_name": ip_name,
                 "instance_type": vm.hardware_profile.vm_size, "server_type": server_type,
                 "subnet": subnet, "nic": nic_name, "id": vm.name, "node_uuid": node_uuid,
-                "universe_uuid": universe_uuid}
+                "universe_uuid": universe_uuid, "instance_state": instance_state,
+                "is_running": is_running}
 
     def get_dns_client(self, subscription_id):
         if self.dns_client is None:

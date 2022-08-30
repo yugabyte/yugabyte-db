@@ -15,6 +15,7 @@
 
 #include <memory>
 
+#include "yb/cdc/cdc_fwd.h"
 #include "yb/cdc/cdc_error.h"
 #include "yb/cdc/cdc_metrics.h"
 #include "yb/cdc/cdc_producer.h"
@@ -42,12 +43,6 @@ namespace yb {
 namespace client {
 
 class TableHandle;
-
-}
-
-namespace tserver {
-
-class TSTabletManager;
 
 }
 
@@ -94,7 +89,7 @@ using TabletIdStreamIdSet = std::set<pair<TabletId, CDCStreamId>>;
 
 class CDCServiceImpl : public CDCServiceIf {
  public:
-  CDCServiceImpl(tserver::TSTabletManager* tablet_manager,
+  CDCServiceImpl(std::unique_ptr<CDCServiceContext> context,
                  const scoped_refptr<MetricEntity>& metric_entity_server,
                  MetricRegistry* metric_registry);
 
@@ -127,9 +122,8 @@ class CDCServiceImpl : public CDCServiceIf {
                                 UpdateCdcReplicatedIndexResponsePB* resp,
                                 rpc::RpcContext rpc) override;
 
-  void GetLatestEntryOpId(const GetLatestEntryOpIdRequestPB* req,
-                          GetLatestEntryOpIdResponsePB* resp,
-                          rpc::RpcContext context) override;
+  Result<GetLatestEntryOpIdResponsePB> GetLatestEntryOpId(
+      const GetLatestEntryOpIdRequestPB& req, CoarseTimePoint deadline) override;
 
   void BootstrapProducer(const BootstrapProducerRequestPB* req,
                          BootstrapProducerResponsePB* resp,
@@ -355,7 +349,7 @@ class CDCServiceImpl : public CDCServiceIf {
 
   rpc::Rpcs rpcs_;
 
-  tserver::TSTabletManager* tablet_manager_;
+  std::unique_ptr<CDCServiceContext> context_;
 
   MetricRegistry* metric_registry_;
 

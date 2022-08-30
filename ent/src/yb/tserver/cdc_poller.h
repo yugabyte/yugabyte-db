@@ -64,10 +64,16 @@ class CDCPoller : public std::enable_shared_from_this<CDCPoller> {
   // Begins poll process for a producer tablet.
   void Poll();
 
+  bool IsPolling() { return is_polling_; }
+
+  void SetSchemaVersion(uint32_t cur_version);
+
   std::string LogPrefixUnlocked() const;
 
  private:
   bool CheckOnline();
+
+  void DoSetSchemaVersion(uint32 cur_version);
 
   void DoPoll();
   // Does the work of sending the changes to the output client.
@@ -88,6 +94,7 @@ class CDCPoller : public std::enable_shared_from_this<CDCPoller> {
   std::mutex data_mutex_;
 
   OpIdPB op_id_ GUARDED_BY(data_mutex_);
+  uint32_t validated_schema_version_ GUARDED_BY(data_mutex_);
 
   yb::Status status_ GUARDED_BY(data_mutex_);
   std::shared_ptr<cdc::GetChangesResponsePB> resp_ GUARDED_BY(data_mutex_);

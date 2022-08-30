@@ -1,8 +1,9 @@
 ---
-title: Deploy to two universes with asynchronous replication
-headerTitle: Asynchronous replication
-linkTitle: Asynchronous replication
+title: Deploy to two universes with xCluster replication
+headerTitle: xCluster deployment
+linkTitle: xCluster
 description: Enable deployment using unidirectional (master-follower) or bidirectional (multi-master) replication between universes
+headContent: Unidirectional (master-follower) and bidirectional (multi-master) replication
 aliases:
   - /preview/deploy/multi-dc/2dc-deployment
 menu:
@@ -13,9 +14,9 @@ menu:
 type: docs
 ---
 
-You can perform deployment using unidirectional (master-follower) or bidirectional (multi-master) asynchronous replication between universes (also known as data centers).
+Using an xCluster deployment, you can use unidirectional (master-follower) or bidirectional (multi-master) asynchronous replication between two universes (aka data centers).
 
-For information on two data center (2DC) deployment architecture and replication scenarios, see [Two data center (2DC) deployments](../../../architecture/docdb-replication/async-replication/).
+For information on xCluster deployment architecture and replication scenarios, see [xCluster replication](../../../architecture/docdb-replication/async-replication/).
 
 ## Set up universes
 
@@ -31,7 +32,7 @@ If you already have existing data in your tables, follow the bootstrap process d
 
 ## Set up unidirectional replication
 
-After you created the required tables, you can set up asynchronous replication as follows:
+After you created the required tables, you can set up unidirectional replication as follows:
 
 - Look up the source universe UUID and the table IDs for the two tables and the index table:
 
@@ -42,14 +43,14 @@ After you created the required tables, you can set up asynchronous replication a
       ```shell
       ./bin/yb-admin -master_addresses <source master ips comma separated> list_tables include_table_id
       ```
-      
+
       The preceding command lists all the tables, including system tables. To locate a specific table, you can add `grep`, as follows:
-      
+
       ```sh
       ./bin/yb-admin -master_addresses <source master ips comma separated> list_tables include_table_id | grep table_name
       ```
-      
-      Note that if there are multiple schemas with the same table name, you might need to contact Yugabyte Support for assistance. 
+
+      Note that if there are multiple schemas with the same table name, you might need to contact Yugabyte Support for assistance.
 
 - Run the following `yb-admin` [`setup_universe_replication`](../../../admin/yb-admin/#setup-universe-replication) command from the YugabyteDB home directory in the source universe:
 
@@ -261,7 +262,7 @@ To create unidirectional replication, peform the following:
     ```
 3. Optionally, if you have access to YugabyteDB Anywhere, you can observe the replication setup (`xClusterSetup1`) by navigating to **Replication** on the source and target universe.
 
-## Set up asynchronous replication in Kubernetes
+## Set up xCluster replication in Kubernetes
 
 In the Kubernetes environment, you can set up a pod to pod connectivity, as follows:
 
@@ -358,10 +359,10 @@ In the Kubernetes environment, you can set up a pod to pod connectivity, as foll
 
 ## Bootstrap a target universe
 
-You can set up asynchronous replication for the following purposes:
+You can set up xCluster replication for the following purposes:
+
 * Enabling replication on a table that has existing data.
 * Catching up an existing stream where the target has fallen too far behind.
-
 
 To ensure that the WALs are still available, you need to perform the following steps within the [cdc_wal_retention_time_secs](../../reference/configuration/yb-master/#cdc-wal-retention-time-secs) gflag window. If the process is going to take more time than the value defined by this flag, you should increase the value.
 

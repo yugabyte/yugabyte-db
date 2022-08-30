@@ -41,6 +41,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
 
   private static final List<TaskType> UNIVERSE_CREATE_TASK_SEQUENCE =
       ImmutableList.of(
+          TaskType.InstanceExistCheck,
           TaskType.SetNodeStatus,
           TaskType.AnsibleCreateServer,
           TaskType.AnsibleUpdateNodeInfo,
@@ -67,6 +68,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
 
   private static final List<TaskType> UNIVERSE_CREATE_TASK_RETRY_SEQUENCE =
       ImmutableList.of(
+          TaskType.InstanceExistCheck,
           TaskType.AnsibleClusterServerCtl, // master
           TaskType.WaitForServer,
           TaskType.AnsibleClusterServerCtl, // tserver
@@ -172,7 +174,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
     universeDetails.creatingUser = defaultUser;
     universeDetails.universeUUID = defaultUniverse.universeUUID;
     universeDetails.firstTry = true;
-    universeDetails.previousTaskUUID = null;
+    universeDetails.setPreviousTaskUUID(null);
     return universeDetails;
   }
 
@@ -202,7 +204,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
     assertTaskSequence(UNIVERSE_CREATE_TASK_SEQUENCE, subTasksByPosition);
     taskInfo = TaskInfo.getOrBadRequest(taskInfo.getTaskUUID());
     taskParams = Json.fromJson(taskInfo.getTaskDetails(), UniverseDefinitionTaskParams.class);
-    taskParams.previousTaskUUID = taskInfo.getTaskUUID();
+    taskParams.setPreviousTaskUUID(taskInfo.getTaskUUID());
     taskParams.firstTry = false;
     // Retry the task.
     taskInfo = submitTask(taskParams);
@@ -224,7 +226,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
     assertTaskSequence(UNIVERSE_CREATE_TASK_SEQUENCE, subTasksByPosition);
     taskInfo = TaskInfo.getOrBadRequest(taskInfo.getTaskUUID());
     taskParams = Json.fromJson(taskInfo.getTaskDetails(), UniverseDefinitionTaskParams.class);
-    taskParams.previousTaskUUID = taskInfo.getTaskUUID();
+    taskParams.setPreviousTaskUUID(taskInfo.getTaskUUID());
     taskParams.firstTry = false;
     primaryCluster.userIntent.enableYCQL = true;
     primaryCluster.userIntent.enableYCQLAuth = true;

@@ -2,6 +2,7 @@
     that:
       - user_name is defined
       - systemd_option is defined
+      - _mount_points is defined
 
 - name: Download ybc package
   include: download-ybc-package.yml
@@ -84,6 +85,19 @@
     when: ybc_flags is defined
 
 - block:
+  - name: Configure | Add yb server ctl script
+    vars:
+      mount_paths: "{{ _mount_points | join(' ') }}"
+    template:
+      src: "roles/configure-cluster-server/templates/yb-server-ctl.sh.j2"
+      dest: "{{ yb_bin_dir }}/yb-server-ctl.sh"
+      owner: "{{ user_name }}"
+      mode: 0755
+    when: not systemd_option
+    tags:
+      - ybc-install
+      - yb-prebuilt-ami
+
   # Cronjob approach for starting yb-controller
   - name: Setup cron to check liveness of controller
     cron:
@@ -140,10 +154,30 @@
         state: started
         enabled: yes
         scope: user
+
+    - name: Enable and start controller
+      systemd:
+        name: yb-controller
+        state: started
+        enabled: yes
+        scope: user
     when: not systemd_system.stat.exists
 
   - name: System systemd units
     block:
+    - name: Stop existing running controller
+      shell:
+        cmd: "sudo systemctl stop yb-controller"
+
+    - name: Stop existing running controller
+      shell:
+        cmd: "sudo systemctl disable yb-controller"
+
+    # Systemd daemon-reload for yb-controller service files
+    - name: Perform daemon-reload for the new services
+      shell:
+        cmd: "sudo systemctl daemon-reload"
+
     - name: Enable yb-controller service
       shell:
         cmd: "sudo systemctl enable yb-controller"
@@ -151,11 +185,6 @@
     - name: Run yb-controller.service to start the yb-controller
       shell:
         cmd: "sudo systemctl start yb-controller"
-
-    # Systemd daemon-reload for yb-controller service files
-    - name: Perform daemon-reload for the new services
-      shell:
-        cmd: "sudo systemctl daemon-reload"
     when: systemd_system.stat.exists
 
   tags:

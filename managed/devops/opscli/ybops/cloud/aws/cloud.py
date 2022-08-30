@@ -337,7 +337,8 @@ class AwsCloud(AbstractCloud):
             filters = [
                 {
                     "Name": "instance-state-name",
-                    "Values": ["running"]
+                    # Include all non-terminating states.
+                    "Values": ["rebooting", "pending", "running", "stopping", "stopped"]
                 }
             ]
 
@@ -392,7 +393,8 @@ class AwsCloud(AbstractCloud):
                 elif interface.get("Attachment").get("DeviceIndex") == 1:
                     secondary_private_ip = interface.get("PrivateIpAddress")
                     secondary_subnet = interface.get("SubnetId")
-
+            instance_state = data["State"].get("Name") if data.get("State") is not None else None
+            logging.info("VM state {}".format(instance_state))
             result = dict(
                 id=data.get("InstanceId", None),
                 name=name_tags[0] if name_tags else None,
@@ -412,7 +414,9 @@ class AwsCloud(AbstractCloud):
                 node_uuid=node_uuid_tags[0] if node_uuid_tags else None,
                 universe_uuid=universe_uuid_tags[0] if universe_uuid_tags else None,
                 vpc=data["VpcId"],
-                ami=data.get("ImageId", None)
+                ami=data.get("ImageId", None),
+                instance_state=instance_state,
+                is_running=True if instance_state == "running" else False
             )
 
             disks = data.get("BlockDeviceMappings")

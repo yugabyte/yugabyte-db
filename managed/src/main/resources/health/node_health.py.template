@@ -194,6 +194,9 @@ YB_NODE_CORE_FILES_CHECK = MetricDefinition(
 YB_NODE_CLOCK_SKEW_CHECK = MetricDefinition(
     "yb_node_clock_skew_check",
     "Status of clock skew check")
+YB_NODE_CONTROLLER_CHECK = MetricDefinition(
+    "yb_node_controller_check",
+    "YB-Controller server check")
 
 ###################################################################################################
 # Reporting
@@ -473,11 +476,11 @@ def get_rss_from_statm(statm):
 
 class NodeChecker():
 
-    def __init__(self, node, node_name, master_index, tserver_index, is_k8s,
-                 yb_home_dir, start_time_ms, ysql_port, ycql_port, redis_port,
-                 enable_tls_client, root_and_client_root_ca_same, ssl_protocol, enable_ysql,
+    def __init__(self, node, node_name, master_index, tserver_index, is_k8s, yb_home_dir,
+                 start_time_ms, ysql_port, ycql_port, redis_port, enable_tls_client,
+                 enable_tls, root_and_client_root_ca_same, ssl_protocol, enable_ysql,
                  enable_ysql_auth, master_http_port, tserver_http_port, ysql_server_http_port,
-                 node_version):
+                 node_version, is_ybc_enabled, ybc_port):
         self.node = node
         self.node_name = node_name
         self.master_index = master_index
@@ -485,6 +488,7 @@ class NodeChecker():
         self.start_time_ms = start_time_ms
         self.yb_home_dir = yb_home_dir
         self.enable_tls_client = enable_tls_client
+        self.enable_tls = enable_tls
         self.root_and_client_root_ca_same = root_and_client_root_ca_same
         self.ssl_protocol = ssl_protocol
         self.is_k8s = is_k8s
@@ -497,6 +501,8 @@ class NodeChecker():
         self.tserver_http_port = tserver_http_port
         self.ysql_server_http_port = ysql_server_http_port
         self.node_version = node_version
+        self.is_ybc_enabled = is_ybc_enabled
+        self.ybc_port = ybc_port
         self.additional_info = {}
 
     def _new_entry(self, message, process=None):
@@ -605,6 +611,11 @@ class NodeChecker():
             return K8S_CERT_FILE_PATH
 
         return os.path.join(self.yb_home_dir, "yugabyte-tls-config/ca.crt")
+
+    def get_certificate_dir(self):
+        if self.is_k8s:
+            return K8S_CERTS_PATH
+        return os.path.join(self.yb_home_dir, "yugabyte-tls-config/")
 
     def get_node_to_node_certificate_path(self):
         if self.is_k8s:
@@ -1112,6 +1123,9 @@ class NodeChecker():
     def yb_tserver_dir(self):
         return os.path.join(self.yb_home_dir, "tserver")
 
+    def yb_controller_dir(self):
+        return os.path.join(self.yb_home_dir, "controller")
+
     def check_cqlsh(self):
         logging.info("Checking cqlsh works for node {}".format(self.node))
         e = self._new_entry("Connectivity with cqlsh")
@@ -1309,6 +1323,22 @@ class NodeChecker():
         return {"ssl_installed:" + self.node: (output == "0")
                 if not has_errors(output) else None}
 
+    def check_yb_controller_availability(self):
+        controller_cli = '{}/bin/yb-controller-cli'.format(self.yb_controller_dir())
+        host = self.node
+        port = self.ybc_port
+        e = self._new_entry("YB-Controller server check")
+        ping_cmd = '{} ping --tserver_ip {} --server_port {}'.format(controller_cli, host, port)
+        if self.enable_tls:
+            ping_cmd = '{} --certs_dir_name {}'.format(ping_cmd, self.get_certificate_dir())
+        metric = Metric.from_definition(YB_NODE_CONTROLLER_CHECK)
+        errors = []
+        output = self._check_output(ping_cmd).strip()
+        if "Ping successful!" not in output:
+            errors = [output]
+        has_errors = len(errors) > 0
+        metric.add_value(0 if has_errors else 1)
+        return e.fill_and_return_entry(errors, has_error=has_errors, metrics=[metric])
 
 ###################################################################################################
 # Utility functions
@@ -1358,12 +1388,9 @@ def is_equal_or_newer_release_build(current_release_build, threshold_release_bui
             parsed_current_build_number = parse_build_number(current_build)
             parsed_threshold_build_number = parse_build_number(threshold_build)
             # Threat PRE_RELEASE and dev builds as later than regular builds
-            if not parsed_current_build_number:
-                # Both non-digit builds OR current build is non-digit
+            if not parsed_current_build_number or not parsed_threshold_build_number:
+                # One of the builds is non-digit - it's dev builds so treat as equal
                 return True
-            if not parsed_threshold_build_number:
-                # Current is digit builds, while threshold build is non-digit
-                return False
             # Regular builds
             c = int(parsed_current_build_number.group(1))
             t = int(parsed_threshold_build_number.group(1))
@@ -1390,13 +1417,14 @@ class CheckCoordinator:
             self.result = {}
 
     class CheckRunInfo:
-        def __init__(self, instance, func_name, yb_process):
+        def __init__(self, instance, func_name, yb_process, max_tries=MAX_TRIES):
             self.instance = instance
             self.func_name = func_name
             self.yb_process = yb_process
             self.result = None
             self.entry = None
             self.tries = 0
+            self.max_tries = max_tries
 
     def __init__(self, retry_interval_secs):
         self.prechecks = []
@@ -1406,8 +1434,9 @@ class CheckCoordinator:
     def add_precheck(self, instance, func_name):
         self.prechecks.append(CheckCoordinator.PreCheckRunInfo(instance, func_name))
 
-    def add_check(self, instance, func_name, yb_process=None):
-        self.checks.append(CheckCoordinator.CheckRunInfo(instance, func_name, yb_process))
+    def add_check(self, instance, func_name, yb_process=None, max_tries=MAX_TRIES):
+        self.checks.append(CheckCoordinator.CheckRunInfo(instance,
+                           func_name, yb_process, max_tries))
 
     def run(self):
         additional_info = {}
@@ -1439,7 +1468,7 @@ class CheckCoordinator:
 
             checks_remaining = 0
             for check in self.checks:
-                if check.result.has_error and check.tries < MAX_TRIES:
+                if check.result.has_error and check.tries < check.max_tries:
                     checks_remaining += 1
 
             if checks_remaining > 0:
@@ -1484,6 +1513,8 @@ class NodeInfo:
         self.check_clock = data["checkClock"]
         self.test_read_write = data["testReadWrite"]
         self.universe_uuid = data["universeUuid"]
+        self.is_ybc_enabled = data["enableYbc"]
+        self.ybc_port = data["ybcPort"]
 
 
 def main():
@@ -1511,11 +1542,11 @@ def main():
         alert_enhancements_version = True
     report = Report()
     checker = NodeChecker(
-        n.node_host, n.node_name, n.master_index, n.tserver_index, n.is_k8s,
-        n.yb_home_dir, n.node_start_time, n.ysql_port, n.ycql_port, n.redis_port,
-        n.enable_tls_client, n.root_and_client_root_ca_same, n.ssl_protocol, n.enable_ysql,
+        n.node_host, n.node_name, n.master_index, n.tserver_index, n.is_k8s, n.yb_home_dir,
+        n.node_start_time, n.ysql_port, n.ycql_port, n.redis_port, n.enable_tls_client,
+        n.enable_tls, n.root_and_client_root_ca_same, n.ssl_protocol, n.enable_ysql,
         n.enable_ysql_auth, n.master_http_port, n.tserver_http_port,
-        n.ysql_server_http_port, n.yb_version)
+        n.ysql_server_http_port, n.yb_version, n.is_ybc_enabled, n.ybc_port)
 
     coordinator.add_precheck(checker, "check_openssl_availability")
 
@@ -1570,6 +1601,8 @@ def main():
                 coordinator.add_check(checker, "check_client_to_node_certificate_expiration")
     if not n.is_k8s:
         coordinator.add_check(checker, "check_oom_kills")
+    if n.is_ybc_enabled:
+        coordinator.add_check(checker, "check_yb_controller_availability", max_tries=3)
 
     entries = coordinator.run()
     for e in entries:

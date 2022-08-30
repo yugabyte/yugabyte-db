@@ -1,8 +1,10 @@
 import React from 'react';
 import { useSelector } from 'react-redux';
 import { Col, ListGroup, ListGroupItem, Row } from 'react-bootstrap';
-import { useQueries, useQuery } from 'react-query';
+import { useQueries, useQuery, useQueryClient } from 'react-query';
 import { Link } from 'react-router';
+import { useInterval } from 'react-use';
+import _ from 'lodash';
 
 import {
   fetchUniversesList,
@@ -10,7 +12,7 @@ import {
   getXclusterConfig
 } from '../../actions/xClusterReplication';
 import { YBLoading } from '../common/indicators';
-import { IReplication } from './IClusterReplication';
+import { Replication } from './XClusterReplicationTypes';
 
 import {
   convertToLocalTime,
@@ -19,6 +21,7 @@ import {
   GetCurrentLag,
   getReplicationStatus
 } from './ReplicationUtils';
+import { TRANSITORY_STATES, XCLUSTER_CONFIG_REFETCH_INTERVAL_MS } from './constants';
 
 import RightArrow from './ArrowIcon';
 
@@ -52,7 +55,7 @@ function ReplicationItem({
   sourceUniverseName,
   currentUserTimezone
 }: {
-  replication: IReplication;
+  replication: Replication;
   currentUniverseUUID: string;
   targetUniverseName: string;
   sourceUniverseName: string;
@@ -139,54 +142,70 @@ interface Props {
 }
 
 export function ReplicationList({ currentUniverseUUID }: Props) {
+  const currentUserTimezone = useSelector((state: any) => state.customer.currentUser.data.timezone);
+  const queryClient = useQueryClient();
+
   const { data: universeInfo, isLoading: currentUniverseLoading } = useQuery(
     ['universe', currentUniverseUUID],
     () => getUniverseInfo(currentUniverseUUID)
   );
-
-  const { sourceXClusterConfigs, targetXClusterConfigs } = universeInfo?.data?.universeDetails || {
-    sourceXClusterConfigs: [],
-    targetXClusterConfigs: []
-  };
-  const currentUserTimezone = useSelector((state: any) => state.customer.currentUser.data.timezone);
-  const XclusterConfigList = Array.from(
-    new Set([...sourceXClusterConfigs, ...targetXClusterConfigs])
-  );
-
-  const replicationData = useQueries(
-    XclusterConfigList.map((uuid: string) => {
-      return {
-        queryKey: ['Xcluster', uuid],
-        queryFn: () => getXclusterConfig(uuid),
-        enabled: universeInfo?.data !== undefined
-      };
-    })
-  );
-
   const { data: universeList, isLoading: isUniverseListLoading } = useQuery(['universeList'], () =>
     fetchUniversesList().then((res) => res.data)
   );
+
+  const sourceXClusterConfigUUIDs =
+    universeInfo?.data?.universeDetails?.sourceXClusterConfigs ?? [];
+  const targetXClusterConfigUUIDs =
+    universeInfo?.data?.universeDetails?.targetXClusterConfigs ?? [];
+
+  // List the XCluster Configurations for which the current universe is a source or a target.
+  const universeXClusterConfigUUIDs = [...sourceXClusterConfigUUIDs, ...targetXClusterConfigUUIDs];
+
+  const xClusterConfigs = useQueries(
+    universeXClusterConfigUUIDs.map((uuid: string) => ({
+      queryKey: ['Xcluster', uuid],
+      queryFn: () => getXclusterConfig(uuid),
+      enabled: universeInfo?.data !== undefined
+    }))
+  );
+
+  useInterval(() => {
+    xClusterConfigs.forEach((xClusterConfig: any) => {
+      if (
+       xClusterConfig?.data?.status &&
+        _.includes(TRANSITORY_STATES, xClusterConfig.data.status)
+      ) {
+        queryClient.invalidateQueries('Xcluster');
+      }
+    });
+  }, XCLUSTER_CONFIG_REFETCH_INTERVAL_MS);
 
   if (currentUniverseLoading || isUniverseListLoading) {
     return <YBLoading />;
   }
 
-  if (replicationData.length === 0) {
+  if (xClusterConfigs.length === 0) {
     return <ReplicationEmptyItem />;
   }
 
   return (
     <ListGroup>
-      {replicationData.map((replication: any) =>
-        !replication.data ? (
+      {xClusterConfigs.map((xClusterConfig: any) =>
+        !xClusterConfig.data ? (
           <YBLoading />
         ) : (
           <ReplicationItem
-            key={replication.data.uuid}
-            replication={replication.data}
+            key={xClusterConfig.data.uuid}
+            replication={xClusterConfig.data}
             currentUniverseUUID={currentUniverseUUID}
-            targetUniverseName={findUniverseName(universeList, replication.data.targetUniverseUUID)}
-            sourceUniverseName={findUniverseName(universeList, replication.data.sourceUniverseUUID)}
+            targetUniverseName={findUniverseName(
+              universeList,
+              xClusterConfig.data.targetUniverseUUID
+            )}
+            sourceUniverseName={findUniverseName(
+              universeList,
+              xClusterConfig.data.sourceUniverseUUID
+            )}
             currentUserTimezone={currentUserTimezone}
           />
         )
