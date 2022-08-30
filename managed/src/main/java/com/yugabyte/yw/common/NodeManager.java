@@ -282,6 +282,8 @@ public class NodeManager extends DevopsBase {
     subCommand.add("--custom_ssh_port");
     subCommand.add(keyInfo.sshPort.toString());
 
+    // TODO make this global and remove this conditional check
+    // to avoid bugs.
     if ((type == NodeCommandType.Provision
             || type == NodeCommandType.Destroy
             || type == NodeCommandType.Create
@@ -289,7 +291,8 @@ public class NodeManager extends DevopsBase {
             || type == NodeCommandType.Update_Mounted_Disks
             || type == NodeCommandType.Transfer_XCluster_Certs
             || type == NodeCommandType.Reboot
-            || type == NodeCommandType.Change_Instance_Type)
+            || type == NodeCommandType.Change_Instance_Type
+            || type == NodeCommandType.Wait_For_SSH)
         && keyInfo.sshUser != null) {
       subCommand.add("--ssh_user");
       subCommand.add(keyInfo.sshUser);
