@@ -548,6 +548,7 @@ _copyIndexOnlyScan(const IndexOnlyScan *from)
 	COPY_SCALAR_FIELD(indexorderdir);
 	COPY_NODE_FIELD(remote.qual);
 	COPY_NODE_FIELD(remote.colrefs);
+	COPY_NODE_FIELD(yb_indexqual_for_recheck);
 
 	return newnode;
 }
