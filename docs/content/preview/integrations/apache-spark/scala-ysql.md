@@ -6,8 +6,8 @@ aliases:
 menu:
   preview:
     identifier: apache-spark-1-scala-ysql
-    parent: integrations
-    weight: 572
+    parent: apache-spark
+    weight: 577
 type: docs
 ---
 
