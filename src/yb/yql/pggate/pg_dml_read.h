@@ -15,6 +15,8 @@
 #ifndef YB_YQL_PGGATE_PG_DML_READ_H_
 #define YB_YQL_PGGATE_PG_DML_READ_H_
 
+#include <optional>
+#include <utility>
 #include <vector>
 
 #include "yb/common/pgsql_protocol.fwd.h"
@@ -29,6 +31,7 @@
 #include "yb/yql/pggate/pg_doc_op.h"
 #include "yb/yql/pggate/pg_session.h"
 #include "yb/yql/pggate/pg_statement.h"
+#include "yb/yql/pggate/pg_tools.h"
 
 namespace yb {
 namespace pggate {
@@ -80,9 +83,7 @@ class PgDmlRead : public PgDml {
   // Bind a column with an IN condition.
   Status BindColumnCondIn(int attnum, int n_attr_values, PgExpr **attr_values);
 
-  Status BindHashCode(bool start_valid, bool start_inclusive,
-                                uint64_t start_hash_val, bool end_valid,
-                                bool end_inclusive, uint64_t end_hash_val);
+  Status BindHashCode(const std::optional<Bound>& start, const std::optional<Bound>& end);
 
   // Add a lower bound to the scan. If a lower bound has already been added
   // this call will set the lower bound to the stricter of the two bounds.

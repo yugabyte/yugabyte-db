@@ -384,6 +384,12 @@ typedef struct PgRangeSplitDatum {
   YBCPgDatumKind datum_kind;
 } YBCPgSplitDatum;
 
+typedef enum PgBoundType {
+  YB_YQL_BOUND_INVALID = 0,
+  YB_YQL_BOUND_VALID,
+  YB_YQL_BOUND_VALID_INCLUSIVE
+} YBCPgBoundType;
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus

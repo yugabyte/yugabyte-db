@@ -239,7 +239,9 @@ IndexOnlyNext(IndexOnlyScanState *node)
 		if (scandesc->xs_recheck)
 		{
 			econtext->ecxt_scantuple = slot;
-			if (!ExecQual(node->indexqual, econtext))
+			ExprState *indexqual = node->yb_indexqual_for_recheck
+				? node->yb_indexqual_for_recheck : node->indexqual;
+			if (!ExecQual(indexqual, econtext))
 			{
 				/* Fails recheck, so drop it and loop back for another */
 				ResetExprContext(econtext);
@@ -584,6 +586,10 @@ ExecInitIndexOnlyScan(IndexOnlyScan *node, EState *estate, int eflags)
 		ExecInitQual(node->scan.plan.qual, (PlanState *) indexstate);
 	indexstate->indexqual =
 		ExecInitQual(node->indexqual, (PlanState *) indexstate);
+
+	indexstate->yb_indexqual_for_recheck = node->yb_indexqual_for_recheck
+		? ExecInitQual(node->yb_indexqual_for_recheck, (PlanState *) indexstate)
+		: NULL;
 
 	/*
 	 * If we are just doing EXPLAIN (ie, aren't going to run the plan), stop

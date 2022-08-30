@@ -1123,13 +1123,9 @@ Status PgApiImpl::DmlAddRowLowerBound(YBCPgStatement handle,
                                                         is_inclusive);
 }
 
-Status PgApiImpl::DmlBindHashCode(PgStatement *handle, bool start_valid,
-                                    bool start_inclusive,
-                                    uint64_t start_hash_val, bool end_valid,
-                                    bool end_inclusive, uint64_t end_hash_val) {
-  return down_cast<PgDmlRead*>(handle)
-                  ->BindHashCode(start_valid, start_inclusive, start_hash_val,
-                                  end_valid, end_inclusive, end_hash_val);
+Status PgApiImpl::DmlBindHashCode(
+  PgStatement* handle, const std::optional<Bound>& start, const std::optional<Bound>& end) {
+  return down_cast<PgDmlRead*>(handle)->BindHashCode(start, end);
 }
 
 Status PgApiImpl::DmlBindTable(PgStatement *handle) {
