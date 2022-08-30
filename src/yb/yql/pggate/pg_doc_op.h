@@ -15,9 +15,9 @@
 #ifndef YB_YQL_PGGATE_PG_DOC_OP_H_
 #define YB_YQL_PGGATE_PG_DOC_OP_H_
 
+#include <variant>
 #include <list>
 #include <memory>
-#include <variant>
 
 #include "yb/util/locks.h"
 #include "yb/util/lw_function.h"
@@ -540,6 +540,8 @@ class PgDocReadOp : public PgDocOp {
 
   // Set the read_time for our backfill's read request based on our exec control parameter.
   void SetReadTimeForBackfill();
+
+  Result<bool> SetLowerUpperBound(LWPgsqlReadRequestPB* request, size_t partition);
 
   // Clone the template into actual requests to be sent to server.
   PgsqlOpPtr CloneFromTemplate() override {
