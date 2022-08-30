@@ -72,7 +72,7 @@ $ CERTS=`pwd`
 $ ENABLE_TLS="use_client_to_server_encryption=true,certs_for_client_dir=$CERTS"
 ```
 
-`node.127.0.0.1.crt` and `node.127.0.0.1.key` are the default values for the `ssl_cert_file` and `ssl_key_file` server-side configuration for a YSQL node. If your local IP is not 127.0.0.1, then use the appropriate local IP to name the two files. Alternatively use `ysql_pg_conf` to set `ssl_cert_file` and `ssl_key_file` to the appropriate values.
+`node.127.0.0.1.crt` and `node.127.0.0.1.key` are the default values for the `ssl_cert_file` and `ssl_key_file` server-side configuration for a YSQL node. If your local IP is not 127.0.0.1, then use the appropriate local IP to name the two files. Alternatively use `ysql_pg_conf_csv` to set `ssl_cert_file` and `ssl_key_file` to the appropriate values.
 
 ### TLS without authentication
 

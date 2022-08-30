@@ -27,35 +27,31 @@ type: docs
   </li>
 </ul>
 
-YugabyteDB YSQL uses PostgreSQL Audit Extension (`pgAudit`) to provide detailed session and/or object audit logging via YugabyteDB TServer logging.
+YugabyteDB YSQL uses PostgreSQL Audit Extension (`pgAudit`) to provide detailed session and/or object audit logging via YugabyteDB YB-TServer logging.
 
 The goal of the YSQL audit logging is to provide YugabyteDB users with capability to produce audit logs often required to comply with government, financial, or ISO certifications. An audit is an official inspection of an individual’s or organization’s accounts, typically by an independent body.
 
-
-## Enabling Audit Logging
-
+## Enable audit logging
 
 ### Step 1. Enable audit logging on YB-TServer
 
 This can be done in one of the following ways:
 
-##### Option A: Using `--ysql_pg_conf` TServer flag
+- Use the `--ysql_pg_conf_csv` TServer flag.
 
-Database administrators can leverage `ysql_pg_conf` to set appropriate values for `pgAudit` configuration.
+    Database administrators can use `ysql_pg_conf_csv` to set appropriate values for `pgAudit` configuration.
 
-For example, `ysql_pg_conf="pgaudit.log='DDL',pgaudit.log_level=notice"`
+    For example, `ysql_pg_conf_csv="pgaudit.log='DDL',pgaudit.log_level=notice"`
 
-These configuration values are set when the YugabyteDB cluster is created and hence are picked up for all users and for every session.
+    These configuration values are set when the YugabyteDB cluster is created and hence are picked up for all users and for every session.
 
+- Use the YugabyteDB `SET` command.
 
-##### Option B: Using YugabyteDB `SET` command
+    An alternative is to use the YB `SET` command, which essentially changes the run-time configuration parameters.
 
-An alternative suggestion is to use the YB `SET` command, which essentially changes the run-time configuration parameters.
+    For example, `SET pgaudit.log='DDL'`
 
-For example, `SET pgaudit.log='DDL'`
-
-`SET` only affects the value used by the current session. For more information, see the [PostgreSQL documentation](https://www.postgresql.org/docs/11/sql-set.html).
-
+    `SET` only affects the value used by the current session. For more information, see the [PostgreSQL documentation](https://www.postgresql.org/docs/11/sql-set.html).
 
 ### Step 2. Load the `pgAudit` extension
 
@@ -65,10 +61,9 @@ Enable audit logging in YugabyteDB clusters by creating the `pgAudit` extension.
 CREATE EXTENSION IF NOT EXISTS pgaudit;
 ```
 
+## Customize audit logging
 
-## Customizing Audit Logging
-
-YSQL audit logging can be further customized by configuring the `pgAudit` flags as per the following table.
+You can further customize YSQL audit logging by configuring the `pgAudit` flags as per the following table.
 
 <table>
   <tr>
@@ -82,7 +77,6 @@ YSQL audit logging can be further customized by configuring the `pgAudit` flags 
    </td>
    <td>Specifies which classes of statements are to be logged by <strong>session audit logging</strong>.
 <ul>
-
 
 <li><strong><code>READ</code></strong>: <code>SELECT</code> and <code>COPY</code> when the source is a relation or a query.
 
@@ -170,28 +164,25 @@ There is no default.
   </tr>
 </table>
 
-## Examples
+## Example
 
 Use these steps to configure audit logging in a YugabyteDB cluster with bare minimum configurations.
-
 
 ### 1. Enable audit logging
 
 Start the YugabyteDB Cluster with the following Audit logging configuration:
 
 ```shell
---ysql_pg_conf="pgaudit.log='DDL',pgaudit.log_level=notice,pgaudit.log_client=ON"
+--ysql_pg_conf_csv="pgaudit.log='DDL',pgaudit.log_level=notice,pgaudit.log_client=ON"
 ```
 
 Alternatively, open the YSQL shell and execute the following commands:
-
 
 ```shell
 SET pgaudit.log='DDL';
 SET pgaudit.log_client=ON;
 SET pgaudit.log_level=notice;
 ```
-
 
 ### 2. Load `pgAudit` extension
 
@@ -205,11 +196,12 @@ When prompted for the password, enter the yugabyte password.
 
 You should be able to login and see an output similar to the following:
 
+```output
+ysqlsh (11.2-YB-2.5.0.0-b0)
+Type "help" for help.
 
-    ysqlsh (11.2-YB-2.5.0.0-b0)
-    Type "help" for help.
-
-    yugabyte=#
+yugabyte=#
+```
 
 To enable the `pgAudit` extension on the YugabyteDB cluster, connect to the database by using the following:
 
@@ -227,15 +219,14 @@ CREATE EXTENSION IF NOT EXISTS pgaudit;
 
 ### 3. Create a table and verify log
 
-Since `pgaudit.log='DDL'` is configured, `CREATE TABLE` YSQL statements are logged and the corresponding log is shown in the YSQL client:
-
+As `pgaudit.log='DDL'` is configured, `CREATE TABLE` YSQL statements are logged and the corresponding log is shown in the YSQL client:
 
 ```sql
 CREATE TABLE employees (empno int, ename text, address text,
   salary int, account_number text);
 ```
 
-```
+```output
 NOTICE:  AUDIT: SESSION,2,1,DDL,CREATE TABLE,TABLE,public.employees,
 "create table employees ( empno int, ename text, address text, salary int,
 account_number text );",<not logged>

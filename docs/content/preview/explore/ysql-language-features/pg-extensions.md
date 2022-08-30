@@ -30,14 +30,15 @@ For information about using a specific extension in YugabyteDB, follow the Examp
 | Extension | Status | Description | Examples |
 | :-------- | :----- | :---------- | :------ |
 | [PostgreSQL modules](https://www.postgresql.org/docs/11/contrib.html) |
+| [file_fdw](https://www.postgresql.org/docs/11/file-fdw.html) | Pre-bundled | Provides the foreign-data wrapper file_fdw, which can be used to access data files in the server's file system. | [Example](#file-fdw-example) |
 | [fuzzystrmatch](https://www.postgresql.org/docs/11/fuzzystrmatch.html) | Pre-bundled | Provides several functions to determine similarities and distance between strings. | [Example](#fuzzystrmatch-example) |
+| [hstore](https://www.postgresql.org/docs/11/hstore.html) | Pre-bundled | Implements the hstore data type for storing sets of key/value pairs in a single PostgreSQL value. | |
+| [passwordcheck](https://www.postgresql.org/docs/11/passwordcheck.html)| Pre-bundled | Checks users' passwords whenever they are set with CREATE ROLE or ALTER ROLE. | [Example](#passwordcheck-example) |
 | [pgcrypto](https://www.postgresql.org/docs/11/pgcrypto.html)| Pre-bundled | Provides various cryptographic functions. | [Example](#pgcrypto-example) |
 | [pg_stat_statements](https://www.postgresql.org/docs/11/pgstatstatements.html)| Pre-bundled| Provides a means for tracking execution statistics of all SQL statements executed by a server. | [Example](#pg-stat-statements-example) |
-| [spi](https://www.postgresql.org/docs/11/contrib-spi.html)|Pre-bundled | Lets you use the Server Programming Interface (SPI) to create user-defined functions and stored procedures in C, and to run YSQL queries directly against YugabyteDB. | [Example](#spi-example) |
-| [hstore](https://www.postgresql.org/docs/11/hstore.html) | Pre-bundled | Implements the hstore data type for storing sets of key/value pairs in a single PostgreSQL value. | |
 | [pg_trgm](https://www.postgresql.org/docs/11/pgtrgm.html) | Pre-bundled | Provides functions and operators for determining the similarity of alphanumeric text based on trigram matching, as well as index operator classes that support fast searching for similar strings. | |
 | [postgres_fdw](https://www.postgresql.org/docs/11/postgres-fdw.html) | Pre-bundled | Provides the foreign-data wrapper postgres_fdw, which can be used to access data stored in external PostgreSQL servers. | [Example](#postgres-fdw-example) |
-| [file_fdw](https://www.postgresql.org/docs/11/file-fdw.html) | Pre-bundled | Provides the foreign-data wrapper file_fdw, which can be used to access data files in the server's file system. | [Example](#file-fdw-example) |
+| [spi](https://www.postgresql.org/docs/11/contrib-spi.html)|Pre-bundled | Lets you use the Server Programming Interface (SPI) to create user-defined functions and stored procedures in C, and to run YSQL queries directly against YugabyteDB. | [Example](#spi-example) |
 | [sslinfo](https://www.postgresql.org/docs/11/sslinfo.html) | Pre-bundled | Provides information about the SSL certificate that the current client provided when connecting to PostgreSQL. | |
 | [tablefunc](https://www.postgresql.org/docs/11/tablefunc.html) | Pre-bundled | Provides several table functions. For example, `normal_rand()` creates values, picked using a pseudorandom generator, from an ideal normal distribution. You specify how many values you want, and the mean and standard deviation of the ideal distribution. You use it in the same way that you use `generate_series()` | [Example](#tablefunc-example) |
 | [uuid-ossp](https://www.postgresql.org/docs/11/uuid-ossp.html) | Pre-bundled | Provides functions to generate universally unique identifiers (UUIDs), and functions to produce certain special UUID constants. | [Example](#uuid-ossp-example) |
@@ -188,6 +189,40 @@ SELECT levenshtein('Yugabyte', 'yugabyte'), metaphone('yugabyte', 8);
 -------------+-----------
            2 | YKBT
 (1 row)
+```
+
+### passwordcheck example
+
+To enable the passwordcheck extension, add `passwordcheck` to `shared_preload_libraries` in the PostgreSQL server configuration parameters using the YB-TServer [`--ysql_pg_conf_csv`](../../../reference/configuration/yb-tserver/#ysql-pg-conf-csv) flag:
+
+```sh
+--ysql_pg_conf_csv="shared_preload_libraries=passwordcheck"
+```
+
+When enabled, if a password is considered too weak, it's rejected with an error. For example:
+
+```sql
+yugabyte=# create role test_role password '1234';
+```
+
+```output
+ERROR:  password is too short
+```
+
+```sql
+yugabyte=# create role test_role password 'aaaaaaaaaaaaaa';
+```
+
+```output
+ERROR:  password must contain both letters and nonletters
+```
+
+```sql
+yugabyte=# create role test_role password '123test_role123';
+```
+
+```output
+ERROR:  password must not contain user name
 ```
 
 ### pgcrypto example
