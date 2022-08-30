@@ -3510,6 +3510,14 @@ Status CatalogManager::CreateCDCStream(const CreateCDCStreamRequestPB* req,
         cdc_table.AddStringColumnValue(req, master::kCdcCheckpoint, OpId().ToString());
         cdc_table.AddTimestampColumnValue(
             req, master::kCdcLastReplicationTime, GetCurrentTimeMicros());
+
+        if (id_type_option_value == cdc::kNamespaceId) {
+          // For cdcsdk cases, we also need to persist last_active_time in the 'cdc_state' table. We
+          // will store this info in the map in the 'kCdcData' column.
+          auto column_id = cdc_table.ColumnId(master::kCdcData);
+          cdc_table.AddMapColumnValue(req, column_id, "active_time", "0");
+        }
+
         session->Apply(op);
       }
       // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
