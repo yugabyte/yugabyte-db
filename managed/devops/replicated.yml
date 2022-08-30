@@ -193,15 +193,32 @@ components:
           - filename: /home/update_password.sql
             contents: |
               ALTER USER postgres WITH PASSWORD '{{repl ConfigOption "dbpass"}}';
+          - filename: /home/reload_pg_hba_conf.sql
+            contents: |
+              SELECT pg_reload_conf();
+          - filename: /home/enable_ldap.sh
+            contents: |
+              sleep 5;
+              su - postgres bash -c 'sed -i "s/^host/#&/" /var/lib/postgresql/data/yugaware/pg_hba.conf';
+              su - postgres bash -c 'echo host all all all ldap ldapserver=\"{{repl ConfigOption "ldap_server"}}\" ldapprefix=\"{{repl ConfigOption "ldap_dn_prefix"}}\" ldapsuffix=\"{{repl ConfigOption "ldap_base_dn"}}\" ldapport={{repl ConfigOption "ldap_port"}} ldaptls={{repl ConfigOption "secure_ldap"}} >> /var/lib/postgresql/data/yugaware/pg_hba.conf';
+              psql -U postgres -f /home/reload_pg_hba_conf.sql;
+          - filename: /home/setup_auth.sh
+            contents: |
+              # Disable all the existing auth mechanism for the host
+              sleep 5;
+              su - postgres bash -c 'sed -i "s/^host/#&/" /var/lib/postgresql/data/yugaware/pg_hba.conf';
+              su - postgres bash -c 'echo host all all all scram-sha-256 >> /var/lib/postgresql/data/yugaware/pg_hba.conf';
+              psql -U postgres -f /home/update_password.sql;
+              psql -U postgres -f /home/reload_pg_hba_conf.sql;
           - filename: /home/post_container_start.sh
             contents: |
                 if [ ! -f "/var/lib/postgresql/data/db_upgraded_9_6_to_14_4" ] \
                   && [ -f /var/lib/postgresql/data/backup_9_6.sql ]
-                then
+                  then
                     psql -U postgres -f /var/lib/postgresql/data/backup_9_6.sql && \
                       echo "true" >> /var/lib/postgresql/data/db_upgraded_9_6_to_14_4;
                 fi
-                psql -U postgres -f /home/update_password.sql;
+                {{repl if ConfigOptionEquals "dbldapauth" "0"}} sh /home/setup_auth.sh {{repl else}} sh /home/enable_ldap.sh {{repl end}}
 
   - name: prometheus
     containers:
@@ -586,6 +603,27 @@ config:
         type: text
         value: ""
         default: "5432"
+      - name: dbldapauth
+        title: Enable LDAP Authentication for DB
+        help_text: When enabled YB Anywhere will use ldap for Postgres Authentication
+        type: bool
+        default: "0"
+      - name: ldap_server
+        title: LDAP server DNS/IP
+        type: text
+      - name: ldap_base_dn
+        title: LDAP Base DN
+        type: text
+      - name: ldap_dn_prefix
+        title: LDAP DN Prefix
+        type: text
+      - name: ldap_port
+        title: LDAP Port
+        type: text
+      - name: secure_ldap
+        title: Enable Secure LDAP(LDAPS)
+        type: bool
+        default: "0"
   - name: app
     title: Application config
     description: Configure your yugaware application
