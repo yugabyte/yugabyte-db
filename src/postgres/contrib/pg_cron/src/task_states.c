@@ -372,10 +372,10 @@ UpdateJobRunStatus(List *taskList)
      SPI_tuptable == NULL)
     elog(ERROR, "SPI_exec failed: %s", querybuf.data);
 
-    SPITupleTable *tuptable = SPI_tuptable;
-    TupleDesc tupdesc = tuptable->tupdesc;
+  SPITupleTable *tuptable = SPI_tuptable;
+  TupleDesc tupdesc = tuptable->tupdesc;
 
-    for (uint64 i = 0; i < SPI_processed; i++) {
+  for (uint64 i = 0; i < SPI_processed; i++) {
         HeapTuple tuple = tuptable->vals[i];
     MemoryContext oldContext = NULL;
     bool isNull;
@@ -408,7 +408,7 @@ UpdateJobRunStatus(List *taskList)
       SetTaskRemoteRunning(task);
     }
     MemoryContextSwitchTo(oldContext);
-    }
+  }
 
   pfree(querybuf.data);
 
