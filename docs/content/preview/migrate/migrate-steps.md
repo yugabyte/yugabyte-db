@@ -6,14 +6,14 @@ beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   preview:
     identifier: migrate-steps
-    parent: yb-voyager
+    parent: migrate
     weight: 102
 type: docs
 ---
 
 This page describes the steps to perform and verify a successful migration to YugabyteDB. Before proceeding with migration, ensure that you have completed the following steps:
 
-- [Install yb-voyager](../../yb-voyager/install-yb-voyager/#install-yb-voyager).
+- [Install yb-voyager](../install-yb-voyager/#install-yb-voyager).
 - [Prepare the source database](#prepare-the-source-database).
 - [Prepare the target database](#prepare-the-target-database).
 
@@ -62,7 +62,7 @@ Prepare your source database by creating a new database user, and provide it wit
 
 {{< /note >}}
 
-If you want yb-voyager to connect to the source database over SSL, refer to [SSL Connectivity](/preview/migrate/yb-voyager/yb-voyager-cli/#ssl-connectivity).
+If you want yb-voyager to connect to the source database over SSL, refer to [SSL Connectivity](../yb-voyager-cli/#ssl-connectivity).
 
 ## Prepare the target database
 
@@ -84,7 +84,7 @@ Prepare your target YugabyteDB cluster by creating a database, and a user for yo
 
 ### Create a user
 
-1. Create a user with [`SUPERUSER`](../../../api/ysql/the-sql-language/statements/dcl_create_role/#syntax) role.
+1. Create a user with [`SUPERUSER`](../../api/ysql/the-sql-language/statements/dcl_create_role/#syntax) role.
 
    - For a local YugabyteDB cluster or YugabyteDB Anywhere versions below 2.13.1 or 2.12.4, create a user and role with the superuser privileges using the following command:
 
@@ -92,7 +92,7 @@ Prepare your target YugabyteDB cluster by creating a database, and a user for yo
      CREATE USER ybvoyager SUPERUSER PASSWORD 'password';
      ```
 
-   - For YugabyteDB Managed or YugabyteDB Anywhere versions (2.13.1 and above) or (2.12.4 and above), create a user with [`yb_superuser`](../../../yugabyte-cloud/cloud-secure-clusters/cloud-users/#admin-and-yb-superuser) role using the following command:
+   - For YugabyteDB Managed or YugabyteDB Anywhere versions (2.13.1 and above) or (2.12.4 and above), create a user with [`yb_superuser`](../../yugabyte-cloud/cloud-secure-clusters/cloud-users/#admin-and-yb-superuser) role using the following command:
 
      ```sql
      CREATE USER ybvoyager PASSWORD 'password';
@@ -108,7 +108,7 @@ Prepare your target YugabyteDB cluster by creating a database, and a user for yo
    export TARGET_DB_PASSWORD=password
    ```
 
-If you want yb-voyager to connect to the target database over SSL, refer to [SSL Connectivity](/preview/migrate/yb-voyager/yb-voyager-cli/#ssl-connectivity).
+If you want yb-voyager to connect to the target database over SSL, refer to [SSL Connectivity](../yb-voyager-cli/#ssl-connectivity).
 
 {{< warning title="Deleting the ybvoyager user" >}}
 
@@ -220,7 +220,7 @@ Fix all the issues listed in the generated schema analysis report by manually ed
 
 After making the manual changes, re-run the `yb-voyager analyze-schema` command. This generates a fresh report using your changes. Repeat these steps until the generated report contains no issues.
 
-To learn more about modelling strategies using YugabyteDB, refer to [Data modeling](../../yb-voyager/yb-voyager-cli/#data-modeling).
+To learn more about modelling strategies using YugabyteDB, refer to [Data modeling](../yb-voyager-cli/#data-modeling).
 
 {{< note title="Manual schema changes" >}}
 
@@ -356,7 +356,7 @@ Run the `yb-voyager import data status --export-dir ${EXPORT_DIR}` command to ge
 
 #### Import data file
 
-If all your data files are in csv format and you have already created a schema in your target YugabyteDB, you can use the `yb-voyager import data file` command to load the data into the target table directly from the csv file(s). This command doesn’t require performing other migration steps ([export and analyze schema](#export-and-analyze-schema), [export data](#export-data), or [import schema](#import-schema) prior to import. It only requires a table present in the target database to perform the import.
+If all your data files are in CSV format and you have already created a schema in your target YugabyteDB, you can use the `yb-voyager import data file` command to load the data into the target table directly from the CSV file(s). This command doesn’t require performing other migration steps ([export and analyze schema](#export-and-analyze-schema), [export data](#export-data), or [import schema](#import-schema) prior to import. It only requires a table present in the target database to perform the import.
 
 <!-- ```sh
 yb-voyager import data file --export-dir ${EXPORT_DIR} \
@@ -391,4 +391,4 @@ The `yb-voyager import data` command automatically creates indexes after it succ
 
 After the `yb-voyager import data` command completes, the automated part of the database migration process is considered complete. You should manually run validation queries on both the source and target database to ensure that the data is correctly migrated. A sample query to validate the databases can include checking the row count of each table.
 
-Refer to [Verify a migration](../../../manage/data-migration/bulk-import-ysql/#verify-a-migration) to validate queries and ensure a successful migration.
+Refer to [Verify a migration](../../manage/data-migration/bulk-import-ysql/#verify-a-migration) to validate queries and ensure a successful migration.

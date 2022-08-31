@@ -8,7 +8,7 @@ image: /images/section_icons/develop/learn.png
 menu:
   preview:
     identifier: install-yb-voyager
-    parent: yb-voyager
+    parent: migrate
     weight: 101
 type: docs
 ---
@@ -97,8 +97,8 @@ source ~/.yb-voyager.rc
 yb-voyager --help
 ```
 
-To learn more about yb-voyager, refer to [YugabyteDB Voyager CLI](../../yb-voyager/yb-voyager-cli/).
+To learn more about yb-voyager, refer to [YugabyteDB Voyager CLI](../yb-voyager-cli/).
 
 ## Next step
 
-- [Migration steps](../../yb-voyager/migrate-steps/)
+- [Migration steps](../migrate-steps/)
