@@ -122,10 +122,54 @@ export const ConfigDetails = ({ data, visible, onHide }) => {
     return data;
   };
 
+  const getForAzure = () => {
+    const {
+      CLIENT_ID,
+      CLIENT_SECRET,
+      TENANT_ID,
+      AZU_VAULT_URL,
+      AZU_KEY_NAME,
+      AZU_KEY_ALGORITHM,
+      AZU_KEY_SIZE
+    } = credentials;
+    const data = [
+      {
+        label: 'Client ID',
+        value: CLIENT_ID
+      },
+      {
+        label: 'Client Secret',
+        value: CLIENT_SECRET
+      },
+      {
+        label: 'Tenant ID',
+        value: TENANT_ID
+      },
+      {
+        label: 'Key Vault URL',
+        value: AZU_VAULT_URL
+      },
+      {
+        label: 'Key Name',
+        value: AZU_KEY_NAME
+      },
+      {
+        label: 'Key Algorithm',
+        value: AZU_KEY_ALGORITHM
+      },
+      {
+        label: 'Key Size (bits)',
+        value: AZU_KEY_SIZE
+      }
+    ];
+    return data;
+  };
+
   const getDetails = () => {
     if (provider === 'AWS') return getForAWS();
     if (provider === 'SMARTKEY') return getForSmartKey();
     if (provider === 'GCP') return getForGCP();
+    if (provider === 'AZU') return getForAzure();
 
     return getForHashicorp();
   };

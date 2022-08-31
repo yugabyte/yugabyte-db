@@ -533,10 +533,19 @@ public class TestPgSelect extends BasePgSQLTest {
       assertRowSet(statement, query, expectedRows);
 
       explainOutput = getExplainAnalyzeOutput(statement, query);
-      assertTrue("Expect no pushdown for IS NOT NULL",
-                 explainOutput.contains("Filter: (b IS NOT NULL)"));
-      assertTrue("Expect YSQL-level filter",
+      if (colOrder.equals("HASH")) {
+        assertTrue("Expect no pushdown for IS NOT NULL when colOrder is HASH",
+                  explainOutput.contains("Filter: (b IS NOT NULL)"));
+        assertTrue("Expect YSQL-level filter",
                   explainOutput.contains("Rows Removed by Filter: 2"));
+      }
+      else {
+        assertTrue("Expect pushdown for IS NOT NULL when colOrder is ASC or DESC",
+                  explainOutput.contains("Index Cond: (b IS NOT NULL)"));
+        assertFalse("Expect DocDB to filter fully",
+                  explainOutput.contains("Rows Removed by"));
+      }
+
 
       // Test IN with NULL (should not match null row because null == null is not true).
       query = "select * from t1 where b IN (NULL, 2, 3)";

@@ -17,6 +17,7 @@
 #define YB_UTIL_METRIC_ENTITY_H
 
 #include <functional>
+#include <map>
 #include <unordered_map>
 
 #include "yb/gutil/callback_forward.h"
@@ -67,20 +68,23 @@ struct MetricJsonOptions {
   MetricLevel level = MetricLevel::kDebug;
 };
 
+struct MetricEntityOptions {
+  std::vector<std::string> metrics;
+  std::vector<std::string> exclude_metrics;
+
+  // Regex for metrics that should always be included for all tables.
+  std::string priority_regex;
+};
+
+using MeticEntitiesOptions = std::map<AggregationMetricLevel, MetricEntityOptions>;
+
 struct MetricPrometheusOptions {
   // Include the metrics at a level and above.
   // Default: debug
   MetricLevel level = MetricLevel::kDebug;
 
-  // Aggregation level for table metrics.
-  // Default: table
-  AggregationMetricLevel aggregation_level = AggregationMetricLevel::kTable;
-
   // Number of tables to include metrics for.
   uint32_t max_tables_metrics_breakdowns;
-
-  // Regex for metrics that should always be included for all tables.
-  std::string priority_regex;
 };
 
 class MetricEntityPrototype {
@@ -147,12 +151,12 @@ class MetricEntity : public RefCountedThreadSafe<MetricEntity> {
 
   // See MetricRegistry::WriteAsJson()
   Status WriteAsJson(JsonWriter* writer,
-                     const std::vector<std::string>& requested_metrics,
+                     const MetricEntityOptions& entity_options,
                      const MetricJsonOptions& opts) const;
 
   Status WriteForPrometheus(PrometheusWriter* writer,
-                     const std::vector<std::string>& requested_metrics,
-                     const MetricPrometheusOptions& opts) const;
+                            const MetricEntityOptions& entity_options,
+                            const MetricPrometheusOptions& opts) const;
 
   const MetricMap& UnsafeMetricsMapForTests() const { return metric_map_; }
 

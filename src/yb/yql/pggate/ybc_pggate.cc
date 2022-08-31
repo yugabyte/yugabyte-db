@@ -117,7 +117,14 @@ Slice YbctidAsSlice(uint64_t ybctid) {
   return Slice(value, bytes);
 }
 
-} // anonymous namespace
+inline std::optional<Bound> MakeBound(YBCPgBoundType type, uint64_t value) {
+  if (type == YB_YQL_BOUND_INVALID) {
+    return std::nullopt;
+  }
+  return Bound{.value = value, .is_inclusive = (type == YB_YQL_BOUND_VALID_INCLUSIVE)};
+}
+
+} // namespace
 
 //--------------------------------------------------------------------------------------------------
 // C API.
@@ -768,13 +775,12 @@ YBCStatus YBCPgDmlBindColumnCondIn(YBCPgStatement handle, int attr_num, int n_at
   return ToYBCStatus(pgapi->DmlBindColumnCondIn(handle, attr_num, n_attr_values, attr_values));
 }
 
-YBCStatus YBCPgDmlBindHashCodes(YBCPgStatement handle, bool start_valid,
-                                 bool start_inclusive, uint64_t start_hash_val,
-                                 bool end_valid, bool end_inclusive,
-                                 uint64_t end_hash_val) {
-  return ToYBCStatus(pgapi->DmlBindHashCode(handle, start_valid,
-                      start_inclusive, start_hash_val, end_valid,
-                      end_inclusive, end_hash_val));
+YBCStatus YBCPgDmlBindHashCodes(
+  YBCPgStatement handle,
+  YBCPgBoundType start_type, uint64_t start_value,
+  YBCPgBoundType end_type, uint64_t end_value) {
+  return ToYBCStatus(pgapi->DmlBindHashCode(
+      handle, MakeBound(start_type, start_value), MakeBound(end_type, end_value)));
 }
 
 YBCStatus YBCPgDmlBindTable(YBCPgStatement handle) {

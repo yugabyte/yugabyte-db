@@ -6266,13 +6266,14 @@ Status CatalogManager::GetTableSchemaInternal(const GetTableSchemaRequestPB* req
   auto l = table->LockForRead();
   RETURN_NOT_OK(CatalogManagerUtil::CheckIfTableDeletedOrNotVisibleToClient(l, resp));
 
-  if (l->pb.has_fully_applied_schema()) {
+  if (get_fully_applied_indexes && l->pb.has_fully_applied_schema()) {
     // An AlterTable is in progress; fully_applied_schema is the last
     // schema that has reached every TS.
     DCHECK(l->pb.state() == SysTablesEntryPB::ALTERING);
     resp->mutable_schema()->CopyFrom(l->pb.fully_applied_schema());
   } else {
-    // There's no AlterTable, the regular schema is "fully applied".
+    // Case 1: There's no AlterTable, the regular schema is "fully applied".
+    // Case 2: get_fully_applied_indexes == false (for YCQL). Always return the latest schema.
     resp->mutable_schema()->CopyFrom(l->pb.schema());
   }
 
