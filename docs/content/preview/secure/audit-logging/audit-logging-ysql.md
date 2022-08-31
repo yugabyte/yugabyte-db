@@ -29,7 +29,7 @@ type: docs
 
 YugabyteDB YSQL uses PostgreSQL Audit Extension (`pgAudit`) to provide detailed session and/or object audit logging via YugabyteDB YB-TServer logging.
 
-The goal of the YSQL audit logging is to provide YugabyteDB users with capability to produce audit logs often required to comply with government, financial, or ISO certifications. An audit is an official inspection of an individual’s or organization’s accounts, typically by an independent body.
+The goal of the YSQL audit logging is to provide YugabyteDB users with capability to produce audit logs often required to comply with government, financial, or ISO certifications. An audit is an official inspection of an individual's or organization's accounts, typically by an independent body.
 
 ## Enable audit logging
 
@@ -37,7 +37,7 @@ The goal of the YSQL audit logging is to provide YugabyteDB users with capabilit
 
 This can be done in one of the following ways:
 
-- Use the `--ysql_pg_conf_csv` TServer flag.
+- Use the `--ysql_pg_conf_csv` YB-TServer flag.
 
     Database administrators can use `ysql_pg_conf_csv` to set appropriate values for `pgAudit` configuration.
 
@@ -63,7 +63,7 @@ CREATE EXTENSION IF NOT EXISTS pgaudit;
 
 ## Customize audit logging
 
-You can further customize YSQL audit logging by configuring the `pgAudit` flags as per the following table.
+You can further customize YSQL audit logging by configuring the `pgAudit` flags, as per the following table.
 
 <table>
   <tr>
@@ -113,7 +113,7 @@ The default is <strong><code>ON</code></strong>.
   <tr>
    <td><code>pgaudit.log_client</code>
    </td>
-   <td><strong><code>ON</code></strong>: Log messages are to be visible to a client process such as psql. Useful for debugging.
+   <td><strong><code>ON</code></strong>: Log messages are to be visible to a client process such as psql. Helpful for debugging.
 <strong><code>OFF</code></strong>: Reverse.
 Note that `pgaudit.log_level` is only enabled when pgaudit.log_client is <strong><code>ON</code></strong>.<p>
 The default is <strong><code>OFF</code></strong>.
@@ -141,7 +141,7 @@ The default is <strong><code>OFF</code></strong>.
   <tr>
    <td><code>pgaudit.log_relation</code>
    </td>
-   <td><strong><code>ON</code></strong>: Session audit logging creates separate log entries for each relation (<code>TABLE</code>, <code>VIEW</code>, etc.) referenced in a <code>SELECT</code> or <code>DML</code> statement. This is a useful shortcut for exhaustive logging without using <strong>object audit logging</strong>.
+   <td><strong><code>ON</code></strong>: Session audit logging creates separate log entries for each relation (<code>TABLE</code>, <code>VIEW</code>, etc.) referenced in a <code>SELECT</code> or <code>DML</code> statement. This is a shortcut for exhaustive logging without using <strong>object audit logging</strong>.
 <p>
 The default is <strong><code>OFF</code></strong>.
    </td>
@@ -186,13 +186,13 @@ SET pgaudit.log_level=notice;
 
 ### 2. Load `pgAudit` extension
 
-Open the YSQL shell (ysqlsh), specifying the `yugabyte` user and prompting for the password, as follows:
+Open the YSQL shell (ysqlsh), specifying the `yugabyte` user, as follows:
 
 ```shell
 $ ./ysqlsh -U yugabyte -W
 ```
 
-When prompted for the password, enter the yugabyte password.
+When prompted, enter the password for the `yugabyte` user.
 
 You should be able to login and see an output similar to the following:
 
@@ -209,7 +209,7 @@ To enable the `pgAudit` extension on the YugabyteDB cluster, connect to the data
 yugabyte=> \c yugabyte yugabyte;
 ```
 
-You are now connected to database called yugabyte as user yugabyte.
+You are now connected to the database `yugabyte` as user `yugabyte`.
 
 Finally, create the `pgAudit` extension as follows:
 
