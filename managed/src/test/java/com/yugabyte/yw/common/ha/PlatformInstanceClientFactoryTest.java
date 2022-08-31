@@ -33,7 +33,6 @@ import play.mvc.Http;
 public class PlatformInstanceClientFactoryTest extends FakeDBApplication {
 
   private static final String KEY = "/api/customers/%s/runtime_config/%s/key/%s";
-  private static final String NOTIFY = "/api/customers/%s/runtime_config/%s/notify/%s";
   private String authToken;
   private Customer customer;
   private EbeanServer localEBeanServer;
@@ -154,13 +153,6 @@ public class PlatformInstanceClientFactoryTest extends FakeDBApplication {
             .header("X-AUTH-TOKEN", authToken)
             .header("content-type", "text/plain")
             .bodyText(v);
-    fakeApi.route(request);
-  }
-
-  private void notifyConfigChangeListeners(String pathPrefix) {
-    Http.RequestBuilder request =
-        fakeRequest("PUT", String.format(NOTIFY, customer.uuid, GLOBAL_SCOPE_UUID, pathPrefix))
-            .header("X-AUTH-TOKEN", authToken);
     fakeApi.route(request);
   }
 }
