@@ -331,6 +331,6 @@ $ ysql_dump -d <database_name> > <database_name>.sql
 
 `ysql_dump` is the ideal option for smaller datasets, because it allows you to export a whole database by running a single command. However, the COPY command is recommended for large databases, because it significantly enhances the performance.
 
-## Next steps
+## Next step
 
-- [Bulk export for YSQL](.../../../../data-migration/bulk-export-ysql/)
+- [Bulk import](../bulk-import-ysql/)
