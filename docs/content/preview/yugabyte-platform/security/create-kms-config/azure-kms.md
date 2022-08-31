@@ -1,32 +1,32 @@
 ---
-title: Create a KMS configuration using AWS KMS
-headerTitle: Create a KMS configuration using AWS KMS
+title: Create a KMS configuration using Azure
+headerTitle: Create a KMS configuration using Azure
 linkTitle: Create a KMS configuration
-description: Use YugabyteDB Anywhere to create a KMS configuration for Amazon Web Services (AWS) KMS.
+description: Use YugabyteDB Anywhere to create a KMS configuration for Azure KMS.
 aliases:
   - /preview/yugabyte-platform/security/create-kms-config
 menu:
   preview_yugabyte-platform:
     parent: security
-    identifier: create-kms-config-1-aws-kms
+    identifier: create-kms-config-1-azure-kms
     weight: 27
 type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="{{< relref "./aws-kms.md" >}}" class="nav-link active">
+    <a href="{{< relref "./aws-kms.md" >}}" class="nav-link">
       <i class="fab fa-aws" aria-hidden="true"></i>
       AWS KMS
     </a>
   </li>
 
   <li >
-    <a href="{{< relref "./azure-kms.md" >}}" class="nav-link">
-      <i class="icon-azure" aria-hidden="true"></i>&nbsp;
+    <a href="{{< relref "./azure-kms.md" >}}" class="nav-link active">
+      <i class="icon-azure" aria-hidden="true"></i>
       &nbsp;&nbsp;Azure KMS
     </a>
-  </li>  
+  </li>
 
   <li >
     <a href="{{< relref "./hashicorp-kms.md" >}}" class="nav-link">
@@ -37,7 +37,7 @@ type: docs
 
 </ul>
 
-Encryption at rest uses universe keys to encrypt and decrypt universe data keys. You can use the YugabyteDB Anywhere UI to create key management service (KMS) configurations for generating the required universe keys for one or more YugabyteDB universes. Encryption at rest in YugabyteDB Anywhere supports the use of [Amazon Web Services (AWS) KMS](https://aws.amazon.com/kms/).
+Encryption at rest uses universe keys to encrypt and decrypt universe data keys. You can use the YugabyteDB Anywhere UI to create key management service (KMS) configurations for generating the required universe keys for one or more YugabyteDB universes. Encryption at rest in YugabyteDB Anywhere supports the use of Microsoft Azure KMS. 
 
 The AWS user associated with a KMS configuration requires the following minimum Identity and Access Management (IAM) KMS-related permissions:
 
