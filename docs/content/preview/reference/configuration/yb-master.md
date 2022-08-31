@@ -95,19 +95,21 @@ Default: Same value as `--fs_data_dirs`
 
 ##### --rpc_bind_addresses
 
-Specifies the comma-separated list of the network interface addresses to bind to for RPC connections
+Specifies the comma-separated list of the network interface addresses to which to bind for RPC connections:
 
-- Typically, the value is set to the private IP address of the host on which the server is running. When using the default, or explicitly setting the value to `0.0.0.0:7100`, the server will listen on all available network interfaces.
+The values used must match on all `yb-master` and [`yb-tserver`](../yb-tserver/#rpc-bind-addresses) configurations.
 
-- The values used must match on all `yb-master` and [`yb-tserver`](../yb-tserver/#rpc-bind-addresses) configurations.
+Default: Private IP address of the host on which the server is running, as defined in `/home/yugabyte/master/conf/server.conf`. For example:
 
-Default: `0.0.0.0:7100`
+```sh
+egrep -i rpc /home/yugabyte/master/conf/server.conf 
+--rpc_bind_addresses=172.161.x.x:7100
+```
 
-{{< note title="Note" >}}
+Make sure that the [`server_broadcast_addresses`](#server-broadcast-addresses) flag is set correctly if the following applies:
 
-In cases where `rpc_bind_addresses` is set to `0.0.0.0` (or not explicitly set, and uses the default) or in cases involving public IP addresses, make sure that [`server_broadcast_addresses`](#server-broadcast-addresses) is correctly set.
-
-{{< /note >}}
+- `rpc_bind_addresses` is set to `0.0.0.0`
+- `rpc_bind_addresses` involves public IP addresses such as, for example, `0.0.0.0:7100`, which instructs the server to listen on all available network interfaces.
 
 ##### --server_broadcast_addresses
 
