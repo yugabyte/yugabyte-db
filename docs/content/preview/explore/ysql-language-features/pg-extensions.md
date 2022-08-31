@@ -202,7 +202,7 @@ To enable the passwordcheck extension, add `passwordcheck` to `shared_preload_li
 When enabled, if a password is considered too weak, it's rejected with an error. For example:
 
 ```sql
-yugabyte=# create role test_role password '1234';
+yugabyte=# create role test_role password 'tooshrt';
 ```
 
 ```output
@@ -210,7 +210,7 @@ ERROR:  password is too short
 ```
 
 ```sql
-yugabyte=# create role test_role password 'aaaaaaaaaaaaaa';
+yugabyte=# create role test_role password 'nonumbersinpassword';
 ```
 
 ```output
