@@ -38,7 +38,7 @@ To convert the PostgreSQL schema to YugabyteDB schema, the following changes nee
 
 {{< tip title="Tip" >}}
 
-Using `ysql_dump` tool can simplify some steps of your schema migration, read more at [use ysql_dump](#use-ysql-dump).
+The `ysql_dump` tool can simplify some steps of your schema migration, refer to [use ysql_dump](#use-ysql-dump).
 
 {{< /tip >}}
 
