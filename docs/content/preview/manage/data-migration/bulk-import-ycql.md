@@ -53,7 +53,7 @@ CREATE TABLE SensorData (
 
 ## Prepare source data
 
-Prepare a CSV (comma-separated values) file where each row of entries must match with the column types declared in the table schema above. Concretely, each CSV must be a valid Cassandra Query Language (CQL) literal for its corresponding type, except for the top-level quotes (For example, use foo rather than 'foo' for strings).
+Prepare a CSV (comma-separated values) file where each row of entries must match with the column types declared in the table schema above. Concretely, each CSV must be a valid Cassandra Query Language (CQL) literal for its corresponding type, except for the top-level quotes (for example, use foo rather than 'foo' for strings).
 
 ### Generate sample data
 

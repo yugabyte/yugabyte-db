@@ -29,7 +29,7 @@ type: docs
 This page describes the following steps required to export PostgreSQL data to YugabyteDB.
 
 - [Convert a PostgreSQL schema](#convert-a-postgresql-schema)
-- [Migrate a PostgreSQL application](#migrate-a-postgresql-application/)
+- [Migrate a PostgreSQL application](#migrate-a-postgresql-application)
 - [Export PostgreSQL data](#export-postgresql-data)
 
 ## Convert a PostgreSQL schema
@@ -38,7 +38,7 @@ To convert the PostgreSQL schema to YugabyteDB schema, the following changes nee
 
 {{< tip title="Tip" >}}
 
-Using `ysql_dump` tool can simplify some steps of your schema migration, read more at [use ysql_dump](#use-ysql-dump).
+The `ysql_dump` tool can simplify some steps of your schema migration, refer to [use ysql_dump](#use-ysql-dump).
 
 {{< /tip >}}
 
