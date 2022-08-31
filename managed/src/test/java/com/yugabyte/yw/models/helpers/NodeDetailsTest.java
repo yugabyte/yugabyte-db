@@ -55,7 +55,6 @@ public class NodeDetailsTest {
     activeStates.add(NodeDetails.NodeState.Stopping);
     activeStates.add(NodeDetails.NodeState.Resizing);
     activeStates.add(NodeDetails.NodeState.Reprovisioning);
-    activeStates.add(NodeDetails.NodeState.Rebooting);
     for (NodeDetails.NodeState state : NodeDetails.NodeState.values()) {
       nd.state = state;
       if (activeStates.contains(state)) {
