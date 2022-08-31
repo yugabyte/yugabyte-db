@@ -36,5 +36,6 @@ set(TOOLS_EXTENSIONS_TEST_LINK_LIBS
 
 set(TOOLS_EXTENSIONS_TESTS
   yb-admin-test_ent
+  yb-admin_client_ent_test
   yb-backup-test_ent
   PARENT_SCOPE)
