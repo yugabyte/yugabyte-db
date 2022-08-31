@@ -50,6 +50,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.ModifyBlackList;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PauseServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PersistResizeNode;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PersistSystemdUpgrade;
+import com.yugabyte.yw.commissioner.tasks.subtasks.RebootServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ResetUniverseVersion;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RestoreBackupYb;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RestoreBackupYbc;
@@ -2799,6 +2800,30 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       log.debug("Cancelling any active health-checks for universe {}", universe.universeUUID);
       healthChecker.cancelHealthCheck(universe.universeUUID);
     }
+  }
+
+  protected SubTaskGroup createRebootTasks(List<NodeDetails> nodes) {
+    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("RebootServer", executor);
+    for (NodeDetails node : nodes) {
+
+      RebootServer.Params params = new RebootServer.Params();
+      params.nodeName = node.nodeName;
+      params.universeUUID = taskParams().universeUUID;
+      params.azUuid = node.azUuid;
+
+      RebootServer task = createTask(RebootServer.class);
+      task.initialize(params);
+
+      subTaskGroup.addSubTask(task);
+      getRunnableTask().addSubTaskGroup(subTaskGroup);
+    }
+    return subTaskGroup;
+  }
+
+  public int getSleepTimeForProcess(ServerType processType) {
+    return processType == ServerType.MASTER
+        ? taskParams().sleepAfterMasterRestartMillis
+        : taskParams().sleepAfterTServerRestartMillis;
   }
 
   // XCluster: All the xCluster related code resides in this section.

@@ -47,7 +47,8 @@ public class RebootUniverse extends UpgradeTaskBase {
 
           LinkedHashSet<NodeDetails> nodes = toOrderedSet(fetchNodes(taskParams().upgradeOption));
           createRollingNodesUpgradeTaskFlow(
-              (nodez, processTypes) -> createRebootTasks(nodez),
+              (nodez, processTypes) ->
+                  createRebootTasks(nodez).setSubTaskGroupType(getTaskSubGroupType()),
               nodes,
               UpgradeContext.builder()
                   .reconfigureMaster(false)
@@ -56,23 +57,5 @@ public class RebootUniverse extends UpgradeTaskBase {
                   .build(),
               taskParams().ybcInstalled);
         });
-  }
-
-  private void createRebootTasks(List<NodeDetails> nodes) {
-    for (NodeDetails node : nodes) {
-      SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("RebootServer", executor);
-
-      RebootServer.Params params = new RebootServer.Params();
-      params.nodeName = node.nodeName;
-      params.universeUUID = taskParams().universeUUID;
-      params.azUuid = node.azUuid;
-
-      RebootServer task = createTask(RebootServer.class);
-      task.initialize(params);
-
-      subTaskGroup.addSubTask(task);
-      subTaskGroup.setSubTaskGroupType(getTaskSubGroupType());
-      getRunnableTask().addSubTaskGroup(subTaskGroup);
-    }
   }
 }
