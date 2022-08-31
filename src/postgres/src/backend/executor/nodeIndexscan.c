@@ -1318,16 +1318,16 @@ ExecIndexBuildScanKeys(PlanState *planstate, Relation index,
 			if (IsA(leftop, FuncExpr)
 				&& ((FuncExpr *) leftop)->funcid == YB_HASH_CODE_OID)
 			{
-				flags |= SK_IS_HASHED;
+				flags |= YB_SK_IS_HASHED;
 			}
 
 			if (!(IsA(leftop, Var) &&
 				  ((Var *) leftop)->varno == INDEX_VAR)
-				  && ((flags & SK_IS_HASHED) == 0))
+				  && ((flags & YB_SK_IS_HASHED) == 0))
 				elog(ERROR, "indexqual doesn't have key on left side");
 
 
-			if ((flags & SK_IS_HASHED) != 0)
+			if ((flags & YB_SK_IS_HASHED) != 0)
 			{
 				varattno = InvalidAttrNumber;
 				opfamily = INTEGER_LSM_FAM_OID;

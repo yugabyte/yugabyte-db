@@ -19,7 +19,8 @@ const initialStateFeatureInTest = {
   topNodeMetrics: false,
   enableYbc: false,
   enableMultiRegionConfig: false,
-  enableGcpKMS: false
+  enableGcpKMS: false,
+  enableAzuKMS: false
 };
 
 const initialStateFeatureReleased = {
@@ -41,7 +42,8 @@ const initialStateFeatureReleased = {
   topNodeMetrics: false,
   enableYbc: false,
   enableMultiRegionConfig: false,
-  enableGcpKMS: false
+  enableGcpKMS: false,
+  enableAzuKMS: false
 };
 
 export const FeatureFlag = (

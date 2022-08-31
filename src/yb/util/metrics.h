@@ -497,15 +497,9 @@ class MetricRegistry {
   // See the MetricJsonOptions struct definition above for options changing the
   // output of this function.
   Status WriteAsJson(JsonWriter* writer,
-                     const std::vector<std::string>& requested_metrics,
+                     const MetricEntityOptions& entity_options,
                      const MetricJsonOptions& opts) const;
 
-  // Writes metrics in this registry to 'writer'.
-  //
-  // See the MetricPrometheusOptions struct definition above for options changing the
-  // output of this function.
-  Status WriteForPrometheus(PrometheusWriter* writer,
-                     const MetricPrometheusOptions& opts) const;
   // Writes metrics in this registry to 'writer'.
   //
   // 'requested_metrics' is a set of substrings to match metric names against,
@@ -517,8 +511,8 @@ class MetricRegistry {
   // See the MetricPrometheusOptions struct definition above for options changing the
   // output of this function.
   Status WriteForPrometheus(PrometheusWriter* writer,
-                     const std::vector<std::string>& requested_metrics,
-                     const MetricPrometheusOptions& opts) const;
+                            const MetricEntityOptions& entity_options,
+                            const MetricPrometheusOptions& opts) const;
 
   // For each registered entity, retires orphaned metrics. If an entity has no more
   // metrics and there are no external references, entities are removed as well.

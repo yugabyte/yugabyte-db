@@ -390,7 +390,7 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   Status SetCDCSDKRetainOpIdAndTime(
       const OpId& cdc_sdk_op_id, const MonoDelta& cdc_sdk_op_id_expiration);
 
-  Result<MonoDelta> GetCDCSDKIntentRetainTime(const CoarseTimePoint& cdc_sdk_latest_active_time);
+  Result<MonoDelta> GetCDCSDKIntentRetainTime(const int64_t& cdc_sdk_latest_active_time);
 
   OpId GetLatestCheckPoint();
 

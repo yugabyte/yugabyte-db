@@ -11,6 +11,8 @@
 // under the License.
 //
 
+#include "yb/client/table_info.h"
+
 #include "yb/consensus/raft_consensus.h"
 
 #include "yb/docdb/primitive_value.h"
@@ -32,6 +34,7 @@
 #include "yb/util/status_log.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
+#include "yb/util/thread.h"
 #include "yb/util/tsan_util.h"
 
 using namespace std::literals;
@@ -50,6 +53,9 @@ DECLARE_int32(client_read_write_timeout_ms);
 DECLARE_bool(disable_truncate_table);
 
 namespace yb {
+
+using client::YBTableInfo;
+using client::YBTableName;
 
 class CqlTest : public CqlTestBase<MiniCluster> {
  public:
@@ -544,6 +550,61 @@ TEST_F(CqlTest, ManyColumns) {
   }
   MonoDelta passed = CoarseMonoClock::Now() - start;
   LOG(INFO) << "Passed: " << passed;
+}
+
+TEST_F(CqlTest, AlteredSchemaVersion) {
+  auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+  ASSERT_OK(session.ExecuteQuery("CREATE TABLE t1 (i INT PRIMARY KEY, j INT) "));
+  ASSERT_OK(session.ExecuteQuery("INSERT INTO t1 (i, j) VALUES (1, 1)"));
+
+  CassandraResult res = ASSERT_RESULT(session.ExecuteWithResult("SELECT * FROM t1 WHERE i = 1"));
+  ASSERT_EQ(res.RenderToString(), "1,1");
+
+  // Run ALTER TABLE in another thread.
+  struct AltererThread {
+    explicit AltererThread(CppCassandraDriver* const driver) : driver_(driver) {
+      EXPECT_OK(Thread::Create("cql-test", "AltererThread",
+                               &AltererThread::ThreadBody, this, &thread_));
+    }
+
+    ~AltererThread() {
+      thread_->Join();
+    }
+
+   private:
+    void ThreadBody() {
+      LOG(INFO) << "In thread: ALTER TABLE";
+      auto session = ASSERT_RESULT(EstablishSession(driver_));
+      ASSERT_OK(session.ExecuteQuery("ALTER TABLE t1 ADD k INT"));
+      LOG(INFO) << "In thread: ALTER TABLE - DONE";
+    }
+
+    CppCassandraDriver* const driver_;
+    scoped_refptr<Thread> thread_;
+  } start_thread(driver_.get());
+
+  const YBTableName table_name(YQL_DATABASE_CQL, kCqlTestKeyspace, "t1");
+  SchemaVersion old_version = static_cast<SchemaVersion>(-1);
+
+  while (true) {
+    YBTableInfo info = ASSERT_RESULT(client_->GetYBTableInfo(table_name));
+    LOG(INFO) << "Schema version=" << info.schema.version() << ": " << info.schema.ToString();
+    if (info.schema.num_columns() == 2) { // Old schema.
+      old_version = info.schema.version();
+      std::this_thread::sleep_for(100ms);
+    } else { // New schema.
+      ASSERT_EQ(3, info.schema.num_columns());
+      LOG(INFO) << "new-version=" << info.schema.version() << " old-version=" << old_version;
+      // Ensure the new schema version is strictly bigger than the old schema version.
+      ASSERT_LT(old_version, info.schema.version());
+      break;
+    }
+  }
+
+  res =  ASSERT_RESULT(session.ExecuteWithResult("SELECT * FROM t1 WHERE i = 1"));
+  ASSERT_EQ(res.RenderToString(), "1,1,NULL");
+
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
 }  // namespace yb

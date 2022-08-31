@@ -255,7 +255,7 @@ class AbstractInstancesMethod(AbstractMethod):
         host_info = None
 
         while host_lookup_count < self.INSTANCE_LOOKUP_RETRY_LIMIT:
-            if not host_info:
+            if not host_info or not host_info.is_running:
                 host_info = self.cloud.get_host_info(args)
 
             if host_info:
@@ -575,24 +575,25 @@ class CreateInstancesMethod(AbstractInstancesMethod):
             "volume_type": args.volume_type
         })
         self.update_ansible_vars_with_args(args)
-        self.run_ansible_create(args)
-
+        create_output = self.run_ansible_create(args)
+        host_info = self.cloud.get_host_info(args)
+        # Set the host and default port.
+        self.extra_vars.update(
+            get_ssh_host_port(host_info, args.custom_ssh_port, default_port=True))
+        # Update with the open port.
+        self.update_open_ssh_port(args)
+        self.extra_vars['ssh_user'] = self.extra_vars.get("ssh_user", DEFAULT_SSH_USER)
+        # Port is already open. Wait for ssh to succeed.
+        wait_for_ssh(self.extra_vars["ssh_host"],
+                     self.extra_vars["ssh_port"],
+                     self.extra_vars["ssh_user"],
+                     args.private_key_file,
+                     ssh2_enabled=args.ssh2_enabled)
         if args.boot_script:
-            host_info = self.cloud.get_host_info(args)
-            self.extra_vars.update(
-                get_ssh_host_port(host_info, args.custom_ssh_port, default_port=True))
-            ssh_port_updated = self.update_open_ssh_port(args)
-            use_default_port = not ssh_port_updated
             logging.info(
                 'Waiting for the startup script to finish on {}'.format(args.search_pattern))
-
-            host_info = get_ssh_host_port(
-                self.wait_for_host(args, use_default_port),
-                args.custom_ssh_port,
-                default_port=use_default_port)
-            host_info['ssh_user'] = self.extra_vars.get("ssh_user", DEFAULT_SSH_USER)
             retries = 0
-            while not self.cloud.wait_for_startup_script(args, host_info) and retries < 5:
+            while not self.cloud.wait_for_startup_script(args, self.extra_vars) and retries < 5:
                 retries += 1
                 time.sleep(2 ** retries)
 
@@ -601,6 +602,9 @@ class CreateInstancesMethod(AbstractInstancesMethod):
                 self.cloud.verify_startup_script(args, host_info)
 
             logging.info('Startup script finished on {}'.format(args.search_pattern))
+        if create_output is not None:
+            host_info.update(create_output)
+        print(json.dumps(host_info))
 
 
 class ProvisionInstancesMethod(AbstractInstancesMethod):
@@ -1720,3 +1724,29 @@ class RunHooks(AbstractInstancesMethod):
                                 remove_command)
         if rc:
             logging.warn("Failed deleting custom hook:\n" + ''.join(stderr))
+
+
+class WaitForSSHConnection(AbstractInstancesMethod):
+    def __init__(self, base_command):
+        super(WaitForSSHConnection, self).__init__(base_command, "wait_for_ssh", True)
+
+    def add_extra_args(self):
+        super(WaitForSSHConnection, self).add_extra_args()
+
+    def callback(self, args):
+        host_info = self.cloud.get_host_info(args)
+        # Set the host and default port.
+        self.extra_vars.update(
+            get_ssh_host_port(host_info, args.custom_ssh_port, default_port=True))
+        # Update with the open port.
+        self.update_open_ssh_port(args)
+        self.extra_vars['ssh_user'] = self.extra_vars.get("ssh_user", DEFAULT_SSH_USER)
+        # Port is already open. Wait for ssh to succeed.
+        connected = wait_for_ssh(self.extra_vars["ssh_host"],
+                                 self.extra_vars["ssh_port"],
+                                 self.extra_vars["ssh_user"],
+                                 args.private_key_file,
+                                 ssh2_enabled=args.ssh2_enabled)
+        if not connected:
+            raise YBOpsRuntimeError("SSH connection to port {} failed"
+                                    .format(self.extra_vars["ssh_port"]))

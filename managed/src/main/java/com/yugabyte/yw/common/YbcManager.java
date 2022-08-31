@@ -7,13 +7,19 @@ import com.google.inject.Singleton;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.services.YbcClientService;
+import com.yugabyte.yw.common.utils.Pair;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Backup;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageNFSData;
+import com.yugabyte.yw.models.helpers.NodeDetails;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.client.YbcClient;
 import org.yb.ybc.BackupServiceNfsDirDeleteRequest;
 import org.yb.ybc.BackupServiceNfsDirDeleteResponse;
+import java.util.regex.Matcher;
 import java.util.UUID;
 import org.yb.ybc.BackupServiceTaskAbortRequest;
 import org.yb.ybc.BackupServiceTaskAbortResponse;
@@ -35,6 +41,8 @@ public class YbcManager {
   private final YbcBackupUtil ybcBackupUtil;
   private final BackupUtil backupUtil;
   private final RuntimeConfigFactory runtimeConfigFactory;
+  private final ReleaseManager releaseManager;
+  private final NodeManager nodeManager;
 
   private static final int WAIT_EACH_ATTEMPT_MS = 5000;
   private static final int MAX_RETRIES = 10;
@@ -47,12 +55,16 @@ public class YbcManager {
       CustomerConfigService customerConfigService,
       YbcBackupUtil ybcBackupUtil,
       BackupUtil backupUtil,
-      RuntimeConfigFactory runtimeConfigFactory) {
+      RuntimeConfigFactory runtimeConfigFactory,
+      ReleaseManager releaseManager,
+      NodeManager nodeManager) {
     this.ybcClientService = ybcClientService;
     this.customerConfigService = customerConfigService;
     this.ybcBackupUtil = ybcBackupUtil;
     this.backupUtil = backupUtil;
     this.runtimeConfigFactory = runtimeConfigFactory;
+    this.releaseManager = releaseManager;
+    this.nodeManager = nodeManager;
   }
 
   public boolean deleteNfsDirectory(Backup backup) {
@@ -222,5 +234,59 @@ public class YbcManager {
 
   public String getStableYbcVersion() {
     return runtimeConfigFactory.globalRuntimeConf().getString(YBC_STABLE_RELEASE_PATH);
+  }
+
+  /**
+   * @param universe
+   * @param node
+   * @return pair of string containing osType and archType of ybc-server-package
+   */
+  public Pair<String, String> getYbcPackageDetailsForNode(Universe universe, NodeDetails node) {
+    Cluster nodeCluster = Universe.getCluster(universe, node.nodeName);
+    String ybSoftwareVersion = nodeCluster.userIntent.ybSoftwareVersion;
+    String ybServerPackage =
+        nodeManager.getYbServerPackageName(ybSoftwareVersion, nodeCluster.getRegions().get(0));
+    return Util.getYbcPackageDetailsFromYbServerPackage(ybServerPackage);
+  }
+
+  /**
+   * @param universe
+   * @param node
+   * @param ybcVersion
+   * @return Temp location of ybc server package on a DB node.
+   */
+  public String getYbcPackageTmpLocation(Universe universe, NodeDetails node, String ybcVersion) {
+    Pair<String, String> ybcPackageDetails = getYbcPackageDetailsForNode(universe, node);
+    return String.format(
+        "/tmp/ybc-%s-%s-%s.tar.gz",
+        ybcVersion, ybcPackageDetails.getFirst(), ybcPackageDetails.getSecond());
+  }
+
+  /**
+   * @param universe
+   * @param node
+   * @param ybcVersion
+   * @return complete file path of ybc server package present in YBA node.
+   */
+  public String getYbcServerPackageForNode(Universe universe, NodeDetails node, String ybcVersion) {
+    Pair<String, String> ybcPackageDetails = getYbcPackageDetailsForNode(universe, node);
+    ReleaseManager.ReleaseMetadata releaseMetadata =
+        releaseManager.getYbcReleaseByVersion(
+            ybcVersion, ybcPackageDetails.getFirst(), ybcPackageDetails.getSecond());
+    String ybcServerPackage =
+        releaseMetadata.getFilePath(
+            Universe.getCluster(universe, node.nodeName).getRegions().get(0));
+    if (StringUtils.isBlank(ybcServerPackage)) {
+      throw new RuntimeException("Ybc package cannot be empty.");
+    }
+    Matcher matcher = NodeManager.YBC_PACKAGE_PATTERN.matcher(ybcServerPackage);
+    boolean matches = matcher.matches();
+    if (!matches) {
+      throw new RuntimeException(
+          String.format(
+              "Ybc package: %s does not follow the format required: %s",
+              ybcServerPackage, NodeManager.YBC_PACKAGE_REGEX));
+    }
+    return ybcServerPackage;
   }
 }

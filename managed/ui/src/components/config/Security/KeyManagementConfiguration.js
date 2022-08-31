@@ -38,9 +38,11 @@ let kmsConfigTypes = [
   // { value: 'SMARTKEY', label: 'Equinix SmartKey' },
   { value: 'AWS', label: 'AWS KMS' },
   { value: 'HASHICORP', label: 'Hashicorp Vault' },
-  { value: 'GCP', label: 'GCP KMS' }
+  { value: 'GCP', label: 'GCP KMS' },
+  { value: 'AZU', label: 'Azure KMS' }
 ];
 
+//GCP KMS
 const PROTECTION_LEVELS = [
   { label: 'HSM (Hardware)', value: 'HSM' },
   { label: 'Software', value: 'SOFTWARE' }
@@ -48,10 +50,24 @@ const PROTECTION_LEVELS = [
 
 const DEFAULT_GCP_LOCATION = GCP_KMS_REGIONS[0].options[0];
 const DEFAULT_PROTECTION = PROTECTION_LEVELS[0];
+
+//Azu KMS
+const AZU_PROTECTION_ALGOS = [{ label: 'RSA', value: 'RSA' }];
+const KEY_SIZES = [
+  { label: '2048', value: 2048 },
+  { label: '3072', value: 3072 },
+  { label: '4096', value: 4096 }
+];
+const DEFAULT_AZU_PROTECTION_ALGO = AZU_PROTECTION_ALGOS[0];
+const DEFAULT_KEY_SIZE = KEY_SIZES[0];
+
+//Form Data
 const DEFAULT_FORM_DATA = {
   kmsProvider: kmsConfigTypes[0],
   PROTECTION_LEVEL: DEFAULT_PROTECTION,
-  LOCATION_ID: DEFAULT_GCP_LOCATION
+  LOCATION_ID: DEFAULT_GCP_LOCATION,
+  AZU_KEY_ALGORITHM: DEFAULT_AZU_PROTECTION_ALGO,
+  AZU_KEY_SIZE: DEFAULT_KEY_SIZE
 };
 
 class KeyManagementConfiguration extends Component {
@@ -176,6 +192,14 @@ class KeyManagementConfiguration extends Component {
             return;
           }
           break;
+        case 'AZU':
+          if (isFieldModified('CLIENT_ID')) data['CLIENT_ID'] = values.CLIENT_ID;
+
+          if (isFieldModified('CLIENT_SECRET')) data['CLIENT_SECRET'] = values.CLIENT_SECRET;
+
+          if (isFieldModified('TENANT_ID')) data['TENANT_ID'] = values.TENANT_ID;
+
+          break;
       }
       updateConfig(data);
     }
@@ -251,6 +275,16 @@ class KeyManagementConfiguration extends Component {
             });
             return;
           }
+
+          break;
+        case 'AZU':
+          data['CLIENT_ID'] = values.CLIENT_ID;
+          data['CLIENT_SECRET'] = values.CLIENT_SECRET;
+          data['TENANT_ID'] = values.TENANT_ID;
+          data['AZU_VAULT_URL'] = values.AZU_VAULT_URL;
+          data['AZU_KEY_NAME'] = values.AZU_KEY_NAME;
+          data['AZU_KEY_ALGORITHM'] = values.AZU_KEY_ALGORITHM.value;
+          data['AZU_KEY_SIZE'] = Number(values.AZU_KEY_SIZE.value);
 
           break;
       }
@@ -629,6 +663,153 @@ class KeyManagementConfiguration extends Component {
     );
   };
 
+  getAzuForm = () => {
+    const isEdit = this.isEditMode();
+
+    return (
+      <>
+        <Row className="config-provider-row" key={'azu-client-id-field'}>
+          <Col lg={3}>
+            <div className="form-item-custom-label">Client ID</div>
+          </Col>
+          <Col lg={7}>
+            <Field
+              name={'CLIENT_ID'}
+              component={YBFormInput}
+              placeholder={''}
+              className={'kube-provider-input-field'}
+            />
+          </Col>
+          <Col lg={1} className="config-zone-tooltip">
+            <YBInfoTip
+              title="Client ID"
+              content="This is the unique identifier of an application registered in the  Azure Active Directory instance."
+            />
+          </Col>
+        </Row>
+
+        <Row className="config-provider-row" key={'azu-client-secret-field'}>
+          <Col lg={3}>
+            <div className="form-item-custom-label">Client Secret</div>
+          </Col>
+          <Col lg={7}>
+            <Field
+              name={'CLIENT_SECRET'}
+              component={YBFormInput}
+              placeholder={''}
+              className={'kube-provider-input-field'}
+            />
+          </Col>
+          <Col lg={1} className="config-zone-tooltip">
+            <YBInfoTip
+              title="Client Secret"
+              content="This is the secret key of an application registered in the  Azure Active Directory instance."
+            />
+          </Col>
+        </Row>
+
+        <Row className="config-provider-row" key={'azu-tenant-id-field'}>
+          <Col lg={3}>
+            <div className="form-item-custom-label">Tenant ID</div>
+          </Col>
+          <Col lg={7}>
+            <Field
+              name={'TENANT_ID'}
+              component={YBFormInput}
+              placeholder={''}
+              className={'kube-provider-input-field'}
+            />
+          </Col>
+          <Col lg={1} className="config-zone-tooltip">
+            <YBInfoTip
+              title="Tenant ID"
+              content="This is the unique identifier of the Azure Active Directory instance."
+            />
+          </Col>
+        </Row>
+
+        <Row className="config-provider-row" key={'azu-key-vault-url-field'}>
+          <Col lg={3}>
+            <div className="form-item-custom-label">Key Vault URL</div>
+          </Col>
+          <Col lg={7}>
+            <Field
+              name={'AZU_VAULT_URL'}
+              component={YBFormInput}
+              placeholder={''}
+              className={'kube-provider-input-field'}
+              disabled={isEdit}
+            />
+          </Col>
+          <Col lg={1} className="config-zone-tooltip">
+            <YBInfoTip title="Key Vault URL" content="The key vault URI in the Azure portal." />
+          </Col>
+        </Row>
+
+        <Row className="config-provider-row" key={'azu-key-name-field'}>
+          <Col lg={3}>
+            <div className="form-item-custom-label">Key Name</div>
+          </Col>
+          <Col lg={7}>
+            <Field
+              name={'AZU_KEY_NAME'}
+              component={YBFormInput}
+              placeholder={''}
+              className={'kube-provider-input-field'}
+              disabled={isEdit}
+            />
+          </Col>
+          <Col lg={1} className="config-zone-tooltip">
+            <YBInfoTip
+              title="Key Name"
+              content="Name of the master key in the Key Vault. If master key with same name already exists then it will be used, else a new one will be created automatically."
+            />
+          </Col>
+        </Row>
+
+        <Row className="config-provider-row" key={'azu-algo-field'}>
+          <Col lg={3}>
+            <div className="form-item-custom-label">Key Algorithm</div>
+          </Col>
+          <Col lg={7}>
+            <Field
+              name="AZU_KEY_ALGORITHM"
+              component={YBFormSelect}
+              options={AZU_PROTECTION_ALGOS}
+              className={'kube-provider-input-field'}
+              isDisabled={true}
+              value={DEFAULT_AZU_PROTECTION_ALGO}
+              defaultValue={DEFAULT_AZU_PROTECTION_ALGO}
+            />
+          </Col>
+          <Col lg={1} className="config-zone-tooltip">
+            <YBInfoTip title="Key Algorithm" content="The key algorithm used for the master key." />
+          </Col>
+        </Row>
+
+        <Row className="config-provider-row" key={'azu-key-size-field'}>
+          <Col lg={3}>
+            <div className="form-item-custom-label">Key Size (bits)</div>
+          </Col>
+          <Col lg={7}>
+            <Field
+              name="AZU_KEY_SIZE"
+              component={YBFormSelect}
+              options={KEY_SIZES}
+              className={'kube-provider-input-field'}
+              isDisabled={isEdit}
+              value={DEFAULT_KEY_SIZE}
+              defaultValue={DEFAULT_KEY_SIZE}
+            />
+          </Col>
+          <Col lg={1} className="config-zone-tooltip">
+            <YBInfoTip title="Key Size" content="The size of the master key." />
+          </Col>
+        </Row>
+      </>
+    );
+  };
+
   displayFormContent = (provider) => {
     if (!provider) {
       return this.getAWSForm();
@@ -642,6 +823,8 @@ class KeyManagementConfiguration extends Component {
         return this.getHCVaultForm();
       case 'GCP':
         return this.getGCPForm();
+      case 'AZU':
+        return this.getAzuForm();
       default:
         return this.getAWSForm();
     }
@@ -654,7 +837,13 @@ class KeyManagementConfiguration extends Component {
   handleEdit = ({ credentials, metadata }) => {
     const formData = { ...credentials, ...metadata };
     const { provider } = metadata;
-    const { AWS_REGION, PROTECTION_LEVEL, LOCATION_ID } = credentials;
+    const {
+      AWS_REGION,
+      PROTECTION_LEVEL,
+      LOCATION_ID,
+      AZU_KEY_ALGORITHM,
+      AZU_KEY_SIZE
+    } = credentials;
     if (provider) formData.kmsProvider = kmsConfigTypes.find((config) => config.value === provider);
     if (AWS_REGION) formData.region = awsRegionList.find((region) => region.value === AWS_REGION);
     if (PROTECTION_LEVEL)
@@ -665,6 +854,14 @@ class KeyManagementConfiguration extends Component {
       formData.LOCATION_ID = GCP_KMS_REGIONS_FLATTENED.find(
         (region) => region.value === LOCATION_ID
       );
+
+    if (AZU_KEY_ALGORITHM)
+      formData.AZU_KEY_ALGORITHM = AZU_PROTECTION_ALGOS.find(
+        (algo) => algo.value === AZU_KEY_ALGORITHM
+      );
+
+    if (AZU_KEY_SIZE)
+      formData.AZU_KEY_SIZE = KEY_SIZES.find((keysize) => keysize.value === AZU_KEY_SIZE);
 
     this.setState({
       listView: false,
@@ -688,6 +885,15 @@ class KeyManagementConfiguration extends Component {
     this.setState({ listView: true, mode: 'NEW', formData: DEFAULT_FORM_DATA });
   };
 
+  isValidUrl = (url) => {
+    try {
+      new URL(url);
+    } catch (e) {
+      return false;
+    }
+    return true;
+  };
+
   render() {
     const { configList, featureFlags, currentUserInfo } = this.props;
     const { listView, enabledIAMProfile, formData } = this.state;
@@ -701,22 +907,25 @@ class KeyManagementConfiguration extends Component {
       const isHCVaultEnabled =
         featureFlags.test.enableHCVault || featureFlags.released.enableHCVault;
       const isGcpKMSEnabled = featureFlags.test.enableGcpKMS || featureFlags.released.enableGcpKMS;
+      const isAzuKMSEnabled = featureFlags.test.enableAzuKMS || featureFlags.released.enableAzuKMS;
 
       let configs = configList.data;
-      if (isHCVaultEnabled || isGcpKMSEnabled) {
+      if (isHCVaultEnabled || isGcpKMSEnabled || isAzuKMSEnabled) {
         kmsConfigTypes = kmsConfigTypes.filter((config) => {
           return (
-            !['HASHICORP', 'GCP'].includes(config.value) ||
+            !['HASHICORP', 'GCP', 'AZU'].includes(config.value) ||
             (config.value === 'HASHICORP' && isHCVaultEnabled) ||
-            (config.value === 'GCP' && isGcpKMSEnabled)
+            (config.value === 'GCP' && isGcpKMSEnabled) ||
+            (config.value === 'AZU' && isAzuKMSEnabled)
           );
         });
         configs = configs
           ? configs.filter((config) => {
               return (
-                !['HASHICORP', 'GCP'].includes(config.metadata.provider) ||
+                !['HASHICORP', 'GCP', 'AZU'].includes(config.metadata.provider) ||
                 (config.metadata.provider === 'HASHICORP' && isHCVaultEnabled) ||
-                (config.metadata.provider === 'GCP' && isGcpKMSEnabled)
+                (config.metadata.provider === 'GCP' && isGcpKMSEnabled) ||
+                (config.metadata.provider === 'AZU' && isAzuKMSEnabled)
               );
             })
           : [];
@@ -802,12 +1011,45 @@ class KeyManagementConfiguration extends Component {
         }),
         GCP_KMS_ENDPOINT: Yup.mixed().when('kmsProvider', {
           is: (provider) => provider?.value === 'GCP',
-          then: Yup.string().matches(
-            /^((https?|ftp|smtp):\/\/)?(www.)?[a-z0-9]+\.[a-z]+(\/[a-zA-Z0-9#]+\/?)*$/,
-            {
-              message: 'GCS Custom Endpoint must be a valid URL'
-            }
+          then: Yup.string().test(
+            'is-url-valid',
+            'GCS Custom Endpoint must be a valid URL',
+            (value) => this.isValidUrl(value)
           )
+        }),
+
+        //Azu KMS
+        CLIENT_ID: Yup.mixed().when('kmsProvider', {
+          is: (provider) => provider?.value === 'AZU',
+          then: Yup.mixed().required('Client ID is required')
+        }),
+        CLIENT_SECRET: Yup.mixed().when('kmsProvider', {
+          is: (provider) => provider?.value === 'AZU',
+          then: Yup.string().required('Client Secret is Required')
+        }),
+        TENANT_ID: Yup.mixed().when('kmsProvider', {
+          is: (provider) => provider?.value === 'AZU',
+          then: Yup.string().required('Tenant ID is Required')
+        }),
+        AZU_KEY_NAME: Yup.mixed().when('kmsProvider', {
+          is: (provider) => provider?.value === 'AZU',
+          then: Yup.string().required('Key Name is Required')
+        }),
+        AZU_KEY_ALGORITHM: Yup.mixed().when('kmsProvider', {
+          is: (provider) => provider?.value === 'AZU',
+          then: Yup.object().required('Key Algorithm is Required')
+        }),
+        AZU_KEY_SIZE: Yup.mixed().when('kmsProvider', {
+          is: (provider) => provider?.value === 'AZU',
+          then: Yup.object().required('Key Size is Required')
+        }),
+        AZU_VAULT_URL: Yup.mixed().when('kmsProvider', {
+          is: (provider) => provider?.value === 'AZU',
+          then: Yup.string()
+            .required('Key Vault URL is Required')
+            .test('is-url-valid', 'Key Vault URL must be a valid URL', (value) =>
+              this.isValidUrl(value)
+            )
         })
       });
 

@@ -22,6 +22,8 @@
 
 #include <boost/functional/hash.hpp>
 
+#include "yb/client/table_info.h"
+
 #include "yb/common/pg_types.h"
 #include "yb/common/pgsql_error.h"
 #include "yb/common/placement_info.h"
@@ -441,6 +443,10 @@ void PgSession::InvalidateTableCache(
 void PgSession::InvalidateAllTablesCache() {
   invalidate_table_cache_time_ = CoarseMonoClock::now();
   table_cache_.clear();
+}
+
+Result<client::TableSizeInfo> PgSession::GetTableDiskSize(const PgObjectId& table_oid) {
+  return pg_client_.GetTableDiskSize(table_oid);
 }
 
 Status PgSession::StartOperationsBuffering() {

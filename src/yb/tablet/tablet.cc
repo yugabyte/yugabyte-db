@@ -1576,8 +1576,7 @@ Result<bool> Tablet::HasScanReachedMaxPartitionKey(
     // For batched index lookup of ybctids, check if the current partition hash is lesser than
     // upper bound. If it is, we can then avoid paging. Paging of batched index lookup of ybctids
     // occur when tablets split after request is prepared.
-    if (pgsql_read_request.has_ybctid_column_value() &&
-        implicit_cast<size_t>(pgsql_read_request.batch_arguments_size()) > row_count) {
+    if (implicit_cast<size_t>(pgsql_read_request.batch_arguments_size()) > row_count) {
       if (!pgsql_read_request.upper_bound().has_key()) {
           return false;
       }

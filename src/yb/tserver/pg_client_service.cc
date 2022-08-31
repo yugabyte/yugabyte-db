@@ -25,6 +25,7 @@
 #include "yb/client/schema.h"
 #include "yb/client/table.h"
 #include "yb/client/table_creator.h"
+#include "yb/client/table_info.h"
 #include "yb/client/tablet_server.h"
 
 #include "yb/common/partition.h"
@@ -329,6 +330,18 @@ class PgClientServiceImpl::Impl {
     live_replicas->set_num_replicas(req.num_replicas());
 
     return client().ValidateReplicationInfo(replication_info);
+  }
+
+  Status GetTableDiskSize(
+      const PgGetTableDiskSizeRequestPB& req, PgGetTableDiskSizeResponsePB* resp,
+      rpc::RpcContext* context) {
+    auto result =
+        VERIFY_RESULT(client().GetTableDiskSize(PgObjectId::GetYbTableIdFromPB(req.table_id())));
+
+    resp->set_size(result.table_size);
+    resp->set_num_missing_tablets(result.num_missing_tablets);
+
+    return Status::OK();
   }
 
   Status CheckIfPitrActive(

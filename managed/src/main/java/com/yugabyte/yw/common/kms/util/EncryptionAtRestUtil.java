@@ -65,23 +65,9 @@ public class EncryptionAtRestUtil {
     return serviceConstructor;
   }
 
-  public static ObjectNode getAuthConfig(UUID configUUID, KeyProvider keyProvider) {
-
+  public static ObjectNode getAuthConfig(UUID configUUID) {
     KmsConfig config = KmsConfig.get(configUUID);
-    final ObjectNode maskedConfig = (ObjectNode) config.authConfig;
-    UUID customerUUID = config.customerUUID;
-
-    return (ObjectNode)
-        EncryptionAtRestUtil.unmaskConfigData(customerUUID, maskedConfig, keyProvider);
-  }
-
-  public static ObjectNode getAuthConfig(KmsConfig config) {
-
-    final ObjectNode maskedConfig = (ObjectNode) config.authConfig;
-    UUID customerUUID = config.customerUUID;
-
-    return (ObjectNode)
-        EncryptionAtRestUtil.unmaskConfigData(customerUUID, maskedConfig, config.keyProvider);
+    return config.authConfig;
   }
 
   public static <N extends JsonNode> ObjectNode maskConfigData(

@@ -532,20 +532,6 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testCreateProviderConfigEncryption() {
-    Map<String, String> testConfig = new HashMap<>();
-    testConfig.put("ACCOUNT_NAME", "John Doe");
-    testConfig.put("ACCOUNT_MAIL", "jdoe@yugabyte.com");
-    Provider testProvider = buildProviderReq("aws", "test-provider");
-    testProvider.setConfig(testConfig);
-    Provider createdProvider =
-        createProviderTest(testProvider, ImmutableList.of("region1", "region2"), UUID.randomUUID());
-    assertTrue(createdProvider.getConfig().containsKey("encrypted"));
-    Map<String, String> decryptedConfig = createdProvider.getUnmaskedConfig();
-    assertEquals(testConfig, decryptedConfig);
-  }
-
-  @Test
   public void testAddRegion() {
     when(mockCommissioner.submit(any(TaskType.class), any(CloudBootstrap.Params.class)))
         .thenReturn(UUID.randomUUID());

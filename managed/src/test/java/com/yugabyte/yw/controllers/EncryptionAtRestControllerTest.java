@@ -394,11 +394,8 @@ public class EncryptionAtRestControllerTest extends FakeDBApplication {
             .put(AzuEARServiceUtil.AZU_KEY_ALGORITHM_FIELDNAME, "RSA")
             .put(AzuEARServiceUtil.AZU_KEY_SIZE_FIELDNAME, 2048);
 
-    // Mask the config data and insert into local db
-    ObjectNode maskedConfig =
-        EncryptionAtRestUtil.maskConfigData(customer.uuid, kmsConfigReq, keyProvider);
     KmsConfig result =
-        KmsConfig.createKMSConfig(customer.uuid, keyProvider, maskedConfig, configName);
+        KmsConfig.createKMSConfig(customer.uuid, keyProvider, kmsConfigReq, configName);
 
     // Edit the key name field in the request body
     String kmsConfigUrl =

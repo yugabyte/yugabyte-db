@@ -7,10 +7,10 @@
 (3 rows)
 
           List of tablespaces
-    Name    |     Owner     | Location 
+    Name    |     Owner     | Location
 ------------+---------------+----------
- pg_default | postgres      | 
- pg_global  | postgres      | 
+ pg_default | postgres      |
+ pg_global  | postgres      |
  tsp1       | yugabyte_test |
  tsp2       | yugabyte_test |
  tsp_unused | yugabyte_test |
@@ -27,7 +27,7 @@
  yugabyte_test | Superuser, Create role, Create DB, Bypass RLS              | {}
 
   List of schemas
-  Name  |  Owner   
+  Name  |  Owner
 --------+----------
  public | postgres
 (1 row)
@@ -39,8 +39,8 @@
  grp_without_spc | yugabyte_test |                   |             |            |
 (2 rows)
 
-                                                                              List of tablegroup tables
-  Group Name  |  Group Owner  | Access privileges | Group Description | Group Tablespace | Group Options |         Name          | Type  |     Owner     | Rel Description |  Size
---------------+---------------+-------------------+-------------------+------------------+---------------+-----------------------+-------+---------------+-----------------+---------
- grp_with_spc | yugabyte_test |                   |                   | tsp1             |               | tbl_with_grp_with_spc | table | yugabyte_test |                 | 0 bytes
+                                                                            List of tablegroup tables
+  Group Name  |  Group Owner  | Access privileges | Group Description | Group Tablespace | Group Options |         Name          | Type  |     Owner     | Rel Description | Size
+--------------+---------------+-------------------+-------------------+------------------+---------------+-----------------------+-------+---------------+-----------------+------
+ grp_with_spc | yugabyte_test |                   |                   | tsp1             |               | tbl_with_grp_with_spc | table | yugabyte_test |                 |
 (1 row)

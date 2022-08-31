@@ -17,6 +17,7 @@ import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.DrainableMap;
+import com.yugabyte.yw.common.ShutdownHookHandler;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.common.password.RedactingService;
@@ -43,13 +44,11 @@ import java.util.Queue;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CancellationException;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -62,7 +61,6 @@ import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import play.api.Play;
-import play.inject.ApplicationLifecycle;
 
 /**
  * TaskExecutor is the executor service for tasks and their subtasks. It is very similar to the
@@ -256,18 +254,18 @@ public class TaskExecutor {
 
   @Inject
   public TaskExecutor(
-      ApplicationLifecycle lifecycle,
+      ShutdownHookHandler shutdownHookHandler,
       ExecutorServiceProvider executorServiceProvider,
       PlatformReplicationManager replicationManager) {
     this.executorServiceProvider = executorServiceProvider;
     this.replicationManager = replicationManager;
     this.taskOwner = Util.getHostname();
     this.skipSubTaskAbortableCheck = true;
-    lifecycle.addStopHook(
-        () ->
-            CompletableFuture.supplyAsync(
-                () -> TaskExecutor.this.shutdown(Duration.ofMinutes(5)),
-                Executors.newCachedThreadPool()));
+    shutdownHookHandler.addShutdownHook(
+        100 /* weight */,
+        () -> {
+          TaskExecutor.this.shutdown(Duration.ofMinutes(5));
+        });
   }
 
   // Shuts down the task executor.
@@ -294,6 +292,7 @@ public class TaskExecutor {
     } catch (InterruptedException e) {
       log.error("Wait for task completion interrupted", e);
     }
+    log.debug("TaskExecutor shutdown in time");
     return false;
   }
 
@@ -880,18 +879,23 @@ public class TaskExecutor {
           TaskInfo.ERROR_STATES.contains(state),
           "Task state must be one of " + TaskInfo.ERROR_STATES);
       ObjectNode taskDetails = CommonUtils.maskConfig(taskInfo.getTaskDetails().deepCopy());
-      Throwable cause = t;
-      // If an exception is eaten up by just wrapping the cause as RuntimeException(e),
-      // this can find the actual cause.
-      while (StringUtils.isEmpty(cause.getMessage()) && cause.getCause() != null) {
-        cause = cause.getCause();
+      String errorString;
+      if (state == TaskInfo.State.Aborted && isShutdown.get()) {
+        errorString = "Platform shutdown";
+      } else {
+        Throwable cause = t;
+        // If an exception is eaten up by just wrapping the cause as RuntimeException(e),
+        // this can find the actual cause.
+        while (StringUtils.isEmpty(cause.getMessage()) && cause.getCause() != null) {
+          cause = cause.getCause();
+        }
+        errorString =
+            "Failed to execute task "
+                + StringUtils.abbreviate(taskDetails.toString(), 500)
+                + ", hit error:\n\n"
+                + StringUtils.abbreviateMiddle(cause.getMessage(), "...", 3000)
+                + ".";
       }
-      String errorString =
-          "Failed to execute task "
-              + StringUtils.abbreviate(taskDetails.toString(), 500)
-              + ", hit error:\n\n"
-              + StringUtils.abbreviateMiddle(cause.getMessage(), "...", 3000)
-              + ".";
       log.error(
           "Failed to execute task type {} UUID {} details {}, hit error.",
           taskInfo.getTaskType(),

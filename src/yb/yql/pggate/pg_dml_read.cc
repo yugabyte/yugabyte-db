@@ -41,7 +41,6 @@
 #include "yb/yql/pggate/pg_select_index.h"
 #include "yb/yql/pggate/pg_table.h"
 #include "yb/yql/pggate/pg_tabledesc.h"
-#include "yb/yql/pggate/pg_tools.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 #include "yb/util/status_format.h"
@@ -86,6 +85,15 @@ class DocKeyBuilder {
   uint16_t hash_;
   const vector<docdb::KeyEntryValue>* hashed_components_ = nullptr;
 };
+
+inline void ApplyBound(
+    ::yb::LWPgsqlReadRequestPB* req, const std::optional<Bound>& bound, bool is_lower) {
+  if (bound) {
+    auto* mutable_bound = is_lower ? req->mutable_lower_bound() : req->mutable_upper_bound();
+    mutable_bound->dup_key(PartitionSchema::EncodeMultiColumnHashValue(bound->value));
+    mutable_bound->set_is_inclusive(bound->is_inclusive);
+  }
+}
 
 } // namespace
 
@@ -751,25 +759,12 @@ Result<docdb::KeyEntryValue> PgDmlRead::BuildKeyColumnValue(
   return BuildKeyColumnValue(col, src, &temp_value);
 }
 
-Status PgDmlRead::BindHashCode(bool start_valid, bool start_inclusive,
-                                uint64_t start_hash_val, bool end_valid,
-                                bool end_inclusive, uint64_t end_hash_val) {
+Status PgDmlRead::BindHashCode(const std::optional<Bound>& start, const std::optional<Bound>& end) {
   if (secondary_index_query_) {
-    return secondary_index_query_->BindHashCode(start_valid, start_inclusive,
-                                                  start_hash_val, end_valid,
-                                                  end_inclusive, end_hash_val);
+    return secondary_index_query_->BindHashCode(start, end);
   }
-  if (start_valid) {
-    read_req_->mutable_lower_bound()->dup_key(
-        PartitionSchema::EncodeMultiColumnHashValue(start_hash_val));
-    read_req_->mutable_lower_bound()->set_is_inclusive(start_inclusive);
-  }
-
-  if (end_valid) {
-    read_req_->mutable_upper_bound()->dup_key(
-        PartitionSchema::EncodeMultiColumnHashValue(end_hash_val));
-    read_req_->mutable_upper_bound()->set_is_inclusive(end_inclusive);
-  }
+  ApplyBound(read_req_.get(), start, true /* is_lower */);
+  ApplyBound(read_req_.get(), end, false /* is_lower */);
   return Status::OK();
 }
 

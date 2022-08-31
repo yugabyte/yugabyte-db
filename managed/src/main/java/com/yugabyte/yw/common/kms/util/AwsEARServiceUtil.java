@@ -75,13 +75,13 @@ public class AwsEARServiceUtil {
   }
 
   public static AWSKMS getKMSClient(UUID configUUID) {
-    ObjectNode authConfig = EncryptionAtRestUtil.getAuthConfig(configUUID, KeyProvider.AWS);
+    ObjectNode authConfig = EncryptionAtRestUtil.getAuthConfig(configUUID);
     return getKMSClient(configUUID, authConfig);
   }
 
   public static AWSKMS getKMSClient(UUID configUUID, ObjectNode authConfig) {
     if (authConfig == null) {
-      authConfig = EncryptionAtRestUtil.getAuthConfig(configUUID, KeyProvider.AWS);
+      authConfig = EncryptionAtRestUtil.getAuthConfig(configUUID);
     }
 
     AWSCredentials awsCredentials = getCredentials(authConfig);
@@ -109,7 +109,7 @@ public class AwsEARServiceUtil {
   }
 
   public static AmazonIdentityManagement getIAMClient(UUID configUUID) {
-    ObjectNode authConfig = EncryptionAtRestUtil.getAuthConfig(configUUID, KeyProvider.AWS);
+    ObjectNode authConfig = EncryptionAtRestUtil.getAuthConfig(configUUID);
 
     AWSCredentials awsCredentials = getCredentials(authConfig);
 
@@ -124,7 +124,7 @@ public class AwsEARServiceUtil {
   }
 
   public static AWSSecurityTokenService getSTSClient(UUID configUUID) {
-    ObjectNode authConfig = EncryptionAtRestUtil.getAuthConfig(configUUID, KeyProvider.AWS);
+    ObjectNode authConfig = EncryptionAtRestUtil.getAuthConfig(configUUID);
 
     AWSCredentials awsCredentials = getCredentials(authConfig);
     if (awsCredentials == null || StringUtils.isBlank(authConfig.path("AWS_REGION").asText())) {

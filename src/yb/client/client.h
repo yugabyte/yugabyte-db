@@ -726,6 +726,9 @@ class YBClient {
   // Check if placement information is satisfiable.
   Status ValidateReplicationInfo(const master::ReplicationInfoPB& replication_info);
 
+  // Get the disk size of a table (calculated as SST file size + WAL file size)
+  Result<TableSizeInfo> GetTableDiskSize(const TableId& table_id);
+
   Result<bool> CheckIfPitrActive();
 
   void LookupTabletByKey(const std::shared_ptr<YBTable>& table,
