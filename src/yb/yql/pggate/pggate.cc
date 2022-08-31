@@ -1856,6 +1856,10 @@ void PgApiImpl::StopSysTablePrefetching() {
   }
 }
 
+bool PgApiImpl::IsSysTablePrefetchingStarted() const {
+  return static_cast<bool>(pg_sys_table_prefetcher_);
+}
+
 void PgApiImpl::RegisterSysTableForPrefetching(
   const PgObjectId& table_id, const PgObjectId& index_id) {
   if (!pg_sys_table_prefetcher_) {
