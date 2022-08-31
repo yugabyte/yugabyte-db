@@ -84,6 +84,9 @@ typedef struct YbScanDescData
 	/* number of keys which represents the yb_hash_code function */
 	int nhash_keys;
 
+	/* True if all the conditions for this index were bound to pggate. */
+	bool is_full_cond_bound;
+
 	TupleDesc target_desc;
 	AttrNumber target_key_attnums[YB_MAX_SCAN_KEYS];
 

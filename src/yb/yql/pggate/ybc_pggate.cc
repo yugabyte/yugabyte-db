@@ -1450,6 +1450,10 @@ void YBCStopSysTablePrefetching() {
   pgapi->StopSysTablePrefetching();
 }
 
+bool YBCIsSysTablePrefetchingStarted() {
+  return pgapi->IsSysTablePrefetchingStarted();
+}
+
 void YBCRegisterSysTableForPrefetching(
   YBCPgOid database_oid, YBCPgOid table_oid, YBCPgOid index_oid) {
   pgapi->RegisterSysTableForPrefetching(
