@@ -30,6 +30,7 @@ SUBDIRS = \
 		pageinspect	\
 		passwordcheck	\
 		pg_buffercache	\
+		pg_cron  \
 		pg_freespacemap \
 		pg_prewarm	\
 		pg_standby	\

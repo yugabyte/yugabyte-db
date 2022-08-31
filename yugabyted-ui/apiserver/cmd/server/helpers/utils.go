@@ -2,6 +2,8 @@ package helpers
 import (
     "crypto/rand"
     "math/big"
+    "strconv"
+    "strings"
 )
 
 func Random128BitString() (string, error) {
@@ -19,4 +21,38 @@ func Random128BitString() (string, error) {
     nonce := n.Text(16)
 
     return nonce, nil
+}
+
+// Convert a version number string into a slice of integers. Will only get the major, minor, and
+// patch numbers
+func GetIntVersion(versionNumber string) []int64 {
+    versions := strings.Split(versionNumber, ".")
+    intVersions := make([]int64, 3)
+    for i, version := range versions {
+        if i > 2 {
+            break
+        }
+        intVersion, err := strconv.ParseInt(version, 10, 64)
+        if err == nil {
+            intVersions[i] = intVersion
+        }
+    }
+    return intVersions
+}
+
+// Compares two version strings. Will only compare major, minor, patch numbers.
+// - If versionA == versionB, return 0
+// - If versionA < versionB, return -1
+// - If versionA > versionB, return 1
+func CompareVersions(versionA string, versionB string) int64 {
+    intVersionA := GetIntVersion(versionA)
+    intVersionB := GetIntVersion(versionB)
+    for i := 0; i < 3; i++ {
+        if intVersionA[i] < intVersionB[i] {
+            return -1
+        } else if intVersionA[i] > intVersionB[i] {
+            return 1
+        }
+    }
+    return 0
 }

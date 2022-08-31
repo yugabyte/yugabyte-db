@@ -9,7 +9,10 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.annotations.VisibleForTesting;
+import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
+import com.yugabyte.yw.cloud.PublicCloudConstants.OsType;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
@@ -642,5 +645,30 @@ public class Util {
       return manualProvisioning;
     }
     return false;
+  }
+
+  /**
+   * @param ybServerPackage
+   * @return pair of string containing osType and archType of ybc-server-package
+   */
+  public static Pair<String, String> getYbcPackageDetailsFromYbServerPackage(
+      String ybServerPackage) {
+    String archType = null;
+    if (ybServerPackage.contains(Architecture.x86_64.name().toLowerCase())) {
+      archType = Architecture.x86_64.name();
+    } else if (ybServerPackage.contains(Architecture.aarch64.name().toLowerCase())
+        || ybServerPackage.contains(Architecture.arm64.name().toLowerCase())) {
+      archType = Architecture.aarch64.name();
+    } else {
+      throw new RuntimeException(
+          "Cannot install ybc on machines of arch types other than x86_64, aarch64");
+    }
+
+    // We are using standard open-source OS names in case of different arch.
+    String osType = OsType.LINUX.toString();
+    if (!archType.equals(Architecture.x86_64.name())) {
+      osType = OsType.EL8.toString();
+    }
+    return new Pair<>(osType.toLowerCase(), archType.toLowerCase());
   }
 }

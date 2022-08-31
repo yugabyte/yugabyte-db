@@ -11,6 +11,7 @@ import static org.junit.Assert.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -21,6 +22,7 @@ import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.NodeActionType;
+import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -29,8 +31,8 @@ import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
+import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -94,9 +96,27 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.universeUUID);
 
     YBClient mockClient = mock(YBClient.class);
-    ShellResponse dummyShellResponse = new ShellResponse();
-    dummyShellResponse.message = "true";
-    when(mockNodeManager.nodeCommand(any(), any())).thenReturn(dummyShellResponse);
+    when(mockNodeManager.nodeCommand(any(), any()))
+        .then(
+            invocation -> {
+              if (invocation.getArgument(0).equals(NodeManager.NodeCommandType.List)) {
+                ShellResponse listResponse = new ShellResponse();
+                NodeTaskParams params = invocation.getArgument(1);
+                if (params.nodeUuid == null) {
+                  listResponse.message = "{\"universe_uuid\":\"" + params.universeUUID + "\"}";
+                } else {
+                  listResponse.message =
+                      "{\"universe_uuid\":\""
+                          + params.universeUUID
+                          + "\", "
+                          + "\"node_uuid\": \""
+                          + params.nodeUuid
+                          + "\"}";
+                }
+                return listResponse;
+              }
+              return ShellResponse.create(ShellResponse.ERROR_CODE_SUCCESS, "true");
+            });
     when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
 
     ChangeMasterClusterConfigResponse ccr = new ChangeMasterClusterConfigResponse(1111, "", null);
@@ -307,7 +327,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
     taskParams.expectedUniverseVersion = 3;
     ShellResponse dummyShellResponse = new ShellResponse();
     dummyShellResponse.message = null;
-    when(mockNodeManager.nodeCommand(any(), any())).thenReturn(dummyShellResponse);
+    doReturn(dummyShellResponse).when(mockNodeManager).nodeCommand(any(), any());
 
     TaskInfo taskInfo = submitTask(taskParams, "host-n1");
     assertEquals(Success, taskInfo.getTaskState());

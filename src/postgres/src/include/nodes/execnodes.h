@@ -1403,6 +1403,12 @@ typedef struct IndexOnlyScanState
 	IndexScanDesc ioss_ScanDesc;
 	Buffer		ioss_VMBuffer;
 	Size		ioss_PscanLen;
+	/*
+	 * yb_indexqual_for_recheck is the modified version of indexqual.
+	 * It is used in tuple recheck step only.
+	 * In majority of cases it is NULL which means that indexqual will be used for tuple recheck.
+	 */
+	ExprState *yb_indexqual_for_recheck;
 } IndexOnlyScanState;
 
 /* ----------------

@@ -10,6 +10,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -41,7 +42,7 @@ import org.junit.Before;
 import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.runners.MockitoJUnitRunner;
+import org.mockito.junit.MockitoJUnitRunner;
 import org.yb.client.ChangeMasterClusterConfigResponse;
 import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.YBClient;
@@ -84,14 +85,15 @@ public class ReadOnlyClusterDeleteTest extends CommissionerBaseTest {
         defaultUniverse.universeUUID,
         ApiUtils.mockUniverseUpdater(userIntent, true /* setMasters */));
     YBClient mockClient = mock(YBClient.class);
-    when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
-    when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
+    // Added lenient() because dependent test is currently ignored.
+    lenient().when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
+    lenient().when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
     ShellResponse dummyShellResponse = new ShellResponse();
     dummyShellResponse.message = "true";
     when(mockNodeManager.nodeCommand(any(), any())).thenReturn(dummyShellResponse);
     try {
       GetMasterClusterConfigResponse gcr = new GetMasterClusterConfigResponse(0, "", null, null);
-      when(mockClient.getMasterClusterConfig()).thenReturn(gcr);
+      lenient().when(mockClient.getMasterClusterConfig()).thenReturn(gcr);
       new ChangeMasterClusterConfigResponse(1111, "", null);
     } catch (Exception e) {
     }

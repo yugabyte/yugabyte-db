@@ -256,7 +256,7 @@ public class UniverseMetricProvider implements MetricsProvider {
       // For now only Hashicorp config expires.
       return null;
     }
-    ObjectNode credentials = EncryptionAtRestUtil.getAuthConfig(kmsConfig);
+    ObjectNode credentials = kmsConfig.authConfig;
     JsonNode keyTtlNode = credentials.get(HashicorpVaultConfigParams.HC_VAULT_TTL);
     if (keyTtlNode == null || keyTtlNode.asLong() == 0) {
       return null;
