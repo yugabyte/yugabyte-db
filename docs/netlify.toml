@@ -269,6 +269,11 @@
   to = "/preview/api/ysql/"
   force = true
 
+[[redirects]]
+  from = "/preview/api/ysql/the-sql-language/with-clause/*"
+  to = "/preview/api/ysql/with-clause/:splat"
+  force = true
+
 # Yugabyte Extensions top hit
 
 [[redirects]]
