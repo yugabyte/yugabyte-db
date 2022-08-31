@@ -28,7 +28,7 @@ A local instance of Prometheus displaying the metrics of your YugabyteDB cluster
 - Install Grafana and start the server according to the [Grafana documentation](https://grafana.com/docs/grafana/latest/installation/mac/).
 
 - Open the Grafana UI on <http://localhost:3000>. The default login is `admin`, with a password of `admin`.
-- Follow the steps on [Grafana support for Prometheus](https://prometheus.io/docs/visualization/grafana/) to create a Prometheus data source.
+- Follow the steps in [Grafana support for Prometheus](https://prometheus.io/docs/visualization/grafana/) to create a Prometheus data source.
 
 ## Create a dashboard
 
