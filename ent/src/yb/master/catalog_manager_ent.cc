@@ -837,10 +837,8 @@ Status CatalogManager::ListSnapshots(const ListSnapshotsRequestPB* req,
         InvalidArgument, "Request must have correct snapshot_id", (req->has_snapshot_id() ?
         req->snapshot_id() : "None"), MasterError(MasterErrorPB::SNAPSHOT_FAILED));
   }
-
   RETURN_NOT_OK(snapshot_coordinator_.ListSnapshots(
-      txn_snapshot_id, req->list_deleted_snapshots(), resp));
-
+      txn_snapshot_id, req->list_deleted_snapshots(), req->detail_options(), resp));
   if (req->prepare_for_backup()) {
     RETURN_NOT_OK(RepackSnapshotsForBackup(resp));
   }
