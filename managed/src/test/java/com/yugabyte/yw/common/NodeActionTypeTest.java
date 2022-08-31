@@ -4,6 +4,7 @@ package com.yugabyte.yw.common;
 
 import static com.yugabyte.yw.models.helpers.TaskType.AddNodeToUniverse;
 import static com.yugabyte.yw.models.helpers.TaskType.DeleteNodeFromUniverse;
+import static com.yugabyte.yw.models.helpers.TaskType.RebootNodeInUniverse;
 import static com.yugabyte.yw.models.helpers.TaskType.ReleaseInstanceFromUniverse;
 import static com.yugabyte.yw.models.helpers.TaskType.RemoveNodeFromUniverse;
 import static com.yugabyte.yw.models.helpers.TaskType.StartMasterOnNode;
@@ -11,6 +12,7 @@ import static com.yugabyte.yw.models.helpers.TaskType.StartNodeInUniverse;
 import static com.yugabyte.yw.models.helpers.TaskType.StopNodeInUniverse;
 import static org.junit.Assert.assertEquals;
 
+import com.yugabyte.yw.commissioner.tasks.RebootNodeInUniverse;
 import com.yugabyte.yw.models.CustomerTask;
 import org.junit.Test;
 
@@ -29,6 +31,8 @@ public class NodeActionTypeTest {
     assertEquals("Removed", NodeActionType.REMOVE.toString(true));
     assertEquals("Releasing", NodeActionType.RELEASE.toString(false));
     assertEquals("Released", NodeActionType.RELEASE.toString(true));
+    assertEquals("Rebooting", NodeActionType.REBOOT.toString(false));
+    assertEquals("Rebooted", NodeActionType.REBOOT.toString(true));
     assertEquals("Starting Master", NodeActionType.START_MASTER.toString(false));
     assertEquals("Started Master", NodeActionType.START_MASTER.toString(true));
     assertEquals("Queries", NodeActionType.QUERY.toString(false));
@@ -42,6 +46,7 @@ public class NodeActionTypeTest {
     assertEquals(AddNodeToUniverse, NodeActionType.ADD.getCommissionerTask());
     assertEquals(RemoveNodeFromUniverse, NodeActionType.REMOVE.getCommissionerTask());
     assertEquals(ReleaseInstanceFromUniverse, NodeActionType.RELEASE.getCommissionerTask());
+    assertEquals(RebootNodeInUniverse, NodeActionType.REBOOT.getCommissionerTask());
     assertEquals(StartMasterOnNode, NodeActionType.START_MASTER.getCommissionerTask());
   }
 
@@ -52,6 +57,7 @@ public class NodeActionTypeTest {
     assertEquals(CustomerTask.TaskType.Delete, NodeActionType.DELETE.getCustomerTask());
     assertEquals(CustomerTask.TaskType.Add, NodeActionType.ADD.getCustomerTask());
     assertEquals(CustomerTask.TaskType.Release, NodeActionType.RELEASE.getCustomerTask());
+    assertEquals(CustomerTask.TaskType.Reboot, NodeActionType.REBOOT.getCustomerTask());
     assertEquals(CustomerTask.TaskType.Remove, NodeActionType.REMOVE.getCustomerTask());
     assertEquals(CustomerTask.TaskType.StartMaster, NodeActionType.START_MASTER.getCustomerTask());
   }
