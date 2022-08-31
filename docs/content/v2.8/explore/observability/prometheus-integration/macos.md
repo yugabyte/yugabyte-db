@@ -1,34 +1,34 @@
 ---
-title: Prometheus Integration
-headerTitle: Prometheus Integration
-linkTitle: Prometheus Integration
+title: Prometheus integration
+headerTitle: Prometheus integration
+linkTitle: Prometheus integration
 description: Learn about exporting YugabyteDB metrics and monitoring the cluster with Prometheus.
 menu:
   v2.8:
     identifier: observability-1-macos
     parent: explore-observability
-    weight: 240
+    weight: 235
 type: docs
 ---
 
  <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/preview/explore/observability/prometheus-integration/macos" class="nav-link active">
+    <a href="../macos" class="nav-link active">
       <i class="fab fa-apple" aria-hidden="true"></i>
       macOS
     </a>
   </li>
 
   <li >
-    <a href="/preview/explore/observability/prometheus-integration/linux" class="nav-link">
+    <a href="../linux" class="nav-link">
       <i class="fab fa-linux" aria-hidden="true"></i>
       Linux
     </a>
   </li>
 
   <li >
-    <a href="/preview/explore/observability/prometheus-integration/docker" class="nav-link">
+    <a href="../docker" class="nav-link">
       <i class="fab fa-docker" aria-hidden="true"></i>
       Docker
     </a>
@@ -176,7 +176,7 @@ Open the Prometheus UI at <http://localhost:9090> and then navigate to the Targe
 
 ## 5. Analyze key metrics
 
-On the Prometheus Graph UI, you can now plot the read/write throughput and latency for the `CassandraKeyValue` sample app. As you can see from the [source code](https://github.com/yugabyte/yugabyte-db/blob/master/java/yb-loadtester/src/main/java/com/yugabyte/sample/apps/CassandraKeyValue.java) of the app, it uses only SELECT statements for reads and INSERT statements for writes (aside from the initial CREATE TABLE). This means you can measure throughput and latency by simply using the metrics corresponding to the SELECT and INSERT statements.
+On the Prometheus Graph UI, you can now plot the read/write throughput and latency for the `CassandraKeyValue` sample app. As you can see from the [source code](https://github.com/yugabyte/yugabyte-db/blob/master/java/yb-loadtester/src/main/java/com/yugabyte/sample/apps/CassandraKeyValue.java) of the app, it uses only SELECT statements for reads and INSERT statements for writes (aside from the initial CREATE TABLE). This means you can measure throughput and latency by using the metrics corresponding to the SELECT and INSERT statements.
 
 Paste the following expressions into the **Expression** box and click **Execute** followed by **Add Graph**.
 
@@ -239,4 +239,4 @@ $ ./bin/yugabyted destroy \
 
 ## What's next?
 
-You can [setup Grafana](https://prometheus.io/docs/visualization/grafana/) and import the [YugabyteDB dashboard](https://grafana.com/grafana/dashboards/12620 "YugabyteDB dashboard on grafana.com") for better visualization of the metrics being collected by Prometheus.
+Set up [Grafana dashboards](../../grafana-dashboard/grafana/) for better visualization of the metrics being collected by Prometheus.
