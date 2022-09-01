@@ -98,8 +98,8 @@ IndexOnlyNext(IndexOnlyScanState *node)
 
 		node->ioss_ScanDesc = scandesc;
 		scandesc->yb_scan_plan = (Scan *) plan;
-		scandesc->yb_rel_pushdown = YbInstantiateRemoteParams(
-			&plan->remote, estate->es_param_list_info);
+		scandesc->yb_rel_pushdown =
+			YbInstantiateRemoteParams(&plan->remote, estate);
 
 		/* Set it up for index-only scan */
 		node->ioss_ScanDesc->xs_want_itup = true;
