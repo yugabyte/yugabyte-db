@@ -133,7 +133,7 @@ You have an option to provide the following:
 
 - A custom Amazon Machine Image (AMI) ID to use in each region.
 
-  YugabyteDB Anywhere supports both x86 and ARM (aarch64) CPU architectures. See [Supported operating systems and architectures](../supported-os-and-arch/) for a complete list of supported operating systems. If you plan to deploy YugabyteDB on AWS Graviton-based EC2 instances, use a custom AMI certified for 64-bit ARM (arm64) architecture.
+  YugabyteDB Anywhere supports both x86 and ARM (aarch64) CPU architectures. See [Supported operating systems and architectures](../../supported-os-and-arch/) for a complete list of supported operating systems. If you plan to deploy YugabyteDB on AWS Graviton-based EC2 instances, use a custom AMI certified for 64-bit ARM (arm64) architecture.
 
   If you don't provide an AMI ID, a recent x86 CentOS image is used. For additional information, see [CentOS on AWS](https://wiki.centos.org/Cloud/AWS).
 
