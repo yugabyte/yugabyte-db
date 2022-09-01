@@ -16,13 +16,13 @@ mkdir -p "${OUTDIR}"
 if ! command -v npm -version &> /dev/null
 then
   log "npm could not be found"
-  exit
+  exit 1
 fi
 
 if ! command -v go version &> /dev/null
 then
   log "go lang could not be found"
-  exit
+  exit 1
 fi
 
 (
@@ -40,5 +40,6 @@ then
   log "Yugabyted UI Binary generated successfully at ${OUTFILE}"
 else
   log "Build Failed."
+  exit 1
 fi
 )
