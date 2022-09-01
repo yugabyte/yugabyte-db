@@ -38,7 +38,8 @@ The IP allow lists assigned to a cluster are listed under **Network Access** on 
 
 ## Limitations
 
-- AWS clusters are limited to a maximum of 30 allow list rules. Each IP address or CIDR entry in an allow list is considered a rule. For example, an allow list with 15 comma-delimited IP addresses has 15 rules.
+- Clusters are limited to a maximum of 100 allow list rules. Each IP address or CIDR entry in an allow list is considered a rule. For example, an allow list with 15 comma-delimited IP addresses has 15 rules.
+- An IP allow list can't have more than 100 allow list rules.
 
 ## Assign an IP allow list to a cluster
 
@@ -73,6 +74,8 @@ The **IP Allow List** tab displays a list of IP allow lists configured for your 
 To view an existing IP allow list, select it in the list.
 
 ### Create an IP allow list
+
+IP allow lists are limited to a maximum of 100 allow list rules (that is, the maximum for a cluster).
 
 To create an IP allow list:
 
