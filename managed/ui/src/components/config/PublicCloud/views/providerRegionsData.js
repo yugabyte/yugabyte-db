@@ -8,7 +8,7 @@ export const regionsData = [
   // YW API: ENG-4225
   {
     destVpcRegion: 'ap-northeast-2',
-    zones: ['ap-northeast-2a', 'ap-northeast-2c']
+    zones: ['ap-northeast-2a', 'ap-northeast-2b', 'ap-northeast-2c', 'ap-northeast-2d']
   },
   {
     destVpcRegion: 'ap-south-1',
