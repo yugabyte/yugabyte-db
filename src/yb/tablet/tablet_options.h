@@ -33,6 +33,8 @@ class Cache;
 class EventListener;
 class MemoryMonitor;
 class Env;
+
+struct RocksDBPriorityThreadPoolMetrics;
 }
 
 namespace yb {
@@ -51,6 +53,7 @@ struct TabletOptions {
   yb::Env* env = Env::Default();
   rocksdb::Env* rocksdb_env = rocksdb::Env::Default();
   std::shared_ptr<rocksdb::RateLimiter> rate_limiter;
+  std::shared_ptr<rocksdb::RocksDBPriorityThreadPoolMetrics> priority_thread_pool_metrics;
 };
 
 using TransactionManagerProvider = std::function<client::TransactionManager&()>;
