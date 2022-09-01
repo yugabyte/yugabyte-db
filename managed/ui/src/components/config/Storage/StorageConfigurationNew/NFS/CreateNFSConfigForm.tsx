@@ -221,6 +221,7 @@ export const CreateNFSConfigForm: FC<CreateNFSConfigFormProps> = ({
                     name="MULTI_REGION_NFS_ENABLED"
                     component={YBFormToggle}
                     isReadOnly={isEditMode}
+                    subLabel="Specify a storage path for each region"
                   />
                 </Col>
               </Row>
