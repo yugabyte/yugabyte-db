@@ -213,7 +213,7 @@ DEFINE_test_flag(int32, log_change_config_every_n, 1,
                  "Used to reduce the number of lines being printed for change config requests "
                  "when a test simulates a failure that would generate a log of these requests.");
 
-DEFINE_bool(enable_lease_revocation, true, "Enables lease revocation mechanism");
+DEFINE_bool(enable_lease_revocation, false, "Enables lease revocation mechanism");
 
 DEFINE_bool(quick_leader_election_on_create, false,
             "Do we trigger quick leader elections on table creation.");
