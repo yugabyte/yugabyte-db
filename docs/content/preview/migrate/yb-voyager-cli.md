@@ -9,6 +9,8 @@ menu:
     parent: migrate
     weight: 105
 type: docs
+rightNav:
+  hideH4: true
 ---
 
 yb-voyager is a command line executable for migrating databases from PostgreSQL, Oracle, and MySQL to a YugabyteDB database.
@@ -243,7 +245,7 @@ Specifies the count to increase the number of connections.
 
 ### --batch-size
 
-Specifies the number of records that the [export directory](../../install-yb-voyager/#create-an-export-directory) can contain.
+Specifies the number of records that the [export directory](../install-yb-voyager/#create-an-export-directory) can contain.
 
 Default : 100,000
 
