@@ -9,7 +9,9 @@ type: docs
 menu:
   preview_yugabyte-cloud:
     parent: yugabytedb-managed
-    identifier: cloud-quickstart
+    weight: 2
+    params:
+      hideLink: true
 ---
 
 The quickest way to get started with YugabyteDB is to create a free Sandbox cluster in YugabyteDB Managed:
