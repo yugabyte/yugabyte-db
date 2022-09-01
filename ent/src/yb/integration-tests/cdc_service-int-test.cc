@@ -79,6 +79,7 @@ DECLARE_int32(TEST_get_changes_read_loop_delay_ms);
 DECLARE_double(cdc_read_safe_deadline_ratio);
 DECLARE_bool(TEST_xcluster_simulate_have_more_records);
 DECLARE_bool(TEST_xcluster_skip_meta_ops);
+DECLARE_bool(TEST_cdc_inject_replication_index_update_failure);
 
 DECLARE_double(cdc_get_changes_free_rpc_ratio);
 DECLARE_int32(rpc_workers_limit);
@@ -1659,10 +1660,33 @@ TEST_P(CDCServiceTestDurableMinReplicatedIndex, TestBootstrapProducer) {
     WriteTestRow(i, 10 + i, "key" + std::to_string(i), tablet_id, proxy);
   }
 
+  // Verify that the cdc_min_replicated_index was initialized at the max index.
+  auto tablet_peer = ASSERT_RESULT(
+      cluster_->mini_tablet_server(0)->server()->tablet_manager()->GetTablet(tablet_id));
+  WaitForCDCIndex(tablet_peer, OpId::Max().index, 4 * FLAGS_update_min_cdc_indices_interval_secs);
+
+  // Force the producer bootstrap to fail after updating the tablet replication index entries.
+  FLAGS_TEST_cdc_inject_replication_index_update_failure = true;
+
+  // Verify that the producer bootstrap request fails.
   BootstrapProducerRequestPB req;
   BootstrapProducerResponsePB resp;
   req.add_table_ids(table_.table()->id());
   rpc::RpcController rpc;
+  ASSERT_OK(cdc_proxy_->BootstrapProducer(req, &resp, &rpc));
+  ASSERT_TRUE(resp.has_error());
+
+  // Verify that the cdc_min_replicated_index remains in the initial state. This tests that the
+  // the tablet replication index was rolled back after the injected failure.
+  tablet_peer = ASSERT_RESULT(
+      cluster_->mini_tablet_server(0)->server()->tablet_manager()->GetTablet(tablet_id));
+  WaitForCDCIndex(tablet_peer, OpId::Max().index, 4 * FLAGS_update_min_cdc_indices_interval_secs);
+
+  // Clear the error injection.
+  FLAGS_TEST_cdc_inject_replication_index_update_failure = false;
+
+  // Verify that the next producer bootstrap request succeeds.
+  rpc.Reset();
   ASSERT_OK(cdc_proxy_->BootstrapProducer(req, &resp, &rpc));
   ASSERT_FALSE(resp.has_error());
 
@@ -1687,18 +1711,17 @@ TEST_P(CDCServiceTestDurableMinReplicatedIndex, TestBootstrapProducer) {
     auto s = OpId::FromString(checkpoint);
     ASSERT_OK(s);
     OpId op_id = *s;
-    // When no writes are present, the checkpoint's index is 1. Plus one for the ALTER WAL RETENTION
-    // TIME that we issue when cdc is enabled on a table.
-    ASSERT_EQ(op_id.index, 2 + kNRows);
+    // When no writes are present, the checkpoint's index is 1. Plus two for the failed and
+    // successful ALTER WAL RETENTION TIME that we issue when cdc is enabled on a table.
+    ASSERT_EQ(op_id.index, 3 + kNRows);
   }
 
   // This table only has one tablet.
   ASSERT_EQ(nrows, 1);
 
   // Ensure that cdc_min_replicated_index is set to the correct value after Bootstrap.
-  auto tablet_peer = ASSERT_RESULT(
+  tablet_peer = ASSERT_RESULT(
       cluster_->mini_tablet_server(0)->server()->tablet_manager()->GetTablet(tablet_id));
-
   auto latest_opid = tablet_peer->log()->GetLatestEntryOpId();
   WaitForCDCIndex(tablet_peer, latest_opid.index, 4 * FLAGS_update_min_cdc_indices_interval_secs);
 }
