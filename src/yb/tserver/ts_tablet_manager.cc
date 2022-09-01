@@ -73,6 +73,8 @@
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/sys_catalog.h"
 
+#include "yb/rocksdb/util/task_metrics.h"
+
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/poller.h"
 
@@ -285,6 +287,8 @@ THREAD_POOL_METRICS_DEFINE(
 THREAD_POOL_METRICS_DEFINE(
     server, admin_triggered_compaction_pool, "Thread pool for tablet compaction jobs.");
 
+ROCKSDB_PRIORITY_THREAD_POOL_METRICS_DEFINE(server);
+
 using consensus::ConsensusMetadata;
 using consensus::RaftConfigPB;
 using consensus::StartRemoteBootstrapRequestPB;
@@ -413,6 +417,10 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
       kDefaultTserverBlockCacheSizePercentage,
       server_->metric_entity(),
       [this](){ return GetTabletPeers(); });
+
+  tablet_options_.priority_thread_pool_metrics =
+      std::make_shared<rocksdb::RocksDBPriorityThreadPoolMetrics>(
+          ROCKSDB_PRIORITY_THREAD_POOL_METRICS_INSTANCE(server_->metric_entity()));
 }
 
 TSTabletManager::~TSTabletManager() {
