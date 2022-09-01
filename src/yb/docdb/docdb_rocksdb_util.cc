@@ -538,9 +538,9 @@ void AddSupportedFilterPolicy(
 }
 
 PriorityThreadPool* GetGlobalPriorityThreadPool() {
-    static PriorityThreadPool priority_thread_pool_for_compactions_and_flushes(
+  static PriorityThreadPool priority_thread_pool_for_compactions_and_flushes(
       GetGlobalRocksDBPriorityThreadPoolSize(), FLAGS_prioritize_tasks_by_disk);
-    return &priority_thread_pool_for_compactions_and_flushes;
+  return &priority_thread_pool_for_compactions_and_flushes;
 }
 
 } // namespace
@@ -711,6 +711,8 @@ void InitRocksDBOptions(
       0 /* lookahead */, rocksdb::ConcurrentWrites::kFalse);
 
   options->iterator_replacer = std::make_shared<rocksdb::IteratorReplacer>(&WrapIterator);
+
+  options->priority_thread_pool_metrics = tablet_options.priority_thread_pool_metrics;
 }
 
 void SetLogPrefix(rocksdb::Options* options, const std::string& log_prefix) {

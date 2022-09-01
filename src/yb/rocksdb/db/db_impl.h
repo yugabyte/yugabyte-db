@@ -73,6 +73,7 @@ class WriteCallback;
 class FileNumbersProvider;
 struct JobContext;
 struct ExternalSstFileInfo;
+struct RocksDBPriorityThreadPoolMetrics;
 
 class DBImpl : public DB {
  public:
@@ -904,6 +905,10 @@ class DBImpl : public DB {
 
   // stores the number of flushes are currently running
   int num_running_flushes_;
+
+  // Tracks state changes for priority thread pool tasks.
+  // Metrics are updated within the PriorityThreadPoolTask.
+  std::shared_ptr<RocksDBPriorityThreadPoolMetrics> priority_thread_pool_metrics_;
 
   // Information for a manual compaction
   struct ManualCompaction {

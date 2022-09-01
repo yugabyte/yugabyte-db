@@ -427,8 +427,8 @@ PriorityThreadPoolTask::PriorityThreadPoolTask()
 class PriorityThreadPool::Impl : public PriorityThreadPoolWorkerContext {
  public:
   explicit Impl(size_t max_running_tasks, bool prioritize_by_group_no)
-    : max_running_tasks_(max_running_tasks),
-      prioritize_by_group_no_(prioritize_by_group_no) {
+      : max_running_tasks_(max_running_tasks),
+        prioritize_by_group_no_(prioritize_by_group_no) {
     CHECK_GE(max_running_tasks, 1);
   }
 
@@ -889,31 +889,29 @@ class PriorityThreadPool::Impl : public PriorityThreadPoolWorkerContext {
     }
   }
 
-  // This function is responsible for updating any tracking related to state changes to a state.
-  // Including updating active_tasks_per_group_ and calling UpdateStatsStateChangedTo on the task.
+  // This function is responsible for updating any tracking related to state changes to a state,
+  // including updating active_tasks_per_group_ and metrics for the relevant queue.
   void NotifyStateChangedTo(
       const PriorityThreadPoolInternalTask& task,
       const PriorityThreadPoolTaskState state) REQUIRES(mutex_) {
     task.task()->UpdateStatsStateChangedTo(state);
-    if (prioritize_by_group_no_) {
-      if (state == PriorityThreadPoolTaskState::kRunning) {
-        ++active_tasks_per_group_[task.group_no()];
-        UpdateGroupNoPriority(task.group_no());
-      }
+    if (prioritize_by_group_no_
+        && state == PriorityThreadPoolTaskState::kRunning) {
+      ++active_tasks_per_group_[task.group_no()];
+      UpdateGroupNoPriority(task.group_no());
     }
   }
 
-  // This function is responsible for updating any tracking related to state changes from a state.
-  // Including updating active_tasks_per_group_ and calling UpdateStatsStateChangedFrom on the task.
+  // This function is responsible for updating any tracking related to state changes from a state,
+  // including updating active_tasks_per_group_ and metrics for the relevant queue.
   void NotifyStateChangedFrom(
       const PriorityThreadPoolInternalTask& task,
       const PriorityThreadPoolTaskState state) REQUIRES(mutex_) {
     task.task()->UpdateStatsStateChangedFrom(state);
-    if (prioritize_by_group_no_) {
-      if (state == PriorityThreadPoolTaskState::kRunning) {
-        --active_tasks_per_group_[task.group_no()];
-        UpdateGroupNoPriority(task.group_no());
-      }
+    if (prioritize_by_group_no_
+        && state == PriorityThreadPoolTaskState::kRunning) {
+      --active_tasks_per_group_[task.group_no()];
+      UpdateGroupNoPriority(task.group_no());
     }
   }
 
