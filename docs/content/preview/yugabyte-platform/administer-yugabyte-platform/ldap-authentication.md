@@ -45,10 +45,19 @@ You can use the YugabyteDB Anywhere UI to enable LDAP authentication for Yugabyt
 
 - Complete the fields in the **LDAP Configuration** page shown in the following illustration:<br><br>
 
-  ![LDAP authentication](/images/yp/ldap-auth-1.png)<br><br>
+  ![LDAP authentication](/images/yb-platform/ldap-auth-1.png)<br>
 
-  With the exception of **LDAP URL**, the description of the preceding settings is provided in [Use the YugabyteDB Anywhere API](#use-the-yugabytedb-anywhere-api). The **LDAP URL** field value represents a combination of the `ldap_url` and `ldap_port` values separated by a colon, as per the following example:<br>
-  `0.0.0.0:9000`
+  <br>
+
+  With the exception of the following fields, the descriptions of the preceding settings are provided in [Use the YugabyteDB Anywhere API](#use-the-yugabytedb-anywhere-api). 
+
+  - The **LDAP URL** field value represents a combination of the `ldap_url` and `ldap_port` values separated by a colon, as in `0.0.0.0:9000`.
+
+  - The **Binding Mechanism** field allows you to select one of the following: 
+    - **Simple Bind**, in which case you can proceed with the typical configuration.
+    - **Search and Bind**, in which case you are presented with a dialog to enter the **Search Attribute** value used for searching and binding. Note that this requires you to complete the **Service Account Details** fields.
+
+  - The **Bind DN** field value represents the distinguished name (DN) used for searching and binding.
 
 ## Use the YugabyteDB Anywhere API
 
@@ -83,7 +92,7 @@ To enable LDAP authentication for YugabyteDB Anywhere login, you can perform a n
   --data-raw '389'
   ```
 
-- The base distinguished name (DN) `yb.security.ldap.ldap_basedn` to enable restriction of users and user groups, as follows:
+- The base DN `yb.security.ldap.ldap_basedn` to enable restriction of users and user groups, as follows:
 
   ```shell
   curl --location --request PUT 'https://10.9.140.199/api/v1/customers/f3a63f07-e3d6-4475-96e4-57a6453072e1/runtime_config/00000000-0000-0000-0000-000000000000/key/yb.security.ldap.ldap_basedn' \
@@ -159,7 +168,9 @@ For more information, see [Update a configuration key](https://yugabyte.stopligh
 
 In addition to the preceding parameters, you may choose to specify parameters for the service account credentials. This would be helpful in certain scenarios. For example, the Windows Active Directory (AD) server does not typically provide regular users with query permissions for the LDAP server. Setting service account credentials would enable these users to query the LDAP server ([the `yugabytePlatformRole` attribute](#define-the-yugabytedb-anywhere-role) would be read and set accordingly). The service account should have enough permissions to query the LDAP server, find users, and read the user attributes.
 
-The following are the runtime configurations to specify:
+The following is the runtime configuration to specify:
+
+<!--
 
 - A service account user name `yb.security.ldap.ldap_service_account_username`, as follows:
 
@@ -171,7 +182,9 @@ The following are the runtime configurations to specify:
   --data-raw '[SERVICE ACCOUNT USERNAME]'
   ```
 
-  Replace `[SERVICE ACCOUNT USERNAME]` with the actual value.<br>
+  Replace `[SERVICE ACCOUNT USERNAME]` with the actual value.
+
+  -->
 
 - A service account password `yb.security.ldap.ldap_service_account_password`, as follows:
 
