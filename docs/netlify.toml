@@ -200,6 +200,48 @@
   to = "/preview/manage/data-migration/bulk-export-ysql/"
   force = true
 
+[[redirects]]
+  from = "/stable/migrate/manual-import/migrate-schema/"
+  to = "/stable/manage/data-migration/bulk-export-ysql/"
+  force = true
+
+[[redirects]]
+  from = "/stable/migrate/manual-import/migrate-application/"
+  to = "/stable/manage/data-migration/bulk-export-ysql/"
+  force = true
+
+[[redirects]]
+  from = "/stable/migrate/manual-import/export-data/"
+  to = "/stable/manage/data-migration/bulk-export-ysql/"
+  force = true
+
+[[redirects]]
+  from = "/stable/migrate/manual-import/prepare-cluster/"
+  to = "/stable/manage/data-migration/bulk-import-ysql/"
+  force = true
+
+[[redirects]]
+  from = "/stable/migrate/manual-import/import-data/"
+  to = "/stable/manage/data-migration/bulk-import-ysql/"
+  force = true
+
+[[redirects]]
+  from = "/stable/migrate/manual-import/verify-migration/"
+  to = "/stable/manage/data-migration/bulk-import-ysql/"
+  force = true
+
+[[redirects]]
+  from = "/stable/migrate/migrate-from-postgresql/"
+  to = "/stable/manage/data-migration/bulk-export-ysql/"
+  force = true
+
+# Redirect for YugabyteDB Voyager
+
+[[redirects]]
+  from = "/:version/migrate/yb-voyager/*"
+  to = "/:version/migrate/*"
+  force = true
+
 # Redirect older versions of specific sections
 
 [[redirects]]

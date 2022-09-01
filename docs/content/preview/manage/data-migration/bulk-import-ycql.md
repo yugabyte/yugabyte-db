@@ -57,7 +57,7 @@ Prepare a CSV (comma-separated values) file where each row of entries must match
 
 ### Generate sample data
 
-If you don't have the data already available in a database table, you can create sample data for the import using the following instructions:
+If you don't have the data already available in a database table, you can create sample data for the import using the following example:
 
 ```sh
 #!/bin/bash
@@ -133,11 +133,11 @@ By default, `COPY` exports timestamps in `yyyy-MM-dd HH:mm:ss.SSSZ` format.
 You can install `cassandra-loader` as follows:
 
 ```sh
-$ wget https://github.com/yugabyte/cassandra-loader/releases/download/v0.0.27-yb-2/cassandra-loader
+wget https://github.com/yugabyte/cassandra-loader/releases/download/<latest-version>/cassandra-loader
 ```
 
 ```sh
-$ chmod a+x cassandra-loader
+chmod a+x cassandra-loader
 ```
 
 #### Run cassandra-loader
