@@ -1933,8 +1933,9 @@ Result<std::shared_ptr<client::TableHandle>> CDCServiceImpl::GetCdcStateTable() 
 
       Status s = tablet_manager_->GetTabletPeer(tablet_id, &tablet_peer);
       if (!s.ok()) {
-        LOG(WARNING) << " Could not delete the entry for stream" << stream_id << " and the tablet "
+        LOG(WARNING) << "Could not delete the entry for stream" << stream_id << " and the tablet "
                      << tablet_id;
+        continue;
       }
       if (IsTabletPeerLeader(tablet_peer)) {
         const auto delete_op = cdc_state_table_result->NewDeleteOp();
