@@ -1826,7 +1826,9 @@ class ControlScript(object):
         status += div_line
         for k, v in status_info:
             extra_len = len(Output.make_yellow(""))
-            status += ("| {:" + str(20 + extra_len) + "}: {:<82} |\n").format(k, v)
+            status += ("| {:" + str(20 + extra_len) + "}: {:<82} |\n").format(k,
+                                                                              v if v is not None
+                                                                              else "None")
         status += div_line
         return status
 
