@@ -93,7 +93,7 @@ To enable LDAP authentication for YugabyteDB Anywhere login, you can perform a n
   --data-raw '[LDAP DN]'
   ```
 
-  <br>Replace `[LDAP DN]` with the actual value, as per the following example: <br>
+  Replace `[LDAP DN]` with the actual value, as per the following example: <br>
 
   `,DC=yugabyte,DC=com`
 
@@ -107,11 +107,11 @@ To enable LDAP authentication for YugabyteDB Anywhere login, you can perform a n
   --data-raw '[LDAP DN PREFIX]'
   ```
 
-  <br>Replace `[LDAP DN PREFIX]` with the actual value, as per the following example: <br>
+  Replace `[LDAP DN PREFIX]` with the actual value, as per the following example: <br>
 
   `CN=`
 
-  <br>Note that YugabyteDB Anywhere combines `ldap_basedn` and `ldap_dn_prefix` with the username provided during login to query the LDAP server. `ldap_basedn` and `ldap_dn_prefix` should be set accordingly.
+  Note that YugabyteDB Anywhere combines `ldap_basedn` and `ldap_dn_prefix` with the username provided during login to query the LDAP server. `ldap_basedn` and `ldap_dn_prefix` should be set accordingly.
 
 - The universally unique identifier (UUID) `yb.security.ldap.ldap_customeruuid`, if you have a multi-tenant setup, as follows:
 
@@ -123,7 +123,7 @@ To enable LDAP authentication for YugabyteDB Anywhere login, you can perform a n
   --data-raw '[UUID]'
   ```
 
-  <br>Replace `[UUID]` with the actual value.<br>
+  Replace `[UUID]` with the actual value.<br>
 
   If the UUID is not specified, then single-tenant is assumed by YugabyteDB Anywhere.
 
@@ -137,7 +137,7 @@ To enable LDAP authentication for YugabyteDB Anywhere login, you can perform a n
   --data-raw 'true'
   ```
 
-  <br>If the port is configured for an SSL connection, then you can enable SSL when you configure the LDAP server on YugabyteDB Anywhere.
+  If the port is configured for an SSL connection, then you can enable SSL when you configure the LDAP server on YugabyteDB Anywhere.
 
 - TLS usage with LDAP `yb.security.ldap.enable_ldap_start_tls`, set to `true` or `false` (default), as follows:
 
@@ -149,7 +149,7 @@ To enable LDAP authentication for YugabyteDB Anywhere login, you can perform a n
   --data-raw 'true'
   ```
 
-  <br>If the port is configured for a TLS connection, then you can enable StartTLS when you configure the LDAP server on YugabyteDB Anywhere.
+  If the port is configured for a TLS connection, then you can enable StartTLS when you configure the LDAP server on YugabyteDB Anywhere.
 
   By default, if neither `ldap.enable_ldaps` or `ldap.enable_ldap_start_tls` is enabled, the connection will be unsecured.
 
@@ -171,7 +171,7 @@ The following are the runtime configurations to specify:
   --data-raw '[SERVICE ACCOUNT USERNAME]'
   ```
 
-  <br>Replace `[SERVICE ACCOUNT USERNAME]` with the actual value.<br>
+  Replace `[SERVICE ACCOUNT USERNAME]` with the actual value.<br>
 
 - A service account password `yb.security.ldap.ldap_service_account_password`, as follows:
 
@@ -183,7 +183,7 @@ The following are the runtime configurations to specify:
   --data-raw '[SERVICE ACCOUNT PASSWORD]'
   ```
 
-  <br>Replace `[SERVICE ACCOUNT PASSWORD]` with the actual value.<br>
+  Replace `[SERVICE ACCOUNT PASSWORD]` with the actual value.<br>
 
 ## Define the YugabyteDB Anywhere role
 
