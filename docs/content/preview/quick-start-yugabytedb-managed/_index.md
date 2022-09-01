@@ -39,4 +39,4 @@ To learn more about YugabyteDB Managed, see the following resources:
 - [YugabyteDB Managed Documentation](../yugabyte-cloud/)
 - [YugabyteDB Managed FAQ](../faq/yugabytedb-managed-faq/)
 
-{{% includeMarkdown "yugabytedb-managed-quick-start.md" %}}
+{{% includeMarkdown "managed-quick-start-include.md" %}}

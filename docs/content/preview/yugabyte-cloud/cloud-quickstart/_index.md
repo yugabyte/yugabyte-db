@@ -25,4 +25,4 @@ The first time you log in, YugabyteDB Managed provides a welcome experience with
 - Connect to the database, load sample data, and run queries
 - Explore a sample application
 
-{{% includeMarkdown "../../quick-start-yugabytedb-managed/yugabytedb-managed-quick-start.md" %}}
+{{% includeMarkdown "../../quick-start-yugabytedb-managed/managed-quick-start-include.md" %}}
