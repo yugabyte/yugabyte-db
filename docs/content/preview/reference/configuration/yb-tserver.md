@@ -34,13 +34,13 @@ yb-tserver [ flags ]
 
 ### Online help
 
-To display the online help, run `yb-tserver --help` from the YugabyteDB home directory.
+To display the online help, run `yb-tserver --help` from the YugabyteDB home directory:
 
 ```sh
 ./bin/yb-tserver --help
 ```
 
-### Help flags
+## Help flags
 
 - ##### --help
 
@@ -51,7 +51,7 @@ To display the online help, run `yb-tserver --help` from the YugabyteDB home dir
   Displays help on modules named by the specified flag value.
 
 
-### General flags
+## General flags
 
 - ##### --flagfile
 
@@ -93,7 +93,7 @@ To display the online help, run `yb-tserver --help` from the YugabyteDB home dir
 
 - ##### --rpc_bind_addresses
 
-  Specifies the comma-separated list of the network interface addresses to which to bind for RPC connections:
+  Specifies the comma-separated list of the network interface addresses to which to bind for RPC connections.
 
   The values must match on all [`yb-master`](../yb-master/#rpc-bind-addresses) and `yb-tserver` configurations.
 
@@ -125,12 +125,12 @@ To display the online help, run `yb-tserver --help` from the YugabyteDB home dir
 
 - ##### --use_private_ip
 
-  Specifies the policy that determines when to use private IP addresses for inter-node communication. Possible values are `never` (default),`zone`,`cloud` and `region`. Based on the values of the [placement (`--placement_*`) configuration flags](#placement-flags).
+  Specifies the policy that determines when to use private IP addresses for inter-node communication. Possible values are `never`, `zone`, `cloud`, and `region`. Based on the values of the [geo-distribution flags](#geo-distribution-flags).
 
   Valid values for the policy are:
 
-  - never` — Always use the [`--server_broadcast_addresses`](#server-broadcast-addresses).
-  - `zone` — Use the private IP inside a zone; use the [`--server_broadcast_addresses`](#server-broadcast-addresses) outside the zone.
+  - `never` — Always use [`--server_broadcast_addresses`](#server-broadcast-addresses).
+  - `zone` — Use the private IP inside a zone; use [`--server_broadcast_addresses`](#server-broadcast-addresses) outside the zone.
   - `region` — Use the private IP address across all zone in a region; use [`--server_broadcast_addresses`](#server-broadcast-addresses) outside the region.
 
   Default: `never`
@@ -257,7 +257,7 @@ Ensure that values used for the write ahead log (WAL) in `yb-tserver` configurat
 
 - ##### --durable_wal_write
 
-  If set to `false`, the writes to the WAL are synced to disk every [`interval_durable_wal_write_ms`](#interval-durable-wal-write-mas) milliseconds (ms) or every [`bytes_durable_wal_write_mb`](#bytes-durable-wal-write-mb) megabyte (MB), whichever comes first. This default setting is recommended only for multi-AZ or multi-region deployments where the availability zones (AZs) or regions are independent failure domains and there is not a risk of correlated power loss. For single AZ deployments, this flag should be set to `true`.
+  If set to `false`, the writes to the WAL are synchronized to disk every [`interval_durable_wal_write_ms`](#interval-durable-wal-write-ms) milliseconds (ms) or every [`bytes_durable_wal_write_mb`](#bytes-durable-wal-write-mb) megabyte (MB), whichever comes first. This default setting is recommended only for multi-AZ or multi-region deployments where the availability zones (AZs) or regions are independent failure domains and there is not a risk of correlated power loss. For single AZ deployments, this flag should be set to `true`.
 
   Default: `false`
 
