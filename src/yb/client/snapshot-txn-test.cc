@@ -61,6 +61,7 @@
 
 using namespace std::literals;
 
+DECLARE_bool(enable_lease_revocation);
 DECLARE_bool(TEST_disallow_lmp_failures);
 DECLARE_bool(enable_multi_raft_heartbeat_batcher);
 DECLARE_bool(fail_on_out_of_range_clock_skew);
@@ -379,6 +380,7 @@ TEST_F(SnapshotTxnTest, BankAccountsWithTimeStrobe) {
 }
 
 TEST_F(SnapshotTxnTest, BankAccountsWithTimeJump) {
+  SetAtomicFlag(true, &FLAGS_enable_lease_revocation);
   FLAGS_fail_on_out_of_range_clock_skew = false;
 
   TestBankAccounts(
