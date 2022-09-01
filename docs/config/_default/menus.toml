@@ -427,8 +427,16 @@
     hideLink = true
 
 [[preview_yugabyte-cloud]]
-  name = "YugabyteDB Managed API"
+  name = "Quick Start"
   weight = 3
+  url = "/preview/yugabyte-cloud/cloud-quickstart/"
+  [preview_yugabyte-cloud.params]
+    showSection = true
+    hideLink = true
+
+[[preview_yugabyte-cloud]]
+  name = "YugabyteDB Managed API"
+  weight = 4
   identifier = "yugabytedb-managed-api"
   url = "https://api-docs.yugabyte.com/docs/managed-apis/"
   [preview_yugabyte-cloud.params]

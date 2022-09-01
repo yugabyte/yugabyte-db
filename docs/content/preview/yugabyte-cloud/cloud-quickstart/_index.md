@@ -9,25 +9,8 @@ type: docs
 menu:
   preview_yugabyte-cloud:
     parent: yugabytedb-managed
-    weight: 2
-    params:
-      hideLink: true
+    identifier: cloud-quickstart
 ---
-
-<div class="custom-tabs tabs-style-2">
-  <ul class="tabs-name">
-    <li class="active">
-      <a href="../quick-start-yugabytedb-managed/" class="nav-link">
-        Use a cloud cluster
-      </a>
-    </li>
-    <li>
-      <a href="../quick-start/" class="nav-link">
-        Use a local cluster
-      </a>
-    </li>
-  </ul>
-</div>
 
 The quickest way to get started with YugabyteDB is to create a free Sandbox cluster in YugabyteDB Managed:
 
@@ -40,9 +23,4 @@ The first time you log in, YugabyteDB Managed provides a welcome experience with
 - Connect to the database, load sample data, and run queries
 - Explore a sample application
 
-To learn more about YugabyteDB Managed, see the following resources:
-
-- [YugabyteDB Managed Documentation](../yugabyte-cloud/)
-- [YugabyteDB Managed FAQ](../faq/yugabytedb-managed-faq/)
-
-{{% includeMarkdown "yugabytedb-managed-quick-start.md" %}}
+{{% includeMarkdown "../../quick-start-yugabytedb-managed/yugabytedb-managed-quick-start.md" %}}
