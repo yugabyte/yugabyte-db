@@ -57,19 +57,19 @@
 
 # Redirect old cloud docs to root of current
 
-[[redirects]]
-  from = "/:version/yugabyte-cloud/cloud-quickstart/"
-  to = "/preview/quick-start-yugabytedb-managed/"
-  force = true
+#[[redirects]]
+#  from = "/:version/yugabyte-cloud/cloud-quickstart/"
+#  to = "/preview/yugabyte-cloud/cloud-quickstart/"
+#  force = true
 
 [[redirects]]
   from = "/:version/yugabyte-cloud/cloud-quickstart/qs-add/"
-  to = "/preview/quick-start-yugabytedb-managed/"
+  to = "/preview/yugabyte-cloud/cloud-quickstart/"
   force = true
 
 [[redirects]]
   from = "/:version/yugabyte-cloud/cloud-quickstart/qs-connect/"
-  to = "/preview/quick-start-yugabytedb-managed/"
+  to = "/preview/yugabyte-cloud/cloud-quickstart/"
   force = true
 
 [[redirects]]
