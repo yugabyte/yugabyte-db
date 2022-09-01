@@ -96,20 +96,6 @@ enum Tickers : uint32_t {
   COMPACTION_KEY_DROP_OBSOLETE,     // The key is obsolete.
   COMPACTION_KEY_DROP_USER,  // user compaction function has dropped the key.
 
-  /*
-   * Priority pool metrics, counts how many Active/Paused/Queued Tasks/Files/Bytes associated
-   * with compaction tasks in priority pool.
-   */
-  COMPACTION_ACTIVE_TASKS,
-  COMPACTION_ACTIVE_FILES,
-  COMPACTION_ACTIVE_BYTES,
-  COMPACTION_PAUSED_TASKS,
-  COMPACTION_PAUSED_FILES,
-  COMPACTION_PAUSED_BYTES,
-  COMPACTION_QUEUED_TASKS,
-  COMPACTION_QUEUED_FILES,
-  COMPACTION_QUEUED_BYTES,
-
   // Number of keys written to the database via the Put and Write call's
   NUMBER_KEYS_WRITTEN,
   // Number of Keys read,
@@ -259,15 +245,6 @@ const std::vector<std::pair<Tickers, std::string>> TickersNameMap = {
     {COMPACTION_KEY_DROP_NEWER_ENTRY, "rocksdb_compaction_key_drop_new"},
     {COMPACTION_KEY_DROP_OBSOLETE, "rocksdb_compaction_key_drop_obsolete"},
     {COMPACTION_KEY_DROP_USER, "rocksdb_compaction_key_drop_user"},
-    {COMPACTION_ACTIVE_TASKS, "rocksdb_compaction_active_tasks"},
-    {COMPACTION_ACTIVE_FILES, "rocksdb_compaction_active_files"},
-    {COMPACTION_ACTIVE_BYTES, "rocksdb_compaction_active_bytes"},
-    {COMPACTION_PAUSED_TASKS, "rocksdb_compaction_paused_tasks"},
-    {COMPACTION_PAUSED_FILES, "rocksdb_compaction_paused_files"},
-    {COMPACTION_PAUSED_BYTES, "rocksdb_compaction_paused_bytes"},
-    {COMPACTION_QUEUED_TASKS, "rocksdb_compaction_queued_tasks"},
-    {COMPACTION_QUEUED_FILES, "rocksdb_compaction_queued_files"},
-    {COMPACTION_QUEUED_BYTES, "rocksdb_compaction_queued_bytes"},
     {NUMBER_KEYS_WRITTEN, "rocksdb_number_keys_written"},
     {NUMBER_KEYS_READ, "rocksdb_number_keys_read"},
     {NUMBER_KEYS_UPDATED, "rocksdb_number_keys_updated"},

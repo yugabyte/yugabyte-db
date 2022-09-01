@@ -43,6 +43,7 @@
 #include "yb/rocksdb/types.h"
 #undef TEST_SYNC_POINT
 #include "yb/rocksdb/util/sync_point.h"
+#include "yb/rocksdb/util/task_metrics.h"
 
 #include "yb/server/hybrid_clock.h"
 
@@ -54,6 +55,7 @@
 
 #include "yb/util/compare_util.h"
 #include "yb/util/enums.h"
+#include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/operation_counter.h"
@@ -93,14 +95,27 @@ constexpr auto kNumTablets = 3;
 
 class RocksDbListener : public rocksdb::EventListener {
  public:
-  void OnCompactionCompleted(rocksdb::DB* db, const rocksdb::CompactionJobInfo&) override {
+  void OnCompactionCompleted(rocksdb::DB* db,
+      const rocksdb::CompactionJobInfo& info) override {
     std::lock_guard<std::mutex> lock(mutex_);
     ++num_compactions_completed_[db];
+    input_files_in_compactions_completed_[db] += info.stats.num_input_files;
+    input_bytes_in_compactions_completed_[db] += info.stats.total_input_bytes;
   }
 
   size_t GetNumCompactionsCompleted(rocksdb::DB* db) {
     std::lock_guard<std::mutex> lock(mutex_);
     return num_compactions_completed_[db];
+  }
+
+  uint64_t GetInputFilesInCompactionsCompleted(rocksdb::DB* db) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return input_files_in_compactions_completed_[db];
+  }
+
+  uint64_t GetInputBytesInCompactionsCompleted(rocksdb::DB* db) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return input_bytes_in_compactions_completed_[db];
   }
 
   void OnFlushCompleted(rocksdb::DB* db, const rocksdb::FlushJobInfo&) override {
@@ -116,6 +131,8 @@ class RocksDbListener : public rocksdb::EventListener {
   void Reset() {
     std::lock_guard<std::mutex> lock(mutex_);
     num_compactions_completed_.clear();
+    input_files_in_compactions_completed_.clear();
+    input_bytes_in_compactions_completed_.clear();
     num_flushes_completed_.clear();
   }
 
@@ -124,6 +141,8 @@ class RocksDbListener : public rocksdb::EventListener {
 
   std::mutex mutex_;
   CountByDbMap num_compactions_completed_ GUARDED_BY(mutex_);
+  CountByDbMap input_files_in_compactions_completed_ GUARDED_BY(mutex_);
+  CountByDbMap input_bytes_in_compactions_completed_ GUARDED_BY(mutex_);
   CountByDbMap num_flushes_completed_ GUARDED_BY(mutex_);
 };
 
@@ -388,6 +407,93 @@ TEST_F(CompactionTest, ManualCompactionProducesOneFilePerDb) {
   auto dbs = GetAllRocksDbs(cluster_.get(), false);
   for (auto* db : dbs) {
     ASSERT_EQ(1, db->GetCurrentVersionNumSSTFiles());
+  }
+}
+
+TEST_F(CompactionTest, CompactionTaskMetrics) {
+  const int kNumFilesTriggerCompaction = 5;
+  // Create and instantiate metric entity.
+  METRIC_DEFINE_entity(test_entity);
+  yb::MetricRegistry registry;
+  auto entity = METRIC_ENTITY_test_entity.Instantiate(&registry, "task metrics");
+
+  // Create task metrics for queued, paused, and active tasks.
+  ROCKSDB_PRIORITY_THREAD_POOL_METRICS_DEFINE(test_entity);
+
+  auto priority_thread_pool_metrics =
+      std::make_shared<rocksdb::RocksDBPriorityThreadPoolMetrics>(
+          ROCKSDB_PRIORITY_THREAD_POOL_METRICS_INSTANCE(entity));
+
+  // Set the priority thread pool metrics for each tserver.
+  for (int i = 0 ; i < NumTabletServers(); i++) {
+    cluster_->GetTabletManager(i)->TEST_tablet_options()->priority_thread_pool_metrics =
+        priority_thread_pool_metrics;
+  }
+
+  // Disable automatic compactions and write files.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) =
+      kNumFilesTriggerCompaction;
+
+  const auto& active = priority_thread_pool_metrics->active;
+  const auto& paused = priority_thread_pool_metrics->paused;
+  const auto& queued = priority_thread_pool_metrics->queued;
+
+  // Check counters pre-compaction. All should be zero.
+  for (const auto& state_metrics : {active, paused, queued}) {
+    ASSERT_EQ(state_metrics.compaction_tasks_added_->value(), 0);
+    ASSERT_EQ(state_metrics.compaction_tasks_removed_->value(), 0);
+    ASSERT_EQ(state_metrics.compaction_input_files_added_->value(), 0);
+    ASSERT_EQ(state_metrics.compaction_input_files_removed_->value(), 0);
+    ASSERT_EQ(state_metrics.compaction_input_bytes_added_->value(), 0);
+    ASSERT_EQ(state_metrics.compaction_input_bytes_removed_->value(), 0);
+  }
+
+  // Compact, then verify metrics match the original files and sizes.
+  SetupWorkload(IsolationLevel::NON_TRANSACTIONAL);
+  ASSERT_OK(WriteAtLeastFilesPerDb(kNumFilesTriggerCompaction));
+  ASSERT_OK(WaitForNumCompactionsPerDb(1));
+  auto dbs = GetAllRocksDbs(cluster_.get());
+  // Wait until the metrics match the number of completed compactions.
+  ASSERT_OK(LoggedWaitFor(
+      [this, dbs, active] {
+          uint64_t num_completed_compactions = 0;
+          for (auto* db : dbs) {
+            num_completed_compactions += rocksdb_listener_->GetNumCompactionsCompleted(db);
+          }
+          return (num_completed_compactions == active.compaction_tasks_removed_->value() &&
+              active.compaction_tasks_added_->value() ==
+                  active.compaction_tasks_removed_->value());
+        }, 60s,
+        "Waiting until all compactions are completed and metrics match with compaction listener...",
+      kWaitDelay * kTimeMultiplier));
+
+  size_t num_completed_compactions = 0;
+  uint64_t input_files_compactions = 0;
+  uint64_t input_bytes_compactions = 0;
+  for (auto* db : dbs) {
+    num_completed_compactions += rocksdb_listener_->GetNumCompactionsCompleted(db);
+    input_files_compactions += rocksdb_listener_->GetInputFilesInCompactionsCompleted(db);
+    input_bytes_compactions += rocksdb_listener_->GetInputBytesInCompactionsCompleted(db);
+  }
+
+  // We expect at least one compaction per database.
+  ASSERT_GT(num_completed_compactions, 0);
+  ASSERT_GT(input_files_compactions, 0);
+  ASSERT_GT(input_bytes_compactions, 0);
+
+  // The total number of compactions should match the value recorded by the listener.
+  ASSERT_EQ(active.compaction_tasks_added_->value(), num_completed_compactions);
+  ASSERT_EQ(active.compaction_input_files_added_->value(), input_files_compactions);
+  ASSERT_EQ(active.compaction_input_bytes_added_->value(), input_bytes_compactions);
+
+  // All added/removed metrics should be identical since the compaction has finished.
+  for (const auto& state_metrics : {active, paused, queued}) {
+    ASSERT_EQ(state_metrics.compaction_tasks_added_->value(),
+      state_metrics.compaction_tasks_removed_->value());
+    ASSERT_EQ(state_metrics.compaction_input_files_added_->value(),
+      state_metrics.compaction_input_files_removed_->value());
+    ASSERT_EQ(state_metrics.compaction_input_bytes_added_->value(),
+      state_metrics.compaction_input_bytes_removed_->value());
   }
 }
 

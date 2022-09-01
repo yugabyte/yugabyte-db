@@ -95,7 +95,8 @@ ImmutableCFOptions::ImmutableCFOptions(const Options& options)
       mem_tracker(options.mem_tracker),
       block_based_table_mem_tracker(options.block_based_table_mem_tracker),
       iterator_replacer(options.iterator_replacer),
-      compaction_file_filter_factory(options.compaction_file_filter_factory.get()) {}
+      compaction_file_filter_factory(options.compaction_file_filter_factory.get()),
+      priority_thread_pool_metrics(options.priority_thread_pool_metrics) {}
 
 ColumnFamilyOptions::ColumnFamilyOptions()
     : comparator(BytewiseComparator()),
