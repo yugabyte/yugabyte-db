@@ -107,6 +107,8 @@ public enum TaskType {
 
   RemoveNodeFromUniverse("RemoveNodeFromUniverse"),
 
+  RebootNodeInUniverse("RebootNodeInUniverse"),
+
   ReleaseInstanceFromUniverse("ReleaseInstanceFromUniverse"),
 
   RotateAccessKey("RotateAccessKey"),

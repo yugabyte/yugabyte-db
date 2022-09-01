@@ -439,6 +439,12 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
             + curNode.nodeName
             + ": As it will under replicate the masters (count = 2, replicationFactor = 3)");
 
+    Result invalidReboot =
+        assertPlatformException(
+            () ->
+                performNodeAction(
+                    customer.uuid, u.universeUUID, curNode.nodeName, NodeActionType.REBOOT, false));
+
     // Changing to another node as n1 is in progress by previous operations.
     NodeDetails nodeToDelete = u.getNode("host-n3");
     Result invalidDelete =

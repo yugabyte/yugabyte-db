@@ -51,6 +51,8 @@ DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_int32(partitions_vtable_cache_refresh_secs);
 DECLARE_int32(client_read_write_timeout_ms);
 DECLARE_bool(disable_truncate_table);
+DECLARE_bool(cql_always_return_metadata_in_execute_response);
+DECLARE_bool(cql_check_table_schema_in_paging_state);
 
 namespace yb {
 
@@ -60,6 +62,11 @@ using client::YBTableName;
 class CqlTest : public CqlTestBase<MiniCluster> {
  public:
   virtual ~CqlTest() = default;
+
+  void TestAlteredPrepare(bool metadata_in_exec_resp);
+  void TestAlteredPrepareWithPaging(bool check_schema_in_paging,
+                                    bool metadata_in_exec_resp = false);
+  void TestPrepareWithDropTableWithPaging();
 };
 
 TEST_F(CqlTest, ProcessorsLimit) {
@@ -604,6 +611,192 @@ TEST_F(CqlTest, AlteredSchemaVersion) {
   res =  ASSERT_RESULT(session.ExecuteWithResult("SELECT * FROM t1 WHERE i = 1"));
   ASSERT_EQ(res.RenderToString(), "1,1,NULL");
 
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+void CqlTest::TestAlteredPrepare(bool metadata_in_exec_resp) {
+  FLAGS_cql_always_return_metadata_in_execute_response = metadata_in_exec_resp;
+
+  auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+  ASSERT_OK(session.ExecuteQuery("CREATE TABLE t1 (i INT PRIMARY KEY, j INT)"));
+  ASSERT_OK(session.ExecuteQuery("INSERT INTO t1 (i, j) VALUES (1, 1)"));
+
+  LOG(INFO) << "Prepare";
+  auto sel_prepared = ASSERT_RESULT(session.Prepare("SELECT * FROM t1 WHERE i = 1"));
+  auto ins_prepared = ASSERT_RESULT(session.Prepare("INSERT INTO t1 (i, j) VALUES (?, ?)"));
+
+  LOG(INFO) << "Execute prepared - before Alter";
+  CassandraResult res =  ASSERT_RESULT(session.ExecuteWithResult(sel_prepared.Bind()));
+  ASSERT_EQ(res.RenderToString(), "1,1");
+
+  ASSERT_OK(session.Execute(ins_prepared.Bind().Bind(0, 2).Bind(1, 2)));
+  res =  ASSERT_RESULT(session.ExecuteWithResult("SELECT * FROM t1 WHERE i = 2"));
+  ASSERT_EQ(res.RenderToString(), "2,2");
+
+  LOG(INFO) << "Alter";
+  auto session2 = ASSERT_RESULT(EstablishSession(driver_.get()));
+  ASSERT_OK(session2.ExecuteQuery("ALTER TABLE t1 ADD k INT"));
+  ASSERT_OK(session2.ExecuteQuery("INSERT INTO t1 (i, k) VALUES (1, 9)"));
+
+  LOG(INFO) << "Execute prepared - after Alter";
+  res =  ASSERT_RESULT(session.ExecuteWithResult(sel_prepared.Bind()));
+  if (metadata_in_exec_resp) {
+    ASSERT_EQ(res.RenderToString(), "1,1,9");
+  } else {
+    ASSERT_EQ(res.RenderToString(), "1,1");
+  }
+
+  ASSERT_OK(session.Execute(ins_prepared.Bind().Bind(0, 3).Bind(1, 3)));
+  res =  ASSERT_RESULT(session.ExecuteWithResult("SELECT * FROM t1 WHERE i = 3"));
+  ASSERT_EQ(res.RenderToString(), "3,3,NULL");
+}
+
+TEST_F(CqlTest, AlteredPrepare) {
+  TestAlteredPrepare(/* metadata_in_exec_resp =*/ false);
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+TEST_F(CqlTest, AlteredPrepare_MetadataInExecResp) {
+  TestAlteredPrepare(/* metadata_in_exec_resp =*/ true);
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+void CqlTest::TestAlteredPrepareWithPaging(bool check_schema_in_paging,
+                                           bool metadata_in_exec_resp) {
+  FLAGS_cql_check_table_schema_in_paging_state = check_schema_in_paging;
+  FLAGS_cql_always_return_metadata_in_execute_response = metadata_in_exec_resp;
+
+  auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+  ASSERT_OK(session.ExecuteQuery(
+      "CREATE TABLE t1 (i INT, j INT, PRIMARY KEY(i, j)) WITH CLUSTERING ORDER BY (j ASC)"));
+
+  for (int j = 1; j <= 7; ++j) {
+    ASSERT_OK(session.ExecuteQuery(Format("INSERT INTO t1 (i, j) VALUES (0, $0)", j)));
+  }
+
+  LOG(INFO) << "Client-1: Prepare";
+  const string select_stmt = "SELECT * FROM t1";
+  auto prepared = ASSERT_RESULT(session.Prepare(select_stmt));
+
+  LOG(INFO) << "Client-1: Execute-1 prepared (for version 0 - 2 columns)";
+  CassandraStatement stmt = prepared.Bind();
+  stmt.SetPageSize(3);
+  CassandraResult res = ASSERT_RESULT(session.ExecuteWithResult(stmt));
+  ASSERT_EQ(res.RenderToString(), "0,1;0,2;0,3");
+  stmt.SetPagingState(res);
+
+  LOG(INFO) << "Client-2: Alter: ADD k";
+  auto session2 = ASSERT_RESULT(EstablishSession(driver_.get()));
+  ASSERT_OK(session2.ExecuteQuery("ALTER TABLE t1 ADD k INT"));
+  ASSERT_OK(session2.ExecuteQuery("INSERT INTO t1 (i, j, k) VALUES (0, 4, 99)"));
+
+  LOG(INFO) << "Client-2: Prepare";
+  auto prepared2 = ASSERT_RESULT(session2.Prepare(select_stmt));
+  LOG(INFO) << "Client-2: Execute-1 prepared (for version 1 - 3 columns)";
+  CassandraStatement stmt2 = prepared2.Bind();
+  stmt2.SetPageSize(3);
+  res = ASSERT_RESULT(session2.ExecuteWithResult(stmt2));
+  ASSERT_EQ(res.RenderToString(), "0,1,NULL;0,2,NULL;0,3,NULL");
+  stmt2.SetPagingState(res);
+
+  LOG(INFO) << "Client-1: Execute-2 prepared (for version 0 - 2 columns)";
+  if (check_schema_in_paging) {
+    Status s = session.Execute(stmt);
+    LOG(INFO) << "Expcted error: " << s;
+    ASSERT_TRUE(s.IsQLError());
+    ASSERT_NE(s.message().ToBuffer().find(
+        "Wrong Metadata Version: Table has been altered. Execute the query again. "
+        "Requested schema version 0, got 1."), std::string::npos) << s;
+  } else {
+    res = ASSERT_RESULT(session.ExecuteWithResult(stmt));
+    if (metadata_in_exec_resp) {
+      ASSERT_EQ(res.RenderToString(), "0,4,99;0,5,NULL;0,6,NULL");
+    } else {
+      // The ral result - (0,4,99) (0,5,NULL) (0,6,NULL) - is interpreted by the driver in
+      // accordance with the old schema - as <page-size>*(INT, INT): (0,4) (99,0,) (5,NULL).
+      ASSERT_EQ(res.RenderToString(), "0,4;99,0;5,NULL");
+    }
+  }
+
+  LOG(INFO) << "Client-2: Execute-2 prepared (for version 1 - 3 columns)";
+  res = ASSERT_RESULT(session2.ExecuteWithResult(stmt2));
+  ASSERT_EQ(res.RenderToString(), "0,4,99;0,5,NULL;0,6,NULL");
+}
+
+TEST_F(CqlTest, AlteredPrepareWithPaging) {
+  TestAlteredPrepareWithPaging(/* check_schema_in_paging =*/ true);
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+TEST_F(CqlTest, AlteredPrepareWithPaging_NoSchemaCheck) {
+  TestAlteredPrepareWithPaging(/* check_schema_in_paging =*/ false);
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+TEST_F(CqlTest, AlteredPrepareWithPaging_MetadataInExecResp) {
+  TestAlteredPrepareWithPaging(/* check_schema_in_paging =*/ false,
+                               /* metadata_in_exec_resp =*/ true);
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+void CqlTest::TestPrepareWithDropTableWithPaging() {
+  auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+  ASSERT_OK(session.ExecuteQuery(
+      "CREATE TABLE t1 (i INT, j INT, PRIMARY KEY(i, j)) WITH CLUSTERING ORDER BY (j ASC)"));
+
+  for (int j = 1; j <= 7; ++j) {
+    ASSERT_OK(session.ExecuteQuery(Format("INSERT INTO t1 (i, j) VALUES (0, $0)", j)));
+  }
+
+  LOG(INFO) << "Client-1: Prepare";
+  const string select_stmt = "SELECT * FROM t1";
+  auto prepared = ASSERT_RESULT(session.Prepare(select_stmt));
+
+  LOG(INFO) << "Client-1: Execute-1 prepared (for existing table)";
+  CassandraStatement stmt = prepared.Bind();
+  stmt.SetPageSize(3);
+  CassandraResult res = ASSERT_RESULT(session.ExecuteWithResult(stmt));
+  ASSERT_EQ(res.RenderToString(), "0,1;0,2;0,3");
+  stmt.SetPagingState(res);
+
+  LOG(INFO) << "Client-2: Drop table";
+  auto session2 = ASSERT_RESULT(EstablishSession(driver_.get()));
+  ASSERT_OK(session2.ExecuteQuery("DROP TABLE t1"));
+
+  LOG(INFO) << "Client-1: Execute-2 prepared (continue for deleted table)";
+  Status s = session.Execute(stmt);
+  LOG(INFO) << "Expcted error: " << s;
+  ASSERT_TRUE(s.IsServiceUnavailable());
+  ASSERT_NE(s.message().ToBuffer().find(
+      "All hosts in current policy attempted and were either unavailable or failed"),
+      std::string::npos) << s;
+
+  LOG(INFO) << "Client-1: Prepare (for deleted table)";
+  auto prepare_res = session.Prepare(select_stmt);
+  ASSERT_FALSE(prepare_res.ok());
+  LOG(INFO) << "Expcted error: " << prepare_res.status();
+  ASSERT_TRUE(prepare_res.status().IsQLError());
+  ASSERT_NE(prepare_res.status().message().ToBuffer().find(
+      "Object Not Found"), std::string::npos) << prepare_res.status();
+
+  LOG(INFO) << "Client-2: Prepare (for deleted table)";
+  prepare_res = session2.Prepare(select_stmt);
+  ASSERT_FALSE(prepare_res.ok());
+  LOG(INFO) << "Expcted error: " << prepare_res.status();
+  ASSERT_TRUE(prepare_res.status().IsQLError());
+  ASSERT_NE(prepare_res.status().message().ToBuffer().find(
+      "Object Not Found"), std::string::npos) << prepare_res.status();
+}
+
+TEST_F(CqlTest, PrepareWithDropTableWithPaging) {
+  FLAGS_cql_check_table_schema_in_paging_state = true;
+  TestPrepareWithDropTableWithPaging();
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+TEST_F(CqlTest, PrepareWithDropTableWithPaging_NoSchemaCheck) {
+  FLAGS_cql_check_table_schema_in_paging_state = false;
+  TestPrepareWithDropTableWithPaging();
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
