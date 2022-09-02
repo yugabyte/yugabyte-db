@@ -4,11 +4,13 @@ linkTitle: yb-voyager CLI
 description: YugabyteDB Voyager CLI and SSL connectivity.
 beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
-  stable:
+  preview:
     identifier: yb-voyager-cli
-    parent: yb-voyager
+    parent: voyager
     weight: 105
 type: docs
+rightNav:
+  hideH4: true
 ---
 
 yb-voyager is a command line executable for migrating databases from PostgreSQL, Oracle, and MySQL to a YugabyteDB database.
@@ -42,7 +44,7 @@ The following command line options specify the migration steps.
 
 ### export schema
 
-[Export the schema](/preview/migrate/yb-voyager/migrate-data/#export-schema) from the source database.
+[Export the schema](../migrate-steps/#export-and-analyze-schema) from the source database.
 
 #### Syntax
 
@@ -162,7 +164,7 @@ yb-voyager import data --export-dir /path/to/yb/export/dir \
 
 ### import data file
 
-Load all your data files in csv format directly to the target YugabyteDB.
+Load all your data files in CSV format directly to the target YugabyteDB.
 
 #### Syntax
 
@@ -243,7 +245,7 @@ Specifies the count to increase the number of connections.
 
 ### --batch-size
 
-Specifies the number of records that the [export directory](../../yb-voyager/install-yb-voyager/#create-an-export-directory) can contain.
+Specifies the number of records that the [export directory](../install-yb-voyager/#create-an-export-directory) can contain.
 
 Default : 100,000
 
@@ -261,13 +263,13 @@ Example : `filename1:tablename1,filename2:tablename2[,...]`
 
 ### --delimiter
 
-Default: “\t” (tab); can be changed to comma(,), pipe(|) or any other character.
+Default: '\t' (tab); can be changed to comma(,), pipe(|) or any other character.
 
 ### –-has-header
 
-This argument is to be specified only for csv file type.
+This argument is to be specified only for CSV file type.
 
-Default: false; change to true if the csv file contains column names as a header.
+Default: false; change to true if the CSV file contains column names as a header.
 
 ## SSL Connectivity
 
@@ -301,10 +303,10 @@ Currently, yb-voyager doesn't support the following features:
 
 Before performing migration from your source database to YugabyteDB, review your sharding strategies.
 
-YugabyteDB supports two ways to shard data: HASH and RANGE. HASH is the default, as it is typically better suited for most OLTP applications. For more information, refer to [Hash and range sharding](../../../architecture/docdb-sharding/sharding/). When exporting a PostgreSQL database, be aware that if you want RANGE sharding, you must call it out in the schema creation.
+YugabyteDB supports two ways to shard data: HASH and RANGE. HASH is the default, as it is typically better suited for most OLTP applications. For more information, refer to [Hash and range sharding](../../architecture/docdb-sharding/sharding/). When exporting a PostgreSQL database, be aware that if you want RANGE sharding, you must call it out in the schema creation.
 
 For most workloads, it is recommended to use HASH partitioning because it efficiently partitions the data, and spreads it evenly across all nodes.
 
 RANGE sharding can be advantageous for particular use cases, such as time series. When querying data for specific time ranges, using RANGE sharding to split the data into the specific time ranges will help improve the speed and efficiency of the query.
 
-Additionally, you can use a combination of HASH and RANGE sharding for your [primary key](../../../explore/indexes-constraints/primary-key-ysql/) by choosing a HASH value as the [partition key](../../../develop/learn/data-modeling-ycql/#partition-key-columns-required), and a RANGE value as the [clustering key](../../../develop/learn/data-modeling-ycql/#clustering-key-columns-optional).
+Additionally, you can use a combination of HASH and RANGE sharding for your [primary key](../../explore/indexes-constraints/primary-key-ysql/) by choosing a HASH value as the [partition key](../../develop/learn/data-modeling-ycql/#partition-key-columns-required), and a RANGE value as the [clustering key](../../develop/learn/data-modeling-ycql/#clustering-key-columns-optional).
