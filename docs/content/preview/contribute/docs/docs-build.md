@@ -49,7 +49,7 @@ By default, Hugo uses the operating system's temporary directory to cache module
 Add a line similar to the following to your `.bashrc` or `.zshrc` file:
 
 ```sh
-export HUGO_CACHEDIR = ~/.hugo-cache
+export HUGO_CACHEDIR=~/.hugo-cache
 ```
 
 Create the folder with `mkdir ~/.hugo-cache`, then start a new terminal session.
