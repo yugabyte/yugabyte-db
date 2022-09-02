@@ -96,6 +96,15 @@ public class StartMasterOnNode extends UniverseDefinitionTaskBase {
         throw new RuntimeException(msg);
       }
 
+      if (currentNode.dedicatedTo == ServerType.TSERVER) {
+        String msg =
+            "Unable to start the Master process on node "
+                + taskParams().nodeName
+                + ", node is dedicated to tserver.";
+        log.error(msg);
+        throw new RuntimeException(msg);
+      }
+
       log.info(
           "Bringing up master for under replicated universe {} ({})",
           universe.universeUUID,

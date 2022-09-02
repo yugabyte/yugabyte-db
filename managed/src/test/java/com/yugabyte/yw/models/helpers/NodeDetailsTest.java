@@ -35,7 +35,7 @@ public class NodeDetailsTest {
                     + ApiUtils.UTIL_INST_TYPE
                     + ", ip: 10.0.0.1, "
                     + "isMaster: false, isTserver: true, state: Live, "
-                    + "azUuid: null, placementUuid: null}")));
+                    + "azUuid: null, placementUuid: null, dedicatedTo: null}")));
   }
 
   @Test

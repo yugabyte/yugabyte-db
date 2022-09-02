@@ -52,6 +52,7 @@ import java.util.Queue;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
@@ -1941,6 +1942,18 @@ public class PlacementInfoUtil {
     nodeDetailsSet.addAll(deltaNodesSet);
   }
 
+  public static NodeDetails createDedicatedMasterNode(NodeDetails exampleNode) {
+    NodeDetails result = exampleNode.clone();
+    result.cloudInfo.private_ip = null;
+    result.cloudInfo.secondary_private_ip = null;
+    result.cloudInfo.public_ip = null;
+    result.dedicatedTo = ServerType.MASTER;
+    result.isTserver = false;
+    result.isMaster = true;
+    result.state = NodeState.ToBeAdded;
+    return result;
+  }
+
   public static class SelectMastersResult {
     public static final SelectMastersResult NONE = new SelectMastersResult();
     public Set<NodeDetails> addedMasters;
@@ -1955,7 +1968,7 @@ public class PlacementInfoUtil {
   @VisibleForTesting
   static SelectMastersResult selectMasters(
       String masterLeader, Collection<NodeDetails> nodes, int replicationFactor) {
-    return selectMasters(masterLeader, nodes, replicationFactor, null, true);
+    return selectMasters(masterLeader, nodes, replicationFactor, null, true, false);
   }
 
   /**
@@ -1971,6 +1984,7 @@ public class PlacementInfoUtil {
    * @param replicationFactor Number of masters to place.
    * @param defaultRegionCode Code of default region (for Geo-partitioned case).
    * @param applySelection If we need to apply the changes to the masters flags immediately.
+   * @param dedicatedNodes If each process has it's own dedicated node.
    * @return Instance of type SelectMastersResult with two lists of nodes - where we need to start
    *     and where we need to stop Masters. List of masters to be stopped doesn't include nodes
    *     which are going to be removed completely.
@@ -1980,7 +1994,8 @@ public class PlacementInfoUtil {
       Collection<NodeDetails> nodes,
       int replicationFactor,
       String defaultRegionCode,
-      boolean applySelection) {
+      boolean applySelection,
+      boolean dedicatedNodes) {
     LOG.info(
         "selectMasters for nodes {}, rf={}, drc={}", nodes, replicationFactor, defaultRegionCode);
 
@@ -1999,7 +2014,7 @@ public class PlacementInfoUtil {
               }
             });
 
-    if (replicationFactor > numCandidates.get()) {
+    if (!dedicatedNodes && replicationFactor > numCandidates.get()) {
       if (defaultRegionCode == null) {
         throw new PlatformServiceException(
             BAD_REQUEST,
@@ -2056,13 +2071,23 @@ public class PlacementInfoUtil {
           masterLeader,
           zoneToNodes.get(zone),
           allocatedMastersRgAz.getOrDefault(zone, 0),
-          result.addedMasters,
-          result.removedMasters);
-    }
-
-    if (applySelection) {
-      result.addedMasters.forEach(node -> node.isMaster = true);
-      result.removedMasters.forEach(node -> node.isMaster = false);
+          node -> {
+            NodeDetails nodeToAdd = node;
+            if (dedicatedNodes) {
+              nodeToAdd = createDedicatedMasterNode(node);
+            } else if (applySelection) {
+              nodeToAdd.isMaster = true;
+            }
+            result.addedMasters.add(nodeToAdd);
+          },
+          node -> {
+            result.removedMasters.add(node);
+            if (dedicatedNodes) {
+              node.state = NodeState.ToBeRemoved;
+            } else if (applySelection) {
+              node.isMaster = false;
+            }
+          });
     }
 
     LOG.info("selectMasters result: master-leader={}, nodes={}", masterLeader, nodes);
@@ -2157,8 +2182,8 @@ public class PlacementInfoUtil {
       String masterLeader,
       List<NodeDetails> nodes,
       int mastersCount,
-      Set<NodeDetails> mastersToAdd,
-      Set<NodeDetails> mastersToRemove) {
+      Consumer<NodeDetails> addMasterCallback,
+      Consumer<NodeDetails> removeMasterCallback) {
     long existingMastersCount = nodes.stream().filter(node -> node.isMaster).count();
     for (NodeDetails node : nodes) {
       if (mastersCount == existingMastersCount) {
@@ -2166,7 +2191,7 @@ public class PlacementInfoUtil {
       }
       if (existingMastersCount < mastersCount && !node.isMaster) {
         existingMastersCount++;
-        mastersToAdd.add(node);
+        addMasterCallback.accept(node);
       } else
       // If the node is a master-leader and we don't need to remove all the masters
       // from the zone, we are going to save it. If (mastersCount == 0) - removing all
@@ -2175,7 +2200,7 @@ public class PlacementInfoUtil {
           && node.isMaster
           && (!Objects.equals(masterLeader, node.cloudInfo.private_ip) || (mastersCount == 0))) {
         existingMastersCount--;
-        mastersToRemove.add(node);
+        removeMasterCallback.accept(node);
       }
     }
   }
