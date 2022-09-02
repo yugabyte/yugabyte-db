@@ -104,7 +104,7 @@ To enable LDAP authentication for YugabyteDB Anywhere login, you can perform a n
 
   Replace `[LDAP DN]` with the actual value, as per the following example: <br>
 
-  `,DC=yugabyte,DC=com`
+  `DC=yugabyte,DC=com`
 
 - Prefix to the common name (CN) of the user `yb.security.ldap.ldap_dn_prefix`, as follows:
 
