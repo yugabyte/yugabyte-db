@@ -2538,6 +2538,17 @@ TEST_P(TabletSplitExternalMiniClusterCrashITest, CrashLeaderTest) {
 
   ASSERT_OK(WaitForTabletsExcept(2, leader_idx, tablet_id));
 
+  // Wait for both child tablets have leaders elected.
+  auto ts_map = ASSERT_RESULT(itest::CreateTabletServerMap(
+      cluster_->GetLeaderMasterProxy<master::MasterClusterProxy>(), &cluster_->proxy_cache()));
+  auto tablet_ids = CHECK_RESULT(GetTestTableTabletIds());
+  for (const auto& id : tablet_ids) {
+    if (id != tablet_id) {
+      itest::TServerDetails *leader_ts = nullptr;
+      ASSERT_OK(itest::FindTabletLeader(ts_map, id, 20s * kTimeMultiplier, &leader_ts));
+    }
+  }
+
   // Check number of rows is correct after recovery.
   ASSERT_OK(CheckRowsCount(kDefaultNumRows));
 
