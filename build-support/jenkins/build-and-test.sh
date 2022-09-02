@@ -653,14 +653,10 @@ else
 fi
 
 # -------------------------------------------------------------------------------------------------
-# Now that that all C++ and Java code has been built, test creating a package.
+# Now that all C++ and Java code has been built, test creating a package.
 #
 # Skip this in ASAN/TSAN, as there are still unresolved issues with dynamic libraries there
 # (conflicting versions of the same library coming from thirdparty vs. Linuxbrew) as of 12/04/2017.
-#
-# Also skip it for compiler types with a specific version at the end, e.g. clang11 or gcc9. These
-# build types are Linux builds that do not use Linuxbrew and we still need to significantly change
-# the logic in library_packager.py for packaging to work in those builds (as of 01/2021).
 
 if [[ ${YB_SKIP_CREATING_RELEASE_PACKAGE:-} != "1" &&
       $build_type != "tsan" &&
@@ -752,6 +748,11 @@ if [[ ${YB_SKIP_CREATING_RELEASE_PACKAGE:-} != "1" &&
 else
   log "Skipping creating distribution package. Build type: $build_type, OSTYPE: $OSTYPE," \
       "YB_SKIP_CREATING_RELEASE_PACKAGE: ${YB_SKIP_CREATING_RELEASE_PACKAGE:-undefined}."
+
+  # yugabyted-ui is usually built during package build.  Test yugabyted-ui build here when not
+  # building package.
+  log "Building yugabyted-ui"
+  time "$YB_SRC_ROOT/yb_build.sh" "$BUILD_TYPE" --build-yugabyted-ui --skip-java
 fi
 
 # -------------------------------------------------------------------------------------------------
