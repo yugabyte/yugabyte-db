@@ -1,3 +1,4 @@
+
 ## Get started
 
 If you aren't using the **Get Started** tutorial, use the following instructions to create a cluster, connect to your database, explore distributed SQL, and build an application.
