@@ -3481,6 +3481,8 @@ Status CatalogManager::CreateCDCStream(const CreateCDCStreamRequestPB* req,
     LOG(INFO) << "Created CDC stream " << stream->ToString();
 
     RETURN_NOT_OK(CreateCdcStateTableIfNeeded(rpc));
+    TRACE("Created CDC state table");
+
     if (!PREDICT_FALSE(FLAGS_TEST_disable_cdc_state_insert_on_setup) &&
         (!req->has_initial_state() ||
          (req->initial_state() == master::SysCDCStreamEntryPB::ACTIVE)) &&
@@ -3520,6 +3522,7 @@ Status CatalogManager::CreateCDCStream(const CreateCDCStreamRequestPB* req,
       }
       // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
       RETURN_NOT_OK(session->TEST_Flush());
+      TRACE("Created CDC state entries");
     }
   } else {
     // Update and add table_id.
@@ -3545,6 +3548,8 @@ Status CatalogManager::CreateCDCStream(const CreateCDCStreamRequestPB* req,
     // Also need to persist changes in sys catalog.
     RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), stream));
     stream_lock.Commit();
+
+    TRACE("Updated CDC stream in sys-catalog");
   }
 
   // Now that the stream is set up, mark the entire cluster as a cdc enabled.
