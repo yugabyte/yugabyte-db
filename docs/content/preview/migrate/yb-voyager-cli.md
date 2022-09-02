@@ -6,7 +6,7 @@ beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   preview:
     identifier: yb-voyager-cli
-    parent: migrate
+    parent: voyager
     weight: 105
 type: docs
 rightNav:
