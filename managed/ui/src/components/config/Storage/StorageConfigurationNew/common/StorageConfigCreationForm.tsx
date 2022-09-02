@@ -34,6 +34,8 @@ export const StorageConfigCreationForm = <T extends FormikValues>({
     <>
       <Formik
         validationSchema={validationSchema}
+        // validateOnChange={false}
+        validateOnBlur={false}
         render={(props) => (
           <>
             <form onSubmit={props.handleSubmit}>
@@ -55,7 +57,13 @@ export const StorageConfigCreationForm = <T extends FormikValues>({
 export const YBReduxFormSelect = (props: { props: any }) => {
   return (
     <YBLabel {...props}>
-      <Select styles={{ menu: (provided) => ({ ...provided, zIndex: 2 }) }} {...props} />
+      <Select
+        styles={{
+          menu: (provided) => ({ ...provided, zIndex: 2 }),
+          control: (provided) => ({ ...provided, height: '42px' })
+        }}
+        {...props}
+      />
     </YBLabel>
   );
 };

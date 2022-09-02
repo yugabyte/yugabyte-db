@@ -17,6 +17,10 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 public class UniverseTaskParams extends AbstractTaskParams {
+  public static final int DEFAULT_SLEEP_AFTER_RESTART_MS = 180000;
+
+  public Integer sleepAfterMasterRestartMillis = DEFAULT_SLEEP_AFTER_RESTART_MS;
+  public Integer sleepAfterTServerRestartMillis = DEFAULT_SLEEP_AFTER_RESTART_MS;
 
   @ApiModel(description = "Communication ports")
   public static class CommunicationPorts {

@@ -2,20 +2,13 @@
 
 package com.yugabyte.yw.forms;
 
+import com.yugabyte.yw.cloud.PublicCloudConstants.OsType;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import play.data.validation.Constraints;
 
 @ApiModel(description = "Packages request parameters")
 public class PackagesRequestParams {
-
-  public enum OsType {
-    CENTOS,
-    ALMALINUX,
-    DARWIN,
-    LINUX,
-    EL8
-  }
 
   public enum ArchitectureType {
     AARCH64,

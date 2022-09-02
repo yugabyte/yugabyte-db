@@ -112,7 +112,6 @@ class MonitoredTask : public std::enable_shared_from_this<MonitoredTask> {
 
   std::string ToString() const;
 
- protected:
   static bool IsStateTerminal(MonitoredTaskState state) {
     return state == MonitoredTaskState::kComplete ||
            state == MonitoredTaskState::kFailed ||

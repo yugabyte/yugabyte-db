@@ -289,34 +289,6 @@ Status Executor::PreExecTreeNode(PTInsertStmt *tnode) {
   }
 }
 
-shared_ptr<client::YBTable> Executor::GetTableFromStatement(const TreeNode *tnode) const {
-  if (tnode != nullptr) {
-    switch (tnode->opcode()) {
-      case TreeNodeOpcode::kPTAlterTable:
-        return static_cast<const PTAlterTable *>(tnode)->table();
-
-      case TreeNodeOpcode::kPTSelectStmt:
-        return static_cast<const PTSelectStmt *>(tnode)->table();
-
-      case TreeNodeOpcode::kPTInsertStmt:
-        return static_cast<const PTInsertStmt *>(tnode)->table();
-
-      case TreeNodeOpcode::kPTDeleteStmt:
-        return static_cast<const PTDeleteStmt *>(tnode)->table();
-
-      case TreeNodeOpcode::kPTUpdateStmt:
-        return static_cast<const PTUpdateStmt *>(tnode)->table();
-
-      case TreeNodeOpcode::kPTExplainStmt:
-        return GetTableFromStatement(static_cast<const PTExplainStmt *>(tnode)->stmt().get());
-
-      default: break;
-    }
-  }
-
-  return nullptr;
-}
-
 //--------------------------------------------------------------------------------------------------
 
 Status Executor::ExecTreeNode(const TreeNode *tnode) {
@@ -2509,16 +2481,11 @@ Status Executor::ProcessStatementStatus(const ParseTree& parse_tree, const Statu
         errcode == ErrorCode::TYPE_NOT_FOUND) {
       if (errcode == ErrorCode::INVALID_ARGUMENTS) {
         // Check the table schema is up-to-date.
-        const shared_ptr<client::YBTable> table = GetTableFromStatement(parse_tree.root().get());
-        if (table) {
-          const uint32_t current_schema_ver = table->schema().version();
-          uint32_t updated_schema_ver = 0;
-          const Status s_get_schema = ql_env_->GetUpToDateTableSchemaVersion(
-              table->name(), &updated_schema_ver);
-
-          if (s_get_schema.ok() && updated_schema_ver == current_schema_ver) {
-            return s; // Do not retry via STALE_METADATA code if the table schema is up-to-date.
-          }
+        const Result<bool> is_altered_res = parse_tree.IsYBTableAltered(ql_env_);
+        // The table is not available if (!is_altered_res.ok()).
+        // Usually it happens if the table was deleted.
+        if (is_altered_res.ok() && !(*is_altered_res)) {
+          return s; // Do not retry via STALE_METADATA code if the table schema is up-to-date.
         }
       }
 

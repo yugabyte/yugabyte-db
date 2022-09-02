@@ -272,10 +272,12 @@ void CQLInboundCall::GetCallDetails(rpc::RpcCallInProgressPB *call_in_progress_p
       const auto& exec_request = static_cast<const ql::ExecuteRequest&>(*request);
       query_id = exec_request.query_id();
       details_pb->set_sql_id(b2a_hex(query_id));
-      statement_ptr = service_impl_->GetPreparedStatement(query_id);
-      if (statement_ptr != nullptr) {
-        details_pb->set_sql_string(statement_ptr->text()
-                                       .substr(0, FLAGS_rpcz_max_cql_query_dump_size));
+      auto stmt_res = service_impl_->GetPreparedStatement(query_id,
+                                                          exec_request.params().schema_version());
+      if (stmt_res.ok()) {
+        LOG_IF(DFATAL, *stmt_res == nullptr) << "Null statement";
+        details_pb->set_sql_string(
+            (*stmt_res)->text().substr(0, FLAGS_rpcz_max_cql_query_dump_size));
       }
       if (FLAGS_display_bind_params_in_cql_details) {
         details_pb->set_params(yb::ToString(exec_request.params().values)
@@ -296,10 +298,12 @@ void CQLInboundCall::GetCallDetails(rpc::RpcCallInProgressPB *call_in_progress_p
         details_pb = call_in_progress->add_call_details();
         if (batchQuery.is_prepared) {
           details_pb->set_sql_id(b2a_hex(batchQuery.query_id));
-          statement_ptr = service_impl_->GetPreparedStatement(batchQuery.query_id);
-          if (statement_ptr != nullptr) {
+          auto stmt_res = service_impl_->GetPreparedStatement(batchQuery.query_id,
+                                                              batchQuery.params.schema_version());
+          if (stmt_res.ok()) {
+            LOG_IF(DFATAL, *stmt_res == nullptr) << "Null statement";
             details_pb->set_sql_string(
-                statement_ptr->text().substr(0, FLAGS_rpcz_max_cql_query_dump_size));
+                (*stmt_res)->text().substr(0, FLAGS_rpcz_max_cql_query_dump_size));
           }
           if (FLAGS_display_bind_params_in_cql_details) {
             details_pb->set_params(yb::ToString(batchQuery.params.values)

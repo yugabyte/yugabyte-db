@@ -178,7 +178,7 @@ bool MetricRegistry::TabletHasBeenShutdown(const scoped_refptr<MetricEntity> ent
 }
 
 Status MetricRegistry::WriteAsJson(JsonWriter* writer,
-                                   const vector<string>& requested_metrics,
+                                   const MetricEntityOptions& entity_options,
                                    const MetricJsonOptions& opts) const {
   EntityMap entities;
   {
@@ -192,7 +192,7 @@ Status MetricRegistry::WriteAsJson(JsonWriter* writer,
       continue;
     }
 
-    WARN_NOT_OK(e.second->WriteAsJson(writer, requested_metrics, opts),
+    WARN_NOT_OK(e.second->WriteAsJson(writer, entity_options, opts),
                 Substitute("Failed to write entity $0 as JSON", e.second->id()));
   }
   writer->EndArray();
@@ -208,12 +208,7 @@ Status MetricRegistry::WriteAsJson(JsonWriter* writer,
 }
 
 Status MetricRegistry::WriteForPrometheus(PrometheusWriter* writer,
-                                          const MetricPrometheusOptions& opts) const {
-  return WriteForPrometheus(writer, {""}, opts);  // Include all metrics.
-}
-
-Status MetricRegistry::WriteForPrometheus(PrometheusWriter* writer,
-                                          const vector<string>& requested_metrics,
+                                          const MetricEntityOptions& entity_options,
                                           const MetricPrometheusOptions& opts) const {
   EntityMap entities;
   {
@@ -226,11 +221,11 @@ Status MetricRegistry::WriteForPrometheus(PrometheusWriter* writer,
       continue;
     }
 
-    WARN_NOT_OK(e.second->WriteForPrometheus(writer, requested_metrics, opts),
+    WARN_NOT_OK(e.second->WriteForPrometheus(writer, entity_options, opts),
                 Substitute("Failed to write entity $0 as Prometheus", e.second->id()));
   }
   RETURN_NOT_OK(writer->FlushAggregatedValues(opts.max_tables_metrics_breakdowns,
-                opts.priority_regex));
+                entity_options.priority_regex));
 
   // Rather than having a thread poll metrics periodically to retire old ones,
   // we'll just retire them here. The only downside is that, if no one is polling

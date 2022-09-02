@@ -110,7 +110,6 @@ class MetricsTest : public YBTest {
     auto value_it = metric_it->second.find(table);
     ASSERT_NE(value_it, metric_it->second.end());
     ASSERT_EQ(value_it->second, expected_aggregation);
-
   }
 
   std::string dumpPrometheusWriterOutput(const PrometheusWriter& w) { return w.output_->str(); }
@@ -271,8 +270,10 @@ TEST_F(MetricsTest, AggregationTest) {
     MetricPrometheusOptions opts;
     std::stringstream output;
     PrometheusWriter writer(&output, AggregationMetricLevel::kTable);
+    MetricEntityOptions entity_options;
+    entity_options.metrics.push_back("*");
     for (const auto& tablet : tablets) {
-      ASSERT_OK(entities[tablet.first]->WriteForPrometheus(&writer, {"*"}, opts));
+      ASSERT_OK(entities[tablet.first]->WriteForPrometheus(&writer, entity_options, opts));
     }
     MetricEntity::AttributeMap attrs;
     attrs["table_id"] = "table1";
@@ -286,8 +287,10 @@ TEST_F(MetricsTest, AggregationTest) {
     MetricPrometheusOptions opts;
     std::stringstream output;
     PrometheusWriter writer(&output, AggregationMetricLevel::kServer);
+    MetricEntityOptions entity_options;
+    entity_options.metrics.push_back("*");
     for (const auto& tablet : tablets) {
-      ASSERT_OK(entities[tablet.first]->WriteForPrometheus(&writer, {"*"}, opts));
+      ASSERT_OK(entities[tablet.first]->WriteForPrometheus(&writer, entity_options, opts));
     }
     DoAggregationCheck(writer, "", METRIC_test_sum_gauge.name(), 34, {});
     DoAggregationCheck(writer, "", METRIC_test_max_gauge.name(), 10, {});
@@ -360,7 +363,9 @@ TEST_F(MetricsTest, JsonPrintTest) {
   // Generate the JSON.
   std::stringstream out;
   JsonWriter writer(&out, JsonWriter::PRETTY);
-  ASSERT_OK(entity_->WriteAsJson(&writer, { "*" }, MetricJsonOptions()));
+  MetricEntityOptions entity_opts;
+  entity_opts.metrics.push_back("*");
+  ASSERT_OK(entity_->WriteAsJson(&writer, entity_opts, MetricJsonOptions()));
 
   // Now parse it back out.
   JsonReader reader(out.str());
@@ -384,7 +389,8 @@ TEST_F(MetricsTest, JsonPrintTest) {
 
   // Verify that, if we filter for a metric that isn't in this entity, we get no result.
   out.str("");
-  ASSERT_OK(entity_->WriteAsJson(&writer, { "not_a_matching_metric" }, MetricJsonOptions()));
+  entity_opts.metrics = { "not_a_matching_metric" };
+  ASSERT_OK(entity_->WriteAsJson(&writer, entity_opts, MetricJsonOptions()));
   ASSERT_EQ("", out.str());
 }
 

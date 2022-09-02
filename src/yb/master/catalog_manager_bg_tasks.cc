@@ -264,9 +264,16 @@ void CatalogManagerBgTasks::Run() {
 
       // Run periodic task for namespace-level replications.
       catalog_manager_->ScheduleXClusterNSReplicationAddTableTask();
+
+      was_leader_ = true;
     } else {
-      // Reset Metrics when leader_status is not ok.
-      catalog_manager_->ResetMetrics();
+      // leader_status is not ok.
+      if (was_leader_) {
+        LOG(INFO) << "Begin one-time cleanup on losing leadership";
+        catalog_manager_->ResetMetrics();
+        catalog_manager_->ResetTasksTrackers();
+        was_leader_ = false;
+      }
     }
     // Wait for a notification or a timeout expiration.
     //  - CreateTable will call Wake() to notify about the tablets to add

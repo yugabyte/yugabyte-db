@@ -331,6 +331,7 @@ export const CreateGCSConfigForm: FC<CreateGCSConfigFormProps> = ({
                     name="MULTI_REGION_GCP_ENABLED"
                     component={YBFormToggle}
                     isReadOnly={isEditMode}
+                    subLabel="Specify a bucket for each region"
                   />
                 </Col>
               </Row>

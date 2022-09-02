@@ -277,7 +277,8 @@ public class NodeInstanceController extends AuthenticatedController {
     // TODO: Always check this for all actions?? For now leaving it as is since it breaks many tests
     if (nodeAction == NodeActionType.STOP
         || nodeAction == NodeActionType.REMOVE
-        || nodeAction == NodeActionType.DELETE) {
+        || nodeAction == NodeActionType.DELETE
+        || nodeAction == NodeActionType.REBOOT) {
       // Always check this?? For now leaving it as is since it breaks many tests
       new AllowedActionsHelper(universe, universe.getNode(nodeName))
           .allowedOrBadRequest(nodeAction);

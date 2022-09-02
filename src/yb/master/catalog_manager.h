@@ -1365,6 +1365,8 @@ class CatalogManager :
   // Conventional "T xxx P yyy: " prefix for logging.
   std::string LogPrefix() const;
 
+  // Removes all tasks from jobs_tracker_ and tasks_tracker_.
+  void ResetTasksTrackers();
   // Aborts all tasks belonging to 'tables' and waits for them to finish.
   void AbortAndWaitForAllTasks(const std::vector<scoped_refptr<TableInfo>>& tables);
 

@@ -37,6 +37,7 @@ import v1.RoutesPrefix;
 
 public class PlatformInstanceClient {
 
+  public static final String YB_HA_WS_KEY = "yb.ha.ws";
   private static final Logger LOG = LoggerFactory.getLogger(PlatformInstanceClient.class);
 
   @Getter(onMethod_ = {@VisibleForTesting})

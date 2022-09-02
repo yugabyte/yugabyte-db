@@ -837,10 +837,8 @@ Status CatalogManager::ListSnapshots(const ListSnapshotsRequestPB* req,
         InvalidArgument, "Request must have correct snapshot_id", (req->has_snapshot_id() ?
         req->snapshot_id() : "None"), MasterError(MasterErrorPB::SNAPSHOT_FAILED));
   }
-
   RETURN_NOT_OK(snapshot_coordinator_.ListSnapshots(
-      txn_snapshot_id, req->list_deleted_snapshots(), resp));
-
+      txn_snapshot_id, req->list_deleted_snapshots(), req->detail_options(), resp));
   if (req->prepare_for_backup()) {
     RETURN_NOT_OK(RepackSnapshotsForBackup(resp));
   }
@@ -3510,6 +3508,14 @@ Status CatalogManager::CreateCDCStream(const CreateCDCStreamRequestPB* req,
         cdc_table.AddStringColumnValue(req, master::kCdcCheckpoint, OpId().ToString());
         cdc_table.AddTimestampColumnValue(
             req, master::kCdcLastReplicationTime, GetCurrentTimeMicros());
+
+        if (id_type_option_value == cdc::kNamespaceId) {
+          // For cdcsdk cases, we also need to persist last_active_time in the 'cdc_state' table. We
+          // will store this info in the map in the 'kCdcData' column.
+          auto column_id = cdc_table.ColumnId(master::kCdcData);
+          cdc_table.AddMapColumnValue(req, column_id, "active_time", "0");
+        }
+
         session->Apply(op);
       }
       // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173

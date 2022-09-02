@@ -1164,12 +1164,6 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
     getRunnableTask().addSubTaskGroup(subTaskGroup);
   }
 
-  private int getSleepTimeForProcess(ServerType processType) {
-    return processType == ServerType.MASTER
-        ? taskParams().sleepAfterMasterRestartMillis
-        : taskParams().sleepAfterTServerRestartMillis;
-  }
-
   private int getNodeToNodeChangeForToggleTls(UserIntent userIntent, UpgradeParams params) {
     return userIntent.enableNodeToNodeEncrypt != params.enableNodeToNodeEncrypt
         ? (params.enableNodeToNodeEncrypt ? 1 : -1)

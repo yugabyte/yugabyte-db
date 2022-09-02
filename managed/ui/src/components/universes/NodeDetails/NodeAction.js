@@ -53,6 +53,8 @@ export default class NodeAction extends Component {
       caption = 'Delete Node';
     } else if (actionType === 'RELEASE') {
       caption = 'Release Instance';
+    } else if (actionType === 'REBOOT') {
+      caption = 'Reboot Node';
     } else if (actionType === 'START') {
       caption = 'Start Processes';
     } else if (actionType === 'ADD') {
@@ -82,6 +84,8 @@ export default class NodeAction extends Component {
       btnIcon = 'fa fa-minus-circle';
     } else if (actionType === 'RELEASE') {
       btnIcon = 'fa fa-trash';
+    } else if (actionType === 'REBOOT') {
+      btnIcon = 'fa fa-repeat';
     } else if (actionType === 'START') {
       btnIcon = 'fa fa-play-circle';
     } else if (actionType === 'ADD') {

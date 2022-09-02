@@ -382,7 +382,8 @@ class MasterSnapshotCoordinator::Impl {
   }
 
   Status ListSnapshots(
-      const TxnSnapshotId& snapshot_id, bool list_deleted, ListSnapshotsResponsePB* resp) {
+      const TxnSnapshotId& snapshot_id, bool list_deleted,
+      ListSnapshotsDetailOptionsPB options, ListSnapshotsResponsePB* resp) {
     std::lock_guard<std::mutex> lock(mutex_);
     if (snapshot_id.IsNil()) {
       for (const auto& p : snapshots_.get<ScheduleTag>()) {
@@ -392,13 +393,13 @@ class MasterSnapshotCoordinator::Impl {
             continue;
           }
         }
-        RETURN_NOT_OK(p->ToPB(resp->add_snapshots()));
+        RETURN_NOT_OK(p->ToPB(resp->add_snapshots(), options));
       }
       return Status::OK();
     }
 
     SnapshotState& snapshot = VERIFY_RESULT(FindSnapshot(snapshot_id));
-    return snapshot.ToPB(resp->add_snapshots());
+    return snapshot.ToPB(resp->add_snapshots(), options);
   }
 
   Status Delete(
@@ -1624,7 +1625,7 @@ class MasterSnapshotCoordinator::Impl {
     const auto& index = snapshots_.get<ScheduleTag>();
     auto p = index.equal_range(boost::make_tuple(schedule.id()));
     for (auto i = p.first; i != p.second; ++i) {
-      RETURN_NOT_OK((**i).ToPB(out->add_snapshots()));
+      RETURN_NOT_OK((**i).ToPB(out->add_snapshots(), ListSnapshotsDetailOptionsPB()));
     }
     return Status::OK();
   }
@@ -1856,8 +1857,9 @@ Status MasterSnapshotCoordinator::RestoreSysCatalogReplicated(
 }
 
 Status MasterSnapshotCoordinator::ListSnapshots(
-    const TxnSnapshotId& snapshot_id, bool list_deleted, ListSnapshotsResponsePB* resp) {
-  return impl_->ListSnapshots(snapshot_id, list_deleted, resp);
+    const TxnSnapshotId& snapshot_id, bool list_deleted,
+    ListSnapshotsDetailOptionsPB options, ListSnapshotsResponsePB* resp) {
+  return impl_->ListSnapshots(snapshot_id, list_deleted, options, resp);
 }
 
 Status MasterSnapshotCoordinator::Delete(

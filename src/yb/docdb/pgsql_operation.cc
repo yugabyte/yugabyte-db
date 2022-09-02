@@ -957,9 +957,6 @@ Result<size_t> PgsqlReadOperation::Execute(const YQLStorageIf& ql_storage,
   // Fetching data.
   bool has_paging_state = false;
   if (request_.batch_arguments_size() > 0) {
-    SCHECK(request_.has_ybctid_column_value(),
-           InternalError,
-           "ybctid arguments can be batched only");
     fetched_rows = VERIFY_RESULT(ExecuteBatchYbctid(
         ql_storage, deadline, read_time, doc_read_context, result_buffer, restart_read_ht));
   } else if (request_.has_sampling_state()) {
@@ -1315,6 +1312,9 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchYbctid(const YQLStorageIf& ql_sto
   }
 
   for (const PgsqlBatchArgumentPB& batch_argument : request_.batch_arguments()) {
+    SCHECK(batch_argument.has_ybctid(),
+           InternalError,
+           "ybctid arguments can be batched only");
     // Get the row.
     RETURN_NOT_OK(ql_storage.GetIterator(
         request_.stmt_id(), projection, doc_read_context, txn_op_context_,
@@ -1431,7 +1431,7 @@ Status PgsqlReadOperation::PopulateAggregate(const QLTableRow& table_row,
 }
 
 Status PgsqlReadOperation::GetIntents(const Schema& schema, KeyValueWriteBatchPB* out) {
-  if (request_.batch_arguments_size() > 0 && request_.has_ybctid_column_value()) {
+  if (request_.batch_arguments_size() > 0) {
     for (const auto& batch_argument : request_.batch_arguments()) {
       SCHECK(batch_argument.has_ybctid(), InternalError, "ybctid batch argument is expected");
       RETURN_NOT_OK(AddIntent(batch_argument.ybctid(), request_.wait_policy(), out));
