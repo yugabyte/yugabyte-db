@@ -4591,6 +4591,11 @@
           "description" : "True if cron jobs were properly configured for this node",
           "type" : "boolean"
         },
+        "dedicatedTo" : {
+          "description" : "Used for configurations where each node can have only one process",
+          "enum" : [ "MASTER", "TSERVER", "CONTROLLER", "YQLSERVER", "YSQLSERVER", "REDISSERVER", "EITHER" ],
+          "type" : "string"
+        },
         "disksAreMountedByUUID" : {
           "description" : "Disks are mounted by uuid",
           "type" : "boolean"
@@ -4745,6 +4750,11 @@
         "cronsActive" : {
           "description" : "True if cron jobs were properly configured for this node",
           "type" : "boolean"
+        },
+        "dedicatedTo" : {
+          "description" : "Used for configurations where each node can have only one process",
+          "enum" : [ "MASTER", "TSERVER", "CONTROLLER", "YQLSERVER", "YSQLSERVER", "REDISSERVER", "EITHER" ],
+          "type" : "string"
         },
         "disksAreMountedByUUID" : {
           "description" : "Disks are mounted by uuid",
@@ -8581,6 +8591,9 @@
         },
         "azOverrides" : {
           "type" : "string"
+        },
+        "dedicatedNodes" : {
+          "type" : "boolean"
         },
         "deviceInfo" : {
           "$ref" : "#/definitions/DeviceInfo"

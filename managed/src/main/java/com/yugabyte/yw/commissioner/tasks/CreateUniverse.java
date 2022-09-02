@@ -89,10 +89,29 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
                   // Fetch the task params from the DB to start from fresh on retry.
                   // Otherwise, some operations like name assignment can fail.
                   fetchTaskDetailsFromDB();
-                  // Set all the in-memory node names.
-                  setNodeNames(u);
+                  boolean dedicatedNodes =
+                      taskParams().getPrimaryCluster().userIntent.dedicatedNodes;
+                  if (dedicatedNodes) {
+                    taskParams()
+                        .nodeDetailsSet
+                        .forEach(
+                            node -> {
+                              if (node.isTserver) {
+                                node.dedicatedTo = ServerType.TSERVER;
+                                if (node.isMaster) {
+                                  node.isMaster = false;
+                                }
+                              }
+                              if (node.isMaster) {
+                                node.dedicatedTo = ServerType.MASTER;
+                              }
+                            });
+                  }
                   // Select master nodes and apply isMaster flags immediately.
                   selectAndApplyMasters();
+                  // Set all the in-memory node names.
+                  setNodeNames(u);
+
                   // Set non on-prem node UUIDs.
                   setCloudNodeUuids(u);
                   // Update on-prem node UUIDs.
@@ -151,11 +170,14 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       // Get the new masters from the node list.
       Set<NodeDetails> newMasters = PlacementInfoUtil.getMastersToProvision(primaryNodes);
 
+      // Get the new tservers from the node list.
+      Set<NodeDetails> newTservers = PlacementInfoUtil.getTserversToProvision(primaryNodes);
+
       // Start masters.
       createStartMasterProcessTasks(newMasters);
 
-      // Start tservers on all nodes.
-      createStartTserverProcessTasks(taskParams().nodeDetailsSet);
+      // Start tservers on tserver nodes.
+      createStartTserverProcessTasks(newTservers);
 
       // Set the node state to live.
       createSetNodeStateTasks(taskParams().nodeDetailsSet, NodeDetails.NodeState.Live)

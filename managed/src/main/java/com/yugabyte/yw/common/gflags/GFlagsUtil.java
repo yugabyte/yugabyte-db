@@ -47,6 +47,10 @@ public class GFlagsUtil {
 
   public static final String YSQL_CGROUP_PATH = "/sys/fs/cgroup/memory/ysql";
 
+  private static final int DEFAULT_MAX_MEMORY_USAGE_PCT_FOR_DEDICATED = 90;
+
+  public static final String DEFAULT_MEMORY_LIMIT_TO_RAM_RATIO =
+      "default_memory_limit_to_ram_ratio";
   public static final String ENABLE_YSQL = "enable_ysql";
   public static final String YSQL_ENABLE_AUTH = "ysql_enable_auth";
   public static final String START_CQL_PROXY = "start_cql_proxy";
@@ -178,6 +182,12 @@ public class GFlagsUtil {
             && node.cloudInfo.secondary_private_ip != null
             && !node.cloudInfo.secondary_private_ip.equals("null");
     boolean useSecondaryIp = isDualNet && !legacyNet;
+
+    if (node.dedicatedTo != null) {
+      extra_gflags.put(
+          DEFAULT_MEMORY_LIMIT_TO_RAM_RATIO,
+          String.valueOf(DEFAULT_MAX_MEMORY_USAGE_PCT_FOR_DEDICATED));
+    }
 
     String processType = taskParam.getProperty("processType");
     if (processType == null) {

@@ -89,7 +89,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       // 'updateInProgress' flag to prevent other updates from happening.
       lockUniverseForUpdate(taskParams().expectedUniverseVersion);
 
-      Set<NodeDetails> nodeList = toOrderedSet(fetchNodes(taskParams().upgradeOption));
+      Set<NodeDetails> nodeList = fetchAllNodes(taskParams().upgradeOption);
 
       // Run the pre-upgrade hooks
       createHookTriggerTasks(nodeList, true, false);
@@ -588,6 +588,10 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     nodeSet.addAll(nodes.getLeft());
     nodeSet.addAll(nodes.getRight());
     return nodeSet;
+  }
+
+  public LinkedHashSet fetchAllNodes(UpgradeOption upgradeOption) {
+    return toOrderedSet(fetchNodes(upgradeOption));
   }
 
   public ImmutablePair<List<NodeDetails>, List<NodeDetails>> fetchNodes(

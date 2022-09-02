@@ -41,8 +41,7 @@ public class ThirdpartySoftwareUpgrade extends UpgradeTaskBase {
   public void run() {
     runUpgrade(
         () -> {
-          LinkedHashSet<NodeDetails> nodesToUpdate =
-              toOrderedSet(fetchNodes(taskParams().upgradeOption));
+          LinkedHashSet<NodeDetails> nodesToUpdate = fetchAllNodes(taskParams().upgradeOption);
           // Verify the request params and fail if invalid
           Universe universe = getUniverse();
           taskParams().clusters =
