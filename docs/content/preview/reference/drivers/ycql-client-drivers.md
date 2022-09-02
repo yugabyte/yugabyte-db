@@ -16,7 +16,9 @@ The following client drivers are supported for use with the [Yugabyte Cloud Quer
 
 For tutorials on building a sample application with the following client drivers, click the relevant link included below for each driver.
 
-Note that for YCQL you have to use the Yugabyte-specific client drivers, otherwise you can run into `NotSupportedError: Unknown data type code 0x0080. Have to skip entire result set.` errors.
+{{< note title="Use YugabyteDB client drivers" >}}
+You should always use the YugabyteDB YCQL client drivers. Using generic Cassandra drivers can lead to errors and performance issues.
+{{< /note >}}
 
 ## C/C++
 
