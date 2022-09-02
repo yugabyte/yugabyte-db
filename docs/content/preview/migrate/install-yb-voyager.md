@@ -8,7 +8,7 @@ image: /images/section_icons/develop/learn.png
 menu:
   preview:
     identifier: install-yb-voyager
-    parent: migrate
+    parent: voyager
     weight: 101
 type: docs
 ---

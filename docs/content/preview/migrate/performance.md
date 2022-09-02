@@ -6,7 +6,7 @@ beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   preview:
     identifier: performance
-    parent: migrate
+    parent: voyager
     weight: 103
 type: docs
 ---
