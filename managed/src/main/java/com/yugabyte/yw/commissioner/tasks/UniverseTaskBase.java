@@ -767,7 +767,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   /** Create a task to check memory limit on the universe nodes */
   public SubTaskGroup createAvailabeMemoryCheck(
-      List<NodeDetails> nodes, String memoryType, Long memoryLimitKB) {
+      Collection<NodeDetails> nodes, String memoryType, Long memoryLimitKB) {
     SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("CheckMemory", executor);
     CheckMemory task = createTask(CheckMemory.class);
     CheckMemory.Params params = new CheckMemory.Params();
@@ -863,12 +863,12 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   /** Create a task to ping yb-controller servers on each node */
-  public SubTaskGroup createWaitForYbcServerTask(Set<NodeDetails> nodeDetailsSet) {
+  public SubTaskGroup createWaitForYbcServerTask(Collection<NodeDetails> nodeDetailsSet) {
     SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("WaitForYbcServer", executor);
     WaitForYbcServer task = createTask(WaitForYbcServer.class);
     WaitForYbcServer.Params params = new WaitForYbcServer.Params();
     params.universeUUID = taskParams().universeUUID;
-    params.nodeDetailsSet = nodeDetailsSet;
+    params.nodeDetailsSet = new HashSet<>(nodeDetailsSet);
     task.initialize(params);
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);

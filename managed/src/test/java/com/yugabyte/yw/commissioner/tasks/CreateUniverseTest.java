@@ -5,6 +5,7 @@ package com.yugabyte.yw.commissioner.tasks;
 import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
@@ -237,5 +238,35 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
     taskInfo = submitTask(taskParams);
     // Task is already successful, so the passwords must have been cleared.
     assertEquals(Failure, taskInfo.getTaskState());
+  }
+
+  @Test
+  public void testCreateDedicatedUniverseSuccess() {
+    UniverseDefinitionTaskParams taskParams = getTaskParams(true);
+    taskParams.getPrimaryCluster().userIntent.dedicatedNodes = true;
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Success, taskInfo.getTaskState());
+    List<TaskInfo> subTasks = taskInfo.getSubTasks();
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.universeUUID);
+    Map<UniverseDefinitionTaskBase.ServerType, List<NodeDetails>> byDedicatedType =
+        defaultUniverse.getNodes().stream().collect(Collectors.groupingBy(n -> n.dedicatedTo));
+    List<NodeDetails> masterNodes =
+        byDedicatedType.get(UniverseDefinitionTaskBase.ServerType.MASTER);
+    List<NodeDetails> tserverNodes =
+        byDedicatedType.get(UniverseDefinitionTaskBase.ServerType.TSERVER);
+    assertEquals(
+        defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.replicationFactor,
+        masterNodes.size());
+    assertEquals(
+        defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.numNodes,
+        tserverNodes.size());
+    for (NodeDetails masterNode : masterNodes) {
+      assertTrue(masterNode.isMaster);
+      assertFalse(masterNode.isTserver);
+    }
+    for (NodeDetails tserverNode : tserverNodes) {
+      assertFalse(tserverNode.isMaster);
+      assertTrue(tserverNode.isTserver);
+    }
   }
 }
