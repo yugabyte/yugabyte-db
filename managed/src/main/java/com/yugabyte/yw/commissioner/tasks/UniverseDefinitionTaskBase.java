@@ -65,6 +65,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import javax.annotation.Nullable;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
@@ -320,10 +321,17 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * @param nodeIdx index to be used in node name.
    * @param region region in which this node is present.
    * @param az zone in which this node is present.
+   * @param dedicatedTo process type that node is reserved for.
    * @return a string which can be used as the node name.
    */
   public static String getNodeName(
-      Cluster cluster, String tagValue, String prefix, int nodeIdx, String region, String az) {
+      Cluster cluster,
+      String tagValue,
+      String prefix,
+      int nodeIdx,
+      String region,
+      String az,
+      @Nullable ServerType dedicatedTo) {
     if (!tagValue.isEmpty()) {
       checkTagPattern(tagValue);
     }
@@ -344,6 +352,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       } else {
         newName = getTagBasedName(tagValue, cluster, nodeIdx, region, az);
       }
+    }
+    if (dedicatedTo != null) {
+      newName += "-" + dedicatedTo.name().toLowerCase();
     }
 
     log.info("Node name " + newName + " at index " + nodeIdx);
@@ -400,7 +411,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
                   taskParams().nodePrefix,
                   node.nodeIdx,
                   node.cloudInfo.region,
-                  node.cloudInfo.az);
+                  node.cloudInfo.az,
+                  node.dedicatedTo);
           iter++;
         }
         node.isYsqlServer = isYSQL;
@@ -500,12 +512,16 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
               taskParams().mastersInDefaultRegion
                   ? PlacementInfoUtil.getDefaultRegionCode(taskParams())
                   : null,
-              applySelection);
+              applySelection,
+              primaryCluster.userIntent.dedicatedNodes);
       log.info(
           "Active masters count after balancing = "
               + PlacementInfoUtil.getNumActiveMasters(primaryNodes));
       if (!result.addedMasters.isEmpty()) {
         log.info("Masters to be added/started: " + result.addedMasters);
+        if (primaryCluster.userIntent.dedicatedNodes) {
+          taskParams().nodeDetailsSet.addAll(result.addedMasters);
+        }
       }
       if (!result.removedMasters.isEmpty()) {
         log.info("Masters to be removed/stopped: " + result.removedMasters);
@@ -1138,11 +1154,13 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * servers.
    */
   protected void createMasterInfoUpdateTask(Universe universe, NodeDetails addedNode) {
-    Set<NodeDetails> tserverNodes = new HashSet<NodeDetails>(universe.getTServers());
-    Set<NodeDetails> masterNodes = new HashSet<NodeDetails>(universe.getMasters());
+    Set<NodeDetails> tserverNodes = new HashSet<>(universe.getTServers());
+    Set<NodeDetails> masterNodes = new HashSet<>(universe.getMasters());
     // We need to add the node explicitly since the node wasn't marked as a master
     // or tserver before the task is completed.
-    tserverNodes.add(addedNode);
+    if (addedNode.dedicatedTo != ServerType.MASTER) {
+      tserverNodes.add(addedNode);
+    }
     masterNodes.add(addedNode);
     // Configure all tservers to update the masters list as well.
     createConfigureServerTasks(tserverNodes, params -> params.updateMasterAddrsOnly = true)
