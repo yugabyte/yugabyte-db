@@ -93,7 +93,7 @@ export interface IStorageConfig {
   name: string;
   data: {
     BACKUP_LOCATION: string;
-    REGION_LOCATIONS: any [];
+    REGION_LOCATIONS: any[];
   };
   state: 'ACTIVE' | 'INACTIVE';
   inUse: boolean;
@@ -111,4 +111,11 @@ export interface ITable {
 export enum Backup_Options_Type {
   ALL = 'all',
   CUSTOM = 'custom'
+}
+
+export interface ThrottleParameters {
+  max_concurrent_uploads: number;
+  per_upload_num_objects: number;
+  max_concurrent_downloads: number;
+  per_download_num_objects: number;
 }
