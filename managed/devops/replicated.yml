@@ -102,69 +102,12 @@ cmds:
     cmd: publicip
 
 components:
-  - name: db_stale_9_6
-    containers:
-    - source: public
-      image_name: postgres
-      name: postgres_stale_9_6
-      version: 9.6
-      env_vars:
-        - name: POSTGRES_DB
-          static_val: 'yugaware'
-        - name: POSTGRES_USER
-          static_val: 'postgres'
-        - name: POSTGRES_PASSWORD
-          static_val: '{{repl ConfigOption "dbpass"}}'
-        - name: PGDATA
-          static_val: '/var/lib/postgresql/data/yugaware'
-      ports:
-        - private_port: "5432"
-      volumes:
-        - host_path: '{{repl ConfigOption "storage_path"}}/postgresql'
-          container_path: /var/lib/postgresql/data
-          owner: "999"
-      publish_events:
-        - name: Postgres started
-          trigger: exec
-          args: ["sh", "/home/post_container_start.sh"]
-          subscriptions:
-            - component: db
-              container: postgres
-              action: start
-      config_files:
-        - filename: /home/update_password.sql
-          contents: |
-            ALTER USER postgres WITH PASSWORD '{{repl ConfigOption "dbpass"}}';
-        - filename: /home/entrypoint.sh
-          contents: |
-            if  [ ! -f /var/lib/postgresql/data/backup_9_6.sql ]
-            then
-                echo "Starting Postgres in the container";
-                docker-entrypoint.sh postgres;
-            else
-                echo "Starting tail -f command";
-                tail -f /dev/null;
-            fi
-        - filename: /home/post_container_start.sh
-          contents: |
-            if [ ! -f /var/lib/postgresql/data/backup_9_6.sql ]
-            then
-              psql -U postgres -f /home/update_password.sql;
-              pg_dumpall -c -U postgres > /var/lib/postgresql/data/backup_9_6.sql;
-              rm -rf /var/lib/postgresql/data/yugaware;
-            else
-              # Kill all the process in the container.
-              kill -9 -1;
-            fi
-      ephemeral: true
-      entrypoint: ["sh", "/home/entrypoint.sh"]
-
   - name: db
     containers:
       - source: public
         image_name: postgres
         name: postgres
-        version: 14.4
+        version: 9.6
         env_vars:
           - name: POSTGRES_DB
             static_val: 'yugaware'
@@ -184,7 +127,7 @@ components:
         publish_events:
           - name: Postgres started
             trigger: exec
-            args: ["sh", "/home/post_container_start.sh"]
+            args: ["psql", "-U", "postgres", "-f", "/home/update_password.sql"]
             subscriptions:
               - component: app
                 container: yugabyte/yugaware
@@ -193,32 +136,6 @@ components:
           - filename: /home/update_password.sql
             contents: |
               ALTER USER postgres WITH PASSWORD '{{repl ConfigOption "dbpass"}}';
-          - filename: /home/reload_pg_hba_conf.sql
-            contents: |
-              SELECT pg_reload_conf();
-          - filename: /home/enable_ldap.sh
-            contents: |
-              sleep 5;
-              su - postgres bash -c 'sed -i "s/^host/#&/" /var/lib/postgresql/data/yugaware/pg_hba.conf';
-              su - postgres bash -c 'echo host all all all ldap ldapserver=\"{{repl ConfigOption "ldap_server"}}\" ldapprefix=\"{{repl ConfigOption "ldap_dn_prefix"}}\" ldapsuffix=\"{{repl ConfigOption "ldap_base_dn"}}\" ldapport={{repl ConfigOption "ldap_port"}} ldaptls={{repl ConfigOption "secure_ldap"}} >> /var/lib/postgresql/data/yugaware/pg_hba.conf';
-              psql -U postgres -f /home/reload_pg_hba_conf.sql;
-          - filename: /home/setup_auth.sh
-            contents: |
-              # Disable all the existing auth mechanism for the host
-              sleep 5;
-              su - postgres bash -c 'sed -i "s/^host/#&/" /var/lib/postgresql/data/yugaware/pg_hba.conf';
-              su - postgres bash -c 'echo host all all all scram-sha-256 >> /var/lib/postgresql/data/yugaware/pg_hba.conf';
-              psql -U postgres -f /home/update_password.sql;
-              psql -U postgres -f /home/reload_pg_hba_conf.sql;
-          - filename: /home/post_container_start.sh
-            contents: |
-                if [ ! -f "/var/lib/postgresql/data/db_upgraded_9_6_to_14_4" ] \
-                  && [ -f /var/lib/postgresql/data/backup_9_6.sql ]
-                  then
-                    psql -U postgres -f /var/lib/postgresql/data/backup_9_6.sql && \
-                      echo "true" >> /var/lib/postgresql/data/db_upgraded_9_6_to_14_4;
-                fi
-                {{repl if ConfigOptionEquals "dbldapauth" "0"}} sh /home/setup_auth.sh {{repl else}} sh /home/enable_ldap.sh {{repl end}}
 
   - name: prometheus
     containers:
@@ -255,7 +172,7 @@ components:
           - name: Prometheus started
             trigger: container-start
             subscriptions:
-              - component: db_stale_9_6
+              - component: db
                 container: postgres
                 action: start
         config_files:
@@ -603,27 +520,6 @@ config:
         type: text
         value: ""
         default: "5432"
-      - name: dbldapauth
-        title: Enable LDAP Authentication for DB
-        help_text: When enabled YB Anywhere will use ldap for Postgres Authentication
-        type: bool
-        default: "0"
-      - name: ldap_server
-        title: LDAP server DNS/IP
-        type: text
-      - name: ldap_base_dn
-        title: LDAP Base DN
-        type: text
-      - name: ldap_dn_prefix
-        title: LDAP DN Prefix
-        type: text
-      - name: ldap_port
-        title: LDAP Port
-        type: text
-      - name: secure_ldap
-        title: Enable Secure LDAP(LDAPS)
-        type: bool
-        default: "0"
   - name: app
     title: Application config
     description: Configure your yugaware application
