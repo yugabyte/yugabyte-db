@@ -135,6 +135,12 @@ public class UpgradeUniverseHandler {
       }
     }
 
+    // Temporary fix for PLAT-4791 until PLAT-4653 fixed.
+    if (universe.getUniverseDetails().getReadOnlyClusters().size() > 0
+        && requestParams.getReadOnlyClusters().size() == 0) {
+      requestParams.clusters.add(universe.getUniverseDetails().getReadOnlyClusters().get(0));
+    }
+
     // Verify request params
     requestParams.verifyParams(universe);
     // Update request params with additional metadata for upgrade task
@@ -187,6 +193,11 @@ public class UpgradeUniverseHandler {
       requestParams.tserverGFlags = trimFlags((requestParams.tserverGFlags));
     }
 
+    // Temporary fix for PLAT-4791 until PLAT-4653 fixed.
+    if (universe.getUniverseDetails().getReadOnlyClusters().size() > 0
+        && requestParams.getReadOnlyClusters().size() == 0) {
+      requestParams.clusters.add(universe.getUniverseDetails().getReadOnlyClusters().get(0));
+    }
     // Verify request params
     requestParams.verifyParams(universe);
     // Update request params with additional metadata for upgrade task
@@ -274,6 +285,12 @@ public class UpgradeUniverseHandler {
     log.debug(
         "rotateCerts called with rootCA: {}",
         (requestParams.rootCA != null) ? requestParams.rootCA.toString() : "NULL");
+
+    // Temporary fix for PLAT-4791 until PLAT-4653 fixed.
+    if (universe.getUniverseDetails().getReadOnlyClusters().size() > 0
+        && requestParams.getReadOnlyClusters().size() == 0) {
+      requestParams.clusters.add(universe.getUniverseDetails().getReadOnlyClusters().get(0));
+    }
     // Verify request params
     requestParams.verifyParams(universe);
     // Update request params with additional metadata for upgrade task

@@ -566,7 +566,7 @@ ybSetupScanQual(ForeignScanState *node)
 		 * acccess the estate to get parameter values, so param references
 		 * are replaced with constant expressions.
 		 */
-		expr = YbExprInstantiateParams(expr, estate->es_param_list_info);
+		expr = YbExprInstantiateParams(expr, estate);
 		/* Create new PgExpr wrapper for the expression */
 		YBCPgExpr yb_expr = YBCNewEvalExprCall(yb_state->handle, expr);
 		/* Add the PgExpr to the statement */

@@ -294,7 +294,7 @@ public class NodeDetails {
     if (!isActionAllowedOnState(actionType)) {
       String msg =
           String.format(
-              "Node %s is not in %s, but is in one of %s, so action %s is not allowed.",
+              "Node %s is in %s state, but not in one of %s, so action %s is not allowed.",
               nodeName,
               state,
               StringUtils.join(NodeState.allowedStatesForAction(actionType), ","),

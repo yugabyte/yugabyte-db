@@ -6,6 +6,7 @@
 -- Dumped by ysql_dump version 11.2-YB-2.15.1.0-b0
 
 SET yb_binary_restore = true;
+SET yb_non_ddl_txn_for_sys_tables_allowed = true;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;
@@ -15,6 +16,24 @@ SELECT pg_catalog.set_config('search_path', '', false);
 SET check_function_bodies = false;
 SET client_min_messages = warning;
 SET row_security = off;
+
+--
+-- Name: hint_plan; Type: SCHEMA; Schema: -; Owner: yugabyte_test
+--
+
+CREATE SCHEMA hint_plan;
+
+
+ALTER SCHEMA hint_plan OWNER TO yugabyte_test;
+
+--
+-- Name: pg_hint_plan; Type: EXTENSION; Schema: -; Owner:
+--
+
+-- For binary upgrade, create an empty extension and insert objects into it
+DROP EXTENSION IF EXISTS pg_hint_plan;
+SELECT pg_catalog.binary_upgrade_create_empty_extension('pg_hint_plan', 'hint_plan', false, '1.3.7', '{16549,16547}', '{"",""}', ARRAY[]::pg_catalog.text[]);
+
 
 SET default_tablespace = '';
 
@@ -50,6 +69,62 @@ ALTER TABLEGROUP grp_with_spc OWNER TO tablegroup_test_user;
 SET default_tablespace = '';
 
 SET default_with_oids = false;
+
+--
+-- Name: hints; Type: TABLE; Schema: hint_plan; Owner: yugabyte_test
+--
+
+
+-- For binary upgrade, must preserve pg_type oid
+SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16551'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_type array oid
+SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16550'::pg_catalog.oid);
+
+CREATE TABLE hint_plan.hints (
+    id integer NOT NULL,
+    norm_query_string text NOT NULL,
+    application_name text NOT NULL,
+    hints text NOT NULL,
+    CONSTRAINT hints_pkey PRIMARY KEY((id) HASH)
+)
+SPLIT INTO 3 TABLETS;
+
+-- For binary upgrade, handle extension membership the hard way
+ALTER EXTENSION pg_hint_plan ADD TABLE hint_plan.hints;
+
+
+ALTER TABLE hint_plan.hints OWNER TO yugabyte_test;
+
+--
+-- Name: hints_id_seq; Type: SEQUENCE; Schema: hint_plan; Owner: yugabyte_test
+--
+
+
+-- For binary upgrade, must preserve pg_type oid
+SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16548'::pg_catalog.oid);
+
+CREATE SEQUENCE hint_plan.hints_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+-- For binary upgrade, handle extension membership the hard way
+ALTER EXTENSION pg_hint_plan ADD SEQUENCE hint_plan.hints_id_seq;
+
+
+ALTER TABLE hint_plan.hints_id_seq OWNER TO yugabyte_test;
+
+--
+-- Name: hints_id_seq; Type: SEQUENCE OWNED BY; Schema: hint_plan; Owner: yugabyte_test
+--
+
+ALTER SEQUENCE hint_plan.hints_id_seq OWNED BY hint_plan.hints.id;
+
 
 --
 -- Name: chat_user; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -807,6 +882,13 @@ CREATE TABLE public.uaccount (
 ALTER TABLE public.uaccount OWNER TO regress_rls_alice;
 
 --
+-- Name: hints id; Type: DEFAULT; Schema: hint_plan; Owner: yugabyte_test
+--
+
+ALTER TABLE ONLY hint_plan.hints ALTER COLUMN id SET DEFAULT nextval('hint_plan.hints_id_seq'::regclass);
+
+
+--
 -- Name: tbl1 a; Type: DEFAULT; Schema: public; Owner: yugabyte_test
 --
 
@@ -818,6 +900,14 @@ ALTER TABLE ONLY public.tbl1 ALTER COLUMN a SET DEFAULT nextval('public.tbl1_a_s
 --
 
 ALTER TABLE ONLY public.tbl2 ALTER COLUMN a SET DEFAULT nextval('public.tbl2_a_seq'::regclass);
+
+
+--
+-- Data for Name: hints; Type: TABLE DATA; Schema: hint_plan; Owner: yugabyte_test
+--
+
+COPY hint_plan.hints (id, norm_query_string, application_name, hints) FROM stdin;
+\.
 
 
 --
@@ -1079,6 +1169,13 @@ COPY public.uaccount (pguser, seclv) FROM stdin;
 
 
 --
+-- Name: hints_id_seq; Type: SEQUENCE SET; Schema: hint_plan; Owner: yugabyte_test
+--
+
+SELECT pg_catalog.setval('hint_plan.hints_id_seq', 1, false);
+
+
+--
 -- Name: tbl1_a_seq; Type: SEQUENCE SET; Schema: public; Owner: yugabyte_test
 --
 
@@ -1090,6 +1187,13 @@ SELECT pg_catalog.setval('public.tbl1_a_seq', 1, true);
 --
 
 SELECT pg_catalog.setval('public.tbl2_a_seq', 1, false);
+
+
+--
+-- Name: hints_norm_and_app; Type: INDEX; Schema: hint_plan; Owner: yugabyte_test
+--
+
+CREATE UNIQUE INDEX hints_norm_and_app ON hint_plan.hints USING lsm (norm_query_string HASH, application_name ASC) SPLIT INTO 3 TABLETS;
 
 
 --
@@ -1200,6 +1304,50 @@ ALTER TABLE public.rls_public ENABLE ROW LEVEL SECURITY;
 --
 
 ALTER TABLE public.uaccount ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: pg_hint_plan; Type: EXTENSION; Schema: -; Owner:
+--
+
+-- YB: ensure extconfig field for extension: pg_hint_plan in pg_extension catalog is correct
+UPDATE pg_extension SET extconfig = ARRAY['hint_plan.hints'::regclass::oid,'hint_plan.hints_id_seq'::regclass::oid]::oid[] WHERE extname = 'pg_hint_plan';
+
+
+--
+-- Name: SCHEMA hint_plan; Type: ACL; Schema: -; Owner: yugabyte_test
+--
+
+SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
+GRANT USAGE ON SCHEMA hint_plan TO PUBLIC;
+SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
+
+
+--
+-- Name: FUNCTION pg_stat_statements_reset(); Type: ACL; Schema: pg_catalog; Owner: postgres
+--
+
+SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
+REVOKE ALL ON FUNCTION pg_catalog.pg_stat_statements_reset() FROM PUBLIC;
+SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
+
+
+--
+-- Name: TABLE hints; Type: ACL; Schema: hint_plan; Owner: yugabyte_test
+--
+
+SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
+GRANT SELECT ON TABLE hint_plan.hints TO PUBLIC;
+SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
+
+
+--
+-- Name: TABLE pg_stat_statements; Type: ACL; Schema: pg_catalog; Owner: postgres
+--
+
+SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
+GRANT SELECT ON TABLE pg_catalog.pg_stat_statements TO PUBLIC;
+SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
+
 
 --
 -- Name: TABLE rls_private; Type: ACL; Schema: public; Owner: yugabyte_test
