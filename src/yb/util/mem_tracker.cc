@@ -649,18 +649,18 @@ bool MemTracker::LimitExceeded() {
 SoftLimitExceededResult MemTracker::SoftLimitExceeded(double* score) {
   // Did we exceed the actual limit?
   if (LimitExceeded()) {
-    return {true, consumption() * 100.0 / limit()};
+    return {ToString(), true, consumption() * 100.0 / limit()};
   }
 
   // No soft limit defined.
   if (!has_limit() || limit_ == soft_limit_) {
-    return {false, 0.0};
+    return SoftLimitExceededResult::NotExceeded();
   }
 
   // Are we under the soft limit threshold?
   int64_t usage = consumption();
   if (usage < soft_limit_) {
-    return {false, 0.0};
+    return SoftLimitExceededResult::NotExceeded();
   }
 
   // We're over the threshold; were we randomly chosen to be over the soft limit?
@@ -668,9 +668,9 @@ SoftLimitExceededResult MemTracker::SoftLimitExceeded(double* score) {
     *score = RandomUniformReal<double>();
   }
   if (usage + (limit_ - soft_limit_) * *score > limit_ && GcMemory(soft_limit_)) {
-    return {true, usage * 100.0 / limit()};
+    return {ToString(), true, usage * 100.0 / limit()};
   }
-  return {false, 0.0};
+  return SoftLimitExceededResult::NotExceeded();
 }
 
 SoftLimitExceededResult MemTracker::AnySoftLimitExceeded(double* score) {
@@ -680,7 +680,7 @@ SoftLimitExceededResult MemTracker::AnySoftLimitExceeded(double* score) {
       return result;
     }
   }
-  return {false, 0.0};
+  return SoftLimitExceededResult::NotExceeded();
 }
 
 int64_t MemTracker::SpareCapacity() const {
@@ -915,7 +915,8 @@ bool CheckMemoryPressureWithLogging(
   }
 
   const std::string msg = StringPrintf(
-      "Soft memory limit exceeded (at %.2f%% of capacity), score: %.2f",
+      "Soft memory limit exceeded for %s (at %.2f%% of capacity), score: %.2f",
+      soft_limit_exceeded_result.tracker_path.c_str(),
       soft_limit_exceeded_result.current_capacity_pct, score);
   if (soft_limit_exceeded_result.current_capacity_pct >=
       FLAGS_memory_limit_warn_threshold_percentage) {
