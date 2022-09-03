@@ -266,6 +266,8 @@ void SleepFor(const MonoDelta& delta);
 
 void SleepUntil(const MonoTime& deadline);
 
+// A monotonically increasing clock which lacks the precision of a hybrid clock but is suitable for
+// any use cases that just need a locally monotonic clock.
 class CoarseMonoClock {
  public:
   typedef std::chrono::nanoseconds duration;

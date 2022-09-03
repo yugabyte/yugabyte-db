@@ -525,6 +525,10 @@ bool RunningTransaction::ProcessingApply() const {
   return processing_apply_.load(std::memory_order_acquire);
 }
 
+const TabletId& RunningTransaction::status_tablet() const {
+  return metadata_.status_tablet;
+}
+
 void RunningTransaction::UpdateTransactionStatusLocation(const TabletId& new_status_tablet) {
   metadata_.old_status_tablet = std::move(metadata_.status_tablet);
   metadata_.status_tablet = new_status_tablet;
