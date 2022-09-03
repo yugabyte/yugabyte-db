@@ -28,6 +28,7 @@
 #include "yb/docdb/intent.h"
 #include "yb/docdb/shared_lock_manager.h"
 #include "yb/docdb/transaction_dump.h"
+#include "yb/gutil/stl_util.h"
 #include "yb/util/logging.h"
 #include "yb/util/memory/memory.h"
 #include "yb/util/metrics.h"
@@ -143,6 +144,8 @@ class ConflictResolverContext {
   virtual TransactionId transaction_id() const = 0;
 
   virtual std::string ToString() const = 0;
+
+  virtual Result<TabletId> GetStatusTablet(ConflictResolver* resolver) const = 0;
 
   std::string LogPrefix() const {
     return ToString() + ": ";
@@ -629,15 +632,27 @@ class PessimisticLockingConflictResolver : public ConflictResolver {
     VTRACE(3, "Waiting on $0 transactions after $1 tries.",
               remaining_transactions_, wait_for_iters_);
 
-    // TODO(pessimistic): include status tablet for use with deadlock detection.
-    std::vector<TransactionId> transactions;
-    transactions.reserve(remaining_transactions_);
+    std::vector<BlockingTransactionData> blockers;
+    blockers.reserve(remaining_transactions_);
     for (auto& txn : RemainingTransactions()) {
-      transactions.push_back(txn.id);
+        blockers.emplace_back(BlockingTransactionData {
+          .id = txn.id,
+          .status_tablet = "",
+        });
     }
+    status_manager().FillStatusTablets(&blockers);
+    EraseIf([](const auto& blocker) {
+      if (blocker.status_tablet.empty()) {
+        LOG(WARNING) << "Cannot find status tablet for blocking transaction " << blocker.id << ". "
+                     << "Ignoring this transaction, as it should be either committed or aborted.";
+        return true;
+      }
+      return false;
+    }, &blockers);
 
     return wait_queue_->WaitOn(
-        context_->transaction_id(), lock_batch_, transactions,
+        context_->transaction_id(), lock_batch_, std::move(blockers),
+        VERIFY_RESULT(context_->GetStatusTablet(this)),
         std::bind(&PessimisticLockingConflictResolver::WaitingDone, shared_from(this), _1));
   }
 
@@ -922,6 +937,23 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
 
   virtual ~TransactionConflictResolverContext() {}
 
+  Result<TabletId> GetStatusTablet(ConflictResolver* resolver) const override {
+    // If this is the first operation for this transaction at this tablet, then GetStatusTablet
+    // will return boost::none since the transaction has not been registered with the tablet's
+    // transaction participant. However, the write_batch_ transaction metadata only includes the
+    // status tablet on the first write to this tablet.
+    if (write_batch_.transaction().has_status_tablet()) {
+      return write_batch_.transaction().status_tablet();
+    }
+    auto tablet_id_opt = resolver->status_manager().FindStatusTablet(transaction_id());
+    if (!tablet_id_opt) {
+      return STATUS_FORMAT(
+          InternalError, "Cannot find status tablet for write_batch transaction $0",
+          transaction_id());
+    }
+    return std::move(*tablet_id_opt);
+  }
+
  private:
   Status ReadConflicts(ConflictResolver* resolver) override {
     RETURN_NOT_OK(transaction_id_);
@@ -1106,6 +1138,12 @@ class OperationConflictResolverContext : public ConflictResolverContextBase {
   }
 
   virtual ~OperationConflictResolverContext() {}
+
+  Result<TabletId> GetStatusTablet(ConflictResolver* resolver) const override {
+    return STATUS(
+        NotSupported,
+        "Pessimistic locking not yet supported for single tablet transactions.");
+  }
 
   // Reads stored intents that could conflict with our operations.
   Status ReadConflicts(ConflictResolver* resolver) override {
