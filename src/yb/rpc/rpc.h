@@ -244,6 +244,7 @@ class Rpcs {
   Handle Register(RpcCommandPtr call);
   void Register(RpcCommandPtr call, Handle* handle);
   bool RegisterAndStart(RpcCommandPtr call, Handle* handle);
+  Status RegisterAndStartStatus(RpcCommandPtr call, Handle* handle);
   RpcCommandPtr Unregister(Handle* handle);
 
   template<class Iter>

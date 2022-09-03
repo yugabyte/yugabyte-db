@@ -43,6 +43,7 @@
 
 #include "yb/client/auto_flags_manager.h"
 #include "yb/client/client.h"
+#include "yb/client/client_fwd.h"
 #include "yb/client/transaction_manager.h"
 #include "yb/client/universe_key_client.h"
 
@@ -157,6 +158,8 @@ constexpr int kTServerYbClientDefaultTimeoutMs = 60 * 1000;
 DEFINE_int32(tserver_yb_client_default_timeout_ms, kTServerYbClientDefaultTimeoutMs,
              "Default timeout for the YBClient embedded into the tablet server that is used "
              "for distributed transactions.");
+
+DEFINE_test_flag(bool, select_all_status_tablets, false, "");
 
 namespace yb {
 namespace tserver {
@@ -678,6 +681,9 @@ client::TransactionPool& TabletServer::TransactionPool() {
 }
 
 client::LocalTabletFilter TabletServer::CreateLocalTabletFilter() {
+  if (FLAGS_TEST_select_all_status_tablets) {
+    return client::LocalTabletFilter();
+  }
   return std::bind(&TSTabletManager::PreserveLocalLeadersOnly, tablet_manager(), _1);
 }
 

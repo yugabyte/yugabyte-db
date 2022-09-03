@@ -23,6 +23,8 @@
 
 #include "yb/common/hybrid_time.h"
 
+#include "yb/docdb/deadlock_detector.h"
+
 #include "yb/gutil/ref_counted.h"
 
 #include "yb/server/server_fwd.h"
@@ -30,6 +32,7 @@
 #include "yb/tablet/tablet_fwd.h"
 
 #include "yb/tserver/tserver_fwd.h"
+#include "yb/tserver/tserver_service.pb.h"
 
 #include "yb/util/metrics_fwd.h"
 #include "yb/util/status_fwd.h"
@@ -136,6 +139,16 @@ class TransactionCoordinator {
 
   // Returns count of managed transactions. Used in tests.
   size_t test_count_transactions() const;
+
+  void ProcessWaitForReport(
+      const tserver::UpdateTransactionWaitingForStatusRequestPB& req,
+      tserver::UpdateTransactionWaitingForStatusResponsePB* resp,
+      DeadlockDetectorRpcCallback&& callback);
+
+  void ProcessProbe(
+      const tserver::ProbeTransactionDeadlockRequestPB& req,
+      tserver::ProbeTransactionDeadlockResponsePB* resp,
+      DeadlockDetectorRpcCallback&& callback);
 
  private:
   class Impl;

@@ -70,6 +70,12 @@ class TransactionStatusManagerMock : public TransactionStatusManager {
   void FillPriorities(
       boost::container::small_vector_base<std::pair<TransactionId, uint64_t>>* inout) override {}
 
+  void FillStatusTablets(std::vector<BlockingTransactionData>* inout) override { }
+
+  boost::optional<TabletId> FindStatusTablet(const TransactionId& id) override {
+    return boost::none;
+  }
+
   HybridTime MinRunningHybridTime() const override {
     return HybridTime::kMin;
   }

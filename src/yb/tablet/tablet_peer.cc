@@ -1491,7 +1491,7 @@ Status TabletPeer::ChangeRole(const std::string& requestor_uuid) {
 void TabletPeer::PollWaitQueue() const {
   if (tablet()) {
     DCHECK_NOTNULL(tablet()->wait_queue());
-    tablet()->wait_queue()->PollBlockerStatus(clock_->Now());
+    tablet()->wait_queue()->Poll(clock_->Now());
   }
 }
 
