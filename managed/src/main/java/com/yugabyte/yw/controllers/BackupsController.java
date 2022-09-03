@@ -11,6 +11,7 @@ import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.TaskInfoManager;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.YbcManager;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupTableParams;
@@ -24,6 +25,7 @@ import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.forms.PlatformResults.YBPTasks;
 import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
 import com.yugabyte.yw.forms.RestoreBackupParams;
+import com.yugabyte.yw.forms.YbcThrottleParameters;
 import com.yugabyte.yw.forms.filters.BackupApiFilter;
 import com.yugabyte.yw.forms.paging.BackupPagedApiQuery;
 import com.yugabyte.yw.models.Audit;
@@ -54,6 +56,7 @@ import io.swagger.annotations.ApiResponses;
 import io.swagger.annotations.Authorization;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.regex.Pattern;
@@ -75,15 +78,18 @@ public class BackupsController extends AuthenticatedController {
   private final Commissioner commissioner;
   private final CustomerConfigService customerConfigService;
   private final BackupUtil backupUtil;
+  private final YbcManager ybcManager;
 
   @Inject
   public BackupsController(
       Commissioner commissioner,
       CustomerConfigService customerConfigService,
-      BackupUtil backupUtil) {
+      BackupUtil backupUtil,
+      YbcManager ybcManager) {
     this.commissioner = commissioner;
     this.customerConfigService = customerConfigService;
     this.backupUtil = backupUtil;
+    this.ybcManager = ybcManager;
   }
 
   @Inject TaskInfoManager taskManager;
@@ -780,5 +786,84 @@ public class BackupsController extends AuthenticatedController {
     List<String> locations = backupUtil.getBackupLocations(backup);
     backupUtil.validateStorageConfigOnLocations(newConfig, locations);
     backup.updateStorageConfigUUID(taskParams.storageConfigUUID);
+  }
+
+  @ApiOperation(
+      value = "Set throttle params in YB-Controller",
+      nickname = "setThrottleParams",
+      response = YBPSuccess.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "throttleParams",
+          value = "Parameters for YB-Controller throttling",
+          paramType = "body",
+          dataType = "com.yugabyte.yw.forms.YbcThrottleParameters",
+          required = true))
+  public Result setThrottleParams(UUID customerUUID, UUID universeUUID) {
+    // Validate customer UUID.
+    Customer.getOrBadRequest(customerUUID);
+    // Validate universe UUID.
+    Universe universe = Universe.getOrBadRequest(universeUUID);
+    if (universe.universeIsLocked() || universe.getUniverseDetails().backupInProgress) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Cannot set throttle params, universe task in progress.");
+    }
+    if (universe.getUniverseDetails().universePaused) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Cannot set throttle params, universe is paused.");
+    }
+    if (!universe.isYbcEnabled()) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Cannot set throttle params, universe does not have YB-Controller setup.");
+    }
+    YbcThrottleParameters throttleParams = parseJsonAndValidate(YbcThrottleParameters.class);
+    try {
+      ybcManager.setThrottleParams(universeUUID, throttleParams);
+    } catch (RuntimeException e) {
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR,
+          String.format(
+              "Got error setting throttle params for universe {}, error: {}",
+              universeUUID.toString(),
+              e.getMessage()));
+    }
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.Universe,
+            Objects.toString(universeUUID, null),
+            Audit.ActionType.SetThrottleParams,
+            request().body().asJson());
+    return YBPSuccess.withMessage("Set throttle params for universe " + universeUUID.toString());
+  }
+
+  @ApiOperation(
+      value = "Get throttle params from YB-Controller",
+      nickname = "getThrottleparams",
+      response = Map.class)
+  public Result getThrottleParams(UUID customerUUID, UUID universeUUID) {
+    // Validate customer UUID
+    Customer.getOrBadRequest(customerUUID);
+    // Validate universe UUID
+    Universe universe = Universe.getOrBadRequest(universeUUID);
+    if (!universe.isYbcEnabled()) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Cannot get throttle params, universe does not have YB-Controller setup.");
+    }
+    if (universe.getUniverseDetails().universePaused) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Cannot get throttle params, universe is paused.");
+    }
+    try {
+      Map<String, String> throttleParams = ybcManager.getThrottleParams(universeUUID);
+      return PlatformResults.withData(throttleParams);
+    } catch (RuntimeException e) {
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR,
+          String.format(
+              "Got error getting throttle params for universe {}, error: {}",
+              universeUUID.toString(),
+              e.getMessage()));
+    }
   }
 }

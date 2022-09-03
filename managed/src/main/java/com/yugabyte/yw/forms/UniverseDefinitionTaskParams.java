@@ -464,6 +464,9 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     @ApiModelProperty public Map<String, String> masterGFlags = new HashMap<>();
     @ApiModelProperty public Map<String, String> tserverGFlags = new HashMap<>();
 
+    // Flags for YB-Controller.
+    @ApiModelProperty public Map<String, String> ybcFlags = new HashMap<>();
+
     // Instance tags (used for AWS only).
     @ApiModelProperty public Map<String, String> instanceTags = new HashMap<>();
 
