@@ -123,44 +123,123 @@
 # Build an app was in quick-start, now in develop
 
 [[redirects]]
-  from="/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-c/*"
+  from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-c/*"
   to = "/preview/develop/build-apps/c/cloud-ysql-c/"
   force = true
 [[redirects]]
-  from="/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-csharp/*"
+  from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-csharp/*"
   to = "/preview/develop/build-apps/csharp/cloud-ysql-csharp/"
   force = true
 [[redirects]]
-  from="/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-cpp/*"
+  from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-cpp/*"
   to = "/preview/develop/build-apps/cpp/cloud-ysql-cpp/"
   force = true
 [[redirects]]
-  from="/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-go/*"
+  from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-go/*"
   to = "/preview/develop/build-apps/go/cloud-ysql-go/"
   force = true
 [[redirects]]
-  from="/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-yb-jdbc/*"
+  from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-yb-jdbc/*"
   to = "/preview/develop/build-apps/java/cloud-ysql-jdbc/"
   force = true
 [[redirects]]
-  from="/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-node/*"
+  from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-node/*"
   to = "/preview/develop/build-apps/nodejs/cloud-ysql-node/"
   force = true
 [[redirects]]
-  from="/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-php/*"
+  from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-php/*"
   to = "/preview/develop/build-apps/php/cloud-ysql-php/"
   force = true
 [[redirects]]
-  from="/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-python/*"
+  from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-python/*"
   to = "/preview/develop/build-apps/python/cloud-ysql-python/"
   force = true
 [[redirects]]
-  from="/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-ruby/*"
+  from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-ruby/*"
   to = "/preview/develop/build-apps/ruby/cloud-ysql-ruby/"
   force = true
 [[redirects]]
-  from="/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-rust/*"
+  from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-rust/*"
   to = "/preview/develop/build-apps/rust/cloud-ysql-rust/"
+  force = true
+
+# Manual import was in migrate, now in manage
+
+[[redirects]]
+  from = "/preview/migrate/manual-import/migrate-schema/"
+  to = "/preview/manage/data-migration/bulk-export-ysql/"
+  force = true
+
+[[redirects]]
+  from = "/preview/migrate/manual-import/migrate-application/"
+  to = "/preview/manage/data-migration/bulk-export-ysql/"
+  force = true
+
+[[redirects]]
+  from = "/preview/migrate/manual-import/export-data/"
+  to = "/preview/manage/data-migration/bulk-export-ysql/"
+  force = true
+
+[[redirects]]
+  from = "/preview/migrate/manual-import/prepare-cluster/"
+  to = "/preview/manage/data-migration/bulk-import-ysql/"
+  force = true
+
+[[redirects]]
+  from = "/preview/migrate/manual-import/import-data/"
+  to = "/preview/manage/data-migration/bulk-import-ysql/"
+  force = true
+
+[[redirects]]
+  from = "/preview/migrate/manual-import/verify-migration/"
+  to = "/preview/manage/data-migration/bulk-import-ysql/"
+  force = true
+
+[[redirects]]
+  from = "/preview/migrate/migrate-from-postgresql/"
+  to = "/preview/manage/data-migration/bulk-export-ysql/"
+  force = true
+
+[[redirects]]
+  from = "/stable/migrate/manual-import/migrate-schema/"
+  to = "/stable/manage/data-migration/bulk-export-ysql/"
+  force = true
+
+[[redirects]]
+  from = "/stable/migrate/manual-import/migrate-application/"
+  to = "/stable/manage/data-migration/bulk-export-ysql/"
+  force = true
+
+[[redirects]]
+  from = "/stable/migrate/manual-import/export-data/"
+  to = "/stable/manage/data-migration/bulk-export-ysql/"
+  force = true
+
+[[redirects]]
+  from = "/stable/migrate/manual-import/prepare-cluster/"
+  to = "/stable/manage/data-migration/bulk-import-ysql/"
+  force = true
+
+[[redirects]]
+  from = "/stable/migrate/manual-import/import-data/"
+  to = "/stable/manage/data-migration/bulk-import-ysql/"
+  force = true
+
+[[redirects]]
+  from = "/stable/migrate/manual-import/verify-migration/"
+  to = "/stable/manage/data-migration/bulk-import-ysql/"
+  force = true
+
+[[redirects]]
+  from = "/stable/migrate/migrate-from-postgresql/"
+  to = "/stable/manage/data-migration/bulk-export-ysql/"
+  force = true
+
+# Redirect for YugabyteDB Voyager
+
+[[redirects]]
+  from = "/:version/migrate/yb-voyager/*"
+  to = "/:version/migrate/*"
   force = true
 
 # Redirect older versions of specific sections
