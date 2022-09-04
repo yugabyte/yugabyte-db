@@ -27,11 +27,11 @@ Intelligent -- AGE allows you to perform graph queries that are the basis for ma
 
 ## Latest happenings
 
-- Latest Apache AGE release, [Apache AGE 1.1.0 (https://github.com/apache/age/releases/tag/v1.1.0-rc0).
+- Latest Apache AGE release, [Apache AGE 1.1.0](https://github.com/apache/age/releases/tag/v1.1.0-rc1).
 - The latest Apache AGE documentation is now available at [here](https://age.apache.org/docs/master/index.html).
-- The roadmap has been updated, please check out the [Apache AGE website](http://age.apache.org/).
+- The roadmap - [Apache AGE website](http://age.apache.org/).
 - Send all your comments and inquiries to the user mailing list, users@age.apache.org.
-- To focus more on implementing the openCypher specification, the support for PostgreSQL 12 will be added in the Q1 2022. 
+- To focus more on implementing the openCypher specification, the support for PostgreSQL 12 will be added in the Q4 2022.
 
 ## Installation
 
@@ -40,7 +40,7 @@ Intelligent -- AGE allows you to perform graph queries that are the basis for ma
 
 ## Graph visualization tool for AGE
 
-Apache AGE Viewer is a subproject of the Apache AGE project:  https://github.com/apache/age-viewer
+Apache AGE Viewer is a subproject of the Apache AGE project:  <https://github.com/apache/age-viewer>
 
 - This is a visualization tool.
 After AGE Extension Installation
@@ -54,7 +54,18 @@ Here is the link to the latest [Apache AGE documentation](https://age.apache.org
 You can learn about how to install Apache AGE, its features and built-in functions and how to use various Cypher queries.
 
 ## Language Specific Drivers
-[Apache AGE Python Driver](https://github.com/rhizome-ai/apache-age-python)
+
+### Built-in
+
+- [Go driver](./drivers/golang)
+- [Java driver](./drivers/jdbc)
+- [NodeJs driver](./drivers/nodejs)
+- [Python driver](./drivers/python)
+
+### Community
+
+- [Apache AGE Python Driver](https://github.com/rhizome-ai/apache-age-python)
+- [Apache AGE Rust Driver](https://github.com/Dzordzu/rust-apache-age.git)
 
 ## Contribution
 
