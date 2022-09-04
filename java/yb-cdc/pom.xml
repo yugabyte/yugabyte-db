@@ -89,7 +89,7 @@
     <dependency>
       <groupId>org.postgresql</groupId>
       <artifactId>postgresql</artifactId>
-      <version>42.2.23</version>
+      <version>${postgresql.jdbc.driver.version}</version>
     </dependency>
     <dependency>
       <groupId>org.mybatis</groupId>
