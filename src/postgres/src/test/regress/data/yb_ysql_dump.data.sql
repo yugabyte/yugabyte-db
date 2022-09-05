@@ -148,6 +148,50 @@ SPLIT INTO 3 TABLETS;
 ALTER TABLE public.chat_user OWNER TO yugabyte_test;
 
 --
+-- Name: p1; Type: TABLE; Schema: public; Owner: yugabyte_test
+--
+
+
+-- For binary upgrade, must preserve pg_type oid
+SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16558'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_type array oid
+SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16557'::pg_catalog.oid);
+
+CREATE TABLE public.p1 (
+    k integer NOT NULL,
+    v text,
+    CONSTRAINT p1_pkey PRIMARY KEY((k) HASH)
+)
+SPLIT INTO 3 TABLETS;
+
+
+ALTER TABLE public.p1 OWNER TO yugabyte_test;
+
+--
+-- Name: p2; Type: TABLE; Schema: public; Owner: yugabyte_test
+--
+
+
+-- For binary upgrade, must preserve pg_type oid
+SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16565'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_type array oid
+SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16564'::pg_catalog.oid);
+
+CREATE TABLE public.p2 (
+    k integer NOT NULL,
+    v text,
+    CONSTRAINT p2_pkey PRIMARY KEY((k) HASH)
+)
+SPLIT INTO 3 TABLETS;
+
+
+ALTER TABLE public.p2 OWNER TO yugabyte_test;
+
+--
 -- Name: rls_private; Type: TABLE; Schema: public; Owner: yugabyte_test
 --
 
@@ -919,6 +963,22 @@ COPY public.chat_user ("chatID") FROM stdin;
 
 
 --
+-- Data for Name: p1; Type: TABLE DATA; Schema: public; Owner: yugabyte_test
+--
+
+COPY public.p1 (k, v) FROM stdin;
+\.
+
+
+--
+-- Data for Name: p2; Type: TABLE DATA; Schema: public; Owner: yugabyte_test
+--
+
+COPY public.p2 (k, v) FROM stdin;
+\.
+
+
+--
 -- Data for Name: rls_private; Type: TABLE DATA; Schema: public; Owner: yugabyte_test
 --
 
@@ -1187,6 +1247,26 @@ SELECT pg_catalog.setval('public.tbl1_a_seq', 1, true);
 --
 
 SELECT pg_catalog.setval('public.tbl2_a_seq', 1, false);
+
+
+--
+-- Name: p1 c1; Type: CONSTRAINT; Schema: public; Owner: yugabyte_test
+--
+
+CREATE UNIQUE INDEX NONCONCURRENTLY c1 ON public.p1 USING lsm (v ASC) SPLIT AT VALUES (('foo'), ('qux'));
+
+ALTER TABLE ONLY public.p1
+    ADD CONSTRAINT c1 UNIQUE USING INDEX c1;
+
+
+--
+-- Name: p2 c2; Type: CONSTRAINT; Schema: public; Owner: yugabyte_test
+--
+
+CREATE UNIQUE INDEX NONCONCURRENTLY c2 ON public.p2 USING lsm (v HASH) SPLIT INTO 10 TABLETS;
+
+ALTER TABLE ONLY public.p2
+    ADD CONSTRAINT c2 UNIQUE USING INDEX c2;
 
 
 --
